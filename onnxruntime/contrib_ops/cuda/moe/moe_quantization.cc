@@ -832,10 +832,15 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   if (is_wfp4afp8 && !use_wfp4afp8_dequant_fallback_) {
     fc1_weight_data = packed_fp4_fc1_weights_ ? packed_fp4_fc1_weights_.get() : fc1_weight_data;
     fc2_weight_data = packed_fp4_fc2_weights_ ? packed_fp4_fc2_weights_.get() : fc2_weight_data;
-  } else if (is_int && !weights_prepacked_) {
+  } else if (int_weights_consumed_by_prepack) {
     // PrePack converted the raw int4/int8 weights to the CUTLASS fpA_intB
-    // layout that the runner consumes. The source initializer was freed
-    // (``is_packed = true``) so we always read from the prepacked buffer.
+    // layout that the runner consumes and freed the source initializer
+    // (``is_packed = true``). Gate on ``int_weights_consumed_by_prepack``
+    // (which already requires ``packed_fc1_weights_ != nullptr``) rather than
+    // just ``is_int && !weights_prepacked_``: when prepacking is disabled at
+    // the session level (``session.disable_prepacking``) PrePack never runs,
+    // the prepack buffers stay null, and the raw initializer pointers read
+    // above must be kept so the runner is not handed null weight pointers.
     fc1_weight_data = packed_fc1_weights_.get();
     fc2_weight_data = packed_fc2_weights_.get();
   }
@@ -1139,22 +1144,17 @@ void QMoE::PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, Al
   const int64_t k_packed = shape[2];
   const int64_t k = k_packed * pack_factor;
 
-  // ``preprocess_weights_for_mixed_gemm_cuda`` only has tile / permutation
-  // tables for SM75 / 80 / 90. The offline pybind binding
-  // (``pack_weights_for_cuda_mixed_gemm``) similarly restricts force_arch
-  // to that set and falls back to 80 for newer archs. Mirror the same
-  // fallback here so SM100/120 (Blackwell) consumers get a defined layout
-  // (compiled-for-Ampere) instead of garbage.
-  int packing_sm = sm_;
-  if (packing_sm < 75) {
-    packing_sm = 75;
-  } else if (packing_sm > 90) {
-    packing_sm = 80;
-  } else if (packing_sm != 75 && packing_sm != 80 && packing_sm != 90) {
-    // sm_ values like 86 or 89 share the SM80 fpA_intB layout; explicitly
-    // round them down so the helper finds a matching tile table.
-    packing_sm = 80;
-  }
+  // Weight packing is architecture-aware (see
+  // docs/contrib_ops/cuda/moe_qmoe.md §7 "Cross-Architecture Packing
+  // Compatibility"). SM90 (Hopper) uses its own Permuted-Linear layout that
+  // skips column interleaving, so it is its own compatibility group. Every
+  // other supported arch — SM75/80/86/89 and SM100/120 (Blackwell) — shares
+  // the SM80 fpA_intB layout, so they all pack as SM80. SM70 and older lack
+  // INT8 LDSM and are unsupported. The compute-side runner selects the same
+  // layout from this clamped arch, so the two cannot drift.
+  ORT_ENFORCE(sm_ >= 75,
+              "QMoE int4/int8 weight prepack requires SM75 or newer, got sm=", sm_);
+  const int packing_sm = (sm_ == 90) ? 90 : 80;
 
   // Per-expert sizes.
   const size_t per_expert_bytes = static_cast<size_t>(n) * static_cast<size_t>(k) / pack_factor;
@@ -1212,7 +1212,10 @@ void QMoE::PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, Al
         quant_type);
   }
 
-  CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+  // No explicit cudaStreamSynchronize here: preprocess_weights_for_mixed_gemm_cuda
+  // synchronizes the stream internally at the end of every per-expert call, so
+  // after the final expert all transpose/pack work (and the CPU->GPU staging
+  // copy above) is complete and the transient scratch buffers are safe to free.
   is_packed = true;
 }
 
