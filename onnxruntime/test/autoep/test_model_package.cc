@@ -1036,7 +1036,7 @@ TEST(ModelPackageTest, VariantSelector_TieBreakIsDeterministic) {
 
 // ------------------------------------------------------------------
 // Test: a variant's per-file `session_options` flow through OrtApis::AddSessionConfigEntry.
-// We verify this by feeding a *known* typed key (intra_op_num_threads) a non-integer value:
+// We verify this by feeding a *known* typed key (session.intra_op_num_threads) a non-integer value:
 // pre-change behavior would silently stuff it into AddConfigEntry and succeed; post-change
 // behavior parses it via the typed dispatcher and fails CreateSession with a parse error.
 // ------------------------------------------------------------------
@@ -1062,14 +1062,14 @@ TEST(ModelPackageTest, VariantSessionOptions_DispatchedThroughAddSessionConfigEn
   })";
   CreateComponentModelMetadata(package_root, "model_1", metadata_json);
 
-  // Per-file session_options assigns a typed key (intra_op_num_threads) a value that is not a
+  // Per-file session_options assigns a typed key (session.intra_op_num_threads) a value that is not a
   // valid integer. Routing this through OrtApis::AddSessionConfigEntry (the new behavior) must reject it.
   {
     std::ofstream os(variant_dir / "variant.json", std::ios::binary);
     os << R"({
       "filename": "mul_1.onnx",
       "session_options": {
-        "intra_op_num_threads": "not_an_int"
+        "session.intra_op_num_threads": "not_an_int"
       }
     })";
   }
@@ -1117,7 +1117,7 @@ TEST(ModelPackageTest, VariantSessionOptions_DispatchedThroughAddSessionConfigEn
     Ort::GetApi().ReleaseSession(raw_session);
     raw_session = nullptr;
   }
-  ASSERT_NE(st, nullptr) << "CreateSession unexpectedly succeeded with malformed intra_op_num_threads";
+  ASSERT_NE(st, nullptr) << "CreateSession unexpectedly succeeded with malformed session.intra_op_num_threads";
   const std::string err_msg = Ort::GetApi().GetErrorMessage(st);
   Ort::GetApi().ReleaseStatus(st);
 
