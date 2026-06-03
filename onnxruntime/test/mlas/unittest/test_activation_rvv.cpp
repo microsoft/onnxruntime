@@ -57,7 +57,7 @@ class MlasActivationRvvBoundaryTest : public MlasTestBase {
     const float pinf = std::numeric_limits<float>::infinity();
     struct Expect {
       const char* name;
-      void (*fn)(const float*, float*, size_t);
+      void(MLASCALL* fn)(const float*, float*, size_t);
       float expected;
       bool allow_nan;
     } cases[] = {
@@ -99,7 +99,7 @@ class MlasActivationRvvBoundaryTest : public MlasTestBase {
     const float ninf = -std::numeric_limits<float>::infinity();
     struct Expect {
       const char* name;
-      void (*fn)(const float*, float*, size_t);
+      void(MLASCALL* fn)(const float*, float*, size_t);
       float expected;
     } cases[] = {
         {"Erf-Inf", MlasComputeErf, -1.0f},
@@ -205,17 +205,17 @@ class MlasActivationRvvBoundaryTest : public MlasTestBase {
 
     // Erf
     MlasComputeErf(in.data(), out.data(), N);
-    for (size_t i = 0; i < N; ++i) ref[i] = std::erff(in[i]);
+    for (size_t i = 0; i < N; ++i) ref[i] = std::erf(in[i]);
     CheckRel("Erf", out, ref, 5e-5f, 1e-5f);
 
     // Tanh
     MlasComputeTanh(in.data(), out.data(), N);
-    for (size_t i = 0; i < N; ++i) ref[i] = std::tanhf(in[i]);
+    for (size_t i = 0; i < N; ++i) ref[i] = std::tanh(in[i]);
     CheckRel("Tanh", out, ref, 5e-5f, 1e-5f);
 
     // Logistic (sigmoid)
     MlasComputeLogistic(in.data(), out.data(), N);
-    for (size_t i = 0; i < N; ++i) ref[i] = 1.0f / (1.0f + std::expf(-in[i]));
+    for (size_t i = 0; i < N; ++i) ref[i] = 1.0f / (1.0f + std::exp(-in[i]));
     CheckRel("Logistic", out, ref, 5e-5f, 1e-5f);
 
     // Exp — confine to non-overflowing range
@@ -224,7 +224,7 @@ class MlasActivationRvvBoundaryTest : public MlasTestBase {
       std::vector<float> exp_in(N), exp_out(N), exp_ref(N);
       for (size_t i = 0; i < N; ++i) exp_in[i] = exp_dist(gen);
       MlasComputeExp(exp_in.data(), exp_out.data(), N);
-      for (size_t i = 0; i < N; ++i) exp_ref[i] = std::expf(exp_in[i]);
+      for (size_t i = 0; i < N; ++i) exp_ref[i] = std::exp(exp_in[i]);
       // Exp grows fast: use a relative-only tolerance
       for (size_t i = 0; i < N; ++i) {
         if (!std::isfinite(exp_ref[i])) continue;
@@ -239,21 +239,21 @@ class MlasActivationRvvBoundaryTest : public MlasTestBase {
     // SiLU(x) = x * sigmoid(x)
     MlasComputeSilu(in.data(), out.data(), N);
     for (size_t i = 0; i < N; ++i) {
-      ref[i] = in[i] / (1.0f + std::expf(-in[i]));
+      ref[i] = in[i] / (1.0f + std::exp(-in[i]));
     }
     CheckRel("Silu", out, ref, 1e-4f, 1e-5f);
 
     // GeluErf(x) = 0.5 * x * (1 + erf(x / sqrt(2)))
     MlasComputeGeluErf(in.data(), out.data(), N);
     for (size_t i = 0; i < N; ++i) {
-      ref[i] = 0.5f * in[i] * (1.0f + std::erff(in[i] * 0.7071067811865476f));
+      ref[i] = 0.5f * in[i] * (1.0f + std::erf(in[i] * 0.7071067811865476f));
     }
     CheckRel("GeluErf", out, ref, 1e-4f, 1e-5f);
   }
 
   struct KernelEntry {
     const char* name;
-    void (*fn)(const float*, float*, size_t);
+    void(MLASCALL* fn)(const float*, float*, size_t);
   };
 
   static constexpr KernelEntry kAllKernels[] = {
