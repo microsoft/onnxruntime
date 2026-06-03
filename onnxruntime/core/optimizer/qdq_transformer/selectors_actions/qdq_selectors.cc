@@ -181,14 +181,23 @@ bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node
     return false;
   }
 
-  // Resize with non-nearest interpolation mode (e.g., linear, cubic) computes interpolated values
-  // using float arithmetic. The QDQ drop optimization is only valid for nearest-neighbor resize,
-  // which copies existing values and can operate correctly on quantized integers.
+  // Resize output depends on both the interpolation mode and the coordinate transformation mode:
+  //   - "nearest" mode copies existing input values, so it can operate directly on quantized integers.
+  //   - Non-nearest modes (e.g., "linear", "cubic") interpolate using float arithmetic, which is only
+  //     correct in the dequantized (float) domain, so QDQ must be preserved.
+  //   - "tf_crop_and_resize" writes extrapolation_value (authored in the float domain) into out-of-crop
+  //     positions; dropping QDQ would store that float value raw in the quantized domain, even for nearest.
+  // Only allow dropping QDQ for nearest mode without tf_crop_and_resize coordinate transformation.
   if (node.OpType() == "Resize") {
     const auto& attrs = node.GetAttributes();
-    const auto mode_attr_it = attrs.find("mode");
-    // Default mode is "nearest" when not specified; only allow drop for nearest mode.
-    if (mode_attr_it != attrs.end() && mode_attr_it->second.s() != "nearest") {
+    // "mode" defaults to "nearest" when absent. It is always present after Graph::Resolve() injects
+    // schema defaults; the absence check is a defensive fallback for hand-built/unresolved graphs.
+    const auto mode_iter = attrs.find("mode");
+    if (mode_iter != attrs.end() && mode_iter->second.s() != "nearest") {
+      return false;
+    }
+    const auto coord_mode_iter = attrs.find("coordinate_transformation_mode");
+    if (coord_mode_iter != attrs.end() && coord_mode_iter->second.s() == "tf_crop_and_resize") {
       return false;
     }
   }
