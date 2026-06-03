@@ -7,6 +7,7 @@ import argparse
 import importlib.util
 import os
 import shutil
+import subprocess
 
 import triton
 
@@ -59,28 +60,29 @@ def compile(function_table, out_dir):
 
 def convert_lib_to_obj(lib_file, out_dir):
     obj_file = lib_file.split(".")[0] + ".o"
-    command = f"cd {out_dir}; objcopy -I binary -O elf64-x86-64 -B i386:x86-64 {lib_file} {obj_file}; cd -"
-    ret = os.system(command)
+    command = ["objcopy", "-I", "binary", "-O", "elf64-x86-64", "-B", "i386:x86-64", lib_file, obj_file]
 
-    if ret != 0:
-        raise Exception(f"exec convert command: {command} failed.")
-    # check file exist
-    if not os.path.exists(f"{out_dir}/{obj_file}"):
-        raise Exception(f"the output file not exist, after exec comamnd: {command}")
+    try:
+        subprocess.run(command, cwd=out_dir, check=True)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(f"exec convert command: {' '.join(command)} failed.") from exc
+
+    if not os.path.exists(os.path.join(out_dir, obj_file)):
+        raise RuntimeError(f"the output file not exist, after exec comamnd: {' '.join(command)}")
 
     return obj_file
 
 
 def archive_obj_files(obj_files, out_dir, out_obj_file):
-    obj_files = " ".join(obj_files)
-    command = f"cd {out_dir}; ar rcs {out_obj_file} {obj_files}; cd -"
-    ret = os.system(command)
+    command = ["ar", "rcs", out_obj_file, *obj_files]
 
-    if ret != 0:
-        raise Exception(f"exec convert command: {command} failed.")
-    # check file exist
-    if not os.path.exists(f"{out_dir}/{out_obj_file}"):
-        raise Exception(f"the output file not exist, after exec comamnd: {command}")
+    try:
+        subprocess.run(command, cwd=out_dir, check=True)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(f"exec convert command: {' '.join(command)} failed.") from exc
+
+    if not os.path.exists(os.path.join(out_dir, out_obj_file)):
+        raise RuntimeError(f"the output file not exist, after exec comamnd: {' '.join(command)}")
 
 
 def convert_and_save(metadata, header_file, out_dir, out_obj_file):
@@ -133,10 +135,10 @@ const _TritonKernelInfo kernel_infos[] = {{
 
 def main(args):
     out_obj_file = args.obj_file
-    out_dir = os.path.dirname(out_obj_file)
+    out_dir = os.path.dirname(out_obj_file) or "."
     out_obj_file = os.path.basename(out_obj_file)
     if not os.path.exists(out_dir):
-        os.mkdir(out_dir)
+        os.makedirs(out_dir, exist_ok=True)
 
     metadata = []
     print("[triton kernel] start compile triton kernel.")
