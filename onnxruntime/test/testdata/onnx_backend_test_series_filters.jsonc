@@ -374,20 +374,29 @@
         "^test_dft_rfft_opset19",
         "^test_dft_irfft_opset19",
         // ORT BitCast kernel does not support bool type.
-        "^test_bitcast_bool_to_uint8"
+        "^test_bitcast_bool_to_uint8",
         // --- ONNX 1.22.0rc1 / opset 27 integration (issue #28752) ---
-        // No opset-27 CPU exclusions are needed. The new opset-27 ops CausalConvWithState
-        // and LinearAttention are ONNX *function* ops, and the updated Range op (opset 27,
-        // which adds float16/bfloat16) also carries an ONNX function body. ORT expands these
-        // function bodies into primitive nodes at graph-partition time, so all 62 opset-27
-        // backend node tests (base + _expanded, including fp16/bf16) pass on the CPU EP even
-        // though no native CausalConvWithState/LinearAttention kernel exists and the CPU
-        // Range-27 kernel registers only the common numeric types. Verified with
-        // onnx_test_runner -e cpu (62/62 succeeded, output-compared) under
-        // ALLOW_RELEASED_ONNX_OPSET_ONLY=0. NOTE: GPU/CUDA/DML EPs were NOT exercised in
-        // this validation env -- CPU EP only. If a non-CPU EP (e.g. CUDA/DML) surfaces a
-        // genuine failure in CI, add a narrowly-scoped EP-specific exclusion below rather
-        // than re-adding a global filter.
+        // Most opset-27 node tests pass on the CPU EP: CausalConvWithState and LinearAttention
+        // are ONNX *function* ops, and the float16 Range-27 op carries an ONNX function body, so
+        // ORT expands them into primitive nodes at graph-partition time (verified with
+        // onnx_test_runner -e cpu, output-compared, under ALLOW_RELEASED_ONNX_OPSET_ONLY=0).
+        // Two categories still need exclusions in the Python onnx_backend_test_series harness:
+        //
+        // 1. FlexAttention is a brand-new ONNX 1.22 op in the ai.onnx.preview domain. It DOES carry
+        //    a (context-dependent) ONNX function body, but ORT does not register the ai.onnx.preview
+        //    domain at all, so it has neither a native kernel nor function-body expansion -> the node
+        //    cannot resolve on any EP yet ("ai.onnx.preview:FlexAttention is not a registered op").
+        //    Scope: exclude ONLY the base node tests (which contain the unresolved FlexAttention
+        //    node). The 11 *_expanded_ver26 variants decompose to standard ai.onnx ops (no preview
+        //    node; the ai.onnx.preview opset_import in their header is unused and harmless), so they
+        //    load and pass -- the negative lookahead keeps them running to retain that coverage.
+        //    Follow-up: register ai.onnx.preview / implement FlexAttention.
+        "^test_flexattention_(?!.*expanded)",
+        // 2. The bfloat16 Range-27 node tests feed bf16 tensors that the Python backend harness
+        //    cannot materialize as numpy arrays ("Numpy_type 256 can't be converted to
+        //    MLDataType"); the CPU/CUDA Range kernels also have no native bf16 specialization
+        //    (deferred to ONNX function expansion). Covers both the base and _expanded variants.
+        "^test_range_bfloat16_type_positive_delta"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
