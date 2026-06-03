@@ -92,8 +92,8 @@ TEST(CropAndResizeTest, CropAndResizeRejectsMalformedCropSize) {
   test_with_three_elements.AddOutput<float>("output", {1, 1, 1, 1}, {0.0f});
 
   test_with_three_elements.Run(OpTester::ExpectResult::kExpectFailure,
-                                "[ShapeInferenceError] crop_size input tensor must have exactly 2 elements; got 3",
-                                {kTensorrtExecutionProvider});
+                               "[ShapeInferenceError] crop_size input tensor must have exactly 2 elements; got 3",
+                               {kTensorrtExecutionProvider});
 }
 
 TEST(CropAndResizeTest, CropAndResize_1133) {
