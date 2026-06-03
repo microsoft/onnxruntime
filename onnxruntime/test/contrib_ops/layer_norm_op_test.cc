@@ -871,7 +871,8 @@ TEST(LayerNormTest, LayerNorm_ConstantWeights_LargeInput) {
   test.AddOutput<float>("Y", dims, {0.1f, 0.1f, 0.1f, 0.1f});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
-            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider});
+            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider,
+            kWebGpuExecutionProvider});
 }
 
 #if defined(USE_DNNL)
