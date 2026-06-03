@@ -128,7 +128,8 @@ acceleration as a follow-up) for the ops that gate end-to-end BF16 execution:
 This unblocks running BF16 LLMs on CPU without inserting `Cast` nodes.
 
 ### Phase 2 — CPU: convolutional / vision and remaining elementwise
-`Conv`, `BatchNormalization`, `InstanceNormalization`, pooling, `Resize`, `Clip`,
+`Conv`, `BatchNormalization`, `InstanceNormalization`, pooling (`MaxPool`, `AveragePool`,
+`GlobalAveragePool`), `Resize`, `Clip`,
 `PRelu`/`LeakyRelu`/`Elu`, remaining reductions and unary math.
 
 ### Phase 3 — CPU: native BF16 acceleration
