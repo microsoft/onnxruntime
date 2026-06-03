@@ -272,3 +272,56 @@ class TestOpMaxPoolFP8(unittest.TestCase):
                             maxpool_inputs,
                             f"QuantizeLinear output {out!r} must not feed directly into MaxPool",
                         )
+
+    def test_quantize_maxpool_fp8_qoperator(self):
+        """QMaxPool (QOperator format) guard: MaxPool must remain unquantized under FP8.
+
+        The guard lives in QMaxPool.quantize() in operators/maxpool.py.  When
+        activation_qType is in FLOAT8_TYPES the method falls back to
+        QuantOperatorBase.quantize(), which copies the node unchanged.  This
+        test exercises that path and confirms the output graph still contains
+        exactly one plain MaxPool node with no FP8-typed inputs/outputs.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            model_fp32_path = os.path.join(tmp, "maxpool_fp32.onnx")
+            model_fp8_qop_path = os.path.join(tmp, "maxpool_fp8_qoperator.onnx")
+
+            self.construct_model_conv_maxpool(model_fp32_path)
+
+            input_data_list = [{"input": np.random.randint(-1, 2, [1, 2, 26, 42]).astype(np.float32)}]
+            data_reader = TestDataFeeds(input_data_list)
+
+            # quantize_static with QOperator format must complete without raising.
+            quantize_static(
+                model_fp32_path,
+                model_fp8_qop_path,
+                data_reader,
+                quant_format=QuantFormat.QOperator,
+                activation_type=QuantType.QFLOAT8E4M3FN,
+                weight_type=QuantType.QFLOAT8E4M3FN,
+                calibrate_method=CalibrationMethod.Distribution,
+            )
+
+            qop_model = onnx.load(model_fp8_qop_path)
+
+            # Exactly one MaxPool node must survive (unquantized).
+            maxpool_nodes = [n for n in qop_model.graph.node if n.op_type == "MaxPool"]
+            self.assertEqual(len(maxpool_nodes), 1, "Expected exactly one MaxPool node in QOperator FP8 model")
+
+            # No FP8-typed tensor may appear on MaxPool inputs or outputs.
+            tensor_types = {}
+            for vi in qop_model.graph.value_info:
+                tensor_types[vi.name] = vi.type.tensor_type.elem_type
+            for inp in qop_model.graph.input:
+                tensor_types[inp.name] = inp.type.tensor_type.elem_type
+            for out in qop_model.graph.output:
+                tensor_types[out.name] = out.type.tensor_type.elem_type
+
+            for node in maxpool_nodes:
+                for tensor_name in list(node.input) + list(node.output):
+                    if tensor_name in tensor_types:
+                        self.assertNotIn(
+                            tensor_types[tensor_name],
+                            FLOAT8_TYPES,
+                            f"MaxPool tensor {tensor_name!r} must not be FP8 type in QOperator model",
+                        )
