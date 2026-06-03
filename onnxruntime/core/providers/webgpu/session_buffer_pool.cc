@@ -21,7 +21,6 @@ void ReleaseSlotBuffers(std::vector<std::pair<size_t, WGPUBuffer>>& entries) {
 
 SessionBufferPool::SessionBufferPool(size_t max_generations)
     : max_generations_{max_generations} {
-  slots_.reserve(max_generations_);
 }
 
 SessionBufferPool::~SessionBufferPool() {

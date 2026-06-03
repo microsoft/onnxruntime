@@ -64,10 +64,10 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
   if (std::string pool_generations_str;
       config_options.TryGetConfigEntry(kSessionBufferPoolGenerations, pool_generations_str)) {
     size_t pool_generations = 0;
-    auto result = std::from_chars(pool_generations_str.data(),
-                                  pool_generations_str.data() + pool_generations_str.size(),
-                                  pool_generations);
-    if (result.ec == std::errc{}) {
+    const char* begin = pool_generations_str.data();
+    const char* end = begin + pool_generations_str.size();
+    auto result = std::from_chars(begin, end, pool_generations);
+    if (result.ec == std::errc{} && result.ptr == end) {
       webgpu_ep_config.session_buffer_pool_generations = pool_generations;
     } else {
       ORT_THROW("Invalid sessionBufferPoolGenerations value: ", pool_generations_str, ". Must be a non-negative integer.");

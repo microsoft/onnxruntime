@@ -98,8 +98,8 @@ class BufferManager {
 
   // Direct access to the underlying cache managers. Used by SessionBufferPool to
   // donate/seed buffers across per-graph BufferManager lifetimes.
-  IBufferCacheManager& StorageCache() const { return *storage_cache_; }
-  IBufferCacheManager& UniformCache() const { return *uniform_cache_; }
+  IBufferCacheManager& StorageCache() { return *storage_cache_; }
+  IBufferCacheManager& UniformCache() { return *uniform_cache_; }
 
  private:
   IBufferCacheManager& GetCacheManager(wgpu::BufferUsage usage) const;
