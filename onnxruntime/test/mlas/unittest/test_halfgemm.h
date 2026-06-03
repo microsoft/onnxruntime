@@ -122,7 +122,7 @@ class MlasHalfGemmTest : public MlasTestBase {
     if (enforce_kleidiai_override) {
       ASSERT_NE(GetMlasPlatform().MlasHalfGemmBatchOverride, nullptr);
       const bool handled = GetMlasPlatform().MlasHalfGemmBatchOverride(
-          M, N, K, BatchSize, GemmParameters.data(), threadpool_, nullptr);
+          M, N, K, BatchSize, GemmParameters.data(), threadpool_);
       ASSERT_TRUE(handled);
     } else {
       MlasHalfGemmBatch(M, N, K, BatchSize, GemmParameters.data(), threadpool_);

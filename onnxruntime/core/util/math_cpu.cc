@@ -201,8 +201,8 @@ void MatMul<MLFloat16>(ptrdiff_t M, ptrdiff_t N, ptrdiff_t K, const MLFloat16* A
   data.ldb = static_cast<size_t>(N);
   data.C = C;
   data.ldc = static_cast<size_t>(N);
-  MlasHalfGemmBatch(static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K), 1, &data, threadpool,
-                    mlas_backend_kernel_selector_config);
+  data.BackendKernelSelectorConfig = mlas_backend_kernel_selector_config;
+  MlasHalfGemmBatch(static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K), 1, &data, threadpool);
 #else
   ORT_UNUSED_PARAMETER(threadpool);
   ORT_UNUSED_PARAMETER(mlas_backend_kernel_selector_config);
