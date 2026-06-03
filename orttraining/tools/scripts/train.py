@@ -1,3 +1,4 @@
+import shlex
 import subprocess
 import sys
 
@@ -7,7 +8,7 @@ def main(argv=None):
         argv = sys.argv[1:]
 
     cmd = ["/workspace/onnxruntime_training_bert", *argv]
-    print(" ".join(cmd))
+    print(shlex.join(cmd))
     subprocess.run(cmd, check=True)
 
 

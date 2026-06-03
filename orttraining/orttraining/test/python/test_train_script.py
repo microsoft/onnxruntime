@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 import importlib.util
+import shlex
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,7 +17,10 @@ def load_train_module():
 
 
 def test_train_script_does_not_execute_shell_command_on_import():
-    with patch("os.system", side_effect=AssertionError("os.system should not be used")):
+    with (
+        patch("os.system", side_effect=AssertionError("os.system should not be used")),
+        patch("subprocess.run", side_effect=AssertionError("subprocess.run should not be used on import")),
+    ):
         module = load_train_module()
 
     assert hasattr(module, "main")
@@ -33,4 +37,4 @@ def test_train_main_uses_argument_list_for_subprocess():
         ["/workspace/onnxruntime_training_bert", "--foo", "bar; id"],
         check=True,
     )
-    mock_print.assert_called_once_with("/workspace/onnxruntime_training_bert --foo bar; id")
+    mock_print.assert_called_once_with(shlex.join(["/workspace/onnxruntime_training_bert", "--foo", "bar; id"]))
