@@ -186,9 +186,9 @@ Status PadFusion::Apply(Graph& graph, Node& pad_node, RewriteRuleEffect& rule_ef
                                   ? *graph.GetNode(child_node.OutputNodesBegin()->Index())
                                   : child_node;
 
-  // If the target node already has an explicit pads attribute, its length must match the spatial
-  // rank implied by the Pad node (pads_size - 4). Otherwise the fused padding values would be
-  // written into mismatched positions.
+  // If the target node already has an explicit pads attribute, its length must match the expected
+  // pads length for the target op (2 * spatial_rank), where spatial_rank = pads_size / 2 - 2.
+  // Otherwise the fused padding values would be written into mismatched positions.
   const auto& target_attrs = target_padding_node.GetAttributes();
   auto target_pads_iter = target_attrs.find("pads");
   if (target_pads_iter != target_attrs.end() && !target_pads_iter->second.ints().empty()) {
