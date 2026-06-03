@@ -159,6 +159,13 @@ Status PadFusion::Apply(Graph& graph, Node& pad_node, RewriteRuleEffect& rule_ef
   }
 
   uint32_t pads_size = static_cast<uint32_t>(pads_values.size());
+  // Per ONNX Pad spec, pads has 2*rank elements. This fusion only applies when the leading two
+  // dimensions (N, C) have zero padding, so we need at least rank 2 (pads_size >= 4) and an even
+  // number of entries.
+  if (pads_size < 4 || (pads_size % 2) != 0) {
+    return Status::OK();
+  }
+
   // check if padding is applied only on feature dims
   if (pads_values[0] != 0 || pads_values[1] != 0 || pads_values[pads_size / 2] != 0 ||
       pads_values[pads_size / 2 + 1] != 0) {

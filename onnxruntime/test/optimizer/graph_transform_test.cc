@@ -2103,6 +2103,46 @@ TEST_F(GraphTransformationTests, FusePadWithAvgPoolWithPadNoInclude) {
   ASSERT_EQ(op_to_count["AveragePool"], 1);
 }
 
+// Verify PadFusion does not fuse and does not crash when the Pad node's `pads` initializer carries
+// fewer than four elements (which violates the 2*rank requirement of the ONNX Pad spec). The data
+// input uses an unspecified rank so ONNX shape inference cannot pre-validate the pads length.
+TEST_F(GraphTransformationTests, PadFusionRejectsShortPadsInitializer) {
+  auto run_case = [&](const std::vector<int64_t>& pads_data) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* data_arg = builder.MakeInput<float>(std::nullopt);
+      auto* weight_arg = builder.MakeInitializer<float>({1, 1, 1, 1}, {1.0f});
+      auto* pads_arg = builder.MakeInitializer<int64_t>(
+          {static_cast<int64_t>(pads_data.size())}, pads_data);
+      auto* pad_out = builder.MakeIntermediate();
+      auto* conv_out = builder.MakeOutput();
+
+      builder.AddNode("Pad", {data_arg, pads_arg}, {pad_out});
+      builder.AddNode("Conv", {pad_out, weight_arg}, {conv_out});
+    };
+
+    auto pre_graph_checker = [](Graph&) { return Status::OK(); };
+    auto post_graph_checker = [](Graph& graph) {
+      // Fusion must not have run; both nodes remain.
+      std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+      ORT_RETURN_IF_NOT(op_to_count["Pad"] == 1, "Pad should not be fused away");
+      ORT_RETURN_IF_NOT(op_to_count["Conv"] == 1, "Conv should remain");
+      return Status::OK();
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<PadFusion>()));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(rule_transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+  };
+
+  // Cover empty, 1, 2, and 3 element pads vectors as well as an odd-length vector.
+  run_case({});
+  run_case({0});
+  run_case({0, 0});
+  run_case({0, 0, 0});
+  run_case({0, 0, 0, 0, 0});
+}
+
 TEST_F(GraphTransformationTests, FuseMatmulBNWithInBetweenNodes) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-with-reshape.onnx";
 
