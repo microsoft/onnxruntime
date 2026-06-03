@@ -125,7 +125,7 @@ MlasHalfGemmBatch(
     if (TryGetHalfGemmBackendSelectorConfig(BatchN, DataParams, BackendKernelSelectorConfig) &&
         GetMlasPlatform().MlasHalfGemmBatchOverride != nullptr &&
         GetMlasPlatform().MlasHalfGemmBatchOverride(
-            M, N, K, BatchN, DataParams, ThreadPool, BackendKernelSelectorConfig)) {
+            M, N, K, BatchN, DataParams, ThreadPool)) {
         return;
     }
 

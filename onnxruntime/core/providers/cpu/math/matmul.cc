@@ -345,14 +345,15 @@ Status MatMul<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*out*/ A
                                   /*out*/ bool& is_packed,
                                   /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
-  ORT_UNUSED_PARAMETER(prepacked_weights);
-
   if (input_idx == 1) {
     size_t packed_b_size = 0;
     is_packed = GemmPackBHalfNative(alloc, tensor, packed_b_, packed_b_size, b_shape_,
                                     &mlas_backend_kernel_selector_config_);
     // The native fp16 packed-B layout depends on the active MLAS backend selector.
     // Keep it owned by this kernel until shared prepacked weights carry layout metadata.
+    if (is_packed && prepacked_weights != nullptr) {
+      prepacked_weights->has_kernel_owned_packed_weights_ = true;
+    }
   }
 
   return Status::OK();
@@ -407,7 +408,7 @@ Status MatMul<MLFloat16>::Compute(OpKernelContext* ctx) const {
   if (M <= 2 && packed_b_ == nullptr && MlasHGemmSupported(CblasNoTrans, CblasNoTrans)) {
     const auto alpha = MLFloat16(1.0f);
     const auto beta = MLFloat16(0.0f);
-    std::vector<MLAS_HGEMM_DATA_PARAMS> data(max_len);
+    InlinedVector<MLAS_HGEMM_DATA_PARAMS> data(max_len);
     for (size_t i = 0; i < max_len; i++) {
       data[i].A = a_data + helper.LeftOffsets()[i];
       data[i].lda = lda;
@@ -423,7 +424,7 @@ Status MatMul<MLFloat16>::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  std::vector<MLAS_HALF_GEMM_DATA_PARAMS> data(max_len);
+  InlinedVector<MLAS_HALF_GEMM_DATA_PARAMS> data(max_len);
   for (size_t i = 0; i < max_len; i++) {
     data[i].A = a_data + helper.LeftOffsets()[i];
     data[i].lda = lda;
@@ -432,9 +433,10 @@ Status MatMul<MLFloat16>::Compute(OpKernelContext* ctx) const {
     data[i].C = y_data + helper.OutputOffsets()[i];
     data[i].ldc = N;
     data[i].BIsBackendNativePacked = static_cast<bool>(packed_b_);
+    data[i].BackendKernelSelectorConfig = &mlas_backend_kernel_selector_config_;
   }
 
-  MlasHalfGemmBatch(M, N, K, max_len, data.data(), thread_pool, &mlas_backend_kernel_selector_config_);
+  MlasHalfGemmBatch(M, N, K, max_len, data.data(), thread_pool);
   return Status::OK();
 }
 

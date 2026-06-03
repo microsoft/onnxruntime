@@ -520,6 +520,66 @@ TEST(MathOpTest, MatMul_Float16) {
 }
 #endif
 
+#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+TEST(MathOpTest, MatMulFloat16SharedInitializerWithKernelOwnedPrepack) {
+  if (!MlasFp16AccelerationSupported()) {
+    GTEST_SKIP() << "Native CPU fp16 MatMul runtime support is unavailable.";
+  }
+
+  std::vector<MLFloat16> a = {
+      MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f), MLFloat16(4.0f),
+      MLFloat16(-1.0f), MLFloat16(-2.0f), MLFloat16(-3.0f), MLFloat16(-4.0f)};
+  std::vector<MLFloat16> b(12, MLFloat16(1.0f));
+  std::vector<MLFloat16> y = {
+      MLFloat16(10.0f), MLFloat16(10.0f), MLFloat16(10.0f),
+      MLFloat16(-10.0f), MLFloat16(-10.0f), MLFloat16(-10.0f)};
+
+  OpTester test("MatMul", 14);
+  test.AddInput<MLFloat16>("A", {2, 4}, a);
+  test.AddInput<MLFloat16>("B", {4, 3}, b, true);
+  test.AddOutput<MLFloat16>("Y", {2, 3}, y);
+
+  OrtValue b_initializer;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<MLFloat16>(), TensorShape({4, 3}),
+                       b.data(), OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator), b_initializer);
+
+  SessionOptions so;
+  ASSERT_EQ(so.AddInitializer("B", &b_initializer), Status::OK());
+
+  test.EnableSharingOfPrePackedWeightsAcrossSessions();
+
+  auto cpu_ep = []() -> std::vector<std::unique_ptr<IExecutionProvider>> {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+    return execution_providers;
+  };
+
+  size_t number_of_pre_packed_weights_counter_session_1 = 0;
+  size_t number_of_shared_pre_packed_weights_counter = 0;
+
+  test.Config(so)
+      .Config(run_with_tunable_op)
+      .ConfigEps(cpu_ep())
+      .RunWithConfig(&number_of_pre_packed_weights_counter_session_1, &number_of_shared_pre_packed_weights_counter);
+
+  if (number_of_pre_packed_weights_counter_session_1 == 0) {
+    GTEST_SKIP() << "Native CPU fp16 MatMul packed-B path is unavailable.";
+  }
+
+  ASSERT_EQ(test.GetNumPrePackedWeightsShared(), static_cast<size_t>(0));
+  ASSERT_EQ(number_of_shared_pre_packed_weights_counter, static_cast<size_t>(0));
+
+  size_t number_of_pre_packed_weights_counter_session_2 = 0;
+  test.Config(so)
+      .Config(run_with_tunable_op)
+      .ConfigEps(cpu_ep())
+      .RunWithConfig(&number_of_pre_packed_weights_counter_session_2, &number_of_shared_pre_packed_weights_counter);
+
+  ASSERT_EQ(number_of_pre_packed_weights_counter_session_2, number_of_pre_packed_weights_counter_session_1);
+  ASSERT_EQ(number_of_shared_pre_packed_weights_counter, static_cast<size_t>(0));
+}
+#endif
+
 #if defined(USE_CUDA) || defined(USE_DNNL)
 TEST(MathOpTest, MatMul_bfloat16) {
 #ifdef USE_CUDA

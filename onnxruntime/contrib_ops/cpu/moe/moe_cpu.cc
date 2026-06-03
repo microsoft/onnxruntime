@@ -552,8 +552,7 @@ Status MoE<MLFloat16>::ComputeGEMM(const MLFloat16* A, const MLFloat16* B, MLFlo
   }
   params.BackendKernelSelectorConfig = &mlas_backend_kernel_selector_config_;
 
-  MlasHalfGemmBatch(static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K), 1, &params, nullptr,
-                    &mlas_backend_kernel_selector_config_);
+  MlasHalfGemmBatch(static_cast<size_t>(M), static_cast<size_t>(N), static_cast<size_t>(K), 1, &params, nullptr);
   return Status::OK();
 }
 

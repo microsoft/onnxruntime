@@ -366,9 +366,9 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
   const auto* Bdata = B != nullptr ? B->Data<MLFloat16>() : nullptr;
 
   if (Sum == nullptr && kernel_rank == 2) {
-    MLAS_CONV_PARAMETERS parameters;
+    MLAS_CONV_PARAMETERS parameters{};
 
-    size_t working_buffer_size = 0;
+    size_t working_buffer_size_in_bytes = 0;
     if (MlasHalfConvPrepare(&parameters,
                             kernel_rank,
                             narrow<size_t>(N),
@@ -382,7 +382,7 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
                             output_shape.GetDims().data(),
                             narrow<size_t>(M / conv_attrs_.group),
                             &activation_,
-                            &working_buffer_size,
+                            &working_buffer_size_in_bytes,
                             0.0f,
                             channels_last_,
                             thread_pool,
@@ -400,8 +400,8 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
       }
 
       if (halfconv_filter != nullptr) {
-        auto* working_data = working_buffer_size > 0
-                                 ? alloc->Alloc(sizeof(MLFloat16) * SafeInt<size_t>(working_buffer_size))
+        auto* working_data = working_buffer_size_in_bytes > 0
+                                 ? alloc->Alloc(working_buffer_size_in_bytes)
                                  : nullptr;
         BufferUniquePtr working_buffer(working_data, BufferDeleter(alloc));
 
@@ -683,7 +683,7 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
               static_cast<size_t>(output_count),
               static_cast<size_t>(group_output_channels),
               static_cast<size_t>(kernel_dim),
-              1, &gemm_params, nullptr, &mlas_backend_kernel_selector_config_);
+              1, &gemm_params, nullptr);
         }
       }
     };
