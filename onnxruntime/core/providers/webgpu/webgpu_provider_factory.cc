@@ -61,6 +61,19 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
     }
   }
 
+  if (std::string pool_generations_str;
+      config_options.TryGetConfigEntry(kSessionBufferPoolGenerations, pool_generations_str)) {
+    size_t pool_generations = 0;
+    auto result = std::from_chars(pool_generations_str.data(),
+                                  pool_generations_str.data() + pool_generations_str.size(),
+                                  pool_generations);
+    if (result.ec == std::errc{}) {
+      webgpu_ep_config.session_buffer_pool_generations = pool_generations;
+    } else {
+      ORT_THROW("Invalid sessionBufferPoolGenerations value: ", pool_generations_str, ". Must be a non-negative integer.");
+    }
+  }
+
   std::string enable_int64_str;
   if (config_options.TryGetConfigEntry(kEnableInt64, enable_int64_str)) {
     if (enable_int64_str == kEnableInt64_ON) {
@@ -122,6 +135,7 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP pix capture enable: " << webgpu_ep_config.enable_pix_capture;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP enable int64: " << webgpu_ep_config.enable_int64;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP multi rotary cache concat offset: " << webgpu_ep_config.multi_rotary_cache_concat_offset;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP session buffer pool generations: " << webgpu_ep_config.session_buffer_pool_generations;
 
   return webgpu_ep_config;
 }
