@@ -2445,7 +2445,7 @@ TEST(TransposeOptimizerTests, TestGatherRank1IndicesNoOpt) {
 TEST(TransposeOptimizerTests, TestGatherNonconstIndicesNoOpt) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({2, 4, 6, 5}, 0.0, 1.0);
-    auto* indices_arg = MakeInput<int64_t>(builder, {{}}, {}, {2});  // graph input, not initializer
+    auto* indices_arg = MakeInput<int64_t>(builder, std::vector<int64_t>{}, {}, {2});  // graph input, not initializer
     auto* transpose_1_out_0 = builder.MakeIntermediate();
     auto* gather_1_out_0 = builder.MakeIntermediate();
     auto* transpose_2_out_0 = builder.MakeOutput();
