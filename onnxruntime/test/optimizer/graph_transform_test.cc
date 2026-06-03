@@ -10744,8 +10744,14 @@ TEST_F(GraphTransformationTests, GatherToSliceFusion) {
     };
 
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSliceFusion>();
+    // Opset 27 is still under development in ONNX 1.22, so the default released-opset-only model load
+    // would throw on strict (ALLOW_RELEASED_ONNX_OPSET_ONLY!=0) legs. Allow the unreleased opset here so
+    // this sub-block exercises the opset-27 Range schema on every CI leg, not just the relaxed ones.
+    const ModelOptions allow_unreleased_opset{/*allow_released_opsets_only*/ false,
+                                              /*strict_shape_type_inference*/ false};
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 27, *logger_, std::move(transformer),
-                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker,
+                                          allow_unreleased_opset));
   }
 }
 

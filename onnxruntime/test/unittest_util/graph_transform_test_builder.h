@@ -12,6 +12,7 @@
 #include "core/framework/framework_common.h"
 #include "core/framework/int4.h"
 #include "core/optimizer/graph_transformer_level.h"
+#include "core/graph/model.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/tensorprotoutils.h"
 #include "test/unittest_util/framework_test_utils.h"
@@ -598,7 +599,8 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
 Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>& build_test_case, int opset_version,
                             const logging::Logger& logger, std::unique_ptr<GraphTransformer> transformer,
                             TransformerLevel level, unsigned steps, const std::function<Status(Graph&)>& pre_graph_checker,
-                            const std::function<Status(Graph&)>& post_graph_checker);
+                            const std::function<Status(Graph&)>& post_graph_checker,
+                            const ModelOptions& model_options = {});
 
 /**
  * @brief Apply a GraphTransformer to a graph, and run graph checkers before and after applying the transformer.
@@ -611,11 +613,14 @@ Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>&
  * @param steps The step count of the GraphTransformerManager
  * @param pre_graph_checker The graph checker function before applying the transformer
  * @param post_graph_checker The graph checker function after applying the transformer
+ * @param model_options Options used when constructing the test model (e.g. to allow loading
+ *                      under-development/unreleased ONNX opsets). Defaults to released-opset-only.
  */
 Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>& build_test_case,
                             const std::vector<int>& opset_versions,
                             const logging::Logger& logger, std::unique_ptr<GraphTransformer> transformer,
                             TransformerLevel level, unsigned steps, const std::function<Status(Graph&)>& pre_graph_checker,
-                            const std::function<Status(Graph&)>& post_graph_checker);
+                            const std::function<Status(Graph&)>& post_graph_checker,
+                            const ModelOptions& model_options = {});
 }  // namespace test
 }  // namespace onnxruntime
