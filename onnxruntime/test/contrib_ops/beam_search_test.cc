@@ -22,11 +22,21 @@ extern std::unique_ptr<Ort::Env> ort_env;
 namespace onnxruntime {
 namespace test {
 
-TEST(BeamSearchParametersTest, SetSubgraphParametersRejectsMismatchedVocabSize) {
+TEST(BeamSearchParametersTest, SetSubgraphParametersRejectsOversizedVocabSize) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.vocab_size = 150;
+
+  EXPECT_THROW(parameters.SetSubgraphParameters(128, 1, 1, 1), OnnxRuntimeException);
+}
+
+TEST(BeamSearchParametersTest, SetSubgraphParametersAllowsPaddedVocabSize) {
   contrib::transformers::BeamSearchParameters parameters;
   parameters.vocab_size = 64;
 
-  EXPECT_THROW(parameters.SetSubgraphParameters(128, 1, 1, 1), OnnxRuntimeException);
+  parameters.SetSubgraphParameters(128, 2, 4, 6);
+
+  EXPECT_EQ(parameters.vocab_size, 64);
+  EXPECT_EQ(parameters.num_heads, 2);
 }
 
 TEST(BeamSearchParametersTest, SetSubgraphParametersUsesSubgraphSizeWhenAttributeIsDefault) {

@@ -306,9 +306,9 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   const TensorShape& logits_shape = logits.Get<Tensor>().Shape();
   ORT_ENFORCE(logits_shape.NumDimensions() == 3);
   const auto logits_vocab_size = static_cast<int>(logits_shape[2]);
-  ORT_RETURN_IF_NOT(vocab_size == logits_vocab_size,
+  ORT_RETURN_IF_NOT(vocab_size > 0 && vocab_size <= logits_vocab_size,
                     "BeamSearch: vocab_size attribute (", vocab_size,
-                    ") does not match decoder logits width (", logits_vocab_size, ")");
+                    ") must be positive and not exceed decoder logits width (", logits_vocab_size, ")");
   auto input_length = logits_shape[1];
   auto logits_batch_size = logits_shape[0];
 
@@ -477,9 +477,9 @@ Status GreedySearchProcessLogits(
   const TensorShape& logits_shape = logits.Get<Tensor>().Shape();
   ORT_ENFORCE(logits_shape.NumDimensions() == 3);
   const auto logits_vocab_size = static_cast<int>(logits_shape[2]);
-  ORT_RETURN_IF_NOT(vocab_size == logits_vocab_size,
+  ORT_RETURN_IF_NOT(vocab_size > 0 && vocab_size <= logits_vocab_size,
                     "GreedySearch: vocab_size attribute (", vocab_size,
-                    ") does not match decoder logits width (", logits_vocab_size, ")");
+                    ") must be positive and not exceed decoder logits width (", logits_vocab_size, ")");
   auto input_length = logits_shape[1];
 
   // Get logits for the last token:
