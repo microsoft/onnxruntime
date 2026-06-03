@@ -43,12 +43,12 @@ Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
   int components = x.NumComponents();
 
   return WGSL_TEMPLATE_APPLY(shader, "nn/layer_norm.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(components, components),
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
-                             WGSL_TEMPLATE_PARAMETER(simplified, simplified_),
-                             WGSL_TEMPLATE_PARAMETER(has_mean_output, has_mean_output_),
                              WGSL_TEMPLATE_PARAMETER(has_inv_std_dev_output, has_inv_std_dev_output_),
-                             WGSL_TEMPLATE_PARAMETER(split_norm_dim, split_norm_dim_),
-                             WGSL_TEMPLATE_PARAMETER(components, components));
+                             WGSL_TEMPLATE_PARAMETER(has_mean_output, has_mean_output_),
+                             WGSL_TEMPLATE_PARAMETER(simplified, simplified_),
+                             WGSL_TEMPLATE_PARAMETER(split_norm_dim, split_norm_dim_));
 }
 
 template <bool simplified>
