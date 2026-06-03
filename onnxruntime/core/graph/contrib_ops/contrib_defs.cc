@@ -2847,6 +2847,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(CropAndResize, 1,
                                   if (crop_size_shape.dim_size() != 1) {
                                     fail_shape_inference("crop_size shape input tensor has wrong dimension");
                                   }
+                                  if (crop_size_shape.dim(0).has_dim_value() &&
+                                      crop_size_shape.dim(0).dim_value() != 2) {
+                                    fail_shape_inference("crop_size input tensor must have exactly 2 elements; got ",
+                                                         crop_size_shape.dim(0).dim_value());
+                                  }
                                 })
                                 .SetDoc(R"DOC(
         Extracts crops from the input image tensor and resizes them using bilinear sampling or nearest neighbor sampling
