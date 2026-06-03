@@ -217,6 +217,10 @@ void CPUIDInfo::ArmLinuxInit() {
         continue;
       }
       auto coreid = proc->linux_id;
+      if (coreid < 0 || static_cast<size_t>(coreid) >= core_uarchs_.size()) {
+        continue;
+      }
+
       auto uarch = corep->uarch;
       core_uarchs_[coreid] = uarch;
       if (uarch == cpuinfo_uarch_cortex_a53 || uarch == cpuinfo_uarch_cortex_a55r0 ||
@@ -381,11 +385,7 @@ CPUIDInfo::CPUIDInfo() {
 #endif  // defined(CPUINFO_SUPPORTED)
 
   // Note: This should be run after cpuinfo initialization if cpuinfo is enabled.
-  // On Wasm/Emscripten, cpuinfo cannot detect the CPU vendor so skip to avoid
-  // an unhelpful "Unknown CPU vendor" warning.
-#if !defined(__wasm__)
   VendorInfoInit();
-#endif
 
 #ifdef CPUIDINFO_ARCH_X86
   X86Init();

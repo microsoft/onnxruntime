@@ -157,7 +157,6 @@ jobs:
     runs-on: [
       "self-hosted",
       "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
-      "1ES.ImageOverride=onnxruntime-Win-CPU-VS2022-Latest-NVMe-x64-test",
       "JobId=windows-cuda-test-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
     ]
     steps:

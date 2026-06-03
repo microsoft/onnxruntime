@@ -181,6 +181,16 @@ bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node
     return false;
   }
 
+  // Resize with mode != "nearest" (linear/cubic) is not order-preserving on integers,
+  // so dropping the surrounding Q/DQ pair would change numerical results. Only the
+  // default nearest-neighbor mode is safe to fold. See issue #21319.
+  if (node.OpType() == "Resize") {
+    const auto* mode_attr = graph_utils::GetNodeAttribute(node, "mode");
+    if (mode_attr != nullptr && mode_attr->s() != "nearest") {
+      return false;
+    }
+  }
+
   const Node& dq_node = *dq_nodes.front();
   const Node& q_node = *q_nodes.front();
 

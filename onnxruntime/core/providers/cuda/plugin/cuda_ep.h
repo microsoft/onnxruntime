@@ -35,6 +35,13 @@ class CudaEp : public onnxruntime::ep::adapter::Ep {
     int sdpa_kernel = 0;                              ///< Attention backend bitmask override.
     bool enable_cuda_graph = false;                   ///< Enable CUDA graph capture and replay.
     int min_num_runs_before_cuda_graph_capture = 2;   ///< Warm-up runs before graph capture begins.
+    bool has_user_compute_stream = false;             ///< Whether user provided an external CUDA stream.
+    void* user_compute_stream = nullptr;              ///< User-provided CUDA stream (cudaStream_t cast to void*).
+    bool do_copy_in_default_stream = true;            ///< Use default stream for H2D/D2H copies.
+    bool use_ep_level_unified_stream = false;         ///< Force all ops to share one stream (no concurrency).
+    void* external_alloc = nullptr;                   ///< External GPU memory allocation function pointer.
+    void* external_free = nullptr;                    ///< External GPU memory deallocation function pointer.
+    void* external_empty_cache = nullptr;             ///< External GPU memory cache-clear function pointer.
   };
 
   CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& logger);

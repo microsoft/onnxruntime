@@ -177,6 +177,12 @@ Status CheckPast(const T* past_key, const T* past_value, const T* past_seq_len,
           "past_sequence_length tensor must be of one element when past_present_share_buffer is set");
     }
     past_sequence_length = *((*past_seq_len).template Data<int32_t>());
+    if (past_sequence_length < 0 || past_sequence_length >= max_sequence_length) {
+      return ORT_MAKE_STATUS(
+          ONNXRUNTIME, INVALID_ARGUMENT,
+          "past_sequence_length must be non-negative and less than max_sequence_length (",
+          max_sequence_length, "), got ", past_sequence_length);
+    }
   }
   return Status::OK();
 }

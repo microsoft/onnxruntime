@@ -61,11 +61,13 @@ input tokens → router (top-k softmax) → permute by expert
 | Attribute | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `k` | int | 1 | Top-K experts selected per token. |
-| `activation_type` | string | `"relu"` | `"relu"`, `"gelu"`, `"silu"`, `"swiglu"`, `"identity"`. |
+| `activation_type` | string | `"relu"` | One of `"relu"`, `"gelu"`, `"silu"`, `"swiglu"`, `"identity"`. These are the only values accepted end-to-end (attribute parsing); other kernel-internal types are not reachable from ONNX. |
 | `normalize_routing_weights` | int | 0 | Re-normalize the top-k weights to sum to 1. |
 | `use_sparse_mixer` | int | 0 | Enable sparse-mixer routing variant. |
 | `swiglu_fusion` | int | 0 | 0=no fusion, 1=interleaved (Gate/Value), 2=block (Gate;Value). See [§8](#8-swiglu-fusion). |
-| `swiglu_limit`, `activation_alpha`, `activation_beta` | float | — | SwiGLU clamp / alpha / beta. |
+| `activation_alpha` | float | `1.0` | SwiGLU alpha. Default `1.0` (Standard SwiGLU); GPT-OSS uses `1.702`. |
+| `activation_beta` | float | `0.0` | SwiGLU beta. Default `0.0` (Standard SwiGLU); GPT-OSS uses `1.0`. |
+| `swiglu_limit` | float | unset (`+inf`) | SwiGLU clamp limit. Unset means no clamp (Standard SwiGLU); GPT-OSS uses `7.0`. |
 | `expert_weight_bits` (QMoE only) | int | 4 | 4 (INT4/MXFP4) or 8 (INT8/FP8). |
 | `block_size` (QMoE only) | int | -1 | Group size for INT4/INT8 group-wise quantization. -1 = per-output-channel. |
 | `quant_type` (QMoE only) | string | `"int"` | `"int"`, `"fp4"`, `"fp8"`, `"wfp4afp8"`. See [§3](#3-quantization-modes). |
@@ -410,16 +412,42 @@ weights are interchangeable across SMs:
 SwiGLU formula:
 
 ```
-SwiGLU(x) = Gate × Sigmoid(alpha × Gate) × (Value + beta)
+SwiGLU(x) = G × Sigmoid(alpha × G) × (L + beta)
+    G = clamp(Gate,  max=limit)
+    L = clamp(Value, min=-limit, max=limit)
 ```
+
+`Gate` and `Value` are the two halves of the FC1 output. The behavior is controlled
+by `activation_alpha` (alpha), `activation_beta` (beta) and `swiglu_limit` (limit).
+
+| Parameter | Attribute | Default | Standard SwiGLU | GPT-OSS SwiGLU |
+|-----------|-----------|---------|-----------------|----------------|
+| alpha | `activation_alpha` | `1.0` | `1.0` | `1.702` |
+| beta | `activation_beta` | `0.0` | `0.0` | `1.0` |
+| limit | `swiglu_limit` | unset → `+inf` (no clamp) | unset / `+inf` | `7.0` |
+
+The attribute **defaults are exactly Standard SwiGLU**, which reduces to:
+
+```
+SwiGLU(x) = Gate × Sigmoid(Gate) × Value = SiLU(Gate) × Value
+```
+
+This is the activation used by Llama- and Gemma-style MoE. GPT-OSS SwiGLU instead
+uses `alpha=1.702`, `beta=1.0`, `limit=7.0`. Both variants run on the same CUDA
+kernel; when `alpha=1.0`, `beta=0.0` and `limit=+inf`, the kernel takes the plain
+`SiLU(Gate) × Value` path (no clamping).
 
 The operator supports three fusion modes via the `swiglu_fusion` attribute:
 
 | `swiglu_fusion` | Inputs | FC1 layout | Notes |
 |----------------:|--------|------------|-------|
 | 0 | `fc1`, `fc2`, `fc3` | separate Gate / Value / Up | Conceptually three GEMMs. |
-| 1 (interleaved) | `fc1`, `fc2` | `[Gate_0, Value_0, Gate_1, Value_1, …]` — `[E, 2×inter, hidden]` | Recommended for newer architectures. |
-| 2 (block) | `fc1`, `fc2` | `[Gate_0…Gate_N | Value_0…Value_N]` — `[E, 2×inter, hidden]` | Concatenated halves. |
+| 1 (interleaved) | `fc1`, `fc2` | `[Gate_0, Value_0, Gate_1, Value_1, …]` — `[E, 2×inter, hidden]` | GPT-OSS layout. |
+| 2 (block) | `fc1`, `fc2` | `[Gate_0…Gate_N | Value_0…Value_N]` — `[E, 2×inter, hidden]` | Concatenated halves; Llama/Gemma layout. |
+
+> **CPU note**: The CPU MoE/QMoE implementation only supports the **interleaved**
+> SwiGLU layout (`swiglu_fusion=1`). The concatenated layout (`swiglu_fusion=2`)
+> throws `ORT_NOT_IMPLEMENTED` on CPU; use the CUDA EP for concatenated SwiGLU.
 
 ### Standard MoE runtime fc3 fusion
 
@@ -776,6 +804,10 @@ The block-scaled tensor op path is fundamentally more efficient because the
 hardware fuses dequantization with the matrix multiply, vs. the in-register
 software dequant of the mixed-input path.
 
+> **MSVC note**: Native SM90/SM120 TMA grouped MoE kernels are disabled in Windows/MSVC
+> builds because CUDA 13 generates host stubs that MSVC rejects for over-aligned
+> TMA parameters. See [§14.1](#141-msvc-and-tma-grouped-moe-gemm).
+
 ---
 
 ## 12. Future / Deferred Modes
@@ -796,7 +828,7 @@ will not change the operator interface.
 
 | Test file | Coverage |
 |-----------|----------|
-| [test_moe_cuda.py](onnxruntime/test/python/transformers/test_moe_cuda.py) | Standard MoE on CUDA: FP16/BF16, SiLU/GeLU/SwiGLU, routing, GEMM parity. |
+| [test_moe_cuda.py](onnxruntime/test/python/transformers/test_moe_cuda.py) | Standard MoE on CUDA: FP16/BF16, SiLU/GeLU/SwiGLU, routing, GEMM parity. SwiGLU coverage includes both GPT-OSS (`TestSwigluMoE`: interleaved, alpha=1.702/beta=1.0/limit=7.0) and Standard/Llama-Gemma (`TestStandardSwigluMoE`: concatenated `swiglu_fusion=2`, alpha=1.0/beta=0.0/no limit → `SiLU(Gate)×Value`). |
 | [test_moe_cpu.py](onnxruntime/test/python/transformers/test_moe_cpu.py) | Standard MoE on CPU (smoke). |
 | [test_qmoe_cuda.py](onnxruntime/test/python/transformers/test_qmoe_cuda.py) | INT4/INT8 QMoE — primary regression signal for the production QMoE path. Exercises `pack_weights_for_cuda_mixed_gemm` and dequant-then-matmul reference. |
 | [test_qmoe_cpu.py](onnxruntime/test/python/transformers/test_qmoe_cpu.py) | INT4/INT8 QMoE on CPU (smoke). |
@@ -866,6 +898,41 @@ if(NOT onnxruntime_USE_FP8_QMOE)
 endif()
 ```
 
+### 14.1 MSVC and TMA grouped MoE GEMM
+
+Windows/MSVC builds intentionally do not define the grouped TMA MoE compile
+switches:
+
+- `COMPILE_HOPPER_TMA_GROUPED_GEMMS`
+- `COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS`
+
+The generated grouped TMA launchers pass CUTLASS TMA descriptor types through
+NVCC-generated host stubs. With CUDA 13 and MSVC, those stubs contain formal
+parameters with 128-byte alignment requirements, which triggers MSVC `C2719`:
+the requested alignment for a by-value formal parameter cannot be guaranteed.
+This affects the generated SM90/SM120 grouped MoE TMA launcher translation units,
+including the native SM120 QMoE FP4 / FP8×FP4 launchers.
+
+The source files are still present in the build graph, but the generated launcher
+bodies are guarded by the compile switches above, so they become empty units on
+MSVC. Runtime dispatch mirrors this build-time choice:
+
+- Standard FP16/BF16 MoE may skip TMA configs and use the existing SM80/Ampere
+  grouped GEMM fallback.
+- QMoE modes that require grouped TMA kernels do not silently fall back to SM80.
+  This includes FP4/block-scaled modes such as native SM120 `fp4`, `wfp4afp8`,
+  and other TMA-only mixed quantized paths. They fail with a clear error saying
+  the required TMA grouped MoE GEMM was not compiled.
+- `wfp4a16` on SM120 normally routes through the SM90 mixed-input TMA kernel set
+  for forward compatibility, but it is also unavailable when the Hopper grouped
+  TMA switch is disabled by MSVC.
+
+The intent is to keep Windows CUDA packaging builds working while avoiding a
+misleading or invalid fallback for QMoE configurations whose data layout requires
+TMA/block-scaled kernels. Re-enable these switches for MSVC only after the CUDA
+host-stub alignment issue is fixed or the launcher ABI is changed to avoid
+over-aligned by-value parameters.
+
 ---
 
 ## 15. Limitations & Known Issues
@@ -881,6 +948,10 @@ endif()
   FP4, the QMoE op currently routes only `sm_ >= 120` through the native FP4
   runner. SM90/SM100 fall back to dequantization. (Remove `sm_ < 120` and
   rebuild to enable native FP4 on those SMs once validated.)
+- **Windows/MSVC native TMA QMoE**: grouped TMA MoE kernels are disabled on MSVC
+  because CUDA 13 host stubs hit MSVC `C2719` with over-aligned TMA parameters.
+  Standard MoE can fall back to SM80 kernels; native QMoE FP4/block-scaled modes
+  cannot. See [§14.1](#141-msvc-and-tma-grouped-moe-gemm).
 - **WFP4AFP8 native** requires SM100+ hardware; only the dequant fallback path
   is validated end-to-end so far.
 - **Hopper W4A8** (INT4 weight + FP8 activation) is not supported — TRT-LLM gates

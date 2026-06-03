@@ -10,6 +10,7 @@
 # license information.
 # --------------------------------------------------------------------------
 import itertools
+import math
 import os
 import time
 import unittest
@@ -1568,11 +1569,32 @@ class SwigluMoeConfig:
         self.swiglu_beta = swiglu_beta
 
 
-# GPT-OSS custom SwiGLU (input is interleaved format)
-def swiglu(x: torch.Tensor, alpha: float = 1.702, beta: float = 1.0, limit: float = 7.0):
+# SwiGLU reference. The general form is:
+#     swiglu = G * sigmoid(alpha * G) * (L + beta)
+#     G = clamp(g, max=limit), L = clamp(l, min=-limit, max=limit)
+# where g (gate) and l (linear/value) are the two halves of the FC1 output.
+#
+# Two common configurations:
+#   - GPT-OSS SwiGLU:  alpha=1.702, beta=1.0, limit=7.0, interleaved layout (swiglu_fusion=1)
+#   - Standard SwiGLU: alpha=1.0,   beta=0.0, limit=None (no clamp), concatenated layout
+#     (swiglu_fusion=2). This reduces to y = silu(gate) * value, which is what
+#     Llama/Gemma-style MoE uses.
+#
+# When interleaved is True the FC1 output is laid out as [g0, l0, g1, l1, ...];
+# otherwise it is concatenated as [g0, g1, ..., l0, l1, ...].
+def swiglu(
+    x: torch.Tensor,
+    alpha: float = 1.702,
+    beta: float = 1.0,
+    limit: float = 7.0,
+    interleaved: bool = True,
+):
     dim = x.shape[-1]
-    x = x.view(-1, dim // 2, 2)
-    x_glu, x_linear = x[..., 0], x[..., 1]
+    if interleaved:
+        x = x.view(-1, dim // 2, 2)
+        x_glu, x_linear = x[..., 0], x[..., 1]
+    else:
+        x_glu, x_linear = x[..., : dim // 2], x[..., dim // 2 :]
 
     if limit is not None:
         x_glu = x_glu.clamp(max=limit)
@@ -1592,10 +1614,12 @@ class SwigluMlp(nn.Module):
         self.alpha = config.swiglu_alpha
         self.beta = config.swiglu_beta
         self.limit = config.swiglu_limit
+        # swiglu_fusion=1 means interleaved gate/value; 2 means concatenated.
+        self.interleaved = config.swiglu_fusion == 1
 
     def forward(self, x):
         x1 = self.w1(x)
-        y = swiglu(x1, self.alpha, self.beta, self.limit)
+        y = swiglu(x1, self.alpha, self.beta, self.limit, self.interleaved)
         y = self.w2(y)
         return y
 
@@ -1639,6 +1663,10 @@ def create_swiglu_moe_onnx_graph(
     fc2_experts_bias: torch.Tensor,
     fc1_experts_weight_scale: torch.Tensor = None,
     fc2_experts_weight_scale: torch.Tensor = None,
+    swiglu_fusion: int = 1,
+    activation_alpha: float = 1.702,
+    activation_beta: float = 1.0,
+    swiglu_limit: float = 7.0,
 ):
     use_quant = quant_bits > 0
     op_name = "QMoE" if use_quant else "MoE"
@@ -1674,13 +1702,18 @@ def create_swiglu_moe_onnx_graph(
             k=topk,
             normalize_routing_weights=1,
             activation_type="swiglu",
-            activation_alpha=1.702,
-            activation_beta=1.0,
-            swiglu_limit=7.0,
-            swiglu_fusion=1,
+            activation_alpha=activation_alpha,
+            activation_beta=activation_beta,
+            swiglu_fusion=swiglu_fusion,
             domain="com.microsoft",
         ),
     ]
+
+    # Only emit swiglu_limit when a finite clamp limit is requested. Omitting the
+    # attribute selects the default (infinity / no clamp), which is required for
+    # standard SwiGLU.
+    if swiglu_limit is not None and math.isfinite(swiglu_limit):
+        nodes[0].attribute.extend([helper.make_attribute("swiglu_limit", float(swiglu_limit))])
 
     if use_quant:
         nodes[0].attribute.extend([helper.make_attribute("expert_weight_bits", quant_bits)])
@@ -1826,6 +1859,10 @@ class SwigluMoEBlock(SparseMoeBlockORTHelper):
             fc2_experts_bias=fc2_experts_bias,
             fc1_experts_weight_scale=moe_experts_weight_scale1,
             fc2_experts_weight_scale=moe_experts_weight_scale2,
+            swiglu_fusion=config.swiglu_fusion,
+            activation_alpha=config.swiglu_alpha,
+            activation_beta=config.swiglu_beta,
+            swiglu_limit=config.swiglu_limit,
         )
 
         self.ort_sess = self.create_ort_session(self.moe_onnx_graph)
@@ -1887,6 +1924,32 @@ class TestSwigluMoE(unittest.TestCase):
             swiglu_alpha=1.702,
             swiglu_beta=1.0,
             swiglu_limit=7.0,
+        )
+        moe = SwigluMoEBlock(config, batch_size, sequence_length, quant_bits)
+        moe.to(device)
+        moe.parity_check()
+
+
+@unittest.skipIf(not use_cuda, "skipping moe test since it requires cuda environment.")
+class TestStandardSwigluMoE(unittest.TestCase):
+    """Standard (Llama/Gemma-style) SwiGLU: y = silu(gate) * value.
+
+    This uses the default SwiGLU parameters (alpha=1.0, beta=0.0, no clamp limit)
+    with the concatenated weight layout (swiglu_fusion=2), where the FC1 output is
+    [gate; value] rather than the interleaved GPT-OSS layout.
+    """
+
+    @parameterized.expand(swiglu_test_cases)
+    def test_standard_swiglu_moe_parity(self, batch_size, sequence_length, quant_bits):
+        config = SwigluMoeConfig(
+            hidden_size=64,
+            intermediate_size=256,
+            num_experts_per_token=2,
+            num_local_experts=4,
+            swiglu_fusion=2,
+            swiglu_alpha=1.0,
+            swiglu_beta=0.0,
+            swiglu_limit=None,
         )
         moe = SwigluMoEBlock(config, batch_size, sequence_length, quant_bits)
         moe.to(device)
