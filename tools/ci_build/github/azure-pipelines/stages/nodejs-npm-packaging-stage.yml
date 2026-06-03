@@ -102,13 +102,13 @@ stages:
     #      - libonnxruntime_providers_tensorrt.so
     #
     #  - Linux arm64 (CPU only):
-    #    dependency: Linux_C_API_Packaging_CPU_aarch64 (drop-onnxruntime-nodejs-linux-aarch64)
+    #    stage: Linux_C_API_Packaging_CPU, job: Linux_C_API_Packaging_CPU_aarch64 (drop-onnxruntime-nodejs-linux-aarch64)
     #    files:
     #      - onnxruntime_binding.node
     #      - libonnxruntime.so.1
     #
     #  - macOS arm64 (CPU, CoreML, WebGPU):
-    #    dependency: MacOS_C_API_Packaging_CPU_arm64 (drop-onnxruntime-nodejs-osx-arm64)
+    #    stage: MacOS_C_API_Packaging_CPU, job: MacOS_C_API_Packaging_CPU_arm64 (drop-onnxruntime-nodejs-osx-arm64)
     #    files:
     #      - onnxruntime_binding.node
     #      - libonnxruntime.{version}.dylib
@@ -256,9 +256,12 @@ stages:
                 throw "No versions found for package $packageName"
             }
 
-            # Extract the latest version
-            $devVersions = $packageInfo.versions | Where-Object { $_ -match '-dev-' }
-            $latestVersion = $devVersions[0]
+            # Extract the latest dev version (NuGet index.json returns versions in ascending order)
+            $devVersions = @($packageInfo.versions | Where-Object { $_ -match '-dev-' })
+            if ($devVersions.Count -eq 0) {
+                throw "No dev versions found for package $packageName"
+            }
+            $latestVersion = $devVersions[-1]
             Write-Host "Latest version of ${packageName}: $latestVersion"
 
             # Generate current version
