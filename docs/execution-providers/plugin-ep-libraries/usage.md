@@ -77,15 +77,15 @@ env.RegisterExecutionProviderLibrary(/*...*/);
   std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
 
   // Find the Ort::EpDevice for "my_ep".
-  std::array<Ort::ConstEpDevice, 1> selected_ep_devices = { nullptr };
+  std::vector<Ort::ConstEpDevice> selected_ep_devices{};
   for (Ort::ConstEpDevice ep_device : ep_devices) {
-    if (std::strcmp(ep_device.GetName(), "my_ep") == 0) {
-      selected_ep_devices[0] = ep_device;
+    if (std::strcmp(ep_device.EpName(), "my_ep") == 0) {
+      selected_ep_devices.push_back(ep_device);
       break;
     }
   }
 
-  if (selected_ep_devices[0] == nullptr) {
+  if (selected_ep_devices.empty()) {
     // Did not find EP. Report application error ...
   }
 
