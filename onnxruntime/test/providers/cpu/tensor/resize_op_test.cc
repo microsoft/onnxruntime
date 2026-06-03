@@ -3272,7 +3272,7 @@ TEST(ResizeOpTest, Scales_NaN_Rejected_18) {
   std::vector<float> X(16, 1.0f);
   std::vector<float> roi{};
   std::vector<float> scales{1.0f, 1.0f, std::numeric_limits<float>::quiet_NaN(), 2.0f};
-  std::vector<float> Y(16, 0.0f);
+  std::vector<float> Y(32, 0.0f);
 
   OpTester test("Resize", 18);
   test.AddShapeToTensorData(false);
@@ -3293,7 +3293,7 @@ TEST(ResizeOpTest, Scales_PositiveInf_Rejected_18) {
   std::vector<float> X(16, 1.0f);
   std::vector<float> roi{};
   std::vector<float> scales{1.0f, 1.0f, 2.0f, std::numeric_limits<float>::infinity()};
-  std::vector<float> Y(16, 0.0f);
+  std::vector<float> Y(32, 0.0f);
 
   OpTester test("Resize", 18);
   test.AddShapeToTensorData(false);
