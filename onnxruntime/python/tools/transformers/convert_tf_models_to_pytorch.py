@@ -66,9 +66,17 @@ def download_compressed_file(tf_ckpt_url, ckpt_dir):
 
 
 def _is_safe_archive_member(extract_dir, member_name):
+    # Normalize separators so that backslash-based traversal entries are detected
+    # on POSIX as well as Windows (zip members may use either separator).
+    normalized_parts = [part for part in member_name.replace("\\", "/").split("/") if part not in ("", ".")]
     extract_dir = os.path.realpath(extract_dir)
-    candidate_path = os.path.realpath(os.path.join(extract_dir, member_name))
-    return os.path.commonpath([extract_dir, candidate_path]) == extract_dir
+    candidate_path = os.path.realpath(os.path.join(extract_dir, *normalized_parts))
+    try:
+        return os.path.commonpath([extract_dir, candidate_path]) == extract_dir
+    except ValueError:
+        # os.path.commonpath raises ValueError for mixed drives or absolute/relative
+        # mixes (e.g. on Windows). Treat any such case as unsafe.
+        return False
 
 
 def safe_extract_archive(archive_path, extract_dir):
@@ -80,10 +88,18 @@ def safe_extract_archive(archive_path, extract_dir):
             for member in tar_ref.getmembers():
                 if not _is_safe_archive_member(extract_dir, member.name):
                     raise ValueError(f"Archive member '{member.name}' resolves outside '{extract_dir}'")
+                if member.issym() or member.islnk():
+                    raise ValueError(f"Archive member '{member.name}' is a link, which is not allowed")
             try:
                 tar_ref.extractall(extract_dir, filter="data")
-            except TypeError:
-                tar_ref.extractall(extract_dir)
+            except TypeError as exc:
+                # The "data" extraction filter (Python 3.9+/backports) rejects symlinks,
+                # hardlinks, device files and absolute paths. Without it, extraction is
+                # not safe, so refuse rather than falling back to an unfiltered extract.
+                raise RuntimeError(
+                    "Safe archive extraction requires the tarfile 'data' filter, "
+                    "which is unavailable in this Python runtime."
+                ) from exc
         return
 
     if zipfile.is_zipfile(archive_path):
