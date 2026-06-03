@@ -24,6 +24,7 @@
 #include <unordered_map>
 #include "absl/debugging/stacktrace.h"
 #include "absl/debugging/symbolize.h"
+#include "core/platform/scoped_resource.h"
 
 #ifdef __APPLE__
 #include <crt_externs.h>
@@ -34,41 +35,23 @@ extern char** environ;
 
 namespace {
 
-// RAII wrapper for a file descriptor: closes it on scope exit unless released.
-class ScopedFd {
- public:
-  ScopedFd() = default;
-  explicit ScopedFd(int fd) : fd_(fd) {}
-  ScopedFd(const ScopedFd&) = delete;
-  ScopedFd& operator=(const ScopedFd&) = delete;
-  ScopedFd(ScopedFd&& other) noexcept : fd_(other.fd_) { other.fd_ = -1; }
-  ScopedFd& operator=(ScopedFd&& other) noexcept {
-    if (this != &other) {
-      Reset();
-      fd_ = other.fd_;
-      other.fd_ = -1;
-    }
-    return *this;
-  }
-  ~ScopedFd() { Reset(); }
-
-  int get() const { return fd_; }
-  void Reset() {
-    if (fd_ != -1) {
-      close(fd_);
-      fd_ = -1;
-    }
-  }
-  // Relinquish ownership; the caller becomes responsible for closing.
-  int Release() {
-    int fd = fd_;
-    fd_ = -1;
-    return fd;
-  }
-
- private:
-  int fd_ = -1;
+// Traits for a POSIX file descriptor, used with onnxruntime::ScopedResource to
+// close it on scope exit unless released.
+struct FdTraits {
+  using Handle = int;
+  static Handle GetInvalidHandleValue() noexcept { return -1; }
+  static void CleanUp(Handle fd) noexcept { close(fd); }
 };
+using ScopedFd = onnxruntime::ScopedResource<FdTraits>;
+
+// Traits for a FILE* obtained from fdopen, used with onnxruntime::ScopedResource
+// to fclose it on scope exit.
+struct FileTraits {
+  using Handle = FILE*;
+  static Handle GetInvalidHandleValue() noexcept { return nullptr; }
+  static void CleanUp(Handle fp) noexcept { fclose(fp); }
+};
+using ScopedFile = onnxruntime::ScopedResource<FileTraits>;
 
 // RAII wrapper for posix_spawn_file_actions_t.
 class ScopedSpawnFileActions {
@@ -92,23 +75,6 @@ class ScopedSpawnFileActions {
  private:
   posix_spawn_file_actions_t actions_{};
   bool initialized_ = false;
-};
-
-// RAII wrapper for a FILE* obtained from fdopen.
-class ScopedFile {
- public:
-  explicit ScopedFile(FILE* fp) : fp_(fp) {}
-  ScopedFile(const ScopedFile&) = delete;
-  ScopedFile& operator=(const ScopedFile&) = delete;
-  ~ScopedFile() {
-    if (fp_ != nullptr) {
-      fclose(fp_);
-    }
-  }
-  FILE* get() const { return fp_; }
-
- private:
-  FILE* fp_;
 };
 
 // RAII wrapper that reaps a child process on scope exit and exposes its status.
@@ -257,8 +223,8 @@ std::unordered_map<void*, std::string> ResolveWithAddr2Line(
     ScopedSpawnFileActions actions;
     if (actions.Init() != 0) continue;
 
-    if (posix_spawn_file_actions_adddup2(actions.get(), write_fd.get(), STDOUT_FILENO) != 0 ||
-        posix_spawn_file_actions_addclose(actions.get(), read_fd.get()) != 0 ||
+    if (posix_spawn_file_actions_adddup2(actions.get(), write_fd.Get(), STDOUT_FILENO) != 0 ||
+        posix_spawn_file_actions_addclose(actions.get(), read_fd.Get()) != 0 ||
         // Redirect stderr to /dev/null to suppress error messages.
         posix_spawn_file_actions_addopen(actions.get(), STDERR_FILENO, "/dev/null", O_WRONLY, 0) != 0) {
       continue;
@@ -277,7 +243,7 @@ std::unordered_map<void*, std::string> ResolveWithAddr2Line(
     if (spawn_ret != 0) continue;
     ScopedChild child(pid);
 
-    FILE* raw_fp = fdopen(read_fd.get(), "r");
+    FILE* raw_fp = fdopen(read_fd.Get(), "r");
     if (raw_fp == nullptr) continue;
     read_fd.Release();  // fp now owns the descriptor.
     ScopedFile fp(raw_fp);
@@ -291,7 +257,7 @@ std::unordered_map<void*, std::string> ResolveWithAddr2Line(
     // Adding those flags would break the 1:1 parsing below.
     char line_buf[1024];
     size_t frame_idx = 0;
-    while (fgets(line_buf, sizeof(line_buf), fp.get()) && frame_idx < frames.size()) {
+    while (fgets(line_buf, sizeof(line_buf), fp.Get()) && frame_idx < frames.size()) {
       // Remove trailing newline
       size_t len = strlen(line_buf);
       if (len > 0 && line_buf[len - 1] == '\n') line_buf[len - 1] = '\0';
@@ -316,7 +282,7 @@ std::unordered_map<void*, std::string> ResolveWithAddr2Line(
 }
 
 }  // namespace
-#endif
+#endif  // !defined(NDEBUG) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_OPSCHEMA_LIB_) && !defined(_AIX)
 
 namespace onnxruntime {
 
@@ -357,7 +323,7 @@ std::vector<std::string> GetStackTrace() {
     }
     stack.push_back(oss.str());
   }
-#endif
+#endif  // !defined(NDEBUG) && !defined(__ANDROID__) && !defined(__wasm__) && !defined(_OPSCHEMA_LIB_) && !defined(_AIX)
 
   return stack;
 }
