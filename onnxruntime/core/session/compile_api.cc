@@ -271,7 +271,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetEpContextDataWrite
   }
 
   if (write_func == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtWriteFileDataFunc function is null");
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtWriteFileDataFunc function is NULL");
   }
 
   model_compile_options->SetEpContextDataWriteFunc(write_func, state);

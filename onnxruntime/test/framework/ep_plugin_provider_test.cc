@@ -1857,7 +1857,7 @@ TEST(PluginExecutionProviderTest, EpContextDataApiRejectsInvalidArguments) {
                   ORT_INVALID_ARGUMENT, "OrtModelCompilationOptions is NULL");
   ExpectOrtStatus(compile_api.ModelCompilationOptions_SetEpContextDataWriteFunc(compilation_options, nullptr,
                                                                                 nullptr),
-                  ORT_INVALID_ARGUMENT, "OrtWriteFileDataFunc function is null");
+                  ORT_INVALID_ARGUMENT, "OrtWriteFileDataFunc function is NULL");
 #endif  // !defined(ORT_MINIMAL_BUILD)
 }
 
