@@ -106,3 +106,40 @@ torch.onnx.export(CustomInverse(), (x,), f, custom_opsets={"com.microsoft": 5})
 ```
 
 Note that you can export a custom op to any version >= the opset version used at registration.
+
+## Handling External Data Files (Large Models)
+
+When exporting large PyTorch models using `torch.onnx.export` with opset 17+,
+PyTorch may automatically split the export into two files:
+
+- `model.onnx` — the model graph structure
+- `model.onnx.data` — the weight tensors stored as external data
+
+This happens when the model exceeds protobuf's 2GB limit. Both files must be
+present in the same directory for ONNX Runtime to load the model correctly.
+`InferenceSession` will fail if `model.onnx.data` is missing.
+
+```python
+# This will fail if model.onnx.data is not in the same directory
+session = onnxruntime.InferenceSession("model.onnx")
+```
+
+### Merging into a Single File for Distribution
+
+For deployment scenarios where shipping two files is inconvenient (Docker images,
+cloud buckets, API distribution), merge them into a single self-contained file:
+
+```python
+import onnx
+
+model = onnx.load("model.onnx", load_external_data=True)
+onnx.save(model, "model_single.onnx", save_as_external_data=False)
+```
+
+Use `model_single.onnx` for all distribution and deployment. No companion
+`.data` file is required.
+
+> **Note:** The merge step requires the `onnx` package (`pip install onnx`).
+> Ensure both `model.onnx` and `model.onnx.data` are in your working directory
+> before running the merge.
+
