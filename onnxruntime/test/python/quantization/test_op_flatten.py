@@ -31,7 +31,9 @@ class TestOpFlatten(unittest.TestCase):
         dr = TestDataFeeds(input_data_list)
         return dr
 
-    def construct_model_matmul_flatten(self, output_model_path, input_shape, weight_shape, output_shape):
+    def construct_model_matmul_flatten(
+        self, output_model_path, input_shape, weight_shape, output_shape, flatten_axis=1
+    ):
         #    (input)
         #      |
         #     MatMul
@@ -54,11 +56,13 @@ class TestOpFlatten(unittest.TestCase):
 
         matmul_node = onnx.helper.make_node("MatMul", matmul_inputs, matmul_outputs, name=matmul_name)
 
-        # make Flatten node (axis=1, no shape initializer needed)
+        # make Flatten node (no shape initializer needed)
         flatten_inputs = [matmul_output_name]
         flatten_outputs = [output_name]
         flatten_name = "flatten_node"
-        flatten_node = onnx.helper.make_node("Flatten", flatten_inputs, flatten_outputs, name=flatten_name, axis=1)
+        flatten_node = onnx.helper.make_node(
+            "Flatten", flatten_inputs, flatten_outputs, name=flatten_name, axis=flatten_axis
+        )
 
         # make graph
         input_tensor = onnx.helper.make_tensor_value_info(input_name, onnx.TensorProto.FLOAT, input_shape)
@@ -80,8 +84,8 @@ class TestOpFlatten(unittest.TestCase):
         np.random.seed(1)
         model_fp32_path = "flatten_fp32.onnx"
 
-        # input [3,7], weight [7,7] -> matmul output [3,7] -> flatten(axis=1) output [3,7]
-        self.construct_model_matmul_flatten(model_fp32_path, [3, 7], [7, 7], [3, 7])
+        # input [3,7], weight [7,5] -> matmul output [3,5] -> flatten(axis=0) output [1,15]
+        self.construct_model_matmul_flatten(model_fp32_path, [3, 7], [7, 5], [1, 15], flatten_axis=0)
 
         activation_proto_qtype = (
             onnx.TensorProto.UINT8 if activation_type == QuantType.QUInt8 else onnx.TensorProto.INT8
