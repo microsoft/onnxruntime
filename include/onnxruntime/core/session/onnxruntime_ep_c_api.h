@@ -2110,7 +2110,7 @@ struct OrtEpApi {
 
   /** \brief Get the application-provided EPContext data read callback.
    *
-   * Returns the OrtReadEpContextDataFunc and opaque state pointer registered via
+   * Returns the OrtReadFileDataFunc and opaque state pointer registered via
    * OrtApi::SessionOptions_SetEpContextDataReadFunc. If no callback was registered, *read_func and *state are set to
    * NULL. The EP is responsible for calling the callback when present and for using its own normal read path when no
    * callback is present.
@@ -2125,12 +2125,12 @@ struct OrtEpApi {
    */
   ORT_API2_STATUS(EpContextConfig_GetEpContextDataReadFunc,
                   _In_ const OrtEpContextConfig* config,
-                  _Out_ OrtReadEpContextDataFunc* read_func,
+                  _Out_ OrtReadFileDataFunc* read_func,
                   _Out_ void** state);
 
   /** \brief Get the application-provided EPContext data write callback.
    *
-   * Returns the OrtWriteEpContextDataFunc and opaque state pointer registered via
+   * Returns the OrtWriteFileDataFunc and opaque state pointer registered via
    * OrtCompileApi::ModelCompilationOptions_SetEpContextDataWriteFunc. If no callback was registered, *write_func and
    * *state are set to NULL. The EP is responsible for calling the callback when present and for using its own normal
    * write path when no callback is present.
@@ -2145,7 +2145,7 @@ struct OrtEpApi {
    */
   ORT_API2_STATUS(EpContextConfig_GetEpContextDataWriteFunc,
                   _In_ const OrtEpContextConfig* config,
-                  _Out_ OrtWriteEpContextDataFunc* write_func,
+                  _Out_ OrtWriteFileDataFunc* write_func,
                   _Out_ void** state);
 };
 

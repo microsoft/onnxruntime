@@ -173,7 +173,7 @@ inline OrtStatus* ReadEpContextDataWithFileFallback(const OrtApi& api, const Ort
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
   }
 
-  OrtReadEpContextDataFunc read_func = nullptr;
+  OrtReadFileDataFunc read_func = nullptr;
   void* read_state = nullptr;
   if (ep_context_config != nullptr) {
     RETURN_IF_ERROR(ep_api.EpContextConfig_GetEpContextDataReadFunc(ep_context_config, &read_func, &read_state));
@@ -200,7 +200,7 @@ inline OrtStatus* ReadEpContextDataWithFileFallback(const OrtApi& api, const Ort
 
   if (ep_context_data_size != 0 && ep_context_data == nullptr) {
     return api.CreateStatus(
-        ORT_FAIL, "OrtReadEpContextDataFunc returned a null buffer for non-empty EPContext data");
+        ORT_FAIL, "OrtReadFileDataFunc returned a null buffer for non-empty EPContext data");
   }
 
   data.clear();
@@ -225,7 +225,7 @@ inline OrtStatus* WriteEpContextDataWithFileFallback(const OrtApi& api, const Or
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data buffer must not be null for non-empty data");
   }
 
-  OrtWriteEpContextDataFunc write_func = nullptr;
+  OrtWriteFileDataFunc write_func = nullptr;
   void* write_state = nullptr;
   if (ep_context_config != nullptr) {
     RETURN_IF_ERROR(ep_api.EpContextConfig_GetEpContextDataWriteFunc(ep_context_config, &write_func, &write_state));

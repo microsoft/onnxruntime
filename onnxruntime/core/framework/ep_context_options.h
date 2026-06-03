@@ -31,7 +31,7 @@ struct BufferWriteFuncHolder {
 /// Holds the opaque state and write function that EPs use to write EPContext binary data.
 /// </summary>
 struct EpContextDataWriteFuncHolder {
-  OrtWriteEpContextDataFunc write_func = nullptr;
+  OrtWriteFileDataFunc write_func = nullptr;
   void* state = nullptr;
 };
 

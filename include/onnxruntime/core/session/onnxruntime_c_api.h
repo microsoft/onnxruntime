@@ -603,47 +603,49 @@ typedef OrtStatus*(ORT_API_CALL* OrtWriteBufferFunc)(_In_ void* state,
                                                      _In_ const void* buffer,
                                                      _In_ size_t buffer_num_bytes);
 
-/** \brief Function called to write EPContext binary data during compilation.
+/** \brief Function called to write named binary data.
  *
- * This function is called synchronously by the execution provider on the calling thread. ORT does not own or retain
- * buffer after the callback returns. ORT does not serialize invocations made by different EP instances or EP worker
- * threads.
+ * This callback is currently used for EPContext binary data, but its contract is intentionally generic so future APIs
+ * can reuse it for other named data payloads. The callback is called synchronously by the component that receives it.
+ * ORT does not own or retain buffer after the callback returns. ORT does not serialize invocations made by different
+ * EP instances or worker threads.
  *
  * Each callback invocation represents one complete write operation for file_name. The callback signature does not
- * provide an offset, sequence number, or final-chunk marker, so EPs that need chunked streaming must define their own
- * ordering and completion contract with the application. EPs should prefer a single callback invocation per EPContext
- * binary unless chunking semantics are documented by that EP.
+ * provide an offset, sequence number, or final-chunk marker, so the component invoking the callback must define any
+ * chunked ordering and completion contract with the application. Current EPContext use should prefer a single callback
+ * invocation per EPContext binary unless chunking semantics are documented by the EP.
  *
  * The application's implementation can process the data in any way (e.g., encrypt and store, upload to cloud storage,
  * or compress) before persisting it.
  *
  * \param[in] state Opaque pointer holding the user's state. ORT does not own or manage this pointer. The application
- *                  must keep it valid for the duration of any compile operation that may invoke this callback and must
- *                  provide any synchronization required if it can be used concurrently.
- * \param[in] file_name The intended EPContext binary file name as a null-terminated UTF-8 string.
- * \param[in] buffer The buffer containing EPContext binary data to write.
+ *                  must keep it valid for the duration required by the API that accepted the callback and must provide
+ *                  any synchronization required if it can be used concurrently.
+ * \param[in] file_name The file name or logical data identifier as a null-terminated UTF-8 string.
+ * \param[in] buffer The buffer containing data to write.
  * \param[in] buffer_num_bytes The size of the buffer in bytes.
  *
  * \return OrtStatus* Write status. Return nullptr on success.
  *                    Use CreateStatus to provide error info with ORT_FAIL as the error code.
  *                    ORT will release the OrtStatus* if not null.
  */
-typedef OrtStatus*(ORT_API_CALL* OrtWriteEpContextDataFunc)(_In_ void* state,
-                                                            _In_ const char* file_name,
-                                                            _In_ const void* buffer,
-                                                            _In_ size_t buffer_num_bytes);
+typedef OrtStatus*(ORT_API_CALL* OrtWriteFileDataFunc)(_In_ void* state,
+                                                       _In_ const char* file_name,
+                                                       _In_ const void* buffer,
+                                                       _In_ size_t buffer_num_bytes);
 
-/** \brief Function called by ORT to read EPContext binary data during session load.
+/** \brief Function called to read named binary data.
  *
- * The application reads, processes (e.g., decrypts, decompresses, downloads), and returns the EPContext binary data.
- * ORT provides an allocator so the application can allocate the output buffer directly. The callback is called
- * synchronously by the execution provider on the calling thread. ORT does not serialize invocations made by different
- * EP instances or EP worker threads.
+ * This callback is currently used for EPContext binary data, but its contract is intentionally generic so future APIs
+ * can reuse it for other named data payloads. The application reads, processes (e.g., decrypts, decompresses,
+ * downloads), and returns the requested data. ORT provides an allocator so the application can allocate the output
+ * buffer directly. The callback is called synchronously by the component that receives it. ORT does not serialize
+ * invocations made by different EP instances or worker threads.
  *
  * \param[in] state Opaque pointer holding the user's state. ORT does not own or manage this pointer. The application
- *                  must keep it valid while any session or EP created from the associated OrtSessionOptions may invoke
- *                  this callback and must provide any synchronization required if it can be used concurrently.
- * \param[in] file_name The EPContext binary file name as a null-terminated UTF-8 string.
+ *                  must keep it valid for the duration required by the API that accepted the callback and must provide
+ *                  any synchronization required if it can be used concurrently.
+ * \param[in] file_name The file name or logical data identifier to read as a null-terminated UTF-8 string.
  * \param[in] allocator ORT-provided allocator. The application must use this to allocate the output buffer.
  * \param[out] buffer Set by the implementation to the allocated buffer containing the output data.
  * \param[out] data_size Set by the implementation to the size of the output data in bytes.
@@ -652,11 +654,11 @@ typedef OrtStatus*(ORT_API_CALL* OrtWriteEpContextDataFunc)(_In_ void* state,
  *                    Use CreateStatus to provide error info with ORT_FAIL as the error code.
  *                    ORT will release the OrtStatus* if not null.
  */
-typedef OrtStatus*(ORT_API_CALL* OrtReadEpContextDataFunc)(_In_ void* state,
-                                                           _In_ const char* file_name,
-                                                           _In_ OrtAllocator* allocator,
-                                                           _Outptr_ void** buffer,
-                                                           _Out_ size_t* data_size);
+typedef OrtStatus*(ORT_API_CALL* OrtReadFileDataFunc)(_In_ void* state,
+                                                      _In_ const char* file_name,
+                                                      _In_ OrtAllocator* allocator,
+                                                      _Outptr_ void** buffer,
+                                                      _Out_ size_t* data_size);
 
 /** \brief Function called by ORT to allow user to specify how an initializer should be saved, that is, either
  * written to an external file or stored within the model. ORT calls this function for every initializer when
@@ -7581,7 +7583,7 @@ struct OrtApi {
    * is responsible for synchronization.
    *
    * \param[in] options The OrtSessionOptions instance.
-   * \param[in] read_func The OrtReadEpContextDataFunc callback.
+   * \param[in] read_func The OrtReadFileDataFunc callback.
    * \param[in] state Opaque state passed to read_func. Can be NULL.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -7589,7 +7591,7 @@ struct OrtApi {
    * \since Version 1.28.
    */
   ORT_API2_STATUS(SessionOptions_SetEpContextDataReadFunc, _Inout_ OrtSessionOptions* options,
-                  _In_ OrtReadEpContextDataFunc read_func, _In_opt_ void* state);
+                  _In_ OrtReadFileDataFunc read_func, _In_opt_ void* state);
 };
 
 /*
@@ -8447,7 +8449,7 @@ struct OrtCompileApi {
    * responsible for synchronization.
    *
    * \param[in] model_compile_options The OrtModelCompilationOptions instance.
-   * \param[in] write_func The OrtWriteEpContextDataFunc called to write EPContext bytes.
+   * \param[in] write_func The OrtWriteFileDataFunc callback used to write EPContext bytes.
    * \param[in] state Opaque state passed to write_func. Can be NULL.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -8456,7 +8458,7 @@ struct OrtCompileApi {
    */
   ORT_API2_STATUS(ModelCompilationOptions_SetEpContextDataWriteFunc,
                   _In_ OrtModelCompilationOptions* model_compile_options,
-                  _In_ OrtWriteEpContextDataFunc write_func, _In_opt_ void* state);
+                  _In_ OrtWriteFileDataFunc write_func, _In_opt_ void* state);
 };
 
 /**

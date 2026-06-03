@@ -773,15 +773,15 @@ inline EpContextConfig::EpContextConfig(const OrtSessionOptions* session_options
   ThrowOnError(GetEpApi().SessionOptions_GetEpContextConfig(session_options, &p_));
 }
 
-inline std::pair<OrtReadEpContextDataFunc, void*> EpContextConfig::GetEpContextDataReadFunc() const {
-  OrtReadEpContextDataFunc read_func = nullptr;
+inline std::pair<OrtReadFileDataFunc, void*> EpContextConfig::GetEpContextDataReadFunc() const {
+  OrtReadFileDataFunc read_func = nullptr;
   void* state = nullptr;
   ThrowOnError(GetEpApi().EpContextConfig_GetEpContextDataReadFunc(this->p_, &read_func, &state));
   return {read_func, state};
 }
 
-inline std::pair<OrtWriteEpContextDataFunc, void*> EpContextConfig::GetEpContextDataWriteFunc() const {
-  OrtWriteEpContextDataFunc write_func = nullptr;
+inline std::pair<OrtWriteFileDataFunc, void*> EpContextConfig::GetEpContextDataWriteFunc() const {
+  OrtWriteFileDataFunc write_func = nullptr;
   void* state = nullptr;
   ThrowOnError(GetEpApi().EpContextConfig_GetEpContextDataWriteFunc(this->p_, &write_func, &state));
   return {write_func, state};
@@ -1354,7 +1354,7 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelWriteFunc
 }
 
 inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextDataWriteFunc(
-    OrtWriteEpContextDataFunc write_func, void* state) {
+    OrtWriteFileDataFunc write_func, void* state) {
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetEpContextDataWriteFunc(this->p_, write_func, state));
   return *this;
 }
@@ -1599,7 +1599,7 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AddExternalInitializersFrom
 }
 
 template <typename T>
-inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetEpContextDataReadFunc(OrtReadEpContextDataFunc read_func,
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetEpContextDataReadFunc(OrtReadFileDataFunc read_func,
                                                                               void* state) {
   ThrowOnError(GetApi().SessionOptions_SetEpContextDataReadFunc(this->p_, read_func, state));
   return *this;

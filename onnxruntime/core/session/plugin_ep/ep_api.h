@@ -186,11 +186,11 @@ ORT_API_STATUS_IMPL(SessionOptions_GetEpContextConfig,
 ORT_API(void, ReleaseEpContextConfig, _Frees_ptr_opt_ OrtEpContextConfig* config);
 ORT_API_STATUS_IMPL(EpContextConfig_GetEpContextDataReadFunc,
                     _In_ const OrtEpContextConfig* config,
-                    _Out_ OrtReadEpContextDataFunc* read_func,
+                    _Out_ OrtReadFileDataFunc* read_func,
                     _Out_ void** state);
 ORT_API_STATUS_IMPL(EpContextConfig_GetEpContextDataWriteFunc,
                     _In_ const OrtEpContextConfig* config,
-                    _Out_ OrtWriteEpContextDataFunc* write_func,
+                    _Out_ OrtWriteFileDataFunc* write_func,
                     _Out_ void** state);
 
 }  // namespace OrtExecutionProviderApi

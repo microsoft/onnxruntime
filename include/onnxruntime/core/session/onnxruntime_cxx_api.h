@@ -1196,10 +1196,10 @@ struct EpContextConfig : detail::Base<OrtEpContextConfig> {
   explicit EpContextConfig(const OrtSessionOptions* session_options);
 
   /// \brief Wraps OrtEpApi::EpContextConfig_GetEpContextDataReadFunc
-  std::pair<OrtReadEpContextDataFunc, void*> GetEpContextDataReadFunc() const;
+  std::pair<OrtReadFileDataFunc, void*> GetEpContextDataReadFunc() const;
 
   /// \brief Wraps OrtEpApi::EpContextConfig_GetEpContextDataWriteFunc
-  std::pair<OrtWriteEpContextDataFunc, void*> GetEpContextDataWriteFunc() const;
+  std::pair<OrtWriteFileDataFunc, void*> GetEpContextDataWriteFunc() const;
 };
 
 /** \brief Validate a compiled model's compatibility for one or more EP devices.
@@ -1685,7 +1685,7 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
                                                                const std::vector<char*>& external_initializer_file_buffer_array,
                                                                const std::vector<size_t>& external_initializer_file_lengths);  ///< Wraps OrtApi::AddExternalInitializersFromFilesInMemory
 
-  SessionOptionsImpl& SetEpContextDataReadFunc(OrtReadEpContextDataFunc read_func, void* state);  ///< Wraps OrtApi::SessionOptions_SetEpContextDataReadFunc
+  SessionOptionsImpl& SetEpContextDataReadFunc(OrtReadFileDataFunc read_func, void* state);  ///< Wraps OrtApi::SessionOptions_SetEpContextDataReadFunc
 
   SessionOptionsImpl& AppendExecutionProvider_CPU(int use_arena);                                            ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CPU
   SessionOptionsImpl& AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options);          ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA
@@ -1789,7 +1789,7 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
   ModelCompilationOptions& SetOutputModelWriteFunc(OrtWriteBufferFunc write_func, void* state);
 
   ///< Wraps OrtCompileApi::ModelCompilationOptions_SetEpContextDataWriteFunc
-  ModelCompilationOptions& SetEpContextDataWriteFunc(OrtWriteEpContextDataFunc write_func, void* state);
+  ModelCompilationOptions& SetEpContextDataWriteFunc(OrtWriteFileDataFunc write_func, void* state);
 
   ModelCompilationOptions& SetEpContextBinaryInformation(const ORTCHAR_T* output_directory,
                                                          const ORTCHAR_T* model_name);  ///< Wraps OrtApi::ModelCompilationOptions_SetEpContextBinaryInformation

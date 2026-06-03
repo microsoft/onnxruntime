@@ -133,7 +133,7 @@ void ModelCompilationOptions::SetOutputModelGetInitializerLocationFunc(
   };
 }
 
-void ModelCompilationOptions::SetEpContextDataWriteFunc(OrtWriteEpContextDataFunc write_func, void* state) {
+void ModelCompilationOptions::SetEpContextDataWriteFunc(OrtWriteFileDataFunc write_func, void* state) {
   session_options_.value.ep_context_gen_options.ep_context_data_write_func = epctx::EpContextDataWriteFuncHolder{
       write_func,
       state,

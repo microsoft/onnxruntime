@@ -135,7 +135,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetSessionExecutionMode, _In_ const OrtSessionOptio
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptions_SetEpContextDataReadFunc, _Inout_ OrtSessionOptions* options,
-                    _In_ OrtReadEpContextDataFunc read_func, _In_opt_ void* state) {
+                    _In_ OrtReadFileDataFunc read_func, _In_opt_ void* state) {
   API_IMPL_BEGIN
   ORT_API_RETURN_IF(options == nullptr, ORT_INVALID_ARGUMENT, "'options' parameter must not be NULL");
   ORT_API_RETURN_IF(read_func == nullptr, ORT_INVALID_ARGUMENT, "'read_func' parameter must not be NULL");
