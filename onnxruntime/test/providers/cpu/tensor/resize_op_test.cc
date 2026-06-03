@@ -3309,9 +3309,9 @@ TEST(ResizeOpTest, Scales_PositiveInf_Rejected_18) {
             kOpenVINOExecutionProvider});
 }
 
-// Duplicate values in the axes attribute violate the ONNX spec and are rejected at construction.
-// The constructor uses ORT_ENFORCE, which throws; the test is excluded from no-exception builds.
-#if !defined(ORT_NO_EXCEPTIONS)
+// Duplicate values in the axes attribute violate the ONNX spec. The check runs after
+// negative-axis normalization, so it covers both raw duplicates and pairs that collide
+// only after canonicalization (e.g. {-1, rank-1}).
 TEST(ResizeOpTest, Axes_Duplicate_Rejected_18) {
   std::vector<float> X(16 * 4);
   std::iota(X.begin(), X.end(), 0.f);
@@ -3331,10 +3331,34 @@ TEST(ResizeOpTest, Axes_Duplicate_Rejected_18) {
   test.AddOutput<float>("Y", {1, 1, 4, 4, 4}, Y);
 
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "axes attribute must contain unique values, found duplicate 2",
+           "axes attribute contains duplicate axis 2",
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
 }
-#endif
+
+// Negative and positive axis entries that resolve to the same canonical index must be
+// rejected. For rank=5, axes={-1, 4} both map to 4.
+TEST(ResizeOpTest, Axes_Duplicate_AfterNormalization_Rejected_18) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> roi{};
+  std::vector<float> scales{0.75f, 0.75f};
+  std::vector<int64_t> axes{-1, 4};
+  std::vector<float> Y(16 * 4, 0.0f);
+
+  OpTester test("Resize", 18);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute<std::vector<int64_t>>("axes", axes);
+
+  test.AddInput<float>("X", {1, 1, 4, 4, 4}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {int64_t(scales.size())}, scales);
+  test.AddOutput<float>("Y", {1, 1, 4, 4, 4}, Y);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "axes attribute contains duplicate axis 4",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
 
 // When axes is provided in tf_crop_and_resize mode, the roi input must contain at least
 // 2 * len(axes) entries so the per-axis start/end pairs can be read safely.

@@ -233,15 +233,9 @@ class UpsampleBase {
       // guard against unit tests that can add an attribute
       auto axes = info.template GetAttrsOrDefault<int64_t>("axes");
       axes_.assign(axes.cbegin(), axes.cend());
-      // ONNX spec requires axes entries to be unique. Detect duplicates as raw integers; range
-      // validation happens later in ParseScalesData / ParseSizesData when the rank is known.
-      if (axes_.size() > 1) {
-        TensorShapeVector sorted_axes(axes_);
-        std::sort(sorted_axes.begin(), sorted_axes.end());
-        auto dup = std::adjacent_find(sorted_axes.begin(), sorted_axes.end());
-        ORT_ENFORCE(dup == sorted_axes.end(),
-                    "axes attribute must contain unique values, found duplicate ", *dup);
-      }
+      // Uniqueness of axes is enforced after negative-axis normalization in
+      // ValidateAndNormalizeAxes, so two raw entries that collide after canonicalization
+      // (e.g. {-1, rank-1}) are still rejected.
     }
 
     extrapolation_value_ = info.template GetAttrOrDefault<float>("extrapolation_value", 0.0f);
@@ -506,6 +500,27 @@ class UpsampleBase {
     }
   }
 
+  // Resolve negative entries in axes_ against the supplied rank, verify each is in range,
+  // and verify that no two entries collide after normalization. Populates normalized_axes
+  // with the canonical non-negative indices in the original order.
+  Status ValidateAndNormalizeAxes(int64_t rank, TensorShapeVector& normalized_axes) const {
+    ORT_RETURN_IF_NOT(rank > 0, "Rank must be positive when axes is provided.");
+    normalized_axes.clear();
+    normalized_axes.reserve(axes_.size());
+    InlinedVector<bool> seen(static_cast<size_t>(rank), false);
+    for (int64_t raw_axis : axes_) {
+      ORT_RETURN_IF_NOT(IsAxisInRange(raw_axis, rank), "axis ", raw_axis,
+                        " is not in valid range [-", rank, ",", rank - 1, "]");
+      const int64_t axis = raw_axis < 0 ? raw_axis + rank : raw_axis;
+      const auto idx = static_cast<size_t>(axis);
+      ORT_RETURN_IF(seen[idx], "axes attribute contains duplicate axis ", axis,
+                    " after negative-axis normalization (rank=", rank, ").");
+      seen[idx] = true;
+      normalized_axes.push_back(axis);
+    }
+    return Status::OK();
+  }
+
   [[nodiscard]] Status ScalesValidation(gsl::span<const float> scales, const UpsampleMode mode) const {
     for (auto& scale : scales) {
       ORT_RETURN_IF_NOT(std::isfinite(scale), "Scale value must be finite.");
@@ -583,9 +598,10 @@ class UpsampleBase {
                           "Number of elements in scales should be equal to number of axes.");
 
         InlinedVector<float> new_scales(size_t(rank), 1.0f);
-        for (size_t i = 0; i < axes_.size(); i++) {
-          const int64_t axis = HandleNegativeAxis(axes_[i], rank);
-          new_scales[static_cast<size_t>(axis)] = scales[i];
+        TensorShapeVector normalized_axes;
+        ORT_RETURN_IF_ERROR(ValidateAndNormalizeAxes(rank, normalized_axes));
+        for (size_t i = 0; i < normalized_axes.size(); i++) {
+          new_scales[static_cast<size_t>(normalized_axes[i])] = scales[i];
         }
         scales.swap(new_scales);
       }
@@ -614,9 +630,10 @@ class UpsampleBase {
                         "Number of elements in sizes should be equal to number of axes.");
       output_dims.assign(input_dims.begin(), input_dims.end());
       const int64_t rank = static_cast<int64_t>(output_dims.size());
-      for (size_t i = 0; i < axes_.size(); i++) {
-        const int64_t axis = HandleNegativeAxis(axes_[i], rank);
-        output_dims[static_cast<size_t>(axis)] = size_span[i];
+      TensorShapeVector normalized_axes;
+      ORT_RETURN_IF_ERROR(ValidateAndNormalizeAxes(rank, normalized_axes));
+      for (size_t i = 0; i < normalized_axes.size(); i++) {
+        output_dims[static_cast<size_t>(normalized_axes[i])] = size_span[i];
       }
     } else {
       std::copy(size_span.begin(), size_span.end(), output_dims.begin());
@@ -675,9 +692,10 @@ class UpsampleBase {
         roi_tmp[i] = 1;
       }
       const int64_t rank_i64 = static_cast<int64_t>(rank);
-      for (size_t i = 0; i < axes_.size(); i++) {
-        const int64_t axis = HandleNegativeAxis(axes_[i], rank_i64);
-        auto v_in_axes = static_cast<size_t>(axis);
+      TensorShapeVector normalized_axes;
+      ORT_RETURN_IF_ERROR(ValidateAndNormalizeAxes(rank_i64, normalized_axes));
+      for (size_t i = 0; i < normalized_axes.size(); i++) {
+        const auto v_in_axes = static_cast<size_t>(normalized_axes[i]);
         roi_tmp[v_in_axes] = (roi_array[i]);
         roi_tmp[rank + v_in_axes] = (roi_array[axes_.size() + i]);
       }
