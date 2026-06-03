@@ -5,6 +5,8 @@
 
 import glob
 import os
+import tarfile
+import zipfile
 
 import requests
 
@@ -63,6 +65,38 @@ def download_compressed_file(tf_ckpt_url, ckpt_dir):
     return compressed_file_dir
 
 
+def _is_safe_archive_member(extract_dir, member_name):
+    extract_dir = os.path.realpath(extract_dir)
+    candidate_path = os.path.realpath(os.path.join(extract_dir, member_name))
+    return os.path.commonpath([extract_dir, candidate_path]) == extract_dir
+
+
+def safe_extract_archive(archive_path, extract_dir):
+    archive_path = os.path.realpath(archive_path)
+    extract_dir = os.path.realpath(extract_dir)
+
+    if tarfile.is_tarfile(archive_path):
+        with tarfile.open(archive_path, "r:*") as tar_ref:
+            for member in tar_ref.getmembers():
+                if not _is_safe_archive_member(extract_dir, member.name):
+                    raise ValueError(f"Archive member '{member.name}' resolves outside '{extract_dir}'")
+            try:
+                tar_ref.extractall(extract_dir, filter="data")
+            except TypeError:
+                tar_ref.extractall(extract_dir)
+        return
+
+    if zipfile.is_zipfile(archive_path):
+        with zipfile.ZipFile(archive_path, "r") as zip_ref:
+            for member_name in zip_ref.namelist():
+                if not _is_safe_archive_member(extract_dir, member_name):
+                    raise ValueError(f"Archive member '{member_name}' resolves outside '{extract_dir}'")
+            zip_ref.extractall(extract_dir)
+        return
+
+    raise ValueError(f"Unsupported archive format: {archive_path}")
+
+
 def get_ckpt_prefix_path(ckpt_dir):
     # get prefix
     sub_folder_dir = None
@@ -94,11 +128,8 @@ def download_tf_checkpoint(model_name, tf_models_dir="tf_models"):
         zip_dir = download_compressed_file(tf_ckpt_url, ckpt_dir)
 
         # unzip file
-        import zipfile  # noqa: PLC0415
-
-        with zipfile.ZipFile(zip_dir, "r") as zip_ref:
-            zip_ref.extractall(ckpt_dir)
-            os.remove(zip_dir)
+        safe_extract_archive(zip_dir, ckpt_dir)
+        os.remove(zip_dir)
 
         return get_ckpt_prefix_path(ckpt_dir)
 
@@ -106,11 +137,8 @@ def download_tf_checkpoint(model_name, tf_models_dir="tf_models"):
         tar_dir = download_compressed_file(tf_ckpt_url, ckpt_dir)
 
         # untar file
-        import tarfile  # noqa: PLC0415
-
-        with tarfile.open(tar_dir, "r") as tar_ref:
-            tar_ref.extractall(ckpt_dir)
-            os.remove(tar_dir)
+        safe_extract_archive(tar_dir, ckpt_dir)
+        os.remove(tar_dir)
 
         return get_ckpt_prefix_path(ckpt_dir)
 
