@@ -4,7 +4,6 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 MODULE_PATH = Path(__file__).with_name("compile_triton.py")
 
@@ -29,8 +28,8 @@ class CompileTritonCommandExecutionTest(unittest.TestCase):
             Path(tmp_dir, obj_file).write_text("", encoding="utf-8")
 
             with (
-                mock.patch.object(self.module.os, "system", return_value=0) as mock_system,
-                mock.patch(
+                unittest.mock.patch.object(self.module.os, "system", return_value=0) as mock_system,
+                unittest.mock.patch(
                     "subprocess.run", return_value=subprocess.CompletedProcess(args=[], returncode=0)
                 ) as mock_run,
             ):
@@ -56,8 +55,8 @@ class CompileTritonCommandExecutionTest(unittest.TestCase):
                 Path(tmp_dir, name).write_text("", encoding="utf-8")
 
             with (
-                mock.patch.object(self.module.os, "system", return_value=0) as mock_system,
-                mock.patch(
+                unittest.mock.patch.object(self.module.os, "system", return_value=0) as mock_system,
+                unittest.mock.patch(
                     "subprocess.run", return_value=subprocess.CompletedProcess(args=[], returncode=0)
                 ) as mock_run,
             ):
