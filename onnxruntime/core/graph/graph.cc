@@ -2973,11 +2973,16 @@ Status Graph::SaveShapeValuesFromDataPropagation(const Node& node,
         OrtValue ort_value;
         if (this->GetOrtValueInitializer(input_name, ort_value, true)) {
           const Tensor& tensor = ort_value.Get<Tensor>();
+          auto enforce_tensor_element_count_matches = [&](size_t tensor_element_count) {
+            ORT_ENFORCE(tensor_element_count == element_cnt,
+                        "The element count from Tensor for initializer '", input_name,
+                        "' should match the count from utils::GetTensorShapeFromTensorProto(). Tensor count: ",
+                        tensor_element_count, ", TensorProto count: ", element_cnt);
+          };
+
           if (initializer->data_type() == TensorProto_DataType_INT32) {
             auto data_span = tensor.DataAsSpan<int32_t>();
-            ORT_ENFORCE(data_span.size() == element_cnt,
-                        "The element counts from Tensor should be the same"
-                        "from using utils::GetTensorShapeFromTensorProto()");
+            enforce_tensor_element_count_matches(data_span.size());
 
             size_t index = 0;
             input_values.resize(element_cnt);
@@ -2986,7 +2991,11 @@ Status Graph::SaveShapeValuesFromDataPropagation(const Node& node,
               ++index;
             }
           } else if (initializer->data_type() == TensorProto_DataType_INT64) {
-            const int64_t* src = tensor.Data<int64_t>();
+            auto data_span = tensor.DataAsSpan<int64_t>();
+            enforce_tensor_element_count_matches(data_span.size());
+
+            const int64_t* src = data_span.data();
+            input_values.resize(element_cnt);
             memcpy(input_values.data(), src, element_cnt * sizeof(int64_t));
           }
         } else {
