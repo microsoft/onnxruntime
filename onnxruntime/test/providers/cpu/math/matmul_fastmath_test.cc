@@ -182,17 +182,12 @@ TEST(MathOpTest, MatMulFloatTypeFastMathKTailDoesNotReadPaddedA) {
   for (const int64_t K : std::array<int64_t, 5>{13, 14, 15, 16, 17}) {
     SCOPED_TRACE("K=" + std::to_string(K));
 
-    OpTester test("MatMul", 7);
-
     std::vector<float> input0_vals(K);
     std::iota(input0_vals.begin(), input0_vals.end(), 1.0f);
-    test.AddInput<float>("A", {M, K}, input0_vals);
 
     std::vector<float> input1_vals(K * N, 1.0f);
-    test.AddInput<float>("B", {K, N}, input1_vals, true);
 
     std::vector<float> expected_vals(N, std::accumulate(input0_vals.begin(), input0_vals.end(), 0.0f));
-    test.AddOutput<float>("Y", {M, N}, expected_vals);
 
     ONNX_NAMESPACE::ModelProto model;
     model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
