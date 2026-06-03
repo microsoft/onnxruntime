@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <exception>
+#include <limits>
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -3264,6 +3265,103 @@ TEST(ResizeOpTest, Axes_and_Sizes_CountMismatch_18) {
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "Number of elements in sizes should be equal to number of axes.",
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Non-finite scale values must be rejected before being multiplied into output dimensions.
+TEST(ResizeOpTest, Scales_NaN_Rejected_18) {
+  std::vector<float> X(16, 1.0f);
+  std::vector<float> roi{};
+  std::vector<float> scales{1.0f, 1.0f, std::numeric_limits<float>::quiet_NaN(), 2.0f};
+  std::vector<float> Y(16, 0.0f);
+
+  OpTester test("Resize", 18);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("mode", "linear");
+
+  test.AddInput<float>("X", {1, 1, 4, 4}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {int64_t(scales.size())}, scales);
+  test.AddOutput<float>("Y", {1, 1, 4, 8}, Y);
+
+  // EPs that do their own validation or do not exercise the CPU ScalesValidation path.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Scale value must be finite.",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
+            kOpenVINOExecutionProvider});
+}
+
+TEST(ResizeOpTest, Scales_PositiveInf_Rejected_18) {
+  std::vector<float> X(16, 1.0f);
+  std::vector<float> roi{};
+  std::vector<float> scales{1.0f, 1.0f, 2.0f, std::numeric_limits<float>::infinity()};
+  std::vector<float> Y(16, 0.0f);
+
+  OpTester test("Resize", 18);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("mode", "linear");
+
+  test.AddInput<float>("X", {1, 1, 4, 4}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {int64_t(scales.size())}, scales);
+  test.AddOutput<float>("Y", {1, 1, 8, 4}, Y);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Scale value must be finite.",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
+            kOpenVINOExecutionProvider});
+}
+
+// Duplicate values in the axes attribute violate the ONNX spec and are rejected at construction.
+// The constructor uses ORT_ENFORCE, which throws; the test is excluded from no-exception builds.
+#if !defined(ORT_NO_EXCEPTIONS)
+TEST(ResizeOpTest, Axes_Duplicate_Rejected_18) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> roi{};
+  std::vector<float> scales{0.75f, 0.75f, 0.75f};
+  std::vector<int64_t> axes{2, 3, 2};
+  std::vector<float> Y(16 * 4, 0.0f);
+
+  OpTester test("Resize", 18);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute<std::vector<int64_t>>("axes", axes);
+
+  test.AddInput<float>("X", {1, 1, 4, 4, 4}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {int64_t(scales.size())}, scales);
+  test.AddOutput<float>("Y", {1, 1, 4, 4, 4}, Y);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "axes attribute must contain unique values, found duplicate 2",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+#endif
+
+// When axes is provided in tf_crop_and_resize mode, the roi input must contain at least
+// 2 * len(axes) entries so the per-axis start/end pairs can be read safely.
+TEST(ResizeOpTest, Roi_TooShortForAxes_18) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  // roi length 4 (= 2 * 2), but axes has 3 entries, so 2 * len(axes) = 6 are required.
+  std::vector<float> roi{0.0f, 0.0f, 1.0f, 1.0f};
+  std::vector<float> scales{0.75f, 0.75f, 0.75f};
+  std::vector<int64_t> axes{2, 3, 4};
+  std::vector<float> Y(16 * 4, 0.0f);
+
+  OpTester test("Resize", 18);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
+  test.AddAttribute<std::vector<int64_t>>("axes", axes);
+
+  test.AddInput<float>("X", {1, 1, 4, 4, 4}, X);
+  test.AddInput<float>("roi", {int64_t(roi.size())}, roi);
+  test.AddInput<float>("scales", {int64_t(scales.size())}, scales);
+  test.AddOutput<float>("Y", {1, 1, 4, 4, 4}, Y);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "roi input length",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
+            kOpenVINOExecutionProvider});
 }
 
 TEST(ResizeOpTest, Sizes_RankMismatch_13) {

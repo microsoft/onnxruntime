@@ -233,6 +233,15 @@ class UpsampleBase {
       // guard against unit tests that can add an attribute
       auto axes = info.template GetAttrsOrDefault<int64_t>("axes");
       axes_.assign(axes.cbegin(), axes.cend());
+      // ONNX spec requires axes entries to be unique. Detect duplicates as raw integers; range
+      // validation happens later in ParseScalesData / ParseSizesData when the rank is known.
+      if (axes_.size() > 1) {
+        TensorShapeVector sorted_axes(axes_);
+        std::sort(sorted_axes.begin(), sorted_axes.end());
+        auto dup = std::adjacent_find(sorted_axes.begin(), sorted_axes.end());
+        ORT_ENFORCE(dup == sorted_axes.end(),
+                    "axes attribute must contain unique values, found duplicate ", *dup);
+      }
     }
 
     extrapolation_value_ = info.template GetAttrOrDefault<float>("extrapolation_value", 0.0f);
@@ -498,6 +507,9 @@ class UpsampleBase {
   }
 
   [[nodiscard]] Status ScalesValidation(gsl::span<const float> scales, const UpsampleMode mode) const {
+    for (auto& scale : scales) {
+      ORT_RETURN_IF_NOT(std::isfinite(scale), "Scale value must be finite.");
+    }
     if (!is_resize_) {
       for (auto& scale : scales) {
         ORT_RETURN_IF_NOT(scale >= 1, "Scale value should be greater than or equal to 1.");
@@ -653,8 +665,11 @@ class UpsampleBase {
 
   // Roi is redefined in Opset-18, we have a concept of axes.
   // So we need to update it accordingly.
-  void ComputeROIWithAxes(InlinedVector<float>& roi_array, size_t rank) const {
+  Status ComputeROIWithAxes(InlinedVector<float>& roi_array, size_t rank) const {
     if (axes_.size()) {
+      ORT_RETURN_IF_NOT(roi_array.size() >= 2 * axes_.size(),
+                        "roi input length (", roi_array.size(),
+                        ") must be at least 2 * number of axes (", 2 * axes_.size(), ").");
       InlinedVector<float> roi_tmp(rank * 2, 0);
       for (size_t i = rank; i < rank * 2; ++i) {
         roi_tmp[i] = 1;
@@ -668,6 +683,7 @@ class UpsampleBase {
       }
       roi_array.swap(roi_tmp);
     }
+    return Status::OK();
   }
 
  public:
