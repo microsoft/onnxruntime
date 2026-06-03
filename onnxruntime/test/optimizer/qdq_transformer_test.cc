@@ -2034,6 +2034,87 @@ TEST(QDQTransformerTests, Resize_No_Fusion) {
   test_case({1, 8, 64, 64}, {4}, {1, 4, 128, 128}, 1, true /*use_contrib_qdq*/);
 }
 
+TEST(QDQTransformerTests, Resize_NonNearest_No_Fusion) {
+  // Resize with mode="linear" or mode="cubic" is not order-preserving on integers.
+  // The surrounding Q/DQ pair must NOT be dropped. See issue #21319.
+  auto test_case = [&](const std::vector<int64_t>& input1_shape,
+                       const std::vector<int64_t>& sizes_shape,
+                       const std::string& mode,
+                       bool use_contrib_qdq = false) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+      EXPECT_EQ(op_to_count["Resize"], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 1);
+    };
+
+    TransformerTester(BuildQDQResizeTestCase(input1_shape,
+                                             sizes_shape,
+                                             mode,                  // mode (linear or cubic)
+                                             "half_pixel",          // coordinate_transformation_mode
+                                             "round_prefer_floor",  // nearest_mode (unused for linear/cubic)
+                                             false,                 // add_dq_output_float
+                                             use_contrib_qdq),
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2);
+  };
+
+  // Use fixed output sizes where batch and channel are unchanged (linear/cubic require scale=1 on batch/channel).
+  // mode="linear"
+  test_case({1, 8, 64, 64}, {1, 8, 128, 128}, "linear");
+  test_case({1, 8, 64, 64}, {1, 8, 128, 128}, "linear", true /*use_contrib_qdq*/);
+  // mode="cubic"
+  test_case({1, 8, 64, 64}, {1, 8, 128, 128}, "cubic");
+  test_case({1, 8, 64, 64}, {1, 8, 128, 128}, "cubic", true /*use_contrib_qdq*/);
+}
+
+TEST(QDQTransformerTests, Resize_DefaultMode_Fusion) {
+  // A Resize node with no "mode" attribute defaults to "nearest" per the ONNX spec.
+  // The selector must treat a missing mode attribute the same as mode="nearest" and
+  // allow Q/DQ to be dropped. See issue #21319.
+  auto test_case = [&](const std::vector<int64_t>& input1_shape,
+                       const std::vector<int64_t>& sizes_data,
+                       bool use_contrib_qdq = false) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input1_arg = builder.MakeInput<uint8_t>(input1_shape,
+                                                    std::numeric_limits<uint8_t>::min(),
+                                                    std::numeric_limits<uint8_t>::max());
+      auto* roi = builder.MakeInitializer<float>({0}, {});
+      auto* scales = builder.MakeInitializer<float>({0}, {});
+      auto* sizes = builder.Make1DInitializer<int64_t>(sizes_data);
+      auto* output_arg = builder.MakeOutput();
+
+      // add DQ
+      auto* dq_output = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<uint8_t>(input1_arg, .003f, 1, dq_output, use_contrib_qdq);
+
+      // add Resize with no mode attribute (ONNX default = "nearest")
+      auto* resize_output = builder.MakeIntermediate();
+      builder.AddNode("Resize", {dq_output, roi, scales, sizes}, {resize_output});
+
+      // add Q
+      builder.AddQuantizeLinearNode<uint8_t>(resize_output, .003f, 1, output_arg, use_contrib_qdq);
+    };
+
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+      EXPECT_EQ(op_to_count["Resize"], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 0);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 0);
+    };
+
+    TransformerTester(build_test_case, check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2);
+  };
+
+  test_case({1, 8, 64, 64}, {1, 8, 128, 128});
+  test_case({1, 8, 64, 64}, {1, 8, 128, 128}, true /*use_contrib_qdq*/);
+}
+
 TEST(QDQTransformerTests, ResizeReshapeSqueezeUnsqueeze) {
   auto test_case = [&](const std::vector<int64_t>& input_shape,
                        const std::vector<int64_t>& sizes_shape,
@@ -4535,13 +4616,15 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
   const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/transform/qdq_conv.onnx");
   const auto& logger = DefaultLoggingManager().DefaultLogger();
 
-  SessionOptions so;
-  // We want to keep the graph un-optimized to prevent QDQ transformer to kick in
-  so.graph_optimization_level = TransformerLevel::Default;
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load(model_file_name));
-  ASSERT_STATUS_OK(session_object.Initialize());
-  const Graph& graph = session_object.GetGraph();
+  // Load the model directly so the graph keeps its constant initializers. The QDQ selectors run
+  // during graph optimization (before session finalization), where initializers are still present.
+  // We must mirror that state here: a full InferenceSession::Initialize() would finalize the session
+  // state and strip the initializers from the graph (CleanInitializedTensorsFromGraph), after which
+  // the ConvNodeGroupSelector bias-scale/zero-point validation could no longer read them via
+  // GraphViewer::GetConstantInitializer. Model::Load resolves the graph without that side effect.
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_file_name, model, nullptr, logger));
+  const Graph& graph = model->MainGraph();
   const auto* conv_node = graph.GetNode(3);
 
   // Make sure node 3 is the conv node
@@ -4652,7 +4735,8 @@ TEST(QDQTransformerTests, QDQ_Selector_Test_ConvClip) {
     auto* dq_bias = builder.MakeIntermediate();
     builder.AddDequantizeLinearNode(input_arg, 0.02348f, uint8_t(0), dq_input, false);
     builder.AddDequantizeLinearNode(weight_arg, 0.307f, uint8_t(0), dq_weight, false);
-    builder.AddDequantizeLinearNode(bias_arg, 0.007f, int32_t(0), dq_bias, false);
+    // bias_scale must equal x_scale * w_scale for QLinearConv fusion
+    builder.AddDequantizeLinearNode(bias_arg, 0.00720836f, int32_t(0), dq_bias, false);
 
     // Conv
     auto* conv_output = builder.MakeIntermediate();
@@ -4719,7 +4803,8 @@ TEST(QDQTransformerTests, QDQ_Selector_Test_ConvClipNonScalar) {
     auto* dq_bias = builder.MakeIntermediate();
     builder.AddDequantizeLinearNode(input_arg, 0.02348f, uint8_t(0), dq_input, false);
     builder.AddDequantizeLinearNode(weight_arg, 0.307f, uint8_t(0), dq_weight, false);
-    builder.AddDequantizeLinearNode(bias_arg, 0.007f, int32_t(0), dq_bias, false);
+    // bias_scale must equal x_scale * w_scale for QLinearConv fusion
+    builder.AddDequantizeLinearNode(bias_arg, 0.00720836f, int32_t(0), dq_bias, false);
 
     // Conv
     auto* conv_output = builder.MakeIntermediate();
@@ -4789,7 +4874,8 @@ TEST(QDQTransformerTests, QDQ_Selector_Test_Conv_Relu) {
       auto* dq_bias = builder.MakeIntermediate();
       builder.AddDequantizeLinearNode(input_arg, 0.02348f, uint8_t(0), dq_input, false);
       builder.AddDequantizeLinearNode(weight_arg, 0.307f, uint8_t(0), dq_weight, false);
-      builder.AddDequantizeLinearNode(bias_arg, 0.007f, int32_t(0), dq_bias, false);
+      // bias_scale must equal x_scale * w_scale for QLinearConv fusion
+      builder.AddDequantizeLinearNode(bias_arg, 0.00720836f, int32_t(0), dq_bias, false);
 
       // Conv
       auto* conv_output = builder.MakeIntermediate();
@@ -4895,7 +4981,8 @@ TEST(QDQTransformerTests, QDQ_Selector_Test_Conv_Relu) {
       auto* dq_bias = builder.MakeIntermediate();
       builder.AddDequantizeLinearNode(input_arg, 0.02348f, uint8_t(0), dq_input, false);
       builder.AddDequantizeLinearNode(weight_arg, 0.307f, uint8_t(0), dq_weight, false);
-      builder.AddDequantizeLinearNode(bias_arg, 0.007f, int32_t(0), dq_bias, false);
+      // bias_scale must equal x_scale * w_scale for QLinearConv fusion
+      builder.AddDequantizeLinearNode(bias_arg, 0.00720836f, int32_t(0), dq_bias, false);
 
       // Conv
       auto* conv_output = builder.MakeIntermediate();

@@ -4,6 +4,7 @@
 #include <limits>
 
 #include "activation_op_test.h"
+#include <limits>
 #include "core/providers/cpu/activation/activations.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
@@ -518,6 +519,24 @@ TEST_F(ActivationOpTest, PRelu) {
     outputs.push_back(formula(inputs[i], slopes[i]));
 
   std::vector<int64_t> dims{2, 2};
+  test.AddInput<float>("X", dims, inputs);
+  test.AddInput<float>("slope", dims, slopes);
+  test.AddOutput<float>("Y", dims, outputs);
+  test.Run();
+}
+
+TEST_F(ActivationOpTest, PRelu_Infinity) {
+  // Regression test: PRelu must not return NaN for +/-inf inputs.
+  // For x > 0, output should be x (so +inf stays +inf).
+  // For x <= 0, output should be x * slope (so -inf with positive slope stays -inf).
+  OpTester test("PRelu");
+
+  const float inf = std::numeric_limits<float>::infinity();
+  std::vector<float> inputs{inf, -inf, 5e30f, -2.5f};
+  std::vector<float> slopes{0.25f, 0.5f, 0.25f, 0.25f};
+  std::vector<float> outputs{inf, -inf, 5e30f, -0.625f};
+
+  std::vector<int64_t> dims{4};
   test.AddInput<float>("X", dims, inputs);
   test.AddInput<float>("slope", dims, slopes);
   test.AddOutput<float>("Y", dims, outputs);

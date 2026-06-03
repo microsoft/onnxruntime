@@ -134,7 +134,8 @@ MlasSBGemmPackedOperation(size_t M, size_t RangeStartN, size_t RangeCountN, size
             bool ZeroMode = (k == 0) && InitialZeroMode;
             CountK = std::min(K - k, PackedStrideK);
 
-            const bfloat16_t* pb = (const bfloat16_t*)PackedB + AlignedN * k + CountK * SliceStartN;
+            const size_t AlignedCountK = (CountK + KernelType::PackedK - 1) & ~(KernelType::PackedK - 1);
+            const bfloat16_t* pb = (const bfloat16_t*)PackedB + AlignedN * k + AlignedCountK * SliceStartN;
             float* c = C + n;
             const float* pbias = ((nullptr == Bias) ? nullptr : Bias + RangeStartN + n);
             MlasSBGemmKernel<KernelType>(M, CountN, CountK, A + k, lda, pb, c, ldc, ZeroMode ? pbias : nullptr, ZeroMode);
@@ -319,7 +320,7 @@ MlasSBGemmPackBSize(
         BIsfp32) {
         size_t bytes_required;
         bytes_required = GetMlasPlatform().MlasSBGemmPackBSizeOverride(TransA, TransB, N, K);
-        if (bytes_required != 0){ // If ArmKleidiAI::MlasSBGemmPackBSize ran to completion
+        if (bytes_required != 0) {  // If ArmKleidiAI::MlasSBGemmPackBSize ran to completion
             return bytes_required;
         }
     }
@@ -365,7 +366,7 @@ MlasSBGemmConvertPackB(
         TransA == CBLAS_TRANSPOSE::CblasNoTrans &&
         TransB == CBLAS_TRANSPOSE::CblasNoTrans &&
         BIsfp32 &&
-        GetMlasPlatform().MlasSBGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)){
+        GetMlasPlatform().MlasSBGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB)) {
         return;
     }
 #endif
@@ -400,7 +401,7 @@ MlasSBGemmBatch(
         TransB == CBLAS_TRANSPOSE::CblasNoTrans &&
         Data->AIsfp32 &&
         (Data->BIsPacked || Data->BIsfp32) &&
-        GetMlasPlatform().MlasSBGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchN, ThreadPool)){
+        GetMlasPlatform().MlasSBGemmBatchOverride(TransA, TransB, M, N, K, Data, BatchN, ThreadPool)) {
         return;
     }
 #endif

@@ -141,34 +141,22 @@ struct PluginEpMetaDefNameFunctor {
 // PluginExecutionProvider
 //
 
-static OrtDevice GetOrtDeviceForPluginEp(gsl::span<const OrtEpDevice* const> ep_devices) {
-  // Get the OrtDevice from OrtEpDevice.device_memory_info if it is set. Otherwise, we set it to CPU.
-  // If there are multiple OrtEpDevice instances, the device_memory_info must be consistent for all.
+static OrtDevice GetOrtDeviceForPluginEp(const OrtEp& ep, gsl::span<const OrtEpDevice* const> ep_devices) {
+  // Resolve the EP's default device. If the EP implements GetDefaultMemoryDevice, use its
+  // answer directly. Otherwise fall back to the first OrtEpDevice's default memory info.
 
   ORT_ENFORCE(!ep_devices.empty());  // Should not be possible to create an EP without OrtEpDevices.
 
-  const OrtMemoryInfo* device_memory_info = ep_devices[0]->device_memory_info;
-
-  // Check assertion that all OrtEpDevice instances must have equivalent device_memory_infos
-  bool all_match = std::all_of(ep_devices.begin() + 1, ep_devices.end(),
-                               [mem_a = device_memory_info](const OrtEpDevice* ep_device) {
-                                 const OrtMemoryInfo* mem_b = ep_device->device_memory_info;
-
-                                 if (mem_a == mem_b) {
-                                   return true;  // Point to the same OrtMemoryInfo instance.
-                                 }
-
-                                 if (mem_a == nullptr || mem_b == nullptr) {
-                                   return false;  // One is nullptr and the other is not.
-                                 }
-
-                                 // Both non-null but point to different instances. Use operator==.
-                                 return *mem_a == *mem_b;
-                               });
-  if (!all_match) {
-    ORT_THROW("Error creating execution provider '", ep_devices[0]->ep_name,
-              "': expected all OrtEpDevice instances to use the same device_memory_info.");
+  if (ep.ort_version_supported >= 27 && ep.GetDefaultMemoryDevice != nullptr) {
+    const OrtMemoryDevice* memory_device = nullptr;
+    Ort::ThrowOnError(ep.GetDefaultMemoryDevice(&ep, &memory_device));
+    if (memory_device != nullptr) {
+      return *static_cast<const OrtDevice*>(memory_device);
+    }
   }
+
+  // If there's no explicit default memory device, choose the first default memory info.
+  const OrtMemoryInfo* device_memory_info = ep_devices[0]->device_memory_info;
 
   return device_memory_info != nullptr ? device_memory_info->device : OrtDevice();
 }
@@ -189,7 +177,7 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
                                                  gsl::span<const OrtEpDevice* const> ep_devices,
                                                  std::shared_ptr<KernelRegistry> kernel_registry,
                                                  const logging::Logger& logger)
-    : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(ep_devices),
+    : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(*ep, ep_devices),
                          std::vector<const OrtEpDevice*>(ep_devices.begin(), ep_devices.end()), logger),
       ort_ep_(std::move(ep)),
       ep_factory_(ep_factory),
