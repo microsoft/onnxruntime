@@ -294,7 +294,7 @@ static int64_t EstimateConstantOfShapeOutputSizeInBytes(const Node& node, const 
     }
   }
 
-  return SafeInt<int64_t>(num_elements) * static_cast<int64_t>(element_size);
+  return num_elements * static_cast<int64_t>(element_size);
 }
 
 // Estimate the total output size in bytes for a node using shape inference results.
