@@ -2070,7 +2070,7 @@ class TestQMoESwiGLUBenchmark(unittest.TestCase):
 
 
 # ============================================================================
-# QMoE integer-weight PrePack parity test.
+# QMoE integer-weight PrePack smoke test.
 #
 # Validates the PrePack hook added in PR #28749: with `quant_type="int"`, the
 # QMoE op should be able to consume raw quantized weights — shape
@@ -2078,15 +2078,16 @@ class TestQMoESwiGLUBenchmark(unittest.TestCase):
 # and internally run the CUTLASS fpA_intB layout transform that callers
 # previously had to do offline via `pack_weights_for_cuda_mixed_gemm`.
 #
-# Strategy: build two ONNX graphs that differ only in whether the weight
-# initializer is pre-prepacked or raw. Both go through ORT's CUDA QMoE
-# kernel. With the PrePack hook in place, the raw-weight graph's output
-# should be bit-identical to the offline-prepacked graph's output.
+# Strategy: build a single ONNX graph with raw (un-prepacked) int4 weight
+# initializers and `weights_prepacked=0`, run it through ORT's CUDA QMoE
+# kernel, and assert the output is finite and has a plausible magnitude.
+# This is a smoke test, not a numerical parity check — see the class
+# docstring for why a bit-parity comparison is intentionally omitted.
 # ============================================================================
 
 
 @unittest.skipUnless(torch.cuda.is_available(), "QMoE PrePack smoke test requires CUDA")
-class TestQMoEIntPrePackParity(unittest.TestCase):
+class TestQMoEIntPrePackSmoke(unittest.TestCase):
     """Smoke test for the QMoE int4 PrePack hook (issue #28748 / PR #28749).
 
     Builds a single QMoE node with raw, un-prepacked ``[E, N, K/2]`` int4

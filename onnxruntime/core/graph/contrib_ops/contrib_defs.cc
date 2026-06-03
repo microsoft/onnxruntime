@@ -1524,7 +1524,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "fc1/fc2 weight initializers have already been laid out in the CUTLASS fpA_intB "
               "format expected by the runner (e.g. produced offline by "
               "pack_weights_for_cuda_mixed_gemm). Set to 0 when the initializers are raw, "
-              "row-major [E, N, K/pack] tensors as produced by quantize_matmul_{4,8}bits; "
+              "un-prepacked [E, N, K/pack] tensors as produced by quantize_matmul_{4,8}bits; "
               "in that case the kernel runs the CUTLASS layout transform itself in PrePack(), "
               "matching the behaviour of MatMulNBits and removing the offline pre-pack "
               "requirement from exporters. Default is 1 for backward compatibility.",
