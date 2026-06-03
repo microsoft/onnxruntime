@@ -129,7 +129,7 @@ extends:
     - template: templates/mac-cpu-packaging-pipeline.yml
       parameters:
         AllowReleasedOpsetOnly: 1
-        DoEsrp: true
+        DoESRP: true
 
     - template: stages/nuget-combine-cuda-stage.yml
       parameters:
@@ -154,7 +154,17 @@ extends:
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
         ArtifactName: 'drop-onnxruntime-nodejs-win-x64'
         StageName: 'Windows_Nodejs_Packaging_x64'
-        BuildCommand: --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_webgpu --build_nodejs --cmake_generator "Visual Studio 17 2022" --enable_generic_interface
+        BuildCommand: >-
+          --build_nodejs
+          --build_shared_lib
+          --cmake_generator "Visual Studio 17 2022"
+          --enable_generic_interface
+          --enable_onnx_tests
+          --enable_wcos
+          --skip_submodule_sync
+          --use_dml
+          --use_telemetry
+          --use_webgpu
         BuildArch: 'x64'
         sln_platform: 'x64'
         DoEsrp: true
@@ -165,7 +175,18 @@ extends:
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
         ArtifactName: 'drop-onnxruntime-nodejs-win-arm64'
         StageName: 'Windows_Nodejs_Packaging_arm64'
-        BuildCommand: --arm64 --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_webgpu --build_nodejs --cmake_generator "Visual Studio 17 2022" --enable_generic_interface
+        BuildCommand: >-
+          --arm64
+          --build_nodejs
+          --build_shared_lib
+          --cmake_generator "Visual Studio 17 2022"
+          --enable_generic_interface
+          --enable_onnx_tests
+          --enable_wcos
+          --skip_submodule_sync
+          --use_dml
+          --use_telemetry
+          --use_webgpu
         BuildArch: 'x64'
         sln_platform: 'arm64'
         DoEsrp: true
