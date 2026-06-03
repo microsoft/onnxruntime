@@ -799,6 +799,82 @@ TEST(LayerNormTest, LayerNorm_Scale_Broadcast_Inner_Mixed) {
   test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 
+// Edge case: LayerNorm with large float32 values that previously caused NaN
+// due to catastrophic cancellation in naive variance formula E[X^2] - E[X]^2.
+TEST(LayerNormTest, LayerNorm_LargeValues_NoNaN) {
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+  test.AddAttribute<int64_t>("axis", -1);
+
+  // Input with large base values but small variance (triggers catastrophic cancellation)
+  std::vector<int64_t> dims{1, 4};
+  test.AddInput<float>("x", dims, {40000.0f, 40001.0f, 40002.0f, 40003.0f});
+  test.AddInput<float>("gamma", {4}, {1.0f, 1.0f, 1.0f, 1.0f});
+  test.AddInput<float>("bias", {4}, {0.0f, 0.0f, 0.0f, 0.0f});
+  // Expected: standard normalized values [-1.3416, -0.4472, 0.4472, 1.3416]
+  test.AddOutput<float>("Y", dims, {-1.3416355f, -0.4472118f, 0.4472118f, 1.3416355f});
+  test.SetOutputRelErr("Y", 1e-4f);
+  // Only CPU (Welford) and CUDA (already robust) handle large values without NaN.
+  // Other EPs may still use naive E[X^2]-E[X]^2 variance formula.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
+            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider,
+            kWebGpuExecutionProvider});
+}
+
+// Edge case: even larger values
+TEST(LayerNormTest, LayerNorm_VeryLargeValues_NoNaN) {
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+  test.AddAttribute<int64_t>("axis", -1);
+
+  std::vector<int64_t> dims{1, 4};
+  test.AddInput<float>("x", dims, {80000.0f, 80001.0f, 80002.0f, 80003.0f});
+  test.AddInput<float>("gamma", {4}, {1.0f, 1.0f, 1.0f, 1.0f});
+  test.AddInput<float>("bias", {4}, {0.0f, 0.0f, 0.0f, 0.0f});
+  test.AddOutput<float>("Y", dims, {-1.3416355f, -0.4472118f, 0.4472118f, 1.3416355f});
+  test.SetOutputRelErr("Y", 1e-4f);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
+            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider,
+            kWebGpuExecutionProvider});
+}
+
+// Edge case: all identical values (zero variance)
+TEST(LayerNormTest, LayerNorm_ZeroVariance) {
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+  test.AddAttribute<int64_t>("axis", -1);
+
+  std::vector<int64_t> dims{1, 4};
+  // All same value: variance=0, output = (x - mean) / sqrt(0 + eps) * gamma + bias = 0 * gamma + bias = bias
+  test.AddInput<float>("x", dims, {5.0f, 5.0f, 5.0f, 5.0f});
+  test.AddInput<float>("gamma", {4}, {1.0f, 1.0f, 1.0f, 1.0f});
+  test.AddInput<float>("bias", {4}, {0.5f, 0.5f, 0.5f, 0.5f});
+  test.AddOutput<float>("Y", dims, {0.5f, 0.5f, 0.5f, 0.5f});
+  test.Run();
+}
+
+// Edge case: constant weights (as in issue #20429)
+TEST(LayerNormTest, LayerNorm_ConstantWeights_LargeInput) {
+  OpTester test("LayerNormalization", 17);
+  test.AddAttribute<float>("epsilon", 1e-05f);
+  test.AddAttribute<int64_t>("axis", -1);
+
+  // Simulates the scenario from issue #20429 where all weights are 0.1
+  // and input values are large due to prior computation
+  std::vector<int64_t> dims{1, 4};
+  test.AddInput<float>("x", dims, {2396.814f, 2396.814f, 2396.814f, 2396.814f});
+  test.AddInput<float>("gamma", {4}, {0.1f, 0.1f, 0.1f, 0.1f});
+  test.AddInput<float>("bias", {4}, {0.1f, 0.1f, 0.1f, 0.1f});
+  // All same input -> normalized to 0, then * 0.1 + 0.1 = 0.1
+  test.AddOutput<float>("Y", dims, {0.1f, 0.1f, 0.1f, 0.1f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
+            kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider,
+            kWebGpuExecutionProvider});
+}
+
 #if defined(USE_DNNL)
 TEST(LayerNormTest, LayerNorm17_Scale_Bias_bfloat16) {
 #ifdef USE_DNNL
