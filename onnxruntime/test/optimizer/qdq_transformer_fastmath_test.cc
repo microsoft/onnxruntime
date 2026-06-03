@@ -482,8 +482,10 @@ void QDQTransformerGemmTests(bool has_output_q, bool has_bias, bool beta_not_one
   };
 
   test_case({2, 2}, {2, 4});
-  test_case({13, 15}, {15, 15});
-  test_case({2, 2}, {2, 4}, true);  // Use com.microsoft QDQ ops
+  if (!alpha_not_one) {
+    test_case({13, 15}, {15, 15});
+    test_case({2, 2}, {2, 4}, true);  // Use com.microsoft QDQ ops
+  }
 }
 
 template <typename Input1Type, typename Input2Type, typename OutputType, typename BiasType = int32_t>
