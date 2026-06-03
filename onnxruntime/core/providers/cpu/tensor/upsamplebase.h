@@ -598,6 +598,8 @@ class UpsampleBase {
                       "Resize: input tensor's rank does not match the output tensor's rank.");
 
     if (axes_.size()) {
+      ORT_RETURN_IF_NOT(axes_.size() == size_span.size(),
+                        "Number of elements in sizes should be equal to number of axes.");
       output_dims.assign(input_dims.begin(), input_dims.end());
       const int64_t rank = static_cast<int64_t>(output_dims.size());
       for (size_t i = 0; i < axes_.size(); i++) {

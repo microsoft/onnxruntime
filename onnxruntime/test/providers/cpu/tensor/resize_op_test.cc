@@ -3187,6 +3187,85 @@ TEST(ResizeOpTest, Axes_OutOfRange_18) {
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
 }
 
+// Negative axis below the valid range must be rejected before being used as a scatter index.
+TEST(ResizeOpTest, Axes_NegativeOutOfRange_18) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> roi{};
+  std::vector<float> scales{0.75f, 0.75f, 0.75f};
+  std::vector<int64_t> axes{2, 3, -6};
+  std::vector<float> Y(16 * 4, 0.0f);
+
+  OpTester test("Resize", 18);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute<std::vector<int64_t>>("axes", axes);
+
+  test.AddInput<float>("X", {1, 1, 4, 4, 4}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {int64_t(scales.size())}, scales);
+  test.AddOutput<float>("Y", {1, 1, 4, 4, 4}, Y);
+
+  // TensorRT, QNN, and DML do not exercise the CPU axes-validation path.
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "axis -6 is not in valid range [-5,4]",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Valid negative axes (within [-rank, -1]) must still produce correct output.
+TEST(ResizeOpTest, Axes_NegativeInRange_18) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> Y = {3.5f, 4.8333335f, 6.1666665f, 8.833333f, 10.166667f, 11.5f, 14.166667f,
+                          15.5f, 16.833334f, 24.833334f, 26.166666f, 27.5f, 30.166666f, 31.5f,
+                          32.833332f, 35.5f, 36.833332f, 38.166668f, 46.166668f, 47.5f, 48.833332f,
+                          51.5f, 52.833332f, 54.166668f, 56.833332f, 58.166668f, 59.5f};
+  std::vector<float> roi{};
+  std::vector<float> scales{3 / 4.0f, 3 / 4.0f, 3 / 4.0f};
+  std::vector<int64_t> output_shape{1, 1, 3, 3, 3};
+  std::vector<int64_t> axes{-3, -2, -1};
+
+  OpTester test("Resize", 18);
+  test.AddAttribute<int64_t>("exclude_outside", 0LL);
+  test.AddAttribute<std::vector<int64_t>>("axes", axes);
+  test.AddAttribute<int64_t>("antialias", 0LL);
+  test.AddAttribute("mode", "linear");
+
+  test.AddInput<float>("X", {1, 1, 4, 4, 4}, X);
+  test.AddInput<float>("roi", {int64_t(roi.size())}, roi);
+  test.AddInput<float>("scales", {int64_t(scales.size())}, scales, true);
+
+  test.AddOutput<float>("Y", output_shape, Y);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+}
+
+// When axes is provided, the sizes input length must match axes length so the scatter
+// loop does not read past the end of sizes.
+TEST(ResizeOpTest, Axes_and_Sizes_CountMismatch_18) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> roi{};
+  std::vector<float> scales{};
+  std::vector<int64_t> sizes{3, 3};
+  std::vector<int64_t> axes{2, 3, 4};
+  std::vector<float> Y(16 * 4, 0.0f);
+
+  OpTester test("Resize", 18);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute<std::vector<int64_t>>("axes", axes);
+
+  test.AddInput<float>("X", {1, 1, 4, 4, 4}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("", {0}, scales);
+  test.AddInput<int64_t>("sizes", {int64_t(sizes.size())}, sizes);
+  test.AddOutput<float>("Y", {1, 1, 4, 4, 4}, Y);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Number of elements in sizes should be equal to number of axes.",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
 TEST(ResizeOpTest, Sizes_RankMismatch_13) {
   OpTester test("Resize", 13);
   test.AddShapeToTensorData(false);
