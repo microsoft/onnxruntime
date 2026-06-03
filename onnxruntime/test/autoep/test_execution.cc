@@ -100,9 +100,9 @@ std::filesystem::path PrepareTempTestDir(std::string_view name) {
 }
 
 struct FakeEpContextConfigCallbacks {
-  OrtReadFileDataFunc read_func = nullptr;
+  OrtReadNamedBufferFunc read_func = nullptr;
   void* read_state = nullptr;
-  OrtWriteFileDataFunc write_func = nullptr;
+  OrtWriteNamedBufferFunc write_func = nullptr;
   void* write_state = nullptr;
 };
 
@@ -111,7 +111,7 @@ const OrtEpContextConfig* FakeEpContextConfig(FakeEpContextConfigCallbacks& call
 }
 
 OrtStatus* ORT_API_CALL FakeEpContextConfigGetReadFunc(const OrtEpContextConfig* config,
-                                                       OrtReadFileDataFunc* read_func, void** state) noexcept {
+                                                       OrtReadNamedBufferFunc* read_func, void** state) noexcept {
   auto* callbacks = reinterpret_cast<const FakeEpContextConfigCallbacks*>(config);
   *read_func = callbacks->read_func;
   *state = callbacks->read_state;
@@ -119,7 +119,7 @@ OrtStatus* ORT_API_CALL FakeEpContextConfigGetReadFunc(const OrtEpContextConfig*
 }
 
 OrtStatus* ORT_API_CALL FakeEpContextConfigGetWriteFunc(const OrtEpContextConfig* config,
-                                                        OrtWriteFileDataFunc* write_func, void** state) noexcept {
+                                                        OrtWriteNamedBufferFunc* write_func, void** state) noexcept {
   auto* callbacks = reinterpret_cast<const FakeEpContextConfigCallbacks*>(config);
   *write_func = callbacks->write_func;
   *state = callbacks->write_state;
@@ -780,7 +780,7 @@ TEST(OrtEpLibrary, EpContextDataUtils_ReadCallbackRejectsNullBufferForNonEmptyPa
   ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataWithFileFallback(
                            api, fake_ep_api, FakeEpContextConfig(callbacks), "invalid_callback_context.bin", nullptr,
                            data),
-                       ORT_FAIL, "OrtReadFileDataFunc returned a null buffer for non-empty EPContext data");
+                       ORT_FAIL, "OrtReadNamedBufferFunc returned a null buffer for non-empty EPContext data");
   ASSERT_TRUE(read_callback_state.read_called);
   EXPECT_EQ(read_callback_state.read_file_name, "invalid_callback_context.bin");
 }

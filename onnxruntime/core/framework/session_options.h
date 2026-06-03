@@ -227,7 +227,7 @@ struct SessionOptions {
   epctx::ModelGenOptions ep_context_gen_options = {};
   epctx::ModelGenOptions GetEpContextGenerationOptions() const;
 
-  OrtReadFileDataFunc ep_context_data_read_func = nullptr;
+  OrtReadNamedBufferFunc ep_context_data_read_func = nullptr;
   void* ep_context_data_read_state = nullptr;
 };
 

@@ -610,7 +610,7 @@ typedef OrtStatus*(ORT_API_CALL* OrtWriteBufferFunc)(_In_ void* state,
  * ORT does not own or retain buffer after the callback returns. ORT does not serialize invocations made by different
  * EP instances or worker threads.
  *
- * Each callback invocation represents one complete write operation for file_name. The callback signature does not
+ * Each callback invocation represents one complete write operation for name. The callback signature does not
  * provide an offset, sequence number, or final-chunk marker, so the component invoking the callback must define any
  * chunked ordering and completion contract with the application. Current EPContext use should prefer a single callback
  * invocation per EPContext binary unless chunking semantics are documented by the EP.
@@ -621,7 +621,7 @@ typedef OrtStatus*(ORT_API_CALL* OrtWriteBufferFunc)(_In_ void* state,
  * \param[in] state Opaque pointer holding the user's state. ORT does not own or manage this pointer. The application
  *                  must keep it valid for the duration required by the API that accepted the callback and must provide
  *                  any synchronization required if it can be used concurrently.
- * \param[in] file_name The file name or logical data identifier as a null-terminated UTF-8 string.
+ * \param[in] name The file name or logical data identifier as a null-terminated UTF-8 string.
  * \param[in] buffer The buffer containing data to write.
  * \param[in] buffer_num_bytes The size of the buffer in bytes.
  *
@@ -629,10 +629,10 @@ typedef OrtStatus*(ORT_API_CALL* OrtWriteBufferFunc)(_In_ void* state,
  *                    Use CreateStatus to provide error info with ORT_FAIL as the error code.
  *                    ORT will release the OrtStatus* if not null.
  */
-typedef OrtStatus*(ORT_API_CALL* OrtWriteFileDataFunc)(_In_ void* state,
-                                                       _In_ const char* file_name,
-                                                       _In_ const void* buffer,
-                                                       _In_ size_t buffer_num_bytes);
+typedef OrtStatus*(ORT_API_CALL* OrtWriteNamedBufferFunc)(_In_ void* state,
+                                                          _In_ const char* name,
+                                                          _In_ const void* buffer,
+                                                          _In_ size_t buffer_num_bytes);
 
 /** \brief Function called to read named binary data.
  *
@@ -645,7 +645,7 @@ typedef OrtStatus*(ORT_API_CALL* OrtWriteFileDataFunc)(_In_ void* state,
  * \param[in] state Opaque pointer holding the user's state. ORT does not own or manage this pointer. The application
  *                  must keep it valid for the duration required by the API that accepted the callback and must provide
  *                  any synchronization required if it can be used concurrently.
- * \param[in] file_name The file name or logical data identifier to read as a null-terminated UTF-8 string.
+ * \param[in] name The file name or logical data identifier to read as a null-terminated UTF-8 string.
  * \param[in] allocator ORT-provided allocator. The application must use this to allocate the output buffer.
  * \param[out] buffer Set by the implementation to the allocated buffer containing the output data.
  * \param[out] data_size Set by the implementation to the size of the output data in bytes.
@@ -654,11 +654,11 @@ typedef OrtStatus*(ORT_API_CALL* OrtWriteFileDataFunc)(_In_ void* state,
  *                    Use CreateStatus to provide error info with ORT_FAIL as the error code.
  *                    ORT will release the OrtStatus* if not null.
  */
-typedef OrtStatus*(ORT_API_CALL* OrtReadFileDataFunc)(_In_ void* state,
-                                                      _In_ const char* file_name,
-                                                      _In_ OrtAllocator* allocator,
-                                                      _Outptr_ void** buffer,
-                                                      _Out_ size_t* data_size);
+typedef OrtStatus*(ORT_API_CALL* OrtReadNamedBufferFunc)(_In_ void* state,
+                                                         _In_ const char* name,
+                                                         _In_ OrtAllocator* allocator,
+                                                         _Outptr_ void** buffer,
+                                                         _Out_ size_t* data_size);
 
 /** \brief Function called by ORT to allow user to specify how an initializer should be saved, that is, either
  * written to an external file or stored within the model. ORT calls this function for every initializer when
@@ -7583,7 +7583,7 @@ struct OrtApi {
    * is responsible for synchronization.
    *
    * \param[in] options The OrtSessionOptions instance.
-   * \param[in] read_func The OrtReadFileDataFunc callback.
+   * \param[in] read_func The OrtReadNamedBufferFunc callback.
    * \param[in] state Opaque state passed to read_func. Can be NULL.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -7591,7 +7591,7 @@ struct OrtApi {
    * \since Version 1.28.
    */
   ORT_API2_STATUS(SessionOptions_SetEpContextDataReadFunc, _Inout_ OrtSessionOptions* options,
-                  _In_ OrtReadFileDataFunc read_func, _In_opt_ void* state);
+                  _In_ OrtReadNamedBufferFunc read_func, _In_opt_ void* state);
 };
 
 /*
@@ -8449,7 +8449,7 @@ struct OrtCompileApi {
    * responsible for synchronization.
    *
    * \param[in] model_compile_options The OrtModelCompilationOptions instance.
-   * \param[in] write_func The OrtWriteFileDataFunc callback used to write EPContext bytes.
+   * \param[in] write_func The OrtWriteNamedBufferFunc callback used to write EPContext bytes.
    * \param[in] state Opaque state passed to write_func. Can be NULL.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -8458,7 +8458,7 @@ struct OrtCompileApi {
    */
   ORT_API2_STATUS(ModelCompilationOptions_SetEpContextDataWriteFunc,
                   _In_ OrtModelCompilationOptions* model_compile_options,
-                  _In_ OrtWriteFileDataFunc write_func, _In_opt_ void* state);
+                  _In_ OrtWriteNamedBufferFunc write_func, _In_opt_ void* state);
 };
 
 /**

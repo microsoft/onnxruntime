@@ -39,9 +39,9 @@
 using namespace onnxruntime;
 
 struct OrtEpContextConfig {
-  OrtWriteFileDataFunc write_func = nullptr;
+  OrtWriteNamedBufferFunc write_func = nullptr;
   void* write_state = nullptr;
-  OrtReadFileDataFunc read_func = nullptr;
+  OrtReadNamedBufferFunc read_func = nullptr;
   void* read_state = nullptr;
 };
 
@@ -1234,7 +1234,7 @@ ORT_API(void, ReleaseEpContextConfig, _Frees_ptr_opt_ OrtEpContextConfig* config
 
 ORT_API_STATUS_IMPL(EpContextConfig_GetEpContextDataReadFunc,
                     _In_ const OrtEpContextConfig* config,
-                    _Out_ OrtReadFileDataFunc* read_func,
+                    _Out_ OrtReadNamedBufferFunc* read_func,
                     _Out_ void** state) {
   API_IMPL_BEGIN
   ORT_API_RETURN_IF(config == nullptr, ORT_INVALID_ARGUMENT, "OrtEpContextConfig is NULL");
@@ -1249,7 +1249,7 @@ ORT_API_STATUS_IMPL(EpContextConfig_GetEpContextDataReadFunc,
 
 ORT_API_STATUS_IMPL(EpContextConfig_GetEpContextDataWriteFunc,
                     _In_ const OrtEpContextConfig* config,
-                    _Out_ OrtWriteFileDataFunc* write_func,
+                    _Out_ OrtWriteNamedBufferFunc* write_func,
                     _Out_ void** state) {
   API_IMPL_BEGIN
   ORT_API_RETURN_IF(config == nullptr, ORT_INVALID_ARGUMENT, "OrtEpContextConfig is NULL");

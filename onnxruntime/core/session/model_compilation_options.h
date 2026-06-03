@@ -100,9 +100,9 @@ class ModelCompilationOptions {
   /// <summary>
   /// Sets a user-provided function to handle EPContext binary data writes.
   /// </summary>
-  /// <param name="write_func">The user-provided OrtWriteFileDataFunc callback used to write EPContext data.</param>
+  /// <param name="write_func">The user-provided OrtWriteNamedBufferFunc callback used to write EPContext data.</param>
   /// <param name="state">The user's state.</param>
-  void SetEpContextDataWriteFunc(OrtWriteFileDataFunc write_func, void* state);
+  void SetEpContextDataWriteFunc(OrtWriteNamedBufferFunc write_func, void* state);
 
   /// <summary>
   /// Sets information relate to EP context binary file.
