@@ -649,9 +649,10 @@ static Node& CreateNodeHelper(onnxruntime::Graph& graph, std::string_view op_nam
   const std::string op_type_str(op_type);
   const std::string op_name_str(op_name);
   // Use op_type as seed when op_name is empty (e.g., after function inlining) to avoid
-  // colliding generated arg names: GenerateNodeName("") can return "" when no conflicting empty
-  // name exists yet, which then seeds output arg names like "_out0" and causes NodeArg name
-  // collisions when a second empty-named node is processed later.
+  // output NodeArg name collisions. When the source node's name is empty,
+  // Graph::GenerateNodeName("") can legally return "" (if no prior empty-named node has been
+  // registered). That empty base then seeds output arg names as "_out0", "_out1", ..., which
+  // can collide with existing NodeArgs already present in the graph.
   const std::string& name_seed = op_name_str.empty() ? op_type_str : op_name_str;
   std::string name = graph.GenerateNodeName(name_seed);
   std::vector<NodeArg*> input_args;
