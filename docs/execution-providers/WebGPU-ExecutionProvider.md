@@ -220,6 +220,12 @@ The same feature is exposed in ORT Web via the `enableGraphCapture` session opti
 - **WebGPU validation.** Tune `validationMode` to surface device-side issues during development; turn it down to `disabled` for production benchmarking to remove validation overhead.
 - **Browser profiling.** For ORT Web, see [WebGPU profiling](../tutorials/web/performance-diagnosis.md#webgpu-profiling).
 
+## Notes
+
+### WebGPU EP vs. JSEP
+
+ONNX Runtime Web historically powered its `webgpu` backend through the **JavaScript Execution Provider (JSEP)**, which is enabled at build time with `--use_jsep`. The native WebGPU EP (`--use_webgpu`) is a separate, C++-side implementation built on Dawn. Today both flags can be enabled in the same build (a transitional state); a future change is expected to make them mutually exclusive. Use `--use_webgpu` for native and WebAssembly+JSEP builds for the browser path that ORT Web currently ships.
+
 ## Additional resources
 
 - [WebGPU specification (W3C)](https://www.w3.org/TR/webgpu/)
