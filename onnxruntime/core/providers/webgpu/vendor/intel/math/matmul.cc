@@ -55,9 +55,14 @@ Status ApplyMatMulIntel(ComputeContext& context,
 
   TensorShape output_shape = helper.OutputShape();
 
+  const auto& arch = context.AdapterInfo().architecture;
+  const bool is_xe_lpg = arch == std::string_view("xe-lpg");
+  const bool is_xe_3lpg = arch == std::string_view("xe-3lpg");
   // When B is a matrix (batch is 1), we fold batchA into the M dimension for better
   // performance (e.g., [2,3,5] → [1,6,5]).
-  if (batchA != 1 && batchB == 1) {
+  const int64_t M = output_shape[output_shape.NumDimensions() - 2];
+  const int64_t m_mod_32 = M % 32;
+  if (batchA != 1 && batchB == 1 && M < 128 && (!(is_xe_lpg || is_xe_3lpg) || (m_mod_32 > 0 && m_mod_32 < 25))) {
     // dimensions of A: [1,`batchA`, M, K]
     int64_t batchAndM = a_shape.SizeToDimension(a_shape.NumDimensions() - 1);
     TensorShapeVector dims_a = {1, batchAndM, helper.K()};
@@ -91,7 +96,7 @@ Status ApplyMatMulIntel(ComputeContext& context,
 
   // Always access A with 1-component when using subgroup.
   const bool is_vec4 = dim_b_outer % 4 == 0;
-  InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, intel::ElementsPerThreadY(is_vec4, dim_a_outer), 1});
+  InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, ElementsPerThreadY(context, is_vec4, dim_a_outer), 1});
 
   const uint32_t dispatch_x = narrow<uint32_t>((dim_b_outer + kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0] - 1) /
                                                (kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0]));
