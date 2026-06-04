@@ -1,24 +1,16 @@
-import importlib.util
 import io
 import tarfile
 import zipfile
-from pathlib import Path
 
 import pytest
+from parity_utilities import find_transformers_source
 
-# Resolve the module path relative to this file so the test works regardless of CWD.
-MODULE_PATH = (
-    Path(__file__).resolve().parents[4]
-    / "onnxruntime"
-    / "python"
-    / "tools"
-    / "transformers"
-    / "convert_tf_models_to_pytorch.py"
-)
-SPEC = importlib.util.spec_from_file_location("convert_tf_models_to_pytorch", MODULE_PATH)
-assert SPEC is not None and SPEC.loader is not None
-convert_tf_models_to_pytorch = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(convert_tf_models_to_pytorch)
+# The source module is not copied into the test build output directory, so skip the
+# whole module when it cannot be located instead of failing during collection.
+if find_transformers_source():
+    import convert_tf_models_to_pytorch
+else:
+    pytest.skip("convert_tf_models_to_pytorch.py not found", allow_module_level=True)
 
 
 def test_safe_extract_archive_rejects_tar_path_traversal(tmp_path):
