@@ -7803,11 +7803,15 @@ struct OrtModelEditorApi {
 
   /** \brief Add an initializer to the OrtGraph
    *
-   * The OrtGraph takes ownership of the OrtValue and the caller must NOT call OrtApi::ReleaseValue on it.
-   * Internally ORT moves the tensor data into the graph's storage (the underlying buffer is reference-counted
-   * via shared_ptr, so this is cheap) and destroys the caller's OrtValue wrapper on success. Any deleter
-   * bound to the OrtValue (e.g., via OrtApi::CreateTensorWithDataAndDeleterAsOrtValue) will fire exactly once
-   * when the graph's copy of the OrtValue is destroyed.
+   * The OrtGraph takes ownership of the OrtValue. On success ORT internally calls
+   * OrtApi::ReleaseValue on the caller's wrapper, so `ort_value` is no longer a valid pointer
+   * after this call returns successfully — do NOT call OrtApi::ReleaseValue on it or otherwise
+   * dereference it. On failure ownership is NOT transferred and the caller remains
+   * responsible for releasing `ort_value`.
+   *
+   * Internally the tensor data is reference-counted via shared_ptr, so the move is cheap.
+   * Any deleter bound to the OrtValue (e.g., via OrtApi::CreateTensorWithDataAndDeleterAsOrtValue)
+   * will fire exactly once when the graph's copy of the OrtValue is destroyed.
    *
    * If the OrtValue was created with a user-provided buffer (e.g., OrtApi::CreateTensorWithDataAsOrtValue),
    * that buffer must remain valid for the duration of the inference session.

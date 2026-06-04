@@ -291,15 +291,23 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort
     }
   }
 
-  // Copy the OrtValue into the graph's storage (cheap: bumps the inner shared_ptr refcount
-  // for the tensor data) and then delete the caller's wrapper. This restores the original
-  // ownership-transfer contract documented for this API: callers may release()/hand off the
-  // raw OrtValue* and must NOT call ReleaseValue afterwards. Dropping the caller's wrapper
-  // here ensures any deleter bound to the OrtValue (e.g. via CreateTensorWithDataAndDeleter)
-  // fires exactly once when the graph's copy is destroyed.
+  // Move the OrtValue into the graph's storage and destroy the caller's wrapper via
+  // OrtApis::ReleaseValue. This restores the original ownership-transfer contract documented
+  // for this API: the caller hands off the raw OrtValue* and must NOT call ReleaseValue on it
+  // afterwards. Any deleter bound to the OrtValue (e.g. via CreateTensorWithDataAndDeleterAsOrtValue)
+  // fires exactly once when the graph's copy of the OrtValue is destroyed.
+  //
+  // Strong exception guarantee: try_emplace below is the only step that can throw (key string
+  // allocation / map rehash). If it throws, *ort_value is untouched and ownership has not been
+  // transferred, so the caller remains responsible for releasing it. The subsequent move-assign
+  // and ReleaseValue are noexcept.
+  static_assert(std::is_nothrow_move_assignable_v<OrtValue>,
+                "Strong exception guarantee for AddInitializerToGraph relies on noexcept move-assign of OrtValue.");
+
   auto& m = data_is_external ? graph->external_initializers : graph->initializers;
-  auto [it, inserted] = m.emplace(name, *ort_value);
+  auto [it, inserted] = m.try_emplace(name);
   ORT_ENFORCE(inserted, "Unexpected duplicate name after validation. This is a bug.");
+  it->second = std::move(*ort_value);
   OrtApis::ReleaseValue(ort_value);
 
   return nullptr;
