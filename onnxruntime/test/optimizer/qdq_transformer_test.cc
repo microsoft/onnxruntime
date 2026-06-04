@@ -4616,13 +4616,15 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
   const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/transform/qdq_conv.onnx");
   const auto& logger = DefaultLoggingManager().DefaultLogger();
 
-  SessionOptions so;
-  // We want to keep the graph un-optimized to prevent QDQ transformer to kick in
-  so.graph_optimization_level = TransformerLevel::Default;
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.Load(model_file_name));
-  ASSERT_STATUS_OK(session_object.Initialize());
-  const Graph& graph = session_object.GetGraph();
+  // Load the model directly so the graph keeps its constant initializers. The QDQ selectors run
+  // during graph optimization (before session finalization), where initializers are still present.
+  // We must mirror that state here: a full InferenceSession::Initialize() would finalize the session
+  // state and strip the initializers from the graph (CleanInitializedTensorsFromGraph), after which
+  // the ConvNodeGroupSelector bias-scale/zero-point validation could no longer read them via
+  // GraphViewer::GetConstantInitializer. Model::Load resolves the graph without that side effect.
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_file_name, model, nullptr, logger));
+  const Graph& graph = model->MainGraph();
   const auto* conv_node = graph.GetNode(3);
 
   // Make sure node 3 is the conv node
@@ -4733,7 +4735,8 @@ TEST(QDQTransformerTests, QDQ_Selector_Test_ConvClip) {
     auto* dq_bias = builder.MakeIntermediate();
     builder.AddDequantizeLinearNode(input_arg, 0.02348f, uint8_t(0), dq_input, false);
     builder.AddDequantizeLinearNode(weight_arg, 0.307f, uint8_t(0), dq_weight, false);
-    builder.AddDequantizeLinearNode(bias_arg, 0.007f, int32_t(0), dq_bias, false);
+    // bias_scale must equal x_scale * w_scale for QLinearConv fusion
+    builder.AddDequantizeLinearNode(bias_arg, 0.00720836f, int32_t(0), dq_bias, false);
 
     // Conv
     auto* conv_output = builder.MakeIntermediate();
@@ -4800,7 +4803,8 @@ TEST(QDQTransformerTests, QDQ_Selector_Test_ConvClipNonScalar) {
     auto* dq_bias = builder.MakeIntermediate();
     builder.AddDequantizeLinearNode(input_arg, 0.02348f, uint8_t(0), dq_input, false);
     builder.AddDequantizeLinearNode(weight_arg, 0.307f, uint8_t(0), dq_weight, false);
-    builder.AddDequantizeLinearNode(bias_arg, 0.007f, int32_t(0), dq_bias, false);
+    // bias_scale must equal x_scale * w_scale for QLinearConv fusion
+    builder.AddDequantizeLinearNode(bias_arg, 0.00720836f, int32_t(0), dq_bias, false);
 
     // Conv
     auto* conv_output = builder.MakeIntermediate();
@@ -4870,7 +4874,8 @@ TEST(QDQTransformerTests, QDQ_Selector_Test_Conv_Relu) {
       auto* dq_bias = builder.MakeIntermediate();
       builder.AddDequantizeLinearNode(input_arg, 0.02348f, uint8_t(0), dq_input, false);
       builder.AddDequantizeLinearNode(weight_arg, 0.307f, uint8_t(0), dq_weight, false);
-      builder.AddDequantizeLinearNode(bias_arg, 0.007f, int32_t(0), dq_bias, false);
+      // bias_scale must equal x_scale * w_scale for QLinearConv fusion
+      builder.AddDequantizeLinearNode(bias_arg, 0.00720836f, int32_t(0), dq_bias, false);
 
       // Conv
       auto* conv_output = builder.MakeIntermediate();
@@ -4976,7 +4981,8 @@ TEST(QDQTransformerTests, QDQ_Selector_Test_Conv_Relu) {
       auto* dq_bias = builder.MakeIntermediate();
       builder.AddDequantizeLinearNode(input_arg, 0.02348f, uint8_t(0), dq_input, false);
       builder.AddDequantizeLinearNode(weight_arg, 0.307f, uint8_t(0), dq_weight, false);
-      builder.AddDequantizeLinearNode(bias_arg, 0.007f, int32_t(0), dq_bias, false);
+      // bias_scale must equal x_scale * w_scale for QLinearConv fusion
+      builder.AddDequantizeLinearNode(bias_arg, 0.00720836f, int32_t(0), dq_bias, false);
 
       // Conv
       auto* conv_output = builder.MakeIntermediate();
