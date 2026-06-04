@@ -68,8 +68,8 @@ Status Col2Im<T>::Compute(OpKernelContext* context) const {
   for (size_t i = 0; i < image_dim_number; ++i) {
     ORT_RETURN_IF_NOT(image_dims[i] > 0, "All 'image_shape' values must be positive.");
     ORT_RETURN_IF_NOT(kernel_dims[i] > 0, "All 'block_shape' values must be positive.");
-    ORT_RETURN_IF_NOT(strides[i] > 0, "All 'strides' values must be positive.");
-    ORT_RETURN_IF_NOT(dilations[i] > 0, "All 'dilations' values must be positive.");
+    ORT_RETURN_IF_NOT(strides[i] > 0, "All stride values must be positive.");
+    ORT_RETURN_IF_NOT(dilations[i] > 0, "All dilation values must be positive.");
     image_shape_size *= image_dims[i];
     kernel_shape_size *= kernel_dims[i];
     const int64_t adjusted_kernel = SafeInt<int64_t>(dilations[i]) * (kernel_dims[i] - 1) + 1;
