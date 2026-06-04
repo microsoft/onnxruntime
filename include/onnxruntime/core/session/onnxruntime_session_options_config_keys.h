@@ -471,6 +471,24 @@ static const char* const kOrtSessionOptionCompileOnly = "session.compile_only";
 // - "1": Gemm FastMath mode is enabled.
 static const char* const kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16 = "mlas.enable_gemm_fastmath_arm64_bfloat16";
 
+// Enables opt-in CPU EP float16 execution for supported ops.
+// This allows InsertCastTransformer to preserve eligible fp16 CPU nodes instead of inserting fp16<->fp32 casts.
+// The fp32 fallback heuristic below is still enabled by default and may keep selected shapes on the fp32 path when
+// native fp16 is not expected to be profitable for the active MLAS backend.
+// Option values:
+// - "0": CPU fp16 is not explicitly enabled, and default cast/fallback behavior is used. [DEFAULT]
+// - "1": Enable CPU fp16 preservation for the current opt-in scope.
+static const char* const kOrtSessionOptionsEnableCpuFp16 = "session.enable_cpu_fp16";
+
+// Controls the CPU fp16 -> fp32 fallback heuristic used when session.enable_cpu_fp16 is "1".
+// The heuristic keeps native CPU fp16 only for cases expected to be profitable, such as supported GEMV-like shapes or
+// constant-RHS MatMul when the active MLAS backend reports a native packed-B path. Other eligible nodes are assigned to
+// CPU through fp32 casts when a valid CPU fp32 kernel exists. This is the recommended/default CPU fp16 mode.
+// Option values:
+// - "0": Do not use the heuristic; preserve native CPU fp16 more broadly for eligible CPU fp16 kernels.
+// - "1": Use the fp32 fallback heuristic. [DEFAULT]
+static const char* const kOrtSessionOptionsCpuFp16UseFp32FallbackHeuristic = "session.cpu_fp16_use_fp32_fallback_heuristic";
+
 // Use LUT (Lookup Table) based GEMM for quantized models when available.
 // Option values:
 // - "0": Do not use LUT based GEMM. [DEFAULT]

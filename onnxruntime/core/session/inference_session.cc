@@ -66,6 +66,7 @@
 #endif
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 #include "core/session/abi_devices.h"
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/DmlGraphFusionTransformer.h"
@@ -1715,14 +1716,24 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
       const InlinedVector<gsl::not_null<const KernelRegistry*>> kernel_regs =
           kernel_registry_manager_.GetKernelRegistriesByProviderType(kCpuExecutionProvider);
 
-      const KernelRegistry* cpu_regs = nullptr;
-      if (!kernel_regs.empty()) {
-        // NOTE: This assumes that CPU kernels are always at the n-1 index of kernel registries vector as per the design
-        //       of GetKernelRegistriesByProviderType function.
-        cpu_regs = kernel_regs[kernel_regs.size() - 1];
-      }
+      const bool enable_cpu_fp16 =
+          session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableCpuFp16, "0") == "1";
+      const bool use_cpu_fp16_fp32_fallback_heuristic =
+          session_options_.config_options.GetConfigOrDefault(
+              kOrtSessionOptionsCpuFp16UseFp32FallbackHeuristic, "1") == "1";
+      const bool force_cpu_fp32 = !enable_cpu_fp16 || use_cpu_fp16_fp32_fallback_heuristic;
 
-      InsertCastTransformer insert_cast_transformer{"CastFloat16Transformer", cpu_regs, on_partition_assignment_fn};
+      // Keep InsertCastTransformer's CPU fp16 profitability checks aligned with execution-time MLAS backend selection.
+      MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config;
+      SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config,
+                                                      session_options_.config_options);
+
+      InsertCastTransformer insert_cast_transformer{
+          "CastFloat16Transformer", kernel_regs,
+          /*enable_cpu_fp16*/ enable_cpu_fp16,
+          /*force_cpu_fp32*/ force_cpu_fp32,
+          &mlas_backend_kernel_selector_config,
+          on_partition_assignment_fn};
       ORT_RETURN_IF_ERROR_SESSIONID_(
           apply_transformer_once(insert_cast_transformer, *session_logger_, graph,
                                  ((graph_optimizations_loop_level > 1) ? &is_graph_modified : nullptr)));

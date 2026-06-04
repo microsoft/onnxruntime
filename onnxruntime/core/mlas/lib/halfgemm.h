@@ -32,13 +32,56 @@ Abstract:
 
 #pragma once
 
-#include <cstdlib>
 #include <cassert>
+#include <cstdlib>
+#include <cstring>
+#include <limits>
+#include <stdexcept>
 #include <string>
 
 #include "mlasi.h"
 #include "mlas_float16.h"
 
+
+MLAS_FORCEINLINE
+bool
+MlasTryMultiplySizeT(
+    size_t a,
+    size_t b,
+    size_t* out
+    )
+{
+#if defined(__has_builtin)
+#if __has_builtin(__builtin_mul_overflow)
+    return __builtin_mul_overflow(a, b, out);
+#endif
+#endif
+    if (b != 0 && a > (std::numeric_limits<size_t>::max)() / b) {
+        return true;
+    }
+    *out = a * b;
+    return false;
+}
+
+MLAS_FORCEINLINE
+bool
+MlasTryAddSizeT(
+    size_t a,
+    size_t b,
+    size_t* out
+    )
+{
+#if defined(__has_builtin)
+#if __has_builtin(__builtin_add_overflow)
+    return __builtin_add_overflow(a, b, out);
+#endif
+#endif
+    if (a > (std::numeric_limits<size_t>::max)() - b) {
+        return true;
+    }
+    *out = a + b;
+    return false;
+}
 
 /**
  * @brief Define the default striding parameters for
@@ -71,12 +114,46 @@ MlasHalfGemmCopyPackB(
     size_t CountK
 )
 {
-    MLAS_UNREFERENCED_PARAMETER(D);
-    MLAS_UNREFERENCED_PARAMETER(B);
-    MLAS_UNREFERENCED_PARAMETER(ldb);
-    MLAS_UNREFERENCED_PARAMETER(CountN);
-    MLAS_UNREFERENCED_PARAMETER(CountK);
-    // No packing needed by default
+    size_t aligned_count_k_input = 0;
+    if (MlasTryAddSizeT(CountK, KernelType::PackedK - 1, &aligned_count_k_input)) {
+        MLAS_THROW_EX(std::runtime_error, "MlasHalfGemmCopyPackB aligned K overflow");
+    }
+    const size_t AlignedCountK = aligned_count_k_input & ~(KernelType::PackedK - 1);
+    size_t PaddingCountK = AlignedCountK - CountK;
+
+    if (ldb == CountN) {
+        size_t bytes_to_copy = 0;
+        if (MlasTryMultiplySizeT(CountK, CountN, &bytes_to_copy) ||
+            MlasTryMultiplySizeT(bytes_to_copy, sizeof(_mlas_fp16_), &bytes_to_copy)) {
+            MLAS_THROW_EX(std::runtime_error, "MlasHalfGemmCopyPackB size overflow");
+        }
+        std::memcpy(D, B, bytes_to_copy);
+        if (PaddingCountK > 0) {
+            size_t padding_bytes = 0;
+            if (MlasTryMultiplySizeT(PaddingCountK, CountN, &padding_bytes) ||
+                MlasTryMultiplySizeT(padding_bytes, sizeof(_mlas_fp16_), &padding_bytes)) {
+                MLAS_THROW_EX(std::runtime_error, "MlasHalfGemmCopyPackB padding size overflow");
+            }
+            std::memset(D + CountK * CountN, 0, padding_bytes);
+        }
+        return;
+    }
+
+    size_t row_bytes = 0;
+    if (MlasTryMultiplySizeT(CountN, sizeof(_mlas_fp16_), &row_bytes)) {
+        MLAS_THROW_EX(std::runtime_error, "MlasHalfGemmCopyPackB row size overflow");
+    }
+    while (CountK > 0) {
+        std::memcpy(D, B, row_bytes);
+        B += ldb;
+        D += CountN;
+        CountK--;
+    }
+    while (PaddingCountK > 0) {
+        std::memset(D, 0, row_bytes);
+        D += CountN;
+        PaddingCountK--;
+    }
 }
 
 /**

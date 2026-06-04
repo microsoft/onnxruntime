@@ -7,6 +7,7 @@
 #pragma once
 
 #include "../mlasi.h"
+#include <limits>
 #include <iostream>
 
 // Fix to ensure compatibility with MSVC build
@@ -224,6 +225,102 @@ MlasConvSymmetricChannelsLast2DFloatPackW(
     size_t PackedFilterGroupStride,
     MLAS_THREADPOOL* ThreadPool
     );
+
+bool
+MLASCALL
+MlasHalfGemmBatch(
+    size_t M,
+    size_t N,
+    size_t K,
+    size_t BatchN,
+    const MLAS_HALF_GEMM_DATA_PARAMS* DataParams,
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    );
+
+size_t
+MLASCALL
+MlasHalfGemmKleidiAIPackBSize(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K
+    );
+
+// Packs B into the native KleidiAI RHS-packed layout for the supported
+// halfgemm configuration only. This differs from the generic MLAS halfgemm
+// prepacked-B format produced by MlasHalfGemmPackB and
+// MlasHalfGemmConvertPackB, so generic MLAS prepacked weights may need to be
+// repacked into this layout before running the KleidiAI halfgemm path.
+// Unsupported transpose combinations return false/0 so the caller can fall
+// back to the generic MLAS path.
+bool
+MLASCALL
+MlasHalfGemmKleidiAIPackB(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const MLAS_FP16* B,
+    size_t ldb,
+    void* PackedB
+    );
+
+bool
+MLASCALL
+MlasHalfConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
+                    size_t Dimensions,
+                    size_t BatchCount,
+                    size_t GroupCount,
+                    size_t InputChannels,
+                    const int64_t* InputShape,
+                    const int64_t* KernelShape,
+                    const int64_t* DilationShape,
+                    const int64_t* Padding,
+                    const int64_t* StrideShape,
+                    const int64_t* OutputShape,
+                    size_t FilterCount,
+                    const MLAS_ACTIVATION* Activation,
+                    size_t* WorkingBufferSize,
+                    float Beta,
+                    bool InputOutputChannelsLast,
+                    MLAS_THREADPOOL* ThreadPool,
+                    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
+
+bool
+MLASCALL
+MlasHalfConv(
+    const MLAS_CONV_PARAMETERS* Parameters,
+    const MLAS_FP16* Input,
+    const MLAS_FP16* Filter,
+    bool FilterAndBiasArePacked,
+    const MLAS_FP16* Bias,
+    MLAS_FP16* WorkingBuffer,
+    MLAS_FP16* Output,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+size_t
+MLASCALL
+MlasHalfConvPackWeightsAndBiasSize(
+    size_t FilterCount,
+    size_t InputChannels,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape
+    );
+
+bool
+MLASCALL
+MlasHalfConvPackWeightsAndBias(
+    size_t FilterCount,
+    size_t InputChannels,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const MLAS_FP16* Filter,
+    const MLAS_FP16* Bias,
+    void* PackedWeightsAndBias,
+    MLAS_THREADPOOL* ThreadPool
+    );
 }
 
 /*++
@@ -258,4 +355,43 @@ inline bool mul_overflow_size_t_builtin(size_t a, size_t b, size_t* out) {
     if (b != 0 && a > SIZE_MAX / b) return true;
     if (out) *out = a * b;
     return false;
+}
+
+/*++
+
+Routine Description:
+
+    This routine adds two size_t values and returns the sum when no wraparound
+    occurs. Uses __builtin_add_overflow if available on the current system and
+    falls back to a default implementation otherwise.
+
+Arguments:
+
+    a - Supplies the first number to be added.
+
+    b - Supplies the second number to be added.
+
+    out - Supplies a size_t reference which receives the result in success
+          cases.
+
+Return Value:
+
+    Returns true if the operation was successful
+    Returns false if wraparound of size_t was detected
+
+--*/
+inline bool TryAddSize(size_t a, size_t b, size_t& out)
+{
+#if defined(__has_builtin)
+#  if __has_builtin(__builtin_add_overflow)
+    return !__builtin_add_overflow(a, b, &out);
+#  endif
+#endif
+
+    if (a > (std::numeric_limits<size_t>::max)() - b) {
+        return false;
+    }
+
+    out = a + b;
+    return true;
 }
