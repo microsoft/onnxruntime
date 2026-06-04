@@ -2523,6 +2523,35 @@ std::string MakeAndChainModelData() {
   model.ToProto().SerializeToString(&model_data);
   return model_data;
 }
+
+// Where(cond, X, Y) where the bool `cond` is a graph INPUT (not a constant), so
+// the bool value sits on the CoreML partition boundary. RewriteBoolGraphIOBoundaries
+// exposes it as an int32 feature and inserts an int32->bool cast, so the node is
+// still claimed; model.mm does the bool<->int32 conversion at runtime.
+std::string MakeWhereBoolInputModelData() {
+  onnxruntime::Model model("where_bool_input_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  auto make_type = [](int32_t elem_type) {
+    ONNX_NAMESPACE::TypeProto t;
+    t.mutable_tensor_type()->set_elem_type(elem_type);
+    for (int64_t d : {1, 4}) t.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(d);
+    return t;
+  };
+  const auto bool_type = make_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  const auto float_type = make_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  auto& cond = graph.GetOrCreateNodeArg("cond", &bool_type);
+  auto& x = graph.GetOrCreateNodeArg("X", &float_type);
+  auto& y = graph.GetOrCreateNodeArg("Y", &float_type);
+  auto& out = graph.GetOrCreateNodeArg("Out", &float_type);
+
+  graph.AddNode("where", "Where", "select X where cond else Y", {&cond, &x, &y}, {&out});
+  ORT_THROW_IF_ERROR(graph.Resolve());
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  return model_data;
+}
 }  // namespace
 
 // Where is lowered to the ML Program 'select' op.
@@ -2665,6 +2694,61 @@ TEST(CoreMLExecutionProviderTest, WhereNonFloatBranchesNotSupported) {
   gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
                                         model_data.size()};
   TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::None);
+}
+
+// float16 X/Y variant of Where_MLProgram, exercising the float16 branch of
+// HasSupportedInputsImpl and the 'select' lowering.
+TEST(CoreMLExecutionProviderTest, WhereFloat16_MLProgram) {
+  const std::string model_data = MakeWhereModelData(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 4};
+  std::vector<MLFloat16> x_data{MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f), MLFloat16(4.0f)};
+  std::vector<MLFloat16> y_data{MLFloat16(-1.0f), MLFloat16(-2.0f), MLFloat16(-3.0f), MLFloat16(-4.0f)};
+  OrtValue x_val, y_val;
+  CreateMLValue<MLFloat16>(CPUAllocator::DefaultInstance(), dims, x_data, &x_val);
+  CreateMLValue<MLFloat16>(CPUAllocator::DefaultInstance(), dims, y_data, &y_val);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", x_val));
+  feeds.insert(std::make_pair("Y", y_val));
+
+  EPVerificationParams params{};
+  params.ep_node_assignment = ExpectedEPNodeAssignment::All;
+  RunAndVerifyOutputsWithEP(model_span, CurrentTestName(),
+                            MakeCoreMLExecutionProvider("MLProgram"), feeds, params);
+#else
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+// A bool graph INPUT flowing into Where exercises the partition-boundary bool
+// handling (RewriteBoolGraphIOBoundaries + model.mm int32<->bool conversion),
+// rather than the constant/internal bool the other Where/And tests rely on.
+TEST(CoreMLExecutionProviderTest, WhereBoolGraphInput_MLProgram) {
+  const std::string model_data = MakeWhereBoolInputModelData();
+  gsl::span<const std::byte> model_span{reinterpret_cast<const std::byte*>(model_data.data()),
+                                        model_data.size()};
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims = {1, 4};
+  OrtValue cond_val, x_val, y_val;
+  CreateMLValue<bool>(CPUAllocator::DefaultInstance(), dims, std::vector<bool>{true, false, true, false}, &cond_val);
+  CreateMLValue<float>(CPUAllocator::DefaultInstance(), dims, {1.0f, 2.0f, 3.0f, 4.0f}, &x_val);
+  CreateMLValue<float>(CPUAllocator::DefaultInstance(), dims, {-1.0f, -2.0f, -3.0f, -4.0f}, &y_val);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("cond", cond_val));
+  feeds.insert(std::make_pair("X", x_val));
+  feeds.insert(std::make_pair("Y", y_val));
+
+  EPVerificationParams params{};
+  params.ep_node_assignment = ExpectedEPNodeAssignment::All;
+  RunAndVerifyOutputsWithEP(model_span, CurrentTestName(),
+                            MakeCoreMLExecutionProvider("MLProgram"), feeds, params);
+#else
+  TestModelLoad(model_span, MakeCoreMLExecutionProvider("MLProgram"), ExpectedEPNodeAssignment::All);
+#endif
 }
 
 // And is lowered to the ML Program 'logical_and' op.
