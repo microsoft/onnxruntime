@@ -12,8 +12,7 @@ import zipfile
 import pytest
 from parity_utilities import find_transformers_source
 
-# The source module is not copied into the test build output directory, so skip the
-# whole module when it cannot be located instead of failing during collection.
+# The source module is not copied into the test build output directory, use a helper function to find it.
 if find_transformers_source():
     from convert_tf_models_to_pytorch import safe_extract_archive
 else:
