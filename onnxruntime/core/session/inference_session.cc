@@ -78,6 +78,7 @@
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session_utils.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/session/user_logging_sink.h"
@@ -871,7 +872,7 @@ InferenceSession::~InferenceSession() {
         telemetry_provider.LogEpDeviceUsage(
             session_id_, ep_info.ep_type, ep_info.hardware_device_type,
             ep_info.vendor_id, ep_info.device_id, ep_info.vendor, ep_info.ep_vendor,
-            ep_info.assigned_node_count,
+            ep_info.ep_version, ep_info.assigned_node_count,
             telemetry_.total_runs_since_last_, telemetry_.total_run_duration_since_last_);
       }
     }
@@ -2787,7 +2788,7 @@ common::Status InferenceSession::Initialize() {
       env.GetTelemetryProvider().LogEpDeviceUsage(
           session_id_, ep_info.ep_type, ep_info.hardware_device_type,
           ep_info.vendor_id, ep_info.device_id, ep_info.vendor, ep_info.ep_vendor,
-          ep_info.assigned_node_count, 0, 0);
+          ep_info.ep_version, ep_info.assigned_node_count, 0, 0);
     }
 
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
@@ -3453,7 +3454,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
           env.GetTelemetryProvider().LogEpDeviceUsage(
               session_id_, ep_info.ep_type, ep_info.hardware_device_type,
               ep_info.vendor_id, ep_info.device_id, ep_info.vendor, ep_info.ep_vendor,
-              ep_info.assigned_node_count,
+              ep_info.ep_version, ep_info.assigned_node_count,
               telemetry_.total_runs_since_last_, telemetry_.total_run_duration_since_last_);
         }
         // reset counters
@@ -3467,6 +3468,10 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
                                                      Telemetry::kRuntimePerfMaxInterval);
       }
     }
+  } else {
+    // Log runtime error with EP versions
+    env.GetTelemetryProvider().LogRuntimeInferenceError(session_id_, retval, telemetry_.ep_versions_summary_,
+                                                         telemetry_.ep_device_types_summary_);
   }
 
   // log evaluation stop to trace logging provider
@@ -4072,6 +4077,7 @@ void InferenceSession::PopulateEpDeviceInfo(const onnxruntime::Graph& graph) {
   telemetry_.ep_device_info_.clear();
   telemetry_.ep_device_types_summary_.clear();
   telemetry_.ep_device_vendor_ids_summary_.clear();
+  telemetry_.ep_versions_summary_.clear();
 
   // First, count nodes assigned to each EP type after graph partitioning.
   // The graph node only carries the EP type string, so when a single EP targets
@@ -4109,6 +4115,10 @@ void InferenceSession::PopulateEpDeviceInfo(const onnxruntime::Graph& graph) {
         Telemetry::EpDeviceInfo entry;
         entry.ep_type = ep_type;
         entry.ep_vendor = ep_device->ep_vendor;
+        auto it = ep_device->ep_metadata.Entries().find(kOrtEpDevice_EpMetadataKey_Version);
+        if (it != ep_device->ep_metadata.Entries().end()) {
+          entry.ep_version = it->second;
+        }
         if (ep_device->device != nullptr) {
           entry.hardware_device_type = HardwareDeviceTypeToString(ep_device->device->type);
           entry.vendor_id = ep_device->device->vendor_id;
@@ -4143,11 +4153,13 @@ void InferenceSession::PopulateEpDeviceInfo(const onnxruntime::Graph& graph) {
   // by position against the existing executionProviderIds field.
   std::ostringstream types_oss;
   std::ostringstream vendor_ids_oss;
+  std::ostringstream versions_oss;
   bool first = true;
   for (const auto& entry : telemetry_.ep_device_info_) {
     if (!first) {
       types_oss << ',';
       vendor_ids_oss << ',';
+      versions_oss << ',';
     }
     first = false;
     types_oss << entry.hardware_device_type;
@@ -4155,9 +4167,11 @@ void InferenceSession::PopulateEpDeviceInfo(const onnxruntime::Graph& graph) {
     vendor_ids_oss << "0x" << std::hex << std::uppercase << std::setw(4)
                    << std::setfill('0') << entry.vendor_id
                    << std::dec << std::nouppercase << std::setfill(' ');
+    versions_oss << entry.ep_type << ':' << entry.ep_version;
   }
   telemetry_.ep_device_types_summary_ = types_oss.str();
   telemetry_.ep_device_vendor_ids_summary_ = vendor_ids_oss.str();
+  telemetry_.ep_versions_summary_ = versions_oss.str();
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
