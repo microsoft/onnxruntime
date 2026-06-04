@@ -128,5 +128,18 @@ void Impl_SaturatingAbs(cudaStream_t stream, const T* input_data, T* output_data
 template <typename T>
 void Impl_SaturatingCastFromDouble(cudaStream_t stream, const double* input_data, T* output_data, size_t count);
 
+/**
+ * Fix exp results for ReduceLogSumExp after computing exp(X - max).
+ *
+ * When max is +/-inf, exp(X[i] - max) produces NaN from inf-inf.
+ * This kernel corrects:
+ *   - X[i] = -inf: set exp_result[i] = 0 (exp(-inf) = 0)
+ *   - X[i] = +inf: set exp_result[i] = 1 (exp(+inf - +inf) = exp(0) = 1)
+ *   - X[i] = NaN: preserve NaN (propagate)
+ */
+template <typename T>
+void Impl_FixExpForReduceLogSumExp(cudaStream_t stream, const T* original_input,
+                                   T* exp_result, size_t count);
+
 }  // namespace cuda
 }  // namespace onnxruntime
