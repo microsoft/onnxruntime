@@ -21,5 +21,3 @@ ort = "2"
 ```
 
 See the [ort documentation](https://ort.pyke.io/) for usage examples and a full API reference.
-
-There is also a community-maintained crate at [tract](https://github.com/sonos/tract) for a pure-Rust ONNX inference engine.
