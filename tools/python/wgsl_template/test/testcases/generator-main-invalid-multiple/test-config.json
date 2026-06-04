@@ -1,0 +1,16 @@
+{
+  "type": "generator",
+  "description": "Test error handling for multiple $MAIN blocks",
+  "entries": {
+    "test.wgsl.template": {
+      "generators": {
+        "dynamic": {
+          "expectsError": "Multiple main function start ($MAIN) detected"
+        },
+        "static-cpp-literal": {
+          "expectsError": "Multiple main function start ($MAIN) detected"
+        }
+      }
+    }
+  }
+}

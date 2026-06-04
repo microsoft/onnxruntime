@@ -1,0 +1,16 @@
+{
+  "type": "generator",
+  "description": "Test error handling for $MAIN with invalid syntax (missing opening brace)",
+  "entries": {
+    "test.wgsl.template": {
+      "generators": {
+        "dynamic": {
+          "expectsError": "Unmatched closing bracket"
+        },
+        "static-cpp-literal": {
+          "expectsError": "Unmatched closing bracket"
+        }
+      }
+    }
+  }
+}

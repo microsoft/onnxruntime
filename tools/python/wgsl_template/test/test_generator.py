@@ -1,8 +1,8 @@
 """Unit tests for the PASS2 generator.
 
 Combines focused unit tests with a fixture-driven runner that pulls
-``generator-*`` cases from the upstream wgsl-template repo. We only
-fixture-test cases where:
+``generator-*`` cases from the ``testcases/`` fixtures next to this
+file. We only fixture-test cases where:
 
 * The fixture directory contains a ``*.static-cpp-literal.gen``
   golden, OR
@@ -31,7 +31,9 @@ from wgsl_template.generator import generate  # noqa: E402
 from wgsl_template.loader import load_from_directory  # noqa: E402
 from wgsl_template.parser import parse  # noqa: E402
 
-_UPSTREAM_TESTCASES = Path("d:/wgsl-template/test/testcases")
+# Fixtures live next to this file. Resolve relative to __file__ so the
+# suite runs on any platform and from any working directory.
+_TESTCASES_DIR = _THIS_DIR / "testcases"
 
 
 def _write(path: Path, content: str) -> None:
@@ -131,36 +133,36 @@ class GeneratorParamErrorsTest(unittest.TestCase):
 
 
 # ----------------------------------------------------------------------
-# Fixture-driven tests against upstream generator-* testcases
+# Fixture-driven tests against the generator-* testcases
 # ----------------------------------------------------------------------
 
 
 _SUPPORTED_GENERATORS = {"static-cpp", "static-cpp-literal"}
 
-# Fixtures that are known to fail upstream too (broken golden expectation).
-# We skip them so the suite stays green; document the reason inline.
+# Fixtures whose golden expectation does not match this engine's
+# end-of-file validation order. Skipped so the suite stays green;
+# reason inline.
 _FIXTURE_SKIPS = {
-    # The fixture expects the engine to raise "Main function context
-    # started but not ended at the end of processing" but the TS engine's
-    # end-of-file validations check for unmatched brackets first, so the
-    # actual error is "Unmatched brackets at the end of processing".
+    # The fixture expects the error "Main function context started but
+    # not ended at the end of processing", but the end-of-file
+    # validations check for unmatched brackets first, so the actual
+    # error is "Unmatched brackets at the end of processing".
     "generator-main-invalid-unclosed",
 }
 
 
 def _normalize_lines(text: str) -> list:
-    """Match the upstream test runner: split on newlines, drop blank
-    lines, trim whitespace per line."""
+    """Split on newlines, drop blank lines, trim whitespace per line."""
     return [line.strip() for line in re.split(r"\r?\n", text) if line.strip() != ""]
 
 
 def _build_fixture_suite() -> unittest.TestSuite:
     suite = unittest.TestSuite()
-    if not _UPSTREAM_TESTCASES.is_dir():
+    if not _TESTCASES_DIR.is_dir():
         return suite
 
-    for entry in sorted(os.listdir(_UPSTREAM_TESTCASES)):
-        case_dir = _UPSTREAM_TESTCASES / entry
+    for entry in sorted(os.listdir(_TESTCASES_DIR)):
+        case_dir = _TESTCASES_DIR / entry
         if not case_dir.is_dir():
             continue
         if not entry.startswith("generator-"):

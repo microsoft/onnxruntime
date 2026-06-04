@@ -1,0 +1,8 @@
+// Main shader template
+#include "shaders/vertex.wgsl.template"
+#include "utils/common.wgsl.template"
+
+@fragment
+fn fs_main() -> @location(0) vec4f {
+    return vec4f(1.0, 0.0, 0.0, 1.0);
+}

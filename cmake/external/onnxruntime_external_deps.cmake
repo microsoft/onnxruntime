@@ -828,6 +828,9 @@ if (onnxruntime_USE_WEBGPU)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES webgpu_glfw glfw)
   endif()
 
+  # TODO(danielsongmicrosoft): Remove duktape. It is only needed by the dynamic
+  # WGSL generator, which is no longer wired up, so onnxruntime_WGSL_TEMPLATE is
+  # unset and this block never runs.
   if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
     if(onnxruntime_USE_VCPKG)
       find_package(unofficial-duktape CONFIG REQUIRED)

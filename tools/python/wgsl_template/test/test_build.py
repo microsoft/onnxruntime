@@ -1,10 +1,9 @@
 """End-to-end tests for the top-level build() orchestrator.
 
 Combines focused unit tests with a fixture-driven runner that targets
-``build-*`` cases from the upstream wgsl-template testcases. We run
-each fixture for every supported generator (skipping ``dynamic``) and
-diff the resulting files byte-for-byte against the
-``expected/<generator>/`` golden tree.
+``build-*`` cases from the ``testcases/`` fixtures. We run each fixture
+for every supported generator and diff the resulting files
+byte-for-byte against the ``expected/<generator>/`` golden tree.
 """
 
 from __future__ import annotations
@@ -25,7 +24,7 @@ from wgsl_template import build  # noqa: E402
 from wgsl_template.errors import WgslTemplateError  # noqa: E402
 from wgsl_template.types import SourceDir  # noqa: E402
 
-_UPSTREAM_TESTCASES = Path("d:/wgsl-template/test/testcases")
+_TESTCASES_DIR = _THIS_DIR / "testcases"
 
 _SUPPORTED_GENERATORS = {"static-cpp", "static-cpp-literal"}
 
@@ -35,10 +34,9 @@ _SUPPORTED_GENERATORS = {"static-cpp", "static-cpp-literal"}
 #   The fixture has multiple templates across multiple aliased source
 #   directories. __str_N IDs are emitted in sorted-by-path order. The
 #   WGSL string contents are byte-identical, but the integer IDs
-#   renumber, which makes a naive byte-for-byte comparison fail. Per
-#   the design doc the ID values are explicitly *not* part of the
-#   contract; skip this case until we add a smarter comparator that
-#   resolves __str_N -> string before diffing.
+#   renumber, which makes a naive byte-for-byte comparison fail. The
+#   ID values are not part of the contract; skip this case until we add
+#   a smarter comparator that resolves __str_N -> string before diffing.
 _FIXTURE_SKIPS = {
     ("build-directories", "static-cpp"),
 }
@@ -130,17 +128,17 @@ class BuildErrorsTest(unittest.TestCase):
 
 
 # ----------------------------------------------------------------------
-# Fixture-driven tests against upstream build-* cases
+# Fixture-driven tests against the build-* cases
 # ----------------------------------------------------------------------
 
 
 def _build_fixture_suite() -> unittest.TestSuite:
     suite = unittest.TestSuite()
-    if not _UPSTREAM_TESTCASES.is_dir():
+    if not _TESTCASES_DIR.is_dir():
         return suite
 
-    for entry in sorted(os.listdir(_UPSTREAM_TESTCASES)):
-        case_dir = _UPSTREAM_TESTCASES / entry
+    for entry in sorted(os.listdir(_TESTCASES_DIR)):
+        case_dir = _TESTCASES_DIR / entry
         if not case_dir.is_dir():
             continue
         if not entry.startswith("build-"):

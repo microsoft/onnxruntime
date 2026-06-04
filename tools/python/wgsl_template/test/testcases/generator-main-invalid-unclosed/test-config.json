@@ -1,0 +1,16 @@
+{
+  "type": "generator",
+  "description": "Test error handling for unclosed $MAIN block",
+  "entries": {
+    "test.wgsl.template": {
+      "generators": {
+        "dynamic": {
+          "expectsError": "Main function context started but not ended at the end of processing"
+        },
+        "static-cpp-literal": {
+          "expectsError": "Main function context started but not ended at the end of processing"
+        }
+      }
+    }
+  }
+}

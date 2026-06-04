@@ -78,6 +78,10 @@ onnxruntime::common::Status ApplyTemplate(ShaderHelper& shader_helper, TemplateP
 
 #else  // Use dynamic generator
 
+// TODO(danielsongmicrosoft): Remove the dynamic WGSL generator. The static
+// Python generator is the only supported mode, so ORT_WGSL_TEMPLATE_DYNAMIC is
+// never defined and this branch is unreachable.
+
 #define WGSL_TEMPLATE_PARAMETER(name, value) \
   onnxruntime::webgpu::wgsl_gen::TemplateParam(#name, static_cast<int>(value))
 

@@ -2,8 +2,7 @@
 
 Mixes inline temp-dir tests for tightly scoped behaviors with a
 fixture-driven runner that pulls ``parser-*`` and ``loader-*`` cases
-straight from the upstream wgsl-template repository at
-``d:/wgsl-template/test/testcases/``.
+from the ``testcases/`` fixtures next to this file.
 """
 
 from __future__ import annotations
@@ -25,8 +24,9 @@ from wgsl_template.loader import load_from_directory  # noqa: E402
 from wgsl_template.parser import parse  # noqa: E402
 from wgsl_template.types import TemplatePass1  # noqa: E402
 
-# Path to the upstream wgsl-template test fixtures.
-_UPSTREAM_TESTCASES = Path("d:/wgsl-template/test/testcases")
+# Fixtures live next to this file. Resolve relative to __file__ so the
+# suite runs on any platform and from any working directory.
+_TESTCASES_DIR = _THIS_DIR / "testcases"
 
 
 def _write(path: Path, content: str) -> None:
@@ -199,7 +199,7 @@ class ParserMacroTest(unittest.TestCase):
 
 
 # ----------------------------------------------------------------------
-# Fixture-driven tests against upstream wgsl-template testcases
+# Fixture-driven tests against the parser-* and loader-* testcases
 # ----------------------------------------------------------------------
 
 
@@ -207,16 +207,16 @@ def _build_fixture_suite() -> unittest.TestSuite:
     """Discover ``parser-*`` and ``loader-*`` fixture directories with
     ``.pass1`` golden files and build a unittest suite.
 
-    Returns an empty suite if the upstream repo isn't available, so
-    contributors without that checkout still get a green run.
+    Returns an empty suite if the fixtures aren't present, so the run
+    stays green even in a trimmed checkout.
     """
 
     suite = unittest.TestSuite()
-    if not _UPSTREAM_TESTCASES.is_dir():
+    if not _TESTCASES_DIR.is_dir():
         return suite
 
-    for entry in sorted(os.listdir(_UPSTREAM_TESTCASES)):
-        case_dir = _UPSTREAM_TESTCASES / entry
+    for entry in sorted(os.listdir(_TESTCASES_DIR)):
+        case_dir = _TESTCASES_DIR / entry
         if not case_dir.is_dir():
             continue
         if not entry.startswith(("parser-", "loader-")):
