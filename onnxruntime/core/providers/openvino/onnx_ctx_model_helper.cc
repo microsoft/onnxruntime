@@ -243,9 +243,13 @@ std::shared_ptr<SharedContext> EPCtxHandler::Initialize(const std::vector<IExecu
         shared_context->Deserialize(ss);
       }
     } else {
-      ORT_THROW_IF_ERROR(utils::ValidateExternalDataPath(session_context.GetOutputModelPath(),
+      const std::filesystem::path cache_context_path{ep_cache_context};
+      const std::filesystem::path& validation_base_path = (cache_context_path.extension() == ".xml")
+                                                              ? session_context.GetModelPath()
+                                                              : session_context.GetOutputModelPath();
+      ORT_THROW_IF_ERROR(utils::ValidateExternalDataPath(validation_base_path,
                                                          std::filesystem::path(ep_cache_context)));
-      std::filesystem::path ep_context_path = session_context.GetOutputModelPath().parent_path() / ep_cache_context;
+      std::filesystem::path ep_context_path = validation_base_path.parent_path() / ep_cache_context;
       if (ep_context_path.extension() != ".xml") {
         shared_context = shared_context_manager_->GetOrCreateSharedContext(ep_context_path);
         shared_context->Deserialize();
