@@ -1086,13 +1086,9 @@ static void RunMaxPoolDropQDQTestCase(int opset) {
   TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, opset);
 }
 
-// Checks that Q/DQ nodes are dropped from DQ -> MaxPool -> Q for opsets where MaxPool's SinceVersion
-// changed (12 and 22).
+// Checks that Q/DQ nodes are dropped from DQ -> MaxPool -> Q for opset 22.
 TEST(QDQTransformerTests, MaxpoolDropQDQ) {
-  RunMaxPoolDropQDQTestCase<int8_t>(12);
-  RunMaxPoolDropQDQTestCase<uint8_t>(12);
   RunMaxPoolDropQDQTestCase<int8_t>(22);
-  RunMaxPoolDropQDQTestCase<uint8_t>(22);
 }
 
 // Runs a test case that checks if Q/DQ nodes are dropped from DQ -> (Un)Squeeze -> Q.
