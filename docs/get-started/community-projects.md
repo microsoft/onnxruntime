@@ -13,7 +13,7 @@ has_toc: false
 
 # Rust API
 
-ONNX Runtime provides an official Rust API. The bindings are available via the [`ort` crate](https://crates.io/crates/ort), which is maintained by [pykeio](https://github.com/pykeio/ort) and integrates with the official ONNX Runtime libraries.
+The actively maintained Rust bindings for ONNX Runtime are provided by the community via the [`ort` crate](https://crates.io/crates/ort), maintained by [pykeio](https://github.com/pykeio/ort).
 
 ```toml
 [dependencies]
