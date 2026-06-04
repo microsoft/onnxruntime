@@ -48,6 +48,7 @@
 #include "core/optimizer/gemm_activation_fusion.h"
 #include "core/optimizer/gemm_sum_fusion.h"
 #include "core/optimizer/gemm_transpose_fusion.h"
+#include "core/optimizer/gqa_mask_reformatting_to_graph_capture.h"
 #include "core/optimizer/group_query_attention_fusion.h"
 #include "core/optimizer/identical_children_consolidation.h"
 #include "core/optimizer/identity_elimination.h"
@@ -452,6 +453,17 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
           InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
       transformers.emplace_back(std::make_unique<MatMulNBitsQkvFusion>(
           InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
+      // Only run when WebGPU graph capture is enabled — the rewrite inserts an
+      // int64-input Cast that only has a kernel when enable_graph_capture (or
+      // enable_int64) is on for the WebGPU EP, and outside graph capture the
+      // CPU-bound mask preprocessing already works fine.
+      const bool webgpu_graph_capture_enabled =
+          session_options.config_options.GetConfigOrDefault(
+              "ep.webgpuexecutionprovider.enableGraphCapture", "0") == "1";
+      if (webgpu_graph_capture_enabled) {
+        transformers.emplace_back(std::make_unique<GqaMaskReformattingToGraphCapture>(
+            InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
+      }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
       // The QDQFinalCleanupTransformer must run AFTER other transformers that fuse Q/DQ nodes. Otherwise, their

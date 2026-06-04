@@ -21,6 +21,62 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size");
 
+  // Int64 path: inputs are scalar (component=1, stored as vec2<u32>, read as i32 low-word).
+  // Each global_idx still produces one packed output word covering 4 logical elements, so we
+  // read 4 scalar inputs and pack them into vec4<input_*_value_t>.
+  if (is_int64_) {
+    if (is_lhs_scalar_ || is_rhs_scalar_ || !is_broadcast_) {
+      if (is_lhs_scalar_) {
+        shader.MainFunctionBody() << "let a_s = " << a.GetByOffset("0") << ";\n"
+                                  << "let a = vec4<input_a_value_t>(a_s, a_s, a_s, a_s);\n";
+      } else {
+        shader.MainFunctionBody() << "let a = vec4<input_a_value_t>("
+                                  << a.GetByOffset("global_idx * 4u") << ", "
+                                  << a.GetByOffset("global_idx * 4u + 1u") << ", "
+                                  << a.GetByOffset("global_idx * 4u + 2u") << ", "
+                                  << a.GetByOffset("global_idx * 4u + 3u") << ");\n";
+      }
+      if (is_rhs_scalar_) {
+        shader.MainFunctionBody() << "let b_s = " << b.GetByOffset("0") << ";\n"
+                                  << "let b = vec4<input_b_value_t>(b_s, b_s, b_s, b_s);\n";
+      } else {
+        shader.MainFunctionBody() << "let b = vec4<input_b_value_t>("
+                                  << b.GetByOffset("global_idx * 4u") << ", "
+                                  << b.GetByOffset("global_idx * 4u + 1u") << ", "
+                                  << b.GetByOffset("global_idx * 4u + 2u") << ", "
+                                  << b.GetByOffset("global_idx * 4u + 3u") << ");\n";
+      }
+    } else {
+      const auto& c_indices = shader.AddIndices("bcast_indices");
+      const auto& a_indices = shader.AddIndices("a_indices");
+      const auto& b_indices = shader.AddIndices("b_indices");
+      shader.MainFunctionBody() << "var outputIndices = " << c_indices.OffsetToIndices("global_idx * 4") << ";\n"
+                                << "let offset_a0 = " << a_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "let offset_b0 = " << b_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "outputIndices = " << c_indices.OffsetToIndices("global_idx * 4 + 1") << ";\n"
+                                << "let offset_a1 = " << a_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "let offset_b1 = " << b_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "outputIndices = " << c_indices.OffsetToIndices("global_idx * 4 + 2") << ";\n"
+                                << "let offset_a2 = " << a_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "let offset_b2 = " << b_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "outputIndices = " << c_indices.OffsetToIndices("global_idx * 4 + 3") << ";\n"
+                                << "let offset_a3 = " << a_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "let offset_b3 = " << b_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
+                                << "let a = vec4<input_a_value_t>("
+                                << a.GetByOffset("offset_a0") << ", "
+                                << a.GetByOffset("offset_a1") << ", "
+                                << a.GetByOffset("offset_a2") << ", "
+                                << a.GetByOffset("offset_a3") << ");\n"
+                                << "let b = vec4<input_b_value_t>("
+                                << b.GetByOffset("offset_b0") << ", "
+                                << b.GetByOffset("offset_b1") << ", "
+                                << b.GetByOffset("offset_b2") << ", "
+                                << b.GetByOffset("offset_b3") << ");\n";
+    }
+    shader.MainFunctionBody() << c.SetByOffset("global_idx", expression_);
+    return Status::OK();
+  }
+
   // check whether can use element-wise mode.
   // If either A or B is scalar, or A and B have the same shape, element-wise mode can be used.
   // In element-wise mode, no indices calculation is needed.
@@ -143,12 +199,23 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
   bool is_lhs_bool = lhs_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
   bool is_rhs_bool = rhs_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
 
-  bool vectorize = is_lhs_scalar || is_rhs_scalar || !is_broadcast;
+  // int64 inputs have no vec4 storage on WebGPU (stored as vec2<u32> per element). We force a
+  // dedicated scalar (component=1) input path. The output of comparison ops (Equal, etc.) is
+  // still u32-packed bool with 4 results per global_idx, so vec_size below stays unchanged.
+  // We only enable this path when BOTH inputs are int64; broadcasting an int64 vs another type
+  // shouldn't happen for the ops we currently expose here.
+  bool is_lhs_int64 = lhs_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+  bool is_rhs_int64 = rhs_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+  bool is_int64 = is_lhs_int64 && is_rhs_int64;
+
+  // Int64 path forces non-vectorized inputs (component=1). Output of comparison ops stays
+  // packed-bool (component=4), so vec_size below is still (size+3)/4 to drive the dispatch.
+  bool vectorize = !is_int64 && (is_lhs_scalar || is_rhs_scalar || !is_broadcast);
   bool a_last_dim_divisible_by_4 = false;
   bool b_last_dim_divisible_by_4 = false;
   bool shared_dimension_divisible_by_4 = false;
   size_t num_shared_dimension = 0;
-  if (!vectorize) {
+  if (!vectorize && !is_int64) {
     // check whether vectorize can be enabled
     a_last_dim_divisible_by_4 = lhs_shape.NumDimensions() > 0 && lhs_shape[lhs_shape.NumDimensions() - 1] % 4 == 0;
     b_last_dim_divisible_by_4 = rhs_shape.NumDimensions() > 0 && rhs_shape[rhs_shape.NumDimensions() - 1] % 4 == 0;
@@ -188,7 +255,8 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
                                    is_rhs_scalar,
                                    shared_dimension_divisible_by_4 || a_last_dim_divisible_by_4,
                                    shared_dimension_divisible_by_4 || b_last_dim_divisible_by_4,
-                                   vectorize};
+                                   vectorize,
+                                   is_int64};
   program
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
@@ -196,7 +264,24 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
       })
       .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, 4});
 
-  if (is_lhs_scalar || is_rhs_scalar || !is_broadcast) {
+  if (is_int64) {
+    // int64 inputs are stored as vec2<u32> per element on WebGPU and have no vec4 packing.
+    // Inputs use component=1; the shader reads 4 scalars per global_idx and packs them into
+    // vec4<input_*_value_t> to keep the existing comparison expressions working unchanged.
+    const uint32_t lhs_buf_size = onnxruntime::narrow<uint32_t>(lhs_shape.Size());
+    const uint32_t rhs_buf_size = onnxruntime::narrow<uint32_t>(rhs_shape.Size());
+    program.AddInputs({{lhs_tensor, ProgramTensorMetadataDependency::Type, {lhs_buf_size}, 1},
+                       {rhs_tensor, ProgramTensorMetadataDependency::Type, {rhs_buf_size}, 1}});
+    if (is_broadcast && !is_lhs_scalar && !is_rhs_scalar) {
+      program
+          .AddIndices(output_tensor->Shape())
+          .AddIndices(lhs_shape)
+          .AddIndices(rhs_shape)
+          .CacheHint("I64B");
+    } else {
+      program.CacheHint("I64E" + std::to_string(is_lhs_scalar) + std::to_string(is_rhs_scalar));
+    }
+  } else if (is_lhs_scalar || is_rhs_scalar || !is_broadcast) {
     // Mode Element-wise
     // cache hint: "E{is_a_scalar}{is_b_scalar}"
     program
@@ -356,10 +441,10 @@ WEBGPU_BINARY_VERSIONED_KERNEL_2(Pow, 13, 14, Pow, WebGpuSupportedNumberTypes(),
 WEBGPU_BINARY_KERNEL_2(Pow, 15, Pow, WebGpuSupportedNumberTypes(), WebGpuSupportedNumberTypes())
 
 WEBGPU_BINARY_IMPL(Equal, "vec4<u32>(vec4<input_a_element_t>(a) == vec4<input_b_element_t>(b))")
-WEBGPU_BINARY_VERSIONED_KERNEL(Equal, 7, 10, Equal, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_VERSIONED_KERNEL(Equal, 11, 12, Equal, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_VERSIONED_KERNEL(Equal, 13, 18, Equal, WebGpuSupportedNumberTypes())
-WEBGPU_BINARY_KERNEL(Equal, 19, Equal, WebGpuSupportedNumberTypes())
+WEBGPU_BINARY_VERSIONED_KERNEL(Equal, 7, 10, Equal, GetOpTypeConstraints(true, false))
+WEBGPU_BINARY_VERSIONED_KERNEL(Equal, 11, 12, Equal, GetOpTypeConstraints(true, false))
+WEBGPU_BINARY_VERSIONED_KERNEL(Equal, 13, 18, Equal, GetOpTypeConstraints(true, false))
+WEBGPU_BINARY_KERNEL(Equal, 19, Equal, GetOpTypeConstraints(true, false))
 
 WEBGPU_BINARY_IMPL(Greater, "vec4<u32>(vec4<input_a_element_t>(a) > vec4<input_b_element_t>(b))")
 WEBGPU_BINARY_VERSIONED_KERNEL(Greater, 7, 8, Greater, WebGpuSupportedNumberTypes())

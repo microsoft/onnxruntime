@@ -65,6 +65,37 @@ Status WhereProgram::GenerateShaderCode(ShaderHelper& shader) const {
     return absl::StrCat("select(", b, ", ", a, ", ", c, ")");
   };
 
+  // Scalar path: one logical element per global_idx. Used when output type has no vec4 storage
+  // (e.g. int64 stored as vec2<u32>). The condition tensor is still bool-packed (8 bools per u32),
+  // so we extract one bool from the right byte of the right u32 word.
+  if (is_scalar_) {
+    if (!is_broadcast_) {
+      shader.MainFunctionBody()
+          << "let c_word = c_data[global_idx / 4u];\n"
+          << "let c_bit = bool(c_word & (0xffu << ((global_idx % 4u) * 8u)));\n"
+          << "let a_val = " << a_input.GetByOffset("global_idx") << ";\n"
+          << "let b_val = " << b_input.GetByOffset("global_idx") << ";\n"
+          << output.SetByOffset("global_idx", expression("a_val", "b_val", "c_bit")) << "\n";
+    } else {
+      const auto& c_indices = shader.AddIndices("c_indices");
+      const auto& a_indices = shader.AddIndices("a_indices");
+      const auto& b_indices = shader.AddIndices("b_indices");
+      const auto& output_indices = shader.AddIndices("output_indices");
+
+      shader.MainFunctionBody()
+          << "let out_idx = " << output_indices.OffsetToIndices("global_idx") << ";\n"
+          << "let off_a = " << a_indices.BroadcastedIndicesToOffset("out_idx", output_indices) << ";\n"
+          << "let off_b = " << b_indices.BroadcastedIndicesToOffset("out_idx", output_indices) << ";\n"
+          << "let off_c = " << c_indices.BroadcastedIndicesToOffset("out_idx", output_indices) << ";\n"
+          << "let c_word = c_data[off_c / 4u];\n"
+          << "let c_bit = bool(c_word & (0xffu << ((off_c % 4u) * 8u)));\n"
+          << "let a_val = " << a_input.GetByOffset("off_a") << ";\n"
+          << "let b_val = " << b_input.GetByOffset("off_b") << ";\n"
+          << output.SetByOffset("global_idx", expression("a_val", "b_val", "c_bit")) << "\n";
+    }
+    return Status::OK();
+  }
+
   if (!is_broadcast_) {
     shader.MainFunctionBody() << output.SetByOffset(
         "global_idx",
@@ -130,18 +161,29 @@ Status Where::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
-  constexpr int component = 4;
-  uint32_t vec_size = onnxruntime::narrow<uint32_t>((output_shape.Size() + 3) / component);
   const auto is_broadcast = !(x_shape == y_shape &&
                               y_shape == cond_shape);
-  WhereProgram program{is_broadcast};
+  // int64 has no vec4 storage on WebGPU (stored as vec2<u32> per element), so
+  // x / y / output run in scalar (component=1) mode. The condition tensor is
+  // still bool, packed 4-per-u32, so it keeps component=4 packing.
+  const bool is_int64_output = output_tensor->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT64;
+  const int component = is_int64_output ? 1 : 4;
+  const uint32_t output_size = onnxruntime::narrow<uint32_t>(output_shape.Size());
+  const uint32_t vec_size = is_int64_output ? output_size : (output_size + 3) / 4;
+  const uint32_t x_buf_size = is_int64_output ? onnxruntime::narrow<uint32_t>(x_shape.Size())
+                                              : onnxruntime::narrow<uint32_t>((x_shape.Size() + 3) / 4);
+  const uint32_t y_buf_size = is_int64_output ? onnxruntime::narrow<uint32_t>(y_shape.Size())
+                                              : onnxruntime::narrow<uint32_t>((y_shape.Size() + 3) / 4);
+  const uint32_t c_buf_size = onnxruntime::narrow<uint32_t>((cond_shape.Size() + 3) / 4);
+
+  WhereProgram program{is_broadcast, is_int64_output};
   program
-      .CacheHint(is_broadcast)
+      .CacheHint(is_broadcast, is_int64_output)
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddInputs({{cond_tensor, ProgramTensorMetadataDependency::Type, {(cond_shape.Size() + 3) / 4}, 4},
-                  {x_tensor, ProgramTensorMetadataDependency::Type, {(x_shape.Size() + 3) / 4}, 4},
-                  {y_tensor, ProgramTensorMetadataDependency::Type, {(y_shape.Size() + 3) / 4}, 4}})
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, 4})
+      .AddInputs({{cond_tensor, ProgramTensorMetadataDependency::Type, {c_buf_size}, 4},
+                  {x_tensor, ProgramTensorMetadataDependency::Type, {x_buf_size}, component},
+                  {y_tensor, ProgramTensorMetadataDependency::Type, {y_buf_size}, component}})
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, component})
       .AddUniformVariables({
           {static_cast<uint32_t>(vec_size)},
       });
@@ -160,11 +202,15 @@ const std::vector<MLDataType>& WhereOpTypeConstraints() {
   // currently support boolean, integer and float types that explicitly allowed in WGSL:
   // https://gpuweb.github.io/gpuweb/wgsl/#plain-types-section
   //
+  // int64 is supported via a scalar (component=1) code path: each element is
+  // stored as vec2<u32> on the GPU but read/written as i32 at the value layer
+  // (low 32 bits with sign extension on write). See GenerateShaderCode.
   static std::vector<MLDataType> types{
       DataTypeImpl::GetTensorType<MLFloat16>(),
       DataTypeImpl::GetTensorType<float>(),
       DataTypeImpl::GetTensorType<int32_t>(),
       DataTypeImpl::GetTensorType<uint32_t>(),
+      DataTypeImpl::GetTensorType<int64_t>(),
       DataTypeImpl::GetTensorType<bool>()};
   return types;
 }

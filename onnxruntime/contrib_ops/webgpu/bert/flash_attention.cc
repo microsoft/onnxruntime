@@ -44,6 +44,34 @@ Status SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram::GenerateShaderCode(Sha
                              WGSL_TEMPLATE_VARIABLE(sin_cache, sin_cache));
 }
 
+Status PrepareIndirectDispatchProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  shader.AddInput("seqlen_k", ShaderUsage::None);
+  shader.AddOutput("indirect_buffer", ShaderUsage::None);
+  shader.MainFunctionBody() << "  if (global_idx == 0u) {\n"
+                            << "    let total_seq_length = u32(seqlen_k[0u]) + 1u;\n"
+                            << "    let num_total_seq_length_tile = (total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;\n"
+                            << "    indirect_buffer[0] = num_total_seq_length_tile;\n"
+                            << "    indirect_buffer[1] = uniforms.num_heads;\n"
+                            << "    indirect_buffer[2] = 1u;\n"
+                            << "  }\n";
+  return Status::OK();
+}
+
+Status PrepareIndirectDispatch(onnxruntime::webgpu::ComputeContext& context,
+                               const WebgpuAttentionParameters& parameters,
+                               const Tensor* seqlen_k,
+                               Tensor* indirect_buffer,
+                               uint32_t tile_size) {
+  PrepareIndirectDispatchProgram program{};
+  program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None});
+  program.AddOutput({indirect_buffer, ProgramTensorMetadataDependency::None});
+  program.SetDispatchGroupSize(1)
+      .SetWorkgroupSize(1)
+      .AddUniformVariables({{tile_size},
+                            {static_cast<uint32_t>(parameters.num_heads_)}});
+  return context.RunProgram(program);
+}
+
 Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Expectations are
   //    qkv have same number of heads and hidden dimension (head size).
@@ -450,12 +478,21 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   Tensor* indirect_buffer_ptr = nullptr;
   Tensor indirect_buffer;
 
-  // Prepare indirect dispatch buffer for decode path with static KV cache
-  const bool use_indirect_dispatch = !kv_empty &&
-                                     parameters.sequence_length_ == 1 &&
-                                     parameters.past_present_share_buffer_ &&
+  // Prepare indirect dispatch buffer for decode path.
+  // Required when total_sequence_length is unknown at dispatch time, which happens in two cases:
+  //   1) Graph capture is on: static cache means total_seq_len varies across iterations of the captured graph.
+  //   2) total_sequence_length is GPU-resident (sentinel 0 from group_query_attention_helper):
+  //      any model that computes seqlens_k inside the ONNX graph (e.g. Gemma4) regardless of GC state.
+  // Without indirect dispatch in these cases, num_total_seq_length_tile=0 and we crash at SetDispatchGroupSize.
+  // The dispatch requires either static KV cache (past_present_share_buffer_) or kv_empty
+  // (KV-shared layer where past_key aliases another layer's present cache).
+  const bool decode_needs_indirect = context.IsGraphCaptureEnabled() ||
+                                     parameters.total_sequence_length_ == 0;
+  const bool use_indirect_dispatch = parameters.sequence_length_ == 1 &&
                                      seqlen_k != nullptr &&
-                                     context.IsGraphCaptureEnabled();
+                                     decode_needs_indirect &&
+                                     (parameters.past_present_share_buffer_ ||
+                                      (kv_empty && past_key != nullptr && past_value != nullptr));
   if (use_indirect_dispatch) {
     const TensorShape indirect_buffer_shape{3};  // 3 uint32 values for dispatch dimensions
     indirect_buffer = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), indirect_buffer_shape);
@@ -480,6 +517,11 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
       // and CopyKVCache is skipped when kv_empty, so no writes occur through these pointers.
       present_key = const_cast<Tensor*>(past_key);
       present_value = const_cast<Tensor*>(past_value);
+    }
+    // Populate indirect dispatch buffer for the decode kernels (CopyKVCache normally does this,
+    // but it's skipped for kv_empty layers).
+    if (use_indirect_dispatch) {
+      ORT_RETURN_IF_ERROR(PrepareIndirectDispatch(context, parameters, seqlen_k, indirect_buffer_ptr, tile_size));
     }
   } else if (do_rotary) {
     ORT_ENFORCE(parameters.is_packed_qkv_, "Fused SplitPackedQKVWithRotaryEmbeddingAndCopyKV requires packed QKV input.");

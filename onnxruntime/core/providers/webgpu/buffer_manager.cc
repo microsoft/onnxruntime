@@ -290,25 +290,40 @@ class GraphCacheManager : public IBufferCacheManager {
   }
 
   void ReleaseBuffer(WGPUBuffer buffer) override {
-    auto buffer_size = static_cast<size_t>(wgpuBufferGetSize(buffer));
-    auto it = buckets_.find(buffer_size);
-    if (it != buckets_.end()) {
-      it->second.emplace_back(buffer);
-    } else {
-      // Insert a new bucket for non-standard buffer sizes
-      buckets_[buffer_size] = std::vector<WGPUBuffer>{buffer};
-    }
+    pending_buffers_.emplace_back(buffer);
   }
 
-  void OnRefresh(GraphCaptureState /*graph_capture_state*/) override {
-    // no-op - buffers are already in buckets_
+  void OnRefresh(GraphCaptureState graph_capture_state) override {
+    for (auto& buffer : pending_buffers_) {
+      if (graph_capture_state == GraphCaptureState::Default) {
+        auto buffer_size = static_cast<size_t>(wgpuBufferGetSize(buffer));
+        auto it = buckets_.find(buffer_size);
+        if (it != buckets_.end()) {
+          it->second.emplace_back(buffer);
+        } else {
+          // Insert a new bucket for non-standard buffer sizes
+          buckets_[buffer_size] = std::vector<WGPUBuffer>{buffer};
+        }
+      } else {
+        // During Capturing or Replaying, quarantine released buffers so that
+        // the captured bind_groups keep exclusive ownership of their buffers.
+        captured_buffers_.emplace_back(buffer);
+      }
+    }
+    pending_buffers_.clear();
   }
 
   ~GraphCacheManager() {
+    for (auto& buffer : pending_buffers_) {
+      wgpuBufferRelease(buffer);
+    }
     for (auto& pair : buckets_) {
       for (auto& buffer : pair.second) {
         wgpuBufferRelease(buffer);
       }
+    }
+    for (auto& buffer : captured_buffers_) {
+      wgpuBufferRelease(buffer);
     }
   }
 
@@ -333,6 +348,8 @@ class GraphCacheManager : public IBufferCacheManager {
   }
   std::unordered_map<size_t, size_t> buckets_limit_;
   std::unordered_map<size_t, std::vector<WGPUBuffer>> buckets_;
+  std::vector<WGPUBuffer> pending_buffers_;
+  std::vector<WGPUBuffer> captured_buffers_;
   std::vector<size_t> buckets_keys_;
 };
 
