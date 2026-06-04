@@ -121,8 +121,11 @@ void addIoBindingMethods(pybind11::module& m) {
         auto ml_type = NumpyTypeToOnnxRuntimeTensorType(type_num);
         // See comment in the int32_t element_type overload above: string tensors are not safe
         // to bind via a raw, non-owning pointer because no std::string objects are constructed
-        // in the caller buffer.
-        if (ml_type == DataTypeImpl::GetType<std::string>()) {
+        // in the caller buffer. Compare against the ONNX type enum rather than the singleton
+        // MLDataType pointer so the check stays correct even if the type registry returns a
+        // different (but equivalent) instance.
+        const auto* primitive_type = ml_type->AsPrimitiveDataType();
+        if (primitive_type != nullptr && primitive_type->GetDataType() == onnx::TensorProto::STRING) {
           throw std::runtime_error("Only binding non-string Tensors is currently supported");
         }
         OrtValue ml_value;
