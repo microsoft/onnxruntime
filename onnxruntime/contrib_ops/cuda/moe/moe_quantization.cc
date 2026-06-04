@@ -1152,9 +1152,14 @@ void QMoE::PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, Al
   // the SM80 fpA_intB layout, so they all pack as SM80. SM70 and older lack
   // INT8 LDSM and are unsupported. The compute-side runner selects the same
   // layout from this clamped arch, so the two cannot drift.
+  //
+  // SM75 is passed through unchanged (rather than clamped to 80) even though it
+  // shares SM80's layout: the compute-side dispatch (getLayoutDetailsForTransform)
+  // still has a distinct SM75 branch, so mirroring it here avoids confusing a
+  // reader into thinking prepack and dispatch disagree.
   ORT_ENFORCE(sm_ >= 75,
               "QMoE int4/int8 weight prepack requires SM75 or newer, got sm=", sm_);
-  const int packing_sm = (sm_ == 90) ? 90 : 80;
+  const int packing_sm = (sm_ == 90 || sm_ == 75) ? sm_ : 80;
 
   // Per-expert sizes.
   const size_t per_expert_bytes = static_cast<size_t>(n) * static_cast<size_t>(k) / pack_factor;
