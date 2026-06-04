@@ -183,12 +183,23 @@ bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node
     return false;
   }
 
-  // Resize with mode != "nearest" (linear/cubic) is not order-preserving on integers,
-  // so dropping the surrounding Q/DQ pair would change numerical results. Only the
-  // default nearest-neighbor mode is safe to fold. See issue #21319.
+  // Resize output depends on both the interpolation mode and the coordinate transformation mode:
+  //   - "nearest" mode copies existing input values, so it can operate directly on quantized integers.
+  //   - Non-nearest modes (e.g., "linear", "cubic") interpolate using float arithmetic, which is only
+  //     correct in the dequantized (float) domain, so QDQ must be preserved.
+  //   - "tf_crop_and_resize" writes extrapolation_value (authored in the float domain) into out-of-crop
+  //     positions; dropping QDQ would store that float value raw in the quantized domain, even for nearest.
+  // Only allow dropping QDQ for nearest mode without tf_crop_and_resize coordinate transformation.
   if (node.OpType() == "Resize") {
-    const auto* mode_attr = graph_utils::GetNodeAttribute(node, "mode");
-    if (mode_attr != nullptr && mode_attr->s() != "nearest") {
+    const auto& attrs = node.GetAttributes();
+    // "mode" defaults to "nearest" when absent. It is always present after Graph::Resolve() injects
+    // schema defaults; the absence check is a defensive fallback for hand-built/unresolved graphs.
+    const auto mode_iter = attrs.find("mode");
+    if (mode_iter != attrs.end() && mode_iter->second.s() != "nearest") {
+      return false;
+    }
+    const auto coord_mode_iter = attrs.find("coordinate_transformation_mode");
+    if (coord_mode_iter != attrs.end() && coord_mode_iter->second.s() == "tf_crop_and_resize") {
       return false;
     }
   }
@@ -987,6 +998,13 @@ bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& n
 
   if (dq_nodes.size() < 3) {  // no bias
     return true;
+  }
+
+  // When bias is present, QGemm folds bias into the int32 accumulator before
+  // applying the alpha*sa*sb output scale, which would incorrectly scale the
+  // bias by alpha. Require alpha==1 and beta==1 so the fused path is exact.
+  if (node.GetAttributes().at("alpha").f() != 1.0) {
+    return false;
   }
 
   if (node.GetAttributes().at("beta").f() != 1.0) {  // beta needs to be 1.0

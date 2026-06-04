@@ -41,6 +41,12 @@ TENSOR_NAME_QUANT_SUFFIX = "_quantized"
 MODEL_SIZE_THRESHOLD = 2147483648  # Quant model should use external data if >= 2GB
 
 FLOAT8_DISTRIBUTIONS = {}
+FLOAT8_TYPES = (
+    onnx_proto.TensorProto.FLOAT8E4M3FN,
+    onnx_proto.TensorProto.FLOAT8E4M3FNUZ,
+    onnx_proto.TensorProto.FLOAT8E5M2,
+    onnx_proto.TensorProto.FLOAT8E5M2FNUZ,
+)
 
 type_to_name = {getattr(TensorProto, k): k for k in dir(TensorProto) if isinstance(getattr(TensorProto, k), int)}
 
