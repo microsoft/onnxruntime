@@ -212,5 +212,35 @@ TEST(Col2ImOpTest, ImageShapeLargerThanColumnTensor) {
            {kDmlExecutionProvider});
 }
 
+TEST(Col2ImOpTest, StridesMustBePositive) {
+  OpTester test("Col2Im", 18);
+
+  test.AddAttribute("strides", std::vector<int64_t>{0, 1});
+  test.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+
+  test.AddInput<float>("input", {1, 1, 1}, std::vector<float>{1.0f});
+  test.AddInput<int64_t>("image_shape", {2}, std::vector<int64_t>{1, 1});
+  test.AddInput<int64_t>("block_shape", {2}, std::vector<int64_t>{1, 1});
+  test.AddOutput<float>("output", {1, 1, 1, 1}, std::vector<float>{0.0f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "All stride values must be positive",
+           {kDmlExecutionProvider});
+}
+
+TEST(Col2ImOpTest, DilationsMustBePositive) {
+  OpTester test("Col2Im", 18);
+
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("dilations", std::vector<int64_t>{0, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+
+  test.AddInput<float>("input", {1, 2, 1}, std::vector<float>{1.0f, 2.0f});
+  test.AddInput<int64_t>("image_shape", {2}, std::vector<int64_t>{1, 1});
+  test.AddInput<int64_t>("block_shape", {2}, std::vector<int64_t>{2, 1});
+  test.AddOutput<float>("output", {1, 1, 1, 1}, std::vector<float>{0.0f});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "All dilation values must be positive",
+           {kDmlExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime
