@@ -15,9 +15,6 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-#if defined(USE_KLEIDIAI)
-#include "kleidiai/mlasi_kleidiai.h"
-#endif
 
 //
 // Define the number of working buffer elements required per thread.
@@ -577,11 +574,9 @@ Return Value:
     const size_t FilterCount = Parameters->FilterCount;
     const size_t OutputSize = Parameters->OutputSize;
     const size_t K = Parameters->K;
-    bool use_gemm_batch_override = false;
-#if defined(USE_KLEIDIAI)
-    use_gemm_batch_override =
-        ArmKleidiAI::SelectConvRoute(Parameters) == ArmKleidiAI::ConvRoute::GemmFallback;
-#endif
+    bool use_gemm_batch_override =
+        GetMlasPlatform().MlasConvRouteOverride != nullptr &&
+        GetMlasPlatform().MlasConvRouteOverride(Parameters) == MlasConvRouteGemmFallback;
 
     //
     // Compute the strides to step through slices of the local segment.

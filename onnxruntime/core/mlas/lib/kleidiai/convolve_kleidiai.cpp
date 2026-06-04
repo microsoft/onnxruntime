@@ -24,9 +24,11 @@
 
 const KaiF32IMatmulKernel& imatmul_conv = GetKleidiAIF32IMatmulUKernel();
 
-// Hard cap of 2 MiB on temporary LHS packing chunks, intended to keep tiles
-// reasonably cache-friendly and to avoid oversized temporary buffers
-constexpr size_t MAX_LHS_CHUNK_BYTES = 2 * 1024 * 1024;
+// Bound for the per-thread packed LHS scratch buffer used by the chunked IGEMM path.
+// This is a heuristic budget (chosen because 2 MiB is a common L2 cache size) which limits
+// temporary memory growth while keeping chunks large enough to be worth the KAI packing overhead.
+// If one m_step block already exceeds the budget, processing is done one m_step at a time.
+constexpr size_t kMaxLhsPackedChunkBytes = 2 * 1024 * 1024;
 
 // Left-hand-side (input indirection) cache key
 struct LhsCacheKey {
@@ -143,12 +145,13 @@ static bool CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
         return false;
     }
 
-    const auto route = ArmKleidiAI::SelectConvRoute(Parameters);
+    const auto route_selection = ArmKleidiAI::SelectConvRoute(Parameters);
+    const auto route = route_selection.route;
 
     if (route == ArmKleidiAI::ConvRoute::Igemm) {
         // ensure LHS packed buffer size is non-zero
-        const size_t d_kh = ComputeKernelSize(Parameters->DilationShape[0], Parameters->KernelShape[0]);
-        const size_t d_kw = ComputeKernelSize(Parameters->DilationShape[1], Parameters->KernelShape[1]);
+        const size_t d_kh = route_selection.effective_kernel_h;
+        const size_t d_kw = route_selection.effective_kernel_w;
         const size_t m_step = imatmul_conv.ukernel.get_m_step();
 
         const size_t bytes_per_m_step = kai_get_lhs_packed_size_lhs_imatmul_pack_x32p2vlx1_x32p_sme(
@@ -502,7 +505,8 @@ static void ConvolveSme(const size_t co, //channels out
                         bool input_is_channels_last,
                         MLAS_THREADPOOL* ThreadPool) {
 
-    //compute corrected dimensions of dilated kernel
+    //dilation expands the logical kernel shape; RHS packing masks the inserted unused weights.
+    //this way, compute corrected dimensions of dilated kernel
     const auto d_kh = ComputeKernelSize(dilationh, kh);
     const auto d_kw = ComputeKernelSize(dilationw, kw);
 
@@ -513,6 +517,12 @@ static void ConvolveSme(const size_t co, //channels out
     size_t n_step = imatmul_conv.ukernel.get_n_step();
     size_t m_step = imatmul_conv.ukernel.get_m_step();
 
+    // Query the packed LHS buffer size for exactly one m_step block.
+    const size_t bytes_per_m_step = kai_get_lhs_packed_size_lhs_imatmul_pack_x32p2vlx1_x32p_sme(
+        m_step, d_kh * d_kw, ci);
+    // Sanity check to ensure data passed to the function is valid and won't cause a zero division error.
+    assert(bytes_per_m_step != 0);
+
     // tile iteration dimensions
     std::array<size_t,3> dim;
     dim[0] = 1;                          // B
@@ -520,11 +530,11 @@ static void ConvolveSme(const size_t co, //channels out
     dim[2] = MlasDivRoundup(co, n_step); // N
 
     //Minimize the kernel call count for the number of available threads
-    auto RequiredTiles = std::min(static_cast<size_t>(MlasGetMaximumThreadCount(ThreadPool)), dim[0]*dim[1]*dim[2]);
+    auto required_tiles = std::min(static_cast<size_t>(MlasGetMaximumThreadCount(ThreadPool)), dim[0]*dim[1]*dim[2]);
 
     //scale required tiles over available tile processors
-    dim[1] = MlasDivRoundup(RequiredTiles * dim[1], dim[1] * dim[2]);
-    dim[2] = MlasDivRoundup(RequiredTiles * dim[2], dim[1] * dim[2]);
+    dim[1] = MlasDivRoundup(required_tiles * dim[1], dim[1] * dim[2]);
+    dim[2] = MlasDivRoundup(required_tiles * dim[2], dim[1] * dim[2]);
 
     //compute new step sizes
     size_t m_tile_step = m_step * MlasDivRoundup(MlasDivRoundup(m, dim[1]), m_step);
@@ -596,7 +606,7 @@ static void ConvolveSme(const size_t co, //channels out
             const size_t rhs_packed_offset =
                 imatmul_conv.ukernel.get_rhs_packed_offset(n_idx * n_tile_step, d_kh * d_kw, ci);
 
-            auto BTile = reinterpret_cast<const void*>(
+            auto b_tile = reinterpret_cast<const void*>(
                 rhs_data + rhs_packed_offset
             );
 
@@ -608,14 +618,10 @@ static void ConvolveSme(const size_t co, //channels out
             // Actual number of rows in this tile (may be smaller for the last tile)
             size_t tile_m_size = std::min(m_tile_step, m - tile_m_start);
 
-            // Query the packed LHS buffer size for exactly one m_step block.
-            const size_t bytes_per_m_step = kai_get_lhs_packed_size_lhs_imatmul_pack_x32p2vlx1_x32p_sme(
-                m_step, d_kh * d_kw, ci);
-            ORT_ENFORCE(bytes_per_m_step != 0,
-                        "KleidiAI LHS packed size must be non-zero.");
-
             // Determine how many rows we can pack in one chunk.
-            size_t m_chunk = std::max<size_t>(m_step, MAX_LHS_CHUNK_BYTES / bytes_per_m_step * m_step);
+            const size_t max_m_step_chunks = kMaxLhsPackedChunkBytes / bytes_per_m_step;
+            // If bytes_per_m_step exceeds kMaxLhsPackedChunkBytes, process m_step at a time
+            size_t m_chunk = max_m_step_chunks == 0 ? m_step : m_step * max_m_step_chunks;
 
             // Do not exceed the number of rows available in this tile
             m_chunk = std::min<size_t>(tile_m_size, m_chunk);
@@ -624,29 +630,33 @@ static void ConvolveSme(const size_t co, //channels out
             const size_t lhs_buffer_bytes = kai_get_lhs_packed_size_lhs_imatmul_pack_x32p2vlx1_x32p_sme(
                 m_chunk, d_kh * d_kw, ci);
 
-            // Allocate a single reusable buffer for LHS packing
-            auto lhs = std::make_unique<std::byte[]>(lhs_buffer_bytes);
+            // Thread-local grow-only reusable buffer for LHS packing
+            thread_local std::vector<std::byte> lhs_buffer;
+            if (lhs_buffer.size() < lhs_buffer_bytes) {
+                lhs_buffer.resize(lhs_buffer_bytes);
+            }
+            auto* lhs = lhs_buffer.data();
 
             // Interpret the packed LHS buffer as the input A tile
             // for the matrix multiplication kernel.
-            auto ATile = reinterpret_cast<const float*>(lhs.get());
+            auto a_tile = reinterpret_cast<const float*>(lhs);
 
             for (size_t m_base = 0; m_base < tile_m_size; m_base += m_chunk) {
                 // Actual number of rows processed in this iteration.
                 // The last chunk may be smaller than m_chunk.
                 const size_t tile_size_m = std::min(m_chunk, tile_m_size - m_base);
 
-                // Pack TileSizeM rows of the LHS matrix into a temporary buffer.
+                // Pack tile_size_m rows of the LHS matrix into a temporary buffer.
                 kai_run_lhs_imatmul_pack_x32p2vlx1_x32p_sme(tile_size_m,
                                                             d_kh * d_kw,
                                                             ci,
                                                             lhs_ptrs.get() + (tile_m_start + m_base) * d_kh * d_kw,
                                                             reinterpret_cast<size_t>(activation_src),
                                                             reinterpret_cast<const void*>(pad_data),
-                                                            lhs.get());
+                                                            lhs);
 
                 // Get result tile, C
-                auto CTile = &reinterpret_cast<std::byte*>(result)[
+                auto c_tile = &reinterpret_cast<std::byte*>(result)[
                     (tile_m_start + m_base) * co * sizeof(float) +
                     n_idx * n_tile_step * sizeof(float)];
 
@@ -654,8 +664,8 @@ static void ConvolveSme(const size_t co, //channels out
                     << " M=" << tile_size_m << " N=" << tile_size_n
                     << " k_chunk_count=" << (d_kh * d_kw) << " k_chunk_length=" << ci);
 
-                imatmul_conv.ukernel.run_imatmul(tile_size_m, tile_size_n, d_kh * d_kw, ci, ATile, BTile,
-                                                 CTile, co * sizeof(float), -std::numeric_limits<float>::max(),
+                imatmul_conv.ukernel.run_imatmul(tile_size_m, tile_size_n, d_kh * d_kw, ci, a_tile, b_tile,
+                                                 c_tile, co * sizeof(float), -std::numeric_limits<float>::max(),
                                                  std::numeric_limits<float>::max());
             }
         });
