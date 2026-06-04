@@ -106,6 +106,13 @@ static bool TryAssignNodes(Graph& graph, const IndexedSubGraph& capability,
     }
   }
 
+  // When newly_assigned_nodes is provided, this call performs the tentative first-pass
+  // tagging of the NHWC two-pass partitioning flow. Those tags only exist so the layout
+  // transformer and the second GetCapability pass can recognize the candidate nodes; they
+  // may be dropped again before any partition is committed. Tentative tags must therefore
+  // not commit resource-accountant budget here. The budget for nodes that survive the
+  // second pass is committed later (see the deferred-commit step in GetCapabilityForEP).
+  const bool is_tentative_pass = (newly_assigned_nodes != nullptr);
   const bool acc_enabled = capability.IsAccountingEnabled();
   for (size_t i = 0, limit = capability.nodes.size(); i < limit; ++i) {
     auto* node = graph.GetNode(capability.nodes[i]);
@@ -114,7 +121,7 @@ static bool TryAssignNodes(Graph& graph, const IndexedSubGraph& capability,
     if (newly_assigned_nodes != nullptr && was_unassigned) {
       newly_assigned_nodes->push_back(node->Index());
     }
-    if (acc_enabled) {
+    if (acc_enabled && !is_tentative_pass) {
       capability.AccountForNode(i);
     }
   }
@@ -349,6 +356,23 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
 
     const NodeIndex end_node = graph.MaxNodeIndex();
 
+    // Pass-1 tags were applied tentatively without committing any resource-accountant
+    // budget (see TryAssignNodes). Capture the per-node costs computed during pass-1,
+    // keyed by node index, so the budget for the nodes that survive the second pass can
+    // be committed after the drop step below. The costs must be captured here because
+    // capabilities.clear() destroys the pass-1 capabilities (and their costs) next.
+    InlinedHashMap<NodeIndex, ResourceCount> pass1_node_costs;
+    if (params.resource_accountant != nullptr) {
+      for (const auto& capability : capabilities) {
+        const auto& sub_graph = *capability->sub_graph;
+        if (sub_graph.IsAccountingEnabled()) {
+          for (size_t i = 0, limit = sub_graph.nodes.size(); i < limit; ++i) {
+            pass1_node_costs.insert_or_assign(sub_graph.nodes[i], sub_graph.GetNodeCost(i));
+          }
+        }
+      }
+    }
+
     // Keep pass-1 EP assignments through the second GetCapability call so that EPs can
     // recognize already-tagged nodes (e.g. nodes transformed into kMSInternalNHWCDomain).
     capabilities.clear();
@@ -405,6 +429,28 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
         auto* node = graph.GetNode(node_index);
         if (node != nullptr && node->GetExecutionProviderType() == ep_type) {
           node->SetExecutionProviderType("");
+        }
+      }
+    }
+
+    // Commit resource-accountant budget for pass-1 tentatively-tagged nodes that survived
+    // the second pass (still claimed by this EP). Pass-1 deliberately deferred this commit
+    // (TryAssignNodes skipped accounting) so that nodes dropped in the loop above never
+    // leak phantom budget into later accounting decisions. New nodes introduced for the
+    // second pass (e.g. NHWC ops) carry their own costs and are accounted normally when
+    // their partitions are placed, so they are intentionally excluded here.
+    if (params.resource_accountant != nullptr) {
+      for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
+        if (pass2_node_indices.count(node_index) == 0) {
+          continue;
+        }
+        const auto* node = graph.GetNode(node_index);
+        if (node == nullptr || node->GetExecutionProviderType() != ep_type) {
+          continue;
+        }
+        auto cost_it = pass1_node_costs.find(node_index);
+        if (cost_it != pass1_node_costs.end()) {
+          params.resource_accountant->AddConsumedAmount(cost_it->second);
         }
       }
     }
