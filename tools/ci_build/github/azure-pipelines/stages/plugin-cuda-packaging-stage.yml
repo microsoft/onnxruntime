@@ -210,6 +210,8 @@ stages:
         # Use a sparse checkout to pull only the .config directory (avoids full repo clone).
         - checkout: self
           fetchDepth: 1
+          lfs: false
+          submodules: false
           sparseCheckoutDirectories: .config
 
         - ${{ if eq(parameters.build_windows_x64, true) }}:
