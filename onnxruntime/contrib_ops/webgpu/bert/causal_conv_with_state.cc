@@ -54,12 +54,42 @@ Status CausalConvWithStateProgram::GenerateShaderCode(ShaderHelper& shader) cons
   }
 
   shader.AddOutput("output", ShaderUsage::UseUniform);
-  shader.AddOutput("present_state", ShaderUsage::UseUniform);
+  if (output_present_state_) {
+    shader.AddOutput("present_state", ShaderUsage::UseUniform);
+  }
 
   return WGSL_TEMPLATE_APPLY(shader, "bert/causal_conv_with_state.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
                              WGSL_TEMPLATE_PARAMETER(has_conv_state, has_conv_state_),
+                             WGSL_TEMPLATE_PARAMETER(output_present_state, output_present_state_),
                              WGSL_TEMPLATE_PARAMETER(use_silu, activation_ == CausalConvActivation::Silu));
+}
+
+Status CausalConvUpdateStateProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  shader.AddInput("input", ShaderUsage::UseElementTypeAlias);
+  shader.AddOutput("present_state", ShaderUsage::UseUniform);
+
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.update_size")
+                            << "  let base_state = global_idx * uniforms.state_length;\n"
+                               "  let base_input = global_idx * uniforms.input_length;\n"
+                               "\n"
+                               "  if (uniforms.input_length >= uniforms.state_length) {\n"
+                               "    let input_offset = uniforms.input_length - uniforms.state_length;\n"
+                               "    for (var s = 0u; s < uniforms.state_length; s++) {\n"
+                               "      present_state[base_state + s] = input[base_input + input_offset + s];\n"
+                               "    }\n"
+                               "  } else {\n"
+                               "    let preserved_state = uniforms.state_length - uniforms.input_length;\n"
+                               "    for (var s = 0u; s < uniforms.state_length; s++) {\n"
+                               "      if (s < preserved_state) {\n"
+                               "        present_state[base_state + s] = present_state[base_state + s + uniforms.input_length];\n"
+                               "      } else {\n"
+                               "        present_state[base_state + s] = input[base_input + s - preserved_state];\n"
+                               "      }\n"
+                               "    }\n"
+                               "  }\n";
+
+  return Status::OK();
 }
 
 Status CausalConvWithState::ComputeInternal(ComputeContext& context) const {
@@ -113,22 +143,26 @@ Status CausalConvWithState::ComputeInternal(ComputeContext& context) const {
   // Output 1: present_state (B, D, K-1)
   std::vector<int64_t> state_dims{batch_size, channels, state_length};
   Tensor* present_state = context.Output(1, TensorShape(state_dims));
+  const bool conv_state_in_present_state = has_conv_state && conv_state->DataRaw() == present_state->DataRaw();
 
   if (input_shape.Size() == 0) {
     if (has_conv_state) {
-      ORT_RETURN_IF_ERROR(context.CopyTensor(*conv_state, *present_state));
+      if (!conv_state_in_present_state) {
+        ORT_RETURN_IF_ERROR(context.CopyTensor(*conv_state, *present_state));
+      }
     } else {
       context.FillZero(*present_state);
-      return Status::OK();
     }
+    return Status::OK();
   }
 
   // Create and run the shader program
-  CausalConvWithStateProgram program{activation_, has_bias, has_conv_state};
+  CausalConvWithStateProgram program{activation_, has_bias, has_conv_state, !conv_state_in_present_state};
 
   uint32_t output_size = static_cast<uint32_t>(batch_size * channels * input_length);
 
-  program.CacheHint(has_bias, has_conv_state, kernel_size, static_cast<int>(activation_));
+  program.CacheHint(has_bias, has_conv_state, !conv_state_in_present_state,
+                    kernel_size, static_cast<int>(activation_));
 
   program.AddInput({input, ProgramTensorMetadataDependency::Type})
       .AddInput({weight, ProgramTensorMetadataDependency::None});
@@ -140,9 +174,12 @@ Status CausalConvWithState::ComputeInternal(ComputeContext& context) const {
     program.AddInput({conv_state, ProgramTensorMetadataDependency::None});
   }
 
-  program.AddOutput({output, ProgramTensorMetadataDependency::None})
-      .AddOutput({present_state, ProgramTensorMetadataDependency::None})
-      .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+  program.AddOutput({output, ProgramTensorMetadataDependency::None});
+  if (!conv_state_in_present_state) {
+    program.AddOutput({present_state, ProgramTensorMetadataDependency::None});
+  }
+
+  program.SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariable({static_cast<uint32_t>(batch_size)})
       .AddUniformVariable({static_cast<uint32_t>(channels)})
       .AddUniformVariable({static_cast<uint32_t>(input_length)})
@@ -150,7 +187,22 @@ Status CausalConvWithState::ComputeInternal(ComputeContext& context) const {
       .AddUniformVariable({static_cast<uint32_t>(state_length)})
       .AddUniformVariable({output_size});
 
-  return context.RunProgram(program);
+  ORT_RETURN_IF_ERROR(context.RunProgram(program));
+
+  if (conv_state_in_present_state) {
+    CausalConvUpdateStateProgram update_state_program;
+    const uint32_t update_size = static_cast<uint32_t>(batch_size * channels);
+    update_state_program.AddInput({input, ProgramTensorMetadataDependency::Type})
+        .AddOutput({present_state, ProgramTensorMetadataDependency::None})
+        .SetDispatchGroupSize((update_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+        .AddUniformVariables({{static_cast<uint32_t>(input_length)},
+                              {static_cast<uint32_t>(state_length)},
+                              {update_size}});
+
+    ORT_RETURN_IF_ERROR(context.RunProgram(update_state_program));
+  }
+
+  return Status::OK();
 }
 
 }  // namespace webgpu

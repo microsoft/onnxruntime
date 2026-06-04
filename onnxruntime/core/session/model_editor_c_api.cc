@@ -77,6 +77,21 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateNode, const char* operator_name, co
   }
 
   if (attributes != nullptr) {
+    // Check for duplicate pointers in the attributes array to prevent double-free
+    onnxruntime::InlinedHashSet<const OrtOpAttr*> seen;
+    seen.reserve(attribs_len);
+    for (size_t i = 0; i < attribs_len; ++i) {
+      if (attributes[i] == nullptr) {
+        return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "attributes cannot contain null entries");
+      }
+
+      if (!seen.insert(attributes[i]).second) {
+        return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                     "Duplicate OrtOpAttr pointer found in attributes array. "
+                                     "Each OrtOpAttr can only appear once.");
+      }
+    }
+
     n->attributes.reserve(attribs_len);
     for (size_t i = 0; i < attribs_len; ++i) {
       n->attributes.push_back(*reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attributes[i]));

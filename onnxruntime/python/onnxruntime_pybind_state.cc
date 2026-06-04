@@ -278,13 +278,12 @@ py::object GetPyObjFromTensor(const OrtValue& ort_value,
     return py::cast<py::object>(result);
   }
 
-  const auto device_type = device.Type();
   // Create a numpy array on top of the OrtValue memory, no copy,
   // but only when the tensor owns the buffer. When the tensor wraps external
   // memory (e.g. a numpy input array passed through as output), the buffer
   // lifetime is not tied to the OrtValue and zero-copy would create a
   // dangling pointer. See https://github.com/microsoft/onnxruntime/issues/21922
-  if (device_type == OrtDevice::CPU) {
+  if (device.UsesCpuMemory()) {
     if (tensor.OwnsBuffer() || zero_copy_non_owning) {
       py::array result = PrimitiveTensorToNumpyOverOrtValue(ort_value);
       return py::cast<py::object>(result);
@@ -3248,6 +3247,195 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 #endif
           },
           R"pbdoc(Compile an ONNX model into an output stream using the provided write functor.)pbdoc");
+
+  // --- Model Package API ---
+#if !defined(ORT_MINIMAL_BUILD)
+  // Helper to create a PyInferenceSession from a pre-initialized OrtSession* (C API handle).
+  // PyInferenceSession's owning ctor is protected; this subclass provides access.
+  struct PyModelPackageSession : PyInferenceSession {
+    PyModelPackageSession(std::unique_ptr<InferenceSession> sess)
+        : PyInferenceSession(std::move(sess)) {}
+  };
+
+  // Wrapper classes to manage opaque C handles with proper RAII
+  struct PyModelPackageContext {
+    OrtModelPackageContext* ctx_{nullptr};
+    PyModelPackageContext(const std::string& package_path) {
+      auto path = ToPathString(package_path);
+      const auto* api = Ort::GetApi().GetModelPackageApi();
+      Ort::ThrowOnError(api->CreateModelPackageContext(path.c_str(), &ctx_));
+    }
+    ~PyModelPackageContext() {
+      if (ctx_) {
+        const auto* api = Ort::GetApi().GetModelPackageApi();
+        api->ReleaseModelPackageContext(ctx_);
+      }
+    }
+    PyModelPackageContext(const PyModelPackageContext&) = delete;
+    PyModelPackageContext& operator=(const PyModelPackageContext&) = delete;
+  };
+
+  struct PyModelPackageComponentContext {
+    OrtModelPackageComponentContext* ctx_{nullptr};
+    ~PyModelPackageComponentContext() {
+      if (ctx_) {
+        const auto* api = Ort::GetApi().GetModelPackageApi();
+        api->ReleaseModelPackageComponentContext(ctx_);
+      }
+    }
+    PyModelPackageComponentContext(const PyModelPackageComponentContext&) = delete;
+    PyModelPackageComponentContext& operator=(const PyModelPackageComponentContext&) = delete;
+    PyModelPackageComponentContext() = default;
+  };
+
+  struct PyModelPackageOptions {
+    OrtModelPackageOptions* opts_{nullptr};
+    ~PyModelPackageOptions() {
+      if (opts_) {
+        const auto* api = Ort::GetApi().GetModelPackageApi();
+        api->ReleaseModelPackageOptions(opts_);
+      }
+    }
+    PyModelPackageOptions(const PyModelPackageOptions&) = delete;
+    PyModelPackageOptions& operator=(const PyModelPackageOptions&) = delete;
+    PyModelPackageOptions() = default;
+  };
+
+  py::class_<PyModelPackageContext>(m, "ModelPackageContext",
+                                    R"pbdoc(Represents an opened model package for inspection and component selection.)pbdoc")
+      .def(py::init<const std::string&>(), py::arg("package_path"),
+           R"pbdoc(Open a model package from the given directory path.)pbdoc")
+      .def(
+          "get_component_names",
+          [](PyModelPackageContext& self) -> std::vector<std::string> {
+            const auto* api = Ort::GetApi().GetModelPackageApi();
+            const char* const* names = nullptr;
+            size_t count = 0;
+            Ort::ThrowOnError(api->ModelPackage_GetComponentNames(self.ctx_, &names, &count));
+            std::vector<std::string> result;
+            result.reserve(count);
+            for (size_t i = 0; i < count; ++i) {
+              result.emplace_back(names[i]);
+            }
+            return result;
+          },
+          R"pbdoc(Get the names of all components in the package.)pbdoc")
+      .def(
+          "get_variant_names",
+          [](PyModelPackageContext& self, const std::string& component_name) -> std::vector<std::string> {
+            const auto* api = Ort::GetApi().GetModelPackageApi();
+            const char* const* names = nullptr;
+            size_t count = 0;
+            Ort::ThrowOnError(api->ModelPackage_GetVariantNames(
+                self.ctx_, component_name.c_str(), &names, &count));
+            std::vector<std::string> result;
+            result.reserve(count);
+            for (size_t i = 0; i < count; ++i) {
+              result.emplace_back(names[i]);
+            }
+            return result;
+          },
+          py::arg("component_name"),
+          R"pbdoc(Get the variant names for a given component.)pbdoc")
+      .def(
+          "get_variant_ep_name",
+          [](PyModelPackageContext& self, const std::string& component_name,
+             const std::string& variant_name) -> std::optional<std::string> {
+            const auto* api = Ort::GetApi().GetModelPackageApi();
+            const char* ep = nullptr;
+            Ort::ThrowOnError(api->ModelPackage_GetVariantEpName(
+                self.ctx_, component_name.c_str(), variant_name.c_str(), &ep));
+            if (ep) return std::string(ep);
+            return std::nullopt;
+          },
+          py::arg("component_name"), py::arg("variant_name"),
+          R"pbdoc(Get the EP name for a variant. Returns None if not declared.)pbdoc")
+      .def(
+          "get_schema_version",
+          [](PyModelPackageContext& self) -> int64_t {
+            const auto* api = Ort::GetApi().GetModelPackageApi();
+            int64_t version = 0;
+            Ort::ThrowOnError(api->ModelPackage_GetSchemaVersion(self.ctx_, &version));
+            return version;
+          },
+          R"pbdoc(Get the schema version declared in the model package manifest.)pbdoc")
+      .def(
+          "select_component",
+          [](PyModelPackageContext& self, const std::string& component_name,
+             PyModelPackageOptions& options) -> std::unique_ptr<PyModelPackageComponentContext> {
+            const auto* api = Ort::GetApi().GetModelPackageApi();
+            auto result = std::make_unique<PyModelPackageComponentContext>();
+            Ort::ThrowOnError(api->SelectComponent(
+                self.ctx_, component_name.c_str(), options.opts_, &result->ctx_));
+            return result;
+          },
+          py::arg("component_name"), py::arg("options"),
+          R"pbdoc(Select a component and resolve its variant based on the provided options.
+Returns a ModelPackageComponentContext for inspecting the selected variant.)pbdoc");
+
+  py::class_<PyModelPackageOptions>(m, "ModelPackageOptions",
+                                    R"pbdoc(Options used for variant selection in a model package.
+Created from a SessionOptions to capture EP configuration for variant matching.)pbdoc")
+      .def(py::init([](PySessionOptions& session_options) {
+             const auto* api = Ort::GetApi().GetModelPackageApi();
+             auto result = std::make_unique<PyModelPackageOptions>();
+             Ort::ThrowOnError(api->CreateModelPackageOptionsFromSessionOptions(
+                 GetOrtEnv(), &session_options, &result->opts_));
+             return result;
+           }),
+           py::arg("session_options"),
+           R"pbdoc(Create model package options from a SessionOptions instance.
+The EP configured on the session options is used for variant selection.)pbdoc");
+
+  py::class_<PyModelPackageComponentContext>(m, "ModelPackageComponentContext",
+                                             R"pbdoc(Represents a selected component within a model package.
+Provides access to the resolved variant's files, session options, and metadata.)pbdoc")
+      .def(
+          "get_selected_variant_folder_path",
+          [](PyModelPackageComponentContext& self) -> std::string {
+            const auto* api = Ort::GetApi().GetModelPackageApi();
+            const ORTCHAR_T* path = nullptr;
+            Ort::ThrowOnError(api->ModelPackageComponent_GetSelectedVariantFolderPath(self.ctx_, &path));
+            return PathToUTF8String(PathString(path));
+          },
+          R"pbdoc(Get the folder path of the selected variant.)pbdoc")
+      .def(
+          "get_selected_variant_name",
+          [](PyModelPackageComponentContext& self) -> std::string {
+            const auto* api = Ort::GetApi().GetModelPackageApi();
+            const char* name = nullptr;
+            Ort::ThrowOnError(api->ModelPackageComponent_GetSelectedVariantName(
+                self.ctx_, &name));
+            return name ? std::string(name) : std::string();
+          },
+          R"pbdoc(Get the name of the selected variant.)pbdoc")
+      .def(
+          "create_session",
+          [](PyModelPackageComponentContext& self, py::object session_options_obj) -> std::unique_ptr<PyInferenceSession> {
+            const auto* api = Ort::GetApi().GetModelPackageApi();
+            OrtSession* ort_session = nullptr;
+            if (session_options_obj.is_none()) {
+              Ort::ThrowOnError(api->CreateSession(GetOrtEnv(), self.ctx_, nullptr, &ort_session));
+            } else {
+              auto& so = session_options_obj.cast<PySessionOptions&>();
+              Ort::ThrowOnError(api->CreateSession(GetOrtEnv(), self.ctx_, &so, &ort_session));
+            }
+            // OrtSession* is a reinterpret_cast of InferenceSession*
+            auto* inference_session = reinterpret_cast<InferenceSession*>(ort_session);
+            std::unique_ptr<InferenceSession> session_ptr(inference_session);
+            return std::make_unique<PyModelPackageSession>(std::move(session_ptr));
+          },
+          py::arg("session_options") = py::none(),
+          R"pbdoc(Create an InferenceSession from the selected component variant.
+
+Args:
+    session_options: Optional SessionOptions override. If None, uses the options
+        captured during variant selection with per-file options merged on top.
+        If provided, variant-specific options are NOT applied.
+
+Returns:
+    An InferenceSession ready for inference.)pbdoc");
+#endif  // !defined(ORT_MINIMAL_BUILD)
 }
 
 bool InitArray() {
