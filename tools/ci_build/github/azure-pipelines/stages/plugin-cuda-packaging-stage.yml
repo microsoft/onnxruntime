@@ -187,8 +187,13 @@ stages:
           - Win_plugin_cuda_x64_Build
         - ${{ if eq(parameters.build_linux_x64, true) }}:
           - Linux_plugin_cuda_x64
-        - ${{ if eq(parameters.build_linux_aarch64, true) }}:
-          - Linux_plugin_cuda_aarch64
+        # TODO: win-arm64 and linux-aarch64 are still being developed.
+        # - ${{ if eq(parameters.build_windows_arm64, true) }}:
+        #   - Win_plugin_cuda_arm64_Build
+        # - ${{ if eq(parameters.build_linux_aarch64, true) }}:
+        #   - Linux_plugin_cuda_aarch64
+        # NOTE: macOS arm64 (Apple Silicon) does not have CUDA support since
+        # Apple devices do not use Nvidia GPUs.
       jobs:
       - job: CreateZipPackages
         displayName: 'Create Foundry Local CUDA Plugin-EP Zip Packages'
@@ -221,12 +226,20 @@ stages:
               artifactName: cuda_plugin_linux_x64
               targetPath: $(Build.SourcesDirectory)/cuda-plugin-linux-x64
 
-        - ${{ if eq(parameters.build_linux_aarch64, true) }}:
-          - task: DownloadPipelineArtifact@2
-            displayName: 'Download cuda_plugin_linux_aarch64'
-            inputs:
-              artifactName: cuda_plugin_linux_aarch64
-              targetPath: $(Build.SourcesDirectory)/cuda-plugin-linux-aarch64
+        # TODO: win-arm64 and linux-aarch64 are still being developed.
+        # - ${{ if eq(parameters.build_windows_arm64, true) }}:
+        #   - task: DownloadPipelineArtifact@2
+        #     displayName: 'Download cuda_plugin_win_arm64'
+        #     inputs:
+        #       artifactName: cuda_plugin_win_arm64
+        #       targetPath: $(Build.SourcesDirectory)/cuda-plugin-win-arm64
+
+        # - ${{ if eq(parameters.build_linux_aarch64, true) }}:
+        #   - task: DownloadPipelineArtifact@2
+        #     displayName: 'Download cuda_plugin_linux_aarch64'
+        #     inputs:
+        #       artifactName: cuda_plugin_linux_aarch64
+        #       targetPath: $(Build.SourcesDirectory)/cuda-plugin-linux-aarch64
 
         - task: PowerShell@2
           displayName: 'Create version.json and zip packages for each platform'
@@ -237,10 +250,13 @@ stages:
               New-Item -ItemType Directory -Path $outputDir -Force
 
               # Add new platforms here as they are implemented.
+              # NOTE: macOS arm64 (Apple Silicon) is excluded — no CUDA support since Apple devices do not use Nvidia GPUs.
               $platforms = @(
                 @{ name = 'win-x64';        dir = '$(Build.SourcesDirectory)/cuda-plugin-win-x64' },
-                @{ name = 'linux-x64';      dir = '$(Build.SourcesDirectory)/cuda-plugin-linux-x64' },
-                @{ name = 'linux-aarch64';  dir = '$(Build.SourcesDirectory)/cuda-plugin-linux-aarch64' }
+                @{ name = 'linux-x64';      dir = '$(Build.SourcesDirectory)/cuda-plugin-linux-x64' }
+                # TODO: win-arm64 and linux-aarch64 are still being developed.
+                # @{ name = 'win-arm64';      dir = '$(Build.SourcesDirectory)/cuda-plugin-win-arm64' },
+                # @{ name = 'linux-aarch64';  dir = '$(Build.SourcesDirectory)/cuda-plugin-linux-aarch64' }
               )
 
               $resolvedVersion = $null
