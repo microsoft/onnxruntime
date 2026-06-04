@@ -3237,7 +3237,10 @@ TEST(ResizeOpTest, Axes_NegativeInRange_18) {
   test.AddInput<float>("scales", {int64_t(scales.size())}, scales, true);
 
   test.AddOutput<float>("Y", output_shape, Y);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kQnnExecutionProvider});
+  // OpenVINO EP's Resize importer does not normalize negative axes against the input rank,
+  // so it rejects models that the ONNX spec accepts. Tracked by GH issue #28788.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 // When axes is provided, the sizes input length must match axes length so the scatter

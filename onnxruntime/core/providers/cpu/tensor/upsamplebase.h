@@ -304,6 +304,12 @@ class UpsampleBase {
         auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
         rank = static_cast<int64_t>(tensor_info.GetDimensionsCount());
       }
+      // When axes are present and the input rank is statically known, validate axes and cache
+      // the normalized form so the inference hot path can skip the bitmap allocation.
+      if (rank > 0 && !axes_.empty()) {
+        ORT_THROW_IF_ERROR(ValidateAndNormalizeAxes(rank, normalized_axes_));
+        normalized_axes_rank_ = rank;
+      }
       if (get_scale && scale->Shape().Size() > 0 && ((opset < 18) || (rank > 0 && opset >= 18))) {
         ORT_THROW_IF_ERROR(ParseScalesData(scale, scales_, rank));
         scales_cached_ = true;
@@ -338,6 +344,8 @@ class UpsampleBase {
   InlinedVector<float> scales_;
   InlinedVector<float> roi_;
   TensorShapeVector axes_;
+  TensorShapeVector normalized_axes_;
+  int64_t normalized_axes_rank_ = -1;
 
   bool scales_cached_;
   bool roi_cached_;
@@ -502,9 +510,15 @@ class UpsampleBase {
 
   // Resolve negative entries in axes_ against the supplied rank, verify each is in range,
   // and verify that no two entries collide after normalization. Populates normalized_axes
-  // with the canonical non-negative indices in the original order.
+  // with the canonical non-negative indices in the original order. When the input rank is
+  // statically known, the constructor pre-populates normalized_axes_ and this call becomes
+  // a copy on the inference hot path.
   Status ValidateAndNormalizeAxes(int64_t rank, TensorShapeVector& normalized_axes) const {
     ORT_RETURN_IF_NOT(rank > 0, "Rank must be positive when axes is provided.");
+    if (rank == normalized_axes_rank_) {
+      normalized_axes = normalized_axes_;
+      return Status::OK();
+    }
     normalized_axes.clear();
     normalized_axes.reserve(axes_.size());
     InlinedVector<bool> seen(static_cast<size_t>(rank), false);
@@ -684,22 +698,29 @@ class UpsampleBase {
   // So we need to update it accordingly.
   Status ComputeROIWithAxes(InlinedVector<float>& roi_array, size_t rank) const {
     if (axes_.size()) {
-      ORT_RETURN_IF_NOT(roi_array.size() >= 2 * axes_.size(),
+      // Per-axis ROI is supplied as a flat [start..., end...] of length 2 * len(axes).
+      // The default-ROI path fills roi_array with [0..., 1...] of length 2 * rank, in which
+      // case the canonical full-rank ROI is already correct and no scatter is needed.
+      const bool per_axis_roi = roi_array.size() == 2 * axes_.size();
+      ORT_RETURN_IF_NOT(per_axis_roi || roi_array.size() == 2 * rank,
                         "roi input length (", roi_array.size(),
-                        ") must be at least 2 * number of axes (", 2 * axes_.size(), ").");
-      InlinedVector<float> roi_tmp(rank * 2, 0);
-      for (size_t i = rank; i < rank * 2; ++i) {
-        roi_tmp[i] = 1;
-      }
+                        ") must be either 2 * rank (", 2 * rank,
+                        ") or 2 * number of axes (", 2 * axes_.size(), ").");
       const int64_t rank_i64 = static_cast<int64_t>(rank);
       TensorShapeVector normalized_axes;
       ORT_RETURN_IF_ERROR(ValidateAndNormalizeAxes(rank_i64, normalized_axes));
-      for (size_t i = 0; i < normalized_axes.size(); i++) {
-        const auto v_in_axes = static_cast<size_t>(normalized_axes[i]);
-        roi_tmp[v_in_axes] = (roi_array[i]);
-        roi_tmp[rank + v_in_axes] = (roi_array[axes_.size() + i]);
+      if (per_axis_roi) {
+        InlinedVector<float> roi_tmp(rank * 2, 0);
+        for (size_t i = rank; i < rank * 2; ++i) {
+          roi_tmp[i] = 1;
+        }
+        for (size_t i = 0; i < normalized_axes.size(); i++) {
+          const auto v_in_axes = static_cast<size_t>(normalized_axes[i]);
+          roi_tmp[v_in_axes] = roi_array[i];
+          roi_tmp[rank + v_in_axes] = roi_array[axes_.size() + i];
+        }
+        roi_array.swap(roi_tmp);
       }
-      roi_array.swap(roi_tmp);
     }
     return Status::OK();
   }
