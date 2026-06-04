@@ -371,9 +371,7 @@ if (CPUINFO_SUPPORTED)
       PATCH_COMMAND
         ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_cpuinfo_h_for_arm64ec.patch &&
         # https://github.com/pytorch/cpuinfo/pull/324
-        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_vcpkg_arm64ec_support.patch &&
-        # https://github.com/pytorch/cpuinfo/pull/348
-        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/win_arm_fp16_detection_fallback.patch
+        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_vcpkg_arm64ec_support.patch
       FIND_PACKAGE_ARGS NAMES cpuinfo
     )
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
