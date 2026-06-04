@@ -40,7 +40,7 @@ struct PyAdapterFormatReaderWriter {
       : format_version_(format_version),
         adapter_version_(adapter_version),
         model_version_(model_version),
-        loaded_adater_(std::move(loaded_adapter)),
+        loaded_adapter_(std::move(loaded_adapter)),
         parameters_(std::move(params)) {}
 
   int format_version_{adapters::kAdapterFormatVersion};
@@ -48,7 +48,7 @@ struct PyAdapterFormatReaderWriter {
   int model_version_{0};
   // This container is used when reading the the file so
   // OrtValue objects can be backed by it. Not exposed to Python
-  std::optional<lora::LoraAdapter> loaded_adater_;
+  std::optional<lora::LoraAdapter> loaded_adapter_;
   // This is a dictionary of string -> OrtValue
   // this is populated directly on write and
   // built on top of the loaded_adapter on read
@@ -69,11 +69,6 @@ void addAdapterFormatMethods(pybind11::module& m) {
           "adapter_version",
           [](const PyAdapterFormatReaderWriter* reader_writer) -> int { return reader_writer->adapter_version_; },
           [](PyAdapterFormatReaderWriter* reader_writer, int adapter_version) -> void { reader_writer->adapter_version_ = adapter_version; },
-          R"pbdoc("Enables user to read format version stored in the file")pbdoc")
-      .def_property(
-          "adapter_version",
-          [](const PyAdapterFormatReaderWriter* reader_writer) -> int { return reader_writer->adapter_version_; },
-          [](PyAdapterFormatReaderWriter* reader_writer, int adapter_version) -> void { reader_writer->adapter_version_ = adapter_version; },
           R"pbdoc("Enables user to read/write adapter version stored in the file")pbdoc")
       .def_property(
           "model_version",
@@ -82,11 +77,34 @@ void addAdapterFormatMethods(pybind11::module& m) {
           R"pbdoc("Enables user to read/write model version this adapter was created for")pbdoc")
       .def_property(
           "parameters",
+          // The dict's values are pybind11 wrappers around raw OrtValue* pointers
+          // that alias storage owned by PyAdapterFormatReaderWriter::loaded_adapter_
+          // (see read_adapter below: entries are produced via py::cast(&ort_value),
+          // i.e. non-owning views into the LoraAdapter's params_values_ map).
+          //
+          // Without an explicit keep-alive, Python users following the natural
+          // pattern
+          //
+          //     params = ort.AdapterFormat.read_adapter(path).parameters
+          //
+          // would silently get a dict of dangling pointers: the temporary
+          // AdapterFormat (and with it the LoraAdapter that backs every OrtValue)
+          // is destroyed at the end of the expression, and any subsequent access
+          // such as params["x"].numpy() would dereference freed memory.
+          //
+          // Python callers reasonably expect refcounting to keep parents alive
+          // while derived objects are still referenced; this is the binding
+          // author's responsibility for non-owning views. py::keep_alive<0, 1>
+          // ties the returned dict (return value, index 0) to the owning
+          // PyAdapterFormatReaderWriter (self, index 1), so the parent — and
+          // therefore the underlying adapter buffer — survives at least as long
+          // as the dict the caller holds.
           [](const PyAdapterFormatReaderWriter* reader_writer) -> py::dict { return reader_writer->parameters_; },
           [](PyAdapterFormatReaderWriter* reader_writer, py::dict& parameters) -> void {
             reader_writer->parameters_ = parameters;
           },
-          R"pbdoc("Enables user to read/write adapter version stored in the file")pbdoc")
+          py::keep_alive<0, 1>(),
+          R"pbdoc("Enables user to read/write the dictionary of adapter parameters (name -> OrtValue)")pbdoc")
       .def(
           "export_adapter",
           [](const PyAdapterFormatReaderWriter* reader_writer, const std::wstring& path) {

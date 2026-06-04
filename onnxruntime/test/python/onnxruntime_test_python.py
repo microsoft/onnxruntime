@@ -2103,6 +2103,41 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(expected_val.shape(), value.shape())
             np.testing.assert_allclose(value.numpy(), expected_val.numpy())
 
+    def test_adapter_parameters_keep_alive(self):
+        # Regression test: AdapterFormat.parameters returned a dict of OrtValue
+        # views into the parent adapter without a pybind11 keep_alive policy.
+        # The natural pattern below dropped the parent and left the dict with
+        # dangling pointers, causing a use-after-free on the next access.
+        adapter_version = 1
+        model_version = 1
+        file_path = pathlib.Path(os.path.realpath(__file__)).parent
+        file_path = str(file_path / "test_adapter_keep_alive.onnx_adapter")
+
+        float_data_type = 1
+        val = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        param_1 = np.array(val).astype(np.float32).reshape(5, 2)
+
+        ort_val_1 = onnxrt.OrtValue.ortvalue_from_numpy_with_onnx_type(param_1, float_data_type)
+
+        adapter_format = onnxrt.AdapterFormat()
+        adapter_format.set_adapter_version(adapter_version)
+        adapter_format.set_model_version(model_version)
+        adapter_format.set_parameters({"param_1": ort_val_1})
+        adapter_format.export_adapter(file_path)
+
+        try:
+            # Drop the AdapterFormat temporary; only `params` keeps a reference.
+            params = onnxrt.AdapterFormat.read_adapter(file_path).parameters
+            gc.collect()
+
+            self.assertIn("param_1", params)
+            value = params["param_1"]
+            self.assertTrue(value.is_tensor())
+            self.assertEqual(value.shape(), [5, 2])
+            np.testing.assert_allclose(value.numpy(), param_1)
+        finally:
+            os.remove(file_path)
+
     def test_run_with_adapter(self):
         model_path = get_name("lora/two_params_lora_model.onnx")
         file_path = os.getcwd() + "/" + get_name("lora/two_params_lora_model.onnx_adapter")
