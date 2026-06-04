@@ -48,10 +48,18 @@ namespace Dml
     static Status HResultToStatus(HRESULT hr, const char* operation, const char* details)
     {
         const StatusCode status_code = hr == E_INVALIDARG ? INVALID_ARGUMENT : FAIL;
-        return Status(ONNXRUNTIME, status_code,
-                      onnxruntime::MakeString(operation, " failed with HRESULT 0x",
-                                              std::setfill('0'), std::uppercase, std::hex, std::setw(8),
-                                              static_cast<uint32_t>(hr), ": ", details));
+        return Status(
+            ONNXRUNTIME,
+            status_code,
+            onnxruntime::MakeString(
+                operation,
+                " failed with HRESULT 0x",
+                std::setfill('0'),
+                std::uppercase,
+                std::hex,
+                std::setw(8),
+                static_cast<uint32_t>(hr), ": ", details
+            ));
     }
 #endif
 
@@ -1026,7 +1034,7 @@ namespace Dml
         ORT_TRY
         {
 #endif
-        m_readbackHeap->ReadbackFromGpu(dstDatas, dataSizesInBytes, srcDatas, srcState);
+            m_readbackHeap->ReadbackFromGpu(dstDatas, dataSizesInBytes, srcDatas, srcState);
 #ifndef ORT_NO_EXCEPTIONS
         }
         ORT_CATCH(const wil::ResultException& ex)
