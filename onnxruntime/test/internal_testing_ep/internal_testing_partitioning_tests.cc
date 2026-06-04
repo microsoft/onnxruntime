@@ -5,18 +5,21 @@
 
 #include "core/common/logging/logging.h"
 #include "core/framework/compute_capability.h"
-#include "core/framework/model_metadef_id_generator.h"
 #include "core/framework/utils.h"
-#include "core/providers/partitioning_utils.h"
 #include "core/session/inference_session.h"
 
 #include "test/unittest_util/framework_test_utils.h"
-#include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/internal_testing_ep/internal_testing_execution_provider.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/test_utils.h"
+
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/framework/model_metadef_id_generator.h"
+#include "core/providers/partitioning_utils.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
