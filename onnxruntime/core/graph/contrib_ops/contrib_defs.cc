@@ -1529,11 +1529,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "are raw, un-prepacked [E, N, K/pack] tensors as produced by "
               "quantize_matmul_{4,8}bits; the kernel runs the CUTLASS layout transform itself "
               "in PrePack(), matching the behaviour of MatMulNBits and removing the offline "
-              "pre-pack requirement from exporters. This attribute is optional with no schema "
-              "default so each execution provider can pick its own backward-compatible default "
-              "(an absent attribute is treated the same as -1/auto).",
+              "pre-pack requirement from exporters. Defaults to -1 (auto) so each execution "
+              "provider can pick its own backward-compatible default rather than the schema "
+              "imposing one.",
               AttributeProto::INT,
-              false)
+              static_cast<int64_t>(-1))
         .Input(0,
                "input",
                "2D tensor with shape (num_tokens, hidden_size), or "
