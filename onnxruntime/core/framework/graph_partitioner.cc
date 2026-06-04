@@ -439,6 +439,14 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     // leak phantom budget into later accounting decisions. New nodes introduced for the
     // second pass (e.g. NHWC ops) carry their own costs and are accounted normally when
     // their partitions are placed, so they are intentionally excluded here.
+    //
+    // Only the consumed total is adjusted here (AddConsumedAmount); the per-node initializer
+    // weight tracking (CommitWeightsForNode) is intentionally not replayed. The pending weight
+    // state computed in pass 1 is discarded by ResetForNewPass before pass 2 and cannot be
+    // committed for survivors without re-probing, which pass 2 does not do for already-tagged
+    // nodes. Leaving those weights uncommitted is the safe direction: in ad-hoc accounting mode
+    // a shared initializer may be re-counted in a later partitioning iteration (a conservative
+    // over-estimate) but is never under-counted, so the configured budget can never be exceeded.
     if (params.resource_accountant != nullptr) {
       for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
         if (pass2_node_indices.count(node_index) == 0) {

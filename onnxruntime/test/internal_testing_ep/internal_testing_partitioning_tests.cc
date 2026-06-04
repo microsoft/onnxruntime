@@ -48,7 +48,9 @@ using namespace onnxruntime::internal_testing_ep;
 // it would be possible to use ORT format models but the same partitioning code would run either way
 #if !defined(ORT_MINIMAL_BUILD)
 
-#if !defined(DISABLE_CONTRIB_OPS)
+// These NHWC two-pass partitioning helpers and tests only use ONNX-domain ops
+// (Conv, LogSoftmax) and core framework utilities, so they are intentionally not
+// guarded by DISABLE_CONTRIB_OPS and provide regression coverage in contrib-disabled builds.
 namespace {
 
 class TwoPassNhwcTestExecutionProvider : public IExecutionProvider {
@@ -251,7 +253,6 @@ class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
 };
 
 }  // namespace
-#endif  // !defined(DISABLE_CONTRIB_OPS)
 
 #define ORT_MODEL_FOLDER ORT_TSTR("testdata/")
 
@@ -350,7 +351,6 @@ TEST(InternalTestingEP, TestDependenciesCorrectlyHandled) {
   ASSERT_EQ(num_other_nodes, 2);
 }
 
-#if !defined(DISABLE_CONTRIB_OPS)
 TEST(InternalTestingEP, NhwcSecondPassDropFallsBackFromCpuKernelNode) {
   std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}, {kMSDomain, 1}};
   Model model("NhwcSecondPassDropFallsBackFromCpuKernelNode",
@@ -535,7 +535,6 @@ TEST(InternalTestingEP, NhwcTwoPassAccountingCommitsOnlySurvivors) {
   EXPECT_NE(*observed_consumed, expected_conv_cost + expected_log_softmax_cost)
       << "Dropped LogSoftmax must not consume budget.";
 }
-#endif  // !defined(DISABLE_CONTRIB_OPS)
 
 // Infrastructure that was used to check NNAPI coverage.
 // Ideally this could be updated to read the model paths, supported ops and stop ops from input files
