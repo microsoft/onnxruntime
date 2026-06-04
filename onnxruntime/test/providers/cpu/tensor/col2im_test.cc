@@ -242,5 +242,40 @@ TEST(Col2ImOpTest, DilationsMustBePositive) {
            {kDmlExecutionProvider});
 }
 
+// The dilated kernel must fit within the padded image. With dilations={1,2} and block_shape={1,2}
+// the second dimension's dilated kernel extent is 3, larger than the padded image extent of 1, so
+// the kernel must reject the inputs instead of computing a negative/zero sliding-block count.
+TEST(Col2ImOpTest, PaddedImageSmallerThanDilatedKernel) {
+  OpTester test("Col2Im", 18);
+
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("dilations", std::vector<int64_t>{1, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+
+  test.AddInput<float>("input", {1, 2, 1}, std::vector<float>{1.0f, 2.0f});
+  test.AddInput<int64_t>("image_shape", {2}, std::vector<int64_t>{1, 1});
+  test.AddInput<int64_t>("block_shape", {2}, std::vector<int64_t>{1, 2});
+  test.AddOutput<float>("output", {1, 1, 1, 1}, std::vector<float>{0.0f});
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Padded image extent is smaller than the dilated kernel", {kDmlExecutionProvider});
+}
+
+// The column tensor's channel dimension (dim[1]) must be a positive multiple of prod(block_shape).
+// Here prod(block_shape) = 4 but dim[1] = 3, so the kernel must reject the inputs.
+TEST(Col2ImOpTest, ColumnChannelsNotMultipleOfBlock) {
+  OpTester test("Col2Im", 18);
+
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+
+  test.AddInput<float>("input", {1, 3, 1}, std::vector<float>{1.0f, 2.0f, 3.0f});
+  test.AddInput<int64_t>("image_shape", {2}, std::vector<int64_t>{2, 2});
+  test.AddInput<int64_t>("block_shape", {2}, std::vector<int64_t>{2, 2});
+  test.AddOutput<float>("output", {1, 1, 2, 2}, std::vector<float>(4, 0.0f));
+  test.Run(OpTester::ExpectResult::kExpectFailure, "must be a positive multiple of prod(block_shape)",
+           {kDmlExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime
