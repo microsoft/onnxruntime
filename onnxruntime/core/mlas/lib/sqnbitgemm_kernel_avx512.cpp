@@ -494,5 +494,8 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512 = []() {
     d.SQ8BitGemmKernel_BlkSum_CompInt8 = SQ8BitGemmKernel_BlkSum_CompInt8_avx512;
     d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx512;
 
+    // 2-bit native CompInt8 path is registered in the AVX-512-VNNI dispatch only.
+    // Hosts with AVX-512 but no VNNI fall through to the existing LUT path.
+
     return d;
 }();

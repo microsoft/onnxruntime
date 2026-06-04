@@ -138,6 +138,60 @@ BENCHMARK(QNBITGEMM<float, 4>)->Apply(QNBitGemmArgs<float>)->UseRealTime();
 BENCHMARK(QNBITGEMM<float, 8>)->Apply(QNBitGemmArgs<float>)->UseRealTime();
 BENCHMARK(QNBITGEMM<MLAS_FP16, 4>)->Apply(QNBitGemmArgs<MLAS_FP16>)->UseRealTime();
 
+// Customer MatMulNBits shapes mirrored at 4-bit for a head-to-head comparison
+// vs the W2 LUT path (LUTGEMM_COMPUTE/CUSTOMER). Customer model uses BlkLen=64.
+// Five distinct (K, N) pairs:
+//   (K=384,  N=1024): 20 nodes
+//   (K=1024, N=192):  40 nodes
+//   (K=1024, N=384):  20 nodes
+//   (K=1024, N=4096): 20 nodes
+//   (K=4096, N=1024): 20 nodes
+// M=128 is the widest-gap prefill shape from e2e benchmarks.
+static void QNBitGemmCustomerArgs(benchmark::internal::Benchmark* b) {
+  b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "HasBias", "ComputeType"});
+  const int64_t M = 128;
+  const int64_t BlkLen = 64;
+  const int64_t Threads = 8;
+  const int64_t Symmetric = 1;
+  const int64_t HasBias = 1;
+  for (auto kn : {std::pair<int64_t, int64_t>{384, 1024},
+                  std::pair<int64_t, int64_t>{1024, 192},
+                  std::pair<int64_t, int64_t>{1024, 384},
+                  std::pair<int64_t, int64_t>{1024, 4096},
+                  std::pair<int64_t, int64_t>{4096, 1024}}) {
+    for (int64_t ct : {int64_t{SQNBIT_CompFp32}, int64_t{SQNBIT_CompInt8}}) {
+      b->Args({BlkLen, M, kn.second, kn.first, Threads, Symmetric, HasBias, ct});
+    }
+  }
+}
+
+BENCHMARK(QNBITGEMM<float, 4>)->Apply(QNBitGemmCustomerArgs)->UseRealTime();
+
+// 2-bit weight rows for the same customer shapes. Phase 2b is a scalar
+// reference; Phase 3 swaps in the AVX-512 (+VNNI) vectorized kernel and
+// these rows become the head-to-head LUT-vs-native comparison surface.
+// W2 vectorized path supports only BlkLen=64 + SQNBIT_CompInt8; the
+// SQNBIT_CompFp32 row exercises the LUT fallback.
+static void QNBit2BitCustomerArgs(benchmark::internal::Benchmark* b) {
+  b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "HasBias", "ComputeType"});
+  const int64_t M = 128;
+  const int64_t BlkLen = 64;
+  const int64_t Threads = 8;
+  const int64_t Symmetric = 1;  // W2 vectorized path is symmetric-only.
+  const int64_t HasBias = 1;
+  for (auto kn : {std::pair<int64_t, int64_t>{384, 1024},
+                  std::pair<int64_t, int64_t>{1024, 192},
+                  std::pair<int64_t, int64_t>{1024, 384},
+                  std::pair<int64_t, int64_t>{1024, 4096},
+                  std::pair<int64_t, int64_t>{4096, 1024}}) {
+    for (int64_t ct : {int64_t{SQNBIT_CompFp32}, int64_t{SQNBIT_CompInt8}}) {
+      b->Args({BlkLen, M, kn.second, kn.first, Threads, Symmetric, HasBias, ct});
+    }
+  }
+}
+
+BENCHMARK(QNBITGEMM<float, 2>)->Apply(QNBit2BitCustomerArgs)->UseRealTime();
+
 // This test gets benchmark arguments from environment variables.
 template <typename AType, size_t BlkBitWidth>
 void QNBITGEMM_ENV(benchmark::State& state) {

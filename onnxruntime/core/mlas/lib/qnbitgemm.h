@@ -457,6 +457,39 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
 
     SQ8BitGemmKernel_BlkSum_CompInt8_Fn* SQ8BitGemmKernel_BlkSum_CompInt8 = nullptr;
 
+    //
+    // SQ2BIT_CompInt8 dispatch surface (mirrors the SQ4 set for 2-bit weights).
+    //
+    // These pointers are populated only on platforms that ship a native 2-bit
+    // VNNI kernel. When all three are nullptr, MlasIsQNBitGemmAvailable returns
+    // false for (BlkBitWidth=2, ComputeType=SQNBIT_CompInt8) and the LUT path
+    // continues to handle 2-bit weights.
+    //
+
+    /** Gets size of packed quantized B data containing 2-bit integers. See MlasQNBitGemmPackQuantBDataSize(). */
+    Q4BitGemmPackQuantBDataSize_Fn* Q2BitGemmPackQuantBDataSize = nullptr;
+
+    /** Packs quantized B data + per-block sums for the 2-bit CompInt8 kernel. */
+    typedef void(SQ2BitGemmPackQuantBDataAndSumBlk_Fn)(
+        size_t N,
+        size_t K,
+        size_t BlkLen,
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+        const std::byte* QuantBDataBegin,
+        const float* QuantBScaleBegin,
+        bool HasZeroPoint,
+        const std::byte* QuantBZPBegin,
+        PackedQuantBDataStruct<float, 2>& PackedQuantB,
+        MLAS_THREADPOOL* ThreadPool,
+        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    );
+
+    SQ2BitGemmPackQuantBDataAndSumBlk_Fn* SQ2BitGemmPackQuantBDataAndBlkSum = nullptr;
+
+    /** Inner kernel for the 2-bit CompInt8 path. Same shape as the 4-bit version;
+        the packed B layout encodes 2-bit weights instead of 4-bit. */
+    SQ4BitGemmKernel_BlkSum_CompInt8_Fn* SQ2BitGemmKernel_BlkSum_CompInt8 = nullptr;
+
     /**
      * @brief Multiply quantized 8-bit integer matrix A with quantized 4-bit integer matrix B.
      *        A and B are block quantized and B is column major.
