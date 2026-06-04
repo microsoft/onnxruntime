@@ -34,7 +34,7 @@ ORT_API_STATUS_IMPL(SetGraphInputs, _In_ OrtGraph* graph,
 ORT_API_STATUS_IMPL(SetGraphOutputs, _In_ OrtGraph* graph,
                     _In_reads_(outputs_len) _In_ OrtValueInfo** outputs, _In_ size_t outputs_len);
 ORT_API_STATUS_IMPL(AddInitializerToGraph, _In_ OrtGraph* graph, _In_ const char* name,
-                    _In_ const OrtValue* ort_value,
+                    _Inout_ OrtValue* ort_value,
                     bool data_is_external);
 ORT_API_STATUS_IMPL(AddNodeToGraph, _In_ OrtGraph* graph, _Inout_ OrtNode* node);
 

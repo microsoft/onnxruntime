@@ -239,7 +239,7 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* ort_graph
 }
 
 ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort_graph, _In_ const char* name,
-                    _In_ const OrtValue* ort_value, bool data_is_external) {
+                    _Inout_ OrtValue* ort_value, bool data_is_external) {
   API_IMPL_BEGIN
   if (name == nullptr || *name == '\0') {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "name cannot be null or empty string");
@@ -291,9 +291,16 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort
     }
   }
 
+  // Copy the OrtValue into the graph's storage (cheap: bumps the inner shared_ptr refcount
+  // for the tensor data) and then delete the caller's wrapper. This restores the original
+  // ownership-transfer contract documented for this API: callers may release()/hand off the
+  // raw OrtValue* and must NOT call ReleaseValue afterwards. Dropping the caller's wrapper
+  // here ensures any deleter bound to the OrtValue (e.g. via CreateTensorWithDataAndDeleter)
+  // fires exactly once when the graph's copy is destroyed.
   auto& m = data_is_external ? graph->external_initializers : graph->initializers;
   auto [it, inserted] = m.emplace(name, *ort_value);
   ORT_ENFORCE(inserted, "Unexpected duplicate name after validation. This is a bug.");
+  OrtApis::ReleaseValue(ort_value);
 
   return nullptr;
   API_IMPL_END

@@ -7803,8 +7803,12 @@ struct OrtModelEditorApi {
 
   /** \brief Add an initializer to the OrtGraph
    *
-   * ORT will copy the OrtValue wrapper internally. The caller retains ownership of the OrtValue and should
-   * release it with OrtApi::ReleaseValue when done. Note that the underlying data buffer is not copied.
+   * The OrtGraph takes ownership of the OrtValue and the caller must NOT call OrtApi::ReleaseValue on it.
+   * Internally ORT moves the tensor data into the graph's storage (the underlying buffer is reference-counted
+   * via shared_ptr, so this is cheap) and destroys the caller's OrtValue wrapper on success. Any deleter
+   * bound to the OrtValue (e.g., via OrtApi::CreateTensorWithDataAndDeleterAsOrtValue) will fire exactly once
+   * when the graph's copy of the OrtValue is destroyed.
+   *
    * If the OrtValue was created with a user-provided buffer (e.g., OrtApi::CreateTensorWithDataAsOrtValue),
    * that buffer must remain valid for the duration of the inference session.
    *
@@ -7843,7 +7847,7 @@ struct OrtModelEditorApi {
    * \since Version 1.22.
    */
   ORT_API2_STATUS(AddInitializerToGraph, _Inout_ OrtGraph* graph, _In_ const char* name,
-                  _In_ const OrtValue* ort_value, bool data_is_external);
+                  _Inout_ OrtValue* ort_value, bool data_is_external);
 
   /** \brief Add an OrtNode to an OrtGraph
    *

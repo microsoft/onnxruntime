@@ -235,7 +235,7 @@ TEST(ModelEditorAPITest, Basic_CApi) {
                                                      &y_tensor));
 
     Ort::ThrowOnError(model_editor_api.AddInitializerToGraph(graph, "Y", y_tensor, /*data is external*/ true));
-    api.ReleaseValue(y_tensor);
+    // graph now owns y_tensor
 
     if (use_constant_node) {
       // Test that a Constant node is converted to an initializer
@@ -1108,21 +1108,21 @@ TEST(ModelEditorAPITest, AddInitializerToGraph_DuplicateName_Fails) {
   Ort::ThrowOnError(api.CreateTensorAsOrtValue(allocator, dims.data(), dims.size(),
                                                ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &tensor2));
 
-  // First add should succeed
+  // First add should succeed: graph takes ownership of tensor1.
   ASSERT_ORTSTATUS_OK(model_editor_api.AddInitializerToGraph(graph, "W", tensor1, false));
 
-  // Second add with same name should fail
+  // Second add with same name should fail. On failure ownership of tensor2 is NOT transferred,
+  // so the caller is still responsible for releasing it.
   Ort::Status status{model_editor_api.AddInitializerToGraph(graph, "W", tensor2, false)};
   EXPECT_FALSE(status.IsOK());
   EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("already been added"));
 
-  // Clean up — caller retains ownership under copy semantics
-  api.ReleaseValue(tensor1);
+  // Clean up. tensor1 is owned by the graph (do NOT release). tensor2 is still owned by us.
   api.ReleaseValue(tensor2);
   api.ReleaseGraph(graph);
 }
 
-TEST(ModelEditorAPITest, AddInitializerToGraph_SamePointerDifferentName_Succeeds) {
+TEST(ModelEditorAPITest, AddInitializerToGraph_OwnershipTransferred) {
   const auto& api = Ort::GetApi();
   const auto& model_editor_api = Ort::GetModelEditorApi();
 
@@ -1137,12 +1137,9 @@ TEST(ModelEditorAPITest, AddInitializerToGraph_SamePointerDifferentName_Succeeds
   Ort::ThrowOnError(api.CreateTensorAsOrtValue(allocator, dims.data(), dims.size(),
                                                ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &tensor));
 
-  // Both adds succeed — each creates an independent copy sharing the same underlying data
-  ASSERT_ORTSTATUS_OK(model_editor_api.AddInitializerToGraph(graph, "W1", tensor, false));
-  ASSERT_ORTSTATUS_OK(model_editor_api.AddInitializerToGraph(graph, "W2", tensor, false));
+  // Graph takes ownership; caller must NOT release tensor afterwards.
+  ASSERT_ORTSTATUS_OK(model_editor_api.AddInitializerToGraph(graph, "W", tensor, false));
 
-  // Caller retains ownership and releases
-  api.ReleaseValue(tensor);
   api.ReleaseGraph(graph);
 }
 
