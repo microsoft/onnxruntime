@@ -92,6 +92,12 @@ void addIoBindingMethods(pybind11::module& m) {
       })
       // This binds input as a Tensor that wraps memory pointer along with the OrtMemoryInfo
       .def("bind_input", [](SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device, int32_t element_type, const std::vector<int64_t>& shape, int64_t data_ptr) -> void {
+        // String tensors require live std::string objects in the backing buffer; the raw-pointer
+        // overload only wraps caller-provided bytes, so binding a string tensor here would lead
+        // to reading/writing through uninitialized std::string storage. Reject it explicitly.
+        if (element_type == onnx::TensorProto::STRING) {
+          throw std::runtime_error("Only binding non-string Tensors is currently supported");
+        }
         auto ml_type = OnnxTypeToOnnxRuntimeTensorType(element_type);
         OrtValue ml_value;
         OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device);
@@ -113,6 +119,12 @@ void addIoBindingMethods(pybind11::module& m) {
 
         OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device);
         auto ml_type = NumpyTypeToOnnxRuntimeTensorType(type_num);
+        // See comment in the int32_t element_type overload above: string tensors are not safe
+        // to bind via a raw, non-owning pointer because no std::string objects are constructed
+        // in the caller buffer.
+        if (ml_type == DataTypeImpl::GetType<std::string>()) {
+          throw std::runtime_error("Only binding non-string Tensors is currently supported");
+        }
         OrtValue ml_value;
         Tensor::InitOrtValue(ml_type, gsl::make_span(shape), reinterpret_cast<void*>(data_ptr), info, ml_value);
 
