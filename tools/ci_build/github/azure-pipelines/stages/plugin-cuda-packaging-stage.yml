@@ -187,6 +187,8 @@ stages:
           - Win_plugin_cuda_x64_Build
         - ${{ if eq(parameters.build_linux_x64, true) }}:
           - Linux_plugin_cuda_x64
+        - ${{ if eq(parameters.build_linux_aarch64, true) }}:
+          - Linux_plugin_cuda_aarch64
       jobs:
       - job: CreateZipPackages
         displayName: 'Create Foundry Local CUDA Plugin-EP Zip Packages'
@@ -219,6 +221,13 @@ stages:
               artifactName: cuda_plugin_linux_x64
               targetPath: $(Build.SourcesDirectory)/cuda-plugin-linux-x64
 
+        - ${{ if eq(parameters.build_linux_aarch64, true) }}:
+          - task: DownloadPipelineArtifact@2
+            displayName: 'Download cuda_plugin_linux_aarch64'
+            inputs:
+              artifactName: cuda_plugin_linux_aarch64
+              targetPath: $(Build.SourcesDirectory)/cuda-plugin-linux-aarch64
+
         - task: PowerShell@2
           displayName: 'Create version.json and zip packages for each platform'
           inputs:
@@ -227,10 +236,11 @@ stages:
               $outputDir = '$(Build.ArtifactStagingDirectory)/cuda-deps-package'
               New-Item -ItemType Directory -Path $outputDir -Force
 
-              # Add new platforms here as they are implemented (e.g. linux-aarch64).
+              # Add new platforms here as they are implemented.
               $platforms = @(
-                @{ name = 'win-x64';    dir = '$(Build.SourcesDirectory)/cuda-plugin-win-x64' },
-                @{ name = 'linux-x64';  dir = '$(Build.SourcesDirectory)/cuda-plugin-linux-x64' }
+                @{ name = 'win-x64';        dir = '$(Build.SourcesDirectory)/cuda-plugin-win-x64' },
+                @{ name = 'linux-x64';      dir = '$(Build.SourcesDirectory)/cuda-plugin-linux-x64' },
+                @{ name = 'linux-aarch64';  dir = '$(Build.SourcesDirectory)/cuda-plugin-linux-aarch64' }
               )
 
               $resolvedVersion = $null
