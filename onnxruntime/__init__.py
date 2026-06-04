@@ -184,6 +184,7 @@ def _get_nvidia_dll_paths(is_windows: bool, cuda: bool = True, cudnn: bool = Tru
             ("nvidia", "cudnn", "bin", "cudnn_adv64_9.dll"),
             ("nvidia", "cudnn", "bin", "cudnn_graph64_9.dll"),
             ("nvidia", "cudnn", "bin", "cudnn64_9.dll"),
+            ("nvidia", "cudnn", "bin", "cudnn_engines_tensor_ir64_9.dll"),
         ]
     else:  # Linux
         # cublas64 depends on cublasLt64, so cublasLt64 should be loaded first.
