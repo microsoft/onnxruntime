@@ -11,6 +11,7 @@
 #include "core/optimizer/matmul_nbits_fusion.h"
 #include "core/optimizer/nhwc_transformer.h"
 #include "core/optimizer/qdq_transformer/qdq_final_cleanup.h"
+#include "core/optimizer/qdq_transformer/qdq_strip_activations_transformer.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"
 #include "core/optimizer/selectors_actions/selector_action_transformer_apply_contexts.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -328,6 +329,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       const bool enable_quant_qdq_cleanup =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableQuantQDQCleanup, "0") == "1";
+      const bool qdq_strip_activations =
+          session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQStripActivations, "0") == "1";
 #if !defined(DISABLE_CONTRIB_OPS)
       const bool qdq_is_int8_allowed =
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsQDQIsInt8Allowed,
@@ -389,7 +392,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                                                  SatApplyContextVariant{},
                                                                                  qdq_matmulnbits_accuracy_level,
                                                                                  intra_op_thread_pool,
-                                                                                 qdq_matmulnbits_block_size));
+                                                                                 qdq_matmulnbits_block_size,
+                                                                                 qdq_strip_activations));
       }
 
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));
@@ -455,6 +459,14 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
           InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
       transformers.emplace_back(std::make_unique<MatMulNBitsQkvFusion>(
           InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
+
+      if (qdq_strip_activations) {
+        transformers.emplace_back(std::make_unique<QDQStripActivationsTransformer>(qdq_matmulnbits_accuracy_level,
+                                                                                   intra_op_thread_pool,
+                                                                                   cpu_execution_provider,
+                                                                                   session_options.config_options,
+                                                                                   qdq_matmulnbits_block_size));
+      }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
       // The QDQFinalCleanupTransformer must run AFTER other transformers that fuse Q/DQ nodes. Otherwise, their
