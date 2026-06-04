@@ -53,7 +53,9 @@ class QMoE final : public CudaKernel, public MoEBase {
   // ``[E, N, K/pack]`` layout (as produced by
   // ``quantize_matmul_{4,8}bits``) is rewritten inside the PrePack hook
   // via ``PrePackIntExpertWeights``, removing the offline prepack
-  // dependency. Only meaningful when ``quant_type_ == "int"``.
+  // dependency. Only meaningful when ``quant_type_ == "int"``. Derived from
+  // the optional tri-state ``weights_prepacked`` attribute: -1/auto (or
+  // absent) maps to true on the CUDA EP, 1 maps to true, 0 maps to false.
   bool weights_prepacked_ = true;
   // Cached source weight shapes captured at PrePack time. When the
   // PrePack hook consumed and released the original int4/int8 weight

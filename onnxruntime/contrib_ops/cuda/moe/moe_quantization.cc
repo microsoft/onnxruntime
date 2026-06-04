@@ -62,10 +62,18 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   this->quant_type_ = op_kernel_info.GetAttrOrDefault<std::string>("quant_type", "int");
   ORT_ENFORCE(quant_type_ == "int" || quant_type_ == "fp4" || quant_type_ == "fp8" || quant_type_ == "wfp4afp8",
               "quant_type must be 'int', 'fp4', 'fp8', or 'wfp4afp8', but got '", quant_type_, "'");
-  // Backward-compat opt-in: default is 1 (callers ship CUTLASS-prepacked
-  // weights, matching all pre-existing tooling). Setting to 0 tells the
-  // PrePack hook to lay out raw [E, N, K/pack] quantized weights itself.
-  weights_prepacked_ = op_kernel_info.GetAttrOrDefault<int64_t>("weights_prepacked", 1) != 0;
+  // ``weights_prepacked`` is an optional tri-state attribute with no schema
+  // default, so each EP picks its own backward-compatible default:
+  //   -1 (auto, also the effective value when the attribute is absent): the EP
+  //      decides. The CUDA EP's backward-compatible default is "prepacked"
+  //      because all pre-existing tooling ships CUTLASS-prepacked weights.
+  //    1: initializers are already prepacked; the compute path reads them as-is.
+  //    0: initializers are raw [E, N, K/pack]; the PrePack hook lays them out.
+  const int64_t weights_prepacked_mode =
+      op_kernel_info.GetAttrOrDefault<int64_t>("weights_prepacked", static_cast<int64_t>(-1));
+  ORT_ENFORCE(weights_prepacked_mode == -1 || weights_prepacked_mode == 0 || weights_prepacked_mode == 1,
+              "weights_prepacked must be -1 (auto), 0, or 1, but got ", weights_prepacked_mode);
+  weights_prepacked_ = (weights_prepacked_mode != 0);
 #if !defined(ENABLE_FP4) || !defined(USE_FP4_QMOE)
   ORT_ENFORCE(quant_type_ != "fp4", "QMoE quant_type='fp4' requires USE_FP4_QMOE with CUDA 12.8 or newer.");
   ORT_ENFORCE(quant_type_ != "wfp4afp8",
