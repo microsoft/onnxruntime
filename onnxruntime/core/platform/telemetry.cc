@@ -64,6 +64,7 @@ void Telemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, cons
                                    const std::string& loadedFrom, const std::vector<std::string>& execution_provider_ids,
                                    const std::string& hardware_device_types,
                                    const std::string& hardware_vendor_ids,
+                                   const std::string& ep_versions,
                                    bool use_fp16, bool captureState) const {
   ORT_UNUSED_PARAMETER(session_id);
   ORT_UNUSED_PARAMETER(ir_version);
@@ -81,6 +82,7 @@ void Telemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, cons
   ORT_UNUSED_PARAMETER(execution_provider_ids);
   ORT_UNUSED_PARAMETER(hardware_device_types);
   ORT_UNUSED_PARAMETER(hardware_vendor_ids);
+  ORT_UNUSED_PARAMETER(ep_versions);
   ORT_UNUSED_PARAMETER(use_fp16);
   ORT_UNUSED_PARAMETER(captureState);
 }

@@ -319,6 +319,7 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                                           const std::string& loaded_from, const std::vector<std::string>& execution_provider_ids,
                                           const std::string& hardware_device_types,
                                           const std::string& hardware_vendor_ids,
+                                          const std::string& ep_versions,
                                           bool use_fp16, bool captureState) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
@@ -374,7 +375,8 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                       // Telemetry info
                       // schemaVersion 1: added hardwareDeviceTypes and hardwareVendorIds
-                      TraceLoggingUInt8(1, "schemaVersion"),
+                      // schemaVersion 2: added executionProviderVersions
+                      TraceLoggingUInt8(2, "schemaVersion"),
                       TraceLoggingUInt32(session_id, "sessionId"),
                       TraceLoggingInt64(ir_version, "irVersion"),
                       TraceLoggingUInt32(projection_, "OrtProgrammingProjection"),
@@ -393,6 +395,7 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"),
                       TraceLoggingString(hardware_device_types.c_str(), "hardwareDeviceTypes"),
                       TraceLoggingString(hardware_vendor_ids.c_str(), "hardwareVendorIds"),
+                      TraceLoggingString(ep_versions.c_str(), "executionProviderVersions"),
                       TraceLoggingString(service_names.c_str(), "serviceNames"),
                       TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
   } else {
@@ -405,7 +408,8 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                       // Telemetry info
                       // schemaVersion 1: added hardwareDeviceTypes and hardwareVendorIds
-                      TraceLoggingUInt8(1, "schemaVersion"),
+                      // schemaVersion 2: added executionProviderVersions
+                      TraceLoggingUInt8(2, "schemaVersion"),
                       TraceLoggingUInt32(session_id, "sessionId"),
                       TraceLoggingInt64(ir_version, "irVersion"),
                       TraceLoggingUInt32(projection_, "OrtProgrammingProjection"),
@@ -424,6 +428,7 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"),
                       TraceLoggingString(hardware_device_types.c_str(), "hardwareDeviceTypes"),
                       TraceLoggingString(hardware_vendor_ids.c_str(), "hardwareVendorIds"),
+                      TraceLoggingString(ep_versions.c_str(), "executionProviderVersions"),
                       TraceLoggingString(service_names.c_str(), "serviceNames"),
                       TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
   }

@@ -2779,6 +2779,7 @@ common::Status InferenceSession::Initialize() {
         graph.DomainToVersionMap(), model_file_name, graph.Name(), model_weight_type, model_graph_hash, model_weight_hash,
         model_->MetaData(), telemetry_.event_name_, execution_providers_.GetIds(),
         telemetry_.ep_device_types_summary_, telemetry_.ep_device_vendor_ids_summary_,
+        telemetry_.ep_versions_summary_,
         model_has_fp16_inputs, false);
 
     // Emit one initial EpDeviceUsage event per (EP, device) pair with run counts of 0.
@@ -4418,6 +4419,7 @@ void InferenceSession::LogAllSessions() {
           graph.DomainToVersionMap(), model_file_name, graph.Name(), model_weight_type, model_graph_hash, model_weight_hash,
           model->MetaData(), session->telemetry_.event_name_, session->execution_providers_.GetIds(),
           session->telemetry_.ep_device_types_summary_, session->telemetry_.ep_device_vendor_ids_summary_,
+          session->telemetry_.ep_versions_summary_,
           model_has_fp16_inputs, true);
     }
 
