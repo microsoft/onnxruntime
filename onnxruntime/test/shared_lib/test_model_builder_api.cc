@@ -1260,6 +1260,56 @@ TEST(ModelEditorAPITest, SetGraphOutputs_DuplicatePointer_Fails) {
   api.ReleaseGraph(graph);
 }
 
+TEST(ModelEditorAPITest, CreateNode_DuplicateAttributePointer_Fails) {
+  const auto& api = Ort::GetApi();
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  float alpha_value = 1.0f;
+  OrtOpAttr* attr = nullptr;
+  Ort::ThrowOnError(api.CreateOpAttr("alpha", &alpha_value, 1, ORT_OP_ATTR_FLOAT, &attr));
+
+  std::vector<const char*> input_names = {"X"};
+  std::vector<const char*> output_names = {"Y"};
+  // Pass the same attribute pointer twice — should fail without releasing it
+  std::vector<OrtOpAttr*> attrs = {attr, attr};
+
+  OrtNode* node = nullptr;
+  Ort::Status status{model_editor_api.CreateNode("Relu", onnxruntime::kOnnxDomain, "relu1",
+                                                 input_names.data(), input_names.size(),
+                                                 output_names.data(), output_names.size(),
+                                                 attrs.data(), attrs.size(), &node)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("Duplicate"));
+  EXPECT_EQ(node, nullptr);
+
+  // Caller still owns the attribute since CreateNode failed before taking ownership
+  api.ReleaseOpAttr(attr);
+}
+
+TEST(ModelEditorAPITest, CreateNode_NullAttributeEntry_Fails) {
+  const auto& api = Ort::GetApi();
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  float alpha_value = 1.0f;
+  OrtOpAttr* attr = nullptr;
+  Ort::ThrowOnError(api.CreateOpAttr("alpha", &alpha_value, 1, ORT_OP_ATTR_FLOAT, &attr));
+
+  std::vector<const char*> input_names = {"X"};
+  std::vector<const char*> output_names = {"Y"};
+  std::vector<OrtOpAttr*> attrs = {attr, nullptr};
+
+  OrtNode* node = nullptr;
+  Ort::Status status{model_editor_api.CreateNode("Relu", onnxruntime::kOnnxDomain, "relu1",
+                                                 input_names.data(), input_names.size(),
+                                                 output_names.data(), output_names.size(),
+                                                 attrs.data(), attrs.size(), &node)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("null"));
+  EXPECT_EQ(node, nullptr);
+
+  api.ReleaseOpAttr(attr);
+}
+
 TEST(ModelEditorAPITest, AddNodeToGraph_NullGraph_Fails) {
   const auto& api = Ort::GetApi();
   const auto& model_editor_api = Ort::GetModelEditorApi();

@@ -26,18 +26,20 @@ jobs:
       build_config: Release
       architecture: x64
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
-      docker_build_args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'
-      docker_image_repo: onnxruntimecuda12manylinuxbuild
+      docker_build_args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1'
+      docker_image_repo: onnxruntimecuda13manylinuxbuild
       extra_build_flags: >-
         --use_binskim_compliant_compile_flags
         --build_wheel
         --parallel
-        --nvcc_threads 1
-        --cuda_version=12.8
-        --cuda_home=/usr/local/cuda-12.8
-        --cudnn_home=/usr/local/cuda-12.8
+        --nvcc_threads 4
+        --flash_nvcc_threads 4
+        --cuda_version=13.0
+        --cuda_home=/usr/local/cuda-13.0
+        --cudnn_home=/usr/local/cuda-13.0
         --enable_cuda_profiling
         --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        --cmake_extra_defines onnxruntime_QUICK_BUILD=ON
         --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON
       python_path_prefix: 'PATH=/opt/python/cp312-cp312/bin:$PATH'
       run_tests: false
@@ -65,8 +67,8 @@ jobs:
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
-          image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecuda12manylinuxbuild
-          build-args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'
+          image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecuda13manylinuxbuild
+          build-args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1'
           push: true
           azure-container-registry-name: onnxruntimebuildcache
         env:
@@ -98,6 +100,15 @@ jobs:
             echo "Warning: perms.txt not found in artifact."
           fi
 
+      # Verify the GPU is accessible inside Docker before running the full test suite.
+      # If the NVIDIA Container Toolkit fails to expose /dev/nvidia* devices,
+      # tests will fail with "CUDA failure 100" and waste 10+ minutes.
+      - name: Verify GPU access in Docker
+        run: |
+          docker run --rm --gpus all \
+            "${{ steps.build_docker_image_step.outputs.full-image-name }}" \
+            nvidia-smi
+
       # --- Install the ORT wheel and run CUDA plugin EP tests ---
       - name: Run CUDA Plugin EP Python Tests
         run: |
@@ -109,6 +120,11 @@ jobs:
             bash -c "
               set -ex
               export PATH=/opt/python/cp312-cp312/bin:\$PATH
+              # Ensure libcudart.so.13 is findable regardless of host-runner NVIDIA Container Toolkit configuration.
+              # The CUDA runtime library lives in the container image at /usr/local/cuda-13.0/lib64, but the
+              # LD_LIBRARY_PATH may not include this path when the runner's NVIDIA toolkit only mounts driver
+              # libraries at /usr/local/nvidia/lib64.
+              export LD_LIBRARY_PATH=/usr/local/cuda-13.0/lib64:\${LD_LIBRARY_PATH:-}
 
               # Install the ORT wheel
               python -m pip install /build/Release/Release/dist/onnxruntime*.whl

@@ -28,6 +28,9 @@
     "react-native": "^0.73.11",
     "react-native-builder-bob": "^0.37.0"
   },
+  "overrides": {
+    "fast-xml-parser": "^5.7.0"
+  },
   "peerDependencies": {
     "react": "*",
     "react-native": "*"
@@ -37,7 +40,7 @@
     "registry": "https://registry.npmjs.org/"
   },
   "source": "lib/index",
-  "version": "1.27.0",
+  "version": "1.28.0",
   "main": "dist/commonjs/index",
   "homepage": "https://github.com/microsoft/onnxruntime/blob/main/js/react_native/README.md",
   "files": [

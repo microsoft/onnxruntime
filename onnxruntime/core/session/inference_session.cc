@@ -3268,7 +3268,10 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
                                  << " with graph annotation id: " << graph_annotation_id;
     // log evaluation start to trace logging provider
     env.GetTelemetryProvider().LogEvaluationStart(session_id_);
-    ORT_RETURN_IF_ERROR_SESSIONID_(cached_execution_provider_for_graph_replay_.ReplayGraph(graph_annotation_id));
+    bool sync_graph_replay = run_options.config_options.GetConfigOrDefault(
+                                 kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
+    ORT_RETURN_IF_ERROR_SESSIONID_(cached_execution_provider_for_graph_replay_.ReplayGraph(graph_annotation_id,
+                                                                                           sync_graph_replay));
   } else {
     InlinedVector<IExecutionProvider*> exec_providers_to_stop;
     exec_providers_to_stop.reserve(execution_providers_.NumProviders());
@@ -3893,6 +3896,18 @@ common::Status InferenceSession::Run(const RunOptions& run_options, IOBinding& i
 common::Status InferenceSession::Run(IOBinding& io_binding) {
   RunOptions run_options;
   return Run(run_options, io_binding);
+}
+
+common::Status InferenceSession::ReleaseCapturedGraph(int graph_annotation_id) {
+  // Acquire session_mutex_ only when concurrent run is not supported, matching the
+  // locking pattern in Run(). For concurrent EPs the mutex is not held by Run(),
+  // so acquiring it here would not synchronize with in-flight runs; those EPs are
+  // responsible for their own thread safety in ReleaseCapturedGraph.
+  std::optional<std::lock_guard<std::mutex>> lock;
+  if (!is_concurrent_run_supported_) {
+    lock.emplace(session_mutex_);
+  }
+  return cached_execution_provider_for_graph_replay_.ReleaseCapturedGraph(graph_annotation_id);
 }
 
 template <typename T>

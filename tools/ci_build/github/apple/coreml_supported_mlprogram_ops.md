@@ -11,12 +11,14 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Concat||
 |ai.onnx:Conv|Only 1D/2D Conv is supported.<br/>Bias if provided must be constant.|
 |ai.onnx:ConvTranspose|Weight and bias must be constant.<br/>padding_type of SAME_UPPER/SAME_LOWER is not supported.<br/>kernel_shape must have default values.<br/>output_shape is not supported.<br/>output_padding must have default values.|
+|ai.onnx:Cos||
 |ai.onnx:DepthToSpace|If 'mode' is 'CRD' the input must have a fixed shape.|
 |ai.onnx:Ceil||
 |ai.onnx:Div||
 |ai.onnx:Elu||
 |ai.onnx:Erf||
 |ai.onnx:Exp||
+|ai.onnx:GatherND|batch_dims must be 0.|
 |ai.onnx:Gemm|Input B must be constant.|
 |ai.onnx:Gelu||
 |ai.onnx:GlobalAveragePool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|
@@ -43,6 +45,7 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Resize|See [resize_op_builder.cc](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/coreml/builders/impl/resize_op_builder.cc) implementation. There are too many permutations to describe the valid combinations.|
 |ai.onnx:Round||
 |ai.onnx:Shape||
+|ai.onnx:Sin||
 |ai.onnx:Slice|starts/ends/axes/steps must be constant initializers.|
 |ai.onnx:Softplus||
 |ai.onnx:Split|If provided, `splits` must be constant.|

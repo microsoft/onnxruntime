@@ -57,6 +57,7 @@
 #include "core/session/ort_env.h"
 #include "core/session/ort_version_check.h"
 #include "core/session/utils.h"
+#include "core/session/model_package_api.h"
 
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 #include "core/providers/cuda/cuda_provider_factory.h"
@@ -3709,6 +3710,10 @@ ORT_API(const OrtCompileApi*, OrtApis::GetCompileApi) {
   return OrtCompileAPI::GetCompileApi();
 }
 
+ORT_API(const OrtModelPackageApi*, OrtApis::GetModelPackageApi) {
+  return OrtModelPackageAPI::GetModelPackageApi();
+}
+
 ORT_API(void, OrtApis::CreateKeyValuePairs, _Outptr_ OrtKeyValuePairs** out) {
   auto kvps = std::make_unique<OrtKeyValuePairs>();
   *out = reinterpret_cast<OrtKeyValuePairs*>(kvps.release());
@@ -4365,6 +4370,13 @@ ORT_API_STATUS_IMPL(OrtApis::SetPerSessionThreadPoolCallbacks, _Inout_ OrtEnv* o
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SessionReleaseCapturedGraph, _In_ OrtSession* session, _In_ int graph_annotation_id) {
+  API_IMPL_BEGIN
+  auto* inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
+  return ToOrtStatus(inference_session->ReleaseCapturedGraph(graph_annotation_id));
+  API_IMPL_END
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString};
@@ -4408,7 +4420,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
     In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_27 = {
+static constexpr OrtApi ort_api_1_to_28 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -4916,8 +4928,12 @@ static constexpr OrtApi ort_api_1_to_27 = {
     &OrtApis::SetPerSessionThreadPoolCallbacks,
     // End of Version 25 - DO NOT MODIFY ABOVE (see above text for more information)
     // End of Version 26 - DO NOT MODIFY ABOVE (see above text for more information)
+
     &OrtApis::GetMemPatternEnabled,
     &OrtApis::GetSessionExecutionMode,
+    &OrtApis::SessionReleaseCapturedGraph,
+    &OrtApis::GetModelPackageApi,
+    // End of Version 27 - DO NOT MODIFY ABOVE (see above text for more information)
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
@@ -4957,9 +4973,10 @@ static_assert(offsetof(OrtApi, CreateExternalInitializerInfo) / sizeof(void*) ==
 static_assert(offsetof(OrtApi, GetTensorElementTypeAndShapeDataReference) / sizeof(void*) == 414, "Size of version 24 API cannot change");
 static_assert(offsetof(OrtApi, SetPerSessionThreadPoolCallbacks) / sizeof(void*) == 418, "Size of version 25 API cannot change");
 // no additions in version 26
+// no additions in version 27
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.27.0",
+static_assert(std::string_view(ORT_VERSION) == "1.28.0",
               "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
 //
@@ -4975,7 +4992,7 @@ static_assert(std::string_view(ORT_VERSION) == "1.27.0",
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_27;
+    return &ort_api_1_to_28;
 
   fprintf(stderr,
           "The requested API version [%u] is not available, only API versions [1, %u] are supported in this build."

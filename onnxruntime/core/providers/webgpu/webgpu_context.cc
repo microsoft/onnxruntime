@@ -303,9 +303,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
                                       metadata,
                                       inputs_segments,
                                       outputs_segments,
-#ifndef NDEBUG  // if debug build
                                       key,
-#endif
                                       x,
                                       y,
                                       z,
@@ -533,14 +531,29 @@ std::vector<const char*> WebGpuContext::GetEnabledDeviceToggles() const {
   // Enable / disable other toggles that may affect the performance.
   // Other toggles that may be useful: "dump_shaders", "disable_symbol_renaming"
   constexpr const char* toggles[] = {
-      "skip_validation",  // only use "skip_validation" when ValidationMode is set to "Disabled"
+      "skip_validation",
       "disable_robustness",
       "d3d_disable_ieee_strictness",
   };
+#ifndef NDEBUG
+  // validation_mode_explicitly_set_ only changes release behavior; mark it used in debug builds
+  // to avoid -Wunused-private-field on toolchains that treat warnings as errors.
+  ORT_UNUSED_PARAMETER(validation_mode_explicitly_set_);
   return std::vector<const char*>(ValidationMode() >= ValidationMode::WGPUOnly
                                       ? std::begin(toggles) + 1
                                       : std::begin(toggles),
                                   std::end(toggles));
+#else
+  // In release/relwithdebinfo builds, default to skip_validation for performance,
+  // but honor explicit validationMode overrides.
+  if (!validation_mode_explicitly_set_) {
+    return std::vector<const char*>(std::begin(toggles), std::end(toggles));
+  }
+  return std::vector<const char*>(ValidationMode() >= ValidationMode::WGPUOnly
+                                      ? std::begin(toggles) + 1
+                                      : std::begin(toggles),
+                                  std::end(toggles));
+#endif
 }
 
 std::vector<const char*> WebGpuContext::GetDisabledDeviceToggles() const {
@@ -1008,6 +1021,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance,
                                                                     device,
                                                                     config.validation_mode,
+                                                                    config.validation_mode_explicitly_set,
                                                                     config.preserve_device,
                                                                     config.max_storage_buffer_binding_size));
     it = contexts_->emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;

@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cctype>
+#include <cstdint>
 #include <cstring>
 #include <climits>
 #include <cstdlib>
@@ -490,6 +491,13 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   const std::string sdpa_kernel_key = ep_options_prefix + "sdpa_kernel";
   const std::string enable_cuda_graph_key = ep_options_prefix + "enable_cuda_graph";
   const std::string min_runs_key = ep_options_prefix + "min_num_runs_before_cuda_graph_capture";
+  const std::string has_user_compute_stream_key = ep_options_prefix + "has_user_compute_stream";
+  const std::string user_compute_stream_key = ep_options_prefix + "user_compute_stream";
+  const std::string do_copy_in_default_stream_key = ep_options_prefix + "do_copy_in_default_stream";
+  const std::string use_ep_level_unified_stream_key = ep_options_prefix + "use_ep_level_unified_stream";
+  const std::string gpu_external_alloc_key = ep_options_prefix + "gpu_external_alloc";
+  const std::string gpu_external_free_key = ep_options_prefix + "gpu_external_free";
+  const std::string gpu_external_empty_cache_key = ep_options_prefix + "gpu_external_empty_cache";
 
   // Prefer plugin-provider-option keys, then fall back to the legacy ep.cuda.*
   // aliases and finally to the historical flat session config names.
@@ -522,6 +530,113 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   read_session_config_non_negative_int(
       {min_runs_key, "ep.cuda.min_num_runs_before_cuda_graph_capture"},
       config.min_num_runs_before_cuda_graph_capture);
+
+  // --- Stream and allocator options ---
+  read_session_config_bool(
+      {has_user_compute_stream_key, "ep.cuda.has_user_compute_stream", "has_user_compute_stream"},
+      config.has_user_compute_stream);
+  read_session_config_bool(
+      {do_copy_in_default_stream_key, "ep.cuda.do_copy_in_default_stream", "do_copy_in_default_stream"},
+      config.do_copy_in_default_stream);
+  read_session_config_bool(
+      {use_ep_level_unified_stream_key, "ep.cuda.use_ep_level_unified_stream", "use_ep_level_unified_stream"},
+      config.use_ep_level_unified_stream);
+
+  // Parse user_compute_stream as a pointer-sized integer (address of a cudaStream_t).
+  // Uses base 0 so that "0x..." hex strings are auto-detected, and validates that
+  // the entire string was consumed (matching the bundled EP's ParseStringWithClassicLocale behavior).
+  auto read_session_config_pointer = [&](std::initializer_list<std::string_view> keys, void*& value) {
+    for (const auto& key : keys) {
+      auto raw_value = try_get_session_config(key);
+      if (!raw_value.has_value()) {
+        continue;
+      }
+
+      ORT_TRY {
+        size_t pos = 0;
+        unsigned long long address = std::stoull(*raw_value, &pos, 0);
+        if (pos == raw_value->size()) {
+          if (address > std::numeric_limits<std::uintptr_t>::max()) {
+            log_invalid_session_config(key, "a pointer-sized integer (value exceeds address space)");
+            return;
+          }
+          value = reinterpret_cast<void*>(static_cast<std::uintptr_t>(address));
+          return;
+        }
+      }
+      ORT_CATCH(const std::exception&) {
+      }
+
+      log_invalid_session_config(key, "a pointer-sized integer (decimal or 0x-prefixed hex address)");
+      return;
+    }
+  };
+
+  read_session_config_pointer(
+      {user_compute_stream_key, "ep.cuda.user_compute_stream", "user_compute_stream"},
+      config.user_compute_stream);
+
+  // If user_compute_stream is provided, force has_user_compute_stream to true.
+  if (config.user_compute_stream != nullptr) {
+    config.has_user_compute_stream = true;
+  }
+
+  // Parse external allocator function pointers.
+  read_session_config_pointer(
+      {gpu_external_alloc_key, "ep.cuda.gpu_external_alloc", "gpu_external_alloc"},
+      config.external_alloc);
+  read_session_config_pointer(
+      {gpu_external_free_key, "ep.cuda.gpu_external_free", "gpu_external_free"},
+      config.external_free);
+  read_session_config_pointer(
+      {gpu_external_empty_cache_key, "ep.cuda.gpu_external_empty_cache", "gpu_external_empty_cache"},
+      config.external_empty_cache);
+
+  // Warn if only one of alloc/free is provided (both are required for external allocator).
+  if ((config.external_alloc == nullptr) != (config.external_free == nullptr)) {
+    LogWarning(factory->ort_api_, factory->default_logger_, ORT_FILE, __LINE__, "CudaEpFactory::CreateEpImpl",
+               "Only one of gpu_external_alloc/gpu_external_free is set. "
+               "Both must be provided for the external allocator to be used. Ignoring.");
+    config.external_alloc = nullptr;
+    config.external_free = nullptr;
+    config.external_empty_cache = nullptr;
+  }
+
+  // Validate: user_compute_stream and external allocator cannot both be active.
+  if (config.has_user_compute_stream && config.external_alloc != nullptr && config.external_free != nullptr) {
+    return factory->ort_api_.CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        "CUDA plugin EP does not support using both user_compute_stream and external allocator simultaneously.");
+  }
+
+  // Validate: user_compute_stream and cuda graph cannot both be active.
+  if (config.has_user_compute_stream && config.enable_cuda_graph) {
+    return factory->ort_api_.CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        "CUDA plugin EP does not support using both user_compute_stream and enable_cuda_graph simultaneously.");
+  }
+
+  // When user_compute_stream is set, force unified stream mode (matches bundled EP behavior).
+  if (config.has_user_compute_stream) {
+    config.use_ep_level_unified_stream = true;
+  }
+
+  // When external allocator is used, force unified stream mode (matches bundled EP behavior).
+  if (config.external_alloc != nullptr && config.external_free != nullptr) {
+    config.use_ep_level_unified_stream = true;
+  }
+
+  // Store external allocator info in the device cache entry so CreateAllocatorImpl can use it.
+  if (config.external_alloc != nullptr && config.external_free != nullptr) {
+    std::lock_guard<std::mutex> lock(factory->device_cache_mutex_);
+    auto* entry = factory->FindDeviceCacheEntryByOrdinalLocked(config.device_id);
+    if (entry) {
+      std::lock_guard<std::mutex> arena_lock(entry->arena_mutex);
+      entry->external_alloc = config.external_alloc;
+      entry->external_free = config.external_free;
+      entry->external_empty_cache = config.external_empty_cache;
+    }
+  }
 
   const OrtLogger& ep_logger = logger ? *logger : factory->default_logger_;
   auto actual_ep = std::make_unique<CudaEp>(*factory, config, ep_logger);
@@ -580,6 +695,19 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
     }
 
     std::lock_guard<std::mutex> lock{entry->arena_mutex};
+
+    // If external allocator function pointers are configured, use those directly
+    // (no arena, no mempool — the external allocator manages its own caching).
+    if (entry->UseExternalAllocator()) {
+      if (!entry->external_device_allocator) {
+        entry->external_device_allocator = std::make_unique<CudaExternalDeviceAllocator>(
+            memory_info, req_device_id,
+            entry->external_alloc, entry->external_free, entry->external_empty_cache);
+      }
+      ++entry->num_external_allocator_users;
+      *allocator = entry->external_device_allocator.get();
+      return nullptr;
+    }
 
     if (use_mempool) {
       if (!entry->mempool_allocator) {
@@ -702,6 +830,16 @@ void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
           return;
         }
         if (--entry.num_mempool_users == 0) entry.mempool_allocator.reset();
+        return;
+      }
+      if (allocator == entry.external_device_allocator.get()) {
+        if (entry.num_external_allocator_users <= 0) {
+          LogWarning(factory->ort_api_, factory->default_logger_, ORT_FILE, __LINE__,
+                     "CudaEpFactory::ReleaseAllocatorImpl",
+                     "Refcount underflow in ReleaseAllocatorImpl (external_device_allocator). Ignoring release.");
+          return;
+        }
+        if (--entry.num_external_allocator_users == 0) entry.external_device_allocator.reset();
         return;
       }
     }
