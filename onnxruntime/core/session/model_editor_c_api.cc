@@ -10,6 +10,7 @@
 #include "core/framework/ort_value.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/framework/tensor_type_and_shape.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/constants.h"
 #include "core/graph/model.h"
 #include "core/graph/model_editor_api_types.h"
@@ -262,9 +263,10 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort
     // the reason for this is to avoid potential shape inferencing errors if this initializer is providing an
     // input involved in that. the ONNX shape inferencing does not support external data for those values.
     // e.g. Reshape's `shape` input, Reduce's `axes', Slice's `starts`, `ends`, `steps`, Clip's `min`, `max`, etc.
-    if (t.SizeInBytes() < 128) {
+    if (t.SizeInBytes() <= onnxruntime::utils::kSmallTensorExternalDataThreshold) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "External initializer should only be used for data >= 128 bytes. "
+                                   "External initializer should only be used for data > "
+                                   "kSmallTensorExternalDataThreshold bytes. "
                                    "Please use CreateTensorAsOrtValue instead.");
     }
   }
