@@ -259,15 +259,19 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort
   }
 
   if (data_is_external) {
-    // enforce that an external initializer is not used if the data size is < 128 bytes.
-    // the reason for this is to avoid potential shape inferencing errors if this initializer is providing an
-    // input involved in that. the ONNX shape inferencing does not support external data for those values.
-    // e.g. Reshape's `shape` input, Reduce's `axes', Slice's `starts`, `ends`, `steps`, Clip's `min`, `max`, etc.
+    // When data_is_external is true, LoadFromModelEditorApiModel encodes `tensor`'s buffer pointer into
+    // the resulting TensorProto as an in-memory external-data reference (kTensorProtoNativeEndianMemoryAddressTag).
+    // That encoding is an internal ORT mechanism, not something callers can construct themselves, so this
+    // function is the only legitimate producer of it. Reject small tensors here to ensure we never emit
+    // an in-memory reference for data that is small enough to be needed by ONNX shape inferencing
+    // (which does not understand external data and consumes the tensor's bytes inline).
+    // e.g. Reshape's `shape`, Reduce's `axes`, Slice's `starts`/`ends`/`steps`, Clip's `min`/`max`, etc.
     if (t.SizeInBytes() <= onnxruntime::utils::kSmallTensorExternalDataThreshold) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "External initializer should only be used for data > "
-                                   "kSmallTensorExternalDataThreshold bytes. "
-                                   "Please use CreateTensorAsOrtValue instead.");
+                                   "data_is_external=true requires the tensor to be larger than "
+                                   "kSmallTensorExternalDataThreshold bytes. For smaller tensors, copy "
+                                   "the data into an ORT-allocated tensor via CreateTensorAsOrtValue and "
+                                   "pass data_is_external=false.");
     }
   }
 
