@@ -3472,10 +3472,10 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
   } else {
     // Log runtime error with EP versions
     env.GetTelemetryProvider().LogRuntimeInferenceError(session_id_, retval, telemetry_.ep_versions_summary_,
-                                                         telemetry_.ep_device_types_summary_);
+                                                        telemetry_.ep_device_types_summary_);
   }
 
-                                                        telemetry_.ep_device_types_summary_);
+  // log evaluation stop to trace logging provider
   env.GetTelemetryProvider().LogEvaluationStop(session_id_);
 
   // send out profiling events (optional)
