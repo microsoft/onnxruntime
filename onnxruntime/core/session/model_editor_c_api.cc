@@ -271,13 +271,6 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort
     }
   }
 
-  // Reject duplicate name in either initializer map. operator[] assignment would silently destroy the
-  // previously-owned tensor; require an explicit replace-by-remove-then-add workflow instead.
-  if (graph->initializers.count(name) != 0 || graph->external_initializers.count(name) != 0) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "An initializer with this name has already been added to the graph.");
-  }
-
   // Reject if this raw pointer is already owned by the graph. Wrapping the same pointer in a second
   // unique_ptr would cause a double-free when the graph is destroyed.
   auto already_owned = [tensor](const auto& m) {
@@ -292,12 +285,25 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort
                                  "Each OrtValue must only be added once.");
   }
 
-  // Strong exception safety: try_emplace inserts a placeholder (default-constructed unique_ptr) under
-  // `name`. If it throws bad_alloc, no insertion occurs and `tensor` is still owned by the caller.
-  // After try_emplace returns successfully, transferring ownership via reset() is noexcept.
-  auto& m = data_is_external ? graph->external_initializers : graph->initializers;
-  auto [it, inserted] = m.try_emplace(name);  // last operation that may throw
-  ORT_ENFORCE(inserted, "duplicate name passed earlier check");  // duplicate-name check above
+  // Reject duplicate name and take ownership in a single step.
+  // Strong exception safety: try_emplace inserts a placeholder (default-constructed unique_ptr) only
+  // if no entry with `name` exists in the target map. If it throws bad_alloc, no insertion occurs and
+  // `tensor` is still owned by the caller. Once try_emplace returns successfully with inserted==true,
+  // transferring ownership via reset() is noexcept. We separately check the other map (the one
+  // try_emplace did not look at) to reject names that collide across the regular/external boundary;
+  // that check is a pure read and does not transfer ownership.
+  auto& target_map = data_is_external ? graph->external_initializers : graph->initializers;
+  auto& other_map = data_is_external ? graph->initializers : graph->external_initializers;
+  if (other_map.count(name) != 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "An initializer with this name has already been added to the graph.");
+  }
+
+  auto [it, inserted] = target_map.try_emplace(name);  // last operation that may throw
+  if (!inserted) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "An initializer with this name has already been added to the graph.");
+  }
   it->second.reset(tensor);  // noexcept: take ownership
 
   return nullptr;
