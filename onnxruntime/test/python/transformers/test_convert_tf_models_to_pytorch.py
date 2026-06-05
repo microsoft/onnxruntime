@@ -1,4 +1,3 @@
-import importlib
 import importlib.util
 import io
 import tarfile
@@ -7,36 +6,19 @@ from pathlib import Path
 
 import pytest
 
-MODULE_NAME = "convert_tf_models_to_pytorch"
-
-
-def _load_convert_module():
-    # Prefer the installed package. In CI this test file is copied into the build/staging directory,
-    # so resolving the module path relative to __file__ no longer points at the source tree.
-    try:
-        return importlib.import_module(f"onnxruntime.transformers.{MODULE_NAME}")
-    except ImportError:
-        pass
-
-    module_path = (
-        Path(__file__).resolve().parents[4]
-        / "onnxruntime"
-        / "python"
-        / "tools"
-        / "transformers"
-        / f"{MODULE_NAME}.py"
-    )
-    if not module_path.is_file():
-        pytest.skip(f"Could not locate {MODULE_NAME}.py at {module_path}", allow_module_level=True)
-
-    spec = importlib.util.spec_from_file_location(MODULE_NAME, module_path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-convert_tf_models_to_pytorch = _load_convert_module()
+# Resolve the module path relative to this file so the test works regardless of CWD.
+MODULE_PATH = (
+    Path(__file__).resolve().parents[4]
+    / "onnxruntime"
+    / "python"
+    / "tools"
+    / "transformers"
+    / "convert_tf_models_to_pytorch.py"
+)
+SPEC = importlib.util.spec_from_file_location("convert_tf_models_to_pytorch", MODULE_PATH)
+assert SPEC is not None and SPEC.loader is not None
+convert_tf_models_to_pytorch = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(convert_tf_models_to_pytorch)
 
 
 def test_safe_extract_archive_rejects_tar_path_traversal(tmp_path):
