@@ -324,7 +324,7 @@ TEST(QDQTransformerTests, MatMul_S8S8U8_DisableFastMath) {
 
 template <typename Input1Type, typename Input2Type, typename OutputType, typename BiasType = int32_t>
 void QDQTransformerGemmTests(bool has_output_q, bool has_bias, bool beta_not_one = false,
-                             bool disable_fastmath = false, bool alpha_not_one = false) {
+                             bool disable_fastmath = false, bool alpha_not_one = false, int opset_version = 0) {
   auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& input2_shape,
                        bool use_contrib_qdq = false) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -435,33 +435,19 @@ void QDQTransformerGemmTests(bool has_output_q, bool has_bias, bool beta_not_one
           kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16, "1"));
     };
 
-    TransformerTester(build_test_case,
-                      check_binary_op_graph,
-                      TransformerLevel::Level1,
-                      TransformerLevel::Level2,
-                      12 /*opset_version*/,
-                      NAN /*per_sample_tolerance*/,
-                      NAN /*relative_per_sample_tolerance*/,
-                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()),
-                      add_session_options);
-    TransformerTester(build_test_case,
-                      check_binary_op_graph,
-                      TransformerLevel::Level1,
-                      TransformerLevel::Level2,
-                      18 /*opset_version*/,
-                      NAN /*per_sample_tolerance*/,
-                      NAN /*relative_per_sample_tolerance*/,
-                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()),
-                      add_session_options);
-    TransformerTester(build_test_case,
-                      check_binary_op_graph,
-                      TransformerLevel::Level1,
-                      TransformerLevel::Level2,
-                      19 /*opset_version*/,
-                      NAN /*per_sample_tolerance*/,
-                      NAN /*relative_per_sample_tolerance*/,
-                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()),
-                      add_session_options);
+    const auto opset_versions = opset_version == 0 ? std::vector<int>{12, 18, 19}
+                                                   : std::vector<int>{opset_version};
+    for (int current_opset_version : opset_versions) {
+      TransformerTester(build_test_case,
+                        check_binary_op_graph,
+                        TransformerLevel::Level1,
+                        TransformerLevel::Level2,
+                        current_opset_version,
+                        NAN /*per_sample_tolerance*/,
+                        NAN /*relative_per_sample_tolerance*/,
+                        std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()),
+                        add_session_options);
+    }
 
     if (disable_fastmath) {
       auto add_session_options = [&](SessionOptions& so) {
@@ -498,15 +484,16 @@ void QDQTransformerGemmTests() {
   QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(false, true, true);
   QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, false, true);
   QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, true, true);
-  if constexpr (std::is_same_v<Input1Type, uint8_t> && std::is_same_v<Input2Type, uint8_t> &&
-                std::is_same_v<OutputType, uint8_t> && std::is_same_v<BiasType, int32_t>) {
-    QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(false, false, false, false, true);
-    QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(false, true, false, false, true);
-    QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, false, false, false, true);
-    QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, true, false, false, true);
-  }
   // dummy test to disable the fastmath session
   QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, true, true, true);
+}
+
+TEST(QDQTransformerTests, Gemm_AlphaNotOne_U8U8U8_FastMath) {
+  constexpr int opset_version = 19;
+  QDQTransformerGemmTests<uint8_t, uint8_t, uint8_t>(false, false, false, false, true, opset_version);
+  QDQTransformerGemmTests<uint8_t, uint8_t, uint8_t>(false, true, false, false, true, opset_version);
+  QDQTransformerGemmTests<uint8_t, uint8_t, uint8_t>(true, false, false, false, true, opset_version);
+  QDQTransformerGemmTests<uint8_t, uint8_t, uint8_t>(true, true, false, false, true, opset_version);
 }
 
 TEST(QDQTransformerTests, Gemm_U8U8U8_FastMath) {
