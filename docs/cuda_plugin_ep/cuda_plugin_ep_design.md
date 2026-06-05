@@ -90,6 +90,31 @@ The plugin is built against the ORT headers in this repository (`ORT_API_VERSION
 
 > **Lowering the floor.** The floor reflects the newest `OrtApi`/`OrtEpApi` function the plugin actually calls. The kernel-registry EP path (`CreateKernelRegistry`, `KernelRegistry_AddKernel`, `GetKernelRegistry`, `EpGraphSupportInfo_*`, `CreateIfKernel`/`CreateLoopKernel`/`CreateScanKernel`) is `\since 1.24`; the stream, memory-device, and data-transfer EP functions are `\since 1.23`. The `Test Linux CUDA Plugin EP` stage (`plugin-linux-cuda-test-stage.yml`) installs the floor version of the base `onnxruntime` package and runs the plugin test against it, so an accidental dependency on a newer API is caught in CI. The Python plugin-loading helpers (`register_execution_provider_library`, `get_ep_devices`, `add_provider_for_devices`) must also exist in the floor's base package; the same test validates this.
 
+### 2.6 API Version Audit and Defensive Capability Gating
+
+Because the plugin binary may load into an older runtime, every `OrtApi`/`OrtEpApi` function it calls must exist in that runtime. The following audit records the newest `\since` version of each API surface the plugin uses (verified against the `\since` annotations in `onnxruntime_c_api.h` and `onnxruntime_ep_c_api.h`). It is the justification for the `1.24.4` floor and identifies exactly which features depend on APIs newer than the floor.
+
+| API surface | Newest `\since` used | Representative functions |
+| --- | --- | --- |
+| `OrtApi` — direct calls (`ort_api_.*`, `Ort::GetApi().*`) | **1.23** | `SyncStream_GetHandle`, `GetTensorSizeInBytes`, `GetRunConfigEntry`, `CreateMemoryInfo_V2`, `Graph_GetNumNodes`/`Graph_GetNodes` (older: `CreateStatus`, `Logger_LogMessage`, `*KeyValuePairs`, `HardwareDevice_*`, `MemoryInfoGet*`, `GetSessionConfigEntry`) |
+| `OrtEpApi` — direct calls (`ep_api_.*`, `Ort::GetEpApi().*`) | **1.24** | `CreateKernelRegistry`, `KernelRegistry_AddKernel`, `ReleaseKernelRegistry`, `CreateIfKernel`/`CreateLoopKernel`/`CreateScanKernel`, `EpGraphSupportInfo_LookUpKernel` (older: `MemoryDevice_*`, `MemoryInfo_GetMemoryDevice`, `SyncStream_*`, `EpDevice_AddAllocatorInfo`, `EpGraphSupportInfo_AddSingleNode`, `CreateEpDevice`/`ReleaseEpDevice`) |
+| EP profiler API (only when built with `ENABLE_CUDA_PROFILING`) | **1.25** | `CreateProfilingEvent`, `ProfilingEventsContainer_AddEvents`, `ReleaseProfilingEvent` (called from `cuda_profiler_plugin.cc` via the `Ort::ProfilingEvent` / `Ort::UnownedProfilingEventsContainer` wrappers) |
+
+`provider_api_shims.cc` uses only internal helpers (`GetEnvironmentVar`, `MLFloat16` conversions), and the plugin uses no Model Editor, Model Package, or Compile API. **Apart from the optional EP profiler, every API the plugin calls is `\since 1.24` or older**, so the true compatibility floor is `1.24.4`.
+
+**Defensive capability gating.** ORT already skips a callback field whose introduction version is newer than the `ort_version_supported` the plugin reports (see §2.5), so a correctly-negotiated plugin is implicitly safe. To make the version dependency explicit — and to guarantee the plugin never invokes an `OrtEpApi` function newer than the runtime — the `CudaEp` constructor (`cuda_ep.cc`) only installs an `OrtEp` callback when the negotiated runtime (`ort_version_supported = min(CurrentOrtApiVersion(), ORT_API_VERSION)`) is new enough to provide both the callback field and every API its implementation calls:
+
+| `OrtEp` callback | `\since` | Installed only when |
+| --- | --- | --- |
+| `Sync` | 1.25 | `ort_version >= 25` |
+| `CreateProfiler` | 1.25 | `ort_version >= 25` **and** `ENABLE_CUDA_PROFILING` |
+| `IsGraphCaptureEnabled`, `IsGraphCaptured`, `ReplayGraph`, `GetGraphCaptureNodeAssignmentPolicy` | 1.26 | `ort_version >= 26` |
+| `GetAvailableResource` | 1.26 | `ort_version >= 26` |
+
+All other `OrtEp` and `OrtEpFactory` callbacks are `\since 1.24` or older and are installed unconditionally. Gating `CreateProfiler` is what makes the three `\since 1.25` profiler functions unreachable on an older runtime: when the profiler is never created, ORT never drives the `OrtEpProfilerImpl` callbacks that call them.
+
+The gates use **graceful degradation rather than throwing**: the gated callbacks are all optional capabilities (per-run sync, EP-level GPU profiling, CUDA-graph capture/replay, device-memory budgeting), so disabling them on an older runtime still yields a fully functional EP — inference runs, just without that specific feature. This was validated by loading the plugin (built against the latest headers) into both the latest runtime (full test suite passes) and an `onnxruntime==1.24.4` runtime (the EP registers, enumerates devices, and runs inference correctly with the newer callbacks left null).
+
 ---
 
 ## 3. Type Resolution — How Kernel Code Compiles Unchanged
