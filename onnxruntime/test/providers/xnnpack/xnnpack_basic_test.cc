@@ -205,6 +205,25 @@ static void RunModelTest(
                             helper.feeds_, params);
 }
 
+TEST(XnnpackEP, TestPoolReluFusionRejectedWithSideConsumer) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 3, 8, 8}, -1.f, 1.f);
+    auto* pool_output = builder.MakeIntermediate();
+    auto* relu_output = builder.MakeIntermediate();
+    auto* output_arg = builder.MakeOutput();
+
+    Node& pool_node = builder.AddNode("MaxPool", {input_arg}, {pool_output});
+    pool_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+    pool_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+    pool_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+
+    builder.AddNode("Relu", {pool_output}, {relu_output});
+    builder.AddNode("Add", {pool_output, relu_output}, {output_arg});
+  };
+
+  RunModelTest(build_test_case, "xnnpack_pool_relu_fanout");
+}
+
 static void RunModelTestWithPath(const ORTCHAR_T* ort_model_path, const char* graph_name,
                                  std::function<void(const Graph&)> graph_verifier = nullptr,
                                  float abs_err_tolerance = .2f) {
