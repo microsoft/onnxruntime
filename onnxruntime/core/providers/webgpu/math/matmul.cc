@@ -192,7 +192,7 @@ Status ComputeMatMul(ComputeContext* context,
   TensorShape output_shape = helper.OutputShape();
   const int64_t dim_output_outer = output_shape[output_shape.NumDimensions() - 2];
   // When B is a matrix (batch is 1), we fold batchA into the M dimension for better
-  // performance (e.g., [2,3,5] → [1,6,5]).
+  // performance (e.g., [2,3,5] → [1,6,5]). This is especially beneficial when M is small.
   if (dim_output_outer < 128 && batchA != 1 && batchB == 1) {
     // dimensions of A: [1,`batchA`, M, K]
     int64_t batchAndM = a_shape.SizeToDimension(a_shape.NumDimensions() - 1);
