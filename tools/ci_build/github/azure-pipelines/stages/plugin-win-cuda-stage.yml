@@ -1,4 +1,11 @@
 parameters:
+- name: arch
+  type: string
+  default: x64
+  values:
+  - x64
+  - arm64
+
 - name: package_version
   type: string
   default: dev
@@ -31,16 +38,23 @@ parameters:
   default: '52-real;61-real;75-real;86-real;89-real;90-virtual'
 
 stages:
-  - stage: Win_plugin_cuda_x64_Build
+  - stage: Win_plugin_cuda_${{ parameters.arch }}_Build
     dependsOn: []
     jobs:
-    - job: Win_plugin_cuda_x64_Build
+    - job: Win_plugin_cuda_${{ parameters.arch }}_Build
       timeoutInMinutes: 360
       workspace:
         clean: all
       pool:
-        name: onnxruntime-Win-CPU-VS2022-Latest
-        os: windows
+        ${{ if eq(parameters.arch, 'arm64') }}:
+          name: onnxruntime-qnn-windows-vs-2022-arm64
+          os: windows
+          hostArchitecture: Arm64
+          demands:
+            - Agent.Version -equals 4.264.2
+        ${{ else }}:
+          name: onnxruntime-Win-CPU-VS2022-Latest
+          os: windows
       templateContext:
         sdl:
           codeSignValidation:
@@ -54,7 +68,7 @@ stages:
         outputs:
         - output: pipelineArtifact
           targetPath: $(Build.ArtifactStagingDirectory)
-          artifactName: cuda_plugin_win_x64
+          artifactName: cuda_plugin_win_${{ parameters.arch }}
       variables:
       - template: ../templates/common-variables.yml
       - name: GRADLE_OPTS
@@ -68,7 +82,7 @@ stages:
 
       - template: ../templates/setup-build-tools.yml
         parameters:
-          host_cpu_arch: 'x64'
+          host_cpu_arch: ${{ parameters.arch }}
           python_version: ${{ parameters.python_version }}
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
@@ -203,19 +217,26 @@ stages:
           type nul > "$(Build.ArtifactStagingDirectory)\version\$(PluginPackageVersion)"
         displayName: 'Create version marker file'
 
-    - job: Win_plugin_cuda_x64_Python_Package
-      dependsOn: Win_plugin_cuda_x64_Build
+    - job: Win_plugin_cuda_${{ parameters.arch }}_Python_Package
+      dependsOn: Win_plugin_cuda_${{ parameters.arch }}_Build
       timeoutInMinutes: 30
       workspace:
         clean: all
       pool:
-        name: onnxruntime-Win-CPU-VS2022-Latest
-        os: windows
+        ${{ if eq(parameters.arch, 'arm64') }}:
+          name: onnxruntime-qnn-windows-vs-2022-arm64
+          os: windows
+          hostArchitecture: Arm64
+          demands:
+            - Agent.Version -equals 4.264.2
+        ${{ else }}:
+          name: onnxruntime-Win-CPU-VS2022-Latest
+          os: windows
       templateContext:
         outputs:
         - output: pipelineArtifact
           targetPath: '$(Build.ArtifactStagingDirectory)\python'
-          artifactName: cuda_plugin_python_win_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}
+          artifactName: cuda_plugin_python_win_${{ parameters.arch }}_cuda${{ replace(parameters.cuda_version, '.', '') }}
       variables:
       - template: ../templates/common-variables.yml
       steps:
@@ -225,7 +246,7 @@ stages:
 
       - template: ../templates/setup-build-tools.yml
         parameters:
-          host_cpu_arch: 'x64'
+          host_cpu_arch: ${{ parameters.arch }}
           python_version: ${{ parameters.python_version }}
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
@@ -239,7 +260,7 @@ stages:
       - task: DownloadPipelineArtifact@2
         displayName: 'Download plugin build artifacts'
         inputs:
-          artifactName: cuda_plugin_win_x64
+          artifactName: cuda_plugin_win_${{ parameters.arch }}
           targetPath: '$(Build.BinariesDirectory)\plugin_artifacts'
 
       - task: PowerShell@2

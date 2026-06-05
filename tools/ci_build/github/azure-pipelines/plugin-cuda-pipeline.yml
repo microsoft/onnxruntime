@@ -21,6 +21,11 @@ parameters:
   type: boolean
   default: true
 
+- name: build_windows_arm64
+  displayName: 'Build Windows ARM64'
+  type: boolean
+  default: false
+
 - name: build_linux_x64
   displayName: 'Build Linux x64'
   type: boolean
@@ -123,6 +128,7 @@ extends:
         - template: stages/plugin-cuda-packaging-stage.yml
           parameters:
             build_windows_x64: ${{ parameters.build_windows_x64 }}
+            build_windows_arm64: ${{ parameters.build_windows_arm64 }}
             build_linux_x64: ${{ parameters.build_linux_x64 }}
             build_linux_aarch64: ${{ parameters.build_linux_aarch64 }}
             cuda_version: ${{ parameters.cuda_version }}
