@@ -20,7 +20,9 @@ docker run -e SYSTEM_COLLECTIONURI --rm --network=host --volume /data/onnx:/data
 --volume "$HOME/.gradle:/home/onnxruntimedev/.gradle" \
 --volume "$HOME/.onnx:/home/onnxruntimedev/.onnx" -e NIGHTLY_BUILD "onnxruntimecuda${CUDA_VERSION_MAJOR}xtrt86build" \
 /bin/bash -c "/usr/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release \
---skip_tests --skip_submodule_sync --parallel --use_binskim_compliant_compile_flags --build_shared_lib --build_nodejs \
+--skip_tests --skip_submodule_sync \
+--parallel --nvcc_threads 1 --flash_nvcc_threads 1 \
+--use_binskim_compliant_compile_flags --build_shared_lib --build_nodejs \
 --use_webgpu --use_tensorrt --cuda_version=$CUDA_VERSION --cuda_home=/usr/local/cuda-$CUDA_VERSION \
 --cudnn_home=/usr --tensorrt_home=/usr \
 --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHS}' --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
