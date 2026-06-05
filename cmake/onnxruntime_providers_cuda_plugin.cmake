@@ -410,8 +410,18 @@ if(NOT DEFINED onnxruntime_PLUGIN_EP_VERSION)
   set(onnxruntime_PLUGIN_EP_VERSION "${ORT_VERSION}-dev")
 endif()
 
+# Bake the minimum compatible ORT version (the single source of truth lives in
+# plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION) into the EP DLL so it can be enforced at runtime by
+# onnxruntime::ep::ApiInit(). Format is strict "MAJOR.MINOR.PATCH".
+set(_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION_FILE "${REPO_ROOT}/plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION")
+file(STRINGS "${_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION_FILE}" _ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION LIMIT_COUNT 1)
+if(NOT _ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION)
+  message(FATAL_ERROR "CUDA plugin EP minimum ORT version file is missing or empty: "
+                      "${_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION_FILE}")
+endif()
+
 # Symbol visibility — only export CreateEpFactories and ReleaseEpFactory
-target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE ORT_API_MANUAL_INIT BUILD_CUDA_EP_AS_PLUGIN ORT_USE_EP_API_ADAPTERS=1 ONNX_ML=1 ONNX_NAMESPACE=onnx ONNX_USE_LITE_PROTO=1 ORT_PLUGIN_EP_VERSION="${onnxruntime_PLUGIN_EP_VERSION}")
+target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE ORT_API_MANUAL_INIT BUILD_CUDA_EP_AS_PLUGIN ORT_USE_EP_API_ADAPTERS=1 ONNX_ML=1 ONNX_NAMESPACE=onnx ONNX_USE_LITE_PROTO=1 ORT_PLUGIN_EP_VERSION="${onnxruntime_PLUGIN_EP_VERSION}" ORT_PLUGIN_EP_MIN_ORT_VERSION="${_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION}")
 
 if (onnxruntime_USE_CUDA_NHWC_OPS)
     target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE ENABLE_CUDA_NHWC_OPS)

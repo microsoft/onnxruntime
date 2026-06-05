@@ -109,36 +109,63 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
       name_(factory.GetEpName()),
       config_(config),
       logger_(logger) {
-  ort_version_supported = kCudaPluginEpMinOrtApiVersion;
+  ort_version_supported = CudaPluginEpOrtVersionSupported();
 
-  // Set function pointers for kernel-registry-based EP
+  // The plugin is compiled against the latest ORT headers (ORT_API_VERSION) but may be loaded by an
+  // older ORT runtime, down to the floor declared in plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION.
+  // `ort_version_supported` is min(runtime, compiled). Some OrtEp callbacks below — and the OrtEpApi
+  // functions their implementations call — only exist in newer ORT versions. Only advertise such a
+  // callback when the negotiated runtime is new enough to (a) know about the OrtEp struct field and
+  // (b) provide every OrtEpApi function the callback relies on. ORT already skips callbacks newer than
+  // `ort_version_supported`, but gating here keeps the version dependency explicit and guarantees the
+  // EP never calls an OrtEpApi function newer than the runtime (the failure mode the guards prevent).
+  const uint32_t ort_version = ort_version_supported;
+
+  // Kernel-registry-based EP callbacks (all introduced in ORT <= 1.24).
   GetName = GetNameImpl;
   GetCapability = GetCapabilityImpl;
   GetKernelRegistry = GetKernelRegistryImpl;
   GetPreferredDataLayout = GetPreferredDataLayoutImpl;
   ShouldConvertDataLayoutForOp = ShouldConvertDataLayoutForOpImpl;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
-  Sync = SyncImpl;
   IsConcurrentRunSupported = IsConcurrentRunSupportedImpl;
   OnRunStart = config_.enable_cuda_graph ? OnRunStartImpl : nullptr;
   OnRunEnd = config_.enable_cuda_graph ? OnRunEndImpl : nullptr;
+
+  // OrtEp::Sync is \since ORT 1.25. Only advertise it on a runtime that provides it.
+  Sync = (ort_version >= 25) ? SyncImpl : nullptr;
 
   // Not a compile-based EP
   Compile = nullptr;
   ReleaseNodeComputeInfos = nullptr;
 
-  // Graph capture/replay — always set so ORT can query capabilities
-  IsGraphCaptureEnabled = IsGraphCaptureEnabledImpl;
-  IsGraphCaptured = IsGraphCapturedImpl;
-  ReplayGraph = ReplayGraphImpl;
-  GetGraphCaptureNodeAssignmentPolicy = GetGraphCaptureNodeAssignmentPolicyImpl;
+  // Graph capture/replay (OrtEp::IsGraphCaptureEnabled/IsGraphCaptured/ReplayGraph/
+  // GetGraphCaptureNodeAssignmentPolicy) and device-resource accounting
+  // (OrtEp::GetAvailableResource + OrtResourceCount) are \since ORT 1.26. Only advertise them when the
+  // negotiated runtime is >= 1.26; older runtimes neither expose these OrtEp fields nor support
+  // EP-driven graph capture, so leaving them null preserves the same behavior explicitly.
+  if (ort_version >= 26) {
+    IsGraphCaptureEnabled = IsGraphCaptureEnabledImpl;
+    IsGraphCaptured = IsGraphCapturedImpl;
+    ReplayGraph = ReplayGraphImpl;
+    GetGraphCaptureNodeAssignmentPolicy = GetGraphCaptureNodeAssignmentPolicyImpl;
+    GetAvailableResource = GetAvailableResourceImpl;
+  } else {
+    IsGraphCaptureEnabled = nullptr;
+    IsGraphCaptured = nullptr;
+    ReplayGraph = nullptr;
+    GetGraphCaptureNodeAssignmentPolicy = nullptr;
+    GetAvailableResource = nullptr;
+  }
 
-  // Resource accounting — allows ORT to query available device memory for budget enforcement
-  GetAvailableResource = GetAvailableResourceImpl;
-
-  // Profiling — CUPTI-based GPU activity tracing when profiling is enabled at build time
+  // Profiling — CUPTI-based GPU activity tracing when profiling is enabled at build time.
+  // The EP profiler API (OrtEp::CreateProfiler, OrtEpProfilerImpl, and the OrtEpApi
+  // CreateProfilingEvent / ProfilingEventsContainer_AddEvents / ReleaseProfilingEvent functions that
+  // CudaPluginEpProfiler calls) is \since ORT 1.25. Only advertise the profiler when the negotiated
+  // runtime supports it; this single guard makes every 1.25 profiler API call unreachable on older
+  // runtimes (the profiler is never created), so inference still runs without EP-level GPU profiling.
 #if defined(ENABLE_CUDA_PROFILING)
-  CreateProfiler = CreateProfilerImpl;
+  CreateProfiler = (ort_version >= 25) ? CreateProfilerImpl : nullptr;
 #else
   CreateProfiler = nullptr;
 #endif

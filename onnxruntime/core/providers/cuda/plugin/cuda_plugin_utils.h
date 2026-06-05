@@ -6,16 +6,34 @@
 
 #pragma once
 
+#include <algorithm>
+
 #include "onnxruntime_c_api.h"
 #include "onnxruntime_cxx_api.h"
 
 #include "core/common/common.h"
+#include "ep/api.h"  // onnxruntime::ep::CurrentOrtApiVersion()
 
-// The minimum ORT API version required by the CUDA plugin EP.
-// This matches MIN_ONNXRUNTIME_VERSION (1.26.0) and must be used in GetApi()
-// and ort_version_supported so that the plugin is compatible with ORT 1.26+
-// without requesting v27-only OrtApi entries that ORT 1.26 does not provide.
-static constexpr uint32_t kCudaPluginEpMinOrtApiVersion = 26;
+// The ORT API version this plugin reports as supported on each EP API struct
+// (OrtEpFactory, OrtEp, OrtAllocator, OrtSyncStreamImpl, OrtSyncNotificationImpl,
+// OrtDataTransferImpl, OrtEpProfilerImpl, OrtLoopKernelHelper, OrtScanKernelHelper).
+//
+// ORT only reads a callback field on these structs when the claimed
+// ort_version_supported is at least the version that introduced the field. We
+// therefore report the lower of:
+//   * the runtime API version negotiated in CreateEpFactories() via
+//     onnxruntime::ep::ApiInit() (see onnxruntime::ep::CurrentOrtApiVersion()), and
+//   * the API version this plugin was compiled against (ORT_API_VERSION).
+// This lets the same plugin binary run on an older ORT runtime (>= the floor in
+// plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION) without claiming callbacks the runtime
+// cannot understand, while still exposing newer callbacks on newer runtimes.
+//
+// Must only be called after onnxruntime::ep::ApiInit() has run (i.e. from EP
+// object constructors, which are reached only after CreateEpFactories()).
+inline uint32_t CudaPluginEpOrtVersionSupported() {
+  return std::min<uint32_t>(::onnxruntime::ep::CurrentOrtApiVersion(),
+                            static_cast<uint32_t>(ORT_API_VERSION));
+}
 
 #include <cuda_runtime_api.h>
 #include <cublas_v2.h>

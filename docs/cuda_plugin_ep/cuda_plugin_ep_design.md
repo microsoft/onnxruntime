@@ -76,6 +76,20 @@ The plugin exports exactly two C symbols:
 
 All other symbols have hidden visibility.
 
+### 2.5 ORT Version Compatibility and API Negotiation
+
+The plugin is built against the ORT headers in this repository (`ORT_API_VERSION`) but is designed to load into an **older** ORT runtime as well, down to the floor declared in [`plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION`](../../plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION) (currently `1.24.4`). The floor is a single source of truth:
+
+- **Build time:** `cmake/onnxruntime_providers_cuda_plugin.cmake` reads the file and bakes it into the DLL as the `ORT_PLUGIN_EP_MIN_ORT_VERSION` preprocessor definition.
+- **Packaging:** the Python wheel (`onnxruntime>=<floor>`, via `plugin-ep-cuda/python/build_wheel.py`) and the NuGet package (`plugin-ep-cuda/csharp/pack_nuget.py`) read the same file.
+
+`CreateEpFactories()` negotiates the API version with the runtime instead of hard-coding it:
+
+1. It calls `onnxruntime::ep::ApiInit(ort_api_base, ORT_PLUGIN_EP_MIN_ORT_VERSION)` (from `include/onnxruntime/ep/api.h`). `ApiInit()` parses the runtime version string reported by `OrtApiBase::GetVersionString()`, enforces the minimum, requests the `OrtApi` matching the **runtime's** version, and initializes the C++ API (`Ort::InitApi`). If the runtime is older than the floor, or the requested API/EP API is unavailable, `ApiInit()` throws and the factory creation fails with a descriptive `OrtStatus` (constructed conservatively via the v1 `OrtApi`, since the C++ API is not yet initialized at that point).
+2. Every EP-facing callback struct (`OrtEpFactory`, `OrtEp`, `OrtAllocator`, `OrtSyncStreamImpl`, `OrtSyncNotificationImpl`, `OrtDataTransferImpl`, `OrtEpProfilerImpl`, `OrtLoopKernelHelper`, `OrtScanKernelHelper`) sets its `ort_version_supported`/`version` field to `CudaPluginEpOrtVersionSupported()` (defined in `cuda_plugin_utils.h`), which returns `min(onnxruntime::ep::CurrentOrtApiVersion(), ORT_API_VERSION)`. ORT only reads a callback field when the claimed version is at least the version that introduced it, so reporting the negotiated runtime version (never higher than what the runtime understands, never higher than what the plugin was compiled against) keeps the plugin compatible across the supported range.
+
+> **Lowering the floor.** The floor reflects the newest `OrtApi`/`OrtEpApi` function the plugin actually calls. The kernel-registry EP path (`CreateKernelRegistry`, `KernelRegistry_AddKernel`, `GetKernelRegistry`, `EpGraphSupportInfo_*`, `CreateIfKernel`/`CreateLoopKernel`/`CreateScanKernel`) is `\since 1.24`; the stream, memory-device, and data-transfer EP functions are `\since 1.23`. The `Test Linux CUDA Plugin EP` stage (`plugin-linux-cuda-test-stage.yml`) installs the floor version of the base `onnxruntime` package and runs the plugin test against it, so an accidental dependency on a newer API is caught in CI. The Python plugin-loading helpers (`register_execution_provider_library`, `get_ep_devices`, `add_provider_for_devices`) must also exist in the floor's base package; the same test validates this.
+
 ---
 
 ## 3. Type Resolution — How Kernel Code Compiles Unchanged
