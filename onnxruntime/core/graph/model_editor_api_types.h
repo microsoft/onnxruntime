@@ -6,6 +6,7 @@
 #include <gsl/gsl>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "core/common/inlined_containers.h"
@@ -264,5 +265,5 @@ struct ModelEditorGraph : public OrtGraph {
 
 struct OrtModel {
   std::unique_ptr<OrtGraph, ::onnxruntime::OrtGraphDeleter> graph;
-  ::onnxruntime::InlinedHashMap<std::string, int> domain_to_version;
+  std::unordered_map<std::string, int> domain_to_version;
 };
