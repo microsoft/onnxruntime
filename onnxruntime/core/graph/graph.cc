@@ -6868,6 +6868,10 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
 
   auto add_initializers = [this](const std::unordered_map<std::string, std::unique_ptr<OrtValue>>& initializers,
                                  bool is_external) {
+    // Note: the map is `const&` but we move out of the OrtValue stored inside each unique_ptr below.
+    // This is intentional and safe here: LoadFromModelEditorApiModel consumes the OrtModel exactly once
+    // (the session takes ownership of the model and tears it down after Load), so the initializers map
+    // is not reused. `const unique_ptr<T>` does not propagate const to `*p`, so the move is well-formed.
     for (auto& name_and_ortvalue : initializers) {
       // convert from OrtValue to TensorProto
       const std::string& name = name_and_ortvalue.first;
