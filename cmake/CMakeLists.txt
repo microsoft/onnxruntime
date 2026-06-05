@@ -673,20 +673,19 @@ else()
   endif()
   check_function_exists(reallocarray HAS_REALLOCARRAY)
   if (NOT APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_target_platform STREQUAL "aarch64")
-   # GCC < 12 on aarch64 ships with an assembler that does not accept the
-   # `+bf16` / `+fp16` architecture extensions used below, producing a cryptic
-   # "compiler doesn't support BFLOAT16" failure during the capability probe.
-   # See microsoft/onnxruntime#22837.
-   if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 12)
-     message(FATAL_ERROR "GCC >= 12 is required for aarch64 BFloat16/Float16 support. Found GCC ${CMAKE_C_COMPILER_VERSION}.")
-   endif()
    check_cxx_compiler_flag(-march=armv8.2-a+bf16 HAS_ARM64_BFLOAT16)
    if(NOT HAS_ARM64_BFLOAT16)
-     message(FATAL_ERROR  "The compiler doesn't support BFLOAT16!!!")
+     message(FATAL_ERROR "The compiler/assembler does not support the aarch64 +bf16 ISA extension. "
+       "On aarch64 this typically requires GCC >= 12 paired with a sufficiently recent binutils "
+       "(the capability is gated by the assembler, not the compiler alone). "
+       "See https://github.com/microsoft/onnxruntime/issues/22837 for details.")
    endif()
    check_cxx_compiler_flag(-march=armv8.2-a+fp16 HAS_ARM64_FLOAT16)
    if(NOT HAS_ARM64_FLOAT16)
-     message(FATAL_ERROR  "The compiler doesn't support FLOAT16!!!")
+     message(FATAL_ERROR "The compiler/assembler does not support the aarch64 +fp16 ISA extension. "
+       "On aarch64 this typically requires GCC >= 12 paired with a sufficiently recent binutils "
+       "(the capability is gated by the assembler, not the compiler alone). "
+       "See https://github.com/microsoft/onnxruntime/issues/22837 for details.")
    endif()
   endif()
 
