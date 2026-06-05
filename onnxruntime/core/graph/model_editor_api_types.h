@@ -14,8 +14,26 @@
 #include "core/graph/abi_graph_types.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
+#include "core/session/ort_apis.h"
 
 namespace onnxruntime {
+
+// Deleters that route destruction through the official OrtApis::Release* entry points instead of
+// invoking `delete` directly. This keeps every owning slot in sync with whatever Release* does today
+// (`delete`) and with whatever it may do in the future (refcount, latch, pool return, etc.) without
+// having to find every plain-`delete` site.
+struct OrtValueDeleter {
+  void operator()(::OrtValue* p) const noexcept { ::OrtApis::ReleaseValue(p); }
+};
+struct OrtValueInfoDeleter {
+  void operator()(::OrtValueInfo* p) const noexcept { ::OrtApis::ReleaseValueInfo(p); }
+};
+struct OrtNodeDeleter {
+  void operator()(::OrtNode* p) const noexcept { ::OrtApis::ReleaseNode(p); }
+};
+struct OrtGraphDeleter {
+  void operator()(::OrtGraph* p) const noexcept { ::OrtApis::ReleaseGraph(p); }
+};
 
 /// <summary>
 /// Concrete implementation of OrtValueInfo used in the ModelEditorApi.
@@ -233,11 +251,11 @@ struct ModelEditorGraph : public OrtGraph {
                            "OrtModelEditorApi does not support getting the parent node for OrtGraph");
   }
 
-  onnxruntime::InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>> inputs;
-  onnxruntime::InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>> outputs;
-  std::unordered_map<std::string, std::unique_ptr<OrtValue>> initializers;
-  std::unordered_map<std::string, std::unique_ptr<OrtValue>> external_initializers;
-  std::vector<std::unique_ptr<onnxruntime::ModelEditorNode>> nodes;
+  onnxruntime::InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo, OrtValueInfoDeleter>> inputs;
+  onnxruntime::InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo, OrtValueInfoDeleter>> outputs;
+  std::unordered_map<std::string, std::unique_ptr<OrtValue, OrtValueDeleter>> initializers;
+  std::unordered_map<std::string, std::unique_ptr<OrtValue, OrtValueDeleter>> external_initializers;
+  std::vector<std::unique_ptr<onnxruntime::ModelEditorNode, OrtNodeDeleter>> nodes;
   std::string name = "ModelEditorGraph";
   std::filesystem::path model_path;
   ModelMetadata model_metadata;
@@ -246,6 +264,6 @@ struct ModelEditorGraph : public OrtGraph {
 }  // namespace onnxruntime
 
 struct OrtModel {
-  std::unique_ptr<OrtGraph> graph;
+  std::unique_ptr<OrtGraph, ::onnxruntime::OrtGraphDeleter> graph;
   std::unordered_map<std::string, int> domain_to_version;
 };

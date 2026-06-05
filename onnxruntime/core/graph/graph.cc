@@ -6843,7 +6843,9 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
   // NodeArg for the value using that
 
   auto add_graph_inputs_outputs = [&, this](
-                                      const InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>>& graph_inputs_or_outputs,
+                                      const InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo,
+                                                                          onnxruntime::OrtValueInfoDeleter>>&
+                                          graph_inputs_or_outputs,
                                       bool is_input) {
     // when updating a model we don't require the inputs or outputs to be set if they're unchanged.
     if (updating_existing_graph && graph_inputs_or_outputs.empty()) {
@@ -6866,7 +6868,9 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
     }
   };
 
-  auto add_initializers = [this](const std::unordered_map<std::string, std::unique_ptr<OrtValue>>& initializers,
+  auto add_initializers = [this](const std::unordered_map<std::string,
+                                                          std::unique_ptr<OrtValue, onnxruntime::OrtValueDeleter>>&
+                                     initializers,
                                  bool is_external) {
     // Note: the map is `const&` but we move out of the OrtValue stored inside each unique_ptr below.
     // This is intentional and safe here: LoadFromModelEditorApiModel consumes the OrtModel exactly once
