@@ -4050,14 +4050,18 @@ inline void GraphImpl<T>::AddInitializer(const std::string& name, Value& initial
 
 template <typename T>
 inline void GraphImpl<T>::AddNode(Node& node) {
-  // Graph takes ownership of `node`
-  ThrowOnError(GetModelEditorApi().AddNodeToGraph(this->p_, node.release()));
+  // Graph takes ownership of `node` only on success. Pass the raw pointer via implicit conversion
+  // (which does not release the wrapper) so that on failure `node` still owns it; release after the
+  // C call returns OK.
+  ThrowOnError(GetModelEditorApi().AddNodeToGraph(this->p_, node));
+  node.release();
 }
 
 template <typename T>
 inline void ModelImpl<T>::AddGraph(Graph& graph) {
-  // Model takes ownership of `graph`
-  ThrowOnError(GetModelEditorApi().AddGraphToModel(this->p_, graph.release()));
+  // Model takes ownership of `graph` only on success. See AddNode for the rationale.
+  ThrowOnError(GetModelEditorApi().AddGraphToModel(this->p_, graph));
+  graph.release();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
