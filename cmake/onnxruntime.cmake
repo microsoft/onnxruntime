@@ -255,6 +255,10 @@ if (CMAKE_SYSTEM_NAME MATCHES "AIX")
   list(APPEND onnxruntime_INTERNAL_LIBRARIES  iconv)
 endif()
 
+if(NOT onnxruntime_MINIMAL_BUILD AND TARGET model_package)
+  list(APPEND onnxruntime_INTERNAL_LIBRARIES model_package)
+endif()
+
 if (onnxruntime_USE_EXTENSIONS)
   list(APPEND onnxruntime_INTERNAL_LIBRARIES
     onnxruntime_extensions

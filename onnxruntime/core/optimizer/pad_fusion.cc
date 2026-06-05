@@ -50,7 +50,7 @@ bool VerifyNotCastChild(const Node& child_node) {
   return true;
 }
 
-void UpdatePaddingAttribute(Node& child_node, const std::vector<int64_t>& pads_values, const uint32_t pads_size) {
+void UpdatePaddingAttribute(Node& child_node, const std::vector<int64_t>& pads_values, const size_t pads_size) {
   auto reset_pads = true;
   if (child_node.GetAttributes().find("pads") != child_node.GetAttributes().end()) {
     /* pads can be empty, overwrite pads attribute in this case */
@@ -62,13 +62,15 @@ void UpdatePaddingAttribute(Node& child_node, const std::vector<int64_t>& pads_v
   }
 
   auto child_pads = child_node.GetMutableAttributes()["pads"].mutable_ints();
-  uint32_t child_pads_size = static_cast<uint32_t>(child_pads->size());
+  const size_t child_pads_size = static_cast<size_t>(child_pads->size());
 
-  for (uint32_t pads_index = 2, child_index = 0; pads_index < pads_size / 2; pads_index++, child_index++) {
-    child_pads->Set(child_index, child_pads->Get(child_index) + pads_values[pads_index]);
-    uint32_t mirrored_child_index = child_index + (child_pads_size / 2);
-    uint32_t mirrored_pad_index = pads_index + (pads_size / 2);
-    child_pads->Set(mirrored_child_index, child_pads->Get(mirrored_child_index) + pads_values[mirrored_pad_index]);
+  for (size_t pads_index = 2, child_index = 0; pads_index < pads_size / 2; pads_index++, child_index++) {
+    child_pads->Set(static_cast<int>(child_index),
+                    child_pads->Get(static_cast<int>(child_index)) + pads_values[pads_index]);
+    const size_t mirrored_child_index = child_index + (child_pads_size / 2);
+    const size_t mirrored_pad_index = pads_index + (pads_size / 2);
+    child_pads->Set(static_cast<int>(mirrored_child_index),
+                    child_pads->Get(static_cast<int>(mirrored_child_index)) + pads_values[mirrored_pad_index]);
   }
 
   if (child_node.OpType() == "AveragePool") {
@@ -158,7 +160,14 @@ Status PadFusion::Apply(Graph& graph, Node& pad_node, RewriteRuleEffect& rule_ef
     pads_values.assign(pad_node.GetAttributes().at("pads").ints().begin(), pad_node.GetAttributes().at("pads").ints().end());
   }
 
-  uint32_t pads_size = static_cast<uint32_t>(pads_values.size());
+  const size_t pads_size = pads_values.size();
+  // Per ONNX Pad spec, pads has 2*rank elements. This fusion only applies when the leading two
+  // dimensions (N, C) have zero padding, so we need at least rank 2 (pads_size >= 4) and an even
+  // number of entries.
+  if (pads_size < 4 || (pads_size % 2) != 0) {
+    return Status::OK();
+  }
+
   // check if padding is applied only on feature dims
   if (pads_values[0] != 0 || pads_values[1] != 0 || pads_values[pads_size / 2] != 0 ||
       pads_values[pads_size / 2 + 1] != 0) {
@@ -173,7 +182,21 @@ Status PadFusion::Apply(Graph& graph, Node& pad_node, RewriteRuleEffect& rule_ef
   Node& child_node = *graph.GetNode(pad_node.OutputNodesBegin()->Index());
   // We don't need to cast the pad_constant_value because this fusion requires that constant_pad_value
   // to be zero. See PadFusion::SatisfyCondition for details.
-  Node& target_padding_node = (child_node.OpType() == "Cast") ? *graph.GetNode(child_node.OutputNodesBegin()->Index()) : child_node;
+  Node& target_padding_node = (child_node.OpType() == "Cast")
+                                  ? *graph.GetNode(child_node.OutputNodesBegin()->Index())
+                                  : child_node;
+
+  // If the target node already has an explicit pads attribute, its length must match the expected
+  // pads length for the target op (2 * spatial_rank), where spatial_rank = pads_size / 2 - 2.
+  // Otherwise the fused padding values would be written into mismatched positions.
+  const auto& target_attrs = target_padding_node.GetAttributes();
+  auto target_pads_iter = target_attrs.find("pads");
+  if (target_pads_iter != target_attrs.end() && !target_pads_iter->second.ints().empty()) {
+    if (static_cast<size_t>(target_pads_iter->second.ints().size()) != pads_size - 4) {
+      return Status::OK();
+    }
+  }
+
   UpdatePaddingAttribute(target_padding_node, pads_values, pads_size);
 
   graph_utils::RemoveNodeOutputEdges(graph, pad_node);
