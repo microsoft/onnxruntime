@@ -719,7 +719,7 @@ TEST(QDQTransformerTests, MatMul_S8S8U8) {
 
 template <typename Input1Type, typename Input2Type, typename OutputType, typename BiasType = int32_t>
 void QDQTransformerGemmTests(bool has_output_q, bool has_bias, bool beta_not_one = false,
-                             bool alpha_not_one = false) {
+                             bool alpha_not_one = false, int opset_version = 0) {
   auto test_case = [&](const std::vector<int64_t>& input1_shape, const std::vector<int64_t>& input2_shape,
                        bool use_contrib_qdq = false) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -825,30 +825,18 @@ void QDQTransformerGemmTests(bool has_output_q, bool has_bias, bool beta_not_one
       }
     };
 
-    TransformerTester(build_test_case,
-                      check_binary_op_graph,
-                      TransformerLevel::Level1,
-                      TransformerLevel::Level2,
-                      12 /*opset_version*/,
-                      0.01 /*per_sample_tolerance*/,
-                      0.01 /*relative_per_sample_tolerance*/,
-                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
-    TransformerTester(build_test_case,
-                      check_binary_op_graph,
-                      TransformerLevel::Level1,
-                      TransformerLevel::Level2,
-                      18 /*opset_version*/,
-                      0.01 /*per_sample_tolerance*/,
-                      0.01 /*relative_per_sample_tolerance*/,
-                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
-    TransformerTester(build_test_case,
-                      check_binary_op_graph,
-                      TransformerLevel::Level1,
-                      TransformerLevel::Level2,
-                      19 /*opset_version*/,
-                      0.01 /*per_sample_tolerance*/,
-                      0.01 /*relative_per_sample_tolerance*/,
-                      std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+    const auto opset_versions = opset_version == 0 ? std::vector<int>{12, 18, 19}
+                                                   : std::vector<int>{opset_version};
+    for (int current_opset_version : opset_versions) {
+      TransformerTester(build_test_case,
+                        check_binary_op_graph,
+                        TransformerLevel::Level1,
+                        TransformerLevel::Level2,
+                        current_opset_version,
+                        0.01 /*per_sample_tolerance*/,
+                        0.01 /*relative_per_sample_tolerance*/,
+                        std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+    }
   };
 
   test_case({2, 2}, {2, 4});
@@ -868,13 +856,14 @@ void QDQTransformerGemmTests() {
   QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(false, true, true);
   QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, false, true);
   QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, true, true);
-  if constexpr (std::is_same_v<Input1Type, uint8_t> && std::is_same_v<Input2Type, uint8_t> &&
-                std::is_same_v<OutputType, uint8_t> && std::is_same_v<BiasType, int32_t>) {
-    QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(false, false, false, true);
-    QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(false, true, false, true);
-    QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, false, false, true);
-    QDQTransformerGemmTests<Input1Type, Input2Type, OutputType, BiasType>(true, true, false, true);
-  }
+}
+
+TEST(QDQTransformerTests, Gemm_AlphaNotOne_U8U8U8) {
+  constexpr int opset_version = 19;
+  QDQTransformerGemmTests<uint8_t, uint8_t, uint8_t>(false, false, false, true, opset_version);
+  QDQTransformerGemmTests<uint8_t, uint8_t, uint8_t>(false, true, false, true, opset_version);
+  QDQTransformerGemmTests<uint8_t, uint8_t, uint8_t>(true, false, false, true, opset_version);
+  QDQTransformerGemmTests<uint8_t, uint8_t, uint8_t>(true, true, false, true, opset_version);
 }
 
 TEST(QDQTransformerTests, Gemm_U8U8U8) {
@@ -1992,6 +1981,43 @@ TEST(QDQTransformerTests, Resize) {
   RandomValueGenerator rand_gen{optional<RandomValueGenerator::RandomSeedType>{2345}};
   test_case({2, 13, 12, 37}, rand_gen.Uniform<int64_t>(std::vector<int64_t>{4}, 1, 16));
   test_case({2, 13, 12, 37}, rand_gen.Uniform<int64_t>(std::vector<int64_t>{4}, 1, 16), true /*use_contrib_qdq*/);
+}
+
+// Resize with a non-nearest mode (linear, cubic) interpolates values in float space, so the
+// QDQ nodes must be preserved to keep the computation in the dequantized domain. Nearest mode
+// with "tf_crop_and_resize" is also guarded in the selector (it writes a float-domain
+// extrapolation_value), but that path is not exercised here because the shared test helper does
+// not supply a valid roi input.
+TEST(QDQTransformerTests, Resize_NonNearest_No_QDQ_Drop) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape,
+                       const std::vector<int64_t>& sizes_data,
+                       const std::string& mode,
+                       bool use_contrib_qdq = false) {
+    auto check_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      const QDQOpKeys qdq_keys = GetQDQOpKeys(use_contrib_qdq);
+      EXPECT_EQ(op_to_count["Resize"], 1);
+      // QDQ nodes must NOT be dropped here because interpolation is computed in float space.
+      EXPECT_EQ(op_to_count[qdq_keys.quantize_linear], 1);
+      EXPECT_EQ(op_to_count[qdq_keys.dequantize_linear], 1);
+    };
+
+    TransformerTester(BuildQDQResizeTestCase(input_shape,
+                                             sizes_data,
+                                             mode,
+                                             "half_pixel",          // coordinate_transformation_mode
+                                             "round_prefer_floor",  // nearest_mode (only used for nearest)
+                                             false,                 // add_dq_output_float
+                                             use_contrib_qdq),
+                      check_graph,
+                      TransformerLevel::Level1,
+                      TransformerLevel::Level2);
+  };
+
+  test_case({1, 1, 1, 3}, {1, 1, 1, 6}, "linear");
+  test_case({1, 1, 1, 3}, {1, 1, 1, 6}, "linear", true /*use_contrib_qdq*/);
+  test_case({1, 1, 3, 3}, {1, 1, 6, 6}, "cubic");
+  test_case({1, 1, 3, 3}, {1, 1, 6, 6}, "cubic", true /*use_contrib_qdq*/);
 }
 
 TEST(QDQTransformerTests, Resize_No_Fusion) {
