@@ -2157,9 +2157,28 @@ class TestInferenceSession(unittest.TestCase):
         # uninitialized padding) into the adapter file, leaking runtime addresses
         # (ASLR bypass) and producing an unloadable adapter. Export must reject
         # string-typed parameters.
-        string_data_type = 8  # ONNX TensorProto.STRING
-        string_array = np.array(["hello", "world"], dtype=object)
-        ort_val_str = onnxrt.OrtValue.ortvalue_from_numpy_with_onnx_type(string_array, string_data_type)
+        #
+        # There is no public Python API to construct a string-typed OrtValue
+        # directly (ortvalue_from_numpy rejects non-numeric arrays), so we
+        # obtain one by running a tiny Constant model whose only output is a
+        # string tensor.
+        from onnx import TensorProto, helper  # noqa: PLC0415
+
+        const_node = helper.make_node(
+            "Constant",
+            inputs=[],
+            outputs=["str_out"],
+            value=helper.make_tensor("v", TensorProto.STRING, dims=[2], vals=[b"hello", b"world"]),
+        )
+        graph = helper.make_graph(
+            [const_node],
+            "string_const",
+            inputs=[],
+            outputs=[helper.make_tensor_value_info("str_out", TensorProto.STRING, [2])],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+        sess = onnxrt.InferenceSession(model.SerializeToString(), providers=onnxrt.get_available_providers())
+        ort_val_str = sess.run_with_ort_values(["str_out"], {})[0]
 
         adapter_format = onnxrt.AdapterFormat()
         adapter_format.set_adapter_version(1)
