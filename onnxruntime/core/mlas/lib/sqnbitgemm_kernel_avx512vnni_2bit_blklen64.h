@@ -74,10 +74,9 @@ namespace onnxruntime {
 namespace mlas {
 namespace sq2bit_avx512 {
 
-// Number of K-blocks the inner loop processes per iteration. Mirrors W4.
-inline constexpr size_t kPerAccuBlk2 = 2;
-// Outer tile shape. Mirrors W4 NCols4 / NRows2.
-inline constexpr size_t kNCols4 = 4;
+// kNCols4 (= 4) and kPerAccuBlk2 (= 2) come from the shared header so the
+// pack layout and the kernel use the same constants. kNRows2 is the M-tile
+// shape, kernel-only.
 inline constexpr size_t kNRows2 = 2;
 
 //
@@ -276,9 +275,13 @@ accumulate_w2_blklen64_r1c1blk1_vnni(
 //
 // R2 x C4 tile. Main hot path for the customer model.
 //
-// Layout assumptions:
-//   * QuantBData : column-major. Col n at offset n * BlockCountK * kBlkBytes.
-//   * QuantBScale: column-major. Col n at offset n * BlockCountK.
+// Layout assumptions (matches the W4 layout produced by W2's pack function):
+//   * QuantBData : 4-N-col grouped, 2-K-block paired (W4-style). Within a
+//     group the inner col stride is kPerAccuBlk2 * kBlkBytes (32 B) for pair
+//     blocks and kBlkBytes (16 B) for the single-block trailing slot when
+//     BlockCountK is odd. Per-group total = BlockCountK * kNCols4 * kBlkBytes.
+//   * QuantBScale: same grouping; col stride kPerAccuBlk2 (2 floats) /
+//     1 float in the single-block slot. Per-group total = BlockCountK * kNCols4.
 //   * QuantA     : row-major int8, BlockCountK * kBlkLen bytes per row.
 //   * QuantAScale: row-major float, BlockCountK floats per row.
 //
@@ -296,8 +299,16 @@ Q2Int8GemmR2xC4BlkLen64Avx512Vnni(
     size_t ldc)
 {
     const size_t lda = BlockCountK * kBlkLen;
-    const size_t ColStrideBytes = BlockCountK * kBlkBytes;
-    const size_t ColStrideScale = BlockCountK;
+    // Per-group strides for the 4-N-col grouped layout.
+    constexpr size_t PerColPairBytes = kPerAccuBlk2 * kBlkBytes;        // 32 B per col in a K-pair slot
+    constexpr size_t PerColSingleBytes = kBlkBytes;                     // 16 B per col in a K-single slot
+    constexpr size_t PerColPairScale = kPerAccuBlk2;                    // 2 floats per col in a K-pair slot
+    constexpr size_t PerKPairAdvanceBytes = kNCols4 * PerColPairBytes;  // 128 B per K-pair iteration
+    constexpr size_t PerKSingleAdvanceBytes = kNCols4 * PerColSingleBytes;
+    constexpr size_t PerKPairAdvanceScale = kNCols4 * PerColPairScale;  // 8 floats per K-pair iteration
+    constexpr size_t PerKSingleAdvanceScale = kNCols4;
+    const size_t GroupStrideBytes = BlockCountK * kNCols4 * kBlkBytes;
+    const size_t GroupStrideScale = BlockCountK * kNCols4;
 
     assert(CountM % kNRows2 == 0);
     assert(CountN % kNCols4 == 0);
@@ -329,33 +340,33 @@ Q2Int8GemmR2xC4BlkLen64Avx512Vnni(
 
                 accumulate_w2_blklen64_r2c1blk2_vnni(
                     av_00, av_01, av_10, av_11,
-                    QuantBDataPtr + 0 * ColStrideBytes,
+                    QuantBDataPtr + 0 * PerColPairBytes,
                     QuantAScalePtr, QuantAScalePtr + BlockCountK,
-                    QuantBScalePtr + 0 * ColStrideScale,
+                    QuantBScalePtr + 0 * PerColPairScale,
                     acc[0], acc[kNCols4 + 0]);
                 accumulate_w2_blklen64_r2c1blk2_vnni(
                     av_00, av_01, av_10, av_11,
-                    QuantBDataPtr + 1 * ColStrideBytes,
+                    QuantBDataPtr + 1 * PerColPairBytes,
                     QuantAScalePtr, QuantAScalePtr + BlockCountK,
-                    QuantBScalePtr + 1 * ColStrideScale,
+                    QuantBScalePtr + 1 * PerColPairScale,
                     acc[1], acc[kNCols4 + 1]);
                 accumulate_w2_blklen64_r2c1blk2_vnni(
                     av_00, av_01, av_10, av_11,
-                    QuantBDataPtr + 2 * ColStrideBytes,
+                    QuantBDataPtr + 2 * PerColPairBytes,
                     QuantAScalePtr, QuantAScalePtr + BlockCountK,
-                    QuantBScalePtr + 2 * ColStrideScale,
+                    QuantBScalePtr + 2 * PerColPairScale,
                     acc[2], acc[kNCols4 + 2]);
                 accumulate_w2_blklen64_r2c1blk2_vnni(
                     av_00, av_01, av_10, av_11,
-                    QuantBDataPtr + 3 * ColStrideBytes,
+                    QuantBDataPtr + 3 * PerColPairBytes,
                     QuantAScalePtr, QuantAScalePtr + BlockCountK,
-                    QuantBScalePtr + 3 * ColStrideScale,
+                    QuantBScalePtr + 3 * PerColPairScale,
                     acc[3], acc[kNCols4 + 3]);
 
                 QuantAPtr += kBlkLen * kPerAccuBlk2;
                 QuantAScalePtr += kPerAccuBlk2;
-                QuantBDataPtr += kPerAccuBlk2 * kBlkBytes;
-                QuantBScalePtr += kPerAccuBlk2;
+                QuantBDataPtr += PerKPairAdvanceBytes;
+                QuantBScalePtr += PerKPairAdvanceScale;
             }
 
             while (k_blks_remaining-- > 0) {
@@ -364,33 +375,33 @@ Q2Int8GemmR2xC4BlkLen64Avx512Vnni(
 
                 accumulate_w2_blklen64_r2c1blk1_vnni(
                     av_00, av_10,
-                    QuantBDataPtr + 0 * ColStrideBytes,
+                    QuantBDataPtr + 0 * PerColSingleBytes,
                     QuantAScalePtr, QuantAScalePtr + BlockCountK,
-                    QuantBScalePtr + 0 * ColStrideScale,
+                    QuantBScalePtr + 0,
                     acc[0], acc[kNCols4 + 0]);
                 accumulate_w2_blklen64_r2c1blk1_vnni(
                     av_00, av_10,
-                    QuantBDataPtr + 1 * ColStrideBytes,
+                    QuantBDataPtr + 1 * PerColSingleBytes,
                     QuantAScalePtr, QuantAScalePtr + BlockCountK,
-                    QuantBScalePtr + 1 * ColStrideScale,
+                    QuantBScalePtr + 1,
                     acc[1], acc[kNCols4 + 1]);
                 accumulate_w2_blklen64_r2c1blk1_vnni(
                     av_00, av_10,
-                    QuantBDataPtr + 2 * ColStrideBytes,
+                    QuantBDataPtr + 2 * PerColSingleBytes,
                     QuantAScalePtr, QuantAScalePtr + BlockCountK,
-                    QuantBScalePtr + 2 * ColStrideScale,
+                    QuantBScalePtr + 2,
                     acc[2], acc[kNCols4 + 2]);
                 accumulate_w2_blklen64_r2c1blk1_vnni(
                     av_00, av_10,
-                    QuantBDataPtr + 3 * ColStrideBytes,
+                    QuantBDataPtr + 3 * PerColSingleBytes,
                     QuantAScalePtr, QuantAScalePtr + BlockCountK,
-                    QuantBScalePtr + 3 * ColStrideScale,
+                    QuantBScalePtr + 3,
                     acc[3], acc[kNCols4 + 3]);
 
                 QuantAPtr += kBlkLen;
                 QuantAScalePtr++;
-                QuantBDataPtr += kBlkBytes;
-                QuantBScalePtr++;
+                QuantBDataPtr += PerKSingleAdvanceBytes;
+                QuantBScalePtr += PerKSingleAdvanceScale;
             }
 
             SumPtr[0] = _mm512_reduce_add_ps(acc[0]);
@@ -412,8 +423,8 @@ Q2Int8GemmR2xC4BlkLen64Avx512Vnni(
                 SumPtr[ldc + 3] += BiasPtr[3];
             }
 
-            QuantBDataColPtr += kNCols4 * ColStrideBytes;
-            QuantBScaleColPtr += kNCols4 * ColStrideScale;
+            QuantBDataColPtr += GroupStrideBytes;
+            QuantBScaleColPtr += GroupStrideScale;
             BiasPtr += BiasPtr != nullptr ? kNCols4 : 0;
             SumPtr += kNCols4;
         }
@@ -421,7 +432,11 @@ Q2Int8GemmR2xC4BlkLen64Avx512Vnni(
 }
 
 //
-// R2 x C1 tile (N-tail).
+// R2 x C1 tile (N-tail). Operates on the column-major tail region of the
+// packed B buffer (cols NMain..N-1), which the dispatcher addresses with
+// the same `multipleCols * (BlockCountK * kBlkBytes)` offset as the old
+// pure column-major layout did (the grouped main region was sized to fit
+// in exactly that many bytes by construction).
 //
 MLAS_FORCEINLINE void
 Q2Int8GemmR2xC1BlkLen64Avx512Vnni(
@@ -511,7 +526,7 @@ Q2Int8GemmR2xC1BlkLen64Avx512Vnni(
 }
 
 //
-// R1 x C4 tile (M-tail).
+// R1 x C4 tile (M-tail). Uses the same 4-N-col grouped layout as R2 x C4.
 //
 MLAS_FORCEINLINE void
 Q2Int8GemmR1xC4BlkLen64Avx512Vnni(
@@ -527,8 +542,15 @@ Q2Int8GemmR1xC4BlkLen64Avx512Vnni(
     size_t ldc)
 {
     const size_t lda = BlockCountK * kBlkLen;
-    const size_t ColStrideBytes = BlockCountK * kBlkBytes;
-    const size_t ColStrideScale = BlockCountK;
+    constexpr size_t PerColPairBytes = kPerAccuBlk2 * kBlkBytes;
+    constexpr size_t PerColSingleBytes = kBlkBytes;
+    constexpr size_t PerColPairScale = kPerAccuBlk2;
+    constexpr size_t PerKPairAdvanceBytes = kNCols4 * PerColPairBytes;
+    constexpr size_t PerKSingleAdvanceBytes = kNCols4 * PerColSingleBytes;
+    constexpr size_t PerKPairAdvanceScale = kNCols4 * PerColPairScale;
+    constexpr size_t PerKSingleAdvanceScale = kNCols4;
+    const size_t GroupStrideBytes = BlockCountK * kNCols4 * kBlkBytes;
+    const size_t GroupStrideScale = BlockCountK * kNCols4;
 
     assert(CountN % kNCols4 == 0);
 
@@ -557,47 +579,47 @@ Q2Int8GemmR1xC4BlkLen64Avx512Vnni(
 
                 accumulate_w2_blklen64_r1c1blk2_vnni(
                     av_0, av_1,
-                    QuantBDataPtr + 0 * ColStrideBytes,
-                    QuantAScalePtr, QuantBScalePtr + 0 * ColStrideScale, acc[0]);
+                    QuantBDataPtr + 0 * PerColPairBytes,
+                    QuantAScalePtr, QuantBScalePtr + 0 * PerColPairScale, acc[0]);
                 accumulate_w2_blklen64_r1c1blk2_vnni(
                     av_0, av_1,
-                    QuantBDataPtr + 1 * ColStrideBytes,
-                    QuantAScalePtr, QuantBScalePtr + 1 * ColStrideScale, acc[1]);
+                    QuantBDataPtr + 1 * PerColPairBytes,
+                    QuantAScalePtr, QuantBScalePtr + 1 * PerColPairScale, acc[1]);
                 accumulate_w2_blklen64_r1c1blk2_vnni(
                     av_0, av_1,
-                    QuantBDataPtr + 2 * ColStrideBytes,
-                    QuantAScalePtr, QuantBScalePtr + 2 * ColStrideScale, acc[2]);
+                    QuantBDataPtr + 2 * PerColPairBytes,
+                    QuantAScalePtr, QuantBScalePtr + 2 * PerColPairScale, acc[2]);
                 accumulate_w2_blklen64_r1c1blk2_vnni(
                     av_0, av_1,
-                    QuantBDataPtr + 3 * ColStrideBytes,
-                    QuantAScalePtr, QuantBScalePtr + 3 * ColStrideScale, acc[3]);
+                    QuantBDataPtr + 3 * PerColPairBytes,
+                    QuantAScalePtr, QuantBScalePtr + 3 * PerColPairScale, acc[3]);
 
                 QuantAPtr += kBlkLen * kPerAccuBlk2;
                 QuantAScalePtr += kPerAccuBlk2;
-                QuantBDataPtr += kPerAccuBlk2 * kBlkBytes;
-                QuantBScalePtr += kPerAccuBlk2;
+                QuantBDataPtr += PerKPairAdvanceBytes;
+                QuantBScalePtr += PerKPairAdvanceScale;
             }
 
             while (k_blks_remaining-- > 0) {
                 const __m512i av = _mm512_loadu_si512(reinterpret_cast<const __m512i*>(QuantAPtr));
 
                 accumulate_w2_blklen64_r1c1blk1_vnni(
-                    av, QuantBDataPtr + 0 * ColStrideBytes,
-                    QuantAScalePtr, QuantBScalePtr + 0 * ColStrideScale, acc[0]);
+                    av, QuantBDataPtr + 0 * PerColSingleBytes,
+                    QuantAScalePtr, QuantBScalePtr + 0, acc[0]);
                 accumulate_w2_blklen64_r1c1blk1_vnni(
-                    av, QuantBDataPtr + 1 * ColStrideBytes,
-                    QuantAScalePtr, QuantBScalePtr + 1 * ColStrideScale, acc[1]);
+                    av, QuantBDataPtr + 1 * PerColSingleBytes,
+                    QuantAScalePtr, QuantBScalePtr + 1, acc[1]);
                 accumulate_w2_blklen64_r1c1blk1_vnni(
-                    av, QuantBDataPtr + 2 * ColStrideBytes,
-                    QuantAScalePtr, QuantBScalePtr + 2 * ColStrideScale, acc[2]);
+                    av, QuantBDataPtr + 2 * PerColSingleBytes,
+                    QuantAScalePtr, QuantBScalePtr + 2, acc[2]);
                 accumulate_w2_blklen64_r1c1blk1_vnni(
-                    av, QuantBDataPtr + 3 * ColStrideBytes,
-                    QuantAScalePtr, QuantBScalePtr + 3 * ColStrideScale, acc[3]);
+                    av, QuantBDataPtr + 3 * PerColSingleBytes,
+                    QuantAScalePtr, QuantBScalePtr + 3, acc[3]);
 
                 QuantAPtr += kBlkLen;
                 QuantAScalePtr++;
-                QuantBDataPtr += kBlkBytes;
-                QuantBScalePtr++;
+                QuantBDataPtr += PerKSingleAdvanceBytes;
+                QuantBScalePtr += PerKSingleAdvanceScale;
             }
 
             SumPtr[0] = _mm512_reduce_add_ps(acc[0]);
@@ -611,8 +633,8 @@ Q2Int8GemmR1xC4BlkLen64Avx512Vnni(
                 SumPtr[3] += BiasPtr[3];
             }
 
-            QuantBDataColPtr += kNCols4 * ColStrideBytes;
-            QuantBScaleColPtr += kNCols4 * ColStrideScale;
+            QuantBDataColPtr += GroupStrideBytes;
+            QuantBScaleColPtr += GroupStrideScale;
             BiasPtr += BiasPtr != nullptr ? kNCols4 : 0;
             SumPtr += kNCols4;
         }
@@ -620,7 +642,7 @@ Q2Int8GemmR1xC4BlkLen64Avx512Vnni(
 }
 
 //
-// R1 x C1 tile (corner).
+// R1 x C1 tile (corner). Same column-major tail-region addressing as R2 x C1.
 //
 MLAS_FORCEINLINE void
 Q2Int8GemmR1xC1BlkLen64Avx512Vnni(

@@ -122,9 +122,13 @@ SQ2BitGemmPackQuantBDataAndBlkSum_Scalar(
     }
 
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+    const size_t NMain = (N / kNCols4) * kNCols4;
     const size_t Iterations = N * BlockCountK;
 
-    // Pack weight bytes (block-by-block, parallel over N * BlockCountK).
+    // Pack weight bytes in the 4-col-grouped + 2-K-block-paired layout for
+    // the main NMain cols; column-major for the tail N % 4 cols. See
+    // PackedQuantBOffsetBytes_W2 in sqnbitgemm_kernel_avx512_2bit.h for the
+    // exact mapping.
     if (QuantBDataBegin != nullptr) {
         std::byte* PackedQuantBData = PackedQuantB.PackedQuantBData;
         MlasTrySimpleParallel(
@@ -132,13 +136,14 @@ SQ2BitGemmPackQuantBDataAndBlkSum_Scalar(
             [&](ptrdiff_t tid) {
                 const size_t n = static_cast<size_t>(tid) / BlockCountK;
                 const size_t blk = static_cast<size_t>(tid) % BlockCountK;
-                const size_t offset = (n * BlockCountK + blk) * kBlkBytes;
-                PackBlock_BlkLen64(QuantBDataBegin + offset, PackedQuantBData + offset);
+                const size_t src_offset = (n * BlockCountK + blk) * kBlkBytes;
+                const size_t dst_offset = PackedQuantBOffsetBytes_W2(n, blk, BlockCountK, NMain);
+                PackBlock_BlkLen64(QuantBDataBegin + src_offset, PackedQuantBData + dst_offset);
             }
         );
     }
 
-    // Copy scales as-is (column-major) and compute BlkSum.
+    // Scales follow the same 4-col-grouped layout (see PackedQuantBScaleOffset_W2).
     //
     // BlkSum uses the W4-style "width-16 row-major chunked" layout because the
     // top-level kernel performs the zero-point correction via the float SGEMM
@@ -161,7 +166,7 @@ SQ2BitGemmPackQuantBDataAndBlkSum_Scalar(
                 const size_t n = static_cast<size_t>(tid) / BlockCountK;
                 const size_t blk = static_cast<size_t>(tid) % BlockCountK;
                 const float scale = QuantBScaleBegin[n * BlockCountK + blk];
-                PackedScales[n * BlockCountK + blk] = scale;
+                PackedScales[PackedQuantBScaleOffset_W2(n, blk, BlockCountK, NMain)] = scale;
                 const size_t blksum_offset = ((n / 16) * BlockCountK + blk) * 16 + (n % 16);
                 BlkSum[blksum_offset] = -scale * static_cast<float>(kDefaultSymmetricZeroPoint2Bit);
             }

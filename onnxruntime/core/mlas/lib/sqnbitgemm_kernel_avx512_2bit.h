@@ -70,6 +70,83 @@ constexpr size_t kPackedBlkBytes = kBlkBytes;             // packing is in-place
 // For 2-bit unsigned values in [0, 3], the symmetric mid-point is 2.
 constexpr uint8_t kDefaultSymmetricZeroPoint2Bit = 2;
 
+// -----------------------------------------------------------------------------
+// Tile shape (must match the AVX-512-VNNI kernel in
+// sqnbitgemm_kernel_avx512vnni_2bit_blklen64.h). The pack layout below is
+// keyed off these values: the main NMain = floor(N / kNCols4) * kNCols4 cols
+// are stored in a 4-col-grouped + 2-K-block-paired arrangement that lets the
+// kernel's R2xC4 hot loop read each tile of B as a single contiguous stream,
+// matching W4's pack layout in PackQuantB (sqnbitgemm_kernel_avx_common.h).
+// -----------------------------------------------------------------------------
+
+constexpr size_t kNCols4 = 4;
+constexpr size_t kPerAccuBlk2 = 2;
+
+//
+// Byte offset into the packed B-data buffer for a logical (n, blk) cell.
+//
+//   Main region (n < NMain = floor(N/kNCols4)*kNCols4):
+//     4-N-col group g = n / 4, col within group c = n % 4.
+//     K-block-pair p = blk / 2, block within pair = blk % 2.
+//     Pair slots run first, then a single-block trailing slot when
+//     BlockCountK is odd.
+//
+//   Tail region (n >= NMain): plain column-major. The tail base lies
+//   exactly at NMain * BlockCountK * kBlkBytes, so the dispatcher's
+//   `multipleCols * ColStrideBytes` offset (where ColStrideBytes is
+//   BlockCountK * kBlkBytes) is unchanged from the column-major layout.
+//
+inline size_t
+PackedQuantBOffsetBytes_W2(size_t n, size_t blk, size_t BlockCountK, size_t NMain)
+{
+    if (n < NMain) {
+        const size_t g = n / kNCols4;
+        const size_t c = n % kNCols4;
+        const size_t per_group_bytes = BlockCountK * kNCols4 * kBlkBytes;
+        const size_t pair_idx = blk / kPerAccuBlk2;
+        const size_t blk_in_pair = blk % kPerAccuBlk2;
+        const size_t full_pairs = BlockCountK / kPerAccuBlk2;
+        if (pair_idx < full_pairs) {
+            return g * per_group_bytes
+                 + pair_idx * (kNCols4 * kPerAccuBlk2 * kBlkBytes)
+                 + c * (kPerAccuBlk2 * kBlkBytes)
+                 + blk_in_pair * kBlkBytes;
+        }
+        return g * per_group_bytes
+             + full_pairs * (kNCols4 * kPerAccuBlk2 * kBlkBytes)
+             + c * kBlkBytes;
+    }
+    return (n * BlockCountK + blk) * kBlkBytes;
+}
+
+//
+// Float offset into the packed B-scale buffer for a logical (n, blk) cell.
+// Same grouping rule as the B-data, two scales per pair, one scale per
+// single-block trailing slot.
+//
+inline size_t
+PackedQuantBScaleOffset_W2(size_t n, size_t blk, size_t BlockCountK, size_t NMain)
+{
+    if (n < NMain) {
+        const size_t g = n / kNCols4;
+        const size_t c = n % kNCols4;
+        const size_t per_group_scales = BlockCountK * kNCols4;
+        const size_t pair_idx = blk / kPerAccuBlk2;
+        const size_t blk_in_pair = blk % kPerAccuBlk2;
+        const size_t full_pairs = BlockCountK / kPerAccuBlk2;
+        if (pair_idx < full_pairs) {
+            return g * per_group_scales
+                 + pair_idx * (kNCols4 * kPerAccuBlk2)
+                 + c * kPerAccuBlk2
+                 + blk_in_pair;
+        }
+        return g * per_group_scales
+             + full_pairs * (kNCols4 * kPerAccuBlk2)
+             + c;
+    }
+    return n * BlockCountK + blk;
+}
+
 //
 // Extract a single 2-bit weight from a standard ONNX MatMulNBits packed byte
 // stream. `src` is the start of one block (kBlkBytes bytes). `i` is the
