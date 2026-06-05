@@ -98,12 +98,16 @@ void addAdapterFormatMethods(pybind11::module& m) {
           // ties the returned dict (return value, index 0) to the owning
           // PyAdapterFormatReaderWriter (self, index 1), so the parent — and
           // therefore the underlying adapter buffer — survives at least as long
-          // as the dict the caller holds.
-          [](const PyAdapterFormatReaderWriter* reader_writer) -> py::dict { return reader_writer->parameters_; },
-          [](PyAdapterFormatReaderWriter* reader_writer, py::dict& parameters) -> void {
-            reader_writer->parameters_ = parameters;
-          },
-          py::keep_alive<0, 1>(),
+          // as the dict the caller holds. def_property() does not accept
+          // keep_alive directly, so the policy is attached to the getter via
+          // py::cpp_function.
+          py::cpp_function(
+              [](const PyAdapterFormatReaderWriter* reader_writer) -> py::dict { return reader_writer->parameters_; },
+              py::keep_alive<0, 1>()),
+          py::cpp_function(
+              [](PyAdapterFormatReaderWriter* reader_writer, py::dict& parameters) -> void {
+                reader_writer->parameters_ = parameters;
+              }),
           R"pbdoc("Enables user to read/write the dictionary of adapter parameters (name -> OrtValue)")pbdoc")
       .def(
           "export_adapter",
@@ -136,15 +140,18 @@ void addAdapterFormatMethods(pybind11::module& m) {
                   tensor.Shape().GetDims(), data_span);
             }
 
-            // Only open the output file after all parameters have been validated and
-            // serialized in memory, so a rejected export does not leave a stray empty file.
+            // Build the entire adapter image in memory before touching the
+            // filesystem, so any failure (string-tensor rejection above, builder
+            // errors below, allocation failure inside FinishWithSpan, etc.)
+            // leaves no stray file behind.
+            auto format_span = format_builder.FinishWithSpan(reader_writer->adapter_version_,
+                                                             reader_writer->model_version_);
+
             std::ofstream file(file_path, std::ios::binary);
             if (file.fail()) {
               ORT_THROW("Failed to open file:", file_path, " for writing.");
             }
 
-            auto format_span = format_builder.FinishWithSpan(reader_writer->adapter_version_,
-                                                             reader_writer->model_version_);
             if (file.write(reinterpret_cast<const char*>(format_span.data()), format_span.size()).fail()) {
               ORT_THROW("Failed to write :", std::to_string(format_span.size()), " bytes to ", file_path);
             }
