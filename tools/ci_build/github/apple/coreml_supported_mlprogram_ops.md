@@ -19,6 +19,7 @@ Keep in sync with doco generated from /docs/execution-providers/CoreML-Execution
 |ai.onnx:Elu||
 |ai.onnx:Erf||
 |ai.onnx:Exp||
+|ai.onnx:GatherND|batch_dims must be 0.|
 |ai.onnx:Gemm|Input B must be constant.|
 |ai.onnx:Gelu||
 |ai.onnx:GlobalAveragePool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|

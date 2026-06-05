@@ -1642,6 +1642,115 @@ TEST_F(GraphTransformationTests, ConstantFoldingConfiguredLimitBlocksLargeConsta
                                         pre_graph_checker, post_graph_checker));
 }
 
+// Verify that ConstantOfShape output size is estimated directly from the input shape
+// initializer (and not just from shape inference) so that excessive constant-folded
+// allocations are blocked before kernel execution. The 'value' attribute uses int64
+// elements (8 bytes) so that 100M * 8 = 800 MB exceeds the configured 256 MB cap.
+TEST_F(GraphTransformationTests, ConstantFoldingConstantOfShapeUsesInputInitializerForSizeCheck) {
+  constexpr int64_t kLargeDim = 100 * 1024 * 1024;  // 100M elements
+
+  auto build_model = [&](ModelTestBuilder& builder) {
+    auto* shape_data = builder.MakeInitializer<int64_t>({1}, {kLargeDim});
+    auto* output_arg = builder.MakeOutput();
+
+    auto& node = builder.AddNode("ConstantOfShape", {shape_data}, {output_arg});
+    ONNX_NAMESPACE::AttributeProto value_attr;
+    value_attr.set_name("value");
+    value_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+    auto* tensor = value_attr.mutable_t();
+    tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    tensor->add_dims(1);
+    tensor->add_int64_data(0);
+    node.AddAttributeProto(std::move(value_attr));
+  };
+
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["ConstantOfShape"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) -> Status {
+    auto op_to_count = CountOpsInGraph(graph);
+    // 800 MB output exceeds the 256 MB cap, so the node must not be folded
+    // (and crucially, the 800 MB allocation must not have happened during folding).
+    TEST_RETURN_IF_NOT(op_to_count["ConstantOfShape"] == 1);
+    return Status::OK();
+  };
+
+  std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  ConfigOptions config_options;
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(
+      kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes, "268435456"));  // 256 MB
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_model, 14, *logger_,
+                                        std::make_unique<ConstantFolding>(*e.get(), false, config_options),
+                                        TransformerLevel::Level1, 1,
+                                        pre_graph_checker, post_graph_checker));
+}
+
+// Companion to the test above that isolates the new input-initializer-based size estimator
+// from the pre-existing shape-inference-based path. After Graph::Resolve() has populated
+// the ConstantOfShape output shape from the constant shape initializer, we explicitly clear
+// the output NodeArg shape in pre_graph_checker. This simulates the documented attack where
+// shape inference fails to propagate the output shape, so the generic shape-based estimator
+// would return -1 and the only thing that can still block folding is the new
+// EstimateConstantOfShapeOutputSizeInBytes path that reads the shape input initializer directly.
+TEST_F(GraphTransformationTests, ConstantFoldingConstantOfShapeBlockedWhenOutputShapeMissing) {
+  constexpr int64_t kLargeDim = 100 * 1024 * 1024;  // 100M elements
+
+  auto build_model = [&](ModelTestBuilder& builder) {
+    auto* shape_data = builder.MakeInitializer<int64_t>({1}, {kLargeDim});
+    auto* output_arg = builder.MakeOutput();
+
+    auto& node = builder.AddNode("ConstantOfShape", {shape_data}, {output_arg});
+    // int64 'value' so derived size is 100M * 8 = 800 MB, exceeding the 256 MB cap below.
+    ONNX_NAMESPACE::AttributeProto value_attr;
+    value_attr.set_name("value");
+    value_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+    auto* tensor = value_attr.mutable_t();
+    tensor->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    tensor->add_dims(1);
+    tensor->add_int64_data(0);
+    node.AddAttributeProto(std::move(value_attr));
+  };
+
+  auto pre_graph_checker = [](Graph& graph) -> Status {
+    auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["ConstantOfShape"] == 1);
+    // Strip the shape that ONNX shape inference propagated onto the ConstantOfShape output.
+    // This forces the size-cap check to rely on the new initializer-based estimator.
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "ConstantOfShape") {
+        for (auto* output_def : node.MutableOutputDefs()) {
+          if (output_def != nullptr && output_def->Exists()) {
+            output_def->ClearShape();
+          }
+        }
+      }
+    }
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) -> Status {
+    auto op_to_count = CountOpsInGraph(graph);
+    // The new initializer-based estimator must still derive 800 MB and refuse to fold,
+    // even though the output NodeArg has no shape for the generic estimator to use.
+    TEST_RETURN_IF_NOT(op_to_count["ConstantOfShape"] == 1);
+    return Status::OK();
+  };
+
+  std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  ConfigOptions config_options;
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(
+      kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes, "268435456"));  // 256 MB
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_model, 14, *logger_,
+                                        std::make_unique<ConstantFolding>(*e.get(), false, config_options),
+                                        TransformerLevel::Level1, 1,
+                                        pre_graph_checker, post_graph_checker));
+}
+
 // Test that small constant folding still works with the size limit.
 TEST_F(GraphTransformationTests, ConstantFoldingSmallOutputAllowed) {
   // Build a model with a small Expand: scalar -> [4, 4] = 16 * 4 = 64 bytes.
@@ -2101,6 +2210,141 @@ TEST_F(GraphTransformationTests, FusePadWithAvgPoolWithPadNoInclude) {
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   ASSERT_EQ(op_to_count["Pad"], 1);
   ASSERT_EQ(op_to_count["AveragePool"], 1);
+}
+
+// Verify PadFusion does not fuse and does not crash when the Pad node's `pads` initializer carries
+// fewer than four elements (which violates the 2*rank requirement of the ONNX Pad spec). The data
+// input uses an unspecified rank so ONNX shape inference cannot pre-validate the pads length.
+TEST_F(GraphTransformationTests, PadFusionRejectsShortPadsInitializer) {
+  auto run_case = [&](const std::vector<int64_t>& pads_data) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* data_arg = builder.MakeInput<float>(std::nullopt);
+      auto* weight_arg = builder.MakeInitializer<float>({1, 1, 1, 1}, {1.0f});
+      auto* pads_arg = builder.MakeInitializer<int64_t>(
+          {static_cast<int64_t>(pads_data.size())}, pads_data);
+      auto* pad_out = builder.MakeIntermediate();
+      auto* conv_out = builder.MakeOutput();
+
+      builder.AddNode("Pad", {data_arg, pads_arg}, {pad_out});
+      builder.AddNode("Conv", {pad_out, weight_arg}, {conv_out});
+    };
+
+    auto pre_graph_checker = [](Graph&) { return Status::OK(); };
+    auto post_graph_checker = [](Graph& graph) {
+      // Fusion must not have run; both nodes remain.
+      std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+      ORT_RETURN_IF_NOT(op_to_count["Pad"] == 1, "Pad should not be fused away");
+      ORT_RETURN_IF_NOT(op_to_count["Conv"] == 1, "Conv should remain");
+      return Status::OK();
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<PadFusion>()));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(rule_transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+  };
+
+  // Cover empty, 1, 2, and 3 element pads vectors as well as an odd-length vector.
+  run_case({});
+  run_case({0});
+  run_case({0, 0});
+  run_case({0, 0, 0});
+  run_case({0, 0, 0, 0, 0});
+}
+
+// Verify PadFusion bails out when the Pad node's pads contain a negative value.
+TEST_F(GraphTransformationTests, PadFusionRejectsNegativePads) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* data_arg = builder.MakeInput<float>(std::nullopt);
+    auto* weight_arg = builder.MakeInitializer<float>({1, 1, 1, 1}, {1.0f});
+    auto* pads_arg = builder.MakeInitializer<int64_t>({8}, {0, 0, 1, 1, 0, 0, -1, 1});
+    auto* pad_out = builder.MakeIntermediate();
+    auto* conv_out = builder.MakeOutput();
+
+    builder.AddNode("Pad", {data_arg, pads_arg}, {pad_out});
+    builder.AddNode("Conv", {pad_out, weight_arg}, {conv_out});
+  };
+
+  auto pre_graph_checker = [](Graph&) { return Status::OK(); };
+  auto post_graph_checker = [](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ORT_RETURN_IF_NOT(op_to_count["Pad"] == 1, "Pad with negative pads should not be fused");
+    ORT_RETURN_IF_NOT(op_to_count["Conv"] == 1, "Conv should remain");
+    return Status::OK();
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<PadFusion>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(rule_transformer),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
+// Verify PadFusion bails out when the child Conv already has an explicit `pads` attribute whose
+// length does not match the spatial rank implied by the Pad node.
+TEST_F(GraphTransformationTests, PadFusionRejectsMismatchedChildPadsRank) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    // Pad pads length 8 implies spatial rank 2 (expected child pads length 4),
+    // but Conv carries a `pads` attribute of length 6, simulating a rank mismatch
+    // that could arise from a malformed model. Data uses unspecified rank so shape
+    // inference does not reject the model before the transformer runs.
+    auto* data_arg = builder.MakeInput<float>(std::nullopt);
+    auto* weight_arg = builder.MakeInitializer<float>({1, 1, 1, 1}, {1.0f});
+    auto* pads_arg = builder.MakeInitializer<int64_t>({8}, {0, 0, 1, 1, 0, 0, 1, 1});
+    auto* pad_out = builder.MakeIntermediate();
+    auto* conv_out = builder.MakeOutput();
+
+    builder.AddNode("Pad", {data_arg, pads_arg}, {pad_out});
+    auto& conv = builder.AddNode("Conv", {pad_out, weight_arg}, {conv_out});
+    conv.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0, 0, 0});
+  };
+
+  auto pre_graph_checker = [](Graph&) { return Status::OK(); };
+  auto post_graph_checker = [](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    ORT_RETURN_IF_NOT(op_to_count["Pad"] == 1, "Pad should not be fused into a rank-mismatched Conv");
+    ORT_RETURN_IF_NOT(op_to_count["Conv"] == 1, "Conv should remain");
+    return Status::OK();
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<PadFusion>()));
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(rule_transformer),
+                                        TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+}
+
+// Verify PadFusion does not crash for the opset-10 attribute form of Pad when the `pads` attribute
+// has fewer than four elements.
+TEST_F(GraphTransformationTests, PadFusionRejectsShortPadsAttributeOpset10) {
+  auto run_case = [&](const std::vector<int64_t>& pads_data) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* data_arg = builder.MakeInput<float>(std::nullopt);
+      auto* weight_arg = builder.MakeInitializer<float>({1, 1, 1, 1}, {1.0f});
+      auto* pad_out = builder.MakeIntermediate();
+      auto* conv_out = builder.MakeOutput();
+
+      auto& pad_node = builder.AddNode("Pad", {data_arg}, {pad_out});
+      pad_node.AddAttribute("pads", pads_data);
+      pad_node.AddAttribute("mode", "constant");
+      builder.AddNode("Conv", {pad_out, weight_arg}, {conv_out});
+    };
+
+    auto pre_graph_checker = [](Graph&) { return Status::OK(); };
+    auto post_graph_checker = [](Graph& graph) {
+      std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+      ORT_RETURN_IF_NOT(op_to_count["Pad"] == 1, "Pad should not be fused away");
+      ORT_RETURN_IF_NOT(op_to_count["Conv"] == 1, "Conv should remain");
+      return Status::OK();
+    };
+
+    auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+    ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<PadFusion>()));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 10, *logger_, std::move(rule_transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+  };
+
+  run_case({});
+  run_case({0, 0});
+  run_case({0, 0, 0});
 }
 
 TEST_F(GraphTransformationTests, FuseMatmulBNWithInBetweenNodes) {

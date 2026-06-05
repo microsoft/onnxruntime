@@ -163,6 +163,7 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
 
   if (std::string validation_mode_str;
       config_options.TryGetConfigEntry(kValidationMode, validation_mode_str)) {
+    config.validation_mode_explicitly_set = true;
     if (validation_mode_str == kValidationMode_Disabled) {
       config.validation_mode = ValidationMode::Disabled;
     } else if (validation_mode_str == kValidationMode_wgpuOnly) {
