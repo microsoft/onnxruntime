@@ -7777,7 +7777,7 @@ struct OrtModelEditorApi {
    * `inputs`, and each entry in the array is reset to nullptr to make the transfer explicit. On any
    * failure, the graph's previous inputs are preserved and ownership of NONE of the OrtValueInfo
    * instances is transferred -- the caller remains responsible for releasing them. Calling
-   * ReleaseOrtValueInfo on an entry whose array slot has been nulled out would cause a double-free.
+   * OrtApi::ReleaseValueInfo on an entry whose array slot has been nulled out would cause a double-free.
    *
    * \param[in] graph The OrtGraph instance to update.
    * \param[in] inputs The input OrtValueInfo instances.
@@ -7788,7 +7788,7 @@ struct OrtModelEditorApi {
    * \since Version 1.22.
    */
   ORT_API2_STATUS(SetGraphInputs, _Inout_ OrtGraph* graph,
-                  _In_reads_(inputs_len) _In_ OrtValueInfo** inputs, _In_ size_t inputs_len);
+                  _In_reads_(inputs_len) _Inout_ OrtValueInfo** inputs, _In_ size_t inputs_len);
 
   /** \brief Set the outputs for the OrtGraph.
    *
@@ -7798,7 +7798,7 @@ struct OrtModelEditorApi {
    * `outputs`, and each entry in the array is reset to nullptr to make the transfer explicit. On any
    * failure, the graph's previous outputs are preserved and ownership of NONE of the OrtValueInfo
    * instances is transferred -- the caller remains responsible for releasing them. Calling
-   * ReleaseOrtValueInfo on an entry whose array slot has been nulled out would cause a double-free.
+   * OrtApi::ReleaseValueInfo on an entry whose array slot has been nulled out would cause a double-free.
    *
    * \param[in] graph The OrtGraph instance to update.
    * \param[in] outputs The output OrtValueInfo instances.
@@ -7809,13 +7809,13 @@ struct OrtModelEditorApi {
    * \since Version 1.22.
    */
   ORT_API2_STATUS(SetGraphOutputs, _Inout_ OrtGraph* graph,
-                  _In_reads_(outputs_len) _In_ OrtValueInfo** outputs, _In_ size_t outputs_len);
+                  _In_reads_(outputs_len) _Inout_ OrtValueInfo** outputs, _In_ size_t outputs_len);
 
   /** \brief Add an initializer to the OrtGraph
    *
    * Atomicity / all-or-nothing: on success, the OrtGraph takes ownership of `tensor` and the caller
-   * must NOT call ReleaseOrtValue on it. On any failure, ownership is NOT transferred and the caller
-   * remains responsible for releasing the OrtValue. Calling ReleaseOrtValue after a successful
+   * must NOT call OrtApi::ReleaseValue on it. On any failure, ownership is NOT transferred and the caller
+   * remains responsible for releasing the OrtValue. Calling OrtApi::ReleaseValue after a successful
    * transfer would cause a double-free.
    * Adding the same OrtValue pointer twice (under any name) is rejected with ORT_INVALID_ARGUMENT.
    * Adding a duplicate initializer name is also rejected; remove the existing entry first if you need
@@ -7824,22 +7824,22 @@ struct OrtModelEditorApi {
    * Two options:
    *
    * Allocated memory:
-   *    Use CreateTensorAsOrtValue (allocates memory) and populate the tensor with the data.
+   *    Use OrtApi::CreateTensorAsOrtValue (allocates memory) and populate the tensor with the data.
    *    Set `data_is_external` to false.
    *
    * Pre-existing memory:
-   *    Use CreateTensorWithDataAsOrtValue or CreateTensorWithDataAndDeleterAsOrtValue to create an OrtValue
+   *    Use OrtApi::CreateTensorWithDataAsOrtValue or OrtApi::CreateTensorWithDataAndDeleterAsOrtValue to create an OrtValue
    *    with a tensor that contains a pointer to the existing data.
    *    Set `data_is_external` to true.
    *
    *    The pointer must remain valid for the duration of the inference session.
-   *    If using CreateTensorWithDataAsOrtValue you are responsible for freeing the memory after the inference session
+   *    If using OrtApi::CreateTensorWithDataAsOrtValue you are responsible for freeing the memory after the inference session
    *    is released.
-   *    If using CreateTensorWithDataAndDeleterAsOrtValue, ORT will free the memory using the provided deleter as
+   *    If using OrtApi::CreateTensorWithDataAndDeleterAsOrtValue, ORT will free the memory using the provided deleter as
    *    soon as the OrtValue is no longer in use.
    *
    *    NOTE: A tensor containing pre-existing memory MUST have 128 bytes of data or more.
-   *          For smaller tensors use CreateTensorAsOrtValue.
+   *          For smaller tensors use OrtApi::CreateTensorAsOrtValue.
    *
    *          ONNX shape inferencing does not support external data. An initializer involved in shape inferencing is
    *          typically small (a single value or limited by the rank of a tensor) and uses less than 128 bytes of
@@ -7855,14 +7855,14 @@ struct OrtModelEditorApi {
    *
    * \since Version 1.22.
    */
-  ORT_API2_STATUS(AddInitializerToGraph, _Inout_ OrtGraph* graph, _In_ const char* name, _In_ OrtValue* tensor,
+  ORT_API2_STATUS(AddInitializerToGraph, _Inout_ OrtGraph* graph, _In_ const char* name, _Inout_ OrtValue* tensor,
                   bool data_is_external);
 
   /** \brief Add an OrtNode to an OrtGraph
    *
    * Atomicity / all-or-nothing: on success, the OrtGraph takes ownership of `node` and the caller
-   * must NOT call ReleaseOrtNode. On any failure, ownership is NOT transferred and the caller remains
-   * responsible for releasing the OrtNode. Calling ReleaseOrtNode after a successful transfer would
+   * must NOT call OrtApi::ReleaseNode. On any failure, ownership is NOT transferred and the caller remains
+   * responsible for releasing the OrtNode. Calling OrtApi::ReleaseNode after a successful transfer would
    * cause a double-free.
    * Adding the same OrtNode pointer twice is rejected with ORT_INVALID_ARGUMENT.
    *
@@ -7873,7 +7873,7 @@ struct OrtModelEditorApi {
    *
    * \since Version 1.22.
    */
-  ORT_API2_STATUS(AddNodeToGraph, _Inout_ OrtGraph* graph, _In_ OrtNode* node);
+  ORT_API2_STATUS(AddNodeToGraph, _Inout_ OrtGraph* graph, _Inout_ OrtNode* node);
 
   /** \brief Create an OrtModel.
    *
@@ -7905,8 +7905,8 @@ struct OrtModelEditorApi {
    * with ORT_INVALID_ARGUMENT.
    *
    * Atomicity / all-or-nothing: on success, the OrtModel takes ownership of `graph` and the caller
-   * must NOT call ReleaseOrtGraph. On any failure, ownership is NOT transferred and the caller
-   * remains responsible for releasing the OrtGraph. Calling ReleaseOrtGraph after a successful
+   * must NOT call OrtApi::ReleaseGraph. On any failure, ownership is NOT transferred and the caller
+   * remains responsible for releasing the OrtGraph. Calling OrtApi::ReleaseGraph after a successful
    * transfer would cause a double-free.
    *
    * \param[in] model The OrtModel instance to update.
@@ -7916,7 +7916,7 @@ struct OrtModelEditorApi {
    *
    * \since Version 1.22.
    */
-  ORT_API2_STATUS(AddGraphToModel, _Inout_ OrtModel* model, _In_ OrtGraph* graph);
+  ORT_API2_STATUS(AddGraphToModel, _Inout_ OrtModel* model, _Inout_ OrtGraph* graph);
 
   /** \brief Create an OrtSession using the OrtModel.
    *
@@ -7925,7 +7925,7 @@ struct OrtModelEditorApi {
    * and SetGraphOutputs must have been called.
    * This will validate the model, run optimizers, and prepare the session for inferencing.
    *
-   * ReleaseOrtModel must be called to free the OrtModel after session creation.
+   * OrtApi::ReleaseModel must be called to free the OrtModel after session creation.
    *
    * \param[in] env The OrtEnv instance.
    * \param[in] model The OrtModel instance.

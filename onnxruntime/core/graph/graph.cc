@@ -6868,18 +6868,17 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
     }
   };
 
-  auto add_initializers = [this](const std::unordered_map<std::string,
-                                                          std::unique_ptr<OrtValue, onnxruntime::OrtValueDeleter>>&
+  auto add_initializers = [this](const InlinedHashMap<std::string,
+                                                      std::unique_ptr<OrtValue, onnxruntime::OrtValueDeleter>>&
                                      initializers,
                                  bool is_external) {
-    // Note: the map is `const&` but we move out of the OrtValue stored inside each unique_ptr below.
-    // This is intentional and safe here: LoadFromModelEditorApiModel consumes the OrtModel exactly once
-    // (the session takes ownership of the model and tears it down after Load), so the initializers map
-    // is not reused. `const unique_ptr<T>` does not propagate const to `*p`, so the move is well-formed.
-    for (auto& name_and_ortvalue : initializers) {
+    // Copy (do not move) the OrtValue into ortvalue_initializers_. The input OrtModel may be reused
+    // by the caller (e.g. applied to multiple sessions), and OrtValue's default move would clear the
+    // payload while leaving `type_` set, which would silently break later reuse.
+    for (const auto& name_and_ortvalue : initializers) {
       // convert from OrtValue to TensorProto
       const std::string& name = name_and_ortvalue.first;
-      OrtValue& v = *name_and_ortvalue.second;
+      const OrtValue& v = *name_and_ortvalue.second;
 
       ORT_ENFORCE(v.IsTensor(), "Initializers must be Tensors");
       const Tensor& t = v.Get<Tensor>();
@@ -6900,7 +6899,7 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
                                                      offset, t.SizeInBytes(), tensor_proto);
 
         // add OrtValue to ortvalue_initializers_ to keep it alive and to store the deleter if provided.
-        ortvalue_initializers_.emplace(name, std::move(v));
+        ortvalue_initializers_.emplace(name, v);
       } else {
         onnxruntime::utils::SetRawDataInTensorProto(tensor_proto, t.DataRaw(), t.SizeInBytes());
       }

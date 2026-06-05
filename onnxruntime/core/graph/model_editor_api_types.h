@@ -6,10 +6,9 @@
 #include <gsl/gsl>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
-#include "core/common/inlined_containers_fwd.h"
+#include "core/common/inlined_containers.h"
 #include "core/framework/ort_value.h"
 #include "core/graph/abi_graph_types.h"
 #include "core/graph/onnx_protobuf.h"
@@ -253,8 +252,8 @@ struct ModelEditorGraph : public OrtGraph {
 
   onnxruntime::InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo, OrtValueInfoDeleter>> inputs;
   onnxruntime::InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo, OrtValueInfoDeleter>> outputs;
-  std::unordered_map<std::string, std::unique_ptr<OrtValue, OrtValueDeleter>> initializers;
-  std::unordered_map<std::string, std::unique_ptr<OrtValue, OrtValueDeleter>> external_initializers;
+  onnxruntime::InlinedHashMap<std::string, std::unique_ptr<OrtValue, OrtValueDeleter>> initializers;
+  onnxruntime::InlinedHashMap<std::string, std::unique_ptr<OrtValue, OrtValueDeleter>> external_initializers;
   std::vector<std::unique_ptr<onnxruntime::ModelEditorNode, OrtNodeDeleter>> nodes;
   std::string name = "ModelEditorGraph";
   std::filesystem::path model_path;
@@ -265,5 +264,5 @@ struct ModelEditorGraph : public OrtGraph {
 
 struct OrtModel {
   std::unique_ptr<OrtGraph, ::onnxruntime::OrtGraphDeleter> graph;
-  std::unordered_map<std::string, int> domain_to_version;
+  ::onnxruntime::InlinedHashMap<std::string, int> domain_to_version;
 };
