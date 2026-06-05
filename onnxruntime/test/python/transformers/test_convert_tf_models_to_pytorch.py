@@ -7,16 +7,17 @@ from pathlib import Path
 import pytest
 
 # Resolve the module path relative to this file so the test works regardless of CWD.
-MODULE_PATH = (
-    Path(__file__).resolve().parents[4]
-    / "onnxruntime"
-    / "python"
-    / "tools"
-    / "transformers"
-    / "convert_tf_models_to_pytorch.py"
-)
+# When tests run from the build output directory, the source file is copied alongside
+# the test file in the same `transformers/` directory (via CMake copy commands).
+# When running directly from the source tree the file lives at
+# <repo>/onnxruntime/python/tools/transformers/ which is three levels up from the
+# test's own directory (onnxruntime/test/python/transformers/).
+_test_dir = Path(__file__).resolve().parent
+_same_dir_candidate = _test_dir / "convert_tf_models_to_pytorch.py"
+_source_tree_candidate = _test_dir.parents[2] / "python" / "tools" / "transformers" / "convert_tf_models_to_pytorch.py"
+MODULE_PATH = _same_dir_candidate if _same_dir_candidate.exists() else _source_tree_candidate
 SPEC = importlib.util.spec_from_file_location("convert_tf_models_to_pytorch", MODULE_PATH)
-assert SPEC is not None and SPEC.loader is not None
+assert SPEC is not None and SPEC.loader is not None, f"Could not load module from {MODULE_PATH}"
 convert_tf_models_to_pytorch = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(convert_tf_models_to_pytorch)
 

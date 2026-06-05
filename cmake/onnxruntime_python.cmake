@@ -852,6 +852,9 @@ if (onnxruntime_BUILD_UNIT_TESTS)
         ${onnxruntime_python_transformers_test_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/transformers/
     COMMAND ${CMAKE_COMMAND} -E copy
+        ${ONNXRUNTIME_ROOT}/python/tools/transformers/convert_tf_models_to_pytorch.py
+        $<TARGET_FILE_DIR:${build_output_target}>/transformers/
+    COMMAND ${CMAKE_COMMAND} -E copy
         ${onnxruntime_python_transformers_test_onnx_attention_srcs}
         $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_onnx_attention/
     COMMAND ${CMAKE_COMMAND} -E copy
