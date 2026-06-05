@@ -3475,7 +3475,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
                                                          telemetry_.ep_device_types_summary_);
   }
 
-  // log evaluation stop to trace logging provider
+                                                        telemetry_.ep_device_types_summary_);
   env.GetTelemetryProvider().LogEvaluationStop(session_id_);
 
   // send out profiling events (optional)
