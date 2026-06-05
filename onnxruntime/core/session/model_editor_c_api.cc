@@ -6,6 +6,7 @@
 #include <variant>
 
 #include "core/common/inlined_containers.h"
+#include "core/common/make_string.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/onnxruntime_typeinfo.h"
@@ -308,11 +309,13 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _Inout_ OrtGraph* 
     // (which does not understand external data and consumes the tensor's bytes inline).
     // e.g. Reshape's `shape`, Reduce's `axes`, Slice's `starts`/`ends`/`steps`, Clip's `min`/`max`, etc.
     if (t.SizeInBytes() <= onnxruntime::utils::kSmallTensorExternalDataThreshold) {
-      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "data_is_external=true requires the tensor to be larger than "
-                                   "kSmallTensorExternalDataThreshold bytes. For smaller tensors, copy "
-                                   "the data into an ORT-allocated tensor via CreateTensorAsOrtValue and "
-                                   "pass data_is_external=false.");
+      const std::string msg = onnxruntime::MakeString(
+          "data_is_external=true requires the tensor to be larger than ",
+          onnxruntime::utils::kSmallTensorExternalDataThreshold,
+          " bytes (got ", t.SizeInBytes(),
+          " bytes). For smaller tensors, copy the data into an ORT-allocated tensor via "
+          "CreateTensorAsOrtValue and pass data_is_external=false.");
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, msg.c_str());
     }
   }
 
