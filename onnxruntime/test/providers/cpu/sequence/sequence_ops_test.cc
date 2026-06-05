@@ -3,6 +3,9 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/util/include/default_providers.h"
+#include "core/common/logging/logging.h"
+#include "core/session/inference_session.h"
 #include <numeric>
 
 namespace onnxruntime {
@@ -550,5 +553,156 @@ TEST(SequenceOpsTest, SplitToSequence_BoolSplit) {
   test.AddSeqOutput("S2", output);
   test.Run();
 }
+
+// SequenceMap (opset 17) tests
+// Each test builds a body GraphProto via a minimal Model, then uses a
+// SequenceMapOpTester (OpTester subclass) that attaches it via AddNodes.
+
+namespace {
+
+using namespace ONNX_NAMESPACE;
+
+// Build a body graph with a single Identity node: input -> output.
+// Used for the identity pass-through test.
+static GraphProto BuildIdentityBody() {
+  Model model("SequenceMap_identity_body", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim();
+
+  auto& x_arg = graph.GetOrCreateNodeArg("x", &float_tensor);
+  auto& y_arg = graph.GetOrCreateNodeArg("y", &float_tensor);
+
+  graph.AddNode("identity", "Identity", "Identity", {&x_arg}, {&y_arg});
+
+  auto status = graph.Resolve();
+  EXPECT_EQ(status, Status::OK());
+  return graph.ToGraphProto();
+}
+
+// Build a body graph with Add: two inputs x + scalar_in -> out.
+static GraphProto BuildAddBody() {
+  Model model("SequenceMap_add_body", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim();
+
+  auto& x_arg = graph.GetOrCreateNodeArg("x", &float_tensor);
+  auto& scalar_arg = graph.GetOrCreateNodeArg("scalar_in", &float_tensor);
+  auto& out_arg = graph.GetOrCreateNodeArg("add_out", &float_tensor);
+
+  graph.AddNode("add", "Add", "Add x and scalar", {&x_arg, &scalar_arg}, {&out_arg});
+
+  auto status = graph.Resolve();
+  EXPECT_EQ(status, Status::OK());
+  return graph.ToGraphProto();
+}
+
+// Build a body graph with two outputs: x (Identity) and x*x (Mul).
+static GraphProto BuildSquareBody() {
+  Model model("SequenceMap_square_body", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  TypeProto float_tensor;
+  float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  float_tensor.mutable_tensor_type()->mutable_shape()->add_dim();
+
+  auto& x_arg = graph.GetOrCreateNodeArg("x", &float_tensor);
+  auto& id_out = graph.GetOrCreateNodeArg("id_out", &float_tensor);
+  auto& sq_out = graph.GetOrCreateNodeArg("sq_out", &float_tensor);
+
+  graph.AddNode("identity", "Identity", "Pass through", {&x_arg}, {&id_out});
+  graph.AddNode("mul", "Mul", "Square", {&x_arg, &x_arg}, {&sq_out});
+
+  auto status = graph.Resolve();
+  EXPECT_EQ(status, Status::OK());
+  return graph.ToGraphProto();
+}
+
+// OpTester subclass for SequenceMap: attaches the body GraphProto via AddNodes.
+class SequenceMapOpTester : public OpTester {
+ public:
+  explicit SequenceMapOpTester(GraphProto body)
+      : OpTester("SequenceMap", 17), body_(std::move(body)) {}
+
+ protected:
+  void AddNodes(onnxruntime::Graph& graph,
+                std::vector<onnxruntime::NodeArg*>& graph_input_defs,
+                std::vector<onnxruntime::NodeArg*>& graph_output_defs,
+                std::vector<std::function<void(onnxruntime::Node& node)>>& /*add_attribute_funcs*/) override {
+    auto& seq_map_node = graph.AddNode("sequence_map", "SequenceMap", "SequenceMap node",
+                                       graph_input_defs, graph_output_defs);
+    seq_map_node.AddAttribute("body", body_);
+  }
+
+ private:
+  GraphProto body_;
+};
+
+}  // namespace
+
+// Test 1: identity body — output sequence equals input sequence.
+TEST(SequenceOpsTest, SequenceMap_Identity) {
+  SequenceMapOpTester test{BuildIdentityBody()};
+
+  SeqTensors<float> input;
+  input.AddTensor({3}, {1.0f, 2.0f, 3.0f});
+  input.AddTensor({2}, {4.0f, 5.0f});
+  test.AddSeqInput("input_sequence", input);
+
+  SeqTensors<float> expected;
+  expected.AddTensor({3}, {1.0f, 2.0f, 3.0f});
+  expected.AddTensor({2}, {4.0f, 5.0f});
+  test.AddSeqOutput("out_sequence", expected);
+
+  test.Run();
+}
+
+// Test 2: Add body with an additional scalar tensor input broadcast to each element.
+TEST(SequenceOpsTest, SequenceMap_AddScalar) {
+  SequenceMapOpTester test{BuildAddBody()};
+
+  SeqTensors<float> input;
+  input.AddTensor({3}, {1.0f, 2.0f, 3.0f});
+  input.AddTensor({3}, {10.0f, 20.0f, 30.0f});
+  test.AddSeqInput("input_sequence", input);
+
+  // additional_inputs is a tensor (passed through to every iteration)
+  test.AddInput<float>("additional_inputs", {3}, {100.0f, 100.0f, 100.0f});
+
+  SeqTensors<float> expected;
+  expected.AddTensor({3}, {101.0f, 102.0f, 103.0f});
+  expected.AddTensor({3}, {110.0f, 120.0f, 130.0f});
+  test.AddSeqOutput("out_sequence", expected);
+
+  test.Run();
+}
+
+// Test 3: Two-output body (identity + square) — verify both output sequences.
+TEST(SequenceOpsTest, SequenceMap_TwoOutputs) {
+  SequenceMapOpTester test{BuildSquareBody()};
+
+  SeqTensors<float> input;
+  input.AddTensor({2}, {2.0f, 3.0f});
+  input.AddTensor({2}, {4.0f, 5.0f});
+  test.AddSeqInput("input_sequence", input);
+
+  SeqTensors<float> expected_id;
+  expected_id.AddTensor({2}, {2.0f, 3.0f});
+  expected_id.AddTensor({2}, {4.0f, 5.0f});
+  test.AddSeqOutput("out_sequence", expected_id);
+
+  SeqTensors<float> expected_sq;
+  expected_sq.AddTensor({2}, {4.0f, 9.0f});
+  expected_sq.AddTensor({2}, {16.0f, 25.0f});
+  test.AddSeqOutput("out_sequence_1", expected_sq);
+
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

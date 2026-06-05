@@ -13,6 +13,9 @@
 #include "core/providers/op_kernel_type_control.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
+#include "core/framework/op_kernel_context_internal.h"
+#include "core/framework/session_state.h"
+#include "core/framework/utils.h"
 
 using namespace onnxruntime::common;
 
@@ -579,4 +582,152 @@ Status SplitToSequence::ComputeImpl(OpKernelContext& context, const Tensor& inpu
 
   return Status::OK();
 }
+
+// SequenceMap (opset 17)
+// Native CPU kernel: avoids the O(n^2) fallback that the context-dependent
+// function body would otherwise generate via Loop + SequenceInsert.
+ONNX_CPU_OPERATOR_KERNEL(
+    SequenceMap,
+    17,
+    KernelDefBuilder()
+        .TypeConstraint("S", DataTypeImpl::AllSequenceTensorTypes())
+        .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
+    SequenceMap);
+
+common::Status SequenceMap::SetupSubgraphExecutionInfo(const SessionState& session_state,
+                                                       const std::string& attribute_name,
+                                                       const SessionState& subgraph_session_state) {
+  ORT_ENFORCE(feeds_fetches_manager_ == nullptr,
+              "SetupSubgraphExecutionInfo should only be called once for each subgraph.");
+  ORT_UNUSED_PARAMETER(attribute_name);
+
+  const auto& node = Node();
+  const auto& subgraph = subgraph_session_state.GetGraphViewer();
+
+  // The subgraph inputs match the outer node's explicit inputs (one element
+  // per sequence input, pass-through for tensor inputs).
+  const auto& subgraph_inputs = subgraph.GetInputs();
+  const auto& subgraph_outputs = subgraph.GetOutputs();
+
+  std::vector<std::string> feed_names;
+  feed_names.reserve(subgraph_inputs.size());
+  for (const auto* input : subgraph_inputs) {
+    feed_names.push_back(input->Name());
+  }
+
+  std::vector<std::string> fetch_names;
+  fetch_names.reserve(subgraph_outputs.size());
+  for (const auto* output : subgraph_outputs) {
+    fetch_names.push_back(output->Name());
+  }
+
+  const auto& subgraph_map = subgraph_session_state.GetOrtValueNameIdxMap();
+  std::unique_ptr<FeedsFetchesManager> ffm;
+  ORT_RETURN_IF_ERROR(FeedsFetchesManager::Create(feed_names, fetch_names, subgraph_map, ffm));
+  ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(subgraph_session_state, *ffm));
+
+  // Feeds come from the outer node's explicit inputs.
+  const auto& node_inputs = node.InputDefs();
+  std::vector<std::string> outer_feed_names;
+  outer_feed_names.reserve(node_inputs.size());
+  for (const auto* input_def : node_inputs) {
+    outer_feed_names.push_back(input_def->Name());
+  }
+
+  std::vector<OrtDevice> feed_locations;
+  ORT_RETURN_IF_ERROR(
+      controlflow::detail::FindDevicesForValues(session_state, outer_feed_names, feed_locations));
+
+  // Outputs go to the SequenceMap node's output sequence slots.
+  std::vector<const OrtDevice*> fetch_locations;
+  const auto& node_outputs = node.OutputDefs();
+  fetch_locations.reserve(node_outputs.size());
+  for (const auto* output_def : node_outputs) {
+    fetch_locations.push_back(&utils::FindDeviceForValue(session_state, output_def->Name()));
+  }
+
+  utils::FinalizeFeedFetchCopyInfo(*ffm, feed_locations, fetch_locations);
+  feeds_fetches_manager_ = std::move(ffm);
+
+  return Status::OK();
+}
+
+Status SequenceMap::Compute(OpKernelContext* ctx) const {
+  ORT_ENFORCE(feeds_fetches_manager_,
+              "SetupSubgraphExecutionInfo must be called prior to SequenceMap Compute.");
+
+  auto* ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
+  const auto* session_state = ctx_internal->SubgraphSessionState("body");
+  ORT_ENFORCE(session_state, "Subgraph SessionState was not found for 'body' attribute.");
+
+  const auto* input_seq = ctx->Input<TensorSeq>(0);
+  ORT_ENFORCE(input_seq != nullptr, "SequenceMap: first input (input_sequence) must be a sequence.");
+  const auto seq_len = input_seq->Size();
+
+  const int num_outer_inputs = ctx->InputCount();
+  const int num_outputs = ctx->OutputCount();
+
+  // Each output sequence collects one tensor per iteration.
+  // We defer SetType until after the first iteration populates the fetches.
+  std::vector<TensorSeq*> output_seqs(num_outputs, nullptr);
+  for (int j = 0; j < num_outputs; ++j) {
+    output_seqs[j] = ctx->Output<TensorSeq>(j);
+    ORT_ENFORCE(output_seqs[j] != nullptr, "SequenceMap: failed to get output TensorSeq slot ", j);
+    output_seqs[j]->Reserve(seq_len);
+  }
+
+  // Validate that all additional sequence inputs have the same length as input_sequence.
+  for (int k = 1; k < num_outer_inputs; ++k) {
+    const auto* seq = ctx->Input<TensorSeq>(k);
+    if (seq != nullptr && seq->Size() != seq_len) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "SequenceMap: additional sequence input ", k,
+                             " has length ", seq->Size(),
+                             " but input_sequence has length ", seq_len);
+    }
+  }
+
+  for (size_t i = 0; i < seq_len; ++i) {
+    std::vector<OrtValue> feeds;
+    feeds.reserve(static_cast<size_t>(num_outer_inputs));
+
+    // Build feeds: sequence inputs -> element i; tensor inputs -> pass-through OrtValue.
+    for (int k = 0; k < num_outer_inputs; ++k) {
+      const auto* seq_k = (k == 0) ? input_seq : ctx->Input<TensorSeq>(k);
+      if (seq_k != nullptr) {
+        feeds.push_back(seq_k->GetAt(i));
+      } else {
+        // Tensor input: shallow-copy the OrtValue (shared_ptr, safe) from the kernel context.
+        const auto* input_val = ctx_internal->GetInputMLValue(k);
+        ORT_ENFORCE(input_val != nullptr, "SequenceMap: input ", k, " is neither a sequence nor a tensor.");
+        feeds.push_back(*input_val);
+      }
+    }
+
+    std::vector<OrtValue> fetches;
+    ORT_RETURN_IF_ERROR(utils::ExecuteSubgraph(*session_state, *feeds_fetches_manager_,
+                                               feeds, fetches, {},
+                                               ExecutionMode::ORT_SEQUENTIAL,
+                                               ctx->GetTerminateFlag(),
+                                               ctx->Logger(),
+                                               ctx->GetComputeStream(),
+                                               /*sync_subgraph_fetches=*/false,
+                                               ctx_internal->GetRunProfiler()));
+
+    ORT_ENFORCE(static_cast<int>(fetches.size()) == num_outputs,
+                "SequenceMap: body returned ", fetches.size(), " outputs but ", num_outputs, " were expected.");
+
+    for (int j = 0; j < num_outputs; ++j) {
+      ORT_ENFORCE(fetches[j].IsTensor(),
+                  "SequenceMap: body output ", j, " must be a tensor.");
+      if (i == 0) {
+        output_seqs[j]->SetType(fetches[j].Get<Tensor>().DataType());
+      }
+      output_seqs[j]->Add(std::move(fetches[j]));
+    }
+  }
+
+  return Status::OK();
+}
+
 }  // namespace onnxruntime

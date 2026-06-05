@@ -4,7 +4,9 @@
 #pragma once
 
 #include "core/common/common.h"
+#include "core/framework/feeds_fetches_manager.h"
 #include "core/framework/op_kernel.h"
+#include "core/providers/cpu/controlflow/utils.h"
 
 namespace onnxruntime {
 
@@ -69,5 +71,19 @@ class SplitToSequence final : public OpKernel {
   int64_t axis_{};
   int64_t keepdims_{1};
   const int64_t DEFAULT_LENGTH_EACH_OUTPUT_ = 1;
+};
+
+class SequenceMap final : public controlflow::IControlFlowKernel {
+ public:
+  SequenceMap(const OpKernelInfo& info) : IControlFlowKernel(info) {}
+
+  Status Compute(OpKernelContext* ctx) const override;
+
+  Status SetupSubgraphExecutionInfo(const SessionState& session_state,
+                                    const std::string& attribute_name,
+                                    const SessionState& subgraph_session_state) override;
+
+ private:
+  std::unique_ptr<FeedsFetchesManager> feeds_fetches_manager_;
 };
 }  // namespace onnxruntime
