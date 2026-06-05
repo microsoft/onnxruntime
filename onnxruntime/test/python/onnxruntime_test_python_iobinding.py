@@ -461,9 +461,11 @@ class TestIOBinding(unittest.TestCase):
         # Overload 2: numpy dtype. NPY_UNICODE, NPY_STRING and NPY_OBJECT all map to
         # std::string in NumpyTypeToOnnxRuntimeTensorType, so each of them must be rejected.
         for dtype in (np.dtype("U1"), np.dtype("S1"), np.dtype(object)):
-            with self.subTest(dtype=dtype):
-                with self.assertRaisesRegex(RuntimeError, "Only binding non-string Tensors"):
-                    io_binding.bind_input("X", "cpu", 0, dtype, [1], scratch_ptr)
+            with (
+                self.subTest(dtype=dtype),
+                self.assertRaisesRegex(RuntimeError, "Only binding non-string Tensors"),
+            ):
+                io_binding.bind_input("X", "cpu", 0, dtype, [1], scratch_ptr)
 
 
 if __name__ == "__main__":
