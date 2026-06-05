@@ -201,6 +201,20 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Only CPU based tensors are currently supported.");
   }
 
+  // Reject if this raw pointer is already owned by the graph. Wrapping the same pointer in a second
+  // unique_ptr would cause a double-free when the graph is destroyed.
+  auto already_owned = [tensor](const auto& m) {
+    for (const auto& kv : m) {
+      if (kv.second.get() == tensor) return true;
+    }
+    return false;
+  };
+  if (already_owned(graph->initializers) || already_owned(graph->external_initializers)) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "This OrtValue pointer has already been added to the graph. "
+                                 "Each OrtValue must only be added once.");
+  }
+
   if (data_is_external) {
     // enforce that an external initializer is not used if the data size is < 128 bytes.
     // the reason for this is to avoid potential shape inferencing errors if this initializer is providing an
@@ -235,6 +249,15 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddNodeToGraph, _In_ OrtGraph* ort_graph,
   if (node == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                  "Invalid OrtNode variant for use in the OrtModelEditorApi");
+  }
+
+  // Reject if this raw pointer is already owned by the graph (prevents double-free).
+  for (const auto& existing : graph->nodes) {
+    if (existing.get() == node) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "This OrtNode pointer has already been added to the graph. "
+                                   "Each OrtNode must only be added once.");
+    }
   }
 
   node->id = graph->nodes.size();
