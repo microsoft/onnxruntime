@@ -232,8 +232,7 @@ def _apply_macros(lines: list[ParsedLine], file_name: str) -> list[ParsedLine]:
             if macro_value == "":
                 raise WgslTemplateParseError(
                     f"Invalid macro definition in file {file_name} at line "
-                    f'{line_index + 1}: macro "{macro_name}" has empty '
-                    f"value (whitespace only)",
+                    f'{line_index + 1}: macro "{macro_name}" has no value',
                     "syntax-error",
                     file_path=file_name,
                     line_number=line_index + 1,

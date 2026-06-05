@@ -31,7 +31,7 @@ std::string pass_as_string(T&& v) {
 }
 }  // namespace wgsl_detail
 
-#include "/string_table.h"  // 12c86e5439e35b74fef09f3dfdefe7340abe236c2eb1741f2d430ec1e5dcd66f
+#include "string_table.h"  // 12c86e5439e35b74fef09f3dfdefe7340abe236c2eb1741f2d430ec1e5dcd66f
 
 // Include template implementations
 

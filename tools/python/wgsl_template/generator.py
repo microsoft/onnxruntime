@@ -726,14 +726,15 @@ def generate(
             "Unmatched parentheses at the end of processing",
             "code-generation-failed",
         )
-    if state.current_bracket_state != 0:
-        raise WgslTemplateGenerateError(
-            "Unmatched brackets at the end of processing",
-            "code-generation-failed",
-        )
+
     if state.main_function == "started":
         raise WgslTemplateGenerateError(
             "Main function context started but not ended at the end of processing",
+            "code-generation-failed",
+        )
+    if state.current_bracket_state != 0:
+        raise WgslTemplateGenerateError(
+            "Unmatched brackets at the end of processing",
             "code-generation-failed",
         )
 

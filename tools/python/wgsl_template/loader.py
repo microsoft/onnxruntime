@@ -66,10 +66,6 @@ def _load_directory(
             # Broken symlink etc.
             continue
         if not _resolve_within(base_dir, resolved):
-            print(
-                f"Skipping file outside base directory: {full_path}",
-                flush=True,
-            )
             continue
 
         # Skip symlinks and special files; only follow real directories

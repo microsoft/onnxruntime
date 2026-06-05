@@ -139,16 +139,8 @@ class GeneratorParamErrorsTest(unittest.TestCase):
 
 _SUPPORTED_GENERATORS = {"static-cpp", "static-cpp-literal"}
 
-# Fixtures whose golden expectation does not match this engine's
-# end-of-file validation order. Skipped so the suite stays green;
-# reason inline.
-_FIXTURE_SKIPS = {
-    # The fixture expects the error "Main function context started but
-    # not ended at the end of processing", but the end-of-file
-    # validations check for unmatched brackets first, so the actual
-    # error is "Unmatched brackets at the end of processing".
-    "generator-main-invalid-unclosed",
-}
+# No fixtures are currently skipped.
+_FIXTURE_SKIPS: set[str] = set()
 
 
 def _normalize_lines(text: str) -> list:

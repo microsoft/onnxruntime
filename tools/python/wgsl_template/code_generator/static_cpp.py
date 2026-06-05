@@ -149,13 +149,6 @@ class StaticCodeGenerator:
     # ------------------------------------------------------------------
     # build() — produce the per-template files plus index.h /
     # index_impl.h / string_table.h.
-    #
-    # Quirk: in index_impl.h the path rendered for string_table.h is
-    # `${prefix}/string_table.h` (note the leading slash) while the
-    # per-template includes are rendered as `${prefix}generated/...`
-    # (no slash). The C++ compiler accepts the resulting double-slash
-    # path, so the inconsistency is cosmetic. Preserved here so output
-    # matches the existing build-* test fixtures byte-for-byte.
     # ------------------------------------------------------------------
 
     def build(
@@ -298,10 +291,7 @@ class StaticCodeGenerator:
 
         if self._string_table is not None:
             sthash = impl_hashes.get("string_table.h", "")
-            # See the build() quirk note above: the prefix is followed
-            # by a literal slash here even though the per-template loop
-            # below does not add one.
-            out.append(f'#include "{include_path_prefix}/string_table.h"  // {sthash}')
+            out.append(f'#include "{include_path_prefix}string_table.h"  // {sthash}')
         out.append("")
         out.append("// Include template implementations")
         out.append("")
