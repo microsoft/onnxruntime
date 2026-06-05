@@ -1184,7 +1184,7 @@ namespace {
 // The returned Ort::Value owns only the OrtValue wrapper; the underlying buffer remains in
 // `storage`, so the caller must keep `storage` alive for as long as the tensor may be accessed.
 Ort::Value MakeCpuFloatTensor(std::vector<float>& storage, size_t num_floats,
-                              gsl::span<const int64_t> dims) {
+                              const std::vector<int64_t>& dims) {
   storage.assign(num_floats, 0.0f);
   auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
   return Ort::Value::CreateTensor<float>(memory_info, storage.data(), storage.size(),
