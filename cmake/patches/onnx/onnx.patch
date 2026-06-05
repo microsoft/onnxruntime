@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 365af87..defe81a 100644
+index 365af8726..5f861a1c7 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -46,6 +46,7 @@ option(ONNX_DISABLE_EXCEPTIONS "Disable exception handling." OFF)
@@ -10,17 +10,70 @@ index 365af87..defe81a 100644
  option(ONNX_INSTALL "Install ONNX targets, headers, and CMake config files" ON)
  if(WIN32)
    option(ONNX_USE_MSVC_STATIC_RUNTIME "Build with MSVC static runtime. Ignored if CMAKE_MSVC_RUNTIME_LIBRARY is defined." OFF)
-@@ -494,7 +495,22 @@ endfunction()
- # target_sources. onnx_core is an OBJECT library consumed by both the onnx
- # static library and the onnx_cpp2py_export Python extension module.
- add_library(onnx_core OBJECT)
+@@ -490,29 +491,13 @@ function(RELATIVE_PROTOBUF_GENERATE_CPP SRCS)
+   set(ONNX_GENERATED_PROTO_FILES ${GENERATED_FILES} PARENT_SCOPE)
+ endfunction()
+ 
+-# Sources are listed explicitly in subdirectory CMakeLists.txt files via
+-# target_sources. onnx_core is an OBJECT library consumed by both the onnx
+-# static library and the onnx_cpp2py_export Python extension module.
+-add_library(onnx_core OBJECT)
 -add_subdirectory(onnx)
+-
+ relative_protobuf_generate_cpp(ONNX_PROTO_SRCS
+                                onnx/onnx.in.proto
+                                onnx/onnx-operators.in.proto
+                                onnx/onnx-data.in.proto)
+-target_sources(onnx_core PRIVATE ${ONNX_PROTO_SRCS})
+-
+-# Proto sources don't play well with unity builds.
+-set_source_files_properties(${ONNX_PROTO_SRCS}
+-    TARGET_DIRECTORY onnx_core
+-    PROPERTIES SKIP_UNITY_BUILD_INCLUSION TRUE
+-)
+-
+-# Dedicated target for the gen_proto.py step only (produces .proto files).
+-# Both onnx_core and onnx_proto run gen_proto.py in a parallel build, creating
+-# a race where both write to the same generated .proto paths simultaneously.
+-# Serialising only the generation step lets protoc and C++ compilation for both
+-# targets proceed in parallel afterwards.
++
++# Serialises the gen_proto.py step so parallel builds don't race writing the
++# generated .proto files; protoc and C++ compilation still overlap afterwards.
+ add_custom_target(onnx_proto_gen DEPENDS ${ONNX_GENERATED_PROTO_FILES})
+ 
+ set(LINKED_PROTOBUF_TARGET protobuf::libprotobuf)
+@@ -521,24 +506,45 @@ if(ONNX_USE_LITE_PROTO)
+     set(LINKED_PROTOBUF_TARGET protobuf::libprotobuf-lite)
+   endif()
+ endif()
++
++# Compile the generated .pb.cc sources in exactly one target: Xcode's build
++# system rejects a protoc custom command shared across several targets.
+ add_library(onnx_proto ${ONNX_PROTO_SRCS})
+ add_onnx_global_defines(onnx_proto)
+ add_dependencies(onnx_proto onnx_proto_gen)
+ 
+-# onnx_core lists ONNX_PROTO_SRCS as sources alongside onnx_proto; without an
+-# explicit ordering cmake schedules gen_proto.py for both concurrently, causing
+-# a write/read race on the generated .proto files. Depending on onnx_proto_gen
+-# (the dedicated gen_proto.py step) serialises only the generation, letting
+-# protoc and C++ compilation for both targets overlap afterwards.
+-add_dependencies(onnx_core onnx_proto_gen)
+-
+-add_library(onnx $<TARGET_OBJECTS:onnx_core>)
+-add_dependencies(onnx onnx_proto onnx_core)
+-set_target_properties(onnx_core PROPERTIES CXX_VISIBILITY_PRESET hidden)
+-add_onnx_global_defines(onnx_core)
++# Core library. Hand-written sources come from target_sources(onnx ...) in the
++# subdirectories; the protobuf objects are pulled in from onnx_proto.
++add_library(onnx $<TARGET_OBJECTS:onnx_proto>)
 +if(ONNX_MINIMAL_BUILD)
 +    message(STATUS "Configuring ONNX minimal build")
 +    # ORT's minimal/WebAssembly builds only need ONNX's type utilities and the
-+    # generated protobuf sources (added unconditionally below); skip globbing in
++    # generated protobuf sources (linked via onnx_proto above); skip pulling in
 +    # the full operator/schema sources via add_subdirectory(onnx).
-+    target_sources(onnx_core PRIVATE
++    target_sources(onnx PRIVATE
 +        "${ONNX_ROOT}/onnx/defs/data_type_utils.cc"
 +    )
 +    # Ensure ONNX_ML is treated as ON for minimal build consistency with ORT's file
@@ -31,11 +84,186 @@ index 365af87..defe81a 100644
 +else()
 +    add_subdirectory(onnx)
 +endif()
++add_dependencies(onnx onnx_proto)
++set_target_properties(onnx PROPERTIES CXX_VISIBILITY_PRESET hidden)
+ add_onnx_global_defines(onnx)
  
- relative_protobuf_generate_cpp(ONNX_PROTO_SRCS
-                                onnx/onnx.in.proto
+ if(ONNX_BUILD_PYTHON)
++  if(BUILD_SHARED_LIBS)
++    # The extension links ONNX internals not on the public ONNX_API surface,
++    # which a hidden-visibility shared libonnx does not export. The wheel always
++    # builds onnx statically; a shared libonnx is for C++ use only.
++    message(FATAL_ERROR
++      "ONNX_BUILD_PYTHON=ON requires a static onnx; do not combine it with "
++      "BUILD_SHARED_LIBS=ON. Use ONNX_BUILD_PYTHON=OFF to build a shared libonnx.")
++  endif()
+   # find system nanobind
+   if(NOT DEFINED nanobind_DIR OR "${nanobind_DIR}" STREQUAL "")
+     execute_process(
+@@ -574,12 +580,15 @@ if(ONNX_BUILD_PYTHON)
+   nanobind_add_module(
+     onnx_cpp2py_export
+     NB_STATIC NB_DOMAIN onnx STABLE_ABI FREE_THREADED LTO
+-    "${ONNX_ROOT}/onnx/cpp2py_export.cc" $<TARGET_OBJECTS:onnx_core>)
+-  add_dependencies(onnx_cpp2py_export onnx)
++    "${ONNX_ROOT}/onnx/cpp2py_export.cc")
++  # Force-load the whole (static) archive so the operator schemas' static
++  # initializers are not dropped as apparently-unused. $<LINK_LIBRARY:WHOLE_ARCHIVE,...>
++  # is the portable --whole-archive / -force_load / /WHOLEARCHIVE spelling.
++  target_link_libraries(onnx_cpp2py_export PRIVATE
++    $<LINK_LIBRARY:WHOLE_ARCHIVE,onnx>)
+ endif()
+ 
+ add_onnx_compile_options(onnx_proto)
+-add_onnx_compile_options(onnx_core)
+ add_onnx_compile_options(onnx)
+ if(TARGET onnx_cpp2py_export)
+   add_onnx_global_defines(onnx_cpp2py_export)
+@@ -627,15 +636,15 @@ if(ONNX_INSTALL)
+ endif()
+ 
+ if(ONNX_USE_UNITY_BUILD)
+-  # If ONNX_USE_UNITY_BUILD is set to ON, set onnx_core to use Unity builds.
+-  set_target_properties(onnx_core
++  # If ONNX_USE_UNITY_BUILD is set to ON, set onnx to use Unity builds.
++  set_target_properties(onnx
+     PROPERTIES
+       UNITY_BUILD ON
+   )
+ 
+   # With unity build object file could get big, need this switch in MSVC.
+   if(MSVC)
+-    target_compile_options(onnx_core PRIVATE /bigobj)
++    target_compile_options(onnx PRIVATE /bigobj)
+   endif()
+ # should be enabled for onnx_proto when protobuf can support Unity builds
+ endif()
+diff --git a/onnx/CMakeLists.txt b/onnx/CMakeLists.txt
+index bd97077f4..1c7a7c6e7 100644
+--- a/onnx/CMakeLists.txt
++++ b/onnx/CMakeLists.txt
+@@ -4,7 +4,7 @@
+ # Sources directly in onnx/
+ # Note: cpp2py_export.cc is excluded — it is compiled separately into the
+ # onnx_cpp2py_export Python extension module.
+-target_sources(onnx_core PRIVATE
++target_sources(onnx PRIVATE
+     checker.cc
+     checker.h
+     onnx_pb.h
+diff --git a/onnx/common/CMakeLists.txt b/onnx/common/CMakeLists.txt
+index 1156aa8cf..d14e08e79 100644
+--- a/onnx/common/CMakeLists.txt
++++ b/onnx/common/CMakeLists.txt
+@@ -7,7 +7,7 @@ configure_file(
+     @ONLY
+ )
+ 
+-target_sources(onnx_core PRIVATE
++target_sources(onnx PRIVATE
+     array_ref.h
+     assertions.cc
+     assertions.h
+diff --git a/onnx/defs/CMakeLists.txt b/onnx/defs/CMakeLists.txt
+index 6c5e76613..835b81537 100644
+--- a/onnx/defs/CMakeLists.txt
++++ b/onnx/defs/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ # Copyright (c) ONNX Project Contributors
+ # SPDX-License-Identifier: Apache-2.0
+ 
+-target_sources(onnx_core PRIVATE
++target_sources(onnx PRIVATE
+     attr_proto_util.cc
+     attr_proto_util.h
+     data_propagators.h
+@@ -49,6 +49,6 @@ add_subdirectory(training)
+ 
+ # These files exhibit issues in unity builds, so we disable them.
+ set_source_files_properties(schema.cc tensor_proto_util.cc
+-    TARGET_DIRECTORY onnx_core
++    TARGET_DIRECTORY onnx
+     PROPERTIES SKIP_UNITY_BUILD_INCLUSION TRUE
+ )
+diff --git a/onnx/defs/controlflow/CMakeLists.txt b/onnx/defs/controlflow/CMakeLists.txt
+index a89ba3be7..0011f0548 100644
+--- a/onnx/defs/controlflow/CMakeLists.txt
++++ b/onnx/defs/controlflow/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ # Copyright (c) ONNX Project Contributors
+ # SPDX-License-Identifier: Apache-2.0
+ 
+-target_sources(onnx_core PRIVATE
++target_sources(onnx PRIVATE
+     defs.cc
+     old.cc
+     utils.cc
+diff --git a/onnx/defs/generator/CMakeLists.txt b/onnx/defs/generator/CMakeLists.txt
+index a89ba3be7..0011f0548 100644
+--- a/onnx/defs/generator/CMakeLists.txt
++++ b/onnx/defs/generator/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ # Copyright (c) ONNX Project Contributors
+ # SPDX-License-Identifier: Apache-2.0
+ 
+-target_sources(onnx_core PRIVATE
++target_sources(onnx PRIVATE
+     defs.cc
+     old.cc
+     utils.cc
+diff --git a/onnx/defs/image/CMakeLists.txt b/onnx/defs/image/CMakeLists.txt
+index b3a8a996f..ebc1561f5 100644
+--- a/onnx/defs/image/CMakeLists.txt
++++ b/onnx/defs/image/CMakeLists.txt
+@@ -1,6 +1,6 @@
+ # Copyright (c) ONNX Project Contributors
+ # SPDX-License-Identifier: Apache-2.0
+ 
+-target_sources(onnx_core PRIVATE
++target_sources(onnx PRIVATE
+     defs.cc
+ )
+diff --git a/onnx/defs/logical/CMakeLists.txt b/onnx/defs/logical/CMakeLists.txt
+index 8db7d6875..0804eec6d 100644
+--- a/onnx/defs/logical/CMakeLists.txt
++++ b/onnx/defs/logical/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ # Copyright (c) ONNX Project Contributors
+ # SPDX-License-Identifier: Apache-2.0
+ 
+-target_sources(onnx_core PRIVATE
++target_sources(onnx PRIVATE
+     defs.cc
+     old.cc
+ )
+diff --git a/onnx/defs/math/CMakeLists.txt b/onnx/defs/math/CMakeLists.txt
+index a89ba3be7..0011f0548 100644
+--- a/onnx/defs/math/CMakeLists.txt
++++ b/onnx/defs/math/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ # Copyright (c) ONNX Project Contributors
+ # SPDX-License-Identifier: Apache-2.0
+ 
+-target_sources(onnx_core PRIVATE
++target_sources(onnx PRIVATE
+     defs.cc
+     old.cc
+     utils.cc
+diff --git a/onnx/defs/nn/CMakeLists.txt b/onnx/defs/nn/CMakeLists.txt
+index a89ba3be7..0011f0548 100644
+--- a/onnx/defs/nn/CMakeLists.txt
++++ b/onnx/defs/nn/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ # Copyright (c) ONNX Project Contributors
+ # SPDX-License-Identifier: Apache-2.0
+ 
+-target_sources(onnx_core PRIVATE
++target_sources(onnx PRIVATE
+     defs.cc
+     old.cc
+     utils.cc
 diff --git a/onnx/defs/nn/old.cc b/onnx/defs/nn/old.cc
-index 4dd6619..6187eb3 100644
+index 4dd66197c..6187eb39e 100644
 --- a/onnx/defs/nn/old.cc
 +++ b/onnx/defs/nn/old.cc
 @@ -3995,7 +3995,6 @@ ONNX_OPERATOR_SET_SCHEMA(
@@ -46,3 +274,195 @@ index 4dd6619..6187eb3 100644
          .SetDoc(GroupNormalization_ver18_doc)
          .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, 1e-5f)
          .Attr(
+diff --git a/onnx/defs/object_detection/CMakeLists.txt b/onnx/defs/object_detection/CMakeLists.txt
+index 8db7d6875..0804eec6d 100644
+--- a/onnx/defs/object_detection/CMakeLists.txt
++++ b/onnx/defs/object_detection/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ # Copyright (c) ONNX Project Contributors
+ # SPDX-License-Identifier: Apache-2.0
+ 
+-target_sources(onnx_core PRIVATE
++target_sources(onnx PRIVATE
+     defs.cc
+     old.cc
+ )
+diff --git a/onnx/defs/optional/CMakeLists.txt b/onnx/defs/optional/CMakeLists.txt
+index 8db7d6875..0804eec6d 100644
+--- a/onnx/defs/optional/CMakeLists.txt
++++ b/onnx/defs/optional/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ # Copyright (c) ONNX Project Contributors
+ # SPDX-License-Identifier: Apache-2.0
+ 
+-target_sources(onnx_core PRIVATE
++target_sources(onnx PRIVATE
+     defs.cc
+     old.cc
+ )
+diff --git a/onnx/defs/preview/CMakeLists.txt b/onnx/defs/preview/CMakeLists.txt
+index b3a8a996f..ebc1561f5 100644
+--- a/onnx/defs/preview/CMakeLists.txt
++++ b/onnx/defs/preview/CMakeLists.txt
+@@ -1,6 +1,6 @@
+ # Copyright (c) ONNX Project Contributors
+ # SPDX-License-Identifier: Apache-2.0
+ 
+-target_sources(onnx_core PRIVATE
++target_sources(onnx PRIVATE
+     defs.cc
+ )
+diff --git a/onnx/defs/quantization/CMakeLists.txt b/onnx/defs/quantization/CMakeLists.txt
+index 8db7d6875..0804eec6d 100644
+--- a/onnx/defs/quantization/CMakeLists.txt
++++ b/onnx/defs/quantization/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ # Copyright (c) ONNX Project Contributors
+ # SPDX-License-Identifier: Apache-2.0
+ 
+-target_sources(onnx_core PRIVATE
++target_sources(onnx PRIVATE
+     defs.cc
+     old.cc
+ )
+diff --git a/onnx/defs/reduction/CMakeLists.txt b/onnx/defs/reduction/CMakeLists.txt
+index a89ba3be7..0011f0548 100644
+--- a/onnx/defs/reduction/CMakeLists.txt
++++ b/onnx/defs/reduction/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ # Copyright (c) ONNX Project Contributors
+ # SPDX-License-Identifier: Apache-2.0
+ 
+-target_sources(onnx_core PRIVATE
++target_sources(onnx PRIVATE
+     defs.cc
+     old.cc
+     utils.cc
+diff --git a/onnx/defs/rnn/CMakeLists.txt b/onnx/defs/rnn/CMakeLists.txt
+index 8db7d6875..0804eec6d 100644
+--- a/onnx/defs/rnn/CMakeLists.txt
++++ b/onnx/defs/rnn/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ # Copyright (c) ONNX Project Contributors
+ # SPDX-License-Identifier: Apache-2.0
+ 
+-target_sources(onnx_core PRIVATE
++target_sources(onnx PRIVATE
+     defs.cc
+     old.cc
+ )
+diff --git a/onnx/defs/sequence/CMakeLists.txt b/onnx/defs/sequence/CMakeLists.txt
+index a89ba3be7..0011f0548 100644
+--- a/onnx/defs/sequence/CMakeLists.txt
++++ b/onnx/defs/sequence/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ # Copyright (c) ONNX Project Contributors
+ # SPDX-License-Identifier: Apache-2.0
+ 
+-target_sources(onnx_core PRIVATE
++target_sources(onnx PRIVATE
+     defs.cc
+     old.cc
+     utils.cc
+diff --git a/onnx/defs/tensor/CMakeLists.txt b/onnx/defs/tensor/CMakeLists.txt
+index a89ba3be7..0011f0548 100644
+--- a/onnx/defs/tensor/CMakeLists.txt
++++ b/onnx/defs/tensor/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ # Copyright (c) ONNX Project Contributors
+ # SPDX-License-Identifier: Apache-2.0
+ 
+-target_sources(onnx_core PRIVATE
++target_sources(onnx PRIVATE
+     defs.cc
+     old.cc
+     utils.cc
+diff --git a/onnx/defs/text/CMakeLists.txt b/onnx/defs/text/CMakeLists.txt
+index b3a8a996f..ebc1561f5 100644
+--- a/onnx/defs/text/CMakeLists.txt
++++ b/onnx/defs/text/CMakeLists.txt
+@@ -1,6 +1,6 @@
+ # Copyright (c) ONNX Project Contributors
+ # SPDX-License-Identifier: Apache-2.0
+ 
+-target_sources(onnx_core PRIVATE
++target_sources(onnx PRIVATE
+     defs.cc
+ )
+diff --git a/onnx/defs/traditionalml/CMakeLists.txt b/onnx/defs/traditionalml/CMakeLists.txt
+index 28a162e24..e27fa8dcd 100644
+--- a/onnx/defs/traditionalml/CMakeLists.txt
++++ b/onnx/defs/traditionalml/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ # Copyright (c) ONNX Project Contributors
+ # SPDX-License-Identifier: Apache-2.0
+ 
+-target_sources(onnx_core PRIVATE
++target_sources(onnx PRIVATE
+     defs.cc
+     old.cc
+     utils.h
+diff --git a/onnx/defs/training/CMakeLists.txt b/onnx/defs/training/CMakeLists.txt
+index b3a8a996f..ebc1561f5 100644
+--- a/onnx/defs/training/CMakeLists.txt
++++ b/onnx/defs/training/CMakeLists.txt
+@@ -1,6 +1,6 @@
+ # Copyright (c) ONNX Project Contributors
+ # SPDX-License-Identifier: Apache-2.0
+ 
+-target_sources(onnx_core PRIVATE
++target_sources(onnx PRIVATE
+     defs.cc
+ )
+diff --git a/onnx/inliner/CMakeLists.txt b/onnx/inliner/CMakeLists.txt
+index fbb2d7b1a..dd1f4f0fa 100644
+--- a/onnx/inliner/CMakeLists.txt
++++ b/onnx/inliner/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ # Copyright (c) ONNX Project Contributors
+ # SPDX-License-Identifier: Apache-2.0
+ 
+-target_sources(onnx_core PRIVATE
++target_sources(onnx PRIVATE
+     inliner.cc
+     inliner.h
+ )
+diff --git a/onnx/shape_inference/CMakeLists.txt b/onnx/shape_inference/CMakeLists.txt
+index 493b24706..8938c98a4 100644
+--- a/onnx/shape_inference/CMakeLists.txt
++++ b/onnx/shape_inference/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ # Copyright (c) ONNX Project Contributors
+ # SPDX-License-Identifier: Apache-2.0
+ 
+-target_sources(onnx_core PRIVATE
++target_sources(onnx PRIVATE
+     attribute_binder.h
+     implementation.cc
+     implementation.h
+diff --git a/onnx/version_converter/CMakeLists.txt b/onnx/version_converter/CMakeLists.txt
+index e6a5571b9..af8f9cb24 100644
+--- a/onnx/version_converter/CMakeLists.txt
++++ b/onnx/version_converter/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ # Copyright (c) ONNX Project Contributors
+ # SPDX-License-Identifier: Apache-2.0
+ 
+-target_sources(onnx_core PRIVATE
++target_sources(onnx PRIVATE
+     BaseConverter.h
+     convert.cc
+     convert.h
+diff --git a/onnx/version_converter/adapters/CMakeLists.txt b/onnx/version_converter/adapters/CMakeLists.txt
+index ef41ddd49..d4afa967b 100644
+--- a/onnx/version_converter/adapters/CMakeLists.txt
++++ b/onnx/version_converter/adapters/CMakeLists.txt
+@@ -1,7 +1,7 @@
+ # Copyright (c) ONNX Project Contributors
+ # SPDX-License-Identifier: Apache-2.0
+ 
+-target_sources(onnx_core PRIVATE
++target_sources(onnx PRIVATE
+     adapter.h
+     Attention_24_23.h
+     axes_attribute_to_input.h
