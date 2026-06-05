@@ -1133,3 +1133,48 @@ TEST(ModelEditorAPITest, CreateNode_NullAttributeEntry_Fails) {
 
   api.ReleaseOpAttr(attr);
 }
+
+// Regression: passing the same OrtValue* twice to AddInitializerToGraph must be rejected.
+// Without the duplicate-pointer guard, the graph would own two unique_ptrs to the same allocation
+// and double-free on destruction.
+TEST(ModelEditorAPITest, AddInitializerToGraph_DuplicatePointer_Fails) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  Ort::Graph graph;
+
+  // Create a CPU tensor via the C++ API (RAII).
+  std::vector<float> data(4, 0.0f);
+  std::vector<int64_t> dims = {2, 2};
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+  Ort::Value value = Ort::Value::CreateTensor<float>(memory_info, data.data(), data.size(),
+                                                     dims.data(), dims.size());
+
+  // First add transfers ownership of the raw OrtValue* to the graph. Detach the C++ wrapper
+  // so it does not also try to release it on destruction.
+  OrtValue* raw = value;
+  Ort::ThrowOnError(model_editor_api.AddInitializerToGraph(graph, "W1", raw, /*data_is_external*/ false));
+  static_cast<void>(value.release());
+
+  // Second add of the same raw pointer (under a different name) must fail without taking ownership.
+  Ort::Status status{model_editor_api.AddInitializerToGraph(graph, "W2", raw, /*data_is_external*/ false)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("already been added"));
+}
+
+// Regression: passing the same OrtNode* twice to AddNodeToGraph must be rejected.
+TEST(ModelEditorAPITest, AddNodeToGraph_DuplicatePointer_Fails) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  Ort::Graph graph;
+  Ort::Node node("Relu", onnxruntime::kOnnxDomain, "relu1", {"X"}, {"Y"});
+
+  // First add transfers ownership of the raw OrtNode* to the graph. Detach the C++ wrapper.
+  OrtNode* raw = node;
+  Ort::ThrowOnError(model_editor_api.AddNodeToGraph(graph, raw));
+  static_cast<void>(node.release());
+
+  // Second add of the same raw pointer must fail without taking ownership.
+  Ort::Status status{model_editor_api.AddNodeToGraph(graph, raw)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("already been added"));
+}
