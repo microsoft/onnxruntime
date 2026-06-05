@@ -140,7 +140,7 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* ort_graph,
   // Strong exception safety: validate every entry and pre-allocate the new vector before mutating any
   // observable state. If anything below throws or returns an error, the existing graph->inputs and the
   // caller's `inputs` array are left untouched, so ownership is never partially transferred.
-  std::vector<onnxruntime::ModelEditorValueInfo*> validated;
+  onnxruntime::InlinedVector<onnxruntime::ModelEditorValueInfo*> validated;
   validated.reserve(inputs_len);
   for (size_t i = 0; i < inputs_len; ++i) {
     if (inputs[i] == nullptr) {
@@ -155,7 +155,7 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* ort_graph,
     validated.push_back(input);
   }
 
-  std::vector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>> new_inputs;
+  onnxruntime::InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>> new_inputs;
   new_inputs.reserve(validated.size());  // last operation that may throw
 
   // Commit phase: only noexcept operations from here on.
@@ -192,7 +192,7 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* ort_graph
   // Strong exception safety: validate every entry and pre-allocate the new vector before mutating any
   // observable state. If anything below throws or returns an error, the existing graph->outputs and the
   // caller's `outputs` array are left untouched, so ownership is never partially transferred.
-  std::vector<onnxruntime::ModelEditorValueInfo*> validated;
+  onnxruntime::InlinedVector<onnxruntime::ModelEditorValueInfo*> validated;
   validated.reserve(outputs_len);
   for (size_t i = 0; i < outputs_len; ++i) {
     if (outputs[i] == nullptr) {
@@ -207,7 +207,7 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* ort_graph
     validated.push_back(output);
   }
 
-  std::vector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>> new_outputs;
+  onnxruntime::InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>> new_outputs;
   new_outputs.reserve(validated.size());  // last operation that may throw
 
   // Commit phase: only noexcept operations from here on.
