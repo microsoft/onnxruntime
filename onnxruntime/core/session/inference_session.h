@@ -1109,9 +1109,9 @@ class InferenceSession {
       return cached_execution_provider_for_graph_replay_ != nullptr && graph_annotation_id != kGraphAnnotationSkip;
     }
 
-    Status ReplayGraph(int graph_annotation_id) {
+    Status ReplayGraph(int graph_annotation_id, bool sync = true) {
       if (cached_execution_provider_for_graph_replay_) {
-        return cached_execution_provider_for_graph_replay_->ReplayGraph(graph_annotation_id);
+        return cached_execution_provider_for_graph_replay_->ReplayGraph(graph_annotation_id, sync);
       }
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cached EP instance for graph replay is not set yet before calling ReplayGraph()");
     }
