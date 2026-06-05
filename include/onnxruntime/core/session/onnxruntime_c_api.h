@@ -7772,11 +7772,13 @@ struct OrtModelEditorApi {
   /** \brief Set the inputs for the OrtGraph.
    *
    * Set the graph inputs. This will replace any existing inputs with the new values.
-   * On success, the OrtGraph takes ownership of every OrtValueInfo in `inputs` and the caller must NOT
-   * call ReleaseOrtValueInfo on those instances; the array entries are reset to nullptr to make this
-   * explicit. On failure, ownership is NOT transferred and the caller remains responsible for releasing
-   * any OrtValueInfo it created. Calling ReleaseOrtValueInfo after a successful transfer would cause a
-   * double-free.
+   *
+   * Strong exception safety / all-or-nothing: on success, the OrtGraph takes ownership of every
+   * OrtValueInfo in `inputs`, and each entry in the array is reset to nullptr to make the transfer
+   * explicit. On failure (any validation error or allocation failure), the graph's previous inputs
+   * are preserved and ownership of NONE of the OrtValueInfo instances is transferred -- the caller
+   * remains responsible for releasing them. Calling ReleaseOrtValueInfo on an entry whose array slot
+   * has been nulled out would cause a double-free.
    *
    * \param[in] graph The OrtGraph instance to update.
    * \param[in] inputs The input OrtValueInfo instances.
@@ -7792,11 +7794,13 @@ struct OrtModelEditorApi {
   /** \brief Set the outputs for the OrtGraph.
    *
    * Set the graph outputs. This will replace any existing outputs with the new values.
-   * On success, the OrtGraph takes ownership of every OrtValueInfo in `outputs` and the caller must NOT
-   * call ReleaseOrtValueInfo on those instances; the array entries are reset to nullptr to make this
-   * explicit. On failure, ownership is NOT transferred and the caller remains responsible for releasing
-   * any OrtValueInfo it created. Calling ReleaseOrtValueInfo after a successful transfer would cause a
-   * double-free.
+   *
+   * Strong exception safety / all-or-nothing: on success, the OrtGraph takes ownership of every
+   * OrtValueInfo in `outputs`, and each entry in the array is reset to nullptr to make the transfer
+   * explicit. On failure (any validation error or allocation failure), the graph's previous outputs
+   * are preserved and ownership of NONE of the OrtValueInfo instances is transferred -- the caller
+   * remains responsible for releasing them. Calling ReleaseOrtValueInfo on an entry whose array slot
+   * has been nulled out would cause a double-free.
    *
    * \param[in] graph The OrtGraph instance to update.
    * \param[in] outputs The output OrtValueInfo instances.
@@ -7811,9 +7815,10 @@ struct OrtModelEditorApi {
 
   /** \brief Add an initializer to the OrtGraph
    *
-   * On success, the OrtGraph takes ownership of `tensor` and the caller must NOT call ReleaseOrtValue
-   * on it. On failure, ownership is NOT transferred and the caller is responsible for releasing the
-   * OrtValue. Calling ReleaseOrtValue after a successful transfer would cause a double-free.
+   * Strong exception safety: on success, the OrtGraph takes ownership of `tensor` and the caller must
+   * NOT call ReleaseOrtValue on it. On failure (validation error or allocation failure), ownership is
+   * NOT transferred and the caller remains responsible for releasing the OrtValue. Calling
+   * ReleaseOrtValue after a successful transfer would cause a double-free.
    * Adding the same OrtValue pointer twice (under any name) is rejected with ORT_INVALID_ARGUMENT.
    * Adding a duplicate initializer name is also rejected; remove the existing entry first if you need
    * to replace it.
@@ -7857,9 +7862,10 @@ struct OrtModelEditorApi {
 
   /** \brief Add an OrtNode to an OrtGraph
    *
-   * On success, the OrtGraph takes ownership of `node` and the caller must NOT call ReleaseOrtNode.
-   * On failure, ownership is NOT transferred and the caller remains responsible for releasing the
-   * OrtNode. Calling ReleaseOrtNode after a successful transfer would cause a double-free.
+   * Strong exception safety: on success, the OrtGraph takes ownership of `node` and the caller must
+   * NOT call ReleaseOrtNode. On failure (validation error or allocation failure), ownership is NOT
+   * transferred and the caller remains responsible for releasing the OrtNode. Calling ReleaseOrtNode
+   * after a successful transfer would cause a double-free.
    * Adding the same OrtNode pointer twice is rejected with ORT_INVALID_ARGUMENT.
    *
    * \param[in] graph The OrtGraph instance to update.
@@ -7900,9 +7906,10 @@ struct OrtModelEditorApi {
    * Add the graph to a model. Each OrtModel may hold at most one OrtGraph; a second call is rejected
    * with ORT_INVALID_ARGUMENT.
    *
-   * On success, the OrtModel takes ownership of `graph` and the caller must NOT call ReleaseOrtGraph.
-   * On failure, ownership is NOT transferred and the caller remains responsible for releasing the
-   * OrtGraph. Calling ReleaseOrtGraph after a successful transfer would cause a double-free.
+   * Strong exception safety: on success, the OrtModel takes ownership of `graph` and the caller must
+   * NOT call ReleaseOrtGraph. On failure, ownership is NOT transferred and the caller remains
+   * responsible for releasing the OrtGraph. Calling ReleaseOrtGraph after a successful transfer would
+   * cause a double-free.
    *
    * \param[in] model The OrtModel instance to update.
    * \param[in] graph The OrtGraph instance to add to the model.

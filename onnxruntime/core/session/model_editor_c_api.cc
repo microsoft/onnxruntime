@@ -136,7 +136,11 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* ort_graph,
                                  "Invalid OrtGraph variant for use in the OrtModelEditorApi");
   }
 
-  graph->inputs.clear();
+  // Strong exception safety: validate every entry and pre-allocate the new vector before mutating any
+  // observable state. If anything below throws or returns an error, the existing graph->inputs and the
+  // caller's `inputs` array are left untouched, so ownership is never partially transferred.
+  std::vector<onnxruntime::ModelEditorValueInfo*> validated;
+  validated.reserve(inputs_len);
   for (size_t i = 0; i < inputs_len; ++i) {
     if (inputs[i] == nullptr) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "inputs cannot contain null entries");
@@ -147,8 +151,18 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* ort_graph,
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                    "Invalid OrtValueInfo variant for use in the OrtModelEditorApi");
     }
+    validated.push_back(input);
+  }
 
-    graph->inputs.push_back(std::unique_ptr<onnxruntime::ModelEditorValueInfo>(input));  // take ownership
+  std::vector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>> new_inputs;
+  new_inputs.reserve(validated.size());  // last operation that may throw
+
+  // Commit phase: only noexcept operations from here on.
+  for (auto* p : validated) {
+    new_inputs.emplace_back(p);  // noexcept: capacity already reserved, unique_ptr ctor is noexcept
+  }
+  graph->inputs.swap(new_inputs);
+  for (size_t i = 0; i < inputs_len; ++i) {
     inputs[i] = nullptr;
   }
 
@@ -174,7 +188,11 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* ort_graph
                                  "Invalid OrtGraph variant for use in the OrtModelEditorApi");
   }
 
-  graph->outputs.clear();
+  // Strong exception safety: validate every entry and pre-allocate the new vector before mutating any
+  // observable state. If anything below throws or returns an error, the existing graph->outputs and the
+  // caller's `outputs` array are left untouched, so ownership is never partially transferred.
+  std::vector<onnxruntime::ModelEditorValueInfo*> validated;
+  validated.reserve(outputs_len);
   for (size_t i = 0; i < outputs_len; ++i) {
     if (outputs[i] == nullptr) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "outputs cannot contain null entries");
@@ -185,8 +203,18 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* ort_graph
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                    "Invalid OrtValueInfo variant for use in the OrtModelEditorApi");
     }
+    validated.push_back(output);
+  }
 
-    graph->outputs.push_back(std::unique_ptr<onnxruntime::ModelEditorValueInfo>(output));  // take ownership
+  std::vector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>> new_outputs;
+  new_outputs.reserve(validated.size());  // last operation that may throw
+
+  // Commit phase: only noexcept operations from here on.
+  for (auto* p : validated) {
+    new_outputs.emplace_back(p);  // noexcept: capacity already reserved, unique_ptr ctor is noexcept
+  }
+  graph->outputs.swap(new_outputs);
+  for (size_t i = 0; i < outputs_len; ++i) {
     outputs[i] = nullptr;
   }
 
@@ -229,6 +257,18 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Only CPU based tensors are currently supported.");
   }
 
+  if (data_is_external) {
+    // enforce that an external initializer is not used if the data size is < 128 bytes.
+    // the reason for this is to avoid potential shape inferencing errors if this initializer is providing an
+    // input involved in that. the ONNX shape inferencing does not support external data for those values.
+    // e.g. Reshape's `shape` input, Reduce's `axes', Slice's `starts`, `ends`, `steps`, Clip's `min`, `max`, etc.
+    if (t.SizeInBytes() < 128) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "External initializer should only be used for data >= 128 bytes. "
+                                   "Please use CreateTensorAsOrtValue instead.");
+    }
+  }
+
   // Reject duplicate name in either initializer map. operator[] assignment would silently destroy the
   // previously-owned tensor; require an explicit replace-by-remove-then-add workflow instead.
   if (graph->initializers.count(name) != 0 || graph->external_initializers.count(name) != 0) {
@@ -250,21 +290,13 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort
                                  "Each OrtValue must only be added once.");
   }
 
-  if (data_is_external) {
-    // enforce that an external initializer is not used if the data size is < 128 bytes.
-    // the reason for this is to avoid potential shape inferencing errors if this initializer is providing an
-    // input involved in that. the ONNX shape inferencing does not support external data for those values.
-    // e.g. Reshape's `shape` input, Reduce's `axes', Slice's `starts`, `ends`, `steps`, Clip's `min`, `max`, etc.
-    if (t.SizeInBytes() < 128) {
-      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "External initializer should only be used for data >= 128 bytes. "
-                                   "Please use CreateTensorAsOrtValue instead.");
-    }
-
-    graph->external_initializers.emplace(name, std::unique_ptr<OrtValue>(tensor));  // take ownership
-  } else {
-    graph->initializers.emplace(name, std::unique_ptr<OrtValue>(tensor));  // take ownership
-  }
+  // Strong exception safety: try_emplace inserts a placeholder (default-constructed unique_ptr) under
+  // `name`. If it throws bad_alloc, no insertion occurs and `tensor` is still owned by the caller.
+  // After try_emplace returns successfully, transferring ownership via reset() is noexcept.
+  auto& m = data_is_external ? graph->external_initializers : graph->initializers;
+  auto [it, inserted] = m.try_emplace(name);  // last operation that may throw
+  ORT_ENFORCE(inserted, "duplicate name passed earlier check");  // duplicate-name check above
+  it->second.reset(tensor);  // noexcept: take ownership
 
   return nullptr;
   API_IMPL_END
@@ -303,8 +335,12 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddNodeToGraph, _In_ OrtGraph* ort_graph,
     }
   }
 
+  // Strong exception safety: reserve room for the new node first. If reserve throws bad_alloc, the
+  // graph state is unchanged and the caller still owns `ort_node`. After reserve, emplace_back is
+  // noexcept (capacity sufficient + unique_ptr move-construction is noexcept).
+  graph->nodes.reserve(graph->nodes.size() + 1);  // last operation that may throw
   node->id = graph->nodes.size();
-  graph->nodes.push_back(std::unique_ptr<onnxruntime::ModelEditorNode>(node));  // take ownership
+  graph->nodes.emplace_back(node);  // noexcept: take ownership
   return nullptr;
   API_IMPL_END
 }
