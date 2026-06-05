@@ -154,6 +154,13 @@ inline bool reduce_isnan<int32_t>(int32_t) { return false; }
 template <>
 inline bool reduce_isnan<int64_t>(int64_t) { return false; }
 
+// Integer types whose precision exceeds double's 53-bit mantissa, where summing in double
+// loses precision for large values. For these, reduction aggregators use Kahan compensated
+// summation. int32_t/uint32_t (and narrower) fit exactly in double, so plain double
+// accumulation is sufficient.
+template <typename T>
+inline constexpr bool kReduceUseKahan = std::is_same_v<T, int64_t> || std::is_same_v<T, uint64_t>;
+
 class ReduceAggregatorBase {
  public:
   // Fast reduction: see OptimizeShapeForFastReduce's comment.
@@ -229,7 +236,7 @@ class ReduceAggregatorSum : public ReduceAggregator<T, T> {
   inline ReduceAggregatorSum(int64_t N, const T&) : ReduceAggregator<T, T>(N, 0) {}
   inline void update(const T& v) {
     if constexpr (std::is_integral_v<T>) {
-      if constexpr (sizeof(T) >= sizeof(int64_t)) {
+      if constexpr (kReduceUseKahan<T>) {
         double y = static_cast<double>(v) - kahan_compensation_;
         double t = double_accumulator_ + y;
         kahan_compensation_ = (t - double_accumulator_) - y;
@@ -244,7 +251,7 @@ class ReduceAggregatorSum : public ReduceAggregator<T, T> {
   static T aggall(const T* from_data, int64_t size) {
     if constexpr (std::is_integral_v<T>) {
       double sum = 0.0;
-      if constexpr (sizeof(T) >= sizeof(int64_t)) {
+      if constexpr (kReduceUseKahan<T>) {
         double comp = 0.0;
         for (size_t i = 0, n = onnxruntime::narrow<size_t>(size); i < n; ++i) {
           double y = static_cast<double>(from_data[i]) - comp;
@@ -454,7 +461,7 @@ class ReduceAggregatorSumSquare : public ReduceAggregator<T, TVAL> {
   inline TVAL aggall(const T* from_data) {
     if constexpr (std::is_integral_v<T>) {
       double sum = 0.0;
-      if constexpr (sizeof(T) >= sizeof(int64_t)) {
+      if constexpr (kReduceUseKahan<T>) {
         double comp = 0.0;
         for (size_t i = 0, n = onnxruntime::narrow<size_t>(this->N_); i < n; ++i) {
           double dv = static_cast<double>(from_data[i]);
@@ -481,7 +488,7 @@ class ReduceAggregatorSumSquare : public ReduceAggregator<T, TVAL> {
   inline void update(const T& v) {
     if constexpr (std::is_integral_v<T>) {
       double dv = static_cast<double>(v);
-      if constexpr (sizeof(T) >= sizeof(int64_t)) {
+      if constexpr (kReduceUseKahan<T>) {
         double y = dv * dv - kahan_compensation_;
         double t = double_accumulator_ + y;
         kahan_compensation_ = (t - double_accumulator_) - y;
@@ -515,7 +522,7 @@ class ReduceAggregatorMean : public ReduceAggregatorSum<T> {
     if constexpr (std::is_integral_v<T>) {
       // Accumulate in double, divide, then saturate back to T.
       double sum = 0.0;
-      if constexpr (sizeof(T) >= sizeof(int64_t)) {
+      if constexpr (kReduceUseKahan<T>) {
         double comp = 0.0;
         for (size_t i = 0, n = onnxruntime::narrow<size_t>(size); i < n; ++i) {
           double y = static_cast<double>(from_data[i]) - comp;
@@ -1161,7 +1168,7 @@ class ReduceAggregatorL1 : public ReduceAggregator<T, T> {
   inline T aggall(const T* from_data) {
     if constexpr (std::is_integral_v<T>) {
       double sum = 0.0;
-      if constexpr (sizeof(T) >= sizeof(int64_t)) {
+      if constexpr (kReduceUseKahan<T>) {
         // Kahan compensated summation for int64+ to minimize precision loss.
         double comp = 0.0;
         for (size_t i = 0, n = onnxruntime::narrow<size_t>(this->N_); i < n; ++i) {
@@ -1185,7 +1192,7 @@ class ReduceAggregatorL1 : public ReduceAggregator<T, T> {
   }
   inline void update(const T& v) {
     if constexpr (std::is_integral_v<T>) {
-      if constexpr (sizeof(T) >= sizeof(int64_t)) {
+      if constexpr (kReduceUseKahan<T>) {
         // Kahan compensated summation for int64+.
         double y = std::abs(static_cast<double>(v)) - kahan_compensation_;
         double t = double_accumulator_ + y;
@@ -1245,7 +1252,7 @@ class ReduceAggregatorL2 : public ReduceAggregator<T, T> {
   inline T aggall(const T* from_data) {
     if constexpr (std::is_integral_v<T>) {
       double sum = 0.0;
-      if constexpr (sizeof(T) >= sizeof(int64_t)) {
+      if constexpr (kReduceUseKahan<T>) {
         // Kahan compensated summation for int64+ to minimize precision loss.
         double comp = 0.0;
         for (size_t i = 0, n = onnxruntime::narrow<size_t>(this->N_); i < n; ++i) {
@@ -1273,7 +1280,7 @@ class ReduceAggregatorL2 : public ReduceAggregator<T, T> {
   inline void update(const T& v) {
     if constexpr (std::is_integral_v<T>) {
       double dv = static_cast<double>(v);
-      if constexpr (sizeof(T) >= sizeof(int64_t)) {
+      if constexpr (kReduceUseKahan<T>) {
         // Kahan compensated summation for int64+.
         double y = dv * dv - kahan_compensation_;
         double t = double_accumulator_ + y;
@@ -1313,7 +1320,7 @@ class ReduceAggregatorLogSum : public ReduceAggregator<T, T> {
   inline T aggall(const T* from_data) {
     if constexpr (std::is_integral_v<T>) {
       double sum = 0.0;
-      if constexpr (sizeof(T) >= sizeof(int64_t)) {
+      if constexpr (kReduceUseKahan<T>) {
         double comp = 0.0;
         for (size_t i = 0, n = onnxruntime::narrow<size_t>(this->N_); i < n; ++i) {
           double y = static_cast<double>(from_data[i]) - comp;
@@ -1344,7 +1351,7 @@ class ReduceAggregatorLogSum : public ReduceAggregator<T, T> {
   }
   inline void update(const T& v) {
     if constexpr (std::is_integral_v<T>) {
-      if constexpr (sizeof(T) >= sizeof(int64_t)) {
+      if constexpr (kReduceUseKahan<T>) {
         double y = static_cast<double>(v) - kahan_compensation_;
         double t = double_accumulator_ + y;
         kahan_compensation_ = (t - double_accumulator_) - y;
