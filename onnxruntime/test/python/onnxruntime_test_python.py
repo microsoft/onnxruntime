@@ -2104,10 +2104,15 @@ class TestInferenceSession(unittest.TestCase):
             np.testing.assert_allclose(value.numpy(), expected_val.numpy())
 
     def test_adapter_parameters_keep_alive(self):
-        # Regression test: AdapterFormat.parameters returned a dict of OrtValue
-        # views into the parent adapter without a pybind11 keep_alive policy.
-        # The natural pattern below dropped the parent and left the dict with
-        # dangling pointers, causing a use-after-free on the next access.
+        # Regression test: AdapterFormat.get_parameters() returned OrtValue
+        # wrappers over non-owning C OrtValue* views into the parent adapter,
+        # with nothing keeping the parent alive. The natural pattern below
+        # dropped the parent and left the dict with dangling pointers, causing
+        # a use-after-free on the next access. Both layers must keep the
+        # backing adapter alive: the C-level `parameters` getter via a pybind11
+        # keep_alive policy on the returned dict, and the Python wrapper by
+        # pinning the adapter on every OrtValue it hands back from
+        # get_parameters().
         adapter_version = 1
         model_version = 1
         file_path = pathlib.Path(os.path.realpath(__file__)).parent
@@ -2127,7 +2132,7 @@ class TestInferenceSession(unittest.TestCase):
 
         try:
             # Drop the AdapterFormat temporary; only `params` keeps a reference.
-            params = onnxrt.AdapterFormat.read_adapter(file_path).parameters
+            params = onnxrt.AdapterFormat.read_adapter(file_path).get_parameters()
             gc.collect()
 
             self.assertIn("param_1", params)
@@ -2135,6 +2140,13 @@ class TestInferenceSession(unittest.TestCase):
             self.assertTrue(value.is_tensor())
             self.assertEqual(value.shape(), [5, 2])
             np.testing.assert_allclose(value.numpy(), param_1)
+
+            # Also drop the dict; an individual OrtValue must keep the adapter
+            # alive on its own (we pin it on every value in get_parameters()).
+            single_value = params["param_1"]
+            del params
+            gc.collect()
+            np.testing.assert_allclose(single_value.numpy(), param_1)
         finally:
             os.remove(file_path)
 
