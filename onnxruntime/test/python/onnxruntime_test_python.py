@@ -2138,6 +2138,34 @@ class TestInferenceSession(unittest.TestCase):
         finally:
             os.remove(file_path)
 
+    def test_adapter_export_rejects_string_tensors(self):
+        # Regression test: export_adapter previously serialized Tensor::DataRaw()
+        # for SizeInBytes() bytes regardless of element type. For string tensors
+        # that copied the std::string object representation (heap pointers and
+        # uninitialized padding) into the adapter file, leaking runtime addresses
+        # (ASLR bypass) and producing an unloadable adapter. Export must reject
+        # string-typed parameters.
+        string_data_type = 8  # ONNX TensorProto.STRING
+        string_array = np.array(["hello", "world"], dtype=object)
+        ort_val_str = onnxrt.OrtValue.ortvalue_from_numpy_with_onnx_type(string_array, string_data_type)
+
+        adapter_format = onnxrt.AdapterFormat()
+        adapter_format.set_adapter_version(1)
+        adapter_format.set_model_version(1)
+        adapter_format.set_parameters({"str_param": ort_val_str})
+
+        file_path = pathlib.Path(os.path.realpath(__file__)).parent
+        file_path = str(file_path / "test_adapter_string_reject.onnx_adapter")
+
+        try:
+            with self.assertRaises(Exception) as ctx:
+                adapter_format.export_adapter(file_path)
+            self.assertIn("STRING", str(ctx.exception))
+            self.assertFalse(os.path.exists(file_path), "adapter file must not be created when export is rejected")
+        finally:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
     def test_run_with_adapter(self):
         model_path = get_name("lora/two_params_lora_model.onnx")
         file_path = os.getcwd() + "/" + get_name("lora/two_params_lora_model.onnx_adapter")

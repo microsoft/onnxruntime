@@ -109,22 +109,38 @@ void addAdapterFormatMethods(pybind11::module& m) {
           "export_adapter",
           [](const PyAdapterFormatReaderWriter* reader_writer, const std::wstring& path) {
             std::filesystem::path file_path(path);
-            std::ofstream file(file_path, std::ios::binary);
-            if (file.fail()) {
-              ORT_THROW("Failed to open file:", file_path, " for writing.");
-            }
 
             adapters::utils::AdapterFormatBuilder format_builder;
             for (auto& [n, value] : reader_writer->parameters_) {
               const std::string param_name = py::str(n);
               const OrtValue* ort_value = value.cast<OrtValue*>();
               const Tensor& tensor = ort_value->Get<Tensor>();
+              const auto element_type = tensor.GetElementType();
+              // Reject string tensors: Tensor::DataRaw() for a string tensor points to an
+              // array of std::string objects, and SizeInBytes() counts the sizeof(std::string)
+              // object representation (which contains heap pointers and uninitialized
+              // padding). Serializing those bytes would (a) leak runtime addresses
+              // (defeating ASLR) and uninitialized heap memory into the adapter file,
+              // and (b) produce an unloadable adapter, since reading the bytes back as
+              // std::string objects is undefined behavior. The adapter format has no
+              // representation for string tensors.
+              if (element_type == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
+                ORT_THROW("Lora adapter parameter '", param_name,
+                          "' has element type STRING, which is not supported by the adapter format.");
+              }
               const auto data_span =
                   gsl::make_span<const uint8_t>(reinterpret_cast<const uint8_t*>(tensor.DataRaw()),
                                                 tensor.SizeInBytes());
               format_builder.AddParameter(
-                  param_name, static_cast<adapters::TensorDataType>(tensor.GetElementType()),
+                  param_name, static_cast<adapters::TensorDataType>(element_type),
                   tensor.Shape().GetDims(), data_span);
+            }
+
+            // Only open the output file after all parameters have been validated and
+            // serialized in memory, so a rejected export does not leave a stray empty file.
+            std::ofstream file(file_path, std::ios::binary);
+            if (file.fail()) {
+              ORT_THROW("Failed to open file:", file_path, " for writing.");
             }
 
             auto format_span = format_builder.FinishWithSpan(reader_writer->adapter_version_,
