@@ -73,14 +73,18 @@ $MAIN {
         hiddenstate_for_expert[expert_base + target_idx] = row + uniforms.token_offset;
     }
     if (local_idx == 0u) {
-        // softmax
+        // softmax with max-subtraction for numerical stability — without it, large
+        // logits (e.g. >= ~89 for f32) cause exp() to overflow to +inf and the
+        // ratio inf/inf becomes NaN, propagating through the rest of the kernel.
+        // shared_vals is sorted in descending order, so shared_vals[0] is the max.
+        let max_val = f32(shared_vals[0]);
         var sum : f32 = 0.0;
         for (var i = 0u; i < K; i++) {
-            sum += exp(f32(shared_vals[i]));
+            sum += exp(f32(shared_vals[i]) - max_val);
         }
         for (var i = 0u; i < K; i++) {
             let expert_idx = shared_idxs[i];
-            topk_values[output_base + expert_idx] = topk_values_value_t(exp(f32(shared_vals[i])) / sum);
+            topk_values[output_base + expert_idx] = topk_values_value_t(exp(f32(shared_vals[i]) - max_val) / sum);
         }
     }
 } // MAIN

@@ -15,8 +15,11 @@
 
 #pragma once
 
+#include <limits>
+
 #include "core/common/status.h"
 #include "core/common/narrow.h"
+#include "core/common/safeint.h"
 #include "core/common/float16.h"
 #include "core/common/float8.h"
 #include "core/framework/float4.h"
@@ -436,6 +439,7 @@ struct CudaKernelAdapterRuntimeConfig {
   bool fuse_conv_bias = false;
   int sdpa_kernel = 0;
   int device_id = 0;
+  bool do_copy_in_default_stream = true;
   cudaDeviceProp device_prop{};
   onnxruntime::AttentionKernelOptions attention_kernel_options;
 };
@@ -609,6 +613,9 @@ class CUDAExecutionProvider : public onnxruntime::IExecutionProvider {
   const cudaDeviceProp& GetDeviceProp() const {
     return config_->device_prop;
   }
+  bool DoCopyOnDefaultStream() const {
+    return config_->do_copy_in_default_stream;
+  }
 
  private:
   const OrtEp* ort_ep_ = nullptr;
@@ -642,6 +649,7 @@ inline void SetCudaKernelAdapterRuntimeConfigForProvider(
   config->fuse_conv_bias = init_config.fuse_conv_bias;
   config->sdpa_kernel = init_config.sdpa_kernel;
   config->device_id = init_config.device_id;
+  config->do_copy_in_default_stream = init_config.do_copy_in_default_stream;
   PL_CUDA_CALL_THROW(cudaGetDeviceProperties(&config->device_prop, config->device_id));
 }
 
@@ -769,15 +777,43 @@ inline Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val,
   const auto& indices_shape = indices->Shape();
   const auto indices_dims = indices_shape.GetDims();
   const auto indices_num_dims = indices_shape.NumDimensions();
+
+  // ONNX spec requires indices to have rank >= 1.
+  if (indices_num_dims == 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "OneHot: indices tensor must have rank >= 1.");
+  }
+
   output_shape = indices_shape.AsShapeVector();
   const auto output_rank = static_cast<int64_t>(indices_num_dims) + 1;
   auto true_axis = HandleNegativeAxis(axis, output_rank);
   output_shape.insert(output_shape.begin() + true_axis, depth_val);
-  prefix_dim_size = 1;
-  for (int64_t i = 0; i < true_axis; ++i) {
-    prefix_dim_size *= indices_dims[narrow<size_t>(i)];
+
+  // Validate that the total output tensor element count does not overflow int64.
+  {
+    int64_t total_elements = 1;
+    for (auto dim : output_shape) {
+      if (dim > 0 && total_elements > std::numeric_limits<int64_t>::max() / dim) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "OneHot: output tensor size would overflow for the given indices shape "
+                               "and depth value (",
+                               depth_val, ").");
+      }
+      total_elements *= dim;
+    }
   }
-  suffix_dim_size = indices_shape.Size() / prefix_dim_size;
+
+  // Use SafeInt for prefix_dim_size to guard against overflow.
+  // SafeInt is defensive here -- the total-element overflow check above already covers this case,
+  // so a SafeIntException should never fire in practice.
+  SafeInt<int64_t> safe_prefix = 1;
+  for (int64_t i = 0; i < true_axis; ++i) {
+    safe_prefix *= indices_dims[narrow<size_t>(i)];
+  }
+  prefix_dim_size = safe_prefix;
+
+  // Guard against division by zero when indices have a zero-sized dimension before the axis.
+  suffix_dim_size = (prefix_dim_size > 0) ? (indices_shape.Size() / prefix_dim_size) : 0;
   return Status::OK();
 }
 

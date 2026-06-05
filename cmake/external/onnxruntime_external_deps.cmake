@@ -149,10 +149,10 @@ if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE AND NOT onnxruntime_USE_VCPKG)
       if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
         onnxruntime_fetchcontent_declare(protoc_binary URL ${DEP_URL_protoc_linux_x64} URL_HASH SHA1=${DEP_SHA1_protoc_linux_x64} EXCLUDE_FROM_ALL)
         FetchContent_Populate(protoc_binary)
-      elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
+      elseif(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
         onnxruntime_fetchcontent_declare(protoc_binary URL ${DEP_URL_protoc_linux_x86} URL_HASH SHA1=${DEP_SHA1_protoc_linux_x86} EXCLUDE_FROM_ALL)
         FetchContent_Populate(protoc_binary)
-      elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^aarch64.*")
+      elseif(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^aarch64.*")
         onnxruntime_fetchcontent_declare(protoc_binary URL ${DEP_URL_protoc_linux_aarch64} URL_HASH SHA1=${DEP_SHA1_protoc_linux_aarch64} EXCLUDE_FROM_ALL)
         FetchContent_Populate(protoc_binary)
       endif()
@@ -405,24 +405,16 @@ if (CPUINFO_SUPPORTED)
   endif()
 endif()
 
-if(onnxruntime_USE_CUDA)
-  onnxruntime_fetchcontent_declare(
-    GSL
-    URL ${DEP_URL_microsoft_gsl}
-    URL_HASH SHA1=${DEP_SHA1_microsoft_gsl}
-    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/gsl/1064.patch
-    EXCLUDE_FROM_ALL
-    FIND_PACKAGE_ARGS 4.0 NAMES Microsoft.GSL
-  )
-else()
-  onnxruntime_fetchcontent_declare(
-    GSL
-    URL ${DEP_URL_microsoft_gsl}
-    URL_HASH SHA1=${DEP_SHA1_microsoft_gsl}
-    EXCLUDE_FROM_ALL
-    FIND_PACKAGE_ARGS 4.0 NAMES Microsoft.GSL
-  )
-endif()
+onnxruntime_fetchcontent_declare(
+  GSL
+  URL ${DEP_URL_microsoft_gsl}
+  URL_HASH SHA1=${DEP_SHA1_microsoft_gsl}
+  # Stringify fix for GSL_SUPPRESS on MSVC (C4875). Remove when GSL ships a release
+  # containing microsoft/GSL#1213 (commit 543d0dd).
+  PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/gsl/1213.patch
+  EXCLUDE_FROM_ALL
+  FIND_PACKAGE_ARGS 4.0 NAMES Microsoft.GSL
+)
 set(GSL_TARGET "Microsoft.GSL::GSL")
 set(GSL_INCLUDE_DIR "$<TARGET_PROPERTY:${GSL_TARGET},INTERFACE_INCLUDE_DIRECTORIES>")
 onnxruntime_fetchcontent_makeavailable(GSL)
@@ -624,10 +616,17 @@ endif()
 if(onnxruntime_ENABLE_TRAINING OR (onnxruntime_ENABLE_TRAINING_APIS AND onnxruntime_BUILD_UNIT_TESTS))
   # Once code under orttraining/orttraining/models dir is removed "onnxruntime_ENABLE_TRAINING" should be removed from
   # this conditional
+  if(Patch_FOUND)
+    set(ONNXRUNTIME_CXXOPTS_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/cxxopts/gcc-15-compat.patch)
+  else()
+    set(ONNXRUNTIME_CXXOPTS_PATCH_COMMAND "")
+  endif()
+
   onnxruntime_fetchcontent_declare(
     cxxopts
     URL ${DEP_URL_cxxopts}
     URL_HASH SHA1=${DEP_SHA1_cxxopts}
+    PATCH_COMMAND ${ONNXRUNTIME_CXXOPTS_PATCH_COMMAND}
     EXCLUDE_FROM_ALL
     FIND_PACKAGE_ARGS NAMES cxxopts
   )

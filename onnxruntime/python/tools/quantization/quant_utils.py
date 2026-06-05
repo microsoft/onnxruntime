@@ -41,6 +41,12 @@ TENSOR_NAME_QUANT_SUFFIX = "_quantized"
 MODEL_SIZE_THRESHOLD = 2147483648  # Quant model should use external data if >= 2GB
 
 FLOAT8_DISTRIBUTIONS = {}
+FLOAT8_TYPES = (
+    onnx_proto.TensorProto.FLOAT8E4M3FN,
+    onnx_proto.TensorProto.FLOAT8E4M3FNUZ,
+    onnx_proto.TensorProto.FLOAT8E5M2,
+    onnx_proto.TensorProto.FLOAT8E5M2FNUZ,
+)
 
 type_to_name = {getattr(TensorProto, k): k for k in dir(TensorProto) if isinstance(getattr(TensorProto, k), int)}
 
@@ -297,6 +303,65 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_real_range=Non
     return [zero_point, scale]
 
 
+def snap_zero_point_to_uint8(rmin, rmax, qmin: int = 0, qmax: int = 255, min_real_range: float | None = None):
+    """Snap a uint8 activation zero-point to qmin (when rmin >= 0) or mid (when rmin < 0).
+
+    Used by the ActivationRestrictedAsymmetric quantization option. Recomputes scale so the
+    dequantized range still covers [rmin, rmax] without clipping.
+
+    :parameter rmin: calibrated minimum activation value (numpy scalar)
+    :parameter rmax: calibrated maximum activation value (numpy scalar)
+    :parameter qmin: minimum quantized value (int, default 0)
+    :parameter qmax: maximum quantized value (int, default 255)
+    :parameter min_real_range: minimum floating-point range to enforce (same semantics as compute_scale_zp).
+        When not None and > 0, rmax is adjusted to max(rmax, rmin + min_real_range) before scale computation.
+    :return: (zero_point, scale) with zero_point dtype uint8 and scale dtype float32
+    """
+    qmin_val = int(qmin)
+    qmax_val = int(qmax)
+    mid = (qmin_val + qmax_val + 1) // 2
+
+    rmin = float(numpy.squeeze(rmin))
+    rmax = float(numpy.squeeze(rmax))
+
+    # Expand the range to include zero, mirroring compute_scale_zp's ordering.
+    rmin = min(rmin, 0.0)
+    rmax = max(rmax, 0.0)
+
+    # Apply minimum real range after zero-inclusion, mirroring compute_scale_zp behaviour.
+    if min_real_range is not None and min_real_range > 0:
+        rmax = max(rmax, rmin + float(min_real_range))
+
+    if rmax <= rmin:
+        # Degenerate range - apply the same snap logic as the normal path, then
+        # compute a meaningful scale rather than a hardcoded 1.0.
+        degenerate_zp = qmin_val if rmin >= 0.0 else mid
+        abs_max = max(abs(rmin), abs(rmax))
+        # Use full range when zp snaps to qmin (all-positive), half range for mid snap.
+        denom = (qmax_val - qmin_val) if degenerate_zp == qmin_val else max(1, (qmax_val - qmin_val) // 2)
+        scale_val = (abs_max if abs_max > 0 else 1.0) / max(1, denom)
+        if min_real_range is not None and scale_val < min_real_range / (qmax_val - qmin_val):
+            scale_val = min_real_range / (qmax_val - qmin_val)
+        return numpy.array(degenerate_zp, dtype=numpy.uint8), numpy.array(scale_val, dtype=numpy.float32)
+
+    if rmin >= 0.0:
+        zero_point = numpy.array(qmin_val, dtype=numpy.uint8)
+        scale = numpy.array(rmax / (qmax_val - qmin_val), dtype=numpy.float32)
+    else:
+        # Snap zero-point to the midpoint of the quantized range.
+        zero_point = numpy.array(mid, dtype=numpy.uint8)
+        # Choose scale that covers both halves without clipping.
+        scale_neg = -rmin / (mid - qmin_val)  # scale needed to represent rmin at q=qmin
+        scale_pos = rmax / (qmax_val - mid)  # scale needed to represent rmax at q=qmax
+        scale = numpy.array(max(scale_neg, scale_pos), dtype=numpy.float32)
+
+    # Enforce minimum real range floor on scale.
+    if min_real_range is not None and float(scale) < min_real_range / (qmax_val - qmin_val):
+        scale = numpy.array(min_real_range / (qmax_val - qmin_val), dtype=numpy.float32)
+
+    return zero_point, scale
+
+
 def compute_scale_zp_float8(element_type, std):
     """Calculate the scale s for a float8 type (E4M3FN).
     The function assumes the coefficient distribution and the float 8
@@ -331,6 +396,105 @@ def compute_scale_zp_float8(element_type, std):
     zero = numpy.array(0, dtype=zp_dtype)
     scale = numpy.array(std / std_f8, dtype=std.dtype)
     return [zero, scale]
+
+
+def compute_scale_zp_blocked(
+    weight: numpy.ndarray,
+    quant_type: int,
+    axis: int,
+    block_size: int,
+    symmetric: bool,
+) -> tuple[numpy.ndarray, numpy.ndarray]:
+    """Compute per-block scale and zero-point for a weight tensor.
+
+    The weight is sliced along *axis* into blocks of *block_size* elements.
+    Per the ONNX opset-21 spec, QuantizeLinear/DequantizeLinear require the
+    scale and zero_point tensors to have the **same rank** as the input tensor.
+    Only rank-2 weight tensors are supported; rank > 2 is explicitly rejected.
+
+    Returns arrays with the same rank and dimensions as *weight*, except
+    ``shape[axis] == ceil(weight.shape[axis] / block_size)``. This matches
+    the ONNX opset-21 QuantizeLinear/DequantizeLinear blocked-quantization spec.
+
+    :param weight: Float32/float16 weight array (must be rank-2).
+    :param quant_type: ONNX tensor data type for quantization.
+    :param axis: Axis along which to apply block-wise quantization.
+    :param block_size: Number of elements per block along *axis*.
+    :param symmetric: Whether to use symmetric quantization per block.
+    :return: Tuple of (zero_point, scale), each with shape matching *weight*
+        except ``shape[axis] == n_blocks``, where ``n_blocks == ceil(weight.shape[axis] / block_size)``.
+    :raises NotImplementedError: If weight rank is not 2 (opset-21 constraint).
+    """
+    if weight.ndim != 2:
+        raise NotImplementedError(
+            f"Per-block (opset-21) quantization is only supported for rank-2 weight tensors. "
+            f"Got rank-{weight.ndim} tensor with shape {weight.shape}. "
+            "For rank > 2 tensors, reshape to 2-D before quantizing or use per-channel quantization."
+        )
+
+    k = weight.shape[axis]
+    n_blocks = (k + block_size - 1) // block_size
+
+    # Flatten all non-axis dims into a single "other" dimension.
+    other = int(numpy.prod([d for i, d in enumerate(weight.shape) if i != axis]))
+    # Move the quantized axis to position 0 for easy slicing.
+    moved = numpy.moveaxis(weight, axis, 0)  # shape: [k, other]
+    moved = moved.reshape(k, other)
+
+    qmin, qmax = get_qmin_qmax_for_qType(quant_type, reduce_range=False, symmetric=symmetric)
+    zp_dtype = ONNX_INT_TYPE_RANGE[quant_type][0].dtype
+
+    # Pad along axis-0 to a multiple of block_size for vectorised reduction.
+    pad_len = n_blocks * block_size - k
+    if pad_len > 0:
+        pad = numpy.zeros((pad_len, other), dtype=moved.dtype)
+        moved_padded = numpy.concatenate([moved, pad], axis=0)
+    else:
+        moved_padded = moved
+
+    # Reshape to [n_blocks, block_size, other] for axis-based min/max.
+    blocks = moved_padded.reshape(n_blocks, block_size, other)
+
+    # Compute per-block min/max vectorised (no Python loop over blocks or cols).
+    rmin = blocks.min(axis=1)  # [n_blocks, other]
+    rmax = blocks.max(axis=1)  # [n_blocks, other]
+
+    # Clamp to include zero, matching compute_scale_zp semantics.
+    rmin = numpy.minimum(rmin, numpy.zeros_like(rmin))
+    rmax = numpy.maximum(rmax, numpy.zeros_like(rmax))
+
+    if symmetric:
+        absmax = numpy.maximum(numpy.abs(rmin), numpy.abs(rmax))
+        rmin = -absmax
+        rmax = absmax
+
+    qmin_val = numpy.float64(qmin)
+    qmax_val = numpy.float64(qmax)
+    dr = (rmax - rmin).astype(numpy.float64)
+    dq = qmax_val - qmin_val
+    raw_scale = (dr / dq).astype(weight.dtype)
+
+    tiny = numpy.finfo(weight.dtype).tiny
+    degenerate = raw_scale < tiny  # blocks where the float range is essentially zero
+
+    scales = numpy.where(degenerate, numpy.ones_like(raw_scale), raw_scale)
+
+    if symmetric:
+        zp_val = int(numpy.round((qmin_val + qmax_val) / 2.0))
+        zero_points = numpy.full((n_blocks, other), zp_val, dtype=zp_dtype)
+    else:
+        raw_zp = numpy.round(qmin_val - rmin.astype(numpy.float64) / scales.astype(numpy.float64))
+        raw_zp = numpy.clip(raw_zp, qmin_val, qmax_val)
+        zero_points = raw_zp.astype(zp_dtype)
+        zero_points[degenerate] = 0
+
+    # Move the block axis back to its original position so the returned arrays have
+    # the same rank as the weight and shape[axis] == n_blocks, as required by the
+    # ONNX opset-21 QuantizeLinear/DequantizeLinear spec.
+    scales = numpy.moveaxis(scales, 0, axis)
+    zero_points = numpy.moveaxis(zero_points, 0, axis)
+
+    return zero_points, scales
 
 
 def compute_data_quant_params(
@@ -463,6 +627,7 @@ def quantize_onnx_initializer(
     scale: numpy.ndarray,
     axis: int | None = None,
     quant_weight_name: str | None = None,
+    block_size: int = 0,
 ) -> onnx.TensorProto:
     """
     Returns a quantized version of the given ONNX initializer.
@@ -471,15 +636,37 @@ def quantize_onnx_initializer(
     :param quant_type: The final quantized data type.
     :param zero_point: The zero-point value to use for quantization.
     :param scale: The scale value to use for quantization.
-    :param axis: The quantization axis if quantizing per-channel. Defaults to None.
+    :param axis: The quantization axis if quantizing per-channel or per-block. Defaults to None.
     :param quant_weight_name: The name of the quantized initializer.
                               If not specified, the quantized name is generated.
+    :param block_size: Block size for opset-21 block-wise quantization. 0 means disabled.
     :return: The quantized ONNX initializer.
     """
     weight_data = tensor_proto_to_array(weight)
     q_weight_data: numpy.ndarray | None = None
 
-    if axis is None:  # Per-tensor quantization
+    if axis is not None and block_size > 0:  # Per-block quantization
+        k = weight_data.shape[axis]
+        other = int(numpy.prod([d for i, d in enumerate(weight_data.shape) if i != axis]))
+        moved = numpy.moveaxis(weight_data, axis, 0).reshape(k, other)
+        # scale/zero_point are in spec shape (shape[axis] == n_blocks); move the block
+        # axis to position 0 locally so the loop can index [blk, col] uniformly.
+        scale_moved = numpy.moveaxis(scale, axis, 0)
+        zp_moved = numpy.moveaxis(zero_point, axis, 0)
+        n_blocks = scale_moved.shape[0]
+        quant_np_dtype = onnx.helper.tensor_dtype_to_np_dtype(quant_type)
+        q_moved = numpy.empty_like(moved, dtype=quant_np_dtype)
+        for blk in range(n_blocks):
+            start = blk * block_size
+            end = min(start + block_size, k)
+            for col in range(other):
+                q_moved[start:end, col] = quantize_nparray(
+                    quant_type, moved[start:end, col].ravel(), scale_moved[blk, col], zp_moved[blk, col]
+                )
+        q_weight_data = numpy.moveaxis(
+            q_moved.reshape([k] + [d for i, d in enumerate(weight_data.shape) if i != axis]), 0, axis
+        )
+    elif axis is None:  # Per-tensor quantization
         q_weight_data = quantize_nparray(quant_type, weight_data.ravel(), scale, zero_point)
     else:  # Per-channel quantization
         channel_count = weight_data.shape[axis]
@@ -796,21 +983,14 @@ def write_calibration_table(calibration_cache, dir="."):
 
     import onnxruntime.quantization.CalTableFlatBuffers.KeyValue as KeyValue  # noqa: PLC0415
     import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable  # noqa: PLC0415
-    from onnxruntime.quantization.calibrate import CalibrationMethod, TensorData, TensorsData  # noqa: PLC0415
+
+    # Use the shared encoder from calibrate.py so write_calibration_table and
+    # save_tensors_data produce identical JSON for numpy scalar/array values.
+    from onnxruntime.quantization.calibrate import CalibrationCacheEncoder  # noqa: PLC0415
 
     logging.info(f"calibration cache: {calibration_cache}")
 
-    class MyEncoder(json.JSONEncoder):
-        def default(self, obj):
-            if isinstance(obj, (TensorData, TensorsData)):
-                return obj.to_dict()
-            if isinstance(obj, np.ndarray):
-                return {"data": obj.tolist(), "dtype": str(obj.dtype), "CLS": "numpy.array"}
-            if isinstance(obj, CalibrationMethod):
-                return {"CLS": obj.__class__.__name__, "value": str(obj)}
-            return json.JSONEncoder.default(self, obj)
-
-    json_data = json.dumps(calibration_cache, cls=MyEncoder)
+    json_data = json.dumps(calibration_cache, cls=CalibrationCacheEncoder)
 
     with open(os.path.join(dir, "calibration.json"), "w") as file:
         file.write(json_data)  # use `json.loads` to do the reverse
@@ -965,18 +1145,72 @@ def get_opset_version(model: ModelProto) -> int:
     return opset_version
 
 
-def update_opset_version(model: ModelProto, weight_type: QuantType) -> ModelProto:
+def update_opset_version(
+    model: ModelProto,
+    weight_type: QuantType,
+    activation_type: QuantType | None = None,
+    tensor_quant_overrides: dict | None = None,
+    block_size: int = 0,
+) -> ModelProto:
     opset_version = get_opset_version(model)
     target_opset_version = opset_version
     weight_quant_type = getattr(weight_type, "tensor_type", weight_type)
+    activation_quant_type = (
+        getattr(activation_type, "tensor_type", activation_type) if activation_type is not None else None
+    )
 
-    if opset_version < 19 and weight_quant_type == onnx.TensorProto.FLOAT8E4M3FN:
+    _int16_types = (onnx.TensorProto.UINT16, onnx.TensorProto.INT16)
+    needs_opset21_for_16bit = weight_quant_type in _int16_types or activation_quant_type in _int16_types
+
+    # Also check TensorQuantOverrides for any 16-bit types, including per-override convert.quant_type.
+    # Validation of structure is deferred to TensorQuantOverridesHelper.is_valid(); skip bump heuristic on malformed input.
+    if not needs_opset21_for_16bit and tensor_quant_overrides:
+        _int16_quant_types = {QuantType.QInt16, QuantType.QUInt16}
+        try:
+            for overrides_list in tensor_quant_overrides.values():
+                for override in overrides_list:
+                    qt = override.get("quant_type")
+                    if qt in _int16_quant_types:
+                        needs_opset21_for_16bit = True
+                        break
+                    convert = override.get("convert")
+                    if convert is not None:
+                        convert_qt = convert.get("quant_type")
+                        if convert_qt in _int16_quant_types:
+                            needs_opset21_for_16bit = True
+                            break
+                if needs_opset21_for_16bit:
+                    break
+        except (AttributeError, TypeError):
+            # Malformed overrides; structural validation is deferred to
+            # TensorQuantOverridesHelper.is_valid(). Skip bump heuristic.
+            logging.debug("Skipping 16-bit opset bump heuristic for TensorQuantOverrides: structure not as expected.")
+
+    if opset_version < 21 and block_size > 0:
+        logging.warning(
+            f"The original model opset version is {opset_version}, which does not support block-wise "
+            "quantization natively. "
+            "Please update the model to opset >= 21. Automatically updating the model to opset 21. "
+            "Please verify the quantized model."
+        )
+        target_opset_version = 21
+
+    elif opset_version < 19 and weight_quant_type == onnx.TensorProto.FLOAT8E4M3FN:
         logging.warning(
             f"The original model opset version is {opset_version}, which does not support quantization to float 8. "
             "Please update the model to opset >= 19. Automatically update the model to opset 19. "
             "Please verify the quantized model."
         )
         target_opset_version = 19
+
+    elif opset_version < 21 and needs_opset21_for_16bit:
+        logging.warning(
+            f"The original model opset version is {opset_version}, which does not support 16-bit integer "
+            "quantization natively. "
+            "Please update the model to opset >= 21. Automatically update the model to opset 21. "
+            "Please verify the quantized model."
+        )
+        target_opset_version = 21
 
     elif opset_version == 10:
         logging.warning(

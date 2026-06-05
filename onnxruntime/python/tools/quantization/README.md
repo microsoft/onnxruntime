@@ -79,6 +79,65 @@ python -m onnxruntime.quantization.static_quantize_runner -i resnet18-v1-7\model
 python -m onnxruntime.quantization.static_quantize_runner -i resnet18-v1-7\model.onnx -o resnet18-v1-7\model_quant.onnx --activation_type qint16 --weight_type qint8 --per_channel
 ```
 
+### Choosing parameters for CPU inference
+
+The right combination of quantization parameters depends on the target CPU architecture.
+Choosing the wrong combination is a common cause of quantized models running *slower* than FP32.
+
+**Format**
+
+- Use `quant_format=QuantFormat.QDQ` (the default since ORT 1.11). ORT's CPU kernels are optimized
+  for the QDQ representation. `QOperator` format is mainly useful for specific hardware back-ends.
+
+**Activation type and weight type by platform**
+
+- x86/x64 without VNNI (most pre-Skylake-SP desktop/laptop CPUs):
+    - `activation_type=QuantType.QUInt8`, `weight_type=QuantType.QInt8`
+    - Set `reduce_range=True` to quantize weights to 7-bit to reduce the risk of integer saturation
+      on CPUs that typically lack the VNNI dot-product instruction.
+
+- x86/x64 with VNNI (e.g., Intel Skylake-SP/Cascade Lake/Ice Lake/Sapphire Rapids or AMD Zen4 and
+  later, though exact support varies by SKU):
+    - `activation_type=QuantType.QUInt8`, `weight_type=QuantType.QInt8`
+    - `reduce_range=False` — VNNI-capable cores typically accumulate 8-bit products without
+      saturation, so range reduction is often unnecessary.
+
+- ARM (Cortex-A, Apple Silicon, Graviton):
+    - `activation_type=QuantType.QInt8`, `weight_type=QuantType.QInt8`
+    - `reduce_range=False` — ARM NEON/SVE generally handles signed 8-bit arithmetic without
+      saturation issues.
+
+**per_channel**
+
+- `per_channel=False` (default) gives better CPU throughput. `per_channel=True` can improve accuracy
+  for models whose weight distributions differ substantially across output channels.
+
+**Example: x64 non-VNNI**
+
+```python
+from onnxruntime.quantization import quantize_static, CalibrationDataReader, QuantFormat, QuantType
+
+# reader: CalibrationDataReader = MyCalibrationDataReader(...)  # user-supplied
+
+quantize_static(
+    model_input="model.onnx",
+    model_output="model_quant.onnx",
+    calibration_data_reader=reader,
+    quant_format=QuantFormat.QDQ,
+    activation_type=QuantType.QUInt8,
+    weight_type=QuantType.QInt8,
+    reduce_range=True,   # recommended on non-VNNI x64
+    per_channel=False,
+)
+```
+
+Note: this guidance applies to models produced by `quantize_static`. The separate
+`convert_onnx_models_to_ort` tool's `--target_platform` flag only affects ORT format conversion
+and does not change the quantization parameters above.
+
+For the full quantization guide see
+https://onnxruntime.ai/docs/performance/model-optimizations/quantization.html
+
 ### Tensor Quant Overrides Json Format
 With `--tensor_quant_overrides`, the tool can consume the json file with quantization override information.
 ```ps1

@@ -126,6 +126,11 @@ extends:
 
     - template: templates/linux-cpu-packaging-pipeline.yml
 
+    - template: templates/mac-cpu-packaging-pipeline.yml
+      parameters:
+        AllowReleasedOpsetOnly: 1
+        DoESRP: true
+
     - template: stages/nuget-combine-cuda-stage.yml
       parameters:
         CudaVersion: ${{ parameters.CudaVersion }}
@@ -143,3 +148,51 @@ extends:
         PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
         CudaArchs: ${{ variables.CudaArchs }}
         win_cudnn_home: ${{ variables.win_cudnn_home }}
+
+    - template: stages/nodejs-win-packaging-stage.yml
+      parameters:
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        ArtifactName: 'drop-onnxruntime-nodejs-win-x64'
+        StageName: 'Windows_Nodejs_Packaging_x64'
+        BuildCommand: >-
+          --build_nodejs
+          --build_shared_lib
+          --cmake_generator "Visual Studio 17 2022"
+          --enable_generic_interface
+          --enable_onnx_tests
+          --enable_wcos
+          --skip_submodule_sync
+          --use_dml
+          --use_telemetry
+          --use_webgpu
+        BuildArch: 'x64'
+        sln_platform: 'x64'
+        DoEsrp: true
+        PublishWebGpuBuildTools: true
+
+    - template: stages/nodejs-win-packaging-stage.yml
+      parameters:
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        ArtifactName: 'drop-onnxruntime-nodejs-win-arm64'
+        StageName: 'Windows_Nodejs_Packaging_arm64'
+        BuildCommand: >-
+          --arm64
+          --build_nodejs
+          --build_shared_lib
+          --cmake_generator "Visual Studio 17 2022"
+          --enable_generic_interface
+          --enable_onnx_tests
+          --enable_wcos
+          --skip_submodule_sync
+          --use_dml
+          --use_telemetry
+          --use_webgpu
+        BuildArch: 'x64'
+        sln_platform: 'arm64'
+        DoEsrp: true
+        DependsOnStageName: Windows_Nodejs_Packaging_x64
+
+    - template: stages/nodejs-npm-packaging-stage.yml
+      parameters:
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}

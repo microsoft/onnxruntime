@@ -20,6 +20,7 @@
 #include <unordered_set>
 
 #include "core/graph/constants.h"
+#include "core/providers/cuda/cuda_nhwc_ops.h"
 
 namespace onnxruntime {
 namespace cuda_plugin {
@@ -108,7 +109,7 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
       name_(factory.GetEpName()),
       config_(config),
       logger_(logger) {
-  ort_version_supported = ORT_API_VERSION;
+  ort_version_supported = kCudaPluginEpMinOrtApiVersion;
 
   // Set function pointers for kernel-registry-based EP
   GetName = GetNameImpl;
@@ -162,6 +163,7 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   adapter_config.fuse_conv_bias = config_.fuse_conv_bias;
   adapter_config.sdpa_kernel = config_.sdpa_kernel;
   adapter_config.device_id = config_.device_id;
+  adapter_config.do_copy_in_default_stream = config_.do_copy_in_default_stream;
   onnxruntime::cuda::SetCudaKernelAdapterRuntimeConfigForProvider(
       static_cast<const void*>(EpImpl()), adapter_config);
 
@@ -214,7 +216,7 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
   tentative_nodes.reserve(all_nodes.size());
 
   for (const auto& node : all_nodes) {
-    std::string ep_name = node.GetEpName();
+    const std::string& ep_name = node.GetEpName();
     if (!ep_name.empty()) {
       if (ep_name == ep->name_) {
         candidate_nodes.push_back(node);
@@ -229,6 +231,18 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
     if (kernel_def != nullptr) {
       candidate_nodes.push_back(node);
       tentative_nodes.push_back(node);
+    } else {
+      // Emit a diagnostic when an NHWC-domain node has no matching kernel.
+      // This helps identify gaps between the layout conversion allowlist and
+      // the actually-registered NHWC kernels in the plugin build.
+      const std::string& node_domain = node.GetDomain();
+      if (node_domain == kMSInternalNHWCDomain) {
+        ORT_CXX_LOGF(Ort::Logger(&ep->logger_), ORT_LOGGING_LEVEL_WARNING,
+                     "NHWC kernel miss: op=%s domain=%s version=%d node=%s - "
+                     "no matching kernel registered in the CUDA plugin EP.",
+                     node.GetOperatorType().c_str(), node_domain.c_str(),
+                     node.GetSinceVersion(), node.GetName().c_str());
+      }
     }
   }
 
@@ -308,36 +322,11 @@ OrtStatus* ORT_API_CALL CudaEp::ShouldConvertDataLayoutForOpImpl(
     return nullptr;
   }
 
-  // ONNX domain ops that have NHWC kernel registrations.
-  static const std::unordered_set<std::string_view> cuda_nhwc_onnx_ops{
-      "BatchNormalization",
-      "Conv",
-      "ConvTranspose",
-      "GlobalMaxPool",
-      "MaxPool",
-      "GlobalAveragePool",
-      "AveragePool",
-      "GridSample",
-      "DepthToSpace",
-      "SpaceToDepth",
-      "LRN",
-  };
-
-  // Check ONNX domain (empty string) or MS domain (com.microsoft)
-  bool is_onnx_domain = (safe_domain[0] == '\0');
-  bool is_ms_domain = (std::strcmp(safe_domain, "com.microsoft") == 0);
-
-  if (is_onnx_domain && cuda_nhwc_onnx_ops.count(safe_op_type) > 0) {
+  if (cuda::IsNhwcEligible(safe_domain, safe_op_type)) {
     *should_convert = 1;  // Convert
-    return nullptr;
+  } else {
+    *should_convert = 0;  // Explicitly decline conversion for unsupported NHWC ops.
   }
-
-  if (is_ms_domain && std::strcmp(safe_op_type, "GridSample") == 0) {
-    *should_convert = 1;  // Convert
-    return nullptr;
-  }
-
-  *should_convert = 0;  // Explicitly decline conversion for unsupported NHWC ops.
   return nullptr;
 #endif
 }
@@ -369,7 +358,11 @@ OrtStatus* ORT_API_CALL CudaEp::CreateSyncStreamForDeviceImpl(
 
   auto cuda_stream = std::make_unique<CudaSyncStream>(ep->factory_, device_id, this_ptr);
 
-  if (ep->config_.enable_cuda_graph) {
+  if (ep->config_.has_user_compute_stream && ep->config_.user_compute_stream != nullptr) {
+    // Wrap the user-provided external CUDA stream with full cuBLAS/cuDNN handles.
+    RETURN_IF_ERROR(cuda_stream->InitHandlesWithUserStream(
+        static_cast<cudaStream_t>(ep->config_.user_compute_stream)));
+  } else if (ep->config_.enable_cuda_graph) {
     // When CUDA graph capture is enabled, all operations on this thread must go
     // through the thread's graph stream so capture/replay sees the same stream
     // as kernels.
@@ -417,8 +410,11 @@ OrtStatus* ORT_API_CALL CudaEp::IsConcurrentRunSupportedImpl(
     return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "is_supported must not be null.");
   }
 
-  ORT_UNUSED_PARAMETER(this_ptr);
-  *is_supported = true;
+  auto* ep = static_cast<CudaEp*>(this_ptr);
+  // When a unified stream is in use (either from user_compute_stream, external
+  // allocator, or explicit use_ep_level_unified_stream), all operations share a
+  // single stream so concurrent runs are not safe.
+  *is_supported = !ep->config_.use_ep_level_unified_stream;
   return nullptr;
 }
 
@@ -599,7 +595,10 @@ OrtStatus* ORT_API_CALL CudaEp::ReplayGraphImpl(OrtEp* this_ptr, int graph_annot
         ORT_EP_FAIL, "ReplayGraph called but CUDA graph manager is not initialized");
   }
   PL_CUDA_CALL_THROW(cudaSetDevice(ep->config_.device_id));
-  return ep->GetPerThreadContext().cuda_graph.Replay(graph_annotation_id);
+  // Launch graph without sync. The caller (PluginExecutionProvider::ReplayGraph)
+  // handles synchronization based on disable_synchronize_execution_providers.
+  // This function is only called from that bridge code path.
+  return ep->GetPerThreadContext().cuda_graph.Replay(graph_annotation_id, /*sync=*/false);
 
   EXCEPTION_TO_STATUS_END
 }

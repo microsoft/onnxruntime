@@ -117,6 +117,8 @@ class PluginExecutionProvider : public IExecutionProvider {
 
   Status OnRunEnd(bool sync_stream, const RunOptions& run_options) override;
 
+  Status OnSessionInitializationEnd() override;
+
   Status Sync() const override;
 
   Status SetEpDynamicOptions(gsl::span<const char* const> keys,
@@ -146,7 +148,8 @@ class PluginExecutionProvider : public IExecutionProvider {
 
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(int graph_annotation_id) const override;
-  common::Status ReplayGraph(int graph_annotation_id) override;
+  common::Status ReplayGraph(int graph_annotation_id, bool sync = true) override;
+  common::Status ReleaseCapturedGraph(int graph_annotation_id) override;
   OrtGraphCaptureNodeAssignmentPolicy GetGraphCaptureNodeAssignmentPolicy() const override;
 
  private:
@@ -155,7 +158,11 @@ class PluginExecutionProvider : public IExecutionProvider {
   struct FusedNodeState {
     FusedNodeState() = default;
     FusedNodeState(FusedNodeState&& other) = default;
+    FusedNodeState& operator=(FusedNodeState&& other) = default;
     FusedNodeState(const FusedNodeState& other) = delete;
+    // Destructor defined out-of-line so EpNode/EpValueInfo are complete when
+    // unique_ptr<EpNode>/unique_ptr<EpValueInfo> are destroyed (required by libc++).
+    ~FusedNodeState();
     Status AddFusedNode(const Node& fused_node, /*out*/ EpNode*& added_ep_node);
 
     std::vector<std::unique_ptr<EpNode>> nodes;

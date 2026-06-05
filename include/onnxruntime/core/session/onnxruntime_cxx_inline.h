@@ -1360,6 +1360,110 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetInputModel(const Ort
   return *this;
 }
 
+// ModelPackageOptions
+inline ModelPackageOptions::ModelPackageOptions(const Env& env, const SessionOptions& session_options) {
+  ThrowOnError(GetModelPackageApi().CreateModelPackageOptionsFromSessionOptions(env, session_options, &this->p_));
+}
+
+inline ModelPackageOptions::ModelPackageOptions(const Env& env, ConstSessionOptions session_options) {
+  ThrowOnError(GetModelPackageApi().CreateModelPackageOptionsFromSessionOptions(env, session_options, &this->p_));
+}
+
+// ModelPackageContext
+inline ModelPackageContext::ModelPackageContext(const ORTCHAR_T* package_root) {
+  ThrowOnError(GetModelPackageApi().CreateModelPackageContext(package_root, &this->p_));
+}
+
+inline size_t ModelPackageContext::GetComponentCount() const {
+  size_t count = 0;
+  ThrowOnError(GetModelPackageApi().ModelPackage_GetComponentCount(this->p_, &count));
+  return count;
+}
+
+inline std::vector<std::string> ModelPackageContext::GetComponentNames() const {
+  const char* const* names = nullptr;
+  size_t count = 0;
+  ThrowOnError(GetModelPackageApi().ModelPackage_GetComponentNames(this->p_, &names, &count));
+  std::vector<std::string> result;
+  result.reserve(count);
+  for (size_t i = 0; i < count; ++i) {
+    result.emplace_back(names[i]);
+  }
+  return result;
+}
+
+inline size_t ModelPackageContext::GetVariantCount(const char* component_name) const {
+  size_t count = 0;
+  ThrowOnError(GetModelPackageApi().ModelPackage_GetVariantCount(this->p_, component_name, &count));
+  return count;
+}
+
+inline std::vector<std::string> ModelPackageContext::GetVariantNames(const char* component_name) const {
+  const char* const* names = nullptr;
+  size_t count = 0;
+  ThrowOnError(GetModelPackageApi().ModelPackage_GetVariantNames(this->p_, component_name, &names, &count));
+  std::vector<std::string> result;
+  result.reserve(count);
+  for (size_t i = 0; i < count; ++i) {
+    result.emplace_back(names[i]);
+  }
+  return result;
+}
+
+inline const char* ModelPackageContext::GetVariantEpName(const char* component_name,
+                                                         const char* variant_name) const {
+  const char* ep = nullptr;
+  ThrowOnError(GetModelPackageApi().ModelPackage_GetVariantEpName(
+      this->p_, component_name, variant_name, &ep));
+  return ep;
+}
+
+inline int64_t ModelPackageContext::GetSchemaVersion() const {
+  int64_t version = 0;
+  ThrowOnError(GetModelPackageApi().ModelPackage_GetSchemaVersion(this->p_, &version));
+  return version;
+}
+
+inline ModelPackageComponentContext ModelPackageContext::SelectComponent(
+    const char* component_name, const ModelPackageOptions& options) const {
+  OrtModelPackageComponentContext* out = nullptr;
+  ThrowOnError(GetModelPackageApi().SelectComponent(this->p_, component_name, options, &out));
+  return ModelPackageComponentContext{out};
+}
+
+// ModelPackageComponentContext
+inline std::basic_string<ORTCHAR_T> ModelPackageComponentContext::GetSelectedVariantFolderPath() const {
+  const ORTCHAR_T* path = nullptr;
+  ThrowOnError(GetModelPackageApi().ModelPackageComponent_GetSelectedVariantFolderPath(this->p_, &path));
+  return std::basic_string<ORTCHAR_T>{path};
+}
+
+inline std::string ModelPackageComponentContext::GetSelectedVariantName() const {
+  const char* name = nullptr;
+  ThrowOnError(GetModelPackageApi().ModelPackageComponent_GetSelectedVariantName(this->p_, &name));
+  return (name != nullptr) ? std::string{name} : std::string{};
+}
+
+inline Session ModelPackageComponentContext::CreateSession(const Env& env) {
+  OrtSession* out = nullptr;
+  ThrowOnError(GetModelPackageApi().CreateSession(env, this->p_, nullptr, &out));
+  return Session{out};
+}
+
+inline Session ModelPackageComponentContext::CreateSession(const Env& env,
+                                                           const SessionOptions& session_options) {
+  OrtSession* out = nullptr;
+  ThrowOnError(GetModelPackageApi().CreateSession(env, this->p_, session_options, &out));
+  return Session{out};
+}
+
+inline Session ModelPackageComponentContext::CreateSession(const Env& env,
+                                                           ConstSessionOptions session_options) {
+  OrtSession* out = nullptr;
+  ThrowOnError(GetModelPackageApi().CreateSession(env, this->p_, session_options, &out));
+  return Session{out};
+}
+
 namespace detail {
 
 template <typename T>
@@ -1398,6 +1502,20 @@ inline std::string ConstSessionOptionsImpl<T>::GetConfigEntryOrDefault(const cha
   }
 
   return this->GetConfigEntry(config_key);
+}
+
+template <typename T>
+inline bool ConstSessionOptionsImpl<T>::GetMemPatternEnabled() const {
+  int out = 0;
+  ThrowOnError(GetApi().GetMemPatternEnabled(this->p_, &out));
+  return out != 0;
+}
+
+template <typename T>
+inline ExecutionMode ConstSessionOptionsImpl<T>::GetExecutionMode() const {
+  ExecutionMode out{};
+  ThrowOnError(GetApi().GetSessionExecutionMode(this->p_, &out));
+  return out;
 }
 
 template <typename T>
@@ -2092,6 +2210,11 @@ inline void SessionImpl<T>::FinalizeModelEditorSession(const Model& model, const
   ThrowOnError(GetModelEditorApi().FinalizeModelEditorSession(this->p_, options, prepacked_weights_container));
 }
 #endif  // #if !defined(ORT_MINIMAL_BUILD)
+
+template <typename T>
+inline void SessionImpl<T>::ReleaseCapturedGraph(int graph_annotation_id) {
+  ThrowOnError(GetApi().SessionReleaseCapturedGraph(this->p_, graph_annotation_id));
+}
 
 }  // namespace detail
 
@@ -3918,11 +4041,9 @@ inline void GraphImpl<T>::SetOutputs(std::vector<ValueInfo>& outputs) {
 }
 
 template <typename T>
-inline void GraphImpl<T>::AddInitializer(const std::string& name, Value& initializer, bool data_is_external) {
-  // Graph takes ownership of `initializer`
-  // On error the ownership is not transferred.
+inline void GraphImpl<T>::AddInitializer(const std::string& name, const Value& initializer, bool data_is_external) {
+  // Graph copies the OrtValue internally. Caller retains ownership of initializer.
   ThrowOnError(GetModelEditorApi().AddInitializerToGraph(this->p_, name.c_str(), initializer, data_is_external));
-  initializer.release();
 }
 
 template <typename T>

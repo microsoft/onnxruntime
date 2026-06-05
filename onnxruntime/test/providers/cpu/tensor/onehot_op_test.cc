@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/trt_op_test_utils.h"
@@ -496,6 +498,89 @@ TEST(OneHotOpTest, DimWithZero) {
   test.AddInput<int64_t>("depth", {1}, {10});
   test.AddInput<int64_t>("values", {2}, {0, 1});
   test.AddOutput<int64_t>("output", {10, 2, 0}, {});
+  test.Run();
+}
+
+// Test that extremely large depth values that would cause output tensor size overflow are rejected.
+TEST(OneHotOpTest, DepthTooLarge_OutputSizeOverflow) {
+  OpTester test("OneHot", 11);
+  // indices shape [2, 3] with depth = INT64_MAX causes output shape [2, 3, INT64_MAX]
+  // which would overflow when computing total element count.
+  test.AddInput<int64_t>("indices", {2, 3}, {1, 2, 3, 4, 5, 6});
+  test.AddInput<int64_t>("depth", {1}, {std::numeric_limits<int64_t>::max()});
+  test.AddInput<int64_t>("values", {2}, {0, 1});
+  test.AddOutput<int64_t>("output", {2, 3, 1}, {0, 0, 0, 0, 0, 0});
+  // Exclude TensorRT and DML EPs: they fail internally on INT64_MAX depth before our kernel's
+  // validation runs, producing a different error message.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "output tensor size would overflow",
+           {kTensorrtExecutionProvider, kDmlExecutionProvider});
+}
+
+// Test that a very large depth value that overflows with multi-dimensional indices is rejected.
+TEST(OneHotOpTest, DepthTooLarge_OutputSizeOverflow_LargeIndices) {
+  OpTester test("OneHot", 11);
+  // indices shape [1000] with depth = INT64_MAX / 500 causes overflow in element count.
+  const int64_t large_depth = std::numeric_limits<int64_t>::max() / 500;
+  std::vector<int64_t> indices(1000, 0);
+  std::vector<int64_t> dummy_output(1000, 0);
+  test.AddInput<int64_t>("indices", {1000}, indices);
+  test.AddInput<int64_t>("depth", {1}, {large_depth});
+  test.AddInput<int64_t>("values", {2}, {0, 1});
+  test.AddOutput<int64_t>("output", {1000, 1}, dummy_output);
+  // Exclude TensorRT and DML EPs: they fail internally on overflow-inducing depth before our
+  // kernel's validation runs.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "output tensor size would overflow",
+           {kTensorrtExecutionProvider, kDmlExecutionProvider});
+}
+
+// Test that a negative depth value is rejected.
+TEST(OneHotOpTest, NegativeDepth) {
+  OpTester test("OneHot", 11);
+  test.AddInput<int64_t>("indices", {2, 3}, {1, 2, 3, 4, 5, 6});
+  test.AddInput<int64_t>("depth", {1}, {-5});
+  test.AddInput<int64_t>("values", {2}, {0, 1});
+  test.AddOutput<int64_t>("output", {2, 3, 1}, {0, 0, 0, 0, 0, 0});
+  // Exclude TensorRT and DML EPs: they reject negative depth with their own error messages rather
+  // than ours.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Depth is negative",
+           {kTensorrtExecutionProvider, kDmlExecutionProvider});
+}
+
+// Test minimum valid depth value of 1.
+TEST(OneHotOpTest, DepthOne) {
+  OpTester test("OneHot", 11);
+  test.AddInput<int64_t>("indices", {3}, {0, 0, 0});
+  test.AddInput<int64_t>("depth", {1}, {1});
+  test.AddInput<int64_t>("values", {2}, {0, 1});
+  test.AddOutput<int64_t>("output", {3, 1}, {1, 1, 1});
+  test.Run();
+}
+
+// Test scalar (rank-0) indices are rejected per ONNX spec (indices must have rank >= 1).
+TEST(OneHotOpTest, ScalarIndicesRejected) {
+  OpTester test("OneHot", 11);
+  test.AddInput<int64_t>("indices", {}, {2});
+  test.AddInput<int64_t>("depth", {1}, {5});
+  test.AddInput<int64_t>("values", {2}, {0, 1});
+  test.AddOutput<int64_t>("output", {5}, {0, 0, 1, 0, 0});
+  // Match either the ONNX shape-inference error ("Indices tensor must have rank >= 1") or the
+  // explicit kernel-level rejection ("OneHot: indices tensor must have rank >= 1.").
+  test.Run(OpTester::ExpectResult::kExpectFailure, "ndices tensor must have rank >= 1");
+}
+
+// Test with opset 9.
+TEST(OneHotOpTest, DefaultAxis_Opset9) {
+  OpTester test("OneHot", 9);
+  test.AddInput<int64_t>("indices", {2, 3}, {1, 9, 8, 2, 4, 6});
+  test.AddInput<int64_t>("depth", {1}, {10});
+  test.AddInput<int64_t>("values", {2}, {0, 1});
+  test.AddOutput<int64_t>("output", {2, 3, 10},
+                          {0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+                           0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+                           0, 0, 0, 0, 0, 0, 0, 0, 1, 0,
+                           0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
+                           0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+                           0, 0, 0, 0, 0, 0, 1, 0, 0, 0});
   test.Run();
 }
 

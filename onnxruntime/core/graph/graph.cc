@@ -528,6 +528,28 @@ bool NodeArg::Exists() const noexcept {
   return exists_;
 }
 
+// Out-of-line constructor and destructor so Graph is complete when
+// unique_ptr<Graph> in subgraphs_ is destroyed (required by libc++).
+Node::Node() = default;
+Node::~Node() = default;
+
+Node::Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph), can_be_saved_(true) {}
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+Node::Node(std::string_view name,
+           std::string_view op_type,
+           std::string_view description,
+           gsl::span<NodeArg* const> input_args,
+           gsl::span<NodeArg* const> output_args,
+           const NodeAttributes* attributes,
+           std::string_view domain) {
+  Init(name, op_type, description,
+       input_args,
+       output_args,
+       attributes, domain);
+}
+#endif
+
 Node::EdgeEnd::EdgeEnd(const Node& node, int src_arg_index, int dst_arg_index) noexcept
     : node_(&node),
       src_arg_index_(src_arg_index),
@@ -659,6 +681,9 @@ void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
 
   if (!domain_.empty())
     proto.set_domain(domain_);
+
+  if (!overload_.empty())
+    proto.set_overload(overload_);
 
   if (!description_.empty())
     proto.set_doc_string(description_);
@@ -1249,6 +1274,21 @@ Graph::Graph(const Model& owning_model,
       continue;
     }
 
+#if !defined(DISABLE_SPARSE_TENSORS)
+    // Reject ORT in-memory address markers on a sparse-tensor Constant attribute before the
+    // sparse-to-dense conversion runs — those markers are an in-process ORT sentinel and must
+    // never appear in a deserialized protobuf. See note on the dense initializer loop below.
+    if (node.attribute_size() > 0 &&
+        node.attribute(0).type() == AttributeProto_AttributeType_SPARSE_TENSOR) {
+      const auto& s = node.attribute(0).sparse_tensor();
+      ORT_ENFORCE(!utils::HasExternalDataInMemory(s.values()) &&
+                      !utils::HasExternalDataInMemory(s.indices()),
+                  "Constant node '", node.name(),
+                  "' sparse-tensor attribute references an ORT in-memory address marker, "
+                  "which is not allowed in a model protobuf.");
+    }
+#endif
+
     const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
     ORT_THROW_IF_ERROR(utils::ConstantNodeProtoToTensorProto(node, model_path, *tensor));
 
@@ -1288,6 +1328,16 @@ Graph::Graph(const Model& owning_model,
   if (graph_proto_->sparse_initializer_size() > 0) {
     for (const auto& sparse_tensor : graph_proto_->sparse_initializer()) {
       ORT_ENFORCE(utils::HasName(sparse_tensor), "Sparse initializer must have a name. This model is invalid");
+      // Reject ORT's in-memory address markers on sparse sub-tensors arriving via the protobuf
+      // path. Such markers are an internal ORT optimization set by trusted loaders (e.g. ORT-format
+      // flatbuffer load) and must never appear in a SparseTensorProto deserialized from an .onnx
+      // protobuf; if they do, the model is crafted and would cause ORT to dereference an
+      // attacker-supplied pointer during sparse-to-dense conversion.
+      for (const auto* sub : {&sparse_tensor.values(), &sparse_tensor.indices()}) {
+        ORT_ENFORCE(!utils::HasExternalDataInMemory(*sub),
+                    "Sparse initializer '", sparse_tensor.values().name(),
+                    "' references an ORT in-memory address marker, which is not allowed in a model protobuf.");
+      }
       const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
       auto status = utils::SparseTensorProtoToDenseTensorProto(sparse_tensor, model_path, *tensor);
       ORT_ENFORCE(status.IsOK(), status.ToString());
@@ -1329,6 +1379,14 @@ Graph::Graph(const Model& owning_model,
 
   // Copy initial tensors to a map.
   for (auto& tensor : graph_proto_->initializer()) {
+    // ORT in-memory address markers are an in-process sentinel: they can only be planted by ORT
+    // itself (e.g. when constructing a TensorProto that aliases an mmap'd .ort buffer or an OrtValue).
+    // They must never appear in a TensorProto deserialized from an .onnx protobuf — if they do, the
+    // model is crafted and would cause ORT to dereference an attacker-supplied pointer when
+    // resolving the initializer.
+    ORT_ENFORCE(!utils::HasExternalDataInMemory(tensor),
+                "Initializer '", tensor.name(),
+                "' references an ORT in-memory address marker, which is not allowed in a model protobuf.");
     auto p = name_to_initial_tensor_.emplace(tensor.name(), &tensor);
     if (!p.second) {
       LOGS(logger_, WARNING) << "Duplicate initializer (dense, sparse or ConstantNode): '" << tensor.name()
@@ -1446,6 +1504,7 @@ void Graph::InitializeStateFromModelFileGraphProto() {
   for (auto& initializer : graph_proto_->initializer()) {
     auto& initializer_name = initializer.name();
     auto initializer_arg = GetNodeArg(initializer_name);
+    ORT_ENFORCE(initializer_arg, "Graph ctor should have created NodeArg for initializer. Missing: ", initializer_name);
     graph_initializers.insert({initializer_name, initializer_arg});
   }
 
@@ -3504,7 +3563,7 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
 
       if (!node.op_) {
         // check whether it refer to a function.
-        std::string func_identifier = function_utils::GetFunctionIdentifier(node.Domain(), node.OpType());
+        std::string func_identifier = function_utils::GetFunctionIdentifier(node.Domain(), node.OpType(), node.Overload());
         const auto& model_local_func_templates = owning_model_.GetModelLocalFunctionTemplates();
         auto iter = model_local_func_templates.find(func_identifier);
         if (iter != model_local_func_templates.end()) {
@@ -3571,6 +3630,28 @@ Status Graph::VerifyNodeAndOpMatch(const ResolveOptions& options) {
     auto& node = *GetNode(node_index);
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       Graph* subgraph = entry.second;
+
+      // Propagate type info from outer scope implicit inputs to the subgraph's NodeArgs.
+      // This is needed when the op's type/shape inference function does not invoke subgraph
+      // inferencing (e.g., some contrib ops like BeamSearch), so InferAndVerifySubgraphTypes
+      // may not have been called to propagate type info from outer scope values such as
+      // initializers declared in the parent graph.
+      // When InferAndVerifySubgraphTypes was already called, UpdateTypeAndShape with strict=true
+      // validates that the existing type is consistent with the outer-scope type.
+      const auto& implicit_input_defs = node.GetDefinitions().implicit_input_defs;
+      for (const auto* implicit_node_arg : implicit_input_defs) {
+        auto* subgraph_nodearg = subgraph->GetNodeArg(implicit_node_arg->Name());
+        if (subgraph_nodearg != nullptr &&
+            implicit_node_arg->TypeAsProto() != nullptr) {
+          auto status = subgraph_nodearg->UpdateTypeAndShape(
+              *implicit_node_arg, /*strict=*/true, options.override_types, subgraph->logger_);
+          if (!status.IsOK()) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                   "Node:", node.Name(), " [subgraph:", entry.first, "] ", status.ErrorMessage());
+          }
+        }
+      }
+
       ORT_RETURN_IF_ERROR(subgraph->VerifyNodeAndOpMatch(options));
     }
   }
@@ -4183,12 +4264,43 @@ Status Graph::InjectExternalInitializersFromFilesInMemory(
       const DataTypeImpl* const type =
           DataTypeImpl::TensorTypeFromONNXEnum(old_initializer.data_type())->GetElementType();
       TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(old_initializer);
-      auto tensor = Tensor(type, tensor_shape, user_provided_tensor_buffer,
-                           OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
 
-      constexpr const bool use_tensor_buffer_false = false;
-      auto new_tensor_proto = utils::TensorToTensorProto(tensor, tensor_name, use_tensor_buffer_false);
-      **existing_entry = std::move(new_tensor_proto);
+      // Convert data from little endian before assigning it to tensor.
+      // It would have been better to byteswap it right after loading from file,
+      // but at that moment information about tensor element size was not available.
+      if constexpr (endian::native != endian::little) {
+        size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(
+            static_cast<ONNX_NAMESPACE::TensorProto_DataType>(old_initializer.data_type()));
+
+        // If element size is unknown, set it to 1 to disable byteswapping
+        if (element_size < 1) element_size = 1;
+
+        auto allocator = CPUAllocator::DefaultInstance();
+
+        auto deleter = [allocator](uint8_t* ptr) { allocator->Free(ptr); };
+        std::unique_ptr<uint8_t[], decltype(deleter)> native_data{
+            reinterpret_cast<uint8_t*>(allocator->Alloc(tensor_byte_size)), deleter};
+
+        auto src_span = gsl::make_span(
+            reinterpret_cast<const unsigned char*>(user_provided_tensor_buffer), tensor_byte_size);
+        auto dst_span = gsl::make_span(
+            reinterpret_cast<unsigned char*>(native_data.get()), tensor_byte_size);
+
+        ORT_RETURN_IF_ERROR(onnxruntime::utils::ReadLittleEndian(element_size, src_span, dst_span));
+
+        auto tensor = Tensor{type, tensor_shape, native_data.release(), allocator};
+
+        constexpr const bool use_tensor_buffer_false = false;
+        auto new_tensor_proto = utils::TensorToTensorProto(tensor, tensor_name, use_tensor_buffer_false);
+        **existing_entry = std::move(new_tensor_proto);
+      } else {
+        auto tensor = Tensor(type, tensor_shape, user_provided_tensor_buffer,
+                             OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+
+        constexpr const bool use_tensor_buffer_false = false;
+        auto new_tensor_proto = utils::TensorToTensorProto(tensor, tensor_name, use_tensor_buffer_false);
+        **existing_entry = std::move(new_tensor_proto);
+      }
     }
   }
 
@@ -4395,6 +4507,10 @@ Node& Graph::AddNode(const Node& other) {
                            &other.GetAttributes(),
                            other.Domain());
 
+  if (!other.Overload().empty()) {
+    new_node.SetOverload(other.Overload());
+  }
+
   // Preserve layering annotation from the source node so that graph transformers
   // that reconstruct nodes (or function inlining) retain the EP assignment hint.
   const auto& annotation = other.GetLayeringAnnotation();
@@ -4426,6 +4542,10 @@ Node& Graph::AddNode(const NodeProto& node_proto,
                            output_defs,
                            &attributes,
                            node_proto.domain());
+
+  if (!node_proto.overload().empty()) {
+    new_node.SetOverload(node_proto.overload());
+  }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   auto maybe_annotation = utils::GetNodeProtoLayeringAnnotation(node_proto);
@@ -6810,12 +6930,12 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
     }
   };
 
-  auto add_initializers = [this](const std::unordered_map<std::string, std::unique_ptr<OrtValue>>& initializers,
+  auto add_initializers = [this](const std::unordered_map<std::string, OrtValue>& initializers,
                                  bool is_external) {
     for (auto& name_and_ortvalue : initializers) {
       // convert from OrtValue to TensorProto
       const std::string& name = name_and_ortvalue.first;
-      OrtValue& v = *name_and_ortvalue.second;
+      const OrtValue& v = name_and_ortvalue.second;
 
       ORT_ENFORCE(v.IsTensor(), "Initializers must be Tensors");
       const Tensor& t = v.Get<Tensor>();
@@ -6836,7 +6956,7 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
                                                      offset, t.SizeInBytes(), tensor_proto);
 
         // add OrtValue to ortvalue_initializers_ to keep it alive and to store the deleter if provided.
-        ortvalue_initializers_.emplace(name, std::move(v));
+        ortvalue_initializers_.emplace(name, v);
       } else {
         onnxruntime::utils::SetRawDataInTensorProto(tensor_proto, t.DataRaw(), t.SizeInBytes());
       }

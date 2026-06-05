@@ -2,7 +2,7 @@
   "license": "MIT",
   "type": "module",
   "name": "onnxruntime-common",
-  "version": "1.26.0",
+  "version": "1.28.0",
   "repository": {
     "url": "https://github.com/Microsoft/onnxruntime.git",
     "type": "git"
@@ -20,7 +20,8 @@
   },
   "devDependencies": {
     "globby": "^15.0.0",
-    "typedoc": "^0.25.7"
+    "typedoc": "^0.28.0",
+    "typescript": "^5.6.2"
   },
   "main": "dist/cjs/index.js",
   "exports": {
