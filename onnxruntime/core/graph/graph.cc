@@ -6770,8 +6770,8 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
   }
 
   const uint64_t required_node_slot_count_64 = has_referenced_node_index
-                                                  ? static_cast<uint64_t>(max_referenced_node_index) + 1U
-                                                  : 0U;
+                                                   ? static_cast<uint64_t>(max_referenced_node_index) + 1U
+                                                   : 0U;
   ORT_RETURN_IF(required_node_slot_count_64 > std::numeric_limits<size_t>::max(),
                 "Node index ", max_referenced_node_index,
                 " is out of range. Invalid ORT format model.");
