@@ -898,7 +898,8 @@ Status Node::LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_e
       for (const auto* fbs_edge : *fbs_edges) {
         ORT_RETURN_IF(nullptr == fbs_edge, "Node::LoadEdgesFromOrtFormat, edge is missing for ", dst_name);
         const auto edge_node_index = fbs_edge->node_index();
-        ORT_RETURN_IF(edge_node_index >= static_cast<uint32_t>(graph.MaxNodeIndex()),
+        const size_t node_slot_count = static_cast<size_t>(graph.MaxNodeIndex());
+        ORT_RETURN_IF(static_cast<size_t>(edge_node_index) >= node_slot_count,
                       "Node::LoadEdgesFromOrtFormat, ", dst_name, " has out-of-range node index ",
                       edge_node_index, ". Invalid ORT format model.");
         const auto* edge_node = graph.GetNode(edge_node_index);
@@ -6745,39 +6746,49 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
   auto* fbs_node_edges = fbs_graph.node_edges();
   ORT_RETURN_IF_ERROR(fbs::utils::ValidateRequiredTableOffsets(fbs_node_edges, "node edge"));
 
-  size_t required_node_slot_count = 0;
-  const auto update_required_node_slot_count = [&required_node_slot_count](uint32_t node_index) -> Status {
-    ORT_RETURN_IF(node_index == std::numeric_limits<uint32_t>::max(),
-                  "Node index is out of range. Invalid ORT format model.");
-    const auto node_slot_count = static_cast<size_t>(node_index) + 1U;
-    required_node_slot_count = std::max(required_node_slot_count, node_slot_count);
-    return Status::OK();
+  uint32_t max_referenced_node_index = 0;
+  bool has_referenced_node_index = false;
+  const auto update_max_referenced_node_index = [&max_referenced_node_index,
+                                                 &has_referenced_node_index](uint32_t node_index) {
+    max_referenced_node_index = has_referenced_node_index ? std::max(max_referenced_node_index, node_index)
+                                                          : node_index;
+    has_referenced_node_index = true;
   };
 
   if (fbs_nodes != nullptr) {
     for (const auto* fbs_node : *fbs_nodes) {
       ORT_RETURN_IF(nullptr == fbs_node, "Node is missing. Invalid ORT format model.");
-      ORT_RETURN_IF_ERROR(update_required_node_slot_count(fbs_node->index()));
+      update_max_referenced_node_index(fbs_node->index());
     }
   }
 
   if (fbs_node_edges != nullptr) {
     for (const auto* fbs_node_edge : *fbs_node_edges) {
       ORT_RETURN_IF(nullptr == fbs_node_edge, "NodeEdge is missing. Invalid ORT format model.");
-      ORT_RETURN_IF_ERROR(update_required_node_slot_count(fbs_node_edge->node_index()));
+      update_max_referenced_node_index(fbs_node_edge->node_index());
     }
   }
 
-  // Sanity bound: reject buffers where a crafted node index would cause a multi-gigabyte
-  // allocation. After graph optimizations, ORT preserves original node indices (leaving holes
-  // in the nodes_ vector), so max_node_index can legitimately be much larger than the number
-  // of remaining nodes. Use a generous multiplier plus an absolute cap to accommodate this
-  // sparsity while still blocking adversarial amplification.
+  const uint64_t required_node_slot_count_64 = has_referenced_node_index
+                                                  ? static_cast<uint64_t>(max_referenced_node_index) + 1U
+                                                  : 0U;
+  ORT_RETURN_IF(required_node_slot_count_64 > std::numeric_limits<size_t>::max(),
+                "Node index ", max_referenced_node_index,
+                " is out of range. Invalid ORT format model.");
+  const size_t required_node_slot_count = static_cast<size_t>(required_node_slot_count_64);
+
+  // Sanity bound: reject buffers where a crafted node index would cause excessive allocation.
+  // ORT preserves original node indices after graph optimizations, so legitimate models can have
+  // sparse node slots. Allow that sparsity, but keep an absolute cap far above expected real model sizes.
   const size_t total_entries = (fbs_nodes != nullptr ? fbs_nodes->size() : 0U) +
                                (fbs_node_edges != nullptr ? fbs_node_edges->size() : 0U);
-  constexpr size_t kMinSlotCap = 1024;           // allow small models without penalty
-  constexpr size_t kAbsoluteSlotCap = 10000000;  // ~80 MB of unique_ptr<Node> on 64-bit
-  const size_t slot_cap = std::min(kAbsoluteSlotCap, std::max(kMinSlotCap, total_entries * 64U));
+  constexpr size_t kMinSlotCap = 1024;
+  constexpr size_t kMaxNodeSlotCount = 1000000;  // ~8 MB of unique_ptr<Node> slots on 64-bit
+  constexpr size_t kSparseNodeSlotMultiplier = 64;
+  const size_t sparse_slot_cap = total_entries > kMaxNodeSlotCount / kSparseNodeSlotMultiplier
+                                     ? kMaxNodeSlotCount
+                                     : total_entries * kSparseNodeSlotMultiplier;
+  const size_t slot_cap = std::min(kMaxNodeSlotCount, std::max(kMinSlotCap, sparse_slot_cap));
   ORT_RETURN_IF(required_node_slot_count > slot_cap,
                 "Node index ", required_node_slot_count - 1,
                 " is unreasonably large relative to the number of entries (",
