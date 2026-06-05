@@ -854,6 +854,9 @@ TEST_P(SessionStatePrepackingTest, PrePackingTest) {
   PrepackingTestParam test_param = GetParam();
 
   OrtThreadPoolParams to{};
+  // Use a small, fixed intra-op pool size to keep thread/memory overhead low (e.g., under ASan)
+  // while still exercising the non-null threadpool path.
+  to.thread_pool_size = 2;
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
   RegisterPrePackingTestSchemaOnce();
 
@@ -930,6 +933,8 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
 
   void SetUp() override {
     OrtThreadPoolParams to{};
+    // Use a small, fixed intra-op pool size to keep thread/memory overhead low (e.g., under ASan).
+    to.thread_pool_size = 2;
     tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
     RegisterPrePackingTestSchemaOnce();
 
