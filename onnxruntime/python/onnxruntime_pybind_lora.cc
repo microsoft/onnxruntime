@@ -82,32 +82,25 @@ void addAdapterFormatMethods(pybind11::module& m) {
           // (see read_adapter below: entries are produced via py::cast(&ort_value),
           // i.e. non-owning views into the LoraAdapter's params_values_ map).
           //
-          // Without an explicit keep-alive, Python users following the natural
-          // pattern
+          // We cannot attach py::keep_alive<0, 1> here: pybind11 keep_alive
+          // takes a weak reference to the returned object as the "patient", and
+          // Python `dict` does not support weak references, so the policy
+          // raises TypeError at call time. Lifetime safety for the documented
+          // user-facing pattern
           //
-          //     params = ort.AdapterFormat.read_adapter(path).parameters
+          //     params = ort.AdapterFormat.read_adapter(path).get_parameters()
           //
-          // would silently get a dict of dangling pointers: the temporary
-          // AdapterFormat (and with it the LoraAdapter that backs every OrtValue)
-          // is destroyed at the end of the expression, and any subsequent access
-          // such as params["x"].numpy() would dereference freed memory.
-          //
-          // Python callers reasonably expect refcounting to keep parents alive
-          // while derived objects are still referenced; this is the binding
-          // author's responsibility for non-owning views. py::keep_alive<0, 1>
-          // ties the returned dict (return value, index 0) to the owning
-          // PyAdapterFormatReaderWriter (self, index 1), so the parent — and
-          // therefore the underlying adapter buffer — survives at least as long
-          // as the dict the caller holds. def_property() does not accept
-          // keep_alive directly, so the policy is attached to the getter via
-          // py::cpp_function.
-          py::cpp_function(
-              [](const PyAdapterFormatReaderWriter* reader_writer) -> py::dict { return reader_writer->parameters_; },
-              py::keep_alive<0, 1>()),
-          py::cpp_function(
-              [](PyAdapterFormatReaderWriter* reader_writer, py::dict& parameters) -> void {
-                reader_writer->parameters_ = parameters;
-              }),
+          // is therefore provided by the Python wrapper
+          // (onnxruntime_inference_collection.AdapterFormat.get_parameters),
+          // which pins the owning C AdapterFormat on every returned OrtValue.
+          // This raw pybind11 class is an implementation detail; callers that
+          // bypass the wrapper and reach for `C.AdapterFormat(...).parameters`
+          // directly are responsible for keeping the AdapterFormat alive while
+          // they use the dict.
+          [](const PyAdapterFormatReaderWriter* reader_writer) -> py::dict { return reader_writer->parameters_; },
+          [](PyAdapterFormatReaderWriter* reader_writer, py::dict& parameters) -> void {
+            reader_writer->parameters_ = parameters;
+          },
           R"pbdoc("Enables user to read/write the dictionary of adapter parameters (name -> OrtValue)")pbdoc")
       .def(
           "export_adapter",

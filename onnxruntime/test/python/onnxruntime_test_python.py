@@ -2108,11 +2108,9 @@ class TestInferenceSession(unittest.TestCase):
         # wrappers over non-owning C OrtValue* views into the parent adapter,
         # with nothing keeping the parent alive. The natural pattern below
         # dropped the parent and left the dict with dangling pointers, causing
-        # a use-after-free on the next access. Both layers must keep the
-        # backing adapter alive: the C-level `parameters` getter via a pybind11
-        # keep_alive policy on the returned dict, and the Python wrapper by
-        # pinning the adapter on every OrtValue it hands back from
-        # get_parameters().
+        # a use-after-free on the next access. The Python wrapper now pins the
+        # owning C AdapterFormat on every OrtValue it hands back, so callers
+        # that keep any of the values keep the backing adapter alive too.
         adapter_version = 1
         model_version = 1
         file_path = pathlib.Path(os.path.realpath(__file__)).parent
