@@ -11,19 +11,20 @@ Module Name:
 Abstract:
 
     Pack-time helpers and reference (scalar) routines for the 2-bit, BlkLen=64
-    AVX-512-VNNI weight GEMM path (SQNBIT_CompInt8, BlkBitWidth=2).
+    AVX-512 weight GEMM path (SQNBIT_CompInt8, BlkBitWidth=2). The vectorized
+    kernels (AVX-512 and AVX-512-VNNI variants) live in
+    sqnbitgemm_kernel_avx512vnni_2bit_blklen64.h.
 
-    This header is currently scalar / header-only and contains the pieces that
-    the Phase 2a round-trip unit tests exercise:
+    This header is scalar / header-only and contains:
 
-      * The packed-block layout used by the (future) AVX-512 dequant inner loop.
+      * The packed-block layout used by the AVX-512 dequant inner loop.
       * A pack routine that converts standard ONNX MatMulNBits 2-bit input data
         into the packed layout.
       * A reference unpack routine (independent of the pack code) that
         materialises one packed block back into 64 individual int8 values.
 
-    The packed layout is designed so that the AVX-512BW dequant in Phase 3 is
-    one 128-bit broadcast plus a per-lane variable shift:
+    The packed layout is designed so that the AVX-512BW dequant is one
+    128-bit broadcast plus a per-lane variable shift:
 
         __m128i p   = _mm_loadu_si128(packed);               // 16 bytes
         __m512i p4  = _mm512_broadcast_i32x4(p);             // 4 lanes
@@ -220,9 +221,7 @@ UnpackSourceBlock_BlkLen64_Reference(const std::byte* src, uint8_t out[kBlkLen])
 }
 
 //
-// Phase 2b reference / dispatch entry points.
-// Defined in sqnbitgemm_kernel_avx512_2bit.cpp; registered into the
-// AVX-512 / AVX-512-VNNI dispatch tables.
+// Reference / dispatch entry points defined in sqnbitgemm_kernel_avx512_2bit.cpp.
 //
 
 size_t MLASCALL
@@ -252,6 +251,56 @@ SQ2BitGemmPackQuantBDataAndBlkSum_Scalar(
 
 size_t MLASCALL
 SQ2BitGemmKernel_BlkSum_CompInt8_Scalar(
+    size_t BlkLen,
+    const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const std::byte* QuantBZeroPoint,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t CountK,
+    size_t BlockCountK,
+    const float* Bias,
+    size_t ldc,
+    const float* ABlockSum,
+    const float* QuantBBlkSum
+);
+
+//
+// Unit-test forwarders for the two AVX-512 vectorized kernel variants. These
+// are non-inline symbols defined in `sqnbitgemm_kernel_avx512vnni.cpp` (VNNI)
+// and `sqnbitgemm_kernel_avx512.cpp` (non-VNNI), each of which is compiled
+// with the appropriate ISA flags. The test TU (which is NOT compiled with
+// AVX-512 flags) calls these by `extern` linkage to exercise both kernels
+// independently of the platform dispatcher.
+//
+// Callers MUST gate on `GetMlasPlatform().Avx512Supported_` before invoking
+// these symbols, since they execute AVX-512BW (and, for the VNNI variant,
+// AVX-512-VNNI) instructions.
+//
+size_t MLASCALL
+SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_TestEntry(
+    size_t BlkLen,
+    const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const std::byte* QuantBZeroPoint,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t CountK,
+    size_t BlockCountK,
+    const float* Bias,
+    size_t ldc,
+    const float* ABlockSum,
+    const float* QuantBBlkSum
+);
+
+size_t MLASCALL
+SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_TestEntry(
     size_t BlkLen,
     const std::byte* QuantA,
     const float* QuantAScale,

@@ -1250,9 +1250,8 @@ GetQNBitGemm(QNBitGemmVariant variant)
         case SQ8BitGemmVariant_CompInt8:
             return SQ8BitGemm_CompInt8;
         case SQ2BitGemmVariant_CompInt8:
-            // Phase 2b: scalar reference compute kernel registered by the
-            // AVX-512 / AVX-512-VNNI dispatch tables. Phase 3 swaps in the
-            // vectorized version at the dispatch slot only.
+            // W2 CompInt8 compute kernel registered by the AVX-512 /
+            // AVX-512-VNNI dispatch tables.
             return SQ2BitGemm_CompInt8;
         default:
             return nullptr;

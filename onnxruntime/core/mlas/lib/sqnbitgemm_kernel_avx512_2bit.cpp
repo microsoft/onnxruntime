@@ -10,19 +10,17 @@ Module Name:
 
 Abstract:
 
-    Phase 2b reference implementation of the 2-bit weight CompInt8 GEMM
-    (BlkBitWidth=2, BlkLen=64). This file contains only scalar C++ code; the
-    AVX-512-VNNI vectorized inner loop lands in Phase 3 as a separate header
-    (sqnbitgemm_kernel_avx512vnni_2bit_blklen64.h) that replaces the kernel
-    slot in the AVX-512-VNNI dispatch table.
+    Reference implementation and pack-time helpers for the 2-bit weight
+    CompInt8 GEMM (BlkBitWidth=2, BlkLen=64). Scalar-only; the vectorized
+    inner loop lives in sqnbitgemm_kernel_avx512vnni_2bit_blklen64.h and is
+    registered into the AVX-512 and AVX-512-VNNI dispatch tables (with VNNI
+    / non-VNNI MAC variants templated from the same source).
 
-    The scalar functions exposed here are linked into the AVX-512-VNNI
-    dispatch table only (the plain AVX-512 dispatch leaves the W2 slots
-    null so non-VNNI hosts fall through to the existing LUT kernel). They
-    are also reachable as plain C++ symbols from unit tests, which use them
-    as a correctness oracle for the vectorized path.
+    The scalar functions exposed here back the pack-time helpers used by
+    both dispatch tables and are reachable as plain C++ symbols from unit
+    tests, which use them as a correctness oracle for the vectorized paths.
 
-    Restrictions (Phase 2):
+    Restrictions:
       * BlkLen == 64 only. Other BlkLens are rejected by the pack helper
         and the kernel returns 0 rows handled.
       * Symmetric quantization only (no per-block zero-point tensor;
@@ -53,7 +51,7 @@ namespace sq2bit_avx512 {
 //   [BlkSum  (float)]   roundup_16(N) * BlockCountK
 //   [Scales  (float)]   N * BlockCountK
 //
-// Alignment slack is added so that the AVX-512 dequant in Phase 3 can use
+// Alignment slack is added so that the AVX-512 dequant can use
 // 64-byte aligned loads.
 //
 size_t MLASCALL
@@ -66,7 +64,7 @@ Q2BitGemmPackQuantBDataSize_Avx512(
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /* BackendKernelSelectorConfig */
 )
 {
-    // Phase 2 supports only BlkLen=64 and SQNBIT_CompInt8. Anything else returns
+    // Only BlkLen=64 and SQNBIT_CompInt8 are supported. Anything else returns
     // 0 so MlasQNBitGemmPackQuantBDataSize reports an unsupported configuration.
     if (BlkLen != kBlkLen || ComputeType != SQNBIT_CompInt8) {
         return 0;
@@ -98,7 +96,7 @@ Q2BitGemmPackQuantBDataSize_Avx512(
 //       = -scale * 2  (symmetric W2 uses an implicit zero point of 2).
 //
 // QuantBZPBegin / HasZeroPoint are accepted for ABI parity with the W4 path
-// but ignored in Phase 2 because the customer model and the projection
+// but ignored here because the customer model and the production callers
 // rely on the symmetric layout.
 //
 void MLASCALL
@@ -178,7 +176,7 @@ SQ2BitGemmPackQuantBDataAndBlkSum_Scalar(
 // Scalar reference kernel for SQ2BitGemmVariant_CompInt8.
 //
 // Inputs match the SQ4BitGemmKernel_BlkSum_CompInt8_Fn typedef so the
-// vectorized Phase 3 implementation can drop into the same dispatch slot.
+// vectorized implementation can drop into the same dispatch slot.
 //
 // Math:
 //   C[m, n] = bias[n]
@@ -209,7 +207,7 @@ SQ2BitGemmKernel_BlkSum_CompInt8_Scalar(
 )
 {
     if (BlkLen != kBlkLen) {
-        return 0;  // Phase 2b only supports BlkLen=64.
+        return 0;  // Only BlkLen=64 is supported.
     }
 
     const size_t lda = BlockCountK * kBlkLen;       // bytes per A row (int8)

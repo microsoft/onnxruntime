@@ -460,6 +460,37 @@ SQ8BitGemmPackQuantBDataAndBlkSum512vnni(
 }
 
 //
+// Unit-test entry point for the AVX-512-VNNI W2 kernel. Mirrors the
+// AVX-512BW (non-VNNI) entry point in sqnbitgemm_kernel_avx512.cpp; see the
+// comment there for the rationale. The caller must verify AVX-512-VNNI is
+// available on the host before calling.
+//
+namespace onnxruntime::mlas::sq2bit_avx512 {
+size_t MLASCALL
+SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_TestEntry(
+    size_t BlkLen,
+    const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const std::byte* QuantBZeroPoint,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t CountK,
+    size_t BlockCountK,
+    const float* Bias,
+    size_t ldc,
+    const float* ABlockSum,
+    const float* QuantBBlkSum)
+{
+    return SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni(
+        BlkLen, QuantA, QuantAScale, QuantBData, QuantBScale, QuantBZeroPoint,
+        C, CountM, CountN, CountK, BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum);
+}
+}  // namespace onnxruntime::mlas::sq2bit_avx512
+
+//
 // Kernel dispatch structure definition.
 //
 const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni = []() {
@@ -481,10 +512,10 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni = []() {
     d.SQ8BitGemmKernel_BlkSum_CompInt8 = SQ8BitGemmKernel_BlkSum_CompInt8_avx512vnni;
     d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx512;
 
-    // 2-bit native CompInt8 path. Phase 2b: scalar reference. Phase 3: this slot
-    // gets swapped for the AVX-512-VNNI vectorized kernel (`_mm512_dpbusd_epi32`).
-    // Plain AVX-512 (non-VNNI) hosts intentionally do not register this path and
-    // fall through to the LUT kernel.
+    // 2-bit native CompInt8 path: AVX-512-VNNI variant. Uses the same tile +
+    // pack layout as the non-VNNI variant (registered in the AVX-512 dispatch);
+    // the per-block MAC is `_mm512_dpbusd_epi32` instead of the
+    // `vpmaddubsw + vpmaddwd + vpaddd` chain.
     d.Q2BitGemmPackQuantBDataSize         = onnxruntime::mlas::sq2bit_avx512::Q2BitGemmPackQuantBDataSize_Avx512;
     d.SQ2BitGemmPackQuantBDataAndBlkSum   = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmPackQuantBDataAndBlkSum_Scalar;
     d.SQ2BitGemmKernel_BlkSum_CompInt8    = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni;

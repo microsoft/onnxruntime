@@ -167,26 +167,23 @@ static void QNBitGemmCustomerArgs(benchmark::internal::Benchmark* b) {
 
 BENCHMARK(QNBITGEMM<float, 4>)->Apply(QNBitGemmCustomerArgs)->UseRealTime();
 
-// 2-bit weight rows for the same customer shapes. Phase 2b is a scalar
-// reference; Phase 3 swaps in the AVX-512 (+VNNI) vectorized kernel and
-// these rows become the head-to-head LUT-vs-native comparison surface.
-// W2 vectorized path supports only BlkLen=64 + SQNBIT_CompInt8; the
-// SQNBIT_CompFp32 row exercises the LUT fallback.
+// 2-bit weight rows for the customer shapes. Exercises the AVX-512 W2 native
+// path (VNNI variant on AVX-512-VNNI hosts; non-VNNI variant on AVX-512BW
+// hosts). W2 is registered only for SQNBIT_CompInt8 and BlkLen=64, so we
+// emit just that one ComputeType.
 static void QNBit2BitCustomerArgs(benchmark::internal::Benchmark* b) {
   b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "HasBias", "ComputeType"});
   const int64_t M = 128;
   const int64_t BlkLen = 64;
   const int64_t Threads = 8;
-  const int64_t Symmetric = 1;  // W2 vectorized path is symmetric-only.
+  const int64_t Symmetric = 1;  // W2 native path is symmetric-only.
   const int64_t HasBias = 1;
   for (auto kn : {std::pair<int64_t, int64_t>{384, 1024},
                   std::pair<int64_t, int64_t>{1024, 192},
                   std::pair<int64_t, int64_t>{1024, 384},
                   std::pair<int64_t, int64_t>{1024, 4096},
                   std::pair<int64_t, int64_t>{4096, 1024}}) {
-    for (int64_t ct : {int64_t{SQNBIT_CompFp32}, int64_t{SQNBIT_CompInt8}}) {
-      b->Args({BlkLen, M, kn.second, kn.first, Threads, Symmetric, HasBias, ct});
-    }
+    b->Args({BlkLen, M, kn.second, kn.first, Threads, Symmetric, HasBias, int64_t{SQNBIT_CompInt8}});
   }
 }
 

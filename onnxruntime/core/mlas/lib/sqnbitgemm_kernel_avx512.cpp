@@ -26,6 +26,8 @@ Abstract:
 #include "sqnbitgemm_kernel_avx512_int8_blklen32.h"
 #include "sqnbitgemm_kernel_avx512_int8_blklen64.h"
 #include "sqnbitgemm_kernel_avx512_int8_blklen128.h"
+#include "sqnbitgemm_kernel_avx512_2bit.h"
+#include "sqnbitgemm_kernel_avx512vnni_2bit_blklen64.h"
 
 //
 // SQNBIT_CompFp32 kernel implementation.
@@ -475,6 +477,37 @@ SQ8BitGemmPackQuantBDataAndBlkSum512(
         HasZeroPoint, QuantBZPBegin, PackedQuantB, ThreadPool);
 }
 
+//
+// Unit-test entry point for the AVX-512BW (non-VNNI) W2 kernel. Linked into
+// the test binary so the test TU (compiled without AVX-512 flags) can invoke
+// this kernel directly without going through the platform dispatcher. The
+// caller must verify AVX-512BW is available on the host before calling.
+//
+namespace onnxruntime::mlas::sq2bit_avx512 {
+size_t MLASCALL
+SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_TestEntry(
+    size_t BlkLen,
+    const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const std::byte* QuantBZeroPoint,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t CountK,
+    size_t BlockCountK,
+    const float* Bias,
+    size_t ldc,
+    const float* ABlockSum,
+    const float* QuantBBlkSum)
+{
+    return SQ2BitGemmKernel_BlkSum_CompInt8_Avx512(
+        BlkLen, QuantA, QuantAScale, QuantBData, QuantBScale, QuantBZeroPoint,
+        C, CountM, CountN, CountK, BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum);
+}
+}  // namespace onnxruntime::mlas::sq2bit_avx512
+
 const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512 = []() {
     MLAS_QNBIT_GEMM_DISPATCH d;
 
@@ -494,8 +527,13 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512 = []() {
     d.SQ8BitGemmKernel_BlkSum_CompInt8 = SQ8BitGemmKernel_BlkSum_CompInt8_avx512;
     d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx512;
 
-    // 2-bit native CompInt8 path is registered in the AVX-512-VNNI dispatch only.
-    // Hosts with AVX-512 but no VNNI fall through to the existing LUT path.
+    // 2-bit native CompInt8 path: AVX-512BW variant (no VNNI). Uses the same
+    // tile + pack layout as the VNNI variant; the per-block MAC is
+    // `vpmaddubsw + vpmaddwd + vpaddd` instead of `_mm512_dpbusd_epi32`.
+    // Pack-size and pack functions are identical between AVX-512 and AVX-512-VNNI.
+    d.Q2BitGemmPackQuantBDataSize         = onnxruntime::mlas::sq2bit_avx512::Q2BitGemmPackQuantBDataSize_Avx512;
+    d.SQ2BitGemmPackQuantBDataAndBlkSum   = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmPackQuantBDataAndBlkSum_Scalar;
+    d.SQ2BitGemmKernel_BlkSum_CompInt8    = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512;
 
     return d;
 }();
