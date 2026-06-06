@@ -22,9 +22,9 @@ parameters:
   default: true
 
 - name: build_windows_arm64
-  displayName: 'Build Windows ARM64'
+  displayName: 'Build Windows ARM64 (CUDA 13.x only)'
   type: boolean
-  default: false
+  default: true
 
 - name: build_linux_x64
   displayName: 'Build Linux x64'
@@ -34,7 +34,7 @@ parameters:
 - name: build_linux_aarch64
   displayName: 'Build Linux aarch64 (CUDA 13.x only)'
   type: boolean
-  default: false
+  default: true
 
 # CUDA major.minor series for the build. The exact toolkit minor can differ per platform:
 # win-x64 / linux use CUDA 13.0, while win-arm64 uses CUDA 13.1 (NVIDIA only ships
@@ -43,7 +43,7 @@ parameters:
 - name: cuda_version
   displayName: 'CUDA Version'
   type: string
-  default: '12.8'
+  default: '13.x'
   values:
   - '12.8'
   - '13.x'
