@@ -591,8 +591,13 @@ static GraphProto BuildAddBody() {
   float_tensor.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
   float_tensor.mutable_tensor_type()->mutable_shape()->add_dim();
 
+  // scalar_in is rank-0 (no dims) so the body Add performs scalar broadcasting.
+  TypeProto float_scalar;
+  float_scalar.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  float_scalar.mutable_tensor_type()->mutable_shape();  // empty shape = rank-0
+
   auto& x_arg = graph.GetOrCreateNodeArg("x", &float_tensor);
-  auto& scalar_arg = graph.GetOrCreateNodeArg("scalar_in", &float_tensor);
+  auto& scalar_arg = graph.GetOrCreateNodeArg("scalar_in", &float_scalar);
   auto& out_arg = graph.GetOrCreateNodeArg("add_out", &float_tensor);
 
   graph.AddNode("add", "Add", "Add x and scalar", {&x_arg, &scalar_arg}, {&out_arg});
@@ -662,7 +667,7 @@ TEST(SequenceOpsTest, SequenceMap_Identity) {
   test.Run();
 }
 
-// Test 2: Add body with an additional scalar tensor input broadcast to each element.
+// Test 2: Add body with a rank-0 scalar extra input broadcast to each sequence element.
 TEST(SequenceOpsTest, SequenceMap_AddScalar) {
   SequenceMapOpTester test{BuildAddBody()};
 
@@ -671,12 +676,12 @@ TEST(SequenceOpsTest, SequenceMap_AddScalar) {
   input.AddTensor({3}, {10.0f, 20.0f, 30.0f});
   test.AddSeqInput("input_sequence", input);
 
-  // additional_inputs is a tensor (passed through to every iteration)
-  test.AddInput<float>("additional_inputs", {3}, {100.0f, 100.0f, 100.0f});
+  // additional_inputs is a rank-0 scalar passed through to every iteration.
+  test.AddInput<float>("additional_inputs", {}, {10.0f});
 
   SeqTensors<float> expected;
-  expected.AddTensor({3}, {101.0f, 102.0f, 103.0f});
-  expected.AddTensor({3}, {110.0f, 120.0f, 130.0f});
+  expected.AddTensor({3}, {11.0f, 12.0f, 13.0f});
+  expected.AddTensor({3}, {20.0f, 30.0f, 40.0f});
   test.AddSeqOutput("out_sequence", expected);
 
   test.Run();

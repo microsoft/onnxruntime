@@ -609,10 +609,15 @@ common::Status SequenceMap::SetupSubgraphExecutionInfo(const SessionState& sessi
   const auto& subgraph_inputs = subgraph.GetInputs();
   const auto& subgraph_outputs = subgraph.GetOutputs();
 
+  const auto& implicit_defs = node.ImplicitInputDefs();
+
   std::vector<std::string> feed_names;
-  feed_names.reserve(subgraph_inputs.size());
+  feed_names.reserve(subgraph_inputs.size() + implicit_defs.size());
   for (const auto* input : subgraph_inputs) {
     feed_names.push_back(input->Name());
+  }
+  for (const auto* implicit_def : implicit_defs) {
+    feed_names.push_back(implicit_def->Name());
   }
 
   std::vector<std::string> fetch_names;
@@ -626,12 +631,15 @@ common::Status SequenceMap::SetupSubgraphExecutionInfo(const SessionState& sessi
   ORT_RETURN_IF_ERROR(FeedsFetchesManager::Create(feed_names, fetch_names, subgraph_map, ffm));
   ORT_RETURN_IF_ERROR(utils::InitializeFeedFetchCopyInfo(subgraph_session_state, *ffm));
 
-  // Feeds come from the outer node's explicit inputs.
+  // Feeds come from the outer node's explicit inputs and implicit inputs (outer-scope captures).
   const auto& node_inputs = node.InputDefs();
   std::vector<std::string> outer_feed_names;
-  outer_feed_names.reserve(node_inputs.size());
+  outer_feed_names.reserve(node_inputs.size() + implicit_defs.size());
   for (const auto* input_def : node_inputs) {
     outer_feed_names.push_back(input_def->Name());
+  }
+  for (const auto* implicit_def : implicit_defs) {
+    outer_feed_names.push_back(implicit_def->Name());
   }
 
   std::vector<OrtDevice> feed_locations;
@@ -667,12 +675,15 @@ Status SequenceMap::Compute(OpKernelContext* ctx) const {
   const int num_outer_inputs = ctx->InputCount();
   const int num_outputs = ctx->OutputCount();
 
-  // Each output sequence collects one tensor per iteration.
-  // We defer SetType until after the first iteration populates the fetches.
+  // Initialise each output TensorSeq with its element type before the iteration loop so that
+  // an empty input sequence still produces correctly-typed outputs (change D).
   std::vector<TensorSeq*> output_seqs(num_outputs, nullptr);
   for (int j = 0; j < num_outputs; ++j) {
     output_seqs[j] = ctx->Output<TensorSeq>(j);
     ORT_ENFORCE(output_seqs[j] != nullptr, "SequenceMap: failed to get output TensorSeq slot ", j);
+    const auto* out_type = ctx->OutputType(j);
+    ORT_ENFORCE(out_type != nullptr, "SequenceMap: could not determine type for output ", j);
+    output_seqs[j]->SetType(out_type->AsSequenceTensorType()->GetElementType());
     output_seqs[j]->Reserve(seq_len);
   }
 
@@ -687,9 +698,17 @@ Status SequenceMap::Compute(OpKernelContext* ctx) const {
     }
   }
 
+  // Hoist feeds/fetches outside the iteration loop to avoid repeated allocation (change C).
+  const auto& implicit_inputs = ctx_internal->GetImplicitInputs();
+  const auto num_implicit = implicit_inputs.size();
+
+  std::vector<OrtValue> feeds;
+  std::vector<OrtValue> fetches;
+  feeds.reserve(static_cast<size_t>(num_outer_inputs) + num_implicit);
+
   for (size_t i = 0; i < seq_len; ++i) {
-    std::vector<OrtValue> feeds;
-    feeds.reserve(static_cast<size_t>(num_outer_inputs));
+    feeds.clear();
+    fetches.clear();
 
     // Build feeds: sequence inputs -> element i; tensor inputs -> pass-through OrtValue.
     for (int k = 0; k < num_outer_inputs; ++k) {
@@ -704,7 +723,11 @@ Status SequenceMap::Compute(OpKernelContext* ctx) const {
       }
     }
 
-    std::vector<OrtValue> fetches;
+    // Append implicit inputs (outer-scope captures) in ImplicitInputDefs() order (change B).
+    for (size_t m = 0; m < num_implicit; ++m) {
+      feeds.push_back(*implicit_inputs[m]);
+    }
+
     ORT_RETURN_IF_ERROR(utils::ExecuteSubgraph(*session_state, *feeds_fetches_manager_,
                                                feeds, fetches, {},
                                                ExecutionMode::ORT_SEQUENTIAL,
@@ -720,9 +743,7 @@ Status SequenceMap::Compute(OpKernelContext* ctx) const {
     for (int j = 0; j < num_outputs; ++j) {
       ORT_ENFORCE(fetches[j].IsTensor(),
                   "SequenceMap: body output ", j, " must be a tensor.");
-      if (i == 0) {
-        output_seqs[j]->SetType(fetches[j].Get<Tensor>().DataType());
-      }
+      // SetType was called before the loop (change D); per-iteration call removed (change E).
       output_seqs[j]->Add(std::move(fetches[j]));
     }
   }
