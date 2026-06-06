@@ -419,6 +419,41 @@ static void RunCpuAttentionSelectorSmokeTest(const char* impl,
   test.Run(session_options, expect_result, expected_failure_string, {}, nullptr, &execution_providers);
 }
 
+static void RunCpuAttentionFlashSpecializedUnsupportedBoundaryTest(
+    bool request_present_outputs,
+    bool request_output_qk,
+    OpTester::ExpectResult expect_result) {
+  const std::vector<int64_t> q_shape = {1, 1, 1, 1};
+  const std::vector<int64_t> k_shape = {1, 1, 1, 1};
+  const std::vector<int64_t> v_shape = {1, 1, 1, 1};
+  const std::vector<int64_t> attn_mask_shape = {1, 1};
+  const std::vector<int64_t> past_shape = {1, 1, 0, 1};
+  const std::vector<int64_t> y_shape = {1, 1, 1, 1};
+  const std::vector<int64_t> present_shape = {1, 1, 1, 1};
+  const std::vector<int64_t> qk_shape = {1, 1, 1, 1};
+  const int qk_matmul_output_mode = request_output_qk ? 0 : -1;
+  const std::vector<float> present_key = request_present_outputs ? std::vector<float>{0.0f} : std::vector<float>{};
+  const std::vector<float> present_value = request_present_outputs ? std::vector<float>{2.0f} : std::vector<float>{};
+  const std::vector<float> qk_matmul_output = request_output_qk ? std::vector<float>{0.0f} : std::vector<float>{};
+
+  OpTester test("Attention", 23, onnxruntime::kOnnxDomain);
+  AddInputs(test, {0.0f}, {0.0f}, {2.0f}, {}, {}, {}, {},
+            -1,
+            q_shape, k_shape, v_shape, attn_mask_shape, past_shape, past_shape,
+            y_shape, present_shape, present_shape, qk_shape,
+            1, 1, qk_matmul_output_mode, 1.0f, 0.0f, 0, TensorType::kFloat,
+            {2.0f}, present_key, present_value, qk_matmul_output);
+
+  SessionOptions session_options;
+  AddCpuAttentionImplConfig(session_options, "flash_specialized", expect_result == OpTester::ExpectResult::kExpectFailure);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(session_options, expect_result,
+           expect_result == OpTester::ExpectResult::kExpectFailure ? "does not support this Attention node" : "",
+           {}, nullptr, &execution_providers);
+}
+
 TEST(AttentionTest, CpuImplUnfusedSelectorRuns) {
   RunCpuAttentionSelectorSmokeTest("unfused", "0", TensorType::kFloat, OpTester::ExpectResult::kExpectSuccess);
 }
@@ -437,6 +472,18 @@ TEST(AttentionTest, CpuImplFlashSpecializedStrictRejectsUnsupportedFp16) {
   RunCpuAttentionSelectorSmokeTest("flash_specialized", "1", TensorType::kFloat16,
                                    OpTester::ExpectResult::kExpectFailure,
                                    "does not support this Attention node");
+}
+
+TEST(AttentionTest, CpuImplFlashSpecializedStrictRejectsOutputQk) {
+  RunCpuAttentionFlashSpecializedUnsupportedBoundaryTest(false, true, OpTester::ExpectResult::kExpectFailure);
+}
+
+TEST(AttentionTest, CpuImplFlashSpecializedNonStrictFallsBackForOutputQk) {
+  RunCpuAttentionFlashSpecializedUnsupportedBoundaryTest(false, true, OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(AttentionTest, CpuImplFlashSpecializedStrictRejectsPresentOutputs) {
+  RunCpuAttentionFlashSpecializedUnsupportedBoundaryTest(true, false, OpTester::ExpectResult::kExpectFailure);
 }
 
 TEST(AttentionTest, CpuImplFlashFlexStrictRejectsUnsupported) {
