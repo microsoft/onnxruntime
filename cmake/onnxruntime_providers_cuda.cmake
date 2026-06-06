@@ -326,19 +326,21 @@
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/Zc:preprocessor>")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>")
-      # Pass /bigobj via the joined "-Xcompiler=/bigobj" form, NOT the space form
-      # "-Xcompiler /bigobj". /bigobj is a recognized MSVC flag, and the CUDA 13.1 Windows
-      # MSBuild integration (win-arm64 agents) handles it via a dedicated code path: for the
-      # space form it BOTH folds /bigobj into the consolidated -Xcompiler="..." host-option
-      # blob AND leaks a second, bare /bigobj onto the nvcc command line, e.g.
+      # Pass /bigobj to the host compiler (cl) using the DASH spelling -bigobj, NOT /bigobj.
+      # cl.exe accepts -bigobj identically to /bigobj (it accepts - or / for every option;
+      # note the -Ob2 -Zi dash flags already in the host blob). NVIDIA's CUDA 13.1 Windows
+      # MSBuild integration (CUDA 13.1.targets) special-cases the literal slash token "/bigobj"
+      # in the host options and ALSO emits a second, BARE "/bigobj" directly on the nvcc
+      # command line, e.g.
       #   ...--generate-code=arch=compute_90a,code=[sm_90a] /bigobj -Xcudafe ...
-      # nvcc then treats the bare /bigobj as a second input file and fails with
+      # nvcc then treats that bare /bigobj as a second input file and fails with
       #   nvcc fatal : A single input file is required for a non-link phase when an output
       #   file is specified
-      # (Only /bigobj leaks; the other -Xcompiler flags fold cleanly. win-x64 / CUDA 13.0
-      # tolerated the space form.) The joined form is a single token the integration does not
-      # split, so /bigobj is passed to cl exactly once and never leaks.
-      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/bigobj>")
+      # This is new in CUDA 13.1 (win-x64 + CUDA 13.0 did not do it). Wrapping as
+      # "-Xcompiler /bigobj" or "-Xcompiler=/bigobj" does NOT help — the targets match the slash
+      # literal either way (verified on CI). The dash spelling -bigobj is not matched, so it is
+      # forwarded to cl exactly once and never leaks.
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-bigobj>")
       # /permissive is required for CUTLASS cute headers and to work around MSVC template resolution
       # issues with abseil headers when compiled through nvcc.
       # See https://github.com/NVIDIA/cutlass/issues/3065
@@ -404,9 +406,9 @@
       endif()
       if (MSVC)
         # Do NOT add /bigobj here: the MSVC block above already adds it (once) for every CUDA
-        # target via the leak-safe joined "-Xcompiler=/bigobj" form. A second /bigobj is both
-        # unnecessary and, if written in the space form, would risk the CUDA 13.1 win-arm64
-        # bare-/bigobj leak described there.
+        # target via the leak-safe dash spelling "-Xcompiler=-bigobj". A second /bigobj is
+        # unnecessary, and the slash spelling would trigger the CUDA 13.1 bare-/bigobj leak
+        # described there.
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4172>")
       endif()
     endif()
