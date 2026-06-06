@@ -107,27 +107,27 @@ torch.onnx.export(CustomInverse(), (x,), f, custom_opsets={"com.microsoft": 5})
 
 Note that you can export a custom op to any version >= the opset version used at registration.
 
-## Handling External Data Files (Large Models)
+## Handling External Data Files
 
-When exporting large PyTorch models using `torch.onnx.export` with opset 17+,
+When exporting PyTorch models using `torch.onnx.export` with opset 17+,
 PyTorch may automatically split the export into two files:
 
 - `model.onnx` — the model graph structure
 - `model.onnx.data` — the weight tensors stored as external data
 
-This happens when the model exceeds protobuf's 2GB limit. Both files must be
-present in the same directory for ONNX Runtime to load the model correctly.
-`InferenceSession` will fail if `model.onnx.data` is missing.
+Both files must be present in the same directory for ONNX Runtime to load
+the model correctly. `InferenceSession` will fail if `model.onnx.data` is missing.
 
 ```python
-# This will fail if model.onnx.data is not in the same directory
+# Fails if model.onnx.data is not in the same directory
 session = onnxruntime.InferenceSession("model.onnx")
 ```
 
-### Merging into a Single File for Distribution
+### Option A — Models under 2 GB: merge into a single file
 
-For deployment scenarios where shipping two files is inconvenient (Docker images,
-cloud buckets, API distribution), merge them into a single self-contained file:
+For models whose weights fit within protobuf's 2 GB limit, the split files can be
+merged into a single self-contained `.onnx` file. This simplifies distribution
+to Docker images, cloud buckets, and API endpoints:
 
 ```python
 import onnx
@@ -136,10 +136,24 @@ model = onnx.load("model.onnx", load_external_data=True)
 onnx.save(model, "model_single.onnx", save_as_external_data=False)
 ```
 
-Use `model_single.onnx` for all distribution and deployment. No companion
-`.data` file is required.
+> **Note:** Requires the `onnx` package (`pip install onnx`). Both `model.onnx`
+> and `model.onnx.data` must be in your working directory before running this.
 
-> **Note:** The merge step requires the `onnx` package (`pip install onnx`).
-> Ensure both `model.onnx` and `model.onnx.data` are in your working directory
-> before running the merge.
+### Option B — Models 2 GB and above: deploy as a file pair
 
+When model weights exceed protobuf's 2 GB limit, merging is not possible.
+The `.onnx.data` file is the ONNX spec's mechanism for handling this case.
+Both files must be co-located at inference time:
+
+```python
+# Both model.onnx and model.onnx.data must be in the same directory
+session = onnxruntime.InferenceSession("/path/to/model/model.onnx")
+# ONNX Runtime resolves model.onnx.data relative to the .onnx file location
+```
+
+For cloud storage (e.g. GCS, S3), upload both files to the same prefix and
+download both to the same local directory before loading:
+
+```bash
+gsutil cp model.onnx model.onnx.data gs://your-bucket/models/
+```
