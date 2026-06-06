@@ -173,10 +173,8 @@ if (MSVC)
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4211>"
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>"
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>"
-        # Pass /bigobj to the host compiler using the DASH spelling -bigobj (see the detailed
-        # note on _cuda_plugin_shared_compile_options below). cl.exe accepts -bigobj identically
-        # to /bigobj, but NVIDIA's CUDA 13.1 MSBuild integration does not special-case the dash
-        # spelling, so it does not leak a bare token onto the nvcc command line.
+        # Pass /bigobj to the CUDA host compiler using dash spelling. Raw /bigobj is excluded
+        # from global ARM64 CUDA options in onnxruntime_common.cmake because nvcc parses it as input.
         "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-bigobj>"
     )
 
@@ -235,24 +233,8 @@ if (MSVC)
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4211>"
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>"
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>"
-            # Pass /bigobj to the host compiler (cl) for the large CUTLASS SM90 template
-            # objects, but spell it -bigobj (dash), NOT /bigobj (slash). cl.exe accepts
-            # -bigobj identically to /bigobj (it accepts - or / for every option; note the
-            # -Ob2 -Zi dash flags already present in the host blob).
-            #
-            # NVIDIA's CUDA 13.1 Windows MSBuild integration (CUDA 13.1.targets) special-cases
-            # the literal slash token "/bigobj" in the host options: it keeps it in the
-            # consolidated -Xcompiler="..." blob AND ALSO emits a second, BARE "/bigobj"
-            # directly on the nvcc command line, e.g.
-            #   ...--generate-code=arch=compute_90a,code=[sm_90a] /bigobj -Xcudafe ...
-            # nvcc then treats that bare /bigobj as a second input file and fails every SM90
-            # source with:
-            #   nvcc fatal : A single input file is required for a non-link phase when an
-            #   output file is specified
-            # This is new in CUDA 13.1 (win-x64 + CUDA 13.0 did not do it). Wrapping as
-            # "-Xcompiler /bigobj" OR "-Xcompiler=/bigobj" does NOT help — the targets match
-            # the slash literal either way (both verified failing on CI). The dash spelling
-            # -bigobj is not matched, so it is forwarded to cl exactly once and never leaks.
+            # Pass /bigobj to the CUDA host compiler using dash spelling. Raw /bigobj is excluded
+            # from global ARM64 CUDA options in onnxruntime_common.cmake because nvcc parses it as input.
             "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-bigobj>"
     )
 endif()

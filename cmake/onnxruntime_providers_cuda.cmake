@@ -326,20 +326,8 @@
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/Zc:preprocessor>")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>")
-      # Pass /bigobj to the host compiler (cl) using the DASH spelling -bigobj, NOT /bigobj.
-      # cl.exe accepts -bigobj identically to /bigobj (it accepts - or / for every option;
-      # note the -Ob2 -Zi dash flags already in the host blob). NVIDIA's CUDA 13.1 Windows
-      # MSBuild integration (CUDA 13.1.targets) special-cases the literal slash token "/bigobj"
-      # in the host options and ALSO emits a second, BARE "/bigobj" directly on the nvcc
-      # command line, e.g.
-      #   ...--generate-code=arch=compute_90a,code=[sm_90a] /bigobj -Xcudafe ...
-      # nvcc then treats that bare /bigobj as a second input file and fails with
-      #   nvcc fatal : A single input file is required for a non-link phase when an output
-      #   file is specified
-      # This is new in CUDA 13.1 (win-x64 + CUDA 13.0 did not do it). Wrapping as
-      # "-Xcompiler /bigobj" or "-Xcompiler=/bigobj" does NOT help — the targets match the slash
-      # literal either way (verified on CI). The dash spelling -bigobj is not matched, so it is
-      # forwarded to cl exactly once and never leaks.
+      # Pass /bigobj to the CUDA host compiler using dash spelling. Raw /bigobj is excluded
+      # from global ARM64 CUDA options in onnxruntime_common.cmake because nvcc parses it as input.
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=-bigobj>")
       # /permissive is required for CUTLASS cute headers and to work around MSVC template resolution
       # issues with abseil headers when compiled through nvcc.
@@ -405,10 +393,7 @@
         target_compile_definitions(${target} PRIVATE COMPILE_HOPPER_TMA_GROUPED_GEMMS)
       endif()
       if (MSVC)
-        # Do NOT add /bigobj here: the MSVC block above already adds it (once) for every CUDA
-        # target via the leak-safe dash spelling "-Xcompiler=-bigobj". A second /bigobj is
-        # unnecessary, and the slash spelling would trigger the CUDA 13.1 bare-/bigobj leak
-        # described there.
+        # Do NOT add another /bigobj here: the MSVC block above already forwards it to cl.
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4172>")
       endif()
     endif()
