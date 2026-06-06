@@ -6,6 +6,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/platform/threadpool.h"
 #include "core/providers/cpu/llm/attention_parameters.h"
+#include "core/providers/cpu/llm/onnx_attention_cpu_impl.h"
 #include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 
 namespace onnxruntime {
@@ -30,6 +31,7 @@ class AttentionBase : public OpKernel {
  public:
   AttentionBase(const OpKernelInfo& info) : OpKernel(info) {
     SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+    ORT_THROW_IF_ERROR(ResolveCpuAttentionSelection(info.GetConfigOptions(), cpu_attention_selection_));
   }
 
   Status ApplyAttention(OpKernelContext* context,
@@ -87,6 +89,7 @@ class AttentionBase : public OpKernel {
                       bool transposed) const;
 
   MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
+  CpuAttentionSelection cpu_attention_selection_;
 };
 
 template <typename T>

@@ -4,6 +4,7 @@
 #include "core/providers/cpu/llm/attention.h"
 #include "core/providers/cpu/llm/attention_helper.h"
 #include "core/providers/cpu/llm/attention_softmax.h"
+#include "core/providers/cpu/llm/onnx_flash_attention.h"
 
 #include "core/common/common.h"
 #include "core/common/safeint.h"
@@ -729,6 +730,33 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
   const T* past_value_data = past_value != nullptr ? past_value->Data<T>() : nullptr;
   T* present_value_data = present_value != nullptr ? present_value->MutableData<T>() : nullptr;
   T* output_qk_data = output_qk != nullptr ? output_qk->MutableData<T>() : nullptr;
+
+  const auto fail_if_strict = [this](CpuAttentionImpl requested_impl) -> Status {
+    if (!cpu_attention_selection_.strict) {
+      return Status::OK();
+    }
+
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "CPU ONNX Attention implementation '",
+                           CpuAttentionImplToString(requested_impl),
+                           "' does not support this Attention node.");
+  };
+
+  if (cpu_attention_selection_.impl == CpuAttentionImpl::kFlashSpecialized ||
+      cpu_attention_selection_.impl == CpuAttentionImpl::kAuto) {
+    if constexpr (std::is_same<T, float>::value) {
+      if (CanUseOnnxFlashAttention(parameters, mask_index, past_key, past_value,
+                                   present_key, present_value, output_qk)) {
+        return DispatchOnnxFlashAttention(Q, K, V, mask_index, output->MutableData<T>(), parameters, tp);
+      }
+    }
+
+    if (cpu_attention_selection_.impl == CpuAttentionImpl::kFlashSpecialized) {
+      ORT_RETURN_IF_ERROR(fail_if_strict(CpuAttentionImpl::kFlashSpecialized));
+    }
+  } else if (cpu_attention_selection_.impl == CpuAttentionImpl::kFlashFlex) {
+    ORT_RETURN_IF_ERROR(fail_if_strict(CpuAttentionImpl::kFlashFlex));
+  }
 
   // Compute the attention score.
   size_t bytes = SafeInt<size_t>(parameters.batch_size) * parameters.q_num_heads *

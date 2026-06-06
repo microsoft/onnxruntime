@@ -5,6 +5,7 @@
 #include <cmath>
 #include <limits>
 #include "gtest/gtest.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
@@ -354,6 +355,76 @@ static void RunTest4D(
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &test_execution_providers);
     ASSERT_EQ(test.GetNumberOfNodesAfterRun(), 1);  // This checks the operator was not inlined.
   }
+}
+
+static void RunCpuAttentionSelectorSmokeTest(const char* impl,
+                                             const char* strict,
+                                             TensorType tensor_type,
+                                             OpTester::ExpectResult expect_result,
+                                             const std::string& expected_failure_string = "") {
+  const std::vector<int64_t> q_shape = {1, 2, 2};
+  const std::vector<int64_t> k_shape = {1, 2, 2};
+  const std::vector<int64_t> v_shape = {1, 2, 2};
+  const std::vector<int64_t> attn_mask_shape = {2, 2};
+  const std::vector<int64_t> past_shape = {1, 1, 0, 2};
+  const std::vector<int64_t> y_shape = {1, 2, 2};
+  const std::vector<int64_t> present_shape = {1, 1, 2, 2};
+  const std::vector<int64_t> qk_shape = {1, 1, 2, 2};
+
+  const std::vector<float> q = {1.0f, 0.0f,
+                                0.0f, 1.0f};
+  const std::vector<float> k = {1.0f, 0.0f,
+                                0.0f, 1.0f};
+  const std::vector<float> v = {1.0f, 2.0f,
+                                3.0f, 4.0f};
+  const std::vector<float> y = {1.5378828f, 2.5378828f,
+                                2.4621172f, 3.4621172f};
+
+  OpTester test("Attention", 23, onnxruntime::kOnnxDomain);
+  AddInputs(test, q, k, v, {}, {}, {}, {}, 0,
+            q_shape, k_shape, v_shape, attn_mask_shape, past_shape, past_shape,
+            y_shape, present_shape, present_shape, qk_shape,
+            1, 1, -1, 1.0f, 0.0f, 0, tensor_type, y, {}, {}, {});
+
+  SessionOptions session_options;
+  ASSERT_TRUE(session_options.config_options.AddConfigEntry(kOrtSessionOptionsOnnxAttentionCpuImpl, impl).IsOK());
+  ASSERT_TRUE(session_options.config_options.AddConfigEntry(kOrtSessionOptionsOnnxAttentionCpuImplStrict, strict).IsOK());
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(session_options, expect_result, expected_failure_string, {}, nullptr, &execution_providers);
+}
+
+TEST(AttentionTest, CpuImplUnfusedSelectorRuns) {
+  RunCpuAttentionSelectorSmokeTest("unfused", "0", TensorType::kFloat, OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(AttentionTest, CpuImplFlashSpecializedStrictRunsSupportedFp32) {
+  RunCpuAttentionSelectorSmokeTest("flash_specialized", "1", TensorType::kFloat,
+                                   OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(AttentionTest, CpuImplFlashSpecializedNonStrictFallsBackForUnsupportedFp16) {
+  RunCpuAttentionSelectorSmokeTest("flash_specialized", "0", TensorType::kFloat16,
+                                   OpTester::ExpectResult::kExpectSuccess);
+}
+
+TEST(AttentionTest, CpuImplFlashSpecializedStrictRejectsUnsupportedFp16) {
+  RunCpuAttentionSelectorSmokeTest("flash_specialized", "1", TensorType::kFloat16,
+                                   OpTester::ExpectResult::kExpectFailure,
+                                   "does not support this Attention node");
+}
+
+TEST(AttentionTest, CpuImplFlashFlexStrictRejectsUnsupported) {
+  RunCpuAttentionSelectorSmokeTest("flash_flex", "1", TensorType::kFloat,
+                                   OpTester::ExpectResult::kExpectFailure,
+                                   "does not support this Attention node");
+}
+
+TEST(AttentionTest, CpuImplInvalidSelectorFails) {
+  RunCpuAttentionSelectorSmokeTest("definitely_not_valid", "0", TensorType::kFloat,
+                                   OpTester::ExpectResult::kExpectFailure,
+                                   "Invalid CPU ONNX Attention implementation");
 }
 
 TEST(AttentionTest, Attention3DDefault) {

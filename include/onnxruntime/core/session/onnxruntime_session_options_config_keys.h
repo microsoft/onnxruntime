@@ -483,6 +483,21 @@ static const char* const kOrtSessionOptionsMlasLutGemm = "mlas.use_lut_gemm";
 // - "1": Disable KleidiAI kernels even if available.
 static const char* const kOrtSessionOptionsMlasDisableKleidiAi = "mlas.disable_kleidiai";
 
+// Selects the CPU implementation used for ONNX-domain Attention.
+// Option values:
+// - "auto": Use the best supported implementation for each node. [DEFAULT]
+// - "unfused": Always use the materialized CPU implementation.
+// - "flash_specialized": Use the CPU fused implementation when supported.
+// - "flash_flex": Use the CPU Flex-style implementation when supported.
+static const char* const kOrtSessionOptionsOnnxAttentionCpuImpl = "session.onnx_attention_cpu_impl";
+
+// Controls unsupported-case handling when session.onnx_attention_cpu_impl selects a fused implementation.
+// Option values:
+// - "0": Fall back to the materialized CPU implementation when unsupported. [DEFAULT]
+// - "1": Fail if the selected fused implementation cannot run the node.
+static const char* const kOrtSessionOptionsOnnxAttentionCpuImplStrict =
+    "session.onnx_attention_cpu_impl_strict";
+
 // When converting DQ + MatMul -> MatMulNBits, the accuracy level of the MatMulNBits is controlled by this option.
 // Refer to MatMulNBits op schema for more details.
 // If not provided, default is 4.
