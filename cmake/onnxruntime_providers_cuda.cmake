@@ -391,7 +391,17 @@
         target_compile_definitions(${target} PRIVATE COMPILE_HOPPER_TMA_GROUPED_GEMMS)
       endif()
       if (MSVC)
-        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>")
+        # Do NOT add "-Xcompiler /bigobj" here: the MSVC block above already adds it for every
+        # CUDA target. Adding it a second time produces a duplicate "-Xcompiler /bigobj" in the
+        # CUDA compile options. On win-x64 (and CUDA 13.0) the MSBuild CUDA integration collapses
+        # the duplicate into a single "/bigobj" inside the folded -Xcompiler="..." host-options
+        # blob, so it is harmless. On win-arm64 with the CUDA 13.1 MSBuild integration the
+        # duplicate is mis-parsed: one "/bigobj" leaks out as a bare token on the nvcc command
+        # line (e.g. "...code=[sm_90a] /bigobj -Xcudafe ..."). nvcc then treats "/bigobj" as a
+        # second input file and fails every SM90 source with:
+        #   nvcc fatal : A single input file is required for a non-link phase when an output file
+        #   is specified
+        # The single "/bigobj" from the MSVC block above is sufficient for the large SM90 objects.
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4172>")
       endif()
     endif()
