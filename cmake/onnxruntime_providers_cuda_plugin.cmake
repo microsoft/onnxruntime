@@ -173,7 +173,11 @@ if (MSVC)
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4211>"
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>"
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>"
-        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>"
+        # Pass /bigobj via the joined "-Xcompiler=/bigobj" form, NOT the space form
+        # "-Xcompiler /bigobj". See the detailed note on _cuda_plugin_shared_compile_options
+        # below: the CUDA 13.1 win-arm64 MSBuild integration leaks a bare /bigobj onto the nvcc
+        # command line for the space form, which nvcc rejects as a second input file.
+        "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/bigobj>"
     )
 
     target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
@@ -231,7 +235,22 @@ if (MSVC)
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4211>"
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>"
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>"
-            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>"
+            # IMPORTANT: pass /bigobj via the joined "-Xcompiler=/bigobj" form, NOT the space
+            # form "-Xcompiler /bigobj". /bigobj is a recognized MSVC flag, and the CUDA 13.1
+            # Windows MSBuild integration (used on the win-arm64 agents) handles it via a
+            # dedicated code path: for the space form it BOTH folds /bigobj into the
+            # consolidated -Xcompiler="..." host-option blob AND leaks a second, bare /bigobj
+            # onto the nvcc command line, e.g.
+            #   ...--generate-code=arch=compute_90a,code=[sm_90a] /bigobj -Xcudafe ...
+            # nvcc then treats the bare /bigobj as a second input file and fails every SM90
+            # source with:
+            #   nvcc fatal : A single input file is required for a non-link phase when an
+            #   output file is specified
+            # (Only /bigobj leaks; the other -Xcompiler flags above are not individually
+            # recognized, so they fold cleanly. win-x64 / CUDA 13.0 tolerated the space form.)
+            # The joined form is a single token the integration does not split, so /bigobj is
+            # passed to cl exactly once and never leaks.
+            "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/bigobj>"
     )
 endif()
 

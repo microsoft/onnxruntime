@@ -326,7 +326,19 @@
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/Zc:preprocessor>")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>")
-      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>")
+      # Pass /bigobj via the joined "-Xcompiler=/bigobj" form, NOT the space form
+      # "-Xcompiler /bigobj". /bigobj is a recognized MSVC flag, and the CUDA 13.1 Windows
+      # MSBuild integration (win-arm64 agents) handles it via a dedicated code path: for the
+      # space form it BOTH folds /bigobj into the consolidated -Xcompiler="..." host-option
+      # blob AND leaks a second, bare /bigobj onto the nvcc command line, e.g.
+      #   ...--generate-code=arch=compute_90a,code=[sm_90a] /bigobj -Xcudafe ...
+      # nvcc then treats the bare /bigobj as a second input file and fails with
+      #   nvcc fatal : A single input file is required for a non-link phase when an output
+      #   file is specified
+      # (Only /bigobj leaks; the other -Xcompiler flags fold cleanly. win-x64 / CUDA 13.0
+      # tolerated the space form.) The joined form is a single token the integration does not
+      # split, so /bigobj is passed to cl exactly once and never leaks.
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/bigobj>")
       # /permissive is required for CUTLASS cute headers and to work around MSVC template resolution
       # issues with abseil headers when compiled through nvcc.
       # See https://github.com/NVIDIA/cutlass/issues/3065
@@ -391,17 +403,10 @@
         target_compile_definitions(${target} PRIVATE COMPILE_HOPPER_TMA_GROUPED_GEMMS)
       endif()
       if (MSVC)
-        # Do NOT add "-Xcompiler /bigobj" here: the MSVC block above already adds it for every
-        # CUDA target. Adding it a second time produces a duplicate "-Xcompiler /bigobj" in the
-        # CUDA compile options. On win-x64 (and CUDA 13.0) the MSBuild CUDA integration collapses
-        # the duplicate into a single "/bigobj" inside the folded -Xcompiler="..." host-options
-        # blob, so it is harmless. On win-arm64 with the CUDA 13.1 MSBuild integration the
-        # duplicate is mis-parsed: one "/bigobj" leaks out as a bare token on the nvcc command
-        # line (e.g. "...code=[sm_90a] /bigobj -Xcudafe ..."). nvcc then treats "/bigobj" as a
-        # second input file and fails every SM90 source with:
-        #   nvcc fatal : A single input file is required for a non-link phase when an output file
-        #   is specified
-        # The single "/bigobj" from the MSVC block above is sufficient for the large SM90 objects.
+        # Do NOT add /bigobj here: the MSVC block above already adds it (once) for every CUDA
+        # target via the leak-safe joined "-Xcompiler=/bigobj" form. A second /bigobj is both
+        # unnecessary and, if written in the space form, would risk the CUDA 13.1 win-arm64
+        # bare-/bigobj leak described there.
         target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4172>")
       endif()
     endif()
