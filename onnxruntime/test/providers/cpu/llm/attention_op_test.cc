@@ -195,6 +195,15 @@ static void SetProviders(std::vector<std::unique_ptr<IExecutionProvider>>& execu
   }
 }
 
+static void AddCpuAttentionImplConfig(SessionOptions& session_options, const char* cpu_attention_impl, bool strict) {
+  ASSERT_TRUE(session_options.config_options.AddConfigEntry(kOrtSessionOptionsOnnxAttentionCpuImpl,
+                                                            cpu_attention_impl)
+                  .IsOK());
+  ASSERT_TRUE(session_options.config_options.AddConfigEntry(kOrtSessionOptionsOnnxAttentionCpuImplStrict,
+                                                            strict ? "1" : "0")
+                  .IsOK());
+}
+
 static void RunTest3D(
     int batch_size,
     int q_num_heads,
@@ -225,7 +234,9 @@ static void RunTest3D(
     const std::vector<float>& qk_matmul_output,
     bool disable_cpu,
     bool disable_cuda,
-    bool disable_dml) {
+    bool disable_dml,
+    const char* cpu_attention_impl = nullptr,
+    bool cpu_attention_impl_strict = false) {
   int total_sequence_length = past_sequence_length + kv_sequence_length;
   // inputs
   int q_hidden_size = q_num_heads * head_size;
@@ -273,7 +284,13 @@ static void RunTest3D(
 
     std::vector<std::unique_ptr<IExecutionProvider>> test_execution_providers;
     test_execution_providers.push_back(std::move(ep));
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &test_execution_providers);
+    if (cpu_attention_impl != nullptr) {
+      SessionOptions session_options;
+      AddCpuAttentionImplConfig(session_options, cpu_attention_impl, cpu_attention_impl_strict);
+      test.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &test_execution_providers);
+    } else {
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &test_execution_providers);
+    }
     ASSERT_EQ(test.GetNumberOfNodesAfterRun(), 1);  // This checks the operator was not inlined.
   }
 }
@@ -308,7 +325,9 @@ static void RunTest4D(
     const std::vector<float>& qk_matmul_output,
     bool disable_cpu,
     bool disable_cuda,
-    bool disable_dml) {
+    bool disable_dml,
+    const char* cpu_attention_impl = nullptr,
+    bool cpu_attention_impl_strict = false) {
   int total_sequence_length = past_sequence_length + kv_sequence_length;
   // inputs
   std::vector<int64_t> q_shape = {batch_size, q_num_heads, q_sequence_length, head_size};
@@ -352,7 +371,13 @@ static void RunTest4D(
 
     std::vector<std::unique_ptr<IExecutionProvider>> test_execution_providers;
     test_execution_providers.push_back(std::move(ep));
-    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &test_execution_providers);
+    if (cpu_attention_impl != nullptr) {
+      SessionOptions session_options;
+      AddCpuAttentionImplConfig(session_options, cpu_attention_impl, cpu_attention_impl_strict);
+      test.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &test_execution_providers);
+    } else {
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &test_execution_providers);
+    }
     ASSERT_EQ(test.GetNumberOfNodesAfterRun(), 1);  // This checks the operator was not inlined.
   }
 }
@@ -387,8 +412,7 @@ static void RunCpuAttentionSelectorSmokeTest(const char* impl,
             1, 1, -1, 1.0f, 0.0f, 0, tensor_type, y, {}, {}, {});
 
   SessionOptions session_options;
-  ASSERT_TRUE(session_options.config_options.AddConfigEntry(kOrtSessionOptionsOnnxAttentionCpuImpl, impl).IsOK());
-  ASSERT_TRUE(session_options.config_options.AddConfigEntry(kOrtSessionOptionsOnnxAttentionCpuImplStrict, strict).IsOK());
+  AddCpuAttentionImplConfig(session_options, impl, strict[0] == '1');
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
@@ -425,6 +449,78 @@ TEST(AttentionTest, CpuImplInvalidSelectorFails) {
   RunCpuAttentionSelectorSmokeTest("definitely_not_valid", "0", TensorType::kFloat,
                                    OpTester::ExpectResult::kExpectFailure,
                                    "Invalid CPU ONNX Attention implementation");
+}
+
+TEST(AttentionTest, CpuImplFlashSpecializedStrictCovers3DLayout) {
+  RunTest3D(1, 1, 1, 1, 2, 1, 1, 0,
+            {0.0f}, {0.0f, 0.0f}, {2.0f, 4.0f},
+            {}, {}, {}, {},
+            -1, -1, 1.0f, 0.0f, 0, TensorType::kFloat,
+            {3.0f}, {}, {}, {},
+            false, true, true, "flash_specialized", true);
+}
+
+TEST(AttentionTest, CpuImplFlashSpecializedStrictCovers4DLayout) {
+  RunTest4D(1, 1, 1, 1, 2, 1, 1, 0,
+            {0.0f}, {0.0f, 0.0f}, {2.0f, 4.0f},
+            {}, {}, {}, {},
+            -1, -1, 1.0f, 0.0f, 0, TensorType::kFloat,
+            {3.0f}, {}, {}, {},
+            false, true, true, "flash_specialized", true);
+}
+
+TEST(AttentionTest, CpuImplFlashSpecializedStrictCoversSoftcap) {
+  RunTest4D(1, 1, 1, 1, 2, 1, 1, 0,
+            {1.0f}, {4.0f, -4.0f}, {10.0f, 20.0f},
+            {}, {}, {}, {},
+            -1, -1, 1.0f, 1.0f, 0, TensorType::kFloat,
+            {11.193438f}, {}, {}, {},
+            false, true, true, "flash_specialized", true);
+}
+
+TEST(AttentionTest, CpuImplFlashSpecializedStrictCoversNumericMask) {
+  RunTest4D(1, 1, 1, 1, 2, 1, 1, 0,
+            {0.0f}, {0.0f, 0.0f}, {5.0f, 99.0f},
+            {0.0f, -std::numeric_limits<float>::infinity()}, {}, {}, {},
+            -1, -1, 1.0f, 0.0f, 0, TensorType::kFloat,
+            {5.0f}, {}, {}, {},
+            false, true, true, "flash_specialized", true);
+}
+
+TEST(AttentionTest, CpuImplFlashSpecializedStrictCoversBoolMask) {
+  RunTest4D(1, 1, 1, 1, 2, 1, 1, 0,
+            {0.0f}, {0.0f, 0.0f}, {5.0f, 7.0f},
+            {}, {false, true}, {}, {},
+            -1, -1, 1.0f, 0.0f, 0, TensorType::kFloat,
+            {7.0f}, {}, {}, {},
+            false, true, true, "flash_specialized", true);
+}
+
+TEST(AttentionTest, CpuImplFlashSpecializedStrictCoversCausal) {
+  RunTest4D(1, 1, 2, 1, 2, 1, 1, 0,
+            {0.0f, 0.0f}, {0.0f, 0.0f}, {1.0f, 3.0f},
+            {}, {}, {}, {},
+            1, -1, 1.0f, 0.0f, 0, TensorType::kFloat,
+            {1.0f, 2.0f}, {}, {}, {},
+            false, true, true, "flash_specialized", true);
+}
+
+TEST(AttentionTest, CpuImplFlashSpecializedStrictCoversGqa) {
+  RunTest3D(1, 2, 1, 1, 2, 1, 1, 0,
+            {0.0f, 0.0f}, {0.0f, 0.0f}, {2.0f, 4.0f},
+            {}, {}, {}, {},
+            -1, -1, 1.0f, 0.0f, 0, TensorType::kFloat,
+            {3.0f, 3.0f}, {}, {}, {},
+            false, true, true, "flash_specialized", true);
+}
+
+TEST(AttentionTest, CpuImplFlashSpecializedStrictCoversSoftcapMaskOrdering) {
+  RunTest4D(1, 1, 1, 1, 3, 1, 1, 0,
+            {0.0f}, {0.0f, 0.0f, 0.0f}, {0.2f, 1000.0f, 0.2f},
+            {0.0f, -std::numeric_limits<float>::infinity(), 0.0f}, {}, {}, {},
+            -1, -1, 1.0f, 1.0f, 0, TensorType::kFloat,
+            {0.2f}, {}, {}, {},
+            false, true, true, "flash_specialized", true);
 }
 
 TEST(AttentionTest, Attention3DDefault) {
@@ -2014,7 +2110,9 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_4D) {
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+  SessionOptions session_options;
+  AddCpuAttentionImplConfig(session_options, "flash_specialized", true);
+  test.Run(session_options, OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 // Test nonpad_kv_seqlen with batch_size > 1 and different valid lengths per batch.
@@ -2059,6 +2157,30 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_MultiBatch_4D) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(AttentionTest, Attention_NonPadKVSeqLen_AllMasked_FlashSpecializedStrictFallback) {
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  test.AddInput<float>("Q", {1, 1, 1, 2}, {1.0f, 1.0f});
+  test.AddInput<float>("K", {1, 1, 4, 2}, std::vector<float>(8, 1.0f));
+  test.AddInput<float>("V", {1, 1, 4, 2},
+                       {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f, 70.0f, 80.0f});
+  test.AddOptionalInputEdge<bool>();
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {1}, {0});
+  test.AddOutput<float>("Y", {1, 1, 1, 2}, {40.0f, 50.0f}, false, 0, 1e-3f);
+  test.AddOptionalOutputEdge<float>();
+  test.AddOptionalOutputEdge<float>();
+
+  SessionOptions session_options;
+  AddCpuAttentionImplConfig(session_options, "flash_specialized", true);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(session_options, OpTester::ExpectResult::kExpectFailure,
+           "does not support this Attention node", {}, nullptr, &execution_providers);
 }
 
 // Edge case: nonpad_kv_seqlen = 0 (all positions masked).

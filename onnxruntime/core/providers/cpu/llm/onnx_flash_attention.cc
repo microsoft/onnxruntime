@@ -158,6 +158,14 @@ bool CanUseOnnxFlashAttention(const AttentionParameters& parameters,
     return false;
   }
 
+  if (parameters.has_nonpad_kv_seqlen) {
+    for (int batch = 0; batch < parameters.batch_size; ++batch) {
+      if (parameters.nonpad_kv_seqlen_data[batch] == 0) {
+        return false;
+      }
+    }
+  }
+
   return mask_index == nullptr || mask_index->IsDataType<bool>() || mask_index->IsDataType<float>();
 }
 
