@@ -33,7 +33,7 @@ Status ParseCpuAttentionImpl(std::string_view value, CpuAttentionImpl& impl) {
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                          "Invalid CPU ONNX Attention implementation '", value,
-                         "'. Valid values are: unfused, flash_specialized, flash_flex, auto.");
+                         "'. Valid values are: unfused, flash_specialized, flash_flex (reserved), auto.");
 }
 
 Status ParseStrictFlag(std::string_view value, bool& strict) {

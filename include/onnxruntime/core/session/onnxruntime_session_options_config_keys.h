@@ -483,18 +483,20 @@ static const char* const kOrtSessionOptionsMlasLutGemm = "mlas.use_lut_gemm";
 // - "1": Disable KleidiAI kernels even if available.
 static const char* const kOrtSessionOptionsMlasDisableKleidiAi = "mlas.disable_kleidiai";
 
-// Selects the CPU implementation used for ONNX-domain Attention.
+// Selects the CPU implementation used for ONNX-domain Attention. The ORT_ONNX_ATTENTION_CPU_IMPL
+// environment variable, when set, overrides this session config value.
 // Option values:
-// - "auto": Use the best supported implementation for each node. [DEFAULT]
+// - "auto": Use the default materialized CPU path for each node. [DEFAULT]
 // - "unfused": Always use the materialized CPU implementation.
-// - "flash_specialized": Use the CPU fused implementation when supported.
-// - "flash_flex": Use the CPU Flex-style implementation when supported.
+// - "flash_specialized": Use the CPU row-streaming prototype when supported.
+// - "flash_flex": Reserved for the CPU Flex-style implementation. Currently falls back or fails in strict mode.
 static const char* const kOrtSessionOptionsOnnxAttentionCpuImpl = "session.onnx_attention_cpu_impl";
 
-// Controls unsupported-case handling when session.onnx_attention_cpu_impl selects a fused implementation.
+// Controls unsupported-case handling when session.onnx_attention_cpu_impl explicitly selects
+// "flash_specialized" or "flash_flex".
 // Option values:
 // - "0": Fall back to the materialized CPU implementation when unsupported. [DEFAULT]
-// - "1": Fail if the selected fused implementation cannot run the node.
+// - "1": Fail if the selected implementation cannot run the node.
 static const char* const kOrtSessionOptionsOnnxAttentionCpuImplStrict =
     "session.onnx_attention_cpu_impl_strict";
 

@@ -422,26 +422,35 @@ static void RunCpuAttentionSelectorSmokeTest(const char* impl,
 static void RunCpuAttentionFlashSpecializedUnsupportedBoundaryTest(
     bool request_present_outputs,
     bool request_output_qk,
+    bool request_past,
+    int softmax_precision,
     OpTester::ExpectResult expect_result) {
   const std::vector<int64_t> q_shape = {1, 1, 1, 1};
   const std::vector<int64_t> k_shape = {1, 1, 1, 1};
   const std::vector<int64_t> v_shape = {1, 1, 1, 1};
-  const std::vector<int64_t> attn_mask_shape = {1, 1};
-  const std::vector<int64_t> past_shape = {1, 1, 0, 1};
+  const int past_sequence_length = request_past ? 1 : 0;
+  const int total_sequence_length = past_sequence_length + 1;
+  const std::vector<int64_t> attn_mask_shape = {1, total_sequence_length};
+  const std::vector<int64_t> past_shape = {1, 1, past_sequence_length, 1};
   const std::vector<int64_t> y_shape = {1, 1, 1, 1};
-  const std::vector<int64_t> present_shape = {1, 1, 1, 1};
-  const std::vector<int64_t> qk_shape = {1, 1, 1, 1};
+  const std::vector<int64_t> present_shape = {1, 1, total_sequence_length, 1};
+  const std::vector<int64_t> qk_shape = {1, 1, 1, total_sequence_length};
   const int qk_matmul_output_mode = request_output_qk ? 0 : -1;
-  const std::vector<float> present_key = request_present_outputs ? std::vector<float>{0.0f} : std::vector<float>{};
-  const std::vector<float> present_value = request_present_outputs ? std::vector<float>{2.0f} : std::vector<float>{};
-  const std::vector<float> qk_matmul_output = request_output_qk ? std::vector<float>{0.0f} : std::vector<float>{};
+  const std::vector<float> past_key = request_past ? std::vector<float>{1.0f} : std::vector<float>{};
+  const std::vector<float> past_value = request_past ? std::vector<float>{3.0f} : std::vector<float>{};
+  const std::vector<float> present_key =
+      request_present_outputs ? std::vector<float>(total_sequence_length, 0.0f) : std::vector<float>{};
+  const std::vector<float> present_value =
+      request_present_outputs ? std::vector<float>(total_sequence_length, 2.0f) : std::vector<float>{};
+  const std::vector<float> qk_matmul_output =
+      request_output_qk ? std::vector<float>(total_sequence_length, 0.0f) : std::vector<float>{};
 
   OpTester test("Attention", 23, onnxruntime::kOnnxDomain);
-  AddInputs(test, {0.0f}, {0.0f}, {2.0f}, {}, {}, {}, {},
+  AddInputs(test, {0.0f}, {0.0f}, {2.0f}, {}, {}, past_key, past_value,
             -1,
             q_shape, k_shape, v_shape, attn_mask_shape, past_shape, past_shape,
             y_shape, present_shape, present_shape, qk_shape,
-            1, 1, qk_matmul_output_mode, 1.0f, 0.0f, 0, TensorType::kFloat,
+            1, 1, qk_matmul_output_mode, 1.0f, 0.0f, softmax_precision, TensorType::kFloat,
             {2.0f}, present_key, present_value, qk_matmul_output);
 
   SessionOptions session_options;
@@ -475,19 +484,39 @@ TEST(AttentionTest, CpuImplFlashSpecializedStrictRejectsUnsupportedFp16) {
 }
 
 TEST(AttentionTest, CpuImplFlashSpecializedStrictRejectsOutputQk) {
-  RunCpuAttentionFlashSpecializedUnsupportedBoundaryTest(false, true, OpTester::ExpectResult::kExpectFailure);
+  RunCpuAttentionFlashSpecializedUnsupportedBoundaryTest(false, true, false, 0,
+                                                         OpTester::ExpectResult::kExpectFailure);
 }
 
 TEST(AttentionTest, CpuImplFlashSpecializedNonStrictFallsBackForOutputQk) {
-  RunCpuAttentionFlashSpecializedUnsupportedBoundaryTest(false, true, OpTester::ExpectResult::kExpectSuccess);
+  RunCpuAttentionFlashSpecializedUnsupportedBoundaryTest(false, true, false, 0,
+                                                         OpTester::ExpectResult::kExpectSuccess);
 }
 
 TEST(AttentionTest, CpuImplFlashSpecializedStrictRejectsPresentOutputs) {
-  RunCpuAttentionFlashSpecializedUnsupportedBoundaryTest(true, false, OpTester::ExpectResult::kExpectFailure);
+  RunCpuAttentionFlashSpecializedUnsupportedBoundaryTest(true, false, false, 0,
+                                                         OpTester::ExpectResult::kExpectFailure);
+}
+
+TEST(AttentionTest, CpuImplFlashSpecializedStrictRejectsSoftmaxPrecision) {
+  RunCpuAttentionFlashSpecializedUnsupportedBoundaryTest(false, false, false, 1,
+                                                         OpTester::ExpectResult::kExpectFailure);
+}
+
+TEST(AttentionTest, CpuImplFlashSpecializedStrictRejectsPastKeyValue) {
+  RunCpuAttentionFlashSpecializedUnsupportedBoundaryTest(false, false, true, 0,
+                                                         OpTester::ExpectResult::kExpectFailure);
 }
 
 TEST(AttentionTest, CpuImplFlashFlexStrictRejectsUnsupported) {
   RunCpuAttentionSelectorSmokeTest("flash_flex", "1", TensorType::kFloat,
+                                   OpTester::ExpectResult::kExpectFailure,
+                                   "does not support this Attention node");
+}
+
+TEST(AttentionTest, CpuImplEnvVarOverridesSessionConfig) {
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_ONNX_ATTENTION_CPU_IMPL", "flash_specialized"}}};
+  RunCpuAttentionSelectorSmokeTest("unfused", "1", TensorType::kFloat16,
                                    OpTester::ExpectResult::kExpectFailure,
                                    "does not support this Attention node");
 }
@@ -2206,7 +2235,7 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_MultiBatch_4D) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-TEST(AttentionTest, Attention_NonPadKVSeqLen_AllMasked_FlashSpecializedStrictFallback) {
+TEST(AttentionTest, Attention_NonPadKVSeqLen_AllMasked_FlashSpecializedStrictRejects) {
   OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
 
   test.AddInput<float>("Q", {1, 1, 1, 2}, {1.0f, 1.0f});

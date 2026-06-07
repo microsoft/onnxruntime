@@ -742,8 +742,7 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
                            "' does not support this Attention node.");
   };
 
-  if (cpu_attention_selection_.impl == CpuAttentionImpl::kFlashSpecialized ||
-      cpu_attention_selection_.impl == CpuAttentionImpl::kAuto) {
+  if (cpu_attention_selection_.impl == CpuAttentionImpl::kFlashSpecialized) {
     if constexpr (std::is_same<T, float>::value) {
       if (CanUseOnnxFlashAttention(parameters, mask_index, past_key, past_value,
                                    present_key, present_value, output_qk)) {
@@ -751,9 +750,7 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
       }
     }
 
-    if (cpu_attention_selection_.impl == CpuAttentionImpl::kFlashSpecialized) {
-      ORT_RETURN_IF_ERROR(fail_if_strict(CpuAttentionImpl::kFlashSpecialized));
-    }
+    ORT_RETURN_IF_ERROR(fail_if_strict(CpuAttentionImpl::kFlashSpecialized));
   } else if (cpu_attention_selection_.impl == CpuAttentionImpl::kFlashFlex) {
     ORT_RETURN_IF_ERROR(fail_if_strict(CpuAttentionImpl::kFlashFlex));
   }

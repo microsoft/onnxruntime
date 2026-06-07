@@ -148,13 +148,13 @@ bool CanUseOnnxFlashAttention(const AttentionParameters& parameters,
                               const Tensor* present_key,
                               const Tensor* present_value,
                               const Tensor* output_qk) {
-  // Supported first-phase envelope from the CPU Flash/Flex design:
+  // Supported envelope for the CPU row-streaming prototype:
   //   - dtype float only (enforced by the caller before this helper)
   //   - 3D packed/strided and 4D BNSH layouts
   //   - no cache/present outputs and no qk_matmul_output snapshots
   //   - fp32 softmax, causal, bool/numeric masks, softcap, nonpad, and GQA
-  // TODO(cpu-flex-attention): move the row-streaming loop into the mapped MLAS tiled
-  // MlasOnnxFlashAttention API before claiming broader performance coverage.
+  // TODO(cpu-flex-attention): move this into the mapped MLAS tiled MlasOnnxFlashAttention
+  // API before enabling it from auto selection or claiming FlashAttention-style coverage.
   if (parameters.softmax_precision != 0 ||
       parameters.qk_matmul_output_mode != attention_helper::QKMatMulOutputMode::kNone ||
       past_key != nullptr ||
