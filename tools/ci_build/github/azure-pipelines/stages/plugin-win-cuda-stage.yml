@@ -178,8 +178,8 @@ stages:
               --build_dir $(Build.BinariesDirectory)
               --skip_submodule_sync
               --cmake_generator "$(VSGenerator)"
-              --parallel 4
-              --nvcc_threads 2
+              --parallel
+              --nvcc_threads 1
               --flash_nvcc_threads 1
               --use_vcpkg
               --use_vcpkg_ms_internal_asset_cache
@@ -206,8 +206,8 @@ stages:
               --build_dir $(Build.BinariesDirectory)
               --skip_submodule_sync
               --cmake_generator "$(VSGenerator)"
-              --parallel 4
-              --nvcc_threads 2
+              --parallel
+              --nvcc_threads 1
               --flash_nvcc_threads 1
               --use_vcpkg
               --use_vcpkg_ms_internal_asset_cache
@@ -236,8 +236,8 @@ stages:
               --build_dir $(Build.BinariesDirectory)
               --skip_submodule_sync
               --cmake_generator "$(VSGenerator)"
-              --parallel 4
-              --nvcc_threads 2
+              --parallel
+              --nvcc_threads 1
               --flash_nvcc_threads 1
               --use_vcpkg
               --use_vcpkg_ms_internal_asset_cache
