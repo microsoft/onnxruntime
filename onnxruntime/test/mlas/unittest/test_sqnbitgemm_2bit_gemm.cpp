@@ -96,13 +96,25 @@ QuantizeA_Reference(size_t M,
 
             constexpr float range_max = static_cast<float>((1 << 7) - 1);
             const float scale = amax / range_max;
-            const float scale_recip = scale != 0.0f ? 1.0f / scale : 0.0f;
+            // Match MLAS's QuantizeARow_CompInt8_avx512 bit-for-bit: it computes
+            // `inverse_scale = 127 / amax` directly from amax (single op), not
+            // `1 / (amax/127)` (two ops). The two are equal in real math but
+            // differ by 1 ULP in float, which is enough to flip the rounded
+            // int8 by ±1 for A values that land right on a half-integer.
+            const float scale_recip = amax != 0.0f ? range_max / amax : 0.0f;
 
             QuantAScale[m * BlockCountK + k_blk] = scale;
 
             for (size_t kk = 0; kk < kBlkLen; ++kk) {
                 const float a = (kk < local_len) ? A[m * K + k + kk] : 0.0f;
-                const float q = std::round(a * scale_recip);
+                // `std::nearbyint` uses the current floating-point rounding mode
+                // (default round-half-to-even) and matches what MLAS's
+                // `_mm512_roundscale_ps(v, _MM_ROUND_NEAREST)` does at .5
+                // boundaries. `std::round` would diverge (rounds half away from
+                // zero), introducing systematic mismatches in the public-API path
+                // where MLAS quantises A and the reference computes ABlockSum
+                // from its own quantization.
+                const float q = std::nearbyint(a * scale_recip);
                 QuantAData[m * BlockCountK * kBlkLen + k + kk] =
                     static_cast<int8_t>(
                         std::clamp(q,
@@ -119,10 +131,12 @@ QuantizeA_Reference(size_t M,
 //
 //   C[m,n] = bias[n]
 //          + sum_blk( scale_a[m,blk] * scale_b[n,blk]
-//                     * dot(qa[m,blk,:], (qb[n,blk,:] - 2)) )
+//                     * dot(qa[m,blk,:], (qb[n,blk,:] - zp[n,blk])) )
 //
-// (Equivalent to the kernel's "dot with raw uint8 weights" + the BlkSum
-//  correction term, just written without the algebraic split.)
+// When BZeroPoints is null the symmetric default ZP = 2 is used for every
+// block (matches the kernel's behavior when no zero-point tensor is supplied).
+// When non-null, BZeroPoints[n * BlockCountK + blk] gives the per-block ZP in
+// [0, 3].
 //
 void
 ReferenceGemm_W2_CompInt8(size_t M,
@@ -131,6 +145,7 @@ ReferenceGemm_W2_CompInt8(size_t M,
                           const float* A,
                           const std::vector<uint8_t>& BWeights,  // [N * K] in [0,3]
                           const float* QuantBScale,
+                          const uint8_t* BZeroPoints,            // [N * BlockCountK] in [0,3] or nullptr
                           const float* Bias,
                           float* C)
 {
@@ -147,12 +162,14 @@ ReferenceGemm_W2_CompInt8(size_t M,
                 const size_t local_len = std::min(K - k, kBlkLen);
                 const float a_scale = QuantAScale[m * BlockCountK + blk];
                 const float b_scale = QuantBScale[n * BlockCountK + blk];
+                const int32_t zp = BZeroPoints != nullptr
+                    ? static_cast<int32_t>(BZeroPoints[n * BlockCountK + blk])
+                    : static_cast<int32_t>(sq2::kDefaultSymmetricZeroPoint2Bit);
 
                 int32_t dot = 0;
                 for (size_t kk = 0; kk < local_len; ++kk) {
                     const int8_t qa = QuantAData[m * BlockCountK * kBlkLen + k + kk];
-                    const int32_t qb = static_cast<int32_t>(BWeights[n * K + k + kk])
-                                       - static_cast<int32_t>(sq2::kDefaultSymmetricZeroPoint2Bit);
+                    const int32_t qb = static_cast<int32_t>(BWeights[n * K + k + kk]) - zp;
                     dot += static_cast<int32_t>(qa) * qb;
                 }
                 acc += static_cast<float>(dot) * a_scale * b_scale;
@@ -162,9 +179,32 @@ ReferenceGemm_W2_CompInt8(size_t M,
     }
 }
 
+//
+// Pack per-block 2-bit zero points into the standard ONNX MatMulNBits W2
+// layout: 4 ZPs per byte along K, row-major in N. Row stride is
+// ceil(BlockCountK / 4) bytes.
+//
+inline std::vector<std::byte>
+PackW2ZeroPoints(size_t N, size_t BlockCountK, const std::vector<uint8_t>& BZeroPoints)
+{
+    const size_t ZPCountK = (BlockCountK + 3) / 4;
+    std::vector<std::byte> packed(N * ZPCountK, std::byte{0});
+    for (size_t n = 0; n < N; ++n) {
+        for (size_t blk = 0; blk < BlockCountK; ++blk) {
+            const uint8_t zp = BZeroPoints[n * BlockCountK + blk] & 0x03u;
+            const size_t byte_idx = n * ZPCountK + (blk / 4);
+            const size_t bit_off = (blk % 4) * 2;
+            packed[byte_idx] = static_cast<std::byte>(
+                static_cast<uint8_t>(packed[byte_idx]) | (zp << bit_off));
+        }
+    }
+    return packed;
+}
+
 class MlasSQ2BitGemmTest {
  public:
-    static void Run(size_t M, size_t N, size_t K, bool WithBias, uint32_t seed)
+    static void Run(size_t M, size_t N, size_t K, bool WithBias, uint32_t seed,
+                    bool WithZeroPoints = false)
     {
         const size_t BlockCountK = (K + kBlkLen - 1) / kBlkLen;
         ASSERT_EQ(K % kBlkLen, 0u) << "Test K must be a multiple of BlkLen=64";
@@ -200,6 +240,21 @@ class MlasSQ2BitGemmTest {
         std::vector<float> QuantBScale(N * BlockCountK);
         for (auto& v : QuantBScale) v = s_dist(rng);
 
+        // Per-block zero points (W2: each ZP in [0,3]). The reference path
+        // uses the raw [N * BlockCountK] uint8 vector; MLAS gets the standard
+        // ONNX-packed byte stream produced by PackW2ZeroPoints.
+        std::vector<uint8_t> BZeroPoints;
+        std::vector<std::byte> BZeroPointsPacked;
+        const uint8_t* BZeroPointsRef = nullptr;
+        const std::byte* BZeroPointsMlas = nullptr;
+        if (WithZeroPoints) {
+            BZeroPoints.resize(N * BlockCountK);
+            for (auto& v : BZeroPoints) v = static_cast<uint8_t>(w_dist(rng));
+            BZeroPointsRef = BZeroPoints.data();
+            BZeroPointsPacked = PackW2ZeroPoints(N, BlockCountK, BZeroPoints);
+            BZeroPointsMlas = BZeroPointsPacked.data();
+        }
+
         std::vector<float> Bias;
         const float* BiasPtr = nullptr;
         if (WithBias) {
@@ -210,18 +265,35 @@ class MlasSQ2BitGemmTest {
 
         // Pack B through the public API.
         const size_t PackedSize = MlasQNBitGemmPackQuantBDataSize(
-            N, K, kBlkBitWidth, kBlkLen, /*has_zero_point=*/false, kComputeType, nullptr);
+            N, K, kBlkBitWidth, kBlkLen, WithZeroPoints, kComputeType, nullptr);
         ASSERT_GT(PackedSize, 0u);
         std::vector<std::byte> PackedQuantB(PackedSize, std::byte{0});
 
+        // Mirror the matmul_nbits.cc prepack flow on AMD64: three separate
+        // calls, one per input (B data, scales, zero_points). Each call passes
+        // only its own input and nullptr for the others. The pack function
+        // must update the BlkSum buffer on the zero_points call by reading
+        // scales from the already-packed buffer.
         MlasQNBitGemmPackQuantBData(
             N, K, kBlkBitWidth, kBlkLen, kComputeType,
             QuantBData.data(), PackedQuantB.data(),
-            QuantBScale.data(), /*has_zp_input=*/false, /*QuantBZeroPoint=*/nullptr,
+            /*QuantBScale=*/nullptr, WithZeroPoints, /*QuantBZeroPoint=*/nullptr,
             nullptr, nullptr);
+        MlasQNBitGemmPackQuantBData(
+            N, K, kBlkBitWidth, kBlkLen, kComputeType,
+            /*QuantBData=*/nullptr, PackedQuantB.data(),
+            QuantBScale.data(), WithZeroPoints, /*QuantBZeroPoint=*/nullptr,
+            nullptr, nullptr);
+        if (WithZeroPoints) {
+            MlasQNBitGemmPackQuantBData(
+                N, K, kBlkBitWidth, kBlkLen, kComputeType,
+                /*QuantBData=*/nullptr, PackedQuantB.data(),
+                /*QuantBScale=*/nullptr, WithZeroPoints, BZeroPointsMlas,
+                nullptr, nullptr);
+        }
 
         const size_t WorkspaceSize = MlasQNBitGemmBatchWorkspaceSize(
-            M, N, K, 1, kBlkBitWidth, kBlkLen, /*has_zero_point=*/false, kComputeType, nullptr);
+            M, N, K, 1, kBlkBitWidth, kBlkLen, WithZeroPoints, kComputeType, nullptr);
         std::vector<std::byte> Workspace(std::max<size_t>(WorkspaceSize, 1), std::byte{0});
 
         std::vector<float> C(M * N, 0.0f);
@@ -232,7 +304,7 @@ class MlasSQ2BitGemmTest {
         params.QuantBDataWorkspace = PackedQuantB.data();
         params.PackedQuantBData = PackedQuantB.data();
         params.QuantBScale = QuantBScale.data();
-        params.QuantBZeroPoint = nullptr;
+        params.QuantBZeroPoint = BZeroPointsMlas;
         params.Bias = BiasPtr;
         params.C = C.data();
         params.ldc = N;
@@ -243,7 +315,7 @@ class MlasSQ2BitGemmTest {
 
         std::vector<float> CRef(M * N, 0.0f);
         ReferenceGemm_W2_CompInt8(M, N, K, A.data(), BWeights, QuantBScale.data(),
-                                  BiasPtr, CRef.data());
+                                  BZeroPointsRef, BiasPtr, CRef.data());
 
         // Both paths perform the identical integer-domain dot product followed
         // by the same float multiply-add chain, so the result should agree to
@@ -258,7 +330,8 @@ class MlasSQ2BitGemmTest {
                 << " (m=" << (i / N) << ", n=" << (i % N) << ")"
                 << " MLAS=" << C[i] << " Ref=" << CRef[i]
                 << " M=" << M << " N=" << N << " K=" << K
-                << " WithBias=" << WithBias;
+                << " WithBias=" << WithBias
+                << " WithZeroPoints=" << WithZeroPoints;
         }
     }
 };
@@ -285,12 +358,55 @@ TEST(MlasSq2BitTest, GemmCompInt8_BlkLen64_PublicApi)
         {7,   17, 128},
         {16,  64, 512},
         {32, 128, 256},
+        // Customer model shapes routed through the full MlasQNBitGemmBatch
+        // dispatcher (threading, PerGemmQuantAWorkspace, packed-B). Both decode
+        // (M=1) and prefill (M=128) sizes; M=128 forces the multi-threaded
+        // path that the direct-call test cannot reach.
+        {  1, 1024,  384}, {  1,  192, 1024}, {  1,  384, 1024}, {  1, 4096, 1024}, {  1, 1024, 4096},
+        {128, 1024,  384}, {128,  192, 1024}, {128,  384, 1024}, {128, 4096, 1024}, {128, 1024, 4096},
     };
 
     for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
         for (const Shape& s : shapes) {
             for (bool bias : {false, true}) {
                 MlasSQ2BitGemmTest::Run(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u));
+            }
+        }
+    }
+}
+
+//
+// Same coverage as GemmCompInt8_BlkLen64_PublicApi but with per-block
+// non-default zero points (random ZP in [0, 3] per block). This is the
+// configuration the customer model uses: 4-input MatMulNBits nodes with an
+// explicit zero_points initializer.
+//
+TEST(MlasSq2BitTest, GemmCompInt8_BlkLen64_PublicApi_WithZeroPoints)
+{
+    if (!MlasIsQNBitGemmAvailable(kBlkBitWidth, kBlkLen, kComputeType)) {
+        GTEST_SKIP() << "MlasQNBitGemm W2/BlkLen=64/CompInt8 not available on this host";
+    }
+
+    struct Shape { size_t M, N, K; };
+    constexpr Shape shapes[] = {
+        {1,   16,  64},
+        {1,   32, 128},
+        {1,   64, 256},
+        {4,   16,  64},
+        {4,   33, 192},
+        {7,   17, 128},
+        {16,  64, 512},
+        {32, 128, 256},
+        // Customer model shapes (BlkLen=64, asymmetric ZP).
+        {  1, 1024,  384}, {  1,  192, 1024}, {  1,  384, 1024}, {  1, 4096, 1024}, {  1, 1024, 4096},
+        {128, 1024,  384}, {128,  192, 1024}, {128,  384, 1024}, {128, 4096, 1024}, {128, 1024, 4096},
+    };
+
+    for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+        for (const Shape& s : shapes) {
+            for (bool bias : {false, true}) {
+                MlasSQ2BitGemmTest::Run(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                                        /*WithZeroPoints=*/true);
             }
         }
     }
@@ -310,7 +426,7 @@ TEST(MlasSq2BitTest, GemmCompInt8_BlkLen64_PublicApi)
 class MlasSQ2BitGemmDirectCallTest {
  public:
     static void Run(size_t M, size_t N, size_t K, bool WithBias, uint32_t seed,
-                    bool TestVnni)
+                    bool TestVnni, bool WithZeroPoints = false)
     {
         const size_t BlockCountK = (K + kBlkLen - 1) / kBlkLen;
         ASSERT_EQ(K % kBlkLen, 0u) << "Test K must be a multiple of BlkLen=64";
@@ -342,6 +458,19 @@ class MlasSQ2BitGemmDirectCallTest {
         std::vector<float> QuantBScale(N * BlockCountK);
         for (auto& v : QuantBScale) v = s_dist(rng);
 
+        // Per-block zero points (same conventions as the public-API harness).
+        std::vector<uint8_t> BZeroPoints;
+        std::vector<std::byte> BZeroPointsPacked;
+        const uint8_t* BZeroPointsRef = nullptr;
+        const std::byte* BZeroPointsMlas = nullptr;
+        if (WithZeroPoints) {
+            BZeroPoints.resize(N * BlockCountK);
+            for (auto& v : BZeroPoints) v = static_cast<uint8_t>(w_dist(rng));
+            BZeroPointsRef = BZeroPoints.data();
+            BZeroPointsPacked = PackW2ZeroPoints(N, BlockCountK, BZeroPoints);
+            BZeroPointsMlas = BZeroPointsPacked.data();
+        }
+
         std::vector<float> Bias;
         const float* BiasPtr = nullptr;
         if (WithBias) {
@@ -353,14 +482,14 @@ class MlasSQ2BitGemmDirectCallTest {
         // Pack B through the public API (produces the same buffer for both
         // VNNI and non-VNNI consumers; the kernel doesn't care which one).
         const size_t PackedSize = MlasQNBitGemmPackQuantBDataSize(
-            N, K, kBlkBitWidth, kBlkLen, /*has_zero_point=*/false, kComputeType, nullptr);
+            N, K, kBlkBitWidth, kBlkLen, WithZeroPoints, kComputeType, nullptr);
         ASSERT_GT(PackedSize, 0u);
         std::vector<std::byte> PackedQuantBBuf(PackedSize, std::byte{0});
 
         MlasQNBitGemmPackQuantBData(
             N, K, kBlkBitWidth, kBlkLen, kComputeType,
             QuantBData.data(), PackedQuantBBuf.data(),
-            QuantBScale.data(), /*has_zp_input=*/false, /*QuantBZeroPoint=*/nullptr,
+            QuantBScale.data(), WithZeroPoints, BZeroPointsMlas,
             nullptr, nullptr);
 
         // Reconstruct the packed-B view so we can pass the right sub-pointers
@@ -424,7 +553,7 @@ class MlasSQ2BitGemmDirectCallTest {
         // Reference: bit-exact integer-domain math.
         std::vector<float> CRef(M * N, 0.0f);
         ReferenceGemm_W2_CompInt8(M, N, K, A.data(), BWeights, QuantBScale.data(),
-                                  BiasPtr, CRef.data());
+                                  BZeroPointsRef, BiasPtr, CRef.data());
 
         const float abs_tol = 1e-4f;
         const float rel_tol = 1e-4f;
@@ -436,7 +565,8 @@ class MlasSQ2BitGemmDirectCallTest {
                 << " (m=" << (i / N) << ", n=" << (i % N) << ")"
                 << " MLAS=" << C[i] << " Ref=" << CRef[i]
                 << " M=" << M << " N=" << N << " K=" << K
-                << " WithBias=" << WithBias;
+                << " WithBias=" << WithBias
+                << " WithZeroPoints=" << WithZeroPoints;
         }
     }
 };
@@ -476,6 +606,38 @@ TEST(MlasSq2BitTest, GemmCompInt8_BlkLen64_Avx512)
 }
 
 //
+// Same as GemmCompInt8_BlkLen64_Avx512 but with random per-block zero points.
+//
+TEST(MlasSq2BitTest, GemmCompInt8_BlkLen64_Avx512_WithZeroPoints)
+{
+    if (!GetMlasPlatform().Avx512Supported_) {
+        GTEST_SKIP() << "AVX-512BW (DQ/VL) not available on this host";
+    }
+
+    struct Shape { size_t M, N, K; };
+    constexpr Shape shapes[] = {
+        {1,   16,  64},
+        {1,   32, 128},
+        {1,   64, 256},
+        {4,   16,  64},
+        {4,   33, 192},
+        {7,   17, 128},
+        {16,  64, 512},
+        {32, 128, 256},
+    };
+
+    for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+        for (const Shape& s : shapes) {
+            for (bool bias : {false, true}) {
+                MlasSQ2BitGemmDirectCallTest::Run(
+                    s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                    /*TestVnni=*/false, /*WithZeroPoints=*/true);
+            }
+        }
+    }
+}
+
+//
 // Exercises the AVX-512-VNNI W2 kernel (_mm512_dpbusd_epi32 MAC) via the
 // direct-call forwarder. On a VNNI host this is the same kernel that the
 // public-API test above hits through the dispatcher; the explicit invocation
@@ -501,6 +663,11 @@ TEST(MlasSq2BitTest, GemmCompInt8_BlkLen64_Avx512Vnni)
         {7,   17, 128},
         {16,  64, 512},
         {32, 128, 256},
+        // Customer model shapes (BlkLen=64). Both decode (M=1) and prefill
+        // (M=128) rows; these are far larger than the small-N shapes above
+        // and exercise the R1xC4 / R2xC4 tile paths at production sizes.
+        {  1, 1024,  384}, {  1,  192, 1024}, {  1,  384, 1024}, {  1, 4096, 1024}, {  1, 1024, 4096},
+        {128, 1024,  384}, {128,  192, 1024}, {128,  384, 1024}, {128, 4096, 1024}, {128, 1024, 4096},
     };
 
     for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
@@ -509,6 +676,42 @@ TEST(MlasSq2BitTest, GemmCompInt8_BlkLen64_Avx512Vnni)
                 MlasSQ2BitGemmDirectCallTest::Run(
                     s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
                     /*TestVnni=*/true);
+            }
+        }
+    }
+}
+
+//
+// Same as GemmCompInt8_BlkLen64_Avx512Vnni but with random per-block zero points.
+//
+TEST(MlasSq2BitTest, GemmCompInt8_BlkLen64_Avx512Vnni_WithZeroPoints)
+{
+    if (GetMlasPlatform().QNBitGemmDispatch != &MlasSQNBitGemmDispatchAvx512vnni) {
+        GTEST_SKIP() << "AVX-512-VNNI not selected as the active dispatch on this host";
+    }
+
+    struct Shape { size_t M, N, K; };
+    constexpr Shape shapes[] = {
+        {1,   16,  64},
+        {1,   32, 128},
+        {1,   64, 256},
+        {4,   16,  64},
+        {4,   33, 192},
+        {7,   17, 128},
+        {16,  64, 512},
+        {32, 128, 256},
+        // Customer model shapes with explicit per-block zero points (matches the
+        // production accuracy concern).
+        {  1, 1024,  384}, {  1,  192, 1024}, {  1,  384, 1024}, {  1, 4096, 1024}, {  1, 1024, 4096},
+        {128, 1024,  384}, {128,  192, 1024}, {128,  384, 1024}, {128, 4096, 1024}, {128, 1024, 4096},
+    };
+
+    for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+        for (const Shape& s : shapes) {
+            for (bool bias : {false, true}) {
+                MlasSQ2BitGemmDirectCallTest::Run(
+                    s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                    /*TestVnni=*/true, /*WithZeroPoints=*/true);
             }
         }
     }

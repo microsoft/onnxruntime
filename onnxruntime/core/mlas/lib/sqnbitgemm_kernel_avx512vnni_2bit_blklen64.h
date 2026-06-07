@@ -890,20 +890,42 @@ SQ2BitGemmKernel_BlkSum_CompInt8_Impl(
         C, CountM, CountN, BlockCountK, Bias, ldc);
 
     // BlkSum correction: C += ABlockSum [M x BlockCountK] @ QuantBBlkSum [BlockCountK x N].
-    float* c_blk = C;
-    const float* b_blk_sum = QuantBBlkSum;
-    size_t RowsRemaining = CountM;
-    const float* a_blksum_row = ABlockSum;
-    while (RowsRemaining > 0) {
-        const auto RowsHandled = GetMlasPlatform().GemmFloatKernel(
-            a_blksum_row, b_blk_sum, c_blk,
-            BlockCountK, RowsRemaining, CountN,
-            BlockCountK, ldc, 1.0f, false);
-
-        c_blk += ldc * RowsHandled;
-        a_blksum_row += BlockCountK * RowsHandled;
-        RowsRemaining -= RowsHandled;
+    //
+    // TEMP DEBUG: scalar reference instead of GetMlasPlatform().GemmFloatKernel
+    // to test whether the SGEMM-call shape/layout assumptions are wrong.
+    // QuantBBlkSum is in the "width-16 chunked" layout:
+    //   BlkSum[(n/16) * BlockCountK * 16 + blk * 16 + (n%16)]
+    {
+        for (size_t m = 0; m < CountM; ++m) {
+            const float* a_row = ABlockSum + m * BlockCountK;
+            float* c_row = C + m * ldc;
+            for (size_t n = 0; n < CountN; ++n) {
+                const size_t chunk = n / 16;
+                const size_t lane  = n % 16;
+                float acc = 0.0f;
+                for (size_t blk = 0; blk < BlockCountK; ++blk) {
+                    const float b = QuantBBlkSum[(chunk * BlockCountK + blk) * 16 + lane];
+                    acc += a_row[blk] * b;
+                }
+                c_row[n] += acc;
+            }
+        }
     }
+    // Original fast path (disabled for debug):
+    // float* c_blk = C;
+    // const float* b_blk_sum = QuantBBlkSum;
+    // size_t RowsRemaining = CountM;
+    // const float* a_blksum_row = ABlockSum;
+    // while (RowsRemaining > 0) {
+    //     const auto RowsHandled = GetMlasPlatform().GemmFloatKernel(
+    //         a_blksum_row, b_blk_sum, c_blk,
+    //         BlockCountK, RowsRemaining, CountN,
+    //         BlockCountK, ldc, 1.0f, false);
+    //
+    //     c_blk += ldc * RowsHandled;
+    //     a_blksum_row += BlockCountK * RowsHandled;
+    //     RowsRemaining -= RowsHandled;
+    // }
 
     return CountM;
 }

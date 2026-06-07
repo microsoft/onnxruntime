@@ -1074,7 +1074,18 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_, true);
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<MLFloat16>())) {
-    if (nbits_ == 4) {
+    if (nbits_ == 2) {
+      MlasDequantizeBlockwise<float, 2>(
+          tmp_b_data_ptr.get(),                           // dequantized output
+          b_data,                                         // quantized input
+          scales_ptr,                                     // quantization scales
+          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+          static_cast<int32_t>(block_size_),              // quantization block size
+          column_wise_quant_,                             // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),                       // number of rows in quantized input
+          static_cast<int32_t>(N_),                       // number of columns in quantized input
+          thread_pool);
+    } else if (nbits_ == 4) {
       MlasDequantizeBlockwise<float, 4>(
           tmp_b_data_ptr.get(),                           // dequantized output
           b_data,                                         // quantized input
@@ -1085,7 +1096,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
           static_cast<int32_t>(K_),                       // number of rows in quantized input
           static_cast<int32_t>(N_),                       // number of columns in quantized input
           thread_pool);
-    } else {  // If it isn't 4bit, it has to be 8-bit quantization
+    } else {  // If it isn't 2bit or 4bit, it has to be 8-bit quantization
       ORT_ENFORCE(nbits_ == 8);
       MlasDequantizeBlockwise<float, 8>(
           tmp_b_data_ptr.get(),                           // dequantized output

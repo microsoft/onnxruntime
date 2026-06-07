@@ -23,8 +23,9 @@ Abstract:
     Restrictions:
       * BlkLen == 64 only. Other BlkLens are rejected by the pack helper
         and the kernel returns 0 rows handled.
-      * Symmetric quantization only (no per-block zero-point tensor;
-        an implicit zero-point of 2 is used to recentre values in [0, 3]).
+      * Per-block zero-point input is supported (standard ONNX W2 layout,
+        4 ZPs per packed byte along K). When no zero-point tensor is
+        supplied the symmetric default of 2 is used.
 
 --*/
 
@@ -95,9 +96,16 @@ Q2BitGemmPackQuantBDataSize_Avx512(
 //   QuantBBlkSum[n * BlockCountK + blk]
 //       = -scale * 2  (symmetric W2 uses an implicit zero point of 2).
 //
-// QuantBZPBegin / HasZeroPoint are accepted for ABI parity with the W4 path
-// but ignored here because the customer model and the production callers
-// rely on the symmetric layout.
+// When QuantBZPBegin is non-null, the per-block zero-point byte stream is in
+// the standard ONNX MatMulNBits W2 layout: 4 zero-points per byte, packed
+// along the K-block axis, row-major in N. Row stride is
+// ZPCountK = ceil(BlockCountK / 4) bytes; the ZP for (n, blk) lives at byte
+// index (n * ZPCountK + blk / 4), at bit offset (blk % 4) * 2.
+//
+// When QuantBZPBegin is null, we fall back to the symmetric default
+// (kDefaultSymmetricZeroPoint2Bit = 2), preserving the prior behavior. The
+// HasZeroPoint flag is informational only: if QuantBZPBegin is non-null we
+// always consume it.
 //
 void MLASCALL
 SQ2BitGemmPackQuantBDataAndBlkSum_Scalar(
@@ -108,7 +116,7 @@ SQ2BitGemmPackQuantBDataAndBlkSum_Scalar(
     const std::byte* QuantBDataBegin,
     const float* QuantBScaleBegin,
     bool /* HasZeroPoint */,
-    const std::byte* /* QuantBZPBegin */,
+    const std::byte* QuantBZPBegin,
     PackedQuantBDataStruct<float, 2>& PackedQuantB,
     MLAS_THREADPOOL* ThreadPool,
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /* BackendKernelSelectorConfig */
@@ -149,15 +157,25 @@ SQ2BitGemmPackQuantBDataAndBlkSum_Scalar(
     // pre-packed B layout:
     //
     //     BlkSum[(n / 16) * BlockCountK * 16 + blk * 16 + (n % 16)]
-    //          = -scale_b * 2   (symmetric W2 uses an implicit ZP of 2)
+    //          = -scale_b * zero_point
     //
     // The allocated BlkSum buffer is sized at MlasDivRoundup(N, 16) * BlockCountK
     // * 16 floats so the layout is well-defined even when N % 16 != 0 (the tail
     // chunk's unused lanes hold whatever the buffer was initialised with, which
     // for production callers must be zero so the SGEMM correction reads zeros).
+    //
+    // Important: ORT's matmul_nbits.cc prepack flow invokes this function up to
+    // three times per node — once each for B, scales, and zero_points — so on
+    // any given invocation only one of (QuantBScaleBegin, QuantBZPBegin) may be
+    // non-null. To get the correct BlkSum we therefore (a) copy scales into the
+    // packed buffer when QuantBScaleBegin is provided, and (b) recompute BlkSum
+    // whenever EITHER scales or zero-points are provided, reading the scales
+    // from the already-packed PackedQuantBScale buffer (which is populated by a
+    // previous call when only ZPs arrive in the current call). This mirrors
+    // the W4 ComputePackBlkSum helper.
+
     if (QuantBScaleBegin != nullptr) {
         float* PackedScales = PackedQuantB.PackedQuantBScale;
-        float* BlkSum = PackedQuantB.QuantBBlkSum;
         MlasTrySimpleParallel(
             ThreadPool, static_cast<ptrdiff_t>(Iterations),
             [&](ptrdiff_t tid) {
@@ -165,8 +183,35 @@ SQ2BitGemmPackQuantBDataAndBlkSum_Scalar(
                 const size_t blk = static_cast<size_t>(tid) % BlockCountK;
                 const float scale = QuantBScaleBegin[n * BlockCountK + blk];
                 PackedScales[PackedQuantBScaleOffset_W2(n, blk, BlockCountK, NMain)] = scale;
+            }
+        );
+    }
+
+    // BlkSum needs to be (re)computed whenever scales or zero-points change.
+    // Source of scales is the already-packed buffer, so this works even when
+    // only zero_points are provided in the current invocation.
+    if (QuantBScaleBegin != nullptr || QuantBZPBegin != nullptr) {
+        const float* PackedScales = PackedQuantB.PackedQuantBScale;
+        float* BlkSum = PackedQuantB.QuantBBlkSum;
+        const size_t ZPCountK = MlasDivRoundup(BlockCountK, 4);
+        MlasTrySimpleParallel(
+            ThreadPool, static_cast<ptrdiff_t>(Iterations),
+            [&](ptrdiff_t tid) {
+                const size_t n = static_cast<size_t>(tid) / BlockCountK;
+                const size_t blk = static_cast<size_t>(tid) % BlockCountK;
+                const float scale =
+                    PackedScales[PackedQuantBScaleOffset_W2(n, blk, BlockCountK, NMain)];
+
+                uint8_t zp = kDefaultSymmetricZeroPoint2Bit;
+                if (QuantBZPBegin != nullptr) {
+                    const size_t zp_byte_idx = n * ZPCountK + (blk / 4);
+                    const size_t zp_bit_off = (blk % 4) * 2;
+                    zp = static_cast<uint8_t>(
+                        (static_cast<uint8_t>(QuantBZPBegin[zp_byte_idx]) >> zp_bit_off) & 0x03u);
+                }
+
                 const size_t blksum_offset = ((n / 16) * BlockCountK + blk) * 16 + (n % 16);
-                BlkSum[blksum_offset] = -scale * static_cast<float>(kDefaultSymmetricZeroPoint2Bit);
+                BlkSum[blksum_offset] = -scale * static_cast<float>(zp);
             }
         );
     }
@@ -184,8 +229,10 @@ SQ2BitGemmPackQuantBDataAndBlkSum_Scalar(
 //                      * dot(int8 a[m, blk, :], uint8 b_unpacked[n, blk, :]) )
 //           + sum_blk( ABlockSum[m, blk] * QuantBBlkSum[n, blk] )
 //
-// The third term applies the symmetric W2 zero-point correction:
-//   QuantBBlkSum[n, blk] = -scale_b * 2, and ABlockSum[m, blk] = scale_a * sum(a).
+// The third term applies the W2 zero-point correction:
+//   QuantBBlkSum[n, blk] = -scale_b * zp, and ABlockSum[m, blk] = scale_a * sum(a).
+// `zp` is the per-block zero point baked in at pack time (defaults to
+// kDefaultSymmetricZeroPoint2Bit = 2 when no zero-point tensor is supplied).
 //
 size_t MLASCALL
 SQ2BitGemmKernel_BlkSum_CompInt8_Scalar(
@@ -243,10 +290,11 @@ SQ2BitGemmKernel_BlkSum_CompInt8_Scalar(
                 // Integer term * scales.
                 acc += a_scale_row[blk] * b_scale_col[blk] * static_cast<float>(dot);
 
-                // Symmetric W2 zero-point correction:
+                // W2 zero-point correction:
                 // dot(a, b_signed) = dot(a, b_unsigned) - zp * sum(a)
                 // so we need C += scale_a * scale_b * (-zp) * sum(a)
-                //          = ABlockSum * QuantBBlkSum (where QuantBBlkSum already encodes -scale_b * zp).
+                //          = ABlockSum * QuantBBlkSum (QuantBBlkSum encodes -scale_b * zp,
+                //            with zp = per-block ZP or 2 when no ZP tensor was supplied).
                 acc += a_blksum_row[blk] * b_blksum_col[blk];
             }
 

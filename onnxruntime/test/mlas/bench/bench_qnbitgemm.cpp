@@ -146,21 +146,23 @@ BENCHMARK(QNBITGEMM<MLAS_FP16, 4>)->Apply(QNBitGemmArgs<MLAS_FP16>)->UseRealTime
 //   (K=1024, N=384):  20 nodes
 //   (K=1024, N=4096): 20 nodes
 //   (K=4096, N=1024): 20 nodes
-// M=128 is the widest-gap prefill shape from e2e benchmarks.
+// Both M=1 (decode) and M=128 (prefill) are exercised — paired with the W2
+// rows below so we get a 3-way (W2 / W4 / W8) comparison at each M.
 static void QNBitGemmCustomerArgs(benchmark::internal::Benchmark* b) {
   b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "HasBias", "ComputeType"});
-  const int64_t M = 128;
   const int64_t BlkLen = 64;
   const int64_t Threads = 8;
   const int64_t Symmetric = 1;
   const int64_t HasBias = 1;
-  for (auto kn : {std::pair<int64_t, int64_t>{384, 1024},
-                  std::pair<int64_t, int64_t>{1024, 192},
-                  std::pair<int64_t, int64_t>{1024, 384},
-                  std::pair<int64_t, int64_t>{1024, 4096},
-                  std::pair<int64_t, int64_t>{4096, 1024}}) {
-    for (int64_t ct : {int64_t{SQNBIT_CompFp32}, int64_t{SQNBIT_CompInt8}}) {
-      b->Args({BlkLen, M, kn.second, kn.first, Threads, Symmetric, HasBias, ct});
+  for (int64_t M : {int64_t{1}, int64_t{128}}) {
+    for (auto kn : {std::pair<int64_t, int64_t>{384, 1024},
+                    std::pair<int64_t, int64_t>{1024, 192},
+                    std::pair<int64_t, int64_t>{1024, 384},
+                    std::pair<int64_t, int64_t>{1024, 4096},
+                    std::pair<int64_t, int64_t>{4096, 1024}}) {
+      for (int64_t ct : {int64_t{SQNBIT_CompFp32}, int64_t{SQNBIT_CompInt8}}) {
+        b->Args({BlkLen, M, kn.second, kn.first, Threads, Symmetric, HasBias, ct});
+      }
     }
   }
 }
@@ -170,24 +172,32 @@ BENCHMARK(QNBITGEMM<float, 4>)->Apply(QNBitGemmCustomerArgs)->UseRealTime();
 // 2-bit weight rows for the customer shapes. Exercises the AVX-512 W2 native
 // path (VNNI variant on AVX-512-VNNI hosts; non-VNNI variant on AVX-512BW
 // hosts). W2 is registered only for SQNBIT_CompInt8 and BlkLen=64, so we
-// emit just that one ComputeType.
+// emit just that one ComputeType. Covers both M=1 (decode) and M=128 (prefill).
 static void QNBit2BitCustomerArgs(benchmark::internal::Benchmark* b) {
   b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "HasBias", "ComputeType"});
-  const int64_t M = 128;
   const int64_t BlkLen = 64;
   const int64_t Threads = 8;
   const int64_t Symmetric = 1;  // W2 native path is symmetric-only.
   const int64_t HasBias = 1;
-  for (auto kn : {std::pair<int64_t, int64_t>{384, 1024},
-                  std::pair<int64_t, int64_t>{1024, 192},
-                  std::pair<int64_t, int64_t>{1024, 384},
-                  std::pair<int64_t, int64_t>{1024, 4096},
-                  std::pair<int64_t, int64_t>{4096, 1024}}) {
-    b->Args({BlkLen, M, kn.second, kn.first, Threads, Symmetric, HasBias, int64_t{SQNBIT_CompInt8}});
+  for (int64_t M : {int64_t{1}, int64_t{128}}) {
+    for (auto kn : {std::pair<int64_t, int64_t>{384, 1024},
+                    std::pair<int64_t, int64_t>{1024, 192},
+                    std::pair<int64_t, int64_t>{1024, 384},
+                    std::pair<int64_t, int64_t>{1024, 4096},
+                    std::pair<int64_t, int64_t>{4096, 1024}}) {
+      b->Args({BlkLen, M, kn.second, kn.first, Threads, Symmetric, HasBias, int64_t{SQNBIT_CompInt8}});
+    }
   }
 }
 
 BENCHMARK(QNBITGEMM<float, 2>)->Apply(QNBit2BitCustomerArgs)->UseRealTime();
+
+// 8-bit weight rows on the customer shapes. Used to confirm whether the W2-vs-W4
+// gap is driven by B-weight unpacking cost: W8 has zero unpacking (one byte per
+// weight, direct vmovdqu8 + dpbusd), W4 has cheap nibble extraction, W2 has the
+// most expensive unpack path. If unpack-density is the bottleneck, expect
+// W8 < W4 < W2 in per-MAC cycles at the larger N shapes.
+BENCHMARK(QNBITGEMM<float, 8>)->Apply(QNBit2BitCustomerArgs)->UseRealTime();
 
 // This test gets benchmark arguments from environment variables.
 template <typename AType, size_t BlkBitWidth>
