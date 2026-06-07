@@ -56,9 +56,14 @@ parameters:
   displayName: 'Linux aarch64 docker base image'
   default: ''
 
-- name: cmake_cuda_archs
+- name: cmake_windows_cuda_archs
   type: string
-  displayName: 'CMAKE_CUDA_ARCHITECTURES'
+  displayName: 'Windows CMAKE_CUDA_ARCHITECTURES'
+  default: '52-real;61-real;75-real;86-real;89-real;90-virtual'
+
+- name: cmake_linux_cuda_archs
+  type: string
+  displayName: 'Linux CMAKE_CUDA_ARCHITECTURES'
   default: '52-real;61-real;75-real;86-real;89-real;90-virtual'
 
 - name: python_version
@@ -133,7 +138,7 @@ stages:
         parameters:
           arch: 'x64'
           cuda_version: ${{ parameters.cuda_version }}
-          cmake_cuda_archs: ${{ parameters.cmake_cuda_archs }}
+          cmake_cuda_archs: ${{ parameters.cmake_windows_cuda_archs }}
           package_version: ${{ parameters.package_type }}
           version_file: ${{ parameters.version_file }}
           python_package_name: ${{ parameters.python_package_name }}
@@ -145,7 +150,7 @@ stages:
         parameters:
           arch: 'arm64'
           cuda_version: ${{ parameters.cuda_version }}
-          cmake_cuda_archs: ${{ parameters.cmake_cuda_archs }}
+          cmake_cuda_archs: ${{ parameters.cmake_windows_cuda_archs }}
           package_version: ${{ parameters.package_type }}
           version_file: ${{ parameters.version_file }}
           python_package_name: ${{ parameters.python_package_name }}
@@ -159,7 +164,7 @@ stages:
           arch: 'x64'
           machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
           cuda_version: ${{ parameters.cuda_version }}
-          cmake_cuda_archs: ${{ parameters.cmake_cuda_archs }}
+          cmake_cuda_archs: ${{ parameters.cmake_linux_cuda_archs }}
           package_version: ${{ parameters.package_type }}
           version_file: ${{ parameters.version_file }}
           python_package_name: ${{ parameters.python_package_name }}
@@ -177,7 +182,7 @@ stages:
           arch: 'aarch64'
           machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
           cuda_version: ${{ parameters.cuda_version }}
-          cmake_cuda_archs: ${{ parameters.cmake_cuda_archs }}
+          cmake_cuda_archs: ${{ parameters.cmake_linux_cuda_archs }}
           package_version: ${{ parameters.package_type }}
           version_file: ${{ parameters.version_file }}
           python_package_name: ${{ parameters.python_package_name }}
