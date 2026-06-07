@@ -2104,13 +2104,15 @@ class TestInferenceSession(unittest.TestCase):
             np.testing.assert_allclose(value.numpy(), expected_val.numpy())
 
     def test_adapter_parameters_keep_alive(self):
-        # Regression test: AdapterFormat.get_parameters() returned OrtValue
-        # wrappers over non-owning C OrtValue* views into the parent adapter,
-        # with nothing keeping the parent alive. The natural pattern below
-        # dropped the parent and left the dict with dangling pointers, causing
-        # a use-after-free on the next access. The Python wrapper now pins the
-        # owning C AdapterFormat on every OrtValue it hands back, so callers
-        # that keep any of the values keep the backing adapter alive too.
+        # Regression test: AdapterFormat.read_adapter returned OrtValue views
+        # over storage owned by the C AdapterFormat with nothing keeping the
+        # parent alive. The natural pattern below dropped the parent and left
+        # the dict with dangling pointers, causing a use-after-free on the
+        # next access. read_adapter now pins the owning C AdapterFormat on
+        # every OrtValue it produces (pybind11 add_patient via
+        # keep_alive_impl), so the dict and any individual value keep the
+        # backing adapter alive on their own. Mirrors the strong-ref pattern
+        # used by the SparseTensor view bindings.
         adapter_version = 1
         model_version = 1
         file_path = pathlib.Path(os.path.realpath(__file__)).parent

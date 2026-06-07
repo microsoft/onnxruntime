@@ -107,23 +107,11 @@ class AdapterFormat:
         self._adapter.parameters = {k: v._ortvalue for k, v in params.items()}
 
     def get_parameters(self) -> dict[str, OrtValue]:
-        # The C-level OrtValues stored in `self._adapter.parameters` are non-owning
-        # views into the adapter's internal storage. The C-level `parameters`
-        # getter has a pybind11 keep_alive policy that ties the returned dict to
-        # the C AdapterFormat, but here we build a fresh Python dict of new
-        # `OrtValue` wrappers; that fresh dict has no link back to self._adapter,
-        # so without an explicit reference here, users who do
-        #     params = ort.AdapterFormat.read_adapter(path).get_parameters()
-        # would get OrtValues that dangle as soon as the temporary AdapterFormat
-        # is destroyed. Pin self._adapter on every returned OrtValue so the
-        # backing adapter stays alive at least as long as any value held by the
-        # caller.
-        result: dict[str, OrtValue] = {}
-        for k, v in self._adapter.parameters.items():
-            ov = OrtValue(v)
-            ov._adapter_keepalive = self._adapter
-            result[k] = ov
-        return result
+        # Each call to the C getter rebuilds the dict and pins the owning
+        # C AdapterFormat onto every returned OrtValue (pybind11 add_patient
+        # via keep_alive_impl), so callers can drop this AdapterFormat and
+        # the dict (or any individual value) keeps the backing adapter alive.
+        return {k: OrtValue(v) for k, v in self._adapter.parameters.items()}
 
 
 def check_and_normalize_provider_args(
