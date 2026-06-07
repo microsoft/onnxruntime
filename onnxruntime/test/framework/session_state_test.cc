@@ -3,6 +3,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <absl/base/config.h>
 
 #include "asserts.h"
@@ -141,7 +142,7 @@ class TestOpKernel : public OpKernel {
 class SessionStateAddGetKernelTest : public testing::TestWithParam<int> {};
 
 TEST_P(SessionStateAddGetKernelTest, AddGetKernelTest) {
-  OrtThreadPoolParams to;
+  OrtThreadPoolParams to{};
   to.thread_pool_size = GetParam();
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
   ONNX_OPERATOR_SCHEMA(Variable)
@@ -231,8 +232,8 @@ class SessionStateTestP : public testing::TestWithParam<TestParam> {};
 // Test that we separate out constant and non-constant initializers correctly
 TEST_P(SessionStateTestP, TestInitializerProcessing) {
   const TestParam& param = GetParam();
-  OrtThreadPoolParams to;
-  to.thread_pool_size = to.thread_pool_size;
+  OrtThreadPoolParams to{};
+  to.thread_pool_size = param.thread_count;
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
 
   std::basic_ostringstream<ORTCHAR_T> oss;
@@ -471,7 +472,7 @@ void LoadWithResourceAwarePartitioning(const ORTCHAR_T* model_path,
   Graph& graph = model->MainGraph();
   ASSERT_STATUS_OK(graph.Resolve());
 
-  OrtThreadPoolParams to;
+  OrtThreadPoolParams to{};
   to.thread_pool_size = 1;
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
 
@@ -833,17 +834,31 @@ struct PrepackingTestParam {
   bool test_prepacking;
 };
 
+namespace {
+// The PrePackingTest schema is registered into the global ONNX schema registry. Register it only
+// once to avoid duplicate-registration warnings when multiple tests/fixtures run in the same process.
+void RegisterPrePackingTestSchemaOnce() {
+  static std::once_flag pre_packing_schema_registered;
+  std::call_once(pre_packing_schema_registered, []() {
+    ONNX_OPERATOR_SCHEMA(PrePackingTest)
+        .SetDoc("Faking Node for PrePacking")
+        .Input(0, "Input_0", "input 0", "tensor(float)")
+        .Input(1, "Input_1", "input 1", "tensor(float)")
+        .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
+  });
+}
+}  // namespace
+
 class SessionStatePrepackingTest : public testing::TestWithParam<PrepackingTestParam> {};
 TEST_P(SessionStatePrepackingTest, PrePackingTest) {
   PrepackingTestParam test_param = GetParam();
 
-  OrtThreadPoolParams to;
+  OrtThreadPoolParams to{};
+  // Use a small, fixed intra-op pool size to keep thread/memory overhead low (e.g., under ASan)
+  // while still exercising the non-null threadpool path.
+  to.thread_pool_size = 2;
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
-  ONNX_OPERATOR_SCHEMA(PrePackingTest)
-      .SetDoc("Faking Node for PrePacking")
-      .Input(0, "Input_0", "input 0", "tensor(float)")
-      .Input(1, "Input_1", "input 1", "tensor(float)")
-      .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
+  RegisterPrePackingTestSchemaOnce();
 
   ExecutionProviders execution_providers;
   auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
@@ -917,13 +932,11 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
   std::unique_ptr<concurrency::ThreadPool> tp;
 
   void SetUp() override {
-    OrtThreadPoolParams to;
+    OrtThreadPoolParams to{};
+    // Use a small, fixed intra-op pool size to keep thread/memory overhead low (e.g., under ASan).
+    to.thread_pool_size = 2;
     tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
-    ONNX_OPERATOR_SCHEMA(PrePackingTest)
-        .SetDoc("Faking Node for PrePacking")
-        .Input(0, "Input_0", "input 0", "tensor(float)")
-        .Input(1, "Input_1", "input 1", "tensor(float)")
-        .Output(0, "output_0", "docstr for output_0.", "tensor(float)");
+    RegisterPrePackingTestSchemaOnce();
 
     auto cpu_execution_provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo(false));
     ASSERT_STATUS_OK(execution_providers.Add(kCpuExecutionProvider, std::move(cpu_execution_provider)));

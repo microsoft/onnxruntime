@@ -15,6 +15,22 @@
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/test_utils.h"
 
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/framework/config_options.h"
+#include "core/framework/execution_providers.h"
+#include "core/framework/ep_context_options.h"
+#include "core/framework/fuse_nodes_funcs.h"
+#include "core/framework/graph_partitioner.h"
+#include "core/framework/kernel_registry_manager.h"
+#include "core/framework/model_metadef_id_generator.h"
+#include "core/framework/resource_accountant.h"
+#include "core/graph/constants.h"
+#include "core/optimizer/graph_optimizer_registry.h"
+#include "core/providers/partitioning_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "test/unittest_util/graph_transform_test_builder.h"
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
@@ -31,6 +47,212 @@ using namespace onnxruntime::internal_testing_ep;
 // tests use onnx format models currently so exclude them from a minimal build.
 // it would be possible to use ORT format models but the same partitioning code would run either way
 #if !defined(ORT_MINIMAL_BUILD)
+
+// These NHWC two-pass partitioning helpers and tests only use ONNX-domain ops
+// (Conv, LogSoftmax) and core framework utilities, so they are intentionally not
+// guarded by DISABLE_CONTRIB_OPS and provide regression coverage in contrib-disabled builds.
+namespace {
+
+class TwoPassNhwcTestExecutionProvider : public IExecutionProvider {
+ public:
+  TwoPassNhwcTestExecutionProvider() : IExecutionProvider{"TwoPassNhwcTestExecutionProvider"} {
+  }
+
+  DataLayout GetPreferredLayout() const override {
+    return DataLayout::NHWC;
+  }
+
+  std::vector<std::unique_ptr<ComputeCapability>>
+  GetCapability(const GraphViewer& graph_viewer,
+                const IKernelLookup&,
+                const GraphOptimizerRegistry&,
+                IResourceAccountant*) const override {
+    // Detect second pass by checking if any node already has our EP type assigned
+    // (set during the first-pass assignment). Real NHWC EPs use this pattern to
+    // recognize nodes that were transformed into kMSInternalNHWCDomain.
+    bool second_pass = false;
+    for (const auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
+      const Node* node = graph_viewer.GetNode(node_index);
+      if (node != nullptr && node->GetExecutionProviderType() == Type()) {
+        second_pass = true;
+        break;
+      }
+    }
+
+    auto generate_metadef_name = [this, &graph_viewer]() {
+      HashValue model_hash;
+      const int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
+      return std::string(Type()) + "_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id);
+    };
+
+    std::vector<std::unique_ptr<ComputeCapability>> capabilities;
+    for (const auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
+      const Node* node = graph_viewer.GetNode(node_index);
+      if (node == nullptr) {
+        continue;
+      }
+
+      const bool is_conv = node->OpType() == "Conv";
+      const bool is_log_softmax = node->OpType() == "LogSoftmax";
+      if (!is_conv && !is_log_softmax) {
+        continue;
+      }
+
+      if (second_pass && is_log_softmax) {
+        continue;
+      }
+
+      const auto& assigned_ep = node->GetExecutionProviderType();
+      if (!assigned_ep.empty() && assigned_ep != Type()) {
+        continue;
+      }
+
+      capabilities.push_back(utils::MakeComputeCapability(graph_viewer,
+                                                          std::vector<const Node*>{node},
+                                                          generate_metadef_name,
+                                                          Type(),
+                                                          false));
+    }
+
+    return capabilities;
+  }
+
+  Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
+                 std::vector<NodeComputeInfo>& node_compute_funcs) override {
+    for (size_t i = 0; i < fused_nodes.size(); ++i) {
+      NodeComputeInfo compute_info;
+      compute_info.create_state_func = [](ComputeContext*, FunctionState*) { return 0; };
+      compute_info.release_state_func = [](FunctionState) {};
+      compute_info.compute_func = [](FunctionState, const OrtApi*, OrtKernelContext*) {
+        return Status::OK();
+      };
+      node_compute_funcs.push_back(std::move(compute_info));
+    }
+
+    return Status::OK();
+  }
+
+ private:
+  mutable ModelMetadefIdGenerator metadef_id_generator_;
+};
+
+// Variant of the two-pass NHWC EP used to validate that the resource accountant
+// is updated correctly across the NHWC two-pass partitioning flow.
+//
+// It reports kCudaExecutionProvider as its type so that the SizeBasedStatsAccountant
+// (which CreateAccountants registers under kCudaExecutionProvider) is wired to it,
+// mirroring the real in-tree CUDA EP. Like the CUDA EP, it attaches accounting costs
+// only to first-pass (newly claimed) capabilities. Second-pass survivors are already
+// tagged with this EP and take the "previously assigned" branch, so they carry no
+// cost and rely on the partitioner's deferred commit (using the captured first-pass
+// costs) for their budget. Dropped nodes therefore never leak budget.
+class AccountingNhwcTestExecutionProvider : public IExecutionProvider {
+ public:
+  AccountingNhwcTestExecutionProvider() : IExecutionProvider{kCudaExecutionProvider} {
+  }
+
+  DataLayout GetPreferredLayout() const override {
+    return DataLayout::NHWC;
+  }
+
+  std::vector<std::unique_ptr<ComputeCapability>>
+  GetCapability(const GraphViewer& graph_viewer,
+                const IKernelLookup&,
+                const GraphOptimizerRegistry&,
+                IResourceAccountant* resource_accountant) const override {
+    if (resource_accountant != nullptr) {
+      observed_accountant_ = resource_accountant;
+    }
+
+    bool second_pass = false;
+    for (const auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
+      const Node* node = graph_viewer.GetNode(node_index);
+      if (node != nullptr && node->GetExecutionProviderType() == Type()) {
+        second_pass = true;
+        break;
+      }
+    }
+
+    auto generate_metadef_name = [this, &graph_viewer]() {
+      HashValue model_hash;
+      const int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
+      return std::string(Type()) + "_" + std::to_string(model_hash) + "_" + std::to_string(metadef_id);
+    };
+
+    std::vector<std::unique_ptr<ComputeCapability>> capabilities;
+    for (const auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
+      const Node* node = graph_viewer.GetNode(node_index);
+      if (node == nullptr) {
+        continue;
+      }
+
+      const bool is_conv = node->OpType() == "Conv";
+      const bool is_log_softmax = node->OpType() == "LogSoftmax";
+      if (!is_conv && !is_log_softmax) {
+        continue;
+      }
+
+      // Drop LogSoftmax on the second pass to model the EP releasing a node that
+      // it tentatively claimed on the first pass.
+      if (second_pass && is_log_softmax) {
+        continue;
+      }
+
+      const auto& assigned_ep = node->GetExecutionProviderType();
+      if (!assigned_ep.empty() && assigned_ep != Type()) {
+        continue;
+      }
+
+      const bool already_claimed = (assigned_ep == Type());
+
+      auto capability = utils::MakeComputeCapability(graph_viewer,
+                                                     std::vector<const Node*>{node},
+                                                     generate_metadef_name,
+                                                     Type(),
+                                                     false);
+
+      // Mirror the in-tree CUDA EP: only newly-claimed (first-pass) capabilities carry
+      // accounting costs. Already-tagged second-pass survivors take the "previously
+      // assigned" branch and carry no cost.
+      if (resource_accountant != nullptr && !already_claimed) {
+        capability->sub_graph->SetAccountant(resource_accountant);
+        for (auto cost_node_index : capability->sub_graph->nodes) {
+          const Node* cost_node = graph_viewer.GetNode(cost_node_index);
+          capability->sub_graph->AppendNodeCost(resource_accountant->ComputeResourceCount(*cost_node));
+        }
+      }
+
+      capabilities.push_back(std::move(capability));
+    }
+
+    return capabilities;
+  }
+
+  Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
+                 std::vector<NodeComputeInfo>& node_compute_funcs) override {
+    for (size_t i = 0; i < fused_nodes.size(); ++i) {
+      NodeComputeInfo compute_info;
+      compute_info.create_state_func = [](ComputeContext*, FunctionState*) { return 0; };
+      compute_info.release_state_func = [](FunctionState) {};
+      compute_info.compute_func = [](FunctionState, const OrtApi*, OrtKernelContext*) {
+        return Status::OK();
+      };
+      node_compute_funcs.push_back(std::move(compute_info));
+    }
+
+    return Status::OK();
+  }
+
+  IResourceAccountant* observed_accountant() const {
+    return observed_accountant_;
+  }
+
+ private:
+  mutable ModelMetadefIdGenerator metadef_id_generator_;
+  mutable IResourceAccountant* observed_accountant_ = nullptr;
+};
+
+}  // namespace
 
 #define ORT_MODEL_FOLDER ORT_TSTR("testdata/")
 
@@ -127,6 +349,191 @@ TEST(InternalTestingEP, TestDependenciesCorrectlyHandled) {
 
   ASSERT_EQ(num_partitions, 2);
   ASSERT_EQ(num_other_nodes, 2);
+}
+
+TEST(InternalTestingEP, NhwcSecondPassDropFallsBackFromCpuKernelNode) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}, {kMSDomain, 1}};
+  Model model("NhwcSecondPassDropFallsBackFromCpuKernelNode",
+              false,
+              ModelMetaData(),
+              PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version,
+              {},
+              DefaultLoggingManager().DefaultLogger());
+
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  const std::vector<int64_t> tensor_shape{1, 1, 3, 3};
+  auto* input = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* weights = builder.MakeInitializer<float>(std::vector<int64_t>{1, 1, 1, 1}, std::vector<float>{1.0f});
+  auto* conv_output = builder.MakeIntermediate<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* output = builder.MakeOutput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+
+  builder.AddConvNode(input, weights, conv_output);
+  builder.AddNode("LogSoftmax", std::vector<NodeArg*>{conv_output}, std::vector<NodeArg*>{output});
+  builder.SetGraphOutputs();
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_data;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&model_data));
+
+  SessionOptions so;
+  auto session = std::make_unique<InferenceSessionWrapper>(so, GetEnvironment());
+  ASSERT_STATUS_OK(session->RegisterExecutionProvider(std::make_unique<TwoPassNhwcTestExecutionProvider>()));
+
+  ASSERT_STATUS_OK(session->Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session->Initialize());
+
+  bool saw_log_softmax = false;
+  int num_ep_nodes = 0;
+  for (const auto& node : session->GetGraph().Nodes()) {
+    if (node.GetExecutionProviderType() == "TwoPassNhwcTestExecutionProvider") {
+      ++num_ep_nodes;
+    }
+
+    if (node.OpType() == "LogSoftmax") {
+      saw_log_softmax = true;
+      EXPECT_NE(node.GetExecutionProviderType(), "TwoPassNhwcTestExecutionProvider");
+    }
+  }
+
+  EXPECT_GT(num_ep_nodes, 0);
+  EXPECT_TRUE(saw_log_softmax);
+}
+
+// Validates that the resource accountant is updated correctly across the NHWC two-pass
+// partitioning flow: a node tentatively claimed on the first pass but dropped on the
+// second pass must NOT consume budget (no phantom), while a node that survives must be
+// committed exactly once (no double-count). This guards the fix where first-pass NHWC
+// tags are tentative and budget is committed only for second-pass survivors.
+TEST(InternalTestingEP, NhwcTwoPassAccountingCommitsOnlySurvivors) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}, {kMSDomain, 1}};
+  Model model("NhwcTwoPassAccountingCommitsOnlySurvivors",
+              false,
+              ModelMetaData(),
+              PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version,
+              {},
+              DefaultLoggingManager().DefaultLogger());
+
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  const std::vector<int64_t> tensor_shape{1, 1, 3, 3};
+  auto* input = builder.MakeInput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* weights = builder.MakeInitializer<float>(std::vector<int64_t>{1, 1, 1, 1}, std::vector<float>{1.0f});
+  auto* conv_output = builder.MakeIntermediate<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+  auto* output = builder.MakeOutput<float>(std::optional<std::vector<int64_t>>{tensor_shape});
+
+  builder.AddConvNode(input, weights, conv_output);
+  builder.AddNode("LogSoftmax", std::vector<NodeArg*>{conv_output}, std::vector<NodeArg*>{output});
+  builder.SetGraphOutputs();
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // Helper to read the size_t held by a ResourceCount.
+  auto get_size = [](const ResourceCount& rc) -> size_t {
+    const auto* value = std::get_if<size_t>(&rc);
+    EXPECT_NE(value, nullptr) << "ResourceCount does not hold size_t";
+    return value != nullptr ? *value : 0;
+  };
+
+  // Build a fresh ad-hoc accountant (no stats file) via the real factory.
+  auto make_accountant = [](std::optional<ResourceAccountantMap>& acc_map) -> IResourceAccountant* {
+    ConfigOptions config;
+    // Large memory limit so nothing is offloaded; empty stats file => ad-hoc cost mode.
+    EXPECT_STATUS_OK(config.AddConfigEntry(kOrtSessionOptionsResourceCudaPartitioningSettings, "1048576,"));
+    EXPECT_STATUS_OK(CreateAccountants(config, PathString(), acc_map));
+    EXPECT_TRUE(acc_map.has_value());
+    auto it = acc_map->find(kCudaExecutionProvider);
+    return it != acc_map->end() ? it->second.get() : nullptr;
+  };
+
+  // Reference per-node costs computed independently on fresh accountants.
+  const Node* conv_node = nullptr;
+  const Node* log_softmax_node = nullptr;
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "Conv") {
+      conv_node = &node;
+    } else if (node.OpType() == "LogSoftmax") {
+      log_softmax_node = &node;
+    }
+  }
+  ASSERT_NE(conv_node, nullptr);
+  ASSERT_NE(log_softmax_node, nullptr);
+
+  std::optional<ResourceAccountantMap> ref_conv_map;
+  std::optional<ResourceAccountantMap> ref_ls_map;
+  IResourceAccountant* ref_conv_acc = make_accountant(ref_conv_map);
+  IResourceAccountant* ref_ls_acc = make_accountant(ref_ls_map);
+  ASSERT_NE(ref_conv_acc, nullptr);
+  ASSERT_NE(ref_ls_acc, nullptr);
+  const size_t expected_conv_cost = get_size(ref_conv_acc->ComputeResourceCount(*conv_node));
+  const size_t expected_log_softmax_cost = get_size(ref_ls_acc->ComputeResourceCount(*log_softmax_node));
+  ASSERT_GT(expected_conv_cost, 0u);
+  ASSERT_GT(expected_log_softmax_cost, 0u);
+
+  // Drive partitioning directly with the accounting-aware NHWC EP. The accountant is
+  // created internally by GraphPartitioner from the config option below (keyed to
+  // kCudaExecutionProvider, which matches the EP's type).
+  ExecutionProviders execution_providers;
+  auto& default_logger = DefaultLoggingManager().DefaultLogger();
+  auto ep = std::make_unique<AccountingNhwcTestExecutionProvider>();
+  auto* ep_raw = ep.get();
+  ep->SetLogger(&default_logger);
+  ASSERT_STATUS_OK(execution_providers.Add(kCudaExecutionProvider, std::move(ep)));
+
+  KernelRegistryManager krm;
+  ASSERT_STATUS_OK(krm.RegisterKernels(execution_providers));
+
+  SessionOptions sess_options;
+  ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsResourceCudaPartitioningSettings, "1048576,"));
+
+  // Capture the accountant's consumed amount when the survivor partition is assigned.
+  // on_partition_assignment_fn runs after GetCapabilityForEP completes (and therefore
+  // after the deferred commit), but before PlaceNode adds any further cost.
+  std::optional<size_t> observed_consumed;
+  OnPartitionAssignmentFunction on_assignment =
+      [&](const Graph&, const ComputeCapability&, const std::string& assigned_ep_type) {
+        if (assigned_ep_type == kCudaExecutionProvider && ep_raw->observed_accountant() != nullptr) {
+          observed_consumed = get_size(ep_raw->observed_accountant()->GetConsumedAmount());
+        }
+      };
+
+  auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(
+      &sess_options, nullptr /*cpu_ep*/, &default_logger);
+
+  GraphPartitioner partitioner(krm, execution_providers, std::move(graph_optimizer_registry), []() -> bool { return false; }, on_assignment);
+
+  layout_transformation::TransformLayoutFunction transform_layout_fn =
+      [](Graph&, bool& modified, const IExecutionProvider&,
+         const layout_transformation::DebugGraphFn&) -> Status {
+    modified = false;
+    return Status::OK();
+  };
+  layout_transformation::DebugGraphFn debug_graph_fn;
+
+  FuncManager func_mgr;
+  ASSERT_STATUS_OK(
+      partitioner.Partition(graph, func_mgr, transform_layout_fn,
+                            sess_options.config_options, default_logger, nullptr /*layering_index*/,
+                            GraphPartitioner::Mode::kNormal,
+                            epctx::ModelGenOptions{},
+                            debug_graph_fn));
+
+  ASSERT_TRUE(observed_consumed.has_value())
+      << "Expected the surviving Conv partition to be assigned to the EP.";
+  // Conv survived: committed exactly once.
+  EXPECT_EQ(*observed_consumed, expected_conv_cost)
+      << "Survivor Conv should be committed exactly once.";
+  // LogSoftmax was dropped on the second pass: its cost must not leak (no phantom budget).
+  EXPECT_NE(*observed_consumed, expected_conv_cost + expected_log_softmax_cost)
+      << "Dropped LogSoftmax must not consume budget.";
 }
 
 // Infrastructure that was used to check NNAPI coverage.

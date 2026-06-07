@@ -283,6 +283,15 @@ The value of `session.resource_cuda_partitioning_settings` is a comma-separated 
 
 The stats file path follows the same resolution rules described above: relative paths are resolved against the model's directory, absolute paths are used as-is.
 
+### Interaction with NHWC Layout (`prefer_nhwc`)
+
+EPs that prefer the NHWC data layout — for example, the CUDA EP when it is created with the provider option `prefer_nhwc=1` (CUDA plugin EP: session option `ep.cuda.prefer_nhwc_layout=1`) — partition layout-sensitive subgraphs in two passes:
+
+1. **First pass (tentative):** The EP tags the nodes it could claim so the layout transformer can rewrite them into the NHWC (`com.microsoft.nhwc`) form.
+2. **Second pass (final):** After the layout transform, the EP runs capability detection again and fuses/optimizes the rewritten nodes. Some first-pass nodes may be dropped here (for example, a node whose NHWC form is not actually supported), in which case they fall back to a later EP.
+
+Because the first-pass tags are tentative, ONNX Runtime does **not** commit any memory budget for them. The budget is committed only for the nodes that survive the second pass; the cost of a node that is dropped is never counted against the memory limit. This keeps the accumulated memory estimate accurate when `prefer_nhwc` is combined with `session.resource_cuda_partitioning_settings`, so a dropped node does not consume phantom budget that could prematurely halt assignment of later nodes.
+
 ## Combining Both Features
 Layer annotations and capacity-aware partitioning can be used together. When both are configured:
 - Layer annotations provide the initial node-to-device mapping.
