@@ -84,8 +84,7 @@ inline constexpr size_t kNRows2 = 2;
 // Dequant one 64-element 2-bit weight block from the packed (broadcast +
 // shift) layout into a ZMM of 64 unsigned bytes in [0, 3].
 //
-// Bytes 0..15  : weights[0..15]   (shift 0, & 0x03)
-// Bytes 16..31 : weights[16..31]  (shift 2, & 0x03)
+// Bytes 0..15  : weights[0..15]   (shift 0, & 0x03)  / Bytes 16..31 : weights[16..31]  (shift 2, & 0x03)
 // Bytes 32..47 : weights[32..47]  (shift 4, & 0x03)
 // Bytes 48..63 : weights[48..63]  (shift 6, & 0x03)
 //
