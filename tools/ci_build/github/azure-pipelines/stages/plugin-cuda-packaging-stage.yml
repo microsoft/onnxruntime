@@ -24,6 +24,11 @@ parameters:
   displayName: 'CUDA Version'
   default: '12.8'
 
+- name: arm64_cuda_version
+  type: string
+  displayName: 'Windows ARM64 CUDA Version'
+  default: '13.1'
+
 - name: package_type
   displayName: 'Package Type'
   type: string
@@ -120,10 +125,14 @@ stages:
             $metadata = [ordered]@{
               cuda_version = '${{ parameters.cuda_version }}'
               cuda_version_no_dot = '${{ replace(parameters.cuda_version, '.', '') }}'
+              cuda_version_win_x64 = '${{ parameters.cuda_version }}'
+              cuda_version_win_x64_no_dot = '${{ replace(parameters.cuda_version, '.', '') }}'
+              cuda_version_win_arm64 = '${{ parameters.arm64_cuda_version }}'
+              cuda_version_win_arm64_no_dot = '${{ replace(parameters.arm64_cuda_version, '.', '') }}'
               docker_base_image_linux_x64 = '${{ parameters.docker_base_image }}'
               python_artifact_linux_x64 = 'cuda_plugin_python_linux_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}'
               python_artifact_win_x64 = 'cuda_plugin_python_win_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}'
-              python_artifact_win_arm64 = 'cuda_plugin_python_win_arm64_cuda${{ replace(parameters.cuda_version, '.', '') }}'
+              python_artifact_win_arm64 = 'cuda_plugin_python_win_arm64_cuda${{ replace(parameters.arm64_cuda_version, '.', '') }}'
               nuget_artifact = 'cuda_plugin_nuget'
             }
 
@@ -150,6 +159,7 @@ stages:
         parameters:
           arch: 'arm64'
           cuda_version: ${{ parameters.cuda_version }}
+          arm64_cuda_version: ${{ parameters.arm64_cuda_version }}
           cmake_cuda_archs: ${{ parameters.cmake_arm64_cuda_archs }}
           package_version: ${{ parameters.package_type }}
           version_file: ${{ parameters.version_file }}
