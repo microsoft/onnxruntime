@@ -170,10 +170,12 @@ void addAdapterFormatMethods(pybind11::module& m) {
             const int model_version = adapter_ptr->ModelVersion();
 
             // Transfer ownership of the LoraAdapter to a capsule.
-            lora::LoraAdapter* raw_adapter = adapter_ptr.release();
-            py::capsule adapter_capsule(raw_adapter, [](void* p) {
+            // Construct capsule while unique_ptr still owns the pointer, so
+            // if capsule allocation throws, unique_ptr cleans up.
+            py::capsule adapter_capsule(adapter_ptr.get(), [](void* p) {
               delete static_cast<lora::LoraAdapter*>(p);
             });
+            lora::LoraAdapter* raw_adapter = adapter_ptr.release();
 
             // Build the parameters dict with OrtValue views pinned to the capsule.
             py::dict params;
