@@ -1,9 +1,13 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
 """End-to-end tests for the top-level build() orchestrator.
 
-Combines focused unit tests with a fixture-driven runner that targets
-``build-*`` cases from the ``testcases/`` fixtures. We run each fixture
-for every supported generator and diff the resulting files
-byte-for-byte against the ``expected/<generator>/`` golden tree.
+Combines focused unit tests with a fixture-driven runner over the
+``build-*`` cases in ``testcases/``. Generated files are compared
+against the ``expected/<generator>/`` golden tree using
+``canonicalize`` (content-equivalence, not byte-for-byte), so
+host-dependent ``__str_N`` numbering / ordering / sha256 markers don't
+cause spurious failures. See ``golden_compare.py``.
 """
 
 from __future__ import annotations
@@ -20,6 +24,7 @@ _PARENT_DIR = _THIS_DIR.parent.parent
 if str(_PARENT_DIR) not in sys.path:
     sys.path.insert(0, str(_PARENT_DIR))
 
+from golden_compare import canonicalize, read_tree  # noqa: E402
 from wgsl_template import build  # noqa: E402
 from wgsl_template.errors import WgslTemplateError  # noqa: E402
 from wgsl_template.types import SourceDir  # noqa: E402
@@ -27,19 +32,6 @@ from wgsl_template.types import SourceDir  # noqa: E402
 _TESTCASES_DIR = _THIS_DIR / "testcases"
 
 _SUPPORTED_GENERATORS = {"static-cpp", "static-cpp-literal"}
-
-# Per-fixture skip list. Each entry is (case_name, generator_name).
-#
-# build-directories with static-cpp:
-#   The fixture has multiple templates across multiple aliased source
-#   directories. __str_N IDs are emitted in sorted-by-path order. The
-#   WGSL string contents are byte-identical, but the integer IDs
-#   renumber, which makes a naive byte-for-byte comparison fail. The
-#   ID values are not part of the contract; skip this case until we add
-#   a smarter comparator that resolves __str_N -> string before diffing.
-_FIXTURE_SKIPS = {
-    ("build-directories", "static-cpp"),
-}
 
 
 def _write(path: Path, content: str) -> None:
@@ -155,13 +147,9 @@ def _build_fixture_suite() -> unittest.TestSuite:
         if config.get("type") != "build":
             continue
 
-        # Filter generators down to ones we support, dropping skipped pairs.
+        # Filter generators down to ones we support.
         gen_cfg = config.get("generators") or {}
-        applicable = {
-            name: cfg
-            for name, cfg in gen_cfg.items()
-            if name in _SUPPORTED_GENERATORS and (entry, name) not in _FIXTURE_SKIPS
-        }
+        applicable = {name: cfg for name, cfg in gen_cfg.items() if name in _SUPPORTED_GENERATORS}
         if not applicable:
             continue
 
@@ -246,19 +234,17 @@ def _make_build_case(case_dir: Path, config: dict, applicable: dict) -> type:
                         f"expected: {expected_files}",
                     )
 
+                    # Compare in canonical form (see golden_compare).
+                    actual_canon = canonicalize(read_tree(out_dir))
+                    expected_canon = canonicalize(read_tree(expected_gen))
+
                     for rel in expected_files:
-                        actual_bytes = (out_dir / rel).read_bytes()
-                        expected_bytes = (expected_gen / rel).read_bytes()
-                        # Normalize CRLF in expected goldens (the
-                        # repository's .gitattributes may have flipped
-                        # them on Windows checkout).
-                        expected_bytes = expected_bytes.replace(b"\r\n", b"\n")
                         self.assertEqual(
-                            actual_bytes,
-                            expected_bytes,
-                            f"{case_name} ({gen_name}): {rel} differs\n"
-                            f"actual:\n{actual_bytes!r}\n"
-                            f"expected:\n{expected_bytes!r}",
+                            actual_canon[rel],
+                            expected_canon[rel],
+                            f"{case_name} ({gen_name}): {rel} differs (after canonicalization)\n"
+                            f"actual:\n{actual_canon[rel]!r}\n"
+                            f"expected:\n{expected_canon[rel]!r}",
                         )
 
     _Case.__name__ = f"BuildFixture_{case_name.replace('-', '_')}"
