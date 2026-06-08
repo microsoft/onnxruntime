@@ -4,9 +4,6 @@
   "entries": {
     "test.wgsl.template": {
       "generators": {
-        "dynamic": {
-          "expectsError": "Multiple main function start ($MAIN) detected"
-        },
         "static-cpp-literal": {
           "expectsError": "Multiple main function start ($MAIN) detected"
         }

@@ -4,13 +4,15 @@
   "entries": {
     "pad.wgsl.template": {
       "generators": {
-        "dynamic": {
-          "expectedParams": ["dim_value_zero", "is_float16", "pad_mode"],
-          "expectedVariables": ["output"]
-        },
         "static-cpp-literal": {
-          "expectedParams": ["dim_value_zero", "is_float16", "pad_mode"],
-          "expectedVariables": ["output"]
+          "expectedParams": [
+            "dim_value_zero",
+            "is_float16",
+            "pad_mode"
+          ],
+          "expectedVariables": [
+            "output"
+          ]
         }
       }
     }

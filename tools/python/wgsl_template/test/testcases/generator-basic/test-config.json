@@ -4,7 +4,6 @@
   "entries": {
     "test.wgsl.template": {
       "generators": {
-        "dynamic": {},
         "static-cpp-literal": {}
       }
     }

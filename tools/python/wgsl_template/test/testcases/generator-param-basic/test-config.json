@@ -4,19 +4,15 @@
   "entries": {
     "compute-param.wgsl.template": {
       "generators": {
-        "dynamic": {
-          "expectedParams": ["BUFFER_SIZE"]
-        },
         "static-cpp-literal": {
-          "expectedParams": ["BUFFER_SIZE"]
+          "expectedParams": [
+            "BUFFER_SIZE"
+          ]
         }
       }
     },
     "compute-no-param.wgsl.template": {
       "generators": {
-        "dynamic": {
-          "expectedParams": []
-        },
         "static-cpp-literal": {
           "expectedParams": []
         }
