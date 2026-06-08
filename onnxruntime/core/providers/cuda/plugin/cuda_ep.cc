@@ -163,6 +163,7 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   adapter_config.fuse_conv_bias = config_.fuse_conv_bias;
   adapter_config.sdpa_kernel = config_.sdpa_kernel;
   adapter_config.device_id = config_.device_id;
+  adapter_config.do_copy_in_default_stream = config_.do_copy_in_default_stream;
   onnxruntime::cuda::SetCudaKernelAdapterRuntimeConfigForProvider(
       static_cast<const void*>(EpImpl()), adapter_config);
 
@@ -357,7 +358,11 @@ OrtStatus* ORT_API_CALL CudaEp::CreateSyncStreamForDeviceImpl(
 
   auto cuda_stream = std::make_unique<CudaSyncStream>(ep->factory_, device_id, this_ptr);
 
-  if (ep->config_.enable_cuda_graph) {
+  if (ep->config_.has_user_compute_stream && ep->config_.user_compute_stream != nullptr) {
+    // Wrap the user-provided external CUDA stream with full cuBLAS/cuDNN handles.
+    RETURN_IF_ERROR(cuda_stream->InitHandlesWithUserStream(
+        static_cast<cudaStream_t>(ep->config_.user_compute_stream)));
+  } else if (ep->config_.enable_cuda_graph) {
     // When CUDA graph capture is enabled, all operations on this thread must go
     // through the thread's graph stream so capture/replay sees the same stream
     // as kernels.
@@ -405,8 +410,11 @@ OrtStatus* ORT_API_CALL CudaEp::IsConcurrentRunSupportedImpl(
     return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "is_supported must not be null.");
   }
 
-  ORT_UNUSED_PARAMETER(this_ptr);
-  *is_supported = true;
+  auto* ep = static_cast<CudaEp*>(this_ptr);
+  // When a unified stream is in use (either from user_compute_stream, external
+  // allocator, or explicit use_ep_level_unified_stream), all operations share a
+  // single stream so concurrent runs are not safe.
+  *is_supported = !ep->config_.use_ep_level_unified_stream;
   return nullptr;
 }
 
@@ -587,7 +595,10 @@ OrtStatus* ORT_API_CALL CudaEp::ReplayGraphImpl(OrtEp* this_ptr, int graph_annot
         ORT_EP_FAIL, "ReplayGraph called but CUDA graph manager is not initialized");
   }
   PL_CUDA_CALL_THROW(cudaSetDevice(ep->config_.device_id));
-  return ep->GetPerThreadContext().cuda_graph.Replay(graph_annotation_id);
+  // Launch graph without sync. The caller (PluginExecutionProvider::ReplayGraph)
+  // handles synchronization based on disable_synchronize_execution_providers.
+  // This function is only called from that bridge code path.
+  return ep->GetPerThreadContext().cuda_graph.Replay(graph_annotation_id, /*sync=*/false);
 
   EXCEPTION_TO_STATUS_END
 }

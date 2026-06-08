@@ -95,6 +95,7 @@ struct WebGpuContextConfig {
       webgpu::ValidationMode::Basic  // for release build, enable basic validation by default
 #endif  // !NDEBUG
   };
+  bool validation_mode_explicitly_set{false};
   bool preserve_device{false};
   uint64_t max_storage_buffer_binding_size{0};
   WebGpuBufferCacheConfig buffer_cache_config{};
@@ -278,11 +279,13 @@ class WebGpuContext final {
   WebGpuContext(WGPUInstance instance,
                 WGPUDevice device,
                 webgpu::ValidationMode validation_mode,
+                bool validation_mode_explicitly_set,
                 bool preserve_device,
                 uint64_t max_storage_buffer_binding_size)
       : instance_{instance},
         device_{device},
         validation_mode_{validation_mode},
+        validation_mode_explicitly_set_{validation_mode_explicitly_set},
         query_type_{TimestampQueryType::None},
         preserve_device_{preserve_device},
         max_storage_buffer_binding_size_{max_storage_buffer_binding_size} {
@@ -327,6 +330,7 @@ class WebGpuContext final {
   wgpu::Device device_;
 
   webgpu::ValidationMode validation_mode_;
+  bool validation_mode_explicitly_set_;
 
   wgpu::Queue device_queue_;
   wgpu::AdapterInfo adapter_info_;

@@ -241,5 +241,7 @@ function(onnxruntime_add_cuda_plugin_object_library)
   target_compile_options("${_ARG_NAME}" PRIVATE
     ${_ARG_COMPILE_OPTIONS}
     "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${_ARG_NVCC_THREADS}\">")
+  # Ensure generated headers (e.g. onnx-ml.pb.h from onnx_proto) exist before compiling.
+  add_dependencies("${_ARG_NAME}" ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_link_libraries("${_ARG_PARENT}" PRIVATE "${_ARG_NAME}")
 endfunction()

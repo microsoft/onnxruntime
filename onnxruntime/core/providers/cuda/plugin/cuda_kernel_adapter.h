@@ -439,6 +439,7 @@ struct CudaKernelAdapterRuntimeConfig {
   bool fuse_conv_bias = false;
   int sdpa_kernel = 0;
   int device_id = 0;
+  bool do_copy_in_default_stream = true;
   cudaDeviceProp device_prop{};
   onnxruntime::AttentionKernelOptions attention_kernel_options;
 };
@@ -612,6 +613,9 @@ class CUDAExecutionProvider : public onnxruntime::IExecutionProvider {
   const cudaDeviceProp& GetDeviceProp() const {
     return config_->device_prop;
   }
+  bool DoCopyOnDefaultStream() const {
+    return config_->do_copy_in_default_stream;
+  }
 
  private:
   const OrtEp* ort_ep_ = nullptr;
@@ -645,6 +649,7 @@ inline void SetCudaKernelAdapterRuntimeConfigForProvider(
   config->fuse_conv_bias = init_config.fuse_conv_bias;
   config->sdpa_kernel = init_config.sdpa_kernel;
   config->device_id = init_config.device_id;
+  config->do_copy_in_default_stream = init_config.do_copy_in_default_stream;
   PL_CUDA_CALL_THROW(cudaGetDeviceProperties(&config->device_prop, config->device_id));
 }
 
