@@ -78,6 +78,7 @@ Expected layout inside the package:
 ```
 lib/netstandard2.0/Microsoft.ML.OnnxRuntime.EP.Cuda.dll
 runtimes/win-x64/native/onnxruntime_providers_cuda_plugin.dll
+runtimes/win-arm64/native/onnxruntime_providers_cuda_plugin.dll
 runtimes/linux-x64/native/libonnxruntime_providers_cuda_plugin.so
 runtimes/linux-arm64/native/libonnxruntime_providers_cuda_plugin.so
 ```
@@ -129,5 +130,6 @@ package, and runs the test app on a GPU agent.
 | RID | Required Files |
 |---|---|
 | `win-x64` | `onnxruntime_providers_cuda_plugin.dll` |
+| `win-arm64` | `onnxruntime_providers_cuda_plugin.dll` |
 | `linux-x64` | `libonnxruntime_providers_cuda_plugin.so` |
 | `linux-arm64` | `libonnxruntime_providers_cuda_plugin.so` |
