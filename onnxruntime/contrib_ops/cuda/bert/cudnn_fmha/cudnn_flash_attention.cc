@@ -59,6 +59,7 @@ void run(
 
 #include <cudnn_frontend.h>
 #include "core/providers/cuda/shared_inc/cudnn_fe_call.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
 
 namespace onnxruntime::cudnn_sdpa {
@@ -359,17 +360,16 @@ thread_local std::unordered_map<GraphParams, std::shared_ptr<fe::graph::Graph>, 
 // Allocate a device buffer of shape [batch_size] filled with a constant sequence length.
 // Used to synthesize a no-op padding mask for one side when cuDNN requires both seq_len_q and
 // seq_len_kv to be set (cudnn_frontend validates that both are present when padding mask is on).
+// The buffer is filled with a stream-ordered Fill kernel (rather than a synchronous cudaMemcpy)
+// so this path is safe to capture into a CUDA graph.
 static IAllocatorUniquePtr<int> CreateConstantSeqLenBuffer(AllocatorPtr allocator,
                                                            Stream* stream,
                                                            int batch_size,
                                                            int value) {
   IAllocatorUniquePtr<int> buffer =
       IAllocator::MakeUniquePtr<int>(allocator, static_cast<size_t>(batch_size), false, stream);
-  std::vector<int> host_values(static_cast<size_t>(batch_size), value);
-  // Synchronous copy: the host buffer is valid for the duration of the (blocking) copy, and the
-  // device data is durable before the cuDNN graph is later enqueued on the stream.
-  CUDA_CALL_THROW(cudaMemcpy(buffer.get(), host_values.data(),
-                             static_cast<size_t>(batch_size) * sizeof(int), cudaMemcpyHostToDevice));
+  cudaStream_t cuda_stream = stream ? static_cast<cudaStream_t>(stream->GetHandle()) : nullptr;
+  onnxruntime::cuda::Fill<int>(cuda_stream, buffer.get(), value, static_cast<int64_t>(batch_size));
   return buffer;
 }
 

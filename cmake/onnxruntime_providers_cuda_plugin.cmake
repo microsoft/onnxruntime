@@ -382,10 +382,11 @@ add_dependencies(onnxruntime_providers_cuda_plugin ${onnxruntime_EXTERNAL_DEPEND
 # Link libraries
 target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE
     CUDA::cudart
-    CUDA::nvrtc
     CUDA::cublas
     CUDA::cublasLt
     CUDA::cufft
+    CUDA::nvrtc
+    CUDA::cuda_driver
     CUDNN::cudnn_all
     cudnn_frontend
     Boost::mp11
