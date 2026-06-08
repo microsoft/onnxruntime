@@ -143,7 +143,7 @@ static bool TryComputeContiguousSliceOffset(gsl::span<const int64_t> input_dims,
     }
   }
 
-  // Compute the byte offset of the first selected element (in elements).
+  // Compute the offset of the first selected element (in elements).
   int64_t offset = 0;
   int64_t stride = 1;
   for (int32_t i = rank - 1; i >= 0; --i) {
