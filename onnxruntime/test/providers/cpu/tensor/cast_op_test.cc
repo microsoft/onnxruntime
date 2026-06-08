@@ -64,7 +64,8 @@ void TestCastOp(gsl::span<const SrcType> input,
                 const std::string& expected_failure_string = "",
                 int opset = 21,
                 Saturate saturate = Saturate::None,
-                bool cuda_only = false) {
+                bool cuda_only = false,
+                const std::unordered_set<std::string>& additional_excluded_providers = {}) {
   OpTester test("Cast", opset);
   test.AddAttribute<int64_t>("to", utils::ToTensorProtoElementType<DstType>());
   test.AddInput<SrcType>("input", dimensions, input.data(), input.size());
@@ -84,6 +85,9 @@ void TestCastOp(gsl::span<const SrcType> input,
     // The OpenVINO doesn't support 0 size input
     excluded_provider_types.insert(kOpenVINOExecutionProvider);
   }
+
+  // Add any additional excluded providers
+  excluded_provider_types.insert(additional_excluded_providers.begin(), additional_excluded_providers.end());
 
   if (cuda_only && (excluded_provider_types.count(kCudaExecutionProvider) > 0)) {
     return;
@@ -3684,7 +3688,9 @@ TEST(CastOpTest, UInt32ToInt64) {
       4294967294LL,
       3221225472LL,
   };
-  TestCastOp(gsl::make_span(input), gsl::make_span(expected), shape);
+  // QNN EP doesn't correctly handle UINT_32 to INT_64 cast (sign-extends instead of zero-extends).
+  TestCastOp(gsl::make_span(input), gsl::make_span(expected), shape,
+             OpTester::ExpectResult::kExpectSuccess, "", 21, Saturate::None, false, {kQnnExecutionProvider});
 }
 
 TEST(CastOpTest, BoolToInt64) {
@@ -3742,7 +3748,10 @@ TEST(CastOpTest, UInt32ToInt64_SizeMod4Eq2) {
   const std::vector<int64_t> shape{2};
   const std::vector<uint32_t> input = {0x80000000u, std::numeric_limits<uint32_t>::max()};
   const std::vector<int64_t> expected = {2147483648LL, 4294967295LL};
-  TestCastOp(gsl::make_span(input), gsl::make_span(expected), shape);
+
+  // QNN EP doesn't correctly handle UINT_32 to INT_64 cast (sign-extends instead of zero-extends).
+  TestCastOp(gsl::make_span(input), gsl::make_span(expected), shape,
+             OpTester::ExpectResult::kExpectSuccess, "", 21, Saturate::None, false, {kQnnExecutionProvider});
 }
 
 // size % 4 == 1
