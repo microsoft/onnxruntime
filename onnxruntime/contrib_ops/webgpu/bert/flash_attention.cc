@@ -16,36 +16,45 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
-// WGSL helper function for writing a normalized indirect dispatch buffer.
-// The host-side dispatch path uses ProgramManager::NormalizeDispatchGroupSize
-// to split a 1D group count into 2D when it exceeds the WebGPU per-dimension
-// limit. The indirect-dispatch path skips that host-side normalization (the
-// dispatch size lives on the GPU), so the same normalization is replicated
-// here. Consumers read `workgroup_idx` from shader_helper which always
-// flattens (x, y, z) into a single linear index, so the (1D vs 2D) split is
-// transparent to consumer shaders.
+// GPU twin of ProgramManager::NormalizeDispatchGroupSize for indirect-dispatch
+// programs that compute their group count on the device. Mirrors the host
+// helper's three tiers (1D, 2D sqrt, 3D cbrt). The caller passes the intended
+// (x, y, z) layout; the helper writes the chosen layout into a storage output
+// named `indirect_buffer`.
 //
-// Caller requirement: the calling shader must declare a storage output named
-// exactly `indirect_buffer` of type `array<u32>` (at least 3 elements).
+// Caller requirement: declare a storage output named exactly `indirect_buffer`
+// of type `array<u32>` with >= 3 elements.
 //
-// Scope: this mirrors only the 2D (sqrt) tier of the host normalizer; the
-// host helper additionally falls back to a 3D (cbrt) layout when the 2D split
-// would also exceed the per-dimension limit. The 2D-only mirror is safe for
-// any total <= ~65535^2 (~4.29B), which covers all expected attention
-// workloads (batch_size * num_heads * num_total_seq_length_tile is far smaller).
-constexpr const char kWriteIndirectDispatchFn[] = R"(
-fn write_indirect_dispatch(total: u32) {
+// Intentional drifts from the host helper:
+//   - per-dim `limit` is hardcoded to the WebGPU spec floor (65535) instead of
+//     being read from device limits;
+//   - intermediate `size` is f32 (no f64 in core WGSL);
+//   - no error surface past the 3D tier - the driver rejects the dispatch
+//     instead.
+//
+// Consumers are unaffected by the chosen layout: shader_helper always flattens
+// workgroup_id (x, y, z) into a single linear workgroup_idx.
+constexpr const char kNormalizeDispatchGroupSizeFn[] = R"(
+fn normalize_dispatch_group_size(x: u32, y: u32, z: u32) {
   let limit = 65535u;  // WebGPU spec maxComputeWorkgroupsPerDimension
-  if (total <= limit) {
-    indirect_buffer[0] = total;
-    indirect_buffer[1] = 1u;
-    indirect_buffer[2] = 1u;
-  } else {
-    let dispatch_avg = u32(ceil(sqrt(f32(total))));
-    indirect_buffer[0] = dispatch_avg;
-    indirect_buffer[1] = dispatch_avg;
-    indirect_buffer[2] = 1u;
+  if (x <= limit && y <= limit && z <= limit) {
+    indirect_buffer[0] = x;
+    indirect_buffer[1] = y;
+    indirect_buffer[2] = z;
+    return;
   }
+  let size = f32(x) * f32(y) * f32(z);
+  let dispatch_avg_2d = u32(ceil(sqrt(size)));
+  if (dispatch_avg_2d <= limit) {
+    indirect_buffer[0] = dispatch_avg_2d;
+    indirect_buffer[1] = dispatch_avg_2d;
+    indirect_buffer[2] = 1u;
+    return;
+  }
+  let dispatch_avg_3d = u32(ceil(pow(size, 1.0 / 3.0)));
+  indirect_buffer[0] = dispatch_avg_3d;
+  indirect_buffer[1] = dispatch_avg_3d;
+  indirect_buffer[2] = dispatch_avg_3d;
 }
 )";
 
@@ -61,7 +70,7 @@ Status SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram::GenerateShaderCode(Sha
 
   if (prepare_indirect_dispatch_) {
     sh.AddOutput("indirect_buffer", ShaderUsage::None);
-    sh.AdditionalImplementation() << kWriteIndirectDispatchFn;
+    sh.AdditionalImplementation() << kNormalizeDispatchGroupSizeFn;
   }
 
   return WGSL_TEMPLATE_APPLY(sh, "bert/split_packed_qkv_with_rotary_embedding_and_copykv.wgsl.template",
@@ -120,14 +129,11 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   if (prepare_indirect_dispatch_) {
-    shader.AdditionalImplementation() << kWriteIndirectDispatchFn;
-    // Mirror the direct-dispatch formula at the FlashAttentionDecodeQKT call site:
-    // batch_size * num_heads * num_total_seq_length_tile. batch_size is read from
-    // copy_kv_shape[0], which is set host-side from parameters.batch_size_.
+    shader.AdditionalImplementation() << kNormalizeDispatchGroupSizeFn;
+    // Match the direct-dispatch shape (batch, num_heads, num_total_seq_length_tile).
     shader.MainFunctionBody() << "  if (global_idx == 0u) {\n"
                               << "    let num_total_seq_length_tile = (total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;\n"
-                              << "    let total = uniforms.copy_kv_shape_shape[0] * uniforms.num_heads * num_total_seq_length_tile;\n"
-                              << "    write_indirect_dispatch(total);\n"
+                              << "    normalize_dispatch_group_size(num_total_seq_length_tile, uniforms.num_heads, uniforms.copy_kv_shape_shape[0]);\n"
                               << "  }\n\n";
   }
 

@@ -43,11 +43,8 @@ $MAIN {
 #if prepare_indirect_dispatch
   if (global_idx == 0u) {
     let num_total_seq_length_tile = (total_seqlen + uniforms.tile_size - 1u) / uniforms.tile_size;
-    // Mirror the direct-dispatch formula at the FlashAttentionDecodeQKT call site:
-    // batch_size * num_heads * num_total_seq_length_tile. batch_size is read from
-    // query_shape[0]; query is shaped (batch_size, sequence_length, hidden_size).
-    let total = uniforms.query_shape[0] * uniforms.num_heads * num_total_seq_length_tile;
-    write_indirect_dispatch(total);
+    // Match the direct-dispatch shape (batch, num_heads, num_total_seq_length_tile).
+    normalize_dispatch_group_size(num_total_seq_length_tile, uniforms.num_heads, uniforms.query_shape[0]);
   }
 #endif
 
