@@ -227,7 +227,6 @@ template <typename T1>
 Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                                 /*out*/ bool& is_packed,
                                 /*out*/ PrePackedWeights* prepacked_weights) {
-  ORT_UNUSED_PARAMETER(prepacked_weights);
   is_packed = false;
   if (has_g_idx_) {
     return Status::OK();
@@ -357,6 +356,17 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
         }
       }
 #endif  // MLAS_TARGET_ARM64
+
+      // Publish packed B into the framework's shared prepacked container so that other kernel
+      // instances and other sessions (when an OrtPrepackedWeightsContainer is configured) can
+      // reference the same buffer in RAM. The framework will call UseSharedPrePackedBuffers()
+      // immediately after this returns to restore packed_b_ as a non-owning reference into the
+      // shared buffer; subsequent PrePack() calls for scales/zero_points can still mutate the
+      // buffer in place (the bytes are identical across sessions with the same initializers).
+      if (prepacked_weights != nullptr) {
+        prepacked_weights->buffers_.push_back(std::move(packed_b_));
+        prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
+      }
     }
     is_packed = true;
   } else if (compute_type_ == SQNBIT_CompInt8) {
@@ -534,8 +544,6 @@ template <>
 Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                                        /*out*/ bool& is_packed,
                                        /*out*/ PrePackedWeights* prepacked_weights) {
-  ORT_UNUSED_PARAMETER(prepacked_weights);
-
   if (input_idx == InputIndex::scales || input_idx == InputIndex::bias) {
     auto sptr = tensor.Data<MLFloat16>();
     auto tensor_size = static_cast<size_t>(tensor.Shape().Size());
@@ -593,6 +601,13 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
     }
 #endif  // MLAS_TARGET_ARM64
 
+    // Publish packed B into the framework's shared prepacked container. See the comment in the
+    // primary MatMulNBits<T1>::PrePack() above for rationale.
+    if (prepacked_weights != nullptr) {
+      prepacked_weights->buffers_.push_back(std::move(packed_b_));
+      prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
+    }
+
     is_packed = true;
   } else if (compute_type_ == SQNBIT_CompInt8) {
     bool should_pack_scale_and_zp = [&]() {
@@ -623,7 +638,7 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
 
 template <typename T1>
 Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
-                                                  gsl::span<const size_t> /*prepacked_buffer_sizes*/,
+                                                  gsl::span<const size_t> prepacked_buffer_sizes,
                                                   int input_idx,
                                                   /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
@@ -635,6 +650,12 @@ Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& 
     if (prefer_lut_gemm_) {
       MlasInitLutGemmKernelConfig(N_, K_, nbits_, block_size_, has_zp_input_);
       packed_b_size_ = MlasLutGemmPackedSize(N_, K_, nbits_, block_size_, has_zp_input_);
+    } else if (!prepacked_buffer_sizes.empty()) {
+      // Restore packed_b_size_ from the shared buffer's size. Compute() uses
+      // `packed_b_size_ > 0` to decide whether B was prepacked, so this must match what
+      // PrePack() recorded (otherwise the kernel would treat B as not-prepacked and try to
+      // read it from the inputs, which have already been released).
+      packed_b_size_ = prepacked_buffer_sizes[0];
     }
   }
 

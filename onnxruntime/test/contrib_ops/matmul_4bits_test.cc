@@ -597,6 +597,112 @@ TEST(MatMulNBits, Float32_4b_Accuracy4_Batch) {
   RunTest<float>(opts);
 }
 
+#ifndef ENABLE_TRAINING
+// Prepacking is disabled in full training build so no need to test the feature in a training build.
+// Verify that the packed B weight is shared across two CPU sessions via OrtPrepackedWeightsContainer.
+TEST(MatMulNBits, SharedPrepackedWeights) {
+  constexpr int64_t M = 1;
+  constexpr int64_t N = 288;
+  constexpr int64_t K = 1024;
+  constexpr int64_t block_size = 128;
+  constexpr int64_t k_blocks = (K + block_size - 1) / block_size;
+  constexpr int64_t blob_size = (block_size * QBits + 7) / 8;
+
+  RandomValueGenerator random{4321};
+  std::vector<float> input0_vals(random.Gaussian<float>(AsSpan({M, K}), 0.0f, 0.25f));
+  std::vector<float> input1_f_vals(random.Gaussian<float>(AsSpan({K, N}), 0.0f, 0.25f));
+
+  const size_t q_data_size_in_bytes = static_cast<size_t>(N * k_blocks * blob_size);
+  const size_t q_scale_size = static_cast<size_t>(N * k_blocks);
+  std::vector<uint8_t> input1_vals(q_data_size_in_bytes);
+  std::vector<float> scales(q_scale_size);
+
+  QuantizeDequantize(input1_f_vals, input1_vals, scales, /*zp=*/nullptr,
+                     static_cast<int32_t>(N), static_cast<int32_t>(K),
+                     static_cast<int32_t>(block_size));
+
+  std::vector<float> expected_vals(M * N);
+  for (int64_t m = 0; m < M; m++) {
+    for (int64_t n = 0; n < N; n++) {
+      float sum = 0.0f;
+      for (int64_t k = 0; k < K; k++) {
+        sum += input0_vals[m * K + k] * input1_f_vals[n * K + k];
+      }
+      expected_vals[m * N + n] = sum;
+    }
+  }
+
+  // Build a single OpTester. The shared prepacked weights container lives on this
+  // instance and is reused across both RunWithConfig() calls below — mirroring the
+  // pattern used by MathOpTest.MatMulSharedPrepackedWeights in matmul_test.cc.
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", static_cast<int64_t>(0));
+  test.AddInput<float>("A", {M, K}, input0_vals, /*is_initializer=*/false);
+  // B (and scales) must be initializers for prepacking to occur.
+  test.AddInput<uint8_t>("B", {N, k_blocks, blob_size}, input1_vals, /*is_initializer=*/true);
+  test.AddInput<float>("scales", {N, k_blocks}, scales, /*is_initializer=*/true);
+  test.AddOptionalInputEdge<uint8_t>();  // zero_points
+  test.AddOptionalInputEdge<int32_t>();  // g_idx
+  test.AddOptionalInputEdge<float>();    // bias
+  test.AddOutput<float>("Y", {M, N}, expected_vals);
+  test.SetOutputAbsErr("Y", 0.1f);
+  // Enable sharing across the sessions launched by RunWithConfig.
+  test.EnableSharingOfPrePackedWeightsAcrossSessions();
+
+  auto cpu_eps = []() -> std::vector<std::unique_ptr<IExecutionProvider>> {
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultCpuExecutionProvider());
+    return eps;
+  };
+
+  // Add B as a shared initializer so that the session-state pre-pack flow takes the
+  // strict shared-initializer path and enforces that buffers were published.
+  OrtValue b_shared;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<uint8_t>(), TensorShape({N, k_blocks, blob_size}),
+                       input1_vals.data(),
+                       OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator),
+                       b_shared);
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.AddInitializer("B", &b_shared));
+
+  // Session 1 populates the shared container.
+  size_t prepacked_in_session1 = 0;
+  size_t shared_used_in_session1 = 0;
+  test.Config(so).ConfigEps(cpu_eps()).RunWithConfig(&prepacked_in_session1, &shared_used_in_session1);
+  EXPECT_EQ(shared_used_in_session1, static_cast<size_t>(0))
+      << "First session should not see any pre-existing shared pre-packed weights.";
+
+  const size_t shared_container_size = test.GetNumPrePackedWeightsShared();
+  EXPECT_EQ(prepacked_in_session1, shared_container_size)
+      << "Every weight pre-packed in session 1 should be reflected in the shared container.";
+
+  // On platforms / MLAS configurations where no pre-packing happens, there's nothing to share.
+  if (prepacked_in_session1 == 0) {
+    return;
+  }
+
+  // Session 2 must reuse the shared buffer instead of allocating a fresh one.
+  size_t prepacked_in_session2 = 0;
+  size_t shared_used_in_session2 = 0;
+  test.Config(so).ConfigEps(cpu_eps()).RunWithConfig(&prepacked_in_session2, &shared_used_in_session2);
+  EXPECT_EQ(prepacked_in_session2, prepacked_in_session1)
+      << "Both sessions should report the same number of pre-packed weights.";
+  EXPECT_EQ(shared_used_in_session2, prepacked_in_session1)
+      << "Second session should reuse all pre-packed weights from the shared container.";
+
+  // Stronger guarantee: the shared container must not have grown during session 2.
+  // If a new buffer had been allocated and inserted, GetNumPrePackedWeightsShared()
+  // would increase. Equality here proves the cached buffers from session 1 were
+  // handed to the session 2 kernel verbatim via UseSharedPrePackedBuffers().
+  EXPECT_EQ(test.GetNumPrePackedWeightsShared(), shared_container_size)
+      << "Shared container size must not grow when the second session reuses cached weights.";
+}
+#endif  // ENABLE_TRAINING
+
 #endif
 #endif
 
