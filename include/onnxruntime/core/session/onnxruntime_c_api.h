@@ -7818,8 +7818,8 @@ struct OrtModelEditorApi {
    * remains responsible for releasing the OrtValue. Calling OrtApi::ReleaseValue after a successful
    * transfer would cause a double-free.
    * Adding the same OrtValue pointer twice (under any name) is rejected with ORT_INVALID_ARGUMENT.
-   * Adding a duplicate initializer name is also rejected; remove the existing entry first if you need
-   * to replace it.
+   * Adding a duplicate initializer name is also rejected. The Model Editor API does not currently
+   * support removing or replacing an initializer once it has been added.
    *
    * Two options:
    *

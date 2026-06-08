@@ -319,9 +319,16 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _Inout_ OrtGraph* 
     }
   }
 
-  // Combined duplicate-pointer check + insert: set::insert returns {iterator, inserted=false} when
-  // the pointer is already owned, otherwise inserts in O(1). If insert throws, no state has changed
-  // and the caller still owns `tensor`.
+  // Reject duplicate name first (pure read, no state change needed on rejection).
+  auto& target_map = data_is_external ? graph->external_initializers : graph->initializers;
+  auto& other_map = data_is_external ? graph->initializers : graph->external_initializers;
+  if (target_map.count(name) != 0 || other_map.count(name) != 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "An initializer with this name has already been added to the graph.");
+  }
+
+  // Duplicate-pointer check: set::insert returns {iterator, inserted=false} when the pointer is
+  // already owned. If insert throws bad_alloc, no state has changed and the caller still owns `tensor`.
   auto [ptr_it, ptr_inserted] = graph->initializer_ptrs.insert(tensor);
   if (!ptr_inserted) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
@@ -329,17 +336,8 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _Inout_ OrtGraph* 
                                  "Each OrtValue must only be added once.");
   }
 
-  // Reject duplicate name in either map. Roll back the set entry on rejection.
-  auto& target_map = data_is_external ? graph->external_initializers : graph->initializers;
-  auto& other_map = data_is_external ? graph->initializers : graph->external_initializers;
-  if (target_map.count(name) != 0 || other_map.count(name) != 0) {
-    graph->initializer_ptrs.erase(ptr_it);
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "An initializer with this name has already been added to the graph.");
-  }
-
-  // Insert the owning entry. operator[] is the only throwing call; on bad_alloc the map is
-  // unchanged and the caller still owns `tensor`. Roll back the set entry and convert the
+  // Insert the owning entry. operator[] is the only remaining throwing call; on bad_alloc the map
+  // is unchanged and the caller still owns `tensor`. Roll back the set entry and convert the
   // exception into a Status rather than letting it propagate.
   ORT_TRY {
     target_map[name].reset(tensor);  // takes ownership on success
@@ -390,10 +388,8 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddNodeToGraph, _Inout_ OrtGraph* ort_gra
                                  "Each OrtNode must only be added once.");
   }
 
-  // Compute the id from the current size before mutating the vector. If emplace_back throws, roll
-  // back the set entry and convert the exception into a Status; vector's amortized exponential
-  // growth handles capacity (no manual reserve needed).
-  node->id = graph->nodes.size();
+  // Take ownership via emplace_back. If it throws bad_alloc, roll back the set entry and convert
+  // the exception into a Status; vector's amortized exponential growth handles capacity.
   ORT_TRY {
     graph->nodes.emplace_back(node);  // takes ownership on success
   }
@@ -405,6 +401,8 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddNodeToGraph, _Inout_ OrtGraph* ort_gra
     });
     return status;
   }
+  // Assign id only after successful insertion — avoids mutating the node on failure.
+  node->id = graph->nodes.size() - 1;
   return nullptr;
   API_IMPL_END
 }
