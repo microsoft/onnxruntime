@@ -56,65 +56,126 @@ steps:
       inputs:
         script: |
           mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}
+          mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\bin
           mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
+          mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\onnxruntime
+          mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\onnxruntime\core
+          mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\onnxruntime\core\providers
+          mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib\cmake
+          mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib\cmake\onnxruntime
 
           if exist $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_cuda.dll (
             echo "cuda context headers copied"
-            mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\core\providers\cuda
-            copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\resource.h $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\core\providers
-            copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\custom_op_context.h $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\core\providers
-            copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\cuda\cuda_context.h $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\core\providers\cuda
-            copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\cuda\cuda_resource.h $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\core\providers\cuda
+            mkdir $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\onnxruntime\core\providers\cuda
+            copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\resource.h $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\onnxruntime\core\providers
+            copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\custom_op_context.h $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\onnxruntime\core\providers
+            copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\cuda\cuda_context.h $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\onnxruntime\core\providers\cuda
+            copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\cuda\cuda_resource.h $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\onnxruntime\core\providers\cuda
           )
 
           echo "Directories created"
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_shared.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_shared.lib $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_shared.pdb $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_cuda.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_cuda.pdb $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_cuda.lib $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
 
-          # Copy WebGPU dependencies if required
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\dxcompiler.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\dxil.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          REM ── Core ORT DLL → bin\,  LIB/PDB → lib\ ─────────────────────
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.dll          $(Build.BinariesDirectory)\${{parameters.artifactName}}\bin
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.lib          $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.pdb          $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
 
-          # Copy QNN dependencies if required
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_qnn.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\libQnnHtp*.so $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib /Y
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\libqnnhtp*.cat $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib /Y
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnCpu.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnGpu.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnHtp.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnHtpPrepare.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnHtpV68Stub.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnHtpV73Stub.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnHtpV81Stub.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnSaver.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnSystem.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\Qualcomm_LICENSE.pdf $(Build.BinariesDirectory)\${{parameters.artifactName}}
+          REM ── Providers Shared DLL → bin\,  LIB/PDB → lib\ ─────────────
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_shared.dll     $(Build.BinariesDirectory)\${{parameters.artifactName}}\bin
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_shared.lib     $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_shared.pdb     $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
 
-          # copy trt ep libraries only when trt ep is enabled
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_tensorrt.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_tensorrt.pdb $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_tensorrt.lib $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          REM ── onnx_test_runner.exe → bin\ ────────────────────────────────
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnx_test_runner.exe     $(Build.BinariesDirectory)\${{parameters.artifactName}}\bin
 
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.pdb $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.lib $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
-          copy $(Build.SourcesDirectory)\include\onnxruntime\core\session\onnxruntime_*.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
-          copy $(Build.SourcesDirectory)\include\onnxruntime\core\framework\provider_options.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
-          copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\cpu\cpu_provider_factory.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
-          copy $(Build.SourcesDirectory)\orttraining\orttraining\training_api\include\onnxruntime_training*.h  $(Build.BinariesDirectory)\${{parameters.artifactName}}\include
+          REM ── CUDA EP DLL → bin\,  LIB/PDB → lib\ ──────────────────────
+          if exist $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_cuda.dll (
+            copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_cuda.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\bin
+          )
 
-          REM copy the README, license and TPN
-          copy $(Build.SourcesDirectory)\README.md $(Build.BinariesDirectory)\${{parameters.artifactName}}\README.md
-          copy $(Build.SourcesDirectory)\docs\Privacy.md $(Build.BinariesDirectory)\${{parameters.artifactName}}\Privacy.md
-          copy $(Build.SourcesDirectory)\LICENSE $(Build.BinariesDirectory)\${{parameters.artifactName}}\LICENSE
+          if exist $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_cuda.lib (
+            copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_cuda.lib $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          )
+
+          if exist $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_cuda.pdb (
+            copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_cuda.pdb $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          )
+
+          REM ── WebGPU DLLs → bin\ ─────────────────────────────────────────
+          if exist $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\dxcompiler.dll (
+            copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\dxcompiler.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\bin
+          )
+
+          if exist $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\dxil.dll (
+            copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\dxil.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\bin
+          )
+
+          REM ── QNN DLLs → bin\ ────────────────────────────────────────────
+          if exist $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_qnn.dll (
+            copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_qnn.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\bin
+            copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\libQnnHtp*.so $(Build.BinariesDirectory)\${{parameters.artifactName}}\bin /Y
+            copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\libqnnhtp*.cat $(Build.BinariesDirectory)\${{parameters.artifactName}}\bin /Y
+            copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnCpu.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\bin
+            copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnGpu.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\bin
+            copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnHtp.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\bin
+            copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnHtpPrepare.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\bin
+            copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnHtpV68Stub.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\bin
+            copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnHtpV73Stub.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\bin
+            copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnHtpV81Stub.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\bin
+            copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnSaver.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\bin
+            copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnSystem.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\bin
+            copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\Qualcomm_LICENSE.pdf $(Build.BinariesDirectory)\${{parameters.artifactName}}
+          )
+
+
+          REM ── TensorRT EP DLL → bin\,  LIB/PDB → lib\ ──────────────────
+          if /I "${{ parameters.trtEnabled }}"=="true" (
+            if exist $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_tensorrt.dll (
+              copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_tensorrt.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\bin
+            )
+
+            if exist $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_tensorrt.lib (
+              copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_tensorrt.lib $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+            )
+
+            if exist $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_tensorrt.pdb (
+              copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_tensorrt.pdb $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+            )
+          )
+
+          REM ── Headers (flat into include\) ───────────────────────────────
+          copy $(Build.SourcesDirectory)\include\onnxruntime\core\session\onnxruntime_*.h              $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\onnxruntime
+          copy $(Build.SourcesDirectory)\include\onnxruntime\core\framework\provider_options.h         $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\onnxruntime
+          copy $(Build.SourcesDirectory)\include\onnxruntime\core\providers\cpu\cpu_provider_factory.h $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\onnxruntime
+          copy $(Build.SourcesDirectory)\orttraining\orttraining\training_api\include\onnxruntime_training*.h $(Build.BinariesDirectory)\${{parameters.artifactName}}\include\onnxruntime
+
+          REM ── Docs and License → root\ ───────────────────────────────────
+          copy $(Build.SourcesDirectory)\README.md             $(Build.BinariesDirectory)\${{parameters.artifactName}}\README.md
+          copy $(Build.SourcesDirectory)\docs\Privacy.md       $(Build.BinariesDirectory)\${{parameters.artifactName}}\Privacy.md
+          copy $(Build.SourcesDirectory)\LICENSE               $(Build.BinariesDirectory)\${{parameters.artifactName}}\LICENSE
           copy $(Build.SourcesDirectory)\ThirdPartyNotices.txt $(Build.BinariesDirectory)\${{parameters.artifactName}}\ThirdPartyNotices.txt
-          copy $(Build.SourcesDirectory)\VERSION_NUMBER $(Build.BinariesDirectory)\${{parameters.artifactName}}\VERSION_NUMBER
+          copy $(Build.SourcesDirectory)\VERSION_NUMBER        $(Build.BinariesDirectory)\${{parameters.artifactName}}\VERSION_NUMBER
           @echo ${{parameters.commitId}} > $(Build.BinariesDirectory)\${{parameters.artifactName}}\GIT_COMMIT_ID
+
+          REM ── CMake Package Files → lib\cmake\onnxruntime\ ──────────────
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\onnxruntimeConfig.cmake $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib\cmake\onnxruntime
+
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\onnxruntimeConfigVersion.cmake $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib\cmake\onnxruntime
+
+          for /d %%D in ($(Build.BinariesDirectory)\${{parameters.buildConfig}}\CMakeFiles\Export\*) do (
+              if exist "%%D\onnxruntimeTargets.cmake" (
+                  copy "%%D\onnxruntimeTargets.cmake" ^
+                       "$(Build.BinariesDirectory)\${{parameters.artifactName}}\lib\cmake\onnxruntime"
+              )
+              if exist "%%D\onnxruntimeTargets-release.cmake" (
+                  copy "%%D\onnxruntimeTargets-release.cmake" ^
+                       "$(Build.BinariesDirectory)\${{parameters.artifactName}}\lib\cmake\onnxruntime"
+              )
+              if exist "%%D\onnxruntimeTargets-relwithdebinfo.cmake" (
+                  copy "%%D\onnxruntimeTargets-relwithdebinfo.cmake" ^
+                       "$(Build.BinariesDirectory)\${{parameters.artifactName}}\lib\cmake\onnxruntime"
+              )
+          )
 
         workingDirectory: '$(Build.BinariesDirectory)\${{parameters.buildConfig}}'
 
