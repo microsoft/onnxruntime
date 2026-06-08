@@ -320,6 +320,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   bool cudnn_sdpa_supported = cudnn_sdpa_enabled &&
                               cudnn_sdpa_bias_ok &&
                               is_mask_none_or_1d_k_len &&
+                              onnxruntime::cudnn_sdpa::is_stable() &&
                               onnxruntime::cudnn_sdpa::is_supported(device_prop,
                                                                     parameters.num_heads,              // num_heads_q
                                                                     parameters.num_heads,              // num_heads_kv

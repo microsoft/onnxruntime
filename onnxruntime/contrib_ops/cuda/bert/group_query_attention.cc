@@ -398,9 +398,6 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     }
   }
 
-  // Compute past_present_share_buffer early since it's needed for flash attention path selection.
-  // This compares the final pointer values after quantization handling.
-
   // === cuDNN SDPA eligibility (preferred on SM>=90, Hopper/Blackwell) ===
   // Constrained to the well-supported causal path: non-quantized FP16/BF16 KV cache, no softcap,
   // no smooth-softmax / head sink, and no sliding window. Rotary and packed QKV are handled by
