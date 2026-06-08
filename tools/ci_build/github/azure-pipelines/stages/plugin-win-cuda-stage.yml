@@ -331,15 +331,11 @@ stages:
           artifactName: cuda_plugin_win_${{ parameters.arch }}
           targetPath: '$(Build.BinariesDirectory)\plugin_artifacts'
 
-      - task: PowerShell@2
+      - powershell: |
+          python -m pip install -r "$(Build.SourcesDirectory)\plugin-ep-cuda\python\requirements-build-wheel.txt"
+          python "$(Build.SourcesDirectory)\plugin-ep-cuda\python\build_wheel.py" `
+            --binary_dir "$(Build.BinariesDirectory)\plugin_artifacts\bin" `
+            --version "$(PluginPythonPackageVersion)" `
+            --package_name "${{ parameters.python_package_name }}" `
+            --output_dir "$(Build.ArtifactStagingDirectory)\python"
         displayName: 'Build Python wheel'
-        inputs:
-          targetType: inline
-          pwsh: true
-          script: |
-            python -m pip install -r "$(Build.SourcesDirectory)\plugin-ep-cuda\python\requirements-build-wheel.txt"
-            python "$(Build.SourcesDirectory)\plugin-ep-cuda\python\build_wheel.py" `
-              --binary_dir "$(Build.BinariesDirectory)\plugin_artifacts\bin" `
-              --version "$(PluginPythonPackageVersion)" `
-              --package_name "${{ parameters.python_package_name }}" `
-              --output_dir "$(Build.ArtifactStagingDirectory)\python"
