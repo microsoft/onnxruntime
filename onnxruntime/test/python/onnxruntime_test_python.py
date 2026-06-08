@@ -2103,6 +2103,50 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(expected_val.shape(), value.shape())
             np.testing.assert_allclose(value.numpy(), expected_val.numpy())
 
+    def test_adapter_read_modify_export(self):
+        # Regression test: after read_adapter, calling set_parameters and then
+        # export_adapter must export the NEW parameters, not the originally read
+        # data. The setter must clear the internal loaded_adapter_ so that
+        # export_adapter uses the user-supplied dict.
+        adapter_version = 1
+        model_version = 1
+        file_path = pathlib.Path(os.path.realpath(__file__)).parent
+        original_path = str(file_path / "test_adapter_read_modify_original.onnx_adapter")
+        modified_path = str(file_path / "test_adapter_read_modify_new.onnx_adapter")
+
+        float_data_type = 1
+        original_data = np.array([1, 2, 3, 4]).astype(np.float32).reshape(2, 2)
+        modified_data = np.array([10, 20, 30, 40, 50, 60]).astype(np.float32).reshape(3, 2)
+
+        ort_original = onnxrt.OrtValue.ortvalue_from_numpy_with_onnx_type(original_data, float_data_type)
+        ort_modified = onnxrt.OrtValue.ortvalue_from_numpy_with_onnx_type(modified_data, float_data_type)
+
+        # Write original adapter
+        adapter_format = onnxrt.AdapterFormat()
+        adapter_format.set_adapter_version(adapter_version)
+        adapter_format.set_model_version(model_version)
+        adapter_format.set_parameters({"param": ort_original})
+        adapter_format.export_adapter(original_path)
+
+        try:
+            # Read, modify, and re-export
+            adapter_read = onnxrt.AdapterFormat.read_adapter(original_path)
+            adapter_read.set_parameters({"new_param": ort_modified})
+            adapter_read.export_adapter(modified_path)
+
+            # Verify the re-exported file has the NEW parameters
+            adapter_verify = onnxrt.AdapterFormat.read_adapter(modified_path)
+            params = adapter_verify.get_parameters()
+            self.assertIn("new_param", params)
+            self.assertNotIn("param", params)
+            self.assertEqual(params["new_param"].shape(), [3, 2])
+            np.testing.assert_allclose(params["new_param"].numpy(), modified_data)
+        finally:
+            if os.path.exists(original_path):
+                os.remove(original_path)
+            if os.path.exists(modified_path):
+                os.remove(modified_path)
+
     def test_adapter_parameters_keep_alive(self):
         # Regression test: AdapterFormat.read_adapter returned OrtValue views
         # over storage owned by the C AdapterFormat with nothing keeping the

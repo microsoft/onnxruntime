@@ -129,6 +129,11 @@ void addAdapterFormatMethods(pybind11::module& m) {
             return params;
           },
           [](PyAdapterFormatReaderWriter* reader_writer, py::dict& parameters) -> void {
+            // Clear loaded_adapter_ so subsequent getter and export_adapter
+            // operations use the user-supplied dict. Without this, a read →
+            // set_parameters → export sequence would silently ignore the new
+            // parameters and re-export the original read data.
+            reader_writer->loaded_adapter_.reset();
             reader_writer->parameters_ = parameters;
           },
           R"pbdoc("Enables user to read/write the dictionary of adapter parameters (name -> OrtValue)")pbdoc")
