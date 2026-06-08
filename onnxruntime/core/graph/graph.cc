@@ -6852,7 +6852,9 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
   // NodeArg for the value using that
 
   auto add_graph_inputs_outputs = [&, this](
-                                      const InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>>& graph_inputs_or_outputs,
+                                      const InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo,
+                                                                          onnxruntime::OrtValueInfoDeleter>>&
+                                          graph_inputs_or_outputs,
                                       bool is_input) {
     // when updating a model we don't require the inputs or outputs to be set if they're unchanged.
     if (updating_existing_graph && graph_inputs_or_outputs.empty()) {
@@ -6875,12 +6877,17 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
     }
   };
 
-  auto add_initializers = [this](const std::unordered_map<std::string, OrtValue>& initializers,
+  auto add_initializers = [this](const InlinedHashMap<std::string,
+                                                      std::unique_ptr<OrtValue, onnxruntime::OrtValueDeleter>>&
+                                     initializers,
                                  bool is_external) {
-    for (auto& name_and_ortvalue : initializers) {
+    // Copy (do not move) the OrtValue into ortvalue_initializers_. The input OrtModel may be reused
+    // by the caller (e.g. applied to multiple sessions), and OrtValue's default move would clear the
+    // payload while leaving `type_` set, which would silently break later reuse.
+    for (const auto& name_and_ortvalue : initializers) {
       // convert from OrtValue to TensorProto
       const std::string& name = name_and_ortvalue.first;
-      const OrtValue& v = name_and_ortvalue.second;
+      const OrtValue& v = *name_and_ortvalue.second;
 
       ORT_ENFORCE(v.IsTensor(), "Initializers must be Tensors");
       const Tensor& t = v.Get<Tensor>();
