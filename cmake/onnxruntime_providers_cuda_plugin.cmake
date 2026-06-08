@@ -414,9 +414,18 @@ endif()
 # plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION) into the EP DLL so it can be enforced at runtime by
 # onnxruntime::ep::ApiInit(). Format is strict "MAJOR.MINOR.PATCH".
 set(_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION_FILE "${REPO_ROOT}/plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION")
+# Re-run CMake configure when the version file changes so the baked-in value stays in sync.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION_FILE}")
 file(STRINGS "${_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION_FILE}" _ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION LIMIT_COUNT 1)
+string(STRIP "${_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION}" _ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION)
 if(NOT _ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION)
   message(FATAL_ERROR "CUDA plugin EP minimum ORT version file is missing or empty: "
+                      "${_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION_FILE}")
+endif()
+# ApiInit() strictly parses "MAJOR.MINOR.PATCH"; fail fast on any malformed value.
+if(NOT _ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+  message(FATAL_ERROR "CUDA plugin EP minimum ORT version must be \"MAJOR.MINOR.PATCH\", got "
+                      "\"${_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION}\" from "
                       "${_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION_FILE}")
 endif()
 
