@@ -173,6 +173,22 @@ TEST(ShapeInferenceV2Test, PartialDataPropagationTest) {
     // Make sure it can load the model and run shape inference without errors.
     Ort::Session session(*ort_env, model_path, session_options);
   }
+
+  {
+    // Model #5
+    // Regression test for the Shape -> Identity -> Unsqueeze path. ORT_ENABLE_BASIC removes the Identity,
+    // then graph resolution re-runs data propagation after large initializers have been converted to
+    // in-memory external OrtValues. The Unsqueeze axes initializer exercises the INT64 in-memory external path in
+    // Graph::SaveShapeValuesFromDataPropagation.
+    auto model_path = ORT_TSTR("testdata/test_shape_data_propagation_unsqueeze_inmemory_int64.onnx");
+
+    Ort::SessionOptions session_options{};
+    session_options.SetGraphOptimizationLevel(ORT_ENABLE_BASIC);
+
+    Ort::Session session(*ort_env, model_path, session_options);
+
+    ORT_ENFORCE(session.GetOutputCount() == 1);
+  }
 }
 
 namespace {
