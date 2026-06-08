@@ -218,7 +218,12 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // (``weights_prepacked == false`` opt-in path), the original tensors
   // were freed; ``context->Input<Tensor>(2)/(5)`` would return nothing.
   // Mirror how ``MatMulNBits`` reads its prepacked B input.
-  const bool int_weights_consumed_by_prepack = is_int && !weights_prepacked_ && packed_fc1_weights_ != nullptr;
+  // Gate on *both* prepacked buffers being present. If only fc1 were prepacked
+  // (e.g. a partial prepack from an earlier failure or a future refactor), this
+  // path must not null out fc2_experts_weights and feed a null fc2 weight/shape
+  // to the runner.
+  const bool int_weights_consumed_by_prepack =
+      is_int && !weights_prepacked_ && packed_fc1_weights_ != nullptr && packed_fc2_weights_ != nullptr;
   const Tensor* fc1_experts_weights = int_weights_consumed_by_prepack ? nullptr : context->Input<Tensor>(2);
   const Tensor* fc1_scales = (is_int && !packed_fc1_scales_) ? context->Input<Tensor>(3) : nullptr;
   const Tensor* fc1_experts_bias_optional = context->Input<Tensor>(4);
@@ -1216,6 +1221,11 @@ void QMoE::PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, Al
 
     // Step 2: apply the CUTLASS fpA_intB row-permutation / column-interleave /
     // bias / pair-interleave transform into the per-expert output slot.
+    // ``synchronize=false``: avoid one host-blocking ``cudaStreamSynchronize``
+    // per expert (which would scale model-load time with ``num_experts``).
+    // Stream ordering guarantees expert e's transform finishes before expert
+    // e+1 reuses the shared transpose scratch, and a single sync after the loop
+    // makes the whole batch complete before the scratch buffers are freed.
     onnxruntime::llm::kernels::weight_only::preprocess_weights_for_mixed_gemm_cuda(
         stream,
         packing_sm,
@@ -1223,13 +1233,14 @@ void QMoE::PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, Al
         transposed_scratch_ptr,
         permutation_map.get(),
         {static_cast<size_t>(k), static_cast<size_t>(n)},
-        quant_type);
+        quant_type,
+        /*synchronize=*/false);
   }
 
-  // No explicit cudaStreamSynchronize here: preprocess_weights_for_mixed_gemm_cuda
-  // synchronizes the stream internally at the end of every per-expert call, so
-  // after the final expert all transpose/pack work (and the CPU->GPU staging
-  // copy above) is complete and the transient scratch buffers are safe to free.
+  // Single host-blocking sync after all experts: this guarantees every
+  // per-expert transform (and the CPU->GPU staging copy above) is complete, so
+  // the transient scratch buffers are safe to free on return.
+  CUDA_CALL_THROW(cudaStreamSynchronize(stream));
   is_packed = true;
 }
 
