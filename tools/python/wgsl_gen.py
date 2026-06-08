@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
 """CLI entry point for the WGSL template generator.
 
 Invoked from CMake during the WebGPU EP build to translate
@@ -56,14 +58,27 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--generator",
         choices=["static-cpp", "static-cpp-literal"],
         default="static-cpp-literal",
-        help="Code generator to use (default: static-cpp-literal).",
+        help=(
+            "Code generator to use (default: static-cpp-literal). "
+            "'static-cpp' deduplicates shader strings into a shared string "
+            "table referenced by short __str_N ids (smaller binary; used by "
+            "release builds). 'static-cpp-literal' inlines each string as a "
+            "C++ literal (larger, but easier to read when debugging; used by "
+            "Debug builds)."
+        ),
     )
     parser.add_argument(
         "-I",
         "--include-prefix",
         default="",
         metavar="PREFIX",
-        help='Include path prefix used when emitting #include directives in index_impl.h (e.g. "wgsl_template_gen/").',
+        help=(
+            "Prefix prepended to the #include paths emitted in index_impl.h "
+            '(e.g. "wgsl_template_gen/"). Must match how the generated output '
+            "directory is reachable from the C++ include search paths, or the "
+            "includes will not resolve. Defaults to empty (includes relative "
+            "to index_impl.h's directory)."
+        ),
     )
     parser.add_argument(
         "-e",
