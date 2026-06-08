@@ -31,40 +31,37 @@ namespace {
 /// Class that supports writing and reading adapters
 /// in onnxruntime format.
 ///
-/// Design: An instance operates in one of two mutually exclusive modes:
+/// Design: Single-source architecture using py::capsule for memory ownership.
 ///
-/// 1. READ mode — created by read_adapter(). OrtValues are zero-copy views
-///    into the LoraAdapter's memory-mapped buffer. Parameters are read-only;
-///    calling the setter throws. export_adapter() re-serializes from the
-///    loaded adapter.
+/// `parameters_` is always the single authoritative dict of name -> OrtValue.
+/// On the read path, OrtValues are zero-copy views into a LoraAdapter's buffer.
+/// The LoraAdapter is owned by a py::capsule that is pinned as a patient on each
+/// OrtValue via pybind11's add_patient. The object graph is:
 ///
-/// 2. WRITE mode — created by the default constructor. The user sets
-///    parameters (owning OrtValues) and calls export_adapter().
+///   PyAdapterFormatReaderWriter -> parameters_ dict -> OrtValues -> capsule -> LoraAdapter
 ///
-/// This separation avoids:
-///   - Copying adapter weights (wasteful on memory-constrained devices).
-///   - An un-collectable reference cycle (self -> cached dict -> OrtValue
-///     patient list -> self) that pybind11's non-traversable instances would
-///     leak.
-///   - Silent behavioral regression where set_parameters on a read instance
-///     would be ignored by export_adapter.
+/// No edge points back to PyAdapterFormatReaderWriter, so there is no reference
+/// cycle (pybind11 instances are not GC-traversable, so a cycle would leak).
+/// The capsule keeps the backing memory alive as long as any OrtValue referencing
+/// it is alive.
+///
+/// The setter replaces parameters_ freely. Old OrtValues (and their capsule
+/// patient) remain alive as long as Python references to them exist.
 /// </summary>
 struct PyAdapterFormatReaderWriter {
   PyAdapterFormatReaderWriter() = default;
   PyAdapterFormatReaderWriter(int format_version, int adapter_version,
                               int model_version,
-                              lora::LoraAdapter&& loaded_adapter)
+                              py::dict parameters)
       : format_version_(format_version),
         adapter_version_(adapter_version),
         model_version_(model_version),
-        loaded_adapter_(std::move(loaded_adapter)) {}
+        parameters_(std::move(parameters)) {}
 
   int format_version_{adapters::kAdapterFormatVersion};
   int adapter_version_{0};
   int model_version_{0};
-  // Read path: owns the backing memory for zero-copy OrtValue views.
-  std::optional<lora::LoraAdapter> loaded_adapter_;
-  // Write path: user-supplied dict of name -> OrtValue.
+  // Single source of truth: name -> OrtValue (views or owning).
   py::dict parameters_;
 };
 
@@ -90,36 +87,11 @@ void addAdapterFormatMethods(pybind11::module& m) {
           R"pbdoc("Enables user to read/write model version this adapter was created for")pbdoc")
       .def_property(
           "parameters",
-          // Getter: builds a fresh dict each call. On the read path, each
-          // OrtValue is a non-owning view into loaded_adapter_'s buffer.
-          // We pin `self` as a patient on each OrtValue (not on the dict,
-          // since dicts are not weak-referenceable and keep_alive would fail).
-          // Building fresh each call avoids storing the dict on self, which
-          // would create an un-collectable cycle (see class comment above).
-          [](py::object self) -> py::dict {
-            auto* rw = self.cast<PyAdapterFormatReaderWriter*>();
-            if (!rw->loaded_adapter_.has_value()) {
-              // Write path: return whatever the user previously set.
-              return rw->parameters_;
-            }
-            py::dict params;
-            auto [begin, end] = rw->loaded_adapter_->GetParamIterators();
-            for (; begin != end; ++begin) {
-              auto& [name, param] = *begin;
-              OrtValue& ort_value = param.GetMapped();
-              // Pin `self` as patient on each OrtValue view.
-              py::object ort_value_obj = py::cast(
-                  &ort_value, py::return_value_policy::reference_internal, self);
-              params[py::str(name)] = std::move(ort_value_obj);
-            }
-            return params;
+          [](const PyAdapterFormatReaderWriter* reader_writer) -> py::dict {
+            return reader_writer->parameters_;
           },
-          [](PyAdapterFormatReaderWriter* reader_writer, py::dict& parameters) -> void {
-            if (reader_writer->loaded_adapter_.has_value()) {
-              ORT_THROW("Cannot set parameters on an AdapterFormat instance created by read_adapter(). "
-                        "Create a new AdapterFormat() for export instead.");
-            }
-            reader_writer->parameters_ = parameters;
+          [](PyAdapterFormatReaderWriter* reader_writer, py::dict parameters) -> void {
+            reader_writer->parameters_ = std::move(parameters);
           },
           R"pbdoc("Enables user to read/write the dictionary of adapter parameters (name -> OrtValue)")pbdoc")
       .def(
@@ -129,11 +101,6 @@ void addAdapterFormatMethods(pybind11::module& m) {
 
             adapters::utils::AdapterFormatBuilder format_builder;
 
-            // Visit every (name, OrtValue) pair from the appropriate source.
-            // We avoid building any intermediate Python dict here so the
-            // export path is exception-safe by construction: the builder
-            // accumulates in memory, and we only touch the filesystem
-            // after FinishWithSpan succeeds.
             auto add_param = [&format_builder](const std::string& param_name, const OrtValue& ort_value) {
               ORT_ENFORCE(ort_value.IsTensor(),
                           "Lora adapter parameter '", param_name, "' must be a Tensor OrtValue.");
@@ -161,18 +128,11 @@ void addAdapterFormatMethods(pybind11::module& m) {
                   tensor.Shape().GetDims(), data_span);
             };
 
-            if (reader_writer->loaded_adapter_.has_value()) {
-              auto [begin, end] = reader_writer->loaded_adapter_->GetParamIterators();
-              for (; begin != end; ++begin) {
-                auto& [name, param] = *begin;
-                add_param(name, param.GetMapped());
-              }
-            } else {
-              for (auto& [n, value] : reader_writer->parameters_) {
-                const std::string param_name = py::str(n);
-                const OrtValue* ort_value = value.cast<OrtValue*>();
-                add_param(param_name, *ort_value);
-              }
+            // Single source: always iterate parameters_ dict.
+            for (auto& [n, value] : reader_writer->parameters_) {
+              const std::string param_name = py::str(n);
+              const OrtValue* ort_value = value.cast<OrtValue*>();
+              add_param(param_name, *ort_value);
             }
 
             // Build the entire adapter image in memory before touching the
@@ -199,13 +159,37 @@ void addAdapterFormatMethods(pybind11::module& m) {
 
       .def_static(
           "read_adapter", [](const std::wstring& file_path) -> std::unique_ptr<PyAdapterFormatReaderWriter> {
-            lora::LoraAdapter lora_adapter;
-            lora_adapter.Load(file_path);
-            const int format_version = lora_adapter.FormatVersion();
-            const int adapter_version = lora_adapter.AdapterVersion();
-            const int model_version = lora_adapter.ModelVersion();
+            // Load into a heap-allocated LoraAdapter, then wrap it in a capsule.
+            // The capsule is pinned as a patient on each OrtValue view, so the
+            // backing memory stays alive as long as any Python reference to an
+            // OrtValue (or the dict containing them) exists.
+            auto adapter_ptr = std::make_unique<lora::LoraAdapter>();
+            adapter_ptr->Load(file_path);
+            const int format_version = adapter_ptr->FormatVersion();
+            const int adapter_version = adapter_ptr->AdapterVersion();
+            const int model_version = adapter_ptr->ModelVersion();
+
+            // Transfer ownership of the LoraAdapter to a capsule.
+            lora::LoraAdapter* raw_adapter = adapter_ptr.release();
+            py::capsule adapter_capsule(raw_adapter, [](void* p) {
+              delete static_cast<lora::LoraAdapter*>(p);
+            });
+
+            // Build the parameters dict with OrtValue views pinned to the capsule.
+            py::dict params;
+            auto [begin, end] = raw_adapter->GetParamIterators();
+            for (; begin != end; ++begin) {
+              auto& [name, param] = *begin;
+              OrtValue& ort_value = param.GetMapped();
+              // Cast with the capsule as parent: pybind11 attaches the capsule
+              // as a patient on the OrtValue handle (strong refcount pin).
+              py::object ort_value_obj = py::cast(
+                  &ort_value, py::return_value_policy::reference_internal, adapter_capsule);
+              params[py::str(name)] = std::move(ort_value_obj);
+            }
+
             return std::make_unique<PyAdapterFormatReaderWriter>(
-                format_version, adapter_version, model_version, std::move(lora_adapter));
+                format_version, adapter_version, model_version, std::move(params));
           },
           R"pbdoc(The function returns an instance of the class that contains a dictionary of name -> numpy arrays)pbdoc");
 

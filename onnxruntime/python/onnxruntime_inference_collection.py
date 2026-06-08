@@ -104,18 +104,14 @@ class AdapterFormat:
         return self._adapter.model_version
 
     def set_parameters(self, params: dict[str, OrtValue]) -> None:
-        """Set adapter parameters. Only valid on instances created via the default constructor.
-
-        Raises RuntimeError if called on an instance returned by read_adapter().
-        To re-export with different parameters, create a new AdapterFormat().
-        """
+        """Set adapter parameters for export."""
         self._adapter.parameters = {k: v._ortvalue for k, v in params.items()}
 
     def get_parameters(self) -> dict[str, OrtValue]:
         """Get adapter parameters as a dict of name -> OrtValue.
 
-        On read instances, the returned OrtValues are zero-copy views that keep
-        the backing adapter memory alive as long as any value is referenced.
+        On read instances, the returned OrtValues are zero-copy views; the
+        backing memory stays alive as long as any returned OrtValue is referenced.
         """
         return {k: OrtValue(v) for k, v in self._adapter.parameters.items()}
 

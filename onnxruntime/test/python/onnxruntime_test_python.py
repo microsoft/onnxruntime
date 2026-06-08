@@ -2104,13 +2104,13 @@ class TestInferenceSession(unittest.TestCase):
             np.testing.assert_allclose(value.numpy(), expected_val.numpy())
 
     def test_adapter_read_modify_export(self):
-        # Regression test: an instance created by read_adapter is read-only.
-        # Attempting to set_parameters on it must raise, preventing silent
-        # data loss where the setter would be ignored by export_adapter.
+        # Verify that an instance created by read_adapter can have its
+        # parameters replaced and re-exported (single-source architecture).
         adapter_version = 1
         model_version = 1
         file_path = pathlib.Path(os.path.realpath(__file__)).parent
         original_path = str(file_path / "test_adapter_read_modify_original.onnx_adapter")
+        modified_path = str(file_path / "test_adapter_read_modify_new.onnx_adapter")
 
         float_data_type = 1
         original_data = np.array([1, 2, 3, 4]).astype(np.float32).reshape(2, 2)
@@ -2127,14 +2127,23 @@ class TestInferenceSession(unittest.TestCase):
         adapter_format.export_adapter(original_path)
 
         try:
-            # Read instance is read-only; set_parameters must raise.
+            # Read, replace parameters, and re-export.
             adapter_read = onnxrt.AdapterFormat.read_adapter(original_path)
-            with self.assertRaises(Exception) as ctx:
-                adapter_read.set_parameters({"new_param": ort_modified})
-            self.assertIn("read_adapter", str(ctx.exception))
+            adapter_read.set_parameters({"new_param": ort_modified})
+            adapter_read.export_adapter(modified_path)
+
+            # Verify the re-exported file has the NEW parameters.
+            adapter_verify = onnxrt.AdapterFormat.read_adapter(modified_path)
+            params = adapter_verify.get_parameters()
+            self.assertIn("new_param", params)
+            self.assertNotIn("param", params)
+            self.assertEqual(params["new_param"].shape(), [3, 2])
+            np.testing.assert_allclose(params["new_param"].numpy(), modified_data)
         finally:
             if os.path.exists(original_path):
                 os.remove(original_path)
+            if os.path.exists(modified_path):
+                os.remove(modified_path)
 
     def test_adapter_parameters_keep_alive(self):
         # Regression test: AdapterFormat.read_adapter returned OrtValue views
