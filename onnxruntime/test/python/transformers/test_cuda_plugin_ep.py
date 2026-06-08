@@ -910,6 +910,34 @@ class TestCudaPluginEP(unittest.TestCase):
         result = _run_nhwc_model_test(target_device, "GridSample", model, {"X": x, "grid": grid}, expected_fn)
         self.assertEqual(result, TEST_PASS, "GridSample (NHWC) plugin test failed")
 
+    def test_nhwc_conv_with_resource_accounting(self):
+        # Smoke test for the NHWC two-pass partitioning flow combined with the resource
+        # accountant (session.resource_cuda_partitioning_settings). The NHWC layout
+        # transform makes the CUDA EP claim Conv nodes tentatively on the first pass; the
+        # budget for surviving nodes is committed only after the second pass. This guards
+        # against regressions where dropped first-pass tags would leak phantom budget. With
+        # a large limit, the Conv must still be claimed by the plugin and run correctly.
+        target_device = get_cuda_plugin_device()
+        inputs = {
+            "X": np.random.rand(1, 2, 4, 4).astype(np.float32),
+            "W": np.random.rand(3, 2, 3, 3).astype(np.float32),
+        }
+        # Large ad-hoc memory limit (1 GB in KB) with no stats file (trailing comma) so the
+        # Conv comfortably fits and remains assigned to the plugin EP.
+        session_config = {
+            **_NHWC_CONFIG,
+            "session.resource_cuda_partitioning_settings": "1048576,",
+        }
+        result = run_operator_test(
+            target_device,
+            create_conv_model,
+            inputs,
+            _expected_conv,
+            session_config=session_config,
+            nhwc_ops={"Conv"},
+        )
+        self.assertTrue(result, "Conv (NHWC + resource accounting) plugin test failed")
+
     # ---- Standard op tests ----
 
     def test_op_reshape(self):
