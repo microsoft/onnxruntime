@@ -1,3 +1,5 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
 """PASS1: comment stripping, #include expansion, #define substitution.
 
 Three sub-passes run in order on each top-level template:
@@ -36,17 +38,22 @@ _DEFINE_INVALID_NAME_RE = re.compile(r"^\s*#define\s+(\S+)(?:\s+(.+))?$")
 # ----------------------------------------------------------------------
 
 
-def _strip_comments(file_path: str, raw: list[str]) -> list[str]:
-    """Strip ``//`` and ``/* */`` comments while preserving line count.
+def _strip_comments(file_path: str, raw: list[str]) -> list[ParsedLine]:
+    """Strip ``//`` and ``/* */`` comments, returning one
+    :class:`ParsedLine` per input line.
+
+    Each line's :class:`CodeReference` line number is bound to its index
+    in ``raw`` (the original source), so errors and ``--preserve-code-ref``
+    output point at the true source line regardless of comment removal.
 
     NOT string-aware. WGSL has no string type, but template arguments
     like ``getElementAt("a/*b", "c")`` would be mis-stripped.
     """
 
-    out: list[str] = []
+    out: list[ParsedLine] = []
     in_multi = False
 
-    for line in raw:
+    for source_index, line in enumerate(raw):
         processed: list[str] = []
         i = 0
         n = len(line)
@@ -71,8 +78,17 @@ def _strip_comments(file_path: str, raw: list[str]) -> list[str]:
                     processed.append(line[i])
                     i += 1
 
-        # Always append (even if empty) to preserve line numbers.
-        out.append("".join(processed).rstrip())
+        # Always append (even if empty) to preserve line count, and tag
+        # each line with its true source line number (1-based).
+        out.append(
+            ParsedLine(
+                line="".join(processed).rstrip(),
+                code_reference=CodeReference(
+                    file_path=file_path,
+                    line_number=source_index + 1,
+                ),
+            )
+        )
 
     if in_multi:
         raise WgslTemplateParseError(
@@ -300,22 +316,12 @@ def _apply_macros(lines: list[ParsedLine], file_name: str) -> list[ParsedLine]:
 def parse(repo: TemplateRepository) -> TemplateRepository:
     """Run PASS1 on every template in the repository."""
 
-    # STEP 1 — strip comments. Build the initial parse_state with raw
-    # lines turned into ParsedLine objects.
+    # STEP 1 — strip comments. _strip_comments returns ParsedLine
+    # objects already tagged with their true source line numbers.
     parse_state: dict[str, _ParseEntry] = {}
     for template_key, template in repo.templates.items():
         assert isinstance(template, TemplatePass0)
-        stripped = _strip_comments(template_key, template.raw)
-        parsed_lines = [
-            ParsedLine(
-                line=text,
-                code_reference=CodeReference(
-                    file_path=template_key,
-                    line_number=index + 1,  # 1-based
-                ),
-            )
-            for index, text in enumerate(stripped)
-        ]
+        parsed_lines = _strip_comments(template_key, template.raw)
         parse_state[template_key] = _ParseEntry(parsed_lines)
 
     # STEP 2 — expand #include directives in every top-level template.
