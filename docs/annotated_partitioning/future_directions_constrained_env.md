@@ -26,53 +26,147 @@ A config like `gpu(layers.0, layers.1, ..., layers.15); cpu(layers.16, ..., laye
 
 ### How to Approach
 
-1. **Extend `LayeringRuleMatcher` to operate on node names directly.** Today the matcher looks at `node.GetMetadata("layer_ann")`. Add a parallel path that runs the same prefix/substring matching against `node.Name()`. This is a small change — the trie infrastructure already exists.
+1. **Add a new `SubstringMatcher` for node-name matching.** Today the `LayeringRuleMatcher` supports exact match and prefix match (via a trie that walks from position 0 of the input string). Neither mode works for node names: a node named `/model/layers.5/self_attn/q_proj/MatMul` does not *start with* `layers.5` — the identifying substring appears in the middle. Name-based matching fundamentally requires **substring** search. The existing trie infrastructure is irrelevant here — a new, simpler matching approach is needed (see "Substring Matching Implementation" below).
 
-2. **Config via a separate session option (same syntax).** Rather than introducing a new qualifier into the existing `kOrtSessionOptionsLayerAssignmentSettings` syntax, add a parallel session option that uses **the same `device(prefix1, prefix2, ...); ...` grammar** but matches against `Node::Name()` instead of node metadata:
+2. **Config via a separate session option (same grammar, different matcher).** Rather than introducing a new qualifier into the existing `kOrtSessionOptionsLayerAssignmentSettings` syntax, add a parallel session option that uses **the same `device(pattern1, pattern2, ...); ...` grammar** but performs **substring matching** against `Node::Name()` instead of prefix/exact matching against node metadata:
 
    ```cpp
    // Existing (annotation-based, matches node metadata 'layer_ann'):
    static const char* const kOrtSessionOptionsLayerAssignmentSettings =
        "session.layer_assignment_settings";
 
-   // NEW (name-based, matches Node::Name() via substring/prefix):
+   // NEW (name-based, matches Node::Name() via substring):
    static const char* const kOrtSessionOptionsNameBasedLayerAssignment =
        "session.name_based_layer_assignment";
    ```
 
-   Usage stays identical — only the matching target differs:
+   Usage stays identical — only the matching target and algorithm differ:
    ```
-   # Annotation-based (existing):
+   # Annotation-based (existing, prefix/exact match against node metadata):
    session.layer_assignment_settings = "cuda(encoder_layer, attention); cpu(embed)"
 
-   # Name-based (new, same syntax):
-   session.name_based_layer_assignment = "cuda(layers.0, layers.1); cpu(layers.16)"
+   # Name-based (new, substring match against Node::Name()):
+   session.name_based_layer_assignment = "cuda(layers.0/, layers.1/); cpu(layers.16/)"
 
    # Range expressions (future extension, not currently supported):
    session.name_based_layer_assignment = "cuda(layers.[0-15]); cpu(layers.[16-31])"
    ```
 
    This approach:
-   - Keeps the existing parser/grammar unchanged (reuse `LayeringRuleMatcher`)
+   - Keeps the existing parser/grammar unchanged (reuse the `device(pattern1, pattern2, ...); ...` syntax)
+   - Uses a **new `SubstringMatcher`** (not the existing trie-based `LayeringRuleMatcher`) for the actual matching
    - Makes intent explicit — users opt into name-based matching deliberately
    - Both options can coexist (annotation-based takes priority if both match a node)
    - No risk of breaking existing annotation-based workflows
 
 3. **Build index at load time.** During `InferenceSession::Initialize()`, after graph is loaded but before partitioning:
    - If config contains name-based rules, iterate all nodes once
-   - Build `NodeIndex → RuleIndex` map using substring/prefix matching on `Node::Name()`
+   - Build `NodeIndex → RuleIndex` map using substring matching on `Node::Name()`
    - Feed this into the existing `LayeringIndex` infrastructure (same downstream flow)
 
-4. **Range expressions (future extension).** The current `LayeringRuleMatcher` supports only exact match (`=prefix`) and prefix match. It does **not** support range syntax today. For transformer models with numbered layers, a future extension could add range support:
+4. **Range expressions (future extension).** The config grammar does **not** support range syntax today. For transformer models with numbered layers, a future extension could add range support:
    ```
    cuda(layers.[0-15]); cpu(layers.[16-31])
    ```
    This would avoid enumerating 32+ layer prefixes manually, but requires new parsing logic. Until then, users must enumerate each layer prefix explicitly or use a broad prefix like `layers.` that captures all layers for a single device.
 
+### Substring Matching Implementation
+
+The existing `LayeringRuleMatcher` uses a **trie** for prefix matching — it walks the input string from position 0 and checks if any trie path matches a prefix of the input. This only works when the pattern appears at the **start** of the matched string.
+
+For node names, patterns appear in the **middle**:
+```
+Pattern:    "layers.5"
+Node name:  "/model/layers.5/self_attn/q_proj/MatMul"
+                    ^^^^^^^^ — match at position 7, not position 0
+```
+
+The trie is useless here. A new `SubstringMatcher` class is needed.
+
+#### Design: Flat vector + `std::string::find`
+
+The simplest correct approach:
+
+```cpp
+class SubstringMatcher {
+ public:
+  explicit SubstringMatcher(const LayeringRules& rules);
+
+  /// Returns the index of the best matching rule for the given node name.
+  /// "Best" = longest pattern that appears as a substring in the name.
+  std::optional<size_t> Match(std::string_view node_name) const;
+
+ private:
+  // Sorted by pattern length descending — longest patterns checked first.
+  // First match wins (longest-match priority).
+  struct PatternEntry {
+    std::string pattern;
+    size_t rule_index;
+  };
+  InlinedVector<PatternEntry> patterns_;  // sorted longest-first
+};
+```
+
+**Match algorithm:**
+```cpp
+std::optional<size_t> SubstringMatcher::Match(std::string_view node_name) const {
+  for (const auto& entry : patterns_) {
+    if (node_name.find(entry.pattern) != std::string_view::npos) {
+      return entry.rule_index;
+    }
+  }
+  return std::nullopt;
+}
+```
+
+**Why longest-match-first ordering:**
+
+Without it, `layers.1` (a substring of `layers.10`, `layers.11`, ..., `layers.19`) would incorrectly match nodes from layers 10–19. By checking longer patterns first, `layers.10` matches before `layers.1` gets a chance. Users should include the path separator for unambiguous matching: `layers.1/` won't match `layers.10/...`.
+
+**Performance:** With ~64 patterns and node names < 200 chars, this is O(P × N) per node where P = number of patterns and N = name length. Total cost for a 1000-node model: ~64 × 200 × 1000 = ~12M character comparisons. This completes in microseconds on modern hardware and runs only once during `Initialize()`. No optimization (Aho-Corasick, etc.) is warranted.
+
+**Priority semantics:**
+
+| Scenario | Behavior |
+|----------|----------|
+| Single match | Return that rule's index |
+| Multiple matches (different lengths) | Longest pattern wins |
+| Multiple matches (same length, different rules) | First rule in config order wins (stable sort by length, preserving config order as tiebreaker) |
+| No match | Return `nullopt` → node goes to fallback EP (CPU) |
+
+**Integration with `LayeringIndex`:**
+
+`LayeringIndex` currently owns a `LayeringRuleMatcher`. For name-based mode, it would own a `SubstringMatcher` instead (or additionally, if both annotation-based and name-based configs are present). The `ProcessGraph` method gains a branch:
+
+```cpp
+void LayeringIndex::ProcessGraph(const Graph& graph) {
+  for (const auto& node : graph.Nodes()) {
+    std::optional<size_t> matched_rule_idx;
+
+    // Annotation-based matching (existing, higher priority)
+    const std::string& annotation = node.GetLayeringAnnotation();
+    if (!annotation.empty()) {
+      matched_rule_idx = matcher_.Match(annotation);
+    }
+
+    // Name-based matching (new, fallback if no annotation match)
+    if (!matched_rule_idx && substring_matcher_) {
+      matched_rule_idx = substring_matcher_->Match(node.Name());
+    }
+
+    if (matched_rule_idx) {
+      node_to_layering_index_[node.Index()] = *matched_rule_idx;
+    }
+  }
+}
+```
+
+This preserves annotation-based priority (if a node has both an annotation and a matching name pattern, annotation wins) while enabling name-based matching for unannotated models.
+
 ### Advantages
 
 - **Zero model modification** — works with any model that has structured naming
-- **Reuses existing partitioning infrastructure** — only the index-building step changes
+- **Reuses existing partitioning infrastructure** — only the index-building and matching steps change
 - **User-friendly** — users can inspect node names with Netron and write rules directly
 - **Composable with resource accounting** — can combine name-based assignment with memory budgets
 
