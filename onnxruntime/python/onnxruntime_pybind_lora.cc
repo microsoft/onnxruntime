@@ -145,7 +145,11 @@ void addAdapterFormatMethods(pybind11::module& m) {
             // accumulates in memory, and we only touch the filesystem
             // after FinishWithSpan succeeds.
             auto add_param = [&format_builder](const std::string& param_name, const OrtValue& ort_value) {
+              ORT_ENFORCE(ort_value.IsTensor(),
+                          "Lora adapter parameter '", param_name, "' must be a Tensor OrtValue.");
               const Tensor& tensor = ort_value.Get<Tensor>();
+              ORT_ENFORCE(tensor.Location().device.Type() == OrtDevice::CPU,
+                          "Lora adapter parameter '", param_name, "' must reside on CPU to be exported.");
               const auto element_type = tensor.GetElementType();
               // Reject string tensors: Tensor::DataRaw() for a string tensor points to an
               // array of std::string objects, and SizeInBytes() counts the sizeof(std::string)
