@@ -319,40 +319,39 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _Inout_ OrtGraph* 
     }
   }
 
-  // Reject if this raw pointer is already owned by the graph. Wrapping the same pointer in a second
-  // unique_ptr would cause a double-free when the graph is destroyed.
-  auto already_owned = [tensor](const auto& m) {
-    for (const auto& kv : m) {
-      if (kv.second.get() == tensor) return true;
-    }
-    return false;
-  };
-  if (already_owned(graph->initializers) || already_owned(graph->external_initializers)) {
+  // Combined duplicate-pointer check + insert: set::insert returns {iterator, inserted=false} when
+  // the pointer is already owned, otherwise inserts in O(1). If insert throws, no state has changed
+  // and the caller still owns `tensor`.
+  auto [ptr_it, ptr_inserted] = graph->initializer_ptrs.insert(tensor);
+  if (!ptr_inserted) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                  "This OrtValue pointer has already been added to the graph. "
                                  "Each OrtValue must only be added once.");
   }
 
-  // Reject duplicate name and take ownership in a single step.
-  // Strong exception safety: try_emplace inserts a placeholder (default-constructed unique_ptr) only
-  // if no entry with `name` exists in the target map. If it throws bad_alloc, no insertion occurs and
-  // `tensor` is still owned by the caller. Once try_emplace returns successfully with inserted==true,
-  // transferring ownership via reset() is noexcept. We separately check the other map (the one
-  // try_emplace did not look at) to reject names that collide across the regular/external boundary;
-  // that check is a pure read and does not transfer ownership.
+  // Reject duplicate name in either map. Roll back the set entry on rejection.
   auto& target_map = data_is_external ? graph->external_initializers : graph->initializers;
   auto& other_map = data_is_external ? graph->initializers : graph->external_initializers;
-  if (other_map.count(name) != 0) {
+  if (target_map.count(name) != 0 || other_map.count(name) != 0) {
+    graph->initializer_ptrs.erase(ptr_it);
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                  "An initializer with this name has already been added to the graph.");
   }
 
-  auto [it, inserted] = target_map.try_emplace(name);  // last operation that may throw
-  if (!inserted) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "An initializer with this name has already been added to the graph.");
+  // Insert the owning entry. operator[] is the only throwing call; on bad_alloc the map is
+  // unchanged and the caller still owns `tensor`. Roll back the set entry and convert the
+  // exception into a Status rather than letting it propagate.
+  ORT_TRY {
+    target_map[name].reset(tensor);  // takes ownership on success
   }
-  it->second.reset(tensor);  // noexcept: take ownership
+  ORT_CATCH(const std::exception& e) {
+    OrtStatus* status = nullptr;
+    ORT_HANDLE_EXCEPTION([&]() {
+      graph->initializer_ptrs.erase(ptr_it);
+      status = OrtApis::CreateStatus(ORT_FAIL, e.what());
+    });
+    return status;
+  }
 
   return nullptr;
   API_IMPL_END
@@ -382,21 +381,30 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddNodeToGraph, _Inout_ OrtGraph* ort_gra
                                  "Invalid OrtNode variant for use in the OrtModelEditorApi");
   }
 
-  // Reject if this raw pointer is already owned by the graph (prevents double-free).
-  for (const auto& existing : graph->nodes) {
-    if (existing.get() == node) {
-      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "This OrtNode pointer has already been added to the graph. "
-                                   "Each OrtNode must only be added once.");
-    }
+  // Combined duplicate-pointer check + insert via the set's return value. If insert throws bad_alloc,
+  // no state is changed and the caller still owns `ort_node`.
+  auto [ptr_it, ptr_inserted] = graph->node_ptrs.insert(node);
+  if (!ptr_inserted) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "This OrtNode pointer has already been added to the graph. "
+                                 "Each OrtNode must only be added once.");
   }
 
-  // Strong exception safety: reserve room for the new node first. If reserve throws bad_alloc, the
-  // graph state is unchanged and the caller still owns `ort_node`. After reserve, emplace_back is
-  // noexcept (capacity sufficient + unique_ptr move-construction is noexcept).
-  graph->nodes.reserve(graph->nodes.size() + 1);  // last operation that may throw
+  // Compute the id from the current size before mutating the vector. If emplace_back throws, roll
+  // back the set entry and convert the exception into a Status; vector's amortized exponential
+  // growth handles capacity (no manual reserve needed).
   node->id = graph->nodes.size();
-  graph->nodes.emplace_back(node);  // noexcept: take ownership
+  ORT_TRY {
+    graph->nodes.emplace_back(node);  // takes ownership on success
+  }
+  ORT_CATCH(const std::exception& e) {
+    OrtStatus* status = nullptr;
+    ORT_HANDLE_EXCEPTION([&]() {
+      graph->node_ptrs.erase(ptr_it);
+      status = OrtApis::CreateStatus(ORT_FAIL, e.what());
+    });
+    return status;
+  }
   return nullptr;
   API_IMPL_END
 }
@@ -426,6 +434,11 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddGraphToModel, _Inout_ OrtModel* model,
 
   if (graph == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "graph cannot be null");
+  }
+
+  if (onnxruntime::ModelEditorGraph::ToInternal(graph) == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Invalid OrtGraph variant for use in the OrtModelEditorApi");
   }
 
   // Reject if the model already owns a graph. Each OrtModel may have at most one graph; without this

@@ -251,11 +251,19 @@ struct ModelEditorGraph : public OrtGraph {
                            "OrtModelEditorApi does not support getting the parent node for OrtGraph");
   }
 
-  onnxruntime::InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo, OrtValueInfoDeleter>> inputs;
-  onnxruntime::InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo, OrtValueInfoDeleter>> outputs;
-  onnxruntime::InlinedHashMap<std::string, std::unique_ptr<OrtValue, OrtValueDeleter>> initializers;
-  onnxruntime::InlinedHashMap<std::string, std::unique_ptr<OrtValue, OrtValueDeleter>> external_initializers;
-  std::vector<std::unique_ptr<onnxruntime::ModelEditorNode, OrtNodeDeleter>> nodes;
+  InlinedVector<std::unique_ptr<ModelEditorValueInfo, OrtValueInfoDeleter>> inputs;
+  InlinedVector<std::unique_ptr<ModelEditorValueInfo, OrtValueInfoDeleter>> outputs;
+  InlinedHashMap<std::string, std::unique_ptr<OrtValue, OrtValueDeleter>> initializers;
+  InlinedHashMap<std::string, std::unique_ptr<OrtValue, OrtValueDeleter>> external_initializers;
+  InlinedVector<std::unique_ptr<ModelEditorNode, OrtNodeDeleter>> nodes;
+
+  // O(1) duplicate-pointer guards for AddInitializerToGraph / AddNodeToGraph.
+  // Mirror the union of `initializers` + `external_initializers`, and `nodes`, respectively.
+  // There is no remove/replace API for initializers or nodes, so these caches grow monotonically
+  // alongside their owning collections and never need invalidation.
+  InlinedHashSet<const OrtValue*> initializer_ptrs;
+  InlinedHashSet<const ModelEditorNode*> node_ptrs;
+
   std::string name = "ModelEditorGraph";
   std::filesystem::path model_path;
   ModelMetadata model_metadata;
@@ -264,6 +272,6 @@ struct ModelEditorGraph : public OrtGraph {
 }  // namespace onnxruntime
 
 struct OrtModel {
-  std::unique_ptr<OrtGraph, ::onnxruntime::OrtGraphDeleter> graph;
+  std::unique_ptr<OrtGraph, onnxruntime::OrtGraphDeleter> graph;
   std::unordered_map<std::string, int> domain_to_version;
 };
