@@ -60,7 +60,7 @@ MultiHeadAttention<T, QK>::MultiHeadAttention(const OpKernelInfo& info)
   kernel_options_ = this->GetAttentionKernelOptions();
 
   constexpr bool kIsFp16 = std::is_same<T, MLFloat16>::value;
-  constexpr bool kIsFp16OrBf16 = std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value;
+  constexpr bool kIsFp16OrBf16 = kIsFp16 || std::is_same<T, BFloat16>::value;
 
   disable_fused_self_attention_ = !kIsFp16 || !kernel_options_->UseTrtFusedAttention();
   enable_trt_flash_attention_ = kIsFp16 && kernel_options_->UseTrtFlashAttention();

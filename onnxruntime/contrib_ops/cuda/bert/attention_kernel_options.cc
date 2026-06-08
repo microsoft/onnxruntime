@@ -42,7 +42,7 @@ void AttentionKernelOptions::Initialize(int value, bool use_build_flag, bool che
     const auto cudnn_flash_attention_env = ParseEnvironmentVariable<bool>(kEnableCudnnFlashAttention);
     if (cudnn_flash_attention_env.has_value()) {
       use_cudnn_flash_attention_ = *cudnn_flash_attention_env;
-      disable_auto_cudnn_flash_attention_ = !*cudnn_flash_attention_env;
+      disable_auto_cudnn_flash_attention_ = !use_cudnn_flash_attention_;
     } else {
       use_cudnn_flash_attention_ = false;
     }
