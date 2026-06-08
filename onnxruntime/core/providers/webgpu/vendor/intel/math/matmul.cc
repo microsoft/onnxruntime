@@ -59,8 +59,13 @@ Status ApplyMatMulIntel(ComputeContext& context,
   const bool is_xe_lpg = arch == std::string_view("xe-lpg");
   const bool is_xe_3lpg = arch == std::string_view("xe-3lpg");
   // When B is a matrix (batch is 1), we fold batchA into the M dimension for better
-  // performance (e.g., [2,3,5] → [1,6,5]). This is especially beneficial when M is small.
-  // Don't fold to workaround for Xe-LPG/Xe-3LPG when the invalid thread rate of workgroup is low.
+  // performance (e.g., [2,3,5] → [1,6,5]).
+  // This is especially beneficial when M is small:
+  // workgroups containing invalid (out-of-bounds) threads make up a large proportion of all
+  // dispatched workgroups when M is small, so folding reduces that waste significantly.
+  // When M is large, the proportion of such wasteful workgroups is already small, so
+  // folding yields negligible gains and is skipped.
+  // Don't fold to workaround for Xe-LPG/Xe-3LPG when M is small and the proportion is relatively small .
   const int64_t M = output_shape[output_shape.NumDimensions() - 2];
   const int64_t m_mod_32 = M % 32;
   if (batchA != 1 && batchB == 1 && M < 128 && (!(is_xe_lpg || is_xe_3lpg) || (m_mod_32 > 0 && m_mod_32 <= 24))) {
@@ -97,7 +102,7 @@ Status ApplyMatMulIntel(ComputeContext& context,
 
   // Always access A with 1-component when using subgroup.
   const bool is_vec4 = dim_b_outer % 4 == 0;
-  InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, ElementsPerThreadY(context, is_vec4, dim_a_outer), 1});
+  InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, ElementsPerThreadY(context, dim_a_outer), 1});
 
   const uint32_t dispatch_x = narrow<uint32_t>((dim_b_outer + kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0] - 1) /
                                                (kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0]));

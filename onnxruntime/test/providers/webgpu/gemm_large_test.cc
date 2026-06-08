@@ -53,6 +53,11 @@ void RunTestTyped(std::initializer_list<int64_t> a_dims, int64_t a_trans, std::i
                   int64_t b_trans, std::initializer_list<int64_t> c_dims, float alpha = 1.0f, float beta = 1.0f) {
   static_assert(std::is_same_v<T, float> || std::is_same_v<T, MLFloat16>, "unexpected type for T");
 
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  }
+
   TensorShape a_shape(a_dims);
   TensorShape b_shape(b_dims);
   TensorShape c_shape(c_dims);
@@ -94,7 +99,7 @@ void RunTestTyped(std::initializer_list<int64_t> a_dims, int64_t a_trans, std::i
     test.SetOutputRelErr("Y", 0.02f);
   }
 
-  test.RunWithConfig();
+  test.ConfigEp(std::move(webgpu_ep)).RunWithConfig();
 }
 
 template <int version = 13>

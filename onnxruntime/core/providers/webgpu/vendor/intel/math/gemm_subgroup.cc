@@ -94,12 +94,12 @@ bool CanApplySubgroup(const ComputeContext& context, int64_t M, int64_t N, int64
   return false;
 }
 
-int64_t ElementsPerThreadY(ComputeContext& context, bool is_vec4, uint32_t M) {
+int64_t ElementsPerThreadY(ComputeContext& context, uint32_t M) {
   // For Xe-LPG and Xe-3LPG, we have observed that 4 elements per thread is optimal when M is large.
   const auto& arch = context.AdapterInfo().architecture;
   const bool is_xe_lpg = arch == std::string_view("xe-lpg");
   const bool is_xe_3lpg = arch == std::string_view("xe-3lpg");
-  return is_vec4 ? (M <= 8 ? 1 : (M <= 16 ? 2 : (M <= 32 ? 4 : (is_xe_lpg || is_xe_3lpg ? 4 : 8)))) : 4;
+  return M <= 8 ? 1 : (M <= 16 ? 2 : (M <= 32 ? 4 : (is_xe_lpg || is_xe_3lpg ? 4 : 8)));
 }
 
 Status MakeMatMulSubgroupSource(ShaderHelper& shader,

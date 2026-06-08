@@ -44,6 +44,11 @@ template <typename T, int version = 13>
 void RunTestTyped(std::initializer_list<int64_t> a_dims, std::initializer_list<int64_t> b_dims) {
   static_assert(std::is_same_v<T, float> || std::is_same_v<T, MLFloat16>, "unexpected type for T");
 
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  }
+
   TensorShape a_shape(a_dims);
   TensorShape b_shape(b_dims);
   MatMulComputeHelper helper;
@@ -73,7 +78,7 @@ void RunTestTyped(std::initializer_list<int64_t> a_dims, std::initializer_list<i
     test.SetOutputRelErr("Y", 0.02f);
   }
 
-  test.RunWithConfig();
+  test.ConfigEp(std::move(webgpu_ep)).RunWithConfig();
 }
 
 // 2D, 3D, and 4D shapes with broadcasting, aligned and unaligned dimensions.
