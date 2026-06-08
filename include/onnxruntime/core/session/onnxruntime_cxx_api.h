@@ -3621,13 +3621,21 @@ struct GraphImpl : ConstGraphImpl<T> {
   using B::B;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // <Wraps GetModelEditorApi().SetGraphInputs()
+  /// <Wraps GetModelEditorApi().SetGraphInputs(). Strong exception safety: on success the Graph
+  /// takes ownership of every ValueInfo in `inputs` and each element is reset to nullptr; on
+  /// failure (an exception is thrown) the Graph state and every element of `inputs` are unchanged.
   void SetInputs(std::vector<ValueInfo>& inputs);
-  // <Wraps GetModelEditorApi().SetGraphOutputs()
+  /// <Wraps GetModelEditorApi().SetGraphOutputs(). Strong exception safety: on success the Graph
+  /// takes ownership of every ValueInfo in `outputs` and each element is reset to nullptr; on
+  /// failure (an exception is thrown) the Graph state and every element of `outputs` are unchanged.
   void SetOutputs(std::vector<ValueInfo>& outputs);
-  // <Wraps GetModelEditorApi().AddInitializerToGraph()
-  void AddInitializer(const std::string& name, const Value& initializer, bool data_is_external);  // Graph copies the OrtValue internally
-  // <Wraps GetModelEditorApi().AddNodeToGraph()
+  /// <Wraps GetModelEditorApi().AddInitializerToGraph(). Strong exception safety: on success the
+  /// Graph takes ownership of `initializer` (which is reset to nullptr); on failure (an exception
+  /// is thrown) `initializer` is unchanged and still owned by the caller.
+  void AddInitializer(const std::string& name, Value& initializer, bool data_is_external);  // Graph takes ownership of Value
+  /// <Wraps GetModelEditorApi().AddNodeToGraph(). Strong exception safety: on success the Graph
+  /// takes ownership of `node` (which is reset to nullptr); on failure (an exception is thrown)
+  /// `node` is unchanged and still owned by the caller.
   void AddNode(Node& node);  // Graph takes ownership of Node
 #endif                       // !defined(ORT_MINIMAL_BUILD)
 };
@@ -3661,7 +3669,9 @@ struct ModelImpl : detail::Base<T> {
   using B::B;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // <Wraps GetModelEditorApi().AddGraphToModel()
+  /// <Wraps GetModelEditorApi().AddGraphToModel(). Strong exception safety: on success the Model
+  /// takes ownership of `graph` (which is reset to nullptr); on failure (an exception is thrown)
+  /// `graph` is unchanged and still owned by the caller.
   void AddGraph(Graph& graph);
 #endif
 };

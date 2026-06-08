@@ -7772,7 +7772,12 @@ struct OrtModelEditorApi {
   /** \brief Set the inputs for the OrtGraph.
    *
    * Set the graph inputs. This will replace any existing inputs with the new values.
-   * The OrtGraph takes ownership of the OrtValueInfo instances and you should NOT call OrtApi::ReleaseValueInfo.
+   *
+   * Atomicity / all-or-nothing: on success, the OrtGraph takes ownership of every OrtValueInfo in
+   * `inputs`, and each entry in the array is reset to nullptr to make the transfer explicit. On any
+   * failure, the graph's previous inputs are preserved and ownership of NONE of the OrtValueInfo
+   * instances is transferred -- the caller remains responsible for releasing them. Calling
+   * OrtApi::ReleaseValueInfo on an entry whose array slot has been nulled out would cause a double-free.
    *
    * \param[in] graph The OrtGraph instance to update.
    * \param[in] inputs The input OrtValueInfo instances.
@@ -7783,12 +7788,17 @@ struct OrtModelEditorApi {
    * \since Version 1.22.
    */
   ORT_API2_STATUS(SetGraphInputs, _Inout_ OrtGraph* graph,
-                  _In_reads_(inputs_len) _In_ OrtValueInfo** inputs, _In_ size_t inputs_len);
+                  _In_reads_(inputs_len) _Inout_ OrtValueInfo** inputs, _In_ size_t inputs_len);
 
   /** \brief Set the outputs for the OrtGraph.
    *
    * Set the graph outputs. This will replace any existing outputs with the new values.
-   * The OrtGraph takes ownership of the OrtValueInfo instances provided and you should NOT call OrtApi::ReleaseValueInfo.
+   *
+   * Atomicity / all-or-nothing: on success, the OrtGraph takes ownership of every OrtValueInfo in
+   * `outputs`, and each entry in the array is reset to nullptr to make the transfer explicit. On any
+   * failure, the graph's previous outputs are preserved and ownership of NONE of the OrtValueInfo
+   * instances is transferred -- the caller remains responsible for releasing them. Calling
+   * OrtApi::ReleaseValueInfo on an entry whose array slot has been nulled out would cause a double-free.
    *
    * \param[in] graph The OrtGraph instance to update.
    * \param[in] outputs The output OrtValueInfo instances.
@@ -7799,14 +7809,17 @@ struct OrtModelEditorApi {
    * \since Version 1.22.
    */
   ORT_API2_STATUS(SetGraphOutputs, _Inout_ OrtGraph* graph,
-                  _In_reads_(outputs_len) _In_ OrtValueInfo** outputs, _In_ size_t outputs_len);
+                  _In_reads_(outputs_len) _Inout_ OrtValueInfo** outputs, _In_ size_t outputs_len);
 
   /** \brief Add an initializer to the OrtGraph
    *
-   * ORT will copy the OrtValue wrapper internally. The caller retains ownership of the OrtValue and should
-   * release it with OrtApi::ReleaseValue when done. Note that the underlying data buffer is not copied.
-   * If the OrtValue was created with a user-provided buffer (e.g., OrtApi::CreateTensorWithDataAsOrtValue),
-   * that buffer must remain valid for the duration of the inference session.
+   * Atomicity / all-or-nothing: on success, the OrtGraph takes ownership of `tensor` and the caller
+   * must NOT call OrtApi::ReleaseValue on it. On any failure, ownership is NOT transferred and the caller
+   * remains responsible for releasing the OrtValue. Calling OrtApi::ReleaseValue after a successful
+   * transfer would cause a double-free.
+   * Adding the same OrtValue pointer twice (under any name) is rejected with ORT_INVALID_ARGUMENT.
+   * Adding a duplicate initializer name is also rejected. The Model Editor API does not currently
+   * support removing or replacing an initializer once it has been added.
    *
    * Two options:
    *
@@ -7835,19 +7848,23 @@ struct OrtModelEditorApi {
    *
    * \param[in] graph The OrtGraph instance to update.
    * \param[in] name The value name for the initializer.
-   * \param[in] ort_value The OrtValue instance containing the tensor data.
-   * \param[in] data_is_external Set to true if the data is external and should not be serialized into the model.
+   * \param[in] tensor The OrtValue instance containing the tensor data.
+   * \param[in] data_is_external Set to true if the data is external and should not be copied.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.22.
    */
-  ORT_API2_STATUS(AddInitializerToGraph, _Inout_ OrtGraph* graph, _In_ const char* name,
-                  _In_ const OrtValue* ort_value, bool data_is_external);
+  ORT_API2_STATUS(AddInitializerToGraph, _Inout_ OrtGraph* graph, _In_ const char* name, _Inout_ OrtValue* tensor,
+                  bool data_is_external);
 
   /** \brief Add an OrtNode to an OrtGraph
    *
-   * Add the node to the graph. The OrtGraph will take ownership of OrtNode and you should NOT call OrtApi::ReleaseNode.
+   * Atomicity / all-or-nothing: on success, the OrtGraph takes ownership of `node` and the caller
+   * must NOT call OrtApi::ReleaseNode. On any failure, ownership is NOT transferred and the caller remains
+   * responsible for releasing the OrtNode. Calling OrtApi::ReleaseNode after a successful transfer would
+   * cause a double-free.
+   * Adding the same OrtNode pointer twice is rejected with ORT_INVALID_ARGUMENT.
    *
    * \param[in] graph The OrtGraph instance to update.
    * \param[in] node The OrtNode instance to add to the graph.
@@ -7856,7 +7873,7 @@ struct OrtModelEditorApi {
    *
    * \since Version 1.22.
    */
-  ORT_API2_STATUS(AddNodeToGraph, _Inout_ OrtGraph* graph, _In_ OrtNode* node);
+  ORT_API2_STATUS(AddNodeToGraph, _Inout_ OrtGraph* graph, _Inout_ OrtNode* node);
 
   /** \brief Create an OrtModel.
    *
@@ -7884,9 +7901,13 @@ struct OrtModelEditorApi {
 
   /** \brief Add an OrtGraph to an OrtModel.
    *
-   * Add the graph to a model. This should be called once when creating a new model.
+   * Add the graph to a model. Each OrtModel may hold at most one OrtGraph; a second call is rejected
+   * with ORT_INVALID_ARGUMENT.
    *
-   * The OrtModel takes ownership of the OrtGraph and you should NOT call OrtApi::ReleaseGraph.
+   * Atomicity / all-or-nothing: on success, the OrtModel takes ownership of `graph` and the caller
+   * must NOT call OrtApi::ReleaseGraph. On any failure, ownership is NOT transferred and the caller
+   * remains responsible for releasing the OrtGraph. Calling OrtApi::ReleaseGraph after a successful
+   * transfer would cause a double-free.
    *
    * \param[in] model The OrtModel instance to update.
    * \param[in] graph The OrtGraph instance to add to the model.
@@ -7895,7 +7916,7 @@ struct OrtModelEditorApi {
    *
    * \since Version 1.22.
    */
-  ORT_API2_STATUS(AddGraphToModel, _Inout_ OrtModel* model, _In_ OrtGraph* graph);
+  ORT_API2_STATUS(AddGraphToModel, _Inout_ OrtModel* model, _Inout_ OrtGraph* graph);
 
   /** \brief Create an OrtSession using the OrtModel.
    *
