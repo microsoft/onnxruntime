@@ -13,6 +13,7 @@
 #include "core/framework/execution_providers.h"
 #include "core/graph/graph.h"
 
+#include <algorithm>
 #include <limits>
 
 namespace onnxruntime {
@@ -335,28 +336,50 @@ LayeringIndex LayeringIndex::Create(const Graph& graph,
                                     EpNameToLayeringIndices ep_map,
                                     LayeringIndexToEpName rule_map,
                                     LayeringRules layering_rules) {
-  // 1. Create LayeringIndex instance with pre-computed maps
   LayeringIndex index(std::move(layering_rules), std::move(ep_map), std::move(rule_map));
-
-  // 2. Traverse the graph and index nodes
   index.ProcessGraph(graph, std::nullopt);
+  return index;
+}
 
+LayeringIndex LayeringIndex::Create(const Graph& graph,
+                                    EpNameToLayeringIndices ep_map,
+                                    LayeringIndexToEpName rule_map,
+                                    LayeringRules layering_rules,
+                                    SubstringMatcher substring_matcher) {
+  LayeringIndex index(std::move(layering_rules), std::move(ep_map), std::move(rule_map), std::move(substring_matcher));
+  index.ProcessGraph(graph, std::nullopt);
   return index;
 }
 
 Status LayeringIndex::Create(const Graph& graph,
                              const std::string& config_string,
+                             const std::string& name_based_config_string,
                              gsl::span<const OrtEpDevice* const> ep_devices,
                              const ExecutionProviders& ep_providers,
                              const logging::Logger& logger,
                              std::optional<LayeringIndex>& layering_index) {
+  // Parse annotation-based rules
   LayeringRules rules;
-  ORT_RETURN_IF_ERROR(LayeringRules::FromConfigString(config_string, rules));
+  if (!config_string.empty()) {
+    ORT_RETURN_IF_ERROR(LayeringRules::FromConfigString(config_string, rules));
+    LOGS(logger, INFO) << "Parsed " << rules.rules.size() << " annotation-based layering rules from config.";
+  }
 
-  LOGS(logger, INFO) << "Parsed " << rules.rules.size() << " layering rules from config.";
+  // Parse name-based rules
+  LayeringRules name_rules;
+  if (!name_based_config_string.empty()) {
+    ORT_RETURN_IF_ERROR(LayeringRules::FromConfigString(name_based_config_string, name_rules));
+    LOGS(logger, INFO) << "Parsed " << name_rules.rules.size() << " name-based layering rules from config.";
+  }
+
+  // Merge both rule sets: annotation-based rules first (lower indices = higher priority in ProcessGraph),
+  // then name-based rules appended. The SubstringMatcher will operate on name-based rules only.
+  const size_t annotation_rule_count = rules.rules.size();
+  for (auto& nr : name_rules.rules) {
+    rules.rules.push_back(std::move(nr));
+  }
 
   if (rules.rules.empty()) {
-    // Return no index indicating no layering
     layering_index.reset();
     return Status::OK();
   }
@@ -384,9 +407,6 @@ Status LayeringIndex::Create(const Graph& graph,
     if (matched_ep) {
       const std::string& ep_type = *matched_ep;
       ep_map[ep_type].insert(i);
-      // Ensure 1:1 mapping from rule index to EP type
-      // Note: A rule index refers to a unique entry in LayeringRules::rules vector.
-      // So 'i' is unique.
       rule_map[i] = ep_type;
       matched_rule_count++;
       LOGS(logger, VERBOSE) << "Layering Rule " << i << " (" << rule.device << " -> " << rule.annotation
@@ -402,7 +422,22 @@ Status LayeringIndex::Create(const Graph& graph,
   LOGS(logger, INFO) << "LayeringIndex created. Matched " << matched_rule_count
                      << " out of " << rules.rules.size() << " rules to available Execution Providers.";
 
-  layering_index = LayeringIndex::Create(graph, std::move(ep_map), std::move(rule_map), std::move(rules));
+  // Build SubstringMatcher from name-based rules only (indices offset by annotation_rule_count)
+  std::optional<SubstringMatcher> substring_matcher;
+  if (annotation_rule_count < rules.rules.size()) {
+    // Create a LayeringRules containing only the name-based portion
+    // SubstringMatcher stores rule indices offset to align with the merged rules vector
+    LayeringRules name_only_rules;
+    for (size_t i = annotation_rule_count; i < rules.rules.size(); ++i) {
+      name_only_rules.rules.push_back(rules.rules[i]);
+    }
+    substring_matcher.emplace(name_only_rules, annotation_rule_count);
+  }
+
+  // Create LayeringIndex with the merged rules
+  LayeringIndex index(std::move(rules), std::move(ep_map), std::move(rule_map), std::move(substring_matcher));
+  index.ProcessGraph(graph, std::nullopt);
+  layering_index = std::move(index);
   return Status::OK();
 }
 
@@ -423,11 +458,16 @@ void LayeringIndex::ProcessGraph(const Graph& graph, std::optional<size_t> paren
   for (auto& node : graph.Nodes()) {
     std::optional<size_t> matched_rule_idx = std::nullopt;
 
-    // 4. For every node query its annotation
+    // 4. For every node query its annotation (prefix/exact match)
     const std::string& annotation = node.GetLayeringAnnotation();
     if (!annotation.empty()) {
       // If it has an annotation try to match it
       matched_rule_idx = matcher_.Match(annotation);
+    }
+
+    // 4b. If no annotation match, try substring matching against node name
+    if (!matched_rule_idx && substring_matcher_) {
+      matched_rule_idx = substring_matcher_->Match(node.Name());
     }
 
     // 5. If node has no annotation, inherit from subgraph parent node
@@ -542,6 +582,30 @@ void LayeringRuleMatcher::UpdateBestMatch(std::optional<size_t>& current_best, s
   if (!current_best || candidate < *current_best) {
     current_best = candidate;
   }
+}
+
+SubstringMatcher::SubstringMatcher(const LayeringRules& rules, size_t rule_index_offset) {
+  for (size_t i = 0; i < rules.rules.size(); ++i) {
+    const auto& rule = rules.rules[i];
+    if (!rule.annotation.empty()) {
+      patterns_.push_back({rule.annotation, i + rule_index_offset});
+    }
+  }
+  // Sort by pattern length descending (longest first).
+  // Stable sort preserves config order as tiebreaker for same-length patterns.
+  std::stable_sort(patterns_.begin(), patterns_.end(),
+                   [](const PatternEntry& a, const PatternEntry& b) {
+                     return a.pattern.size() > b.pattern.size();
+                   });
+}
+
+std::optional<size_t> SubstringMatcher::Match(std::string_view node_name) const {
+  for (const auto& entry : patterns_) {
+    if (node_name.find(entry.pattern) != std::string_view::npos) {
+      return entry.rule_index;
+    }
+  }
+  return std::nullopt;
 }
 
 std::optional<std::reference_wrapper<const InlinedHashSet<size_t>>>

@@ -11,6 +11,7 @@
 #include "core/common/logging/logging.h"
 #include "gsl/gsl"
 #include <string>
+#include <string_view>
 #include <vector>
 #include <optional>
 #include <memory>
@@ -83,6 +84,36 @@ class LayeringRuleMatcher {
   void UpdateBestMatch(std::optional<size_t>& current_best, size_t candidate) const;
 };
 
+/// <summary>
+/// Performs substring matching against node names. Unlike LayeringRuleMatcher (which does
+/// prefix/exact matching from position 0), this matches patterns appearing anywhere in the
+/// input string. Longest matching pattern wins.
+/// </summary>
+class SubstringMatcher {
+ public:
+  /// <param name="rules">The rules whose annotations become substring patterns.
+  ///   The '=' prefix (exact match) qualifier is ignored — all patterns are substrings.</param>
+  /// <param name="rule_index_offset">Offset added to each pattern's local index to produce the
+  ///   global rule index in the merged LayeringRules vector.</param>
+  explicit SubstringMatcher(const LayeringRules& rules, size_t rule_index_offset = 0);
+
+  /// <summary>
+  /// Returns the index of the best matching rule for the given node name.
+  /// "Best" = longest pattern that appears as a substring in the name.
+  /// </summary>
+  /// <param name="node_name">the node's name to match against</param>
+  /// <returns>index of the matching LayeringRule if a substring match is found</returns>
+  std::optional<size_t> Match(std::string_view node_name) const;
+
+ private:
+  struct PatternEntry {
+    std::string pattern;
+    size_t rule_index;
+  };
+  // Sorted by pattern length descending. First match wins (longest-match priority).
+  InlinedVector<PatternEntry> patterns_;
+};
+
 namespace EpLayeringMatcher {
 /// <summary>
 /// Matches a list of available OrtEpDevices against the device string specified in the LayerAnnotation.
@@ -126,11 +157,22 @@ class LayeringIndex {
                               LayeringRules layering_rules);
 
   /// <summary>
+  /// Creates a fully initialized LayeringIndex with an optional SubstringMatcher for name-based matching.
+  /// </summary>
+  static LayeringIndex Create(const Graph& graph,
+                              EpNameToLayeringIndices ep_map,
+                              LayeringIndexToEpName rule_map,
+                              LayeringRules layering_rules,
+                              SubstringMatcher substring_matcher);
+
+  /// <summary>
   /// Factory method that creates a LayeringIndex by parsing configuration, matching rules against
   /// available devices/providers, and indexing the graph.
   /// </summary>
   /// <param name="graph">The graph to index.</param>
-  /// <param name="config_string">The configuration string containing layering rules.</param>
+  /// <param name="config_string">The annotation-based configuration string (prefix/exact match on metadata).</param>
+  /// <param name="name_based_config_string">The name-based configuration string (substring match on Node::Name()).
+  ///              May be empty if name-based matching is not configured.</param>
   /// <param name="ep_devices">Available OrtEpDevices to match rules against.</param>
   /// <param name="ep_providers">Available ExecutionProviders to match rules against (fallback).</param>
   /// <param name="logger">Logger for reporting information/errors.</param>
@@ -139,6 +181,7 @@ class LayeringIndex {
   /// <returns>Status indicating success or failure.</returns>
   static Status Create(const Graph& graph,
                        const std::string& config_string,
+                       const std::string& name_based_config_string,
                        gsl::span<const OrtEpDevice* const> ep_devices,
                        const ExecutionProviders& ep_providers,
                        const logging::Logger& logger,
@@ -192,11 +235,17 @@ class LayeringIndex {
     LayerIndexToNodes layer_to_node_ids_;
   };
 
-  LayeringIndex(LayeringRules layering_rules, EpNameToLayeringIndices ep_name_to_layering_indices, LayeringIndexToEpName layering_index_to_ep_name)
+  LayeringIndex(LayeringRules layering_rules, EpNameToLayeringIndices ep_name_to_layering_indices,
+                LayeringIndexToEpName layering_index_to_ep_name,
+                std::optional<SubstringMatcher> substring_matcher = std::nullopt)
       : rules_(std::move(layering_rules)),
         matcher_(rules_),
         ep_name_to_layering_indices_(std::move(ep_name_to_layering_indices)),
-        layering_index_to_ep_name_(std::move(layering_index_to_ep_name)) {}
+        layering_index_to_ep_name_(std::move(layering_index_to_ep_name)),
+        substring_matcher_(std::move(substring_matcher)) {}
+
+  // Optional substring matcher for name-based layer assignment
+  std::optional<SubstringMatcher> substring_matcher_;
 
   // Graph and sub-graphs mapping to their indices
   InlinedHashMap<const Graph*, GraphLayeringIndex> graph_index_;

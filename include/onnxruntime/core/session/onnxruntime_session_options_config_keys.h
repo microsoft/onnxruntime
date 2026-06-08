@@ -420,6 +420,18 @@ static const char* const kOrtSessionOptionsResourceCudaPartitioningSettings =
 /// </summary>
 static const char* const kOrtSessionOptionsLayerAssignmentSettings = "session.layer_assignment_settings";
 
+/// <summary>
+/// Name-based layer assignment. Uses the same device(pattern1, pattern2, ...); ... grammar
+/// as kOrtSessionOptionsLayerAssignmentSettings but performs SUBSTRING matching against
+/// Node::Name() instead of prefix/exact matching against node metadata annotations.
+/// The '=' prefix (exact match) from the annotation-based grammar is NOT supported here
+/// — all patterns are treated as substrings.
+/// Longest matching pattern wins when multiple patterns match the same node name.
+/// If both this option and kOrtSessionOptionsLayerAssignmentSettings are set,
+/// annotation-based matching takes priority for nodes that have annotations.
+/// </summary>
+static const char* const kOrtSessionOptionsNameBasedLayerAssignment = "session.name_based_layer_assignment";
+
 // Enable EP context feature to dump the partitioned graph which includes the EP context into Onnx file.
 // The dumped Onnx model with EP context can be used for future inference to avoid the EP graph partitioning/compile overhead.
 // "0": disable. (default)
