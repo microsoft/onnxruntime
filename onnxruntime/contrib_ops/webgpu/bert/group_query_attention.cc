@@ -165,11 +165,18 @@ Status RunFusedQKRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context,
   // Dispatch computations only over the Q domain, and fuse K write operations using a head-index-based condition.
   const bool has_qk_norm = (q_norm_weight != nullptr) && (k_norm_weight != nullptr);
   FusedQKRotaryEmbeddingProgram program(params.rotary_interleaved_, has_qk_norm);
+  // When has_qk_norm is true the shader binds q_input/k_input with UseElementTypeAlias, so
+  // the per-input cache dependency must include Type for both. Without TypeAndRank on
+  // key_in the shader-validation in Debug builds fails with "Input dependency is not set
+  // for Type, but type alias for element type or value type is used."
+  const auto k_input_dep = has_qk_norm
+                               ? ProgramTensorMetadataDependency::TypeAndRank
+                               : ProgramTensorMetadataDependency::Rank;
   program
       .CacheHint(params.rotary_interleaved_, has_qk_norm)
       .AddInputs({
           {query_in, ProgramTensorMetadataDependency::TypeAndRank},
-          {key_in, ProgramTensorMetadataDependency::Rank},
+          {key_in, k_input_dep},
           {seqlen_k, ProgramTensorMetadataDependency::TypeAndRank},
           {cos_cache, ProgramTensorMetadataDependency::Rank},
           {sin_cache, ProgramTensorMetadataDependency::Rank},
