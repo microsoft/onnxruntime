@@ -892,10 +892,10 @@ if (onnxruntime_USE_CUDA)
   # On an ARM64 host the suffix is left empty, so find_library() for cudart only looks in
   # "lib64" and never finds <cuda_home>/lib/.../cudart.lib. find_package(CUDAToolkit) then
   # fails with: Could NOT find CUDAToolkit (missing: CUDA_CUDART). Pre-seed the (internal)
-  # search-suffix variables so the toolkit's import libraries are located. We list every
-  # layout NVIDIA ships (lib/x64, lib/arm64, lib) so this works regardless of where the
-  # win-arm64 toolkit places cudart.lib. FindCUDAToolkit unsets these at the end, so this
-  # only affects the search below and is a no-op once CMake gains native WoA support.
+  # search-suffix variables with win-arm64 import-library locations (lib/arm64 and
+  # lib/arm64/stubs) so the toolkit's cudart.lib can be found. FindCUDAToolkit unsets
+  # these at the end, so this only affects the search below and is a no-op once CMake
+  # gains native WoA support.
   if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows" AND CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "ARM64")
     set(_CUDAToolkit_win_search_dirs lib/arm64)
     set(_CUDAToolkit_win_stub_search_dirs lib/arm64/stubs)

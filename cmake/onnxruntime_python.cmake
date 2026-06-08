@@ -395,10 +395,10 @@ if (WIN32)
         set(_cudnn_arch "x64")
       endif()
       set(CUDNN_SEARCH_PATHS
-        "${onnxruntime_CUDNN_HOME}/bin/cudnn64_*.dll"
         "${onnxruntime_CUDNN_HOME}/bin/${_cudnn_arch}/cudnn64_*.dll"
-        "${onnxruntime_CUDNN_HOME}/bin/${onnxruntime_CUDA_VERSION}/cudnn64_*.dll"
         "${onnxruntime_CUDNN_HOME}/bin/${onnxruntime_CUDA_VERSION}/${_cudnn_arch}/cudnn64_*.dll"
+        "${onnxruntime_CUDNN_HOME}/bin/cudnn64_*.dll"
+        "${onnxruntime_CUDNN_HOME}/bin/${onnxruntime_CUDA_VERSION}/cudnn64_*.dll"
       )
       set(CUDNN_DLL_PATH "")
       foreach(search_path ${CUDNN_SEARCH_PATHS})

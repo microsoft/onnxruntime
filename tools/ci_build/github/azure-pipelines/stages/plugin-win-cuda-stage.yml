@@ -304,7 +304,10 @@ stages:
         outputs:
         - output: pipelineArtifact
           targetPath: '$(Build.ArtifactStagingDirectory)\python'
-          artifactName: cuda_plugin_python_win_${{ parameters.arch }}_cuda${{ replace(parameters.cuda_version, '.', '') }}
+          ${{ if eq(parameters.arch, 'arm64') }}:
+            artifactName: cuda_plugin_python_win_arm64_cuda${{ replace(parameters.arm64_cuda_version, '.', '') }}
+          ${{ else }}:
+            artifactName: cuda_plugin_python_win_x64_cuda${{ replace(parameters.cuda_version, '.', '') }}
       variables:
       - template: ../templates/common-variables.yml
       steps:
