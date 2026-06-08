@@ -2973,11 +2973,16 @@ Status Graph::SaveShapeValuesFromDataPropagation(const Node& node,
         OrtValue ort_value;
         if (this->GetOrtValueInitializer(input_name, ort_value, true)) {
           const Tensor& tensor = ort_value.Get<Tensor>();
+          auto enforce_tensor_element_count_matches = [&](size_t tensor_element_count) {
+            ORT_ENFORCE(tensor_element_count == element_cnt,
+                        "The element count from Tensor for initializer '", input_name,
+                        "' should match the count from utils::GetTensorShapeFromTensorProto(). Tensor count: ",
+                        tensor_element_count, ", TensorProto count: ", element_cnt);
+          };
+
           if (initializer->data_type() == TensorProto_DataType_INT32) {
             auto data_span = tensor.DataAsSpan<int32_t>();
-            ORT_ENFORCE(data_span.size() == element_cnt,
-                        "The element counts from Tensor should be the same"
-                        "from using utils::GetTensorShapeFromTensorProto()");
+            enforce_tensor_element_count_matches(data_span.size());
 
             size_t index = 0;
             input_values.resize(element_cnt);
@@ -2986,7 +2991,11 @@ Status Graph::SaveShapeValuesFromDataPropagation(const Node& node,
               ++index;
             }
           } else if (initializer->data_type() == TensorProto_DataType_INT64) {
-            const int64_t* src = tensor.Data<int64_t>();
+            auto data_span = tensor.DataAsSpan<int64_t>();
+            enforce_tensor_element_count_matches(data_span.size());
+
+            const int64_t* src = data_span.data();
+            input_values.resize(element_cnt);
             memcpy(input_values.data(), src, element_cnt * sizeof(int64_t));
           }
         } else {
@@ -6843,7 +6852,9 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
   // NodeArg for the value using that
 
   auto add_graph_inputs_outputs = [&, this](
-                                      const InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>>& graph_inputs_or_outputs,
+                                      const InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo,
+                                                                          onnxruntime::OrtValueInfoDeleter>>&
+                                          graph_inputs_or_outputs,
                                       bool is_input) {
     // when updating a model we don't require the inputs or outputs to be set if they're unchanged.
     if (updating_existing_graph && graph_inputs_or_outputs.empty()) {
@@ -6866,12 +6877,17 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
     }
   };
 
-  auto add_initializers = [this](const std::unordered_map<std::string, OrtValue>& initializers,
+  auto add_initializers = [this](const InlinedHashMap<std::string,
+                                                      std::unique_ptr<OrtValue, onnxruntime::OrtValueDeleter>>&
+                                     initializers,
                                  bool is_external) {
-    for (auto& name_and_ortvalue : initializers) {
+    // Copy (do not move) the OrtValue into ortvalue_initializers_. The input OrtModel may be reused
+    // by the caller (e.g. applied to multiple sessions), and OrtValue's default move would clear the
+    // payload while leaving `type_` set, which would silently break later reuse.
+    for (const auto& name_and_ortvalue : initializers) {
       // convert from OrtValue to TensorProto
       const std::string& name = name_and_ortvalue.first;
-      const OrtValue& v = name_and_ortvalue.second;
+      const OrtValue& v = *name_and_ortvalue.second;
 
       ORT_ENFORCE(v.IsTensor(), "Initializers must be Tensors");
       const Tensor& t = v.Get<Tensor>();

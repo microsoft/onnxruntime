@@ -558,3 +558,72 @@ static const char* const kOrtSessionOptionsRecordEpGraphAssignmentInfo = "sessio
 // - "0": disable. (default)
 // - "1": enable.
 static const char* const kOrtSessionOptionEpEnableWeightlessEpContextNodes = "ep.enable_weightless_ep_context_nodes";
+
+// Controls the intra-op thread pool size for a session.
+// Value should be a base-10 int32 string.
+// Equivalent to OrtApi::SetIntraOpNumThreads.
+static const char* const kOrtSessionOptionsConfigIntraOpNumThreads = "session.intra_op_num_threads";
+
+// Controls the inter-op thread pool size for a session.
+// Value should be a base-10 int32 string.
+// Equivalent to OrtApi::SetInterOpNumThreads.
+static const char* const kOrtSessionOptionsConfigInterOpNumThreads = "session.inter_op_num_threads";
+
+// Enable or disable the CPU memory arena for a session.
+// "0": disable; "1": enable.
+// Equivalent to OrtApi::DisableCpuMemArena / OrtApi::EnableCpuMemArena.
+static const char* const kOrtSessionOptionsConfigEnableCpuMemArena = "session.enable_cpu_mem_arena";
+
+// Enable or disable memory pattern optimization for a session.
+// "0": disable; "1": enable.
+// Equivalent to OrtApi::DisableMemPattern / OrtApi::EnableMemPattern.
+static const char* const kOrtSessionOptionsConfigEnableMemPattern = "session.enable_mem_pattern";
+
+// Session log identifier.
+// Value should be a UTF-8 string.
+// Equivalent to OrtApi::SetSessionLogId.
+static const char* const kOrtSessionOptionsConfigLogId = "session.log_id";
+
+// Session log severity level.
+// Value should be a base-10 int32 string (refer to OrtLoggingLevel values).
+// Equivalent to OrtApi::SetSessionLogSeverityLevel.
+static const char* const kOrtSessionOptionsConfigLogSeverityLevel = "session.log_severity_level";
+
+// Session log verbosity level.
+// Value should be a base-10 int32 string.
+// Equivalent to OrtApi::SetSessionLogVerbosityLevel.
+static const char* const kOrtSessionOptionsConfigLogVerbosityLevel = "session.log_verbosity_level";
+
+// Enable or disable profiling for a session.
+// Empty string: disable profiling.
+// Non-empty string: enable profiling and use value as profile file prefix.
+// Equivalent to OrtApi::DisableProfiling / OrtApi::EnableProfiling.
+static const char* const kOrtSessionOptionsConfigEnableProfiling = "session.enable_profiling";
+
+// Graph optimization level for a session.
+// Value should be one of:
+// "disable_all", "enable_basic", "enable_extended", "enable_layout", "enable_all".
+// Equivalent to OrtApi::SetSessionGraphOptimizationLevel.
+static const char* const kOrtSessionOptionsConfigGraphOptimizationLevel = "session.graph_optimization_level";
+
+// File path for saving the optimized model.
+// Value should be a path string.
+// Equivalent to OrtApi::SetOptimizedModelFilePath.
+static const char* const kOrtSessionOptionsConfigOptimizedModelFilePath = "session.optimized_model_filepath";
+
+// Session execution mode.
+// Value should be one of:
+// "sequential", "parallel", "ort_sequential", "ort_parallel".
+// Equivalent to OrtApi::SetSessionExecutionMode.
+static const char* const kOrtSessionOptionsConfigExecutionMode = "session.execution_mode";
+
+// Controls whether to use per-session thread pools.
+// "0": disable per-session threads (use global thread pools).
+// "1": keep per-session threads enabled (default behavior before disable call).
+// Equivalent to OrtApi::DisablePerSessionThreads (one-way via API).
+static const char* const kOrtSessionOptionsConfigUsePerSessionThreads = "session.use_per_session_threads";
+
+// Enable or disable deterministic compute for a session.
+// "0": disable; "1": enable.
+// Equivalent to OrtApi::SetDeterministicCompute.
+static const char* const kOrtSessionOptionsConfigUseDeterministicCompute = "session.use_deterministic_compute";

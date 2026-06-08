@@ -11,6 +11,7 @@
 #include "test/unittest_util/model_tester.h"
 #include "test/util/include/scoped_env_vars.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
+#include "contrib_ops/cpu/transformers/beam_search_parameters.h"
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_options.h"
@@ -20,6 +21,33 @@ extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace onnxruntime {
 namespace test {
+
+TEST(BeamSearchParametersTest, SetSubgraphParametersRejectsOversizedVocabSize) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.vocab_size = 150;
+
+  EXPECT_THROW(parameters.SetSubgraphParameters(128, 1, 1, 1), OnnxRuntimeException);
+}
+
+TEST(BeamSearchParametersTest, SetSubgraphParametersAllowsPaddedVocabSize) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.vocab_size = 64;
+
+  parameters.SetSubgraphParameters(128, 2, 4, 6);
+
+  EXPECT_EQ(parameters.vocab_size, 64);
+  EXPECT_EQ(parameters.num_heads, 2);
+}
+
+TEST(BeamSearchParametersTest, SetSubgraphParametersUsesSubgraphSizeWhenAttributeIsDefault) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.vocab_size = -1;
+
+  parameters.SetSubgraphParameters(128, 2, 4, 6);
+
+  EXPECT_EQ(parameters.vocab_size, 128);
+  EXPECT_EQ(parameters.num_heads, 2);
+}
 
 void RunGptBeamSearchFp32() {
   std::vector<int64_t> input_ids_shape{3, 12};
