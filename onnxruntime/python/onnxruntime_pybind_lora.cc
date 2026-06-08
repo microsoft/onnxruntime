@@ -31,25 +31,23 @@ namespace {
 /// Class that supports writing and reading adapters
 /// in onnxruntime format.
 ///
-/// Design: Two-source architecture (loaded_adapter_ vs parameters_)
+/// Design: An instance operates in one of two mutually exclusive modes:
 ///
-/// On the read path, OrtValues are zero-copy views into the LoraAdapter's
-/// memory-mapped (or loaded) buffer. This avoids duplicating potentially
-/// large adapter weights on memory-constrained devices.
+/// 1. READ mode — created by read_adapter(). OrtValues are zero-copy views
+///    into the LoraAdapter's memory-mapped buffer. Parameters are read-only;
+///    calling the setter throws. export_adapter() re-serializes from the
+///    loaded adapter.
 ///
-/// Unifying into a single cached py::dict is not possible because it would
-/// create an un-collectable reference cycle:
-///   self -> parameters_ dict -> OrtValue (pybind11 patient list) -> self
-/// pybind11 instances do not implement tp_traverse, so Python's cyclic GC
-/// cannot break this cycle and the object would leak.
+/// 2. WRITE mode — created by the default constructor. The user sets
+///    parameters (owning OrtValues) and calls export_adapter().
 ///
-/// Instead:
-///   - loaded_adapter_ holds backing memory; the getter builds a fresh dict
-///     each call, pinning `self` on each OrtValue (no cycle since the dict
-///     is not stored on self).
-///   - parameters_ is used only on the write path (user-supplied values).
-///   - The setter clears loaded_adapter_ so that after an explicit
-///     set_parameters, both getter and export_adapter use the new dict.
+/// This separation avoids:
+///   - Copying adapter weights (wasteful on memory-constrained devices).
+///   - An un-collectable reference cycle (self -> cached dict -> OrtValue
+///     patient list -> self) that pybind11's non-traversable instances would
+///     leak.
+///   - Silent behavioral regression where set_parameters on a read instance
+///     would be ignored by export_adapter.
 /// </summary>
 struct PyAdapterFormatReaderWriter {
   PyAdapterFormatReaderWriter() = default;
@@ -117,11 +115,10 @@ void addAdapterFormatMethods(pybind11::module& m) {
             return params;
           },
           [](PyAdapterFormatReaderWriter* reader_writer, py::dict& parameters) -> void {
-            // Clear loaded_adapter_ so subsequent getter and export_adapter
-            // operations use the user-supplied dict. Without this, a read →
-            // set_parameters → export sequence would silently ignore the new
-            // parameters and re-export the original read data.
-            reader_writer->loaded_adapter_.reset();
+            if (reader_writer->loaded_adapter_.has_value()) {
+              ORT_THROW("Cannot set parameters on an AdapterFormat instance created by read_adapter(). "
+                        "Create a new AdapterFormat() for export instead.");
+            }
             reader_writer->parameters_ = parameters;
           },
           R"pbdoc("Enables user to read/write the dictionary of adapter parameters (name -> OrtValue)")pbdoc")

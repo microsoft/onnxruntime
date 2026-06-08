@@ -104,13 +104,19 @@ class AdapterFormat:
         return self._adapter.model_version
 
     def set_parameters(self, params: dict[str, OrtValue]) -> None:
+        """Set adapter parameters. Only valid on instances created via the default constructor.
+
+        Raises RuntimeError if called on an instance returned by read_adapter().
+        To re-export with different parameters, create a new AdapterFormat().
+        """
         self._adapter.parameters = {k: v._ortvalue for k, v in params.items()}
 
     def get_parameters(self) -> dict[str, OrtValue]:
-        # Each call to the C getter rebuilds the dict and pins the owning
-        # C AdapterFormat onto every returned OrtValue (pybind11 add_patient
-        # via keep_alive_impl), so callers can drop this AdapterFormat and
-        # the dict (or any individual value) keeps the backing adapter alive.
+        """Get adapter parameters as a dict of name -> OrtValue.
+
+        On read instances, the returned OrtValues are zero-copy views that keep
+        the backing adapter memory alive as long as any value is referenced.
+        """
         return {k: OrtValue(v) for k, v in self._adapter.parameters.items()}
 
 
