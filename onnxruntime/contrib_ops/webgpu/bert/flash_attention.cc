@@ -484,7 +484,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   // Route between prefill path (FlashAttentionProgram, single kernel)
   // and fused decode path (QKV + VxReduce, 2 kernels).
   const bool use_split_reduce = (parameters.sequence_length_ <= 4) ||
-                                (parameters.sequence_length_ < 64 &&
+                                (parameters.sequence_length_ < 32 &&
                                  static_cast<uint32_t>(parameters.total_sequence_length_) > 1000);
 
   if (!use_split_reduce) {
