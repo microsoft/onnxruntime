@@ -1298,10 +1298,10 @@ The executable would be ~500–1000 LOC (excluding tokenizer): configure session
 
 ```
 Near-term (low effort, high value):
-├── 1. Name-based matching in LayeringRuleMatcher
-│     - Add 'name:' prefix qualifier to config syntax
-│     - Match against Node::Name() instead of metadata
-│     - Support range expressions for numbered layers
+├── 1. Name-based matching via session.name_based_layer_assignment  [DONE]
+│     - Separate session option with substring matching against Node::Name()
+│     - SubstringMatcher with longest-match-wins priority
+│     - Annotation-based matching takes precedence when both are configured
 │
 ├── 2. Precise per-node memory estimation
 │     - Static workspace estimation functions registered per kernel type

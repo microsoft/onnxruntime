@@ -2025,6 +2025,70 @@ TEST(LayeringIndexTest, AnnotationTakesPriorityOverNameBased) {
   EXPECT_EQ(*assign2, 1u);  // annotation match only
 }
 
+TEST(LayeringIndexTest, UpdateAppliesSubstringMatcherToNewNodes) {
+  // Verifies that LayeringIndex::Update() applies substring_matcher_ fallback
+  // for new nodes that have no annotation but whose Name() matches a name-based pattern.
+  // This covers the post-layout-transform incremental update path.
+
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 12;
+  Model model("test_model", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto type_proto;
+  type_proto.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  // Initial graph with one node assigned via name-based matching
+  NodeArg* input = &graph.GetOrCreateNodeArg("input", &type_proto);
+  NodeArg* mid = &graph.GetOrCreateNodeArg("mid", &type_proto);
+  NodeArg* output = &graph.GetOrCreateNodeArg("output", &type_proto);
+
+  graph.AddNode("/model/layers.0/self_attn/MatMul", "Abs", "", {input}, {mid});
+  graph.AddNode("/model/norm/LayerNorm", "Abs", "", {mid}, {output});
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // Name-based rules: layers.0/ -> gpu (index 0)
+  LayeringRules name_rules;
+  name_rules.rules.push_back({"gpu", "layers.0/", true});
+
+  LayeringIndex::EpNameToLayeringIndices ep_map;
+  ep_map["GpuEP"].insert(0);
+  LayeringIndex::LayeringIndexToEpName rule_map;
+  rule_map[0] = "GpuEP";
+
+  SubstringMatcher substring_matcher(name_rules);
+  auto index = LayeringIndex::Create(graph, std::move(ep_map), std::move(rule_map),
+                                     std::move(name_rules), std::move(substring_matcher));
+
+  // Simulate layout transform adding new nodes with structured names
+  NodeArg* new_out1 = &graph.GetOrCreateNodeArg("new_out1", &type_proto);
+  NodeArg* new_out2 = &graph.GetOrCreateNodeArg("new_out2", &type_proto);
+
+  // New node whose name matches "layers.0/" pattern
+  Node& new_matching = graph.AddNode("/model/layers.0/self_attn/Transpose", "Abs", "", {output}, {new_out1});
+
+  // New node whose name does NOT match any pattern
+  Node& new_unmatched = graph.AddNode("/model/lm_head/MatMul", "Abs", "", {new_out1}, {new_out2});
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // Call Update() with the new nodes (the incremental path)
+  std::vector<NodeIndex> new_nodes = {new_matching.Index(), new_unmatched.Index()};
+  index.Update(graph, new_nodes);
+
+  // new_matching should be assigned via substring match
+  auto assign_match = index.GetNodeAssignment(graph, new_matching.Index());
+  ASSERT_TRUE(assign_match.has_value());
+  EXPECT_EQ(*assign_match, 0u);
+
+  // new_unmatched should remain unassigned
+  auto assign_no = index.GetNodeAssignment(graph, new_unmatched.Index());
+  EXPECT_FALSE(assign_no.has_value());
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 

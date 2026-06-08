@@ -424,7 +424,7 @@ static const char* const kOrtSessionOptionsLayerAssignmentSettings = "session.la
 /// Name-based layer assignment. Uses the same device(pattern1, pattern2, ...); ... grammar
 /// as kOrtSessionOptionsLayerAssignmentSettings but performs SUBSTRING matching against
 /// Node::Name() instead of prefix/exact matching against node metadata annotations.
-/// The '=' prefix (exact match) from the annotation-based grammar is NOT supported here
+/// The '=' prefix (exact match) from the annotation-based grammar is rejected with an error
 /// — all patterns are treated as substrings.
 /// Longest matching pattern wins when multiple patterns match the same node name.
 /// If both this option and kOrtSessionOptionsLayerAssignmentSettings are set,

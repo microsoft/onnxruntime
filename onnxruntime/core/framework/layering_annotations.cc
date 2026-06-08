@@ -91,8 +91,9 @@ common::Status LayeringRules::FromConfigString(const std::string& config_value, 
   return common::Status::OK();
 }
 
-LayeringRuleMatcher::LayeringRuleMatcher(const LayeringRules& rules) {
-  for (size_t i = 0; i < rules.rules.size(); ++i) {
+LayeringRuleMatcher::LayeringRuleMatcher(const LayeringRules& rules, size_t rule_count) {
+  const size_t limit = (rule_count == 0) ? rules.rules.size() : std::min(rule_count, rules.rules.size());
+  for (size_t i = 0; i < limit; ++i) {
     const auto& rule = rules.rules[i];
     ORT_ENFORCE(!rule.annotation.empty(), "Layering rule annotation cannot be empty");
     if (rule.prefix_match) {
@@ -369,6 +370,13 @@ Status LayeringIndex::Create(const Graph& graph,
   LayeringRules name_rules;
   if (!name_based_config_string.empty()) {
     ORT_RETURN_IF_ERROR(LayeringRules::FromConfigString(name_based_config_string, name_rules));
+    // Reject '=' (exact-match qualifier) in name-based rules — all patterns must be substrings
+    for (const auto& rule : name_rules.rules) {
+      ORT_RETURN_IF(!rule.prefix_match,
+                    "Name-based layer assignment does not support the '=' (exact-match) qualifier. "
+                    "All patterns are treated as substrings. Remove the '=' prefix from pattern: '",
+                    rule.annotation, "'");
+    }
     LOGS(logger, INFO) << "Parsed " << name_rules.rules.size() << " name-based layering rules from config.";
   }
 
@@ -435,7 +443,8 @@ Status LayeringIndex::Create(const Graph& graph,
   }
 
   // Create LayeringIndex with the merged rules
-  LayeringIndex index(std::move(rules), std::move(ep_map), std::move(rule_map), std::move(substring_matcher));
+  LayeringIndex index(std::move(rules), std::move(ep_map), std::move(rule_map),
+                      std::move(substring_matcher), annotation_rule_count);
   index.ProcessGraph(graph, std::nullopt);
   layering_index = std::move(index);
   return Status::OK();
@@ -525,28 +534,36 @@ void LayeringIndex::Update(const Graph& graph, gsl::span<const NodeIndex> nodes)
       continue;
     }
 
+    std::optional<size_t> matched_rule_idx;
+
+    // Try annotation-based matching first (higher priority)
     const std::string& annotation = node->GetLayeringAnnotation();
     if (!annotation.empty()) {
-      auto matched_rule_idx = matcher_.Match(annotation);
+      matched_rule_idx = matcher_.Match(annotation);
+    }
 
-      if (matched_rule_idx) {
-        const size_t rule_idx = *matched_rule_idx;
+    // Fallback to substring matching against node name
+    if (!matched_rule_idx && substring_matcher_) {
+      matched_rule_idx = substring_matcher_->Match(node->Name());
+    }
 
-        // Only assign if this rule maps to a valid EP in our configuration
-        if (layering_index_to_ep_name_.count(rule_idx)) {
-          // Check if already assigned to a DIFFERENT rule, if so clean up old mapping
-          auto prev_assign = current_graph_index.node_to_layering_index_.find(node_index);
-          if (prev_assign != current_graph_index.node_to_layering_index_.end()) {
-            size_t old_rule = prev_assign->second;
-            if (old_rule != rule_idx) {
-              current_graph_index.layer_to_node_ids_[old_rule].erase(node_index);
-            }
+    if (matched_rule_idx) {
+      const size_t rule_idx = *matched_rule_idx;
+
+      // Only assign if this rule maps to a valid EP in our configuration
+      if (layering_index_to_ep_name_.count(rule_idx)) {
+        // Check if already assigned to a DIFFERENT rule, if so clean up old mapping
+        auto prev_assign = current_graph_index.node_to_layering_index_.find(node_index);
+        if (prev_assign != current_graph_index.node_to_layering_index_.end()) {
+          size_t old_rule = prev_assign->second;
+          if (old_rule != rule_idx) {
+            current_graph_index.layer_to_node_ids_[old_rule].erase(node_index);
           }
-
-          ORT_IGNORE_RETURN_VALUE(current_graph_index.node_to_layering_index_.insert_or_assign(node_index, rule_idx));
-          ORT_IGNORE_RETURN_VALUE(current_graph_index.layer_to_node_ids_[rule_idx].insert(node_index));
-          was_updated = true;
         }
+
+        ORT_IGNORE_RETURN_VALUE(current_graph_index.node_to_layering_index_.insert_or_assign(node_index, rule_idx));
+        ORT_IGNORE_RETURN_VALUE(current_graph_index.layer_to_node_ids_[rule_idx].insert(node_index));
+        was_updated = true;
       }
     }
   }

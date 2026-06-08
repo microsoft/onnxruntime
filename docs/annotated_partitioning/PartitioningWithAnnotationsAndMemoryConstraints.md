@@ -188,7 +188,7 @@ device1(pattern1, pattern2, ...); device2(pattern3, pattern4, ...)
 
 - **Substring matching:** A pattern matches if it appears *anywhere* in the node name. For example, `layers.0/` matches `/model/layers.0/self_attn/q_proj/MatMul`.
 - **Longest match wins:** When multiple patterns match the same node name, the longest pattern takes priority. For example, `layers.10/` wins over `layers.1/` for a node named `/model/layers.10/...`.
-- **No `=` prefix:** The exact-match qualifier (`=`) from annotation-based syntax is not supported. All patterns are treated as substrings.
+- **No `=` prefix:** The exact-match qualifier (`=`) from annotation-based syntax is rejected with an error. All patterns are treated as substrings.
 - **Same device designators:** The device portion uses the same device designators as `session.layer_assignment_settings` (see table above).
 
 ```python

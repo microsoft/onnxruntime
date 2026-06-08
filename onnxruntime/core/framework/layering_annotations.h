@@ -58,7 +58,11 @@ struct LayeringRules {
 /// </summary>
 class LayeringRuleMatcher {
  public:
-  explicit LayeringRuleMatcher(const LayeringRules& rules);
+  /// <param name="rules">The full set of layering rules.</param>
+  /// <param name="rule_count">Number of rules to index (from the beginning). If 0 or omitted,
+  ///   all rules are indexed. Use this to scope the matcher to annotation-based rules only
+  ///   when name-based rules are appended to the same vector.</param>
+  explicit LayeringRuleMatcher(const LayeringRules& rules, size_t rule_count = 0);
 
   /// <summary>
   /// The method returns the index of the best matching rule for the given annotation
@@ -237,9 +241,10 @@ class LayeringIndex {
 
   LayeringIndex(LayeringRules layering_rules, EpNameToLayeringIndices ep_name_to_layering_indices,
                 LayeringIndexToEpName layering_index_to_ep_name,
-                std::optional<SubstringMatcher> substring_matcher = std::nullopt)
+                std::optional<SubstringMatcher> substring_matcher = std::nullopt,
+                size_t annotation_rule_count = 0)
       : rules_(std::move(layering_rules)),
-        matcher_(rules_),
+        matcher_(rules_, annotation_rule_count),
         ep_name_to_layering_indices_(std::move(ep_name_to_layering_indices)),
         layering_index_to_ep_name_(std::move(layering_index_to_ep_name)),
         substring_matcher_(std::move(substring_matcher)) {}
