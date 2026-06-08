@@ -29,7 +29,27 @@ namespace py = pybind11;
 namespace {
 /// <summary>
 /// Class that supports writing and reading adapters
-/// in innxruntime format
+/// in onnxruntime format.
+///
+/// Design: Two-source architecture (loaded_adapter_ vs parameters_)
+///
+/// On the read path, OrtValues are zero-copy views into the LoraAdapter's
+/// memory-mapped (or loaded) buffer. This avoids duplicating potentially
+/// large adapter weights on memory-constrained devices.
+///
+/// Unifying into a single cached py::dict is not possible because it would
+/// create an un-collectable reference cycle:
+///   self -> parameters_ dict -> OrtValue (pybind11 patient list) -> self
+/// pybind11 instances do not implement tp_traverse, so Python's cyclic GC
+/// cannot break this cycle and the object would leak.
+///
+/// Instead:
+///   - loaded_adapter_ holds backing memory; the getter builds a fresh dict
+///     each call, pinning `self` on each OrtValue (no cycle since the dict
+///     is not stored on self).
+///   - parameters_ is used only on the write path (user-supplied values).
+///   - The setter clears loaded_adapter_ so that after an explicit
+///     set_parameters, both getter and export_adapter use the new dict.
 /// </summary>
 struct PyAdapterFormatReaderWriter {
   PyAdapterFormatReaderWriter() = default;
@@ -44,16 +64,9 @@ struct PyAdapterFormatReaderWriter {
   int format_version_{adapters::kAdapterFormatVersion};
   int adapter_version_{0};
   int model_version_{0};
-  // Populated only on the read path (read_adapter). When present, the
-  // `parameters` getter builds OrtValue views over its params_values_ map
-  // and pins this object as the keep_alive patient on each value.
+  // Read path: owns the backing memory for zero-copy OrtValue views.
   std::optional<lora::LoraAdapter> loaded_adapter_;
-  // Populated only on the write path (user-supplied via the `parameters`
-  // setter) and consumed by export_adapter. On the read path this stays
-  // empty; the getter builds a fresh dict from loaded_adapter_ each call,
-  // which avoids an AdapterFormat -> dict -> OrtValue -> AdapterFormat
-  // reference cycle that pybind11's patient list would not let the GC
-  // break.
+  // Write path: user-supplied dict of name -> OrtValue.
   py::dict parameters_;
 };
 
@@ -79,35 +92,12 @@ void addAdapterFormatMethods(pybind11::module& m) {
           R"pbdoc("Enables user to read/write model version this adapter was created for")pbdoc")
       .def_property(
           "parameters",
-          // Getter: build the dict on demand. On the read path each
-          // returned OrtValue is a non-owning view over storage owned by
-          // loaded_adapter_, so we pin `self` (the AdapterFormat Python
-          // object) onto every OrtValue. The patient list bumps self's
-          // Python refcount, so callers that keep any individual OrtValue
-          // keep the backing adapter alive.
-          //
-          // Why per-element pinning, not a property-level
-          // return_value_policy: pybind11 policies attach to the function's
-          // single return value. Setting reference_internal on this getter
-          // would try to pin `self` onto the returned `py::dict`, but
-          // (a) dict is not a pybind-registered type so keep_alive falls
-          // back to weakref and dicts are not weak-referenceable -> runtime
-          // TypeError, and (b) even if that worked, it would not propagate
-          // to the dict's elements, so a caller doing
-          //     value = params["x"]; del params
-          // would still dangle. We therefore apply the policy per element,
-          // using the per-call form of py::cast: it requests
-          // reference_internal with `self` as parent, which routes through
-          // pybind11's add_patient on the OrtValue (a registered type) --
-          // a strong refcount-based pin, not a weakref.
-          //
-          // The dict is built in a local first and only returned at the
-          // end, so a throw mid-build leaves no half-populated state.
-          //
-          // We deliberately do NOT cache the dict on `self`: caching would
-          // create a self -> dict -> OrtValue -> self reference cycle
-          // (via the patient list), and pybind11 instances are not
-          // traversable by the cyclic GC, so the cycle would leak.
+          // Getter: builds a fresh dict each call. On the read path, each
+          // OrtValue is a non-owning view into loaded_adapter_'s buffer.
+          // We pin `self` as a patient on each OrtValue (not on the dict,
+          // since dicts are not weak-referenceable and keep_alive would fail).
+          // Building fresh each call avoids storing the dict on self, which
+          // would create an un-collectable cycle (see class comment above).
           [](py::object self) -> py::dict {
             auto* rw = self.cast<PyAdapterFormatReaderWriter*>();
             if (!rw->loaded_adapter_.has_value()) {
@@ -119,9 +109,7 @@ void addAdapterFormatMethods(pybind11::module& m) {
             for (; begin != end; ++begin) {
               auto& [name, param] = *begin;
               OrtValue& ort_value = param.GetMapped();
-              // reference_internal == "borrowed reference owned by `self`";
-              // pybind11 attaches `self` as a keep_alive patient on the
-              // returned OrtValue handle.
+              // Pin `self` as patient on each OrtValue view.
               py::object ort_value_obj = py::cast(
                   &ort_value, py::return_value_policy::reference_internal, self);
               params[py::str(name)] = std::move(ort_value_obj);
