@@ -1,3 +1,5 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
 """Static C++ code generator.
 
 The single :class:`StaticCodeGenerator` class implements both

@@ -1,3 +1,5 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
 """Built-in code patterns and indices-helper rewrite table.
 
 A :class:`CodePattern` is a single rewrite rule consumed by the PASS2

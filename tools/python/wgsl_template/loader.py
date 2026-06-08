@@ -1,3 +1,5 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
 """PASS0: load template files from one or more source directories."""
 
 from __future__ import annotations

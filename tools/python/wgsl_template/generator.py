@@ -1,3 +1,5 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
 """PASS2: pattern matching, directives, and code generation.
 
 The state machine in :func:`_generate_impl` tracks parentheses,

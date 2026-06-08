@@ -1,3 +1,5 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
 """Unit tests for the PASS2 generator.
 
 Combines focused unit tests with a fixture-driven runner that pulls

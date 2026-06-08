@@ -1,3 +1,5 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
 """WGSL template engine.
 
 The public entry point is :func:`build`, which orchestrates the

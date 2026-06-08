@@ -1,3 +1,5 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
 """Code generators that emit C++ from PASS2 results.
 
 The single :class:`StaticCodeGenerator` covers both ``static-cpp`` and

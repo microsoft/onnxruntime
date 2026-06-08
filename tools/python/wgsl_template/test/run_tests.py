@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
 """Test runner for the WGSL template Python port.
 
 Discovers ``test_*.py`` siblings and aggregates them into one suite.
