@@ -148,7 +148,7 @@ class PluginExecutionProvider : public IExecutionProvider {
 
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(int graph_annotation_id) const override;
-  common::Status ReplayGraph(int graph_annotation_id) override;
+  common::Status ReplayGraph(int graph_annotation_id, bool sync = true) override;
   common::Status ReleaseCapturedGraph(int graph_annotation_id) override;
   OrtGraphCaptureNodeAssignmentPolicy GetGraphCaptureNodeAssignmentPolicy() const override;
 

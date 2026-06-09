@@ -898,7 +898,8 @@ bool JsExecutionProvider::IsGraphCaptured(int) const {
   return is_graph_captured_;
 }
 
-Status JsExecutionProvider::ReplayGraph(int) {
+Status JsExecutionProvider::ReplayGraph(int, bool /*sync*/) {
+  // The sync parameter is ignored: JS EP always replays synchronously.
   ORT_ENFORCE(IsGraphCaptured(0));
   EM_ASM({ Module.jsepReplay(); });
   return Status::OK();

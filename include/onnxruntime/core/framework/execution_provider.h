@@ -287,8 +287,11 @@ class IExecutionProvider {
 
   /**
      Run the instantiated graph.
+     @param sync If true, synchronize the device/stream after replay to ensure completion before returning.
+                 If false, the caller is responsible for synchronization.
+                 EPs that always replay synchronously may ignore this parameter.
    */
-  virtual common::Status ReplayGraph(int /*graph_annotation_id*/) {
+  virtual common::Status ReplayGraph(int /*graph_annotation_id*/, bool /*sync*/ = true) {
     return Status::OK();
   }
 

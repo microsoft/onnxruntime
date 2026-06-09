@@ -9,7 +9,7 @@
 #include <stdexcept>
 
 static const std::vector<std::string> lutgemm_bench_arg_names = {"BlkLen", "N", "K", "Threads", "HasZP"};
-static const std::vector<std::string> lutgemm_compute_arg_names = {"BlkLen", "M", "N", "K", "Threads", "HasZP"};
+static const std::vector<std::string> lutgemm_compute_arg_names = {"BlkLen", "M", "N", "K", "Threads", "HasZP", "HasBias"};
 
 template <size_t BlkBitWidth>
 void LUTGEMM_PACK(benchmark::State& state) {
@@ -95,6 +95,7 @@ void LUTGEMM_COMPUTE(benchmark::State& state) {
   const size_t K = static_cast<size_t>(state.range(3));
   const size_t Threads = static_cast<size_t>(state.range(4));
   const bool HasZeroPoint = static_cast<bool>(state.range(5));
+  const bool HasBias = static_cast<bool>(state.range(6));
 
   if (!MlasIsLutGemmAvailable(N, K, BlkBitWidth, BlkLen)) {
     state.SkipWithMessage("LUT GEMM is not available with the given configuration.");
@@ -144,14 +145,21 @@ void LUTGEMM_COMPUTE(benchmark::State& state) {
       PackedBuf.data(),
       tp.get());
 
+  std::vector<float> Bias;
+  const float* BiasPtr = nullptr;
+  if (HasBias) {
+    Bias = RandomVectorUniform(N, -1.0f, 1.0f);
+    BiasPtr = Bias.data();
+  }
+
   MlasLutGemm(A.data(), BlkLen, PackedBuf.data(), C.data(),
               static_cast<int>(K), static_cast<int>(M), static_cast<int>(N),
-              HasZeroPoint, tp.get());
+              HasZeroPoint, tp.get(), BiasPtr);
 
   for (auto _ : state) {
     MlasLutGemm(A.data(), BlkLen, PackedBuf.data(), C.data(),
                 static_cast<int>(K), static_cast<int>(M), static_cast<int>(N),
-                HasZeroPoint, tp.get());
+                HasZeroPoint, tp.get(), BiasPtr);
   }
 }
 
@@ -169,12 +177,13 @@ static void LutGemmPackArgs(benchmark::internal::Benchmark* b) {
 static void LutGemmComputeArgs(benchmark::internal::Benchmark* b) {
   b->ArgNames(lutgemm_compute_arg_names);
   b->ArgsProduct({
-      {128},             // BlkLen
-      {1, 32},           // M
-      {4096},            // N
-      {4096},            // K
-      {8},               // Threads
-      {int64_t{false}},  // HasZeroPoint
+      {128},                            // BlkLen
+      {1, 32},                          // M
+      {4096},                           // N
+      {4096},                           // K
+      {8},                              // Threads
+      {int64_t{false}},                 // HasZeroPoint
+      {int64_t{false}, int64_t{true}},  // HasBias
   });
 }
 
