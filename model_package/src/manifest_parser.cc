@@ -103,15 +103,6 @@ ModelPackageStatus* CheckUnknownFields(const ordered_json& obj,
   return nullptr;
 }
 
-bool VariantHasInlineExecutorInfo(const ordered_json& variant_body) {
-  auto it = variant_body.find(kExecutorInfoKey);
-  if (it == variant_body.end() || !it->is_object()) return false;
-  for (auto e = it->begin(); e != it->end(); ++e) {
-    if (e->is_object()) return true;
-  }
-  return false;
-}
-
 ModelPackageStatus* ResolveVariantDirectory(const fs::path& component_dir,
                                             const fs::path& package_root,
                                             const ordered_json& variant_body,
@@ -238,8 +229,10 @@ ModelPackageStatus* ParseVariant(const fs::path& component_dir,
     }
   }
 
-  // Resolve variant directory eagerly only if any inline executor_info exists.
-  bool has_inline_executor = VariantHasInlineExecutorInfo(variant_body);
+  // Resolve variant_directory if declared (records the resolved path when it
+  // exists on disk). We do NOT require the directory to exist here: executor
+  // semantics are not the library's concern, and executors must resolve their
+  // own file references against variant_directory at load time anyway.
   std::optional<fs::path> resolved_dir;
   auto* status = ResolveVariantDirectory(component_dir, package_root, variant_body,
                                          variant_name, opts,
@@ -249,12 +242,6 @@ ModelPackageStatus* ParseVariant(const fs::path& component_dir,
   out->resolved_directory_attempted = true;
   if (resolved_dir.has_value()) {
     out->resolved_directory_cache = resolved_dir->string();
-  }
-
-  if (has_inline_executor && !resolved_dir.has_value()) {
-    return MakeStatus(MODEL_PACKAGE_ERR_STATE,
-                      "variant '" + variant_name + "' has inline executor_info but no "
-                      "resolvable variant_directory (inline payload paths anchor to it).");
   }
 
   return nullptr;

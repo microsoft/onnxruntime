@@ -227,19 +227,6 @@ bool test_set_variant_unknown_component_errors() {
   return true;
 }
 
-bool test_set_variant_eager_inline_check() {
-  // Inline executor_info but no resolvable variant_directory -> ERR_STATE.
-  ModelPackage* raw = nullptr;
-  CHECK_OK(ModelPackage_New(&raw));
-  PkgHandle p(raw);
-  CHECK_OK(ModelPackage_SetComponentInline(p.get(), "c", R"({"variants": {}})"));
-  CHECK_ERR(ModelPackage_SetVariant(p.get(), "c", "v1",
-      R"({"variant_directory": "./does_not_exist_xyz",
-          "executor_info": {"ort": {"some": "data"}}})"),
-      MODEL_PACKAGE_ERR_STATE);
-  return true;
-}
-
 bool test_remove_variant() {
   ModelPackage* raw = nullptr;
   CHECK_OK(ModelPackage_New(&raw));
@@ -495,7 +482,6 @@ const Test kTests[] = {
     {"remove_missing_component_is_noop", test_remove_missing_component_is_noop},
     {"set_variant_upsert", test_set_variant_upsert},
     {"set_variant_unknown_component_errors", test_set_variant_unknown_component_errors},
-    {"set_variant_eager_inline_check", test_set_variant_eager_inline_check},
     {"remove_variant", test_remove_variant},
     {"set_executor_info_inline_and_remove", test_set_executor_info_inline_and_remove},
     {"set_executor_info_external_records_path", test_set_executor_info_external_records_path},

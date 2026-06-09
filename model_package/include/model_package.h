@@ -214,9 +214,9 @@ MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_SetComponentExternal(ModelPac
 MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_RemoveComponent(ModelPackage*, const char* name);
 
 /// Upsert a variant inside a component. `variant_json` must be a JSON object
-/// matching the variant schema. Errors with `MODEL_PACKAGE_ERR_STATE` when
-/// the new variant declares any inline executor_info but has no resolvable
-/// variant_directory.
+/// matching the variant schema. The library does not validate that
+/// `variant_directory` exists on disk; executors are responsible for resolving
+/// their own file references at load time.
 MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_SetVariant(ModelPackage*,
                                                               const char* component_name,
                                                               const char* variant_name,

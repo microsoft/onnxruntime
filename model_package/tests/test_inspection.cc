@@ -274,7 +274,9 @@ bool test_executor_info_inline_and_external() {
   return true;
 }
 
-bool test_inline_executor_info_without_directory_rejected() {
+bool test_inline_executor_info_without_directory_accepted() {
+  // Library no longer requires variant_directory to exist for inline
+  // executor_info. Executors interpret their own payload.
   Sandbox s;
   s.Write("manifest.json", R"({
     "schema_version": 1,
@@ -289,8 +291,8 @@ bool test_inline_executor_info_without_directory_rejected() {
     }
   })");
   ModelPackage* pkg = nullptr;
-  CHECK_ERR(ModelPackage_Open(s.root().c_str(), nullptr, &pkg), MODEL_PACKAGE_ERR_STATE);
-  CHECK(pkg == nullptr);
+  CHECK_OK(ModelPackage_Open(s.root().c_str(), nullptr, &pkg));
+  ModelPackage_Close(pkg);
   return true;
 }
 
@@ -493,8 +495,8 @@ const Test kTests[] = {
     {"external_component_file", test_external_component_file},
     {"external_component_directory", test_external_component_directory},
     {"executor_info_inline_and_external", test_executor_info_inline_and_external},
-    {"inline_executor_info_without_directory_rejected",
-     test_inline_executor_info_without_directory_rejected},
+    {"inline_executor_info_without_directory_accepted",
+     test_inline_executor_info_without_directory_accepted},
     {"path_confinement_rejects_external_paths", test_path_confinement_rejects_external_paths},
     {"installed_layout_allows_absolute", test_installed_layout_allows_absolute},
     {"shared_assets_resolve", test_shared_assets_resolve},

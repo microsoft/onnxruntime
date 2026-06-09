@@ -107,8 +107,6 @@ PkgHandle MakeAuthoredPkgAt(const fs::path& /*root*/,
   ModelPackage_New(&raw);
   if (layout != "portable") ModelPackage_SetLayout(raw, layout.c_str());
   ModelPackage_SetComponentInline(raw, "encoder", R"({"variants": {}})");
-  // variant_directory does not need to exist on disk unless inline executor_info
-  // is declared (eager check); we keep it absent so the test variant is light.
   ModelPackage_SetVariant(raw, "encoder", "v1", R"({"ep": "CPU"})");
   return PkgHandle(raw);
 }
