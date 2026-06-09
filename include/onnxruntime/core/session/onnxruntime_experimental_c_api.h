@@ -50,7 +50,9 @@
 #define ORT_EXPERIMENTAL_API(VER, RET, NAME, ...)                                                 \
   typedef RET(ORT_API_CALL* OrtExperimental_##NAME##_SinceV##VER##_Fn)(__VA_ARGS__) NO_EXCEPTION; \
   static const char* const kOrtExperimental_##NAME##_SinceV##VER##_FnName = #NAME "_SinceV" #VER;
+
 #include "onnxruntime_experimental_c_api.inc"
+
 #undef ORT_EXPERIMENTAL_API
 
 #ifdef __cplusplus
@@ -77,7 +79,9 @@ namespace Experimental {
     return reinterpret_cast<OrtExperimental_##NAME##_SinceV##VER##_Fn>(                \
         api->GetExperimentalFunction(kOrtExperimental_##NAME##_SinceV##VER##_FnName)); \
   }
+
 #include "onnxruntime_experimental_c_api.inc"
+
 #undef ORT_EXPERIMENTAL_API
 
 }  // namespace Experimental
