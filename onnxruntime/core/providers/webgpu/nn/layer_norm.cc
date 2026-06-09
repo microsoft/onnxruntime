@@ -204,7 +204,6 @@ Status RunLayerNormProgram(ComputeContext& context,
   if (x->Shape().Size() == 0) {
     return Status::OK();
   }
-
   const int components = GetMaxComponents(norm_size);
   const uint32_t norm_size_vectorized = onnxruntime::narrow<uint32_t>((norm_size + components - 1) / components);
 

@@ -229,6 +229,83 @@ class MlasSQLutGemmTest : public MlasTestBase {
     }
   }
 
+  // Verifies that the bias argument to MlasLutGemm is correctly broadcast-added per row.
+  // Bias has shape [N] and must be added to every row of the [M, N] output.
+  void TestWithBias(size_t M, size_t N, size_t K, bool WithThreadpool, bool Symmetric) {
+    MLAS_THREADPOOL* tp = WithThreadpool ? GetMlasThreadPool() : nullptr;
+
+    MlasClearLutGemmKernelConfig();
+
+    const float* A = BufferA.GetBuffer(K * M);
+    const float* B = BufferB.GetBuffer(N * K);
+    float* C = BufferC.GetBuffer(N * M, true);
+    float* CReference = BufferCReference.GetBuffer(N * M, true);
+
+    uint8_t* QuantBData = nullptr;
+    float* QuantBScale = nullptr;
+    uint8_t* QuantBZeroPoint = nullptr;
+
+    {
+      size_t QuantBDataSizeInBytes, QuantBScaleSize, QuantBZeroPointSizeInBytes;
+      MlasBlockwiseQuantizedBufferSizes<BlkBitWidth>(BlkLen, /* columnwise */ true,
+                                                     static_cast<int>(K), static_cast<int>(N),
+                                                     QuantBDataSizeInBytes, QuantBScaleSize, &QuantBZeroPointSizeInBytes);
+
+      QuantBData = BufferQuantBData.GetBuffer(QuantBDataSizeInBytes);
+      QuantBScale = BufferQuantBScale.GetBuffer(QuantBScaleSize);
+      if (!Symmetric) {
+        QuantBZeroPoint = BufferQuantBZeroPoint.GetBuffer(QuantBZeroPointSizeInBytes);
+      }
+
+      MlasQuantizeBlockwise<float, BlkBitWidth>(QuantBData, QuantBScale, QuantBZeroPoint,
+                                                B, BlkLen, /* columnwise */ true,
+                                                static_cast<int>(K), static_cast<int>(N),
+                                                static_cast<int>(N), GetMlasThreadPool());
+    }
+
+    MlasInitLutGemmKernelConfig(N, K, BlkBitWidth, BlkLen, !Symmetric);
+
+    size_t PackedBufSize = MlasLutGemmPackedSize(N, K, BlkBitWidth, BlkLen, !Symmetric);
+    std::byte* PackedBuf = BufferPackedB.GetBuffer(PackedBufSize);
+
+    MlasLutGemmPack(
+        N, K, BlkBitWidth, BlkLen, !Symmetric,
+        reinterpret_cast<std::byte*>(QuantBData),
+        QuantBScale,
+        QuantBZeroPoint,
+        false,  // IsFloatZeroPoint
+        PackedBuf, tp);
+
+    // Build a deterministic per-output-feature bias vector with non-trivial variation across N
+    // so that any stride/transpose bug in the fused bias add will be caught.
+    std::vector<float> Bias(N);
+    for (size_t n = 0; n < N; ++n) {
+      Bias[n] = 0.125f + 0.5f * static_cast<float>(n % 7) - 0.25f * static_cast<float>(n % 11);
+    }
+
+    MlasLutGemm(
+        A, BlkLen, PackedBuf, C,
+        static_cast<int>(K), static_cast<int>(M), static_cast<int>(N),
+        !Symmetric, tp, Bias.data());
+
+    // Reference: same GEMM as the no-bias path, then broadcast-add Bias.
+    CallReferenceGemm(M, N, K, A, QuantBData, QuantBScale, QuantBZeroPoint, CReference);
+    for (size_t m = 0; m < M; m++) {
+      for (size_t n = 0; n < N; n++) {
+        CReference[m * N + n] += Bias[n];
+      }
+    }
+
+    size_t f = 0;
+    for (size_t m = 0; m < M; m++) {
+      for (size_t n = 0; n < N; n++, f++) {
+        ASSERT_TRUE(CloseEnough(C[f], CReference[f]))
+            << "Expected: " << CReference[f] << " Actual: " << C[f] << "@[" << m << "x" << n << "], "
+            << "M=" << M << ", N=" << N << ", K=" << K << ", Symmetric=" << Symmetric << ", WithBias=true";
+      }
+    }
+  }
+
  public:
   static const char* GetTestSuiteName() {
     static std::string suite_name = std::string("SQLutGemm") +
@@ -369,6 +446,69 @@ class SQLutGemmFloatZPTest : public MlasTestFixture<MlasSQLutGemmTest<BlkBitWidt
   float ZPValue_;
 };
 
+// Fixture for the fused bias path (MlasLutGemm Bias parameter).
+template <size_t BlkBitWidth, size_t BlkLen>
+class SQLutGemmBiasTest : public MlasTestFixture<MlasSQLutGemmTest<BlkBitWidth, BlkLen>> {
+ public:
+  explicit SQLutGemmBiasTest(size_t M, size_t N, size_t K, bool WithThreadpool, bool Symmetric)
+      : M_(M), N_(N), K_(K), WithThreadpool_(WithThreadpool), Symmetric_(Symmetric) {}
+
+  void TestBody() override {
+    MlasTestFixture<MlasSQLutGemmTest<BlkBitWidth, BlkLen>>::mlas_tester->TestWithBias(
+        M_, N_, K_, WithThreadpool_, Symmetric_);
+  }
+
+  static size_t RegisterSingleTest(size_t M, size_t N, size_t K, bool WithThreadpool, bool Symmetric) {
+    if (!MlasIsLutGemmAvailable(N, K, BlkBitWidth, BlkLen)) {
+      return 0;
+    }
+    if (N < BlkLen) {
+      return 0;
+    }
+
+    std::stringstream ss;
+    ss << (WithThreadpool ? "Threaded" : "SingleThread")
+       << "/Bias/isSymmetric" << Symmetric
+       << "/M" << M << "xN" << N << "xK" << K;
+
+    auto test_name = ss.str();
+
+    testing::RegisterTest(
+        MlasSQLutGemmTest<BlkBitWidth, BlkLen>::GetTestSuiteName(),
+        test_name.c_str(),
+        nullptr,
+        test_name.c_str(),
+        __FILE__,
+        __LINE__,
+        [=]() -> MlasTestFixture<MlasSQLutGemmTest<BlkBitWidth, BlkLen>>* {
+          return new SQLutGemmBiasTest<BlkBitWidth, BlkLen>(M, N, K, WithThreadpool, Symmetric);
+        });
+
+    return 1;
+  }
+
+  static size_t RegisterShortExecuteTests() {
+    size_t count = 0;
+    for (bool with_threadpool : {true}) {
+      for (bool symmetric : {true, false}) {
+        // Cover M=1 (decode-like) and M>1 (prefill/batched) paths, and multiple chunked-N sizes
+        // so we exercise the per-tile bias slice arithmetic across more than one tile.
+        count += RegisterSingleTest(1, 128, 128, with_threadpool, symmetric);
+        count += RegisterSingleTest(1, 256, 256, with_threadpool, symmetric);
+        count += RegisterSingleTest(1, 1024, 1024, with_threadpool, symmetric);
+        count += RegisterSingleTest(32, 128, 128, with_threadpool, symmetric);
+        count += RegisterSingleTest(32, 256, 256, with_threadpool, symmetric);
+      }
+    }
+    return count;
+  }
+
+ private:
+  size_t M_, N_, K_;
+  bool WithThreadpool_;
+  bool Symmetric_;
+};
+
 static size_t SQLutGemmRegisterAllShortExecuteTests() {
   size_t count = 0;
   count += SQLutGemmShortExecuteTest<2, 32>::RegisterShortExecuteTests();
@@ -379,6 +519,10 @@ static size_t SQLutGemmRegisterAllShortExecuteTests() {
   count += SQLutGemmFloatZPTest<2, 32>::RegisterShortExecuteTests();
   count += SQLutGemmFloatZPTest<2, 64>::RegisterShortExecuteTests();
   count += SQLutGemmFloatZPTest<2, 128>::RegisterShortExecuteTests();
+  // Fused bias tests
+  count += SQLutGemmBiasTest<2, 32>::RegisterShortExecuteTests();
+  count += SQLutGemmBiasTest<2, 64>::RegisterShortExecuteTests();
+  count += SQLutGemmBiasTest<2, 128>::RegisterShortExecuteTests();
   return count;
 }
 

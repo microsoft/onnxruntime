@@ -2687,6 +2687,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>left_window_size for local attention (like Mistral). Default value is -1 meaning unused.</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for q</dd>
+<dt><tt>qk_norm_epsilon</tt> : float</dt>
+<dd>Epsilon used by the per-head RMS norm applied to Q and K when q_norm_weight and k_norm_weight inputs are provided. Default value is 1e-6.</dd>
 <dt><tt>qk_output</tt> : int</dt>
 <dd>Output values of QK matrix multiplication before (1) or after (2) softmax normalization. Default value is 0 (don't output).</dd>
 <dt><tt>rotary_interleaved</tt> : int</dt>
@@ -2701,7 +2703,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Quantization type for V cache. One of 'NONE', 'PER_TENSOR', 'PER_CHANNEL'.</dd>
 </dl>
 
-#### Inputs (7 - 14)
+#### Inputs (7 - 16)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -2732,6 +2734,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Scale tensor for past_key.</dd>
 <dt><tt>v_scale</tt> (optional) : T_KV_SCALE</dt>
 <dd>Scale tensor for past_value.</dd>
+<dt><tt>q_norm_weight</tt> (optional) : T</dt>
+<dd>Optional 1D tensor of shape (head_size). When provided together with k_norm_weight, the kernel applies a per-head RMS normalization to Q (and K) before any rotary embedding. Used by Qwen3-style models that wrap their Q/K projections in a Reshape -> SimplifiedLayerNormalization -> Reshape stack; downstream graph fusion folds that pattern into this input. Currently honored by the native WebGPU execution provider only; JSEP WebGPU/JS and other EPs must reject the node when this input is set.</dd>
+<dt><tt>k_norm_weight</tt> (optional) : T</dt>
+<dd>Optional 1D tensor of shape (head_size). See q_norm_weight. Must be provided together with q_norm_weight.</dd>
 </dl>
 
 #### Outputs (1 - 4)

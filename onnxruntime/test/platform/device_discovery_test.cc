@@ -25,9 +25,7 @@ TEST(DeviceDiscoveryTest, HasCpuDevice) {
   const auto cpu_devices = GetDevicesByType(OrtHardwareDeviceType_CPU);
   ASSERT_GT(cpu_devices.size(), 0);
 
-#if defined(CPUINFO_SUPPORTED)
-  ASSERT_NE(cpu_devices[0].vendor_id, 0);
-#endif  // defined(CPUINFO_SUPPORTED)
+  ASSERT_FALSE(cpu_devices[0].vendor.empty());
 }
 
 TEST(DeviceDiscoveryTest, GpuDevicesHaveValidProperties) {

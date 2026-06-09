@@ -167,6 +167,18 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   const Tensor* k_scale = context->Input<Tensor>(12);
   const Tensor* v_scale = context->Input<Tensor>(13);
 
+  // q_norm_weight (input 14) / k_norm_weight (input 15) are populated by the WebGPU-only
+  // GroupQueryAttentionPreNormFusion optimizer pass. The CUDA kernel does not implement
+  // the fused per-head Q/K RMS normalization prologue, so reject the node if either input
+  // is present rather than silently dropping the normalization.
+  if ((context->InputCount() > 14 && context->Input<Tensor>(14) != nullptr) ||
+      (context->InputCount() > 15 && context->Input<Tensor>(15) != nullptr)) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        "GroupQueryAttention (CUDA): q_norm_weight / k_norm_weight inputs are not supported. "
+        "The per-head Q/K RMS normalization prologue is implemented only on the WebGPU EP.");
+  }
+
   if (k_quant_type_ != KVQuantizationType::NONE) {
     if (k_scale == nullptr) {
       return ORT_MAKE_STATUS(

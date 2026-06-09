@@ -595,7 +595,10 @@ OrtStatus* ORT_API_CALL CudaEp::ReplayGraphImpl(OrtEp* this_ptr, int graph_annot
         ORT_EP_FAIL, "ReplayGraph called but CUDA graph manager is not initialized");
   }
   PL_CUDA_CALL_THROW(cudaSetDevice(ep->config_.device_id));
-  return ep->GetPerThreadContext().cuda_graph.Replay(graph_annotation_id);
+  // Launch graph without sync. The caller (PluginExecutionProvider::ReplayGraph)
+  // handles synchronization based on disable_synchronize_execution_providers.
+  // This function is only called from that bridge code path.
+  return ep->GetPerThreadContext().cuda_graph.Replay(graph_annotation_id, /*sync=*/false);
 
   EXCEPTION_TO_STATUS_END
 }
