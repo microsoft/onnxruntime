@@ -79,7 +79,7 @@ bool MatchPreNormReshapeChain(Graph& graph,
 
   Node* reshape_outer = graph.GetMutableProducerNode(consumer_input->Name());
   if (reshape_outer == nullptr ||
-      !graph_utils::IsSupportedOptypeVersionAndDomain(*reshape_outer, "Reshape", {5, 13, 14, 19, 21, 23})) {
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*reshape_outer, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25})) {
     return false;
   }
   if (reshape_outer->GetOutputEdgesCount() != 1) {
@@ -174,7 +174,7 @@ bool MatchPreNormReshapeChain(Graph& graph,
   }
   Node* reshape_inner = graph.GetMutableProducerNode(sln->InputDefs()[0]->Name());
   if (reshape_inner == nullptr ||
-      !graph_utils::IsSupportedOptypeVersionAndDomain(*reshape_inner, "Reshape", {5, 13, 14, 19, 21, 23})) {
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*reshape_inner, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25})) {
     return false;
   }
   if (reshape_inner->GetOutputEdgesCount() != 1) {

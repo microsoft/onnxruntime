@@ -6883,6 +6883,21 @@ TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaTest) {
                     std::make_unique<AttentionFusion>());
 }
 
+TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaOpset25Test) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::MatMulAdd);
+  };
+
+  TransformerTester(build_test_case,
+                    CheckMobileClipAttentionFusedSession,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    25,
+                    1e-3,
+                    0.0,
+                    std::make_unique<AttentionFusion>());
+}
+
 TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionGemmTest) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::GemmWithReshapes);
@@ -8219,8 +8234,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionOpsetTest) {
     return Status::OK();
   };
 
-  const std::vector<int> opsets{11, 12, 13, 14, 15, 18};
-  bool shape_test_for_opset15 = false;
+  const std::vector<int> opsets{11, 12, 13, 14, 15, 18, 19, 21, 23, 24, 25};
 
   for (auto& opset : opsets) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -8245,14 +8259,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionOpsetTest) {
 
       builder.AddNode("Add", {input_arg0, input_arg1}, {add_out});
       if (opset_version >= 15) {
-        if (shape_test_for_opset15) {
-          auto& shape_1 = builder.AddNode("Shape", {add_out}, {shape_out});
-          shape_1.AddAttribute("start", (int64_t)1);
-          shape_1.AddAttribute("end", (int64_t)2);
-        } else {
-          builder.AddNode("Shape", {add_out}, {shape_out}).AddAttribute("start", (int64_t)0);
-          shape_test_for_opset15 = true;
-        }
+        builder.AddNode("Shape", {add_out}, {shape_out}).AddAttribute("start", (int64_t)0);
       } else {
         builder.AddNode("Shape", {add_out}, {shape_out});
       }
@@ -8271,13 +8278,48 @@ TEST_F(GraphTransformationTests, ReshapeFusionOpsetTest) {
       builder.AddNode("Reshape", {add_out, concattraining1_out}, {out});
     };
 
+    // Test that the fusion fires for every opset.
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ReshapeFusion>();
-    if (opset >= 15 && shape_test_for_opset15) {
-      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                            pre_graph_checker, pre_graph_checker));
-    } else {
-      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                            pre_graph_checker, post_graph_checker));
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
+
+    // For opset >= 15, also test that partial Shape (start=1, end=2) prevents fusion.
+    if (opset >= 15) {
+      auto build_partial_shape_case = [&](ModelTestBuilder& builder) {
+        auto* input_arg0 = builder.MakeInput<float>({{batch_size, seq_lenth, hidden_size}});
+        auto* input_arg1 = builder.MakeInput<float>({{hidden_size}});
+        auto* scalar_int_0 = builder.MakeInitializer<int64_t>({}, {0});
+        auto* scalar_int_1 = builder.MakeInitializer<int64_t>({}, {1});
+        auto* single_value_1d_int_0 = builder.MakeInitializer<int64_t>({1}, {0});
+        auto* single_value_1d_int_16 = builder.MakeInitializer<int64_t>({1}, {16});
+        auto* single_value_1d_int_64 = builder.MakeInitializer<int64_t>({1}, {64});
+        auto* add_out = builder.MakeIntermediate();
+        auto* shape_out = builder.MakeIntermediate();
+        auto* gather_out_0 = builder.MakeIntermediate();
+        auto* gather_out_1 = builder.MakeIntermediate();
+        auto* unsqueeze_out_0 = builder.MakeIntermediate();
+        auto* unsqueeze_out_1 = builder.MakeIntermediate();
+        auto* concattraining1_out = builder.MakeIntermediate();
+        auto* concattraining1_length = builder.MakeIntermediate();
+        auto* out = builder.MakeOutput();
+
+        builder.AddNode("Add", {input_arg0, input_arg1}, {add_out});
+        auto& shape_1 = builder.AddNode("Shape", {add_out}, {shape_out});
+        shape_1.AddAttribute("start", (int64_t)1);
+        shape_1.AddAttribute("end", (int64_t)2);
+        builder.AddNode("Gather", {shape_out, scalar_int_0}, {gather_out_0});
+        builder.AddNode("Gather", {shape_out, scalar_int_1}, {gather_out_1});
+        builder.AddNode("Unsqueeze", {gather_out_0, single_value_1d_int_0}, {unsqueeze_out_0});
+        builder.AddNode("Unsqueeze", {gather_out_1, single_value_1d_int_0}, {unsqueeze_out_1});
+        builder.AddNode("ConcatTraining", {unsqueeze_out_0, unsqueeze_out_1, single_value_1d_int_16, single_value_1d_int_64},
+                        {concattraining1_out, concattraining1_length}, "com.microsoft")
+            .AddAttribute("axis", static_cast<int64_t>(0));
+        builder.AddNode("Reshape", {add_out, concattraining1_out}, {out});
+      };
+
+      std::unique_ptr<GraphTransformer> transformer_no_fuse = std::make_unique<ReshapeFusion>();
+      ASSERT_STATUS_OK(TestGraphTransformer(build_partial_shape_case, opset, *logger_, std::move(transformer_no_fuse),
+                                            TransformerLevel::Level1, 1, pre_graph_checker, pre_graph_checker));
     }
   }
 }

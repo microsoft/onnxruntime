@@ -258,6 +258,13 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionFusesQwenPatter
       TransformerLevel::Level2, /*steps=*/1, nullptr, CheckFusedGraph));
 }
 
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionFusesQwenPatternOpset25) {
+  auto build = [](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, BuildOptions{}); };
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/25, *logger_, MakeWebGpuTransformer(),
+      TransformerLevel::Level2, /*steps=*/1, nullptr, CheckFusedGraph));
+}
+
 TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionMatchesUnfusedWebGpuResults) {
   if (!DefaultWebGpuExecutionProvider()) {
     GTEST_SKIP() << "WebGPU EP unavailable in this build.";
