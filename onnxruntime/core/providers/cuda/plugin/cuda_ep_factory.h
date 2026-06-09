@@ -112,9 +112,20 @@ class CudaEpFactory : public OrtEpFactory {
     std::unique_ptr<CudaArenaAllocator> device_arena;
     std::unique_ptr<CudaArenaAllocator> pinned_arena;
     std::unique_ptr<CudaMempoolOrtAllocator> mempool_allocator;
+    std::unique_ptr<CudaExternalDeviceAllocator> external_device_allocator;
     int num_device_arena_users = 0;
     int num_pinned_arena_users = 0;
     int num_mempool_users = 0;
+    int num_external_allocator_users = 0;
+
+    // External allocator function pointers (set during CreateEpImpl when configured).
+    void* external_alloc = nullptr;
+    void* external_free = nullptr;
+    void* external_empty_cache = nullptr;
+
+    bool UseExternalAllocator() const {
+      return external_alloc != nullptr && external_free != nullptr;
+    }
   };
 
   struct HardwareDeviceKey {

@@ -176,6 +176,47 @@ OrtStatus* CudaSyncStream::InitHandlesWithExternalStream(cudaStream_t external_s
   return status.release();
 }
 
+OrtStatus* CudaSyncStream::InitHandlesWithUserStream(cudaStream_t user_stream) {
+  int prev_device = -1;
+  const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
+
+  Ort::Status status = StatusFromCudaError(cudaSetDevice(device_id_));
+  if (status.IsOK()) {
+    cuda_stream_ = user_stream;
+    owns_stream_ = false;  // Do NOT destroy the user's stream.
+  }
+  // Create cuBLAS/cuDNN/cuBLASLt handles bound to the user stream.
+  if (status.IsOK()) {
+    status = StatusFromCublasError(cublasCreate(&cublas_handle_));
+  }
+  if (status.IsOK()) {
+    status = StatusFromCublasError(cublasSetStream(cublas_handle_, cuda_stream_));
+  }
+  if (status.IsOK()) {
+    status = StatusFromCudnnError(cudnnCreate(&cudnn_handle_));
+  }
+  if (status.IsOK()) {
+    status = StatusFromCudnnError(cudnnSetStream(cudnn_handle_, cuda_stream_));
+  }
+  if (status.IsOK()) {
+    status = StatusFromCublasError(cublasLtCreate(&cublas_lt_handle_));
+  }
+
+  if (restore_prev_device) {
+    Ort::Status restore_status = StatusFromCudaError(cudaSetDevice(prev_device));
+    if (status.IsOK()) {
+      status = std::move(restore_status);
+    }
+  }
+
+  if (status.IsOK()) {
+    RegisterStream(cuda_stream_, this);
+    registered_ = true;
+  }
+
+  return status.release();
+}
+
 void CudaSyncStream::EnqueueDeferredCPUBuffer(void* cpu_buffer) {
   std::lock_guard<std::mutex> lock(deferred_cpu_buffers_mutex_);
   deferred_cpu_buffers_.push_back(cpu_buffer);
