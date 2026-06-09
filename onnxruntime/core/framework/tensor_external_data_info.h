@@ -7,6 +7,7 @@
 #include <ostream>
 #include <string>
 #include <tuple>
+#include <vector>
 
 #include <core/common/inlined_containers_fwd.h>
 #include "core/common/path_string.h"
@@ -25,6 +26,28 @@ class ExternalDataInfo {
   using OFFSET_TYPE = off_t;
 #endif
 
+  // Optional slice spec keys in TensorProto::external_data. Adding a slice spec to an
+  // initializer is purely additive: models that do not set any of these keys behave
+  // exactly as before (no slicing is performed).
+  //
+  //   "source_shape" - comma-separated dims of the full (un-sliced) tensor stored in
+  //                    the external file. Presence of this key enables slicing.
+  //                    No default. (e.g. "2048,8192")
+  //   "slice_starts" - comma-separated per-dim start indices (in elements).
+  //                    Same rank as source_shape.
+  //                    DEFAULT (key absent): all zeros — slice begins at the origin.
+  //   "slice_sizes"  - comma-separated per-dim slice sizes (in elements).
+  //                    Same rank as source_shape. Must equal TensorProto.dims.
+  //                    DEFAULT (key absent): source_shape[d] - slice_starts[d] for
+  //                    each d — slice extends to the end of each source dim.
+  //
+  // When source_shape is present, `offset` is the byte offset of the START of the
+  // source tensor within the file, and `length` (if present) must equal the byte
+  // size of the SOURCE tensor (not the slice).
+  static constexpr const char* kSourceShapeKey = "source_shape";
+  static constexpr const char* kSliceStartsKey = "slice_starts";
+  static constexpr const char* kSliceSizesKey = "slice_sizes";
+
   ExternalDataInfo();
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -37,6 +60,14 @@ class ExternalDataInfo {
   size_t GetLength() const { return length_; }
 
   const std::string& GetChecksum() const { return checksum_; }
+
+  // True if this entry declares a multi-dimensional slice view of a larger
+  // tensor stored in the external file.
+  bool HasSliceSpec() const noexcept { return !source_shape_.empty(); }
+
+  const std::vector<int64_t>& GetSourceShape() const noexcept { return source_shape_; }
+  const std::vector<int64_t>& GetSliceStarts() const noexcept { return slice_starts_; }
+  const std::vector<int64_t>& GetSliceSizes() const noexcept { return slice_sizes_; }
 
   static common::Status Create(
       const ::google::protobuf::RepeatedPtrField<::ONNX_NAMESPACE::StringStringEntryProto>& input,
@@ -89,6 +120,11 @@ class ExternalDataInfo {
   // 0 means the whole file
   size_t length_ = 0;
   std::string checksum_;
+
+  // Multi-dim slice spec (optional). Empty source_shape_ means no slicing.
+  std::vector<int64_t> source_shape_;
+  std::vector<int64_t> slice_starts_;
+  std::vector<int64_t> slice_sizes_;
 
   // Pre-packed blobs found associated with this TensorProto if present
   // format key, offset, length, checksum

@@ -502,5 +502,396 @@ TEST(TensorProtoUtilsTest, ConstantTensorProtoWithExternalData) {
   TestConstantNodeConversionWithExternalData<float>(TensorProto_DataType_FLOAT);
   TestConstantNodeConversionWithExternalData<double>(TensorProto_DataType_DOUBLE);
 }
+
+// =============================================================================
+// External data slice spec tests
+// =============================================================================
+namespace {
+
+// Adds (key, value) to tensor_proto.external_data().
+void AddExtEntry(ONNX_NAMESPACE::TensorProto& tp, std::string_view key, std::string_view value) {
+  auto* e = tp.add_external_data();
+  e->set_key(std::string(key));
+  e->set_value(std::string(value));
+}
+
+// Builds an FP32 source tensor of `source_shape` (row-major), writes it to a
+// temporary file, and returns the file path plus the source data as a vector.
+std::pair<std::filesystem::path, std::vector<float>> WriteFp32SourceFile(
+    const std::vector<int64_t>& source_shape,
+    ScopedFileDeleter& deleter) {
+  size_t total = 1;
+  for (auto d : source_shape) total *= static_cast<size_t>(d);
+  std::vector<float> data;
+  data.reserve(total);
+  for (size_t i = 0; i < total; ++i) {
+    data.push_back(static_cast<float>(i));  // 0, 1, 2, ...
+  }
+
+  std::basic_string<ORTCHAR_T> filename_template = ORT_TSTR("ort_slice_test_XXXXXX");
+  FILE* fp = nullptr;
+  CreateTestFile(fp, filename_template);
+  ORT_ENFORCE(fp != nullptr);
+  std::fwrite(data.data(), sizeof(float), data.size(), fp);
+  std::fclose(fp);
+  deleter = ScopedFileDeleter(filename_template);
+  return {std::filesystem::path(filename_template), std::move(data)};
+}
+
+ONNX_NAMESPACE::TensorProto MakeSlicedFp32Proto(
+    const std::filesystem::path& file_path,
+    const std::vector<int64_t>& source_shape,
+    const std::vector<int64_t>& slice_starts,
+    const std::vector<int64_t>& slice_sizes,
+    int64_t source_byte_offset = 0) {
+  ONNX_NAMESPACE::TensorProto tp;
+  tp.set_name("sliced_w");
+  tp.set_data_type(ONNX_NAMESPACE::TensorProto::FLOAT);
+  for (auto d : slice_sizes) tp.add_dims(d);
+  tp.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+  AddExtEntry(tp, "location", ToUTF8String(file_path.native()));
+  AddExtEntry(tp, "offset", std::to_string(source_byte_offset));
+
+  auto join = [](const std::vector<int64_t>& v) {
+    std::string out;
+    for (size_t i = 0; i < v.size(); ++i) {
+      if (i) out.push_back(',');
+      out.append(std::to_string(v[i]));
+    }
+    return out;
+  };
+  AddExtEntry(tp, ExternalDataInfo::kSourceShapeKey, join(source_shape));
+  AddExtEntry(tp, ExternalDataInfo::kSliceStartsKey, join(slice_starts));
+  AddExtEntry(tp, ExternalDataInfo::kSliceSizesKey, join(slice_sizes));
+  return tp;
+}
+
+// Returns the expected sliced FP32 values (row-major gather from `source`).
+std::vector<float> ExpectedSlice(const std::vector<float>& source,
+                                 const std::vector<int64_t>& source_shape,
+                                 const std::vector<int64_t>& slice_starts,
+                                 const std::vector<int64_t>& slice_sizes) {
+  // Compute row-major strides for source.
+  const size_t rank = source_shape.size();
+  std::vector<size_t> strides(rank, 1);
+  for (size_t d = rank; d-- > 1;) {
+    strides[d - 1] = strides[d] * static_cast<size_t>(source_shape[d]);
+  }
+  std::vector<float> out;
+  size_t slice_total = 1;
+  for (auto d : slice_sizes) slice_total *= static_cast<size_t>(d);
+  out.reserve(slice_total);
+
+  std::vector<int64_t> idx(rank, 0);
+  for (size_t k = 0; k < slice_total; ++k) {
+    size_t off = 0;
+    for (size_t d = 0; d < rank; ++d) {
+      off += static_cast<size_t>(slice_starts[d] + idx[d]) * strides[d];
+    }
+    out.push_back(source[off]);
+    // Increment row-major index in slice space.
+    for (size_t d = rank; d-- > 0;) {
+      ++idx[d];
+      if (idx[d] < slice_sizes[d]) break;
+      idx[d] = 0;
+    }
+  }
+  return out;
+}
+
+}  // namespace
+
+TEST(ExternalDataSliceTest, ParseValidSliceSpec) {
+  ONNX_NAMESPACE::TensorProto tp;
+  tp.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+  AddExtEntry(tp, "location", "weights.bin");
+  AddExtEntry(tp, "offset", "1024");
+  AddExtEntry(tp, ExternalDataInfo::kSourceShapeKey, "2048,8192");
+  AddExtEntry(tp, ExternalDataInfo::kSliceStartsKey, "0,2048");
+  AddExtEntry(tp, ExternalDataInfo::kSliceSizesKey, "1024,4096");
+
+  std::unique_ptr<ExternalDataInfo> info;
+  ASSERT_STATUS_OK(ExternalDataInfo::Create(tp.external_data(), info));
+  ASSERT_TRUE(info->HasSliceSpec());
+  ASSERT_EQ(info->GetSourceShape(), (std::vector<int64_t>{2048, 8192}));
+  ASSERT_EQ(info->GetSliceStarts(), (std::vector<int64_t>{0, 2048}));
+  ASSERT_EQ(info->GetSliceSizes(), (std::vector<int64_t>{1024, 4096}));
+  ASSERT_EQ(info->GetOffset(), 1024);
+}
+
+TEST(ExternalDataSliceTest, ParseDefaultStartsToZero) {
+  ONNX_NAMESPACE::TensorProto tp;
+  tp.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+  AddExtEntry(tp, "location", "weights.bin");
+  AddExtEntry(tp, ExternalDataInfo::kSourceShapeKey, "8,16");
+  AddExtEntry(tp, ExternalDataInfo::kSliceSizesKey, "4,16");
+  // No slice_starts: should default to all zeros.
+
+  std::unique_ptr<ExternalDataInfo> info;
+  ASSERT_STATUS_OK(ExternalDataInfo::Create(tp.external_data(), info));
+  ASSERT_TRUE(info->HasSliceSpec());
+  ASSERT_EQ(info->GetSliceStarts(), (std::vector<int64_t>{0, 0}));
+}
+
+TEST(ExternalDataSliceTest, ParseDefaultSizesToRemainder) {
+  ONNX_NAMESPACE::TensorProto tp;
+  tp.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+  AddExtEntry(tp, "location", "weights.bin");
+  AddExtEntry(tp, ExternalDataInfo::kSourceShapeKey, "2048,8192");
+  AddExtEntry(tp, ExternalDataInfo::kSliceStartsKey, "1024,2048");
+  // No slice_sizes: should default to source_shape - slice_starts.
+
+  std::unique_ptr<ExternalDataInfo> info;
+  ASSERT_STATUS_OK(ExternalDataInfo::Create(tp.external_data(), info));
+  ASSERT_TRUE(info->HasSliceSpec());
+  ASSERT_EQ(info->GetSliceSizes(), (std::vector<int64_t>{1024, 6144}));
+}
+
+TEST(ExternalDataSliceTest, ParseDefaultBothToWholeTensor) {
+  // Only source_shape supplied => slice equals the entire source. This is a no-op slice
+  // (semantically identical to omitting the slice spec) and must be accepted.
+  ONNX_NAMESPACE::TensorProto tp;
+  tp.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+  AddExtEntry(tp, "location", "weights.bin");
+  AddExtEntry(tp, ExternalDataInfo::kSourceShapeKey, "3,5");
+  // No slice_starts, no slice_sizes.
+
+  std::unique_ptr<ExternalDataInfo> info;
+  ASSERT_STATUS_OK(ExternalDataInfo::Create(tp.external_data(), info));
+  ASSERT_TRUE(info->HasSliceSpec());
+  ASSERT_EQ(info->GetSliceStarts(), (std::vector<int64_t>{0, 0}));
+  ASSERT_EQ(info->GetSliceSizes(), (std::vector<int64_t>{3, 5}));
+}
+
+TEST(ExternalDataSliceTest, ParseRejectsRankMismatch) {
+  ONNX_NAMESPACE::TensorProto tp;
+  tp.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+  AddExtEntry(tp, "location", "weights.bin");
+  AddExtEntry(tp, ExternalDataInfo::kSourceShapeKey, "8,16");
+  AddExtEntry(tp, ExternalDataInfo::kSliceSizesKey, "4");  // wrong rank
+  std::unique_ptr<ExternalDataInfo> info;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(ExternalDataInfo::Create(tp.external_data(), info),
+                                       "does not match");
+}
+
+TEST(ExternalDataSliceTest, ParseRejectsSliceStartsWithoutSourceShape) {
+  ONNX_NAMESPACE::TensorProto tp;
+  tp.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+  AddExtEntry(tp, "location", "weights.bin");
+  AddExtEntry(tp, ExternalDataInfo::kSliceStartsKey, "0,0");
+  std::unique_ptr<ExternalDataInfo> info;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(ExternalDataInfo::Create(tp.external_data(), info),
+                                       "without");
+}
+
+TEST(ExternalDataSliceTest, ParseRejectsOutOfBoundsSlice) {
+  ONNX_NAMESPACE::TensorProto tp;
+  tp.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+  AddExtEntry(tp, "location", "weights.bin");
+  AddExtEntry(tp, ExternalDataInfo::kSourceShapeKey, "8,16");
+  AddExtEntry(tp, ExternalDataInfo::kSliceStartsKey, "5,0");
+  AddExtEntry(tp, ExternalDataInfo::kSliceSizesKey, "4,16");  // 5 + 4 > 8
+  std::unique_ptr<ExternalDataInfo> info;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(ExternalDataInfo::Create(tp.external_data(), info),
+                                       "out of bounds");
+}
+
+TEST(ExternalDataSliceTest, ReadFp32_OuterAxisOnly) {
+  // Source (4, 6), slice rows [1, 4) => shape (3, 6) — fully contiguous block.
+  ScopedFileDeleter deleter;
+  auto [file_path, source] = WriteFp32SourceFile({4, 6}, deleter);
+  auto tp = MakeSlicedFp32Proto(file_path, /*source_shape*/ {4, 6},
+                                /*slice_starts*/ {1, 0}, /*slice_sizes*/ {3, 6});
+
+  std::vector<uint8_t> bytes;
+  ASSERT_STATUS_OK(UnpackInitializerData(tp, file_path, bytes));
+  ASSERT_EQ(bytes.size(), 3u * 6u * sizeof(float));
+  const float* read = reinterpret_cast<const float*>(bytes.data());
+  auto expected = ExpectedSlice(source, {4, 6}, {1, 0}, {3, 6});
+  for (size_t i = 0; i < expected.size(); ++i) {
+    ASSERT_EQ(read[i], expected[i]) << "mismatch at " << i;
+  }
+}
+
+TEST(ExternalDataSliceTest, ReadFp32_2D_InnerAndOuter) {
+  // Source (4, 6), slice (rows [1,3), cols [2,5)) => shape (2, 3). Non-contiguous.
+  ScopedFileDeleter deleter;
+  auto [file_path, source] = WriteFp32SourceFile({4, 6}, deleter);
+  auto tp = MakeSlicedFp32Proto(file_path, {4, 6}, {1, 2}, {2, 3});
+
+  std::vector<uint8_t> bytes;
+  ASSERT_STATUS_OK(UnpackInitializerData(tp, file_path, bytes));
+  ASSERT_EQ(bytes.size(), 2u * 3u * sizeof(float));
+  const float* read = reinterpret_cast<const float*>(bytes.data());
+  auto expected = ExpectedSlice(source, {4, 6}, {1, 2}, {2, 3});
+  for (size_t i = 0; i < expected.size(); ++i) {
+    ASSERT_EQ(read[i], expected[i]) << "mismatch at " << i;
+  }
+}
+
+TEST(ExternalDataSliceTest, ReadFp32_3D_MixedSlice) {
+  // Source (2, 3, 4), slice (depth [0,2), rows [1,3), cols [1,3)) => shape (2, 2, 2).
+  ScopedFileDeleter deleter;
+  auto [file_path, source] = WriteFp32SourceFile({2, 3, 4}, deleter);
+  auto tp = MakeSlicedFp32Proto(file_path, {2, 3, 4}, {0, 1, 1}, {2, 2, 2});
+
+  std::vector<uint8_t> bytes;
+  ASSERT_STATUS_OK(UnpackInitializerData(tp, file_path, bytes));
+  ASSERT_EQ(bytes.size(), 2u * 2u * 2u * sizeof(float));
+  const float* read = reinterpret_cast<const float*>(bytes.data());
+  auto expected = ExpectedSlice(source, {2, 3, 4}, {0, 1, 1}, {2, 2, 2});
+  for (size_t i = 0; i < expected.size(); ++i) {
+    ASSERT_EQ(read[i], expected[i]) << "mismatch at " << i;
+  }
+}
+
+TEST(ExternalDataSliceTest, ReadFp32_WholeTensorSliceIsIdentity) {
+  // slice covers the entire source => one read.
+  ScopedFileDeleter deleter;
+  auto [file_path, source] = WriteFp32SourceFile({3, 5}, deleter);
+  auto tp = MakeSlicedFp32Proto(file_path, {3, 5}, {0, 0}, {3, 5});
+
+  std::vector<uint8_t> bytes;
+  ASSERT_STATUS_OK(UnpackInitializerData(tp, file_path, bytes));
+  ASSERT_EQ(bytes.size(), source.size() * sizeof(float));
+  const float* read = reinterpret_cast<const float*>(bytes.data());
+  for (size_t i = 0; i < source.size(); ++i) {
+    ASSERT_EQ(read[i], source[i]);
+  }
+}
+
+TEST(ExternalDataSliceTest, ReadFp32_WithSourceByteOffset) {
+  // Place the source tensor at byte offset 64 in a file that has 16 floats of padding first.
+  std::vector<float> padding(16, -1.0f);
+  std::vector<float> source;
+  for (size_t i = 0; i < 12; ++i) source.push_back(static_cast<float>(100 + i));
+
+  std::basic_string<ORTCHAR_T> filename_template = ORT_TSTR("ort_slice_off_test_XXXXXX");
+  FILE* fp = nullptr;
+  CreateTestFile(fp, filename_template);
+  std::fwrite(padding.data(), sizeof(float), padding.size(), fp);
+  std::fwrite(source.data(), sizeof(float), source.size(), fp);
+  std::fclose(fp);
+  ScopedFileDeleter deleter{filename_template};
+  std::filesystem::path file_path(filename_template);
+
+  // Source is (3, 4), slice (rows [1,3), cols [1,4)) => (2, 3).
+  auto tp = MakeSlicedFp32Proto(file_path, {3, 4}, {1, 1}, {2, 3},
+                                /*source_byte_offset*/ static_cast<int64_t>(padding.size() * sizeof(float)));
+
+  std::vector<uint8_t> bytes;
+  ASSERT_STATUS_OK(UnpackInitializerData(tp, file_path, bytes));
+  ASSERT_EQ(bytes.size(), 2u * 3u * sizeof(float));
+  const float* read = reinterpret_cast<const float*>(bytes.data());
+  auto expected = ExpectedSlice(source, {3, 4}, {1, 1}, {2, 3});
+  for (size_t i = 0; i < expected.size(); ++i) {
+    ASSERT_EQ(read[i], expected[i]);
+  }
+}
+
+TEST(ExternalDataSliceTest, ReadInt4_OuterAxisSliceIsOk) {
+  // Source (4, 8) UINT4, packed last-dim => 8/2 = 4 bytes per row, 16 bytes total.
+  // Slice rows [1,3), keep full innermost dim => shape (2, 8) => 8 bytes.
+  std::vector<uint8_t> packed_source;  // row-major, 2 elements per byte
+  packed_source.reserve(16);
+  for (int i = 0; i < 16; ++i) packed_source.push_back(static_cast<uint8_t>(i + 1));
+
+  std::basic_string<ORTCHAR_T> filename_template = ORT_TSTR("ort_slice_int4_XXXXXX");
+  FILE* fp = nullptr;
+  CreateTestFile(fp, filename_template);
+  std::fwrite(packed_source.data(), 1, packed_source.size(), fp);
+  std::fclose(fp);
+  ScopedFileDeleter deleter{filename_template};
+  std::filesystem::path file_path(filename_template);
+
+  ONNX_NAMESPACE::TensorProto tp;
+  tp.set_name("w_int4");
+  tp.set_data_type(ONNX_NAMESPACE::TensorProto::UINT4);
+  tp.add_dims(2);
+  tp.add_dims(8);
+  tp.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+  AddExtEntry(tp, "location", ToUTF8String(file_path.native()));
+  AddExtEntry(tp, "offset", "0");
+  AddExtEntry(tp, ExternalDataInfo::kSourceShapeKey, "4,8");
+  AddExtEntry(tp, ExternalDataInfo::kSliceStartsKey, "1,0");
+  AddExtEntry(tp, ExternalDataInfo::kSliceSizesKey, "2,8");
+
+  std::vector<uint8_t> bytes;
+  ASSERT_STATUS_OK(UnpackInitializerData(tp, file_path, bytes));
+  // Expect 2 rows of 8 elements = 2 * 4 packed bytes = 8 bytes total.
+  ASSERT_EQ(bytes.size(), 8u);
+  // Should equal bytes 4..11 of the source (rows 1 and 2, 4 bytes each).
+  for (size_t i = 0; i < 8; ++i) {
+    ASSERT_EQ(bytes[i], packed_source[4 + i]);
+  }
+}
+
+TEST(ExternalDataSliceTest, ReadInt4_InnerAxisEvenAlignedSliceIsOk) {
+  // Source (4, 8) UINT4, packed last-dim => 8/2 = 4 bytes per row, 16 bytes total.
+  // Slice all rows but inner dim [2, 6) => shape (4, 4) = 2 bytes per row => 8 bytes.
+  // slice_start=2 and slice_size=4 are both EVEN, so the byte boundary is exact:
+  // each row's bytes [1, 3) of the source row map to dst row.
+  std::vector<uint8_t> packed_source;
+  packed_source.reserve(16);
+  for (int i = 0; i < 16; ++i) packed_source.push_back(static_cast<uint8_t>(i + 1));
+
+  std::basic_string<ORTCHAR_T> filename_template = ORT_TSTR("ort_slice_int4_inner_XXXXXX");
+  FILE* fp = nullptr;
+  CreateTestFile(fp, filename_template);
+  std::fwrite(packed_source.data(), 1, packed_source.size(), fp);
+  std::fclose(fp);
+  ScopedFileDeleter deleter{filename_template};
+  std::filesystem::path file_path(filename_template);
+
+  ONNX_NAMESPACE::TensorProto tp;
+  tp.set_name("w_int4_inner");
+  tp.set_data_type(ONNX_NAMESPACE::TensorProto::UINT4);
+  tp.add_dims(4);
+  tp.add_dims(4);
+  tp.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+  AddExtEntry(tp, "location", ToUTF8String(file_path.native()));
+  AddExtEntry(tp, "offset", "0");
+  AddExtEntry(tp, ExternalDataInfo::kSourceShapeKey, "4,8");
+  AddExtEntry(tp, ExternalDataInfo::kSliceStartsKey, "0,2");
+  AddExtEntry(tp, ExternalDataInfo::kSliceSizesKey, "4,4");
+
+  std::vector<uint8_t> bytes;
+  ASSERT_STATUS_OK(UnpackInitializerData(tp, file_path, bytes));
+  // Expect 4 rows of 4 elements = 4 * 2 packed bytes = 8 bytes total.
+  ASSERT_EQ(bytes.size(), 8u);
+  // For each source row r, copy bytes [1, 3) i.e. source_byte_idx = r*4 + 1 and +2.
+  for (size_t r = 0; r < 4; ++r) {
+    ASSERT_EQ(bytes[r * 2 + 0], packed_source[r * 4 + 1]) << "row " << r << " byte 0";
+    ASSERT_EQ(bytes[r * 2 + 1], packed_source[r * 4 + 2]) << "row " << r << " byte 1";
+  }
+}
+
+TEST(ExternalDataSliceTest, ReadInt4_InnerAxisOddAlignedSliceIsRejected) {
+  std::vector<uint8_t> packed_source(16, 0xAB);
+  std::basic_string<ORTCHAR_T> filename_template = ORT_TSTR("ort_slice_int4_rej_XXXXXX");
+  FILE* fp = nullptr;
+  CreateTestFile(fp, filename_template);
+  std::fwrite(packed_source.data(), 1, packed_source.size(), fp);
+  std::fclose(fp);
+  ScopedFileDeleter deleter{filename_template};
+  std::filesystem::path file_path(filename_template);
+
+  ONNX_NAMESPACE::TensorProto tp;
+  tp.set_name("w_int4_bad");
+  tp.set_data_type(ONNX_NAMESPACE::TensorProto::UINT4);
+  tp.add_dims(4);
+  tp.add_dims(3);  // odd inner slice_size from source 8
+  tp.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+  AddExtEntry(tp, "location", ToUTF8String(file_path.native()));
+  AddExtEntry(tp, "offset", "0");
+  AddExtEntry(tp, ExternalDataInfo::kSourceShapeKey, "4,8");
+  AddExtEntry(tp, ExternalDataInfo::kSliceStartsKey, "0,0");
+  AddExtEntry(tp, ExternalDataInfo::kSliceSizesKey, "4,3");
+
+  std::vector<uint8_t> bytes;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(UnpackInitializerData(tp, file_path, bytes),
+                                       "byte-aligned");
+}
+
 }  // namespace test
 }  // namespace onnxruntime

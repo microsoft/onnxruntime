@@ -30,6 +30,34 @@ Status ExternalDataInfo::Create(const RepeatedPtrField<StringStringEntryProto>& 
   auto external_data_info = std::make_unique<ExternalDataInfo>();
   PrepackedInfos prepacked_infos;
 
+  // Helper to parse a comma-separated list of int64 values, e.g. "2048,4096,512".
+  // Trims surrounding whitespace; rejects empty fields.
+  auto parse_int64_list = [](const std::string& key,
+                             const std::string& value,
+                             std::vector<int64_t>& out) -> Status {
+    out.clear();
+    auto fields = utils::SplitString(value, ",", false);
+    out.reserve(fields.size());
+    for (const auto& f : fields) {
+      // utils::SplitString returns string_views with no trim. Reject empty/whitespace fields
+      // to fail loudly on typos like "1,,2" or "1, ,2".
+      std::string_view sv(f);
+      while (!sv.empty() && (sv.front() == ' ' || sv.front() == '\t')) sv.remove_prefix(1);
+      while (!sv.empty() && (sv.back() == ' ' || sv.back() == '\t')) sv.remove_suffix(1);
+      if (sv.empty()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "external_data ", key,
+                               " contains empty value: \"", value, "\"");
+      }
+      int64_t v;
+      ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(std::string(sv), v));
+      out.push_back(v);
+    }
+    if (out.empty()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "external_data ", key, " must not be empty");
+    }
+    return Status::OK();
+  };
+
   const int input_size = input.size();
 
   for (int i = 0; i != input_size; ++i) {
@@ -47,6 +75,15 @@ Status ExternalDataInfo::Create(const RepeatedPtrField<StringStringEntryProto>& 
       ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(stringmap.value(), external_data_info->length_));
     } else if (stringmap.key() == "checksum" && !stringmap.value().empty()) {
       external_data_info->checksum_ = stringmap.value();
+    } else if (stringmap.key() == kSourceShapeKey && !stringmap.value().empty()) {
+      ORT_RETURN_IF_ERROR(parse_int64_list(kSourceShapeKey, stringmap.value(),
+                                           external_data_info->source_shape_));
+    } else if (stringmap.key() == kSliceStartsKey && !stringmap.value().empty()) {
+      ORT_RETURN_IF_ERROR(parse_int64_list(kSliceStartsKey, stringmap.value(),
+                                           external_data_info->slice_starts_));
+    } else if (stringmap.key() == kSliceSizesKey && !stringmap.value().empty()) {
+      ORT_RETURN_IF_ERROR(parse_int64_list(kSliceSizesKey, stringmap.value(),
+                                           external_data_info->slice_sizes_));
     } else if (stringmap.key().find("prepacked", 0) == 0) {
       // Starts with 'prepacked', each has its own key.
       // Each prepacked entry may have multiple blobs with the same key
@@ -84,6 +121,66 @@ Status ExternalDataInfo::Create(const RepeatedPtrField<StringStringEntryProto>& 
 
   if (external_data_info->rel_path_.empty()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model format error! Missing 'location'");
+  }
+
+  // Slice spec validation. `source_shape` gates the feature: when present, the entry
+  // describes a slice of a larger tensor on disk. The other two keys are optional with
+  // sensible defaults so that authors only need to specify what differs from the default:
+  //   - slice_starts defaults to all-zeros (slice begins at the source origin)
+  //   - slice_sizes  defaults to source_shape[d] - slice_starts[d]
+  //                  (slice extends to the end of each source dim)
+  // Specifying neither => the slice covers the entire source tensor (a no-op slice that
+  // is equivalent to omitting the slice spec, but accepted for self-describing models).
+  if (!external_data_info->source_shape_.empty()) {
+    const auto rank = external_data_info->source_shape_.size();
+
+    if (external_data_info->slice_starts_.empty()) {
+      external_data_info->slice_starts_.assign(rank, 0);
+    } else if (external_data_info->slice_starts_.size() != rank) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "external_data '", kSliceStartsKey, "' rank ",
+                             external_data_info->slice_starts_.size(),
+                             " does not match '", kSourceShapeKey, "' rank ", rank);
+    }
+
+    if (external_data_info->slice_sizes_.empty()) {
+      // Default: from slice_starts to the end of each dim.
+      external_data_info->slice_sizes_.resize(rank);
+      for (size_t d = 0; d < rank; ++d) {
+        external_data_info->slice_sizes_[d] =
+            external_data_info->source_shape_[d] - external_data_info->slice_starts_[d];
+      }
+    } else if (external_data_info->slice_sizes_.size() != rank) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "external_data '", kSliceSizesKey, "' rank ",
+                             external_data_info->slice_sizes_.size(),
+                             " does not match '", kSourceShapeKey, "' rank ", rank);
+    }
+
+    for (size_t d = 0; d < rank; ++d) {
+      const int64_t src = external_data_info->source_shape_[d];
+      const int64_t start = external_data_info->slice_starts_[d];
+      const int64_t size = external_data_info->slice_sizes_[d];
+      if (src <= 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "external_data '", kSourceShapeKey, "' dim ", d,
+                               " must be > 0, got ", src);
+      }
+      if (start < 0 || size < 0 || start > src || size > src || start + size > src) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "external_data slice out of bounds at dim ", d,
+                               ": source_shape=", src,
+                               ", slice_start=", start, ", slice_size=", size);
+      }
+    }
+  } else {
+    // No source_shape but slice_starts or slice_sizes present is a typo guard.
+    // (Note: the pre-existing parser also rejected unknown keys, so this is not a regression.)
+    if (!external_data_info->slice_starts_.empty() || !external_data_info->slice_sizes_.empty()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "external_data has '", kSliceStartsKey, "' or '", kSliceSizesKey,
+                             "' without '", kSourceShapeKey, "'");
+    }
   }
 
   if (!prepacked_infos.empty()) {

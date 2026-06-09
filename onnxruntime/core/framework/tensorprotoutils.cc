@@ -18,6 +18,7 @@
 #include "core/common/span_utils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/endian_utils.h"
+#include "core/framework/external_data_slicing.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
 #include "core/framework/ort_value_pattern_planner.h"
@@ -183,8 +184,30 @@ Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto
   if (external_file_path == kTensorProtoMemoryAddressTag) {
     // The external data is in the same memory as the tensor proto.
     // The offset is the address of the data.
+    // Slice spec is not supported for in-memory external data; GetExternalDataInfo would have
+    // validated the layout, but in-memory tensors are always pre-formed contiguous buffers.
+    std::unique_ptr<onnxruntime::ExternalDataInfo> info;
+    ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), info));
+    ORT_RETURN_IF(info->HasSliceSpec(),
+                  "Slice spec is not supported for in-memory external data (",
+                  tensor_proto.name(), ")");
     std::memcpy(unpacked_tensor.data(), reinterpret_cast<const void*>(file_offset), tensor_byte_size);
     return Status::OK();
+  }
+
+  // Re-parse to inspect slice spec. We can't easily get it from GetExternalDataInfo without
+  // changing its public signature, and parsing is cheap (string -> small struct).
+  std::unique_ptr<onnxruntime::ExternalDataInfo> info;
+  ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), info));
+
+  if (info->HasSliceSpec()) {
+    return utils::ReadSlicedExternalTensor(
+        onnxruntime::Env::Default(),
+        external_file_path,
+        *info,
+        tensor_proto.data_type(),
+        gsl::make_span(tensor_proto.dims().data(), static_cast<size_t>(tensor_proto.dims_size())),
+        gsl::make_span(reinterpret_cast<char*>(unpacked_tensor.data()), static_cast<size_t>(tensor_byte_size)));
   }
 
   ORT_RETURN_IF_ERROR(onnxruntime::Env::Default().ReadFileIntoBuffer(
@@ -320,11 +343,46 @@ Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                                                 : (tensor_proto_dir / location);
 
   ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorProto<0>(tensor_proto, &tensor_byte_size));
-  const size_t external_data_length = external_data_info->GetLength();
-  ORT_RETURN_IF_NOT(external_data_length == 0 || external_data_length == tensor_byte_size,
-                    "TensorProto: ", tensor_proto.name(),
-                    " external data size mismatch. Computed size: ", *&tensor_byte_size,
-                    ", external_data.length: ", external_data_length);
+
+  if (external_data_info->HasSliceSpec()) {
+    // When a slice spec is present, the optional `length` (if non-zero) describes the SOURCE
+    // tensor (not the slice destination). Validate against the source if length was set.
+    const size_t external_data_length = external_data_info->GetLength();
+    if (external_data_length != 0) {
+      size_t expected_source_bytes = 0;
+      ORT_RETURN_IF_ERROR(utils::ComputeSourceTensorByteSize(*external_data_info,
+                                                             tensor_proto.data_type(),
+                                                             expected_source_bytes));
+      ORT_RETURN_IF_NOT(external_data_length == expected_source_bytes,
+                        "TensorProto: ", tensor_proto.name(),
+                        " external_data.length (", external_data_length,
+                        ") does not match source-tensor byte size derived from source_shape (",
+                        expected_source_bytes, ").");
+    }
+
+    // Also validate that slice_sizes match TensorProto.dims so callers that ignore the slice
+    // spec (e.g. legacy non-CPU loaders) cannot silently read the wrong byte range.
+    const auto& slice_sizes = external_data_info->GetSliceSizes();
+    if (static_cast<int>(slice_sizes.size()) != tensor_proto.dims_size()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "TensorProto: ", tensor_proto.name(),
+                             " external_data slice_sizes rank does not match TensorProto.dims rank.");
+    }
+    for (int d = 0; d < tensor_proto.dims_size(); ++d) {
+      if (slice_sizes[d] != tensor_proto.dims(d)) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "TensorProto: ", tensor_proto.name(),
+                               " external_data slice_sizes[", d, "]=", slice_sizes[d],
+                               " does not match TensorProto.dims[", d, "]=", tensor_proto.dims(d));
+      }
+    }
+  } else {
+    const size_t external_data_length = external_data_info->GetLength();
+    ORT_RETURN_IF_NOT(external_data_length == 0 || external_data_length == tensor_byte_size,
+                      "TensorProto: ", tensor_proto.name(),
+                      " external data size mismatch. Computed size: ", *&tensor_byte_size,
+                      ", external_data.length: ", external_data_length);
+  }
 
   file_offset = external_data_info->GetOffset();
 
@@ -1090,12 +1148,18 @@ Status GetExtDataFromTensorProto(const Env& env,
       GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_data_file_path, file_offset,
                           raw_data_safe_len, (prepacked_info != nullptr) ? &*prepacked_infos : nullptr));
 
+  // Re-parse to check slice spec. Cheap and avoids a public API change.
+  std::unique_ptr<onnxruntime::ExternalDataInfo> info;
+  ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), info));
+
   TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
   const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
   MLDataType ml_tensor_type = DataTypeImpl::GetType<Tensor>();
   const auto& name = tensor_proto.name();
 
   if (external_data_file_path == onnxruntime::utils::kTensorProtoMemoryAddressTag) {
+    ORT_RETURN_IF(info->HasSliceSpec(),
+                  "Slice spec is not supported for in-memory external data (", name, ")");
     // the value in location is the memory address of the data
     void* ext_data_buf = reinterpret_cast<void*>(file_offset);
     auto tensor = Tensor{type, tensor_shape, ext_data_buf, OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator)};
@@ -1103,6 +1167,45 @@ Status GetExtDataFromTensorProto(const Env& env,
                   " kTensorProtoMemoryAddressTag address points to length: ", static_cast<size_t>(raw_data_safe_len),
                   " while shape has bytes size: ", tensor.SizeInBytes());
     Tensor::InitOrtValue(std::move(tensor), ort_value);
+  } else if (info->HasSliceSpec()) {
+#if defined(__wasm__)
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "External data slice spec is not supported in the WebAssembly build (",
+                           name, ")");
+#else
+    // raw_data_safe_len is the DESTINATION byte size (the slice). Validate that the SOURCE
+    // tensor (offset .. offset + source_bytes) fits in the file.
+    size_t source_bytes = 0;
+    ORT_RETURN_IF_ERROR(utils::ComputeSourceTensorByteSize(*info, tensor_proto.data_type(), source_bytes));
+    const std::uintmax_t file_length = std::filesystem::file_size(external_data_file_path);
+    SafeInt<FileOffsetType> end_of_source(file_offset);
+    end_of_source += source_bytes;
+    ORT_RETURN_IF(file_offset < 0 || static_cast<std::uintmax_t>(end_of_source) > file_length,
+                  "External initializer: ", name, " source-tensor range (offset=", file_offset,
+                  ", bytes=", source_bytes, ") exceeds file_length=", file_length);
+
+    auto allocator = CPUAllocator::DefaultInstance();
+    auto buffer = IAllocator::MakeUniquePtr<char>(allocator, raw_data_safe_len);
+    ORT_RETURN_IF_ERROR(utils::ReadSlicedExternalTensor(
+        env, external_data_file_path, *info, tensor_proto.data_type(),
+        gsl::make_span(tensor_proto.dims().data(), static_cast<size_t>(tensor_proto.dims_size())),
+        gsl::make_span(buffer.get(), static_cast<size_t>(raw_data_safe_len))));
+
+    if constexpr (endian::native != endian::little) {
+      if (type->Size() > 1) {
+        gsl::span<std::byte> data_span{reinterpret_cast<std::byte*>(buffer.get()),
+                                       static_cast<size_t>(raw_data_safe_len)};
+        SwapByteOrderInplace(type->Size(), data_span);
+      }
+    }
+
+    auto p_tensor = std::make_unique<Tensor>(type, tensor_shape, buffer.get(), allocator);
+    ORT_RETURN_IF(raw_data_safe_len != p_tensor->SizeInBytes(), "Weight: ", name,
+                  " Sliced data byte size: ", static_cast<size_t>(raw_data_safe_len),
+                  " while shape has bytes size: ", p_tensor->SizeInBytes());
+    buffer.release();  // Tensor now owns the buffer via `allocator`.
+    Tensor::InitOrtValue(std::move(*p_tensor), ort_value);
+#endif
   } else {
 #if defined(__wasm__)
     ORT_RETURN_IF(file_offset < 0 || file_offset + raw_data_safe_len >= 4294967296,
@@ -1215,6 +1318,16 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
   SafeInt<size_t> raw_data_safe_len = 0;
   ORT_RETURN_IF_ERROR(
       GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_data_file_path, file_offset, raw_data_safe_len));
+
+  // Custom external data loaders (WebGPU/JS/etc.) consume a single (offset, length) byte
+  // range. They cannot honor a multi-dim slice spec; reject explicitly rather than silently
+  // load the wrong bytes.
+  std::unique_ptr<onnxruntime::ExternalDataInfo> info;
+  ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), info));
+  ORT_RETURN_IF(info->HasSliceSpec(),
+                "Tensor '", tensor_proto.name(),
+                "' uses an external_data slice spec which is not supported by the current "
+                "IExternalDataLoader implementation. Load via the default CPU path instead.");
 
   ORT_RETURN_IF(file_offset < 0 || raw_data_safe_len != tensor.SizeInBytes(),
                 "External initializer: ", tensor_proto.name(), " offset: ", file_offset,
