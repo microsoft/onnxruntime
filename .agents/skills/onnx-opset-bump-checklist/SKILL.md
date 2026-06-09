@@ -157,6 +157,25 @@ Key notes:
   `--use_vcpkg` build actually requests in its `downloads/` dir — the RC run wrote a `.part`;
   the formal-tag run wrote the bare `.tar.gz`. When unsure, copy the exact path from the build's
   download error.
+- **(f) Why there is no GitHub fallback — `x-block-origin` (the actual failure mode).**
+  `tools/ci_build/build.py` (`add_default_vcpkg_options`, the `--use_vcpkg_ms_internal_asset_cache`
+  branch) configures the asset cache as
+  `--x-asset-sources=x-azurl,https://vcpkg.storage.devpackages.microsoft.io/artifacts/;x-block-origin`
+  (or the Terrapin `x-script` form). The trailing **`x-block-origin` forbids vcpkg from falling
+  back to the GitHub origin** — so if the blob is absent the leg does **not** silently download
+  from GitHub, it **hard-fails**. The asset-cache key is the **bare lowercase SHA512 hex, no
+  extension**: the blob lives at `…/artifacts/<sha512>`. Quick probe (no auth needed, read is public):
+  ```bash
+  curl -s -o /dev/null -w "%{http_code}\n" \
+    https://vcpkg.storage.devpackages.microsoft.io/artifacts/<portfile-sha512>
+  # 200 = already mirrored (legs will pass) ; 404 = NOT mirrored (every vcpkg leg will 404-fail)
+  ```
+- **(g) This recurs on EVERY archive bump, including each RC.** rc1→rc2→…→formal each produce a
+  *new* `.tar.gz` with a *new* SHA512, so each one is a distinct, un-mirrored blob. A green rc1 run
+  does **not** mean rc2 is mirrored. After every `portfile.cmake` REF/SHA512 change, run the curl
+  probe above; if 404, the upload (steps 1–2) must happen again before any `--use_vcpkg` leg can pass.
+  Terrapin-enabled self-hosted Windows legs (`-a true`) self-seed the mirror as a side effect; the
+  read-only `x-azurl` legs (Linux/macOS/GitHub-hosted) cannot and will 404 until that seed lands.
 
 ## 3. onnx.patch rebase + binskim.patch mirror
 
