@@ -53,6 +53,7 @@ endif()
 
 set(MODEL_PACKAGE_SOURCES
   src/api.cc
+  src/ort_json.cc
   src/parser.cc
 )
 
@@ -91,6 +92,21 @@ install(TARGETS model_package
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-install(FILES include/model_package_api.h
+install(FILES include/model_package_api.h include/ort_json.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+if(MODEL_PACKAGE_BUILD_TESTS)
+  enable_testing()
+  add_executable(test_ort_json tests/test_ort_json.cc)
+  target_link_libraries(test_ort_json PRIVATE model_package nlohmann_json::nlohmann_json)
+  target_include_directories(test_ort_json PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+  )
+  add_test(NAME ort_json COMMAND test_ort_json)
+endif()

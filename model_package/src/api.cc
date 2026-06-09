@@ -4,20 +4,25 @@
 #include "model_package_api.h"
 #include "model_package_internal.h"
 #include "parser.h"
+#include "status_impl.h"
 
 #include <new>
 #include <string>
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Status implementation
-// ─────────────────────────────────────────────────────────────────────────────
+using model_package::MakeStatus;
 
-struct ModelPackageStatus {
-  std::string message;
-};
-
+// Existing parser surface only returns a string; classify those failures as
+// ERR_SCHEMA for now. Phase 1 rewires the parser to thread codes end-to-end.
 static ModelPackageStatus* MakeError(std::string msg) {
-  return new (std::nothrow) ModelPackageStatus{std::move(msg)};
+  return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA, std::move(msg));
+}
+
+static ModelPackageStatus* MakeInvalidArg(std::string msg) {
+  return MakeStatus(MODEL_PACKAGE_ERR_INVALID_ARG, std::move(msg));
+}
+
+static ModelPackageStatus* MakeNotFound(std::string msg) {
+  return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND, std::move(msg));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -56,10 +61,10 @@ const Variant* ContextImpl::FindVariant(const char* component_name, const char* 
 // Validation macro
 // ─────────────────────────────────────────────────────────────────────────────
 
-#define RETURN_IF_NULL(ptr, param_name)                                 \
-  do {                                                                  \
-    if ((ptr) == nullptr)                                               \
-      return MakeError(std::string(param_name) + " must not be null."); \
+#define RETURN_IF_NULL(ptr, param_name)                                      \
+  do {                                                                       \
+    if ((ptr) == nullptr)                                                    \
+      return MakeInvalidArg(std::string(param_name) + " must not be null."); \
   } while (0)
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -75,6 +80,11 @@ void ModelPackage_ReleaseStatus(ModelPackageStatus* status) {
 const char* ModelPackage_GetErrorMessage(const ModelPackageStatus* status) {
   if (status == nullptr) return nullptr;
   return status->message.c_str();
+}
+
+ModelPackageErrorCode ModelPackage_GetErrorCode(const ModelPackageStatus* status) {
+  if (status == nullptr) return MODEL_PACKAGE_OK;
+  return status->code;
 }
 
 ModelPackageStatus* ModelPackage_CreateContext(
@@ -143,7 +153,7 @@ ModelPackageStatus* ModelPackage_GetComponentName(
   RETURN_IF_NULL(out_name, "out_name");
 
   if (component_idx >= context->impl.component_names_cache.size()) {
-    return MakeError("component_idx out of range: " + std::to_string(component_idx));
+    return MakeInvalidArg("component_idx out of range: " + std::to_string(component_idx));
   }
 
   *out_name = context->impl.component_names_cache[component_idx].c_str();
@@ -160,7 +170,7 @@ ModelPackageStatus* ModelPackage_GetVariantCount(
 
   const auto* comp = context->impl.FindComponent(component_name);
   if (!comp) {
-    return MakeError(std::string("Component not found: '") + component_name + "'.");
+    return MakeNotFound(std::string("Component not found: '") + component_name + "'.");
   }
 
   *out_count = comp->variants.size();
@@ -178,11 +188,11 @@ ModelPackageStatus* ModelPackage_GetVariantName(
 
   auto it = context->impl.variant_names_cache.find(component_name);
   if (it == context->impl.variant_names_cache.end()) {
-    return MakeError(std::string("Component not found: '") + component_name + "'.");
+    return MakeNotFound(std::string("Component not found: '") + component_name + "'.");
   }
 
   if (variant_idx >= it->second.size()) {
-    return MakeError("variant_idx out of range: " + std::to_string(variant_idx));
+    return MakeInvalidArg("variant_idx out of range: " + std::to_string(variant_idx));
   }
 
   *out_name = it->second[variant_idx].c_str();
@@ -201,8 +211,8 @@ ModelPackageStatus* ModelPackage_GetVariantFolderPath(
 
   const auto* variant = context->impl.FindVariant(component_name, variant_name);
   if (!variant) {
-    return MakeError(std::string("Variant '") + variant_name + "' not found in component '" +
-                     component_name + "'.");
+    return MakeNotFound(std::string("Variant '") + variant_name + "' not found in component '" +
+                        component_name + "'.");
   }
 
   // Cache the path string for stable pointer.
@@ -226,8 +236,8 @@ ModelPackageStatus* ModelPackage_GetVariantEpName(
 
   const auto* variant = context->impl.FindVariant(component_name, variant_name);
   if (!variant) {
-    return MakeError(std::string("Variant '") + variant_name + "' not found in component '" +
-                     component_name + "'.");
+    return MakeNotFound(std::string("Variant '") + variant_name + "' not found in component '" +
+                        component_name + "'.");
   }
 
   if (out_ep) {
