@@ -39,7 +39,11 @@ struct VariantModelInfo {
   // from variant.json file entry
   std::optional<std::unordered_map<std::string, std::string>> session_options;
   std::optional<std::unordered_map<std::string, std::string>> provider_options;
-  std::optional<std::unordered_map<std::string, std::string>> shared_files;  // logical_name -> checksum/path
+
+  // Resolved folder containing the model's external initializer file, when
+  // executor_info.ort.external_data was set (path or sha256: URI). Empty
+  // otherwise. Used as the ORT external-initializers folder hint.
+  std::optional<std::string> external_data_folder_path;
 };
 
 // variant-level info (metadata.json + variant.json)
@@ -124,10 +128,8 @@ class ModelPackageComponentContext {
 
   Status GetSelectedVariantName(const std::string*& out_name) const;
 
-  // Returns the resolved external_data folder (variant.json
-  // executor_info.ort.external_data) so the caller can pass it as
-  // session.model_external_initializers_file_folder_path. nullptr-on-success
-  // means the variant declared none.
+  // Returns the resolved external_data folder for the selected variant, or
+  // nullptr-on-success if none was declared. Borrowed from VariantModelInfo.
   Status GetSelectedVariantExternalDataFolder(const std::string*& out_folder) const;
 
   std::vector<std::unique_ptr<IExecutionProvider>>& MutableProviderList() { return provider_list_; }
@@ -158,8 +160,6 @@ class ModelPackageComponentContext {
   mutable std::string consumer_metadata_cache_{};
   mutable bool consumer_metadata_cache_valid_{false};
   mutable std::filesystem::path folder_path_cache_{};
-  mutable std::string external_data_folder_cache_{};
-  mutable bool external_data_folder_cache_valid_{false};
   mutable std::vector<std::string> session_option_keys_cache_{};
   mutable std::vector<std::string> session_option_values_cache_{};
   mutable std::vector<std::string> provider_option_keys_cache_{};

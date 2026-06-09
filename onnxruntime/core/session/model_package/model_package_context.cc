@@ -347,31 +347,15 @@ Status ModelPackageComponentContext::GetSelectedVariantName(const std::string*& 
 Status ModelPackageComponentContext::GetSelectedVariantExternalDataFolder(
     const std::string*& out_folder) const {
   out_folder = nullptr;
-
-  if (external_data_folder_cache_valid_) {
-    if (!external_data_folder_cache_.empty()) {
-      out_folder = &external_data_folder_cache_;
-    }
-    return Status::OK();
-  }
-
   const VariantInfo* selected_variant = nullptr;
   ORT_RETURN_IF_ERROR(GetSelectedVariantInfo(selected_variant));
   ORT_RETURN_IF(selected_variant == nullptr,
                 "Selected variant is null for component: ", component_model_name_);
-
-  external_data_folder_cache_.clear();
-  external_data_folder_cache_valid_ = true;
-  if (!selected_variant->file.has_value() || !selected_variant->file->shared_files.has_value()) {
-    return Status::OK();
+  if (selected_variant->file.has_value() &&
+      selected_variant->file->external_data_folder_path.has_value() &&
+      !selected_variant->file->external_data_folder_path->empty()) {
+    out_folder = &(*selected_variant->file->external_data_folder_path);
   }
-  const auto& shared = *selected_variant->file->shared_files;
-  auto it = shared.find("external_data");
-  if (it == shared.end() || it->second.empty()) {
-    return Status::OK();
-  }
-  external_data_folder_cache_ = it->second;
-  out_folder = &external_data_folder_cache_;
   return Status::OK();
 }
 
@@ -505,9 +489,9 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
         fill_string_map("session_options", ort_file.session_options);
         fill_string_map("provider_options", ort_file.provider_options);
 
-        // external_data is a single string (path OR sha256: URI). Resolve to
-        // an on-disk path and store it under the conventional "external_data"
-        // key so the downstream struct shape (map<string,string>) is preserved.
+        // external_data: a path (relative to variant folder) or a sha256: URI.
+        // Resolve to an on-disk folder and stash it for the session creation path
+        // to feed into kOrtSessionOptionsModelExternalInitializersFileFolderPath.
         if (auto it = ort_obj->find("external_data"); it != ort_obj->end()) {
           if (!it->is_string()) {
             ORT_THROW("ORT variant configuration: external_data must be a string for variant '",
@@ -530,13 +514,11 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
                            ? ext
                            : (ort_variant.folder_path / ext).string();
           }
-          std::unordered_map<std::string, std::string> shared;
-          shared.emplace("external_data", std::move(resolved));
-          ort_file.shared_files = std::move(shared);
+          ort_file.external_data_folder_path = std::move(resolved);
         }
 
         if (!ort_file.identifier.empty() || ort_file.session_options.has_value() ||
-            ort_file.provider_options.has_value() || ort_file.shared_files.has_value()) {
+            ort_file.provider_options.has_value() || ort_file.external_data_folder_path.has_value()) {
           ort_variant.file = std::move(ort_file);
         }
       }
