@@ -38,19 +38,19 @@ TEST_F(ExperimentalCApiTest, EmptyNameReturnsNull) {
 // Known name resolves to non-null (C-style lookup)
 TEST_F(ExperimentalCApiTest, KnownNameResolvesC) {
   OrtExperimentalFnPtr fn =
-      api_->GetExperimentalFunction(kOrtExperimental_OrtApi_ExperimentalApiTest_V27_FnName);
+      api_->GetExperimentalFunction(kOrtExperimental_OrtApi_ExperimentalApiTest_SinceV27_FnName);
   EXPECT_NE(fn, nullptr);
 }
 
 // Known name resolves to non-null (C++-style accessor)
 TEST_F(ExperimentalCApiTest, KnownNameResolvesCpp) {
-  auto* fn = Ort::Experimental::Get_OrtApi_ExperimentalApiTest_V27_Fn(api_);
+  auto* fn = Ort::Experimental::Get_OrtApi_ExperimentalApiTest_SinceV27_Fn(api_);
   EXPECT_NE(fn, nullptr);
 }
 
 // Call through typed pointer succeeds and returns the expected sentinel value
 TEST_F(ExperimentalCApiTest, CallThroughTypedPointer) {
-  auto* fn = Ort::Experimental::Get_OrtApi_ExperimentalApiTest_V27_Fn(api_);
+  auto* fn = Ort::Experimental::Get_OrtApi_ExperimentalApiTest_SinceV27_Fn(api_);
   ASSERT_NE(fn, nullptr);
 
   int64_t result = 0;
@@ -62,8 +62,8 @@ TEST_F(ExperimentalCApiTest, CallThroughTypedPointer) {
 // The same name looked up twice returns the same pointer
 TEST_F(ExperimentalCApiTest, ConsistentLookup) {
   OrtExperimentalFnPtr fn1 =
-      api_->GetExperimentalFunction(kOrtExperimental_OrtApi_ExperimentalApiTest_V27_FnName);
+      api_->GetExperimentalFunction(kOrtExperimental_OrtApi_ExperimentalApiTest_SinceV27_FnName);
   OrtExperimentalFnPtr fn2 =
-      api_->GetExperimentalFunction(kOrtExperimental_OrtApi_ExperimentalApiTest_V27_FnName);
+      api_->GetExperimentalFunction(kOrtExperimental_OrtApi_ExperimentalApiTest_SinceV27_FnName);
   EXPECT_EQ(fn1, fn2);
 }

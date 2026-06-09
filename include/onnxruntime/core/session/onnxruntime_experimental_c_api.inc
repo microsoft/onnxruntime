@@ -15,15 +15,15 @@
 //                   (e.g., OrtApi_Foo for functions destined for OrtApi).
 //     Params:       The parameter list, using SAL annotations as in other ORT C API declarations.
 //
-// The function lookup name is mechanically generated as Name_V<SinceVersion>.
+// The function lookup name is mechanically generated as Name_SinceV<SinceVersion>.
 //
 // Experimental function lifecycle rules:
 //   - Adding: Add one ORT_EXPERIMENTAL_API line with the current API version and implement it.
 //   - Removing: Delete the line. The versioned name is inherently unique and cannot be reused.
 //   - Changing a signature: Add a new entry at the current API version (producing a new name) and optionally delete
 //     the old entry. Both can coexist during a transition period.
-//   - Promoting to stable: Move the function to the stable OrtApi struct (append-only, drop the
-//     _V<SinceVersion> suffix). Delete the experimental entry.
+//   - Promoting to stable: Move the function to the stable OrtApi struct (append-only, drop the _SinceV<SinceVersion>
+//     suffix). Delete the experimental entry.
 
 /** \brief Test-only experimental function that exercises the lookup mechanism end-to-end.
  *

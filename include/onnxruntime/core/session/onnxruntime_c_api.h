@@ -7504,7 +7504,7 @@ struct OrtApi {
    * typedefs, name constants, and (for C++) typed accessors.
    *
    * \param[in] name The null-terminated name of the experimental function to look up.
-   *                 Names follow the pattern \<TargetStruct\>_\<Name\>_V\<APIVersion\>.
+   *                 Names follow the pattern \<TargetStruct\>_\<Name\>_SinceV\<APIVersion\>.
    *                 Name constants are defined in onnxruntime_experimental_c_api.h.
    * \return The function pointer cast to ::OrtExperimentalFnPtr, or nullptr if the name is null
    *         or the function is not available in this build. The caller must cast the returned
