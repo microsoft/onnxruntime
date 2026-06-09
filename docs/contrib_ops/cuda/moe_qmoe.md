@@ -71,6 +71,7 @@ input tokens → router (top-k softmax) → permute by expert
 | `expert_weight_bits` (QMoE only) | int | 4 | 4 (INT4/MXFP4) or 8 (INT8/FP8). |
 | `block_size` (QMoE only) | int | -1 | Group size for INT4/INT8 group-wise quantization. -1 = per-output-channel. |
 | `quant_type` (QMoE only) | string | `"int"` | `"int"`, `"fp4"`, `"fp8"`, `"wfp4afp8"`. See [§3](#3-quantization-modes). |
+| `weights_prepacked` (QMoE only) | int | -1 | Tri-state, only meaningful when `quant_type="int"`. `-1` (auto): each EP picks its own backward-compatible default — the CUDA EP treats auto as prepacked. `1`: the INT4/INT8 `fc1`/`fc2` initializers are already in the CUTLASS `fpA_intB` layout (e.g. from `pack_weights_for_cuda_mixed_gemm`) and are consumed as-is. `0`: the initializers are raw `[E, N, K/pack]` tensors (as produced by `quantize_matmul_{4,8}bits`) and the kernel runs the CUTLASS layout transform in `PrePack()`. See [§5.1](#51-weights-input-2--5--8). |
 
 ### 2.2 Type Constraints
 
@@ -228,10 +229,39 @@ extra subtraction.
 
 ### 5.1 Weights (input 2 / 5 / 8)
 
-Not transformed at runtime. INT4/INT8 weights must already be packed offline by
-`pack_weights_for_cuda_mixed_gemm` (see [§6](#6-weight-formats)). MXFP4 weights
-must be packed by `pack_fp4_weights_for_cuda_moe_gemm`. FP8 weights are stored
-as raw e4m3 bytes (no packing).
+**INT4/INT8** weight layout is controlled by the `weights_prepacked` attribute
+([§2.1](#21-attributes)):
+
+- **`weights_prepacked=-1` (auto, default) or `1`** — the `fc1`/`fc2` weights are
+  assumed to already be in the CUTLASS `fpA_intB` layout, packed offline by
+  `pack_weights_for_cuda_mixed_gemm` (see [§6](#6-weight-formats)). They are
+  copied to GPU and consumed as-is (today's behaviour).
+- **`weights_prepacked=0`** — the `fc1`/`fc2` weights are raw, schema-conformant
+  `[E, N, K/pack]` tensors as produced by `quantize_matmul_{4,8}bits`. `PrePack`
+  runs the CUTLASS layout transform itself via `PrePackIntExpertWeights`,
+  removing the offline pre-pack dependency. This makes integer QMoE symmetric
+  with `MatMulNBits::PrePack_B`.
+
+`PrePackIntExpertWeights` loops over the `E` experts and, per expert, applies the
+same transpose + row-permutation / column-interleave / bias / pair-interleave
+transform as `pack_weights_for_cuda_mixed_gemm` (see [§6.1](#61-int4-group-wise-quant_typeint-expert_weight_bits4)).
+Packing is architecture-aware ([§7](#7-cross-architecture-packing-compatibility)):
+SM90 (Hopper) is its own layout group, while all other supported arches
+(SM75/80/86/89, SM100/120) share the SM80 layout. SM75+ is required. The source
+`[E, N, K/pack]` initializers are released after their shapes are cached
+(`fc1_weights_shape_` / `fc2_weights_shape_`), so peak weight memory stays ~1×.
+The prepacked GPU buffers (`packed_fc1_weights_` / `packed_fc2_weights_`) are then
+preferred by `ComputeInternal`. If prepacking is disabled at the session level
+(`session.disable_prepacking`), the buffers stay null and the raw initializer
+pointers are read at compute time instead.
+
+> **Note**: `weights_prepacked=0` is the only path that triggers an in-`PrePack`
+> layout transform for INT weights. FP4 / FP8 / WFP4AFP8 weight handling is
+> unaffected.
+
+MXFP4 weights must be packed by `pack_fp4_weights_for_cuda_moe_gemm`. FP8 weights
+are stored as raw e4m3 bytes (no packing).
+
 
 ### 5.2 INT4/INT8 scales + zero-point → bias
 
@@ -287,7 +317,12 @@ This section covers the five distinct weight encodings supported by QMoE.
 INT4 packing layout within a byte: `[high_nibble | low_nibble] = [elt_1 | elt_0]`.
 Each INT4 element is in `[-8, 7]` (signed) before bias, `[0, 15]` after the +8 bias.
 
-#### Preprocessing pipeline (offline, `pack_weights_for_cuda_mixed_gemm`)
+#### Preprocessing pipeline (offline `pack_weights_for_cuda_mixed_gemm`, or in-`PrePack` via `PrePackIntExpertWeights`)
+
+This is the layout transform applied either offline by
+`pack_weights_for_cuda_mixed_gemm`, or per-expert inside `PrePack` when
+`weights_prepacked=0` (see [§5.1](#51-weights-input-2--5--8)).
+
 
 1. **Input layout**: `[N, K]` per expert (Out × In), 2 elements per byte for INT4.
 2. **Transpose & signed conversion**:
@@ -830,7 +865,7 @@ will not change the operator interface.
 |-----------|----------|
 | [test_moe_cuda.py](onnxruntime/test/python/transformers/test_moe_cuda.py) | Standard MoE on CUDA: FP16/BF16, SiLU/GeLU/SwiGLU, routing, GEMM parity. SwiGLU coverage includes both GPT-OSS (`TestSwigluMoE`: interleaved, alpha=1.702/beta=1.0/limit=7.0) and Standard/Llama-Gemma (`TestStandardSwigluMoE`: concatenated `swiglu_fusion=2`, alpha=1.0/beta=0.0/no limit → `SiLU(Gate)×Value`). |
 | [test_moe_cpu.py](onnxruntime/test/python/transformers/test_moe_cpu.py) | Standard MoE on CPU (smoke). |
-| [test_qmoe_cuda.py](onnxruntime/test/python/transformers/test_qmoe_cuda.py) | INT4/INT8 QMoE — primary regression signal for the production QMoE path. Exercises `pack_weights_for_cuda_mixed_gemm` and dequant-then-matmul reference. |
+| [test_qmoe_cuda.py](onnxruntime/test/python/transformers/test_qmoe_cuda.py) | INT4/INT8 QMoE — primary regression signal for the production QMoE path. Exercises `pack_weights_for_cuda_mixed_gemm` and dequant-then-matmul reference. `TestQMoEIntPrePackSmoke` covers the raw-weight `weights_prepacked=0` in-`PrePack` layout transform (smoke test: asserts finite output, not bit-parity). |
 | [test_qmoe_cpu.py](onnxruntime/test/python/transformers/test_qmoe_cpu.py) | INT4/INT8 QMoE on CPU (smoke). |
 | [test_qmoe_fp4_cuda.py](onnxruntime/test/python/transformers/test_qmoe_fp4_cuda.py) | MXFP4 QMoE: quantization utilities, packing, FP16/BF16, SiLU/SwiGLU, top-k and expert-count variants. End-to-end runs on SM120; on SM<120 the dequant fallback is exercised. |
 | [test_qmoe_fp8_cuda.py](onnxruntime/test/python/transformers/test_qmoe_fp8_cuda.py) | FP8 W8A16 QMoE on SM90+ native path and SM<90 dequant fallback. |
@@ -954,6 +989,11 @@ over-aligned by-value parameters.
   cannot. See [§14.1](#141-msvc-and-tma-grouped-moe-gemm).
 - **WFP4AFP8 native** requires SM100+ hardware; only the dequant fallback path
   is validated end-to-end so far.
+- **In-`PrePack` INT weight layout transform** (`weights_prepacked=0`) is
+  currently covered only by a smoke test (`TestQMoEIntPrePackSmoke`), not a
+  bit-parity check: the existing offline pre-pack harness hardcodes
+  `force_arch=80` and produces incorrect output on SM≥90, so a parity
+  comparison against it is omitted until that harness honours the runtime SM.
 - **Hopper W4A8** (INT4 weight + FP8 activation) is not supported — TRT-LLM gates
   its fast path to SM89 only.
 
