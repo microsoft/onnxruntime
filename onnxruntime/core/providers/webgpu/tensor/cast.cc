@@ -118,8 +118,10 @@ Status CastProgram::GenerateShaderCode(ShaderHelper& sh) const {
 
   sh.MainFunctionBody() << sh.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size");
 
-  if (is_from_int64_ && to_ != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-    // int64 -> non-int64
+  if (is_from_int64_) {
+    // int64 -> any (including int64)
+    // Note: int64 inputs are not enabled by default (requires enable_int64).
+    // This path handles the downcast to 32-bit types.
     // Load lanes 1-3 conditionally to avoid out-of-bounds reads when size % 4 != 0.
     // Lane 0 is always valid due to the workgroup size guard.
     sh.MainFunctionBody() << "  let base = global_idx * 4u;\n"
@@ -132,42 +134,45 @@ Status CastProgram::GenerateShaderCode(ShaderHelper& sh) const {
                             << " = " << input.GetByOffset(MakeStringWithClassicLocale("base + ", i, "u")) << "; }\n";
     }
     sh.MainFunctionBody() << "  let a = vec4<i32>(a0, a1, a2, a3);\n";
-    sh.MainFunctionBody() << output.SetByOffset("global_idx", expression);
-  } else if (to_ == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-    // cast to int64
-    std::array<std::string, 4> values;
-    constexpr std::array<char, 4> kLanes{'x', 'y', 'z', 'w'};
-    if (is_from_int64_) {
-      // int64 -> int64: straight 64-bit copy of the vec2<u32> (low, high) pair.
-      sh.MainFunctionBody() << "  let base = global_idx * 4u;\n";
-      for (size_t i = 0; i < 4; ++i) {
-        values[i] = MakeStringWithClassicLocale("x[base + ", i, "u]");
+    if (to_ == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+      // int64 -> int64
+      constexpr std::array<char, 4> kLanes{'x', 'y', 'z', 'w'};
+      sh.MainFunctionBody() << output.SetByOffset("base", "a.x");
+      for (size_t i = 1; i < 4; ++i) {
+        sh.MainFunctionBody() << "  if (base + " << i << "u < uniforms.output_size) { "
+                              << output.SetByOffset(MakeStringWithClassicLocale("base + ", i, "u"),
+                                                    MakeStringWithClassicLocale("a.", kLanes[i]))
+                              << " }\n";
       }
     } else {
-      sh.MainFunctionBody() << "  let a = " << input.GetByOffset("global_idx") << ";\n"
-                            << "  let base = global_idx * 4u;\n";
-      for (size_t i = 0; i < 4; ++i) {
-        if (is_from_float_) {
-          // float32/float16 -> int64: IEEE 754 bit decomposition. float16 reuses the
-          // float32 helper since every f16 value is exactly representable as f32.
-          values[i] = MakeStringWithClassicLocale("float_to_int64(f32(a.", kLanes[i], "))");
-        } else if (is_from_unsigned_) {
-          // uint32/bool -> int64: zero-extend.
-          values[i] = MakeStringWithClassicLocale("vec2<u32>(u32(a.", kLanes[i], "), 0u)");
-        } else {
-          // int32 -> int64: sign-extend.
-          values[i] = MakeStringWithClassicLocale(
-              "vec2<u32>(u32(a.", kLanes[i], "), select(0u, 0xFFFFFFFFu, i32(a.", kLanes[i], ") < 0))");
-        }
+      sh.MainFunctionBody() << output.SetByOffset("global_idx", expression);
+    }
+  } else if (to_ == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+    // cast to int64 (non-int64 inputs only)
+    std::array<std::string, 4> values;
+    constexpr std::array<char, 4> kLanes{'x', 'y', 'z', 'w'};
+    sh.MainFunctionBody() << "  let a = " << input.GetByOffset("global_idx") << ";\n"
+                          << "  let base = global_idx * 4u;\n";
+    for (size_t i = 0; i < 4; ++i) {
+      if (is_from_float_) {
+        // float32/float16 -> int64: IEEE 754 bit decomposition. float16 reuses the
+        // float32 helper since every f16 value is exactly representable as f32.
+        values[i] = MakeStringWithClassicLocale("float_to_int64(f32(a.", kLanes[i], "))");
+      } else if (is_from_unsigned_) {
+        // uint32/bool -> int64: zero-extend.
+        values[i] = MakeStringWithClassicLocale("vec2<u32>(u32(a.", kLanes[i], "), 0u)");
+      } else {
+        // int32 -> int64: sign-extend.
+        values[i] = MakeStringWithClassicLocale(
+            "vec2<u32>(u32(a.", kLanes[i], "), select(0u, 0xFFFFFFFFu, i32(a.", kLanes[i], ") < 0))");
       }
     }
-    // Note: Direct array assignment is used here instead of output.SetByOffset() because
-    // the values are already vec2<u32> (64-bit representations).
-    // SetByOffset would incorrectly try to convert int32 to int64.
-    sh.MainFunctionBody() << "  y[base] = " << values[0] << ";\n";
+    // Use use_storage_type=true to write vec2<u32> directly.
+    sh.MainFunctionBody() << output.SetByOffset("base", values[0], /*use_storage_type=*/true);
     for (size_t i = 1; i < 4; ++i) {
-      sh.MainFunctionBody() << "  if (base + " << i << "u < uniforms.output_size) { y[base + " << i
-                            << "u] = " << values[i] << "; }\n";
+      sh.MainFunctionBody() << "  if (base + " << i << "u < uniforms.output_size) { "
+                            << output.SetByOffset(MakeStringWithClassicLocale("base + ", i, "u"), values[i], /*use_storage_type=*/true)
+                            << " }\n";
     }
   } else {
     // generic cast (no int64 involved).
