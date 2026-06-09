@@ -102,13 +102,13 @@ void DropViewCache(const ModelPackage* pkg) { DropCache(pkg); }
 extern "C" {
 
 const char* ModelPackageStatus_Message(const ModelPackageStatus* s) {
-  return ModelPackage_GetErrorMessage(s);
+  return s ? s->message.c_str() : nullptr;
 }
 ModelPackageErrorCode ModelPackageStatus_Code(const ModelPackageStatus* s) {
-  return ModelPackage_GetErrorCode(s);
+  return s ? s->code : MODEL_PACKAGE_OK;
 }
 void ModelPackageStatus_Release(ModelPackageStatus* s) {
-  ModelPackage_ReleaseStatus(s);
+  delete s;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

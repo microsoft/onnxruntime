@@ -137,8 +137,8 @@ ModelPackageStatus* ResolveVariantDirectory(const fs::path& component_dir,
   auto* status = ResolvePath(component_dir, package_root, dir_input, opts,
                              require_exists, &resolved);
   if (status) {
-    if (!require_exists && ModelPackage_GetErrorCode(status) == MODEL_PACKAGE_ERR_NOT_FOUND) {
-      ModelPackage_ReleaseStatus(status);
+    if (!require_exists && ModelPackageStatus_Code(status) == MODEL_PACKAGE_ERR_NOT_FOUND) {
+      ModelPackageStatus_Release(status);
       *out = std::nullopt;
       return nullptr;
     }

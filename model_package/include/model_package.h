@@ -4,13 +4,10 @@
 /// \file model_package.h
 /// \brief Public C API for the ONNX Runtime Model Package library.
 ///
-/// This is the new API per model_package_redesign.md. The legacy
-/// model_package_api.h coexists during the in-progress redesign.
-///
 /// Error handling: functions that can fail return `ModelPackageStatus*`.
 /// `nullptr` means success. Use `ModelPackageStatus_Message`,
-/// `ModelPackageStatus_Code`, and `ModelPackageStatus_Release` from the legacy
-/// header to inspect and release statuses; the type is shared.
+/// `ModelPackageStatus_Code`, and `ModelPackageStatus_Release` to inspect
+/// and release statuses.
 
 #pragma once
 
@@ -33,14 +30,16 @@ typedef struct ModelComponent ModelComponent;
 typedef struct ModelVariant   ModelVariant;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Status helpers (alias names matching §7.1)
+// Status helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Same as ModelPackage_GetErrorMessage. Provided under the §7.1 name.
+/// Get the error message from a status object. Returns nullptr if status is nullptr.
+/// The returned string is owned by the status object.
 MODEL_PACKAGE_API const char*           ModelPackageStatus_Message(const ModelPackageStatus*);
-/// Same as ModelPackage_GetErrorCode. Provided under the §7.1 name.
+/// Get the categorical error code from a status object. Returns MODEL_PACKAGE_OK
+/// if status is nullptr (i.e. success).
 MODEL_PACKAGE_API ModelPackageErrorCode ModelPackageStatus_Code(const ModelPackageStatus*);
-/// Same as ModelPackage_ReleaseStatus. Provided under the §7.1 name.
+/// Release a status object. Safe to call with nullptr.
 MODEL_PACKAGE_API void                  ModelPackageStatus_Release(ModelPackageStatus*);
 
 // ─────────────────────────────────────────────────────────────────────────────

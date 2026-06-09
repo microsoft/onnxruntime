@@ -22,12 +22,11 @@
 #include "core/session/provider_policy_context.h"
 #include "core/session/utils.h"
 
-// We intentionally use the standalone model_package library's internal C++ types directly
-// (model_package::ParsePackage, model_package_internal.h) rather than its public C API
-// (ModelPackage_* functions). This avoids double-wrapping since ORT compiles the library in-tree.
-// The public C API exists for external consumers (GenAI, FL) who link independently.
-#include "model_package_internal.h"
-#include "parser.h"
+// Use the standalone model_package library's public C API. The library has no ORT
+// dependency; ORT links it as a static archive (see cmake/onnxruntime_session.cmake)
+// and translates the C handles into the ORT-internal C++ types defined in
+// model_package_context.h here.
+#include "model_package.h"
 
 namespace onnxruntime {
 
@@ -346,53 +345,176 @@ Status ModelPackageComponentContext::GetSelectedVariantName(const std::string*& 
 }
 
 ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_root) {
-  // Use the standalone model_package library for parsing.
-  model_package::PackageInfo pkg_info;
-  std::string error;
-  if (!model_package::ParsePackage(package_root, pkg_info, error)) {
-    ORT_THROW("Failed to parse model package: ", error);
+  // Open the package via the new public C API. RAII guard ensures the handle is
+  // released even on exception paths during conversion to ORT-internal types.
+  ::ModelPackage* pkg = nullptr;
+  if (::ModelPackageStatus* st = ::ModelPackage_Open(package_root.string().c_str(), nullptr, &pkg)) {
+    std::string msg = ::ModelPackageStatus_Message(st) ? ::ModelPackageStatus_Message(st) : "unknown error";
+    ::ModelPackageStatus_Release(st);
+    ORT_THROW("Failed to open model package at '", package_root.string(), "': ", msg);
   }
+  std::unique_ptr<::ModelPackage, decltype(&::ModelPackage_Close)> pkg_guard(pkg, &::ModelPackage_Close);
 
-  // Convert standalone library types to ORT internal types.
-  model_package_info_.schema_version = pkg_info.schema_version;
+  const ::ModelPackageInfo* pkg_info = ::ModelPackage_Info(pkg);
+  model_package_info_.schema_version = pkg_info ? pkg_info->schema_version : 0;
   model_package_info_.components.clear();
   component_name_to_index_.clear();
 
-  for (const auto& component : pkg_info.components) {
-    const auto& name = component.name;
-    size_t component_idx = model_package_info_.components.size();
-    component_name_to_index_[name] = component_idx;
+  const size_t component_count = pkg_info ? pkg_info->num_components : 0;
+  for (size_t ci = 0; ci < component_count; ++ci) {
+    const ::ModelComponent* component = ::ModelPackage_GetComponent(pkg, ci);
+    if (component == nullptr) {
+      ORT_THROW("Failed to access component at index ", ci, " in model package: ", package_root.string());
+    }
+
+    const char* name_cstr = ::ModelComponent_Name(component);
+    std::string component_name = name_cstr ? name_cstr : "";
+    const size_t component_idx = model_package_info_.components.size();
+    component_name_to_index_[component_name] = component_idx;
 
     ComponentInfo ort_component{};
-    ort_component.component_name = name;
+    ort_component.component_name = component_name;
     ort_component.selected_variant_index.reset();
 
-    for (const auto& variant : component.variants) {
-      VariantInfo ort_variant{};
-      ort_variant.component_name = name;
-      ort_variant.variant_name = variant.name;
-      ort_variant.folder_path = variant.folder_path;
-
-      // Convert EP compatibility (single entry per variant).
-      ort_variant.ep_compatibility.ep = variant.ep_compatibility.ep;
-      ort_variant.ep_compatibility.device = variant.ep_compatibility.device;
-      ort_variant.ep_compatibility.compatibility_string = variant.ep_compatibility.compatibility_string;
-      ort_variant.ep_compatibility.compiled_model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
-
-      // Convert file entry (single file per variant).
-      if (variant.file.has_value()) {
-        VariantModelInfo ort_file{};
-        ort_file.identifier = variant.file->filename;
-        ort_file.model_file_path = variant.file->resolved_path;
-        ort_file.session_options = variant.file->session_options;
-        ort_file.provider_options = variant.file->provider_options;
-        ort_file.shared_files = variant.file->shared_files;
-        ort_variant.file = std::move(ort_file);
+    const size_t variant_count = ::ModelComponent_VariantCount(component);
+    for (size_t vi = 0; vi < variant_count; ++vi) {
+      const ::ModelVariant* variant = ::ModelComponent_GetVariant(component, vi);
+      if (variant == nullptr) {
+        ORT_THROW("Failed to access variant at index ", vi, " in component '", component_name,
+                  "' of model package: ", package_root.string());
       }
 
-      // Consumer metadata.
-      if (variant.consumer_metadata_json.has_value()) {
-        ort_variant.consumer_metadata = nlohmann::json::parse(*variant.consumer_metadata_json);
+      VariantInfo ort_variant{};
+      ort_variant.component_name = component_name;
+      const char* variant_name_cstr = ::ModelVariant_Name(variant);
+      ort_variant.variant_name = variant_name_cstr ? variant_name_cstr : "";
+
+      // Resolve the variant directory. Treat absence as a soft error and leave
+      // folder_path empty; downstream callers that require a directory will
+      // surface a clearer error at the point of use.
+      const char* resolved_dir = nullptr;
+      if (::ModelPackageStatus* st = ::ModelVariant_ResolveDirectoryPath(variant, &resolved_dir)) {
+        ::ModelPackageStatus_Release(st);
+      } else if (resolved_dir != nullptr) {
+        ort_variant.folder_path = std::filesystem::path(resolved_dir);
+      }
+
+      // EP compatibility (single entry per variant).
+      const char* ep_cstr = ::ModelVariant_EpName(variant);
+      if (ep_cstr != nullptr) ort_variant.ep_compatibility.ep = std::string(ep_cstr);
+      const char* dev_cstr = ::ModelVariant_Device(variant);
+      if (dev_cstr != nullptr) ort_variant.ep_compatibility.device = std::string(dev_cstr);
+      const char* compat_cstr = ::ModelVariant_CompatibilityString(variant);
+      if (compat_cstr != nullptr) ort_variant.ep_compatibility.compatibility_string = std::string(compat_cstr);
+      ort_variant.ep_compatibility.compiled_model_compatibility =
+          OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+
+      // Parse the `ort` executor_info namespace if present (§5.3 of the redesign).
+      // The library returns it as an opaque JSON string; ORT decides its shape.
+      const char* ort_json_str = nullptr;
+      if (::ModelPackageStatus* st = ::ModelVariant_GetExecutorInfoJson(variant, "ort", &ort_json_str)) {
+        std::string msg = ::ModelPackageStatus_Message(st) ? ::ModelPackageStatus_Message(st) : "unknown error";
+        ::ModelPackageStatus_Release(st);
+        ORT_THROW("Failed to read executor_info[\"ort\"] for variant '", ort_variant.variant_name,
+                  "' in component '", component_name, "': ", msg);
+      }
+      if (ort_json_str != nullptr) {
+        json ort_obj;
+        try {
+          ort_obj = json::parse(ort_json_str);
+        } catch (const std::exception& e) {
+          ORT_THROW("Failed to parse executor_info[\"ort\"] JSON for variant '", ort_variant.variant_name,
+                    "' in component '", component_name, "': ", e.what());
+        }
+        if (!ort_obj.is_object()) {
+          ORT_THROW("executor_info[\"ort\"] must be a JSON object for variant '", ort_variant.variant_name,
+                    "' in component '", component_name, "'");
+        }
+
+        VariantModelInfo ort_file{};
+
+        if (auto it = ort_obj.find("model_file"); it != ort_obj.end()) {
+          if (!it->is_string()) {
+            ORT_THROW("executor_info[\"ort\"].model_file must be a string for variant '",
+                      ort_variant.variant_name, "' in component '", component_name, "'");
+          }
+          const std::string model_file = it->get<std::string>();
+          ort_file.identifier = model_file;
+          // model_file is resolved relative to variant_directory per §5.3.
+          ort_file.model_file_path = ort_variant.folder_path.empty()
+                                         ? std::filesystem::path(model_file)
+                                         : ort_variant.folder_path / model_file;
+        }
+
+        auto fill_string_map = [&](const char* key,
+                                   std::optional<std::unordered_map<std::string, std::string>>& dest) {
+          auto it = ort_obj.find(key);
+          if (it == ort_obj.end()) return;
+          if (!it->is_object()) {
+            ORT_THROW("executor_info[\"ort\"].", key, " must be a JSON object for variant '",
+                      ort_variant.variant_name, "' in component '", component_name, "'");
+          }
+          std::unordered_map<std::string, std::string> out;
+          out.reserve(it->size());
+          for (auto kv = it->begin(); kv != it->end(); ++kv) {
+            if (!kv.value().is_string()) {
+              ORT_THROW("executor_info[\"ort\"].", key, " entries must be strings for variant '",
+                        ort_variant.variant_name, "' in component '", component_name, "'");
+            }
+            out.emplace(kv.key(), kv.value().get<std::string>());
+          }
+          dest = std::move(out);
+        };
+        fill_string_map("session_options", ort_file.session_options);
+        fill_string_map("provider_options", ort_file.provider_options);
+
+        // §5.3 external_data is a single string (path OR sha256: URI). Resolve to
+        // an on-disk path. Stored under the conventional key "external_data" so the
+        // existing struct shape (map<string,string>) is preserved; downstream ORT
+        // code does not currently read this field directly.
+        if (auto it = ort_obj.find("external_data"); it != ort_obj.end()) {
+          if (!it->is_string()) {
+            ORT_THROW("executor_info[\"ort\"].external_data must be a string for variant '",
+                      ort_variant.variant_name, "' in component '", component_name, "'");
+          }
+          const std::string ext = it->get<std::string>();
+          std::string resolved;
+          if (ext.rfind("sha256:", 0) == 0) {
+            const char* asset_path = nullptr;
+            if (::ModelPackageStatus* st = ::ModelPackage_ResolveAssetUri(pkg, ext.c_str(), &asset_path)) {
+              std::string msg = ::ModelPackageStatus_Message(st) ? ::ModelPackageStatus_Message(st)
+                                                                  : "unknown error";
+              ::ModelPackageStatus_Release(st);
+              ORT_THROW("Failed to resolve external_data shared asset '", ext, "' for variant '",
+                        ort_variant.variant_name, "' in component '", component_name, "': ", msg);
+            }
+            resolved = asset_path ? asset_path : ext;
+          } else {
+            // Path-style: relative to variant_directory.
+            resolved = ort_variant.folder_path.empty()
+                           ? ext
+                           : (ort_variant.folder_path / ext).string();
+          }
+          std::unordered_map<std::string, std::string> shared;
+          shared.emplace("external_data", std::move(resolved));
+          ort_file.shared_files = std::move(shared);
+        }
+
+        if (!ort_file.identifier.empty() || ort_file.session_options.has_value() ||
+            ort_file.provider_options.has_value() || ort_file.shared_files.has_value()) {
+          ort_variant.file = std::move(ort_file);
+        }
+      }
+
+      // Variant-scope additional_metadata.
+      const char* var_meta = ::ModelVariant_AdditionalMetadataJson(variant);
+      if (var_meta != nullptr) {
+        try {
+          ort_variant.consumer_metadata = json::parse(var_meta);
+        } catch (const std::exception& e) {
+          ORT_THROW("Failed to parse additional_metadata JSON for variant '", ort_variant.variant_name,
+                    "' in component '", component_name, "': ", e.what());
+        }
       }
 
       model_variant_infos_.push_back(ort_variant);
@@ -405,7 +527,6 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
   // Create component names cache for quick lookup.
   component_names_cache_.clear();
   component_names_cache_.reserve(model_package_info_.components.size());
-
   for (const auto& component : model_package_info_.components) {
     component_names_cache_.push_back(component.component_name);
   }

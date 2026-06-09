@@ -52,14 +52,12 @@ endif()
 # ─────────────────────────────────────────────────────────────────────────────
 
 set(MODEL_PACKAGE_SOURCES
-  src/api.cc
   src/asset_hasher.cc
   src/authoring.cc
   src/commit_vacuum_validate.cc
   src/manifest_parser.cc
   src/model_package_impl.cc
   src/ort_json.cc
-  src/parser.cc
   src/path_resolver.cc
   src/sha256.cc
 )

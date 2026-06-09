@@ -8,7 +8,7 @@
 /// true on success. main() runs the suite and exits non-zero on any failure.
 
 #include "ort_json.h"
-#include "model_package_api.h"
+#include "model_package.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -37,8 +37,8 @@ const char* g_current = "<none>";
     ModelPackageStatus* _s = (status);                                                                \
     if (_s != nullptr) {                                                                              \
       std::fprintf(stderr, "[FAIL] %s line %d: expected OK, got: %s\n",                               \
-                   g_current, __LINE__, ModelPackage_GetErrorMessage(_s));                            \
-      ModelPackage_ReleaseStatus(_s);                                                                 \
+                   g_current, __LINE__, ModelPackageStatus_Message(_s));                            \
+      ModelPackageStatus_Release(_s);                                                                 \
       return false;                                                                                   \
     }                                                                                                 \
   } while (0)
@@ -51,8 +51,8 @@ const char* g_current = "<none>";
                    g_current, __LINE__, (int)(expected_code));                                        \
       return false;                                                                                   \
     }                                                                                                 \
-    ModelPackageErrorCode _c = ModelPackage_GetErrorCode(_s);                                         \
-    ModelPackage_ReleaseStatus(_s);                                                                   \
+    ModelPackageErrorCode _c = ModelPackageStatus_Code(_s);                                         \
+    ModelPackageStatus_Release(_s);                                                                   \
     if (_c != (expected_code)) {                                                                      \
       std::fprintf(stderr, "[FAIL] %s line %d: expected error %d, got %d\n",                          \
                    g_current, __LINE__, (int)(expected_code), (int)_c);                               \
