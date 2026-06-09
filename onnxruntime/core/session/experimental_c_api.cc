@@ -20,7 +20,7 @@ namespace OrtExperimentalApis {
 // Test-only experimental function that writes a known sentinel value.
 // Exists to exercise the experimental API mechanism end-to-end and to serve as a template for future experimental
 // functions.
-ORT_API_STATUS_IMPL(OrtApi_ExperimentalApiTest_SinceV27,
+ORT_API_STATUS_IMPL(OrtApi_ExperimentalApiTest_SinceV28,
                     _Out_ int64_t* out) {
   API_IMPL_BEGIN
   if (out == nullptr) {

@@ -14,15 +14,15 @@
 // if the function is not present).
 //
 // C usage:
-//   OrtExperimental_OrtApi_ExperimentalApiTest_SinceV27_Fn fn =
-//       (OrtExperimental_OrtApi_ExperimentalApiTest_SinceV27_Fn)api->GetExperimentalFunction(
-//           kOrtExperimental_OrtApi_ExperimentalApiTest_SinceV27_FnName);
+//   OrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_Fn fn =
+//       (OrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_Fn)api->GetExperimentalFunction(
+//           kOrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_FnName);
 //   if (fn) {
 //     OrtStatusPtr status = fn(&result);
 //   }
 //
 // C++ usage:
-//   if (auto* fn = Ort::Experimental::Get_OrtApi_ExperimentalApiTest_SinceV27_Fn(api)) {
+//   if (auto* fn = Ort::Experimental::Get_OrtApi_ExperimentalApiTest_SinceV28_Fn(api)) {
 //     Ort::Status status(fn(&result));
 //   }
 
@@ -40,12 +40,12 @@
 //   // Name constant for lookup:
 //   static const char* const kOrtExperimental_<NAME>_SinceV<VER>_FnName = "<NAME>_SinceV<VER>";
 //
-// Example: ORT_EXPERIMENTAL_API(27, OrtStatusPtr, OrtApi_ExperimentalApiTest, _Out_ int64_t* out)
+// Example: ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, _Out_ int64_t* out)
 // produces:
-//   typedef OrtStatusPtr(ORT_API_CALL* OrtExperimental_OrtApi_ExperimentalApiTest_SinceV27_Fn)(
+//   typedef OrtStatusPtr(ORT_API_CALL* OrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_Fn)(
 //       _Out_ int64_t* out) NO_EXCEPTION;
-//   static const char* const kOrtExperimental_OrtApi_ExperimentalApiTest_SinceV27_FnName =
-//       "OrtApi_ExperimentalApiTest_SinceV27";
+//   static const char* const kOrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_FnName =
+//       "OrtApi_ExperimentalApiTest_SinceV28";
 
 #define ORT_EXPERIMENTAL_API(VER, RET, NAME, ...)                                                 \
   typedef RET(ORT_API_CALL* OrtExperimental_##NAME##_SinceV##VER##_Fn)(__VA_ARGS__) NO_EXCEPTION; \
@@ -66,11 +66,11 @@ namespace Experimental {
 //
 //   inline OrtExperimental_<NAME>_SinceV<VER>_Fn Get_<NAME>_SinceV<VER>_Fn(const OrtApi* api);
 //
-// Example: for ORT_EXPERIMENTAL_API(27, OrtStatusPtr, OrtApi_ExperimentalApiTest, ...) this produces:
-//   inline OrtExperimental_OrtApi_ExperimentalApiTest_SinceV27_Fn
-//   Get_OrtApi_ExperimentalApiTest_SinceV27_Fn(const OrtApi* api) {
-//     return reinterpret_cast<OrtExperimental_OrtApi_ExperimentalApiTest_SinceV27_Fn>(
-//         api->GetExperimentalFunction(kOrtExperimental_OrtApi_ExperimentalApiTest_SinceV27_FnName));
+// Example: for ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, ...) this produces:
+//   inline OrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_Fn
+//   Get_OrtApi_ExperimentalApiTest_SinceV28_Fn(const OrtApi* api) {
+//     return reinterpret_cast<OrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_Fn>(
+//         api->GetExperimentalFunction(kOrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_FnName));
 //   }
 
 #define ORT_EXPERIMENTAL_API(VER, RET, NAME, ...)                                      \

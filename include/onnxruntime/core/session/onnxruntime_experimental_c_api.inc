@@ -31,4 +31,4 @@
  *
  * \snippet{doc} snippets.dox OrtStatus Return Value
  */
-ORT_EXPERIMENTAL_API(27, OrtStatusPtr, OrtApi_ExperimentalApiTest, _Out_ int64_t* out)
+ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, _Out_ int64_t* out)
