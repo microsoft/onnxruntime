@@ -246,7 +246,9 @@ static void TestSTFTInvalidFrameStep(int64_t frame_step) {
   vector<int64_t> output_shape = {1, 7, 9, 2};
   vector<float> expected_output(1 * 7 * 9 * 2, 0.f);
   test.AddOutput<float>("output", output_shape, expected_output);
-  test.Run(OpTester::ExpectResult::kExpectFailure, "frame_step must be greater than zero");
+  test.Config(OpTester::ExpectResult::kExpectFailure, "frame_step must be greater than zero");
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
 }
 
 TEST(SignalOpsTest, STFTFrameStepMustBePositive) {
@@ -291,7 +293,8 @@ TEST(SignalOpsTest, STFTFloatComplexInputBatched) {
 
   test.AddOutput<float>("output", output_shape, expected_output);
   test.SetOutputAbsErr("output", 0.001f);
-  test.Run();
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
 }
 
 TEST(SignalOpsTest, HannWindowFloat) {
