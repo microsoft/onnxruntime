@@ -109,6 +109,10 @@ struct ModelPackage {
   std::unordered_map<std::string, size_t> component_index_by_name;
   std::unordered_map<std::string, size_t> shared_asset_index_by_uri;
 
+  // Authoring-time bookkeeping: source directories for copy_in=true shared
+  // assets that haven't been committed yet. Keyed by sha256:<hex> URI.
+  std::unordered_map<std::string, std::filesystem::path> pending_shared_asset_copies;
+
   // Package-level string caches and ABI view.
   std::optional<std::string> package_name_cache;
   std::optional<std::string> package_version_cache;
@@ -133,6 +137,8 @@ struct ModelVariant {
 };
 
 namespace model_package_v2 {
+
+void DropViewCache(const ModelPackage* pkg);
 
 // Stable view handles kept alive by the package so that pointer identity
 // matches across repeated lookups (per §7.2 caller contract).

@@ -186,6 +186,100 @@ MODEL_PACKAGE_API const char* ModelVariant_AdditionalMetadataJson(const ModelVar
 MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_ComputeDirectoryHash(const char* source_dir,
                                                                        const char** out_uri);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Authoring — mutation API (Phase 3)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// All mutations follow the §7.2 pointer-invalidation contract: a mutation on
+// entity X invalidates pointers into X and its descendants. Callers must
+// re-fetch handles within X's subtree after mutating it.
+//
+// Strict unknown-field rejection follows the open option `strict_unknown_fields`
+// (default true). Newly created packages from ModelPackage_New default to strict.
+
+/// Set or replace an inline component. `component_json` must be a JSON object
+/// matching the §5.2 schema. Existing component with the same name is replaced.
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_SetComponentInline(ModelPackage*,
+                                                                     const char* name,
+                                                                     const char* component_json);
+
+/// Set or replace an external component. `path` is recorded in the manifest
+/// (relative to package_root, or absolute in installed layout). If the file
+/// exists, it is loaded; otherwise the component is initialized empty
+/// ({"variants": {}}). The path is library-owned until removed.
+/// `path` may be a directory (resolves to `<dir>/component.json`).
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_SetComponentExternal(ModelPackage*,
+                                                                       const char* name,
+                                                                       const char* path);
+
+/// Remove a component by name. No-op on missing name.
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_RemoveComponent(ModelPackage*, const char* name);
+
+/// Upsert a variant inside a component. `variant_json` must be a JSON object
+/// matching the §5.2 variant schema. Errors with ERR_STATE when the new variant
+/// declares any inline executor_info but has no resolvable variant_directory.
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_SetVariant(ModelPackage*,
+                                                             const char* component_name,
+                                                             const char* variant_name,
+                                                             const char* variant_json);
+
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_RemoveVariant(ModelPackage*,
+                                                                const char* component_name,
+                                                                const char* variant_name);
+
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_SetVariantExecutorInfoInline(ModelPackage*,
+                                                                               const char* component,
+                                                                               const char* variant,
+                                                                               const char* namespace_,
+                                                                               const char* info_json);
+
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_SetVariantExecutorInfoExternal(ModelPackage*,
+                                                                                 const char* component,
+                                                                                 const char* variant,
+                                                                                 const char* namespace_,
+                                                                                 const char* path);
+
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_RemoveVariantExecutorInfo(ModelPackage*,
+                                                                            const char* component,
+                                                                            const char* variant,
+                                                                            const char* namespace_);
+
+/// Add a content-addressed shared asset. If `expected_uri_or_null` is non-NULL,
+/// the computed URI must match it (reproducible-build check). With
+/// `copy_in=false`, an override path is stored in the manifest; this is
+/// rejected eagerly in portable layout. With `copy_in=true`, the source
+/// directory is staged for copy at _Commit time.
+/// `out_uri` is set to a NUL-terminated string owned by the package; remains
+/// valid until the asset is removed or the package is closed.
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_AddSharedAsset(ModelPackage*,
+                                                                 const char* source_dir,
+                                                                 const char* expected_uri_or_null,
+                                                                 bool copy_in,
+                                                                 const char** out_uri);
+
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_RemoveSharedAsset(ModelPackage*, const char* uri);
+
+/// Set or clear package-level metadata. Any argument may be NULL to leave the
+/// existing value untouched. Passing an empty string clears the field.
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_SetMetadata(ModelPackage*,
+                                                              const char* name_or_null,
+                                                              const char* version_or_null,
+                                                              const char* description_or_null);
+
+/// Set layout. Valid values: "portable" or "installed".
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_SetLayout(ModelPackage*, const char* layout);
+
+/// Set or clear `additional_metadata` at a given scope.
+/// scope: "manifest" (component and variant must be NULL),
+///        "component" (component required, variant NULL),
+///        "variant" (component and variant required).
+/// `json_or_null = NULL` clears the field at that scope.
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_SetAdditionalMetadataJson(ModelPackage*,
+                                                                            const char* scope,
+                                                                            const char* component_or_null,
+                                                                            const char* variant_or_null,
+                                                                            const char* json_or_null);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

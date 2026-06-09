@@ -54,6 +54,7 @@ endif()
 set(MODEL_PACKAGE_SOURCES
   src/api.cc
   src/asset_hasher.cc
+  src/authoring.cc
   src/manifest_parser.cc
   src/model_package_impl.cc
   src/ort_json.cc
@@ -130,4 +131,12 @@ if(MODEL_PACKAGE_BUILD_TESTS)
     ${CMAKE_CURRENT_SOURCE_DIR}/src
   )
   add_test(NAME asset_hashing COMMAND test_asset_hashing)
+
+  add_executable(test_authoring tests/test_authoring.cc)
+  target_link_libraries(test_authoring PRIVATE model_package nlohmann_json::nlohmann_json)
+  target_include_directories(test_authoring PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+  )
+  add_test(NAME authoring COMMAND test_authoring)
 endif()

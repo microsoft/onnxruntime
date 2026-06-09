@@ -91,6 +91,8 @@ void DropCache(const ModelPackage* pkg) {
 
 }  // namespace
 
+void DropViewCache(const ModelPackage* pkg) { DropCache(pkg); }
+
 }  // namespace model_package_v2
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -153,12 +155,6 @@ ModelPackageStatus* ModelPackage_Open(const char* package_root,
   }
   *out = pkg.release();
   return nullptr;
-}
-
-ModelPackageStatus* ModelPackage_New(ModelPackage** out) {
-  if (!out) return NullArg("out");
-  return MakeStatus(MODEL_PACKAGE_ERR_STATE,
-                    "ModelPackage_New is not yet implemented (Phase 3).");
 }
 
 void ModelPackage_Close(ModelPackage* pkg) {

@@ -161,6 +161,23 @@ ModelPackageStatus* ParseVariant(const fs::path& component_dir,
                                  bool strict,
                                  const std::string& variant_name,
                                  const ordered_json& variant_body,
+                                 VariantRecord* out);
+ModelPackageStatus* ParseComponent(const fs::path& package_root,
+                                   const PathResolverOptions& opts,
+                                   bool strict,
+                                   const std::string& component_name,
+                                   const ordered_json& body,
+                                   const fs::path& component_dir,
+                                   ComponentRecord* out);
+ModelPackageStatus* LoadSharedAssets(ModelPackage* pkg, const PathResolverOptions& opts);
+ModelPackageStatus* PopulateInfoView(ModelPackage* pkg);
+
+ModelPackageStatus* ParseVariant(const fs::path& component_dir,
+                                 const fs::path& package_root,
+                                 const PathResolverOptions& opts,
+                                 bool strict,
+                                 const std::string& variant_name,
+                                 const ordered_json& variant_body,
                                  VariantRecord* out) {
   if (auto* s = ExpectObject(variant_body, "variant '" + variant_name + "'")) return s;
   if (auto* s = CheckUnknownFields(variant_body, kVariantKnownKeys,
@@ -467,6 +484,52 @@ ModelPackageStatus* PopulateInfoView(ModelPackage* pkg) {
 }
 
 }  // namespace
+
+PathResolverOptions PathOptionsFor(const ModelPackage* pkg) {
+  PathResolverOptions o;
+  o.follow_symlinks = pkg->follow_symlinks;
+  o.allow_external_paths = pkg->allow_external_paths || (pkg->layout == "installed");
+  return o;
+}
+
+ModelPackageStatus* ParseVariantBody(const fs::path& component_dir,
+                                     const fs::path& package_root,
+                                     const PathResolverOptions& opts,
+                                     bool strict,
+                                     const std::string& variant_name,
+                                     const ordered_json& variant_body,
+                                     VariantRecord* out) {
+  return ParseVariant(component_dir, package_root, opts, strict, variant_name, variant_body, out);
+}
+
+ModelPackageStatus* ParseComponentBody(const fs::path& package_root,
+                                       const PathResolverOptions& opts,
+                                       bool strict,
+                                       const std::string& component_name,
+                                       const ordered_json& body,
+                                       const fs::path& component_dir,
+                                       ComponentRecord* out) {
+  return ParseComponent(package_root, opts, strict, component_name, body, component_dir, out);
+}
+
+ModelPackageStatus* RefreshInfoView(ModelPackage* pkg) {
+  pkg->package_name_cache.reset();
+  pkg->package_version_cache.reset();
+  pkg->description_cache.reset();
+  pkg->additional_metadata_cache.reset();
+  pkg->info_view = ModelPackageInfo{};
+  if (auto* s = PopulateInfoView(pkg)) return s;
+  pkg->info_view.package_name    = pkg->package_name_cache    ? pkg->package_name_cache->c_str()    : nullptr;
+  pkg->info_view.package_version = pkg->package_version_cache ? pkg->package_version_cache->c_str() : nullptr;
+  pkg->info_view.description     = pkg->description_cache     ? pkg->description_cache->c_str()     : nullptr;
+  return nullptr;
+}
+
+ModelPackageStatus* RefreshSharedAssets(ModelPackage* pkg, const PathResolverOptions& opts) {
+  pkg->shared_assets.clear();
+  pkg->shared_asset_index_by_uri.clear();
+  return LoadSharedAssets(pkg, opts);
+}
 
 ModelPackageStatus* ParsePackage(const fs::path& package_root,
                                  const ModelPackageOpenOptions& opts,
