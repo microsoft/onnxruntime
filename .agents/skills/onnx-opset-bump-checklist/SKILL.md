@@ -176,6 +176,34 @@ Key notes:
   probe above; if 404, the upload (steps 1–2) must happen again before any `--use_vcpkg` leg can pass.
   Terrapin-enabled self-hosted Windows legs (`-a true`) self-seed the mirror as a side effect; the
   read-only `x-azurl` legs (Linux/macOS/GitHub-hosted) cannot and will 404 until that seed lands.
+- **(h) CI failure signature (how to recognize this in a red build).** Only the **vcpkg-based**
+  legs fail; the `cmake/deps.txt` FetchContent legs stay green (they pull the `.zip` from GitHub,
+  mirror-independent — see (d)). The failing leg's log shows a vcpkg download error during the
+  `onnx` port install, e.g.:
+  ```
+  error: Failed to download from mirror set
+  error: https://vcpkg.storage.devpackages.microsoft.io/artifacts/<sha512>: failed: status code 404
+  error: x-block-origin set, prohibiting access to the original source URL
+  ```
+  That `404` + `x-block-origin set` pair on a `…/artifacts/<sha512>` URL **is** this gotcha — the
+  `<sha512>` in the error equals the `portfile.cmake` SHA512. (Confirmed live for ONNX 1.22.0rc2:
+  rc1 blob → HTTP 200, rc2 blob → HTTP 404.)
+- **(i) Fix options (in order of preference).**
+  1. **Self-seed via a Terrapin Windows leg** — trigger/re-run one internal Azure DevOps pipeline
+     whose Windows job runs on a self-hosted pool (has `C:\local\Terrapin\TerrapinRetrievalTool.exe`)
+     and passes `--use_vcpkg_ms_internal_asset_cache`. Its `-a true` Terrapin fetches the archive
+     from origin and **writes it back to the mirror**; afterwards re-run the failing read-only legs.
+     (No infra ticket needed.) Manual Terrapin upload commands are in §2 steps 1–2 above.
+  2. **`az storage blob upload`** — anyone with write access to the `devpackages` storage account:
+     download the exact origin `.tar.gz`, verify `sha512sum` equals the portfile SHA512, then
+     `az storage blob upload --container-name artifacts --name <sha512> --file <tar.gz> --auth-mode login`.
+     The blob **name must be the bare lowercase SHA512, no extension**.
+  3. **EngSys / 1ES ticket** — if neither self-service path is available, ask the team that owns
+     `vcpkg.storage.devpackages.microsoft.io` to mirror the asset, giving them the origin URL + SHA512.
+  Verify any fix with the §2(f) curl probe returning **HTTP 200** before re-running CI.
+
+  > Detailed worked example (ONNX 1.22.0rc2 coordinates, live-probe evidence, full procedures):
+  > see the architect runbook artifact `architect-f1afcb8a/onnx-rc2-vcpkg-mirror-runbook.md`.
 
 ## 3. onnx.patch rebase + binskim.patch mirror
 
