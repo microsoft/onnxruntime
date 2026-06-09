@@ -42,7 +42,12 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
 
   shader.MainFunctionBody()
       << "var index = " << indices.GetByIndices("indices_indices") << ";\n"
-      << "if (index < 0) { index += indices_value_t(" << x_shape.IndicesGet("uniforms.input_shape_shape", gather_axis_) << ");}\n"
+      << "let gather_axis_dim = indices_value_t(" << x_shape.IndicesGet("uniforms.input_shape_shape", gather_axis_) << ");\n"
+      << "if (index < 0) { index += gather_axis_dim;}\n"
+      << "if (index < 0 || index >= gather_axis_dim) {\n"
+      << "  " << output.SetByOffset("global_idx", "output_value_t(0)") << ";\n"
+      << "  return;\n"
+      << "}\n"
       << "var data_indices = input_shape_indices_t(0);\n";
 
   for (int i = 0, j = 0; i < x_shape.Rank(); i++) {

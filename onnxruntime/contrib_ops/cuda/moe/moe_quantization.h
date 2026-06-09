@@ -37,8 +37,35 @@ class QMoE final : public CudaKernel, public MoEBase {
                                  IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
   void PrePackRepackFP4Weights(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
                                IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
+  // Prepacks int4/int8 expert weights into the CUTLASS fpA_intB layout so the
+  // QMoE runner can consume them directly. Mirrors what MatMulNBits.PrePack
+  // does, looped over the E expert dimension. ``tensor`` is the 3-D
+  // ``[E, N, K / (8 / bits)]`` weight initializer; ``packed_buf`` receives a
+  // GPU buffer in the kernel-expected ``[E, K, N / (8 / bits)]`` layout.
+  void PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
+                               IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
   int64_t expert_weight_bits_;
   bool is_fp16_;
+  // When true (the schema default), the int4/int8 fc1/fc2 weight
+  // initializers are already in the CUTLASS fpA_intB layout — produced
+  // offline e.g. via ``pack_weights_for_cuda_mixed_gemm`` — and the
+  // compute path reads them as-is. When false, the raw schema-conformant
+  // ``[E, N, K/pack]`` layout (as produced by
+  // ``quantize_matmul_{4,8}bits``) is rewritten inside the PrePack hook
+  // via ``PrePackIntExpertWeights``, removing the offline prepack
+  // dependency. Only meaningful when ``quant_type_ == "int"``. Derived from
+  // the optional tri-state ``weights_prepacked`` attribute: -1/auto (or
+  // absent) maps to true on the CUDA EP, 1 maps to true, 0 maps to false.
+  bool weights_prepacked_ = true;
+  // Cached source weight shapes captured at PrePack time. When the
+  // PrePack hook consumed and released the original int4/int8 weight
+  // initializers (``is_packed = true``), ``context->Input<Tensor>(2)``
+  // and ``(5)`` return nothing, so ``moe_helper::CheckInputs`` can no
+  // longer read the shapes from the live tensors. We feed it these
+  // cached shapes instead via the ``TensorShape*`` overload, matching
+  // how ``MatMulNBits`` caches ``N_`` / ``K_`` in its constructor.
+  TensorShape fc1_weights_shape_;
+  TensorShape fc2_weights_shape_;
   bool use_fp4_dequant_fallback_ = false;
   // Dequantizes FP8 weights to FP16/BF16 scratch buffers before invoking the A16 MoE runner.
   bool use_fp8_dequant_fallback_ = false;
@@ -54,6 +81,14 @@ class QMoE final : public CudaKernel, public MoEBase {
   // PrePack logic:
   // - Copies scales to GPU buffer (if in CPU) or just keeps them. For simplicity, we allocate and copy.
   // - Computes Bias from ZP and Scale using PrePack kernel.
+  // - For ``quant_type == "int"``, also prepacks the per-expert int4/int8
+  //   weight tensors into the CUTLASS fpA_intB layout, mirroring
+  //   ``MatMulNBits.PrePack_B``. Without this, callers would have to
+  //   pre-prepack the weights offline using ``pack_weights_for_cuda_mixed_gemm``,
+  //   which is asymmetric with how ``MatMulNBits`` is consumed and forces
+  //   a CUDA-enabled ORT build for any offline quantization tooling.
+  IAllocatorUniquePtr<void> packed_fc1_weights_;
+  IAllocatorUniquePtr<void> packed_fc2_weights_;
   IAllocatorUniquePtr<void> packed_fc1_scales_;
   IAllocatorUniquePtr<void> packed_fc1_bias_;
   IAllocatorUniquePtr<void> packed_fc2_scales_;
