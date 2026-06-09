@@ -7,6 +7,8 @@
 #param tile_size
 #param use_indirect_dispatch
 
+#use .getByOffset .setByOffset
+
 // This shader reduces partial V outputs from the fused QKV shader.
 // Each tile produced a locally-normalized V contribution. To get the
 // correct global result, we rescale each tile's contribution using
@@ -50,13 +52,13 @@ $MAIN {
     g_max = max(g_max, sink_value);
 #endif
     for (var i = 0u; i < num_total_seq_length_tile; i++) {
-      g_max = max(g_max, metadata[meta_base + i].x);
+      g_max = max(g_max, metadata.getByOffset(meta_base + i).x);
     }
 
     // Compute global sum with rescaling
     var g_sum = f32(0);
     for (var i = 0u; i < num_total_seq_length_tile; i++) {
-      let m_value = metadata[meta_base + i];
+      let m_value = metadata.getByOffset(meta_base + i);
       g_sum += m_value.y * exp(m_value.x - g_max);
     }
 #if has_head_sink
@@ -68,9 +70,9 @@ $MAIN {
     if (head_size_offset + local_col < uniforms.head_size_vec) {
       for (var r = 0u; r < num_total_seq_length_tile; r += tile_size) {
         if (r + local_row < num_total_seq_length_tile) {
-          let tile_meta = metadata[meta_base + r + local_row];
+          let tile_meta = metadata.getByOffset(meta_base + r + local_row);
           let rescale_f32 = tile_meta.y * exp(tile_meta.x - g_max) / g_sum;
-          value += input[in_offset + (r + local_row) * uniforms.head_size_vec + head_size_offset + local_col] * output_value_t(output_element_t(rescale_f32));
+          value += input.getByOffset(in_offset + (r + local_row) * uniforms.head_size_vec + head_size_offset + local_col) * output_value_t(output_element_t(rescale_f32));
         }
       }
     }
@@ -89,7 +91,7 @@ $MAIN {
                       q_idx * uniforms.num_heads * uniforms.head_size_vec +
                       head_idx * uniforms.head_size_vec +
                       head_size_offset + local_idx;
-      output[output_id] = value;
+      output.setByOffset(output_id, value);
     }
     workgroupBarrier();
   }
