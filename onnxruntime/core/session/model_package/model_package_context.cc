@@ -5,9 +5,7 @@
 
 #include <algorithm>
 #include <cctype>
-#include <fstream>
 #include <limits>
-#include <sstream>
 #include <string>
 #include <unordered_set>
 
@@ -151,8 +149,7 @@ Status ModelPackageComponentContext::GetSelectedVariantFilePath(std::filesystem:
   const auto& selected_variant = component_model_info_.variants[selected_idx];
   ORT_RETURN_IF(!selected_variant.file.has_value(),
                 "Selected variant '", selected_variant.variant_name,
-                "' does not have a variant.json descriptor (or it lacks a 'filename' entry). "
-                "Component: ",
+                "' has no executor_info[\"ort\"] entry or it lacks 'model_file'. Component: ",
                 component_model_name_);
 
   out_path = selected_variant.file->model_file_path;
@@ -410,9 +407,7 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
       ort_variant.ep_compatibility.compiled_model_compatibility =
           OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
 
-      // Resolve the ORT executor_info: prefer the manifest declaration; fall
-      // back to a `variant.json` file inside variant_directory when the
-      // manifest is silent.
+      // Resolve the ORT executor_info from the manifest.
       std::optional<json> ort_obj;
       if (const ::ModelExecutorInfoEntry* ei =
               ::ModelVariantInfo_FindExecutorInfo(variant, "ort")) {
@@ -422,27 +417,6 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
           } catch (const std::exception& e) {
             ORT_THROW("Failed to parse executor_info[\"ort\"] JSON for variant '",
                       ort_variant.variant_name, "' in component '", component_name, "': ", e.what());
-          }
-        }
-      }
-      if (!ort_obj.has_value() && !ort_variant.folder_path.empty()) {
-        std::filesystem::path fallback = ort_variant.folder_path / "variant.json";
-        std::error_code ec;
-        if (std::filesystem::exists(fallback, ec)) {
-          std::ifstream f(fallback, std::ios::binary);
-          if (!f) {
-            ORT_THROW("Cannot open variant.json fallback at '", fallback.string(),
-                      "' for variant '", ort_variant.variant_name,
-                      "' in component '", component_name, "'");
-          }
-          std::ostringstream buf;
-          buf << f.rdbuf();
-          try {
-            ort_obj = json::parse(buf.str());
-          } catch (const std::exception& e) {
-            ORT_THROW("Failed to parse variant.json at '", fallback.string(),
-                      "' for variant '", ort_variant.variant_name,
-                      "' in component '", component_name, "': ", e.what());
           }
         }
       }
