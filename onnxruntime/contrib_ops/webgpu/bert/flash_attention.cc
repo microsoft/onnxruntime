@@ -16,21 +16,37 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
-// WGSL helper function for writing normalized indirect dispatch buffer.
+// WGSL helper function for normalizing on-device indirect dispatch dims.
 // Shared by CopyKVCacheProgram and SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram.
-constexpr const char kWriteIndirectDispatchFn[] = R"(
-fn write_indirect_dispatch(total: u32) {
+// Mirrors ProgramManager::NormalizeDispatchGroupSize three tiers:
+//   1) direct (x, y, z) write when every dim is within the spec limit (65535);
+//   2) 2D sqrt collapse when the product fits a square layout;
+//   3) 3D cbrt collapse otherwise.
+// Consumers are unaffected by the chosen layout: ShaderHelper flattens
+// workgroup_id (x, y, z) into a single linear workgroup_idx.
+// Caller contract: must register a storage output named exactly
+// `indirect_buffer` of array<u32> with at least 3 elements.
+constexpr const char kNormalizeDispatchGroupSizeFn[] = R"(
+fn normalize_dispatch_group_size(x: u32, y: u32, z: u32) {
   let limit = 65535u;  // WebGPU spec maxComputeWorkgroupsPerDimension
-  if (total <= limit) {
-    indirect_buffer[0] = total;
-    indirect_buffer[1] = 1u;
-    indirect_buffer[2] = 1u;
-  } else {
-    let dispatch_avg = u32(ceil(sqrt(f32(total))));
-    indirect_buffer[0] = dispatch_avg;
-    indirect_buffer[1] = dispatch_avg;
-    indirect_buffer[2] = 1u;
+  if (x <= limit && y <= limit && z <= limit) {
+    indirect_buffer[0] = x;
+    indirect_buffer[1] = y;
+    indirect_buffer[2] = z;
+    return;
   }
+  let size = f32(x) * f32(y) * f32(z);
+  let dispatch_avg_2d = u32(ceil(sqrt(size)));
+  if (dispatch_avg_2d <= limit) {
+    indirect_buffer[0] = dispatch_avg_2d;
+    indirect_buffer[1] = dispatch_avg_2d;
+    indirect_buffer[2] = 1u;
+    return;
+  }
+  let dispatch_avg_3d = u32(ceil(pow(size, 1.0 / 3.0)));
+  indirect_buffer[0] = dispatch_avg_3d;
+  indirect_buffer[1] = dispatch_avg_3d;
+  indirect_buffer[2] = dispatch_avg_3d;
 }
 )";
 
@@ -46,7 +62,7 @@ Status SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram::GenerateShaderCode(Sha
 
   if (prepare_indirect_dispatch_) {
     sh.AddOutput("indirect_buffer", ShaderUsage::None);
-    sh.AdditionalImplementation() << kWriteIndirectDispatchFn;
+    sh.AdditionalImplementation() << kNormalizeDispatchGroupSizeFn;
   }
 
   return WGSL_TEMPLATE_APPLY(sh, "bert/split_packed_qkv_with_rotary_embedding_and_copykv.wgsl.template",
@@ -106,12 +122,10 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   // Add indirect dispatch logic for thread 0
   if (prepare_indirect_dispatch_) {
-    shader.AdditionalImplementation() << kWriteIndirectDispatchFn;
+    shader.AdditionalImplementation() << kNormalizeDispatchGroupSizeFn;
     shader.MainFunctionBody() << "  if (global_idx == 0u) {\n"
                               << "    let num_total_seq_length_tile = (total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;\n"
-                              << "    let num_q_tiles = (uniforms.new_sequence_length + uniforms.m_tile - 1u) / uniforms.m_tile;\n"
-                              << "    let total = uniforms.batch_size * uniforms.num_heads * num_q_tiles * num_total_seq_length_tile;\n"
-                              << "    write_indirect_dispatch(total);\n"
+                              << "    normalize_dispatch_group_size(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);\n"
                               << "  }\n\n";
   }
 
@@ -138,7 +152,7 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
 Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& parameters,
                    const Tensor* K, const Tensor* past_key, Tensor* present_key,
                    const Tensor* V, const Tensor* past_value, Tensor* present_value,
-                   uint32_t tile_size, const Tensor* seqlen_k, Tensor* indirect_buffer, uint32_t m_tile) {
+                   uint32_t tile_size, const Tensor* seqlen_k, Tensor* indirect_buffer, uint32_t num_q_tiles) {
   // CopyKVCache takes past key/value and current key/value and copies them to present key and value.
   // This makes it so that FlashAttention only needs to look at present key and value, and saves
   // number of input buffers in the shader, which we run out of (<=8) without this optimization.
@@ -196,8 +210,7 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
                             {tile_size},
                             {static_cast<uint32_t>(parameters.num_heads_)},
                             {static_cast<uint32_t>(parameters.batch_size_)},
-                            {static_cast<uint32_t>(parameters.sequence_length_)},
-                            {m_tile}});
+                            {num_q_tiles}});
 
   return context.RunProgram(program);
 }
@@ -431,6 +444,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 
   // Compute m_tile early so it can be passed to CopyKVCache for indirect dispatch.
   const uint32_t m_tile = parameters.sequence_length_ >= 4 ? 4u : (parameters.sequence_length_ >= 2 ? 2u : 1u);
+  const uint32_t num_q_tiles = (static_cast<uint32_t>(parameters.sequence_length_) + m_tile - 1u) / m_tile;
 
   // Create indirect dispatch buffer if using indirect dispatch
   Tensor* indirect_buffer_ptr = nullptr;
@@ -478,10 +492,10 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                                                       Q, seqlen_k,
                                                                       cos_cache, sin_cache,
                                                                       &query_output, present_key, present_value,
-                                                                      indirect_buffer_ptr, tile_size, m_tile));
+                                                                      indirect_buffer_ptr, tile_size, num_q_tiles));
     Q = &query_output;
   } else {
-    ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr, m_tile));
+    ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr, num_q_tiles));
   }
 
   // Extract present_sequence_length directly from present_key tensor shape
@@ -607,7 +621,7 @@ Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::Comput
                                                      Tensor* present_key,
                                                      Tensor* present_value,
                                                      Tensor* indirect_buffer,
-                                                     uint32_t tile_size, uint32_t m_tile) {
+                                                     uint32_t tile_size, uint32_t num_q_tiles) {
   const auto half_rotary_embedding_dim = gsl::narrow_cast<uint32_t>(cos_cache->Shape()[1]);
   const auto head_size = params.head_size_;
 
@@ -665,8 +679,7 @@ Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::Comput
       {tile_size},
       {static_cast<uint32_t>(dispatch_size)},
       {static_cast<uint32_t>(params.batch_size_)},
-      {static_cast<uint32_t>(params.sequence_length_)},
-      {m_tile},
+      {num_q_tiles},
   });
 
   program.SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);

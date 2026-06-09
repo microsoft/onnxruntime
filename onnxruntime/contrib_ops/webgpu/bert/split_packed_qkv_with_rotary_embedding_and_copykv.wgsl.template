@@ -43,9 +43,7 @@ $MAIN {
 #if prepare_indirect_dispatch
   if (global_idx == 0u) {
     let num_total_seq_length_tile = (total_seqlen + uniforms.tile_size - 1u) / uniforms.tile_size;
-    let num_q_tiles = (uniforms.new_sequence_length + uniforms.m_tile - 1u) / uniforms.m_tile;
-    let total = uniforms.batch_size * uniforms.num_heads * num_q_tiles * num_total_seq_length_tile;
-    write_indirect_dispatch(total);
+    normalize_dispatch_group_size(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);
   }
 #endif
 

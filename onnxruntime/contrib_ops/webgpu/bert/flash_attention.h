@@ -37,8 +37,7 @@ class SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram final : public Program<S
       {"tile_size", ProgramUniformVariableDataType::Uint32},
       {"dispatch_size", ProgramUniformVariableDataType::Uint32},
       {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"new_sequence_length", ProgramUniformVariableDataType::Uint32},
-      {"m_tile", ProgramUniformVariableDataType::Uint32});
+      {"num_q_tiles", ProgramUniformVariableDataType::Uint32});
 
  private:
   const bool interleaved_;
@@ -61,8 +60,7 @@ class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
                                           {"tile_size", ProgramUniformVariableDataType::Uint32},
                                           {"num_heads", ProgramUniformVariableDataType::Uint32},
                                           {"batch_size", ProgramUniformVariableDataType::Uint32},
-                                          {"new_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"m_tile", ProgramUniformVariableDataType::Uint32});
+                                          {"num_q_tiles", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_past_;
@@ -220,7 +218,7 @@ Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::Comput
                                                      Tensor* present_key,
                                                      Tensor* present_value,
                                                      Tensor* indirect_buffer,
-                                                     uint32_t tile_size, uint32_t m_tile);
+                                                     uint32_t tile_size, uint32_t num_q_tiles);
 }  // namespace webgpu
 }  // namespace contrib
 }  // namespace onnxruntime
