@@ -10,6 +10,7 @@
 //   ORT_EXPERIMENTAL_API(SinceVersion, ReturnType, Name, Params...)
 //
 //     SinceVersion: The ORT API version in which the function was first introduced.
+//                   Must be a numeric literal (e.g., 28), not a macro like ORT_API_VERSION.
 //     ReturnType:   The return type of the function (typically OrtStatusPtr).
 //     Name:         The base name (without version suffix). By convention, prefixed with the target stable struct
 //                   (e.g., OrtApi_Foo for functions destined for OrtApi).
@@ -26,6 +27,8 @@
 //     suffix). Delete the experimental entry.
 
 /** \brief Test-only experimental function that exercises the lookup mechanism end-to-end.
+ *
+ * This entry is kept permanently for regression coverage of the experimental API mechanism.
  *
  * \param[out] out The output of this function, the value 12345.
  *

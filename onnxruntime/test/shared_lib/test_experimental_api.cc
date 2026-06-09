@@ -42,7 +42,9 @@ TEST_F(ExperimentalCApiTest, KnownNameResolvesC) {
   EXPECT_NE(fn, nullptr);
 }
 
-// Known name resolves to non-null (C++-style accessor)
+// Known name resolves to non-null (C++-style accessor).
+// The typed accessor's nullptr path (unknown name) is covered transitively via the C-side
+// UnknownNameReturnsNull test, which exercises the same underlying GetExperimentalFunction lookup.
 TEST_F(ExperimentalCApiTest, KnownNameResolvesCpp) {
   auto* fn = Ort::Experimental::Get_OrtApi_ExperimentalApiTest_SinceV28_Fn(api_);
   EXPECT_NE(fn, nullptr);

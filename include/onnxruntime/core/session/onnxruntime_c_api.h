@@ -7539,7 +7539,7 @@ struct OrtApi {
    *
    * \since Version 1.28.
    */
-  OrtExperimentalFnPtr(ORT_API_CALL* GetExperimentalFunction)(_In_ const char* name) NO_EXCEPTION;
+  ORT_API_T(OrtExperimentalFnPtr, GetExperimentalFunction, _In_ const char* name);
 };
 
 /*
