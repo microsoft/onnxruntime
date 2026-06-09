@@ -53,8 +53,11 @@ endif()
 
 set(MODEL_PACKAGE_SOURCES
   src/api.cc
+  src/manifest_parser.cc
+  src/model_package_impl.cc
   src/ort_json.cc
   src/parser.cc
+  src/path_resolver.cc
 )
 
 if(MODEL_PACKAGE_BUILD_SHARED)
@@ -92,7 +95,7 @@ install(TARGETS model_package
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-install(FILES include/model_package_api.h include/ort_json.h
+install(FILES include/model_package_api.h include/model_package.h include/ort_json.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
@@ -109,4 +112,12 @@ if(MODEL_PACKAGE_BUILD_TESTS)
     ${CMAKE_CURRENT_SOURCE_DIR}/src
   )
   add_test(NAME ort_json COMMAND test_ort_json)
+
+  add_executable(test_inspection tests/test_inspection.cc)
+  target_link_libraries(test_inspection PRIVATE model_package nlohmann_json::nlohmann_json)
+  target_include_directories(test_inspection PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+  )
+  add_test(NAME inspection COMMAND test_inspection)
 endif()
