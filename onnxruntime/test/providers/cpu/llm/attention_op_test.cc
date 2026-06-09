@@ -518,13 +518,17 @@ TEST(AttentionTest, Attention4DAttnMaskBoolAllFalse) {
   ASSERT_EQ(m.size(), q_sequence_length * kv_sequence_length);
   ASSERT_EQ(y.size(), batch_size * q_num_heads * q_sequence_length * v_head_size);
 
+  // Bug-2 (ONNX opset-23/24 errata, onnx#8068): every position is masked, so every query row
+  // is fully masked and must produce a zero output row (not the incidental mean-of-V that the
+  // finite mask sentinel used to yield). See the fully-masked-row guard in attention.cc.
+  std::fill(y.begin(), y.end(), 0.0f);
+
   RunTest4D(batch_size, q_num_heads, q_sequence_length, head_size, kv_sequence_length, kv_num_heads, v_head_size, past_sequence_length,
             q, k, v, std::vector<float>(), m, std::vector<float>(), std::vector<float>(),
             -1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode, scale, softcap, softmax_precision, tensor_type
             y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
-            // Note: all-false bool mask (every position masked) is a degenerate case. It works because
-            // mask_filter_value (~-3.4e38) is so extreme that float precision loses QK differences,
-            // producing uniform softmax weights matching CPU behavior.
+            // All-false bool mask (every position masked): per the opset-23/24 errata a fully-masked
+            // query row produces a zero output row.
             false, false, true  // disable_cpu, disable_cuda, disable_dml
   );
 }
@@ -593,17 +597,14 @@ TEST(AttentionTest, Attention4DAttnMaskBoolAllFalseDecodeWithPast) {
       0.7f, 0.7f, 0.7f, 0.7f, 0.7f, 0.7f, 0.7f, 0.7f,
       0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f};
 
-  // With all-false mask, softmax produces uniform weights: 1/4 per position.
-  // Standard concat places new token at past_sequence_length, so present_value =
-  // [past_v[0], past_v[1], past_v[2], new_v]. Output = mean of all V rows:
-  //   head 0: mean(0.1, 0.2, 0.3, 0.4) = 0.25
-  //   head 1: mean(0.5, 0.6, 0.7, 0.8) = 0.65
-  // These values match upstream/main behavior (unfused standard concat path).
+  // With all-false mask every key is disallowed, so the single decode query row is fully masked.
+  // Per the opset-23/24 errata (onnx#8068) a fully-masked row produces a zero output row, not the
+  // incidental mean-of-V that the finite mask sentinel used to yield.
   std::vector<float> y = {
       // head 0
-      0.25f, 0.25f, 0.25f, 0.25f, 0.25f, 0.25f, 0.25f, 0.25f,
+      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
       // head 1
-      0.65f, 0.65f, 0.65f, 0.65f, 0.65f, 0.65f, 0.65f, 0.65f};
+      0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
 
   ASSERT_EQ(q.size(), batch_size * q_num_heads * q_sequence_length * head_size);
   ASSERT_EQ(k.size(), batch_size * kv_num_heads * kv_sequence_length * head_size);
@@ -2000,8 +2001,7 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_AllMasked) {
 
   std::vector<float> q = {1.0f, 1.0f};
   std::vector<float> k(8, 1.0f);
-  // All V positions are "invalid" — result is uniform over 4 highly-negative-scored positions,
-  // so softmax is uniform 0.25 each.
+  // All KV positions are invalid (nonpad=0), so the single query row is fully masked.
   std::vector<float> v = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f, 70.0f, 80.0f};
 
   test.AddInput<float>("Q", q_shape, q);
@@ -2012,9 +2012,9 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_AllMasked) {
   test.AddOptionalInputEdge<float>();
   test.AddInput<int64_t>("nonpad_kv_seqlen", {1}, {0});
 
-  // With all positions masked to -inf, softmax produces uniform weights and
-  // the result is the mean of all V rows: [(10+30+50+70)/4, (20+40+60+80)/4] = [40, 50].
-  std::vector<float> expected_y = {40.0f, 50.0f};
+  // Per the opset-23/24 errata (onnx#8068) a fully-masked query row produces a zero output row,
+  // not the incidental mean-of-V that the finite mask sentinel used to yield.
+  std::vector<float> expected_y = {0.0f, 0.0f};
   test.AddOutput<float>("Y", {1, 1, 1, 2}, expected_y, false, 0, 1e-3f);
   test.AddOptionalOutputEdge<float>();
   test.AddOptionalOutputEdge<float>();
@@ -2180,6 +2180,202 @@ TEST(AttentionTest, Attention_NonPadKVSeqLen_NoneMasked) {
   // [(1+3+5+7)/4, (2+4+6+8)/4] = [4.0, 5.0]
   std::vector<float> expected_y = {4.0f, 5.0f};
   test.AddOutput<float>("Y", {1, 1, 1, 2}, expected_y, false, 0, 1e-3f);
+  test.AddOptionalOutputEdge<float>();
+  test.AddOptionalOutputEdge<float>();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// ---------------------------------------------------------------------------
+// Bottom-right (offset-aware) is_causal + nonpad_kv_seqlen and composed
+// is_causal + attn_mask fully-masked-row -> 0 (ONNX opset-24 / onnx#8068).
+//
+// These goldens are EP-independent (analytic): constant Q/K make every attended
+// score equal, so the output of each query row is the mean of V over exactly the
+// set of keys the bottom-right/composed mask allows. The CUDA developer reuses
+// these golden values and adds CUDA-dispatch assertions (Flash-selected / not
+// NOT_IMPLEMENTED) for the same shapes.
+// ---------------------------------------------------------------------------
+
+// External/static-cache decode (S_q=1) with is_causal + per-batch valid lengths.
+// With bottom-right alignment the single decode query attends keys 0..nonpad[b]-1.
+// Mirrors onnx test_attention_4d_gqa_causal_nonpad_decode.
+TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_Decode_BottomRight) {
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(1));
+
+  // batch=2, heads=1, q_seq=1, kv_seq=4, head_size=2. Batch 0 has 4 valid keys, batch 1 has 2.
+  std::vector<int64_t> q_shape = {2, 1, 1, 2};
+  std::vector<int64_t> k_shape = {2, 1, 4, 2};
+  std::vector<int64_t> v_shape = {2, 1, 4, 2};
+
+  std::vector<float> q(2 * 1 * 1 * 2, 1.0f);
+  std::vector<float> k(2 * 1 * 4 * 2, 1.0f);
+  std::vector<float> v = {
+      1.0f, 1.0f, 2.0f, 2.0f, 3.0f, 3.0f, 4.0f, 4.0f,         // batch 0
+      10.0f, 10.0f, 20.0f, 20.0f, 30.0f, 30.0f, 40.0f, 40.0f  // batch 1
+  };
+
+  test.AddInput<float>("Q", q_shape, q);
+  test.AddInput<float>("K", k_shape, k);
+  test.AddInput<float>("V", v_shape, v);
+  test.AddOptionalInputEdge<bool>();   // attn_mask
+  test.AddOptionalInputEdge<float>();  // past_key
+  test.AddOptionalInputEdge<float>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {2}, {4, 2});
+
+  // Batch 0: mean(V[0..3]) = [2.5, 2.5]. Batch 1: mean(V[0..1]) = [15, 15].
+  std::vector<float> expected_y = {2.5f, 2.5f, 15.0f, 15.0f};
+  test.AddOutput<float>("Y", {2, 1, 1, 2}, expected_y, false, 0, 1e-4f);
+  test.AddOptionalOutputEdge<float>();  // present_key
+  test.AddOptionalOutputEdge<float>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Continued / chunked prefill (S_q=2) into a partially-filled static cache.
+// nonpad=[4], S_q=2 -> offset = 4 - 2 = 2: query 0 attends keys {0,1,2}, query 1
+// attends {0,1,2,3}. The old top-left alignment would mask everything past the
+// diagonal ({0} and {0,1}), so this case fails pre-fix and passes post-fix.
+// Mirrors onnx test_attention_4d_causal_nonpad_continued_prefill.
+TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_ContinuedPrefill_BottomRight) {
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(1));
+
+  // batch=1, heads=1, q_seq=2, kv_seq=4, head_size=2.
+  std::vector<int64_t> q_shape = {1, 1, 2, 2};
+  std::vector<int64_t> k_shape = {1, 1, 4, 2};
+  std::vector<int64_t> v_shape = {1, 1, 4, 2};
+
+  std::vector<float> q(1 * 1 * 2 * 2, 1.0f);
+  std::vector<float> k(1 * 1 * 4 * 2, 1.0f);
+  std::vector<float> v = {1.0f, 1.0f, 2.0f, 2.0f, 3.0f, 3.0f, 4.0f, 4.0f};
+
+  test.AddInput<float>("Q", q_shape, q);
+  test.AddInput<float>("K", k_shape, k);
+  test.AddInput<float>("V", v_shape, v);
+  test.AddOptionalInputEdge<bool>();   // attn_mask
+  test.AddOptionalInputEdge<float>();  // past_key
+  test.AddOptionalInputEdge<float>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {1}, {4});
+
+  // Query 0: mean(V[0..2]) = [2, 2]. Query 1: mean(V[0..3]) = [2.5, 2.5].
+  std::vector<float> expected_y = {2.0f, 2.0f, 2.5f, 2.5f};
+  test.AddOutput<float>("Y", {1, 1, 2, 2}, expected_y, false, 0, 1e-4f);
+  test.AddOptionalOutputEdge<float>();  // present_key
+  test.AddOptionalOutputEdge<float>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Composed is_causal + boolean attn_mask, fully-masked-row -> 0 (Bug-2).
+// Causal frontier (offset 0): query 0 attends {0}, query 1 attends {0,1}. The bool
+// mask [[T,F],[F,F]] intersects: query 0 keeps key 0 (output = V[0]); query 1 has no
+// allowed key (fully masked) and must output an all-zero row, not mean-of-V / NaN.
+// Mirrors onnx test_attention_causal_boolmask_nan_robustness.
+TEST(AttentionTest, Attention_Causal_BoolMask_FullyMaskedRow_Zero) {
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(1));
+
+  // batch=1, heads=1, q_seq=2, kv_seq=2, head_size=2.
+  std::vector<int64_t> q_shape = {1, 1, 2, 2};
+  std::vector<int64_t> k_shape = {1, 1, 2, 2};
+  std::vector<int64_t> v_shape = {1, 1, 2, 2};
+
+  std::vector<float> q(1 * 1 * 2 * 2, 1.0f);
+  std::vector<float> k(1 * 1 * 2 * 2, 1.0f);
+  std::vector<float> v = {5.0f, 7.0f, 9.0f, 11.0f};  // V[0]=[5,7], V[1]=[9,11]
+
+  test.AddInput<float>("Q", q_shape, q);
+  test.AddInput<float>("K", k_shape, k);
+  test.AddInput<float>("V", v_shape, v);
+  // 2D bool mask (broadcast over batch/heads): row 0 allows key 0, row 1 allows none.
+  test.AddInput<bool>("attn_mask", {2, 2}, {true, false, false, false});
+
+  // Query 0 attends only key 0 -> V[0] = [5, 7]. Query 1 is fully masked -> [0, 0].
+  std::vector<float> expected_y = {5.0f, 7.0f, 0.0f, 0.0f};
+  test.AddOutput<float>("Y", {1, 1, 2, 2}, expected_y, false, 0, 1e-4f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// M-1 regression guard (onnx#8068): a row whose additive bias is FINITE but very negative must NOT be
+// treated as fully masked. The old detector used a 0.5x sentinel magnitude threshold; in fp16 the
+// sentinel is MLFloat16::MinValue (-65504), so a finite user bias below 0.5*sentinel (-32752) — e.g.
+// -40000 — was wrongly classified as fully masked and zeroed. The exact structural predicate keys off
+// sentinel-equality on the bias slot, so a finite bias keeps its key unmasked: equal bias on both keys
+// cancels in softmax and the row attends uniformly (mean-of-V), it is never zeroed.
+TEST(AttentionTest, Attention_FiniteNegativeBias_RowNotZeroed_Fp16) {
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+
+  // batch=1, heads=1, q_seq=1, kv_seq=2, head_size=2.
+  std::vector<int64_t> q_shape = {1, 1, 1, 2};
+  std::vector<int64_t> k_shape = {1, 1, 2, 2};
+  std::vector<int64_t> v_shape = {1, 1, 2, 2};
+
+  std::vector<float> q(1 * 1 * 1 * 2, 1.0f);
+  std::vector<float> k(1 * 1 * 2 * 2, 1.0f);
+  std::vector<float> v = {5.0f, 7.0f, 9.0f, 11.0f};  // V[0]=[5,7], V[1]=[9,11]
+
+  test.AddInput<MLFloat16>("Q", q_shape, ToFloat16(q));
+  test.AddInput<MLFloat16>("K", k_shape, ToFloat16(k));
+  test.AddInput<MLFloat16>("V", v_shape, ToFloat16(v));
+  // Finite, very negative additive bias on BOTH keys (below the old fp16 0.5x threshold of -32752,
+  // but NOT the -65504 sentinel). Equal bias on both keys -> softmax is uniform.
+  std::vector<float> attn_mask = {-40000.0f, -40000.0f};
+  test.AddInput<MLFloat16>("attn_mask", {1, 1, 1, 2}, ToFloat16(attn_mask));
+
+  // Row is NOT fully masked: attends both keys equally -> mean(V) = [(5+9)/2, (7+11)/2] = [7, 9],
+  // not [0, 0].
+  std::vector<float> expected_y = {7.0f, 9.0f};
+  test.AddOutput<MLFloat16>("Y", {1, 1, 1, 2}, ToFloat16(expected_y), false, 0, 3e-3f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// M-1 structural-empty guard (onnx#8068): the fully-masked-row guard must fire purely from the
+// causal/nonpad frontier, with NO attn_mask present. With is_causal and nonpad_kv_seqlen < q_seqlen,
+// the bottom-right offset (nonpad - q_seqlen) is negative, so early query rows have zero allowed keys
+// (frontier collapses to 0). Those rows must output 0, not mean-of-V. q_seqlen=4, nonpad=2 -> rows 0,1
+// are structurally empty; row 2 attends key 0; row 3 attends keys 0,1.
+TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_StructuralEmptyRow_Zero) {
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(1));
+
+  // batch=1, heads=1, q_seq=4, kv_seq=4, head_size=2.
+  std::vector<int64_t> q_shape = {1, 1, 4, 2};
+  std::vector<int64_t> k_shape = {1, 1, 4, 2};
+  std::vector<int64_t> v_shape = {1, 1, 4, 2};
+
+  std::vector<float> q(1 * 1 * 4 * 2, 1.0f);
+  std::vector<float> k(1 * 1 * 4 * 2, 1.0f);
+  // Only the first two keys are valid (nonpad=2); V[0]=[5,7], V[1]=[9,11], rest unused.
+  std::vector<float> v = {5.0f, 7.0f, 9.0f, 11.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+
+  test.AddInput<float>("Q", q_shape, q);
+  test.AddInput<float>("K", k_shape, k);
+  test.AddInput<float>("V", v_shape, v);
+  test.AddOptionalInputEdge<bool>();   // attn_mask: none (structural-only masking)
+  test.AddOptionalInputEdge<float>();  // past_key
+  test.AddOptionalInputEdge<float>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {1}, {2});
+
+  // offset = nonpad - q_seqlen = -2. Row i attends keys j <= i + offset AND j < nonpad:
+  //   i=0,1 -> no allowed keys -> [0, 0] (structural-empty -> zeroed)
+  //   i=2   -> key 0          -> V[0] = [5, 7]
+  //   i=3   -> keys 0,1       -> mean = [(5+9)/2, (7+11)/2] = [7, 9]
+  std::vector<float> expected_y = {0.0f, 0.0f, 0.0f, 0.0f, 5.0f, 7.0f, 7.0f, 9.0f};
+  test.AddOutput<float>("Y", {1, 1, 4, 2}, expected_y, false, 0, 1e-4f);
   test.AddOptionalOutputEdge<float>();
   test.AddOptionalOutputEdge<float>();
 
@@ -3312,6 +3508,317 @@ TEST(AttentionTest, Attention_QkMatmulOutputMode_PostMaskBias_WithSoftcapAndNonp
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// ---------------------------------------------------------------------------
+// CUDA-dispatch assertions for the onnx#8068 bottom-right / fully-masked-row
+// semantics (issue microsoft/onnxruntime#28904, CUDA half).
+//
+// These mirror the EP-independent goldens authored above for the CPU EP and run
+// them on the CUDA EP. Their purpose is dispatch-level: assert that the
+// is_causal=1 + nonpad_kv_seqlen (no past_key) shape is ACCEPTED on CUDA (it used
+// to return NOT_IMPLEMENTED), that the MEA bottom-right fallback and the unfused
+// fully-masked-row -> 0 guard compute the correct result, and that the no-mask
+// fp16 decode shape routes through the Flash fast path (head_size=64 so Flash's
+// is_supported() gate passes). Constant Q/K keep every attended score equal, so
+// each output row is the analytic mean of V over the allowed keys regardless of
+// head_size or EP. Tests are skipped when no CUDA device is present.
+// ---------------------------------------------------------------------------
+
+// External/static-cache decode (S_q=1), is_causal + per-batch valid lengths, fp32.
+// No mask -> Flash-ineligible for fp32, so this exercises the MEA bottom-right path
+// (causal_from_top_left=false). Reuses the goldens of
+// Attention_Causal_NonPadKVSeqLen_Decode_BottomRight.
+TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_Decode_BottomRight_CUDA) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA device not available";
+  }
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(1));
+
+  std::vector<int64_t> q_shape = {2, 1, 1, 2};
+  std::vector<int64_t> k_shape = {2, 1, 4, 2};
+  std::vector<int64_t> v_shape = {2, 1, 4, 2};
+
+  std::vector<float> q(2 * 1 * 1 * 2, 1.0f);
+  std::vector<float> k(2 * 1 * 4 * 2, 1.0f);
+  std::vector<float> v = {
+      1.0f, 1.0f, 2.0f, 2.0f, 3.0f, 3.0f, 4.0f, 4.0f,         // batch 0
+      10.0f, 10.0f, 20.0f, 20.0f, 30.0f, 30.0f, 40.0f, 40.0f  // batch 1
+  };
+
+  test.AddInput<float>("Q", q_shape, q);
+  test.AddInput<float>("K", k_shape, k);
+  test.AddInput<float>("V", v_shape, v);
+  test.AddOptionalInputEdge<bool>();   // attn_mask
+  test.AddOptionalInputEdge<float>();  // past_key
+  test.AddOptionalInputEdge<float>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {2}, {4, 2});
+
+  std::vector<float> expected_y = {2.5f, 2.5f, 15.0f, 15.0f};
+  test.AddOutput<float>("Y", {2, 1, 1, 2}, expected_y, false, 0, 1e-4f);
+  test.AddOptionalOutputEdge<float>();  // present_key
+  test.AddOptionalOutputEdge<float>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Continued / chunked prefill (S_q=2) into a partially-filled static cache, fp32.
+// offset = nonpad - S_q = 4 - 2 = 2. Reuses the goldens of
+// Attention_Causal_NonPadKVSeqLen_ContinuedPrefill_BottomRight.
+TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_ContinuedPrefill_BottomRight_CUDA) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA device not available";
+  }
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(1));
+
+  std::vector<int64_t> q_shape = {1, 1, 2, 2};
+  std::vector<int64_t> k_shape = {1, 1, 4, 2};
+  std::vector<int64_t> v_shape = {1, 1, 4, 2};
+
+  std::vector<float> q(1 * 1 * 2 * 2, 1.0f);
+  std::vector<float> k(1 * 1 * 4 * 2, 1.0f);
+  std::vector<float> v = {1.0f, 1.0f, 2.0f, 2.0f, 3.0f, 3.0f, 4.0f, 4.0f};
+
+  test.AddInput<float>("Q", q_shape, q);
+  test.AddInput<float>("K", k_shape, k);
+  test.AddInput<float>("V", v_shape, v);
+  test.AddOptionalInputEdge<bool>();   // attn_mask
+  test.AddOptionalInputEdge<float>();  // past_key
+  test.AddOptionalInputEdge<float>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {1}, {4});
+
+  std::vector<float> expected_y = {2.0f, 2.0f, 2.5f, 2.5f};
+  test.AddOutput<float>("Y", {1, 1, 2, 2}, expected_y, false, 0, 1e-4f);
+  test.AddOptionalOutputEdge<float>();  // present_key
+  test.AddOptionalOutputEdge<float>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Composed is_causal + boolean attn_mask, fully-masked-row -> 0 (Bug-2), fp32.
+// total_sequence_length=2 (not divisible by 4) makes MEA ineligible, so this
+// exercises the unified-unfused fully-masked-row guard on CUDA. Reuses the goldens
+// of Attention_Causal_BoolMask_FullyMaskedRow_Zero.
+TEST(AttentionTest, Attention_Causal_BoolMask_FullyMaskedRow_Zero_CUDA) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA device not available";
+  }
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(1));
+
+  std::vector<int64_t> q_shape = {1, 1, 2, 2};
+  std::vector<int64_t> k_shape = {1, 1, 2, 2};
+  std::vector<int64_t> v_shape = {1, 1, 2, 2};
+
+  std::vector<float> q(1 * 1 * 2 * 2, 1.0f);
+  std::vector<float> k(1 * 1 * 2 * 2, 1.0f);
+  std::vector<float> v = {5.0f, 7.0f, 9.0f, 11.0f};
+
+  test.AddInput<float>("Q", q_shape, q);
+  test.AddInput<float>("K", k_shape, k);
+  test.AddInput<float>("V", v_shape, v);
+  test.AddInput<bool>("attn_mask", {2, 2}, {true, false, false, false});
+
+  std::vector<float> expected_y = {5.0f, 7.0f, 0.0f, 0.0f};
+  test.AddOutput<float>("Y", {1, 1, 2, 2}, expected_y, false, 0, 1e-4f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// fp16 external-cache decode with a Flash-eligible head_size (64). No attn_mask, so
+// the is_causal=1 + nonpad_kv_seqlen shape routes to the Flash fast path (which does
+// bottom-right + per-batch seqlens_k masking natively). Constant Q/K make each output
+// row the analytic mean of V over the allowed keys, independent of head_size.
+TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_Decode_FlashFP16_CUDA) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA device not available";
+  }
+  constexpr int kHeadSize = 64;
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(1));
+
+  // batch=2, heads=1, q_seq=1, kv_seq=4, head_size=64. Batch 0: 4 valid keys, batch 1: 2.
+  std::vector<int64_t> q_shape = {2, 1, 1, kHeadSize};
+  std::vector<int64_t> k_shape = {2, 1, 4, kHeadSize};
+  std::vector<int64_t> v_shape = {2, 1, 4, kHeadSize};
+
+  std::vector<float> q(2 * 1 * 1 * kHeadSize, 1.0f);
+  std::vector<float> k(2 * 1 * 4 * kHeadSize, 1.0f);
+  // Each (batch, key) row of V is a constant value so the mean is exact in fp16.
+  const float v_row_values[2][4] = {{1.0f, 2.0f, 3.0f, 4.0f}, {10.0f, 20.0f, 30.0f, 40.0f}};
+  std::vector<float> v;
+  v.reserve(2 * 4 * kHeadSize);
+  for (int b = 0; b < 2; ++b) {
+    for (int s = 0; s < 4; ++s) {
+      for (int h = 0; h < kHeadSize; ++h) {
+        v.push_back(v_row_values[b][s]);
+      }
+    }
+  }
+
+  test.AddInput<MLFloat16>("Q", q_shape, ToFloat16(q));
+  test.AddInput<MLFloat16>("K", k_shape, ToFloat16(k));
+  test.AddInput<MLFloat16>("V", v_shape, ToFloat16(v));
+  test.AddOptionalInputEdge<bool>();       // attn_mask
+  test.AddOptionalInputEdge<MLFloat16>();  // past_key
+  test.AddOptionalInputEdge<MLFloat16>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {2}, {4, 2});
+
+  // Batch 0: mean(1,2,3,4)=2.5. Batch 1: mean(10,20)=15. Broadcast across head_size.
+  std::vector<float> expected_y_f;
+  expected_y_f.reserve(2 * kHeadSize);
+  for (int h = 0; h < kHeadSize; ++h) expected_y_f.push_back(2.5f);
+  for (int h = 0; h < kHeadSize; ++h) expected_y_f.push_back(15.0f);
+  test.AddOutput<MLFloat16>("Y", {2, 1, 1, kHeadSize}, ToFloat16(expected_y_f), false, 0, 0.02f);
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_key
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Direct MEA (CUTLASS) fp16 fully-masked-row golden. head_size=8 (MEA-eligible, Flash-ineligible)
+// + total_sequence_length=4 (MEA-eligible) + nonpad_kv_seqlen routes to the MEA bottom-right
+// path, and the bool attn_mask drives LaunchZeroFullyMaskedRows directly. Batch 0 is fully
+// masked (-> zero row); batch 1 retains all keys (-> mean of V). This covers the MEA
+// ZeroFullyMaskedRows partial+full path that the unfused tests only reach indirectly.
+TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_MEA_FP16_FullyMaskedRow_Zero_CUDA) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA device not available";
+  }
+  constexpr int kHeadSize = 8;
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(1));
+
+  std::vector<int64_t> q_shape = {2, 1, 1, kHeadSize};
+  std::vector<int64_t> k_shape = {2, 1, 4, kHeadSize};
+  std::vector<int64_t> v_shape = {2, 1, 4, kHeadSize};
+
+  std::vector<float> q(2 * 1 * 1 * kHeadSize, 1.0f);
+  std::vector<float> k(2 * 1 * 4 * kHeadSize, 1.0f);
+  // Batch 1 V rows are constant per key so the retained-row mean is exact in fp16.
+  const float v_row_values[2][4] = {{0.0f, 0.0f, 0.0f, 0.0f}, {1.0f, 2.0f, 3.0f, 4.0f}};
+  std::vector<float> v;
+  v.reserve(2 * 4 * kHeadSize);
+  for (int b = 0; b < 2; ++b)
+    for (int s = 0; s < 4; ++s)
+      for (int h = 0; h < kHeadSize; ++h) v.push_back(v_row_values[b][s]);
+
+  test.AddInput<MLFloat16>("Q", q_shape, ToFloat16(q));
+  test.AddInput<MLFloat16>("K", k_shape, ToFloat16(k));
+  test.AddInput<MLFloat16>("V", v_shape, ToFloat16(v));
+  // attn_mask (bool, broadcast over heads): batch 0 fully masked, batch 1 fully allowed.
+  test.AddInput<bool>("attn_mask", {2, 1, 1, 4},
+                      {false, false, false, false, true, true, true, true});
+  test.AddOptionalInputEdge<MLFloat16>();  // past_key
+  test.AddOptionalInputEdge<MLFloat16>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {2}, {4, 4});
+
+  // Batch 0: fully masked -> zero row. Batch 1: mean(1,2,3,4)=2.5 across head_size.
+  std::vector<float> expected_y_f;
+  expected_y_f.reserve(2 * kHeadSize);
+  for (int h = 0; h < kHeadSize; ++h) expected_y_f.push_back(0.0f);
+  for (int h = 0; h < kHeadSize; ++h) expected_y_f.push_back(2.5f);
+  test.AddOutput<MLFloat16>("Y", {2, 1, 1, kHeadSize}, ToFloat16(expected_y_f), false, 0, 0.02f);
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_key
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// M-1 regression guard: a FINITE but very-negative fp16 additive bias must NOT be treated as a
+// fully-masked row. head_size=4 + total_sequence_length=2 route to the unfused kernel (the path
+// the prior 0.5x score-collapse heuristic wrongly zeroed). Every key carries bias=-40000
+// (finite, strictly greater than the -65504 fp16 sentinel), so all keys are retained and each
+// row softmaxes to the uniform mean of V rather than zero.
+TEST(AttentionTest, Attention_Unfused_FiniteNegativeBias_NotZeroed_FP16_CUDA) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA device not available";
+  }
+  constexpr int kHeadSize = 4;
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(0));
+
+  std::vector<int64_t> q_shape = {1, 1, 2, kHeadSize};
+  std::vector<int64_t> k_shape = {1, 1, 2, kHeadSize};
+  std::vector<int64_t> v_shape = {1, 1, 2, kHeadSize};
+
+  std::vector<float> q(1 * 1 * 2 * kHeadSize, 1.0f);
+  std::vector<float> k(1 * 1 * 2 * kHeadSize, 1.0f);
+  // Key 0 rows = 5, key 1 rows = 9 -> uniform-softmax mean = 7.
+  std::vector<float> v = {5.0f, 5.0f, 5.0f, 5.0f, 9.0f, 9.0f, 9.0f, 9.0f};
+
+  test.AddInput<MLFloat16>("Q", q_shape, ToFloat16(q));
+  test.AddInput<MLFloat16>("K", k_shape, ToFloat16(k));
+  test.AddInput<MLFloat16>("V", v_shape, ToFloat16(v));
+  // Additive fp16 bias of -40000 on every (query,key): finite but below the old 0.5x threshold
+  // (0.5 * -65504 = -32752). The old heuristic wrongly zeroed; the exact predicate keeps the row.
+  test.AddInput<MLFloat16>("attn_mask", {2, 2}, ToFloat16(std::vector<float>(4, -40000.0f)));
+
+  // Uniform softmax over the 2 equally-biased keys -> mean(5,9)=7 for both query rows.
+  std::vector<float> expected_y(1 * 1 * 2 * kHeadSize, 7.0f);
+  test.AddOutput<MLFloat16>("Y", {1, 1, 2, kHeadSize}, ToFloat16(expected_y), false, 0, 0.05f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Structural fully-masked rows with NO attn_mask: is_causal bottom-right + nonpad_kv_seqlen < q
+// leaves the early query rows with an empty causal frontier (offset = nonpad - q_seq < 0), so
+// they must output zero per onnx#8068 even though no attn_mask is present. fp32 head_size=4 +
+// total_sequence_length=4 routes to the MEA path, exercising the ungated (is_causal) fully-masked
+// guard. q_seq=4, nonpad=2: rows 0,1 see zero allowed keys -> 0; row 2 sees key 0; row 3 sees
+// keys 0,1. Constant Q/K make retained rows the uniform mean of the allowed V rows.
+TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_StructuralEmptyRows_Zero_CUDA) {
+  if (!HasCudaEnvironment(0)) {
+    GTEST_SKIP() << "CUDA device not available";
+  }
+  constexpr int kHeadSize = 4;
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(1));
+
+  std::vector<int64_t> q_shape = {1, 1, 4, kHeadSize};
+  std::vector<int64_t> k_shape = {1, 1, 4, kHeadSize};
+  std::vector<int64_t> v_shape = {1, 1, 4, kHeadSize};
+
+  std::vector<float> q(1 * 1 * 4 * kHeadSize, 1.0f);
+  std::vector<float> k(1 * 1 * 4 * kHeadSize, 1.0f);
+  // Key 0 rows = 1, key 1 rows = 3 (keys 2,3 are padding beyond nonpad=2 and never attended).
+  std::vector<float> v = {1.0f, 1.0f, 1.0f, 1.0f, 3.0f, 3.0f, 3.0f, 3.0f,
+                          7.0f, 7.0f, 7.0f, 7.0f, 9.0f, 9.0f, 9.0f, 9.0f};
+
+  test.AddInput<float>("Q", q_shape, q);
+  test.AddInput<float>("K", k_shape, k);
+  test.AddInput<float>("V", v_shape, v);
+  test.AddOptionalInputEdge<bool>();   // attn_mask (none — masking is purely structural)
+  test.AddOptionalInputEdge<float>();  // past_key
+  test.AddOptionalInputEdge<float>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {1}, {2});
+
+  // Rows 0,1 structurally empty -> 0. Row 2 -> V[0]=1. Row 3 -> mean(V[0],V[1])=2.
+  std::vector<float> expected_y = {0.0f, 0.0f, 0.0f, 0.0f,
+                                   0.0f, 0.0f, 0.0f, 0.0f,
+                                   1.0f, 1.0f, 1.0f, 1.0f,
+                                   2.0f, 2.0f, 2.0f, 2.0f};
+  test.AddOutput<float>("Y", {1, 1, 4, kHeadSize}, expected_y, false, 0, 1e-4f);
+  test.AddOptionalOutputEdge<float>();  // present_key
+  test.AddOptionalOutputEdge<float>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
