@@ -1012,6 +1012,37 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
        "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7867)"},
       {"attention_4d_diff_heads_mask4d_padded_kv_expanded",
        "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7867)"},
+      // #28904: preemptive skip for the onnx#8068 Attention tests (bottom-right
+      // is_causal + nonpad_kv_seqlen, and composed is_causal+attn_mask
+      // fully-masked-row->0). The bundled cmake/external/onnx is v1.21.0 and does
+      // not yet contain these tests, so these entries are no-ops today; they
+      // prevent the new tests from failing the C++ onnx_test_runner the moment the
+      // onnx pin is bumped to a release including #8068, before the CPU/CUDA
+      // kernels land. This mirrors the jsonc filter block in
+      // onnx_backend_test_series_filters.jsonc (the Python series uses the jsonc;
+      // this C++ runner uses GetBrokenTests()). De-skip per path as each kernel
+      // lands, and remove entirely once the onnx pin includes #8068.
+      // TODO(#28904): remove this block when the CPU/CUDA kernels land and cmake/external/onnx is bumped to a release containing onnx/onnx#8068.
+      {"attention_4d_gqa_causal_nonpad_decode",
+       "Skipped until #28904 kernels land and cmake/external/onnx includes onnx/onnx#8068"},
+      {"attention_4d_gqa_causal_nonpad_decode_expanded",
+       "Skipped until #28904 kernels land and cmake/external/onnx includes onnx/onnx#8068"},
+      {"attention_4d_gqa_causal_nonpad_decode_fp16",
+       "Skipped until #28904 kernels land and cmake/external/onnx includes onnx/onnx#8068"},
+      {"attention_4d_gqa_causal_nonpad_decode_fp16_expanded",
+       "Skipped until #28904 kernels land and cmake/external/onnx includes onnx/onnx#8068"},
+      {"attention_4d_causal_nonpad_continued_prefill",
+       "Skipped until #28904 kernels land and cmake/external/onnx includes onnx/onnx#8068"},
+      {"attention_4d_causal_nonpad_continued_prefill_expanded",
+       "Skipped until #28904 kernels land and cmake/external/onnx includes onnx/onnx#8068"},
+      {"attention_causal_boolmask_nan_robustness",
+       "Skipped until #28904 kernels land and cmake/external/onnx includes onnx/onnx#8068"},
+      {"attention_causal_boolmask_nan_robustness_expanded",
+       "Skipped until #28904 kernels land and cmake/external/onnx includes onnx/onnx#8068"},
+      {"attention_23_boolmask_fullymasked_row_nan_robustness",
+       "Skipped until #28904 kernels land and cmake/external/onnx includes onnx/onnx#8068"},
+      {"attention_23_boolmask_fullymasked_row_nan_robustness_expanded",
+       "Skipped until #28904 kernels land and cmake/external/onnx includes onnx/onnx#8068"},
       {"loop13_seq", "Creation of empty sequences is currently not supported in the test runner"},
       {"sequence_insert_at_front", "shape mismatch, expect {4} got {3}"},
       {"cast_FLOAT_to_BFLOAT16", "expect uint16 got bfloat16"},
