@@ -12,7 +12,7 @@
 #include <fstream>
 #include <sstream>
 
-namespace model_package_v2 {
+namespace model_package {
 
 namespace {
 
@@ -152,4 +152,4 @@ std::string Sha256::HashFileHex(const std::string& path) {
   return h.FinalHex();
 }
 
-}  // namespace model_package_v2
+}  // namespace model_package

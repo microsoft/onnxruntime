@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 /// \file commit_vacuum_validate.cc
-/// \brief Phase 4 — commit, vacuum, and validate (§7.3, §7.4).
+/// \brief Commit, vacuum, and validate implementation.
 
 #include "model_package.h"
 
@@ -29,7 +29,7 @@
 #include "status_impl.h"
 
 namespace fs = std::filesystem;
-namespace mp = model_package_v2;
+namespace mp = model_package;
 using model_package::MakeStatus;
 using nlohmann::ordered_json;
 
@@ -105,7 +105,7 @@ ModelPackageStatus* WriteFileAtomic(const fs::path& final_path, const std::strin
 
 ModelPackageStatus* CopyTreeNoFollow(const fs::path& src, const fs::path& dst) {
   // Recursively copy `src` into `dst`. Refuses to follow symlinks (consistent
-  // with the §4.3.1 hash semantics) so the on-disk bytes match the URI we
+  // with the directory hash semantics) so the on-disk bytes match the URI we
   // already computed.
   std::error_code ec;
   fs::create_directories(dst, ec);
@@ -190,7 +190,7 @@ ordered_json SerializeComponentBody(const mp::ComponentRecord* comp) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 ModelPackageStatus* CheckDenseConstraints(ModelPackage* pkg) {
-  // Reject external executor_info in dense mode (§7.3 says "flatten everything",
+  // Reject external executor_info in dense mode (dense flattens everything,
   // but the in-memory model never loads external executor_info bodies, so we
   // can't inline them surgically. ERR_STATE so the caller's intent is clear.)
   for (const auto& comp : pkg->components) {
@@ -253,9 +253,9 @@ ModelPackageStatus* CommitSharedAssetsCopyIn(ModelPackage* pkg, const fs::path& 
 
 ModelPackageStatus* CommitExternalComponents(ModelPackage* pkg) {
   // Write each external component's current in-memory body to its disk file.
-  // Per §7.3/§7.4 these are "library-owned"; for in-place PRESERVE commit we
-  // re-emit them every time (cheaper than tracking dirtiness). External
-  // executor_info files are intentionally left alone — opaque per §7.3.
+  // These are library-owned; for in-place PRESERVE commit we re-emit them
+  // every time (cheaper than tracking dirtiness). External executor_info
+  // files are opaque and intentionally left untouched.
   for (const auto& comp : pkg->components) {
     if (comp->storage != mp::ComponentStorage::kExternal) continue;
     fs::path path = comp->external_path;
@@ -319,7 +319,7 @@ ModelPackageStatus* CommitInPlace(ModelPackage* pkg, ModelPackageWriteMode mode)
 
   // Re-derive shared assets + info view to pick up the materialized assets.
   if (auto* s = mp::RefreshSharedAssets(pkg, mp::PathOptionsFor(pkg))) return s;
-  if (auto* s = mp::RefreshInfoView(pkg)) return s;
+  if (auto* s = mp::RefreshPackageMetadata(pkg)) return s;
   mp::DropViewCache(pkg);
   return nullptr;
 }
@@ -494,11 +494,11 @@ ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg,
   std::swap(pkg->description_cache, fresh.description_cache);
   std::swap(pkg->layout_cache, fresh.layout_cache);
   std::swap(pkg->additional_metadata_cache, fresh.additional_metadata_cache);
-  std::swap(pkg->info_view, fresh.info_view);
+  std::swap(pkg->schema_version, fresh.schema_version);
   pkg->pending_shared_asset_copies.clear();
+  pkg->info_cache.reset();
 
-  // Re-anchor info_view string pointers (they may point into swapped buffers).
-  if (auto* s = mp::RefreshInfoView(pkg)) return s;
+  if (auto* s = mp::RefreshPackageMetadata(pkg)) return s;
   return nullptr;
 }
 

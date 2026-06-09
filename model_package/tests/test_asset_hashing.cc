@@ -17,7 +17,7 @@
 #include <string>
 
 namespace fs = std::filesystem;
-using model_package_v2::Sha256;
+using model_package::Sha256;
 
 namespace {
 

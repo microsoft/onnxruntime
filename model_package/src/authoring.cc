@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 /// \file authoring.cc
-/// \brief Phase 3 — mutation API per §7.3 of model_package_redesign.md.
+/// \brief Mutation (authoring) API implementation.
 
 #include "model_package.h"
 
@@ -20,7 +20,7 @@
 #include "status_impl.h"
 
 namespace fs = std::filesystem;
-namespace mp = model_package_v2;
+namespace mp = model_package;
 using model_package::MakeStatus;
 using nlohmann::ordered_json;
 
@@ -78,7 +78,7 @@ ModelPackageStatus* PostMutate(ModelPackage* pkg, bool refresh_assets = true) {
   if (refresh_assets) {
     if (auto* s = RefreshSharedAssetsHelper(pkg)) return s;
   }
-  return mp::RefreshInfoView(pkg);
+  return mp::RefreshPackageMetadata(pkg);
 }
 
 ordered_json& EnsureManifestComponentsObject(ModelPackage* pkg) {
@@ -108,7 +108,7 @@ ModelPackageStatus* ModelPackage_New(ModelPackage** out) {
   pkg->follow_symlinks = true;
   pkg->allow_external_paths = false;
   pkg->package_root = fs::path();
-  if (auto* s = mp::RefreshInfoView(pkg.get())) return s;
+  if (auto* s = mp::RefreshPackageMetadata(pkg.get())) return s;
   *out = pkg.release();
   return nullptr;
 }
@@ -424,7 +424,7 @@ ModelPackageStatus* ModelPackage_AddSharedAsset(ModelPackage* pkg,
     // We omit it to keep the on-disk manifest minimal: shared assets at the
     // default convention need no override entry. The asset will surface in
     // shared_assets[] only after some uses_assets reference it OR after
-    // commit materializes it. For Phase 3 visibility, also add a transient
+    // commit materializes it. Also add a transient
     // manifest entry only if needed at validate time — skip for now.
   } else {
     pkg->manifest["shared_assets"][computed_uri] = std::string(source_dir);

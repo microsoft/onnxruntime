@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 /// \file asset_hasher.h
-/// \brief Directory Merkle hash per §4.3.1 of the redesign.
+/// \brief Directory Merkle hash for content-addressed shared assets.
 
 #pragma once
 
@@ -11,7 +11,7 @@
 
 #include "model_package_api.h"
 
-namespace model_package_v2 {
+namespace model_package {
 
 /// Compute the canonical asset URI for a directory:
 ///   1. Walk recursively, collect regular files (ignore empty dirs).
@@ -27,4 +27,4 @@ namespace model_package_v2 {
 ModelPackageStatus* ComputeDirectoryAssetUri(const std::filesystem::path& source_dir,
                                              std::string* out_uri);
 
-}  // namespace model_package_v2
+}  // namespace model_package

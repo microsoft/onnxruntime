@@ -10,7 +10,7 @@
 #include "model_package_impl.h"
 #include "path_resolver.h"
 
-namespace model_package_v2 {
+namespace model_package {
 
 /// Parse the manifest at `<package_root>/manifest.json` and all referenced
 /// external component files, then populate `*pkg`. Caller owns `pkg`.
@@ -37,8 +37,10 @@ ModelPackageStatus* ParseComponentBody(const std::filesystem::path& package_root
                                        const std::filesystem::path& component_dir,
                                        ComponentRecord* out);
 
-/// Re-derive `pkg->info_view` (and the underlying caches) from `pkg->manifest`.
-ModelPackageStatus* RefreshInfoView(ModelPackage* pkg);
+/// Re-derive package-level metadata (schema_version, package_name, version,
+/// description, layout, additional_metadata) from `pkg->manifest` into the
+/// package's stable string buffers.
+ModelPackageStatus* RefreshPackageMetadata(ModelPackage* pkg);
 
 /// Re-derive `pkg->shared_assets` from `pkg->manifest` plus any URIs referenced
 /// via `uses_assets`. Clears and replaces the existing shared_assets vector
@@ -48,4 +50,4 @@ ModelPackageStatus* RefreshSharedAssets(ModelPackage* pkg, const PathResolverOpt
 /// Build PathResolverOptions appropriate for `pkg` (respects layout).
 PathResolverOptions PathOptionsFor(const ModelPackage* pkg);
 
-}  // namespace model_package_v2
+}  // namespace model_package

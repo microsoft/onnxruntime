@@ -17,9 +17,7 @@
 
 namespace fs = std::filesystem;
 
-namespace model_package_v2 {
-
-using model_package::MakeStatus;
+namespace model_package {
 
 namespace {
 
@@ -170,7 +168,7 @@ ModelPackageStatus* ParseComponent(const fs::path& package_root,
                                    const fs::path& component_dir,
                                    ComponentRecord* out);
 ModelPackageStatus* LoadSharedAssets(ModelPackage* pkg, const PathResolverOptions& opts);
-ModelPackageStatus* PopulateInfoView(ModelPackage* pkg);
+ModelPackageStatus* PopulatePackageMetadata(ModelPackage* pkg);
 
 ModelPackageStatus* ParseVariant(const fs::path& component_dir,
                                  const fs::path& package_root,
@@ -402,21 +400,13 @@ ModelPackageStatus* LoadSharedAssets(ModelPackage* pkg, const PathResolverOption
     }
     rec->resolved_path = resolved;
     rec->resolved_path_cache = resolved.string();
-    rec->abi_view.struct_size = sizeof(ModelSharedAsset);
-    rec->abi_view.abi_version = 1;
-    rec->abi_view.uri = rec->uri_cache.c_str();
-    rec->abi_view.resolved_path = rec->resolved_path_cache.c_str();
     pkg->shared_asset_index_by_uri.emplace(uri, pkg->shared_assets.size());
     pkg->shared_assets.push_back(std::move(rec));
   }
   return nullptr;
 }
 
-ModelPackageStatus* PopulateInfoView(ModelPackage* pkg) {
-  auto& info = pkg->info_view;
-  info.struct_size = sizeof(ModelPackageInfo);
-  info.abi_version = 1;
-
+ModelPackageStatus* PopulatePackageMetadata(ModelPackage* pkg) {
   auto sv_it = pkg->manifest.find(kSchemaVersionKey);
   if (sv_it == pkg->manifest.end()) {
     return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
@@ -426,18 +416,18 @@ ModelPackageStatus* PopulateInfoView(ModelPackage* pkg) {
     return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
                       "manifest: 'schema_version' must be an integer.");
   }
-  info.schema_version = sv_it->get<int64_t>();
-  if (info.schema_version != kSupportedSchemaVersion) {
+  pkg->schema_version = sv_it->get<int64_t>();
+  if (pkg->schema_version != kSupportedSchemaVersion) {
     return MakeStatus(MODEL_PACKAGE_ERR_VERSION,
-                      "manifest: schema_version " + std::to_string(info.schema_version) +
+                      "manifest: schema_version " + std::to_string(pkg->schema_version) +
                           " is not supported (this build supports " +
                           std::to_string(kSupportedSchemaVersion) + ").");
   }
 
-  auto stropt = [&](const char* key, std::optional<std::string>* dst, const char** out_field) -> ModelPackageStatus* {
+  auto stropt = [&](const char* key, std::optional<std::string>* dst) -> ModelPackageStatus* {
     auto it = pkg->manifest.find(key);
     if (it == pkg->manifest.end()) {
-      *out_field = nullptr;
+      dst->reset();
       return nullptr;
     }
     if (!it->is_string()) {
@@ -445,12 +435,11 @@ ModelPackageStatus* PopulateInfoView(ModelPackage* pkg) {
                         std::string("manifest: '") + key + "' must be a string.");
     }
     *dst = it->get<std::string>();
-    *out_field = (*dst)->c_str();
     return nullptr;
   };
-  if (auto* s = stropt(kPackageNameKey, &pkg->package_name_cache, &info.package_name)) return s;
-  if (auto* s = stropt(kPackageVersionKey, &pkg->package_version_cache, &info.package_version)) return s;
-  if (auto* s = stropt(kDescriptionKey, &pkg->description_cache, &info.description)) return s;
+  if (auto* s = stropt(kPackageNameKey, &pkg->package_name_cache)) return s;
+  if (auto* s = stropt(kPackageVersionKey, &pkg->package_version_cache)) return s;
+  if (auto* s = stropt(kDescriptionKey, &pkg->description_cache)) return s;
 
   // layout: default "portable"
   auto layout_it = pkg->manifest.find(kLayoutKey);
@@ -467,19 +456,14 @@ ModelPackageStatus* PopulateInfoView(ModelPackage* pkg) {
     pkg->layout = "portable";
   }
   pkg->layout_cache = pkg->layout;
-  info.layout = pkg->layout_cache.c_str();
 
-  // additional_metadata: emit as JSON string if present.
+  // additional_metadata: serialize as JSON string if present.
   auto am_it = pkg->manifest.find(kAdditionalMetadataKey);
   if (am_it != pkg->manifest.end()) {
     pkg->additional_metadata_cache = am_it->dump();
-    info.additional_metadata_json = pkg->additional_metadata_cache->c_str();
   } else {
-    info.additional_metadata_json = nullptr;
+    pkg->additional_metadata_cache.reset();
   }
-
-  info.num_components = pkg->components.size();
-  info.num_shared_assets = pkg->shared_assets.size();
   return nullptr;
 }
 
@@ -512,17 +496,12 @@ ModelPackageStatus* ParseComponentBody(const fs::path& package_root,
   return ParseComponent(package_root, opts, strict, component_name, body, component_dir, out);
 }
 
-ModelPackageStatus* RefreshInfoView(ModelPackage* pkg) {
+ModelPackageStatus* RefreshPackageMetadata(ModelPackage* pkg) {
   pkg->package_name_cache.reset();
   pkg->package_version_cache.reset();
   pkg->description_cache.reset();
   pkg->additional_metadata_cache.reset();
-  pkg->info_view = ModelPackageInfo{};
-  if (auto* s = PopulateInfoView(pkg)) return s;
-  pkg->info_view.package_name    = pkg->package_name_cache    ? pkg->package_name_cache->c_str()    : nullptr;
-  pkg->info_view.package_version = pkg->package_version_cache ? pkg->package_version_cache->c_str() : nullptr;
-  pkg->info_view.description     = pkg->description_cache     ? pkg->description_cache->c_str()     : nullptr;
-  return nullptr;
+  return PopulatePackageMetadata(pkg);
 }
 
 ModelPackageStatus* RefreshSharedAssets(ModelPackage* pkg, const PathResolverOptions& opts) {
@@ -587,15 +566,9 @@ ModelPackageStatus* ParsePackage(const fs::path& package_root,
   }
 
   if (auto* s = LoadSharedAssets(pkg, presolve_opts)) return s;
-  if (auto* s = PopulateInfoView(pkg)) return s;
-
-  // After the info view is populated, refresh package_name/version/description
-  // pointers since they may have moved during optional resolution above.
-  pkg->info_view.package_name    = pkg->package_name_cache    ? pkg->package_name_cache->c_str()    : nullptr;
-  pkg->info_view.package_version = pkg->package_version_cache ? pkg->package_version_cache->c_str() : nullptr;
-  pkg->info_view.description     = pkg->description_cache     ? pkg->description_cache->c_str()     : nullptr;
+  if (auto* s = PopulatePackageMetadata(pkg)) return s;
 
   return nullptr;
 }
 
-}  // namespace model_package_v2
+}  // namespace model_package

@@ -11,7 +11,7 @@
 
 namespace fs = std::filesystem;
 
-namespace model_package_v2 {
+namespace model_package {
 
 namespace {
 
@@ -120,4 +120,4 @@ ModelPackageStatus* ResolvePath(const fs::path& base_dir,
   return nullptr;
 }
 
-}  // namespace model_package_v2
+}  // namespace model_package

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 /// \file path_resolver.h
-/// \brief Path-resolution and confinement helpers per §4.2 of the redesign.
+/// \brief Path-resolution and confinement helpers.
 
 #pragma once
 
@@ -11,7 +11,7 @@
 
 #include "model_package_api.h"  // for ModelPackageStatus
 
-namespace model_package_v2 {
+namespace model_package {
 
 struct PathResolverOptions {
   bool allow_external_paths{false};
@@ -40,4 +40,4 @@ ModelPackageStatus* ResolvePath(const std::filesystem::path& base_dir,
 /// True if `uri` matches `^sha256:[0-9a-f]{64}$`.
 bool IsSha256AssetUri(const std::string& uri);
 
-}  // namespace model_package_v2
+}  // namespace model_package

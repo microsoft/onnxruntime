@@ -4,15 +4,15 @@
 /// \file model_package_impl.h
 /// \brief Internal C++ representation of a ModelPackage handle.
 ///
-/// The package stores its parsed manifest plus per-component records as
-/// `nlohmann::ordered_json` to preserve declaration order and unknown fields
-/// for round-trip. Typed accessors are thin views over the JSON; their string
-/// outputs are cached in stable per-entity std::string fields so that
-/// `const char*` returns remain valid until the package is closed or the
-/// relevant scope is mutated.
+/// Records hold the parsed manifest data plus stable per-entity string buffers
+/// so that all `const char*` exposed through the C API have package-owned
+/// storage. The package builds an `InfoViewCache` lazily that materializes the
+/// public POD struct tree returned by `ModelPackage_Info()`; any mutation
+/// drops the cache so the next read produces a fresh tree.
 
 #pragma once
 
+#include <deque>
 #include <filesystem>
 #include <map>
 #include <memory>
@@ -25,13 +25,9 @@
 
 #include "model_package.h"
 
-namespace model_package_v2 {
+namespace model_package {
 
 using ordered_json = nlohmann::ordered_json;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Records
-// ─────────────────────────────────────────────────────────────────────────────
 
 /// How the component's body is stored on disk relative to the manifest.
 enum class ComponentStorage {
@@ -43,22 +39,18 @@ struct VariantRecord {
   std::string name;
   nlohmann::ordered_json body;                    ///< the full variant JSON object
 
-  // String caches for stable C API pointers.
+  // Stable string buffers for ABI exposure.
   std::string name_cache;
   std::optional<std::string> ep_cache;
   std::optional<std::string> device_cache;
   std::optional<std::string> compatibility_string_cache;
   std::optional<std::string> resolved_directory_cache;
-  std::vector<std::string> used_asset_uri_caches;
-  mutable std::unordered_map<std::string, std::string> executor_info_json_cache;
+  std::vector<std::string>   used_asset_uri_caches;
   mutable std::optional<std::string> additional_metadata_cache;
   mutable std::optional<std::string> variant_json_cache;
 
-  // The variant's resolved variant_directory, if it has one. Lazily filled.
-  // std::nullopt means "no resolvable directory" (the directory field is
-  // missing and the default <component_dir>/<variant_name>/ doesn't exist).
-  // Populated at open for variants that declare any inline executor_info
-  // (eager check per §4.2). Otherwise computed on-demand.
+  /// Resolved variant_directory for variants that have one. `std::nullopt`
+  /// means none was declared and the default location does not exist.
   std::optional<std::filesystem::path> resolved_directory;
   bool resolved_directory_attempted{false};
 };
@@ -67,11 +59,10 @@ struct ComponentRecord {
   std::string name;
   ComponentStorage storage{ComponentStorage::kInline};
   std::filesystem::path external_path;            ///< valid iff storage == kExternal
-  std::filesystem::path component_dir;            ///< the directory used as the base for this component's relative paths
+  std::filesystem::path component_dir;            ///< base directory for relative paths inside this component
   nlohmann::ordered_json body;                    ///< {"component_name": ..., "variants": {...}, "additional_metadata": {...}}
   std::vector<std::unique_ptr<VariantRecord>> variants;
 
-  // String caches.
   std::string name_cache;
   mutable std::optional<std::string> additional_metadata_cache;
   mutable std::optional<std::string> component_json_cache;
@@ -82,18 +73,34 @@ struct SharedAssetRecord {
   std::filesystem::path resolved_path;
   std::string uri_cache;
   std::string resolved_path_cache;
-  ModelSharedAsset abi_view{};                    ///< populated to point at the caches above
 };
 
-}  // namespace model_package_v2
+/// Materialized POD-struct tree returned by ModelPackage_Info(). Owns all
+/// backing storage (extra strings and array buffers) so pointers stay valid
+/// until the next mutation drops the cache.
+struct InfoViewCache {
+  /// Backing storage for serialized JSON strings produced for the view.
+  std::deque<std::string> string_pool;
+
+  // Per-variant arrays. Indexed [component_idx][variant_idx].
+  std::vector<std::vector<const char*>>            used_assets_storage;
+  std::vector<std::vector<ModelExecutorInfoEntry>> executor_infos_storage;
+  std::vector<std::vector<ModelVariantInfo>>       variants_storage;
+
+  std::vector<ModelComponentInfo>    components;
+  std::vector<ModelSharedAssetInfo>  shared_assets;
+  ModelPackageInfo                   info{};
+};
+
+}  // namespace model_package
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Public opaque types (live in the global namespace to match the C API)
+// Public opaque type (lives in the global namespace to match the C API)
 // ─────────────────────────────────────────────────────────────────────────────
 
 struct ModelPackage {
   std::filesystem::path package_root;
-  nlohmann::ordered_json manifest;                ///< the parsed manifest.json, with declarations intact (component values stay in their original string-or-object form)
+  nlohmann::ordered_json manifest;                ///< parsed manifest.json with declarations intact (component values stay in their original string-or-object form)
   std::string layout;                             ///< "portable" | "installed"
 
   // Open-time options.
@@ -101,57 +108,38 @@ struct ModelPackage {
   bool follow_symlinks{true};
   bool strict_unknown_fields{true};
 
-  // Component and shared-asset records (in declaration order).
-  std::vector<std::unique_ptr<model_package_v2::ComponentRecord>> components;
-  std::vector<std::unique_ptr<model_package_v2::SharedAssetRecord>> shared_assets;
-
-  // Index for fast name->record lookup.
-  std::unordered_map<std::string, size_t> component_index_by_name;
-  std::unordered_map<std::string, size_t> shared_asset_index_by_uri;
-
-  // Authoring-time bookkeeping: source directories for copy_in=true shared
-  // assets that haven't been committed yet. Keyed by sha256:<hex> URI.
-  std::unordered_map<std::string, std::filesystem::path> pending_shared_asset_copies;
-
-  // Cache for the most recent ModelPackage_Validate report JSON.
-  mutable std::optional<std::string> last_validate_report;
-
-  // Package-level string caches and ABI view.
+  // Package-level parsed data and stable string buffers.
+  int64_t schema_version{0};
   std::optional<std::string> package_name_cache;
   std::optional<std::string> package_version_cache;
   std::optional<std::string> description_cache;
   std::string layout_cache;
   mutable std::optional<std::string> additional_metadata_cache;
-  ModelPackageInfo info_view{};
+
+  std::vector<std::unique_ptr<model_package::ComponentRecord>>   components;
+  std::vector<std::unique_ptr<model_package::SharedAssetRecord>> shared_assets;
+
+  std::unordered_map<std::string, size_t> component_index_by_name;
+  std::unordered_map<std::string, size_t> shared_asset_index_by_uri;
+
+  /// Authoring-time staging for copy_in=true shared assets that have not been
+  /// committed yet. Keyed by sha256:<hex> URI.
+  std::unordered_map<std::string, std::filesystem::path> pending_shared_asset_copies;
+
+  /// Cache for the most recent ModelPackage_Validate report JSON.
+  mutable std::optional<std::string> last_validate_report;
+
+  /// Lazily built; dropped on any mutation.
+  mutable std::optional<model_package::InfoViewCache> info_cache;
 };
 
-struct ModelComponent {
-  ModelPackage* owner{nullptr};
-  size_t component_idx{0};
-  model_package_v2::ComponentRecord* record{nullptr};
-};
+namespace model_package {
 
-struct ModelVariant {
-  ModelPackage* owner{nullptr};
-  size_t component_idx{0};
-  size_t variant_idx{0};
-  model_package_v2::ComponentRecord* component_record{nullptr};
-  model_package_v2::VariantRecord* record{nullptr};
-};
+/// Drop the materialized view cache. Call after any mutation that affects the
+/// view tree. Safe on a cleared cache.
+void DropViewCache(ModelPackage* pkg);
 
-namespace model_package_v2 {
+/// Return the package's info view, building it lazily.
+const InfoViewCache& BuildOrGetViewCache(const ModelPackage* pkg);
 
-void DropViewCache(const ModelPackage* pkg);
-
-// Stable view handles kept alive by the package so that pointer identity
-// matches across repeated lookups (per §7.2 caller contract).
-struct ViewCache {
-  std::vector<std::unique_ptr<ModelComponent>> component_views;
-  std::vector<std::vector<std::unique_ptr<ModelVariant>>> variant_views; // [component_idx][variant_idx]
-};
-
-ViewCache& GetViewCache(ModelPackage* pkg);
-const ModelComponent* ComponentView(ModelPackage* pkg, size_t idx);
-const ModelVariant*   VariantView(ModelPackage* pkg, size_t comp_idx, size_t var_idx);
-
-}  // namespace model_package_v2
+}  // namespace model_package

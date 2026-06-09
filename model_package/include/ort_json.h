@@ -6,7 +6,7 @@
 ///
 /// Consumers (ORT's CreateSession, GenAI, publisher tools) can parse, navigate,
 /// build, mutate, and serialize JSON values without bringing their own JSON
-/// dependency. See §11 of model_package_redesign.md for the full design.
+/// dependency.
 ///
 /// Errors are reported as `ModelPackageStatus*` (the same type used by
 /// `ModelPackage_*`). A nullptr return indicates success.

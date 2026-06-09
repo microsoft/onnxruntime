@@ -13,7 +13,7 @@
 
 namespace fs = std::filesystem;
 
-namespace model_package_v2 {
+namespace model_package {
 
 using model_package::MakeStatus;
 
@@ -94,4 +94,4 @@ ModelPackageStatus* ComputeDirectoryAssetUri(const fs::path& source_dir,
   return nullptr;
 }
 
-}  // namespace model_package_v2
+}  // namespace model_package

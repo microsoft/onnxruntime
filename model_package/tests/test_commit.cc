@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 /// \file test_commit.cc
-/// \brief Phase 4 — commit, vacuum, validate tests (§7.3, §7.4).
+/// \brief Commit, vacuum, and validate tests.
 
 #include "model_package.h"
 #include "model_package_api.h"
@@ -129,11 +129,12 @@ bool test_commit_inplace_basic_roundtrip() {
   CHECK_OK(ModelPackage_Open(s.path("pkg").c_str(), nullptr, &re));
   PkgHandle rep(re);
   CHECK(ModelPackage_Info(rep.get())->num_components == 1);
-  const ModelComponent* c = ModelPackage_FindComponent(rep.get(), "encoder");
+  const ModelPackageInfo* info = ModelPackage_Info(rep.get());
+  const ModelComponentInfo* c = ModelPackage_FindComponent(info, "encoder");
   CHECK(c != nullptr);
-  CHECK(ModelComponent_VariantCount(c) == 1);
-  const ModelVariant* v = ModelComponent_FindVariant(c, "v1");
-  CHECK(std::string(ModelVariant_EpName(v)) == "CPU");
+  CHECK(c->num_variants == 1);
+  const ModelVariantInfo* v = ModelComponentInfo_FindVariant(c, "v1");
+  CHECK(std::string(v->ep) == "CPU");
   return true;
 }
 
@@ -165,7 +166,7 @@ bool test_commit_external_component_writes_file() {
   ModelPackage* re2 = nullptr;
   CHECK_OK(ModelPackage_Open(s.path("pkg").c_str(), nullptr, &re2));
   PkgHandle rep2(re2);
-  CHECK(ModelPackage_FindComponent(rep2.get(), "decoder") != nullptr);
+  CHECK(ModelPackage_FindComponent(ModelPackage_Info(rep2.get()), "decoder") != nullptr);
   return true;
 }
 

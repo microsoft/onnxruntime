@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 /// \file test_authoring.cc
-/// \brief Phase 3 authoring API tests (§7.3 of model_package_redesign.md).
+/// \brief Authoring (mutation) API tests.
 
 #include "model_package.h"
 #include "model_package_api.h"
@@ -126,10 +126,10 @@ bool test_set_component_inline_basic() {
   CHECK_OK(ModelPackage_SetComponentInline(p.get(), "encoder",
                                            R"({"variants": {}})"));
   CHECK(ModelPackage_Info(p.get())->num_components == 1);
-  const ModelComponent* c = ModelPackage_FindComponent(p.get(), "encoder");
+  const ModelComponentInfo* c = ModelPackage_FindComponent(ModelPackage_Info(p.get()), "encoder");
   CHECK(c != nullptr);
-  CHECK(std::string(ModelComponent_Name(c)) == "encoder");
-  CHECK(ModelComponent_VariantCount(c) == 0);
+  CHECK(std::string(c->name) == "encoder");
+  CHECK(c->num_variants == 0);
   return true;
 }
 
@@ -142,8 +142,8 @@ bool test_set_component_inline_replaces_existing() {
   CHECK_OK(ModelPackage_SetComponentInline(p.get(), "c",
       R"({"variants": {"v1": {"variant_directory": "."}}})"));
   CHECK(ModelPackage_Info(p.get())->num_components == 1);
-  const ModelComponent* c = ModelPackage_FindComponent(p.get(), "c");
-  CHECK(ModelComponent_VariantCount(c) == 1);
+  const ModelComponentInfo* c = ModelPackage_FindComponent(ModelPackage_Info(p.get()), "c");
+  CHECK(c->num_variants == 1);
   return true;
 }
 
@@ -176,8 +176,9 @@ bool test_remove_component() {
   CHECK(ModelPackage_Info(p.get())->num_components == 2);
   CHECK_OK(ModelPackage_RemoveComponent(p.get(), "a"));
   CHECK(ModelPackage_Info(p.get())->num_components == 1);
-  CHECK(ModelPackage_FindComponent(p.get(), "a") == nullptr);
-  CHECK(ModelPackage_FindComponent(p.get(), "b") != nullptr);
+  const ModelPackageInfo* info = ModelPackage_Info(p.get());
+  CHECK(ModelPackage_FindComponent(info, "a") == nullptr);
+  CHECK(ModelPackage_FindComponent(info, "b") != nullptr);
   return true;
 }
 
@@ -201,19 +202,19 @@ bool test_set_variant_upsert() {
 
   CHECK_OK(ModelPackage_SetVariant(p.get(), "c", "v1",
       R"({"variant_directory": ".", "ep": "CPU"})"));
-  const ModelComponent* c = ModelPackage_FindComponent(p.get(), "c");
-  CHECK(ModelComponent_VariantCount(c) == 1);
-  const ModelVariant* v = ModelComponent_FindVariant(c, "v1");
+  const ModelComponentInfo* c = ModelPackage_FindComponent(ModelPackage_Info(p.get()), "c");
+  CHECK(c->num_variants == 1);
+  const ModelVariantInfo* v = ModelComponentInfo_FindVariant(c, "v1");
   CHECK(v != nullptr);
-  CHECK(std::string(ModelVariant_EpName(v)) == "CPU");
+  CHECK(std::string(v->ep) == "CPU");
 
   // Upsert: change ep.
   CHECK_OK(ModelPackage_SetVariant(p.get(), "c", "v1",
       R"({"variant_directory": ".", "ep": "CUDA"})"));
-  c = ModelPackage_FindComponent(p.get(), "c");
-  CHECK(ModelComponent_VariantCount(c) == 1);
-  v = ModelComponent_FindVariant(c, "v1");
-  CHECK(std::string(ModelVariant_EpName(v)) == "CUDA");
+  c = ModelPackage_FindComponent(ModelPackage_Info(p.get()), "c");
+  CHECK(c->num_variants == 1);
+  v = ModelComponentInfo_FindVariant(c, "v1");
+  CHECK(std::string(v->ep) == "CUDA");
   return true;
 }
 
@@ -246,8 +247,8 @@ bool test_remove_variant() {
   CHECK_OK(ModelPackage_SetComponentInline(p.get(), "c", R"({"variants": {}})"));
   CHECK_OK(ModelPackage_SetVariant(p.get(), "c", "v1", R"({"variant_directory": "."})"));
   CHECK_OK(ModelPackage_RemoveVariant(p.get(), "c", "v1"));
-  const ModelComponent* c = ModelPackage_FindComponent(p.get(), "c");
-  CHECK(ModelComponent_VariantCount(c) == 0);
+  const ModelComponentInfo* c = ModelPackage_FindComponent(ModelPackage_Info(p.get()), "c");
+  CHECK(c->num_variants == 0);
   return true;
 }
 
@@ -264,16 +265,19 @@ bool test_set_executor_info_inline_and_remove() {
 
   CHECK_OK(ModelPackage_SetVariantExecutorInfoInline(p.get(), "c", "v1", "ort",
       R"({"model": "m.onnx"})"));
-  const ModelVariant* v = ModelComponent_FindVariant(
-      ModelPackage_FindComponent(p.get(), "c"), "v1");
+  const ModelVariantInfo* v = ModelComponentInfo_FindVariant(
+      ModelPackage_FindComponent(ModelPackage_Info(p.get()), "c"), "v1");
   const char* ej = nullptr;
-  CHECK_OK(ModelVariant_GetExecutorInfoJson(v, "ort", &ej));
+  const ModelExecutorInfoEntry* ei = ModelVariantInfo_FindExecutorInfo(v, "ort");
+  ej = ei ? ei->json : nullptr;
   CHECK(ej != nullptr);
   CHECK(std::strstr(ej, "\"model\"") != nullptr);
 
   CHECK_OK(ModelPackage_RemoveVariantExecutorInfo(p.get(), "c", "v1", "ort"));
-  v = ModelComponent_FindVariant(ModelPackage_FindComponent(p.get(), "c"), "v1");
-  CHECK_OK(ModelVariant_GetExecutorInfoJson(v, "ort", &ej));
+  v = ModelComponentInfo_FindVariant(ModelPackage_FindComponent(ModelPackage_Info(p.get()), "c"), "v1");
+  ei = ModelVariantInfo_FindExecutorInfo(v, "ort");
+  ej = ei ? ei->json : nullptr;
+  CHECK(ei == nullptr);
   CHECK(ej == nullptr);
   return true;
 }
@@ -346,10 +350,10 @@ bool test_set_additional_metadata_variant_scope() {
   CHECK_OK(ModelPackage_SetVariant(p.get(), "c", "v1", R"({"variant_directory": "."})"));
   CHECK_OK(ModelPackage_SetAdditionalMetadataJson(p.get(), "variant", "c", "v1",
       R"({"foo":"bar"})"));
-  const ModelVariant* v = ModelComponent_FindVariant(
-      ModelPackage_FindComponent(p.get(), "c"), "v1");
+  const ModelVariantInfo* v = ModelComponentInfo_FindVariant(
+      ModelPackage_FindComponent(ModelPackage_Info(p.get()), "c"), "v1");
   CHECK(v != nullptr);
-  const char* md = ModelVariant_AdditionalMetadataJson(v);
+  const char* md = v->additional_metadata_json;
   CHECK(md != nullptr);
   CHECK(std::string(md).find("foo") != std::string::npos);
   return true;
@@ -469,12 +473,13 @@ bool test_view_cache_drops_on_remove() {
   PkgHandle p(raw);
   CHECK_OK(ModelPackage_SetComponentInline(p.get(), "a", R"({"variants": {}})"));
   CHECK_OK(ModelPackage_SetComponentInline(p.get(), "b", R"({"variants": {}})"));
-  const ModelComponent* a = ModelPackage_FindComponent(p.get(), "a");
+  const ModelComponentInfo* a = ModelPackage_FindComponent(ModelPackage_Info(p.get()), "a");
   CHECK(a != nullptr);
   CHECK_OK(ModelPackage_RemoveComponent(p.get(), "a"));
-  // Old pointer is invalidated per §7.2; we must re-fetch and 'a' must now be gone.
-  CHECK(ModelPackage_FindComponent(p.get(), "a") == nullptr);
-  CHECK(ModelPackage_FindComponent(p.get(), "b") != nullptr);
+  // Old pointer was invalidated by the mutation; re-fetch and 'a' must now be gone.
+  const ModelPackageInfo* info = ModelPackage_Info(p.get());
+  CHECK(ModelPackage_FindComponent(info, "a") == nullptr);
+  CHECK(ModelPackage_FindComponent(info, "b") != nullptr);
   return true;
 }
 

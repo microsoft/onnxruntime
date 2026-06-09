@@ -12,7 +12,7 @@
 #include <istream>
 #include <string>
 
-namespace model_package_v2 {
+namespace model_package {
 
 class Sha256 {
  public:
@@ -41,4 +41,4 @@ class Sha256 {
   size_t   buffer_len_;
 };
 
-}  // namespace model_package_v2
+}  // namespace model_package

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 /// \file test_inspection.cc
-/// \brief Tests for the Phase 1 read-only inspection API (model_package.h).
+/// \brief Tests for the read-only inspection API (model_package.h).
 
 #include "model_package.h"
 #include "model_package_api.h"
@@ -120,16 +120,16 @@ bool test_open_minimal_inline() {
   CHECK(info->num_shared_assets == 0);
   CHECK(info->additional_metadata_json == nullptr);
 
-  const ModelComponent* c = ModelPackage_GetComponent(pkg, 0);
-  CHECK(std::string(ModelComponent_Name(c)) == "alpha");
-  CHECK(ModelComponent_VariantCount(c) == 1);
+  const ModelComponentInfo* c = &info->components[0];
+  CHECK(std::string(c->name) == "alpha");
+  CHECK(c->num_variants == 1);
 
-  const ModelVariant* v = ModelComponent_GetVariant(c, 0);
-  CHECK(std::string(ModelVariant_Name(v)) == "cpu");
-  CHECK(ModelVariant_EpName(v) == nullptr);
-  CHECK(ModelVariant_Device(v) == nullptr);
-  CHECK(ModelVariant_CompatibilityString(v) == nullptr);
-  CHECK(ModelVariant_UsedAssetCount(v) == 0);
+  const ModelVariantInfo* v = &c->variants[0];
+  CHECK(std::string(v->name) == "cpu");
+  CHECK(v->ep == nullptr);
+  CHECK(v->device == nullptr);
+  CHECK(v->compatibility_string == nullptr);
+  CHECK(v->num_used_assets == 0);
 
   ModelPackage_Close(pkg);
   return true;
@@ -170,23 +170,22 @@ bool test_open_full_inline_with_metadata() {
   CHECK(info->additional_metadata_json != nullptr);
   CHECK(std::string(info->additional_metadata_json).find("\"author\":\"team\"") != std::string::npos);
 
-  const ModelComponent* c = ModelPackage_FindComponent(pkg, "decoder");
+  const ModelComponentInfo* c = ModelPackage_FindComponent(info, "decoder");
   CHECK(c != nullptr);
-  const char* comp_meta = ModelComponent_AdditionalMetadataJson(c);
+  const char* comp_meta = c->additional_metadata_json;
   CHECK(comp_meta != nullptr);
   CHECK(std::string(comp_meta).find("\"size\":\"small\"") != std::string::npos);
 
-  const ModelVariant* v = ModelComponent_FindVariant(c, "cuda_fp16");
+  const ModelVariantInfo* v = ModelComponentInfo_FindVariant(c, "cuda_fp16");
   CHECK(v != nullptr);
-  CHECK(std::string(ModelVariant_EpName(v)) == "CUDAExecutionProvider");
-  CHECK(std::string(ModelVariant_Device(v)) == "gpu");
-  CHECK(std::string(ModelVariant_CompatibilityString(v)) == "sm_80");
-  const char* var_meta = ModelVariant_AdditionalMetadataJson(v);
+  CHECK(std::string(v->ep) == "CUDAExecutionProvider");
+  CHECK(std::string(v->device) == "gpu");
+  CHECK(std::string(v->compatibility_string) == "sm_80");
+  const char* var_meta = v->additional_metadata_json;
   CHECK(var_meta != nullptr);
   CHECK(std::string(var_meta).find("\"notes\":\"quantized\"") != std::string::npos);
 
-  const char* resolved = nullptr;
-  CHECK_OK(ModelVariant_ResolveDirectoryPath(v, &resolved));
+  const char* resolved = v->variant_directory;
   CHECK(resolved != nullptr);
   CHECK(std::string(resolved).find("decoder/cuda_fp16") != std::string::npos);
 
@@ -205,9 +204,9 @@ bool test_external_component_file() {
   })");
   ModelPackage* pkg = nullptr;
   CHECK_OK(ModelPackage_Open(s.root().c_str(), nullptr, &pkg));
-  const ModelComponent* c = ModelPackage_FindComponent(pkg, "decoder");
+  const ModelComponentInfo* c = ModelPackage_FindComponent(ModelPackage_Info(pkg), "decoder");
   CHECK(c != nullptr);
-  CHECK(ModelComponent_VariantCount(c) == 1);
+  CHECK(c->num_variants == 1);
   ModelPackage_Close(pkg);
   return true;
 }
@@ -251,22 +250,24 @@ bool test_executor_info_inline_and_external() {
 
   ModelPackage* pkg = nullptr;
   CHECK_OK(ModelPackage_Open(s.root().c_str(), nullptr, &pkg));
-  const ModelVariant* v =
-      ModelComponent_FindVariant(ModelPackage_FindComponent(pkg, "decoder"), "cuda");
+  const ModelPackageInfo* info = ModelPackage_Info(pkg);
+  const ModelVariantInfo* v =
+      ModelComponentInfo_FindVariant(ModelPackage_FindComponent(info, "decoder"), "cuda");
   CHECK(v != nullptr);
 
-  const char* ort_json = nullptr;
-  CHECK_OK(ModelVariant_GetExecutorInfoJson(v, "ort", &ort_json));
+  const ModelExecutorInfoEntry* ort_ei = ModelVariantInfo_FindExecutorInfo(v, "ort");
+  const char* ort_json = ort_ei ? ort_ei->json : nullptr;
   CHECK(ort_json != nullptr);
   CHECK(std::string(ort_json).find("model.onnx") != std::string::npos);
 
-  const char* genai_json = nullptr;
-  CHECK_OK(ModelVariant_GetExecutorInfoJson(v, "genai", &genai_json));
+  const ModelExecutorInfoEntry* genai_ei = ModelVariantInfo_FindExecutorInfo(v, "genai");
+  const char* genai_json = genai_ei ? genai_ei->json : nullptr;
   CHECK(genai_json != nullptr);
   CHECK(std::string(genai_json).find("\"x\":1") != std::string::npos);
 
-  const char* missing = nullptr;
-  CHECK_OK(ModelVariant_GetExecutorInfoJson(v, "absent", &missing));
+  const ModelExecutorInfoEntry* missing_ei = ModelVariantInfo_FindExecutorInfo(v, "absent");
+  const char* missing = missing_ei ? missing_ei->json : nullptr;
+  CHECK(missing_ei == nullptr);
   CHECK(missing == nullptr);
 
   ModelPackage_Close(pkg);
@@ -351,11 +352,11 @@ bool test_shared_assets_resolve() {
   CHECK_OK(ModelPackage_Open(s.root().c_str(), nullptr, &pkg));
   CHECK(ModelPackage_Info(pkg)->num_shared_assets == 2);
 
-  const ModelSharedAsset* a = ModelPackage_GetSharedAsset(pkg, 0);
+  const ModelSharedAssetInfo* a = &ModelPackage_Info(pkg)->shared_assets[0];
   CHECK(std::string(a->uri).find("aaaa") != std::string::npos);
   CHECK(std::string(a->resolved_path).find("assets/a") != std::string::npos);
 
-  const ModelSharedAsset* b = ModelPackage_GetSharedAsset(pkg, 1);
+  const ModelSharedAssetInfo* b = &ModelPackage_Info(pkg)->shared_assets[1];
   CHECK(std::string(b->uri).find("bbbb") != std::string::npos);
   // Default convention path: shared_assets/sha256-<hex>
   CHECK(std::string(b->resolved_path).find("shared_assets/sha256-bb") != std::string::npos);
@@ -477,8 +478,9 @@ bool test_find_returns_null_on_missing() {
   s.Write("manifest.json", R"({"schema_version":1,"components":{"a":{"variants":{"cpu":{}}}}})");
   ModelPackage* pkg = nullptr;
   CHECK_OK(ModelPackage_Open(s.root().c_str(), nullptr, &pkg));
-  CHECK(ModelPackage_FindComponent(pkg, "missing") == nullptr);
-  CHECK(ModelComponent_FindVariant(ModelPackage_FindComponent(pkg, "a"), "missing") == nullptr);
+  const ModelPackageInfo* info = ModelPackage_Info(pkg);
+  CHECK(ModelPackage_FindComponent(info, "missing") == nullptr);
+  CHECK(ModelComponentInfo_FindVariant(ModelPackage_FindComponent(info, "a"), "missing") == nullptr);
   ModelPackage_Close(pkg);
   return true;
 }
