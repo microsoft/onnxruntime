@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 /// \file test_commit.cc
-/// \brief Commit, vacuum, and validate tests.
+/// \brief Commit, prune, and validate tests.
 
 #include "model_package.h"
 #include "model_package_api.h"
@@ -260,10 +260,10 @@ bool test_commit_dest_root_must_be_empty() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Vacuum
+// Prune
 // ─────────────────────────────────────────────────────────────────────────────
 
-bool test_vacuum_skips_within_grace_period() {
+bool test_prune_skips_within_grace_period() {
   Sandbox s;
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
   CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").c_str(),
@@ -274,13 +274,13 @@ bool test_vacuum_skips_within_grace_period() {
                     ("sha256-" + std::string(64, 'a'));
   fs::create_directories(orphan);
   CHECK(fs::is_directory(orphan));
-  CHECK_OK(ModelPackage_Vacuum(p.get()));
+  CHECK_OK(ModelPackage_Prune(p.get()));
   // Within grace period -> still there.
   CHECK(fs::is_directory(orphan));
   return true;
 }
 
-bool test_vacuum_removes_old_orphans() {
+bool test_prune_removes_old_orphans() {
   Sandbox s;
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
   CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").c_str(),
@@ -294,12 +294,12 @@ bool test_vacuum_removes_old_orphans() {
   std::error_code ec;
   fs::last_write_time(orphan, old, ec);
   CHECK(!ec);
-  CHECK_OK(ModelPackage_Vacuum(p.get()));
+  CHECK_OK(ModelPackage_Prune(p.get()));
   CHECK(!fs::exists(orphan));
   return true;
 }
 
-bool test_vacuum_removes_stale_staging_dirs() {
+bool test_prune_removes_stale_staging_dirs() {
   Sandbox s;
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
   CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").c_str(),
@@ -310,7 +310,7 @@ bool test_vacuum_removes_stale_staging_dirs() {
   fs::create_directories(stage);
   auto old = fs::file_time_type::clock::now() - std::chrono::seconds(120);
   std::error_code ec; fs::last_write_time(stage, old, ec);
-  CHECK_OK(ModelPackage_Vacuum(p.get()));
+  CHECK_OK(ModelPackage_Prune(p.get()));
   CHECK(!fs::exists(stage));
   return true;
 }
@@ -338,6 +338,8 @@ bool test_validate_asset_reach_flags_unknown_uri() {
                                MODEL_PACKAGE_WRITE_PRESERVE));
   // Add a uses_assets URI but no matching shared asset.
   std::string fake_uri = "sha256:" + std::string(64, '0');
+  std::error_code ec;
+  fs::create_directories(s.path("pkg") / "encoder", ec);
   std::string variant = R"({"variant_directory": "encoder", "uses_assets": [")" +
                         fake_uri + R"("]})";
   CHECK_OK(ModelPackage_SetVariant(p.get(), "encoder", "v1", variant.c_str()));
@@ -427,9 +429,9 @@ const Test kTests[] = {
     {"commit_dense_rejects_external_executor_info", test_commit_dense_rejects_external_executor_info},
     {"commit_dest_root_self_contained", test_commit_dest_root_self_contained},
     {"commit_dest_root_must_be_empty", test_commit_dest_root_must_be_empty},
-    {"vacuum_skips_within_grace_period", test_vacuum_skips_within_grace_period},
-    {"vacuum_removes_old_orphans", test_vacuum_removes_old_orphans},
-    {"vacuum_removes_stale_staging_dirs", test_vacuum_removes_stale_staging_dirs},
+    {"prune_skips_within_grace_period", test_prune_skips_within_grace_period},
+    {"prune_removes_old_orphans", test_prune_removes_old_orphans},
+    {"prune_removes_stale_staging_dirs", test_prune_removes_stale_staging_dirs},
     {"validate_all_clean_package", test_validate_all_clean_package},
     {"validate_asset_reach_flags_unknown_uri", test_validate_asset_reach_flags_unknown_uri},
     {"validate_paths_flags_missing_external", test_validate_paths_flags_missing_external},

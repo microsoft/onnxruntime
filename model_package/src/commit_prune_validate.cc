@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-/// \file commit_vacuum_validate.cc
-/// \brief Commit, vacuum, and validate implementation.
+/// \file commit_prune_validate.cc
+/// \brief Commit, prune, and validate implementation.
 
 #include "model_package.h"
 
@@ -503,10 +503,10 @@ ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Vacuum
+// Prune
 // ─────────────────────────────────────────────────────────────────────────────
 
-constexpr std::chrono::seconds kVacuumGrace{60};
+constexpr std::chrono::seconds kPruneGrace{60};
 
 bool IsTmpName(const fs::path& p) {
   std::string name = p.filename().string();
@@ -518,7 +518,7 @@ bool IsOldEnough(const fs::path& p) {
   auto last = fs::last_write_time(p, ec);
   if (ec) return false;
   auto now = decltype(last)::clock::now();
-  return (now - last) >= kVacuumGrace;
+  return (now - last) >= kPruneGrace;
 }
 
 }  // namespace
@@ -535,7 +535,7 @@ ModelPackageStatus* ModelPackage_Commit(ModelPackage* pkg,
   return CommitInPlace(pkg, mode);
 }
 
-ModelPackageStatus* ModelPackage_Vacuum(ModelPackage* pkg) {
+ModelPackageStatus* ModelPackage_Prune(ModelPackage* pkg) {
   if (!pkg) return NullArg("pkg");
   if (pkg->package_root.empty()) return nullptr;
   fs::path assets_root = pkg->package_root / "shared_assets";

@@ -54,7 +54,7 @@ endif()
 set(MODEL_PACKAGE_SOURCES
   src/asset_hasher.cc
   src/authoring.cc
-  src/commit_vacuum_validate.cc
+  src/commit_prune_validate.cc
   src/manifest_parser.cc
   src/model_package_impl.cc
   src/ort_json.cc

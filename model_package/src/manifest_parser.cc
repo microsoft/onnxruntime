@@ -110,31 +110,36 @@ ModelPackageStatus* ResolveVariantDirectory(const fs::path& component_dir,
                                             const PathResolverOptions& opts,
                                             bool require_exists,
                                             std::optional<fs::path>* out) {
-  std::string dir_input;
   auto it = variant_body.find(kVariantDirectoryKey);
-  if (it != variant_body.end()) {
+  bool explicitly_declared = (it != variant_body.end());
+  std::string dir_input;
+  if (explicitly_declared) {
     if (!it->is_string()) {
       return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
                         "variant '" + variant_name + "': variant_directory must be a string.");
     }
     dir_input = it->get<std::string>();
   } else {
-    // Default: <component_dir>/<variant_name>/
+    // No explicit value: try the conventional default. Missing-on-disk is
+    // fine; we just won't expose a resolved path.
     dir_input = variant_name;
   }
+
   fs::path resolved;
+  // For explicitly-declared variant_directory we require the path to actually
+  // exist on disk. For the inferred default we don't, since callers may simply
+  // be using their own anchor.
+  bool must_exist = require_exists || explicitly_declared;
   auto* status = ResolvePath(component_dir, package_root, dir_input, opts,
-                             require_exists, &resolved);
+                             must_exist, &resolved);
   if (status) {
-    if (!require_exists && ModelPackageStatus_Code(status) == MODEL_PACKAGE_ERR_NOT_FOUND) {
+    if (!must_exist && ModelPackageStatus_Code(status) == MODEL_PACKAGE_ERR_NOT_FOUND) {
       ModelPackageStatus_Release(status);
       *out = std::nullopt;
       return nullptr;
     }
     return status;
   }
-  // For require_exists=false we may still have a path that didn't exist; only
-  // record it when it actually does, so the eager-inline check is meaningful.
   std::error_code ec;
   if (fs::exists(resolved, ec)) {
     *out = resolved;

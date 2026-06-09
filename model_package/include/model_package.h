@@ -280,7 +280,7 @@ MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_SetAdditionalMetadataJson(Mod
                                                                              const char* json_or_null);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Commit / Vacuum / Validate
+// Commit / Prune / Validate
 // ─────────────────────────────────────────────────────────────────────────────
 
 typedef enum {
@@ -300,7 +300,7 @@ MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_Commit(ModelPackage*,
 /// Reclaim files under `<package_root>/shared_assets/` that are no longer
 /// reachable from the current manifest. Files outside `<package_root>` are
 /// never touched.
-MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_Vacuum(ModelPackage*);
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_Prune(ModelPackage*);
 
 typedef enum {
   MODEL_PACKAGE_VALIDATE_SCHEMA         = 1 << 0,
