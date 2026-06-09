@@ -113,6 +113,9 @@ struct ModelPackage {
   // assets that haven't been committed yet. Keyed by sha256:<hex> URI.
   std::unordered_map<std::string, std::filesystem::path> pending_shared_asset_copies;
 
+  // Cache for the most recent ModelPackage_Validate report JSON.
+  mutable std::optional<std::string> last_validate_report;
+
   // Package-level string caches and ABI view.
   std::optional<std::string> package_name_cache;
   std::optional<std::string> package_version_cache;

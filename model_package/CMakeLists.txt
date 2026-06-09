@@ -55,6 +55,7 @@ set(MODEL_PACKAGE_SOURCES
   src/api.cc
   src/asset_hasher.cc
   src/authoring.cc
+  src/commit_vacuum_validate.cc
   src/manifest_parser.cc
   src/model_package_impl.cc
   src/ort_json.cc
@@ -139,4 +140,12 @@ if(MODEL_PACKAGE_BUILD_TESTS)
     ${CMAKE_CURRENT_SOURCE_DIR}/src
   )
   add_test(NAME authoring COMMAND test_authoring)
+
+  add_executable(test_commit tests/test_commit.cc)
+  target_link_libraries(test_commit PRIVATE model_package nlohmann_json::nlohmann_json)
+  target_include_directories(test_commit PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+  )
+  add_test(NAME commit COMMAND test_commit)
 endif()

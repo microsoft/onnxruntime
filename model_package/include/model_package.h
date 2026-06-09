@@ -280,6 +280,48 @@ MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_SetAdditionalMetadataJson(Mod
                                                                             const char* variant_or_null,
                                                                             const char* json_or_null);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Commit / Vacuum / Validate (Phase 4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+typedef enum {
+  MODEL_PACKAGE_WRITE_PRESERVE = 0, ///< each component/executor-info keeps current shape
+  MODEL_PACKAGE_WRITE_DENSE    = 1, ///< flatten all external components inline
+} ModelPackageWriteMode;
+
+/// Persist the in-memory model to disk. `dest_root_or_null = NULL` commits
+/// in-place at `package_root`. Otherwise `dest_root` must be empty or
+/// nonexistent; the entire package is materialized there (self-contained "save
+/// as"). On a successful dest_root commit, `package_root` is updated to
+/// `dest_root` so subsequent in-place commits go to the new location.
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_Commit(ModelPackage*,
+                                                          const char* dest_root_or_null,
+                                                          ModelPackageWriteMode mode);
+
+/// Reclaim files under `<package_root>/shared_assets/` that are no longer
+/// reachable from the current manifest. Files outside `<package_root>` are
+/// never touched per §4.2.
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_Vacuum(ModelPackage*);
+
+typedef enum {
+  MODEL_PACKAGE_VALIDATE_SCHEMA           = 1 << 0,
+  MODEL_PACKAGE_VALIDATE_PATHS            = 1 << 1,
+  MODEL_PACKAGE_VALIDATE_ASSET_REACH      = 1 << 2,
+  MODEL_PACKAGE_VALIDATE_ASSET_REHASH     = 1 << 3,
+  MODEL_PACKAGE_VALIDATE_UNKNOWN_FIELDS   = 1 << 4,
+  MODEL_PACKAGE_VALIDATE_ALL              = ~0,
+} ModelPackageValidateFlags;
+
+/// Run structural and reachability checks. `*out_report_json` is set to a
+/// JSON string owned by the package describing findings:
+///   `{"errors": [{"code": "...", "message": "..."}, ...],
+///     "warnings": [...]}` — empty arrays when nothing was found at that level.
+/// Returns non-NULL status when any error-level finding fired; warnings alone
+/// still return success.
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_Validate(ModelPackage*,
+                                                            int flags,
+                                                            const char** out_report_json);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif
