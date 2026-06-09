@@ -45,4 +45,16 @@ bool IsSha256AssetUri(const std::string& uri);
 /// empty). Returns true on a match, false otherwise.
 bool TrySplitAssetUriPrefix(const std::string& input, std::string& uri, std::string& tail);
 
+/// Default on-disk directory name for a shared asset URI, i.e. the basename
+/// under `<package_root>/shared_assets/`. For `sha256:<hex>` this is
+/// `sha256-<hex>`. Returns empty string if `uri` is not a valid sha256 URI.
+std::string DefaultSharedAssetDirName(const std::string& uri);
+
+/// Inverse of `DefaultSharedAssetDirName`. If `dir_name` matches `sha256-<hex>`
+/// returns the corresponding `sha256:<hex>` URI; otherwise returns empty string.
+std::string SharedAssetUriFromDirName(const std::string& dir_name);
+
+/// Prefix shared by every default-convention shared-asset directory name.
+constexpr const char* kSharedAssetOnDiskPrefix = "sha256-";
+
 }  // namespace model_package

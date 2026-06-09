@@ -384,8 +384,7 @@ ModelPackageStatus* LoadSharedAssets(ModelPackage* pkg, const PathResolverOption
       }
     } else {
       // Default convention: <package_root>/shared_assets/sha256-<hex>/
-      std::string hex = uri.substr(std::strlen("sha256:"));
-      resolved = pkg->package_root / "shared_assets" / ("sha256-" + hex);
+      resolved = pkg->package_root / "shared_assets" / DefaultSharedAssetDirName(uri);
     }
     rec->resolved_path = resolved;
     rec->resolved_path_cache = resolved.string();

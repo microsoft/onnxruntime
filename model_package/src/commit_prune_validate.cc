@@ -219,10 +219,10 @@ ModelPackageStatus* CommitSharedAssetsCopyIn(ModelPackage* pkg, const fs::path& 
   std::error_code ec;
   fs::create_directories(assets_root, ec);
   for (const auto& [uri, src] : pkg->pending_shared_asset_copies) {
-    std::string hex = uri.substr(std::strlen("sha256:"));
-    fs::path final_dir = assets_root / ("sha256-" + hex);
+    std::string dir_name = mp::DefaultSharedAssetDirName(uri);
+    fs::path final_dir = assets_root / dir_name;
     if (fs::exists(final_dir, ec)) continue;  // already materialized — trust it.
-    fs::path stage_dir = assets_root / ("sha256-" + hex + ".tmp." + RandomSuffix());
+    fs::path stage_dir = assets_root / (dir_name + ".tmp." + RandomSuffix());
     if (auto* s = CopyTreeNoFollow(src, stage_dir)) {
       fs::remove_all(stage_dir, ec);
       return s;
@@ -393,9 +393,9 @@ ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg,
                         "Commit dest_root: shared asset source '" + src.string() +
                             "' for " + uri + " is not a directory.");
     }
-    std::string hex = uri.substr(std::strlen("sha256:"));
-    fs::path final_dir = assets_root / ("sha256-" + hex);
-    fs::path stage_dir = assets_root / ("sha256-" + hex + ".tmp." + RandomSuffix());
+    std::string dir_name = mp::DefaultSharedAssetDirName(uri);
+    fs::path final_dir = assets_root / dir_name;
+    fs::path stage_dir = assets_root / (dir_name + ".tmp." + RandomSuffix());
     if (auto* s = CopyTreeNoFollow(src, stage_dir)) {
       fs::remove_all(stage_dir, ec);
       return s;
@@ -621,9 +621,8 @@ ModelPackageStatus* ModelPackage_Prune(ModelPackage* pkg) {
         }
         continue;
       }
-      if (name.rfind("sha256-", 0) != 0) continue;
-      std::string hex = name.substr(std::strlen("sha256-"));
-      std::string uri = "sha256:" + hex;
+      std::string uri = mp::SharedAssetUriFromDirName(name);
+      if (uri.empty()) continue;
       if (pkg->shared_asset_index_by_uri.count(uri)) continue;
       if (!IsOldEnough(entry.path())) continue;
       fs::remove_all(entry.path(), ec);

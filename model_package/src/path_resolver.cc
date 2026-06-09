@@ -4,6 +4,7 @@
 #include "path_resolver.h"
 
 #include <cctype>
+#include <cstring>
 #include <string>
 #include <system_error>
 
@@ -138,6 +139,21 @@ bool TrySplitAssetUriPrefix(const std::string& input, std::string& uri, std::str
   uri.assign(input, 0, kUriLen);
   tail.assign(input, kUriLen + 1, std::string::npos);
   return true;
+}
+
+std::string DefaultSharedAssetDirName(const std::string& uri) {
+  if (!IsSha256AssetUri(uri)) return {};
+  return std::string(kSharedAssetOnDiskPrefix) + uri.substr(std::strlen("sha256:"));
+}
+
+std::string SharedAssetUriFromDirName(const std::string& dir_name) {
+  const size_t prefix_len = std::strlen(kSharedAssetOnDiskPrefix);
+  if (dir_name.size() != prefix_len + 64) return {};
+  if (dir_name.compare(0, prefix_len, kSharedAssetOnDiskPrefix) != 0) return {};
+  for (size_t i = prefix_len; i < dir_name.size(); ++i) {
+    if (!IsHexLower(dir_name[i])) return {};
+  }
+  return "sha256:" + dir_name.substr(prefix_len);
 }
 
 }  // namespace model_package
