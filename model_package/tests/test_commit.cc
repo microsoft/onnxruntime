@@ -177,6 +177,9 @@ bool test_commit_pending_shared_asset_copy_in() {
   CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").c_str(),
                                        nullptr, /*copy_in=*/true, &uri));
   std::string uri_copy(uri);
+  // Reference the asset so commit accepts the pending copy.
+  std::string vbody = R"({"ep":"CPU","uses_assets":[")" + uri_copy + R"("]})";
+  CHECK_OK(ModelPackage_SetVariant(p.get(), "encoder", "v1", vbody.c_str()));
   CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").c_str(),
                                MODEL_PACKAGE_WRITE_PRESERVE));
   std::string hex = uri_copy.substr(7);
@@ -229,6 +232,8 @@ bool test_commit_dest_root_self_contained() {
   CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").c_str(),
                                        nullptr, /*copy_in=*/true, &uri));
   std::string uri_copy(uri);
+  std::string vbody = R"({"ep":"CPU","uses_assets":[")" + uri_copy + R"("]})";
+  CHECK_OK(ModelPackage_SetVariant(p.get(), "encoder", "v1", vbody.c_str()));
   fs::path saved = s.path("saved");
   CHECK_OK(ModelPackage_Commit(p.get(), saved.c_str(), MODEL_PACKAGE_WRITE_PRESERVE));
   CHECK(fs::is_regular_file(saved / "manifest.json"));
@@ -392,6 +397,24 @@ bool test_validate_asset_rehash_detects_mutation() {
   return true;
 }
 
+bool test_commit_rejects_unreferenced_shared_asset() {
+  Sandbox s;
+  s.Write("src_asset/m.onnx", "alpha");
+  PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
+  const char* uri = nullptr;
+  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").c_str(),
+                                       nullptr, /*copy_in=*/true, &uri));
+  // No uses_assets reference, so commit must refuse.
+  CHECK_ERR(ModelPackage_Commit(p.get(), s.path("pkg").c_str(),
+                                MODEL_PACKAGE_WRITE_PRESERVE),
+            MODEL_PACKAGE_ERR_STATE);
+  // Same check on dest_root path.
+  CHECK_ERR(ModelPackage_Commit(p.get(), s.path("saved").c_str(),
+                                MODEL_PACKAGE_WRITE_PRESERVE),
+            MODEL_PACKAGE_ERR_STATE);
+  return true;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Atomicity hint: no stray .tmp.* under <pkg_root> after successful commit
 // ─────────────────────────────────────────────────────────────────────────────
@@ -405,6 +428,8 @@ bool test_commit_leaves_no_temp_files() {
   const char* uri = nullptr;
   CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").c_str(),
                                        nullptr, true, &uri));
+  std::string vbody = std::string(R"({"ep":"CPU","uses_assets":[")") + uri + R"("]})";
+  CHECK_OK(ModelPackage_SetVariant(p.get(), "encoder", "v1", vbody.c_str()));
   CHECK_OK(ModelPackage_SetComponentExternal(p.get(), "decoder", "decoder.json"));
   CHECK_OK(ModelPackage_Commit(p.get(), nullptr,
                                MODEL_PACKAGE_WRITE_PRESERVE));
@@ -436,6 +461,7 @@ const Test kTests[] = {
     {"validate_asset_reach_flags_unknown_uri", test_validate_asset_reach_flags_unknown_uri},
     {"validate_paths_flags_missing_external", test_validate_paths_flags_missing_external},
     {"validate_asset_rehash_detects_mutation", test_validate_asset_rehash_detects_mutation},
+    {"commit_rejects_unreferenced_shared_asset", test_commit_rejects_unreferenced_shared_asset},
     {"commit_leaves_no_temp_files", test_commit_leaves_no_temp_files},
 };
 

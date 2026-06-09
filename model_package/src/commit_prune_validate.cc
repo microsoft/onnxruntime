@@ -215,6 +215,19 @@ ModelPackageStatus* CheckDenseConstraints(ModelPackage* pkg) {
 
 ModelPackageStatus* CommitSharedAssetsCopyIn(ModelPackage* pkg, const fs::path& root) {
   if (pkg->pending_shared_asset_copies.empty()) return nullptr;
+  // Refuse to materialize assets that nothing references — almost always a
+  // forgotten uses_assets edit. The default-convention path is materialized
+  // implicitly by AddSharedAsset(copy_in=true), so we have no manifest entry
+  // to tell us "the user really did want this asset"; the only signal is a
+  // uses_assets entry surfacing it via shared_asset_index_by_uri.
+  for (const auto& [uri, src] : pkg->pending_shared_asset_copies) {
+    if (pkg->shared_asset_index_by_uri.find(uri) == pkg->shared_asset_index_by_uri.end()) {
+      return MakeStatus(MODEL_PACKAGE_ERR_STATE,
+                        "Commit: shared asset " + uri + " was AddSharedAsset'd but no "
+                        "variant references it via uses_assets. Add the reference or "
+                        "RemoveSharedAsset before committing.");
+    }
+  }
   fs::path assets_root = root / "shared_assets";
   std::error_code ec;
   fs::create_directories(assets_root, ec);
@@ -362,6 +375,16 @@ ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg,
     }
   }
 
+  // Refuse pending copies that nothing references — see CommitSharedAssetsCopyIn.
+  for (const auto& [uri, src] : pkg->pending_shared_asset_copies) {
+    if (pkg->shared_asset_index_by_uri.find(uri) == pkg->shared_asset_index_by_uri.end()) {
+      return MakeStatus(MODEL_PACKAGE_ERR_STATE,
+                        "Commit: shared asset " + uri + " was AddSharedAsset'd but no "
+                        "variant references it via uses_assets. Add the reference or "
+                        "RemoveSharedAsset before committing.");
+    }
+  }
+
   // Copy all shared assets into dest_root. Any manifest override entries are
   // re-mapped to the default convention path under dest_root.
   fs::path assets_root = dest_root / "shared_assets";
@@ -378,13 +401,6 @@ ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg,
     } else {
       to_copy.emplace_back(rec->uri, rec->resolved_path);
     }
-  }
-  // Plus pending entries that haven't surfaced into shared_assets yet (no
-  // consumer referenced them via uses_assets, no override entry).
-  for (const auto& [uri, src] : pkg->pending_shared_asset_copies) {
-    bool already = false;
-    for (const auto& [u, _] : to_copy) if (u == uri) { already = true; break; }
-    if (!already) to_copy.emplace_back(uri, src);
   }
 
   for (const auto& [uri, src] : to_copy) {
