@@ -359,6 +359,9 @@ typedef OrtStatus* OrtStatusPtr;
  *
  * Returned by OrtApi::GetExperimentalFunction. Cast to the correct function pointer type before calling.
  * The experimental API function pointer types are defined in onnxruntime_experimental_c_api.h.
+ *
+ * This is a function pointer rather than \c void* because casting between function pointers and object
+ * pointers is undefined behavior in C and C++. Using a function pointer type keeps all casts well-defined.
  */
 typedef void(ORT_API_CALL* OrtExperimentalFnPtr)(void);
 
@@ -7501,7 +7504,7 @@ struct OrtApi {
    * typedefs, name constants, and (for C++) typed accessors.
    *
    * \param[in] name The null-terminated name of the experimental function to look up.
-   *                 Names follow the pattern \<TargetStruct\>_\<Name\>_ExpSinceV\<APIVersion\>.
+   *                 Names follow the pattern \<TargetStruct\>_\<Name\>_V\<APIVersion\>.
    *                 Name constants are defined in onnxruntime_experimental_c_api.h.
    * \return The function pointer cast to ::OrtExperimentalFnPtr, or nullptr if the name is null
    *         or the function is not available in this build. The caller must cast the returned

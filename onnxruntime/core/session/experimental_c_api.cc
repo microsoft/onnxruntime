@@ -20,7 +20,7 @@ namespace OrtExperimentalApis {
 // Test-only experimental function that writes a known sentinel value.
 // Exists to exercise the experimental API mechanism end-to-end and to serve as a template for future experimental
 // functions.
-ORT_API_STATUS_IMPL(OrtApi_ExperimentalApiTest_ExpSinceV27,
+ORT_API_STATUS_IMPL(OrtApi_ExperimentalApiTest_V27,
                     _Out_ int64_t* out) {
   API_IMPL_BEGIN
   if (out == nullptr) {
@@ -45,9 +45,9 @@ struct ExperimentalEntry {
 };
 
 static const ExperimentalEntry kExperimentalFunctions[] = {
-#define ORT_EXPERIMENTAL_API(VER, NAME, ...)          \
-  {kOrtExperimental_##NAME##_ExpSinceV##VER##_FnName, \
-   reinterpret_cast<OrtExperimentalFnPtr>(&OrtExperimentalApis::NAME##_ExpSinceV##VER)},
+#define ORT_EXPERIMENTAL_API(VER, RET, NAME, ...) \
+  {kOrtExperimental_##NAME##_V##VER##_FnName,     \
+   reinterpret_cast<OrtExperimentalFnPtr>(&OrtExperimentalApis::NAME##_V##VER)},
 #include "onnxruntime_experimental_c_api.inc"
 #undef ORT_EXPERIMENTAL_API
 };
