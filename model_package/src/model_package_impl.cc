@@ -395,6 +395,56 @@ ModelPackageStatus* ModelPackage_ResolveAssetUri(const ModelPackage* pkg,
   return nullptr;
 }
 
+ModelPackageStatus* ModelPackage_ResolveStringRef(const ModelPackage* pkg,
+                                                  const char* base_dir,
+                                                  const char* input,
+                                                  bool must_exist,
+                                                  const char** out_path) {
+  if (!pkg) return NullArg("pkg");
+  if (!input) return NullArg("input");
+  if (!out_path) return NullArg("out_path");
+  *out_path = nullptr;
+  static thread_local std::string slot;
+
+  std::string uri_part, tail_part;
+  if (mp::TrySplitAssetUriPrefix(std::string(input), uri_part, tail_part)) {
+    auto asset_it = pkg->shared_asset_index_by_uri.find(uri_part);
+    if (asset_it == pkg->shared_asset_index_by_uri.end()) {
+      return MakeStatus(MODEL_PACKAGE_ERR_ASSET_MISSING,
+                        std::string("Asset URI not declared in this package: '") + uri_part + "'.");
+    }
+    const std::string& asset_folder = pkg->shared_assets[asset_it->second]->resolved_path_cache;
+    if (tail_part.empty()) {
+      slot = asset_folder;
+      *out_path = slot.c_str();
+      return nullptr;
+    }
+    // Tail is resolved with portable confinement under the asset folder:
+    // no absolute, no `..`. follow_symlinks mirrors the package setting.
+    mp::PathResolverOptions tail_opts;
+    tail_opts.allow_external_paths = false;
+    tail_opts.follow_symlinks = pkg->follow_symlinks;
+    std::filesystem::path resolved;
+    if (auto* s = mp::ResolvePath(asset_folder, asset_folder, tail_part, tail_opts,
+                                  must_exist, &resolved)) {
+      return s;
+    }
+    slot = resolved.string();
+    *out_path = slot.c_str();
+    return nullptr;
+  }
+
+  std::filesystem::path base = base_dir ? std::filesystem::path(base_dir) : pkg->package_root;
+  std::filesystem::path resolved;
+  if (auto* s = mp::ResolvePath(base, pkg->package_root, std::string(input),
+                                mp::PathOptionsFor(pkg), must_exist, &resolved)) {
+    return s;
+  }
+  slot = resolved.string();
+  *out_path = slot.c_str();
+  return nullptr;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Round-trip JSON getters
 // ─────────────────────────────────────────────────────────────────────────────

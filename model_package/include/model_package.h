@@ -179,6 +179,29 @@ MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_ResolveAssetUri(const ModelPa
                                                                    const char* uri,
                                                                    const char** out_path);
 
+/// Resolve a string reference using the model package's path resolution rules.
+/// `input` may be:
+///   - `sha256:<hex>`               -> shared-asset folder
+///   - `sha256:<hex>/sub/path`      -> file or subdir inside a shared-asset folder
+///                                     (sub/path is resolved with portable-mode
+///                                     confinement under the asset folder: no
+///                                     absolute, no `..`)
+///   - relative path                -> resolved against `base_dir` (or
+///                                     `package_root` when `base_dir == NULL`),
+///                                     confined to `package_root` in portable layout
+///   - absolute path / `..` segments -> only allowed in installed layout
+///
+/// `must_exist` controls whether a missing target is `MODEL_PACKAGE_ERR_NOT_FOUND`
+/// or the lexically-normalized path is returned anyway.
+/// On success `*out_path` points to a NUL-terminated thread-local string; copy
+/// it if you need it to outlive the next `ModelPackage_ResolveStringRef` call on
+/// the same thread.
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_ResolveStringRef(const ModelPackage*,
+                                                                    const char* base_dir,
+                                                                    const char* input,
+                                                                    bool must_exist,
+                                                                    const char** out_path);
+
 /// Compute the canonical `sha256:<hex>` URI for a directory. On success,
 /// `*out_uri` is set to a NUL-terminated string owned by an internal
 /// thread-local slot; the caller must copy if it must outlive the next call

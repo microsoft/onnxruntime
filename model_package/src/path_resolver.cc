@@ -120,4 +120,24 @@ ModelPackageStatus* ResolvePath(const fs::path& base_dir,
   return nullptr;
 }
 
+bool TrySplitAssetUriPrefix(const std::string& input, std::string& uri, std::string& tail) {
+  static constexpr size_t kPrefixLen = 7;  // "sha256:"
+  static constexpr size_t kHexLen = 64;
+  static constexpr size_t kUriLen = kPrefixLen + kHexLen;
+  if (input.size() < kUriLen) return false;
+  if (input.compare(0, kPrefixLen, "sha256:") != 0) return false;
+  for (size_t i = kPrefixLen; i < kUriLen; ++i) {
+    if (!IsHexLower(input[i])) return false;
+  }
+  if (input.size() == kUriLen) {
+    uri.assign(input);
+    tail.clear();
+    return true;
+  }
+  if (input[kUriLen] != '/') return false;
+  uri.assign(input, 0, kUriLen);
+  tail.assign(input, kUriLen + 1, std::string::npos);
+  return true;
+}
+
 }  // namespace model_package

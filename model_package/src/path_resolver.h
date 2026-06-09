@@ -40,4 +40,9 @@ ModelPackageStatus* ResolvePath(const std::filesystem::path& base_dir,
 /// True if `uri` matches `^sha256:[0-9a-f]{64}$`.
 bool IsSha256AssetUri(const std::string& uri);
 
+/// If `input` begins with a `sha256:<hex>` token followed by end-of-string or
+/// '/', split into `uri` (the bare URI) and `tail` (substring after '/', or
+/// empty). Returns true on a match, false otherwise.
+bool TrySplitAssetUriPrefix(const std::string& input, std::string& uri, std::string& tail);
+
 }  // namespace model_package

@@ -455,6 +455,26 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
 
         VariantModelInfo ort_file{};
 
+        // Common resolver for ORT-side string refs (model_file, external_data).
+        // Delegates to ModelPackage_ResolveStringRef so accepted forms (relative,
+        // absolute, '..', sha256: URI, sha256: URI + subpath) and portable/installed
+        // confinement match the rest of the model_package library.
+        const std::string base_dir_str = ort_variant.folder_path.string();
+        const char* base_dir = base_dir_str.empty() ? nullptr : base_dir_str.c_str();
+        auto resolve_string_ref = [&](const char* field, const std::string& input,
+                                      bool must_exist) -> std::string {
+          const char* resolved = nullptr;
+          if (::ModelPackageStatus* st = ::ModelPackage_ResolveStringRef(
+                  pkg, base_dir, input.c_str(), must_exist, &resolved)) {
+            std::string msg = ::ModelPackageStatus_Message(st) ? ::ModelPackageStatus_Message(st)
+                                                                : "unknown error";
+            ::ModelPackageStatus_Release(st);
+            ORT_THROW("Failed to resolve ORT variant '", field, "' = '", input, "' for variant '",
+                      ort_variant.variant_name, "' in component '", component_name, "': ", msg);
+          }
+          return resolved ? std::string(resolved) : std::string{};
+        };
+
         if (auto it = ort_obj->find("model_file"); it != ort_obj->end()) {
           if (!it->is_string()) {
             ORT_THROW("ORT variant configuration: model_file must be a string for variant '",
@@ -462,9 +482,8 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
           }
           const std::string model_file = it->get<std::string>();
           ort_file.identifier = model_file;
-          ort_file.model_file_path = ort_variant.folder_path.empty()
-                                         ? std::filesystem::path(model_file)
-                                         : ort_variant.folder_path / model_file;
+          ort_file.model_file_path = resolve_string_ref("model_file", model_file,
+                                                         /*must_exist=*/false);
         }
 
         auto fill_string_map = [&](const char* key,
@@ -489,32 +508,13 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
         fill_string_map("session_options", ort_file.session_options);
         fill_string_map("provider_options", ort_file.provider_options);
 
-        // external_data: a path (relative to variant folder) or a sha256: URI.
-        // Resolve to an on-disk folder and stash it for the session creation path
-        // to feed into kOrtSessionOptionsModelExternalInitializersFileFolderPath.
         if (auto it = ort_obj->find("external_data"); it != ort_obj->end()) {
           if (!it->is_string()) {
             ORT_THROW("ORT variant configuration: external_data must be a string for variant '",
                       ort_variant.variant_name, "' in component '", component_name, "'");
           }
-          const std::string ext = it->get<std::string>();
-          std::string resolved;
-          if (ext.rfind("sha256:", 0) == 0) {
-            const char* asset_path = nullptr;
-            if (::ModelPackageStatus* st = ::ModelPackage_ResolveAssetUri(pkg, ext.c_str(), &asset_path)) {
-              std::string msg = ::ModelPackageStatus_Message(st) ? ::ModelPackageStatus_Message(st)
-                                                                  : "unknown error";
-              ::ModelPackageStatus_Release(st);
-              ORT_THROW("Failed to resolve external_data shared asset '", ext, "' for variant '",
-                        ort_variant.variant_name, "' in component '", component_name, "': ", msg);
-            }
-            resolved = asset_path ? asset_path : ext;
-          } else {
-            resolved = ort_variant.folder_path.empty()
-                           ? ext
-                           : (ort_variant.folder_path / ext).string();
-          }
-          ort_file.external_data_folder_path = std::move(resolved);
+          ort_file.external_data_folder_path = resolve_string_ref(
+              "external_data", it->get<std::string>(), /*must_exist=*/false);
         }
 
         if (!ort_file.identifier.empty() || ort_file.session_options.has_value() ||
