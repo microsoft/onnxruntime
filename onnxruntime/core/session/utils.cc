@@ -1021,6 +1021,11 @@ OrtStatus* CreateSessionForModelPackage(_In_ const OrtSessionOptions* options,
                                                       mapped_model));
     model_data = mapped_model.get();
     model_data_length = model_file_length;
+  } else if (options_to_use == nullptr) {
+    // No external_data and caller did not pass options: synthesize a default
+    // OrtSessionOptions so the downstream *options_to_use dereferences are safe.
+    cloned_options = std::make_unique<OrtSessionOptions>();
+    options_to_use = cloned_options.get();
   }
 
   if (model_data != nullptr) {
@@ -1050,7 +1055,7 @@ OrtStatus* CreateSessionForModelPackage(_In_ const OrtSessionOptions* options,
     }
   }
 
-  if (model_package_context.IsFromPolicy() && options_to_use != nullptr) {
+  if (model_package_context.IsFromPolicy()) {
     ProviderPolicyContext provider_policy_context;
     ORT_API_RETURN_IF_STATUS_NOT_OK(provider_policy_context.LogTelemetry(
         *sess, *options_to_use,
