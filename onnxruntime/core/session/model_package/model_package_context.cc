@@ -344,6 +344,37 @@ Status ModelPackageComponentContext::GetSelectedVariantName(const std::string*& 
   return Status::OK();
 }
 
+Status ModelPackageComponentContext::GetSelectedVariantExternalDataFolder(
+    const std::string*& out_folder) const {
+  out_folder = nullptr;
+
+  if (external_data_folder_cache_valid_) {
+    if (!external_data_folder_cache_.empty()) {
+      out_folder = &external_data_folder_cache_;
+    }
+    return Status::OK();
+  }
+
+  const VariantInfo* selected_variant = nullptr;
+  ORT_RETURN_IF_ERROR(GetSelectedVariantInfo(selected_variant));
+  ORT_RETURN_IF(selected_variant == nullptr,
+                "Selected variant is null for component: ", component_model_name_);
+
+  external_data_folder_cache_.clear();
+  external_data_folder_cache_valid_ = true;
+  if (!selected_variant->file.has_value() || !selected_variant->file->shared_files.has_value()) {
+    return Status::OK();
+  }
+  const auto& shared = *selected_variant->file->shared_files;
+  auto it = shared.find("external_data");
+  if (it == shared.end() || it->second.empty()) {
+    return Status::OK();
+  }
+  external_data_folder_cache_ = it->second;
+  out_folder = &external_data_folder_cache_;
+  return Status::OK();
+}
+
 ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_root) {
   // Open the package via the model_package C API. RAII guard ensures the handle is
   // released even on exception paths during conversion to ORT-internal types.

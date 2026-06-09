@@ -124,6 +124,12 @@ class ModelPackageComponentContext {
 
   Status GetSelectedVariantName(const std::string*& out_name) const;
 
+  // Returns the resolved external_data folder (variant.json
+  // executor_info.ort.external_data) so the caller can pass it as
+  // session.model_external_initializers_file_folder_path. nullptr-on-success
+  // means the variant declared none.
+  Status GetSelectedVariantExternalDataFolder(const std::string*& out_folder) const;
+
   std::vector<std::unique_ptr<IExecutionProvider>>& MutableProviderList() { return provider_list_; }
   const std::vector<const OrtEpDevice*>& ExecutionDevices() const { return execution_devices_; }
   const std::vector<const OrtEpDevice*>& DevicesSelected() const { return devices_selected_; }
@@ -152,6 +158,8 @@ class ModelPackageComponentContext {
   mutable std::string consumer_metadata_cache_{};
   mutable bool consumer_metadata_cache_valid_{false};
   mutable std::filesystem::path folder_path_cache_{};
+  mutable std::string external_data_folder_cache_{};
+  mutable bool external_data_folder_cache_valid_{false};
   mutable std::vector<std::string> session_option_keys_cache_{};
   mutable std::vector<std::string> session_option_values_cache_{};
   mutable std::vector<std::string> provider_option_keys_cache_{};
