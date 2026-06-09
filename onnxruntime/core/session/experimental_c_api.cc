@@ -5,6 +5,7 @@
 // See onnxruntime_experimental_c_api.inc for the declaration list and lifecycle rules.
 
 #include <cstring>
+#include <array>
 
 #include "core/framework/error_code_helper.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -44,11 +45,11 @@ struct ExperimentalEntry {
   OrtExperimentalFnPtr fn;
 };
 
-static const ExperimentalEntry kExperimentalFunctions[] = {
+static const std::array kExperimentalFunctions{
 
-#define ORT_EXPERIMENTAL_API(VER, RET, NAME, ...)  \
-  {kOrtExperimental_##NAME##_SinceV##VER##_FnName, \
-   reinterpret_cast<OrtExperimentalFnPtr>(&OrtExperimentalApis::NAME##_SinceV##VER)},
+#define ORT_EXPERIMENTAL_API(VER, RET, NAME, ...)                   \
+  ExperimentalEntry{kOrtExperimental_##NAME##_SinceV##VER##_FnName, \
+                    reinterpret_cast<OrtExperimentalFnPtr>(&OrtExperimentalApis::NAME##_SinceV##VER)},
 
 #include "onnxruntime_experimental_c_api.inc"
 
