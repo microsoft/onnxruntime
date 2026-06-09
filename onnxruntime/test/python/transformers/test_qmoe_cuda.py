@@ -2110,7 +2110,7 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
     hardware (the other ``test_swiglu_qmoe_parity_*`` cases in this file
     fail on H200 / H100 with max-diff > 1.0 on plain main, by
     inspection — pre-existing). A real parity check can be added once
-    that harness honours the runtime SM.
+    that harness honors the runtime SM.
     """
 
     def _run_one(self, *, hidden_size, inter_size, num_experts, top_k, swiglu_fusion, batch_size):

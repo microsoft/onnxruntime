@@ -1528,7 +1528,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "pack_weights_for_cuda_mixed_gemm) and are consumed as-is. 0: the initializers "
               "are raw, un-prepacked [E, N, K/pack] tensors as produced by "
               "quantize_matmul_{4,8}bits; the kernel runs the CUTLASS layout transform itself "
-              "in PrePack(), matching the behaviour of MatMulNBits and removing the offline "
+              "in PrePack(), matching the behavior of MatMulNBits and removing the offline "
               "pre-pack requirement from exporters. Defaults to -1 (auto) so each execution "
               "provider can pick its own backward-compatible default rather than the schema "
               "imposing one.",

@@ -850,7 +850,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     // PrePack converted the raw int4/int8 weights to the CUTLASS fpA_intB
     // layout that the runner consumes and freed the source initializer
     // (``is_packed = true``). Gate on ``int_weights_consumed_by_prepack``
-    // (which already requires ``packed_fc1_weights_ != nullptr``) rather than
+    // (which already requires both packed weight buffers) rather than
     // just ``is_int && !weights_prepacked_``: when prepacking is disabled at
     // the session level (``session.disable_prepacking``) PrePack never runs,
     // the prepack buffers stay null, and the raw initializer pointers read
@@ -1158,22 +1158,7 @@ void QMoE::PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, Al
   const int64_t k_packed = shape[2];
   const int64_t k = k_packed * pack_factor;
 
-  // Weight packing is architecture-aware (see
-  // docs/contrib_ops/cuda/moe_qmoe.md §7 "Cross-Architecture Packing
-  // Compatibility"). SM90 (Hopper) uses its own Permuted-Linear layout that
-  // skips column interleaving, so it is its own compatibility group. Every
-  // other supported arch — SM75/80/86/89 and SM100/120 (Blackwell) — shares
-  // the SM80 fpA_intB layout, so they all pack as SM80. SM70 and older lack
-  // INT8 LDSM and are unsupported. The compute-side runner selects the same
-  // layout from this clamped arch, so the two cannot drift.
-  //
-  // SM75 is passed through unchanged (rather than clamped to 80) even though it
-  // shares SM80's layout: the compute-side dispatch (getLayoutDetailsForTransform)
-  // still has a distinct SM75 branch, so mirroring it here avoids confusing a
-  // reader into thinking prepack and dispatch disagree.
-  ORT_ENFORCE(sm_ >= 75,
-              "QMoE int4/int8 weight prepack requires SM75 or newer, got sm=", sm_);
-  const int packing_sm = (sm_ == 90 || sm_ == 75) ? sm_ : 80;
+  const int packing_sm = onnxruntime::llm::kernels::weight_only::get_arch_for_mixed_gemm_weight_preprocess(sm_);
 
   // Per-expert sizes.
   const size_t per_expert_bytes = static_cast<size_t>(n) * static_cast<size_t>(k) / pack_factor;
