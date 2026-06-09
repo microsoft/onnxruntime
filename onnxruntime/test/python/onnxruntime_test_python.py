@@ -2190,7 +2190,8 @@ class TestInferenceSession(unittest.TestCase):
             gc.collect()
             np.testing.assert_allclose(single_value.numpy(), param_1)
         finally:
-            os.remove(file_path)
+            if os.path.exists(file_path):
+                os.remove(file_path)
 
     def test_adapter_export_rejects_string_tensors(self):
         # Regression test: export_adapter previously serialized Tensor::DataRaw()

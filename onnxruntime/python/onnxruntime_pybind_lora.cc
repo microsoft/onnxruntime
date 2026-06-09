@@ -193,7 +193,7 @@ void addAdapterFormatMethods(pybind11::module& m) {
             return std::make_unique<PyAdapterFormatReaderWriter>(
                 format_version, adapter_version, model_version, std::move(params));
           },
-          R"pbdoc(The function returns an instance of the class that contains a dictionary of name -> numpy arrays)pbdoc");
+          R"pbdoc(The function returns an instance of the class that contains a dictionary of name -> OrtValue)pbdoc");
 
   py::class_<lora::LoraAdapter> lora_adapter_binding(m, "LoraAdapter");
   lora_adapter_binding.def(py::init())
