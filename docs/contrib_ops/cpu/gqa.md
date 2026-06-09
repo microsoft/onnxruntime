@@ -17,7 +17,12 @@ Quantized KV-cache GEMM helpers are implemented in MLAS:
 - `onnxruntime/core/mlas/lib/qkv_quant_kernel_avx2.cpp`
 - `onnxruntime/core/mlas/lib/qkv_quant_kernel_avx512vnni.cpp`
 - `onnxruntime/core/mlas/lib/qkv_quant_kernel_neon.cpp`
-- `onnxruntime/core/mlas/lib/flashattn_qkv.cpp` (flash attention tiled kernel)
+- `onnxruntime/core/mlas/lib/flashattn_qkv.cpp` (quantized-KV flash attention tiled kernel)
+
+The non-quantized flash attention tiled kernel is implemented in MLAS:
+
+- `onnxruntime/core/mlas/lib/flashattn_gqa.cpp` (FP32-KV flash attention tiled kernel)
+- `onnxruntime/core/mlas/inc/mlas.h` (`MlasFlashAttentionGQA` declaration and `MlasFlashAttentionGQAArgs`)
 
 The operator schema itself is defined in:
 
@@ -48,12 +53,14 @@ At a high level, the CPU kernel executes GroupQueryAttention in these stages:
 
 The non-quantized and quantized paths share the surrounding validation, masking, softmax, and output flow. Their main difference is how the K/V cache is stored and read during QK and SV GEMMs.
 
-The quantized path has two execution strategies:
+Both the non-quantized and quantized paths have two execution strategies:
 
 - **Naive (full materialization)**: Computes the full `[S, T]` attention score matrix, applies masking and softmax, then computes the SV product. Simple but memory-intensive for long sequences.
 - **Flash Attention (tiled, online softmax)**: Processes K/V in L2-cache-sized blocks using the online softmax algorithm (Milakov & Gimelshein, 2018). Avoids materializing the full attention matrix, reducing peak memory from O(S×T) to O(S×Bc) per head. Multi-threaded via the MLAS thread pool.
 
-The flash path is selected by default when conditions are met (see below). Set `ORT_GQA_DISABLE_FLASH_ATTENTION=1` to force the naive path.
+The quantized path uses `MlasFlashAttentionQuantizedKV` (`flashattn_qkv.cpp`); the non-quantized FP32 path uses `MlasFlashAttentionGQA` (`flashattn_gqa.cpp`). Both share the same tiling, masking, online-softmax, and flash-decoding structure.
+
+The flash path is selected by default when conditions are met (see below). Set `ORT_GQA_DISABLE_FLASH_ATTENTION=1` to force the naive path (applies to both the quantized and non-quantized paths).
 
 ## Supported Cache Modes
 
@@ -144,9 +151,9 @@ For quantized V cache, the CPU path calls `MlasSVGemm` with:
 
 As with QK GEMM, the default MLAS contract preserves the FP32 left-hand operand and dequantizes only the cached V values on the fly.
 
-## Flash Attention Path
+## Quantized Flash Attention Path
 
-The flash attention path (`MlasFlashAttentionQuantizedKV`) processes K/V in blocks with online softmax, fusing QK, masking, softmax, and SV into a single tiled loop. This avoids the O(S×T) memory allocation for the full attention matrix.
+The quantized flash attention path (`MlasFlashAttentionQuantizedKV`) processes K/V in blocks with online softmax, fusing QK, masking, softmax, and SV into a single tiled loop. This avoids the O(S×T) memory allocation for the full attention matrix.
 
 ### Algorithm
 
@@ -203,6 +210,47 @@ When `batch × num_heads < thread_count` and `kv_chunk_count > 1`, the kernel sw
 The partials buffer is allocated alongside the per-thread scratch in a single allocation:
 - Per-thread scratch: `scores[Bc]` (one float per KV block element)
 - Partials: `batch × num_heads × kv_chunks × (2 + H)` floats (m, l, and partial output per chunk)
+
+## Non-Quantized Flash Attention Path
+
+The non-quantized flash attention path (`MlasFlashAttentionGQA`, in `flashattn_gqa.cpp`) is the FP32-KV-cache counterpart of the quantized path. It is selected for the `float` kernel specialization and reuses the same tiling, online-softmax, masking, and flash-decoding structure.
+
+### Differences from the Quantized Path
+
+- **Cache element type**: The present K/V cache is FP32, laid out as BNSH (`[batch, kv_num_heads, seqlen_present, head_size]`). There is no quantize-on-write or dequantize-on-read step.
+- **QK GEMM**: Uses the single-threaded SGEMM primitive `MlasSgemmOperation(CblasNoTrans, CblasTrans, ...)` on an FP32 K block instead of `MlasQKGemm`.
+- **SV accumulate**: Uses `MlasSgemmOperation(CblasNoTrans, CblasNoTrans, ..., beta)` with `beta = 0` for the first KV block and `beta = 1` afterwards (accumulate) instead of `MlasSVGemm`.
+- **Cache concat**: New K/V tokens are appended into the FP32 present cache with `ConcatStateChunkGQA<float>` before the tiled loop runs.
+
+### Algorithm
+
+For each (batch, head, q_block) tile:
+
+1. **QK GEMM** — `MlasSgemmOperation` of the query tile against a block slice of the FP32 K cache (Bc rows at a time)
+1b. **Attention bias** — Add the corresponding tile of the bias tensor (if present) to QK scores
+2. **Causal + local window masking** — Set masked positions to −∞ before softmax
+3. **Online softmax** — Track running max `m` and sum `l`, rescale accumulated output with `exp(m_old − m_new)`
+4. **SV accumulate** — `MlasSgemmOperation(..., beta)` accumulates `softmax(QK_block) × V_block` into the output tile
+5. **Finalize** — Normalize accumulated output by `1/l` after all KV blocks are processed
+
+### Activation Conditions
+
+The non-quantized flash path is selected when ALL of the following hold:
+
+- The kernel specialization is `float` (FP16 uses the naive path)
+- `ORT_GQA_DISABLE_FLASH_ATTENTION` environment variable is not set (or set to `0`)
+- `total_sequence_length > 1`
+- No softcap
+- No smooth softmax
+- No head sink
+- No output QK capture
+- `present_key` and `present_value` are provided
+
+Attention bias, causal masking, local window attention, GQA head grouping (`num_heads != kv_num_heads`), ragged per-batch sequence lengths, shared past/present buffers, and flash decoding are all supported, mirroring the quantized flash path. When any condition is not met, the kernel falls back to the naive full-materialization path.
+
+### Block Sizes, Threading, and Flash Decoding
+
+Block-size selection (`kv_block_size`, `q_block_size`), `(batch, head, q_block)` task partitioning, the per-thread working buffer layout (`l`, `m`, `scores`, `temp_output`), and the two-phase flash-decoding strategy for single-token decode are identical to the quantized path described above. The only difference is that the per-thread `temp_output` tile is accumulated directly by the SV SGEMM rather than via a fused dequantization.
 
 ## MLAS Dispatch Paths
 
