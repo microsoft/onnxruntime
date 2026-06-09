@@ -120,11 +120,18 @@ Status CastProgram::GenerateShaderCode(ShaderHelper& sh) const {
 
   if (is_from_int64_ && to_ != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
     // int64 -> non-int64
-    sh.MainFunctionBody() << "  let a0 = " << input.GetByOffset("global_idx * 4") << ";\n"
-                          << "  let a1 = " << input.GetByOffset("global_idx * 4 + 1") << ";\n"
-                          << "  let a2 = " << input.GetByOffset("global_idx * 4 + 2") << ";\n"
-                          << "  let a3 = " << input.GetByOffset("global_idx * 4 + 3") << ";\n"
-                          << "  let a = vec4<i32>(a0, a1, a2, a3);\n";
+    // Load lanes 1-3 conditionally to avoid out-of-bounds reads when size % 4 != 0.
+    // Lane 0 is always valid due to the workgroup size guard.
+    sh.MainFunctionBody() << "  let base = global_idx * 4u;\n"
+                          << "  let a0 = " << input.GetByOffset("base") << ";\n"
+                          << "  var a1: i32 = 0;\n"
+                          << "  var a2: i32 = 0;\n"
+                          << "  var a3: i32 = 0;\n";
+    for (size_t i = 1; i < 4; ++i) {
+      sh.MainFunctionBody() << "  if (base + " << i << "u < uniforms.output_size) { a" << i
+                            << " = " << input.GetByOffset(MakeStringWithClassicLocale("base + ", i, "u")) << "; }\n";
+    }
+    sh.MainFunctionBody() << "  let a = vec4<i32>(a0, a1, a2, a3);\n";
     sh.MainFunctionBody() << output.SetByOffset("global_idx", expression);
   } else if (to_ == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
     // cast to int64
@@ -155,7 +162,7 @@ Status CastProgram::GenerateShaderCode(ShaderHelper& sh) const {
       }
     }
     // Note: Direct array assignment is used here instead of output.SetByOffset() because
-    // the values are already vec2<u32> (64-bit representations), not int32 scalars.
+    // the values are already vec2<u32> (64-bit representations).
     // SetByOffset would incorrectly try to convert int32 to int64.
     sh.MainFunctionBody() << "  y[base] = " << values[0] << ";\n";
     for (size_t i = 1; i < 4; ++i) {
