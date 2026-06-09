@@ -504,10 +504,11 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   const uint32_t present_sequence_length = static_cast<uint32_t>(present_key->Shape()[2]);
 
   // Route between prefill path (FlashAttentionProgram, single kernel)
-  // and fused decode path (QKV + VxReduce, 2 kernels).
-  const bool use_split_reduce = (parameters.sequence_length_ <= 4) ||
-                                (parameters.sequence_length_ < 32 &&
-                                 static_cast<uint32_t>(parameters.total_sequence_length_) > 1000);
+  // and split-reduce decode path (QKV + VxReduce, 2 kernels).
+  // Split-reduce wins for short Q (sequence_length < 32) across all KV
+  // cache lengths measured: 1.13x-2.07x faster at total_sequence_length
+  // 128 / 500 / 2000 on a representative LLM (32 heads, head_size 96).
+  const bool use_split_reduce = parameters.sequence_length_ < 32;
 
   if (!use_split_reduce) {
     // Prefill path: FlashAttentionProgram (single kernel with subgroup shuffles)
