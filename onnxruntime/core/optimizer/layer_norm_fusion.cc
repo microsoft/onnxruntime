@@ -752,6 +752,19 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // Assign provider to this new node. Provider should be same as the provider for old node.
     layer_norm_node.SetExecutionProviderType(reduce_mean_node.GetExecutionProviderType());
 
+    // Pow has two inputs: x and exponent (e.g. 2.0 constant).
+    // After fusion, the exponent is no longer needed (SimplifiedLayerNormalization
+    // computes variance internally). If the exponent is connected via a graph edge
+    // (Constant node or Cast-from-constant), remove that edge before FinalizeNodeFusion
+    // so that MoveAllNodeInputEdges doesn't try to move it to the fused node.
+    for (auto it = pow_node.InputEdgesBegin(), end = pow_node.InputEdgesEnd(); it != end; ++it) {
+      if (it->GetDstArgIndex() == 1) {
+        graph.RemoveEdge(it->GetNode().Index(), pow_node.Index(),
+                         it->GetSrcArgIndex(), it->GetDstArgIndex());
+        break;
+      }
+    }
+
     // move input edges to add (first in list) across to the layer_norm_node.
     // move output definitions and output edges from mul_node (last in list) to layer_norm_node.
     // remove all the other nodes.
