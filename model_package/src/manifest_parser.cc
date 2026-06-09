@@ -499,6 +499,92 @@ ModelPackageStatus* RefreshSharedAssets(ModelPackage* pkg, const PathResolverOpt
   return LoadSharedAssets(pkg, opts);
 }
 
+namespace {
+
+ModelPackageStatus* ResolveExecutorInfoEntry(const ModelPackage* pkg,
+                                             const VariantRecord& var,
+                                             const std::string& ns,
+                                             const ordered_json& entry,
+                                             bool strict_missing_external,
+                                             std::string* dst_json) {
+  if (entry.is_object()) {
+    *dst_json = entry.dump();
+    return nullptr;
+  }
+  if (entry.is_string()) {
+    if (!var.resolved_directory.has_value()) {
+      if (!strict_missing_external) {
+        dst_json->clear();
+        return nullptr;
+      }
+      return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
+                        "variant '" + var.name + "': executor_info['" + ns +
+                            "'] points at an external file but the variant has no "
+                            "resolved variant_directory to anchor it.");
+    }
+    PathResolverOptions opts = PathOptionsFor(pkg);
+    fs::path resolved;
+    if (auto* s = ResolvePath(*var.resolved_directory, pkg->package_root,
+                              entry.get<std::string>(), opts,
+                              /*must_exist=*/strict_missing_external, &resolved)) {
+      if (!strict_missing_external) {
+        ModelPackageStatus_Release(s);
+        dst_json->clear();
+        return nullptr;
+      }
+      return s;
+    }
+    std::ifstream f(resolved, std::ios::binary);
+    if (!f) {
+      if (!strict_missing_external) {
+        dst_json->clear();
+        return nullptr;
+      }
+      return MakeStatus(MODEL_PACKAGE_ERR_IO,
+                        "Cannot open executor_info file: '" + resolved.string() + "'.");
+    }
+    std::ostringstream buf;
+    buf << f.rdbuf();
+    std::string contents = buf.str();
+    try {
+      auto _ = ordered_json::parse(contents);
+      (void)_;
+    } catch (const std::exception& e) {
+      return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
+                        std::string("Failed to parse executor_info JSON at '") +
+                            resolved.string() + "': " + e.what());
+    }
+    *dst_json = std::move(contents);
+    return nullptr;
+  }
+  return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
+                    "variant '" + var.name + "': executor_info['" + ns +
+                        "'] must be a string or object.");
+}
+
+}  // namespace
+
+ModelPackageStatus* RefreshExecutorInfoCache(ModelPackage* pkg, bool strict_missing_external) {
+  for (auto& comp : pkg->components) {
+    for (auto& vp : comp->variants) {
+      VariantRecord& var = *vp;
+      var.executor_info_resolved.clear();
+      auto ei_it = var.body.find("executor_info");
+      if (ei_it == var.body.end() || !ei_it->is_object()) continue;
+      var.executor_info_resolved.reserve(ei_it->size());
+      for (auto e = ei_it->begin(); e != ei_it->end(); ++e) {
+        std::string body_json;
+        if (auto* s = ResolveExecutorInfoEntry(pkg, var, e.key(), e.value(),
+                                               strict_missing_external, &body_json)) {
+          return s;
+        }
+        var.executor_info_resolved.emplace_back(e.key(), std::move(body_json));
+      }
+    }
+  }
+  return nullptr;
+}
+
 ModelPackageStatus* ParsePackage(const fs::path& package_root,
                                  const ModelPackageOpenOptions& opts,
                                  ModelPackage* pkg) {
@@ -556,6 +642,7 @@ ModelPackageStatus* ParsePackage(const fs::path& package_root,
 
   if (auto* s = LoadSharedAssets(pkg, presolve_opts)) return s;
   if (auto* s = PopulatePackageMetadata(pkg)) return s;
+  if (auto* s = RefreshExecutorInfoCache(pkg, /*strict_missing_external=*/true)) return s;
 
   return nullptr;
 }

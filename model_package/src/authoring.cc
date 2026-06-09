@@ -78,7 +78,8 @@ ModelPackageStatus* PostMutate(ModelPackage* pkg, bool refresh_assets = true) {
   if (refresh_assets) {
     if (auto* s = RefreshSharedAssetsHelper(pkg)) return s;
   }
-  return mp::RefreshPackageMetadata(pkg);
+  if (auto* s = mp::RefreshPackageMetadata(pkg)) return s;
+  return mp::RefreshExecutorInfoCache(pkg, /*strict_missing_external=*/false);
 }
 
 ordered_json& EnsureManifestComponentsObject(ModelPackage* pkg) {

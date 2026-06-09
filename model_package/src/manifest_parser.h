@@ -47,6 +47,15 @@ ModelPackageStatus* RefreshPackageMetadata(ModelPackage* pkg);
 /// and `shared_asset_index_by_uri`.
 ModelPackageStatus* RefreshSharedAssets(ModelPackage* pkg, const PathResolverOptions& opts);
 
+/// Re-resolve every variant's executor_info entries into stable strings on the
+/// VariantRecord (inline bodies dumped, external files loaded + JSON-parsed).
+/// If `strict_missing_external` is true, missing external files are an error
+/// (use at Open: the package is already published, files must be present);
+/// if false, missing external files are recorded as an empty body (use during
+/// authoring: callers may set the path before writing the file). Parse errors
+/// on existing external files are always surfaced.
+ModelPackageStatus* RefreshExecutorInfoCache(ModelPackage* pkg, bool strict_missing_external);
+
 /// Build PathResolverOptions appropriate for `pkg` (respects layout).
 PathResolverOptions PathOptionsFor(const ModelPackage* pkg);
 

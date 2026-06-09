@@ -8,9 +8,7 @@
 
 #include <cstddef>
 #include <cstring>
-#include <fstream>
 #include <new>
-#include <sstream>
 #include <string>
 
 #include "asset_hasher.h"
@@ -55,61 +53,6 @@ void DropViewCache(ModelPackage* pkg) {
   pkg->additional_metadata_cache.reset();
 }
 
-namespace {
-
-// Materialize an executor_info entry's JSON string into `dst` (a slot in the
-// view cache string_pool) and fill out an ABI entry. Returns nullptr on
-// success, or a status describing why the entry could not be rendered.
-ModelPackageStatus* MaterializeExecutorInfoEntry(const ModelPackage* pkg,
-                                                 const VariantRecord& var,
-                                                 const std::string& ns,
-                                                 const ordered_json& entry,
-                                                 std::string* dst_json) {
-  if (entry.is_object()) {
-    *dst_json = entry.dump();
-    return nullptr;
-  }
-  if (entry.is_string()) {
-    if (!var.resolved_directory.has_value()) {
-      return MakeStatus(MODEL_PACKAGE_ERR_NOT_FOUND,
-                        "variant '" + var.name + "' has no variant_directory for "
-                        "external executor_info file.");
-    }
-    PathResolverOptions opts;
-    opts.allow_external_paths = pkg->allow_external_paths || (pkg->layout == "installed");
-    opts.follow_symlinks = pkg->follow_symlinks;
-    std::filesystem::path resolved;
-    if (auto* s = ResolvePath(*var.resolved_directory, pkg->package_root,
-                              entry.get<std::string>(), opts,
-                              /*must_exist=*/true, &resolved)) {
-      return s;
-    }
-    std::ifstream f(resolved, std::ios::binary);
-    if (!f) {
-      return MakeStatus(MODEL_PACKAGE_ERR_IO,
-                        "Cannot open executor_info file: '" + resolved.string() + "'.");
-    }
-    std::ostringstream buf;
-    buf << f.rdbuf();
-    std::string contents = buf.str();
-    try {
-      auto _ = ordered_json::parse(contents);
-      (void)_;
-    } catch (const std::exception& e) {
-      return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
-                        std::string("Failed to parse executor_info JSON at '") +
-                            resolved.string() + "': " + e.what());
-    }
-    *dst_json = std::move(contents);
-    return nullptr;
-  }
-  return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
-                    "variant '" + var.name + "': executor_info['" + ns +
-                        "'] must be a string or object.");
-}
-
-}  // namespace
-
 const InfoViewCache& BuildOrGetViewCache(const ModelPackage* pkg) {
   if (pkg->info_cache.has_value()) return *pkg->info_cache;
 
@@ -134,10 +77,7 @@ const InfoViewCache& BuildOrGetViewCache(const ModelPackage* pkg) {
     size_t total_execs = 0;
     for (const auto& vp : comp.variants) {
       total_used += vp->used_asset_uri_caches.size();
-      auto ei_it = vp->body.find("executor_info");
-      if (ei_it != vp->body.end() && ei_it->is_object()) {
-        total_execs += ei_it->size();
-      }
+      total_execs += vp->executor_info_resolved.size();
     }
     cache.used_assets_storage[ci].reserve(total_used);
     cache.executor_infos_storage[ci].reserve(total_execs);
@@ -156,31 +96,15 @@ const InfoViewCache& BuildOrGetViewCache(const ModelPackage* pkg) {
       ua_ranges[vi] = {ua_begin, cache.used_assets_storage[ci].size()};
 
       size_t ei_begin = cache.executor_infos_storage[ci].size();
-      auto ei_it = var.body.find("executor_info");
-      if (ei_it != var.body.end() && ei_it->is_object()) {
-        for (auto e = ei_it->begin(); e != ei_it->end(); ++e) {
-          std::string json_str;
-          if (auto* s = MaterializeExecutorInfoEntry(pkg, var, e.key(), e.value(), &json_str)) {
-            // Render failure: encode the error message as the JSON body so the
-            // caller can still walk the structure. We don't have a way to
-            // surface a status from a const getter; the validation path
-            // surfaces these errors separately.
-            ModelPackageStatus_Release(s);
-            json_str.clear();
-          }
-          cache.string_pool.push_back(std::move(json_str));
-          const std::string& ns_str = e.key();
-          // Stash the namespace key in the string pool too (it's owned by the
-          // ordered_json; stable as long as the body is not mutated, but copy
-          // for safety).
-          cache.string_pool.push_back(ns_str);
-          ModelExecutorInfoEntry entry{};
-          entry.struct_size = sizeof(ModelExecutorInfoEntry);
-          entry.abi_version = 1;
-          entry.ns = cache.string_pool[cache.string_pool.size() - 1].c_str();
-          entry.json = cache.string_pool[cache.string_pool.size() - 2].c_str();
-          cache.executor_infos_storage[ci].push_back(entry);
-        }
+      // executor_info_resolved is populated eagerly by RefreshExecutorInfoCache
+      // (at Open and on every mutation); any parse/IO error surfaces there.
+      for (const auto& [ns_str, body_json] : var.executor_info_resolved) {
+        ModelExecutorInfoEntry entry{};
+        entry.struct_size = sizeof(ModelExecutorInfoEntry);
+        entry.abi_version = 1;
+        entry.ns = ns_str.c_str();
+        entry.json = body_json.c_str();
+        cache.executor_infos_storage[ci].push_back(entry);
       }
       ei_ranges[vi] = {ei_begin, cache.executor_infos_storage[ci].size()};
     }

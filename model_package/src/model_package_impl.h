@@ -12,7 +12,6 @@
 
 #pragma once
 
-#include <deque>
 #include <filesystem>
 #include <map>
 #include <memory>
@@ -53,6 +52,12 @@ struct VariantRecord {
   /// means none was declared and the default location does not exist.
   std::optional<std::filesystem::path> resolved_directory;
   bool resolved_directory_attempted{false};
+
+  /// Pre-resolved executor_info entries. Populated eagerly at Open and
+  /// after any mutation that can touch executor_info. The first member is the
+  /// namespace key; the second is the serialized JSON body of that entry
+  /// (inline bodies are dumped, external file bodies are read + validated).
+  std::vector<std::pair<std::string, std::string>> executor_info_resolved;
 };
 
 struct ComponentRecord {
@@ -79,9 +84,6 @@ struct SharedAssetRecord {
 /// backing storage (extra strings and array buffers) so pointers stay valid
 /// until the next mutation drops the cache.
 struct InfoViewCache {
-  /// Backing storage for serialized JSON strings produced for the view.
-  std::deque<std::string> string_pool;
-
   // Per-variant arrays. Indexed [component_idx][variant_idx].
   std::vector<std::vector<const char*>>            used_assets_storage;
   std::vector<std::vector<ModelExecutorInfoEntry>> executor_infos_storage;
