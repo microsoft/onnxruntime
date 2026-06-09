@@ -174,6 +174,18 @@ MODEL_PACKAGE_API const char* ModelComponent_AdditionalMetadataJson(const ModelC
 /// Variant-scope additional_metadata. NULL when absent.
 MODEL_PACKAGE_API const char* ModelVariant_AdditionalMetadataJson(const ModelVariant*);
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared asset hashing utility
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Compute the canonical sha256:<hex> URI for a directory per §4.3.1.
+/// On success, *out_uri is set to a NUL-terminated string owned by an internal
+/// per-call slot; the caller must copy if it needs to outlive the next call.
+/// (Phase 2: the slot is thread-local so a single thread's repeated calls each
+///  invalidate the previous return.)
+MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_ComputeDirectoryHash(const char* source_dir,
+                                                                       const char** out_uri);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

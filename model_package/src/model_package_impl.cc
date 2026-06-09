@@ -14,6 +14,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "asset_hasher.h"
 #include "manifest_parser.h"
 #include "model_package_impl.h"
 #include "path_resolver.h"
@@ -412,6 +413,23 @@ const char* ModelComponent_AdditionalMetadataJson(const ModelComponent* c) {
 const char* ModelVariant_AdditionalMetadataJson(const ModelVariant* v) {
   if (!v) return nullptr;
   return CachedAdditionalMetadata(v->record->body, v->record->additional_metadata_cache);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Hashing utility
+// ─────────────────────────────────────────────────────────────────────────────
+
+ModelPackageStatus* ModelPackage_ComputeDirectoryHash(const char* source_dir,
+                                                      const char** out_uri) {
+  if (!source_dir) return NullArg("source_dir");
+  if (!out_uri) return NullArg("out_uri");
+  *out_uri = nullptr;
+  static thread_local std::string slot;
+  if (auto* s = mp::ComputeDirectoryAssetUri(std::filesystem::path(source_dir), &slot)) {
+    return s;
+  }
+  *out_uri = slot.c_str();
+  return nullptr;
 }
 
 }  // extern "C"

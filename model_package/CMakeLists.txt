@@ -53,11 +53,13 @@ endif()
 
 set(MODEL_PACKAGE_SOURCES
   src/api.cc
+  src/asset_hasher.cc
   src/manifest_parser.cc
   src/model_package_impl.cc
   src/ort_json.cc
   src/parser.cc
   src/path_resolver.cc
+  src/sha256.cc
 )
 
 if(MODEL_PACKAGE_BUILD_SHARED)
@@ -120,4 +122,12 @@ if(MODEL_PACKAGE_BUILD_TESTS)
     ${CMAKE_CURRENT_SOURCE_DIR}/src
   )
   add_test(NAME inspection COMMAND test_inspection)
+
+  add_executable(test_asset_hashing tests/test_asset_hashing.cc)
+  target_link_libraries(test_asset_hashing PRIVATE model_package nlohmann_json::nlohmann_json)
+  target_include_directories(test_asset_hashing PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+  )
+  add_test(NAME asset_hashing COMMAND test_asset_hashing)
 endif()
