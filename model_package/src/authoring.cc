@@ -361,7 +361,7 @@ ModelPackageStatus* MutateExecutorInfo(ModelPackage* pkg,
   }
   if (auto* s = ReparseVariantInPlace(pkg, comp, var)) return s;
   comp->component_json_cache.reset();
-  return PostMutate(pkg);
+  return PostMutate(pkg, /*refresh_assets=*/false);
 }
 
 }  // namespace
@@ -508,7 +508,7 @@ ModelPackageStatus* ModelPackage_SetLayout(ModelPackage* pkg, const char* layout
   }
   pkg->manifest["layout"] = l;
   pkg->layout = l;
-  return PostMutate(pkg);
+  return PostMutate(pkg, /*refresh_assets=*/false);
 }
 
 ModelPackageStatus* ModelPackage_SetAdditionalMetadataJson(ModelPackage* pkg,
