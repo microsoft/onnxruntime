@@ -297,9 +297,10 @@ MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_Commit(ModelPackage*,
                                                           const char* dest_root_or_null,
                                                           ModelPackageWriteMode mode);
 
-/// Reclaim files under `<package_root>/shared_assets/` that are no longer
-/// reachable from the current manifest. Files outside `<package_root>` are
-/// never touched.
+/// Reclaim unreferenced files under `<package_root>/shared_assets/` and tracked
+/// orphan variant/component directories left behind by RemoveVariant,
+/// RemoveComponent, SetVariant or SetComponentExternal. Only paths registered
+/// through this API and inside `package_root` are touched.
 MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_Prune(ModelPackage*);
 
 typedef enum {

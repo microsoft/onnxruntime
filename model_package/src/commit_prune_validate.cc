@@ -545,21 +545,16 @@ std::vector<fs::path> CollectLiveDirs(const ModelPackage* pkg) {
   return out;
 }
 
-// Drop entries from `pending` that we've handled (removed, or known
-// permanently unsafe to touch). Entries that should wait (grace, still
-// referenced) stay in the list for a future Prune call.
+// Drop entries we've handled (removed, or unsafe to touch). Entries still
+// waiting on grace or live references stay for a future Prune call.
 void SweepOrphanDirs(ModelPackage* pkg,
                      std::vector<fs::path>* pending,
                      const std::vector<fs::path>& live_dirs) {
   pending->erase(std::remove_if(pending->begin(), pending->end(), [&](const fs::path& p) {
-    // Never touch anything outside package_root. Drop so we don't keep the
-    // entry around forever; the caller already promised to handle it.
-    if (!mp::IsInsidePackageRoot(pkg, p)) return true;
+    if (!mp::IsInsidePackageRoot(pkg, p)) return true;  // outside our scope
     std::error_code ec;
-    if (!fs::exists(p, ec)) return true;  // already gone
-
-    // If any live directory IS this path (someone re-added it) or lives
-    // under it, deleting it would damage live state. Keep waiting.
+    if (!fs::exists(p, ec)) return true;
+    // Skip if any live dir IS p or lives under it; deleting would damage live state.
     for (const auto& live : live_dirs) {
       if (IsAncestorOrEqual(p, live)) return false;
     }
@@ -612,7 +607,7 @@ ModelPackageStatus* ModelPackage_Prune(ModelPackage* pkg) {
   if (!pkg) return NullArg("pkg");
   if (pkg->package_root.empty()) return nullptr;
 
-  // 1. Shared-asset sweep.
+  // Shared-asset sweep: drop unreferenced sha256-* dirs and stale staging dirs.
   fs::path assets_root = pkg->package_root / "shared_assets";
   std::error_code ec;
   if (fs::is_directory(assets_root, ec)) {
@@ -635,10 +630,8 @@ ModelPackageStatus* ModelPackage_Prune(ModelPackage* pkg) {
     }
   }
 
-  // 2. Tracked-orphan sweep: only paths we registered through our own API.
-  // Components are swept first so that removing a component_dir reclaims its
-  // child variant dirs in one shot; the variant pass then mops up anything
-  // not covered by a component removal.
+  // Tracked-orphan sweep: components before variants so a component_dir
+  // removal reclaims its child variant dirs in one shot.
   std::vector<fs::path> live_dirs = CollectLiveDirs(pkg);
   SweepOrphanDirs(pkg, &pkg->pending_orphan_component_dirs, live_dirs);
   SweepOrphanDirs(pkg, &pkg->pending_orphan_variant_dirs, live_dirs);

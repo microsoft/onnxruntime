@@ -120,15 +120,12 @@ ModelPackageStatus* ResolveVariantDirectory(const fs::path& component_dir,
     }
     dir_input = it->get<std::string>();
   } else {
-    // No explicit value: try the conventional default. Missing-on-disk is
-    // fine; we just won't expose a resolved path.
+    // Inferred default: missing-on-disk is fine; we just leave out unset.
     dir_input = variant_name;
   }
 
   fs::path resolved;
-  // For explicitly-declared variant_directory we require the path to actually
-  // exist on disk. For the inferred default we don't, since callers may simply
-  // be using their own anchor.
+  // Explicit value must exist; inferred default may not.
   bool must_exist = require_exists || explicitly_declared;
   auto* status = ResolvePath(component_dir, package_root, dir_input, opts,
                              must_exist, &resolved);
