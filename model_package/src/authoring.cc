@@ -140,6 +140,7 @@ ModelPackageStatus* ModelPackage_SetComponentInline(ModelPackage* pkg,
 
   if (auto* existing = FindComponentRecord(pkg, name)) {
     size_t idx = pkg->component_index_by_name[name];
+    mp::RecordOrphanComponent(pkg, *pkg->components[idx]);
     pkg->components[idx] = std::move(rec);
   } else {
     pkg->components.push_back(std::move(rec));
@@ -198,6 +199,7 @@ ModelPackageStatus* ModelPackage_SetComponentExternal(ModelPackage* pkg,
 
   if (FindComponentRecord(pkg, name)) {
     size_t idx = pkg->component_index_by_name[name];
+    mp::RecordOrphanComponent(pkg, *pkg->components[idx]);
     pkg->components[idx] = std::move(rec);
   } else {
     pkg->components.push_back(std::move(rec));
@@ -212,6 +214,7 @@ ModelPackageStatus* ModelPackage_RemoveComponent(ModelPackage* pkg, const char* 
   auto it = pkg->component_index_by_name.find(name);
   if (it == pkg->component_index_by_name.end()) return nullptr;
   size_t idx = it->second;
+  mp::RecordOrphanComponent(pkg, *pkg->components[idx]);
   pkg->components.erase(pkg->components.begin() + idx);
   auto comps_it = pkg->manifest.find("components");
   if (comps_it != pkg->manifest.end() && comps_it->is_object()) {
@@ -260,7 +263,12 @@ ModelPackageStatus* ModelPackage_SetVariant(ModelPackage* pkg,
   // Replace or append.
   bool replaced = false;
   for (auto& v : comp->variants) {
-    if (v->name == variant_name) { v = std::move(vr); replaced = true; break; }
+    if (v->name == variant_name) {
+      mp::RecordOrphanVariantDir(pkg, *v);
+      v = std::move(vr);
+      replaced = true;
+      break;
+    }
   }
   if (!replaced) comp->variants.push_back(std::move(vr));
 
@@ -278,7 +286,11 @@ ModelPackageStatus* ModelPackage_RemoveVariant(ModelPackage* pkg,
   auto* comp = FindComponentRecord(pkg, component_name);
   if (!comp) return nullptr;
   auto pred = [&](const std::unique_ptr<mp::VariantRecord>& v) {
-    return v->name == variant_name;
+    if (v->name == variant_name) {
+      mp::RecordOrphanVariantDir(pkg, *v);
+      return true;
+    }
+    return false;
   };
   comp->variants.erase(std::remove_if(comp->variants.begin(), comp->variants.end(), pred),
                        comp->variants.end());

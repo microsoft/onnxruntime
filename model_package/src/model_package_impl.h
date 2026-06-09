@@ -126,6 +126,14 @@ struct ModelPackage {
   /// committed yet. Keyed by sha256:<hex> URI.
   std::unordered_map<std::string, std::filesystem::path> pending_shared_asset_copies;
 
+  /// On-disk paths that were removed from the live tree (via RemoveVariant /
+  /// RemoveComponent / SetVariant or SetComponentExternal replacement) and
+  /// are candidates for cleanup by ModelPackage_Prune. The library only ever
+  /// touches paths that were registered through its own API; it never walks
+  /// package_root looking for unknown content.
+  std::vector<std::filesystem::path> pending_orphan_variant_dirs;
+  std::vector<std::filesystem::path> pending_orphan_component_dirs;
+
   /// Cache for the most recent ModelPackage_Validate report JSON.
   mutable std::optional<std::string> last_validate_report;
 
@@ -141,5 +149,16 @@ void DropViewCache(ModelPackage* pkg);
 
 /// Return the package's info view, building it lazily.
 const InfoViewCache& BuildOrGetViewCache(const ModelPackage* pkg);
+
+/// Returns true iff `p` is `package_root` or lives under it (lexically).
+bool IsInsidePackageRoot(const ModelPackage* pkg, const std::filesystem::path& p);
+
+/// Record a variant's resolved directory as a Prune candidate if it lives
+/// inside package_root. No-op if the variant has no resolved directory.
+void RecordOrphanVariantDir(ModelPackage* pkg, const VariantRecord& v);
+
+/// Record orphan paths owned by a component being removed/replaced: every
+/// variant directory plus, for external components, the component_dir itself.
+void RecordOrphanComponent(ModelPackage* pkg, const ComponentRecord& c);
 
 }  // namespace model_package

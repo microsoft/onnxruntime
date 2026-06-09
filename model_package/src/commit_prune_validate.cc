@@ -521,7 +521,80 @@ bool IsOldEnough(const fs::path& p) {
   return (now - last) >= kPruneGrace;
 }
 
+bool IsAncestorOrEqual(const fs::path& ancestor, const fs::path& descendant) {
+  // ancestor == descendant, or descendant lives under ancestor (boundary aware).
+  auto a = ancestor.lexically_normal().generic_string();
+  auto d = descendant.lexically_normal().generic_string();
+  if (d.size() < a.size()) return false;
+  if (d.compare(0, a.size(), a) != 0) return false;
+  return d.size() == a.size() || d[a.size()] == '/';
+}
+
+std::vector<fs::path> CollectLiveDirs(const ModelPackage* pkg) {
+  std::vector<fs::path> out;
+  for (const auto& c : pkg->components) {
+    if (c->storage == mp::ComponentStorage::kExternal) {
+      out.push_back(c->component_dir);
+    }
+    for (const auto& v : c->variants) {
+      if (v->resolved_directory.has_value()) {
+        out.push_back(*v->resolved_directory);
+      }
+    }
+  }
+  return out;
+}
+
+// Drop entries from `pending` that we've handled (removed, or known
+// permanently unsafe to touch). Entries that should wait (grace, still
+// referenced) stay in the list for a future Prune call.
+void SweepOrphanDirs(ModelPackage* pkg,
+                     std::vector<fs::path>* pending,
+                     const std::vector<fs::path>& live_dirs) {
+  pending->erase(std::remove_if(pending->begin(), pending->end(), [&](const fs::path& p) {
+    // Never touch anything outside package_root. Drop so we don't keep the
+    // entry around forever; the caller already promised to handle it.
+    if (!mp::IsInsidePackageRoot(pkg, p)) return true;
+    std::error_code ec;
+    if (!fs::exists(p, ec)) return true;  // already gone
+
+    // If any live directory IS this path (someone re-added it) or lives
+    // under it, deleting it would damage live state. Keep waiting.
+    for (const auto& live : live_dirs) {
+      if (IsAncestorOrEqual(p, live)) return false;
+    }
+    if (!IsOldEnough(p)) return false;
+    fs::remove_all(p, ec);
+    return true;
+  }), pending->end());
+}
+
 }  // namespace
+
+namespace model_package {
+
+bool IsInsidePackageRoot(const ModelPackage* pkg, const fs::path& p) {
+  if (pkg->package_root.empty()) return false;
+  return IsAncestorOrEqual(pkg->package_root, p);
+}
+
+void RecordOrphanVariantDir(ModelPackage* pkg, const VariantRecord& v) {
+  if (!v.resolved_directory.has_value()) return;
+  if (!IsInsidePackageRoot(pkg, *v.resolved_directory)) return;
+  pkg->pending_orphan_variant_dirs.push_back(*v.resolved_directory);
+}
+
+void RecordOrphanComponent(ModelPackage* pkg, const ComponentRecord& c) {
+  for (const auto& v : c.variants) {
+    RecordOrphanVariantDir(pkg, *v);
+  }
+  if (c.storage == ComponentStorage::kExternal &&
+      IsInsidePackageRoot(pkg, c.component_dir)) {
+    pkg->pending_orphan_component_dirs.push_back(c.component_dir);
+  }
+}
+
+}  // namespace model_package
 
 extern "C" {
 
@@ -538,30 +611,38 @@ ModelPackageStatus* ModelPackage_Commit(ModelPackage* pkg,
 ModelPackageStatus* ModelPackage_Prune(ModelPackage* pkg) {
   if (!pkg) return NullArg("pkg");
   if (pkg->package_root.empty()) return nullptr;
+
+  // 1. Shared-asset sweep.
   fs::path assets_root = pkg->package_root / "shared_assets";
   std::error_code ec;
-  if (!fs::is_directory(assets_root, ec)) return nullptr;
-  for (const auto& entry : fs::directory_iterator(assets_root, ec)) {
-    if (ec) break;
-    if (!entry.is_directory()) continue;
-    std::string name = entry.path().filename().string();
-    // Stale staging directories: reclaim once past grace.
-    if (IsTmpName(entry.path())) {
-      if (IsOldEnough(entry.path())) {
-        fs::remove_all(entry.path(), ec);
+  if (fs::is_directory(assets_root, ec)) {
+    for (const auto& entry : fs::directory_iterator(assets_root, ec)) {
+      if (ec) break;
+      if (!entry.is_directory()) continue;
+      std::string name = entry.path().filename().string();
+      if (IsTmpName(entry.path())) {
+        if (IsOldEnough(entry.path())) {
+          fs::remove_all(entry.path(), ec);
+        }
+        continue;
       }
-      continue;
+      if (name.rfind("sha256-", 0) != 0) continue;
+      std::string hex = name.substr(std::strlen("sha256-"));
+      std::string uri = "sha256:" + hex;
+      if (pkg->shared_asset_index_by_uri.count(uri)) continue;
+      if (!IsOldEnough(entry.path())) continue;
+      fs::remove_all(entry.path(), ec);
     }
-    // Final asset directories: keep iff reachable from manifest.
-    if (name.rfind("sha256-", 0) != 0) continue;
-    std::string hex = name.substr(std::strlen("sha256-"));
-    std::string uri = "sha256:" + hex;
-    if (pkg->shared_asset_index_by_uri.count(uri)) continue;
-    if (!IsOldEnough(entry.path())) continue;
-    fs::remove_all(entry.path(), ec);
   }
-  // Note: orphan component-directory cleanup under <package_root> is deferred
-  // per the spec's "future work" framing — needs a designated convention dir.
+
+  // 2. Tracked-orphan sweep: only paths we registered through our own API.
+  // Components are swept first so that removing a component_dir reclaims its
+  // child variant dirs in one shot; the variant pass then mops up anything
+  // not covered by a component removal.
+  std::vector<fs::path> live_dirs = CollectLiveDirs(pkg);
+  SweepOrphanDirs(pkg, &pkg->pending_orphan_component_dirs, live_dirs);
+  SweepOrphanDirs(pkg, &pkg->pending_orphan_variant_dirs, live_dirs);
+
   return nullptr;
 }
 
