@@ -84,6 +84,18 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                   "kv_cache_bit_width must be 0 when quantization is disabled, got ", kv_cache_bit_width_);
   }
 
+  // q_norm_weight (input 14) / k_norm_weight (input 15) are populated by the WebGPU-only
+  // GroupQueryAttentionPreNormFusion optimizer pass. The CPU kernel does not implement
+  // the fused per-head Q/K RMS normalization prologue, so reject the node if either input
+  // is present rather than silently dropping the normalization.
+  if ((context->InputCount() > 14 && context->Input<Tensor>(14) != nullptr) ||
+      (context->InputCount() > 15 && context->Input<Tensor>(15) != nullptr)) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        "GroupQueryAttention (CPU): q_norm_weight / k_norm_weight inputs are not supported. "
+        "The per-head Q/K RMS normalization prologue is implemented only on the WebGPU EP.");
+  }
+
   GroupQueryAttentionParameters parameters = {};
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs(query,
                                                                 key,
@@ -294,13 +306,34 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     if constexpr (std::is_same_v<T, float>) {
       const float* k_data_q = packed_qkv ? nullptr : k_rotary;
       const float* v_data_q = packed_qkv ? nullptr : V.Get<Tensor>().Data<float>();
+      auto mlas_quant_type = ToMlasKVQuantType(k_quant_type_, kv_cache_bit_width_);
+
+      // Use flash attention path when:
+      // 1. Total sequence length is long enough to benefit from tiling
+      // 2. No features that flash path doesn't support (softcap, smooth softmax, output_qk)
+      const bool use_flash = !disable_gqa_flash_ &&
+                             parameters.total_sequence_length > 1 &&
+                             softcap_ == 0.0f &&
+                             !use_smooth_softmax_ &&
+                             head_sink_data == nullptr &&
+                             output_qk == nullptr;
+
+      if (use_flash) {
+        return ApplyAttentionQuantizedFlash(
+            q_rotary, k_data_q, v_data_q,
+            attention_bias,
+            past_key, past_value,
+            output, present_k, present_v, seqlens_k,
+            k_scale->Data<float>(), v_scale->Data<float>(),
+            mlas_quant_type, parameters, allocator, context);
+      }
+
       return ApplyAttentionQuantized(
           q_rotary, k_data_q, v_data_q, head_sink_data,
           attention_bias, past_key, past_value,
           output, present_k, present_v, output_qk, seqlens_k,
           k_scale->Data<float>(), v_scale->Data<float>(),
-          ToMlasKVQuantType(k_quant_type_, kv_cache_bit_width_),
-          parameters, allocator, context);
+          mlas_quant_type, parameters, allocator, context);
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "Quantized KV cache requires float Q dtype");

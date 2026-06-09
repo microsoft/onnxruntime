@@ -199,7 +199,7 @@ MlasQKGemm(
 /**
  * @brief Softmax-times-V GEMM with a quantized V cache.
  *
- *   C[M, N] = A[M, K] * B[K, N]
+ *   C[M, N] = Beta * C[M, N] + A[M, K] * B[K, N]
  *
  * where:
  *   - A is FP32 row-major, shape [M, K] (attention probabilities), stride lda.
@@ -207,8 +207,8 @@ MlasQKGemm(
  *     with K = total_sequence_length, N = head_size), packed row-major over
  *     rows. Each row occupies
  *     MlasKVQuantPackedRowBytes(QuantType, N) bytes.
- *   - C is FP32 row-major, shape [M, N], stride ldc (>= N). The kernel
- *     overwrites C (no accumulate).
+ *   - C is FP32 row-major, shape [M, N], stride ldc (>= N).
+ *     When Beta == 0, C is overwritten. When Beta != 0, C is accumulated.
  *   - PER_CHANNEL scales are length N and apply along the N (head_size) axis.
  *
  * @param M          Query token count.
@@ -221,6 +221,7 @@ MlasQKGemm(
  * @param Scales     Scale buffer (single scalar or length-N vector).
  * @param C          Output buffer (FP32).
  * @param ldc        Leading dimension of C in elements.
+ * @param Beta       Scalar multiplier for existing C values. 0 = overwrite.
  * @param ThreadPool Optional thread pool.
  */
 void
@@ -236,5 +237,73 @@ MlasSVGemm(
     const float* Scales,
     float* C,
     size_t ldc,
+    float Beta,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+/**
+ * @brief Arguments for the Flash Attention kernel with quantized KV cache.
+ *
+ * This kernel implements the online-softmax tiled Flash Attention algorithm
+ * operating directly on INT8/INT4 quantized K and V cache buffers.
+ * It avoids materializing the full [S, T] attention probability matrix.
+ */
+struct MlasFlashAttentionQuantizedKVArgs {
+    int batch_size;
+    int num_heads;           // Q heads
+    int kv_num_heads;        // KV heads (for GQA sharing)
+    int sequence_length;     // Q sequence length (new tokens)
+    int total_seqlen;        // Total KV sequence length (past + new)
+    int head_size;
+    int past_seqlen;         // For computing causal positions
+    int local_window_size;   // -1 = disabled
+    int seqlen_present_kv;   // Buffer dimension for present KV (may be > total_seqlen)
+    int q_block_size;        // Br (query block size)
+    int kv_block_size;       // Bc (KV block size)
+    float scale;             // 1/sqrt(head_size) or user-specified
+
+    MLAS_KV_QUANT_TYPE quant_type;
+    bool per_channel_k;      // Whether K uses per-channel scales
+    bool per_channel_v;      // Whether V uses per-channel scales
+
+    int thread_count;
+    float* buffer;
+    size_t buffer_size_per_thread;
+
+    const float* query;      // [B, N, S, H] FP32
+    const uint8_t* k_cache;  // [B, kv_N, seqlen_present, packed_row_bytes] quantized
+    const uint8_t* v_cache;  // [B, kv_N, seqlen_present, packed_row_bytes] quantized
+    const float* k_scale;    // Scalar or per-channel scales for K
+    const float* v_scale;    // Scalar or per-channel scales for V
+    float* output;           // [B, S, N, H] FP32
+
+    // Attention bias (additive, applied after QK GEMM before masking/softmax).
+    // Shape: [B|1, N|1, S, T] where dimensions of size 1 are broadcast.
+    const float* attention_bias;              // nullptr if no bias
+    int attention_bias_seqlen_stride;         // stride along the T (total_seqlen) dimension = shape[3]
+    bool attention_bias_broadcast_batch;      // true if shape[0] == 1
+    bool attention_bias_broadcast_head;       // true if shape[1] == 1
+
+    // Flash decoding fields (used when sequence_length == 1 and KV is split across threads).
+    // Partials buffer stores per-(batch, head, kv_chunk) intermediate results:
+    //   [m_partial, l_partial, output_partial[head_size]] for each chunk.
+    float* flash_decoding_partials;  // nullptr to disable flash decoding
+    int kv_chunk_count;              // number of KV chunks = ceil(total_seqlen / kv_block_size)
+};
+
+/**
+ * @brief Flash Attention with quantized KV cache.
+ *
+ * Implements tiled attention with online softmax, processing KV in blocks
+ * to avoid materializing the full attention matrix. Supports causal masking
+ * and local window attention.
+ *
+ * @param args       Pointer to argument structure.
+ * @param ThreadPool Optional thread pool for parallelization.
+ */
+void
+MLASCALL
+MlasFlashAttentionQuantizedKV(
+    MlasFlashAttentionQuantizedKVArgs* args,
     MLAS_THREADPOOL* ThreadPool
     );

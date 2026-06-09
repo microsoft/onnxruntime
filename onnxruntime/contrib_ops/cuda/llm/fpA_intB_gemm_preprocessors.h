@@ -37,7 +37,8 @@ void preprocess_weights_for_mixed_gemm_cuda(cudaStream_t stream,
                                             int8_t* row_major_quantized_weight,
                                             int32_t* d_permutation_map,
                                             std::vector<size_t> const& shape,
-                                            QuantType quant_type);
+                                            QuantType quant_type,
+                                            bool synchronize = true);
 
 }  // namespace weight_only
 }  // namespace kernels

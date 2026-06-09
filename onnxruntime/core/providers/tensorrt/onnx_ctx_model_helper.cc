@@ -323,18 +323,12 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     // Get engine from cache file.
     std::string cache_path = attrs.at(EP_CACHE_CONTEXT).s();
 
-    // For security purpose, in the case of running context model, TRT EP won't allow
-    // engine cache path to be the relative path like "../file_path" or the absolute path.
-    // It only allows the engine cache to be in the same directory or sub directory of the context model.
-    if (IsAbsolutePath(cache_path)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "For security purpose, the ep_cache_context attribute should be set with a relative path, but it is an absolute path:  " + cache_path);
-    }
-    if (IsRelativePathToParentPath(cache_path)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "The file path in ep_cache_context attribute has '..'. For security purpose, it's not allowed to point outside the directory.");
-    }
+    // Validate that the cache path does not escape the model directory.
+    // Rejects absolute paths, ".." traversal, and symlink-based escapes.
+    std::filesystem::path ctx_model_dir(GetPathOrParentPathOfCtxModel(ep_context_model_path_));
+    ORT_RETURN_IF_ERROR(utils::ValidateExternalDataPathFromDir(ctx_model_dir, std::filesystem::path(cache_path)));
 
     // The engine cache and context model (current model) should be in the same directory
-    std::filesystem::path ctx_model_dir(GetPathOrParentPathOfCtxModel(ep_context_model_path_));
     auto engine_cache_path = ctx_model_dir.append(cache_path);
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] GetEpContextFromGraph engine_cache_path: " + engine_cache_path.string();
 

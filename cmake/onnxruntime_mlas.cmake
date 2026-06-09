@@ -55,6 +55,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/qlutgemm.cpp
   ${MLAS_SRC_DIR}/sqnbitgemm_q8_block.h
   ${MLAS_SRC_DIR}/flashattn.cpp
+  ${MLAS_SRC_DIR}/flashattn_qkv.cpp
   ${MLAS_SRC_DIR}/qkv_quant.cpp
   ${MLAS_SRC_DIR}/cast.cpp
   ${MLAS_SRC_DIR}/layernorm.cpp
@@ -962,6 +963,8 @@ endif()
               ${MLAS_SRC_DIR}/riscv64/sconv_nchwc_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/rotary_embedding_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/layernorm_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/qgemm_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/activation_kernel_rvv.cpp
             )
             list(REMOVE_ITEM mlas_platform_srcs
               "${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_1.cpp")
@@ -973,6 +976,8 @@ endif()
               ${MLAS_SRC_DIR}/riscv64/sconv_nchwc_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/rotary_embedding_kernel_rvv.cpp
               ${MLAS_SRC_DIR}/riscv64/layernorm_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/qgemm_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/activation_kernel_rvv.cpp
               PROPERTIES COMPILE_FLAGS "-march=rv64gcv -mabi=lp64d")
             list(APPEND mlas_private_compile_definitions MLAS_USE_RVV=1)
 

@@ -96,7 +96,10 @@ TEST(OptimizerInitializerTest, LoadExternalData) {
 
   // bad model paths
   EXPECT_THROW(Initializer i(tensor_proto_base, std::filesystem::path()), OnnxRuntimeException);
-  EXPECT_THROW(Initializer i(tensor_proto_base, ORT_TSTR("invalid/directory")), std::filesystem::filesystem_error);
+  // ValidateExternalDataPath in GetExtDataFromTensorProto now rejects this earlier with an
+  // ORT error ("External data path does not exist") instead of letting a downstream
+  // std::filesystem call throw filesystem_error.
+  EXPECT_THROW(Initializer i(tensor_proto_base, ORT_TSTR("invalid/directory")), OnnxRuntimeException);
 
   // bad length
   {
