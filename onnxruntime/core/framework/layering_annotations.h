@@ -163,11 +163,15 @@ class LayeringIndex {
   /// <summary>
   /// Creates a fully initialized LayeringIndex with an optional SubstringMatcher for name-based matching.
   /// </summary>
+  /// <param name="annotation_rule_count">Number of rules (from the start of layering_rules) that are
+  ///   annotation-based. The annotation matcher will only index these rules. Rules beyond this index
+  ///   are name-based and matched exclusively via substring_matcher against Node::Name().</param>
   static LayeringIndex Create(const Graph& graph,
                               EpNameToLayeringIndices ep_map,
                               LayeringIndexToEpName rule_map,
                               LayeringRules layering_rules,
-                              SubstringMatcher substring_matcher);
+                              SubstringMatcher substring_matcher,
+                              size_t annotation_rule_count = 0);
 
   /// <summary>
   /// Factory method that creates a LayeringIndex by parsing configuration, matching rules against

@@ -346,8 +346,10 @@ LayeringIndex LayeringIndex::Create(const Graph& graph,
                                     EpNameToLayeringIndices ep_map,
                                     LayeringIndexToEpName rule_map,
                                     LayeringRules layering_rules,
-                                    SubstringMatcher substring_matcher) {
-  LayeringIndex index(std::move(layering_rules), std::move(ep_map), std::move(rule_map), std::move(substring_matcher));
+                                    SubstringMatcher substring_matcher,
+                                    size_t annotation_rule_count) {
+  LayeringIndex index(std::move(layering_rules), std::move(ep_map), std::move(rule_map),
+                      std::move(substring_matcher), annotation_rule_count);
   index.ProcessGraph(graph, std::nullopt);
   return index;
 }

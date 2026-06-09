@@ -2005,7 +2005,8 @@ TEST(LayeringIndexTest, AnnotationTakesPriorityOverNameBased) {
   SubstringMatcher substring_matcher(name_only_rules, /*rule_index_offset=*/2);
 
   auto index = LayeringIndex::Create(graph, std::move(ep_map), std::move(rule_map),
-                                     std::move(merged_rules), std::move(substring_matcher));
+                                     std::move(merged_rules), std::move(substring_matcher),
+                                     /*annotation_rule_count=*/2);
 
   // node0: annotation "go_to_cpu" matches rule 0 (CpuEP).
   // Name "layers.0/" also matches rule 2 (GpuEP).
