@@ -154,6 +154,9 @@ Status CastProgram::GenerateShaderCode(ShaderHelper& sh) const {
         }
       }
     }
+    // Note: Direct array assignment is used here instead of output.SetByOffset() because
+    // the values are already vec2<u32> (64-bit representations), not int32 scalars.
+    // SetByOffset would incorrectly try to convert int32 to int64.
     sh.MainFunctionBody() << "  y[base] = " << values[0] << ";\n";
     for (size_t i = 1; i < 4; ++i) {
       sh.MainFunctionBody() << "  if (base + " << i << "u < uniforms.output_size) { y[base + " << i
