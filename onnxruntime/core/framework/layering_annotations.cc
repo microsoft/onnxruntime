@@ -91,8 +91,9 @@ common::Status LayeringRules::FromConfigString(const std::string& config_value, 
   return common::Status::OK();
 }
 
-LayeringRuleMatcher::LayeringRuleMatcher(const LayeringRules& rules, size_t rule_count) {
-  const size_t limit = (rule_count == 0) ? rules.rules.size() : std::min(rule_count, rules.rules.size());
+LayeringRuleMatcher::LayeringRuleMatcher(const LayeringRules& rules, std::optional<size_t> annotation_rule_count) {
+  const size_t limit = annotation_rule_count.has_value() ? std::min(*annotation_rule_count, rules.rules.size())
+                                                         : rules.rules.size();
   for (size_t i = 0; i < limit; ++i) {
     const auto& rule = rules.rules[i];
     ORT_ENFORCE(!rule.annotation.empty(), "Layering rule annotation cannot be empty");
@@ -347,7 +348,7 @@ LayeringIndex LayeringIndex::Create(const Graph& graph,
                                     LayeringIndexToEpName rule_map,
                                     LayeringRules layering_rules,
                                     SubstringMatcher substring_matcher,
-                                    size_t annotation_rule_count) {
+                                    std::optional<size_t> annotation_rule_count) {
   LayeringIndex index(std::move(layering_rules), std::move(ep_map), std::move(rule_map),
                       std::move(substring_matcher), annotation_rule_count);
   index.ProcessGraph(graph, std::nullopt);
@@ -603,11 +604,11 @@ void LayeringRuleMatcher::UpdateBestMatch(std::optional<size_t>& current_best, s
   }
 }
 
-SubstringMatcher::SubstringMatcher(const LayeringRules& rules, size_t rule_index_offset) {
+SubstringMatcher::SubstringMatcher(const LayeringRules& rules, size_t name_rules_start_index) {
   for (size_t i = 0; i < rules.rules.size(); ++i) {
     const auto& rule = rules.rules[i];
     if (!rule.annotation.empty()) {
-      patterns_.push_back({rule.annotation, i + rule_index_offset});
+      patterns_.push_back({rule.annotation, i + name_rules_start_index});
     }
   }
   // Sort by pattern length descending (longest first).

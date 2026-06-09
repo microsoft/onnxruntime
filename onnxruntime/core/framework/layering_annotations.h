@@ -58,11 +58,15 @@ struct LayeringRules {
 /// </summary>
 class LayeringRuleMatcher {
  public:
-  /// <param name="rules">The full set of layering rules.</param>
-  /// <param name="rule_count">Number of rules to index (from the beginning). If 0 or omitted,
-  ///   all rules are indexed. Use this to scope the matcher to annotation-based rules only
-  ///   when name-based rules are appended to the same vector.</param>
-  explicit LayeringRuleMatcher(const LayeringRules& rules, size_t rule_count = 0);
+  /// <param name="rules">The full set of layering rules (may include appended name-based rules).</param>
+  /// <param name="annotation_rule_count">Number of annotation-based rules to index (from the beginning
+  ///   of the rules vector). If nullopt or omitted, all rules are indexed.
+  ///   If 0, no rules are indexed (disables annotation matching entirely).
+  ///   When name-based rules are appended after annotation rules in the same vector,
+  ///   pass the count of annotation rules so name-based patterns are excluded from
+  ///   the prefix/exact-match trie.</param>
+  explicit LayeringRuleMatcher(const LayeringRules& rules,
+                               std::optional<size_t> annotation_rule_count = std::nullopt);
 
   /// <summary>
   /// The method returns the index of the best matching rule for the given annotation
@@ -96,10 +100,14 @@ class LayeringRuleMatcher {
 class SubstringMatcher {
  public:
   /// <param name="rules">The rules whose annotations become substring patterns.
-  ///   The '=' prefix (exact match) qualifier is ignored — all patterns are substrings.</param>
-  /// <param name="rule_index_offset">Offset added to each pattern's local index to produce the
-  ///   global rule index in the merged LayeringRules vector.</param>
-  explicit SubstringMatcher(const LayeringRules& rules, size_t rule_index_offset = 0);
+  ///   The '=' prefix (exact match) qualifier is rejected during config parsing — all patterns
+  ///   must be substrings.</param>
+  /// <param name="name_rules_start_index">The starting index of these name-based rules within the
+  ///   merged rules vector. When name-based rules are appended after annotation-based rules,
+  ///   this equals the count of annotation rules. For example, if there are 3 annotation rules
+  ///   followed by 2 name-based rules, pass name_rules_start_index=3 so that Match() returns
+  ///   3 or 4 (the correct merged-vector positions) instead of 0 or 1.</param>
+  explicit SubstringMatcher(const LayeringRules& rules, size_t name_rules_start_index = 0);
 
   /// <summary>
   /// Returns the index of the best matching rule for the given node name.
@@ -171,7 +179,7 @@ class LayeringIndex {
                               LayeringIndexToEpName rule_map,
                               LayeringRules layering_rules,
                               SubstringMatcher substring_matcher,
-                              size_t annotation_rule_count = 0);
+                              std::optional<size_t> annotation_rule_count = std::nullopt);
 
   /// <summary>
   /// Factory method that creates a LayeringIndex by parsing configuration, matching rules against
@@ -246,7 +254,7 @@ class LayeringIndex {
   LayeringIndex(LayeringRules layering_rules, EpNameToLayeringIndices ep_name_to_layering_indices,
                 LayeringIndexToEpName layering_index_to_ep_name,
                 std::optional<SubstringMatcher> substring_matcher = std::nullopt,
-                size_t annotation_rule_count = 0)
+                std::optional<size_t> annotation_rule_count = std::nullopt)
       : rules_(std::move(layering_rules)),
         matcher_(rules_, annotation_rule_count),
         ep_name_to_layering_indices_(std::move(ep_name_to_layering_indices)),

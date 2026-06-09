@@ -1866,7 +1866,7 @@ TEST(SubstringMatcherTest, RuleIndexOffset) {
   rules.rules.push_back({"cpu", "embed", true});      // Local index 1
 
   // Offset by 5 — simulates name-based rules appended after 5 annotation-based rules
-  SubstringMatcher matcher(rules, /*rule_index_offset=*/5);
+  SubstringMatcher matcher(rules, /*name_rules_start_index=*/5);
 
   {
     auto result = matcher.Match("/model/layers.0/MatMul");
@@ -2002,7 +2002,7 @@ TEST(LayeringIndexTest, AnnotationTakesPriorityOverNameBased) {
   // SubstringMatcher covers only the name-based rule (index 2)
   LayeringRules name_only_rules;
   name_only_rules.rules.push_back({"gpu", "layers.0/", true});
-  SubstringMatcher substring_matcher(name_only_rules, /*rule_index_offset=*/2);
+  SubstringMatcher substring_matcher(name_only_rules, /*name_rules_start_index=*/2);
 
   auto index = LayeringIndex::Create(graph, std::move(ep_map), std::move(rule_map),
                                      std::move(merged_rules), std::move(substring_matcher),
