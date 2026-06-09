@@ -545,8 +545,12 @@ std::vector<fs::path> CollectLiveDirs(const ModelPackage* pkg) {
   return out;
 }
 
-// Drop entries we've handled (removed, or unsafe to touch). Entries still
-// waiting on grace or live references stay for a future Prune call.
+// Drop entries we've handled (removed, or unsafe to touch). Entries that
+// reference live state stay for a future Prune call. Tracked orphans don't
+// wait on the kPruneGrace window: they were recorded by an in-session
+// mutation, so there's no concurrent writer to protect against. The grace
+// window is still applied to the shared_assets sweep below, which discovers
+// candidates fresh from disk.
 void SweepOrphanDirs(ModelPackage* pkg,
                      std::vector<fs::path>* pending,
                      const std::vector<fs::path>& live_dirs) {
@@ -558,7 +562,6 @@ void SweepOrphanDirs(ModelPackage* pkg,
     for (const auto& live : live_dirs) {
       if (IsAncestorOrEqual(p, live)) return false;
     }
-    if (!IsOldEnough(p)) return false;
     fs::remove_all(p, ec);
     return true;
   }), pending->end());
