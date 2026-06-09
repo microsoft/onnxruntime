@@ -830,6 +830,24 @@ class TestGQACPUQuantizedKVWithBias(unittest.TestCase):
             bias_broadcast_head=True,
         )
 
+    def test_int8_bias_broadcast_head_multi_batch(self):
+        """Bias shape [B, 1, S, T] with batch_size > 1 and num_heads > 1.
+
+        Regression test: the bias batch stride must use the head extent (1 when the
+        head dimension is broadcast), not num_heads. With batch_size == 1 the bug is
+        masked because batch_idx is always 0.
+        """
+        run_quantized_gqa_bias_test(
+            batch_size=3,
+            seq_len=8,
+            num_heads=4,
+            kv_num_heads=2,
+            head_size=16,
+            quant_type="PER_TENSOR",
+            bit_width=8,
+            bias_broadcast_head=True,
+        )
+
     def test_int8_bias_broadcast_both(self):
         """Bias shape [1, 1, S, T] with batch_size > 1 and num_heads > 1."""
         run_quantized_gqa_bias_test(

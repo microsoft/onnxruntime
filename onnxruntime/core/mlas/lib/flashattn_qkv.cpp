@@ -127,10 +127,12 @@ MlasFlashAttentionQuantizedKVThreaded(
             ? args->v_scale + kv_head_idx * static_cast<size_t>(head_size)
             : args->v_scale;
 
-        // Q pointer: layout [batch, num_heads, seq, head_size] or packed
+        // Q pointer: layout [batch, num_heads, seq, head_size]. The batch stride is
+        // supplied separately (args->q_batch_stride) so the kernel works with both the
+        // standard BNSH layout and packed-QKV input where Q/K/V are interleaved per batch.
         const float* q_ptr = args->query +
-            (static_cast<size_t>(batch_idx) * static_cast<size_t>(num_heads) +
-             static_cast<size_t>(head_idx)) * static_cast<size_t>(sequence_length) * static_cast<size_t>(head_size) +
+            static_cast<size_t>(batch_idx) * args->q_batch_stride +
+            static_cast<size_t>(head_idx) * static_cast<size_t>(sequence_length) * static_cast<size_t>(head_size) +
             static_cast<size_t>(q_idx) * static_cast<size_t>(head_size);
 
         // Iterate over KV blocks
@@ -162,10 +164,14 @@ MlasFlashAttentionQuantizedKVThreaded(
                     static_cast<ptrdiff_t>(args->attention_bias_seqlen_stride);
                 const ptrdiff_t bias_matrix_size =
                     static_cast<ptrdiff_t>(sequence_length) * bias_seqlen_stride;
+                // The bias tensor has shape [batch|1, num_heads|1, S, T]; the batch
+                // stride uses the actual head extent (1 when the head dim is broadcast).
+                const ptrdiff_t bias_head_extent =
+                    args->attention_bias_broadcast_head ? 1 : static_cast<ptrdiff_t>(num_heads);
                 ptrdiff_t bias_offset = 0;
                 if (!args->attention_bias_broadcast_batch) {
                     bias_offset += static_cast<ptrdiff_t>(batch_idx) *
-                                   static_cast<ptrdiff_t>(num_heads) * bias_matrix_size;
+                                   bias_head_extent * bias_matrix_size;
                 }
                 if (!args->attention_bias_broadcast_head) {
                     bias_offset += static_cast<ptrdiff_t>(head_idx) * bias_matrix_size;
@@ -378,10 +384,11 @@ MlasFlashDecodingQuantizedKVThreaded(
             ? args->v_scale + kv_head_idx * static_cast<size_t>(head_size)
             : args->v_scale;
 
-        // Q pointer: layout [batch, num_heads, 1, head_size] (sequence_length=1)
+        // Q pointer: layout [batch, num_heads, 1, head_size] (sequence_length=1).
+        // The batch stride is supplied separately to support packed-QKV input.
         const float* q_ptr = args->query +
-            (static_cast<size_t>(batch_idx) * static_cast<size_t>(num_heads) +
-             static_cast<size_t>(head_idx)) * static_cast<size_t>(head_size);
+            static_cast<size_t>(batch_idx) * args->q_batch_stride +
+            static_cast<size_t>(head_idx) * static_cast<size_t>(head_size);
 
         // Step 1: QK^T GEMM for this KV chunk
         const uint8_t* k_block = k_cache_head + static_cast<size_t>(ir) * packed_row_bytes;
@@ -405,10 +412,14 @@ MlasFlashDecodingQuantizedKVThreaded(
             const ptrdiff_t bias_seqlen_stride =
                 static_cast<ptrdiff_t>(args->attention_bias_seqlen_stride);
             const ptrdiff_t bias_matrix_size = bias_seqlen_stride;  // S=1
+            // The bias tensor has shape [batch|1, num_heads|1, S, T]; the batch stride
+            // uses the actual head extent (1 when the head dim is broadcast).
+            const ptrdiff_t bias_head_extent =
+                args->attention_bias_broadcast_head ? 1 : static_cast<ptrdiff_t>(num_heads);
             ptrdiff_t bias_offset = 0;
             if (!args->attention_bias_broadcast_batch) {
                 bias_offset += static_cast<ptrdiff_t>(batch_idx) *
-                               static_cast<ptrdiff_t>(num_heads) * bias_matrix_size;
+                               bias_head_extent * bias_matrix_size;
             }
             if (!args->attention_bias_broadcast_head) {
                 bias_offset += static_cast<ptrdiff_t>(head_idx) * bias_matrix_size;

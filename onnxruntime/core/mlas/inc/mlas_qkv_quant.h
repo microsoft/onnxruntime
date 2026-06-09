@@ -271,6 +271,8 @@ struct MlasFlashAttentionQuantizedKVArgs {
     size_t buffer_size_per_thread;
 
     const float* query;      // [B, N, S, H] FP32
+    size_t q_batch_stride;   // element stride between consecutive batches in `query`
+                             // (num_heads*S*H for unpacked, (num_heads+2*kv_num_heads)*S*H for packed QKV)
     const uint8_t* k_cache;  // [B, kv_N, seqlen_present, packed_row_bytes] quantized
     const uint8_t* v_cache;  // [B, kv_N, seqlen_present, packed_row_bytes] quantized
     const float* k_scale;    // Scalar or per-channel scales for K
