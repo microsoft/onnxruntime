@@ -390,6 +390,8 @@ That behavior is now implemented by tracking:
 
 The final support set is chosen from `candidate_nodes`, with the existing CPU-preferred-node filtering applied only where appropriate.
 
+When resource accounting is also enabled (`session.resource_cuda_partitioning_settings`), this two-pass flow interacts with the partitioner's budget commit in an important way. The first-pass tags are tentative — ORT applies them only so the layout transformer can rewrite the nodes — so the partitioner does **not** commit any accountant budget for them. After the second pass, the partitioner commits budget only for the first-pass nodes that survived (still claimed by the plugin), using the per-node costs captured during the first pass. Nodes dropped on the second pass therefore never consume budget, and surviving nodes are counted exactly once. Plugin EPs that attach accounting costs should do so only on first-pass (newly claimed) capabilities, mirroring the in-tree CUDA EP, which leaves already-assigned second-pass nodes cost-free and relies on the partitioner's deferred commit.
+
 **B. Cache the shim provider pointer at kernel creation**
 
 Migrated CUDA kernels expect `info.GetExecutionProvider()` to return the shim `CUDAExecutionProvider`, not the outer `PluginExecutionProvider`. The adapter now resolves that relationship once during kernel creation, captures the shim provider's runtime-config object, and uses `CudaKernel` accessors for later provider-setting reads.

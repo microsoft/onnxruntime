@@ -326,10 +326,20 @@ std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const Con
     ORT_THROW_IF_ERROR(normalized_config_options.AddConfigEntry(normalized_key.c_str(), value.c_str()));
   }
 
+  // Return nullptr (rather than throwing) when the dynamic plugin EP is uninitialized.
+  // Tests interpret nullptr as "WebGPU EP unavailable" and skip themselves, which matches
+  // the behavior of the non-plugin code path below when USE_WEBGPU is undefined.
+  //
+  // If the dynamic plugin EP is initialized to a different EP, fail fast. Many call sites pass
+  // this helper directly into ConfigEp/RegisterExecutionProvider and do not null-check, so
+  // silently returning nullptr here can lead to confusing downstream failures.
   auto ep_name = dynamic_plugin_ep_infra::GetEpName();
-  ORT_ENFORCE(ep_name == kWebGpuExecutionProvider,
+  if (!ep_name.has_value()) {
+    return nullptr;
+  }
+  ORT_ENFORCE(*ep_name == kWebGpuExecutionProvider,
               "Dynamic plugin EP is not the WebGPU EP. Expected \"", kWebGpuExecutionProvider,
-              "\", got \"", ep_name.value_or("<uninitialized>"), "\"");
+              "\", got \"", *ep_name, "\"");
   return dynamic_plugin_ep_infra::MakeEp(nullptr, &normalized_config_options);
 #else
   return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();

@@ -426,7 +426,7 @@ Status CudnnFlashAttention(
          data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH);
   assert(parameters.mask_type == AttentionMaskType::MASK_NONE ||
          parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN);
-  constexpr bool is_bf16 = false;
+  constexpr bool is_bf16 = std::is_same<T, BFloat16>::value;
 
   T* attention_bias = const_cast<T*>(data.attention_bias);
   int* mask_sequence_lengths_kv = const_cast<int*>(data.mask_index);

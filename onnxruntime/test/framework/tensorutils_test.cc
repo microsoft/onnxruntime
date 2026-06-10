@@ -716,6 +716,164 @@ TEST_F(PathValidationTest, ValidateExternalDataPathEmptyModelPathWithSymlinkOuts
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes working directory"));
 }
 
+// Test that symlinked model + symlinked data in same blob store passes (HuggingFace layout).
+// Layout:
+//   base_dir_/blobs/model_blob       (real model file)
+//   base_dir_/blobs/data_blob        (real data file)
+//   base_dir_/snapshots/v1/model.onnx -> ../../blobs/model_blob  (symlink)
+//   base_dir_/snapshots/v1/data.bin   -> ../../blobs/data_blob   (symlink)
+TEST_F(PathValidationTest, ValidateExternalDataPathSymlinkedModelAndData_HuggingFaceLayout) {
+  auto blobs_dir = base_dir_ / "blobs";
+  auto snapshots_dir = base_dir_ / "snapshots" / "v1";
+  try {
+    CreateDirectories(blobs_dir);
+    CreateDirectories(snapshots_dir);
+
+    // Create real files in blobs/
+    std::ofstream{blobs_dir / "model_blob"};
+    std::ofstream{blobs_dir / "data_blob"};
+
+    // Create symlinks in snapshots/v1/
+    std::filesystem::create_symlink(blobs_dir / "model_blob", snapshots_dir / "model.onnx");
+    std::filesystem::create_symlink(blobs_dir / "data_blob", snapshots_dir / "data.bin");
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping symlink test: " << e.what();
+  }
+
+  // model.onnx is a symlink; data.bin is also a symlink.
+  // Both resolve to the same blobs/ directory — should pass.
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(snapshots_dir / "model.onnx", "data.bin"));
+}
+
+// Test that symlinked model + empty external data path is rejected (not silently accepted).
+TEST_F(PathValidationTest, ValidateExternalDataPathSymlinkedModel_EmptyPathRejected) {
+  auto blobs_dir = base_dir_ / "blobs";
+  auto snapshots_dir = base_dir_ / "snapshots" / "v1";
+  try {
+    CreateDirectories(blobs_dir);
+    CreateDirectories(snapshots_dir);
+    std::ofstream{blobs_dir / "model_blob"};
+    std::filesystem::create_symlink(blobs_dir / "model_blob", snapshots_dir / "model.onnx");
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping symlink test: " << e.what();
+  }
+
+  Status status = utils::ValidateExternalDataPath(snapshots_dir / "model.onnx", "");
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Empty external data path"));
+}
+
+// Test that symlinked model + absolute external data path is rejected without symlink fallback.
+TEST_F(PathValidationTest, ValidateExternalDataPathSymlinkedModel_AbsolutePathRejected) {
+  auto blobs_dir = base_dir_ / "blobs";
+  auto snapshots_dir = base_dir_ / "snapshots" / "v1";
+  try {
+    CreateDirectories(blobs_dir);
+    CreateDirectories(snapshots_dir);
+    std::ofstream{blobs_dir / "model_blob"};
+    std::filesystem::create_symlink(blobs_dir / "model_blob", snapshots_dir / "model.onnx");
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping symlink test: " << e.what();
+  }
+
+  Status status = utils::ValidateExternalDataPath(snapshots_dir / "model.onnx", "/etc/passwd");
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Absolute path not allowed"));
+}
+
+// Test that symlinked model + data symlink resolving OUTSIDE the real model dir is rejected.
+TEST_F(PathValidationTest, ValidateExternalDataPathSymlinkedModel_DataEscapesRealDir) {
+  auto blobs_dir = base_dir_ / "blobs";
+  auto snapshots_dir = base_dir_ / "snapshots" / "v1";
+  try {
+    CreateDirectories(blobs_dir);
+    CreateDirectories(snapshots_dir);
+    std::ofstream{blobs_dir / "model_blob"};
+    std::filesystem::create_symlink(blobs_dir / "model_blob", snapshots_dir / "model.onnx");
+
+    // Create data symlink that resolves outside of blobs/ (the real model dir)
+    auto outside_target = outside_dir_ / "evil.bin";
+    std::ofstream{outside_target};
+    std::filesystem::create_symlink(outside_target, snapshots_dir / "evil_data.bin");
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping symlink test: " << e.what();
+  }
+
+  Status status = utils::ValidateExternalDataPath(snapshots_dir / "model.onnx", "evil_data.bin");
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes model directory"));
+}
+
+// Test that ValidateExternalDataPathFromDir rejects a non-existent file even if path is valid.
+TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_NonExistentFileRejected) {
+  // base_dir_ exists but "no_such_file.bin" does not.
+  Status status = utils::ValidateExternalDataPathFromDir(base_dir_, "no_such_file.bin");
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("does not exist"));
+}
+
+// Tests for ValidateExternalDataPathFromDir (directory-based overload used by EPs).
+TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_ValidSubpath) {
+  // A valid relative path under the given directory should pass.
+  CreateEmptyFile(base_dir_ / "engine.cache");
+  CreateDirectories(base_dir_ / "subdir");
+  CreateEmptyFile(base_dir_ / "subdir" / "engine.cache");
+
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPathFromDir(base_dir_, "engine.cache"));
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPathFromDir(base_dir_, "subdir/engine.cache"));
+#ifdef _WIN32
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPathFromDir(base_dir_, "subdir\\engine.cache"));
+#endif
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_EscapeViaDotDot) {
+  // A path with ".." that escapes the directory must fail.
+  CreateEmptyFile(outside_dir_ / "data.bin");
+
+  Status status = utils::ValidateExternalDataPathFromDir(base_dir_, "../data.bin");
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("External data path escapes model directory"));
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_AbsolutePathRejected) {
+  // Absolute paths must be rejected.
+#ifdef _WIN32
+  Status status = utils::ValidateExternalDataPathFromDir(base_dir_, "C:\\data.bin");
+  ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
+#endif
+  Status status_unix = utils::ValidateExternalDataPathFromDir(base_dir_, "/data.bin");
+  ASSERT_THAT(status_unix.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_EmptyPathRejected) {
+  Status status = utils::ValidateExternalDataPathFromDir(base_dir_, "");
+  ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Empty external data path"));
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_EmptyDirFallsToCwd) {
+  // When directory is empty, should fall back to current working directory.
+  std::filesystem::path cwd = std::filesystem::current_path();
+  CreateEmptyFile(cwd / "fromdir_test_data.bin");
+  other_files_.push_back(cwd / "fromdir_test_data.bin");
+
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPathFromDir("", "fromdir_test_data.bin"));
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_SymlinkOutsideRejected) {
+  // A symlink that resolves outside the given directory must be rejected.
+  auto outside_target = outside_dir_ / "outside_engine.bin";
+  try {
+    std::ofstream{outside_target};
+    auto symlink_path = base_dir_ / "escape_link.bin";
+    std::filesystem::create_symlink(outside_target, symlink_path);
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping symlink test: " << e.what();
+  }
+
+  Status status = utils::ValidateExternalDataPathFromDir(base_dir_, "escape_link.bin");
+  ASSERT_FALSE(status.IsOK());
+}
+
 #if defined(_WIN32)
 // Direct tests for the Windows AppContainer fallback used by
 // WindowsEnv::GetWeaklyCanonicalPath. The AppContainer trigger itself can't be
@@ -1151,7 +1309,136 @@ TEST_F(PathValidationTest, SparseTensorExternalDataPathTraversalBlocked_ZeroNNZ)
   EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("escapes"));
 }
 
+// Defense-in-depth: SparseTensorProtoToDenseTensorProto must reject ORT's in-memory address
+// marker on sparse sub-tensors unconditionally. The trusted .ort loader is required to
+// materialize sparse sub-tensors as inline raw_data so they never carry markers. Without this
+// self-check, a caller that bypasses the Graph-ctor chokepoint would dereference an
+// attacker-controlled address.
+TEST(SparseTensorProtoToDenseTensorProtoMarkerTest, RejectsInMemoryMarkerOnValuesByDefault) {
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.add_dims(4);
+
+  auto* values = sparse.mutable_values();
+  values->set_name("sparse_marker_values");
+  values->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  values->add_dims(2);
+  values->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  auto* loc = values->add_external_data();
+  loc->set_key("location");
+  loc->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag));
+  auto* off = values->add_external_data();
+  off->set_key("offset");
+  off->set_value("0");
+  auto* len = values->add_external_data();
+  len->set_key("length");
+  len->set_value(std::to_string(2 * sizeof(float)));
+
+  auto* indices = sparse.mutable_indices();
+  indices->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  indices->add_dims(2);
+  indices->add_int64_data(0);
+  indices->add_int64_data(1);
+
+  ONNX_NAMESPACE::TensorProto dense;
+  Status status = utils::SparseTensorProtoToDenseTensorProto(sparse, std::filesystem::path{}, dense);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("in-memory address marker"));
+}
+
+TEST(SparseTensorProtoToDenseTensorProtoMarkerTest, RejectsInMemoryMarkerOnIndicesByDefault) {
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.add_dims(4);
+
+  auto* values = sparse.mutable_values();
+  values->set_name("sparse_marker_indices");
+  values->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  values->add_dims(2);
+  values->add_float_data(1.0f);
+  values->add_float_data(2.0f);
+
+  auto* indices = sparse.mutable_indices();
+  indices->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  indices->add_dims(2);
+  indices->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  auto* loc = indices->add_external_data();
+  loc->set_key("location");
+  loc->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag));
+  auto* off = indices->add_external_data();
+  off->set_key("offset");
+  off->set_value("0");
+  auto* len = indices->add_external_data();
+  len->set_key("length");
+  len->set_value(std::to_string(2 * sizeof(int64_t)));
+
+  ONNX_NAMESPACE::TensorProto dense;
+  Status status = utils::SparseTensorProtoToDenseTensorProto(sparse, std::filesystem::path{}, dense);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("in-memory address marker"));
+}
+
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
+
+// Defense-in-depth: GetExtDataFromTensorProto must reject absolute external paths even when
+// called with an empty model_path (e.g. from training checkpoint or custom-op init paths).
+// Previously, ValidateExternalDataPath was only invoked from Graph::ConvertInitializersIntoOrtValues,
+// so direct callers of GetExtDataFromTensorProto could load arbitrary files.
+TEST(GetExtDataFromTensorProtoTest, RejectsAbsoluteExternalPathWithEmptyModelPath) {
+  ONNX_NAMESPACE::TensorProto tensor_proto;
+  tensor_proto.set_name("abs_external");
+  tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  tensor_proto.add_dims(2);
+  tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  auto* loc = tensor_proto.add_external_data();
+  loc->set_key("location");
+#ifdef _WIN32
+  loc->set_value("C:\\data.bin");
+#else
+  loc->set_value("/etc/passwd");
+#endif
+
+  auto* off = tensor_proto.add_external_data();
+  off->set_key("offset");
+  off->set_value("0");
+
+  auto* len = tensor_proto.add_external_data();
+  len->set_key("length");
+  len->set_value(std::to_string(2 * sizeof(float)));
+
+  OrtValue value;
+  Status status = utils::GetExtDataFromTensorProto(Env::Default(), {}, tensor_proto, value);
+  ASSERT_FALSE(status.IsOK()) << "Absolute external path must be rejected even with empty model_path.";
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
+}
+
+// Defense-in-depth: GetExtDataFromTensorProto must reject directory-escaping external paths even
+// when the caller passes a non-empty model_path. This guards callers outside Graph::Resolve.
+TEST(GetExtDataFromTensorProtoTest, RejectsEscapingExternalPath) {
+  ONNX_NAMESPACE::TensorProto tensor_proto;
+  tensor_proto.set_name("escape_external");
+  tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  tensor_proto.add_dims(2);
+  tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  auto* loc = tensor_proto.add_external_data();
+  loc->set_key("location");
+  loc->set_value("../escape.bin");
+
+  auto* off = tensor_proto.add_external_data();
+  off->set_key("offset");
+  off->set_value("0");
+
+  auto* len = tensor_proto.add_external_data();
+  len->set_key("length");
+  len->set_value(std::to_string(2 * sizeof(float)));
+
+  OrtValue value;
+  // Pass a synthetic model_path so the validator has a model directory to compare against.
+  std::filesystem::path model_path = std::filesystem::temp_directory_path() / "sub" / "model.onnx";
+  Status status = utils::GetExtDataFromTensorProto(Env::Default(), model_path, tensor_proto, value);
+  ASSERT_FALSE(status.IsOK()) << "Directory-escaping external path must be rejected.";
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("escapes"));
+}
 
 TEST(TensorProtoUtilsTest, GetNodeProtoLayeringAnnotation) {
   // Case 1: Annotation exists
