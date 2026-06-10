@@ -180,17 +180,6 @@ MLAS_FORCEINLINE size_t Process1Row(
                 MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this - 4), C_ptr + 4, sum);
             }
         }
-        else if(cols_this > 2){
-            if(HasZeroPointB){
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C_ptr, MlasSveReinterpretS32FromU32(acc03));
-            }
-            else{
-                // Row 0 (C0)
-                svint32_t prev = MlasSveLoadInt32(MlasSveWhileLtB32(0, cols_this), C_ptr);
-                svint32_t sum = MlasSveAddInt32X(MlasSveWhileLtB32(0, cols_this), prev, MlasSveReinterpretS32FromU32(acc03));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C_ptr, sum);
-            }
-        }
         else{
             if(HasZeroPointB){
                 MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C_ptr, MlasSveReinterpretS32FromU32(acc03));
@@ -371,21 +360,6 @@ MLAS_FORCEINLINE size_t Process2Rows(
                 prev = MlasSveLoadInt32(MlasSveWhileLtB32(0, cols_this - 4), C1 + 4);
                 sum  = MlasSveAddInt32X(MlasSveWhileLtB32(0, cols_this - 4), prev, MlasSveReinterpretS32FromU32(acc47_c1));
                 MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this - 4), C1 + 4, sum);
-            }
-        }
-        else if(cols_this > 2){
-            if(HasZeroPointB){
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C0, MlasSveReinterpretS32FromU32(acc03_c0));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C1, MlasSveReinterpretS32FromU32(acc03_c1));
-            }
-            else{
-                // Row 0 (C0)
-                svint32_t prev = MlasSveLoadInt32(MlasSveWhileLtB32(0, cols_this), C0);
-                svint32_t sum = MlasSveAddInt32X(MlasSveWhileLtB32(0, cols_this), prev, MlasSveReinterpretS32FromU32(acc03_c0));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C0, sum);
-                prev = MlasSveLoadInt32(MlasSveWhileLtB32(0, cols_this), C1);
-                sum = MlasSveAddInt32X(MlasSveWhileLtB32(0, cols_this), prev, MlasSveReinterpretS32FromU32(acc03_c1));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C1, sum);   
             }
         }
         else{
@@ -624,35 +598,12 @@ MLAS_FORCEINLINE size_t Process4Rows(
                 MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this - 4), C3 + 4, sum);
             }
         }
-        else if(cols_this > 2){
+        else{
             if(HasZeroPointB){
                 MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C0, MlasSveReinterpretS32FromU32(acc03_c0));
                 MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C1, MlasSveReinterpretS32FromU32(acc03_c1));
                 MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C2, MlasSveReinterpretS32FromU32(acc03_c2));
                 MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C3, MlasSveReinterpretS32FromU32(acc03_c3));
-            }
-            else{
-                // Row 0 (C0)
-                svint32_t prev = MlasSveLoadInt32(MlasSveWhileLtB32(0, cols_this), C0);
-                svint32_t sum = MlasSveAddInt32X(MlasSveWhileLtB32(0, cols_this), prev, MlasSveReinterpretS32FromU32(acc03_c0));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C0, sum);
-                prev = MlasSveLoadInt32(MlasSveWhileLtB32(0, cols_this), C1);
-                sum = MlasSveAddInt32X(MlasSveWhileLtB32(0, cols_this), prev, MlasSveReinterpretS32FromU32(acc03_c1));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C1, sum);
-                prev = MlasSveLoadInt32(MlasSveWhileLtB32(0, cols_this), C2);
-                sum = MlasSveAddInt32X(MlasSveWhileLtB32(0, cols_this), prev, MlasSveReinterpretS32FromU32(acc03_c2));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C2, sum);
-                prev = MlasSveLoadInt32(MlasSveWhileLtB32(0, cols_this), C3);
-                sum = MlasSveAddInt32X(MlasSveWhileLtB32(0, cols_this), prev, MlasSveReinterpretS32FromU32(acc03_c3));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C3, sum);
-            }
-        }
-        else{
-            if(HasZeroPointB){
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, std::min(int(cols_this), 2)), C0, MlasSveReinterpretS32FromU32(acc03_c0));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, std::min(int(cols_this), 2)), C1, MlasSveReinterpretS32FromU32(acc03_c1));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, std::min(int(cols_this), 2)), C2, MlasSveReinterpretS32FromU32(acc03_c2));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, std::min(int(cols_this), 2)), C3, MlasSveReinterpretS32FromU32(acc03_c3));
             }
             else{
                 // Row 0 (C0)
@@ -985,45 +936,6 @@ MLAS_FORCEINLINE size_t Process8Rows(
                 sum  = MlasSveAddInt32X(MlasSveWhileLtB32(0, cols_this - 4), prev, MlasSveReinterpretS32FromU32(acc47_c7));
                 MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this - 4), C7 + 4, sum);
             }
-        }
-        else if(cols_this > 2){
-            if(HasZeroPointB){
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C0, MlasSveReinterpretS32FromU32(acc03_c0));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C1, MlasSveReinterpretS32FromU32(acc03_c1));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C2, MlasSveReinterpretS32FromU32(acc03_c2));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C3, MlasSveReinterpretS32FromU32(acc03_c3));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C4, MlasSveReinterpretS32FromU32(acc03_c4));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C5, MlasSveReinterpretS32FromU32(acc03_c5));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C6, MlasSveReinterpretS32FromU32(acc03_c6));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C7, MlasSveReinterpretS32FromU32(acc03_c7));
-            }
-            else{
-                // Row 0 (C0)
-                svint32_t prev = MlasSveLoadInt32(MlasSveWhileLtB32(0, cols_this), C0);
-                svint32_t sum = MlasSveAddInt32X(MlasSveWhileLtB32(0, cols_this), prev, MlasSveReinterpretS32FromU32(acc03_c0));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C0, sum);
-                prev = MlasSveLoadInt32(MlasSveWhileLtB32(0, cols_this), C1);
-                sum = MlasSveAddInt32X(MlasSveWhileLtB32(0, cols_this), prev, MlasSveReinterpretS32FromU32(acc03_c1));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C1, sum);
-                prev = MlasSveLoadInt32(MlasSveWhileLtB32(0, cols_this), C2);
-                sum = MlasSveAddInt32X(MlasSveWhileLtB32(0, cols_this), prev, MlasSveReinterpretS32FromU32(acc03_c2));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C2, sum);
-                prev = MlasSveLoadInt32(MlasSveWhileLtB32(0, cols_this), C3);
-                sum = MlasSveAddInt32X(MlasSveWhileLtB32(0, cols_this), prev, MlasSveReinterpretS32FromU32(acc03_c3));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C3, sum);
-                prev = MlasSveLoadInt32(MlasSveWhileLtB32(0, cols_this), C4);
-                sum = MlasSveAddInt32X(MlasSveWhileLtB32(0, cols_this), prev, MlasSveReinterpretS32FromU32(acc03_c4));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C4, sum);
-                prev = MlasSveLoadInt32(MlasSveWhileLtB32(0, cols_this), C5);
-                sum = MlasSveAddInt32X(MlasSveWhileLtB32(0, cols_this), prev, MlasSveReinterpretS32FromU32(acc03_c5));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C5, sum);
-                prev = MlasSveLoadInt32(MlasSveWhileLtB32(0, cols_this), C6);
-                sum = MlasSveAddInt32X(MlasSveWhileLtB32(0, cols_this), prev, MlasSveReinterpretS32FromU32(acc03_c6));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C6, sum);
-                prev = MlasSveLoadInt32(MlasSveWhileLtB32(0, cols_this), C7);
-                sum = MlasSveAddInt32X(MlasSveWhileLtB32(0, cols_this), prev, MlasSveReinterpretS32FromU32(acc03_c7));
-                MlasSveStoreInt32(MlasSveWhileLtB32(0, cols_this), C7, sum);
-            }  
         }
         else{
             if(HasZeroPointB){
