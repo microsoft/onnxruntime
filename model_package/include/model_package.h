@@ -270,9 +270,14 @@ MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_RemoveVariantExecutorInfo(Mod
 /// non-NULL, the computed URI must match (reproducible-build check). With
 /// `copy_in == false`, an override path is stored in the manifest; this is
 /// rejected eagerly in portable layout. With `copy_in == true`, the source
-/// directory is staged for copy at `_Commit` time. `out_uri` is set to a
-/// NUL-terminated string owned by the package; remains valid until the asset
-/// is removed or the package is closed.
+/// directory is staged for copy at `_Commit` time.
+///
+/// `out_uri` is set to a NUL-terminated string owned by the package. The
+/// pointer is only guaranteed to remain valid until the next mutation
+/// (any ModelPackage_Set*, ModelPackage_Remove*, ModelPackage_AddSharedAsset,
+/// or ModelPackage_Commit call), since those calls may rebuild the
+/// shared-asset table or rehash the pending-copies map. Callers that need to
+/// retain the URI must copy it into their own storage.
 MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_AddSharedAsset(ModelPackage*,
                                                                   const char* source_dir,
                                                                   const char* expected_uri_or_null,
