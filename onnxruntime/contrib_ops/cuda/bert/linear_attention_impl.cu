@@ -830,6 +830,179 @@ __global__ void LinearAttentionDecodeKernel(
   }
 }
 
+// =============================================================================
+// Decode-optimized kernel v2 — column-per-thread, coalesced row-major state.
+//
+// The v1 warp-per-column kernel above shards the state column across a warp's
+// lanes (DK/32 rows each). In the row-major [DK, d_v] state layout a column is
+// strided by d_v, so the per-token state load/store is fully uncoalesced (32
+// lanes hit 32 separate sectors). llama.cpp avoids this by storing the state
+// transposed, but that would change this op's present_state output layout.
+//
+// This v2 keeps the state layout unchanged (row-major [DK, d_v], contract and
+// parity preserved) and instead maps ONE THREAD per output column. Thread `col`
+// owns the whole column S[:, col] in registers (DK values). For a fixed row i,
+// consecutive threads read consecutive addresses (i*d_v + col), so the state
+// load/store is fully COALESCED — no transpose required. Per-column reductions
+// (S^T@k, S^T@q) are sequential within the thread, so there are no cross-thread
+// reductions; the only shared data are the per-token k/q/decay broadcasts.
+//
+// Grid:  (batch_size, kv_num_heads, ceil(d_v / kColsPerBlock))
+// Block: (kColsPerBlock)
+// Requires d_v % kColsPerBlock == 0 (so every thread maps to a valid column and
+// all threads participate in the cooperative broadcast loads / __syncthreads).
+// =============================================================================
+constexpr int kColsPerBlock = 32;
+
+template <typename T, int DK>
+__global__ void LinearAttentionDecodeColKernel(
+    const T* __restrict__ query,
+    const T* __restrict__ key,
+    const T* __restrict__ value,
+    T* __restrict__ state,
+    const T* __restrict__ decay,
+    const T* __restrict__ beta_in,
+    T* __restrict__ output,
+    int seq_len,
+    int q_num_heads,
+    int kv_num_heads,
+    int n_k_heads,
+    int d_v,
+    int output_hidden,
+    float scale,
+    bool needs_decay,
+    bool decay_per_key_dim,
+    bool needs_beta,
+    bool beta_per_head,
+    bool needs_retrieval) {
+  const int b = blockIdx.x;
+  const int h_kv = blockIdx.y;
+  const int tid = threadIdx.x;
+  const int col = blockIdx.z * kColsPerBlock + tid;
+  // d_v is required to be a multiple of kColsPerBlock by the dispatcher, so all
+  // threads have a valid column and may participate in the barriers below.
+
+  const int kv_per_k = kv_num_heads / n_k_heads;
+  const int h_k = h_kv / kv_per_k;
+
+  // This thread owns column `col`: S[i][col] lives at i*d_v + col (row-major).
+  T* S_head = state + ((int64_t)b * kv_num_heads + h_kv) * DK * d_v + col;
+  float s_col[DK];
+#pragma unroll
+  for (int i = 0; i < DK; ++i) {
+    s_col[i] = to_float(S_head[(int64_t)i * d_v]);
+  }
+
+  // Per-token broadcasts shared across all columns of this (b, h_kv).
+  __shared__ float k_sh[DK];
+  __shared__ float q_sh[DK];
+  __shared__ float g_sh[DK];
+  __shared__ float scalar_g;
+
+  const int k_hidden = n_k_heads * DK;
+  const int q_hidden = q_num_heads * DK;
+  const int v_hidden = kv_num_heads * d_v;
+
+  for (int t = 0; t < seq_len; ++t) {
+    const int64_t bt = (int64_t)b * seq_len + t;
+
+    for (int i = tid; i < DK; i += kColsPerBlock) {
+      k_sh[i] = to_float(key[bt * k_hidden + h_k * DK + i]);
+    }
+    if (needs_decay) {
+      if (decay_per_key_dim) {
+        for (int i = tid; i < DK; i += kColsPerBlock) {
+          g_sh[i] = expf(to_float(decay[bt * (kv_num_heads * DK) + h_kv * DK + i]));
+        }
+      } else if (tid == 0) {
+        scalar_g = expf(to_float(decay[bt * kv_num_heads + h_kv]));
+      }
+    }
+    __syncthreads();
+
+    // Decay.
+    if (needs_decay) {
+      if (decay_per_key_dim) {
+#pragma unroll
+        for (int i = 0; i < DK; ++i) {
+          s_col[i] *= g_sh[i];
+        }
+      } else {
+        const float g = scalar_g;
+#pragma unroll
+        for (int i = 0; i < DK; ++i) {
+          s_col[i] *= g;
+        }
+      }
+    }
+
+    // Retrieval: r_col = sum_i (decayed S[i][col]) * k[i].
+    float r_col = 0.0f;
+    if (needs_retrieval) {
+#pragma unroll
+      for (int i = 0; i < DK; ++i) {
+        r_col += s_col[i] * k_sh[i];
+      }
+    }
+
+    // delta_col = beta * (v[col] - r_col), or just v[col] when no beta.
+    const float v_col = to_float(value[bt * v_hidden + h_kv * d_v + col]);
+    float delta_col;
+    if (needs_beta) {
+      const float beta_v = beta_per_head ? to_float(beta_in[bt * kv_num_heads + h_kv])
+                                         : to_float(beta_in[bt]);
+      delta_col = beta_v * (v_col - r_col);
+    } else {
+      delta_col = v_col;
+    }
+
+    // State update: S[i][col] = decayed S[i][col] + k[i] * delta_col.
+#pragma unroll
+    for (int i = 0; i < DK; ++i) {
+      s_col[i] += k_sh[i] * delta_col;
+    }
+
+    // Readout: output = scale * sum_i S[i][col] * q[i].
+    if (q_num_heads >= kv_num_heads) {
+      const int heads_per_group = q_num_heads / kv_num_heads;
+      for (int g = 0; g < heads_per_group; ++g) {
+        const int h_q = h_kv * heads_per_group + g;
+        __syncthreads();
+        for (int i = tid; i < DK; i += kColsPerBlock) {
+          q_sh[i] = to_float(query[bt * q_hidden + h_q * DK + i]);
+        }
+        __syncthreads();
+        float acc = 0.0f;
+#pragma unroll
+        for (int i = 0; i < DK; ++i) {
+          acc += s_col[i] * q_sh[i];
+        }
+        output[bt * output_hidden + h_q * d_v + col] = from_float<T>(scale * acc);
+      }
+    } else {
+      const int h_q = h_kv * q_num_heads / kv_num_heads;
+      __syncthreads();
+      for (int i = tid; i < DK; i += kColsPerBlock) {
+        q_sh[i] = to_float(query[bt * q_hidden + h_q * DK + i]);
+      }
+      __syncthreads();
+      float acc = 0.0f;
+#pragma unroll
+      for (int i = 0; i < DK; ++i) {
+        acc += s_col[i] * q_sh[i];
+      }
+      output[bt * output_hidden + h_kv * d_v + col] = from_float<T>(scale * acc);
+    }
+    __syncthreads();  // before next token overwrites k_sh/g_sh
+  }
+
+  // Store the updated column back (coalesced).
+#pragma unroll
+  for (int i = 0; i < DK; ++i) {
+    S_head[(int64_t)i * d_v] = from_float<T>(s_col[i]);
+  }
+}
+
 }  // anonymous namespace
 
 template <typename T>
@@ -871,6 +1044,32 @@ Status LaunchLinearAttentionKernel(
   // ---------------------------------------------------------------------------
   constexpr int kDecodeSeqThreshold = 16;
   if (seq_len <= kDecodeSeqThreshold && (d_k == 64 || d_k == 128 || d_k == 256)) {
+    // v2 (column-per-thread, coalesced row-major state) is the default. It
+    // requires d_v % kColsPerBlock == 0; otherwise fall back to the v1
+    // warp-per-column kernel (which handles any d_v).
+    if (d_v % kColsPerBlock == 0) {
+      const dim3 decode_grid(batch_size, kv_num_heads,
+                             (d_v + kColsPerBlock - 1) / kColsPerBlock);
+      const dim3 decode_block(kColsPerBlock, 1, 1);
+
+      auto launch_col = [&](auto dk_tag) -> Status {
+        constexpr int DK = decltype(dk_tag)::value;
+        LinearAttentionDecodeColKernel<T, DK><<<decode_grid, decode_block, 0, stream>>>(
+            query, key, value, present_state, decay, beta, output,
+            seq_len, q_num_heads, kv_num_heads, n_k_heads, d_v, output_hidden, scale,
+            needs_decay, decay_per_key_dim, needs_beta, beta_per_head, needs_retrieval);
+        return CUDA_CALL(cudaGetLastError());
+      };
+
+      if (d_k == 128) {
+        return launch_col(std::integral_constant<int, 128>{});
+      } else if (d_k == 64) {
+        return launch_col(std::integral_constant<int, 64>{});
+      } else {  // d_k == 256
+        return launch_col(std::integral_constant<int, 256>{});
+      }
+    }
+
     const dim3 decode_grid(batch_size, kv_num_heads,
                            (d_v + kWarpsPerBlock - 1) / kWarpsPerBlock);
     const dim3 decode_block(32, kWarpsPerBlock, 1);
