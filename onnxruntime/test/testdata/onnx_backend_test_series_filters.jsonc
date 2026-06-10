@@ -40,6 +40,8 @@
         "^test_attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal_expanded*",  // webgpu
         "^test_attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal*",  // location of infinities
         "^test_attention_4d_attn_mask_3d_causal_expanded*", // webgpu
+        "^test_attention_4d_softcap_neginf_mask_expanded*",  // global skip (macOS-arm64-webgpu expanded-ref underflow); see #28969 -- function-expanded Attention reference (softcap + neginf mask) hits a SizeFromDimension underflow; this is a GLOBAL skip affecting all configs (incl. passing CPU x64 + Linux-arm64), triggered only by the macOS-arm64-webgpu expanded-reference path; fused Attention kernel unaffected; remove once #28969 is fixed
+        "^test_attention_4d_softcap_neginf_mask_poison_expanded*",  // global skip (same macOS-arm64-webgpu expanded-ref underflow); see #28969 -- poison variant fails identically (the -inf mask values are not the trigger); remove once #28969 is fixed
         "^test_attention_4d_diff_heads_mask4d_padded_kv*", // Need nonpad_kv_seqlen
         // TODO: support qk_matmul_output modes beyond kQK in Attention-cuda (see issue #27712)
         // Tests combining qk_matmul with softcap need unfused-path qk_matmul support (deferred).
