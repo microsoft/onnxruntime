@@ -190,24 +190,19 @@ Status ComputeMatMul(ComputeContext* context,
   int64_t batchB = b_shape.SizeToDimension(b_shape.NumDimensions() - 2);
 
   TensorShape output_shape = helper.OutputShape();
-  const int64_t dim_output_outer = output_shape[output_shape.NumDimensions() - 2];
+
   // When B is a matrix (batch is 1), we fold batchA into the M dimension for better
   // performance (e.g., [2,3,5] → [1,6,5]).
-  // This is especially beneficial when M is small:
-  // workgroups containing invalid (out-of-bounds) threads make up a large proportion of all
-  // dispatched workgroups when M is small, so folding reduces that waste significantly.
-  // When M is large, the proportion of such wasteful workgroups is already small, so
-  // folding yields negligible gains and is skipped.
-  if (dim_output_outer < 128 && batchA != 1 && batchB == 1) {
-    // dimensions of A: [1,`batchA`, M, K]
+  if (batchA != 1 && batchB == 1) {
+    // dimensions of A: [1, `batchA`, M, K]
     int64_t batchAndM = a_shape.SizeToDimension(a_shape.NumDimensions() - 1);
-    TensorShapeVector dims_a = {1, batchAndM, helper.K()};
-    // dimensions of B: [1,K,N]
-    TensorShapeVector dims_b = {1, helper.K(), helper.N()};
+    TensorShapeVector dims_a = {batchAndM, helper.K()};
+    // dimensions of B: [K, N]
+    TensorShapeVector dims_b = {helper.K(), helper.N()};
 
     a_shape = TensorShape(dims_a);
     b_shape = TensorShape(dims_b);
-    output_shape = {1, batchAndM, helper.N()};
+    output_shape = {batchAndM, helper.N()};
   }
 
   // helpful dimension variables

@@ -55,29 +55,25 @@ Status ApplyMatMulIntel(ComputeContext& context,
 
   TensorShape output_shape = helper.OutputShape();
 
-  const auto& arch = context.AdapterInfo().architecture;
-  const bool is_xe_lpg = arch == std::string_view("xe-lpg");
-  const bool is_xe_3lpg = arch == std::string_view("xe-3lpg");
   // When B is a matrix (batch is 1), we fold batchA into the M dimension for better
   // performance (e.g., [2,3,5] → [1,6,5]).
-  // This is especially beneficial when M is small:
-  // workgroups containing invalid (out-of-bounds) threads make up a large proportion of all
-  // dispatched workgroups when M is small, so folding reduces that waste significantly.
-  // When M is large, the proportion of such wasteful workgroups is already small, so
-  // folding yields negligible gains and is skipped.
-  // Don't fold to workaround for Xe-LPG/Xe-3LPG when M is small and the proportion is relatively small .
+  // Don't fold to workaround for Xe-LPG/Xe-3LPG when M is small and the proportion of workgroups
+  // containing invalid (out-of-bounds) threads is relatively small .
   const int64_t M = output_shape[output_shape.NumDimensions() - 2];
   const int64_t m_mod_32 = M % 32;
-  if (batchA != 1 && batchB == 1 && M < 128 && (!(is_xe_lpg || is_xe_3lpg) || (m_mod_32 > 0 && m_mod_32 <= 24))) {
+  if (batchA != 1 && batchB == 1 &&
+      (!(context.AdapterInfo().architecture == std::string_view("xe-lpg") ||
+         context.AdapterInfo().architecture == std::string_view("xe-3lpg")) ||
+       (m_mod_32 > 0 && m_mod_32 <= 24))) {
     // dimensions of A: [1,`batchA`, M, K]
     int64_t batchAndM = a_shape.SizeToDimension(a_shape.NumDimensions() - 1);
-    TensorShapeVector dims_a = {1, batchAndM, helper.K()};
-    // dimensions of B: [1,K,N]
-    TensorShapeVector dims_b = {1, helper.K(), helper.N()};
+    TensorShapeVector dims_a = {batchAndM, helper.K()};
+    // dimensions of B: [K, N]
+    TensorShapeVector dims_b = {helper.K(), helper.N()};
 
     a_shape = TensorShape(dims_a);
     b_shape = TensorShape(dims_b);
-    output_shape = {1, batchAndM, helper.N()};
+    output_shape = {batchAndM, helper.N()};
   }
 
   // helpful dimension variables
