@@ -3079,9 +3079,6 @@ TEST(CApiTest, create_tensor_with_data_int4) {
   auto query_dims = tensor_info.GetShape();
   ASSERT_EQ(query_dims, dims);
   ASSERT_EQ(tensor_info.GetElementType(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4);
-
-  uint8_t pair_2 = tensor.At<uint8_t>({2});
-  ASSERT_EQ(values[2], pair_2);
 }
 
 // Test creating an Ort::Value with UINT4 data.
@@ -3101,9 +3098,29 @@ TEST(CApiTest, create_tensor_with_data_uint4) {
   auto query_dims = tensor_info.GetShape();
   ASSERT_EQ(query_dims, dims);
   ASSERT_EQ(tensor_info.GetElementType(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4);
+}
 
-  uint8_t pair_2 = tensor.At<uint8_t>({2});
-  ASSERT_EQ(values[2], pair_2);
+// Test that TensorAt rejects sub-byte packed types to prevent OOB pointer returns.
+TEST(CApiTest, tensor_at_rejects_subbyte_types) {
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  // Int4: 7 logical elements packed into 4 bytes
+  {
+    std::array<uint8_t, 4> values = {0x10, 0x32, 0x78, 0x06};
+    std::vector<int64_t> dims = {7};
+    Ort::Value tensor = Ort::Value::CreateTensor(info, values.data(), values.size(), dims.data(), dims.size(),
+                                                 ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4);
+    ASSERT_THROW(tensor.At<uint8_t>({0}), Ort::Exception);
+  }
+
+  // UInt4: 7 logical elements packed into 4 bytes
+  {
+    std::array<uint8_t, 4> values = {0x10, 0x32, 0x54, 0x0F};
+    std::vector<int64_t> dims = {7};
+    Ort::Value tensor = Ort::Value::CreateTensor(info, values.data(), values.size(), dims.data(), dims.size(),
+                                                 ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4);
+    ASSERT_THROW(tensor.At<uint8_t>({0}), Ort::Exception);
+  }
 }
 
 TEST(CApiTest, access_tensor_data_elements) {
