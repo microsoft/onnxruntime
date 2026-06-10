@@ -98,9 +98,9 @@ stages:
               ls -la /build/python_wheel/
               exit 1
             fi
-            # --no-deps keeps onnxruntime pinned at the minimum version (the plugin wheel only
-            # requires onnxruntime>=<min>, which is already satisfied by the pinned install above).
-            python3 -m pip install --no-deps \"\$wheel\"
+            # The plugin wheel declares no dependency on a core onnxruntime package, so installing it
+            # leaves the onnxruntime pinned at the minimum version above untouched.
+            python3 -m pip install \"\$wheel\"
             python3 -c \"import onnxruntime; print('Base onnxruntime runtime version:', onnxruntime.__version__)\"
             python3 -u /onnxruntime_src/plugin-ep-cuda/python/test/test_cuda_plugin_ep.py
           "
