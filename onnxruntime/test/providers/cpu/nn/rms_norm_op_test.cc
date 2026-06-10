@@ -304,6 +304,55 @@ TEST(RMSNormalizationOpTest, RMSNorm_Scale_1xSx3_Axis2) {
   test.ConfigEp(std::move(cpu)).RunWithConfig();
 }
 
+// Rank-reduced scale (S, W) for an (B, S, W) input with axis=2. This is
+// NumPy-broadcast-equivalent to a (1, S, W) scale and must produce the same
+// result as RMSNorm_Scale_1xSx3_Axis2. It is a regression test for a CUDA
+// LayerNorm/RMSNorm kernel bug where a scale whose rank was smaller than the
+// input rank fell back to a generic broadcasting path that the CUDA kernel
+// does not implement, silently applying scale[0:W] to every row. Runs on all
+// available EPs (including CUDA) so the GPU path is covered.
+TEST(RMSNormalizationOpTest, RMSNorm_Scale_RankReduced_Sx3_Axis2) {
+  OpTester test("RMSNormalization", 23);
+  test.AddAttribute<float>("epsilon", 1e-5f);
+  test.AddAttribute<int64_t>("axis", 2);
+
+  std::vector<float> x(2 * 4 * 3);
+  for (int i = 0; i < static_cast<int>(x.size()); ++i) {
+    x[i] = static_cast<float>(i);
+  }
+  test.AddInput<float>("X", {2, 4, 3}, x);
+
+  // Rank-2 scale (S, W) broadcasts over the batch dimension.
+  test.AddInput<float>("scale",
+                       {4, 3},
+                       {
+                           1.1f, 1.1f, 1.1f,
+                           1.2f, 1.2f, 1.2f,
+                           1.3f, 1.3f, 1.3f,
+                           1.4f, 1.4f, 1.4f,
+                       },
+                       true);
+
+  test.AddOutput<float>(
+      "Y", {2, 4, 3},
+      {
+          0.0000f, 0.8521f, 1.7041f,
+          0.8818f, 1.1758f, 1.4697f,
+          1.1068f, 1.2912f, 1.4757f,
+          1.2558f, 1.3954f, 1.5349f,
+
+          1.0134f, 1.0978f, 1.1823f,
+          1.1235f, 1.1984f, 1.2733f,
+          1.2304f, 1.2988f, 1.3672f,
+          1.3354f, 1.3990f, 1.4626f,
+      });
+
+  // TRT, DNNL, OpenVINO, NNAPI, CoreML and QNN don't support this combination.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
+            kNnapiExecutionProvider, kQnnExecutionProvider});
+}
+
 TEST(RMSNormalizationOpTest, RMSNorm_Scale_NoBroadcast_BxSx3_Axis2) {
   OpTester test("RMSNormalization", 23);
   test.AddAttribute<float>("epsilon", 1e-05f);
