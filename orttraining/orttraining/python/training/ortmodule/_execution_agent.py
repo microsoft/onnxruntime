@@ -31,8 +31,10 @@ class InferenceAgent:
         :param sess_options: session options
         :param providers: Optional sequence of providers in order of decreasing
             precedence. Values can either be provider names or tuples of
-            (provider name, options dict). If not provided, then all available
-            providers are used with the default precedence.
+            (provider name, options dict). If not provided, any providers
+            configured in `session_options` are used; if none are configured
+            there either, `CPUExecutionProvider` is used by default. To use
+            other providers, specify them explicitly.
         :param provider_options: Optional sequence of options dicts corresponding
             to the providers listed in 'providers'.
 
@@ -105,11 +107,13 @@ class TrainingAgent:
         :param fw_outputs_device_info: Device info for fetches in forward pass.
         :param bw_fetches_names: Fetch names for backward pass.
         :param bw_outputs_device_info: Device info for fetches in backward pass.
-        :param sess_options: session options
+        :param session_options: session options
         :param providers: Optional sequence of providers in order of decreasing
             precedence. Values can either be provider names or tuples of
-            (provider name, options dict). If not provided, then all available
-            providers are used with the default precedence.
+            (provider name, options dict). If not provided, any providers
+            configured in `session_options` are used; if none are configured there
+            either, `CPUExecutionProvider` is used by default. To use other
+            providers, specify them explicitly.
         :param provider_options: Optional sequence of options dicts corresponding
             to the providers listed in 'providers'.
         :param local_rank: Optional rank of current device, used for memory profiling only.

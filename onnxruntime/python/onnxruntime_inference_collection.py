@@ -264,8 +264,10 @@ class Session:
 
         :param providers: Optional sequence of providers in order of decreasing
             precedence. Values can either be provider names or tuples of
-            (provider name, options dict). If not provided, then all available
-            providers are used with the default precedence.
+            (provider name, options dict). If not provided, any providers
+            configured in the session options at construction time are used;
+            if none were configured there either, `CPUExecutionProvider` is
+            used by default. To use other providers, specify them explicitly.
         :param provider_options: Optional sequence of options dicts corresponding
             to the providers listed in 'providers'.
 
@@ -484,8 +486,10 @@ class InferenceSession(Session):
         :param sess_options: Session options.
         :param providers: Optional sequence of providers in order of decreasing
             precedence. Values can either be provider names or tuples of
-            (provider name, options dict). If not provided, then all available
-            providers are used with the default precedence.
+            (provider name, options dict). If not provided, any providers
+            configured in `sess_options` are used; if none are configured there
+            either, `CPUExecutionProvider` is used by default. To use other
+            providers, specify them explicitly.
         :param provider_options: Optional sequence of options dicts corresponding
             to the providers listed in 'providers'.
 
