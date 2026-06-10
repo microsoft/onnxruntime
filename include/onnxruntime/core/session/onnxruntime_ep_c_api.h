@@ -2118,8 +2118,13 @@ typedef enum OrtGraphCaptureNodeAssignmentPolicy {
 struct OrtEp {
   /** \brief The ONNX Runtime version the execution provider was compiled with.
    *
-   * Implementation should set to ORT_API_VERSION.
+   * Implementation should normally set this to ORT_API_VERSION.
    * ORT will use this to ensure it does not call functions that were not available when the library was compiled.
+   *
+   * An execution provider that is compiled against the latest headers but wants to remain loadable by an
+   * older ORT runtime may instead set this to the minimum of ORT_API_VERSION and the loaded runtime's API
+   * version. In that case it must only populate OrtEp callbacks (and call OrtEpApi functions) that exist in
+   * that lower version.
    *
    * \since Version 1.22.
    */

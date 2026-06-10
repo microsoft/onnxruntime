@@ -80,27 +80,30 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(
         "CUDA Plugin EP: default_logger must not be null.");
   }
 
-  // Log initialization (default_logger is guaranteed non-null after the check above).
-  {
-    std::string msg = "CreateEpFactories: Initializing CUDA Plugin EP with registration name: ";
-    msg += (registration_name ? registration_name : "NULL");
-    auto* status = ort_api->Logger_LogMessage(default_logger, ORT_LOGGING_LEVEL_INFO,
-                                              msg.c_str(),
-                                              ORT_FILE, __LINE__, __FUNCTION__);
-    if (status) ort_api->ReleaseStatus(status);
-  }
-
-  if (max_factories < 1) {
-    auto* log_status = ort_api->Logger_LogMessage(default_logger, ORT_LOGGING_LEVEL_ERROR,
-                                                  "CreateEpFactories: max_factories < 1",
-                                                  ORT_FILE, __LINE__, __FUNCTION__);
-    if (log_status) ort_api->ReleaseStatus(log_status);
-    return ort_api->CreateStatus(
-        ORT_INVALID_ARGUMENT,
-        "CUDA Plugin EP: Not enough space to return EP factory. Need at least one.");
-  }
-
+  // This is a C entry point, so no C++ exception may escape it. Wrap everything that can throw
+  // (e.g. std::string operations and factory construction) and report failures back to ORT as an
+  // OrtStatus instead.
   try {
+    // Log initialization (default_logger is guaranteed non-null after the check above).
+    {
+      std::string msg = "CreateEpFactories: Initializing CUDA Plugin EP with registration name: ";
+      msg += (registration_name ? registration_name : "NULL");
+      auto* status = ort_api->Logger_LogMessage(default_logger, ORT_LOGGING_LEVEL_INFO,
+                                                msg.c_str(),
+                                                ORT_FILE, __LINE__, __FUNCTION__);
+      if (status) ort_api->ReleaseStatus(status);
+    }
+
+    if (max_factories < 1) {
+      auto* log_status = ort_api->Logger_LogMessage(default_logger, ORT_LOGGING_LEVEL_ERROR,
+                                                    "CreateEpFactories: max_factories < 1",
+                                                    ORT_FILE, __LINE__, __FUNCTION__);
+      if (log_status) ort_api->ReleaseStatus(log_status);
+      return ort_api->CreateStatus(
+          ORT_INVALID_ARGUMENT,
+          "CUDA Plugin EP: Not enough space to return EP factory. Need at least one.");
+    }
+
     auto factory = std::make_unique<onnxruntime::cuda_plugin::CudaEpFactory>(
         *ort_api, *ep_api, *default_logger);
 
@@ -116,6 +119,12 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(
                                                   ex.what(), ORT_FILE, __LINE__, __FUNCTION__);
     if (log_status) ort_api->ReleaseStatus(log_status);
     return ort_api->CreateStatus(ORT_EP_FAIL, ex.what());
+  } catch (...) {
+    constexpr const char* unknown_error = "CUDA Plugin EP: unknown error in CreateEpFactories.";
+    auto* log_status = ort_api->Logger_LogMessage(default_logger, ORT_LOGGING_LEVEL_ERROR,
+                                                  unknown_error, ORT_FILE, __LINE__, __FUNCTION__);
+    if (log_status) ort_api->ReleaseStatus(log_status);
+    return ort_api->CreateStatus(ORT_EP_FAIL, unknown_error);
   }
 
   return nullptr;

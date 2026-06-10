@@ -132,7 +132,10 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   OnRunStart = config_.enable_cuda_graph ? OnRunStartImpl : nullptr;
   OnRunEnd = config_.enable_cuda_graph ? OnRunEndImpl : nullptr;
 
-  // OrtEp::Sync is \since ORT 1.25. Only advertise it on a runtime that provides it.
+  // OrtEp::Sync is \since ORT 1.25. A runtime older than 1.25 does not know about this OrtEp field and
+  // ignores it regardless of its value, so gating is not strictly required for correctness here. We
+  // still gate it to stay consistent with the version-dependent callbacks below and to keep the
+  // minimum-version dependency explicit at each assignment.
   Sync = (ort_version >= 25) ? SyncImpl : nullptr;
 
   // Not a compile-based EP
