@@ -239,23 +239,26 @@ static void LutGemmComputeArgs(benchmark::internal::Benchmark* b) {
 //   (K=1024, N=384):  20 nodes
 //   (K=1024, N=4096): 20 nodes
 //   (K=4096, N=1024): 20 nodes
-// M=128 is the widest-gap prefill shape vs the W4 CompInt8 path.
-// Pair with QNBITGEMM<float, 4>/QNBitGemmCustomerArgs for head-to-head.
+// Covers both M=1 (decode) and M=128 (prefill) so the LUT path can be
+// compared apples-to-apples against the W4 CompInt8 and W2-prod/W2-super
+// kernels (QNBITGEMM<float, 4>/QNBitGemmCustomerArgs and
+// QNBITGEMM<float, 2>/QNBit2BitCustomerArgs).
 static void LutGemmCustomerArgs(benchmark::internal::Benchmark* b) {
   b->ArgNames(lutgemm_compute_arg_names);
-  // Five separate Args() entries (rather than ArgsProduct) so we only run the
-  // exact (K, N) pairs that appear in the customer model.
-  const int64_t M = 128;
+  // Separate Args() entries so we only run the exact (M, K, N) tuples that
+  // appear in the customer model.
   const int64_t BlkLen = 64;
   const int64_t Threads = 8;
   const int64_t HasZP = 0;
   const int64_t HasBias = 1;
-  for (auto kn : {std::pair<int64_t, int64_t>{384, 1024},
-                  std::pair<int64_t, int64_t>{1024, 192},
-                  std::pair<int64_t, int64_t>{1024, 384},
-                  std::pair<int64_t, int64_t>{1024, 4096},
-                  std::pair<int64_t, int64_t>{4096, 1024}}) {
-    b->Args({BlkLen, M, kn.second, kn.first, Threads, HasZP, HasBias});
+  for (int64_t M : {int64_t{1}, int64_t{128}}) {
+    for (auto kn : {std::pair<int64_t, int64_t>{384, 1024},
+                    std::pair<int64_t, int64_t>{1024, 192},
+                    std::pair<int64_t, int64_t>{1024, 384},
+                    std::pair<int64_t, int64_t>{1024, 4096},
+                    std::pair<int64_t, int64_t>{4096, 1024}}) {
+      b->Args({BlkLen, M, kn.second, kn.first, Threads, HasZP, HasBias});
+    }
   }
 }
 

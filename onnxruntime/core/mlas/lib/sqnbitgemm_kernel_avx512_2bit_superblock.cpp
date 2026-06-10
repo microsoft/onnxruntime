@@ -1,0 +1,359 @@
+/*++
+
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+Licensed under the MIT License.
+
+Module Name:
+
+    sqnbitgemm_kernel_avx512_2bit_superblock.cpp
+
+Abstract:
+
+    Pack helpers and a scalar reference kernel for the super-block W2 layout.
+
+    See sqnbitgemm_kernel_avx512_2bit_superblock.h for the layout description
+    and the rationale (closing the W2-vs-W4 prefill gap by replacing the
+    per-block broadcast + variable shift unpack with a single 64-byte load +
+    four fixed-shift+mask pairs).
+
+    This translation unit is scalar / portable. The vectorized inner loop
+    that consumes the super-block layout lives in a separate header to be
+    added in phase 3, and is wired into the dispatch tables in phase 4.
+
+--*/
+
+#include "sqnbitgemm_kernel_avx512_2bit_superblock.h"
+
+#include <algorithm>
+#include <cassert>
+#include <cstdint>
+#include <cstring>
+
+#include "mlasi.h"
+#include "qnbitgemm.h"
+
+namespace onnxruntime {
+namespace mlas {
+namespace sq2bit_avx512_super {
+
+namespace sq2 = ::onnxruntime::mlas::sq2bit_avx512;
+
+//
+// Workspace / pack-buffer size for the super-block W2 path. Returns 0 if any
+// of the configuration constraints is violated; the caller (MlasQNBitGemmPackQuantBDataSize)
+// treats that as "unsupported" and falls back to the original W2 path.
+//
+// Constraints:
+//   * BlkLen == 64
+//   * ComputeType == SQNBIT_CompInt8
+//
+// K-tail handling: BlockCountK is rounded UP to a multiple of kSuperBlockBlks
+// for the storage that the inner K-loop walks (PackedQuantBData,
+// PackedQuantBScale). Padding slots hold zeroed weights and scales, so they
+// contribute exactly 0 to the dot product. The BlkSum buffer is kept at the
+// LOGICAL BlockCountK because it is consumed by the SGEMM correction step,
+// not by the inner K-loop.
+//
+// Storage matches the original W2 layout total bytes when BlockCountK is a
+// multiple of 4. When not a multiple of 4, storage grows by at most 3 K-blocks
+// per N-col (= up to 48 bytes per col -- negligible at production N values).
+//
+//   [PackedQuantBData]  N * BlockCountKPadded * kBlkBytes
+//   [PackedQuantBScale] N * BlockCountKPadded * sizeof(float)
+//   [QuantBBlkSum]      roundup_16(N) * BlockCountK (logical) * 16 floats
+//
+size_t MLASCALL
+Q2BitGemmPackQuantBDataSize_SuperBlock(
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    bool /* HasZeroPoint */,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /* BackendKernelSelectorConfig */
+)
+{
+    if (BlkLen != sq2::kBlkLen || ComputeType != SQNBIT_CompInt8) {
+        return 0;
+    }
+    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+    if (BlockCountK == 0) {
+        return 0;
+    }
+    const size_t BlockCountKPadded =
+        MlasDivRoundup(BlockCountK, kSuperBlockBlks) * kSuperBlockBlks;
+
+    // Use BlockCountKPadded for BlkSum sizing too. The actual SGEMM-correction
+    // step only reads LOGICAL BlockCountK entries, but PackedQuantBDataStruct
+    // is constructed by the caller with a single BlockCountK value that
+    // controls BOTH the packed-B size and the BlkSum offset. If we sized
+    // BlkSum at the logical BlockCountK while sizing packed-B at padded,
+    // the struct's BlkSum pointer would land inside the packed-B region
+    // (because the caller's struct uses one BlockCountK consistently). The
+    // extra storage from padding the BlkSum is ~16 floats per N -- trivial.
+    size_t PackedQuantBDataSize = N * BlockCountKPadded * kBlkBytes;
+    const size_t ScaleSize = N * BlockCountKPadded * sizeof(float);
+    size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountKPadded * 16 * sizeof(float);
+
+    constexpr size_t kPackedQuantBDataAlignment = 64;
+    PackedQuantBDataSize += kPackedQuantBDataAlignment - 1;
+
+    constexpr size_t kBlkSumAlignment = MlasQNBitQuantBBlkSumAlignment();
+    BlkSumSize += kBlkSumAlignment - 1;
+
+    return PackedQuantBDataSize + ScaleSize + BlkSumSize;
+}
+
+//
+// Pack quantized B data + scales + per-block sums for the super-block W2 path.
+//
+// PackedQuantBData layout (super-blocks of 4 K-blocks, 64 bytes each):
+//   The super-block at logical (n, blk_super=blk/4) lives at byte offset
+//   PackedQuantBOffsetBytes_W2_SuperBlock(n, blk_super, SuperBlockCountK, NMain).
+//   Byte b within the super-block holds 2-bit weight b from each of the 4
+//   constituent K-blocks at bit positions {0..1, 2..3, 4..5, 6..7}.
+//
+// PackedQuantBScale layout: one float per K-block, four floats per super-block,
+// addressed by PackedQuantBScaleOffset_W2_SuperBlock.
+//
+// QuantBBlkSum layout: the same width-16 row-major chunked layout used by the
+// existing W2 path, so the SGEMM correction step (MlasGemmFloatKernel) can be
+// shared verbatim with the existing kernel.
+//
+// Mirrors the SQ2BitGemmPackQuantBDataAndBlkSum_Scalar prepack 3-call pattern:
+// ORT's matmul_nbits.cc invokes this function up to three times (B, scales, ZP).
+// We write scales when scales arrive, then re-derive BlkSum whenever either
+// scales or zero-points arrive, reading scales from the already-packed buffer.
+//
+void MLASCALL
+SQ2BitGemmPackQuantBDataAndBlkSum_SuperBlockScalar(
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE /* ComputeType */,
+    const std::byte* QuantBDataBegin,
+    const float* QuantBScaleBegin,
+    bool /* HasZeroPoint */,
+    const std::byte* QuantBZPBegin,
+    PackedQuantBDataStruct<float, 2>& PackedQuantB,
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /* BackendKernelSelectorConfig */
+)
+{
+    assert(BlkLen == sq2::kBlkLen);
+    if (BlkLen != sq2::kBlkLen) {
+        return;
+    }
+
+    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+    if (BlockCountK == 0) {
+        return;
+    }
+
+    // Pad BlockCountK up to a multiple of kSuperBlockBlks so the inner K-loop
+    // can iterate whole super-blocks uniformly. Padding slots store zeroed
+    // weights / scales and contribute exactly 0 to the dot product.
+    const size_t SuperBlockCountKPadded =
+        MlasDivRoundup(BlockCountK, kSuperBlockBlks);
+    const size_t BlockCountKPadded = SuperBlockCountKPadded * kSuperBlockBlks;
+    const size_t NMain = (N / kNCols4) * kNCols4;
+
+    // Zero source block used when packing a super whose K-range crosses the
+    // logical BlockCountK boundary. We point to this static zero buffer in
+    // the missing slots so the existing 4-block pack helper does the right
+    // thing without any branching inside it.
+    static const std::byte kZeroBlock[kBlkBytes] = {};
+
+    // ----- B-data pack -----
+    if (QuantBDataBegin != nullptr) {
+        std::byte* PackedQuantBData = PackedQuantB.PackedQuantBData;
+        const size_t Iterations = N * SuperBlockCountKPadded;
+        MlasTrySimpleParallel(
+            ThreadPool, static_cast<ptrdiff_t>(Iterations),
+            [&](ptrdiff_t tid) {
+                const size_t n = static_cast<size_t>(tid) / SuperBlockCountKPadded;
+                const size_t blk_super = static_cast<size_t>(tid) % SuperBlockCountKPadded;
+                const size_t blk0 = blk_super * kSuperBlockBlks;
+
+                // Pick real source block pointers for slots that exist; the
+                // static zero buffer for slots past the logical BlockCountK.
+                auto src_for = [&](size_t blk) -> const std::byte* {
+                    if (blk < BlockCountK) {
+                        return QuantBDataBegin + (n * BlockCountK + blk) * kBlkBytes;
+                    }
+                    return kZeroBlock;
+                };
+                const std::byte* src_blk_0 = src_for(blk0 + 0);
+                const std::byte* src_blk_1 = src_for(blk0 + 1);
+                const std::byte* src_blk_2 = src_for(blk0 + 2);
+                const std::byte* src_blk_3 = src_for(blk0 + 3);
+
+                const size_t dst_offset =
+                    PackedQuantBOffsetBytes_W2_SuperBlock(n, blk_super, SuperBlockCountKPadded, NMain);
+                sq2::PackSuperBlock4_BlkLen64(src_blk_0, src_blk_1, src_blk_2, src_blk_3,
+                                              PackedQuantBData + dst_offset);
+            }
+        );
+    }
+
+    // ----- Scales -----
+    // Iterate over the PADDED block count so trailing padding slots get
+    // explicit zero scales (otherwise they could hold uninitialised noise
+    // and the kernel's K-loop would read those into the FMA).
+    if (QuantBScaleBegin != nullptr) {
+        float* PackedScales = PackedQuantB.PackedQuantBScale;
+        const size_t Iterations = N * BlockCountKPadded;
+        MlasTrySimpleParallel(
+            ThreadPool, static_cast<ptrdiff_t>(Iterations),
+            [&](ptrdiff_t tid) {
+                const size_t n = static_cast<size_t>(tid) / BlockCountKPadded;
+                const size_t blk = static_cast<size_t>(tid) % BlockCountKPadded;
+                const float scale = (blk < BlockCountK)
+                    ? QuantBScaleBegin[n * BlockCountK + blk]
+                    : 0.0f;
+                PackedScales[PackedQuantBScaleOffset_W2_SuperBlock(n, blk, BlockCountKPadded, NMain)] = scale;
+            }
+        );
+    }
+
+    // ----- BlkSum (recomputed whenever scales or ZPs arrive) -----
+    // BlkSum is consumed by the SGEMM correction step (MlasGemmFloatKernel),
+    // which is called outside the inner K-loop with the LOGICAL BlockCountK
+    // and the per-row ABlockSum the dispatcher produced for that logical K.
+    // We therefore only need to fill the first BlockCountK entries; the buffer
+    // is sized at MlasDivRoundup(N, 16) * BlockCountK * 16 floats (logical).
+    if (QuantBScaleBegin != nullptr || QuantBZPBegin != nullptr) {
+        const float* PackedScales = PackedQuantB.PackedQuantBScale;
+        float* BlkSum = PackedQuantB.QuantBBlkSum;
+        const size_t ZPCountK = MlasDivRoundup(BlockCountK, 4);
+        const size_t Iterations = N * BlockCountK;
+        MlasTrySimpleParallel(
+            ThreadPool, static_cast<ptrdiff_t>(Iterations),
+            [&](ptrdiff_t tid) {
+                const size_t n = static_cast<size_t>(tid) / BlockCountK;
+                const size_t blk = static_cast<size_t>(tid) % BlockCountK;
+                const float scale =
+                    PackedScales[PackedQuantBScaleOffset_W2_SuperBlock(n, blk, BlockCountKPadded, NMain)];
+
+                uint8_t zp = kDefaultSymmetricZeroPoint2Bit;
+                if (QuantBZPBegin != nullptr) {
+                    const size_t zp_byte_idx = n * ZPCountK + (blk / 4);
+                    const size_t zp_bit_off = (blk % 4) * 2;
+                    zp = static_cast<uint8_t>(
+                        (static_cast<uint8_t>(QuantBZPBegin[zp_byte_idx]) >> zp_bit_off) & 0x03u);
+                }
+
+                const size_t blksum_offset = ((n / 16) * BlockCountK + blk) * 16 + (n % 16);
+                BlkSum[blksum_offset] = -scale * static_cast<float>(zp);
+            }
+        );
+    }
+}
+
+//
+// Scalar reference kernel that consumes the super-block packed layout.
+// Same math as the existing reference kernel; differs only in how it walks
+// PackedQuantBData (super-block-major) and PackedQuantBScale (super-block-major).
+//
+// This is the correctness oracle for the SIMD super-block kernel coming in
+// Phase 3. It also lets us validate the pack layout end-to-end via the
+// existing MlasQNBitGemmBatch dispatch path once we wire it up.
+//
+size_t MLASCALL
+SQ2BitGemmKernel_BlkSum_CompInt8_SuperBlockScalar(
+    const size_t BlkLen,
+    const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const std::byte* /* QuantBZeroPoint */,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t /* CountK */,
+    size_t BlockCountK,
+    const float* Bias,
+    size_t ldc,
+    const float* ABlockSum,
+    const float* QuantBBlkSum
+)
+{
+    if (BlkLen != sq2::kBlkLen) {
+        return 0;
+    }
+    if (BlockCountK == 0) {
+        return 0;
+    }
+
+    // PackedQuantBData and PackedQuantBScale are addressed via padded counts
+    // (K-tail handling -- see Q2BitGemmPackQuantBDataSize_SuperBlock). The K
+    // dot-product loop itself iterates only LOGICAL BlockCountK steps because
+    // A is unpadded; the kernel never reads past the real A rows.
+    const size_t SuperBlockCountKPadded =
+        MlasDivRoundup(BlockCountK, kSuperBlockBlks);
+    const size_t BlockCountKPadded = SuperBlockCountKPadded * kSuperBlockBlks;
+
+    // The kernel is called by SQ2BitGemm_CompInt8 with the full CountN range; that
+    // function selects an N-tile boundary (kNCols4) up the stack. For a scalar
+    // reference path we don't depend on the 4-N-col grouping, but we DO need to
+    // index PackedQuantBData/PackedQuantBScale via the super-block offset helpers
+    // so we read the right bytes regardless of caller tile choice.
+    //
+    // CountN may not be a multiple of kNCols4 in the tail case. Detect that and
+    // fall back to plain column-major for the tail cols (the layout helpers
+    // already encode this rule).
+    const size_t NMainLocal = (CountN / kNCols4) * kNCols4;
+
+    const size_t lda = BlockCountK * sq2::kBlkLen;  // bytes per A row (int8)
+    const size_t lda_scale = BlockCountK;            // floats per A scale row
+
+    for (size_t m = 0; m < CountM; ++m) {
+        const int8_t* a_row = reinterpret_cast<const int8_t*>(QuantA + m * lda);
+        const float* a_scale_row = QuantAScale + m * lda_scale;
+        const float* a_blksum_row = ABlockSum + m * lda_scale;
+        float* c_row = C + m * ldc;
+
+        for (size_t n = 0; n < CountN; ++n) {
+            float acc = (Bias != nullptr) ? Bias[n] : 0.0f;
+
+            for (size_t blk = 0; blk < BlockCountK; ++blk) {
+                // Pull the super-block this K-block belongs to and unpack only the
+                // slot we need (block_in_super = blk % 4 selects the 2-bit field).
+                const size_t blk_super = blk / kSuperBlockBlks;
+                const size_t blk_in_super = blk % kSuperBlockBlks;
+                const size_t super_offset =
+                    PackedQuantBOffsetBytes_W2_SuperBlock(n, blk_super, SuperBlockCountKPadded, NMainLocal);
+                const std::byte* super = QuantBData + super_offset;
+
+                uint8_t b_unpacked[sq2::kBlkLen];
+                for (size_t i = 0; i < sq2::kBlkLen; ++i) {
+                    const uint8_t byte = static_cast<uint8_t>(super[i]);
+                    b_unpacked[i] = static_cast<uint8_t>((byte >> (2 * blk_in_super)) & 0x03u);
+                }
+
+                const int8_t* a_blk = a_row + blk * sq2::kBlkLen;
+                int32_t dot = 0;
+                for (size_t i = 0; i < sq2::kBlkLen; ++i) {
+                    dot += static_cast<int32_t>(a_blk[i]) * static_cast<int32_t>(b_unpacked[i]);
+                }
+
+                const float b_scale =
+                    QuantBScale[PackedQuantBScaleOffset_W2_SuperBlock(n, blk, BlockCountKPadded, NMainLocal)];
+                acc += a_scale_row[blk] * b_scale * static_cast<float>(dot);
+
+                // The width-16 row-major BlkSum layout is column-major in n
+                // (one float per (n, blk)); same as the existing W2 path.
+                const size_t blksum_offset = ((n / 16) * BlockCountK + blk) * 16 + (n % 16);
+                acc += a_blksum_row[blk] * QuantBBlkSum[blksum_offset];
+            }
+
+            c_row[n] = acc;
+        }
+    }
+
+    return CountM;
+}
+
+}  // namespace sq2bit_avx512_super
+}  // namespace mlas
+}  // namespace onnxruntime

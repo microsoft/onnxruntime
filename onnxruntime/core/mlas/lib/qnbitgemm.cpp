@@ -1001,15 +1001,26 @@ SQ2BitGemm_CompInt8(
 
     const size_t k_blks = MlasDivRoundup(K, BlkLen);
 
+    // The packed-B-data and per-block-scale buffers may use a layout that
+    // addresses each N-col at a stride larger than `k_blks` (e.g. the AVX-512
+    // super-block / W2-v2 kernel rounds up to a multiple of 4 to amortise
+    // unpack across 4 K-blocks). Ask the dispatch for the effective per-N-col
+    // block count; default to logical k_blks if the dispatch doesn't override.
+    // BlkSum keeps the logical stride because the SGEMM correction step
+    // expects width-16 chunked PackB layout independent of the W2 variant.
+    const size_t k_blks_eff = (Dispatch->Q2BitGemmEffectiveBlockCountK != nullptr)
+                                  ? Dispatch->Q2BitGemmEffectiveBlockCountK(k_blks)
+                                  : k_blks;
+
     const size_t lda = k_blks * (per_gemm_quant_a_workspace->QuantScale ? BlkLen : Q8BlkSize(BlkLen));
     const size_t ldc = DataParams->ldc;
-    const size_t ldb = k_blks * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);  // BlkLen / 4 bytes per block
+    const size_t ldb = k_blks_eff * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);  // BlkLen / 4 bytes per block
 
     const std::byte* QuantA = per_gemm_quant_a_workspace->QuantData + RangeStartM * lda;
     const float* QuantAScale = per_gemm_quant_a_workspace->QuantScale + RangeStartM * k_blks;
 
     const std::byte* QuantBData = static_cast<const std::byte*>(DataParams->PackedQuantBData) + RangeStartN * ldb;
-    const float* QuantBScale = DataParams->QuantBScale + RangeStartN * k_blks;
+    const float* QuantBScale = DataParams->QuantBScale + RangeStartN * k_blks_eff;
     const float* ABlockSum = per_gemm_quant_a_workspace->BlockSum + RangeStartM * k_blks;
     const float* QuantBBlkSum = DataParams->QuantBBlkSum + RangeStartN * k_blks;
     float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
@@ -1021,7 +1032,7 @@ SQ2BitGemm_CompInt8(
         CountN = std::min(RangeCountN - n, size_t{128});
 
         const std::byte* b_col = QuantBData + n * ldb;
-        const float* b_col_scale = QuantBScale + n * k_blks;
+        const float* b_col_scale = QuantBScale + n * k_blks_eff;
         float* c_blk = C + n;
         const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
         const float* b_blk_sum = QuantBBlkSum + n * k_blks;

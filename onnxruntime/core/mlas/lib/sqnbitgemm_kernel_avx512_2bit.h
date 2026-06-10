@@ -220,6 +220,92 @@ UnpackSourceBlock_BlkLen64_Reference(const std::byte* src, uint8_t out[kBlkLen])
     }
 }
 
+// -----------------------------------------------------------------------------
+// EXPERIMENTAL: super-block packing for fast unpack
+// -----------------------------------------------------------------------------
+//
+// The existing per-block pack (PackBlock_BlkLen64) stores 16 bytes per K-block
+// such that each byte holds 4 weights from 4 different "rows" of the block.
+// Unpacking that layout into a ZMM of 64 natural-order weights requires a
+// broadcast + per-dword variable shift (`vpsrlvd`, ~3c latency, 1c throughput
+// on Zen5) -- a cost we measured at ~30-35% of total W2 kernel time.
+//
+// The super-block layout below groups FOUR consecutive K-blocks together into
+// a single 64-byte buffer (= 4 * 16 bytes, same total storage) such that
+// byte[i] (i = 0..63) holds:
+//   bits[0..1] = block_0.weight[i]
+//   bits[2..3] = block_1.weight[i]
+//   bits[4..5] = block_2.weight[i]
+//   bits[6..7] = block_3.weight[i]
+//
+// Unpack with a single ZMM load and four fixed-shift+mask pairs:
+//
+//   __m512i super = _mm512_loadu_si512(packed);
+//   __m512i mask  = _mm512_set1_epi8(0x03);
+//   __m512i bv0   = _mm512_and_si512(super, mask);
+//   __m512i bv1   = _mm512_and_si512(_mm512_srli_epi16(super, 2), mask);
+//   __m512i bv2   = _mm512_and_si512(_mm512_srli_epi16(super, 4), mask);
+//   __m512i bv3   = _mm512_and_si512(_mm512_srli_epi16(super, 6), mask);
+//
+// Each shift+mask is ~2c (1c srli_epi16 + 1c andd) and the four chains are
+// fully independent, so the critical path is ~4c for ALL four blocks combined
+// vs the current ~20c (4 broadcasts * ~5c each, partially overlapped).
+//
+// Note on `_mm512_srli_epi16`: it shifts each 16-bit lane by N. For a byte
+// that is the LOW byte of a 16-bit lane, the shift pulls in bits from the
+// adjacent HIGH byte. The subsequent AND with 0x03 discards those leaked
+// bits, leaving the correct per-byte result. For the HIGH byte, zeros are
+// shifted in from the top, which is what we want.
+
+constexpr size_t kSuperBlockBlks = 4;                                // 4 K-blocks per super
+constexpr size_t kSuperBlockBytes = kSuperBlockBlks * kBlkBytes;     // 64 bytes
+constexpr size_t kSuperBlockWeights = kSuperBlockBlks * kBlkLen;     // 256 weights
+
+//
+// Pack 4 consecutive K-blocks (4 * 16 = 64 source bytes in standard ONNX
+// layout) into a 64-byte super-block. Pure permutation of the 256 2-bit
+// elements; bit-identical round-trip with UnpackSuperBlock4_BlkLen64_Reference.
+//
+inline void
+PackSuperBlock4_BlkLen64(const std::byte* src_block_0,
+                         const std::byte* src_block_1,
+                         const std::byte* src_block_2,
+                         const std::byte* src_block_3,
+                         std::byte* dst)
+{
+    for (size_t i = 0; i < kBlkLen; ++i) {
+        const uint8_t v0 = ExtractSrcWeight(src_block_0, i);
+        const uint8_t v1 = ExtractSrcWeight(src_block_1, i);
+        const uint8_t v2 = ExtractSrcWeight(src_block_2, i);
+        const uint8_t v3 = ExtractSrcWeight(src_block_3, i);
+        dst[i] = static_cast<std::byte>(
+            static_cast<uint8_t>(v0 | (v1 << 2) | (v2 << 4) | (v3 << 6))
+        );
+    }
+}
+
+//
+// Reference unpack of one 64-byte super-block back into 4 K-blocks worth of
+// natural-order uint8 weights ([0, 3]). Written from the documented layout
+// rule -- intentionally independent of PackSuperBlock4_BlkLen64 so it can
+// serve as a round-trip oracle.
+//
+inline void
+UnpackSuperBlock4_BlkLen64_Reference(const std::byte* packed,
+                                     uint8_t out_block_0[kBlkLen],
+                                     uint8_t out_block_1[kBlkLen],
+                                     uint8_t out_block_2[kBlkLen],
+                                     uint8_t out_block_3[kBlkLen])
+{
+    for (size_t i = 0; i < kBlkLen; ++i) {
+        const uint8_t b = static_cast<uint8_t>(packed[i]);
+        out_block_0[i] = static_cast<uint8_t>((b >> 0) & 0x03u);
+        out_block_1[i] = static_cast<uint8_t>((b >> 2) & 0x03u);
+        out_block_2[i] = static_cast<uint8_t>((b >> 4) & 0x03u);
+        out_block_3[i] = static_cast<uint8_t>((b >> 6) & 0x03u);
+    }
+}
+
 //
 // Reference / dispatch entry points defined in sqnbitgemm_kernel_avx512_2bit.cpp.
 //

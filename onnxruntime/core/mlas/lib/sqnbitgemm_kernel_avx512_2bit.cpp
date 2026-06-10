@@ -72,9 +72,15 @@ Q2BitGemmPackQuantBDataSize_Avx512(
     }
 
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-    size_t PackedQuantBDataSize = N * BlockCountK * kBlkBytes;
-    const size_t ScaleSize = N * BlockCountK * sizeof(float);
-    size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(float);
+    // Pad BlockCountK to a multiple of 4 to match the W2 buffer ABI used by
+    // PackedQuantBDataStruct (BlkBitWidth=2 always pads). The padding is a
+    // few extra K-block slots per N-col (<= 48 bytes data + a few floats for
+    // scales / BlkSum) -- negligible -- but lets the W2-v1 (this path) and
+    // W2-v2 (super-block) pack helpers share a single buffer layout.
+    const size_t BlockCountKPadded = ((BlockCountK + 3) / 4) * 4;
+    size_t PackedQuantBDataSize = N * BlockCountKPadded * kBlkBytes;
+    const size_t ScaleSize = N * BlockCountKPadded * sizeof(float);
+    size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountKPadded * 16 * sizeof(float);
 
     constexpr size_t kPackedQuantBDataAlignment = 64;  // AVX-512 friendly
     PackedQuantBDataSize += kPackedQuantBDataAlignment - 1;
