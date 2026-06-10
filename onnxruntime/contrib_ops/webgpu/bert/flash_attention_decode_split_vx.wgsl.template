@@ -43,7 +43,7 @@ $MAIN {
   let local_row = u32(local_idx / tile_size_k_vec);
   let local_col = local_idx % tile_size_k_vec;
   #if use_indirect_dispatch
-  let total_sequence_length = u32(seqlens_k[0]) + 1u;
+  let total_sequence_length = min(max(u32(seqlens_k[0]) + 1u, 1u), uniforms.present_sequence_length);
   #else
   let total_sequence_length = uniforms.total_sequence_length;
   #endif
