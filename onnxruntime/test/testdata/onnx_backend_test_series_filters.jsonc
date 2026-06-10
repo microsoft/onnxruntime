@@ -48,6 +48,7 @@
         "^test_attention_4d_causal_nonpad_continued_prefill",     // #28904 bottom-right continued-prefill
         "^test_attention_causal_boolmask_nan_robustness",         // #28904 fully-masked-row -> 0 (Bug-2, opset-24)
         "^test_attention_23_boolmask_fullymasked_row_nan_robustness", // #28904 fully-masked-row -> 0 (Bug-2, opset-23 errata)
+        // TODO(#28994): when cmake/external/onnx is bumped past onnx/onnx#8068, add the mode-3 conformance skips (^test_attention_(23|24)_.*qk_matmul_output_mode3) here -- CUDA qk_matmul_output mode-3 is NOT_IMPLEMENTED (cuda/llm/attention.cc:1477). See #28994 Section A.
         // TODO: support qk_matmul_output modes beyond kQK in Attention-cuda (see issue #27712)
         // Tests combining qk_matmul with softcap need unfused-path qk_matmul support (deferred).
         "^test_attention_3d_with_past_and_present_qk_matmul_softcap_cuda", // qk_matmul modes beyond kQK not supported

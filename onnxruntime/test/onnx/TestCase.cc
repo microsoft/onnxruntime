@@ -1043,6 +1043,9 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
        "Skipped until #28904 kernels land and cmake/external/onnx includes onnx/onnx#8068"},
       {"attention_23_boolmask_fullymasked_row_nan_robustness_expanded",
        "Skipped until #28904 kernels land and cmake/external/onnx includes onnx/onnx#8068"},
+      // TODO(#28994): at the onnx pin-bump past onnx/onnx#8068, also add the mode-3
+      // qk_matmul_output conformance tests here -- CUDA returns NOT_IMPLEMENTED for modes
+      // beyond kQK (cuda/llm/attention.cc:1477). See #28994 Section A.
       {"loop13_seq", "Creation of empty sequences is currently not supported in the test runner"},
       {"sequence_insert_at_front", "shape mismatch, expect {4} got {3}"},
       {"cast_FLOAT_to_BFLOAT16", "expect uint16 got bfloat16"},
