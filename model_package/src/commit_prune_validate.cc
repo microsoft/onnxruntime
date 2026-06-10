@@ -53,7 +53,7 @@ std::string RandomSuffix() {
   std::random_device rd;
   uint64_t hi = (uint64_t(rd()) << 32) | rd();
   char buf[17];
-  std::snprintf(buf, sizeof(buf), "%016lx", static_cast<unsigned long>(hi));
+  std::snprintf(buf, sizeof(buf), "%016llx", static_cast<unsigned long long>(hi));
   return buf;
 }
 

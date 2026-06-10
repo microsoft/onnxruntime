@@ -66,7 +66,7 @@ class Sandbox {
     std::random_device rd;
     std::mt19937_64 g(rd());
     char buf[32];
-    std::snprintf(buf, sizeof(buf), "mp_auth_%016lx", static_cast<unsigned long>(g()));
+    std::snprintf(buf, sizeof(buf), "mp_auth_%016llx", static_cast<unsigned long long>(g()));
     root_ = fs::temp_directory_path() / buf;
     fs::create_directories(root_);
   }
