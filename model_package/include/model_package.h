@@ -80,10 +80,10 @@ MODEL_PACKAGE_API void ModelPackage_Close(ModelPackage* pkg);
 // ─────────────────────────────────────────────────────────────────────────────
 
 typedef struct ModelExecutorInfoEntry {
-  size_t      struct_size;  ///< sizeof(ModelExecutorInfoEntry)
-  int         abi_version;  ///< 1
-  const char* ns;           ///< namespace name (e.g. "ort", "genai")
-  const char* json;         ///< canonical JSON value as string (object, array, etc.)
+  size_t      struct_size;    ///< sizeof(ModelExecutorInfoEntry)
+  int         abi_version;    ///< 1
+  const char* namespace_key;  ///< executor namespace name (e.g. "ort", "genai")
+  const char* json;           ///< canonical JSON value as string (object, array, etc.)
 } ModelExecutorInfoEntry;
 
 typedef struct ModelVariantInfo {
@@ -151,7 +151,7 @@ MODEL_PACKAGE_API const ModelVariantInfo*   ModelComponentInfo_FindVariant(const
                                                                            const char* name);
 /// Find an executor_info entry by namespace. Returns NULL when not declared.
 MODEL_PACKAGE_API const ModelExecutorInfoEntry* ModelVariantInfo_FindExecutorInfo(
-    const ModelVariantInfo*, const char* ns);
+    const ModelVariantInfo*, const char* namespace_key);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Round-trip JSON getters

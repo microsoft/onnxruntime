@@ -102,7 +102,7 @@ const InfoViewCache& BuildOrGetViewCache(const ModelPackage* pkg) {
         ModelExecutorInfoEntry entry{};
         entry.struct_size = sizeof(ModelExecutorInfoEntry);
         entry.abi_version = 1;
-        entry.ns = ns_str.c_str();
+        entry.namespace_key = ns_str.c_str();
         entry.json = body_json.c_str();
         cache.executor_infos_storage[ci].push_back(entry);
       }
@@ -289,10 +289,11 @@ const ModelVariantInfo* ModelComponentInfo_FindVariant(const ModelComponentInfo*
 }
 
 const ModelExecutorInfoEntry* ModelVariantInfo_FindExecutorInfo(const ModelVariantInfo* var,
-                                                                const char* ns) {
-  if (!var || !ns) return nullptr;
+                                                                const char* namespace_key) {
+  if (!var || !namespace_key) return nullptr;
   for (size_t i = 0; i < var->num_executor_infos; ++i) {
-    if (var->executor_infos[i].ns && std::strcmp(var->executor_infos[i].ns, ns) == 0) {
+    if (var->executor_infos[i].namespace_key &&
+        std::strcmp(var->executor_infos[i].namespace_key, namespace_key) == 0) {
       return &var->executor_infos[i];
     }
   }
