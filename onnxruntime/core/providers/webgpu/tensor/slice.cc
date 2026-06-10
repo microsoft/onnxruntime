@@ -153,6 +153,7 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
 
   ORT_RETURN_IF_NOT(axes_raw.size() == starts_raw.size(), "axes and starts must have the same size");
   ORT_RETURN_IF_NOT(steps_raw.size() == starts_raw.size(), "steps and starts must have the same size");
+  ORT_RETURN_IF_NOT(ends_raw.size() == starts_raw.size(), "ends and starts must have the same size");
 
   // get final axes
   std::vector<uint32_t> axes, axes_fixed;
