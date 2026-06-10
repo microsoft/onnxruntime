@@ -3123,6 +3123,60 @@ TEST(CApiTest, tensor_at_rejects_subbyte_types) {
   }
 }
 
+// Regression: TensorAt still works correctly for normal (non-sub-byte) types.
+TEST(CApiTest, tensor_at_normal_types_still_work) {
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  // float
+  {
+    std::vector<float> values = {1.0f, 2.0f, 3.0f, 4.0f};
+    std::vector<int64_t> dims = {4};
+    Ort::Value tensor = Ort::Value::CreateTensor<float>(info, values.data(), values.size(), dims.data(), dims.size());
+    ASSERT_EQ(1.0f, tensor.At<float>({0}));
+    ASSERT_EQ(4.0f, tensor.At<float>({3}));
+  }
+
+  // int32_t
+  {
+    std::vector<int32_t> values = {10, 20, 30};
+    std::vector<int64_t> dims = {3};
+    Ort::Value tensor = Ort::Value::CreateTensor<int32_t>(info, values.data(), values.size(), dims.data(), dims.size());
+    ASSERT_EQ(10, tensor.At<int32_t>({0}));
+    ASSERT_EQ(30, tensor.At<int32_t>({2}));
+  }
+
+  // int8_t
+  {
+    std::vector<int8_t> values = {-1, 0, 1, 127};
+    std::vector<int64_t> dims = {4};
+    Ort::Value tensor = Ort::Value::CreateTensor<int8_t>(info, values.data(), values.size(), dims.data(), dims.size());
+    ASSERT_EQ(-1, tensor.At<int8_t>({0}));
+    ASSERT_EQ(127, tensor.At<int8_t>({3}));
+  }
+}
+
+// Test that TensorAt bounds checking still rejects out-of-range indices for normal types.
+TEST(CApiTest, tensor_at_bounds_check) {
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  std::vector<float> values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  std::vector<int64_t> dims = {2, 3};
+  Ort::Value tensor = Ort::Value::CreateTensor<float>(info, values.data(), values.size(), dims.data(), dims.size());
+
+  // Valid access works
+  ASSERT_EQ(1.0f, tensor.At<float>({0, 0}));
+  ASSERT_EQ(6.0f, tensor.At<float>({1, 2}));
+
+  // Out-of-range indices throw
+  ASSERT_THROW(tensor.At<float>({2, 0}), Ort::Exception);   // row out of range
+  ASSERT_THROW(tensor.At<float>({0, 3}), Ort::Exception);   // col out of range
+  ASSERT_THROW(tensor.At<float>({-1, 0}), Ort::Exception);  // negative index
+
+  // Wrong number of dimensions throws
+  ASSERT_THROW(tensor.At<float>({0}), Ort::Exception);
+  ASSERT_THROW(tensor.At<float>({0, 0, 0}), Ort::Exception);
+}
+
 TEST(CApiTest, access_tensor_data_elements) {
   /**
    * Create a 2x3 data blob that looks like:
