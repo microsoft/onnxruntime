@@ -39,6 +39,10 @@
 //   ORT_RUNTIME_CLASS(ExperimentalType);
 //
 
+ORT_RUNTIME_CLASS(ModelPackageOptions);
+ORT_RUNTIME_CLASS(ModelPackageContext);
+ORT_RUNTIME_CLASS(ModelPackageComponentContext);
+
 //
 // C: function pointer typedefs and name constants
 //
