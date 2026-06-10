@@ -600,11 +600,9 @@ Status SessionState::PrepackConstantInitializedTensors(
                                                       is_packed,
                                                       &weights_to_be_filled_in));
 
-                  // Some kernels (matmul_nbits and non-CPU related kernels) do not share their pre-packed results
+                  // Some kernels (non-CPU related kernels) do not share their pre-packed results
                   // even though they set is_packed = true so we leave it up to them.
                   // We can change their behavior if we wish do so in a separate PR
-                  // XXX: Interestingly enough, matmul_nbits does accept shared pre-packs, but does not
-                  // produce them.
                   if (is_packed && !weights_to_be_filled_in.buffers_.empty()) {
                     const auto& op_type = node.OpType();
                     const std::string prepacked_weights_container_key = GenerateKeyForPrepackedWeightsMap(

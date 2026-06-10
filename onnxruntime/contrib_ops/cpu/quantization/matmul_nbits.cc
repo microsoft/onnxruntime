@@ -173,7 +173,6 @@ template <typename T1>
 Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                                 /*out*/ bool& is_packed,
                                 /*out*/ PrePackedWeights* prepacked_weights) {
-  ORT_UNUSED_PARAMETER(prepacked_weights);
   is_packed = false;
   if (has_g_idx_ || has_unquantized_zero_point_) {
     return Status::OK();
@@ -196,6 +195,14 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(), scale_ptr,
                                 has_zp_input_, nullptr, nullptr);
     is_packed = true;
+
+    // Expose the packed B buffer for cross-kernel sharing. The framework will move it
+    // into the shared container, then immediately call UseSharedPrePackedBuffers() to
+    // give it back to this kernel as a non-owning reference.
+    if (prepacked_weights != nullptr) {
+      prepacked_weights->buffers_.push_back(std::move(packed_b_));
+      prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
+    }
   } else if (compute_type_ == SQNBIT_CompInt8) {
     // Packing scales and zero points
     bool should_pack_scale_and_zp_inputs = [&]() {
@@ -228,6 +235,14 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
         MlasQNBitGemmScalesPacked(K_, nbits_, block_size_, compute_type_, has_zp_input_)) {
       scales_are_packed_ = true;
       is_packed = true;
+
+      // The scales have already been absorbed into the shared packed B buffer.
+      // Push a nullptr placeholder so the framework's sharing logic recognizes this
+      // input as participating in pre-packing without allocating an additional buffer.
+      if (prepacked_weights != nullptr) {
+        prepacked_weights->buffers_.push_back(nullptr);
+        prepacked_weights->buffer_sizes_.push_back(0);
+      }
     }
 #endif  // MLAS_TARGET_ARM64
   }
@@ -241,8 +256,6 @@ template <>
 Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                                        /*out*/ bool& is_packed,
                                        /*out*/ PrePackedWeights* prepacked_weights) {
-  ORT_UNUSED_PARAMETER(prepacked_weights);
-
   if (input_idx == InputIndex::scales || input_idx == InputIndex::bias) {
     auto sptr = tensor.Data<MLFloat16>();
     auto tensor_size = static_cast<size_t>(tensor.Shape().Size());
@@ -283,6 +296,14 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
     MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(),
                                 scales_fp32_.get(), has_zp_input_, nullptr, nullptr);
     is_packed = true;
+
+    // Expose the packed B buffer for cross-kernel sharing. The framework will move it
+    // into the shared container, then immediately call UseSharedPrePackedBuffers() to
+    // give it back to this kernel as a non-owning reference.
+    if (prepacked_weights != nullptr) {
+      prepacked_weights->buffers_.push_back(std::move(packed_b_));
+      prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
+    }
   } else if (compute_type_ == SQNBIT_CompInt8) {
 #ifdef MLAS_TARGET_AMD64_IX86
     if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
@@ -307,9 +328,16 @@ Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& 
                                                   /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
 
-  if (input_idx == 1) {
+  if (input_idx == InputIndex::B) {
     used_shared_buffers = true;
     packed_b_ = std::move(prepacked_buffers[0]);
+  } else if (input_idx == InputIndex::scales) {
+    // When the scales were absorbed into the shared packed B buffer (see PrePack),
+    // a nullptr placeholder is pushed to keep the framework's sharing bookkeeping
+    // consistent. There is no separate buffer to adopt here - the packed B buffer
+    // (already populated via UseSharedPrePackedBuffers for input_idx == B) carries
+    // the packed scales.
+    used_shared_buffers = true;
   }
 
   return Status::OK();
