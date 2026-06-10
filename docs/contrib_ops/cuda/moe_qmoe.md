@@ -71,7 +71,7 @@ input tokens → router (top-k softmax) → permute by expert
 | `expert_weight_bits` (QMoE only) | int | 4 | 4 (INT4/MXFP4) or 8 (INT8/FP8). |
 | `block_size` (QMoE only) | int | -1 | Group size for INT4/INT8 group-wise quantization. -1 = per-output-channel. |
 | `quant_type` (QMoE only) | string | `"int"` | `"int"`, `"fp4"`, `"fp8"`, `"wfp4afp8"`. See [§3](#3-quantization-modes). |
-| `weights_prepacked` (QMoE only) | int | -1 | Tri-state, only meaningful when `quant_type="int"`. `-1` (auto): each EP picks its own backward-compatible default — the CUDA EP treats auto as prepacked. `1`: the INT4/INT8 `fc1`/`fc2` initializers are already in the CUTLASS `fpA_intB` layout (e.g. from `pack_weights_for_cuda_mixed_gemm`) and are consumed as-is. `0`: the initializers are raw `[E, N, K/pack]` tensors (as produced by `quantize_matmul_{4,8}bits`) and the kernel runs the CUTLASS layout transform in `PrePack()`. See [§5.1](#51-weights-input-2--5--8). |
+| `weights_prepacked` (QMoE only) | int | -1 | Tri-state, only meaningful when `quant_type="int"`. The prepacked layouts selected by `-1` and `1` are **EP-determined**. `-1` (default): the INT4/INT8 `fc1`/`fc2` initializers are already prepacked in the EP's default layout (e.g. from `pack_weights_for_cuda_mixed_gemm` for the CUDA EP). `1`: already prepacked in the EP's SM90 (Hopper) layout. `0`: the initializers are raw `[E, N, K/pack]` tensors (as produced by `quantize_matmul_{4,8}bits`) and the kernel runs the CUTLASS layout transform in `PrePack()` for the runtime arch. **Note:** the CUDA EP INT4/INT8 MoE GEMM always runs the Ampere (SM80) kernel — even on SM90 — so it consumes the SM80 `fpA_intB` layout on all architectures; `-1` and `1` are therefore equivalent for the CUDA EP today, and `1` is reserved for a possible future Hopper-specific layout. See [§5.1](#51-weights-input-2--5--8). |
 
 ### 2.2 Type Constraints
 
@@ -230,24 +230,38 @@ extra subtraction.
 ### 5.1 Weights (input 2 / 5 / 8)
 
 **INT4/INT8** weight layout is controlled by the `weights_prepacked` attribute
-([§2.1](#21-attributes)):
+([§2.1](#21-attributes)). The prepacked layouts selected by `-1` and `1` are
+determined by the execution provider:
 
-- **`weights_prepacked=-1` (auto, default) or `1`** — the `fc1`/`fc2` weights are
-  assumed to already be in the CUTLASS `fpA_intB` layout, packed offline by
-  `pack_weights_for_cuda_mixed_gemm` (see [§6](#6-weight-formats)). They are
-  copied to GPU and consumed as-is (today's behaviour).
+- **`weights_prepacked=-1` (default)** — the `fc1`/`fc2` weights are already in
+  the EP's default prepacked layout (e.g. packed offline by
+  `pack_weights_for_cuda_mixed_gemm` for the CUDA EP). They are copied to GPU
+  and consumed as-is.
+- **`weights_prepacked=1`** — the `fc1`/`fc2` weights are already in the EP's
+  **SM90** (Hopper) prepacked layout (reserved; see the note below).
 - **`weights_prepacked=0`** — the `fc1`/`fc2` weights are raw, schema-conformant
   `[E, N, K/pack]` tensors as produced by `quantize_matmul_{4,8}bits`. `PrePack`
   runs the CUTLASS layout transform itself via `PrePackIntExpertWeights`,
   removing the offline pre-pack dependency. This makes integer QMoE symmetric
   with `MatMulNBits::PrePack_B`.
 
+> **Single layout on the CUDA EP.** The CUDA EP INT4/INT8 MoE GEMM always
+> dispatches to the Ampere (**SM80**) grouped-GEMM kernel — even on SM90 —
+> because mixed int-weight + fp16/bf16 activation is not a valid Hopper TMA
+> warp-specialized specialisation (`isValidHopperMOESpecialisation` is `false`).
+> This matches **TensorRT-LLM**, which likewise routes `W4A16`/`W8A16` MoE to the
+> SM80 kernel on Hopper; its Hopper TMA-WS mixed-dtype MoE kernel is reserved for
+> `W4A8` (FP8 activation) and `WFP4A16` (FP4 weight). Consequently the CUDA EP
+> consumes the **SM80 `fpA_intB` layout on every GPU**, `PrePack` always packs
+> for SM80, and `weights_prepacked=-1` and `=1` are equivalent today. `1` is
+> accepted and reserved for a possible future Hopper-specific layout (e.g.
+> `W4A8`). There is therefore no architecture-match constraint: SM80-format
+> weights run correctly on SM90 via the SM80 kernel.
+
 `PrePackIntExpertWeights` loops over the `E` experts and, per expert, applies the
 same transpose + row-permutation / column-interleave / bias / pair-interleave
-transform as `pack_weights_for_cuda_mixed_gemm` (see [§6.1](#61-int4-group-wise-quant_typeint-expert_weight_bits4)).
-Packing is architecture-aware ([§7](#7-cross-architecture-packing-compatibility)):
-SM90 (Hopper) is its own layout group, while all other supported arches
-(SM75/80/86/89, SM100/120) share the SM80 layout. SM75+ is required. The source
+transform as `pack_weights_for_cuda_mixed_gemm` (see [§6.1](#61-int4-group-wise-quant_typeint-expert_weight_bits4)),
+always targeting the SM80 layout. SM75+ is required. The source
 `[E, N, K/pack]` initializers are released after their shapes are cached
 (`fc1_weights_shape_` / `fc2_weights_shape_`), so peak weight memory stays ~1×.
 The prepacked GPU buffers (`packed_fc1_weights_` / `packed_fc2_weights_`) are then
@@ -439,6 +453,17 @@ weights are interchangeable across SMs:
 - **MXFP4**: separate format ([§6.5](#65-mxfp4-e2m1-quant_typefp4-and-wfp4afp8))
   — does not use `pack_weights_for_cuda_mixed_gemm`.
 - **FP8**: no packing.
+
+> **QMoE uses Group A on every GPU.** The table above describes the layouts the
+> `pack_weights_for_cuda_mixed_gemm` *preprocessor* can emit. The QMoE INT4/INT8
+> MoE GEMM, however, always dispatches to the Ampere (SM80) grouped-GEMM kernel —
+> even on SM90 — because mixed int-weight + fp16/bf16 activation is not a valid
+> Hopper TMA warp-specialized specialisation (the same is true in TensorRT-LLM).
+> It therefore consumes the **Group A (SM80) layout on all architectures,
+> including Hopper**. For QMoE, always pack INT4/INT8 weights for SM80 (`arch=80`),
+> and `PrePackIntExpertWeights` (`weights_prepacked=0`) does exactly that
+> regardless of the runtime device SM. Group B (SM90) layout is currently unused
+> by QMoE.
 
 ---
 

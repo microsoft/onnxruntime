@@ -152,7 +152,10 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True):
         q_weight_reshaped = q_weight.reshape(n, -1)
 
         # Pack weights for CUDA mixed-gemm kernel (FpA_IntB format), and qMoE kernel uses the same format.
-        processed_q_weight = _quantize.pack_weights_for_cuda_mixed_gemm(q_weight_reshaped, n, k, 4)
+        # Pin arch=80: the QMoE grouped MoE GEMM always runs the Ampere (SM80) kernel -- even on SM90 --
+        # so it consumes the SM80 (column-interleaved) layout on every GPU. Auto-detect (force_arch=-1)
+        # would emit the non-interleaved SM90 layout on Hopper and produce wrong results.
+        processed_q_weight = _quantize.pack_weights_for_cuda_mixed_gemm(q_weight_reshaped, n, k, 4, 80)
 
         # So we need to DEQUANTIZE back to get `result`.
         # scale is [n, block_per_k]
@@ -232,8 +235,11 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True):
             )
 
         q_weight_reshaped = q_weight.reshape(n, -1)
-        # Pack weights for CUDA mixed-gemm kernel (FpA_IntB format)
-        processed_q_weight = _quantize.pack_weights_for_cuda_mixed_gemm(q_weight_reshaped, n, k, 8)
+        # Pack weights for CUDA mixed-gemm kernel (FpA_IntB format).
+        # Pin arch=80: the QMoE grouped MoE GEMM always runs the Ampere (SM80) kernel -- even on SM90 --
+        # so it consumes the SM80 (column-interleaved) layout on every GPU. Auto-detect (force_arch=-1)
+        # would emit the non-interleaved SM90 layout on Hopper and produce wrong results.
+        processed_q_weight = _quantize.pack_weights_for_cuda_mixed_gemm(q_weight_reshaped, n, k, 8, 80)
 
         # Dequantize for reference
         # (q - 128) * scale if using 128 offset? or (q) * scale if symmetric around 0?

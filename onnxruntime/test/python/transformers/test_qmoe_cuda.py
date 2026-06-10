@@ -138,8 +138,12 @@ def print_diff_statistics(diff_tensor: torch.Tensor, prefix: str = ""):
 
 
 def preprocess_weights_for_mixed_gemm(
-    tensor: torch.Tensor, quant_bits: int, sm: int = -1, do_weight_interleave: bool = True
+    tensor: torch.Tensor, quant_bits: int, sm: int = 80, do_weight_interleave: bool = True
 ) -> torch.Tensor:
+    # ``sm`` defaults to 80: the QMoE grouped MoE GEMM always runs the Ampere (SM80)
+    # kernel -- even on SM90 -- so it consumes the SM80 (column-interleaved) layout on
+    # every GPU. Passing sm=-1 (auto-detect) would emit the non-interleaved SM90 layout
+    # on Hopper and produce wrong results.
     if len(tensor.shape) == 2:
         tensor = tensor.unsqueeze(0)
 
