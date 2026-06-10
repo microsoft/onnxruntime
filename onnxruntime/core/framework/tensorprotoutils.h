@@ -589,6 +589,19 @@ Status TensorProtoWithExternalDataToTensorProto(
 Status ValidateExternalDataPath(const std::filesystem::path& model_path,
                                 const std::filesystem::path& external_data_path);
 
+/// <summary>
+/// Validates that the given external data path is not an absolute path, is under the given directory
+/// (after resolving symlinks), and exists.
+///
+/// Use this overload when you already have the directory that should contain the external data
+/// (e.g., EP context model directories). Use ValidateExternalDataPath() when you have a model file path.
+/// </summary>
+/// <param name="model_dir">Directory that should contain the external data. Falls back to "." if empty.</param>
+/// <param name="external_data_path">External data file path to be validated (must be relative).</param>
+/// <returns>The function will fail if the resolved `external_data_path` path is not under model_dir</returns>
+Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
+                                       const std::filesystem::path& external_data_path);
+
 #endif  // !defined(SHARED_PROVIDER)
 
 inline bool HasType(const ONNX_NAMESPACE::AttributeProto& at_proto) {

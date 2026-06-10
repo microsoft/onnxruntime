@@ -62,6 +62,19 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   this->quant_type_ = op_kernel_info.GetAttrOrDefault<std::string>("quant_type", "int");
   ORT_ENFORCE(quant_type_ == "int" || quant_type_ == "fp4" || quant_type_ == "fp8" || quant_type_ == "wfp4afp8",
               "quant_type must be 'int', 'fp4', 'fp8', or 'wfp4afp8', but got '", quant_type_, "'");
+  // ``weights_prepacked`` is an optional tri-state attribute that defaults to
+  // -1 (auto) in the schema, so each EP picks its own backward-compatible
+  // default rather than the schema imposing one:
+  //   -1 (auto, also the schema default): the EP decides. The CUDA EP's
+  //      backward-compatible default is "prepacked" because all pre-existing
+  //      tooling ships CUTLASS-prepacked weights.
+  //    1: initializers are already prepacked; the compute path reads them as-is.
+  //    0: initializers are raw [E, N, K/pack]; the PrePack hook lays them out.
+  const int64_t weights_prepacked_mode =
+      op_kernel_info.GetAttrOrDefault<int64_t>("weights_prepacked", static_cast<int64_t>(-1));
+  ORT_ENFORCE(weights_prepacked_mode == -1 || weights_prepacked_mode == 0 || weights_prepacked_mode == 1,
+              "weights_prepacked must be -1 (auto), 0, or 1, but got ", weights_prepacked_mode);
+  weights_prepacked_ = (weights_prepacked_mode != 0);
 #if !defined(ENABLE_FP4) || !defined(USE_FP4_QMOE)
   ORT_ENFORCE(quant_type_ != "fp4", "QMoE quant_type='fp4' requires USE_FP4_QMOE with CUDA 12.8 or newer.");
   ORT_ENFORCE(quant_type_ != "wfp4afp8",
@@ -201,10 +214,20 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool uses_global_weight_scales = is_fp4 || is_fp8 || is_wfp4afp8;
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* router_probs = context->Input<Tensor>(1);
-  const Tensor* fc1_experts_weights = context->Input<Tensor>(2);
+  // When PrePack consumed the int4/int8 expert-weight initializers
+  // (``weights_prepacked == false`` opt-in path), the original tensors
+  // were freed; ``context->Input<Tensor>(2)/(5)`` would return nothing.
+  // Mirror how ``MatMulNBits`` reads its prepacked B input.
+  // Gate on *both* prepacked buffers being present. If only fc1 were prepacked
+  // (e.g. a partial prepack from an earlier failure or a future refactor), this
+  // path must not null out fc2_experts_weights and feed a null fc2 weight/shape
+  // to the runner.
+  const bool int_weights_consumed_by_prepack =
+      is_int && !weights_prepacked_ && packed_fc1_weights_ != nullptr && packed_fc2_weights_ != nullptr;
+  const Tensor* fc1_experts_weights = int_weights_consumed_by_prepack ? nullptr : context->Input<Tensor>(2);
   const Tensor* fc1_scales = (is_int && !packed_fc1_scales_) ? context->Input<Tensor>(3) : nullptr;
   const Tensor* fc1_experts_bias_optional = context->Input<Tensor>(4);
-  const Tensor* fc2_experts_weights = context->Input<Tensor>(5);
+  const Tensor* fc2_experts_weights = int_weights_consumed_by_prepack ? nullptr : context->Input<Tensor>(5);
   const Tensor* fc2_scales = (is_int && !packed_fc2_scales_) ? context->Input<Tensor>(6) : nullptr;
   const Tensor* fc2_experts_bias_optional = context->Input<Tensor>(7);
   // The CUTLASS MoE runner has no separate FC3 GEMM — gate and up projection weights must be
@@ -226,8 +249,13 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     return Status::OK();
   };
 
-  ORT_RETURN_IF_ERROR(check_weight_type(fc1_experts_weights, "fc1_experts_weights", is_fp8));
-  ORT_RETURN_IF_ERROR(check_weight_type(fc2_experts_weights, "fc2_experts_weights", is_fp8));
+  // When PrePack consumed the int weight initializers, the dtype check
+  // is no longer applicable (we know they were uint8 — that's what
+  // PrePackIntExpertWeights validated and consumed).
+  if (!int_weights_consumed_by_prepack) {
+    ORT_RETURN_IF_ERROR(check_weight_type(fc1_experts_weights, "fc1_experts_weights", is_fp8));
+    ORT_RETURN_IF_ERROR(check_weight_type(fc2_experts_weights, "fc2_experts_weights", is_fp8));
+  }
 
   // Unified FP4 inputs: block scales in fc*_scales (3/6), global scales in 15/16.
   const Tensor* fp4_fc1_block_scales = (uses_fp4_weight_scales && !packed_fp4_fc1_block_scales_) ? context->Input<Tensor>(3) : nullptr;
@@ -258,10 +286,13 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   int64_t pack_size = expert_weight_bits_ == 4 ? 2 : 1;
   bool is_fused_swiglu = activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu;
   MoEParameters moe_params;
+  // Prefer the cached shapes when PrePack consumed the source initializer.
+  const TensorShape& fc1_shape = int_weights_consumed_by_prepack ? fc1_weights_shape_ : fc1_experts_weights->Shape();
+  const TensorShape& fc2_shape = int_weights_consumed_by_prepack ? fc2_weights_shape_ : fc2_experts_weights->Shape();
   ORT_RETURN_IF_ERROR(onnxruntime::contrib::moe_helper::CheckInputs<Tensor>(
-      moe_params, input, router_probs, fc1_experts_weights,
+      moe_params, input, router_probs, &fc1_shape,
       fc1_experts_bias_optional, fc1_scales, fc1_zeros,
-      fc2_experts_weights, fc2_experts_bias_optional, fc2_scales, fc2_zeros,
+      &fc2_shape, fc2_experts_bias_optional, fc2_scales, fc2_zeros,
       nullptr, nullptr, nullptr, nullptr,
       pack_size, is_fused_swiglu, block_size_));
 
@@ -810,25 +841,22 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
   Tensor* output = context->Output(0, input->Shape());
 
-  const void* fc1_weight_data = fc1_experts_weights->DataRaw();
-  const void* fc2_weight_data = fc2_experts_weights->DataRaw();
+  const void* fc1_weight_data = fc1_experts_weights ? fc1_experts_weights->DataRaw() : nullptr;
+  const void* fc2_weight_data = fc2_experts_weights ? fc2_experts_weights->DataRaw() : nullptr;
   if (is_wfp4afp8 && !use_wfp4afp8_dequant_fallback_) {
     fc1_weight_data = packed_fp4_fc1_weights_ ? packed_fp4_fc1_weights_.get() : fc1_weight_data;
     fc2_weight_data = packed_fp4_fc2_weights_ ? packed_fp4_fc2_weights_.get() : fc2_weight_data;
-  } else if (is_int) {
-    // PrePack converts the raw int4/int8 weights to the CUTLASS fpA_intB
-    // layout that the runner consumes. Use the prepacked buffer when the
-    // PrePack hook ran; otherwise (rare; e.g. session built with
-    // ``session.disable_prepacking``) fall back to the original
-    // initializer and assume the caller already prepacked the bytes
-    // themselves (back-compat with QMoE consumers that pre-prepacked
-    // weights offline before this hook existed).
-    if (packed_fc1_weights_) {
-      fc1_weight_data = packed_fc1_weights_.get();
-    }
-    if (packed_fc2_weights_) {
-      fc2_weight_data = packed_fc2_weights_.get();
-    }
+  } else if (int_weights_consumed_by_prepack) {
+    // PrePack converted the raw int4/int8 weights to the CUTLASS fpA_intB
+    // layout that the runner consumes and freed the source initializer
+    // (``is_packed = true``). Gate on ``int_weights_consumed_by_prepack``
+    // (which already requires ``packed_fc1_weights_ != nullptr``) rather than
+    // just ``is_int && !weights_prepacked_``: when prepacking is disabled at
+    // the session level (``session.disable_prepacking``) PrePack never runs,
+    // the prepack buffers stay null, and the raw initializer pointers read
+    // above must be kept so the runner is not handed null weight pointers.
+    fc1_weight_data = packed_fc1_weights_.get();
+    fc2_weight_data = packed_fc2_weights_.get();
   }
   IAllocatorUniquePtr<void> dequant_fc1_weights;
   IAllocatorUniquePtr<void> dequant_fc2_weights;
@@ -988,21 +1016,19 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   } else if (input_idx == 5 && quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
     PrePackRepackFP4Weights(tensor, stream, alloc, packed_fp4_fc2_weights_, is_packed);
     is_packed = false;
-  } else if (input_idx == 2 && quant_type_ == "int") {
-    // Bring the raw int4/int8 fc1 weight tensor into the CUTLASS
-    // fpA_intB layout that the QMoE runner consumes. Mirrors the
-    // PrePack_B path in MatMulNBits.
-    //
-    // We deliberately leave ``is_packed = false`` so ORT keeps the
-    // original initializer alive: ``moe_helper::CheckInputs`` still
-    // needs its shape at every ``Compute`` call to validate moe_params,
-    // matching the same trade-off used by the WFP4AFP8 weight branch
-    // above. ``packed_fc1_weights_`` carries the prepacked bytes.
+  } else if (input_idx == 2 && quant_type_ == "int" && !weights_prepacked_) {
+    // Caller opted in (``weights_prepacked=0`` attribute) to having ORT
+    // do the CUTLASS fpA_intB layout transform internally, instead of
+    // shipping pre-prepacked bytes. Mirrors ``MatMulNBits::PrePack_B``
+    // looped over the E experts of ``[E, N, K/pack]``. We cache the
+    // source shape in ``fc1_weights_shape_`` so ``CheckInputs`` can be
+    // satisfied without holding the original initializer alive, then
+    // set ``is_packed = true`` to let ORT free it.
+    fc1_weights_shape_ = tensor.Shape();
     PrePackIntExpertWeights(tensor, stream, alloc, packed_fc1_weights_, is_packed);
-    is_packed = false;
-  } else if (input_idx == 5 && quant_type_ == "int") {
+  } else if (input_idx == 5 && quant_type_ == "int" && !weights_prepacked_) {
+    fc2_weights_shape_ = tensor.Shape();
     PrePackIntExpertWeights(tensor, stream, alloc, packed_fc2_weights_, is_packed);
-    is_packed = false;
   } else if (input_idx == 3) {  // fc1_scales
     DUMP_TENSOR("fc1_scales", tensor);
     if (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
@@ -1132,7 +1158,22 @@ void QMoE::PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, Al
   const int64_t k_packed = shape[2];
   const int64_t k = k_packed * pack_factor;
 
-  ORT_ENFORCE(bits != 4 || k % 2 == 0, "K must be even for 4-bit packed weights, got K=", k);
+  // Weight packing is architecture-aware (see
+  // docs/contrib_ops/cuda/moe_qmoe.md §7 "Cross-Architecture Packing
+  // Compatibility"). SM90 (Hopper) uses its own Permuted-Linear layout that
+  // skips column interleaving, so it is its own compatibility group. Every
+  // other supported arch — SM75/80/86/89 and SM100/120 (Blackwell) — shares
+  // the SM80 fpA_intB layout, so they all pack as SM80. SM70 and older lack
+  // INT8 LDSM and are unsupported. The compute-side runner selects the same
+  // layout from this clamped arch, so the two cannot drift.
+  //
+  // SM75 is passed through unchanged (rather than clamped to 80) even though it
+  // shares SM80's layout: the compute-side dispatch (getLayoutDetailsForTransform)
+  // still has a distinct SM75 branch, so mirroring it here avoids confusing a
+  // reader into thinking prepack and dispatch disagree.
+  ORT_ENFORCE(sm_ >= 75,
+              "QMoE int4/int8 weight prepack requires SM75 or newer, got sm=", sm_);
+  const int packing_sm = (sm_ == 90 || sm_ == 75) ? sm_ : 80;
 
   // Per-expert sizes.
   const size_t per_expert_bytes = static_cast<size_t>(n) * static_cast<size_t>(k) / pack_factor;
@@ -1180,16 +1221,25 @@ void QMoE::PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, Al
 
     // Step 2: apply the CUTLASS fpA_intB row-permutation / column-interleave /
     // bias / pair-interleave transform into the per-expert output slot.
+    // ``synchronize=false``: avoid one host-blocking ``cudaStreamSynchronize``
+    // per expert (which would scale model-load time with ``num_experts``).
+    // Stream ordering guarantees expert e's transform finishes before expert
+    // e+1 reuses the shared transpose scratch, and a single sync after the loop
+    // makes the whole batch complete before the scratch buffers are freed.
     onnxruntime::llm::kernels::weight_only::preprocess_weights_for_mixed_gemm_cuda(
         stream,
-        sm_,
+        packing_sm,
         dst_e,
         transposed_scratch_ptr,
         permutation_map.get(),
         {static_cast<size_t>(k), static_cast<size_t>(n)},
-        quant_type);
+        quant_type,
+        /*synchronize=*/false);
   }
 
+  // Single host-blocking sync after all experts: this guarantees every
+  // per-expert transform (and the CPU->GPU staging copy above) is complete, so
+  // the transient scratch buffers are safe to free on return.
   CUDA_CALL_THROW(cudaStreamSynchronize(stream));
   is_packed = true;
 }

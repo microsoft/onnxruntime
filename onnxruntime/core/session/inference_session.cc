@@ -3268,7 +3268,10 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
                                  << " with graph annotation id: " << graph_annotation_id;
     // log evaluation start to trace logging provider
     env.GetTelemetryProvider().LogEvaluationStart(session_id_);
-    ORT_RETURN_IF_ERROR_SESSIONID_(cached_execution_provider_for_graph_replay_.ReplayGraph(graph_annotation_id));
+    bool sync_graph_replay = run_options.config_options.GetConfigOrDefault(
+                                 kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
+    ORT_RETURN_IF_ERROR_SESSIONID_(cached_execution_provider_for_graph_replay_.ReplayGraph(graph_annotation_id,
+                                                                                           sync_graph_replay));
   } else {
     InlinedVector<IExecutionProvider*> exec_providers_to_stop;
     exec_providers_to_stop.reserve(execution_providers_.NumProviders());

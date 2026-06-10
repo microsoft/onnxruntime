@@ -1292,7 +1292,8 @@ bool NvExecutionProvider::IsGraphCaptured(int graph_annotation_id) const {
   return false;
 }
 
-Status NvExecutionProvider::ReplayGraph(int graph_annotation_id) {
+Status NvExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync*/) {
+  // The sync parameter is ignored: NV TRT RTX EP manages its own CUDA graph lifecycle and always replays synchronously.
   // This is hardcoded to always return OK because we are not allowing the ORT framework to have the CUDA graph control.
   (void)graph_annotation_id;
   return Status::OK();
@@ -2283,17 +2284,10 @@ common::Status NvExecutionProvider::RefitEngine(std::string onnx_model_filename,
                              "The ONNX model was not provided as path. "
                              "Please use provide an ONNX bytestream to enable refitting the weightless engine.");
     } else {
-      // check if file path to ONNX is legal
-      if (path_check && IsAbsolutePath(onnx_model_path.string())) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                               "For security purpose, the ONNX model path should be set with "
-                               "a relative path, but it is an absolute path: " +
-                                   onnx_model_path.string());
-      }
-      if (path_check && IsRelativePathToParentPath(onnx_model_path.string())) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                               "The ONNX model path has '..'. For security purpose, it's not "
-                               "allowed to point outside the directory.");
+      // Validate that the ONNX model path does not escape the model directory.
+      if (path_check && !onnx_model_filename.empty()) {
+        ORT_RETURN_IF_ERROR(utils::ValidateExternalDataPathFromDir(
+            std::filesystem::path(onnx_model_folder_path), std::filesystem::path(onnx_model_filename)));
       }
 
       if (!(std::filesystem::exists(onnx_model_path) && std::filesystem::is_regular_file(onnx_model_path))) {

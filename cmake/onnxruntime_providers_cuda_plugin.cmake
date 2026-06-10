@@ -385,6 +385,8 @@ target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE
     CUDA::cublas
     CUDA::cublasLt
     CUDA::cufft
+    CUDA::nvrtc
+    CUDA::cuda_driver
     CUDNN::cudnn_all
     cudnn_frontend
     Boost::mp11

@@ -103,6 +103,18 @@ class MatMul<float> final : public OpKernel {
   // sbgemm kernel is implemented as 8x8 blocks with weights pre-packed to 4 blocks of 4x2
   // so a minimum of 32 elements is defined to outweigh the additional prepacking overhead
   const size_t kFastMathModeKernelsizeThreshold = 32;
+
+  bool CanUseFastMathModeSBGemm(size_t n, size_t k) const {
+    return use_fastmath_mode_ &&
+           (trans_a_attr_ == 0) &&
+           (trans_b_attr_ == 0) &&
+           ((n * k) >= kFastMathModeKernelsizeThreshold);
+  }
+
+  bool CanPackBForFastMathModeSBGemm(const TensorShape& b_shape) const {
+    return b_shape.NumDimensions() == 2 &&
+           CanUseFastMathModeSBGemm(static_cast<size_t>(b_shape[1]), static_cast<size_t>(b_shape[0]));
+  }
 #endif
 };
 

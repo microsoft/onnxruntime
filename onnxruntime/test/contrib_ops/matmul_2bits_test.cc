@@ -254,7 +254,8 @@ void TestMatMul2BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f) {
 
 template <typename AType>
 void TestMatMul2BitsLutGemm(int64_t M, int64_t N, int64_t K, int64_t block_size,
-                            bool has_zero_point, float abs_error = 0.15f, float rel_error = 0.05f) {
+                            bool has_zero_point, bool has_bias = false,
+                            float abs_error = 0.15f, float rel_error = 0.05f) {
   if (K % 32 != 0 || N % 128 != 0 || block_size % 32 != 0) {
     GTEST_SKIP() << "LUT GEMM requires K multiple of 32, N multiple of 128, block_size multiple of 32";
   }
@@ -308,12 +309,26 @@ void TestMatMul2BitsLutGemm(int64_t M, int64_t N, int64_t K, int64_t block_size,
       static_cast<int32_t>(N),
       tp);
 
+  // Optional per-output-feature bias with non-trivial variation across N so any stride/transpose
+  // bug in the fused bias add (inside MlasLutGemm) is observable.
+  std::vector<float> bias;
+  if (has_bias) {
+    bias.resize(static_cast<size_t>(N));
+    for (int64_t n = 0; n < N; ++n) {
+      bias[static_cast<size_t>(n)] =
+          0.125f + 0.5f * static_cast<float>(n % 7) - 0.25f * static_cast<float>(n % 11);
+    }
+  }
+
   std::vector<float> expected_vals(M * N);
   for (int64_t m = 0; m < M; m++) {
     for (int64_t n = 0; n < N; n++) {
       float sum = 0.0f;
       for (int64_t k = 0; k < K; k++) {
         sum += input0_fp32_vals[m * K + k] * input1_fp32_vals[n * K + k];
+      }
+      if (has_bias) {
+        sum += bias[static_cast<size_t>(n)];
       }
       expected_vals[m * N + n] = sum;
     }
@@ -344,7 +359,16 @@ void TestMatMul2BitsLutGemm(int64_t M, int64_t N, int64_t K, int64_t block_size,
   }
 
   test.AddOptionalInputEdge<int32_t>();
-  test.AddOptionalInputEdge<AType>();
+
+  if (has_bias) {
+    if constexpr (std::is_same<AType, float>::value) {
+      test.AddInput<AType>("bias", {N}, bias, true);
+    } else {
+      test.AddOptionalInputEdge<AType>();
+    }
+  } else {
+    test.AddOptionalInputEdge<AType>();
+  }
 
   if constexpr (std::is_same<AType, float>::value) {
     test.AddOutput<AType>("Y", {M, N}, expected_vals);
@@ -403,6 +427,38 @@ TEST(MatMulNBitsLutGemm, Float32_2Bits_Symmetric_Batch32_128x128) {
 
 TEST(MatMulNBitsLutGemm, Float32_2Bits_Asymmetric_Batch32_256x256) {
   TestMatMul2BitsLutGemm<float>(32, 256, 256, 32, true);
+}
+
+// Fused-bias tests — verify the Bias parameter to MlasLutGemm is broadcast-added correctly.
+// These are the regression tests for the bug where the LUT path silently dropped the optional
+// `bias` input of MatMulNBits.
+TEST(MatMulNBitsLutGemm, Float32_2Bits_Symmetric_128x128_Bias) {
+  TestMatMul2BitsLutGemm<float>(1, 128, 128, 32, /*has_zero_point=*/false, /*has_bias=*/true);
+}
+
+TEST(MatMulNBitsLutGemm, Float32_2Bits_Asymmetric_128x128_Bias) {
+  TestMatMul2BitsLutGemm<float>(1, 128, 128, 32, /*has_zero_point=*/true, /*has_bias=*/true);
+}
+
+TEST(MatMulNBitsLutGemm, Float32_2Bits_Symmetric_256x256_BlkLen64_Bias) {
+  TestMatMul2BitsLutGemm<float>(1, 256, 256, 64, /*has_zero_point=*/false, /*has_bias=*/true);
+}
+
+TEST(MatMulNBitsLutGemm, Float32_2Bits_Asymmetric_256x256_BlkLen64_Bias) {
+  TestMatMul2BitsLutGemm<float>(1, 256, 256, 64, /*has_zero_point=*/true, /*has_bias=*/true);
+}
+
+TEST(MatMulNBitsLutGemm, Float32_2Bits_Asymmetric_128x256_BlkLen128_Bias) {
+  TestMatMul2BitsLutGemm<float>(1, 128, 256, 128, /*has_zero_point=*/true, /*has_bias=*/true);
+}
+
+// Batched (M>1) bias tests — exercise the per-row bias broadcast across many activation rows.
+TEST(MatMulNBitsLutGemm, Float32_2Bits_Symmetric_Batch32_128x128_Bias) {
+  TestMatMul2BitsLutGemm<float>(32, 128, 128, 32, /*has_zero_point=*/false, /*has_bias=*/true);
+}
+
+TEST(MatMulNBitsLutGemm, Float32_2Bits_Asymmetric_Batch32_256x256_Bias) {
+  TestMatMul2BitsLutGemm<float>(32, 256, 256, 32, /*has_zero_point=*/true, /*has_bias=*/true);
 }
 
 // Float zero point tests — directed QAD scenario (zp=1.5)
