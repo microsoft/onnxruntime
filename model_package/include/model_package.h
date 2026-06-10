@@ -82,7 +82,7 @@ MODEL_PACKAGE_API void ModelPackage_Close(ModelPackage* pkg);
 typedef struct ModelExecutorInfoEntry {
   size_t struct_size;         ///< sizeof(ModelExecutorInfoEntry)
   int abi_version;            ///< 1
-  const char* namespace_key;  ///< executor namespace name (e.g. "ort", "genai")
+  const char* namespace_key;  ///< executor namespace name (e.g. "ort")
   const char* json;           ///< canonical JSON value as string (object, array, etc.)
 } ModelExecutorInfoEntry;
 

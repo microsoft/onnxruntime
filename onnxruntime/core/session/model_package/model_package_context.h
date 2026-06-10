@@ -192,7 +192,7 @@ class ModelPackageContext {
                          gsl::span<const std::string>& out_variant_names) const;
 
   // Get the EP compatibility info declared on a variant.
-  // Lets callers (e.g. GenAI defaulting logic) inspect what EP a variant targets
+  // Lets callers inspect what EP a variant targets
   // before any EP has been resolved / before SelectComponent has been called.
   Status GetVariantEpCompatibility(const std::string& component_name,
                                    const std::string& variant_name,

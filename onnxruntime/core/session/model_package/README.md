@@ -72,9 +72,8 @@ keeps the variant directory self-describing and survives `executor_info`
 schema evolution without rewriting the manifest.
 
 The key under `executor_info` is the **executor namespace name** (`"ort"`),
-not the EP. Other consumers (e.g. GenAI) use their own namespace key
-(`"genai"`), so a single variant can carry per-consumer payloads side by
-side.
+not the EP. Other consumers use their own namespace key, so a single
+variant can carry per-consumer payloads side by side.
 
 ---
 
@@ -245,6 +244,3 @@ context is released.
   hosts these entries.
 - `include/onnxruntime/core/session/onnxruntime_experimental_c_api.inc`:
   the canonical list of `OrtModelPackageApi_*` entries.
-- The GenAI repo (`onnxruntime-genai`): consumer of the same packages
-  through the `executor_info["genai"]` slot; uses these experimental
-  functions under the hood to create sessions.

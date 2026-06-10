@@ -237,7 +237,7 @@ bool test_executor_info_inline_and_external() {
             "variant_directory": "v",
             "executor_info": {
               "ort":   "ort_info.json",
-              "genai": {"x": 1}
+              "other": {"x": 1}
             }
           }
         }
@@ -259,10 +259,10 @@ bool test_executor_info_inline_and_external() {
   CHECK(ort_json != nullptr);
   CHECK(std::string(ort_json).find("model.onnx") != std::string::npos);
 
-  const ModelExecutorInfoEntry* genai_ei = ModelVariantInfo_FindExecutorInfo(v, "genai");
-  const char* genai_json = genai_ei ? genai_ei->json : nullptr;
-  CHECK(genai_json != nullptr);
-  CHECK(std::string(genai_json).find("\"x\":1") != std::string::npos);
+  const ModelExecutorInfoEntry* other_ei = ModelVariantInfo_FindExecutorInfo(v, "other");
+  const char* other_json = other_ei ? other_ei->json : nullptr;
+  CHECK(other_json != nullptr);
+  CHECK(std::string(other_json).find("\"x\":1") != std::string::npos);
 
   const ModelExecutorInfoEntry* missing_ei = ModelVariantInfo_FindExecutorInfo(v, "absent");
   const char* missing = missing_ei ? missing_ei->json : nullptr;
@@ -283,7 +283,7 @@ bool test_inline_executor_info_without_directory_accepted() {
       "decoder": {
         "variants": {
           "cuda": {
-            "executor_info": { "genai": {"x": 1} }
+            "executor_info": { "other": {"x": 1} }
           }
         }
       }

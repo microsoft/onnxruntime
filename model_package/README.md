@@ -2,8 +2,8 @@
 
 A standalone C library for **reading, authoring, validating, and committing**
 ONNX Runtime model packages. The library has no dependency on ONNX Runtime
-itself, so any consumer (ORT, ONNX Runtime GenAI, Foundry Local, publisher
-tools, …) can link against it without dragging in a session runtime.
+itself, so any consumer (ORT, publisher tools, ...) can link against it
+without dragging in a session runtime.
 
 The library owns three things:
 
@@ -16,7 +16,7 @@ The library owns three things:
 
 It deliberately does **not** know about ONNX, execution providers, sessions,
 or the JSON payload that lives under any `executor_info["<consumer>"]` slot.
-Each consumer (ORT, GenAI, etc.) owns its own slot and parses it itself.
+Each consumer owns its own slot and parses it itself.
 
 ---
 
@@ -191,7 +191,7 @@ on-disk directory plus zero or more per-consumer `executor_info` payloads.
   "compatibility_string": "<EP-defined opaque token>",      // optional, opaque to library
   "executor_info": {                                        // optional
     "ort":   "ort_info.json",                               // string → external file
-    "genai": { "filename": "model.onnx" }                    // object → inline JSON
+    "other": { "filename": "model.onnx" }                    // object → inline JSON
   },
   "additional_metadata": { /* free-form */ }                 // optional
 }
@@ -217,19 +217,16 @@ Field reference:
 
 #### `executor_info`
 
-This is the extension point that lets ORT, GenAI, and any future consumer
-share a package without colliding. Keys are consumer namespaces; values are
-either:
+This is the extension point that lets ORT and any future consumer share a
+package without colliding. Keys are consumer namespaces; values are either:
 
 - **A string** — a path to a JSON file. Resolved against the variant
   directory. The file must exist (in strict mode) and parse as JSON.
 - **An inline JSON object** — embedded directly in the manifest.
 
-The library round-trips the payload but never interprets it. See:
-
-- [`onnxruntime/core/session/model_package/README.md`](../onnxruntime/core/session/model_package/README.md)
-  for the `"ort"` namespace schema.
-- The GenAI repo (`onnxruntime-genai`) for the `"genai"` namespace schema.
+The library round-trips the payload but never interprets it. See
+[`onnxruntime/core/session/model_package/README.md`](../onnxruntime/core/session/model_package/README.md)
+for the `"ort"` namespace schema.
 
 Consumers can embed `sha256:<hex>[/sub/path]` references inside their
 `executor_info` payload and resolve them through
