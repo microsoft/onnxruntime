@@ -1,33 +1,452 @@
 # Model Package Library
 
-A standalone C library for **reading, authoring, and committing** ONNX
-Runtime Model Packages. No dependency on ONNX Runtime, so any consumer
-(ORT, ONNX Runtime GenAI, Foundry Local, external publisher tools) can
-link against it.
+A standalone C library for **reading, authoring, validating, and committing**
+ONNX Runtime model packages. The library has no dependency on ONNX Runtime
+itself, so any consumer (ORT, ONNX Runtime GenAI, Foundry Local, publisher
+tools, …) can link against it without dragging in a session runtime.
 
-## What it does
+The library owns three things:
 
-- **Open** a package directory and walk its components / variants /
-  shared assets through a POD tree (`ModelPackage_Info()`).
-- **Author** from scratch or in place via mutation calls
-  (`SetComponentInline`, `SetVariant`, `SetVariantExecutorInfoExternal`,
-  `AddSharedAsset`, etc.) and serialize with `ModelPackage_Commit()`.
-- **Resolve** path / shared-asset references via
-  `ModelPackage_ResolveStringRef()`. Accepts relative paths, absolute
-  paths (installed layout only), `..` segments (installed only), bare
-  `sha256:<hex>` asset URIs, and `sha256:<hex>/sub/path` forms.
-- **Prune** stale orphan directories and **Validate** structural,
-  reachability, path, and rehash invariants.
+1. The **on-disk layout** of a model package (directory + manifest + shared
+   assets).
+2. The **schema** of `manifest.json` and `component.json`, including the
+   `executor_info` extension point.
+3. The **resolution rules** for paths and content-addressed shared assets,
+   including portable vs installed confinement.
 
-## What it deliberately does NOT do
+It deliberately does **not** know about ONNX, execution providers, sessions,
+or the JSON payload that lives under any `executor_info["<consumer>"]` slot.
+Each consumer (ORT, GenAI, etc.) owns its own slot and parses it itself.
 
-- **Variant selection** — picking which variant best matches the
-  available execution providers requires EP factory introspection and
-  lives in the executor (ORT in particular).
-- **Session creation** — building an `OrtSession` is ORT's job.
-- **Interpreting `executor_info` payloads** — each consumer namespace
-  (`ort`, `genai`, …) is opaque to this library.
-- **Interpreting `compatibility_string`** — the format is owned by EPs.
+---
+
+## On-disk layout
+
+A package is a directory containing a top-level `manifest.json`. Components
+live under the package root, either declared inline in the manifest or as
+external `component.json` files. Variants are directories under their
+component. Shared assets are content-addressed directories under
+`shared_assets/`.
+
+```
+package_root/
+├── manifest.json                       # required
+├── decoder/                            # external component (directory)
+│   ├── component.json                  # required when external
+│   └── cpu/                            # variant_directory
+│       ├── model.onnx
+│       └── ort_info.json               # executor_info["ort"], external form
+├── encoder/                            # inline component (no component.json)
+│   └── cuda/
+│       └── model.onnx
+└── shared_assets/
+    └── sha256-<64hex>/                 # content-addressed asset directory
+        ├── tokenizer.json
+        └── chat_template.jinja
+```
+
+- The package root must be a directory. A single file is **not** a package.
+- A package has at least one component. A component has at least one variant.
+- A variant always corresponds to a directory on disk (`variant_directory`).
+  Files inside that directory are referenced by `executor_info` payloads, not
+  by the manifest.
+- `shared_assets/` is optional and only needs to exist if at least one
+  shared asset is published.
+
+### Portable vs installed layout
+
+`manifest.layout` declares how the package may use paths:
+
+- `"portable"` (default): every path is a `package_root`-relative POSIX path
+  with no `..` segments and no absolute paths. The package is self-contained
+  and movable. This is the format you ship.
+- `"installed"`: absolute paths and `..` segments are allowed. This is for
+  packages that have been "installed" onto a system that links shared assets
+  to a system-wide cache, or that reference pre-existing files outside the
+  package root.
+
+The library enforces these rules at parse time. `ModelPackageOpenOptions.
+allow_external_paths` can additionally relax portable confinement for read
+operations, but the parser still rejects absolute paths inside the manifest
+unless `layout == "installed"`.
+
+---
+
+## `manifest.json`
+
+```jsonc
+{
+  "schema_version": 1,                   // required, must equal 1
+  "package_name":   "phi-4-mini",        // optional, free-form
+  "package_version":"4.0.0",             // optional, free-form
+  "description":    "Phi-4 mini reasoning model.",  // optional
+  "layout":         "portable",          // optional: "portable" (default) | "installed"
+
+  "components": {                        // required, at least one entry
+    "decoder":  "decoder",               // external — path relative to package_root
+    "encoder":  { /* inline component body */ }
+  },
+
+  "shared_assets": {                     // optional
+    "sha256:<64hex>": "shared_assets/sha256-<64hex>"  // optional path override
+  },
+
+  "additional_metadata": { /* free-form */ }   // optional
+}
+```
+
+Field reference:
+
+| Field                | Type            | Required | Notes |
+| -------------------- | --------------- | -------- | ----- |
+| `schema_version`     | integer         | yes      | Must be `1`. Anything else is an `ERR_VERSION`. |
+| `package_name`       | string          | no       | Human label. Not used for resolution. |
+| `package_version`    | string          | no       | Human label. Not used for resolution. |
+| `description`        | string          | no       | Free-form. |
+| `layout`             | string          | no       | `"portable"` (default) or `"installed"`. |
+| `components`         | object          | yes      | Map of component name → component value. See below. |
+| `shared_assets`      | object          | no       | Map of `sha256:<hex>` URI → path override (string). |
+| `additional_metadata`| any JSON value  | no       | Opaque to this library. Round-tripped verbatim. |
+
+By default the parser rejects unknown top-level keys (`strict_unknown_fields`,
+on by default). Disable it via `ModelPackageOpenOptions` to round-trip
+manifests authored against a newer schema.
+
+### Components
+
+The value under `components[name]` is either:
+
+- **A string** — the path to an external `component.json` (or to a directory
+  whose `component.json` will be loaded). Resolved against `package_root`.
+- **A JSON object** — an inline component body matching the
+  [component schema](#componentjson) below.
+
+The component's "directory" is:
+
+- For an inline component, the package root itself.
+- For an external component pointed at by a directory path, that directory.
+- For an external component pointed at by a file path, the file's parent.
+
+Variant paths in the component body are resolved against this directory.
+
+### Shared assets
+
+`shared_assets[uri]` is an **override**: it says "the asset with this URI
+lives at this path", overriding the default convention of
+`<package_root>/shared_assets/sha256-<hex>/`. Overrides are eagerly rejected
+in portable layout when they would escape `package_root` (e.g. absolute paths,
+`..` segments).
+
+Variants reference shared assets by URI through `uses_assets` (see below) and
+through embedded `sha256:<hex>[/sub/path]` references in their `executor_info`
+payloads (see [`ModelPackage_ResolveStringRef`](#path-resolution-rules)).
+
+---
+
+## `component.json`
+
+When a component is external, `component.json` is the file referenced from
+the manifest. When inline, the same body is embedded directly in
+`manifest.components[name]`.
+
+```jsonc
+{
+  "component_name": "decoder",           // optional, descriptive only
+  "variants": {                          // required, may be empty
+    "cpu":  { /* variant body */ },
+    "cuda": { /* variant body */ }
+  },
+  "additional_metadata": { /* free-form */ }   // optional
+}
+```
+
+Field reference:
+
+| Field                | Type   | Required | Notes |
+| -------------------- | ------ | -------- | ----- |
+| `component_name`     | string | no       | Sanity-checked as a string; not used for lookup. The map key in `components` wins. |
+| `variants`           | object | yes      | Map of variant name → variant body. May be empty (placeholder component). |
+| `additional_metadata`| any    | no       | Free-form. |
+
+---
+
+## Variant body
+
+A variant binds a single (EP, device, compatibility) triple to a single
+on-disk directory plus zero or more per-consumer `executor_info` payloads.
+
+```jsonc
+{
+  "variant_directory":    "cuda",                          // optional — defaults to variant name
+  "ep":                   "CUDAExecutionProvider",          // optional
+  "device":               "gpu",                            // optional ("cpu" | "gpu" | "npu")
+  "compatibility_string": "<EP-defined opaque token>",      // optional, opaque to library
+  "uses_assets":          ["sha256:<64hex>"],               // optional
+  "executor_info": {                                        // optional
+    "ort":   "ort_info.json",                               // string → external file
+    "genai": { "filename": "model.onnx" }                    // object → inline JSON
+  },
+  "additional_metadata": { /* free-form */ }                 // optional
+}
+```
+
+Field reference:
+
+| Field                  | Type             | Required | Notes |
+| ---------------------- | ---------------- | -------- | ----- |
+| `variant_directory`    | string           | no       | Path relative to the component directory. Defaults to the variant name. If declared but missing on disk, parse fails. |
+| `ep`                   | string           | no       | Single ONNX Runtime EP name (e.g. `CPUExecutionProvider`). |
+| `device`               | string           | no       | Lower-case `cpu` / `gpu` / `npu`. ORT uses this for variant selection. |
+| `compatibility_string` | string           | no       | Opaque to the library. ORT hands it to the EP's `ValidateCompiledModelCompatibilityInfo` callback. |
+| `uses_assets`          | array of strings | no       | Each entry must be a valid `sha256:<64hex>` URI. |
+| `executor_info`        | object           | no       | Map of consumer namespace → string (external file) or object (inline JSON). |
+| `additional_metadata`  | any              | no       | Free-form. |
+
+#### `variant_directory`
+
+- Always interpreted as a directory.
+- Resolved against the **component directory** (not the package root).
+- The library does not validate the directory's contents; consumers resolve
+  their own file references relative to it.
+
+#### `executor_info`
+
+This is the extension point that lets ORT, GenAI, and any future consumer
+share a package without colliding. Keys are consumer namespaces; values are
+either:
+
+- **A string** — a path to a JSON file. Resolved against the variant
+  directory. The file must exist (in strict mode) and parse as JSON.
+- **An inline JSON object** — embedded directly in the manifest.
+
+The library round-trips the payload but never interprets it. See:
+
+- [`onnxruntime/core/session/model_package/README.md`](../onnxruntime/core/session/model_package/README.md)
+  for the `"ort"` namespace schema.
+- The GenAI repo (`onnxruntime-genai`) for the `"genai"` namespace schema.
+
+#### `uses_assets`
+
+Declares which shared assets the variant consumes. Each URI must be the
+`sha256:<64hex>` form. The library uses this list to:
+
+- Discover shared assets that aren't declared explicitly in
+  `manifest.shared_assets`.
+- Validate asset reachability (`MODEL_PACKAGE_VALIDATE_ASSET_REACH`).
+- Reject orphan/missing assets at `_Validate` time.
+
+Consumers can additionally embed `sha256:<hex>[/sub/path]` references inside
+their `executor_info` payload and resolve them via
+`ModelPackage_ResolveStringRef` — they do not need to be listed in
+`uses_assets`, but listing them keeps validation honest and makes the
+manifest self-describing.
+
+---
+
+## Shared assets
+
+Shared assets are **directories** identified by a content hash. Two packages
+that ship the same tokenizer will reuse the same asset directory on disk in
+an installed layout, dedup-ing storage and downloads.
+
+### Canonical asset URI
+
+`ModelPackage_ComputeDirectoryHash(source_dir)` computes the canonical URI:
+
+1. Walk `source_dir` recursively, collecting regular files. Empty
+   subdirectories are ignored.
+2. Reject symlinks (portability hazard).
+3. For each file, compute `sha256(file_bytes)` → per-file hex digest.
+4. Build a manifest text of lines `<sha256_hex>  <relative_posix_path>\n`
+   sorted lexicographically by path. Paths use forward slashes, no leading
+   `./`. Non-ASCII paths must be NFC-normalized by the caller.
+5. `asset_uri = "sha256:" + sha256(manifest_text)`, lowercase hex.
+
+The scheme hashes **both** file contents and file names, so renaming a file
+inside an asset changes the URI. The on-disk directory name follows the
+convention `sha256-<hex>` (dash, not colon) to keep the path filesystem-safe.
+
+### Default location
+
+`<package_root>/shared_assets/sha256-<hex>/`. Override per-asset by adding an
+entry to `manifest.shared_assets`.
+
+### Adding a shared asset programmatically
+
+```c
+const char* uri = NULL;
+ModelPackageStatus* st = ModelPackage_AddSharedAsset(
+    pkg,
+    "/path/to/tokenizer",     // source_dir
+    NULL,                     // expected_uri_or_null (reproducible-build check)
+    /*copy_in=*/true,         // stage for copy at Commit time
+    &uri);
+```
+
+`copy_in == false` stores an override path in the manifest and is rejected
+eagerly in portable layout (the path is unlikely to be portable). `copy_in
+== true` stages the source for copy when `ModelPackage_Commit()` runs.
+
+---
+
+## Path resolution rules
+
+`ModelPackage_ResolveStringRef(pkg, base_dir, input, must_exist, &out)` is
+the canonical path resolver. It accepts:
+
+| Input form                  | Resolution |
+| --------------------------- | ---------- |
+| `sha256:<hex>`              | Returns the on-disk directory for that shared asset. Error if the asset isn't registered. |
+| `sha256:<hex>/sub/path`     | Returns `<asset_dir>/sub/path`. The subpath is confined to the asset folder (no absolute, no `..`). |
+| Relative path               | Resolved against `base_dir` (or `package_root` when `base_dir` is NULL). |
+| Absolute path / `..` segments | Allowed only in `installed` layout or when the package was opened with `allow_external_paths = true`. |
+
+In portable layout the resolver enforces that the resolved path stays
+underneath `package_root`. Symlinks are followed by default
+(`follow_symlinks`).
+
+`out_path` is a NUL-terminated thread-local pointer; copy it if it must
+outlive the next `ResolveStringRef` call on the same thread.
+
+---
+
+## C API quick tour
+
+All public entry points are declared in `include/model_package.h`. Reading a
+package and walking the info tree:
+
+```c
+#include "model_package.h"
+
+ModelPackage* pkg = NULL;
+if (ModelPackageStatus* st = ModelPackage_Open("/path/to/pkg", NULL, &pkg)) {
+    fprintf(stderr, "open failed: %s\n", ModelPackageStatus_Message(st));
+    ModelPackageStatus_Release(st);
+    return 1;
+}
+
+const ModelPackageInfo* info = ModelPackage_Info(pkg);
+printf("schema=%lld layout=%s\n", (long long)info->schema_version, info->layout);
+for (size_t i = 0; i < info->num_components; ++i) {
+    const ModelComponentInfo* c = &info->components[i];
+    printf("component %s (%zu variants)\n", c->name, c->num_variants);
+    for (size_t v = 0; v < c->num_variants; ++v) {
+        const ModelVariantInfo* var = &c->variants[v];
+        printf("  variant %s  dir=%s  ep=%s\n",
+               var->name,
+               var->variant_directory ? var->variant_directory : "(unset)",
+               var->ep ? var->ep : "(unset)");
+        for (size_t e = 0; e < var->num_executor_infos; ++e) {
+            const ModelExecutorInfoEntry* ei = &var->executor_infos[e];
+            printf("    executor_info[%s] = %s\n", ei->namespace_key, ei->json);
+        }
+    }
+}
+
+ModelPackage_Close(pkg);
+```
+
+Authoring a new package from scratch:
+
+```c
+ModelPackage* pkg = NULL;
+ModelPackage_New(&pkg);
+ModelPackage_SetMetadata(pkg, "phi-4-mini", "4.0.0", "Phi-4 mini.");
+
+ModelPackage_SetComponentInline(pkg, "decoder", "{\"variants\": {}}");
+ModelPackage_SetVariant(pkg, "decoder", "cpu",
+    "{\"variant_directory\":\"decoder/cpu\","
+    " \"ep\":\"CPUExecutionProvider\","
+    " \"device\":\"cpu\"}");
+ModelPackage_SetVariantExecutorInfoInline(
+    pkg, "decoder", "cpu", "ort", "{\"model_file\":\"model.onnx\"}");
+
+const char* asset_uri = NULL;
+ModelPackage_AddSharedAsset(pkg, "/src/tokenizer", NULL, /*copy_in=*/true, &asset_uri);
+// asset_uri is owned by pkg; copy it if you need it past the next mutation.
+
+ModelPackage_Commit(pkg, "/path/to/new_pkg", MODEL_PACKAGE_WRITE_PRESERVE);
+ModelPackage_Close(pkg);
+```
+
+### Lifetime contract
+
+Every `const char*` and every `const ModelPackageInfo*` (plus sub-arrays)
+returned by the read API is owned by the `ModelPackage` handle and remains
+valid **until the next mutation of that scope** or until
+`ModelPackage_Close()`. Any `Set*` / `Remove*` / `Add*` / `Commit` call
+invalidates cached pointers in the mutated scope; re-read `Info()` after
+mutating.
+
+`ModelPackage_AddSharedAsset`'s `out_uri` follows the same "valid until next
+mutation" rule.
+
+`ModelPackage_ResolveStringRef` and `ModelPackage_ComputeDirectoryHash`
+return pointers into a per-thread scratch slot; copy before the next call on
+the same thread.
+
+### Commit modes
+
+`ModelPackage_Commit(pkg, dest, mode)`:
+
+- `dest == NULL` → in-place commit at `package_root`.
+- `dest != NULL` → write a self-contained "save as". `dest` must be empty or
+  nonexistent. On success the package's root is updated to `dest`, so
+  subsequent in-place commits go there.
+
+`mode`:
+
+- `MODEL_PACKAGE_WRITE_PRESERVE` (default) — each component and
+  `executor_info` entry keeps its current inline-or-external shape.
+- `MODEL_PACKAGE_WRITE_DENSE` — flatten every external component back inline
+  into `manifest.json`. Useful for single-file authoring inspection.
+
+### Prune
+
+`ModelPackage_Prune(pkg)` removes:
+
+- Unreferenced subdirectories under `<package_root>/shared_assets/`.
+- Tracked orphan variant and component directories left behind by
+  `RemoveVariant`, `RemoveComponent`, `SetVariant`, or
+  `SetComponentExternal`.
+
+Only paths registered through this API and strictly inside `package_root`
+are touched.
+
+### Validate
+
+`ModelPackage_Validate(pkg, flags, &report_json)` runs a configurable set of
+structural checks and returns a JSON report
+`{"errors": [...], "warnings": [...]}`:
+
+| Flag                                    | Checks |
+| --------------------------------------- | ------ |
+| `MODEL_PACKAGE_VALIDATE_SCHEMA`         | Required keys, types, value ranges. |
+| `MODEL_PACKAGE_VALIDATE_PATHS`          | Every recorded path resolves under the configured layout. |
+| `MODEL_PACKAGE_VALIDATE_ASSET_REACH`    | Every declared `sha256:` URI is reachable on disk or registered as an override. |
+| `MODEL_PACKAGE_VALIDATE_ASSET_REHASH`   | Recompute every asset directory hash and compare to its URI (slow). |
+| `MODEL_PACKAGE_VALIDATE_UNKNOWN_FIELDS` | Surface unknown JSON fields as warnings. |
+| `MODEL_PACKAGE_VALIDATE_ALL`            | All of the above. |
+
+Errors cause a non-NULL status return; warnings alone return success.
+
+---
+
+## What the library deliberately does NOT do
+
+- **Variant selection.** Picking which variant best matches the EPs the
+  caller has available requires EP factory introspection and is owned by the
+  executor. ORT's selector lives in
+  `onnxruntime/core/session/model_package/` and uses each EP's
+  `ValidateCompiledModelCompatibilityInfo` callback.
+- **Session creation.** Building an `OrtSession` is ORT's job.
+- **Interpreting `executor_info` payloads.** Each consumer namespace owns
+  its own slot. The library only validates that values are either strings
+  (paths) or objects.
+- **Interpreting `compatibility_string`.** The format is owned by the EP
+  declared in `ep`. The library never parses it.
+
+---
 
 ## Building
 
@@ -38,93 +457,21 @@ ctest --test-dir build --output-on-failure   # requires BUILD_TESTS=ON
 ```
 
 CMake options:
+
 - `MODEL_PACKAGE_BUILD_SHARED` (default `ON`) — shared vs static.
-- `MODEL_PACKAGE_BUILD_TESTS`  (default `OFF`) — build the four
-  unit-test executables (`test_asset_hashing`, `test_inspection`,
-  `test_authoring`, `test_commit`).
+- `MODEL_PACKAGE_BUILD_TESTS` (default `OFF`) — build the unit-test
+  executables (`test_asset_hashing`, `test_inspection`, `test_authoring`,
+  `test_commit`).
 
-## C API quick tour
+The only build-time dependency is a vendored copy of nlohmann/json (header
+only).
 
-All public entry points are declared in `include/model_package.h`. Open
-a package and walk its info tree:
+---
 
-```c
-#include "model_package.h"
+## See also
 
-ModelPackage* pkg = NULL;
-ModelPackageStatus* st = ModelPackage_Open("/path/to/pkg", NULL, &pkg);
-if (st) {
-    fprintf(stderr, "open failed: %s\n", ModelPackageStatus_Message(st));
-    ModelPackageStatus_Release(st);
-    return 1;
-}
-
-const ModelPackageInfo* info = ModelPackage_Info(pkg);
-for (size_t i = 0; i < info->num_components; ++i) {
-    const ModelComponentInfo* c = &info->components[i];
-    printf("component %s (%zu variants)\n", c->name, c->num_variants);
-}
-
-ModelPackage_Close(pkg);
-```
-
-Author a package from scratch:
-
-```c
-ModelPackage* pkg = NULL;
-ModelPackage_New(&pkg);
-ModelPackage_SetComponentInline(pkg, "encoder", "{\"variants\": {}}");
-ModelPackage_SetVariant(pkg, "encoder", "v1",
-                        "{\"ep\":\"CPU\",\"variant_directory\":\"encoder/v1\"}");
-ModelPackage_SetVariantExecutorInfoInline(
-    pkg, "encoder", "v1", "ort", "{\"model_file\":\"model.onnx\"}");
-ModelPackage_Commit(pkg, "/path/to/new_pkg", MODEL_PACKAGE_WRITE_PRESERVE);
-ModelPackage_Close(pkg);
-```
-
-### Lifetime contract
-
-Every `const char*` and every `const ModelPackageInfo*` (plus
-sub-arrays) returned by the read API is owned by the `ModelPackage`
-handle and remains valid **until the next mutation of that scope** or
-until `ModelPackage_Close()`. Any `Set*`/`Remove*`/`Add*`/`Commit` call
-invalidates cached pointers in the mutated scope; re-read
-`ModelPackage_Info()` after mutating.
-
-`ModelPackage_AddSharedAsset` returns its `out_uri` under the same
-"valid until next mutation" contract.
-
-## Package format
-
-A package is a directory rooted at `package_root/` containing
-`manifest.json`. Components may be declared inline in the manifest or
-externally as a sibling `component.json`/folder. Variants live under a
-`variant_directory` (defaults to `<component_dir>/<variant_name>`),
-which holds the model files plus any executor-specific configuration
-referenced by `executor_info`. Shared, content-addressed asset
-directories live under `shared_assets/sha256-<hex>/`.
-
-```
-package_root/
-├── manifest.json
-├── decoder/                       # external component
-│   ├── component.json
-│   └── cpu/                       # variant_directory
-│       └── model.onnx
-└── shared_assets/
-    └── sha256-<64hex>/            # content-addressed asset
-        └── ...
-```
-
-See `/datadisks/jambaykinley/archive/m/model_package_redesign.md` for
-the full design rationale.
-
-## ORT integration
-
-ORT's `OrtModelPackageApi` (see `onnxruntime_c_api.h`) wraps this
-library and adds variant selection plus `OrtSession` creation:
-`CreateModelPackageOptionsFromSessionOptions` →
-`OrtModelPackageApi::SelectComponent` →
-`OrtModelPackageApi::CreateSession`.
-
-The library itself never links against ORT.
+- `onnxruntime/core/session/model_package/README.md` — how ORT consumes this
+  library and the `executor_info["ort"]` schema.
+- `model_package_redesign.md` in the `archive` repo — original design
+  rationale (extension fields, content addressing, portable vs installed,
+  shared-asset overrides).
