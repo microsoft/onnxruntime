@@ -129,7 +129,6 @@ bool test_open_minimal_inline() {
   CHECK(v->ep == nullptr);
   CHECK(v->device == nullptr);
   CHECK(v->compatibility_string == nullptr);
-  CHECK(v->num_used_assets == 0);
 
   ModelPackage_Close(pkg);
   return true;
@@ -338,17 +337,17 @@ bool test_shared_assets_resolve() {
     "components": {
       "x": {
         "variants": {
-          "cpu": {
-            "uses_assets": [
-              "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-              "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-            ]
-          }
+          "cpu": {}
         }
       }
     }
   })");
   fs::create_directories(s.root() / "assets" / "a");
+  // Discovery: an on-disk sha256-<hex> dir without an override entry must
+  // surface alongside the explicit override.
+  fs::create_directories(
+      s.root() / "shared_assets" /
+      "sha256-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
 
   ModelPackage* pkg = nullptr;
   CHECK_OK(ModelPackage_Open(s.root().c_str(), nullptr, &pkg));

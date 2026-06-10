@@ -60,7 +60,6 @@ const InfoViewCache& BuildOrGetViewCache(const ModelPackage* pkg) {
   auto& cache = *pkg->info_cache;
   const size_t num_components = pkg->components.size();
 
-  cache.used_assets_storage.resize(num_components);
   cache.executor_infos_storage.resize(num_components);
   cache.variants_storage.resize(num_components);
   cache.components.resize(num_components);
@@ -68,33 +67,22 @@ const InfoViewCache& BuildOrGetViewCache(const ModelPackage* pkg) {
   for (size_t ci = 0; ci < num_components; ++ci) {
     const auto& comp = *pkg->components[ci];
     const size_t num_variants = comp.variants.size();
-    cache.used_assets_storage[ci].clear();
     cache.executor_infos_storage[ci].clear();
     cache.variants_storage[ci].resize(num_variants);
 
-    // Total used-asset count across this component's variants.
-    size_t total_used = 0;
+    // Total executor_info entry count across this component's variants.
     size_t total_execs = 0;
     for (const auto& vp : comp.variants) {
-      total_used += vp->used_asset_uri_caches.size();
       total_execs += vp->executor_info_resolved.size();
     }
-    cache.used_assets_storage[ci].reserve(total_used);
     cache.executor_infos_storage[ci].reserve(total_execs);
 
-    // First pass: append all used-asset and executor_info entries so storage
-    // pointers stay stable for the second pass.
-    std::vector<std::pair<size_t, size_t>> ua_ranges(num_variants);  // [begin, end)
+    // First pass: append all executor_info entries so storage pointers stay
+    // stable for the second pass.
     std::vector<std::pair<size_t, size_t>> ei_ranges(num_variants);
 
     for (size_t vi = 0; vi < num_variants; ++vi) {
       const auto& var = *comp.variants[vi];
-      size_t ua_begin = cache.used_assets_storage[ci].size();
-      for (const auto& uri : var.used_asset_uri_caches) {
-        cache.used_assets_storage[ci].push_back(uri.c_str());
-      }
-      ua_ranges[vi] = {ua_begin, cache.used_assets_storage[ci].size()};
-
       size_t ei_begin = cache.executor_infos_storage[ci].size();
       // executor_info_resolved is populated eagerly by RefreshExecutorInfoCache
       // (at Open and on every mutation); any parse/IO error surfaces there.
@@ -139,10 +127,6 @@ const InfoViewCache& BuildOrGetViewCache(const ModelPackage* pkg) {
       vi_out.device = OptStr(var.device_cache);
       vi_out.compatibility_string = OptStr(var.compatibility_string_cache);
       vi_out.additional_metadata_json = OptStr(var.additional_metadata_cache);
-      auto [ua_begin, ua_end] = ua_ranges[vi];
-      vi_out.num_used_assets = ua_end - ua_begin;
-      vi_out.used_assets =
-          (vi_out.num_used_assets > 0) ? &cache.used_assets_storage[ci][ua_begin] : nullptr;
       auto [ei_begin, ei_end] = ei_ranges[vi];
       vi_out.num_executor_infos = ei_end - ei_begin;
       vi_out.executor_infos =

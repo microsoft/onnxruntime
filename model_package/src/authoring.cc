@@ -430,43 +430,52 @@ ModelPackageStatus* ModelPackage_AddSharedAsset(ModelPackage* pkg,
   }
   if (copy_in) {
     // No manifest entry needed — the asset will be materialized at the default
-    // convention path on commit. Record the staged source.
+    // convention path on commit. LoadSharedAssets surfaces the staged source
+    // immediately so the URI shows up in ModelPackage_Info() before commit.
     pkg->pending_shared_asset_copies[computed_uri] = fs::path(source_dir);
-    // Ensure the asset shows up in the shared_assets enumeration even before
-    // commit: insert a manifest entry pointing at the (future) default path.
-    // We omit it to keep the on-disk manifest minimal: shared assets at the
-    // default convention need no override entry. The asset will surface in
-    // shared_assets[] only after some uses_assets reference it OR after
-    // commit materializes it. Also add a transient
-    // manifest entry only if needed at validate time — skip for now.
   } else {
     pkg->manifest["shared_assets"][computed_uri] = std::string(source_dir);
   }
 
   if (auto* s = PostMutate(pkg)) return s;
 
-  // Look up the record and return its URI.
+  // Look up the record and return its URI. After PostMutate, the URI is
+  // always present in shared_assets_index_by_uri (either via the override
+  // path or via the pending-copy tier of LoadSharedAssets).
   auto sit = pkg->shared_asset_index_by_uri.find(computed_uri);
-  if (sit != pkg->shared_asset_index_by_uri.end()) {
-    *out_uri = pkg->shared_assets[sit->second]->uri_cache.c_str();
-  } else {
-    // copy_in=true with no consumer yet — still hand the caller the URI via
-    // the pending_shared_asset_copies key.
-    *out_uri = pkg->pending_shared_asset_copies.find(computed_uri)->first.c_str();
+  if (sit == pkg->shared_asset_index_by_uri.end()) {
+    return MakeStatus(MODEL_PACKAGE_ERR_STATE,
+                      std::string("AddSharedAsset: failed to register URI ") + computed_uri);
   }
+  *out_uri = pkg->shared_assets[sit->second]->uri_cache.c_str();
   return nullptr;
 }
 
 ModelPackageStatus* ModelPackage_RemoveSharedAsset(ModelPackage* pkg, const char* uri) {
   if (!pkg) return NullArg("pkg");
   if (!uri) return NullArg("uri");
+  std::string uri_str(uri);
   if (pkg->manifest.contains("shared_assets") && pkg->manifest["shared_assets"].is_object()) {
-    pkg->manifest["shared_assets"].erase(uri);
+    pkg->manifest["shared_assets"].erase(uri_str);
     if (pkg->manifest["shared_assets"].empty()) {
       pkg->manifest.erase("shared_assets");
     }
   }
-  pkg->pending_shared_asset_copies.erase(uri);
+  pkg->pending_shared_asset_copies.erase(uri_str);
+  // Physically remove the on-disk directory at the default convention. If it
+  // stays on disk, the next RefreshSharedAssets would auto-discover it again
+  // and the removal would be a no-op. We only touch paths that live inside
+  // package_root.
+  if (!pkg->package_root.empty()) {
+    std::string dir_name = mp::DefaultSharedAssetDirName(uri_str);
+    if (!dir_name.empty()) {
+      std::filesystem::path on_disk = pkg->package_root / "shared_assets" / dir_name;
+      if (mp::IsInsidePackageRoot(pkg, on_disk)) {
+        std::error_code ec;
+        std::filesystem::remove_all(on_disk, ec);
+      }
+    }
+  }
   return PostMutate(pkg);
 }
 

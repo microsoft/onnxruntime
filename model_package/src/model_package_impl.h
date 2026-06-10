@@ -44,7 +44,6 @@ struct VariantRecord {
   std::optional<std::string> device_cache;
   std::optional<std::string> compatibility_string_cache;
   std::optional<std::string> resolved_directory_cache;
-  std::vector<std::string>   used_asset_uri_caches;
   mutable std::optional<std::string> additional_metadata_cache;
   mutable std::optional<std::string> variant_json_cache;
 
@@ -85,7 +84,6 @@ struct SharedAssetRecord {
 /// until the next mutation drops the cache.
 struct InfoViewCache {
   // Per-variant arrays. Indexed [component_idx][variant_idx].
-  std::vector<std::vector<const char*>>            used_assets_storage;
   std::vector<std::vector<ModelExecutorInfoEntry>> executor_infos_storage;
   std::vector<std::vector<ModelVariantInfo>>       variants_storage;
 

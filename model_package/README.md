@@ -143,9 +143,11 @@ lives at this path", overriding the default convention of
 in portable layout when they would escape `package_root` (e.g. absolute paths,
 `..` segments).
 
-Variants reference shared assets by URI through `uses_assets` (see below) and
-through embedded `sha256:<hex>[/sub/path]` references in their `executor_info`
-payloads (see [`ModelPackage_ResolveStringRef`](#path-resolution-rules)).
+Variants reference shared assets only by embedding `sha256:<hex>[/sub/path]`
+strings inside their `executor_info` payloads. Consumers resolve those
+references through [`ModelPackage_ResolveStringRef`](#path-resolution-rules).
+The library never parses `executor_info` payloads, so it has no manifest-level
+list of which variant uses which asset.
 
 ---
 
@@ -187,7 +189,6 @@ on-disk directory plus zero or more per-consumer `executor_info` payloads.
   "ep":                   "CUDAExecutionProvider",          // optional
   "device":               "gpu",                            // optional ("cpu" | "gpu" | "npu")
   "compatibility_string": "<EP-defined opaque token>",      // optional, opaque to library
-  "uses_assets":          ["sha256:<64hex>"],               // optional
   "executor_info": {                                        // optional
     "ort":   "ort_info.json",                               // string → external file
     "genai": { "filename": "model.onnx" }                    // object → inline JSON
@@ -204,7 +205,6 @@ Field reference:
 | `ep`                   | string           | no       | Single ONNX Runtime EP name (e.g. `CPUExecutionProvider`). |
 | `device`               | string           | no       | Lower-case `cpu` / `gpu` / `npu`. ORT uses this for variant selection. |
 | `compatibility_string` | string           | no       | Opaque to the library. ORT hands it to the EP's `ValidateCompiledModelCompatibilityInfo` callback. |
-| `uses_assets`          | array of strings | no       | Each entry must be a valid `sha256:<64hex>` URI. |
 | `executor_info`        | object           | no       | Map of consumer namespace → string (external file) or object (inline JSON). |
 | `additional_metadata`  | any              | no       | Free-form. |
 
@@ -231,21 +231,11 @@ The library round-trips the payload but never interprets it. See:
   for the `"ort"` namespace schema.
 - The GenAI repo (`onnxruntime-genai`) for the `"genai"` namespace schema.
 
-#### `uses_assets`
-
-Declares which shared assets the variant consumes. Each URI must be the
-`sha256:<64hex>` form. The library uses this list to:
-
-- Discover shared assets that aren't declared explicitly in
-  `manifest.shared_assets`.
-- Validate asset reachability (`MODEL_PACKAGE_VALIDATE_ASSET_REACH`).
-- Reject orphan/missing assets at `_Validate` time.
-
-Consumers can additionally embed `sha256:<hex>[/sub/path]` references inside
-their `executor_info` payload and resolve them via
-`ModelPackage_ResolveStringRef` — they do not need to be listed in
-`uses_assets`, but listing them keeps validation honest and makes the
-manifest self-describing.
+Consumers can embed `sha256:<hex>[/sub/path]` references inside their
+`executor_info` payload and resolve them through
+`ModelPackage_ResolveStringRef`. The library does not maintain a per-variant
+list of consumed assets; see [Shared assets](#shared-assets) for how URIs
+enter the resolvable set.
 
 ---
 
@@ -276,6 +266,27 @@ convention `sha256-<hex>` (dash, not colon) to keep the path filesystem-safe.
 
 `<package_root>/shared_assets/sha256-<hex>/`. Override per-asset by adding an
 entry to `manifest.shared_assets`.
+
+### How URIs enter the resolvable set
+
+At Open time the library populates the resolvable shared-asset table from
+three sources, in order. Within each tier an already-seen URI is skipped:
+
+1. **Manifest overrides.** Every entry under `manifest.shared_assets` lands
+   first. These can also point at non-default paths (subject to the
+   layout's portability rules).
+2. **On-disk discovery.** The library lists `<package_root>/shared_assets/`
+   and admits each `sha256-<hex>` subdirectory it finds (sorted
+   lexicographically). The resolved path is the default
+   `<package_root>/shared_assets/sha256-<hex>/`. A missing `shared_assets/`
+   directory is fine.
+3. **Pending authoring stages.** Any `copy_in=true` source registered via
+   `ModelPackage_AddSharedAsset` is surfaced at its staged source path so
+   `ResolveStringRef` works before `Commit`.
+
+This means the manifest does not need to enumerate the assets that ship in
+the conventional `shared_assets/` directory. The override list is only
+needed when an asset lives outside the default convention.
 
 ### Adding a shared asset programmatically
 
@@ -409,12 +420,19 @@ the same thread.
 
 ### Prune
 
-`ModelPackage_Prune(pkg)` removes:
+`ModelPackage_Prune(pkg)` reclaims storage that the library itself manages:
 
-- Unreferenced subdirectories under `<package_root>/shared_assets/`.
 - Tracked orphan variant and component directories left behind by
   `RemoveVariant`, `RemoveComponent`, `SetVariant`, or
   `SetComponentExternal`.
+- Stale `.tmp.<suffix>` staging directories from interrupted commits, after
+  a short grace window.
+
+`Prune` deliberately never removes `shared_assets/sha256-<hex>/` directories.
+Consumers freely embed `sha256:` references inside their own `executor_info`
+payloads, and the library cannot prove an asset is unused without parsing
+every consumer's namespace. Use `ModelPackage_RemoveSharedAsset(uri)` to
+delete a shared asset explicitly when the caller knows it is unreferenced.
 
 Only paths registered through this API and strictly inside `package_root`
 are touched.
@@ -429,7 +447,6 @@ structural checks and returns a JSON report
 | --------------------------------------- | ------ |
 | `MODEL_PACKAGE_VALIDATE_SCHEMA`         | Required keys, types, value ranges. |
 | `MODEL_PACKAGE_VALIDATE_PATHS`          | Every recorded path resolves under the configured layout. |
-| `MODEL_PACKAGE_VALIDATE_ASSET_REACH`    | Every declared `sha256:` URI is reachable on disk or registered as an override. |
 | `MODEL_PACKAGE_VALIDATE_ASSET_REHASH`   | Recompute every asset directory hash and compare to its URI (slow). |
 | `MODEL_PACKAGE_VALIDATE_UNKNOWN_FIELDS` | Surface unknown JSON fields as warnings. |
 | `MODEL_PACKAGE_VALIDATE_ALL`            | All of the above. |

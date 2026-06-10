@@ -97,8 +97,6 @@ typedef struct ModelVariantInfo {
   const char* device;                  ///< NULL when unset
   const char* compatibility_string;    ///< NULL when unset
   const char* additional_metadata_json;///< NULL when unset
-  size_t              num_used_assets;
-  const char* const*  used_assets;     ///< each entry is a "sha256:<hex>" URI
   size_t                          num_executor_infos;
   const ModelExecutorInfoEntry*   executor_infos;
 } ModelVariantInfo;
@@ -334,9 +332,8 @@ MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_Prune(ModelPackage*);
 typedef enum {
   MODEL_PACKAGE_VALIDATE_SCHEMA         = 1 << 0,
   MODEL_PACKAGE_VALIDATE_PATHS          = 1 << 1,
-  MODEL_PACKAGE_VALIDATE_ASSET_REACH    = 1 << 2,
-  MODEL_PACKAGE_VALIDATE_ASSET_REHASH   = 1 << 3,
-  MODEL_PACKAGE_VALIDATE_UNKNOWN_FIELDS = 1 << 4,
+  MODEL_PACKAGE_VALIDATE_ASSET_REHASH   = 1 << 2,
+  MODEL_PACKAGE_VALIDATE_UNKNOWN_FIELDS = 1 << 3,
   MODEL_PACKAGE_VALIDATE_ALL            = ~0,
 } ModelPackageValidateFlags;
 

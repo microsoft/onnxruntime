@@ -42,8 +42,10 @@ ModelPackageStatus* ParseComponentBody(const std::filesystem::path& package_root
 /// package's stable string buffers.
 ModelPackageStatus* RefreshPackageMetadata(ModelPackage* pkg);
 
-/// Re-derive `pkg->shared_assets` from `pkg->manifest` plus any URIs referenced
-/// via `uses_assets`. Clears and replaces the existing shared_assets vector
+/// Re-derive `pkg->shared_assets` from `pkg->manifest.shared_assets` overrides,
+/// plus any `sha256-<hex>` subdirectories discovered under
+/// `<package_root>/shared_assets/`, plus any pending copy_in entries staged via
+/// the authoring API. Clears and replaces the existing shared_assets vector
 /// and `shared_asset_index_by_uri`.
 ModelPackageStatus* RefreshSharedAssets(ModelPackage* pkg, const PathResolverOptions& opts);
 

@@ -41,7 +41,6 @@ constexpr const char* kVariantDirectoryKey = "variant_directory";
 constexpr const char* kEpKey = "ep";
 constexpr const char* kDeviceKey = "device";
 constexpr const char* kCompatibilityStringKey = "compatibility_string";
-constexpr const char* kUsesAssetsKey = "uses_assets";
 constexpr const char* kExecutorInfoKey = "executor_info";
 
 static const std::set<std::string> kManifestKnownKeys = {
@@ -55,7 +54,7 @@ static const std::set<std::string> kComponentKnownKeys = {
 
 static const std::set<std::string> kVariantKnownKeys = {
     kVariantDirectoryKey, kEpKey, kDeviceKey, kCompatibilityStringKey,
-    kUsesAssetsKey,       kExecutorInfoKey, kAdditionalMetadataKey,
+    kExecutorInfoKey,     kAdditionalMetadataKey,
 };
 
 ModelPackageStatus* ReadFileToString(const fs::path& path, std::string* out) {
@@ -194,28 +193,6 @@ ModelPackageStatus* ParseVariant(const fs::path& component_dir,
   if (auto* s = stringopt(kDeviceKey, &out->device_cache)) return s;
   if (auto* s = stringopt(kCompatibilityStringKey, &out->compatibility_string_cache)) return s;
 
-  auto ua_it = variant_body.find(kUsesAssetsKey);
-  if (ua_it != variant_body.end()) {
-    if (!ua_it->is_array()) {
-      return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
-                        "variant '" + variant_name + "': uses_assets must be an array of strings.");
-    }
-    for (const auto& entry : *ua_it) {
-      if (!entry.is_string()) {
-        return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
-                          "variant '" + variant_name + "': uses_assets entries must be strings.");
-      }
-      std::string uri = entry.get<std::string>();
-      if (!IsSha256AssetUri(uri)) {
-        return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
-                          "variant '" + variant_name + "': uses_assets entry '" + uri +
-                              "' is not a valid sha256:<hex> URI.");
-      }
-      out->used_asset_uri_caches.push_back(std::move(uri));
-    }
-  }
-
-  // executor_info: shape-check each entry (string or object). Don't resolve files yet.
   auto ei_it = variant_body.find(kExecutorInfoKey);
   if (ei_it != variant_body.end()) {
     if (!ei_it->is_object()) {
@@ -337,8 +314,19 @@ ModelPackageStatus* LoadComponentForEntry(const fs::path& manifest_dir,
 }
 
 ModelPackageStatus* LoadSharedAssets(ModelPackage* pkg, const PathResolverOptions& opts) {
-  // Gather URIs in this order: overrides first (declaration order), then any
-  // URIs referenced in variant uses_assets that aren't already listed.
+  // Source-of-truth ordering for the assembled shared_assets vector:
+  //   1. Manifest overrides (in declaration order). These specify a custom
+  //      on-disk path for an asset URI (e.g. a system-wide cache or another
+  //      location outside <package_root>/shared_assets/).
+  //   2. Discovered sha256-<hex> subdirectories under <package_root>/shared_assets/.
+  //      These resolve to the default-convention path. Missing shared_assets/ is
+  //      not an error: portable packages may not ship one yet, installed
+  //      packages may route everything through overrides.
+  //   3. Pending copy_in assets from the authoring API that haven't been
+  //      committed yet. These surface immediately so callers see the asset
+  //      they just added; the staged source dir is reported as resolved_path
+  //      until commit materializes it under shared_assets/.
+  // Within each tier, an URI that's already known is skipped.
   std::vector<std::string> ordered_uris;
   std::unordered_map<std::string, std::string> override_paths;
 
@@ -363,12 +351,29 @@ ModelPackageStatus* LoadSharedAssets(ModelPackage* pkg, const PathResolverOption
     }
   }
   std::set<std::string> seen(ordered_uris.begin(), ordered_uris.end());
-  for (const auto& comp : pkg->components) {
-    for (const auto& var : comp->variants) {
-      for (const auto& uri : var->used_asset_uri_caches) {
-        if (seen.insert(uri).second) ordered_uris.push_back(uri);
-      }
+
+  // Tier 2: discover sha256-<hex> dirs under <package_root>/shared_assets/.
+  fs::path assets_root = pkg->package_root / "shared_assets";
+  std::error_code ec;
+  if (!pkg->package_root.empty() && fs::is_directory(assets_root, ec)) {
+    std::vector<std::string> discovered;
+    for (const auto& entry : fs::directory_iterator(assets_root, ec)) {
+      if (ec) break;
+      if (!entry.is_directory(ec)) continue;
+      std::string name = entry.path().filename().string();
+      std::string uri = SharedAssetUriFromDirName(name);
+      if (uri.empty()) continue;  // not a sha256-<hex> dir; ignore (.tmp staging, etc.)
+      if (!seen.insert(uri).second) continue;
+      discovered.push_back(std::move(uri));
     }
+    std::sort(discovered.begin(), discovered.end());
+    for (auto& uri : discovered) ordered_uris.push_back(std::move(uri));
+  }
+
+  // Tier 3: pending copy_in entries.
+  for (const auto& [uri, src] : pkg->pending_shared_asset_copies) {
+    if (!seen.insert(uri).second) continue;
+    ordered_uris.push_back(uri);
   }
 
   for (const auto& uri : ordered_uris) {
@@ -382,9 +387,14 @@ ModelPackageStatus* LoadSharedAssets(ModelPackage* pkg, const PathResolverOption
                                 opts, /*must_exist=*/false, &resolved)) {
         return s;
       }
+    } else if (auto pending_it = pkg->pending_shared_asset_copies.find(uri);
+               pending_it != pkg->pending_shared_asset_copies.end() &&
+               override_paths.find(uri) == override_paths.end()) {
+      // Pending copy_in with no override: surface the staged source until commit.
+      resolved = pending_it->second;
     } else {
       // Default convention: <package_root>/shared_assets/sha256-<hex>/
-      resolved = pkg->package_root / "shared_assets" / DefaultSharedAssetDirName(uri);
+      resolved = assets_root / DefaultSharedAssetDirName(uri);
     }
     rec->resolved_path = resolved;
     rec->resolved_path_cache = resolved.string();

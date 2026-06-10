@@ -215,19 +215,6 @@ ModelPackageStatus* CheckDenseConstraints(ModelPackage* pkg) {
 
 ModelPackageStatus* CommitSharedAssetsCopyIn(ModelPackage* pkg, const fs::path& root) {
   if (pkg->pending_shared_asset_copies.empty()) return nullptr;
-  // Refuse to materialize assets that nothing references — almost always a
-  // forgotten uses_assets edit. The default-convention path is materialized
-  // implicitly by AddSharedAsset(copy_in=true), so we have no manifest entry
-  // to tell us "the user really did want this asset"; the only signal is a
-  // uses_assets entry surfacing it via shared_asset_index_by_uri.
-  for (const auto& [uri, src] : pkg->pending_shared_asset_copies) {
-    if (pkg->shared_asset_index_by_uri.find(uri) == pkg->shared_asset_index_by_uri.end()) {
-      return MakeStatus(MODEL_PACKAGE_ERR_STATE,
-                        "Commit: shared asset " + uri + " was AddSharedAsset'd but no "
-                        "variant references it via uses_assets. Add the reference or "
-                        "RemoveSharedAsset before committing.");
-    }
-  }
   fs::path assets_root = root / "shared_assets";
   std::error_code ec;
   fs::create_directories(assets_root, ec);
@@ -375,16 +362,6 @@ ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg,
     }
   }
 
-  // Refuse pending copies that nothing references — see CommitSharedAssetsCopyIn.
-  for (const auto& [uri, src] : pkg->pending_shared_asset_copies) {
-    if (pkg->shared_asset_index_by_uri.find(uri) == pkg->shared_asset_index_by_uri.end()) {
-      return MakeStatus(MODEL_PACKAGE_ERR_STATE,
-                        "Commit: shared asset " + uri + " was AddSharedAsset'd but no "
-                        "variant references it via uses_assets. Add the reference or "
-                        "RemoveSharedAsset before committing.");
-    }
-  }
-
   // Copy all shared assets into dest_root. Any manifest override entries are
   // re-mapped to the default convention path under dest_root.
   fs::path assets_root = dest_root / "shared_assets";
@@ -399,6 +376,13 @@ ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg,
       to_copy.emplace_back(rec->uri, pit->second);
     } else {
       to_copy.emplace_back(rec->uri, rec->resolved_path);
+    }
+  }
+  // Pending copies without a SharedAssetRecord shouldn't happen now that
+  // LoadSharedAssets surfaces pending copies, but stay defensive.
+  for (const auto& [uri, src] : pkg->pending_shared_asset_copies) {
+    if (pkg->shared_asset_index_by_uri.find(uri) == pkg->shared_asset_index_by_uri.end()) {
+      to_copy.emplace_back(uri, src);
     }
   }
   // Only materialize shared_assets/ when something will actually land in it.
@@ -629,23 +613,23 @@ ModelPackageStatus* ModelPackage_Prune(ModelPackage* pkg) {
   if (!pkg) return NullArg("pkg");
   if (pkg->package_root.empty()) return nullptr;
 
-  // Shared-asset sweep: drop unreferenced sha256-* dirs and stale staging dirs.
-  fs::path assets_root = pkg->package_root / "shared_assets";
+  // Shared assets are NEVER auto-pruned. The library cannot prove an asset is
+  // unused without parsing every consumer's executor_info payload, and a
+  // mistaken delete is worse than disk bloat for content-addressed dirs that
+  // dedupe naturally. Callers reclaim shared assets via explicit
+  // ModelPackage_RemoveSharedAsset(uri) (which still requires consumer-aware
+  // knowledge of what's reachable).
+  //
+  // Stale `.tmp.<suffix>` staging dirs from interrupted commits are reclaimed
+  // here after a grace window: they belong to this library's own staging
+  // protocol and aren't user data.
   std::error_code ec;
+  fs::path assets_root = pkg->package_root / "shared_assets";
   if (fs::is_directory(assets_root, ec)) {
     for (const auto& entry : fs::directory_iterator(assets_root, ec)) {
       if (ec) break;
       if (!entry.is_directory()) continue;
-      std::string name = entry.path().filename().string();
-      if (IsTmpName(entry.path())) {
-        if (IsOldEnough(entry.path())) {
-          fs::remove_all(entry.path(), ec);
-        }
-        continue;
-      }
-      std::string uri = mp::SharedAssetUriFromDirName(name);
-      if (uri.empty()) continue;
-      if (pkg->shared_asset_index_by_uri.count(uri)) continue;
+      if (!IsTmpName(entry.path())) continue;
       if (!IsOldEnough(entry.path())) continue;
       fs::remove_all(entry.path(), ec);
     }
@@ -723,30 +707,6 @@ ModelPackageStatus* ModelPackage_Validate(ModelPackage* pkg, int flags,
         AddFinding(warnings, "PATHS",
                    "shared asset " + rec->uri + " resolved path is not a directory: " +
                        rec->resolved_path.string());
-      }
-    }
-  }
-
-  // ASSET_REACH: every uses_assets URI is registered AND resolvable.
-  if (flags & MODEL_PACKAGE_VALIDATE_ASSET_REACH) {
-    for (const auto& comp : pkg->components) {
-      for (const auto& var : comp->variants) {
-        for (const auto& uri : var->used_asset_uri_caches) {
-          auto it = pkg->shared_asset_index_by_uri.find(uri);
-          if (it == pkg->shared_asset_index_by_uri.end()) {
-            AddFinding(errors, "ASSET_REACH",
-                       "variant '" + comp->name + "/" + var->name +
-                           "' references unknown shared asset " + uri);
-            continue;
-          }
-          const auto& rec = pkg->shared_assets[it->second];
-          if (!fs::is_directory(rec->resolved_path, ec)) {
-            AddFinding(errors, "ASSET_REACH",
-                       "variant '" + comp->name + "/" + var->name +
-                           "' uses asset " + uri + " but the resolved path does not exist: " +
-                           rec->resolved_path.string());
-          }
-        }
       }
     }
   }

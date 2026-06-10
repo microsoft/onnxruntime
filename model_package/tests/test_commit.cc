@@ -177,9 +177,6 @@ bool test_commit_pending_shared_asset_copy_in() {
   CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").c_str(),
                                        nullptr, /*copy_in=*/true, &uri));
   std::string uri_copy(uri);
-  // Reference the asset so commit accepts the pending copy.
-  std::string vbody = R"({"ep":"CPU","uses_assets":[")" + uri_copy + R"("]})";
-  CHECK_OK(ModelPackage_SetVariant(p.get(), "encoder", "v1", vbody.c_str()));
   CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").c_str(),
                                MODEL_PACKAGE_WRITE_PRESERVE));
   std::string hex = uri_copy.substr(7);
@@ -232,8 +229,6 @@ bool test_commit_dest_root_self_contained() {
   CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").c_str(),
                                        nullptr, /*copy_in=*/true, &uri));
   std::string uri_copy(uri);
-  std::string vbody = R"({"ep":"CPU","uses_assets":[")" + uri_copy + R"("]})";
-  CHECK_OK(ModelPackage_SetVariant(p.get(), "encoder", "v1", vbody.c_str()));
   fs::path saved = s.path("saved");
   CHECK_OK(ModelPackage_Commit(p.get(), saved.c_str(), MODEL_PACKAGE_WRITE_PRESERVE));
   CHECK(fs::is_regular_file(saved / "manifest.json"));
@@ -276,8 +271,6 @@ bool test_commit_dest_root_rehashes_existing_asset() {
   CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").c_str(),
                                        nullptr, /*copy_in=*/true, &uri));
   std::string uri_copy(uri);
-  std::string vbody = R"({"ep":"CPU","uses_assets":[")" + uri_copy + R"("]})";
-  CHECK_OK(ModelPackage_SetVariant(p.get(), "encoder", "v1", vbody.c_str()));
   CHECK_OK(ModelPackage_Commit(p.get(), s.path("orig").c_str(),
                                MODEL_PACKAGE_WRITE_PRESERVE));
 
@@ -293,39 +286,44 @@ bool test_commit_dest_root_rehashes_existing_asset() {
   return true;
 }
 
-bool test_prune_skips_within_grace_period() {
+bool test_prune_never_touches_shared_assets() {
+  // Shared assets are content-addressed and only removed via explicit
+  // RemoveSharedAsset. Even an obviously orphan sha256-<hex>/ directory that
+  // matches no manifest entry must survive Prune.
   Sandbox s;
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
   CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").c_str(),
                                MODEL_PACKAGE_WRITE_PRESERVE));
 
-  // Manually plant an orphan asset dir (fresh mtime).
-  fs::path orphan = s.path("pkg") / "shared_assets" /
-                    ("sha256-" + std::string(64, 'a'));
-  fs::create_directories(orphan);
-  CHECK(fs::is_directory(orphan));
+  fs::path planted = s.path("pkg") / "shared_assets" /
+                     ("sha256-" + std::string(64, 'a'));
+  fs::create_directories(planted);
+  // Backdate mtime to past grace window to make sure it isn't grace-protected.
+  auto old = fs::file_time_type::clock::now() - std::chrono::seconds(120);
+  std::error_code ec;
+  fs::last_write_time(planted, old, ec);
   CHECK_OK(ModelPackage_Prune(p.get()));
-  // Within grace period -> still there.
-  CHECK(fs::is_directory(orphan));
+  CHECK(fs::is_directory(planted));
   return true;
 }
 
-bool test_prune_removes_old_orphans() {
+bool test_prune_reclaims_tracked_orphan_variant_dirs() {
   Sandbox s;
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
   CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").c_str(),
                                MODEL_PACKAGE_WRITE_PRESERVE));
-
-  fs::path orphan = s.path("pkg") / "shared_assets" /
-                    ("sha256-" + std::string(64, 'b'));
-  fs::create_directories(orphan);
-  // Backdate mtime to >60s ago.
-  auto old = fs::file_time_type::clock::now() - std::chrono::seconds(120);
-  std::error_code ec;
-  fs::last_write_time(orphan, old, ec);
-  CHECK(!ec);
+  // Now that package_root is anchored, materialize an on-disk variant dir and
+  // register it so subsequent removal records a tracked orphan.
+  fs::path victim = s.path("pkg") / "encoder" / "v1";
+  fs::create_directories(victim);
+  CHECK_OK(ModelPackage_SetVariant(p.get(), "encoder", "v1",
+                                   R"({"ep":"CPU","variant_directory":"encoder/v1"})"));
+  CHECK_OK(ModelPackage_Commit(p.get(), nullptr, MODEL_PACKAGE_WRITE_PRESERVE));
+  CHECK(fs::is_directory(victim));
+  CHECK_OK(ModelPackage_RemoveVariant(p.get(), "encoder", "v1"));
+  CHECK_OK(ModelPackage_Commit(p.get(), nullptr, MODEL_PACKAGE_WRITE_PRESERVE));
   CHECK_OK(ModelPackage_Prune(p.get()));
-  CHECK(!fs::exists(orphan));
+  CHECK(!fs::exists(victim));
   return true;
 }
 
@@ -361,25 +359,6 @@ bool test_validate_all_clean_package() {
   return true;
 }
 
-bool test_validate_asset_reach_flags_unknown_uri() {
-  Sandbox s;
-  PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
-  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").c_str(),
-                               MODEL_PACKAGE_WRITE_PRESERVE));
-  // Add a uses_assets URI but no matching shared asset.
-  std::string fake_uri = "sha256:" + std::string(64, '0');
-  std::error_code ec;
-  fs::create_directories(s.path("pkg") / "encoder", ec);
-  std::string variant = R"({"variant_directory": "encoder", "uses_assets": [")" +
-                        fake_uri + R"("]})";
-  CHECK_OK(ModelPackage_SetVariant(p.get(), "encoder", "v1", variant.c_str()));
-  const char* report = nullptr;
-  CHECK_ERR(ModelPackage_Validate(p.get(), MODEL_PACKAGE_VALIDATE_ASSET_REACH, &report),
-            MODEL_PACKAGE_ERR_STATE);
-  CHECK(std::string(report).find("ASSET_REACH") != std::string::npos);
-  return true;
-}
-
 bool test_validate_paths_flags_missing_external() {
   Sandbox s;
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
@@ -392,7 +371,6 @@ bool test_validate_paths_flags_missing_external() {
   fs::remove(s.path("pkg") / "decoder.json", ec);
   const char* report = nullptr;
   CHECK_OK(ModelPackage_Validate(p.get(), MODEL_PACKAGE_VALIDATE_PATHS, &report));
-  // PATHS findings are warnings, not errors -> OK status, but warning surfaces.
   CHECK(std::string(report).find("PATHS") != std::string::npos);
   return true;
 }
@@ -405,9 +383,6 @@ bool test_validate_asset_rehash_detects_mutation() {
   CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").c_str(),
                                        nullptr, /*copy_in=*/true, &uri));
   std::string uri_copy(uri);
-  // Reference the asset from the variant so it surfaces in shared_assets[].
-  std::string variant = R"({"uses_assets": [")" + uri_copy + R"("], "ep": "CPU"})";
-  CHECK_OK(ModelPackage_SetVariant(p.get(), "encoder", "v1", variant.c_str()));
   CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").c_str(),
                                MODEL_PACKAGE_WRITE_PRESERVE));
   // Mutate the on-disk shared asset directly.
@@ -422,21 +397,25 @@ bool test_validate_asset_rehash_detects_mutation() {
   return true;
 }
 
-bool test_commit_rejects_unreferenced_shared_asset() {
+bool test_commit_accepts_unreferenced_shared_asset() {
+  // Shared assets no longer require an in-manifest reference: AddSharedAsset
+  // signals the user's intent to ship the asset, period. Commit materializes
+  // it under shared_assets/ at the default-convention path.
   Sandbox s;
   s.Write("src_asset/m.onnx", "alpha");
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
   const char* uri = nullptr;
   CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").c_str(),
                                        nullptr, /*copy_in=*/true, &uri));
-  // No uses_assets reference, so commit must refuse.
-  CHECK_ERR(ModelPackage_Commit(p.get(), s.path("pkg").c_str(),
-                                MODEL_PACKAGE_WRITE_PRESERVE),
-            MODEL_PACKAGE_ERR_STATE);
-  // Same check on dest_root path.
-  CHECK_ERR(ModelPackage_Commit(p.get(), s.path("saved").c_str(),
-                                MODEL_PACKAGE_WRITE_PRESERVE),
-            MODEL_PACKAGE_ERR_STATE);
+  std::string uri_copy(uri);
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("pkg").c_str(),
+                               MODEL_PACKAGE_WRITE_PRESERVE));
+  std::string hex = uri_copy.substr(7);
+  CHECK(fs::is_directory(s.path("pkg") / "shared_assets" / ("sha256-" + hex)));
+  // Same on dest_root path.
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("saved").c_str(),
+                               MODEL_PACKAGE_WRITE_PRESERVE));
+  CHECK(fs::is_directory(s.path("saved") / "shared_assets" / ("sha256-" + hex)));
   return true;
 }
 
@@ -453,8 +432,7 @@ bool test_commit_leaves_no_temp_files() {
   const char* uri = nullptr;
   CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").c_str(),
                                        nullptr, true, &uri));
-  std::string vbody = std::string(R"({"ep":"CPU","uses_assets":[")") + uri + R"("]})";
-  CHECK_OK(ModelPackage_SetVariant(p.get(), "encoder", "v1", vbody.c_str()));
+  (void)uri;
   CHECK_OK(ModelPackage_SetComponentExternal(p.get(), "decoder", "decoder.json"));
   CHECK_OK(ModelPackage_Commit(p.get(), nullptr,
                                MODEL_PACKAGE_WRITE_PRESERVE));
@@ -480,14 +458,13 @@ const Test kTests[] = {
     {"commit_dest_root_self_contained", test_commit_dest_root_self_contained},
     {"commit_dest_root_must_be_empty", test_commit_dest_root_must_be_empty},
     {"commit_dest_root_rehashes_existing_asset", test_commit_dest_root_rehashes_existing_asset},
-    {"prune_skips_within_grace_period", test_prune_skips_within_grace_period},
-    {"prune_removes_old_orphans", test_prune_removes_old_orphans},
+    {"prune_never_touches_shared_assets", test_prune_never_touches_shared_assets},
+    {"prune_reclaims_tracked_orphan_variant_dirs", test_prune_reclaims_tracked_orphan_variant_dirs},
     {"prune_removes_stale_staging_dirs", test_prune_removes_stale_staging_dirs},
     {"validate_all_clean_package", test_validate_all_clean_package},
-    {"validate_asset_reach_flags_unknown_uri", test_validate_asset_reach_flags_unknown_uri},
     {"validate_paths_flags_missing_external", test_validate_paths_flags_missing_external},
     {"validate_asset_rehash_detects_mutation", test_validate_asset_rehash_detects_mutation},
-    {"commit_rejects_unreferenced_shared_asset", test_commit_rejects_unreferenced_shared_asset},
+    {"commit_accepts_unreferenced_shared_asset", test_commit_accepts_unreferenced_shared_asset},
     {"commit_leaves_no_temp_files", test_commit_leaves_no_temp_files},
 };
 
