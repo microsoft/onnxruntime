@@ -103,8 +103,8 @@ The **OpSet Version** column uses the following notation:
 |ConvTranspose|*in* X:**T**<br> *in* W:**T**<br> *in* B:**T**<br> *out* Y:**T**|22+|**T** = tensor(float)|
 |||[11, 21]|**T** = tensor(float)|
 |||[1, 10]|**T** = tensor(float)|
-|Cos|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(float)|
-|||[7, 21]|**T** = tensor(float)|
+|Cos|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(double), tensor(float)|
+|||[7, 21]|**T** = tensor(double), tensor(float)|
 |Cosh|*in* input:**T**<br> *out* output:**T**|22+|**T** = tensor(float)|
 |||[9, 21]|**T** = tensor(float)|
 |Crop|*in* input:**T**<br> *out* output:**T**|1+|**T** = tensor(float)|
