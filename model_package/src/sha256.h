@@ -37,8 +37,8 @@ class Sha256 {
   void Transform(const uint8_t block[64]);
   uint32_t state_[8];
   uint64_t bit_count_;
-  uint8_t  buffer_[64];
-  size_t   buffer_len_;
+  uint8_t buffer_[64];
+  size_t buffer_len_;
 };
 
 }  // namespace model_package

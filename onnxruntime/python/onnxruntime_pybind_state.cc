@@ -3247,7 +3247,6 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 #endif
           },
           R"pbdoc(Compile an ONNX model into an output stream using the provided write functor.)pbdoc");
-
 }
 
 bool InitArray() {

@@ -441,7 +441,7 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
           if (::ModelPackageStatus* st = ::ModelPackage_ResolveStringRef(
                   pkg, base_dir, input.c_str(), must_exist, &resolved)) {
             std::string msg = ::ModelPackageStatus_Message(st) ? ::ModelPackageStatus_Message(st)
-                                                                : "unknown error";
+                                                               : "unknown error";
             ::ModelPackageStatus_Release(st);
             ORT_THROW("Failed to resolve ORT variant '", field, "' = '", input, "' for variant '",
                       ort_variant.variant_name, "' in component '", component_name, "': ", msg);
@@ -457,7 +457,7 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
           const std::string model_file = it->get<std::string>();
           ort_file.identifier = model_file;
           ort_file.model_file_path = resolve_string_ref("model_file", model_file,
-                                                         /*must_exist=*/false);
+                                                        /*must_exist=*/false);
         }
 
         auto fill_string_map = [&](const char* key,

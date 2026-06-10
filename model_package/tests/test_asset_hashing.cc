@@ -33,15 +33,15 @@ const char* g_current = "<none>";
     }                                                                                     \
   } while (0)
 
-#define CHECK_OK(status)                                                                              \
-  do {                                                                                                \
-    ModelPackageStatus* _s = (status);                                                                \
-    if (_s != nullptr) {                                                                              \
-      std::fprintf(stderr, "[FAIL] %s line %d: expected OK, got: %s\n",                               \
-                   g_current, __LINE__, ModelPackageStatus_Message(_s));                              \
-      ModelPackageStatus_Release(_s);                                                                 \
-      return false;                                                                                   \
-    }                                                                                                 \
+#define CHECK_OK(status)                                                 \
+  do {                                                                   \
+    ModelPackageStatus* _s = (status);                                   \
+    if (_s != nullptr) {                                                 \
+      std::fprintf(stderr, "[FAIL] %s line %d: expected OK, got: %s\n",  \
+                   g_current, __LINE__, ModelPackageStatus_Message(_s)); \
+      ModelPackageStatus_Release(_s);                                    \
+      return false;                                                      \
+    }                                                                    \
   } while (0)
 
 class Sandbox {
@@ -54,7 +54,10 @@ class Sandbox {
     root_ = fs::temp_directory_path() / buf;
     fs::create_directories(root_);
   }
-  ~Sandbox() { std::error_code ec; fs::remove_all(root_, ec); }
+  ~Sandbox() {
+    std::error_code ec;
+    fs::remove_all(root_, ec);
+  }
   Sandbox(const Sandbox&) = delete;
   Sandbox& operator=(const Sandbox&) = delete;
   const fs::path& root() const { return root_; }
@@ -64,6 +67,7 @@ class Sandbox {
     std::ofstream f(full, std::ios::binary);
     f << contents;
   }
+
  private:
   fs::path root_;
 };
@@ -130,7 +134,8 @@ bool test_directory_hash_name_change_differs() {
   Sandbox s2;
   s2.Write("b.txt", "alpha");  // same content, different name
 
-  const char* u1 = nullptr; const char* u2 = nullptr;
+  const char* u1 = nullptr;
+  const char* u2 = nullptr;
   CHECK_OK(ModelPackage_ComputeDirectoryHash(s1.root().c_str(), &u1));
   std::string copy1(u1);
   CHECK_OK(ModelPackage_ComputeDirectoryHash(s2.root().c_str(), &u2));
@@ -144,10 +149,11 @@ bool test_directory_hash_swapped_names_differ() {
   s1.Write("b.txt", "beta");
 
   Sandbox s2;
-  s2.Write("a.txt", "beta");   // swapped contents
+  s2.Write("a.txt", "beta");  // swapped contents
   s2.Write("b.txt", "alpha");
 
-  const char* u1 = nullptr; const char* u2 = nullptr;
+  const char* u1 = nullptr;
+  const char* u2 = nullptr;
   CHECK_OK(ModelPackage_ComputeDirectoryHash(s1.root().c_str(), &u1));
   std::string copy1(u1);
   CHECK_OK(ModelPackage_ComputeDirectoryHash(s2.root().c_str(), &u2));
@@ -161,7 +167,8 @@ bool test_directory_hash_content_change_differs() {
   Sandbox s2;
   s2.Write("a.txt", "ALPHA");
 
-  const char* u1 = nullptr; const char* u2 = nullptr;
+  const char* u1 = nullptr;
+  const char* u2 = nullptr;
   CHECK_OK(ModelPackage_ComputeDirectoryHash(s1.root().c_str(), &u1));
   std::string copy1(u1);
   CHECK_OK(ModelPackage_ComputeDirectoryHash(s2.root().c_str(), &u2));
@@ -176,7 +183,8 @@ bool test_directory_hash_empty_dirs_ignored() {
   s2.Write("a.txt", "alpha");
   fs::create_directories(s2.root() / "empty_subdir");
 
-  const char* u1 = nullptr; const char* u2 = nullptr;
+  const char* u1 = nullptr;
+  const char* u2 = nullptr;
   CHECK_OK(ModelPackage_ComputeDirectoryHash(s1.root().c_str(), &u1));
   std::string copy1(u1);
   CHECK_OK(ModelPackage_ComputeDirectoryHash(s2.root().c_str(), &u2));
@@ -268,7 +276,10 @@ bool test_missing_directory_errors() {
   return true;
 }
 
-struct Test { const char* name; bool (*fn)(); };
+struct Test {
+  const char* name;
+  bool (*fn)();
+};
 
 const Test kTests[] = {
     {"sha256_known_vectors", test_sha256_known_vectors},

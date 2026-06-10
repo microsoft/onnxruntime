@@ -30,34 +30,34 @@ const char* g_current = "<none>";
     }                                                                                     \
   } while (0)
 
-#define CHECK_OK(status)                                                                              \
-  do {                                                                                                \
-    ModelPackageStatus* _s = (status);                                                                \
-    if (_s != nullptr) {                                                                              \
-      std::fprintf(stderr, "[FAIL] %s line %d: expected OK, got: %s\n",                               \
-                   g_current, __LINE__, ModelPackageStatus_Message(_s));                              \
-      ModelPackageStatus_Release(_s);                                                                 \
-      return false;                                                                                   \
-    }                                                                                                 \
+#define CHECK_OK(status)                                                 \
+  do {                                                                   \
+    ModelPackageStatus* _s = (status);                                   \
+    if (_s != nullptr) {                                                 \
+      std::fprintf(stderr, "[FAIL] %s line %d: expected OK, got: %s\n",  \
+                   g_current, __LINE__, ModelPackageStatus_Message(_s)); \
+      ModelPackageStatus_Release(_s);                                    \
+      return false;                                                      \
+    }                                                                    \
   } while (0)
 
-#define CHECK_ERR(status, expected_code)                                                              \
-  do {                                                                                                \
-    ModelPackageStatus* _s = (status);                                                                \
-    if (_s == nullptr) {                                                                              \
-      std::fprintf(stderr, "[FAIL] %s line %d: expected error %d, got OK\n",                          \
-                   g_current, __LINE__, (int)(expected_code));                                        \
-      return false;                                                                                   \
-    }                                                                                                 \
-    ModelPackageErrorCode _c = ModelPackageStatus_Code(_s);                                           \
-    if (_c != (expected_code)) {                                                                      \
-      std::fprintf(stderr, "[FAIL] %s line %d: expected error %d, got %d (%s)\n",                     \
-                   g_current, __LINE__, (int)(expected_code), (int)_c,                                \
-                   ModelPackageStatus_Message(_s));                                                   \
-      ModelPackageStatus_Release(_s);                                                                 \
-      return false;                                                                                   \
-    }                                                                                                 \
-    ModelPackageStatus_Release(_s);                                                                   \
+#define CHECK_ERR(status, expected_code)                                          \
+  do {                                                                            \
+    ModelPackageStatus* _s = (status);                                            \
+    if (_s == nullptr) {                                                          \
+      std::fprintf(stderr, "[FAIL] %s line %d: expected error %d, got OK\n",      \
+                   g_current, __LINE__, (int)(expected_code));                    \
+      return false;                                                               \
+    }                                                                             \
+    ModelPackageErrorCode _c = ModelPackageStatus_Code(_s);                       \
+    if (_c != (expected_code)) {                                                  \
+      std::fprintf(stderr, "[FAIL] %s line %d: expected error %d, got %d (%s)\n", \
+                   g_current, __LINE__, (int)(expected_code), (int)_c,            \
+                   ModelPackageStatus_Message(_s));                               \
+      ModelPackageStatus_Release(_s);                                             \
+      return false;                                                               \
+    }                                                                             \
+    ModelPackageStatus_Release(_s);                                               \
   } while (0)
 
 class Sandbox {
@@ -70,7 +70,10 @@ class Sandbox {
     root_ = fs::temp_directory_path() / buf;
     fs::create_directories(root_);
   }
-  ~Sandbox() { std::error_code ec; fs::remove_all(root_, ec); }
+  ~Sandbox() {
+    std::error_code ec;
+    fs::remove_all(root_, ec);
+  }
   Sandbox(const Sandbox&) = delete;
   Sandbox& operator=(const Sandbox&) = delete;
   const fs::path& root() const { return root_; }
@@ -81,6 +84,7 @@ class Sandbox {
     std::ofstream f(full, std::ios::binary);
     f << contents;
   }
+
  private:
   fs::path root_;
 };
@@ -92,6 +96,7 @@ class PkgHandle {
   PkgHandle(const PkgHandle&) = delete;
   PkgHandle& operator=(const PkgHandle&) = delete;
   ModelPackage* get() const { return p_; }
+
  private:
   ModelPackage* p_;
 };
@@ -140,7 +145,7 @@ bool test_set_component_inline_replaces_existing() {
 
   CHECK_OK(ModelPackage_SetComponentInline(p.get(), "c", R"({"variants": {}})"));
   CHECK_OK(ModelPackage_SetComponentInline(p.get(), "c",
-      R"({"variants": {"v1": {"variant_directory": "."}}})"));
+                                           R"({"variants": {"v1": {"variant_directory": "."}}})"));
   CHECK(ModelPackage_Info(p.get())->num_components == 1);
   const ModelComponentInfo* c = ModelPackage_FindComponent(ModelPackage_Info(p.get()), "c");
   CHECK(c->num_variants == 1);
@@ -152,8 +157,8 @@ bool test_set_component_inline_rejects_unknown_field() {
   CHECK_OK(ModelPackage_New(&raw));
   PkgHandle p(raw);
   CHECK_ERR(ModelPackage_SetComponentInline(p.get(), "c",
-      R"({"variants": {}, "typo_field": 1})"),
-      MODEL_PACKAGE_ERR_SCHEMA);
+                                            R"({"variants": {}, "typo_field": 1})"),
+            MODEL_PACKAGE_ERR_SCHEMA);
   CHECK(ModelPackage_Info(p.get())->num_components == 0);
   return true;
 }
@@ -201,7 +206,7 @@ bool test_set_variant_upsert() {
   CHECK_OK(ModelPackage_SetComponentInline(p.get(), "c", R"({"variants": {}})"));
 
   CHECK_OK(ModelPackage_SetVariant(p.get(), "c", "v1",
-      R"({"variant_directory": ".", "ep": "CPU"})"));
+                                   R"({"variant_directory": ".", "ep": "CPU"})"));
   const ModelComponentInfo* c = ModelPackage_FindComponent(ModelPackage_Info(p.get()), "c");
   CHECK(c->num_variants == 1);
   const ModelVariantInfo* v = ModelComponentInfo_FindVariant(c, "v1");
@@ -210,7 +215,7 @@ bool test_set_variant_upsert() {
 
   // Upsert: change ep.
   CHECK_OK(ModelPackage_SetVariant(p.get(), "c", "v1",
-      R"({"variant_directory": ".", "ep": "CUDA"})"));
+                                   R"({"variant_directory": ".", "ep": "CUDA"})"));
   c = ModelPackage_FindComponent(ModelPackage_Info(p.get()), "c");
   CHECK(c->num_variants == 1);
   v = ModelComponentInfo_FindVariant(c, "v1");
@@ -251,7 +256,7 @@ bool test_set_executor_info_inline_and_remove() {
   CHECK_OK(ModelPackage_SetVariant(p.get(), "c", "v1", R"({"variant_directory": "."})"));
 
   CHECK_OK(ModelPackage_SetVariantExecutorInfoInline(p.get(), "c", "v1", "ort",
-      R"({"model": "m.onnx"})"));
+                                                     R"({"model": "m.onnx"})"));
   const ModelVariantInfo* v = ModelComponentInfo_FindVariant(
       ModelPackage_FindComponent(ModelPackage_Info(p.get()), "c"), "v1");
   const char* ej = nullptr;
@@ -276,7 +281,7 @@ bool test_set_executor_info_external_records_path() {
   CHECK_OK(ModelPackage_SetComponentInline(p.get(), "c", R"({"variants": {}})"));
   CHECK_OK(ModelPackage_SetVariant(p.get(), "c", "v1", R"({"variant_directory": "."})"));
   CHECK_OK(ModelPackage_SetVariantExecutorInfoExternal(p.get(), "c", "v1", "ort",
-      "ort_info.json"));
+                                                       "ort_info.json"));
   return true;
 }
 
@@ -317,7 +322,7 @@ bool test_set_additional_metadata_manifest_scope() {
   CHECK_OK(ModelPackage_New(&raw));
   PkgHandle p(raw);
   CHECK_OK(ModelPackage_SetAdditionalMetadataJson(p.get(), "manifest", nullptr, nullptr,
-      R"({"author":"jambayk"})"));
+                                                  R"({"author":"jambayk"})"));
   const ModelPackageInfo* info = ModelPackage_Info(p.get());
   CHECK(info->additional_metadata_json != nullptr);
   CHECK(std::string(info->additional_metadata_json).find("jambayk") != std::string::npos);
@@ -336,7 +341,7 @@ bool test_set_additional_metadata_variant_scope() {
   CHECK_OK(ModelPackage_SetComponentInline(p.get(), "c", R"({"variants": {}})"));
   CHECK_OK(ModelPackage_SetVariant(p.get(), "c", "v1", R"({"variant_directory": "."})"));
   CHECK_OK(ModelPackage_SetAdditionalMetadataJson(p.get(), "variant", "c", "v1",
-      R"({"foo":"bar"})"));
+                                                  R"({"foo":"bar"})"));
   const ModelVariantInfo* v = ModelComponentInfo_FindVariant(
       ModelPackage_FindComponent(ModelPackage_Info(p.get()), "c"), "v1");
   CHECK(v != nullptr);
@@ -439,7 +444,7 @@ bool test_round_trip_component_json() {
   CHECK_OK(ModelPackage_New(&raw));
   PkgHandle p(raw);
   CHECK_OK(ModelPackage_SetComponentInline(p.get(), "c",
-      R"({"variants": {"v1": {"variant_directory": ".", "ep": "CPU"}}})"));
+                                           R"({"variants": {"v1": {"variant_directory": ".", "ep": "CPU"}}})"));
   const char* j = nullptr;
   CHECK_OK(ModelPackage_GetComponentJson(p.get(), "c", &j));
   CHECK(j != nullptr);
@@ -470,7 +475,10 @@ bool test_view_cache_drops_on_remove() {
   return true;
 }
 
-struct Test { const char* name; bool (*fn)(); };
+struct Test {
+  const char* name;
+  bool (*fn)();
+};
 
 const Test kTests[] = {
     {"new_creates_empty_package", test_new_creates_empty_package},
@@ -504,8 +512,12 @@ int main() {
   for (const auto& t : kTests) {
     g_current = t.name;
     bool ok = t.fn();
-    if (ok) { std::printf("[PASS] %s\n", t.name); g_passed++; }
-    else    { g_failed++; }
+    if (ok) {
+      std::printf("[PASS] %s\n", t.name);
+      g_passed++;
+    } else {
+      g_failed++;
+    }
   }
   std::printf("\n=== %d passed, %d failed ===\n", g_passed, g_failed);
   return g_failed == 0 ? 0 : 1;

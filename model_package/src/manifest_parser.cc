@@ -44,17 +44,29 @@ constexpr const char* kCompatibilityStringKey = "compatibility_string";
 constexpr const char* kExecutorInfoKey = "executor_info";
 
 static const std::set<std::string> kManifestKnownKeys = {
-    kSchemaVersionKey, kPackageNameKey, kPackageVersionKey, kDescriptionKey,
-    kLayoutKey,        kComponentsKey,  kSharedAssetsKey,   kAdditionalMetadataKey,
+    kSchemaVersionKey,
+    kPackageNameKey,
+    kPackageVersionKey,
+    kDescriptionKey,
+    kLayoutKey,
+    kComponentsKey,
+    kSharedAssetsKey,
+    kAdditionalMetadataKey,
 };
 
 static const std::set<std::string> kComponentKnownKeys = {
-    kComponentNameKey, kVariantsKey, kAdditionalMetadataKey,
+    kComponentNameKey,
+    kVariantsKey,
+    kAdditionalMetadataKey,
 };
 
 static const std::set<std::string> kVariantKnownKeys = {
-    kVariantDirectoryKey, kEpKey, kDeviceKey, kCompatibilityStringKey,
-    kExecutorInfoKey,     kAdditionalMetadataKey,
+    kVariantDirectoryKey,
+    kEpKey,
+    kDeviceKey,
+    kCompatibilityStringKey,
+    kExecutorInfoKey,
+    kAdditionalMetadataKey,
 };
 
 ModelPackageStatus* ReadFileToString(const fs::path& path, std::string* out) {

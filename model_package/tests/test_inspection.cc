@@ -31,34 +31,34 @@ const char* g_current = "<none>";
     }                                                                                     \
   } while (0)
 
-#define CHECK_OK(status)                                                                              \
-  do {                                                                                                \
-    ModelPackageStatus* _s = (status);                                                                \
-    if (_s != nullptr) {                                                                              \
-      std::fprintf(stderr, "[FAIL] %s line %d: expected OK, got: %s\n",                               \
-                   g_current, __LINE__, ModelPackageStatus_Message(_s));                              \
-      ModelPackageStatus_Release(_s);                                                                 \
-      return false;                                                                                   \
-    }                                                                                                 \
+#define CHECK_OK(status)                                                 \
+  do {                                                                   \
+    ModelPackageStatus* _s = (status);                                   \
+    if (_s != nullptr) {                                                 \
+      std::fprintf(stderr, "[FAIL] %s line %d: expected OK, got: %s\n",  \
+                   g_current, __LINE__, ModelPackageStatus_Message(_s)); \
+      ModelPackageStatus_Release(_s);                                    \
+      return false;                                                      \
+    }                                                                    \
   } while (0)
 
-#define CHECK_ERR(status, expected_code)                                                              \
-  do {                                                                                                \
-    ModelPackageStatus* _s = (status);                                                                \
-    if (_s == nullptr) {                                                                              \
-      std::fprintf(stderr, "[FAIL] %s line %d: expected error %d, got OK\n",                          \
-                   g_current, __LINE__, (int)(expected_code));                                        \
-      return false;                                                                                   \
-    }                                                                                                 \
-    ModelPackageErrorCode _c = ModelPackageStatus_Code(_s);                                           \
-    if (_c != (expected_code)) {                                                                      \
-      std::fprintf(stderr, "[FAIL] %s line %d: expected error %d, got %d: %s\n",                     \
-                   g_current, __LINE__, (int)(expected_code), (int)_c,                                \
-                   ModelPackageStatus_Message(_s));                                                   \
-      ModelPackageStatus_Release(_s);                                                                 \
-      return false;                                                                                   \
-    }                                                                                                 \
-    ModelPackageStatus_Release(_s);                                                                   \
+#define CHECK_ERR(status, expected_code)                                         \
+  do {                                                                           \
+    ModelPackageStatus* _s = (status);                                           \
+    if (_s == nullptr) {                                                         \
+      std::fprintf(stderr, "[FAIL] %s line %d: expected error %d, got OK\n",     \
+                   g_current, __LINE__, (int)(expected_code));                   \
+      return false;                                                              \
+    }                                                                            \
+    ModelPackageErrorCode _c = ModelPackageStatus_Code(_s);                      \
+    if (_c != (expected_code)) {                                                 \
+      std::fprintf(stderr, "[FAIL] %s line %d: expected error %d, got %d: %s\n", \
+                   g_current, __LINE__, (int)(expected_code), (int)_c,           \
+                   ModelPackageStatus_Message(_s));                              \
+      ModelPackageStatus_Release(_s);                                            \
+      return false;                                                              \
+    }                                                                            \
+    ModelPackageStatus_Release(_s);                                              \
   } while (0)
 
 class Sandbox {
@@ -317,7 +317,8 @@ bool test_installed_layout_allows_absolute() {
   s.Write("manifest.json", std::string(R"({
     "schema_version": 1,
     "layout": "installed",
-    "components": {"decoder": ")") + abs_comp + R"("}
+    "components": {"decoder": ")") +
+                               abs_comp + R"("}
   })");
 
   ModelPackage* pkg = nullptr;
@@ -365,8 +366,8 @@ bool test_shared_assets_resolve() {
   // Resolve via API.
   const char* path = nullptr;
   CHECK_OK(ModelPackage_ResolveAssetUri(pkg,
-      "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      &path));
+                                        "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                                        &path));
   CHECK(std::string(path).find("assets/a") != std::string::npos);
 
   CHECK_ERR(ModelPackage_ResolveAssetUri(pkg, "sha256:not_a_known_one", &path),
@@ -486,7 +487,10 @@ bool test_find_returns_null_on_missing() {
   return true;
 }
 
-struct Test { const char* name; bool (*fn)(); };
+struct Test {
+  const char* name;
+  bool (*fn)();
+};
 
 const Test kTests[] = {
     {"open_minimal_inline", test_open_minimal_inline},

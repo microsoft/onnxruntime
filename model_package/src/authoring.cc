@@ -180,7 +180,8 @@ ModelPackageStatus* ModelPackage_SetComponentExternal(ModelPackage* pkg,
   ordered_json body;
   if (fs::exists(file_path, ec)) {
     std::ifstream f(file_path, std::ios::binary);
-    std::ostringstream buf; buf << f.rdbuf();
+    std::ostringstream buf;
+    buf << f.rdbuf();
     if (auto* s = ParseJsonString(buf.str().c_str(),
                                   ("component '" + std::string(name) + "'").c_str(), &body)) return s;
   } else {
@@ -578,7 +579,7 @@ ModelPackageStatus* ModelPackage_SetAdditionalMetadataJson(ModelPackage* pkg,
     pkg->manifest["components"][comp->name] = comp->body;
   }
   if (comp) comp->component_json_cache.reset();
-  if (var)  var->additional_metadata_cache.reset();
+  if (var) var->additional_metadata_cache.reset();
   if (comp) comp->additional_metadata_cache.reset();
   return PostMutate(pkg, /*refresh_assets=*/false);
 }

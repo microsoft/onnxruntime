@@ -110,10 +110,10 @@ inline const ModelPackageFns& GetModelPackageFns() {
 
 struct VariantSpec {
   std::string variant_name;
-  std::string ep;                                                              // empty => omit
-  std::string device;                                                          // empty => omit
-  std::string compatibility_string;                                            // empty => omit
-  std::filesystem::path source_model;                                          // empty => no executor_info
+  std::string ep;                      // empty => omit
+  std::string device;                  // empty => omit
+  std::string compatibility_string;    // empty => omit
+  std::filesystem::path source_model;  // empty => no executor_info
   std::optional<std::unordered_map<std::string, std::string>> session_options;
   std::optional<std::unordered_map<std::string, std::string>> provider_options;
 };
@@ -193,10 +193,8 @@ std::filesystem::path BuildTwoVariantPackage(const std::filesystem::path& packag
                                              const std::filesystem::path& model_2,
                                              std::string_view ep_name = "example_ep") {
   std::vector<VariantSpec> variants;
-  variants.push_back(VariantSpec{std::string(variant_name_1), std::string(ep_name),
-                                 std::string(device_1), std::string(compat_1), model_1, {}, {}});
-  variants.push_back(VariantSpec{std::string(variant_name_2), std::string(ep_name),
-                                 std::string(device_2), std::string(compat_2), model_2, {}, {}});
+  variants.push_back(VariantSpec{std::string(variant_name_1), std::string(ep_name), std::string(device_1), std::string(compat_1), model_1, {}, {}});
+  variants.push_back(VariantSpec{std::string(variant_name_2), std::string(ep_name), std::string(device_2), std::string(compat_2), model_2, {}, {}});
   return BuildPackage(package_root, "model_1", variants);
 }
 
@@ -279,9 +277,7 @@ TEST(ModelPackageApiTest, SingleFileVariantInComponent_SelectComponentAndCreateS
           {"enable_htp", "1"},
       }});
   variants.push_back(VariantSpec{
-      "variant_2", "example_ep", "npu",
-      "example_ep;version=0.1.0;ort_api_version=25;hardware_architecture=arch2",
-      "testdata/mul_16.onnx", {}, {}});
+      "variant_2", "example_ep", "npu", "example_ep;version=0.1.0;ort_api_version=25;hardware_architecture=arch2", "testdata/mul_16.onnx", {}, {}});
   BuildPackage(package_root, "model_1", variants);
 
   RegisteredEpDeviceUniquePtr example_ep;
@@ -319,16 +315,16 @@ TEST(ModelPackageApiTest, SingleFileVariantInComponent_SelectComponentAndCreateS
 
   OrtModelPackageComponentContext* raw_component_context = nullptr;
   ASSERT_ORTSTATUS_OK(pkg_api.SelectComponent(model_pkg_context.get(),
-                                               "model_1",
-                                               model_pkg_options.get(),
-                                               &raw_component_context));
+                                              "model_1",
+                                              model_pkg_options.get(),
+                                              &raw_component_context));
   component_context.reset(raw_component_context);
 
   OrtSession* raw_session = nullptr;
   ASSERT_ORTSTATUS_OK(pkg_api.CreateSession(*ort_env,
-                                             component_context.get(),
-                                             session_options,
-                                             &raw_session));
+                                            component_context.get(),
+                                            session_options,
+                                            &raw_session));
   Ort::Session session(raw_session);
 
   Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
@@ -627,10 +623,9 @@ TEST(ModelPackageTest, VariantSessionOptions_DispatchedThroughAddSessionConfigEn
   const auto package_root = std::filesystem::temp_directory_path() / "ort_mp_session_options_dispatch";
   std::vector<VariantSpec> variants;
   variants.push_back(VariantSpec{
-      "variant_1", "example_ep", "cpu", "", "testdata/mul_1.onnx",
-      std::unordered_map<std::string, std::string>{
-          {"session.intra_op_num_threads", "not_an_int"},
-      },
+      "variant_1", "example_ep", "cpu", "", "testdata/mul_1.onnx", std::unordered_map<std::string, std::string>{
+                                                                       {"session.intra_op_num_threads", "not_an_int"},
+                                                                   },
       {}});
   BuildPackage(package_root, "model_1", variants);
 

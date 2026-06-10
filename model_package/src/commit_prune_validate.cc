@@ -55,7 +55,8 @@ std::string RandomSuffix() {
 
 ModelPackageStatus* FsyncPath(const fs::path& p, bool is_dir) {
 #ifdef _WIN32
-  (void)p; (void)is_dir;
+  (void)p;
+  (void)is_dir;
   return nullptr;
 #else
   int flags = is_dir ? (O_RDONLY | O_DIRECTORY) : O_RDONLY;
@@ -558,16 +559,17 @@ void SweepOrphanDirs(ModelPackage* pkg,
                      std::vector<fs::path>* pending,
                      const std::vector<fs::path>& live_dirs) {
   pending->erase(std::remove_if(pending->begin(), pending->end(), [&](const fs::path& p) {
-    if (!mp::IsInsidePackageRoot(pkg, p)) return true;  // outside our scope
-    std::error_code ec;
-    if (!fs::exists(p, ec)) return true;
-    // Skip if any live dir IS p or lives under it; deleting would damage live state.
-    for (const auto& live : live_dirs) {
-      if (IsAncestorOrEqual(p, live)) return false;
-    }
-    fs::remove_all(p, ec);
-    return true;
-  }), pending->end());
+                   if (!mp::IsInsidePackageRoot(pkg, p)) return true;  // outside our scope
+                   std::error_code ec;
+                   if (!fs::exists(p, ec)) return true;
+                   // Skip if any live dir IS p or lives under it; deleting would damage live state.
+                   for (const auto& live : live_dirs) {
+                     if (IsAncestorOrEqual(p, live)) return false;
+                   }
+                   fs::remove_all(p, ec);
+                   return true;
+                 }),
+                 pending->end());
 }
 
 }  // namespace
@@ -684,8 +686,7 @@ ModelPackageStatus* ModelPackage_Validate(ModelPackage* pkg, int flags,
                                            /*strict=*/true,
                                            comp->name, comp->body,
                                            comp->component_dir, &scratch)) {
-        AddFinding(errors, "SCHEMA", std::string("component '") + comp->name + "': " +
-                                           ModelPackageStatus_Message(s));
+        AddFinding(errors, "SCHEMA", std::string("component '") + comp->name + "': " + ModelPackageStatus_Message(s));
         ModelPackageStatus_Release(s);
       }
     }
@@ -737,7 +738,11 @@ ModelPackageStatus* ModelPackage_Validate(ModelPackage* pkg, int flags,
         "layout", "components", "shared_assets", "additional_metadata"};
     for (auto it = pkg->manifest.begin(); it != pkg->manifest.end(); ++it) {
       bool found = false;
-      for (auto* k : kKnown) if (it.key() == k) { found = true; break; }
+      for (auto* k : kKnown)
+        if (it.key() == k) {
+          found = true;
+          break;
+        }
       if (!found) {
         AddFinding(warnings, "UNKNOWN_FIELDS",
                    "manifest contains unknown field '" + it.key() + "'.");

@@ -30,13 +30,13 @@ using ordered_json = nlohmann::ordered_json;
 
 /// How the component's body is stored on disk relative to the manifest.
 enum class ComponentStorage {
-  kInline,   ///< body lives directly inside the manifest as an object
-  kExternal, ///< body lives in a separate file pointed to by a string
+  kInline,    ///< body lives directly inside the manifest as an object
+  kExternal,  ///< body lives in a separate file pointed to by a string
 };
 
 struct VariantRecord {
   std::string name;
-  nlohmann::ordered_json body;                    ///< the full variant JSON object
+  nlohmann::ordered_json body;  ///< the full variant JSON object
 
   // Stable string buffers for ABI exposure.
   std::string name_cache;
@@ -62,9 +62,9 @@ struct VariantRecord {
 struct ComponentRecord {
   std::string name;
   ComponentStorage storage{ComponentStorage::kInline};
-  std::filesystem::path external_path;            ///< valid iff storage == kExternal
-  std::filesystem::path component_dir;            ///< base directory for relative paths inside this component
-  nlohmann::ordered_json body;                    ///< {"component_name": ..., "variants": {...}, "additional_metadata": {...}}
+  std::filesystem::path external_path;  ///< valid iff storage == kExternal
+  std::filesystem::path component_dir;  ///< base directory for relative paths inside this component
+  nlohmann::ordered_json body;          ///< {"component_name": ..., "variants": {...}, "additional_metadata": {...}}
   std::vector<std::unique_ptr<VariantRecord>> variants;
 
   std::string name_cache;
@@ -73,7 +73,7 @@ struct ComponentRecord {
 };
 
 struct SharedAssetRecord {
-  std::string uri;                                ///< "sha256:<hex>"
+  std::string uri;  ///< "sha256:<hex>"
   std::filesystem::path resolved_path;
   std::string uri_cache;
   std::string resolved_path_cache;
@@ -85,11 +85,11 @@ struct SharedAssetRecord {
 struct InfoViewCache {
   // Per-variant arrays. Indexed [component_idx][variant_idx].
   std::vector<std::vector<ModelExecutorInfoEntry>> executor_infos_storage;
-  std::vector<std::vector<ModelVariantInfo>>       variants_storage;
+  std::vector<std::vector<ModelVariantInfo>> variants_storage;
 
-  std::vector<ModelComponentInfo>    components;
-  std::vector<ModelSharedAssetInfo>  shared_assets;
-  ModelPackageInfo                   info{};
+  std::vector<ModelComponentInfo> components;
+  std::vector<ModelSharedAssetInfo> shared_assets;
+  ModelPackageInfo info{};
 };
 
 }  // namespace model_package
@@ -100,8 +100,8 @@ struct InfoViewCache {
 
 struct ModelPackage {
   std::filesystem::path package_root;
-  nlohmann::ordered_json manifest;                ///< parsed manifest.json with declarations intact (component values stay in their original string-or-object form)
-  std::string layout;                             ///< "portable" | "installed"
+  nlohmann::ordered_json manifest;  ///< parsed manifest.json with declarations intact (component values stay in their original string-or-object form)
+  std::string layout;               ///< "portable" | "installed"
 
   // Open-time options.
   bool allow_external_paths{false};
@@ -116,7 +116,7 @@ struct ModelPackage {
   std::string layout_cache;
   mutable std::optional<std::string> additional_metadata_cache;
 
-  std::vector<std::unique_ptr<model_package::ComponentRecord>>   components;
+  std::vector<std::unique_ptr<model_package::ComponentRecord>> components;
   std::vector<std::unique_ptr<model_package::SharedAssetRecord>> shared_assets;
 
   std::unordered_map<std::string, size_t> component_index_by_name;

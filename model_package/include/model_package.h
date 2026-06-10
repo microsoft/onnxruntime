@@ -46,11 +46,11 @@ typedef struct ModelPackage ModelPackage;
 
 /// Get the error message from a status object. Returns NULL if `status` is NULL.
 /// The returned string is owned by the status object.
-MODEL_PACKAGE_API const char*           ModelPackageStatus_Message(const ModelPackageStatus*);
+MODEL_PACKAGE_API const char* ModelPackageStatus_Message(const ModelPackageStatus*);
 /// Get the categorical error code. Returns `MODEL_PACKAGE_OK` when `status` is NULL.
 MODEL_PACKAGE_API ModelPackageErrorCode ModelPackageStatus_Code(const ModelPackageStatus*);
 /// Release a status object. Safe to call with NULL.
-MODEL_PACKAGE_API void                  ModelPackageStatus_Release(ModelPackageStatus*);
+MODEL_PACKAGE_API void ModelPackageStatus_Release(ModelPackageStatus*);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Lifecycle
@@ -58,10 +58,10 @@ MODEL_PACKAGE_API void                  ModelPackageStatus_Release(ModelPackageS
 
 typedef struct ModelPackageOpenOptions {
   size_t struct_size;          ///< sizeof(ModelPackageOpenOptions)
-  int    abi_version;          ///< 1
-  bool   allow_external_paths; ///< default false; unlocks absolute paths and `..` segments
-  bool   follow_symlinks;      ///< default true
-  bool   strict_unknown_fields;///< default true; relax to round-trip newer schemas
+  int abi_version;             ///< 1
+  bool allow_external_paths;   ///< default false; unlocks absolute paths and `..` segments
+  bool follow_symlinks;        ///< default true
+  bool strict_unknown_fields;  ///< default true; relax to round-trip newer schemas
 } ModelPackageOpenOptions;
 
 /// Open an existing model package directory. `opts` may be NULL for defaults.
@@ -80,57 +80,57 @@ MODEL_PACKAGE_API void ModelPackage_Close(ModelPackage* pkg);
 // ─────────────────────────────────────────────────────────────────────────────
 
 typedef struct ModelExecutorInfoEntry {
-  size_t      struct_size;    ///< sizeof(ModelExecutorInfoEntry)
-  int         abi_version;    ///< 1
+  size_t struct_size;         ///< sizeof(ModelExecutorInfoEntry)
+  int abi_version;            ///< 1
   const char* namespace_key;  ///< executor namespace name (e.g. "ort", "genai")
   const char* json;           ///< canonical JSON value as string (object, array, etc.)
 } ModelExecutorInfoEntry;
 
 typedef struct ModelVariantInfo {
-  size_t      struct_size;             ///< sizeof(ModelVariantInfo)
-  int         abi_version;             ///< 1
+  size_t struct_size;  ///< sizeof(ModelVariantInfo)
+  int abi_version;     ///< 1
   const char* name;
   /// Resolved absolute path to the variant's on-disk directory, or NULL when
   /// no directory has been declared and the default location does not exist.
   const char* variant_directory;
-  const char* ep;                      ///< NULL when unset
-  const char* device;                  ///< NULL when unset
-  const char* compatibility_string;    ///< NULL when unset
-  const char* additional_metadata_json;///< NULL when unset
-  size_t                          num_executor_infos;
-  const ModelExecutorInfoEntry*   executor_infos;
+  const char* ep;                        ///< NULL when unset
+  const char* device;                    ///< NULL when unset
+  const char* compatibility_string;      ///< NULL when unset
+  const char* additional_metadata_json;  ///< NULL when unset
+  size_t num_executor_infos;
+  const ModelExecutorInfoEntry* executor_infos;
 } ModelVariantInfo;
 
 typedef struct ModelComponentInfo {
-  size_t      struct_size;             ///< sizeof(ModelComponentInfo)
-  int         abi_version;             ///< 1
+  size_t struct_size;  ///< sizeof(ModelComponentInfo)
+  int abi_version;     ///< 1
   const char* name;
-  const char* additional_metadata_json;///< NULL when unset
-  size_t                  num_variants;
+  const char* additional_metadata_json;  ///< NULL when unset
+  size_t num_variants;
   const ModelVariantInfo* variants;
 } ModelComponentInfo;
 
 typedef struct ModelSharedAssetInfo {
-  size_t      struct_size;             ///< sizeof(ModelSharedAssetInfo)
-  int         abi_version;             ///< 1
-  const char* uri;                     ///< "sha256:<hex>"
-  const char* resolved_path;           ///< absolute on-disk directory path
+  size_t struct_size;         ///< sizeof(ModelSharedAssetInfo)
+  int abi_version;            ///< 1
+  const char* uri;            ///< "sha256:<hex>"
+  const char* resolved_path;  ///< absolute on-disk directory path
 } ModelSharedAssetInfo;
 
 typedef struct ModelPackageInfo {
-  size_t      struct_size;             ///< sizeof(ModelPackageInfo)
-  int         abi_version;             ///< 1
-  int64_t     schema_version;
-  const char* package_name;            ///< NULL when unset
-  const char* package_version;         ///< NULL when unset
-  const char* description;             ///< NULL when unset
-  const char* layout;                  ///< "portable" or "installed"
-  const char* additional_metadata_json;///< NULL when unset
+  size_t struct_size;  ///< sizeof(ModelPackageInfo)
+  int abi_version;     ///< 1
+  int64_t schema_version;
+  const char* package_name;              ///< NULL when unset
+  const char* package_version;           ///< NULL when unset
+  const char* description;               ///< NULL when unset
+  const char* layout;                    ///< "portable" or "installed"
+  const char* additional_metadata_json;  ///< NULL when unset
 
-  size_t                       num_components;
-  const ModelComponentInfo*    components;
-  size_t                       num_shared_assets;
-  const ModelSharedAssetInfo*  shared_assets;
+  size_t num_components;
+  const ModelComponentInfo* components;
+  size_t num_shared_assets;
+  const ModelSharedAssetInfo* shared_assets;
 } ModelPackageInfo;
 
 /// Return the package-level info tree. Pointer is owned by the package and is
@@ -145,8 +145,8 @@ MODEL_PACKAGE_API const ModelPackageInfo* ModelPackage_Info(const ModelPackage* 
 MODEL_PACKAGE_API const ModelComponentInfo* ModelPackage_FindComponent(const ModelPackageInfo*,
                                                                        const char* name);
 /// Find a variant within a component by name. Returns NULL when not found.
-MODEL_PACKAGE_API const ModelVariantInfo*   ModelComponentInfo_FindVariant(const ModelComponentInfo*,
-                                                                           const char* name);
+MODEL_PACKAGE_API const ModelVariantInfo* ModelComponentInfo_FindVariant(const ModelComponentInfo*,
+                                                                         const char* name);
 /// Find an executor_info entry by namespace. Returns NULL when not declared.
 MODEL_PACKAGE_API const ModelExecutorInfoEntry* ModelVariantInfo_FindExecutorInfo(
     const ModelVariantInfo*, const char* namespace_key);
@@ -310,8 +310,8 @@ MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_SetAdditionalMetadataJson(Mod
 // ─────────────────────────────────────────────────────────────────────────────
 
 typedef enum {
-  MODEL_PACKAGE_WRITE_PRESERVE = 0, ///< each component/executor-info keeps its current shape
-  MODEL_PACKAGE_WRITE_DENSE    = 1, ///< flatten all external components inline
+  MODEL_PACKAGE_WRITE_PRESERVE = 0,  ///< each component/executor-info keeps its current shape
+  MODEL_PACKAGE_WRITE_DENSE = 1,     ///< flatten all external components inline
 } ModelPackageWriteMode;
 
 /// Persist the in-memory model to disk. `dest_root_or_null == NULL` commits
@@ -330,11 +330,11 @@ MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_Commit(ModelPackage*,
 MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_Prune(ModelPackage*);
 
 typedef enum {
-  MODEL_PACKAGE_VALIDATE_SCHEMA         = 1 << 0,
-  MODEL_PACKAGE_VALIDATE_PATHS          = 1 << 1,
-  MODEL_PACKAGE_VALIDATE_ASSET_REHASH   = 1 << 2,
+  MODEL_PACKAGE_VALIDATE_SCHEMA = 1 << 0,
+  MODEL_PACKAGE_VALIDATE_PATHS = 1 << 1,
+  MODEL_PACKAGE_VALIDATE_ASSET_REHASH = 1 << 2,
   MODEL_PACKAGE_VALIDATE_UNKNOWN_FIELDS = 1 << 3,
-  MODEL_PACKAGE_VALIDATE_ALL            = ~0,
+  MODEL_PACKAGE_VALIDATE_ALL = ~0,
 } ModelPackageValidateFlags;
 
 /// Run structural and reachability checks. `*out_report_json` is set to a

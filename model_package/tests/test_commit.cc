@@ -32,34 +32,34 @@ const char* g_current = "<none>";
     }                                                                                     \
   } while (0)
 
-#define CHECK_OK(status)                                                                              \
-  do {                                                                                                \
-    ModelPackageStatus* _s = (status);                                                                \
-    if (_s != nullptr) {                                                                              \
-      std::fprintf(stderr, "[FAIL] %s line %d: expected OK, got: %s\n",                               \
-                   g_current, __LINE__, ModelPackageStatus_Message(_s));                              \
-      ModelPackageStatus_Release(_s);                                                                 \
-      return false;                                                                                   \
-    }                                                                                                 \
+#define CHECK_OK(status)                                                 \
+  do {                                                                   \
+    ModelPackageStatus* _s = (status);                                   \
+    if (_s != nullptr) {                                                 \
+      std::fprintf(stderr, "[FAIL] %s line %d: expected OK, got: %s\n",  \
+                   g_current, __LINE__, ModelPackageStatus_Message(_s)); \
+      ModelPackageStatus_Release(_s);                                    \
+      return false;                                                      \
+    }                                                                    \
   } while (0)
 
-#define CHECK_ERR(status, expected_code)                                                              \
-  do {                                                                                                \
-    ModelPackageStatus* _s = (status);                                                                \
-    if (_s == nullptr) {                                                                              \
-      std::fprintf(stderr, "[FAIL] %s line %d: expected error %d, got OK\n",                          \
-                   g_current, __LINE__, (int)(expected_code));                                        \
-      return false;                                                                                   \
-    }                                                                                                 \
-    ModelPackageErrorCode _c = ModelPackageStatus_Code(_s);                                           \
-    if (_c != (expected_code)) {                                                                      \
-      std::fprintf(stderr, "[FAIL] %s line %d: expected error %d, got %d (%s)\n",                     \
-                   g_current, __LINE__, (int)(expected_code), (int)_c,                                \
-                   ModelPackageStatus_Message(_s));                                                   \
-      ModelPackageStatus_Release(_s);                                                                 \
-      return false;                                                                                   \
-    }                                                                                                 \
-    ModelPackageStatus_Release(_s);                                                                   \
+#define CHECK_ERR(status, expected_code)                                          \
+  do {                                                                            \
+    ModelPackageStatus* _s = (status);                                            \
+    if (_s == nullptr) {                                                          \
+      std::fprintf(stderr, "[FAIL] %s line %d: expected error %d, got OK\n",      \
+                   g_current, __LINE__, (int)(expected_code));                    \
+      return false;                                                               \
+    }                                                                             \
+    ModelPackageErrorCode _c = ModelPackageStatus_Code(_s);                       \
+    if (_c != (expected_code)) {                                                  \
+      std::fprintf(stderr, "[FAIL] %s line %d: expected error %d, got %d (%s)\n", \
+                   g_current, __LINE__, (int)(expected_code), (int)_c,            \
+                   ModelPackageStatus_Message(_s));                               \
+      ModelPackageStatus_Release(_s);                                             \
+      return false;                                                               \
+    }                                                                             \
+    ModelPackageStatus_Release(_s);                                               \
   } while (0)
 
 class Sandbox {
@@ -72,7 +72,10 @@ class Sandbox {
     root_ = fs::temp_directory_path() / buf;
     fs::create_directories(root_);
   }
-  ~Sandbox() { std::error_code ec; fs::remove_all(root_, ec); }
+  ~Sandbox() {
+    std::error_code ec;
+    fs::remove_all(root_, ec);
+  }
   Sandbox(const Sandbox&) = delete;
   Sandbox& operator=(const Sandbox&) = delete;
   const fs::path& root() const { return root_; }
@@ -83,6 +86,7 @@ class Sandbox {
     std::ofstream f(full, std::ios::binary);
     f << contents;
   }
+
  private:
   fs::path root_;
 };
@@ -95,6 +99,7 @@ class PkgHandle {
   PkgHandle& operator=(const PkgHandle&) = delete;
   ModelPackage* get() const { return p_; }
   ModelPackage** outparam() { return &p_; }
+
  private:
   ModelPackage* p_;
 };
@@ -196,7 +201,8 @@ bool test_commit_dense_inlines_external_component() {
   CHECK(!fs::exists(s.path("pkg") / "decoder.json"));
   // Manifest contains decoder as an inline object.
   std::ifstream f(s.path("pkg") / "manifest.json");
-  std::ostringstream oss; oss << f.rdbuf();
+  std::ostringstream oss;
+  oss << f.rdbuf();
   std::string m = oss.str();
   CHECK(m.find("\"decoder\"") != std::string::npos);
   CHECK(m.find("\"variants\"") != std::string::npos);
@@ -241,7 +247,8 @@ bool test_commit_dest_root_self_contained() {
   CHECK_OK(ModelPackage_Commit(p.get(), nullptr, MODEL_PACKAGE_WRITE_PRESERVE));
   // The most recent in-place commit should have landed at `saved`, not `orig`.
   std::ifstream f(saved / "manifest.json");
-  std::ostringstream oss; oss << f.rdbuf();
+  std::ostringstream oss;
+  oss << f.rdbuf();
   CHECK(oss.str().find("savedpkg") != std::string::npos);
   return true;
 }
@@ -277,7 +284,10 @@ bool test_commit_dest_root_rehashes_existing_asset() {
   // Tamper with the landed sha256-<hex>/ dir under the existing package root.
   std::string hex = uri_copy.substr(7);
   fs::path landed = s.path("orig") / "shared_assets" / ("sha256-" + hex) / "m.onnx";
-  { std::ofstream f(landed, std::ios::binary); f << "TAMPERED"; }
+  {
+    std::ofstream f(landed, std::ios::binary);
+    f << "TAMPERED";
+  }
 
   // CommitToDestRoot must rehash the source and refuse the mismatch.
   CHECK_ERR(ModelPackage_Commit(p.get(), s.path("saved").c_str(),
@@ -337,7 +347,8 @@ bool test_prune_removes_stale_staging_dirs() {
                    ("sha256-" + std::string(64, 'c') + ".tmp.abcdef0123");
   fs::create_directories(stage);
   auto old = fs::file_time_type::clock::now() - std::chrono::seconds(120);
-  std::error_code ec; fs::last_write_time(stage, old, ec);
+  std::error_code ec;
+  fs::last_write_time(stage, old, ec);
   CHECK_OK(ModelPackage_Prune(p.get()));
   CHECK(!fs::exists(stage));
   return true;
@@ -389,7 +400,10 @@ bool test_validate_asset_rehash_detects_mutation() {
   std::string hex = uri_copy.substr(7);
   fs::path landed = s.path("pkg") / "shared_assets" / ("sha256-" + hex) / "m.onnx";
   CHECK(fs::is_regular_file(landed));
-  { std::ofstream f(landed, std::ios::binary); f << "MUTATED"; }
+  {
+    std::ofstream f(landed, std::ios::binary);
+    f << "MUTATED";
+  }
   const char* report = nullptr;
   CHECK_ERR(ModelPackage_Validate(p.get(), MODEL_PACKAGE_VALIDATE_ASSET_REHASH, &report),
             MODEL_PACKAGE_ERR_STATE);
@@ -446,7 +460,10 @@ bool test_commit_leaves_no_temp_files() {
   return true;
 }
 
-struct Test { const char* name; bool (*fn)(); };
+struct Test {
+  const char* name;
+  bool (*fn)();
+};
 
 const Test kTests[] = {
     {"commit_inplace_basic_roundtrip", test_commit_inplace_basic_roundtrip},
@@ -474,8 +491,12 @@ int main() {
   for (const auto& t : kTests) {
     g_current = t.name;
     bool ok = t.fn();
-    if (ok) { std::printf("[PASS] %s\n", t.name); g_passed++; }
-    else    { g_failed++; }
+    if (ok) {
+      std::printf("[PASS] %s\n", t.name);
+      g_passed++;
+    } else {
+      g_failed++;
+    }
   }
   std::printf("\n=== %d passed, %d failed ===\n", g_passed, g_failed);
   return g_failed == 0 ? 0 : 1;

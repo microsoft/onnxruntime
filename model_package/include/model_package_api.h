@@ -57,15 +57,15 @@ typedef struct ModelPackageStatus ModelPackageStatus;
 /// values will not be renumbered.
 typedef enum ModelPackageErrorCode {
   MODEL_PACKAGE_OK = 0,
-  MODEL_PACKAGE_ERR_IO = 1,                  ///< Filesystem read/write/sync failure.
-  MODEL_PACKAGE_ERR_SCHEMA = 2,              ///< JSON value has wrong shape or wrong type.
-  MODEL_PACKAGE_ERR_VERSION = 3,             ///< Unsupported schema_version.
-  MODEL_PACKAGE_ERR_PATH_CONFINEMENT = 4,    ///< Path resolution escaped the allowed base.
-  MODEL_PACKAGE_ERR_ASSET_MISSING = 5,       ///< Declared shared asset not resolvable.
-  MODEL_PACKAGE_ERR_ASSET_HASH_MISMATCH = 6, ///< Existing asset directory failed rehash.
-  MODEL_PACKAGE_ERR_NOT_FOUND = 7,           ///< Named entity not present.
-  MODEL_PACKAGE_ERR_INVALID_ARG = 8,         ///< Null pointer or otherwise invalid argument.
-  MODEL_PACKAGE_ERR_STATE = 9                ///< Operation not legal in current state.
+  MODEL_PACKAGE_ERR_IO = 1,                   ///< Filesystem read/write/sync failure.
+  MODEL_PACKAGE_ERR_SCHEMA = 2,               ///< JSON value has wrong shape or wrong type.
+  MODEL_PACKAGE_ERR_VERSION = 3,              ///< Unsupported schema_version.
+  MODEL_PACKAGE_ERR_PATH_CONFINEMENT = 4,     ///< Path resolution escaped the allowed base.
+  MODEL_PACKAGE_ERR_ASSET_MISSING = 5,        ///< Declared shared asset not resolvable.
+  MODEL_PACKAGE_ERR_ASSET_HASH_MISMATCH = 6,  ///< Existing asset directory failed rehash.
+  MODEL_PACKAGE_ERR_NOT_FOUND = 7,            ///< Named entity not present.
+  MODEL_PACKAGE_ERR_INVALID_ARG = 8,          ///< Null pointer or otherwise invalid argument.
+  MODEL_PACKAGE_ERR_STATE = 9                 ///< Operation not legal in current state.
 } ModelPackageErrorCode;
 
 #ifdef __cplusplus
