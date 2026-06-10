@@ -116,8 +116,14 @@ manifests authored against a newer schema.
 
 The value under `components[name]` is either:
 
-- **A string** — the path to an external `component.json` (or to a directory
-  whose `component.json` will be loaded). Resolved against `package_root`.
+- **A string** — the path to an external component, resolved against
+  `package_root`. The path may be:
+  - **A directory.** The loader appends `component.json` and reads that
+    file. The filename is fixed in this form (must be exactly
+    `component.json`).
+  - **A file.** Loaded directly. The filename is not enforced and may be
+    anything (e.g. `decoder.json`). Useful when one directory holds
+    multiple component definitions.
 - **A JSON object** — an inline component body matching the
   [component schema](#componentjson) below.
 
