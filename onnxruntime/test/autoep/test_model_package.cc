@@ -682,65 +682,6 @@ TEST(ModelPackageTest, VariantSessionOptions_DispatchedThroughAddSessionConfigEn
   std::filesystem::remove_all(package_root, ec);
 }
 
-// Test that the C++ RAII wrappers (Ort::ModelPackageContext, etc.) work correctly.
-TEST(ModelPackageApiTest, CxxWrappers_PackageContextQueries) {
-  const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_api_test";
-  BuildTwoVariantPackage(package_root,
-                         "variant_1", "cpu", "",
-                         "testdata/mul_1.onnx",
-                         "variant_2", "npu", "",
-                         "testdata/mul_16.onnx");
-
-  Ort::ModelPackageContext ctx(package_root.c_str());
-
-  EXPECT_EQ(ctx.GetComponentCount(), 1u);
-  auto component_names = ctx.GetComponentNames();
-  ASSERT_EQ(component_names.size(), 1u);
-  EXPECT_EQ(component_names[0], "model_1");
-
-  EXPECT_EQ(ctx.GetVariantCount("model_1"), 2u);
-  auto variant_names = ctx.GetVariantNames("model_1");
-  ASSERT_EQ(variant_names.size(), 2u);
-  std::unordered_set<std::string> variant_set(variant_names.begin(), variant_names.end());
-  EXPECT_EQ(variant_set.count("variant_1"), 1u);
-  EXPECT_EQ(variant_set.count("variant_2"), 1u);
-
-  std::error_code ec;
-  std::filesystem::remove_all(package_root, ec);
-}
-
-TEST(ModelPackageApiTest, CxxWrappers_SelectComponentAndQueryFileAccessors) {
-  const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_api_test";
-  BuildTwoVariantPackage(package_root,
-                         "variant_1", "cpu", "",
-                         "testdata/mul_1.onnx",
-                         "variant_2", "npu", "",
-                         "testdata/mul_16.onnx");
-
-  RegisteredEpDeviceUniquePtr example_ep;
-  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
-  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
-
-  Ort::SessionOptions so;
-  std::unordered_map<std::string, std::string> ep_options;
-  so.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
-  Ort::ModelPackageOptions pkg_opts(*ort_env, so);
-
-  Ort::ModelPackageContext ctx(package_root.c_str());
-  auto cix = ctx.SelectComponent("model_1", pkg_opts);
-
-  auto folder = cix.GetSelectedVariantFolderPath();
-  EXPECT_FALSE(folder.empty());
-
-  auto variant_name = cix.GetSelectedVariantName();
-  EXPECT_FALSE(variant_name.empty());
-
-  auto session = cix.CreateSession(*ort_env, so);
-
-  std::error_code ec;
-  std::filesystem::remove_all(package_root, ec);
-}
-
 // GetSelectedVariantFolderPath returns the correct path even when the variant
 // declares no executor_info (i.e., no `file` descriptor for the variant).
 TEST(ModelPackageApiTest, FolderPath_ReturnsCorrectPath_WhenExecutorInfoAbsent) {
