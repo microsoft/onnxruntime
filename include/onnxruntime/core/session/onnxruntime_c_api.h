@@ -8836,22 +8836,23 @@ struct OrtModelPackageApi {
                   _Outptr_ const ORTCHAR_T** folder_path);
 
   /// @}
-  /** \brief Create an OrtSession for a selected file within a component model variant.
+  /** \brief Create an OrtSession for the selected variant's model file.
    *
-   * The chosen variant (and thus its EP selection) is determined by `context`, which
-   * was built from an OrtSessionOptions via CreateModelPackageOptionsFromSessionOptions.
+   * The chosen variant (and its EP selection) is determined by `context`, which
+   * was built via CreateModelPackageOptionsFromSessionOptions. The session
+   * options captured there only drive variant selection and EP discovery;
+   * they are NOT applied to the session itself.
    *
    * Session options precedence:
    *   1. session_options == NULL (default path):
-   *      ORT uses the OrtSessionOptions that was captured when `context` was created.
-   *      Any variant-specific session and provider options declared in the package
-   *      metadata are merged on top.
+   *      ORT starts from a fresh OrtSessionOptions and merges the variant's
+   *      session and provider options from the package metadata on top.
    *
    *   2. session_options != NULL (advanced path):
-   *      ORT uses the caller-provided OrtSessionOptions as-is. Variant-specific
-   *      session and provider options from the package metadata are NOT applied.
-   *      Use this when custom EP setup is required (e.g., shared CUDA streams,
-   *      shared QNN EP contexts, custom allocators).
+   *      ORT uses the caller-supplied OrtSessionOptions as-is. Variant
+   *      session and provider options from the package metadata are NOT
+   *      merged. Use this when custom EP setup is required (e.g. shared
+   *      CUDA streams, shared QNN EP contexts, custom allocators).
    *
    * \since Version 1.27.
    */
