@@ -1090,8 +1090,8 @@ class SparseMoeBlockORTHelper(nn.Module):
         ort_dtype_quant_bits_tolerance_map = {
             "FP32:0": (5e-3, 1e-3),
             "FP16:0": (0.3, 0.05),
-            "FP16:4": (3.0, 1e-2),
-            "FP16:8": (2.0, 1e-2),
+            "FP16:4": (0.5, 1e-2),
+            "FP16:8": (0.5, 1e-2),
             "BF16:0": (1.0, 1e-2),
             "BF16:4": (30.0, 1e-1),
             "BF16:8": (20.0, 1e-1),
