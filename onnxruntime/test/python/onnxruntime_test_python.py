@@ -2103,6 +2103,143 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(expected_val.shape(), value.shape())
             np.testing.assert_allclose(value.numpy(), expected_val.numpy())
 
+    def test_adapter_read_modify_export(self):
+        # Verify that an instance created by read_adapter can have its
+        # parameters replaced and re-exported (single-source architecture).
+        adapter_version = 1
+        model_version = 1
+        file_path = pathlib.Path(os.path.realpath(__file__)).parent
+        original_path = str(file_path / "test_adapter_read_modify_original.onnx_adapter")
+        modified_path = str(file_path / "test_adapter_read_modify_new.onnx_adapter")
+
+        float_data_type = 1
+        original_data = np.array([1, 2, 3, 4]).astype(np.float32).reshape(2, 2)
+        modified_data = np.array([10, 20, 30, 40, 50, 60]).astype(np.float32).reshape(3, 2)
+
+        ort_original = onnxrt.OrtValue.ortvalue_from_numpy_with_onnx_type(original_data, float_data_type)
+        ort_modified = onnxrt.OrtValue.ortvalue_from_numpy_with_onnx_type(modified_data, float_data_type)
+
+        # Write original adapter
+        adapter_format = onnxrt.AdapterFormat()
+        adapter_format.set_adapter_version(adapter_version)
+        adapter_format.set_model_version(model_version)
+        adapter_format.set_parameters({"param": ort_original})
+        adapter_format.export_adapter(original_path)
+
+        try:
+            # Read, replace parameters, and re-export.
+            adapter_read = onnxrt.AdapterFormat.read_adapter(original_path)
+            adapter_read.set_parameters({"new_param": ort_modified})
+            adapter_read.export_adapter(modified_path)
+
+            # Verify the re-exported file has the NEW parameters.
+            adapter_verify = onnxrt.AdapterFormat.read_adapter(modified_path)
+            params = adapter_verify.get_parameters()
+            self.assertIn("new_param", params)
+            self.assertNotIn("param", params)
+            self.assertEqual(params["new_param"].shape(), [3, 2])
+            np.testing.assert_allclose(params["new_param"].numpy(), modified_data)
+        finally:
+            if os.path.exists(original_path):
+                os.remove(original_path)
+            if os.path.exists(modified_path):
+                os.remove(modified_path)
+
+    def test_adapter_parameters_keep_alive(self):
+        # Regression test: AdapterFormat.read_adapter returned OrtValue views
+        # over storage owned by the C AdapterFormat with nothing keeping the
+        # parent alive. The natural pattern below dropped the parent and left
+        # the dict with dangling pointers, causing a use-after-free on the
+        # next access. read_adapter now pins the owning C AdapterFormat on
+        # every OrtValue it produces (pybind11 add_patient via
+        # keep_alive_impl), so the dict and any individual value keep the
+        # backing adapter alive on their own. Mirrors the strong-ref pattern
+        # used by the SparseTensor view bindings.
+        adapter_version = 1
+        model_version = 1
+        file_path = pathlib.Path(os.path.realpath(__file__)).parent
+        file_path = str(file_path / "test_adapter_keep_alive.onnx_adapter")
+
+        float_data_type = 1
+        val = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        param_1 = np.array(val).astype(np.float32).reshape(5, 2)
+
+        ort_val_1 = onnxrt.OrtValue.ortvalue_from_numpy_with_onnx_type(param_1, float_data_type)
+
+        adapter_format = onnxrt.AdapterFormat()
+        adapter_format.set_adapter_version(adapter_version)
+        adapter_format.set_model_version(model_version)
+        adapter_format.set_parameters({"param_1": ort_val_1})
+        adapter_format.export_adapter(file_path)
+
+        try:
+            # Drop the AdapterFormat temporary; only `params` keeps a reference.
+            params = onnxrt.AdapterFormat.read_adapter(file_path).get_parameters()
+            gc.collect()
+
+            self.assertIn("param_1", params)
+            value = params["param_1"]
+            self.assertTrue(value.is_tensor())
+            self.assertEqual(value.shape(), [5, 2])
+            np.testing.assert_allclose(value.numpy(), param_1)
+
+            # Also drop the dict; an individual OrtValue must keep the adapter
+            # alive on its own (we pin it on every value in get_parameters()).
+            single_value = params["param_1"]
+            del params
+            gc.collect()
+            np.testing.assert_allclose(single_value.numpy(), param_1)
+        finally:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
+    def test_adapter_export_rejects_string_tensors(self):
+        # Regression test: export_adapter previously serialized Tensor::DataRaw()
+        # for SizeInBytes() bytes regardless of element type. For string tensors
+        # that copied the std::string object representation (heap pointers and
+        # uninitialized padding) into the adapter file, leaking runtime addresses
+        # (ASLR bypass) and producing an unloadable adapter. Export must reject
+        # string-typed parameters.
+        #
+        # There is no public Python API to construct a string-typed OrtValue
+        # directly (ortvalue_from_numpy rejects non-numeric arrays), so we
+        # obtain one by running a tiny Constant model whose only output is a
+        # string tensor.
+        from onnx import TensorProto, helper  # noqa: PLC0415
+
+        const_node = helper.make_node(
+            "Constant",
+            inputs=[],
+            outputs=["str_out"],
+            value=helper.make_tensor("v", TensorProto.STRING, dims=[2], vals=[b"hello", b"world"]),
+        )
+        graph = helper.make_graph(
+            [const_node],
+            "string_const",
+            inputs=[],
+            outputs=[helper.make_tensor_value_info("str_out", TensorProto.STRING, [2])],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+        sess = onnxrt.InferenceSession(model.SerializeToString(), providers=onnxrt.get_available_providers())
+        ort_val_str = sess.run_with_ort_values(["str_out"], {})[0]
+
+        adapter_format = onnxrt.AdapterFormat()
+        adapter_format.set_adapter_version(1)
+        adapter_format.set_model_version(1)
+        adapter_format.set_parameters({"str_param": ort_val_str})
+
+        file_path = pathlib.Path(os.path.realpath(__file__)).parent
+        file_path = str(file_path / "test_adapter_string_reject.onnx_adapter")
+
+        try:
+            with self.assertRaises(Exception) as ctx:
+                adapter_format.export_adapter(file_path)
+            self.assertIn("STRING", str(ctx.exception))
+            self.assertFalse(os.path.exists(file_path), "adapter file must not be created when export is rejected")
+        finally:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
     def test_run_with_adapter(self):
         model_path = get_name("lora/two_params_lora_model.onnx")
         file_path = os.getcwd() + "/" + get_name("lora/two_params_lora_model.onnx_adapter")

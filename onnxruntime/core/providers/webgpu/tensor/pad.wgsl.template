@@ -62,6 +62,10 @@ $MAIN {
         in_coord = output_index - lower_pads;
     }
 
+#if pad_mode == PAD_MODE_WRAP
+    in_coord = ((in_coord % data_shape) + data_shape) % data_shape;
+#endif
+
     input_index += select(u32(in_coord)
 #if output.rank > 1
         * getElementAt(uniforms.data_stride, dim, output.rank - 1)
