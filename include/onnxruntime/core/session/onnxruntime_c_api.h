@@ -5425,13 +5425,11 @@ struct OrtApi {
   ORT_CLASS_RELEASE(Node);
 
   /** \brief Release an OrtGraph.
-   * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.22.
    */
   ORT_CLASS_RELEASE(Graph);
 
   /** \brief Release an OrtModel.
-   * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.22.
    */
   ORT_CLASS_RELEASE(Model);
@@ -7530,7 +7528,7 @@ struct OrtApi {
    * accessors.
    *
    * \param[in] name The null-terminated name of the experimental function to look up.
-   *                 Names follow the pattern "\<target struct\>_\<function name\>_SinceV\<ORT API version added\>".
+   *                 Names follow the pattern "<target struct>_<function name>_SinceV<ORT API version added>".
    *                 Name constants are defined in onnxruntime_experimental_c_api.h.
    * \return The function pointer cast to ::OrtExperimentalFnPtr, or nullptr if the function is not available in this
    *         build. The caller must cast the returned pointer to the correct function pointer type before calling.
