@@ -2069,5 +2069,142 @@ class TestQMoESwiGLUBenchmark(unittest.TestCase):
         print("- Throughput: ORT throughput improvement (higher is better)")
 
 
+# ============================================================================
+# QMoE integer-weight PrePack smoke test.
+#
+# Validates the PrePack hook added in PR #28749: with `quant_type="int"`, the
+# QMoE op should be able to consume raw quantized weights — shape
+# `[E, N, K/(8/bits)]` as produced by `quantize_matmul_{4,8}bits` —
+# and internally run the CUTLASS fpA_intB layout transform that callers
+# previously had to do offline via `pack_weights_for_cuda_mixed_gemm`.
+#
+# Strategy: build a single ONNX graph with raw (un-prepacked) int4 weight
+# initializers and `weights_prepacked=0`, run it through ORT's CUDA QMoE
+# kernel, and assert the output is finite and has a plausible magnitude.
+# This is a smoke test, not a numerical parity check — see the class
+# docstring for why a bit-parity comparison is intentionally omitted.
+# ============================================================================
+
+
+@unittest.skipUnless(torch.cuda.is_available(), "QMoE PrePack smoke test requires CUDA")
+class TestQMoEIntPrePackSmoke(unittest.TestCase):
+    """Smoke test for the QMoE int4 PrePack hook (issue #28748 / PR #28749).
+
+    Builds a single QMoE node with raw, un-prepacked ``[E, N, K/2]`` int4
+    weights straight from ``quantize_matmul_4bits`` and runs it through
+    the CUDA QMoE kernel. With the new ``PrePackIntExpertWeights`` hook,
+    the kernel should:
+
+    1. Accept the on-disk shape that matches the ``com.microsoft::QMoE``
+       schema (``[E, N, K/pack]``), where today's offline tooling has to
+       hand-write the transposed pre-prepacked shape ``[E, K, N/pack]``
+       and pre-pack the bytes itself via ``pack_weights_for_cuda_mixed_gemm``.
+    2. Run the GEMM to completion and produce sensible output (no NaN /
+       Inf, output magnitudes consistent with a small weight + small
+       input matmul).
+
+    We deliberately do **not** include a bit-parity check against the
+    existing offline-pre-pack code path because the existing harness
+    (``quant_dequant_blockwise`` → ``pack_weights_for_cuda_mixed_gemm``)
+    hardcodes ``force_arch=80`` and produces incorrect output on SM>=90
+    hardware (the other ``test_swiglu_qmoe_parity_*`` cases in this file
+    fail on H200 / H100 with max-diff > 1.0 on plain main, by
+    inspection — pre-existing). A real parity check can be added once
+    that harness honours the runtime SM.
+    """
+
+    def _run_one(self, *, hidden_size, inter_size, num_experts, top_k, swiglu_fusion, batch_size):
+        torch.manual_seed(123)
+        numpy.random.seed(123)
+
+        onnx_dtype = TensorProto.FLOAT16
+        use_swiglu = True
+        # fc1 packs gate+up along the N axis when use_swiglu=True.
+        fc1_n = 2 * inter_size if use_swiglu else inter_size
+        fc1_k = hidden_size
+        fc2_n = hidden_size
+        fc2_k = inter_size
+
+        raw_fc1 = numpy.zeros((num_experts, fc1_n, fc1_k // 2), dtype=numpy.uint8)
+        raw_fc2 = numpy.zeros((num_experts, fc2_n, fc2_k // 2), dtype=numpy.uint8)
+        fc1_scales = numpy.zeros((num_experts, fc1_n), dtype=numpy.float16)
+        fc2_scales = numpy.zeros((num_experts, fc2_n), dtype=numpy.float16)
+
+        for e in range(num_experts):
+            w1 = (torch.randn(fc1_n, fc1_k) * 0.05).numpy().astype(numpy.float16)
+            w2 = (torch.randn(fc2_n, fc2_k) * 0.05).numpy().astype(numpy.float16)
+            qw1 = numpy.zeros((fc1_n, 1, fc1_k // 2), dtype=numpy.uint8)
+            qw2 = numpy.zeros((fc2_n, 1, fc2_k // 2), dtype=numpy.uint8)
+            sc1 = numpy.zeros((fc1_n, 1), dtype=numpy.float32)
+            sc2 = numpy.zeros((fc2_n, 1), dtype=numpy.float32)
+            zp1 = numpy.zeros((fc1_n, 1), dtype=numpy.uint8)
+            zp2 = numpy.zeros((fc2_n, 1), dtype=numpy.uint8)
+            _pybind.quantize_matmul_4bits(qw1, numpy.ascontiguousarray(w1.T), sc1, zp1, fc1_k, fc1_n, fc1_k, True)
+            _pybind.quantize_matmul_4bits(qw2, numpy.ascontiguousarray(w2.T), sc2, zp2, fc2_k, fc2_n, fc2_k, True)
+            raw_fc1[e] = qw1.reshape(fc1_n, fc1_k // 2)
+            raw_fc2[e] = qw2.reshape(fc2_n, fc2_k // 2)
+            fc1_scales[e] = numpy.abs(sc1).flatten().astype(numpy.float16)
+            fc2_scales[e] = numpy.abs(sc2).flatten().astype(numpy.float16)
+
+        qmoe = helper.make_node(
+            "QMoE",
+            inputs=["x", "router", "fc1_W", "fc1_S", "", "fc2_W", "fc2_S", ""],
+            outputs=["y"],
+            name="qmoe",
+            domain="com.microsoft",
+            k=top_k,
+            normalize_routing_weights=1,
+            activation_type="swiglu" if use_swiglu else "silu",
+            swiglu_fusion=swiglu_fusion,
+            expert_weight_bits=4,
+            quant_type="int",
+            # Opt in to the PrePack-hook path; the weights below are raw
+            # ``[E, N, K/2]`` outputs of ``quantize_matmul_4bits``, not
+            # CUTLASS-prepacked.
+            weights_prepacked=0,
+        )
+        graph = helper.make_graph(
+            nodes=[qmoe],
+            name="qmoe_only",
+            inputs=[
+                helper.make_tensor_value_info("x", onnx_dtype, [None, hidden_size]),
+                helper.make_tensor_value_info("router", onnx_dtype, [None, num_experts]),
+            ],
+            outputs=[helper.make_tensor_value_info("y", onnx_dtype, [None, hidden_size])],
+            initializer=[
+                helper.make_tensor("fc1_W", TensorProto.UINT8, list(raw_fc1.shape), raw_fc1.tobytes(), raw=True),
+                helper.make_tensor("fc2_W", TensorProto.UINT8, list(raw_fc2.shape), raw_fc2.tobytes(), raw=True),
+                helper.make_tensor("fc1_S", onnx_dtype, list(fc1_scales.shape), fc1_scales.flatten().tolist()),
+                helper.make_tensor("fc2_S", onnx_dtype, list(fc2_scales.shape), fc2_scales.flatten().tolist()),
+            ],
+        )
+        model = helper.make_model(
+            graph, opset_imports=[helper.make_opsetid("", 20), helper.make_opsetid("com.microsoft", 1)]
+        )
+        model.ir_version = 10
+
+        sess = onnxruntime.InferenceSession(model.SerializeToString(), providers=ort_provider)
+        x = numpy.random.randn(batch_size, hidden_size).astype(numpy.float16)
+        router = numpy.random.randn(batch_size, num_experts).astype(numpy.float16)
+        out = sess.run(None, {"x": x, "router": router})[0]
+
+        self.assertEqual(out.shape, (batch_size, hidden_size))
+        self.assertEqual(out.dtype, numpy.float16)
+        self.assertFalse(numpy.isnan(out).any(), "QMoE raw-weight output has NaN")
+        self.assertFalse(numpy.isinf(out).any(), "QMoE raw-weight output has Inf")
+        # With weights ~ N(0, 0.05) and input ~ N(0, 1), SwiGLU + routing
+        # output magnitudes land well below 10 per element. A loose bound
+        # catches accidental near-zero or runaway output that would
+        # indicate the PrePack hook silently produced wrong bytes.
+        self.assertGreater(numpy.abs(out).mean(), 1e-4, "Output is suspiciously close to zero")
+        self.assertLess(numpy.abs(out).max(), 10.0, "Output magnitude is implausibly large")
+
+    def test_int4_swiglu_interleaved_small(self):
+        self._run_one(hidden_size=64, inter_size=32, num_experts=4, top_k=2, swiglu_fusion=1, batch_size=8)
+
+    def test_int4_swiglu_interleaved_medium(self):
+        self._run_one(hidden_size=128, inter_size=64, num_experts=8, top_k=2, swiglu_fusion=1, batch_size=16)
+
+
 if __name__ == "__main__":
     unittest.main()

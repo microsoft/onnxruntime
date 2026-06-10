@@ -304,6 +304,25 @@ class GraphCacheManager : public IBufferCacheManager {
     // no-op - buffers are already in buckets_
   }
 
+  std::vector<std::pair<size_t, WGPUBuffer>> ExtractCachedBuffers() override {
+    std::vector<std::pair<size_t, WGPUBuffer>> result;
+    for (auto& pair : buckets_) {
+      for (auto& buffer : pair.second) {
+        result.emplace_back(pair.first, buffer);
+      }
+      pair.second.clear();
+    }
+    return result;
+  }
+
+  void AbsorbCachedBuffers(std::vector<std::pair<size_t, WGPUBuffer>>&& buffers) override {
+    for (auto& entry : buffers) {
+      if (entry.second) {
+        ReleaseBuffer(entry.second);
+      }
+    }
+  }
+
   ~GraphCacheManager() {
     for (auto& pair : buckets_) {
       for (auto& buffer : pair.second) {
@@ -383,6 +402,37 @@ class GraphSimpleCacheManager : public IBufferCacheManager {
     }
     for (auto& buffer : captured_buffers_) {
       wgpuBufferRelease(buffer);
+    }
+  }
+
+  std::vector<std::pair<size_t, WGPUBuffer>> ExtractCachedBuffers() override {
+    // Donation is expected after captured commands have been released and any
+    // in-flight work has completed; all three containers therefore hold buffers
+    // no longer referenced by the device.
+    std::vector<std::pair<size_t, WGPUBuffer>> result;
+    for (auto& pair : buffers_) {
+      for (auto& buffer : pair.second) {
+        result.emplace_back(pair.first, buffer);
+      }
+      pair.second.clear();
+    }
+    buffers_.clear();
+    for (auto& buffer : pending_buffers_) {
+      result.emplace_back(static_cast<size_t>(wgpuBufferGetSize(buffer)), buffer);
+    }
+    pending_buffers_.clear();
+    for (auto& buffer : captured_buffers_) {
+      result.emplace_back(static_cast<size_t>(wgpuBufferGetSize(buffer)), buffer);
+    }
+    captured_buffers_.clear();
+    return result;
+  }
+
+  void AbsorbCachedBuffers(std::vector<std::pair<size_t, WGPUBuffer>>&& buffers) override {
+    for (auto& entry : buffers) {
+      if (entry.second) {
+        buffers_[entry.first].emplace_back(entry.second);
+      }
     }
   }
 
