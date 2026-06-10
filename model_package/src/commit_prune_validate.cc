@@ -388,7 +388,6 @@ ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg,
   // Copy all shared assets into dest_root. Any manifest override entries are
   // re-mapped to the default convention path under dest_root.
   fs::path assets_root = dest_root / "shared_assets";
-  fs::create_directories(assets_root, ec);
   // Gather source dirs for every URI we know about.
   // 1. URIs already on disk (under current package_root) and not in pending: copy from there.
   // 2. Pending copy_in sources: copy from staged source.
@@ -401,6 +400,10 @@ ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg,
     } else {
       to_copy.emplace_back(rec->uri, rec->resolved_path);
     }
+  }
+  // Only materialize shared_assets/ when something will actually land in it.
+  if (!to_copy.empty()) {
+    fs::create_directories(assets_root, ec);
   }
 
   for (const auto& [uri, src] : to_copy) {
