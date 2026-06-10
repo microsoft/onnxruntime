@@ -24,12 +24,26 @@ class MatMul final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
   Status ComputeDefault(OpKernelContext* context, MatMulComputeHelper& helper) const;
 
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 /*out*/ bool& is_packed,
+                 /*out*/ PrePackedWeights* prepacked_weights) override;
+
  private:
   const float alpha_;
   const bool trans_A_;
   const bool trans_B_;
   const bool trans_batch_a_;
   const bool trans_batch_b_;
+
+  // Decode (M==1) GEMV fast path: a transposed [N, K] copy of a small constant
+  // fp16/bf16 weight is built once in PrePack so ComputeInternal can dispatch a
+  // single-kernel GEMV instead of cuBLAS's split-K + reduce. The original B
+  // input is left intact (is_packed stays false) so the M>1 cuBLAS path still
+  // works.
+  IAllocatorUniquePtr<void> gemv_b_transposed_;
+  bool gemv_enabled_ = false;
+  int64_t gemv_n_ = 0;
+  int64_t gemv_k_ = 0;
 };
 
 template <typename T>

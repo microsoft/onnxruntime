@@ -5,12 +5,22 @@
 
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/cuda_type_conversion.h"
+#include "core/providers/cuda/math/matmul_gemv.h"
 #ifndef BUILD_CUDA_EP_AS_PLUGIN
 #include "core/providers/cuda/tunable/math/matmul.h"
 #endif
 
 namespace onnxruntime {
 namespace cuda {
+
+// GEMV decode fast path is only beneficial for small N (cuBLAS GEMM tiles win
+// for large N) and a reasonably large K (enough reduction work to amortize the
+// launch). Engaged only for fp16/bf16 constant weights at M==1.
+namespace {
+constexpr int64_t kGemvMaxN = 1024;
+constexpr int64_t kGemvMinK = 256;
+}  // namespace
 
 #define REGISTER_KERNEL_TYPED(T)                                  \
   ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
@@ -91,6 +101,40 @@ static bool CanUseStridedBatchedGemm(const TensorShape& left_shape, const Tensor
 }
 
 template <typename T>
+Status MatMul<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                          /*out*/ bool& is_packed,
+                          /*out*/ PrePackedWeights* /*prepacked_weights*/) {
+  is_packed = false;
+  // Only the constant weight B (input 1), fp16/bf16, used as a plain [K, N]
+  // matrix (no transpose), is eligible. We keep is_packed == false so the
+  // original B tensor remains available for the cuBLAS path when M > 1.
+  if constexpr (std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>) {
+    if (input_idx == 1 && !trans_B_ && !trans_batch_b_) {
+      const auto& shape = tensor.Shape();
+      if (shape.NumDimensions() == 2) {
+        const int64_t k = shape[0];
+        const int64_t n = shape[1];
+        if (n >= 1 && n <= kGemvMaxN && k >= kGemvMinK) {
+          using CudaT = typename OrtToCudaType<T>::type;
+          cudaStream_t stream = cudaStreamLegacy;  // PrePack runs at init, outside any capture.
+          const size_t bytes = static_cast<size_t>(n) * static_cast<size_t>(k) * sizeof(CudaT);
+          gemv_b_transposed_ = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
+          TransposeForGemv<CudaT>(stream,
+                                  reinterpret_cast<CudaT*>(gemv_b_transposed_.get()),
+                                  reinterpret_cast<const CudaT*>(tensor.Data<T>()),
+                                  static_cast<int>(k), static_cast<int>(n));
+          CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+          gemv_n_ = n;
+          gemv_k_ = k;
+          gemv_enabled_ = true;
+        }
+      }
+    }
+  }
+  return Status::OK();
+}
+
+template <typename T>
 Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* left_X = ctx->Input<Tensor>(0);
   const Tensor* right_X = ctx->Input<Tensor>(1);
@@ -121,6 +165,22 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
     using CudaT = typename ToCudaType<T>::MappedType;
     Fill<CudaT>(Stream(ctx), reinterpret_cast<CudaT*>(Y->MutableData<T>()), CudaT(0.f), narrow<int64_t>(output_size));
     return Status::OK();
+  }
+
+  // Decode (M==1) GEMV fast path: a single custom kernel beats cuBLAS's split-K
+  // dot + reduce for a small constant fp16/bf16 weight. Falls through to cuBLAS
+  // for M > 1, transposed A, or batched GEMM.
+  if constexpr (std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>) {
+    if (gemv_enabled_ && !trans_a && helper.M() == 1 && helper.OutputOffsets().size() == 1 &&
+        helper.N() == gemv_n_ && helper.K() == gemv_k_) {
+      using CudaT = typename OrtToCudaType<T>::type;
+      MatMulGemvM1<CudaT>(Stream(ctx),
+                          reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+                          reinterpret_cast<const CudaT*>(left_X->Data<T>()),
+                          reinterpret_cast<const CudaT*>(gemv_b_transposed_.get()),
+                          static_cast<int>(helper.N()), static_cast<int>(helper.K()), alpha_);
+      return Status::OK();
+    }
   }
 
 #ifndef BUILD_CUDA_EP_AS_PLUGIN

@@ -520,6 +520,57 @@ TEST(MathOpTest, MatMul_Float16) {
 }
 #endif
 
+#ifdef USE_CUDA
+// Exercises the CUDA MatMul decode (M==1) GEMV fast path: a constant fp16 weight
+// with K >= 256 and small N is prepacked (transposed) and run by a custom GEMV
+// kernel. The non-constant variant takes the cuBLAS path; both must match.
+TEST(MathOpTest, MatMul_Float16_GemvDecode) {
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
+    return;
+  }
+
+  constexpr int K = 2048;
+  constexpr int N = 256;
+  std::vector<float> A(K), B(static_cast<size_t>(K) * N);
+  for (int k = 0; k < K; ++k) {
+    A[k] = 0.05f * std::sin(0.013f * k);
+  }
+  for (int i = 0; i < K * N; ++i) {
+    B[i] = 0.05f * std::cos(0.017f * i);
+  }
+
+  std::vector<float> Y(N, 0.0f);
+  for (int n = 0; n < N; ++n) {
+    float sum = 0.0f;
+    for (int k = 0; k < K; ++k) {
+      sum += A[k] * B[k * N + n];
+    }
+    Y[n] = sum;
+  }
+
+  std::vector<MLFloat16> f_A(A.size()), f_B(B.size()), f_Y(Y.size());
+  ConvertFloatToMLFloat16(A.data(), f_A.data(), static_cast<int>(A.size()));
+  ConvertFloatToMLFloat16(B.data(), f_B.data(), static_cast<int>(B.size()));
+  ConvertFloatToMLFloat16(Y.data(), f_Y.data(), static_cast<int>(Y.size()));
+
+  auto run_test = [&](bool B_is_constant) {
+    OpTester test("MatMul", 14);
+    test.AddInput<MLFloat16>("A", {1, K}, f_A);
+    test.AddInput<MLFloat16>("B", {K, N}, f_B, B_is_constant);
+    test.AddOutput<MLFloat16>("Y", {1, N}, f_Y);
+    // fp16 accumulation tolerance over K=2048 reductions.
+    test.SetOutputAbsErr("Y", 1.0f);
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.emplace_back(DefaultCudaExecutionProvider());
+    test.ConfigEps(std::move(execution_providers)).RunWithConfig();
+  };
+  run_test(true);   // constant B -> GEMV fast path
+  run_test(false);  // non-constant B -> cuBLAS path
+}
+#endif
+
 #if defined(USE_CUDA) || defined(USE_DNNL)
 TEST(MathOpTest, MatMul_bfloat16) {
 #ifdef USE_CUDA
