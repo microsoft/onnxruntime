@@ -298,7 +298,9 @@ TEST(PluginExecutionProviderFactoryTest, CreatePluginExecutionProviderFailsWhenG
   EXPECT_EQ(context.ep_factory.GetReleaseEpCount(), 1);
 }
 
-TEST(PluginExecutionProviderFactoryTest, CreatePluginExecutionProviderFailsForTooLowVersion) {
+// NOTE: We disable the API version check as a workaround for EPs that don't set OrtEp::ort_version_supported
+// correctly. Accordingly, we also disable this test. This change should NOT be merged back into main.
+TEST(PluginExecutionProviderFactoryTest, DISABLED_CreatePluginExecutionProviderFailsForTooLowVersion) {
   test_plugin_ep::CreateProviderTestContext context;
 
   auto ort_ep = std::make_unique<test_plugin_ep::TestOrtEp>();

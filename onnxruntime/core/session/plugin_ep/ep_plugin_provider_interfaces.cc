@@ -74,12 +74,15 @@ PluginExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_
 
 // Do some basic checks on `ort_ep` to detect obvious issues early on.
 static Status SanityCheckOrtEp(const OrtEp& ort_ep) {
-  // Plugin EPs were first introduced in ORT 1.22, so we expect at least this API version.
-  constexpr auto kMinAllowedOrtVersionSupported = 22;
+  // NOTE: We disable the API version check as a workaround for EPs that don't set OrtEp::ort_version_supported
+  // correctly. This change should NOT be merged back into main.
 
-  ORT_RETURN_IF_NOT(ort_ep.ort_version_supported >= kMinAllowedOrtVersionSupported,
-                    "OrtEp has invalid ort_version_supported=", ort_ep.ort_version_supported,
-                    " (expected at least ", kMinAllowedOrtVersionSupported, ").");
+  // Plugin EPs were first introduced in ORT 1.22, so we expect at least this API version.
+  // constexpr auto kMinAllowedOrtVersionSupported = 22;
+
+  // ORT_RETURN_IF_NOT(ort_ep.ort_version_supported >= kMinAllowedOrtVersionSupported,
+  //                   "OrtEp has invalid ort_version_supported=", ort_ep.ort_version_supported,
+  //                   " (expected at least ", kMinAllowedOrtVersionSupported, ").");
 
   ORT_RETURN_IF_NOT(ort_ep.GetName != nullptr, "OrtEp has null GetName function pointer.");
 
