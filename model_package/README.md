@@ -1,78 +1,130 @@
 # Model Package Library
 
-A standalone C library for parsing and inspecting ONNX Runtime Model Packages.
-
-**No dependency on ONNX Runtime.** This library can be consumed independently by any component (ORT, GenAI, FL, or external tools).
+A standalone C library for **reading, authoring, and committing** ONNX
+Runtime Model Packages. No dependency on ONNX Runtime, so any consumer
+(ORT, ONNX Runtime GenAI, Foundry Local, external publisher tools) can
+link against it.
 
 ## What it does
 
-- Parses model package directory structures (`manifest.json`, `metadata.json`, `variant.json`)
-- Provides read-only access to:
-  - Components and their variants
-  - EP compatibility declarations (opaque strings)
-  - Model file paths within variants
-  - Session/provider options per file
-  - Consumer metadata (opaque JSON)
+- **Open** a package directory and walk its components / variants /
+  shared assets through a POD tree (`ModelPackage_Info()`).
+- **Author** from scratch or in place via mutation calls
+  (`SetComponentInline`, `SetVariant`, `SetVariantExecutorInfoExternal`,
+  `AddSharedAsset`, etc.) and serialize with `ModelPackage_Commit()`.
+- **Resolve** path / shared-asset references via
+  `ModelPackage_ResolveStringRef()`. Accepts relative paths, absolute
+  paths (installed layout only), `..` segments (installed only), bare
+  `sha256:<hex>` asset URIs, and `sha256:<hex>/sub/path` forms.
+- **Prune** stale orphan directories and **Validate** structural,
+  reachability, path, and rehash invariants.
 
-## What it does NOT do
+## What it deliberately does NOT do
 
-- Variant selection (requires runtime EP factory validation → stays in ORT)
-- Session creation (requires ORT `InferenceSession`)
-- Any interpretation of `compatibility_string` tokens
+- **Variant selection** — picking which variant best matches the
+  available execution providers requires EP factory introspection and
+  lives in the executor (ORT in particular).
+- **Session creation** — building an `OrtSession` is ORT's job.
+- **Interpreting `executor_info` payloads** — each consumer namespace
+  (`ort`, `genai`, …) is opaque to this library.
+- **Interpreting `compatibility_string`** — the format is owned by EPs.
 
 ## Building
 
 ```bash
-cmake -B build -S .
-cmake --build build
+cmake -B build -S . [-DMODEL_PACKAGE_BUILD_TESTS=ON]
+cmake --build build -j
+ctest --test-dir build --output-on-failure   # requires BUILD_TESTS=ON
 ```
 
-Options:
-- `-DMODEL_PACKAGE_BUILD_SHARED=ON|OFF` — Build as shared (default) or static library
-- `-DMODEL_PACKAGE_BUILD_TESTS=ON` — Build tests (default OFF)
+CMake options:
+- `MODEL_PACKAGE_BUILD_SHARED` (default `ON`) — shared vs static.
+- `MODEL_PACKAGE_BUILD_TESTS`  (default `OFF`) — build the four
+  unit-test executables (`test_asset_hashing`, `test_inspection`,
+  `test_authoring`, `test_commit`).
 
-## C API Usage
+## C API quick tour
+
+All public entry points are declared in `include/model_package.h`. Open
+a package and walk its info tree:
 
 ```c
-#include "model_package_api.h"
+#include "model_package.h"
 
-ModelPackageContext* ctx = NULL;
-ModelPackageStatus* status = ModelPackage_CreateContext("/path/to/package", &ctx);
-if (status != NULL) {
-    printf("Error: %s\n", ModelPackage_GetErrorMessage(status));
-    ModelPackage_ReleaseStatus(status);
-    return;
+ModelPackage* pkg = NULL;
+ModelPackageStatus* st = ModelPackage_Open("/path/to/pkg", NULL, &pkg);
+if (st) {
+    fprintf(stderr, "open failed: %s\n", ModelPackageStatus_Message(st));
+    ModelPackageStatus_Release(st);
+    return 1;
 }
 
-size_t count = 0;
-ModelPackage_GetComponentCount(ctx, &count);
-
-for (size_t i = 0; i < count; i++) {
-    const char* name = NULL;
-    ModelPackage_GetComponentName(ctx, i, &name);
-    printf("Component: %s\n", name);
+const ModelPackageInfo* info = ModelPackage_Info(pkg);
+for (size_t i = 0; i < info->num_components; ++i) {
+    const ModelComponentInfo* c = &info->components[i];
+    printf("component %s (%zu variants)\n", c->name, c->num_variants);
 }
 
-ModelPackage_ReleaseContext(ctx);
+ModelPackage_Close(pkg);
 ```
 
-## Integration with ORT
+Author a package from scratch:
 
-ORT compiles this library as part of its build and wraps the C API through `OrtModelPackageApi`, adding:
-- Variant selection via EP factory compatibility validation
-- Session creation with merged options
+```c
+ModelPackage* pkg = NULL;
+ModelPackage_New(&pkg);
+ModelPackage_SetComponentInline(pkg, "encoder", "{\"variants\": {}}");
+ModelPackage_SetVariant(pkg, "encoder", "v1",
+                        "{\"ep\":\"CPU\",\"variant_directory\":\"encoder/v1\"}");
+ModelPackage_SetVariantExecutorInfoInline(
+    pkg, "encoder", "v1", "ort", "{\"model_file\":\"model.onnx\"}");
+ModelPackage_Commit(pkg, "/path/to/new_pkg", MODEL_PACKAGE_WRITE_PRESERVE);
+ModelPackage_Close(pkg);
+```
 
-## Package Format
+### Lifetime contract
+
+Every `const char*` and every `const ModelPackageInfo*` (plus
+sub-arrays) returned by the read API is owned by the `ModelPackage`
+handle and remains valid **until the next mutation of that scope** or
+until `ModelPackage_Close()`. Any `Set*`/`Remove*`/`Add*`/`Commit` call
+invalidates cached pointers in the mutated scope; re-read
+`ModelPackage_Info()` after mutating.
+
+`ModelPackage_AddSharedAsset` returns its `out_uri` under the same
+"valid until next mutation" contract.
+
+## Package format
+
+A package is a directory rooted at `package_root/` containing
+`manifest.json`. Components may be declared inline in the manifest or
+externally as a sibling `component.json`/folder. Variants live under a
+`variant_directory` (defaults to `<component_dir>/<variant_name>`),
+which holds the model files plus any executor-specific configuration
+referenced by `executor_info`. Shared, content-addressed asset
+directories live under `shared_assets/sha256-<hex>/`.
 
 ```
 package_root/
-├── manifest.json              # schema_version, components list
-└── models/
-    └── <component_name>/
-        ├── metadata.json      # variants + EP compatibility declarations
-        └── <variant_name>/
-            ├── variant.json   # files list, consumer_metadata
-            └── model.onnx     # (or other model files)
+├── manifest.json
+├── decoder/                       # external component
+│   ├── component.json
+│   └── cpu/                       # variant_directory
+│       └── model.onnx
+└── shared_assets/
+    └── sha256-<64hex>/            # content-addressed asset
+        └── ...
 ```
 
-Single-component shorthand (metadata.json at root, no manifest.json) is also supported.
+See `/datadisks/jambaykinley/archive/m/model_package_redesign.md` for
+the full design rationale.
+
+## ORT integration
+
+ORT's `OrtModelPackageApi` (see `onnxruntime_c_api.h`) wraps this
+library and adds variant selection plus `OrtSession` creation:
+`CreateModelPackageOptionsFromSessionOptions` →
+`OrtModelPackageApi::SelectComponent` →
+`OrtModelPackageApi::CreateSession`.
+
+The library itself never links against ORT.
