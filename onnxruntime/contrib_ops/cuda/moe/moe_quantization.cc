@@ -67,7 +67,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   // concrete prepacked layouts selected by -1 and 1 are determined by the
   // execution provider. The CUDA EP maps the tri-state as:
   //   -1 (default): already prepacked in the EP's default int weight layout.
-  //    1: already prepacked in the EP's SM90 (Hopper) int weight layout.
+  //    1: already prepacked in an alternate EP-selected int weight layout.
   //    0: raw [E, N, K/pack] initializers; the PrePack hook lays them out.
   //
   // Important: the CUDA QMoE int4/int8 MoE GEMM always dispatches to the
@@ -77,6 +77,8 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   // consumes the SM80/Ampere CUTLASS fpA_intB layout on every GPU. As a result
   // the EP default (-1) is the SM80 layout regardless of the runtime device SM,
   // and SM80-format weights are valid on SM90 (they run via the SM80 kernel).
+  // For CUDA today, -1 and 1 are equivalent (both SM80 layout), and 1 is
+  // reserved for a possible future Hopper-specific layout.
   // PrePack (weights_prepacked=0) packs for the SM80 layout accordingly.
   const int64_t weights_prepacked_mode =
       op_kernel_info.GetAttrOrDefault<int64_t>("weights_prepacked", static_cast<int64_t>(-1));
@@ -1154,6 +1156,9 @@ void QMoE::PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, Al
                                    IAllocatorUniquePtr<void>& packed_buf, bool& is_packed) {
   ORT_ENFORCE(expert_weight_bits_ == 4 || expert_weight_bits_ == 8,
               "PrePackIntExpertWeights: only 4 and 8 bits are supported, got ", expert_weight_bits_);
+  ORT_ENFORCE(sm_ >= 75,
+              "PrePackIntExpertWeights: quant_type='int' with weights_prepacked=0 requires SM75+ CUDA hardware, got SM",
+              sm_);
   const auto& shape = tensor.Shape();
   ORT_ENFORCE(shape.NumDimensions() == 3,
               "PrePackIntExpertWeights: expected 3-D weight tensor [E, N, K/pack], got ndim=",
