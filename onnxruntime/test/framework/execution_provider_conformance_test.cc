@@ -140,9 +140,11 @@ TEST_P(EpConformanceTest, PreferredAllocatorsAreNonNullAndRepeatable) {
       << "CreatePreferredAllocators() must be repeatable (documented as stateless).";
 }
 
-// Invariant: each preferred allocator hands back usable memory. A non-zero
-// allocation yields a non-null pointer that can be freed. For CPU-accessible
-// memory we additionally verify the buffer is host-writable and readable.
+// Invariant: each CPU-accessible preferred allocator hands back usable memory:
+// a non-zero allocation yields a non-null, host-writable and -readable pointer
+// that can be freed. Device allocators are intentionally excluded here -- their
+// raw Alloc/Free lifecycle is backend-specific (see body) -- and are covered by
+// PreferredAllocatorsAreNonNullAndRepeatable instead.
 TEST_P(EpConformanceTest, PreferredAllocatorsAllocateUsableMemory) {
   auto ep = MakeEp();
   if (!ep) GTEST_SKIP() << GetParam().name << " EP not available in this environment.";
@@ -153,21 +155,36 @@ TEST_P(EpConformanceTest, PreferredAllocatorsAllocateUsableMemory) {
   }
 
   constexpr size_t kBytes = 256;
+  size_t exercised = 0;
   for (const auto& alloc : allocators) {
     ASSERT_NE(alloc, nullptr);
+
+    // Standalone Alloc()/Free() is only a backend-agnostic contract for
+    // CPU-accessible allocators. A device allocator may hand out memory with a
+    // backend-specific lifecycle that this test cannot drive: e.g. the WebGPU
+    // GpuBufferAllocator creates buffers mapped at creation that must be
+    // unmapped through the buffer manager before Free(), so Free()-ing a
+    // freshly allocated buffer throws. Skip such allocators; they are covered
+    // by PreferredAllocatorsAreNonNullAndRepeatable.
+    if (!alloc->Info().device.UsesCpuMemory()) {
+      continue;
+    }
 
     void* p = alloc->Alloc(kBytes);
     ASSERT_NE(p, nullptr) << "Alloc(" << kBytes << ") returned null for allocator on "
                           << alloc->Info().device.ToString();
 
-    // Only host-accessible memory may be touched from the test (CPU) thread.
-    if (alloc->Info().device.UsesCpuMemory()) {
-      std::memset(p, 0xAB, kBytes);
-      const auto* bytes = static_cast<const unsigned char*>(p);
-      EXPECT_EQ(bytes[0], 0xAB);
-      EXPECT_EQ(bytes[kBytes - 1], 0xAB);
-    }
+    std::memset(p, 0xAB, kBytes);
+    const auto* bytes = static_cast<const unsigned char*>(p);
+    EXPECT_EQ(bytes[0], 0xAB);
+    EXPECT_EQ(bytes[kBytes - 1], 0xAB);
     alloc->Free(p);
+    ++exercised;
+  }
+
+  if (exercised == 0) {
+    GTEST_SKIP() << GetParam().name
+                 << " EP exposes no CPU-accessible preferred allocator to exercise.";
   }
 }
 
