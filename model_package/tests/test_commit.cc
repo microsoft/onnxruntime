@@ -268,6 +268,31 @@ bool test_commit_dest_root_must_be_empty() {
 // Prune
 // ─────────────────────────────────────────────────────────────────────────────
 
+bool test_commit_dest_root_rehashes_existing_asset() {
+  Sandbox s;
+  s.Write("src_asset/m.onnx", "alpha");
+  PkgHandle p = MakeAuthoredPkgAt(s.path("orig"));
+  const char* uri = nullptr;
+  CHECK_OK(ModelPackage_AddSharedAsset(p.get(), s.path("src_asset").c_str(),
+                                       nullptr, /*copy_in=*/true, &uri));
+  std::string uri_copy(uri);
+  std::string vbody = R"({"ep":"CPU","uses_assets":[")" + uri_copy + R"("]})";
+  CHECK_OK(ModelPackage_SetVariant(p.get(), "encoder", "v1", vbody.c_str()));
+  CHECK_OK(ModelPackage_Commit(p.get(), s.path("orig").c_str(),
+                               MODEL_PACKAGE_WRITE_PRESERVE));
+
+  // Tamper with the landed sha256-<hex>/ dir under the existing package root.
+  std::string hex = uri_copy.substr(7);
+  fs::path landed = s.path("orig") / "shared_assets" / ("sha256-" + hex) / "m.onnx";
+  { std::ofstream f(landed, std::ios::binary); f << "TAMPERED"; }
+
+  // CommitToDestRoot must rehash the source and refuse the mismatch.
+  CHECK_ERR(ModelPackage_Commit(p.get(), s.path("saved").c_str(),
+                                MODEL_PACKAGE_WRITE_PRESERVE),
+            MODEL_PACKAGE_ERR_STATE);
+  return true;
+}
+
 bool test_prune_skips_within_grace_period() {
   Sandbox s;
   PkgHandle p = MakeAuthoredPkgAt(s.path("pkg"));
@@ -454,6 +479,7 @@ const Test kTests[] = {
     {"commit_dense_rejects_external_executor_info", test_commit_dense_rejects_external_executor_info},
     {"commit_dest_root_self_contained", test_commit_dest_root_self_contained},
     {"commit_dest_root_must_be_empty", test_commit_dest_root_must_be_empty},
+    {"commit_dest_root_rehashes_existing_asset", test_commit_dest_root_rehashes_existing_asset},
     {"prune_skips_within_grace_period", test_prune_skips_within_grace_period},
     {"prune_removes_old_orphans", test_prune_removes_old_orphans},
     {"prune_removes_stale_staging_dirs", test_prune_removes_stale_staging_dirs},
