@@ -13,6 +13,17 @@
 #undef __out
 #endif
 
+// Workaround for CCCL (CUDA 13.x) header-ordering issue:
+// <cub/device/device_transform.cuh> specializes cuda::proclaims_copyable_arguments,
+// whose primary template lives in <cuda/__functional/address_stability.h>.
+// Under some CUDA 13.x toolkits the cub umbrella reaches device_transform.cuh
+// before address_stability.h, causing a cudafe++ parse error on the
+// specialization (`global qualification of class name is invalid before ':'`).
+// Force the primary template to be visible first.
+#if defined(__CUDACC_VER_MAJOR__) && (__CUDACC_VER_MAJOR__ >= 13)
+#include <cuda/__functional/address_stability.h>
+#endif
+
 #include <cub/cub.cuh>
 
 #if defined(_MSC_VER)
