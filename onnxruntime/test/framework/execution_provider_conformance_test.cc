@@ -65,7 +65,12 @@ std::vector<EpConformanceParam> GetEpConformanceParams() {
 #ifdef USE_DML
   params.push_back({"Dml", [] { return DefaultDmlExecutionProvider(); }});
 #endif
-#ifdef USE_WEBGPU
+  // Mirror the guard used by base_tester.cc / default_providers.cc: in
+  // ORT_USE_EP_API_ADAPTERS builds DefaultWebGpuExecutionProvider() ORT_ENFORCEs
+  // (aborting the whole test run) when the dynamic plugin EP is initialized to a
+  // different EP, rather than cleanly returning nullptr. Only list the built-in
+  // WebGPU EP when it is not routed through the EP API adapters.
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
   params.push_back({"WebGpu", [] { return DefaultWebGpuExecutionProvider(); }});
 #endif
 #ifdef USE_XNNPACK
