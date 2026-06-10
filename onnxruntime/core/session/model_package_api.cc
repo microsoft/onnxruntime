@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/model_package_api.h"
+#include "core/session/onnxruntime_experimental_c_api.h"
 
 #include "core/common/common.h"
 #include "core/framework/error_code_helper.h"
@@ -23,7 +23,9 @@ using namespace onnxruntime;
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, \
                                "Model package API is not supported in this build")
 
-ORT_API(void, OrtModelPackageAPI::ReleaseModelPackageOptions,
+namespace OrtExperimentalApis {
+
+ORT_API(void, OrtModelPackageApi_ReleaseModelPackageOptions_SinceV28,
         _Frees_ptr_opt_ OrtModelPackageOptions* options) {
 #if !defined(ORT_MINIMAL_BUILD)
   delete reinterpret_cast<onnxruntime::ModelPackageOptions*>(options);
@@ -32,7 +34,7 @@ ORT_API(void, OrtModelPackageAPI::ReleaseModelPackageOptions,
 #endif
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateModelPackageOptionsFromSessionOptions,
+ORT_API_STATUS_IMPL(OrtModelPackageApi_CreateModelPackageOptionsFromSessionOptions_SinceV28,
                     _In_ const OrtEnv* env,
                     _In_ const OrtSessionOptions* session_options,
                     _Outptr_ OrtModelPackageOptions** out) {
@@ -54,7 +56,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateModelPackageOptionsFromSessionOpti
   API_IMPL_END
 }
 
-ORT_API(void, OrtModelPackageAPI::ReleaseModelPackageContext,
+ORT_API(void, OrtModelPackageApi_ReleaseModelPackageContext_SinceV28,
         _Frees_ptr_opt_ OrtModelPackageContext* ctx) {
 #if !defined(ORT_MINIMAL_BUILD)
   delete reinterpret_cast<onnxruntime::ModelPackageContext*>(ctx);
@@ -63,7 +65,7 @@ ORT_API(void, OrtModelPackageAPI::ReleaseModelPackageContext,
 #endif
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateModelPackageContext,
+ORT_API_STATUS_IMPL(OrtModelPackageApi_CreateModelPackageContext_SinceV28,
                     _In_ const ORTCHAR_T* package_root,
                     _Outptr_ OrtModelPackageContext** out) {
   API_IMPL_BEGIN
@@ -89,7 +91,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateModelPackageContext,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetComponentCount,
+ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_GetComponentCount_SinceV28,
                     _In_ const OrtModelPackageContext* ctx,
                     _Out_ size_t* out_count) {
   API_IMPL_BEGIN
@@ -107,7 +109,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetComponentCount,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetComponentNames,
+ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_GetComponentNames_SinceV28,
                     _In_ const OrtModelPackageContext* ctx,
                     _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_names,
                     _Out_ size_t* out_count) {
@@ -136,7 +138,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetComponentNames,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetVariantCount,
+ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_GetVariantCount_SinceV28,
                     _In_ const OrtModelPackageContext* ctx,
                     _In_ const char* component_name,
                     _Out_ size_t* out_count) {
@@ -158,7 +160,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetVariantCount,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetVariantNames,
+ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_GetVariantNames_SinceV28,
                     _In_ const OrtModelPackageContext* ctx,
                     _In_ const char* component_name,
                     _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_variant_names,
@@ -190,7 +192,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetVariantNames,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::SelectComponent,
+ORT_API_STATUS_IMPL(OrtModelPackageApi_SelectComponent_SinceV28,
                     _In_ const OrtModelPackageContext* context,
                     _In_ const char* component_name,
                     _In_ const OrtModelPackageOptions* options,
@@ -235,7 +237,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::SelectComponent,
   API_IMPL_END
 }
 
-ORT_API(void, OrtModelPackageAPI::ReleaseModelPackageComponentContext,
+ORT_API(void, OrtModelPackageApi_ReleaseModelPackageComponentContext_SinceV28,
         _Frees_ptr_opt_ OrtModelPackageComponentContext* cix) {
 #if !defined(ORT_MINIMAL_BUILD)
   delete reinterpret_cast<onnxruntime::ModelPackageComponentContext*>(cix);
@@ -244,7 +246,7 @@ ORT_API(void, OrtModelPackageAPI::ReleaseModelPackageComponentContext,
 #endif
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantFolderPath,
+ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackageComponent_GetSelectedVariantFolderPath_SinceV28,
                     _In_ const OrtModelPackageComponentContext* ctx,
                     _Outptr_ const ORTCHAR_T** folder_path) {
   API_IMPL_BEGIN
@@ -269,7 +271,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariant
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateSession,
+ORT_API_STATUS_IMPL(OrtModelPackageApi_CreateSession_SinceV28,
                     _In_ const OrtEnv* env,
                     _In_ OrtModelPackageComponentContext* ctx,
                     _In_opt_ const OrtSessionOptions* session_options,
@@ -383,7 +385,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::CreateSession,
 
 // ---------- API table ------------------------------------------------------
 
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetVariantEpName,
+ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_GetVariantEpName_SinceV28,
                     _In_ const OrtModelPackageContext* ctx,
                     _In_ const char* component_name,
                     _In_ const char* variant_name,
@@ -417,7 +419,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetVariantEpName,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetSchemaVersion,
+ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_GetSchemaVersion_SinceV28,
                     _In_ const OrtModelPackageContext* ctx,
                     _Out_ int64_t* out_version) {
   API_IMPL_BEGIN
@@ -437,7 +439,7 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackage_GetSchemaVersion,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantName,
+ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackageComponent_GetSelectedVariantName_SinceV28,
                     _In_ const OrtModelPackageComponentContext* ctx,
                     _Outptr_ const char** out_name) {
   API_IMPL_BEGIN
@@ -461,40 +463,4 @@ ORT_API_STATUS_IMPL(OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariant
   API_IMPL_END
 }
 
-// ---------- API table dispatch ---------------------------------------------
-
-static constexpr OrtModelPackageApi ort_model_package_api = {
-    // Options
-    &OrtModelPackageAPI::CreateModelPackageOptionsFromSessionOptions,
-    &OrtModelPackageAPI::ReleaseModelPackageOptions,
-
-    // Context
-    &OrtModelPackageAPI::CreateModelPackageContext,
-    &OrtModelPackageAPI::ReleaseModelPackageContext,
-
-    // Package-level queries
-    &OrtModelPackageAPI::ModelPackage_GetSchemaVersion,
-    &OrtModelPackageAPI::ModelPackage_GetComponentCount,
-    &OrtModelPackageAPI::ModelPackage_GetComponentNames,
-    &OrtModelPackageAPI::ModelPackage_GetVariantCount,
-    &OrtModelPackageAPI::ModelPackage_GetVariantNames,
-    &OrtModelPackageAPI::ModelPackage_GetVariantEpName,
-
-    // Variant selection and component queries
-    &OrtModelPackageAPI::SelectComponent,
-    &OrtModelPackageAPI::ReleaseModelPackageComponentContext,
-    &OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantName,
-    &OrtModelPackageAPI::ModelPackageComponent_GetSelectedVariantFolderPath,
-
-    // Session
-    &OrtModelPackageAPI::CreateSession,
-
-    // End of Version 1.27 - DO NOT MODIFY ABOVE
-};
-
-static_assert(offsetof(OrtModelPackageApi, CreateSession) / sizeof(void*) == 14,
-              "Size of initial OrtModelPackageApi cannot change");
-
-ORT_API(const OrtModelPackageApi*, OrtModelPackageAPI::GetModelPackageApi) {
-  return &ort_model_package_api;
-}
+}  // namespace OrtExperimentalApis

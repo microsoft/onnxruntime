@@ -18,6 +18,14 @@
 
 namespace OrtExperimentalApis {
 
+// Forward declarations driven by the .inc file so the registration table below
+// can take the address of every entry, including those defined in other
+// translation units linked into onnxruntime_session.
+#define ORT_EXPERIMENTAL_API(VER, RET, NAME, ...) \
+  RET ORT_API_CALL NAME##_SinceV##VER(__VA_ARGS__) NO_EXCEPTION;
+#include "onnxruntime_experimental_c_api.inc"
+#undef ORT_EXPERIMENTAL_API
+
 // Test-only experimental function that writes a known sentinel value.
 // Exists to exercise the experimental API mechanism end-to-end and to serve as a template for future experimental
 // functions.

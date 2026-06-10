@@ -35,3 +35,92 @@
  * \snippet{doc} snippets.dox OrtStatus Return Value
  */
 ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, _Out_ int64_t* out)
+
+// ---------------------------------------------------------------------------
+// OrtModelPackageApi
+//
+// A model package is a directory containing one or more components (logical models).
+// Each component has one or more variants, where each variant targets a single execution
+// provider (EP). The manifest declares the EP, device, and an optional compatibility
+// string per variant so the runtime can pick the best-matching variant for the EPs
+// configured in OrtSessionOptions.
+//
+// Typical flow:
+//   1) CreateModelPackageOptionsFromSessionOptions(env, session_options, &opts)
+//   2) CreateModelPackageContext(package_root, &ctx)
+//   3) (optional) inspect components/variants via ModelPackage_GetXxx
+//   4) SelectComponent(ctx, component_name, opts, &comp_ctx)
+//   5) (optional) ModelPackageComponent_GetSelectedVariantName / FolderPath
+//   6) CreateSession(env, comp_ctx, session_options_or_null, &session)
+//
+// Opaque handles (OrtModelPackageOptions, OrtModelPackageContext, OrtModelPackageComponentContext)
+// are declared in onnxruntime_experimental_c_api.h.
+// ---------------------------------------------------------------------------
+
+ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtModelPackageApi_CreateModelPackageOptionsFromSessionOptions,
+                     _In_ const OrtEnv* env,
+                     _In_ const OrtSessionOptions* session_options,
+                     _Outptr_ OrtModelPackageOptions** out)
+
+ORT_EXPERIMENTAL_API(28, void, OrtModelPackageApi_ReleaseModelPackageOptions,
+                     _Frees_ptr_opt_ OrtModelPackageOptions* options)
+
+ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtModelPackageApi_CreateModelPackageContext,
+                     _In_ const ORTCHAR_T* package_root,
+                     _Outptr_ OrtModelPackageContext** out)
+
+ORT_EXPERIMENTAL_API(28, void, OrtModelPackageApi_ReleaseModelPackageContext,
+                     _Frees_ptr_opt_ OrtModelPackageContext* ctx)
+
+ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtModelPackageApi_ModelPackage_GetSchemaVersion,
+                     _In_ const OrtModelPackageContext* ctx,
+                     _Out_ int64_t* out_version)
+
+ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtModelPackageApi_ModelPackage_GetComponentCount,
+                     _In_ const OrtModelPackageContext* ctx,
+                     _Out_ size_t* out_count)
+
+ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtModelPackageApi_ModelPackage_GetComponentNames,
+                     _In_ const OrtModelPackageContext* ctx,
+                     _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_names,
+                     _Out_ size_t* out_count)
+
+ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtModelPackageApi_ModelPackage_GetVariantCount,
+                     _In_ const OrtModelPackageContext* ctx,
+                     _In_ const char* component_name,
+                     _Out_ size_t* out_count)
+
+ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtModelPackageApi_ModelPackage_GetVariantNames,
+                     _In_ const OrtModelPackageContext* ctx,
+                     _In_ const char* component_name,
+                     _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_variant_names,
+                     _Out_ size_t* out_count)
+
+ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtModelPackageApi_ModelPackage_GetVariantEpName,
+                     _In_ const OrtModelPackageContext* ctx,
+                     _In_ const char* component_name,
+                     _In_ const char* variant_name,
+                     _Outptr_result_maybenull_ const char** out_ep)
+
+ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtModelPackageApi_SelectComponent,
+                     _In_ const OrtModelPackageContext* context,
+                     _In_ const char* component_name,
+                     _In_ const OrtModelPackageOptions* options,
+                     _Outptr_ OrtModelPackageComponentContext** out)
+
+ORT_EXPERIMENTAL_API(28, void, OrtModelPackageApi_ReleaseModelPackageComponentContext,
+                     _Frees_ptr_opt_ OrtModelPackageComponentContext* ctx)
+
+ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtModelPackageApi_ModelPackageComponent_GetSelectedVariantName,
+                     _In_ const OrtModelPackageComponentContext* ctx,
+                     _Outptr_ const char** out_name)
+
+ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtModelPackageApi_ModelPackageComponent_GetSelectedVariantFolderPath,
+                     _In_ const OrtModelPackageComponentContext* ctx,
+                     _Outptr_ const ORTCHAR_T** folder_path)
+
+ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtModelPackageApi_CreateSession,
+                     _In_ const OrtEnv* env,
+                     _In_ OrtModelPackageComponentContext* context,
+                     _In_opt_ const OrtSessionOptions* session_options,
+                     _Outptr_ OrtSession** session)
