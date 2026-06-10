@@ -623,6 +623,7 @@ void WindowsTelemetry::LogEpDeviceUsage(uint32_t session_id,
                     TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
                     TraceLoggingLevel(WINEVENT_LEVEL_INFO),
                     // Telemetry info
+                    // schemaVersion 1: added epVersion, runtimeVersion
                     TraceLoggingUInt8(1, "schemaVersion"),
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingString(ep_type.c_str(), "executionProviderType"),
@@ -635,6 +636,7 @@ void WindowsTelemetry::LogEpDeviceUsage(uint32_t session_id,
                     TraceLoggingInt32(assigned_node_count, "assignedNodeCount"),
                     TraceLoggingUInt32(total_runs_since_last, "totalRunsSinceLast"),
                     TraceLoggingInt64(total_run_duration_since_last, "totalRunDurationSinceLast"),
+                    TraceLoggingString(ORT_VERSION, "runtimeVersion"),
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
