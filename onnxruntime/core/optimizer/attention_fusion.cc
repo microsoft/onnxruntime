@@ -920,11 +920,11 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
   }
 
   std::vector<graph_utils::EdgeEndToMatch> q_path{
-      {0, 0, "Transpose", {1, 13}, kOnnxDomain},
-      {0, 0, "Reshape", {5, 13}, kOnnxDomain},
-      {0, 0, "Add", {7, 13}, kOnnxDomain},
+      {0, 0, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Add", {7, 13, 14}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain},
-      {0, 0, "LayerNormalization", {1}, kOnnxDomain}};
+      {0, 0, "LayerNormalization", {1, 17}, kOnnxDomain}};
   if (!graph_utils::FindPath(edges[edges.size() - 1]->GetNode(), true, q_path, edges, logger)) {
     DEBUG_LOG("Failed to find path for q");
     return false;
@@ -953,9 +953,9 @@ static bool FuseSubGraphQKImpl(Node& layer_norm,
   }
 
   std::vector<graph_utils::EdgeEndToMatch> k_path{
-      {0, 1, "Transpose", {1, 13}, kOnnxDomain},
-      {0, 0, "Reshape", {5, 13}, kOnnxDomain},
-      {0, 0, "Add", {7, 13}, kOnnxDomain},
+      {0, 1, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Add", {7, 13, 14}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain},
       {0, 0, "LayerNormalization", {1, 17}, kOnnxDomain}};
 
@@ -1070,8 +1070,8 @@ static bool FuseSubGraphQK(Node& layer_norm,
                            const logging::Logger& logger) {
   // path to q
   std::vector<graph_utils::EdgeEndToMatch> q_varience_path{
-      {0, 0, "Div", {7, 13}, kOnnxDomain},
-      {0, 0, "MatMul", {1, 9}, kOnnxDomain}};
+      {0, 0, "Div", {7, 13, 14}, kOnnxDomain},
+      {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain}};
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(*(mask_nodes.add), true, q_varience_path, edges, logger)) {
     DEBUG_LOG("Failed to find path for q");
@@ -1163,7 +1163,7 @@ static bool FuseSubGraphQKDistilBert(Node& layer_norm,
   // path to q
   std::vector<graph_utils::EdgeEndToMatch> q_varience_path{
       {0, 2, "MatMul", {1, 9, 13}, kOnnxDomain},
-      {0, 0, "Div", {7, 13}, kOnnxDomain}};
+      {0, 0, "Div", {7, 13, 14}, kOnnxDomain}};
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(*(mask_nodes.where), true, q_varience_path, edges, logger)) {
     DEBUG_LOG("Failed to find path for q");
@@ -1265,14 +1265,14 @@ bool AttentionFusion::FuseSubGraph(Node& layer_norm,
                                    std::map<std::string, NodeArg*>& mask_int32_map,
                                    const logging::Logger& logger) {
   std::vector<graph_utils::EdgeEndToMatch> parent_path{
-      {0, 0, "Add", {7, 13}, kOnnxDomain},
+      {0, 0, "Add", {7, 13, 14}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain},
-      {0, 0, "Reshape", {5, 13}, kOnnxDomain},
-      {0, 0, "Transpose", {1, 13}, kOnnxDomain},
+      {0, 0, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain},
-      {0, 1, "Transpose", {1, 13}, kOnnxDomain},
-      {0, 0, "Reshape", {5, 13}, kOnnxDomain},
-      {0, 0, "Add", {7, 13}, kOnnxDomain},
+      {0, 1, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Add", {7, 13, 14}, kOnnxDomain},
       {0, 0, "MatMul", {1, 9, 13}, kOnnxDomain},
       {0, 0, "LayerNormalization", {1, 17}, kOnnxDomain}};
 

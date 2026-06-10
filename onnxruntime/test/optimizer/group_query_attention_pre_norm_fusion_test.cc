@@ -16,6 +16,7 @@
 #include "test/optimizer/webgpu_fusion_test_util.h"
 
 #include "gtest/gtest.h"
+#include "onnx/defs/schema.h"
 
 namespace onnxruntime {
 namespace test {
@@ -258,10 +259,17 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionFusesQwenPatter
       TransformerLevel::Level2, /*steps=*/1, nullptr, CheckFusedGraph));
 }
 
-TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionFusesQwenPatternOpset25) {
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionFusesQwenPatternCurrentOpset) {
+  // Uses the current max ONNX opset to catch version-list drift.
+  // If this fails, update version lists in
+  // onnxruntime/core/optimizer/group_query_attention_pre_norm_fusion.cc.
+  int current_opset = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance()
+                          .Map()
+                          .at(ONNX_NAMESPACE::ONNX_DOMAIN)
+                          .second;
   auto build = [](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, BuildOptions{}); };
   ASSERT_STATUS_OK(TestGraphTransformer(
-      build, /*opset_version=*/25, *logger_, MakeWebGpuTransformer(),
+      build, /*opset_version=*/current_opset, *logger_, MakeWebGpuTransformer(),
       TransformerLevel::Level2, /*steps=*/1, nullptr, CheckFusedGraph));
 }
 
