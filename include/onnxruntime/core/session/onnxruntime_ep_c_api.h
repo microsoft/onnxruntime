@@ -2119,12 +2119,15 @@ struct OrtEp {
   /** \brief The ONNX Runtime version the execution provider was compiled with.
    *
    * Implementation should normally set this to ORT_API_VERSION.
-   * ORT will use this to ensure it does not call functions that were not available when the library was compiled.
+   * ORT reads this field to gate which OrtEp callbacks it invokes: it will not call a callback that was
+   * introduced after this version (e.g. when a plugin compiled against an older ORT is loaded by a newer
+   * runtime, the newer callbacks stay unused).
    *
-   * An execution provider that is compiled against the latest headers but wants to remain loadable by an
-   * older ORT runtime may instead set this to the minimum of ORT_API_VERSION and the loaded runtime's API
-   * version. In that case it must only populate OrtEp callbacks (and call OrtEpApi functions) that exist in
-   * that lower version.
+   * A plugin compiled against the latest headers that wants to remain loadable by an older ORT runtime may
+   * set this to the minimum of ORT_API_VERSION and the loaded runtime's API version, which caps callback
+   * invocation at the runtime's version. Note that this field does not restrict the OrtEpApi functions the
+   * plugin itself calls; the plugin must independently ensure it only populates callbacks, and only calls
+   * OrtEpApi functions, that exist in the loaded runtime's version.
    *
    * \since Version 1.22.
    */
