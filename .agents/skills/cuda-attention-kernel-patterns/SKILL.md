@@ -142,15 +142,45 @@ for (int64_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
 Always call `CUDA_CALL(cudaGetLastError())` after kernel launches in standalone helper functions. This is the established pattern in the file (see `ConcatPastToPresent`, `PastPresentBufferShare`).
 
-## 6. Fully-Masked Batches
+## 6. Fully-Masked Rows and Batches
 
-All-false bool masks or `seqlens_k=0` produce NaN in CUTLASS MEA.
+All-false bool masks, an all-`-inf` `attn_mask` row, or a causal/nonpad frontier
+with no allowed key produce NaN in CUTLASS MEA (the uniform/empty softmax degenerates:
+`s_prime=0` → `1/s_prime=inf` → `0 × inf = NaN`). Per onnx/onnx#8068 (Bug-2), a
+**fully-masked query row** — one with no key allowed by the composed causal + nonpad +
+mask constraints — must output a **zero row** (`Y = 0`), **not** mean-of-V.
 
-**Additive-bias path** (bool mask converted to bias): Fixed by capping `mask_filter_value` to `-1e+30f` (see section 2). CUTLASS then naturally computes uniform softmax → mean(V).
+**This `Y = 0` behavior is now consistent on BOTH EPs** (the earlier mean(V)-vs-zero
+cross-EP divergence is RESOLVED — there is no longer an open TODO here):
 
-**Nonpad path** (`seqlens_k=0`): CUTLASS skips all K/V positions → `s_prime=0` → NaN. Fixed by `ZeroOutputForFullyMaskedBatches` kernel which zeros output for batches where `seqlens_k[b] == 0`. Note: this produces zeros, not mean(V) — a cross-EP consistency TODO exists.
+- **CUDA**: `ZeroFullyMaskedRowsKernel` (in `attention_mask_impl.cu`) runs after the
+  MEA/CUTLASS output and zeros each fully-masked row with a **select** (not multiply,
+  so `0 @ V = 0` even when V is poisoned). It detects a fully-masked row with an exact
+  per-key predicate (within the causal/nonpad frontier AND the additive-bias slot is
+  above the mask sentinel), matching the onnx#8068 `isneginf`-of-row-max reference. A
+  finite (even very negative) user bias is not the sentinel, so its key stays unmasked
+  and the row is left untouched.
+- **CPU**: `core/providers/cpu/llm/attention.cc` applies the same Bug-2 guard — after
+  softmax it zeros any row whose composed frontier admitted no unmasked key.
 
-**CPU/Unfused behavior**: `mask_filter_value = lowest()` (not `-inf`). All masked values are equal → `softmax(equal) = 1/N` → output = mean(V). This is the spec reference.
+**Additive-bias path** (bool mask converted to bias): `mask_filter_value` is capped to
+`-1e+30f` (see section 2) so CUTLASS does not overflow to NaN; a row that is nonetheless
+fully masked is then zeroed by the per-row guard above.
+
+**Whole-batch empty (`seqlens_k[b] == 0`)**: the structural case where an entire batch
+has zero valid keys is additionally handled by `ZeroOutputForFullyMaskedBatches`, which
+zeros that batch's output. (The per-row guard covers the finer-grained case where only
+some query rows are fully masked.)
+
+**`qk_matmul_output_mode` (mode 3 / post-softmax debug output)**: for a fully-masked row
+the mode-3 snapshot is **mandated to be `0`** (zero row), consistent with `Y = 0`, per the
+onnx#8068 SIG decision (this superseded the earlier "unspecified" proposal). The CPU
+post-softmax snapshot is taken **after** the row-zeroing guard — matching the onnx
+reference and the v23/v24 function bodies, where the guard runs before the mode-3
+capture — so the debug tensor reflects the same zero row as the output. Note this
+mode-3=0 behavior is served by the **CPU** path: CUDA `qk_matmul_output_mode` beyond
+`kNone`/`kQK` (i.e. `kPostSoftCap`/`kPostMaskBias`/`kPostSoftMax`) returns
+`NOT_IMPLEMENTED` (`attention.cc`), so an agent must not assume CUDA produces mode-3=0.
 
 ## 7. Test Runner Targeting
 
@@ -183,7 +213,9 @@ CPU is the spec reference implementation. CUDA outputs should match CPU for all 
 
 - CPU uses `mask_filter_value = std::numeric_limits<T>::lowest()` (finite, not `-inf`)
 - CPU softmax: subtract-max-first → works correctly with extreme finite values
-- CPU handles fully-masked batches naturally (uniform softmax → mean(V))
+- CPU zeros fully-masked query rows (onnx#8068 Bug-2 guard) — output `Y = 0`, matching
+  CUDA's `ZeroFullyMaskedRowsKernel`. (Earlier docs claimed CPU produced mean(V) here;
+  that divergence is resolved — both EPs now emit a zero row.)
 
 Run tests with `disable_cpu=false` to always validate against CPU. The C++ test framework (`RunTest4D`) supports `disable_cpu`, `disable_cuda`, `disable_dml` flags.
 
@@ -230,38 +262,67 @@ The contrib `QkvToContext` function (used by contrib MHA, NOT by ONNX Attention)
 
 The ONNX spec defines two causal alignment modes based on where query positions sit in the full attention matrix:
 
-- **Upper-left**: `q_i` attends to `kv[0..i]`. Query positions start at 0 in the full matrix.
-- **Lower-right**: `q_i` attends to `kv[kv_len - q_len + i..kv_len - 1]`. Query positions are at the end.
+- **Upper-left** (a.k.a. *top-left*): `q_i` attends to `kv[0..i]`. Query positions start at 0 in the full matrix.
+- **Bottom-right** (a.k.a. *lower-right*): `q_i` attends to `kv[0 .. kv_len - q_len + i]` — i.e. keys `j` with `j <= i + offset`, where `offset = kv_len - q_len` (clamped `>= 0`). The causal diagonal is anchored at the end of the key axis. This is the term onnx/onnx#8068 uses; kernel flags spell it `CausalFromBottomRight`.
 
-**ONNX spec rule**: `is_causal=1` always means upper-left in the full matrix. When `past_key` provides context, `past_sequence_length` shifts the query start position forward — the resulting `[S_q × total_kv]` sub-matrix effectively has lower-right alignment.
+**ONNX spec rule**: causal alignment depends on how the KV context is supplied.
+
+- **Internal cache / no cache** (`past_key`, or plain self-attention): `is_causal=1`
+  is upper-left in the full matrix. When `past_key` provides context,
+  `past_sequence_length` shifts the query start position forward — the resulting
+  `[S_q × total_kv]` sub-matrix is effectively bottom-right.
+- **External / static cache** (`nonpad_kv_seqlen`, no `past_key`, opset 24): per
+  onnx/onnx#8068, `is_causal=1` uses **bottom-right** (offset-aware) alignment —
+  query in-block index `i` attends key `j` iff `j <= i + offset[b]`, where
+  `offset[b] = nonpad_kv_seqlen[b] - q_sequence_length` (clamped to `>= 0`).
 
 ### Per-kernel behavior
 
 | Kernel | Alignment | Mechanism |
 |--------|-----------|-----------|
-| **Flash** | Lower-right only | `is_causal` flag → `seqlen_k - seqlen_q` offset in kernel. No top-left option. |
+| **Flash** | Bottom-right only | `is_causal` flag → `seqlen_k - seqlen_q` offset in kernel. No upper-left option. |
 | **MEA (CUTLASS)** | Both | `causal_from_top_left` flag in `MemoryEfficientAttentionParams`. `true` → `CausalFromTopLeft` (offset=0). `false` → `CausalFromBottomRight` (offset = num_keys - num_queries). |
-| **Unfused** | Both | `past_kv_length` param. `0` → upper-left. `total_kv - S_q` → lower-right. |
+| **Unfused** | Both | `past_kv_length` param. `0` → upper-left. `total_kv - S_q` → bottom-right. |
 
 ### Dispatch logic in attention.cc
 
 ```cpp
-// Flash cannot do upper-left → guarded by causal_cross_no_past
+// Pure cross-attention with NO external cache (S_q != S_kv, no past, no nonpad):
+// this is the upper-left case Flash cannot express.
 bool causal_cross_no_past = parameters.is_causal &&
     parameters.q_sequence_length != parameters.total_sequence_length &&
     parameters.past_sequence_length == 0;
 
-// Flash: skip when causal_cross_no_past (no top-left support)
-// MEA: NOT skipped — handles it via causal_from_top_left = (past_sequence_length == 0)
-// Unfused: always correct via past_kv_length = parameters.past_sequence_length
+// Flash: eligible UNLESS (causal_cross_no_past && nonpad_kv_seqlen == nullptr).
+//   - No external cache  -> upper-left required -> skip Flash (no upper-left support).
+//   - External cache (nonpad_kv_seqlen != nullptr) -> required frontier IS bottom-right
+//     (onnx#8068), so Flash IS eligible and produces it natively via seqlens_k.
+// MEA: external cache -> causal_from_top_left = false (bottom-right, offset = num_keys -
+//   num_queries == nonpad_kv_seqlen[b] - q_len per batch); otherwise causal_from_top_left
+//   = (past_sequence_length == 0).
+// Unfused: always correct via past_kv_length (0 -> upper-left; total_kv - S_q -> bottom-right).
 ```
 
 ### When S_q == S_kv
 
-Upper-left and lower-right produce **identical** results when `S_q == S_kv` (the offset is 0 either way). The alignment distinction only matters for cross-attention shapes (`S_q != S_kv`).
+Upper-left and bottom-right produce **identical** results when `S_q == S_kv` (the offset is 0 either way). The alignment distinction only matters for cross-attention shapes (`S_q != S_kv`).
 
 ### TensorScatter decode (opset 24 external KV cache)
 
-TensorScatter manages KV cache externally — `past_key` is nullptr but K/V already contain the full sequence. Per the ONNX spec, `is_causal` with `S_q != S_kv` and no `past_key` means upper-left (q[0] sees only kv[0]), which is **not meaningful for decode**.
+TensorScatter manages KV cache externally — `past_key` is nullptr but K/V already
+contain the full sequence, with `nonpad_kv_seqlen[b]` giving each batch's valid
+(non-padded) key count. Per onnx/onnx#8068, `is_causal=1` with an external/static KV
+cache (no `past_key`) uses **bottom-right** (offset-aware) alignment: query in-block
+index `i` attends key `j` iff `j <= i + offset[b]`, where
+`offset[b] = nonpad_kv_seqlen[b] - q_sequence_length` (clamped to `>= 0`). For decode
+(`q_sequence_length == 1`) the single query row therefore attends all
+`nonpad_kv_seqlen[b]` valid keys — the meaningful, spec-correct result (not the
+degenerate "q[0] sees only kv[0]" of upper-left).
 
-**Correct pattern**: TensorScatter decode must use `is_causal=0` and rely on `nonpad_kv_seqlen` to bound the active KV range. Models using `is_causal=1` with TensorScatter decode have a spec-invalid combination.
+**Correct pattern**: `is_causal=1` with TensorScatter + `nonpad_kv_seqlen` (no `past_key`)
+is **valid and supported** for both decode and continued-prefill — it yields bottom-right
+causal attention bounded by the per-batch valid-key count. (`is_causal=0` is also valid
+where a model wants no causal masking.) The earlier `is_causal=1` NOT_IMPLEMENTED reject
+was **removed** in the onnx#8068 alignment work; the only still-invalid combination is
+`nonpad_kv_seqlen` together with `past_key` (mutually exclusive internal-vs-external
+cache, enforced at validation in `attention_helper.h`).
