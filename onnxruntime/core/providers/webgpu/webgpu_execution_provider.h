@@ -47,9 +47,13 @@ struct WebGpuExecutionProviderConfig {
   bool enable_pix_capture{false};                // PIX capture is disabled by default
   bool enable_int64{false};                      // int64 ops are not enabled by default
   uint32_t multi_rotary_cache_concat_offset{0};  // offset for concatenated multi rotary cache (0 = disabled)
-  // Number of generations of buffers to retain in the per-session pool for reuse
-  // across captured-graph lifetimes. 0 disables pooling. Default 1 caches one
-  // generator's worth of intermediate buffers.
+  // Number of retired generators' worth of buffers to keep across
+  // ReleaseCapturedGraph. A "generation" here is the buffer cache of one
+  // captured-graph BufferManager; donated buffers are reused by subsequent
+  // generators on the same session to avoid reallocating from the device.
+  // 0 disables pooling; the default 1 retains the most recent generation,
+  // which is sufficient to eliminate reallocation in steady-state per-request
+  // GenAI usage where one generator retires just before the next is created.
   size_t session_buffer_pool_generations{1};
   std::vector<std::string> force_cpu_node_names{};
 };

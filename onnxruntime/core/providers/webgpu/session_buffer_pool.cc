@@ -28,6 +28,19 @@ SessionBufferPool::~SessionBufferPool() {
 }
 
 void SessionBufferPool::Donate(BufferManager& retiring_mgr) {
+  // Safe to take ownership of the retiring manager's buffers because:
+  //   1. InferenceSession::session_mutex_ serializes Run and
+  //      ReleaseCapturedGraph for the WebGPU EP, so no Run is in progress on
+  //      this session while we donate.
+  //   2. OnRunEnd flushes the queue (and, in ValidationMode::Basic+, fences
+  //      via PopErrorScope) before Run returns, so prior captured-graph work
+  //      has been submitted.
+  //   3. All work goes through a single WebGPU device queue, which orders
+  //      future submits after the prior submitted work, so a subsequent
+  //      generator's first Submit using these buffer handles happens-after
+  //      any in-flight read/write on the GPU timeline.
+  // Donating across a different queue or after a host-side readback on
+  // donated buffers would invalidate (3) and require an explicit fence here.
   if (max_generations_ == 0) {
     return;
   }
@@ -36,6 +49,8 @@ void SessionBufferPool::Donate(BufferManager& retiring_mgr) {
   slot.storage = retiring_mgr.StorageCache().ExtractCachedBuffers();
   slot.uniform = retiring_mgr.UniformCache().ExtractCachedBuffers();
 
+  // The caches are now empty either way; the retiring manager is about to be
+  // destroyed, so the early-exit only avoids pushing an empty slot.
   if (slot.storage.empty() && slot.uniform.empty()) {
     return;
   }
