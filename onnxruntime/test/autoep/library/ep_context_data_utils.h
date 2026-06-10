@@ -17,6 +17,7 @@
 #endif
 
 #include "plugin_ep_utils.h"
+#include "onnxruntime_experimental_c_api.h"
 
 // Sample-only EPContext data helpers. These are intentionally outside the ORT C and EP ABI.
 namespace ep_context_data_utils {
@@ -165,18 +166,20 @@ inline OrtStatus* WriteEpContextDataToFile(const OrtApi& api, const char* file_n
   return nullptr;
 }
 
-inline OrtStatus* ReadEpContextDataWithFileFallback(const OrtApi& api, const OrtEpApi& ep_api,
-                                                    const OrtEpContextConfig* ep_context_config,
-                                                    const char* file_name, const OrtGraph* graph,
-                                                    std::vector<char>& data) {
+inline OrtStatus* ReadEpContextDataWithFileFallback(
+    const OrtApi& api,
+    OrtExperimental_OrtEpApi_EpContextConfig_GetEpContextDataReadFunc_SinceV28_Fn get_read_func,
+    const OrtEpContextConfig* ep_context_config,
+    const char* file_name, const OrtGraph* graph,
+    std::vector<char>& data) {
   if (file_name == nullptr || file_name[0] == '\0') {
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
   }
 
   OrtReadNamedBufferFunc read_func = nullptr;
   void* read_state = nullptr;
-  if (ep_context_config != nullptr) {
-    RETURN_IF_ERROR(ep_api.EpContextConfig_GetEpContextDataReadFunc(ep_context_config, &read_func, &read_state));
+  if (get_read_func != nullptr && ep_context_config != nullptr) {
+    RETURN_IF_ERROR(get_read_func(ep_context_config, &read_func, &read_state));
   }
 
   if (read_func == nullptr) {
@@ -212,11 +215,13 @@ inline OrtStatus* ReadEpContextDataWithFileFallback(const OrtApi& api, const Ort
   return nullptr;
 }
 
-inline OrtStatus* WriteEpContextDataWithFileFallback(const OrtApi& api, const OrtEpApi& ep_api,
-                                                     const OrtEpContextConfig* ep_context_config,
-                                                     const char* file_name, const char* fallback_file_name,
-                                                     const OrtGraph* graph,
-                                                     const void* buffer, size_t buffer_size) {
+inline OrtStatus* WriteEpContextDataWithFileFallback(
+    const OrtApi& api,
+    OrtExperimental_OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc_SinceV28_Fn get_write_func,
+    const OrtEpContextConfig* ep_context_config,
+    const char* file_name, const char* fallback_file_name,
+    const OrtGraph* graph,
+    const void* buffer, size_t buffer_size) {
   if (file_name == nullptr || file_name[0] == '\0') {
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
   }
@@ -227,8 +232,8 @@ inline OrtStatus* WriteEpContextDataWithFileFallback(const OrtApi& api, const Or
 
   OrtWriteNamedBufferFunc write_func = nullptr;
   void* write_state = nullptr;
-  if (ep_context_config != nullptr) {
-    RETURN_IF_ERROR(ep_api.EpContextConfig_GetEpContextDataWriteFunc(ep_context_config, &write_func, &write_state));
+  if (get_write_func != nullptr && ep_context_config != nullptr) {
+    RETURN_IF_ERROR(get_write_func(ep_context_config, &write_func, &write_state));
   }
 
   if (write_func != nullptr) {
@@ -242,11 +247,13 @@ inline OrtStatus* WriteEpContextDataWithFileFallback(const OrtApi& api, const Or
   return WriteEpContextDataToFile(api, fallback_file_name, graph, buffer, buffer_size);
 }
 
-inline OrtStatus* WriteEpContextDataWithFileFallback(const OrtApi& api, const OrtEpApi& ep_api,
-                                                     const OrtEpContextConfig* ep_context_config,
-                                                     const char* file_name, const OrtGraph* graph,
-                                                     const void* buffer, size_t buffer_size) {
-  return WriteEpContextDataWithFileFallback(api, ep_api, ep_context_config, file_name, file_name, graph, buffer,
+inline OrtStatus* WriteEpContextDataWithFileFallback(
+    const OrtApi& api,
+    OrtExperimental_OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc_SinceV28_Fn get_write_func,
+    const OrtEpContextConfig* ep_context_config,
+    const char* file_name, const OrtGraph* graph,
+    const void* buffer, size_t buffer_size) {
+  return WriteEpContextDataWithFileFallback(api, get_write_func, ep_context_config, file_name, file_name, graph, buffer,
                                             buffer_size);
 }
 

@@ -24,7 +24,6 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_ep_types.h"
-#include "core/session/abi_session_options_impl.h"
 #include "core/session/abi_opschema.h"
 #include "core/session/environment.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
@@ -37,16 +36,7 @@
 #include "core/session/plugin_ep/ep_event_profiling.h"
 
 using namespace onnxruntime;
-
-struct OrtEpContextConfig {
-  OrtWriteNamedBufferFunc write_func = nullptr;
-  void* write_state = nullptr;
-  OrtReadNamedBufferFunc read_func = nullptr;
-  void* read_state = nullptr;
-};
-
 namespace OrtExecutionProviderApi {
-
 ORT_API_STATUS_IMPL(CreateEpDevice, _In_ OrtEpFactory* ep_factory,
                     _In_ const OrtHardwareDevice* hardware_device,
                     _In_opt_ const OrtKeyValuePairs* ep_metadata,
@@ -1208,60 +1198,6 @@ ORT_API_STATUS_IMPL(ProfilingEventsContainer_AddEvents,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(SessionOptions_GetEpContextConfig,
-                    _In_ const OrtSessionOptions* session_options,
-                    _Outptr_ OrtEpContextConfig** config) {
-  API_IMPL_BEGIN
-  ORT_API_RETURN_IF(session_options == nullptr, ORT_INVALID_ARGUMENT, "OrtSessionOptions is NULL");
-  ORT_API_RETURN_IF(config == nullptr, ORT_INVALID_ARGUMENT, "Output OrtEpContextConfig is NULL");
-
-  auto ep_context_config = std::make_unique<OrtEpContextConfig>();
-  if (const auto* write_config = session_options->value.ep_context_gen_options.TryGetEpContextDataWriteFunc()) {
-    ep_context_config->write_func = write_config->write_func;
-    ep_context_config->write_state = write_config->state;
-  }
-  ep_context_config->read_func = session_options->value.ep_context_data_read_func;
-  ep_context_config->read_state = session_options->value.ep_context_data_read_state;
-
-  *config = ep_context_config.release();
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API(void, ReleaseEpContextConfig, _Frees_ptr_opt_ OrtEpContextConfig* config) {
-  delete config;
-}
-
-ORT_API_STATUS_IMPL(EpContextConfig_GetEpContextDataReadFunc,
-                    _In_ const OrtEpContextConfig* config,
-                    _Out_ OrtReadNamedBufferFunc* read_func,
-                    _Out_ void** state) {
-  API_IMPL_BEGIN
-  ORT_API_RETURN_IF(config == nullptr, ORT_INVALID_ARGUMENT, "OrtEpContextConfig is NULL");
-  ORT_API_RETURN_IF(read_func == nullptr, ORT_INVALID_ARGUMENT, "Output read_func is NULL");
-  ORT_API_RETURN_IF(state == nullptr, ORT_INVALID_ARGUMENT, "Output state is NULL");
-
-  *read_func = config->read_func;
-  *state = config->read_func != nullptr ? config->read_state : nullptr;
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(EpContextConfig_GetEpContextDataWriteFunc,
-                    _In_ const OrtEpContextConfig* config,
-                    _Out_ OrtWriteNamedBufferFunc* write_func,
-                    _Out_ void** state) {
-  API_IMPL_BEGIN
-  ORT_API_RETURN_IF(config == nullptr, ORT_INVALID_ARGUMENT, "OrtEpContextConfig is NULL");
-  ORT_API_RETURN_IF(write_func == nullptr, ORT_INVALID_ARGUMENT, "Output write_func is NULL");
-  ORT_API_RETURN_IF(state == nullptr, ORT_INVALID_ARGUMENT, "Output state is NULL");
-
-  *write_func = config->write_func;
-  *state = config->write_func != nullptr ? config->write_state : nullptr;
-  return nullptr;
-  API_IMPL_END
-}
-
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -1351,13 +1287,6 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::ProfilingEvent_GetArgValue,
     &OrtExecutionProviderApi::ProfilingEventsContainer_AddEvents,
     // End of Version 25 - DO NOT MODIFY ABOVE
-    // End of Version 26 - DO NOT MODIFY ABOVE
-
-    &OrtExecutionProviderApi::SessionOptions_GetEpContextConfig,
-    &OrtExecutionProviderApi::ReleaseEpContextConfig,
-    &OrtExecutionProviderApi::EpContextConfig_GetEpContextDataReadFunc,
-    &OrtExecutionProviderApi::EpContextConfig_GetEpContextDataWriteFunc,
-    // End of Version 27 - DO NOT MODIFY ABOVE
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
@@ -1369,8 +1298,6 @@ static_assert(offsetof(OrtEpApi, GetEnvConfigEntries) / sizeof(void*) == 49,
               "Size of version 24 API cannot change");
 static_assert(offsetof(OrtEpApi, ProfilingEventsContainer_AddEvents) / sizeof(void*) == 72,
               "Size of version 25 API cannot change");
-static_assert(offsetof(OrtEpApi, EpContextConfig_GetEpContextDataWriteFunc) / sizeof(void*) == 76,
-              "Size of version 27 API cannot change");
 
 }  // namespace OrtExecutionProviderApi
 

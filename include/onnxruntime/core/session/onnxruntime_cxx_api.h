@@ -658,7 +658,6 @@ ORT_DEFINE_RELEASE(Value);
 ORT_DEFINE_RELEASE(ValueInfo);
 
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
-ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpContextConfig, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDef, GetEpApi);
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(KernelDefBuilder, GetEpApi);
@@ -787,7 +786,6 @@ struct AllocatedFree {
 
 struct AllocatorWithDefaultOptions;
 struct Env;
-struct EpContextConfig;
 struct EpDevice;
 struct ExternalInitializerInfo;
 struct Graph;
@@ -1185,21 +1183,6 @@ struct EpDevice : detail::EpDeviceImpl<OrtEpDevice> {
   /// \brief Wraps OrtEpApi::CreateEpDevice
   EpDevice(OrtEpFactory& ep_factory, ConstHardwareDevice& hardware_device,
            ConstKeyValuePairs ep_metadata = {}, ConstKeyValuePairs ep_options = {});
-};
-
-/** \brief Owning wrapper around ::OrtEpContextConfig. */
-struct EpContextConfig : detail::Base<OrtEpContextConfig> {
-  explicit EpContextConfig(std::nullptr_t) {}                                       ///< No instance is created
-  explicit EpContextConfig(OrtEpContextConfig* p) : Base<OrtEpContextConfig>{p} {}  ///< Take ownership
-
-  /// \brief Wraps OrtEpApi::SessionOptions_GetEpContextConfig
-  explicit EpContextConfig(const OrtSessionOptions* session_options);
-
-  /// \brief Wraps OrtEpApi::EpContextConfig_GetEpContextDataReadFunc
-  std::pair<OrtReadNamedBufferFunc, void*> GetEpContextDataReadFunc() const;
-
-  /// \brief Wraps OrtEpApi::EpContextConfig_GetEpContextDataWriteFunc
-  std::pair<OrtWriteNamedBufferFunc, void*> GetEpContextDataWriteFunc() const;
 };
 
 /** \brief Validate a compiled model's compatibility for one or more EP devices.
@@ -1685,8 +1668,6 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
                                                                const std::vector<char*>& external_initializer_file_buffer_array,
                                                                const std::vector<size_t>& external_initializer_file_lengths);  ///< Wraps OrtApi::AddExternalInitializersFromFilesInMemory
 
-  SessionOptionsImpl& SetEpContextDataReadFunc(OrtReadNamedBufferFunc read_func, void* state);  ///< Wraps OrtApi::SessionOptions_SetEpContextDataReadFunc
-
   SessionOptionsImpl& AppendExecutionProvider_CPU(int use_arena);                                            ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CPU
   SessionOptionsImpl& AppendExecutionProvider_CUDA(const OrtCUDAProviderOptions& provider_options);          ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA
   SessionOptionsImpl& AppendExecutionProvider_CUDA_V2(const OrtCUDAProviderOptionsV2& provider_options);     ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CUDA_V2
@@ -1787,9 +1768,6 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
 
   ///< Wraps OrtApi::ModelCompilationOptions_SetOutputModelWriteFunc
   ModelCompilationOptions& SetOutputModelWriteFunc(OrtWriteBufferFunc write_func, void* state);
-
-  ///< Wraps OrtCompileApi::ModelCompilationOptions_SetEpContextDataWriteFunc
-  ModelCompilationOptions& SetEpContextDataWriteFunc(OrtWriteNamedBufferFunc write_func, void* state);
 
   ModelCompilationOptions& SetEpContextBinaryInformation(const ORTCHAR_T* output_directory,
                                                          const ORTCHAR_T* model_name);  ///< Wraps OrtApi::ModelCompilationOptions_SetEpContextBinaryInformation

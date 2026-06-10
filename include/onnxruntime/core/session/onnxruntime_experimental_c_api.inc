@@ -282,3 +282,106 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtModelPackageApi_CreateSession,
                      _In_ OrtModelPackageComponentContext* context,
                      _In_opt_ const OrtSessionOptions* session_options,
                      _Outptr_ OrtSession** session)
+
+/** \brief Registers a callback to provide EPContext binary data during session load.
+ *
+ * When loading a compiled model with external (non-embedded) EPContext binary data, an execution provider can
+ * retrieve this callback from OrtEpContextConfig and call it instead of reading the binary data from disk.
+ *
+ * Reading happens at session load, so this callback is configured on OrtSessionOptions. The corresponding write
+ * callback runs only at compile time and is configured on OrtModelCompilationOptions via
+ * OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteFunc.
+ *
+ * The state pointer is stored as-is and is not owned by ORT. It must remain valid while any session or EP created
+ * from these options may call the callback. If the same state may be used by multiple EPs or threads, the application
+ * is responsible for synchronization.
+ *
+ * \param[in] options The OrtSessionOptions instance.
+ * \param[in] read_func The OrtReadNamedBufferFunc callback.
+ * \param[in] state Opaque state passed to read_func. Can be NULL.
+ *
+ * \snippet{doc} snippets.dox OrtStatus Return Value
+ */
+ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_SessionOptions_SetEpContextDataReadFunc,
+                     _Inout_ OrtSessionOptions* options, _In_ OrtReadNamedBufferFunc read_func, _In_opt_ void* state)
+
+/** \brief Sets a callback for writing EPContext binary data during compilation.
+ *
+ * When EPContext embed mode is disabled, execution providers can retrieve this callback from OrtEpContextConfig and
+ * call it instead of writing EPContext binary data directly to disk.
+ *
+ * Writing happens only at compile time, so this callback is configured on OrtModelCompilationOptions. The
+ * corresponding read callback runs at session load and is configured on OrtSessionOptions via
+ * OrtApi_SessionOptions_SetEpContextDataReadFunc.
+ *
+ * The state pointer is stored as-is and is not owned by ORT. It must remain valid for the duration of the compile
+ * operation that may call the callback. If the same state may be used by multiple EPs or threads, the application is
+ * responsible for synchronization.
+ *
+ * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+ * \param[in] write_func The OrtWriteNamedBufferFunc callback used to write EPContext bytes.
+ * \param[in] state Opaque state passed to write_func. Can be NULL.
+ *
+ * \snippet{doc} snippets.dox OrtStatus Return Value
+ */
+ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteFunc,
+                     _In_ OrtModelCompilationOptions* model_compile_options, _In_ OrtWriteNamedBufferFunc write_func,
+                     _In_opt_ void* state)
+
+/** \brief Extracts the EPContext configuration (callbacks and state) from an OrtSessionOptions instance.
+ *
+ * The EP should call this during CreateEp() while session_options is still valid, and store the returned handle for
+ * use during Compile(). The returned config is always non-NULL and must be released with
+ * OrtEpApi_ReleaseEpContextConfig.
+ *
+ * The returned handle owns only ORT's copy of callback function pointers and opaque state pointer values. It does not
+ * own the application-provided state. The application is responsible for keeping callback state valid and
+ * synchronized while an EP may call callbacks retrieved from this config.
+ *
+ * \param[in] session_options The OrtSessionOptions instance.
+ * \param[out] config The extracted OrtEpContextConfig.
+ *
+ * \snippet{doc} snippets.dox OrtStatus Return Value
+ */
+ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtEpApi_SessionOptions_GetEpContextConfig,
+                     _In_ const OrtSessionOptions* session_options, _Outptr_ OrtEpContextConfig** config)
+
+/** \brief Release an OrtEpContextConfig instance.
+ *
+ * \param[in] config The OrtEpContextConfig instance to release. May be NULL.
+ */
+ORT_EXPERIMENTAL_API(28, void, OrtEpApi_ReleaseEpContextConfig, _Frees_ptr_opt_ OrtEpContextConfig* config)
+
+/** \brief Get the application-provided EPContext data read callback.
+ *
+ * Returns the OrtReadNamedBufferFunc and opaque state pointer registered via
+ * OrtApi_SessionOptions_SetEpContextDataReadFunc. If no callback was registered, *read_func and *state are set to
+ * NULL. The EP is responsible for calling the callback when present and for using its own normal read path when no
+ * callback is present.
+ *
+ * \param[in] config The OrtEpContextConfig from OrtEpApi_SessionOptions_GetEpContextConfig.
+ * \param[out] read_func The registered read callback, or NULL if none was registered.
+ * \param[out] state Opaque state pointer passed to read_func, or NULL if none was registered.
+ *
+ * \snippet{doc} snippets.dox OrtStatus Return Value
+ */
+ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtEpApi_EpContextConfig_GetEpContextDataReadFunc,
+                     _In_ const OrtEpContextConfig* config, _Out_ OrtReadNamedBufferFunc* read_func,
+                     _Out_ void** state)
+
+/** \brief Get the application-provided EPContext data write callback.
+ *
+ * Returns the OrtWriteNamedBufferFunc and opaque state pointer registered via
+ * OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteFunc. If no callback was registered, *write_func and
+ * *state are set to NULL. The EP is responsible for calling the callback when present and for using its own normal
+ * write path when no callback is present.
+ *
+ * \param[in] config The OrtEpContextConfig from OrtEpApi_SessionOptions_GetEpContextConfig.
+ * \param[out] write_func The registered write callback, or NULL if none was registered.
+ * \param[out] state Opaque state pointer passed to write_func, or NULL if none was registered.
+ *
+ * \snippet{doc} snippets.dox OrtStatus Return Value
+ */
+ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc,
+                     _In_ const OrtEpContextConfig* config, _Out_ OrtWriteNamedBufferFunc* write_func,
+                     _Out_ void** state)

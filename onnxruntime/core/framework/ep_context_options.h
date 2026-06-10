@@ -7,6 +7,7 @@
 #include <variant>
 #include "core/framework/allocator.h"
 #include "core/framework/config_options.h"
+#include "core/session/onnxruntime_experimental_c_api.h"
 
 namespace onnxruntime {
 namespace epctx {

@@ -259,32 +259,6 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelGetInit
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetEpContextDataWriteFunc,
-                    _In_ OrtModelCompilationOptions* ort_model_compile_options,
-                    _In_ OrtWriteNamedBufferFunc write_func, _In_opt_ void* state) {
-  API_IMPL_BEGIN
-#if !defined(ORT_MINIMAL_BUILD)
-  auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
-
-  if (model_compile_options == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtModelCompilationOptions is NULL");
-  }
-
-  if (write_func == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtWriteNamedBufferFunc function is NULL");
-  }
-
-  model_compile_options->SetEpContextDataWriteFunc(write_func, state);
-  return nullptr;
-#else
-  ORT_UNUSED_PARAMETER(ort_model_compile_options);
-  ORT_UNUSED_PARAMETER(write_func);
-  ORT_UNUSED_PARAMETER(state);
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Compile API is not supported in this build");
-#endif  // !defined(ORT_MINIMAL_BUILD)
-  API_IMPL_END
-}
-
 ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetEpContextEmbedMode,
                     _In_ OrtModelCompilationOptions* ort_model_compile_options,
                     bool embed_ep_context_in_model) {
@@ -393,11 +367,6 @@ static constexpr OrtCompileApi ort_compile_api = {
 
     &OrtCompileAPI::ModelCompilationOptions_SetInputModel,
     // End of Version 24 - DO NOT MODIFY ABOVE
-    // End of Version 25 - DO NOT MODIFY ABOVE
-    // End of Version 26 - DO NOT MODIFY ABOVE
-
-    &OrtCompileAPI::ModelCompilationOptions_SetEpContextDataWriteFunc,
-    // End of Version 27 - DO NOT MODIFY ABOVE
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
@@ -407,8 +376,6 @@ static_assert(offsetof(OrtCompileApi, ModelCompilationOptions_SetOutputModelGetI
               "Size of version 23 of Api cannot change");
 static_assert(offsetof(OrtCompileApi, ModelCompilationOptions_SetInputModel) / sizeof(void*) == 14,
               "Size of version 24 of Api cannot change");
-static_assert(offsetof(OrtCompileApi, ModelCompilationOptions_SetEpContextDataWriteFunc) / sizeof(void*) == 15,
-              "Size of version 27 of Api cannot change");
 
 ORT_API(const OrtCompileApi*, OrtCompileAPI::GetCompileApi) {
   return &ort_compile_api;

@@ -18,7 +18,6 @@ extern "C" {
  * @{
  */
 ORT_RUNTIME_CLASS(Ep);
-ORT_RUNTIME_CLASS(EpContextConfig);
 ORT_RUNTIME_CLASS(EpFactory);
 ORT_RUNTIME_CLASS(EpGraphSupportInfo);
 ORT_RUNTIME_CLASS(MemoryDevice);  // opaque class to wrap onnxruntime::OrtDevice
@@ -2078,75 +2077,6 @@ struct OrtEpApi {
   ORT_API2_STATUS(ProfilingEventsContainer_AddEvents, _In_ OrtProfilingEventsContainer* events_container,
                   _In_reads_(num_events) const OrtProfilingEvent* const* events,
                   _In_ size_t num_events);
-
-  /** \brief Get the EPContext configuration from session options.
-   *
-   * Extracts EPContext-related data I/O callbacks from the session options into an opaque OrtEpContextConfig handle.
-   * The EP should call this during CreateEp() while session_options is still valid, and store the returned handle for
-   * use during Compile(). The returned config is always non-NULL and must be released with ReleaseEpContextConfig.
-   *
-   * The returned handle owns only ORT's copy of callback function pointers and opaque state pointer values. It does not
-   * own the application-provided state. The application is responsible for keeping callback state valid and
-   * synchronized while an EP may call callbacks retrieved from this config.
-   *
-   * \param[in] session_options The OrtSessionOptions instance.
-   * \param[out] config The extracted OrtEpContextConfig.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.28.
-   */
-  ORT_API2_STATUS(SessionOptions_GetEpContextConfig,
-                  _In_ const OrtSessionOptions* session_options,
-                  _Outptr_ OrtEpContextConfig** config);
-
-  /** \brief Release an OrtEpContextConfig instance.
-   *
-   * \param[in] input The OrtEpContextConfig instance to release. May be NULL.
-   *
-   * \since Version 1.28.
-   */
-  ORT_CLASS_RELEASE(EpContextConfig);
-
-  /** \brief Get the application-provided EPContext data read callback.
-   *
-   * Returns the OrtReadNamedBufferFunc and opaque state pointer registered via
-   * OrtApi::SessionOptions_SetEpContextDataReadFunc. If no callback was registered, *read_func and *state are set to
-   * NULL. The EP is responsible for calling the callback when present and for using its own normal read path when no
-   * callback is present.
-   *
-   * \param[in] config The OrtEpContextConfig from SessionOptions_GetEpContextConfig.
-   * \param[out] read_func The registered read callback, or NULL if none was registered.
-   * \param[out] state Opaque state pointer passed to read_func, or NULL if none was registered.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.28.
-   */
-  ORT_API2_STATUS(EpContextConfig_GetEpContextDataReadFunc,
-                  _In_ const OrtEpContextConfig* config,
-                  _Out_ OrtReadNamedBufferFunc* read_func,
-                  _Out_ void** state);
-
-  /** \brief Get the application-provided EPContext data write callback.
-   *
-   * Returns the OrtWriteNamedBufferFunc and opaque state pointer registered via
-   * OrtCompileApi::ModelCompilationOptions_SetEpContextDataWriteFunc. If no callback was registered, *write_func and
-   * *state are set to NULL. The EP is responsible for calling the callback when present and for using its own normal
-   * write path when no callback is present.
-   *
-   * \param[in] config The OrtEpContextConfig from SessionOptions_GetEpContextConfig.
-   * \param[out] write_func The registered write callback, or NULL if none was registered.
-   * \param[out] state Opaque state pointer passed to write_func, or NULL if none was registered.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.28.
-   */
-  ORT_API2_STATUS(EpContextConfig_GetEpContextDataWriteFunc,
-                  _In_ const OrtEpContextConfig* config,
-                  _Out_ OrtWriteNamedBufferFunc* write_func,
-                  _Out_ void** state);
 };
 
 /**

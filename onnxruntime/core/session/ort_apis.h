@@ -66,8 +66,6 @@ ORT_API_STATUS_IMPL(EnableMemPattern, _In_ OrtSessionOptions* options);
 ORT_API_STATUS_IMPL(DisableMemPattern, _In_ OrtSessionOptions* options);
 ORT_API_STATUS_IMPL(GetMemPatternEnabled, _In_ const OrtSessionOptions* options, _Out_ int* out);
 ORT_API_STATUS_IMPL(GetSessionExecutionMode, _In_ const OrtSessionOptions* options, _Out_ ExecutionMode* out);
-ORT_API_STATUS_IMPL(SessionOptions_SetEpContextDataReadFunc, _Inout_ OrtSessionOptions* options,
-                    _In_ OrtReadNamedBufferFunc read_func, _In_opt_ void* state);
 ORT_API_STATUS_IMPL(EnableCpuMemArena, _In_ OrtSessionOptions* options);
 ORT_API_STATUS_IMPL(DisableCpuMemArena, _In_ OrtSessionOptions* options);
 ORT_API_STATUS_IMPL(SetSessionLogId, _In_ OrtSessionOptions* options, const char* logid);

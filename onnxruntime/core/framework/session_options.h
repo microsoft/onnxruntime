@@ -16,6 +16,7 @@
 #include "core/framework/ep_context_options.h"
 #include "core/framework/ort_value.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/session/onnxruntime_experimental_c_api.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/util/thread_utils.h"
 

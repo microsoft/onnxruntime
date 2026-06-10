@@ -134,18 +134,6 @@ ORT_API_STATUS_IMPL(OrtApis::GetSessionExecutionMode, _In_ const OrtSessionOptio
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionOptions_SetEpContextDataReadFunc, _Inout_ OrtSessionOptions* options,
-                    _In_ OrtReadNamedBufferFunc read_func, _In_opt_ void* state) {
-  API_IMPL_BEGIN
-  ORT_API_RETURN_IF(options == nullptr, ORT_INVALID_ARGUMENT, "'options' parameter must not be NULL");
-  ORT_API_RETURN_IF(read_func == nullptr, ORT_INVALID_ARGUMENT, "'read_func' parameter must not be NULL");
-
-  options->value.ep_context_data_read_func = read_func;
-  options->value.ep_context_data_read_state = state;
-  return nullptr;
-  API_IMPL_END
-}
-
 // set filepath to save optimized onnx model.
 ORT_API_STATUS_IMPL(OrtApis::SetOptimizedModelFilePath, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* optimized_model_filepath) {
   options->value.optimized_model_filepath = optimized_model_filepath;
