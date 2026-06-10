@@ -7,7 +7,6 @@
 #include <complex>
 #include <functional>
 #include <limits>
-#include <type_traits>
 #include <vector>
 #include <core/common/safeint.h>
 
@@ -525,9 +524,9 @@ template <typename T, typename U>
 static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_onesided, bool /*inverse*/) {
   // Attr("onesided"): default = 1
   // Input(0, "signal") type = T1
-  // Input(1, "frame_length") type = T2
+  // Input(1, "frame_step") type = T2
   // Input(2, "window") type = T1, optional
-  // Input(3, "frame_step") type = T2
+  // Input(3, "frame_length") type = T2
   // Output(0, "output") type = T1
 
   // Get signal
@@ -594,16 +593,15 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
   Tensor b_fft, chirp;
   InlinedVector<std::complex<T>> V;
   InlinedVector<std::complex<T>> temp_output;
-  const int64_t signal_frame_step_components = std::is_same<T, U>::value ? signal_components : 1;
 
   // Run each dft of each batch as if it was a real-valued batch size 1 dft operation
   for (int64_t batch_idx = 0; batch_idx < batch_size; batch_idx++) {
     for (int64_t i = 0; i < n_dfts; i++) {
       const auto frame_start = i * frame_step;
+      // Defensive check before creating a non-owning tensor view. n_dfts derivation should keep this in bounds.
       ORT_RETURN_IF_NOT(frame_start <= signal_size - window_size, "STFT input frame is out of bounds.");
-      auto input_frame_begin =
-          signal_data + (batch_idx * signal_size * signal_frame_step_components) +
-          (frame_start * signal_frame_step_components);
+      // signal_data is U*, so one increment advances one input sample, including both lanes for complex input.
+      auto input_frame_begin = signal_data + (batch_idx * signal_size) + frame_start;
 
       auto output_frame_begin = Y_data + (batch_idx * n_dfts * dft_output_size * output_components) +
                                 (i * dft_output_size * output_components);
@@ -625,9 +623,9 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
 Status STFT::Compute(OpKernelContext* ctx) const {
   // Attr("onesided"): default = 1
   // Input(0, "signal") type = T1
-  // Input(1, "frame_length") type = T2
+  // Input(1, "frame_step") type = T2
   // Input(2, "window") type = T1, optional
-  // Input(3, "frame_step") type = T2
+  // Input(3, "frame_length") type = T2
   // Output(0, "output") type = T1
 
   // Get signal shape
