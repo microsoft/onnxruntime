@@ -3,7 +3,7 @@
 
 /// \file status_impl.h
 /// \brief Internal representation of ModelPackageStatus, shared by all
-///        implementation units in the model_package library (including OrtJson).
+///        implementation units in the model_package library.
 
 #pragma once
 

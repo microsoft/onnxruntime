@@ -57,7 +57,6 @@ set(MODEL_PACKAGE_SOURCES
   src/commit_prune_validate.cc
   src/manifest_parser.cc
   src/model_package_impl.cc
-  src/ort_json.cc
   src/path_resolver.cc
   src/sha256.cc
 )
@@ -97,7 +96,7 @@ install(TARGETS model_package
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-install(FILES include/model_package_api.h include/model_package.h include/ort_json.h
+install(FILES include/model_package_api.h include/model_package.h
   DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
@@ -107,14 +106,6 @@ install(FILES include/model_package_api.h include/model_package.h include/ort_js
 
 if(MODEL_PACKAGE_BUILD_TESTS)
   enable_testing()
-  add_executable(test_ort_json tests/test_ort_json.cc)
-  target_link_libraries(test_ort_json PRIVATE model_package nlohmann_json::nlohmann_json)
-  target_include_directories(test_ort_json PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-  )
-  add_test(NAME ort_json COMMAND test_ort_json)
-
   add_executable(test_inspection tests/test_inspection.cc)
   target_link_libraries(test_inspection PRIVATE model_package nlohmann_json::nlohmann_json)
   target_include_directories(test_inspection PRIVATE

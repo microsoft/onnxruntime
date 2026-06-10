@@ -6,8 +6,7 @@
 ///
 /// This header defines the export macro, the opaque `ModelPackageStatus` type,
 /// and the `ModelPackageErrorCode` enum used by every entry point in the
-/// library. The actual API entry points live in `model_package.h` and
-/// `ort_json.h`.
+/// library. The actual API entry points live in `model_package.h`.
 ///
 /// Error handling: functions that can fail return `ModelPackageStatus*`. A
 /// `nullptr` return indicates success. Use the `ModelPackageStatus_*` helpers
