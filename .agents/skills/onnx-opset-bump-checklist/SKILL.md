@@ -311,6 +311,34 @@ only the bare name) to keep coverage. Over-filtering is CI-safe but hides workin
 Another agent may already have rebased `onnx.patch`. Inspect with
 `git show <main-sha>:cmake/patches/onnx/onnx.patch` rather than reading the file directly.
 
+**(j) A green Linux webgpu CI leg does NOT mean WebGPU ran the node tests.**
+New ONNX backend node tests (`OnnxBackendNodeModelTest`) only **execute** on the
+**macOS-arm64** webgpu CI leg. The Linux webgpu leg (`py-linux-webgpu-stage.yml`) is
+**build-only** — it compiles the WebGPU EP but runs no kernels. So a green Linux webgpu
+leg proves the build, not that any WebGPU op actually ran. To exercise WebGPU kernels
+off-Mac locally, use a software Vulkan adapter (Mesa lavapipe) — see the
+`webgpu-local-testing` skill.
+
+**(k) Filter vs. override — pick the right one for a newly-failing node test.**
+Two test-data files handle failures differently; choosing wrong either hides a real bug
+or drops coverage:
+- `onnx_backend_test_series_filters.jsonc` = **SKIP** a test for a **real EP bug**.
+  Always cite the tracking issue **and** a removal condition (when the skip can be
+  deleted). When only the reference **decomposition** path is broken, skip just the
+  `_expanded` variant — not the bare test (see gotcha **h**).
+- `onnx_backend_test_series_overrides.jsonc` = **RELAX ATOL** for benign fp16/ULP
+  differences. This **keeps the test running** — prefer it over a skip whenever the
+  kernel is actually correct and the failure is only numeric tolerance. **Guardrail:**
+  relax atol only **after** root-causing the diff as ~1 ULP at the output magnitude or a
+  few elements (e.g. `5e-4` ≈ 1 fp16 ULP at `O(1)` values). Unexplained, large, or
+  **growing** diffs are bugs to **investigate**, not override.
+
+**(l) New upstream reference tests can EXPOSE latent EP bugs.**
+A bump pulls in new/updated reference tests that may surface pre-existing EP bugs the
+old test set never hit. Example: #28969 — a WebGPU broadcast underflow that ONNX
+1.22's expanded-Attention reference tests exposed. Treat such failures as bugs to fix
+(or filter-with-issue per gotcha **k**), not as bump noise.
+
 ## 5. Build & validate locally
 
 **The canonical build + test command set lives in §9 (verification gauntlet)** — run those to
