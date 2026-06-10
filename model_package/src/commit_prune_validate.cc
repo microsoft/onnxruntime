@@ -12,15 +12,19 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <fcntl.h>
 #include <filesystem>
 #include <fstream>
 #include <random>
 #include <sstream>
 #include <string>
 #include <system_error>
-#include <unistd.h>
 #include <vector>
+
+#ifndef _WIN32
+#include <cerrno>
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 
 #include "asset_hasher.h"
 #include "manifest_parser.h"
