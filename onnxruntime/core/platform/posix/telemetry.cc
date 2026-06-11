@@ -784,6 +784,138 @@ void PosixTelemetry::LogProviderOptions(
   LogEventAsync(std::move(event));
 }
 
+void PosixTelemetry::LogModelLoadStart(uint32_t session_id) const {
+  if (!enabled_ || !logger_) {
+    return;
+  }
+
+  auto event = EventBuilder("ModelLoadStart", EventPriority::NORMAL,
+                            PDT_ProductAndServiceUsage)
+                   .AddCommonContext(this)
+                   .AddUInt32("sessionId", session_id)
+                   .Build();
+
+  LogEventAsync(std::move(event));
+}
+
+void PosixTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& status) const {
+  if (!enabled_ || !logger_) {
+    return;
+  }
+
+  auto event = EventBuilder("ModelLoadEnd", EventPriority::NORMAL,
+                            PDT_ProductAndServicePerformance)
+                   .AddCommonContext(this)
+                   .AddUInt32("sessionId", session_id)
+                   .AddBool("isSuccess", status.IsOK())
+                   .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
+                   .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
+                   .AddString("errorMessage", status.ErrorMessage())
+                   .Build();
+
+  LogEventAsync(std::move(event));
+}
+
+void PosixTelemetry::LogSessionCreationEnd(uint32_t session_id, const common::Status& status) const {
+  if (!enabled_ || !logger_) {
+    return;
+  }
+
+  auto event = EventBuilder("SessionCreationEnd", EventPriority::CRITICAL,
+                            PDT_ProductAndServicePerformance)
+                   .AddCommonContext(this)
+                   .AddUInt32("sessionId", session_id)
+                   .AddBool("isSuccess", status.IsOK())
+                   .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
+                   .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
+                   .AddString("errorMessage", status.ErrorMessage())
+                   .Build();
+
+  LogEventAsync(std::move(event));
+}
+
+void PosixTelemetry::LogEpDeviceUsage(
+    uint32_t session_id,
+    const std::string& ep_type,
+    const std::string& hardware_device_type,
+    uint32_t hardware_vendor_id,
+    uint32_t hardware_device_id,
+    const std::string& hardware_vendor,
+    const std::string& ep_vendor,
+    int assigned_node_count,
+    uint32_t total_runs_since_last,
+    int64_t total_run_duration_since_last) const {
+  if (!enabled_ || !logger_) {
+    return;
+  }
+
+  auto event = EventBuilder("EpDeviceUsage", EventPriority::NORMAL,
+                            PDT_ProductAndServiceUsage)
+                   .AddCommonContext(this)
+                   .AddUInt32("sessionId", session_id)
+                   .AddString("executionProviderType", ep_type)
+                   .AddString("hardwareDeviceType", hardware_device_type)
+                   .AddUInt32("hardwareVendorId", hardware_vendor_id)
+                   .AddUInt32("hardwareDeviceId", hardware_device_id)
+                   .AddString("hardwareVendor", hardware_vendor)
+                   .AddString("epVendor", ep_vendor)
+                   .AddInt32("assignedNodeCount", assigned_node_count)
+                   .AddUInt32("totalRunsSinceLast", total_runs_since_last)
+                   .AddInt64("totalRunDurationSinceLast", total_run_duration_since_last)
+                   .Build();
+
+  LogEventAsync(std::move(event));
+}
+
+void PosixTelemetry::LogRegisterEpLibraryStart(const std::string& registration_name) const {
+  if (!enabled_ || !logger_) {
+    return;
+  }
+
+  auto event = EventBuilder("RegisterEpLibraryStart", EventPriority::NORMAL,
+                            PDT_ProductAndServiceUsage)
+                   .AddCommonContext(this)
+                   .AddString("registrationName", registration_name)
+                   .Build();
+
+  LogEventAsync(std::move(event));
+}
+
+void PosixTelemetry::LogRegisterEpLibraryEnd(const std::string& registration_name,
+                                             const common::Status& status) const {
+  if (!enabled_ || !logger_) {
+    return;
+  }
+
+  auto event = EventBuilder("RegisterEpLibraryEnd", EventPriority::NORMAL,
+                            PDT_ProductAndServicePerformance)
+                   .AddCommonContext(this)
+                   .AddString("registrationName", registration_name)
+                   .AddBool("isSuccess", status.IsOK())
+                   .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
+                   .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
+                   .AddString("errorMessage", status.ErrorMessage())
+                   .Build();
+
+  LogEventAsync(std::move(event));
+}
+
+void PosixTelemetry::LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
+                                                     const std::string& lib_path) const {
+  if (!enabled_ || !logger_) {
+    return;
+  }
+
+  auto event = EventBuilder("RegisterEpLibraryWithLibPath", EventPriority::NORMAL,
+                            PDT_ProductAndServiceUsage)
+                   .AddCommonContext(this)
+                   .AddString("registrationName", registration_name)
+                   .AddString("libPath", lib_path)
+                   .Build();
+
+  LogEventAsync(std::move(event));
+}
+
 void PosixTelemetry::LogSystemMetrics(uint32_t session_id) const {
   if (!enabled_ || !logger_) {
     return;

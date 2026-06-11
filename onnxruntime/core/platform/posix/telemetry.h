@@ -100,6 +100,28 @@ class PosixTelemetry : public Telemetry {
                           const std::string& provider_options_string,
                           bool captureState) const override;
 
+  void LogModelLoadStart(uint32_t session_id) const override;
+  void LogModelLoadEnd(uint32_t session_id, const common::Status& status) const override;
+
+  void LogSessionCreationEnd(uint32_t session_id, const common::Status& status) const override;
+
+  void LogEpDeviceUsage(uint32_t session_id,
+                        const std::string& ep_type,
+                        const std::string& hardware_device_type,
+                        uint32_t hardware_vendor_id,
+                        uint32_t hardware_device_id,
+                        const std::string& hardware_vendor,
+                        const std::string& ep_vendor,
+                        int assigned_node_count,
+                        uint32_t total_runs_since_last,
+                        int64_t total_run_duration_since_last) const override;
+
+  void LogRegisterEpLibraryStart(const std::string& registration_name) const override;
+  void LogRegisterEpLibraryEnd(const std::string& registration_name,
+                               const common::Status& status) const override;
+  void LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
+                                       const std::string& lib_path) const override;
+
  private:
   // Initialize telemetry SDK logger
   void Initialize();
