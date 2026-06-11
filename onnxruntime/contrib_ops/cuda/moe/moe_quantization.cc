@@ -234,6 +234,18 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // to the runner.
   const bool int_weights_consumed_by_prepack =
       is_int && !weights_prepacked_ && packed_fc1_weights_ != nullptr && packed_fc2_weights_ != nullptr;
+  // When ``weights_prepacked == 0`` the raw ``[E, N, K/pack]`` int weights must be
+  // converted to the CUTLASS fpA_intB layout by PrePack before the runner can consume
+  // them. If PrePack never ran (e.g. ``session.disable_prepacking`` is set), the prepack
+  // buffers stay null and falling through to the raw initializer pointers would feed
+  // non-CUTLASS bytes to the runner, producing silently wrong output. Fail loudly instead.
+  if (is_int && !weights_prepacked_ &&
+      (packed_fc1_weights_ == nullptr || packed_fc2_weights_ == nullptr)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "QMoE weights_prepacked=0 requires PrePack to run, but the int weight "
+                           "buffers were not produced (is session.disable_prepacking set?). Provide "
+                           "CUTLASS-prepacked weights with weights_prepacked=1, or enable prepacking.");
+  }
   const Tensor* fc1_experts_weights = int_weights_consumed_by_prepack ? nullptr : context->Input<Tensor>(2);
   const Tensor* fc1_scales = (is_int && !packed_fc1_scales_) ? context->Input<Tensor>(3) : nullptr;
   const Tensor* fc1_experts_bias_optional = context->Input<Tensor>(4);
@@ -854,8 +866,19 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const void* fc1_weight_data = fc1_experts_weights ? fc1_experts_weights->DataRaw() : nullptr;
   const void* fc2_weight_data = fc2_experts_weights ? fc2_experts_weights->DataRaw() : nullptr;
   if (is_wfp4afp8 && !use_wfp4afp8_dequant_fallback_) {
-    fc1_weight_data = packed_fp4_fc1_weights_ ? packed_fp4_fc1_weights_.get() : fc1_weight_data;
-    fc2_weight_data = packed_fp4_fc2_weights_ ? packed_fp4_fc2_weights_.get() : fc2_weight_data;
+    // The native CUTLASS WFP4AFP8 path consumes weights in the repacked FP4
+    // layout produced by PrePack. If PrePack never ran (e.g.
+    // ``session.disable_prepacking`` is set) the repacked buffers stay null and
+    // falling through to the raw initializer bytes would feed a non-CUTLASS
+    // layout to the runner, producing silently wrong output. Fail loudly.
+    if (packed_fp4_fc1_weights_ == nullptr || packed_fp4_fc2_weights_ == nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "QMoE wfp4afp8 requires PrePack to run, but the repacked FP4 weight "
+                             "buffers were not produced (is session.disable_prepacking set?). "
+                             "Enable prepacking to use the native WFP4AFP8 path.");
+    }
+    fc1_weight_data = packed_fp4_fc1_weights_.get();
+    fc2_weight_data = packed_fp4_fc2_weights_.get();
   } else if (int_weights_consumed_by_prepack) {
     // PrePack converted the raw int4/int8 weights to the CUTLASS fpA_intB
     // layout that the runner consumes and freed the source initializer
