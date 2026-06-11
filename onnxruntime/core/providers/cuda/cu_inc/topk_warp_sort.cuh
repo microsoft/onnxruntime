@@ -40,6 +40,16 @@ constexpr int kWarpSize = 32;
 constexpr int kWarpBitonicMaxSize = 32;
 constexpr int kWarpMergeMaxSize = 64;
 
+__device__ __forceinline__ int LaneId() {
+  int lane_id;
+  asm volatile("mov.u32 %0, %%laneid;" : "=r"(lane_id));
+  return lane_id;
+}
+
+__device__ __forceinline__ int LinearThreadIdInBlock() {
+  return threadIdx.x + blockDim.x * (threadIdx.y + blockDim.y * threadIdx.z);
+}
+
 /**
  * @brief In-register, warp-wide bitonic sort of kWarpSize (32) (score, index)
  *        pairs, producing a descending order.
@@ -53,7 +63,7 @@ constexpr int kWarpMergeMaxSize = 64;
  * index = INT_MAX so that they sort to the bottom.
  */
 __device__ inline void WarpBitonicSortDescending(float& score, int& index) {
-  const int lane_id = threadIdx.x % kWarpSize;
+  const int lane_id = LaneId();
 
   // Build the bitonic sorting network in stages.
   for (int k = 2; k <= kWarpSize; k <<= 1) {
@@ -124,14 +134,17 @@ struct WarpMergeSorter {
   // padded with (-FLT_MAX, INT_MAX) so they sort to the bottom.
   __device__ static void Sort(float* smem_scores, int* smem_indices,
                               TempStorage& temp_storage, int num_valid_items) {
-    if (threadIdx.x >= kWarpSize) {
+    const int thread_id = LinearThreadIdInBlock();
+    if (thread_id >= kWarpSize) {
       return;
     }
+
+    const int lane_id = thread_id;
 
     ScoreIndex items[kItemsPerThread];
 #pragma unroll
     for (int i = 0; i < kItemsPerThread; ++i) {
-      const int idx = threadIdx.x + i * kWarpSize;
+      const int idx = lane_id + i * kWarpSize;
       if (idx < num_valid_items) {
         items[i].score = smem_scores[idx];
         items[i].index = smem_indices[idx];
@@ -146,7 +159,7 @@ struct WarpMergeSorter {
     // Blocked write-back: rank r lives at smem[r].
 #pragma unroll
     for (int i = 0; i < kItemsPerThread; ++i) {
-      const int idx = threadIdx.x * kItemsPerThread + i;
+  const int idx = lane_id * kItemsPerThread + i;
       if (idx < BufferSize) {
         smem_scores[idx] = items[i].score;
         smem_indices[idx] = items[i].index;
