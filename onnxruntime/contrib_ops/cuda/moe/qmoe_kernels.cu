@@ -6,6 +6,7 @@
 #include "core/common/narrow.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cu_inc/cub.cuh"
+#include "core/providers/cuda/cu_inc/topk_warp_sort.cuh"
 #include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
 #include <cuda_bf16.h>
 #include <algorithm>
@@ -201,6 +202,131 @@ __global__ void SoftmaxTopKMergeKernel(const T* logits, float* topk_scales, int*
   }
 }
 
+// Warp-bitonic softmax + top-k for num_experts <= 32. Each warp handles one
+// row, with lane `l` owning expert `l`. The whole softmax reduction and the
+// sort are done with warp shuffles (no shared memory). This is the fastest path
+// for tiny expert counts per the onnxruntime-genai top-k benchmark. Tie-breaking
+// (equal scores prefer the lower expert index) matches SoftmaxTopKMergeKernel.
+template <typename T, int kWarpsPerBlock>
+__global__ void SoftmaxTopKWarpBitonicKernel(const T* logits, float* topk_scales, int* topk_indices,
+                                             int num_rows, int num_experts, int k, bool normalize_scales) {
+  constexpr int kWarpSize = onnxruntime::cuda::topk_warp::kWarpSize;
+  const int lane = threadIdx.x;
+  const int row = blockIdx.x * kWarpsPerBlock + threadIdx.y;
+  if (row >= num_rows) return;
+
+  const T* row_logits = logits + static_cast<size_t>(row) * num_experts;
+  const float logit = (lane < num_experts) ? static_cast<float>(row_logits[lane]) : -FLT_MAX;
+
+  // Warp-wide max for numerical stability.
+  float max_val = logit;
+#pragma unroll
+  for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
+    max_val = fmaxf(max_val, __shfl_xor_sync(0xFFFFFFFF, max_val, offset));
+  }
+
+  // Warp-wide exp sum (softmax denominator over all experts).
+  float sum_exp = (lane < num_experts) ? expf(logit - max_val) : 0.0f;
+#pragma unroll
+  for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
+    sum_exp += __shfl_xor_sync(0xFFFFFFFF, sum_exp, offset);
+  }
+  const float inv_sum = (sum_exp > 0.0f) ? (1.0f / sum_exp) : 0.0f;
+
+  // Sort (logit, expert index) descending; sorting by logit is equivalent to
+  // sorting by softmax probability since the mapping is monotonic.
+  float score = logit;
+  int index = (lane < num_experts) ? lane : INT_MAX;
+  onnxruntime::cuda::topk_warp::WarpBitonicSortDescending(score, index);
+
+  // Lane r now holds the rank-r element. Compute the top-k probabilities.
+  float prob = (lane < k) ? expf(score - max_val) * inv_sum : 0.0f;
+
+  if (normalize_scales) {
+    float scale_sum = prob;
+#pragma unroll
+    for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
+      scale_sum += __shfl_xor_sync(0xFFFFFFFF, scale_sum, offset);
+    }
+    const float denom = (scale_sum > 1e-6f) ? scale_sum : 1.0f;
+    prob /= denom;
+  }
+
+  if (lane < k) {
+    topk_scales[static_cast<size_t>(row) * k + lane] = prob;
+    topk_indices[static_cast<size_t>(row) * k + lane] = index;
+  }
+}
+
+// Warp CUB merge sort softmax + top-k for num_experts <= kBufferSize (64). One
+// warp (32 threads) per block sorts a row's logits held in shared memory. This
+// is the genai-recommended path for sort sizes in (32, 64]. Tie-breaking
+// matches SoftmaxTopKMergeKernel via ScoreIndexGreater.
+template <typename T, int kBufferSize>
+__global__ void SoftmaxTopKWarpMergeKernel(const T* logits, float* topk_scales, int* topk_indices,
+                                           int num_rows, int num_experts, int k, bool normalize_scales) {
+  constexpr int kWarpSize = onnxruntime::cuda::topk_warp::kWarpSize;
+  using WarpMergeSorter = onnxruntime::cuda::topk_warp::WarpMergeSorter<kBufferSize>;
+
+  const int row = blockIdx.x;
+  if (row >= num_rows) return;
+  const int lane = threadIdx.x;
+
+  __shared__ float s_scores[kBufferSize];
+  __shared__ int s_indices[kBufferSize];
+  __shared__ typename WarpMergeSorter::TempStorage temp_storage;
+
+  const T* row_logits = logits + static_cast<size_t>(row) * num_experts;
+
+  // Load logits into shared memory and compute the warp-wide max.
+  float local_max = -FLT_MAX;
+  for (int i = lane; i < kBufferSize; i += kWarpSize) {
+    const float v = (i < num_experts) ? static_cast<float>(row_logits[i]) : -FLT_MAX;
+    s_scores[i] = v;
+    s_indices[i] = (i < num_experts) ? i : INT_MAX;
+    local_max = fmaxf(local_max, v);
+  }
+#pragma unroll
+  for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
+    local_max = fmaxf(local_max, __shfl_xor_sync(0xFFFFFFFF, local_max, offset));
+  }
+  const float max_val = local_max;
+
+  // Warp-wide exp sum over all experts.
+  float local_sum = 0.0f;
+  for (int i = lane; i < num_experts; i += kWarpSize) {
+    local_sum += expf(s_scores[i] - max_val);
+  }
+#pragma unroll
+  for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
+    local_sum += __shfl_xor_sync(0xFFFFFFFF, local_sum, offset);
+  }
+  const float inv_sum = (local_sum > 0.0f) ? (1.0f / local_sum) : 0.0f;
+
+  __syncwarp();
+  WarpMergeSorter::Sort(s_scores, s_indices, temp_storage, num_experts);
+  __syncwarp();
+
+  // s_scores[r]/s_indices[r] now hold the rank-r logit/expert index.
+  float scale_sum = 0.0f;
+  if (normalize_scales) {
+    for (int i = lane; i < k; i += kWarpSize) {
+      scale_sum += expf(s_scores[i] - max_val) * inv_sum;
+    }
+#pragma unroll
+    for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
+      scale_sum += __shfl_xor_sync(0xFFFFFFFF, scale_sum, offset);
+    }
+  }
+  const float denom = (normalize_scales && scale_sum > 1e-6f) ? scale_sum : 1.0f;
+
+  for (int i = lane; i < k; i += kWarpSize) {
+    const float prob = expf(s_scores[i] - max_val) * inv_sum;
+    topk_scales[static_cast<size_t>(row) * k + i] = normalize_scales ? (prob / denom) : prob;
+    topk_indices[static_cast<size_t>(row) * k + i] = s_indices[i];
+  }
+}
+
 template <typename T>
 void DispatchSoftmaxTopK(const T* logits, float* topk_scales, int* topk_indices,
                          int num_rows, int num_experts, int k, bool normalize_scales,
@@ -210,7 +336,23 @@ void DispatchSoftmaxTopK(const T* logits, float* topk_scales, int* topk_indices,
   // num_experts. k must fit in s_topk (<= 64).
   const dim3 grid(static_cast<unsigned>(num_rows));
   if (k <= 64 && num_experts <= 1024) {
-    if (num_experts <= 128) {
+    // Tiny expert counts: a single warp sorts a row entirely in registers via
+    // an in-register bitonic sort (no shared memory). Multiple warps per block
+    // process multiple rows for better occupancy.
+    if (num_experts <= onnxruntime::cuda::topk_warp::kWarpBitonicMaxSize) {
+      constexpr int kWarpsPerBlock = 8;
+      const dim3 block(static_cast<unsigned>(onnxruntime::cuda::topk_warp::kWarpSize), kWarpsPerBlock);
+      const dim3 bitonic_grid(static_cast<unsigned>((num_rows + kWarpsPerBlock - 1) / kWarpsPerBlock));
+      SoftmaxTopKWarpBitonicKernel<T, kWarpsPerBlock><<<bitonic_grid, block, 0, stream>>>(
+          logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales);
+      return;
+    } else if (num_experts <= onnxruntime::cuda::topk_warp::kWarpMergeMaxSize) {
+      // Single warp per row sorts up to 64 logits in shared memory (CUB warp
+      // merge sort), the genai-recommended path for sort sizes in (32, 64].
+      SoftmaxTopKWarpMergeKernel<T, 64><<<grid, onnxruntime::cuda::topk_warp::kWarpSize, 0, stream>>>(
+          logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales);
+      return;
+    } else if (num_experts <= 128) {
       SoftmaxTopKMergeKernel<T, 128, 1><<<grid, 128, 0, stream>>>(
           logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales);
       return;
