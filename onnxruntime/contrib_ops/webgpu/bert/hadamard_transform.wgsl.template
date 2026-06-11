@@ -1,0 +1,68 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Fast Walsh-Hadamard Transform (FWHT) applied along the head dimension.
+// Reads from a const input buffer, writes to a separate output buffer.
+// Each workgroup processes one (batch, seq, head) slice.
+
+#param head_size_log2
+#param components
+
+const HEAD_SIZE : u32 = 1u << head_size_log2;
+const HEAD_SIZE_VEC : u32 = HEAD_SIZE / components;
+
+#use .getByOffset .setByOffset
+
+var<workgroup> shared_data : array<f32, HEAD_SIZE>;
+
+#include "bert/hadamard_transform_common.wgsl.template"
+
+$MAIN {
+  let slice_idx = workgroup_idx;
+  let num_slices = uniforms.batch_size * uniforms.seq_length * uniforms.num_heads;
+  if (slice_idx >= num_slices) {
+    return;
+  }
+
+  let base_offset = slice_idx * HEAD_SIZE_VEC;
+
+  // Load from read-only input into shared memory.
+  for (var i = local_idx; i < HEAD_SIZE_VEC; i += workgroup_size_x) {
+    let val = input.getByOffset(base_offset + i);
+#if components == 4
+    shared_data[i * 4u + 0u] = f32(val[0]);
+    shared_data[i * 4u + 1u] = f32(val[1]);
+    shared_data[i * 4u + 2u] = f32(val[2]);
+    shared_data[i * 4u + 3u] = f32(val[3]);
+#elif components == 2
+    shared_data[i * 2u + 0u] = f32(val[0]);
+    shared_data[i * 2u + 1u] = f32(val[1]);
+#else
+    shared_data[i] = f32(val);
+#endif
+  }
+  workgroupBarrier();
+
+  // Walsh-Hadamard Transform butterfly passes.
+  wht_butterfly(local_idx, workgroup_size_x);
+
+  // Normalize by 1/sqrt(HEAD_SIZE) to make the transform orthogonal.
+  let norm = 1.0f / sqrt(f32(HEAD_SIZE));
+
+  // Write results to output buffer.
+  for (var i = local_idx; i < HEAD_SIZE_VEC; i += workgroup_size_x) {
+#if components == 4
+    let v0 = output_element_t(shared_data[i * 4u + 0u] * norm);
+    let v1 = output_element_t(shared_data[i * 4u + 1u] * norm);
+    let v2 = output_element_t(shared_data[i * 4u + 2u] * norm);
+    let v3 = output_element_t(shared_data[i * 4u + 3u] * norm);
+    output.setByOffset(base_offset + i, output_value_t(v0, v1, v2, v3));
+#elif components == 2
+    let v0 = output_element_t(shared_data[i * 2u + 0u] * norm);
+    let v1 = output_element_t(shared_data[i * 2u + 1u] * norm);
+    output.setByOffset(base_offset + i, output_value_t(v0, v1));
+#else
+    output.setByOffset(base_offset + i, output_value_t(output_element_t(shared_data[i] * norm)));
+#endif
+  }
+} // MAIN

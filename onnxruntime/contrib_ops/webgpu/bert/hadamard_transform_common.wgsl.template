@@ -1,0 +1,26 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Shared Walsh-Hadamard Transform butterfly function.
+// Requires the caller to declare:
+//   const HEAD_SIZE : u32 = ...;
+//   var<workgroup> shared_data : array<f32, HEAD_SIZE>;
+//   #param head_size_log2
+
+fn wht_butterfly(lid: u32, wg_size: u32) {
+  for (var step = 0u; step < head_size_log2; step++) {
+    let half_block = 1u << step;
+    let block_size = half_block << 1u;
+    for (var idx = lid; idx < HEAD_SIZE / 2u; idx += wg_size) {
+      let block_id = idx / half_block;
+      let offset_in_block = idx % half_block;
+      let ii = block_id * block_size + offset_in_block;
+      let jj = ii + half_block;
+      let a = shared_data[ii];
+      let b = shared_data[jj];
+      shared_data[ii] = a + b;
+      shared_data[jj] = a - b;
+    }
+    workgroupBarrier();
+  }
+}

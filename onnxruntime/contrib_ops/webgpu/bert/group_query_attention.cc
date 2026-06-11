@@ -241,6 +241,24 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   }
 
   GroupQueryAttentionParameters params = {};
+
+  // When TurboQuant is enabled, compute the compressed KV cache head dimension.
+  // TurboQuant stores (head_size/8 + 1) u32 words per head. The dimension seen by
+  // the tensor depends on its element type: fp16 → ×2, fp32 → ×1.
+  int kv_compressed_head_size = 0;
+  if (context.TurboQuantEnabled() && past_key != nullptr) {
+    const int qkv_last_dim = static_cast<int>(query->Shape().GetDims()[2]);
+    // For packed QKV, dim[2] contains Q+K+V concatenated, so divide by (num_heads + 2*kv_num_heads).
+    // For separate Q, dim[2] is just Q hidden size, so divide by num_heads.
+    const bool is_packed_qkv = (key == nullptr || !key->Shape().Size());
+    const int head_size_from_q = is_packed_qkv
+                                     ? qkv_last_dim / (num_heads_ + 2 * kv_num_heads_)
+                                     : qkv_last_dim / num_heads_;
+    const int compressed_u32_words = head_size_from_q / 8 + 1;
+    const int bytes_per_element = static_cast<int>(past_key->DataType()->Size());
+    kv_compressed_head_size = compressed_u32_words * (4 / bytes_per_element);  // 4 bytes per u32
+  }
+
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs(query,
                                                                 key,
                                                                 value,
@@ -256,7 +274,8 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                                                 scale_,
                                                                 softcap_,
                                                                 0,
-                                                                onnxruntime::narrow<int>(context.DeviceLimits().maxComputeInvocationsPerWorkgroup)));
+                                                                onnxruntime::narrow<int>(context.DeviceLimits().maxComputeInvocationsPerWorkgroup),
+                                                                kv_compressed_head_size));
   params.use_smooth_softmax = use_smooth_softmax_;
   params.rotary_interleaved = rotary_interleaved_;
 
@@ -310,11 +329,15 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   output_shape[1] = static_cast<int64_t>(parameters.sequence_length_);
   output_shape[2] = static_cast<int64_t>(parameters.hidden_size_);
   Tensor* output = context.Output(0, output_shape);
+
+  // When TurboQuant is enabled, the KV cache head dimension is compressed.
+  // Use the computed compressed size to match GenAI's pre-allocated buffer shape.
+  int64_t kv_head_dim = (kv_compressed_head_size > 0) ? kv_compressed_head_size : parameters.head_size_;
   std::vector<int64_t> present_dims{
       parameters.batch_size_,
       kv_num_heads_,
       parameters.seqlen_present_kv_cache_,
-      parameters.head_size_};
+      kv_head_dim};
   std::vector<int64_t> present_kv_shape(present_dims);
   Tensor* present_key = context.Output(1, present_kv_shape);
   Tensor* present_value = context.Output(2, present_kv_shape);
@@ -377,6 +400,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     }
   } else if (parameters.is_packed_qkv_ && do_rotary_) {
     // Use the ultimate fused operation when FlashAttention and static KV cache is enabled.
+    // When TurboQuant is active, ApplyFlashAttention handles the fused split+rotary+Hadamard+quantize path.
     if (will_use_flash_attention && parameters.past_present_share_buffer_) {
       // Directly call ApplyFlashAttention with fused split/rotary/copyKV enabled
       // query points to packed QKV, K and V are nullptr since they're not needed

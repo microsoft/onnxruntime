@@ -1,0 +1,191 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Fused TurboQuant copy-to-KV-cache with Walsh-Hadamard Transform and 4-bit quantization.
+// Each workgroup handles one (batch, head, seq) slice for either K or V.
+// Workgroup layout: [0, num_slices_per_kv) -> K, [num_slices_per_kv, 2*num_slices_per_kv) -> V.
+//
+// For new tokens: apply Walsh-Hadamard butterfly transform in shared memory,
+// compute L2 norm, quantize each element to a 4-bit centroid index, pack 8 indices per u32,
+// and store norm (as bitcast<u32>(f32)) followed by packed index words.
+// For past tokens (has_past): simple u32-word copy from past to present.
+//
+// Output layout per head: [norm_u32, packed_indices_0, packed_indices_1, ..., packed_indices_(HEAD_SIZE/8 - 1)]
+
+#param has_past
+#param kv_BNSH
+#param past_present_share_buffer
+#param use_seqlen_k
+#param prepare_indirect_dispatch
+#param head_size_log2
+#param components
+#param compressed_head_size_u32
+#use .indicesToOffset
+
+const HEAD_SIZE : u32 = 1u << head_size_log2;
+const HEAD_SIZE_VEC : u32 = HEAD_SIZE / components;
+const COMPRESSED_HEAD_U32 : u32 = compressed_head_size_u32;
+
+var<workgroup> shared_data : array<f32, HEAD_SIZE>;
+
+#include "bert/hadamard_transform_common.wgsl.template"
+#include "bert/turbo_quant_common.wgsl.template"
+
+var<workgroup> reduction_buf : array<f32, 64>;
+// Reuse shared memory for packing: store centroid indices (0-15) as u32 per element.
+var<workgroup> index_buf : array<u32, HEAD_SIZE>;
+
+$MAIN {
+  // Decode workgroup_idx -> (is_value, batch, head, seq)
+  let is_value = workgroup_idx >= uniforms.num_slices_per_kv;
+  let kv_slice = select(workgroup_idx, workgroup_idx - uniforms.num_slices_per_kv, is_value);
+  if (kv_slice >= uniforms.num_slices_per_kv) { return; }
+
+  // Compute total_seq_length
+#if use_seqlen_k
+  let total_seq_length = u32(seqlen_k[0u]) + 1u;
+#else
+  let total_seq_length = uniforms.total_sequence_length;
+#endif
+  let past_seq_length = total_seq_length - uniforms.kv_sequence_length;
+
+  // Decode kv_slice -> (batch, head, seq) based on copy_sequence_length.
+#if past_present_share_buffer
+  let copy_seq_length = uniforms.kv_sequence_length;
+#elif has_past
+  let copy_seq_length = total_seq_length;
+#else
+  let copy_seq_length = uniforms.kv_sequence_length;
+#endif
+  let batch = kv_slice / (uniforms.kv_num_heads * copy_seq_length);
+  let head = (kv_slice / copy_seq_length) % uniforms.kv_num_heads;
+  let seq = kv_slice % copy_seq_length;
+
+  // Prepare indirect dispatch buffer (first workgroup, first thread only).
+#if prepare_indirect_dispatch
+  if (workgroup_idx == 0u && local_idx == 0u) {
+    let num_total_seq_length_tile = (total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;
+    indirect_buffer[0] = num_total_seq_length_tile;
+    indirect_buffer[1] = uniforms.num_heads;
+    indirect_buffer[2] = 1u;
+  }
+#endif
+
+  // Compute destination offset in present_key/present_value (u32 packed, always BNSH layout).
+#if past_present_share_buffer
+  let dest_seq = past_seq_length + seq;
+#else
+  let dest_seq = seq;
+#endif
+  let present_base = ((batch * uniforms.kv_num_heads + head) * uniforms.present_seq_length + dest_seq) * COMPRESSED_HEAD_U32;
+
+  // Handle past tokens: simple u32 word copy (already quantized).
+#if has_past
+  if (seq < past_seq_length) {
+    let past_base = ((batch * uniforms.kv_num_heads + head) * past_seq_length + seq) * COMPRESSED_HEAD_U32;
+    for (var i = local_idx; i < COMPRESSED_HEAD_U32; i += workgroup_size_x) {
+      if (!is_value) {
+        present_key[present_base + i] = past_key[past_base + i];
+      } else {
+        present_value[present_base + i] = past_value[past_base + i];
+      }
+    }
+    return;
+  }
+  let new_seq = seq - past_seq_length;
+#else
+  let new_seq = seq;
+#endif
+
+  // Compute source offset in K/V for new tokens.
+#if kv_BNSH
+  let src_base = key.indicesToOffset(key_indices_t(batch, head, new_seq, 0u));
+#else
+  let src_base = key.indicesToOffset(key_indices_t(batch, new_seq, head, 0u));
+#endif
+
+  // Load from K or V into shared memory (f32).
+  for (var i = local_idx; i < HEAD_SIZE_VEC; i += workgroup_size_x) {
+    var val : key_value_t;
+    if (!is_value) {
+      val = key[src_base + i];
+    } else {
+      val = value[src_base + i];
+    }
+#if components == 4
+    shared_data[i * 4u + 0u] = f32(val[0]);
+    shared_data[i * 4u + 1u] = f32(val[1]);
+    shared_data[i * 4u + 2u] = f32(val[2]);
+    shared_data[i * 4u + 3u] = f32(val[3]);
+#elif components == 2
+    shared_data[i * 2u + 0u] = f32(val[0]);
+    shared_data[i * 2u + 1u] = f32(val[1]);
+#else
+    shared_data[i] = f32(val);
+#endif
+  }
+  workgroupBarrier();
+
+  // Walsh-Hadamard Transform butterfly passes.
+  wht_butterfly(local_idx, workgroup_size_x);
+
+  // WHT normalization.
+  let wht_norm = 1.0f / sqrt(f32(HEAD_SIZE));
+  for (var i = local_idx; i < HEAD_SIZE; i += workgroup_size_x) {
+    shared_data[i] *= wht_norm;
+  }
+  workgroupBarrier();
+
+  // Compute L2 norm via parallel reduction.
+  var partial_sq_sum = 0.0f;
+  for (var i = local_idx; i < HEAD_SIZE; i += workgroup_size_x) {
+    partial_sq_sum += shared_data[i] * shared_data[i];
+  }
+  reduction_buf[local_idx] = partial_sq_sum;
+  workgroupBarrier();
+  for (var stride = workgroup_size_x >> 1u; stride > 0u; stride >>= 1u) {
+    if (local_idx < stride) {
+      reduction_buf[local_idx] += reduction_buf[local_idx + stride];
+    }
+    workgroupBarrier();
+  }
+  let l2_norm = sqrt(reduction_buf[0]);
+  let inv_l2 = select(0.0f, 1.0f / l2_norm, l2_norm > 0.0f);
+
+  // Quantize: compute centroid index for each element and store in index_buf.
+  for (var i = local_idx; i < HEAD_SIZE; i += workgroup_size_x) {
+    let unit_val = shared_data[i] * inv_l2;
+    index_buf[i] = snap_to_centroid_index(unit_val);
+  }
+  workgroupBarrier();
+
+  // Pack 8 indices per u32 word and write to output.
+  // Thread 0 writes the norm word.
+  if (local_idx == 0u) {
+    if (!is_value) {
+      present_key[present_base] = bitcast<u32>(l2_norm);
+    } else {
+      present_value[present_base] = bitcast<u32>(l2_norm);
+    }
+  }
+
+  // Each thread packs one or more u32 words (HEAD_SIZE/8 words total).
+  let num_packed_words = HEAD_SIZE >> 3u;
+  for (var w = local_idx; w < num_packed_words; w += workgroup_size_x) {
+    let base_elem = w << 3u;
+    var packed = 0u;
+    packed |= (index_buf[base_elem + 0u] & 0xFu);
+    packed |= (index_buf[base_elem + 1u] & 0xFu) << 4u;
+    packed |= (index_buf[base_elem + 2u] & 0xFu) << 8u;
+    packed |= (index_buf[base_elem + 3u] & 0xFu) << 12u;
+    packed |= (index_buf[base_elem + 4u] & 0xFu) << 16u;
+    packed |= (index_buf[base_elem + 5u] & 0xFu) << 20u;
+    packed |= (index_buf[base_elem + 6u] & 0xFu) << 24u;
+    packed |= (index_buf[base_elem + 7u] & 0xFu) << 28u;
+    if (!is_value) {
+      present_key[present_base + 1u + w] = packed;
+    } else {
+      present_value[present_base + 1u + w] = packed;
+    }
+  }
+}
