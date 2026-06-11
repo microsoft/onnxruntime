@@ -32,6 +32,7 @@
 #include "core/providers/webgpu/tensor/cast.h"
 #include "core/providers/webgpu/tensor/expand.h"
 #include "core/providers/webgpu/tensor/grid_sample.h"
+#include "core/providers/webgpu/generator/constant_of_shape.h"
 #include "core/providers/webgpu/generator/range.h"
 #include "core/providers/webgpu/tensor/unsqueeze.h"
 
@@ -478,6 +479,9 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
 
   // Register Range kernels with conditional int64 support
   RegisterRangeKernels(*kernel_registry, enable_int64);
+
+  // Register ConstantOfShape kernels with conditional int64 support
+  RegisterConstantOfShapeKernels(*kernel_registry, enable_int64);
 
   // Register Unsqueeze kernels with conditional int64 support
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateUnsqueezeVersionedKernelInfo<1, 10>(enable_int64)));

@@ -45,6 +45,16 @@ class SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram final : public Program<S
   const uint32_t multi_rotary_cache_concat_offset_;
 };
 
+class PrepareIndirectDispatchProgram final : public Program<PrepareIndirectDispatchProgram> {
+ public:
+  PrepareIndirectDispatchProgram() : Program{"PrepareIndirectDispatch"} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"tile_size", ProgramUniformVariableDataType::Uint32},
+                                          {"num_heads", ProgramUniformVariableDataType::Uint32});
+};
+
 class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
  public:
   CopyKVCacheProgram(const std::string& kernel_name, bool has_past, bool kv_BNSH, bool past_present_share_buffer,
