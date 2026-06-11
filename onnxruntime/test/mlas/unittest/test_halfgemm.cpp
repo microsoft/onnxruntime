@@ -33,6 +33,13 @@ struct HalfGemmPackBPaddingKernel {
   static constexpr size_t PackedK = 4;
 };
 
+void ExpectBufferFilledWith(const std::vector<std::byte>& buffer, std::byte expected) {
+  const auto expected_value = std::to_integer<unsigned int>(expected);
+  for (size_t i = 0; i < buffer.size(); ++i) {
+    EXPECT_EQ(std::to_integer<unsigned int>(buffer[i]), expected_value) << "index=" << i;
+  }
+}
+
 }  // namespace
 
 #if defined(USE_KLEIDIAI)
@@ -487,25 +494,33 @@ TEST(HalfGemmPackB, ReturnsZeroOnOverflow) {
   EXPECT_EQ(MlasHalfGemmPackBSize(max, 2, true), size_t{0});
 }
 
-TEST(HalfGemmPackB, PackBReturnsOnOverflow) {
+TEST(HalfGemmPackB, PackBLeavesOutputUnchangedOnOverflow) {
   const size_t max = (std::numeric_limits<size_t>::max)();
   std::vector<MLAS_FP16> b(1);
-  std::vector<std::byte> packed_b(1);
+  constexpr std::byte sentinel{0x5A};
+  std::vector<std::byte> packed_b(16, sentinel);
 
-  EXPECT_NO_THROW(MlasHalfGemmPackB(max, 2, b.data(), max, packed_b.data()));
+  MlasHalfGemmPackB(max, 2, b.data(), max, packed_b.data());
+  ExpectBufferFilledWith(packed_b, sentinel);
 }
 
-TEST(HalfGemmPackB, PackBRejectsInvalidArguments) {
+TEST(HalfGemmPackB, PackBExitsEarlyForInvalidArguments) {
   constexpr size_t N = 5;
   constexpr size_t K = 3;
+  constexpr std::byte sentinel{0x5A};
 
   std::vector<MLAS_FP16> b(K * N);
-  std::vector<std::byte> packed_b(MlasHalfGemmPackBSize(N, K, false));
+  std::vector<std::byte> packed_b(MlasHalfGemmPackBSize(N, K, false), sentinel);
   ASSERT_FALSE(packed_b.empty());
 
-  EXPECT_NO_THROW(MlasHalfGemmPackB(N, K, b.data(), N - 1, packed_b.data()));
-  EXPECT_NO_THROW(MlasHalfGemmPackB(N, K, nullptr, N, packed_b.data()));
-  EXPECT_NO_THROW(MlasHalfGemmPackB(N, K, b.data(), N, nullptr));
+  MlasHalfGemmPackB(N, K, b.data(), N - 1, packed_b.data());
+  ExpectBufferFilledWith(packed_b, sentinel);
+
+  MlasHalfGemmPackB(N, K, nullptr, N, packed_b.data());
+  ExpectBufferFilledWith(packed_b, sentinel);
+
+  MlasHalfGemmPackB(N, K, b.data(), N, nullptr);
+  ExpectBufferFilledWith(packed_b, sentinel);
 }
 
 TEST(HalfGemmPackB, CopyPackBZeroPadsAlignedKTail) {
@@ -746,7 +761,7 @@ TEST(HalfGemmKleidiAIPath, PackedBFloatSingleThreadVariedShapesAndBiasWithoutOut
 // KleidiAI-specific packed-B uses a separate direct-consumption contract from
 // generic halfgemm PackB. Unsupported combinations fail at the public API
 // boundary because generic MLAS cannot consume this backend-native layout.
-TEST(HalfGemmKleidiAIPath, KleidiAIPackedBWithBiasThrows) {
+TEST(HalfGemmKleidiAIPath, KleidiAIPackedBWithBiasIsRejected) {
   if (!MlasFp16AccelerationSupported()) {
     GTEST_SKIP();
   }
@@ -790,7 +805,7 @@ TEST(HalfGemmKleidiAIPath, KleidiAIPackedBWithBiasThrows) {
 #endif
 }
 
-TEST(HalfGemmKleidiAIPath, KleidiAIPackedBWithOutputProcessorThrows) {
+TEST(HalfGemmKleidiAIPath, KleidiAIPackedBWithOutputProcessorIsRejected) {
   if (!MlasFp16AccelerationSupported()) {
     GTEST_SKIP();
   }
@@ -837,7 +852,7 @@ TEST(HalfGemmKleidiAIPath, KleidiAIPackedBWithOutputProcessorThrows) {
 #endif
 }
 
-TEST(HalfGemmKleidiAIPath, ZeroKFallsBack) {
+TEST(HalfGemmKleidiAIPath, ZeroKIsNotHandledByKleidiAIOverride) {
   if (GetMlasPlatform().MlasHalfGemmBatchOverride == nullptr) {
     GTEST_SKIP() << "KleidiAI halfgemm override unavailable";
   }

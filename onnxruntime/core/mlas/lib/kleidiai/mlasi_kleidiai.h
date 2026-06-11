@@ -8,6 +8,7 @@
 
 #include "../mlasi.h"
 #include <limits>
+#include <iostream>
 #include <vector>
 
 // Fix to ensure compatibility with MSVC build
