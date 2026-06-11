@@ -246,6 +246,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddOutput("output", ShaderUsage::UseUniform);
 
   return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(compressed_head_size_u32, compressed_head_size_u32_),
                              WGSL_TEMPLATE_PARAMETER(has_attention_bias, has_attention_bias_),
                              WGSL_TEMPLATE_PARAMETER(has_head_sink, has_head_sink_),
                              WGSL_TEMPLATE_PARAMETER(is_fp16, is_fp16_),
@@ -256,6 +257,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
                              WGSL_TEMPLATE_PARAMETER(q_BNSH, q_BNSH_),
                              WGSL_TEMPLATE_PARAMETER(qkv_head_size, qkv_head_size_),
                              WGSL_TEMPLATE_PARAMETER(qkv_num_heads, qkv_num_heads_),
+                             WGSL_TEMPLATE_PARAMETER(turbo_quant, turbo_quant_),
                              WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
                              WGSL_TEMPLATE_PARAMETER(use_shm_path, use_shm_path_));
 }
@@ -515,6 +517,33 @@ Status ComputeFlashAttentionDecodeSplitVxScore(onnxruntime::webgpu::ComputeConte
   return context.RunProgram(program);
 }
 
+class TQReduceProgram final : public Program<TQReduceProgram> {
+ public:
+  TQReduceProgram(uint32_t tile_size, uint32_t seq_tile_size, bool use_indirect_dispatch)
+      : Program{"FlashAttentionDecodeTQVxReduce"}, tile_size_(tile_size), seq_tile_size_(seq_tile_size), use_indirect_dispatch_(use_indirect_dispatch) {}
+  Status GenerateShaderCode(ShaderHelper& shader) const override {
+    shader.AddInput("input", ShaderUsage::UseUniform);
+    if (use_indirect_dispatch_) {
+      shader.AddInput("seqlens_k", ShaderUsage::None);
+    }
+    shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+    return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_decode_vx_reduce_tq.wgsl.template",
+                               WGSL_TEMPLATE_PARAMETER(seq_tile_size, seq_tile_size_),
+                               WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
+                               WGSL_TEMPLATE_PARAMETER(use_indirect_dispatch, use_indirect_dispatch_));
+  }
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"head_size_vec", ProgramUniformVariableDataType::Uint32},
+                                          {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"num_present_sequence_length_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"num_head_size_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"batch_heads", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  uint32_t tile_size_;
+  uint32_t seq_tile_size_;
+  bool use_indirect_dispatch_;
+};
+
 Status ComputeFlashAttentionDecodeTQVxReduce(onnxruntime::webgpu::ComputeContext& context,
                                              const Tensor* out_split_vx,
                                              Tensor* output,
@@ -575,37 +604,7 @@ Status ComputeFlashAttentionDecodeTQVxReduce(onnxruntime::webgpu::ComputeContext
   // But TQ SplitVx output is already divided by num_tiles... no, it's normalized by softmax.
   // The correct answer is just sum(partial[i]). So we need sum=1 not sum=num_tiles.
 
-  // Let me just use the simple old template directly.
-  // This requires not using FlashAttentionDecodeVxReduceProgram. Instead, inline it.
   (void)metadata;  // unused
-
-  // Manually create a program that uses the simple TQ reduce template
-  class TQReduceProgram final : public Program<TQReduceProgram> {
-   public:
-    TQReduceProgram(uint32_t tile_size, uint32_t seq_tile_size, bool use_indirect_dispatch)
-        : Program{"FlashAttentionDecodeTQVxReduce"}, tile_size_(tile_size), seq_tile_size_(seq_tile_size), use_indirect_dispatch_(use_indirect_dispatch) {}
-    Status GenerateShaderCode(ShaderHelper& shader) const override {
-      shader.AddInput("input", ShaderUsage::UseUniform);
-      if (use_indirect_dispatch_) {
-        shader.AddInput("seqlens_k", ShaderUsage::None);
-      }
-      shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
-      return WGSL_TEMPLATE_APPLY(shader, "bert/flash_attention_decode_vx_reduce_tq.wgsl.template",
-                                 WGSL_TEMPLATE_PARAMETER(seq_tile_size, seq_tile_size_),
-                                 WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
-                                 WGSL_TEMPLATE_PARAMETER(use_indirect_dispatch, use_indirect_dispatch_));
-    }
-    WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"head_size_vec", ProgramUniformVariableDataType::Uint32},
-                                            {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32},
-                                            {"num_present_sequence_length_tile", ProgramUniformVariableDataType::Uint32},
-                                            {"num_head_size_tile", ProgramUniformVariableDataType::Uint32},
-                                            {"batch_heads", ProgramUniformVariableDataType::Uint32});
-
-   private:
-    uint32_t tile_size_;
-    uint32_t seq_tile_size_;
-    bool use_indirect_dispatch_;
-  };
 
   TQReduceProgram tq_program{static_cast<uint32_t>(reduce_tile_size), seq_tile_size, use_indirect_dispatch};
   tq_program.AddInputs({{out_split_vx, ProgramTensorMetadataDependency::TypeAndRank, components}});
@@ -868,7 +867,10 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   // Split-reduce wins for short Q (sequence_length < 32) across all KV
   // cache lengths measured: 1.13x-2.07x faster at total_sequence_length
   // 128 / 500 / 2000 on a representative LLM (32 heads, head_size 96).
-  const bool use_split_reduce = parameters.sequence_length_ < 32;
+  // TQ 3-pass decode only handles seq_len=1 (one Q row per workgroup).
+  // For seq_len > 1 with TQ, use the prefill path which has full TQ support.
+  const bool use_split_reduce = turbo_quant_enabled ? (parameters.sequence_length_ == 1)
+                                                    : (parameters.sequence_length_ < 32);
 
   if (!use_split_reduce) {
     // Prefill path: FlashAttentionProgram (single kernel with subgroup shuffles)
