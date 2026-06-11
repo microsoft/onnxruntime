@@ -61,6 +61,11 @@ MlasHalfGemmTryGetPackedBSize(
     size_t* PackedBSize
     )
 {
+    if (N == 0 || K == 0) {
+        *PackedBSize = 0;
+        return true;
+    }
+
     if (PackedK == 0) {
         return false;
     }

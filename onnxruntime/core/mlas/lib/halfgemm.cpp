@@ -92,7 +92,6 @@ TryGetHalfGemmBackendSelectorConfig(
 }
 #endif
 
-
 void
 MLASCALL
 MlasHalfGemmBatch(
@@ -108,7 +107,21 @@ MlasHalfGemmBatch(
         return;
     }
 
+    if (DataParams == nullptr) {
+        MLAS_THROW_EX(std::runtime_error, "HalfGemm requires non-null DataParams.");
+    }
+
     if (K == 0) {
+        for (size_t gemm_i = 0; gemm_i < BatchN; gemm_i++) {
+            const auto& data = DataParams[gemm_i];
+            if (data.BIsBackendNativePacked &&
+                (data.ldb != 0 || data.Bias != nullptr || data.OutputProcessor != nullptr)) {
+                MLAS_THROW_EX(
+                    std::runtime_error,
+                    "backend-native halfgemm packed B with K==0 requires ldb == 0, Bias == nullptr, and "
+                    "OutputProcessor == nullptr");
+            }
+        }
         MlasHalfGemmZeroKBatch(M, N, BatchN, DataParams);
         return;
     }
