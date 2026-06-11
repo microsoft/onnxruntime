@@ -263,10 +263,10 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionFusesQwenPatter
   // Uses the current max ONNX opset to catch version-list drift.
   // If this fails, update version lists in
   // onnxruntime/core/optimizer/group_query_attention_pre_norm_fusion.cc.
-  int current_opset = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance()
-                          .Map()
-                          .at(ONNX_NAMESPACE::ONNX_DOMAIN)
-                          .second;
+  const auto& map = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().Map();
+  auto it = map.find(ONNX_NAMESPACE::ONNX_DOMAIN);
+  ASSERT_TRUE(it != map.end()) << "ONNX domain not found in OpSchemaRegistry";
+  int current_opset = it->second.second;
   auto build = [](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, BuildOptions{}); };
   ASSERT_STATUS_OK(TestGraphTransformer(
       build, /*opset_version=*/current_opset, *logger_, MakeWebGpuTransformer(),

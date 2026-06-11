@@ -7206,7 +7206,6 @@ TEST_F(GraphTransformationTests, DivMulFusionCurrentOpsetTest) {
   auto post_graph_checker = [current_opset](Graph& graph) {
     auto op_to_count = CountOpsInGraph(graph);
     if (op_to_count["Div"] == 1 && op_to_count["Mul"] == 0) {
-      TEST_RETURN_IF_NOT(op_to_count["Mul"] == 0);
       return Status::OK();
     }
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
