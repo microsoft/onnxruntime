@@ -225,6 +225,10 @@ type IOBindingState = {
 
 /**
  *  tuple elements are: InferenceSession ID; inputNamesUTF8Encoded; outputNamesUTF8Encoded; bindingState
+ *
+ *  modelDataOffsetToFree is the WASM heap offset of the model data buffer that must be kept alive for the entire
+ *  session lifetime (e.g. when `use_ort_model_bytes_for_initializers` makes the initializer tensors point directly
+ *  into it) and freed in releaseSession(). It is 0 when the buffer was already freed right after createSession().
  */
 type SessionMetadata = [
   inferenceSessionId: number,
@@ -233,6 +237,7 @@ type SessionMetadata = [
   bindingState: IOBindingState | null,
   enableGraphCapture: boolean,
   inputOutputBound: boolean,
+  modelDataOffsetToFree: number,
 ];
 
 const activeSessions = new Map<number, SessionMetadata>();
@@ -348,6 +353,7 @@ export const createSession = async (
   let sessionOptionsHandle = 0;
   let ioBindingHandle = 0;
   let allocs: number[] = [];
+  let modelDataOffsetToFree = 0;
   const inputNamesUTF8Encoded = [];
   const outputNamesUTF8Encoded = [];
 
@@ -492,6 +498,13 @@ export const createSession = async (
       };
     }
 
+    if (
+      (options?.extra?.session as Record<string, unknown> | undefined)?.use_ort_model_bytes_for_initializers === '1'
+    ) {
+      // hand ownership of the model data buffer to the session; releaseSession() will free it.
+      modelDataOffsetToFree = modelDataOffset;
+    }
+
     activeSessions.set(sessionHandle, [
       sessionHandle,
       inputNamesUTF8Encoded,
@@ -499,6 +512,7 @@ export const createSession = async (
       bindingState,
       enableGraphCapture,
       false,
+      modelDataOffsetToFree,
     ]);
     return [sessionHandle, inputNames, outputNames, inputMetadata, outputMetadata];
   } catch (e) {
@@ -518,7 +532,10 @@ export const createSession = async (
     }
     throw e;
   } finally {
-    wasm._free(modelDataOffset);
+    // skip only when ownership was handed to the session above; the session frees it in releaseSession().
+    if (modelDataOffsetToFree === 0) {
+      wasm._free(modelDataOffset);
+    }
     if (sessionOptionsHandle !== 0) {
       if (wasm._OrtReleaseSessionOptions(sessionOptionsHandle) !== 0) {
         checkLastError("Can't release session options.");
@@ -537,7 +554,15 @@ export const releaseSession = (sessionId: number): void => {
   if (!session) {
     throw new Error(`cannot release session. invalid session id: ${sessionId}`);
   }
-  const [sessionHandle, inputNamesUTF8Encoded, outputNamesUTF8Encoded, ioBindingState, enableGraphCapture] = session;
+  const [
+    sessionHandle,
+    inputNamesUTF8Encoded,
+    outputNamesUTF8Encoded,
+    ioBindingState,
+    enableGraphCapture,
+    ,
+    modelDataOffsetToFree,
+  ] = session;
 
   if (ioBindingState) {
     if (enableGraphCapture) {
@@ -558,6 +583,10 @@ export const releaseSession = (sessionId: number): void => {
   outputNamesUTF8Encoded.forEach((buf) => wasm._OrtFree(buf));
   if (wasm._OrtReleaseSession(sessionHandle) !== 0) {
     checkLastError("Can't release session.");
+  }
+  // free the model data buffer that was kept alive for the session's in-place initializers, if any.
+  if (modelDataOffsetToFree !== 0) {
+    wasm._free(modelDataOffsetToFree);
   }
   activeSessions.delete(sessionId);
 };
@@ -715,6 +744,7 @@ export const run = async (
   const ioBindingState = session[3];
   const enableGraphCapture = session[4];
   const inputOutputBound = session[5];
+  const modelDataOffsetToFree = session[6];
 
   const inputCount = inputIndices.length;
   const outputCount = outputIndices.length;
@@ -825,6 +855,7 @@ export const run = async (
         ioBindingState,
         enableGraphCapture,
         true,
+        modelDataOffsetToFree,
       ]);
     }
 
@@ -1064,6 +1095,7 @@ export const run = async (
         ioBindingState,
         enableGraphCapture,
         false,
+        modelDataOffsetToFree,
       ]);
     }
     // Wait for all output tensor data to be downloaded.
