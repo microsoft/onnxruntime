@@ -290,21 +290,18 @@ class GraphCacheManager : public IBufferCacheManager {
   }
 
   void ReleaseBuffer(WGPUBuffer buffer) override {
-    if (graph_capture_state_ == GraphCaptureState::Default) {
-      auto buffer_size = static_cast<size_t>(wgpuBufferGetSize(buffer));
-      auto it = buckets_.find(buffer_size);
-      if (it != buckets_.end()) {
-        it->second.emplace_back(buffer);
-      } else {
-        buckets_[buffer_size] = std::vector<WGPUBuffer>{buffer};
-      }
+    auto buffer_size = static_cast<size_t>(wgpuBufferGetSize(buffer));
+    auto it = buckets_.find(buffer_size);
+    if (it != buckets_.end()) {
+      it->second.emplace_back(buffer);
     } else {
-      captured_buffers_.emplace_back(buffer);
+      // Insert a new bucket for non-standard buffer sizes
+      buckets_[buffer_size] = std::vector<WGPUBuffer>{buffer};
     }
   }
 
-  void OnRefresh(GraphCaptureState graph_capture_state) override {
-    graph_capture_state_ = graph_capture_state;
+  void OnRefresh(GraphCaptureState /*graph_capture_state*/) override {
+    // no-op - buffers are already in buckets_
   }
 
   ~GraphCacheManager() {
@@ -312,9 +309,6 @@ class GraphCacheManager : public IBufferCacheManager {
       for (auto& buffer : pair.second) {
         wgpuBufferRelease(buffer);
       }
-    }
-    for (auto& buffer : captured_buffers_) {
-      wgpuBufferRelease(buffer);
     }
   }
 
@@ -339,9 +333,7 @@ class GraphCacheManager : public IBufferCacheManager {
   }
   std::unordered_map<size_t, size_t> buckets_limit_;
   std::unordered_map<size_t, std::vector<WGPUBuffer>> buckets_;
-  std::vector<WGPUBuffer> captured_buffers_;
   std::vector<size_t> buckets_keys_;
-  GraphCaptureState graph_capture_state_ = GraphCaptureState::Default;
 };
 
 class GraphSimpleCacheManager : public IBufferCacheManager {
