@@ -31,6 +31,50 @@ constexpr float kTestTolerance = 0.005f;
 // For int8: scale=0.008, zp=0 covers [-128*0.008, 127*0.008] = [-1.024, 1.016]
 constexpr int8_t kTestZpInt8 = 0;
 
+// Lightweight transform test: builds model, creates a single InferenceSession,
+// runs Load + Initialize (which applies all graph transformers), then invokes
+// check_transformed_graph on the resulting session.
+//
+// Unlike TransformerTester, this skips the baseline session and Run() calls,
+// roughly halving the per-test memory footprint. This matters for ASan CI jobs
+// that run dozens of tests in a single process and are close to the memory
+// budget. Use for tests that only need to verify post-transform graph structure;
+// keep numerically-sensitive integration tests on TransformerTester so the
+// transformed graph still produces correct outputs.
+static void CheckTransformedGraphOnly(
+    const std::function<void(ModelTestBuilder&)>& build_test_case,
+    const std::function<void(InferenceSessionWrapper&)>& check_transformed_graph,
+    int opset_version,
+    bool enable_strip_activations) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = opset_version;
+  domain_to_version[kMSDomain] = 1;
+  Model model("QDQStripActivationsTest", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+  build_test_case(helper);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  SessionOptions session_options;
+  session_options.graph_optimization_level = TransformerLevel::Level2;
+  if (enable_strip_activations) {
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+        kOrtSessionOptionsQDQStripActivations, "1"));
+  }
+  InferenceSessionWrapper session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+  if (check_transformed_graph) {
+    check_transformed_graph(session);
+  }
+}
+
 // Test: Simple Q->DQ pair removed by QDQStripActivationsTransformer
 // Graph: Input -> Q -> DQ -> Relu -> Output
 // Expected: Input -> Relu -> Output (Q and DQ removed)
@@ -54,18 +98,8 @@ TEST(QDQStripActivationsTransformerTests, RemoveSimpleQDQPair) {
     EXPECT_EQ(op_to_count["Relu"], 1);
   };
 
-  auto add_session_options = [](SessionOptions& so) {
-    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsQDQStripActivations, "1"));
-  };
-
-  TransformerTester(build_test_case,
-                    check_graph,
-                    TransformerLevel::Level1,
-                    TransformerLevel::Level2,
-                    21 /*opset_version*/,
-                    kTestTolerance,
-                    0.0f,
-                    nullptr, add_session_options);
+  CheckTransformedGraphOnly(build_test_case, check_graph, 21 /*opset_version*/,
+                            true /*enable_strip_activations*/);
 }
 
 // Test: Q with multiple DQ consumers all get removed
@@ -98,18 +132,8 @@ TEST(QDQStripActivationsTransformerTests, RemoveQDQPairMultipleDQConsumers) {
     EXPECT_EQ(op_to_count["Sigmoid"], 1);
   };
 
-  auto add_session_options = [](SessionOptions& so) {
-    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsQDQStripActivations, "1"));
-  };
-
-  TransformerTester(build_test_case,
-                    check_graph,
-                    TransformerLevel::Level1,
-                    TransformerLevel::Level2,
-                    21 /*opset_version*/,
-                    kTestTolerance,
-                    0.0f,
-                    nullptr, add_session_options);
+  CheckTransformedGraphOnly(build_test_case, check_graph, 21 /*opset_version*/,
+                            true /*enable_strip_activations*/);
 }
 
 // Test: Q->DQ pair not removed when scale/zp mismatch
@@ -133,18 +157,8 @@ TEST(QDQStripActivationsTransformerTests, NoRemovalOnScaleMismatch) {
     EXPECT_EQ(op_to_count["Relu"], 1);
   };
 
-  auto add_session_options = [](SessionOptions& so) {
-    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsQDQStripActivations, "1"));
-  };
-
-  TransformerTester(build_test_case,
-                    check_graph,
-                    TransformerLevel::Level1,
-                    TransformerLevel::Level2,
-                    21 /*opset_version*/,
-                    1.0f,
-                    1.0f,
-                    nullptr, add_session_options);
+  CheckTransformedGraphOnly(build_test_case, check_graph, 21 /*opset_version*/,
+                            true /*enable_strip_activations*/);
 }
 
 // Test: Option disabled - no Q->DQ removal
@@ -170,11 +184,8 @@ TEST(QDQStripActivationsTransformerTests, OptionDisabledNoRemoval) {
     EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
   };
 
-  TransformerTester(build_test_case,
-                    check_graph,
-                    TransformerLevel::Level1,
-                    TransformerLevel::Level2,
-                    21 /*opset_version*/);
+  CheckTransformedGraphOnly(build_test_case, check_graph, 21 /*opset_version*/,
+                            false /*enable_strip_activations*/);
 }
 
 // Test: DQ producing graph output - handled via Identity node
@@ -195,18 +206,8 @@ TEST(QDQStripActivationsTransformerTests, RemoveQDQPairWithGraphOutput) {
     EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
   };
 
-  auto add_session_options = [](SessionOptions& so) {
-    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsQDQStripActivations, "1"));
-  };
-
-  TransformerTester(build_test_case,
-                    check_graph,
-                    TransformerLevel::Level1,
-                    TransformerLevel::Level2,
-                    21 /*opset_version*/,
-                    kTestTolerance,
-                    0.0f,
-                    nullptr, add_session_options);
+  CheckTransformedGraphOnly(build_test_case, check_graph, 21 /*opset_version*/,
+                            true /*enable_strip_activations*/);
 }
 
 // Test: Multiple chained Q->DQ pairs all removed
@@ -241,18 +242,8 @@ TEST(QDQStripActivationsTransformerTests, RemoveMultipleChainedQDQPairs) {
     EXPECT_EQ(op_to_count["Sigmoid"], 1);
   };
 
-  auto add_session_options = [](SessionOptions& so) {
-    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsQDQStripActivations, "1"));
-  };
-
-  TransformerTester(build_test_case,
-                    check_graph,
-                    TransformerLevel::Level1,
-                    TransformerLevel::Level2,
-                    21 /*opset_version*/,
-                    kTestTolerance,
-                    0.0f,
-                    nullptr, add_session_options);
+  CheckTransformedGraphOnly(build_test_case, check_graph, 21 /*opset_version*/,
+                            true /*enable_strip_activations*/);
 }
 
 // Test: int8_t Q->DQ pair removed
@@ -276,18 +267,8 @@ TEST(QDQStripActivationsTransformerTests, RemoveInt8QDQPair) {
     EXPECT_EQ(op_to_count["Relu"], 1);
   };
 
-  auto add_session_options = [](SessionOptions& so) {
-    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsQDQStripActivations, "1"));
-  };
-
-  TransformerTester(build_test_case,
-                    check_graph,
-                    TransformerLevel::Level1,
-                    TransformerLevel::Level2,
-                    21 /*opset_version*/,
-                    kTestTolerance,
-                    0.0f,
-                    nullptr, add_session_options);
+  CheckTransformedGraphOnly(build_test_case, check_graph, 21 /*opset_version*/,
+                            true /*enable_strip_activations*/);
 }
 
 // Test: With qdq_strip_activations, data-movement ops keep Q/DQ adjacent so removal works.
@@ -324,18 +305,8 @@ TEST(QDQStripActivationsTransformerTests, SkipDataMovementRules) {
     EXPECT_EQ(op_to_count["Relu"], 1);
   };
 
-  auto add_session_options = [](SessionOptions& so) {
-    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsQDQStripActivations, "1"));
-  };
-
-  TransformerTester(build_test_case,
-                    check_graph,
-                    TransformerLevel::Level1,
-                    TransformerLevel::Level2,
-                    21 /*opset_version*/,
-                    kTestTolerance,
-                    0.0f,
-                    nullptr, add_session_options);
+  CheckTransformedGraphOnly(build_test_case, check_graph, 21 /*opset_version*/,
+                            true /*enable_strip_activations*/);
 }
 
 // Test: Conv with QDQ is fused into QLinearConv by Level1, while surrounding
