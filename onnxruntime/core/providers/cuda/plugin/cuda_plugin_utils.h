@@ -31,8 +31,10 @@
 // Must only be called after onnxruntime::ep::ApiInit() has run (i.e. from EP
 // object constructors, which are reached only after CreateEpFactories()).
 inline uint32_t CudaPluginEpOrtVersionSupported() {
-  return std::min<uint32_t>(::onnxruntime::ep::CurrentOrtApiVersion(),
-                            static_cast<uint32_t>(ORT_API_VERSION));
+  constexpr uint32_t kCudaPluginEpOrtVersionSupported = 26;
+  static_assert(kCudaPluginEpOrtVersionSupported <= ORT_API_VERSION);
+
+  return std::min<uint32_t>(::onnxruntime::ep::CurrentOrtApiVersion(), kCudaPluginEpOrtVersionSupported);
 }
 
 #include <cuda_runtime_api.h>

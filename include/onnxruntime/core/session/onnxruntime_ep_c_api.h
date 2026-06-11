@@ -2116,18 +2116,11 @@ typedef enum OrtGraphCaptureNodeAssignmentPolicy {
  * \since Version 1.22.
  */
 struct OrtEp {
-  /** \brief The ONNX Runtime version the execution provider was compiled with.
+  /** \brief The ONNX Runtime version the execution provider supports.
    *
    * Implementation should normally set this to ORT_API_VERSION.
-   * ORT reads this field to gate which OrtEp callbacks it invokes: it will not call a callback that was
-   * introduced after this version (e.g. when a plugin compiled against an older ORT is loaded by a newer
-   * runtime, the newer callbacks stay unused).
-   *
-   * A plugin compiled against the latest headers that wants to remain loadable by an older ORT runtime may
-   * set this to the minimum of ORT_API_VERSION and the loaded runtime's API version, which caps callback
-   * invocation at the runtime's version. Note that this field does not restrict the OrtEpApi functions the
-   * plugin itself calls; the plugin must independently ensure it only populates callbacks, and only calls
-   * OrtEpApi functions, that exist in the loaded runtime's version.
+   * However, if the execution provider only supports a subset of APIs, it can set this to the maximum
+   * version that it fully supports.
    *
    * \since Version 1.22.
    */
