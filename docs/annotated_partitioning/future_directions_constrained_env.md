@@ -202,7 +202,7 @@ So if the original node was `/model/layers.5/self_attn/q_proj/MatMul`, the fused
 **Edge cases to handle:**
 1. **Generic names** (e.g., `"Attention"` without incorporating the original name): Some fusions create nodes with generic names that don't contain layer-identifying substrings. In general, name-based partitioning can only be used when node names contain representative strings suitable for layer matching. Two options exist:
    - **Annotation fallback**: Use annotation-based assignment for these nodes, or update the transformer to follow the derivative naming convention.
-   - **Exact-match rule**: If the user is willing to assign *all* nodes with a given generic name to the same device, they can add an exact-match rule (e.g., `cuda(=Attention)`). This works without annotations, but applies uniformly — all nodes matching that name go to the specified device.
+   - **Substring rule**: Add a substring pattern (e.g., `cuda(Attention)`) to assign all nodes whose name contains `Attention`. Note that name-based assignment does not support the '=' exact-match qualifier — all patterns are substrings.
 2. **Multiple source nodes**: When a fusion merges N nodes from potentially different layers, the resulting name typically uses one of them as the base. If the merged nodes span layer boundaries, the fused node will match whichever layer the chosen base name belongs to. This mirrors annotation-based behavior (annotation is copied from one source node).
 
 **Recommendation:** No special machinery needed for pre-partitioning transformers. The derivative naming convention already preserves matchability. Document this as a convention that transformer authors should follow: always pass an original node's name as the base to `GenerateNodeName()`.
@@ -1308,7 +1308,7 @@ Near-term (low effort, high value):
 ├── 1. Name-based matching via session.name_based_layer_assignment  [DONE]
 │     - Separate session option with substring matching against Node::Name()
 │     - SubstringMatcher with longest-match-wins priority
-│     - Annotation-based matching takes precedence when both are configured
+│     - Mutually exclusive with annotation-based matching (setting both options returns INVALID_ARGUMENT)
 │
 ├── 2. Precise per-node memory estimation
 │     - Static workspace estimation functions registered per kernel type
