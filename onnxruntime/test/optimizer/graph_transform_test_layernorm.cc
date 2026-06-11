@@ -1400,6 +1400,9 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat2) {
 // To fix: update the EdgeEndToMatch version lists in
 // onnxruntime/core/optimizer/embed_layer_norm_fusion.cc
 
+// Loads a model and upgrades it to the current ONNX opset. Currently handles converting
+// Squeeze/Unsqueeze/Reduce* ops from attribute-based axes to input-based (opset 13+/18+).
+// Extend this function if additional op conversions are needed for new test models.
 static void LoadModelAtCurrentOpset(const ORTCHAR_T* base_model_uri,
                                     std::shared_ptr<Model>& p_model,
                                     const logging::Logger& logger) {
