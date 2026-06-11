@@ -287,7 +287,7 @@ typedef enum OrtErrorCode {
   ORT_NO_SUCHFILE,
   /**
    * Legacy/unused but retained for ABI compatibility. Historically returned when a model could not be found by name in
-   * a multi-model serving context (ONNX Runtime Server, removed in 2022).
+   * the ONNX Runtime Server (removed in 2022).
    */
   ORT_NO_MODEL,
   /**
