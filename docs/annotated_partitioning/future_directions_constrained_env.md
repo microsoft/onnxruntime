@@ -56,7 +56,7 @@ A config like `gpu(layers.0, layers.1, ..., layers.15); cpu(layers.16, ..., laye
    - Keeps the existing parser/grammar unchanged (reuse the `device(pattern1, pattern2, ...); ...` syntax)
    - Uses a **new `SubstringMatcher`** (not the existing trie-based `LayeringRuleMatcher`) for the actual matching
    - Makes intent explicit — users opt into name-based matching deliberately
-   - Both options can coexist (annotation-based takes priority if both match a node)
+   - The two options are **mutually exclusive** — setting both returns an error
    - No risk of breaking existing annotation-based workflows
 
 3. **Build index at load time.** During `InferenceSession::Initialize()`, after graph is loaded but before partitioning:
@@ -136,22 +136,27 @@ Without it, `layers.1` (a substring of `layers.10`, `layers.11`, ..., `layers.19
 
 **Integration with `LayeringIndex`:**
 
-`LayeringIndex` currently owns a `LayeringRuleMatcher`. For name-based mode, it would own a `SubstringMatcher` instead (or additionally, if both annotation-based and name-based configs are present). The `ProcessGraph` method gains a branch:
+`LayeringIndex` owns either a `LayeringRuleMatcher` (annotation mode) or a `SubstringMatcher` (name-based mode) — the two are mutually exclusive. The `ProcessGraph` method branches based on which mode is active:
 
 ```cpp
-void LayeringIndex::ProcessGraph(const Graph& graph) {
+void LayeringIndex::ProcessGraph(const Graph& graph, std::optional<size_t> parent_layer_id) {
   for (const auto& node : graph.Nodes()) {
     std::optional<size_t> matched_rule_idx;
 
-    // Annotation-based matching (existing, higher priority)
-    const std::string& annotation = node.GetLayeringAnnotation();
-    if (!annotation.empty()) {
-      matched_rule_idx = matcher_.Match(annotation);
-    }
-
-    // Name-based matching (new, fallback if no annotation match)
-    if (!matched_rule_idx && substring_matcher_) {
+    if (substring_matcher_) {
+      // Name-based mode: substring match against node name, no inheritance.
+      // Node names are dense, so each node is matched independently.
       matched_rule_idx = substring_matcher_->Match(node.Name());
+    } else {
+      // Annotation-based mode: prefix/exact match against metadata,
+      // with subgraph inheritance for unannotated nodes.
+      const std::string& annotation = node.GetLayeringAnnotation();
+      if (!annotation.empty()) {
+        matched_rule_idx = matcher_.Match(annotation);
+      }
+      if (!matched_rule_idx && parent_layer_id) {
+        matched_rule_idx = parent_layer_id;
+      }
     }
 
     if (matched_rule_idx) {
@@ -161,7 +166,9 @@ void LayeringIndex::ProcessGraph(const Graph& graph) {
 }
 ```
 
-This preserves annotation-based priority (if a node has both an annotation and a matching name pattern, annotation wins) while enabling name-based matching for unannotated models.
+**Why mutual exclusivity (not priority/fallback):**
+
+The two modes have fundamentally different inheritance semantics. Annotations are sparse — nodes without annotations inherit from their subgraph parent to maintain device consistency. Names are dense — virtually every node has a name, so inheritance is unnecessary and would incorrectly override name-based matches in subgraphs. Making the modes mutually exclusive keeps the semantics simple and predictable.
 
 ### Advantages
 

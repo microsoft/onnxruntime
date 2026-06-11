@@ -427,8 +427,11 @@ static const char* const kOrtSessionOptionsLayerAssignmentSettings = "session.la
 /// The '=' prefix (exact match) from the annotation-based grammar is rejected with an error
 /// — all patterns are treated as substrings.
 /// Longest matching pattern wins when multiple patterns match the same node name.
-/// If both this option and kOrtSessionOptionsLayerAssignmentSettings are set,
-/// annotation-based matching takes priority for nodes that have annotations.
+/// No subgraph inheritance is applied — each node is matched independently by its name.
+///
+/// MUTUALLY EXCLUSIVE with kOrtSessionOptionsLayerAssignmentSettings. Setting both returns
+/// INVALID_ARGUMENT. Use annotation-based matching for models with explicit layer annotations,
+/// or name-based matching for models with structured node names (HuggingFace, PyTorch exports).
 /// </summary>
 static const char* const kOrtSessionOptionsNameBasedLayerAssignment = "session.name_based_layer_assignment";
 

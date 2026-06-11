@@ -212,7 +212,9 @@ session = ort.InferenceSession("model.onnx", opts,
 - Use [Netron](https://netron.app/) to inspect your model's node names and identify suitable substrings.
 - Nodes that do not match any pattern fall through to normal EP capability-based assignment (typically CPU).
 
-**Combining with annotation-based matching:** Both `session.layer_assignment_settings` and `session.name_based_layer_assignment` can be set simultaneously. Annotation-based matching takes priority — if a node has a `layer_ann` metadata property that matches an annotation rule, that assignment is used. Name-based matching acts as a fallback for nodes without annotation matches.
+**Mutual exclusivity with annotation-based matching:** The `session.name_based_layer_assignment` and `session.layer_assignment_settings` options are **mutually exclusive** — setting both will return an error. Use annotation-based matching for models that carry explicit `layer_ann` metadata annotations, or name-based matching for unmodified models with structured node names. If you need fine-grained exceptions (e.g., force one specific node to CPU), add the node's name pattern to the name-based config instead of mixing the two approaches.
+
+**No subgraph inheritance:** Unlike annotation-based matching (where unannotated subgraph nodes inherit their parent's device assignment), name-based matching treats every node independently. Since node names are dense (virtually every node has a name encoding its structural position), inheritance is unnecessary — each node matches on its own name.
 
 ## Capacity-Aware Partitioning (implemented for CUDA)
 
@@ -329,12 +331,13 @@ EPs that prefer the NHWC data layout — for example, the CUDA EP when it is cre
 Because the first-pass tags are tentative, ONNX Runtime does **not** commit any memory budget for them. The budget is committed only for the nodes that survive the second pass; the cost of a node that is dropped is never counted against the memory limit. This keeps the accumulated memory estimate accurate when `prefer_nhwc` is combined with `session.resource_cuda_partitioning_settings`, so a dropped node does not consume phantom budget that could prematurely halt assignment of later nodes.
 
 ## Combining Features
-Layer annotations, name-based assignment, and capacity-aware partitioning can be used together in any combination. When multiple are configured:
-- Annotation-based matching (`session.layer_assignment_settings`) has highest priority.
-- Name-based matching (`session.name_based_layer_assignment`) provides fallback for nodes without annotation matches.
+Layer annotations OR name-based assignment can be combined with capacity-aware partitioning. Note that annotation-based and name-based matching are **mutually exclusive** — you cannot use both simultaneously.
+
+When a layer assignment option (either annotation-based or name-based) is configured together with the capacity-aware partitioner:
+- The layer assignment option expresses the desired device placement.
 - The capacity-aware partitioner enforces the memory budget, potentially overriding assignments that would exceed the GPU memory limit.
 
-This combination gives you fine-grained control: use annotations or name patterns to express logical model structure, and let the memory budget act as a safety net.
+This gives you fine-grained control: use annotations or name patterns to express logical model structure, and let the memory budget act as a safety net.
 
 ```python
 opts = ort.SessionOptions()

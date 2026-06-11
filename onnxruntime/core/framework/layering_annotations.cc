@@ -91,10 +91,8 @@ common::Status LayeringRules::FromConfigString(const std::string& config_value, 
   return common::Status::OK();
 }
 
-LayeringRuleMatcher::LayeringRuleMatcher(const LayeringRules& rules, std::optional<size_t> annotation_rule_count) {
-  const size_t limit = annotation_rule_count.has_value() ? std::min(*annotation_rule_count, rules.rules.size())
-                                                         : rules.rules.size();
-  for (size_t i = 0; i < limit; ++i) {
+LayeringRuleMatcher::LayeringRuleMatcher(const LayeringRules& rules) {
+  for (size_t i = 0; i < rules.rules.size(); ++i) {
     const auto& rule = rules.rules[i];
     ORT_ENFORCE(!rule.annotation.empty(), "Layering rule annotation cannot be empty");
     if (rule.prefix_match) {
@@ -347,10 +345,9 @@ LayeringIndex LayeringIndex::Create(const Graph& graph,
                                     EpNameToLayeringIndices ep_map,
                                     LayeringIndexToEpName rule_map,
                                     LayeringRules layering_rules,
-                                    SubstringMatcher substring_matcher,
-                                    std::optional<size_t> annotation_rule_count) {
+                                    SubstringMatcher substring_matcher) {
   LayeringIndex index(std::move(layering_rules), std::move(ep_map), std::move(rule_map),
-                      std::move(substring_matcher), annotation_rule_count);
+                      std::move(substring_matcher));
   index.ProcessGraph(graph, std::nullopt);
   return index;
 }
@@ -362,32 +359,36 @@ Status LayeringIndex::Create(const Graph& graph,
                              const ExecutionProviders& ep_providers,
                              const logging::Logger& logger,
                              std::optional<LayeringIndex>& layering_index) {
-  // Parse annotation-based rules
+  // Annotation-based and name-based layer assignment are mutually exclusive.
+  if (!config_string.empty() && !name_based_config_string.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Cannot set both 'session.layer_assignment_settings' and "
+                           "'session.name_based_layer_assignment'. These options are mutually exclusive. "
+                           "Use annotation-based matching for models with explicit layer annotations, "
+                           "or name-based matching for models with structured node names.");
+  }
+
+  const bool is_name_based = !name_based_config_string.empty();
+  const std::string& active_config = is_name_based ? name_based_config_string : config_string;
+
   LayeringRules rules;
-  if (!config_string.empty()) {
-    ORT_RETURN_IF_ERROR(LayeringRules::FromConfigString(config_string, rules));
-    LOGS(logger, INFO) << "Parsed " << rules.rules.size() << " annotation-based layering rules from config.";
-  }
+  if (!active_config.empty()) {
+    ORT_RETURN_IF_ERROR(LayeringRules::FromConfigString(active_config, rules));
 
-  // Parse name-based rules
-  LayeringRules name_rules;
-  if (!name_based_config_string.empty()) {
-    ORT_RETURN_IF_ERROR(LayeringRules::FromConfigString(name_based_config_string, name_rules));
-    // Reject '=' (exact-match qualifier) in name-based rules — all patterns must be substrings
-    for (const auto& rule : name_rules.rules) {
-      ORT_RETURN_IF(!rule.prefix_match,
-                    "Name-based layer assignment does not support the '=' (exact-match) qualifier. "
-                    "All patterns are treated as substrings. Remove the '=' prefix from pattern: '",
-                    rule.annotation, "'");
+    if (is_name_based) {
+      // Reject '=' (exact-match qualifier) in name-based rules — all patterns must be substrings
+      for (const auto& rule : rules.rules) {
+        if (!rule.prefix_match) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Name-based layer assignment does not support the '=' (exact-match) qualifier. "
+                                 "All patterns are treated as substrings. Remove the '=' prefix from pattern: '",
+                                 rule.annotation, "'");
+        }
+      }
+      LOGS(logger, INFO) << "Parsed " << rules.rules.size() << " name-based layering rules from config.";
+    } else {
+      LOGS(logger, INFO) << "Parsed " << rules.rules.size() << " annotation-based layering rules from config.";
     }
-    LOGS(logger, INFO) << "Parsed " << name_rules.rules.size() << " name-based layering rules from config.";
-  }
-
-  // Merge both rule sets: annotation-based rules first (lower indices = higher priority in ProcessGraph),
-  // then name-based rules appended. The SubstringMatcher will operate on name-based rules only.
-  const size_t annotation_rule_count = rules.rules.size();
-  for (auto& nr : name_rules.rules) {
-    rules.rules.push_back(std::move(nr));
   }
 
   if (rules.rules.empty()) {
@@ -433,21 +434,15 @@ Status LayeringIndex::Create(const Graph& graph,
   LOGS(logger, INFO) << "LayeringIndex created. Matched " << matched_rule_count
                      << " out of " << rules.rules.size() << " rules to available Execution Providers.";
 
-  // Build SubstringMatcher from name-based rules only (indices offset by annotation_rule_count)
+  // Build SubstringMatcher for name-based mode
   std::optional<SubstringMatcher> substring_matcher;
-  if (annotation_rule_count < rules.rules.size()) {
-    // Create a LayeringRules containing only the name-based portion
-    // SubstringMatcher stores rule indices offset to align with the merged rules vector
-    LayeringRules name_only_rules;
-    for (size_t i = annotation_rule_count; i < rules.rules.size(); ++i) {
-      name_only_rules.rules.push_back(rules.rules[i]);
-    }
-    substring_matcher.emplace(name_only_rules, annotation_rule_count);
+  if (is_name_based) {
+    substring_matcher.emplace(rules);
   }
 
-  // Create LayeringIndex with the merged rules
+  // Create LayeringIndex — annotation mode uses matcher_ only, name-based uses substring_matcher_ only
   LayeringIndex index(std::move(rules), std::move(ep_map), std::move(rule_map),
-                      std::move(substring_matcher), annotation_rule_count);
+                      std::move(substring_matcher));
   index.ProcessGraph(graph, std::nullopt);
   layering_index = std::move(index);
   return Status::OK();
@@ -470,21 +465,23 @@ void LayeringIndex::ProcessGraph(const Graph& graph, std::optional<size_t> paren
   for (auto& node : graph.Nodes()) {
     std::optional<size_t> matched_rule_idx = std::nullopt;
 
-    // 4. For every node query its annotation (prefix/exact match)
-    const std::string& annotation = node.GetLayeringAnnotation();
-    if (!annotation.empty()) {
-      // If it has an annotation try to match it
-      matched_rule_idx = matcher_.Match(annotation);
-    }
-
-    // 4b. If no annotation match, try substring matching against node name
-    if (!matched_rule_idx && substring_matcher_) {
+    if (substring_matcher_) {
+      // Name-based mode: substring matching against node name, no inheritance.
+      // Node names are dense (virtually every node has one), so inheritance is
+      // unnecessary — each node is matched independently by its own name.
       matched_rule_idx = substring_matcher_->Match(node.Name());
-    }
+    } else {
+      // Annotation-based mode: prefix/exact match against metadata annotation,
+      // with subgraph inheritance for unannotated nodes.
+      const std::string& annotation = node.GetLayeringAnnotation();
+      if (!annotation.empty()) {
+        matched_rule_idx = matcher_.Match(annotation);
+      }
 
-    // 5. If node has no annotation, inherit from subgraph parent node
-    if (!matched_rule_idx && parent_layer_id) {
-      matched_rule_idx = parent_layer_id;
+      // Inherit from subgraph parent node if no annotation match
+      if (!matched_rule_idx && parent_layer_id) {
+        matched_rule_idx = parent_layer_id;
+      }
     }
 
     // Record assignment if we have a match
@@ -539,15 +536,15 @@ void LayeringIndex::Update(const Graph& graph, gsl::span<const NodeIndex> nodes)
 
     std::optional<size_t> matched_rule_idx;
 
-    // Try annotation-based matching first (higher priority)
-    const std::string& annotation = node->GetLayeringAnnotation();
-    if (!annotation.empty()) {
-      matched_rule_idx = matcher_.Match(annotation);
-    }
-
-    // Fallback to substring matching against node name
-    if (!matched_rule_idx && substring_matcher_) {
+    if (substring_matcher_) {
+      // Name-based mode: substring match against node name
       matched_rule_idx = substring_matcher_->Match(node->Name());
+    } else {
+      // Annotation-based mode: prefix/exact match against metadata
+      const std::string& annotation = node->GetLayeringAnnotation();
+      if (!annotation.empty()) {
+        matched_rule_idx = matcher_.Match(annotation);
+      }
     }
 
     if (matched_rule_idx) {
@@ -604,11 +601,11 @@ void LayeringRuleMatcher::UpdateBestMatch(std::optional<size_t>& current_best, s
   }
 }
 
-SubstringMatcher::SubstringMatcher(const LayeringRules& rules, size_t name_rules_start_index) {
+SubstringMatcher::SubstringMatcher(const LayeringRules& rules) {
   for (size_t i = 0; i < rules.rules.size(); ++i) {
     const auto& rule = rules.rules[i];
     if (!rule.annotation.empty()) {
-      patterns_.push_back({rule.annotation, i + name_rules_start_index});
+      patterns_.push_back({rule.annotation, i});
     }
   }
   // Sort by pattern length descending (longest first).

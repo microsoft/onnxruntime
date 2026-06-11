@@ -58,15 +58,8 @@ struct LayeringRules {
 /// </summary>
 class LayeringRuleMatcher {
  public:
-  /// <param name="rules">The full set of layering rules (may include appended name-based rules).</param>
-  /// <param name="annotation_rule_count">Number of annotation-based rules to index (from the beginning
-  ///   of the rules vector). If nullopt or omitted, all rules are indexed.
-  ///   If 0, no rules are indexed (disables annotation matching entirely).
-  ///   When name-based rules are appended after annotation rules in the same vector,
-  ///   pass the count of annotation rules so name-based patterns are excluded from
-  ///   the prefix/exact-match trie.</param>
-  explicit LayeringRuleMatcher(const LayeringRules& rules,
-                               std::optional<size_t> annotation_rule_count = std::nullopt);
+  /// <param name="rules">The annotation-based layering rules to index.</param>
+  explicit LayeringRuleMatcher(const LayeringRules& rules);
 
   /// <summary>
   /// The method returns the index of the best matching rule for the given annotation
@@ -102,12 +95,7 @@ class SubstringMatcher {
   /// <param name="rules">The rules whose annotations become substring patterns.
   ///   The '=' prefix (exact match) qualifier is rejected during config parsing — all patterns
   ///   must be substrings.</param>
-  /// <param name="name_rules_start_index">The starting index of these name-based rules within the
-  ///   merged rules vector. When name-based rules are appended after annotation-based rules,
-  ///   this equals the count of annotation rules. For example, if there are 3 annotation rules
-  ///   followed by 2 name-based rules, pass name_rules_start_index=3 so that Match() returns
-  ///   3 or 4 (the correct merged-vector positions) instead of 0 or 1.</param>
-  explicit SubstringMatcher(const LayeringRules& rules, size_t name_rules_start_index = 0);
+  explicit SubstringMatcher(const LayeringRules& rules);
 
   /// <summary>
   /// Returns the index of the best matching rule for the given node name.
@@ -169,21 +157,19 @@ class LayeringIndex {
                               LayeringRules layering_rules);
 
   /// <summary>
-  /// Creates a fully initialized LayeringIndex with an optional SubstringMatcher for name-based matching.
+  /// Creates a fully initialized LayeringIndex with a SubstringMatcher for name-based matching.
+  /// In this mode, annotation matching is disabled and no subgraph inheritance is applied.
   /// </summary>
-  /// <param name="annotation_rule_count">Number of rules (from the start of layering_rules) that are
-  ///   annotation-based. The annotation matcher will only index these rules. Rules beyond this index
-  ///   are name-based and matched exclusively via substring_matcher against Node::Name().</param>
   static LayeringIndex Create(const Graph& graph,
                               EpNameToLayeringIndices ep_map,
                               LayeringIndexToEpName rule_map,
                               LayeringRules layering_rules,
-                              SubstringMatcher substring_matcher,
-                              std::optional<size_t> annotation_rule_count = std::nullopt);
+                              SubstringMatcher substring_matcher);
 
   /// <summary>
   /// Factory method that creates a LayeringIndex by parsing configuration, matching rules against
   /// available devices/providers, and indexing the graph.
+  /// Annotation-based and name-based options are mutually exclusive — setting both returns an error.
   /// </summary>
   /// <param name="graph">The graph to index.</param>
   /// <param name="config_string">The annotation-based configuration string (prefix/exact match on metadata).</param>
@@ -253,10 +239,9 @@ class LayeringIndex {
 
   LayeringIndex(LayeringRules layering_rules, EpNameToLayeringIndices ep_name_to_layering_indices,
                 LayeringIndexToEpName layering_index_to_ep_name,
-                std::optional<SubstringMatcher> substring_matcher = std::nullopt,
-                std::optional<size_t> annotation_rule_count = std::nullopt)
+                std::optional<SubstringMatcher> substring_matcher = std::nullopt)
       : rules_(std::move(layering_rules)),
-        matcher_(rules_, annotation_rule_count),
+        matcher_(rules_),
         ep_name_to_layering_indices_(std::move(ep_name_to_layering_indices)),
         layering_index_to_ep_name_(std::move(layering_index_to_ep_name)),
         substring_matcher_(std::move(substring_matcher)) {}
