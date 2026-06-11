@@ -145,28 +145,33 @@ class PosixTelemetry : public Telemetry {
   // Log system resource metrics
   void LogSystemMetrics(uint32_t session_id) const;
 
-  // Mutex for thread-safe access
-  mutable std::mutex mutex_;
+  // All shared telemetry state below is static: PosixTelemetry is a process-wide singleton whose
+  // lifetime is gated by global_register_count_ (the first instance initializes the SDK, the last
+  // tears it down), matching WindowsTelemetry. Keeping the SDK handles and state static ensures a
+  // single owner regardless of how many PosixTelemetry objects exist.
+
+  // Mutex for thread-safe init/shutdown of the shared SDK state.
+  static std::mutex mutex_;
 
   // Telemetry SDK instances.
   // log_manager_ is owned by LogManagerProvider; logger_ is owned by log_manager_.
-  ::Microsoft::Applications::Events::ILogManager* log_manager_ = nullptr;
-  ::Microsoft::Applications::Events::ILogger* logger_ = nullptr;
+  static ::Microsoft::Applications::Events::ILogManager* log_manager_;
+  static ::Microsoft::Applications::Events::ILogger* logger_;
 
   // SDK configuration — must outlive log_manager_ (LogManagerImpl holds a reference).
-  std::unique_ptr<::Microsoft::Applications::Events::ILogConfiguration> config_;
+  static std::unique_ptr<::Microsoft::Applications::Events::ILogConfiguration> config_;
 
   // State tracking
-  mutable std::atomic<bool> enabled_{true};
-  mutable std::atomic<uint32_t> projection_{0};
-  mutable std::atomic<unsigned char> level_{0};
-  mutable std::atomic<uint64_t> keyword_{0};
+  static std::atomic<bool> enabled_;
+  static std::atomic<uint32_t> projection_;
+  static std::atomic<unsigned char> level_;
+  static std::atomic<uint64_t> keyword_;
 
   // Process info tracking
-  mutable std::atomic<bool> process_info_logged_{false};
+  static std::atomic<bool> process_info_logged_;
 
   // Sampling counter for the per-run SystemMetrics event (see LogSystemMetrics).
-  mutable std::atomic<uint32_t> system_metrics_sample_counter_{0};
+  static std::atomic<uint32_t> system_metrics_sample_counter_;
 
   // Global registration count for singleton behavior
   static std::atomic<uint32_t> global_register_count_;

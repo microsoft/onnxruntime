@@ -36,6 +36,16 @@ namespace onnxruntime {
 // Static member initialization
 std::atomic<uint32_t> PosixTelemetry::global_register_count_{0};
 std::mutex PosixTelemetry::global_mutex_;
+std::mutex PosixTelemetry::mutex_;
+::Microsoft::Applications::Events::ILogManager* PosixTelemetry::log_manager_ = nullptr;
+::Microsoft::Applications::Events::ILogger* PosixTelemetry::logger_ = nullptr;
+std::unique_ptr<::Microsoft::Applications::Events::ILogConfiguration> PosixTelemetry::config_;
+std::atomic<bool> PosixTelemetry::enabled_{true};
+std::atomic<uint32_t> PosixTelemetry::projection_{0};
+std::atomic<unsigned char> PosixTelemetry::level_{0};
+std::atomic<uint64_t> PosixTelemetry::keyword_{0};
+std::atomic<bool> PosixTelemetry::process_info_logged_{false};
+std::atomic<uint32_t> PosixTelemetry::system_metrics_sample_counter_{0};
 
 // Tenant token for 1DS telemetry ingestion
 constexpr const char* TENANT_TOKEN = "5ad963bd4b3a4118a481401cc0211875-da8e8657-47d4-4ed7-ab39-7886e136f53b-6988";
