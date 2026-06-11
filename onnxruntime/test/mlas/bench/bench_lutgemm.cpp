@@ -240,8 +240,8 @@ static void LutGemmComputeArgs(benchmark::internal::Benchmark* b) {
 //   (K=1024, N=4096): 20 nodes
 //   (K=4096, N=1024): 20 nodes
 // Covers both M=1 (decode) and M=128 (prefill) so the LUT path can be
-// compared apples-to-apples against the W4 CompInt8 and W2-prod/W2-super
-// kernels (QNBITGEMM<float, 4>/QNBitGemmCustomerArgs and
+// compared apples-to-apples against the W4 CompInt8 and W2 kernels
+// (QNBITGEMM<float, 4>/QNBitGemmCustomerArgs and
 // QNBITGEMM<float, 2>/QNBit2BitCustomerArgs).
 static void LutGemmCustomerArgs(benchmark::internal::Benchmark* b) {
   b->ArgNames(lutgemm_compute_arg_names);

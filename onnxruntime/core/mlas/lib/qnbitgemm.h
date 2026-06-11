@@ -51,15 +51,12 @@ struct PackedQuantBDataStruct {
     PackedQuantBDataStruct(void* PackedQuantBWorkspace, size_t N, size_t BlockCountK, size_t BlkLen, bool QuantAUnsigned)
         : QuantBWorkspace_(PackedQuantBWorkspace), N_(N), BlockCountK_(BlockCountK), BlkLen_(BlkLen)
     {
-        // For 2-bit weights, the AVX-512 super-block (W2-v2) layout requires
-        // BlockCountK to be a multiple of 4 (one super-block packs 4 consecutive
-        // K-blocks together). The legacy W2-v1 layout doesn't require this but
-        // accepts the small storage padding (<= 48 bytes per N-col), so we pad
-        // unconditionally for BlkBitWidth=2 to keep a single buffer ABI for both
-        // kernel variants. The matching pack-size dispatch functions
-        // (Q2BitGemmPackQuantBDataSize_Avx512 / _SuperBlock) round up by the
-        // same amount, so the allocated buffer always matches the slab layout
-        // computed below.
+        // For 2-bit weights, the AVX-512 W2 packed layout groups 4 consecutive
+        // K-blocks into a single 64-byte slot so the SIMD unpack is one ZMM
+        // load + four fixed shift/mask pairs. The pack-size dispatch
+        // (Q2BitGemmPackQuantBDataSize_Avx512) rounds BlockCountK up to a
+        // multiple of 4 internally; we mirror that rounding here so the
+        // allocated buffer always matches the slab layout computed below.
         const size_t EffectiveBlockCountK =
             (BlkBitWidth == 2) ? ((BlockCountK + 3) / 4) * 4 : BlockCountK;
         const size_t PackedQuantBDataSize = N * EffectiveBlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
@@ -505,20 +502,19 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
      * @brief Returns the effective per-N-col block count used by the 2-bit packed
      *        B-data and B-scale layouts. The layout addresses each N-col at a
      *        stride of `effective_block_count * <bytes-per-block | sizeof(float)>`,
-     *        and so does the dispatcher's per-N-tile pointer arithmetic. Some
-     *        2-bit kernels (notably the AVX-512 super-block / W2-v2 layout) round
-     *        BlockCountK up to a multiple of 4 internally to amortise unpack
-     *        cost across 4 consecutive K-blocks; the buffer is sized accordingly
-     *        (see PackedQuantBDataStruct, which always pads for BlkBitWidth==2)
-     *        so the dispatcher must use the matching stride or it will step
-     *        past the data when n != 0.
+     *        and so does the dispatcher's per-N-tile pointer arithmetic. The
+     *        AVX-512 W2 kernel rounds BlockCountK up to a multiple of 4
+     *        internally to amortise unpack cost across 4 consecutive K-blocks;
+     *        the buffer is sized accordingly (see PackedQuantBDataStruct, which
+     *        always pads for BlkBitWidth==2) so the dispatcher must use the
+     *        matching stride or it will step past the data when n != 0.
      *
      *        BlkSum is NOT affected: it uses the SGEMM-style width-16 chunked
      *        layout with stride `BlockCountK * 16 * sizeof(float)` per chunk
-     *        regardless of which kernel variant is active.
+     *        regardless of which W2 dispatch implementation is active.
      *
      *        Returns 0 if not set; the dispatcher falls back to the logical
-     *        `BlockCountK` (the W2-v1 / column-major-ish stride convention).
+     *        `BlockCountK` (the plain column-major-ish stride convention).
      */
     typedef size_t(Q2BitGemmEffectiveBlockCountK_Fn)(size_t BlockCountK);
 

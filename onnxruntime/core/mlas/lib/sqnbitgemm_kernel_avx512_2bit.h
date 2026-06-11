@@ -10,34 +10,33 @@ Module Name:
 
 Abstract:
 
-    Pack-time helpers and reference (scalar) routines for the 2-bit, BlkLen=64
-    AVX-512 weight GEMM path (SQNBIT_CompInt8, BlkBitWidth=2). The vectorized
-    kernels (AVX-512 and AVX-512-VNNI variants) live in
-    sqnbitgemm_kernel_avx512vnni_2bit_blklen64.h.
+    Pack-time helpers and scalar reference routines for the block-group W2 layout: groups of 4 K-blocks share a single 64-byte
+    packed buffer that allows the AVX-512 unpack to be one ZMM load plus
+    four fixed `vpsrlw+vpand` pairs (instead of the current per-block
+    broadcast + variable shift).
 
-    This header is scalar / header-only and contains:
+    Layout summary (BlkLen=64 only):
 
-      * The packed-block layout used by the AVX-512 dequant inner loop.
-      * A pack routine that converts standard ONNX MatMulNBits 2-bit input data
-        into the packed layout.
-      * A reference unpack routine (independent of the pack code) that
-        materialises one packed block back into 64 individual int8 values.
+      * Each "block-group" packs FOUR consecutive K-blocks (256 weights total).
+      * Total storage per block-group = kBlkBytes * 4 = 64 bytes (identical to
+        4 separately-packed blocks under the current scheme).
+      * Byte b of the block-group holds:
+          bits[0..1] = block_0.weight[b]
+          bits[2..3] = block_1.weight[b]
+          bits[4..5] = block_2.weight[b]
+          bits[6..7] = block_3.weight[b]
+      * The N-dimension uses the same 4-col-grouped layout as the existing
+        W2 kernel (kNCols4 = 4), so the main NMain region groups 4 N-cols
+        per "row" of block-groups.
 
-    The packed layout is designed so that the AVX-512BW dequant is one
-    128-bit broadcast plus a per-lane variable shift:
+    Restrictions:
 
-        __m128i p   = _mm_loadu_si128(packed);               // 16 bytes
-        __m512i p4  = _mm512_broadcast_i32x4(p);             // 4 lanes
-        __m512i sh  = _mm512_set_epi32(6,6,6,6, 4,4,4,4,
-                                       2,2,2,2, 0,0,0,0);
-        __m512i v   = _mm512_srlv_epi32(p4, sh);             // per-lane shift
-        v           = _mm512_and_si512(v, _mm512_set1_epi8(0x03));
-
-    With this layout the resulting ZMM holds weights 0..63 in their natural
-    order.
-
-    NOTE: This file intentionally restricts itself to BlkLen == 64. Other
-    BlkLens fall through to the existing LUT path until later phases.
+      * BlkLen == 64 only.
+      * BlockCountK must be a multiple of kBlockGroupBlks = 4. The
+        path returns 0 from the pack-size helper for non-multiples; the
+        caller falls back to the existing W2 path.
+      * The customer model's K dimensions (384, 1024, 4096) are all multiples
+        of 256 (= 4 * 64), so all customer shapes satisfy this constraint.
 
 --*/
 
@@ -59,94 +58,29 @@ namespace onnxruntime {
 namespace mlas {
 namespace sq2bit_avx512 {
 
+// -----------------------------------------------------------------------------
+// Block / block-group constants (BlkLen=64 W2 native path).
+// -----------------------------------------------------------------------------
+
 // Each 2-bit weight occupies 2 bits; one byte holds 4 weights.
 constexpr size_t kWeightsPerByte = 4;
 
 // Block constants for the BlkLen=64 variant.
 constexpr size_t kBlkLen = 64;
 constexpr size_t kBlkBytes = kBlkLen / kWeightsPerByte;  // 16 packed src bytes per block
-constexpr size_t kPackedBlkBytes = kBlkBytes;             // packing is in-place: 16 -> 16
 
 // Default zero point used when the input is symmetric (no zero-point tensor).
 // For 2-bit unsigned values in [0, 3], the symmetric mid-point is 2.
 constexpr uint8_t kDefaultSymmetricZeroPoint2Bit = 2;
 
-// -----------------------------------------------------------------------------
-// Tile shape (must match the AVX-512-VNNI kernel in
-// sqnbitgemm_kernel_avx512vnni_2bit_blklen64.h). The pack layout below is
-// keyed off these values: the main NMain = floor(N / kNCols4) * kNCols4 cols
-// are stored in a 4-col-grouped + 2-K-block-paired arrangement that lets the
-// kernel's R2xC4 hot loop read each tile of B as a single contiguous stream,
-// matching W4's pack layout in PackQuantB (sqnbitgemm_kernel_avx_common.h).
-// -----------------------------------------------------------------------------
-
+// Tile shape used by the SIMD kernel; the pack layout is keyed off these.
 constexpr size_t kNCols4 = 4;
-constexpr size_t kPerAccuBlk2 = 2;
 
-//
-// Byte offset into the packed B-data buffer for a logical (n, blk) cell.
-//
-//   Main region (n < NMain = floor(N/kNCols4)*kNCols4):
-//     4-N-col group g = n / 4, col within group c = n % 4.
-//     K-block-pair p = blk / 2, block within pair = blk % 2.
-//     Pair slots run first, then a single-block trailing slot when
-//     BlockCountK is odd.
-//
-//   Tail region (n >= NMain): plain column-major. The tail base lies
-//   exactly at NMain * BlockCountK * kBlkBytes, so the dispatcher's
-//   `multipleCols * ColStrideBytes` offset (where ColStrideBytes is
-//   BlockCountK * kBlkBytes) is unchanged from the column-major layout.
-//
-inline size_t
-PackedQuantBOffsetBytes_W2(size_t n, size_t blk, size_t BlockCountK, size_t NMain)
-{
-    if (n < NMain) {
-        const size_t g = n / kNCols4;
-        const size_t c = n % kNCols4;
-        const size_t per_group_bytes = BlockCountK * kNCols4 * kBlkBytes;
-        const size_t pair_idx = blk / kPerAccuBlk2;
-        const size_t blk_in_pair = blk % kPerAccuBlk2;
-        const size_t full_pairs = BlockCountK / kPerAccuBlk2;
-        if (pair_idx < full_pairs) {
-            return g * per_group_bytes
-                 + pair_idx * (kNCols4 * kPerAccuBlk2 * kBlkBytes)
-                 + c * (kPerAccuBlk2 * kBlkBytes)
-                 + blk_in_pair * kBlkBytes;
-        }
-        return g * per_group_bytes
-             + full_pairs * (kNCols4 * kPerAccuBlk2 * kBlkBytes)
-             + c * kBlkBytes;
-    }
-    return (n * BlockCountK + blk) * kBlkBytes;
-}
-
-//
-// Float offset into the packed B-scale buffer for a logical (n, blk) cell.
-// Same grouping rule as the B-data, two scales per pair, one scale per
-// single-block trailing slot.
-//
-inline size_t
-PackedQuantBScaleOffset_W2(size_t n, size_t blk, size_t BlockCountK, size_t NMain)
-{
-    if (n < NMain) {
-        const size_t g = n / kNCols4;
-        const size_t c = n % kNCols4;
-        const size_t per_group_scales = BlockCountK * kNCols4;
-        const size_t pair_idx = blk / kPerAccuBlk2;
-        const size_t blk_in_pair = blk % kPerAccuBlk2;
-        const size_t full_pairs = BlockCountK / kPerAccuBlk2;
-        if (pair_idx < full_pairs) {
-            return g * per_group_scales
-                 + pair_idx * (kNCols4 * kPerAccuBlk2)
-                 + c * kPerAccuBlk2
-                 + blk_in_pair;
-        }
-        return g * per_group_scales
-             + full_pairs * (kNCols4 * kPerAccuBlk2)
-             + c;
-    }
-    return n * BlockCountK + blk;
-}
+// block-group constants. 4 consecutive K-blocks share a single 64-byte buffer
+// so the SIMD unpack is one ZMM load + four fixed shift/mask pairs.
+constexpr size_t kBlockGroupBlks = 4;                                // 4 K-blocks per group
+constexpr size_t kBlockGroupBytes = kBlockGroupBlks * kBlkBytes;     // 64 bytes
+constexpr size_t kBlockGroupWeights = kBlockGroupBlks * kBlkLen;     // 256 weights
 
 //
 // Extract a single 2-bit weight from a standard ONNX MatMulNBits packed byte
@@ -164,110 +98,16 @@ ExtractSrcWeight(const std::byte* src, size_t i)
 }
 
 //
-// Pack one source block (16 bytes = 64 2-bit weights, standard ONNX layout)
-// into the destination layout described at the top of this file.
+// Pack 4 consecutive K-blocks (4 * 16 = 64 source bytes in standard ONNX
+// layout) into a 64-byte block-group. Pure permutation of the 256 2-bit
+// elements; bit-identical round-trip with UnPackBlockGroup_BlkLen64_Reference.
 //
 //   src_byte[i] holds val[4i .. 4i+3] at bit positions {0..1, 2..3, 4..5, 6..7}.
-//   dst_byte[i] holds val[i], val[i+16], val[i+32], val[i+48] at the same bit
-//                positions.
-//
-// This is a pure permutation of the 64 2-bit elements; the bit width and
-// count are preserved (16 bytes in, 16 bytes out).
+//   dst_byte[i] holds block0.weight[i], block1.weight[i], block2.weight[i],
+//                    block3.weight[i] at the same bit positions.
 //
 inline void
-PackBlock_BlkLen64(const std::byte* src, std::byte* dst)
-{
-    for (size_t i = 0; i < kBlkBytes; ++i) {
-        const uint8_t v0 = ExtractSrcWeight(src, i + 0);
-        const uint8_t v1 = ExtractSrcWeight(src, i + 16);
-        const uint8_t v2 = ExtractSrcWeight(src, i + 32);
-        const uint8_t v3 = ExtractSrcWeight(src, i + 48);
-        dst[i] = static_cast<std::byte>(
-            static_cast<uint8_t>(v0 | (v1 << 2) | (v2 << 4) | (v3 << 6))
-        );
-    }
-}
-
-//
-// Reference unpack of one packed block back into 64 int8 values in natural
-// order ([val0, val1, ..., val63]).
-//
-// This routine is intentionally written without reference to PackBlock_BlkLen64
-// so that it can serve as an independent oracle for round-trip tests:
-// it simply applies the documented dst_byte layout rule in reverse.
-//
-inline void
-UnpackBlock_BlkLen64_Reference(const std::byte* packed, uint8_t out[kBlkLen])
-{
-    for (size_t i = 0; i < kBlkBytes; ++i) {
-        const uint8_t b = static_cast<uint8_t>(packed[i]);
-        out[i + 0]  = static_cast<uint8_t>((b >> 0) & 0x03u);
-        out[i + 16] = static_cast<uint8_t>((b >> 2) & 0x03u);
-        out[i + 32] = static_cast<uint8_t>((b >> 4) & 0x03u);
-        out[i + 48] = static_cast<uint8_t>((b >> 6) & 0x03u);
-    }
-}
-
-//
-// Extract all 64 weights from a standard ONNX MatMulNBits source block into
-// natural order. Used by tests as the "expected" sequence for round-tripping.
-//
-inline void
-UnpackSourceBlock_BlkLen64_Reference(const std::byte* src, uint8_t out[kBlkLen])
-{
-    for (size_t i = 0; i < kBlkLen; ++i) {
-        out[i] = ExtractSrcWeight(src, i);
-    }
-}
-
-// -----------------------------------------------------------------------------
-// EXPERIMENTAL: super-block packing for fast unpack
-// -----------------------------------------------------------------------------
-//
-// The existing per-block pack (PackBlock_BlkLen64) stores 16 bytes per K-block
-// such that each byte holds 4 weights from 4 different "rows" of the block.
-// Unpacking that layout into a ZMM of 64 natural-order weights requires a
-// broadcast + per-dword variable shift (`vpsrlvd`, ~3c latency, 1c throughput
-// on Zen5) -- a cost we measured at ~30-35% of total W2 kernel time.
-//
-// The super-block layout below groups FOUR consecutive K-blocks together into
-// a single 64-byte buffer (= 4 * 16 bytes, same total storage) such that
-// byte[i] (i = 0..63) holds:
-//   bits[0..1] = block_0.weight[i]
-//   bits[2..3] = block_1.weight[i]
-//   bits[4..5] = block_2.weight[i]
-//   bits[6..7] = block_3.weight[i]
-//
-// Unpack with a single ZMM load and four fixed-shift+mask pairs:
-//
-//   __m512i super = _mm512_loadu_si512(packed);
-//   __m512i mask  = _mm512_set1_epi8(0x03);
-//   __m512i bv0   = _mm512_and_si512(super, mask);
-//   __m512i bv1   = _mm512_and_si512(_mm512_srli_epi16(super, 2), mask);
-//   __m512i bv2   = _mm512_and_si512(_mm512_srli_epi16(super, 4), mask);
-//   __m512i bv3   = _mm512_and_si512(_mm512_srli_epi16(super, 6), mask);
-//
-// Each shift+mask is ~2c (1c srli_epi16 + 1c andd) and the four chains are
-// fully independent, so the critical path is ~4c for ALL four blocks combined
-// vs the current ~20c (4 broadcasts * ~5c each, partially overlapped).
-//
-// Note on `_mm512_srli_epi16`: it shifts each 16-bit lane by N. For a byte
-// that is the LOW byte of a 16-bit lane, the shift pulls in bits from the
-// adjacent HIGH byte. The subsequent AND with 0x03 discards those leaked
-// bits, leaving the correct per-byte result. For the HIGH byte, zeros are
-// shifted in from the top, which is what we want.
-
-constexpr size_t kSuperBlockBlks = 4;                                // 4 K-blocks per super
-constexpr size_t kSuperBlockBytes = kSuperBlockBlks * kBlkBytes;     // 64 bytes
-constexpr size_t kSuperBlockWeights = kSuperBlockBlks * kBlkLen;     // 256 weights
-
-//
-// Pack 4 consecutive K-blocks (4 * 16 = 64 source bytes in standard ONNX
-// layout) into a 64-byte super-block. Pure permutation of the 256 2-bit
-// elements; bit-identical round-trip with UnpackSuperBlock4_BlkLen64_Reference.
-//
-inline void
-PackSuperBlock4_BlkLen64(const std::byte* src_block_0,
+PackBlockGroup_BlkLen64(const std::byte* src_block_0,
                          const std::byte* src_block_1,
                          const std::byte* src_block_2,
                          const std::byte* src_block_3,
@@ -285,13 +125,13 @@ PackSuperBlock4_BlkLen64(const std::byte* src_block_0,
 }
 
 //
-// Reference unpack of one 64-byte super-block back into 4 K-blocks worth of
+// Reference unpack of one 64-byte block-group back into 4 K-blocks worth of
 // natural-order uint8 weights ([0, 3]). Written from the documented layout
-// rule -- intentionally independent of PackSuperBlock4_BlkLen64 so it can
+// rule -- intentionally independent of PackBlockGroup_BlkLen64 so it can
 // serve as a round-trip oracle.
 //
 inline void
-UnpackSuperBlock4_BlkLen64_Reference(const std::byte* packed,
+UnPackBlockGroup_BlkLen64_Reference(const std::byte* packed,
                                      uint8_t out_block_0[kBlkLen],
                                      uint8_t out_block_1[kBlkLen],
                                      uint8_t out_block_2[kBlkLen],
@@ -307,7 +147,101 @@ UnpackSuperBlock4_BlkLen64_Reference(const std::byte* packed,
 }
 
 //
-// Reference / dispatch entry points defined in sqnbitgemm_kernel_avx512_2bit.cpp.
+// Extract all 64 weights from a standard ONNX MatMulNBits source block into
+// natural order. Used by tests as the "expected" sequence for round-tripping.
+//
+inline void
+UnpackSourceBlock_BlkLen64_Reference(const std::byte* src, uint8_t out[kBlkLen])
+{
+    for (size_t i = 0; i < kBlkLen; ++i) {
+        out[i] = ExtractSrcWeight(src, i);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// block-group packed-data layout.
+//
+//   Main region (n < NMain = floor(N / kNCols4) * kNCols4):
+//     4-N-col groups of g = n / 4, col within group c = n % 4.
+//     K-block-group index s = blk / 4 (s in [0, BlockCountK / 4)).
+//     Within a group, block-groups run consecutively across the 4 cols,
+//     so each (s, group) slot is a contiguous (kNCols4 * kBlockGroupBytes)
+//     = 256 byte chunk.
+//
+//   Tail region (n >= NMain): plain column-major block-groups, identical
+//   shape to the main region but flat in N.
+//
+// K-tail handling (BlockCountK not a multiple of kBlockGroupBlks):
+//   The pack helpers round BlockCountK up to a multiple of kBlockGroupBlks
+//   (= 4) for storage purposes -- the padding 1-3 blocks at the trailing
+//   block-group contain zeroed weight bytes and zeroed scales, so they
+//   contribute 0 to the integer dot product and 0 to the BlkSum correction.
+//   This lets the SIMD kernel iterate the block-group K-loop without a
+//   special tail handler for B, and avoids dual packing layouts. Storage
+//   waste is at most (kBlockGroupBlks - 1) blocks per N-col, i.e. <= 48
+//   bytes per col -- negligible at any realistic N.
+//
+//   Conventions used by the offset helpers below:
+//     * `BlockGroupCountKPadded = ceil(BlockCountK / kBlockGroupBlks)` is
+//       the number of block-groups the kernel actually iterates.
+//     * `BlockCountKPadded = BlockGroupCountKPadded * kBlockGroupBlks` is
+//       the K-block count used to address the scale buffer.
+//     * Callers must pass `BlockGroupCountKPadded` and `BlockCountKPadded`
+//       to these helpers; the original logical BlockCountK is only used
+//       for sizing the BlkSum buffer (which is consumed by the SGEMM
+//       correction step, not the inner K-loop).
+//
+// Caller-side constraints: BlkLen == 64; BlockCountK >= 1 (any K, padded
+// internally to a multiple of kBlockGroupBlks).
+// -----------------------------------------------------------------------------
+
+inline size_t
+PackedQuantBOffsetBytes_W2(size_t n, size_t blk_group,
+                                      size_t BlockGroupCountKPadded, size_t NMain)
+{
+    if (n < NMain) {
+        const size_t g = n / kNCols4;
+        const size_t c = n % kNCols4;
+        const size_t per_group_bytes = BlockGroupCountKPadded * kNCols4 * kBlockGroupBytes;
+        return g * per_group_bytes
+             + blk_group * (kNCols4 * kBlockGroupBytes)
+             + c * kBlockGroupBytes;
+    }
+    return (n * BlockGroupCountKPadded + blk_group) * kBlockGroupBytes;
+}
+
+//
+// Float offset into the packed B-scale buffer for a logical (n, blk) cell.
+// Scales remain per-block (one float per K-block), 4 per group. Caller
+// passes BlockCountKPadded (= BlockGroupCountKPadded * kBlockGroupBlks);
+// scale slots in [BlockCountK, BlockCountKPadded) contain zeros so the
+// kernel can index uniformly.
+//
+inline size_t
+PackedQuantBScaleOffset_W2(size_t n, size_t blk,
+                                      size_t BlockCountKPadded, size_t NMain)
+{
+    const size_t BlockGroupCountKPadded = BlockCountKPadded / kBlockGroupBlks;
+    const size_t blk_group = blk / kBlockGroupBlks;
+    const size_t blk_in_group = blk % kBlockGroupBlks;
+    if (n < NMain) {
+        const size_t g = n / kNCols4;
+        const size_t c = n % kNCols4;
+        const size_t per_group_scales = BlockGroupCountKPadded * kNCols4 * kBlockGroupBlks;
+        return g * per_group_scales
+             + blk_group * (kNCols4 * kBlockGroupBlks)
+             + c * kBlockGroupBlks
+             + blk_in_group;
+    }
+    return n * BlockCountKPadded + blk;
+}
+
+//
+// Reference (scalar) entry points -- defined in sqnbitgemm_kernel_avx512_2bit.cpp.
+//
+// These cover Pack helpers and scalar oracle. They are
+// reachable from unit tests via direct linkage; production dispatch wiring
+// is performed by the platform dispatcher.
 //
 
 size_t MLASCALL
@@ -355,16 +289,10 @@ SQ2BitGemmKernel_BlkSum_CompInt8_Scalar(
 );
 
 //
-// Unit-test forwarders for the two AVX-512 vectorized kernel variants. These
-// are non-inline symbols defined in `sqnbitgemm_kernel_avx512vnni.cpp` (VNNI)
-// and `sqnbitgemm_kernel_avx512.cpp` (non-VNNI), each of which is compiled
-// with the appropriate ISA flags. The test TU (which is NOT compiled with
-// AVX-512 flags) calls these by `extern` linkage to exercise both kernels
-// independently of the platform dispatcher.
-//
-// Callers MUST gate on `GetMlasPlatform().Avx512Supported_` before invoking
-// these symbols, since they execute AVX-512BW (and, for the VNNI variant,
-// AVX-512-VNNI) instructions.
+// Unit-test forwarders for the AVX-512 SIMD block-group kernels. Same gating
+// rules as the existing W2 test entries: the caller MUST verify
+// GetMlasPlatform().Avx512Supported_ (and, for the VNNI variant, that the
+// active dispatch is the AVX-512-VNNI one) before invoking these symbols.
 //
 size_t MLASCALL
 SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_TestEntry(

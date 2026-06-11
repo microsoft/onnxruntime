@@ -1027,6 +1027,74 @@ TEST(MatMul2Bits, Float32_2b_Accuracy4) {
   TestMatMul2BitsTyped<float, 100, 288, 16, 16, 4>();
 }
 
+// MatMulNBits operator-level coverage for the native AVX-512 W2 CPU kernel.
+// The kernel is gated on (BlkBitWidth=2, BlkLen=64, ComputeType=SQNBIT_CompInt8)
+// and is reachable through the public MatMulNBits op when accuracy_level=4 and
+// block_size=64 (so the platform dispatcher picks the CompInt8 path on AVX-512
+// hosts). On non-AVX-512 hosts the path is unavailable and the op falls back
+// to LUT or scalar -- the OpTester correctness check still passes because the
+// expected output is computed via dequantize-and-matmul.
+//
+// The K-values are chosen to exercise:
+//   * Single block (BlockCountK=1)         -> K=64
+//   * BlockCountK=2,3 not multiple of 4    -> K=128, K=192 (K-tail handler)
+//   * Exact block-group multiples          -> K=256, K=512, K=1024
+//   * BlockCountK=6 (1 full + 2 tail)      -> K=384  (matches customer model)
+// and combinations of M ∈ {1 (decode), 2, 4, 100 (prefill)} and
+// N ∈ {16 (N-tail R1xC1/R2xC1), 32, 288, 1024 (kNCols4 multiples)}.
+//
+// TestMatMul2BitsTyped fans each shape out to 4 sub-tests: ±has_zero_point
+// crossed with ±has_bias.
+TEST(MatMul2Bits, Float32_2b_BlkLen64_Accuracy4) {
+  // Single-block K (K = BlkLen = 64).
+  TestMatMul2BitsTyped<float, 1, 16, 64, 64, 4>();
+  TestMatMul2BitsTyped<float, 1, 32, 64, 64, 4>();
+  TestMatMul2BitsTyped<float, 2, 16, 64, 64, 4>();
+  TestMatMul2BitsTyped<float, 4, 32, 64, 64, 4>();
+
+  // BlockCountK=2,3 -- exercises K-tail handler (BlockCountK not a multiple
+  // of kBlockGroupBlks=4).
+  TestMatMul2BitsTyped<float, 1, 32, 128, 64, 4>();
+  TestMatMul2BitsTyped<float, 1, 32, 192, 64, 4>();
+  TestMatMul2BitsTyped<float, 2, 16, 128, 64, 4>();
+
+  // Exact block-group multiples (BlockCountK = 4, 8, 16; no K-tail).
+  TestMatMul2BitsTyped<float, 1, 32, 256, 64, 4>();
+  TestMatMul2BitsTyped<float, 1, 288, 512, 64, 4>();
+  TestMatMul2BitsTyped<float, 4, 32, 1024, 64, 4>();
+
+  // Customer-model proportion: BlockCountK=6 = 1 full block-group + 2-block tail.
+  TestMatMul2BitsTyped<float, 1, 288, 384, 64, 4>();
+
+  // Larger M (multiple R2 tile iterations) and customer-shape K=1024.
+  TestMatMul2BitsTyped<float, 100, 32, 256, 64, 4>();
+  TestMatMul2BitsTyped<float, 100, 288, 1024, 64, 4>();
+}
+
+// Same BlkLen=64 grid at accuracy_level=0. accuracy_level=0 lets the runtime
+// pick the best path; for BlkBitWidth=2 + BlkLen=64 it still routes to the
+// native W2 CompInt8 kernel on AVX-512 hosts. This catches any dispatch-table
+// wiring bug that only manifests when accuracy_level isn't explicitly 4.
+TEST(MatMul2Bits, Float32_2b_BlkLen64_Accuracy0) {
+  TestMatMul2BitsTyped<float, 1, 16, 64, 64, 0>();
+  TestMatMul2BitsTyped<float, 1, 32, 64, 64, 0>();
+  TestMatMul2BitsTyped<float, 2, 16, 64, 64, 0>();
+  TestMatMul2BitsTyped<float, 4, 32, 64, 64, 0>();
+
+  TestMatMul2BitsTyped<float, 1, 32, 128, 64, 0>();
+  TestMatMul2BitsTyped<float, 1, 32, 192, 64, 0>();
+  TestMatMul2BitsTyped<float, 2, 16, 128, 64, 0>();
+
+  TestMatMul2BitsTyped<float, 1, 32, 256, 64, 0>();
+  TestMatMul2BitsTyped<float, 1, 288, 512, 64, 0>();
+  TestMatMul2BitsTyped<float, 4, 32, 1024, 64, 0>();
+
+  TestMatMul2BitsTyped<float, 1, 288, 384, 64, 0>();
+
+  TestMatMul2BitsTyped<float, 100, 32, 256, 64, 0>();
+  TestMatMul2BitsTyped<float, 100, 288, 1024, 64, 0>();
+}
+
 #if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
 
 namespace {

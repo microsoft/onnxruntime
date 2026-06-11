@@ -28,9 +28,7 @@ Abstract:
 #include "sqnbitgemm_kernel_avx512_int8_blklen64.h"
 #include "sqnbitgemm_kernel_avx512_int8_blklen128.h"
 #include "sqnbitgemm_kernel_avx512_2bit.h"
-#include "sqnbitgemm_kernel_avx512vnni_2bit_blklen64.h"
-#include "sqnbitgemm_kernel_avx512_2bit_superblock.h"
-#include "sqnbitgemm_kernel_avx512vnni_2bit_blklen64_superblock.h"
+#include "sqnbitgemm_kernel_avx512_2bit_blklen64.h"
 
 MLAS_FORCEINLINE void
 SQ4BitGemmM1Kernel_CompFp32(
@@ -462,10 +460,10 @@ SQ8BitGemmPackQuantBDataAndBlkSum512vnni(
 }
 
 //
-// Unit-test entry point for the AVX-512-VNNI W2 kernel. Mirrors the
-// AVX-512BW (non-VNNI) entry point in sqnbitgemm_kernel_avx512.cpp; see the
-// comment there for the rationale. The caller must verify AVX-512-VNNI is
-// available on the host before calling.
+// Unit-test entry point for the AVX-512-VNNI W2 kernel
+// (sqnbitgemm_kernel_avx512_2bit_blklen64.h). Exposed for
+// direct invocation from tests; production wiring (Phase 4) will add the
+// runtime dispatcher integration.
 //
 namespace onnxruntime::mlas::sq2bit_avx512 {
 size_t MLASCALL
@@ -493,37 +491,6 @@ SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_TestEntry(
 }  // namespace onnxruntime::mlas::sq2bit_avx512
 
 //
-// Unit-test entry point for the AVX-512-VNNI W2 SUPER-BLOCK kernel
-// (sqnbitgemm_kernel_avx512vnni_2bit_blklen64_superblock.h). Exposed for
-// direct invocation from tests; production wiring (Phase 4) will add the
-// runtime dispatcher integration.
-//
-namespace onnxruntime::mlas::sq2bit_avx512_super {
-size_t MLASCALL
-SQ2BitGemmKernel_BlkSum_CompInt8_Super_Avx512Vnni_TestEntry(
-    size_t BlkLen,
-    const std::byte* QuantA,
-    const float* QuantAScale,
-    const std::byte* QuantBData,
-    const float* QuantBScale,
-    const std::byte* QuantBZeroPoint,
-    float* C,
-    size_t CountM,
-    size_t CountN,
-    size_t CountK,
-    size_t BlockCountK,
-    const float* Bias,
-    size_t ldc,
-    const float* ABlockSum,
-    const float* QuantBBlkSum)
-{
-    return SQ2BitGemmKernel_BlkSum_CompInt8_Super_Avx512Vnni(
-        BlkLen, QuantA, QuantAScale, QuantBData, QuantBScale, QuantBZeroPoint,
-        C, CountM, CountN, CountK, BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum);
-}
-}  // namespace onnxruntime::mlas::sq2bit_avx512_super
-
-//
 // Kernel dispatch structure definition.
 //
 const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni = []() {
@@ -545,24 +512,14 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni = []() {
     d.SQ8BitGemmKernel_BlkSum_CompInt8 = SQ8BitGemmKernel_BlkSum_CompInt8_avx512vnni;
     d.QuantizeARowComputeBlkSum_CompInt8 = QuantizeARow_CompInt8_avx512;
 
-    // 2-bit native CompInt8 path: AVX-512-VNNI variant of the super-block
-    // (W2-v2) kernel -- single 64-byte load + four fixed shift/mask pairs
-    // to unpack 4 K-blocks at once. Pack-size and pack functions are shared
-    // with the AVX-512BW variant; the per-block MAC is `_mm512_dpbusd_epi32`
-    // instead of `vpmaddubsw + vpmaddwd + vpaddd`.
-    //
-    // The legacy `sq2bit_avx512::*` (W2-v1) symbols remain in the build but
-    // are no longer reached at runtime. A follow-up will remove them once
-    // W2-v2 has soaked in production.
-    d.Q2BitGemmPackQuantBDataSize         = onnxruntime::mlas::sq2bit_avx512_super::Q2BitGemmPackQuantBDataSize_SuperBlock;
-    d.SQ2BitGemmPackQuantBDataAndBlkSum   = onnxruntime::mlas::sq2bit_avx512_super::SQ2BitGemmPackQuantBDataAndBlkSum_SuperBlockScalar;
-    d.SQ2BitGemmKernel_BlkSum_CompInt8    = onnxruntime::mlas::sq2bit_avx512_super::SQ2BitGemmKernel_BlkSum_CompInt8_Super_Avx512Vnni_TestEntry;
-    // W2-v2 packs and addresses each N-col at a stride of
-    // SuperBlockCountKPadded * kSuperBlockBlks blocks (BlockCountK rounded
-    // UP to a multiple of 4) to keep the inner K-loop's super-block stride
-    // constant. The dispatcher needs this stride for its per-N-tile pointer
-    // arithmetic in SQ2BitGemm_CompInt8.
-    d.Q2BitGemmEffectiveBlockCountK       = [](size_t BlockCountK) { return ((BlockCountK + 3) / 4) * 4; };
+    // 2-bit native CompInt8 path. Single dispatch entry (W2):
+    // 64-byte ZMM load + four fixed shift/mask pairs to unpack 4 K-blocks at
+    // once, with VNNI's `vpdpbusd` for the integer MAC. See the matching
+    // comment in sqnbitgemm_kernel_avx512.cpp for the K-padding contract.
+    d.Q2BitGemmPackQuantBDataSize       = onnxruntime::mlas::sq2bit_avx512::Q2BitGemmPackQuantBDataSize_Avx512;
+    d.SQ2BitGemmPackQuantBDataAndBlkSum = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmPackQuantBDataAndBlkSum_Scalar;
+    d.SQ2BitGemmKernel_BlkSum_CompInt8  = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_TestEntry;
+    d.Q2BitGemmEffectiveBlockCountK     = [](size_t BlockCountK) { return ((BlockCountK + 3) / 4) * 4; };
 
     return d;
 }();

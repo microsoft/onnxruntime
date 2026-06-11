@@ -364,10 +364,10 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     // Guard: for LUT-eligible nodes, scales/ZP are already packed inside
     // packed_b_ by the LUT branch above (or by the LUT scale-pack path at
     // the bottom of this function). Re-running the non-LUT pack here would
-    // overwrite the LUT-packed buffer with W2-super layout bytes, causing
-    // heap corruption when the LUT compute path later reads back the
-    // packed-B contents. prefer_lut_gemm_ is gated to T1==float (see ctor),
-    // so checking it here is sufficient.
+    // overwrite the LUT-packed buffer with W2 layout bytes, causing heap
+    // corruption when the LUT compute path later reads back the packed-B
+    // contents. prefer_lut_gemm_ is gated to T1==float (see ctor), so
+    // checking it here is sufficient.
     bool should_pack_scale_and_zp_inputs = [&]() {
 #if defined(MLAS_TARGET_AMD64_IX86)
       return true;
