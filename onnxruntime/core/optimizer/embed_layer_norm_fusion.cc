@@ -138,6 +138,17 @@ static bool MatchInputToConcatSubgraph(
     }
   }
 
+  // Opset 15+ added start/end attributes to Shape. Reject partial-shape queries.
+  const Node& shape_node_path1 = edges[shape_index]->GetNode();
+  if (shape_node_path1.SinceVersion() >= 15) {
+    const ONNX_NAMESPACE::AttributeProto* start_attr = graph_utils::GetNodeAttribute(shape_node_path1, "start");
+    const ONNX_NAMESPACE::AttributeProto* end_attr = graph_utils::GetNodeAttribute(shape_node_path1, "end");
+    if (!((!start_attr || static_cast<int>(start_attr->i()) == 0) && (!end_attr))) {
+      DEBUG_LOG("Shape node in path 1 has non-default start/end attributes.");
+      return false;
+    }
+  }
+
   Node& concat_node = *graph.GetNode(edges[0]->GetNode().Index());
   Node& gather_node_0 = *graph.GetNode(edges[2]->GetNode().Index());
   Node& shape_node_0 = *graph.GetNode(edges[3]->GetNode().Index());
@@ -166,6 +177,16 @@ static bool MatchInputToConcatSubgraph(
 
   Node& gather_node_1 = *graph.GetNode(edges[1]->GetNode().Index());
   Node& shape_node_1 = *graph.GetNode(edges[2]->GetNode().Index());
+
+  // Opset 15+ added start/end attributes to Shape. Reject partial-shape queries.
+  if (shape_node_1.SinceVersion() >= 15) {
+    const ONNX_NAMESPACE::AttributeProto* start_attr = graph_utils::GetNodeAttribute(shape_node_1, "start");
+    const ONNX_NAMESPACE::AttributeProto* end_attr = graph_utils::GetNodeAttribute(shape_node_1, "end");
+    if (!((!start_attr || static_cast<int>(start_attr->i()) == 0) && (!end_attr))) {
+      DEBUG_LOG("Shape node in path 2 has non-default start/end attributes.");
+      return false;
+    }
+  }
 
   // The gather node (with second input indices==1) is also shared by other subgraph
   if (expected_gather_node_1_index != gather_node_1.Index()) {

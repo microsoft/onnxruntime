@@ -98,6 +98,16 @@ bool MatchGemmSubgraph(Graph& graph,
   const Node& slice = edges[6]->GetNode();
   const Node& shape_before_slice = edges[7]->GetNode();
 
+  // Opset 15+ added start/end attributes to Shape. Reject partial-shape queries.
+  if (shape_before_slice.SinceVersion() >= 15) {
+    const ONNX_NAMESPACE::AttributeProto* start_attr = graph_utils::GetNodeAttribute(shape_before_slice, "start");
+    const ONNX_NAMESPACE::AttributeProto* end_attr = graph_utils::GetNodeAttribute(shape_before_slice, "end");
+    if (!((!start_attr || static_cast<int>(start_attr->i()) == 0) && (!end_attr))) {
+      DEBUG_LOG("Shape node has non-default start/end attributes");
+      return false;
+    }
+  }
+
   const auto& subgraph_input = shape_before_slice.InputDefs()[0];
   if (reshape_before_gemm.InputDefs()[0]->Name() != subgraph_input->Name()) {
     DEBUG_LOG("Input of reshape_before_gemm is not the input of subgraph");
