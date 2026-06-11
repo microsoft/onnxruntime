@@ -15,6 +15,7 @@
 #include "core/providers/cpu/math/gemm.h"
 
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 using onnxruntime::attention_helper::AttentionParameters;
@@ -576,27 +577,46 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
       // that softmax over an all-sentinel row would otherwise yield (the CPU sentinel
       // `mask_filter_value<T>()` is finite, so softmax does not naturally collapse such a row to 0).
       //
-      // The row is classified with the EXACT structural predicate shared with the CUDA EP — never a
-      // magnitude threshold on the combined QK+bias score: a key is "unmasked" iff it lies within the
-      // row's nonpad/causal frontier AND its additive mask-bias slot is not the -inf sentinel. A row
-      // with zero unmasked keys is fully masked. A finite (even very negative) user bias is not equal
-      // to the sentinel, so its key stays unmasked and the row is never zeroed — matching the onnx#8068
-      // reference (`isneginf` of the additive-bias row max) and keeping the CPU and CUDA fully-masked
-      // decisions bit-for-bit identical.
+      // The row is classified with an EXACT structural predicate — never a magnitude threshold on the
+      // combined QK+bias score: a key is "masked" iff its additive mask-bias slot is either the
+      // internal sentinel (`mask_filter_value<T>()`, a finite large negative) OR an IEEE negative
+      // infinity supplied directly in a user float `attn_mask`. A row with zero unmasked keys is fully
+      // masked. A finite (even very negative, e.g. `-40000`) user bias is neither the sentinel nor
+      // `-inf`, so its key stays unmasked and the row is never zeroed. This matches the onnx#8068
+      // reference (`isneginf` of the additive-bias row max), and agrees with the CUDA guard for the
+      // two cases that matter here — a user `-inf` and the internal sentinel. (It is NOT bit-for-bit
+      // identical to CUDA for every finite bias: the CUDA guard masks any `bias <= masked_bias_value`,
+      // whose value is capped at `kCutlassSafeMaskFilterValue` (-1e30), so CUDA also masks finite
+      // biases in `(lowest(), -1e30]`; this CPU predicate, like the reference `isneginf`, does not.)
       const bool apply_fully_masked_guard = (mask_data != nullptr) || parameters.has_nonpad_kv_seqlen;
       InlinedVector<bool> fully_masked_row;
       if (apply_fully_masked_guard) {
         fully_masked_row.resize(static_cast<size_t>(parameters.q_sequence_length), false);
         const T* mask_slice = (mask_data != nullptr) ? mask_data + mask_data_offset : nullptr;
         const T sentinel = mask_filter_value<T>();
+        // Portable conversion to float so the IEEE -inf test works for both float and MLFloat16.
+        const auto to_float = [](const T v) -> float {
+          if constexpr (std::is_same<T, MLFloat16>::value) {
+            return v.ToFloat();
+          } else {
+            return static_cast<float>(v);
+          }
+        };
         for (int s = 0; s < parameters.q_sequence_length; ++s) {
           const int frontier = parameters.has_nonpad_kv_seqlen
                                    ? first_masked_kv_per_row[static_cast<size_t>(s)]
                                    : parameters.total_sequence_length;
           bool has_unmasked_key = false;
           for (int t = 0; t < frontier; ++t) {
-            if (mask_slice == nullptr ||
-                !(mask_slice[s * parameters.total_sequence_length + t] == sentinel)) {
+            if (mask_slice == nullptr) {
+              has_unmasked_key = true;
+              break;
+            }
+            const T mask_value = mask_slice[s * parameters.total_sequence_length + t];
+            const float mask_value_f = to_float(mask_value);
+            const bool key_masked =
+                (mask_value == sentinel) || (std::isinf(mask_value_f) && mask_value_f < 0.0f);
+            if (!key_masked) {
               has_unmasked_key = true;
               break;
             }

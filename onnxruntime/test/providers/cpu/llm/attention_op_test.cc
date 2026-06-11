@@ -533,6 +533,101 @@ TEST(AttentionTest, Attention4DAttnMaskBoolAllFalse) {
   );
 }
 
+// Bug-1 (onnx#28958, tianleiwu review): a user-supplied float `attn_mask` that uses IEEE -inf to
+// mask a position must be recognized as masked by the CPU fully-masked-row guard, exactly like the
+// internal finite sentinel and like the CUDA EP / the onnx#8068 reference (`isneginf`). A row whose
+// every key is a user -inf is fully masked and must yield a zero output row (and a zero mode-3
+// qk_matmul_output row), not a NaN row. A finite key (e.g. mask bias 0) on a row keeps that row
+// finite, proving the guard does not over-zero.
+TEST(AttentionTest, Attention4DAttnMaskFloatNegInfFullyMasked) {
+  int batch_size = 1;            // Q.shape[0]
+  int q_num_heads = 1;           // Q.shape[1]
+  int q_sequence_length = 2;     // Q.shape[2]
+  int head_size = 4;             // Q.shape[3]
+  int kv_sequence_length = 2;    // K.shape[2] and V.shape[2]
+  int kv_num_heads = 1;          // K.shape[1] and V.shape[1]
+  int v_head_size = 4;           // V.shape[3]
+  int past_sequence_length = 0;  // past_key.shape[2] and past_value.shape[2]
+
+  // Q and K are arbitrary: row 0 is fully masked (zeroed) and row 1 attends exactly one key, so the
+  // softmax over a single retained key is 1.0 regardless of the scores -> the goldens are exact.
+  std::vector<float> q = {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f};
+  std::vector<float> k = {0.9f, 0.8f, 0.7f, 0.6f, 0.5f, 0.4f, 0.3f, 0.2f};
+  // V key 0 = {1,2,3,4}, V key 1 = {5,6,7,8}.
+  std::vector<float> v = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
+
+  const float ninf = -std::numeric_limits<float>::infinity();
+  // Float additive mask {q_sequence_length, total_sequence_length} = {2, 2}:
+  //   row 0: both keys -inf  -> fully masked -> zero row (this is the merge-blocker case: before the
+  //          fix the CPU guard missed user -inf and emitted a NaN row).
+  //   row 1: key 0 finite (0), key 1 -inf    -> attends only key 0 -> Y = V[key0], softmax = [1, 0].
+  std::vector<float> attn_mask = {ninf, ninf, 0.0f, ninf};
+
+  // Y {batch, q_num_heads, q_sequence_length, v_head_size} = {1,1,2,4}.
+  std::vector<float> y = {0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 2.0f, 3.0f, 4.0f};
+  // Mode-3 qk_matmul_output (post-softmax) {1,1,2,2}: masked row 0 zeroed; row 1 = [1, 0].
+  std::vector<float> qk_matmul_output = {0.0f, 0.0f, 1.0f, 0.0f};
+
+  ASSERT_EQ(q.size(), static_cast<size_t>(batch_size * q_num_heads * q_sequence_length * head_size));
+  ASSERT_EQ(k.size(), static_cast<size_t>(batch_size * kv_num_heads * kv_sequence_length * head_size));
+  ASSERT_EQ(v.size(), static_cast<size_t>(batch_size * kv_num_heads * kv_sequence_length * v_head_size));
+  ASSERT_EQ(attn_mask.size(), static_cast<size_t>(q_sequence_length * kv_sequence_length));
+  ASSERT_EQ(y.size(), static_cast<size_t>(batch_size * q_num_heads * q_sequence_length * v_head_size));
+
+  RunTest4D(batch_size, q_num_heads, q_sequence_length, head_size, kv_sequence_length, kv_num_heads, v_head_size, past_sequence_length,
+            q, k, v, attn_mask, {}, std::vector<float>(), std::vector<float>(),
+            -1, 3, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat,  // is_causal, qk_matmul_output_mode=3, scale, softcap, softmax_precision, tensor_type
+            y, std::vector<float>(), std::vector<float>(), qk_matmul_output,
+            // CPU-only: this pins the CPU float -inf predicate fix (onnx#28958). CUDA/DML masking is
+            // covered separately and uses a different masked-bias guard.
+            false, true, true  // disable_cpu, disable_cuda, disable_dml
+  );
+}
+
+// FP16 twin of Attention4DAttnMaskFloatNegInfFullyMasked: exercises the MLFloat16 branch of the
+// CPU predicate's to_float conversion with a user fp16 -inf attn_mask. Same structure/goldens.
+TEST(AttentionTest, Attention4DAttnMaskFloat16NegInfFullyMasked) {
+  int batch_size = 1;            // Q.shape[0]
+  int q_num_heads = 1;           // Q.shape[1]
+  int q_sequence_length = 2;     // Q.shape[2]
+  int head_size = 4;             // Q.shape[3]
+  int kv_sequence_length = 2;    // K.shape[2] and V.shape[2]
+  int kv_num_heads = 1;          // K.shape[1] and V.shape[1]
+  int v_head_size = 4;           // V.shape[3]
+  int past_sequence_length = 0;  // past_key.shape[2] and past_value.shape[2]
+
+  // Q and K are arbitrary: row 0 is fully masked (zeroed) and row 1 attends exactly one key, so the
+  // softmax over a single retained key is 1.0 regardless of the scores -> the goldens are exact.
+  std::vector<float> q = {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f};
+  std::vector<float> k = {0.9f, 0.8f, 0.7f, 0.6f, 0.5f, 0.4f, 0.3f, 0.2f};
+  // V key 0 = {1,2,3,4}, V key 1 = {5,6,7,8}.
+  std::vector<float> v = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
+
+  const float ninf = -std::numeric_limits<float>::infinity();
+  // FP16 additive mask {2, 2}: row 0 both keys -inf (fully masked -> zero row); row 1 key 0 finite,
+  // key 1 -inf (attends only key 0 -> Y = V[key0], softmax = [1, 0]).
+  std::vector<float> attn_mask = {ninf, ninf, 0.0f, ninf};
+
+  // Y {1,1,2,4}: masked row 0 zeroed; row 1 = V[key0].
+  std::vector<float> y = {0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 2.0f, 3.0f, 4.0f};
+  // Mode-3 qk_matmul_output (post-softmax) {1,1,2,2}: masked row 0 zeroed; row 1 = [1, 0].
+  std::vector<float> qk_matmul_output = {0.0f, 0.0f, 1.0f, 0.0f};
+
+  ASSERT_EQ(q.size(), static_cast<size_t>(batch_size * q_num_heads * q_sequence_length * head_size));
+  ASSERT_EQ(k.size(), static_cast<size_t>(batch_size * kv_num_heads * kv_sequence_length * head_size));
+  ASSERT_EQ(v.size(), static_cast<size_t>(batch_size * kv_num_heads * kv_sequence_length * v_head_size));
+  ASSERT_EQ(attn_mask.size(), static_cast<size_t>(q_sequence_length * kv_sequence_length));
+  ASSERT_EQ(y.size(), static_cast<size_t>(batch_size * q_num_heads * q_sequence_length * v_head_size));
+
+  RunTest4D(batch_size, q_num_heads, q_sequence_length, head_size, kv_sequence_length, kv_num_heads, v_head_size, past_sequence_length,
+            q, k, v, attn_mask, {}, std::vector<float>(), std::vector<float>(),
+            -1, 3, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1, TensorType::kFloat16,  // is_causal, qk_matmul_output_mode=3, scale, softcap, softmax_precision, tensor_type
+            y, std::vector<float>(), std::vector<float>(), qk_matmul_output,
+            // CPU-only: pins the MLFloat16 branch of the CPU -inf predicate fix (onnx#28958).
+            false, true, true  // disable_cpu, disable_cuda, disable_dml
+  );
+}
+
 // Regression guard: all-false bool mask in decode mode (past_sequence_length > 0).
 // Guards against a bug where fully-masked batches produce NaN or incorrect output.
 // Expected behavior: uniform softmax over all KV values produces Y = mean-of-V.
