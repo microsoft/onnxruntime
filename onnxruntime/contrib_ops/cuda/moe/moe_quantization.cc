@@ -62,18 +62,28 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
   this->quant_type_ = op_kernel_info.GetAttrOrDefault<std::string>("quant_type", "int");
   ORT_ENFORCE(quant_type_ == "int" || quant_type_ == "fp4" || quant_type_ == "fp8" || quant_type_ == "wfp4afp8",
               "quant_type must be 'int', 'fp4', 'fp8', or 'wfp4afp8', but got '", quant_type_, "'");
-  // ``weights_prepacked`` is an optional tri-state attribute that defaults to
-  // -1 (auto) in the schema, so each EP picks its own backward-compatible
-  // default rather than the schema imposing one:
-  //   -1 (auto, also the schema default): the EP decides. The CUDA EP's
-  //      backward-compatible default is "prepacked" because all pre-existing
-  //      tooling ships CUTLASS-prepacked weights.
-  //    1: initializers are already prepacked; the compute path reads them as-is.
-  //    0: initializers are raw [E, N, K/pack]; the PrePack hook lays them out.
+  // ``weights_prepacked`` is an optional tri-state attribute (default -1) that
+  // declares the layout of the int4/int8 fc1/fc2 weight initializers. The
+  // concrete prepacked layouts selected by -1 and 1 are determined by the
+  // execution provider. The CUDA EP maps the tri-state as:
+  //   -1 (default): already prepacked in the EP's default int weight layout.
+  //    1: already prepacked in an alternate EP-selected int weight layout.
+  //    0: raw [E, N, K/pack] initializers; the PrePack hook lays them out.
+  //
+  // Important: the CUDA QMoE int4/int8 MoE GEMM always dispatches to the
+  // Ampere (SM80) grouped-GEMM kernel -- even on SM90 -- because mixed
+  // int-weight + fp16/bf16 activation is not a valid Hopper TMA warp-specialized
+  // specialisation (see isValidHopperMOESpecialisation). The kernel therefore
+  // consumes the SM80/Ampere CUTLASS fpA_intB layout on every GPU. As a result
+  // the EP default (-1) is the SM80 layout regardless of the runtime device SM,
+  // and SM80-format weights are valid on SM90 (they run via the SM80 kernel).
+  // For CUDA today, -1 and 1 are equivalent (both SM80 layout), and 1 is
+  // reserved for a possible future Hopper-specific layout.
+  // PrePack (weights_prepacked=0) packs for the SM80 layout accordingly.
   const int64_t weights_prepacked_mode =
       op_kernel_info.GetAttrOrDefault<int64_t>("weights_prepacked", static_cast<int64_t>(-1));
   ORT_ENFORCE(weights_prepacked_mode == -1 || weights_prepacked_mode == 0 || weights_prepacked_mode == 1,
-              "weights_prepacked must be -1 (auto), 0, or 1, but got ", weights_prepacked_mode);
+              "weights_prepacked must be -1 (default), 0, or 1, but got ", weights_prepacked_mode);
   weights_prepacked_ = (weights_prepacked_mode != 0);
 #if !defined(ENABLE_FP4) || !defined(USE_FP4_QMOE)
   ORT_ENFORCE(quant_type_ != "fp4", "QMoE quant_type='fp4' requires USE_FP4_QMOE with CUDA 12.8 or newer.");
@@ -850,7 +860,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     // PrePack converted the raw int4/int8 weights to the CUTLASS fpA_intB
     // layout that the runner consumes and freed the source initializer
     // (``is_packed = true``). Gate on ``int_weights_consumed_by_prepack``
-    // (which already requires ``packed_fc1_weights_ != nullptr``) rather than
+    // (which already requires both packed weight buffers) rather than
     // just ``is_int && !weights_prepacked_``: when prepacking is disabled at
     // the session level (``session.disable_prepacking``) PrePack never runs,
     // the prepack buffers stay null, and the raw initializer pointers read
@@ -1146,6 +1156,9 @@ void QMoE::PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, Al
                                    IAllocatorUniquePtr<void>& packed_buf, bool& is_packed) {
   ORT_ENFORCE(expert_weight_bits_ == 4 || expert_weight_bits_ == 8,
               "PrePackIntExpertWeights: only 4 and 8 bits are supported, got ", expert_weight_bits_);
+  ORT_ENFORCE(sm_ >= 75,
+              "PrePackIntExpertWeights: quant_type='int' with weights_prepacked=0 requires SM75+ CUDA hardware, got SM",
+              sm_);
   const auto& shape = tensor.Shape();
   ORT_ENFORCE(shape.NumDimensions() == 3,
               "PrePackIntExpertWeights: expected 3-D weight tensor [E, N, K/pack], got ndim=",
@@ -1158,22 +1171,15 @@ void QMoE::PrePackIntExpertWeights(const Tensor& tensor, cudaStream_t stream, Al
   const int64_t k_packed = shape[2];
   const int64_t k = k_packed * pack_factor;
 
-  // Weight packing is architecture-aware (see
-  // docs/contrib_ops/cuda/moe_qmoe.md §7 "Cross-Architecture Packing
-  // Compatibility"). SM90 (Hopper) uses its own Permuted-Linear layout that
-  // skips column interleaving, so it is its own compatibility group. Every
-  // other supported arch — SM75/80/86/89 and SM100/120 (Blackwell) — shares
-  // the SM80 fpA_intB layout, so they all pack as SM80. SM70 and older lack
-  // INT8 LDSM and are unsupported. The compute-side runner selects the same
-  // layout from this clamped arch, so the two cannot drift.
-  //
-  // SM75 is passed through unchanged (rather than clamped to 80) even though it
-  // shares SM80's layout: the compute-side dispatch (getLayoutDetailsForTransform)
-  // still has a distinct SM75 branch, so mirroring it here avoids confusing a
-  // reader into thinking prepack and dispatch disagree.
-  ORT_ENFORCE(sm_ >= 75,
-              "QMoE int4/int8 weight prepack requires SM75 or newer, got sm=", sm_);
-  const int packing_sm = (sm_ == 90 || sm_ == 75) ? sm_ : 80;
+  // The CUDA QMoE int4/int8 MoE GEMM always dispatches to the Ampere (SM80)
+  // grouped-GEMM kernel -- even on SM90 -- because mixed int-weight + fp16/bf16
+  // is not a valid Hopper TMA warp-specialized specialisation. The kernel thus
+  // consumes the SM80 CUTLASS fpA_intB layout on every GPU, so the weights must
+  // always be preprocessed for SM80 regardless of the runtime device SM.
+  // (Using get_arch_for_mixed_gemm_weight_preprocess(sm_) here would emit the
+  // SM90 layout on Hopper, which the SM80 kernel cannot consume -> wrong output.)
+  const int packing_sm =
+      onnxruntime::llm::kernels::weight_only::get_arch_for_mixed_gemm_weight_preprocess(80);
 
   // Per-expert sizes.
   const size_t per_expert_bytes = static_cast<size_t>(n) * static_cast<size_t>(k) / pack_factor;
