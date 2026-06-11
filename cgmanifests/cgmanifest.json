@@ -350,7 +350,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "ee2ded25e539f64052c9d8635bef4ea62c30e014",
+          "commitHash": "cc03dce1a23538f6b820401e36ee339e9a5d2edd",
           "repositoryUrl": "https://github.com/microsoft/cpp_client_telemetry.git"
         },
         "comments": "1DS SDK (cpp_client_telemetry) for cross-platform telemetry on non-Windows platforms (macOS, Linux, Android, iOS)."

@@ -65,4 +65,4 @@ kleidiai;https://github.com/ARM-software/kleidiai/archive/refs/tags/v1.20.0.tar.
 kleidiai-qmx;https://github.com/qualcomm/kleidiai/archive/2f10c9a8d32f81ffeeb6d4885a29cc35d2b0da87.zip;5e855730a2d69057a569f43dd7532db3b2d2a05c
 vulkan_headers;https://codeload.github.com/KhronosGroup/Vulkan-Headers/tar.gz/refs/tags/v1.4.344;57bc528ef7c4a3f7bfbb59e64a187e3734bd29d8
 # cpp_client_telemetry (1DS SDK) for cross-platform telemetry on non-Windows platforms
-cpp_client_telemetry;https://github.com/microsoft/cpp_client_telemetry/archive/refs/tags/v3.10.40.1.zip;ee2ded25e539f64052c9d8635bef4ea62c30e014
+cpp_client_telemetry;https://github.com/microsoft/cpp_client_telemetry/archive/refs/tags/v3.10.161.1.zip;0c0e767283fde29629bbc647b21bc0ac39edeb01
