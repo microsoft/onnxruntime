@@ -240,7 +240,7 @@ class WebGpuContext final {
     return *split_k_config_;
   }
 
-  void StartProfiling();
+  void StartProfiling(TimePoint profiling_start_time = std::chrono::high_resolution_clock::now());
   // Collect pending GPU profiling data into the given events vector.
   void CollectProfilingData(profiling::Events& events);
   // Collect pending GPU profiling data into the shared events_ vector (run-level).
@@ -364,6 +364,8 @@ class WebGpuContext final {
   std::vector<PendingQueryInfo> pending_queries_;
 
   uint64_t gpu_timestamp_offset_ = 0;
+  TimePoint profiling_start_time_;
+  int64_t profiling_first_submit_cpu_offset_us_ = -1;
   bool is_profiling_ = false;
   // Shared GPU profiling events for run-level profiling.
   profiling::Events events_;
