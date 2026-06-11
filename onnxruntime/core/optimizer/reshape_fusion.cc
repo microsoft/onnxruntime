@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
+#include <limits>
 
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
@@ -176,7 +177,8 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const Node
     if (shape.SinceVersion() >= 15) {
       const ONNX_NAMESPACE::AttributeProto* start_attr = graph_utils::GetNodeAttribute(shape, "start");
       const ONNX_NAMESPACE::AttributeProto* end_attr = graph_utils::GetNodeAttribute(shape, "end");
-      if (!((!start_attr || static_cast<int>(start_attr->i()) == 0) && (!end_attr))) {
+      if (!((!start_attr || start_attr->i() == 0) &&
+            (!end_attr || end_attr->i() == std::numeric_limits<int64_t>::max()))) {
         return false;
       }
     }

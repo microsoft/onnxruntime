@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 #include "core/optimizer/embed_layer_norm_fusion.h"
 
+#include <limits>
+
 #include "core/common/span_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
@@ -143,7 +145,8 @@ static bool MatchInputToConcatSubgraph(
   if (shape_node_path1.SinceVersion() >= 15) {
     const ONNX_NAMESPACE::AttributeProto* start_attr = graph_utils::GetNodeAttribute(shape_node_path1, "start");
     const ONNX_NAMESPACE::AttributeProto* end_attr = graph_utils::GetNodeAttribute(shape_node_path1, "end");
-    if (!((!start_attr || static_cast<int>(start_attr->i()) == 0) && (!end_attr))) {
+    if (!((!start_attr || start_attr->i() == 0) &&
+          (!end_attr || end_attr->i() == std::numeric_limits<int64_t>::max()))) {
       DEBUG_LOG("Shape node in path 1 has non-default start/end attributes.");
       return false;
     }
@@ -182,7 +185,8 @@ static bool MatchInputToConcatSubgraph(
   if (shape_node_1.SinceVersion() >= 15) {
     const ONNX_NAMESPACE::AttributeProto* start_attr = graph_utils::GetNodeAttribute(shape_node_1, "start");
     const ONNX_NAMESPACE::AttributeProto* end_attr = graph_utils::GetNodeAttribute(shape_node_1, "end");
-    if (!((!start_attr || static_cast<int>(start_attr->i()) == 0) && (!end_attr))) {
+    if (!((!start_attr || start_attr->i() == 0) &&
+          (!end_attr || end_attr->i() == std::numeric_limits<int64_t>::max()))) {
       DEBUG_LOG("Shape node in path 2 has non-default start/end attributes.");
       return false;
     }
