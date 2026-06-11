@@ -455,7 +455,17 @@ static std::string GenerateKeyForPrepackedWeightsMap(const std::string& op_type,
 Status SessionState::PrepackConstantInitializedTensors(
     InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
     const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map) {
-  auto prepacked_constant_weights = [this, &constant_initializers_use_count, &initializers_to_share_map](
+  // When set, any CPU constant initializer that a kernel pre-packs is content-addressed
+  // into the shared OrtPrepackedWeightsContainer. This is required for cross-session sharing
+  // of pre-packed weights synthesized by graph optimizers at session-creation time (e.g. the
+  // DQ + MatMul -> MatMulNBits fusion), whose initializer names are auto-generated and
+  // therefore cannot be registered via OrtApi::AddInitializer ahead of time.
+  const bool share_all_cpu_prepacked_initializers =
+      sess_options_.config_options.GetConfigOrDefault(
+          kOrtSessionOptionsShareAllPrepackedCpuInitializers, "0") == "1";
+
+  auto prepacked_constant_weights = [this, &constant_initializers_use_count, &initializers_to_share_map,
+                                     share_all_cpu_prepacked_initializers](
                                         bool should_cache_prepacked_weights_for_shared_initializers) -> Status {
     for (auto& node : GetGraphViewer().Nodes()) {
       if (sess_options_.IsLoadCancellationFlagSet()) {
@@ -483,8 +493,13 @@ Status SessionState::PrepackConstantInitializedTensors(
                 auto iter = initializers_to_share_map.find(input_name);
                 bool is_shared_initializer = (iter != initializers_to_share_map.end());
 
-                // Caching pre-packed weights is limited to shared initializers associated with the CPU EP for now
-                if (is_shared_initializer && should_cache_prepacked_weights_for_shared_initializers &&
+                // Caching pre-packed weights is limited to CPU EP for now. By default only initializers
+                // explicitly registered via OrtApi::AddInitializer (is_shared_initializer) participate.
+                // When share_all_cpu_prepacked_initializers is enabled, every CPU constant initializer is
+                // eligible; deduplication is content-addressed via hash(packed_bytes) so different
+                // per-session synthesized names still collide on identical packed contents.
+                if ((is_shared_initializer || share_all_cpu_prepacked_initializers) &&
+                    should_cache_prepacked_weights_for_shared_initializers &&
                     node.GetExecutionProviderType() == kCpuExecutionProvider) {
                   // caching of pre-packed weights' turned ON
 

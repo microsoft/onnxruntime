@@ -304,6 +304,29 @@ static const char* const kOrtSessionOptionsModelExternalInitializersFileFolderPa
 static const char* const kOrtSessionOptionsSavePrePackedConstantInitializers =
     "session.save_external_prepacked_constant_initializers";
 
+// Enables cross-session sharing of pre-packed weights for *all* CPU constant initializers via an
+// OrtPrepackedWeightsContainer, not just those explicitly registered with OrtApi::AddInitializer.
+//
+// Without this flag, only initializers registered via AddInitializer participate in the
+// OrtPrepackedWeightsContainer cache. That requires knowing initializer names ahead of time, which is
+// not possible when graph-level optimizers synthesize new initializers at session-creation time (e.g.
+// the DQ + MatMul -> MatMulNBits fusion produces transposed/repacked weights with auto-generated
+// names that do not exist in the input model file).
+//
+// With this flag set to "1", any CPU constant initializer that a kernel pre-packs participates in the
+// shared container, content-addressed by hash(packed_bytes). Two sessions that pack byte-identical
+// weights deduplicate to a single buffer owned by the container.
+//
+// Requirements:
+//   - The session must be created via OrtApi::CreateSessionWithPrepackedWeightsContainer.
+//   - All sessions intended to share must set this flag consistently and use the same container.
+//
+// - "0": Default. Only AddInitializer-registered initializers can share pre-packed weights cross-session.
+// - "1": All CPU constant initializers can share pre-packed weights cross-session via the container.
+// Sample usage: sess_options.add_session_config_entry(kOrtSessionOptionsShareAllPrepackedCpuInitializers, "1")
+static const char* const kOrtSessionOptionsShareAllPrepackedCpuInitializers =
+    "session.share_all_prepacked_cpu_initializers";
+
 // Use this config when you want to collect memory stats for each node in the graph.
 // The file format is a CSV file with the following columns:
 // The file will be created if it does not exist, and will be overwritten if it does.
