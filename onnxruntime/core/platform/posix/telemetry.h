@@ -61,6 +61,8 @@ class PosixTelemetry : public Telemetry {
                           const std::unordered_map<std::string, std::string>& model_metadata,
                           const std::string& loadedFrom,
                           const std::vector<std::string>& execution_provider_ids,
+                          const std::string& hardware_device_types,
+                          const std::string& hardware_vendor_ids,
                           bool use_fp16, bool captureState) const override;
 
   void LogCompileModelStart(uint32_t session_id,
@@ -83,7 +85,7 @@ class PosixTelemetry : public Telemetry {
 
   void LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last,
                       int64_t total_run_duration_since_last,
-                      std::unordered_map<int64_t, long long> duration_per_batch_size) const override;
+                      const std::unordered_map<int64_t, long long>& duration_per_batch_size) const override;
 
   void LogExecutionProviderEvent(LUID* adapterLuid) const override;
   void LogDriverInfoEvent(const std::string_view device_class,

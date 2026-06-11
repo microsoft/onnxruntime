@@ -594,6 +594,8 @@ void PosixTelemetry::LogSessionCreation(
     const std::unordered_map<std::string, std::string>& model_metadata,
     const std::string& loadedFrom,
     const std::vector<std::string>& execution_provider_ids,
+    const std::string& hardware_device_types,
+    const std::string& hardware_vendor_ids,
     bool use_fp16, bool captureState) const {
   if (!enabled_ || !logger_) {
     return;
@@ -620,6 +622,8 @@ void PosixTelemetry::LogSessionCreation(
                      .AddStringMap("modelMetadata", model_metadata)
                      .AddString("loadedFrom", loadedFrom)
                      .AddStringList("executionProviderIds", execution_provider_ids)
+                     .AddString("hardwareDeviceTypes", hardware_device_types)
+                     .AddString("hardwareVendorIds", hardware_vendor_ids)
                      .AddBool("useFp16", use_fp16);
 
   LogEventAsync(builder.Build());
@@ -702,7 +706,7 @@ void PosixTelemetry::LogRuntimeError(
 void PosixTelemetry::LogRuntimePerf(
     uint32_t session_id, uint32_t total_runs_since_last,
     int64_t total_run_duration_since_last,
-    std::unordered_map<int64_t, long long> duration_per_batch_size) const {
+    const std::unordered_map<int64_t, long long>& duration_per_batch_size) const {
   if (!enabled_ || !logger_) {
     return;
   }

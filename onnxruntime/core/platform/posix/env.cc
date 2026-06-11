@@ -649,6 +649,8 @@ class PosixEnv : public Env {
  private:
 #ifdef USE_1DS_TELEMETRY
   PosixTelemetry telemetry_provider_;
+#else
+  Telemetry telemetry_provider_;
 #endif
 #ifdef ORT_USE_CPUINFO
   PosixEnv() {
