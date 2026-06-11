@@ -47,6 +47,11 @@ enum class EventPriority {
   CRITICAL = EventLatency_RealTime  // ProcessInfo, SessionCreation
 };
 
+// SystemMetrics is emitted from LogEvaluationStop, i.e. once per inference Run(), which is a hot
+// path for small/high-frequency models. Sample it to bound the per-run getrusage() + event cost:
+// the event is emitted on the first run and then once every kSystemMetricsSampleInterval runs.
+constexpr uint32_t kSystemMetricsSampleInterval = 100;
+
 // Helper class to build events with common properties
 class EventBuilder {
  private:
@@ -781,6 +786,13 @@ void PosixTelemetry::LogProviderOptions(
 
 void PosixTelemetry::LogSystemMetrics(uint32_t session_id) const {
   if (!enabled_ || !logger_) {
+    return;
+  }
+
+  // Sample to bound per-inference overhead: emit on the first run and every
+  // kSystemMetricsSampleInterval-th run thereafter. fetch_add returns the previous value, so the
+  // first call (0) passes and the getrusage() syscall below is skipped on non-sampled runs.
+  if ((system_metrics_sample_counter_.fetch_add(1, std::memory_order_relaxed) % kSystemMetricsSampleInterval) != 0) {
     return;
   }
 

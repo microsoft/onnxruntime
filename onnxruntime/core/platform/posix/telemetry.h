@@ -143,6 +143,9 @@ class PosixTelemetry : public Telemetry {
   // Process info tracking
   mutable std::atomic<bool> process_info_logged_{false};
 
+  // Sampling counter for the per-run SystemMetrics event (see LogSystemMetrics).
+  mutable std::atomic<uint32_t> system_metrics_sample_counter_{0};
+
   // Global registration count for singleton behavior
   static std::atomic<uint32_t> global_register_count_;
   static std::mutex global_mutex_;
