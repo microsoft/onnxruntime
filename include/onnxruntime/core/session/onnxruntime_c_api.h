@@ -295,8 +295,7 @@ typedef enum OrtErrorCode {
    */
   ORT_ENGINE_ERROR,
   /**
-   * A C++ exception was caught at the C API boundary. This is the catch-all code reported when an exception
-   * propagates out of any internal operation, so the error message is the primary source of detail.
+   * A runtime exception was caught. The error message is the primary source of detail.
    */
   ORT_RUNTIME_EXCEPTION,
   /**
