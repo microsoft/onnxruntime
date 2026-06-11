@@ -203,9 +203,23 @@ __global__ void SoftmaxTopKKernelBlock(const T* logits, float* topk_scales, int*
 // the layout onnxruntime-genai's top-k benchmarks also recommend (CUB block
 // merge) for sort sizes up to ~1024. The capacity (kBlockSize*kItemsPerThread)
 // must be >= num_experts; padding lanes carry -FLT_MAX so they sort to the
-// bottom. Tie-breaking matches the scalar kernel (lower expert index first)
-// because the value carried alongside each key is the expert index and the sort
-// is stable.
+// bottom. Tie-breaking matches the scalar kernel (lower expert index first):
+// each key carries its expert index and the comparator breaks ties on the lower
+// index, so correctness does not rely on cub::BlockMergeSort being a stable sort
+// (it is not).
+struct LogitIndexKey {
+  float logit;
+  int index;
+};
+
+// Order primarily by descending logit, breaking ties by ascending expert index
+// so that equal logits deterministically prefer the lower expert index.
+struct LogitIndexDescending {
+  __device__ bool operator()(const LogitIndexKey& a, const LogitIndexKey& b) const {
+    return a.logit > b.logit || (a.logit == b.logit && a.index < b.index);
+  }
+};
+
 template <typename T, int kBlockSize, int kItemsPerThread>
 __global__ void SoftmaxTopKMergeKernel(const T* logits, float* topk_scales, int* topk_indices,
                                        int num_rows, int num_experts, int k, bool normalize_scales) {
@@ -215,7 +229,7 @@ __global__ void SoftmaxTopKMergeKernel(const T* logits, float* topk_scales, int*
   const T* row_logits = logits + static_cast<size_t>(row) * num_experts;
   const int tid = threadIdx.x;
 
-  using BlockMergeSort = cub::BlockMergeSort<float, kBlockSize, kItemsPerThread, int>;
+  using BlockMergeSort = cub::BlockMergeSort<LogitIndexKey, kBlockSize, kItemsPerThread>;
   using BlockReduce = cub::BlockReduce<float, kBlockSize>;
   __shared__ union {
     typename BlockMergeSort::TempStorage merge;
@@ -225,62 +239,61 @@ __global__ void SoftmaxTopKMergeKernel(const T* logits, float* topk_scales, int*
   __shared__ float s_max;
   __shared__ float s_sum;
 
-  // Load this thread's keys (logits) and values (expert indices) in a blocked
-  // arrangement: thread t owns indices [t*ipt, t*ipt+ipt).
-  float keys[kItemsPerThread];
-  int vals[kItemsPerThread];
+  // Load this thread's (logit, expert index) keys in a blocked arrangement:
+  // thread t owns indices [t*ipt, t*ipt+ipt).
+  LogitIndexKey keys[kItemsPerThread];
 #pragma unroll
   for (int j = 0; j < kItemsPerThread; ++j) {
     const int idx = tid * kItemsPerThread + j;
-    keys[j] = (idx < num_experts) ? static_cast<float>(row_logits[idx]) : -FLT_MAX;
-    vals[j] = (idx < num_experts) ? idx : num_experts;
+    keys[j].logit = (idx < num_experts) ? static_cast<float>(row_logits[idx]) : -FLT_MAX;
+    keys[j].index = (idx < num_experts) ? idx : num_experts;
   }
 
   // Softmax denominator over all experts (needed when normalize_scales is false;
   // when true it cancels in the top-k normalization but is still correct).
   float local_max = -FLT_MAX;
 #pragma unroll
-  for (int j = 0; j < kItemsPerThread; ++j) local_max = fmaxf(local_max, keys[j]);
+  for (int j = 0; j < kItemsPerThread; ++j) local_max = fmaxf(local_max, keys[j].logit);
 #if CUDART_VERSION >= 12090
-  float block_max = BlockReduce(temp.reduce).Reduce(local_max, ::cuda::maximum<float>());
+  float block_max = BlockReduce(temp.reduce).Reduce(local_max, ::cuda::maximum());
 #else
   float block_max = BlockReduce(temp.reduce).Reduce(local_max, cub::Max());
 #endif
   if (tid == 0) s_max = block_max;
+  // Single barrier: publishes s_max to all threads and also separates the two
+  // BlockReduce uses that share temp.reduce.
   __syncthreads();
   const float max_val = s_max;
-  __syncthreads();
 
   float local_sum = 0.0f;
 #pragma unroll
   for (int j = 0; j < kItemsPerThread; ++j) {
     const int idx = tid * kItemsPerThread + j;
-    if (idx < num_experts) local_sum += expf(keys[j] - max_val);
+    if (idx < num_experts) local_sum += expf(keys[j].logit - max_val);
   }
 #if CUDART_VERSION >= 12090
-  float block_sum = BlockReduce(temp.reduce).Reduce(local_sum, ::cuda::std::plus<float>());
+  float block_sum = BlockReduce(temp.reduce).Reduce(local_sum, ::cuda::std::plus());
 #else
   float block_sum = BlockReduce(temp.reduce).Reduce(local_sum, cub::Sum());
 #endif
   if (tid == 0) s_sum = block_sum;
+  // Single barrier: publishes s_sum and separates temp.reduce from temp.merge.
   __syncthreads();
   const float inv_sum = (s_sum > 0.0f) ? (1.0f / s_sum) : 0.0f;
-  __syncthreads();
 
-  // Sort (logit, index) pairs descending. Result stays in a blocked layout, so
-  // sorted rank r lives in thread (r / ipt), item (r % ipt).
-  struct DescendingOp {
-    __device__ bool operator()(const float& a, const float& b) const { return a > b; }
-  };
-  BlockMergeSort(temp.merge).Sort(keys, vals, DescendingOp());
-  __syncthreads();
+  // Sort (logit, index) keys descending (ties broken on lower index). Result
+  // stays in a blocked layout, so sorted rank r lives in thread (r / ipt),
+  // item (r % ipt). Sort() leaves the sorted keys in each thread's registers and
+  // temp.merge is not reused afterwards, so no barrier is needed here; the
+  // shared s_topk writes below are published by the barrier that follows them.
+  BlockMergeSort(temp.merge).Sort(keys, LogitIndexDescending());
 
 #pragma unroll
   for (int j = 0; j < kItemsPerThread; ++j) {
     const int rank = tid * kItemsPerThread + j;
     if (rank < k) {
-      topk_indices[static_cast<size_t>(row) * k + rank] = vals[j];
-      s_topk[rank] = expf(keys[j] - max_val) * inv_sum;
+      topk_indices[static_cast<size_t>(row) * k + rank] = keys[j].index;
+      s_topk[rank] = expf(keys[j].logit - max_val) * inv_sum;
     }
   }
   __syncthreads();
