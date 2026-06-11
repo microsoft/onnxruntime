@@ -20,6 +20,56 @@ int Compute1DGridSize(int num_elements, int block_size) {
   return (num_elements + block_size - 1) / block_size;
 }
 
+constexpr float kTopKNormalizeEpsilon = 1e-6f;
+
+__device__ __forceinline__ float SoftmaxScale(float logit, float max_val, float inv_sum) {
+  return expf(logit - max_val) * inv_sum;
+}
+
+__device__ __forceinline__ float SafeInvSum(float sum) {
+  return (sum > 0.0f) ? (1.0f / sum) : 0.0f;
+}
+
+__device__ __forceinline__ float TopKNormalizeDenom(bool normalize_scales, float scale_sum) {
+  return (normalize_scales && scale_sum > kTopKNormalizeEpsilon) ? scale_sum : 1.0f;
+}
+
+__device__ __forceinline__ float WarpReduceMax(float value) {
+  constexpr int kWarpSize = onnxruntime::cuda::topk_warp::kWarpSize;
+#pragma unroll
+  for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
+    value = fmaxf(value, __shfl_xor_sync(0xFFFFFFFF, value, offset));
+  }
+  return value;
+}
+
+__device__ __forceinline__ float WarpReduceSum(float value) {
+  constexpr int kWarpSize = onnxruntime::cuda::topk_warp::kWarpSize;
+#pragma unroll
+  for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
+    value += __shfl_xor_sync(0xFFFFFFFF, value, offset);
+  }
+  return value;
+}
+
+template <typename BlockReduce>
+__device__ __forceinline__ float BlockReduceMax(float value, typename BlockReduce::TempStorage& temp_storage) {
+#if CUDART_VERSION >= 12090
+  return BlockReduce(temp_storage).Reduce(value, ::cuda::maximum());
+#else
+  return BlockReduce(temp_storage).Reduce(value, cub::Max());
+#endif
+}
+
+template <typename BlockReduce>
+__device__ __forceinline__ float BlockReduceSum(float value, typename BlockReduce::TempStorage& temp_storage) {
+#if CUDART_VERSION >= 12090
+  return BlockReduce(temp_storage).Reduce(value, ::cuda::std::plus());
+#else
+  return BlockReduce(temp_storage).Reduce(value, cub::Sum());
+#endif
+}
+
 template <typename T>
 __global__ void SoftmaxTopKKernel(const T* logits, float* topk_scales, int* topk_indices,
                                   int num_rows, int num_experts, int k, bool normalize_scales) {
@@ -81,7 +131,7 @@ __global__ void SoftmaxTopKKernel(const T* logits, float* topk_scales, int* topk
     for (int i = 0; i < k; ++i) {
       scale_sum += row_scales[i];
     }
-    if (scale_sum > 1e-6f) {
+    if (scale_sum > kTopKNormalizeEpsilon) {
       for (int i = 0; i < k; ++i) {
         row_scales[i] /= scale_sum;
       }
@@ -146,11 +196,7 @@ __global__ void SoftmaxTopKMergeKernel(const T* logits, float* topk_scales, int*
   float local_max = -FLT_MAX;
 #pragma unroll
   for (int j = 0; j < kItemsPerThread; ++j) local_max = fmaxf(local_max, keys[j].logit);
-#if CUDART_VERSION >= 12090
-  float block_max = BlockReduce(temp.reduce).Reduce(local_max, ::cuda::maximum());
-#else
-  float block_max = BlockReduce(temp.reduce).Reduce(local_max, cub::Max());
-#endif
+  const float block_max = BlockReduceMax<BlockReduce>(local_max, temp.reduce);
   if (tid == 0) s_max = block_max;
   // Single barrier: publishes s_max to all threads and also separates the two
   // BlockReduce uses that share temp.reduce.
@@ -163,15 +209,11 @@ __global__ void SoftmaxTopKMergeKernel(const T* logits, float* topk_scales, int*
     const int idx = tid * kItemsPerThread + j;
     if (idx < num_experts) local_sum += expf(keys[j].logit - max_val);
   }
-#if CUDART_VERSION >= 12090
-  float block_sum = BlockReduce(temp.reduce).Reduce(local_sum, ::cuda::std::plus());
-#else
-  float block_sum = BlockReduce(temp.reduce).Reduce(local_sum, cub::Sum());
-#endif
+  const float block_sum = BlockReduceSum<BlockReduce>(local_sum, temp.reduce);
   if (tid == 0) s_sum = block_sum;
   // Single barrier: publishes s_sum and separates temp.reduce from temp.merge.
   __syncthreads();
-  const float inv_sum = (s_sum > 0.0f) ? (1.0f / s_sum) : 0.0f;
+  const float inv_sum = SafeInvSum(s_sum);
 
   // Sort (logit, index) keys descending (ties broken on lower index). Result
   // stays in a blocked layout, so sorted rank r lives in thread (r / ipt),
@@ -185,7 +227,7 @@ __global__ void SoftmaxTopKMergeKernel(const T* logits, float* topk_scales, int*
     const int rank = tid * kItemsPerThread + j;
     if (rank < k) {
       topk_indices[static_cast<size_t>(row) * k + rank] = keys[j].index;
-      s_topk[rank] = expf(keys[j].logit - max_val) * inv_sum;
+      s_topk[rank] = SoftmaxScale(keys[j].logit, max_val, inv_sum);
     }
   }
   __syncthreads();
@@ -194,7 +236,7 @@ __global__ void SoftmaxTopKMergeKernel(const T* logits, float* topk_scales, int*
     if (normalize_scales) {
       float scale_sum = 0.0f;
       for (int i = 0; i < k; ++i) scale_sum += s_topk[i];
-      const float denom = (scale_sum > 1e-6f) ? scale_sum : 1.0f;
+      const float denom = TopKNormalizeDenom(normalize_scales, scale_sum);
       for (int i = 0; i < k; ++i) topk_scales[static_cast<size_t>(row) * k + i] = s_topk[i] / denom;
     } else {
       for (int i = 0; i < k; ++i) topk_scales[static_cast<size_t>(row) * k + i] = s_topk[i];
@@ -210,7 +252,6 @@ __global__ void SoftmaxTopKMergeKernel(const T* logits, float* topk_scales, int*
 template <typename T, int kWarpsPerBlock>
 __global__ void SoftmaxTopKWarpBitonicKernel(const T* logits, float* topk_scales, int* topk_indices,
                                              int num_rows, int num_experts, int k, bool normalize_scales) {
-  constexpr int kWarpSize = onnxruntime::cuda::topk_warp::kWarpSize;
   const int lane = threadIdx.x;
   const int row = blockIdx.x * kWarpsPerBlock + threadIdx.y;
   if (row >= num_rows) return;
@@ -218,20 +259,11 @@ __global__ void SoftmaxTopKWarpBitonicKernel(const T* logits, float* topk_scales
   const T* row_logits = logits + static_cast<size_t>(row) * num_experts;
   const float logit = (lane < num_experts) ? static_cast<float>(row_logits[lane]) : -FLT_MAX;
 
-  // Warp-wide max for numerical stability.
-  float max_val = logit;
-#pragma unroll
-  for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
-    max_val = fmaxf(max_val, __shfl_xor_sync(0xFFFFFFFF, max_val, offset));
-  }
+  const float max_val = WarpReduceMax(logit);
 
   // Warp-wide exp sum (softmax denominator over all experts).
-  float sum_exp = (lane < num_experts) ? expf(logit - max_val) : 0.0f;
-#pragma unroll
-  for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
-    sum_exp += __shfl_xor_sync(0xFFFFFFFF, sum_exp, offset);
-  }
-  const float inv_sum = (sum_exp > 0.0f) ? (1.0f / sum_exp) : 0.0f;
+  const float sum_exp = WarpReduceSum((lane < num_experts) ? expf(logit - max_val) : 0.0f);
+  const float inv_sum = SafeInvSum(sum_exp);
 
   // Sort (logit, expert index) descending; sorting by logit is equivalent to
   // sorting by softmax probability since the mapping is monotonic.
@@ -240,16 +272,10 @@ __global__ void SoftmaxTopKWarpBitonicKernel(const T* logits, float* topk_scales
   onnxruntime::cuda::topk_warp::WarpBitonicSortDescending(score, index);
 
   // Lane r now holds the rank-r element. Compute the top-k probabilities.
-  float prob = (lane < k) ? expf(score - max_val) * inv_sum : 0.0f;
+  float prob = (lane < k) ? SoftmaxScale(score, max_val, inv_sum) : 0.0f;
 
   if (normalize_scales) {
-    float scale_sum = prob;
-#pragma unroll
-    for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
-      scale_sum += __shfl_xor_sync(0xFFFFFFFF, scale_sum, offset);
-    }
-    const float denom = (scale_sum > 1e-6f) ? scale_sum : 1.0f;
-    prob /= denom;
+    prob /= TopKNormalizeDenom(normalize_scales, WarpReduceSum(prob));
   }
 
   if (lane < k) {
@@ -286,22 +312,14 @@ __global__ void SoftmaxTopKWarpMergeKernel(const T* logits, float* topk_scales, 
     s_indices[i] = (i < num_experts) ? i : INT_MAX;
     local_max = fmaxf(local_max, v);
   }
-#pragma unroll
-  for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
-    local_max = fmaxf(local_max, __shfl_xor_sync(0xFFFFFFFF, local_max, offset));
-  }
-  const float max_val = local_max;
+  const float max_val = WarpReduceMax(local_max);
 
   // Warp-wide exp sum over all experts.
   float local_sum = 0.0f;
   for (int i = lane; i < num_experts; i += kWarpSize) {
     local_sum += expf(s_scores[i] - max_val);
   }
-#pragma unroll
-  for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
-    local_sum += __shfl_xor_sync(0xFFFFFFFF, local_sum, offset);
-  }
-  const float inv_sum = (local_sum > 0.0f) ? (1.0f / local_sum) : 0.0f;
+  const float inv_sum = SafeInvSum(WarpReduceSum(local_sum));
 
   __syncwarp();
   WarpMergeSorter::Sort(s_scores, s_indices, temp_storage, num_experts);
@@ -311,17 +329,14 @@ __global__ void SoftmaxTopKWarpMergeKernel(const T* logits, float* topk_scales, 
   float scale_sum = 0.0f;
   if (normalize_scales) {
     for (int i = lane; i < k; i += kWarpSize) {
-      scale_sum += expf(s_scores[i] - max_val) * inv_sum;
+      scale_sum += SoftmaxScale(s_scores[i], max_val, inv_sum);
     }
-#pragma unroll
-    for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
-      scale_sum += __shfl_xor_sync(0xFFFFFFFF, scale_sum, offset);
-    }
+    scale_sum = WarpReduceSum(scale_sum);
   }
-  const float denom = (normalize_scales && scale_sum > 1e-6f) ? scale_sum : 1.0f;
+  const float denom = TopKNormalizeDenom(normalize_scales, scale_sum);
 
   for (int i = lane; i < k; i += kWarpSize) {
-    const float prob = expf(s_scores[i] - max_val) * inv_sum;
+    const float prob = SoftmaxScale(s_scores[i], max_val, inv_sum);
     topk_scales[static_cast<size_t>(row) * k + i] = normalize_scales ? (prob / denom) : prob;
     topk_indices[static_cast<size_t>(row) * k + i] = s_indices[i];
   }
