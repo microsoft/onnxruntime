@@ -295,7 +295,7 @@ typedef enum OrtErrorCode {
    */
   ORT_ENGINE_ERROR,
   /**
-   * A runtime exception was caught. The error message is the primary source of detail.
+   * A generic runtime exception was caught. The error message is the primary source of detail.
    */
   ORT_RUNTIME_EXCEPTION,
   /**
