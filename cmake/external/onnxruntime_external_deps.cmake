@@ -903,6 +903,13 @@ endif()
 
 # 1DS SDK (cpp_client_telemetry) for cross-platform telemetry on non-Windows platforms
 if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
+  if(onnxruntime_USE_VCPKG)
+    # Consume the 1DS SDK from the vcpkg port "cpp-client-telemetry", which exposes the
+    # MSTelemetry::mat target with its include directories and transitive dependencies
+    # (curl/nlohmann-json/sqlite3/zlib) already wired up via vcpkg. None of the FetchContent
+    # workarounds below are needed on this path.
+    find_package(MSTelemetry CONFIG REQUIRED)
+  else()
   set(BUILD_UNIT_TESTS_SAVED "${BUILD_UNIT_TESTS}")
   set(BUILD_FUNC_TESTS_SAVED "${BUILD_FUNC_TESTS}")
   set(BUILD_SAMPLES_SAVED "${BUILD_SAMPLES}")
@@ -964,6 +971,7 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
   set(BUILD_UNIT_TESTS "${BUILD_UNIT_TESTS_SAVED}" CACHE BOOL "" FORCE)
   set(BUILD_FUNC_TESTS "${BUILD_FUNC_TESTS_SAVED}" CACHE BOOL "" FORCE)
   set(BUILD_SAMPLES "${BUILD_SAMPLES_SAVED}" CACHE BOOL "" FORCE)
+  endif()
 endif()
 
 FILE(TO_NATIVE_PATH ${CMAKE_BINARY_DIR} ORT_BINARY_DIR)

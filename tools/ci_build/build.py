@@ -267,6 +267,8 @@ def generate_vcpkg_install_options(build_dir, args):
         vcpkg_install_options.append("--x-feature=webnn-ep")
     if args.use_xnnpack:
         vcpkg_install_options.append("--x-feature=xnnpack-ep")
+    if args.use_telemetry:
+        vcpkg_install_options.append("--x-feature=telemetry")
 
     overlay_triplets_dir = None
 

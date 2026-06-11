@@ -217,7 +217,12 @@ endif()
 
 # Link telemetry library (1DS SDK) for non-Windows platforms
 if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
-  if(TARGET mat)
+  if(TARGET MSTelemetry::mat)
+    # vcpkg port (cpp-client-telemetry): the imported target propagates its include
+    # directories and transitive dependencies (curl/sqlite3/zlib/nlohmann-json), so no
+    # manual include paths or system libraries are required here.
+    target_link_libraries(onnxruntime_common PRIVATE MSTelemetry::mat)
+  elseif(TARGET mat)
     target_link_libraries(onnxruntime_common PRIVATE mat)
     # cpp_client_telemetry uses include_directories() (directory-scoped) rather than
     # target_include_directories(), so include paths don't propagate via target_link_libraries.
@@ -247,7 +252,7 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
       )
     endif()
   else()
-    message(WARNING "Telemetry enabled but 'mat' library target not found")
+    message(WARNING "Telemetry enabled but no 1DS SDK target ('MSTelemetry::mat' or 'mat') was found")
   endif()
 endif()
 

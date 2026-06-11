@@ -96,6 +96,15 @@
     "webgpu-ep": {
       "description": "Build with WebGPU EP",
       "dependencies": []
+    },
+    "telemetry": {
+      "description": "Build with 1DS telemetry support (cpp-client-telemetry) on non-Windows platforms",
+      "dependencies": [
+        {
+          "name": "cpp-client-telemetry",
+          "platform": "!windows & !emscripten & !uwp"
+        }
+      ]
     }
   },
   "overrides": [
