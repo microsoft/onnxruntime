@@ -148,8 +148,9 @@ class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecode
                                  bool has_attention_bias, uint32_t tile_size, int head_size_vec,
                                  bool use_indirect_dispatch, bool q_BNSH = false,
                                  bool is_unidirectional = false,
-                                 uint32_t m_tile = 1)
-      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), head_size_vec_(head_size_vec), use_indirect_dispatch_(use_indirect_dispatch), q_BNSH_(q_BNSH), is_unidirectional_(is_unidirectional), m_tile_(m_tile) {
+                                 uint32_t m_tile = 1,
+                                 bool use_seqlen_k = false)
+      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), head_size_vec_(head_size_vec), use_indirect_dispatch_(use_indirect_dispatch), q_BNSH_(q_BNSH), is_unidirectional_(is_unidirectional), m_tile_(m_tile), use_seqlen_k_(use_seqlen_k) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -174,12 +175,13 @@ class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecode
   bool q_BNSH_;
   bool is_unidirectional_;
   uint32_t m_tile_;
+  bool use_seqlen_k_;
 };
 
 class FlashAttentionDecodeVxReduceProgram final : public Program<FlashAttentionDecodeVxReduceProgram> {
  public:
-  FlashAttentionDecodeVxReduceProgram(const std::string& kernel_name, uint32_t tile_size, uint32_t seq_tile_size, bool use_indirect_dispatch, bool has_head_sink = false, uint32_t m_tile = 1)
-      : Program{kernel_name}, tile_size_(tile_size), seq_tile_size_(seq_tile_size), use_indirect_dispatch_(use_indirect_dispatch), has_head_sink_(has_head_sink), m_tile_(m_tile) {
+  FlashAttentionDecodeVxReduceProgram(const std::string& kernel_name, uint32_t tile_size, uint32_t seq_tile_size, bool use_indirect_dispatch, bool has_head_sink = false, uint32_t m_tile = 1, bool use_seqlen_k = false)
+      : Program{kernel_name}, tile_size_(tile_size), seq_tile_size_(seq_tile_size), use_indirect_dispatch_(use_indirect_dispatch), has_head_sink_(has_head_sink), m_tile_(m_tile), use_seqlen_k_(use_seqlen_k) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -198,6 +200,7 @@ class FlashAttentionDecodeVxReduceProgram final : public Program<FlashAttentionD
   bool use_indirect_dispatch_;
   bool has_head_sink_;
   uint32_t m_tile_;
+  bool use_seqlen_k_;
 };
 
 Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
