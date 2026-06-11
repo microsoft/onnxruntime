@@ -506,8 +506,9 @@ uint64_t PosixTelemetry::Keyword() const {
 }
 
 void PosixTelemetry::LogProcessInfo() const {
-  // LogProcessInfo only collects system metadata and always fires if we have a valid logger.
-  if (!logger_) {
+  // LogProcessInfo only collects system metadata, but it must still honor the
+  // runtime opt-out (DisableTelemetryEvents) like every other event.
+  if (!enabled_ || !logger_) {
     return;
   }
 
