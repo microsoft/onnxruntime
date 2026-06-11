@@ -56,14 +56,16 @@ inline const bool UseSME2 = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2();
 inline const bool UseSME = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME();
 inline const std::string_view vendor_name = MLAS_CPUIDINFO::GetCPUIDInfo().GetCPUVendor();
 
+// Selects the convolution route for Arm® KleidiAI™
 enum class ConvRoute {
-    None, // Do not override the caller's default convolution path.
-    Igemm,
-    GemmFallback,
+    NoKleidiAi,    // decline the conv, caller runs unchanged
+    IGemm,         // handle the whole conv via SME IGEMM kernel
+    SGemmFallback, // decline IGEMM, but still route the per-segment SGEMM slices through MlasGemm
+                   // so that the Arm® KleidiAI™ SGEMM backend override can pick them up
 };
 
 struct ConvRouteSelection {
-    ConvRoute route = ConvRoute::None;
+    ConvRoute route = ConvRoute::NoKleidiAi;
     size_t effective_kernel_h = 0;
     size_t effective_kernel_w = 0;
 };
@@ -167,7 +169,7 @@ inline ConvRouteSelection SelectConvRoute(const MLAS_CONV_PARAMETERS* Parameters
     if (MlasMultiplyOverflowsSizeT(output_m, effective_k, &total_work) ||
         MlasMultiplyOverflowsSizeT(total_work, filter_count, &total_work)) {
         // Total work calculation overflow means total work is too large, fall back
-        return ConvRouteSelection{ConvRoute::GemmFallback, effective_kernel_h, effective_kernel_w};
+        return ConvRouteSelection{ConvRoute::SGemmFallback, effective_kernel_h, effective_kernel_w};
     }
 
     const size_t conv_igemm_max_work =
@@ -176,10 +178,10 @@ inline ConvRouteSelection SelectConvRoute(const MLAS_CONV_PARAMETERS* Parameters
             ? Parameters->BackendKernelSelectorConfig->kleidiai_conv_igemm_max_work
             : ConvIgemmMaxWorkDefault;
     if (total_work > conv_igemm_max_work) {
-        return ConvRouteSelection{ConvRoute::GemmFallback, effective_kernel_h, effective_kernel_w};
+        return ConvRouteSelection{ConvRoute::SGemmFallback, effective_kernel_h, effective_kernel_w};
     }
 
-    return ConvRouteSelection{ConvRoute::Igemm, effective_kernel_h, effective_kernel_w};
+    return ConvRouteSelection{ConvRoute::IGemm, effective_kernel_h, effective_kernel_w};
 }
 
 // Buffer packing routines.
@@ -351,17 +353,17 @@ MlasConvSymmetricChannelsLast2DFloatPackW(
     MLAS_THREADPOOL* ThreadPool
     );
 
-inline MLAS_CONV_ROUTE
+inline MLAS_CONV_SGEMM_ROUTE
 MLASCALL
-MlasConvRoute(const MLAS_CONV_PARAMETERS* Parameters) {
+MlasConvSGemmRoute(const MLAS_CONV_PARAMETERS* Parameters) {
     if (Parameters->BackendKernelSelectorConfig &&
         !Parameters->BackendKernelSelectorConfig->use_kleidiai) {
-        return MlasConvRouteDefault;
+        return MlasConvSGemmRouteDirect;
     }
 
-    return ArmKleidiAI::SelectConvRoute(Parameters).route == ArmKleidiAI::ConvRoute::GemmFallback
-        ? MlasConvRouteGemmFallback
-        : MlasConvRouteDefault;
+    return ArmKleidiAI::SelectConvRoute(Parameters).route == ArmKleidiAI::ConvRoute::SGemmFallback
+        ? MlasConvSGemmRouteDispatch
+        : MlasConvSGemmRouteDirect;
 }
 }
 

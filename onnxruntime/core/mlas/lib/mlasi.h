@@ -918,14 +918,14 @@ bool
     MLAS_THREADPOOL* ThreadPool
     );
 
-enum MLAS_CONV_ROUTE {
-    MlasConvRouteDefault,
-    MlasConvRouteGemmFallback,
+enum MLAS_CONV_SGEMM_ROUTE {
+    MlasConvSGemmRouteDirect,   // call MlasSgemmOperation directly
+    MlasConvSGemmRouteDispatch, // call MlasGemm so backend SGEMM overrides may be selected
 };
 
 typedef
-MLAS_CONV_ROUTE
-(MLASCALL MLAS_CONV_ROUTE_OVERRIDE)(
+MLAS_CONV_SGEMM_ROUTE
+(MLASCALL MLAS_CONV_SGEMM_ROUTE_OVERRIDE)(
     const MLAS_CONV_PARAMETERS* Parameters
     );
 
@@ -1559,7 +1559,7 @@ struct MLAS_PLATFORM {
     // MLAS Conv overrides
     MLAS_CONV_PREPARE_FLOAT_OVERRIDE* MlasConvPrepareOverride = nullptr;
     MLAS_CONV_FLOAT_OVERRIDE* MlasConvOverride = nullptr;
-    MLAS_CONV_ROUTE_OVERRIDE* MlasConvRouteOverride = nullptr;
+    MLAS_CONV_SGEMM_ROUTE_OVERRIDE* MlasConvSGemmRouteOverride = nullptr;
 #if defined(__aarch64__) && defined(__linux__)
     // SBGemm overrides
     MLAS_SBGEMM_BATCH_OVERRIDE* MlasSBGemmBatchOverride = nullptr;

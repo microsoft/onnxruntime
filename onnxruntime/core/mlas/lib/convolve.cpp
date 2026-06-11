@@ -574,9 +574,9 @@ Return Value:
     const size_t FilterCount = Parameters->FilterCount;
     const size_t OutputSize = Parameters->OutputSize;
     const size_t K = Parameters->K;
-    bool use_gemm_batch_override =
-        GetMlasPlatform().MlasConvRouteOverride != nullptr &&
-        GetMlasPlatform().MlasConvRouteOverride(Parameters) == MlasConvRouteGemmFallback;
+    const bool use_gemm_batch_override =
+        GetMlasPlatform().MlasConvSGemmRouteOverride != nullptr &&
+        GetMlasPlatform().MlasConvSGemmRouteOverride(Parameters) == MlasConvSGemmRouteDispatch;
 
     //
     // Compute the strides to step through slices of the local segment.
@@ -1394,7 +1394,12 @@ MlasConvSupportsDenseChannelsLast2DFloatKernel(
         return false;
     }
 
-    if (Padding[0] != Padding[2] || Padding[1] != Padding[3]) {
+    // The channels-last float convolution path is only implemented by the Arm® KleidiAI™
+    // SME conv override, which currently uses a single padding value in its LHS indirection table.
+    // Require uniform padding until separate H/W padding is supported there.
+    if (Padding[0] != Padding[2] ||
+        Padding[1] != Padding[3] ||
+        Padding[0] != Padding[1]) {
         return false;
     }
 

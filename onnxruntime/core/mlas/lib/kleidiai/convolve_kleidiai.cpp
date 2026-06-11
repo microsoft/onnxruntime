@@ -148,7 +148,7 @@ static bool CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
     const auto route_selection = ArmKleidiAI::SelectConvRoute(Parameters);
     const auto route = route_selection.route;
 
-    if (route == ArmKleidiAI::ConvRoute::Igemm) {
+    if (route == ArmKleidiAI::ConvRoute::IGemm) {
         // ensure LHS packed buffer size is non-zero
         const size_t d_kh = route_selection.effective_kernel_h;
         const size_t d_kw = route_selection.effective_kernel_w;
@@ -164,7 +164,7 @@ static bool CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
         return true;
     }
 
-    if (route == ArmKleidiAI::ConvRoute::GemmFallback) {
+    if (route == ArmKleidiAI::ConvRoute::SGemmFallback) {
         KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSme returning false to prefer SGEMM-backed conv path.");
     } else {
         KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSme returning false on functional or optimization checks.");

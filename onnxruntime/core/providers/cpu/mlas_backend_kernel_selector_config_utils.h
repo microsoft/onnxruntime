@@ -19,12 +19,12 @@ inline void SetupMlasBackendKernelSelectorFromConfigOptions(MLAS_BACKEND_KERNEL_
                                                             const ConfigOptions& config_options) {
   config.use_kleidiai = config_options.GetConfigOrDefault(kOrtSessionOptionsMlasDisableKleidiAi, "0") != "1";
 
-  std::string conv_igemm_max_work;
-  if (config_options.TryGetConfigEntry(kOrtSessionOptionsMlasKleidiAiConvIgemmMaxWork, conv_igemm_max_work)) {
-    ORT_ENFORCE(TryParseStringWithClassicLocale<size_t>(conv_igemm_max_work,
+  if (auto conv_igemm_max_work =
+          config_options.GetConfigEntry(kOrtSessionOptionsMlasKleidiAiConvIgemmMaxWork)) {
+    ORT_ENFORCE(TryParseStringWithClassicLocale<size_t>(*conv_igemm_max_work,
                                                         config.kleidiai_conv_igemm_max_work),
                 "Invalid value for ", kOrtSessionOptionsMlasKleidiAiConvIgemmMaxWork,
-                ": ", conv_igemm_max_work, ". Expected a non-negative integer.");
+                ": ", *conv_igemm_max_work, ". Expected a non-negative integer.");
   }
 }
 
