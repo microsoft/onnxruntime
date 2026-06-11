@@ -690,6 +690,24 @@ TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathAndInvalidArguments) {
                        ORT_INVALID_ARGUMENT, "EPContext data fallback file name must not be empty");
 }
 
+TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathRejectsUnsafeNames) {
+  const auto& api = Ort::GetApi();
+  std::filesystem::path data_path;
+
+  ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, "../escape.ctx", nullptr, data_path),
+                       ORT_INVALID_ARGUMENT, "EPContext data file name must not contain path traversal");
+  EXPECT_TRUE(data_path.empty());
+
+#ifdef _WIN32
+  const char* absolute_file_name = "C:\\temp\\escape.ctx";
+#else
+  const char* absolute_file_name = "/tmp/escape.ctx";
+#endif
+  ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, absolute_file_name, nullptr, data_path),
+                       ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute");
+  EXPECT_TRUE(data_path.empty());
+}
+
 TEST(OrtEpLibrary, EpContextDataUtils_FileFallbackReadsAndWrites) {
   const auto& api = Ort::GetApi();
   const std::filesystem::path test_dir = PrepareTempTestDir("ort_ep_context_data_utils_file_fallback_test");

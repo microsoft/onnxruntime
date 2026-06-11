@@ -78,6 +78,16 @@ inline std::string PathToUtf8String(const std::filesystem::path& path) {
 #endif
 }
 
+inline bool ContainsPathTraversal(const std::filesystem::path& path) {
+  const std::filesystem::path parent_dir{".."};
+  for (const auto& component : path) {
+    if (component == parent_dir) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // NOTE: This sample resolves file_name (which can originate from an untrusted EPContext model's
 // "ep_cache_context" attribute) directly into a filesystem path. An absolute path or one containing ".."
 // segments can therefore escape the model directory. Production EPs that adopt this pattern should validate
@@ -91,12 +101,21 @@ inline OrtStatus* ResolveEpContextDataPath(const OrtApi& api, const char* file_n
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
   }
 
-  data_path = Utf8Path(file_name);
-  if (data_path.empty()) {
+  const auto candidate_path = Utf8Path(file_name);
+  if (candidate_path.empty()) {
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name is not a valid path");
   }
 
-  if (data_path.is_absolute() || graph == nullptr) {
+  if (candidate_path.is_absolute()) {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute");
+  }
+
+  if (ContainsPathTraversal(candidate_path)) {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not contain path traversal");
+  }
+
+  data_path = candidate_path;
+  if (graph == nullptr) {
     return nullptr;
   }
 
@@ -110,12 +129,39 @@ inline OrtStatus* ResolveEpContextDataPath(const OrtApi& api, const char* file_n
   return nullptr;
 }
 
+inline OrtStatus* ResolveEpContextDataFilePath(const OrtApi& api, const char* file_name, const OrtGraph* graph,
+                                               std::filesystem::path& data_path) {
+  data_path.clear();
+
+  if (file_name == nullptr || file_name[0] == '\0') {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
+  }
+
+  data_path = Utf8Path(file_name);
+  if (data_path.empty()) {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name is not a valid path");
+  }
+
+  if (graph == nullptr) {
+    return nullptr;
+  }
+
+  const ORTCHAR_T* model_path = nullptr;
+  RETURN_IF_ERROR(api.Graph_GetModelPath(graph, &model_path));
+  if (model_path == nullptr || model_path[0] == 0 || data_path.is_absolute()) {
+    return nullptr;
+  }
+
+  data_path = std::filesystem::path{model_path}.parent_path() / data_path;
+  return nullptr;
+}
+
 inline OrtStatus* ReadEpContextDataFromFile(const OrtApi& api, const char* file_name, const OrtGraph* graph,
                                             std::vector<char>& data) {
   data.clear();
 
   std::filesystem::path data_path;
-  RETURN_IF_ERROR(ResolveEpContextDataPath(api, file_name, graph, data_path));
+  RETURN_IF_ERROR(ResolveEpContextDataFilePath(api, file_name, graph, data_path));
 
   std::ifstream input_stream(data_path, std::ios::binary);
   if (!input_stream) {
@@ -141,7 +187,7 @@ inline OrtStatus* WriteEpContextDataToFile(const OrtApi& api, const char* file_n
   }
 
   std::filesystem::path data_path;
-  RETURN_IF_ERROR(ResolveEpContextDataPath(api, file_name, graph, data_path));
+  RETURN_IF_ERROR(ResolveEpContextDataFilePath(api, file_name, graph, data_path));
 
   std::ofstream output_stream(data_path, std::ios::binary);
   if (!output_stream) {
