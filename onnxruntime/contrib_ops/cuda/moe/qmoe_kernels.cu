@@ -35,7 +35,7 @@ __device__ __forceinline__ float TopKNormalizeDenom(bool normalize_scales, float
 }
 
 __device__ __forceinline__ float WarpReduceMax(float value) {
-  constexpr int kWarpSize = onnxruntime::cuda::topk_warp::kWarpSize;
+  constexpr int kWarpSize = onnxruntime::cuda::topk::kWarpSize;
 #pragma unroll
   for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
     value = fmaxf(value, __shfl_xor_sync(0xFFFFFFFF, value, offset));
@@ -44,7 +44,7 @@ __device__ __forceinline__ float WarpReduceMax(float value) {
 }
 
 __device__ __forceinline__ float WarpReduceSum(float value) {
-  constexpr int kWarpSize = onnxruntime::cuda::topk_warp::kWarpSize;
+  constexpr int kWarpSize = onnxruntime::cuda::topk::kWarpSize;
 #pragma unroll
   for (int offset = kWarpSize / 2; offset > 0; offset >>= 1) {
     value += __shfl_xor_sync(0xFFFFFFFF, value, offset);
@@ -145,22 +145,8 @@ __global__ void SoftmaxTopKKernel(const T* logits, float* topk_scales, int* topk
 // the layout onnxruntime-genai's top-k benchmarks also recommend (CUB block
 // merge) for sort sizes up to ~1024. The capacity (kBlockSize*kItemsPerThread)
 // must be >= num_experts; padding lanes carry -FLT_MAX so they sort to the
-// bottom. Tie-breaking matches the scalar kernel (lower expert index first):
-// each key carries its expert index and the comparator breaks ties on the lower
-// index, so correctness does not rely on cub::BlockMergeSort being a stable sort
-// (it is not).
-struct LogitIndexKey {
-  float logit;
-  int index;
-};
-
-// Order primarily by descending logit, breaking ties by ascending expert index
-// so that equal logits deterministically prefer the lower expert index.
-struct LogitIndexDescending {
-  __device__ bool operator()(const LogitIndexKey& a, const LogitIndexKey& b) const {
-    return a.logit > b.logit || (a.logit == b.logit && a.index < b.index);
-  }
-};
+// bottom. Tie-breaking matches the scalar kernel (lower expert index first) via
+// the same packed stable sort key used by the warp merge path.
 
 template <typename T, int kBlockSize, int kItemsPerThread>
 __global__ void SoftmaxTopKMergeKernel(const T* logits, float* topk_scales, int* topk_indices,
@@ -171,7 +157,7 @@ __global__ void SoftmaxTopKMergeKernel(const T* logits, float* topk_scales, int*
   const T* row_logits = logits + static_cast<size_t>(row) * num_experts;
   const int tid = threadIdx.x;
 
-  using BlockMergeSort = cub::BlockMergeSort<LogitIndexKey, kBlockSize, kItemsPerThread>;
+  using BlockMergeSort = cub::BlockMergeSort<uint64_t, kBlockSize, kItemsPerThread, cub::NullType>;
   using BlockReduce = cub::BlockReduce<float, kBlockSize>;
   __shared__ union {
     typename BlockMergeSort::TempStorage merge;
@@ -181,21 +167,21 @@ __global__ void SoftmaxTopKMergeKernel(const T* logits, float* topk_scales, int*
   __shared__ float s_max;
   __shared__ float s_sum;
 
-  // Load this thread's (logit, expert index) keys in a blocked arrangement:
-  // thread t owns indices [t*ipt, t*ipt+ipt).
-  LogitIndexKey keys[kItemsPerThread];
+  // Load this thread's packed (logit, expert index) keys in a blocked
+  // arrangement: thread t owns indices [t*ipt, t*ipt+ipt).
+  uint64_t keys[kItemsPerThread];
+  float local_max = -FLT_MAX;
 #pragma unroll
   for (int j = 0; j < kItemsPerThread; ++j) {
     const int idx = tid * kItemsPerThread + j;
-    keys[j].logit = (idx < num_experts) ? static_cast<float>(row_logits[idx]) : -FLT_MAX;
-    keys[j].index = (idx < num_experts) ? idx : num_experts;
+    const float logit = (idx < num_experts) ? static_cast<float>(row_logits[idx]) : -FLT_MAX;
+    const int index = (idx < num_experts) ? idx : INT_MAX;
+    keys[j] = onnxruntime::cuda::topk::PackStableSortKey(logit, index);
+    local_max = fmaxf(local_max, logit);
   }
 
   // Softmax denominator over all experts (needed when normalize_scales is false;
   // when true it cancels in the top-k normalization but is still correct).
-  float local_max = -FLT_MAX;
-#pragma unroll
-  for (int j = 0; j < kItemsPerThread; ++j) local_max = fmaxf(local_max, keys[j].logit);
   const float block_max = BlockReduceMax<BlockReduce>(local_max, temp.reduce);
   if (tid == 0) s_max = block_max;
   // Single barrier: publishes s_max to all threads and also separates the two
@@ -207,7 +193,9 @@ __global__ void SoftmaxTopKMergeKernel(const T* logits, float* topk_scales, int*
 #pragma unroll
   for (int j = 0; j < kItemsPerThread; ++j) {
     const int idx = tid * kItemsPerThread + j;
-    if (idx < num_experts) local_sum += expf(keys[j].logit - max_val);
+    if (idx < num_experts) {
+      local_sum += expf(onnxruntime::cuda::topk::UnpackStableSortScore(keys[j]) - max_val);
+    }
   }
   const float block_sum = BlockReduceSum<BlockReduce>(local_sum, temp.reduce);
   if (tid == 0) s_sum = block_sum;
@@ -215,19 +203,21 @@ __global__ void SoftmaxTopKMergeKernel(const T* logits, float* topk_scales, int*
   __syncthreads();
   const float inv_sum = SafeInvSum(s_sum);
 
-  // Sort (logit, index) keys descending (ties broken on lower index). Result
-  // stays in a blocked layout, so sorted rank r lives in thread (r / ipt),
-  // item (r % ipt). Sort() leaves the sorted keys in each thread's registers and
-  // temp.merge is not reused afterwards, so no barrier is needed here; the
-  // shared s_topk writes below are published by the barrier that follows them.
-  BlockMergeSort(temp.merge).Sort(keys, LogitIndexDescending());
+  // Sort packed (logit, index) keys descending. Result stays in a blocked
+  // layout, so sorted rank r lives in thread (r / ipt), item (r % ipt). Sort()
+  // leaves the sorted keys in each thread's registers and temp.merge is not
+  // reused afterwards, so no barrier is needed here; the shared s_topk writes
+  // below are published by the barrier that follows them.
+  BlockMergeSort(temp.merge).Sort(keys, onnxruntime::cuda::topk::Greater<uint64_t>());
 
 #pragma unroll
   for (int j = 0; j < kItemsPerThread; ++j) {
     const int rank = tid * kItemsPerThread + j;
     if (rank < k) {
-      topk_indices[static_cast<size_t>(row) * k + rank] = keys[j].index;
-      s_topk[rank] = SoftmaxScale(keys[j].logit, max_val, inv_sum);
+      const uint64_t key = keys[j];
+      topk_indices[static_cast<size_t>(row) * k + rank] =
+          onnxruntime::cuda::topk::UnpackStableSortIndex(key);
+      s_topk[rank] = SoftmaxScale(onnxruntime::cuda::topk::UnpackStableSortScore(key), max_val, inv_sum);
     }
   }
   __syncthreads();
@@ -269,7 +259,7 @@ __global__ void SoftmaxTopKWarpBitonicKernel(const T* logits, float* topk_scales
   // sorting by softmax probability since the mapping is monotonic.
   float score = logit;
   int index = (lane < num_experts) ? lane : INT_MAX;
-  onnxruntime::cuda::topk_warp::WarpBitonicSortDescending(score, index);
+  onnxruntime::cuda::topk::WarpBitonicSortDescending(score, index);
 
   // Lane r now holds the rank-r element. Compute the top-k probabilities.
   float prob = (lane < k) ? SoftmaxScale(score, max_val, inv_sum) : 0.0f;
@@ -291,8 +281,8 @@ __global__ void SoftmaxTopKWarpBitonicKernel(const T* logits, float* topk_scales
 template <typename T, int kBufferSize>
 __global__ void SoftmaxTopKWarpMergeKernel(const T* logits, float* topk_scales, int* topk_indices,
                                            int num_rows, int num_experts, int k, bool normalize_scales) {
-  constexpr int kWarpSize = onnxruntime::cuda::topk_warp::kWarpSize;
-  using WarpMergeSorter = onnxruntime::cuda::topk_warp::WarpMergeSorter<kBufferSize>;
+  constexpr int kWarpSize = onnxruntime::cuda::topk::kWarpSize;
+  using WarpMergeSorter = onnxruntime::cuda::topk::WarpMergeSorter<kBufferSize>;
 
   const int row = blockIdx.x;
   if (row >= num_rows) return;
@@ -354,17 +344,17 @@ void DispatchSoftmaxTopK(const T* logits, float* topk_scales, int* topk_indices,
     // Tiny expert counts: a single warp sorts a row entirely in registers via
     // an in-register bitonic sort (no shared memory). Multiple warps per block
     // process multiple rows for better occupancy.
-    if (num_experts <= onnxruntime::cuda::topk_warp::kWarpBitonicMaxSize) {
+    if (num_experts <= onnxruntime::cuda::topk::kWarpBitonicMaxSize) {
       constexpr int kWarpsPerBlock = 8;
-      const dim3 block(static_cast<unsigned>(onnxruntime::cuda::topk_warp::kWarpSize), kWarpsPerBlock);
+      const dim3 block(static_cast<unsigned>(onnxruntime::cuda::topk::kWarpSize), kWarpsPerBlock);
       const dim3 bitonic_grid(static_cast<unsigned>((num_rows + kWarpsPerBlock - 1) / kWarpsPerBlock));
       SoftmaxTopKWarpBitonicKernel<T, kWarpsPerBlock><<<bitonic_grid, block, 0, stream>>>(
           logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales);
       return;
-    } else if (num_experts <= onnxruntime::cuda::topk_warp::kWarpMergeMaxSize) {
+    } else if (num_experts <= onnxruntime::cuda::topk::kWarpMergeMaxSize) {
       // Single warp per row sorts up to 64 logits in shared memory (CUB warp
       // merge sort), the genai-recommended path for sort sizes in (32, 64].
-      SoftmaxTopKWarpMergeKernel<T, 64><<<grid, onnxruntime::cuda::topk_warp::kWarpSize, 0, stream>>>(
+      SoftmaxTopKWarpMergeKernel<T, 64><<<grid, onnxruntime::cuda::topk::kWarpSize, 0, stream>>>(
           logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales);
       return;
     } else if (num_experts <= 128) {

@@ -29,7 +29,7 @@
 
 namespace onnxruntime {
 namespace cuda {
-namespace topk_warp {
+namespace topk {
 
 constexpr int kWarpSize = 32;
 
@@ -120,8 +120,9 @@ __device__ __forceinline__ int UnpackStableSortIndex(uint64_t key) {
   return static_cast<int>(UINT_MAX - inverted_index);
 }
 
-struct PackedStableSortKeyGreater {
-  __device__ __forceinline__ bool operator()(uint64_t a, uint64_t b) const {
+template <typename T>
+struct Greater {
+  __device__ __host__ __forceinline__ bool operator()(const T& a, const T& b) const {
     return a > b;
   }
 };
@@ -167,7 +168,7 @@ struct WarpMergeSorter {
       }
     }
 
-    SortT(temp_storage).Sort(items, PackedStableSortKeyGreater());
+    SortT(temp_storage).Sort(items, Greater<uint64_t>());
 
     // Blocked write-back: rank r lives at smem[r].
 #pragma unroll
@@ -181,6 +182,6 @@ struct WarpMergeSorter {
   }
 };
 
-}  // namespace topk_warp
+}  // namespace topk
 }  // namespace cuda
 }  // namespace onnxruntime
