@@ -115,12 +115,24 @@ Status CheckInputs(const T* input,
   if (rotary_embedding_dim == 0) {
     int cache_width = 0;
     ORT_RETURN_IF_ERROR(detail::NarrowNonNegativeToInt32(cos_cache_dims[1], "cache_width", cache_width));
+
+    int effective_rotary_dim = 0;
+    ORT_RETURN_IF_ERROR(detail::CheckedMulToInt32(cache_width, 2, "effective_rotary_dim", effective_rotary_dim));
+
     if (head_size == 0) {
-      ORT_RETURN_IF_ERROR(detail::CheckedMulToInt32(cache_width, 2, "head_size", head_size));
+      head_size = effective_rotary_dim;
     }
-    // Validate that the rotary embedding dimension derived from cos_cache does not exceed hidden_size,
-    // which would cause an out-of-bounds read on the input tensor.
-    int effective_rotary_dim = cache_width * 2;
+
+    // Rotary embedding is applied per head, so the inferred dimension must not exceed head_size.
+    if (head_size > 0 && effective_rotary_dim > head_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "RotaryEmbedding: cos_cache dimension (", cache_width,
+                             " * 2 = ", effective_rotary_dim,
+                             ") exceeds head_size (", head_size,
+                             ") when rotary_embedding_dim is 0");
+    }
+
+    // Also guard against exceeding the full hidden_size (covers num_heads==0 / rank-3 without num_heads).
     if (hidden_size > 0 && effective_rotary_dim > hidden_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "RotaryEmbedding: cos_cache dimension (", cache_width,
@@ -168,8 +180,8 @@ Status CheckInputs(const T* input,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'cos_cache' dimension 0 should be same as ",
                            "max_sequence_length, got ", cos_cache_dims[0]);
   }
-  if ((head_size / 2) != static_cast<int>(cos_cache_dims[1]) &&
-      (rotary_embedding_dim <= 0 || (rotary_embedding_dim / 2) != static_cast<int>(cos_cache_dims[1]))) {
+  const int expected_cache_width = rotary_embedding_dim > 0 ? (rotary_embedding_dim / 2) : (head_size / 2);
+  if (expected_cache_width != static_cast<int>(cos_cache_dims[1])) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'cos_cache' dimension 1 should be same as ",
                            "head_size / 2 or rotary_embedding_dim / 2, got ", cos_cache_dims[1]);
   }

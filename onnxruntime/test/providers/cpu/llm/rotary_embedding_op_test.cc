@@ -1431,7 +1431,7 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_RejectsCosCacheExceedsHiddenSize) {
                        std::vector<float>(max_sequence_length * half_rotary_dim, 0.0f));
   test.AddInput<float>("sin_cache", {max_sequence_length, half_rotary_dim},
                        std::vector<float>(max_sequence_length * half_rotary_dim, 1.0f));
-  test.AddInput<int64_t>("position_ids", {1}, {0});
+  test.AddInput<int64_t>("position_ids", {batch_size, sequence_length}, {0});
   test.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
                         std::vector<float>(hidden_size, 0.0f));
 
