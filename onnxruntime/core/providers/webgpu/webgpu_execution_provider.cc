@@ -584,6 +584,10 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       multi_rotary_cache_concat_offset_{config.multi_rotary_cache_concat_offset},
       prepack_allocator_{std::make_shared<webgpu::GpuBufferAllocator>(
           [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, false)} {
+  if (enable_graph_capture_ && config.session_buffer_pool_generations > 0) {
+    session_buffer_pool_ = std::make_unique<webgpu::SessionBufferPool>(
+        config.session_buffer_pool_generations);
+  }
   if (config.enable_pix_capture) {
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
     // set pix frame generator
@@ -750,6 +754,11 @@ WebGpuExecutionProvider::~WebGpuExecutionProvider() {
   // but no entries in captured_graphs_ (edge case cleanup)
   per_graph_buffer_mgrs_.clear();
 
+  // Release pooled buffers before the WebGpuContext is released.
+  if (session_buffer_pool_) {
+    session_buffer_pool_->Clear();
+  }
+
   WebGpuContextFactory::ReleaseContext(context_id_);
 }
 
@@ -794,6 +803,9 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
             webgpu::BufferCacheMode::Graph,
             webgpu::BufferCacheMode::GraphSimple,
             webgpu::BufferCacheMode::Disabled);
+        if (session_buffer_pool_) {
+          session_buffer_pool_->SeedInto(*it->second);
+        }
       }
       graph_buffer_mgr_active_ = true;
 
@@ -880,8 +892,14 @@ Status WebGpuExecutionProvider::ReleaseCapturedGraph(int graph_annotation_id) {
   // Remove from captured set
   captured_graph_ids_.erase(graph_annotation_id);
 
-  // Release per-graph buffer manager (destroys cached buffers)
-  per_graph_buffer_mgrs_.erase(graph_annotation_id);
+  // Release per-graph buffer manager (donate to session pool if enabled; otherwise destroy)
+  auto mgr_it = per_graph_buffer_mgrs_.find(graph_annotation_id);
+  if (mgr_it != per_graph_buffer_mgrs_.end()) {
+    if (session_buffer_pool_ && mgr_it->second) {
+      session_buffer_pool_->Donate(*mgr_it->second);
+    }
+    per_graph_buffer_mgrs_.erase(mgr_it);
+  }
 
   // Clean up run count tracking
   graph_id_to_run_count_.erase(graph_annotation_id);

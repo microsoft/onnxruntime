@@ -197,6 +197,8 @@ struct GroupQueryAttentionData {
   bool use_memory_efficient_attention = false;
   bool use_flash_attention_fast_decode = false;
   bool use_xqa = false;
+  // cuDNN SDPA (cudnn_frontend) path: preferred on SM>=90 for non-quantized FP16/BF16 GQA.
+  bool use_cudnn_sdpa = false;
   // GQA-capable unfused fallback (issue #28195): used when Flash/MEA/XQA are all ineligible,
   // e.g. fp16 head_size > 256 with past_key, or GQA on old GPUs without MEA/Flash support.
   bool use_unfused = false;
@@ -213,6 +215,11 @@ struct GroupQueryAttentionData {
   T* unfused_q_bnsh = nullptr;
   T* unfused_y_bnsh = nullptr;
   void* unfused_workspace = nullptr;
+
+  // cuDNN SDPA path: temp-space allocator and cuDNN handle (stored as void* to avoid pulling the
+  // cuDNN headers into this file; cast to cudnnHandle_t in the .cu runner).
+  AllocatorPtr allocator = nullptr;
+  void* cudnn_handle = nullptr;
 };
 
 template <typename T>

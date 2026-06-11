@@ -441,6 +441,32 @@ class TestIOBinding(unittest.TestCase):
                 # Inspect contents of output_ortvalue and make sure that it has the right contents
                 self.assertTrue(np.array_equal(self._create_expected_output_alternate(), output_ortvalue.numpy()))
 
+    def test_bind_input_rejects_string_tensor(self):
+        # Binding a string tensor via a raw, non-owning pointer is unsafe: the backing buffer
+        # has no live std::string objects, which previously caused out-of-bounds writes when
+        # the tensor was later read or destroyed. Both overloads of bind_input (ONNX int
+        # element_type and numpy dtype) must reject string tensors explicitly.
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
+        io_binding = session.io_binding()
+
+        # Use a real allocation just to have a valid pointer; the type check happens before
+        # the pointer is dereferenced.
+        scratch = np.zeros(4, dtype=np.uint8)
+        scratch_ptr = scratch.ctypes.data
+
+        # Overload 1: int32 ONNX element type.
+        with self.assertRaisesRegex(RuntimeError, "Only binding non-string Tensors"):
+            io_binding.bind_input("X", "cpu", 0, int(TensorProto.STRING), [1], scratch_ptr)
+
+        # Overload 2: numpy dtype. NPY_UNICODE, NPY_STRING and NPY_OBJECT all map to
+        # std::string in NumpyTypeToOnnxRuntimeTensorType, so each of them must be rejected.
+        for dtype in (np.dtype("U1"), np.dtype("S1"), np.dtype(object)):
+            with (
+                self.subTest(dtype=dtype),
+                self.assertRaisesRegex(RuntimeError, "Only binding non-string Tensors"),
+            ):
+                io_binding.bind_input("X", "cpu", 0, dtype, [1], scratch_ptr)
+
 
 if __name__ == "__main__":
     unittest.main()
