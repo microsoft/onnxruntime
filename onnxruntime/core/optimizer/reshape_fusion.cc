@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
-#include <limits>
 
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/initializer.h"
@@ -173,19 +172,11 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const Node
     const Node& gather = edges[1]->GetNode();
     const Node& shape = edges[2]->GetNode();
 
-    // Opset 15+ added optional start/end attributes to Shape, allowing it to return only a
-    // subset of dimensions ("partial shape"). The fusion below assumes Shape returns the full
-    // tensor shape so that Gather indices correspond directly to tensor dimensions. If start != 0
-    // or end is set to something other than the default (INT64_MAX = all dims), the Gather index
-    // semantics change and the fusion would produce incorrect results. Reject such cases.
-    if (shape.SinceVersion() >= 15) {
-      const ONNX_NAMESPACE::AttributeProto* start_attr = graph_utils::GetNodeAttribute(shape, "start");
-      const ONNX_NAMESPACE::AttributeProto* end_attr = graph_utils::GetNodeAttribute(shape, "end");
-      // end=INT64_MAX is the runtime default, meaning "all dimensions" (i.e. full shape).
-      if (!((!start_attr || start_attr->i() == 0) &&
-            (!end_attr || end_attr->i() == std::numeric_limits<int64_t>::max()))) {
-        return false;
-      }
+    // The fusion assumes Shape returns the full tensor shape so that Gather indices correspond
+    // directly to tensor dimensions. A partial shape (opset 15+ start/end attributes) would shift
+    // the index mapping and produce incorrect results.
+    if (!graph_utils::IsFullShapeNode(shape)) {
+      return false;
     }
 
     InlinedVector<int64_t> axes;

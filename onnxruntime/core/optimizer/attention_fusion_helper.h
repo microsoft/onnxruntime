@@ -98,19 +98,12 @@ bool MatchGemmSubgraph(Graph& graph,
   const Node& slice = edges[6]->GetNode();
   const Node& shape_before_slice = edges[7]->GetNode();
 
-  // Opset 15+ added optional start/end attributes to Shape, allowing it to return only a
-  // subset of dimensions ("partial shape"). The downstream Slice/Squeeze/Gather nodes assume
-  // Shape returns the full tensor shape. If start != 0 or end is not the default (INT64_MAX),
-  // the fusion would produce incorrect index mapping. Reject such cases.
-  if (shape_before_slice.SinceVersion() >= 15) {
-    const ONNX_NAMESPACE::AttributeProto* start_attr = graph_utils::GetNodeAttribute(shape_before_slice, "start");
-    const ONNX_NAMESPACE::AttributeProto* end_attr = graph_utils::GetNodeAttribute(shape_before_slice, "end");
-    // end=INT64_MAX is the runtime default, meaning "all dimensions" (i.e. full shape).
-    if (!((!start_attr || start_attr->i() == 0) &&
-          (!end_attr || end_attr->i() == std::numeric_limits<int64_t>::max()))) {
-      DEBUG_LOG("Shape node has non-default start/end attributes");
-      return false;
-    }
+  // The downstream Slice/Squeeze/Gather nodes assume Shape returns the full tensor shape so
+  // that indices map directly to tensor dimensions. A partial shape (opset 15+ start/end
+  // attributes) would produce incorrect index mapping.
+  if (!graph_utils::IsFullShapeNode(shape_before_slice)) {
+    DEBUG_LOG("Shape node has non-default start/end attributes");
+    return false;
   }
 
   const auto& subgraph_input = shape_before_slice.InputDefs()[0];

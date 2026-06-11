@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 #include "core/optimizer/embed_layer_norm_fusion.h"
 
-#include <limits>
-
 #include "core/common/span_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
@@ -140,20 +138,12 @@ static bool MatchInputToConcatSubgraph(
     }
   }
 
-  // Opset 15+ added optional start/end attributes to Shape, allowing it to return only a
-  // subset of dimensions ("partial shape"). The Gather(index=0) below assumes Shape returns
-  // the full tensor shape. If start != 0 or end is not the default (INT64_MAX), the Gather
-  // would pick the wrong dimension and fusion would be incorrect. Reject such cases.
+  // The Gather(index=0) below assumes Shape returns the full tensor shape. A partial shape
+  // (opset 15+ start/end attributes) would cause Gather to pick the wrong dimension.
   const Node& shape_node_path1 = edges[shape_index]->GetNode();
-  if (shape_node_path1.SinceVersion() >= 15) {
-    const ONNX_NAMESPACE::AttributeProto* start_attr = graph_utils::GetNodeAttribute(shape_node_path1, "start");
-    const ONNX_NAMESPACE::AttributeProto* end_attr = graph_utils::GetNodeAttribute(shape_node_path1, "end");
-    // end=INT64_MAX is the runtime default, meaning "all dimensions" (i.e. full shape).
-    if (!((!start_attr || start_attr->i() == 0) &&
-          (!end_attr || end_attr->i() == std::numeric_limits<int64_t>::max()))) {
-      DEBUG_LOG("Shape node in path 1 has non-default start/end attributes.");
-      return false;
-    }
+  if (!graph_utils::IsFullShapeNode(shape_node_path1)) {
+    DEBUG_LOG("Shape node in path 1 has non-default start/end attributes.");
+    return false;
   }
 
   Node& concat_node = *graph.GetNode(edges[0]->GetNode().Index());
@@ -185,19 +175,11 @@ static bool MatchInputToConcatSubgraph(
   Node& gather_node_1 = *graph.GetNode(edges[1]->GetNode().Index());
   Node& shape_node_1 = *graph.GetNode(edges[2]->GetNode().Index());
 
-  // Opset 15+ added optional start/end attributes to Shape, allowing it to return only a
-  // subset of dimensions ("partial shape"). The Gather(index=1) below assumes Shape returns
-  // the full tensor shape. If start != 0 or end is not the default (INT64_MAX), the Gather
-  // would pick the wrong dimension and fusion would be incorrect. Reject such cases.
-  if (shape_node_1.SinceVersion() >= 15) {
-    const ONNX_NAMESPACE::AttributeProto* start_attr = graph_utils::GetNodeAttribute(shape_node_1, "start");
-    const ONNX_NAMESPACE::AttributeProto* end_attr = graph_utils::GetNodeAttribute(shape_node_1, "end");
-    // end=INT64_MAX is the runtime default, meaning "all dimensions" (i.e. full shape).
-    if (!((!start_attr || start_attr->i() == 0) &&
-          (!end_attr || end_attr->i() == std::numeric_limits<int64_t>::max()))) {
-      DEBUG_LOG("Shape node in path 2 has non-default start/end attributes.");
-      return false;
-    }
+  // The Gather(index=1) below assumes Shape returns the full tensor shape. A partial shape
+  // (opset 15+ start/end attributes) would cause Gather to pick the wrong dimension.
+  if (!graph_utils::IsFullShapeNode(shape_node_1)) {
+    DEBUG_LOG("Shape node in path 2 has non-default start/end attributes.");
+    return false;
   }
 
   // The gather node (with second input indices==1) is also shared by other subgraph
