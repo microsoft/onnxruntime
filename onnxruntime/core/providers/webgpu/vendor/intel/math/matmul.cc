@@ -57,7 +57,7 @@ Status ApplyMatMulIntel(ComputeContext& context,
 
   // When B is a matrix (batch is 1), we fold batchA into the M dimension for better
   // performance (e.g., [2,3,5] → [1,6,5]).
-  // Don't fold to workaround for Xe-LPG/Xe-3LPG when M is small and the proportion of workgroups
+  // Don't fold to workaround for Xe-LPG/Xe-3LPG when the proportion of workgroups
   // containing invalid (out-of-bounds) threads is relatively small .
   const int64_t M = output_shape[output_shape.NumDimensions() - 2];
   const int64_t m_mod_32 = M % 32;
@@ -65,7 +65,7 @@ Status ApplyMatMulIntel(ComputeContext& context,
       (!(context.AdapterInfo().architecture == std::string_view("xe-lpg") ||
          context.AdapterInfo().architecture == std::string_view("xe-3lpg")) ||
        (m_mod_32 > 0 && m_mod_32 <= 24))) {
-    // dimensions of A: [1,`batchA`, M, K]
+    // dimensions of A: [`batchA` * M, K]
     int64_t batchAndM = a_shape.SizeToDimension(a_shape.NumDimensions() - 1);
     TensorShapeVector dims_a = {batchAndM, helper.K()};
     // dimensions of B: [K, N]
