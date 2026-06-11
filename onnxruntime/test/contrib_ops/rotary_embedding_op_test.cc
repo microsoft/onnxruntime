@@ -1172,5 +1172,33 @@ TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_PositionIds_Negative_WebGPU_Pas
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+// Test that cos_cache dimension exceeding hidden_size is rejected when rotary_embedding_dim=0.
+TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_RejectsCosCacheExceedsHiddenSize) {
+  int batch_size = 1;
+  int sequence_length = 1;
+  int hidden_size = 64;
+  int half_rotary_dim = 64;  // makes cos_cache_dims[1]*2 = 128 > hidden_size
+  int max_sequence_length = 2;
+
+  OpTester test("RotaryEmbedding", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("interleaved", static_cast<int64_t>(0));
+  test.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(1));
+
+  test.AddInput<float>("input", {batch_size, sequence_length, hidden_size},
+                       std::vector<float>(hidden_size, 42.0f));
+  test.AddInput<int64_t>("position_ids", {1}, {0});
+  test.AddInput<float>("cos_cache", {max_sequence_length, half_rotary_dim},
+                       std::vector<float>(max_sequence_length * half_rotary_dim, 0.0f));
+  test.AddInput<float>("sin_cache", {max_sequence_length, half_rotary_dim},
+                       std::vector<float>(max_sequence_length * half_rotary_dim, 1.0f));
+  test.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                        std::vector<float>(hidden_size, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "cos_cache dimension", {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

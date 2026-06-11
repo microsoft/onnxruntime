@@ -118,6 +118,16 @@ Status CheckInputs(const T* input,
     if (head_size == 0) {
       ORT_RETURN_IF_ERROR(detail::CheckedMulToInt32(cache_width, 2, "head_size", head_size));
     }
+    // Validate that the rotary embedding dimension derived from cos_cache does not exceed hidden_size,
+    // which would cause an out-of-bounds read on the input tensor.
+    int effective_rotary_dim = cache_width * 2;
+    if (hidden_size > 0 && effective_rotary_dim > hidden_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "RotaryEmbedding: cos_cache dimension (", cache_width,
+                             " * 2 = ", effective_rotary_dim,
+                             ") exceeds input hidden_size (", hidden_size,
+                             ") when rotary_embedding_dim is 0");
+    }
   } else {
     if (!transposed) {
       if (num_heads <= 0) {
