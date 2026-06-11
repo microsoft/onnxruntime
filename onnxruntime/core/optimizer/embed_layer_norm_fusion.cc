@@ -140,11 +140,15 @@ static bool MatchInputToConcatSubgraph(
     }
   }
 
-  // Opset 15+ added start/end attributes to Shape. Reject partial-shape queries.
+  // Opset 15+ added optional start/end attributes to Shape, allowing it to return only a
+  // subset of dimensions ("partial shape"). The Gather(index=0) below assumes Shape returns
+  // the full tensor shape. If start != 0 or end is not the default (INT64_MAX), the Gather
+  // would pick the wrong dimension and fusion would be incorrect. Reject such cases.
   const Node& shape_node_path1 = edges[shape_index]->GetNode();
   if (shape_node_path1.SinceVersion() >= 15) {
     const ONNX_NAMESPACE::AttributeProto* start_attr = graph_utils::GetNodeAttribute(shape_node_path1, "start");
     const ONNX_NAMESPACE::AttributeProto* end_attr = graph_utils::GetNodeAttribute(shape_node_path1, "end");
+    // end=INT64_MAX is the runtime default, meaning "all dimensions" (i.e. full shape).
     if (!((!start_attr || start_attr->i() == 0) &&
           (!end_attr || end_attr->i() == std::numeric_limits<int64_t>::max()))) {
       DEBUG_LOG("Shape node in path 1 has non-default start/end attributes.");
@@ -181,10 +185,14 @@ static bool MatchInputToConcatSubgraph(
   Node& gather_node_1 = *graph.GetNode(edges[1]->GetNode().Index());
   Node& shape_node_1 = *graph.GetNode(edges[2]->GetNode().Index());
 
-  // Opset 15+ added start/end attributes to Shape. Reject partial-shape queries.
+  // Opset 15+ added optional start/end attributes to Shape, allowing it to return only a
+  // subset of dimensions ("partial shape"). The Gather(index=1) below assumes Shape returns
+  // the full tensor shape. If start != 0 or end is not the default (INT64_MAX), the Gather
+  // would pick the wrong dimension and fusion would be incorrect. Reject such cases.
   if (shape_node_1.SinceVersion() >= 15) {
     const ONNX_NAMESPACE::AttributeProto* start_attr = graph_utils::GetNodeAttribute(shape_node_1, "start");
     const ONNX_NAMESPACE::AttributeProto* end_attr = graph_utils::GetNodeAttribute(shape_node_1, "end");
+    // end=INT64_MAX is the runtime default, meaning "all dimensions" (i.e. full shape).
     if (!((!start_attr || start_attr->i() == 0) &&
           (!end_attr || end_attr->i() == std::numeric_limits<int64_t>::max()))) {
       DEBUG_LOG("Shape node in path 2 has non-default start/end attributes.");
