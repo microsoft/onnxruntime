@@ -46,16 +46,23 @@ class QMoE final : public CudaKernel, public MoEBase {
                                IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
   int64_t expert_weight_bits_;
   bool is_fp16_;
-  // When true (the schema default), the int4/int8 fc1/fc2 weight
-  // initializers are already in the CUTLASS fpA_intB layout — produced
-  // offline e.g. via ``pack_weights_for_cuda_mixed_gemm`` — and the
-  // compute path reads them as-is. When false, the raw schema-conformant
-  // ``[E, N, K/pack]`` layout (as produced by
-  // ``quantize_matmul_{4,8}bits``) is rewritten inside the PrePack hook
-  // via ``PrePackIntExpertWeights``, removing the offline prepack
-  // dependency. Only meaningful when ``quant_type_ == "int"``. Derived from
-  // the optional tri-state ``weights_prepacked`` attribute: -1/auto (or
-  // absent) maps to true on the CUDA EP, 1 maps to true, 0 maps to false.
+  // When true, the int4/int8 fc1/fc2 weight initializers are already in a
+  // CUTLASS fpA_intB layout — produced offline e.g. via
+  // ``pack_weights_for_cuda_mixed_gemm`` — and the compute path reads them
+  // as-is. When false, the raw schema-conformant ``[E, N, K/pack]`` layout
+  // (as produced by ``quantize_matmul_{4,8}bits``) is rewritten inside the
+  // PrePack hook via ``PrePackIntExpertWeights``, removing the offline
+  // prepack dependency. Only meaningful when ``quant_type_ == "int"``.
+  // Derived from the optional tri-state ``weights_prepacked`` attribute:
+  // -1 (default) and 1 both map to true; 0 maps to false. The concrete
+  // prepacked layouts selected by -1 and 1 are determined by the execution
+  // provider. For the CUDA EP the int4/int8 MoE GEMM always dispatches to the
+  // Ampere (SM80) grouped-GEMM kernel -- even on SM90 -- because mixed
+  // int-weight + fp16/bf16 activation is not a valid Hopper TMA warp-specialized
+  // specialisation (matches TensorRT-LLM, which also routes W4A16/W8A16 MoE to
+  // the SM80 kernel on Hopper). The kernel therefore consumes the SM80 fpA_intB
+  // layout on every GPU, so -1 and 1 are currently equivalent for the CUDA EP;
+  // 1 is reserved for a possible future Hopper-specific layout (e.g. W4A8).
   bool weights_prepacked_ = true;
   // Cached source weight shapes captured at PrePack time. When the
   // PrePack hook consumed and released the original int4/int8 weight

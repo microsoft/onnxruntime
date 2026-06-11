@@ -11,6 +11,10 @@ namespace options {
 
 constexpr const char* kPreferredLayout = "ep.webgpuexecutionprovider.preferredLayout";
 constexpr const char* kEnableGraphCapture = "ep.webgpuexecutionprovider.enableGraphCapture";
+// Number of generations of buffers to retain in the per-session pool for reuse
+// across captured-graph lifetimes. 0 disables pooling. Default 1 caches one
+// generator's worth of intermediate buffers.
+constexpr const char* kSessionBufferPoolGenerations = "ep.webgpuexecutionprovider.sessionBufferPoolGenerations";
 constexpr const char* kEnableInt64 = "ep.webgpuexecutionprovider.enableInt64";
 constexpr const char* kMultiRotaryCacheConcatOffset = "ep.webgpuexecutionprovider.multiRotaryCacheConcatOffset";
 
