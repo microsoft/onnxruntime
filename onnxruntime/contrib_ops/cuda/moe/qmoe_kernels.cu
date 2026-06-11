@@ -261,7 +261,7 @@ __global__ void SoftmaxTopKWarpBitonicKernel(const T* logits, float* topk_scales
 // Warp CUB merge sort softmax + top-k for num_experts <= kBufferSize (64). One
 // warp (32 threads) per block sorts a row's logits held in shared memory. This
 // is the genai-recommended path for sort sizes in (32, 64]. Tie-breaking
-// matches SoftmaxTopKMergeKernel via ScoreIndexGreater.
+// matches SoftmaxTopKMergeKernel via a packed stable sort key.
 template <typename T, int kBufferSize>
 __global__ void SoftmaxTopKWarpMergeKernel(const T* logits, float* topk_scales, int* topk_indices,
                                            int num_rows, int num_experts, int k, bool normalize_scales) {

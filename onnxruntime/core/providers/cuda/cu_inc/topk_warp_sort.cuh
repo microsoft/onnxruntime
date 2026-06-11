@@ -96,18 +96,33 @@ __device__ inline void WarpBitonicSortDescending(float& score, int& index) {
   }
 }
 
-// Composite key sorted by the CUB warp merge sort. Sorting the (score, index)
-// pair as a single key lets the comparator break ties deterministically without
-// relying on the sort being stable (CUB merge sort is not stable).
-struct ScoreIndex {
-  float score;
-  int index;
-};
+// Convert a (score, index) pair into a single unsigned integer key. Descending
+// integer order then gives descending float score order, with equal scores
+// preferring the smaller original index. This matches the stable Top-K packing
+// used by onnxruntime-genai while avoiding a compound comparator in CUB.
+__device__ __forceinline__ uint64_t PackStableSortKey(float score, int index) {
+  const uint32_t score_bits = __float_as_uint(score);
+  const uint32_t sortable_score =
+      (score_bits & 0x80000000u) ? (~score_bits) : (score_bits | 0x80000000u);
+  const uint32_t inverted_index = UINT_MAX - static_cast<uint32_t>(index);
+  return (static_cast<uint64_t>(sortable_score) << 32) | inverted_index;
+}
 
-// Descending comparator with smaller-index tie-breaking.
-struct ScoreIndexGreater {
-  __device__ __forceinline__ bool operator()(const ScoreIndex& a, const ScoreIndex& b) const {
-    return a.score > b.score || (a.score == b.score && a.index < b.index);
+__device__ __forceinline__ float UnpackStableSortScore(uint64_t key) {
+  const uint32_t sortable_score = static_cast<uint32_t>(key >> 32);
+  const uint32_t score_bits =
+      (sortable_score & 0x80000000u) ? (sortable_score & 0x7fffffffu) : ~sortable_score;
+  return __uint_as_float(score_bits);
+}
+
+__device__ __forceinline__ int UnpackStableSortIndex(uint64_t key) {
+  const uint32_t inverted_index = static_cast<uint32_t>(key & 0xffffffffu);
+  return static_cast<int>(UINT_MAX - inverted_index);
+}
+
+struct PackedStableSortKeyGreater {
+  __device__ __forceinline__ bool operator()(uint64_t a, uint64_t b) const {
+    return a > b;
   }
 };
 
@@ -127,7 +142,7 @@ struct WarpMergeSorter {
   static_assert(BufferSize > 0 && BufferSize <= 256, "BufferSize must be in (0, 256].");
 
   static constexpr int kItemsPerThread = (BufferSize + kWarpSize - 1) / kWarpSize;
-  using SortT = cub::WarpMergeSort<ScoreIndex, kItemsPerThread, kWarpSize>;
+  using SortT = cub::WarpMergeSort<uint64_t, kItemsPerThread, kWarpSize, cub::NullType>;
   using TempStorage = typename SortT::TempStorage;
 
   // num_valid_items elements are read from shared memory; the remainder are
@@ -141,28 +156,26 @@ struct WarpMergeSorter {
 
     const int lane_id = thread_id;
 
-    ScoreIndex items[kItemsPerThread];
+    uint64_t items[kItemsPerThread];
 #pragma unroll
     for (int i = 0; i < kItemsPerThread; ++i) {
       const int idx = lane_id + i * kWarpSize;
       if (idx < num_valid_items) {
-        items[i].score = smem_scores[idx];
-        items[i].index = smem_indices[idx];
+        items[i] = PackStableSortKey(smem_scores[idx], smem_indices[idx]);
       } else {
-        items[i].score = -FLT_MAX;
-        items[i].index = INT_MAX;
+        items[i] = PackStableSortKey(-FLT_MAX, INT_MAX);
       }
     }
 
-    SortT(temp_storage).Sort(items, ScoreIndexGreater());
+    SortT(temp_storage).Sort(items, PackedStableSortKeyGreater());
 
     // Blocked write-back: rank r lives at smem[r].
 #pragma unroll
     for (int i = 0; i < kItemsPerThread; ++i) {
-  const int idx = lane_id * kItemsPerThread + i;
+      const int idx = lane_id * kItemsPerThread + i;
       if (idx < BufferSize) {
-        smem_scores[idx] = items[i].score;
-        smem_indices[idx] = items[i].index;
+        smem_scores[idx] = UnpackStableSortScore(items[i]);
+        smem_indices[idx] = UnpackStableSortIndex(items[i]);
       }
     }
   }
