@@ -30,7 +30,8 @@ $MAIN {
     let seqlen_i = seqlens.getByOffset(batch_idx);
     let seqlen = u32(seqlen_i);
     let total_seqlen = seqlen + 1u;
-    let past_seqlen = total_seqlen - uniforms.sequence_length;
+    // Right-padded batches with prompt shorter than sequence_length would underflow u32; clamp to 0.
+    let past_seqlen = select(total_seqlen - uniforms.sequence_length, 0u, total_seqlen <= uniforms.sequence_length);
     let position_id = past_seqlen + seq_idx;
 #if use_multi_rotary_cache_concat
     let base_position = select(0u, multi_rotary_cache_concat_offset, total_seqlen > multi_rotary_cache_concat_offset);
