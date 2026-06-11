@@ -269,11 +269,7 @@ Before discussing gaps, it's important to note what ORT already provides:
 
 **Note on arena and temp buffer reuse:** While the BFC arena wastes memory due to chunk granularity, it does provide **automatic reuse** for temp buffers during sequential execution — subsequent kernels reuse the same arena memory for their scratch needs without actual device allocations.
 
-**CUDA mempool as an alternative:** ORT already supports replacing the BFC arena with native CUDA memory pools (`cudaMallocFromPoolAsync`), enabled via:
-```cpp
-session_options.add_session_config_entry("ep.cudaexecutionprovider.arena.use_cuda_mempool", "1");
-```
-This provides stream-aware pooling managed by the CUDA driver, with less memory waste than BFC. Since `GetScratchBuffer()` uses the same device allocator as activations (resolved via `SessionState::GetAllocator(device)` — keyed by `OrtDevice` only, not by purpose), enabling mempool automatically benefits temp buffers too. A separate temp-only allocator would require architectural changes to `AllocatorMap` (currently not feasible without significant refactoring).
+**CUDA mempool as an alternative:** ORT supports replacing the BFC arena with native CUDA memory pools (`cudaMallocFromPoolAsync`). This is enabled via the EP-scoped arena configuration key `arena.use_cuda_mempool` (e.g., `"ep.cudapluginexecutionprovider.arena.use_cuda_mempool" = "1"` in session config). This provides stream-aware pooling managed by the CUDA driver, with less memory waste than BFC. Since `GetScratchBuffer()` uses the same device allocator as activations (resolved via `SessionState::GetAllocator(device)` — keyed by `OrtDevice` only, not by purpose), enabling mempool automatically benefits temp buffers too. A separate temp-only allocator would require architectural changes to `AllocatorMap` (currently not feasible without significant refactoring).
 
 **Pre-allocated space for temp buffers (alternative approach):** If workspace sizes can be pre-computed (see Phase A below), temp buffers could be served from the same pre-allocated memory pattern buffer used for activations. Since workspace is live only during its kernel's execution, it participates naturally in liveness-based offset planning — no arena needed at all. This is the more principled solution: solve the workspace size problem first, then temp memory becomes part of the static plan.
 
@@ -1032,11 +1028,9 @@ Workspace pre-allocation follows the same model:
 
 Even with workspace planning, the per-`Run()` buffer allocation can still OOM if device memory is fragmented or consumed by other processes since `Initialize()`. For constrained environments, this is the last remaining point of failure.
 
-Most constrained-environment users run **single-threaded inference** — one `Run()` at a time. ORT already has a concurrent-run counter (`InferenceSession::current_num_runs_`). If the session is configured to disallow concurrency, the execution buffer (which includes workspace slots) can be **allocated once at initialization and reused for every `Run()` call**:
+Most constrained-environment users run **single-threaded inference** — one `Run()` at a time. ORT already has a concurrent-run counter (`InferenceSession::current_num_runs_`). If the session is configured to disallow concurrency, the execution buffer (which includes workspace slots) can be **allocated once at initialization and reused for every `Run()` call**.
 
-```cpp
-session_options.AddConfigEntry("session.pre_allocate_execution_buffers", "1");
-```
+**Proposed** (not currently implemented): a session option such as `session.pre_allocate_execution_buffers = "1"` would enable this behavior.
 
 When enabled:
 1. After `FinalizeSessionState()` computes the memory pattern (including workspace offsets from `DeclareWorkspaceRequirements`), allocate the peak buffer once: `IAllocator::Alloc(peak_size)` per EP.
