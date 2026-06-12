@@ -108,13 +108,13 @@ struct ForwardToFactoryImpl {
 
   static OrtStatus* ORT_API_CALL SelectBestModelCandidate(
       OrtEpFactory* this_ptr,
-      _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
-      size_t num_devices,
+      _In_ const OrtHardwareDevice* device,
       _In_reads_(num_candidates) const OrtKeyValuePairs* const* candidates,
       size_t num_candidates,
+      _In_opt_ const OrtSessionOptions* session_options,
       size_t* selected_index) noexcept {
     return static_cast<TFactory*>(this_ptr)->SelectBestModelCandidate(
-        devices, num_devices, candidates, num_candidates, selected_index);
+        device, candidates, num_candidates, session_options, selected_index);
   }
 
   static void ORT_API_CALL ReleaseEp(OrtEpFactory* this_ptr, OrtEp* ep) noexcept {

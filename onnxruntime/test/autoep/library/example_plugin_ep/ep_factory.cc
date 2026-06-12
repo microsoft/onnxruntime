@@ -535,10 +535,10 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::ValidateCompiledModelCompatibilityInfo
 
 OrtStatus* ORT_API_CALL ExampleEpFactory::SelectBestModelCandidateImpl(
     OrtEpFactory* this_ptr,
-    const OrtHardwareDevice* const* devices,
-    size_t num_devices,
+    const OrtHardwareDevice* device,
     const OrtKeyValuePairs* const* candidates,
     size_t num_candidates,
+    const OrtSessionOptions* /*session_options*/,
     size_t* selected_index) noexcept {
   auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
 
@@ -551,6 +551,8 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::SelectBestModelCandidateImpl(
   if (candidates == nullptr || num_candidates == 0) {
     return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "candidates cannot be nullptr or empty");
   }
+
+  const OrtHardwareDevice* devices[] = {device};
 
   int best_rank = -1;
   size_t best_idx = std::numeric_limits<size_t>::max();
@@ -566,7 +568,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::SelectBestModelCandidateImpl(
 
     OrtCompiledModelCompatibility compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
     OrtStatus* status = ValidateCompiledModelCompatibilityInfoImpl(
-        this_ptr, devices, num_devices, compatibility_info, &compatibility);
+        this_ptr, devices, 1, compatibility_info, &compatibility);
     if (status != nullptr) {
       return status;
     }

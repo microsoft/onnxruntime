@@ -108,10 +108,10 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
 
   static OrtStatus* ORT_API_CALL SelectBestModelCandidateImpl(
       OrtEpFactory* this_ptr,
-      const OrtHardwareDevice* const* devices,
-      size_t num_devices,
+      const OrtHardwareDevice* device,
       const OrtKeyValuePairs* const* candidates,
       size_t num_candidates,
+      const OrtSessionOptions* session_options,
       size_t* selected_index) noexcept;
 
   const std::string ep_name_;              // EP name

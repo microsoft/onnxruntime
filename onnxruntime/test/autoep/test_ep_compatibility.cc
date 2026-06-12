@@ -27,8 +27,6 @@ TEST(EpCompatibilitySelectBestTest, SelectBestModelCandidate_UsesHardwareDevices
   ASSERT_NE(factory, nullptr);
   ASSERT_NE(factory->SelectBestModelCandidate, nullptr);
 
-  const OrtHardwareDevice* devices[] = {ep_device->device};
-
   const std::string ep_name = factory->GetName(factory);
 
   const std::string optimal =
@@ -57,7 +55,7 @@ TEST(EpCompatibilitySelectBestTest, SelectBestModelCandidate_UsesHardwareDevices
 
   size_t selected_index = std::numeric_limits<size_t>::max();
   OrtStatus* st = factory->SelectBestModelCandidate(
-      factory, devices, 1, candidates, 3, &selected_index);
+      factory, ep_device->device, candidates, 3, nullptr, &selected_index);
 
   ASSERT_EQ(st, nullptr) << (st ? api->GetErrorMessage(st) : "");
 

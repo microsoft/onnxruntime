@@ -123,13 +123,13 @@ class EpFactoryInternalImpl {
   }
 
   virtual OrtStatus* SelectBestModelCandidate(
-      _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
-      _In_ size_t num_devices,
+      _In_ const OrtHardwareDevice* device,
       _In_reads_(num_candidates) const OrtKeyValuePairs* const* candidates,
       _In_ size_t num_candidates,
+      _In_opt_ const OrtSessionOptions* session_options,
       _Out_ size_t* selected_index) noexcept {
-    ORT_UNUSED_PARAMETER(devices);
-    ORT_UNUSED_PARAMETER(num_devices);
+    ORT_UNUSED_PARAMETER(device);
+    ORT_UNUSED_PARAMETER(session_options);
     if (candidates == nullptr || num_candidates == 0 || selected_index == nullptr) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                    "Invalid arguments to SelectBestModelCandidate.");
