@@ -1426,6 +1426,14 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("k", "Number of top experts to select from expert pool", AttributeProto::INT, static_cast<int64_t>(1))
         .Attr("normalize_routing_weights", "Whether to normalize routing weights", AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("use_sparse_mixer", "Whether to use sparse mixer", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("num_shared_experts",
+              "Number of always-on shared experts fused into the op. When > 0, the last num_shared_experts "
+              "expert slots in the fc1/fc2 weight (and bias/scale) tensors are the shared experts, and the last "
+              "num_shared_experts columns of router_probs hold their raw (pre-sigmoid) per-token gate logits. "
+              "Each token is routed to its top-k routed experts plus all shared experts; the shared experts are "
+              "always selected, weighted by sigmoid(gate logit), and excluded from the routed softmax/top-k/"
+              "normalization. The shared experts must share the routed experts' inter_size. Default 0 (disabled).",
+              AttributeProto::INT, static_cast<int64_t>(0))
         .Input(0, "input", "2D input tensor with shape (num_tokens, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
         .Input(1, "router_probs", "2D input tensor with shape (num_tokens, num_experts)", "T")
         .Input(2, "fc1_experts_weights", "3D input tensor with shape (num_experts, fusion_size * inter_size, hidden_size), where fusion_size is 2 for fused swiglu, and 1 otherwise", "T")
@@ -1484,6 +1492,15 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               static_cast<int64_t>(0))
         .Attr("use_sparse_mixer",
               "Whether to use sparse mixer",
+              AttributeProto::INT,
+              static_cast<int64_t>(0))
+        .Attr("num_shared_experts",
+              "Number of always-on shared experts fused into the op. When > 0, the last num_shared_experts "
+              "expert slots in the fc1/fc2 weight (and bias/scale) tensors are the shared experts, and the last "
+              "num_shared_experts columns of router_probs hold their raw (pre-sigmoid) per-token gate logits. "
+              "Each token is routed to its top-k routed experts plus all shared experts; the shared experts are "
+              "always selected, weighted by sigmoid(gate logit), and excluded from the routed softmax/top-k/"
+              "normalization. The shared experts must share the routed experts' inter_size. Default 0 (disabled).",
               AttributeProto::INT,
               static_cast<int64_t>(0))
         .Attr("expert_weight_bits",

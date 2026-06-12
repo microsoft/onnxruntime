@@ -72,24 +72,35 @@ __device__ __forceinline__ float BlockReduceSum(float value, typename BlockReduc
 
 template <typename T>
 __global__ void SoftmaxTopKKernel(const T* logits, float* topk_scales, int* topk_indices,
-                                  int num_rows, int num_experts, int k, bool normalize_scales) {
+                                  int num_rows, int num_experts, int k, bool normalize_scales,
+                                  int num_shared_experts) {
   int row = blockIdx.x * blockDim.x + threadIdx.x;
   if (row >= num_rows) return;
 
-  const T* row_logits = logits + row * num_experts;
-  float* row_scales = topk_scales + row * k;
-  int* row_indices = topk_indices + row * k;
+  // The router logits tensor has ``num_experts`` columns. When shared experts are
+  // fused, the last ``num_shared_experts`` columns hold the (raw, pre-sigmoid)
+  // shared-expert gate logits and the first ``num_routed`` columns hold the
+  // routed-expert logits. The shared experts are always selected with an
+  // independent sigmoid gate and are excluded from the routed softmax / top-k /
+  // normalization. Each output row therefore has ``k + num_shared_experts`` slots:
+  // the first ``k`` are the routed top-k, followed by the always-on shared experts.
+  const int num_routed = num_experts - num_shared_experts;
+  const int slots_per_row = k + num_shared_experts;
 
-  // 1. Find max for numerical stability
+  const T* row_logits = logits + row * num_experts;
+  float* row_scales = topk_scales + row * slots_per_row;
+  int* row_indices = topk_indices + row * slots_per_row;
+
+  // 1. Find max for numerical stability (over routed experts only)
   float max_val = onnxruntime::cuda::topk::kNegativeInfinity;
-  for (int i = 0; i < num_experts; ++i) {
+  for (int i = 0; i < num_routed; ++i) {
     float val = static_cast<float>(row_logits[i]);
     if (val > max_val) max_val = val;
   }
 
-  // 2. Compute exp sum
+  // 2. Compute exp sum (over routed experts only)
   float sum_exp = 0.0f;
-  for (int i = 0; i < num_experts; ++i) {
+  for (int i = 0; i < num_routed; ++i) {
     sum_exp += expf(static_cast<float>(row_logits[i]) - max_val);
   }
   const float inv_sum = SafeInvSum(sum_exp);
@@ -107,7 +118,7 @@ __global__ void SoftmaxTopKKernel(const T* logits, float* topk_scales, int* topk
     row_indices[i] = -1;
   }
 
-  for (int i = 0; i < num_experts; ++i) {
+  for (int i = 0; i < num_routed; ++i) {
     float prob = SoftmaxScale(static_cast<float>(row_logits[i]), max_val, inv_sum);
 
     // Insert into top-k logic
@@ -126,7 +137,7 @@ __global__ void SoftmaxTopKKernel(const T* logits, float* topk_scales, int* topk
     }
   }
 
-  // 4. Normalize if requested
+  // 4. Normalize if requested (routed top-k only; shared experts are not normalized)
   if (normalize_scales) {
     float scale_sum = 0.0f;
     for (int i = 0; i < k; ++i) {
@@ -137,6 +148,16 @@ __global__ void SoftmaxTopKKernel(const T* logits, float* topk_scales, int* topk
         row_scales[i] /= scale_sum;
       }
     }
+  }
+
+  // 5. Append always-on shared experts: index = num_routed + j, scale = sigmoid(gate logit).
+  // These bypass the routed softmax/top-k/normalization and carry their own
+  // independent per-token sigmoid gate, matching the HF Qwen MoE shared-expert formula
+  //   out += sigmoid(x @ shared_gate) * SharedExpert(x).
+  for (int j = 0; j < num_shared_experts; ++j) {
+    float gate = static_cast<float>(row_logits[num_routed + j]);
+    row_scales[k + j] = 1.0f / (1.0f + expf(-gate));
+    row_indices[k + j] = num_routed + j;
   }
 }
 
@@ -340,6 +361,7 @@ __global__ void SoftmaxTopKWarpMergeKernel(const T* logits, float* topk_scales, 
 template <typename T>
 void DispatchSoftmaxTopK(const T* logits, float* topk_scales, int* topk_indices,
                          int num_rows, int num_experts, int k, bool normalize_scales,
+                         int num_shared_experts,
                          cudaStream_t stream) {
   ORT_ENFORCE(k > 0 && k <= num_experts,
               "SoftmaxTopK requires 0 < k <= num_experts, got k=", k,
@@ -400,8 +422,9 @@ void LaunchSoftmaxTopK(
     int num_experts,
     int k,
     bool normalize_scales,
-    cudaStream_t stream) {
-  DispatchSoftmaxTopK<float>(logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales, stream);
+    cudaStream_t stream,
+    int num_shared_experts) {
+  DispatchSoftmaxTopK<float>(logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales, num_shared_experts, stream);
 }
 
 void LaunchSoftmaxTopK(
@@ -412,8 +435,9 @@ void LaunchSoftmaxTopK(
     int num_experts,
     int k,
     bool normalize_scales,
-    cudaStream_t stream) {
-  DispatchSoftmaxTopK<half>(logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales, stream);
+    cudaStream_t stream,
+    int num_shared_experts) {
+  DispatchSoftmaxTopK<float>(logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales, num_shared_experts, stream);
 }
 
 void LaunchSoftmaxTopK(
@@ -424,8 +448,9 @@ void LaunchSoftmaxTopK(
     int num_experts,
     int k,
     bool normalize_scales,
-    cudaStream_t stream) {
-  DispatchSoftmaxTopK<__nv_bfloat16>(logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales, stream);
+    cudaStream_t stream,
+    int num_shared_experts) {
+  DispatchSoftmaxTopK<__nv_bfloat16>(logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales, num_shared_experts, stream);
 }
 
 template <typename T>
