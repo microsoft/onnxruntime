@@ -260,6 +260,10 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
   int64_t output_size = output_shape.Size();
   auto* output_tensor = context.Output(0, output_shape);
 
+  if (output_size == 0) {
+    return Status::OK();
+  }
+
   // For the 2-bit zero-point path we need to address the packed byte using the scale row index
   // and the within-row quantize-axis index (not the flat scales offset, which crosses row
   // boundaries when scale_qaxis_dim isn't a multiple of the packing factor). To keep the shader
