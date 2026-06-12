@@ -9,6 +9,7 @@
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/framework/allocator.h"
 #include "ep/get_capability_utils.h"
+#include "ep/api.h"  // onnxruntime::ep::CurrentOrtApiVersion()
 
 #include <cstring>
 #include <limits>
@@ -109,17 +110,20 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
       name_(factory.GetEpName()),
       config_(config),
       logger_(logger) {
-  ort_version_supported = CudaPluginEpOrtVersionSupported();
+  // ort_version_supported reports the ORT API version this plugin was compiled with (ORT_API_VERSION).
+  // ORT uses it to avoid reading OrtEp struct fields that did not exist when the plugin was compiled.
+  ort_version_supported = ORT_API_VERSION;
 
   // The plugin is compiled against the latest ORT headers (ORT_API_VERSION) but may be loaded by an
-  // older ORT runtime, down to the floor declared in plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION.
-  // `ort_version_supported` is min(runtime, compiled). Some OrtEp callbacks below — and the OrtEpApi
-  // functions their implementations call — only exist in newer ORT versions. Only advertise such a
-  // callback when the negotiated runtime is new enough to (a) know about the OrtEp struct field and
-  // (b) provide every OrtEpApi function the callback relies on. ORT already skips callbacks newer than
-  // `ort_version_supported`, but gating here keeps the version dependency explicit and guarantees the
-  // EP never calls an OrtEpApi function newer than the runtime (the failure mode the guards prevent).
-  const uint32_t ort_version = ort_version_supported;
+  // older ORT runtime, down to the floor declared in plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION. Some
+  // OrtEp callbacks below — and the OrtEpApi functions their implementations call — only exist in
+  // newer ORT versions. The guard against calling an OrtEpApi function the runtime does not provide
+  // is the runtime API version, not ort_version_supported. We therefore gate such callbacks on the
+  // version negotiated with the runtime (onnxruntime::ep::CurrentOrtApiVersion()): only advertise a
+  // callback when the runtime is new enough to (a) know about the OrtEp struct field and (b) provide
+  // every OrtEpApi function the callback relies on. Leaving the pointer null on older runtimes
+  // disables only that optional capability while the EP stays fully functional.
+  const uint32_t ort_version = ::onnxruntime::ep::CurrentOrtApiVersion();
 
   // Kernel-registry-based EP callbacks (all introduced in ORT <= 1.24).
   GetName = GetNameImpl;
@@ -133,9 +137,8 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   OnRunEnd = config_.enable_cuda_graph ? OnRunEndImpl : nullptr;
 
   // OrtEp::Sync is \since ORT 1.25. A runtime older than 1.25 does not know about this OrtEp field and
-  // ignores it regardless of its value, so gating is not strictly required for correctness here. We
-  // still gate it to stay consistent with the version-dependent callbacks below and to keep the
-  // minimum-version dependency explicit at each assignment.
+  // ignores it regardless of its value. We still gate it on the runtime version to keep the
+  // minimum-version dependency explicit at each assignment and consistent with the callbacks below.
   Sync = (ort_version >= 25) ? SyncImpl : nullptr;
 
   // Not a compile-based EP
