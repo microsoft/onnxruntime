@@ -742,11 +742,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     indirect_buffer_ptr = &indirect_buffer;
   }
 
-  // TurboQuant requires head_size > 4 and power of 2 (Hadamard transform needs power-of-2,
-  // and packing 8 indices per u32 needs head_size >= 8). Silently disable if not met.
-  const bool turbo_quant_enabled = context.TurboQuantEnabled() &&
-                                   parameters.head_size_ >= 8 &&
-                                   (parameters.head_size_ & (parameters.head_size_ - 1)) == 0;
+  // TurboQuant: head_size constraints are validated in CheckInputs via kv_cache_extra_bits.
+  const bool turbo_quant_enabled = context.TurboQuantEnabled();
 
   // Compressed KV cache: 1 u32 for norm + head_size/8 u32s for packed 4-bit indices.
   const int compressed_head_size_u32 = turbo_quant_enabled ? (parameters.head_size_ / 8 + 1) : 0;
@@ -810,7 +807,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 
     if (turbo_quant_enabled) {
       // Fused TurboQuant path: split packed QKV + rotary K + Hadamard + quantize K/V + rotary Q
-      ORT_RETURN_IF_ERROR(TurboQuantFusedSplitRotaryCopyKV(context, parameters,
+      ORT_RETURN_IF_ERROR(TurboQuantApplyRotaryAndCopyToQuantizedKVCache(context, parameters,
                                                            Q, seqlen_k,
                                                            cos_cache, sin_cache,
                                                            &query_output, tq_present_key, tq_present_value,
@@ -825,7 +822,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     Q = &query_output;
   } else if (turbo_quant_enabled && K != nullptr && V != nullptr) {
     // Fused path: apply Hadamard transform to new K/V tokens while copying them into the KV cache.
-    ORT_RETURN_IF_ERROR(TurboQuantCopyKVCache(context, parameters, K, tq_past_key, tq_present_key, V, tq_past_value, tq_present_value,
+    ORT_RETURN_IF_ERROR(TurboQuantCopyToQuantizedKVCache(context, parameters, K, tq_past_key, tq_present_key, V, tq_past_value, tq_present_value,
                                               tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr));
   } else {
     ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr, num_q_tiles));

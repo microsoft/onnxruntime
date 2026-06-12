@@ -47,7 +47,7 @@ Status TurboQuantHadamardProgram::GenerateShaderCode(ShaderHelper& shader) const
                              WGSL_TEMPLATE_VARIABLE(key, key));
 }
 
-Status TurboQuantCopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& parameters,
+Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& parameters,
                              const Tensor* K, const Tensor* past_key, Tensor* present_key,
                              const Tensor* V, const Tensor* past_value, Tensor* present_value,
                              uint32_t tile_size, const Tensor* seqlen_k, Tensor* indirect_buffer) {
@@ -74,7 +74,7 @@ Status TurboQuantCopyKVCache(onnxruntime::webgpu::ComputeContext& context, const
   bool use_seqlen_k = (seqlen_k != nullptr);
   bool kv_BNSH = parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH || parameters.qkv_format_ == Q_K_V_BNSH;
 
-  TurboQuantHadamardProgram program{"TurboQuantCopyKVCache", has_past, kv_BNSH,
+  TurboQuantHadamardProgram program{"TurboQuantCopyToQuantizedKVCache", has_past, kv_BNSH,
                                     parameters.past_present_share_buffer_,
                                     head_size, head_size_log2, components,
                                     compressed_head_size_u32,
@@ -145,7 +145,7 @@ Status TurboQuantFusedRotaryProgram::GenerateShaderCode(ShaderHelper& shader) co
     shader.AddOutput("indirect_buffer", ShaderUsage::None);
   }
 
-  return WGSL_TEMPLATE_APPLY(shader, "bert/turbo_quant_fused_rotary.wgsl.template",
+  return WGSL_TEMPLATE_APPLY(shader, "bert/turbo_quant_fused_rotary_hadamard.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(compressed_head_size_u32, compressed_head_size_u32_),
                              WGSL_TEMPLATE_PARAMETER(half_rotary_dim, half_rotary_dim_),
                              WGSL_TEMPLATE_PARAMETER(head_size_log2, head_size_log2_),
@@ -160,7 +160,7 @@ Status TurboQuantFusedRotaryProgram::GenerateShaderCode(ShaderHelper& shader) co
                              WGSL_TEMPLATE_VARIABLE(sin_cache, sin_cache));
 }
 
-Status TurboQuantFusedSplitRotaryCopyKV(onnxruntime::webgpu::ComputeContext& context,
+Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& context,
                                         const WebgpuAttentionParameters& parameters,
                                         const Tensor* packedQKV,
                                         const Tensor* seqlen_k,

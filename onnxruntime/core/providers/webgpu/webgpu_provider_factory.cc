@@ -100,16 +100,13 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
 
   std::string turbo_quant_str;
   if (config_options.TryGetConfigEntry(kTurboQuant, turbo_quant_str)) {
-    uint32_t bits_value = 0;
-    auto bits_result = std::from_chars(turbo_quant_str.data(),
-                                       turbo_quant_str.data() + turbo_quant_str.size(),
-                                       bits_value);
-    if (bits_result.ec != std::errc{} ||
-        bits_result.ptr != turbo_quant_str.data() + turbo_quant_str.size() ||
-        (bits_value != 0 && bits_value != 4)) {
+    if (turbo_quant_str == kTurboQuant_OFF) {
+      webgpu_ep_config.turbo_quantization_bits = 0;
+    } else if (turbo_quant_str == kTurboQuant_4Bit) {
+      webgpu_ep_config.turbo_quantization_bits = 4;
+    } else {
       ORT_THROW("Invalid turboQuant value: ", turbo_quant_str, ". Must be \"0\" or \"4\".");
     }
-    webgpu_ep_config.turbo_quantization_bits = bits_value;
   }
 
   // parse force CPU node names

@@ -242,21 +242,19 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
 
   GroupQueryAttentionParameters params = {};
 
-  // When TurboQuant is enabled, compute the compressed KV cache head dimension.
-  // TurboQuant stores (head_size/8 + 1) u32 words per head. The dimension seen by
-  // the tensor depends on its element type: fp16 → ×2, fp32 → ×1.
-  int kv_compressed_head_size = 0;
-  if (context.TurboQuantEnabled() && past_key != nullptr) {
+  // TurboQuant uses 4-bit quantization with 32 extra bits (1 u32) per head for the L2 norm.
+  // Requires head_size >= 8 and power-of-2 (Hadamard transform constraint).
+  const bool turbo_quant = context.TurboQuantEnabled();
+  const int kv_cache_bit_width = turbo_quant ? 4 : 0;
+  const int kv_cache_extra_bits = turbo_quant ? 32 : 0;
+  if (turbo_quant) {
     const int qkv_last_dim = static_cast<int>(query->Shape().GetDims()[2]);
-    // For packed QKV, dim[2] contains Q+K+V concatenated, so divide by (num_heads + 2*kv_num_heads).
-    // For separate Q, dim[2] is just Q hidden size, so divide by num_heads.
-    const bool is_packed_qkv = (key == nullptr || !key->Shape().Size());
-    const int head_size_from_q = is_packed_qkv
-                                     ? qkv_last_dim / (num_heads_ + 2 * kv_num_heads_)
-                                     : qkv_last_dim / num_heads_;
-    const int compressed_u32_words = head_size_from_q / 8 + 1;
-    const int bytes_per_element = static_cast<int>(past_key->DataType()->Size());
-    kv_compressed_head_size = compressed_u32_words * (4 / bytes_per_element);  // 4 bytes per u32
+    const bool is_packed = (key == nullptr || !key->Shape().Size());
+    const int hs = is_packed ? qkv_last_dim / (num_heads_ + 2 * kv_num_heads_) : qkv_last_dim / num_heads_;
+    if (hs < 8 || (hs & (hs - 1)) != 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "TurboQuant requires head_size >= 8 and a power of 2. Got head_size=", hs);
+    }
   }
 
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs(query,
@@ -273,9 +271,9 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                                                 total_seqlen_tensor,
                                                                 scale_,
                                                                 softcap_,
-                                                                0,
+                                                                kv_cache_bit_width,
                                                                 onnxruntime::narrow<int>(context.DeviceLimits().maxComputeInvocationsPerWorkgroup),
-                                                                kv_compressed_head_size));
+                                                                kv_cache_extra_bits));
   params.use_smooth_softmax = use_smooth_softmax_;
   params.rotary_interleaved = rotary_interleaved_;
 
@@ -331,8 +329,12 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   Tensor* output = context.Output(0, output_shape);
 
   // When TurboQuant is enabled, the KV cache head dimension is compressed.
-  // Use the computed compressed size to match GenAI's pre-allocated buffer shape.
-  int64_t kv_head_dim = (kv_compressed_head_size > 0) ? kv_compressed_head_size : parameters.head_size_;
+  // Derive from quantization parameters: (head_size * bit_width + extra_bits) / bits_per_element.
+  int64_t kv_head_dim = parameters.head_size_;
+  if (kv_cache_bit_width > 0 && past_key != nullptr) {
+    int bits_per_element = static_cast<int>(past_key->DataType()->Size()) * 8;
+    kv_head_dim = (parameters.head_size_ * kv_cache_bit_width + kv_cache_extra_bits) / bits_per_element;
+  }
   std::vector<int64_t> present_dims{
       parameters.batch_size_,
       kv_num_heads_,
@@ -497,6 +499,14 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   if (will_use_flash_attention) {
     return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
                                present_value, parameters, context, seqlen_k, nullptr, nullptr, head_sink);
+  }
+
+  // TurboQuant compresses the KV cache; non-flash attention paths cannot interpret it.
+  if (context.TurboQuantEnabled()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "TurboQuant KV cache quantization requires flash attention. "
+                           "The non-flash attention path cannot be used with compressed KV caches. "
+                           "Check that smooth_softmax and local_window_size are not set.");
   }
 
   // Non-flash attention path does not support kv_sequence_length==0 (shared KV layers).

@@ -50,7 +50,7 @@ class TurboQuantHadamardProgram final : public Program<TurboQuantHadamardProgram
   bool use_seqlen_k_;
 };
 
-Status TurboQuantCopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& parameters,
+Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& parameters,
                              const Tensor* K, const Tensor* past_key, Tensor* present_key,
                              const Tensor* V, const Tensor* past_value, Tensor* present_value,
                              uint32_t tile_size, const Tensor* seqlen_k, Tensor* indirect_buffer);
@@ -100,7 +100,7 @@ class TurboQuantFusedRotaryProgram final : public Program<TurboQuantFusedRotaryP
   uint32_t multi_rotary_cache_concat_offset_;
 };
 
-Status TurboQuantFusedSplitRotaryCopyKV(onnxruntime::webgpu::ComputeContext& context,
+Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& context,
                                         const WebgpuAttentionParameters& parameters,
                                         const Tensor* packedQKV,
                                         const Tensor* seqlen_k,
