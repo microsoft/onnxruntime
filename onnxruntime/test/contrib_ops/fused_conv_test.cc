@@ -524,9 +524,9 @@ TEST(FusedConvTest, Cpu_NhwcDepthwiseConv2D_Relu_NegativePreActivation) {
   vector<float> W = {-1.0f, -1.0f, -1.0f,
                      -1.0f, -1.0f, -1.0f,
                      -1.0f, -1.0f, -1.0f,
-                      1.0f,  1.0f,  1.0f,
-                      1.0f,  1.0f,  1.0f,
-                      1.0f,  1.0f,  1.0f};
+                     1.0f, 1.0f, 1.0f,
+                     1.0f, 1.0f, 1.0f,
+                     1.0f, 1.0f, 1.0f};
   vector<int64_t> Y_shape = {1, 3, 3, 2};
   auto expected_vals = {0.0f, 120.0f, 0.0f, 210.0f, 0.0f, 160.0f,
                         0.0f, 270.0f, 0.0f, 450.0f, 0.0f, 330.0f,
