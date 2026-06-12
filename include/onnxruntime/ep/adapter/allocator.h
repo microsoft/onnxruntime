@@ -7,6 +7,8 @@
 #error "This header should not be included directly. Include ep/adapters.h instead."
 #endif
 
+#include <cstdlib>
+#include <cstring>
 #include <mutex>
 #include <utility>
 
@@ -55,14 +57,49 @@ class IAllocatorWrappingOrtAllocator final : public IAllocator {
     ORT_NOT_IMPLEMENTED("IAllocatorWrappingOrtAllocator::AllocOnStream is not implemented yet.");
   }
 
+  void GetStats(AllocatorStats* stats) override {
+    if (!stats) return;
+    *stats = {};
+
+    try {
+      Ort::KeyValuePairs kvps = ort_allocator_.GetStats();
+      std::vector<const char*> keys, values;
+      kvps.GetKeyValuePairs(keys, values);
+      for (size_t i = 0; i < keys.size(); ++i) {
+        int64_t val = std::atoll(values[i]);
+        if (std::strcmp(keys[i], "Limit") == 0) {
+          stats->bytes_limit = val;
+        } else if (std::strcmp(keys[i], "InUse") == 0) {
+          stats->bytes_in_use = val;
+        } else if (std::strcmp(keys[i], "RequestedInUse") == 0) {
+          stats->bytes_requested_in_use = val;
+        } else if (std::strcmp(keys[i], "TotalAllocated") == 0) {
+          stats->total_allocated_bytes = val;
+        } else if (std::strcmp(keys[i], "MaxInUse") == 0) {
+          stats->max_bytes_in_use = val;
+        } else if (std::strcmp(keys[i], "NumAllocs") == 0) {
+          stats->num_allocs = val;
+        } else if (std::strcmp(keys[i], "NumReserves") == 0) {
+          stats->num_reserves = val;
+        } else if (std::strcmp(keys[i], "NumArenaExtensions") == 0) {
+          stats->num_arena_extensions = val;
+        } else if (std::strcmp(keys[i], "NumArenaShrinkages") == 0) {
+          stats->num_arena_shrinkages = val;
+        } else if (std::strcmp(keys[i], "MaxAllocSize") == 0) {
+          stats->max_alloc_size = val;
+        }
+      }
+    } catch (...) {
+      // If plugin doesn't implement GetStats, AllocatorGetStats returns empty KVPs.
+      // Any other failure is silently ignored.
+    }
+  }
+
  private:
   static const Ort::Allocator& EnsureOrtAllocatorHasValue(const Ort::Allocator& ort_allocator) {
     ORT_ENFORCE(ort_allocator != nullptr, "Ort::Allocator must contain a non-nullptr OrtAllocator.");
     return ort_allocator;
   }
-
-  // TODO: Consider adding GetStats() override. Requires parsing OrtKeyValuePairs from the C API
-  // into AllocatorStats; see GetStatsFromOrtAllocator() in allocator_adapters.cc for reference.
 
   Ort::Allocator ort_allocator_;
 

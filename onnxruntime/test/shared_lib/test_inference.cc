@@ -3239,6 +3239,79 @@ TEST(CApiTest, get_profiling_start_time) {
   ASSERT_TRUE(before_start_time <= profiling_start_time && profiling_start_time <= after_start_time);
 }
 
+// Test that profiling events include memory stats (mem_bytes_in_use, mem_total_allocated, etc.)
+// when an arena allocator is in use.
+TEST(CApiTest, profiling_memory_stats) {
+  // Use add_mul_add.onnx: 3 nodes (Add, Mul, Add), inputs A[3,2] and B[3,2], output C[3,2]
+  constexpr PATH_TYPE model_uri = TSTR("testdata/add_mul_add.onnx");
+
+  Ort::SessionOptions session_options;
+#ifdef _WIN32
+  session_options.EnableProfiling(L"mem_profile_test");
+#else
+  session_options.EnableProfiling("mem_profile_test");
+#endif
+
+  Ort::Session session(*ort_env, model_uri, session_options);
+
+  // Prepare inputs
+  Ort::MemoryInfo mem_info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  std::vector<float> input_data(3 * 2, 1.0f);
+  std::array<int64_t, 2> input_shape = {3, 2};
+
+  auto input_a = Ort::Value::CreateTensor<float>(mem_info, input_data.data(), input_data.size(),
+                                                 input_shape.data(), input_shape.size());
+  auto input_b = Ort::Value::CreateTensor<float>(mem_info, input_data.data(), input_data.size(),
+                                                 input_shape.data(), input_shape.size());
+
+  // Run inference
+  const char* input_names[] = {"A", "B"};
+  const char* output_names[] = {"C"};
+  std::array<Ort::Value, 2> inputs = {std::move(input_a), std::move(input_b)};
+  auto outputs = session.Run(Ort::RunOptions{}, input_names, inputs.data(), 2, output_names, 1);
+
+  // End profiling and get the profile file path
+  auto allocator = std::make_unique<MockedOrtAllocator>();
+  auto profile_file = session.EndProfilingAllocated(allocator.get());
+  std::string profile_path(profile_file.get());
+  ASSERT_FALSE(profile_path.empty());
+
+  // RAII cleanup: remove profile file regardless of test outcome
+  auto cleanup = [&profile_path]() {
+    if (!profile_path.empty()) {
+      std::filesystem::remove(profile_path);
+    }
+  };
+  struct ScopeGuard {
+    std::function<void()> fn;
+    ~ScopeGuard() { fn(); }
+  } guard{cleanup};
+
+  // Read the profile JSON file
+  std::ifstream file(profile_path);
+  ASSERT_TRUE(file.is_open()) << "Could not open profile file: " << profile_path;
+  std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  file.close();
+  ASSERT_FALSE(content.empty()) << "Profile file is empty";
+
+  // The profile output is a Chrome Tracing JSON array of events.
+  // Each kernel event should now contain memory stats in its args.
+  EXPECT_NE(content.find("\"mem_bytes_in_use\""), std::string::npos) << "Expected mem_bytes_in_use in profiling output";
+  EXPECT_NE(content.find("\"mem_total_allocated\""), std::string::npos) << "Expected mem_total_allocated in profiling output";
+  EXPECT_NE(content.find("\"mem_in_use_delta\""), std::string::npos) << "Expected mem_in_use_delta in profiling output";
+  EXPECT_NE(content.find("\"mem_in_use_peak\""), std::string::npos) << "Expected mem_in_use_peak in profiling output";
+  EXPECT_NE(content.find("\"mem_allocated_delta\""), std::string::npos) << "Expected mem_allocated_delta in profiling output";
+
+  // Verify there are multiple kernel events with memory data (we have 3 nodes)
+  size_t count = 0;
+  size_t pos = 0;
+  while ((pos = content.find("\"mem_bytes_in_use\"", pos)) != std::string::npos) {
+    ++count;
+    ++pos;
+  }
+  EXPECT_GE(count, 3u) << "Expected at least 3 kernel events with memory stats (one per node)";
+}
+
 TEST(CApiTest, model_metadata) {
   auto allocator = std::make_unique<MockedOrtAllocator>();
   // The following all tap into the c++ APIs which internally wrap over C APIs

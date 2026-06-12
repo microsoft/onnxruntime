@@ -50,6 +50,8 @@ void GetStatsFromOrtAllocator(OrtAllocator* ort_allocator, AllocatorStats* stats
         stats->bytes_limit = val;
       } else if (strcmp(keys[i], "InUse") == 0) {
         stats->bytes_in_use = val;
+      } else if (strcmp(keys[i], "RequestedInUse") == 0) {
+        stats->bytes_requested_in_use = val;
       } else if (strcmp(keys[i], "TotalAllocated") == 0) {
         stats->total_allocated_bytes = val;
       } else if (strcmp(keys[i], "MaxInUse") == 0) {
@@ -144,6 +146,7 @@ std::unordered_map<std::string, std::string> OrtAllocatorImplWrappingIAllocator:
   if (stats.num_allocs > 0 || stats.bytes_limit != 0) {
     entries.insert_or_assign("Limit", std::to_string(stats.bytes_limit));
     entries.insert_or_assign("InUse", std::to_string(stats.bytes_in_use));
+    entries.insert_or_assign("RequestedInUse", std::to_string(stats.bytes_requested_in_use));
     entries.insert_or_assign("TotalAllocated", std::to_string(stats.total_allocated_bytes));
     entries.insert_or_assign("MaxInUse", std::to_string(stats.max_bytes_in_use));
     entries.insert_or_assign("NumAllocs", std::to_string(stats.num_allocs));

@@ -211,6 +211,7 @@ void CudaMempoolArena::GetStats(AllocatorStats* stats) {
   stats->num_allocs = num_allocs_;
   stats->total_allocated_bytes = total_allocated_;
   stats->bytes_in_use = in_use_bytes_;
+  stats->bytes_requested_in_use = in_use_bytes_;  // No padding in mempool; requested == actual
   stats->max_bytes_in_use = max_bytes_in_use_;
   stats->num_arena_shrinkages = num_arena_shrinkages_;
 }
