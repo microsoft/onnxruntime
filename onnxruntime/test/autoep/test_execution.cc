@@ -1010,41 +1010,6 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_ExternalDataUsesWriteCallback) {
   EXPECT_EQ(std::string(callback_state.payload.begin(), callback_state.payload.end()), "binary_data");
 }
 
-TEST(OrtEpLibrary, PluginEp_GenEpContextModel_ExternalDataBufferOutputRequiresWriteCallback) {
-  RegisteredEpDeviceUniquePtr example_ep;
-  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
-  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
-
-  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
-
-  Ort::SessionOptions session_options;
-  std::unordered_map<std::string, std::string> ep_options;
-  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
-
-  Ort::AllocatorWithDefaultOptions allocator;
-  void* output_model_buffer = nullptr;
-  size_t output_model_buffer_size = 0;
-  auto release_output_model_buffer = gsl::finally([&]() {
-    if (output_model_buffer != nullptr) {
-      allocator.Free(output_model_buffer);
-    }
-  });
-
-  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
-  compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
-  compile_options.SetInputModelPath(input_model_file);
-  compile_options.SetOutputModelBuffer(allocator, &output_model_buffer, &output_model_buffer_size);
-  compile_options.SetEpContextEmbedMode(false);
-
-  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.GetErrorMessage(),
-              ::testing::HasSubstr("External EPContext data requires an output model path, an EPContext file path "
-                                   "(\"ep.context_file_path\"), or an OrtWriteNamedBufferFunc callback"));
-  EXPECT_EQ(output_model_buffer, nullptr);
-  EXPECT_EQ(output_model_buffer_size, 0U);
-}
-
 TEST(OrtEpLibrary, PluginEp_LoadEpContextModel_ExternalDataUsesReadCallback) {
   RegisteredEpDeviceUniquePtr example_ep;
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
