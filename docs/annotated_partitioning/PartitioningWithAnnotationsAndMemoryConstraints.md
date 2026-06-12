@@ -178,6 +178,44 @@ Nodes that do not match any rule fall through to the normal EP capability-based 
 
 > **Note — Annotations vs. actual placement:** An annotation expresses a *preference*, not a guarantee. If the target EP does not have a registered kernel for a node (for example, a particular data-type / opset-version combination is not implemented in the CUDA EP), that node will not be placed on the requested device. Instead it falls through to the next EP in the provider list that can handle it.
 
+### Name-Based Layer Assignment (No Model Modification)
+
+For models that already have structured node names (most HuggingFace exports, ONNX models produced by PyTorch, etc.), you can skip the annotation step entirely. The session option `session.name_based_layer_assignment` performs **substring matching** directly against `Node::Name()`:
+
+```
+device1(pattern1, pattern2, ...); device2(pattern3, pattern4, ...)
+```
+
+- **Substring matching:** A pattern matches if it appears *anywhere* in the node name. For example, `layers.0/` matches `/model/layers.0/self_attn/q_proj/MatMul`.
+- **Longest match wins:** When multiple patterns match the same node name, the longest pattern takes priority. For example, `layers.10/` wins over `layers.1/` for a node named `/model/layers.10/...`.
+- **No `=` prefix:** The exact-match qualifier (`=`) from annotation-based syntax is rejected with an error. All patterns are treated as substrings.
+- **Same device designators:** The device portion uses the same device designators as `session.layer_assignment_settings` (see table above).
+
+```python
+import onnxruntime as ort
+
+opts = ort.SessionOptions()
+
+# Assign layers 0–7 to GPU, layers 8–15 to CPU based on node names
+opts.add_session_config_entry(
+    "session.name_based_layer_assignment",
+    "gpu(layers.0/, layers.1/, layers.2/, layers.3/, layers.4/, layers.5/, layers.6/, layers.7/); "
+    "cpu(layers.8/, layers.9/, layers.10/, layers.11/, layers.12/, layers.13/, layers.14/, layers.15/)"
+)
+
+session = ort.InferenceSession("model.onnx", opts,
+                               providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
+```
+
+**Tips for writing patterns:**
+- Include the trailing `/` in layer patterns (e.g., `layers.1/` instead of `layers.1`) to avoid `layers.1` accidentally matching `layers.10`, `layers.11`, etc.
+- Use [Netron](https://netron.app/) to inspect your model's node names and identify suitable substrings.
+- Nodes that do not match any pattern fall through to normal EP capability-based assignment (typically CPU).
+
+**Mutual exclusivity with annotation-based matching:** The `session.name_based_layer_assignment` and `session.layer_assignment_settings` options are **mutually exclusive** — setting both will return an error. Use annotation-based matching for models that carry explicit `layer_ann` metadata annotations, or name-based matching for unmodified models with structured node names. If you need fine-grained exceptions (e.g., force one specific node to CPU), add the node's name pattern to the name-based config instead of mixing the two approaches.
+
+**No subgraph inheritance:** Unlike annotation-based matching (where unannotated subgraph nodes inherit their parent's device assignment), name-based matching treats every node independently. Since node names are dense (virtually every node has a name encoding its structural position), inheritance is unnecessary — each node matches on its own name.
+
 ## Capacity-Aware Partitioning (implemented for CUDA)
 
 When running models on a CUDA GPU with limited memory, you can set a memory budget so ONNX Runtime stops assigning nodes to the CUDA EP once the estimated memory consumption reaches the limit. Nodes are considered in topological order and assignment halts at the first node that would exceed the budget — ONNX Runtime does not search ahead for smaller nodes that might still fit. Remaining nodes are then eligible for assignment by the subsequent EPs in the session's provider list (often CPU, but not necessarily).
@@ -292,26 +330,30 @@ EPs that prefer the NHWC data layout — for example, the CUDA EP when it is cre
 
 Because the first-pass tags are tentative, ONNX Runtime does **not** commit any memory budget for them. The budget is committed only for the nodes that survive the second pass; the cost of a node that is dropped is never counted against the memory limit. This keeps the accumulated memory estimate accurate when `prefer_nhwc` is combined with `session.resource_cuda_partitioning_settings`, so a dropped node does not consume phantom budget that could prematurely halt assignment of later nodes.
 
-## Combining Both Features
-Layer annotations and capacity-aware partitioning can be used together. When both are configured:
-- Layer annotations provide the initial node-to-device mapping.
+## Combining Features
+Layer annotations OR name-based assignment can be combined with capacity-aware partitioning. Note that annotation-based and name-based matching are **mutually exclusive** — you cannot use both simultaneously.
+
+When a layer assignment option (either annotation-based or name-based) is configured together with the capacity-aware partitioner:
+- The layer assignment option expresses the desired device placement.
 - The capacity-aware partitioner enforces the memory budget, potentially overriding assignments that would exceed the GPU memory limit.
 
-This combination gives you fine-grained control: use annotations to express logical model structure, and let the memory budget act as a safety net.
+This gives you fine-grained control: use annotations or name patterns to express logical model structure, and let the memory budget act as a safety net.
 
 ```python
 opts = ort.SessionOptions()
 
+# Name-based assignment (no model modification needed)
 opts.add_session_config_entry(
-    "session.layer_assignment_settings",
-    "gpu(encoder, decoder); cpu(=postprocess)"
+    "session.name_based_layer_assignment",
+    "gpu(layers.0/, layers.1/, layers.2/, layers.3/); cpu(layers.4/, layers.5/, layers.6/, layers.7/)"
 )
 
+# Memory budget as a safety net
 opts.add_session_config_entry(
     "session.resource_cuda_partitioning_settings",
     "4194304,node_memory_stats.csv"
 )
 
-session = ort.InferenceSession("model_annotated.onnx", opts,
+session = ort.InferenceSession("model.onnx", opts,
                                providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
 ```

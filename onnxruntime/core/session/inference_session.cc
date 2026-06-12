@@ -1652,8 +1652,9 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   std::optional<LayeringIndex> layering_index_storage;
   const auto layering_config = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsLayerAssignmentSettings, "");
-  if (!layering_config.empty()) {
-    ORT_RETURN_IF_ERROR_SESSIONID_(LayeringIndex::Create(graph, layering_config, {}, execution_providers_,
+  const auto name_based_config = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsNameBasedLayerAssignment, "");
+  if (!layering_config.empty() || !name_based_config.empty()) {
+    ORT_RETURN_IF_ERROR_SESSIONID_(LayeringIndex::Create(graph, layering_config, name_based_config, {}, execution_providers_,
                                                          *session_logger_, layering_index_storage));
     if (layering_index_storage) {
       layering_index = &layering_index_storage.value();
