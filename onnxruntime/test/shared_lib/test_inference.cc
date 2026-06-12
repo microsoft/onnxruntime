@@ -3110,7 +3110,13 @@ TEST(CApiTest, tensor_at_rejects_subbyte_types) {
     std::vector<int64_t> dims = {7};
     Ort::Value tensor = Ort::Value::CreateTensor(info, values.data(), values.size(), dims.data(), dims.size(),
                                                  ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4);
-    ASSERT_THROW(tensor.At<uint8_t>({0}), Ort::Exception);
+    try {
+      tensor.At<uint8_t>({0});
+      FAIL() << "Expected TensorAt to reject int4 sub-byte packed type";
+    } catch (const Ort::Exception& excpt) {
+      EXPECT_EQ(excpt.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
+      EXPECT_THAT(excpt.what(), testing::HasSubstr("does not support sub-byte packed types"));
+    }
   }
 
   // UInt4: 7 logical elements packed into 4 bytes
@@ -3119,40 +3125,42 @@ TEST(CApiTest, tensor_at_rejects_subbyte_types) {
     std::vector<int64_t> dims = {7};
     Ort::Value tensor = Ort::Value::CreateTensor(info, values.data(), values.size(), dims.data(), dims.size(),
                                                  ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4);
-    ASSERT_THROW(tensor.At<uint8_t>({0}), Ort::Exception);
+    try {
+      tensor.At<uint8_t>({0});
+      FAIL() << "Expected TensorAt to reject uint4 sub-byte packed type";
+    } catch (const Ort::Exception& excpt) {
+      EXPECT_EQ(excpt.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
+      EXPECT_THAT(excpt.what(), testing::HasSubstr("does not support sub-byte packed types"));
+    }
   }
 }
 
-// Regression: TensorAt still works correctly for normal (non-sub-byte) types.
-TEST(CApiTest, tensor_at_normal_types_still_work) {
+// TensorAt provides direct element access for normal (non-sub-byte) types.
+TEST(CApiTest, tensor_at_with_data_float) {
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  std::vector<float> values = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<int64_t> dims = {4};
+  Ort::Value tensor = Ort::Value::CreateTensor<float>(info, values.data(), values.size(), dims.data(), dims.size());
+  ASSERT_EQ(1.0f, tensor.At<float>({0}));
+  ASSERT_EQ(4.0f, tensor.At<float>({3}));
+}
 
-  // float
-  {
-    std::vector<float> values = {1.0f, 2.0f, 3.0f, 4.0f};
-    std::vector<int64_t> dims = {4};
-    Ort::Value tensor = Ort::Value::CreateTensor<float>(info, values.data(), values.size(), dims.data(), dims.size());
-    ASSERT_EQ(1.0f, tensor.At<float>({0}));
-    ASSERT_EQ(4.0f, tensor.At<float>({3}));
-  }
+TEST(CApiTest, tensor_at_with_data_int32) {
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  std::vector<int32_t> values = {10, 20, 30};
+  std::vector<int64_t> dims = {3};
+  Ort::Value tensor = Ort::Value::CreateTensor<int32_t>(info, values.data(), values.size(), dims.data(), dims.size());
+  ASSERT_EQ(10, tensor.At<int32_t>({0}));
+  ASSERT_EQ(30, tensor.At<int32_t>({2}));
+}
 
-  // int32_t
-  {
-    std::vector<int32_t> values = {10, 20, 30};
-    std::vector<int64_t> dims = {3};
-    Ort::Value tensor = Ort::Value::CreateTensor<int32_t>(info, values.data(), values.size(), dims.data(), dims.size());
-    ASSERT_EQ(10, tensor.At<int32_t>({0}));
-    ASSERT_EQ(30, tensor.At<int32_t>({2}));
-  }
-
-  // int8_t
-  {
-    std::vector<int8_t> values = {-1, 0, 1, 127};
-    std::vector<int64_t> dims = {4};
-    Ort::Value tensor = Ort::Value::CreateTensor<int8_t>(info, values.data(), values.size(), dims.data(), dims.size());
-    ASSERT_EQ(-1, tensor.At<int8_t>({0}));
-    ASSERT_EQ(127, tensor.At<int8_t>({3}));
-  }
+TEST(CApiTest, tensor_at_with_data_int8) {
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  std::vector<int8_t> values = {-1, 0, 1, 127};
+  std::vector<int64_t> dims = {4};
+  Ort::Value tensor = Ort::Value::CreateTensor<int8_t>(info, values.data(), values.size(), dims.data(), dims.size());
+  ASSERT_EQ(-1, tensor.At<int8_t>({0}));
+  ASSERT_EQ(127, tensor.At<int8_t>({3}));
 }
 
 // Test that TensorAt bounds checking still rejects out-of-range indices for normal types.
