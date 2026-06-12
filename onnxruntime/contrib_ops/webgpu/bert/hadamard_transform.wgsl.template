@@ -1,44 +1,43 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// Fast Walsh-Hadamard Transform (FWHT) applied along the head dimension.
+// Fast Walsh-Hadamard Transform (FWHT) applied along the last dimension.
 // Reads from a const input buffer, writes to a separate output buffer.
-// Each workgroup processes one (batch, seq, head) slice.
+// Each workgroup processes one contiguous slice of size 1 << hadamard_size_log2.
 
-#param head_size_log2
+#param hadamard_size_log2
 #param components
 
-const HEAD_SIZE : u32 = 1u << head_size_log2;
-const HEAD_SIZE_VEC : u32 = HEAD_SIZE / components;
+const HADAMARD_SIZE : u32 = 1u << hadamard_size_log2;
+const HADAMARD_SIZE_VEC : u32 = HADAMARD_SIZE / components;
 
 #use .getByOffset .setByOffset
 
-var<workgroup> shared_data : array<f32, HEAD_SIZE>;
+var<workgroup> shared_data : array<input_element_t, HADAMARD_SIZE>;
 
 #include "bert/hadamard_transform_common.wgsl.template"
 
 $MAIN {
   let slice_idx = workgroup_idx;
-  let num_slices = uniforms.batch_size * uniforms.seq_length * uniforms.num_heads;
-  if (slice_idx >= num_slices) {
+  if (slice_idx >= uniforms.num_slices) {
     return;
   }
 
-  let base_offset = slice_idx * HEAD_SIZE_VEC;
+  let base_offset = slice_idx * HADAMARD_SIZE_VEC;
 
-  // Load from read-only input into shared memory.
-  for (var i = local_idx; i < HEAD_SIZE_VEC; i += workgroup_size_x) {
+  // Load from input into shared memory.
+  for (var i = local_idx; i < HADAMARD_SIZE_VEC; i += workgroup_size_x) {
     let val = input.getByOffset(base_offset + i);
 #if components == 4
-    shared_data[i * 4u + 0u] = f32(val[0]);
-    shared_data[i * 4u + 1u] = f32(val[1]);
-    shared_data[i * 4u + 2u] = f32(val[2]);
-    shared_data[i * 4u + 3u] = f32(val[3]);
+    shared_data[i * 4u + 0u] = val[0];
+    shared_data[i * 4u + 1u] = val[1];
+    shared_data[i * 4u + 2u] = val[2];
+    shared_data[i * 4u + 3u] = val[3];
 #elif components == 2
-    shared_data[i * 2u + 0u] = f32(val[0]);
-    shared_data[i * 2u + 1u] = f32(val[1]);
+    shared_data[i * 2u + 0u] = val[0];
+    shared_data[i * 2u + 1u] = val[1];
 #else
-    shared_data[i] = f32(val);
+    shared_data[i] = val;
 #endif
   }
   workgroupBarrier();
@@ -46,23 +45,23 @@ $MAIN {
   // Walsh-Hadamard Transform butterfly passes.
   wht_butterfly(local_idx, workgroup_size_x);
 
-  // Normalize by 1/sqrt(HEAD_SIZE) to make the transform orthogonal.
-  let norm = 1.0f / sqrt(f32(HEAD_SIZE));
+  // Normalize by 1/sqrt(HADAMARD_SIZE) to make the transform orthogonal.
+  let norm = input_element_t(1) / input_element_t(sqrt(f32(HADAMARD_SIZE)));
 
   // Write results to output buffer.
-  for (var i = local_idx; i < HEAD_SIZE_VEC; i += workgroup_size_x) {
+  for (var i = local_idx; i < HADAMARD_SIZE_VEC; i += workgroup_size_x) {
 #if components == 4
-    let v0 = output_element_t(shared_data[i * 4u + 0u] * norm);
-    let v1 = output_element_t(shared_data[i * 4u + 1u] * norm);
-    let v2 = output_element_t(shared_data[i * 4u + 2u] * norm);
-    let v3 = output_element_t(shared_data[i * 4u + 3u] * norm);
+    let v0 = shared_data[i * 4u + 0u] * norm;
+    let v1 = shared_data[i * 4u + 1u] * norm;
+    let v2 = shared_data[i * 4u + 2u] * norm;
+    let v3 = shared_data[i * 4u + 3u] * norm;
     output.setByOffset(base_offset + i, output_value_t(v0, v1, v2, v3));
 #elif components == 2
-    let v0 = output_element_t(shared_data[i * 2u + 0u] * norm);
-    let v1 = output_element_t(shared_data[i * 2u + 1u] * norm);
+    let v0 = shared_data[i * 2u + 0u] * norm;
+    let v1 = shared_data[i * 2u + 1u] * norm;
     output.setByOffset(base_offset + i, output_value_t(v0, v1));
 #else
-    output.setByOffset(base_offset + i, output_value_t(output_element_t(shared_data[i] * norm)));
+    output.setByOffset(base_offset + i, output_value_t(shared_data[i] * norm));
 #endif
   }
 } // MAIN

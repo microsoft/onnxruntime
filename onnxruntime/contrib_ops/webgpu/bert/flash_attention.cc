@@ -836,17 +836,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   // Rotate Q before attention (Hadamard transform for TurboQuant).
   if (turbo_quant_enabled) {
     rotated_q = context.CreateGPUTensor(Q->DataType(), Q->Shape());
-    if (parameters.qkv_format_ == Q_K_V_BNSH) {
-      ORT_RETURN_IF_ERROR(ApplyHadamardTransform(
-          context, Q, &rotated_q,
-          parameters.batch_size_ * parameters.num_heads_,
-          parameters.sequence_length_, 1, parameters.head_size_));
-    } else {
-      ORT_RETURN_IF_ERROR(ApplyHadamardTransform(
-          context, Q, &rotated_q,
-          parameters.batch_size_, parameters.sequence_length_,
-          parameters.num_heads_, parameters.head_size_));
-    }
+    ORT_RETURN_IF_ERROR(ApplyHadamardTransform(context, Q, &rotated_q, parameters.head_size_));
     Q = &rotated_q;
   }
 
@@ -1005,10 +995,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 
   // Apply inverse Hadamard transform: attn_output_temp -> output.
   if (turbo_quant_enabled) {
-    ORT_RETURN_IF_ERROR(ApplyHadamardTransform(
-        context, attn_output, output,
-        parameters.batch_size_, parameters.sequence_length_,
-        parameters.num_heads_, parameters.head_size_));
+    ORT_RETURN_IF_ERROR(ApplyHadamardTransform(context, attn_output, output, parameters.head_size_));
   }
 
   return Status::OK();

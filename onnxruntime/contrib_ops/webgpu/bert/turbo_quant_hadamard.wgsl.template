@@ -17,12 +17,12 @@
 #param past_present_share_buffer
 #param use_seqlen_k
 #param prepare_indirect_dispatch
-#param head_size_log2
+#param hadamard_size_log2
 #param components
 #param compressed_head_size_u32
 #use .indicesToOffset
 
-const HEAD_SIZE : u32 = 1u << head_size_log2;
+const HEAD_SIZE : u32 = 1u << hadamard_size_log2;
 const HEAD_SIZE_VEC : u32 = HEAD_SIZE / components;
 const COMPRESSED_HEAD_U32 : u32 = compressed_head_size_u32;
 

@@ -11,7 +11,7 @@
 // K/V workgroups use shared memory for Hadamard + quantization.
 // Q workgroups do simple per-element rotary and return early (no shared memory needed).
 
-#param head_size_log2
+#param hadamard_size_log2
 #param half_rotary_dim
 #param compressed_head_size_u32
 #param past_present_share_buffer
@@ -21,7 +21,7 @@
 #param use_multi_rotary_cache_concat
 #use .getByIndices .getByOffset .setByOffset
 
-const HEAD_SIZE : u32 = 1u << head_size_log2;
+const HEAD_SIZE : u32 = 1u << hadamard_size_log2;
 const COMPRESSED_HEAD_U32 : u32 = compressed_head_size_u32;
 const HALF_ROTARY_DIM : u32 = half_rotary_dim;
 

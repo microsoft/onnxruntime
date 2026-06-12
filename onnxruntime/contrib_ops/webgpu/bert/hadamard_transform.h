@@ -15,38 +15,34 @@ using namespace onnxruntime::webgpu;
 
 class HadamardTransformProgram final : public Program<HadamardTransformProgram> {
  public:
-  HadamardTransformProgram(int head_size_log2, int components)
+  HadamardTransformProgram(int slice_size_log2, int components)
       : Program{"HadamardTransform"},
-        head_size_log2_(head_size_log2),
+        slice_size_log2_(slice_size_log2),
         components_(components) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"batch_size", ProgramUniformVariableDataType::Uint32},
-      {"seq_length", ProgramUniformVariableDataType::Uint32},
-      {"num_heads", ProgramUniformVariableDataType::Uint32});
+      {"num_slices", ProgramUniformVariableDataType::Uint32});
 
  private:
-  int head_size_log2_;
+  int slice_size_log2_;
   int components_;
 };
 
-// Apply the normalized Walsh-Hadamard transform in-place along the head dimension.
-// The transform is orthogonal (H * H = I with normalization), so applying it
-// twice recovers the original data. This means the same function serves as
-// both the forward and inverse transform.
+// Apply the normalized Walsh-Hadamard transform.
+// The normalized Hadamard matrix is symmetric and orthogonal (H @ H^T = I),
+// so applying it twice recovers the original data. This means the same function
+// serves as both the forward and inverse transform.
 //
-// Data layout: contiguous slices of [head_size] elements, with
-// batch_size * seq_length * num_heads total slices.
-// head_size must be a power of 2.
+// If explicit_slice_size > 0, it is used as the transform dimension size.
+// Otherwise, the last dimension of the tensor shape is used.
+// The transform size must be a power of 2 (>= 4).
+// All elements are divided into slices of that size, each transformed independently.
 Status ApplyHadamardTransform(onnxruntime::webgpu::ComputeContext& context,
                               const Tensor* input,
                               Tensor* output,
-                              int batch_size,
-                              int seq_length,
-                              int num_heads,
-                              int head_size);
+                              int explicit_slice_size = 0);
 
 }  // namespace webgpu
 }  // namespace contrib

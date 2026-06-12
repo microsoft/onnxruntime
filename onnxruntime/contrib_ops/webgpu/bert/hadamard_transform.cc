@@ -17,7 +17,7 @@ Status HadamardTransformProgram::GenerateShaderCode(ShaderHelper& sh) const {
 
   return WGSL_TEMPLATE_APPLY(sh, "bert/hadamard_transform.wgsl.template",
                              WGSL_TEMPLATE_PARAMETER(components, components_),
-                             WGSL_TEMPLATE_PARAMETER(head_size_log2, head_size_log2_),
+                             WGSL_TEMPLATE_PARAMETER(hadamard_size_log2, slice_size_log2_),
                              WGSL_TEMPLATE_VARIABLE(input, input),
                              WGSL_TEMPLATE_VARIABLE(output, output));
 }
@@ -25,35 +25,34 @@ Status HadamardTransformProgram::GenerateShaderCode(ShaderHelper& sh) const {
 Status ApplyHadamardTransform(onnxruntime::webgpu::ComputeContext& context,
                               const Tensor* input,
                               Tensor* output,
-                              int batch_size,
-                              int seq_length,
-                              int num_heads,
-                              int head_size) {
-  // head_size must be a power of 2
-  ORT_ENFORCE((head_size & (head_size - 1)) == 0, "head_size must be a power of 2 for Hadamard transform, got ", head_size);
-  ORT_ENFORCE(head_size >= 4, "head_size must be at least 4 for vectorized Hadamard transform, got ", head_size);
+                              int explicit_slice_size) {
+  const auto& shape = input->Shape();
+  ORT_ENFORCE(shape.NumDimensions() >= 1, "Input tensor must have at least 1 dimension.");
 
-  int head_size_log2 = 0;
-  for (int tmp = head_size; tmp > 1; tmp >>= 1) {
-    head_size_log2++;
+  // Use explicit slice size if provided, otherwise derive from last dimension.
+  const int slice_size = explicit_slice_size > 0 ? explicit_slice_size : static_cast<int>(shape[shape.NumDimensions() - 1]);
+  ORT_ENFORCE((slice_size & (slice_size - 1)) == 0, "Last dimension must be a power of 2 for Hadamard transform, got ", slice_size);
+  ORT_ENFORCE(slice_size >= 4, "Last dimension must be at least 4 for vectorized Hadamard transform, got ", slice_size);
+
+  int slice_size_log2 = 0;
+  for (int tmp = slice_size; tmp > 1; tmp >>= 1) {
+    slice_size_log2++;
   }
 
-  const int components = head_size % 4 == 0 ? 4 : (head_size % 2 == 0 ? 2 : 1);
-  const uint32_t num_slices = static_cast<uint32_t>(batch_size * seq_length * num_heads);
+  const int components = slice_size % 4 == 0 ? 4 : (slice_size % 2 == 0 ? 2 : 1);
+  const uint32_t num_slices = static_cast<uint32_t>(shape.Size() / slice_size);
 
   // Workgroup size: use up to 64 threads. Each thread handles multiple butterfly pairs.
-  const uint32_t workgroup_size = std::min(static_cast<uint32_t>(head_size / 2), 64u);
+  const uint32_t workgroup_size = std::min(static_cast<uint32_t>(slice_size / 2), 64u);
 
-  HadamardTransformProgram program(head_size_log2, components);
+  HadamardTransformProgram program(slice_size_log2, components);
   program.AddInput({input, ProgramTensorMetadataDependency::TypeAndRank, components});
   program.AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, components});
 
   program.SetDispatchGroupSize(num_slices)
       .SetWorkgroupSize(workgroup_size)
-      .CacheHint(head_size_log2, components)
-      .AddUniformVariables({{static_cast<uint32_t>(batch_size)},
-                            {static_cast<uint32_t>(seq_length)},
-                            {static_cast<uint32_t>(num_heads)}});
+      .CacheHint(slice_size_log2, components)
+      .AddUniformVariables({{num_slices}});
 
   return context.RunProgram(program);
 }
