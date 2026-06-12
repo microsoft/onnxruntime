@@ -36,6 +36,17 @@ class AttentionKernelOptions {
   bool UseTrtCausalAttention() const { return use_trt_causal_attention_; }
   bool UseDecoderAttention() const { return use_decoder_attention_; }
 
+  // True when the SDPA kernel was explicitly selected via the sdpa_kernel provider option
+  // (a positive bitmask). When false, the kernel selection follows defaults / environment
+  // variables, which allows operators to auto-prefer cuDNN SDPA on SM>=90.
+  bool HasExplicitKernelSelection() const { return has_explicit_kernel_selection_; }
+
+  // True when operators may auto-prefer cuDNN SDPA on SM>=90. This is disabled when
+  // the user explicitly pins kernels via sdpa_kernel or sets ORT_ENABLE_CUDNN_FLASH_ATTENTION=0.
+  bool AllowCudnnFlashAttentionAuto() const {
+    return !has_explicit_kernel_selection_ && !disable_auto_cudnn_flash_attention_;
+  }
+
   bool AllowDebugInfo() const { return enable_kernel_debug_info_; }
 
   int MinSeqLenForFlashAttentionPackedQkv() const { return min_seq_len_for_flash_attention_packed_qkv_; }
@@ -60,6 +71,9 @@ class AttentionKernelOptions {
   bool use_trt_causal_attention_{false};
 
   bool use_decoder_attention_{true};
+
+  bool has_explicit_kernel_selection_{false};
+  bool disable_auto_cudnn_flash_attention_{false};
 
   bool enable_kernel_debug_info_{false};
 

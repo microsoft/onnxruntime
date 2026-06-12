@@ -124,6 +124,18 @@ static const char* const kOrtSessionOptionsMemoryOptimizerProbeConfig = "optimiz
 // Default is an empty string which means no optimizers are disabled.
 static const char* const kOrtSessionOptionsDisableSpecifiedOptimizers = "optimization.disable_specified_optimizers";
 
+// Maximum total output size in bytes that the constant folding optimizer is allowed to produce per node.
+// Prevents malicious models from causing excessive memory allocation during optimization.
+// If the estimated or actual output size of a constant-foldable node exceeds this limit, the node will
+// not be constant folded and will instead be executed at runtime.
+//
+// Option values:
+// - A positive integer (as string): Maximum allowed output size in bytes per constant-folded node.
+//   Default is "1073741824" (1 GB).
+// - "0": Disable the size limit (not recommended for untrusted models).
+static const char* const kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes =
+    "optimization.constant_folding_max_output_size_in_bytes";
+
 // It controls whether to run graph optimizations in loop or not.
 //
 // "0": disable. Graph Optimization Loop is disabled.
@@ -183,6 +195,23 @@ static const char* const kOrtSessionOptionsConfigAllowIntraOpSpinning = "session
 static const char* const kOrtSessionOptionsConfigIntraOpSpinDurationUs = "session.intra_op.spin_duration_us";
 static const char* const kOrtSessionOptionsConfigInterOpSpinDurationUs = "session.inter_op.spin_duration_us";
 
+// Configure the maximum exponential-backoff cap for the thread pool spin loop.
+// When > 1, each idle spin iteration emits a growing number of SpinPause() calls
+// (1, 2, 4, ..., up to this cap), which reduces the density of pause instructions
+// during the spin window and lowers CPU/power usage compared to emitting one
+// SpinPause() per iteration. The total wall-clock spin duration targeted by
+// session.{intra,inter}_op.spin_duration_us is preserved by scaling the iteration
+// count against the backoff cap.
+//   "1" (default) = no backoff, one SpinPause() per iteration (original behavior).
+//   ">= 2"        = enable exponential backoff capped at this value. Typical
+//                   values: 4 (hybrid/E-core friendly) or 8 (desktop/server).
+// Values above 64 are clamped to 64.
+// This setting is subordinate to allow_spinning and spin_duration_us: when
+// spinning is disabled or spin_duration_us forces zero iterations, this value
+// has no effect.
+static const char* const kOrtSessionOptionsConfigIntraOpSpinBackoffMax = "session.intra_op.spin_backoff_max";
+static const char* const kOrtSessionOptionsConfigInterOpSpinBackoffMax = "session.inter_op.spin_backoff_max";
+
 // Key for using model bytes directly for ORT format
 // If a session is created using an input byte array contains the ORT format model data,
 // By default we will copy the model bytes at the time of session creation to ensure the model bytes
@@ -194,12 +223,22 @@ static const char* const kOrtSessionOptionsConfigUseORTModelBytesDirectly = "ses
 /// <summary>
 /// Key for using the ORT format model flatbuffer bytes directly for initializers.
 /// This avoids copying the bytes and reduces peak memory usage during model loading and initialization.
-/// Requires `session.use_ort_model_bytes_directly` to be true.
+/// Requires `session.use_ort_model_bytes_directly` or `session.use_memory_mapped_ort_model` to be true.
 /// If set, the flatbuffer bytes provided when creating the InferenceSession MUST remain valid for the entire
 /// duration of the InferenceSession.
 /// </summary>
 static const char* const kOrtSessionOptionsConfigUseORTModelBytesForInitializers =
     "session.use_ort_model_bytes_for_initializers";
+
+/// <summary>
+/// Key for using memory-mapped I/O to load ORT format model files.
+/// When set to "1" and the session is created from a file path, ORT will use memory-mapped I/O
+/// to load the .ort model file instead of reading it into a heap-allocated buffer.
+/// Usage with session.use_ort_model_bytes_for_initializers will ensure Tensors point directly to the mapped bytes,
+/// although the mapping must remain valid and model weights will be immutable.
+/// The model load will fail if the mapping fails; fallbacks should be caller-handled.
+/// </summary>
+static const char* const kOrtSessionOptionsConfigUseMemoryMappedOrtModel = "session.use_memory_mapped_ort_model";
 
 // This should only be specified when exporting an ORT format model for use on a different platform.
 // If the ORT format model will be used on ARM platforms set to "1". For other platforms set to "0"
@@ -417,6 +456,15 @@ static const char* const kOrtSessionOptionStopShareEpContexts = "ep.stop_share_e
 static const char* const kOrtSessionOptionsEpContextModelExternalInitializersFileName =
     "ep.context_model_external_initializers_file_name";
 
+// Internal-only flag set by OrtCompileAPI::CompileModel() to signal EPs that this session
+// is being used for compilation only and will never be used for inference.
+// EPs can use this to skip GPU deserialization and execution context creation, which would
+// otherwise be wasteful since the session is destroyed immediately after compilation.
+// This is NOT a user-facing option and must not be set directly by application code.
+// "0": normal session (default)
+// "1": compile-only session (set internally by OrtCompileAPI::CompileModel)
+static const char* const kOrtSessionOptionCompileOnly = "session.compile_only";
+
 // Gemm fastmath mode provides fp32 gemm acceleration with bfloat16 based matmul.
 // Option values:
 // - "0": Gemm FastMath mode is not enabled. [DEFAULT]
@@ -510,3 +558,72 @@ static const char* const kOrtSessionOptionsRecordEpGraphAssignmentInfo = "sessio
 // - "0": disable. (default)
 // - "1": enable.
 static const char* const kOrtSessionOptionEpEnableWeightlessEpContextNodes = "ep.enable_weightless_ep_context_nodes";
+
+// Controls the intra-op thread pool size for a session.
+// Value should be a base-10 int32 string.
+// Equivalent to OrtApi::SetIntraOpNumThreads.
+static const char* const kOrtSessionOptionsConfigIntraOpNumThreads = "session.intra_op_num_threads";
+
+// Controls the inter-op thread pool size for a session.
+// Value should be a base-10 int32 string.
+// Equivalent to OrtApi::SetInterOpNumThreads.
+static const char* const kOrtSessionOptionsConfigInterOpNumThreads = "session.inter_op_num_threads";
+
+// Enable or disable the CPU memory arena for a session.
+// "0": disable; "1": enable.
+// Equivalent to OrtApi::DisableCpuMemArena / OrtApi::EnableCpuMemArena.
+static const char* const kOrtSessionOptionsConfigEnableCpuMemArena = "session.enable_cpu_mem_arena";
+
+// Enable or disable memory pattern optimization for a session.
+// "0": disable; "1": enable.
+// Equivalent to OrtApi::DisableMemPattern / OrtApi::EnableMemPattern.
+static const char* const kOrtSessionOptionsConfigEnableMemPattern = "session.enable_mem_pattern";
+
+// Session log identifier.
+// Value should be a UTF-8 string.
+// Equivalent to OrtApi::SetSessionLogId.
+static const char* const kOrtSessionOptionsConfigLogId = "session.log_id";
+
+// Session log severity level.
+// Value should be a base-10 int32 string (refer to OrtLoggingLevel values).
+// Equivalent to OrtApi::SetSessionLogSeverityLevel.
+static const char* const kOrtSessionOptionsConfigLogSeverityLevel = "session.log_severity_level";
+
+// Session log verbosity level.
+// Value should be a base-10 int32 string.
+// Equivalent to OrtApi::SetSessionLogVerbosityLevel.
+static const char* const kOrtSessionOptionsConfigLogVerbosityLevel = "session.log_verbosity_level";
+
+// Enable or disable profiling for a session.
+// Empty string: disable profiling.
+// Non-empty string: enable profiling and use value as profile file prefix.
+// Equivalent to OrtApi::DisableProfiling / OrtApi::EnableProfiling.
+static const char* const kOrtSessionOptionsConfigEnableProfiling = "session.enable_profiling";
+
+// Graph optimization level for a session.
+// Value should be one of:
+// "disable_all", "enable_basic", "enable_extended", "enable_layout", "enable_all".
+// Equivalent to OrtApi::SetSessionGraphOptimizationLevel.
+static const char* const kOrtSessionOptionsConfigGraphOptimizationLevel = "session.graph_optimization_level";
+
+// File path for saving the optimized model.
+// Value should be a path string.
+// Equivalent to OrtApi::SetOptimizedModelFilePath.
+static const char* const kOrtSessionOptionsConfigOptimizedModelFilePath = "session.optimized_model_filepath";
+
+// Session execution mode.
+// Value should be one of:
+// "sequential", "parallel", "ort_sequential", "ort_parallel".
+// Equivalent to OrtApi::SetSessionExecutionMode.
+static const char* const kOrtSessionOptionsConfigExecutionMode = "session.execution_mode";
+
+// Controls whether to use per-session thread pools.
+// "0": disable per-session threads (use global thread pools).
+// "1": keep per-session threads enabled (default behavior before disable call).
+// Equivalent to OrtApi::DisablePerSessionThreads (one-way via API).
+static const char* const kOrtSessionOptionsConfigUsePerSessionThreads = "session.use_per_session_threads";
+
+// Enable or disable deterministic compute for a session.
+// "0": disable; "1": enable.
+// Equivalent to OrtApi::SetDeterministicCompute.
+static const char* const kOrtSessionOptionsConfigUseDeterministicCompute = "session.use_deterministic_compute";

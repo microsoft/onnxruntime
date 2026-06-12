@@ -4,6 +4,8 @@
 
 #pragma once
 #include <ctime>
+#include <utility>
+#include <vector>
 #ifndef USE_CUDA_MINIMAL
 #include <cudnn.h>
 #else
@@ -135,6 +137,13 @@ class OutputAllocator : public nvinfer1::IOutputAllocator {
  * tensor name -> ( dimension -> [min, max, opt] )
  */
 using ShapeRangesMap = std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>;
+
+// SubGraph_t and SubGraphCollection_t were removed from NvOnnxParser.h starting in TRT-RTX 1.5.0.99.
+// Define them here so the provider owns these ORT-internal types for any SDK that no longer ships them.
+#if TRT_MAJOR_RTX >= 2 || (TRT_MAJOR_RTX == 1 && ((TRT_MINOR_RTX == 5 && TRT_BUILD_RTX >= 99) || TRT_MINOR_RTX >= 6))
+using SubGraph_t = std::pair<std::vector<size_t>, bool>;
+using SubGraphCollection_t = std::vector<SubGraph_t>;
+#endif
 
 /**
  * @brief Container for tensor data and their shape.
@@ -330,7 +339,7 @@ class NvExecutionProvider : public IExecutionProvider {
   // CUDA Graph support
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(int graph_annotation_id) const override;
-  Status ReplayGraph(int graph_annotation_id) override;
+  Status ReplayGraph(int graph_annotation_id, bool sync = true) override;
   void HandleCudaGraphStart(cudaStream_t stream, bool require_io_binding, CudaGraphAnnotation_t cuda_graph_annotation_id, bool& graph_replay_on_this_run, bool& should_start_capture);
 
   static common::Status RefitEngine(std::string onnx_model_filename,
@@ -404,6 +413,9 @@ class NvExecutionProvider : public IExecutionProvider {
 
   // For create/dump EP context node model
   bool dump_ep_context_model_ = false;
+  // Set when the EP is instantiated by OrtCompileAPI::CompileModel(). Causes
+  // CreateNodeComputeInfoFromGraph to skip GPU deserialization and context creation.
+  bool compile_only_mode_ = false;
   std::string ep_context_file_path_;
   int ep_context_embed_mode_ = 0;
   std::string ctx_model_path_;

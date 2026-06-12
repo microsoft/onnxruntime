@@ -7,6 +7,8 @@
 #include <span>
 #include <string>
 #include <memory>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "core/framework/execution_provider.h"
@@ -14,6 +16,7 @@
 #include "core/graph/constants.h"
 #include "core/providers/providers.h"
 #include "core/providers/webgpu/buffer_manager.h"
+#include "core/providers/webgpu/session_buffer_pool.h"
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
 #include "core/providers/webgpu/webgpu_pix_frame_generator.h"
@@ -44,6 +47,10 @@ struct WebGpuExecutionProviderConfig {
   bool enable_pix_capture{false};                // PIX capture is disabled by default
   bool enable_int64{false};                      // int64 ops are not enabled by default
   uint32_t multi_rotary_cache_concat_offset{0};  // offset for concatenated multi rotary cache (0 = disabled)
+  // Number of generations of buffers to retain in the per-session pool for reuse
+  // across captured-graph lifetimes. 0 disables pooling. Default 1 caches one
+  // generator's worth of intermediate buffers.
+  size_t session_buffer_pool_generations{1};
   std::vector<std::string> force_cpu_node_names{};
 };
 
@@ -96,7 +103,8 @@ class WebGpuExecutionProvider : public IExecutionProvider {
 
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(int graph_annotation_id) const override;
-  Status ReplayGraph(int graph_annotation_id) override;
+  Status ReplayGraph(int graph_annotation_id, bool sync = true) override;
+  Status ReleaseCapturedGraph(int graph_annotation_id) override;
   OrtGraphCaptureNodeAssignmentPolicy GetGraphCaptureNodeAssignmentPolicy() const override {
     return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
   }
@@ -124,22 +132,32 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   DataLayout preferred_data_layout_;
   std::vector<std::string> force_cpu_node_names_;
   bool enable_graph_capture_ = false;
+  bool graph_buffer_mgr_active_ = false;
   bool enable_int64_ = false;
   uint32_t multi_rotary_cache_concat_offset_ = 0;
-  bool is_graph_captured_ = false;
-  int regular_run_count_before_graph_capture_ = 0;
-  const int min_num_runs_before_cuda_graph_capture_ = 1;  // Required regular runs before graph capture for any necessary allocations.
-  int m_current_graph_annotation_id = 0;
+  std::unordered_map<int, int> graph_id_to_run_count_;
+  // Required regular runs before graph capture for any necessary allocations.
+  const int min_num_runs_before_graph_capture_ = 0;
+  int current_graph_annotation_id_ = 0;
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
   std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
-  // Buffer manager specifically for graph capture mode
-  std::unique_ptr<webgpu::BufferManager> graph_buffer_mgr_ = nullptr;
+  // Per-graph buffer managers keyed by annotation ID.
+  // Each captured graph gets its own buffer manager so that buffer caches
+  // are isolated between different generators.
+  std::unordered_map<int, std::unique_ptr<webgpu::BufferManager>> per_graph_buffer_mgrs_;
 
-  // Store captured commands directly in the EP instead of in WebGpuContext
-  std::vector<webgpu::CapturedCommandInfo> captured_commands_;
+  // Per-session pool of buffers donated by retired per-graph BufferManagers,
+  // seeded into new per-graph BufferManagers to avoid device allocations for
+  // identically-shaped intermediate tensors across generators.
+  std::unique_ptr<webgpu::SessionBufferPool> session_buffer_pool_;
+
+  // Store captured commands per graph annotation ID
+  std::unordered_map<int, std::vector<webgpu::CapturedCommandInfo>> captured_graphs_;
+  // Track which graph annotation IDs have completed capture
+  std::unordered_set<int> captured_graph_ids_;
 
   // Allocator for prepacked weights (uses buffers without mapping)
   AllocatorPtr prepack_allocator_;

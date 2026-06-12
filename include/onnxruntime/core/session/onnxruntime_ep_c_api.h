@@ -951,6 +951,69 @@ struct OrtScanKernelHelper {
 };
 
 /**
+ * \brief Discriminator for the resource count type stored in an OrtResourceCount.
+ *
+ * New resource accounting types can be added by appending new enum values.
+ * The OrtResourceCount union storage is large enough to hold all current and future types.
+ *
+ * \since Version 1.26.
+ */
+typedef enum OrtResourceCountKind {
+  OrtResourceCountKind_None = 0,        ///< Unset / zero-cost sentinel.
+  OrtResourceCountKind_TotalBytes = 1,  ///< Single uint64_t: byte count (cost or budget).
+} OrtResourceCountKind;
+
+/**
+ * \brief ABI-stable tagged union representing a resource cost or budget.
+ *
+ * This struct is a C-safe variant that can be passed by value across the plugin DLL boundary.
+ * The `kind` field selects which member of the `value` union is active. The
+ * `value.reserved_words` storage reserves space for future resource types without changing
+ * the struct layout.
+ *
+ * Adding new resource types requires only: (a) a new OrtResourceCountKind enum value,
+ * (b) a new union member. No new C API functions are needed.
+ *
+ * \since Version 1.26.
+ */
+typedef struct OrtResourceCount {
+  uint32_t kind;     /**< OrtResourceCountKind discriminator. */
+  uint32_t reserved; /**< Must be zero. Ensures natural alignment for the value union. */
+
+  union {
+    uint64_t total_bytes;       /**< Active when kind == OrtResourceCountKind_TotalBytes. */
+    uint64_t reserved_words[6]; /**< 48 bytes fixed storage for future resource types. */
+  } value;
+
+#ifdef __cplusplus
+  /** Default-construct a None (unset) resource count. */
+  OrtResourceCount() noexcept : kind{OrtResourceCountKind_None}, reserved{0}, value{} {}
+
+  /** Construct a zero/unset resource count. */
+  static OrtResourceCount None() noexcept {
+    return OrtResourceCount{};
+  }
+
+  /** Construct a resource count representing total bytes. */
+  static OrtResourceCount FromTotalBytes(uint64_t bytes) noexcept {
+    OrtResourceCount rc{};
+    rc.kind = OrtResourceCountKind_TotalBytes;
+    rc.value.total_bytes = bytes;
+    return rc;
+  }
+
+  /** Read the total_bytes value (caller must check kind first). */
+  uint64_t AsTotalBytes() const noexcept {
+    return value.total_bytes;
+  }
+#endif
+} OrtResourceCount;
+
+#ifdef __cplusplus
+static_assert(sizeof(OrtResourceCount) == 56, "OrtResourceCount size must not change to maintain ABI stability");
+#endif
+
+/**
  * \brief The OrtEpApi struct provides functions that are relevant to the implementation of an execution provider.
  *
  * \since Version 1.22.
@@ -2466,6 +2529,107 @@ struct OrtEp {
    */
   ORT_API_T(OrtGraphCaptureNodeAssignmentPolicy, GetGraphCaptureNodeAssignmentPolicy,
             _In_ const OrtEp* this_ptr);
+
+  /** \brief Query the available device resource for partitioning budget.
+   *
+   * Called by ORT during graph partitioning when no explicit resource budget threshold
+   * has been configured via session options. The EP should query its device for the
+   * currently available resource (e.g., free GPU memory) and return it as an OrtResourceCount.
+   *
+   * If the EP does not support resource querying, set this function pointer to NULL.
+   * ORT will skip threshold-based budget enforcement in that case.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[out] available The available device resource.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional. If set to NULL, no automatic
+   *       resource threshold is established and budget enforcement requires an explicit
+   *       threshold from session options.
+   *
+   * \since Version 1.26.
+   */
+  ORT_API2_STATUS(GetAvailableResource, _In_ const OrtEp* this_ptr, _Out_ OrtResourceCount* available);
+
+  /** \brief Called by ORT when session initialization is complete.
+   *
+   * This provides an opportunity for execution providers to optionally synchronize and
+   * clean up temporary resources to reduce memory usage and ensure the first inference run is fast.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT assumes no
+   *       post-initialization work is needed and treats it as a no-op success.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(OnSessionInitializationEnd, _In_ OrtEp* this_ptr);
+
+  /** \brief Get the EP's default memory device.
+   *
+   * The EP's default memory device identifies the hardware the EP operates on. ORT uses it to:
+   * - Determine if data copies are needed between EPs (inserting memcpy nodes at EP boundaries)
+   * - Determine if the EP is CPU-based (which affects synchronization and data transfer decisions)
+   * - Bind execution streams to the correct device
+   *
+   * If the implementation allows an EP to be created with multiple EpDevices this should return the OrtMemoryDevice
+   * that ORT should consider as default for this EP instance.
+   *
+   * An OrtMemoryDevice is obtained from an OrtMemoryInfo via `OrtEpApi::MemoryInfo_GetMemoryDevice()`.
+   * Typically, an EP creates OrtMemoryInfo instances and registers them with its OrtEpDevice(s) via
+   * `OrtEpApi::EpDevice_AddAllocatorInfo()`. The OrtMemoryDevice returned here must correspond to an
+   * OrtMemoryInfo registered as an `OrtDeviceAllocator` entry (either `OrtDeviceMemoryType_DEFAULT` or
+   * `OrtDeviceMemoryType_HOST_ACCESSIBLE`). An OrtMemoryDevice from an `OrtReadOnlyAllocator` entry is
+   * not accepted as the EP's default/identity device.
+   *
+   * The returned pointer must remain valid for the lifetime of the OrtEp instance
+   * (typically by storing the parent OrtMemoryInfo as a member of the EP).
+   *
+   * If this function is not implemented (NULL), or if it sets `device` to NULL, ORT infers
+   * the default memory device from the first OrtEpDevice's `OrtDeviceAllocator` entry with
+   * `OrtDeviceMemoryType_DEFAULT` registered via `EpDevice_AddAllocatorInfo`. EPs created against
+   * multiple OrtEpDevices whose default memory devices differ should implement this function to
+   * disambiguate; otherwise the first OrtEpDevice's default memory device is used and the others
+   * are ignored for identity purposes. If no such allocator entry is registered, the EP defaults
+   * to a CPU memory device.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[out] device Set to the EP's default OrtMemoryDevice, or NULL to use the default behavior (described above).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional. If set to NULL (not implemented), ORT
+   *       infers the default memory device using the default behavior described above.
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(GetDefaultMemoryDevice, _In_ const OrtEp* this_ptr,
+                  _Outptr_result_maybenull_ const OrtMemoryDevice** device);
+
+  /** \brief Release a previously captured graph and its associated resources.
+   *
+   * Called when the caller no longer needs the captured graph for the given annotation ID.
+   * This allows the EP to free buffers and other resources tied to this graph.
+   *
+   * \param[in] this_ptr The EP instance.
+   * \param[in] graph_annotation_id The annotation ID of the graph to release.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT assumes
+   *       no captured graph release is needed and treats it as a no-op success.
+   *
+   * \note Thread safety: For EPs that support concurrent Run() calls, this method may be
+   *       called concurrently with Run(). The EP is responsible for ensuring thread safety
+   *       of its own state in that case. For non-concurrent EPs, the session serializes
+   *       calls via its internal mutex.
+   *
+   * \since Version 1.27.
+   */
+  ORT_API2_STATUS(ReleaseCapturedGraph, _In_ OrtEp* this_ptr, _In_ int graph_annotation_id);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.

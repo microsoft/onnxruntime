@@ -293,6 +293,8 @@ void TestMatMulNBitsTyped(std::optional<float> abs_error = std::nullopt,
     base_opts.output_abs_error = 0.1f;
   } else if constexpr (std::is_same<AType, MLFloat16>::value) {
     base_opts.output_abs_error = 0.055f;
+  } else {
+    base_opts.output_abs_error = 0.05f;
   }
 
   if (rel_error.has_value()) {
@@ -300,6 +302,8 @@ void TestMatMulNBitsTyped(std::optional<float> abs_error = std::nullopt,
   } else if (base_opts.accuracy_level == 4) {
     base_opts.output_rel_error = 0.02f;
   } else if constexpr (std::is_same<AType, MLFloat16>::value) {
+    base_opts.output_rel_error = 0.02f;
+  } else {
     base_opts.output_rel_error = 0.02f;
   }
 
@@ -356,8 +360,6 @@ void TestMatMulNBitsTyped(std::optional<float> abs_error = std::nullopt,
   }
 #endif
 }
-
-#if !defined(USE_OPENVINO)
 
 TEST(MatMulNBits, Float32_4b_Accuracy0) {
   TestMatMulNBitsTyped<float, 1, 1, 16, 16, 0>();
@@ -465,6 +467,8 @@ TEST(MatMulNBits, Float16_4b_Accuracy0) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 128, 0>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 32, 0>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 0>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 256, 128, 32, 0>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 192, 128, 32, 0>();
 }
 
 TEST(MatMulNBits, Float16_4b_Accuracy4) {
@@ -495,6 +499,8 @@ TEST(MatMulNBits, Float16_4b_Accuracy4) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 32, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 128, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 4>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 256, 128, 32, 4>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 192, 128, 32, 4>();
 
   // See PR #27412 for details on the following test case,
   // which is added to cover a specific failure case in the past.
@@ -591,7 +597,6 @@ TEST(MatMulNBits, Float32_4b_Accuracy4_Batch) {
   RunTest<float>(opts);
 }
 
-#endif
 #endif
 #endif
 
@@ -821,6 +826,166 @@ TEST(MatMulNBits, BFloat16_Int4_NoZeroPoint) {
     RunTest<BFloat16>(32, 1024, 2048, block_size, has_zeropoint, zp_is_4bit, abs_error);
   }
 }
+
+// Chunked dequant+GEMM path tests.
+// Force the chunked path with a small chunk size to exercise per-chunk pointer
+// arithmetic (blob, scales, zero_points offsets) and strided cuBLAS output
+// with manageable tensor sizes.
+
+TEST(MatMulNBits, Fp16_Int4_Chunked_Uint8ZeroPoint) {
+  constexpr float abs_error = 0.1f;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+      {"ORT_MATMULNBITS_FORCE_CHUNKED", "1"},
+      {"ORT_MATMULNBITS_CHUNK_SIZE", "64"}}};
+
+  for (auto block_size : {32, 64, 128}) {
+    for (auto M : {1, 2}) {
+      TestOptions opts{};
+      opts.M = M, opts.N = 256, opts.K = 1024;
+      opts.block_size = block_size;
+      opts.has_zero_point = true;
+      opts.zp_is_4bit = true;
+      opts.output_abs_error = abs_error;
+      opts.output_rel_error = 0.001f;
+      std::vector<std::unique_ptr<IExecutionProvider>> eps;
+      eps.push_back(DefaultCudaExecutionProvider());
+      RunTest<MLFloat16>(opts, std::move(eps));
+    }
+  }
+  // Odd blocks_per_col (K=96, block_size=32 → blocks_per_col=3) exercises the
+  // (blocks_per_col + 1) / 2 rounding in the 4-bit packed ZP offset.
+  {
+    TestOptions opts{};
+    opts.M = 1, opts.N = 256, opts.K = 96;
+    opts.block_size = 32;
+    opts.has_zero_point = true;
+    opts.zp_is_4bit = true;
+    opts.output_abs_error = abs_error;
+    opts.output_rel_error = 0.001f;
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultCudaExecutionProvider());
+    RunTest<MLFloat16>(opts, std::move(eps));
+  }
+}
+
+TEST(MatMulNBits, Fp16_Int4_Chunked_Fp16ZeroPoint) {
+  constexpr float abs_error = 0.1f;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+      {"ORT_MATMULNBITS_FORCE_CHUNKED", "1"},
+      {"ORT_MATMULNBITS_CHUNK_SIZE", "64"}}};
+
+  for (auto block_size : {32, 64, 128}) {
+    for (auto M : {1, 2}) {
+      TestOptions opts{};
+      opts.M = M, opts.N = 256, opts.K = 1024;
+      opts.block_size = block_size;
+      opts.has_zero_point = true;
+      opts.zp_is_4bit = false;
+      opts.output_abs_error = abs_error;
+      opts.output_rel_error = 0.001f;
+      std::vector<std::unique_ptr<IExecutionProvider>> eps;
+      eps.push_back(DefaultCudaExecutionProvider());
+      RunTest<MLFloat16>(opts, std::move(eps));
+    }
+  }
+}
+
+TEST(MatMulNBits, Fp16_Int4_Chunked_NoZeroPoint) {
+  constexpr float abs_error = 0.1f;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+      {"ORT_MATMULNBITS_FORCE_CHUNKED", "1"},
+      {"ORT_MATMULNBITS_CHUNK_SIZE", "64"}}};
+
+  for (auto block_size : {32, 64, 128}) {
+    for (auto M : {1, 2}) {
+      TestOptions opts{};
+      opts.M = M, opts.N = 256, opts.K = 1024;
+      opts.block_size = block_size;
+      opts.has_zero_point = false;
+      opts.zp_is_4bit = true;
+      opts.output_abs_error = abs_error;
+      opts.output_rel_error = 0.001f;
+      std::vector<std::unique_ptr<IExecutionProvider>> eps;
+      eps.push_back(DefaultCudaExecutionProvider());
+      RunTest<MLFloat16>(opts, std::move(eps));
+    }
+  }
+}
+
+TEST(MatMulNBits, BFloat16_Int4_Chunked_Uint8ZeroPoint) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "Skipping BFloat16 tests on CUDA < 8.0";
+  }
+
+  constexpr float abs_error = 0.1f;
+  constexpr bool zp_is_4bit = true;
+  constexpr bool has_zeropoint = true;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+      {"ORT_MATMULNBITS_FORCE_CHUNKED", "1"},
+      {"ORT_MATMULNBITS_CHUNK_SIZE", "64"}}};
+
+  for (auto block_size : {32, 64, 128}) {
+    for (auto M : {1, 2}) {
+      TestOptions opts{};
+      opts.M = M, opts.N = 256, opts.K = 1024;
+      opts.block_size = block_size;
+      opts.has_zero_point = has_zeropoint;
+      opts.zp_is_4bit = zp_is_4bit;
+      opts.output_abs_error = abs_error;
+      opts.output_rel_error = 0.001f;
+      std::vector<std::unique_ptr<IExecutionProvider>> eps;
+      eps.push_back(DefaultCudaExecutionProvider());
+      RunTest<BFloat16>(opts, std::move(eps));
+    }
+  }
+  // Odd blocks_per_col (K=96, block_size=32 → blocks_per_col=3) exercises the
+  // (blocks_per_col + 1) / 2 rounding in the 4-bit packed ZP offset.
+  {
+    TestOptions opts{};
+    opts.M = 1, opts.N = 256, opts.K = 96;
+    opts.block_size = 32;
+    opts.has_zero_point = has_zeropoint;
+    opts.zp_is_4bit = zp_is_4bit;
+    opts.output_abs_error = abs_error;
+    opts.output_rel_error = 0.001f;
+    std::vector<std::unique_ptr<IExecutionProvider>> eps;
+    eps.push_back(DefaultCudaExecutionProvider());
+    RunTest<BFloat16>(opts, std::move(eps));
+  }
+}
+
+TEST(MatMulNBits, BFloat16_Int4_Chunked_BFloat16ZeroPoint) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "Skipping BFloat16 tests on CUDA < 8.0";
+  }
+
+  constexpr float abs_error = 0.1f;
+  constexpr bool zp_is_4bit = false;
+  constexpr bool has_zeropoint = true;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{
+      {"ORT_MATMULNBITS_FORCE_CHUNKED", "1"},
+      {"ORT_MATMULNBITS_CHUNK_SIZE", "64"}}};
+
+  for (auto block_size : {32, 64, 128}) {
+    for (auto M : {1, 2}) {
+      TestOptions opts{};
+      opts.M = M, opts.N = 256, opts.K = 1024;
+      opts.block_size = block_size;
+      opts.has_zero_point = has_zeropoint;
+      opts.zp_is_4bit = zp_is_4bit;
+      opts.output_abs_error = abs_error;
+      opts.output_rel_error = 0.001f;
+      std::vector<std::unique_ptr<IExecutionProvider>> eps;
+      eps.push_back(DefaultCudaExecutionProvider());
+      RunTest<BFloat16>(opts, std::move(eps));
+    }
+  }
+}
 #endif
 
 #endif  // defined(USE_CUDA) || defined(USE_DML)
@@ -967,6 +1132,37 @@ TEST(MatMulNBits, InvalidGIdx_Negative) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "group_index value",
            {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kDmlExecutionProvider, kWebGpuExecutionProvider,
             kOpenVINOExecutionProvider});
+}
+
+// Test that block_size=512 (unsupported) is rejected at kernel creation.
+TEST(MatMulNBits, UnsupportedBlockSize_512) {
+  constexpr int64_t M = 1, N = 1, K = 512, block_size = 512;
+  constexpr int64_t k_blocks = (K + block_size - 1) / block_size;
+  constexpr int64_t blob_size = block_size * QBits / 8;
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("bits", int64_t{QBits});
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("accuracy_level", int64_t{0});
+
+  std::vector<float> a_data(M * K, 1.0f);
+  test.AddInput<float>("A", {M, K}, a_data, false);
+
+  std::vector<uint8_t> b_data(N * k_blocks * blob_size, 0);
+  test.AddInput<uint8_t>("B", {N, k_blocks, blob_size}, b_data, true);
+
+  std::vector<float> scales(N * k_blocks, 1.0f);
+  test.AddInput<float>("scales", {N, k_blocks}, scales, true);
+
+  std::vector<float> y_data(M * N, 0.0f);
+  test.AddOutput<float>("Y", {M, N}, y_data);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Only block sizes 16, 32, 64, 128, and 256 are supported",
+           {}, nullptr, &execution_providers);
 }
 
 }  // namespace test

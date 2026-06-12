@@ -4,13 +4,18 @@ set -e
 os_major_version=$(tr -dc '0-9.' </etc/redhat-release | cut -d \. -f1)
 
 echo "installing for os major version : $os_major_version"
+PACKAGE_MANAGER="yum"
 if [ "$os_major_version" -gt 7 ]; then
     PACKAGE_MANAGER="dnf"
-    $PACKAGE_MANAGER install -y which redhat-lsb-core expat-devel tar unzip zlib-devel make bzip2 bzip2-devel perl-IPC-Cmd openssl-devel wget
+    if [ "$os_major_version" -ge 9 ]; then
+        "${PACKAGE_MANAGER}" install -y which expat-devel tar unzip zlib-devel make bzip2 bzip2-devel perl-IPC-Cmd openssl-devel wget
+    else
+        "${PACKAGE_MANAGER}" install -y which redhat-lsb-core expat-devel tar unzip zlib-devel make bzip2 bzip2-devel perl-IPC-Cmd openssl-devel wget
+    fi
 fi
 
 # Install automatic documentation generation dependencies
-$PACKAGE_MANAGER install -y graphviz
+"${PACKAGE_MANAGER}" install -y graphviz
 
 if ! command -v ccache &>/dev/null; then
     "$PACKAGE_MANAGER" install -y ccache # FIXME: base image should already have ccache installed

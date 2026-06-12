@@ -16,10 +16,7 @@
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/tunable/cuda_tuning_context.h"
-
-#ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/cuda/bert/attention_kernel_options.h"
-#endif
 
 namespace onnxruntime {
 
@@ -91,13 +88,11 @@ class CUDAExecutionProvider : public IExecutionProvider {
   bool IsFuseConvBias() const { return info_.fuse_conv_bias; }
   bool UseTF32() const { return info_.use_tf32; }
 
-#ifndef DISABLE_CONTRIB_OPS
   // Attention kernel options parsed from sdpa_kernel cuda provider option.
   const AttentionKernelOptions* GetAttentionKernelOptions() const {
     attention_kernel_options_.InitializeOnce(info_.sdpa_kernel, true, true);
     return &attention_kernel_options_;
   }
-#endif
 
   ProviderOptions GetProviderOptions() const override {
     return CUDAExecutionProviderInfo::ToProviderOptions(info_);
@@ -123,7 +118,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(CudaGraphAnnotation_t graph_annotation_id) const override;
-  Status ReplayGraph(CudaGraphAnnotation_t graph_annotation_id) override;
+  Status ReplayGraph(CudaGraphAnnotation_t graph_annotation_id, bool sync = true) override;
   OrtGraphCaptureNodeAssignmentPolicy GetGraphCaptureNodeAssignmentPolicy() const override {
     return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
   }
@@ -143,10 +138,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
   // the tuning context might be altered when calling into a TunableOp
   mutable cuda::tunable::CudaTuningContext tuning_context_;
 
-#ifndef DISABLE_CONTRIB_OPS
   // Attention kernel options parsed from sdpa_kernel cuda provider option.
   mutable AttentionKernelOptions attention_kernel_options_;
-#endif
 
   class PerThreadContext final {
    public:
@@ -212,7 +205,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     void CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id);
     bool IsGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
     CudaGraphAnnotation_t GetCudaGraphAnnotationId(const onnxruntime::RunOptions& run_options) const;
-    Status ReplayGraph(CudaGraphAnnotation_t cuda_graph_annotation_id);
+    Status ReplayGraph(CudaGraphAnnotation_t cuda_graph_annotation_id, bool sync = true);
     void IncrementRegularRunCountBeforeGraphCapture(CudaGraphAnnotation_t cuda_graph_annotation_id);
 
    private:

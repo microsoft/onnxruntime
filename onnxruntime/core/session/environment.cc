@@ -60,6 +60,10 @@
 #include "orttraining/core/optimizer/graph_transformer_registry.h"
 #endif
 
+#if !defined(NDEBUG) && defined(__linux__) && !defined(__ANDROID__)
+#include "absl/debugging/symbolize.h"
+#endif
+
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
@@ -69,6 +73,7 @@ using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
 
 std::once_flag schemaRegistrationOnceFlag;
+std::once_flag symbolizerInitOnceFlag;
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
 #endif  // defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
@@ -267,6 +272,17 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
   if (create_global_thread_pools) {
     ORT_RETURN_IF_ERROR(SetGlobalThreadingOptions(*tp_options));
   }
+
+  // Initialize abseil symbolizer for readable stack traces in debug builds.
+  // Restricted to Linux: InitializeSymbolizer(nullptr) relies on /proc/self/exe
+  // to locate the executable, which is Linux-specific. Other platforms either
+  // use a different mechanism (Windows: C++23 <stacktrace>) or would need a real
+  // argv[0] path plumbed through, which is out of scope for this debug helper.
+#if !defined(NDEBUG) && defined(__linux__) && !defined(__ANDROID__)
+  std::call_once(symbolizerInitOnceFlag, []() {
+    absl::InitializeSymbolizer(nullptr);
+  });
+#endif
 
   ORT_TRY {
 #if !defined(ORT_MINIMAL_BUILD)

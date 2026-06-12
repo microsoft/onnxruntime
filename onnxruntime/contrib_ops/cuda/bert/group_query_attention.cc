@@ -4,15 +4,18 @@
 #include <cstdint>
 #include <vector>
 #include <algorithm>
+#include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention.h"
 #include "contrib_ops/cpu/bert/group_query_attention_helper.h"
+#include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "contrib_ops/cuda/bert/xqa/xqa_loader.h"
+#include "contrib_ops/cuda/bert/unfused_attention.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cpu/utils/debug_macros.h"
 
@@ -117,6 +120,11 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   // Memory efficient attention supports float and float16. BFloat16 support added for SM80+.
   disable_memory_efficient_attention_ = !kernel_options_->UseEfficientAttention();
 
+  // cuDNN SDPA (cudnn_frontend) supports FP16 and BF16 and is auto-preferred on SM>=90.
+  constexpr bool kIsFp16OrBf16 = std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value;
+  enable_cudnn_flash_attention_ = kIsFp16OrBf16 && kernel_options_->UseCudnnFlashAttention();
+  auto_enable_cudnn_flash_attention_ = kIsFp16OrBf16 && kernel_options_->AllowCudnnFlashAttentionAuto();
+
   if (!disable_flash_attention_) {
     zeros_ = this->GetScratchBuffer<int>(kZerosCount, nullptr);
     CUDA_CALL_THROW(cudaMemset(zeros_.get(), 0, kZerosCount * sizeof(int)));
@@ -164,6 +172,18 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   const Tensor* head_sink = context->Input<Tensor>(11);
   const Tensor* k_scale = context->Input<Tensor>(12);
   const Tensor* v_scale = context->Input<Tensor>(13);
+
+  // q_norm_weight (input 14) / k_norm_weight (input 15) are populated by the WebGPU-only
+  // GroupQueryAttentionPreNormFusion optimizer pass. The CUDA kernel does not implement
+  // the fused per-head Q/K RMS normalization prologue, so reject the node if either input
+  // is present rather than silently dropping the normalization.
+  if ((context->InputCount() > 14 && context->Input<Tensor>(14) != nullptr) ||
+      (context->InputCount() > 15 && context->Input<Tensor>(15) != nullptr)) {
+    return ORT_MAKE_STATUS(
+        ONNXRUNTIME, INVALID_ARGUMENT,
+        "GroupQueryAttention (CUDA): q_norm_weight / k_norm_weight inputs are not supported. "
+        "The per-head Q/K RMS normalization prologue is implemented only on the WebGPU EP.");
+  }
 
   if (k_quant_type_ != KVQuantizationType::NONE) {
     if (k_scale == nullptr) {
@@ -220,11 +240,17 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                                 softcap_,
                                                                 kv_cache_bit_width_,
                                                                 device_prop.maxThreadsPerBlock));
+#ifndef USE_INT4_KV_CACHE
+  if (kv_cache_bit_width_ == 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "kv_cache_bit_width==4 is not enabled in this build.");
+  }
+#endif
 
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckCustomAttentionInputs(position_ids,
                                                                                attention_bias,
                                                                                head_sink,
                                                                                parameters));
+
   parameters.local_window_size = local_window_size_;
   parameters.is_unidirectional = is_unidirectional_;
   parameters.use_smooth_softmax = use_smooth_softmax_ || head_sink != nullptr;
@@ -289,13 +315,14 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
   data.past_key = (past_key == nullptr) ? nullptr : reinterpret_cast<const CudaU*>(past_key->Data<U>());
   data.past_value = (past_value == nullptr) ? nullptr : reinterpret_cast<const CudaU*>(past_value->Data<U>());
-
   data.present_key = reinterpret_cast<CudaU*>(present_key_output->MutableData<U>());
   data.present_value = reinterpret_cast<CudaU*>(present_value_output->MutableData<U>());
-
   // Compute past_present_share_buffer early since it's needed for flash attention path selection.
-  // This compares the final pointer values after quantization handling.
-  parameters.past_present_share_buffer = (data.past_key == data.present_key);
+  bool past_key_shared = (data.past_key != nullptr && data.past_key == data.present_key);
+  bool past_value_shared = (data.past_value != nullptr && data.past_value == data.present_value);
+  ORT_ENFORCE(past_key_shared == past_value_shared,
+              "past_key/present_key and past_value/present_value must be both shared or both separate.");
+  parameters.past_present_share_buffer = past_key_shared;
 
   bool is_inputs_quantized = (k_quant_type_ != KVQuantizationType::NONE) || (v_quant_type_ != KVQuantizationType::NONE);
   constexpr bool is_int8 = std::is_same<U, int8_t>::value;
@@ -317,6 +344,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       (device_prop.major >= 8) &&
       !parameters.is_first_prompt &&
       parameters.sequence_length == 1 &&
+      parameters.kv_sequence_length > 0 &&  // Shared KV (kv_seq=0) has no new K/V to append
       parameters.past_present_share_buffer &&
       parameters.softcap == 0.0f &&
       !parameters.use_smooth_softmax &&
@@ -382,11 +410,34 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     }
   }
 
-  // Compute past_present_share_buffer early since it's needed for flash attention path selection.
-  // This compares the final pointer values after quantization handling.
+  // === cuDNN SDPA eligibility (preferred on SM>=90, Hopper/Blackwell) ===
+  // Constrained to the well-supported causal path: non-quantized FP16/BF16 KV cache, no softcap,
+  // no smooth-softmax / head sink, and no sliding window. Rotary and packed QKV are handled by
+  // PrepareQKV before the kernel runs; cuDNN handles grouped-query attention natively.
+  bool use_cudnn_sdpa = !data.use_xqa &&
+                        !is_inputs_quantized &&
+                        std::is_same<T, U>::value &&
+                        parameters.softcap == 0.0f &&
+                        !parameters.use_smooth_softmax &&
+                        head_sink == nullptr &&
+                        parameters.local_window_size == -1 &&
+                        parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH &&
+                        (enable_cudnn_flash_attention_ ||
+                         (auto_enable_cudnn_flash_attention_ && device_prop.major >= 9)) &&
+                        onnxruntime::cudnn_sdpa::is_stable() &&
+                        onnxruntime::cudnn_sdpa::is_supported(device_prop,
+                                                              parameters.num_heads,
+                                                              parameters.kv_num_heads,
+                                                              parameters.head_size,
+                                                              parameters.head_size,
+                                                              parameters.sequence_length,          // seq_len_q
+                                                              parameters.seqlen_present_kv_cache,  // seq_len_kv (capacity)
+                                                              /*is_causal=*/true);
+  data.use_cudnn_sdpa = use_cudnn_sdpa;
 
 #if USE_FLASH_ATTENTION
   bool use_flash_attention = !data.use_xqa &&
+                             !data.use_cudnn_sdpa &&
                              !disable_flash_attention_ &&
                              onnxruntime::flash::is_supported<T>(device_prop,
                                                                  parameters.head_size,
@@ -394,7 +445,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                                  parameters.kv_num_heads);
 
   data.use_flash_attention = use_flash_attention;
-  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt && parameters.past_present_share_buffer && !is_inputs_quantized;
+  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt && parameters.kv_sequence_length > 0 && parameters.past_present_share_buffer && !is_inputs_quantized;
 
   if (use_flash_attention) {
     // Allocate Flash specific buffers (Softmax LSE, Accum)
@@ -465,7 +516,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   }
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
-  if (!data.use_xqa && !data.use_flash_attention) {
+  if (!data.use_xqa && !data.use_cudnn_sdpa && !data.use_flash_attention) {
     // Fall back to memory efficient attention.
     int sm = (device_prop.major * 10) + device_prop.minor;
     bool use_memory_efficient_attention =
@@ -507,22 +558,57 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     data.qkv_buffer = reinterpret_cast<CudaT*>(unpacked_qkv_buffer.get());
   }
 
+  // ---------------------------------------------------------------------
+  // GQA-capable unfused fallback (issue #28195).
+  // Activates when Flash / MEA / XQA are all ineligible and KV is not quantized.
+  // Supports any head_size (FP32 QK accumulation), GQA, sliding window, softcap.
+  // See LaunchUnfusedAttention in contrib_ops/cuda/bert/unfused_attention.h.
+  // ---------------------------------------------------------------------
+  IAllocatorUniquePtr<void> unfused_scratch;
+  if (!data.use_xqa && !data.use_cudnn_sdpa && !data.use_flash_attention && !data.use_memory_efficient_attention &&
+      !is_inputs_quantized && !parameters.use_smooth_softmax && head_sink == nullptr &&
+      parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH) {
+    data.use_unfused = true;
+
+    const size_t B = static_cast<size_t>(parameters.batch_size);
+    const size_t N_q = static_cast<size_t>(parameters.num_heads);
+    const size_t S_q = static_cast<size_t>(parameters.sequence_length);
+    const size_t H = static_cast<size_t>(parameters.head_size);
+    // GQA guarantees head_size == v_head_size; use H_v for the Y output buffer
+    // so the allocation stays correct if a distinct v_head_size is ever exposed.
+    const size_t H_v = (parameters.v_head_size > 0)
+                           ? static_cast<size_t>(parameters.v_head_size)
+                           : H;
+    const size_t S_kv = static_cast<size_t>(parameters.total_sequence_length);
+
+    auto align = [](SafeInt<size_t> v) -> SafeInt<size_t> {
+      return ((v + SafeInt<size_t>(255)) / SafeInt<size_t>(256)) * SafeInt<size_t>(256);
+    };
+    const SafeInt<size_t> q_bnsh_bytes = align(SafeInt<size_t>(B) * N_q * S_q * H * sizeof(T));
+    const SafeInt<size_t> y_bnsh_bytes = align(SafeInt<size_t>(B) * N_q * S_q * H_v * sizeof(T));
+    const SafeInt<size_t> ws_bytes = SafeInt<size_t>(
+        onnxruntime::contrib::cuda::GetUnfusedAttentionWorkspaceSize(
+            static_cast<int>(B), static_cast<int>(N_q), static_cast<int>(S_q), static_cast<int>(S_kv)));
+    const SafeInt<size_t> workspace_offset = q_bnsh_bytes + y_bnsh_bytes;
+
+    unfused_scratch = GetScratchBuffer<void>(static_cast<size_t>(q_bnsh_bytes + y_bnsh_bytes + ws_bytes),
+                                             GetComputeStream(context));
+    auto* base = reinterpret_cast<uint8_t*>(unfused_scratch.get());
+    data.unfused_q_bnsh = reinterpret_cast<CudaT*>(base);
+    data.unfused_y_bnsh = reinterpret_cast<CudaT*>(base + static_cast<size_t>(q_bnsh_bytes));
+    data.unfused_workspace = reinterpret_cast<void*>(base + static_cast<size_t>(workspace_offset));
+  }
+
   if (kernel_options_->AllowDebugInfo()) {
     AttentionKernelDebugInfo debug_info;
     debug_info.use_flash_attention = data.use_flash_attention;
     debug_info.use_efficient_attention = data.use_memory_efficient_attention;
+    debug_info.use_cudnn_flash_attention = data.use_cudnn_sdpa;
 
     debug_info.Print("GroupQueryAttention",
                      this->Node().Name(),
                      std::is_same<T, MLFloat16>::value,
                      std::is_same<T, BFloat16>::value);
-  }
-
-  // Validate past_value pointer consistency (past_present_share_buffer was computed early after pointer setup)
-  if (parameters.past_present_share_buffer) {
-    ORT_ENFORCE(data.past_value == data.present_value, "past_value and present_value must be the same tensor when past_present_share_buffer is true");
-  } else {
-    ORT_ENFORCE(data.past_value != data.present_value, "past_value and present_value must be different tensors when past_present_share_buffer is false");
   }
 
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
@@ -556,6 +642,11 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 #endif
 
   cublasHandle_t cublas = GetCublasHandle(context);
+
+  if (data.use_cudnn_sdpa) {
+    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&data.allocator));
+    data.cudnn_handle = static_cast<void*>(GetCudnnHandle(context));
+  }
 
   ORT_RETURN_IF_ERROR((QkvToContext<CudaT, CudaU>(
       device_prop, cublas, ort_stream.get(), parameters, data)));

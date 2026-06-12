@@ -100,7 +100,7 @@ class CudaEpFactory : public OrtEpFactory {
   const std::string ep_name_{"CudaPluginExecutionProvider"};
   const std::string vendor_{"NVIDIA"};
   const uint32_t vendor_id_ = 0x10DE;  // NVIDIA PCI vendor ID
-  const std::string ep_version_{"1.0.0"};
+  const std::string ep_version_{ORT_PLUGIN_EP_VERSION};
 
   struct DeviceCacheEntry {
     int cuda_device_id{-1};
@@ -112,9 +112,20 @@ class CudaEpFactory : public OrtEpFactory {
     std::unique_ptr<CudaArenaAllocator> device_arena;
     std::unique_ptr<CudaArenaAllocator> pinned_arena;
     std::unique_ptr<CudaMempoolOrtAllocator> mempool_allocator;
+    std::unique_ptr<CudaExternalDeviceAllocator> external_device_allocator;
     int num_device_arena_users = 0;
     int num_pinned_arena_users = 0;
     int num_mempool_users = 0;
+    int num_external_allocator_users = 0;
+
+    // External allocator function pointers (set during CreateEpImpl when configured).
+    void* external_alloc = nullptr;
+    void* external_free = nullptr;
+    void* external_empty_cache = nullptr;
+
+    bool UseExternalAllocator() const {
+      return external_alloc != nullptr && external_free != nullptr;
+    }
   };
 
   struct HardwareDeviceKey {

@@ -30,6 +30,7 @@ from .quant_utils import (
     ms_domain,
     quantize_onnx_initializer,
     save_and_reload_model_with_shape_infer,
+    snap_zero_point_to_uint8,
     tensor_proto_to_array,
 )
 from .registry import CreateOpQuantizer
@@ -1071,7 +1072,7 @@ class ONNXQuantizer(BaseQuantizer):
             scale_name,
             zp_name,
             QuantizedValueType.Initializer,
-            None,
+            channel_axis,
         )
         self.quantized_value_map[weight_name] = quantized_value
 
@@ -1096,8 +1097,9 @@ class ONNXQuantizer(BaseQuantizer):
             if self.model.model.producer_name != "onnx-quantizer" or (
                 self.model.model.producer_name == "onnx-quantizer" and scale_init is not None
             ):
-                # axis is not specified so scale_init must be a scalar.
-                assert scale_init is None or onnx.numpy_helper.to_array(scale_init).size == 1
+                # Per-tensor (axis=None) requires a scalar scale.
+                if quantized_value.axis is None:
+                    assert scale_init is None or onnx.numpy_helper.to_array(scale_init).size == 1
 
             dqlinear_name = value_name + "_DequantizeLinear"
             dqlinear_node = self.model.find_node_by_name(dqlinear_name, self.new_nodes, self.model.graph())
@@ -1108,7 +1110,11 @@ class ONNXQuantizer(BaseQuantizer):
                     quantized_value.zp_name,
                 ]
                 dequantize_node = onnx.helper.make_node(
-                    "DequantizeLinear", dqlinear_inputs, [value_name], dqlinear_name
+                    "DequantizeLinear",
+                    dqlinear_inputs,
+                    [value_name],
+                    dqlinear_name,
+                    axis=quantized_value.axis,
                 )
                 return dequantize_node
             else:
@@ -1157,6 +1163,11 @@ class ONNXQuantizer(BaseQuantizer):
                 reduce_range = quant_overrides.get("reduce_range", False)
                 qmin, qmax = get_qmin_qmax_for_qType(quant_type, reduce_range=reduce_range, symmetric=symmetric)
                 zero, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric, self.min_real_range)
+                if self.is_activation_restricted_asymmetric and quant_type == onnx.TensorProto.UINT8 and not symmetric:
+                    # Forward effective qmin/qmax and min_real_range so reduce_range / MinimumRealRange are honored.
+                    zero, scale = snap_zero_point_to_uint8(
+                        rmin, rmax, qmin=qmin, qmax=qmax, min_real_range=self.min_real_range
+                    )
 
             quantization_params[tensor_name] = QuantizationParams(zero_point=zero, scale=scale, quant_type=quant_type)
 

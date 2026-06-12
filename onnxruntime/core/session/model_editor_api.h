@@ -29,20 +29,20 @@ ORT_API_STATUS_IMPL(CreateNode, const char* operator_name, const char* domain_na
                     _Outptr_ OrtNode** node);
 
 ORT_API_STATUS_IMPL(CreateGraph, _Outptr_ OrtGraph** graph);
-ORT_API_STATUS_IMPL(SetGraphInputs, _In_ OrtGraph* graph,
-                    _In_reads_(inputs_len) _In_ OrtValueInfo** inputs, _In_ size_t inputs_len);
-ORT_API_STATUS_IMPL(SetGraphOutputs, _In_ OrtGraph* graph,
-                    _In_reads_(outputs_len) _In_ OrtValueInfo** outputs, _In_ size_t outputs_len);
-ORT_API_STATUS_IMPL(AddInitializerToGraph, _In_ OrtGraph* graph, _In_ const char* name, _Inout_ OrtValue* tensor,
+ORT_API_STATUS_IMPL(SetGraphInputs, _Inout_ OrtGraph* graph,
+                    _In_reads_(inputs_len) _Inout_ OrtValueInfo** inputs, _In_ size_t inputs_len);
+ORT_API_STATUS_IMPL(SetGraphOutputs, _Inout_ OrtGraph* graph,
+                    _In_reads_(outputs_len) _Inout_ OrtValueInfo** outputs, _In_ size_t outputs_len);
+ORT_API_STATUS_IMPL(AddInitializerToGraph, _Inout_ OrtGraph* graph, _In_ const char* name, _Inout_ OrtValue* tensor,
                     bool data_is_external);
-ORT_API_STATUS_IMPL(AddNodeToGraph, _In_ OrtGraph* graph, _Inout_ OrtNode* node);
+ORT_API_STATUS_IMPL(AddNodeToGraph, _Inout_ OrtGraph* graph, _Inout_ OrtNode* node);
 
 ORT_API_STATUS_IMPL(CreateModel,
                     _In_reads_(opset_entries_len) const char* const* domain_names,
                     _In_reads_(opset_entries_len) const int* opset_versions,
                     size_t opset_entries_len,
                     _Outptr_ OrtModel** model);
-ORT_API_STATUS_IMPL(AddGraphToModel, _In_ OrtModel* model, _Inout_ OrtGraph* graph);
+ORT_API_STATUS_IMPL(AddGraphToModel, _Inout_ OrtModel* model, _Inout_ OrtGraph* graph);
 
 ORT_API_STATUS_IMPL(CreateSessionFromModel, _In_ const OrtEnv* env, _In_ const OrtModel* model,
                     _In_ const OrtSessionOptions* options, _Outptr_ OrtSession** out);

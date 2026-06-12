@@ -1334,6 +1334,19 @@ BitShift<T>::BitShift(const OpKernelInfo& info) : OpKernel(info) {
     ORT_THROW("Invalid direction value of '", direction, "'. Valid values are 'LEFT' or 'RIGHT'.");
 }
 
+// Shifting by >= the bit width of an unsigned type is undefined behavior in C++.
+// On x86, 64-bit shifts mask the shift amount to 6 bits, so shift by 64 acts like shift by 0.
+// Guard against this by returning 0 when the shift amount >= the bit width.
+template <typename T>
+inline T SafeShiftLeft(T value, T shift) {
+  return shift >= sizeof(T) * 8 ? T{0} : value << shift;
+}
+
+template <typename T>
+inline T SafeShiftRight(T value, T shift) {
+  return shift >= sizeof(T) * 8 ? T{0} : value >> shift;
+}
+
 template <typename T>
 Status BitShift<T>::Compute(OpKernelContext* context) const {
   ProcessBroadcastSpanFuncs funcs{
@@ -1345,11 +1358,11 @@ Status BitShift<T>::Compute(OpKernelContext* context) const {
         ptrdiff_t i = 0;
         if (shift_left) {
           for (const auto& input : input1.array()) {
-            output[i++] = input0 << input;
+            output[i++] = SafeShiftLeft(input0, input);
           }
         } else {
           for (const auto& input : input1.array()) {
-            output[i++] = input0 >> input;
+            output[i++] = SafeShiftRight(input0, input);
           }
         }
       },
@@ -1361,11 +1374,11 @@ Status BitShift<T>::Compute(OpKernelContext* context) const {
         ptrdiff_t i = 0;
         if (shift_left) {
           for (const auto& input : input0.array()) {
-            output[i++] = input << input1;
+            output[i++] = SafeShiftLeft(input, input1);
           }
         } else {
           for (const auto& input : input0.array()) {
-            output[i++] = input >> input1;
+            output[i++] = SafeShiftRight(input, input1);
           }
         }
       },
@@ -1380,11 +1393,11 @@ Status BitShift<T>::Compute(OpKernelContext* context) const {
         auto cur_out = output.begin(), end_out = output.end();
         if (shift_left) {
           for (; cur0 != end0; ++cur0, ++cur1, ++cur_out) {
-            *cur_out = *cur0 << *cur1;
+            *cur_out = SafeShiftLeft(*cur0, *cur1);
           }
         } else {
           for (; cur0 != end0; ++cur0, ++cur1, ++cur_out) {
-            *cur_out = *cur0 >> *cur1;
+            *cur_out = SafeShiftRight(*cur0, *cur1);
           }
         }
 
@@ -1877,7 +1890,7 @@ Status PRelu<float>::Compute(OpKernelContext* context) const {
   ProcessBroadcastSpanFuncs funcs{
       [](BroadcastHelper& per_iter_bh) {
         float input0 = per_iter_bh.ScalarInput0<float>();
-        if (input0 > 0)
+        if (input0 >= 0)
           per_iter_bh.OutputEigen<float>().array() = input0;
         else
           per_iter_bh.OutputEigen<float>() = input0 * per_iter_bh.EigenInput1<float>().array();
@@ -1888,8 +1901,7 @@ Status PRelu<float>::Compute(OpKernelContext* context) const {
         float* output = per_iter_bh.OutputEigen<float>().data();
         size_t size = per_iter_bh.OutputEigen<float>().size();
         for (size_t i = 0; i < size; i++) {
-          output[i] = static_cast<float>(input0[i] > 0) * input0[i] +
-                      (1.0f - static_cast<float>(input0[i] > 0)) * input0[i] * input1;
+          output[i] = (input0[i] >= 0) ? input0[i] : input0[i] * input1;
         }
       },
       [](BroadcastHelper& per_iter_bh) {
@@ -1898,8 +1910,7 @@ Status PRelu<float>::Compute(OpKernelContext* context) const {
         float* output = per_iter_bh.OutputEigen<float>().data();
         size_t size = per_iter_bh.OutputEigen<float>().size();
         for (size_t i = 0; i < size; i++) {
-          output[i] = static_cast<float>(input0[i] > 0) * input0[i] +
-                      (1.0f - static_cast<float>(input0[i] > 0)) * input0[i] * input1[i];
+          output[i] = (input0[i] >= 0) ? input0[i] : input0[i] * input1[i];
         }
       }};
 
@@ -2023,7 +2034,7 @@ Status Erf<float>::Compute(OpKernelContext* context) const {
         const float* p_input = input_data + start;
         float* p_output = output_data + start;
         const std::ptrdiff_t count = std::min(length_per_task, elem_count - start);
-        MlasComputeErf(p_input, p_output, count);
+        MlasComputeErf(p_input, p_output, static_cast<size_t>(count));
       },
       0);
 
@@ -2041,7 +2052,6 @@ Status Erf<MLFloat16>::Compute(OpKernelContext* context) const {
   int64_t elem_count = X->Shape().Size();
   constexpr int64_t length_per_task = 4096;
   int64_t task_count = (elem_count + length_per_task - 1) / length_per_task;
-
   const auto narrow_task_count = onnxruntime::narrow<std::ptrdiff_t>(task_count);
 
   // get allocator for temporary buffers
@@ -2053,19 +2063,12 @@ Status Erf<MLFloat16>::Compute(OpKernelContext* context) const {
       [&](ptrdiff_t task_idx) {
         const auto start = task_idx * length_per_task;
         const int64_t count = std::min(length_per_task, elem_count - start);
-        const auto narrow_count = onnxruntime::narrow<std::ptrdiff_t>(count);
-
         const MLFloat16* p_input = input_data + start;
         MLFloat16* p_output = output_data + start;
-
-        // allocate temp buffers using ORT allocator
-        IAllocatorUniquePtr<float> input_fp32 = IAllocator::MakeUniquePtr<float>(alloc, narrow_count);
-        IAllocatorUniquePtr<float> output_fp32 = IAllocator::MakeUniquePtr<float>(alloc, narrow_count);
-
-        // convert, compute, convert back
-        MlasConvertHalfToFloatBuffer(p_input, input_fp32.get(), narrow_count);
-        MlasComputeErf(input_fp32.get(), output_fp32.get(), narrow_count);
-        MlasConvertFloatToHalfBuffer(output_fp32.get(), p_output, narrow_count);
+        // allocate temp buffers for fp32 input and output
+        IAllocatorUniquePtr<float> input_tmp_fp32 = IAllocator::MakeUniquePtr<float>(alloc, static_cast<size_t>(count));
+        IAllocatorUniquePtr<float> output_tmp_fp32 = IAllocator::MakeUniquePtr<float>(alloc, static_cast<size_t>(count));
+        MlasComputeFP16Erf(p_input, p_output, input_tmp_fp32.get(), output_tmp_fp32.get(), static_cast<size_t>(count));
       },
       0);
 

@@ -55,6 +55,9 @@
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/matmul_activation_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
+#include "core/optimizer/group_query_attention_pre_norm_fusion.h"
+#include "core/optimizer/matmul_nbits_qkv_fusion.h"
+#include "core/optimizer/matmul_nbits_mlp_fusion.h"
 #include "core/optimizer/matmul_bn_fusion.h"
 #include "core/optimizer/matmul_integer_to_float.h"
 #include "core/optimizer/matmul_scale_fusion.h"
@@ -411,7 +414,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<SkipLayerNormFusion>(cpu_acl_cuda_dml_js_webgpu_eps));
       transformers.emplace_back(std::make_unique<BiasSkipLayerNormFusion>(cpu_acl_cuda_dml_js_webgpu_eps));
       transformers.emplace_back(std::make_unique<FastGeluFusion>(cpu_cuda_dml_eps));
-      transformers.emplace_back(std::make_unique<QuickGeluFusion>(cpu_acl_cuda_dml_eps));
+      transformers.emplace_back(std::make_unique<QuickGeluFusion>(cpu_acl_cuda_dml_js_webgpu_eps));
 
       // GeluApproximation has side effects which may change results. It needs to be manually enabled,
       // or alternatively the model can be updated offline using a model conversion script
@@ -446,6 +449,12 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 #endif
 
       transformers.emplace_back(std::make_unique<MatMulNBitsFusion>(cpu_ep));
+      transformers.emplace_back(std::make_unique<GroupQueryAttentionPreNormFusion>(
+          InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
+      transformers.emplace_back(std::make_unique<MatMulNBitsMlpFusion>(
+          InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
+      transformers.emplace_back(std::make_unique<MatMulNBitsQkvFusion>(
+          InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
       // The QDQFinalCleanupTransformer must run AFTER other transformers that fuse Q/DQ nodes. Otherwise, their
@@ -463,7 +472,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       auto cpu_registry = cpu_execution_provider.GetKernelRegistry();
       auto nhwc_transformer = std::make_unique<NhwcTransformer>(std::move(cpu_allocator), std::move(cpu_registry),
-                                                                logger);
+                                                                logger, session_options.config_options);
       if (nhwc_transformer->IsActive()) {
         transformers.emplace_back(std::move(nhwc_transformer));
       }
@@ -566,7 +575,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
         AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
         auto cpu_registry = cpu_execution_provider.GetKernelRegistry();
         auto nhwc_transformer = std::make_unique<NhwcTransformer>(std::move(cpu_allocator), std::move(cpu_registry),
-                                                                  logger);
+                                                                  logger, session_options.config_options);
         if (nhwc_transformer->IsActive()) {
           transformers.emplace_back(std::move(nhwc_transformer));
         }

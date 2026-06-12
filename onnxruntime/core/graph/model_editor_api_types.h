@@ -9,13 +9,31 @@
 #include <unordered_map>
 #include <vector>
 
-#include "core/common/inlined_containers_fwd.h"
+#include "core/common/inlined_containers.h"
 #include "core/framework/ort_value.h"
 #include "core/graph/abi_graph_types.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
+#include "core/session/ort_apis.h"
 
 namespace onnxruntime {
+
+// Deleters that route destruction through the official OrtApis::Release* entry points instead of
+// invoking `delete` directly. This keeps every owning slot in sync with whatever Release* does today
+// (`delete`) and with whatever it may do in the future (refcount, latch, pool return, etc.) without
+// having to find every plain-`delete` site.
+struct OrtValueDeleter {
+  void operator()(::OrtValue* p) const noexcept { ::OrtApis::ReleaseValue(p); }
+};
+struct OrtValueInfoDeleter {
+  void operator()(::OrtValueInfo* p) const noexcept { ::OrtApis::ReleaseValueInfo(p); }
+};
+struct OrtNodeDeleter {
+  void operator()(::OrtNode* p) const noexcept { ::OrtApis::ReleaseNode(p); }
+};
+struct OrtGraphDeleter {
+  void operator()(::OrtGraph* p) const noexcept { ::OrtApis::ReleaseGraph(p); }
+};
 
 /// <summary>
 /// Concrete implementation of OrtValueInfo used in the ModelEditorApi.
@@ -233,11 +251,19 @@ struct ModelEditorGraph : public OrtGraph {
                            "OrtModelEditorApi does not support getting the parent node for OrtGraph");
   }
 
-  onnxruntime::InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>> inputs;
-  onnxruntime::InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>> outputs;
-  std::unordered_map<std::string, std::unique_ptr<OrtValue>> initializers;
-  std::unordered_map<std::string, std::unique_ptr<OrtValue>> external_initializers;
-  std::vector<std::unique_ptr<onnxruntime::ModelEditorNode>> nodes;
+  InlinedVector<std::unique_ptr<ModelEditorValueInfo, OrtValueInfoDeleter>> inputs;
+  InlinedVector<std::unique_ptr<ModelEditorValueInfo, OrtValueInfoDeleter>> outputs;
+  InlinedHashMap<std::string, std::unique_ptr<OrtValue, OrtValueDeleter>> initializers;
+  InlinedHashMap<std::string, std::unique_ptr<OrtValue, OrtValueDeleter>> external_initializers;
+  InlinedVector<std::unique_ptr<ModelEditorNode, OrtNodeDeleter>> nodes;
+
+  // O(1) duplicate-pointer guards for AddInitializerToGraph / AddNodeToGraph.
+  // Mirror the union of `initializers` + `external_initializers`, and `nodes`, respectively.
+  // There is no remove/replace API for initializers or nodes, so these caches grow monotonically
+  // alongside their owning collections and never need invalidation.
+  InlinedHashSet<const OrtValue*> initializer_ptrs;
+  InlinedHashSet<const ModelEditorNode*> node_ptrs;
+
   std::string name = "ModelEditorGraph";
   std::filesystem::path model_path;
   ModelMetadata model_metadata;
@@ -246,6 +272,6 @@ struct ModelEditorGraph : public OrtGraph {
 }  // namespace onnxruntime
 
 struct OrtModel {
-  std::unique_ptr<OrtGraph> graph;
+  std::unique_ptr<OrtGraph, onnxruntime::OrtGraphDeleter> graph;
   std::unordered_map<std::string, int> domain_to_version;
 };
