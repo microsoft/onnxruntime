@@ -317,6 +317,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       &fc2_shape, fc2_experts_bias_optional, fc2_scales, fc2_zeros,
       nullptr, nullptr, nullptr, nullptr,
       pack_size, is_fused_swiglu, block_size_));
+  ORT_RETURN_IF_NOT(k_ > 0 && k_ <= moe_params.num_experts,
+                    "QMoE requires 0 < k <= num_experts, got k=", k_,
+                    " and num_experts=", moe_params.num_experts);
 
   if (uses_fp4_weight_scales) {
     constexpr int64_t fp4_block_size = 32;
