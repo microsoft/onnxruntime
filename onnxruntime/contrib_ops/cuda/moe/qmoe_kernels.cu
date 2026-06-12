@@ -166,19 +166,22 @@ __global__ void SoftmaxTopKKernel(const T* logits, float* topk_scales, int* topk
 // ~2.5x faster than k rounds of block-argmax on this size (benchmarked), and is
 // the layout onnxruntime-genai's top-k benchmarks also recommend (CUB block
 // merge) for sort sizes up to ~1024. The capacity (kBlockSize*kItemsPerThread)
-// must be >= num_experts; padding lanes carry (-inf, INT_MAX) so valid -inf
+// must be >= num_routed; padding lanes carry (-inf, INT_MAX) so valid -inf
 // expert scores sort ahead of padding. Tie-breaking matches the scalar kernel
 // (lower expert index first) via the same packed stable sort key used by the
 // warp merge path.
 
 template <typename T, int kBlockSize, int kItemsPerThread>
 __global__ void SoftmaxTopKMergeKernel(const T* logits, float* topk_scales, int* topk_indices,
-                                       int num_rows, int num_experts, int k, bool normalize_scales) {
+                                       int num_rows, int num_experts, int k, bool normalize_scales,
+                                       int num_shared_experts) {
   const int row = blockIdx.x;
   if (row >= num_rows) return;
 
   const T* row_logits = logits + static_cast<size_t>(row) * num_experts;
   const int tid = threadIdx.x;
+  const int num_routed = num_experts - num_shared_experts;
+  const int slots_per_row = k + num_shared_experts;
 
   using BlockMergeSort = cub::BlockMergeSort<uint64_t, kBlockSize, kItemsPerThread, cub::NullType>;
   using BlockReduce = cub::BlockReduce<float, kBlockSize>;
@@ -197,11 +200,12 @@ __global__ void SoftmaxTopKMergeKernel(const T* logits, float* topk_scales, int*
 #pragma unroll
   for (int j = 0; j < kItemsPerThread; ++j) {
     const int idx = tid * kItemsPerThread + j;
-    const float logit = (idx < num_experts) ? static_cast<float>(row_logits[idx])
-                                            : onnxruntime::cuda::topk::kNegativeInfinity;
-    const int index = (idx < num_experts) ? idx : INT_MAX;
+    const bool is_routed = (idx < num_routed);
+    const float logit = is_routed ? static_cast<float>(row_logits[idx])
+                                  : onnxruntime::cuda::topk::kNegativeInfinity;
+    const int index = is_routed ? idx : INT_MAX;
     keys[j] = onnxruntime::cuda::topk::PackStableSortKey(logit, index);
-    local_max = fmaxf(local_max, logit);
+    if (is_routed) local_max = fmaxf(local_max, logit);
   }
 
   // Softmax denominator over all experts (needed when normalize_scales is false;
@@ -217,7 +221,7 @@ __global__ void SoftmaxTopKMergeKernel(const T* logits, float* topk_scales, int*
 #pragma unroll
   for (int j = 0; j < kItemsPerThread; ++j) {
     const int idx = tid * kItemsPerThread + j;
-    if (idx < num_experts) {
+    if (idx < num_routed) {
       local_sum += expf(onnxruntime::cuda::topk::UnpackStableSortScore(keys[j]) - max_val);
     }
   }
@@ -239,7 +243,7 @@ __global__ void SoftmaxTopKMergeKernel(const T* logits, float* topk_scales, int*
     const int rank = tid * kItemsPerThread + j;
     if (rank < k) {
       const uint64_t key = keys[j];
-      topk_indices[static_cast<size_t>(row) * k + rank] =
+      topk_indices[static_cast<size_t>(row) * slots_per_row + rank] =
           onnxruntime::cuda::topk::UnpackStableSortIndex(key);
       s_topk[rank] = SoftmaxScale(onnxruntime::cuda::topk::UnpackStableSortScore(key), max_val, inv_sum);
     }
@@ -251,39 +255,52 @@ __global__ void SoftmaxTopKMergeKernel(const T* logits, float* topk_scales, int*
       float scale_sum = 0.0f;
       for (int i = 0; i < k; ++i) scale_sum += s_topk[i];
       const float denom = TopKNormalizeDenom(normalize_scales, scale_sum);
-      for (int i = 0; i < k; ++i) topk_scales[static_cast<size_t>(row) * k + i] = s_topk[i] / denom;
+      for (int i = 0; i < k; ++i) topk_scales[static_cast<size_t>(row) * slots_per_row + i] = s_topk[i] / denom;
     } else {
-      for (int i = 0; i < k; ++i) topk_scales[static_cast<size_t>(row) * k + i] = s_topk[i];
+      for (int i = 0; i < k; ++i) topk_scales[static_cast<size_t>(row) * slots_per_row + i] = s_topk[i];
+    }
+    for (int j = 0; j < num_shared_experts; ++j) {
+      const float gate = static_cast<float>(row_logits[num_routed + j]);
+      topk_scales[static_cast<size_t>(row) * slots_per_row + k + j] = 1.0f / (1.0f + expf(-gate));
+      topk_indices[static_cast<size_t>(row) * slots_per_row + k + j] = num_routed + j;
     }
   }
 }
 
-// Warp-bitonic softmax + top-k for num_experts <= 32. Each warp handles one
-// row, with lane `l` owning expert `l`. The whole softmax reduction and the
-// sort are done with warp shuffles (no shared memory). This is the fastest path
-// for tiny expert counts per the onnxruntime-genai top-k benchmark. Tie-breaking
-// (equal scores prefer the lower expert index) matches SoftmaxTopKMergeKernel.
+// Warp-bitonic softmax + top-k for num_routed <= 32. Each warp handles one
+// row, with lane `l` owning routed expert `l`. The whole softmax reduction and
+// the sort are done with warp shuffles (no shared memory). This is the fastest
+// path for tiny expert counts per the onnxruntime-genai top-k benchmark.
+// Tie-breaking (equal scores prefer the lower expert index) matches
+// SoftmaxTopKMergeKernel. Shared experts are appended after the top-k and do
+// not consume warp lanes, so a power-of-two routed count stays on this path.
 template <typename T, int kWarpsPerBlock>
 __global__ void SoftmaxTopKWarpBitonicKernel(const T* logits, float* topk_scales, int* topk_indices,
-                                             int num_rows, int num_experts, int k, bool normalize_scales) {
+                                             int num_rows, int num_experts, int k, bool normalize_scales,
+                                             int num_shared_experts) {
   const int lane = threadIdx.x;
   const int row = blockIdx.x * kWarpsPerBlock + threadIdx.y;
   if (row >= num_rows) return;
 
+  const int num_routed = num_experts - num_shared_experts;
+  const int slots_per_row = k + num_shared_experts;
   const T* row_logits = logits + static_cast<size_t>(row) * num_experts;
-  const float logit = (lane < num_experts) ? static_cast<float>(row_logits[lane])
-                                           : onnxruntime::cuda::topk::kNegativeInfinity;
 
+  // Only routed experts participate in the softmax/top-k sort; lane l owns
+  // routed expert l (or -inf padding). Shared experts are appended separately
+  // and may lie beyond the warp's lane range when num_routed == warp size.
+  const float logit = (lane < num_routed) ? static_cast<float>(row_logits[lane])
+                                          : onnxruntime::cuda::topk::kNegativeInfinity;
   const float max_val = WarpReduceMax(logit);
 
-  // Warp-wide exp sum (softmax denominator over all experts).
-  const float sum_exp = WarpReduceSum((lane < num_experts) ? expf(logit - max_val) : 0.0f);
+  // Warp-wide exp sum (softmax denominator over routed experts only).
+  const float sum_exp = WarpReduceSum((lane < num_routed) ? expf(logit - max_val) : 0.0f);
   const float inv_sum = SafeInvSum(sum_exp);
 
-  // Sort (logit, expert index) descending; sorting by logit is equivalent to
-  // sorting by softmax probability since the mapping is monotonic.
+  // Sort (logit, expert index) descending; padding lanes use (-inf, INT_MAX)
+  // so they sort to the end and cannot appear in the top-k.
   float score = logit;
-  int index = (lane < num_experts) ? lane : INT_MAX;
+  int index = (lane < num_routed) ? lane : INT_MAX;
   onnxruntime::cuda::topk::WarpBitonicSortDescending(score, index);
 
   // Lane r now holds the rank-r element. Compute the top-k probabilities.
@@ -294,8 +311,17 @@ __global__ void SoftmaxTopKWarpBitonicKernel(const T* logits, float* topk_scales
   }
 
   if (lane < k) {
-    topk_scales[static_cast<size_t>(row) * k + lane] = prob;
-    topk_indices[static_cast<size_t>(row) * k + lane] = index;
+    topk_scales[static_cast<size_t>(row) * slots_per_row + lane] = prob;
+    topk_indices[static_cast<size_t>(row) * slots_per_row + lane] = index;
+  }
+
+  // Append always-on shared expert sigmoid gates. The gate logits are read
+  // directly from global memory (not the per-lane `logit`) because shared
+  // experts may lie beyond the warp's lane range when num_routed == warp size.
+  for (int j = lane; j < num_shared_experts; j += onnxruntime::cuda::topk::kWarpSize) {
+    const float gate = static_cast<float>(row_logits[num_routed + j]);
+    topk_scales[static_cast<size_t>(row) * slots_per_row + k + j] = 1.0f / (1.0f + expf(-gate));
+    topk_indices[static_cast<size_t>(row) * slots_per_row + k + j] = num_routed + j;
   }
 }
 
@@ -305,13 +331,16 @@ __global__ void SoftmaxTopKWarpBitonicKernel(const T* logits, float* topk_scales
 // matches SoftmaxTopKMergeKernel via a packed stable sort key.
 template <typename T, int kBufferSize>
 __global__ void SoftmaxTopKWarpMergeKernel(const T* logits, float* topk_scales, int* topk_indices,
-                                           int num_rows, int num_experts, int k, bool normalize_scales) {
+                                           int num_rows, int num_experts, int k, bool normalize_scales,
+                                           int num_shared_experts) {
   constexpr int kWarpSize = onnxruntime::cuda::topk::kWarpSize;
   using WarpMergeSorter = onnxruntime::cuda::topk::WarpMergeSorter<kBufferSize>;
 
   const int row = blockIdx.x;
   if (row >= num_rows) return;
   const int lane = threadIdx.x;
+  const int num_routed = num_experts - num_shared_experts;
+  const int slots_per_row = k + num_shared_experts;
 
   __shared__ float s_scores[kBufferSize];
   __shared__ int s_indices[kBufferSize];
@@ -319,26 +348,27 @@ __global__ void SoftmaxTopKWarpMergeKernel(const T* logits, float* topk_scales, 
 
   const T* row_logits = logits + static_cast<size_t>(row) * num_experts;
 
-  // Load logits into shared memory and compute the warp-wide max.
+  // Load routed logits; shared expert slots get -inf/INT_MAX so they sort to the end.
   float local_max = onnxruntime::cuda::topk::kNegativeInfinity;
   for (int i = lane; i < kBufferSize; i += kWarpSize) {
-    const float v = (i < num_experts) ? static_cast<float>(row_logits[i])
-                                      : onnxruntime::cuda::topk::kNegativeInfinity;
+    const bool is_routed = (i < num_routed);
+    const float v = is_routed ? static_cast<float>(row_logits[i])
+                              : onnxruntime::cuda::topk::kNegativeInfinity;
     s_scores[i] = v;
-    s_indices[i] = (i < num_experts) ? i : INT_MAX;
-    local_max = fmaxf(local_max, v);
+    s_indices[i] = is_routed ? i : INT_MAX;
+    if (is_routed) local_max = fmaxf(local_max, v);
   }
   const float max_val = WarpReduceMax(local_max);
 
-  // Warp-wide exp sum over all experts.
+  // Warp-wide exp sum over routed experts only.
   float local_sum = 0.0f;
-  for (int i = lane; i < num_experts; i += kWarpSize) {
+  for (int i = lane; i < num_routed; i += kWarpSize) {
     local_sum += expf(s_scores[i] - max_val);
   }
   const float inv_sum = SafeInvSum(WarpReduceSum(local_sum));
 
   __syncwarp();
-  WarpMergeSorter::Sort(s_scores, s_indices, temp_storage, num_experts);
+  WarpMergeSorter::Sort(s_scores, s_indices, temp_storage, num_routed);
   __syncwarp();
 
   // s_scores[r]/s_indices[r] now hold the rank-r logit/expert index.
@@ -353,8 +383,15 @@ __global__ void SoftmaxTopKWarpMergeKernel(const T* logits, float* topk_scales, 
 
   for (int i = lane; i < k; i += kWarpSize) {
     const float prob = SoftmaxScale(s_scores[i], max_val, inv_sum);
-    topk_scales[static_cast<size_t>(row) * k + i] = normalize_scales ? (prob / denom) : prob;
-    topk_indices[static_cast<size_t>(row) * k + i] = s_indices[i];
+    topk_scales[static_cast<size_t>(row) * slots_per_row + i] = normalize_scales ? (prob / denom) : prob;
+    topk_indices[static_cast<size_t>(row) * slots_per_row + i] = s_indices[i];
+  }
+
+  // Append always-on shared expert sigmoid gates.
+  for (int j = lane; j < num_shared_experts; j += kWarpSize) {
+    const float gate = static_cast<float>(row_logits[num_routed + j]);
+    topk_scales[static_cast<size_t>(row) * slots_per_row + k + j] = 1.0f / (1.0f + expf(-gate));
+    topk_indices[static_cast<size_t>(row) * slots_per_row + k + j] = num_routed + j;
   }
 }
 
@@ -363,46 +400,50 @@ void DispatchSoftmaxTopK(const T* logits, float* topk_scales, int* topk_indices,
                          int num_rows, int num_experts, int k, bool normalize_scales,
                          int num_shared_experts,
                          cudaStream_t stream) {
-  ORT_ENFORCE(k > 0 && k <= num_experts,
-              "SoftmaxTopK requires 0 < k <= num_experts, got k=", k,
-              " and num_experts=", num_experts);
+  const int num_routed = num_experts - num_shared_experts;
+  ORT_ENFORCE(k > 0 && k <= num_routed,
+              "SoftmaxTopK requires 0 < k <= num_experts - num_shared_experts, got k=", k,
+              ", num_experts=", num_experts, " and num_shared_experts=", num_shared_experts);
 
   // Block-per-row CUB merge sort is the fastest path for the common decode case
-  // (one block fully sorts a row). Pick the smallest capacity that covers
-  // num_experts. k must fit in s_topk (<= 64).
+  // (one block fully sorts a row). The path is chosen by num_routed (the number
+  // of experts actually sorted) rather than num_experts, since shared experts
+  // are appended separately and do not consume sort capacity. This keeps a
+  // power-of-two routed count (e.g. 32) on the fast bitonic path even when an
+  // extra shared expert is fused in. k must fit in s_topk (<= 64).
   const dim3 grid(static_cast<unsigned>(num_rows));
-  if (k <= 64 && num_experts <= 1024) {
+  if (k <= 64 && num_routed <= 1024) {
     // Tiny expert counts: a single warp sorts a row entirely in registers via
     // an in-register bitonic sort (no shared memory). Multiple warps per block
     // process multiple rows for better occupancy.
-    if (num_experts <= onnxruntime::cuda::topk::kWarpBitonicMaxSize) {
+    if (num_routed <= onnxruntime::cuda::topk::kWarpBitonicMaxSize) {
       constexpr int kWarpsPerBlock = 8;
       const dim3 block(static_cast<unsigned>(onnxruntime::cuda::topk::kWarpSize), kWarpsPerBlock);
       const dim3 bitonic_grid(static_cast<unsigned>((num_rows + kWarpsPerBlock - 1) / kWarpsPerBlock));
       SoftmaxTopKWarpBitonicKernel<T, kWarpsPerBlock><<<bitonic_grid, block, 0, stream>>>(
-          logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales);
+          logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales, num_shared_experts);
       return;
-    } else if (num_experts <= onnxruntime::cuda::topk::kWarpMergeMaxSize) {
+    } else if (num_routed <= onnxruntime::cuda::topk::kWarpMergeMaxSize) {
       // Single warp per row sorts up to 64 logits in shared memory (CUB warp
       // merge sort), the genai-recommended path for sort sizes in (32, 64].
       SoftmaxTopKWarpMergeKernel<T, 64><<<grid, onnxruntime::cuda::topk::kWarpSize, 0, stream>>>(
-          logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales);
+          logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales, num_shared_experts);
       return;
-    } else if (num_experts <= 128) {
+    } else if (num_routed <= 128) {
       SoftmaxTopKMergeKernel<T, 128, 1><<<grid, 128, 0, stream>>>(
-          logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales);
+          logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales, num_shared_experts);
       return;
-    } else if (num_experts <= 256) {
+    } else if (num_routed <= 256) {
       SoftmaxTopKMergeKernel<T, 128, 2><<<grid, 128, 0, stream>>>(
-          logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales);
+          logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales, num_shared_experts);
       return;
-    } else if (num_experts <= 512) {
+    } else if (num_routed <= 512) {
       SoftmaxTopKMergeKernel<T, 128, 4><<<grid, 128, 0, stream>>>(
-          logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales);
+          logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales, num_shared_experts);
       return;
-    } else /*if (num_experts <= 1024)*/ {
+    } else /*if (num_routed <= 1024)*/ {
       SoftmaxTopKMergeKernel<T, 256, 4><<<grid, 256, 0, stream>>>(
-          logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales);
+          logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales, num_shared_experts);
       return;
     }
   } else {
@@ -410,7 +451,7 @@ void DispatchSoftmaxTopK(const T* logits, float* topk_scales, int* topk_indices,
     const int block = 256;
     const int grid_1d = Compute1DGridSize(num_rows, block);
     SoftmaxTopKKernel<T><<<grid_1d, block, 0, stream>>>(
-        logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales);
+        logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales, num_shared_experts);
   }
 }
 
@@ -437,7 +478,7 @@ void LaunchSoftmaxTopK(
     bool normalize_scales,
     cudaStream_t stream,
     int num_shared_experts) {
-  DispatchSoftmaxTopK<float>(logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales, num_shared_experts, stream);
+  DispatchSoftmaxTopK<half>(logits, topk_scales, topk_indices, num_rows, num_experts, k, normalize_scales, num_shared_experts, stream);
 }
 
 void LaunchSoftmaxTopK(
