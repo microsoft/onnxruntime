@@ -24,6 +24,7 @@
 #include <cfloat>
 #include <climits>
 #include <cstdint>
+#include <limits>
 
 #include "core/providers/cuda/cu_inc/cub.cuh"
 
@@ -39,6 +40,7 @@ constexpr int kWarpSize = 32;
 // kWarpMergeMaxSize. Larger sizes should fall back to a block-wide sort.
 constexpr int kWarpBitonicMaxSize = 32;
 constexpr int kWarpMergeMaxSize = 64;
+constexpr float kNegativeInfinity = -std::numeric_limits<float>::infinity();
 
 __device__ __forceinline__ int LaneId() {
   int lane_id;
@@ -59,8 +61,8 @@ __device__ __forceinline__ int LinearThreadIdInBlock() {
  * Ties on the score are broken in favor of the smaller index. Data is exchanged
  * with __shfl_sync, so no shared memory is required.
  *
- * Lanes that do not hold a valid element should pass score = -FLT_MAX and
- * index = INT_MAX so that they sort to the bottom.
+ * Lanes that do not hold a valid element should pass score = kNegativeInfinity
+ * and index = INT_MAX so that valid -inf scores sort ahead of padding.
  */
 __device__ inline void WarpBitonicSortDescending(float& score, int& index) {
   const int lane_id = LaneId();
@@ -147,7 +149,7 @@ struct WarpMergeSorter {
   using TempStorage = typename SortT::TempStorage;
 
   // num_valid_items elements are read from shared memory; the remainder are
-  // padded with (-FLT_MAX, INT_MAX) so they sort to the bottom.
+  // padded with (kNegativeInfinity, INT_MAX) so valid -inf scores sort ahead of padding.
   __device__ static void Sort(float* smem_scores, int* smem_indices,
                               TempStorage& temp_storage, int num_valid_items) {
     const int thread_id = LinearThreadIdInBlock();
@@ -164,7 +166,7 @@ struct WarpMergeSorter {
       if (idx < num_valid_items) {
         items[i] = PackStableSortKey(smem_scores[idx], smem_indices[idx]);
       } else {
-        items[i] = PackStableSortKey(-FLT_MAX, INT_MAX);
+        items[i] = PackStableSortKey(kNegativeInfinity, INT_MAX);
       }
     }
 

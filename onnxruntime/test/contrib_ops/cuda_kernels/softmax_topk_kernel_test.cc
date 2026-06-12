@@ -222,6 +222,52 @@ TEST(CUDA_EP_Unittest, SoftmaxTopK_BlockMergeStillMatchesReference) {
   RunSoftmaxTopKTest<float>(num_rows, num_experts, k, true, logits, 1e-6f);
 }
 
+TEST(CUDA_EP_Unittest, SoftmaxTopK_WarpBitonicHandlesNegativeInfinityPadding) {
+  constexpr int num_rows = 2;
+  constexpr int num_experts = 8;
+  constexpr int k = 8;
+  constexpr float neg_inf = -std::numeric_limits<float>::infinity();
+  std::vector<float> logits = {
+      3.0f, neg_inf, 2.0f, neg_inf, 1.0f, neg_inf, 0.0f, neg_inf,
+      neg_inf, 4.0f, neg_inf, neg_inf, 3.0f, neg_inf, neg_inf, 2.0f};
+
+  RunSoftmaxTopKTest<float>(num_rows, num_experts, k, false, logits, 1e-6f);
+}
+
+TEST(CUDA_EP_Unittest, SoftmaxTopK_WarpMergeHandlesNegativeInfinityPadding) {
+  constexpr int num_rows = 2;
+  constexpr int num_experts = 40;
+  constexpr int k = 40;
+  constexpr float neg_inf = -std::numeric_limits<float>::infinity();
+  std::vector<float> logits(static_cast<size_t>(num_rows) * num_experts, neg_inf);
+  for (int expert = 0; expert < 10; ++expert) {
+    logits[expert * 3] = static_cast<float>(expert) * 0.25f;
+    logits[static_cast<size_t>(1) * num_experts + expert * 2] = 3.0f - static_cast<float>(expert) * 0.125f;
+  }
+
+  RunSoftmaxTopKTest<float>(num_rows, num_experts, k, true, logits, 1e-6f);
+}
+
+TEST(CUDA_EP_Unittest, SoftmaxTopK_BlockMergeHandlesNegativeInfinityPadding) {
+  constexpr int num_rows = 2;
+  constexpr int num_experts = 80;
+  constexpr int k = 64;
+  constexpr float neg_inf = -std::numeric_limits<float>::infinity();
+  std::vector<float> logits(static_cast<size_t>(num_rows) * num_experts, neg_inf);
+  for (int expert = 0; expert < 20; ++expert) {
+    logits[expert * 2] = static_cast<float>(expert) * 0.125f;
+    logits[static_cast<size_t>(1) * num_experts + expert * 3] = 5.0f - static_cast<float>(expert) * 0.25f;
+  }
+
+  RunSoftmaxTopKTest<float>(num_rows, num_experts, k, true, logits, 1e-6f);
+}
+
+TEST(CUDA_EP_Unittest, SoftmaxTopK_RejectsKGreaterThanExperts) {
+  EXPECT_THROW(onnxruntime::contrib::cuda::LaunchSoftmaxTopK(
+                   static_cast<const float*>(nullptr), nullptr, nullptr, 1, 8, 9, false, nullptr),
+               OnnxRuntimeException);
+}
+
 }  // namespace
 }  // namespace test
 }  // namespace onnxruntime
