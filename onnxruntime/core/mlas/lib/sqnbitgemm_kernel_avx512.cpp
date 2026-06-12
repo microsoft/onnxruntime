@@ -28,6 +28,8 @@ Abstract:
 #include "sqnbitgemm_kernel_avx512_int8_blklen128.h"
 #include "sqnbitgemm_kernel_avx512_2bit.h"
 #include "sqnbitgemm_kernel_avx512_2bit_blklen64.h"
+#include "sqnbitgemm_kernel_avx512_2bit_blklen128.h"
+#include "sqnbitgemm_kernel_avx512_2bit_blklen32.h"
 
 //
 // SQNBIT_CompFp32 kernel implementation.
@@ -500,6 +502,16 @@ SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_TestEntry(
     const float* ABlockSum,
     const float* QuantBBlkSum)
 {
+    if (BlkLen == 128) {
+        return SQ2BitGemmKernel_BlkSum_CompInt8_BlkLen128_Avx512(
+            QuantA, QuantAScale, QuantBData, QuantBScale,
+            C, CountM, CountN, BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum);
+    }
+    if (BlkLen == 32) {
+        return SQ2BitGemmKernel_BlkSum_CompInt8_BlkLen32_Avx512(
+            QuantA, QuantAScale, QuantBData, QuantBScale,
+            C, CountM, CountN, BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum);
+    }
     return SQ2BitGemmKernel_BlkSum_CompInt8_Avx512(
         BlkLen, QuantA, QuantAScale, QuantBData, QuantBScale, QuantBZeroPoint,
         C, CountM, CountN, CountK, BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum);

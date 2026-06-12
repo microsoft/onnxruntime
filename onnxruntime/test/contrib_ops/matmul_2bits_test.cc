@@ -1095,6 +1095,107 @@ TEST(MatMul2Bits, Float32_2b_BlkLen64_Accuracy0) {
   TestMatMul2BitsTyped<float, 100, 288, 1024, 64, 0>();
 }
 
+// MatMulNBits op-level coverage for the BlkLen=128 path. Same coverage matrix
+// as the BlkLen=64 tests above, adjusted so that K is always a multiple of
+// 128 (BlkLen=128 constraint). Exercises:
+//   * Single-block K (BlockCountK=1)         -> K=128
+//   * BlockCountK=2,3 not multiple of 4      -> K=256, K=384 (K-tail handler)
+//   * Exact block-group multiples            -> K=512, K=1024, K=2048
+//   * BlockCountK=6 (1 full + 2 tail)        -> K=768
+// and the same M/N combinations as BlkLen=64.
+TEST(MatMul2Bits, Float32_2b_BlkLen128_Accuracy4) {
+  // Single-block K (K = BlkLen = 128).
+  TestMatMul2BitsTyped<float, 1, 16, 128, 128, 4>();
+  TestMatMul2BitsTyped<float, 1, 32, 128, 128, 4>();
+  TestMatMul2BitsTyped<float, 2, 16, 128, 128, 4>();
+  TestMatMul2BitsTyped<float, 4, 32, 128, 128, 4>();
+
+  // BlockCountK=2,3 -- exercises K-tail handler.
+  TestMatMul2BitsTyped<float, 1, 32, 256, 128, 4>();
+  TestMatMul2BitsTyped<float, 1, 32, 384, 128, 4>();
+  TestMatMul2BitsTyped<float, 2, 16, 256, 128, 4>();
+
+  // Exact block-group multiples (BlockCountK = 4, 8, 16).
+  TestMatMul2BitsTyped<float, 1, 32, 512, 128, 4>();
+  TestMatMul2BitsTyped<float, 1, 288, 1024, 128, 4>();
+  TestMatMul2BitsTyped<float, 4, 32, 2048, 128, 4>();
+
+  // BlockCountK=6 = 1 full block-group + 2-block tail.
+  TestMatMul2BitsTyped<float, 1, 288, 768, 128, 4>();
+
+  // Larger M (multi-iter R2 tile) at customer-shape proportions.
+  TestMatMul2BitsTyped<float, 100, 32, 512, 128, 4>();
+  TestMatMul2BitsTyped<float, 100, 288, 1024, 128, 4>();
+}
+
+TEST(MatMul2Bits, Float32_2b_BlkLen128_Accuracy0) {
+  TestMatMul2BitsTyped<float, 1, 16, 128, 128, 0>();
+  TestMatMul2BitsTyped<float, 1, 32, 128, 128, 0>();
+  TestMatMul2BitsTyped<float, 2, 16, 128, 128, 0>();
+  TestMatMul2BitsTyped<float, 4, 32, 128, 128, 0>();
+
+  TestMatMul2BitsTyped<float, 1, 32, 256, 128, 0>();
+  TestMatMul2BitsTyped<float, 1, 32, 384, 128, 0>();
+  TestMatMul2BitsTyped<float, 2, 16, 256, 128, 0>();
+
+  TestMatMul2BitsTyped<float, 1, 32, 512, 128, 0>();
+  TestMatMul2BitsTyped<float, 1, 288, 1024, 128, 0>();
+  TestMatMul2BitsTyped<float, 4, 32, 2048, 128, 0>();
+
+  TestMatMul2BitsTyped<float, 1, 288, 768, 128, 0>();
+
+  TestMatMul2BitsTyped<float, 100, 32, 512, 128, 0>();
+  TestMatMul2BitsTyped<float, 100, 288, 1024, 128, 0>();
+}
+
+// MatMulNBits op-level coverage for the BlkLen=32 path. K multiples of 32.
+// Same coverage matrix as BlkLen=64/128 (single-block, K-tail, exact group
+// multiples, customer-shape proportions, single-row decode, M=100 prefill).
+TEST(MatMul2Bits, Float32_2b_BlkLen32_Accuracy4) {
+  // Single-block K (K = BlkLen = 32).
+  TestMatMul2BitsTyped<float, 1, 16, 32, 32, 4>();
+  TestMatMul2BitsTyped<float, 1, 32, 32, 32, 4>();
+  TestMatMul2BitsTyped<float, 2, 16, 32, 32, 4>();
+  TestMatMul2BitsTyped<float, 4, 32, 32, 32, 4>();
+
+  // BlockCountK=2,3 -- K-tail handler (BlockCountK not a multiple of 4).
+  TestMatMul2BitsTyped<float, 1, 32, 64, 32, 4>();
+  TestMatMul2BitsTyped<float, 1, 32, 96, 32, 4>();
+  TestMatMul2BitsTyped<float, 2, 16, 64, 32, 4>();
+
+  // Exact block-group multiples (BlockCountK = 4, 8, 16).
+  TestMatMul2BitsTyped<float, 1, 32, 128, 32, 4>();
+  TestMatMul2BitsTyped<float, 1, 288, 256, 32, 4>();
+  TestMatMul2BitsTyped<float, 4, 32, 512, 32, 4>();
+
+  // BlockCountK=6 = 1 full block-group + 2-block tail.
+  TestMatMul2BitsTyped<float, 1, 288, 192, 32, 4>();
+
+  // Larger M.
+  TestMatMul2BitsTyped<float, 100, 32, 128, 32, 4>();
+  TestMatMul2BitsTyped<float, 100, 288, 256, 32, 4>();
+}
+
+TEST(MatMul2Bits, Float32_2b_BlkLen32_Accuracy0) {
+  TestMatMul2BitsTyped<float, 1, 16, 32, 32, 0>();
+  TestMatMul2BitsTyped<float, 1, 32, 32, 32, 0>();
+  TestMatMul2BitsTyped<float, 2, 16, 32, 32, 0>();
+  TestMatMul2BitsTyped<float, 4, 32, 32, 32, 0>();
+
+  TestMatMul2BitsTyped<float, 1, 32, 64, 32, 0>();
+  TestMatMul2BitsTyped<float, 1, 32, 96, 32, 0>();
+  TestMatMul2BitsTyped<float, 2, 16, 64, 32, 0>();
+
+  TestMatMul2BitsTyped<float, 1, 32, 128, 32, 0>();
+  TestMatMul2BitsTyped<float, 1, 288, 256, 32, 0>();
+  TestMatMul2BitsTyped<float, 4, 32, 512, 32, 0>();
+
+  TestMatMul2BitsTyped<float, 1, 288, 192, 32, 0>();
+
+  TestMatMul2BitsTyped<float, 100, 32, 128, 32, 0>();
+  TestMatMul2BitsTyped<float, 100, 288, 256, 32, 0>();
+}
+
 #if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
 
 namespace {

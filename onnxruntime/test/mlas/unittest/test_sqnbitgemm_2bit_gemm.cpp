@@ -524,3 +524,738 @@ TEST(MlasSq2BitTest, BlkLen64_Avx512Vnni_WithZeroPoints)
         }
     }
 }
+
+// =============================================================================
+// BlkLen=128 coverage. Mirrors the BlkLen=64 tests above. The helpers are
+// duplicated rather than templated to keep the BlkLen=64 path bit-identical;
+// the diff is purely additive.
+// =============================================================================
+
+namespace {
+
+constexpr size_t kBlkLen128 = sq2::kBlkLen128;        // 128
+constexpr size_t kBlkBytes128 = sq2::kBlkBytes128;    // 32
+
+void
+PackSourceBlock_BlkLen128(const uint8_t weights[kBlkLen128], std::byte* src_out)
+{
+    for (size_t i = 0; i < kBlkBytes128; ++i) {
+        const uint8_t v0 = weights[4 * i + 0] & 0x03u;
+        const uint8_t v1 = weights[4 * i + 1] & 0x03u;
+        const uint8_t v2 = weights[4 * i + 2] & 0x03u;
+        const uint8_t v3 = weights[4 * i + 3] & 0x03u;
+        src_out[i] = static_cast<std::byte>(
+            static_cast<uint8_t>(v0 | (v1 << 2) | (v2 << 4) | (v3 << 6))
+        );
+    }
+}
+
+void
+QuantizeA_Reference_BlkLen128(size_t M, size_t K, const float* A,
+                              int8_t* QuantAData, float* QuantAScale)
+{
+    const size_t BlockCountK = (K + kBlkLen128 - 1) / kBlkLen128;
+    for (size_t m = 0; m < M; ++m) {
+        for (size_t k = 0, k_blk = 0; k < K; k += kBlkLen128, ++k_blk) {
+            const size_t local_len = std::min(K - k, kBlkLen128);
+            float amax = 0.0f;
+            for (size_t kk = 0; kk < local_len; ++kk) {
+                amax = std::max(amax, std::fabs(A[m * K + k + kk]));
+            }
+            constexpr float range_max = 127.0f;
+            const float scale = amax / range_max;
+            const float scale_recip = amax != 0.0f ? range_max / amax : 0.0f;
+            QuantAScale[m * BlockCountK + k_blk] = scale;
+            for (size_t kk = 0; kk < kBlkLen128; ++kk) {
+                const float a = (kk < local_len) ? A[m * K + k + kk] : 0.0f;
+                const float q = std::nearbyint(a * scale_recip);
+                QuantAData[m * BlockCountK * kBlkLen128 + k + kk] =
+                    static_cast<int8_t>(std::clamp(q, -127.0f, 127.0f));
+            }
+        }
+    }
+}
+
+void
+ReferenceGemm_W2_CompInt8_BlkLen128(size_t M, size_t N, size_t K,
+                                    const float* A,
+                                    const std::vector<uint8_t>& BWeights,
+                                    const float* QuantBScale,
+                                    const uint8_t* BZeroPoints,
+                                    const float* Bias,
+                                    float* C)
+{
+    const size_t BlockCountK = (K + kBlkLen128 - 1) / kBlkLen128;
+    std::vector<int8_t> QuantAData(M * BlockCountK * kBlkLen128, int8_t{0});
+    std::vector<float> QuantAScale(M * BlockCountK, 0.0f);
+    QuantizeA_Reference_BlkLen128(M, K, A, QuantAData.data(), QuantAScale.data());
+
+    for (size_t m = 0; m < M; ++m) {
+        for (size_t n = 0; n < N; ++n) {
+            float acc = (Bias != nullptr) ? Bias[n] : 0.0f;
+            for (size_t k = 0, blk = 0; k < K; k += kBlkLen128, ++blk) {
+                const size_t local_len = std::min(K - k, kBlkLen128);
+                const float a_scale = QuantAScale[m * BlockCountK + blk];
+                const float b_scale = QuantBScale[n * BlockCountK + blk];
+                const int32_t zp = BZeroPoints != nullptr
+                    ? static_cast<int32_t>(BZeroPoints[n * BlockCountK + blk])
+                    : static_cast<int32_t>(sq2::kDefaultSymmetricZeroPoint2Bit);
+                int32_t dot = 0;
+                for (size_t kk = 0; kk < local_len; ++kk) {
+                    const int8_t qa = QuantAData[m * BlockCountK * kBlkLen128 + k + kk];
+                    const int32_t qb =
+                        static_cast<int32_t>(BWeights[n * K + k + kk]) - zp;
+                    dot += static_cast<int32_t>(qa) * qb;
+                }
+                acc += static_cast<float>(dot) * a_scale * b_scale;
+            }
+            C[m * N + n] = acc;
+        }
+    }
+}
+
+void
+RunW2Case_BlkLen128(size_t M, size_t N, size_t K, bool WithBias, uint32_t seed,
+                    bool WithZeroPoints, W2KernelFn kernel,
+                    const char* kernel_name)
+{
+    const size_t BlockCountK = (K + kBlkLen128 - 1) / kBlkLen128;
+    ASSERT_EQ(K % kBlkLen128, 0u) << "BlkLen128 test K must be a multiple of 128";
+
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<float> a_dist(-1.0f, 1.0f);
+    std::uniform_int_distribution<uint32_t> w_dist(0, 3);
+    std::uniform_real_distribution<float> s_dist(0.05f, 0.5f);
+
+    std::vector<float> A(M * K);
+    for (auto& v : A) v = a_dist(rng);
+
+    std::vector<uint8_t> BWeights(N * K);
+    for (auto& v : BWeights) v = static_cast<uint8_t>(w_dist(rng));
+
+    // Source-packed B in standard ONNX layout (32 bytes per block at BlkLen=128).
+    std::vector<std::byte> QuantBData(N * BlockCountK * kBlkBytes128, std::byte{0});
+    for (size_t n = 0; n < N; ++n) {
+        for (size_t blk = 0; blk < BlockCountK; ++blk) {
+            uint8_t blk_weights[kBlkLen128];
+            for (size_t kk = 0; kk < kBlkLen128; ++kk) {
+                blk_weights[kk] = BWeights[n * K + blk * kBlkLen128 + kk];
+            }
+            PackSourceBlock_BlkLen128(blk_weights,
+                                      QuantBData.data() + (n * BlockCountK + blk) * kBlkBytes128);
+        }
+    }
+
+    std::vector<float> QuantBScale(N * BlockCountK);
+    for (auto& v : QuantBScale) v = s_dist(rng);
+
+    std::vector<uint8_t> BZeroPoints;
+    std::vector<std::byte> BZeroPointsPacked;
+    const uint8_t* BZeroPointsRef = nullptr;
+    const std::byte* BZeroPointsMlas = nullptr;
+    if (WithZeroPoints) {
+        BZeroPoints.resize(N * BlockCountK);
+        for (auto& v : BZeroPoints) v = static_cast<uint8_t>(w_dist(rng));
+        BZeroPointsRef = BZeroPoints.data();
+        BZeroPointsPacked = PackW2ZeroPoints(N, BlockCountK, BZeroPoints);
+        BZeroPointsMlas = BZeroPointsPacked.data();
+    }
+
+    std::vector<float> Bias;
+    const float* BiasPtr = nullptr;
+    if (WithBias) {
+        Bias.resize(N);
+        for (auto& v : Bias) v = a_dist(rng);
+        BiasPtr = Bias.data();
+    }
+
+    const size_t PackedSize = sq2::Q2BitGemmPackQuantBDataSize_Avx512(
+        N, K, kBlkLen128, WithZeroPoints, SQNBIT_CompInt8, nullptr);
+    ASSERT_GT(PackedSize, 0u) << "BlkLen128 block-group pack size unsupported for shape";
+
+    std::vector<std::byte> PackedQuantBBuf(PackedSize, std::byte{0});
+    PackedQuantBDataStruct<float, 2> packed_b(
+        PackedQuantBBuf.data(), N, BlockCountK, kBlkLen128, /*QuantAUnsigned=*/false);
+
+    sq2::SQ2BitGemmPackQuantBDataAndBlkSum_Scalar(
+        N, K, kBlkLen128, SQNBIT_CompInt8,
+        QuantBData.data(), /*scales=*/nullptr,
+        WithZeroPoints, /*zp=*/nullptr,
+        packed_b, /*tp=*/nullptr, /*cfg=*/nullptr);
+    sq2::SQ2BitGemmPackQuantBDataAndBlkSum_Scalar(
+        N, K, kBlkLen128, SQNBIT_CompInt8,
+        /*B=*/nullptr, QuantBScale.data(),
+        WithZeroPoints, /*zp=*/nullptr,
+        packed_b, /*tp=*/nullptr, /*cfg=*/nullptr);
+    if (WithZeroPoints) {
+        sq2::SQ2BitGemmPackQuantBDataAndBlkSum_Scalar(
+            N, K, kBlkLen128, SQNBIT_CompInt8,
+            /*B=*/nullptr, /*scales=*/nullptr,
+            WithZeroPoints, BZeroPointsMlas,
+            packed_b, /*tp=*/nullptr, /*cfg=*/nullptr);
+    }
+
+    std::vector<int8_t> QuantAData(M * BlockCountK * kBlkLen128, int8_t{0});
+    std::vector<float> QuantAScale(M * BlockCountK, 0.0f);
+    QuantizeA_Reference_BlkLen128(M, K, A.data(), QuantAData.data(), QuantAScale.data());
+
+    std::vector<float> ABlockSum(M * BlockCountK, 0.0f);
+    for (size_t m = 0; m < M; ++m) {
+        for (size_t blk = 0; blk < BlockCountK; ++blk) {
+            int32_t sum = 0;
+            for (size_t kk = 0; kk < kBlkLen128; ++kk) {
+                sum += static_cast<int32_t>(
+                    QuantAData[m * BlockCountK * kBlkLen128 + blk * kBlkLen128 + kk]);
+            }
+            ABlockSum[m * BlockCountK + blk] =
+                QuantAScale[m * BlockCountK + blk] * static_cast<float>(sum);
+        }
+    }
+
+    std::vector<float> C(M * N, 0.0f);
+    kernel(
+        kBlkLen128,
+        reinterpret_cast<const std::byte*>(QuantAData.data()),
+        QuantAScale.data(),
+        packed_b.PackedQuantBData,
+        packed_b.PackedQuantBScale,
+        /*QuantBZeroPoint=*/nullptr,
+        C.data(),
+        M, N, /*CountK=*/K, BlockCountK,
+        BiasPtr,
+        /*ldc=*/N,
+        ABlockSum.data(),
+        packed_b.QuantBBlkSum);
+
+    std::vector<float> CRef(M * N, 0.0f);
+    ReferenceGemm_W2_CompInt8_BlkLen128(M, N, K, A.data(), BWeights, QuantBScale.data(),
+                                        BZeroPointsRef, BiasPtr, CRef.data());
+
+    const float abs_tol = 1e-4f;
+    const float rel_tol = 1e-4f;
+    for (size_t i = 0; i < M * N; ++i) {
+        const float diff = std::fabs(C[i] - CRef[i]);
+        const float bound = abs_tol + rel_tol * std::fabs(CRef[i]);
+        ASSERT_LE(diff, bound)
+            << "BlkLen128 " << kernel_name << " mismatch at i=" << i
+            << " (m=" << (i / N) << ", n=" << (i % N) << ")"
+            << " out=" << C[i] << " ref=" << CRef[i]
+            << " M=" << M << " N=" << N << " K=" << K
+            << " WithBias=" << WithBias
+            << " WithZeroPoints=" << WithZeroPoints;
+    }
+}
+
+//
+// Shape set for BlkLen=128. K must be a multiple of 128 (BlkLen=128 constraint).
+// Covers the same regimes as the BlkLen=64 shape set:
+//   * R1 / R2 tiles, M=1 decode + larger M prefill
+//   * BlockCountK in {1, 2, 3, 4, 8, 16, 32} -- full + K-tail variants
+//   * N-tail (NMain=0 and various NTail) combined with K-tail
+//
+constexpr struct { size_t M, N, K; } kSimdShapes_BlkLen128[] = {
+    {1,   16,  128},   // R1, BlockCountK=1
+    {1,   32,  256},   // R1, BlockCountK=2 (K-tail, no full group)
+    {1, 1024, 1024},   // R1, BlockCountK=8
+    {1, 1024, 4096},   // R1, BlockCountK=32 (customer N)
+    {2,   16,  128},
+    {2,   32,  256},
+    {2,   64,  512},   // BlockCountK=4 (one full group)
+    {3,   16,  256},   // R2 head + R1 tail
+    {3,  384, 1024},
+    {4,   16,  256},
+    {4,   32,  256},
+    {16,  64,  512},
+    {32, 128,  256},
+    // M=128 prefill at customer-like shapes (K multiples of 128)
+    {128, 1024, 1024}, {128, 1024, 4096},
+    {128,  192, 1024}, {128,  384, 1024},
+    // K-tail stress (BlockCountK not a multiple of 4)
+    {  2,   16,  384},    // tail=3
+    {  4,   16,  384},
+    {128, 1024,  384},    // tail=3 at customer M
+    {  2,   16,  640},    // tail=1
+    {  4,   16,  640},
+    {  2,   16,  768},    // tail=2
+    {  4,   16,  768},
+    // N-tail stress
+    {  1,    1,  256},
+    {  1,    3,  256},
+    {  4,    3,  256},
+    {  1,   17,  256},
+    {  4,   17,  256},
+    {128,   17,  256},
+    {  1,   33,  256},
+    {  4,   33,  256},
+    {128,   33,  256},
+    {  1,   18,  256},
+    {  4,   18,  256},
+    {128,   19,  256},
+    // N-tail combined with K-tail (most generic)
+    {  1,   17,  384},
+    {  4,   33,  384},
+    {128,   19,  640},
+};
+
+}  // namespace
+
+TEST(MlasSq2BitTest, Scalar_BlkLen128)
+{
+    for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+        for (const auto& s : kSimdShapes_BlkLen128) {
+            for (bool bias : {false, true}) {
+                RunW2Case_BlkLen128(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                                    /*WithZeroPoints=*/false,
+                                    sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Scalar,
+                                    "Scalar");
+            }
+        }
+    }
+}
+
+TEST(MlasSq2BitTest, Scalar_BlkLen128_WithZeroPoints)
+{
+    for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+        for (const auto& s : kSimdShapes_BlkLen128) {
+            for (bool bias : {false, true}) {
+                RunW2Case_BlkLen128(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                                    /*WithZeroPoints=*/true,
+                                    sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Scalar,
+                                    "Scalar");
+            }
+        }
+    }
+}
+
+TEST(MlasSq2BitTest, BlkLen128_Avx512)
+{
+    if (!GetMlasPlatform().Avx512Supported_) {
+        GTEST_SKIP() << "AVX-512BW (DQ/VL) not available on this host";
+    }
+    for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+        for (const auto& s : kSimdShapes_BlkLen128) {
+            for (bool bias : {false, true}) {
+                RunW2Case_BlkLen128(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                                    /*WithZeroPoints=*/false,
+                                    sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_TestEntry,
+                                    "AVX-512BW");
+            }
+        }
+    }
+}
+
+TEST(MlasSq2BitTest, BlkLen128_Avx512_WithZeroPoints)
+{
+    if (!GetMlasPlatform().Avx512Supported_) {
+        GTEST_SKIP() << "AVX-512BW (DQ/VL) not available on this host";
+    }
+    for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+        for (const auto& s : kSimdShapes_BlkLen128) {
+            for (bool bias : {false, true}) {
+                RunW2Case_BlkLen128(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                                    /*WithZeroPoints=*/true,
+                                    sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_TestEntry,
+                                    "AVX-512BW");
+            }
+        }
+    }
+}
+
+TEST(MlasSq2BitTest, BlkLen128_Avx512Vnni)
+{
+    if (GetMlasPlatform().QNBitGemmDispatch != &MlasSQNBitGemmDispatchAvx512vnni) {
+        GTEST_SKIP() << "AVX-512-VNNI not selected as the active dispatch on this host";
+    }
+    for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+        for (const auto& s : kSimdShapes_BlkLen128) {
+            for (bool bias : {false, true}) {
+                RunW2Case_BlkLen128(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                                    /*WithZeroPoints=*/false,
+                                    sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_TestEntry,
+                                    "AVX-512-VNNI");
+            }
+        }
+    }
+}
+
+TEST(MlasSq2BitTest, BlkLen128_Avx512Vnni_WithZeroPoints)
+{
+    if (GetMlasPlatform().QNBitGemmDispatch != &MlasSQNBitGemmDispatchAvx512vnni) {
+        GTEST_SKIP() << "AVX-512-VNNI not selected as the active dispatch on this host";
+    }
+    for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+        for (const auto& s : kSimdShapes_BlkLen128) {
+            for (bool bias : {false, true}) {
+                RunW2Case_BlkLen128(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                                    /*WithZeroPoints=*/true,
+                                    sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_TestEntry,
+                                    "AVX-512-VNNI");
+            }
+        }
+    }
+}
+
+// =============================================================================
+// BlkLen=32 coverage. Mirrors BlkLen=128 above with per-block byte width 8
+// and per-group bytes 32. Helpers duplicated (rather than templated) to keep
+// the BlkLen=64 hot path bit-identical.
+// =============================================================================
+
+namespace {
+
+constexpr size_t kBlkLen32 = sq2::kBlkLen32;          // 32
+constexpr size_t kBlkBytes32 = sq2::kBlkBytes32;      // 8
+
+void
+PackSourceBlock_BlkLen32(const uint8_t weights[kBlkLen32], std::byte* src_out)
+{
+    for (size_t i = 0; i < kBlkBytes32; ++i) {
+        const uint8_t v0 = weights[4 * i + 0] & 0x03u;
+        const uint8_t v1 = weights[4 * i + 1] & 0x03u;
+        const uint8_t v2 = weights[4 * i + 2] & 0x03u;
+        const uint8_t v3 = weights[4 * i + 3] & 0x03u;
+        src_out[i] = static_cast<std::byte>(
+            static_cast<uint8_t>(v0 | (v1 << 2) | (v2 << 4) | (v3 << 6))
+        );
+    }
+}
+
+void
+QuantizeA_Reference_BlkLen32(size_t M, size_t K, const float* A,
+                             int8_t* QuantAData, float* QuantAScale)
+{
+    const size_t BlockCountK = (K + kBlkLen32 - 1) / kBlkLen32;
+    for (size_t m = 0; m < M; ++m) {
+        for (size_t k = 0, k_blk = 0; k < K; k += kBlkLen32, ++k_blk) {
+            const size_t local_len = std::min(K - k, kBlkLen32);
+            float amax = 0.0f;
+            for (size_t kk = 0; kk < local_len; ++kk) {
+                amax = std::max(amax, std::fabs(A[m * K + k + kk]));
+            }
+            constexpr float range_max = 127.0f;
+            const float scale = amax / range_max;
+            const float scale_recip = amax != 0.0f ? range_max / amax : 0.0f;
+            QuantAScale[m * BlockCountK + k_blk] = scale;
+            for (size_t kk = 0; kk < kBlkLen32; ++kk) {
+                const float a = (kk < local_len) ? A[m * K + k + kk] : 0.0f;
+                const float q = std::nearbyint(a * scale_recip);
+                QuantAData[m * BlockCountK * kBlkLen32 + k + kk] =
+                    static_cast<int8_t>(std::clamp(q, -127.0f, 127.0f));
+            }
+        }
+    }
+}
+
+void
+ReferenceGemm_W2_CompInt8_BlkLen32(size_t M, size_t N, size_t K,
+                                   const float* A,
+                                   const std::vector<uint8_t>& BWeights,
+                                   const float* QuantBScale,
+                                   const uint8_t* BZeroPoints,
+                                   const float* Bias,
+                                   float* C)
+{
+    const size_t BlockCountK = (K + kBlkLen32 - 1) / kBlkLen32;
+    std::vector<int8_t> QuantAData(M * BlockCountK * kBlkLen32, int8_t{0});
+    std::vector<float> QuantAScale(M * BlockCountK, 0.0f);
+    QuantizeA_Reference_BlkLen32(M, K, A, QuantAData.data(), QuantAScale.data());
+
+    for (size_t m = 0; m < M; ++m) {
+        for (size_t n = 0; n < N; ++n) {
+            float acc = (Bias != nullptr) ? Bias[n] : 0.0f;
+            for (size_t k = 0, blk = 0; k < K; k += kBlkLen32, ++blk) {
+                const size_t local_len = std::min(K - k, kBlkLen32);
+                const float a_scale = QuantAScale[m * BlockCountK + blk];
+                const float b_scale = QuantBScale[n * BlockCountK + blk];
+                const int32_t zp = BZeroPoints != nullptr
+                    ? static_cast<int32_t>(BZeroPoints[n * BlockCountK + blk])
+                    : static_cast<int32_t>(sq2::kDefaultSymmetricZeroPoint2Bit);
+                int32_t dot = 0;
+                for (size_t kk = 0; kk < local_len; ++kk) {
+                    const int8_t qa = QuantAData[m * BlockCountK * kBlkLen32 + k + kk];
+                    const int32_t qb =
+                        static_cast<int32_t>(BWeights[n * K + k + kk]) - zp;
+                    dot += static_cast<int32_t>(qa) * qb;
+                }
+                acc += static_cast<float>(dot) * a_scale * b_scale;
+            }
+            C[m * N + n] = acc;
+        }
+    }
+}
+
+void
+RunW2Case_BlkLen32(size_t M, size_t N, size_t K, bool WithBias, uint32_t seed,
+                   bool WithZeroPoints, W2KernelFn kernel,
+                   const char* kernel_name)
+{
+    const size_t BlockCountK = (K + kBlkLen32 - 1) / kBlkLen32;
+    ASSERT_EQ(K % kBlkLen32, 0u) << "BlkLen32 test K must be a multiple of 32";
+
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<float> a_dist(-1.0f, 1.0f);
+    std::uniform_int_distribution<uint32_t> w_dist(0, 3);
+    std::uniform_real_distribution<float> s_dist(0.05f, 0.5f);
+
+    std::vector<float> A(M * K);
+    for (auto& v : A) v = a_dist(rng);
+
+    std::vector<uint8_t> BWeights(N * K);
+    for (auto& v : BWeights) v = static_cast<uint8_t>(w_dist(rng));
+
+    std::vector<std::byte> QuantBData(N * BlockCountK * kBlkBytes32, std::byte{0});
+    for (size_t n = 0; n < N; ++n) {
+        for (size_t blk = 0; blk < BlockCountK; ++blk) {
+            uint8_t blk_weights[kBlkLen32];
+            for (size_t kk = 0; kk < kBlkLen32; ++kk) {
+                blk_weights[kk] = BWeights[n * K + blk * kBlkLen32 + kk];
+            }
+            PackSourceBlock_BlkLen32(blk_weights,
+                                     QuantBData.data() + (n * BlockCountK + blk) * kBlkBytes32);
+        }
+    }
+
+    std::vector<float> QuantBScale(N * BlockCountK);
+    for (auto& v : QuantBScale) v = s_dist(rng);
+
+    std::vector<uint8_t> BZeroPoints;
+    std::vector<std::byte> BZeroPointsPacked;
+    const uint8_t* BZeroPointsRef = nullptr;
+    const std::byte* BZeroPointsMlas = nullptr;
+    if (WithZeroPoints) {
+        BZeroPoints.resize(N * BlockCountK);
+        for (auto& v : BZeroPoints) v = static_cast<uint8_t>(w_dist(rng));
+        BZeroPointsRef = BZeroPoints.data();
+        BZeroPointsPacked = PackW2ZeroPoints(N, BlockCountK, BZeroPoints);
+        BZeroPointsMlas = BZeroPointsPacked.data();
+    }
+
+    std::vector<float> Bias;
+    const float* BiasPtr = nullptr;
+    if (WithBias) {
+        Bias.resize(N);
+        for (auto& v : Bias) v = a_dist(rng);
+        BiasPtr = Bias.data();
+    }
+
+    const size_t PackedSize = sq2::Q2BitGemmPackQuantBDataSize_Avx512(
+        N, K, kBlkLen32, WithZeroPoints, SQNBIT_CompInt8, nullptr);
+    ASSERT_GT(PackedSize, 0u) << "BlkLen32 pack size unsupported for shape";
+
+    std::vector<std::byte> PackedQuantBBuf(PackedSize, std::byte{0});
+    PackedQuantBDataStruct<float, 2> packed_b(
+        PackedQuantBBuf.data(), N, BlockCountK, kBlkLen32, /*QuantAUnsigned=*/false);
+
+    sq2::SQ2BitGemmPackQuantBDataAndBlkSum_Scalar(
+        N, K, kBlkLen32, SQNBIT_CompInt8,
+        QuantBData.data(), /*scales=*/nullptr,
+        WithZeroPoints, /*zp=*/nullptr,
+        packed_b, /*tp=*/nullptr, /*cfg=*/nullptr);
+    sq2::SQ2BitGemmPackQuantBDataAndBlkSum_Scalar(
+        N, K, kBlkLen32, SQNBIT_CompInt8,
+        /*B=*/nullptr, QuantBScale.data(),
+        WithZeroPoints, /*zp=*/nullptr,
+        packed_b, /*tp=*/nullptr, /*cfg=*/nullptr);
+    if (WithZeroPoints) {
+        sq2::SQ2BitGemmPackQuantBDataAndBlkSum_Scalar(
+            N, K, kBlkLen32, SQNBIT_CompInt8,
+            /*B=*/nullptr, /*scales=*/nullptr,
+            WithZeroPoints, BZeroPointsMlas,
+            packed_b, /*tp=*/nullptr, /*cfg=*/nullptr);
+    }
+
+    std::vector<int8_t> QuantAData(M * BlockCountK * kBlkLen32, int8_t{0});
+    std::vector<float> QuantAScale(M * BlockCountK, 0.0f);
+    QuantizeA_Reference_BlkLen32(M, K, A.data(), QuantAData.data(), QuantAScale.data());
+
+    std::vector<float> ABlockSum(M * BlockCountK, 0.0f);
+    for (size_t m = 0; m < M; ++m) {
+        for (size_t blk = 0; blk < BlockCountK; ++blk) {
+            int32_t sum = 0;
+            for (size_t kk = 0; kk < kBlkLen32; ++kk) {
+                sum += static_cast<int32_t>(
+                    QuantAData[m * BlockCountK * kBlkLen32 + blk * kBlkLen32 + kk]);
+            }
+            ABlockSum[m * BlockCountK + blk] =
+                QuantAScale[m * BlockCountK + blk] * static_cast<float>(sum);
+        }
+    }
+
+    std::vector<float> C(M * N, 0.0f);
+    kernel(
+        kBlkLen32,
+        reinterpret_cast<const std::byte*>(QuantAData.data()),
+        QuantAScale.data(),
+        packed_b.PackedQuantBData,
+        packed_b.PackedQuantBScale,
+        /*QuantBZeroPoint=*/nullptr,
+        C.data(),
+        M, N, /*CountK=*/K, BlockCountK,
+        BiasPtr,
+        /*ldc=*/N,
+        ABlockSum.data(),
+        packed_b.QuantBBlkSum);
+
+    std::vector<float> CRef(M * N, 0.0f);
+    ReferenceGemm_W2_CompInt8_BlkLen32(M, N, K, A.data(), BWeights, QuantBScale.data(),
+                                       BZeroPointsRef, BiasPtr, CRef.data());
+
+    const float abs_tol = 1e-4f;
+    const float rel_tol = 1e-4f;
+    for (size_t i = 0; i < M * N; ++i) {
+        const float diff = std::fabs(C[i] - CRef[i]);
+        const float bound = abs_tol + rel_tol * std::fabs(CRef[i]);
+        ASSERT_LE(diff, bound)
+            << "BlkLen32 " << kernel_name << " mismatch at i=" << i
+            << " (m=" << (i / N) << ", n=" << (i % N) << ")"
+            << " out=" << C[i] << " ref=" << CRef[i]
+            << " M=" << M << " N=" << N << " K=" << K
+            << " WithBias=" << WithBias
+            << " WithZeroPoints=" << WithZeroPoints;
+    }
+}
+
+// K-shape constraint: K multiple of 32 (BlkLen=32). Covers BlockCountK in
+// {1, 2, 3, 4, 8, 16, 32, 64} -- both K-tail variants (BlockCountK not a
+// multiple of 4) and exact block-group multiples.
+constexpr struct { size_t M, N, K; } kSimdShapes_BlkLen32[] = {
+    {1,   16,   32},   // R1, BlockCountK=1
+    {1,   32,   64},   // R1, BlockCountK=2 (K-tail, no full group)
+    {1, 1024,  256},   // R1, BlockCountK=8
+    {1, 1024, 1024},   // R1, BlockCountK=32
+    {2,   16,   32},
+    {2,   32,   64},
+    {2,   64,  128},   // BlockCountK=4 (one full group)
+    {3,   16,   64},   // R2 head + R1 tail
+    {3,  384,  256},
+    {4,   16,   64},
+    {4,   32,   64},
+    {16,  64,  128},
+    {32, 128,  128},
+    // M=128 prefill
+    {128, 1024,  256}, {128, 1024, 1024},
+    {128,  192,  256}, {128,  384,  256},
+    // K-tail (BlockCountK not multiple of 4)
+    {  2,   16,   96},     // tail=3
+    {  4,   16,   96},
+    {128, 1024,   96},
+    {  2,   16,  160},     // tail=1
+    {  4,   16,  160},
+    {  2,   16,  192},     // tail=2 (BlockCountK=6)
+    {  4,   16,  192},
+    // N-tail
+    {  1,    1,   64},
+    {  1,    3,   64},
+    {  4,    3,   64},
+    {  1,   17,   64},
+    {  4,   17,   64},
+    {128,   17,   64},
+    {  1,   33,   64},
+    {  4,   33,   64},
+    {128,   33,   64},
+    {  1,   18,   64},
+    {  4,   18,   64},
+    {128,   19,   64},
+    // N-tail + K-tail
+    {  1,   17,   96},
+    {  4,   33,   96},
+    {128,   19,  160},
+};
+
+}  // namespace
+
+TEST(MlasSq2BitTest, Scalar_BlkLen32)
+{
+    for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+        for (const auto& s : kSimdShapes_BlkLen32) {
+            for (bool bias : {false, true}) {
+                RunW2Case_BlkLen32(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                                   /*WithZeroPoints=*/false,
+                                   sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Scalar,
+                                   "Scalar");
+            }
+        }
+    }
+}
+
+TEST(MlasSq2BitTest, Scalar_BlkLen32_WithZeroPoints)
+{
+    for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+        for (const auto& s : kSimdShapes_BlkLen32) {
+            for (bool bias : {false, true}) {
+                RunW2Case_BlkLen32(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                                   /*WithZeroPoints=*/true,
+                                   sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Scalar,
+                                   "Scalar");
+            }
+        }
+    }
+}
+
+TEST(MlasSq2BitTest, BlkLen32_Avx512)
+{
+    if (!GetMlasPlatform().Avx512Supported_) {
+        GTEST_SKIP() << "AVX-512BW (DQ/VL) not available on this host";
+    }
+    for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+        for (const auto& s : kSimdShapes_BlkLen32) {
+            for (bool bias : {false, true}) {
+                RunW2Case_BlkLen32(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                                   /*WithZeroPoints=*/false,
+                                   sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_TestEntry,
+                                   "AVX-512BW");
+            }
+        }
+    }
+}
+
+TEST(MlasSq2BitTest, BlkLen32_Avx512_WithZeroPoints)
+{
+    if (!GetMlasPlatform().Avx512Supported_) {
+        GTEST_SKIP() << "AVX-512BW (DQ/VL) not available on this host";
+    }
+    for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+        for (const auto& s : kSimdShapes_BlkLen32) {
+            for (bool bias : {false, true}) {
+                RunW2Case_BlkLen32(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                                   /*WithZeroPoints=*/true,
+                                   sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_TestEntry,
+                                   "AVX-512BW");
+            }
+        }
+    }
+}
+
+TEST(MlasSq2BitTest, BlkLen32_Avx512Vnni)
+{
+    if (GetMlasPlatform().QNBitGemmDispatch != &MlasSQNBitGemmDispatchAvx512vnni) {
+        GTEST_SKIP() << "AVX-512-VNNI not selected as the active dispatch on this host";
+    }
+    for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+        for (const auto& s : kSimdShapes_BlkLen32) {
+            for (bool bias : {false, true}) {
+                RunW2Case_BlkLen32(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                                   /*WithZeroPoints=*/false,
+                                   sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_TestEntry,
+                                   "AVX-512-VNNI");
+            }
+        }
+    }
+}
+
+TEST(MlasSq2BitTest, BlkLen32_Avx512Vnni_WithZeroPoints)
+{
+    if (GetMlasPlatform().QNBitGemmDispatch != &MlasSQNBitGemmDispatchAvx512vnni) {
+        GTEST_SKIP() << "AVX-512-VNNI not selected as the active dispatch on this host";
+    }
+    for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+        for (const auto& s : kSimdShapes_BlkLen32) {
+            for (bool bias : {false, true}) {
+                RunW2Case_BlkLen32(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                                   /*WithZeroPoints=*/true,
+                                   sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_TestEntry,
+                                   "AVX-512-VNNI");
+            }
+        }
+    }
+}

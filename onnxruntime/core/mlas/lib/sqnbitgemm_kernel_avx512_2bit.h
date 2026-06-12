@@ -159,6 +159,155 @@ UnpackSourceBlock_BlkLen64_Reference(const std::byte* src, uint8_t out[kBlkLen])
 }
 
 // -----------------------------------------------------------------------------
+// BlkLen=128 constants and pack helpers (parallel to the BlkLen=64 set above).
+// The block-group still aggregates 4 K-blocks; only the per-block width
+// (and hence the per-group byte count) changes. The N-major / 4-col-grouped
+// layout structure, the K-tail rounding rule, and the SGEMM correction step
+// are identical to BlkLen=64.
+// -----------------------------------------------------------------------------
+
+constexpr size_t kBlkLen128 = 128;
+constexpr size_t kBlkBytes128 = kBlkLen128 / kWeightsPerByte;             // 32 packed src bytes per block
+constexpr size_t kBlockGroupBytes128 = kBlockGroupBlks * kBlkBytes128;    // 128 bytes per block-group
+constexpr size_t kBlockGroupWeights128 = kBlockGroupBlks * kBlkLen128;    // 512 weights per block-group
+
+//
+// Pack 4 consecutive K-blocks (4 * 32 = 128 source bytes in standard ONNX
+// layout) into a 128-byte block-group. Identical bit-layout rule as the
+// BlkLen=64 variant: byte b of the destination holds bits[0..1] of block_0's
+// weight[b], bits[2..3] of block_1's weight[b], etc. Only the byte count
+// (= kBlkLen128 = 128) differs.
+//
+inline void
+PackBlockGroup_BlkLen128(const std::byte* src_block_0,
+                         const std::byte* src_block_1,
+                         const std::byte* src_block_2,
+                         const std::byte* src_block_3,
+                         std::byte* dst)
+{
+    for (size_t i = 0; i < kBlkLen128; ++i) {
+        const uint8_t v0 = ExtractSrcWeight(src_block_0, i);
+        const uint8_t v1 = ExtractSrcWeight(src_block_1, i);
+        const uint8_t v2 = ExtractSrcWeight(src_block_2, i);
+        const uint8_t v3 = ExtractSrcWeight(src_block_3, i);
+        dst[i] = static_cast<std::byte>(
+            static_cast<uint8_t>(v0 | (v1 << 2) | (v2 << 4) | (v3 << 6))
+        );
+    }
+}
+
+//
+// Reference unpack of one 128-byte block-group back into 4 K-blocks worth of
+// natural-order uint8 weights ([0, 3]). Independent of PackBlockGroup_BlkLen128
+// so it can serve as a round-trip oracle.
+//
+inline void
+UnPackBlockGroup_BlkLen128_Reference(const std::byte* packed,
+                                     uint8_t out_block_0[kBlkLen128],
+                                     uint8_t out_block_1[kBlkLen128],
+                                     uint8_t out_block_2[kBlkLen128],
+                                     uint8_t out_block_3[kBlkLen128])
+{
+    for (size_t i = 0; i < kBlkLen128; ++i) {
+        const uint8_t b = static_cast<uint8_t>(packed[i]);
+        out_block_0[i] = static_cast<uint8_t>((b >> 0) & 0x03u);
+        out_block_1[i] = static_cast<uint8_t>((b >> 2) & 0x03u);
+        out_block_2[i] = static_cast<uint8_t>((b >> 4) & 0x03u);
+        out_block_3[i] = static_cast<uint8_t>((b >> 6) & 0x03u);
+    }
+}
+
+//
+// Byte offset for the BlkLen=128 packed B-data buffer. Same shape as
+// PackedQuantBOffsetBytes_W2 (the BlkLen=64 variant just above) but using
+// kBlockGroupBytes128 (= 128) per slot instead of kBlockGroupBytes (= 64).
+// The N-major / 4-col-grouped layout is identical so the dispatcher's
+// per-N-tile pointer arithmetic and the N-tail handling are reusable.
+//
+inline size_t
+PackedQuantBOffsetBytes_W2_BlkLen128(size_t n, size_t blk_group,
+                                     size_t BlockGroupCountKPadded, size_t NMain)
+{
+    if (n < NMain) {
+        const size_t g = n / kNCols4;
+        const size_t c = n % kNCols4;
+        const size_t per_group_bytes = BlockGroupCountKPadded * kNCols4 * kBlockGroupBytes128;
+        return g * per_group_bytes
+             + blk_group * (kNCols4 * kBlockGroupBytes128)
+             + c * kBlockGroupBytes128;
+    }
+    return (n * BlockGroupCountKPadded + blk_group) * kBlockGroupBytes128;
+}
+
+//
+// NOTE on scale offsets:
+// PackedQuantBScaleOffset_W2 is BlkLen-independent (one float per K-block,
+// the layout depends only on kBlockGroupBlks and kNCols4). The BlkLen=128
+// path reuses it verbatim; no PackedQuantBScaleOffset_W2_BlkLen128 needed.
+//
+
+// -----------------------------------------------------------------------------
+// BlkLen=32 constants and pack helpers (parallel to the BlkLen=64/128 sets).
+// 4 K-blocks * 32 weights = 128 weights per group = 32 packed bytes per group
+// (fits in one YMM). Same N-major / 4-col-grouped layout. Same K-tail rounding
+// rule (round BlockCountK up to a multiple of kBlockGroupBlks=4).
+// -----------------------------------------------------------------------------
+
+constexpr size_t kBlkLen32 = 32;
+constexpr size_t kBlkBytes32 = kBlkLen32 / kWeightsPerByte;             // 8 packed src bytes per block
+constexpr size_t kBlockGroupBytes32 = kBlockGroupBlks * kBlkBytes32;    // 32 bytes per block-group
+constexpr size_t kBlockGroupWeights32 = kBlockGroupBlks * kBlkLen32;    // 128 weights per block-group
+
+inline void
+PackBlockGroup_BlkLen32(const std::byte* src_block_0,
+                        const std::byte* src_block_1,
+                        const std::byte* src_block_2,
+                        const std::byte* src_block_3,
+                        std::byte* dst)
+{
+    for (size_t i = 0; i < kBlkLen32; ++i) {
+        const uint8_t v0 = ExtractSrcWeight(src_block_0, i);
+        const uint8_t v1 = ExtractSrcWeight(src_block_1, i);
+        const uint8_t v2 = ExtractSrcWeight(src_block_2, i);
+        const uint8_t v3 = ExtractSrcWeight(src_block_3, i);
+        dst[i] = static_cast<std::byte>(
+            static_cast<uint8_t>(v0 | (v1 << 2) | (v2 << 4) | (v3 << 6))
+        );
+    }
+}
+
+inline void
+UnPackBlockGroup_BlkLen32_Reference(const std::byte* packed,
+                                    uint8_t out_block_0[kBlkLen32],
+                                    uint8_t out_block_1[kBlkLen32],
+                                    uint8_t out_block_2[kBlkLen32],
+                                    uint8_t out_block_3[kBlkLen32])
+{
+    for (size_t i = 0; i < kBlkLen32; ++i) {
+        const uint8_t b = static_cast<uint8_t>(packed[i]);
+        out_block_0[i] = static_cast<uint8_t>((b >> 0) & 0x03u);
+        out_block_1[i] = static_cast<uint8_t>((b >> 2) & 0x03u);
+        out_block_2[i] = static_cast<uint8_t>((b >> 4) & 0x03u);
+        out_block_3[i] = static_cast<uint8_t>((b >> 6) & 0x03u);
+    }
+}
+
+inline size_t
+PackedQuantBOffsetBytes_W2_BlkLen32(size_t n, size_t blk_group,
+                                    size_t BlockGroupCountKPadded, size_t NMain)
+{
+    if (n < NMain) {
+        const size_t g = n / kNCols4;
+        const size_t c = n % kNCols4;
+        const size_t per_group_bytes = BlockGroupCountKPadded * kNCols4 * kBlockGroupBytes32;
+        return g * per_group_bytes
+             + blk_group * (kNCols4 * kBlockGroupBytes32)
+             + c * kBlockGroupBytes32;
+    }
+    return (n * BlockGroupCountKPadded + blk_group) * kBlockGroupBytes32;
+}
+
+// -----------------------------------------------------------------------------
 // block-group packed-data layout.
 //
 //   Main region (n < NMain = floor(N / kNCols4) * kNCols4):
