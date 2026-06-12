@@ -915,6 +915,7 @@ bool
     Parameters->InputChannels = InputChannels;
     Parameters->FilterCount = FilterCount;
     Parameters->Beta = Beta;
+    Parameters->ChannelsLast = InputOutputChannelsLast;
     Parameters->InputOutputChannelsLast = InputOutputChannelsLast;
 
     size_t input_size = 1;
