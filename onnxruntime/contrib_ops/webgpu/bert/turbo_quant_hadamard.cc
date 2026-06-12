@@ -14,7 +14,7 @@ namespace webgpu {
 
 Status TurboQuantHadamardProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& key = shader.AddInput("key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias |
-                                                ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
+                                               ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
   shader.AddInput("value", ShaderUsage::UseUniform);
   // present_key/present_value are u32 arrays (packed 4-bit quantized data)
   shader.AddOutput("present_key", ShaderUsage::UseUniform);

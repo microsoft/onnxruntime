@@ -25,11 +25,7 @@ class TurboQuantHadamardProgram final : public Program<TurboQuantHadamardProgram
                             bool past_present_share_buffer, int head_size, int head_size_log2, int components,
                             int compressed_head_size_u32,
                             bool prepare_indirect_dispatch = false, bool use_seqlen_k = false)
-      : Program{kernel_name}, has_past_(has_past), kv_BNSH_(kv_BNSH),
-        past_present_share_buffer_(past_present_share_buffer),
-        head_size_(head_size), head_size_log2_(head_size_log2), components_(components),
-        compressed_head_size_u32_(compressed_head_size_u32),
-        prepare_indirect_dispatch_(prepare_indirect_dispatch), use_seqlen_k_(use_seqlen_k) {}
+      : Program{kernel_name}, has_past_(has_past), kv_BNSH_(kv_BNSH), past_present_share_buffer_(past_present_share_buffer), head_size_(head_size), head_size_log2_(head_size_log2), components_(components), compressed_head_size_u32_(compressed_head_size_u32), prepare_indirect_dispatch_(prepare_indirect_dispatch), use_seqlen_k_(use_seqlen_k) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -70,11 +66,13 @@ class TurboQuantFusedRotaryProgram final : public Program<TurboQuantFusedRotaryP
                                bool prepare_indirect_dispatch, bool use_seqlen_k,
                                uint32_t multi_rotary_cache_concat_offset)
       : Program{kernel_name},
-        head_size_(head_size), head_size_log2_(head_size_log2),
+        head_size_(head_size),
+        head_size_log2_(head_size_log2),
         half_rotary_dim_(half_rotary_dim),
         compressed_head_size_u32_(compressed_head_size_u32),
         past_present_share_buffer_(past_present_share_buffer),
-        prepare_indirect_dispatch_(prepare_indirect_dispatch), use_seqlen_k_(use_seqlen_k),
+        prepare_indirect_dispatch_(prepare_indirect_dispatch),
+        use_seqlen_k_(use_seqlen_k),
         multi_rotary_cache_concat_offset_(multi_rotary_cache_concat_offset) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;

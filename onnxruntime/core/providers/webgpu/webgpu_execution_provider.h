@@ -51,7 +51,7 @@ struct WebGpuExecutionProviderConfig {
   // across captured-graph lifetimes. 0 disables pooling. Default 1 caches one
   // generator's worth of intermediate buffers.
   size_t session_buffer_pool_generations{1};
-  uint32_t turbo_quantization_bits{0};            // TurboQuant KV cache quantization bits (0 = off, 4 = 4-bit)
+  uint32_t turbo_quantization_bits{0};  // TurboQuant KV cache quantization bits (0 = off, 4 = 4-bit)
   std::vector<std::string> force_cpu_node_names{};
 };
 
