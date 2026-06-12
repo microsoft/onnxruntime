@@ -95,7 +95,7 @@ $MAIN {
 
 #if turbo_quant
   // TurboQuant: present_key is u32-packed (scale + 4-bit indices). Dequantize K on-the-fly.
-  // Full-word approach: each thread reads one u32 word and extracts all 8 nibbles ΓåÆ 2 vec4 dot products.
+  // Full-word approach: each thread reads one u32 word and extracts all 8 nibbles -> 2 vec4 dot products.
   let kv_head_offset = (batch_head_idx / uniforms.n_reps) * uniforms.present_sequence_length * COMPRESSED_HEAD_U32;
 
   // Preload centroid LUT and scales in parallel with Q.
