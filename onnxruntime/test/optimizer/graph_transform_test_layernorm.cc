@@ -9,6 +9,8 @@
 
 #include "gtest/gtest.h"
 
+#include "onnx/defs/schema.h"
+
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
@@ -35,6 +37,13 @@ namespace test {
 #define MODEL_FOLDER ORT_TSTR("testdata/transform/")
 
 #ifndef DISABLE_CONTRIB_OPS
+
+static int GetCurrentOnnxOpset() {
+  const auto& map = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().Map();
+  auto it = map.find(ONNX_NAMESPACE::ONNX_DOMAIN);
+  EXPECT_TRUE(it != map.end()) << "ONNX domain not found in OpSchemaRegistry";
+  return it != map.end() ? it->second.second : 0;
+}
 
 TEST_F(GraphTransformationTests, LayerNormFusionTest) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/layer_norm.onnx";
@@ -623,6 +632,111 @@ static void TestSkipLayerNormFusion(const std::basic_string<ORTCHAR_T>& file_pat
   ASSERT_TRUE(op_to_count["LayerNormalization"] == ln_count);
   ASSERT_TRUE(op_to_count["com.microsoft.SkipLayerNormalization"] == skip_ln_count);
   ASSERT_TRUE(op_to_count["Cast"] == cast_count);
+}
+
+// Current-opset regression tests for LayerNorm and SkipLayerNorm fusions.
+// These construct minimal graphs at the current ONNX opset and verify the optimizer fires.
+
+TEST_F(GraphTransformationTests, LayerNormFusionCurrentOpsetTest) {
+  // LayerNorm pattern: ReduceMean -> Sub -> Pow(2) -> ReduceMean -> Add(eps) -> Sqrt -> Div -> Mul(gamma) -> Add(beta)
+  int current_opset = GetCurrentOnnxOpset();
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    constexpr int64_t hidden_size = 64;
+    auto* input = builder.MakeInput<float>({{2, 3, hidden_size}});
+    auto* gamma = builder.MakeInitializer<float>({hidden_size}, -1.0f, 1.0f);
+    auto* beta = builder.MakeInitializer<float>({hidden_size}, -0.5f, 0.5f);
+    auto* two = builder.MakeInitializer<float>({}, {2.0f});
+    auto* eps = builder.MakeInitializer<float>({}, {1e-5f});
+
+    auto* axes = builder.MakeInitializer<int64_t>({1}, {-1});
+    auto* mean1_out = builder.MakeIntermediate();
+    auto* sub_out = builder.MakeIntermediate();
+    auto* pow_out = builder.MakeIntermediate();
+    auto* mean2_out = builder.MakeIntermediate();
+    auto* add_eps_out = builder.MakeIntermediate();
+    auto* sqrt_out = builder.MakeIntermediate();
+    auto* div_out = builder.MakeIntermediate();
+    auto* mul_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("ReduceMean", {input, axes}, {mean1_out});
+    builder.AddNode("Sub", {input, mean1_out}, {sub_out});
+    builder.AddNode("Pow", {sub_out, two}, {pow_out});
+    builder.AddNode("ReduceMean", {pow_out, axes}, {mean2_out});
+    builder.AddNode("Add", {mean2_out, eps}, {add_eps_out});
+    builder.AddNode("Sqrt", {add_eps_out}, {sqrt_out});
+    builder.AddNode("Div", {sub_out, sqrt_out}, {div_out});
+    builder.AddNode("Mul", {div_out, gamma}, {mul_out});
+    builder.AddNode("Add", {mul_out, beta}, {output});
+  };
+
+  auto post_graph_checker = [current_opset](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    if (op_to_count["LayerNormalization"] == 1) {
+      TEST_RETURN_IF_NOT(op_to_count["ReduceMean"] == 0);
+      TEST_RETURN_IF_NOT(op_to_count["Sub"] == 0);
+      TEST_RETURN_IF_NOT(op_to_count["Pow"] == 0);
+      TEST_RETURN_IF_NOT(op_to_count["Sqrt"] == 0);
+      TEST_RETURN_IF_NOT(op_to_count["Div"] == 0);
+      return Status::OK();
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "LayerNorm fusion failed at opset ", current_opset,
+                           ". Remaining ops: ReduceMean=", op_to_count["ReduceMean"],
+                           " Sub=", op_to_count["Sub"],
+                           " Pow=", op_to_count["Pow"],
+                           " Sqrt=", op_to_count["Sqrt"],
+                           " Div=", op_to_count["Div"],
+                           ". Either update version lists in "
+                           "onnxruntime/core/optimizer/layer_norm_fusion.cc"
+                           " or skip this opset in the test if the fusion is not expected to apply.");
+  };
+
+  const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
+  // LayerNorm fusion at Level1 when opset >= 17 (ONNX LayerNormalization available).
+  // At Level2, it skips if fuse_in_level_1 is true.
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
+                                        std::make_unique<LayerNormFusion>(no_limit_empty_ep_list, TransformerLevel::Level1),
+                                        TransformerLevel::Level1, 1, nullptr, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, SkipLayerNormFusionCurrentOpsetTest) {
+  // SkipLayerNorm pattern: Add(input, skip) -> LayerNormalization(gamma, beta)
+  int current_opset = GetCurrentOnnxOpset();
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    constexpr int64_t hidden_size = 64;
+    auto* input = builder.MakeInput<float>({{2, 3, hidden_size}});
+    auto* skip = builder.MakeInput<float>({{2, 3, hidden_size}});
+    auto* gamma = builder.MakeInitializer<float>({hidden_size}, -1.0f, 1.0f);
+    auto* beta = builder.MakeInitializer<float>({hidden_size}, -0.5f, 0.5f);
+
+    auto* add_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Add", {input, skip}, {add_out});
+    builder.AddNode("LayerNormalization", {add_out, gamma, beta}, {output})
+        .AddAttribute("axis", static_cast<int64_t>(-1));
+  };
+
+  auto post_graph_checker = [current_opset](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    if (op_to_count["com.microsoft.SkipLayerNormalization"] == 1) {
+      TEST_RETURN_IF_NOT(op_to_count["Add"] == 0);
+      TEST_RETURN_IF_NOT(op_to_count["LayerNormalization"] == 0);
+      return Status::OK();
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "SkipLayerNorm fusion failed at opset ", current_opset,
+                           ". Remaining ops: Add=", op_to_count["Add"],
+                           " LayerNormalization=", op_to_count["LayerNormalization"],
+                           ". Either update version lists in "
+                           "onnxruntime/core/optimizer/skip_layer_norm_fusion.cc"
+                           " or skip this opset in the test if the fusion is not expected to apply.");
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
+                                        std::make_unique<SkipLayerNormFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
 }
 
 TEST_F(GraphTransformationTests, SkipLayerNormFusionTest) {
@@ -1277,6 +1391,135 @@ TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat2) {
   ASSERT_TRUE(op_to_count["com.microsoft.Attention"] == 1);
   ASSERT_TRUE(op_to_count["com.microsoft.SkipLayerNormalization"] == 0);
   ASSERT_TRUE(op_to_count["com.microsoft.EmbedLayerNormalization"] == 1);
+}
+
+// These tests verify that EmbedLayerNorm fusion fires at the CURRENT max ONNX opset.
+// When the ONNX opset advances, nodes will report a new SinceVersion(). If the
+// optimizer's version lists are not updated, the fusion will fail to match.
+//
+// To fix: update the EdgeEndToMatch version lists in
+// onnxruntime/core/optimizer/embed_layer_norm_fusion.cc
+
+// Loads a model and upgrades it to the current ONNX opset. Currently handles converting
+// Squeeze/Unsqueeze/Reduce* ops from attribute-based axes to input-based (opset 13+/18+).
+// Extend this function if additional op conversions are needed for new test models.
+static void LoadModelAtCurrentOpset(const ORTCHAR_T* base_model_uri,
+                                    std::shared_ptr<Model>& p_model,
+                                    const logging::Logger& logger) {
+  int current_opset = GetCurrentOnnxOpset();
+  ONNX_NAMESPACE::ModelProto model_proto;
+  {
+    std::shared_ptr<Model> base_model;
+    ASSERT_STATUS_OK(Model::Load(base_model_uri, base_model, nullptr, logger));
+    model_proto = base_model->ToProto();
+  }
+  for (auto& opset_import : *model_proto.mutable_opset_import()) {
+    if (opset_import.domain().empty() || opset_import.domain() == "ai.onnx") {
+      opset_import.set_version(current_opset);
+      break;
+    }
+  }
+
+  // Convert attribute-based Squeeze/Unsqueeze to input-based for opset 13+ compatibility.
+  // Also convert ReduceSum/ReduceMean axes attribute to input for opset 18+ compatibility.
+  auto* graph_proto = model_proto.mutable_graph();
+  int next_init_id = 0;
+  for (auto& node : *graph_proto->mutable_node()) {
+    bool is_squeeze_unsqueeze = (node.op_type() == "Squeeze" || node.op_type() == "Unsqueeze");
+    bool is_reduce = (node.op_type() == "ReduceSum" || node.op_type() == "ReduceMean" ||
+                      node.op_type() == "ReduceMax" || node.op_type() == "ReduceMin" ||
+                      node.op_type() == "ReduceProd");
+    if (!is_squeeze_unsqueeze && !is_reduce) {
+      continue;
+    }
+    int axes_attr_idx = -1;
+    for (int i = 0; i < node.attribute_size(); ++i) {
+      if (node.attribute(i).name() == "axes") {
+        axes_attr_idx = i;
+        break;
+      }
+    }
+    if (axes_attr_idx < 0) {
+      continue;
+    }
+    const auto& axes_attr = node.attribute(axes_attr_idx);
+    std::string init_name = "__axes_init_" + std::to_string(next_init_id++);
+    auto* init = graph_proto->add_initializer();
+    init->set_name(init_name);
+    init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+    init->add_dims(axes_attr.ints_size());
+    for (int i = 0; i < axes_attr.ints_size(); ++i) {
+      init->add_int64_data(axes_attr.ints(i));
+    }
+    // For Squeeze/Unsqueeze, axes is input[1]. For Reduce ops, axes is also input[1].
+    node.add_input(init_name);
+    node.mutable_attribute()->SwapElements(axes_attr_idx, node.attribute_size() - 1);
+    node.mutable_attribute()->RemoveLast();
+  }
+
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), p_model, nullptr, logger));
+}
+
+TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat1CurrentOpset) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/embed_layer_norm_format1.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_NO_FATAL_FAILURE(LoadModelAtCurrentOpset(model_uri, p_model, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<EmbedLayerNormFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["com.microsoft.EmbedLayerNormalization"], 1)
+      << "EmbedLayerNorm fusion (format 1) failed at opset " << GetCurrentOnnxOpset() << ". "
+      << "Update version lists in onnxruntime/core/optimizer/embed_layer_norm_fusion.cc "
+      << "(MatchInputToConcatSubgraph, MatchPositionEmbeddingSubgraph).";
+  EXPECT_EQ(op_to_count["Gather"], 0);
+  EXPECT_EQ(op_to_count["Add"], 0);
+}
+
+TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat2CurrentOpset) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/embed_layer_norm_format2.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_NO_FATAL_FAILURE(LoadModelAtCurrentOpset(model_uri, p_model, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<EmbedLayerNormFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["com.microsoft.EmbedLayerNormalization"], 1)
+      << "EmbedLayerNorm fusion (format 2: NonZero+Transpose+Squeeze path) failed at opset "
+      << GetCurrentOnnxOpset() << ". "
+      << "Update version lists in onnxruntime/core/optimizer/embed_layer_norm_fusion.cc "
+      << "(parent_path_1, parent_path_2).";
+  EXPECT_EQ(op_to_count["Shape"], 0);
+  EXPECT_EQ(op_to_count["Expand"], 0);
+  EXPECT_EQ(op_to_count["Gather"], 0);
+  EXPECT_EQ(op_to_count["Unsqueeze"], 0);
+}
+
+TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat3CurrentOpset) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/embed_layer_norm_format3.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_NO_FATAL_FAILURE(LoadModelAtCurrentOpset(model_uri, p_model, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<EmbedLayerNormFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["com.microsoft.EmbedLayerNormalization"], 1)
+      << "EmbedLayerNorm fusion (format 3: Range-based path) failed at opset "
+      << GetCurrentOnnxOpset() << ". "
+      << "Update version lists in onnxruntime/core/optimizer/embed_layer_norm_fusion.cc "
+      << "(parent_path_3, parent_path_4).";
+  EXPECT_EQ(op_to_count["Shape"], 0);
+  EXPECT_EQ(op_to_count["Gather"], 0);
+  EXPECT_EQ(op_to_count["Unsqueeze"], 0);
 }
 
 static void EmbedLayerNormFusionFormat3(const std::basic_string<ORTCHAR_T>& file_path, logging::Logger* logger) {
