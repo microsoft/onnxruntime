@@ -55,6 +55,8 @@ class MoE : public WebGpuKernel {
     // for now webgpu only implements a subset of MoE features
     // ORT_ENFORCE(normalize_routing_weights_ == 0, "normalize_routing_weights not supported");
     ORT_ENFORCE(use_sparse_mixer_ == 0, "use_sparse_mixer not supported");
+    ORT_ENFORCE(info.GetAttrOrDefault<int64_t>("num_shared_experts", 0) == 0,
+                "num_shared_experts > 0 (shared experts) is not supported by the WebGPU MoE operator.");
   }
 
   Status ComputeInternal(ComputeContext& context) const override;

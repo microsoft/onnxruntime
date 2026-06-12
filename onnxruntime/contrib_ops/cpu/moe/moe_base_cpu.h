@@ -49,6 +49,10 @@ class MoEBaseCPU {
       ORT_ENFORCE(k_ == 2, "Sparse mixer only supports k=2");
     }
 
+    // Shared experts (num_shared_experts > 0) are only implemented by the CUDA EP.
+    ORT_ENFORCE(op_kernel_info.GetAttrOrDefault<int64_t>("num_shared_experts", 0) == 0,
+                "num_shared_experts > 0 (shared experts) is not supported by the CPU MoE/QMoE operator.");
+
     swiglu_fusion_ = op_kernel_info.GetAttrOrDefault<int64_t>("swiglu_fusion", 0);
     swiglu_limit_ = op_kernel_info.GetAttrOrDefault<float>("swiglu_limit", std::numeric_limits<float>::infinity());
     activation_alpha_ = op_kernel_info.GetAttrOrDefault<float>("activation_alpha", 1.0f);
