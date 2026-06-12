@@ -75,8 +75,8 @@ void MatMulGemvM1(cudaStream_t stream, T* y, const T* a, const T* b_transposed,
   GemvM1Kernel<T, THREADS><<<n, THREADS, 0, stream>>>(y, a, b_transposed, n, k, alpha);
 }
 
-#define INSTANTIATE_GEMV(T)                                                                   \
-  template void TransposeForGemv<T>(cudaStream_t, T*, const T*, int, int);                     \
+#define INSTANTIATE_GEMV(T)                                                \
+  template void TransposeForGemv<T>(cudaStream_t, T*, const T*, int, int); \
   template void MatMulGemvM1<T>(cudaStream_t, T*, const T*, const T*, int, int, float)
 
 INSTANTIATE_GEMV(OrtToCudaType<MLFloat16>::type);
