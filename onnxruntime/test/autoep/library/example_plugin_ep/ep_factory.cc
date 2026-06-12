@@ -238,10 +238,14 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   config.enable_weightless_ep_context_nodes = weightless_ep_context_nodes_enable == "1";
 
   OrtEpContextConfig* ep_context_config = nullptr;
-  if (auto* get_ep_context_config =
-          Ort::Experimental::Get_OrtEpApi_SessionOptions_GetEpContextConfig_SinceV28_Fn(&factory->ort_api)) {
-    RETURN_IF_ERROR(get_ep_context_config(session_options, &ep_context_config));
+  auto* get_ep_context_config =
+      Ort::Experimental::Get_OrtEpApi_SessionOptions_GetEpContextConfig_SinceV28_Fn(&factory->ort_api);
+  if (get_ep_context_config == nullptr) {
+    return factory->ort_api.CreateStatus(ORT_NOT_IMPLEMENTED,
+                                         "OrtEpApi_SessionOptions_GetEpContextConfig is not available");
   }
+  RETURN_IF_ERROR(get_ep_context_config(session_options, &ep_context_config));
+
   auto dummy_ep = std::make_unique<ExampleEp>(*factory, factory->ep_name_, config, *logger,
                                               ep_context_config);
 

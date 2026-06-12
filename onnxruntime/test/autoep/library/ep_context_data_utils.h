@@ -88,14 +88,9 @@ inline bool ContainsPathTraversal(const std::filesystem::path& path) {
   return false;
 }
 
-// NOTE: This sample resolves file_name (which can originate from an untrusted EPContext model's
-// "ep_cache_context" attribute) directly into a filesystem path. An absolute path or one containing ".."
-// segments can therefore escape the model directory. Production EPs that adopt this pattern should validate
-// or sandbox the resolved path (e.g. reject absolute paths and traversal, confine to an allowed directory)
-// and bound the amount of data read.
-inline OrtStatus* ResolveEpContextDataPath(const OrtApi& api, const char* file_name, const OrtGraph* graph,
-                                           std::filesystem::path& data_path) {
-  data_path.clear();
+inline OrtStatus* ValidateEpContextDataName(const OrtApi& api, const char* file_name,
+                                            std::filesystem::path& data_name) {
+  data_name.clear();
 
   if (file_name == nullptr || file_name[0] == '\0') {
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
@@ -114,8 +109,67 @@ inline OrtStatus* ResolveEpContextDataPath(const OrtApi& api, const char* file_n
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not contain path traversal");
   }
 
+  data_name = candidate_path;
+  return nullptr;
+}
+
+// Resolve file_name (which can originate from an untrusted EPContext model's "ep_cache_context" attribute) as a
+// model-relative path when graph is available. Trusted direct callers may pass an absolute path when graph is null.
+// Production EPs should still apply their own sandboxing and size limits.
+inline OrtStatus* ResolveEpContextDataPath(const OrtApi& api, const char* file_name, const OrtGraph* graph,
+                                           std::filesystem::path& data_path) {
+  data_path.clear();
+
+  if (file_name == nullptr || file_name[0] == '\0') {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
+  }
+
+  const auto candidate_path = Utf8Path(file_name);
+  if (candidate_path.empty()) {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name is not a valid path");
+  }
+
+  if (ContainsPathTraversal(candidate_path)) {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not contain path traversal");
+  }
+
   data_path = candidate_path;
   if (graph == nullptr) {
+    return nullptr;
+  }
+
+  if (candidate_path.is_absolute()) {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute");
+  }
+
+  const ORTCHAR_T* model_path = nullptr;
+  RETURN_IF_ERROR(api.Graph_GetModelPath(graph, &model_path));
+  if (model_path == nullptr || model_path[0] == 0) {
+    return nullptr;
+  }
+
+  data_path = std::filesystem::path{model_path}.parent_path() / data_path;
+  return nullptr;
+}
+
+inline OrtStatus* ResolveEpContextDataOutputPath(const OrtApi& api, const char* file_name, const OrtGraph* graph,
+                                                 std::filesystem::path& data_path) {
+  data_path.clear();
+
+  if (file_name == nullptr || file_name[0] == '\0') {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
+  }
+
+  data_path = Utf8Path(file_name);
+  if (data_path.empty()) {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name is not a valid path");
+  }
+
+  if (ContainsPathTraversal(data_path)) {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not contain path traversal");
+  }
+
+  if (graph == nullptr || data_path.is_absolute()) {
     return nullptr;
   }
 
@@ -129,30 +183,28 @@ inline OrtStatus* ResolveEpContextDataPath(const OrtApi& api, const char* file_n
   return nullptr;
 }
 
-inline OrtStatus* ResolveEpContextDataFilePath(const OrtApi& api, const char* file_name, const OrtGraph* graph,
-                                               std::filesystem::path& data_path) {
-  data_path.clear();
-
-  if (file_name == nullptr || file_name[0] == '\0') {
-    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
+inline OrtStatus* WriteEpContextDataToResolvedFile(const OrtApi& api, const std::filesystem::path& data_path,
+                                                   const void* buffer, size_t buffer_size) {
+  std::ofstream output_stream(data_path, std::ios::binary);
+  if (!output_stream) {
+    const std::string message = "Failed to open EPContext data file for write: " +
+                                PathToUtf8String(data_path);
+    return api.CreateStatus(ORT_FAIL, message.c_str());
   }
 
-  data_path = Utf8Path(file_name);
-  if (data_path.empty()) {
-    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name is not a valid path");
+  if (buffer_size != 0) {
+    if (buffer_size > static_cast<size_t>(std::numeric_limits<std::streamsize>::max())) {
+      return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data buffer is too large to write");
+    }
+
+    output_stream.write(static_cast<const char*>(buffer), static_cast<std::streamsize>(buffer_size));
+    if (!output_stream) {
+      const std::string message = "Failed to write EPContext data file: " +
+                                  PathToUtf8String(data_path);
+      return api.CreateStatus(ORT_FAIL, message.c_str());
+    }
   }
 
-  if (graph == nullptr) {
-    return nullptr;
-  }
-
-  const ORTCHAR_T* model_path = nullptr;
-  RETURN_IF_ERROR(api.Graph_GetModelPath(graph, &model_path));
-  if (model_path == nullptr || model_path[0] == 0 || data_path.is_absolute()) {
-    return nullptr;
-  }
-
-  data_path = std::filesystem::path{model_path}.parent_path() / data_path;
   return nullptr;
 }
 
@@ -161,7 +213,7 @@ inline OrtStatus* ReadEpContextDataFromFile(const OrtApi& api, const char* file_
   data.clear();
 
   std::filesystem::path data_path;
-  RETURN_IF_ERROR(ResolveEpContextDataFilePath(api, file_name, graph, data_path));
+  RETURN_IF_ERROR(ResolveEpContextDataPath(api, file_name, graph, data_path));
 
   std::ifstream input_stream(data_path, std::ios::binary);
   if (!input_stream) {
@@ -187,29 +239,8 @@ inline OrtStatus* WriteEpContextDataToFile(const OrtApi& api, const char* file_n
   }
 
   std::filesystem::path data_path;
-  RETURN_IF_ERROR(ResolveEpContextDataFilePath(api, file_name, graph, data_path));
-
-  std::ofstream output_stream(data_path, std::ios::binary);
-  if (!output_stream) {
-    const std::string message = "Failed to open EPContext data file for write: " +
-                                PathToUtf8String(data_path);
-    return api.CreateStatus(ORT_FAIL, message.c_str());
-  }
-
-  if (buffer_size != 0) {
-    if (buffer_size > static_cast<size_t>(std::numeric_limits<std::streamsize>::max())) {
-      return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data buffer is too large to write");
-    }
-
-    output_stream.write(static_cast<const char*>(buffer), static_cast<std::streamsize>(buffer_size));
-    if (!output_stream) {
-      const std::string message = "Failed to write EPContext data file: " +
-                                  PathToUtf8String(data_path);
-      return api.CreateStatus(ORT_FAIL, message.c_str());
-    }
-  }
-
-  return nullptr;
+  RETURN_IF_ERROR(ResolveEpContextDataPath(api, file_name, graph, data_path));
+  return WriteEpContextDataToResolvedFile(api, data_path, buffer, buffer_size);
 }
 
 inline OrtStatus* ReadEpContextDataWithFileFallback(
@@ -224,7 +255,11 @@ inline OrtStatus* ReadEpContextDataWithFileFallback(
 
   OrtReadNamedBufferFunc read_func = nullptr;
   void* read_state = nullptr;
-  if (get_read_func != nullptr && ep_context_config != nullptr) {
+  if (ep_context_config != nullptr && get_read_func == nullptr) {
+    return api.CreateStatus(ORT_NOT_IMPLEMENTED,
+                            "OrtEpApi_EpContextConfig_GetEpContextDataReadFunc is not available");
+  }
+  if (ep_context_config != nullptr) {
     RETURN_IF_ERROR(get_read_func(ep_context_config, &read_func, &read_state));
   }
 
@@ -261,6 +296,17 @@ inline OrtStatus* ReadEpContextDataWithFileFallback(
   return nullptr;
 }
 
+inline OrtStatus* ReadEpContextDataWithFileFallback(
+    const OrtApi& api,
+    const OrtEpContextConfig* ep_context_config,
+    const char* file_name, const OrtGraph* graph,
+    std::vector<char>& data) {
+  return ReadEpContextDataWithFileFallback(
+      api,
+      Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataReadFunc_SinceV28_Fn(&api),
+      ep_context_config, file_name, graph, data);
+}
+
 inline OrtStatus* WriteEpContextDataWithFileFallback(
     const OrtApi& api,
     OrtExperimental_OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc_SinceV28_Fn get_write_func,
@@ -278,7 +324,11 @@ inline OrtStatus* WriteEpContextDataWithFileFallback(
 
   OrtWriteNamedBufferFunc write_func = nullptr;
   void* write_state = nullptr;
-  if (get_write_func != nullptr && ep_context_config != nullptr) {
+  if (ep_context_config != nullptr && get_write_func == nullptr) {
+    return api.CreateStatus(ORT_NOT_IMPLEMENTED,
+                            "OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc is not available");
+  }
+  if (ep_context_config != nullptr) {
     RETURN_IF_ERROR(get_write_func(ep_context_config, &write_func, &write_state));
   }
 
@@ -286,11 +336,28 @@ inline OrtStatus* WriteEpContextDataWithFileFallback(
     return write_func(write_state, file_name, buffer, buffer_size);
   }
 
+  std::filesystem::path logical_path;
+  RETURN_IF_ERROR(ValidateEpContextDataName(api, file_name, logical_path));
+
   if (fallback_file_name == nullptr || fallback_file_name[0] == '\0') {
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data fallback file name must not be empty");
   }
 
-  return WriteEpContextDataToFile(api, fallback_file_name, graph, buffer, buffer_size);
+  std::filesystem::path data_path;
+  RETURN_IF_ERROR(ResolveEpContextDataOutputPath(api, fallback_file_name, graph, data_path));
+  return WriteEpContextDataToResolvedFile(api, data_path, buffer, buffer_size);
+}
+
+inline OrtStatus* WriteEpContextDataWithFileFallback(
+    const OrtApi& api,
+    const OrtEpContextConfig* ep_context_config,
+    const char* file_name, const char* fallback_file_name,
+    const OrtGraph* graph,
+    const void* buffer, size_t buffer_size) {
+  return WriteEpContextDataWithFileFallback(
+      api,
+      Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc_SinceV28_Fn(&api),
+      ep_context_config, file_name, fallback_file_name, graph, buffer, buffer_size);
 }
 
 inline OrtStatus* WriteEpContextDataWithFileFallback(
@@ -301,6 +368,14 @@ inline OrtStatus* WriteEpContextDataWithFileFallback(
     const void* buffer, size_t buffer_size) {
   return WriteEpContextDataWithFileFallback(api, get_write_func, ep_context_config, file_name, file_name, graph, buffer,
                                             buffer_size);
+}
+
+inline OrtStatus* WriteEpContextDataWithFileFallback(
+    const OrtApi& api,
+    const OrtEpContextConfig* ep_context_config,
+    const char* file_name, const OrtGraph* graph,
+    const void* buffer, size_t buffer_size) {
+  return WriteEpContextDataWithFileFallback(api, ep_context_config, file_name, file_name, graph, buffer, buffer_size);
 }
 
 }  // namespace ep_context_data_utils

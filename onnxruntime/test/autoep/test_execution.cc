@@ -94,7 +94,7 @@ void ExpectOrtStatusError(OrtStatus* status_ptr, OrtErrorCode expected_code, std
 }
 
 std::filesystem::path PrepareTempTestDir(std::string_view name) {
-  std::filesystem::path test_dir = std::filesystem::temp_directory_path() / std::string{name};
+  std::filesystem::path test_dir = std::string{name};
   std::filesystem::remove_all(test_dir);
   std::filesystem::create_directories(test_dir);
   return test_dir;
@@ -672,21 +672,17 @@ TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathAndInvalidArguments) {
 
   ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataToFile(api, "unused.ctx", nullptr, nullptr, 1),
                        ORT_INVALID_ARGUMENT, "EPContext data buffer must not be null for non-empty data");
-  ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(api, FakeEpContextConfigGetWriteFunc,
-                                                                                 nullptr, "unused.ctx", nullptr,
+  ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(api, nullptr, "unused.ctx", nullptr,
                                                                                  nullptr, 1),
                        ORT_INVALID_ARGUMENT, "EPContext data buffer must not be null for non-empty data");
 
   std::vector<char> data;
-  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataWithFileFallback(api, FakeEpContextConfigGetReadFunc,
-                                                                                nullptr, "", nullptr, data),
+  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataWithFileFallback(api, nullptr, "", nullptr, data),
                        ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
-  ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(api, FakeEpContextConfigGetWriteFunc,
-                                                                                 nullptr, "", nullptr, nullptr, 0),
+  ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(api, nullptr, "", nullptr, nullptr, 0),
                        ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
   ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(
-                           api, FakeEpContextConfigGetWriteFunc, nullptr, "logical_context_data.bin", "", nullptr,
-                           nullptr, 0),
+                           api, nullptr, "logical_context_data.bin", "", nullptr, nullptr, 0),
                        ORT_INVALID_ARGUMENT, "EPContext data fallback file name must not be empty");
 }
 
@@ -703,9 +699,15 @@ TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathRejectsUnsafeNames) {
 #else
   const char* absolute_file_name = "/tmp/escape.ctx";
 #endif
-  ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, absolute_file_name, nullptr, data_path),
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ResolveEpContextDataPath(api, absolute_file_name, nullptr, data_path));
+  EXPECT_TRUE(data_path.is_absolute());
+
+  std::vector<char> data;
+  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataFromFile(api, "../escape.ctx", nullptr, data),
+                       ORT_INVALID_ARGUMENT, "EPContext data file name must not contain path traversal");
+  ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(
+                           api, nullptr, absolute_file_name, "unused.ctx", nullptr, nullptr, 0),
                        ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute");
-  EXPECT_TRUE(data_path.empty());
 }
 
 TEST(OrtEpLibrary, EpContextDataUtils_FileFallbackReadsAndWrites) {
@@ -727,19 +729,18 @@ TEST(OrtEpLibrary, EpContextDataUtils_FileFallbackReadsAndWrites) {
   const std::filesystem::path wrapper_data_path = test_dir / "wrapper_context_data.bin";
   const std::string wrapper_data_file_name = ep_context_data_utils::PathToUtf8String(wrapper_data_path);
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataWithFileFallback(
-      api, FakeEpContextConfigGetWriteFunc, nullptr, wrapper_data_file_name.c_str(), nullptr, payload.data(),
-      payload.size()));
+      api, nullptr, wrapper_data_file_name.c_str(), nullptr, payload.data(), payload.size()));
 
   data.clear();
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextDataWithFileFallback(
-      api, FakeEpContextConfigGetReadFunc, nullptr, wrapper_data_file_name.c_str(), nullptr, data));
+      api, nullptr, wrapper_data_file_name.c_str(), nullptr, data));
   EXPECT_EQ(std::string(data.begin(), data.end()), payload);
 
   const std::filesystem::path fallback_data_path = test_dir / "fallback_context_data.bin";
   const std::string fallback_data_file_name = ep_context_data_utils::PathToUtf8String(fallback_data_path);
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataWithFileFallback(
-      api, FakeEpContextConfigGetWriteFunc, nullptr, "logical_context_data.bin", fallback_data_file_name.c_str(),
-      nullptr, payload.data(), payload.size()));
+      api, nullptr, "logical_context_data.bin", fallback_data_file_name.c_str(), nullptr, payload.data(),
+      payload.size()));
 
   data.clear();
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextDataFromFile(api, fallback_data_file_name.c_str(), nullptr,
@@ -749,11 +750,11 @@ TEST(OrtEpLibrary, EpContextDataUtils_FileFallbackReadsAndWrites) {
   const std::filesystem::path empty_data_path = test_dir / "empty_context_data.bin";
   const std::string empty_data_file_name = ep_context_data_utils::PathToUtf8String(empty_data_path);
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataWithFileFallback(
-      api, FakeEpContextConfigGetWriteFunc, nullptr, empty_data_file_name.c_str(), nullptr, nullptr, 0));
+      api, nullptr, empty_data_file_name.c_str(), nullptr, nullptr, 0));
 
   data.assign({'s', 't', 'a', 'l', 'e'});
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextDataWithFileFallback(
-      api, FakeEpContextConfigGetReadFunc, nullptr, empty_data_file_name.c_str(), nullptr, data));
+      api, nullptr, empty_data_file_name.c_str(), nullptr, data));
   EXPECT_TRUE(data.empty());
 
   const std::filesystem::path missing_data_path = test_dir / "missing_context_data.bin";
@@ -1007,6 +1008,41 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_ExternalDataUsesWriteCallback) {
   ASSERT_TRUE(callback_state.write_called);
   EXPECT_FALSE(callback_state.write_file_name.empty());
   EXPECT_EQ(std::string(callback_state.payload.begin(), callback_state.payload.end()), "binary_data");
+}
+
+TEST(OrtEpLibrary, PluginEp_GenEpContextModel_ExternalDataBufferOutputRequiresWriteCallback) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
+
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  Ort::AllocatorWithDefaultOptions allocator;
+  void* output_model_buffer = nullptr;
+  size_t output_model_buffer_size = 0;
+  auto release_output_model_buffer = gsl::finally([&]() {
+    if (output_model_buffer != nullptr) {
+      allocator.Free(output_model_buffer);
+    }
+  });
+
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+  compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
+  compile_options.SetInputModelPath(input_model_file);
+  compile_options.SetOutputModelBuffer(allocator, &output_model_buffer, &output_model_buffer_size);
+  compile_options.SetEpContextEmbedMode(false);
+
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr(
+                                            "External EPContext data requires an output model path or an "
+                                            "OrtWriteNamedBufferFunc callback"));
+  EXPECT_EQ(output_model_buffer, nullptr);
+  EXPECT_EQ(output_model_buffer_size, 0U);
 }
 
 TEST(OrtEpLibrary, PluginEp_LoadEpContextModel_ExternalDataUsesReadCallback) {
