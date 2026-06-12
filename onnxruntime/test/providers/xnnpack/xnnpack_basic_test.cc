@@ -221,7 +221,23 @@ TEST(XnnpackEP, TestPoolReluFusionRejectedWithSideConsumer) {
     builder.AddNode("Add", {pool_output, relu_output}, {output_arg});
   };
 
-  RunModelTest(build_test_case, "xnnpack_pool_relu_fanout");
+  // the fusion must be rejected: Relu should remain as a standalone node on the CPU EP
+  std::function<void(const Graph&)> verify = [](const Graph& graph) {
+    int num_relu = 0;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Relu") {
+        ++num_relu;
+        EXPECT_EQ(node.GetExecutionProviderType(), kCpuExecutionProvider)
+            << "Relu should not have been taken by the XNNPACK EP";
+      }
+    }
+    EXPECT_EQ(num_relu, 1) << "Relu should not have been fused with MaxPool";
+  };
+
+  EPVerificationParams params;
+  params.graph_verifier = &verify;
+
+  RunModelTest(build_test_case, "xnnpack_pool_relu_fanout", params);
 }
 
 static void RunModelTestWithPath(const ORTCHAR_T* ort_model_path, const char* graph_name,
