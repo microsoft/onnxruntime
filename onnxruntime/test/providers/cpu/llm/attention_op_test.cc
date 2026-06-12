@@ -3917,5 +3917,165 @@ TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_StructuralEmptyRows_Zero_CUD
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+// Structural fully-masked rows routed through the FLASH path, SINGLE-TILE epilogue (regression for
+// #28958). Unlike Attention_Causal_NonPadKVSeqLen_StructuralEmptyRows_Zero_CUDA (fp32, head_size=4
+// -> MEA), this uses fp16 + head_size=64 (== v_head_size) + is_causal=1 + nonpad_kv_seqlen < q_seq +
+// NO attn_mask + NO past_key, which satisfies flash_eligible (cuda/llm/attention.cc:1385-1397) and
+// routes to RunFlashAttention nonpad Path-1 (mha_fwd_kvcache with seqlens_k). The Flash path has no
+// host-side LaunchZeroFullyMaskedRows guard (that runs only on MEA/unfused), so a structurally empty
+// leading row depends entirely on the FA2 epilogue zeroing an lse==-inf row instead of emitting NaN.
+// total_sequence_length=4 -> num_n_blocks=1 -> num_splits=1, so this exercises ONLY the single-tile
+// epilogue (flash_attention/softmax.h:182-186, inv_sum=1 when sum==0 and acc_o=0). The split-KV
+// combine is locked by the _SplitKV_ test below. offset = nonpad - q_seq = 2 - 4 = -2: rows 0,1
+// attend zero keys -> 0; row 2 -> V row 0; row 3 -> mean(V row 0, V row 1). Constant Q/K make
+// retained rows the uniform mean of the allowed V rows.
+TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_FlashStructuralEmptyRows_Zero_FP16_CUDA) {
+  if (!HasCudaEnvironment(800)) {
+    return;  // Flash requires SM 8.0+; on older GPUs this silently falls to MEA, losing the FA2 intent.
+  }
+  constexpr int kHeadSize = 64;
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(1));
+
+  std::vector<int64_t> q_shape = {1, 1, 4, kHeadSize};
+  std::vector<int64_t> k_shape = {1, 1, 4, kHeadSize};
+  std::vector<int64_t> v_shape = {1, 1, 4, kHeadSize};
+
+  std::vector<float> q(1 * 1 * 4 * kHeadSize, 1.0f);
+  std::vector<float> k(1 * 1 * 4 * kHeadSize, 1.0f);
+  // V row 0 = 1, V row 1 = 3 (V rows 2,3 are padding beyond nonpad=2 and never attended).
+  const float v_row_values[4] = {1.0f, 3.0f, 7.0f, 9.0f};
+  std::vector<float> v;
+  v.reserve(4 * kHeadSize);
+  for (int s = 0; s < 4; ++s)
+    for (int h = 0; h < kHeadSize; ++h) v.push_back(v_row_values[s]);
+
+  test.AddInput<MLFloat16>("Q", q_shape, ToFloat16(q));
+  test.AddInput<MLFloat16>("K", k_shape, ToFloat16(k));
+  test.AddInput<MLFloat16>("V", v_shape, ToFloat16(v));
+  test.AddOptionalInputEdge<bool>();       // attn_mask (none — masking is purely structural)
+  test.AddOptionalInputEdge<MLFloat16>();  // past_key
+  test.AddOptionalInputEdge<MLFloat16>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {1}, {2});
+
+  // Rows 0,1 structurally empty -> 0. Row 2 -> V[0]=1. Row 3 -> mean(V[0],V[1])=2.
+  std::vector<float> expected_y_f;
+  expected_y_f.reserve(4 * kHeadSize);
+  const float expected_row[4] = {0.0f, 0.0f, 1.0f, 2.0f};
+  for (int s = 0; s < 4; ++s)
+    for (int h = 0; h < kHeadSize; ++h) expected_y_f.push_back(expected_row[s]);
+  test.AddOutput<MLFloat16>("Y", {1, 1, 4, kHeadSize}, ToFloat16(expected_y_f), false, 0, 0.02f);
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_key
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// BFloat16 counterpart of the Flash single-tile structural-empty-row regression above (#28958).
+// BFloat16 Flash requires SM 8.0+. total_sequence_length=4 -> num_splits=1, so this also exercises
+// only the single-tile epilogue (flash_attention/softmax.h:182-186). Same shapes/expectations:
+// leading offset<0 rows must be 0, not NaN.
+TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_FlashStructuralEmptyRows_Zero_BF16_CUDA) {
+  if (!HasCudaEnvironment(800)) {
+    return;  // BFloat16 Flash requires SM 8.0+
+  }
+  constexpr int kHeadSize = 64;
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(1));
+
+  std::vector<int64_t> q_shape = {1, 1, 4, kHeadSize};
+  std::vector<int64_t> k_shape = {1, 1, 4, kHeadSize};
+  std::vector<int64_t> v_shape = {1, 1, 4, kHeadSize};
+
+  std::vector<float> q(1 * 1 * 4 * kHeadSize, 1.0f);
+  std::vector<float> k(1 * 1 * 4 * kHeadSize, 1.0f);
+  // V row 0 = 1, V row 1 = 3 (V rows 2,3 are padding beyond nonpad=2 and never attended).
+  const float v_row_values[4] = {1.0f, 3.0f, 7.0f, 9.0f};
+  std::vector<float> v;
+  v.reserve(4 * kHeadSize);
+  for (int s = 0; s < 4; ++s)
+    for (int h = 0; h < kHeadSize; ++h) v.push_back(v_row_values[s]);
+
+  test.AddInput<BFloat16>("Q", q_shape, FloatsToBFloat16s(q));
+  test.AddInput<BFloat16>("K", k_shape, FloatsToBFloat16s(k));
+  test.AddInput<BFloat16>("V", v_shape, FloatsToBFloat16s(v));
+  test.AddOptionalInputEdge<bool>();      // attn_mask (none — masking is purely structural)
+  test.AddOptionalInputEdge<BFloat16>();  // past_key
+  test.AddOptionalInputEdge<BFloat16>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {1}, {2});
+
+  // Rows 0,1 structurally empty -> 0. Row 2 -> V row 0 = 1. Row 3 -> mean(V row 0, V row 1) = 2.
+  std::vector<float> expected_y_f;
+  expected_y_f.reserve(4 * kHeadSize);
+  const float expected_row[4] = {0.0f, 0.0f, 1.0f, 2.0f};
+  for (int s = 0; s < 4; ++s)
+    for (int h = 0; h < kHeadSize; ++h) expected_y_f.push_back(expected_row[s]);
+  test.AddOutput<BFloat16>("Y", {1, 1, 4, kHeadSize}, FloatsToBFloat16s(expected_y_f), false, 0, 0.02f);
+  test.AddOptionalOutputEdge<BFloat16>();  // present_key
+  test.AddOptionalOutputEdge<BFloat16>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Structural fully-masked rows routed through the FLASH SPLIT-KV combine path (regression for
+// #28958). This is the higher NaN-risk path the single-tile tests above do NOT cover: with a large
+// total_sequence_length the FA2 num_splits heuristic chooses num_splits > 1, so each masked split
+// emits lse == -inf and the cross-split combine must avoid expf(-inf - -inf) -> NaN. fp16 +
+// head_size=64 + total_sequence_length=257 forces num_n_blocks = ceil(257/256) = 2 -> num_splits = 2
+// on an A100-class GPU (num_splits_heuristic in flash_attention/flash_api.cc with block_n=256 for
+// head_size<=64, 108 SMs). nonpad_kv_seqlen=2 with q_seq=4 (offset = 2 - 4 = -2) leaves rows 0,1
+// structurally empty across every split; the remaining 255 KV positions are padding beyond nonpad
+// and never attended. This locks the split-KV combine guards (flash_attention/flash_fwd_kernel.h:
+// 1125 lse_max==-inf -> 0, :1135 lse_sum==0 -> lse_logsum=+inf, :1153 scale=expf(-inf)=0 -> O=0).
+TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_FlashStructuralEmptyRows_Zero_SplitKV_FP16_CUDA) {
+  if (!HasCudaEnvironment(800)) {
+    return;  // Flash requires SM 8.0+; otherwise this falls to MEA and the split-KV intent is lost.
+  }
+  constexpr int kHeadSize = 64;
+  constexpr int kKvSeqLen = 257;  // > block_n (256) -> num_n_blocks=2 -> num_splits=2 (split-KV path)
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(1));
+
+  std::vector<int64_t> q_shape = {1, 1, 4, kHeadSize};
+  std::vector<int64_t> k_shape = {1, 1, kKvSeqLen, kHeadSize};
+  std::vector<int64_t> v_shape = {1, 1, kKvSeqLen, kHeadSize};
+
+  std::vector<float> q(1 * 1 * 4 * kHeadSize, 1.0f);
+  std::vector<float> k(1 * 1 * kKvSeqLen * kHeadSize, 1.0f);
+  // V row 0 = 1, V row 1 = 3 (V rows 2..256 are padding beyond nonpad=2 and never attended).
+  std::vector<float> v;
+  v.reserve(kKvSeqLen * kHeadSize);
+  for (int s = 0; s < kKvSeqLen; ++s) {
+    const float val = (s == 0) ? 1.0f : (s == 1 ? 3.0f : 99.0f);
+    for (int h = 0; h < kHeadSize; ++h) v.push_back(val);
+  }
+
+  test.AddInput<MLFloat16>("Q", q_shape, ToFloat16(q));
+  test.AddInput<MLFloat16>("K", k_shape, ToFloat16(k));
+  test.AddInput<MLFloat16>("V", v_shape, ToFloat16(v));
+  test.AddOptionalInputEdge<bool>();       // attn_mask (none — masking is purely structural)
+  test.AddOptionalInputEdge<MLFloat16>();  // past_key
+  test.AddOptionalInputEdge<MLFloat16>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {1}, {2});
+
+  // Rows 0,1 structurally empty -> 0. Row 2 -> V row 0 = 1. Row 3 -> mean(V row 0, V row 1) = 2.
+  std::vector<float> expected_y_f;
+  expected_y_f.reserve(4 * kHeadSize);
+  const float expected_row[4] = {0.0f, 0.0f, 1.0f, 2.0f};
+  for (int s = 0; s < 4; ++s)
+    for (int h = 0; h < kHeadSize; ++h) expected_y_f.push_back(expected_row[s]);
+  test.AddOutput<MLFloat16>("Y", {1, 1, 4, kHeadSize}, ToFloat16(expected_y_f), false, 0, 0.02f);
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_key
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

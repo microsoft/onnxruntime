@@ -1043,9 +1043,8 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
        "Skipped until #28904 kernels land and cmake/external/onnx includes onnx/onnx#8068"},
       {"attention_23_boolmask_fullymasked_row_nan_robustness_expanded",
        "Skipped until #28904 kernels land and cmake/external/onnx includes onnx/onnx#8068"},
-      // TODO(#28994): at the onnx pin-bump past onnx/onnx#8068, also add the mode-3
-      // qk_matmul_output conformance tests here -- CUDA returns NOT_IMPLEMENTED for modes
-      // beyond kQK (cuda/llm/attention.cc:1477). See #28994 Section A.
+      // NOTE: the #8068 mode-3 qk_matmul_output skips are CUDA-only (CPU implements mode 3 and
+      // would pass) — they live in the `provider_name == "cuda"` block below, not here. See #28994.
       {"loop13_seq", "Creation of empty sequences is currently not supported in the test runner"},
       {"sequence_insert_at_front", "shape mismatch, expect {4} got {3}"},
       {"cast_FLOAT_to_BFLOAT16", "expect uint16 got bfloat16"},
@@ -1218,6 +1217,25 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
 #else
     broken_tests->insert({"bidaf", "this test should be recovered when multi-gpu pipeline deprecates NV12", {"opset9"}});
 #endif
+    // #28994: preemptive skip for the #8068 mode-3 qk_matmul_output conformance tests. CUDA returns
+    // NOT_IMPLEMENTED for qk_matmul_output modes beyond kQK (cuda/llm/attention.cc:1477), so these
+    // hard-fail the moment the onnx pin is bumped past onnx/onnx#8068. CPU IMPLEMENTS mode 3 and
+    // passes, so these are scoped to CUDA only (not the provider-agnostic block above) to preserve
+    // CPU mode-3 conformance. The bundled cmake/external/onnx is v1.21.0 and does not yet contain
+    // these tests, so the entries are no-ops today. Exact names sourced from the onnx#8068 generated
+    // corpus. De-skip when mode>kQK is supported in Attention-cuda (#27712). See #28994 Section A.
+    broken_tests->insert({"attention_23_fullymasked_qk_matmul_output_mode3_zero",
+                          "CUDA NOT_IMPLEMENTED for qk_matmul_output mode>kQK; skip until onnx#8068 pin + #27712 (#28994)"});
+    broken_tests->insert({"attention_23_fullymasked_qk_matmul_output_mode3_zero_expanded",
+                          "CUDA NOT_IMPLEMENTED for qk_matmul_output mode>kQK; skip until onnx#8068 pin + #27712 (#28994)"});
+    broken_tests->insert({"attention_24_fullymasked_qk_matmul_output_mode3_zero",
+                          "CUDA NOT_IMPLEMENTED for qk_matmul_output mode>kQK; skip until onnx#8068 pin + #27712 (#28994)"});
+    broken_tests->insert({"attention_24_fullymasked_qk_matmul_output_mode3_zero_expanded",
+                          "CUDA NOT_IMPLEMENTED for qk_matmul_output mode>kQK; skip until onnx#8068 pin + #27712 (#28994)"});
+    broken_tests->insert({"attention_24_qk_matmul_output_mode3_softmax_precision",
+                          "CUDA NOT_IMPLEMENTED for qk_matmul_output mode>kQK; skip until onnx#8068 pin + #27712 (#28994)"});
+    broken_tests->insert({"attention_24_qk_matmul_output_mode3_softmax_precision_expanded",
+                          "CUDA NOT_IMPLEMENTED for qk_matmul_output mode>kQK; skip until onnx#8068 pin + #27712 (#28994)"});
   }
 
   if (provider_name == "nnapi") {
