@@ -521,13 +521,27 @@ void add_bias_and_interleave_quantized_tensor_inplace_cuda(
   }
 }
 
+int get_arch_for_mixed_gemm_weight_preprocess(int arch) {
+  ORT_ENFORCE(arch >= 75, "Unsupported CUDA architecture: ", arch);
+  if (arch < 80) {
+    return 75;
+  }
+#ifndef EXCLUDE_SM_90
+  if (arch >= 90 && arch < 100) {
+    return 90;
+  }
+#endif
+  return 80;
+}
+
 void preprocess_weights_for_mixed_gemm_cuda(cudaStream_t stream,
                                             int arch,
                                             int8_t* preprocessed_quantized_weight,
                                             int8_t* row_major_quantized_weight,
                                             int32_t* d_permutation_map,
                                             std::vector<size_t> const& shape,
-                                            QuantType quant_type) {
+                                            QuantType quant_type,
+                                            bool synchronize) {
   LayoutDetails details = getLayoutDetailsForTransform(quant_type, arch);
 
   ORT_ENFORCE(shape.size() == 2 || shape.size() == 3, "Shape must be 2-D or 3-D");
@@ -576,9 +590,17 @@ void preprocess_weights_for_mixed_gemm_cuda(cudaStream_t stream,
     ORT_ENFORCE(copy_err == cudaSuccess, "cudaMemcpyAsync failed: ", cudaGetErrorString(copy_err));
   }
 
-  // Synchronize the stream to ensure the permutation is complete before row_permutation memory is relased.
-  auto sync_err = cudaStreamSynchronize(stream);
-  ORT_ENFORCE(sync_err == cudaSuccess, "cudaStreamSynchronize failed: ", cudaGetErrorString(sync_err));
+  // Synchronize the stream so that all transform work is complete before the
+  // caller releases the (transient) scratch buffers. Callers that invoke this
+  // repeatedly on the same stream (e.g. QMoE looping over experts) can pass
+  // ``synchronize=false`` to skip the per-call host-blocking sync and issue a
+  // single ``cudaStreamSynchronize`` once after the final call instead. The
+  // device permutation source (``kPerm_*``) has static storage duration, so it
+  // is always safe regardless of when the async copy completes.
+  if (synchronize) {
+    auto sync_err = cudaStreamSynchronize(stream);
+    ORT_ENFORCE(sync_err == cudaSuccess, "cudaStreamSynchronize failed: ", cudaGetErrorString(sync_err));
+  }
 }
 
 }  // namespace weight_only

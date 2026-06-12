@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/platform/device_discovery.h"
+#include "core/platform/linux/npu_device_discovery.h"
 #include "core/platform/linux/pci_device_discovery.h"
 
 #include <filesystem>
@@ -123,7 +124,7 @@ Status GetPciBusId(const std::filesystem::path& sysfs_path, std::optional<std::s
 
   std::error_code error_code;
   auto pci_bus_id_path = std::filesystem::canonical(sysfs_path / "device", error_code);  // resolves symlink to PCI bus id, e.g. 0000:65:00.0
-  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code, sysfs_path / "device", "Getting PCI bus id from DRM device by resolving symlink"));
+  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code, sysfs_path / "device", "Getting PCI bus id from sysfs device by resolving symlink"));
 
   auto pci_bus_id_filename = pci_bus_id_path.filename();
   if (std::regex_match(pci_bus_id_filename.string(), pci_bus_id_regex)) {
@@ -269,6 +270,7 @@ Status GetGpuDeviceFromPci(const GpuPciPathInfo& path_info, OrtHardwareDevice& g
 namespace {
 
 constexpr const char* kSysfsPciDevicesPath = "/sys/bus/pci/devices";
+constexpr const char* kSysfsAccelPath = "/sys/class/accel";
 
 Status GetGpuDevices(std::vector<OrtHardwareDevice>& gpu_devices_out) {
   std::vector<GpuSysfsPathInfo> gpu_sysfs_path_infos{};
@@ -315,6 +317,119 @@ Status GetGpuDevices(std::vector<OrtHardwareDevice>& gpu_devices_out) {
 
 }  // namespace
 
+namespace npu_device_discovery {
+
+Status DetectNpuSysfsPaths(const fs::path& sysfs_accel_path,
+                           std::vector<NpuSysfsPathInfo>& npu_sysfs_paths_out) {
+  std::error_code error_code{};
+
+  const bool sysfs_accel_path_exists = fs::exists(sysfs_accel_path, error_code);
+  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code, sysfs_accel_path, "Checking existence of accel sysfs path"));
+
+  if (!sysfs_accel_path_exists) {
+    npu_sysfs_paths_out = {};
+    return Status::OK();
+  }
+
+  const auto detect_accel_path = [](const fs::path& sysfs_path, size_t& accel_idx) -> bool {
+    const auto filename = sysfs_path.filename();
+    const auto filename_str = std::string_view{filename.native()};
+
+    // Look for a filename matching "accelN". N is a number.
+    constexpr std::string_view prefix = "accel";
+    if (filename_str.find(prefix) != 0) {
+      return false;
+    }
+
+    size_t parsed_accel_idx{};
+    if (!TryParseStringWithClassicLocale<size_t>(filename_str.substr(prefix.size()), parsed_accel_idx)) {
+      return false;
+    }
+
+    accel_idx = parsed_accel_idx;
+    return true;
+  };
+
+  std::vector<NpuSysfsPathInfo> npu_sysfs_paths{};
+
+  auto dir_iterator = fs::directory_iterator{sysfs_accel_path, error_code};
+  ORT_RETURN_IF_ERROR(ErrorCodeToStatus(error_code, sysfs_accel_path, "Iterating over accel sysfs devices"));
+
+  for (const auto& dir_item : dir_iterator) {
+    const auto& dir_item_path = dir_item.path();
+
+    if (size_t accel_idx{}; detect_accel_path(dir_item_path, accel_idx)) {
+      NpuSysfsPathInfo path_info{};
+      path_info.accel_idx = accel_idx;
+      path_info.path = dir_item_path;
+      npu_sysfs_paths.emplace_back(std::move(path_info));
+    }
+  }
+
+  npu_sysfs_paths_out = std::move(npu_sysfs_paths);
+  return Status::OK();
+}
+
+Status GetNpuDeviceFromSysfs(const NpuSysfsPathInfo& path_info,
+                             OrtHardwareDevice& npu_device_out) {
+  OrtHardwareDevice npu_device{};
+
+  const auto& sysfs_path = path_info.path;
+
+  uint16_t vendor_id{};
+  const auto vendor_id_path = sysfs_path / "device" / "vendor";
+  ORT_RETURN_IF_ERROR(ReadValueFromFile(vendor_id_path, vendor_id));
+  npu_device.vendor_id = vendor_id;
+
+  uint16_t device_id{};
+  const auto device_id_path = sysfs_path / "device" / "device";
+  ORT_RETURN_IF_ERROR(ReadValueFromFile(device_id_path, device_id));
+  npu_device.device_id = device_id;
+
+  npu_device.metadata.Add("accel_idx", MakeString(path_info.accel_idx));
+
+  std::optional<std::string> pci_bus_id;
+  ORT_RETURN_IF_ERROR(GetPciBusId(sysfs_path, pci_bus_id));
+  if (pci_bus_id) {
+    npu_device.metadata.Add("pci_bus_id", std::move(*pci_bus_id));
+  }
+
+  npu_device.type = OrtHardwareDeviceType_NPU;
+
+  npu_device_out = std::move(npu_device);
+
+  return Status::OK();
+}
+
+}  // namespace npu_device_discovery
+
+namespace {
+
+Status GetNpuDevices(std::vector<OrtHardwareDevice>& npu_devices_out) {
+  std::vector<npu_device_discovery::NpuSysfsPathInfo> npu_sysfs_path_infos{};
+  ORT_RETURN_IF_ERROR(npu_device_discovery::DetectNpuSysfsPaths(kSysfsAccelPath, npu_sysfs_path_infos));
+
+  std::vector<OrtHardwareDevice> npu_devices{};
+  npu_devices.reserve(npu_sysfs_path_infos.size());
+
+  for (const auto& npu_sysfs_path_info : npu_sysfs_path_infos) {
+    OrtHardwareDevice npu_device{};
+    if (auto status = npu_device_discovery::GetNpuDeviceFromSysfs(npu_sysfs_path_info, npu_device); !status.IsOK()) {
+      LOGS_DEFAULT(WARNING) << MakeString("Failed to detect devices under ",
+                                          npu_sysfs_path_info.path,
+                                          ": ",
+                                          status.ErrorMessage());
+      continue;
+    }
+    npu_devices.emplace_back(std::move(npu_device));
+  }
+
+  npu_devices_out = std::move(npu_devices);
+
+  return Status::OK();
+}
+}  // namespace
+
 std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatform() {
   std::unordered_set<OrtHardwareDevice> devices;
 
@@ -334,7 +449,16 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
   }
 
   // get NPU devices
-  // TODO figure out how to discover these
+  {
+    std::vector<OrtHardwareDevice> npu_devices{};
+    Status npu_device_discovery_status = GetNpuDevices(npu_devices);
+    if (npu_device_discovery_status.IsOK()) {
+      devices.insert(std::make_move_iterator(npu_devices.begin()),
+                     std::make_move_iterator(npu_devices.end()));
+    } else {
+      LOGS_DEFAULT(WARNING) << "NPU device discovery failed: " << npu_device_discovery_status.ErrorMessage();
+    }
+  }
 
   return devices;
 }
