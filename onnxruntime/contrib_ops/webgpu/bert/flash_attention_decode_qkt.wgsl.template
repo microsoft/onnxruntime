@@ -108,7 +108,7 @@ $MAIN {
   }
   workgroupBarrier();
 
-  // Each thread processes one u32 word per iteration (all 8 nibbles ΓåÆ 2 dot products).
+  // Each thread processes one u32 word per iteration (all 8 nibbles -> 2 dot products).
   for (var kw: u32 = 0u; kw < COMPRESSED_HEAD_U32_WITHOUT_SCALE; kw += tile_size_k_vec) {
     let word_idx = kw + local_col;
     if (word_idx < COMPRESSED_HEAD_U32_WITHOUT_SCALE) {
