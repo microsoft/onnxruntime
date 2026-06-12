@@ -26,6 +26,7 @@
 #include <math.h>
 #include <type_traits>
 #include "contrib_ops/cuda/bert/linear_attention_impl.h"
+#include "core/providers/cuda/cu_inc/common.cuh"
 
 namespace onnxruntime {
 namespace contrib {
@@ -67,9 +68,55 @@ __device__ __forceinline__ __nv_bfloat16 from_float(float val) { return __float2
 __device__ __forceinline__ float warp_reduce_sum(float v) {
 #pragma unroll
   for (int offset = 16; offset > 0; offset >>= 1) {
-    v += __shfl_xor_sync(0xffffffffu, v, offset);
+    v += onnxruntime::cuda::WARP_SHFL_XOR(v, offset);
   }
   return v;
+}
+
+template <typename T>
+__device__ __forceinline__ float ComputeLinearAttentionDeltaColumn(
+    const T* value,
+    const T* beta_in,
+    int64_t batch_token_offset,
+    int value_hidden,
+    int kv_head,
+    int d_v,
+    int col,
+    int kv_num_heads,
+    bool needs_beta,
+    bool beta_per_head,
+    float retrieval_col) {
+  const float value_col = to_float(value[batch_token_offset * value_hidden + kv_head * d_v + col]);
+  if (!needs_beta) {
+    return value_col;
+  }
+
+  const float beta_value = beta_per_head ? to_float(beta_in[batch_token_offset * kv_num_heads + kv_head])
+                                         : to_float(beta_in[batch_token_offset]);
+  return beta_value * (value_col - retrieval_col);
+}
+
+struct LinearAttentionReadoutHeads {
+  int query_head;
+  int output_head;
+};
+
+__device__ __forceinline__ int GetLinearAttentionReadoutHeadCount(int q_num_heads, int kv_num_heads) {
+  return q_num_heads >= kv_num_heads ? q_num_heads / kv_num_heads : 1;
+}
+
+__device__ __forceinline__ LinearAttentionReadoutHeads GetLinearAttentionReadoutHeads(
+    int kv_head,
+    int q_num_heads,
+    int kv_num_heads,
+    int group_index) {
+  if (q_num_heads >= kv_num_heads) {
+    const int heads_per_group = q_num_heads / kv_num_heads;
+    const int query_head = kv_head * heads_per_group + group_index;
+    return {query_head, query_head};
+  }
+
+  return {kv_head * q_num_heads / kv_num_heads, kv_head};
 }
 
 // =============================================================================
@@ -674,7 +721,7 @@ __global__ void LinearAttentionRecurrentKernelFixedShape(
 // design and is far better for the latency-bound seq_len<=few case where the
 // shared-memory state caching of the recurrent kernels yields no amortization.
 //
-// Grid:  (kv_num_heads, batch_size, ceil(d_v / kWarpsPerBlock))
+// Grid:  (batch_size, kv_num_heads, ceil(d_v / kWarpsPerBlock))
 // Block: (32, kWarpsPerBlock)
 // Each warp owns exactly one output column `col`. The recurrent state column
 // S[:, col] is sharded into registers across the warp's 32 lanes (DK/32 rows per
@@ -775,16 +822,8 @@ __global__ void LinearAttentionDecodeKernel(
       r_col = warp_reduce_sum(partial);
     }
 
-    // delta_col = beta * (v[col] - r_col), or just v[col] when no beta.
-    float v_col = to_float(value[bt * v_hidden + h_kv * d_v + col]);
-    float delta_col;
-    if (needs_beta) {
-      float beta_v = beta_per_head ? to_float(beta_in[bt * kv_num_heads + h_kv])
-                                   : to_float(beta_in[bt]);
-      delta_col = beta_v * (v_col - r_col);
-    } else {
-      delta_col = v_col;
-    }
+    const float delta_col = ComputeLinearAttentionDeltaColumn(
+        value, beta_in, bt, v_hidden, h_kv, d_v, col, kv_num_heads, needs_beta, beta_per_head, r_col);
 
     // State update: S[i][col] = decayed S[i][col] + k[i] * delta_col.
 #pragma unroll
@@ -793,32 +832,19 @@ __global__ void LinearAttentionDecodeKernel(
     }
 
     // Readout: output = scale * sum_i S[i][col] * q[i].
-    if (q_num_heads >= kv_num_heads) {
-      const int heads_per_group = q_num_heads / kv_num_heads;
-      for (int g = 0; g < heads_per_group; ++g) {
-        const int h_q = h_kv * heads_per_group + g;
-        float partial = 0.0f;
-#pragma unroll
-        for (int r = 0; r < ROWS; ++r) {
-          float q_reg = to_float(query[bt * q_hidden + h_q * DK + (r * 32 + lane)]);
-          partial += s_shard[r] * q_reg;
-        }
-        float acc = warp_reduce_sum(partial);
-        if (lane == 0) {
-          output[bt * output_hidden + h_q * d_v + col] = from_float<T>(scale * acc);
-        }
-      }
-    } else {
-      const int h_q = h_kv * q_num_heads / kv_num_heads;
+    const int head_count = GetLinearAttentionReadoutHeadCount(q_num_heads, kv_num_heads);
+    for (int group_index = 0; group_index < head_count; ++group_index) {
+      const LinearAttentionReadoutHeads readout_heads =
+          GetLinearAttentionReadoutHeads(h_kv, q_num_heads, kv_num_heads, group_index);
       float partial = 0.0f;
 #pragma unroll
       for (int r = 0; r < ROWS; ++r) {
-        float q_reg = to_float(query[bt * q_hidden + h_q * DK + (r * 32 + lane)]);
+        float q_reg = to_float(query[bt * q_hidden + readout_heads.query_head * DK + (r * 32 + lane)]);
         partial += s_shard[r] * q_reg;
       }
       float acc = warp_reduce_sum(partial);
       if (lane == 0) {
-        output[bt * output_hidden + h_kv * d_v + col] = from_float<T>(scale * acc);
+        output[bt * output_hidden + readout_heads.output_head * d_v + col] = from_float<T>(scale * acc);
       }
     }
   }
@@ -945,16 +971,8 @@ __global__ void LinearAttentionDecodeColKernel(
       }
     }
 
-    // delta_col = beta * (v[col] - r_col), or just v[col] when no beta.
-    const float v_col = to_float(value[bt * v_hidden + h_kv * d_v + col]);
-    float delta_col;
-    if (needs_beta) {
-      const float beta_v = beta_per_head ? to_float(beta_in[bt * kv_num_heads + h_kv])
-                                         : to_float(beta_in[bt]);
-      delta_col = beta_v * (v_col - r_col);
-    } else {
-      delta_col = v_col;
-    }
+    const float delta_col = ComputeLinearAttentionDeltaColumn(
+        value, beta_in, bt, v_hidden, h_kv, d_v, col, kv_num_heads, needs_beta, beta_per_head, r_col);
 
     // State update: S[i][col] = decayed S[i][col] + k[i] * delta_col.
 #pragma unroll
@@ -963,27 +981,13 @@ __global__ void LinearAttentionDecodeColKernel(
     }
 
     // Readout: output = scale * sum_i S[i][col] * q[i].
-    if (q_num_heads >= kv_num_heads) {
-      const int heads_per_group = q_num_heads / kv_num_heads;
-      for (int g = 0; g < heads_per_group; ++g) {
-        const int h_q = h_kv * heads_per_group + g;
-        __syncthreads();
-        for (int i = tid; i < DK; i += kColsPerBlock) {
-          q_sh[i] = to_float(query[bt * q_hidden + h_q * DK + i]);
-        }
-        __syncthreads();
-        float acc = 0.0f;
-#pragma unroll
-        for (int i = 0; i < DK; ++i) {
-          acc += s_col[i] * q_sh[i];
-        }
-        output[bt * output_hidden + h_q * d_v + col] = from_float<T>(scale * acc);
-      }
-    } else {
-      const int h_q = h_kv * q_num_heads / kv_num_heads;
+    const int head_count = GetLinearAttentionReadoutHeadCount(q_num_heads, kv_num_heads);
+    for (int group_index = 0; group_index < head_count; ++group_index) {
+      const LinearAttentionReadoutHeads readout_heads =
+          GetLinearAttentionReadoutHeads(h_kv, q_num_heads, kv_num_heads, group_index);
       __syncthreads();
       for (int i = tid; i < DK; i += kColsPerBlock) {
-        q_sh[i] = to_float(query[bt * q_hidden + h_q * DK + i]);
+        q_sh[i] = to_float(query[bt * q_hidden + readout_heads.query_head * DK + i]);
       }
       __syncthreads();
       float acc = 0.0f;
@@ -991,7 +995,7 @@ __global__ void LinearAttentionDecodeColKernel(
       for (int i = 0; i < DK; ++i) {
         acc += s_col[i] * q_sh[i];
       }
-      output[bt * output_hidden + h_kv * d_v + col] = from_float<T>(scale * acc);
+      output[bt * output_hidden + readout_heads.output_head * d_v + col] = from_float<T>(scale * acc);
     }
     __syncthreads();  // before next token overwrites k_sh/g_sh
   }
@@ -1042,6 +1046,8 @@ Status LaunchLinearAttentionKernel(
   // block barriers. Engaged for the common decode shapes (DK in {64,128,256});
   // everything else falls through to the recurrent kernels below.
   // ---------------------------------------------------------------------------
+  // This cutoff keeps short decode/continuation runs on the column-parallel kernels;
+  // longer prefill-like runs benefit from amortizing state in shared memory below.
   constexpr int kDecodeSeqThreshold = 16;
   if (seq_len <= kDecodeSeqThreshold && (d_k == 64 || d_k == 128 || d_k == 256)) {
     // v2 (column-per-thread, coalesced row-major state) is the default. It
@@ -1061,10 +1067,10 @@ Status LaunchLinearAttentionKernel(
         return CUDA_CALL(cudaGetLastError());
       };
 
-      if (d_k == 128) {
-        return launch_col(std::integral_constant<int, 128>{});
-      } else if (d_k == 64) {
+      if (d_k == 64) {
         return launch_col(std::integral_constant<int, 64>{});
+      } else if (d_k == 128) {
+        return launch_col(std::integral_constant<int, 128>{});
       } else {  // d_k == 256
         return launch_col(std::integral_constant<int, 256>{});
       }
@@ -1083,10 +1089,10 @@ Status LaunchLinearAttentionKernel(
       return CUDA_CALL(cudaGetLastError());
     };
 
-    if (d_k == 128) {
-      return launch_decode(std::integral_constant<int, 128>{});
-    } else if (d_k == 64) {
+    if (d_k == 64) {
       return launch_decode(std::integral_constant<int, 64>{});
+    } else if (d_k == 128) {
+      return launch_decode(std::integral_constant<int, 128>{});
     } else {  // d_k == 256
       return launch_decode(std::integral_constant<int, 256>{});
     }
