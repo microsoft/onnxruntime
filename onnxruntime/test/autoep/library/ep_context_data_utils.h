@@ -332,6 +332,8 @@ inline OrtStatus* WriteEpContextDataWithFileFallback(
     RETURN_IF_ERROR(get_write_func(ep_context_config, &write_func, &write_state));
   }
 
+  // The app-supplied write callback owns its own logical namespace, so file_name is passed through unmodified.
+  // Only the file-fallback path below maps a name onto the filesystem, so it validates the logical name there.
   if (write_func != nullptr) {
     return write_func(write_state, file_name, buffer, buffer_size);
   }

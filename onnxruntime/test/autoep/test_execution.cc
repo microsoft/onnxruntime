@@ -1038,9 +1038,9 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_ExternalDataBufferOutputRequiresWr
 
   Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
   ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr(
-                                            "External EPContext data requires an output model path or an "
-                                            "OrtWriteNamedBufferFunc callback"));
+  EXPECT_THAT(status.GetErrorMessage(),
+              ::testing::HasSubstr("External EPContext data requires an output model path, an EPContext file path "
+                                   "(\"ep.context_file_path\"), or an OrtWriteNamedBufferFunc callback"));
   EXPECT_EQ(output_model_buffer, nullptr);
   EXPECT_EQ(output_model_buffer_size, 0U);
 }

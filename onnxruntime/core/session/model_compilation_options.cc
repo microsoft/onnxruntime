@@ -340,8 +340,8 @@ Status ModelCompilationOptions::Check() const {
   if (!ep_context_gen_options.embed_ep_context_in_model && !output_model_is_file && !has_ep_context_file_path &&
       !has_ep_context_data_write_func) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "External EPContext data requires an output model path or an "
-                           "OrtWriteNamedBufferFunc callback");
+                           "External EPContext data requires an output model path, an EPContext file path "
+                           "(\"ep.context_file_path\"), or an OrtWriteNamedBufferFunc callback");
   }
 
   const epctx::BufferHolder* output_buffer_ptr = ep_context_gen_options.TryGetOutputModelBuffer();
