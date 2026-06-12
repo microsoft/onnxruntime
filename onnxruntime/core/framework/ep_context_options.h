@@ -7,6 +7,8 @@
 #include <variant>
 #include "core/framework/allocator.h"
 #include "core/framework/config_options.h"
+// Needed for OrtWriteNamedBufferFunc (used by EpContextDataWriteFuncHolder below). This include can be removed
+// once the experimental EPContext data callback APIs are promoted to the stable C API.
 #include "core/session/onnxruntime_experimental_c_api.h"
 
 namespace onnxruntime {

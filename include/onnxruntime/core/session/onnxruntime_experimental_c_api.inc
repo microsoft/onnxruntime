@@ -297,13 +297,14 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtModelPackageApi_CreateSession,
  * is responsible for synchronization.
  *
  * \param[in] options The OrtSessionOptions instance.
- * \param[in] read_func The OrtReadNamedBufferFunc callback.
- * \param[in] state Opaque state passed to read_func. Can be NULL.
+ * \param[in] read_func The OrtReadNamedBufferFunc callback. Pass NULL to clear a previously set callback (any
+ *                      previously set state is cleared as well).
+ * \param[in] state Opaque state passed to read_func. Can be NULL. Ignored when read_func is NULL.
  *
  * \snippet{doc} snippets.dox OrtStatus Return Value
  */
 ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_SessionOptions_SetEpContextDataReadFunc,
-                     _Inout_ OrtSessionOptions* options, _In_ OrtReadNamedBufferFunc read_func, _In_opt_ void* state)
+                     _Inout_ OrtSessionOptions* options, _In_opt_ OrtReadNamedBufferFunc read_func, _In_opt_ void* state)
 
 /** \brief Sets a callback for writing EPContext binary data during compilation.
  *

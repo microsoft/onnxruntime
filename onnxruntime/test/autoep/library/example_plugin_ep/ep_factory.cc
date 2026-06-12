@@ -233,7 +233,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
 
   ExampleEp::Config config = {};
   config.enable_ep_context = ep_context_enable == "1";
-  config.embed_ep_context_in_model = ep_context_embed_mode != "0";
+  config.embed_ep_context_in_model = ep_context_embed_mode == "1";
   config.ep_context_output_model_path = std::move(ep_context_output_model_path);
   config.enable_weightless_ep_context_nodes = weightless_ep_context_nodes_enable == "1";
 

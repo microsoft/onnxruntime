@@ -71,8 +71,8 @@ ORT_RUNTIME_CLASS(EpContextConfig);
  * \param[in] buffer_num_bytes The size of the buffer in bytes.
  *
  * \return OrtStatus* Write status. Return nullptr on success.
- *                    Use CreateStatus to provide error info with ORT_FAIL as the error code.
- *                    ORT will release the OrtStatus* if not null.
+ *                    On failure, use CreateStatus to provide error info with an appropriate OrtErrorCode
+ *                    (e.g., ORT_FAIL); ORT propagates the returned code. ORT will release the OrtStatus* if not null.
  */
 typedef OrtStatus*(ORT_API_CALL* OrtWriteNamedBufferFunc)(_In_ void* state,
                                                           _In_ const char* name,
@@ -96,8 +96,8 @@ typedef OrtStatus*(ORT_API_CALL* OrtWriteNamedBufferFunc)(_In_ void* state,
  * \param[out] data_size Set by the implementation to the size of the output data in bytes.
  *
  * \return OrtStatus* Read status. Return nullptr on success.
- *                    Use CreateStatus to provide error info with ORT_FAIL as the error code.
- *                    ORT will release the OrtStatus* if not null.
+ *                    On failure, use CreateStatus to provide error info with an appropriate OrtErrorCode
+ *                    (e.g., ORT_FAIL); ORT propagates the returned code. ORT will release the OrtStatus* if not null.
  */
 typedef OrtStatus*(ORT_API_CALL* OrtReadNamedBufferFunc)(_In_ void* state,
                                                          _In_ const char* name,

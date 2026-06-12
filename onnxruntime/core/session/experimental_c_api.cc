@@ -58,13 +58,14 @@ ORT_API_STATUS_IMPL(OrtApi_ExperimentalApiTest_SinceV28,
 }
 
 ORT_API_STATUS_IMPL(OrtApi_SessionOptions_SetEpContextDataReadFunc_SinceV28, _Inout_ OrtSessionOptions* options,
-                    _In_ OrtReadNamedBufferFunc read_func, _In_opt_ void* state) {
+                    _In_opt_ OrtReadNamedBufferFunc read_func, _In_opt_ void* state) {
   API_IMPL_BEGIN
   ORT_API_RETURN_IF(options == nullptr, ORT_INVALID_ARGUMENT, "'options' parameter must not be NULL");
-  ORT_API_RETURN_IF(read_func == nullptr, ORT_INVALID_ARGUMENT, "'read_func' parameter must not be NULL");
 
+  // Passing a null read_func clears any previously set callback. Clear the state too so a stale state pointer is
+  // never paired with a missing callback.
   options->value.ep_context_data_read_func = read_func;
-  options->value.ep_context_data_read_state = state;
+  options->value.ep_context_data_read_state = read_func != nullptr ? state : nullptr;
   return nullptr;
   API_IMPL_END
 }
