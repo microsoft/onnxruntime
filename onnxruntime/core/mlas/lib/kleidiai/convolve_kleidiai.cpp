@@ -7,6 +7,7 @@
 #include <cassert>
 #include <algorithm>
 #include <cstddef>
+#include <cstring>
 #include <functional>
 #include <array>
 #include <vector>
@@ -92,6 +93,15 @@ static constexpr size_t ComputeConvOutSize(const size_t L, const size_t K, const
     return 0;
 }
 
+static inline void CopyChannelBlock(float* dst, const float* src, size_t channels) {
+    if (channels == 1) {
+        *dst = *src;
+        return;
+    }
+
+    std::memcpy(dst, src, channels * sizeof(float));
+}
+
 static size_t ComputeMlasWorkingBufferSize(const size_t co,
                                            const size_t ih, const size_t iw,
                                            const size_t kh, const size_t kw,
@@ -109,6 +119,12 @@ static size_t ComputeMlasWorkingBufferSize(const size_t co,
 }
 
 static bool CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
+    // Grouped support in this override is only implemented for channels-last
+    // layout. The generic grouped path still assumes contiguous per-group CHW.
+    if (Parameters->GroupCount > 1 && !Parameters->ChannelsLast) {
+        return false;
+    }
+
     if (!MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
             Parameters->Dimensions,
             Parameters->BatchCount,
@@ -550,15 +566,36 @@ static void ConvolveSme(const size_t co, //channels out
     dim[1] = MlasDivRoundup(m, m_step);
     dim[2] = MlasDivRoundup(co, n_step);
 
+    const bool grouped_channels_last = input_is_channels_last && groups > 1;
+    const size_t input_channels_total = ci * groups;
+    const size_t output_channels_total = co * groups;
+    const float* input_base = in;
+    float* output_base = out;
+    std::vector<float> input_group_buffer;
+    if (grouped_channels_last) {
+        input_group_buffer.resize(ih * iw * ci);
+    }
+
     for (size_t g = 0; g < groups; ++g) {
+        const float* input_group = in;
+        if (grouped_channels_last) {
+            for (size_t pixel = 0; pixel < ih * iw; ++pixel) {
+                const float* src = input_base + pixel * input_channels_total + g * ci;
+                CopyChannelBlock(input_group_buffer.data() + pixel * ci, src, ci);
+            }
+            input_group = input_group_buffer.data();
+        }
 
         auto result = out;
         const bool need_transpose = (!input_is_channels_last) && (co > 1);
-        if (need_transpose) {
+        if (need_transpose || grouped_channels_last) {
             result = tmp_mlas_aligned;
         }
 
-        auto lhs = LhsPackImageDataSme(ci, ih, iw, d_kh, d_kw, sh, sw, padding, in, input_is_channels_last, ThreadPool);
+        auto lhs = LhsPackImageDataSme(ci, ih, iw, d_kh, d_kw, sh, sw, padding,
+                                      input_group,
+                                      input_is_channels_last,
+                                      ThreadPool);
         const std::byte* rhs_data = packed_rhs ? packed_rhs + g * packed_rhs_group_stride : nullptr;
         std::unique_ptr<std::byte[]> rhs_storage;
         if (rhs_data == nullptr) {
@@ -613,13 +650,23 @@ static void ConvolveSme(const size_t co, //channels out
             );
         });
 
+        if (grouped_channels_last) {
+            for (size_t pixel = 0; pixel < m; ++pixel) {
+                float* dst = output_base + pixel * output_channels_total + g * co;
+                const float* src = result + pixel * co;
+                CopyChannelBlock(dst, src, co);
+            }
+        }
+
         if (need_transpose) {
             //Note: this could be absorbed into post conv activation
             MlasTranspose(tmp_mlas_aligned, out, m, co, ThreadPool);
         }
 
-        in += ci * ih * iw;
-        out += m * co;
+        if (!grouped_channels_last) {
+            in += ci * ih * iw;
+            out += m * co;
+        }
         weights += co * ci * kh * kw;
         if(bias){
             bias += co;
@@ -739,7 +786,10 @@ ArmKleidiAI::MlasConv(
                 Parameters->PackedFilterGroupStride,
                 Input, Output, WorkingBuffer, Parameters->ChannelsLast, ThreadPool);
 
-    MlasActivation(Parameters->Activation, Output, nullptr, Parameters->FilterCount, Parameters->OutputSize,
-                   Parameters->OutputSize);
+    const bool grouped_channels_last = Parameters->ChannelsLast && Parameters->GroupCount > 1;
+    const size_t activation_rows = grouped_channels_last ? Parameters->OutputSize : Parameters->FilterCount;
+    const size_t activation_cols =
+        grouped_channels_last ? Parameters->GroupCount * Parameters->FilterCount : Parameters->OutputSize;
+    MlasActivation(Parameters->Activation, Output, nullptr, activation_rows, activation_cols, activation_cols);
     return true;
 }
