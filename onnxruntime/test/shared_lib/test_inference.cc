@@ -3175,14 +3175,24 @@ TEST(CApiTest, tensor_at_bounds_check) {
   ASSERT_EQ(1.0f, tensor.At<float>({0, 0}));
   ASSERT_EQ(6.0f, tensor.At<float>({1, 2}));
 
+  auto expect_at_throws = [&tensor](const std::vector<int64_t>& location, const std::string& expected_message) {
+    try {
+      tensor.At<float>(location);
+      FAIL() << "Expected TensorAt to throw for the given location";
+    } catch (const Ort::Exception& excpt) {
+      EXPECT_EQ(excpt.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
+      EXPECT_THAT(excpt.what(), testing::HasSubstr(expected_message));
+    }
+  };
+
   // Out-of-range indices throw
-  ASSERT_THROW(tensor.At<float>({2, 0}), Ort::Exception);   // row out of range
-  ASSERT_THROW(tensor.At<float>({0, 3}), Ort::Exception);   // col out of range
-  ASSERT_THROW(tensor.At<float>({-1, 0}), Ort::Exception);  // negative index
+  expect_at_throws({2, 0}, "invalid location range");   // row out of range
+  expect_at_throws({0, 3}, "invalid location range");   // col out of range
+  expect_at_throws({-1, 0}, "invalid location range");  // negative index
 
   // Wrong number of dimensions throws
-  ASSERT_THROW(tensor.At<float>({0}), Ort::Exception);
-  ASSERT_THROW(tensor.At<float>({0, 0, 0}), Ort::Exception);
+  expect_at_throws({0}, "location dimensions do not match shape size");
+  expect_at_throws({0, 0, 0}, "location dimensions do not match shape size");
 }
 
 TEST(CApiTest, access_tensor_data_elements) {
