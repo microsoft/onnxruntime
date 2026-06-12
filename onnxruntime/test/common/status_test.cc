@@ -6,6 +6,7 @@
 #include <cerrno>
 #include <string>
 
+#include "gsl/gsl"
 #include "gtest/gtest.h"
 
 namespace onnxruntime {
@@ -22,11 +23,11 @@ TEST(StatusCodeFromSystemErrnoTest, KnownAndUnknownValues) {
 
 // ToString() on a SYSTEM-category status must use the status' own stored code, not the live global errno.
 TEST(StatusTest, ToStringWithSystemCategoryUsesStoredCode) {
+  const int saved_errno = errno;
+  auto restore_errno = gsl::finally([saved_errno]() { errno = saved_errno; });
   errno = EINVAL;  // Poison the global errno; ToString() must not read it.
   const Status status(SYSTEM, ENOENT, "open file failed");
-  const std::string text = status.ToString();
-  EXPECT_NE(text.find(std::to_string(ENOENT)), std::string::npos);
-  EXPECT_EQ(text.find(std::to_string(EINVAL)), std::string::npos);
+  EXPECT_EQ(status.ToString(), "SystemError : " + std::to_string(ENOENT));
 }
 
 }  // namespace test
