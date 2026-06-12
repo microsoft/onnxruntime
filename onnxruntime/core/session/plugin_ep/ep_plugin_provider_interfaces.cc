@@ -11,6 +11,8 @@
 #include <vector>
 #include "core/framework/compute_capability.h"
 #include "core/framework/error_code_helper.h"
+#include "core/framework/external_data_loader.h"
+#include "core/framework/tensor.h"
 #include "core/framework/plugin_data_transfer.h"
 #include "core/framework/plugin_ep_stream.h"
 #include "core/framework/resource_accountant.h"
@@ -848,6 +850,60 @@ std::unique_ptr<onnxruntime::IDataTransfer> PluginExecutionProvider::GetDataTran
   }
 
   return std::make_unique<plugin_ep::DataTransfer>(*data_transfer_impl);
+}
+
+namespace {
+
+// Bridge class that adapts OrtEp::LoadExternalData callback to IExternalDataLoader interface.
+class PluginExternalDataLoader : public IExternalDataLoader {
+ public:
+  PluginExternalDataLoader(OrtEp& ort_ep, const std::vector<const OrtMemoryInfo*>& mem_infos)
+      : ort_ep_(ort_ep), mem_infos_(mem_infos) {}
+
+  bool CanLoad(const OrtMemoryInfo& target_memory_info) const override {
+    // Match if the target is any of this EP's registered device memory locations
+    for (const auto* info : mem_infos_) {
+      if (info->device.Type() == target_memory_info.device.Type() &&
+          info->device.Id() == target_memory_info.device.Id() &&
+          info->device.Type() != OrtDevice::CPU) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  common::Status LoadTensor(const Env& /*env*/,
+                            const std::filesystem::path& data_file_path,
+                            FileOffsetType data_offset,
+                            SafeInt<size_t> data_length,
+                            Tensor& tensor) const override {
+    auto path_str = data_file_path.native();
+    OrtStatus* status = ort_ep_.LoadExternalData(
+        &ort_ep_,
+        path_str.c_str(),
+        static_cast<int64_t>(data_offset),
+        static_cast<size_t>(data_length),
+        tensor.MutableDataRaw());
+
+    if (status != nullptr) {
+      return ToStatusAndRelease(status);
+    }
+    return common::Status::OK();
+  }
+
+ private:
+  OrtEp& ort_ep_;
+  const std::vector<const OrtMemoryInfo*>& mem_infos_;
+};
+
+}  // namespace
+
+std::unique_ptr<onnxruntime::IExternalDataLoader> PluginExecutionProvider::GetExternalDataLoader() const {
+  // Available if the plugin EP implements LoadExternalData (e.g., via cuFile/GDS)
+  if (ort_ep_->LoadExternalData != nullptr) {
+    return std::make_unique<PluginExternalDataLoader>(*ort_ep_, allocator_mem_infos_);
+  }
+  return nullptr;
 }
 
 std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {

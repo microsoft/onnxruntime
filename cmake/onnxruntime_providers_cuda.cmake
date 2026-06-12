@@ -381,6 +381,11 @@
       target_link_libraries(${target} PRIVATE CUDA::cupti)
     endif()
 
+    if (onnxruntime_USE_GDS)
+      target_link_libraries(${target} PRIVATE CUDA::cuFile)
+      target_compile_definitions(${target} PRIVATE USE_GDS)
+    endif()
+
     if (onnxruntime_ENABLE_NVTX_PROFILE)
       target_link_libraries(${target} PRIVATE CUDA::nvtx3)
     endif()

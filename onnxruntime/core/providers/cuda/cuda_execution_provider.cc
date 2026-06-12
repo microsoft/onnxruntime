@@ -17,6 +17,9 @@
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/cuda_profiler.h"
 #include "core/providers/cuda/cuda_mempool_arena.h"
+#ifdef USE_GDS
+#include "core/providers/cuda/gpu_external_data_loader.h"
+#endif
 #include "core/session/onnxruntime_run_options_config_keys.h"
 
 #ifndef USE_CUDA_MINIMAL
@@ -3388,6 +3391,15 @@ static bool ArgMaxOrArgMinNeedFallbackToCPU(const onnxruntime::Node& node) {
 
 std::unique_ptr<onnxruntime::IDataTransfer> CUDAExecutionProvider::GetDataTransfer() const {
   return std::make_unique<onnxruntime::GPUDataTransfer>();
+}
+
+std::unique_ptr<onnxruntime::IExternalDataLoader> CUDAExecutionProvider::GetExternalDataLoader() const {
+#ifdef USE_GDS
+  if (cuda::GpuExternalDataLoader::IsGdsAvailable()) {
+    return std::make_unique<cuda::GpuExternalDataLoader>(info_.device_id);
+  }
+#endif
+  return nullptr;
 }
 
 std::vector<std::unique_ptr<ComputeCapability>>

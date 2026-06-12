@@ -21,6 +21,12 @@
 
 #include "core/graph/constants.h"
 
+#if defined(USE_GDS)
+#include <fcntl.h>
+#include <unistd.h>
+#include <cufile.h>
+#endif
+
 namespace onnxruntime {
 namespace cuda_plugin {
 
@@ -142,6 +148,13 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   CreateProfiler = nullptr;
 #endif
 
+  // Direct disk-to-GPU loading via cuFile (GPUDirect Storage)
+#if defined(USE_GDS)
+  LoadExternalData = LoadExternalDataImpl;
+#else
+  LoadExternalData = nullptr;
+#endif
+
   const OrtApi& ort_api = factory_.GetOrtApi();
   Ort::Status log_status(ort_api.Logger_LogMessage(&logger_, ORT_LOGGING_LEVEL_INFO,
                                                    "CUDA Plugin EP created",
@@ -166,9 +179,24 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
       static_cast<const void*>(EpImpl()), adapter_config);
 
   // CUDA graph streams are created lazily per thread by PerThreadContext.
+
+#if defined(USE_GDS)
+  // Initialize cuFile driver for GDS direct loading
+  CUfileError_t gds_status = cuFileDriverOpen();
+  gds_driver_open_ = (gds_status.err == CU_FILE_SUCCESS);
+  if (!gds_driver_open_) {
+    // GDS not available — LoadExternalData will be set to nullptr
+    LoadExternalData = nullptr;
+  }
+#endif
 }
 
 CudaEp::~CudaEp() {
+#if defined(USE_GDS)
+  if (gds_driver_open_) {
+    cuFileDriverClose();
+  }
+#endif
   std::lock_guard<std::mutex> lock(per_thread_contexts_mutex_);
   for (const auto& cache_weak : per_thread_context_caches_) {
     auto cache = cache_weak.lock();
@@ -679,6 +707,63 @@ OrtStatus* ORT_API_CALL CudaEp::CreateProfilerImpl(
   EXCEPTION_TO_STATUS_END
 }
 #endif  // defined(ENABLE_CUDA_PROFILING)
+
+#if defined(USE_GDS)
+OrtStatus* ORT_API_CALL CudaEp::LoadExternalDataImpl(
+    OrtEp* this_ptr, const ORTCHAR_T* data_file_path,
+    int64_t data_offset, size_t data_length, void* gpu_buffer) noexcept {
+  EXCEPTION_TO_STATUS_BEGIN
+
+  ORT_UNUSED_PARAMETER(this_ptr);
+
+  // Open file with O_DIRECT for GDS bypass
+  int fd = open(data_file_path, O_RDONLY | O_DIRECT);
+  if (fd < 0) {
+    return Ort::GetApi().CreateStatus(ORT_FAIL, "Failed to open file for GDS direct loading");
+  }
+
+  // Register file handle with cuFile
+  CUfileDescr_t cf_descr{};
+  cf_descr.handle.fd = fd;
+  cf_descr.type = CU_FILE_HANDLE_TYPE_OPAQUE_FD;
+
+  CUfileHandle_t cf_handle{};
+  CUfileError_t status = cuFileHandleRegister(&cf_handle, &cf_descr);
+  if (status.err != CU_FILE_SUCCESS) {
+    close(fd);
+    return Ort::GetApi().CreateStatus(ORT_FAIL, "cuFileHandleRegister failed");
+  }
+
+  // Register GPU buffer with cuFile
+  status = cuFileBufRegister(gpu_buffer, data_length, 0);
+  if (status.err != CU_FILE_SUCCESS) {
+    cuFileHandleDeregister(cf_handle);
+    close(fd);
+    return Ort::GetApi().CreateStatus(ORT_FAIL, "cuFileBufRegister failed");
+  }
+
+  // Read directly from disk to GPU memory via DMA
+  ssize_t bytes_read = cuFileRead(cf_handle, gpu_buffer, data_length,
+                                  static_cast<off_t>(data_offset), 0);
+
+  // Cleanup
+  cuFileBufDeregister(gpu_buffer);
+  cuFileHandleDeregister(cf_handle);
+  close(fd);
+
+  if (bytes_read < 0) {
+    return Ort::GetApi().CreateStatus(ORT_FAIL, "cuFileRead failed");
+  }
+
+  if (static_cast<size_t>(bytes_read) != data_length) {
+    return Ort::GetApi().CreateStatus(ORT_FAIL, "cuFileRead: incomplete read");
+  }
+
+  return nullptr;  // success
+
+  EXCEPTION_TO_STATUS_END
+}
+#endif  // defined(USE_GDS)
 
 }  // namespace cuda_plugin
 }  // namespace onnxruntime

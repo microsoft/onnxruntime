@@ -284,6 +284,11 @@ if (onnxruntime_ENABLE_CUDA_PROFILING)
     target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE ENABLE_CUDA_PROFILING)
 endif()
 
+if (onnxruntime_USE_GDS)
+    target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE CUDA::cuFile)
+    target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE USE_GDS)
+endif()
+
 # Default plugin EP version to ORT_VERSION with "-dev" suffix if not explicitly provided.
 if(NOT DEFINED onnxruntime_PLUGIN_EP_VERSION)
   set(onnxruntime_PLUGIN_EP_VERSION "${ORT_VERSION}-dev")

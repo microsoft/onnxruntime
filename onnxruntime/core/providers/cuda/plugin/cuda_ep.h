@@ -97,6 +97,12 @@ class CudaEp : public onnxruntime::ep::adapter::Ep {
       OrtEp* this_ptr, OrtEpProfilerImpl** profiler) noexcept;
 #endif
 
+#if defined(USE_GDS)
+  static OrtStatus* ORT_API_CALL LoadExternalDataImpl(
+      OrtEp* this_ptr, const ORTCHAR_T* data_file_path,
+      int64_t data_offset, size_t data_length, void* gpu_buffer) noexcept;
+#endif
+
   /// Helper to parse the graph annotation ID from run options.
   CudaGraphAnnotation_t GetGraphAnnotationId(const OrtRunOptions* run_options) const;
 
@@ -110,6 +116,10 @@ class CudaEp : public onnxruntime::ep::adapter::Ep {
   std::string name_;
   Config config_;
   const OrtLogger& logger_;
+
+#if defined(USE_GDS)
+  bool gds_driver_open_{false};
+#endif
 
   mutable std::mutex per_thread_contexts_mutex_;
   // The thread-local cache owns contexts so they are released when a thread exits.

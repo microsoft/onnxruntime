@@ -2567,6 +2567,31 @@ struct OrtEp {
    * \since Version 1.27.
    */
   ORT_API2_STATUS(OnSessionInitializationEnd, _In_ OrtEp* this_ptr);
+
+  /** \brief Load external initializer data directly to device memory, bypassing CPU staging.
+   *
+   * When this function is implemented and the target tensor is on this EP's device, ORT calls it
+   * instead of the default path that loads external data into CPU memory and then copies to device.
+   * This enables technologies like GPUDirect Storage (cuFile) to DMA data from disk to GPU memory.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] data_file_path Absolute path to the file containing the external data.
+   * \param[in] data_offset Byte offset within the file where the data starts.
+   * \param[in] data_length Number of bytes to read from the file.
+   * \param[out] gpu_buffer Pre-allocated device memory pointer where the data should be loaded.
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT uses the default
+   *       CPU-staging path (mmap/read to CPU, then cudaMemcpy to device).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.28.
+   */
+  ORT_API2_STATUS(LoadExternalData, _In_ OrtEp* this_ptr,
+                  _In_z_ const ORTCHAR_T* data_file_path,
+                  _In_ int64_t data_offset,
+                  _In_ size_t data_length,
+                  _Out_writes_bytes_(data_length) void* gpu_buffer);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.

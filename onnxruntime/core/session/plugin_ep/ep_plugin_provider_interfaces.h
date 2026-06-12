@@ -127,6 +127,7 @@ class PluginExecutionProvider : public IExecutionProvider {
   const InlinedVector<const Node*> GetEpContextNodes() const override;
 
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
+  std::unique_ptr<IExternalDataLoader> GetExternalDataLoader() const override;
 
   void RegisterStreamHandlers(IStreamCommandHandleRegistry&, AllocatorMap&) const override;
 
