@@ -1,3 +1,11 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#pragma once
+
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {

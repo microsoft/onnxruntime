@@ -1012,8 +1012,9 @@ Status LaunchLinearAttentionKernel(
   // Decode fast path: small seq_len is latency-bound. The recurrent kernels keep
   // state in shared memory across the token loop (great for prefill) but at
   // decode that caching yields no amortization while only using kv_num_heads
-  // blocks. The column-parallel decode kernel saturates the GPU and avoids
-  // block barriers. Engaged for the common decode shapes (DK in {64,128,256});
+  // blocks. The column-parallel decode kernel increases occupancy with
+  // finer-grained work distribution. Engaged for the common decode shapes
+  // (DK in {64,128,256});
   // everything else falls through to the recurrent kernels below.
   // ---------------------------------------------------------------------------
   // This cutoff keeps short decode/continuation runs on the column-parallel kernels;
