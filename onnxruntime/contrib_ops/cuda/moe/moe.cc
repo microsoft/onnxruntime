@@ -55,6 +55,9 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
       1,  //  no quantization so pack size is 1
       is_fused_swiglu,
       0));  // no block-wise quantization for regular MoE
+  ORT_RETURN_IF_NOT(k_ > 0 && k_ <= moe_params.num_experts,
+                    "MoE requires 0 < k <= num_experts, got k=", k_,
+                    " and num_experts=", moe_params.num_experts);
 
   using CudaT = typename OrtToCudaType<T>::type;
 
