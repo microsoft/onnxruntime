@@ -20,9 +20,9 @@ build.bat --cmake_generator "Visual Studio 17 2022" --config Release --build_whe
 The plugin is compiled against the ONNX Runtime headers in this repository, but it is designed to load into an **older** ONNX Runtime runtime as well. The minimum compatible version is declared in [`plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION`](../../plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION) (currently **1.24.4**) and is the single source of truth:
 
 - It is baked into the plugin library at build time (`ORT_PLUGIN_EP_MIN_ORT_VERSION`) and enforced at load time.
-- It becomes the `onnxruntime>=<min>` dependency of the `onnxruntime-ep-cuda12`/`onnxruntime-ep-cuda13` Python wheels and the minimum core package version for the NuGet package.
+- It is documented as the minimum core ONNX Runtime version in the `onnxruntime-ep-cuda12`/`onnxruntime-ep-cuda13` Python wheel and NuGet package READMEs. The plugin packages do **not** declare a hard dependency on the core `onnxruntime` package, so you install a compatible `onnxruntime` (version `>=<min>`) separately.
 
-At load time, `CreateEpFactories()` negotiates the API version with the runtime: it reads the runtime's reported version, enforces the minimum, and requests the `OrtApi` that matches the **runtime** (not the build). If the runtime is older than the minimum, registration fails with a descriptive error instead of crashing. As a result, the same plugin binary works with any ONNX Runtime from the minimum version up to the version it was built against.
+At load time, `CreateEpFactories()` negotiates the API version with the runtime: it reads the runtime's reported version, enforces the minimum, and requests the `OrtApi` that matches the **runtime** (not the build). If the runtime is older than the minimum, registration fails with a descriptive error instead of crashing. As a result, the same plugin binary works with any ONNX Runtime from the minimum version onward, including runtimes newer than the version it was built against (API versions are backward compatible because they are only appended to).
 
 ## Running
 

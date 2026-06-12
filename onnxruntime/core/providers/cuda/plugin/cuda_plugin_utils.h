@@ -12,7 +12,6 @@
 #include "onnxruntime_cxx_api.h"
 
 #include "core/common/common.h"
-#include "ep/api.h"  // onnxruntime::ep::CurrentOrtApiVersion(), used for runtime capability gating
 
 // Every EP-facing callback struct (OrtEpFactory, OrtEp, OrtAllocator, OrtSyncStreamImpl,
 // OrtSyncNotificationImpl, OrtDataTransferImpl, OrtEpProfilerImpl, OrtLoopKernelHelper,
