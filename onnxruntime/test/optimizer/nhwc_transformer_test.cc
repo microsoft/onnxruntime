@@ -447,12 +447,22 @@ TEST(NhwcTransformerTests, ConvFloat_UsesNhwcOnlyWithKleidi) {
 
   auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
-    // Only validate NhwcFusedConv graph shape if that path was selected
-    if (op_to_count["com.microsoft.NhwcFusedConv"] == 0) {
+
+    const bool kleidi_supported = HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {16, 8, 3, 3}, {1, 1, 1, 1});
+    const int nhwc_count = op_to_count["com.microsoft.NhwcFusedConv"];
+
+    // Other Level 3 layout optimizers may consume the Conv node in the graph before NhwcTransformer.
+    // If NHWC is selected, validate that it's only used with Arm® KleidiAI™ support and that
+    // the expected transpose-boundary graph shape is produced. Otherwise, don't validate the graph shape.
+    if (nhwc_count == 0) {
+      // When the Arm® KleidiAI™ NHWC Conv path is available but no NHWC ops were produced,
+      // ensure that some other optimiser run and consumed the Conv node instead
+      EXPECT_TRUE(!kleidi_supported || op_to_count["Conv"] == 0);
       return;
     }
-    EXPECT_TRUE(HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {16, 8, 3, 3}, {1, 1, 1, 1}));
-    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 1);
+
+    EXPECT_TRUE(kleidi_supported);
+    EXPECT_EQ(nhwc_count, 1);
     EXPECT_EQ(op_to_count["Transpose"], 2);
   };
 
@@ -517,15 +527,26 @@ TEST(NhwcTransformerTests, FusedConvFloat_UsesNhwcOnlyWithKleidi) {
 
   auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
-    // Only validate NhwcFusedConv graph shape if that path was selected
-    if (op_to_count["com.microsoft.NhwcFusedConv"] == 0) {
+
+    const bool kleidi_supported = HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {16, 8, 3, 3}, {1, 1, 1, 1}, {1, 1});
+    const int nhwc_count = op_to_count["com.microsoft.NhwcFusedConv"];
+
+    // Other Level 3 layout optimizers may consume the FusedConv node in the graph before NhwcTransformer.
+    // If NHWC is selected, validate that it's only used with Arm® KleidiAI™ support and that
+    // the expected transpose-boundary graph shape is produced. Otherwise, don't validate the graph shape.
+    if (nhwc_count == 0) {
+      // When the Arm® KleidiAI™ NHWC Conv path is available but no NHWC ops were produced,
+      // ensure that some other optimiser run and consumed the FusedConv node instead
+      EXPECT_TRUE(!kleidi_supported || op_to_count["com.microsoft.FusedConv"] == 0);
       return;
     }
-    EXPECT_TRUE(HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {16, 8, 3, 3}, {1, 1, 1, 1}, {1, 1}));
-    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 1);
+
+    EXPECT_TRUE(kleidi_supported);
+    EXPECT_EQ(nhwc_count, 1);
     EXPECT_EQ(op_to_count["Transpose"], 2);
   };
 
+  // Different optimizer paths can change accumulation order, so allow a slightly larger absolute tolerance
   TransformerTester(build_test_case,
                     check_nhwc_graph,
                     TransformerLevel::Level2,
