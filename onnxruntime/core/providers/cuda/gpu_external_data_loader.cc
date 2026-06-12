@@ -11,6 +11,7 @@
 
 #include "core/framework/tensor.h"
 #include "core/common/common.h"
+#include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 namespace cuda {
