@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <fstream>
 #include <memory>
-#include <sstream>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
@@ -140,46 +139,6 @@ Status ProgramManager::Build(const ProgramBase& program,
   descriptor.label = program.Name().c_str();
 
   auto shader_module = device.CreateShaderModule(&descriptor);
-
-  // Fetch shader compilation info to surface WGSL errors at the point of creation.
-  {
-    std::string shader_name = std::string(program.Name());
-    wgpu::Future compilation_future = shader_module.GetCompilationInfo(
-        wgpu::CallbackMode::WaitAnyOnly,
-        [shader_name, &code](wgpu::CompilationInfoRequestStatus status, wgpu::CompilationInfo const* info) {
-          if (status != wgpu::CompilationInfoRequestStatus::Success || info == nullptr || info->messageCount == 0) {
-            return;
-          }
-          bool has_error = false;
-          for (size_t i = 0; i < info->messageCount; ++i) {
-            const auto& msg = info->messages[i];
-            std::string msg_text(msg.message.data ? std::string(msg.message.data, msg.message.length) : "(no message)");
-            if (msg.type == wgpu::CompilationMessageType::Error) {
-              LOGS_DEFAULT(ERROR) << "WGSL compilation error in \"" << shader_name
-                                  << "\" line " << msg.lineNum << ":" << msg.linePos
-                                  << " - " << msg_text;
-              has_error = true;
-            } else if (msg.type == wgpu::CompilationMessageType::Warning) {
-              LOGS_DEFAULT(WARNING) << "WGSL compilation warning in \"" << shader_name
-                                    << "\" line " << msg.lineNum << ":" << msg.linePos
-                                    << " - " << msg_text;
-            }
-          }
-          if (has_error) {
-            // Annotate the shader source with line numbers for easier debugging
-            std::ostringstream numbered;
-            std::istringstream stream(code);
-            std::string line;
-            int line_no = 1;
-            while (std::getline(stream, line)) {
-              numbered << line_no << ": " << line << "\n";
-              line_no++;
-            }
-            LOGS_DEFAULT(ERROR) << "=== Failed WGSL shader source [" << shader_name << "] ===\n" << numbered.str();
-          }
-        });
-    [[maybe_unused]] auto wait_status = webgpu_context_.Wait(compilation_future);
-  }
 
   // TODO: a new cache hierarchy for constants.
   //
