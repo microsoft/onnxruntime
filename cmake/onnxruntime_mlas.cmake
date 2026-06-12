@@ -244,6 +244,8 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.h
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen64.h
+      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen128.h
+      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen32.h
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
       ${MLAS_SRC_DIR}/qkv_quant_kernel_avx512vnni.cpp
@@ -797,6 +799,8 @@ else()
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.h
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen64.h
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen128.h
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen32.h
           ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.h
           ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.cpp
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.h
