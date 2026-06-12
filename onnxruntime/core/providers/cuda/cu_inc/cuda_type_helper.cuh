@@ -34,8 +34,8 @@ template <>
 __device__ __forceinline__ __nv_bfloat16 from_float(float val) { return __float2bfloat16(val); }
 #endif
 
-} // namespace
+}  // namespace
 
-} // namespace cuda
-} // namespace contrib
-} // namespace onnxruntime
+}  // namespace cuda
+}  // namespace contrib
+}  // namespace onnxruntime
