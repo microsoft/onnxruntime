@@ -541,10 +541,10 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     if (turbo_quant_enabled) {
       // Fused TurboQuant path: split packed QKV + rotary K + Hadamard + quantize K/V + rotary Q
       ORT_RETURN_IF_ERROR(TurboQuantApplyRotaryAndCopyToQuantizedKVCache(context, parameters,
-                                                           Q, seqlen_k,
-                                                           cos_cache, sin_cache,
-                                                           &query_output, tq_present_key, tq_present_value,
-                                                           indirect_buffer_ptr, tile_size, num_q_tiles));
+                                                                         Q, seqlen_k,
+                                                                         cos_cache, sin_cache,
+                                                                         &query_output, tq_present_key, tq_present_value,
+                                                                         indirect_buffer_ptr, tile_size, num_q_tiles));
     } else {
       ORT_RETURN_IF_ERROR(RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(context, parameters,
                                                                         Q, seqlen_k,
@@ -556,7 +556,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   } else if (turbo_quant_enabled && K != nullptr && V != nullptr) {
     // Fused path: apply Hadamard transform to new K/V tokens while copying them into the KV cache.
     ORT_RETURN_IF_ERROR(TurboQuantCopyToQuantizedKVCache(context, parameters, K, tq_past_key, tq_present_key, V, tq_past_value, tq_present_value,
-                                              tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr, num_q_tiles));
+                                                         tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr, num_q_tiles));
   } else {
     ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr, num_q_tiles));
   }

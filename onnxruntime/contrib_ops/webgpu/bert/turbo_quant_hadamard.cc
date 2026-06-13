@@ -48,10 +48,10 @@ Status TurboQuantHadamardProgram::GenerateShaderCode(ShaderHelper& shader) const
 }
 
 Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& parameters,
-                             const Tensor* K, const Tensor* past_key, Tensor* present_key,
-                             const Tensor* V, const Tensor* past_value, Tensor* present_value,
-                             uint32_t tile_size, const Tensor* seqlen_k, Tensor* indirect_buffer,
-                             uint32_t num_q_tiles) {
+                                        const Tensor* K, const Tensor* past_key, Tensor* present_key,
+                                        const Tensor* V, const Tensor* past_value, Tensor* present_value,
+                                        uint32_t tile_size, const Tensor* seqlen_k, Tensor* indirect_buffer,
+                                        uint32_t num_q_tiles) {
   const int head_size = parameters.head_size_;
   const int components = head_size % 4 == 0 ? 4 : (head_size % 2 == 0 ? 2 : 1);
   ORT_ENFORCE((head_size & (head_size - 1)) == 0 && head_size >= 4,
@@ -164,17 +164,17 @@ Status TurboQuantFusedRotaryProgram::GenerateShaderCode(ShaderHelper& shader) co
 }
 
 Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& context,
-                                        const WebgpuAttentionParameters& parameters,
-                                        const Tensor* packedQKV,
-                                        const Tensor* seqlen_k,
-                                        const Tensor* cos_cache,
-                                        const Tensor* sin_cache,
-                                        Tensor* query,
-                                        Tensor* present_key,
-                                        Tensor* present_value,
-                                        Tensor* indirect_buffer,
-                                        uint32_t tile_size,
-                                        uint32_t num_q_tiles) {
+                                                      const WebgpuAttentionParameters& parameters,
+                                                      const Tensor* packedQKV,
+                                                      const Tensor* seqlen_k,
+                                                      const Tensor* cos_cache,
+                                                      const Tensor* sin_cache,
+                                                      Tensor* query,
+                                                      Tensor* present_key,
+                                                      Tensor* present_value,
+                                                      Tensor* indirect_buffer,
+                                                      uint32_t tile_size,
+                                                      uint32_t num_q_tiles) {
   const int head_size = parameters.head_size_;
   ORT_ENFORCE((head_size & (head_size - 1)) == 0 && head_size >= 4,
               "head_size must be a power of 2 >= 4 for TurboQuant fused rotary, got ", head_size);

@@ -53,10 +53,10 @@ class TurboQuantHadamardProgram final : public Program<TurboQuantHadamardProgram
 };
 
 Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& parameters,
-                             const Tensor* K, const Tensor* past_key, Tensor* present_key,
-                             const Tensor* V, const Tensor* past_value, Tensor* present_value,
-                             uint32_t tile_size, const Tensor* seqlen_k, Tensor* indirect_buffer,
-                             uint32_t num_q_tiles);
+                                        const Tensor* K, const Tensor* past_key, Tensor* present_key,
+                                        const Tensor* V, const Tensor* past_value, Tensor* present_value,
+                                        uint32_t tile_size, const Tensor* seqlen_k, Tensor* indirect_buffer,
+                                        uint32_t num_q_tiles);
 
 // Fused TurboQuant: Split packed QKV + Rotary K + Hadamard + Quantize K/V + Rotary Q.
 // Single dispatch handles all Q/K/V processing from packed QKV input.
@@ -106,17 +106,17 @@ class TurboQuantFusedRotaryProgram final : public Program<TurboQuantFusedRotaryP
 };
 
 Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& context,
-                                        const WebgpuAttentionParameters& parameters,
-                                        const Tensor* packedQKV,
-                                        const Tensor* seqlen_k,
-                                        const Tensor* cos_cache,
-                                        const Tensor* sin_cache,
-                                        Tensor* query,
-                                        Tensor* present_key,
-                                        Tensor* present_value,
-                                        Tensor* indirect_buffer,
-                                        uint32_t tile_size,
-                                        uint32_t num_q_tiles);
+                                                      const WebgpuAttentionParameters& parameters,
+                                                      const Tensor* packedQKV,
+                                                      const Tensor* seqlen_k,
+                                                      const Tensor* cos_cache,
+                                                      const Tensor* sin_cache,
+                                                      Tensor* query,
+                                                      Tensor* present_key,
+                                                      Tensor* present_value,
+                                                      Tensor* indirect_buffer,
+                                                      uint32_t tile_size,
+                                                      uint32_t num_q_tiles);
 
 }  // namespace webgpu
 }  // namespace contrib
