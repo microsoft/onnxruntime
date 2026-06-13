@@ -31,9 +31,9 @@ class HadamardTransformProgram final : public Program<HadamardTransformProgram> 
 };
 
 // Apply the normalized Walsh-Hadamard transform.
-// The normalized Hadamard matrix is symmetric and orthogonal (H @ H^T = I),
-// so applying it twice recovers the original data. This means the same function
-// serves as both the forward and inverse transform.
+// The normalized Hadamard matrix is symmetric (H == H^T) and orthogonal
+// (H @ H^T = I), so applying it twice recovers the original data. 
+// This means the same function serves as both the forward and inverse transform.
 //
 // If explicit_slice_size > 0, it is used as the transform dimension size.
 // Otherwise, the last dimension of the tensor shape is used.

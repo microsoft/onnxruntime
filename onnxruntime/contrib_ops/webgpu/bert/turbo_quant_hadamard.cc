@@ -50,7 +50,8 @@ Status TurboQuantHadamardProgram::GenerateShaderCode(ShaderHelper& shader) const
 Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& parameters,
                              const Tensor* K, const Tensor* past_key, Tensor* present_key,
                              const Tensor* V, const Tensor* past_value, Tensor* present_value,
-                             uint32_t tile_size, const Tensor* seqlen_k, Tensor* indirect_buffer) {
+                             uint32_t tile_size, const Tensor* seqlen_k, Tensor* indirect_buffer,
+                             uint32_t num_q_tiles) {
   const int head_size = parameters.head_size_;
   const int components = head_size % 4 == 0 ? 4 : (head_size % 2 == 0 ? 2 : 1);
   ORT_ENFORCE((head_size & (head_size - 1)) == 0 && head_size >= 4,
@@ -115,14 +116,16 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
       .SetWorkgroupSize(workgroup_size)
       .CacheHint(has_past, parameters.qkv_format_, parameters.past_present_share_buffer_,
                  prepare_indirect_dispatch, use_seqlen_k, head_size_log2, components, compressed_head_size_u32)
-      .AddUniformVariables({{static_cast<uint32_t>(parameters.total_sequence_length_)},
-                            {static_cast<uint32_t>(parameters.kv_sequence_length_)},
-                            {tile_size},
-                            {static_cast<uint32_t>(parameters.num_heads_)},
+      .AddUniformVariables({{static_cast<uint32_t>(parameters.batch_size_)},
+                            {static_cast<uint32_t>(compressed_head_size_u32)},
                             {static_cast<uint32_t>(kv_num_heads)},
+                            {static_cast<uint32_t>(parameters.kv_sequence_length_)},
+                            {static_cast<uint32_t>(parameters.num_heads_)},
+                            {num_q_tiles},
                             {num_slices_per_kv},
                             {present_seq_length},
-                            {static_cast<uint32_t>(compressed_head_size_u32)}});
+                            {tile_size},
+                            {static_cast<uint32_t>(parameters.total_sequence_length_)}});
 
   return context.RunProgram(program);
 }
@@ -170,7 +173,8 @@ Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::Compu
                                         Tensor* present_key,
                                         Tensor* present_value,
                                         Tensor* indirect_buffer,
-                                        uint32_t tile_size) {
+                                        uint32_t tile_size,
+                                        uint32_t num_q_tiles) {
   const int head_size = parameters.head_size_;
   ORT_ENFORCE((head_size & (head_size - 1)) == 0 && head_size >= 4,
               "head_size must be a power of 2 >= 4 for TurboQuant fused rotary, got ", head_size);
@@ -225,17 +229,19 @@ Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::Compu
       .CacheHint(parameters.past_present_share_buffer_,
                  prepare_indirect_dispatch, use_seqlen_k, head_size_log2,
                  half_rotary_dim, compressed_head_size_u32, multi_rotary_cache_concat_offset)
-      .AddUniformVariables({{static_cast<uint32_t>(parameters.total_sequence_length_)},
-                            {static_cast<uint32_t>(parameters.kv_sequence_length_)},
-                            {tile_size},
-                            {static_cast<uint32_t>(parameters.num_heads_)},
-                            {static_cast<uint32_t>(kv_num_heads)},
-                            {num_kv_slices},
-                            {num_q_slices},
-                            {present_seq_length},
+      .AddUniformVariables({{static_cast<uint32_t>(parameters.batch_size_)},
                             {static_cast<uint32_t>(compressed_head_size_u32)},
                             {static_cast<uint32_t>(parameters.hidden_size_)},
-                            {static_cast<uint32_t>(parameters.kv_hidden_size_)}});
+                            {static_cast<uint32_t>(parameters.kv_hidden_size_)},
+                            {static_cast<uint32_t>(kv_num_heads)},
+                            {static_cast<uint32_t>(parameters.kv_sequence_length_)},
+                            {static_cast<uint32_t>(parameters.num_heads_)},
+                            {num_kv_slices},
+                            {num_q_slices},
+                            {num_q_tiles},
+                            {present_seq_length},
+                            {tile_size},
+                            {static_cast<uint32_t>(parameters.total_sequence_length_)}});
 
   return context.RunProgram(program);
 }

@@ -54,9 +54,21 @@ $MAIN {
 #if prepare_indirect_dispatch
   if (workgroup_idx == 0u && local_idx == 0u) {
     let num_total_seq_length_tile = (total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;
-    indirect_buffer[0] = num_total_seq_length_tile;
-    indirect_buffer[1] = uniforms.num_heads;
-    indirect_buffer[2] = 1u;
+    let limit = 65535u;
+    let x = num_total_seq_length_tile;
+    let y = uniforms.num_heads * uniforms.num_q_tiles;
+    let z = uniforms.batch_size;
+    if (x <= limit && y <= limit && z <= limit) {
+      indirect_buffer[0] = x;
+      indirect_buffer[1] = y;
+      indirect_buffer[2] = z;
+    } else {
+      let size = f32(x) * f32(y) * f32(z);
+      let dispatch_avg_2d = u32(ceil(sqrt(size)));
+      indirect_buffer[0] = dispatch_avg_2d;
+      indirect_buffer[1] = dispatch_avg_2d;
+      indirect_buffer[2] = 1u;
+    }
   }
 #endif
 

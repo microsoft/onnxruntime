@@ -155,8 +155,9 @@ class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecode
                                  bool has_attention_bias, uint32_t tile_size, int head_size_vec,
                                  bool use_indirect_dispatch, bool q_BNSH = false,
                                  bool is_unidirectional = false,
-                                 uint32_t m_tile = 1)
-      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), head_size_vec_(head_size_vec), use_indirect_dispatch_(use_indirect_dispatch), q_BNSH_(q_BNSH), is_unidirectional_(is_unidirectional), m_tile_(m_tile) {
+                                 uint32_t m_tile = 1,
+                                 bool turbo_quant = false, int compressed_head_size_u32 = 0)
+      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), head_size_vec_(head_size_vec), use_indirect_dispatch_(use_indirect_dispatch), q_BNSH_(q_BNSH), is_unidirectional_(is_unidirectional), m_tile_(m_tile), turbo_quant_(turbo_quant), compressed_head_size_u32_(compressed_head_size_u32) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -181,62 +182,6 @@ class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecode
   bool q_BNSH_;
   bool is_unidirectional_;
   uint32_t m_tile_;
-};
-
-class FlashAttentionDecodeQKTProgram final : public Program<FlashAttentionDecodeQKTProgram> {
- public:
-  FlashAttentionDecodeQKTProgram(const std::string& kernel_name,
-                                 bool has_attention_bias, uint32_t tile_size, bool use_indirect_dispatch,
-                                 bool turbo_quant = false, int compressed_head_size_u32 = 0, int head_size_vec = 0)
-      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), use_indirect_dispatch_(use_indirect_dispatch), turbo_quant_(turbo_quant), compressed_head_size_u32_(compressed_head_size_u32), head_size_vec_(head_size_vec) {
-  }
-
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
-
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"head_size_vec", ProgramUniformVariableDataType::Uint32},
-                                          {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"alpha", ProgramUniformVariableDataType::Float32},
-                                          {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"n_reps", ProgramUniformVariableDataType::Uint32},
-                                          {"num_present_sequence_length_tile", ProgramUniformVariableDataType::Uint32},
-                                          {"num_heads", ProgramUniformVariableDataType::Uint32},
-                                          {"batch_size", ProgramUniformVariableDataType::Uint32},
-                                          {"attn_bias_dim0", ProgramUniformVariableDataType::Uint32},
-                                          {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32},
-                                          {"compressed_head_size_u32", ProgramUniformVariableDataType::Uint32});
-
- private:
-  bool has_attention_bias_;
-  uint32_t tile_size_;
-  bool use_indirect_dispatch_;
-  bool turbo_quant_;
-  int compressed_head_size_u32_;
-  int head_size_vec_;
-};
-
-class FlashAttentionDecodeSplitVxProgram final : public Program<FlashAttentionDecodeSplitVxProgram> {
- public:
-  FlashAttentionDecodeSplitVxProgram(const std::string& kernel_name, uint32_t tile_size, int head_size_vec, bool use_indirect_dispatch, bool has_head_sink = false,
-                                     bool turbo_quant = false, int compressed_head_size_u32 = 0)
-      : Program{kernel_name}, tile_size_(tile_size), head_size_vec_(head_size_vec), use_indirect_dispatch_(use_indirect_dispatch), has_head_sink_(has_head_sink), turbo_quant_(turbo_quant), compressed_head_size_u32_(compressed_head_size_u32) {
-  }
-
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
-
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"total_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"head_size_vec", ProgramUniformVariableDataType::Uint32},
-                                          {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"n_reps", ProgramUniformVariableDataType::Uint32},
-                                          {"num_present_sequence_length_tile", ProgramUniformVariableDataType::Uint32},
-                                          {"batch_heads", ProgramUniformVariableDataType::Uint32},
-                                          {"num_heads", ProgramUniformVariableDataType::Uint32},
-                                          {"compressed_head_size_u32", ProgramUniformVariableDataType::Uint32});
-
- private:
-  uint32_t tile_size_;
-  int head_size_vec_;
-  bool use_indirect_dispatch_;
-  bool has_head_sink_;
   bool turbo_quant_;
   int compressed_head_size_u32_;
 };

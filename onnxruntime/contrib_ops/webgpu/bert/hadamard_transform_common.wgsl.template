@@ -4,7 +4,8 @@
 // The Hadamard transform is an orthogonal linear transformation (H @ H^T = I)
 // that spreads information uniformly across all dimensions of a vector. Unlike
 // random rotations, it requires no learned parameters and is its own inverse —
-// applying it twice recovers the original input.
+// applying it twice recovers the original input. Hadamard matrix is also 
+// symmetric so H == H^T.
 //
 // In quantization a Hadamard transform is applied to distribute outlier magnitudes
 // evenly across dimensions. This prevents a single large value from dominating and
@@ -31,6 +32,19 @@
 // This is why methods like QuaRot can apply orthogonal rotations to every activation
 // during inference with negligible overhead — it's just shuffles, adds, and subtracts.
 //
+// Consider the H8 hadamard matrix
+//
+// [ 1  1  1  1  1  1  1  1 
+//   1 -1  1 -1  1 -1  1 -1
+//   1  1 -1 -1  1  1 -1 -1
+//   1 -1 -1  1  1 -1 -1  1
+//   1  1  1  1 -1 -1 -1 -1
+//   1 -1  1 -1 -1  1 -1  1
+//   1  1 -1 -1 -1 -1  1  1
+//   1 -1 -1  1 -1  1  1 -1]
+// 
+// and a vector matrix multiply operation [a b c d e f g h] @ H8.
+// 
 // The butterfly pattern — pair_distance doubles each stage:
 //
 //   Stage 0 (pair_distance=1):  pairs are adjacent
@@ -52,6 +66,10 @@ fn wht_butterfly(lid: u32, wg_size: u32) {
   for (var step = 0u; step < hadamard_size_log2; step++) {
     for (var idx = lid; idx < pair_count; idx += wg_size) {
       // The array is divided into groups of (2 * pair_distance).
+      // A group is the unit for addition subtraction 
+      // (ab) in stage 0
+      // (ABCD) in stage 1
+      //
       // Each group's first half pairs with its second half:
       //
       //   pair_distance=4, array of 16:
@@ -62,6 +80,10 @@ fn wht_butterfly(lid: u32, wg_size: u32) {
       //   idx=0 → group=0, group_idx=0 → i = 0*8+0 = 0,  j = 0+4 = 4
       //   idx=5 → group=1, group_idx=1 → i = 1*8+1 = 9,  j = 9+4 = 13
       //   So we butterfly shared_data[i] with shared_data[j].
+      //
+      // to compute the group we are in, it would be input_index/(pair_distance * 2u)
+      // since idx is iterating pairs idx is 2 * input_index and therefore
+      // group = idx/pair_distance
       let group = idx / pair_distance;
       let group_size = (pair_distance * 2u);
       let group_idx = idx % pair_distance;
