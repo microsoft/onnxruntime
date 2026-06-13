@@ -21,12 +21,12 @@ import torch
 import torch.nn.functional as F
 from cuda_plugin_ep_helper import get_cuda_provider_name
 from onnx import TensorProto, helper
-from onnxruntime.capi import _pybind_state as _quantize
 from parameterized import parameterized
 from torch import nn
 
 import onnxruntime
 from onnxruntime import InferenceSession, SessionOptions
+from onnxruntime.capi import _pybind_state as _quantize
 
 # Reduces number of tests to run for faster pipeline checks
 pipeline_mode = os.getenv("PIPELINE_MODE", "1") == "1"
