@@ -85,9 +85,8 @@ inline bool MoeGemvDisabledByEnv() {
 }
 
 inline bool MoeGemvRejectedByProfiledInterSize(int64_t expanded_num_rows, int64_t inter_size) {
-  static constexpr int64_t kMaxRowsForSmallInterSize = 4;
-  static constexpr int64_t kMinInterSizeForTop8 = 704;
-  return expanded_num_rows > kMaxRowsForSmallInterSize && inter_size < kMinInterSizeForTop8;
+  return expanded_num_rows > onnxruntime::llm::kernels::moe_gemv::kMaxProfiledExpandedRowsForSmallProblemDim &&
+         inter_size < onnxruntime::llm::kernels::moe_gemv::kMinProfiledProblemDimForExpandedRowsAbove4;
 }
 
 // Attempts the batched int4 per-channel MoE GEMV. Returns true if it ran (output
@@ -1572,7 +1571,6 @@ __global__ void finalizeMoeRoutingKernel(GemmOutputType const* expanded_permuted
                                          OutputType* reduced_unpermuted_output, ScaleBiasType const* bias, float const* scales,
                                          int const* unpermuted_row_to_permuted_row, int const* token_selected_experts, int64_t const orig_cols,
                                          int64_t const experts_per_token, int const num_experts_per_node, int const start_expert_id) {
-  assert(orig_cols % 4 == 0);
   int64_t const original_row = blockIdx.x;
   int64_t const num_rows = gridDim.x;
   auto const offset = original_row * orig_cols;
@@ -1580,6 +1578,7 @@ __global__ void finalizeMoeRoutingKernel(GemmOutputType const* expanded_permuted
 
   // Load 128-bits per thread, according to the smallest data type we read/write
   constexpr int64_t FINALIZE_ELEM_PER_THREAD = 128 / std::min(sizeof_bits<OutputType>::value, sizeof_bits<GemmOutputType>::value);
+  assert(orig_cols % FINALIZE_ELEM_PER_THREAD == 0);
 
   int64_t const start_offset = threadIdx.x;
   int64_t const stride = FINALIZE_THREADS_PER_BLOCK;
@@ -1638,11 +1637,11 @@ __global__ void finalizeMoeRoutingOneRowKernel(GemmOutputType const* expanded_pe
                                                int const* unpermuted_row_to_permuted_row, int const* token_selected_experts,
                                                int64_t const orig_cols, int const num_experts_per_node,
                                                int const start_expert_id) {
-  assert(orig_cols % 4 == 0);
   static_assert(ExpertsPerToken > 0 && ExpertsPerToken <= 4);
 
   // Load 128-bits per thread, according to the smallest data type we read/write
   constexpr int64_t FINALIZE_ELEM_PER_THREAD = 128 / std::min(sizeof_bits<OutputType>::value, sizeof_bits<GemmOutputType>::value);
+  assert(orig_cols % FINALIZE_ELEM_PER_THREAD == 0);
 
   __shared__ int expanded_permuted_rows_for_topk[ExpertsPerToken];
   __shared__ int expert_ids_for_topk[ExpertsPerToken];
@@ -1711,8 +1710,6 @@ __global__ void finalizeMoeRoutingNoFillingKernel(GemmOutputType const* expanded
                                                   int const* const unpermuted_row_to_permuted_row, int const* permuted_row_to_unpermuted_row,
                                                   int const* token_selected_experts, int64_t const* expert_first_token_offset, int64_t const num_rows,
                                                   int64_t const orig_cols, int64_t const experts_per_token, int const num_experts_per_node, int const start_expert_id) {
-  assert(orig_cols % 4 == 0);
-
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900))
   asm volatile("griddepcontrol.wait;");
 #endif
@@ -1744,6 +1741,7 @@ __global__ void finalizeMoeRoutingNoFillingKernel(GemmOutputType const* expanded
 
     // Load 128-bits per thread, according to the smallest data type we read/write
     constexpr int64_t FINALIZE_ELEM_PER_THREAD = 128 / std::min(sizeof_bits<OutputType>::value, sizeof_bits<GemmOutputType>::value);
+    assert(orig_cols % FINALIZE_ELEM_PER_THREAD == 0);
 
     int64_t const start_offset = threadIdx.x;
     int64_t const stride = FINALIZE_THREADS_PER_BLOCK;
@@ -1801,6 +1799,10 @@ void finalizeMoeRoutingKernelLauncher(GemmOutputType const* expanded_permuted_ro
   // Only add bias on rank 0 for tensor parallelism
   bool const is_rank_0 = parallelism_config.tp_rank == 0;
   ScaleBiasType const* bias_ptr = is_rank_0 ? bias : nullptr;
+  constexpr int64_t kFinalizeElemPerThread = 128 / std::min(sizeof_bits<OutputType>::value, sizeof_bits<GemmOutputType>::value);
+  ORT_ENFORCE(cols % kFinalizeElemPerThread == 0,
+              "MoE finalize requires cols to be divisible by ", kFinalizeElemPerThread,
+              " for vectorized 128-bit loads, got ", cols, ".");
   int num_experts_per_node_int = SafeInt<int>(num_experts_per_node);
   int const start_expert_id = num_experts_per_node_int * parallelism_config.ep_rank;
 
@@ -2430,7 +2432,7 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
         fc1_expert_biases, output, expert_first_token_offset, num_experts_per_node,
         permuted_row_to_expert, expanded_num_rows, inter_size, hidden_size,
         onnxruntime::llm::common::getSMVersion(), quant_params.groupwise.group_size,
-        /*disabled=*/use_ampere_activation_fusion || !bias_is_broadcast ||
+        /*disabled=*/parallelism_config.ep_size > 1 || use_ampere_activation_fusion || !bias_is_broadcast ||
             MoeGemvRejectedByProfiledInterSize(expanded_num_rows, inter_size),
         activation_params, stream);
 
@@ -2445,7 +2447,7 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
                                                         permuted_row_to_expert, expanded_num_rows, /*n=*/static_cast<int64_t>(fc1_out_size), /*k=*/hidden_size,
                                                         onnxruntime::llm::common::getSMVersion(),
                                                         quant_params.groupwise.group_size,
-                                                        /*disabled=*/use_ampere_activation_fusion || !bias_is_broadcast ||
+                                                        /*disabled=*/parallelism_config.ep_size > 1 || use_ampere_activation_fusion || !bias_is_broadcast ||
                                                             MoeGemvRejectedByProfiledInterSize(expanded_num_rows, inter_size),
                                                         stream);
     if (!fc1_did_gemv) {
@@ -2536,6 +2538,8 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
   ActivationParameters activation_params;  // Here assume gemm2 has no activation
                                            // Note: expanded_num_rows, to check this value, it's greater than num_rows * num_experts_per_node
                                            // Fast path: int4 per-channel MoE GEMV (no bias here; fc2 bias applied in finalizeMoeRouting).
+                                           // Keep the decode GEMV path single-EP until token-drop/all-to-all
+                                           // cases are profiled and validated.
   bool const fc2_did_gemv = tryLaunchMoeGemvInt4PerChannel<T, WeightType, ScaleBiasType>(
       input, fc2_expert_weights,
       quant_params.groupwise.group_size > 0
@@ -2544,7 +2548,9 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
       /*biases*/ nullptr, static_cast<T*>(gemm_output), expert_first_token_offset, num_experts_per_node,
       permuted_row_to_expert, expanded_num_rows, /*n=*/hidden_size, /*k=*/inter_size, onnxruntime::llm::common::getSMVersion(),
       quant_params.groupwise.group_size,
-      /*disabled=*/using_tma_ws_gemm2 || MoeGemvRejectedByProfiledInterSize(expanded_num_rows, inter_size), stream);
+      /*disabled=*/parallelism_config.ep_size > 1 || using_tma_ws_gemm2 ||
+          MoeGemvRejectedByProfiledInterSize(expanded_num_rows, inter_size),
+      stream);
   if (!fc2_did_gemv) {
     auto universal_input = GroupedGemmInput<T, WeightType, OutputType, OutputType>{input, total_tokens_including_expert,
                                                                                    fc2_expert_weights,

@@ -9,6 +9,8 @@
 #include "contrib_ops/cuda/llm/moe_gemm/moe_kernels.h"
 #include "contrib_ops/cuda/llm/common/env_utils.h"
 
+#include <mutex>
+
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
@@ -16,6 +18,16 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+namespace {
+void LogSwigluFusionRemapOnce() {
+  static std::once_flag log_warning;
+  std::call_once(log_warning, []() {
+    LOGS_DEFAULT(WARNING) << "MoE swiglu_fusion is 0 with no fc3_experts_weights; assuming interleaved "
+                             "SwiGLU layout for backward compatibility.";
+  });
+}
+}  // namespace
 
 #define REGISTER_KERNEL_TYPED(T)                    \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                    \
@@ -52,6 +64,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   if (activation_type_ == ActivationType::Swiglu && swiglu_fusion == 0 &&
       fc3_experts_weights_optional == nullptr) {
     swiglu_fusion = 1;
+    LogSwigluFusionRemapOnce();
   }
 
   bool is_fused_swiglu = (activation_type_ == ActivationType::Swiglu) &&

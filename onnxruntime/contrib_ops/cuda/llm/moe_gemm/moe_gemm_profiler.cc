@@ -156,6 +156,7 @@ int MoeGemmProfiler::bucketM(int64_t m) {
   if (m <= 1) {
     return 1;
   }
+  // Saturate large M values into one bucket to keep the cache bounded.
   constexpr int64_t kMaxBucket = 8192;
   if (m >= kMaxBucket) {
     return static_cast<int>(kMaxBucket);

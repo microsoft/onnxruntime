@@ -23,11 +23,22 @@
 
 #include <cstring>
 #include <limits>
+#include <mutex>
 #include <vector>
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
+
+namespace {
+void LogQMoESwigluFusionRemapOnce() {
+  static std::once_flag log_warning;
+  std::call_once(log_warning, []() {
+    LOGS_DEFAULT(WARNING) << "QMoE swiglu_fusion is 0; assuming interleaved SwiGLU layout "
+                             "for backward compatibility.";
+  });
+}
+}  // namespace
 
 namespace onnxruntime {
 namespace contrib {
@@ -267,6 +278,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   if (activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu &&
       swiglu_fusion == 0) {
     swiglu_fusion = 1;
+    LogQMoESwigluFusionRemapOnce();
   }
 
   const Tensor* fc1_zeros = packed_fc1_bias_ ? nullptr : context->Input<Tensor>(11);

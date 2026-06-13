@@ -928,7 +928,7 @@ Status: the P1 row-to-expert scan item is implemented by materializing the local
 expert id in `permuted_token_selected_experts` during both prologue paths and
 passing that map to the GEMV kernels. GEMV keeps the prefix-offset scan as a
 fallback when the map is unavailable. Initial SM90 actual-model profiles are
-recorded in [qmoe_gemv_exp.md](qmoe_gemv_exp.md). Follow-up P1 tile probes
+recorded in [qmoe_gemv_experiments.md](qmoe_gemv_experiments.md). Follow-up P1 tile probes
 kept the existing `CtaN=8, Threads=128` shape after `CtaN=16`, `Threads=64`,
 and a map-specialized launch all failed to improve the measured GEMV kernels.
 The first fusion experiment, FC1 interleaved SwiGLU inside the INT4 per-channel
@@ -971,7 +971,7 @@ Use `--list-cases` to show named benchmark cases, including FP16 model-size
 decode cases for GPT-OSS-20B, Qwen3.6-35B-A3B (shared expert ignored), and
 Gemma-4-26B-A4B.
 
-Record comparable profile runs in [qmoe_gemv_exp.md](qmoe_gemv_exp.md).
+Record comparable profile runs in [qmoe_gemv_experiments.md](qmoe_gemv_experiments.md).
 
 For a quick smoke run without `nsys`, set `ORT_QMOE_GEMV_BENCHMARK=1` and run
 `TestQMoEGemvBenchmark` directly. Select one case with

@@ -18,8 +18,13 @@ namespace onnxruntime::llm {
 namespace kernels {
 namespace moe_gemv {
 
+inline constexpr int64_t kMaxProfiledExpandedRows = 8;
+inline constexpr int64_t kMaxProfiledExpandedRowsForSmallProblemDim = 4;
+inline constexpr int64_t kMinProfiledProblemDim = 512;
+inline constexpr int64_t kMinProfiledProblemDimForExpandedRowsAbove4 = 704;
+
 // Returns true if the batched MoE GEMV fast path supports this problem shape.
-// Requirements: int4 per-channel weights, half/bf16 activations, sm >= 80,
+// Requirements: int4 per-channel weights, FP16 activations, sm >= 80,
 // small expanded_num_rows, and n divisible by the kernel tile width.
 bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t k);
 
@@ -31,7 +36,7 @@ bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t
 //   out:      [expanded_num_rows, n] (row-major)
 //   expert_first_token_offset: [num_experts + 1] prefix offsets of permuted rows
 //   permuted_row_to_expert: [expanded_num_rows] local expert id for each permuted row, or nullptr to scan offsets
-// T is half or __nv_bfloat16.
+// T is half. BF16 currently falls back to grouped GEMM.
 template <typename T>
 void launch_moe_gemv_int4_per_channel(
     T const* act, uint8_t const* weight, T const* scales, T const* bias, T* out,

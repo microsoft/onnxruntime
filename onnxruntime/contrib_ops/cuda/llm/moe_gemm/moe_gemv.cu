@@ -3,8 +3,8 @@
 
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv.h"
 
-#include <cuda_bf16.h>
 #include <cuda_fp16.h>
+#include <type_traits>
 
 #include "core/common/common.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/dispatcher.h"
@@ -304,10 +304,6 @@ static constexpr int kThreads = 128;
 // int4 ColumnMajorInterleave (Sm80) tile width along N.
 static constexpr int kTileSizeK = 64;
 static constexpr int kInt4Interleave = 128 * 8 / (kTileSizeK * 4);  // = 4
-static constexpr int64_t kMaxProfiledExpandedRows = 8;
-static constexpr int64_t kMinProfiledProblemDim = 512;
-static constexpr int64_t kMinProfiledProblemDimForExpandedRowsAbove4 = 704;
-
 bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t k) {
   if (sm < 80) {
     return false;
@@ -318,7 +314,7 @@ bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t
   if (n < kMinProfiledProblemDim || k < kMinProfiledProblemDim) {
     return false;
   }
-  if (expanded_num_rows > 4 &&
+  if (expanded_num_rows > kMaxProfiledExpandedRowsForSmallProblemDim &&
       (n < kMinProfiledProblemDimForExpandedRowsAbove4 || k < kMinProfiledProblemDimForExpandedRowsAbove4)) {
     return false;
   }
@@ -341,12 +337,6 @@ template <>
 struct DetailsForT<half> {
   using Details = fiv::KernelDetails<fiv::FP16DetailsA, fiv::Int4DetailsW, fiv::ColumnMajorInterleaved, true, kTileSizeK>;
   using TypeA = half;
-};
-
-template <>
-struct DetailsForT<__nv_bfloat16> {
-  using Details = fiv::KernelDetails<fiv::BF16DetailsA, fiv::Int4DetailsW, fiv::ColumnMajorInterleaved, true, kTileSizeK>;
-  using TypeA = __nv_bfloat16;
 };
 
 template <typename T>
@@ -388,10 +378,6 @@ void launch_moe_gemv_int4_per_channel_interleaved_swiglu(
 template void launch_moe_gemv_int4_per_channel<half>(half const*, uint8_t const*, half const*, half const*, half*,
                                                      int64_t const*, int const*, int, int64_t, int64_t, int64_t,
                                                      int, cudaStream_t);
-template void launch_moe_gemv_int4_per_channel<__nv_bfloat16>(__nv_bfloat16 const*, uint8_t const*, __nv_bfloat16 const*,
-                                                              __nv_bfloat16 const*, __nv_bfloat16*, int64_t const*,
-                                                              int const*, int, int64_t, int64_t, int64_t, int,
-                                                              cudaStream_t);
 template void launch_moe_gemv_int4_per_channel_interleaved_swiglu<half>(
     half const*, uint8_t const*, half const*, half const*, half*, int64_t const*, int const*, int, int64_t,
     int64_t, int64_t, int, cutlass_kernels::ActivationParams, cudaStream_t);
