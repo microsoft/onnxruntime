@@ -14,24 +14,22 @@ const TQ_CENTROIDS = array<f32, 16>(
     -0.2377, -0.1809, -0.1419, -0.1104, -0.0829, -0.0578, -0.0342, -0.0113,
      0.0113,  0.0342,  0.0578,  0.0829,  0.1104,  0.1419,  0.1809,  0.2377);
 
-// 15 interior decision boundaries for binary search quantization
+// 15 interior decision boundaries for branchless quantization
 const TQ_BOUNDARIES = array<f32, 15>(
     -0.2093, -0.1614, -0.1261, -0.0966, -0.0704, -0.0460, -0.0227,
      0.0000,  0.0227,  0.0460,  0.0704,  0.0966,  0.1261,  0.1614,  0.2093);
 
-// Binary search to find the centroid index (0..15) for a unit-normalized value.
+// Branchless centroid index lookup (0..15) for a unit-normalized value.
+// Counts how many boundaries the value exceeds — no divergence across threads.
 fn snap_to_centroid_index(x: f32) -> u32 {
-  var lo = 0u;
-  var hi = 15u;
-  while (lo < hi) {
-    let mid = (lo + hi) / 2u;
-    if (x <= TQ_BOUNDARIES[mid]) {
-      hi = mid;
-    } else {
-      lo = mid + 1u;
-    }
-  }
-  return lo;
+  return u32(x > TQ_BOUNDARIES[0])  + u32(x > TQ_BOUNDARIES[1])  +
+         u32(x > TQ_BOUNDARIES[2])  + u32(x > TQ_BOUNDARIES[3])  +
+         u32(x > TQ_BOUNDARIES[4])  + u32(x > TQ_BOUNDARIES[5])  +
+         u32(x > TQ_BOUNDARIES[6])  + u32(x > TQ_BOUNDARIES[7])  +
+         u32(x > TQ_BOUNDARIES[8])  + u32(x > TQ_BOUNDARIES[9])  +
+         u32(x > TQ_BOUNDARIES[10]) + u32(x > TQ_BOUNDARIES[11]) +
+         u32(x > TQ_BOUNDARIES[12]) + u32(x > TQ_BOUNDARIES[13]) +
+         u32(x > TQ_BOUNDARIES[14]);
 }
 
 // Extract 4-bit index at position `idx` within packed u32 words starting at `data_offset`.

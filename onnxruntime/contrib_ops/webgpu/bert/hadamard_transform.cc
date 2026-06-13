@@ -40,6 +40,7 @@ Status ApplyHadamardTransform(onnxruntime::webgpu::ComputeContext& context,
   }
 
   const int components = slice_size % 4 == 0 ? 4 : (slice_size % 2 == 0 ? 2 : 1);
+  ORT_ENFORCE(shape.Size() % slice_size == 0, "Total tensor size must be divisible by slice_size, got ", shape.Size(), " % ", slice_size, " != 0");
   const uint32_t num_slices = static_cast<uint32_t>(shape.Size() / slice_size);
 
   // Workgroup size: use up to 64 threads. Each thread handles multiple butterfly pairs.

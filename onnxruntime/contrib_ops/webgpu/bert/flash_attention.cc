@@ -28,8 +28,8 @@ namespace webgpu {
 // workgroup_id (x, y, z) into a single linear workgroup_idx.
 // Caller contract: must register a storage output named exactly
 // `indirect_buffer` of array<u32> with at least 3 elements.
-constexpr const char kNormalizeDispatchGroupSizeFn[] = R"(
-fn normalize_dispatch_group_size(x: u32, y: u32, z: u32) {
+constexpr const char kPopulateIndirectDispatchBufferFn[] = R"(
+fn populate_indirect_dispatch_buffer(x: u32, y: u32, z: u32) {
   let limit = 65535u;  // WebGPU spec maxComputeWorkgroupsPerDimension
   if (x <= limit && y <= limit && z <= limit) {
     indirect_buffer[0] = x;
@@ -64,7 +64,6 @@ Status SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram::GenerateShaderCode(Sha
 
   if (prepare_indirect_dispatch_) {
     sh.AddOutput("indirect_buffer", ShaderUsage::None);
-    sh.AdditionalImplementation() << kNormalizeDispatchGroupSizeFn;
   }
 
   return WGSL_TEMPLATE_APPLY(sh, "bert/split_packed_qkv_with_rotary_embedding_and_copykv.wgsl.template",
@@ -124,10 +123,10 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   // Add indirect dispatch logic for thread 0
   if (prepare_indirect_dispatch_) {
-    shader.AdditionalImplementation() << kNormalizeDispatchGroupSizeFn;
+    shader.AdditionalImplementation() << kPopulateIndirectDispatchBufferFn;
     shader.MainFunctionBody() << "  if (global_idx == 0u) {\n"
                               << "    let num_total_seq_length_tile = (total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;\n"
-                              << "    normalize_dispatch_group_size(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);\n"
+                              << "    populate_indirect_dispatch_buffer(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);\n"
                               << "  }\n\n";
   }
 

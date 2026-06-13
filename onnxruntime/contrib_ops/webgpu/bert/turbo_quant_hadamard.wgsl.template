@@ -26,17 +26,18 @@ const HEAD_SIZE : u32 = 1u << hadamard_size_log2;
 const HEAD_SIZE_VEC : u32 = HEAD_SIZE / components;
 const COMPRESSED_HEAD_U32 : u32 = compressed_head_size_u32;
 
-var<workgroup> shared_data : array<f32, HEAD_SIZE>;
+var<workgroup> hadamard_buffer : array<f32, HEAD_SIZE>;
 
 #include "bert/hadamard_transform_common.wgsl.template"
 #include "bert/turbo_quant_common.wgsl.template"
+#include "bert/indirect_dispatch_common.wgsl.template"
 
-var<workgroup> reduction_buf : array<f32, 64>;
+var<workgroup> scale_reduction_buffer : array<f32, 64>;
 // Reuse shared memory for packing: store centroid indices (0-15) as u32 per element.
-var<workgroup> index_buf : array<u32, HEAD_SIZE>;
+var<workgroup> index_buffer : array<u32, HEAD_SIZE>;
 
 $MAIN {
-  // Decode workgroup_idx -> (is_value, batch, head, seq)
+  // Map flat workgroup index to logical (K-or-V, batch, head, seq) coordinates.
   let is_value = workgroup_idx >= uniforms.num_slices_per_kv;
   let kv_slice = select(workgroup_idx, workgroup_idx - uniforms.num_slices_per_kv, is_value);
   if (kv_slice >= uniforms.num_slices_per_kv) { return; }
@@ -47,9 +48,12 @@ $MAIN {
 #else
   let total_seq_length = uniforms.total_sequence_length;
 #endif
+
+  // uniforms.kv_sequence_length is the sequence length of the new key/values.
   let past_seq_length = total_seq_length - uniforms.kv_sequence_length;
 
-  // Decode kv_slice -> (batch, head, seq) based on copy_sequence_length.
+  // Unflatten kv_slice into (batch, head, seq). The seq extent depends on whether
+  // past tokens also need processing (copy) or just new tokens.
 #if past_present_share_buffer
   let copy_seq_length = uniforms.kv_sequence_length;
 #elif has_past
@@ -65,21 +69,7 @@ $MAIN {
 #if prepare_indirect_dispatch
   if (workgroup_idx == 0u && local_idx == 0u) {
     let num_total_seq_length_tile = (total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;
-    let limit = 65535u;
-    let x = num_total_seq_length_tile;
-    let y = uniforms.num_heads * uniforms.num_q_tiles;
-    let z = uniforms.batch_size;
-    if (x <= limit && y <= limit && z <= limit) {
-      indirect_buffer[0] = x;
-      indirect_buffer[1] = y;
-      indirect_buffer[2] = z;
-    } else {
-      let size = f32(x) * f32(y) * f32(z);
-      let dispatch_avg_2d = u32(ceil(sqrt(size)));
-      indirect_buffer[0] = dispatch_avg_2d;
-      indirect_buffer[1] = dispatch_avg_2d;
-      indirect_buffer[2] = 1u;
-    }
+    populate_indirect_dispatch_buffer(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);
   }
 #endif
 
@@ -125,15 +115,15 @@ $MAIN {
       val = value[src_base + i];
     }
 #if components == 4
-    shared_data[i * 4u + 0u] = f32(val[0]);
-    shared_data[i * 4u + 1u] = f32(val[1]);
-    shared_data[i * 4u + 2u] = f32(val[2]);
-    shared_data[i * 4u + 3u] = f32(val[3]);
+    hadamard_buffer[i * 4u + 0u] = f32(val[0]);
+    hadamard_buffer[i * 4u + 1u] = f32(val[1]);
+    hadamard_buffer[i * 4u + 2u] = f32(val[2]);
+    hadamard_buffer[i * 4u + 3u] = f32(val[3]);
 #elif components == 2
-    shared_data[i * 2u + 0u] = f32(val[0]);
-    shared_data[i * 2u + 1u] = f32(val[1]);
+    hadamard_buffer[i * 2u + 0u] = f32(val[0]);
+    hadamard_buffer[i * 2u + 1u] = f32(val[1]);
 #else
-    shared_data[i] = f32(val);
+    hadamard_buffer[i] = f32(val);
 #endif
   }
   workgroupBarrier();
@@ -144,30 +134,32 @@ $MAIN {
   // WHT normalization.
   let wht_norm = 1.0f / sqrt(f32(HEAD_SIZE));
   for (var i = local_idx; i < HEAD_SIZE; i += workgroup_size_x) {
-    shared_data[i] *= wht_norm;
+    hadamard_buffer[i] *= wht_norm;
   }
   workgroupBarrier();
 
   // Compute L2 norm via parallel reduction.
   var partial_sq_sum = 0.0f;
   for (var i = local_idx; i < HEAD_SIZE; i += workgroup_size_x) {
-    partial_sq_sum += shared_data[i] * shared_data[i];
+    partial_sq_sum += hadamard_buffer[i] * hadamard_buffer[i];
   }
-  reduction_buf[local_idx] = partial_sq_sum;
+  scale_reduction_buffer[local_idx] = partial_sq_sum;
   workgroupBarrier();
+  // Tree reduction: each iteration halves active threads, accumulating the total
+  // sum of squares into scale_reduction_buffer[0] in log2(workgroup_size) steps.
   for (var stride = workgroup_size_x >> 1u; stride > 0u; stride >>= 1u) {
     if (local_idx < stride) {
-      reduction_buf[local_idx] += reduction_buf[local_idx + stride];
+      scale_reduction_buffer[local_idx] += scale_reduction_buffer[local_idx + stride];
     }
     workgroupBarrier();
   }
-  let l2_norm = sqrt(reduction_buf[0]);
+  let l2_norm = sqrt(scale_reduction_buffer[0]);
   let inv_l2 = select(0.0f, 1.0f / l2_norm, l2_norm > 0.0f);
 
-  // Quantize: compute centroid index for each element and store in index_buf.
+  // Quantize: compute centroid index for each element and store in index_buffer.
   for (var i = local_idx; i < HEAD_SIZE; i += workgroup_size_x) {
-    let unit_val = shared_data[i] * inv_l2;
-    index_buf[i] = snap_to_centroid_index(unit_val);
+    let unit_val = hadamard_buffer[i] * inv_l2;
+    index_buffer[i] = snap_to_centroid_index(unit_val);
   }
   workgroupBarrier();
 
@@ -186,14 +178,14 @@ $MAIN {
   for (var w = local_idx; w < num_packed_words; w += workgroup_size_x) {
     let base_elem = w << 3u;
     var packed = 0u;
-    packed |= (index_buf[base_elem + 0u] & 0xFu);
-    packed |= (index_buf[base_elem + 1u] & 0xFu) << 4u;
-    packed |= (index_buf[base_elem + 2u] & 0xFu) << 8u;
-    packed |= (index_buf[base_elem + 3u] & 0xFu) << 12u;
-    packed |= (index_buf[base_elem + 4u] & 0xFu) << 16u;
-    packed |= (index_buf[base_elem + 5u] & 0xFu) << 20u;
-    packed |= (index_buf[base_elem + 6u] & 0xFu) << 24u;
-    packed |= (index_buf[base_elem + 7u] & 0xFu) << 28u;
+    packed |= (index_buffer[base_elem + 0u] & 0xFu);
+    packed |= (index_buffer[base_elem + 1u] & 0xFu) << 4u;
+    packed |= (index_buffer[base_elem + 2u] & 0xFu) << 8u;
+    packed |= (index_buffer[base_elem + 3u] & 0xFu) << 12u;
+    packed |= (index_buffer[base_elem + 4u] & 0xFu) << 16u;
+    packed |= (index_buffer[base_elem + 5u] & 0xFu) << 20u;
+    packed |= (index_buffer[base_elem + 6u] & 0xFu) << 24u;
+    packed |= (index_buffer[base_elem + 7u] & 0xFu) << 28u;
     if (!is_value) {
       present_key[present_base + 1u + w] = packed;
     } else {

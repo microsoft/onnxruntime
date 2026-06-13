@@ -16,7 +16,7 @@
 // Fast Walsh-Hadamard Transform (WHT) via in-place butterfly operations.
 //
 // Requires the caller to declare:
-//   var<workgroup> shared_data : array<T, ...>;  // T can be f32 or f16
+//   var<workgroup> hadamard_buffer : array<T, ...>;  // T can be f32 or f16
 //   hadamard_size_log2 (via #param in the including template)
 //
 // The Fast Hadamard Transform avoids materializing the full N×N Hadamard matrix.
@@ -79,7 +79,7 @@ fn wht_butterfly(lid: u32, wg_size: u32) {
       //
       //   idx=0 → group=0, group_idx=0 → i = 0*8+0 = 0,  j = 0+4 = 4
       //   idx=5 → group=1, group_idx=1 → i = 1*8+1 = 9,  j = 9+4 = 13
-      //   So we butterfly shared_data[i] with shared_data[j].
+      //   So we butterfly hadamard_buffer[i] with hadamard_buffer[j].
       //
       // to compute the group we are in, it would be input_index/(pair_distance * 2u)
       // since idx is iterating pairs idx is 2 * input_index and therefore
@@ -89,10 +89,10 @@ fn wht_butterfly(lid: u32, wg_size: u32) {
       let group_idx = idx % pair_distance;
       let i = group * group_size + group_idx;
       let j = i + pair_distance;
-      let a = shared_data[i];
-      let b = shared_data[j];
-      shared_data[i] = a + b;
-      shared_data[j] = a - b;
+      let a = hadamard_buffer[i];
+      let b = hadamard_buffer[j];
+      hadamard_buffer[i] = a + b;
+      hadamard_buffer[j] = a - b;
     }
     workgroupBarrier();
     pair_distance = pair_distance << 1u;

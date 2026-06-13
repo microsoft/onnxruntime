@@ -13,7 +13,7 @@ const HADAMARD_SIZE_VEC : u32 = HADAMARD_SIZE / components;
 
 #use .getByOffset .setByOffset
 
-var<workgroup> shared_data : array<input_element_t, HADAMARD_SIZE>;
+var<workgroup> hadamard_buffer : array<input_element_t, HADAMARD_SIZE>;
 
 #include "bert/hadamard_transform_common.wgsl.template"
 
@@ -29,15 +29,15 @@ $MAIN {
   for (var i = local_idx; i < HADAMARD_SIZE_VEC; i += workgroup_size_x) {
     let val = input.getByOffset(base_offset + i);
 #if components == 4
-    shared_data[i * 4u + 0u] = val[0];
-    shared_data[i * 4u + 1u] = val[1];
-    shared_data[i * 4u + 2u] = val[2];
-    shared_data[i * 4u + 3u] = val[3];
+    hadamard_buffer[i * 4u + 0u] = val[0];
+    hadamard_buffer[i * 4u + 1u] = val[1];
+    hadamard_buffer[i * 4u + 2u] = val[2];
+    hadamard_buffer[i * 4u + 3u] = val[3];
 #elif components == 2
-    shared_data[i * 2u + 0u] = val[0];
-    shared_data[i * 2u + 1u] = val[1];
+    hadamard_buffer[i * 2u + 0u] = val[0];
+    hadamard_buffer[i * 2u + 1u] = val[1];
 #else
-    shared_data[i] = val;
+    hadamard_buffer[i] = val;
 #endif
   }
   workgroupBarrier();
@@ -51,17 +51,17 @@ $MAIN {
   // Write results to output buffer.
   for (var i = local_idx; i < HADAMARD_SIZE_VEC; i += workgroup_size_x) {
 #if components == 4
-    let v0 = shared_data[i * 4u + 0u] * norm;
-    let v1 = shared_data[i * 4u + 1u] * norm;
-    let v2 = shared_data[i * 4u + 2u] * norm;
-    let v3 = shared_data[i * 4u + 3u] * norm;
+    let v0 = hadamard_buffer[i * 4u + 0u] * norm;
+    let v1 = hadamard_buffer[i * 4u + 1u] * norm;
+    let v2 = hadamard_buffer[i * 4u + 2u] * norm;
+    let v3 = hadamard_buffer[i * 4u + 3u] * norm;
     output.setByOffset(base_offset + i, output_value_t(v0, v1, v2, v3));
 #elif components == 2
-    let v0 = shared_data[i * 2u + 0u] * norm;
-    let v1 = shared_data[i * 2u + 1u] * norm;
+    let v0 = hadamard_buffer[i * 2u + 0u] * norm;
+    let v1 = hadamard_buffer[i * 2u + 1u] * norm;
     output.setByOffset(base_offset + i, output_value_t(v0, v1));
 #else
-    output.setByOffset(base_offset + i, output_value_t(shared_data[i] * norm));
+    output.setByOffset(base_offset + i, output_value_t(hadamard_buffer[i] * norm));
 #endif
   }
 } // MAIN
