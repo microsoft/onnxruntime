@@ -85,8 +85,6 @@ def main():
         return
 
     case = _custom_case_from_args(args)
-    if case["onnx_dtype"] == "BFLOAT16":
-        print("Note: BFLOAT16 currently profiles the grouped GEMM fallback; the GEMV fast path is FP16-only.")
 
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is required for QMoE GEMV profiling")

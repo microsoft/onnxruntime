@@ -112,7 +112,7 @@ bool tryLaunchMoeGemvIntSymmetric(T const* input, WeightType const* weights, Sca
                                   int64_t n, int64_t k, int sm, int group_size,
                                   bool disabled, cudaStream_t stream) {
   if constexpr ((std::is_same_v<WeightType, cutlass::uint4b_t> || std::is_same_v<WeightType, uint8_t>) &&
-                std::is_same_v<T, half> && std::is_same_v<ScaleBiasType, T>) {
+                (std::is_same_v<T, half> || std::is_same_v<T, __nv_bfloat16>) && std::is_same_v<ScaleBiasType, T>) {
     bool const env_disabled = MoeGemvDisabledByEnv();
     bool const has_block_zeros = group_size > 0 && weight_zeros != nullptr;
     if (disabled || env_disabled || has_block_zeros) {
@@ -156,7 +156,7 @@ bool tryLaunchMoeGemvIntSymmetricInterleavedSwiGLU(
     int64_t expanded_num_rows, int64_t inter_size, int64_t k, int sm, int group_size,
     bool disabled, cutlass_kernels::ActivationParams activation_params, cudaStream_t stream) {
   if constexpr ((std::is_same_v<WeightType, cutlass::uint4b_t> || std::is_same_v<WeightType, uint8_t>) &&
-                std::is_same_v<T, half> && std::is_same_v<ScaleBiasType, T>) {
+                (std::is_same_v<T, half> || std::is_same_v<T, __nv_bfloat16>) && std::is_same_v<ScaleBiasType, T>) {
     bool const env_disabled = MoeGemvDisabledByEnv();
     bool const has_block_zeros = group_size > 0 && weight_zeros != nullptr;
     if (disabled || env_disabled || has_block_zeros) {

@@ -440,6 +440,22 @@ struct DetailsForTAndWeight<half, uint8_t> {
   static constexpr int kWeightBits = 8;
 };
 
+#ifdef ENABLE_BF16
+template <>
+struct DetailsForTAndWeight<__nv_bfloat16, cutlass::uint4b_t> {
+  using Details = fiv::KernelDetails<fiv::BF16DetailsA, fiv::Int4DetailsW, fiv::ColumnMajorInterleaved, true, kTileSizeK>;
+  using TypeA = __nv_bfloat16;
+  static constexpr int kWeightBits = 4;
+};
+
+template <>
+struct DetailsForTAndWeight<__nv_bfloat16, uint8_t> {
+  using Details = fiv::KernelDetails<fiv::BF16DetailsA, fiv::Int8DetailsW, fiv::ColumnMajorInterleaved, true, kTileSizeK>;
+  using TypeA = __nv_bfloat16;
+  static constexpr int kWeightBits = 8;
+};
+#endif
+
 template <typename T, typename WeightType>
 void launch_moe_gemv_int_symmetric(T const* act, WeightType const* weight, T const* scales, T const* bias, T* out,
                                    int64_t const* expert_first_token_offset, int const* permuted_row_to_expert,
@@ -517,6 +533,31 @@ template void launch_moe_gemv_int4_per_channel<half>(half const*, uint8_t const*
 template void launch_moe_gemv_int4_per_channel_interleaved_swiglu<half>(
     half const*, uint8_t const*, half const*, half const*, half*, int64_t const*, int const*, int, int64_t,
     int64_t, int64_t, int, cutlass_kernels::ActivationParams, cudaStream_t);
+
+#ifdef ENABLE_BF16
+template void launch_moe_gemv_int_symmetric<__nv_bfloat16, cutlass::uint4b_t>(
+    __nv_bfloat16 const*, cutlass::uint4b_t const*, __nv_bfloat16 const*, __nv_bfloat16 const*, __nv_bfloat16*,
+    int64_t const*, int const*, int, int64_t, int64_t, int64_t, int, int, cudaStream_t);
+template void launch_moe_gemv_int_symmetric<__nv_bfloat16, uint8_t>(
+    __nv_bfloat16 const*, uint8_t const*, __nv_bfloat16 const*, __nv_bfloat16 const*, __nv_bfloat16*,
+    int64_t const*, int const*, int, int64_t, int64_t, int64_t, int, int, cudaStream_t);
+template void launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, cutlass::uint4b_t>(
+    __nv_bfloat16 const*, cutlass::uint4b_t const*, __nv_bfloat16 const*, __nv_bfloat16 const*, __nv_bfloat16*,
+    int64_t const*, int const*, int, int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams,
+    cudaStream_t);
+template void launch_moe_gemv_int_symmetric_interleaved_swiglu<__nv_bfloat16, uint8_t>(
+    __nv_bfloat16 const*, uint8_t const*, __nv_bfloat16 const*, __nv_bfloat16 const*, __nv_bfloat16*,
+    int64_t const*, int const*, int, int64_t, int64_t, int64_t, int, int, cutlass_kernels::ActivationParams,
+    cudaStream_t);
+
+template void launch_moe_gemv_int4_per_channel<__nv_bfloat16>(
+    __nv_bfloat16 const*, uint8_t const*, __nv_bfloat16 const*, __nv_bfloat16 const*, __nv_bfloat16*,
+    int64_t const*, int const*, int, int64_t, int64_t, int64_t, int, cudaStream_t);
+template void launch_moe_gemv_int4_per_channel_interleaved_swiglu<__nv_bfloat16>(
+    __nv_bfloat16 const*, uint8_t const*, __nv_bfloat16 const*, __nv_bfloat16 const*, __nv_bfloat16*,
+    int64_t const*, int const*, int, int64_t, int64_t, int64_t, int, cutlass_kernels::ActivationParams,
+    cudaStream_t);
+#endif
 }  // namespace moe_gemv
 }  // namespace kernels
 }  // namespace onnxruntime::llm

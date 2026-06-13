@@ -27,7 +27,7 @@ inline constexpr int64_t kMinProfiledProblemDim = 512;
 inline constexpr int64_t kMinProfiledProblemDimForExpandedRowsAbove4 = 512;
 
 // Returns true if the batched MoE GEMV fast path supports this problem shape.
-// Requirements: FP16 activations, sm >= 80, small expanded_num_rows, supported
+// Requirements: FP16/BF16 activations, sm >= 80, small expanded_num_rows, supported
 // INT weight type, supported group size, and n divisible by the kernel tile width.
 bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t k,
                            int weight_bits, int group_size);
@@ -37,7 +37,7 @@ bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t
 
 // Launches symmetric INT MoE GEMV. group_size <= 0 means per-channel scales;
 // group_size 64/128 means block-wise scales laid out as [num_experts, k_blocks, n].
-// T is half. WeightType is cutlass::uint4b_t or uint8_t.
+// T is half or __nv_bfloat16. WeightType is cutlass::uint4b_t or uint8_t.
 template <typename T, typename WeightType>
 void launch_moe_gemv_int_symmetric(
     T const* act, WeightType const* weight, T const* scales, T const* bias, T* out,
@@ -63,7 +63,7 @@ void launch_moe_gemv_int_symmetric_interleaved_swiglu(
 //   out:      [expanded_num_rows, n] (row-major)
 //   expert_first_token_offset: [num_experts + 1] prefix offsets of permuted rows
 //   permuted_row_to_expert: [expanded_num_rows] local expert id for each permuted row, or nullptr to scan offsets
-// T is half. BF16 currently falls back to grouped GEMM.
+// T is half or __nv_bfloat16.
 template <typename T>
 void launch_moe_gemv_int4_per_channel(
     T const* act, uint8_t const* weight, T const* scales, T const* bias, T* out,

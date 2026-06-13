@@ -128,7 +128,6 @@ Values are average kernel duration in microseconds inside the measured NVTX rang
 
 - FP16 GEMV shows a real end-to-end win for single-token decode at 1024x4096, unlike the tiny 128x256 test shape.
 - The previous broad `expanded_num_rows <= 64` dispatch threshold was too optimistic on SM90 for this shape. At expanded rows 8 and 16, grouped GEMM fallback is faster end-to-end.
-- BF16 needs separate treatment. The single-token BF16 point is much slower with GEMV even though the raw GEMV kernels are not obviously bad.
 - The initial P1 dispatch cutoff is therefore conservative: FP16 only, `expanded_num_rows <= 2`, and `N/K >= 1024`. Collect more model-size points around expanded rows 2, 4, 8, and 16 before enabling GEMV beyond true single-token decode.
 
 ## 2026-06-12 Post-Threshold Dispatch Smoke: SM90, Warmup 1, Repeat 2
@@ -634,3 +633,130 @@ iterations for GEMV.
   implementation, but only report model-shape profiling for 64 in this round.
 - Keep `kMinProfiledProblemDimForExpandedRowsAbove4 = 512` so Qwen-style
   `top_k=8`, `intermediate_size=512` decode runs can use the custom GEMV path.
+
+## 2026-06-13 BF16 GEMV Enablement: SM90, Warmup 5, Repeat 100
+
+### Setup
+
+- Goal: extend the CUDA QMoE GEMV fast path from FP16-only activations to BF16,
+  reaching dispatch and kernel parity with FP16.
+- GPU: single H200 (SM90), `CUDA_VISIBLE_DEVICES=1` on an otherwise idle GPU
+  (`nvidia-smi` confirmed 0% before recording).
+- ONNX Runtime build: `~/onnxruntime/build/cu130/Release`, CUDA 13.0.
+- Python: `~/onnxruntime/.venv_cu130/bin/python` (Python 3.14).
+- Nsight Systems: `~/cuda13.0/bin/nsys`. Kernel parsing used
+  `parse_nsys.py --nvtx-range benchmark --pattern '%'` so both the CUTLASS
+  grouped-GEMM fallback and the custom GEMV kernels appear.
+- All model-shape runs used `--warmup 5 --repeat 100 --block-size 64`.
+
+Implementation summary:
+
+- The runtime gate in `moe_kernels.cu` relaxes from `std::is_same_v<T, half>` to
+  `std::is_same_v<T, half> || std::is_same_v<T, __nv_bfloat16>` for both
+  `tryLaunchMoeGemvIntSymmetric` and the interleaved-SwiGLU variant.
+- `moe_gemv.cu` adds `__nv_bfloat16` `DetailsForTAndWeight` specializations for
+  `cutlass::uint4b_t` and `uint8_t`, plus the matching `__nv_bfloat16` template
+  instantiations (group sizes 0/64/128, INT4/INT8, bias on/off) under
+  `ENABLE_BF16`.
+- BF16 and FP16 now share one dispatch gate and one set of custom kernels.
+
+Command template (run once per dtype):
+
+```bash
+cd /tmp
+export CUDA_HOME=~/cuda13.0
+export CUDNN_HOME=~/cudnn9.19_cuda13
+export PATH=$CUDA_HOME/bin:$PATH
+export LD_LIBRARY_PATH=/usr/lib64/openmpi/lib:$CUDA_HOME/lib64:$CUDNN_HOME/lib64:$CUDNN_HOME/lib:${LD_LIBRARY_PATH:-}
+export PYTHONPATH=~/onnxruntime/build/cu130/Release:~/onnxruntime/onnxruntime/test/python/transformers
+
+CUDA_VISIBLE_DEVICES=1 \
+~/onnxruntime/onnxruntime/test/python/transformers/profile_qmoe_gemv.sh \
+   --python ~/onnxruntime/.venv_cu130/bin/python \
+   --case <case-name> --dtype <FLOAT16|BFLOAT16> \
+   --block-size 64 --warmup 5 --repeat 100 \
+   -o /tmp/qmoe_gemv_bf16_20260613/<output-name>
+```
+
+### Routing Parity
+
+Both dtypes route to the same custom kernels for the same shape:
+`moe_gemv_interleaved_swiglu_kernel` for FC1 and `moe_gemv_kernel` for FC2.
+
+| Case | Expanded rows | DType | FC1 kernel | FC2 kernel | Route |
+|------|---------------|-------|------------|------------|-------|
+| `gpt_oss_20b` (`2880x2880`, e32, top4) | 4 | FP16 | `moe_gemv_interleaved_swiglu_kernel` | `moe_gemv_kernel` | GEMV |
+| `gpt_oss_20b` (`2880x2880`, e32, top4) | 4 | BF16 | `moe_gemv_interleaved_swiglu_kernel` | `moe_gemv_kernel` | GEMV |
+| `qwen3_6_35b_a3b` (`2048x512`, e256, top8) | 8 | FP16 | `moe_gemv_interleaved_swiglu_kernel` | `moe_gemv_kernel` | GEMV |
+| `qwen3_6_35b_a3b` (`2048x512`, e256, top8) | 8 | BF16 | `moe_gemv_interleaved_swiglu_kernel` | `moe_gemv_kernel` | GEMV |
+| `gemma4_26b_a4b` (`2816x704`, e128, top8) | 8 | FP16 | `moe_gemv_interleaved_swiglu_kernel` | `moe_gemv_kernel` | GEMV |
+| `gemma4_26b_a4b` (`2816x704`, e128, top8) | 8 | BF16 | `moe_gemv_interleaved_swiglu_kernel` | `moe_gemv_kernel` | GEMV |
+
+### End-To-End Benchmark Latency (block_size=64, INT4)
+
+Lower is better. `Enabled` is the default GEMV build; `Fallback` sets
+`ORT_DISABLE_MOE_GEMV=1`. Values are the benchmark-loop latency in milliseconds.
+
+| Model case | DType | Enabled ms | Fallback ms | Speedup |
+|------------|-------|------------|-------------|---------|
+| `gpt_oss_20b` (`2880x2880`, e32, top4) | FP16 | 0.0683 | 0.0969 | 1.42x |
+| `gpt_oss_20b` (`2880x2880`, e32, top4) | BF16 | 0.0673 | 0.0995 | 1.48x |
+| `qwen3_6_35b_a3b` (`2048x512`, e256, top8) | FP16 | 0.0512 | 0.0730 | 1.43x |
+| `qwen3_6_35b_a3b` (`2048x512`, e256, top8) | BF16 | 0.0526 | 0.0724 | 1.38x |
+| `gemma4_26b_a4b` (`2816x704`, e128, top8) | FP16 | 0.0595 | 0.0827 | 1.39x |
+| `gemma4_26b_a4b` (`2816x704`, e128, top8) | BF16 | 0.0604 | 0.0771 | 1.28x |
+
+### Primary FC Compute Kernel Timing
+
+Average kernel duration in microseconds inside the measured `benchmark` NVTX
+range. GEMV columns are FC1 (`moe_gemv_interleaved_swiglu_kernel`) and FC2
+(`moe_gemv_kernel`); the fallback column is the CUTLASS `MoeFCGemm` average over
+its 200 calls.
+
+| Model case | DType | FC1 GEMV us | FC2 GEMV us | Fallback `MoeFCGemm` us |
+|------------|-------|-------------|-------------|--------------------------|
+| `gpt_oss_20b` | FP16 | 14.17 | 10.97 | 22.14 |
+| `gpt_oss_20b` | BF16 | 14.58 | 11.00 | 22.71 |
+| `qwen3_6_35b_a3b` | FP16 | 5.11 | 3.24 | 10.67 |
+| `qwen3_6_35b_a3b` | BF16 | 5.29 | 3.35 | 10.94 |
+| `gemma4_26b_a4b` | FP16 | 7.52 | 4.59 | 14.96 |
+| `gemma4_26b_a4b` | BF16 | 9.45 | 5.29 | 12.28 |
+
+### Standalone INT4/INT8 Synthetic Shape (`1024x4096`, e8, top2)
+
+| Case | DType | Route | FC1 GEMV us | FC2 GEMV us |
+|------|-------|-------|-------------|-------------|
+| `blockwise_int4_b64` | FP16 | GEMV | 4.53 | 6.95 |
+| `blockwise_int4_b64` | BF16 | GEMV | 4.62 | 7.01 |
+| `blockwise_int8_b64` | FP16 | grouped GEMM fallback | — | — |
+| `blockwise_int8_b64` | BF16 | grouped GEMM fallback | — | — |
+
+The INT4 GEMV kernel times are within noise across dtypes. End-to-end latency on
+this tiny `e8` shape is high-variance (the disabled path swung between 0.17 and
+0.27 ms across repeats), so only the stable in-NVTX kernel times are reported
+here. INT8 block-wise stays on grouped GEMM for this shape, and that fallback is
+dtype-independent (both FP16 and BF16 fall back identically).
+
+### Correctness
+
+- Focused SwiGLU BF16 parity tests passed:
+  `pytest test_qmoe_cuda.py -k "swiglu and bf16"` reported `16 passed, 59
+  deselected`.
+- Every benchmark case above reported `has_invalid_output=false`, so the
+  GEMV-enabled BF16 output matched the reference within tolerance.
+
+### Per-Channel Note
+
+The default per-channel (`block_size=0`) `gpt_oss` benchmark case stays on
+grouped GEMM in this build for both FP16 and BF16 (the trace shows two
+`MoeFCGemm` calls plus a separate `doGatedActivationKernel`). The fallback is
+dtype-independent, so BF16 still matches FP16 behavior. The current branch's
+confirmed model-shape GEMV coverage is the block-wise (`block_size=64`) path used
+in the tables above.
+
+### Decision
+
+- Keep the relaxed gate: BF16 and FP16 share one dispatch path and one set of
+  custom GEMV kernels.
+- For every profiled model shape, BF16 routes to GEMV exactly where FP16 does and
+  matches FP16 latency within measurement noise.

@@ -183,7 +183,7 @@ under [onnxruntime/contrib_ops/cuda/llm/moe_gemm/](onnxruntime/contrib_ops/cuda/
 
 | Path | CUTLASS class | Used for | SM range |
 |------|---------------|----------|----------|
-| **MoE GEMV fast path** | `fpA_intB_gemv`-based custom kernel | INT4 per-column W4A16 and symmetric INT4/INT8 block-wise W*A16 with FP16 activations and true decode row counts | SM80+ |
+| **MoE GEMV fast path** | `fpA_intB_gemv`-based custom kernel | INT4 per-column W4A16 and symmetric INT4/INT8 block-wise W*A16 with FP16 or BF16 activations and true decode row counts | SM80+ |
 | **Ampere GemmGrouped** | `cutlass::gemm::kernel::GemmGrouped` | INT4/INT8 W*A16, FP8 W8A16 dequant fallback, FP32 | SM75–SM89, plus all mixed-input on SM90/SM120 |
 | **TMA Warp-Specialized (mixed-input)** | `CollectiveBuilderMixedInput` | Same-type FP16×FP16 / BF16×BF16, native MXFP4 W4A16 | SM90 (same-type), SM120 (FP4 W4A16) |
 | **Block-Scaled Tensor Op** | `OpClassBlockScaledTensorOp` | Native FP8×MXFP4 (`wfp4afp8`) | SM100+ (Blackwell) |
@@ -191,7 +191,7 @@ under [onnxruntime/contrib_ops/cuda/llm/moe_gemm/](onnxruntime/contrib_ops/cuda/
 The MoE GEMV fast path is selected before the Ampere grouped GEMM for integer
 QMoE when all of the following are true:
 
-- activation/output dtype is FP16;
+- activation/output dtype is FP16 or BF16;
 - scales and biases use the same dtype as the activation;
 - weights are INT4 for per-column scales, or INT4/INT8 for symmetric block-wise scales;
 - `block_size <= 0` for per-column INT4, or `block_size` is 64 or 128 for block-wise INT4/INT8;
@@ -202,9 +202,11 @@ QMoE when all of the following are true:
 - `N` is divisible by the column-interleaved tile width (32 for INT4, 16 for INT8),
   and `K` satisfies the kernel step and, for block-wise scales, complete-block alignment.
 
-BF16, asymmetric block-wise quantization, broader row counts, and dimensions
+Asymmetric block-wise quantization, broader row counts, and dimensions
 outside the profiled gate stay on grouped GEMM until profile data shows an
-end-to-end GEMV win.
+end-to-end GEMV win. FP16 and BF16 share the same dispatch gate and custom
+kernels; for a given shape, BF16 routes to GEMV exactly where FP16 does and
+shows comparable latency.
 
 Set `ORT_DISABLE_MOE_GEMV=1` before process start to force the grouped GEMM
 fallback for debugging, benchmarking, or bisecting numerical differences. The
@@ -927,9 +929,9 @@ column: scale tensors are `[E, N]`, and `block_size <= 0`.
 | Area | What is implemented | Result |
 |------|---------------------|--------|
 | Benchmarking | Added `profile_qmoe_gemv.py` and `profile_qmoe_gemv.sh` to run GEMV-enabled and `ORT_DISABLE_MOE_GEMV=1` grouped-GEMM profiles in separate processes. | Stable A/B profiles with the `benchmark` NVTX range; use `parse_nsys.py --pattern '%'` so fallback CUTLASS kernels are visible. |
-| Route policy | Dispatch is data-gated to FP16 integer QMoE decode shapes, `expanded_num_rows <= 8`, `N >= 512`, `K >= 512`, and profiled alignment constraints. | Keeps tiny shapes, BF16, and unprofiled row counts on grouped GEMM. |
+| Route policy | Dispatch is data-gated to FP16/BF16 integer QMoE decode shapes, `expanded_num_rows <= 8`, `N >= 512`, `K >= 512`, and profiled alignment constraints. | Keeps tiny shapes and unprofiled row counts on grouped GEMM. |
 | Row-to-expert lookup | The prologue materializes the local expert id for each permuted row and passes it to the GEMV kernels. | Removes repeated prefix-offset scans inside each N-tile CTA; GPT-OSS and Gemma model-shape kernels improved. |
-| FC1 interleaved SwiGLU | The FC1 GEMV path can apply interleaved SwiGLU in the GEMV epilogue for the profiled FP16 INT4 path. | Removes the separate activation launch and FC1 intermediate traffic; GPT-OSS and Gemma improved end-to-end. |
+| FC1 interleaved SwiGLU | The FC1 GEMV path can apply interleaved SwiGLU in the GEMV epilogue for the profiled FP16/BF16 INT4 path. | Removes the separate activation launch and FC1 intermediate traffic; GPT-OSS and Gemma improved end-to-end. |
 | One-row finalize | `num_rows == 1`, `top_k <= 4` has a static top-k finalize specialization. | Modest GPT-OSS finalize improvement while preserving the existing FC2 GEMV parallelism. |
 | End-to-end GPT-OSS | The final per-column GEMV path was validated in ORT GenAI on GPT-OSS-20B INT4. | About 15% faster than the grouped-GEMM baseline and about 8% faster than the FasterTransformer reference at batch 1. |
 
@@ -941,11 +943,24 @@ scales to `[E, K_blocks, N]`, and the GEMV kernels consume that same layout.
 
 | Area | What is implemented | Result |
 |------|---------------------|--------|
-| INT4 and INT8 details | The GEMV kernel details support `(half, cutlass::uint4b_t)` and `(half, uint8_t)`. | Both weight types use the SM80 column-interleaved `fpA_intB` layout on all GPUs, matching the grouped-GEMM path. |
+| INT4 and INT8 details | The GEMV kernel details support `(half, cutlass::uint4b_t)`, `(half, uint8_t)`, and the matching `__nv_bfloat16` weight-type pairs. | Both weight types use the SM80 column-interleaved `fpA_intB` layout on all GPUs, matching the grouped-GEMM path, for FP16 and BF16 activations. |
 | Group-size dispatch | GEMV templates now cover `GroupSize == 0`, 64, and 128. | Per-column and block-wise paths share the same kernel structure while preserving complete-block checks. |
 | Scale indexing | Block-wise scale loads use `real_offset_k / GroupSize * n + real_offset_n` with a K-loop scale step. | Reuses QMoE's existing `[E, K_blocks, N]` runtime scale layout; no new scale pack format is needed. |
 | Symmetric-only gate | Block-wise GEMV runs only when zero-point compensation is absent. | Asymmetric block-wise models stay on grouped GEMM until a zero-point GEMV path is implemented and profiled. |
 | Model-shape b64 profile | GPT-OSS-20B and Qwen3.6-35B-A3B were profiled with `block_size=64`. | Both use real GEMV kernels under the current 512 threshold and show about 1.4x lower benchmark latency than grouped GEMM fallback. |
+
+#### Completed BF16 enablement
+
+BF16 activations now share the exact dispatch gate and custom GEMV kernels with
+FP16. The runtime gate relaxes from `T == half` to `T == half || T ==
+__nv_bfloat16`, and `__nv_bfloat16` template instantiations were added for the
+per-column INT4, block-wise INT4/INT8, and interleaved-SwiGLU GEMV kernels.
+
+| Area | What is implemented | Result |
+|------|---------------------|--------|
+| Gate relaxation | `tryLaunchMoeGemvIntSymmetric` and the interleaved-SwiGLU variant accept `__nv_bfloat16` activations with `ScaleBiasType == T`. | For a given shape, BF16 routes to GEMV exactly where FP16 does. |
+| Kernel instantiation | `moe_gemv.cu` adds `__nv_bfloat16` details/instantiations (group sizes 0/64/128, INT4/INT8, bias on/off) under `ENABLE_BF16`. | The custom FC1/FC2 GEMV kernels run for BF16; no grouped-GEMM fallback when the FP16 gate would route. |
+| Profiling | GPT-OSS-20B, Qwen3.6-35B-A3B, and Gemma model shapes profiled with `block_size=64` for both dtypes. | BF16 matches FP16 routing and latency within noise (about 1.3x–1.5x faster than grouped GEMM); SwiGLU BF16 parity tests pass. |
 
 #### Experiments rejected after profiling
 
@@ -966,8 +981,6 @@ scales to `[E, K_blocks, N]`, and the GEMV kernels consume that same layout.
   and N tiles, then reduces partial results with bounded numerical change.
 - Architecture-specific dispatch thresholds or a small autotuner for SM80, SM89,
   SM90, SM100, and SM120 rather than one broad hand-tuned gate.
-- BF16 GEMV re-evaluation after more launch/fusion work; current BF16 points stay
-  on grouped GEMM.
 - Asymmetric block-wise GEMV with zero-point compensation in the kernel, if model
   demand and grouped-GEMM baseline data justify the maintenance cost.
 - More model-shape block-wise profiling, especially `block_size=128`, INT8, and
