@@ -7,9 +7,9 @@ This file records QMoE INT4 per-channel GEMV profiling results so future kernel 
 ### Setup
 
 - Machine/GPU: local CUDA machine, SM90 reported by `torch.cuda.get_device_capability()`.
-- ONNX Runtime build: `/home/tianlei/onnxruntime/build/cu130/Release`.
-- Python: `/home/tianlei/onnxruntime/.venv_cu130/bin/python`.
-- Nsight Systems: `/home/tianlei/cuda13.0/bin/nsys`.
+- ONNX Runtime build: `~/onnxruntime/build/cu130/Release`.
+- Python: `~/onnxruntime/.venv/bin/python`.
+- Nsight Systems: `~/cuda13.0/bin/nsys`.
 - Benchmark script: `onnxruntime/test/python/transformers/profile_qmoe_gemv.sh`.
 - Warmup: 5 ORT runs before the measured `benchmark` NVTX range.
 - Repeat: 100 measured ORT runs inside the `benchmark` NVTX range.
@@ -21,10 +21,10 @@ Command template:
 
 ```bash
 pushd /tmp >/dev/null
-PATH=/home/tianlei/cuda13.0/bin:$PATH \
-PYTHONPATH=/home/tianlei/onnxruntime/build/cu130/Release:/home/tianlei/onnxruntime/onnxruntime/test/python/transformers \
-/home/tianlei/onnxruntime/onnxruntime/test/python/transformers/profile_qmoe_gemv.sh \
-  --python /home/tianlei/onnxruntime/.venv_cu130/bin/python \
+PATH=~/cuda13.0/bin:$PATH \
+PYTHONPATH=~/onnxruntime/build/cu130/Release:~/onnxruntime/onnxruntime/test/python/transformers \
+~/onnxruntime/onnxruntime/test/python/transformers/profile_qmoe_gemv.sh \
+  --python ~/onnxruntime/.venv/bin/python \
   --case <case-name> --warmup 5 --repeat 100 \
   -o /tmp/qmoe_gemv_<case-name>_warmup5_r100
 popd >/dev/null
@@ -90,10 +90,10 @@ Command template:
 
 ```bash
 pushd /tmp >/dev/null
-PATH=/home/tianlei/cuda13.0/bin:$PATH \
-PYTHONPATH=/home/tianlei/onnxruntime/build/cu130/Release:/home/tianlei/onnxruntime/onnxruntime/test/python/transformers \
-/home/tianlei/onnxruntime/onnxruntime/test/python/transformers/profile_qmoe_gemv.sh \
-  --python /home/tianlei/onnxruntime/.venv_cu130/bin/python \
+PATH=~/cuda13.0/bin:$PATH \
+PYTHONPATH=~/onnxruntime/build/cu130/Release:~/onnxruntime/onnxruntime/test/python/transformers \
+~/onnxruntime/onnxruntime/test/python/transformers/profile_qmoe_gemv.sh \
+  --python ~/onnxruntime/.venv/bin/python \
   --batch-size 1 --sequence-length <m> \
   --hidden-size 1024 --intermediate-size 4096 \
   --num-experts 8 --top-k 2 --dtype FLOAT16 \
@@ -438,3 +438,70 @@ vector element.
   for GPT-style single-token decode and does not alter routing for larger batches
   or top-k 8 models. Dispatching exact top-k specializations is worthwhile for
   GPT-OSS top-k 4; reducing the one-row block from 256 to 128 threads is not.
+
+## 2026-06-13 GenAI End-To-End Throughput: GPT-OSS-20B INT4, SM90 (H200), Batch 1
+
+### Setup
+
+- Measures full ONNX Runtime GenAI token-generation throughput, not isolated
+  kernel time, so it captures the real end-to-end impact of the MoE GEMV path.
+- GPU: single H200 (SM90), `CUDA_VISIBLE_DEVICES=1` on an otherwise idle GPU.
+  GPU 0 was busy with another job during early runs and produced corrupted
+  numbers, so all results below use an idle GPU.
+- ONNX Runtime build: `~/onnxruntime/build/cu130/Release` (branch
+  `tlw/rel-1.27.0_qmoe_update`), CUDA 13.0, `CMAKE_CUDA_ARCHITECTURES=89;90`.
+- ONNX Runtime GenAI: `0.14.0-dev`, venv `~/.venv_src_8f0278c` (Python 3.14).
+- Model: `gpt-oss-20b` INT4 per-channel,
+  `~/models/gpt-oss-20b/cuda/cuda-int4-kquant-block-32-mixed/`
+  (`hidden=inter=2880`, 32 experts, top-k 4, SwiGLU interleaved). Single-token
+  decode expands to 4 rows per step, which routes to the INT4 per-channel GEMV.
+- Three configurations compared:
+  - **Cutlass baseline (grouped GEMM)**: GEMV disabled via
+    `ORT_DISABLE_MOE_GEMV=1`, so FC1/FC2 use the cutlass grouped-GEMM path.
+  - **GEMV (final)**: default build with the INT4 per-channel MoE GEMV fast path,
+    including the row-to-expert map, FC1 interleaved SwiGLU fusion, and static
+    top-k one-row finalize specialization.
+  - **FT baseline**: FasterTransformer MoE kernel used in ORT 1.26 (or ORT GenAI 0.14.1) reference token-generation throughput for the same model and prompt lengths.
+- Correctness: both GEMV-enabled and `ORT_DISABLE_MOE_GEMV=1` produce identical
+  correct output ("Paris is the capital of France.") for the sanity prompt, and
+  the Nsight trace confirms `moe_gemv_kernel` executes for FC1 and FC2.
+
+Command template (run once per configuration):
+
+```bash
+cd ~/onnxruntime-genai/benchmark/python
+source ~/.venv_src_8f0278c/bin/activate
+export LD_LIBRARY_PATH=~/cuda13.0/lib64:~/cudnn9.19_cuda13/lib:$LD_LIBRARY_PATH
+# Add ORT_DISABLE_MOE_GEMV=1 for the cutlass baseline.
+CUDA_VISIBLE_DEVICES=1 python benchmark_e2e.py \
+  -i ~/models/gpt-oss-20b/cuda/cuda-int4-kquant-block-32-mixed/ \
+  -b 1 -l 128,1024,2048 -g 256 -r 10 -w 2 \
+  --use_random_tokens --chat_template '{input}' \
+  -pm 1 -e cuda -mn gpt-oss-20b -pr int4 -o results_gptoss/<name>.csv
+```
+
+### Token-Generation Throughput
+
+Higher is better. Values are average token-generation throughput in tokens per
+second (tps) for batch size 1, 256 generated tokens, 10 repeats, 2 warmups.
+
+| Prompt length | Cutlass baseline (gemm) tps | GEMV (final) tps | FT baseline tps | GEMV vs cutlass | GEMV vs FT |
+|---------------|-----------------------------|------------------|-----------------|-----------------|------------|
+| 128 | 248.9 | 288.0 | 265.2 | +15.7% | +8.6% |
+| 1024 | 237.8 | 272.2 | 252.9 | +14.5% | +7.6% |
+| 2048 | 231.3 | 265.0 | 245.6 | +14.6% | +7.9% |
+
+### Observations
+
+- The final MoE GEMV path beats both the cutlass grouped-GEMM baseline and the
+  FasterTransformer 0.14.1 reference at every measured prompt length.
+- Versus the cutlass grouped-GEMM baseline, GEMV improves end-to-end
+  token-generation throughput by roughly 15% across prompt lengths.
+- Versus the FT 0.14.1 baseline, GEMV is about 8% faster, meeting the goal of
+  outperforming FasterTransformer for GPT-OSS-20B single-token decode.
+- These end-to-end gains are consistent with the kernel-level wins recorded in
+  the row-to-expert map, FC1 interleaved SwiGLU fusion, and static top-k finalize
+  sections above.
+- Always confirm the benchmark GPU is idle (`nvidia-smi`) before recording
+  numbers; contention on a shared GPU inflates sampling latency and corrupts the
+  throughput measurement.
