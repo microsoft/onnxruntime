@@ -868,7 +868,9 @@ Status: the P1 row-to-expert scan item is implemented by materializing the local
 expert id in `permuted_token_selected_experts` during both prologue paths and
 passing that map to the GEMV kernels. GEMV keeps the prefix-offset scan as a
 fallback when the map is unavailable. Initial SM90 actual-model profiles are
-recorded in [qmoe_gemv_exp.md](qmoe_gemv_exp.md).
+recorded in [qmoe_gemv_exp.md](qmoe_gemv_exp.md). Follow-up P1 tile probes
+kept the existing `CtaN=8, Threads=128` shape after `CtaN=16`, `Threads=64`,
+and a map-specialized launch all failed to improve the measured GEMV kernels.
 
 Keep the debug switch (`ORT_DISABLE_MOE_GEMV`) until all planned fast paths have
 independent coverage and benchmark data. It is useful for A/B testing, fallback

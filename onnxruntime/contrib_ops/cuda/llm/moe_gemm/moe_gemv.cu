@@ -116,12 +116,12 @@ static void launch_moe_gemv(TypeA* act, uint8_t* weight, TypeA* scales, TypeA* b
   dim3 block(Threads);
   if (bias != nullptr) {
     moe_gemv_kernel<Details, CtaN, Threads, true><<<grid, block, 0, stream>>>(
-        act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts, weight_expert_stride,
-        static_cast<int>(n), static_cast<int>(k));
+        act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts,
+        weight_expert_stride, static_cast<int>(n), static_cast<int>(k));
   } else {
     moe_gemv_kernel<Details, CtaN, Threads, false><<<grid, block, 0, stream>>>(
-        act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts, weight_expert_stride,
-        static_cast<int>(n), static_cast<int>(k));
+        act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts,
+        weight_expert_stride, static_cast<int>(n), static_cast<int>(k));
   }
 }
 

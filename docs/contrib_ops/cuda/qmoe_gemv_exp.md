@@ -265,3 +265,55 @@ range. The two GEMV compute rows correspond to FC1 and FC2.
 - Qwen remains routed to grouped GEMM by the logical-intermediate-size guard. A
   quick enabled-mode smoke run reported valid output for
   `qwen3_6_35b_a3b_m1_top8_fp16_2048x512_e256`.
+
+## 2026-06-12 P1 Tile-Shape Probe: SM90, FP16, Warmup 5, Repeat 100
+
+### Setup
+
+- Same build and Python environment as above.
+- Goal: test the next P1 tile-shape knobs against the actual model-size cases
+  that route to GEMV after the row-to-expert map optimization.
+- Variants tested:
+  - `CtaN=16, Threads=128`: halves the number of N-tile CTAs.
+  - `CtaN=8, Threads=64`: reduces threads per CTA while preserving the N tile.
+  - `CtaN=8, Threads=128` with a map-specialized launch: splits direct-map and
+    prefix-scan kernels so the common direct-map path avoids the runtime branch.
+- Nsight artifacts:
+  `/tmp/qmoe_actual_*_ctan16_warmup5_r100_{gemv,gemm}.{nsys-rep,sqlite}`,
+  `/tmp/qmoe_actual_*_threads64_warmup5_r100_{gemv,gemm}.{nsys-rep,sqlite}`,
+  and `/tmp/qmoe_actual_*_specialized_map_warmup5_r100_{gemv,gemm}.{nsys-rep,sqlite}`.
+
+### End-To-End ORT Loop Timing
+
+| Variant | Model case | Enabled ms | Fallback ms | Result |
+|---------|------------|------------|-------------|--------|
+| `CtaN=16, Threads=128` | `gpt_oss_20b_m1_top4_fp16_2880x2880_e32` | 0.0852 | 0.0872 | Reject |
+| `CtaN=16, Threads=128` | `gemma4_26b_a4b_m1_top8_fp16_2816x704_e128` | 0.0644 | 0.0791 | Reject |
+| `CtaN=8, Threads=64` | `gpt_oss_20b_m1_top4_fp16_2880x2880_e32` | 0.0832 | 0.0993 | Reject |
+| `CtaN=8, Threads=64` | `gemma4_26b_a4b_m1_top8_fp16_2816x704_e128` | 0.0645 | 0.0799 | Reject |
+| map-specialized launch | `gpt_oss_20b_m1_top4_fp16_2880x2880_e32` | 0.0726 | 0.0909 | Reject, neutral/slightly worse kernels |
+| map-specialized launch | `gemma4_26b_a4b_m1_top8_fp16_2816x704_e128` | 0.0600 | 0.0790 | Reject, neutral/slightly worse kernels |
+
+### Primary GEMV Compute Kernel Timing
+
+Values are average kernel duration in microseconds inside the measured NVTX
+range. Previous best is the row-to-expert map build with `CtaN=8, Threads=128`:
+GPT `13.69, 10.22` us and Gemma `7.17, 4.56` us.
+
+| Variant | GPT GEMV avg us | Gemma GEMV avg us | Decision |
+|---------|-----------------|-------------------|----------|
+| `CtaN=16, Threads=128` | 19.48, 17.52 | 11.07, 5.65 | Wider N tile is slower for both models. |
+| `CtaN=8, Threads=64` | 18.77, 16.78 | 11.09, 5.09 | Fewer threads are slower for both models. |
+| map-specialized launch | 14.00, 10.10 | 7.25, 4.62 | No clear kernel win; keep the simpler launch. |
+
+### Observations
+
+- The existing `CtaN=8, Threads=128` tile remains the best measured choice for
+  the current SM90 actual-model cases.
+- Halving N tiles with `CtaN=16` reduced CTA count but lost too much per-CTA
+  efficiency.
+- `Threads=64` did not help the 704-wide Gemma case and significantly hurt the
+  larger GPT-OSS case.
+- The direct-map branch in the current kernel is not a visible bottleneck after
+  the row-to-expert map optimization, so the extra specialized launch variants
+  are not worth the additional code size.
