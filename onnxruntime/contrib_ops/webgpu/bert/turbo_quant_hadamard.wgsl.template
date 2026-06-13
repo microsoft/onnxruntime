@@ -30,7 +30,9 @@ var<workgroup> hadamard_buffer : array<f32, HEAD_SIZE>;
 
 #include "bert/hadamard_transform_common.wgsl.template"
 #include "bert/turbo_quant_common.wgsl.template"
+#if prepare_indirect_dispatch
 #include "bert/indirect_dispatch_common.wgsl.template"
+#endif
 
 var<workgroup> scale_reduction_buffer : array<f32, 64>;
 // Reuse shared memory for packing: store centroid indices (0-15) as u32 per element.
