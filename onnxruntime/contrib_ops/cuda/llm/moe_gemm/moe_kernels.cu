@@ -84,6 +84,12 @@ inline bool MoeGemvDisabledByEnv() {
   return disabled;
 }
 
+inline bool MoeGemvRejectedByProfiledInterSize(int64_t expanded_num_rows, int64_t inter_size) {
+  static constexpr int64_t kMaxRowsForSmallInterSize = 4;
+  static constexpr int64_t kMinInterSizeForTop8 = 704;
+  return expanded_num_rows > kMaxRowsForSmallInterSize && inter_size < kMinInterSizeForTop8;
+}
+
 // Attempts the batched int4 per-channel MoE GEMV. Returns true if it ran (output
 // written), false if the configuration is unsupported and the caller must fall
 // back to the grouped GEMM. Compiles to a no-op (returns false) for any type
@@ -2271,7 +2277,9 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
         expanded_num_rows, /*n=*/static_cast<int64_t>(fc1_out_size), /*k=*/hidden_size,
         onnxruntime::llm::common::getSMVersion(),
         quant_params.groupwise.group_size,
-        /*disabled=*/use_ampere_activation_fusion || !bias_is_broadcast, stream);
+        /*disabled=*/use_ampere_activation_fusion || !bias_is_broadcast ||
+            MoeGemvRejectedByProfiledInterSize(expanded_num_rows, inter_size),
+        stream);
     if (!fc1_did_gemv) {
       auto universal_input = GroupedGemmInput<T, WeightType, OutputType, OutputType>{input,
                                                                                      total_tokens_including_expert, fc1_expert_weights,
@@ -2367,7 +2375,7 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
       /*biases*/ nullptr, static_cast<T*>(gemm_output), expert_first_token_offset, num_experts_per_node,
       expanded_num_rows, /*n=*/hidden_size, /*k=*/inter_size, onnxruntime::llm::common::getSMVersion(),
       quant_params.groupwise.group_size,
-      /*disabled=*/using_tma_ws_gemm2, stream);
+      /*disabled=*/using_tma_ws_gemm2 || MoeGemvRejectedByProfiledInterSize(expanded_num_rows, inter_size), stream);
   if (!fc2_did_gemv) {
     auto universal_input = GroupedGemmInput<T, WeightType, OutputType, OutputType>{input, total_tokens_including_expert,
                                                                                    fc2_expert_weights,

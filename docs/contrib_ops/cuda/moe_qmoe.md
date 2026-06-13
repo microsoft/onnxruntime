@@ -193,13 +193,15 @@ per-channel QMoE when all of the following are true:
 - activation/output dtype is FP16;
 - weights are INT4 and scales/biases use the same dtype as the activation;
 - `block_size <= 0` (per-output-channel scales, no group-wise scales or zero-points);
-- `expanded_num_rows = num_tokens * top_k` is in `(0, 2]`;
-- `N >= 1024` and `K >= 1024`;
+- `expanded_num_rows = num_tokens * top_k` is in `(0, 8]`;
+- `N >= 512` and `K >= 512`;
+- if `expanded_num_rows > 4`, the logical MoE intermediate size is at least 704
+  and the GEMV call dimensions satisfy `N >= 704` and `K >= 704`;
 - `N` is divisible by 32 for the INT4 column-interleaved tile, and `K` satisfies
   the kernel step alignment.
 
-BF16 and broader row-count coverage currently stay on grouped GEMM until profile
-data shows an end-to-end GEMV win.
+BF16 and broader row-count or smaller-dimension coverage currently stay on
+grouped GEMM until profile data shows an end-to-end GEMV win.
 
 Set `ORT_DISABLE_MOE_GEMV=1` before process start to force the grouped GEMM
 fallback for debugging, benchmarking, or bisecting numerical differences. The
@@ -857,7 +859,7 @@ follow-up work in the order below so each step has an isolated benchmark signal.
 |----------|-----------|------------------|----------------------|------------|
 | P0 | Establish a benchmark baseline | Prevent regressions and tune cutoffs with data | Add a focused microbenchmark or perf-test mode that sweeps `num_tokens`, `top_k`, `hidden_size`, `inter_size`, dtype, and SM. Always run with GEMV on and with `ORT_DISABLE_MOE_GEMV=1`. | Report latency and speedup for SM80/SM89/SM90/SM100/SM120 where available; keep QMoE parity tests green. |
 | P1 | Avoid repeated row-to-expert scans | Reduces per-block overhead, especially when `N` has many tiles | Either materialize `permuted_row_to_expert` during the prologue or launch GEMV by expert ranges so each block already knows its expert. Keep the existing prefix-offset scan as fallback until the new map is available for all prologue paths. | Compare kernel time for `expanded_num_rows` in `{1, 2, 4, 8, 16, 32, 64}` and `N` in typical FC1/FC2 sizes. |
-| P1 | Tune tile shapes and dispatch threshold | Better occupancy/throughput across model dimensions | Benchmark `CtaN`, thread count, and max `expanded_num_rows` alternatives. The current conservative cutoff (`expanded_num_rows <= 2`, FP16, `N/K >= 1024`) should stay data-driven per architecture or at least per broad SM family. | GEMV should win over grouped GEMM at the selected threshold for both FC1 and FC2 shapes. |
+| P1 | Tune tile shapes and dispatch threshold | Better occupancy/throughput across model dimensions | Benchmark `CtaN`, thread count, and max `expanded_num_rows` alternatives. The current model-profiled cutoff (`expanded_num_rows <= 8`, FP16, `N/K >= 512`, and logical intermediate size plus GEMV call dimensions at least 704 when `expanded_num_rows > 4`) should stay data-driven per architecture or at least per broad SM family. | GEMV should win over grouped GEMM at the selected threshold for both FC1 and FC2 shapes. |
 | P2 | Fuse FC1 gated activation for SwiGLU | Saves one global write/read of the FC1 intermediate and one activation launch | Add a gated GEMV epilogue for `swiglu_fusion=1/2` that writes post-gated `[expanded_rows, inter_size]`. Preserve the existing unfused activation path for non-SwiGLU and unsupported parameter combinations. | Add targeted interleaved and block SwiGLU INT4 per-channel decode tests; benchmark FC1 end-to-end latency. |
 | P2 | Fuse FC2 finalize/scatter for decode | Reduces FC2 output traffic and launch overhead | Add an FC2 GEMV variant that applies routing weights and accumulates directly into final output for small rows. This likely needs access to `permuted_row_to_unpermuted_row` and `token_topk_unpermuted_scales`. | Compare full MoE latency, not just GEMV kernel time, because finalize launch removal is the main benefit. |
 | P3 | Broaden dtype/quant coverage only if profitable | Avoids extra maintenance for rarely faster paths | Evaluate INT8 per-channel and selected group-wise INT4 cases after the INT4 per-channel path is tuned. Group-wise support needs scale loads indexed by K group and zero-point handling, so it should be justified by benchmark data. | Require parity coverage for each new mode and benchmark wins over grouped GEMM. |

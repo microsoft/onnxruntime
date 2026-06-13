@@ -145,3 +145,78 @@ Values are average kernel duration in microseconds inside the measured NVTX rang
 | `custom_m1_top2_float16_1024x4096_e8` | 2 | FP16 | GEMV | 4 | Passed |
 | `custom_m4_top2_float16_1024x4096_e8` | 8 | FP16 | grouped GEMM fallback (`expanded_num_rows > 2`) | 0 | Passed |
 | `custom_m1_top2_bfloat16_1024x4096_e8` | 2 | BF16 | grouped GEMM fallback (FP16-only GEMV gate) | 0 | Passed |
+
+## 2026-06-12 Actual Model Dimensions: SM90, FP16, Warmup 5, Repeat 20
+
+### Setup
+
+- Same build and Python environment as above.
+- Nsight Systems profiles used the measured `benchmark` NVTX range.
+- Enabled mode leaves `ORT_DISABLE_MOE_GEMV` unset. Fallback mode sets `ORT_DISABLE_MOE_GEMV=1`.
+- Nsight artifacts: `/tmp/qmoe_actual_<case>_warmup5_r20_{enabled,gemm}.{nsys-rep,sqlite}`.
+- Summary log: `/tmp/qmoe_actual_model_dims_fp16_warmup5_r20_summary.txt`.
+
+Model dimensions came from the Hugging Face configs below. Qwen's shared expert
+is ignored in this benchmark.
+
+| Model case | Source dimensions | Tokens | Expanded rows | Enabled ms | Fallback ms | `moe_gemv` calls in enabled profile | Route |
+|------------|-------------------|--------|---------------|------------|-------------|--------------------------------------|-------|
+| `gpt_oss_20b_m1_top4_fp16_2880x2880_e32` | `hidden_size=2880`, `intermediate_size=2880`, `num_local_experts=32`, `top_k=4` | 1 | 4 | 0.0909 | 0.0944 | 0 | grouped GEMM fallback |
+| `qwen3_6_35b_a3b_m1_top8_fp16_2048x512_e256` | `hidden_size=2048`, `moe_intermediate_size=512`, `num_experts=256`, `top_k=8` | 1 | 8 | 0.0744 | 0.0743 | 0 | grouped GEMM fallback |
+| `gemma4_26b_a4b_m1_top8_fp16_2816x704_e128` | `hidden_size=2816`, `moe_intermediate_size=704`, `num_experts=128`, `top_k=8` | 1 | 8 | 0.0819 | 0.0820 | 0 | grouped GEMM fallback |
+
+### Observations
+
+- The actual single-token top-k values for these models produce expanded rows 4
+  or 8, so they intentionally stay on grouped GEMM under the current
+  `expanded_num_rows <= 2` GEMV gate.
+- Enabled and forced-fallback timings are nearly identical, and the enabled
+  profiles contain zero custom `moe_gemv` kernels, confirming the dispatch route.
+- These profiles establish the current grouped-GEMM baseline for actual model
+  dimensions. Future GEMV work for model-realistic top-k needs targeted row-count
+  improvements before expanding the dispatch gate.
+
+## 2026-06-12 Actual Model Dimensions With Relaxed GEMV Gate: SM90, FP16, Warmup 5, Repeat 100
+
+### Setup
+
+- Same build and Python environment as above.
+- Dispatch was temporarily relaxed to `expanded_num_rows <= 8` and `N/K >= 512`
+  to force GEMV coverage for GPT-OSS-20B, Qwen3.6-35B-A3B, and Gemma-4-26B-A4B
+  FP16 model-size cases.
+- Nsight artifacts: `/tmp/qmoe_actual_<case>_relaxed_warmup5_r100_{enabled,gemm}.{nsys-rep,sqlite}`.
+- Summary log: `/tmp/qmoe_actual_model_dims_fp16_relaxed_warmup5_r100_summary.txt`.
+
+| Model case | Expanded rows | Enabled route | Enabled ms | Fallback ms | GEMV/GEMM | GEMV calls | Primary enabled compute avg us | Primary fallback compute avg us | Decision |
+|------------|---------------|---------------|------------|-------------|-----------|------------|--------------------------------|---------------------------------|----------|
+| `gpt_oss_20b_m1_top4_fp16_2880x2880_e32` | 4 | GEMV | 0.0760 | 0.0905 | 0.84x | 200 | 15.35, 11.94 | 20.11, 18.48 | Keep GEMV candidate |
+| `qwen3_6_35b_a3b_m1_top8_fp16_2048x512_e256` | 8 | GEMV | 0.0865 | 0.0707 | 1.22x | 200 | 20.37, 18.77 | 10.33 aggregated over 200 calls | Reject current GEMV gate |
+| `gemma4_26b_a4b_m1_top8_fp16_2816x704_e128` | 8 | GEMV | 0.0745 | 0.0801 | 0.93x | 200 | 14.61, 11.85 | 13.58 aggregated over 200 calls | Keep GEMV candidate |
+
+### Observations
+
+- GPT-OSS-20B benefits from GEMV at expanded rows 4 with square 2880x2880 FC
+  dimensions.
+- Gemma-4-26B-A4B shows a smaller but positive end-to-end win at expanded rows 8
+  with 2816x704 / 704x2816 FC dimensions.
+- Qwen3.6-35B-A3B regresses with the current GEMV kernel at expanded rows 8 and
+  2048x512 / 512x2048 FC dimensions. The primary GEMV kernels are slower than
+  grouped GEMM for this 512-wide MoE hidden size.
+- Based on this pass, the dispatch gate should keep `expanded_num_rows <= 8` and
+  `N/K >= 512`, but require the logical MoE intermediate size and each GEMV call
+  dimension to be at least 704 when `expanded_num_rows > 4`. The logical
+  intermediate-size check is needed because Qwen's gated FC1 has `N=1024` even
+  though the MoE hidden size is 512. This keeps GPT-OSS and Gemma enabled while
+  routing the measured Qwen regression to grouped GEMM. A future autotuner could
+  replace this hand cutoff.
+
+### Final Route Check After Logical Intermediate-Size Guard
+
+After adding the logical intermediate-size guard, short Nsight profiles with
+warmup 1 and repeat 2 confirmed the intended final routing:
+
+| Model case | Expected route | `moe_gemv` calls in benchmark | Result |
+|------------|----------------|--------------------------------|--------|
+| `gpt_oss_20b_m1_top4_fp16_2880x2880_e32` | GEMV | 4 | Passed |
+| `qwen3_6_35b_a3b_m1_top8_fp16_2048x512_e256` | grouped GEMM fallback | 0 | Passed |
+| `gemma4_26b_a4b_m1_top8_fp16_2816x704_e128` | GEMV | 4 | Passed |
