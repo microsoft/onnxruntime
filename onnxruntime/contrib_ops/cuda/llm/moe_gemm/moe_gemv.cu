@@ -133,12 +133,17 @@ static constexpr int kThreads = 128;
 // int4 ColumnMajorInterleave (Sm80) tile width along N.
 static constexpr int kTileSizeK = 64;
 static constexpr int kInt4Interleave = 128 * 8 / (kTileSizeK * 4);  // = 4
+static constexpr int64_t kMaxProfiledExpandedRows = 2;
+static constexpr int64_t kMinProfiledProblemDim = 1024;
 
 bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t k) {
   if (sm < 80) {
     return false;
   }
-  if (expanded_num_rows <= 0 || expanded_num_rows > 64) {
+  if (expanded_num_rows <= 0 || expanded_num_rows > kMaxProfiledExpandedRows) {
+    return false;
+  }
+  if (n < kMinProfiledProblemDim || k < kMinProfiledProblemDim) {
     return false;
   }
   // n must tile evenly; k must tile evenly into StepK (32 for int4) along interleaved-K.

@@ -87,7 +87,7 @@ inline bool MoeGemvDisabledByEnv() {
 // Attempts the batched int4 per-channel MoE GEMV. Returns true if it ran (output
 // written), false if the configuration is unsupported and the caller must fall
 // back to the grouped GEMM. Compiles to a no-op (returns false) for any type
-// combination other than (half|bf16 activations, uint4b_t weights, ScaleBias==T).
+// combination other than (half activations, uint4b_t weights, ScaleBias==T).
 template <typename T, typename WeightType, typename ScaleBiasType>
 bool tryLaunchMoeGemvInt4PerChannel(T const* input, WeightType const* weights, ScaleBiasType const* scales,
                                     ScaleBiasType const* biases, T* output,
@@ -95,8 +95,7 @@ bool tryLaunchMoeGemvInt4PerChannel(T const* input, WeightType const* weights, S
                                     int64_t expanded_num_rows, int64_t n, int64_t k, int sm, int group_size,
                                     bool disabled, cudaStream_t stream) {
   if constexpr (std::is_same_v<WeightType, cutlass::uint4b_t> &&
-                (std::is_same_v<T, half> || std::is_same_v<T, __nv_bfloat16>) &&
-                std::is_same_v<ScaleBiasType, T>) {
+                std::is_same_v<T, half> && std::is_same_v<ScaleBiasType, T>) {
     if (disabled || MoeGemvDisabledByEnv() || group_size > 0) {
       return false;
     }
