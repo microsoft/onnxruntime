@@ -308,25 +308,28 @@ Status ComputeFlashAttentionDecodeQKV(onnxruntime::webgpu::ComputeContext& conte
                                                 : parameters.scale_;
 
   const bool has_attention_bias = attention_bias != nullptr;
-  const int components = turbo_quant ? 1 : 4;
-  const int head_size_vec = parameters.v_head_size_ / 4;  // Always vec4 for Q/output
+  const int components = 4;
+  // TurboQuant changes view of kv cache from fp16/fp32 to packed u32.
+  // It already packs 4 float values into a single u32, so KV cache tensors use 1 component.
+  const int kv_cache_components = turbo_quant ? 1 : components;
+  const int head_size_vec = parameters.v_head_size_ / components;
 
   bool q_BNSH = parameters.qkv_format_ == Q_K_V_BNSH;
   bool is_unidirectional = parameters.is_unidirectional_;
   FlashAttentionDecodeQKVProgram program{"FlashAttentionDecodeQKV", has_attention_bias, tile_size, head_size_vec, use_indirect_dispatch, q_BNSH, is_unidirectional, m_tile, turbo_quant, compressed_head_size_u32};
-  program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, 4},
-                     {present_key, ProgramTensorMetadataDependency::TypeAndRank, components},
-                     {present_value, ProgramTensorMetadataDependency::TypeAndRank, components}});
+  program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, components},
+                     {present_key, ProgramTensorMetadataDependency::TypeAndRank, kv_cache_components},
+                     {present_value, ProgramTensorMetadataDependency::TypeAndRank, kv_cache_components}});
   if (use_indirect_dispatch) {
     program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None});
   }
   if (has_attention_bias) {
     program.AddInput({attention_bias, ProgramTensorMetadataDependency::TypeAndRank});
   }
-  program.AddOutputs({{out_split_vx, ProgramTensorMetadataDependency::TypeAndRank, 4},
+  program.AddOutputs({{out_split_vx, ProgramTensorMetadataDependency::TypeAndRank, components},
                       {metadata, ProgramTensorMetadataDependency::Rank, 2}});
 
-  const uint32_t vectorized_head_size = parameters.head_size_ / 4;
+  const uint32_t vectorized_head_size = parameters.head_size_ / components;
 
   uint32_t attn_bias_dim0 = 1;
   uint32_t attn_bias_dim1 = 1;
@@ -455,8 +458,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   Tensor rotated_q;
 
   // Compute m_tile early so it can be passed to CopyKVCache for indirect dispatch.
-  // TQ fused QKV is only validated with m_tile=1. Multi-Q-row TQ has a correctness issue.
-  const uint32_t m_tile = context.TurboQuantEnabled() ? 1u : (parameters.sequence_length_ >= 4 ? 4u : (parameters.sequence_length_ >= 2 ? 2u : 1u));
+  const uint32_t m_tile = parameters.sequence_length_ >= 4 ? 4u : (parameters.sequence_length_ >= 2 ? 2u : 1u);
   const uint32_t num_q_tiles = (static_cast<uint32_t>(parameters.sequence_length_) + m_tile - 1u) / m_tile;
 
   // Create indirect dispatch buffer if using indirect dispatch
@@ -478,7 +480,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   // TurboQuant: head_size constraints are validated in CheckInputs via kv_cache_extra_bits.
   const bool turbo_quant_enabled = context.TurboQuantEnabled();
 
-  // Compressed KV cache: 1 u32 for norm + head_size/8 u32s for packed 4-bit indices.
+  // Compressed KV cache: 1 u32 for scale + head_size/8 u32s for packed 4-bit indices.
   const int compressed_head_size_u32 = turbo_quant_enabled ? (parameters.head_size_ / 8 + 1) : 0;
 
   // When TurboQuant is active, create u32 tensor views over present/past KV cache buffers.
@@ -539,7 +541,6 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     query_output = context.CreateGPUTensor(Q->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.hidden_size_}));
 
     if (turbo_quant_enabled) {
-      // Fused TurboQuant path: split packed QKV + rotary K + Hadamard + quantize K/V + rotary Q
       ORT_RETURN_IF_ERROR(TurboQuantApplyRotaryAndCopyToQuantizedKVCache(context, parameters,
                                                                          Q, seqlen_k,
                                                                          cos_cache, sin_cache,
@@ -553,11 +554,15 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                                                                         indirect_buffer_ptr, tile_size, num_q_tiles));
     }
     Q = &query_output;
-  } else if (turbo_quant_enabled && K != nullptr && V != nullptr) {
-    // Fused path: apply Hadamard transform to new K/V tokens while copying them into the KV cache.
+  } else if (turbo_quant_enabled) {
+    // TurboQuant without rotary: K/V must be non-null (kv_empty already handled above).
+    ORT_ENFORCE(K != nullptr && V != nullptr,
+                "TurboQuant requires non-null K/V inputs when kv_sequence_length > 0.");
     ORT_RETURN_IF_ERROR(TurboQuantCopyToQuantizedKVCache(context, parameters, K, tq_past_key, tq_present_key, V, tq_past_value, tq_present_value,
                                                          tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr, num_q_tiles));
   } else {
+    ORT_ENFORCE(!turbo_quant_enabled,
+                "CopyKVCache does not support TurboQuant — KV cache layout is u32-packed and incompatible.");
     ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, tile_size, use_seqlen_k ? seqlen_k : nullptr, indirect_buffer_ptr, num_q_tiles));
   }
 
@@ -573,7 +578,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     Q = &rotated_q;
   }
 
-  // When Hadamard is active, write attention output to a temp buffer, then
+  // When TurboQuant is active, write attention output to a temp buffer, then
   // inverse-Hadamard from temp -> final output.
   Tensor attn_output_temp;
   Tensor* attn_output = output;
