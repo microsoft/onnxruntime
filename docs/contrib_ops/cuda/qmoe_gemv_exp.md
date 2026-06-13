@@ -415,7 +415,9 @@ vector element.
 | Variant | Enabled ms | FC1 GEMV avg us | FC2 GEMV avg us | Finalize avg us | Result |
 |---------|------------|-----------------|-----------------|-----------------|--------|
 | FC1 fused baseline | 0.0681 | 13.93 | 10.11 | ~5.65 | Baseline for comparison. |
-| one-row finalize specialization | 0.0681 | 13.98 | 10.09 | 5.50 | Keep; small finalize-kernel win, end-to-end neutral within noise. |
+| one-row finalize specialization | 0.0681 | 13.98 | 10.09 | 5.50 | Kept as first step; small finalize-kernel win, end-to-end neutral within noise. |
+| static top-k one-row specialization | 0.0671 | 13.93 | 10.01 | 5.00 | Keep; top-k 4 compile-time unroll improves finalize and gives the best GPT-OSS enabled latency so far. |
+| static top-k with 128 threads | 0.0684 | 13.82 | 10.24 | 6.48 | Reject; smaller block underutilizes the 2880-wide output. |
 
 ### Correctness
 
@@ -434,4 +436,5 @@ vector element.
   carefully bounded numerical change.
 - The current one-row finalize specialization is intentionally small: it is useful
   for GPT-style single-token decode and does not alter routing for larger batches
-  or top-k 8 models.
+  or top-k 8 models. Dispatching exact top-k specializations is worthwhile for
+  GPT-OSS top-k 4; reducing the one-row block from 256 to 128 threads is not.

@@ -1632,24 +1632,24 @@ __global__ void finalizeMoeRoutingKernel(GemmOutputType const* expanded_permuted
 #endif
 }
 
-template <typename OutputType, class GemmOutputType, class ScaleBiasType, ScaleMode SCALE_MODE, int MaxExpertsPerToken>
+template <typename OutputType, class GemmOutputType, class ScaleBiasType, ScaleMode SCALE_MODE, int ExpertsPerToken>
 __global__ void finalizeMoeRoutingOneRowKernel(GemmOutputType const* expanded_permuted_rows,
                                                OutputType* reduced_unpermuted_output, ScaleBiasType const* bias, float const* scales,
                                                int const* unpermuted_row_to_permuted_row, int const* token_selected_experts,
-                                               int64_t const orig_cols, int64_t const experts_per_token,
-                                               int const num_experts_per_node, int const start_expert_id) {
+                                               int64_t const orig_cols, int const num_experts_per_node,
+                                               int const start_expert_id) {
   assert(orig_cols % 4 == 0);
-  assert(experts_per_token <= MaxExpertsPerToken);
+  static_assert(ExpertsPerToken > 0 && ExpertsPerToken <= 4);
 
   // Load 128-bits per thread, according to the smallest data type we read/write
   constexpr int64_t FINALIZE_ELEM_PER_THREAD = 128 / std::min(sizeof_bits<OutputType>::value, sizeof_bits<GemmOutputType>::value);
 
-  __shared__ int expanded_permuted_rows_for_topk[MaxExpertsPerToken];
-  __shared__ int expert_ids_for_topk[MaxExpertsPerToken];
-  __shared__ float row_scales_for_topk[MaxExpertsPerToken];
+  __shared__ int expanded_permuted_rows_for_topk[ExpertsPerToken];
+  __shared__ int expert_ids_for_topk[ExpertsPerToken];
+  __shared__ float row_scales_for_topk[ExpertsPerToken];
 
   int const tid = threadIdx.x;
-  if (tid < experts_per_token) {
+  if (tid < ExpertsPerToken) {
     int const expert_id = token_selected_experts[tid] - start_expert_id;
     expert_ids_for_topk[tid] = expert_id;
     expanded_permuted_rows_for_topk[tid] =
@@ -1677,7 +1677,8 @@ __global__ void finalizeMoeRoutingOneRowKernel(GemmOutputType const* expanded_pe
   for (int elem_index = start_offset; elem_index < num_elems_in_col; elem_index += stride) {
     ComputeElem thread_output;
     thread_output.fill(0);
-    for (int k_idx = 0; k_idx < experts_per_token; ++k_idx) {
+#pragma unroll
+    for (int k_idx = 0; k_idx < ExpertsPerToken; ++k_idx) {
       int const expanded_permuted_row = expanded_permuted_rows_for_topk[k_idx];
       if (expanded_permuted_row < 0) {
         continue;
@@ -1833,12 +1834,30 @@ void finalizeMoeRoutingKernelLauncher(GemmOutputType const* expanded_permuted_ro
     config.gridDim = blocks;
     config.blockDim = threads;
     if (num_rows == 1 && experts_per_token > 0 && experts_per_token <= 4) {
-      auto func = final_scales
-                      ? &finalizeMoeRoutingOneRowKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::DEFAULT, 4>
-                      : &finalizeMoeRoutingOneRowKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::NO_SCALE, 4>;
-      cudaLaunchKernelEx(&config, func, expanded_permuted_rows, reduced_unpermuted_output, bias_ptr, final_scales,
-                         unpermuted_row_to_permuted_row, token_selected_experts, cols, experts_per_token,
-                         num_experts_per_node_int, start_expert_id);
+#define LAUNCH_FINALIZE_ONE_ROW(EXPERTS_PER_TOKEN)                                                                                        \
+  do {                                                                                                                                    \
+    auto func = final_scales                                                                                                              \
+                    ? &finalizeMoeRoutingOneRowKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::DEFAULT, EXPERTS_PER_TOKEN>   \
+                    : &finalizeMoeRoutingOneRowKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::NO_SCALE, EXPERTS_PER_TOKEN>; \
+    cudaLaunchKernelEx(&config, func, expanded_permuted_rows, reduced_unpermuted_output, bias_ptr, final_scales,                          \
+                       unpermuted_row_to_permuted_row, token_selected_experts, cols, num_experts_per_node_int, start_expert_id);          \
+  } while (0)
+
+      switch (experts_per_token) {
+        case 1:
+          LAUNCH_FINALIZE_ONE_ROW(1);
+          break;
+        case 2:
+          LAUNCH_FINALIZE_ONE_ROW(2);
+          break;
+        case 3:
+          LAUNCH_FINALIZE_ONE_ROW(3);
+          break;
+        default:
+          LAUNCH_FINALIZE_ONE_ROW(4);
+          break;
+      }
+#undef LAUNCH_FINALIZE_ONE_ROW
     } else {
       auto func = final_scales
                       ? &finalizeMoeRoutingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::DEFAULT>
