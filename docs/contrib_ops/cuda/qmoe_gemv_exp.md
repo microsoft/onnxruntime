@@ -220,3 +220,48 @@ warmup 1 and repeat 2 confirmed the intended final routing:
 | `gpt_oss_20b_m1_top4_fp16_2880x2880_e32` | GEMV | 4 | Passed |
 | `qwen3_6_35b_a3b_m1_top8_fp16_2048x512_e256` | grouped GEMM fallback | 0 | Passed |
 | `gemma4_26b_a4b_m1_top8_fp16_2816x704_e128` | GEMV | 4 | Passed |
+
+## 2026-06-13 P1 Row-To-Expert Map: SM90, FP16, Warmup 5, Repeat 100
+
+### Setup
+
+- Same build and Python environment as above.
+- Change under test: the prologue now writes the local expert id for each
+  permuted row into `permuted_token_selected_experts`, and the INT4
+  per-channel MoE GEMV kernel uses that direct row-to-expert map instead of
+  scanning `expert_first_token_offset` in every N-tile CTA. The prefix-offset
+  scan remains as a fallback when no map is passed.
+- Nsight artifacts:
+  `/tmp/qmoe_actual_gpt_oss_20b_p1_row_expert_warmup5_r100_{gemv,gemm}.{nsys-rep,sqlite}`
+  and
+  `/tmp/qmoe_actual_gemma4_26b_p1_row_expert_warmup5_r100_{gemv,gemm}.{nsys-rep,sqlite}`.
+- Summary logs:
+  `/tmp/qmoe_actual_gpt_oss_20b_p1_row_expert_warmup5_r100.log` and
+  `/tmp/qmoe_actual_gemma4_26b_p1_row_expert_warmup5_r100.log`.
+
+### End-To-End ORT Loop Timing
+
+| Model case | Expanded rows | Enabled route | Enabled ms | Fallback ms | GEMV/GEMM | GEMV calls | Result |
+|------------|---------------|---------------|------------|-------------|-----------|------------|--------|
+| `gpt_oss_20b_m1_top4_fp16_2880x2880_e32` | 4 | GEMV | 0.0721 | 0.0941 | 0.77x | 200 | GEMV faster |
+| `gemma4_26b_a4b_m1_top8_fp16_2816x704_e128` | 8 | GEMV | 0.0610 | 0.0795 | 0.77x | 200 | GEMV faster |
+
+### Primary Compute Kernel Timing
+
+Values are average kernel duration in microseconds inside the measured NVTX
+range. The two GEMV compute rows correspond to FC1 and FC2.
+
+| Model case | GEMV compute avg us | Fallback compute avg us | Previous GEMV compute avg us | Notes |
+|------------|---------------------|-------------------------|------------------------------|-------|
+| `gpt_oss_20b_m1_top4_fp16_2880x2880_e32` | 13.69, 10.22 | 20.32, 18.55 | 15.35, 11.94 | Direct map reduces GEMV kernel time by about 11% and 14% versus the relaxed-gate baseline. |
+| `gemma4_26b_a4b_m1_top8_fp16_2816x704_e128` | 7.17, 4.56 | 18.82, 7.99 | 14.61, 11.85 | Direct map removes a large per-tile scan cost at top-k 8 for this 704-wide case. |
+
+### Observations
+
+- The P1 row-to-expert map improves both actual-model GEMV candidates without
+  changing the dispatch policy.
+- The improvement is largest for Gemma, where expanded rows 8 and many N tiles
+  made the repeated prefix scan particularly visible.
+- Qwen remains routed to grouped GEMM by the logical-intermediate-size guard. A
+  quick enabled-mode smoke run reported valid output for
+  `qwen3_6_35b_a3b_m1_top8_fp16_2048x512_e256`.

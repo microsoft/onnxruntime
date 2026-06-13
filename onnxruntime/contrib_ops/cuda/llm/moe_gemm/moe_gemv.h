@@ -28,11 +28,12 @@ bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t
 //   bias:     [num_experts, n] per-expert bias (T) or nullptr
 //   out:      [expanded_num_rows, n] (row-major)
 //   expert_first_token_offset: [num_experts + 1] prefix offsets of permuted rows
+//   permuted_row_to_expert: [expanded_num_rows] local expert id for each permuted row, or nullptr to scan offsets
 // T is half or __nv_bfloat16.
 template <typename T>
 void launch_moe_gemv_int4_per_channel(
     T const* act, uint8_t const* weight, T const* scales, T const* bias, T* out,
-    int64_t const* expert_first_token_offset, int num_experts, int64_t expanded_num_rows,
+    int64_t const* expert_first_token_offset, int const* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
     int64_t n, int64_t k, int sm, cudaStream_t stream);
 
 }  // namespace moe_gemv

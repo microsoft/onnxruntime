@@ -864,6 +864,12 @@ follow-up work in the order below so each step has an isolated benchmark signal.
 | P2 | Fuse FC2 finalize/scatter for decode | Reduces FC2 output traffic and launch overhead | Add an FC2 GEMV variant that applies routing weights and accumulates directly into final output for small rows. This likely needs access to `permuted_row_to_unpermuted_row` and `token_topk_unpermuted_scales`. | Compare full MoE latency, not just GEMV kernel time, because finalize launch removal is the main benefit. |
 | P3 | Broaden dtype/quant coverage only if profitable | Avoids extra maintenance for rarely faster paths | Evaluate INT8 per-channel and selected group-wise INT4 cases after the INT4 per-channel path is tuned. Group-wise support needs scale loads indexed by K group and zero-point handling, so it should be justified by benchmark data. | Require parity coverage for each new mode and benchmark wins over grouped GEMM. |
 
+Status: the P1 row-to-expert scan item is implemented by materializing the local
+expert id in `permuted_token_selected_experts` during both prologue paths and
+passing that map to the GEMV kernels. GEMV keeps the prefix-offset scan as a
+fallback when the map is unavailable. Initial SM90 actual-model profiles are
+recorded in [qmoe_gemv_exp.md](qmoe_gemv_exp.md).
+
 Keep the debug switch (`ORT_DISABLE_MOE_GEMV`) until all planned fast paths have
 independent coverage and benchmark data. It is useful for A/B testing, fallback
 validation, and bisecting numerical or performance regressions.

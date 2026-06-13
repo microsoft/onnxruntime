@@ -20,7 +20,8 @@ namespace fpA_intB_gemv {
 template <typename Details, int CtaN, int Threads, bool EnableBias,
           typename TypeA = typename Details::TypeDetailsA::Type>
 __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
-                                int64_t const* expert_first_token_offset, int num_experts,
+                                int64_t const* expert_first_token_offset, int const* permuted_row_to_expert,
+                                int num_experts,
                                 int64_t weight_expert_stride, int n, int k) {
 #if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750))
   using AccessTypeA = typename Details::AccessTypeA;
@@ -34,16 +35,18 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
 
   int const row = blockIdx.x;
 
-  // Resolve the expert owning this permuted row via a small linear scan over the
-  // monotonically increasing offsets (num_experts is small, value broadcasts).
-  int expert = 0;
+  int expert = permuted_row_to_expert != nullptr ? permuted_row_to_expert[row] : 0;
+  // Fallback path for prologues that have not materialized the row-to-expert map.
 #pragma unroll 1
-  for (int e = 0; e < num_experts; ++e) {
+  for (int e = 0; e < num_experts && permuted_row_to_expert == nullptr; ++e) {
     if (row >= static_cast<int>(expert_first_token_offset[e + 1])) {
       expert = e + 1;
-    } else {
-      break;
+      continue;
     }
+    break;
+  }
+  if (expert < 0 || expert >= num_experts) {
+    return;
   }
 
   weight += expert * weight_expert_stride;
@@ -105,18 +108,19 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
 
 template <typename Details, int CtaN, int Threads, typename TypeA>
 static void launch_moe_gemv(TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
-                            int64_t const* expert_first_token_offset, int num_experts, int64_t expanded_num_rows,
-                            int64_t n, int64_t k, cudaStream_t stream) {
+                            int64_t const* expert_first_token_offset, int const* permuted_row_to_expert,
+                            int num_experts, int64_t expanded_num_rows, int64_t n, int64_t k,
+                            cudaStream_t stream) {
   int64_t const weight_expert_stride = n * k / Details::kElemsPerByteW;
   dim3 grid(static_cast<unsigned>(expanded_num_rows), static_cast<unsigned>(n / (CtaN * Details::kInterleave)));
   dim3 block(Threads);
   if (bias != nullptr) {
     moe_gemv_kernel<Details, CtaN, Threads, true><<<grid, block, 0, stream>>>(
-        act, weight, scales, bias, out, expert_first_token_offset, num_experts, weight_expert_stride,
+        act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts, weight_expert_stride,
         static_cast<int>(n), static_cast<int>(k));
   } else {
     moe_gemv_kernel<Details, CtaN, Threads, false><<<grid, block, 0, stream>>>(
-        act, weight, scales, bias, out, expert_first_token_offset, num_experts, weight_expert_stride,
+        act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts, weight_expert_stride,
         static_cast<int>(n), static_cast<int>(k));
   }
 }
@@ -180,7 +184,8 @@ struct DetailsForT<__nv_bfloat16> {
 
 template <typename T>
 void launch_moe_gemv_int4_per_channel(T const* act, uint8_t const* weight, T const* scales, T const* bias, T* out,
-                                      int64_t const* expert_first_token_offset, int num_experts,
+                                      int64_t const* expert_first_token_offset, int const* permuted_row_to_expert,
+                                      int num_experts,
                                       int64_t expanded_num_rows, int64_t n, int64_t k, int sm, cudaStream_t stream) {
   ORT_UNUSED_PARAMETER(sm);
   using Details = typename DetailsForT<T>::Details;
@@ -191,14 +196,16 @@ void launch_moe_gemv_int4_per_channel(T const* act, uint8_t const* weight, T con
       const_cast<TypeA*>(reinterpret_cast<TypeA const*>(scales)),
       const_cast<TypeA*>(reinterpret_cast<TypeA const*>(bias)),
       reinterpret_cast<TypeA*>(out),
-      expert_first_token_offset, num_experts, expanded_num_rows, n, k, stream);
+      expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, n, k, stream);
 }
 
 template void launch_moe_gemv_int4_per_channel<half>(half const*, uint8_t const*, half const*, half const*, half*,
-                                                     int64_t const*, int, int64_t, int64_t, int64_t, int, cudaStream_t);
+                                                     int64_t const*, int const*, int, int64_t, int64_t, int64_t,
+                                                     int, cudaStream_t);
 template void launch_moe_gemv_int4_per_channel<__nv_bfloat16>(__nv_bfloat16 const*, uint8_t const*, __nv_bfloat16 const*,
-                                                              __nv_bfloat16 const*, __nv_bfloat16*, int64_t const*, int,
-                                                              int64_t, int64_t, int64_t, int, cudaStream_t);
+                                                              __nv_bfloat16 const*, __nv_bfloat16*, int64_t const*,
+                                                              int const*, int, int64_t, int64_t, int64_t, int,
+                                                              cudaStream_t);
 
 }  // namespace moe_gemv
 }  // namespace kernels
