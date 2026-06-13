@@ -133,23 +133,23 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
 
     // GEMM 1
     MoeGemmId id1(static_cast<int>(moe_params.inter_size), static_cast<int>(moe_params.hidden_size), dtype, MoeGemmId::GemmType::Gemm1);
-    if (mGemmId1 != id1) {
-      mGemmId1 = id1;
+    {
+      // profileTactics caches per (GemmId, M bucket); calling it every forward lets decode
+      // (small M) and prefill (large M) each profile and select their own best tile shape.
       GemmDims dims(static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.num_rows),
                     static_cast<int64_t>(moe_params.inter_size), static_cast<int64_t>(moe_params.hidden_size));
-      mGemmProfiler.profileTactics(&moe_runner, dtype, dims, id1);
+      mGemmProfiler.profileTactics(&moe_runner, dims, id1);
     }
-    auto config1 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), mGemmId1);
+    auto config1 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), id1);
 
     // GEMM 2
     MoeGemmId id2(static_cast<int>(moe_params.hidden_size), static_cast<int>(moe_params.inter_size), dtype, MoeGemmId::GemmType::Gemm2);
-    if (mGemmId2 != id2) {
-      mGemmId2 = id2;
+    {
       GemmDims dims(static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.num_rows),
                     static_cast<int64_t>(moe_params.hidden_size), static_cast<int64_t>(moe_params.inter_size));
-      mGemmProfiler.profileTactics(&moe_runner, dtype, dims, id2);
+      mGemmProfiler.profileTactics(&moe_runner, dims, id2);
     }
-    auto config2 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), mGemmId2);
+    auto config2 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), id2);
 
     moe_runner.setTactic(config1, config2);
   }
