@@ -42,8 +42,20 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* fc3_experts_bias_optional = context->Input<Tensor>(7);
 
   using onnxruntime::llm::kernels::cutlass_kernels::ActivationType;
+
+  // Backward compatibility: the published gpt-oss-20b model (and any model exported by ORT < 1.27)
+  // hard-coded the interleaved SwiGLU fusion layout and did not emit a swiglu_fusion attribute, so it
+  // falls back to the default of 0 ("not fused"). When the activation is SwiGLU, swiglu_fusion is 0,
+  // and there is no separate FC3 weight, the gate and value projections are actually pre-fused into FC1
+  // (interleaved layout). Treat this as swiglu_fusion == 1 so those legacy models keep working.
+  int swiglu_fusion = swiglu_fusion_;
+  if (activation_type_ == ActivationType::Swiglu && swiglu_fusion == 0 &&
+      fc3_experts_weights_optional == nullptr) {
+    swiglu_fusion = 1;
+  }
+
   bool is_fused_swiglu = (activation_type_ == ActivationType::Swiglu) &&
-                         (swiglu_fusion_ != 0) &&
+                         (swiglu_fusion != 0) &&
                          (fc3_experts_weights_optional == nullptr);
 
   MoEParameters moe_params;
@@ -301,7 +313,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
         onnxruntime::llm::kernels::cutlass_kernels::ActivationParams params(kernel_activation_type);
         params.alpha = activation_alpha_;
         params.beta = activation_beta_;
-        params.swiglu_fusion = swiglu_fusion_;
+        params.swiglu_fusion = swiglu_fusion;
         params.limit = swiglu_limit_;
         return params;
       }(),

@@ -211,6 +211,17 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
               "QMoE in CUDA execution provider does not support separate fc3_experts_weights. "
               "Gate and up projection weights must be pre-concatenated into fc1.");
 
+  // Backward compatibility: the published gpt-oss-20b model (and any model exported by ORT < 1.27)
+  // hard-coded the interleaved SwiGLU fusion layout and did not emit a swiglu_fusion attribute, so it
+  // falls back to the default of 0 ("not fused"). QMoE never has a separate FC3 (enforced above), so a
+  // SwiGLU activation with swiglu_fusion == 0 means the gate and value projections are actually pre-fused
+  // into FC1 (interleaved layout). Treat this as swiglu_fusion == 1 so those legacy models keep working.
+  int swiglu_fusion = swiglu_fusion_;
+  if (activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu &&
+      swiglu_fusion == 0) {
+    swiglu_fusion = 1;
+  }
+
   const Tensor* fc1_zeros = packed_fc1_bias_ ? nullptr : context->Input<Tensor>(11);
   const Tensor* fc2_zeros = packed_fc2_bias_ ? nullptr : context->Input<Tensor>(12);
 
@@ -931,7 +942,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           onnxruntime::llm::kernels::cutlass_kernels::ActivationParams params(activation_type_);
           params.alpha = activation_alpha_;
           params.beta = activation_beta_;
-          params.swiglu_fusion = swiglu_fusion_;
+          params.swiglu_fusion = swiglu_fusion;
           params.limit = swiglu_limit_;
           return params;
         }(),
