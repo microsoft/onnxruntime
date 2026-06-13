@@ -3163,7 +3163,7 @@ TEST(CApiTest, tensor_at_with_data_int8) {
   ASSERT_EQ(127, tensor.At<int8_t>({3}));
 }
 
-// Test that TensorAt bounds checking still rejects out-of-range indices for normal types.
+// Test that TensorAt bounds checking rejects out-of-range indices for normal types.
 TEST(CApiTest, tensor_at_bounds_check) {
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
