@@ -491,6 +491,16 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   const Tensor* tq_past_key = past_key;
   const Tensor* tq_past_value = past_value;
   if (turbo_quant_enabled) {
+    const int64_t bytes_per_elem = static_cast<int64_t>(present_key->DataType()->Size());
+    ORT_ENFORCE(present_key->Shape().NumDimensions() == 4 && present_value->Shape().NumDimensions() == 4,
+                "TurboQuant expects present_key/present_value to be 4-D tensors.");
+    ORT_ENFORCE(present_key->Shape()[3] * bytes_per_elem >= static_cast<int64_t>(compressed_head_size_u32) * 4,
+                "TurboQuant KV cache shape mismatch for present_key. Expected last_dim_bytes>=",
+                static_cast<int64_t>(compressed_head_size_u32) * 4, ", got shape=", present_key->Shape().ToString());
+    ORT_ENFORCE(present_value->Shape()[3] * bytes_per_elem >= static_cast<int64_t>(compressed_head_size_u32) * 4,
+                "TurboQuant KV cache shape mismatch for present_value. Expected last_dim_bytes>=",
+                static_cast<int64_t>(compressed_head_size_u32) * 4, ", got shape=", present_value->Shape().ToString());
+
     TensorShapeVector u32_present_shape({present_key->Shape()[0], present_key->Shape()[1],
                                          present_key->Shape()[2],
                                          static_cast<int64_t>(compressed_head_size_u32)});

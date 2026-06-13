@@ -249,7 +249,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   const int kv_cache_extra_bits = turbo_quant ? 32 : 0;
   if (turbo_quant) {
     const int qkv_last_dim = static_cast<int>(query->Shape().GetDims()[2]);
-    const bool is_packed = (key == nullptr || !key->Shape().Size());
+    const bool is_packed = (key == nullptr);
     const int hs = is_packed ? qkv_last_dim / (num_heads_ + 2 * kv_num_heads_) : qkv_last_dim / num_heads_;
     if (hs < 8 || (hs & (hs - 1)) != 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
