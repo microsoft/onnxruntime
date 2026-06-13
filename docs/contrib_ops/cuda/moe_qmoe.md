@@ -24,7 +24,7 @@ and have been significantly modified for ONNX Runtime — see
 10. [FP8 (W8A16) Details](#10-fp8-w8a16-details)
 11. [WFP4AFP8 Details](#11-wfp4afp8-details)
 12. [Future / Deferred Modes](#12-future--deferred-modes)
-  - [12.1 MoE GEMV Improvement Plan](#121-moe-gemv-improvement-plan)
+  - [12.1 MoE GEMV Optimization Summary](#121-moe-gemv-optimization-summary)
 13. [Testing](#13-testing)
 14. [Build Configuration](#14-build-configuration)
 15. [Limitations & Known Issues](#15-limitations--known-issues)
@@ -183,26 +183,28 @@ under [onnxruntime/contrib_ops/cuda/llm/moe_gemm/](onnxruntime/contrib_ops/cuda/
 
 | Path | CUTLASS class | Used for | SM range |
 |------|---------------|----------|----------|
-| **MoE GEMV fast path** | `fpA_intB_gemv`-based custom kernel | INT4 per-channel W4A16 with FP16 activations and true decode row counts | SM80+ |
+| **MoE GEMV fast path** | `fpA_intB_gemv`-based custom kernel | INT4 per-column W4A16 and symmetric INT4/INT8 block-wise W*A16 with FP16 activations and true decode row counts | SM80+ |
 | **Ampere GemmGrouped** | `cutlass::gemm::kernel::GemmGrouped` | INT4/INT8 W*A16, FP8 W8A16 dequant fallback, FP32 | SM75–SM89, plus all mixed-input on SM90/SM120 |
 | **TMA Warp-Specialized (mixed-input)** | `CollectiveBuilderMixedInput` | Same-type FP16×FP16 / BF16×BF16, native MXFP4 W4A16 | SM90 (same-type), SM120 (FP4 W4A16) |
 | **Block-Scaled Tensor Op** | `OpClassBlockScaledTensorOp` | Native FP8×MXFP4 (`wfp4afp8`) | SM100+ (Blackwell) |
 
-The MoE GEMV fast path is selected before the Ampere grouped GEMM for INT4
-per-channel QMoE when all of the following are true:
+The MoE GEMV fast path is selected before the Ampere grouped GEMM for integer
+QMoE when all of the following are true:
 
 - activation/output dtype is FP16;
-- weights are INT4 and scales/biases use the same dtype as the activation;
-- `block_size <= 0` (per-output-channel scales, no group-wise scales or zero-points);
+- scales and biases use the same dtype as the activation;
+- weights are INT4 for per-column scales, or INT4/INT8 for symmetric block-wise scales;
+- `block_size <= 0` for per-column INT4, or `block_size` is 64 or 128 for block-wise INT4/INT8;
+- block-wise GEMV is symmetric only; if zero-point compensation is present, dispatch falls back to grouped GEMM;
 - `expanded_num_rows = num_tokens * top_k` is in `(0, 8]`;
 - `N >= 512` and `K >= 512`;
-- if `expanded_num_rows > 4`, the logical MoE intermediate size is at least 704
-  and the GEMV call dimensions satisfy `N >= 704` and `K >= 704`;
-- `N` is divisible by 32 for the INT4 column-interleaved tile, and `K` satisfies
-  the kernel step alignment.
+- if `expanded_num_rows > 4`, the logical MoE intermediate size is at least 512;
+- `N` is divisible by the column-interleaved tile width (32 for INT4, 16 for INT8),
+  and `K` satisfies the kernel step and, for block-wise scales, complete-block alignment.
 
-BF16 and broader row-count or smaller-dimension coverage currently stay on
-grouped GEMM until profile data shows an end-to-end GEMV win.
+BF16, asymmetric block-wise quantization, broader row counts, and dimensions
+outside the profiled gate stay on grouped GEMM until profile data shows an
+end-to-end GEMV win.
 
 Set `ORT_DISABLE_MOE_GEMV=1` before process start to force the grouped GEMM
 fallback for debugging, benchmarking, or bisecting numerical differences. The
@@ -909,74 +911,80 @@ software dequant of the mixed-input path.
 The schema reserves the necessary input slots (18–21) so adding these modes
 will not change the operator interface.
 
-### 12.1 MoE GEMV Improvement Plan
+### 12.1 MoE GEMV Optimization Summary
 
-The INT4 per-channel MoE GEMV path targets decode-sized workloads where launch
-overhead and global-memory traffic dominate grouped GEMM efficiency. Track
-follow-up work in the order below so each step has an isolated benchmark signal.
+The MoE GEMV work targets decode-sized integer QMoE workloads where grouped GEMM
+launch overhead, prologue overhead, and intermediate traffic dominate the FC
+compute. Detailed measurements are recorded in
+[qmoe_gemv_experiments.md](qmoe_gemv_experiments.md). This section is the
+implementation summary and current backlog.
 
-| Priority | Work item | Expected benefit | Implementation notes | Validation |
-|----------|-----------|------------------|----------------------|------------|
-| P0 | Establish a benchmark baseline | Prevent regressions and tune cutoffs with data | Add a focused microbenchmark or perf-test mode that sweeps `num_tokens`, `top_k`, `hidden_size`, `inter_size`, dtype, and SM. Always run with GEMV on and with `ORT_DISABLE_MOE_GEMV=1`. | Report latency and speedup for SM80/SM89/SM90/SM100/SM120 where available; keep QMoE parity tests green. |
-| P1 | Avoid repeated row-to-expert scans | Reduces per-block overhead, especially when `N` has many tiles | Either materialize `permuted_row_to_expert` during the prologue or launch GEMV by expert ranges so each block already knows its expert. Keep the existing prefix-offset scan as fallback until the new map is available for all prologue paths. | Compare kernel time for `expanded_num_rows` in `{1, 2, 4, 8, 16, 32, 64}` and `N` in typical FC1/FC2 sizes. |
-| P1 | Tune tile shapes and dispatch threshold | Better occupancy/throughput across model dimensions | Benchmark `CtaN`, thread count, and max `expanded_num_rows` alternatives. The current model-profiled cutoff (`expanded_num_rows <= 8`, FP16, `N/K >= 512`, and logical intermediate size plus GEMV call dimensions at least 704 when `expanded_num_rows > 4`) should stay data-driven per architecture or at least per broad SM family. | GEMV should win over grouped GEMM at the selected threshold for both FC1 and FC2 shapes. |
-| P2 | Fuse FC1 gated activation for SwiGLU | Saves one global write/read of the FC1 intermediate and one activation launch | Add a gated GEMV epilogue for `swiglu_fusion=1/2` that writes post-gated `[expanded_rows, inter_size]`. Preserve the existing unfused activation path for non-SwiGLU and unsupported parameter combinations. | Add targeted interleaved and block SwiGLU INT4 per-channel decode tests; benchmark FC1 end-to-end latency. |
-| P2 | Fuse FC2 finalize/scatter for decode | Reduces FC2 output traffic and launch overhead | Add an FC2 GEMV variant that applies routing weights and accumulates directly into final output for small rows. This likely needs access to `permuted_row_to_unpermuted_row` and `token_topk_unpermuted_scales`. | Compare full MoE latency, not just GEMV kernel time, because finalize launch removal is the main benefit. |
-| P3 | Broaden dtype/quant coverage only if profitable | Avoids extra maintenance for rarely faster paths | Evaluate INT8 per-channel and selected group-wise INT4 cases after the INT4 per-channel path is tuned. Group-wise support needs scale loads indexed by K group and zero-point handling, so it should be justified by benchmark data. | Require parity coverage for each new mode and benchmark wins over grouped GEMM. |
+#### Completed per-column INT4 work
 
-Status: the P1 row-to-expert scan item is implemented by materializing the local
-expert id in `permuted_token_selected_experts` during both prologue paths and
-passing that map to the GEMV kernels. GEMV keeps the prefix-offset scan as a
-fallback when the map is unavailable. Initial SM90 actual-model profiles are
-recorded in [qmoe_gemv_experiments.md](qmoe_gemv_experiments.md). Follow-up P1 tile probes
-kept the existing `CtaN=8, Threads=128` shape after `CtaN=16`, `Threads=64`,
-and a map-specialized launch all failed to improve the measured GEMV kernels.
-The first fusion experiment, FC1 interleaved SwiGLU inside the INT4 per-channel
-GEMV epilogue, is implemented for the profiled FP16 path. It supports
-`swiglu_fusion == 1` with scalar or per-expert alpha/beta/limit parameters and
-falls back to the unfused GEMV-plus-activation path for unsupported dtype,
-quantization, or activation modes. On SM90 actual-model profiles it improved
-GPT-OSS-20B from `0.0721` ms to `0.0681` ms and Gemma-4-26B-A4B from `0.0610`
-ms to `0.0580` ms; Qwen3.6-35B-A3B remains routed to grouped GEMM by the
-current 512-wide intermediate-size guard.
-For GPT-OSS-20B, a naive FC2 GEMV-plus-finalize fused kernel was rejected after
-profiling because it serialized the four top-k expert GEMVs inside each CTA.
-A smaller one-row finalize specialization is kept for `num_rows == 1` and
-`top_k <= 4`; it preserves the existing FC2 GEMV parallelism, caches the
-one-token routing metadata in shared memory, and dispatches exact top-k
-specializations so GPT-OSS top-k 4 is compile-time unrolled. The measured
-benefit is still modest, so the next substantial GPT-OSS opportunity is likely a
-different FC2 design that preserves top-k parallelism while reducing finalize
-traffic.
+Per-column here means the original INT4 W4A16 path with one scale per output
+column: scale tensors are `[E, N]`, and `block_size <= 0`.
 
-Keep the debug switch (`ORT_DISABLE_MOE_GEMV`) until all planned fast paths have
-independent coverage and benchmark data. It is useful for A/B testing, fallback
-validation, and bisecting numerical or performance regressions.
+| Area | What is implemented | Result |
+|------|---------------------|--------|
+| Benchmarking | Added `profile_qmoe_gemv.py` and `profile_qmoe_gemv.sh` to run GEMV-enabled and `ORT_DISABLE_MOE_GEMV=1` grouped-GEMM profiles in separate processes. | Stable A/B profiles with the `benchmark` NVTX range; use `parse_nsys.py --pattern '%'` so fallback CUTLASS kernels are visible. |
+| Route policy | Dispatch is data-gated to FP16 integer QMoE decode shapes, `expanded_num_rows <= 8`, `N >= 512`, `K >= 512`, and profiled alignment constraints. | Keeps tiny shapes, BF16, and unprofiled row counts on grouped GEMM. |
+| Row-to-expert lookup | The prologue materializes the local expert id for each permuted row and passes it to the GEMV kernels. | Removes repeated prefix-offset scans inside each N-tile CTA; GPT-OSS and Gemma model-shape kernels improved. |
+| FC1 interleaved SwiGLU | The FC1 GEMV path can apply interleaved SwiGLU in the GEMV epilogue for the profiled FP16 INT4 path. | Removes the separate activation launch and FC1 intermediate traffic; GPT-OSS and Gemma improved end-to-end. |
+| One-row finalize | `num_rows == 1`, `top_k <= 4` has a static top-k finalize specialization. | Modest GPT-OSS finalize improvement while preserving the existing FC2 GEMV parallelism. |
+| End-to-end GPT-OSS | The final per-column GEMV path was validated in ORT GenAI on GPT-OSS-20B INT4. | About 15% faster than the grouped-GEMM baseline and about 8% faster than the FasterTransformer reference at batch 1. |
 
-The initial P0 profiling hook is
-[profile_qmoe_gemv.sh](../../../onnxruntime/test/python/transformers/profile_qmoe_gemv.sh).
-It profiles GEMV and the grouped-GEMM fallback in separate sequential `nsys`
-runs, which avoids overlapping Python workers on the same GPU and keeps the
-cached `ORT_DISABLE_MOE_GEMV` value fixed before the CUDA kernel path is first
-used:
+#### Completed block-wise INT4/INT8 work
+
+Block-wise here means `quant_type="int"` with `block_size` 64 or 128 and scales
+provided as `[E, N, K / block_size]`. QMoE prepack/runtime transposes those
+scales to `[E, K_blocks, N]`, and the GEMV kernels consume that same layout.
+
+| Area | What is implemented | Result |
+|------|---------------------|--------|
+| INT4 and INT8 details | The GEMV kernel details support `(half, cutlass::uint4b_t)` and `(half, uint8_t)`. | Both weight types use the SM80 column-interleaved `fpA_intB` layout on all GPUs, matching the grouped-GEMM path. |
+| Group-size dispatch | GEMV templates now cover `GroupSize == 0`, 64, and 128. | Per-column and block-wise paths share the same kernel structure while preserving complete-block checks. |
+| Scale indexing | Block-wise scale loads use `real_offset_k / GroupSize * n + real_offset_n` with a K-loop scale step. | Reuses QMoE's existing `[E, K_blocks, N]` runtime scale layout; no new scale pack format is needed. |
+| Symmetric-only gate | Block-wise GEMV runs only when zero-point compensation is absent. | Asymmetric block-wise models stay on grouped GEMM until a zero-point GEMV path is implemented and profiled. |
+| Model-shape b64 profile | GPT-OSS-20B and Qwen3.6-35B-A3B were profiled with `block_size=64`. | Both use real GEMV kernels under the current 512 threshold and show about 1.4x lower benchmark latency than grouped GEMM fallback. |
+
+#### Experiments rejected after profiling
+
+| Experiment | Why it was rejected |
+|------------|---------------------|
+| Broad GEMV enablement for tiny 128x256 cases | Raw GEMV compute kernels were faster, but end-to-end ORT loop latency was worse than grouped GEMM. |
+| Expanded rows 8/16 for 1024x4096 before model-specific tuning | GEMV compute stayed competitive, but total latency regressed for larger expanded-row counts. |
+| `CtaN=16, Threads=128` | Fewer N-tile CTAs did not offset lower per-CTA efficiency; GPT and Gemma kernels slowed down. |
+| `CtaN=8, Threads=64` | Lower thread count slowed both profiled model-size cases. |
+| Map-specialized launch | Avoiding the runtime map/prefix branch was neutral or slightly worse and added code size. |
+| Naive FC2 GEMV + finalize fusion | Serialized top-k expert GEMVs inside one CTA; GPT-OSS FC2/finalize kernel time regressed sharply. |
+| One-row finalize with 128 threads | Underutilized the 2880-wide GPT-OSS output; the 256-thread static top-k variant was better. |
+| Asymmetric block-size-128 fallback stress cases | Existing grouped-GEMM parity tolerance was exceeded in this environment; they were not kept in the GEMV-focused matrix. |
+
+#### Remaining ideas not tried
+
+- A better FC2/finalize design that preserves parallelism across top-k experts
+  and N tiles, then reduces partial results with bounded numerical change.
+- Architecture-specific dispatch thresholds or a small autotuner for SM80, SM89,
+  SM90, SM100, and SM120 rather than one broad hand-tuned gate.
+- BF16 GEMV re-evaluation after more launch/fusion work; current BF16 points stay
+  on grouped GEMM.
+- Asymmetric block-wise GEMV with zero-point compensation in the kernel, if model
+  demand and grouped-GEMM baseline data justify the maintenance cost.
+- More model-shape block-wise profiling, especially `block_size=128`, INT8, and
+  end-to-end GenAI runs for models that ship block-wise QMoE weights.
+- Native validation on SM100/SM120 for interactions between GEMV routing and the
+  FP4 / WFP4AFP8 paths.
+
+Keep `ORT_DISABLE_MOE_GEMV=1` available. It is useful for A/B testing, fallback
+validation, and bisecting numerical or performance regressions. For quick
+profiling, use
+[profile_qmoe_gemv.sh](../../../onnxruntime/test/python/transformers/profile_qmoe_gemv.sh):
 
 ```bash
 onnxruntime/test/python/transformers/profile_qmoe_gemv.sh \
-  --case m1_top2_fp16_128x256 --warmup 5 --repeat 100
+  --case gpt_oss_20b_m1_top4_fp16_2880x2880_e32 \
+  --block-size 64 --warmup 5 --repeat 100
 ```
-
-For model-size sweeps, pass explicit shape arguments such as
-`--hidden-size 1024 --intermediate-size 4096 --num-experts 8 --top-k 2`.
-Use `--list-cases` to show named benchmark cases, including FP16 model-size
-decode cases for GPT-OSS-20B, Qwen3.6-35B-A3B (shared expert ignored), and
-Gemma-4-26B-A4B.
-
-Record comparable profile runs in [qmoe_gemv_experiments.md](qmoe_gemv_experiments.md).
-
-For a quick smoke run without `nsys`, set `ORT_QMOE_GEMV_BENCHMARK=1` and run
-`TestQMoEGemvBenchmark` directly. Select one case with
-`ORT_QMOE_GEMV_BENCHMARK_CASE=<case-name>` and compare fallback mode by running
-again with `ORT_DISABLE_MOE_GEMV=1`.
 
 ---
 

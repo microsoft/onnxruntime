@@ -4,14 +4,14 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 #
-# Profile the CUDA QMoE INT4 per-channel GEMV decode path with nsys.
+# Profile the CUDA QMoE GEMV decode path with nsys.
 #
 # Usage:
 #   ./profile_qmoe_gemv.sh
 #   ./profile_qmoe_gemv.sh --list-cases
 #   ./profile_qmoe_gemv.sh --case m8_top2_fp16_128x256 --warmup 5 --repeat 200
 #   ./profile_qmoe_gemv.sh --case gpt_oss_20b_m1_top4_fp16_2880x2880_e32 --warmup 5 --repeat 100
-#   ./profile_qmoe_gemv.sh --batch-size 1 --sequence-length 1 --hidden-size 2880 --intermediate-size 2880 --num-experts 32 --top-k 4
+#   ./profile_qmoe_gemv.sh --batch-size 1 --sequence-length 1 --hidden-size 1024 --intermediate-size 4096 --num-experts 8 --top-k 2 --quant-bits 8 --block-size 128
 #   CUDA_VISIBLE_DEVICES=1 ./profile_qmoe_gemv.sh -o /tmp/qmoe_gemv
 #
 
@@ -36,7 +36,7 @@ while [[ "$#" -gt 0 ]]; do
         --list-cases)
             LIST_CASES=1
             ;;
-        --batch-size|--sequence-length|--hidden-size|--intermediate-size|--num-experts|--top-k|--dtype)
+        --batch-size|--sequence-length|--hidden-size|--intermediate-size|--num-experts|--top-k|--dtype|--quant-bits|--block-size)
             EXTRA_ARGS+=("$1" "$2")
             shift
             ;;
@@ -58,7 +58,7 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: $0 [--list-cases] [--case NAME] [--batch-size N] [--sequence-length N] [--hidden-size N] [--intermediate-size N] [--num-experts N] [--top-k N] [--dtype FLOAT16|BFLOAT16] [--warmup N] [--repeat N] [--python PYTHON] [-o NAME]"
+            echo "Usage: $0 [--list-cases] [--case NAME] [--batch-size N] [--sequence-length N] [--hidden-size N] [--intermediate-size N] [--num-experts N] [--top-k N] [--dtype FLOAT16|BFLOAT16] [--quant-bits 4|8] [--block-size 0|64|128] [--warmup N] [--repeat N] [--python PYTHON] [-o NAME]"
             exit 1
             ;;
     esac

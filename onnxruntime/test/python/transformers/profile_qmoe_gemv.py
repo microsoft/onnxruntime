@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 
 """
-Profiling script for the CUDA QMoE INT4 per-channel GEMV decode path.
+Profiling script for the CUDA QMoE GEMV decode path.
 
 Usage:
   python profile_qmoe_gemv.py --case m1_top2_fp16_128x256 --warmup 5 --repeat 100
@@ -37,6 +37,8 @@ def _custom_case_from_args(args):
         "num_experts": args.num_experts,
         "top_k": args.top_k,
         "onnx_dtype": args.dtype,
+        "quant_bits": args.quant_bits,
+        "block_size": args.block_size,
     }
     case.update({key: value for key, value in custom_fields.items() if value is not None})
 
@@ -44,14 +46,14 @@ def _custom_case_from_args(args):
         case["name"] = (
             f"custom_m{case['batch_size'] * case['sequence_length']}_top{case['top_k']}_"
             f"{case['onnx_dtype'].lower()}_{case['hidden_size']}x{case['intermediate_size']}_"
-            f"e{case['num_experts']}"
+            f"e{case['num_experts']}_int{case.get('quant_bits', 4)}_b{case.get('block_size', 0)}"
         )
 
     return case
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Profile CUDA QMoE INT4 per-channel GEMV decode")
+    parser = argparse.ArgumentParser(description="Profile CUDA QMoE GEMV decode")
     parser.add_argument("--case", default="m1_top2_fp16_128x256", help="Benchmark case name")
     parser.add_argument("--list-cases", action="store_true", help="List available benchmark case names and exit")
     parser.add_argument("--batch-size", type=int, help="Override batch size")
@@ -61,6 +63,8 @@ def main():
     parser.add_argument("--num-experts", type=int, help="Override number of experts")
     parser.add_argument("--top-k", type=int, help="Override top-k experts per token")
     parser.add_argument("--dtype", choices=["FLOAT16", "BFLOAT16"], help="Override ONNX dtype")
+    parser.add_argument("--quant-bits", type=int, choices=[4, 8], help="Override QMoE integer weight bits")
+    parser.add_argument("--block-size", type=int, choices=[0, 64, 128], help="Override QMoE INT block size")
     parser.add_argument("--warmup", type=int, default=5, help="Warmup iterations before the benchmark NVTX range")
     parser.add_argument("--repeat", type=int, default=100, help="Benchmark iterations")
     parser.add_argument(

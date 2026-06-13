@@ -1486,13 +1486,17 @@ phi3_test_cases = [
 phi3_blockwise_test_cases = [
     (1, 1, 4, 32),  # tiny debug case for asymmetric ZP compensation
     (1, 32, 4, 32),  # batch_size, sequence_length, quant_bits, block_size
+    (1, 32, 4, 64),
+    (1, 32, 4, 128),
     (1, 32, 8, 64),
+    (1, 32, 8, 128),
     (2, 16, 4, 32),
     (2, 16, 8, 64),
 ]
 phi3_blockwise_asymmetric_test_cases = [
     (1, 32, 4, 64),
     (1, 32, 8, 64),
+    (1, 32, 8, 128),
     (2, 16, 8, 64),
 ]
 
@@ -1592,8 +1596,6 @@ class TestPhiQMoE(unittest.TestCase):
 
     @parameterized.expand(phi3_blockwise_test_cases)
     def test_phi3_qmoe_blockwise_parity(self, batch_size, sequence_length, quant_bits, block_size):
-        if quant_bits == 8:
-            self.skipTest("8-bit blockwise quantization is not supported on CUDA")
         torch.manual_seed(42)
         numpy.random.seed(42)
 
@@ -1626,8 +1628,6 @@ class TestPhiQMoE(unittest.TestCase):
 
     @parameterized.expand(phi3_blockwise_test_cases)
     def test_phi3_qmoe_blockwise_parity_bf16(self, batch_size, sequence_length, quant_bits, block_size):
-        if quant_bits == 8:
-            self.skipTest("8-bit blockwise quantization is not supported on CUDA")
         torch.manual_seed(142)
         numpy.random.seed(142)
 
@@ -1685,13 +1685,16 @@ swiglu_blockwise_test_cases = [
     (1, 1, 4, 32),  # tiny debug case for asymmetric ZP compensation
     (1, 32, 4, 32),  # batch_size, sequence_length, quant_bits, block_size
     (1, 32, 4, 64),  # New case for group_size=64
+    (1, 32, 4, 128),
     (1, 32, 8, 64),
+    (1, 32, 8, 128),
     (2, 16, 4, 32),
     (2, 16, 8, 64),
 ]
 swiglu_blockwise_asymmetric_test_cases = [
     (1, 32, 4, 64),
     (1, 32, 8, 64),
+    (1, 32, 8, 128),
     (2, 16, 8, 64),
 ]
 
@@ -1933,6 +1936,8 @@ def _qmoe_gemv_benchmark_cases():
             "num_experts": 4,
             "top_k": 2,
             "onnx_dtype": "FLOAT16",
+            "quant_bits": 4,
+            "block_size": 0,
         },
         {
             "name": "m4_top2_fp16_128x256",
@@ -1943,6 +1948,8 @@ def _qmoe_gemv_benchmark_cases():
             "num_experts": 4,
             "top_k": 2,
             "onnx_dtype": "FLOAT16",
+            "quant_bits": 4,
+            "block_size": 0,
         },
         {
             "name": "m8_top2_fp16_128x256",
@@ -1953,6 +1960,8 @@ def _qmoe_gemv_benchmark_cases():
             "num_experts": 4,
             "top_k": 2,
             "onnx_dtype": "FLOAT16",
+            "quant_bits": 4,
+            "block_size": 0,
         },
         {
             "name": "m1_top2_bf16_128x256",
@@ -1963,6 +1972,8 @@ def _qmoe_gemv_benchmark_cases():
             "num_experts": 4,
             "top_k": 2,
             "onnx_dtype": "BFLOAT16",
+            "quant_bits": 4,
+            "block_size": 0,
         },
         {
             "name": "gpt_oss_20b_m1_top4_fp16_2880x2880_e32",
@@ -1973,6 +1984,8 @@ def _qmoe_gemv_benchmark_cases():
             "num_experts": 32,
             "top_k": 4,
             "onnx_dtype": "FLOAT16",
+            "quant_bits": 4,
+            "block_size": 0,
         },
         {
             "name": "qwen3_6_35b_a3b_m1_top8_fp16_2048x512_e256",
@@ -1983,6 +1996,8 @@ def _qmoe_gemv_benchmark_cases():
             "num_experts": 256,
             "top_k": 8,
             "onnx_dtype": "FLOAT16",
+            "quant_bits": 4,
+            "block_size": 0,
         },
         {
             "name": "gemma4_26b_a4b_m1_top8_fp16_2816x704_e128",
@@ -1993,6 +2008,56 @@ def _qmoe_gemv_benchmark_cases():
             "num_experts": 128,
             "top_k": 8,
             "onnx_dtype": "FLOAT16",
+            "quant_bits": 4,
+            "block_size": 0,
+        },
+        {
+            "name": "blockwise_int4_b64_m1_top2_fp16_1024x4096_e8",
+            "batch_size": 1,
+            "sequence_length": 1,
+            "hidden_size": 1024,
+            "intermediate_size": 4096,
+            "num_experts": 8,
+            "top_k": 2,
+            "onnx_dtype": "FLOAT16",
+            "quant_bits": 4,
+            "block_size": 64,
+        },
+        {
+            "name": "blockwise_int4_b128_m1_top2_fp16_1024x4096_e8",
+            "batch_size": 1,
+            "sequence_length": 1,
+            "hidden_size": 1024,
+            "intermediate_size": 4096,
+            "num_experts": 8,
+            "top_k": 2,
+            "onnx_dtype": "FLOAT16",
+            "quant_bits": 4,
+            "block_size": 128,
+        },
+        {
+            "name": "blockwise_int8_b64_m1_top2_fp16_1024x4096_e8",
+            "batch_size": 1,
+            "sequence_length": 1,
+            "hidden_size": 1024,
+            "intermediate_size": 4096,
+            "num_experts": 8,
+            "top_k": 2,
+            "onnx_dtype": "FLOAT16",
+            "quant_bits": 8,
+            "block_size": 64,
+        },
+        {
+            "name": "blockwise_int8_b128_m1_top2_fp16_1024x4096_e8",
+            "batch_size": 1,
+            "sequence_length": 1,
+            "hidden_size": 1024,
+            "intermediate_size": 4096,
+            "num_experts": 8,
+            "top_k": 2,
+            "onnx_dtype": "FLOAT16",
+            "quant_bits": 8,
+            "block_size": 128,
         },
     ]
 
@@ -2023,8 +2088,9 @@ def run_qmoe_gemv_benchmark(case):
         config,
         batch_size=case["batch_size"],
         sequence_length=case["sequence_length"],
-        quant_bits=4,
+        quant_bits=case.get("quant_bits", 4),
         onnx_dtype=onnx_dtype,
+        block_size=case.get("block_size", 0),
         use_asymmetric_quant=False,
     )
     hidden_states = torch.randn(
@@ -2034,10 +2100,12 @@ def run_qmoe_gemv_benchmark(case):
 
     return {
         "case": case["name"],
+        "block_size": case.get("block_size", 0),
         "disable_gemv": os.getenv("ORT_DISABLE_MOE_GEMV") == "1",
         "expanded_num_rows": case["batch_size"] * case["sequence_length"] * case["top_k"],
         "has_invalid_output": bool(torch.isnan(output).any() or torch.isinf(output).any()),
         "latency_ms": qmoe.last_ort_latency_ms,
+        "quant_bits": case.get("quant_bits", 4),
         "sm": torch.cuda.get_device_capability()[0] * 10 + torch.cuda.get_device_capability()[1],
     }
 

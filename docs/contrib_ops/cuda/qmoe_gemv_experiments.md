@@ -505,3 +505,132 @@ second (tps) for batch size 1, 256 generated tokens, 10 repeats, 2 warmups.
 - Always confirm the benchmark GPU is idle (`nvidia-smi`) before recording
   numbers; contention on a shared GPU inflates sampling latency and corrupts the
   throughput measurement.
+
+## 2026-06-13 Block-Wise INT4/INT8 GEMV: SM90, `block_size=64`, Warmup 5, Repeat 100
+
+### Setup
+
+- Goal: extend the CUDA QMoE GEMV path from INT4 per-column quantization to
+  symmetric block-wise integer quantization.
+- GPU: H200, SM90.
+- ONNX Runtime build: `~/onnxruntime/build/cu130/Release`.
+- Python: `~/onnxruntime/.venv/bin/python`.
+- Nsight Systems: `~/cuda13.0/bin/nsys`.
+- All model-shape runs used `--warmup 5 --repeat 100 --block-size 64` and parsed
+  the `benchmark` NVTX range.
+- Kernel parsing used `parse_nsys.py --pattern '%'` so the CUTLASS fallback
+  kernels and custom GEMV kernels both appear.
+
+Implementation summary:
+
+- The GEMV kernels now support symmetric INT4 and INT8 block-wise scales for
+  group sizes 64 and 128.
+- Block-wise scale inputs are `[E, N, K_blocks]`; QMoE prepack/runtime transposes
+  them to `[E, K_blocks, N]`, and GEMV consumes that same layout.
+- Block-wise GEMV is symmetric only. When zero-point compensation is present,
+  dispatch rejects GEMV and falls back to grouped GEMM.
+- The per-column INT4 path is unchanged and still uses `GroupSize == 0`.
+
+Command template:
+
+```bash
+cd /tmp
+source ~/onnxruntime/.venv/bin/activate
+export CUDA_HOME=~/cuda13.0
+export CUDNN_HOME=~/cudnn9.19_cuda13
+export PATH=$CUDA_HOME/bin:$PATH
+export LD_LIBRARY_PATH=/usr/lib64/openmpi/lib:$CUDA_HOME/lib64:$CUDNN_HOME/lib64:$CUDNN_HOME/lib:${LD_LIBRARY_PATH:-}
+export PYTHONPATH=~/onnxruntime/build/cu130/Release:~/onnxruntime/onnxruntime/test/python/transformers
+
+~/onnxruntime/onnxruntime/test/python/transformers/profile_qmoe_gemv.sh \
+   --python ~/onnxruntime/.venv/bin/python \
+   --case <case-name> \
+   --block-size 64 --warmup 5 --repeat 100 \
+   -o /tmp/qmoe_profile_20260613/<output-name>
+```
+
+### Correctness and Smoke Coverage
+
+- Provider build passed after threading `MOEParallelismConfig` into the static
+  `gemm1` helper.
+- Python syntax passed for `test_qmoe_cuda.py` and `profile_qmoe_gemv.py`.
+- Focused parity passed: `python -m pytest .../test_qmoe_cuda.py -k "blockwise"`
+  reported `40 passed, 35 deselected`.
+- Short benchmark smokes on SM90 produced finite output for INT4/INT8,
+  `block_size` 64/128, with `expanded_num_rows=2`.
+
+| Case | Quant Bits | Block Size | Latency (ms) | Status |
+|------|------------|------------|--------------|--------|
+| `blockwise_int4_b64_m1_top2_fp16_1024x4096_e8` | 4 | 64 | 0.074851 | passed |
+| `blockwise_int4_b128_m1_top2_fp16_1024x4096_e8` | 4 | 128 | 0.129937 | passed |
+| `blockwise_int8_b64_m1_top2_fp16_1024x4096_e8` | 8 | 64 | 0.078567 | passed |
+| `blockwise_int8_b128_m1_top2_fp16_1024x4096_e8` | 8 | 128 | 0.081153 | passed |
+
+### Route Investigation
+
+- The symmetric INT4 block-wise ONNX graph has empty zero-point inputs 11/12 and
+  no zero-point initializers.
+- Temporary diagnostics showed early profiler/tactic invocations could reject
+  GEMV, but the measured benchmark loop had null zero-point pointers and launched
+  the custom kernels.
+- Temporary diagnostics were removed before final profiling; the provider no
+  longer contains `MOE_GEMV_DEBUG`, `QMOE_PREPACK_DEBUG`, or `QMOE_COMPUTE_DEBUG`
+  strings.
+- Route verification must come from Nsight kernels inside the `benchmark` NVTX
+  range, not from the benchmark JSON alone.
+
+### GPT-OSS-20B Shape, INT4, `block_size=64`
+
+Shape: `M=1`, `top_k=4`, `expanded_num_rows=4`, `hidden_size=2880`,
+`intermediate_size=2880`, `num_experts=32`, FP16.
+
+Artifacts:
+
+- GEMV enabled: `/tmp/qmoe_profile_20260613/gpt_oss_20b_b64_gemv.sqlite`
+- GEMV disabled: `/tmp/qmoe_profile_20260613/gpt_oss_20b_b64_gemm.sqlite`
+
+| Mode | Benchmark latency (ms) | Key FC kernels in benchmark range |
+|------|------------------------|-----------------------------------|
+| GEMV enabled | 0.068951 | `moe_gemv_interleaved_swiglu_kernel`: 100 calls, 14.37 us avg; `moe_gemv_kernel`: 100 calls, 10.91 us avg |
+| GEMV disabled | 0.096503 | `MoeFCGemm`: 200 calls, 22.36 us avg |
+
+Result: real GEMV route, about 1.40x faster than grouped GEMM fallback by
+end-to-end benchmark latency.
+
+### Qwen3-6-35B-A3B Shape, INT4, `block_size=64`
+
+Shape: `M=1`, `top_k=8`, `expanded_num_rows=8`, `hidden_size=2048`,
+`intermediate_size=512`, `num_experts=256`, FP16.
+
+The old `kMinProfiledProblemDimForExpandedRowsAbove4 = 704` policy produced a
+fallback-vs-fallback comparison:
+
+| Mode | Benchmark latency (ms) | Route |
+|------|------------------------|-------|
+| GEMV enabled | 0.072524 | grouped GEMM fallback, `MoeFCGemm`: 200 calls, 10.90 us avg |
+| GEMV disabled | 0.074525 | grouped GEMM fallback, `MoeFCGemm`: 200 calls, 10.93 us avg |
+
+After lowering `kMinProfiledProblemDimForExpandedRowsAbove4` to 512:
+
+Artifacts:
+
+- GEMV enabled: `/tmp/qmoe_profile_20260613/qwen3_6_35b_a3b_b64_gate512_gemv.sqlite`
+- GEMV disabled: `/tmp/qmoe_profile_20260613/qwen3_6_35b_a3b_b64_gate512_gemm.sqlite`
+
+| Mode | Benchmark latency (ms) | Key FC kernels in benchmark range |
+|------|------------------------|-----------------------------------|
+| GEMV enabled | 0.052437 | `moe_gemv_interleaved_swiglu_kernel`: 100 calls, 5.07 us avg; `moe_gemv_kernel`: 100 calls, 3.28 us avg |
+| GEMV disabled | 0.073088 | `MoeFCGemm`: 200 calls, 10.81 us avg |
+
+Result: the 512 gate makes Qwen a true GEMV-vs-GEMM comparison and improves
+end-to-end latency by about 1.39x. FC kernel time drops from about 2.162 ms
+total per 100 iterations for grouped GEMM to about 0.835 ms total per 100
+iterations for GEMV.
+
+### Decision
+
+- Keep `block_size=64` as the immediate model-shape profiling target.
+- Keep symmetric block-wise INT4/INT8 support for both 64 and 128 in the
+  implementation, but only report model-shape profiling for 64 in this round.
+- Keep `kMinProfiledProblemDimForExpandedRowsAbove4 = 512` so Qwen-style
+  `top_k=8`, `intermediate_size=512` decode runs can use the custom GEMV path.

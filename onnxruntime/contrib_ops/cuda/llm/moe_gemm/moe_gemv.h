@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// Batched GEMV fast path for int4 weight-only per-channel MoE at small expanded
-// row counts (e.g. batch-1 decode with top_k experts). Each expanded row is a
-// single token-expert pair; one thread-block handles one row and offsets the
+// Batched GEMV fast path for symmetric int weight-only MoE at small expanded row
+// counts (e.g. batch-1 decode with top_k experts). Each expanded row is a single
+// token-expert pair; one thread-block handles one row and offsets the
 // weight/scale/bias pointers by that row's expert. Reuses the device-side math
 // (layout, dequantize, mma, epilogue) from the dense fpA_intB_gemv kernel.
 
@@ -21,12 +21,39 @@ namespace moe_gemv {
 inline constexpr int64_t kMaxProfiledExpandedRows = 8;
 inline constexpr int64_t kMaxProfiledExpandedRowsForSmallProblemDim = 4;
 inline constexpr int64_t kMinProfiledProblemDim = 512;
-inline constexpr int64_t kMinProfiledProblemDimForExpandedRowsAbove4 = 704;
+// Lowered from 704 to 512 so block-wise decode shapes (e.g. Qwen top_k=8,
+// inter_size=512) take the GEMV path. This also covers per-column INT4 shapes
+// with inter_size in [512, 704); both bands are gated by ORT_DISABLE_MOE_GEMV.
+inline constexpr int64_t kMinProfiledProblemDimForExpandedRowsAbove4 = 512;
 
 // Returns true if the batched MoE GEMV fast path supports this problem shape.
-// Requirements: int4 per-channel weights, FP16 activations, sm >= 80,
-// small expanded_num_rows, and n divisible by the kernel tile width.
+// Requirements: FP16 activations, sm >= 80, small expanded_num_rows, supported
+// INT weight type, supported group size, and n divisible by the kernel tile width.
+bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t k,
+                           int weight_bits, int group_size);
+
+// Backward-compatible per-channel INT4 shape check.
 bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t k);
+
+// Launches symmetric INT MoE GEMV. group_size <= 0 means per-channel scales;
+// group_size 64/128 means block-wise scales laid out as [num_experts, k_blocks, n].
+// T is half. WeightType is cutlass::uint4b_t or uint8_t.
+template <typename T, typename WeightType>
+void launch_moe_gemv_int_symmetric(
+    T const* act, WeightType const* weight, T const* scales, T const* bias, T* out,
+    int64_t const* expert_first_token_offset, int const* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
+    int64_t n, int64_t k, int group_size, int sm, cudaStream_t stream);
+
+// Launches symmetric INT MoE GEMV and fuses interleaved SwiGLU activation.
+// weight/bias use raw FC1 output width n = 2 * inter_size. Scales are
+// [num_experts, n] for group_size <= 0 and [num_experts, k_blocks, n] for
+// block-wise group_size 64/128.
+template <typename T, typename WeightType>
+void launch_moe_gemv_int_symmetric_interleaved_swiglu(
+    T const* act, WeightType const* weight, T const* scales, T const* bias, T* out,
+    int64_t const* expert_first_token_offset, int const* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
+    int64_t inter_size, int64_t k, int group_size, int sm, cutlass_kernels::ActivationParams activation_params,
+    cudaStream_t stream);
 
 // Launches the int4 per-channel MoE GEMV.
 //   act:      [expanded_num_rows, k]  permuted activations (row-major)
