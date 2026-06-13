@@ -18,9 +18,12 @@
 # while maintaining computational efficiency.
 # --------------------------------------------------------------------------
 import copy
+import json
+import os
 import time
 import unittest
 from collections import OrderedDict
+from contextlib import nullcontext
 
 import numpy
 import torch
@@ -32,6 +35,14 @@ from torch import nn
 
 import onnxruntime
 from onnxruntime.capi import _pybind_state as _pybind
+
+try:
+    import nvtx
+
+    has_nvtx = True
+except ImportError:
+    has_nvtx = False
+    nvtx = None
 
 try:
     from onnx import TensorProto
@@ -80,6 +91,17 @@ if torch.cuda.is_available():
     ort_provider = ["CUDAExecutionProvider"]
 else:
     ort_provider = ["CPUExecutionProvider"]
+
+
+def _qmoe_benchmark_nvtx_range(name="benchmark", color="green"):
+    if os.getenv("ORT_QMOE_GEMV_BENCHMARK_NVTX") != "1":
+        return nullcontext()
+
+    if not has_nvtx:
+        return nullcontext()
+
+    return nvtx.annotate(name, color=color)
+
 
 torch.manual_seed(42)
 numpy.random.seed(42)
@@ -287,6 +309,25 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True, asymmetric: bool 
         scale, quantized_storage, dequantized, zero_point_storage
     """
     block_size = weights.shape[1]
+    if is_4_bit_quantization and not asymmetric and block_size > 256:
+        n, k = weights.shape
+        weights_float = weights.detach().float()
+        scale = weights_float.abs().amax(dim=1, keepdim=True) / 7.0
+        scale = torch.clamp(scale, min=torch.finfo(torch.float32).eps)
+        q_weight = torch.clamp(torch.round(weights_float / scale), -8, 7).to(torch.int16) + 8
+        q_weight = q_weight.to(torch.uint8).contiguous()
+        q_low = q_weight[:, 0::2]
+        q_high = q_weight[:, 1::2]
+        if q_high.shape[1] < q_low.shape[1]:
+            q_high = F.pad(q_high, (0, 1))
+        q_packed = q_low | (q_high << 4)
+        processed_q_weight = _pybind.pack_weights_for_cuda_mixed_gemm(q_packed.cpu().numpy(), n, k, 4, 80)
+        processed_q_weight_torch = (
+            torch.from_numpy(processed_q_weight).reshape(k, n // 2).to(weights.device).view(torch.uint8)
+        )
+        dequantized = (q_weight.to(weights.dtype) - 8.0) * scale.to(weights.device).to(weights.dtype)
+        return scale.to(weights.device).to(torch.float16), processed_q_weight_torch, dequantized, None
+
     return quant_dequant_blockwise(weights, block_size, is_4_bit_quantization, asymmetric)
 
 
@@ -855,14 +896,25 @@ class SparseMoeBlockORTHelper(nn.Module):
             print("DEBUG: ORT inference completed successfully")
 
         if enable_performance_test:
-            repeat = 100
-            s = time.time()
-            for _ in range(repeat):
-                iobinding.synchronize_inputs()
-                self.ort_sess.run_with_iobinding(iobinding)
-                iobinding.synchronize_outputs()
-            e = time.time()
+            warmup = max(0, int(os.getenv("ORT_QMOE_GEMV_BENCHMARK_WARMUP", "5")))
+            repeat = max(1, int(os.getenv("ORT_QMOE_GEMV_BENCHMARK_REPEATS", "100")))
+            with _qmoe_benchmark_nvtx_range("warmup", "yellow"):
+                for _ in range(warmup):
+                    iobinding.synchronize_inputs()
+                    self.ort_sess.run_with_iobinding(iobinding)
+                    iobinding.synchronize_outputs()
+
+            with _qmoe_benchmark_nvtx_range("benchmark", "green"):
+                torch.cuda.synchronize()
+                s = time.perf_counter()
+                for _ in range(repeat):
+                    iobinding.synchronize_inputs()
+                    self.ort_sess.run_with_iobinding(iobinding)
+                    iobinding.synchronize_outputs()
+                torch.cuda.synchronize()
+                e = time.perf_counter()
             time_ms = (e - s) / repeat * 1000
+            self.last_ort_latency_ms = time_ms
             is_swiglu = hasattr(self, "use_swiglu") and self.use_swiglu
             is_interleaved = getattr(self, "swiglu_fusion", 0) == 1
             act_type = f"SwiGLU(interleaved={is_interleaved})" if is_swiglu else "SiLU"
@@ -1149,7 +1201,7 @@ class SparseMoeBlockORTHelper(nn.Module):
         dtype_str = ort_dtype_name_map[self.onnx_dtype]
         tolerance_key = f"{dtype_str}:{self.quant_bits}"
         if tolerance_key in ort_dtype_quant_bits_tolerance_map:
-            base_atol, rtol = ort_dtype_quant_bits_tolerance_map[tolerance_key]
+            base_atol, _rtol = ort_dtype_quant_bits_tolerance_map[tolerance_key]
 
             # Increase tolerance for asymmetric quantization due to different computation path
             if self.use_asymmetric_quant:
@@ -1423,6 +1475,7 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
 
 # Define test cases for different MoE types
 phi3_test_cases = [
+    (1, 1, 4),  # decode-sized INT4 per-channel path exercises the MoE GEMV fast path
     (1, 32, 4),
     (1, 32, 8),
     (2, 16, 4),
@@ -1864,6 +1917,148 @@ class TestSwigluQMoEBf16(unittest.TestCase):
         self.assertFalse(torch.isinf(torch_result).any())
 
         swiglu_moe.parity_check()
+
+
+_QMOE_GEMV_BENCHMARK_RESULT_PREFIX = "QMOE_GEMV_BENCHMARK_RESULT "
+
+
+def _qmoe_gemv_benchmark_cases():
+    return [
+        {
+            "name": "m1_top2_fp16_128x256",
+            "batch_size": 1,
+            "sequence_length": 1,
+            "hidden_size": 128,
+            "intermediate_size": 256,
+            "num_experts": 4,
+            "top_k": 2,
+            "onnx_dtype": "FLOAT16",
+        },
+        {
+            "name": "m4_top2_fp16_128x256",
+            "batch_size": 1,
+            "sequence_length": 4,
+            "hidden_size": 128,
+            "intermediate_size": 256,
+            "num_experts": 4,
+            "top_k": 2,
+            "onnx_dtype": "FLOAT16",
+        },
+        {
+            "name": "m8_top2_fp16_128x256",
+            "batch_size": 1,
+            "sequence_length": 8,
+            "hidden_size": 128,
+            "intermediate_size": 256,
+            "num_experts": 4,
+            "top_k": 2,
+            "onnx_dtype": "FLOAT16",
+        },
+        {
+            "name": "m1_top2_bf16_128x256",
+            "batch_size": 1,
+            "sequence_length": 1,
+            "hidden_size": 128,
+            "intermediate_size": 256,
+            "num_experts": 4,
+            "top_k": 2,
+            "onnx_dtype": "BFLOAT16",
+        },
+        {
+            "name": "gpt_oss_20b_m1_top4_fp16_2880x2880_e32",
+            "batch_size": 1,
+            "sequence_length": 1,
+            "hidden_size": 2880,
+            "intermediate_size": 2880,
+            "num_experts": 32,
+            "top_k": 4,
+            "onnx_dtype": "FLOAT16",
+        },
+        {
+            "name": "qwen3_6_35b_a3b_m1_top8_fp16_2048x512_e256",
+            "batch_size": 1,
+            "sequence_length": 1,
+            "hidden_size": 2048,
+            "intermediate_size": 512,
+            "num_experts": 256,
+            "top_k": 8,
+            "onnx_dtype": "FLOAT16",
+        },
+        {
+            "name": "gemma4_26b_a4b_m1_top8_fp16_2816x704_e128",
+            "batch_size": 1,
+            "sequence_length": 1,
+            "hidden_size": 2816,
+            "intermediate_size": 704,
+            "num_experts": 128,
+            "top_k": 8,
+            "onnx_dtype": "FLOAT16",
+        },
+    ]
+
+
+def _qmoe_gemv_benchmark_case(case_name):
+    for case in _qmoe_gemv_benchmark_cases():
+        if case["name"] == case_name:
+            return case
+
+    case_names = ", ".join(case["name"] for case in _qmoe_gemv_benchmark_cases())
+    raise ValueError(f"Unknown QMoE GEMV benchmark case '{case_name}'. Available cases: {case_names}")
+
+
+def run_qmoe_gemv_benchmark(case):
+    seed = 4242
+    torch.manual_seed(seed)
+    numpy.random.seed(seed)
+
+    onnx_dtype = getattr(TensorProto, case["onnx_dtype"])
+    torch_dtype = onnx_to_torch_type_map[onnx_dtype]
+    config = PhiMoEConfig(
+        hidden_size=case["hidden_size"],
+        intermediate_size=case["intermediate_size"],
+        num_local_experts=case["num_experts"],
+        num_experts_per_tok=case["top_k"],
+    )
+    qmoe = PhiMoESparseMoeBlock(
+        config,
+        batch_size=case["batch_size"],
+        sequence_length=case["sequence_length"],
+        quant_bits=4,
+        onnx_dtype=onnx_dtype,
+        use_asymmetric_quant=False,
+    )
+    hidden_states = torch.randn(
+        case["batch_size"], case["sequence_length"], case["hidden_size"], device=device, dtype=torch_dtype
+    )
+    output = qmoe.ort_forward(hidden_states, enable_performance_test=True)
+
+    return {
+        "case": case["name"],
+        "disable_gemv": os.getenv("ORT_DISABLE_MOE_GEMV") == "1",
+        "expanded_num_rows": case["batch_size"] * case["sequence_length"] * case["top_k"],
+        "has_invalid_output": bool(torch.isnan(output).any() or torch.isinf(output).any()),
+        "latency_ms": qmoe.last_ort_latency_ms,
+        "sm": torch.cuda.get_device_capability()[0] * 10 + torch.cuda.get_device_capability()[1],
+    }
+
+
+def run_qmoe_gemv_benchmark_case(case_name=None):
+    case = _qmoe_gemv_benchmark_case(
+        case_name or os.getenv("ORT_QMOE_GEMV_BENCHMARK_CASE", _qmoe_gemv_benchmark_cases()[0]["name"])
+    )
+    return run_qmoe_gemv_benchmark(case)
+
+
+@unittest.skipIf(not torch.cuda.is_available(), "skipping QMoE GEMV benchmark since it requires CUDA.")
+@unittest.skipIf(
+    os.getenv("ORT_QMOE_GEMV_BENCHMARK") != "1",
+    "Set ORT_QMOE_GEMV_BENCHMARK=1 to run the opt-in QMoE GEMV benchmark.",
+)
+class TestQMoEGemvBenchmark(unittest.TestCase):
+    def test_decode_latency(self):
+        result = run_qmoe_gemv_benchmark_case()
+        self.assertFalse(result["has_invalid_output"])
+        print(_QMOE_GEMV_BENCHMARK_RESULT_PREFIX + json.dumps(result, sort_keys=True))
 
 
 @unittest.skipIf(True, "Skipping QMoE benchmark tests")
