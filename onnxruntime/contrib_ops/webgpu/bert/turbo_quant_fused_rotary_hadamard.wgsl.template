@@ -4,12 +4,16 @@
 // Fused TurboQuant: Split packed QKV + Rotary K + Hadamard + Quantize K/V + Rotary Q.
 //
 // A single dispatch handles all three components:
-//   Workgroups [0, num_kv_slices):          K — split from packed QKV, apply rotary, Hadamard, quantize, write to present_key
-//   Workgroups [num_kv_slices, 2*num_kv_slices):  V — split from packed QKV, Hadamard, quantize, write to present_value
-//   Workgroups [2*num_kv_slices, total):    Q — split from packed QKV, apply rotary, write to query output
+//   Workgroups [0, num_kv_slices):                K — split from packed QKV, apply rotary, WHT, quantize, write to present_key
+//   Workgroups [num_kv_slices, 2*num_kv_slices):  V — split from packed QKV, WHT, quantize, write to present_value
+//   Workgroups [2*num_kv_slices, total):           Q — split from packed QKV, apply rotary, write to query output
 //
-// K/V workgroups use shared memory for Hadamard + quantization.
-// Q workgroups do simple per-element rotary and return early (no shared memory needed).
+// K/V path: apply Walsh-Hadamard butterfly transform in shared memory, compute L2 norm,
+// quantize each element to a 4-bit centroid index, pack 8 indices per u32, and store
+// norm (as bitcast<u32>(f32)) followed by packed index words.
+// Q path: per-element rotary embedding and return (no shared memory or barriers needed).
+//
+// Output layout per KV head: [norm_u32, packed_indices_0, ..., packed_indices_(HEAD_SIZE/8 - 1)]
 
 #param hadamard_size_log2
 #param half_rotary_dim
@@ -32,10 +36,11 @@ var<workgroup> hadamard_buffer : array<f32, HEAD_SIZE>;
 #include "bert/indirect_dispatch_common.wgsl.template"
 
 var<workgroup> scale_reduction_buffer : array<f32, 64>;
+// Reuse shared memory for packing: store centroid indices (0-15) as u32 per element.
 var<workgroup> index_buffer : array<u32, HEAD_SIZE>;
 
 $MAIN {
-  // Compute total_seq_length from seqlen_k
+  // Compute total_seq_length.
 #if use_seqlen_k
   let total_seq_length = u32(seqlen_k[0u]) + 1u;
 #else
@@ -43,8 +48,8 @@ $MAIN {
 #endif
   let past_seq_length = total_seq_length - uniforms.kv_sequence_length;
 
-  // Compute position_id for rotary embedding
-  let position_id = past_seq_length;  // For kv_sequence_length=1 (decode), position = past_seq_length
+  // Base position offset for rotary embedding cos/sin cache lookup.
+  let position_id = past_seq_length;
 #if use_multi_rotary_cache_concat
   let base_position = select(0u, multi_rotary_cache_concat_offset, total_seq_length > multi_rotary_cache_concat_offset);
 #else
@@ -59,7 +64,7 @@ $MAIN {
   }
 #endif
 
-  // Determine which component this workgroup handles
+  // Map flat workgroup index to logical component (Q, K, or V).
   let num_kv_slices = uniforms.num_kv_slices;
   let is_q = workgroup_idx >= 2u * num_kv_slices;
   let is_value = !is_q && workgroup_idx >= num_kv_slices;
@@ -69,23 +74,24 @@ $MAIN {
     let q_slice = workgroup_idx - 2u * num_kv_slices;
     if (q_slice >= uniforms.num_q_slices) { return; }
 
-    // Decode q_slice -> (batch, seq, head)
+    // Unflatten q_slice into (batch, seq, head).
     let batch = q_slice / (uniforms.kv_sequence_length * uniforms.num_heads);
     let head = (q_slice / uniforms.kv_sequence_length) % uniforms.num_heads;
     let seq = q_slice % uniforms.kv_sequence_length;
 
-    // Token offset in packed QKV buffer
+    // Compute source offset in packed QKV for this Q head.
+    // Packed QKV layout per token: [Q_hidden | K_kv_hidden | V_kv_hidden].
     let token_size = uniforms.hidden_size + 2u * uniforms.kv_hidden_size;
     let token_offset = (batch * uniforms.kv_sequence_length + seq) * token_size;
     let q_src_base = token_offset + head * HEAD_SIZE;
 
-    // Output offset in query (BSD format: batch * seq * hidden_size)
+    // Destination offset in query output (BSD layout: batch * seq * hidden_size).
     let q_dst_base = (batch * uniforms.kv_sequence_length + seq) * uniforms.hidden_size + head * HEAD_SIZE;
 
-    // Position for this specific seq within the batch
+    // Position index for rotary embedding cos/sin lookup.
     let seq_position_id = past_seq_length + seq;
 
-    // Apply rotary embedding to Q head
+    // Apply rotary embedding: rotate first HALF_ROTARY_DIM pairs.
     for (var i = local_idx; i < HALF_ROTARY_DIM; i += workgroup_size_x) {
       let cos_v = cos_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i));
       let sin_v = sin_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i));
@@ -108,11 +114,11 @@ $MAIN {
     return;
   }
 
-  // ============ K/V WORKGROUP PATH (Hadamard + quantize) ============
+  // ============ K/V WORKGROUP PATH (WHT + quantize) ============
   let kv_slice = select(workgroup_idx, workgroup_idx - num_kv_slices, is_value);
   if (kv_slice >= num_kv_slices) { return; }
 
-  // Decode kv_slice -> (batch, head, seq)
+  // Unflatten kv_slice into (batch, head, seq).
   let batch = kv_slice / (uniforms.kv_num_heads * uniforms.kv_sequence_length);
   let head = (kv_slice / uniforms.kv_sequence_length) % uniforms.kv_num_heads;
   let seq = kv_slice % uniforms.kv_sequence_length;
@@ -125,19 +131,20 @@ $MAIN {
 #endif
   let present_base = ((batch * uniforms.kv_num_heads + head) * uniforms.present_seq_length + dest_seq) * COMPRESSED_HEAD_U32;
 
-  // Compute source offset in packed QKV for this KV head
+  // Compute source offset in packed QKV for this KV head.
+  // Packed QKV layout per token: [Q_hidden | K_kv_hidden | V_kv_hidden].
   let token_size = uniforms.hidden_size + 2u * uniforms.kv_hidden_size;
   let token_offset = (batch * uniforms.kv_sequence_length + seq) * token_size;
   let k_src_base = token_offset + uniforms.hidden_size + head * HEAD_SIZE;
   let v_src_base = token_offset + uniforms.hidden_size + uniforms.kv_hidden_size + head * HEAD_SIZE;
   let src_base = select(k_src_base, v_src_base, is_value);
 
-  // Position for rotary embedding on K
+  // Position index for rotary embedding cos/sin lookup (K only).
   let seq_position_id = past_seq_length + seq;
 
-  // Load from packed QKV into shared memory (f32), applying rotary to K.
+  // Load from packed QKV into shared memory (f32). K gets rotary, V loads directly.
   if (!is_value) {
-    // K path: load with rotary embedding applied
+    // K path: apply rotary embedding during load.
     for (var i = local_idx; i < HALF_ROTARY_DIM; i += workgroup_size_x) {
       let cos_v = f32(cos_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i)));
       let sin_v = f32(sin_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i)));
@@ -154,7 +161,7 @@ $MAIN {
       hadamard_buffer[actual_idx] = f32(packed_qkv.getByOffset(src_base + actual_idx));
     }
   } else {
-    // V path: load directly (no rotary)
+    // V path: straight copy, no rotary.
     for (var i = local_idx; i < HEAD_SIZE; i += workgroup_size_x) {
       hadamard_buffer[i] = f32(packed_qkv.getByOffset(src_base + i));
     }
@@ -178,6 +185,8 @@ $MAIN {
   }
   scale_reduction_buffer[local_idx] = partial_sq_sum;
   workgroupBarrier();
+  // Tree reduction: each iteration halves active threads, accumulating the total
+  // sum of squares into scale_reduction_buffer[0] in log2(workgroup_size) steps.
   for (var stride = workgroup_size_x >> 1u; stride > 0u; stride >>= 1u) {
     if (local_idx < stride) {
       scale_reduction_buffer[local_idx] += scale_reduction_buffer[local_idx + stride];

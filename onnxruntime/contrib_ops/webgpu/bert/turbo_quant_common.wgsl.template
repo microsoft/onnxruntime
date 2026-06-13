@@ -31,20 +31,3 @@ fn snap_to_centroid_index(x: f32) -> u32 {
          u32(x > TQ_BOUNDARIES[12]) + u32(x > TQ_BOUNDARIES[13]) +
          u32(x > TQ_BOUNDARIES[14]);
 }
-
-// Extract 4-bit index at position `idx` within packed u32 words starting at `data_offset`.
-// idx is the element index within the head (0..HEAD_SIZE-1).
-// data_offset points to word 1 (first packed word, after the norm word).
-// kv_cache is a pointer to a storage buffer of u32.
-fn tq_extract_index(kv_cache: ptr<storage, array<u32>, read>, data_offset: u32, idx: u32) -> u32 {
-  let word_idx = idx >> 3u;        // 8 indices per u32
-  let bit_pos = (idx & 7u) << 2u;  // 4 bits per index
-  return ((*kv_cache)[data_offset + word_idx] >> bit_pos) & 0xFu;
-}
-
-// Dequantize a single element: look up centroid and scale by L2 norm.
-fn tq_dequant_element(kv_cache: ptr<storage, array<u32>, read>, base_offset: u32, elem_idx: u32) -> f32 {
-  let norm = bitcast<f32>((*kv_cache)[base_offset]);
-  let centroid_idx = tq_extract_index(kv_cache, base_offset + 1u, elem_idx);
-  return TQ_CENTROIDS[centroid_idx] * norm;
-}

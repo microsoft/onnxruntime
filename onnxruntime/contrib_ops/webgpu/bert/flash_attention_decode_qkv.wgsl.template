@@ -19,6 +19,15 @@
 #include "bert/turbo_quant_common.wgsl.template"
 const COMPRESSED_HEAD_U32 : u32 = compressed_head_size_u32;
 const COMPRESSED_HEAD_U32_WITHOUT_SCALE : u32 = COMPRESSED_HEAD_U32 - 1u;
+
+// Dequantize 4 consecutive nibbles from the low 16 bits of a packed u32 word.
+fn tq_unpack_nibbles(packed: u32) -> q_value_t {
+  return q_value_t(
+    q_element_t(tq_lut[(packed) & 0xFu]),
+    q_element_t(tq_lut[(packed >> 4u) & 0xFu]),
+    q_element_t(tq_lut[(packed >> 8u) & 0xFu]),
+    q_element_t(tq_lut[(packed >> 12u) & 0xFu]));
+}
 #endif
 
 // Fused QK^T + softmax + V multiply shader.
@@ -133,16 +142,8 @@ $MAIN {
         if (seq_idx < total_sequence_length) {
           let base = kv_head_offset + seq_idx * COMPRESSED_HEAD_U32;
           let packed = present_key[base + 1u + word_idx];
-          let k_lo = q_value_t(
-              q_element_t(tq_lut[(packed) & 0xFu]),
-              q_element_t(tq_lut[(packed >> 4u) & 0xFu]),
-              q_element_t(tq_lut[(packed >> 8u) & 0xFu]),
-              q_element_t(tq_lut[(packed >> 12u) & 0xFu]));
-          let k_hi = q_value_t(
-              q_element_t(tq_lut[(packed >> 16u) & 0xFu]),
-              q_element_t(tq_lut[(packed >> 20u) & 0xFu]),
-              q_element_t(tq_lut[(packed >> 24u) & 0xFu]),
-              q_element_t(tq_lut[(packed >> 28u) & 0xFu]));
+          let k_lo = tq_unpack_nibbles(packed);
+          let k_hi = tq_unpack_nibbles(packed >> 16u);
           for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
             let mq_lo = all_q[m][word_idx * 2u] * q_element_t(uniforms.alpha);
             let mq_hi = all_q[m][word_idx * 2u + 1u] * q_element_t(uniforms.alpha);
@@ -264,12 +265,7 @@ $MAIN {
           let scale = tq_v_scales[row_offset + local_row];
           let packed = present_value[base + 1u + tq_word_idx];
           let tq_shift = (elem_base & 4u) << 2u;
-          let nibbles = packed >> tq_shift;
-          let v_val = q_value_t(
-              q_element_t(tq_lut[(nibbles) & 0xFu] * scale),
-              q_element_t(tq_lut[(nibbles >> 4u) & 0xFu] * scale),
-              q_element_t(tq_lut[(nibbles >> 8u) & 0xFu] * scale),
-              q_element_t(tq_lut[(nibbles >> 12u) & 0xFu] * scale));
+          let v_val = tq_unpack_nibbles(packed >> tq_shift) * q_element_t(scale);
           for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
             qkv_values[m][local_row][local_col] += v_val * tile_qk[m][row_offset + local_row];
           }
