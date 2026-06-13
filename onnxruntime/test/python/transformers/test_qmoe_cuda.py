@@ -27,11 +27,11 @@ import torch
 import torch.nn.functional as F
 from cuda_plugin_ep_helper import resolve_cuda_plugin_ep
 from onnx import helper
+from onnxruntime.capi import _pybind_state as _pybind
 from parameterized import parameterized
 from torch import nn
 
 import onnxruntime
-from onnxruntime.capi import _pybind_state as _pybind
 
 try:
     from onnx import TensorProto
@@ -1186,7 +1186,7 @@ class SparseMoeBlockORTHelper(nn.Module):
         dtype_str = ort_dtype_name_map[self.onnx_dtype]
         tolerance_key = f"{dtype_str}:{self.quant_bits}"
         if tolerance_key in ort_dtype_quant_bits_tolerance_map:
-            base_atol, rtol = ort_dtype_quant_bits_tolerance_map[tolerance_key]
+            base_atol, _rtol = ort_dtype_quant_bits_tolerance_map[tolerance_key]
 
             # Increase tolerance for asymmetric quantization due to different computation path
             if self.use_asymmetric_quant:
@@ -1460,6 +1460,7 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
 
 # Define test cases for different MoE types
 phi3_test_cases = [
+    (1, 1, 4),  # decode-sized INT4 per-channel path exercises the MoE GEMV fast path
     (1, 32, 4),
     (1, 32, 8),
     (2, 16, 4),
