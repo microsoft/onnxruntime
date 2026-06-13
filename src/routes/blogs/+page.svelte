@@ -448,6 +448,13 @@
 	];
 	let blogsCommunity = [
 		{
+			title: 'Use AI models on-device with Ionic, React, and ONNX Runtime',
+			date: 'December 1, 2025',
+			link: 'https://vault.top/blog/use-ai-models-on-device-with-ionic-react-and-onnx-runtime',
+			blurb:
+				'A practical walkthrough of running AI models locally (on-device) in an Ionic React app across iOS, Android, and the web. Includes pseudocode examples using ONNX Runtime for model setup, inference, and use cases.'
+		},
+		{
 			title: 'Sentence Transformers 3.2.0: 2x-3x Faster Inference with ONNX Runtime',
 			date: 'October 10, 2024',
 			link: 'https://github.com/UKPLab/sentence-transformers/releases/tag/v3.2.0',
