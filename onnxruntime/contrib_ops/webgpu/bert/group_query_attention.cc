@@ -331,8 +331,8 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   // When TurboQuant is enabled, the KV cache head dimension is compressed.
   // Derive from quantization parameters: (head_size * bit_width + extra_bits) / bits_per_element.
   int64_t kv_head_dim = parameters.head_size_;
-  if (kv_cache_bit_width > 0 && past_key != nullptr) {
-    int bits_per_element = static_cast<int>(past_key->DataType()->Size()) * 8;
+  if (kv_cache_bit_width > 0) {
+    int bits_per_element = static_cast<int>(query->DataType()->Size()) * 8;
     kv_head_dim = (parameters.head_size_ * kv_cache_bit_width + kv_cache_extra_bits) / bits_per_element;
   }
   std::vector<int64_t> present_dims{

@@ -153,12 +153,12 @@ Status CheckPast(const T* past_key, const T* past_value, int batch_size, int kv_
   }
   if (past_key_dims[3] != packed_head_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'past_key' dimension 3 should be same as head_size, got ",
+                           "Input 'past_key' dimension 3 should match the packed KV head dimension, got ",
                            past_key_dims[3], " expected ", packed_head_size);
   }
   if (past_value_dims[3] != packed_head_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Input 'past_value' dimension 3 should be same as head_size, got ",
+                           "Input 'past_value' dimension 3 should match the packed KV head dimension, got ",
                            past_value_dims[3], " expected ", packed_head_size);
   }
   return Status::OK();

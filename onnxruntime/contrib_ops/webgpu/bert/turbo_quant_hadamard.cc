@@ -27,11 +27,9 @@ Status TurboQuantHadamardProgram::GenerateShaderCode(ShaderHelper& shader) const
     shader.AddOutput("indirect_buffer", ShaderUsage::None);
   }
 
-  // Always create a valid reference for past_key; use 'key' as dummy when has_past is false.
-  const ShaderVariableHelper* past_key_ptr = &key;
   if (has_past_) {
     // Past KV cache is already u32-packed — add as uniform only (no type aliases needed).
-    past_key_ptr = &shader.AddInput("past_key", ShaderUsage::UseUniform);
+    shader.AddInput("past_key", ShaderUsage::UseUniform);
     shader.AddInput("past_value", ShaderUsage::UseUniform);
   }
 
@@ -54,8 +52,8 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
                                         uint32_t num_q_tiles) {
   const int head_size = parameters.head_size_;
   const int components = head_size % 4 == 0 ? 4 : (head_size % 2 == 0 ? 2 : 1);
-  ORT_ENFORCE((head_size & (head_size - 1)) == 0 && head_size >= 4,
-              "head_size must be a power of 2 >= 4 for Hadamard transform, got ", head_size);
+  ORT_ENFORCE((head_size & (head_size - 1)) == 0 && head_size >= 8,
+              "head_size must be a power of 2 >= 8 for Hadamard transform, got ", head_size);
 
   int head_size_log2 = 0;
   for (int tmp = head_size; tmp > 1; tmp >>= 1) head_size_log2++;
@@ -176,8 +174,8 @@ Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::Compu
                                                       uint32_t tile_size,
                                                       uint32_t num_q_tiles) {
   const int head_size = parameters.head_size_;
-  ORT_ENFORCE((head_size & (head_size - 1)) == 0 && head_size >= 4,
-              "head_size must be a power of 2 >= 4 for TurboQuant fused rotary, got ", head_size);
+  ORT_ENFORCE((head_size & (head_size - 1)) == 0 && head_size >= 8,
+              "head_size must be a power of 2 >= 8 for TurboQuant fused rotary, got ", head_size);
 
   int head_size_log2 = 0;
   for (int tmp = head_size; tmp > 1; tmp >>= 1) head_size_log2++;
