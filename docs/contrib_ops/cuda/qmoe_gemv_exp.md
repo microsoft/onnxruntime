@@ -317,3 +317,63 @@ GPT `13.69, 10.22` us and Gemma `7.17, 4.56` us.
 - The direct-map branch in the current kernel is not a visible bottleneck after
   the row-to-expert map optimization, so the extra specialized launch variants
   are not worth the additional code size.
+
+## 2026-06-13 FC1 Interleaved SwiGLU Fusion: SM90, FP16, Warmup 5, Repeat 100
+
+### Setup
+
+- Same build and Python environment as above.
+- Change under test: FC1 INT4 per-channel GEMV has an interleaved SwiGLU epilogue
+  for the profiled FP16 path. It computes adjacent gate/linear FC1 columns,
+  applies the existing `alpha=1.702`, `beta=1.0`, `limit=7.0` SwiGLU formula,
+  and writes post-activation `[expanded_rows, inter_size]` directly to the FC2
+  input buffer.
+- The unfused GEMV plus `doGatedActivationKernel` path remains the fallback for
+  non-FP16, non-INT4-per-channel, groupwise quantization, non-interleaved
+  activations, and shapes rejected by the existing GEMV dispatch policy.
+- Nsight artifacts:
+  `/tmp/ort_qmoe_profile/qmoe_swiglu_fused_gpt_{gemv,gemm}.{nsys-rep,sqlite}`,
+  `/tmp/ort_qmoe_profile/qmoe_swiglu_fused_gemma_{gemv,gemm}.{nsys-rep,sqlite}`,
+  and `/tmp/ort_qmoe_profile/qmoe_swiglu_fused_qwen_{gemv,gemm}.{nsys-rep,sqlite}`.
+
+### Correctness
+
+- Focused QMoE GEMV smoke:
+  `TestQMoEGemvBenchmark::test_decode_latency` passed.
+- Large enough FP16 INT4 SwiGLU parity case to exercise the fused path
+  (`hidden_size=1024`, `intermediate_size=512`, `num_experts=4`, `top_k=2`) had
+  max absolute difference `0.0009766` before the helper's parity check and
+  `0.000893` in the built-in parity check.
+
+### End-To-End ORT Loop Timing
+
+Lower is better. Previous best is the P1 row-to-expert map build with the same
+`CtaN=8, Threads=128` tile shape.
+
+| Model case | Expanded rows | Enabled route | Fused GEMV ms | Previous best GEMV ms | Fallback ms | Result |
+|------------|---------------|---------------|---------------|-----------------------|-------------|--------|
+| `gpt_oss_20b_m1_top4_fp16_2880x2880_e32` | 4 | GEMV | 0.0681 | 0.0721 | 0.1013 | GEMV faster; fusion improves enabled path by about 5.5%. |
+| `gemma4_26b_a4b_m1_top8_fp16_2816x704_e128` | 8 | GEMV | 0.0580 | 0.0610 | 0.0811 | GEMV faster; fusion improves enabled path by about 4.9%. |
+| `qwen3_6_35b_a3b_m1_top8_fp16_2048x512_e256` | 8 | grouped GEMM fallback | 0.0706 | N/A | 0.0710 | No custom GEMV kernels; route unchanged by fusion. |
+
+### Primary Kernel Timing
+
+Values are average kernel duration in microseconds inside the measured NVTX
+range. The fused GEMV compute rows correspond to fused FC1 and unfused FC2.
+
+| Model case | Fused GEMV compute avg us | Previous best GEMV compute avg us | Removed activation avg us from fallback profile | Notes |
+|------------|---------------------------|-----------------------------------|-----------------------------------------------|-------|
+| `gpt_oss_20b_m1_top4_fp16_2880x2880_e32` | 13.93, 10.11 | 13.69, 10.22 | 3.23 | FC1 GEMV is slightly slower due to the fused epilogue, but removing the activation launch gives a net end-to-end win. |
+| `gemma4_26b_a4b_m1_top8_fp16_2816x704_e128` | 8.30, 4.57 | 7.17, 4.56 | 1.82 | The fused epilogue costs more for the small FC1 tile, but still beats the separate activation launch end-to-end. |
+| `qwen3_6_35b_a3b_m1_top8_fp16_2048x512_e256` | N/A | N/A | 1.76 | The 512-wide intermediate-size guard keeps Qwen on grouped GEMM. |
+
+### Observations
+
+- FC1 interleaved SwiGLU fusion is a modest but real win for the two actual-model
+  cases that already route to GEMV.
+- The win comes from launch and memory-traffic removal, not from faster FC1
+  compute. The fused FC1 kernel is slightly slower than the prior FC1 GEMV
+  kernel, so this optimization should stay narrowly gated to the measured path.
+- The FC2 finalize/scatter fusion remains a larger but riskier opportunity. It
+  can remove another launch, but it needs a design that preserves the current
+  float accumulation behavior across top-k experts.

@@ -12,6 +12,8 @@
 #include <cstdint>
 #include <cuda_runtime.h>
 
+#include "contrib_ops/cuda/llm/moe_gemm/common.h"
+
 namespace onnxruntime::llm {
 namespace kernels {
 namespace moe_gemv {
@@ -35,6 +37,17 @@ void launch_moe_gemv_int4_per_channel(
     T const* act, uint8_t const* weight, T const* scales, T const* bias, T* out,
     int64_t const* expert_first_token_offset, int const* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
     int64_t n, int64_t k, int sm, cudaStream_t stream);
+
+// Launches the int4 per-channel MoE GEMV and fuses interleaved SwiGLU activation.
+//   weight/scales/bias use raw FC1 output width [num_experts, k, 2 * inter_size]
+//   out is post-activation [expanded_num_rows, inter_size]
+// Only interleaved SwiGLU layout (`swiglu_fusion == 1`) is supported.
+template <typename T>
+void launch_moe_gemv_int4_per_channel_interleaved_swiglu(
+    T const* act, uint8_t const* weight, T const* scales, T const* bias, T* out,
+    int64_t const* expert_first_token_offset, int const* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
+    int64_t inter_size, int64_t k, int sm, cutlass_kernels::ActivationParams activation_params,
+    cudaStream_t stream);
 
 }  // namespace moe_gemv
 }  // namespace kernels

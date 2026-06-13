@@ -871,6 +871,14 @@ fallback when the map is unavailable. Initial SM90 actual-model profiles are
 recorded in [qmoe_gemv_exp.md](qmoe_gemv_exp.md). Follow-up P1 tile probes
 kept the existing `CtaN=8, Threads=128` shape after `CtaN=16`, `Threads=64`,
 and a map-specialized launch all failed to improve the measured GEMV kernels.
+The first fusion experiment, FC1 interleaved SwiGLU inside the INT4 per-channel
+GEMV epilogue, is implemented for the profiled FP16 path. It supports
+`swiglu_fusion == 1` with scalar or per-expert alpha/beta/limit parameters and
+falls back to the unfused GEMV-plus-activation path for unsupported dtype,
+quantization, or activation modes. On SM90 actual-model profiles it improved
+GPT-OSS-20B from `0.0721` ms to `0.0681` ms and Gemma-4-26B-A4B from `0.0610`
+ms to `0.0580` ms; Qwen3.6-35B-A3B remains routed to grouped GEMM by the
+current 512-wide intermediate-size guard.
 
 Keep the debug switch (`ORT_DISABLE_MOE_GEMV`) until all planned fast paths have
 independent coverage and benchmark data. It is useful for A/B testing, fallback
