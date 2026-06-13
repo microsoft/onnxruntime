@@ -395,7 +395,6 @@ template void launch_moe_gemv_int4_per_channel<__nv_bfloat16>(__nv_bfloat16 cons
 template void launch_moe_gemv_int4_per_channel_interleaved_swiglu<half>(
     half const*, uint8_t const*, half const*, half const*, half*, int64_t const*, int const*, int, int64_t,
     int64_t, int64_t, int, cutlass_kernels::ActivationParams, cudaStream_t);
-
 }  // namespace moe_gemv
 }  // namespace kernels
 }  // namespace onnxruntime::llm

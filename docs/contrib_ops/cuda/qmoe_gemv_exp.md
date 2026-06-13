@@ -377,3 +377,61 @@ range. The fused GEMV compute rows correspond to fused FC1 and unfused FC2.
 - The FC2 finalize/scatter fusion remains a larger but riskier opportunity. It
   can remove another launch, but it needs a design that preserves the current
   float accumulation behavior across top-k experts.
+
+## 2026-06-13 GPT-OSS FC2 / Finalize Follow-Up: SM90, FP16, Warmup 5, Repeat 100
+
+### Setup
+
+- Same build and Python environment as above.
+- Target case: `gpt_oss_20b_m1_top4_fp16_2880x2880_e32`.
+- Goal: find remaining GPT-OSS-specific opportunity after FC1 interleaved SwiGLU
+  fusion. The prior profile had FC1 GEMV around `13.93` us, FC2 GEMV around
+  `10.11` us, and finalize around `5.65` us.
+- Nsight artifacts:
+  `/tmp/ort_qmoe_profile/qmoe_fc2_finalize_fused_gpt_{gemv,gemm}.{nsys-rep,sqlite}`
+  for the rejected fused-FC2 prototype and
+  `/tmp/ort_qmoe_profile/qmoe_finalize_onerow_gpt_{gemv,gemm}.{nsys-rep,sqlite}`
+  for the retained one-row finalize specialization.
+
+### Rejected Prototype: FC2 GEMV + Finalize Fusion
+
+The prototype assigned one CTA to each original token and N tile, then looped
+over the token's top-k experts inside that CTA. It avoided atomics and preserved
+the top-k accumulation order, but it also serialized the four GPT-OSS FC2 GEMVs
+that previously ran as separate expanded-row CTAs.
+
+| Variant | Enabled ms | Fused FC2/finalize avg us | Decision |
+|---------|------------|---------------------------|----------|
+| FC2 GEMV + finalize fusion | 0.0848 | 33.21 | Reject; removed from code. |
+
+### Retained Prototype: One-Row Finalize Specialization
+
+The retained change keeps the existing FC2 GEMV kernel and only specializes
+`finalizeMoeRoutingKernelLauncher` for `num_rows == 1` and `top_k <= 4`. The
+specialized kernel caches `unpermuted_row_to_permuted_row`, expert ids, and
+routing scales once in shared memory instead of reloading them for every output
+vector element.
+
+| Variant | Enabled ms | FC1 GEMV avg us | FC2 GEMV avg us | Finalize avg us | Result |
+|---------|------------|-----------------|-----------------|-----------------|--------|
+| FC1 fused baseline | 0.0681 | 13.93 | 10.11 | ~5.65 | Baseline for comparison. |
+| one-row finalize specialization | 0.0681 | 13.98 | 10.09 | 5.50 | Keep; small finalize-kernel win, end-to-end neutral within noise. |
+
+### Correctness
+
+- Large enough FP16 INT4 SwiGLU top-k 4 parity case
+  (`hidden_size=1024`, `intermediate_size=1024`, `num_experts=8`, `top_k=4`) had
+  max absolute difference `0.0006104` before the helper's parity check and
+  `0.000732` in the built-in parity check.
+
+### Observations
+
+- GPT-OSS still has room around FC2 and finalize, but a simple single-CTA
+  FC2/finalize fusion is the wrong shape because it gives up expanded-row
+  parallelism.
+- A viable future FC2/finalize design likely needs to preserve parallelism across
+  top-k experts and N tiles, then reduce partial results without atomics or with
+  carefully bounded numerical change.
+- The current one-row finalize specialization is intentionally small: it is useful
+  for GPT-style single-token decode and does not alter routing for larger batches
+  or top-k 8 models.

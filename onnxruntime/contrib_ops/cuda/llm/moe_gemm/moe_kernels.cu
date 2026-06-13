@@ -1632,6 +1632,76 @@ __global__ void finalizeMoeRoutingKernel(GemmOutputType const* expanded_permuted
 #endif
 }
 
+template <typename OutputType, class GemmOutputType, class ScaleBiasType, ScaleMode SCALE_MODE, int MaxExpertsPerToken>
+__global__ void finalizeMoeRoutingOneRowKernel(GemmOutputType const* expanded_permuted_rows,
+                                               OutputType* reduced_unpermuted_output, ScaleBiasType const* bias, float const* scales,
+                                               int const* unpermuted_row_to_permuted_row, int const* token_selected_experts,
+                                               int64_t const orig_cols, int64_t const experts_per_token,
+                                               int const num_experts_per_node, int const start_expert_id) {
+  assert(orig_cols % 4 == 0);
+  assert(experts_per_token <= MaxExpertsPerToken);
+
+  // Load 128-bits per thread, according to the smallest data type we read/write
+  constexpr int64_t FINALIZE_ELEM_PER_THREAD = 128 / std::min(sizeof_bits<OutputType>::value, sizeof_bits<GemmOutputType>::value);
+
+  __shared__ int expanded_permuted_rows_for_topk[MaxExpertsPerToken];
+  __shared__ int expert_ids_for_topk[MaxExpertsPerToken];
+  __shared__ float row_scales_for_topk[MaxExpertsPerToken];
+
+  int const tid = threadIdx.x;
+  if (tid < experts_per_token) {
+    int const expert_id = token_selected_experts[tid] - start_expert_id;
+    expert_ids_for_topk[tid] = expert_id;
+    expanded_permuted_rows_for_topk[tid] =
+        (expert_id >= 0 && expert_id < num_experts_per_node) ? unpermuted_row_to_permuted_row[tid] : -1;
+    row_scales_for_topk[tid] = (SCALE_MODE == ScaleMode::NO_SCALE) ? 1.f : scales[tid];
+  }
+  __syncthreads();
+
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900))
+  asm volatile("griddepcontrol.wait;");
+#endif
+
+  int64_t const start_offset = tid;
+  int64_t const stride = FINALIZE_THREADS_PER_BLOCK;
+  int64_t const num_elems_in_col = orig_cols / FINALIZE_ELEM_PER_THREAD;
+
+  using BiasElem = cutlass::Array<ScaleBiasType, FINALIZE_ELEM_PER_THREAD>;
+  using InputElem = cutlass::Array<GemmOutputType, FINALIZE_ELEM_PER_THREAD>;
+  using OutputElem = cutlass::Array<OutputType, FINALIZE_ELEM_PER_THREAD>;
+  using ComputeElem = cutlass::Array<float, FINALIZE_ELEM_PER_THREAD>;
+  auto const* bias_v = reinterpret_cast<BiasElem const*>(bias);
+  auto const* expanded_permuted_rows_v = reinterpret_cast<InputElem const*>(expanded_permuted_rows);
+  auto* reduced_row_ptr_v = reinterpret_cast<OutputElem*>(reduced_unpermuted_output);
+
+  for (int elem_index = start_offset; elem_index < num_elems_in_col; elem_index += stride) {
+    ComputeElem thread_output;
+    thread_output.fill(0);
+    for (int k_idx = 0; k_idx < experts_per_token; ++k_idx) {
+      int const expanded_permuted_row = expanded_permuted_rows_for_topk[k_idx];
+      if (expanded_permuted_row < 0) {
+        continue;
+      }
+
+      auto const* expanded_permuted_rows_row_ptr = expanded_permuted_rows_v + expanded_permuted_row * num_elems_in_col;
+
+      ComputeElem expert_result = arrayConvert<InputElem, ComputeElem>(expanded_permuted_rows_row_ptr[elem_index]);
+      if (bias) {
+        auto const* bias_ptr = bias_v + expert_ids_for_topk[k_idx] * num_elems_in_col;
+        expert_result = expert_result + arrayConvert<BiasElem, ComputeElem>(bias_ptr[elem_index]);
+      }
+
+      thread_output = thread_output + row_scales_for_topk[k_idx] * expert_result;
+    }
+
+    OutputElem output_elem = arrayConvert<ComputeElem, OutputElem>(thread_output);
+    reduced_row_ptr_v[elem_index] = output_elem;
+  }
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900))
+  asm volatile("griddepcontrol.launch_dependents;");
+#endif
+}
+
 // Final kernel to unpermute and scale
 // This kernel unpermutes the original data, does the k-way reduction and performs the final skip connection.
 template <typename OutputType, class GemmOutputType, class ScaleBiasType, ScaleMode SCALE_MODE>
@@ -1762,12 +1832,21 @@ void finalizeMoeRoutingKernelLauncher(GemmOutputType const* expanded_permuted_ro
     int64_t const threads = FINALIZE_THREADS_PER_BLOCK;
     config.gridDim = blocks;
     config.blockDim = threads;
-    auto func = final_scales
-                    ? &finalizeMoeRoutingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::DEFAULT>
-                    : &finalizeMoeRoutingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::NO_SCALE>;
-    cudaLaunchKernelEx(&config, func, expanded_permuted_rows, reduced_unpermuted_output, bias_ptr, final_scales,
-                       unpermuted_row_to_permuted_row, token_selected_experts, cols, experts_per_token, num_experts_per_node_int,
-                       start_expert_id);
+    if (num_rows == 1 && experts_per_token > 0 && experts_per_token <= 4) {
+      auto func = final_scales
+                      ? &finalizeMoeRoutingOneRowKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::DEFAULT, 4>
+                      : &finalizeMoeRoutingOneRowKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::NO_SCALE, 4>;
+      cudaLaunchKernelEx(&config, func, expanded_permuted_rows, reduced_unpermuted_output, bias_ptr, final_scales,
+                         unpermuted_row_to_permuted_row, token_selected_experts, cols, experts_per_token,
+                         num_experts_per_node_int, start_expert_id);
+    } else {
+      auto func = final_scales
+                      ? &finalizeMoeRoutingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::DEFAULT>
+                      : &finalizeMoeRoutingKernel<OutputType, GemmOutputType, ScaleBiasType, ScaleMode::NO_SCALE>;
+      cudaLaunchKernelEx(&config, func, expanded_permuted_rows, reduced_unpermuted_output, bias_ptr, final_scales,
+                         unpermuted_row_to_permuted_row, token_selected_experts, cols, experts_per_token, num_experts_per_node_int,
+                         start_expert_id);
+    }
   }
 }
 
@@ -2436,8 +2515,8 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
   }
 
   ActivationParameters activation_params;  // Here assume gemm2 has no activation
-  // Note: expanded_num_rows, to check this value, it's greater than num_rows * num_experts_per_node
-  // Fast path: int4 per-channel MoE GEMV (no bias here; fc2 bias applied in finalizeMoeRouting).
+                                           // Note: expanded_num_rows, to check this value, it's greater than num_rows * num_experts_per_node
+                                           // Fast path: int4 per-channel MoE GEMV (no bias here; fc2 bias applied in finalizeMoeRouting).
   bool const fc2_did_gemv = tryLaunchMoeGemvInt4PerChannel<T, WeightType, ScaleBiasType>(
       input, fc2_expert_weights,
       quant_params.groupwise.group_size > 0

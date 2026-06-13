@@ -879,6 +879,13 @@ quantization, or activation modes. On SM90 actual-model profiles it improved
 GPT-OSS-20B from `0.0721` ms to `0.0681` ms and Gemma-4-26B-A4B from `0.0610`
 ms to `0.0580` ms; Qwen3.6-35B-A3B remains routed to grouped GEMM by the
 current 512-wide intermediate-size guard.
+For GPT-OSS-20B, a naive FC2 GEMV-plus-finalize fused kernel was rejected after
+profiling because it serialized the four top-k expert GEMVs inside each CTA.
+A smaller one-row finalize specialization is kept for `num_rows == 1` and
+`top_k <= 4`; it preserves the existing FC2 GEMV parallelism and only caches the
+one-token routing metadata in shared memory. The measured benefit is kernel-local
+and modest, so the next substantial GPT-OSS opportunity is likely a different
+FC2 design that preserves top-k parallelism while reducing finalize traffic.
 
 Keep the debug switch (`ORT_DISABLE_MOE_GEMV`) until all planned fast paths have
 independent coverage and benchmark data. It is useful for A/B testing, fallback
