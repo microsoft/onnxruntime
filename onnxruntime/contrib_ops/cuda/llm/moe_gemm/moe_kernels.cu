@@ -115,10 +115,10 @@ bool tryLaunchMoeGemvIntSymmetric(T const* input, WeightType const* weights, Sca
                 (std::is_same_v<T, half> || std::is_same_v<T, __nv_bfloat16>) && std::is_same_v<ScaleBiasType, T>) {
     bool const env_disabled = MoeGemvDisabledByEnv();
     bool const has_block_zeros = group_size > 0 && weight_zeros != nullptr;
+    constexpr int weight_bits = MoeGemvWeightBits<WeightType>();
     if (disabled || env_disabled || has_block_zeros) {
       return false;
     }
-    constexpr int weight_bits = MoeGemvWeightBits<WeightType>();
     if (!onnxruntime::llm::kernels::moe_gemv::is_moe_gemv_supported(
             sm, expanded_num_rows, n, k, weight_bits, group_size)) {
       return false;
@@ -162,6 +162,8 @@ bool tryLaunchMoeGemvIntSymmetricInterleavedSwiGLU(
     if (disabled || env_disabled || has_block_zeros) {
       return false;
     }
+    int64_t const n = inter_size * 2;
+    constexpr int weight_bits = MoeGemvWeightBits<WeightType>();
     if (activation_params.swiglu_fusion != 1) {
       return false;
     }
@@ -169,8 +171,6 @@ bool tryLaunchMoeGemvIntSymmetricInterleavedSwiGLU(
         activation_params.activation_type != ActivationType::SwigluBias) {
       return false;
     }
-    int64_t const n = inter_size * 2;
-    constexpr int weight_bits = MoeGemvWeightBits<WeightType>();
     if (!onnxruntime::llm::kernels::moe_gemv::is_moe_gemv_supported(
             sm, expanded_num_rows, n, k, weight_bits, group_size)) {
       return false;

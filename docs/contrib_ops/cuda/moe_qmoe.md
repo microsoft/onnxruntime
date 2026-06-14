@@ -183,7 +183,7 @@ under [onnxruntime/contrib_ops/cuda/llm/moe_gemm/](onnxruntime/contrib_ops/cuda/
 
 | Path | CUTLASS class | Used for | SM range |
 |------|---------------|----------|----------|
-| **MoE GEMV fast path** | `fpA_intB_gemv`-based custom kernel | INT4 per-column W4A16 and symmetric INT4/INT8 block-wise W*A16 with FP16 or BF16 activations and true decode row counts | SM80+ |
+| **MoE GEMV fast path** | `fpA_intB_gemv`-based custom kernel | INT4/INT8 per-column W*A16 and symmetric INT4/INT8 block-wise W*A16 with FP16 or BF16 activations and true decode row counts | SM80+ |
 | **Ampere GemmGrouped** | `cutlass::gemm::kernel::GemmGrouped` | INT4/INT8 W*A16, FP8 W8A16 dequant fallback, FP32 | SM75–SM89, plus all mixed-input on SM90/SM120 |
 | **TMA Warp-Specialized (mixed-input)** | `CollectiveBuilderMixedInput` | Same-type FP16×FP16 / BF16×BF16, native MXFP4 W4A16 | SM90 (same-type), SM120 (FP4 W4A16) |
 | **Block-Scaled Tensor Op** | `OpClassBlockScaledTensorOp` | Native FP8×MXFP4 (`wfp4afp8`) | SM100+ (Blackwell) |
@@ -193,8 +193,8 @@ QMoE when all of the following are true:
 
 - activation/output dtype is FP16 or BF16;
 - scales and biases use the same dtype as the activation;
-- weights are INT4 for per-column scales, or INT4/INT8 for symmetric block-wise scales;
-- `block_size <= 0` for per-column INT4, or `block_size` is 64 or 128 for block-wise INT4/INT8;
+- weights are INT4 or INT8 for per-column scales, or INT4/INT8 for symmetric block-wise scales;
+- `block_size <= 0` for per-column INT4/INT8, or `block_size` is 64 or 128 for block-wise INT4/INT8;
 - block-wise GEMV is symmetric only; if zero-point compensation is present, dispatch falls back to grouped GEMM;
 - `expanded_num_rows = num_tokens * top_k` is in `(0, 8]`;
 - `N >= 512` and `K >= 512`;
@@ -935,7 +935,25 @@ column: scale tensors are `[E, N]`, and `block_size <= 0`.
 | One-row finalize | `num_rows == 1`, `top_k <= 4` has a static top-k finalize specialization. | Modest GPT-OSS finalize improvement while preserving the existing FC2 GEMV parallelism. |
 | End-to-end GPT-OSS | The final per-column GEMV path was validated in ORT GenAI on GPT-OSS-20B INT4. | About 15% faster than the grouped-GEMM baseline and about 8% faster than the FasterTransformer reference at batch 1. |
 
+#### Completed per-column INT8 work
+
+Per-column INT8 means W8A16 with one symmetric scale per output column: scale
+tensors are `[E, N]` and `block_size <= 0`. The per-column path previously
+required `block_size == 0` exactly in `is_moe_gemv_supported`, but the QMoE
+runtime carries per-column scales as `group_size = -1` (the `QuantParams::Int`
+default), so per-column INT4 *and* INT8 silently fell back to grouped GEMM. The
+gate now treats any `group_size <= 0` as the per-column case, matching the GEMV
+launcher dispatch that already mapped `group_size <= 0` to the `GroupSize == 0`
+kernel.
+
+| Area | What is implemented | Result |
+|------|---------------------|--------|
+| Gate fix | `is_moe_gemv_supported` accepts `group_size <= 0` (per-column) alongside 64/128 instead of requiring exactly 0. | Per-column INT4 and INT8 now reach the GEMV kernels; block-wise behavior is unchanged. |
+| INT8 details | The existing `(half, uint8_t)` and `(__nv_bfloat16, uint8_t)` GEMV kernel details cover per-column INT8 with no new instantiation. | FC1 interleaved-SwiGLU and FC2 per-column INT8 GEMV run for FP16 and BF16. |
+| Profiling | `int8_per_column_*_1024x4096_e8` and `gpt_oss_20b_*_int8_2880x2880_e32` cases profiled in GEMV and `ORT_DISABLE_MOE_GEMV=1` modes. | Real `moe_gemv_kernel` / `moe_gemv_interleaved_swiglu_kernel` confirmed; about 1.2x–1.4x lower benchmark latency than grouped GEMM with valid output. |
+
 #### Completed block-wise INT4/INT8 work
+
 
 Block-wise here means `quant_type="int"` with `block_size` 64 or 128 and scales
 provided as `[E, N, K / block_size]`. QMoE prepack/runtime transposes those

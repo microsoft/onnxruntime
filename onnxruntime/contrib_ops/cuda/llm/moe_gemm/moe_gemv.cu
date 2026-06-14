@@ -386,10 +386,8 @@ bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t
   if (weight_bits != 4 && weight_bits != 8) {
     return false;
   }
-  if (group_size != 0 && group_size != 64 && group_size != 128) {
-    return false;
-  }
-  if (group_size == 0 && weight_bits != 4) {
+  // group_size <= 0 selects the per-column (per-channel) path; block-wise scales must be 64 or 128.
+  if (group_size > 0 && group_size != 64 && group_size != 128) {
     return false;
   }
   // Keep the first block-wise GEMV implementation on complete K blocks.

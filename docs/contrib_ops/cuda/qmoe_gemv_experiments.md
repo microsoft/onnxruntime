@@ -754,9 +754,95 @@ dtype-independent, so BF16 still matches FP16 behavior. The current branch's
 confirmed model-shape GEMV coverage is the block-wise (`block_size=64`) path used
 in the tables above.
 
+> Update (2026-06-13): the per-channel fallback observed here was a gate bug
+> (`group_size = -1` rejected by `is_moe_gemv_supported`), not a fundamental
+> limitation. It is fixed in the "INT8 Per-Column GEMV Enablement" section below,
+> after which per-column INT4/INT8 route to GEMV for FP16 and BF16.
+
+
 ### Decision
 
 - Keep the relaxed gate: BF16 and FP16 share one dispatch path and one set of
   custom GEMV kernels.
 - For every profiled model shape, BF16 routes to GEMV exactly where FP16 does and
   matches FP16 latency within measurement noise.
+
+## 2026-06-13 INT8 Per-Column GEMV Enablement: SM90, `block_size=0`, Warmup 5, Repeat 100
+
+### Setup
+
+- Goal: route per-column (`block_size <= 0`) symmetric INT8 W8A16 QMoE decode
+  shapes to the custom GEMV fast path for FP16 and BF16 activations.
+- GPU: single H200 (SM90), `CUDA_VISIBLE_DEVICES=1` on an otherwise idle GPU
+  (`nvidia-smi` confirmed 0% before recording).
+- ONNX Runtime build: `~/onnxruntime/build/cu130/Release`, CUDA 13.0,
+  `CMAKE_CUDA_ARCHITECTURES=89;90`. Rebuilt with `--clean_moe`.
+- Python: `~/onnxruntime/.venv_cu130/bin/python` (Python 3.14).
+- Nsight Systems: `~/cuda13.0/bin/nsys`. Kernel parsing used
+  `parse_nsys.py --nvtx-range benchmark --pattern '%'`.
+- Artifacts: `/tmp/qmoe_gemv_int8pc_20260613/<case>_{gemv,gemm}.{nsys-rep,sqlite}`.
+
+### Root Cause Of The Prior Per-Column Fallback
+
+The earlier BF16 section's "Per-Channel Note" observed that per-channel
+(`block_size=0`) cases stayed on grouped GEMM. The cause was in the GEMV gate:
+
+- The QMoE runtime carries per-column scales through `QuantParams::Int`, which
+  leaves `groupwise.group_size` at its struct default of `-1`
+  (`moe_kernels.h`).
+- `is_moe_gemv_supported` previously required `group_size == 0` exactly for the
+  per-column case, so `group_size = -1` was rejected (`sup=0`) and dispatch fell
+  back to grouped GEMM — for per-column INT4 *and* INT8.
+- The GEMV launcher dispatch (`dispatch_moe_gemv_group_size` and the
+  interleaved-SwiGLU variant) already maps any `group_size <= 0` to the
+  `GroupSize == 0` per-column kernel.
+
+The fix relaxes `is_moe_gemv_supported` to accept any `group_size <= 0` as the
+per-column case (alongside block-wise 64/128). No new kernel instantiation is
+needed: `(half, uint8_t)` and `(__nv_bfloat16, uint8_t)` GEMV details already
+exist from the block-wise INT8 work.
+
+### Routing Confirmation
+
+Both FC stages now route to the custom kernels for per-column INT8. Values are
+average kernel duration in microseconds inside the measured `benchmark` NVTX
+range; FC1 is `moe_gemv_interleaved_swiglu_kernel`, FC2 is `moe_gemv_kernel`.
+
+| Case | Expanded rows | DType | FC1 GEMV us | FC2 GEMV us | Route |
+|------|---------------|-------|-------------|-------------|-------|
+| `int8_per_column_m1_top2_*_1024x4096_e8` | 2 | FP16 | 5.15 | 5.26 | GEMV |
+| `int8_per_column_m1_top2_*_1024x4096_e8` | 2 | BF16 | 6.24 | 5.75 | GEMV |
+| `gpt_oss_20b_m1_top4_int8_2880x2880_e32` | 4 | FP16 | 22.57 | 11.90 | GEMV |
+| `gpt_oss_20b_m1_top4_int8_2880x2880_e32` | 4 | BF16 | 22.71 | 12.13 | GEMV |
+
+### End-To-End Benchmark Latency
+
+Lower is better. `Enabled` is the default GEMV build; `Fallback` sets
+`ORT_DISABLE_MOE_GEMV=1`. Values are the benchmark-loop latency in milliseconds.
+Every case reported `has_invalid_output=false`.
+
+| Model case | DType | Enabled ms | Fallback ms | Speedup |
+|------------|-------|------------|-------------|---------|
+| `int8_per_column_m1_top2_1024x4096_e8` | FP16 | 0.0566 | 0.0816 | 1.44x |
+| `int8_per_column_m1_top2_1024x4096_e8` | BF16 | 0.0578 | 0.0862 | 1.49x |
+| `gpt_oss_20b_m1_top4_int8_2880x2880_e32` | FP16 | 0.0785 | 0.0947 | 1.21x |
+| `gpt_oss_20b_m1_top4_int8_2880x2880_e32` | BF16 | 0.0785 | 0.0989 | 1.26x |
+
+### Correctness
+
+- Focused INT8 per-column SwiGLU parity tests passed:
+  `pytest test_qmoe_cuda.py -k "test_swiglu_qmoe_parity_1 or
+  test_swiglu_qmoe_parity_3 or test_swiglu_qmoe_parity_bf16_1 or
+  test_swiglu_qmoe_parity_bf16_3"` reported `4 passed`.
+- Regression check: `pytest -k "TestSwigluQMoE or TestQMoEIntPrePackSmoke"`
+  reported `34 passed, 4 skipped`.
+- The per-column INT4 and block-wise INT4/INT8 routes are unchanged: block-wise
+  cases still pass `group_size = 64/128` and per-column INT4 now also reaches
+  GEMV via the same `group_size <= 0` relaxation.
+
+### Decision
+
+- Keep the relaxed gate: `is_moe_gemv_supported` accepts `group_size <= 0` as the
+  per-column case for INT4 and INT8.
+- Per-column INT8 W8A16 decode shapes route to GEMV for both FP16 and BF16 and
+  beat the grouped-GEMM fallback at every profiled shape.

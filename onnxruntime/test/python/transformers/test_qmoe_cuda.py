@@ -309,24 +309,38 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True, asymmetric: bool 
         scale, quantized_storage, dequantized, zero_point_storage
     """
     block_size = weights.shape[1]
-    if is_4_bit_quantization and not asymmetric and block_size > 256:
+    if not asymmetric and block_size > 256:
         n, k = weights.shape
         weights_float = weights.detach().float()
-        scale = weights_float.abs().amax(dim=1, keepdim=True) / 7.0
-        scale = torch.clamp(scale, min=torch.finfo(torch.float32).eps)
-        q_weight = torch.clamp(torch.round(weights_float / scale), -8, 7).to(torch.int16) + 8
-        q_weight = q_weight.to(torch.uint8).contiguous()
-        q_low = q_weight[:, 0::2]
-        q_high = q_weight[:, 1::2]
-        if q_high.shape[1] < q_low.shape[1]:
-            q_high = F.pad(q_high, (0, 1))
-        q_packed = q_low | (q_high << 4)
-        processed_q_weight = _pybind.pack_weights_for_cuda_mixed_gemm(q_packed.cpu().numpy(), n, k, 4, 80)
-        processed_q_weight_torch = (
-            torch.from_numpy(processed_q_weight).reshape(k, n // 2).to(weights.device).view(torch.uint8)
-        )
-        dequantized = (q_weight.to(weights.dtype) - 8.0) * scale.to(weights.device).to(weights.dtype)
-        return scale.to(weights.device).to(torch.float16), processed_q_weight_torch, dequantized, None
+        if is_4_bit_quantization:
+            scale = weights_float.abs().amax(dim=1, keepdim=True) / 7.0
+            scale = torch.clamp(scale, min=torch.finfo(torch.float32).eps)
+            q_weight = torch.clamp(torch.round(weights_float / scale), -8, 7).to(torch.int16) + 8
+            q_weight = q_weight.to(torch.uint8).contiguous()
+            q_low = q_weight[:, 0::2]
+            q_high = q_weight[:, 1::2]
+            if q_high.shape[1] < q_low.shape[1]:
+                q_high = F.pad(q_high, (0, 1))
+            q_packed = q_low | (q_high << 4)
+            processed_q_weight = _pybind.pack_weights_for_cuda_mixed_gemm(q_packed.cpu().numpy(), n, k, 4, 80)
+            processed_q_weight_torch = (
+                torch.from_numpy(processed_q_weight).reshape(k, n // 2).to(weights.device).view(torch.uint8)
+            )
+            dequantized = (q_weight.to(weights.dtype) - 8.0) * scale.to(weights.device).to(weights.dtype)
+            return scale.to(weights.device).to(torch.float16), processed_q_weight_torch, dequantized, None
+        else:
+            # 8-bit per-column (per-channel) symmetric quantization. Weights are biased
+            # uint8 values centered at 128, matching the kernel's (q - 128) * scale dequant.
+            scale = weights_float.abs().amax(dim=1, keepdim=True) / 127.0
+            scale = torch.clamp(scale, min=torch.finfo(torch.float32).eps)
+            q_weight = torch.clamp(torch.round(weights_float / scale), -127, 127).to(torch.int16) + 128
+            q_weight = q_weight.to(torch.uint8).contiguous()
+            processed_q_weight = _pybind.pack_weights_for_cuda_mixed_gemm(q_weight.cpu().numpy(), n, k, 8, 80)
+            processed_q_weight_torch = (
+                torch.from_numpy(processed_q_weight).reshape(k, n).to(weights.device).view(torch.uint8)
+            )
+            dequantized = (q_weight.to(weights.dtype) - 128.0) * scale.to(weights.device).to(weights.dtype)
+            return scale.to(weights.device).to(torch.float16), processed_q_weight_torch, dequantized, None
 
     return quant_dequant_blockwise(weights, block_size, is_4_bit_quantization, asymmetric)
 
@@ -2118,6 +2132,54 @@ def _qmoe_gemv_benchmark_cases():
             "onnx_dtype": "BFLOAT16",
             "quant_bits": 8,
             "block_size": 64,
+        },
+        {
+            "name": "gpt_oss_20b_m1_top4_int8_fp16_2880x2880_e32",
+            "batch_size": 1,
+            "sequence_length": 1,
+            "hidden_size": 2880,
+            "intermediate_size": 2880,
+            "num_experts": 32,
+            "top_k": 4,
+            "onnx_dtype": "FLOAT16",
+            "quant_bits": 8,
+            "block_size": 0,
+        },
+        {
+            "name": "gpt_oss_20b_m1_top4_int8_bf16_2880x2880_e32",
+            "batch_size": 1,
+            "sequence_length": 1,
+            "hidden_size": 2880,
+            "intermediate_size": 2880,
+            "num_experts": 32,
+            "top_k": 4,
+            "onnx_dtype": "BFLOAT16",
+            "quant_bits": 8,
+            "block_size": 0,
+        },
+        {
+            "name": "int8_per_column_m1_top2_fp16_1024x4096_e8",
+            "batch_size": 1,
+            "sequence_length": 1,
+            "hidden_size": 1024,
+            "intermediate_size": 4096,
+            "num_experts": 8,
+            "top_k": 2,
+            "onnx_dtype": "FLOAT16",
+            "quant_bits": 8,
+            "block_size": 0,
+        },
+        {
+            "name": "int8_per_column_m1_top2_bf16_1024x4096_e8",
+            "batch_size": 1,
+            "sequence_length": 1,
+            "hidden_size": 1024,
+            "intermediate_size": 4096,
+            "num_experts": 8,
+            "top_k": 2,
+            "onnx_dtype": "BFLOAT16",
+            "quant_bits": 8,
+            "block_size": 0,
         },
     ]
 
