@@ -113,12 +113,11 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   bool is_quantized = (k_quant_type_ != KVQuantizationType::NONE || v_quant_type_ != KVQuantizationType::NONE);
   // XQA enablement:
   //  - An explicit ORT_ENABLE_XQA overrides everything (1 = on, 0 = off, including the head_sink default-on path).
-  //  - When unset, XQA defaults on for the quantized KV cache path and off for the non-quantized path
-  //    (the non-quantized head_sink decode path is additionally enabled per-Run in ComputeInternal).
+  //  - When unset, XQA defaults on for both quantized and non-quantized fp16/bf16 paths.
   constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
   const int xqa_env = ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", -1);  // -1 means unset
   xqa_force_disabled_ = (xqa_env == 0);
-  const int effective_enable_xqa = (xqa_env == -1) ? (is_quantized ? 1 : 0) : xqa_env;
+  const int effective_enable_xqa = (xqa_env == -1) ? 1 : xqa_env;
   enable_xqa_ = kIsFp16OrBf16 && (effective_enable_xqa != 0);
 
   kernel_options_ = this->GetAttentionKernelOptions();
@@ -437,7 +436,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
     bool is_non_quantized_supported = !is_inputs_quantized &&
                                       (parameters.head_size == 256 || parameters.head_size == 128 || parameters.head_size == 64) &&
-                                      (64 % group_size == 0);
+                                      (group_size == 1 || group_size == 2 || group_size == 4 || group_size == 5 ||
+                                       group_size == 8 || group_size == 16 || group_size == 32);
 
     data.use_xqa = (is_non_quantized_supported || is_int8_quantized_supported || is_fp8_quantized_supported);
 
