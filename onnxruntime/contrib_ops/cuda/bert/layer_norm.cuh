@@ -129,25 +129,25 @@ __device__ inline void LayerNorm(
 
 template <typename T, int TPB>
 __device__ inline void SimplifiedLayerNorm(
-    const T& thread_data, const int ld, const int offset, const T* gamma, const T epsilon, T* output) {
+    const float& thread_data, const int ld, const int offset, const T* gamma, const T epsilon, T* output) {
   // Assuming thread_data is already divided by ld
 
-  using BlockReduce = cub::BlockReduce<T, TPB>;
+  using BlockReduce = cub::BlockReduce<float, TPB>;
   __shared__ typename BlockReduce::TempStorage temp_storage;
-  __shared__ T rsigma;  // 1 / std.dev.
+  __shared__ float rsigma;  // 1 / std.dev.
 
-  const T sum = BlockReduce(temp_storage).Sum(thread_data);
+  const float sum = BlockReduce(temp_storage).Sum(thread_data);
 
   if (threadIdx.x == 0) {
-    rsigma = Rsqrt(sum + epsilon);
+    rsigma = Rsqrt(sum + static_cast<float>(epsilon));
   }
   __syncthreads();
 
   for (int i = threadIdx.x; i < ld; i += TPB) {
     const int idx = offset + i;
-    const T val = output[idx];
-    const T g(gamma[i]);
-    output[idx] = g * val * rsigma;
+    const float val = static_cast<float>(output[idx]);
+    const float g = static_cast<float>(gamma[i]);
+    output[idx] = static_cast<T>(g * val * rsigma);
   }
 }
 
@@ -199,15 +199,15 @@ __device__ inline void LayerNormSmall(const T* input_v, const cub::KeyValuePair<
 }
 
 template <typename T, int TPB, int ILP>
-__device__ inline void SimplifiedLayerNormSmall(const T* input_v, const T& thread_data, const int ld, const int idx,
+__device__ inline void SimplifiedLayerNormSmall(const T* input_v, const float& thread_data, const int ld, const int idx,
                                                 const T* gamma, const T epsilon, T* output) {
   // Assuming thread_data is already divided by ld
   // Small settings: the block covers the leading dimension TPB >= ld. The input
   // value is available in a register
   using VecT = aligned_vector<T, ILP>;
-  using BlockReduce = cub::BlockReduce<T, TPB>;
+  using BlockReduce = cub::BlockReduce<float, TPB>;
   __shared__ typename BlockReduce::TempStorage temp_storage;
-  __shared__ T rsigma;  // 1 / std.dev.
+  __shared__ float rsigma;  // 1 / std.dev.
 
   const bool is_valid = ILP * threadIdx.x < ld;
 
@@ -218,17 +218,17 @@ __device__ inline void SimplifiedLayerNormSmall(const T* input_v, const T& threa
     *gamma_val = *reinterpret_cast<const VecT*>(&gamma[threadIdx.x * ILP]);
   }
 
-  const T sum = BlockReduce(temp_storage).Sum(thread_data);
+  const float sum = BlockReduce(temp_storage).Sum(thread_data);
 
   if (threadIdx.x == 0) {
-    rsigma = Rsqrt(sum + epsilon);
+    rsigma = Rsqrt(sum + static_cast<float>(epsilon));
   }
   __syncthreads();
 
   if (is_valid) {
 #pragma unroll
     for (int i = 0; i < ILP; i++) {
-      output_v[i] = gamma_v[i] * input_v[i] * rsigma;
+      output_v[i] = static_cast<T>(static_cast<float>(gamma_v[i]) * static_cast<float>(input_v[i]) * rsigma);
     }
 
     VecT* output_val = reinterpret_cast<VecT*>(&output_v);

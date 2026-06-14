@@ -99,6 +99,7 @@ __global__ void SkipLayerNormKernel(
   // Reduce sum of x and x^2, and the results are divided by ld.
   KeyValuePairSum pair_sum;
   cub::KeyValuePair<T, T> thread_data(0, 0);
+  float thread_data_simplified = 0.0f;
 
   for (int i = threadIdx.x; i < ld; i += TPB) {
     const int idx = offset + i;
@@ -112,6 +113,11 @@ __global__ void SkipLayerNormKernel(
     const T rldval = reverse_ld * val;
     thread_data = pair_sum(thread_data, cub::KeyValuePair<T, T>(rldval, rldval * val));
 
+    if (Simplified) {
+      float val_f = static_cast<float>(val);
+      thread_data_simplified += static_cast<float>(reverse_ld) * val_f * val_f;
+    }
+
     if (sum_output != nullptr) {
       sum_output[idx] = val;
     }
@@ -120,7 +126,7 @@ __global__ void SkipLayerNormKernel(
   }
 
   if (Simplified) {
-    SimplifiedLayerNorm<T, TPB>(thread_data.value, ld, offset, gamma, epsilon, output);
+    SimplifiedLayerNorm<T, TPB>(thread_data_simplified, ld, offset, gamma, epsilon, output);
     return;
   }
   LayerNorm<T, TPB>(thread_data, ld, offset, beta, gamma, epsilon, output);
@@ -138,6 +144,7 @@ __global__ void SkipLayerNormKernelSmall(
   T sum_v[ILP];
 
   cub::KeyValuePair<T, T> thread_data(T(0.f), T(0.f));
+  float thread_data_simplified = 0.0f;
 
   if (ILP * threadIdx.x < ld) {  // load data under this guard to avoid reading out-of-bounds
     T skip_v[ILP], bias_v[ILP];
@@ -157,6 +164,7 @@ __global__ void SkipLayerNormKernelSmall(
 
     T rldval_sum = T(0.f);
     T rldvalsq_sum = T(0.f);
+    float rldvalsq_sum_f = 0.0f;
     const bool has_sum_output = (sum_output != nullptr);
 
 #pragma unroll
@@ -169,6 +177,11 @@ __global__ void SkipLayerNormKernelSmall(
       const T rldval = rld * sum_v[i];
       rldval_sum += rldval;
       rldvalsq_sum += rldval * sum_v[i];
+
+      if (Simplified) {
+        float val_f = static_cast<float>(sum_v[i]);
+        rldvalsq_sum_f += static_cast<float>(rld) * val_f * val_f;
+      }
     }
 
     if (has_sum_output) {
@@ -176,10 +189,11 @@ __global__ void SkipLayerNormKernelSmall(
     }
 
     thread_data = cub::KeyValuePair<T, T>(rldval_sum, rldvalsq_sum);
+    thread_data_simplified = rldvalsq_sum_f;
   }
 
   if (Simplified) {
-    SimplifiedLayerNormSmall<T, TPB, ILP>(sum_v, thread_data.value, ld, idx, gamma, epsilon, output);
+    SimplifiedLayerNormSmall<T, TPB, ILP>(sum_v, thread_data_simplified, ld, idx, gamma, epsilon, output);
     return;
   }
   LayerNormSmall<T, TPB, ILP>(sum_v, thread_data, ld, idx, beta, gamma, epsilon, output);
