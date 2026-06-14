@@ -1,8 +1,8 @@
 diff --git a/absl/hash/internal/hash.h b/absl/hash/internal/hash.h
 index 1234567..abcdefg 100644
---- a/absl/hash/internal/hash.h
-+++ b/absl/hash/internal/hash.h
-@@ -477,7 +477,7 @@ H AbslHashValue(H hash_state, T (&)[N]) {
+--- a/absl/hash/internal/hash.h	2026-06-14 09:18:51.688331018 +0000
++++ b/absl/hash/internal/hash.h	2026-06-14 09:18:51.693331114 +0000
+@@ -478,7 +478,7 @@
  template <typename H, typename T, size_t N>
  H AbslHashValue(H hash_state, T (&)[N]) {
    static_assert(
@@ -11,7 +11,7 @@ index 1234567..abcdefg 100644
        "Hashing C arrays is not allowed. For string literals, wrap the literal "
        "in absl::string_view(). To hash the array contents, use "
        "absl::MakeSpan() or make the array an std::array. To hash the array "
-@@ -1265,7 +1265,7 @@ class ABSL_DLL MixingHashState : public HashStateBase<MixingHashState> {
+@@ -1265,7 +1265,7 @@
    }
 
   private:
@@ -22,9 +22,9 @@ index 1234567..abcdefg 100644
                                                            WeaklyMixedInteger);
 diff --git a/absl/hash/hash.h b/absl/hash/hash.h
 index 1234567..abcdefg 100644
---- a/absl/hash/hash.h
-+++ b/absl/hash/hash.h
-@@ -333,7 +333,8 @@ class HashState : public hash_internal::HashStateBase<HashState> {
+--- a/absl/hash/hash.h	2026-06-14 09:18:51.688331018 +0000
++++ b/absl/hash/hash.h	2026-06-14 09:18:51.697331190 +0000
+@@ -332,7 +332,8 @@
        absl::enable_if_t<
            std::is_base_of<hash_internal::HashStateBase<T>, T>::value, int> = 0>
    static HashState Create(T* state) {
@@ -34,7 +34,7 @@ index 1234567..abcdefg 100644
      s.Init(state);
      return s;
    }
-@@ -368,7 +369,7 @@ class HashState : public hash_internal::HashStateBase<HashState> {
+@@ -368,7 +369,7 @@
   private:
    HashState() = default;
 
@@ -45,9 +45,9 @@ index 1234567..abcdefg 100644
    template <typename T>
 diff --git a/absl/container/internal/raw_hash_set.h b/absl/container/internal/raw_hash_set.h
 index 1234567..abcdefg 100644
---- a/absl/container/internal/raw_hash_set.h
-+++ b/absl/container/internal/raw_hash_set.h
-@@ -464,7 +464,7 @@ inline uint16_t NextSeed() {
+--- a/absl/container/internal/raw_hash_set.h	2026-06-14 09:18:51.688331018 +0000
++++ b/absl/container/internal/raw_hash_set.h	2026-06-14 09:18:51.699331228 +0000
+@@ -465,7 +465,7 @@
  inline uint16_t NextSeed() {
    static_assert(PerTableSeed::kBitCount == 16);
    thread_local uint16_t seed =
@@ -56,3 +56,16 @@ index 1234567..abcdefg 100644
    seed += uint16_t{0xad53};
    return seed;
  }
+diff --git a/absl/container/internal/common.h b/absl/container/internal/common.h
+index 1234567..abcdefg 100644
+--- a/absl/container/internal/common.h	2026-06-14 09:18:51.688331018 +0000
++++ b/absl/container/internal/common.h	2026-06-14 09:18:51.701331266 +0000
+@@ -59,7 +59,7 @@
+ template <class T>
+ struct IfRRef {
+   template <class Other>
+-  using AddPtr = Other;
++  using AddPtr = std::enable_if_t<true, Other>;
+ };
+
+ template <class T>
