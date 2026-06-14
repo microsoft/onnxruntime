@@ -194,7 +194,7 @@ QMoE when all of the following are true:
 - activation/output dtype is FP16 or BF16;
 - scales and biases use the same dtype as the activation;
 - weights are INT4 or INT8 for per-column scales, or INT4/INT8 for symmetric block-wise scales;
-- `block_size <= 0` for per-column INT4/INT8, or `block_size` is 64 or 128 for block-wise INT4/INT8;
+- `block_size <= 0` for per-column INT4/INT8, or `block_size` is 32, 64, or 128 for block-wise INT4/INT8;
 - block-wise GEMV is symmetric only; if zero-point compensation is present, dispatch falls back to grouped GEMM;
 - `expanded_num_rows = num_tokens * top_k` is in `(0, 8]`;
 - `N >= 512` and `K >= 512`;
@@ -455,9 +455,9 @@ Dequantization (symmetric): `W = (W_stored - 128) * scale`.
 
 | Architecture | Activation | Supported `block_size` |
 |--------------|-----------|------------------------|
-| SM75–89 (Turing/Ampere/Ada) | FP16/BF16 | 64, 128 |
-| SM90 (Hopper) | FP16/BF16 | any multiple of 64 |
-| SM100/120 (Blackwell) | FP16/BF16 | falls back to Ampere — 64 or 128 |
+| SM75–89 (Turing/Ampere/Ada) | FP16/BF16 | 32, 64, 128 |
+| SM90 (Hopper) | FP16/BF16 | falls back to Ampere — 32, 64, 128 |
+| SM100/120 (Blackwell) | FP16/BF16 | falls back to Ampere — 32, 64, 128 |
 
 For MXFP4, the block size is fixed at **32** by the format.
 
@@ -948,21 +948,21 @@ kernel.
 
 | Area | What is implemented | Result |
 |------|---------------------|--------|
-| Gate fix | `is_moe_gemv_supported` accepts `group_size <= 0` (per-column) alongside 64/128 instead of requiring exactly 0. | Per-column INT4 and INT8 now reach the GEMV kernels; block-wise behavior is unchanged. |
+| Gate fix | `is_moe_gemv_supported` accepts `group_size <= 0` (per-column) alongside 32/64/128 block-wise group sizes. | Per-column INT4 and INT8 now reach the GEMV kernels, and block-wise INT4/INT8 includes `block_size=32`. |
 | INT8 details | The existing `(half, uint8_t)` and `(__nv_bfloat16, uint8_t)` GEMV kernel details cover per-column INT8 with no new instantiation. | FC1 interleaved-SwiGLU and FC2 per-column INT8 GEMV run for FP16 and BF16. |
 | Profiling | `int8_per_column_*_1024x4096_e8` and `gpt_oss_20b_*_int8_2880x2880_e32` cases profiled in GEMV and `ORT_DISABLE_MOE_GEMV=1` modes. | Real `moe_gemv_kernel` / `moe_gemv_interleaved_swiglu_kernel` confirmed; about 1.2x–1.4x lower benchmark latency than grouped GEMM with valid output. |
 
 #### Completed block-wise INT4/INT8 work
 
 
-Block-wise here means `quant_type="int"` with `block_size` 64 or 128 and scales
+Block-wise here means `quant_type="int"` with `block_size` 32, 64, or 128 and scales
 provided as `[E, N, K / block_size]`. QMoE prepack/runtime transposes those
 scales to `[E, K_blocks, N]`, and the GEMV kernels consume that same layout.
 
 | Area | What is implemented | Result |
 |------|---------------------|--------|
 | INT4 and INT8 details | The GEMV kernel details support `(half, cutlass::uint4b_t)`, `(half, uint8_t)`, and the matching `__nv_bfloat16` weight-type pairs. | Both weight types use the SM80 column-interleaved `fpA_intB` layout on all GPUs, matching the grouped-GEMM path, for FP16 and BF16 activations. |
-| Group-size dispatch | GEMV templates now cover `GroupSize == 0`, 64, and 128. | Per-column and block-wise paths share the same kernel structure while preserving complete-block checks. |
+| Group-size dispatch | GEMV templates now cover `GroupSize == 0`, 32, 64, and 128. | Per-column and block-wise paths share the same kernel structure while preserving complete-block checks. |
 | Scale indexing | Block-wise scale loads use `real_offset_k / GroupSize * n + real_offset_n` with a K-loop scale step. | Reuses QMoE's existing `[E, K_blocks, N]` runtime scale layout; no new scale pack format is needed. |
 | Symmetric-only gate | Block-wise GEMV runs only when zero-point compensation is absent. | Asymmetric block-wise models stay on grouped GEMM until a zero-point GEMV path is implemented and profiled. |
 | Model-shape b64 profile | GPT-OSS-20B and Qwen3.6-35B-A3B were profiled with `block_size=64`. | Both use real GEMV kernels under the current 512 threshold and show about 1.4x lower benchmark latency than grouped GEMM fallback. |
@@ -977,7 +977,7 @@ per-column INT4, block-wise INT4/INT8, and interleaved-SwiGLU GEMV kernels.
 | Area | What is implemented | Result |
 |------|---------------------|--------|
 | Gate relaxation | `tryLaunchMoeGemvIntSymmetric` and the interleaved-SwiGLU variant accept `__nv_bfloat16` activations with `ScaleBiasType == T`. | For a given shape, BF16 routes to GEMV exactly where FP16 does. |
-| Kernel instantiation | `moe_gemv.cu` adds `__nv_bfloat16` details/instantiations (group sizes 0/64/128, INT4/INT8, bias on/off) under `ENABLE_BF16`. | The custom FC1/FC2 GEMV kernels run for BF16; no grouped-GEMM fallback when the FP16 gate would route. |
+| Kernel instantiation | `moe_gemv.cu` adds `__nv_bfloat16` details/instantiations (group sizes 0/32/64/128, INT4/INT8, bias on/off) under `ENABLE_BF16`. | The custom FC1/FC2 GEMV kernels run for BF16; no grouped-GEMM fallback when the FP16 gate would route. |
 | Profiling | GPT-OSS-20B, Qwen3.6-35B-A3B, and Gemma model shapes profiled with `block_size=64` for both dtypes. | BF16 matches FP16 routing and latency within noise (about 1.3x–1.5x faster than grouped GEMM); SwiGLU BF16 parity tests pass. |
 
 #### Experiments rejected after profiling

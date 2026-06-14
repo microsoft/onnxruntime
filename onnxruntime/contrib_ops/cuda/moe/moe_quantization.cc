@@ -322,10 +322,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                            "QMoE row-wise quantization (block_size <= 0) does not support zero_points. "
                            "Remove fc*_zero_points or use block-wise quantization.");
   }
-  if (block_size_ > 0 && block_size_ < 64 && has_any_zero_point) {
+  if (block_size_ > 0 && block_size_ < 32 && has_any_zero_point) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "QMoE asymmetric zero_points are currently supported only when block_size >= 64. "
-                           "Use block_size >= 64 or remove fc*_zero_points.");
+                           "QMoE asymmetric zero_points are currently supported only when block_size >= 32. "
+                           "Use block_size >= 32 or remove fc*_zero_points.");
   }
 
   int64_t pack_size = expert_weight_bits_ == 4 ? 2 : 1;

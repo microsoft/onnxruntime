@@ -36,7 +36,7 @@ bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t
 bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t k);
 
 // Launches symmetric INT MoE GEMV. group_size <= 0 means per-channel scales;
-// group_size 64/128 means block-wise scales laid out as [num_experts, k_blocks, n].
+// group_size 32/64/128 means block-wise scales laid out as [num_experts, k_blocks, n].
 // T is half or __nv_bfloat16. WeightType is cutlass::uint4b_t or uint8_t.
 template <typename T, typename WeightType>
 void launch_moe_gemv_int_symmetric(
@@ -47,7 +47,7 @@ void launch_moe_gemv_int_symmetric(
 // Launches symmetric INT MoE GEMV and fuses interleaved SwiGLU activation.
 // weight/bias use raw FC1 output width n = 2 * inter_size. Scales are
 // [num_experts, n] for group_size <= 0 and [num_experts, k_blocks, n] for
-// block-wise group_size 64/128.
+// block-wise group_size 32/64/128.
 template <typename T, typename WeightType>
 void launch_moe_gemv_int_symmetric_interleaved_swiglu(
     T const* act, WeightType const* weight, T const* scales, T const* bias, T* out,

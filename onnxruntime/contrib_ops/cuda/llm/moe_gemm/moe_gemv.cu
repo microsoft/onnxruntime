@@ -331,6 +331,9 @@ static void dispatch_moe_gemv_group_size(TypeA* act, uint8_t* weight, TypeA* sca
   if (group_size <= 0) {
     launch_moe_gemv<Details, CtaN, Threads, 0, TypeA>(act, weight, scales, bias, out, expert_first_token_offset,
                                                       permuted_row_to_expert, num_experts, expanded_num_rows, n, k, stream);
+  } else if (group_size == 32) {
+    launch_moe_gemv<Details, CtaN, Threads, 32, TypeA>(act, weight, scales, bias, out, expert_first_token_offset,
+                                                       permuted_row_to_expert, num_experts, expanded_num_rows, n, k, stream);
   } else if (group_size == 64) {
     launch_moe_gemv<Details, CtaN, Threads, 64, TypeA>(act, weight, scales, bias, out, expert_first_token_offset,
                                                        permuted_row_to_expert, num_experts, expanded_num_rows, n, k, stream);
@@ -350,6 +353,10 @@ static void dispatch_moe_gemv_interleaved_swiglu_group_size(
     cutlass_kernels::ActivationParams activation_params, cudaStream_t stream) {
   if (group_size <= 0) {
     launch_moe_gemv_interleaved_swiglu<Details, CtaN, Threads, 0, TypeA>(
+        act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts,
+        expanded_num_rows, inter_size, k, activation_params, stream);
+  } else if (group_size == 32) {
+    launch_moe_gemv_interleaved_swiglu<Details, CtaN, Threads, 32, TypeA>(
         act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts,
         expanded_num_rows, inter_size, k, activation_params, stream);
   } else if (group_size == 64) {
@@ -386,8 +393,8 @@ bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t
   if (weight_bits != 4 && weight_bits != 8) {
     return false;
   }
-  // group_size <= 0 selects the per-column (per-channel) path; block-wise scales must be 64 or 128.
-  if (group_size > 0 && group_size != 64 && group_size != 128) {
+  // group_size <= 0 selects the per-column (per-channel) path; block-wise scales must be 32, 64, or 128.
+  if (group_size > 0 && group_size != 32 && group_size != 64 && group_size != 128) {
     return false;
   }
   // Keep the first block-wise GEMV implementation on complete K blocks.

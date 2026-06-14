@@ -64,7 +64,7 @@ def main():
     parser.add_argument("--top-k", type=int, help="Override top-k experts per token")
     parser.add_argument("--dtype", choices=["FLOAT16", "BFLOAT16"], help="Override ONNX dtype")
     parser.add_argument("--quant-bits", type=int, choices=[4, 8], help="Override QMoE integer weight bits")
-    parser.add_argument("--block-size", type=int, choices=[0, 64, 128], help="Override QMoE INT block size")
+    parser.add_argument("--block-size", type=int, choices=[0, 32, 64, 128], help="Override QMoE INT block size")
     parser.add_argument("--warmup", type=int, default=5, help="Warmup iterations before the benchmark NVTX range")
     parser.add_argument("--repeat", type=int, default=100, help="Benchmark iterations")
     parser.add_argument(
