@@ -158,7 +158,7 @@ CudaMempoolOrtAllocator::CudaMempoolOrtAllocator(const OrtMemoryInfo* memory_inf
       pool_(pool),
       pool_release_threshold_(pool_release_threshold),
       bytes_to_keep_on_shrink_(bytes_to_keep_on_shrink) {
-  version = kCudaPluginEpMinOrtApiVersion;
+  version = ORT_API_VERSION;
   Alloc = AllocImpl;
   AllocOnStream = AllocOnStreamImpl;
   Free = FreeImpl;

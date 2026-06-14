@@ -825,9 +825,6 @@ ORT_API_STATUS_IMPL(GetTensorElementTypeAndShapeDataReference, _In_ const OrtVal
                     _Outptr_result_maybenull_ const int64_t** shape_data,
                     _Out_ size_t* shape_data_count);
 
-// Model Package API
-ORT_API(const OrtModelPackageApi*, GetModelPackageApi);
-
 // Experimental API
 ORT_API(OrtExperimentalFnPtr, GetExperimentalFunction, _In_ const char* name);
 

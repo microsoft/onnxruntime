@@ -521,6 +521,19 @@ void add_bias_and_interleave_quantized_tensor_inplace_cuda(
   }
 }
 
+int get_arch_for_mixed_gemm_weight_preprocess(int arch) {
+  ORT_ENFORCE(arch >= 75, "Unsupported CUDA architecture: ", arch);
+  if (arch < 80) {
+    return 75;
+  }
+#ifndef EXCLUDE_SM_90
+  if (arch >= 90 && arch < 100) {
+    return 90;
+  }
+#endif
+  return 80;
+}
+
 void preprocess_weights_for_mixed_gemm_cuda(cudaStream_t stream,
                                             int arch,
                                             int8_t* preprocessed_quantized_weight,

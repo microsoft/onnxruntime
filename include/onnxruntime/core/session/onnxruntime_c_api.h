@@ -263,21 +263,76 @@ typedef enum OrtLoggingLevel {
   ORT_LOGGING_LEVEL_FATAL,    ///< Fatal error messages (most severe).
 } OrtLoggingLevel;
 
+/** \brief Error codes reported by ONNX Runtime.
+ *
+ * The error code associated with an ::OrtStatus.
+ */
 typedef enum OrtErrorCode {
+  /**
+   * Success. No error occurred.
+   */
   ORT_OK,
+  /**
+   * Generic failure that does not map to a more specific error code. Consult the error message for details.
+   */
   ORT_FAIL,
+  /**
+   * A caller-supplied argument was invalid (e.g. NULL pointer, out-of-range value, mismatched shape/rank, or bad
+   * configuration).
+   */
   ORT_INVALID_ARGUMENT,
+  /**
+   * A required file (such as a model file) does not exist.
+   */
   ORT_NO_SUCHFILE,
+  /**
+   * Legacy/unused but retained for ABI compatibility. Historically returned when a model could not be found by name in
+   * the ONNX Runtime Server (removed in 2022).
+   */
   ORT_NO_MODEL,
+  /**
+   * A hardware accelerator or backend engine reported a failure (e.g. a device crash or other device-level error).
+   */
   ORT_ENGINE_ERROR,
+  /**
+   * A generic runtime exception was caught. The error message is the primary source of detail.
+   */
   ORT_RUNTIME_EXCEPTION,
+  /**
+   * Protobuf parsing or serialization failed.
+   */
   ORT_INVALID_PROTOBUF,
+  /**
+   * Invalid session state for the requested operation. Despite the name, this code does not mean "success, model
+   * loaded"; it is returned when the session is in the wrong state for the requested call (e.g. a model is already
+   * loaded, the session is already initialized, or no model has been loaded yet). The name is historical and is
+   * retained for ABI compatibility; consult the error message for the specific condition.
+   */
   ORT_MODEL_LOADED,
+  /**
+   * The requested functionality is not implemented in this build.
+   */
   ORT_NOT_IMPLEMENTED,
+  /**
+   * The model graph is structurally invalid (e.g. recursive function definitions, invalid tensor dimensions, or
+   * malformed nodes).
+   */
   ORT_INVALID_GRAPH,
+  /**
+   * An execution provider reported a generic failure.
+   */
   ORT_EP_FAIL,
+  /**
+   * Model loading or session initialization was canceled at the caller's request.
+   */
   ORT_MODEL_LOAD_CANCELED,
+  /**
+   * The model requires compilation by an execution provider, but compilation was disabled via session options.
+   */
   ORT_MODEL_REQUIRES_COMPILATION,
+  /**
+   * A requested resource could not be found.
+   */
   ORT_NOT_FOUND,
 } OrtErrorCode;
 
@@ -348,9 +403,6 @@ ORT_RUNTIME_CLASS(ExternalSemaphoreHandle);   // EP-imported view of shared exte
 ORT_RUNTIME_CLASS(DeviceEpIncompatibilityDetails);
 ORT_RUNTIME_CLASS(EpAssignedSubgraph);
 ORT_RUNTIME_CLASS(EpAssignedNode);
-ORT_RUNTIME_CLASS(ModelPackageOptions);
-ORT_RUNTIME_CLASS(ModelPackageContext);
-ORT_RUNTIME_CLASS(ModelPackageComponentContext);
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -937,9 +989,6 @@ typedef struct OrtCompileApi OrtCompileApi;
 
 struct OrtInteropApi;
 typedef struct OrtInteropApi OrtInteropApi;
-
-struct OrtModelPackageApi;
-typedef struct OrtModelPackageApi OrtModelPackageApi;
 
 struct OrtEpApi;
 typedef struct OrtEpApi OrtEpApi;
@@ -7501,26 +7550,6 @@ struct OrtApi {
    */
   ORT_API2_STATUS(SessionReleaseCapturedGraph, _In_ OrtSession* session, _In_ int graph_annotation_id);
 
-  /** \brief Get the model package API table.
-   *
-   * Returns a pointer to the ::OrtModelPackageApi function table, which provides APIs to:
-   * - create and release model package options and contexts,
-   * - inspect model package metadata (components/variants),
-   * - select a component/variant and query selected files/options,
-   * - create a session from model package selection results.
-   *
-   * The returned pointer is owned by ONNX Runtime and is valid for the process lifetime.
-   * Do not free it.
-   *
-   * \note May return NULL if model package support is not available in the current build
-   *       (for example, minimal builds).
-   *
-   * \return Pointer to ::OrtModelPackageApi, or NULL if unsupported.
-   *
-   * \since Version 1.27.
-   */
-  const OrtModelPackageApi*(ORT_API_CALL* GetModelPackageApi)(void);
-
   /** \brief Retrieve an experimental function pointer by name.
    *
    * Experimental functions are not part of the stable ABI and may be added or removed between releases without notice.
@@ -8643,250 +8672,6 @@ struct OrtInteropApi {
   ORT_API2_STATUS(DeinitGraphicsInteropForEpDevice, _In_ const OrtEpDevice* ep_device);
 
   /// @}
-};
-
-/** \brief API table for model package workflows.
- *
- * A model package is a directory containing one or more *components* (logical models).
- * Each component has one or more *variants*, where each variant targets a single
- * execution provider (EP). The package manifest declares the EP name, device type,
- * and an optional compatibility string for every variant so that the runtime can
- * automatically select the best variant for the hardware and EPs available in the
- * caller's session options.
- *
- * Obtain this table from OrtApi::GetModelPackageApi(). The APIs support:
- * - creating model package options that capture EP configuration from OrtSessionOptions,
- * - loading a package context (manifest + metadata) from a package root path,
- * - querying component/variant metadata including per-variant EP information,
- * - selecting a component (which also resolves the best-matching variant),
- * - querying the selected variant's name and folder path,
- * - creating an OrtSession from the selected component context.
- *
- * Typical flow:
- * 1) Create model package options:
- *    - CreateModelPackageOptionsFromSessionOptions()
- * 2) Load package metadata:
- *    - CreateModelPackageContext()
- * 3) Query metadata (optional):
- *    - ModelPackage_GetSchemaVersion()
- *    - ModelPackage_GetComponentCount()
- *    - ModelPackage_GetComponentNames()
- *    - ModelPackage_GetVariantCount()
- *    - ModelPackage_GetVariantNames()
- *    - ModelPackage_GetVariantEpName()
- * 4) Select a component and resolve variant:
- *    - SelectComponent()
- * 5) Query selected variant info (optional):
- *    - ModelPackageComponent_GetSelectedVariantName()
- *    - ModelPackageComponent_GetSelectedVariantFolderPath()
- * 6) Create session:
- *    - CreateSession()
- *
- * Ownership:
- * - Release objects created by this API with the corresponding release methods:
- *   ReleaseModelPackageOptions(), ReleaseModelPackageContext(),
- *   ReleaseModelPackageComponentContext().
- *
- * \since Version 1.27.
- */
-struct OrtModelPackageApi {
-  /// \name OrtModelPackageOptions
-  /// @{
-
-  /** \brief Create model package options from an existing OrtSessionOptions.
-   *
-   * Captures EP configuration (registered execution providers and their devices) from
-   * the session options for use during variant selection. The resulting OrtModelPackageOptions
-   * is passed to SelectComponent() to resolve the best variant for the available EPs.
-   *
-   * \param[in] env The ORT environment.
-   * \param[in] session_options Session options containing registered EPs.
-   * \param[out] out Receives the newly created OrtModelPackageOptions. Must be released
-   *             with ReleaseModelPackageOptions().
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(CreateModelPackageOptionsFromSessionOptions,
-                  _In_ const OrtEnv* env,
-                  _In_ const OrtSessionOptions* session_options,
-                  _Outptr_ OrtModelPackageOptions** out);
-
-  ORT_CLASS_RELEASE(ModelPackageOptions);
-  /// @}
-  /// \name OrtModelPackageContext
-  /// @{
-
-  /** \brief Create a model package context by parsing the package at the given root path.
-   *
-   * Parses the manifest.json and component metadata from the specified directory.
-   * The returned context provides read-only access to the package structure (components,
-   * variants, EP declarations).
-   *
-   * \param[in] package_root Path to the model package root directory (containing manifest.json).
-   * \param[out] out Receives the newly created OrtModelPackageContext. Must be released
-   *             with ReleaseModelPackageContext().
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(CreateModelPackageContext,
-                  _In_ const ORTCHAR_T* package_root,
-                  _Outptr_ OrtModelPackageContext** out);
-
-  ORT_CLASS_RELEASE(ModelPackageContext);
-
-  /** \brief Get the schema version declared in the model package manifest.
-   *
-   * \param[in] ctx The model package context.
-   * \param[out] out_version Receives the schema version number.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackage_GetSchemaVersion,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _Out_ int64_t* out_version);
-
-  /** \brief Get the number of components in the model package.
-   *
-   * \param[in] ctx The model package context.
-   * \param[out] out_count Receives the component count.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackage_GetComponentCount,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _Out_ size_t* out_count);
-
-  /** \brief Get the names of all components in the model package.
-   *
-   * Returns a pointer to an array of UTF-8 component name strings. The array and its
-   * strings are owned by `ctx` and remain valid until the context is released.
-   *
-   * \param[in] ctx The model package context.
-   * \param[out] out_names Receives a pointer to an array of component name strings.
-   * \param[out] out_count Receives the number of elements in the array.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackage_GetComponentNames,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_names,
-                  _Out_ size_t* out_count);
-
-  /** \brief Get the number of variants for a given component.
-   *
-   * \param[in] ctx The model package context.
-   * \param[in] component_name Name of the component to query.
-   * \param[out] out_count Receives the variant count.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackage_GetVariantCount,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _In_ const char* component_name,
-                  _Out_ size_t* out_count);
-
-  /** \brief Get the names of all variants for a given component.
-   *
-   * Returns a pointer to an array of UTF-8 variant name strings. The array and its
-   * strings are owned by `ctx` and remain valid until the context is released.
-   *
-   * \param[in] ctx The model package context.
-   * \param[in] component_name Name of the component to query.
-   * \param[out] out_variant_names Receives a pointer to an array of variant name strings.
-   * \param[out] out_count Receives the number of elements in the array.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackage_GetVariantNames,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _In_ const char* component_name,
-                  _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_variant_names,
-                  _Out_ size_t* out_count);
-
-  /** \brief Get the EP name declared for a (component, variant) pair.
-   *
-   * Each variant targets a single EP. `out_ep` receives the EP name string.
-   * When the variant does not declare an EP, the returned pointer is NULL.
-   * String memory is owned by `ctx` and remains valid until the context is released.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackage_GetVariantEpName,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _In_ const char* component_name,
-                  _In_ const char* variant_name,
-                  _Outptr_result_maybenull_ const char** out_ep);
-
-  /** \brief Select a component model and return an opaque component instance.
-   *
-   * The variant selection is also performed during this call based on the component metadata and the provided options.
-   * The returned `OrtModelPackgeComponentContext*` is independent of `context` lifetime and must be released via
-   * `ReleaseComponentInstance`.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(SelectComponent,
-                  _In_ const OrtModelPackageContext* context,
-                  _In_ const char* component_name,
-                  _In_ const OrtModelPackageOptions* options,
-                  _Outptr_ OrtModelPackageComponentContext** out);
-
-  ORT_CLASS_RELEASE(ModelPackageComponentContext);
-
-  /** \brief Get the name of the selected variant after SelectComponent has been called.
-   *
-   * String memory is owned by `ctx` and remains valid until the context is released.
-   *
-   * \param[in] ctx The component context returned by SelectComponent().
-   * \param[out] out_name Receives the selected variant's name string.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackageComponent_GetSelectedVariantName,
-                  _In_ const OrtModelPackageComponentContext* ctx,
-                  _Outptr_ const char** out_name);
-
-  /** \brief Get the folder path of the selected variant.
-   *
-   * Returns the resolved absolute path to the variant's directory on disk.
-   * The string is owned by `ctx` and remains valid until the context is released.
-   *
-   * \param[in] ctx The component context returned by SelectComponent().
-   * \param[out] folder_path Receives the variant folder path string.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackageComponent_GetSelectedVariantFolderPath,
-                  _In_ const OrtModelPackageComponentContext* ctx,
-                  _Outptr_ const ORTCHAR_T** folder_path);
-
-  /// @}
-  /** \brief Create an OrtSession for a selected file within a component model variant.
-   *
-   * The chosen variant (and thus its EP selection) is determined by `context`, which
-   * was built from an OrtSessionOptions via CreateModelPackageOptionsFromSessionOptions.
-   *
-   * Session options precedence:
-   *   1. session_options == NULL (default path):
-   *      ORT uses the OrtSessionOptions that was captured when `context` was created.
-   *      Any variant-specific session and provider options declared in the package
-   *      metadata are merged on top.
-   *
-   *   2. session_options != NULL (advanced path):
-   *      ORT uses the caller-provided OrtSessionOptions as-is. Variant-specific
-   *      session and provider options from the package metadata are NOT applied.
-   *      Use this when custom EP setup is required (e.g., shared CUDA streams,
-   *      shared QNN EP contexts, custom allocators).
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(CreateSession,
-                  _In_ const OrtEnv* env,
-                  _In_ OrtModelPackageComponentContext* context,
-                  _In_opt_ const OrtSessionOptions* session_options,
-                  _Outptr_ OrtSession** session);
-
-  // End of Version 1.27 - DO NOT MODIFY ABOVE
 };
 
 /*
