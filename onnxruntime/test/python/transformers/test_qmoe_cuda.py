@@ -1502,17 +1502,109 @@ phi3_blockwise_test_cases = [
     (1, 32, 4, 32),  # batch_size, sequence_length, quant_bits, block_size
     (1, 32, 4, 64),
     (1, 32, 4, 128),
+    (1, 32, 8, 32),
     (1, 32, 8, 64),
     (1, 32, 8, 128),
     (2, 16, 4, 32),
+    (2, 16, 8, 32),
     (2, 16, 8, 64),
 ]
 phi3_blockwise_asymmetric_test_cases = [
+    (1, 1, 4, 32),
+    (1, 1, 8, 32),
     (1, 32, 4, 64),
     (1, 32, 8, 64),
     (1, 32, 8, 128),
     (2, 16, 8, 64),
 ]
+
+# These cases use expanded rows > 4 with K < 512, which is outside the profiled
+# GEMV range and therefore exercises the CUTLASS grouped GEMM path.
+qmoe_cutlass_gemm_blockwise_test_cases = [
+    (1, 3, 4, 32),
+    (1, 3, 8, 32),
+]
+
+qmoe_cutlass_gemm_second_scale_row_test_cases = [
+    (4, False),
+    (4, True),
+    (8, False),
+    (8, True),
+]
+
+
+def _run_qmoe_cutlass_gemm_second_scale_row_regression(test_case, quant_bits, use_asymmetric_quant):
+    hidden_size = 128
+    intermediate_size = 128
+    sequence_length = 8
+    num_experts = 1
+    top_k = 1
+    block_size = 32
+    onnx_dtype = TensorProto.FLOAT16
+    torch_dtype = onnx_to_torch_type_map[onnx_dtype]
+
+    is_4_bit = quant_bits == 4
+
+    fc1 = torch.zeros((intermediate_size, hidden_size), device=device, dtype=torch_dtype)
+    fc2 = torch.zeros((hidden_size, intermediate_size), device=device, dtype=torch_dtype)
+
+    fc1[0, :block_size] = 1.0 / 1024.0
+    fc1[0, block_size : 2 * block_size] = 1.0
+    fc2[0, 0] = 1.0
+
+    fc1_scale, fc1_weight, fc1_qdq, fc1_zp = quant_dequant_blockwise(
+        fc1, block_size, is_4_bit, asymmetric=use_asymmetric_quant
+    )
+    fc2_scale, fc2_weight, fc2_qdq, fc2_zp = quant_dequant_blockwise(
+        fc2, block_size, is_4_bit, asymmetric=use_asymmetric_quant
+    )
+
+    model = create_moe_onnx_graph(
+        hidden_size=hidden_size,
+        sequence_length=sequence_length,
+        num_experts=num_experts,
+        top_k=top_k,
+        intermediate_size=intermediate_size,
+        torch_dtype=torch.float32,
+        onnx_dtype=onnx_dtype,
+        fc1_experts_weights=fc1_weight.unsqueeze(0),
+        fc2_experts_weights=fc2_weight.unsqueeze(0),
+        fc1_scales=fc1_scale.unsqueeze(0),
+        fc2_scales=fc2_scale.unsqueeze(0),
+        fc1_zero_points=fc1_zp.unsqueeze(0) if fc1_zp is not None else None,
+        fc2_zero_points=fc2_zp.unsqueeze(0) if fc2_zp is not None else None,
+        use_swiglu=False,
+        use_quant=True,
+        quant_bits=quant_bits,
+        block_size=block_size,
+    )
+
+    previous_disable_gemv = os.environ.get("ORT_DISABLE_MOE_GEMV")
+    os.environ["ORT_DISABLE_MOE_GEMV"] = "1"
+    try:
+        sess_options = onnxruntime.SessionOptions()
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        sess = onnxruntime.InferenceSession(
+            model,
+            sess_options,
+            providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")],
+        )
+    finally:
+        if previous_disable_gemv is None:
+            os.environ.pop("ORT_DISABLE_MOE_GEMV", None)
+        else:
+            os.environ["ORT_DISABLE_MOE_GEMV"] = previous_disable_gemv
+
+    x = torch.zeros((sequence_length, hidden_size), device=device, dtype=torch_dtype)
+    x[:, block_size : 2 * block_size] = 1.0 if use_asymmetric_quant else -1.0
+    router = torch.zeros((sequence_length, num_experts), device=device, dtype=torch_dtype)
+
+    ort_output = sess.run(None, {"input": x.cpu().numpy(), "router_probs": router.cpu().numpy()})[0]
+    fc1_output = torch.matmul(x.float(), fc1_qdq.float().T)
+    expected = torch.matmul(F.silu(fc1_output), fc2_qdq.float().T).cpu().numpy().astype(numpy.float16)
+
+    test_case.assertGreater(abs(expected[0, 0]), 20.0)
+    numpy.testing.assert_allclose(ort_output, expected, rtol=2e-2, atol=2.5e-1)
 
 
 @unittest.skipIf(not torch.cuda.is_available(), "skipping QMoE test since it requires CUDA.")
@@ -1686,6 +1778,52 @@ class TestPhiQMoE(unittest.TestCase):
         )
         phi3_moe.parity_check()
 
+    @parameterized.expand(qmoe_cutlass_gemm_blockwise_test_cases)
+    def test_phi3_qmoe_blockwise_cutlass_gemm_parity(self, batch_size, sequence_length, quant_bits, block_size):
+        torch.manual_seed(44)
+        numpy.random.seed(44)
+
+        test_config = f"batch_size={batch_size}, sequence_length={sequence_length}, quant_bits={quant_bits}, block_size={block_size}"
+        print(f"Running Phi3 QMoE block-wise CUTLASS GEMM test: {test_config}")
+
+        config = PhiMoEConfig(hidden_size=128, intermediate_size=256, num_local_experts=4, num_experts_per_tok=2)
+
+        phi3_moe = PhiMoESparseMoeBlock(
+            config,
+            batch_size=batch_size,
+            sequence_length=sequence_length,
+            quant_bits=quant_bits,
+            onnx_dtype=TensorProto.FLOAT16,
+            block_size=block_size,
+            use_asymmetric_quant=False,
+        )
+        phi3_moe.parity_check()
+
+    @parameterized.expand(qmoe_cutlass_gemm_blockwise_test_cases)
+    def test_phi3_qmoe_blockwise_cutlass_gemm_parity_bf16(self, batch_size, sequence_length, quant_bits, block_size):
+        torch.manual_seed(144)
+        numpy.random.seed(144)
+
+        test_config = f"batch_size={batch_size}, sequence_length={sequence_length}, quant_bits={quant_bits}, block_size={block_size} (BF16)"
+        print(f"Running Phi3 QMoE block-wise CUTLASS GEMM test (BF16): {test_config}")
+
+        config = PhiMoEConfig(hidden_size=128, intermediate_size=256, num_local_experts=4, num_experts_per_tok=2)
+
+        phi3_moe = PhiMoESparseMoeBlock(
+            config,
+            batch_size=batch_size,
+            sequence_length=sequence_length,
+            quant_bits=quant_bits,
+            onnx_dtype=TensorProto.BFLOAT16,
+            block_size=block_size,
+            use_asymmetric_quant=False,
+        )
+        phi3_moe.parity_check()
+
+    @parameterized.expand(qmoe_cutlass_gemm_second_scale_row_test_cases)
+    def test_phi3_qmoe_blockwise_cutlass_gemm_second_scale_row(self, quant_bits, use_asymmetric_quant):
+        _run_qmoe_cutlass_gemm_second_scale_row_regression(self, quant_bits, use_asymmetric_quant)
+
 
 swiglu_test_cases = [
     (1, 32, 4),
@@ -1700,12 +1838,16 @@ swiglu_blockwise_test_cases = [
     (1, 32, 4, 32),  # batch_size, sequence_length, quant_bits, block_size
     (1, 32, 4, 64),  # New case for group_size=64
     (1, 32, 4, 128),
+    (1, 32, 8, 32),
     (1, 32, 8, 64),
     (1, 32, 8, 128),
     (2, 16, 4, 32),
+    (2, 16, 8, 32),
     (2, 16, 8, 64),
 ]
 swiglu_blockwise_asymmetric_test_cases = [
+    (1, 1, 4, 32),
+    (1, 1, 8, 32),
     (1, 32, 4, 64),
     (1, 32, 8, 64),
     (1, 32, 8, 128),
@@ -1881,6 +2023,52 @@ class TestSwigluQMoE(unittest.TestCase):
             use_asymmetric_quant=True,
         )
         swiglu_moe.parity_check()
+
+    @parameterized.expand(qmoe_cutlass_gemm_blockwise_test_cases)
+    def test_swiglu_qmoe_blockwise_cutlass_gemm_parity(self, batch_size, sequence_length, quant_bits, block_size):
+        torch.manual_seed(44)
+        numpy.random.seed(44)
+
+        test_config = f"batch_size={batch_size}, sequence_length={sequence_length}, quant_bits={quant_bits}, block_size={block_size}"
+        print(f"Running SwiGLU block-wise CUTLASS GEMM test: {test_config}")
+
+        config = SwigluMoeConfig(hidden_size=128, intermediate_size=256, num_local_experts=4, num_experts_per_token=2)
+
+        swiglu_moe = SwigluMoEBlock(
+            config,
+            batch_size=batch_size,
+            sequence_length=sequence_length,
+            quant_bits=quant_bits,
+            onnx_dtype=TensorProto.FLOAT16,
+            block_size=block_size,
+            use_asymmetric_quant=False,
+        )
+        swiglu_moe.parity_check()
+
+    @parameterized.expand(qmoe_cutlass_gemm_blockwise_test_cases)
+    def test_swiglu_qmoe_blockwise_cutlass_gemm_parity_bf16(self, batch_size, sequence_length, quant_bits, block_size):
+        torch.manual_seed(144)
+        numpy.random.seed(144)
+
+        test_config = f"batch_size={batch_size}, sequence_length={sequence_length}, quant_bits={quant_bits}, block_size={block_size} (BF16)"
+        print(f"Running SwiGLU block-wise CUTLASS GEMM test (BF16): {test_config}")
+
+        config = SwigluMoeConfig(hidden_size=128, intermediate_size=256, num_local_experts=4, num_experts_per_token=2)
+
+        swiglu_moe = SwigluMoEBlock(
+            config,
+            batch_size=batch_size,
+            sequence_length=sequence_length,
+            quant_bits=quant_bits,
+            onnx_dtype=TensorProto.BFLOAT16,
+            block_size=block_size,
+            use_asymmetric_quant=False,
+        )
+        swiglu_moe.parity_check()
+
+    @parameterized.expand(qmoe_cutlass_gemm_second_scale_row_test_cases)
+    def test_swiglu_qmoe_blockwise_cutlass_gemm_second_scale_row(self, quant_bits, use_asymmetric_quant):
+        _run_qmoe_cutlass_gemm_second_scale_row_regression(self, quant_bits, use_asymmetric_quant)
 
 
 def has_bf16_qmoe():

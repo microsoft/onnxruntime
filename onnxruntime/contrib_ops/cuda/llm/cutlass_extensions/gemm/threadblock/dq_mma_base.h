@@ -68,8 +68,10 @@ class DqMmaBase {
 
   static_assert(DequantOp != WeightOnlyQuantOp::UNDEFINED, "");
 
-  // Finegrained scales get streamed in via cp.async
-  static constexpr int ScalebiasStages = isFinegrained(DequantOp) ? Stages : 1;
+  static constexpr int kMinFinegrainedGroupSize = 32;
+  static constexpr int kFinegrainedScaleRowsPerStage = Shape::kK / kMinFinegrainedGroupSize;
+  // Finegrained scales get streamed in via cp.async.
+  static constexpr int ScalebiasStages = isFinegrained(DequantOp) ? Stages * kFinegrainedScaleRowsPerStage : 1;
   // We always have scales.
   static constexpr int ScaleElementsPerStage = Shape::kN;
   // We sometimes have a bias

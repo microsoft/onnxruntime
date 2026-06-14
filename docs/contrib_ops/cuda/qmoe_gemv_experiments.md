@@ -1,6 +1,6 @@
 # QMoE GEMV Profiling Experiments
 
-This file records QMoE INT4 per-channel GEMV profiling results so future kernel and dispatch changes can be compared against a stable baseline.
+This file records QMoE INT4/INT8 GEMV profiling results so future kernel and dispatch changes can be compared against a stable baseline.
 
 ## 2026-06-12 Baseline: SM90, Warmup 5, Repeat 100
 
@@ -633,6 +633,133 @@ iterations for GEMV.
   implementation, but only report model-shape profiling for 64 in this round.
 - Keep `kMinProfiledProblemDimForExpandedRowsAbove4 = 512` so Qwen-style
   `top_k=8`, `intermediate_size=512` decode runs can use the custom GEMV path.
+
+## 2026-06-14 Block Size 32 vs 64: SM90, FP16 INT4, Warmup 5, Repeat 100
+
+### Setup
+
+- Goal: compare the newly enabled INT4 `block_size=32` path against the existing
+  `block_size=64` path on real model-shaped QMoE decode workloads.
+- GPU: single H200 (SM90).
+- ONNX Runtime build: `~/onnxruntime/build/cu130/Release`, CUDA 13.0,
+  after the `block_size=32` CUTLASS/GEMV changes were built and installed.
+- Python: `~/onnxruntime/.venv/bin/python`.
+- Nsight Systems: `nsys 2025.3.2.367`. The first `nsys` run hit a
+  `/tmp/nvidia/nsight_systems` permission issue; rerunning with `TMPDIR` under
+  the artifact directory fixed it.
+- Artifacts: `/tmp/qmoe_profile_block32_vs64_20260614_024925/`.
+
+The profiling CLI was updated to accept `--block-size 32`; prior to this run it
+only allowed `0/64/128` even though the benchmark helper could construct custom
+cases.
+
+Command template:
+
+```bash
+cd ~/onnxruntime
+source .venv/bin/activate
+export CUDA_VERSION=13.0
+export CUDA_HOME=~/cuda13.0
+export CUDNN_HOME=~/cudnn_9.19_cuda13
+export PATH=$CUDA_HOME/bin:$PATH
+export LD_LIBRARY_PATH=/usr/lib64/openmpi/lib:$CUDA_HOME/lib64:$CUDNN_HOME/lib64:$CUDNN_HOME/lib:${LD_LIBRARY_PATH:-}
+export PYTHONPATH=$PWD/build/cu130/Release:$PWD/onnxruntime/test/python/transformers:${PYTHONPATH:-}
+
+python onnxruntime/test/python/transformers/profile_qmoe_gemv.py \
+  --case <case-name> --block-size <32|64> --warmup 5 --repeat 100
+
+TMPDIR=/tmp/qmoe_profile_block32_vs64_20260614_024925/tmp \
+bash onnxruntime/test/python/transformers/profile_qmoe_gemv.sh \
+  --case <case-name> --block-size <32|64> --warmup 5 --repeat 100 \
+  -o /tmp/qmoe_profile_block32_vs64_20260614_024925/<output-name>
+```
+
+### Standalone End-To-End Benchmark Latency
+
+Lower is better. These numbers are from the plain benchmark loop, outside nsys,
+with the default GEMV-enabled route. Every case reported
+`has_invalid_output=false`.
+
+| Model case | Expanded rows | Block size | Latency (ms) | Relative to b64 |
+|------------|---------------|------------|--------------|-----------------|
+| `gpt_oss_20b` (`2880x2880`, e32, top4) | 4 | 32 | 0.068118 | 1.006x |
+| `gpt_oss_20b` (`2880x2880`, e32, top4) | 4 | 64 | 0.067712 | 1.000x |
+| `qwen3_6_35b_a3b` (`2048x512`, e256, top8) | 8 | 32 | 0.050836 | 0.991x |
+| `qwen3_6_35b_a3b` (`2048x512`, e256, top8) | 8 | 64 | 0.051312 | 1.000x |
+
+Result: `block_size=32` and `block_size=64` are effectively tied on the default
+GEMV path for these model-shaped decode cases. GPT-OSS is about 0.6% faster with
+`block_size=64`; Qwen3.6-35B-A3B is about 0.9% faster with `block_size=32`. Both
+differences are small enough to treat as measurement noise unless repeated
+end-to-end model runs show the same direction.
+
+### Nsight Route Confirmation And FC Kernel Timing
+
+All rows below are restricted to the `benchmark` NVTX range. The GEMV-enabled
+route uses `moe_gemv_interleaved_swiglu_kernel` for FC1 and `moe_gemv_kernel` for
+FC2. The disabled route (`ORT_DISABLE_MOE_GEMV=1`) uses CUTLASS `MoeFCGemm`.
+
+| Model case | Block size | Mode | Route kernel | Calls | Avg us |
+|------------|------------|------|--------------|-------|--------|
+| `gpt_oss_20b` | 32 | GEMV enabled | `moe_gemv_interleaved_swiglu_kernel` | 100 | 17.878 |
+| `gpt_oss_20b` | 32 | GEMV enabled | `moe_gemv_kernel` | 100 | 12.978 |
+| `gpt_oss_20b` | 32 | GEMV disabled | `MoeFCGemm` | 200 | 43.283 |
+| `gpt_oss_20b` | 64 | GEMV enabled | `moe_gemv_interleaved_swiglu_kernel` | 100 | 17.655 |
+| `gpt_oss_20b` | 64 | GEMV enabled | `moe_gemv_kernel` | 100 | 12.364 |
+| `gpt_oss_20b` | 64 | GEMV disabled | `MoeFCGemm` | 200 | 41.113 |
+| `qwen3_6_35b_a3b` | 32 | GEMV enabled | `moe_gemv_interleaved_swiglu_kernel` | 100 | 6.266 |
+| `qwen3_6_35b_a3b` | 32 | GEMV enabled | `moe_gemv_kernel` | 100 | 4.000 |
+| `qwen3_6_35b_a3b` | 32 | GEMV disabled | `MoeFCGemm` | 200 | 20.719 |
+| `qwen3_6_35b_a3b` | 64 | GEMV enabled | `moe_gemv_interleaved_swiglu_kernel` | 100 | 6.201 |
+| `qwen3_6_35b_a3b` | 64 | GEMV enabled | `moe_gemv_kernel` | 100 | 3.930 |
+| `qwen3_6_35b_a3b` | 64 | GEMV disabled | `MoeFCGemm` | 200 | 20.000 |
+
+The custom GEMV kernels are present for both `block_size=32` and 64. Kernel-level
+timing is slightly lower for `block_size=64` in this profile, but the standalone
+benchmark latency is essentially flat between the two block sizes.
+
+### nsys Wrapper Benchmark Latency
+
+These numbers are useful for route comparisons but include profiling overhead;
+prefer the standalone table above for clean latency. Lower is better.
+
+| Model case | Mode | Block size 32 (ms) | Block size 64 (ms) |
+|------------|------|--------------------|--------------------|
+| `gpt_oss_20b` | GEMV enabled | 0.075520 | 0.072995 |
+| `gpt_oss_20b` | GEMV disabled | 0.140200 | 0.134682 |
+| `qwen3_6_35b_a3b` | GEMV enabled | 0.055514 | 0.064243 |
+| `qwen3_6_35b_a3b` | GEMV disabled | 0.093866 | 0.096064 |
+
+The profiled fallback runs confirm GEMV remains substantially faster than the
+grouped-GEMM fallback for both block sizes and both model shapes.
+
+### Artifacts
+
+Primary summaries:
+
+- `/tmp/qmoe_profile_block32_vs64_20260614_024925/benchmark_results.jsonl`
+- `/tmp/qmoe_profile_block32_vs64_20260614_024925/route_kernel_summary.tsv`
+- `/tmp/qmoe_profile_block32_vs64_20260614_024925/artifacts.txt`
+
+Nsight Systems produced one `.nsys-rep` and one `.sqlite` for each
+`{model, block_size, mode}` tuple. Examples:
+
+- `/tmp/qmoe_profile_block32_vs64_20260614_024925/nsys_gpt_oss_20b_m1_top4_fp16_2880x2880_e32_b32_gemv.sqlite`
+- `/tmp/qmoe_profile_block32_vs64_20260614_024925/nsys_gpt_oss_20b_m1_top4_fp16_2880x2880_e32_b64_gemv.sqlite`
+- `/tmp/qmoe_profile_block32_vs64_20260614_024925/nsys_qwen3_6_35b_a3b_m1_top8_fp16_2048x512_e256_b32_gemv.sqlite`
+- `/tmp/qmoe_profile_block32_vs64_20260614_024925/nsys_qwen3_6_35b_a3b_m1_top8_fp16_2048x512_e256_b64_gemv.sqlite`
+
+### Decision
+
+- Keep `block_size=32` enabled for INT4 QMoE. It reaches the same custom GEMV
+  route as `block_size=64` for the GPT-OSS-20B and Qwen3.6-35B-A3B decode
+  shapes, with no meaningful end-to-end latency regression in the standalone
+  benchmark loop.
+- Do not tune the GEMV gate differently for 32 vs 64 based on this data. The
+  current model-shape route is valid for both block sizes.
+- Continue using nsys NVTX-range kernel evidence, not benchmark JSON alone, when
+  verifying whether a block-wise QMoE case actually reached GEMV or fell back to
+  grouped GEMM.
 
 ## 2026-06-13 BF16 GEMV Enablement: SM90, Warmup 5, Repeat 100
 
