@@ -15,8 +15,7 @@ csharp/
     └── WebGpuEpNuGetTest/
         ├── WebGpuEpNuGetTest.csproj                # Test console app (net8.0)
         ├── Program.cs                              # Registers EP, runs inference, validates output
-        ├── mul.onnx                                # Test model (element-wise multiply)
-        └── generate_mul_model.py                   # Script to regenerate mul.onnx
+        └── generate_mul_model.py                   # Generates mul.onnx (the test model) on demand
 ```
 
 ## Prerequisites
@@ -56,6 +55,15 @@ python pack_nuget.py --version 0.1.0-dev `
   --binary-dir-macos-arm64 <path-to-macos-arm64-binaries>
 ```
 
+### Pack from downloaded CI artifacts
+
+When the per-platform binaries have been downloaded as pipeline artifacts into a single root directory (with one
+subdirectory per platform), use `--artifacts-dir` instead of the individual `--binary-dir-*` flags:
+
+```powershell
+python pack_nuget.py --version 0.1.0-dev --artifacts-dir <path-to-artifacts-root>
+```
+
 ## Versioning
 
 The package version is supplied to `pack_nuget.py` via `--version`. In the packaging pipeline, the release or
@@ -65,8 +73,14 @@ pre-release version is derived from [`plugin-ep-webgpu/VERSION_NUMBER`](../VERSI
 
 The test app registers the WebGPU EP, creates a session, runs a simple Mul model, and validates the output.
 
+First generate the test model if you haven't already (see [Regenerating the Test Model](#regenerating-the-test-model)),
+then point the test project's `nuget.config` at pack_nuget.py's output and run the test.
+
+> **Note:** the snippet below **overwrites** `test/WebGpuEpNuGetTest/nuget.config` if it already exists. Back up
+> any local changes first.
+
 ```powershell
-# Point the test project's nuget.config at the pack output
+# Point the test project's nuget.config at pack_nuget.py's output
 $localFeed = (Resolve-Path nuget_output).Path
 @"
 <?xml version="1.0" encoding="utf-8"?>
@@ -93,24 +107,10 @@ python test/WebGpuEpNuGetTest/generate_mul_model.py
 
 Requires the `onnx` Python package.
 
-## CI Pipeline
-
-The NuGet packaging is integrated into the WebGPU plugin pipeline:
-
-- **Pipeline:** `tools/ci_build/github/azure-pipelines/plugin-webgpu-pipeline.yml`
-- **Packaging stage:** `tools/ci_build/github/azure-pipelines/stages/plugin-webgpu-nuget-packaging-stage.yml`
-
-The CI stage downloads build artifacts from all enabled platform stages, invokes `pack_nuget.py`, ESRP-signs the
-package, and runs the test app on a GPU agent.
-
 ## Native Binaries Per Platform
 
-| RID | Required Files |
-|---|---|
-| `win-x64` | `onnxruntime_providers_webgpu.dll`, `dxil.dll`, `dxcompiler.dll` |
-| `win-arm64` | `onnxruntime_providers_webgpu.dll`, `dxil.dll`, `dxcompiler.dll` |
-| `linux-x64` | `libonnxruntime_providers_webgpu.so` |
-| `osx-arm64` | `libonnxruntime_providers_webgpu.dylib` |
+See the [Supported Platforms table in the package readme](Microsoft.ML.OnnxRuntime.EP.WebGpu/README.md#supported-platforms)
+for the list of native libraries required per RID.
 
 On Windows, `dxil.dll` and `dxcompiler.dll` are the DirectX Shader Compiler binaries downloaded from the
 [DXC GitHub releases](https://github.com/microsoft/DirectXShaderCompiler/releases). The CI pipeline handles this

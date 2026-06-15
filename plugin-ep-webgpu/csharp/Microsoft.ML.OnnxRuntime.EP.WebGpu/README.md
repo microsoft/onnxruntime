@@ -10,10 +10,17 @@ core package (e.g. `Microsoft.ML.OnnxRuntime`) of version `@min_onnxruntime_vers
 If the referenced ONNX Runtime is incompatible, the plugin EP will report an error when its library is
 registered.
 
+### Installation
+
+```bash
+dotnet add package Microsoft.ML.OnnxRuntime --version @min_onnxruntime_version@
+dotnet add package Microsoft.ML.OnnxRuntime.EP.WebGpu
+```
+
 ### Usage
 
 ```csharp
-// Note: Error handling is omitted for brevity.
+// Note: Error handling is omitted for brevity, except for the device-discovery check below.
 
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.EP.WebGpu;
@@ -32,6 +39,10 @@ foreach (var d in env.GetEpDevices())
         break;
     }
 }
+if (webGpuDevice is null)
+{
+    throw new InvalidOperationException("No WebGPU device found.");
+}
 
 // Create a session with the WebGPU EP
 using var sessionOptions = new SessionOptions();
@@ -48,3 +59,16 @@ using var session = new InferenceSession("model.onnx", sessionOptions);
 | win-arm64 | `onnxruntime_providers_webgpu.dll`, `dxil.dll`, `dxcompiler.dll` |
 | linux-x64 | `libonnxruntime_providers_webgpu.so` |
 | osx-arm64 | `libonnxruntime_providers_webgpu.dylib` |
+
+On Windows, `dxil.dll` and `dxcompiler.dll` (DirectX Shader Compiler) are bundled with the package. On Linux, a
+system Vulkan loader (`libvulkan.so.1`) is required at runtime and is **not** bundled — install it via your
+distribution's package manager.
+
+### Troubleshooting
+
+- **`No WebGPU device found`** — the plugin EP loaded but no compatible adapter was discovered. On Linux this
+  usually means the Vulkan loader (`libvulkan.so.1`) is not installed. On Windows it may indicate a missing or
+  outdated GPU driver.
+- **`ORT runtime version "..." is below the minimum required version "@min_onnxruntime_version@"`** — the
+  referenced `Microsoft.ML.OnnxRuntime` package is older than `@min_onnxruntime_version@`. Upgrade the core package
+  reference.
