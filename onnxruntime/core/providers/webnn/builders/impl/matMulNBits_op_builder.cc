@@ -40,16 +40,9 @@ void MatMulNBitsBuilder::AddInitializersToSkip(ModelBuilder& model_builder, cons
   NodeAttrHelper helper(node);
   const auto bits = helper.Get("bits", 4);
 
-  if (bits == 4) {
-    if (input_defs[1]->TypeAsProto()->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-      model_builder.AddInitializerToSkip(input_defs[1]->Name());  // B
-      if (TensorExists(input_defs, 3)) {
-        model_builder.AddInitializerToSkip(input_defs[3]->Name());  // zero_points
-      }
-    }
-  } else if (bits == 8) {
-    // For 8-bit, B is stored as uint8. We skip it to re-register with the correct 3D shape
-    // [N, n_blocks_per_col, block_size] for dequantizeLinear.
+  if (bits == 8 ||
+      (bits == 4 && input_defs[1]->TypeAsProto()->tensor_type().elem_type() ==
+                        ONNX_NAMESPACE::TensorProto_DataType_UINT8)) {
     model_builder.AddInitializerToSkip(input_defs[1]->Name());  // B
     if (TensorExists(input_defs, 3)) {
       model_builder.AddInitializerToSkip(input_defs[3]->Name());  // zero_points
@@ -129,6 +122,7 @@ Status MatMulNBitsBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
           model_builder.GetBuilder().call<emscripten::val>("constant", zero_points_desc, default_zero_point_buffer);
     }
   } else {
+    assert(bits == 8);
     // 8-bit path: B is stored as uint8 (one element per byte), register as uint8.
     const std::vector<uint32_t> x_shape{N, n_blocks_per_col, block_size};
     emscripten::val x_shape_array = emscripten::val::array(x_shape);
