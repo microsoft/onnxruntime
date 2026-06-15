@@ -896,7 +896,11 @@ Status Node::LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_e
     if (fbs_edges) {
       for (const auto* fbs_edge : *fbs_edges) {
         ORT_RETURN_IF(nullptr == fbs_edge, "Node::LoadEdgesFromOrtFormat, edge is missing for ", dst_name);
-        edge_set.emplace(*graph.GetNode(fbs_edge->node_index()), fbs_edge->src_arg_index(), fbs_edge->dst_arg_index());
+        const Node* other = graph.GetNode(fbs_edge->node_index());
+        ORT_RETURN_IF(other == nullptr,
+                      "Node::LoadEdgesFromOrtFormat: edge references unpopulated node slot ",
+                      fbs_edge->node_index(), " for ", dst_name);
+        edge_set.emplace(*other, fbs_edge->src_arg_index(), fbs_edge->dst_arg_index());
       }
     }
     return Status::OK();
@@ -6757,8 +6761,11 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
   if (fbs_node_edges != nullptr) {
     for (const auto* fbs_node_edge : *fbs_node_edges) {
       ORT_RETURN_IF(nullptr == fbs_node_edge, "NodeEdge is missing. Invalid ORT format model.");
-      ORT_RETURN_IF(fbs_node_edge->node_index() >= fbs_graph.max_node_index(), "Node index is out of range");
-      ORT_RETURN_IF_ERROR(nodes_[fbs_node_edge->node_index()]->LoadEdgesFromOrtFormat(*fbs_node_edge, *this));
+      const auto edge_node_index = fbs_node_edge->node_index();
+      ORT_RETURN_IF(edge_node_index >= fbs_graph.max_node_index(), "Node index is out of range");
+      ORT_RETURN_IF(nodes_[edge_node_index] == nullptr,
+                    "ORT format: edge references unpopulated node slot ", edge_node_index);
+      ORT_RETURN_IF_ERROR(nodes_[edge_node_index]->LoadEdgesFromOrtFormat(*fbs_node_edge, *this));
     }
   }
 
@@ -6769,7 +6776,10 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
       node_args.reserve(fbs_node_args->size());
       for (const auto* fbs_node_arg_name : *fbs_node_args) {
         ORT_RETURN_IF(nullptr == fbs_node_arg_name, "NodeArg Name is missing. Invalid ORT format model.");
-        gsl::not_null<NodeArg*> node_arg = GetNodeArg(fbs_node_arg_name->str());
+        NodeArg* node_arg = GetNodeArg(fbs_node_arg_name->str());
+        ORT_RETURN_IF(node_arg == nullptr,
+                      "ORT format: graph input/output references unknown NodeArg '",
+                      fbs_node_arg_name->str(), "'");
         node_args.push_back(node_arg);
       }
     }

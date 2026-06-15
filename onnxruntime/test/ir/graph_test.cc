@@ -3521,5 +3521,178 @@ TEST_F(GraphTest, OuterScopeInitializerConflictingTypeFails) {
   EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("[subgraph:body]"));
 }
 
+// Regression tests for hardened ORT-format graph loading. Construct minimal
+// fbs::Model buffers by hand so that Graph::LoadFromOrtFormat sees specific
+// semantic corruptions and rejects them with a clear error rather than
+// dereferencing a null pointer.
+namespace {
+
+flatbuffers::Offset<fbs::ValueInfo> CreateMinimalFbsNodeArg(flatbuffers::FlatBufferBuilder& builder,
+                                                            const char* name) {
+  // Minimal tensor type (float, no shape) so LoadValueInfoOrtFormat accepts the named NodeArg.
+  auto tensor_type = fbs::CreateTensorTypeAndShape(builder, fbs::TensorDataType::FLOAT, 0);
+  auto type_info = fbs::CreateTypeInfo(builder, 0, fbs::TypeInfoValue::tensor_type, tensor_type.Union());
+  return fbs::CreateValueInfoDirect(builder, name, /*doc_string*/ nullptr, type_info);
+}
+
+flatbuffers::Offset<fbs::Node> CreateMinimalFbsIdentityNode(flatbuffers::FlatBufferBuilder& builder,
+                                                            uint32_t index,
+                                                            const char* input_name,
+                                                            const char* output_name) {
+  std::vector<flatbuffers::Offset<flatbuffers::String>> inputs_v{builder.CreateSharedString(input_name)};
+  std::vector<flatbuffers::Offset<flatbuffers::String>> outputs_v{builder.CreateSharedString(output_name)};
+  std::vector<int32_t> input_arg_counts_v{1};
+  // Node::LoadFromOrtFormat requires implicit_inputs to be non-null (may be empty).
+  std::vector<flatbuffers::Offset<flatbuffers::String>> implicit_inputs_v{};
+  return fbs::CreateNodeDirect(builder,
+                               /*name*/ "",
+                               /*doc_string*/ nullptr,
+                               /*domain*/ "",
+                               /*since_version*/ 13,
+                               /*index*/ index,
+                               /*op_type*/ "Identity",
+                               /*type*/ fbs::NodeType::Primitive,
+                               /*execution_provider_type*/ nullptr,
+                               &inputs_v,
+                               &outputs_v,
+                               /*attributes*/ nullptr,
+                               &input_arg_counts_v,
+                               &implicit_inputs_v);
+}
+
+// Wrap a Graph offset in a minimal fbs::Model + InferenceSession and finish the buffer.
+template <typename BuildGraphFn>
+std::vector<uint8_t> BuildOrtFormatSessionBuffer(BuildGraphFn build_graph) {
+  flatbuffers::FlatBufferBuilder builder;
+  auto graph_offset = build_graph(builder);
+
+  std::vector<flatbuffers::Offset<fbs::OperatorSetId>> opsets_v{
+      fbs::CreateOperatorSetIdDirect(builder, /*domain*/ "", /*version*/ 13)};
+
+  auto model_offset = fbs::CreateModelDirect(builder,
+                                             /*ir_version*/ 7,
+                                             &opsets_v,
+                                             /*producer_name*/ nullptr,
+                                             /*producer_version*/ nullptr,
+                                             /*domain*/ nullptr,
+                                             /*model_version*/ 0,
+                                             /*doc_string*/ nullptr,
+                                             graph_offset);
+
+  auto session_offset = fbs::CreateInferenceSessionDirect(builder,
+                                                          std::to_string(kOrtModelVersion).c_str(),
+                                                          model_offset,
+                                                          0);
+  builder.Finish(session_offset);
+  return std::vector<uint8_t>(builder.GetBufferPointer(),
+                              builder.GetBufferPointer() + builder.GetSize());
+}
+
+}  // namespace
+
+// An outer NodeEdge references a node slot inside max_node_index that has no Node populated.
+// Previously this would dereference a null nodes_[edge_node_index] and crash.
+TEST_F(GraphTest, LoadFromOrtFormat_RejectsNodeEdgeForUnpopulatedNodeSlot) {
+  auto buf = BuildOrtFormatSessionBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    // No nodes at all, but reserve a slot for index 0 so nodes_ has size 1 with a null entry.
+    std::vector<flatbuffers::Offset<fbs::NodeEdge>> node_edges_v{
+        fbs::CreateNodeEdgeDirect(builder, /*node_index*/ 0)};
+
+    return fbs::CreateGraphDirect(builder,
+                                  /*initializers*/ nullptr,
+                                  /*node_args*/ nullptr,
+                                  /*nodes*/ nullptr,
+                                  /*max_node_index*/ 1,
+                                  &node_edges_v);
+  });
+
+  const auto* fbs_session = fbs::GetInferenceSession(buf.data());
+  ASSERT_NE(fbs_session, nullptr);
+  ASSERT_NE(fbs_session->model(), nullptr);
+
+  OrtFormatLoadOptions load_options;
+  std::unique_ptr<Model> loaded_model;
+  auto status = Model::LoadFromOrtFormat(*fbs_session->model(), nullptr, load_options, *logger_, loaded_model);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("edge references unpopulated node slot"));
+}
+
+// A NodeEdge whose owning node exists, but whose inner EdgeEnd references a node slot
+// that was never populated. The Node::LoadEdgesFromOrtFormat null check should reject it.
+TEST_F(GraphTest, LoadFromOrtFormat_RejectsEdgeEndForUnpopulatedNodeSlot) {
+  auto buf = BuildOrtFormatSessionBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args_v{
+        CreateMinimalFbsNodeArg(builder, "x"),
+        CreateMinimalFbsNodeArg(builder, "y"),
+    };
+
+    // Populate node at index 0. Slot 1 stays null because max_node_index = 2 but only one node is provided.
+    std::vector<flatbuffers::Offset<fbs::Node>> nodes_v{
+        CreateMinimalFbsIdentityNode(builder, /*index*/ 0, "x", "y"),
+    };
+
+    // Edge for node 0 with input_edges referencing node_index 1 (the null slot).
+    std::vector<fbs::EdgeEnd> input_edges_v{fbs::EdgeEnd(/*node_index*/ 1, 0, 0)};
+    std::vector<flatbuffers::Offset<fbs::NodeEdge>> node_edges_v{
+        fbs::CreateNodeEdgeDirect(builder, /*node_index*/ 0, &input_edges_v),
+    };
+
+    std::vector<flatbuffers::Offset<flatbuffers::String>> inputs_v{builder.CreateSharedString("x")};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> outputs_v{builder.CreateSharedString("y")};
+
+    return fbs::CreateGraphDirect(builder,
+                                  /*initializers*/ nullptr,
+                                  &node_args_v,
+                                  &nodes_v,
+                                  /*max_node_index*/ 2,
+                                  &node_edges_v,
+                                  &inputs_v,
+                                  &outputs_v);
+  });
+
+  const auto* fbs_session = fbs::GetInferenceSession(buf.data());
+  ASSERT_NE(fbs_session, nullptr);
+  ASSERT_NE(fbs_session->model(), nullptr);
+
+  OrtFormatLoadOptions load_options;
+  std::unique_ptr<Model> loaded_model;
+  auto status = Model::LoadFromOrtFormat(*fbs_session->model(), nullptr, load_options, *logger_, loaded_model);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(),
+              ::testing::HasSubstr("Node::LoadEdgesFromOrtFormat: edge references unpopulated node slot"));
+}
+
+// graph inputs/outputs reference a NodeArg name that does not exist in node_args_.
+// Previously the gsl::not_null assertion would fire on the null GetNodeArg result.
+TEST_F(GraphTest, LoadFromOrtFormat_RejectsGraphIoWithUnknownNodeArgName) {
+  auto buf = BuildOrtFormatSessionBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args_v{
+        CreateMinimalFbsNodeArg(builder, "x"),
+    };
+
+    // Inputs reference a NodeArg name that was not declared in node_args.
+    std::vector<flatbuffers::Offset<flatbuffers::String>> inputs_v{builder.CreateSharedString("nonexistent")};
+
+    return fbs::CreateGraphDirect(builder,
+                                  /*initializers*/ nullptr,
+                                  &node_args_v,
+                                  /*nodes*/ nullptr,
+                                  /*max_node_index*/ 0,
+                                  /*node_edges*/ nullptr,
+                                  &inputs_v);
+  });
+
+  const auto* fbs_session = fbs::GetInferenceSession(buf.data());
+  ASSERT_NE(fbs_session, nullptr);
+  ASSERT_NE(fbs_session->model(), nullptr);
+
+  OrtFormatLoadOptions load_options;
+  std::unique_ptr<Model> loaded_model;
+  auto status = Model::LoadFromOrtFormat(*fbs_session->model(), nullptr, load_options, *logger_, loaded_model);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(),
+              ::testing::HasSubstr("graph input/output references unknown NodeArg 'nonexistent'"));
+}
+
 }  // namespace test
 }  // namespace onnxruntime
