@@ -2,6 +2,11 @@
 
 This file records QMoE INT4/INT8 GEMV profiling results so future kernel and dispatch changes can be compared against a stable baseline.
 
+> **Note**: These are **point-in-time** measurements captured on the specific GPU, driver, CUDA
+> toolkit, and ORT build noted in each section header. Treat the numbers as a historical baseline
+> for regression comparison, not as current performance guidance — re-run the benchmark script on
+> your own hardware before drawing conclusions.
+
 ## 2026-06-12 Baseline: SM90, Warmup 5, Repeat 100
 
 ### Setup

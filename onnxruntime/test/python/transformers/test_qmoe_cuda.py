@@ -1104,8 +1104,14 @@ class SparseMoeBlockORTHelper(nn.Module):
                 use_quant=True,  # Always use QMoE
                 quant_bits=self.quant_bits,
                 # We use swiglu_fusion=1 (fused and interleaved) based on the kernel implementation.
-                # This matches the behavior of the Cutlass/MLAS kernels used in ORT.
-                swiglu_fusion=getattr(self, "swiglu_fusion", 0),
+                # This matches the behavior of the Cutlass/MLAS kernels used in ORT. Tests may set
+                # onnx_swiglu_fusion_override to emit a different attribute value (e.g. 0) while keeping
+                # the interleaved weight layout, to exercise the kernel's backward-compat remap.
+                swiglu_fusion=(
+                    self.onnx_swiglu_fusion_override
+                    if getattr(self, "onnx_swiglu_fusion_override", None) is not None
+                    else getattr(self, "swiglu_fusion", 0)
+                ),
                 block_size=self.block_size,  # Add block_size for block-wise quantization
             )
         except Exception as e:
@@ -1901,6 +1907,35 @@ class TestSwigluQMoE(unittest.TestCase):
         self.assertEqual(torch_result.shape, expected_shape)
         self.assertFalse(torch.isnan(torch_result).any())
         self.assertFalse(torch.isinf(torch_result).any())
+
+        swiglu_moe.parity_check()
+
+    def test_swiglu_qmoe_fusion0_remap_parity(self):
+        # Backward-compat regression: the published gpt-oss-20b model emits no swiglu_fusion attribute
+        # (defaulting to 0) but stores FC1 in the interleaved SwiGLU layout. The CUDA QMoE op remaps
+        # swiglu_fusion=0 -> 1 for SwiGLU activation. Here we build an interleaved block, emit
+        # swiglu_fusion=0 in the ONNX graph, and verify parity still holds against the interleaved
+        # reference. Without the remap this would compute the wrong (non-interleaved) result.
+        torch.manual_seed(1234)
+        numpy.random.seed(1234)
+
+        config = SwigluMoeConfig(hidden_size=128, intermediate_size=256, num_local_experts=4, num_experts_per_token=2)
+
+        swiglu_moe = SwigluMoEBlock(
+            config,
+            batch_size=1,
+            sequence_length=32,
+            quant_bits=4,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_asymmetric_quant=False,
+        )
+        # Keep the interleaved reference and weight layout (swiglu_fusion == 1) but emit swiglu_fusion=0
+        # in the ONNX attribute so the op's backward-compatibility remap path is exercised.
+        self.assertEqual(swiglu_moe.swiglu_fusion, 1)
+        swiglu_moe.onnx_swiglu_fusion_override = 0
+
+        hidden_states = torch.randn(1, 32, config.hidden_size).to(device).to(torch.float16)
+        _ = swiglu_moe.forward(hidden_states)
 
         swiglu_moe.parity_check()
 

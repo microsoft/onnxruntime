@@ -536,6 +536,15 @@ The operator supports three fusion modes via the `swiglu_fusion` attribute:
 | 1 (interleaved) | `fc1`, `fc2` | `[Gate_0, Value_0, Gate_1, Value_1, …]` — `[E, 2×inter, hidden]` | GPT-OSS layout. |
 | 2 (block) | `fc1`, `fc2` | `[Gate_0…Gate_N | Value_0…Value_N]` — `[E, 2×inter, hidden]` | Concatenated halves; Llama/Gemma layout. |
 
+> **Backward-compatibility remap (`swiglu_fusion=0` + SwiGLU)**: The published gpt-oss-20b
+> model before June 2025 uses **interleaved** SwiGLU layout but `swiglu_fusion` attribute to `0`.
+> To keep those models working, when `activation_type="swiglu"` and `swiglu_fusion=0`,
+> the CUDA op treats the FC1 weights as interleaved (i.e. as if `swiglu_fusion=1`):
+> unconditionally for **QMoE** (which never has a separate `fc3`).
+> A one-time warning is logged. Consequently a SwiGLU model that genuinely intended the
+> non-interleaved split must provide a separate `fc3` (standard MoE) rather than rely on
+> `swiglu_fusion=0`. New exporters should set `swiglu_fusion` explicitly.
+
 > **CPU note**: The CPU MoE/QMoE implementation only supports the **interleaved**
 > SwiGLU layout (`swiglu_fusion=1`). The concatenated layout (`swiglu_fusion=2`)
 > throws `ORT_NOT_IMPLEMENTED` on CPU; use the CUDA EP for concatenated SwiGLU.
