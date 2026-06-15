@@ -633,13 +633,15 @@ void WebGpuContext::WriteTimestamp(uint32_t query_index) {
   compute_pass_encoder.WriteTimestamp(query_set_, query_index);
 }
 
-void WebGpuContext::StartProfiling(TimePoint profiling_start_time) {
+void WebGpuContext::StartProfiling() {
   if (query_type_ == TimestampQueryType::None) {
     return;
   }
 
   is_profiling_ = true;
-  profiling_start_time_ = profiling_start_time;
+  // profiling_start_time_ is supplied separately via SetProfilingStartTime, which is
+  // driven by WebGpuProfiler::StartProfiling and carries the ORT profiler's CPU time
+  // base for both session-level and run-level profiling.
   gpu_timestamp_offset_ = 0;
   profiling_first_submit_cpu_offset_us_ = -1;
 
@@ -665,6 +667,9 @@ void WebGpuContext::StartProfiling(TimePoint profiling_start_time) {
 
 void WebGpuContext::CollectProfilingData(profiling::Events& events) {
   if (!pending_queries_.empty()) {
+    // Shift GPU timestamps (which start from 0 at the first submit) onto the ORT
+    // profiler's CPU timeline by adding the CPU elapsed time from profiling_start_time_
+    // to that first submit. This keeps GPU events aligned with ORT CPU events.
     int64_t cpu_offset_us = profiling_first_submit_cpu_offset_us_ > 0
                                 ? profiling_first_submit_cpu_offset_us_
                                 : 0;
@@ -776,6 +781,8 @@ void WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr) {
                 "Number of pending dispatches (", num_pending_dispatches_,
                 ") does not match pending kernels size (", pending_kernels_.size(), ")");
 
+    // Capture the CPU elapsed time from the ORT profiler's start to this first submit.
+    // Used in CollectProfilingData to offset GPU timestamps onto the ORT CPU timeline.
     if (profiling_first_submit_cpu_offset_us_ < 0) {
       profiling_first_submit_cpu_offset_us_ = TimeDiffMicroSeconds(profiling_start_time_);
     }

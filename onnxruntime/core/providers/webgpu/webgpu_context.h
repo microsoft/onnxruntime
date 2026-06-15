@@ -240,7 +240,12 @@ class WebGpuContext final {
     return *split_k_config_;
   }
 
-  void StartProfiling(TimePoint profiling_start_time = std::chrono::high_resolution_clock::now());
+  // Set the CPU time base (ORT profiler's profiling_start_time) used to align GPU
+  // timestamps with ORT CPU events. Pushed in by WebGpuProfiler::StartProfiling, which
+  // is the only place that receives the framework's profiling start time for both
+  // session-level and run-level profiling.
+  void SetProfilingStartTime(TimePoint profiling_start_time) { profiling_start_time_ = profiling_start_time; }
+  void StartProfiling();
   // Collect pending GPU profiling data into the given events vector.
   void CollectProfilingData(profiling::Events& events);
   // Collect pending GPU profiling data into the shared events_ vector (run-level).
@@ -364,7 +369,11 @@ class WebGpuContext final {
   std::vector<PendingQueryInfo> pending_queries_;
 
   uint64_t gpu_timestamp_offset_ = 0;
+  // ORT profiler's CPU time base, set via SetProfilingStartTime; GPU timestamps are
+  // aligned to it. See SetProfilingStartTime.
   TimePoint profiling_start_time_;
+  // CPU elapsed time (us) from profiling_start_time_ to the first GPU submit, applied
+  // as an offset to GPU timestamps in CollectProfilingData. -1 until the first submit.
   int64_t profiling_first_submit_cpu_offset_us_ = -1;
   bool is_profiling_ = false;
   // Shared GPU profiling events for run-level profiling.

@@ -778,10 +778,10 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
     context_.PushErrorScope();
   }
 
-  // Start profiling if session-level or run-level profiling is enabled
-  if (session_profiler_ && session_profiler_->Enabled()) {
-    context_.StartProfiling(session_profiler_->ProfilingStartTime());
-  } else if (run_options.enable_profiling) {
+  // Start profiling if session-level or run-level profiling is enabled. The CPU time
+  // base used to align GPU timestamps is pushed into the context by
+  // WebGpuProfiler::StartProfiling, so no timepoint is threaded through here.
+  if ((session_profiler_ && session_profiler_->Enabled()) || run_options.enable_profiling) {
     context_.StartProfiling();
   }
 
@@ -871,7 +871,7 @@ Status WebGpuExecutionProvider::ReplayGraph(int graph_annotation_id, bool /*sync
   ORT_ENFORCE(IsGraphCaptured(graph_annotation_id));
   // TODO: enable profiling in run level
   if (session_profiler_ && session_profiler_->Enabled()) {
-    context_.StartProfiling(session_profiler_->ProfilingStartTime());
+    context_.StartProfiling();
   }
   context_.Replay(captured_graphs_.at(graph_annotation_id), *per_graph_buffer_mgrs_.at(graph_annotation_id));
   if (session_profiler_ && session_profiler_->Enabled()) {
