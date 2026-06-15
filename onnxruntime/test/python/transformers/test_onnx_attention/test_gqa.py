@@ -289,6 +289,7 @@ def parity_check_gqa_past(
         key_padding_mask=key_padding_mask,
         causal=causal,
         softcap=config.softcap,
+        past_seqlen=config.past_kv_sequence_length,
     )
     out_ref_np = out_ref.to(torch.float32).detach().cpu().numpy()
 
@@ -548,6 +549,7 @@ def parity_check_gqa_past_with_padding(
         key_padding_mask=key_padding_mask,
         causal=config.is_causal == 1,
         softcap=config.softcap,
+        past_seqlen=config.past_kv_sequence_length,
     )
 
     # --- ONNX Runtime Path ---

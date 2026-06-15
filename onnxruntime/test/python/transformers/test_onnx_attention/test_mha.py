@@ -298,6 +298,7 @@ def parity_check_mha_past(
         attn_bias=attn_bias_ref,
         causal=causal,
         softcap=config.softcap,
+        past_seqlen=config.past_kv_sequence_length,
     )
     out_ref_np = out_ref.to(torch.float32).detach().cpu().numpy()
 
@@ -2393,7 +2394,13 @@ class TestONNXAttentionMHAAsymmetricHeadSize(unittest.TestCase):
         full_k_bsnh = full_k_bnsh.transpose(1, 2)
         full_v_bsnh = full_v_bnsh.transpose(1, 2)
 
-        out_ref, _ = attention_ref(q=q, k=full_k_bsnh, v=full_v_bsnh, causal=True)
+        out_ref, _ = attention_ref(
+            q=q,
+            k=full_k_bsnh,
+            v=full_v_bsnh,
+            causal=True,
+            past_seqlen=config.past_kv_sequence_length,
+        )
 
         # ORT path — should fall back to unfused (not crash in MEA)
         out_ort, present_k, present_v = attention_past_func(

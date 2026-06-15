@@ -345,7 +345,10 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
 
   T* mask_data = nullptr;
   bool delete_mask_data = false;
-  bool causal = parameters.is_causal && parameters.q_sequence_length > 1;
+  // Skip causal masking only for the common decode case where the single query
+  // follows existing past K/V and all K/V positions are visible.
+  bool causal = parameters.is_causal &&
+                !(parameters.q_sequence_length == 1 && parameters.past_sequence_length > 0);
   if (mask_index == nullptr) {
     // No external mask: allocate only if causal behavior needed.
     if (causal) {

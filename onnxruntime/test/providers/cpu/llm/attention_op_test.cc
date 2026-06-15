@@ -2796,8 +2796,40 @@ TEST(AttentionTest, Attention4DSoftCapOutputQkRawLogits) {
 
 // ============================================================================
 // Causal alignment tests: verify upper-left (no past) vs lower-right (with past)
-// These are CUDA-only tests that validate the causal masking fix.
+// These tests validate causal mask alignment across CPU and CUDA.
 // ============================================================================
+
+// Test: Causal + cross-attention (S_q=1, S_kv=6, no past)
+// ONNX spec mandates upper-left alignment: q0 attends only to kv[0].
+// This covers GitHub issue #29020, where CPU skipped causal masking for S_q=1.
+TEST(AttentionTest, Attention4DCausalSingleQueryCrossAttentionUpperLeft) {
+  int batch_size = 1;
+  int q_num_heads = 1;
+  int q_sequence_length = 1;
+  int head_size = 8;
+  int kv_sequence_length = 6;
+  int kv_num_heads = 1;
+  int v_head_size = 8;
+  int past_sequence_length = 0;
+
+  std::vector<float> q(batch_size * q_num_heads * q_sequence_length * head_size, 0.0f);
+  std::vector<float> k(batch_size * kv_num_heads * kv_sequence_length * head_size, 0.0f);
+  std::vector<float> v(batch_size * kv_num_heads * kv_sequence_length * v_head_size, 0.0f);
+  for (int i = 0; i < v_head_size; ++i) {
+    v[i] = 1.0f;
+  }
+  std::vector<float> y(batch_size * q_num_heads * q_sequence_length * v_head_size, 1.0f);
+
+  RunTest4D(batch_size, q_num_heads, q_sequence_length, head_size, kv_sequence_length, kv_num_heads,
+            v_head_size, past_sequence_length,
+            q, k, v, std::vector<float>(), std::initializer_list<bool>(),
+            std::vector<float>(), std::vector<float>(),
+            1, -1, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(), -1,
+            TensorType::kFloat,
+            y, std::vector<float>(), std::vector<float>(), std::vector<float>(),
+            false, false, true  // disable_cpu, disable_cuda, disable_dml
+  );
+}
 
 // Test: Causal + cross-attention (S_q=3, S_kv=5, no past)
 // ONNX spec mandates upper-left alignment: q_i attends to kv[0..i].
