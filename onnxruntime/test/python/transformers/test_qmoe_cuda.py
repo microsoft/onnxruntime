@@ -137,43 +137,6 @@ def print_diff_statistics(diff_tensor: torch.Tensor, prefix: str = ""):
     )
 
 
-def preprocess_weights_for_mixed_gemm(
-    tensor: torch.Tensor, quant_bits: int, sm: int = -1, do_weight_interleave: bool = True
-) -> torch.Tensor:
-    if len(tensor.shape) == 2:
-        tensor = tensor.unsqueeze(0)
-
-    # Input tensor shape is [Experts, n, k_packed]. k_packed is k/2 for 4-bit, k for 8-bit.
-    num_experts = tensor.shape[0]
-    n = tensor.shape[1]
-    k_packed = tensor.shape[2]
-    k = k_packed * 2 if quant_bits == 4 else k_packed
-
-    packed_list = []
-
-    if _pybind and hasattr(_pybind, "pack_weights_for_cuda_mixed_gemm") and torch.cuda.is_available():
-        for i in range(num_experts):
-            if tensor[i].dtype == torch.bfloat16:
-                weight = tensor[i].to(torch.float32).cpu().numpy()
-            else:
-                weight = tensor[i].cpu().numpy()
-            packed = _pybind.pack_weights_for_cuda_mixed_gemm(weight, n, k, quant_bits, sm)
-            # pack_weights_for_cuda_mixed_gemm returns int8 array of shape [packed_size]
-            # We need to reshape it to (k, n/2) for 4-bit, (k, n) for 8-bit.
-            output_rows = k
-            output_cols = n // 2 if quant_bits == 4 else n
-            packed_tensor = torch.from_numpy(packed).to(tensor.device)
-            packed_tensor = packed_tensor.view(torch.uint8).view(output_rows, output_cols)
-            packed_list.append(packed_tensor)
-
-        return torch.stack(packed_list)
-    else:
-        # This shall not happen unless older version of onnxruntime is used.
-        raise ImportError(
-            "onnxruntime._pybind_state.pack_weights_for_cuda_mixed_gemm not found. Cannot preprocess weights."
-        )
-
-
 def quant_dequant_blockwise(weights, block_size, is_4_bit_quantization: bool = True, asymmetric: bool = False):
     # DEBUG
     # print(f"DEBUG: quant_dequant input shape={weights.shape}, 4bit={is_4_bit_quantization}, asym={asymmetric}")
@@ -2110,7 +2073,7 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
     hardware (the other ``test_swiglu_qmoe_parity_*`` cases in this file
     fail on H200 / H100 with max-diff > 1.0 on plain main, by
     inspection — pre-existing). A real parity check can be added once
-    that harness honours the runtime SM.
+    that harness honors the runtime SM.
     """
 
     def _run_one(self, *, hidden_size, inter_size, num_experts, top_k, swiglu_fusion, batch_size):

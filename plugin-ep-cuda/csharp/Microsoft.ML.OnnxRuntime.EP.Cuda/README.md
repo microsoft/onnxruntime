@@ -2,6 +2,14 @@
 
 CUDA plugin Execution Provider for [ONNX Runtime](https://github.com/microsoft/onnxruntime).
 
+### Prerequisites
+
+This package provides the CUDA plugin EP only. Your project must separately reference an ONNX Runtime
+core package (e.g. `Microsoft.ML.OnnxRuntime`) of version `@min_onnxruntime_version@` or later.
+
+If the referenced ONNX Runtime is incompatible, the plugin EP will report an error when its library is
+registered.
+
 ### Usage
 
 ```csharp
@@ -48,4 +56,4 @@ env.UnregisterExecutionProviderLibrary("cuda_ep");
 
 - NVIDIA GPU with CUDA support
 - CUDA toolkit and cuDNN installed on the system
-- ONNX Runtime 1.26.0 or later
+- ONNX Runtime `@min_onnxruntime_version@` or later

@@ -29,8 +29,10 @@ enum StatusCategory {
 };
 
 /**
-   Error code for ONNXRuntime.
-*/
+ * Error code for ONNXRuntime.
+ *
+ * These values must stay in sync with the public C API OrtErrorCode enum values.
+ */
 enum StatusCode {
   OK = 0,
   FAIL = 1,
