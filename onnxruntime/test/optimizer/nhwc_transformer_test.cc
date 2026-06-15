@@ -456,7 +456,7 @@ TEST(NhwcTransformerTests, ConvFloat_UsesNhwcOnlyWithKleidi) {
     // the expected transpose-boundary graph shape is produced. Otherwise, don't validate the graph shape.
     if (nhwc_count == 0) {
       // When the Arm® KleidiAI™ NHWC Conv path is available but no NHWC ops were produced,
-      // ensure that some other optimiser run and consumed the Conv node instead
+      // ensure that some other optimizer ran and consumed the Conv node instead
       EXPECT_TRUE(!kleidi_supported || op_to_count["Conv"] == 0);
       return;
     }
@@ -536,7 +536,7 @@ TEST(NhwcTransformerTests, FusedConvFloat_UsesNhwcOnlyWithKleidi) {
     // the expected transpose-boundary graph shape is produced. Otherwise, don't validate the graph shape.
     if (nhwc_count == 0) {
       // When the Arm® KleidiAI™ NHWC Conv path is available but no NHWC ops were produced,
-      // ensure that some other optimiser run and consumed the FusedConv node instead
+      // ensure that some other optimizer ran and consumed the FusedConv node instead
       EXPECT_TRUE(!kleidi_supported || op_to_count["com.microsoft.FusedConv"] == 0);
       return;
     }
