@@ -331,16 +331,16 @@ static void dispatch_moe_gemv_group_size(TypeA* act, uint8_t* weight, TypeA* sca
                                          int group_size, cudaStream_t stream) {
   if (group_size <= 0) {
     launch_moe_gemv<Details, CtaN, Threads, 0, TypeA, AccT>(act, weight, scales, bias, out, expert_first_token_offset,
-                                                      permuted_row_to_expert, num_experts, expanded_num_rows, n, k, stream);
+                                                            permuted_row_to_expert, num_experts, expanded_num_rows, n, k, stream);
   } else if (group_size == 32) {
     launch_moe_gemv<Details, CtaN, Threads, 32, TypeA, AccT>(act, weight, scales, bias, out, expert_first_token_offset,
-                                                       permuted_row_to_expert, num_experts, expanded_num_rows, n, k, stream);
+                                                             permuted_row_to_expert, num_experts, expanded_num_rows, n, k, stream);
   } else if (group_size == 64) {
     launch_moe_gemv<Details, CtaN, Threads, 64, TypeA, AccT>(act, weight, scales, bias, out, expert_first_token_offset,
-                                                       permuted_row_to_expert, num_experts, expanded_num_rows, n, k, stream);
+                                                             permuted_row_to_expert, num_experts, expanded_num_rows, n, k, stream);
   } else if (group_size == 128) {
     launch_moe_gemv<Details, CtaN, Threads, 128, TypeA, AccT>(act, weight, scales, bias, out, expert_first_token_offset,
-                                                        permuted_row_to_expert, num_experts, expanded_num_rows, n, k, stream);
+                                                              permuted_row_to_expert, num_experts, expanded_num_rows, n, k, stream);
   } else {
     ORT_THROW("unsupported MoE GEMV group_size: ", group_size);
   }
