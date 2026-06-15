@@ -4,6 +4,7 @@
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv.h"
 
 #include <cuda_fp16.h>
+#include <cstdlib>
 #include <type_traits>
 
 #include "core/common/common.h"
@@ -18,7 +19,7 @@ namespace fpA_intB_gemv {
 // Mirrors the dense fpA_intB_gemv `kernel<>` body for GroupSize=0 (per-channel),
 // EnableActScale=false, EnableZero=false, ApplyAlphaInAdvance=false.
 template <typename Details, int CtaN, int Threads, int GroupSize, bool EnableBias,
-          typename TypeA = typename Details::TypeDetailsA::Type>
+          typename TypeA = typename Details::TypeDetailsA::Type, typename AccT = TypeA>
 __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
                                 int64_t const* expert_first_token_offset, int const* permuted_row_to_expert,
                                 int num_experts,
@@ -83,8 +84,8 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
     bias += tile_id_n * CtaN * Details::kInterleave;
   }
 
-  TypeA tile_acc[CtaM * CtaN];
-  fill<CtaM * CtaN>(tile_acc, static_cast<TypeA>(0.f));
+  AccT tile_acc[CtaM * CtaN];
+  fill<CtaM * CtaN>(tile_acc, static_cast<AccT>(0.f));
 
   TypeA vec_scale[CtaN];
   if constexpr (GroupSize == 0) {
@@ -112,15 +113,15 @@ __global__ void moe_gemv_kernel(TypeA* act, uint8_t* weight, TypeA* scales, Type
 #pragma unroll
     for (int i = 0; i < CtaM; ++i) {
       act_iterator.load(tile_a, iter, i);
-      mma<Details, 1, CtaN, StepK>(tile_acc + i * CtaN, tile_w_pack2, tile_a);
+      mma<Details, 1, CtaN, StepK, AccT>(tile_acc + i * CtaN, tile_w_pack2, tile_a);
     }
   }
-  epilogue<Details, CtaM, CtaN, Threads, EnableBias, false>(out, n, tile_acc, bias, 1.0f);
+  epilogue<Details, CtaM, CtaN, Threads, EnableBias, false, AccT>(out, n, tile_acc, bias, 1.0f);
 #endif
 }
 
 template <typename Details, int CtaM, int CtaN, int Threads, bool EnableBias,
-          typename TypeA = typename Details::TypeDetailsA::Type>
+          typename TypeA = typename Details::TypeDetailsA::Type, typename AccT = TypeA>
 __device__ __forceinline__ void swiglu_epilogue(void* out, void* tile_acc, void* bias,
                                                 cutlass_kernels::ActivationParams activation_params) {
   static constexpr int Interleave = Details::kInterleave;
@@ -137,7 +138,7 @@ __device__ __forceinline__ void swiglu_epilogue(void* out, void* tile_acc, void*
   int warp_id = tid / WarpSize, lane_id = tid % WarpSize;
 #pragma unroll
   for (int n = 0; n < CtaN; ++n) {
-    float v = static_cast<float>(reinterpret_cast<TypeA*>(tile_acc)[n]);
+    float v = static_cast<float>(reinterpret_cast<AccT*>(tile_acc)[n]);
     v = warp_reduce_sum<Interleave, ThreadsPerInterleavedTile>(v);
     if (lane_id < Interleave * ThreadsPerInterleavedTile && lane_id % ThreadsPerInterleavedTile == 0) {
       shmem[warp_id * RawCols + n * Interleave + lane_id / ThreadsPerInterleavedTile] = v;
@@ -171,7 +172,7 @@ __device__ __forceinline__ void swiglu_epilogue(void* out, void* tile_acc, void*
 }
 
 template <typename Details, int CtaN, int Threads, int GroupSize, bool EnableBias,
-          typename TypeA = typename Details::TypeDetailsA::Type>
+          typename TypeA = typename Details::TypeDetailsA::Type, typename AccT = TypeA>
 __global__ void moe_gemv_interleaved_swiglu_kernel(
     TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
     int64_t const* expert_first_token_offset, int const* permuted_row_to_expert, int num_experts,
@@ -244,8 +245,8 @@ __global__ void moe_gemv_interleaved_swiglu_kernel(
     bias += tile_id_n * CtaN * Details::kInterleave;
   }
 
-  TypeA tile_acc[CtaM * CtaN];
-  fill<CtaM * CtaN>(tile_acc, static_cast<TypeA>(0.f));
+  AccT tile_acc[CtaM * CtaN];
+  fill<CtaM * CtaN>(tile_acc, static_cast<AccT>(0.f));
 
   TypeA vec_scale[CtaN];
   if constexpr (GroupSize == 0) {
@@ -273,14 +274,14 @@ __global__ void moe_gemv_interleaved_swiglu_kernel(
 #pragma unroll
     for (int i = 0; i < CtaM; ++i) {
       act_iterator.load(tile_a, iter, i);
-      mma<Details, 1, CtaN, StepK>(tile_acc + i * CtaN, tile_w_pack2, tile_a);
+      mma<Details, 1, CtaN, StepK, AccT>(tile_acc + i * CtaN, tile_w_pack2, tile_a);
     }
   }
-  swiglu_epilogue<Details, CtaM, CtaN, Threads, EnableBias>(out, tile_acc, bias, activation_params);
+  swiglu_epilogue<Details, CtaM, CtaN, Threads, EnableBias, TypeA, AccT>(out, tile_acc, bias, activation_params);
 #endif
 }
 
-template <typename Details, int CtaN, int Threads, int GroupSize, typename TypeA>
+template <typename Details, int CtaN, int Threads, int GroupSize, typename TypeA, typename AccT = TypeA>
 static void launch_moe_gemv(TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
                             int64_t const* expert_first_token_offset, int const* permuted_row_to_expert,
                             int num_experts, int64_t expanded_num_rows, int64_t n, int64_t k,
@@ -290,17 +291,17 @@ static void launch_moe_gemv(TypeA* act, uint8_t* weight, TypeA* scales, TypeA* b
   dim3 grid(static_cast<unsigned>(expanded_num_rows), static_cast<unsigned>(n / (CtaN * Details::kInterleave)));
   dim3 block(Threads);
   if (bias != nullptr) {
-    moe_gemv_kernel<Details, CtaN, Threads, GroupSize, true><<<grid, block, 0, stream>>>(
+    moe_gemv_kernel<Details, CtaN, Threads, GroupSize, true, TypeA, AccT><<<grid, block, 0, stream>>>(
         act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts,
         weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k));
   } else {
-    moe_gemv_kernel<Details, CtaN, Threads, GroupSize, false><<<grid, block, 0, stream>>>(
+    moe_gemv_kernel<Details, CtaN, Threads, GroupSize, false, TypeA, AccT><<<grid, block, 0, stream>>>(
         act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts,
         weight_expert_stride, scale_expert_stride, static_cast<int>(n), static_cast<int>(k));
   }
 }
 
-template <typename Details, int CtaN, int Threads, int GroupSize, typename TypeA>
+template <typename Details, int CtaN, int Threads, int GroupSize, typename TypeA, typename AccT = TypeA>
 static void launch_moe_gemv_interleaved_swiglu(
     TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
     int64_t const* expert_first_token_offset, int const* permuted_row_to_expert, int num_experts,
@@ -312,59 +313,59 @@ static void launch_moe_gemv_interleaved_swiglu(
   dim3 grid(static_cast<unsigned>(expanded_num_rows), static_cast<unsigned>(n / (CtaN * Details::kInterleave)));
   dim3 block(Threads);
   if (bias != nullptr) {
-    moe_gemv_interleaved_swiglu_kernel<Details, CtaN, Threads, GroupSize, true><<<grid, block, 0, stream>>>(
+    moe_gemv_interleaved_swiglu_kernel<Details, CtaN, Threads, GroupSize, true, TypeA, AccT><<<grid, block, 0, stream>>>(
         act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts,
         weight_expert_stride, scale_expert_stride, static_cast<int>(inter_size), static_cast<int>(k), activation_params);
   } else {
-    moe_gemv_interleaved_swiglu_kernel<Details, CtaN, Threads, GroupSize, false><<<grid, block, 0, stream>>>(
+    moe_gemv_interleaved_swiglu_kernel<Details, CtaN, Threads, GroupSize, false, TypeA, AccT><<<grid, block, 0, stream>>>(
         act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts,
         weight_expert_stride, scale_expert_stride, static_cast<int>(inter_size), static_cast<int>(k), activation_params);
   }
 }
 
-template <typename Details, int CtaN, int Threads, typename TypeA>
+template <typename Details, int CtaN, int Threads, typename TypeA, typename AccT = TypeA>
 static void dispatch_moe_gemv_group_size(TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
                                          int64_t const* expert_first_token_offset,
                                          int const* permuted_row_to_expert, int num_experts,
                                          int64_t expanded_num_rows, int64_t n, int64_t k,
                                          int group_size, cudaStream_t stream) {
   if (group_size <= 0) {
-    launch_moe_gemv<Details, CtaN, Threads, 0, TypeA>(act, weight, scales, bias, out, expert_first_token_offset,
+    launch_moe_gemv<Details, CtaN, Threads, 0, TypeA, AccT>(act, weight, scales, bias, out, expert_first_token_offset,
                                                       permuted_row_to_expert, num_experts, expanded_num_rows, n, k, stream);
   } else if (group_size == 32) {
-    launch_moe_gemv<Details, CtaN, Threads, 32, TypeA>(act, weight, scales, bias, out, expert_first_token_offset,
+    launch_moe_gemv<Details, CtaN, Threads, 32, TypeA, AccT>(act, weight, scales, bias, out, expert_first_token_offset,
                                                        permuted_row_to_expert, num_experts, expanded_num_rows, n, k, stream);
   } else if (group_size == 64) {
-    launch_moe_gemv<Details, CtaN, Threads, 64, TypeA>(act, weight, scales, bias, out, expert_first_token_offset,
+    launch_moe_gemv<Details, CtaN, Threads, 64, TypeA, AccT>(act, weight, scales, bias, out, expert_first_token_offset,
                                                        permuted_row_to_expert, num_experts, expanded_num_rows, n, k, stream);
   } else if (group_size == 128) {
-    launch_moe_gemv<Details, CtaN, Threads, 128, TypeA>(act, weight, scales, bias, out, expert_first_token_offset,
+    launch_moe_gemv<Details, CtaN, Threads, 128, TypeA, AccT>(act, weight, scales, bias, out, expert_first_token_offset,
                                                         permuted_row_to_expert, num_experts, expanded_num_rows, n, k, stream);
   } else {
     ORT_THROW("unsupported MoE GEMV group_size: ", group_size);
   }
 }
 
-template <typename Details, int CtaN, int Threads, typename TypeA>
+template <typename Details, int CtaN, int Threads, typename TypeA, typename AccT = TypeA>
 static void dispatch_moe_gemv_interleaved_swiglu_group_size(
     TypeA* act, uint8_t* weight, TypeA* scales, TypeA* bias, TypeA* out,
     int64_t const* expert_first_token_offset, int const* permuted_row_to_expert, int num_experts,
     int64_t expanded_num_rows, int64_t inter_size, int64_t k, int group_size,
     cutlass_kernels::ActivationParams activation_params, cudaStream_t stream) {
   if (group_size <= 0) {
-    launch_moe_gemv_interleaved_swiglu<Details, CtaN, Threads, 0, TypeA>(
+    launch_moe_gemv_interleaved_swiglu<Details, CtaN, Threads, 0, TypeA, AccT>(
         act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts,
         expanded_num_rows, inter_size, k, activation_params, stream);
   } else if (group_size == 32) {
-    launch_moe_gemv_interleaved_swiglu<Details, CtaN, Threads, 32, TypeA>(
+    launch_moe_gemv_interleaved_swiglu<Details, CtaN, Threads, 32, TypeA, AccT>(
         act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts,
         expanded_num_rows, inter_size, k, activation_params, stream);
   } else if (group_size == 64) {
-    launch_moe_gemv_interleaved_swiglu<Details, CtaN, Threads, 64, TypeA>(
+    launch_moe_gemv_interleaved_swiglu<Details, CtaN, Threads, 64, TypeA, AccT>(
         act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts,
         expanded_num_rows, inter_size, k, activation_params, stream);
   } else if (group_size == 128) {
-    launch_moe_gemv_interleaved_swiglu<Details, CtaN, Threads, 128, TypeA>(
+    launch_moe_gemv_interleaved_swiglu<Details, CtaN, Threads, 128, TypeA, AccT>(
         act, weight, scales, bias, out, expert_first_token_offset, permuted_row_to_expert, num_experts,
         expanded_num_rows, inter_size, k, activation_params, stream);
   } else {
@@ -385,6 +386,25 @@ static constexpr int kThreads = 128;
 static constexpr int kTileSizeK = 64;
 static constexpr int kInt4Interleave = 128 * 8 / (kTileSizeK * 4);  // = 4
 static constexpr int kInt8Interleave = 128 * 8 / (kTileSizeK * 8);  // = 2
+
+// Maps a runtime accumulator-precision choice to a compile-time type tag so the
+// host launcher can select the fp32- or 16-bit-accumulation kernel instantiation.
+template <typename T>
+struct TypeTag {
+  using type = T;
+};
+
+// Opt-in: accumulate the GEMV inner product in 16-bit (fp16) instead of the default
+// fp32. Honored only for fp16 activations (bf16 always accumulates in fp32). Set
+// ORT_MOE_GEMV_FP16_ACCUM=1 to measure the perf/accuracy tradeoff of 16-bit accumulation.
+inline bool MoeGemvUseFp16Accum() {
+  static bool const enabled = []() {
+    char const* v = std::getenv("ORT_MOE_GEMV_FP16_ACCUM");
+    return v != nullptr && v[0] == '1';
+  }();
+  return enabled;
+}
+
 bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t k,
                            int weight_bits, int group_size) {
   if (sm < 80) {
@@ -470,13 +490,25 @@ void launch_moe_gemv_int_symmetric(T const* act, WeightType const* weight, T con
   ORT_UNUSED_PARAMETER(sm);
   using Details = typename DetailsForTAndWeight<T, WeightType>::Details;
   using TypeA = typename DetailsForTAndWeight<T, WeightType>::TypeA;
-  fiv::dispatch_moe_gemv_group_size<Details, kCtaN, kThreads, TypeA>(
-      const_cast<TypeA*>(reinterpret_cast<TypeA const*>(act)),
-      const_cast<uint8_t*>(reinterpret_cast<uint8_t const*>(weight)),
-      const_cast<TypeA*>(reinterpret_cast<TypeA const*>(scales)),
-      const_cast<TypeA*>(reinterpret_cast<TypeA const*>(bias)),
-      reinterpret_cast<TypeA*>(out),
-      expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, n, k, group_size, stream);
+  // Accumulate in fp32 by default. fp16 activations may opt back into 16-bit accumulation
+  // via ORT_MOE_GEMV_FP16_ACCUM=1; bf16 always accumulates in fp32 (16-bit bf16 accumulation
+  // is too lossy). use_fp32_accum selects the kernel's AccT at runtime.
+  bool const use_fp32_accum = !std::is_same_v<T, half> || !MoeGemvUseFp16Accum();
+  auto launch = [&](auto acc_tag) {
+    using AccT = typename decltype(acc_tag)::type;
+    fiv::dispatch_moe_gemv_group_size<Details, kCtaN, kThreads, TypeA, AccT>(
+        const_cast<TypeA*>(reinterpret_cast<TypeA const*>(act)),
+        const_cast<uint8_t*>(reinterpret_cast<uint8_t const*>(weight)),
+        const_cast<TypeA*>(reinterpret_cast<TypeA const*>(scales)),
+        const_cast<TypeA*>(reinterpret_cast<TypeA const*>(bias)),
+        reinterpret_cast<TypeA*>(out),
+        expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, n, k, group_size, stream);
+  };
+  if (use_fp32_accum) {
+    launch(TypeTag<float>{});
+  } else {
+    launch(TypeTag<TypeA>{});
+  }
 }
 
 template <typename T, typename WeightType>
@@ -488,14 +520,24 @@ void launch_moe_gemv_int_symmetric_interleaved_swiglu(
   ORT_UNUSED_PARAMETER(sm);
   using Details = typename DetailsForTAndWeight<T, WeightType>::Details;
   using TypeA = typename DetailsForTAndWeight<T, WeightType>::TypeA;
-  fiv::dispatch_moe_gemv_interleaved_swiglu_group_size<Details, kCtaN, kThreads, TypeA>(
-      const_cast<TypeA*>(reinterpret_cast<TypeA const*>(act)),
-      const_cast<uint8_t*>(reinterpret_cast<uint8_t const*>(weight)),
-      const_cast<TypeA*>(reinterpret_cast<TypeA const*>(scales)),
-      const_cast<TypeA*>(reinterpret_cast<TypeA const*>(bias)),
-      reinterpret_cast<TypeA*>(out),
-      expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, inter_size, k, group_size,
-      activation_params, stream);
+  // Accumulate in fp32 by default (see launch_moe_gemv_int_symmetric for the policy).
+  bool const use_fp32_accum = !std::is_same_v<T, half> || !MoeGemvUseFp16Accum();
+  auto launch = [&](auto acc_tag) {
+    using AccT = typename decltype(acc_tag)::type;
+    fiv::dispatch_moe_gemv_interleaved_swiglu_group_size<Details, kCtaN, kThreads, TypeA, AccT>(
+        const_cast<TypeA*>(reinterpret_cast<TypeA const*>(act)),
+        const_cast<uint8_t*>(reinterpret_cast<uint8_t const*>(weight)),
+        const_cast<TypeA*>(reinterpret_cast<TypeA const*>(scales)),
+        const_cast<TypeA*>(reinterpret_cast<TypeA const*>(bias)),
+        reinterpret_cast<TypeA*>(out),
+        expert_first_token_offset, permuted_row_to_expert, num_experts, expanded_num_rows, inter_size, k, group_size,
+        activation_params, stream);
+  };
+  if (use_fp32_accum) {
+    launch(TypeTag<float>{});
+  } else {
+    launch(TypeTag<TypeA>{});
+  }
 }
 
 template <typename T>

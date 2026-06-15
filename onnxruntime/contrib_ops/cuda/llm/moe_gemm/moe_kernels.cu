@@ -2153,10 +2153,10 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
   // in the case of unfused activation we overlap permuted_data and fc1_result
   // we need to calculate the max possible size, so use the max of all three
   size_t overlapped_gemm1_gemm2_inputs_size = std::max(permuted_data_size, fc2_result_size);
-  // When glu_inter_elems is 0 we are always fused, otherwise we may need the un-fused case
-  if (glu_inter_elems > 0) {
-    overlapped_gemm1_gemm2_inputs_size = std::max(overlapped_gemm1_gemm2_inputs_size, fc1_result_size);
-  }
+  // In the gated (glu) case fc1_result_ used to alias overlapped_gemm1_gemm2_inputs. That made the
+  // fused-SwiGLU GEMV read and write the same buffer with mismatched row strides (input hidden_size,
+  // output inter_size), corrupting any launch that spanned more than one wave. fc1_result_ now uses
+  // its own dedicated buffer (fc1_result_dedicated below), so inputs no longer needs to fit fc1_result_size.
 
   size_t const alpha_scale_ptr_array_size = num_experts_per_node * sizeof(float*);
 
@@ -2165,6 +2165,10 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
   if (glu_inter_elems > 0) {
     overlapped_gemm1_gemm2_outputs_size = std::max(std::max(glu_inter_size, fc2_result_size), overlapped_gemm1_gemm2_outputs_size);
   }
+
+  // Dedicated buffer for the gated FC1 result so the fused-SwiGLU GEMV never aliases its own input
+  // (see comment above). Only the gated / has-glu path uses it; zero otherwise.
+  size_t const fc1_result_dedicated_size = (glu_inter_elems > 0) ? fc1_result_size : 0;
 
   size_t smoothed_act_size = use_awq ? std::max(permuted_elems, interbuf_elems) * sizeof(T) * 2
                                      : 0;  // Extra workspace required by AWQ for smoothing activations
@@ -2189,6 +2193,7 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
   ADD(permuted_token_final_scales);
   ADD(overlapped_gemm1_gemm2_inputs);
   ADD(overlapped_gemm1_gemm2_outputs);
+  ADD(fc1_result_dedicated);
   ADD_NAME(alpha_scale_ptr_array_fc1, alpha_scale_ptr_array_size);
   ADD_NAME(alpha_scale_ptr_array_fc2, alpha_scale_ptr_array_size);
   ADD(fp4_act_scale);
@@ -2257,10 +2262,12 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
   // Always same value, ignored if not needed
   glu_inter_result_ = has_glu_inter_result ? getWsPtr(T{}, "overlapped_gemm1_gemm2_outputs") : nullptr;
 
-  // fc1 and fc2 alias one of the above pointers, but it depends on if actfn is fused/unfused which is overlapped
+  // fc2 aliases one of the overlapped pointers depending on whether the activation is fused/unfused.
   // NOTE: It is important to get the overlapped pointers correct as the wrong order will cause the buffer to be used
-  // as an input and output for the same gemm, which will cause corruption
-  fc1_result_ = has_glu_inter_result ? getWsPtr(T{}, "overlapped_gemm1_gemm2_inputs")
+  // as an input and output for the same gemm, which will cause corruption.
+  // fc1_result_ uses a dedicated buffer in the gated case so the fused-SwiGLU GEMV does not write its
+  // inter_size-strided output over its own hidden_size-strided input, which corrupted multi-wave launches.
+  fc1_result_ = has_glu_inter_result ? getWsPtr(T{}, "fc1_result_dedicated")
                                      : getWsPtr(T{}, "overlapped_gemm1_gemm2_outputs");
   fc2_result_ = has_glu_inter_result ? getWsPtr(T{}, "overlapped_gemm1_gemm2_outputs")
                                      : getWsPtr(T{}, "overlapped_gemm1_gemm2_inputs");

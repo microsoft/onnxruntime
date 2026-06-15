@@ -1013,12 +1013,18 @@ class SparseMoeBlockORTHelper(nn.Module):
                     w2_bias_list.append(w2_bias.detach().cpu())
 
             torch_dtype = onnx_to_torch_type_map[self.onnx_dtype] if self.onnx_dtype else torch.float32
-            # For BF16 quantized: keep expert weights in float32 so the PyTorch reference
+            # For quantized MoE: keep expert weights in float32 so the PyTorch reference
             # computes in float32 (PhiMoESwiGLUMLP.forward casts input to weight dtype).
-            # ORT's CUTLASS kernel accumulates int8 products in float32 before applying the
-            # BF16 scale, matching float32 precision.  Storing weights as BF16 causes
-            # catastrophic cancellation for near-zero outputs due to the 7-bit mantissa.
-            ref_weight_dtype = torch.float32 if (torch_dtype == torch.bfloat16 and self.quant_bits > 0) else torch_dtype
+            # ORT's CUTLASS grouped GEMM and the decode GEMV kernel both accumulate the
+            # weight*activation products in float32 before applying the FP16/BF16 scale, so a
+            # float32 reference matches the kernel's accumulation precision. Storing weights in
+            # the low-precision dtype causes catastrophic cancellation for near-zero outputs
+            # (BF16's 7-bit / FP16's 10-bit mantissa) and makes the reference itself lossy.
+            ref_weight_dtype = (
+                torch.float32
+                if (torch_dtype in (torch.bfloat16, torch.float16) and self.quant_bits > 0)
+                else torch_dtype
+            )
 
             if self.use_swiglu:
                 if getattr(self, "swiglu_fusion", 0) == 1:
@@ -1384,11 +1390,15 @@ class PhiMoESparseMoeBlock(SparseMoeBlockORTHelper):
                         expert.w2.weight, is_4_bit, asymmetric=use_effective_asymmetric_quant
                     )
 
-                # For BF16 quantized: keep weights in float32 so the PyTorch reference
-                # computes in float32, matching ORT's CUTLASS kernel that accumulates int8
-                # products in float32 before applying the BF16 scale.
+                # For quantized MoE: keep weights in float32 so the PyTorch reference computes
+                # in float32, matching ORT's CUTLASS grouped GEMM and decode GEMV kernel that
+                # both accumulate weight*activation products in float32 before applying the
+                # FP16/BF16 scale. A low-precision reference is itself lossy and would mask the
+                # kernel's accumulation precision.
                 ref_weight_dtype = (
-                    torch.float32 if (torch_dtype == torch.bfloat16 and self.quant_bits > 0) else torch_dtype
+                    torch.float32
+                    if (torch_dtype in (torch.bfloat16, torch.float16) and self.quant_bits > 0)
+                    else torch_dtype
                 )
                 expert.w1.weight.data = w1_qdq.to(ref_weight_dtype)
                 expert.w2.weight.data = w2_qdq.to(ref_weight_dtype)
