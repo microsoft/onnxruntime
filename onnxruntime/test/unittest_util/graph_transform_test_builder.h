@@ -571,7 +571,8 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        std::unique_ptr<GraphTransformer> transformer = nullptr,
                        const std::function<void(SessionOptions&)>& add_session_options = {},
                        const InlinedHashSet<std::string>& disabled_optimizers = {},
-                       std::unique_ptr<IExecutionProvider> ep = nullptr);
+                       std::unique_ptr<IExecutionProvider> ep = nullptr,
+                       const ModelOptions& model_options = {});
 
 void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& build_test_case,
                        const std::function<void(InferenceSessionWrapper& session)>& check_transformed_graph,

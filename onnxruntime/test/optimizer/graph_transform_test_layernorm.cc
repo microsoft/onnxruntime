@@ -697,7 +697,8 @@ TEST_F(GraphTransformationTests, LayerNormFusionCurrentOpsetTest) {
   // At Level2, it skips if fuse_in_level_1 is true.
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
                                         std::make_unique<LayerNormFusion>(no_limit_empty_ep_list, TransformerLevel::Level1),
-                                        TransformerLevel::Level1, 1, nullptr, post_graph_checker));
+                                        TransformerLevel::Level1, 1, nullptr, post_graph_checker,
+                                        ModelOptions{/*allow_released_opsets_only*/ false, /*strict_shape_type_inference*/ false}));
 }
 
 TEST_F(GraphTransformationTests, SkipLayerNormFusionCurrentOpsetTest) {
@@ -736,7 +737,8 @@ TEST_F(GraphTransformationTests, SkipLayerNormFusionCurrentOpsetTest) {
 
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
                                         std::make_unique<SkipLayerNormFusion>(),
-                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker,
+                                        ModelOptions{/*allow_released_opsets_only*/ false, /*strict_shape_type_inference*/ false}));
 }
 
 TEST_F(GraphTransformationTests, SkipLayerNormFusionTest) {
@@ -1457,7 +1459,11 @@ static void LoadModelAtCurrentOpset(const ORTCHAR_T* base_model_uri,
     node.mutable_attribute()->RemoveLast();
   }
 
-  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), p_model, nullptr, logger));
+  // EmbedLayerNorm fixtures are rewritten to the current ONNX opset, which may still be
+  // under development (e.g. opset 27 in ONNX 1.22). Allow the unreleased opset so the model
+  // loads on strict (ALLOW_RELEASED_ONNX_OPSET_ONLY default) CI legs as well.
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), p_model, nullptr, logger,
+                               ModelOptions{/*allow_released_opsets_only*/ false, /*strict_shape_type_inference*/ false}));
 }
 
 TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat1CurrentOpset) {
