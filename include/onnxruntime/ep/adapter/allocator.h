@@ -66,10 +66,11 @@ class IAllocatorWrappingOrtAllocator final : public IAllocator {
       Ort::KeyValuePairs kvps = ort_allocator_.GetStats();
       std::vector<const char*> keys, values;
       kvps.GetKeyValuePairs(keys, values);
-      for (size_t i = 0; i < keys.size(); ++i) {
+      const size_t n = keys.size() < values.size() ? keys.size() : values.size();
+      for (size_t i = 0; i < n; ++i) {
         char* end = nullptr;
-        int64_t val = std::strtoll(values[i], &end, 10);
-        if (end == values[i]) continue;  // skip unparseable entries
+        const int64_t val = std::strtoll(values[i], &end, 10);
+        if (end == values[i] || *end != '\0') continue;  // skip unparseable entries
         if (std::strcmp(keys[i], "Limit") == 0) {
           stats->bytes_limit = val;
         } else if (std::strcmp(keys[i], "InUse") == 0) {
