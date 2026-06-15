@@ -34,13 +34,10 @@ microsoft_gsl;https://github.com/microsoft/GSL/archive/refs/tags/v4.2.1.zip;1094
 microsoft_wil;https://github.com/microsoft/wil/archive/refs/tags/v1.0.250325.1.zip;826c8bd47c2258ec61b8b218e031e5b33d27f761
 mimalloc;https://github.com/microsoft/mimalloc/archive/refs/tags/v2.1.1.zip;d5ee7d34223d0567892db5179849939c8769dc41
 mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.82.0.zip;9bc9e01dffb64d9e0773b2e44d2f22c51aace063
-# ONNX pinned to the 1.22.0rc2 source archive (rel-1.22.0 HEAD) for the upstream
-# Xcode/iOS CMake fix (onnx#8056, via onnx#8066). The 7 CI requirements.txt files
-# intentionally stay at onnx==1.22.0rc1 until ONNX publishes the rc2 wheel on PyPI;
-# rc1->rc2 is a build/packaging + shape-inference/checker hardening delta with no
-# operator-schema or opset change, so the rc1 wheel remains functionally compatible.
-# TODO(PR #28754): bump those 7 requirements.txt to onnx==1.22.0rc2 once the rc2 wheel is on PyPI.
-onnx;https://github.com/onnx/onnx/archive/b124e0188a8bc47c9de8157e3296df6c77fdc06b.zip;d17222634f334954756bce9a6b14b7f2fe705704
+# ONNX pinned to the 1.22.0 final release (tag v1.22.0). rc2->final changed only CI
+# workflow yml + VERSION_NUMBER (no operator-schema, opset, or testdata change), so it is
+# pure version plumbing. The 7 CI requirements.txt files are pinned to onnx==1.22.0 (now on PyPI).
+onnx;https://github.com/onnx/onnx/archive/refs/tags/v1.22.0.zip;2b2cd58ac7a26df5371266149e0c76776330cdf1
 # Use the latest commit of 10.9-GA
 onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/d5dce67db7c2e64b07e055571f5ec06f7f254de2.zip;01114d3b67650857281fa50faa2e412130a63b69
 protobuf;https://github.com/protocolbuffers/protobuf/archive/refs/tags/v21.12.zip;7cf2733949036c7d52fda017badcab093fe73bfa

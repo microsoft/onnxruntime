@@ -375,7 +375,7 @@
         "^test_dft_irfft_opset19",
         // ORT BitCast kernel does not support bool type.
         "^test_bitcast_bool_to_uint8",
-        // --- ONNX 1.22.0rc1 / opset 27 integration (issue #28752) ---
+        // --- ONNX 1.22.0 / opset 27 integration (issue #28752) ---
         // Most opset-27 node tests pass on the CPU EP: CausalConvWithState and LinearAttention
         // are ONNX *function* ops, and the float16 Range-27 op carries an ONNX function body, so
         // ORT expands them into primitive nodes at graph-partition time (verified with
