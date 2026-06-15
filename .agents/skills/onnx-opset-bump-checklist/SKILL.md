@@ -339,6 +339,37 @@ old test set never hit. Example: #28969 — a WebGPU broadcast underflow that ON
 1.22's expanded-Attention reference tests exposed. Treat such failures as bugs to fix
 (or filter-with-issue per gotcha **k**), not as bump noise.
 
+**(m) After a FINAL release, re-seed the vcpkg MS-internal asset mirror or every `--use_vcpkg` leg 404s.**
+The MS-internal vcpkg asset mirror (`vcpkg.storage.devpackages.microsoft.io`) is **not**
+self-service: the new onnx tag tarball must be **Terrapin-seeded** into it. Until that
+lands, every `--use_vcpkg` CI leg fails the download with an `x-block-origin` **404**
+(the mirror refuses to proxy an un-seeded asset). This bites at the **rc → FINAL** re-pin
+too — the released `vX.Y.0` tag tarball is a *different* asset hash than the RC, so the
+mirror must be re-seeded for the final tag. Treat "seed the tag tarball to the vcpkg
+mirror" as a required step of the Phase-2 final re-pin, not a follow-up. (See §2 for the
+mirror procedure; the `--minimal_build extended` gate in §9 is the mirror-independent
+stand-in until seeding completes.)
+
+**(n) A FINAL onnx release can still ship a map-max opset > last *release* opset.**
+"FINAL" does **not** imply the new opset is released. ONNX 1.22.0 ships
+`DomainToVersionRange` **map-max 27** while the last *released* opset is **26** — i.e.
+opset 27 stays **under development** for the entire 1.22 cycle. So strict legs (the
+default, or `ALLOW_RELEASED_ONNX_OPSET_ONLY=1`) still throw **"Opset N under development"**
+at model load on any `*CurrentOpset` test that builds at the map-max opset — even after
+the bump is "final". Don't assume the under-development gating ends when the RC does.
+
+**(o) Prefer per-model `ModelOptions{allow_released_opsets_only=false}` over per-leg env flips or `GTEST_SKIP`.**
+For `*CurrentOpset` tests caught by gotcha **n**, set the relaxation **per model** via
+`ModelOptions{/*allow_released_opsets_only*/ false, …}` on the `Model::Load` /
+`TestGraphTransformer` / `TransformerTester` call. This is **leg-agnostic** (the test then
+exercises the new opset on *every* CI leg, not just the ones that happen to set the env
+var) and **preserves opset coverage** (unlike `GTEST_SKIP`, which silently drops it).
+Avoid flipping a per-leg CI env var (`ALLOW_RELEASED_ONNX_OPSET_ONLY=0`) — it only fixes
+the legs you remember to touch and leaves the default-strict legs red. Precedent on this
+branch: `38f17243b` (GatherToSlice), generalized to all `*CurrentOpset` fusion tests.
+Annotate each call site with a one-line WHY + the tracking issue so it can be removed once
+the opset is released (#28966).
+
 ## 5. Build & validate locally
 
 **The canonical build + test command set lives in §9 (verification gauntlet)** — run those to

@@ -6909,6 +6909,8 @@ TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaCurrentOpsetTest) {
     BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::MatMulAdd);
   };
 
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
   TransformerTester(build_test_case,
                     CheckMobileClipAttentionFusedSession,
                     TransformerLevel::Level1,
@@ -7061,6 +7063,8 @@ TEST_F(GraphTransformationTests, GeluFusionCurrentOpsetTest) {
                            " or skip this opset in the test if the fusion is not expected to apply.");
   };
 
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
                                         std::make_unique<GeluFusion>(),
                                         TransformerLevel::Level1, 1, nullptr, post_graph_checker,
@@ -7117,6 +7121,8 @@ TEST_F(GraphTransformationTests, FastGeluFusionCurrentOpsetTest) {
                            " or skip this opset in the test if the fusion is not expected to apply.");
   };
 
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
                                         std::make_unique<FastGeluFusion>(),
                                         TransformerLevel::Level2, 1, nullptr, post_graph_checker,
@@ -7155,6 +7161,8 @@ TEST_F(GraphTransformationTests, BiasGeluFusionCurrentOpsetTest) {
                            " or skip this opset in the test if the fusion is not expected to apply.");
   };
 
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
                                         std::make_unique<BiasGeluFusion>(),
                                         TransformerLevel::Level2, 1, nullptr, post_graph_checker,
@@ -7191,6 +7199,8 @@ TEST_F(GraphTransformationTests, MatMulAddFusionCurrentOpsetTest) {
                            " or skip this opset in the test if the fusion is not expected to apply.");
   };
 
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
                                         std::make_unique<MatMulAddFusion>(),
                                         TransformerLevel::Level1, 1, nullptr, post_graph_checker,
@@ -7227,6 +7237,8 @@ TEST_F(GraphTransformationTests, DivMulFusionCurrentOpsetTest) {
 
   auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("DivMulFusionCurrentOpset");
   ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<DivMulFusion>()));
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
                                         std::move(rule_transformer),
                                         TransformerLevel::Level1, 1, nullptr, post_graph_checker,
@@ -7264,6 +7276,8 @@ TEST_F(GraphTransformationTests, QuickGeluFusionCurrentOpsetTest) {
                            " or skip this opset in the test if the fusion is not expected to apply.");
   };
 
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
                                         std::make_unique<QuickGeluFusion>(),
                                         TransformerLevel::Level2, 1, nullptr, post_graph_checker,
@@ -8569,6 +8583,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionOpsetTest) {
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ReshapeFusion>();
     // The opset list includes the current ONNX opset, which may still be under development
     // (e.g. opset 27 in ONNX 1.22). Allow the unreleased opset so the model loads on strict legs.
+    // Remove once opset 27 is released. Tracked by #28966.
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
                                           pre_graph_checker, post_graph_checker,
                                           ModelOptions{/*allow_released_opsets_only*/ false, /*strict_shape_type_inference*/ false}));
@@ -8608,6 +8623,8 @@ TEST_F(GraphTransformationTests, ReshapeFusionOpsetTest) {
       };
 
       std::unique_ptr<GraphTransformer> transformer_no_fuse = std::make_unique<ReshapeFusion>();
+      // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+      // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
       ASSERT_STATUS_OK(TestGraphTransformer(build_partial_shape_case, opset, *logger_, std::move(transformer_no_fuse),
                                             TransformerLevel::Level1, 1, pre_graph_checker, pre_graph_checker,
                                             ModelOptions{/*allow_released_opsets_only*/ false, /*strict_shape_type_inference*/ false}));
