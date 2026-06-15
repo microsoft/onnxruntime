@@ -759,6 +759,27 @@ TEST(GatherBlockQuantizedOpTest, WebGpu_GatherAxis0NoZeroPoints_2Bits_Uint8) {
                                                 /*block_size=*/16, /*bits=*/2, output, output_shape);
 }
 
+TEST(GatherBlockQuantizedOpTest, WebGpu_EmptyIndices_8Bits_Uint8) {
+  // An empty indices tensor produces an empty output. The kernel must not dispatch a
+  // (0, 1, 1) workgroup in that case. See issue #28772.
+  std::vector<uint8_t> data(2 * 16, 128);
+  std::vector<int64_t> data_shape = {2, 16};
+  std::vector<int32_t> indices = {};
+  std::vector<int64_t> indices_shape = {0};
+  std::vector<float> scales = {1.0f, 2.0f};
+  std::vector<int64_t> scales_shape = {2, 1};
+
+  std::vector<float> output = {};
+  std::vector<int64_t> output_shape = {0, 16};
+
+  std::vector<uint8_t> zero_points = {};
+  std::vector<int64_t> zero_points_shape = {};
+  RunGatherBlockQuantizedWebGpu<float, int32_t>(data, data_shape, indices, indices_shape, scales, scales_shape,
+                                                zero_points, zero_points_shape,
+                                                /*gather_axis=*/0, /*quantize_axis=*/1,
+                                                /*block_size=*/16, /*bits=*/8, output, output_shape);
+}
+
 TEST(GatherBlockQuantizedOpTest, WebGpu_InvalidIndices_2Bits_Uint8) {
   auto pack4 = [](int v0, int v1, int v2, int v3) -> uint8_t {
     auto enc = [](int v) { return static_cast<uint8_t>((v + 2) & 0x3); };
