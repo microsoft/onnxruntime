@@ -345,10 +345,13 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
 
   T* mask_data = nullptr;
   bool delete_mask_data = false;
-  // Skip causal masking only for the common decode case where the single query
-  // follows existing past K/V and all K/V positions are visible.
+  // For the nonpad_kv_seqlen path, keep the existing q_len=1 behavior: the
+  // TensorScatter decode tests expect bottom-right alignment where the single
+  // query can see all valid keys.
   bool causal = parameters.is_causal &&
-                !(parameters.q_sequence_length == 1 && parameters.past_sequence_length > 0);
+                (parameters.has_nonpad_kv_seqlen
+                     ? parameters.q_sequence_length > 1
+                     : !(parameters.q_sequence_length == 1 && parameters.past_sequence_length > 0));
   if (mask_index == nullptr) {
     // No external mask: allocate only if causal behavior needed.
     if (causal) {
