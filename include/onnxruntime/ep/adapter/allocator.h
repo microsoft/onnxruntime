@@ -11,6 +11,7 @@
 #include <cstring>
 #include <mutex>
 #include <utility>
+#include <vector>
 
 #include "core/framework/allocator.h"
 

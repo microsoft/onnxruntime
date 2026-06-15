@@ -22,8 +22,8 @@ static void CheckStats(BFCArena* a, int64_t num_allocs, int64_t bytes_in_use,
 }
 
 static void CheckStatsDetailed(BFCArena* a, int64_t num_allocs, int64_t bytes_in_use,
-                                int64_t bytes_requested_in_use, int64_t max_bytes_in_use,
-                                int64_t max_alloc_size) {
+                               int64_t bytes_requested_in_use, int64_t max_bytes_in_use,
+                               int64_t max_alloc_size) {
   AllocatorStats stats;
   a->GetStats(&stats);
   EXPECT_EQ(stats.bytes_in_use, bytes_in_use);

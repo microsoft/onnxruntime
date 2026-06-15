@@ -3239,7 +3239,7 @@ TEST(CApiTest, get_profiling_start_time) {
   ASSERT_TRUE(before_start_time <= profiling_start_time && profiling_start_time <= after_start_time);
 }
 
-// Test that profiling events include memory stats (mem_bytes_in_use, mem_total_allocated, etc.)
+// Test that profiling events include memory stats (mem_bytes_in_use, mem_arena_held, etc.)
 // when an arena allocator is in use.
 TEST(CApiTest, profiling_memory_stats) {
   // Use add_mul_add.onnx: 3 nodes (Add, Mul, Add), inputs A[3,2] and B[3,2], output C[3,2]
@@ -3277,9 +3277,10 @@ TEST(CApiTest, profiling_memory_stats) {
   ASSERT_FALSE(profile_path.empty());
 
   // RAII cleanup: remove profile file regardless of test outcome
-  auto cleanup = [&profile_path]() {
+  auto cleanup = [&profile_path]() noexcept {
     if (!profile_path.empty()) {
-      std::filesystem::remove(profile_path);
+      std::error_code ec;
+      std::filesystem::remove(profile_path, ec);
     }
   };
   struct ScopeGuard {
@@ -3297,10 +3298,10 @@ TEST(CApiTest, profiling_memory_stats) {
   // The profile output is a Chrome Tracing JSON array of events.
   // Each kernel event should now contain memory stats in its args.
   EXPECT_NE(content.find("\"mem_bytes_in_use\""), std::string::npos) << "Expected mem_bytes_in_use in profiling output";
-  EXPECT_NE(content.find("\"mem_total_allocated\""), std::string::npos) << "Expected mem_total_allocated in profiling output";
+  EXPECT_NE(content.find("\"mem_arena_held\""), std::string::npos) << "Expected mem_arena_held in profiling output";
   EXPECT_NE(content.find("\"mem_in_use_delta\""), std::string::npos) << "Expected mem_in_use_delta in profiling output";
   EXPECT_NE(content.find("\"mem_in_use_peak\""), std::string::npos) << "Expected mem_in_use_peak in profiling output";
-  EXPECT_NE(content.find("\"mem_allocated_delta\""), std::string::npos) << "Expected mem_allocated_delta in profiling output";
+  EXPECT_NE(content.find("\"mem_arena_held_delta\""), std::string::npos) << "Expected mem_arena_held_delta in profiling output";
 
   // Verify there are multiple kernel events with memory data (we have 3 nodes)
   size_t count = 0;
