@@ -21,11 +21,22 @@
 
 #include <cstring>
 #include <limits>
+#include <mutex>
 #include <vector>
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
+
+namespace {
+void LogQMoESwigluFusionRemapOnce() {
+  static std::once_flag log_warning;
+  std::call_once(log_warning, []() {
+    LOGS_DEFAULT(WARNING) << "QMoE swiglu_fusion is 0; assuming interleaved SwiGLU layout "
+                             "for backward compatibility.";
+  });
+}
+}  // namespace
 
 namespace onnxruntime {
 namespace contrib {
@@ -211,6 +222,18 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
               "QMoE in CUDA execution provider does not support separate fc3_experts_weights. "
               "Gate and up projection weights must be pre-concatenated into fc1.");
 
+  // Backward compatibility: the published gpt-oss-20b model (and any model exported by ORT < 1.27)
+  // hard-coded the interleaved SwiGLU fusion layout and did not emit a swiglu_fusion attribute, so it
+  // falls back to the default of 0 ("not fused"). QMoE never has a separate FC3 (enforced above), so a
+  // SwiGLU activation with swiglu_fusion == 0 means the gate and value projections are actually pre-fused
+  // into FC1 (interleaved layout). Treat this as swiglu_fusion == 1 so those legacy models keep working.
+  int swiglu_fusion = swiglu_fusion_;
+  if (activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu &&
+      swiglu_fusion == 0) {
+    swiglu_fusion = 1;
+    LogQMoESwigluFusionRemapOnce();
+  }
+
   const Tensor* fc1_zeros = packed_fc1_bias_ ? nullptr : context->Input<Tensor>(11);
   const Tensor* fc2_zeros = packed_fc2_bias_ ? nullptr : context->Input<Tensor>(12);
 
@@ -247,10 +270,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                            "QMoE row-wise quantization (block_size <= 0) does not support zero_points. "
                            "Remove fc*_zero_points or use block-wise quantization.");
   }
-  if (block_size_ > 0 && block_size_ < 64 && has_any_zero_point) {
+  if (block_size_ > 0 && block_size_ < 32 && has_any_zero_point) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "QMoE asymmetric zero_points are currently supported only when block_size >= 64. "
-                           "Use block_size >= 64 or remove fc*_zero_points.");
+                           "QMoE asymmetric zero_points are currently supported only when block_size >= 32. "
+                           "Use block_size >= 32 or remove fc*_zero_points.");
   }
 
   int64_t pack_size = expert_weight_bits_ == 4 ? 2 : 1;
@@ -413,23 +436,23 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
       // GEMM 1: N=fc1_out_size (doubled for gated), K=hidden_size
       MoeGemmId id1(static_cast<int>(fc1_out_size), static_cast<int>(moe_params.hidden_size), dtype, wtype, MoeGemmId::GemmType::Gemm1);
-      if (mGemmId1 != id1) {
-        mGemmId1 = id1;
+      {
+        // profileTactics caches per (GemmId, M bucket); calling it every forward lets decode
+        // (small M) and prefill (large M) each profile and select their own best tile shape.
         GemmDims dims(static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.num_rows),
                       fc1_out_size, static_cast<int64_t>(moe_params.hidden_size));
-        mGemmProfiler.profileTactics(m_moe_runner.get(), dtype, dims, id1);
+        mGemmProfiler.profileTactics(m_moe_runner.get(), dims, id1);
       }
-      config1 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), mGemmId1);
+      config1 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), id1);
 
       // GEMM 2
       MoeGemmId id2(static_cast<int>(moe_params.hidden_size), static_cast<int>(moe_params.inter_size), dtype, wtype, MoeGemmId::GemmType::Gemm2);
-      if (mGemmId2 != id2) {
-        mGemmId2 = id2;
+      {
         GemmDims dims(static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.num_rows),
                       static_cast<int64_t>(moe_params.hidden_size), static_cast<int64_t>(moe_params.inter_size));
-        mGemmProfiler.profileTactics(m_moe_runner.get(), dtype, dims, id2);
+        mGemmProfiler.profileTactics(m_moe_runner.get(), dims, id2);
       }
-      config2 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), mGemmId2);
+      config2 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), id2);
 
       m_moe_runner->setTactic(config1, config2);
     }
@@ -931,7 +954,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           onnxruntime::llm::kernels::cutlass_kernels::ActivationParams params(activation_type_);
           params.alpha = activation_alpha_;
           params.beta = activation_beta_;
-          params.swiglu_fusion = swiglu_fusion_;
+          params.swiglu_fusion = swiglu_fusion;
           params.limit = swiglu_limit_;
           return params;
         }(),

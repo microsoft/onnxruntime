@@ -498,7 +498,7 @@ struct MoeFCGemm {
       __syncthreads();
 
       if constexpr (use_dq_gemm<Mma>::value) {
-        typename MatrixCoord::Index scale_row_extent = isFinegrained(Mma::QuantOp) ? gemm_k / 64 : 1;
+        typename MatrixCoord::Index scale_row_extent = isFinegrained(Mma::QuantOp) ? gemm_k / params.group_size : 1;
         typename Mma::IteratorScale iterator_scale = initialize_scale<typename Mma::IteratorScale, Mma::QuantOp>(LayoutScaleZero(ldm_Scale),
                                                                                                                  reinterpret_cast<typename Mma::IteratorScale::Pointer>(ptr_Scale),
                                                                                                                  reinterpret_cast<typename Mma::IteratorScale::Pointer>(ptr_Zero),
