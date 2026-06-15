@@ -37,11 +37,12 @@ namespace onnxruntime::llm::kernels {
 
 namespace cutlass_kernels {
 
-// These kernels are used in moeUtilOp.cpp
+// Utility kernels used by the MoE runner to build expert maps, expand rows, and finalize routing.
 int64_t computeNumTokensPerBlock(int64_t const num_tokens, int64_t const num_experts_per_node);
 
-bool fusedBuildExpertMapsSortFirstToken(int const* token_selected_experts, int* unpermuted_token_selected_experts,
-                                        int* permuted_source_token_ids, int64_t* expert_first_token_offset, int64_t const num_tokens,
+bool fusedBuildExpertMapsSortFirstToken(int const* token_selected_experts, int* permuted_row_to_unpermuted_row,
+                                        int* unpermuted_row_to_permuted_row, int* permuted_token_selected_experts,
+                                        int64_t* expert_first_token_offset, int64_t const num_tokens,
                                         int const num_experts_per_node, int const experts_per_token, int const start_expert, int const end_expert,
                                         cudaStream_t stream);
 
