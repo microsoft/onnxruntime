@@ -22,10 +22,10 @@ using namespace onnxruntime::webgpu;
 class TurboQuantHadamardProgram final : public Program<TurboQuantHadamardProgram> {
  public:
   TurboQuantHadamardProgram(const std::string& kernel_name, bool has_past, bool kv_BNSH,
-                            bool past_present_share_buffer, int head_size, int head_size_log2, int components,
+                            bool past_present_share_buffer, int head_size_log2, int components,
                             int compressed_head_size_u32,
                             bool prepare_indirect_dispatch = false, bool use_seqlen_k = false)
-      : Program{kernel_name}, has_past_(has_past), kv_BNSH_(kv_BNSH), past_present_share_buffer_(past_present_share_buffer), head_size_(head_size), head_size_log2_(head_size_log2), components_(components), compressed_head_size_u32_(compressed_head_size_u32), prepare_indirect_dispatch_(prepare_indirect_dispatch), use_seqlen_k_(use_seqlen_k) {}
+      : Program{kernel_name}, has_past_(has_past), kv_BNSH_(kv_BNSH), past_present_share_buffer_(past_present_share_buffer), head_size_log2_(head_size_log2), components_(components), compressed_head_size_u32_(compressed_head_size_u32), prepare_indirect_dispatch_(prepare_indirect_dispatch), use_seqlen_k_(use_seqlen_k) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -44,7 +44,6 @@ class TurboQuantHadamardProgram final : public Program<TurboQuantHadamardProgram
   bool has_past_;
   bool kv_BNSH_;
   bool past_present_share_buffer_;
-  int head_size_;
   int head_size_log2_;
   int components_;
   int compressed_head_size_u32_;
@@ -62,14 +61,13 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
 // Single dispatch handles all Q/K/V processing from packed QKV input.
 class TurboQuantFusedRotaryProgram final : public Program<TurboQuantFusedRotaryProgram> {
  public:
-  TurboQuantFusedRotaryProgram(const std::string& kernel_name, int head_size, int head_size_log2,
+  TurboQuantFusedRotaryProgram(const std::string& kernel_name, int head_size_log2,
                                int half_rotary_dim,
                                int compressed_head_size_u32,
                                bool past_present_share_buffer,
                                bool prepare_indirect_dispatch, bool use_seqlen_k,
                                uint32_t multi_rotary_cache_concat_offset)
       : Program{kernel_name},
-        head_size_(head_size),
         head_size_log2_(head_size_log2),
         half_rotary_dim_(half_rotary_dim),
         compressed_head_size_u32_(compressed_head_size_u32),
@@ -95,7 +93,6 @@ class TurboQuantFusedRotaryProgram final : public Program<TurboQuantFusedRotaryP
                                           {"total_sequence_length", ProgramUniformVariableDataType::Uint32});
 
  private:
-  int head_size_;
   int head_size_log2_;
   int half_rotary_dim_;
   int compressed_head_size_u32_;

@@ -77,7 +77,7 @@ Status TurboQuantCopyToQuantizedKVCache(onnxruntime::webgpu::ComputeContext& con
 
   TurboQuantHadamardProgram program{"TurboQuantCopyToQuantizedKVCache", has_past, kv_BNSH,
                                     parameters.past_present_share_buffer_,
-                                    head_size, head_size_log2, components,
+                                    head_size_log2, components,
                                     compressed_head_size_u32,
                                     prepare_indirect_dispatch, use_seqlen_k};
   // Inputs: K and V in their original format (fp16/fp32, vectorized).
@@ -197,7 +197,7 @@ Status TurboQuantApplyRotaryAndCopyToQuantizedKVCache(onnxruntime::webgpu::Compu
   bool use_seqlen_k = (seqlen_k != nullptr);
   const uint32_t multi_rotary_cache_concat_offset = context.MultiRotaryCacheConcatOffset();
 
-  TurboQuantFusedRotaryProgram program{"TurboQuantFusedRotary", head_size, head_size_log2,
+  TurboQuantFusedRotaryProgram program{"TurboQuantFusedRotary", head_size_log2,
                                        half_rotary_dim,
                                        compressed_head_size_u32,
                                        parameters.past_present_share_buffer_,
