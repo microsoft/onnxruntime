@@ -488,7 +488,10 @@ class KernelScope {
   size_t total_output_sizes_{};
   std::string input_type_shape_;
 
-  // Memory profiling: allocator stats sampled before/after kernel execution
+  // Memory profiling: allocator stats sampled before/after kernel execution.
+  // has_meaningful_stats_ is true when the allocator has been used (num_allocs > 0) or reports a
+  // memory limit (bytes_limit != 0), indicating it implements stats tracking. This avoids emitting
+  // empty stats for allocators that don't support GetStats() or haven't been used yet.
   AllocatorPtr ep_allocator_;
   bool has_meaningful_stats_{false};
   int64_t mem_in_use_before_{0};

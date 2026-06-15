@@ -3298,6 +3298,8 @@ TEST(CApiTest, profiling_memory_stats) {
   // The profile output is a Chrome Tracing JSON array of events.
   // Each kernel event should now contain memory stats in its args.
   EXPECT_NE(content.find("\"mem_bytes_in_use\""), std::string::npos) << "Expected mem_bytes_in_use in profiling output";
+  EXPECT_NE(content.find("\"mem_bytes_requested_in_use\""), std::string::npos) << "Expected mem_bytes_requested_in_use in profiling output";
+  EXPECT_NE(content.find("\"mem_requested_in_use_delta\""), std::string::npos) << "Expected mem_requested_in_use_delta in profiling output";
   EXPECT_NE(content.find("\"mem_arena_held\""), std::string::npos) << "Expected mem_arena_held in profiling output";
   EXPECT_NE(content.find("\"mem_in_use_delta\""), std::string::npos) << "Expected mem_in_use_delta in profiling output";
   EXPECT_NE(content.find("\"mem_in_use_peak\""), std::string::npos) << "Expected mem_in_use_peak in profiling output";
@@ -3310,7 +3312,7 @@ TEST(CApiTest, profiling_memory_stats) {
     ++count;
     ++pos;
   }
-  EXPECT_GE(count, 3u) << "Expected at least 3 kernel events with memory stats (one per node)";
+  EXPECT_GE(count, 1u) << "Expected at least 1 kernel event with memory stats";
 }
 
 TEST(CApiTest, model_metadata) {

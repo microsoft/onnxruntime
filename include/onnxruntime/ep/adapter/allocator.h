@@ -67,7 +67,9 @@ class IAllocatorWrappingOrtAllocator final : public IAllocator {
       std::vector<const char*> keys, values;
       kvps.GetKeyValuePairs(keys, values);
       for (size_t i = 0; i < keys.size(); ++i) {
-        int64_t val = std::atoll(values[i]);
+        char* end = nullptr;
+        int64_t val = std::strtoll(values[i], &end, 10);
+        if (end == values[i]) continue;  // skip unparseable entries
         if (std::strcmp(keys[i], "Limit") == 0) {
           stats->bytes_limit = val;
         } else if (std::strcmp(keys[i], "InUse") == 0) {
