@@ -42,6 +42,9 @@ LinearClassifier::LinearClassifier(const OpKernelInfo& info)
   ORT_ENFORCE(!coefficients_.empty(), "LinearClassifier: coefficients must not be empty.");
 
   // The ONNX spec requires exactly one of classlabels_strings or classlabels_ints to be provided.
+  // However, existing models in the wild omit both and rely on default labels (0/1 for binary,
+  // 0..N-1 for multi-class). Rejecting both-empty would break those models, so we only enforce
+  // that both are not simultaneously set.
   ORT_ENFORCE(classlabels_strings_.empty() || classlabels_ints_.empty(),
               "LinearClassifier: only one of classlabels_strings or classlabels_ints may be specified.");
 

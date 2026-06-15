@@ -362,11 +362,12 @@ TEST(MLOpTest, LinearClassifier1DInput) {
 
   test.AddAttribute("coefficients", coefficients);
   test.AddAttribute("intercepts", intercepts);
+  test.AddAttribute("classlabels_ints", std::vector<int64_t>{10, 20});
 
-  // Input [2] treated as [1,2]. score = 1*1 + (-1)*2 + 0 = -1 < 0 => class 0
+  // Input [2] treated as [1,2]. score = 1*1 + (-1)*2 + 0 = -1 < 0 => class 0 (label 10)
   test.AddInput<float>("X", {2}, {1.f, 2.f});
-  test.AddOutput<int64_t>("Y", {1}, {0LL});
-  test.AddOutput<float>("Z", {1, 1}, {-1.f});
+  test.AddOutput<int64_t>("Y", {1}, {10LL});
+  test.AddOutput<float>("Z", {1, 2}, {2.f, -1.f});
   test.Run();
 }
 
