@@ -145,14 +145,12 @@ inline ConvRouteSelection SelectConvRoute(const MLAS_CONV_PARAMETERS* Parameters
         return ConvRouteSelection{};
     }
 
-    const auto filter_count = Parameters->FilterCount;
-    if (filter_count == 1) {
-        // Single-output-channel convolutions do not fill the SME IGEMM N tile efficiently,
-        // so defer to the default convolution route.
+    if (Parameters->KernelShape[0] < 3 || Parameters->KernelShape[1] < 3) {
         return ConvRouteSelection{};
     }
 
-    if (Parameters->KernelShape[0] < 3 || Parameters->KernelShape[1] < 3) {
+    const auto filter_count = Parameters->FilterCount;
+    if (filter_count == 0) {
         return ConvRouteSelection{};
     }
 
@@ -161,7 +159,18 @@ inline ConvRouteSelection SelectConvRoute(const MLAS_CONV_PARAMETERS* Parameters
         MlasMultiplyOverflowsSizeT(effective_k, effective_kernel_w, &effective_k)) {
         return ConvRouteSelection{};
     }
-    if (effective_k == 0 || filter_count == 0) {
+    if (effective_k == 0) {
+        return ConvRouteSelection{};
+    }
+
+    // Currently, the fallback routes assume NCHW layout, so keep valid NHWC convolutions on IGEMM
+    if (Parameters->ChannelsLast) {
+        return ConvRouteSelection{ConvRoute::IGemm, effective_kernel_h, effective_kernel_w};
+    }
+
+    if (filter_count == 1) {
+        // Single-output-channel convolutions do not fill the SME IGEMM N tile efficiently,
+        // so defer to the default convolution route.
         return ConvRouteSelection{};
     }
 
