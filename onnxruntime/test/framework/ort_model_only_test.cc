@@ -221,6 +221,49 @@ TEST(OrtModelTest, RejectsInvalidEdgeEndNodeIndex) {
                              testing::HasSubstr("references missing node")));
 }
 
+TEST(OrtModelTest, RejectsEdgeEndReferencingNullNodeSlot) {
+  // Two real nodes at indices 0 and 3 force nodes_ to size 4, leaving slots 1 and 2 unpopulated.
+  // An inner EdgeEnd that references one of those null slots (index 2) is within range but points
+  // at a missing node, and must be rejected gracefully rather than dereferenced.
+  const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<flatbuffers::String>> empty_args;
+    std::vector<int32_t> empty_arg_counts;
+    auto make_node = [&](const char* name, uint32_t index) {
+      return fbs::CreateNodeDirect(builder, name, "", "", 1, index, "Identity",
+                                   fbs::NodeType::Primitive, nullptr,
+                                   &empty_args, &empty_args, nullptr,
+                                   &empty_arg_counts, &empty_args);
+    };
+    std::vector<flatbuffers::Offset<fbs::Node>> nodes{make_node("n0", 0), make_node("n3", 3)};
+    // Edge owned by node 0 with an input edge referencing the null slot at index 2.
+    std::vector<fbs::EdgeEnd> input_edges{fbs::EdgeEnd(2, 0, 0)};
+    std::vector<flatbuffers::Offset<fbs::NodeEdge>> node_edges{
+        fbs::CreateNodeEdgeDirect(builder, 0, &input_edges)};
+    return fbs::CreateGraphDirect(builder, nullptr, nullptr, &nodes, 4, &node_edges);
+  });
+
+  const auto status = LoadOrtBuffer(buffer);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("references missing node"));
+}
+
+TEST(OrtModelTest, RejectsGraphInputWithUnknownNodeArg) {
+  // A graph input referencing a NodeArg name that was never declared in node_args must be rejected
+  // rather than firing a null-pointer assertion on the GetNodeArg result.
+  const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
+        fbs::CreateValueInfoDirect(builder, "x", "", CreateFloatTensorTypeInfo(builder, 1))};
+    std::vector<flatbuffers::Offset<flatbuffers::String>> inputs{
+        builder.CreateSharedString("nonexistent")};
+    return fbs::CreateGraphDirect(builder, nullptr, &node_args, nullptr, 0, nullptr, &inputs);
+  });
+
+  const auto status = LoadOrtBuffer(buffer);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(),
+              testing::HasSubstr("Graph references unknown NodeArg 'nonexistent'"));
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 // Keep the CompareTypeProtos in case we need debug the difference
 /*
