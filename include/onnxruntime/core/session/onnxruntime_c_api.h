@@ -3072,6 +3072,7 @@ struct OrtApi {
    * For example, given a tensor with shape of [3,224,224], a pointer to the element at location [2,150,128] can be retrieved
    *
    * This function only works for numeric type tensors (No strings, etc).
+   * This function does not support sub-byte packed types (e.g., int4).
    * This is a no-copy method whose returned pointer is valid until the passed in ::OrtValue is free'd.
    *
    * \param[in] value
