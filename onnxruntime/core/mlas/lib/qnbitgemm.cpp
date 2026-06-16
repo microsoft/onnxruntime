@@ -49,7 +49,13 @@ GetQNBitGemmVariant(
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
-    if ((BlkLen == 16 || BlkLen == 32 || BlkLen == 64 || BlkLen == 128 || BlkLen == 256)) {
+    // BlkLen support varies by BlkBitWidth:
+    //   W4 / W8 : {16, 32, 64, 128, 256}
+    //   W2      : {32, 64, 128}  (the native non-LUT kernel does not implement 16 or 256;
+    //              the pack-size helper returns 0 for those, and we must report
+    //              this truthfully via MlasIsQNBitGemmAvailable for direct MLAS
+    //              callers who rely on availability as the support contract.)
+    if (BlkLen == 16 || BlkLen == 32 || BlkLen == 64 || BlkLen == 128 || BlkLen == 256) {
         if (BlkBitWidth == 4) {
             if (ComputeType == SQNBIT_CompFp32) {
                 return SQ4BitGemmVariant_CompFp32;
@@ -64,10 +70,12 @@ GetQNBitGemmVariant(
             } else if (ComputeType == HQNBIT_CompFp16) {
                 return HQ8BitGemmVariant_CompFp16;
             }
-        } else if (BlkBitWidth == 2) {
-            if (ComputeType == SQNBIT_CompInt8) {
-                return SQ2BitGemmVariant_CompInt8;
-            }
+        }
+    }
+
+    if (BlkBitWidth == 2 && (BlkLen == 32 || BlkLen == 64 || BlkLen == 128)) {
+        if (ComputeType == SQNBIT_CompInt8) {
+            return SQ2BitGemmVariant_CompInt8;
         }
     }
 

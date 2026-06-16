@@ -1249,4 +1249,33 @@ TEST(MlasSq2BitTest, BlkLen32_Avx512Vnni_WithZeroPoints) {
   }
 }
 
+//
+// Availability contract test for W2 + SQNBIT_CompInt8.
+//
+// The W2 native kernel only implements BlkLen ∈ {32, 64, 128}.
+// MlasIsQNBitGemmAvailable must report this truthfully so direct MLAS callers
+// can rely on it as the support contract. Previously the variant gate also
+// admitted BlkLen 16 and 256 (since they're valid for W4 / W8), which made
+// availability return true for shapes that Q2BitGemmPackQuantBDataSize_Avx512
+// would refuse to size (returning 0).
+//
+TEST(MlasSq2BitTest, AvailabilityContract_BlkLens) {
+  if (!GetMlasPlatform().Avx512Supported_) {
+    GTEST_SKIP() << "W2 native dispatch is AVX-512-only on x86_64";
+  }
+
+  // Supported BlkLens.
+  EXPECT_TRUE(MlasIsQNBitGemmAvailable(2, 32, SQNBIT_CompInt8));
+  EXPECT_TRUE(MlasIsQNBitGemmAvailable(2, 64, SQNBIT_CompInt8));
+  EXPECT_TRUE(MlasIsQNBitGemmAvailable(2, 128, SQNBIT_CompInt8));
+
+  // Unsupported BlkLens for W2 (valid for W4/W8 but not implemented for W2).
+  EXPECT_FALSE(MlasIsQNBitGemmAvailable(2, 16, SQNBIT_CompInt8));
+  EXPECT_FALSE(MlasIsQNBitGemmAvailable(2, 256, SQNBIT_CompInt8));
+
+  // Compute types not implemented for W2.
+  EXPECT_FALSE(MlasIsQNBitGemmAvailable(2, 64, SQNBIT_CompFp32));
+  EXPECT_FALSE(MlasIsQNBitGemmAvailable(2, 64, HQNBIT_CompFp16));
+}
+
 #endif  // defined(MLAS_TARGET_AMD64)
