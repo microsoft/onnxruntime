@@ -2393,20 +2393,15 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_SlidingWindow) {
 }
 
 // ---------------------------------------------------------------------------
-// WebGPU: batched right-padded packed-QKV prefill regression
+// Batched right-padded packed-QKV prefill with do_rotary.
 //
 // In a multi-batch prefill where individual prompts have different real lengths,
 // GenAI right-pads short prompts up to the max sequence_length and reports each
-// batch's real length via seqlens_k[b] = real_len[b] - 1. The WebGPU rotary
-// embedding shader for packed-QKV computes past_seqlen = (seqlens_k[b] + 1) -
-// sequence_length per-batch. For a short batch whose real_len < sequence_length,
-// that subtraction underflowed u32, producing astronomically large position_ids
-// that read out-of-bounds from cos/sin caches -- garbage values manifesting as
-// gibberish output text. The fix clamps past_seqlen to 0 during prefill.
-//
-// This test exercises the packed-QKV do_rotary path (which dispatches
-// SplitPackedQKVWithRotaryEmbeddingProgram). It compares each batch's
-// real-last-token output against a single-batch reference for the same prompt.
+// batch's real length via seqlens_k[b] = real_len[b] - 1. The property under
+// test: each batch's real-last-token output (the one used to predict the next
+// token) must equal what we get from running that prompt singly as a batch=1
+// prefill. This is a generic correctness check that any GQA-supporting EP
+// should satisfy.
 // ---------------------------------------------------------------------------
 
 // Builds a packed QKV tensor with deterministic values at real positions and
@@ -2450,7 +2445,9 @@ static std::vector<float> RunGQAPackedQKVRotaryPrefill(
     int kv_num_heads,
     int head_size,
     const std::vector<int32_t>& seqlens_k_data,
-    const std::vector<float>& packed_qkv_data) {
+    const std::vector<float>& packed_qkv_data,
+    bool use_cuda = false,
+    bool use_webgpu = false) {
   const int hidden_size = num_heads * head_size;
   const int kv_hidden_size = kv_num_heads * head_size;
   const int qkv_hidden = hidden_size + 2 * kv_hidden_size;
@@ -2504,7 +2501,13 @@ static std::vector<float> RunGQAPackedQKVRotaryPrefill(
   tester.SetOutputTolerance(1e6f);  // We fetch and compare outputs ourselves.
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  if (use_cuda) {
+    execution_providers.push_back(DefaultCudaExecutionProvider());
+  } else if (use_webgpu) {
+    execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  } else {
+    execution_providers.push_back(DefaultCpuExecutionProvider());
+  }
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 
   auto fetches = tester.GetFetches();
@@ -2512,16 +2515,12 @@ static std::vector<float> RunGQAPackedQKVRotaryPrefill(
   return std::vector<float>(out_data, out_data + output_size);
 }
 
-// Regression for u32 underflow in WebGPU SplitPackedQKVWithRotaryEmbedding
-// shader during right-padded batched prefill. Runs each prompt singly to build
-// a reference, then runs all prompts as a right-padded batch and asserts that
-// each batch's real-last-token output matches its single-prompt reference.
-TEST(GroupQueryAttentionTest, WebGPU_BatchedRightPaddedRotaryPrefill) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
-  if (!webgpu_ep) {
-    GTEST_SKIP() << "WebGPU EP not available";
-  }
-
+// Inner helper: builds packed-QKV inputs, computes per-prompt references, runs
+// the right-padded batched prefill, and asserts each batch's real-last-token
+// output matches its single-prompt reference. Both reference and batched runs
+// go through the same EP, so this validates per-batch consistency within each
+// EP rather than cross-EP equivalence.
+static void RunBatchedRightPaddedRotaryPrefillForEP(bool use_cuda, bool use_webgpu) {
   constexpr int batch_size = 3;
   constexpr int num_heads = 4;
   constexpr int kv_num_heads = 2;
@@ -2554,7 +2553,7 @@ TEST(GroupQueryAttentionTest, WebGPU_BatchedRightPaddedRotaryPrefill) {
         /*batch_size=*/1, /*sequence_length=*/real_len,
         num_heads, kv_num_heads, head_size,
         /*seqlens_k_data=*/{static_cast<int32_t>(real_len - 1)},
-        packed_single);
+        packed_single, use_cuda, use_webgpu);
   }
 
   // Now run all batches together with right-padding.
@@ -2564,7 +2563,7 @@ TEST(GroupQueryAttentionTest, WebGPU_BatchedRightPaddedRotaryPrefill) {
   }
   const auto batched_output = RunGQAPackedQKVRotaryPrefill(
       batch_size, sequence_length, num_heads, kv_num_heads, head_size,
-      seqlens_k_data, packed_batched);
+      seqlens_k_data, packed_batched, use_cuda, use_webgpu);
 
   // Each batch's real-last-token output (used to predict next token) must match
   // its single-prompt reference. The tolerance is loose enough for fp16 rounding
@@ -2583,6 +2582,26 @@ TEST(GroupQueryAttentionTest, WebGPU_BatchedRightPaddedRotaryPrefill) {
           << " channel " << c << " mismatch";
     }
   }
+}
+
+TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefill_CPU) {
+  RunBatchedRightPaddedRotaryPrefillForEP(/*use_cuda=*/false, /*use_webgpu=*/false);
+}
+
+TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefill_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+  RunBatchedRightPaddedRotaryPrefillForEP(/*use_cuda=*/true, /*use_webgpu=*/false);
+}
+
+TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefill_WebGPU) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  RunBatchedRightPaddedRotaryPrefillForEP(/*use_cuda=*/false, /*use_webgpu=*/true);
 }
 
 }  // namespace test
