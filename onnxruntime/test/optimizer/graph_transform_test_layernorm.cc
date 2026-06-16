@@ -9,7 +9,7 @@
 
 #include "gtest/gtest.h"
 
-#include "onnx/defs/schema.h"
+#include "core/graph/onnx_protobuf.h"
 
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
