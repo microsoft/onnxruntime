@@ -58,7 +58,6 @@
     "pybind11",
     "re2",
     "safeint",
-    "utf8-range",
     {
       "name": "vcpkg-cmake",
       "host": true
@@ -115,6 +114,10 @@
     {
       "name": "flatbuffers",
       "version": "23.5.26"
+    },
+    {
+      "name": "mimalloc",
+      "version": "2.2.3"
     }
   ]
 }
