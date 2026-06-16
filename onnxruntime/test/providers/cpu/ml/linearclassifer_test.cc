@@ -345,6 +345,8 @@ TEST(MLOpTest, LinearClassifierInput3DFails) {
   test.AddAttribute("intercepts", intercepts);
   test.AddAttribute("classlabels_ints", classes);
 
+  // Bypass ONNX shape inference so we exercise the kernel's own runtime rank validation.
+  test.AddShapeToTensorData(false);
   test.AddInput<float>("X", {1, 1, 2}, {1.f, 2.f});
   test.AddOutput<int64_t>("Y", {1}, {0LL});
   test.AddOutput<float>("Z", {1, 2}, {0.f, 0.f});
