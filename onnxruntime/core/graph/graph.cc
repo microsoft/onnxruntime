@@ -6,6 +6,7 @@
 #include <cassert>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <numeric>
 #include <queue>
 #include <stack>
@@ -896,7 +897,16 @@ Status Node::LoadEdgesFromOrtFormat(const onnxruntime::fbs::NodeEdge& fbs_node_e
     if (fbs_edges) {
       for (const auto* fbs_edge : *fbs_edges) {
         ORT_RETURN_IF(nullptr == fbs_edge, "Node::LoadEdgesFromOrtFormat, edge is missing for ", dst_name);
-        edge_set.emplace(*graph.GetNode(fbs_edge->node_index()), fbs_edge->src_arg_index(), fbs_edge->dst_arg_index());
+        const auto edge_node_index = fbs_edge->node_index();
+        const size_t node_slot_count = static_cast<size_t>(graph.MaxNodeIndex());
+        ORT_RETURN_IF(static_cast<size_t>(edge_node_index) >= node_slot_count,
+                      "Node::LoadEdgesFromOrtFormat, ", dst_name, " has out-of-range node index ",
+                      edge_node_index, ". Invalid ORT format model.");
+        const auto* edge_node = graph.GetNode(edge_node_index);
+        ORT_RETURN_IF(edge_node == nullptr,
+                      "Node::LoadEdgesFromOrtFormat, ", dst_name, " references missing node ",
+                      edge_node_index, ". Invalid ORT format model.");
+        edge_set.emplace(*edge_node, fbs_edge->src_arg_index(), fbs_edge->dst_arg_index());
       }
     }
     return Status::OK();
@@ -6649,8 +6659,10 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
 
   // Initializers
   auto fbs_initializers = fbs_graph.initializers();
+  ORT_RETURN_IF_ERROR(fbs::utils::ValidateRequiredTableOffsets(fbs_initializers, "initializer"));
 #if !defined(DISABLE_SPARSE_TENSORS)
   auto fbs_sparse_initializers = fbs_graph.sparse_initializers();
+  ORT_RETURN_IF_ERROR(fbs::utils::ValidateRequiredTableOffsets(fbs_sparse_initializers, "sparse initializer"));
   flatbuffers::uoffset_t map_size = (fbs_initializers != nullptr ? fbs_initializers->size() : 0U) +
                                     (fbs_sparse_initializers != nullptr ? fbs_sparse_initializers->size() : 0U);
 #else
@@ -6720,6 +6732,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
   // NodeArgs
   auto fbs_node_args = fbs_graph.node_args();
   if (fbs_node_args) {
+    ORT_RETURN_IF_ERROR(fbs::utils::ValidateRequiredTableOffsets(fbs_node_args, "node arg"));
     node_args_.reserve(fbs_node_args->size());
     for (const auto* fbs_value_info : *fbs_node_args) {
       ORT_RETURN_IF(nullptr == fbs_value_info, "NodeArg is missing. Invalid ORT format model.");
@@ -6727,16 +6740,72 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
       ORT_RETURN_IF_ERROR(fbs::utils::LoadValueInfoOrtFormat(*fbs_value_info, node_arg_info));
       const auto* name = fbs_value_info->name();
       ORT_RETURN_IF(name == nullptr, "NodeArg name is missing. Invalid ORT format model.");
-      node_args_[name->str()] = std::make_unique<NodeArg>(std::move(node_arg_info));
+      const auto inserted = node_args_.emplace(name->str(), std::make_unique<NodeArg>(std::move(node_arg_info)));
+      ORT_RETURN_IF(!inserted.second, "Duplicate NodeArg name '", name->str(), "'. Invalid ORT format model.");
     }
   }
 
   // Nodes
   //
-  // Since we access a node using its index, we need to have nodes_ with size max_node_index to avoid
-  // out of bounds access.
-  nodes_.resize(fbs_graph.max_node_index());
+  // Since we access a node using its index, we need to have nodes_ with a size that covers all
+  // referenced indices. We compute the required slot count from actual node and edge data rather
+  // than trusting the serialized max_node_index field.
   auto* fbs_nodes = fbs_graph.nodes();
+  ORT_RETURN_IF_ERROR(fbs::utils::ValidateRequiredTableOffsets(fbs_nodes, "node"));
+  auto* fbs_node_edges = fbs_graph.node_edges();
+  ORT_RETURN_IF_ERROR(fbs::utils::ValidateRequiredTableOffsets(fbs_node_edges, "node edge"));
+
+  uint32_t max_referenced_node_index = 0;
+  bool has_referenced_node_index = false;
+  const auto update_max_referenced_node_index = [&max_referenced_node_index,
+                                                 &has_referenced_node_index](uint32_t node_index) {
+    max_referenced_node_index = has_referenced_node_index ? std::max(max_referenced_node_index, node_index)
+                                                          : node_index;
+    has_referenced_node_index = true;
+  };
+
+  if (fbs_nodes != nullptr) {
+    for (const auto* fbs_node : *fbs_nodes) {
+      ORT_RETURN_IF(nullptr == fbs_node, "Node is missing. Invalid ORT format model.");
+      update_max_referenced_node_index(fbs_node->index());
+    }
+  }
+
+  if (fbs_node_edges != nullptr) {
+    for (const auto* fbs_node_edge : *fbs_node_edges) {
+      ORT_RETURN_IF(nullptr == fbs_node_edge, "NodeEdge is missing. Invalid ORT format model.");
+      update_max_referenced_node_index(fbs_node_edge->node_index());
+    }
+  }
+
+  const uint64_t required_node_slot_count_64 = has_referenced_node_index
+                                                   ? static_cast<uint64_t>(max_referenced_node_index) + 1U
+                                                   : 0U;
+  ORT_RETURN_IF(required_node_slot_count_64 > std::numeric_limits<size_t>::max(),
+                "Node index ", max_referenced_node_index,
+                " is out of range. Invalid ORT format model.");
+  const size_t required_node_slot_count = static_cast<size_t>(required_node_slot_count_64);
+
+  // Sanity bound: reject buffers where a crafted node index would cause excessive allocation.
+  // ORT preserves original node indices after graph optimizations, so legitimate models can have
+  // sparse node slots. Allow that sparsity, but keep an absolute cap far above expected real model sizes.
+  const size_t total_entries = (fbs_nodes != nullptr ? fbs_nodes->size() : 0U) +
+                               (fbs_node_edges != nullptr ? fbs_node_edges->size() : 0U);
+  constexpr size_t kMinSlotCap = 1024;
+  constexpr size_t kMaxNodeSlotCount = 1000000;  // ~8 MB of unique_ptr<Node> slots on 64-bit
+  constexpr size_t kSparseNodeSlotMultiplier = 64;
+  const size_t sparse_slot_cap = total_entries > kMaxNodeSlotCount / kSparseNodeSlotMultiplier
+                                     ? kMaxNodeSlotCount
+                                     : total_entries * kSparseNodeSlotMultiplier;
+  const size_t slot_cap = std::min(kMaxNodeSlotCount, std::max(kMinSlotCap, sparse_slot_cap));
+  ORT_RETURN_IF(required_node_slot_count > slot_cap,
+                "Node index ", required_node_slot_count - 1,
+                " is unreasonably large relative to the number of entries (",
+                total_entries, "). Invalid ORT format model.");
+
+  ORT_RETURN_IF(fbs_graph.max_node_index() < required_node_slot_count,
+                "Serialized max node index is smaller than the required node slot count. Invalid ORT format model.");
+  nodes_.resize(required_node_slot_count);
 
   // It is possible to have no nodes in the model. Most likely scenario is the subgraph of an If Node
   // where the subgraph returns a Constant node. The Constant node will be lifted to an initializer by ORT
@@ -6746,18 +6815,22 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
       ORT_RETURN_IF(nullptr == fbs_node, "Node is missing. Invalid ORT format model.");
       std::unique_ptr<Node> node;
       ORT_RETURN_IF_ERROR(Node::LoadFromOrtFormat(*fbs_node, *this, load_options, logger_, node));
-      ORT_RETURN_IF(node->Index() >= fbs_graph.max_node_index(), "Node index is out of range");
+      ORT_RETURN_IF(node->Index() >= nodes_.size(), "Node index is out of range");
+      ORT_RETURN_IF(nodes_[node->Index()] != nullptr,
+                    "Duplicate node index ", node->Index(), ". Invalid ORT format model.");
       nodes_[node->Index()] = std::move(node);
       ++num_of_nodes_;
     }
   }
 
   // NodeEdges
-  auto* fbs_node_edges = fbs_graph.node_edges();
   if (fbs_node_edges != nullptr) {
     for (const auto* fbs_node_edge : *fbs_node_edges) {
       ORT_RETURN_IF(nullptr == fbs_node_edge, "NodeEdge is missing. Invalid ORT format model.");
-      ORT_RETURN_IF(fbs_node_edge->node_index() >= fbs_graph.max_node_index(), "Node index is out of range");
+      ORT_RETURN_IF(fbs_node_edge->node_index() >= nodes_.size(), "Node index is out of range");
+      ORT_RETURN_IF(nodes_[fbs_node_edge->node_index()] == nullptr,
+                    "NodeEdge references missing node ", fbs_node_edge->node_index(),
+                    ". Invalid ORT format model.");
       ORT_RETURN_IF_ERROR(nodes_[fbs_node_edge->node_index()]->LoadEdgesFromOrtFormat(*fbs_node_edge, *this));
     }
   }
@@ -6769,7 +6842,9 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
       node_args.reserve(fbs_node_args->size());
       for (const auto* fbs_node_arg_name : *fbs_node_args) {
         ORT_RETURN_IF(nullptr == fbs_node_arg_name, "NodeArg Name is missing. Invalid ORT format model.");
-        gsl::not_null<NodeArg*> node_arg = GetNodeArg(fbs_node_arg_name->str());
+        auto* node_arg = GetNodeArg(fbs_node_arg_name->str());
+        ORT_RETURN_IF(node_arg == nullptr, "Graph references unknown NodeArg '", fbs_node_arg_name->str(),
+                      "'. Invalid ORT format model.");
         node_args.push_back(node_arg);
       }
     }
