@@ -274,7 +274,7 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionFusesQwenPatter
   ASSERT_STATUS_OK(TestGraphTransformer(
       build, /*opset_version=*/current_opset, *logger_, MakeWebGpuTransformer(),
       TransformerLevel::Level2, /*steps=*/1, nullptr, CheckFusedGraph,
-      ModelOptions{/*allow_released_opsets_only*/ false, /*strict_shape_type_inference*/ false}));
+      ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 }
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionMatchesUnfusedWebGpuResults) {

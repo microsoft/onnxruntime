@@ -6922,7 +6922,7 @@ TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaCurrentOpsetTest) {
                     /*add_session_options*/ {},
                     /*disabled_optimizers*/ {},
                     /*ep*/ nullptr,
-                    ModelOptions{/*allow_released_opsets_only*/ false, /*strict_shape_type_inference*/ false});
+                    ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false});
 }
 
 TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionGemmTest) {
@@ -7068,7 +7068,7 @@ TEST_F(GraphTransformationTests, GeluFusionCurrentOpsetTest) {
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
                                         std::make_unique<GeluFusion>(),
                                         TransformerLevel::Level1, 1, nullptr, post_graph_checker,
-                                        ModelOptions{/*allow_released_opsets_only*/ false, /*strict_shape_type_inference*/ false}));
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 }
 
 TEST_F(GraphTransformationTests, FastGeluFusionCurrentOpsetTest) {
@@ -7126,7 +7126,7 @@ TEST_F(GraphTransformationTests, FastGeluFusionCurrentOpsetTest) {
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
                                         std::make_unique<FastGeluFusion>(),
                                         TransformerLevel::Level2, 1, nullptr, post_graph_checker,
-                                        ModelOptions{/*allow_released_opsets_only*/ false, /*strict_shape_type_inference*/ false}));
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 }
 
 TEST_F(GraphTransformationTests, BiasGeluFusionCurrentOpsetTest) {
@@ -7166,7 +7166,7 @@ TEST_F(GraphTransformationTests, BiasGeluFusionCurrentOpsetTest) {
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
                                         std::make_unique<BiasGeluFusion>(),
                                         TransformerLevel::Level2, 1, nullptr, post_graph_checker,
-                                        ModelOptions{/*allow_released_opsets_only*/ false, /*strict_shape_type_inference*/ false}));
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 }
 
 TEST_F(GraphTransformationTests, MatMulAddFusionCurrentOpsetTest) {
@@ -7204,7 +7204,7 @@ TEST_F(GraphTransformationTests, MatMulAddFusionCurrentOpsetTest) {
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
                                         std::make_unique<MatMulAddFusion>(),
                                         TransformerLevel::Level1, 1, nullptr, post_graph_checker,
-                                        ModelOptions{/*allow_released_opsets_only*/ false, /*strict_shape_type_inference*/ false}));
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 }
 
 TEST_F(GraphTransformationTests, DivMulFusionCurrentOpsetTest) {
@@ -7242,7 +7242,7 @@ TEST_F(GraphTransformationTests, DivMulFusionCurrentOpsetTest) {
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
                                         std::move(rule_transformer),
                                         TransformerLevel::Level1, 1, nullptr, post_graph_checker,
-                                        ModelOptions{/*allow_released_opsets_only*/ false, /*strict_shape_type_inference*/ false}));
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 }
 
 TEST_F(GraphTransformationTests, QuickGeluFusionCurrentOpsetTest) {
@@ -7281,7 +7281,7 @@ TEST_F(GraphTransformationTests, QuickGeluFusionCurrentOpsetTest) {
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
                                         std::make_unique<QuickGeluFusion>(),
                                         TransformerLevel::Level2, 1, nullptr, post_graph_checker,
-                                        ModelOptions{/*allow_released_opsets_only*/ false, /*strict_shape_type_inference*/ false}));
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 }
 
 TEST_F(GraphTransformationTests, GeluFusionTest) {
@@ -8586,7 +8586,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionOpsetTest) {
     // Remove once opset 27 is released. Tracked by #28966.
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
                                           pre_graph_checker, post_graph_checker,
-                                          ModelOptions{/*allow_released_opsets_only*/ false, /*strict_shape_type_inference*/ false}));
+                                          ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 
     // For opset >= 15, also test that partial Shape (start=1, end=2) prevents fusion.
     if (opset >= 15) {
@@ -8627,7 +8627,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionOpsetTest) {
       // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
       ASSERT_STATUS_OK(TestGraphTransformer(build_partial_shape_case, opset, *logger_, std::move(transformer_no_fuse),
                                             TransformerLevel::Level1, 1, pre_graph_checker, pre_graph_checker,
-                                            ModelOptions{/*allow_released_opsets_only*/ false, /*strict_shape_type_inference*/ false}));
+                                            ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
     }
   }
 }
@@ -10778,7 +10778,7 @@ TEST_F(GraphTransformationTests, GatherToSliceFusion) {
     // Opset 27 is still under development in ONNX 1.22, so the default released-opset-only model load
     // would throw on strict (ALLOW_RELEASED_ONNX_OPSET_ONLY!=0) legs. Allow the unreleased opset here so
     // this sub-block exercises the opset-27 Range schema on every CI leg, not just the relaxed ones.
-    const ModelOptions allow_unreleased_opset{/*allow_released_opsets_only*/ false,
+    const ModelOptions allow_unreleased_opset{kAllowReleasedOpsetsOnly,
                                               /*strict_shape_type_inference*/ false};
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 27, *logger_, std::move(transformer),
                                           TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker,

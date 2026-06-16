@@ -40,6 +40,16 @@
 
 namespace onnxruntime {
 namespace test {
+
+// Value for ModelOptions::allow_released_opsets_only (the first ModelOptions ctor argument) used
+// by the *CurrentOpset fusion tests. Those tests build models stamped at the in-development ONNX
+// opset (e.g. opset 27 while 26 is the latest released opset); ORT's default strict load-time
+// validation would reject them. Passing allow_released_opsets_only=false loads them via the
+// warn-and-proceed path instead. Named to mirror the ctor argument so each call site reads
+// ModelOptions{kAllowReleasedOpsetsOnly, ...} (false = do not restrict to released opsets, i.e.
+// allow the not-yet-released opset). Remove once the opset is released (tracked by #28966).
+constexpr bool kAllowReleasedOpsetsOnly = false;
+
 template <typename T>
 struct IsTypeQuantLinearCompatible : utils::IsByteType<T> {};
 
