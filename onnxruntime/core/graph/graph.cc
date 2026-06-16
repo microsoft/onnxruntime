@@ -2967,7 +2967,8 @@ Status Graph::SaveShapeValuesFromDataPropagation(const Node& node,
                                                  NodeArg& output_def,
                                                  const TypeProto& onnx_inferred_type_after_data_propagation) const {
   // Helper function to get the input value if it's a initializer.
-  auto get_initialized_input_values_func = [&](const std::string& input_name, TensorShapeVector& input_values)
+  auto get_initialized_input_values_func = [&](const std::string& input_name, TensorShapeVector& input_values,
+                                               int& num_dims)
       -> Status {
     const TensorProto* initializer = this->GetConstantInitializer(input_name, true);
 
@@ -2976,6 +2977,11 @@ Status Graph::SaveShapeValuesFromDataPropagation(const Node& node,
       // If shape has dimension size equals zero, it means it's a scalar and has only one element.
       auto tensor_shape = utils::GetTensorShapeFromTensorProto(*initializer);
       size_t element_cnt = narrow<size_t>(tensor_shape.Size());
+
+      // Report the initializer's rank so callers can distinguish a 0-D scalar from a rank-1
+      // single-element tensor (both have a single element). Sourcing the rank from the same
+      // TensorProto the values come from keeps value and rank consistent.
+      num_dims = static_cast<int>(tensor_shape.NumDimensions());
 
       // Check if this is in-memory external data (data stored in OrtValue)
       if (utils::HasExternalDataInMemory(*initializer)) {
