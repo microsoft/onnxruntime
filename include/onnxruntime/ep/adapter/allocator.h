@@ -62,19 +62,19 @@ class IAllocatorWrappingOrtAllocator final : public IAllocator {
     if (!stats) return;
     *stats = {};
 
-    try {
-      Ort::KeyValuePairs kvps = ort_allocator_.GetStats();
-      std::vector<const char*> keys, values;
-      kvps.GetKeyValuePairs(keys, values);
-      const size_t n = keys.size() < values.size() ? keys.size() : values.size();
-      for (size_t i = 0; i < n; ++i) {
-        int64_t val = 0;
-        if (!TryParseStringWithClassicLocale(std::string_view(values[i]), val)) continue;
-        stats->SetFromKeyValue(keys[i], val);
-      }
-    } catch (...) {
-      // If plugin doesn't implement GetStats, AllocatorGetStats returns empty KVPs.
-      // Any other failure is silently ignored.
+    // GetStats was added in OrtAllocator version 23. For older allocators the function pointer
+    // may be uninitialized, so we must not call through it.
+    const OrtAllocator* raw = ort_allocator_;
+    if (raw->version < 23 || !raw->GetStats) return;
+
+    Ort::KeyValuePairs kvps = ort_allocator_.GetStats();
+    std::vector<const char*> keys, values;
+    kvps.GetKeyValuePairs(keys, values);
+    const size_t n = keys.size() < values.size() ? keys.size() : values.size();
+    for (size_t i = 0; i < n; ++i) {
+      int64_t val = 0;
+      if (!TryParseStringWithClassicLocale(std::string_view(values[i]), val)) continue;
+      stats->SetFromKeyValue(keys[i], val);
     }
   }
 
