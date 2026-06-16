@@ -828,6 +828,12 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     webgpu_group.add_argument(
         "--use_external_dawn", action="store_true", help="Use external Dawn dependency for WebGPU."
     )
+    webgpu_group.add_argument(
+        "--wgsl_template",
+        choices=["static"],
+        default="static",
+        help="Deprecated no-op. WGSL template generation is always static; kept for backward compatibility.",
+    )
 
     # --- XNNPACK ---
     xnn_group = parser.add_argument_group("XNNPACK Execution Provider")

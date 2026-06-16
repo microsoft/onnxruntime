@@ -20,12 +20,13 @@ jobs:
     runs-on: [
       "self-hosted",
       "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
-      "JobId=webgpu_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}-${{ matrix.vcpkg_option }}"
+      "JobId=webgpu_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}-${{ matrix.vcpkg_option }}-${{ matrix.wgsl_template }}"
       ]
     timeout-minutes: 300
     strategy:
       matrix:
         vcpkg_option: [novcpkg, vcpkg]
+        wgsl_template: [static]
     env:
       OrtPackageId: Microsoft.ML.OnnxRuntime
       OnnxRuntimeBuildDirectory: ${{ github.workspace }}
@@ -120,6 +121,7 @@ jobs:
             --build_nodejs `
             --build_java `
             --use_webgpu `
+            --wgsl_template ${{ matrix.wgsl_template }} `
             ${{ matrix.vcpkg_option == 'vcpkg' && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }} `
             --cmake_extra_defines `
             onnxruntime_BUILD_UNIT_TESTS=ON `
