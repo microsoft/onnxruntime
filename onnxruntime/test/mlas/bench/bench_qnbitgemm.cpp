@@ -141,16 +141,17 @@ static void QNBit2BitArgs(benchmark::internal::Benchmark* b) {
   b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "HasBias", "ComputeType"});
 
   b->ArgsProduct({
-      {32, 64, 128},                     // BlkLen      (W2 native kernel supports all three)
-      {1, 4096},                         // M           (decode + prefill)
-      {4096, 11008},                     // N
-      {4096, 11008},                     // K
-      {1, 8},                            // Threads
-      {int64_t{true}},                   // Symmetric   (W2 native kernel constraint)
-      {int64_t{false}, int64_t{true}},   // HasBias
-      {int64_t{SQNBIT_CompInt8}},        // ComputeType (W2 native kernel constraint)
+      {32, 64, 128},                    // BlkLen      (W2 native kernel supports all three)
+      {1, 4096},                        // M           (decode + prefill)
+      {4096, 11008},                    // N
+      {4096, 11008},                    // K
+      {1, 8},                           // Threads
+      {int64_t{true}},                  // Symmetric   (W2 native kernel constraint)
+      {int64_t{false}, int64_t{true}},  // HasBias
+      {int64_t{SQNBIT_CompInt8}},       // ComputeType (W2 native kernel constraint)
   });
-}BENCHMARK(QNBITGEMM<float, 4>)->Apply(QNBitGemmArgs<float>)->UseRealTime();
+}
+BENCHMARK(QNBITGEMM<float, 4>)->Apply(QNBitGemmArgs<float>)->UseRealTime();
 BENCHMARK(QNBITGEMM<float, 8>)->Apply(QNBitGemmArgs<float>)->UseRealTime();
 BENCHMARK(QNBITGEMM<MLAS_FP16, 4>)->Apply(QNBitGemmArgs<MLAS_FP16>)->UseRealTime();
 BENCHMARK(QNBITGEMM<float, 2>)->Apply(QNBit2BitArgs)->UseRealTime();
