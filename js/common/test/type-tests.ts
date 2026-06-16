@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import globby from 'globby';
+import { globbySync } from 'globby';
 import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { dirname, join, normalize, relative } from 'node:path';
@@ -47,7 +47,7 @@ const TYPE_TESTS_DIR = join(dirname(fileURLToPath(import.meta.url)), './type-tes
  */
 const prepareTestFileList = () =>
   //
-  globby.sync('**/*.ts', {
+  globbySync('**/*.ts', {
     cwd: TYPE_TESTS_DIR,
     absolute: true,
   });
@@ -56,10 +56,11 @@ const prepareTestFileList = () =>
  * Run typescript compiler on the given files.
  */
 const compileTypeScriptFiles = (filepaths: string[]): readonly typescript.Diagnostic[] => {
-  // TypeScript compiler options, base URL is reset to `TYPE_TESTS_DIR`.
-  const compilerOptions = JSON.parse(readFileSync(new URL('./type-tests/tsconfig.json', import.meta.url), 'utf-8'))
-    .compilerOptions as typescript.CompilerOptions;
-  compilerOptions.baseUrl = TYPE_TESTS_DIR;
+  // Parse tsconfig.json using TypeScript's API to properly resolve string enum values.
+  const tsconfigPath = fileURLToPath(new URL('./type-tests/tsconfig.json', import.meta.url));
+  const configFile = typescript.readConfigFile(tsconfigPath, typescript.sys.readFile);
+  const parsedConfig = typescript.parseJsonConfigFileContent(configFile.config, typescript.sys, TYPE_TESTS_DIR);
+  const compilerOptions = parsedConfig.options;
 
   // Run TypeScript compiler
   const program = typescript.createProgram({
@@ -118,9 +119,11 @@ const prepareTestCases = () => {
     // check file name exists
     assert(error.fileName, 'Each compile error should have a file name. Please check TypeScript compiler options.');
 
-    // check file name is in test cases
+    // skip errors from files outside the test suite (e.g. @types/node)
     const testCase = filePathToTestCaseMap.get(error.fileName);
-    assert(testCase, `unexpected error file name: ${error.fileName}`);
+    if (!testCase) {
+      continue;
+    }
 
     testCase.actualFailures.push(error);
   }

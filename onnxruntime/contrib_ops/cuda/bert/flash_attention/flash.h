@@ -70,6 +70,7 @@ struct Flash_fwd_params : public Qkv_params {
   int seqlen_k_rounded = 0;
   int d_rounded = 0;
   int rotary_dim = 0;
+  int total_q = 0;
 
   // The scaling factors for the kernel.
   float scale_softmax = 0.0;
@@ -79,11 +80,10 @@ struct Flash_fwd_params : public Qkv_params {
   // array of length b+1 holding starting offset of each sequence.
   int* __restrict__ cu_seqlens_q = nullptr;
   int* __restrict__ cu_seqlens_k = nullptr;
+  int* __restrict__ leftpad_k = nullptr;
 
   // If provided, the actual length of each k sequence.
   int* __restrict__ seqused_k = nullptr;
-
-  int* __restrict__ blockmask = nullptr;
 
   // The K_new and V_new matrices.
   void* __restrict__ knew_ptr = nullptr;
@@ -122,6 +122,7 @@ struct Flash_fwd_params : public Qkv_params {
 
   bool is_rotary_interleaved = false;
 
+  void* __restrict__ head_sink_ptr = nullptr;
   bool smooth_softmax = false;
 
   int num_splits = 0;  // For split-KV version
@@ -129,14 +130,17 @@ struct Flash_fwd_params : public Qkv_params {
   void* __restrict__ alibi_slopes_ptr = nullptr;
   index_t alibi_slopes_batch_stride = 0;
 
+  bool unpadded_lse = false;  // For varlen paths: LSE is in [nheads, total_seqlen_q] format instead of [b, nheads, seqlen_q].
   const cudaDeviceProp* dprops = nullptr;
+  bool seqlenq_ngroups_swapped = false;  // q has been transposed from (b, 1, (nheads_kv ngroups), d) to (b, ngroups, nheads_kv, d).
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-template <typename T, int Headdim>
+template <typename T, int Headdim, bool Is_causal>
 void run_mha_fwd_(Flash_fwd_params& params, cudaStream_t stream);
-template <typename T, int Headdim>
+
+template <typename T, int Headdim, bool Is_causal>
 void run_mha_fwd_splitkv_dispatch(Flash_fwd_params& params, cudaStream_t stream);
 
 }  // namespace flash

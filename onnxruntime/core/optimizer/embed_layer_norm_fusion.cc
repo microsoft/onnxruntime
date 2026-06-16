@@ -17,7 +17,7 @@ using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::common;
 namespace onnxruntime {
 // Add a Cast to convert Input from int64 to int32.
-static NodeArg* CastToInt32(Graph& graph, NodeArg* input, ProviderType provider_type) {
+static NodeArg* CastToInt32(Graph& graph, NodeArg* input, const Node& source_node) {
   auto data_type = input->TypeAsProto()->tensor_type().elem_type();
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
     return input;
@@ -36,13 +36,13 @@ static NodeArg* CastToInt32(Graph& graph, NodeArg* input, ProviderType provider_
                              "Cast Input from int64 to int32",
                              std::array{input},
                              std::array{&cast32},
+                             source_node,
                              nullptr,
                              kOnnxDomain);
 
   // Add attribute: "to" = 6
   node.AddAttribute("to", int64_t{ONNX_NAMESPACE::TensorProto_DataType_INT32});
-
-  node.SetExecutionProviderType(provider_type);
+  node.SetExecutionProviderType(source_node.GetExecutionProviderType());
   return &cast32;
 }
 
@@ -115,9 +115,9 @@ static bool MatchInputToConcatSubgraph(
     const NodeIndex expected_gather_node_1_index) {
   std::vector<graph_utils::EdgeEndToMatch> expand_parent_path1{
       {0, index, "Concat", {4, 11, 13}, kOnnxDomain},
-      {0, 0, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
-      {0, 0, "Shape", {1, 13}, kOnnxDomain},
+      {0, 0, "Shape", {1, 13, 15, 19, 21, 23, 24, 25}, kOnnxDomain},
   };
 
   std::vector<const Node::EdgeEnd*> edges;
@@ -138,6 +138,14 @@ static bool MatchInputToConcatSubgraph(
     }
   }
 
+  // The Gather(index=0) below assumes Shape returns the full tensor shape. A partial shape
+  // (opset 15+ start/end attributes) would cause Gather to pick the wrong dimension.
+  const Node& shape_node_path1 = edges[shape_index]->GetNode();
+  if (!graph_utils::IsFullShapeNode(shape_node_path1)) {
+    DEBUG_LOG("Shape node in path 1 has non-default start/end attributes.");
+    return false;
+  }
+
   Node& concat_node = *graph.GetNode(edges[0]->GetNode().Index());
   Node& gather_node_0 = *graph.GetNode(edges[2]->GetNode().Index());
   Node& shape_node_0 = *graph.GetNode(edges[3]->GetNode().Index());
@@ -147,9 +155,9 @@ static bool MatchInputToConcatSubgraph(
   }
 
   std::vector<graph_utils::EdgeEndToMatch> concat_parent_path{
-      {0, 1, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, 1, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
-      {0, 0, "Shape", {1, 13}, kOnnxDomain}};
+      {0, 0, "Shape", {1, 13, 15, 19, 21, 23, 24, 25}, kOnnxDomain}};
 
   if (!graph_utils::FindPath(concat_node, true, concat_parent_path, edges, logger)) {
     DEBUG_LOG("Failed to find path 2 of position shape.");
@@ -166,6 +174,13 @@ static bool MatchInputToConcatSubgraph(
 
   Node& gather_node_1 = *graph.GetNode(edges[1]->GetNode().Index());
   Node& shape_node_1 = *graph.GetNode(edges[2]->GetNode().Index());
+
+  // The Gather(index=1) below assumes Shape returns the full tensor shape. A partial shape
+  // (opset 15+ start/end attributes) would cause Gather to pick the wrong dimension.
+  if (!graph_utils::IsFullShapeNode(shape_node_1)) {
+    DEBUG_LOG("Shape node in path 2 has non-default start/end attributes.");
+    return false;
+  }
 
   // The gather node (with second input indices==1) is also shared by other subgraph
   if (expected_gather_node_1_index != gather_node_1.Index()) {
@@ -231,42 +246,42 @@ static bool MatchPositionEmbeddingSubgraphsFromGather(
   // --> Cast --> Unsqueeze --> Expand --> Gather
   std::vector<graph_utils::EdgeEndToMatch> parent_path_1{
       {0, 1, "Expand", {8, 13}, kOnnxDomain},
-      {0, 0, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
-      {0, 0, "Cast", {9, 13}, kOnnxDomain},
-      {0, 0, "Squeeze", {1, 11, 13}, kOnnxDomain},
-      {0, 0, "Transpose", {1, 13}, kOnnxDomain},
+      {0, 0, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Cast", {9, 13, 19, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Squeeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "NonZero", {9, 13}, kOnnxDomain},
-      {0, 0, "ConstantOfShape", {9}, kOnnxDomain},
-      {0, 0, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "ConstantOfShape", {9, 20, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
-      {0, 0, "Shape", {1, 13}, kOnnxDomain}};
+      {0, 0, "Shape", {1, 13, 15, 19, 21, 23, 24, 25}, kOnnxDomain}};
   // Look for Path 2 (Path 1 with no cast):
   std::vector<graph_utils::EdgeEndToMatch> parent_path_2{
       {0, 1, "Expand", {8, 13}, kOnnxDomain},
-      {0, 0, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
-      {0, 0, "Squeeze", {1, 11, 13}, kOnnxDomain},
-      {0, 0, "Transpose", {1, 13}, kOnnxDomain},
+      {0, 0, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Squeeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Transpose", {1, 13, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "NonZero", {9, 13}, kOnnxDomain},
-      {0, 0, "ConstantOfShape", {9}, kOnnxDomain},
-      {0, 0, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
+      {0, 0, "ConstantOfShape", {9, 20, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
-      {0, 0, "Shape", {1, 13}, kOnnxDomain}};
+      {0, 0, "Shape", {1, 13, 15, 19, 21, 23, 24, 25}, kOnnxDomain}};
   // Path 3 Pattern:
   // Shape -> Gather -> Cast (to=7) -> Range (start=0, delta=1) -> Unsqueeze -> Expand
   std::vector<graph_utils::EdgeEndToMatch> parent_path_3{
       {0, 1, "Expand", {8, 13}, kOnnxDomain},
-      {0, 0, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
-      {0, 0, "Range", {1, 11}, kOnnxDomain},
-      {0, 1, "Cast", {9, 13}, kOnnxDomain},
+      {0, 0, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Range", {11, 27}, kOnnxDomain},
+      {0, 1, "Cast", {9, 13, 19, 21, 23, 24, 25}, kOnnxDomain},
       {0, 0, "Gather", {1, 11, 13}, kOnnxDomain},
-      {0, 0, "Shape", {1, 13}, kOnnxDomain}};
+      {0, 0, "Shape", {1, 13, 15, 19, 21, 23, 24, 25}, kOnnxDomain}};
   // Path 4 pattern (Path 3 with no "Cast"):
   std::vector<graph_utils::EdgeEndToMatch> parent_path_4{
       {0, 1, "Expand", {8, 13}, kOnnxDomain},
-      {0, 0, "Unsqueeze", {1, 11, 13}, kOnnxDomain},
-      {0, 0, "Range", {1, 11}, kOnnxDomain},
+      {0, 0, "Unsqueeze", {1, 11, 13, 21, 23, 24, 25}, kOnnxDomain},
+      {0, 0, "Range", {11, 27}, kOnnxDomain},
       {0, 1, "Gather", {1, 11, 13}, kOnnxDomain},
-      {0, 0, "Shape", {1, 13}, kOnnxDomain}};
+      {0, 0, "Shape", {1, 13, 15, 19, 21, 23, 24, 25}, kOnnxDomain}};
   // Match one of the three path patterns.
   if (!graph_utils::FindPath(position_gather_node, true, parent_path_1, pg_edges, logger) &&
       !graph_utils::FindPath(position_gather_node, true, parent_path_2, pg_edges, logger) &&
@@ -318,7 +333,7 @@ static bool MatchPositionEmbeddingSubgraphsFromGather(
 
     // Match Shape --> Expand path.
     std::vector<const Node::EdgeEnd*> pg_edges_2;
-    if (!graph_utils::FindPath(expand_node, true, {graph_utils::EdgeEndToMatch{0, 1, "Shape", {1, 13}, kOnnxDomain}}, pg_edges_2, logger)) {
+    if (!graph_utils::FindPath(expand_node, true, {graph_utils::EdgeEndToMatch{0, 1, "Shape", {1, 13, 15, 19, 21, 23, 24, 25}, kOnnxDomain}}, pg_edges_2, logger)) {
       DEBUG_LOG("Failed to match Shape node. ");
       return false;
     }
@@ -338,9 +353,9 @@ static bool MatchPositionEmbeddingSubgraphsFromGather(
     //                  --------------------
     std::vector<const Node::EdgeEnd*> pg_edges_2;
     std::vector<graph_utils::EdgeEndToMatch> path_to_match_1{
-        {0, 1, "Where", {9}, kOnnxDomain},
-        {0, 0, "Equal", {1, 7, 11, 13}, kOnnxDomain},
-        {0, 0, "Reshape", {5, 13}, kOnnxDomain}};
+        {0, 1, "Where", {9, 16}, kOnnxDomain},
+        {0, 0, "Equal", {1, 7, 11, 13, 19}, kOnnxDomain},
+        {0, 0, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25}, kOnnxDomain}};
     if (graph_utils::FindPath(expand_node, true, path_to_match_1, pg_edges_2, logger)) {
       if (!optimizer_utils::CheckOutputEdges(graph, pg_edges_2[0]->GetNode(), 1) ||
           !optimizer_utils::CheckOutputEdges(graph, pg_edges_2[1]->GetNode(), 1) ||
@@ -450,7 +465,7 @@ static NodeArg* ExtractEmbedding(Graph& graph,
   assert(sequence_length > 0);
   assert(hidden_size > 0);
 
-  Initializer old_initializer{*tensor, graph.ModelPath()};
+  Initializer old_initializer{graph, *tensor, graph.ModelPath()};
   auto data_type = tensor->data_type();
 
   ONNX_NAMESPACE::TensorProto initializer;
@@ -474,7 +489,7 @@ static NodeArg* ExtractEmbedding(Graph& graph,
     utils::SetRawDataInTensorProto(initializer, data, gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
   }
 
-  NodeArg& node_arg = graph_utils::AddInitializer(graph, initializer);
+  NodeArg& node_arg = graph_utils::AddInitializerWithOrtValue(graph, initializer);
   modified = true;
   return &node_arg;
 }
@@ -487,9 +502,9 @@ static void CreateEmbedLayernormNode(Graph& graph,
                                      NodeArg* segment_embedding,
                                      Node& layer_norm_node) {
   // Cast input_ids and segment_ids to int32 if needed.
-  input_ids = CastToInt32(graph, input_ids, layer_norm_node.GetExecutionProviderType());
+  input_ids = CastToInt32(graph, input_ids, layer_norm_node);
   if (segment_ids != nullptr && segment_embedding != nullptr) {
-    segment_ids = CastToInt32(graph, segment_ids, layer_norm_node.GetExecutionProviderType());
+    segment_ids = CastToInt32(graph, segment_ids, layer_norm_node);
   }
 
   NodeArg place_holder("", nullptr);
@@ -514,7 +529,7 @@ static void CreateEmbedLayernormNode(Graph& graph,
                                               "fused EmbedLayerNorm subgraphs ",
                                               embed_layer_norm_input_defs,
                                               std::array{layer_norm_node.MutableOutputDefs()[0], &mask_index},
-                                              {}, kMSDomain);
+                                              layer_norm_node, nullptr, kMSDomain);
 
   // Get attribute "epsilon" from "LayerNormalization" node if available. Else, default value
   // will be used.
@@ -559,7 +574,7 @@ static bool FuseSubGraph(Graph& graph,
 
   // Trace back to find Gather --> Add --> LayerNormalization
   std::vector<graph_utils::EdgeEndToMatch> word_embedding_path{
-      {0, 0, "Add", {7, 13}, kOnnxDomain},
+      {0, 0, "Add", {7, 13, 14}, kOnnxDomain},
       {0, 0, "Gather", {1, 11, 13}, kOnnxDomain}};
   if (!graph_utils::FindPath(layer_norm_add_node, true, word_embedding_path, edges, logger)) {
     return false;
@@ -843,7 +858,7 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
     std::vector<const Node::EdgeEnd*> edges;
 
     // Find Add --> LayerNormalization
-    if (!graph_utils::FindPath(layer_norm_node, true, {graph_utils::EdgeEndToMatch{0, 0, "Add", {7, 13}, kOnnxDomain}}, edges, logger)) {
+    if (!graph_utils::FindPath(layer_norm_node, true, {graph_utils::EdgeEndToMatch{0, 0, "Add", {7, 13, 14}, kOnnxDomain}}, edges, logger)) {
       continue;
     }
     Node& layer_norm_add_node = *graph.GetNode(edges[0]->GetNode().Index());

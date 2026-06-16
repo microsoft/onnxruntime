@@ -45,7 +45,11 @@ export const convertDataToInt32 = (data: Uint8Array, dataType: MLOperandDataType
 
   // Convert Uint8Array to original typed array.
   const numElements = data.byteLength / bytesPerElement;
-  const originalArray = new (tensorTypeToTypedArrayConstructor(dataType))(data.buffer, data.byteOffset, numElements);
+  const originalArray = new (tensorTypeToTypedArrayConstructor(dataType))(
+    data.buffer as ArrayBuffer,
+    data.byteOffset,
+    numElements,
+  );
 
   switch (dataType) {
     case 'int64':
@@ -283,7 +287,7 @@ class TensorWrapper {
         targetBuffer.set(originalData);
         return undefined;
       } else {
-        return originalData.buffer;
+        return new Uint8Array(originalData).buffer;
       }
     } else {
       return dstBuffer ? this.mlContext.readTensor(this.mlTensor, dstBuffer) : this.mlContext.readTensor(this.mlTensor);
@@ -336,11 +340,12 @@ class TensorIdTracker {
     copyOld: boolean,
   ): Promise<MLTensor> {
     const context = this.tensorManager.getMLContext(sessionId);
+    const opLimits = this.tensorManager.getMLOpSupportLimits(sessionId);
     let fallbackDataType: MLOperandDataType | undefined;
     // Check if the context supports the data type. If not, try to use the fallback data type.
-    if (!context.opSupportLimits().input.dataTypes.includes(dataType)) {
+    if (!opLimits?.input.dataTypes.includes(dataType)) {
       fallbackDataType = webnnDataTypeToFallback.get(dataType);
-      if (!fallbackDataType || !context.opSupportLimits().input.dataTypes.includes(fallbackDataType)) {
+      if (!fallbackDataType || opLimits?.input.dataTypes.includes(fallbackDataType)) {
         throw new Error(`WebNN backend does not support data type: ${dataType}`);
       }
       LOG_DEBUG(
@@ -431,7 +436,7 @@ class TensorIdTracker {
         }
         return;
       } else {
-        return dstData.buffer;
+        return dstData.buffer as ArrayBuffer;
       }
     }
     if (!this.wrapper) {
@@ -458,6 +463,10 @@ class TensorManagerImpl implements TensorManager {
       throw new Error('MLContext not found for session.');
     }
     return context;
+  }
+
+  public getMLOpSupportLimits(sessionId: number): MLOpSupportLimits | undefined {
+    return this.backend.getMLOpSupportLimits(sessionId);
   }
 
   public reserveTensorId(): TensorId {
@@ -538,7 +547,6 @@ class TensorManagerImpl implements TensorManager {
     const context = this.getMLContext(sessionId);
     const tensorId = createNewTensorId();
     // Defaulting to READ | WRITE if usage is not provided.
-    // eslint-disable-next-line no-bitwise
     const wrapper = new TensorWrapper({
       sessionId,
       context,

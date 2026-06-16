@@ -136,10 +136,8 @@ CUresult CUDADriverWrapper::cuLaunchKernel(
       f, gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, sharedMemBytes, hStream, kernelParams, extra);
 }
 
-// Initialize the singleton instance
-CUDADriverWrapper CUDADriverWrapper::instance;
-
 const CUDADriverWrapper* CUDADriverWrapper::GetInstance() {
+  static CUDADriverWrapper instance;
   return &instance;
 }
 

@@ -12,10 +12,12 @@
 #include <gsl/gsl>
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
-#include "core/framework/endian.h"
-#include "core/framework/float8.h"
-#include "core/framework/float16.h"
+#include "core/common/endian.h"
+#include "core/common/float8.h"
+#include "core/common/float16.h"
 #include "core/framework/int4.h"
+#include "core/framework/int2.h"
+#include "core/framework/float4.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/to_tensor_proto_element_type.h"
 
@@ -209,6 +211,8 @@ class DataTypeImpl {
   static const std::vector<MLDataType>& AllTensorTypesIRv4();
   static const std::vector<MLDataType>& AllTensorTypesIRv9();
   static const std::vector<MLDataType>& AllTensorTypesIRv10();
+  static const std::vector<MLDataType>& AllTensorTypesIRv11();
+  static const std::vector<MLDataType>& AllTensorTypesIRv13();
 
   static const std::vector<MLDataType>& AllFixedSizeTensorTypes();  // up to IR4 (no float 8), deprecated
   static const std::vector<MLDataType>& AllFixedSizeTensorTypesIRv4();
@@ -283,10 +287,14 @@ template <typename T>
 struct IsTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_t, int16_t,
                                               int32_t, int64_t, std::string, bool, MLFloat16,
                                               double, uint32_t, uint64_t, BFloat16,
-                                              Int4x2, UInt4x2
+                                              Int4x2, UInt4x2, Int2x4, UInt2x4
 #if !defined(DISABLE_FLOAT8_TYPES)
                                               ,
-                                              Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ
+                                              Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ, Float8E8M0
+#endif
+#if !defined(DISABLE_FLOAT4_TYPES)
+                                              ,
+                                              Float4E2M1x2
 #endif
                                               > {
 };
@@ -298,10 +306,15 @@ struct IsTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_
 template <typename T>
 struct IsSparseTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_t, int16_t,
                                                     int32_t, int64_t, std::string, bool, MLFloat16,
-                                                    double, uint32_t, uint64_t, BFloat16
+                                                    double, uint32_t, uint64_t, BFloat16,
+                                                    Int4x2, UInt4x2, Int2x4, UInt2x4
 #if !defined(DISABLE_FLOAT8_TYPES)
                                                     ,
-                                                    Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ
+                                                    Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ, Float8E8M0
+#endif
+#if !defined(DISABLE_FLOAT4_TYPES)
+                                                    ,
+                                                    Float4E2M1x2
 #endif
                                                     > {
 };
@@ -921,7 +934,7 @@ class OpaqueType : public NonTensorType<T> {
  *
  * \details This class contains an integer constant that can be
  *          used for input data type dispatching. This class also stores the number of subelements per size units.
- *          Example: For int4, the size unit is 1 byte and the number of subelements is 2.
+ *          Example: For float4/int4, the size unit is 1 byte and the number of subelements is 2.
  *
  */
 class PrimitiveDataTypeBase : public DataTypeImpl {
@@ -1101,6 +1114,7 @@ inline const PrimitiveDataTypeBase* DataTypeImpl::AsPrimitiveDataType() const {
 // Registers a subbyte primitive.
 // Examples:
 //   - Int4x2 stores 2 packed 4-bit elements in 1 byte: ORT_*_SUBBYTE_TYPE(Int4x2, 2)
+//   - Float4E2M1x2 stores 2 packed 4-bit elements in 1 byte: ORT_*_SUBBYTE_TYPE(Float4E2M1x2, 2)
 //   - [not supported] Int3x8 could store 8 packed 3-bit elements in 3 bytes: ORT_*_SUBBYTE_TYPE(Int3x8, 8)
 #define ORT_REGISTER_PRIM_SUBBYTE_TYPE(TYPE, NUM_SUB_ELEMS)       \
   template <>                                                     \

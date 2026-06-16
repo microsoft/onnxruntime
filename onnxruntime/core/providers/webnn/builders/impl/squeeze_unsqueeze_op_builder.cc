@@ -85,7 +85,7 @@ Status SqueezeUnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_buil
 
   emscripten::val output = emscripten::val::undefined();
   // Use WebNN's reshape to implement Squeeze/Unsqueeze.
-  std::vector<uint32_t> new_shape = GetNarrowedIntfromInt64<uint32_t>(input_shape);
+  std::vector<uint32_t> new_shape = GetNarrowedIntFromInt64<uint32_t>(input_shape);
   // Sort axes_data in ascending order.
   std::sort(axes_data.begin(), axes_data.end());
   if (op_type == "Squeeze") {
@@ -127,9 +127,6 @@ bool SqueezeUnsqueezeOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewe
                                                   const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
-  std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger))
-    return false;
 
   if (input_defs.size() < 1) {
     LOGS(logger, ERROR) << op_type << " has no input tensor";

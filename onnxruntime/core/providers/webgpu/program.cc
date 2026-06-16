@@ -49,17 +49,18 @@ ProgramUniformVariableValue::ProgramUniformVariableValue(ProgramUniformVariableD
   memcpy(data.data(), ptr, length * element_byte_size);
 }
 
-std::ostream& operator<<(std::ostream& os, ProgramUniformVariableDataType type) {
-  os << ProgramUniformVariableDataTypeName[std::underlying_type<decltype(type)>::type(type)];
-  return os;
-}
+#define DEFINE_ENUM_STREAM_OP(StreamType, EnumType, EnumNameArray)         \
+  StreamType& operator<<(StreamType& os, EnumType type) {                  \
+    os << EnumNameArray[std::underlying_type<decltype(type)>::type(type)]; \
+    return os;                                                             \
+  }
 
-std::ostream& operator<<(std::ostream& os, ProgramConstantDataType type) {
-  os << ProgramConstantDataTypeName[std::underlying_type<decltype(type)>::type(type)];
-  return os;
-}
+DEFINE_ENUM_STREAM_OP(std::ostream, ProgramUniformVariableDataType, ProgramUniformVariableDataTypeName)
+DEFINE_ENUM_STREAM_OP(OStringStream, ProgramUniformVariableDataType, ProgramUniformVariableDataTypeName)
+DEFINE_ENUM_STREAM_OP(std::ostream, ProgramConstantDataType, ProgramConstantDataTypeName)
+DEFINE_ENUM_STREAM_OP(OStringStream, ProgramConstantDataType, ProgramConstantDataTypeName)
 
-std::ostream& operator<<(std::ostream& os, ProgramTensorMetadataDependency dep) {
+OStringStream& operator<<(OStringStream& os, ProgramTensorMetadataDependency dep) {
   bool first = true;
   if ((dep & ProgramTensorMetadataDependency::Type) == ProgramTensorMetadataDependency::Type) {
     os << "Type";
@@ -109,10 +110,7 @@ constexpr std::string_view ProgramVariableDataTypeName[] = {
     "i4x8",    // Int4x8
 };
 
-std::ostream& operator<<(std::ostream& os, ProgramVariableDataType type) {
-  os << ProgramVariableDataTypeName[std::underlying_type<decltype(type)>::type(type)];
-  return os;
-}
+DEFINE_ENUM_STREAM_OP(OStringStream, ProgramVariableDataType, ProgramVariableDataTypeName)
 #endif
 
 int NumberOfComponents(ProgramVariableDataType type) {
@@ -305,6 +303,16 @@ ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dep
       use_override_shape{false},
       override_shape{} {}
 
+ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, ProgramOutput::FlattenTag, int component)
+    : tensor{tensor},
+      dependency{dependency},
+      var_type{ToProgramVariableDataType(tensor->GetElementType(), component)},
+      is_atomic{false},
+      use_override_shape{true},
+      override_shape{} {
+  override_shape = {(tensor->Shape().Size() + component - 1) / component};
+}
+
 ProgramOutput::ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component)
     : tensor{tensor},
       dependency{dependency},
@@ -319,6 +327,7 @@ ProgramBase::ProgramBase(std::string_view name, ProgramMetadata&& metadata)
       dispatch_group_size_x_{0},
       dispatch_group_size_y_{0},
       dispatch_group_size_z_{0},
+      indirect_dispatch_tensor_{nullptr},
       workgroup_size_x_{0},
       workgroup_size_y_{0},
       workgroup_size_z_{0} {
@@ -356,6 +365,12 @@ ProgramBase& ProgramBase::SetDispatchGroupSize(uint32_t x, uint32_t y, uint32_t 
   dispatch_group_size_x_ = x;
   dispatch_group_size_y_ = y;
   dispatch_group_size_z_ = z;
+  return *this;
+}
+
+ProgramBase& ProgramBase::SetIndirectDispatchTensor(const Tensor* indirect_dispatch_tensor) {
+  indirect_dispatch_tensor_ = indirect_dispatch_tensor;
+  AddInput({indirect_dispatch_tensor, ProgramTensorMetadataDependency::None});
   return *this;
 }
 

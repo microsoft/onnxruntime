@@ -21,6 +21,11 @@ namespace Microsoft.ML.OnnxRuntime.CompileApi
         public IntPtr ModelCompilationOptions_SetEpContextEmbedMode;
         public IntPtr CompileModel;
         public IntPtr ModelCompilationOptions_SetFlags;
+        public IntPtr ModelCompilationOptions_SetEpContextBinaryInformation;
+        public IntPtr ModelCompilationOptions_SetGraphOptimizationLevel;
+        public IntPtr ModelCompilationOptions_SetOutputModelWriteFunc;
+        public IntPtr ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc;
+        public IntPtr ModelCompilationOptions_SetInputModel;
     }
 
     internal class NativeMethods
@@ -101,6 +106,43 @@ namespace Microsoft.ML.OnnxRuntime.CompileApi
             uint flags);
         public DOrtModelCompilationOptions_SetFlags OrtModelCompilationOptions_SetFlags;
 
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtModelCompilationOptions_SetEpContextBinaryInformation(
+            IntPtr /* OrtModelCompilationOptions* */ options,
+            byte[] /* const ORTCHAR_T* */ outputDirectory,
+            byte[] /* const ORTCHAR_T* */ modelName);
+        public DOrtModelCompilationOptions_SetEpContextBinaryInformation
+                        OrtModelCompilationOptions_SetEpContextBinaryInformation;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtModelCompilationOptions_SetGraphOptimizationLevel(
+            IntPtr /* OrtModelCompilationOptions* */ options,
+            GraphOptimizationLevel graphOptimizationLevel);
+        public DOrtModelCompilationOptions_SetGraphOptimizationLevel
+            OrtModelCompilationOptions_SetGraphOptimizationLevel;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtModelCompilationOptions_SetOutputModelWriteFunc(
+            IntPtr /* OrtModelCompilationOptions* */ options,
+            IntPtr /* DOrtWriteBufferDelegate */ writeFunc,
+            IntPtr /* void* */ state);
+        public DOrtModelCompilationOptions_SetOutputModelWriteFunc
+                        OrtModelCompilationOptions_SetOutputModelWriteFunc;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtModelCompilationOptions_SetOutputModelGetInitializerLocationFunc(
+            IntPtr /* OrtModelCompilationOptions* */ options,
+            IntPtr /* DOrtHandleInitializerDataDelegate */ handleInitializerFunc,
+            IntPtr /* void* */ state);
+        public DOrtModelCompilationOptions_SetOutputModelGetInitializerLocationFunc
+                        OrtModelCompilationOptions_SetOutputModelGetInitializerLocationFunc;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtModelCompilationOptions_SetInputModel(
+            IntPtr /* OrtModelCompilationOptions* */ options,
+            IntPtr /* const OrtModel* */ inputModel);
+        public DOrtModelCompilationOptions_SetInputModel OrtModelCompilationOptions_SetInputModel;
+
         internal NativeMethods(OnnxRuntime.NativeMethods.DOrtGetCompileApi getCompileApi)
         {
 
@@ -160,6 +202,32 @@ namespace Microsoft.ML.OnnxRuntime.CompileApi
                 (DOrtModelCompilationOptions_SetFlags)Marshal.GetDelegateForFunctionPointer(
                     _compileApi.ModelCompilationOptions_SetFlags,
                     typeof(DOrtModelCompilationOptions_SetFlags));
+
+            OrtModelCompilationOptions_SetEpContextBinaryInformation =
+                (DOrtModelCompilationOptions_SetEpContextBinaryInformation)Marshal.GetDelegateForFunctionPointer(
+                    _compileApi.ModelCompilationOptions_SetEpContextBinaryInformation,
+                    typeof(DOrtModelCompilationOptions_SetEpContextBinaryInformation));
+
+            OrtModelCompilationOptions_SetGraphOptimizationLevel =
+                (DOrtModelCompilationOptions_SetGraphOptimizationLevel)Marshal.GetDelegateForFunctionPointer(
+                    _compileApi.ModelCompilationOptions_SetGraphOptimizationLevel,
+                    typeof(DOrtModelCompilationOptions_SetGraphOptimizationLevel));
+
+            OrtModelCompilationOptions_SetOutputModelWriteFunc =
+                (DOrtModelCompilationOptions_SetOutputModelWriteFunc)Marshal.GetDelegateForFunctionPointer(
+                    _compileApi.ModelCompilationOptions_SetOutputModelWriteFunc,
+                    typeof(DOrtModelCompilationOptions_SetOutputModelWriteFunc));
+
+            OrtModelCompilationOptions_SetOutputModelGetInitializerLocationFunc =
+                (DOrtModelCompilationOptions_SetOutputModelGetInitializerLocationFunc)Marshal.
+                GetDelegateForFunctionPointer(
+                    _compileApi.ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc,
+                    typeof(DOrtModelCompilationOptions_SetOutputModelGetInitializerLocationFunc));
+
+            OrtModelCompilationOptions_SetInputModel =
+                (DOrtModelCompilationOptions_SetInputModel)Marshal.GetDelegateForFunctionPointer(
+                    _compileApi.ModelCompilationOptions_SetInputModel,
+                    typeof(DOrtModelCompilationOptions_SetInputModel));
 
         }
     }

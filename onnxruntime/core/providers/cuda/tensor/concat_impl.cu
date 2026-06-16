@@ -10,13 +10,8 @@ namespace onnxruntime {
 namespace cuda {
 
 namespace {
-#ifdef USE_ROCM
-constexpr int kNumElementsPerThread = 2;
-constexpr int kNumThreadsPerBlock = 512;
-#else
 constexpr int kNumElementsPerThread = GridDim::maxElementsPerThread;
 constexpr int kNumThreadsPerBlock = GridDim::maxThreadsPerBlock;
-#endif
 }  // namespace
 
 // concat dimension are same for all inputs
@@ -85,7 +80,7 @@ Status ConcatSameConcatDimImpl(cudaStream_t stream, const size_t element_bytes, 
 template Status ConcatSameConcatDimImpl<const void**>(cudaStream_t stream, const size_t element_bytes,
                                                       const int block_size_including_axis_dim,
                                                       const int block_size_inside_axis_dim, const int64_t concat_size,
-                                                      void* output_data, const void** input_data,
+                                                      void* output_data, const void** const input_data,
                                                       const size_t output_size);
 
 // input tensor addresses passed by value

@@ -1,0 +1,47 @@
+steps:
+- task: AzureCLI@2
+  displayName: 'Download and Extract Maven using Azure CLI'
+  inputs:
+    azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
+    scriptType: 'pscore' # Use PowerShell Core
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      # Define the scope for the access token
+      $authScope = "https://mspmecloud.onmicrosoft.com/RebuildManager.Web/.default"
+
+      Write-Host "Requesting access token for scope: $authScope"
+      $tokenInfo = az account get-access-token --scope $authScope | ConvertFrom-Json
+      
+      # Set the token as an environment variable for the next tool to use
+      $env:TRT_UPLOAD_AUTH_TOKEN = $tokenInfo.accessToken
+      Write-Host "Successfully configured TRT_UPLOAD_AUTH_TOKEN environment variable."
+
+      # Execute the Terrapin Retrieval Tool to download Maven
+      Write-Host "Downloading Maven..."
+      & C:\local\Terrapin\TerrapinRetrievalTool.exe -b https://vcpkg.storage.devpackages.microsoft.io/artifacts/ -a true -u Environment -p https://dlcdn.apache.org/maven/maven-3/3.9.11/binaries/apache-maven-3.9.11-bin.zip -s 03e2d65d4483a3396980629f260e25cac0d8b6f7f2791e4dc20bc83f9514db8d0f05b0479e699a5f34679250c49c8e52e961262ded468a20de0be254d8207076 -d $(Agent.TempDirectory)\maven.zip
+      
+      # Check if the download was successful
+      if ($LASTEXITCODE -ne 0) {
+        throw "Error downloading maven. Exit code: $LASTEXITCODE"
+      }
+      Write-Host "Maven downloaded successfully."
+
+      # Extract the downloaded maven zip file
+      $arguments = "x", "$(Agent.TempDirectory)\maven.zip", "-y", "-o$(Agent.TempDirectory)"
+      Write-Output "Executing: 7z.exe $arguments"
+      & 7z.exe $arguments
+
+      # Check if the extraction was successful
+      if ($LASTEXITCODE -ne 0) {
+        throw "Error extracting maven.zip. Exit code: $LASTEXITCODE"
+      }
+      Write-Host "Maven extracted successfully."
+
+      # Prepend the Maven bin directory to the PATH for subsequent steps in the job
+      Write-Host "Adding Maven to the pipeline PATH."
+      Write-Host "##vso[task.prependpath]$(Agent.TempDirectory)\apache-maven-3.9.11\bin"
+
+- script: |
+    echo "Verifying Maven installation..."
+    mvn --version
+  displayName: 'Verify Maven Version'

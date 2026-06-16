@@ -802,6 +802,7 @@ $(function () {
         }
       }
       container.addEventListener('click', function (event) { return handleClick(event, state); });
+      container.addEventListener('keydown', function (event) { return handleKeyDown(event, state); });
       if (state.groups.length === 0) {
         return state;
       }
@@ -820,6 +821,7 @@ $(function () {
       while (li) {
         var a = li.firstElementChild;
         a.setAttribute(contentAttrs.name, 'tab');
+        a.setAttribute('role', 'tab');
         var dataTab = a.getAttribute('data-tab').replace(/\+/g, ' ');
         a.setAttribute('data-tab', dataTab);
         var section = element.querySelector("[id=\"" + a.getAttribute('aria-controls') + "\"]");
@@ -912,6 +914,91 @@ $(function () {
       var top = info.anchor.getBoundingClientRect().top;
       if (top !== originalTop && event instanceof MouseEvent) {
         window.scrollTo(0, window.pageYOffset + top - originalTop);
+      }
+    }
+
+    function handleKeyDown(event, state) {
+      var info = getTabInfoFromEvent(event);
+      if (info === null) {
+        return;
+      }
+
+      var handled = false;
+      var tabGroup = info.group;
+      var currentTabIndex = tabGroup.tabs.findIndex(function(tab) { return tab.a === info.anchor; });
+      
+      switch (event.key) {
+        case 'ArrowLeft':
+        case 'ArrowUp':
+          // Move to previous tab
+          handled = true;
+          var prevIndex = currentTabIndex - 1;
+          if (prevIndex < 0) {
+            prevIndex = tabGroup.tabs.length - 1;
+          }
+          while (prevIndex !== currentTabIndex && !tabGroup.tabs[prevIndex].visible) {
+            prevIndex--;
+            if (prevIndex < 0) {
+              prevIndex = tabGroup.tabs.length - 1;
+            }
+          }
+          if (tabGroup.tabs[prevIndex].visible) {
+            tabGroup.tabs[prevIndex].focus();
+          }
+          break;
+
+        case 'ArrowRight':
+        case 'ArrowDown':
+          // Move to next tab
+          handled = true;
+          var nextIndex = currentTabIndex + 1;
+          if (nextIndex >= tabGroup.tabs.length) {
+            nextIndex = 0;
+          }
+          while (nextIndex !== currentTabIndex && !tabGroup.tabs[nextIndex].visible) {
+            nextIndex++;
+            if (nextIndex >= tabGroup.tabs.length) {
+              nextIndex = 0;
+            }
+          }
+          if (tabGroup.tabs[nextIndex].visible) {
+            tabGroup.tabs[nextIndex].focus();
+          }
+          break;
+
+        case 'Home':
+          // Move to first visible tab
+          handled = true;
+          for (var i = 0; i < tabGroup.tabs.length; i++) {
+            if (tabGroup.tabs[i].visible) {
+              tabGroup.tabs[i].focus();
+              break;
+            }
+          }
+          break;
+
+        case 'End':
+          // Move to last visible tab
+          handled = true;
+          for (var i = tabGroup.tabs.length - 1; i >= 0; i--) {
+            if (tabGroup.tabs[i].visible) {
+              tabGroup.tabs[i].focus();
+              break;
+            }
+          }
+          break;
+
+        case 'Enter':
+        case ' ': // Space key
+          // Activate the current tab
+          handled = true;
+          handleClick(event, state);
+          break;
+      }
+
+      if (handled) {
+        event.preventDefault();
+        event.stopPropagation();
       }
     }
 

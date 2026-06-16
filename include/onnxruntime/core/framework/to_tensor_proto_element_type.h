@@ -10,8 +10,10 @@
 #include "core/graph/onnx_protobuf.h"
 #endif
 
-#include "core/framework/float8.h"
-#include "core/framework/float16.h"
+#include "core/framework/float4.h"
+#include "core/common/float8.h"
+#include "core/common/float16.h"
+#include "core/framework/int2.h"
 #include "core/framework/int4.h"
 
 namespace onnxruntime {
@@ -96,8 +98,20 @@ template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<Float8E5M2FNUZ>() {
   return ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ;
 }
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<Float8E8M0>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E8M0;
+}
 
 #endif
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<Float4E2M1x2>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_FLOAT4E2M1;
+}
+#endif
+
 template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<Int4x2>() {
   return ONNX_NAMESPACE::TensorProto_DataType_INT4;
@@ -105,6 +119,15 @@ constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<Int4x2>(
 template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<UInt4x2>() {
   return ONNX_NAMESPACE::TensorProto_DataType_UINT4;
+}
+
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<Int2x4>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_INT2;
+}
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<UInt2x4>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_UINT2;
 }
 
 }  // namespace utils

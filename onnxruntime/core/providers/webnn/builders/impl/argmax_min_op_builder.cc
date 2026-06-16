@@ -18,10 +18,6 @@ class ArgMaxMinOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
-
-  // Operator support related.
-  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
-                         WebnnDeviceType device_type, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -63,20 +59,6 @@ Status ArgMaxMinOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
-}
-
-// Operator support related.
-bool ArgMaxMinOpBuilder::IsOpSupportedImpl(const GraphViewer& /* initializers */,
-                                           const Node& node,
-                                           WebnnDeviceType device_type,
-                                           const logging::Logger& logger) const {
-  const auto& input_defs = node.InputDefs();
-
-  std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger))
-    return false;
-
-  return true;
 }
 
 void CreateArgMaxMinOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

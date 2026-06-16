@@ -5,6 +5,7 @@
 
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "QnnInterface.h"
@@ -17,6 +18,10 @@
 
 namespace onnxruntime {
 namespace qnn {
+
+// Forward declarations
+class QnnModelWrapper;
+class BF16ConversionGuard;
 
 // Stores information about an ONNX input or output tensor.
 // Filled out by QnnModelWrapper::GetTensorInfo()
@@ -31,9 +36,13 @@ struct TensorInfo {
 struct ModelSettings {
   bool offload_graph_io_quantization = false;
   bool htp_shared_memory = false;
+  bool htp_bf16_enable = false;
 };
 
 class QnnModelWrapper {
+  // Allow BF16ConversionGuard to access private RestoreFP32AfterValidation method
+  friend class BF16ConversionGuard;
+
  public:
   QnnModelWrapper(const GraphViewer& graph_viewer,
                   const logging::Logger& logger,
@@ -67,6 +76,9 @@ class QnnModelWrapper {
   Status MakeTensorWrapper(const TensorInfo& tensor_info,
                            const std::string& tensor_name,
                            QnnTensorWrapper& tensor_wrapper) const;
+
+  // Sets the QNN tensor memory type based on model settings and whether the tensor is a graph input/output.
+  void SetTensorMemTypeFromSettings(QnnTensorWrapper& tensor_wrapper, const std::string& tensor_name);
 
   // Add to internal tensor wrapper table
   bool AddTensorWrapper(QnnTensorWrapper&& tensor_wrapper);
@@ -185,7 +197,7 @@ class QnnModelWrapper {
                           bool is_for_input = true,
                           bool is_for_output = false);
 
-  // Tranpose NCHW->HWCN for QNN weight
+  // Transpose NCHW->HWCN for QNN weight
   Status AddNchwToHwcnTranspose(NodeIndex node_index,
                                 const std::string& input_name,
                                 const std::string& output_name,
@@ -235,33 +247,52 @@ class QnnModelWrapper {
                             tensor_data_type, quantize_param, do_op_validation, is_for_input, is_for_output);
   }
 
-  Status AddInt64CastNode(const std::string& input_name, std::string& cast_output_name,
-                          std::vector<uint32_t>&& cast_output_shape, bool do_op_validation) {
-    cast_output_name = input_name + "_ort_qnn_ep_cast";
-    QnnTensorWrapper cast_output(cast_output_name, QNN_TENSOR_TYPE_NATIVE, QNN_DATATYPE_INT_32,
-                                 QnnQuantParamsWrapper(), std::move(cast_output_shape));
-    ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(cast_output)), "Failed to add tensor.");
-    ORT_RETURN_IF_NOT(CreateQnnNode(cast_output_name,
-                                    QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                    "Cast",
-                                    {input_name},
-                                    {cast_output_name},
-                                    {},
-                                    do_op_validation),
-                      "Failed to add node.");
-
-    return Status::OK();
-  }
-
   Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
-                               std::vector<uint8_t>& unpacked_tensor) const;
+                               std::vector<uint8_t>& unpacked_tensor,
+                               const bool unpack_4_bit_to_8_bit = true) const;
 
   QnnBackendType GetQnnBackendType() const { return qnn_backend_type_; }
 
   const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
 
-  // Unpack float scales from initializer (1 scale for per-tensor, > 1 for per-axis).
-  Status UnpackScales(const std::string& initializer_name, std::vector<float>& scales) const;
+  // Unpack scales from initializer (1 scale for per-tensor, > 1 for per-axis or per-block).
+  // Template parameter T allows handling both float and uint8_t scale types.
+  template <typename T = float>
+  Status UnpackScales(const std::string& initializer_name, std::vector<T>& scales) const {
+    const auto& graph_initializers = GetInitializerTensors();
+    auto iter = graph_initializers.find(initializer_name);
+    ORT_RETURN_IF(iter == graph_initializers.end(), "Unable to find initializer for scale(s): ",
+                  initializer_name.c_str());
+    gsl::not_null<const onnx::TensorProto*> scale_tensor_proto = iter->second;
+
+    ORT_RETURN_IF_NOT(scale_tensor_proto->has_data_type(), "Expected scale initializer ", initializer_name.c_str(),
+                      " to have a proto data type.");
+
+    // Handle float scales
+    if constexpr (std::is_same_v<T, float>) {
+      // Verify data type for float scales
+      ORT_RETURN_IF_NOT(scale_tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                        "Expected float scale initializer to be of type FLOAT");
+
+      std::vector<uint8_t> initializer_bytes;
+      ORT_RETURN_IF_ERROR(UnpackInitializerData(*scale_tensor_proto, initializer_bytes));
+      gsl::span<const float> src = gsl::make_span(reinterpret_cast<const float*>(initializer_bytes.data()),
+                                                  initializer_bytes.size() / sizeof(float));
+      scales.insert(scales.end(), src.begin(), src.end());
+    }
+    // Handle uint8_t scales (for block quantization)
+    else if constexpr (std::is_same_v<T, uint8_t>) {
+      // Verify data type for uint8_t scales
+      ORT_RETURN_IF_NOT(scale_tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                        "Expected uint8_t scale initializer to be of type UINT8");
+
+      ORT_RETURN_IF_ERROR(UnpackInitializerData(*scale_tensor_proto, scales));
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Scale ONNX data type `", typeid(T).name(),
+                             "` is not supported for unpacking.");
+    }
+    return Status::OK();
+  }
 
   // Unpack zero-points from initializer and convert to int32_t (1 zero-point for per-tensor, > 1 for per-channel).
   Status UnpackZeroPoints(const std::string& initializer_name,
@@ -304,6 +335,36 @@ class QnnModelWrapper {
   void GetGraphInputOutputTensorWrapper(const std::vector<std::string>& names,
                                         std::vector<QnnTensorWrapper>& wrappers_list);
 
+  // BF16 conversion helper methods
+  bool IsBF16ConversionEnabled() const {
+    return model_settings_.htp_bf16_enable &&
+           (qnn_backend_type_ == QnnBackendType::HTP || qnn_backend_type_ == QnnBackendType::SERIALIZER);
+  }
+
+  bool ProcessBF16InputConversion(const std::string& qnn_node_name,
+                                  const std::vector<std::string>& input_names,
+                                  std::vector<std::string>& converted_input_names,
+                                  std::vector<QnnOpProperty>& cast_ops_to_add);
+
+  bool ProcessBF16OutputConversion(const std::string& qnn_node_name,
+                                   const std::vector<std::string>& output_names,
+                                   std::vector<std::string>& converted_output_names,
+                                   std::vector<std::pair<std::string, std::string>>& graph_output_cast_ops);
+
+  bool ApplyBF16ConversionForValidation(const std::vector<std::string>& input_names,
+                                        const std::vector<std::string>& output_names,
+                                        std::vector<std::string>& validation_input_names,
+                                        std::vector<std::string>& validation_output_names);
+
+  void RestoreFP32AfterValidation(const std::vector<std::string>& input_names,
+                                  const std::vector<std::string>& output_names);
+
+  bool CreateBF16CastTensor(const std::string& tensor_name,
+                            const std::vector<uint32_t>& shape,
+                            Qnn_TensorType_t tensor_type);
+
+  bool ProcessBF16Conversions(std::vector<QnnOpProperty>& final_ops);
+
   const GraphViewer& graph_viewer_;
   const logging::Logger& logger_;
   const QNN_INTERFACE_VER_TYPE& qnn_interface_;
@@ -331,6 +392,88 @@ class QnnModelWrapper {
   ModelSettings model_settings_ = {};
   utils::QnnJSONGraph json_qnn_graph_;
 };  // QnnModelWrapper
+
+template <typename T>
+inline Status AddQnnScalar(QnnModelWrapper& qnn_model_wrapper,
+                           const NodeIndex& node_index,
+                           const std::string& node_name,
+                           const T& scalar,
+                           const std::string& qnn_scalar_param_name,
+                           std::vector<std::string>& param_names) {
+  Qnn_Scalar_t qnn_scalar = QNN_SCALAR_INIT;
+  if (std::is_same<T, float>::value) {
+    qnn_scalar.dataType = QNN_DATATYPE_FLOAT_32;
+    qnn_scalar.floatValue = static_cast<float>(scalar);
+  } else if (std::is_same<T, uint32_t>::value) {
+    qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
+    qnn_scalar.uint32Value = static_cast<uint32_t>(scalar);
+  } else if (std::is_same<T, int32_t>::value) {
+    qnn_scalar.dataType = QNN_DATATYPE_INT_32;
+    qnn_scalar.int32Value = static_cast<int32_t>(scalar);
+  } else if (std::is_same<T, int64_t>::value) {
+    qnn_scalar.dataType = QNN_DATATYPE_INT_64;
+    qnn_scalar.int64Value = static_cast<int64_t>(scalar);
+  } else if (std::is_same<T, bool>::value) {
+    qnn_scalar.dataType = QNN_DATATYPE_BOOL_8;
+    qnn_scalar.bool8Value = static_cast<uint8_t>(scalar);
+  } else {
+    ORT_RETURN_IF(true, "QNN EP: Unsupported scalar dtype");
+  }
+  QnnParamWrapper qnn_param_wrapper(node_index, node_name, qnn_scalar_param_name, qnn_scalar);
+  param_names.push_back(qnn_param_wrapper.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(qnn_param_wrapper));
+  return Status::OK();
+}
+
+inline Status AddQnnScalar(QnnModelWrapper& qnn_model_wrapper,
+                           const NodeIndex& node_index,
+                           const std::string& node_name,
+                           const std::string& scalar,
+                           const std::string& qnn_scalar_param_name,
+                           std::vector<std::string>& param_names) {
+  Qnn_Scalar_t qnn_scalar = QNN_SCALAR_INIT;
+  qnn_scalar.dataType = QNN_DATATYPE_STRING;
+  qnn_scalar.stringValue = scalar.c_str();
+  QnnParamWrapper qnn_param_wrapper(node_index, node_name, qnn_scalar_param_name, qnn_scalar);
+  param_names.push_back(qnn_param_wrapper.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(qnn_param_wrapper));
+  return Status::OK();
+}
+
+// RAII guard to ensure FP32 restoration after BF16 conversion for validation
+class BF16ConversionGuard {
+ public:
+  BF16ConversionGuard(QnnModelWrapper* wrapper,
+                      const std::vector<std::string>& input_names,
+                      const std::vector<std::string>& output_names)
+      : wrapper_(wrapper),
+        input_names_(input_names),
+        output_names_(output_names) {}
+
+  ~BF16ConversionGuard() {
+    if (wrapper_) {
+      try {
+        wrapper_->RestoreFP32AfterValidation(input_names_, output_names_);
+      } catch (...) {
+        // Destructors must not throw exceptions
+        // Silently catch any exceptions during cleanup
+      }
+    }
+  }
+
+  // Prevent copying
+  BF16ConversionGuard(const BF16ConversionGuard&) = delete;
+  BF16ConversionGuard& operator=(const BF16ConversionGuard&) = delete;
+
+  // Prevent moving to avoid double-cleanup issues
+  BF16ConversionGuard(BF16ConversionGuard&&) = delete;
+  BF16ConversionGuard& operator=(BF16ConversionGuard&&) = delete;
+
+ private:
+  QnnModelWrapper* wrapper_;
+  std::vector<std::string> input_names_;   // Store by value, not reference
+  std::vector<std::string> output_names_;  // Store by value, not reference
+};
 
 }  // namespace qnn
 }  // namespace onnxruntime

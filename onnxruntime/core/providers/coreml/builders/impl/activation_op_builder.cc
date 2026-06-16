@@ -118,6 +118,15 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     } else if (op_type == "PRelu") {
       coreml_op_type = "prelu";
       add_alpha = true;
+    } else if (op_type == "Softplus") {
+      coreml_op_type = "softplus";
+    } else if (op_type == "Elu") {
+      coreml_op_type = "elu";
+      add_alpha = true;
+    } else if (op_type == "HardSigmoid") {
+      // CoreML MIL: sigmoid_hard(x, alpha, beta) = min(max(alpha*x + beta, 0), 1)
+      // ONNX HardSigmoid has the same definition with defaults alpha=0.2, beta=0.5.
+      coreml_op_type = "sigmoid_hard";
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
@@ -141,7 +150,7 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
         }
       } else {
         NodeAttrHelper helper(node);
-        const auto alpha = helper.Get("alpha", 0.01f);
+        const auto alpha = helper.Get("alpha", "Elu" == op_type ? 1.0f : 0.01f);
 
         if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
           AddOperationInput(*op, "alpha", model_builder.AddScalarConstant(op->type(), "alpha", alpha));
@@ -159,6 +168,20 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
         approximate = "EXACT";
       }
       AddOperationInput(*op, "mode", model_builder.AddScalarConstant(op->type(), "mode", std::string(approximate)));
+    }
+
+    if (op_type == "HardSigmoid") {
+      NodeAttrHelper helper(node);
+      const float alpha = helper.Get("alpha", 0.2f);
+      const float beta = helper.Get("beta", 0.5f);
+      auto input_dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+      if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+        AddOperationInput(*op, "alpha", model_builder.AddScalarConstant(op->type(), "alpha", alpha));
+        AddOperationInput(*op, "beta", model_builder.AddScalarConstant(op->type(), "beta", beta));
+      } else {
+        AddOperationInput(*op, "alpha", model_builder.AddScalarConstant(op->type(), "alpha", MLFloat16(alpha)));
+        AddOperationInput(*op, "beta", model_builder.AddScalarConstant(op->type(), "beta", MLFloat16(beta)));
+      }
     }
 
     AddOperationOutput(*op, *node.OutputDefs()[0]);
@@ -183,6 +206,14 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
       auto* leaky_relu = layer->mutable_activation()->mutable_leakyrelu();
       leaky_relu->set_alpha(alpha);
+    } else if (op_type == "HardSigmoid") {
+      NodeAttrHelper helper(node);
+      const auto alpha = helper.Get("alpha", 0.2f);
+      const auto beta = helper.Get("beta", 0.5f);
+
+      auto* hard_sigmoid = layer->mutable_activation()->mutable_sigmoidhard();
+      hard_sigmoid->set_alpha(alpha);
+      hard_sigmoid->set_beta(beta);
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
@@ -259,8 +290,22 @@ bool ActivationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInp
                                             const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
 
-  if (op_type == "Gelu" && !input_params.create_mlprogram) {
-    return false;
+  if (!input_params.create_mlprogram) {
+    if (op_type == "Gelu" || op_type == "Softplus" || op_type == "Elu") {
+      return false;
+    }
+  }
+  if (op_type == "HardSigmoid") {
+    // CoreML sigmoid_hard (MLProgram) and ActivationSigmoidHard (NN) both
+    // support float32 and float16 only. ONNX HardSigmoid also allows double
+    // and (opset 22+) bfloat16 — fall back to CPU for those.
+    const auto input_dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    if (input_dtype != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+        input_dtype != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+      LOGS(logger, VERBOSE) << "HardSigmoid input data type [" << input_dtype
+                            << "] is not supported by CoreML (float or float16 only)";
+      return false;
+    }
   }
   if (op_type == "PRelu") {
     return IsPReluOpSupported(node, input_params, logger);
@@ -269,8 +314,13 @@ bool ActivationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInp
   return true;
 }
 
-int ActivationOpBuilder::GetMinSupportedOpSet(const Node& /* node */) const {
-  // All ops opset 5- uses consumed_inputs attribute which is not supported for now
+int ActivationOpBuilder::GetMinSupportedOpSet(const Node& node) const {
+  const auto& op_type(node.OpType());
+  // Softplus was unmodified from opset 1 to 21 (with no attributes).
+  if (op_type == "Softplus") {
+    return 1;
+  }
+  // All other ops opset 5- uses consumed_inputs attribute which is not supported for now.
   return 6;
 }
 
@@ -286,6 +336,9 @@ void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistration
           "PRelu",
           "LeakyRelu",
           "Gelu",
+          "Softplus",
+          "Elu",
+          "HardSigmoid",
       };
 
   op_registrations.builders.push_back(std::make_unique<ActivationOpBuilder>());

@@ -8,6 +8,7 @@
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/graph.h"
 
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -31,12 +32,81 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
 /** Returns the attribute of a Node with a given name. */
 const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const std::string& attr_name);
 
+/** Checks whether a Shape node returns the full tensor shape (all dimensions).
+ * Returns false if start/end attributes restrict the output to a subset of dimensions. */
+bool IsFullShapeNode(const Node& node);
+
 /** Add a new initializer to 'graph'.
 Checks that new_initializer does not already exist in 'graph' before adding it.
 @returns The NodeArg for the new initializer.
 @remarks No matching graph input is created, so the initializer will be constant.
 */
 NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer);
+
+/// <summary>
+/// Adds a new initializer to 'graph' with new_initializer that points to the OrtValue buffer
+/// </summary>
+/// <param name="graph">target graph</param>
+/// <param name="new_initializer">TensorProto with external data contained in ort_value</param>
+/// <param name="ort_value">ort_value with data</param>
+/// <returns></returns>
+NodeArg& AddInitializerWithOrtValue(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer,
+                                    OrtValue ort_value);
+
+/** Add a new initializer to 'graph'.
+ * Checks that new_initializer does not already exist in 'graph' before adding it.
+ * @param new_initializer tensor proto that has external data pointing to data within the tensor.
+ * @param tensor with data
+ * @returns The NodeArg for the new initializer.
+ * @remarks No matching graph input is created, so the initializer will be constant.
+ */
+NodeArg& AddInitializerWithOrtValue(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer, Tensor&& tensor);
+
+/** Add a new initializer to 'graph'.
+ * The function unpacks data into a tensor and converts new_initializer to a TensorProto with external data in memory.
+ * The initializer is then added to the graph and tensor is wrapped into OrtValue and added to
+ * Graph::ortvalue_initializers_;
+ *
+ * @param graph The graph to which the initializer will be added.
+ * @param new_initializer tensor proto that actually has data in it
+ * @returns The NodeArg for the new initializer.
+ *  @remarks No matching graph input is created, so the initializer will be constant.
+ */
+NodeArg& AddInitializerWithOrtValue(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer);
+
+/// <summary>
+/// If the initializer with the given name does not exist in the destination graph, but exists in the
+/// source graph, copy it to the destination graph.
+/// </summary>
+/// <param name="src_graph">source graph s</param>
+/// <param name="dst_graph">destination</param>
+/// <param name="name">initializers name</param>
+/// <param name="copy_in_memory_data ">if external data is in memory, copy data inline.
+///  default is false. This is to accomodate EPs who load initializers on their own and do not understand
+///          our /*/_ORT_MEM_ADDR_/*/ external data reference</param>
+void MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph, const std::string& name,
+                                   bool copy_in_memory_data = false);
+
+/// <summary>
+/// If the constant initializer with the given name does not exist in the destination graph, but exists in the
+/// source graph, copy it to the destination graph along with its OrtValue if present.
+/// </summary>
+/// <param name="src_graph"></param>
+/// <param name="dst_graph"></param>
+/// <param name="name"></param>
+/// <param name="check_outer_scope">checks outerscope if true</param>
+void MakeConstantInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph,
+                                           const std::string& name, bool check_outer_scope);
+
+/// <summary>
+/// If the initializer is present with the graph and has external data in memory,
+/// convert it to inline data. This is necessary for EPs that can not handle
+/// external initializers that are in memory since our in-memory external data is not ONNX standard.
+/// </summary>
+/// <param name="graph">Graph</param>
+/// <param name="name">intializer name</param>
+/// <returns>Status</returns>
+Status ConvertInMemoryDataToInline(Graph& graph, const std::string& name);
 
 /** Gets the index of an output arg with the specified output arg name. */
 int GetNodeOutputIndexFromOutputName(const Node& node, const std::string& output_name);
@@ -124,6 +194,15 @@ bool MatchesOpSinceVersion(const Node& node, gsl::span<const ONNX_NAMESPACE::Ope
 /** Checks if the node has the same op set domain as the given one. */
 bool MatchesOpSetDomain(const Node& node, std::string_view domain);
 
+/// <summary>
+/// The function checks that the external data offset points to the same data as the tensor.
+/// </summary>
+/// <param name="tensor_proto"></param>
+/// <param name="tensor"></param>
+/// <returns>true if successful</returns>
+[[nodiscard]] bool CheckInMemoryDataMatch(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                          const Tensor& tensor);
+
 #if !defined(ORT_MINIMAL_BUILD)
 
 /** Checks if the output at the specified index is input to downstream Nodes. */
@@ -131,6 +210,9 @@ bool IsOutputUsed(const Node& node, int index);
 
 /** Returns true if the graph has the given input.*/
 bool IsGraphInput(const Graph& graph, const NodeArg* input);
+
+/** Returns true if the graph has the given output.*/
+bool IsGraphOutput(const Graph& graph, const NodeArg* output);
 
 /** returns true if 'name' is an initializer in 'graph', or an ancestor graph if check_outer_scope is true.
 @param check_outer_scope If true and 'graph' is a subgraph, check ancestor graph/s for 'name' if not found in 'graph'.
@@ -397,6 +479,22 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& node);
 NodeArg& CreateNodeArg(Graph& graph, const NodeArg& base_arg);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+/// <summary>
+/// This function creates an indexed subgraph from a collection of nodes
+/// using the graph instance. The IndexedSubgraph can then be used to create
+/// a filtered GraphViewer instance that only contains the nodes in the collection.
+/// </summary>
+/// <param name="nodes"></param>
+/// <param name="graph"></param>
+/// <param name="indexed_subgraph"></param>
+/// <returns></returns>
+Status CreateFilteredIndexedGraph(gsl::span<const Node* const> nodes, const Graph& graph,
+                                  std::unique_ptr<IndexedSubGraph>& indexed_subgraph);
+
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 }  // namespace graph_utils
 }  // namespace onnxruntime

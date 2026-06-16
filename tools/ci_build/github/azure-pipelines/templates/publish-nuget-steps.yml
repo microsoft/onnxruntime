@@ -18,7 +18,7 @@ stages:
     - name: GDN_CODESIGN_TARGETDIRECTORY
       value: '$(Agent.TempDirectory)\binfiles'
     pool:
-      name: 'onnxruntime-Win-CPU-2022'
+      name: 'onnxruntime-Win-CPU-VS2022-Latest'
 
     steps:
     # https://learn.microsoft.com/en-us/azure/devops/pipelines/yaml-schema/resources-pipelines-pipeline?view=azure-pipelines#pipeline-resource-metadata-as-predefined-variables
@@ -30,10 +30,7 @@ stages:
     - checkout: self
       submodules: false
 
-    - task: UsePythonVersion@0
-      inputs:
-        versionSpec: '3.12'
-        addToPath: true
+    - template: setup-feeds-and-python-steps.yml
 
     - template: set-version-number-variables-step.yml
 
@@ -70,7 +67,6 @@ stages:
               7z.exe l -slt %%~ni.zip runtimes\linux-arm64\native\libonnxruntime.so | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo linux,aarch64,default,%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
               7z.exe l -slt %%~ni.zip runtimes\osx-x64\native\libonnxruntime.dylib | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo osx,x64,default,%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
               7z.exe l -slt %%~ni.zip runtimes\win-x64\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x64,default,%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
-              7z.exe l -slt %%~ni.zip runtimes\win-x86\native\onnxruntime.dll | findstr /R /C:"^Size = [0-9]*" | for /F "tokens=3" %%a  in ('more') do if not "%%a" == "" echo win,x86,default,%%a >> $(Build.BinariesDirectory)\binary_size_data.txt
               )
             )
 
@@ -131,5 +127,3 @@ stages:
         packageParentPath: '$(Build.BinariesDirectory)'
         publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/7982ae20-ed19-4a35-a362-a96ac99897b7'
         allowPackageConflicts: true
-
-

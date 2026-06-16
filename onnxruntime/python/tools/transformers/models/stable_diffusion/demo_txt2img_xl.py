@@ -20,7 +20,8 @@
 # limitations under the License.
 # --------------------------------------------------------------------------
 
-import coloredlogs
+import logging
+
 from cuda import cudart
 from demo_utils import (
     add_controlnet_arguments,
@@ -220,7 +221,7 @@ def run_turbo_demo(args):
     args.engine = "ORT_CUDA"
     base, refiner = load_pipelines(args, 1)
 
-    from datasets import load_dataset
+    from datasets import load_dataset  # noqa: PLC0415
 
     dataset = load_dataset("Gustavosta/Stable-Diffusion-Prompts")
     num_rows = dataset["test"].num_rows
@@ -252,7 +253,7 @@ def main(args):
 
 
 if __name__ == "__main__":
-    coloredlogs.install(fmt="%(funcName)20s: %(message)s")
+    logging.basicConfig(format="%(funcName)20s: %(message)s", level=logging.INFO)
 
     parser = arg_parser("Options for Stable Diffusion XL Demo")
     add_controlnet_arguments(parser)

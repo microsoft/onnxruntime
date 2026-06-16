@@ -7,7 +7,7 @@
 
 namespace onnxruntime::test {
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
 
 namespace {
 
@@ -22,8 +22,6 @@ TEST(ResizeGradTest, ResizeGradWithSizes) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
 #ifdef USE_CUDA
   providers.emplace_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  providers.emplace_back(DefaultRocmExecutionProvider());
 #endif
 
   OpTester test("ResizeGrad", 1, onnxruntime::kMSDomain);
@@ -51,8 +49,6 @@ TEST(ResizeGradTest, ResizeGradWithSizesHalf) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
 #ifdef USE_CUDA
   providers.emplace_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  providers.emplace_back(DefaultRocmExecutionProvider());
 #endif
 
   OpTester test("ResizeGrad", 1, onnxruntime::kMSDomain);
@@ -86,8 +82,6 @@ TEST(ResizeGradTest, ResizeGradWithSizesAndAlignCorners) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
 #ifdef USE_CUDA
   providers.emplace_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  providers.emplace_back(DefaultRocmExecutionProvider());
 #endif
 
   OpTester test("ResizeGrad", 1, onnxruntime::kMSDomain);
@@ -118,8 +112,6 @@ TEST(ResizeGradTest, ResizeGradWithScales) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
 #ifdef USE_CUDA
   providers.emplace_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  providers.emplace_back(DefaultRocmExecutionProvider());
 #endif
 
   OpTester test("ResizeGrad", 1, onnxruntime::kMSDomain);
@@ -152,8 +144,6 @@ TEST(ResizeGradTest, ResizeGradWithScalesHalf) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
 #ifdef USE_CUDA
   providers.emplace_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  providers.emplace_back(DefaultRocmExecutionProvider());
 #endif
 
   OpTester test("ResizeGrad", 1, onnxruntime::kMSDomain);
@@ -192,8 +182,6 @@ TEST(ResizeGradTest, ResizeGradWithScalesAndAlignCorners) {
   std::vector<std::unique_ptr<IExecutionProvider>> providers;
 #ifdef USE_CUDA
   providers.emplace_back(DefaultCudaExecutionProvider());
-#elif USE_ROCM
-  providers.emplace_back(DefaultRocmExecutionProvider());
 #endif
 
   OpTester test("ResizeGrad", 1, onnxruntime::kMSDomain);
@@ -222,6 +210,6 @@ TEST(ResizeGradTest, ResizeGradWithScalesAndAlignCorners) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &providers);
 }
 
-#endif  // defined(USE_CUDA) || defined(USE_ROCM)
+#endif  // defined(USE_CUDA)
 
 }  // namespace onnxruntime::test

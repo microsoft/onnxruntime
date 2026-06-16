@@ -139,26 +139,6 @@ void SetQnnTensorClientBuf(Qnn_Tensor_t& qnn_tensor, const std::vector<uint8_t>&
   ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
-void SetQnnTensorClientBuf(Qnn_Tensor_t& qnn_tensor, const std::vector<uint32_t>& client_buf) {
-  if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
-    auto size = client_buf.size() * sizeof(uint32_t);
-    qnn_tensor.v1.clientBuf.data = const_cast<void*>(static_cast<const void*>(client_buf.data()));
-    qnn_tensor.v1.clientBuf.dataSize = static_cast<uint32_t>(size);
-    return;
-  }
-
-#ifdef QNN_TENSOR_V2_INIT
-  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
-    auto size = client_buf.size() * sizeof(uint32_t);
-    qnn_tensor.v2.clientBuf.data = const_cast<void*>(static_cast<const void*>(client_buf.data()));
-    qnn_tensor.v2.clientBuf.dataSize = static_cast<uint32_t>(size);
-    return;
-  }
-#endif  // QNN_TENSOR_V2_INIT
-
-  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
-}
-
 void SetQnnTensorClientBuf(Qnn_Tensor_t& qnn_tensor, void* buf_data, uint32_t buf_size) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     qnn_tensor.v1.clientBuf.data = buf_data;
@@ -476,7 +456,7 @@ bool CreateTensorInQnnGraph(const QNN_INTERFACE_VER_TYPE& qnn_interface,
       return false;
     }
     // verify size expressed by the dims matches the raw tensor size
-    uint32_t qnn_tensor_size = CalcQnnTensorNumElems(qnn_tensor) * gsl::narrow_cast<uint32_t>(data_size);
+    const auto qnn_tensor_size = utils::GetQnnTensorDataSizeInBytes(qnn_tensor);
     auto qnn_tensor_buf_size = GetQnnTensorClientBuf(qnn_tensor).dataSize;
     if (qnn_tensor_size != qnn_tensor_buf_size) {
       ss << "Data length mismatch for static tensor. node_name: " << node_name
@@ -592,6 +572,10 @@ bool QnnOpConfigWrapper::CreateQnnGraphOp(const QNN_INTERFACE_VER_TYPE& qnn_inte
   }
 
   return true;
+}
+
+bool IsIrBackend(QnnBackendType backend_type) {
+  return backend_type == QnnBackendType::SERIALIZER;
 }
 
 bool IsNpuBackend(QnnBackendType backend_type) {

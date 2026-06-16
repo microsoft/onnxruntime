@@ -12,6 +12,18 @@
 namespace onnxruntime {
 namespace test {
 
+PathString GetSharedLibraryFileName(const PathString& base_library_name) {
+#if defined(_WIN32)
+  constexpr auto kPrefix{ORT_TSTR("")}, kSuffix{ORT_TSTR(".dll")};
+#elif defined(__APPLE__)
+  constexpr auto kPrefix{ORT_TSTR("lib")}, kSuffix{ORT_TSTR(".dylib")};
+#else
+  constexpr auto kPrefix{ORT_TSTR("lib")}, kSuffix{ORT_TSTR(".so")};
+#endif
+
+  return PathString{kPrefix} + base_library_name + kSuffix;
+}
+
 void DeleteFileFromDisk(const ORTCHAR_T* path) {
 #ifdef _WIN32
   ASSERT_EQ(TRUE, DeleteFileW(path));

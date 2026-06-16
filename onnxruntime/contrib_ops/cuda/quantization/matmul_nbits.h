@@ -10,11 +10,37 @@
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 using namespace onnxruntime::cuda;
+
+// Environment variables to force the chunked dequant+GEMM path for testing.
+// ORT_MATMULNBITS_FORCE_CHUNKED=1 bypasses the scratch-size and min-N guards.
+// ORT_MATMULNBITS_CHUNK_SIZE overrides the default chunk size (32768).
+constexpr const char* kForceChunkedEnvVar = "ORT_MATMULNBITS_FORCE_CHUNKED";
+constexpr const char* kChunkSizeEnvVar = "ORT_MATMULNBITS_CHUNK_SIZE";
+constexpr int64_t kDefaultChunkTargetRows = 32768;
+
+#if USE_FPA_INTB_GEMM
+using onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunner;
+using onnxruntime::llm::kernels::weight_only::GemmDims;
+using onnxruntime::llm::kernels::weight_only::GemmIdCore;
+using onnxruntime::llm::kernels::weight_only::GemmPluginProfilerManager;
+using onnxruntime::llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPluginProfiler;
+using GemmProfilerPtr = std::shared_ptr<WeightOnlyGroupwiseQuantGemmPluginProfiler>;
+using WeightOnlyGemmRunnerPtr = std::shared_ptr<onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunnerInterface>;
+
+// Environment variable to configure fpA_intB_gemm for experiments. Set it to 0 to disable, 1 to eanble all.
+constexpr const char* kFpAIntBGemmOption = "ORT_FPA_INTB_GEMM";
+constexpr int kFpAIntBGemmOption_All = 0x01;
+constexpr int kFpAIntBGemmOption_Gemv = 0x02;
+constexpr int kFpAIntBGemmOption_Int4 = 0x04;
+constexpr int kFpAIntBGemmOption_Int8 = 0x08;
+#endif
 
 template <typename T>
 class MatMulNBits final : public CudaKernel {
@@ -24,16 +50,129 @@ class MatMulNBits final : public CudaKernel {
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("N", &N_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("bits", &nbits_));
+
+    constexpr int kInputIndexScale = 2;
+    constexpr int kInputIndexZeroPoints = 3;
+    constexpr int kInputIndexGroupIndex = 4;
+    constexpr int kInputIndexBias = 5;
+
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+    // PLUGIN BUILD ADAPTATION: The adapter Node does not expose InputDefs(),
+    // so we cannot check whether optional inputs (zero_points, g_idx, bias)
+    // truly exist at construction time. Instead, we check input count here
+    // and verify actual tensor presence in ComputeInternal.
+    ORT_UNUSED_PARAMETER(kInputIndexScale);  // only used in non-plugin path for type checking
+    has_zero_points_ = info.GetInputCount() > kInputIndexZeroPoints;
+    has_g_idx_ = info.GetInputCount() > kInputIndexGroupIndex;
+    has_bias_ = info.GetInputCount() > kInputIndexBias;
+    // is_zero_points_scale_same_type_ defaults to false; checked at runtime in plugin path.
+#else
+    has_zero_points_ = info.GetInputCount() > kInputIndexZeroPoints && info.node().InputDefs()[kInputIndexZeroPoints]->Exists();
+    has_g_idx_ = info.GetInputCount() > kInputIndexGroupIndex && info.node().InputDefs()[kInputIndexGroupIndex]->Exists();
+    has_bias_ = info.GetInputCount() > kInputIndexBias && info.node().InputDefs()[kInputIndexBias]->Exists();
+
+    if (has_zero_points_) {
+      int32_t zero_point_type = info.node().InputDefs()[kInputIndexZeroPoints]->TypeAsProto()->tensor_type().elem_type();
+      int32_t scale_type = info.node().InputDefs()[kInputIndexScale]->TypeAsProto()->tensor_type().elem_type();
+      is_zero_points_scale_same_type_ = (zero_point_type == scale_type);
+    }
+#endif
+    sm_ = this->GetDeviceProp().major * 10 + this->GetDeviceProp().minor;
+
+    force_chunked_ = ParseEnvironmentVariableWithDefault<int>(kForceChunkedEnvVar, 0) != 0;
+    chunk_target_rows_ = ParseEnvironmentVariableWithDefault<int64_t>(kChunkSizeEnvVar, kDefaultChunkTargetRows);
+    if (chunk_target_rows_ < 1) {
+      chunk_target_rows_ = kDefaultChunkTargetRows;
+    }
+
+#if USE_FPA_INTB_GEMM
+    if constexpr (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value) {
+      int option = ParseEnvironmentVariableWithDefault<int>(kFpAIntBGemmOption, 0);
+      if ((option & (static_cast<int>(nbits_) | kFpAIntBGemmOption_All)) != 0 &&
+          (block_size_ == 64 || block_size_ == 128) &&
+          (nbits_ == 4 || nbits_ == 8) &&
+          !has_g_idx_ && !has_bias_ &&
+          N_ % (nbits_ == 8 ? 32 : 64) == 0 &&
+          K_ % block_size_ == 0 &&
+          sm_ >= 75) {
+        if ((option & (kFpAIntBGemmOption_Gemv | kFpAIntBGemmOption_All)) != 0) {
+          using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
+          KernelType cuda_kernel_type;
+          if constexpr (std::is_same<T, MLFloat16>::value) {
+            cuda_kernel_type = (nbits_ == 8) ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
+          } else if constexpr (std::is_same<T, BFloat16>::value) {
+            cuda_kernel_type = (nbits_ == 8) ? KernelType::BF16Int8Groupwise : KernelType::BF16Int4Groupwise;
+          }
+
+          if (onnxruntime::llm::kernels::fpA_intB_gemv::is_supported(sm_, cuda_kernel_type)) {
+            has_fpA_intB_gemv_ = true;
+          }
+        }
+
+        InitGemmProfiler(sm_);
+
+        constexpr int max_m = 8291;
+        RunGemmProfile(has_fpA_intB_gemv_, 1, max_m);
+        has_fpA_intB_gemm_ = true;
+      }
+    }
+
+#ifndef NDEBUG
+    printf("n=%d, k=%d, block_size=%d, bits=%d, zp_bits=%d, g_idx=%d, bias=%d, gemv=%d, gemm=%d\n",
+           int(N_), int(K_), int(block_size_), int(nbits_),
+           has_zero_points_ ? (is_zero_points_scale_same_type_ ? int(sizeof(T)) * 8 : int(nbits_)) : int(0),
+           int(has_g_idx_ ? 1 : 0), int(has_bias_ ? 1 : 0),
+           int(has_fpA_intB_gemv_), int(has_fpA_intB_gemm_));
+#endif
+#endif
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
+#if USE_FPA_INTB_GEMM
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool& is_packed, PrePackedWeights* prepacked_weights) override;
+#endif
 
  private:
+#if USE_FPA_INTB_GEMM
+  void InitGemmProfiler(int sm);
+  void RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int max_m);
+
+  Status PrePack_B(const Tensor& tensor, AllocatorPtr alloc, cudaStream_t stream);
+  Status PrePack_Scale(const Tensor& tensor, AllocatorPtr alloc, cudaStream_t stream);
+  Status PrePack_ZeroPoint(const Tensor& tensor, AllocatorPtr alloc, cudaStream_t stream);
+#endif
+
   int64_t K_;
   int64_t N_;
   int64_t block_size_;
   int64_t nbits_;
+  int sm_{0};
   bool column_wise_quant_blk_{true};
+
+  bool has_g_idx_{false};
+  bool has_bias_{false};
+  bool has_zero_points_{false};
+  bool is_zero_points_scale_same_type_{false};
+  bool force_chunked_{false};
+  int64_t chunk_target_rows_{kDefaultChunkTargetRows};
+
+#if USE_FPA_INTB_GEMM
+  bool has_fpA_intB_gemv_{false};
+  bool has_fpA_intB_gemm_{false};
+
+  bool is_prepacked_weight_{false};
+  bool is_prepacked_scale_{false};
+  bool is_prepacked_zero_point_{false};
+
+  WeightOnlyGemmRunnerPtr weightOnlyGemmRunner_{nullptr};
+  mutable GemmProfilerPtr gemmProfiler_{nullptr};
+  GemmIdCore gemmId_{};
+
+  IAllocatorUniquePtr<void> fpA_intB_weight_buffer_;
+  IAllocatorUniquePtr<void> fpA_intB_scale_buffer_;
+  IAllocatorUniquePtr<void> fpA_intB_zero_buffer_;
+#endif
 };
 
 }  // namespace cuda

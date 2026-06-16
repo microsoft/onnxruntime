@@ -27,6 +27,17 @@ if [[ $LIB_NAME == *.dylib ]]
 then
     dsymutil $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME -o $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME.dSYM
     strip -S $BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME
+
+    # ORT NuGet packaging expects the unversioned library (libonnxruntime.dylib) to contain the binary content,
+    # because the versioned library is excluded by the nuspec generation script.
+    # We explicitly overwrite the symlink with the real file to ensure 'nuget pack' (especially on Windows)
+    # doesn't pack an empty/broken symlink.
+    # Only applies to versioned libonnxruntime libraries (e.g. libonnxruntime.1.24.0.dylib).
+    if [[ "$LIB_NAME" =~ ^libonnxruntime\..*\.dylib$ && -L "$BINARY_DIR/$ARTIFACT_NAME/lib/libonnxruntime.dylib" ]]; then
+       rm "$BINARY_DIR/$ARTIFACT_NAME/lib/libonnxruntime.dylib"
+       cp "$BINARY_DIR/$ARTIFACT_NAME/lib/$LIB_NAME" "$BINARY_DIR/$ARTIFACT_NAME/lib/libonnxruntime.dylib"
+    fi
+
     # copy the CoreML EP header for macOS build (libs with .dylib ext)
     cp $SOURCE_DIR/include/onnxruntime/core/providers/coreml/coreml_provider_factory.h  $BINARY_DIR/$ARTIFACT_NAME/include
 else

@@ -11,7 +11,6 @@ import os
 import pprint
 import re
 
-import coloredlogs  # noqa: F401
 from benchmark import *  # noqa: F403
 from perf_utils import *  # noqa: F403
 
@@ -158,7 +157,7 @@ def main():
 
     path = os.path.join(os.getcwd(), args.perf_result_path)
     if not os.path.exists(path):
-        from pathlib import Path
+        from pathlib import Path  # noqa: PLC0415
 
         Path(path).mkdir(parents=True, exist_ok=True)
 

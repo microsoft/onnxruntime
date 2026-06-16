@@ -3,6 +3,7 @@
 
 #pragma once
 
+#cmakedefine HAS_ARRAY_BOUNDS
 #cmakedefine HAS_BITWISE_INSTEAD_OF_LOGICAL
 #cmakedefine HAS_CAST_FUNCTION_TYPE
 #cmakedefine HAS_CATCH_VALUE
@@ -19,6 +20,7 @@
 #cmakedefine HAS_PARENTHESES
 #cmakedefine HAS_REALLOCARRAY
 #cmakedefine HAS_SHORTEN_64_TO_32
+#cmakedefine HAS_STRINGOP_OVERFLOW
 #cmakedefine HAS_TAUTOLOGICAL_POINTER_COMPARE
 #cmakedefine HAS_UNUSED_BUT_SET_PARAMETER
 #cmakedefine HAS_UNUSED_BUT_SET_VARIABLE

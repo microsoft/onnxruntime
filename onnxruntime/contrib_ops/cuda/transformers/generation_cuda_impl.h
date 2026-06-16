@@ -4,8 +4,9 @@
 #pragma once
 
 #include <stdint.h>
+#include "core/providers/cuda/curand_wrapper.h"
 #include <cuda_fp16.h>
-#include <curand_kernel.h>
+
 #include <cstdio>
 #include "contrib_ops/cpu/transformers/generation_shared.h"
 

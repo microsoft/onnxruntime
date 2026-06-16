@@ -55,7 +55,8 @@ ComPtr<ID3D11Fence> ImageConverter::FetchOrCreateFenceOnDevice(
     // There's no fence on the device, so create a new one
     ComPtr<ID3D11Device5> spD3D11Device5;
     WINML_THROW_IF_FAILED(pD3D11Device->QueryInterface(IID_PPV_ARGS(&spD3D11Device5)));
-    WINML_THROW_IF_FAILED(spD3D11Device5->OpenSharedFence(device_cache.GetConverterFenceHandle(), IID_PPV_ARGS(&fence))
+    WINML_THROW_IF_FAILED(
+      spD3D11Device5->OpenSharedFence(device_cache.GetConverterFenceHandle(), IID_PPV_ARGS(&fence))
     );
 
     // Store the fence on the device

@@ -419,13 +419,13 @@ Status CudaQuantizeLinearStdInt4(cudaStream_t stream, const InT* input, OutT* ou
   int blocksPerGrid = static_cast<int>(CeilDiv(num_of_element,
                                                GridDim::maxThreadsPerBlock * GridDim::maxElementsPerThread));
   QuantizeLinearKernelStdInt4<GridDim::maxThreadsPerBlock, GridDim::maxElementsPerThread>
-  <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
-      input,
-      output,
-      scale,
-      zero_point,
-      static_cast<int>(num_of_element),
-      RoundStdInt4<InT, OutT>());
+      <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(
+          input,
+          output,
+          scale,
+          zero_point,
+          static_cast<int>(num_of_element),
+          RoundStdInt4<InT, OutT>());
   return Status::OK();
 }
 
@@ -611,15 +611,15 @@ __global__ void DequantizeLinearKernelAxisStdInt4(const InT* input, OutT* output
 
 #pragma unroll
   for (; i + 1 < NumElementsPerThread && id + 1 < num_element; i += 2, id += step) {
-      scale_id0 = (id / n_same_scale) % n_scales;
-      scale_id1 = ((id + 1) / n_same_scale) % n_scales;
+    scale_id0 = (id / n_same_scale) % n_scales;
+    scale_id1 = ((id + 1) / n_same_scale) % n_scales;
 
-      v0 = ExtractInt4FromByte(input[id >> 1], 0);
-      v1 = ExtractInt4FromByte(input[id >> 1], 1);
-      zp0 = zero_point_ptr == nullptr ? 0 : ExtractInt4FromByte(zero_point_ptr[scale_id0 >> 1], scale_id0 & 1);
-      zp1 = zero_point_ptr == nullptr ? 0 : ExtractInt4FromByte(zero_point_ptr[scale_id1 >> 1], scale_id1 & 1);
-      output[id] = static_cast<OutT>(v0 - zp0) * scale_ptr[scale_id0];
-      output[id + 1] = static_cast<OutT>(v1 - zp1) * scale_ptr[scale_id1];
+    v0 = ExtractInt4FromByte(input[id >> 1], 0);
+    v1 = ExtractInt4FromByte(input[id >> 1], 1);
+    zp0 = zero_point_ptr == nullptr ? 0 : ExtractInt4FromByte(zero_point_ptr[scale_id0 >> 1], scale_id0 & 1);
+    zp1 = zero_point_ptr == nullptr ? 0 : ExtractInt4FromByte(zero_point_ptr[scale_id1 >> 1], scale_id1 & 1);
+    output[id] = static_cast<OutT>(v0 - zp0) * scale_ptr[scale_id0];
+    output[id + 1] = static_cast<OutT>(v1 - zp1) * scale_ptr[scale_id1];
   }
 
   if (i < NumElementsPerThread && id < num_element) {

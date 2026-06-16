@@ -82,7 +82,7 @@ Status WhereProgram::GenerateShaderCode(ShaderHelper& shader) const {
         -> void {
       const std::string a_expression = "a_data[index_a" + x + "][component_a" + x + "]";
       const std::string b_expression = "b_data[index_b" + x + "][component_b" + x + "]";
-      const std::string c_expression = "bool(c_data[index_c" + x + "] & (0xffu << (component_c" + x + " * 8)))";
+      const std::string c_expression = "bool(c_data[index_c" + x + "] & (0xffu << u32(component_c" + x + " * 8)))";
 
       shader.MainFunctionBody() << "let output_indices" << x << " = " << output_indices.OffsetToIndices("global_idx * 4 + " + x) << ";\n"
                                 << "let offset_a" << x << " = " << a_indices.BroadcastedIndicesToOffset("output_indices" + x, output_indices) << ";\n"
@@ -126,6 +126,10 @@ Status Where::ComputeInternal(ComputeContext& context) const {
   TensorShape output_shape;
   ORT_RETURN_IF_ERROR(ComputeOutputShape(cond_shape, x_shape, y_shape, output_shape));
   auto* output_tensor = context.Output(0, output_shape);
+  if (output_tensor->Shape().Size() == 0) {
+    return Status::OK();
+  }
+
   constexpr int component = 4;
   uint32_t vec_size = onnxruntime::narrow<uint32_t>((output_shape.Size() + 3) / component);
   const auto is_broadcast = !(x_shape == y_shape &&

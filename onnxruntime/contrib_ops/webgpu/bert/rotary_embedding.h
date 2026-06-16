@@ -15,8 +15,8 @@ using onnxruntime::webgpu::ComputeContext;
 
 class RotaryEmbeddingProgram final : public Program<RotaryEmbeddingProgram> {
  public:
-  RotaryEmbeddingProgram(bool interleaved) : Program{"RotaryEmbedding"}, interleaved_{interleaved} {
-  }
+  RotaryEmbeddingProgram(bool interleaved, bool use_seqlens_for_position = false)
+      : Program{"RotaryEmbedding"}, interleaved_{interleaved}, use_seqlens_for_position_{use_seqlens_for_position} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -27,6 +27,39 @@ class RotaryEmbeddingProgram final : public Program<RotaryEmbeddingProgram> {
 
  private:
   const bool interleaved_;
+  const bool use_seqlens_for_position_;
+};
+
+class FusedQKRotaryEmbeddingProgram final : public Program<FusedQKRotaryEmbeddingProgram> {
+ public:
+  FusedQKRotaryEmbeddingProgram(bool interleaved, bool has_qk_norm)
+      : Program{"FusedQKRotaryEmbedding"},
+        interleaved_{interleaved},
+        has_qk_norm_{has_qk_norm} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  // q_* describes query rotation domain (same definition as existing program)
+  // k_* describes key rotation domain.
+  // When has_qk_norm_ is true, the program also fuses a per-head RMS normalization
+  // (epsilon = qk_norm_epsilon, scale = q_norm_weight / k_norm_weight) over the
+  // head_size channels of Q and K before the rotary rotation. head_size and
+  // qk_norm_epsilon are required uniforms when has_qk_norm_ is true; they are
+  // ignored otherwise but must still be supplied (callers pass placeholder values).
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"scale", ProgramUniformVariableDataType::Float32},
+      {"q_global_shape", ProgramUniformVariableDataType::Uint32},
+      {"q_global_stride", ProgramUniformVariableDataType::Uint32},
+      {"q_input_output_stride", ProgramUniformVariableDataType::Uint32},
+      {"k_global_shape", ProgramUniformVariableDataType::Uint32},
+      {"k_input_output_stride", ProgramUniformVariableDataType::Uint32},
+      {"q_domain_size", ProgramUniformVariableDataType::Uint32},
+      {"head_size", ProgramUniformVariableDataType::Uint32},
+      {"qk_norm_epsilon", ProgramUniformVariableDataType::Float32});
+
+ private:
+  const bool interleaved_;
+  const bool has_qk_norm_;
 };
 
 class RotaryEmbedding final : public WebGpuKernel {
@@ -41,6 +74,32 @@ class RotaryEmbedding final : public WebGpuKernel {
   bool interleaved_;
   bool is_packed_batching_;
 };
+
+// Apply rotary embedding to a single tensor using RotaryEmbeddingProgram.
+//
+// If use_seqlens_for_position is true, `position_ids_or_seqlens` must be the seqlens tensor (shape
+// [batch_size], containing per-batch seqlen_k values where
+// seqlen_k = past_sequence_length + kv_sequence_length - 1). The shader derives position_id
+// per batch as: past_seqlen + sequence_index, where
+// past_seqlen = (seqlens[batch] + 1) - global_shape[1].
+//
+// If use_seqlens_for_position is false, `position_ids_or_seqlens` must be the position_ids tensor
+// (shape [batch, seq] or [1, 1] for broadcast). The shader reads position from this tensor
+// directly.
+Status RunRotaryEmbedding(ComputeContext& context,
+                          const Tensor* input,
+                          const Tensor* position_ids_or_seqlens,
+                          const Tensor* cos_cache,
+                          const Tensor* sin_cache,
+                          Tensor* output,
+                          int batch_size,
+                          int sequence_length,
+                          int hidden_size,
+                          int head_size,
+                          float scale,
+                          bool rotary_interleaved,
+                          bool use_seqlens_for_position,
+                          const std::vector<uint32_t>& input_output_strides);
 
 }  // namespace webgpu
 }  // namespace contrib

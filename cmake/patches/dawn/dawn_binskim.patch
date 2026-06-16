@@ -1,0 +1,13 @@
+diff --git a/src/tint/CMakeLists.txt b/src/tint/CMakeLists.txt
+index 0d5f52a358..90764d21b5 100644
+--- a/src/tint/CMakeLists.txt
++++ b/src/tint/CMakeLists.txt
+@@ -143,8 +143,6 @@ function(tint_default_compile_options TARGET)
+       /W4
+       /wd4068 # unknown pragma
+       /wd4127 # conditional expression is constant
+-      /wd4244 # 'conversion' conversion from 'type1' to 'type2', possible loss of data
+-      /wd4267 # 'var' : conversion from 'size_t' to 'type', possible loss of data
+       /wd4324 # 'struct_name' : structure was padded due to __declspec(align())
+       /wd4459 # declaration of 'identifier' hides global declaration
+       /wd4458 # declaration of 'identifier' hides class member

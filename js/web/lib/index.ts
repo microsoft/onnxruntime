@@ -19,10 +19,26 @@ if (!BUILD_DEFS.DISABLE_WEBGL) {
   registerBackend('webgl', onnxjsBackend, -10);
 }
 
+if (!BUILD_DEFS.DISABLE_JSEP && !BUILD_DEFS.DISABLE_WEBGPU) {
+  throw new Error(
+    'The current build is specified to enable both JSEP and WebGPU EP. This is not a valid configuration. ' +
+      'JSEP and WebGPU EPs cannot be enabled at the same time.',
+  );
+}
+
+if (!BUILD_DEFS.DISABLE_WEBNN && BUILD_DEFS.DISABLE_JSEP && BUILD_DEFS.DISABLE_WEBGPU) {
+  throw new Error(
+    'The current build is specified to enable WebNN EP without JSEP or WebGPU EP. This is not a valid configuration. ' +
+      'WebNN EP requires either JSEP or WebGPU EP to be enabled.',
+  );
+}
+
 if (!BUILD_DEFS.DISABLE_WASM) {
   const wasmBackend = require('./backend-wasm').wasmBackend;
-  if (!BUILD_DEFS.DISABLE_JSEP) {
+  if (!BUILD_DEFS.DISABLE_JSEP || !BUILD_DEFS.DISABLE_WEBGPU) {
     registerBackend('webgpu', wasmBackend, 5);
+  }
+  if (!BUILD_DEFS.DISABLE_WEBNN) {
     registerBackend('webnn', wasmBackend, 5);
   }
   registerBackend('cpu', wasmBackend, 10);

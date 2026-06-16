@@ -658,7 +658,6 @@ async function main() {
           // delete the files stores in the specific folder to clean up the recovery page list.
           // see also: https://www.laptopmag.com/articles/edge-browser-stop-tab-restore
           const deleteEdgeActiveRecoveryCommand =
-            // eslint-disable-next-line max-len
             'del /F /Q % LOCALAPPDATA %\\Packages\\Microsoft.MicrosoftEdge_8wekyb3d8bbwe\\AC\\MicrosoftEdge\\User\\Default\\Recovery\\Active\\*';
           npmlog.info('TestRunnerCli.Run', `CMD: ${deleteEdgeActiveRecoveryCommand}`);
           spawnSync(deleteEdgeActiveRecoveryCommand, { shell: true, stdio: 'inherit' });

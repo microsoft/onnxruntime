@@ -602,7 +602,8 @@ SQ8BitGemmKernel_BlkSum_CompInt8_avx2(
     const float* Bias,
     size_t ldc,
     const float* ABlockSum,
-    const float* QuantBBlkSum
+    const float* QuantBBlkSum,
+    const float* /*QuantBBlkSum2*/
 )
 {
     if (BlkLen == 16) {
@@ -1394,7 +1395,8 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
     bool HasZeroPoint,
     const std::byte* QuantBZPBegin,
     PackedQuantBDataStruct<float, 4>& PackedQuantB,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /*BackendKernelSelectorConfig*/
 )
 {
     assert(BlkLen >= 16 && BlkLen % 16 == 0);
@@ -1421,7 +1423,8 @@ SQ8BitGemmPackQuantBDataAndBlkSum(
     bool HasZeroPoint,
     const std::byte* QuantBZPBegin,
     PackedQuantBDataStruct<float, 8>& PackedQuantB,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /*BackendKernelSelectorConfig*/
 )
 {
     assert(BlkLen >= 16 && BlkLen % 16 == 0);

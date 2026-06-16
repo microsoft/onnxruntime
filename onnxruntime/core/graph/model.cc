@@ -1,13 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+#include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/model.h"
 #include "core/graph/model_editor_api_types.h"
+#include "core/graph/model_helpers.h"
 #include "core/graph/model_load_utils.h"
 
 #ifdef _MSC_VER
@@ -61,7 +68,7 @@ void Model::RemoveLocalFunctionsProtos(const InlinedHashSet<std::string>& retain
     }
 
     for (auto it = local_functions->begin(); it != local_functions->end();) {
-      const auto function_id = function_utils::GetFunctionIdentifier(it->domain(), it->name());
+      const auto function_id = function_utils::GetFunctionIdentifier(it->domain(), it->name(), it->overload());
       if (retained.find(function_id) == retained_end) {
         it = local_functions->erase(it);
       } else {
@@ -125,14 +132,17 @@ Model::Model(const std::string& graph_name,
   for (auto& func : model_local_functions) {
     auto func_ptr = model_proto_.add_functions();
     func_ptr->CopyFrom(func);
-    model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func_ptr->domain(), func_ptr->name()),
+    model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func_ptr->domain(), func_ptr->name(), func_ptr->overload()),
                                             func_ptr);
   }
+
+  ORT_THROW_IF_ERROR(ValidateModelLocalFunctionAcyclic(model_local_functions_));
 
   model_local_function_templates_maps_.reserve(model_proto_.functions().size());
   for (auto& func : model_proto_.functions()) {
     auto func_schema_ptr = function_utils::CreateSchema(func.domain(),
                                                         func.name(),
+                                                        func.overload(),
                                                         model_local_functions_,
                                                         *p_domain_to_version,
                                                         *schema_registry,
@@ -142,7 +152,8 @@ Model::Model(const std::string& graph_name,
     func_template_ptr->op_schema_ = std::move(func_schema_ptr);
     func_template_ptr->onnx_func_proto_ = &func;
     model_local_function_templates_maps_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(),
-                                                                                                func.name()),
+                                                                                                func.name(),
+                                                                                                func.overload()),
                                                           std::move(func_template_ptr));
   }
 
@@ -256,13 +267,16 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
 
   model_local_functions_.reserve(model_proto_.functions().size());
   for (auto& func : model_proto_.functions()) {
-    model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name()), &func);
+    model_local_functions_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name(), func.overload()), &func);
   }
+
+  ORT_THROW_IF_ERROR(ValidateModelLocalFunctionAcyclic(model_local_functions_));
 
   model_local_function_templates_maps_.reserve(model_proto_.functions().size());
   for (auto& func : model_proto_.functions()) {
     auto func_schema_ptr = function_utils::CreateSchema(func.domain(),
                                                         func.name(),
+                                                        func.overload(),
                                                         model_local_functions_,
                                                         domain_to_version,
                                                         *schema_registry,
@@ -272,7 +286,8 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
     func_template_ptr->op_schema_ = std::move(func_schema_ptr);
     func_template_ptr->onnx_func_proto_ = &func;
     model_local_function_templates_maps_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(),
-                                                                                                func.name()),
+                                                                                                func.name(),
+                                                                                                func.overload()),
                                                           std::move(func_template_ptr));
   }
 
@@ -361,6 +376,10 @@ const ModelMetaData& Model::MetaData() const noexcept {
   return model_metadata_;
 }
 
+ModelMetaData& Model::MetaData() noexcept {
+  return model_metadata_;
+}
+
 Graph& Model::MainGraph() noexcept {
   return *graph_;
 }
@@ -377,6 +396,15 @@ ModelProto Model::ToProto() const {
   // out dense duplicates of sparse initializers and leave the original
   // proto intact.
   ModelProto result(model_proto_);
+
+  // Sync current model_metadata_ back to protobuf metadata_props
+  result.clear_metadata_props();
+  for (const auto& metadata : model_metadata_) {
+    const gsl::not_null<StringStringEntryProto*> prop{result.add_metadata_props()};
+    prop->set_key(metadata.first);
+    prop->set_value(metadata.second);
+  }
+
   const auto& graph = *graph_;
   *(result.mutable_graph()) = graph.ToGraphProto();
   return result;
@@ -386,11 +414,39 @@ ModelProto Model::ToGraphProtoWithExternalInitializers(const std::filesystem::pa
                                                        const std::filesystem::path& file_path,
                                                        const ModelSavingOptions& model_saving_options) const {
   ModelProto result(model_proto_);
+
+  // Sync current model_metadata_ back to protobuf metadata_props
+  result.clear_metadata_props();
+  for (const auto& metadata : model_metadata_) {
+    const gsl::not_null<StringStringEntryProto*> prop{result.add_metadata_props()};
+    prop->set_key(metadata.first);
+    prop->set_value(metadata.second);
+  }
+
   const auto& graph = *graph_;
   *(result.mutable_graph()) = graph.ToGraphProtoWithExternalInitializers(external_file_name,
                                                                          file_path,
                                                                          model_saving_options);
   return result;
+}
+
+common::Status Model::ToGraphProtoWithCustomInitializerHandling(OrtGetInitializerLocationFunc handle_initializer_func,
+                                                                void* state,
+                                                                /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) const {
+  model_proto = model_proto_;
+
+  // Sync current model_metadata_ back to protobuf metadata_props
+  model_proto.clear_metadata_props();
+  for (const auto& metadata : model_metadata_) {
+    const gsl::not_null<StringStringEntryProto*> prop{model_proto.add_metadata_props()};
+    prop->set_key(metadata.first);
+    prop->set_value(metadata.second);
+  }
+
+  const auto& graph = *graph_;
+  ORT_RETURN_IF_ERROR(graph.ToGraphProtoWithCustomInitializerHandling(handle_initializer_func,
+                                                                      state, *model_proto.mutable_graph()));
+  return Status::OK();
 }
 
 Status Model::Load(std::istream& model_istream, ModelProto* p_model_proto) {
@@ -762,9 +818,9 @@ common::Status Model::LoadFromModelEditorApiModel(const OrtModel& model_editor_a
                                                   std::unique_ptr<Model>& model) {
   model = std::make_unique<Model>();
   model->model_proto_.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-  // The optimizer Initializer class requires a path if external data is used, however in the Graph API usage the
+  // The optimizer Initializer class requires a path if external data is used, however in Model Editor API usage the
   // external data is pointing to pre-allocated memory and does not require a path. Set a dummy value to make it happy.
-  model->model_path_ = std::filesystem::path("_GRAPH_API_MODEL_");
+  model->model_path_ = std::filesystem::path("_MODEL_EDITOR_API_MODEL_");
 
   auto schema_registry = std::make_shared<SchemaRegistryManager>();
   if (local_registries != nullptr) {
@@ -773,9 +829,55 @@ common::Status Model::LoadFromModelEditorApiModel(const OrtModel& model_editor_a
     }
   }
 
+  // add the other domains that might be used by ORT internally.
+  auto domain_to_version = model_editor_api_model.domain_to_version;  // copy
+  auto allow_official_onnx_release_only_final = options.allow_released_opsets_only &&
+                                                model_load_utils::IsAllowReleasedONNXOpsetsOnlySet();
+
+  for (const auto& [domain, version] : domain_to_version) {
+    model_load_utils::ValidateOpsetForDomain(schema_registry->GetLastReleasedOpsetVersions(false), logger,
+                                             allow_official_onnx_release_only_final, domain, version);
+  }
+
+  // convert kOnnxDomainAlias to kOnnxDomain if needed and remove the alias entry
+  if (auto onnx_alias_iter = domain_to_version.find(kOnnxDomainAlias); onnx_alias_iter != domain_to_version.end()) {
+    if (domain_to_version.find(kOnnxDomain) == domain_to_version.end()) {
+      domain_to_version[kOnnxDomain] = onnx_alias_iter->second;
+    }
+
+    domain_to_version.erase(onnx_alias_iter);
+  }
+
+  if (auto onnx_iter = domain_to_version.find(kOnnxDomain); onnx_iter == domain_to_version.end()) {
+    // ONNX domain must be explicitly specified as we can't simply default to the latest opset ORT knows about.
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "The opset for the ONNX domain must be explicitly specified.");
+  }
+
+  // special-case the internal NHWC domain as it must match the ONNX opset if not explicitly imported
+  if (domain_to_version.find(kMSInternalNHWCDomain) == domain_to_version.end()) {
+    auto onnx_version = domain_to_version.find(kOnnxDomain);
+    if (onnx_version != domain_to_version.end()) {
+      domain_to_version[kMSInternalNHWCDomain] = onnx_version->second;
+    }
+  }
+
+  auto domain_map = allow_official_onnx_release_only_final ? schema_registry->GetLastReleasedOpsetVersions(false)
+                                                           : schema_registry->GetLatestOpsetVersions(false);
+
+  for (const auto& [domain, version] : domain_map) {
+    if (domain_to_version.find(domain) == domain_to_version.end()) {
+      domain_to_version[domain] = version;
+    }
+
+    // add to the model proto so that if we save the optimized model it has the required opset imports
+    const gsl::not_null<OperatorSetIdProto*> opset_id_proto{model->model_proto_.add_opset_import()};
+    opset_id_proto->set_domain(domain);
+    opset_id_proto->set_version(version);
+  }
+
   ORT_RETURN_IF_ERROR(Graph::LoadFromModelEditorApiModel(*model_editor_api_model.graph,
                                                          *model,
-                                                         model_editor_api_model.domain_to_version,
+                                                         domain_to_version,
                                                          schema_registry,
                                                          options.strict_shape_type_inference,
                                                          logger,
@@ -896,6 +998,7 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
 
   // Load the model metadata
   if (const auto* fbs_metadata_props = fbs_model.metadata_props()) {
+    ORT_RETURN_IF_ERROR(fbs::utils::ValidateRequiredTableOffsets(fbs_metadata_props, "metadata property"));
     model->model_metadata_.reserve(fbs_metadata_props->size());
     for (const auto* prop : *fbs_metadata_props) {
       ORT_RETURN_IF(nullptr == prop, "Null entry in metadata_props. Invalid ORT format model.");

@@ -70,6 +70,31 @@ class FgemmShortExecuteTest : public MlasTestFixture<MlasFgemmTest<T, Packed, Th
     test_registered += RegisterTestTransposeABProduct(128, 3072, 768, 1, 1.0f, 0.0f);
     test_registered += RegisterTestTransposeABProduct(128, 768, 3072, 1, 1.0f, 0.0f);
     test_registered += RegisterTestTransposeABProduct(25, 81, 79, 7, 1.0f, 0.0f);
+    test_registered += RegisterTestTransposeABProduct(1024, 1, 512, 1, 1.0f, 0.0f);
+
+    // gemv specific tests M == 1 and N == 1
+    //
+    for (size_t b = 16; b <= 256; b <<= 1) {
+      test_registered += RegisterTestTransposeABProduct(1, b, b, 1, 1.0f, 0.0f);
+      test_registered += RegisterTestTransposeABProduct(b, 1, b, 1, 1.0f, 0.0f);
+    }
+    // Exercise M == 1 && N == 1 cases with K > 1 to validate LHS gather handling.
+    test_registered += RegisterTestTransposeABProduct(1, 1, 16, 1, 1.0f, 0.0f);
+    test_registered += RegisterTestTransposeABProduct(1, 1, 31, 1, 1.0f, 0.0f);
+    test_registered += RegisterTestTransposeABProduct(1, 1, 64, 1, 1.0f, 0.0f);
+    test_registered += RegisterTestTransposeABProduct(1, 1, 16, 3, 1.0f, 0.0f);
+
+    // Short-path batch coverage with non-trivial alpha/beta combinations.
+    // Keep this small to avoid long-test-only latency while still exercising BatchSize > 1.
+    for (size_t batch_size : {2u, 4u, 8u}) {
+      test_registered += RegisterTestTransposeABProduct(25, 81, 79, batch_size, 1.0f, 0.0f);
+      test_registered += RegisterTestTransposeABProduct(25, 81, 79, batch_size, 0.0f, 0.25f);
+      test_registered += RegisterTestTransposeABProduct(25, 81, 0, batch_size, 0.0f, 0.25f);
+      test_registered += RegisterTestTransposeABProduct(1, 64, 31, batch_size, 0.0f, -1.0f);
+      test_registered += RegisterTestTransposeABProduct(64, 1, 31, batch_size, 0.5f, 0.5f);
+      test_registered += RegisterTestTransposeABProduct(1, 1, 31, batch_size, 0.0f, 0.25f);
+    }
+
     return test_registered;
   }
 

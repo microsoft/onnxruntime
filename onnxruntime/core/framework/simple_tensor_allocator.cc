@@ -14,7 +14,7 @@ common::Status SimpleTensorAllocator::GetPreallocatedBuffer(int ort_value_index,
                                                             AllocatorPtr& alloc_out) {
   const struct OrtDevice& location = seq_plan_.GetLocation(ort_value_index);
   // just return allocator and let others handle it.
-  alloc_out = GetAllocator(location);
+  alloc_out = GetInitializerAllocator(location);
   return Status::OK();
 }
 }  // namespace onnxruntime

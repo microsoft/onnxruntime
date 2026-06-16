@@ -278,16 +278,13 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
   int iteration_counter = 0;
   while (current_length < parameters->max_length) {
 #ifdef DEBUG_GENERATION
-    auto cur_len = std::to_string(current_length);
-    dumper->Print("***CurrentLength", cur_len, true);
-    dumper->Print("iteration", iteration_counter, true);
-
+    dumper->Print(::onnxruntime::MakeString("***CurrentLength=", current_length, ", iteration=", iteration_counter));
     dumper->Print("input_ids", feeds[0]);
     dumper->Print("position_ids", feeds[1]);
     dumper->Print("attention_mask", feeds[2]);
     for (size_t i = 3; i < feeds.size(); i++) {
-      dumper->Print("past", static_cast<int>(i) - 3, true);
-      dumper->Print("", feeds[i]);
+      auto name = ::onnxruntime::MakeString("past[", static_cast<int>(i) - 3, "]");
+      dumper->Print(name.c_str(), feeds[i]);
     }
 #endif
 
@@ -305,7 +302,9 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                                       ExecutionMode::ORT_SEQUENTIAL,
                                       this->context_.GetTerminateFlag(),
                                       this->context_.Logger(),
-                                      this->ort_stream_);
+                                      this->ort_stream_,
+                                      /*sync_subgraph_fetches*/ false,
+                                      this->context_.GetRunProfiler());
     } else {
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
       const_cast<SessionState&>(this->decoder_session_state_).IncrementGraphExecutionCounter();
@@ -318,7 +317,9 @@ Status BeamSearchGpt<T>::Execute(const FeedsFetchesManager* init_run_feeds_fetch
                                       ExecutionMode::ORT_SEQUENTIAL,
                                       this->context_.GetTerminateFlag(),
                                       this->context_.Logger(),
-                                      this->ort_stream_);
+                                      this->ort_stream_,
+                                      /*sync_subgraph_fetches*/ false,
+                                      this->context_.GetRunProfiler());
     }
 
     ORT_RETURN_IF_ERROR(status);

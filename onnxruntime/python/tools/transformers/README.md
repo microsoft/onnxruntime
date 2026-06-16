@@ -35,7 +35,7 @@ Models not in the list may only be partially optimized or not optimized at all.
 -  **use_gpu**: (*optional*)
     When opt_level > 1, please set this flag for GPU inference.
 - **opt_level**: (*optional*)
-    Set a proper graph optimization level of OnnxRuntime: 0 - disable all (default), 1 - basic, 2 - extended, 99 - all. If the value is positive, OnnxRuntime will be used to optimize graph first.
+    Set a proper graph optimization level of OnnxRuntime: 0 - disable all (default), 1 - basic, 2 - extended, 3 - layout, 99 - all. If the value is positive, OnnxRuntime will be used to optimize graph first.
 - **verbose**: (*optional*)
     Print verbose information when this flag is specified.
 
@@ -84,4 +84,3 @@ Since past state is used, sequence length in input_ids is 1. For example, s=4 me
 python -m onnxruntime.transformers.models.gpt2.benchmark_gpt2 --use_gpu -m gpt2 -o -v -b 1 8 32 128 -s 4 8 32 128 -p fp32
 python -m onnxruntime.transformers.models.gpt2.benchmark_gpt2 --use_gpu -m gpt2 -o -v -b 1 8 32 128 -s 4 8 32 128 -p fp16
 ```
-

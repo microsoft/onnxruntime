@@ -64,7 +64,7 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   int components = input.NumComponents();
 
   const std::string thread_max_decl = is_fp32_
-                                          ? "var thread_max = x_value_t(-3.402823e+38f);\n"
+                                          ? "var thread_max = x_value_t(-3.4028234663852886e+38f);\n"
                                           : "var thread_max = x_value_t(-65504.0h);\n";
 
   // Define shared memory for row max and row sum
@@ -141,7 +141,9 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
       // Calculate the final value for each element in the row
       << "  for (var col = lindex; col < cols; col += wg) {\n"
-      << "    let value = exp(getValue(row, col, row_stride) - row_max_shared) / row_sum_shared;\n"
+      << "    var value = exp(getValue(row, col, row_stride) - row_max_shared) / row_sum_shared;\n"
+      << "    // max operation protects against NaN since all values should be >=0\n"
+      << "    value = max(value, x_value_t(0.0));\n"
       << "    setValue(row, col, row_stride, value);\n"
       << "  }\n";
 

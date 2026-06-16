@@ -32,15 +32,6 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
     ASSERT_STATUS_OK(execution_providers.Add(ep_type, std::move(cuda_ep)));
   }
 #endif
-#ifdef USE_ROCM
-  if (provider_ == kRocmExecutionProvider) {
-    auto rocm_ep = DefaultRocmExecutionProvider();
-    ep_type = rocm_ep->Type();
-    auto rocm_transfer = rocm_ep->GetDataTransfer();
-    ASSERT_STATUS_OK(dtm.RegisterDataTransfer(std::move(rocm_transfer)));
-    ASSERT_STATUS_OK(execution_providers.Add(ep_type, std::move(rocm_ep)));
-  }
-#endif
 
   const auto& logger = DefaultLoggingManager().DefaultLogger();
   Model model("test", false, ModelMetaData(), ORT_TSTR(""), IOnnxRuntimeOpSchemaRegistryList(),
@@ -56,8 +47,8 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
     if (provider_ == kCpuExecutionProvider || data.is_cpu_data_) {
       initializer_map[name] = data.value_;
     }
-#if defined(USE_CUDA) || defined(USE_ROCM)
-    if ((provider_ == kCudaExecutionProvider || provider_ == kRocmExecutionProvider) && !data.is_cpu_data_) {
+#if defined(USE_CUDA)
+    if (provider_ == kCudaExecutionProvider && !data.is_cpu_data_) {
       const Tensor& tensor = data.value_.Get<Tensor>();
 
       Tensor gpu_tensor(tensor.DataType(), tensor.Shape(),

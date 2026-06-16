@@ -138,7 +138,6 @@ ORTMODULE_FALLBACK_RETRY = False
 ORTMODULE_IS_DETERMINISTIC = torch.are_deterministic_algorithms_enabled()
 
 ONNXRUNTIME_CUDA_VERSION = ort_info.cuda_version if hasattr(ort_info, "cuda_version") else None
-ONNXRUNTIME_ROCM_VERSION = ort_info.rocm_version if hasattr(ort_info, "rocm_version") else None
 
 # The first value indicates whether the code is in ONNX export context.
 # The export context here include the full export process, including prepare export input/output information,

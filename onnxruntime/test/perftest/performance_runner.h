@@ -33,7 +33,8 @@ struct PerformanceResult {
   size_t peak_workingset_size{0};
   short average_CPU_usage{0};
   double total_time_cost{0};
-  std::vector<double> time_costs;
+  std::vector<double> time_costs_submission;
+  std::vector<double> time_costs_total;
   std::string model_name;
 
   void DumpToFile(const std::basic_string<ORTCHAR_T>& path, bool f_include_statistics = false) const;
@@ -61,8 +62,7 @@ class PerformanceRunner {
 
   template <bool isWarmup>
   Status RunOneIteration() {
-    std::chrono::duration<double> duration_seconds(std::chrono::seconds(0));
-
+    RunTiming duration_seconds;
     auto status = Status::OK();
     ORT_TRY {
       duration_seconds = session_->Run();
@@ -76,11 +76,14 @@ class PerformanceRunner {
 
     if (!isWarmup) {
       std::lock_guard<std::mutex> guard(results_mutex_);
-      performance_result_.time_costs.emplace_back(duration_seconds.count());
-      performance_result_.total_time_cost += duration_seconds.count();
+      performance_result_.time_costs_submission.emplace_back(duration_seconds.submit_timing.count());
+      performance_result_.time_costs_total.emplace_back(duration_seconds.total_timing.count());
+      // if the test did not run async the device timing will be equal to the CPU timing
+      performance_result_.total_time_cost += duration_seconds.total_timing.count();
       if (performance_test_config_.run_config.f_verbose) {
-        std::cout << "iteration:" << performance_result_.time_costs.size() << ","
-                  << "time_cost:" << performance_result_.time_costs.back() << std::endl;
+        std::cout << "iteration:" << performance_result_.time_costs_submission.size() << ","
+                  << "time_cost_submission:" << performance_result_.time_costs_submission.back() << ","
+                  << "time_cost_total:" << performance_result_.time_costs_total.back() << std::endl;
       }
     }
     return Status::OK();

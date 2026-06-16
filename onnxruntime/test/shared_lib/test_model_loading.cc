@@ -6,6 +6,7 @@
 #include "core/common/narrow.h"
 #include "test/util/include/asserts.h"
 #include <fstream>
+#include <limits>
 #include "test_fixture.h"
 #include "file_util.h"
 
@@ -60,11 +61,24 @@ TEST(CApiTest, model_from_array) {
   create_session(so);
 
 #ifdef USE_CUDA
-  OrtCUDAProviderOptionsV2* options;
-  Ort::ThrowOnError(Ort::GetApi().CreateCUDAProviderOptions(&options));
+  Ort::CUDAProviderOptions options;
   so.AppendExecutionProvider_CUDA_V2(*options);
   create_session(so);
 #endif
+}
+
+TEST(CApiTest, model_from_array_rejects_oversized_input) {
+  const char dummy_model_data[] = "invalid";
+  const size_t oversized_length = static_cast<size_t>(std::numeric_limits<int32_t>::max()) + 1ULL;
+  Ort::SessionOptions so;
+
+  try {
+    Ort::Session session(*ort_env.get(), dummy_model_data, oversized_length, so);
+    FAIL() << "Creation of session should have thrown exception";
+  } catch (const Ort::Exception& ex) {
+    EXPECT_EQ(ex.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
+    ASSERT_THAT(ex.what(), testing::HasSubstr("maximum supported size"));
+  }
 }
 
 #if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)

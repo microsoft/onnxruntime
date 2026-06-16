@@ -15,10 +15,10 @@
  */
 
 /* Modifications Copyright (c) Microsoft. */
+#include "core/providers/cuda/curand_wrapper.h"
 
 #include "core/providers/cuda/nn/dropout_impl.h"
 
-#include <curand_kernel.h>
 #include <algorithm>
 #include "core/providers/cuda/cu_inc/bitmask.cuh"
 

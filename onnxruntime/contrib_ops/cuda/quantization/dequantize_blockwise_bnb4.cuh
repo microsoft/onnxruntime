@@ -22,12 +22,12 @@ __device__ inline float ScalarMul(float a, float b) {
 
 template <>
 __device__ inline half ScalarMul(half a, half b) {
-  #if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
-    return a * b;
-  #else
-    // half multiplication not supported
-    return static_cast<half>(static_cast<float>(a) * static_cast<float>(b));
-  #endif
+#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
+  return a * b;
+#else
+  // half multiplication not supported
+  return static_cast<half>(static_cast<float>(a) * static_cast<float>(b));
+#endif
 }
 
 template <>

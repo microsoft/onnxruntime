@@ -1,8 +1,8 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 6fe5c96e..633debb6 100644
+index 47995579..70feae97 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -70,6 +70,16 @@ endif()
+@@ -91,6 +91,16 @@ endif()
  
  include(GNUInstallDirs)
  

@@ -1,4 +1,5 @@
 # build, distribute, and bins (+ python proto bindings)
+build.*/
 build
 build_*/
 .build_debug/*

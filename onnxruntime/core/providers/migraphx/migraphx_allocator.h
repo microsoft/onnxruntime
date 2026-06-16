@@ -3,9 +3,9 @@
 
 #pragma once
 
+#include <mutex>
 #include <unordered_set>
 #include "core/framework/allocator.h"
-#include <mutex>
 
 namespace onnxruntime {
 
@@ -14,8 +14,9 @@ class MIGraphXAllocator : public IAllocator {
   MIGraphXAllocator(int device_id, const char* name)
       : IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(device_id)),
-                          device_id, OrtMemTypeDefault)) {}
+                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD,
+                                    static_cast<OrtDevice::DeviceId>(device_id)),
+                          OrtMemTypeDefault)) {}
 
   virtual void* Alloc(size_t size) override;
   virtual void Free(void* p) override;
@@ -54,8 +55,9 @@ class MIGraphXPinnedAllocator final : public IAllocator {
   MIGraphXPinnedAllocator(const int device_id, const char* name)
       : IAllocator(
             OrtMemoryInfo(name, OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, static_cast<OrtDevice::DeviceId>(device_id)),
-                          device_id, OrtMemTypeCPUOutput)) {}
+                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::AMD,
+                                    static_cast<OrtDevice::DeviceId>(device_id)),
+                          OrtMemTypeCPUOutput)) {}
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;

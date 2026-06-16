@@ -772,7 +772,8 @@ std::unique_ptr<KernelRegistry> RegisterKernels() {
 using namespace js;
 
 JsExecutionProvider::JsExecutionProvider(const JsExecutionProviderInfo& info, const SessionOptions* session_options)
-    : IExecutionProvider{kJsExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)},
+    : IExecutionProvider{kJsExecutionProvider,
+                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0)},
       preferred_data_layout_{info.data_layout} {
   if (session_options) {
     enable_graph_capture_ = session_options->config_options.GetConfigOrDefault("enableGraphCapture", "false") == "true";
@@ -848,6 +849,23 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> JsExecutionProvider::GetExtern
   return std::make_unique<js::ExternalDataLoader>();
 }
 
+std::optional<bool> JsExecutionProvider::ShouldConvertDataLayoutForOp(std::string_view node_domain,
+                                                                      std::string_view node_op_type,
+                                                                      DataLayout target_data_layout) const {
+  if (target_data_layout != DataLayout::NHWC) {
+    return std::nullopt;
+  }
+
+  // TODO(fs-eire): Remove special case handing of JSEP once NHWC Resize implementation is fixed
+  if (node_domain == kOnnxDomain && node_op_type == "Resize") {
+    // leave Resize as-is pending bugfix for NHWC implementation. this means the node will remain in the ONNX domain
+    // with the original input layout.
+    return false;
+  }
+
+  return std::nullopt;
+}
+
 JsExecutionProvider::~JsExecutionProvider() {
 }
 
@@ -880,7 +898,8 @@ bool JsExecutionProvider::IsGraphCaptured(int) const {
   return is_graph_captured_;
 }
 
-Status JsExecutionProvider::ReplayGraph(int) {
+Status JsExecutionProvider::ReplayGraph(int, bool /*sync*/) {
+  // The sync parameter is ignored: JS EP always replays synchronously.
   ORT_ENFORCE(IsGraphCaptured(0));
   EM_ASM({ Module.jsepReplay(); });
   return Status::OK();

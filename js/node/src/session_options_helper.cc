@@ -31,6 +31,7 @@ const std::unordered_map<std::string, GraphOptimizationLevel> GRAPH_OPT_LEVEL_NA
     {"disabled", ORT_DISABLE_ALL},
     {"basic", ORT_ENABLE_BASIC},
     {"extended", ORT_ENABLE_EXTENDED},
+    {"layout", ORT_ENABLE_LAYOUT},
     {"all", ORT_ENABLE_ALL}};
 
 const std::unordered_map<std::string, ExecutionMode> EXECUTION_MODE_NAME_TO_ID_MAP = {{"sequential", ORT_SEQUENTIAL},
@@ -72,12 +73,37 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
         for (const auto& nameIter : obj.GetPropertyNames()) {
           Napi::Value nameVar = nameIter.second;
           std::string name = nameVar.As<Napi::String>().Utf8Value();
-          if (name != "name") {
-            Napi::Value valueVar = obj.Get(nameVar);
-            ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsString(), epList.Env(), "Invalid argument: sessionOptions.executionProviders must be a string or an object with property 'name'.");
-            std::string value = valueVar.As<Napi::String>().Utf8Value();
-            webgpu_options[name] = value;
+          Napi::Value valueVar = obj.Get(nameVar);
+          std::string value;
+          if (name == "preferredLayout" ||
+              name == "validationMode" ||
+              name == "storageBufferCacheMode" ||
+              name == "uniformBufferCacheMode" ||
+              name == "queryResolveBufferCacheMode" ||
+              name == "defaultBufferCacheMode") {
+            ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsString(), epList.Env(),
+                                        "Invalid argument: \"", name, "\" must be a string.");
+            value = valueVar.As<Napi::String>().Utf8Value();
+          } else if (name == "forceCpuNodeNames") {
+            ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsArray(), epList.Env(),
+                                        "Invalid argument: \"forceCpuNodeNames\" must be a string array.");
+            auto arr = valueVar.As<Napi::Array>();
+            for (uint32_t i = 0; i < arr.Length(); i++) {
+              Napi::Value v = arr[i];
+              ORT_NAPI_THROW_TYPEERROR_IF(!v.IsString(), epList.Env(),
+                                          "Invalid argument: elements of \"forceCpuNodeNames\" must be strings.");
+              if (i > 0) {
+                value += '\n';
+              }
+              value += v.As<Napi::String>().Utf8Value();
+            }
+          } else {
+            // unrecognized option
+            ORT_NAPI_THROW_TYPEERROR_IF(name != "name", epList.Env(),
+                                        "Invalid argument: WebGPU EP has an unrecognized option: '", name, "'.");
+            continue;
           }
+          webgpu_options[name] = value;
         }
       }
 #endif
@@ -117,7 +143,7 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
 #ifdef USE_CUDA
     } else if (name == "cuda") {
       OrtCUDAProviderOptionsV2* options;
-      Ort::GetApi().CreateCUDAProviderOptions(&options);
+      Ort::ThrowOnError(Ort::GetApi().CreateCUDAProviderOptions(&options));
       options->device_id = deviceId;
       sessionOptions.AppendExecutionProvider_CUDA_V2(*options);
       Ort::GetApi().ReleaseCUDAProviderOptions(options);
@@ -125,7 +151,7 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
 #ifdef USE_TENSORRT
     } else if (name == "tensorrt") {
       OrtTensorRTProviderOptionsV2* options;
-      Ort::GetApi().CreateTensorRTProviderOptions(&options);
+      Ort::ThrowOnError(Ort::GetApi().CreateTensorRTProviderOptions(&options));
       options->device_id = deviceId;
       sessionOptions.AppendExecutionProvider_TensorRT_V2(*options);
       Ort::GetApi().ReleaseTensorRTProviderOptions(options);

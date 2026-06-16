@@ -30,16 +30,17 @@ stages:
     workspace:
       clean: all
     pool:
-      name: 'onnxruntime-Win-CPU-2022'
+      name: 'onnxruntime-Win-CPU-VS2022-Latest'
     variables:
       breakCodesignValidationInjection: ${{ parameters.DoEsrp }}
       ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
-      BuildDate: $[format('{0:yyyyMMdd}', pipeline.startTime)]
-      BuildTime: $[format('{0:HHmm}', pipeline.startTime)]
 
     steps:
     - checkout: self
       submodules: true
+
+    - template: ../templates/setup-feeds-and-python-steps.yml
+
     - template: ../templates/flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Pipeline Artifact - NuGet'
@@ -71,6 +72,8 @@ stages:
         TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
+
+    - template: ../templates/set-version-number-variables-step.yml
 
     # Reconstruct the build dir
     - task: PowerShell@2
@@ -114,6 +117,7 @@ stages:
           -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"
           -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
           -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
+          -p:PackageVersion=$(OnnxRuntimeVersion)
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - template: ../templates/win-esrp-dll.yml
@@ -122,19 +126,20 @@ stages:
         DisplayName: 'ESRP - Sign C# dlls'
         DoEsrp: ${{ parameters.DoEsrp }}
 
-    - task: UsePythonVersion@0
-      displayName: 'Use Python'
-      inputs:
-        versionSpec: 3.12
-
     - task: MSBuild@1
       displayName: 'Build Nuget Packages'
       inputs:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
         configuration: RelWithDebInfo
         platform: 'Any CPU'
-        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
-                              -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix) -p:CurrentDate=$(BuildDate) -p:CurrentTime=$(BuildTime)'
+        msbuildArguments: >-
+          -t:CreatePackage
+          "-p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory)"
+          -p:OrtPackageId=Microsoft.ML.OnnxRuntime.Gpu
+          "-p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}"
+          "-p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)"
+          "-p:CurrentDate=$(ORT_CI_BUILD_DATE)"
+          "-p:CurrentTime=$(ORT_CI_BUILD_TIME)"
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: BatchScript@1
@@ -178,6 +183,7 @@ stages:
         # 1* stands for version number. we use it to filter Gpu.Windows and Gpu.Linux packages
         PackageName: 'Microsoft.ML.OnnxRuntime.Gpu.1*nupkg'
         VerifyNugetSigning: false
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
 
     - template: ../templates/validate-package.yml
       parameters:
@@ -186,6 +192,7 @@ stages:
         PackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Windows.*nupkg'
         PlatformsSupported: 'win-x64'
         VerifyNugetSigning: false
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
 
     - template: ../templates/validate-package.yml
       parameters:
@@ -194,6 +201,7 @@ stages:
         PackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Linux.*nupkg'
         PlatformsSupported: 'linux-x64'
         VerifyNugetSigning: false
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
 
     - task: MSBuild@1
       displayName: 'Clean C#'

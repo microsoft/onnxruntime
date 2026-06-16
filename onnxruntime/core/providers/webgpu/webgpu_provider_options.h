@@ -11,10 +11,17 @@ namespace options {
 
 constexpr const char* kPreferredLayout = "ep.webgpuexecutionprovider.preferredLayout";
 constexpr const char* kEnableGraphCapture = "ep.webgpuexecutionprovider.enableGraphCapture";
+// Number of generations of buffers to retain in the per-session pool for reuse
+// across captured-graph lifetimes. 0 disables pooling. Default 1 caches one
+// generator's worth of intermediate buffers.
+constexpr const char* kSessionBufferPoolGenerations = "ep.webgpuexecutionprovider.sessionBufferPoolGenerations";
+constexpr const char* kEnableInt64 = "ep.webgpuexecutionprovider.enableInt64";
+constexpr const char* kMultiRotaryCacheConcatOffset = "ep.webgpuexecutionprovider.multiRotaryCacheConcatOffset";
 
 constexpr const char* kDawnProcTable = "ep.webgpuexecutionprovider.dawnProcTable";
 
 constexpr const char* kDawnBackendType = "ep.webgpuexecutionprovider.dawnBackendType";
+constexpr const char* kPowerPreference = "ep.webgpuexecutionprovider.powerPreference";
 
 constexpr const char* kDeviceId = "ep.webgpuexecutionprovider.deviceId";
 constexpr const char* kWebGpuInstance = "ep.webgpuexecutionprovider.webgpuInstance";
@@ -32,16 +39,24 @@ constexpr const char* kEnablePIXCapture = "ep.webgpuexecutionprovider.enablePIXC
 
 constexpr const char* kPreserveDevice = "ep.webgpuexecutionprovider.preserveDevice";
 
+constexpr const char* kMaxStorageBufferBindingSize = "ep.webgpuexecutionprovider.maxStorageBufferBindingSize";
+
 // The following are the possible values for the provider options.
 
 constexpr const char* kDawnBackendType_D3D12 = "D3D12";
 constexpr const char* kDawnBackendType_Vulkan = "Vulkan";
+
+constexpr const char* kPowerPreference_HighPerformance = "high-performance";
+constexpr const char* kPowerPreference_LowPower = "low-power";
 
 constexpr const char* kPreferredLayout_NCHW = "NCHW";
 constexpr const char* kPreferredLayout_NHWC = "NHWC";
 
 constexpr const char* kEnableGraphCapture_ON = "1";
 constexpr const char* kEnableGraphCapture_OFF = "0";
+
+constexpr const char* kEnableInt64_ON = "1";
+constexpr const char* kEnableInt64_OFF = "0";
 
 constexpr const char* kEnablePIXCapture_ON = "1";
 constexpr const char* kEnablePIXCapture_OFF = "0";

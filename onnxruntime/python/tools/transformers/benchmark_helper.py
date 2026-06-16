@@ -18,7 +18,6 @@ from enum import Enum
 from time import sleep
 from typing import Any
 
-import coloredlogs
 import numpy
 import torch
 import transformers
@@ -112,12 +111,9 @@ def create_onnxruntime_session(
     elif use_gpu:
         if provider == "dml":
             providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
-        elif provider == "rocm":
-            providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
         elif provider == "migraphx":
             providers = [
                 "MIGraphXExecutionProvider",
-                "ROCMExecutionProvider",
                 "CPUExecutionProvider",
             ]
         elif provider == "cuda" or provider is None:
@@ -150,12 +146,12 @@ def create_onnxruntime_session(
 
 def setup_logger(verbose=True):
     if verbose:
-        coloredlogs.install(
-            level="DEBUG",
-            fmt="[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s",
+        logging.basicConfig(
+            format="[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s",
+            level=logging.DEBUG,
         )
     else:
-        coloredlogs.install(fmt="%(message)s")
+        logging.basicConfig(format="%(message)s", level=logging.INFO)
         logging.getLogger("transformers").setLevel(logging.WARNING)
 
 
@@ -174,8 +170,8 @@ def prepare_environment(cache_dir, output_dir, use_gpu, provider=None):
 
         else:
             assert not set(onnxruntime.get_available_providers()).isdisjoint(
-                ["CUDAExecutionProvider", "ROCMExecutionProvider", "MIGraphXExecutionProvider"]
-            ), "Please install onnxruntime-gpu package, or install ROCm support, to test GPU inference."
+                ["CUDAExecutionProvider", "MIGraphXExecutionProvider"]
+            ), "Please install onnxruntime-gpu package, or install migraphx, to test GPU inference."
 
     logger.info(f"PyTorch Version:{torch.__version__}")
     logger.info(f"Transformers Version:{transformers.__version__}")
@@ -407,7 +403,7 @@ def set_random_seed(seed=123):
 
 
 def get_gpu_info() -> list[dict[str, Any]] | None:
-    from py3nvml.py3nvml import (
+    from py3nvml.py3nvml import (  # noqa: PLC0415
         NVMLError,
         nvmlDeviceGetCount,
         nvmlDeviceGetHandleByIndex,
@@ -449,7 +445,7 @@ class MemoryMonitor(ABC):
         self.keep_measuring = keep_measuring
 
     def measure_cpu_usage(self):
-        import psutil
+        import psutil  # noqa: PLC0415
 
         max_usage = 0
         while True:
@@ -469,7 +465,7 @@ class CudaMemoryMonitor(MemoryMonitor):
         super().__init__(keep_measuring)
 
     def measure_gpu_usage(self) -> list[dict[str, Any]] | None:
-        from py3nvml.py3nvml import (
+        from py3nvml.py3nvml import (  # noqa: PLC0415
             NVMLError,
             nvmlDeviceGetCount,
             nvmlDeviceGetHandleByIndex,
@@ -522,7 +518,7 @@ class RocmMemoryMonitor(MemoryMonitor):
             if rocm_smi_path not in sys.path:
                 sys.path.append(rocm_smi_path)
         try:
-            import rocm_smi
+            import rocm_smi  # noqa: PLC0415
 
             self.rocm_smi = rocm_smi
             self.rocm_smi.initializeRsmi()

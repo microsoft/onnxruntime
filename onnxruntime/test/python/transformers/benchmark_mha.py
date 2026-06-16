@@ -1172,7 +1172,7 @@ def plot_prompt_performance(
     head_size: int,
     max_seq_len: int,
 ):
-    import triton
+    import triton  # noqa: PLC0415
 
     formats = InputFormats.get_name_list()
 

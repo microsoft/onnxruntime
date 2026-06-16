@@ -6,6 +6,7 @@
 import logging
 
 from fusion_layernorm import FusionLayerNormalization
+from fusion_mha_dit import FusionMultiHeadAttentionDiT
 from fusion_mha_mmdit import FusionMultiHeadAttentionMMDit
 from fusion_options import FusionOptions
 from import_utils import is_installed
@@ -43,15 +44,21 @@ class MmditOnnxModel(BertOnnxModel):
         fusion.apply()
 
     def fuse_multi_head_attention(self):
+        # MMDit fusion for Stable Diffusion 3.x / Flux patterns
         fusion = FusionMultiHeadAttentionMMDit(self)
         fusion.apply()
+
+        # DiT fusion for F5-TTS and other diffusion transformer patterns
+        # with pre-computed Q/K/V (post-RoPE), custom scaling, and optional FP16 Casts
+        dit_fusion = FusionMultiHeadAttentionDiT(self)
+        dit_fusion.apply()
 
     def optimize(self, options: FusionOptions | None = None, add_dynamic_axes: bool = False):
         assert not add_dynamic_axes
 
         if is_installed("tqdm"):
-            import tqdm
-            from tqdm.contrib.logging import logging_redirect_tqdm
+            import tqdm  # noqa: PLC0415
+            from tqdm.contrib.logging import logging_redirect_tqdm  # noqa: PLC0415
 
             with logging_redirect_tqdm():
                 steps = 5

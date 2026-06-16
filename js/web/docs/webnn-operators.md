@@ -30,8 +30,10 @@ platforms. Check the [WebNN status](https://webmachinelearning.github.io/webnn-s
 | Cos | ai.onnx(7+) | cos | |
 | CumSum | ai.onnx(11-13, 14+) | cumulativeSum | 'axis' input should be a constant |
 | Div | ai.onnx(7-12, 13, 14+) | div | |
-| DequantizeLinear | ai.onnx(10-12, 13-18, 19-20, 21-22, 23+) | dequantizeLinear | The shape of x_scale should be a subsample of the shape of input |
+| DepthToSpace | ai.onnx(7-10, 11-12, 13+) | reshape, transpose | |
+| DequantizeLinear | ai.onnx(10-12, 13-18, 19-20, 21-22, 23+) | dequantizeLinear, reshape | |
 | Dropout | ai.onnx(7-9, 10-11, 12, 13-21, 22+) | identity | Only supports test mode |
+| DynamicQuantizeLinear | ai.onnx(11+) | cast, clamp, div, div, max, min, quantizeLinear, reduceMax, reduceMin, reshape, roundEven, sub | |
 | Einsum | ai.onnx(12+) | reshape, transpose, matmul, reduceSum, mul, triangular | |
 | Elu | ai.onnx(7+) | elu | |
 | Equal | ai.onnx(7-10, 11-12, 13-18, 19+) | equal | |
@@ -41,21 +43,24 @@ platforms. Check the [WebNN status](https://webmachinelearning.github.io/webnn-s
 | Flatten | ai.onnx(7-8, 9-10, 11-12, 13-20, 21+) | reshape | |
 | Floor | ai.onnx(7-12, 13+) | floor | |
 | Gather | ai.onnx(7-10, 11-12, 13+) | gather | |
+| GatherBlockQuantized | com.microsoft(1+) | dequantizeLinear, gather | |
 | GatherElements | ai.onnx(11-12, 13+) | gatherElements | |
 | GatherND | ai.onnx(11, 12, 13+) | gatherND | Only supports 'batch_dims' == 0 |
 | Gelu | ai.onnx(20+) | gelu | |
-| Gemm | ai.onnx(7-8, 9-10, 11-12, 13+) | gemm | Only supports 1-D 'C' input |
+| Gemm | ai.onnx(7-8, 9-10, 11-12, 13+) | gemm | |
 | GlobalAveragePool | ai.onnx(7+) | averagePool2d | Only supports 4-D input |
 | GlobalMaxPool | ai.onnx(7+) | maxPool2d | Only supports 4-D input |
 | GlobalLpPool| ai.onnx(7+) | l2Pool2d | Only supports 4-D input, 'p' value is 2 |
 | Greater | ai.onnx(7-8, 9-12, 13+) | greater | |
 | GreaterOrEqual | ai.onnx(12-15, 16+) | greaterOrEqual | |
-| GroupQueryAttention | com.microsoft(1+) | add, cast, concat, constant, cumulativeSum, div, expand, lesser, matmul, reshape, scatterND, softmax, transpose, where | Only supports input total_sequence_length is constant and past_sequence_length of past kv equals to present_sequence_length of present kv. Does not support cos_cache and sin_cache inputs |
+| GroupQueryAttention | com.microsoft(1+) | add, cast, concat, constant, cumulativeSum, div, expand, lesser, matmul, reshape, scatterND, softmax, transpose, where | Only supports input total_sequence_length is constant and past_sequence_length of past kv equals to present_sequence_length of present kv. |
 | GRU | ai.onnx(7-13, 14-21, 22+) | gru | Only supports 'layout' == 0. 'clip' is not supported. The activation functions in 'activations' must be one of 'Relu', 'Tanh', 'Sigmoid'. Forward and backward activations must be the same if bidirectional. 'sequence_lens' if present should be constant with values equal to the first dimension length of input 'X' |
 | HardSigmoid | ai.onnx(7+) | hardSigmoid | |
 | HardSwish | ai.onnx(14+) | hardSwish | |
 | Identity | ai.onnx(7-13, 14-15, 16-18, 19-20, 21+) | identity | |
 | InstanceNormalization | ai.onnx(7+) | instanceNormalization | |
+| IsNaN | ai.onnx(9-12, 13-19, 20+) | isNaN | |
+| IsInf | ai.onnx(10-19, 20+) | isInfinite, equal, greater | |
 | LayerNormalization | ai.onnx(7-16, 17+) | layerNormalization | |
 | LeakyRelu | ai.onnx(7-15, 16+) | leakyRelu | |
 | Less | ai.onnx(7-8, 9-12, 13+) | lesser | |
@@ -66,7 +71,7 @@ platforms. Check the [WebNN status](https://webmachinelearning.github.io/webnn-s
 | LSTM | ai.onnx(7-13, 14-21, 22+) | lstm | Only supports 'layout' == 0, 'input_forget' == 0. 'clip' is not supported. The activation functions in 'activations' must be one of 'Relu', 'Tanh', 'Sigmoid'. Forward and backward activations must be the same if bidirectional. 'sequence_lens' if present should be constant with values equal to the first dimension length of input 'X' |
 | MatMul | ai.onnx(7-8, 9-12, 13+) | matmul | |
 | MatMulInteger | ai.onnx(10+) | cast, dequantizeLinear, matmul | |
-| MatMulNBits | com.microsoft(1+) | add, dequantizeLinear, matmul, reshape, transpose | Inputs 'B' and 'zero_points' (if present) should be constants, input 'g_idx' is not supported, only bits=4 is supported |
+| MatMulNBits | com.microsoft(1+) | add, dequantizeLinear, matmul, reshape, transpose | Inputs 'B' and 'zero_points' (if present) should be constants, input 'g_idx' is not supported, only bits=4 and bits=8 are supported |
 | Max | ai.onnx(7, 8-11, 12, 13+) | max | |
 | MaxPool | ai.onnx(7, 8-9, 10, 11, 12+) | maxPool2d | Only supports 4-D input, 2-D 'kernel_shape', 'storage_order' != 1, one output |
 | Min | ai.onnx(7, 8-11, 12, 13+) | min | |
@@ -78,8 +83,9 @@ platforms. Check the [WebNN status](https://webmachinelearning.github.io/webnn-s
 | Pad | ai.onnx(7-10, 11-12, 13-17, 18, 19-20, 21+) | pad | modes == 'wrap' is not supported |
 | Pow | ai.onnx(7-11, 12, 13-14, 15+) | pow | |
 | PRelu | ai.onnx(7-8, 9-15, 16+) | prelu | |
-| QuantizeLinear | ai.onnx(10-12, 13-18, 19-20, 21-22, 23+) | quantizeLinear | The shape of x_scale should be a subsample of the shape of input |
+| QuantizeLinear | ai.onnx(10-12, 13-18, 19-20, 21-22, 23+) | quantizeLinear, reshape | |
 | Reciprocal | ai.onnx(7-12, 13+) | reciprocal | |
+| Round | ai.onnx(11-21, 22+) | roundEven | |
 | ReduceL1 | ai.onnx(7-10, 11-12, 13-17, 18+) | reduceL1 | Input 'axes' if present should be a constant |
 | ReduceL2 | ai.onnx(7-10, 11-12, 13-17, 18+) | reduceL2 | Input 'axes' if present should be a constant |
 | ReduceLogSum| ai.onnx(7-10, 11-12, 13-17, 18+) | reduceLogSum | Input 'axes' if present should be a constant |

@@ -66,8 +66,12 @@ Status CumSum::ComputeInternal(ComputeContext& context) const {
   int64_t input_rank = input_shape.NumDimensions();
 
   const auto* axis_tensor = context.Input(1);
-  const auto* axis_data = axis_tensor->Data<int>();
-  int64_t axis = static_cast<int64_t>(axis_data[0]);
+  int64_t axis;
+  if (axis_tensor->DataType() == DataTypeImpl::GetType<int64_t>()) {
+    axis = axis_tensor->Data<int64_t>()[0];
+  } else {
+    axis = static_cast<int64_t>(axis_tensor->Data<int>()[0]);
+  };
 
   ORT_ENFORCE(-input_rank <= axis && axis < input_rank, "Axes attribute must be within range -input_rank <= axis < input_rank.");
   // Handle negative axis

@@ -7,10 +7,11 @@
 #include <gsl/gsl>
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/cuda_op_test_utils.h"
-#include "test/providers/model_tester.h"
 #include "test/util/include/current_test_name.h"
+#include "test/unittest_util/model_tester.h"
 #include "test/util/include/scoped_env_vars.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
+#include "contrib_ops/cpu/transformers/beam_search_parameters.h"
 
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_options.h"
@@ -20,6 +21,33 @@ extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace onnxruntime {
 namespace test {
+
+TEST(BeamSearchParametersTest, SetSubgraphParametersRejectsOversizedVocabSize) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.vocab_size = 150;
+
+  EXPECT_THROW(parameters.SetSubgraphParameters(128, 1, 1, 1), OnnxRuntimeException);
+}
+
+TEST(BeamSearchParametersTest, SetSubgraphParametersAllowsPaddedVocabSize) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.vocab_size = 64;
+
+  parameters.SetSubgraphParameters(128, 2, 4, 6);
+
+  EXPECT_EQ(parameters.vocab_size, 64);
+  EXPECT_EQ(parameters.num_heads, 2);
+}
+
+TEST(BeamSearchParametersTest, SetSubgraphParametersUsesSubgraphSizeWhenAttributeIsDefault) {
+  contrib::transformers::BeamSearchParameters parameters;
+  parameters.vocab_size = -1;
+
+  parameters.SetSubgraphParameters(128, 2, 4, 6);
+
+  EXPECT_EQ(parameters.vocab_size, 128);
+  EXPECT_EQ(parameters.num_heads, 2);
+}
 
 void RunGptBeamSearchFp32() {
   std::vector<int64_t> input_ids_shape{3, 12};
@@ -81,11 +109,6 @@ void RunGptBeamSearchFp32() {
   OrtCUDAProviderOptionsV2 cuda_options;
   cuda_options.use_tf32 = false;
   session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
-#endif
-
-#ifdef USE_ROCM
-  OrtROCMProviderOptions rocm_options;
-  session_options.AppendExecutionProvider_ROCM(rocm_options);
 #endif
 
   // The ONNX model is generated like the following:
@@ -177,18 +200,12 @@ TEST(BeamSearchTest, GptBeamSearchFp16) {
 
   constexpr int min_cuda_architecture = 530;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
-  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
-  if (enable_cuda || enable_rocm) {
+  if (enable_cuda) {
     Ort::SessionOptions session_options;
 #ifdef USE_CUDA
     OrtCUDAProviderOptionsV2 cuda_options;
     cuda_options.use_tf32 = false;
     session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
-#endif
-
-#ifdef USE_ROCM
-    OrtROCMProviderOptions rocm_options;
-    session_options.AppendExecutionProvider_ROCM(rocm_options);
 #endif
 
     // The ONNX model is generated like the following:
@@ -272,18 +289,12 @@ TEST(BeamSearchTest, GptBeamSearchWithInitDecoderFp16) {
 
   constexpr int min_cuda_architecture = 530;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
-  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
-  if (enable_cuda || enable_rocm) {
+  if (enable_cuda) {
     Ort::SessionOptions session_options;
 #ifdef USE_CUDA
     OrtCUDAProviderOptionsV2 cuda_options;
     cuda_options.use_tf32 = false;
     session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
-#endif
-
-#ifdef USE_ROCM
-    OrtROCMProviderOptions rocm_options;
-    session_options.AppendExecutionProvider_ROCM(rocm_options);
 #endif
 
     // The ONNX model is generated like the following:
@@ -366,18 +377,12 @@ TEST(BeamSearchTest, GptBeamSearchFp16_VocabPadded) {
 
   constexpr int min_cuda_architecture = 530;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
-  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
-  if (enable_cuda || enable_rocm) {
+  if (enable_cuda) {
     Ort::SessionOptions session_options;
 #ifdef USE_CUDA
     OrtCUDAProviderOptionsV2 cuda_options;
     cuda_options.use_tf32 = false;
     session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
-#endif
-
-#ifdef USE_ROCM
-    OrtROCMProviderOptions rocm_options;
-    session_options.AppendExecutionProvider_ROCM(rocm_options);
 #endif
 
     // The following model was obtained by padding the vocabulary size in testdata/transformers/tiny_gpt2_beamsearch_fp16.onnx

@@ -205,7 +205,7 @@ class TensorflowTestSession : public TestSession {
     assert(t != nullptr);
     feed_tensors_[test_data_id][input_id] = t;
   }
-  std::chrono::duration<double> Run() override {
+  RunTiming Run() override {
     // Randomly pick one OrtValueArray from feed_tensors_. (NOT ThreadSafe)
     const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(feed_tensors_.size() - 1));
     const size_t id = static_cast<size_t>(dist_(rand_engine_, p));
@@ -222,7 +222,10 @@ class TensorflowTestSession : public TestSession {
       TF_DeleteTensor(f);
     }
     TF_DeleteStatus(s);
-    return end - start;
+    RunTiming timing;
+    timing.cpu_time = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    timing.total_timing = timing.submit_timing;
+    return timing;
   }
 
   ~TensorflowTestSession() override {

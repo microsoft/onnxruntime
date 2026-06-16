@@ -83,16 +83,18 @@ struct BufferBackedRandomAccessStreamReadAsync
     return S_OK;
   }
 
-  virtual HRESULT STDMETHODCALLTYPE put_Completed(ABI::Windows::Foundation::IAsyncOperationWithProgressCompletedHandler<
-                                                  ABI::Windows::Storage::Streams::IBuffer*,
-                                                  UINT32>* handler) override {
+  virtual HRESULT STDMETHODCALLTYPE put_Completed(
+    ABI::Windows::Foundation::
+      IAsyncOperationWithProgressCompletedHandler<ABI::Windows::Storage::Streams::IBuffer*, UINT32>* handler
+  ) override {
     completed_handler_ = handler;
     return S_OK;
   }
 
-  virtual HRESULT STDMETHODCALLTYPE get_Completed(ABI::Windows::Foundation::IAsyncOperationWithProgressCompletedHandler<
-                                                  ABI::Windows::Storage::Streams::IBuffer*,
-                                                  UINT32>** handler) override {
+  virtual HRESULT STDMETHODCALLTYPE get_Completed(
+    ABI::Windows::Foundation::
+      IAsyncOperationWithProgressCompletedHandler<ABI::Windows::Storage::Streams::IBuffer*, UINT32>** handler
+  ) override {
     completed_handler_.CopyTo(handler);
     return S_OK;
   }
@@ -308,16 +310,18 @@ struct BufferBackedRandomAccessStreamReferenceOpenReadAsync
 
   virtual HRESULT STDMETHODCALLTYPE Close(void) override { return E_NOTIMPL; }
 
-  virtual HRESULT STDMETHODCALLTYPE
-  put_Completed(ABI::Windows::Foundation::IAsyncOperationCompletedHandler<
-                ABI::Windows::Storage::Streams::IRandomAccessStreamWithContentType*>* handler) override {
+  virtual HRESULT STDMETHODCALLTYPE put_Completed(
+    ABI::Windows::Foundation::IAsyncOperationCompletedHandler<
+      ABI::Windows::Storage::Streams::IRandomAccessStreamWithContentType*>* handler
+  ) override {
     completed_handler_ = handler;
     return S_OK;
   }
 
-  virtual HRESULT STDMETHODCALLTYPE
-  get_Completed(ABI::Windows::Foundation::IAsyncOperationCompletedHandler<
-                ABI::Windows::Storage::Streams::IRandomAccessStreamWithContentType*>** handler) override {
+  virtual HRESULT STDMETHODCALLTYPE get_Completed(
+    ABI::Windows::Foundation::IAsyncOperationCompletedHandler<
+      ABI::Windows::Storage::Streams::IRandomAccessStreamWithContentType*>** handler
+  ) override {
     completed_handler_.CopyTo(handler);
     return S_OK;
   }

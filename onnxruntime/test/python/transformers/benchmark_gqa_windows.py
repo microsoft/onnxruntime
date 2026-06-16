@@ -3,11 +3,11 @@ import os
 import time
 
 import torch
-from test_sparse_attention import GroupQueryAttentionConfig, OrtGroupQueryAttention
+from gqa_test_helper import GroupQueryAttentionConfig, OrtGroupQueryAttention
 
 
 def save_results(results, filename):
-    import pandas as pd
+    import pandas as pd  # noqa: PLC0415
 
     df = pd.DataFrame(
         results,

@@ -10,7 +10,13 @@ namespace onnxruntime {
 
 using namespace openvino_ep;
 
-OVRTAllocator::OVRTAllocator(ov::Core& core, OrtDevice::DeviceType device_type, OrtDevice::DeviceId device_id, const char* name) : IAllocator(OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(device_type, OrtDevice::MemType::DEFAULT, device_id), device_id, OrtMemTypeCPUInput)), core_(core) {
+OVRTAllocator::OVRTAllocator(ov::Core& core, OrtDevice::DeviceType device_type, OrtDevice::DeviceId device_id,
+                             const char* name)
+    : IAllocator(OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
+                               OrtDevice(device_type, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::INTEL,
+                                         device_id),
+                               OrtMemTypeCPUInput)),
+      core_(core) {
   if (device_type == OrtDevice::NPU) {
     remote_ctx_ = core_.get_default_context("NPU").as<ov::intel_npu::level_zero::ZeroContext>();
   } else {
@@ -22,7 +28,7 @@ void* OVRTAllocator::Alloc(size_t size) {
   try {
     ov::Tensor* tensor = new ov::Tensor(remote_ctx_.create_host_tensor(ov::element::Type_t::u8,
                                                                        {size}));
-    std::unique_lock lock(mutex_);
+    std::lock_guard<std::mutex> lock(mutex_);
     allocated_.insert({tensor->data(), tensor});
     return reinterpret_cast<void*>(tensor->data());
   } catch (const ov::Exception& e) {
@@ -32,12 +38,16 @@ void* OVRTAllocator::Alloc(size_t size) {
 
 void OVRTAllocator::Free(void* p) {
   try {
-    std::unique_lock lock(mutex_);
-    auto it = allocated_.find(p);
-    if (it != allocated_.end()) {
-      ov::Tensor* tensor = it->second;
-      allocated_.erase(it);
-      lock.unlock();
+    ov::Tensor* tensor = nullptr;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      auto it = allocated_.find(p);
+      if (it != allocated_.end()) {
+        tensor = it->second;
+        allocated_.erase(it);
+      }
+    }
+    if (tensor) {
       delete tensor;
     }
   } catch (const ov::Exception& e) {

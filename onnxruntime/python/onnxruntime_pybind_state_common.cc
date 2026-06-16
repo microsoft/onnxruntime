@@ -27,20 +27,19 @@ bool do_copy_in_default_stream = true;
 // TODO remove deprecated global config
 onnxruntime::cuda::TunableOpInfo tunable_op{};
 onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info{};
+#endif
+
+#if defined(USE_MIGRAPHX) || defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 // TODO remove deprecated global config
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
 
-#ifdef USE_ROCM
-// TODO remove deprecated global config
-bool miopen_conv_exhaustive_search = false;
-// TODO remove deprecated global config
-bool do_copy_in_default_stream = true;
-// TODO remove deprecated global config
-onnxruntime::rocm::TunableOpInfo tunable_op{};
-onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{};
-// TODO remove deprecated global config
-onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
+#ifdef USE_MIGRAPHX
+namespace migraphx::external {
+void* alloc_fn{nullptr};
+void* free_fn{nullptr};
+void* empty_cache_fn{nullptr};
+}  // namespace migraphx::external
 #endif
 
 #if defined(ENABLE_DLPACK)

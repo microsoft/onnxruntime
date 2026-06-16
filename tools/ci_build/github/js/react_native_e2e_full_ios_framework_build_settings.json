@@ -10,7 +10,8 @@
             "--use_xcode",
             "--build_apple_framework",
             "--use_coreml",
-            "--skip_tests"
+            "--skip_tests",
+            "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF"
         ],
         "iphonesimulator": [
             "--ios",

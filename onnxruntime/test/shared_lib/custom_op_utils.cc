@@ -18,6 +18,14 @@ template <typename T>
 void cuda_slice(const T*, int64_t, int64_t, T*, cudaStream_t compute_stream);
 #endif
 
+MyCustomKernel::MyCustomKernel(const OrtApi& ort_api, const OrtKernelInfo* info)
+    : ort_(ort_api) {
+  Ort::ConstKernelInfo kernel_info(info);
+  EXPECT_EQ(kernel_info.GetOperatorDomain(), "test");
+  EXPECT_EQ(kernel_info.GetOperatorType(), "Foo");
+  EXPECT_EQ(kernel_info.GetOperatorSinceVersion(), 1);
+}
+
 void MyCustomKernel::Compute(OrtKernelContext* context) {
   // Setup inputs
   Ort::KernelContext ctx(context);
@@ -35,15 +43,16 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
   int64_t size = output_info.GetElementCount();
 
 #ifdef USE_CUDA
-  OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
+  OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator,
+                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0));
 #else
-  OrtMemoryInfo mem_info("", OrtAllocatorType::OrtArenaAllocator, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0));
+  OrtMemoryInfo mem_info("", OrtAllocatorType::OrtArenaAllocator,
+                         OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0));
 #endif
-  OrtAllocator* allocator;
-  Ort::ThrowOnError(ort_.KernelContext_GetAllocator(context, &mem_info, &allocator));
-  void* allocated = allocator->Alloc(allocator, 2);
+  Ort::Allocator allocator = ctx.GetAllocator(mem_info);
+  void* allocated = allocator.Alloc(2);
   EXPECT_NE(allocated, nullptr) << "KernelContext_GetAllocator() can successfully allocate some memory";
-  allocator->Free(allocator, allocated);
+  allocator.Free(allocated);
 
   // Do computation
 #ifdef USE_CUDA
@@ -451,8 +460,9 @@ void StandaloneCustomKernel::InitGru() {
   float betas[1] = {2.f};
   Ort::OpAttr activation_beta = Ort::OpAttr("activation_beta ", betas, 1, OrtOpAttrType::ORT_OP_ATTR_FLOATS);
 
-  const char* direction_string = "bidirectional";
-  Ort::OpAttr direction = Ort::OpAttr("direction", direction_string, 1, OrtOpAttrType::ORT_OP_ATTR_STRING);
+  const std::string direction_string = "bidirectional";
+  Ort::OpAttr direction = Ort::OpAttr("direction", direction_string.c_str(), static_cast<int>(direction_string.length()),
+                                      OrtOpAttrType::ORT_OP_ATTR_STRING);
 
   int64_t linear_before_reset_value = 0;
   Ort::OpAttr linear_before_reset = Ort::OpAttr("linear_before_reset", &linear_before_reset_value, 1,

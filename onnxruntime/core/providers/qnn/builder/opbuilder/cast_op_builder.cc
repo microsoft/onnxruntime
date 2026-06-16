@@ -68,7 +68,7 @@ Status CastOpBuilder::ProcessExtraInputForNotEqual(QnnModelWrapper& qnn_model_wr
   }
 
   // Build additional static input with value 0.
-  const std::string& input_name = utils::GetNodeName(node_unit) + "_notequal_zero";
+  const std::string& input_name = utils::GetUniqueName(node_unit, "_notequal_zero");
 
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_UNDEFINED;
   const auto* type_proto = input.node_arg.TypeAsProto();
@@ -84,7 +84,7 @@ Status CastOpBuilder::ProcessExtraInputForNotEqual(QnnModelWrapper& qnn_model_wr
                     "Failed to add additional input tensor for QNN Cast node that will be replaced by NotEqual.");
   input_names.push_back(input_name);
 
-  LOGS(logger, VERBOSE) << "FP-to-Bool Cast node " << utils::GetNodeName(node_unit) << " is replaced by NotEqual.";
+  LOGS(logger, VERBOSE) << "FP-to-Bool Cast node " << node_unit.Name() << " is replaced by NotEqual.";
   return Status::OK();
 }
 
@@ -177,7 +177,7 @@ Status CastOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   const std::string qnn_op_type = IsFpToBoolCast(node_unit)
                                       ? QNN_OP_ELEMENT_WISE_NOT_EQUAL
                                       : GetQnnOpType(node_unit.OpType());
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(node_unit),
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetUniqueName(node_unit),
                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                     qnn_op_type,
                                                     std::move(input_names),

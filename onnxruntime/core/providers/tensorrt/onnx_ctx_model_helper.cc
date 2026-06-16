@@ -23,6 +23,13 @@ bool GraphHasCtxNode(const GraphViewer& graph_viewer) {
   for (int i = 0; i < graph_viewer.MaxNodeIndex(); ++i) {
     auto node = graph_viewer.GetNode(i);
     if (node != nullptr && node->OpType() == EPCONTEXT_OP) {
+      // Only match EPContext nodes that belong to this EP.
+      // If the source attribute is present and doesn't match, skip the node.
+      const auto& attrs = node->GetAttributes();
+      if (attrs.count(SOURCE) > 0 &&
+          attrs.at(SOURCE).s() != kTensorrtExecutionProvider) {
+        continue;
+      }
       return true;
     }
   }
@@ -92,6 +99,7 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
   auto attr_1 = ONNX_NAMESPACE::AttributeProto::Create();  // ep_cache_context
   auto attr_2 = ONNX_NAMESPACE::AttributeProto::Create();  // hardware_architecture
   auto attr_3 = ONNX_NAMESPACE::AttributeProto::Create();  // onnx_model_filename
+  auto attr_4 = ONNX_NAMESPACE::AttributeProto::Create();  // source
   std::string engine_data_str = "";
   attr_0->set_name(EMBED_MODE);
   attr_0->set_type(onnx::AttributeProto_AttributeType_INT);
@@ -112,15 +120,19 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
   attr_2->set_s(compute_capability);
   attr_3->set_name(ONNX_MODEL_FILENAME);
   attr_3->set_type(onnx::AttributeProto_AttributeType_STRING);
-  attr_3->set_s(std::filesystem::path(onnx_model_path).filename().string());
+  attr_3->set_s(PathToUTF8String(std::filesystem::path(onnx_model_path).filename().native()));
+  attr_4->set_name(SOURCE);
+  attr_4->set_type(onnx::AttributeProto_AttributeType_STRING);
+  attr_4->set_s(kTensorrtExecutionProvider);
 
   auto node_attributes = ONNX_NAMESPACE::NodeAttributes::Create();
-  constexpr int num_attributes = 4;
+  constexpr int num_attributes = 5;
   node_attributes->reserve(num_attributes);
   node_attributes->emplace(EMBED_MODE, *attr_0);
   node_attributes->emplace(EP_CACHE_CONTEXT, *attr_1);
   node_attributes->emplace(COMPUTE_CAPABILITY, *attr_2);
   node_attributes->emplace(ONNX_MODEL_FILENAME, *attr_3);
+  node_attributes->emplace(SOURCE, *attr_4);
 
   // Create EP context node
   graph_build.AddNode(EPCONTEXT_OP, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), EPCONTEXT_OP_DOMAIN);
@@ -298,6 +310,8 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
                                                            make_secure_path_checks,
                                                            onnx_model_bytestream_,
                                                            onnx_model_bytestream_size_,
+                                                           onnx_external_data_bytestream_,
+                                                           onnx_external_data_bytestream_size_,
                                                            (*trt_engine_).get(),
                                                            false /* serialize refitted engine to disk */,
                                                            detailed_build_log_);
@@ -309,18 +323,12 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     // Get engine from cache file.
     std::string cache_path = attrs.at(EP_CACHE_CONTEXT).s();
 
-    // For security purpose, in the case of running context model, TRT EP won't allow
-    // engine cache path to be the relative path like "../file_path" or the absolute path.
-    // It only allows the engine cache to be in the same directory or sub directory of the context model.
-    if (IsAbsolutePath(cache_path)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "For security purpose, the ep_cache_context attribute should be set with a relative path, but it is an absolute path:  " + cache_path);
-    }
-    if (IsRelativePathToParentPath(cache_path)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "The file path in ep_cache_context attribute has '..'. For security purpose, it's not allowed to point outside the directory.");
-    }
+    // Validate that the cache path does not escape the model directory.
+    // Rejects absolute paths, ".." traversal, and symlink-based escapes.
+    std::filesystem::path ctx_model_dir(GetPathOrParentPathOfCtxModel(ep_context_model_path_));
+    ORT_RETURN_IF_ERROR(utils::ValidateExternalDataPathFromDir(ctx_model_dir, std::filesystem::path(cache_path)));
 
     // The engine cache and context model (current model) should be in the same directory
-    std::filesystem::path ctx_model_dir(GetPathOrParentPathOfCtxModel(ep_context_model_path_));
     auto engine_cache_path = ctx_model_dir.append(cache_path);
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] GetEpContextFromGraph engine_cache_path: " + engine_cache_path.string();
 
@@ -367,6 +375,8 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
                                                            make_secure_path_checks,
                                                            onnx_model_bytestream_,
                                                            onnx_model_bytestream_size_,
+                                                           onnx_external_data_bytestream_,
+                                                           onnx_external_data_bytestream_size_,
                                                            (*trt_engine_).get(),
                                                            true /* serialize refitted engine to disk */,
                                                            detailed_build_log_);

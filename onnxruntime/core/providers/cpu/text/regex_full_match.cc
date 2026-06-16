@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(DISABLE_STRING_TYPE)
+
 #include "regex_full_match.h"
 #include "core/common/common.h"
 
@@ -33,3 +35,5 @@ Status RegexFullMatch::Compute(OpKernelContext* context) const {
 }
 
 }  // namespace onnxruntime
+
+#endif  // !defined(DISABLE_STRING_TYPE)

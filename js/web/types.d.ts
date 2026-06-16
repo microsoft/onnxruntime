@@ -20,3 +20,7 @@ declare module 'onnxruntime-web/webgl' {
 declare module 'onnxruntime-web/webgpu' {
   export * from 'onnxruntime-web';
 }
+
+declare module 'onnxruntime-web/jspi' {
+  export * from 'onnxruntime-web';
+}

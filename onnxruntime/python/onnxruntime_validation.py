@@ -23,9 +23,9 @@ def check_distro_info():
         __my_distro__ = __my_system__
         __my_distro_ver__ = platform.release().lower()
 
-        if __my_distro_ver__ not in ["10", "11"]:
+        if __my_distro_ver__ not in ["10", "11", "2016server", "2019server", "2022server", "2025server"]:
             warnings.warn(
-                f"Unsupported Windows version ({__my_distro_ver__}). ONNX Runtime supports Windows 10 and above, only."
+                f"Unsupported Windows version ({__my_distro_ver__}). ONNX Runtime supports Windows 10 and above, or Windows Server 2016 and above."
             )
     elif __my_system__ == "linux":
         """Although the 'platform' python module for getting Distro information works well on standard OS images
@@ -57,7 +57,7 @@ def check_distro_info():
                 f"Unsupported macOS version ({__my_distro_ver__}). ONNX Runtime supports macOS 11.0 or later."
             )
     elif __my_system__ == "aix":
-        import subprocess
+        import subprocess  # noqa: PLC0415
 
         returned_output = subprocess.check_output("oslevel")
         __my_distro_ver__str = returned_output.decode("utf-8")
@@ -74,11 +74,11 @@ def get_package_name_and_version_info():
     cuda_version = ""
 
     try:
-        from .build_and_package_info import __version__ as version
-        from .build_and_package_info import package_name
+        from .build_and_package_info import __version__ as version  # noqa: PLC0415
+        from .build_and_package_info import package_name  # noqa: PLC0415
 
         try:  # noqa: SIM105
-            from .build_and_package_info import cuda_version
+            from .build_and_package_info import cuda_version  # noqa: PLC0415
         except ImportError:
             # cuda_version is optional. For example, cpu only package does not have the attribute.
             pass
@@ -94,7 +94,7 @@ def check_training_module():
 
     has_ortmodule = False
     try:
-        from onnxruntime.training.ortmodule import ORTModule  # noqa: F401
+        from onnxruntime.training.ortmodule import ORTModule  # noqa: F401, PLC0415
 
         has_ortmodule = True
     except ImportError:
@@ -105,7 +105,7 @@ def check_training_module():
         # for any exception other than not having ortmodule, we want to continue
         # device version validation and raise the exception after.
         try:
-            from onnxruntime.training.ortmodule._fallback import ORTModuleInitException
+            from onnxruntime.training.ortmodule._fallback import ORTModuleInitException  # noqa: PLC0415
 
             if isinstance(e, ORTModuleInitException):
                 # ORTModule is present but not ready to run yet
@@ -125,7 +125,7 @@ def check_training_module():
             # collect cuda library build info. the library info may not be available
             # when the build environment has none or multiple libraries installed
             try:
-                from .build_and_package_info import cudart_version
+                from .build_and_package_info import cudart_version  # noqa: PLC0415
             except ImportError:
                 warnings.warn("WARNING: failed to get cudart_version from onnxruntime build info.")
                 cudart_version = None
@@ -137,7 +137,7 @@ def check_training_module():
                 warnings.warn(f"onnxruntime build info: cudart_version: {cudart_version}")
 
             # collection cuda library info from current environment.
-            from onnxruntime.capi.onnxruntime_collect_build_info import find_cudart_versions
+            from onnxruntime.capi.onnxruntime_collect_build_info import find_cudart_versions  # noqa: PLC0415
 
             local_cudart_versions = find_cudart_versions(build_env=False, build_cuda_version=cuda_version)
             if cudart_version and local_cudart_versions and cudart_version not in local_cudart_versions:

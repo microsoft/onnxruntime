@@ -26,7 +26,7 @@ Abstract:
 
 #define MLAS_DGEMM_TRANSA_ROWS              12
 
-#if defined (MLAS_TARGET_AMD64)  || defined (MLAS_TARGET_POWER)
+#if defined (MLAS_TARGET_AMD64)  || defined (MLAS_TARGET_POWER) || defined (MLAS_TARGET_S390X)
 
 void
 MlasDgemmMultiplyBeta(
@@ -530,7 +530,7 @@ Return Value:
 
         size_t RowsHandled;
 
-#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_LARCH64)
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_LARCH64) || defined(MLAS_TARGET_S390X)
         RowsHandled = GetMlasPlatform().GemmDoubleKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
 #else
         if (ZeroMode) {

@@ -151,7 +151,7 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
         raise unittest.SkipTest("Temporarily disabled pending investigation")
 
         if torch.version.cuda is None:
-            # Only run this test when CUDA is available, as on ROCm BF16 is not supported by MIOpen.
+            # Only run this test when CUDA is available.
             return
 
         class Model(torch.nn.Module):

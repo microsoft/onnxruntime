@@ -13,7 +13,6 @@
 #include "core/framework/execution_frame.h"
 #include "core/framework/ort_value_name_idx_map.h"
 #include "core/framework/ort_value.h"
-#include "core/framework/callback.h"
 
 namespace onnxruntime {
 class DataTransferManager;
@@ -37,7 +36,9 @@ class OptimizerExecutionFrame final : public IExecutionFrame {
          const std::function<bool(const std::string&)>& is_sparse_initializer_func,
          const logging::Logger& logger);
 
-    ~Info() = default;
+    // Destructor defined out-of-line so NodeIndexInfo is complete when
+    // unique_ptr<NodeIndexInfo> is destroyed (required by libc++).
+    ~Info();
 
     const AllocatorPtr& GetAllocator() const {
       return allocator_ptr_;

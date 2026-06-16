@@ -4,6 +4,7 @@
 #pragma once
 
 #include "boost/mp11.hpp"
+#include <gsl/gsl>
 
 // It is safe to include the below header even if SHARED_PROVIDER macro is enabled
 // as it doesn't include any pb headers.
@@ -26,7 +27,6 @@
 #include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/onnx_protobuf.h"
-#include <gsl/gsl>
 namespace onnxruntime {
 class OpKernelContext;
 }
@@ -107,6 +107,7 @@ class OpKernel {
 
   // Override this function to use provided pre-packed weight.
   // Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+  //                                 gsl::span<const size_t> prepacked_buffer_sizes,
   //                                 int input_idx,
   //                                 /*out*/ bool& used_shared_buffers) {
   //     used_shared_buffers = true;
@@ -120,10 +121,12 @@ class OpKernel {
   //                            and must use the same order for retrieval in UseSharedPrePackedBuffers(). Though each element
   //                           of this vector is a BufferUniquePtr, the deleter of the BufferUniquePtr is NULL. So actually they
   //                           are raw pointers.
+  // @param prepacked_buffer_sizes: The sizes (in bytes) of each buffer in prepacked_buffers.
   // @param input_idx: The input index of the tensor in this kernel
   // @param used_shared_buffers: Boolean flag set by the kernel implementation indicating
   // that the provided weight has been used by the kernel.
   virtual Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& /*prepacked_buffers*/,
+                                           gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                            int /*input_idx*/,
                                            /*out*/ bool& used_shared_buffers) {
     used_shared_buffers = false;
@@ -188,13 +191,6 @@ namespace js {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace js
-}  // namespace contrib
-
-namespace contrib {
-namespace rocm {
-template <typename T>
-KernelCreateInfo BuildKernelCreateInfo();
-}  // namespace rocm
 }  // namespace contrib
 
 namespace contrib {
@@ -303,6 +299,24 @@ using BuildKernelCreateInfoFn = KernelCreateInfo (*)();
             .Provider(provider)                                                                                                    \
             .Build(),                                                                                                              \
         static_cast<KernelCreatePtrFn>([](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status { out = std::make_unique<__VA_ARGS__>(info); return Status::OK(); })); \
+  }
+
+#define ONNX_OPERATOR_THREE_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, type3, name) \
+  provider##_##name##_##domain##_ver##ver##_##type1##_##type2##_##type3
+
+#define ONNX_OPERATOR_THREE_TYPED_KERNEL_EX(name, domain, ver, type1, type2, type3, provider, builder, ...)                        \
+  class ONNX_OPERATOR_THREE_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, type3, name);                             \
+  template <>                                                                                                                      \
+  KernelCreateInfo                                                                                                                 \
+  BuildKernelCreateInfo<ONNX_OPERATOR_THREE_TYPED_KERNEL_CLASS_NAME(provider, domain, ver, type1, type2, type3, name)>() {         \
+    return KernelCreateInfo(                                                                                                       \
+        builder.SetName(#name)                                                                                                     \
+            .SetDomain(domain)                                                                                                     \
+            .SinceVersion(ver)                                                                                                     \
+            .Provider(provider)                                                                                                    \
+            .Build(),                                                                                                              \
+        static_cast<KernelCreatePtrFn>([](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {  \
+          out = std::make_unique<__VA_ARGS__>(info); return Status::OK(); })); \
   }
 
 #define ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME(provider, domain, startver, endver, type, name) \

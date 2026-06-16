@@ -106,12 +106,15 @@ def _convert(
 
     providers = ["CPUExecutionProvider"]
 
-    # if the optimization level is 'all' we manually exclude the NCHWc transformer. It's not applicable to ARM
-    # devices, and creates a device specific model which won't run on all hardware.
+    # if the optimization level is greater than or equal to 'layout' we manually exclude the NCHWc transformer.
+    # It's not applicable to ARM devices, and creates a device specific model which won't run on all hardware.
     # If someone really really really wants to run it they could manually create an optimized onnx model first,
     # or they could comment out this code.
     optimizer_filter = None
-    if optimization_level == ort.GraphOptimizationLevel.ORT_ENABLE_ALL and target_platform != "amd64":
+    if (
+        (optimization_level == ort.GraphOptimizationLevel.ORT_ENABLE_ALL)
+        or (optimization_level == ort.GraphOptimizationLevel.ORT_ENABLE_LAYOUT)
+    ) and target_platform != "amd64":
         optimizer_filter = ["NchwcTransformer"]
 
     converted_models = []

@@ -43,6 +43,16 @@ class Tensor final {
   // Strive not to allocate Tensor with new/delete as it is a shallow class and using it by value is just fine.
   // Use InitOrtValue() methods to allocate for OrtValue.
 
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  /// Static factory kept for plugin EP kernels that still call Tensor::Create().
+  /// The main tree deprecated these in favor of constructors, but dynamically-linked
+  /// plugin code relies on the static method.
+  static std::unique_ptr<Tensor> Create(MLDataType elt_type, const TensorShape& shape,
+                                        std::shared_ptr<IAllocator> allocator) {
+    return std::make_unique<Tensor>(elt_type, shape, std::move(allocator));
+  }
+#endif
+
   Tensor() = default;  // to allow creating vector<Tensor> to support seq(tensor)
 
   /**
@@ -284,9 +294,9 @@ class Tensor final {
 
   /// <summary>
   /// The number of Tensor "storage" elements. A single storage element may contain multiple sub-elements for
-  /// sub-byte data types (e.g., int4).
+  /// sub-byte data types (e.g., int4/float4).
   ///
-  /// For element types smaller than 1 byte (e.g., int4), a single storage element stores multiple sub-byte elements.
+  /// For element types smaller than 1 byte (e.g., int4/float4), a single storage element stores multiple sub-byte elements.
   /// Example: Tensor<int4> of shape (4,) has 2 storage elements.
   ///
   /// For element types >= 1 byte, this function returns the product of the shape.

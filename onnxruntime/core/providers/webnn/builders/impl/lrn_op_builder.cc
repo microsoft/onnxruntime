@@ -21,8 +21,6 @@ class LRNOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
-                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
   bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
   bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
@@ -54,10 +52,10 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   /**
       WebNN doesn't support LRN. So decompose it into a series of ops:
-      X --> Pow --> (Transpose)--> Pad --> AveragePool--> (Transpose) --> Mul --> Add --> Pow --> Div
-             ^           ^                      ^               ^          ^       ^       ^       ^
-             |           |                      |               |          |       |       |       |
-            Y:2      (0,2,3,1)           Kernel:(1,size)     (0,3,1,2)   B:alpha  B:bias B:beta  A:input
+      X --> Pow --> Transpose --> Pad --> AveragePool--> Transpose --> Mul --> Add --> Pow --> Div
+             ^          ^                      ^             ^          ^       ^       ^       ^
+             |          |                      |             |          |       |       |       |
+            Y:2     (0,2,3,1)           Kernel:(1,size)  (0,3,1,2)   B:alpha  B:bias B:beta  A:input
       */
   //
   // pow(input, 2)
@@ -66,15 +64,11 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val pow1_output = wnn_builder.call<emscripten::val>("pow", input, pow1_constant, label_options);
 
   // transpose(pow1_output, permutation=[0, 2, 3, 1])
-  // LRN is one of NHWC layout sensitive ops. When preferred layout is NCHW, move dimension 1 to dimension 3 (rightmost).
-  if (model_builder.GetPreferredLayout() == DataLayout::NCHW) {
-    std::vector<uint32_t> perm{0, 2, 3, 1};
-    emscripten::val transpose_options = emscripten::val::object();
-    transpose_options.set("label", node_name + "_transpose_rightmost");
-    transpose_options.set("permutation", emscripten::val::array(perm));
-    pow1_output =
-        wnn_builder.call<emscripten::val>("transpose", pow1_output, transpose_options);
-  }
+  std::vector<uint32_t> perm{0, 2, 3, 1};
+  emscripten::val transpose_options = emscripten::val::object();
+  transpose_options.set("label", node_name + "_transpose_rightmost");
+  transpose_options.set("permutation", emscripten::val::array(perm));
+  pow1_output = wnn_builder.call<emscripten::val>("transpose", pow1_output, transpose_options);
 
   // pad(pow1_output, beginning_padding = {0, 0, 0, leading_padding}, ending_padding = {0, 0, 0, trailing_padding})
   // Adding a Pad before averagePool2d and calling AveragePool with pads as 0's.
@@ -97,14 +91,10 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   // transpose(pool_output, permutation=[0, 3, 1, 2])
   // Move dimension 3 back to dimension 1.
-  if (model_builder.GetPreferredLayout() == DataLayout::NCHW) {
-    std::vector<uint32_t> perm{0, 3, 1, 2};
-    emscripten::val transpose_options = emscripten::val::object();
-    transpose_options.set("label", node_name + "_transpose_inverse");
-    transpose_options.set("permutation", emscripten::val::array(perm));
-    pool_output =
-        wnn_builder.call<emscripten::val>("transpose", pool_output, transpose_options);
-  }
+  perm = {0, 3, 1, 2};
+  transpose_options.set("label", node_name + "_transpose_inverse");
+  transpose_options.set("permutation", emscripten::val::array(perm));
+  pool_output = wnn_builder.call<emscripten::val>("transpose", pool_output, transpose_options);
 
   // mul(pool_output, alpha_constant)
   label_options.set("label", node_name + "_mul");
@@ -128,11 +118,10 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 // Operator support related.
-bool LRNOpBuilder::IsOpSupportedImpl(const GraphViewer&,
-                                     const Node& node,
-                                     const WebnnDeviceType /* device_type */,
-                                     const logging::Logger& logger) const {
+bool LRNOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
+                                          const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
+
   std::vector<int64_t> input_shape;
   if (!GetShape(*input_defs[0], input_shape, logger))
     return false;
@@ -143,12 +132,6 @@ bool LRNOpBuilder::IsOpSupportedImpl(const GraphViewer&,
     return false;
   }
 
-  return true;
-}
-
-bool LRNOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
-                                          const emscripten::val& wnn_limits, const logging::Logger& logger) const {
-  const auto& input_defs = node.InputDefs();
   const std::string_view op_type = node.OpType();
   int32_t input_type = 0;
   if (!GetType(*input_defs[0], input_type, logger)) {
@@ -156,9 +139,10 @@ bool LRNOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
   }
 
   // Check if the input data type is supported by each decomposed WebNN op.
-  // Decomposed ops include: "add", "averagePool2d", "div", "mul", "pad", "pow" and "transpose".
-  for (const std::string_view webnn_op_type : decomposed_op_map.at(op_type)) {
-    const std::string_view webnn_input_name = GetWebNNOpFirstInputName(webnn_op_type);
+  // Decomposed ops include: "Add", "AveragePool", "Div", "Mul", "Pad", "Pow" and "Transpose".
+  for (const std::string_view decomposed_op_type : decomposed_op_map.at(op_type)) {
+    const std::string_view webnn_op_type = GetWebNNOpType(decomposed_op_type);
+    const std::string_view webnn_input_name = GetWebNNOpFirstInputName(decomposed_op_type);
     if (!IsDataTypeSupportedByWebNNOp(op_type, webnn_op_type, input_type, wnn_limits, webnn_input_name, "X", logger)) {
       return false;
     }
@@ -178,7 +162,8 @@ bool LRNOpBuilder::HasSupportedOutputsImpl(const Node& node,
   }
 
   // Check if the output data type is supported by every decomposed WebNN op.
-  for (const std::string_view webnn_op_type : decomposed_op_map.at(op_type)) {
+  for (const std::string_view decomposed_op_type : decomposed_op_map.at(op_type)) {
+    const std::string_view webnn_op_type = GetWebNNOpType(decomposed_op_type);
     if (!IsDataTypeSupportedByWebNNOp(op_type, webnn_op_type, output_type, wnn_limits, "output", "Y", logger)) {
       return false;
     }

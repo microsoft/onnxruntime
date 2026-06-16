@@ -31,7 +31,7 @@ TEST(CApiTensorTest, load_simple_float_tensor_not_enough_space) {
   // deserialize it
   std::vector<float> output(1);
   OrtValue value;
-  OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
+  OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), OrtMemTypeDefault);
 
   ASSERT_STATUS_NOT_OK(
       utils::TensorProtoToOrtValue(Env::Default(), std::filesystem::path(), p,
@@ -53,7 +53,7 @@ TEST(CApiTensorTest, load_simple_float_tensor_membuffer) {
   // deserialize it
   std::vector<float> output(3);
   OrtValue value;
-  OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
+  OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), OrtMemTypeDefault);
   ASSERT_STATUS_OK(
       utils::TensorProtoToOrtValue(Env::Default(), std::filesystem::path(), p,
                                    MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info),
@@ -80,7 +80,7 @@ TEST(CApiTensorTest, load_simple_float_tensor_allocator) {
   // save it to a buffer
   ASSERT_TRUE(p.SerializeToString(&s));
   // deserialize it
-  AllocatorPtr tmp_allocator = std::make_shared<CPUAllocator>();
+  AllocatorPtr tmp_allocator = CPUAllocator::DefaultInstance();
   OrtValue value;
 
   ASSERT_STATUS_OK(utils::TensorProtoToOrtValue(Env::Default(), std::filesystem::path(), p, tmp_allocator, value));
@@ -153,7 +153,7 @@ static void run_external_data_test() {
 #endif
   }
   OrtValue value;
-  OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
+  OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), OrtMemTypeDefault);
   ASSERT_STATUS_OK(utils::TensorProtoToOrtValue(
       Env::Default(), std::filesystem::path(), p, MemBuffer(output.data(), output.size() * sizeof(float), cpu_memory_info), value));
 
@@ -204,7 +204,7 @@ TEST(CApiTensorTest, load_huge_tensor_with_external_data) {
   // deserialize it
   std::vector<int> output(total_ele_count);
   OrtValue value;
-  OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
+  OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), OrtMemTypeDefault);
   ASSERT_STATUS_OK(
       utils::TensorProtoToOrtValue(Env::Default(), std::filesystem::path(), p,
                                    MemBuffer(output.data(), output.size() * sizeof(int), cpu_memory_info), value));

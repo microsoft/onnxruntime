@@ -134,7 +134,7 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
   int m = batch_size * sequence_length;
   int n = (parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size);
   int k = parameters.input_hidden_size;
-  gemm_buffer = GetScratchBuffer<T1>(static_cast<size_t>(m) * n, context->GetComputeStream());
+  gemm_buffer = GetScratchBuffer<T1>(static_cast<size_t>(m) * n, GetComputeStream(context));
 
   CudaT one = ToCudaType<T1>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T1>::FromFloat(0.0f);
@@ -195,7 +195,7 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
   if (do_rotary_) {
     ORT_ENFORCE(parameters.head_size == 64 || parameters.head_size == 128,
                 "Current implementation of rotary embedding only supports head size of 64 or 128");
-    parameters.rotary_embedding_dim = parameters.head_size;
+    parameters.rotary_dim = parameters.head_size;
     parameters.t_step = parameters.past_sequence_length;
   }
 

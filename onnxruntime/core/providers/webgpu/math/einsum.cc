@@ -4,6 +4,7 @@
 #include "core/providers/webgpu/math/einsum.h"
 
 #include <algorithm>
+#include <cctype>
 #include <regex>
 #include <set>
 #include <vector>
@@ -24,7 +25,7 @@ static const std::regex lhs_pattern("(([a-zA-Z]|\\.\\.\\.)*,)*([a-zA-Z]|\\.\\.\\
 // Helper function to remove all whitespaces in a given string.
 std::string RemoveAllWhitespace(const std::string& str) {
   std::string result = str;
-  result.erase(std::remove_if(result.begin(), result.end(), ::isspace), result.end());
+  std::erase_if(result, [](unsigned char c) { return std::isspace(c); });
   return result;
 }
 
@@ -34,13 +35,13 @@ bool IsInteger(const std::string& s) {
 }
 }  // namespace
 
-#define WEBGPU_EINSUM_TYPED_KERNEL_DECL(version)                                               \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                                               \
-      Einsum, kOnnxDomain, version, float, kWebGpuExecutionProvider,                           \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), \
+#define WEBGPU_EINSUM_KERNEL_DECL(version)                                            \
+  ONNX_OPERATOR_KERNEL_EX(                                                            \
+      Einsum, kOnnxDomain, version, kWebGpuExecutionProvider,                         \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()), \
       Einsum);
 
-WEBGPU_EINSUM_TYPED_KERNEL_DECL(12);
+WEBGPU_EINSUM_KERNEL_DECL(12);
 
 EinsumEquation::EinsumEquation(const std::vector<const Tensor*>& inputs,
                                const std::string& raw_equation) {
@@ -222,11 +223,11 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   const ShaderVariableHelper& output =
-      shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+      shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
   // Helper variables for shader generation.
-  std::string init_prod = "var prod = 1.0;";
-  std::string init_sum = "var sum = 0.0;";
+  std::string init_prod = "var prod = output_element_t(1);";
+  std::string init_sum = "var sum = output_element_t(0);";
   std::string update_sum = "sum += prod;";
   std::vector<std::string> idx_copy;
   std::vector<std::string> reduce_ops;
@@ -318,16 +319,19 @@ Status EinsumProgram::GenerateShaderCode(ShaderHelper& shader) const {
               symbol));
 
           // Check if we've already processed this symbol to avoid duplicate loop generation
-          if (uniform_symbol_set.find(symbol) == uniform_symbol_set.end()) {
+          if (!uniform_symbol_set.contains(symbol)) {
             // Add symbol to tracked set to prevent duplicate processing
             uniform_symbol_set.insert(symbol);
 
             // Generate a WGSL loop header for reduction over this dimension
             // Format like: for(var j: u32 = 0; j < uniforms.input0_shape[1]; j++) {, given equation
             // "ij,jk->ik".
+            std::string shape_access = GetElementAt(
+                "uniforms.input" + std::to_string(lhs_term_index) + "_shape",
+                input_index,
+                static_cast<int>(inputs[lhs_term_index].get().Rank()));
             reduce_ops_loop_headers.push_back("for(var " + symbol + ": u32 = 0; " + symbol + " < " +
-                                              "uniforms.input" + std::to_string(lhs_term_index) +
-                                              "_shape[" + std::to_string(input_index) + "]; " +
+                                              shape_access + "; " +
                                               symbol + "++) {");
 
             // Add corresponding loop closing brace

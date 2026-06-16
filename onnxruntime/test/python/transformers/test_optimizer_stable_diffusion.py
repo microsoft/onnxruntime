@@ -95,7 +95,7 @@ class TestStableDiffusionOptimization(unittest.TestCase):
         model_type = "stable-diffusion"
         model_name = TINY_MODELS[model_type]
 
-        from optimum.onnxruntime import ORTStableDiffusionPipeline
+        from optimum.onnxruntime import ORTStableDiffusionPipeline  # noqa: PLC0415
 
         base = ORTStableDiffusionPipeline.from_pretrained(model_name, export=True)
         base.save_pretrained(save_directory)
@@ -128,7 +128,7 @@ class TestStableDiffusionOrFluxPipelineOptimization(unittest.TestCase):
         atol,
         disable_group_norm=False,
     ):
-        from optimum.onnxruntime import ORTPipelineForText2Image
+        from optimum.onnxruntime import ORTPipelineForText2Image  # noqa: PLC0415
 
         if os.path.exists(export_onnx_dir):
             shutil.rmtree(export_onnx_dir, ignore_errors=True)
@@ -174,7 +174,7 @@ class TestStableDiffusionOrFluxPipelineOptimization(unittest.TestCase):
 
         seed = 123
         np.random.seed(seed)
-        import torch
+        import torch  # noqa: PLC0415
 
         baseline_outputs = baseline(**inputs, generator=torch.Generator(device="cuda").manual_seed(seed))
 

@@ -108,6 +108,7 @@ Status TransformModelInputsForInference(Graph& inference_graph,
       ORT_ENFORCE(!inference_graph.IsInitializedTensor(named_parameter_it->first),
                   "The eval graph is invalid. Expected model parameter ",
                   named_parameter_it->first, " to be a graph input, not a graph initializer.");
+
       inference_graph.AddInitializedTensor(utils::CopyTensorToTensorProto(
           named_parameter_it->second->Data().Get<onnxruntime::Tensor>(),
           named_parameter_it->first, data_transfer_manager));
@@ -265,7 +266,7 @@ Status Parameter::ResetGrad() {
   if (device.Type() == OrtDevice::CPU) {
     memset(p_tensor->MutableDataRaw(), 0, p_tensor->SizeInBytes());
   }
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA)
   else if (device.Type() == OrtDevice::GPU) {
     ORT_NOT_IMPLEMENTED("Not implemented.");
   }

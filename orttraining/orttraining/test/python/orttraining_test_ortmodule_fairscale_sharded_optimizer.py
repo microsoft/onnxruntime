@@ -103,7 +103,7 @@ def train_step(args, model, device, optimizer, loss_fn, train_loader, epoch):
         probability = model(data)
 
         if args.view_graphs:
-            import torchviz
+            import torchviz  # noqa: PLC0415
 
             pytorch_backward_graph = torchviz.make_dot(probability, params=dict(list(model.named_parameters())))
             pytorch_backward_graph.view()

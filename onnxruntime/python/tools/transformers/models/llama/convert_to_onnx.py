@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import warnings
 from itertools import chain
 
 import onnx
@@ -126,7 +127,7 @@ def save_onnx_model(onnx_model: onnx.ModelProto, output_path: str, data_path: st
 def run_dynamo_export(
     args: argparse.Namespace, l_config: AutoConfig, llama: AutoModelForCausalLM, rank: int = 0, world_size: int = 1
 ):
-    from torch._dynamo import config
+    from torch._dynamo import config  # noqa: PLC0415
 
     config.capture_scalar_outputs = True
 
@@ -234,6 +235,7 @@ def run_torchscript_separate_export(
         opset_version=torch_export_onnx_opset_version,
         do_constant_folding=True,
         verbose=args.verbose,
+        dynamo=False,
     )
 
     # Check decoder_model.onnx and save all external data to one file
@@ -293,6 +295,7 @@ def run_torchscript_separate_export(
         opset_version=torch_export_onnx_opset_version,
         do_constant_folding=True,
         verbose=args.verbose,
+        dynamo=False,
     )
 
     # Check decoder_with_past_model.onnx and save all external data to one file
@@ -404,7 +407,7 @@ def optimize_export(
     world_size: int = 1,
     window_size: int = -1,
 ):
-    from fusion_options import FusionOptions
+    from fusion_options import FusionOptions  # noqa: PLC0415
 
     optimization_options = FusionOptions("gpt2")
 
@@ -489,10 +492,10 @@ def smooth_quant(
     decoder_model_int8_path: str,
     decoder_with_past_model_int8_path: str,
 ):
-    from neural_compressor import PostTrainingQuantConfig, set_workspace
-    from neural_compressor import quantization as intel_quantization
-    from onnx.external_data_helper import load_external_data_for_model
-    from quant_kv_dataloader import QuantKVDataLoader
+    from neural_compressor import PostTrainingQuantConfig, set_workspace  # noqa: PLC0415
+    from neural_compressor import quantization as intel_quantization  # noqa: PLC0415
+    from onnx.external_data_helper import load_external_data_for_model  # noqa: PLC0415
+    from quant_kv_dataloader import QuantKVDataLoader  # noqa: PLC0415
 
     set_workspace(args.nc_workspace)
     quantization_config = PostTrainingQuantConfig(
@@ -631,7 +634,7 @@ def get_args():
         "--execution_provider",
         required=False,
         default="cpu",
-        choices=["cpu", "cuda", "rocm"],
+        choices=["cpu", "cuda"],
         help="Execution provider to verify parity with",
     )
 
@@ -669,6 +672,8 @@ def get_args():
     )
 
     blockwise_group = parser.add_argument_group("blockwise (4-bit quantization)")
+
+    parser.add_argument("--bits", default=4, type=int, help="the target bits to represent weight")
 
     blockwise_group.add_argument(
         "--block_size",
@@ -799,6 +804,12 @@ def get_args():
 
 
 def main():
+    warnings.warn(
+        "This example is deprecated. Use the Olive recipe instead: "
+        "https://github.com/microsoft/olive-recipes/tree/main",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     if version.parse(torch.__version__) < version.parse("2.2.0"):
         logger.error(f"Detected PyTorch version {torch.__version__}. Please upgrade and use v2.2.0 or newer.")
         return
@@ -988,6 +999,7 @@ def main():
                         model = onnx.load_model(fp_path, load_external_data=True)
                         quant = MatMulNBitsQuantizer(
                             model=model,
+                            bits=args.bits,
                             block_size=args.block_size,
                             is_symmetric=True,
                             accuracy_level=args.int4_accuracy_level,

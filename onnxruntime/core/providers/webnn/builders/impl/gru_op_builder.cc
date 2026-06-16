@@ -143,8 +143,7 @@ bool GruOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node
 
     const auto& sequence_lens_tensor = *seq_initializer;
     std::vector<int32_t> sequence_lens;
-    if (!ReadIntArrayFrom1DTensor(sequence_lens_tensor, sequence_lens, logger)) {
-      LOGS(logger, ERROR) << "Cannot read sequence lens tensor";
+    if (!ReadIntArrayFrom1DTensor(sequence_lens_tensor, sequence_lens, graph_viewer, logger)) {
       return false;
     }
     if (!std::all_of(sequence_lens.begin(), sequence_lens.end(),
@@ -220,7 +219,8 @@ bool GruOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
     return false;
   }
 
-  return IsDataTypeSupportedByOp(op_type, input_X_type, wnn_limits, "input", "X", logger);
+  return IsDataTypeSupportedByOp(op_type, input_X_type, wnn_limits, "input", "X", logger) &&
+         IsInputRankSupportedByOp(node, wnn_limits, logger);
 }
 
 bool GruOpBuilder::HasSupportedOutputsImpl(const Node& node,
@@ -237,15 +237,15 @@ bool GruOpBuilder::HasSupportedOutputsImpl(const Node& node,
   bool Y_h_supported = has_Y_h && GetType(*output_defs[1], Y_h_type, logger);
 
   if (Y_supported && !Y_h_supported) {
-    return IsDataTypeSupportedByOp(op_type, Y_type, wnn_limits, "outputs", "Y", logger);
+    return IsDataTypeSupportedByOp(op_type, Y_type, wnn_limits, "output1", "Y", logger);
   } else if (!Y_supported && Y_h_supported) {
-    return IsDataTypeSupportedByOp(op_type, Y_h_type, wnn_limits, "outputs", "Y_h", logger);
+    return IsDataTypeSupportedByOp(op_type, Y_h_type, wnn_limits, "output0", "Y_h", logger);
   } else if (Y_supported && Y_h_supported) {
     if (Y_type != Y_h_type) {
       LOGS(logger, VERBOSE) << "[GRU] Output data types must be the same.";
       return false;
     }
-    return IsDataTypeSupportedByOp(op_type, Y_type, wnn_limits, "outputs", "Y", logger);
+    return IsDataTypeSupportedByOp(op_type, Y_type, wnn_limits, "output1", "Y", logger);
   } else {
     LOGS(logger, VERBOSE) << "[GRU] No output found.";
     return false;

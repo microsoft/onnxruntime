@@ -30,9 +30,10 @@ static GetTestModelFn BuildF32ConvTestCase(const std::string& conv_op_type, cons
                                            const std::vector<int64_t>& dilations,
                                            std::optional<int64_t> group,
                                            const std::string& auto_pad = "NOTSET",
-                                           std::optional<OutputActivationInfo> output_activation = std::nullopt) {
+                                           std::optional<OutputActivationInfo> output_activation = std::nullopt,
+                                           const std::optional<std::vector<int64_t>>& output_shape = std::nullopt) {
   return [conv_op_type, input_def, weights_def, bias_def, strides, pads,
-          dilations, group, auto_pad, output_activation](ModelTestBuilder& builder) {
+          dilations, group, auto_pad, output_activation, output_shape](ModelTestBuilder& builder) {
     std::vector<NodeArg*> conv_inputs = {
         MakeTestInput(builder, input_def),
         MakeTestInput(builder, weights_def)};
@@ -62,6 +63,10 @@ static GetTestModelFn BuildF32ConvTestCase(const std::string& conv_op_type, cons
       conv_node.AddAttribute("dilations", dilations);
     }
 
+    if (output_shape.has_value()) {
+      conv_node.AddAttribute("output_shape", output_shape.value());
+    }
+
     if (output_activation.has_value()) {
       NodeArg* output = builder.MakeOutput();
       std::vector<NodeArg*> activation_inputs = {conv_output};
@@ -73,21 +78,197 @@ static GetTestModelFn BuildF32ConvTestCase(const std::string& conv_op_type, cons
   };
 }
 
+// Creates a graph with a single Q/DQ Conv operator with mismatched bias scales to test bias requantization.
+template <typename ActivationQType, typename WeightQType>
+static GetTestQDQModelFn<ActivationQType> BuildQDQConvBiasRequantTestCase(
+    const std::string& conv_op_type,
+    const TestInputDef<float>& input_def,
+    const TestInputDef<float>& weights_def,
+    const TestInputDef<float>& bias_def,
+    const std::vector<int64_t>& strides,
+    const std::vector<int64_t>& pads,
+    const std::vector<int64_t>& dilations,
+    std::optional<int64_t> group,
+    const std::string& auto_pad = "NOTSET",
+    bool use_contrib_qdq = false) {
+  return [conv_op_type, input_def, weights_def, bias_def, strides, pads,
+          dilations, group, auto_pad, use_contrib_qdq](ModelTestBuilder& builder,
+                                                       std::vector<QuantParams<ActivationQType>>& output_qparams) {
+    std::vector<NodeArg*> conv_inputs;
+
+    // input -> Q/DQ ->
+    auto* input = MakeTestInput(builder, input_def);
+    QuantParams<ActivationQType> input_qparams = GetTestInputQuantParams<ActivationQType>(input_def);
+    auto* input_qdq = AddQDQNodePair<ActivationQType>(builder, input, input_qparams.scale, input_qparams.zero_point,
+                                                      use_contrib_qdq);
+    conv_inputs.push_back(input_qdq);
+
+    // weights -> Q/DQ ->
+    auto* weights = MakeTestInput(builder, weights_def);
+    QuantParams<WeightQType> weights_qparams = GetTestInputQuantParams<WeightQType>(weights_def);
+    auto* weights_qdq = AddQDQNodePair<WeightQType>(builder, weights, weights_qparams.scale,
+                                                    weights_qparams.zero_point, use_contrib_qdq);
+    conv_inputs.push_back(weights_qdq);
+
+    // bias -> Create bias with MISMATCHED scale to trigger requantization
+    if (!bias_def.GetShape().empty()) {
+      // Intentionally use a WRONG bias scale that doesn't match (input_scale * weight_scale)
+      // This should trigger the bias requantization logic in QNN EP
+      const float correct_bias_scale = input_qparams.scale * weights_qparams.scale;
+      const float wrong_bias_scale = correct_bias_scale * 2.5f;  // Intentionally wrong scale
+
+      conv_inputs.push_back(MakeTestQDQBiasInput(builder, bias_def, wrong_bias_scale, use_contrib_qdq));
+    }
+
+    auto* conv_output = builder.MakeIntermediate();
+    Node& conv_node = builder.AddNode(conv_op_type, conv_inputs, {conv_output});
+
+    conv_node.AddAttribute("auto_pad", auto_pad);
+
+    if (group.has_value()) {
+      conv_node.AddAttribute("group", group.value());
+    }
+
+    if (!pads.empty() && auto_pad == "NOTSET") {
+      conv_node.AddAttribute("pads", pads);
+    }
+    if (!strides.empty()) {
+      conv_node.AddAttribute("strides", strides);
+    }
+    if (!dilations.empty()) {
+      conv_node.AddAttribute("dilations", dilations);
+    }
+
+    AddQDQNodePairWithOutputAsGraphOutput<ActivationQType>(builder, conv_output, output_qparams[0].scale,
+                                                           output_qparams[0].zero_point, use_contrib_qdq);
+  };
+}
+
+// Creates a graph with a single Q/DQ Conv operator with per-channel weights and mismatched bias scales to test bias requantization.
+template <typename ActivationQType, typename WeightQType>
+static GetTestQDQModelFn<ActivationQType> BuildQDQConvPerChannelBiasRequantTestCase(
+    const std::string& conv_op_type,
+    const TestInputDef<float>& input_def,
+    const TestInputDef<float>& weights_def,
+    const TestInputDef<float>& bias_def,
+    int64_t weight_quant_axis,
+    const std::vector<int64_t>& strides,
+    const std::vector<int64_t>& pads,
+    const std::vector<int64_t>& dilations,
+    std::optional<int64_t> group,
+    const std::string& auto_pad = "NOTSET",
+    bool use_contrib_qdq = false) {
+  return [conv_op_type, input_def, weights_def, bias_def, strides, pads,
+          dilations, group, auto_pad, use_contrib_qdq,
+          weight_quant_axis](ModelTestBuilder& builder,
+                             std::vector<QuantParams<ActivationQType>>& output_qparams) {
+    std::vector<NodeArg*> conv_inputs;
+
+    // input -> Q/DQ ->
+    auto* input = MakeTestInput(builder, input_def);
+    QuantParams<ActivationQType> input_qparams = GetTestInputQuantParams<ActivationQType>(input_def);
+    auto* input_qdq = AddQDQNodePair<ActivationQType>(builder, input, input_qparams.scale, input_qparams.zero_point,
+                                                      use_contrib_qdq);
+    conv_inputs.push_back(input_qdq);
+
+    // Quantized(weights) -> DQ -> (per-channel quantization)
+    ORT_ENFORCE(weights_def.IsInitializer() && weights_def.IsRawData());
+    std::vector<float> weight_scales;
+    std::vector<WeightQType> weight_zero_points;
+    TensorShape weights_shape = weights_def.GetTensorShape();
+    int64_t pos_weight_quant_axis = weight_quant_axis;
+    if (pos_weight_quant_axis < 0) {
+      pos_weight_quant_axis += static_cast<int64_t>(weights_shape.NumDimensions());
+    }
+    GetTestInputQuantParamsPerChannel<WeightQType>(weights_def, weight_scales, weight_zero_points,
+                                                   static_cast<size_t>(pos_weight_quant_axis), true);
+
+    std::vector<WeightQType> quantized_weights;
+    size_t num_weight_storage_elems = weights_shape.Size();
+    if constexpr (std::is_same_v<WeightQType, Int4x2> || std::is_same_v<WeightQType, UInt4x2>) {
+      num_weight_storage_elems = Int4x2::CalcNumInt4Pairs(weights_shape.Size());
+    }
+    quantized_weights.resize(num_weight_storage_elems);
+    QuantizeValues<float, WeightQType>(weights_def.GetRawData(), quantized_weights, weights_shape,
+                                       weight_scales, weight_zero_points, pos_weight_quant_axis);
+
+    NodeArg* weights_initializer = builder.MakeInitializer<WeightQType>(weights_def.GetShape(), quantized_weights);
+    NodeArg* weights_dq = builder.MakeIntermediate();
+    Node& weights_dq_node = builder.AddDequantizeLinearNode<WeightQType>(weights_initializer, weight_scales,
+                                                                         weight_zero_points, weights_dq,
+                                                                         nullptr, use_contrib_qdq);
+    weights_dq_node.AddAttribute("axis", weight_quant_axis);
+    conv_inputs.push_back(weights_dq);
+
+    // Quantized(bias) -> DQ -> (per-channel quantization with WRONG scales)
+    if (!bias_def.GetShape().empty()) {
+      // Create INTENTIONALLY WRONG bias scales that don't match input_scale * weight_scale[i]
+      // This should cause QDQ to fail against CPU, but our requantization should fix it
+      ORT_ENFORCE(bias_def.IsInitializer() && bias_def.IsRawData());
+      std::vector<float> wrong_bias_scales = weight_scales;
+      std::vector<int32_t> bias_zero_points(weight_scales.size(), 0);
+
+      // Apply wrong scaling factors to each channel - this will make QDQ fail without requantization
+      for (size_t i = 0; i < wrong_bias_scales.size(); i++) {
+        // Use different wrong multipliers for each channel to make it really wrong
+        float wrong_multiplier = 1.5f + (i * 0.3f);  // 1.5, 1.8, 2.1, etc.
+        wrong_bias_scales[i] = (input_qparams.scale * weight_scales[i]) * wrong_multiplier;
+      }
+
+      TensorShape bias_shape = bias_def.GetTensorShape();
+      std::vector<int32_t> quantized_biases(bias_shape.Size());
+      QuantizeValues<float, int32_t>(bias_def.GetRawData(), quantized_biases, bias_shape, wrong_bias_scales,
+                                     bias_zero_points, 0);
+
+      NodeArg* bias_initializer = builder.MakeInitializer<int32_t>(bias_def.GetShape(), quantized_biases);
+      NodeArg* bias_dq = builder.MakeIntermediate();
+      Node& bias_dq_node = builder.AddDequantizeLinearNode<int32_t>(bias_initializer, wrong_bias_scales, bias_zero_points,
+                                                                    bias_dq, nullptr, use_contrib_qdq);
+
+      bias_dq_node.AddAttribute("axis", static_cast<int64_t>(0));
+      conv_inputs.push_back(bias_dq);
+    }
+
+    auto* conv_output = builder.MakeIntermediate();
+    Node& conv_node = builder.AddNode(conv_op_type, conv_inputs, {conv_output});
+
+    conv_node.AddAttribute("auto_pad", auto_pad);
+
+    if (group.has_value()) {
+      conv_node.AddAttribute("group", group.value());
+    }
+
+    if (!pads.empty() && auto_pad == "NOTSET") {
+      conv_node.AddAttribute("pads", pads);
+    }
+    if (!strides.empty()) {
+      conv_node.AddAttribute("strides", strides);
+    }
+    if (!dilations.empty()) {
+      conv_node.AddAttribute("dilations", dilations);
+    }
+
+    AddQDQNodePairWithOutputAsGraphOutput<ActivationQType>(builder, conv_output, output_qparams[0].scale,
+                                                           output_qparams[0].zero_point, use_contrib_qdq);
+  };
+}
+
 // Runs a Conv model on the QNN CPU backend. Checks the graph node assignment, and that inference
 // outputs for QNN EP and CPU EP match.
-static void RunCPUConvOpTest(const std::string& conv_op_type, const TestInputDef<float>& input_def,
-                             const TestInputDef<float>& weights_def,
-                             const TestInputDef<float>& bias_def,
-                             const std::vector<int64_t>& strides,
-                             const std::vector<int64_t>& pads,
-                             const std::vector<int64_t>& dilations,
-                             std::optional<int64_t> group,
-                             const std::string& auto_pad,
-                             ExpectedEPNodeAssignment expected_ep_assignment,
-                             int opset = 13,
-                             float fp32_abs_err = 1e-5f) {
+static void RunConvOpTest(const std::string& conv_op_type, const TestInputDef<float>& input_def,
+                          const TestInputDef<float>& weights_def,
+                          const TestInputDef<float>& bias_def,
+                          const std::vector<int64_t>& strides,
+                          const std::vector<int64_t>& pads,
+                          const std::vector<int64_t>& dilations,
+                          std::optional<int64_t> group,
+                          const std::string& auto_pad,
+                          ExpectedEPNodeAssignment expected_ep_assignment,
+                          const std::string& backend_name = "cpu",
+                          int opset = 13,
+                          float fp32_abs_err = 1e-5f) {
   ProviderOptions provider_options;
-  provider_options["backend_type"] = "cpu";
+  provider_options["backend_type"] = backend_name;
   provider_options["offload_graph_io_quantization"] = "0";
 
   auto build_fn = BuildF32ConvTestCase(conv_op_type, input_def, weights_def, bias_def, strides, pads,
@@ -112,11 +293,12 @@ static GetTestQDQModelFn<ActivationQType> BuildQDQConvTestCase(
     std::optional<int64_t> group,
     const std::string& auto_pad = "NOTSET",
     bool use_contrib_qdq = false,
-    std::optional<OutputActivationInfo> output_activation = std::nullopt) {
+    std::optional<OutputActivationInfo> output_activation = std::nullopt,
+    std::optional<std::vector<int64_t>> output_shape = std::nullopt) {
   return [conv_op_type, input_def, weights_def, bias_def, strides, pads,
           dilations, group, auto_pad,
-          use_contrib_qdq, output_activation](ModelTestBuilder& builder,
-                                              std::vector<QuantParams<ActivationQType>>& output_qparams) {
+          use_contrib_qdq, output_activation, output_shape](ModelTestBuilder& builder,
+                                                            std::vector<QuantParams<ActivationQType>>& output_qparams) {
     std::vector<NodeArg*> conv_inputs;
 
     // input -> Q/DQ ->
@@ -158,6 +340,9 @@ static GetTestQDQModelFn<ActivationQType> BuildQDQConvTestCase(
     }
     if (!dilations.empty()) {
       conv_node.AddAttribute("dilations", dilations);
+    }
+    if (output_shape.has_value()) {
+      conv_node.AddAttribute("output_shape", output_shape.value());
     }
 
     NodeArg* q_input = conv_output;
@@ -306,17 +491,18 @@ static void RunHTPConvOpTest(const std::string& conv_op_type, const TestInputDef
                              bool use_contrib_qdq = false,
                              int opset = 13,
                              QDQTolerance tolerance = QDQTolerance(),
-                             std::optional<OutputActivationInfo> output_activation = std::nullopt) {
+                             std::optional<OutputActivationInfo> output_activation = std::nullopt,
+                             std::optional<std::vector<int64_t>> output_shape = std::nullopt) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy(BuildF32ConvTestCase(conv_op_type, input_def, weights_def, bias_def, strides, pads, dilations,
-                                            group, auto_pad, output_activation),
+                                            group, auto_pad, output_activation, output_shape),
                        BuildQDQConvTestCase<ActivationQType, WeightQType>(conv_op_type, input_def, weights_def,
                                                                           bias_def, strides, pads, dilations,
                                                                           group, auto_pad, use_contrib_qdq,
-                                                                          output_activation),
+                                                                          output_activation, output_shape),
                        provider_options,
                        opset,
                        expected_ep_assignment,
@@ -358,128 +544,128 @@ static void RunHTPConvOpPerChannelTest(const std::string& conv_op_type, const Te
 // TODO: Segfaults when calling graphFinalize(). v2.13
 // fixed by QNN 2.32
 TEST_F(QnnCPUBackendTests, Convf32_dynamic_bias) {
-  RunCPUConvOpTest("Conv",
-                   TestInputDef<float>({1, 1, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
-                   TestInputDef<float>({2, 1, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
-                   TestInputDef<float>({2}, false, -1.0f, 1.0f),           // Random dynamic bias
-                   {1, 1},                                                 // default strides
-                   {0, 0, 0, 0},                                           // default pads
-                   {1, 1},                                                 // default dilations
-                   1,                                                      // default group
-                   "NOTSET",                                               // No auto-padding
-                   ExpectedEPNodeAssignment::All);
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 1, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
+                TestInputDef<float>({2, 1, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
+                TestInputDef<float>({2}, false, -1.0f, 1.0f),           // Random dynamic bias
+                {1, 1},                                                 // default strides
+                {0, 0, 0, 0},                                           // default pads
+                {1, 1},                                                 // default dilations
+                1,                                                      // default group
+                "NOTSET",                                               // No auto-padding
+                ExpectedEPNodeAssignment::All);
 
-  RunCPUConvOpTest("Conv",
-                   TestInputDef<float>({1, 1, 3, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
-                   TestInputDef<float>({2, 1, 2, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
-                   TestInputDef<float>({2}, false, -1.0f, 1.0f),              // Random dynamic bias
-                   {1, 1, 1},                                                 // default strides
-                   {0, 0, 0, 0, 0, 0},                                        // default pads
-                   {1, 1, 1},                                                 // default dilations
-                   1,                                                         // default group
-                   "NOTSET",                                                  // No auto-padding
-                   ExpectedEPNodeAssignment::All);
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 1, 3, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
+                TestInputDef<float>({2, 1, 2, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
+                TestInputDef<float>({2}, false, -1.0f, 1.0f),              // Random dynamic bias
+                {1, 1, 1},                                                 // default strides
+                {0, 0, 0, 0, 0, 0},                                        // default pads
+                {1, 1, 1},                                                 // default dilations
+                1,                                                         // default group
+                "NOTSET",                                                  // No auto-padding
+                ExpectedEPNodeAssignment::All);
 }
 
 // Check that QNN compiles DQ -> Conv -> Q as a single unit.
 // Tests bias as an initializer.
 TEST_F(QnnCPUBackendTests, Convf32_bias_initializer) {
-  RunCPUConvOpTest("Conv",
-                   TestInputDef<float>({1, 1, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
-                   TestInputDef<float>({2, 1, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
-                   TestInputDef<float>({2}, true, -1.0f, 1.0f),            // Random static bias
-                   {1, 1},                                                 // default strides
-                   {0, 0, 0, 0},                                           // default pads
-                   {1, 1},                                                 // default dilations
-                   1,                                                      // default group
-                   "NOTSET",                                               // No auto-padding
-                   ExpectedEPNodeAssignment::All);
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 1, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
+                TestInputDef<float>({2, 1, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
+                TestInputDef<float>({2}, true, -1.0f, 1.0f),            // Random static bias
+                {1, 1},                                                 // default strides
+                {0, 0, 0, 0},                                           // default pads
+                {1, 1},                                                 // default dilations
+                1,                                                      // default group
+                "NOTSET",                                               // No auto-padding
+                ExpectedEPNodeAssignment::All);
 
-  RunCPUConvOpTest("Conv",
-                   TestInputDef<float>({1, 1, 3, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
-                   TestInputDef<float>({2, 1, 2, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
-                   TestInputDef<float>({2}, true, -1.0f, 1.0f),               // Random static bias
-                   {1, 1, 1},                                                 // default strides
-                   {0, 0, 0, 0, 0, 0},                                        // default pads
-                   {1, 1, 1},                                                 // default dilations
-                   1,                                                         // default group
-                   "NOTSET",                                                  // No auto-padding
-                   ExpectedEPNodeAssignment::All);
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 1, 3, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
+                TestInputDef<float>({2, 1, 2, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
+                TestInputDef<float>({2}, true, -1.0f, 1.0f),               // Random static bias
+                {1, 1, 1},                                                 // default strides
+                {0, 0, 0, 0, 0, 0},                                        // default pads
+                {1, 1, 1},                                                 // default dilations
+                1,                                                         // default group
+                "NOTSET",                                                  // No auto-padding
+                ExpectedEPNodeAssignment::All);
 }
 
 // Tests Conv's auto_pad value "SAME_UPPER" (compares to CPU EP).
 TEST_F(QnnCPUBackendTests, Convf32_AutoPadUpper) {
-  RunCPUConvOpTest("Conv",
-                   TestInputDef<float>({1, 1, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
-                   TestInputDef<float>({2, 1, 2, 2}, true, -1.0f, 1.0f),   // Random static weights
-                   TestInputDef<float>({2}, true, -1.0f, 1.0f),            // Random static bias
-                   {1, 1},                                                 // strides
-                   {},                                                     // pads
-                   {1, 1},                                                 // dilations
-                   1,                                                      // default group
-                   "SAME_UPPER",                                           // auto_pad
-                   ExpectedEPNodeAssignment::All);
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 1, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
+                TestInputDef<float>({2, 1, 2, 2}, true, -1.0f, 1.0f),   // Random static weights
+                TestInputDef<float>({2}, true, -1.0f, 1.0f),            // Random static bias
+                {1, 1},                                                 // strides
+                {},                                                     // pads
+                {1, 1},                                                 // dilations
+                1,                                                      // default group
+                "SAME_UPPER",                                           // auto_pad
+                ExpectedEPNodeAssignment::All);
 
-  RunCPUConvOpTest("Conv",
-                   TestInputDef<float>({1, 1, 3, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
-                   TestInputDef<float>({2, 1, 2, 2, 2}, true, -1.0f, 1.0f),   // Random static weights
-                   TestInputDef<float>({2}, true, -1.0f, 1.0f),               // Random static bias
-                   {1, 1, 1},                                                 // strides
-                   {},                                                        // pads
-                   {1, 1, 1},                                                 // dilations
-                   1,                                                         // default group
-                   "SAME_UPPER",                                              // auto_pad
-                   ExpectedEPNodeAssignment::All);
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 1, 3, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
+                TestInputDef<float>({2, 1, 2, 2, 2}, true, -1.0f, 1.0f),   // Random static weights
+                TestInputDef<float>({2}, true, -1.0f, 1.0f),               // Random static bias
+                {1, 1, 1},                                                 // strides
+                {},                                                        // pads
+                {1, 1, 1},                                                 // dilations
+                1,                                                         // default group
+                "SAME_UPPER",                                              // auto_pad
+                ExpectedEPNodeAssignment::All);
 }
 
 // Tests ConvTranspose's auto_pad value "SAME_UPPER" (compares to CPU EP).
 TEST_F(QnnCPUBackendTests, ConvTransposef32_AutoPadUpper) {
-  RunCPUConvOpTest("ConvTranspose",
-                   TestInputDef<float>({1, 1, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
-                   TestInputDef<float>({1, 2, 2, 2}, true, -1.0f, 1.0f),   // Random static weights
-                   TestInputDef<float>({2}, true, -1.0f, 1.0f),            // Random static bias
-                   {1, 1},                                                 // strides
-                   {},                                                     // pads
-                   {1, 1},                                                 // dilations
-                   1,                                                      // default group
-                   "SAME_UPPER",                                           // auto_pad
-                   ExpectedEPNodeAssignment::All);
+  RunConvOpTest("ConvTranspose",
+                TestInputDef<float>({1, 1, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
+                TestInputDef<float>({1, 2, 2, 2}, true, -1.0f, 1.0f),   // Random static weights
+                TestInputDef<float>({2}, true, -1.0f, 1.0f),            // Random static bias
+                {1, 1},                                                 // strides
+                {},                                                     // pads
+                {1, 1},                                                 // dilations
+                1,                                                      // default group
+                "SAME_UPPER",                                           // auto_pad
+                ExpectedEPNodeAssignment::All);
 
-  RunCPUConvOpTest("ConvTranspose",
-                   TestInputDef<float>({1, 1, 3, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
-                   TestInputDef<float>({1, 2, 2, 2, 2}, true, -1.0f, 1.0f),   // Random static weights
-                   TestInputDef<float>({2}, true, -1.0f, 1.0f),               // Random static bias
-                   {1, 1, 1},                                                 // strides
-                   {},                                                        // pads
-                   {1, 1, 1},                                                 // dilations
-                   1,                                                         // default group
-                   "SAME_UPPER",                                              // auto_pad
-                   ExpectedEPNodeAssignment::All);
+  RunConvOpTest("ConvTranspose",
+                TestInputDef<float>({1, 1, 3, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
+                TestInputDef<float>({1, 2, 2, 2, 2}, true, -1.0f, 1.0f),   // Random static weights
+                TestInputDef<float>({2}, true, -1.0f, 1.0f),               // Random static bias
+                {1, 1, 1},                                                 // strides
+                {},                                                        // pads
+                {1, 1, 1},                                                 // dilations
+                1,                                                         // default group
+                "SAME_UPPER",                                              // auto_pad
+                ExpectedEPNodeAssignment::All);
 }
 
 // Tests Conv's auto_pad value "SAME_LOWER" (compares to CPU EP).
 TEST_F(QnnCPUBackendTests, Convf32_AutoPadLower) {
-  RunCPUConvOpTest("Conv",
-                   TestInputDef<float>({1, 1, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
-                   TestInputDef<float>({2, 1, 2, 2}, false, -1.0f, 1.0f),  // Random dynamic weights
-                   TestInputDef<float>({2}, true, -1.0f, 1.0f),            // Random static bias
-                   {1, 1},                                                 // strides
-                   {},                                                     // pads
-                   {1, 1},                                                 // dilations
-                   1,                                                      // default group
-                   "SAME_LOWER",                                           // auto_pad
-                   ExpectedEPNodeAssignment::All);
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 1, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
+                TestInputDef<float>({2, 1, 2, 2}, false, -1.0f, 1.0f),  // Random dynamic weights
+                TestInputDef<float>({2}, true, -1.0f, 1.0f),            // Random static bias
+                {1, 1},                                                 // strides
+                {},                                                     // pads
+                {1, 1},                                                 // dilations
+                1,                                                      // default group
+                "SAME_LOWER",                                           // auto_pad
+                ExpectedEPNodeAssignment::All);
 
-  RunCPUConvOpTest("Conv",
-                   TestInputDef<float>({1, 1, 3, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
-                   TestInputDef<float>({2, 1, 2, 2, 2}, false, -1.0f, 1.0f),  // Random dynamic weights
-                   TestInputDef<float>({2}, true, -1.0f, 1.0f),               // Random static bias
-                   {1, 1, 1},                                                 // strides
-                   {},                                                        // pads
-                   {1, 1, 1},                                                 // dilations
-                   1,                                                         // default group
-                   "SAME_LOWER",                                              // auto_pad
-                   ExpectedEPNodeAssignment::All);
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 1, 3, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
+                TestInputDef<float>({2, 1, 2, 2, 2}, false, -1.0f, 1.0f),  // Random dynamic weights
+                TestInputDef<float>({2}, true, -1.0f, 1.0f),               // Random static bias
+                {1, 1, 1},                                                 // strides
+                {},                                                        // pads
+                {1, 1, 1},                                                 // dilations
+                1,                                                         // default group
+                "SAME_LOWER",                                              // auto_pad
+                ExpectedEPNodeAssignment::All);
 }
 
 // Tests ConvTranspose's auto_pad value "SAME_LOWER" (compares to CPU EP).
@@ -487,16 +673,16 @@ TEST_F(QnnCPUBackendTests, Convf32_AutoPadLower) {
 // unknown file: error: SEH exception with code 0xc0000005 thrown in the test body
 // fixed by QNN 2.32
 TEST_F(QnnCPUBackendTests, ConvTransposef32_AutoPadLower) {
-  RunCPUConvOpTest("ConvTranspose",
-                   TestInputDef<float>({1, 1, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
-                   TestInputDef<float>({1, 2, 2, 2}, false, -1.0f, 1.0f),  // Random dynamic weights
-                   TestInputDef<float>({2}, true, -1.0f, 1.0f),            // Random static bias
-                   {1, 1},                                                 // strides
-                   {},                                                     // pads
-                   {1, 1},                                                 // dilations
-                   1,                                                      // default group
-                   "SAME_LOWER",                                           // auto_pad
-                   ExpectedEPNodeAssignment::All);
+  RunConvOpTest("ConvTranspose",
+                TestInputDef<float>({1, 1, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
+                TestInputDef<float>({1, 2, 2, 2}, false, -1.0f, 1.0f),  // Random dynamic weights
+                TestInputDef<float>({2}, true, -1.0f, 1.0f),            // Random static bias
+                {1, 1},                                                 // strides
+                {},                                                     // pads
+                {1, 1},                                                 // dilations
+                1,                                                      // default group
+                "SAME_LOWER",                                           // auto_pad
+                ExpectedEPNodeAssignment::All);
 }
 
 // Tests ConvTranspose's auto_pad value "SAME_LOWER" (compares to CPU EP).
@@ -505,45 +691,47 @@ TEST_F(QnnCPUBackendTests, ConvTransposef32_AutoPadLower) {
 // 0xC0000005: Access violation reading location 0x0000000000000000.
 // fixed by QNN 2.32
 TEST_F(QnnCPUBackendTests, ConvTranspose3D_f32_AutoPadLower) {
-  RunCPUConvOpTest("ConvTranspose",
-                   TestInputDef<float>({1, 1, 3, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
-                   TestInputDef<float>({1, 2, 2, 2, 2}, false, -1.0f, 1.0f),  // Random dynamic weights
-                   TestInputDef<float>({2}, true, -1.0f, 1.0f),               // Random static bias
-                   {1, 1, 1},                                                 // strides
-                   {},                                                        // pads
-                   {1, 1, 1},                                                 // dilations
-                   1,                                                         // default group
-                   "SAME_LOWER",                                              // auto_pad
-                   ExpectedEPNodeAssignment::All);
+  RunConvOpTest("ConvTranspose",
+                TestInputDef<float>({1, 1, 3, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
+                TestInputDef<float>({1, 2, 2, 2, 2}, false, -1.0f, 1.0f),  // Random dynamic weights
+                TestInputDef<float>({2}, true, -1.0f, 1.0f),               // Random static bias
+                {1, 1, 1},                                                 // strides
+                {},                                                        // pads
+                {1, 1, 1},                                                 // dilations
+                1,                                                         // default group
+                "SAME_LOWER",                                              // auto_pad
+                ExpectedEPNodeAssignment::All);
 }
 
 // large input,output, pads
 TEST_F(QnnCPUBackendTests, Convf32_large_input1_pad_bias_initializer) {
-  RunCPUConvOpTest("Conv",
-                   TestInputDef<float>({1, 3, 60, 452}, false, 0.0f, 10.0f),  // Random dynamic input
-                   TestInputDef<float>({16, 3, 3, 3}, true, 0.0f, 1.0f),      // Random dynamic weights
-                   TestInputDef<float>({16}, true, -1.0f, 1.0f),              // Random static bias
-                   {1, 1},
-                   {1, 1, 1, 1},
-                   {1, 1},
-                   1,  // default group
-                   "NOTSET",
-                   ExpectedEPNodeAssignment::All,
-                   13,
-                   1e-4f);
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 3, 60, 452}, false, 0.0f, 10.0f),  // Random dynamic input
+                TestInputDef<float>({16, 3, 3, 3}, true, 0.0f, 1.0f),      // Random dynamic weights
+                TestInputDef<float>({16}, true, -1.0f, 1.0f),              // Random static bias
+                {1, 1},
+                {1, 1, 1, 1},
+                {1, 1},
+                1,  // default group
+                "NOTSET",
+                ExpectedEPNodeAssignment::All,
+                "cpu",
+                13,
+                1e-4f);
 
-  RunCPUConvOpTest("Conv",
-                   TestInputDef<float>({1, 3, 60, 452, 20}, false, 0.0f, 10.0f),  // Random dynamic input
-                   TestInputDef<float>({16, 3, 3, 3, 3}, true, 0.0f, 1.0f),       // Random dynamic weights
-                   TestInputDef<float>({16}, true, -1.0f, 1.0f),                  // Random static bias
-                   {1, 1, 1},
-                   {1, 1, 1, 1, 1, 1},
-                   {1, 1, 1},
-                   1,  // default group
-                   "NOTSET",
-                   ExpectedEPNodeAssignment::All,
-                   13,
-                   2e-4f);
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 3, 60, 452, 20}, false, 0.0f, 10.0f),  // Random dynamic input
+                TestInputDef<float>({16, 3, 3, 3, 3}, true, 0.0f, 1.0f),       // Random dynamic weights
+                TestInputDef<float>({16}, true, -1.0f, 1.0f),                  // Random static bias
+                {1, 1, 1},
+                {1, 1, 1, 1, 1, 1},
+                {1, 1, 1},
+                1,  // default group
+                "NOTSET",
+                ExpectedEPNodeAssignment::All,
+                "cpu",
+                13,
+                2e-4f);
 }
 
 TEST_F(QnnCPUBackendTests, Convf32_large_input2_nopad_bias_initializer) {
@@ -555,76 +743,78 @@ TEST_F(QnnCPUBackendTests, Convf32_large_input2_nopad_bias_initializer) {
   float fp32_abs_err = 1e-5f;  // default value
 #endif
 
-  RunCPUConvOpTest("Conv",
-                   TestInputDef<float>({1, 32, 16, 113}, false, -3.0f, 3.0f),  // Random dynamic input
-                   TestInputDef<float>({16, 32, 1, 1}, false, -1.0f, 1.0f),    // Random dynamic weights
-                   TestInputDef<float>({16}, true, -1.0f, 1.0f),               // Random static bias
-                   {1, 1},
-                   {0, 0, 0, 0},
-                   {1, 1},
-                   1,  // default group
-                   "NOTSET",
-                   ExpectedEPNodeAssignment::All,
-                   13,  // opset
-                   fp32_abs_err);
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 32, 16, 113}, false, -3.0f, 3.0f),  // Random dynamic input
+                TestInputDef<float>({16, 32, 1, 1}, false, -1.0f, 1.0f),    // Random dynamic weights
+                TestInputDef<float>({16}, true, -1.0f, 1.0f),               // Random static bias
+                {1, 1},
+                {0, 0, 0, 0},
+                {1, 1},
+                1,  // default group
+                "NOTSET",
+                ExpectedEPNodeAssignment::All,
+                "cpu",
+                13,  // opset
+                fp32_abs_err);
 
-  RunCPUConvOpTest("Conv",
-                   TestInputDef<float>({1, 32, 16, 113, 12}, false, -3.0f, 3.0f),  // Random dynamic input
-                   TestInputDef<float>({16, 32, 1, 1, 1}, false, -1.0f, 1.0f),     // Random dynamic weights
-                   TestInputDef<float>({16}, true, -1.0f, 1.0f),                   // Random static bias
-                   {1, 1, 1},
-                   {0, 0, 0, 0, 0, 0},
-                   {1, 1, 1},
-                   1,  // default group
-                   "NOTSET",
-                   ExpectedEPNodeAssignment::All,
-                   13,  // opset
-                   fp32_abs_err);
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 32, 16, 113, 12}, false, -3.0f, 3.0f),  // Random dynamic input
+                TestInputDef<float>({16, 32, 1, 1, 1}, false, -1.0f, 1.0f),     // Random dynamic weights
+                TestInputDef<float>({16}, true, -1.0f, 1.0f),                   // Random static bias
+                {1, 1, 1},
+                {0, 0, 0, 0, 0, 0},
+                {1, 1, 1},
+                1,  // default group
+                "NOTSET",
+                ExpectedEPNodeAssignment::All,
+                "cpu",
+                13,  // opset
+                fp32_abs_err);
 }
 
 // Test 1D Conv with static weights (implemented in QNN EP as 2D convolution with height of 1).
 TEST_F(QnnCPUBackendTests, Conv1Df32_StaticWeights_DefaultBias) {
   std::vector<float> input_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
-  RunCPUConvOpTest("Conv",
-                   TestInputDef<float>({1, 2, 4}, false, input_data),               // Dynamic input
-                   TestInputDef<float>({1, 2, 2}, true, {1.0f, 2.0f, 3.0f, 4.0f}),  // Static weights
-                   TestInputDef<float>({1}, true, {1.0f}),                          // Initializer Bias
-                   {1},                                                             // Strides
-                   {0, 0},                                                          // Pads
-                   {1},                                                             // Dilations
-                   1,                                                               // default group
-                   "NOTSET",
-                   ExpectedEPNodeAssignment::All);
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 2, 4}, false, input_data),               // Dynamic input
+                TestInputDef<float>({1, 2, 2}, true, {1.0f, 2.0f, 3.0f, 4.0f}),  // Static weights
+                TestInputDef<float>({1}, true, {1.0f}),                          // Initializer Bias
+                {1},                                                             // Strides
+                {0, 0},                                                          // Pads
+                {1},                                                             // Dilations
+                1,                                                               // default group
+                "NOTSET",
+                ExpectedEPNodeAssignment::All);
 }
 
 // Test 1D Conv with dynamic weights (implemented in QNN EP as 2D convolution with height of 1).
 TEST_F(QnnCPUBackendTests, Conv1Df32_DynamicWeights_DefaultBias) {
   std::vector<float> input_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
-  RunCPUConvOpTest("Conv",
-                   TestInputDef<float>({1, 2, 4}, false, input_data),                // Dynamic input
-                   TestInputDef<float>({1, 2, 2}, false, {1.0f, 2.0f, 3.0f, 4.0f}),  // Dynamic weights
-                   TestInputDef<float>(),                                            // Default bias
-                   {1},                                                              // Strides
-                   {0, 0},                                                           // Pads
-                   {1},                                                              // Dilations
-                   1,                                                                // default group
-                   "NOTSET",
-                   ExpectedEPNodeAssignment::All);
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 2, 4}, false, input_data),                // Dynamic input
+                TestInputDef<float>({1, 2, 2}, false, {1.0f, 2.0f, 3.0f, 4.0f}),  // Dynamic weights
+                TestInputDef<float>(),                                            // Default bias
+                {1},                                                              // Strides
+                {0, 0},                                                           // Pads
+                {1},                                                              // Dilations
+                1,                                                                // default group
+                "NOTSET",
+                ExpectedEPNodeAssignment::All);
 }
 
 // Test 1D ConvTranspose with static weights (implemented in QNN EP as 2D convolution with height of 1).
 TEST_F(QnnCPUBackendTests, ConvTranspose1Df32_StaticWeights_DefaultBias) {
   std::vector<float> input_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
-  RunCPUConvOpTest("ConvTranspose",
-                   TestInputDef<float>({1, 2, 4}, false, input_data),               // Dynamic input
-                   TestInputDef<float>({2, 1, 2}, true, {1.0f, 2.0f, 3.0f, 4.0f}),  // Static weights
-                   TestInputDef<float>({1}, true, {0.0f}),                          // Zero bias
-                   {1},                                                             // Strides
-                   {0, 0},                                                          // Pads
-                   {1},                                                             // Dilations
-                   1,                                                               // default group
-                   "NOTSET",
-                   ExpectedEPNodeAssignment::All);
+  RunConvOpTest("ConvTranspose",
+                TestInputDef<float>({1, 2, 4}, false, input_data),               // Dynamic input
+                TestInputDef<float>({2, 1, 2}, true, {1.0f, 2.0f, 3.0f, 4.0f}),  // Static weights
+                TestInputDef<float>({1}, true, {0.0f}),                          // Zero bias
+                {1},                                                             // Strides
+                {0, 0},                                                          // Pads
+                {1},                                                             // Dilations
+                1,                                                               // default group
+                "NOTSET",
+                ExpectedEPNodeAssignment::All);
 }
 
 // Test 1D ConvTranspose with dynamic weights (implemented in QNN EP as 2D convolution with height of 1).
@@ -633,16 +823,16 @@ TEST_F(QnnCPUBackendTests, ConvTranspose1Df32_StaticWeights_DefaultBias) {
 // fixed by QNN 2.32
 TEST_F(QnnCPUBackendTests, ConvTranspose1Df32_DynamicWeights_DefaultBias) {
   std::vector<float> input_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
-  RunCPUConvOpTest("ConvTranspose",
-                   TestInputDef<float>({1, 2, 4}, false, input_data),                // Dynamic input
-                   TestInputDef<float>({2, 1, 2}, false, {1.0f, 2.0f, 3.0f, 4.0f}),  // Dynamic weights
-                   TestInputDef<float>({1}, true, {0.0f}),                           // Zero bias
-                   {1},                                                              // Strides
-                   {0, 0},                                                           // Pads
-                   {1},                                                              // Dilations
-                   1,                                                                // default group
-                   "NOTSET",
-                   ExpectedEPNodeAssignment::All);
+  RunConvOpTest("ConvTranspose",
+                TestInputDef<float>({1, 2, 4}, false, input_data),                // Dynamic input
+                TestInputDef<float>({2, 1, 2}, false, {1.0f, 2.0f, 3.0f, 4.0f}),  // Dynamic weights
+                TestInputDef<float>({1}, true, {0.0f}),                           // Zero bias
+                {1},                                                              // Strides
+                {0, 0},                                                           // Pads
+                {1},                                                              // Dilations
+                1,                                                                // default group
+                "NOTSET",
+                ExpectedEPNodeAssignment::All);
 }
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
@@ -654,7 +844,9 @@ TEST_F(QnnCPUBackendTests, ConvTranspose1Df32_DynamicWeights_DefaultBias) {
 // It has to be QDQ model, because the DQ node with initializer on Conv gets processed first
 // and DQ node requires its node unit to be processed
 // So, Conv gets processed before Mul node
-TEST_F(QnnHTPBackendTests, Test_QDQConvWithDynamicWeightsFromMul) {
+//
+// Since at least QAIRT 2.33 value pair (3.549, 3.588) at index #12709 don't match, which is 0.039 from 3.549
+TEST_F(QnnHTPBackendTests, DISABLED_Test_QDQConvWithDynamicWeightsFromMul) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
@@ -706,9 +898,7 @@ TEST_F(QnnHTPBackendTests, Test_QDQConvWithDynamicWeightsFromMul) {
   RunQnnModelTest(BuildConvMulGraph,
                   provider_options,
                   13,
-                  ExpectedEPNodeAssignment::All,
-                  4e-4f);  // Accuracy decreased slightly in QNN SDK 2.17.
-                           // Expected: 9.94500065, Actual: 9.94537735
+                  ExpectedEPNodeAssignment::All);
 }
 
 // Check that QNN compiles DQ -> Conv -> Q as a single unit.
@@ -725,9 +915,7 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_bias_dynamic_input) {
                                      "NOTSET",
                                      ExpectedEPNodeAssignment::All,
                                      false,  // use_qdq_contrib_ops
-                                     13,     // opset
-                                     // Need tolerance of 0.413% of output range after QNN SDK 2.17
-                                     QDQTolerance(0.00413f));
+                                     13);    // opset
 
   RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
                                      TestInputDef<float>({1, 1, 5, 5, 5}, false, 0.0f, 10.0f),   // Random dynamic input
@@ -740,9 +928,7 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_bias_dynamic_input) {
                                      "NOTSET",
                                      ExpectedEPNodeAssignment::All,
                                      false,  // use_qdq_contrib_ops
-                                     13,     // opset
-                                     // Need tolerance of 0.413% of output range after QNN SDK 2.17
-                                     QDQTolerance(0.00413f));
+                                     13);    // opset
 }
 
 // Test per-channel QDQ Conv. in0: u8, in1 (weight): s8, in2 (bias): s32, out: u8
@@ -799,6 +985,79 @@ TEST_F(QnnHTPBackendTests, ConvU16S4S32_PerChannel) {
                                                ExpectedEPNodeAssignment::All,
                                                false,  // use_qdq_contrib_ops
                                                21);    // opset
+}
+
+// Test bias requantization when bias scale doesn't match (weight_scale * activation_scale)
+// This test uses a bias with intentionally wrong scale to trigger the requantization logic in QNN EP
+TEST_F(QnnHTPBackendTests, ConvU8U8S32_BiasRequantization) {
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  TestQDQModelAccuracy(BuildF32ConvTestCase("Conv",
+                                            TestInputDef<float>({1, 2, 4, 4}, false, -10.0f, 10.0f),  // Input
+                                            TestInputDef<float>({3, 2, 2, 2}, true, -1.0f, 5.0f),     // Weights
+                                            TestInputDef<float>({3}, true, -1.0f, 1.0f),              // Bias
+                                            {1, 1},                                                   // Strides
+                                            {0, 0, 0, 0},                                             // Pads
+                                            {1, 1},                                                   // Dilations
+                                            1,                                                        // Group
+                                            "NOTSET"),                                                // Auto pad
+                       BuildQDQConvBiasRequantTestCase<uint8_t, uint8_t>("Conv",
+                                                                         TestInputDef<float>({1, 2, 4, 4}, false, -10.0f, 10.0f),  // Input
+                                                                         TestInputDef<float>({3, 2, 2, 2}, true, -1.0f, 5.0f),     // Weights
+                                                                         TestInputDef<float>({3}, true, -1.0f, 1.0f),              // Bias (will get wrong scale)
+                                                                         {1, 1},                                                   // Strides
+                                                                         {0, 0, 0, 0},                                             // Pads
+                                                                         {1, 1},                                                   // Dilations
+                                                                         1,                                                        // Group
+                                                                         "NOTSET"),                                                // Auto pad
+                       provider_options,
+                       13,  // opset
+                       ExpectedEPNodeAssignment::All,
+                       QDQTolerance(0.015f));
+}
+
+// Test per-channel bias requantization when bias scales don't match (weight_scale[i] * activation_scale)
+// This test uses a bias with intentionally wrong scales that would cause QDQ to fail against CPU,
+// but the requantization logic should correct it, allowing the test to pass.
+TEST_F(QnnHTPBackendTests, ConvU8S8S32_PerChannel_BiasRequantization) {
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  TestInputDef<float> input_def({1, 2, 4, 4}, false, -10.0f, 10.0f);
+  std::vector<int64_t> weight_shape = {3, 2, 2, 2};
+  TestInputDef<float> weight_def(weight_shape, true,
+                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+  std::vector<int64_t> bias_shape = {3};
+  TestInputDef<float> bias_def(bias_shape, true,
+                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+
+  TestQDQModelAccuracy(BuildF32ConvTestCase("Conv",
+                                            input_def,
+                                            weight_def,
+                                            bias_def,
+                                            {1, 1},        // Strides
+                                            {0, 0, 0, 0},  // Pads
+                                            {1, 1},        // Dilations
+                                            1,             // Group
+                                            "NOTSET"),     // Auto pad
+                       BuildQDQConvPerChannelBiasRequantTestCase<uint8_t, int8_t>("Conv",
+                                                                                  input_def,
+                                                                                  weight_def,
+                                                                                  bias_def,
+                                                                                  0,             // weight quant axis
+                                                                                  {1, 1},        // Strides
+                                                                                  {0, 0, 0, 0},  // Pads
+                                                                                  {1, 1},        // Dilations
+                                                                                  1,             // Group
+                                                                                  "NOTSET",      // Auto pad
+                                                                                  false),        // use_contrib_qdq
+                       provider_options,
+                       13,  // opset
+                       ExpectedEPNodeAssignment::All,
+                       QDQTolerance(0.015f));
 }
 
 // Test per-channel QDQ Conv with INT4 weights and no bias.
@@ -1909,9 +2168,7 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_bias_initializer) {
                                      "NOTSET",
                                      ExpectedEPNodeAssignment::All,
                                      false,  // use_qdq_contrib_ops
-                                     13,     // opset
-                                     // Need tolerance of 0.413% of output range after QNN SDK 2.17
-                                     QDQTolerance(0.00413f));
+                                     13);    // opset
 
   RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
                                      TestInputDef<float>({1, 1, 5, 5, 5}, false, 0.0f, 10.0f),   // Random dynamic input
@@ -1924,9 +2181,7 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_bias_initializer) {
                                      "NOTSET",
                                      ExpectedEPNodeAssignment::All,
                                      false,  // use_qdq_contrib_ops
-                                     13,     // opset
-                                     // Need tolerance of 0.413% of output range after QNN SDK 2.17
-                                     QDQTolerance(0.00413f));
+                                     13);    // opset
 }
 
 // Tests 1D Conv with bias as an initializer.
@@ -2114,7 +2369,160 @@ TEST_F(QnnHTPBackendTests, ConvTranspose1DU8U8S32_AutoPadLower) {
                                      13);
 }
 
-TEST_F(QnnHTPBackendTests, ConvU8U8S32_large_input1_padding_bias_initializer) {
+// Tests Conv's auto_pad value "VALID" on HTP backend (compares to CPU EP).
+TEST_F(QnnHTPBackendTests, ConvU8U8S32_AutoPadValid) {
+  RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
+                                     TestInputDef<float>({1, 1, 5, 5}, false, 0.f, 10.f),  // Dynamic input
+                                     TestInputDef<float>({1, 1, 4, 4}, true, -1.f, 1.f),   // Static weights
+                                     TestInputDef<float>({1}, true, {1.0f}),               // Initializer bias
+                                     {1, 1},                                               // strides
+                                     {},                                                   // pads
+                                     {1, 1},                                               // dilations
+                                     1,                                                    // default group
+                                     "VALID",                                              // auto_pad
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_contrib_qdq
+                                     13);
+
+  RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
+                                     TestInputDef<float>({1, 1, 5, 5, 5}, false, 0.f, 10.f),  // Dynamic input
+                                     TestInputDef<float>({1, 1, 4, 4, 4}, true, -1.f, 1.f),   // Static weights
+                                     TestInputDef<float>({1}, true, {1.0f}),                  // Initializer bias
+                                     {1, 1, 1},                                               // strides
+                                     {},                                                      // pads
+                                     {1, 1, 1},                                               // dilations
+                                     1,                                                       // default group
+                                     "VALID",                                                 // auto_pad
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_contrib_qdq
+                                     13);
+}
+
+// Tests ConvTranspose's auto_pad value "VALID" on HTP backend (compares to CPU EP).
+TEST_F(QnnHTPBackendTests, ConvTransposeU8U8S32_AutoPadValid) {
+  RunHTPConvOpTest<uint8_t, uint8_t>("ConvTranspose",
+                                     TestInputDef<float>({1, 1, 5, 5}, false, 0.f, 10.f),  // Dynamic input
+                                     TestInputDef<float>({1, 1, 4, 4}, true, -1.f, 1.f),   // Static weights
+                                     TestInputDef<float>({1}, true, {1.0f}),               // Initializer bias
+                                     {1, 1},                                               // strides
+                                     {},                                                   // pads
+                                     {1, 1},                                               // dilations
+                                     1,                                                    // default group
+                                     "VALID",                                              // auto_pad
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_contrib_qdq
+                                     13);
+
+  RunHTPConvOpTest<uint8_t, uint8_t>("ConvTranspose",
+                                     TestInputDef<float>({1, 1, 5, 5, 5}, false, 0.f, 10.f),  // Dynamic input
+                                     TestInputDef<float>({1, 1, 4, 4, 4}, true, -1.f, 1.f),   // Static weights
+                                     TestInputDef<float>({1}, true, {1.0f}),                  // Initializer bias
+                                     {1, 1, 1},                                               // strides
+                                     {},                                                      // pads
+                                     {1, 1, 1},                                               // dilations
+                                     1,                                                       // default group
+                                     "VALID",                                                 // auto_pad
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_contrib_qdq
+                                     13);
+}
+
+// Test ConvTranspose with output_shape attribute
+// This test verifies that when 'output_shape' is provided, the QNN EP correctly
+// calculates and applies padding for ConvTranspose, overriding any 'pads' attribute,
+// and correctly distributes the padding according to 'auto_pad' rules.
+TEST_F(QnnHTPBackendTests, ConvTransposeU8U8S32_OutputShape) {
+  std::vector<int64_t> output_shape = {6, 6};
+  RunHTPConvOpTest<uint8_t, uint8_t>("ConvTranspose",
+                                     TestInputDef<float>({1, 1, 4, 4}, false, 0.f, 10.f),  // Dynamic input
+                                     TestInputDef<float>({1, 1, 2, 2}, true, -1.f, 1.f),   // Static weights
+                                     TestInputDef<float>({1}, true, {1.0f}),               // Initializer bias
+                                     {2, 2},                                               // strides
+                                     {0, 0, 0, 0},                                         // pads
+                                     {1, 1},                                               // dilations
+                                     1,                                                    // group
+                                     "SAME_UPPER",                                         // auto_pad
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_contrib_qdq
+                                     13,     // opset
+                                     QDQTolerance(),
+                                     std::nullopt,   // No output activation
+                                     output_shape);  // Pass the output_shape attribute
+
+  std::vector<int64_t> output_shape_3d = {6, 6, 6};
+  RunHTPConvOpTest<uint8_t, uint8_t>("ConvTranspose",
+                                     TestInputDef<float>({1, 1, 4, 4, 4}, false, 0.f, 10.f),  // Dynamic input
+                                     TestInputDef<float>({1, 1, 2, 2, 2}, true, -1.f, 1.f),   // Static weights
+                                     TestInputDef<float>({1}, true, {1.0f}),                  // Initializer bias
+                                     {2, 2, 2},                                               // strides
+                                     {0, 0, 0, 0, 0, 0},                                      // pads
+                                     {1, 1, 1},                                               // dilations
+                                     1,                                                       // group
+                                     "SAME_UPPER",                                            // auto_pad
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_contrib_qdq
+                                     13,     // opset
+                                     QDQTolerance(),
+                                     std::nullopt,      // No output activation
+                                     output_shape_3d);  // Pass the output_shape attribute
+}
+
+TEST_F(QnnHTPBackendTests, ConvTranspose1DU8U8S32_OutputShape) {
+  std::vector<int64_t> output_shape = {6};
+  RunHTPConvOpTest<uint8_t, uint8_t>("ConvTranspose",
+                                     TestInputDef<float>({1, 1, 4}, false, 0.f, 10.f),  // Dynamic input
+                                     TestInputDef<float>({1, 1, 2}, true, -1.f, 1.f),   // Static weights
+                                     TestInputDef<float>({1}, true, {1.0f}),            // Initializer bias
+                                     {2},                                               // strides
+                                     {0, 0},                                            // pads
+                                     {1},                                               // dilations
+                                     1,                                                 // group
+                                     "SAME_UPPER",                                      // auto_pad
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_contrib_qdq
+                                     13,     // opset
+                                     QDQTolerance(),
+                                     std::nullopt,   // No output activation
+                                     output_shape);  // Pass the output_shape attribute
+}
+
+// Tests Conv1d auto_pad value "VALID" on HTP backend (compares to CPU EP).
+TEST_F(QnnHTPBackendTests, Conv1DU8U8S32_AutoPadValid) {
+  std::vector<float> input_data = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f};
+  RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
+                                     TestInputDef<float>({1, 2, 4}, false, input_data),           // Dynamic input
+                                     TestInputDef<float>({1, 2, 2}, true, {1.f, 2.f, 3.f, 4.f}),  // Static weight
+                                     TestInputDef<float>({1}, true, {1.0f}),                      // Initializer bias
+                                     {1},                                                         // strides
+                                     {0},                                                         // pads
+                                     {1},                                                         // dilations
+                                     1,                                                           // default group
+                                     "VALID",                                                     // auto_pad
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_contrib_qdq
+                                     13);
+}
+
+// Tests ConvTranspose 1d auto_pad value "VALID" on HTP backend (compares to CPU EP).
+TEST_F(QnnHTPBackendTests, ConvTranspose1DU8U8S32_AutoPadValid) {
+  std::vector<float> input_data = {0.f, 1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f};
+  RunHTPConvOpTest<uint8_t, uint8_t>("ConvTranspose",
+                                     TestInputDef<float>({1, 2, 4}, false, input_data),           // Dynamic input
+                                     TestInputDef<float>({2, 1, 2}, true, {1.f, 2.f, 3.f, 4.f}),  // Static weight
+                                     TestInputDef<float>({1}, true, {1.0f}),                      // Initializer bias
+                                     {1},                                                         // strides
+                                     {0},                                                         // pads
+                                     {1},                                                         // dilations
+                                     1,                                                           // default group
+                                     "VALID",                                                     // auto_pad
+                                     ExpectedEPNodeAssignment::All,
+                                     false,  // use_contrib_qdq
+                                     13);
+}
+
+// Fails with QNN SDK 2.35.0:
+// value pair (-4.54545403, -4.54687548) at index #3 don't match, which is -0.00142145 from -4.54545
+TEST_F(QnnHTPBackendTests, DISABLED_ConvU8U8S32_large_input1_padding_bias_initializer) {
   RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
                                      TestInputDef<float>({1, 3, 60, 452}, false, 0.f, 10.f),        // Dynamic input
                                      TestInputDef<float>({16, 3, 3, 3}, true, -1.f, 1.f),           // Static weights
@@ -2132,12 +2540,6 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_large_input1_padding_bias_initializer) {
 }
 
 TEST_F(QnnHTPBackendTests, ConvU8U8S32_large_input2_bias_initializer) {
-#ifdef __linux__
-  // On Linux QNN SDK 2.17: Need a tolerance of 0.785% of output range to pass.
-  QDQTolerance tolerance = QDQTolerance(0.00785f);
-#else
-  QDQTolerance tolerance = QDQTolerance();
-#endif
   RunHTPConvOpTest<uint8_t, uint8_t>("Conv",
                                      TestInputDef<float>({1, 128, 8, 56}, false, 0.f, 10.f),  // Dynamic input
                                      TestInputDef<float>({32, 128, 1, 1}, true, -1.f, 1.f),   // Random static weights
@@ -2149,8 +2551,7 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_large_input2_bias_initializer) {
                                      "NOTSET",
                                      ExpectedEPNodeAssignment::All,
                                      false,
-                                     13,
-                                     tolerance);
+                                     13);
 }
 
 TEST_F(QnnHTPBackendTests, ConvU8U8S32_LargeInput_Dilations_Pads) {
@@ -2166,6 +2567,288 @@ TEST_F(QnnHTPBackendTests, ConvU8U8S32_LargeInput_Dilations_Pads) {
                                      ExpectedEPNodeAssignment::All);
 }
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+
+#if defined(_M_ARM64)
+//
+// GPU tests:
+//
+
+// Convolution 2D GPU test.
+TEST_F(QnnGPUBackendTests, Conv2D) {
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 1, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
+                TestInputDef<float>({2, 1, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
+                TestInputDef<float>({2}, true, -1.0f, 1.0f),            // Random static bias
+                {1, 1},                                                 // default strides
+                {0, 0, 0, 0},                                           // default pads
+                {1, 1},                                                 // default dilations
+                1,                                                      // default group
+                "NOTSET",                                               // No auto-padding
+                ExpectedEPNodeAssignment::All,
+                "gpu");
+}
+
+// Convolution 3D GPU test.
+// Disable Reason : 3D Conv is currently not supported by the GPU.
+TEST_F(QnnGPUBackendTests, DISABLED_Conv3D) {
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 1, 3, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
+                TestInputDef<float>({2, 1, 2, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
+                TestInputDef<float>({2}, true, -1.0f, 1.0f),               // Random static bias
+                {1, 1, 1},                                                 // default strides
+                {0, 0, 0, 0, 0, 0},                                        // default pads
+                {1, 1, 1},                                                 // default dilations
+                1,                                                         // default group
+                "NOTSET",                                                  // No auto-padding
+                ExpectedEPNodeAssignment::All,
+                "gpu");
+}
+
+// Convolution 2D dynamic bias GPU test.
+TEST_F(QnnGPUBackendTests, Conv2D_biasDynamic) {
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 1, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
+                TestInputDef<float>({2, 1, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
+                TestInputDef<float>({2}, false, -1.0f, 1.0f),           // Random static bias
+                {1, 1},                                                 // default strides
+                {0, 0, 0, 0},                                           // default pads
+                {1, 1},                                                 // default dilations
+                1,                                                      // default group
+                "NOTSET",                                               // No auto-padding
+                ExpectedEPNodeAssignment::All,
+                "gpu");
+}
+
+// Convolution 2D GPU test, large input feature map, more output feature maps.
+TEST_F(QnnGPUBackendTests, Conv2D_largeInput) {
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 3, 60, 452}, false, 0.0f, 10.0f),  // Random dynamic input
+                TestInputDef<float>({16, 3, 3, 3}, true, 0.0f, 1.0f),      // Random dynamic weights
+                TestInputDef<float>({16}, true, -1.0f, 1.0f),              // Random static bias
+                {1, 1},                                                    // default strides
+                {0, 0, 0, 0},                                              // default pads
+                {1, 1},                                                    // default dilations
+                1,                                                         // default group
+                "NOTSET",                                                  // No auto-padding
+                ExpectedEPNodeAssignment::All,
+                "gpu",
+                13,
+                1e-4f);
+}
+
+// Convolution 2D GPU test, reduce featuremaps with pointwise conv.
+TEST_F(QnnGPUBackendTests, Conv2D_bottleneckSqueeze) {
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 32, 16, 113}, false, -3.0f, 3.0f),  // Random dynamic input
+                TestInputDef<float>({16, 32, 1, 1}, false, -1.0f, 1.0f),    // Random dynamic weights
+                TestInputDef<float>({16}, true, -1.0f, 1.0f),               // Random static bias
+                {1, 1},                                                     // default strides
+                {0, 0, 0, 0},                                               // default pads
+                {1, 1},                                                     // default dilations
+                1,                                                          // default group
+                "NOTSET",                                                   // No auto-padding
+                ExpectedEPNodeAssignment::All,
+                "gpu",
+                13,
+                1e-4f);
+}
+
+// Convolution 2D SAME_UPPER pad GPU test.
+TEST_F(QnnGPUBackendTests, Conv2D_padSameUpper) {
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 1, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
+                TestInputDef<float>({2, 1, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
+                TestInputDef<float>({2}, true, -1.0f, 1.0f),            // Random static bias
+                {1, 1},                                                 // default strides
+                {},                                                     // unspecified pads
+                {1, 1},                                                 // default dilations
+                1,                                                      // default group
+                "SAME_UPPER",                                           // auto-padding
+                ExpectedEPNodeAssignment::All,
+                "gpu");
+}
+
+// Convolution Transpose 2D GPU test.
+TEST_F(QnnGPUBackendTests, ConvTranspose2D) {
+  RunConvOpTest("ConvTranspose",
+                TestInputDef<float>({1, 1, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
+                TestInputDef<float>({1, 2, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
+                TestInputDef<float>({2}, true, -1.0f, 1.0f),            // Random static bias
+                {1, 1},                                                 // default strides
+                {0, 0, 0, 0},                                           // default pads
+                {1, 1},                                                 // default dilations
+                1,                                                      // default group
+                "NOTSET",                                               // No auto-padding
+                ExpectedEPNodeAssignment::All,
+                "gpu");
+}
+
+// Convolution Transpose 2D SAME_LOWER pad GPU test.
+TEST_F(QnnGPUBackendTests, ConvTranspose2D_padSameLower) {
+  RunConvOpTest("ConvTranspose",
+                TestInputDef<float>({1, 1, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
+                TestInputDef<float>({1, 2, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
+                TestInputDef<float>({2}, true, -1.0f, 1.0f),            // Random static bias
+                {1, 1},                                                 // default strides
+                {},                                                     // unspecified pads
+                {1, 1},                                                 // default dilations
+                1,                                                      // default group
+                "SAME_LOWER",                                           // auto_pad
+                ExpectedEPNodeAssignment::All,
+                "gpu");
+}
+
+// Depthwise Convolution 2D GPU test, depthwise conv.
+TEST_F(QnnGPUBackendTests, Conv2D_depthwise) {
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 3, 3, 3}, false, 0.0f, 1.0f),  // Random dynamic input
+                TestInputDef<float>({3, 1, 2, 2}, true, 0.0f, 1.0f),   // Random static weights
+                TestInputDef<float>({3}, true, -1.0f, 1.0f),           // Random static bias
+                {1, 1},                                                // default strides
+                {0, 0, 0, 0},                                          // default pads
+                {1, 1},                                                // default dilations
+                3,                                                     // 3 groups
+                "NOTSET",                                              // No auto-padding
+                ExpectedEPNodeAssignment::All,
+                "gpu");
+}
+
+// Convolution 2D GPU test, reduce featuremaps with depthwise-pointwise conv.
+TEST_F(QnnGPUBackendTests, Conv2D_depthwiseSeparable) {
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 6, 16, 16}, false, -3.0f, 3.0f),  // Random dynamic input
+                TestInputDef<float>({3, 2, 1, 1}, false, -1.0f, 1.0f),    // Random dynamic weights
+                TestInputDef<float>({3}, true, -1.0f, 1.0f),              // Random static bias
+                {1, 1},                                                   // default strides
+                {0, 0, 0, 0},                                             // default pads
+                {1, 1},                                                   // default dilations
+                3,                                                        // 3 groups
+                "NOTSET",                                                 // No auto-padding
+                ExpectedEPNodeAssignment::All,
+                "gpu",
+                13,
+                1e-4f);
+}
+
+// Convolution 2D groups GPU test, use grouping.
+TEST_F(QnnGPUBackendTests, Conv2D_groups) {
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 4, 3, 3}, false, 0.0f, 1.0f),  // Random dynamic input
+                TestInputDef<float>({2, 2, 2, 2}, true, 0.0f, 1.0f),   // Random static weights
+                TestInputDef<float>({2}, true, -1.0f, 1.0f),           // Random static bias
+                {1, 1},                                                // default strides
+                {0, 0, 0, 0},                                          // default pads
+                {1, 1},                                                // default dilations
+                2,                                                     // 2 groups
+                "NOTSET",                                              // No auto-padding
+                ExpectedEPNodeAssignment::All,
+                "gpu",
+                13,
+                1e-4f);
+}
+
+// Convolution 2D groups GPU test, use grouping, more than 1 output per group.
+TEST_F(QnnGPUBackendTests, Conv2D_groupsExpand) {
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 4, 3, 3}, false, 0.0f, 1.0f),  // Random dynamic input
+                TestInputDef<float>({4, 2, 2, 2}, true, 0.0f, 1.0f),   // Random static weights
+                TestInputDef<float>({4}, true, -1.0f, 1.0f),           // Random static bias
+                {1, 1},                                                // default strides
+                {0, 0, 0, 0},                                          // default pads
+                {1, 1},                                                // default dilations
+                2,                                                     // 2 groups
+                "NOTSET",                                              // No auto-padding
+                ExpectedEPNodeAssignment::All,
+                "gpu",
+                13,
+                1e-4f);
+}
+
+// Convolution 2D groups GPU test, use grouping, 1 group of 3.
+TEST_F(QnnGPUBackendTests, Conv2D_1groupOf3) {
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 3, 3, 3}, false, 0.0f, 1.0f),  // Random dynamic input
+                TestInputDef<float>({2, 3, 2, 2}, true, 0.0f, 1.0f),   // Random static weights
+                TestInputDef<float>({2}, true, -1.0f, 1.0f),           // Random static bias
+                {1, 1},                                                // default strides
+                {0, 0, 0, 0},                                          // default pads
+                {1, 1},                                                // default dilations
+                1,                                                     // 1 groups
+                "NOTSET",                                              // No auto-padding
+                ExpectedEPNodeAssignment::All,
+                "gpu",
+                13,
+                1e-4f);
+}
+
+// Convolution 2D groups GPU test, use grouping, more than 1 group of 3.
+// Disable Reason : doesn't work.
+TEST_F(QnnGPUBackendTests, DISABLED_Conv2D_2groupsOf3) {
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 6, 3, 3}, false, 0.0f, 1.0f),  // Random dynamic input
+                TestInputDef<float>({2, 3, 2, 2}, true, 0.0f, 1.0f),   // Random static weights
+                TestInputDef<float>({2}, true, -1.0f, 1.0f),           // Random static bias
+                {1, 1},                                                // default strides
+                {0, 0, 0, 0},                                          // default pads
+                {1, 1},                                                // default dilations
+                2,                                                     // 2 groups
+                "NOTSET",                                              // No auto-padding
+                ExpectedEPNodeAssignment::All,
+                "gpu",
+                13,
+                1e-4f);
+}
+
+// Convolution 2D groups GPU test, use grouping, more than 1 group of 2.
+TEST_F(QnnGPUBackendTests, Conv2D_3groupsOf2) {
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 6, 3, 3}, false, 0.0f, 1.0f),  // Random dynamic input
+                TestInputDef<float>({3, 2, 2, 2}, true, 0.0f, 1.0f),   // Random static weights
+                TestInputDef<float>({3}, true, -1.0f, 1.0f),           // Random static bias
+                {1, 1},                                                // default strides
+                {0, 0, 0, 0},                                          // default pads
+                {1, 1},                                                // default dilations
+                3,                                                     // 3 groups
+                "NOTSET",                                              // No auto-padding
+                ExpectedEPNodeAssignment::All,
+                "gpu",
+                13,
+                1e-4f);
+}
+
+// Convolution 1D GPU test.
+TEST_F(QnnGPUBackendTests, Conv1D) {
+  std::vector<float> input_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
+  RunConvOpTest("Conv",
+                TestInputDef<float>({1, 2, 4}, false, input_data),               // Dynamic input
+                TestInputDef<float>({1, 2, 2}, true, {1.0f, 2.0f, 3.0f, 4.0f}),  // Static weights
+                TestInputDef<float>({1}, true, {1.0f}),                          // Initializer Bias
+                {1},                                                             // Strides
+                {0, 0},                                                          // Pads
+                {1},                                                             // Dilations
+                1,                                                               // default group
+                "NOTSET",
+                ExpectedEPNodeAssignment::All,
+                "gpu");
+}
+
+// Convolution Transpose 1D GPU test.
+TEST_F(QnnGPUBackendTests, ConvTranspose1D) {
+  std::vector<float> input_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
+  RunConvOpTest("ConvTranspose",
+                TestInputDef<float>({1, 2, 4}, false, input_data),               // Dynamic input
+                TestInputDef<float>({2, 1, 2}, true, {1.0f, 2.0f, 3.0f, 4.0f}),  // Static weights
+                TestInputDef<float>({1}, true, {0.0f}),                          // Zero bias
+                {1},                                                             // Strides
+                {0, 0},                                                          // Pads
+                {1},                                                             // Dilations
+                1,                                                               // default group
+                "NOTSET",
+                ExpectedEPNodeAssignment::All,
+                "gpu");
+}
+
+#endif  // defined(_M_ARM64) GPU tests
 
 }  // namespace test
 }  // namespace onnxruntime

@@ -10,20 +10,19 @@
 namespace onnxruntime {
 namespace webgpu {
 
-class GemmProgram final : public Program<GemmProgram> {
+class GemmNaiveProgram final : public Program<GemmNaiveProgram> {
  public:
-  GemmProgram(bool transA, bool transB, float alpha, bool need_handle_bias, bool need_handle_matmul)
-      : Program{"Gemm"},
+  GemmNaiveProgram(bool transA, bool transB, bool need_handle_bias, bool need_handle_matmul)
+      : Program{"GemmNaive"},
         transA_{transA},
         transB_{transB},
-        alpha_{alpha},
         need_handle_bias_{need_handle_bias},
         need_handle_matmul_{need_handle_matmul} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"num_tile_n", ProgramUniformVariableDataType::Uint32},
+      {"output_size", ProgramUniformVariableDataType::Uint32},
       {"M", ProgramUniformVariableDataType::Uint32},
       {"N", ProgramUniformVariableDataType::Uint32},
       {"K", ProgramUniformVariableDataType::Uint32},
@@ -33,7 +32,6 @@ class GemmProgram final : public Program<GemmProgram> {
  private:
   bool transA_;
   bool transB_;
-  float alpha_;
   bool need_handle_bias_;
   bool need_handle_matmul_;
 };

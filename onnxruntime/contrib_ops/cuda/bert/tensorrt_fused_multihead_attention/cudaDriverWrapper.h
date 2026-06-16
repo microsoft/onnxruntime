@@ -100,8 +100,6 @@ class CUDADriverWrapper {
       CUfunction f, uint32_t gridDimX, uint32_t gridDimY, uint32_t gridDimZ,
       uint32_t blockDimX, uint32_t blockDimY, uint32_t blockDimZ, uint32_t sharedMemBytes, CUstream hStream,
       void** kernelParams, void** extra);
-
-  static CUDADriverWrapper instance;
 };
 
 inline void cuErrCheck_(CUresult stat, const CUDADriverWrapper& wrap, const char* file, int line) {

@@ -18,6 +18,7 @@ class Dropout final : public CudaKernel {
     if (info.GetAttr<int64_t>("seed", &seed).IsOK()) {
       generator_ = std::make_unique<PhiloxGenerator>(static_cast<uint64_t>(seed));
     }
+    opset_ = info.node().SinceVersion();
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -25,6 +26,7 @@ class Dropout final : public CudaKernel {
  private:
   mutable std::unique_ptr<PhiloxGenerator> generator_;
   static constexpr float default_ratio_ = 0.5f;
+  int opset_ = 12;
 };
 
 }  // namespace cuda

@@ -10,7 +10,9 @@
 #include "core/util/math_cpuonly.h"
 #include "core/util/qmath.h"
 
+#include <cassert>
 #include <algorithm>
+#include <vector>
 
 namespace onnxruntime {
 namespace contrib {
@@ -65,18 +67,24 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
                                                bool a_is_signed,
                                                const Tensor* b_tensor,
                                                const Tensor* b_scale_tensor,
-                                               const Tensor* b_zp_tensor,
+                                               const Tensor* b_zp_constant_tensor,
                                                const Tensor* bias_tensor) const {
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(a_shape,
                                      b_tensor ? b_tensor->Shape() : b_shape_,
                                      b_scale_tensor ? &b_scale_tensor->Shape() : nullptr,
-                                     b_zp_tensor ? &b_zp_tensor->Shape() : nullptr));
+                                     b_zp_constant_tensor ? &b_zp_constant_tensor->Shape() : nullptr));
   Tensor* y = ctx->Output(OUT_Y, helper.OutputShape());
 
   // Bail out early if the output is going to be empty
   if (y->Shape().Size() == 0)
     return Status::OK();
+
+  if (bias_tensor != nullptr) {
+    ORT_RETURN_IF_NOT(bias_tensor->Shape().Size() == static_cast<int64_t>(helper.N()),
+                      "bias tensor's element count must equal B's last dimension (",
+                      helper.N(), "), but got ", bias_tensor->Shape().Size());
+  }
 
   auto* y_data = y->MutableData<float>();
   const auto* bias_data = bias_tensor != nullptr ? bias_tensor->Data<float>() : nullptr;
@@ -85,12 +93,12 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
   bool is_b_zp_per_column = false;
   uint8_t b_zp_default = 0;
   const uint8_t* b_zp_ptr = &b_zp_default;
-  if (nullptr != b_zp_tensor) {
-    ORT_ENFORCE(IsBQuantParamSupported(b_zp_tensor->Shape(), b_tensor ? b_tensor->Shape() : b_shape_),
+  if (nullptr != b_zp_constant_tensor) {
+    ORT_ENFORCE(IsBQuantParamSupported(b_zp_constant_tensor->Shape(), b_tensor ? b_tensor->Shape() : b_shape_),
                 "MatmulInteger : b zero point is not valid");
 
-    is_b_zp_per_column = !IsScalarOr1ElementVector(b_zp_tensor);
-    b_zp_ptr = static_cast<const uint8_t*>(b_zp_tensor->DataRaw());
+    is_b_zp_per_column = !IsScalarOr1ElementVector(b_zp_constant_tensor);
+    b_zp_ptr = static_cast<const uint8_t*>(b_zp_constant_tensor->DataRaw());
   }
 
   // process scale of b
@@ -161,6 +169,28 @@ class DynamicQuantizeMatMul final : public MatMulIntegerToFloatBase {
 
   Status Compute(OpKernelContext* context) const override;
 
+#if defined(USE_KLEIDIAI)
+  bool SupportsKleidiaiDynamicQuant() const override {
+    if (!MlasIsDynamicQGemmAvailable(&mlas_backend_kernel_selector_config_)) {
+      return false;
+    }
+    return true;
+  }
+
+  int GetBScaleIdx() const override {
+    return IN_B_SCALE;
+  }
+
+  int GetBZeroPointIdx() const override {
+    return IN_B_ZERO_POINT;
+  }
+
+  int GetBiasIdx() const override {
+    return IN_BIAS;
+  }
+
+#endif
+
   enum InputTensors : int {
     IN_A = 0,
     IN_B = 1,
@@ -199,44 +229,108 @@ class MatMulIntegerToFloat final : public MatMulIntegerToFloatBase {
 };
 
 Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
-  const Tensor* a = ctx->Input<Tensor>(IN_A);
-  const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(IN_B);
+  // Can this operation be offloaded to a MLAS specific dynamic quantization matmul ?
+  if (!can_use_dynamic_quant_mlas_) {
+    const Tensor* a = ctx->Input<Tensor>(IN_A);
+    const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(IN_B);
 
-  const Tensor* b_scale_tensor = ctx->Input<Tensor>(IN_B_SCALE);
-  const Tensor* b_zp_tensor = ctx->Input<Tensor>(IN_B_ZERO_POINT);
+    const Tensor* b_scale_tensor = ctx->Input<Tensor>(IN_B_SCALE);
+    const Tensor* b_zp_constant_tensor = ctx->Input<Tensor>(IN_B_ZERO_POINT);
 
-  // calculate quantization parameter of a
-  const float* a_data = a->Data<float>();
-  int64_t num_of_elements = a->Shape().Size();
+    // calculate quantization parameter of a
+    const float* a_data = a->Data<float>();
+    int64_t num_of_elements = a->Shape().Size();
 
-  float a_scale;
-  uint8_t a_zero_point;
-  GetQuantizationParameter(a_data, num_of_elements, a_scale, a_zero_point, ctx->GetOperatorThreadPool());
+    float a_scale;
+    uint8_t a_zero_point;
+    GetQuantizationParameter(a_data, num_of_elements, a_scale, a_zero_point, ctx->GetOperatorThreadPool());
 
-  AllocatorPtr allocator;
-  ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
-  uint8_t* a_data_quant = static_cast<uint8_t*>(allocator->Alloc(SafeInt<size_t>(num_of_elements) * sizeof(uint8_t)));
-  BufferUniquePtr a_buffer_quant_holder(a_data_quant, BufferDeleter(std::move(allocator)));
+    AllocatorPtr allocator;
+    ORT_RETURN_IF_ERROR(ctx->GetTempSpaceAllocator(&allocator));
+    uint8_t* a_data_quant = static_cast<uint8_t*>(allocator->Alloc(SafeInt<size_t>(num_of_elements) * sizeof(uint8_t)));
+    BufferUniquePtr a_buffer_quant_holder(a_data_quant, BufferDeleter(std::move(allocator)));
 
-  ParQuantizeLinearStd(a_data, a_data_quant, narrow<size_t>(num_of_elements), a_scale, a_zero_point, ctx->GetOperatorThreadPool());
+    ParQuantizeLinearStd(a_data, a_data_quant, narrow<size_t>(num_of_elements), a_scale, a_zero_point, ctx->GetOperatorThreadPool());
 
-  bool is_b_scale_supported = IsBQuantParamSupported(b_scale_tensor->Shape(), b ? b->Shape() : b_shape_);
-  ORT_RETURN_IF_ERROR(ComputeCommon(
-      ctx,
-      a_data_quant,
-      a->Shape(),
-      a_scale,
-      a_zero_point,
-      false /*a_is_signed*/,
-      b,
-      is_b_scale_supported ? b_scale_tensor : nullptr,
-      b_zp_tensor,
-      ctx->Input<Tensor>(IN_BIAS)));
+    bool is_b_scale_supported = IsBQuantParamSupported(b_scale_tensor->Shape(), b ? b->Shape() : b_shape_);
+    const bool is_a_signed = false;
+    ORT_RETURN_IF_ERROR(ComputeCommon(
+        ctx,
+        a_data_quant,
+        a->Shape(),
+        a_scale,
+        a_zero_point,
+        is_a_signed,
+        b,
+        is_b_scale_supported ? b_scale_tensor : nullptr,
+        b_zp_constant_tensor,
+        ctx->Input<Tensor>(IN_BIAS)));
 
-  if (!is_b_scale_supported) {
-    ScaleOutput(*b_scale_tensor, *ctx->Output<Tensor>(0));
+    if (!is_b_scale_supported) {
+      ScaleOutput(*b_scale_tensor, *ctx->Output<Tensor>(0));
+    }
   }
+  // Guard against KleidiAI functions being called in non-Kleidi builds
+  // migrate to a suitable override function call for KleidiAI dynamic QGEMM function calls
+#if defined(USE_KLEIDIAI)
+  else {
+    MatMulComputeHelper helper;
+    ORT_RETURN_IF_ERROR(helper.Compute(ctx->Input<Tensor>(IN_A)->Shape(),
+                                       b_shape_,  // ctx->Input<Tensor>(IN_B)->Shape(), this is not available now constant data is
+                                       // deleted during session init post prepacking
+                                       nullptr,
+                                       nullptr));
+    // allocate the kernel’s output tensor from the execution context
+    Tensor* y = ctx->Output(OUT_Y, helper.OutputShape());
 
+    // Bail out early if any dimension is 0, the product (and hence the total number of elements) is 0
+    if (y->Shape().Size() == 0)
+      return Status::OK();
+
+    const float* a_data = ctx->Input<Tensor>(IN_A)->Data<float>();
+    auto* y_data = y->MutableData<float>();
+
+    // batch gemm
+    MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS gemm_shape;
+    gemm_shape.M = static_cast<size_t>(helper.M());
+    gemm_shape.N = static_cast<size_t>(helper.N());
+    gemm_shape.K = static_cast<size_t>(helper.K());
+
+    const size_t num_gemms = helper.OutputOffsets().size();
+    std::vector<MLAS_GEMM_DYN_QUANT_DATA_PARAMS> gemm_data_vec(num_gemms);
+
+    for (size_t gemm_idx = 0; gemm_idx < num_gemms; gemm_idx++) {
+      auto& params = gemm_data_vec[gemm_idx];
+      params.A = a_data + helper.LeftOffsets()[gemm_idx];
+      params.lda = gemm_shape.K;
+      params.PackedB = packed_b_.get();
+      params.C = y_data + helper.OutputOffsets()[gemm_idx];
+      params.ldc = gemm_shape.N;
+    }
+
+    MlasDynamicQGemmBatch(gemm_shape, gemm_data_vec.data(), num_gemms, ctx->GetOperatorThreadPool(), &mlas_backend_kernel_selector_config_);
+    // This evaluates to true if bias data was not provided as constant data for prepacking stage
+    if (!dynamic_quant_mlas_bias_data_was_packed_) {
+      if (ctx->Input<Tensor>(IN_BIAS) != nullptr) {
+        const Tensor* bias_t = ctx->Input<Tensor>(IN_BIAS);
+        ORT_RETURN_IF_NOT(bias_t->Shape().Size() == static_cast<int64_t>(gemm_shape.N),
+                          "bias tensor's element count must equal B's last dimension (",
+                          gemm_shape.N, "), but got ", bias_t->Shape().Size());
+        const auto biases = std::vector<float>(&bias_t->Data<float>()[0],
+                                               &bias_t->Data<float>()[gemm_shape.N]);
+
+        // deferred adding of bias
+        for (size_t gemm_idx = 0; gemm_idx < num_gemms; gemm_idx++) {
+          float* MxN = y_data + helper.OutputOffsets()[gemm_idx];
+          for (auto l = gemm_shape.M; l > 0; --l) {
+            MlasEltwiseAdd<float>(MxN, biases.data(), MxN, gemm_shape.N);
+            MxN += gemm_shape.N;
+          }
+        }
+      }
+    }
+  }
+#endif
   return Status::OK();
 }
 
@@ -275,7 +369,7 @@ Status MatMulIntegerToFloat::Compute(OpKernelContext* ctx) const {
     a_zero_point = *(static_cast<const uint8_t*>(a_zero_point_tensor->DataRaw()));
   }
 
-  const Tensor* b_zp_tensor = ctx->Input<Tensor>(IN_B_ZERO_POINT);
+  const Tensor* b_zp_constant_tensor = ctx->Input<Tensor>(IN_B_ZERO_POINT);
   ORT_RETURN_IF_ERROR(ComputeCommon(
       ctx,
       static_cast<const uint8_t*>(a->DataRaw()),
@@ -285,7 +379,7 @@ Status MatMulIntegerToFloat::Compute(OpKernelContext* ctx) const {
       a->IsDataType<int8_t>(),
       b,
       is_b_scale_supported ? b_scale_tensor : nullptr,
-      b_zp_tensor,
+      b_zp_constant_tensor,
       ctx->Input<Tensor>(IN_BIAS)));
 
   if (!is_a_scale_scalar) {

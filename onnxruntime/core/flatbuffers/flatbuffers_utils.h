@@ -50,6 +50,24 @@ onnxruntime::common::Status LoadOpsetImportOrtFormat(
     const flatbuffers::Vector<flatbuffers::Offset<fbs::OperatorSetId>>* fbs_op_set_ids,
     std::unordered_map<std::string, int>& domain_to_version);
 
+template <typename T>
+inline onnxruntime::common::Status ValidateRequiredTableOffsets(
+    const flatbuffers::Vector<flatbuffers::Offset<T>>* fbs_entries,
+    const char* entry_description) {
+  if (fbs_entries == nullptr) {
+    return onnxruntime::common::Status::OK();
+  }
+
+  const auto* raw_offsets = reinterpret_cast<const uint8_t*>(fbs_entries->Data());
+  for (flatbuffers::uoffset_t i = 0; i < fbs_entries->size(); ++i) {
+    const auto entry_offset =
+        flatbuffers::ReadScalar<flatbuffers::uoffset_t>(raw_offsets + i * sizeof(flatbuffers::uoffset_t));
+    ORT_RETURN_IF(entry_offset == 0, "Null ", entry_description, " entry. Invalid ORT format model.");
+  }
+
+  return onnxruntime::common::Status::OK();
+}
+
 // check if filename ends in .ort
 bool IsOrtFormatModel(const PathString& filename);
 

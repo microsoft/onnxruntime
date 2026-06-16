@@ -127,7 +127,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
                 *list(
                     chain.from_iterable(
                         (f"present_key_cross_{i}", f"present_value_cross_{i}")
-                        for i in range(self.config.num_hidden_layers)
+                        for i in range(self.config.decoder_layers)
                     )
                 ),
             ]
@@ -143,7 +143,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
                             f"present_key_cross_{i}",
                             f"present_value_cross_{i}",
                         )
-                        for i in range(self.config.num_hidden_layers)
+                        for i in range(self.config.decoder_layers)
                     )
                 ),
             ]
@@ -293,8 +293,9 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
                 input_names=input_names,
                 output_names=output_names,
                 dynamic_axes=dynamic_axes,
-                opset_version=17,
+                opset_version=18,
                 do_constant_folding=True,
+                dynamo=False,
                 verbose=verbose,
             )
 

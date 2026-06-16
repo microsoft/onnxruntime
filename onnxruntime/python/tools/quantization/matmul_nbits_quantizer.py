@@ -11,12 +11,19 @@ import copy
 import logging
 import os
 
+import ml_dtypes
 import numpy as np
 import numpy.typing as npt
 import onnx
+import onnx_ir as ir
 from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
 
-from onnxruntime.capi._pybind_state import quantize_matmul_4bits, quantize_matmul_8bits, quantize_qdq_matmul_4bits
+from onnxruntime.capi._pybind_state import (
+    quantize_matmul_2bits,
+    quantize_matmul_4bits,
+    quantize_matmul_8bits,
+    quantize_qdq_matmul_4bits,
+)
 
 from .calibrate import CalibrationDataReader
 from .neural_compressor import gptq_quantize, rtn_quantize
@@ -235,6 +242,7 @@ class DefaultWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         op_types_to_quantize: tuple[str, ...] | None = None,
         quant_axes: tuple[tuple[str, int], ...] | None = None,
         bits: int = 4,
+        channel_wised_quantize: bool = False,
     ):
         """
         This is a class for weight only affine quantization configuration.
@@ -269,6 +277,9 @@ class DefaultWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         self.is_symmetric = is_symmetric
         self.bits = bits
         self.accuracy_level = accuracy_level
+        self.channel_wised_quantize = channel_wised_quantize
+        if channel_wised_quantize and quant_format == QuantFormat.QOperator:
+            raise NotImplementedError("QuantFormat.QOperator is not supported channel_wised_quantize yet")
 
 
 class NVAWQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
@@ -290,8 +301,8 @@ class NVAWQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         """
         # Import torch and DataLoader
         try:
-            import torch
-            from torch.utils.data import DataLoader
+            import torch  # noqa: PLC0415
+            from torch.utils.data import DataLoader  # noqa: PLC0415
 
             self.torch = torch
             self.DataLoader = DataLoader
@@ -303,7 +314,7 @@ class NVAWQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
 
         # Import datasets
         try:
-            from datasets import load_dataset
+            from datasets import load_dataset  # noqa: PLC0415
 
             self.load_dataset = load_dataset
         except ImportError:
@@ -314,7 +325,7 @@ class NVAWQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
 
         # Import transformers
         try:
-            from transformers import AutoConfig, AutoTokenizer
+            from transformers import AutoConfig, AutoTokenizer  # noqa: PLC0415
 
             self.AutoConfig = AutoConfig
             self.AutoTokenizer = AutoTokenizer
@@ -539,7 +550,7 @@ class HQQWeightOnlyQuantizer:
         opt_params: dict | None = None,
         verbose=False,
     ):
-        import torch
+        import torch  # noqa: PLC0415
 
         opt_params = {"lp_norm": 0.7, "beta": 1e1, "kappa": 1.01, "iters": 20} if opt_params is None else opt_params
         lp_norm, beta, kappa, iters = (
@@ -598,7 +609,7 @@ class HQQWeightOnlyQuantizer:
     def quantize_internal(
         self, tensor, bits=4, channel_wise=True, group_size=64, optimize=True, round_zero=True, axis=1
     ):
-        import torch
+        import torch  # noqa: PLC0415
 
         weight = tensor.float()
         ori_shape = weight.shape
@@ -676,7 +687,7 @@ class HQQWeightOnlyQuantizer:
         if node.op_type == "Gather":
             raise NotImplementedError("Gather quantization is not supported yet in HQQ")
 
-        import torch
+        import torch  # noqa: PLC0415
 
         logger.info(f"start to quantize {node.name} ...")
         input_b = node.input[1]
@@ -686,9 +697,23 @@ class HQQWeightOnlyQuantizer:
             return [node]  # only care about constant weight
 
         b_array = onnx.numpy_helper.to_array(b_pb)
-        if len(b_array.shape) != 2:
-            logger.info("MatMul weight is not 2D. Skip to quantize")
-            return [node]  # can only process 2-D matrix
+        b_original_shape = b_array.shape
+        if len(b_original_shape) != 2:
+            if len(b_original_shape) < 2:
+                logger.info("MatMul weight has fewer than 2 dimensions. Skip to quantize.")
+                return [node]
+            leading = b_original_shape[:-2]
+            if any(d != 1 for d in leading):
+                logger.info(
+                    "MatMul weight has non-unit batch dims %s; N-D batched quantization not supported. "
+                    "Skip to quantize.",
+                    list(leading),
+                )
+                return [node]
+            # Squeeze all unit leading dims to obtain a 2-D weight [K, N]
+            b_array = b_array.reshape(b_original_shape[-2], b_original_shape[-1])
+        else:
+            b_original_shape = None  # already 2-D, no reshape needed
         b_array_torch = torch.from_numpy(b_array)
         if torch.cuda.is_available():
             b_array_torch = b_array_torch.cuda()
@@ -744,18 +769,42 @@ class HQQWeightOnlyQuantizer:
         kwargs["bits"] = bits
         kwargs["block_size"] = self.config.block_size
 
+        # When rank(A) >= rank_b_orig, the reshape would be a no-op since MatMulNBits
+        # already produces the correct output shape.
+        a_static_rank = _get_static_rank(node.input[0], graph_stack)
+        rank_b_orig = len(b_original_shape) if b_original_shape is not None else 0
+        needs_reshape = b_original_shape is not None and (a_static_rank is None or a_static_rank < rank_b_orig)
+        matmul_q_output = node.output[0] if not needs_reshape else node.output[0] + "_pre_reshape"
         matmul_q_node = onnx.helper.make_node(
             "MatMulNBits",
             inputs=input_names,
-            outputs=[node.output[0]],
+            outputs=[matmul_q_output],
             name=node.name + "_Q" + str(bits) if node.name else "",
             domain="com.microsoft",
             **kwargs,
         )
 
+        output_nodes = [matmul_q_node]
+        if needs_reshape:
+            # Restore ONNX MatMul broadcast shape on the output.
+            # MatMul(A, B_orig) output shape (with B_orig leading dims all 1) is:
+            #   [1] * max(rank(B_orig) - rank(A), 0) + A.shape[:-1] + [N]
+            # MatMulNBits with squeezed B produces [...A.shape[:-1], N] (rank=rank(A)),
+            # so we only need to prepend leading 1s when rank(B_orig) > rank(A).
+            output_nodes.extend(
+                _build_nbits_output_reshape(
+                    a_input_name=node.input[0],
+                    b_original_shape=b_original_shape,
+                    target_graph=bs_graph,
+                    name_prefix=(node.name + "_Q" + str(bits)) if node.name else (b_pb.name + "_Q" + str(bits)),
+                    pre_reshape_output=matmul_q_output,
+                    final_output=node.output[0],
+                )
+            )
+
         logger.info(f"complete quantization of {node.name} ...")
 
-        return [matmul_q_node]
+        return output_nodes
 
 
 def get_initializer(name, graph_path: list[GraphProto]) -> tuple[TensorProto, GraphProto]:
@@ -765,6 +814,175 @@ def get_initializer(name, graph_path: list[GraphProto]) -> tuple[TensorProto, Gr
             if tensor.name == name:
                 return tensor, graph
     return None, None
+
+
+def _get_static_rank(tensor_name: str, graph_path: list[GraphProto]) -> int | None:
+    """Return the static rank of a tensor if its shape is known, else None.
+
+    Searches graph inputs, value_info, and outputs in the graph stack (inner-most
+    graph first).  A known shape requires ``HasField('shape')`` to be true on the
+    tensor_type; the rank is then ``len(shape.dim)``.  Individual dim sizes may
+    still be symbolic — only the rank (dimension count) matters here.
+    """
+    for gid in range(len(graph_path) - 1, -1, -1):
+        graph = graph_path[gid]
+        for vi in list(graph.input) + list(graph.value_info) + list(graph.output):
+            if vi.name == tensor_name:
+                tt = vi.type.tensor_type
+                if tt.HasField("shape"):
+                    return len(tt.shape.dim)
+                return None
+    return None
+
+
+def _build_nbits_output_reshape(
+    a_input_name: str,
+    b_original_shape: tuple,
+    target_graph: GraphProto,
+    name_prefix: str,
+    pre_reshape_output: str,
+    final_output: str,
+) -> list[NodeProto]:
+    """Build the reshape chain that restores the ONNX MatMul-broadcast output shape.
+
+    MatMulNBits produces shape ``[...A_batch_dims, M, N]`` (rank = rank(A)). To match
+    the original ``MatMul(A, B_orig)`` output, where B_orig has all-unit leading
+    dims, we need:
+
+        a_rank_eff = max(rank(A), 2)   # ONNX promotes 1-D A to rank-2
+        out_shape = [1] * max(rank(B_orig) - a_rank_eff, 0) + A.shape[:-1] + [N]
+
+    This is built dynamically via Shape/Gather/Max/Sub/Max/ConstantOfShape/Slice/Concat
+    so it works regardless of A's static rank (handles rank(A) == 1, rank(A) == 2
+    — the common transformer case — as well as rank(A) >= rank(B_orig) where no
+    leading-1 prepending is needed). All ops used are valid from opset 11 onward.
+
+    Args:
+        a_input_name: name of the activation input edge (A) feeding MatMulNBits.
+        b_original_shape: the original (pre-squeeze) shape of B, e.g. ``(1, K, N)``.
+        target_graph: graph proto to append helper initializers into.
+        name_prefix: unique prefix for generated node/initializer names.
+        pre_reshape_output: name of the MatMulNBits output edge (the input of the
+            generated Reshape).
+        final_output: name of the final edge produced by the generated Reshape
+            (must match the original MatMul output edge).
+
+    Returns:
+        List of nodes to append to the consumer's ``output_nodes`` after the
+        MatMulNBits node. Initializers are appended to ``target_graph`` in place.
+    """
+    rank_b_orig = len(b_original_shape)
+    n_dim = b_original_shape[-1]
+
+    # Incorporate the unique output tensor name so initializer names are unique
+    # even when multiple MatMul nodes share the same node.name (Fix 2).
+    p = name_prefix + "_" + final_output
+    init_zero = p + "_zero"
+    init_one = p + "_one"
+    init_two = p + "_two"
+    init_one_vec = p + "_one_vec"
+    init_rank_b = p + "_rank_b"
+    init_n_vec = p + "_n_vec"
+    init_zero_vec = p + "_zero_vec"
+    init_one_value_template = p + "_one_value"
+
+    target_graph.initializer.extend(
+        [
+            onnx.numpy_helper.from_array(np.array(0, dtype=np.int64), name=init_zero),
+            onnx.numpy_helper.from_array(np.array(1, dtype=np.int64), name=init_one),
+            onnx.numpy_helper.from_array(np.array(2, dtype=np.int64), name=init_two),
+            onnx.numpy_helper.from_array(np.array([1], dtype=np.int64), name=init_one_vec),
+            onnx.numpy_helper.from_array(np.array(rank_b_orig, dtype=np.int64), name=init_rank_b),
+            onnx.numpy_helper.from_array(np.array([n_dim], dtype=np.int64), name=init_n_vec),
+            onnx.numpy_helper.from_array(np.array([0], dtype=np.int64), name=init_zero_vec),
+        ]
+    )
+
+    a_shape = p + "_a_shape"
+    a_shape_of_shape = p + "_a_shape_of_shape"
+    a_rank = p + "_a_rank"
+    a_rank_eff = p + "_a_rank_eff"
+    extra_raw = p + "_extra_raw"
+    extra_count = p + "_extra_count"
+    extra_count_vec = p + "_extra_count_vec"
+    extra_ones = p + "_extra_ones"
+    a_rank_minus_one = p + "_a_rank_m1"
+    a_rank_minus_one_vec = p + "_a_rank_m1_vec"
+    a_prefix_shape = p + "_a_prefix_shape"
+    target_shape = p + "_target_shape"
+
+    nodes = [
+        onnx.helper.make_node("Shape", [a_input_name], [a_shape], name=p + "_shape_a"),
+        # Use Shape(shape) + Gather instead of Size to stay within opset 11
+        # (Size requires opset >= 13 when applied to a shape tensor).
+        # Shape applied to the 1-D shape vector yields [rank_a] as a 1-element
+        # tensor; Gather with scalar index 0 extracts it as a scalar int64.
+        onnx.helper.make_node("Shape", [a_shape], [a_shape_of_shape], name=p + "_shape_of_a_shape"),
+        onnx.helper.make_node("Gather", [a_shape_of_shape, init_zero], [a_rank], name=p + "_gather_rank"),
+        # ONNX MatMul promotes a 1-D activation to rank-2 before computing the
+        # output shape, so use Max(a_rank, 2) as the effective rank when
+        # computing how many leading 1s to prepend.
+        onnx.helper.make_node("Max", [a_rank, init_two], [a_rank_eff], name=p + "_max_rank_eff"),
+        onnx.helper.make_node("Sub", [init_rank_b, a_rank_eff], [extra_raw], name=p + "_sub"),
+        onnx.helper.make_node("Max", [extra_raw, init_zero], [extra_count], name=p + "_max"),
+        onnx.helper.make_node("Reshape", [extra_count, init_one_vec], [extra_count_vec], name=p + "_reshape_extra"),
+        onnx.helper.make_node(
+            "ConstantOfShape",
+            [extra_count_vec],
+            [extra_ones],
+            name=p + "_const_ones",
+            value=onnx.helper.make_tensor(
+                name=init_one_value_template,
+                data_type=TensorProto.INT64,
+                dims=[1],
+                vals=[1],
+            ),
+        ),
+        onnx.helper.make_node("Sub", [a_rank, init_one], [a_rank_minus_one], name=p + "_sub_one"),
+        onnx.helper.make_node(
+            "Reshape", [a_rank_minus_one, init_one_vec], [a_rank_minus_one_vec], name=p + "_reshape_rank_m1"
+        ),
+        onnx.helper.make_node(
+            "Slice",
+            [a_shape, init_zero_vec, a_rank_minus_one_vec, init_zero_vec],
+            [a_prefix_shape],
+            name=p + "_slice_a_prefix",
+        ),
+        onnx.helper.make_node(
+            "Concat",
+            [extra_ones, a_prefix_shape, init_n_vec],
+            [target_shape],
+            name=p + "_concat_target",
+            axis=0,
+        ),
+        onnx.helper.make_node(
+            "Reshape",
+            [pre_reshape_output, target_shape],
+            [final_output],
+            name=p + "_reshape_out",
+        ),
+    ]
+    return nodes
+
+
+# transpose int4 matrix (packed as uint8)
+def transpose_packed_int4_matrix(packed, rows, cols):
+    # unpack to int4 matrix
+    total = rows * cols
+    high = (packed >> 4) & 0x0F
+    low = packed & 0x0F
+    int4_vals = np.empty(total, dtype=np.uint8)
+    int4_vals[0::2] = low
+    int4_vals[1::2] = high
+    int4_matrix = int4_vals.reshape((rows, cols))
+
+    # transpose int4 matrix
+    int4_matrix_transposed = int4_matrix.T
+
+    # pack to uint8
+    flat = int4_matrix_transposed.reshape(-1)
+    packed = ((flat[1::2] << 4) & 0xF0) | (flat[0::2] & 0x0F)
+    return packed.astype(np.uint8)
 
 
 class DefaultWeightOnlyQuantizer:
@@ -792,9 +1010,13 @@ class DefaultWeightOnlyQuantizer:
 
             # block wise quantization, each block comes from a single column
             packed = np.zeros((cols, k_blocks, blob_size), dtype="uint8")
-            zero_point = np.zeros(cols * ((k_blocks + kpack - 1) // kpack), dtype="uint8")
-            scales = np.zeros((cols * k_blocks), dtype=fp32weight.dtype)
-            if qbits == 8:
+            zero_point = np.zeros((cols, ((k_blocks + kpack - 1) // kpack)), dtype="uint8")
+            scales = np.zeros((cols, k_blocks), dtype=fp32weight.dtype)
+            if qbits == 2:
+                quantize_matmul_2bits(
+                    packed, fp32weight, scales, zero_point, block_size, cols, rows, self.config.is_symmetric
+                )
+            elif qbits == 8:
                 quantize_matmul_8bits(
                     packed, fp32weight, scales, zero_point, block_size, cols, rows, self.config.is_symmetric
                 )
@@ -803,6 +1025,10 @@ class DefaultWeightOnlyQuantizer:
                     packed, fp32weight, scales, zero_point, block_size, cols, rows, self.config.is_symmetric
                 )
         else:
+            # block size equal to rows (K) if channel wised quantize enabled
+            block_size = rows if self.config.channel_wised_quantize else self.config.block_size
+            k_blocks = (rows + block_size - 1) // block_size
+
             assert qbits == 4, "QDQ format only support 4 bits quantization"
             packed = np.zeros((rows * cols + 1) // 2, dtype="uint8")
             zero_point = np.zeros((cols * k_blocks + 1) // 2, dtype="uint8")
@@ -816,7 +1042,8 @@ class DefaultWeightOnlyQuantizer:
     def quantize_matmul(self, node: NodeProto, graph_stack: list[GraphProto]) -> list[NodeProto]:
         """
         Quantize weight B of MatMul node to int4 or int8.
-        Currently only support 2D constant matrix and axis 0 blockwise quantization.
+        Supports 2D constant matrix, and N-D constant matrices whose leading dimensions are all 1
+        (which are squeezed to 2D before quantization). Axis 0 blockwise quantization only.
         """
         bits = self.config.bits
         if bits == 8:
@@ -829,21 +1056,56 @@ class DefaultWeightOnlyQuantizer:
             logger.info("MatMul doesn't have const weight. Skip to quantize")
             return [node]  # only care about constant weight
 
-        b_ndarray = onnx.numpy_helper.to_array(b_tensor)
-        if len(b_ndarray.shape) != 2:
-            logger.info("MatMul weight is not 2D. Skip to quantize")
-            return [node]  # can only process 2-D matrix
+        b_ndarray = ir.from_proto(b_tensor).numpy()
+        b_original_shape = b_ndarray.shape
+        if len(b_original_shape) != 2:
+            if len(b_original_shape) < 2:
+                logger.info("MatMul weight has fewer than 2 dimensions. Skip to quantize.")
+                return [node]
+            leading = b_original_shape[:-2]
+            if any(d != 1 for d in leading):
+                logger.info(
+                    "MatMul weight has non-unit batch dims %s; N-D batched quantization not supported. "
+                    "Skip to quantize.",
+                    list(leading),
+                )
+                return [node]
+            # Squeeze all unit leading dims to obtain a 2-D weight [K, N]
+            b_ndarray = b_ndarray.reshape(b_original_shape[-2], b_original_shape[-1])
+        else:
+            b_original_shape = None  # already 2-D, no reshape needed
+
+        bfloat16 = b_ndarray.dtype == "bfloat16"
+        if bfloat16:
+            b_ndarray = b_ndarray.astype(np.float32)
 
         packed, scales, zero_points = self.qbits_block_quant(b_ndarray)
+        if bfloat16:
+            scales = scales.astype(ml_dtypes.bfloat16)
 
         if self.config.quant_format == QuantFormat.QOperator:
-            b_quant = onnx.numpy_helper.from_array(packed, b_tensor.name + f"_Q{bits}")
-            scales_tensor = onnx.numpy_helper.from_array(scales, b_tensor.name + "_scales")
+            b_quant = ir.serde.serialize_tensor(ir.Tensor(packed, name=b_tensor.name + f"_Q{bits}"))
+            scales_tensor = ir.serde.serialize_tensor(ir.Tensor(scales, name=b_tensor.name + "_scales"))
         else:
             b_quant = onnx.helper.make_tensor(
                 b_tensor.name + f"_DQ_Q{bits}", qtype, b_ndarray.shape, packed.tobytes(), True
             )
-            scales_tensor = onnx.numpy_helper.from_array(scales, b_tensor.name + "_DQ_scales")
+            scales_tensor = ir.serde.serialize_tensor(ir.Tensor(scales, name=b_tensor.name + "_DQ_scales"))
+
+        # if QDQ, CW and SYM enabled, optimize for Intel NPU, tranpose the weight to NHWC format will increase performance
+        qdq_opt_for_intel_npu_enabled = (
+            self.config.quant_format == QuantFormat.QDQ
+            and self.config.channel_wised_quantize
+            and self.config.is_symmetric
+        )
+        if qdq_opt_for_intel_npu_enabled:
+            rows, cols = b_ndarray.shape
+            packed = transpose_packed_int4_matrix(packed, rows, cols)
+            scales = scales.reshape((cols, 1))  # (cols, 1)
+            b_quant = onnx.helper.make_tensor(
+                b_tensor.name + f"_DQ_Q{bits}", qtype, [cols, rows], packed.tobytes(), True
+            )
+            scales_tensor = ir.serde.serialize_tensor(ir.Tensor(scales, name=b_tensor.name + "_DQ_scales"))
 
         for input in b_graph.input:
             if input.name == input_b:
@@ -871,28 +1133,60 @@ class DefaultWeightOnlyQuantizer:
             if self.config.accuracy_level:
                 kwargs["accuracy_level"] = self.config.accuracy_level
 
+            # When rank(A) >= rank_b_orig, the reshape would be a no-op since MatMulNBits
+            # already produces the correct output shape.
+            a_static_rank = _get_static_rank(node.input[0], graph_stack)
+            rank_b_orig = len(b_original_shape) if b_original_shape is not None else 0
+            needs_reshape = b_original_shape is not None and (a_static_rank is None or a_static_rank < rank_b_orig)
+            qop_output = node.output[0] if not needs_reshape else node.output[0] + "_pre_reshape"
             matmul_qbit_node = onnx.helper.make_node(
                 "MatMulNBits",
                 inputs=input_names,
-                outputs=[node.output[0]],
+                outputs=[qop_output],
                 name=node.name + f"_Q{bits}" if node.name else "",
                 domain="com.microsoft",
                 **kwargs,
             )
 
             output_nodes.append(matmul_qbit_node)
+            if needs_reshape:
+                output_nodes.extend(
+                    _build_nbits_output_reshape(
+                        a_input_name=node.input[0],
+                        b_original_shape=b_original_shape,
+                        target_graph=b_graph,
+                        name_prefix=(node.name + f"_Q{bits}") if node.name else (b_tensor.name + f"_Q{bits}"),
+                        pre_reshape_output=qop_output,
+                        final_output=node.output[0],
+                    )
+                )
         else:
             dq_input_names = [b_quant.name, scales_tensor.name]
             dq_output_names = [b_quant.name + "_output"]
-            matmul_input_names = [node.input[0], dq_output_names[0]]
-            matmul_output_names = [node.output[0]]
+            tp_input_names = [dq_output_names[0]]
+            tp_output_names = [dq_output_names[0] + "_transposed"]
+            matmul_input_names = [
+                node.input[0],
+                tp_output_names[0] if qdq_opt_for_intel_npu_enabled else dq_output_names[0],
+            ]
+            # When rank(A) >= rank_b_orig, the reshape would be a no-op since MatMul
+            # already produces the correct output shape.
+            a_static_rank = _get_static_rank(node.input[0], graph_stack)
+            rank_b_orig = len(b_original_shape) if b_original_shape is not None else 0
+            needs_reshape = b_original_shape is not None and (a_static_rank is None or a_static_rank < rank_b_orig)
+            qdq_matmul_out = node.output[0] if not needs_reshape else node.output[0] + "_pre_reshape"
+            matmul_output_names = [qdq_matmul_out]
             if not self.config.is_symmetric:
                 zp_tensor = onnx.helper.make_tensor(
                     b_tensor.name + "_DQ_zero_points", qtype, scales.shape, zero_points.tobytes(), True
                 )
                 dq_input_names.append(zp_tensor.name)
                 b_graph.initializer.extend([zp_tensor])
-            dq_kwargs = {"axis": 0, "block_size": self.config.block_size}
+            rows, cols = b_ndarray.shape
+            dq_kwargs = {
+                "axis": 1 if qdq_opt_for_intel_npu_enabled else 0,
+                "block_size": rows if self.config.channel_wised_quantize else self.config.block_size,
+            }
             dq_node = onnx.helper.make_node(
                 "DequantizeLinear",
                 inputs=dq_input_names,
@@ -906,7 +1200,27 @@ class DefaultWeightOnlyQuantizer:
                 outputs=matmul_output_names,
                 name=node.name + f"_matmul_Q{bits}" if node.name else "",
             )
-            output_nodes.extend([dq_node, matmul_node])
+            if qdq_opt_for_intel_npu_enabled:
+                tp_node = onnx.helper.make_node(
+                    "Transpose",
+                    inputs=tp_input_names,
+                    outputs=tp_output_names,
+                    perm=[1, 0],
+                )
+                output_nodes.extend([dq_node, tp_node, matmul_node])
+            else:
+                output_nodes.extend([dq_node, matmul_node])
+            if needs_reshape:
+                output_nodes.extend(
+                    _build_nbits_output_reshape(
+                        a_input_name=node.input[0],
+                        b_original_shape=b_original_shape,
+                        target_graph=b_graph,
+                        name_prefix=(node.name + f"_DQ_Q{bits}") if node.name else (b_tensor.name + f"_DQ_Q{bits}"),
+                        pre_reshape_output=qdq_matmul_out,
+                        final_output=node.output[0],
+                    )
+                )
 
         return output_nodes
 
@@ -1114,7 +1428,7 @@ class NVAWQWeightOnlyQuantizer:
             ModelProto: The quantized ONNX model.
         """
         try:
-            from modelopt.onnx.quantization.int4 import quantize as quantize_int4
+            from modelopt.onnx.quantization.int4 import quantize as quantize_int4  # noqa: PLC0415
         except ImportError:
             print(
                 "Please ensure that the 'modelopt' package is installed. Please install it using pip install nvidia_modelopt."
@@ -1145,7 +1459,7 @@ class MatMulNBitsQuantizer:
     MatMul              MatMulNBits                DeQuantizeLinear -> MatMul
     Gather              GatherBlockQuantized       Gather, Gather, Gather (optional) -> DequantizeLinear
 
-    Perform 4/8 bits quantization of constant weights for target nodes.
+    Perform 2/4/8 bits quantization of constant weights for target nodes.
     If algo_config.quant_format is QOperator:
       - nodes are replaced by the corresponding QOperator nodes.
       - quantized weights are stored in the contrib ops.
@@ -1163,6 +1477,7 @@ class MatMulNBitsQuantizer:
     def __init__(
         self,
         model: ModelProto | str,
+        bits: int = 4,  # default to 4bit
         block_size: int = 128,
         is_symmetric: bool = False,
         accuracy_level: int | None = None,
@@ -1171,12 +1486,14 @@ class MatMulNBitsQuantizer:
         quant_format=QuantFormat.QOperator,
         op_types_to_quantize: tuple[str, ...] | None = None,
         quant_axes: tuple[tuple[str, int], ...] | None = None,
+        channel_wised_quantize: bool = False,
         algo_config: WeightOnlyQuantConfig | None = None,
     ):
         if nodes_to_exclude is None:
             nodes_to_exclude = []
         self.model = ONNXModel(onnx.load(model)) if isinstance(model, str) else ONNXModel(model)
         self.model_path = model if isinstance(model, str) else None
+        self.bits = bits
         self.block_size = block_size
         self.is_symmetric = is_symmetric
         self.accuracy_level = accuracy_level
@@ -1192,12 +1509,13 @@ class MatMulNBitsQuantizer:
                 quant_format=quant_format,
                 op_types_to_quantize=op_types_to_quantize,
                 quant_axes=quant_axes,
-                bits=4,  # default to 4 bits
+                bits=bits,
+                channel_wised_quantize=channel_wised_quantize,
             )
 
         self.algo_config = algo_config
         if hasattr(self.algo_config, "bits"):
-            assert self.algo_config.bits in [4, 8], "Only support 4 or 8 bits quantization"
+            assert self.algo_config.bits in [2, 4, 8], "Only support 2, 4 or 8 bits quantization"
 
         if algo_config.algorithm == "HQQ":
             self.node_quantizer = HQQWeightOnlyQuantizer(self.algo_config)
@@ -1546,6 +1864,7 @@ if __name__ == "__main__":
 
     quant = MatMulNBitsQuantizer(
         model=model,
+        bits=args.bits,
         accuracy_level=args.accuracy_level,
         nodes_to_exclude=args.nodes_to_exclude,
         nodes_to_include=args.nodes_to_include,

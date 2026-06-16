@@ -4,6 +4,11 @@
 #pragma once
 #include <gsl/gsl>
 
+#include <algorithm>
+#include <cctype>
+#include <string>
+#include "core/common/common.h"
+
 namespace onnxruntime {
 namespace contrib {
 
@@ -52,6 +57,34 @@ enum AttentionKernelType {
   AttentionKernel_DecoderAttention,
   AttentionKernel_Default
 };
+
+enum class QKOutputType : int {
+  NO_OUTPUT = 0,
+  BEFORE_SOFTMAX = 1,
+  AFTER_SOFTMAX = 2
+};
+
+// Enum to define quantization granularity.
+enum class KVQuantizationType : int {
+  NONE = 0,
+  PER_TENSOR = 1,
+  PER_CHANNEL = 2,
+};
+
+inline KVQuantizationType StringToKVQuantizationType(std::string s) {
+  std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::toupper(c); });
+  if (s == "NONE") {
+    return KVQuantizationType::NONE;
+  }
+  if (s == "PER_TENSOR") {
+    return KVQuantizationType::PER_TENSOR;
+  }
+  if (s == "PER_CHANNEL") {
+    return KVQuantizationType::PER_CHANNEL;
+  }
+  ORT_THROW("Invalid KV quantization type: '", s,
+            "'. Valid values are: NONE, PER_TENSOR, PER_CHANNEL.");
+}
 
 constexpr bool LAYOUT_BSNH = false;
 constexpr bool LAYOUT_BNSH = true;

@@ -15,7 +15,7 @@
 
 /* Modifications Copyright (c) Microsoft. */
 
-#include "core/framework/endian.h"
+#include "core/common/endian.h"
 
 #include "core/util/force_inline.h"
 

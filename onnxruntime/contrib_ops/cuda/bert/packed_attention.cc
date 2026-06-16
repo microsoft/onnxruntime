@@ -261,7 +261,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     use_memory_efficient_attention =
         (attention_bias == nullptr || parameters.sequence_length % (4 * sizeof(T)) == 0) &&
         sizeof(T) == 2 &&  // only enable for fp16
-        has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.v_head_size);
+        has_memory_efficient_attention(sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value, parameters.head_size, parameters.v_head_size);
   }
 #endif
 
@@ -286,7 +286,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int m = parameters.token_count;
   int n = parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size;
   int k = parameters.input_hidden_size;
-  gemm_buffer = this->template GetScratchBuffer<T>(static_cast<size_t>(m) * n, context->GetComputeStream());
+  gemm_buffer = this->template GetScratchBuffer<T>(static_cast<size_t>(m) * n, this->GetComputeStream(context));
 
   cublasHandle_t cublas = this->GetCublasHandle(context);
 
@@ -310,7 +310,7 @@ Status PackedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    false,
                                                    use_memory_efficient_attention,
                                                    no_qkv_workspace);
-  auto work_space = this->template GetScratchBuffer<void>(workSpaceSize, context->GetComputeStream());
+  auto work_space = this->template GetScratchBuffer<void>(workSpaceSize, this->GetComputeStream(context));
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   PackedAttentionData<CudaT> data;

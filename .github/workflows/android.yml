@@ -24,10 +24,16 @@ permissions:
 
 jobs:
   AndroidBinarySizeCheckJob_MinimalBaseline:
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "JobId=AndroidBinarySizeCheckJob_MinimalBaseline-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
+    env:
+      CCACHE_DIR: ~/.cache/ccache # explicitly set to prevent any fallback to `~/.ccache`
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         submodules: false
 
@@ -37,7 +43,7 @@ jobs:
         ndk-version: 28.0.13004108
 
     - name: Get Docker Image using Action
-      uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.7
+      uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
       id: build_docker_image_step
       with:
         dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
@@ -67,19 +73,13 @@ jobs:
       shell: python
       working-directory: ${{ github.workspace }}
 
-    - name: Export GitHub Actions cache environment variables
-      uses: actions/github-script@v7
-      with:
-        script: |
-          core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-          core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-
+    # FUTURE WORK: ccache, vcpkg cache
     - name: 1a. Build onnxruntime
       run: |
         set -e -x
         BINARY_SIZE_THRESHOLD_ARGS=""
-        echo "Binary size threshold in bytes: 1306224"
-        BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes 1306224"
+        echo "Binary size threshold in bytes: 1436672"
+        BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes 1436672"
 
         # Ensure ANDROID_NDK_HOME is available and get its real path
         if [ -z "$ANDROID_NDK_HOME" ]; then
@@ -107,8 +107,6 @@ jobs:
           -e BUILD_ID=${{ github.run_id }} \
           -e BUILD_REASON=${{ github.event_name }} \
           -e BUILD_BRANCH=${{ github.ref }} \
-          -e ACTIONS_CACHE_URL \
-          -e ACTIONS_RUNTIME_TOKEN \
           -e RUNNER_TEMP=/build \
           ${{ steps.build_docker_image_step.outputs.full-image-name }} \
             bash -c "python3 -m pip install -r /onnxruntime_src/tools/ci_build/requirements/pybind/requirements.txt && \
@@ -119,22 +117,29 @@ jobs:
       shell: bash
 
   android_nnapi_ep:
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "JobId=android_nnapi_ep-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
+    env:
+      CCACHE_DIR: ~/.cache/ccache # explicitly set to prevent any fallback to `~/.ccache`
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Use jdk 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
           architecture: x64
 
-
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.7
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
-          vcpkg-version: '2025.04.09'
-          vcpkg-hash: '31a28b58854b7c7b503db99bb2eb41582d9f835b401adf3bd0f680ef329faa4ab4278b987b586a2a6141e2c98f007833266a4e3b60c3164226a3905466a082ce'
+          ccache-version: 4.13.1
+          ccache-hash: 626407a9b81dd86f8ec9867bff396b32dd1f00344f5b323526579a64f6d4104927f83e8d7a05ad9806fd78f4491e0adb4cff73388000a62050cb1b00766214ee
+          vcpkg-version: '2025.08.27'
+          vcpkg-hash: '9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079'
           cmake-version: '3.31.6'
           cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
           add-cmake-to-path: 'true'
@@ -145,12 +150,22 @@ jobs:
         with:
           ndk-version: 28.0.13004108
 
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v7
+      - name: Setup CCache
+        uses: actions/cache@v5
         with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+          # Fully qualify by workflow. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
+          key: ccache | android.yml | android_nnapi_ep
+          path: ~/.cache/ccache
+
+      - name: Setup VCPKG Cache
+        uses: actions/cache@v5
+        with:
+          key: vcpkg-cache | android.yml | android_nnapi_ep
+          path: ~/.cache/vcpkg
+
+      - name: CCache reset stats
+        run: ccache --zero-stats
+        shell: bash
 
       - name: NNAPI EP, Build, Test on Android Emulator
         run: >-
@@ -163,18 +178,25 @@ jobs:
           --android_abi=x86_64
           --android_api=29
           --skip_submodule_sync
-          --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+          --parallel
+          --use_cache
+          --use_vcpkg
+          --use_vcpkg_ms_internal_asset_cache
           --use_nnapi
           --build_shared_lib
           --cmake_generator=Ninja
           --build_java
+          --update --build --test
         shell: bash
-
 
       - name: Build Minimal ORT with NNAPI and run tests
         run:
           tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh
           "$(pwd)"
+        shell: bash
+
+      - name: CCache stats
+        run: ccache --show-stats -vv
         shell: bash
 
       - name: Install psutil for emulator shutdown by run_android_emulator.py
@@ -200,28 +222,55 @@ jobs:
 
   android_cpu_ep:
     name: Android CI Pipeline
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: [
+        "self-hosted",
+        "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU",
+        "JobId=android_cpu_ep-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+        ]
+    env:
+      CCACHE_DIR: ~/.cache/ccache # explicitly set to prevent any fallback to `~/.ccache`
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Use jdk 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
           architecture: x64
+
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
+        with:
+          ccache-version: 4.13.1
+          ccache-hash: 626407a9b81dd86f8ec9867bff396b32dd1f00344f5b323526579a64f6d4104927f83e8d7a05ad9806fd78f4491e0adb4cff73388000a62050cb1b00766214ee
+          vcpkg-version: '2025.08.27'
+          vcpkg-hash: '9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079'
+          cmake-version: '3.31.6'
+          cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
+          add-cmake-to-path: 'true'
+          disable-terrapin: 'true'
 
       - name: Setup Android NDK
         uses: ./.github/actions/setup-android-ndk
         with:
           ndk-version: 28.0.13004108
 
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v7
+      - name: Setup CCache
+        uses: actions/cache@v5
         with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+          # Fully qualify by workflow. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
+          key: ccache | android.yml | android_cpu_ep
+          path: ~/.cache/ccache
+
+      - name: Setup VCPKG Cache
+        uses: actions/cache@v5
+        with:
+          key: vcpkg-cache | android.yml | android_cpu_ep
+          path: ~/.cache/vcpkg
+
+      - name: CCache reset stats
+        run: ccache --zero-stats
+        shell: bash
 
       - name: CPU EP, Build and Test
         run: >-
@@ -234,9 +283,17 @@ jobs:
           --android_abi=x86_64
           --android_api=30
           --skip_submodule_sync
-          --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+          --parallel
+          --use_cache
+          --use_vcpkg
+          --use_vcpkg_ms_internal_asset_cache
           --cmake_generator=Ninja
           --build_java
+          --update --build --test
+        shell: bash
+
+      - name: CCache stats
+        run: ccache --show-stats -vv
         shell: bash
 
       - name: Install psutil for emulator shutdown by run_android_emulator.py

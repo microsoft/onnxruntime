@@ -170,6 +170,11 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
+        /// Native handle to the OrtKeyValuePairs instance.
+        /// </summary>
+        internal IntPtr Handle => handle;
+
+        /// <summary>
         /// Indicates whether the native handle is invalid.
         /// </summary>
         public override bool IsInvalid { get { return handle == IntPtr.Zero; } }

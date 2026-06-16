@@ -10,7 +10,7 @@
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
 
 #include "core/common/safeint.h"
-#include "core/framework/float16.h"
+#include "core/common/float16.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
 
@@ -54,6 +54,7 @@ class FusedConvFp16 final : public OpKernel {
                  /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
@@ -211,6 +212,7 @@ Status FusedConvFp16::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
 }
 
 Status FusedConvFp16::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                                 int input_idx,
                                                 /*out*/ bool& used_shared_buffers) {
   if (input_idx != 1) {

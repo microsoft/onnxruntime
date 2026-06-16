@@ -16,10 +16,7 @@
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/tunable/cuda_tuning_context.h"
-
-#ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/cuda/bert/attention_kernel_options.h"
-#endif
 
 namespace onnxruntime {
 
@@ -38,6 +35,10 @@ class CUDAExecutionProvider : public IExecutionProvider {
   Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
 
   DataLayout GetPreferredLayout() const override;
+
+  std::optional<bool> ShouldConvertDataLayoutForOp(std::string_view node_domain,
+                                                   std::string_view node_op_type,
+                                                   DataLayout target_data_layout) const override;
 
   const void* GetExecutionHandle() const noexcept override {
     // The CUDA interface does not return anything interesting.
@@ -87,20 +88,29 @@ class CUDAExecutionProvider : public IExecutionProvider {
   bool IsFuseConvBias() const { return info_.fuse_conv_bias; }
   bool UseTF32() const { return info_.use_tf32; }
 
-#ifndef DISABLE_CONTRIB_OPS
   // Attention kernel options parsed from sdpa_kernel cuda provider option.
   const AttentionKernelOptions* GetAttentionKernelOptions() const {
     attention_kernel_options_.InitializeOnce(info_.sdpa_kernel, true, true);
     return &attention_kernel_options_;
   }
-#endif
 
   ProviderOptions GetProviderOptions() const override {
     return CUDAExecutionProviderInfo::ToProviderOptions(info_);
   }
 
-  static AllocatorPtr CreateCudaAllocator(OrtDevice::DeviceId device_id, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy,
-                                          CUDAExecutionProviderExternalAllocatorInfo external_alloc_info, const OrtArenaCfg* arena_cfg);
+  struct CUDAAllocatorParams {
+    OrtDevice::DeviceId device_id = 0;
+    size_t cuda_mem_threshold = std::numeric_limits<size_t>::max();
+    ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kNextPowerOfTwo;
+    const CUDAExecutionProviderInfo* provider_info = nullptr;
+    const CUDAExecutionProviderExternalAllocatorInfo* external_alloc_info = nullptr;
+    const OrtArenaCfg* arena_cfg = nullptr;
+    const logging::Logger* logger = nullptr;
+  };
+
+  static AllocatorPtr CreateCudaAllocator(const CUDAAllocatorParams& cuda_allocator_params);
+
+  static AllocatorPtr CreateCudaPinnedAllocator(const CUDAAllocatorParams& cuda_allocator_params);
 
   ITuningContext* GetTuningContext() const override;
 
@@ -108,7 +118,10 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(CudaGraphAnnotation_t graph_annotation_id) const override;
-  Status ReplayGraph(CudaGraphAnnotation_t graph_annotation_id) override;
+  Status ReplayGraph(CudaGraphAnnotation_t graph_annotation_id, bool sync = true) override;
+  OrtGraphCaptureNodeAssignmentPolicy GetGraphCaptureNodeAssignmentPolicy() const override {
+    return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
+  }
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const override;
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
@@ -125,10 +138,8 @@ class CUDAExecutionProvider : public IExecutionProvider {
   // the tuning context might be altered when calling into a TunableOp
   mutable cuda::tunable::CudaTuningContext tuning_context_;
 
-#ifndef DISABLE_CONTRIB_OPS
   // Attention kernel options parsed from sdpa_kernel cuda provider option.
   mutable AttentionKernelOptions attention_kernel_options_;
-#endif
 
   class PerThreadContext final {
    public:
@@ -194,7 +205,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     void CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id);
     bool IsGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const;
     CudaGraphAnnotation_t GetCudaGraphAnnotationId(const onnxruntime::RunOptions& run_options) const;
-    Status ReplayGraph(CudaGraphAnnotation_t cuda_graph_annotation_id);
+    Status ReplayGraph(CudaGraphAnnotation_t cuda_graph_annotation_id, bool sync = true);
     void IncrementRegularRunCountBeforeGraphCapture(CudaGraphAnnotation_t cuda_graph_annotation_id);
 
    private:

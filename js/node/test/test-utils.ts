@@ -88,7 +88,7 @@ export function warmup(): void {
     try {
       const session = await InferenceSession.create(path.join(TEST_DATA_ROOT, 'test_types_int32.onnx'));
       await session.run({ input: new Tensor(new Float32Array(5), [1, 5]) }, { output: null }, {});
-    } catch (e) {}
+    } catch {}
   });
 }
 
@@ -197,7 +197,7 @@ export function assertTensorEqual(actual: Tensor, expected: Tensor, atol?: numbe
 }
 
 export function loadTensorFromFile(pbFile: string): Tensor {
-  const tensorProto = onnx_proto.onnx.TensorProto.decode(fs.readFileSync(pbFile));
+  const tensorProto = onnx_proto.onnx.TensorProto.decode(new Uint8Array(fs.readFileSync(pbFile)));
   let transferredTypedArray: Tensor.DataType;
   let type: Tensor.Type;
   const dims = tensorProto.dims.map((dim) => (typeof dim === 'number' ? dim : dim.toNumber()));

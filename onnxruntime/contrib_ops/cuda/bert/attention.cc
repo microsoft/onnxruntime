@@ -36,24 +36,30 @@ constexpr int kPresentOutputIndex = 1;
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(BFloat16)
 
 template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionBase(info, false) {
   kernel_options_ = this->GetAttentionKernelOptions();
 
-  disable_fused_self_attention_ = sizeof(T) != 2 || !kernel_options_->UseTrtFusedAttention();
+  constexpr bool kIsFp16 = std::is_same<T, MLFloat16>::value;
+  constexpr bool kIsBf16 = std::is_same<T, BFloat16>::value;
+  constexpr bool kIs16bit = kIsFp16 || kIsBf16;
 
-  enable_trt_flash_attention_ = sizeof(T) == 2 && kernel_options_->UseTrtFlashAttention();
+  // We only support FP16 for TRT fused/flash/causal attention.
+  disable_fused_self_attention_ = !kIsFp16 || !kernel_options_->UseTrtFusedAttention();
+  enable_trt_flash_attention_ = kIsFp16 && kernel_options_->UseTrtFlashAttention();
+  enable_fused_causal_attention_ = kIsFp16 && kernel_options_->UseTrtCausalAttention();
 
-  enable_fused_causal_attention_ = sizeof(T) == 2 && kernel_options_->UseTrtCausalAttention();
+  disable_memory_efficient_attention_ = kIsBf16 || !kernel_options_->UseEfficientAttention();
 
-  disable_memory_efficient_attention_ = !kernel_options_->UseEfficientAttention();
-
-  disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
+  disable_flash_attention_ = !kIs16bit || !kernel_options_->UseFlashAttention();
 }
 
 template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
+  auto ort_stream = GetOrtStream(context);
+
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
@@ -112,10 +118,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                              nullptr == present &&
                              parameters.hidden_size == parameters.v_hidden_size &&
                              nullptr == mask_index &&
-                             onnxruntime::flash::is_supported(device_prop,
-                                                              parameters.head_size,
-                                                              parameters.num_heads,
-                                                              parameters.num_heads);
+                             onnxruntime::flash::is_supported<T>(device_prop,
+                                                                 parameters.head_size,
+                                                                 parameters.num_heads,
+                                                                 parameters.num_heads);
   // When input is packed QKV format, TensorRT kernel might be faster when sequence length <= 512.
   if (use_flash_attention && parameters.sequence_length < kernel_options_->MinSeqLenForFlashAttentionPackedQkv()) {
     use_flash_attention = false;
@@ -135,14 +141,14 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     softmax_lse_accum_bytes = slse_accum_bytes;
     out_accum_bytes = o_accum_bytes;
   }
-  auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
-  auto softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, context->GetComputeStream());
-  auto out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, context->GetComputeStream());
+  auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, GetComputeStream(context));
+  auto softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, GetComputeStream(context));
+  auto out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, GetComputeStream(context));
 #else
   constexpr bool use_flash_attention = false;
-  auto softmax_lse_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
-  auto softmax_lse_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());  // nullptr
-  auto out_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());          // nullptr
+  auto softmax_lse_buffer = GetScratchBuffer<void>(0, GetComputeStream(context));
+  auto softmax_lse_accum_buffer = GetScratchBuffer<void>(0, GetComputeStream(context));  // nullptr
+  auto out_accum_buffer = GetScratchBuffer<void>(0, GetComputeStream(context));          // nullptr
 #endif
 
   if (!use_flash_attention) {
@@ -210,7 +216,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       (nullptr == mask_index || parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) &&
       (sizeof(T) == 2 || parameters.sequence_length >= this->kernel_options_->MinSeqLenForEfficientAttentionFp32()) &&
       (nullptr == attention_bias || parameters.sequence_length % (4 * sizeof(T)) == 0) &&
-      has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.v_head_size);
+      has_memory_efficient_attention(sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value, parameters.head_size, parameters.v_head_size);
 
 #else
   constexpr bool use_memory_efficient_attention = false;
@@ -234,12 +240,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 
-  AllocatorPtr allocator;
-  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
   int m = batch_size * sequence_length;
   int n = (parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size);
   int k = parameters.input_hidden_size;
-  IAllocatorUniquePtr<void> gemm_buffer = IAllocator::MakeUniquePtr<void>(allocator, static_cast<size_t>(m * n) * sizeof(T), false, context->GetComputeStream());
+  IAllocatorUniquePtr<void> gemm_buffer = GetScratchBuffer<void>(static_cast<size_t>(m * n) * sizeof(T), GetComputeStream(context));
 
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
@@ -271,7 +275,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    use_memory_efficient_attention,
                                                    use_cudnn_flash_attention,
                                                    false);
-  IAllocatorUniquePtr<void> work_space = IAllocator::MakeUniquePtr<void>(allocator, workSpaceSize, false, context->GetComputeStream());
+  IAllocatorUniquePtr<void> work_space = GetScratchBuffer<void>(workSpaceSize, GetComputeStream(context));
 
   data.gemm_buffer = reinterpret_cast<CudaT*>(gemm_buffer.get());
   if (nullptr != bias) {
@@ -309,7 +313,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   cudnnHandle_t cudnn = GetCudnnHandle(context);
-  return QkvToContext<CudaT>(device_prop, cublas, cudnn, context->GetComputeStream(), parameters, data);
+  return QkvToContext<CudaT>(device_prop, cublas, cudnn, ort_stream.get(), parameters, data);
 }
 
 }  // namespace cuda

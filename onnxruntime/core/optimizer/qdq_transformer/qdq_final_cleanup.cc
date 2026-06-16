@@ -51,7 +51,8 @@ bool CleanUpNodeSequence(NodeSequence node_sequence_type, Graph& graph, NodeInde
     const auto output_edges_count = second_node_ptr->GetOutputEdgesCount();
 
     if (!match_second(*second_node_ptr) ||
-        !QDQ::IsQDQPairSupported(first_node, *second_node_ptr, get_constant_initializer, graph.ModelPath(), false) ||
+        !QDQ::IsQDQPairSupported(graph, first_node, *second_node_ptr, get_constant_initializer,
+                                 graph.ModelPath(), false) ||
         (produces_graph_output && output_edges_count != 0) ||
         (!produces_graph_output && output_edges_count != 1)) {
       return false;

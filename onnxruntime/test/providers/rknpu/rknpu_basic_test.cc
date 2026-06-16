@@ -1,6 +1,6 @@
 #include "core/session/inference_session.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/framework/test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
 #include "gtest/gtest.h"
 #include "core/providers/rknpu/rknpu_execution_provider.h"
 #include "core/common/logging/logging.h"
@@ -60,7 +60,7 @@ TEST(RknpuExecutionProviderTest, FunctionTest) {
 
   std::vector<int64_t> dims_mul_x = {1, 1, 3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+  AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
   OrtValue ml_value_x;
   CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x, &ml_value_x);
   OrtValue ml_value_y;

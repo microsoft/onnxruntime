@@ -22,6 +22,12 @@ class CastOpBuilder : public BaseOpBuilder {
 
  public:
   bool SupportsMLProgram() const override { return true; }
+
+  // Cast is shape-only data movement from CoreML's perspective: per-element
+  // dtype conversion that the marshalling overhead dominates for small
+  // tensors. CoreML claims it but a partition consisting only of Casts
+  // doesn't earn its own marshalling cost.
+  bool IsTrivial(const Node& /*node*/) const override { return true; }
 };
 
 Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model_builder,
@@ -77,13 +83,17 @@ Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model
 
 bool CastOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                       const logging::Logger& logger) const {
+  if (input_params.create_mlprogram) {
+    // The ML Program 'cast' op stands alone, so a Cast fed directly by a graph
+    // input (no preceding node) is fine here.
+    return true;
+  }
+
+  // The NeuralNetwork path only supports a Cast that consumes an ArgMax, so it
+  // needs a preceding node to inspect (InputEdgesBegin() must be dereferenceable).
   if (node.GetInputEdgesCount() == 0) {
     LOGS(logger, VERBOSE) << "Cast has no preceding nodes.";
     return false;
-  }
-
-  if (input_params.create_mlprogram) {
-    return true;
   }
 
   const auto& prec_node = node.InputEdgesBegin()->GetNode();

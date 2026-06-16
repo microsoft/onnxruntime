@@ -37,7 +37,7 @@ Status QuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         if (!optimizer_utils::IsScalar(input_arg)) continue;
         const TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, input_arg.Name());
         if (!tensor_proto) continue;
-        Initializer init_const{*tensor_proto, graph.ModelPath()};
+        Initializer init_const{graph, *tensor_proto, graph.ModelPath()};
         const auto data_type = tensor_proto->data_type();
         if (data_type == TensorProto_DataType_FLOAT) {
           alpha = *(init_const.data<float>());

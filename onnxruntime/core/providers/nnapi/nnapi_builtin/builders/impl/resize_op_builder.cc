@@ -249,7 +249,7 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const N
         return false;
       }
 
-      const Initializer unpacked_tensor(*scales);
+      const Initializer unpacked_tensor(graph_viewer.GetGraph(), *scales);
       auto scales_data = unpacked_tensor.DataAsSpan<float>();
       input_is_nchw = scales_data[1] == 1.0F;
       const float scale_n = scales_data[0];
@@ -287,7 +287,7 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const N
         return false;
       }
 
-      Initializer unpacked_tensor(*sizes);
+      Initializer unpacked_tensor(graph_viewer.GetGraph(), *sizes);
       auto sizes_data = unpacked_tensor.DataAsSpan<int64_t>();
 
       input_is_nchw = sizes_data[1] == input_shape[1];

@@ -19,6 +19,19 @@ from onnxruntime import InferenceSession
 
 logger = logging.getLogger(__name__)
 
+
+def _torch_load_weights_only(path: str, **kwargs):
+    try:
+        return torch.load(path, weights_only=True, **kwargs)
+    except TypeError:
+        logger.warning(
+            "Current PyTorch version does not support torch.load(..., weights_only=True); "
+            "falling back to default torch.load behavior for %s.",
+            path,
+        )
+        return torch.load(path, **kwargs)
+
+
 PRETRAINED_T5_MODELS = ["t5-small", "t5-base", "t5-large", "t5-3b", "t5-11b"]
 PRETRAINED_MT5_MODELS = [
     "google/mt5-small",
@@ -88,7 +101,7 @@ class T5Helper:
             raise ValueError("only support mode_type=t5 or mt5")
 
         if state_dict_path:
-            model.load_state_dict(torch.load(state_dict_path))
+            model.load_state_dict(_torch_load_weights_only(state_dict_path))
 
         decoder = T5Decoder(model.decoder, model.lm_head, model.config)
         decoder.eval().to(device)
@@ -238,7 +251,7 @@ class T5Helper:
         else:
             # Workaround when symbolic shape inference fails.
             # Need enable shape_infer_before_optimization in convert_to_onnx.py as well.
-            from float16 import convert_float_to_float16
+            from float16 import convert_float_to_float16  # noqa: PLC0415
 
             convert_float_to_float16(
                 onnx_model.model,
@@ -262,7 +275,7 @@ class T5Helper:
     ):
         """Optimize ONNX model with an option to convert it to use mixed precision."""
 
-        from fusion_options import FusionOptions
+        from fusion_options import FusionOptions  # noqa: PLC0415
 
         optimization_options = None
         if is_float16:

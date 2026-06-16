@@ -101,6 +101,8 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     VitisAI,
     CoreML,
     NvTensorRtRtx,  // TensorRt EP for RTX GPUs.
+    MIGraphX,
+    CPU
   };
 
   struct EpToAppend {
@@ -109,7 +111,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     const char* canonical_name = nullptr;
   };
 
-  static std::array<EpToAppend, 12> supported_eps = {
+  static std::array<EpToAppend, 14> supported_eps = {
       EpToAppend{EpID::DML, "DML", kDmlExecutionProvider},
       EpToAppend{EpID::QNN, "QNN", kQnnExecutionProvider},
       EpToAppend{EpID::OpenVINO, "OpenVINO", kOpenVINOExecutionProvider},
@@ -121,7 +123,9 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
       EpToAppend{EpID::JS, "JS", kJsExecutionProvider},
       EpToAppend{EpID::VitisAI, "VitisAI", kVitisAIExecutionProvider},
       EpToAppend{EpID::CoreML, "CoreML", kCoreMLExecutionProvider},
-      EpToAppend{EpID::NvTensorRtRtx, "NvTensorRtRtx", kNvTensorRTRTXExecutionProvider}};
+      EpToAppend{EpID::NvTensorRtRtx, "NvTensorRtRtx", kNvTensorRTRTXExecutionProvider},
+      EpToAppend{EpID::MIGraphX, "MIGraphX", kMIGraphXExecutionProvider},
+      EpToAppend{EpID::CPU, "CPU", kCpuExecutionProvider}};
 
   ProviderOptions provider_options;
   OrtStatus* status = ParseProviderOptions(provider_options_keys,
@@ -132,7 +136,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     return status;
   }
 
-#ifdef _WIN32
+#if defined(_WIN32) && defined(ONNXRUNTIME_ENABLE_INSTRUMENT)
   for (const auto& config_pair : provider_options) {
     TraceLoggingWrite(
         telemetry_provider_handle,
@@ -195,6 +199,11 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
                                                                              ep_to_append.canonical_name));
 
   switch (ep_to_append.id) {
+    case EpID::CPU: {
+      // CPU EP is always available by default. Accept the name as valid but do nothing,
+      // since the CPU EP is implicitly registered in every session.
+      break;
+    }
     case EpID::DML: {
 #if defined(USE_DML)
       options->provider_factories.push_back(
@@ -255,7 +264,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
       break;
     }
     case EpID::WebGPU: {
-#if defined(USE_WEBGPU)
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
       options->provider_factories.push_back(WebGpuProviderFactoryCreator::Create(options->value.config_options));
 #else
       status = create_not_supported_status();
@@ -277,6 +286,14 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
         provider_options["preferred_layout"] = preferred_layout;
       }
       options->provider_factories.push_back(JsProviderFactoryCreator::Create(provider_options, &(options->value)));
+#else
+      status = create_not_supported_status();
+#endif
+      break;
+    }
+    case EpID::MIGraphX: {
+#if defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
+      options->provider_factories.push_back(MIGraphXProviderFactoryCreator::Create(provider_options));
 #else
       status = create_not_supported_status();
 #endif
@@ -322,11 +339,9 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   API_IMPL_END
 }
 
-#if defined(__APPLE__) || defined(ORT_MINIMAL_BUILD)
 static OrtStatus* CreateNotEnabledStatus(const std::string& ep) {
   return OrtApis::CreateStatus(ORT_FAIL, (ep + " execution provider is not enabled in this build. ").c_str());
 }
-#endif
 
 /**
  * Stubs for the publicly exported static registration functions for EPs that are referenced in the C# bindings
@@ -443,13 +458,6 @@ ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, _In_ int* device_id) {
 ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, _In_ int device_id) {
   ORT_UNUSED_PARAMETER(device_id);
   return CreateNotEnabledStatus("CUDA");
-}
-
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM,
-                    _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* provider_options) {
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(provider_options);
-  return CreateNotEnabledStatus("ROCM");
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO,
@@ -617,6 +625,24 @@ ORT_API(void, OrtApis::ReleaseDnnlProviderOptions, _Frees_ptr_opt_ OrtDnnlProvid
   ORT_UNUSED_PARAMETER(ptr);
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_VitisAI,
+                    _In_ OrtSessionOptions* options, _In_reads_(num_keys) const char* const* provider_options_keys,
+                    _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(provider_options_keys);
+  ORT_UNUSED_PARAMETER(provider_options_values);
+  ORT_UNUSED_PARAMETER(num_keys);
+  return CreateNotEnabledStatus("VitisAI");
+}
+#endif
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_ROCM,
+                    _In_ OrtSessionOptions* options, _In_ const OrtROCMProviderOptions* provider_options) {
+  ORT_UNUSED_PARAMETER(options);
+  ORT_UNUSED_PARAMETER(provider_options);
+  return CreateNotEnabledStatus("ROCM");
+}
+
 ORT_API_STATUS_IMPL(OrtApis::CreateROCMProviderOptions, _Outptr_ OrtROCMProviderOptions** out) {
   ORT_UNUSED_PARAMETER(out);
   return CreateNotEnabledStatus("ROCM");
@@ -647,14 +673,3 @@ ORT_API_STATUS_IMPL(OrtApis::GetROCMProviderOptionsAsString,
 ORT_API(void, OrtApis::ReleaseROCMProviderOptions, _Frees_ptr_opt_ OrtROCMProviderOptions* ptr) {
   ORT_UNUSED_PARAMETER(ptr);
 }
-
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_VitisAI,
-                    _In_ OrtSessionOptions* options, _In_reads_(num_keys) const char* const* provider_options_keys,
-                    _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys) {
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(provider_options_keys);
-  ORT_UNUSED_PARAMETER(provider_options_values);
-  ORT_UNUSED_PARAMETER(num_keys);
-  return CreateNotEnabledStatus("VitisAI");
-}
-#endif

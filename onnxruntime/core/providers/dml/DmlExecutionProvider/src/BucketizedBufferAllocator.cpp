@@ -46,7 +46,7 @@ namespace Dml
               OrtMemoryInfo(
                   "DML",
                   OrtAllocatorType::OrtDeviceAllocator,
-                  OrtDevice(OrtDevice::DML, OrtDevice::MemType::DEFAULT, 0))),
+                  OrtDevice(OrtDevice::DML, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::MICROSOFT, 0))),
           m_device(device),
           m_heapProperties(heapProps),
           m_heapFlags(heapFlags),
@@ -132,7 +132,7 @@ namespace Dml
         assert(resourceWrapper->GetD3D12Resource()->GetDesc().Width == bucketSize);
         assert(resourceWrapper != nullptr);
 
-        ComPtr<AllocationInfo> allocInfo = wil::MakeOrThrow<AllocationInfo>(
+        ComPtr<AllocationInfo> allocInfo = Dml::SafeMakeOrThrow<AllocationInfo>(
             this,
             ++m_currentAllocationId,
             resourceId,

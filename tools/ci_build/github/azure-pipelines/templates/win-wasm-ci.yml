@@ -13,7 +13,7 @@ parameters:
 
 - name: PoolName
   type: string
-  default: 'onnxruntime-Win-CPU-2022'
+  default: 'onnxruntime-Win-CPU-VS2022-Latest'
 
 - name: SkipPublish
   type: boolean
@@ -71,14 +71,12 @@ jobs:
      git submodule update --init --recursive
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'Checkout submodules'
-  - task: UsePythonVersion@0
-    inputs:
-      versionSpec: '3.12'
-      addToPath: true
+  - template: setup-feeds-and-python-steps.yml
+    parameters:
       architecture: $(buildArch)
   - task: NodeTool@0
     inputs:
-      versionSpec: '20.x'
+      versionSpec: '22.x'
 
   - task: PythonScript@0
     displayName: 'Build and test (node)'

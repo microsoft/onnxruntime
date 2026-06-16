@@ -33,7 +33,7 @@ __global__ void _ReverseBySequenceKernel(const int32_t max_seq_length,
 template <typename T>
 void ReverseBySequence(cudaStream_t stream,
                        const int32_t max_seq_length,
-                       const int32_t *seq_lengths,
+                       const int32_t* seq_lengths,
                        const int32_t batch_size,
                        const int32_t input_or_hidden_size,
                        const T* data,
@@ -80,7 +80,7 @@ void ReorderBidirectionalDataInSequence(cudaStream_t stream,
                                         const T* data,
                                         T* reordered_data,
                                         const size_t N) {
-  // The cudnn Y output is organize like [Y1, YB1] [Y2, YB2] ... 
+  // The cudnn Y output is organize like [Y1, YB1] [Y2, YB2] ...
   // need to reorganize it to [Y1, Y2, ...] [YB1, YB2, ...]
   int32_t seq_block_size = 2 * batch_size * hidden_size;
   fast_divmod div_seq_block(seq_block_size);
@@ -123,7 +123,7 @@ __global__ void _MaskZeroSequences(const int32_t hidden_size,
   }
 }
 
-template <typename T> 
+template <typename T>
 void MaskZeroSequences(cudaStream_t stream,
                        const int32_t hidden_size,
                        T* y_output_data,
@@ -136,29 +136,29 @@ void MaskZeroSequences(cudaStream_t stream,
       hidden_size, y_output_data, y_h_output_data, y_c_output_data, zeor_seq_index_cache, (CUDA_LONG)N);
 }
 
-#define SPECIALIZED_RNN_IMPL(T)                                                 \
-  template void ReverseBySequence<T>(cudaStream_t stream,                       \
-                                     const int32_t max_seq_length,              \
-                                     const int32_t* seq_lengths,                \
-                                     const int32_t batch_size,                  \
-                                     const int32_t hidden_size,                 \
-                                     const T* data,                             \
-                                     T* reversed_data,                          \
-                                     const size_t N);                           \
-  template void ReorderBidirectionalDataInSequence<T>(cudaStream_t stream,\
-                                                      const int32_t seq_length, \
-                                                      const int32_t batch_size, \
-                                                      const int32_t hidden_size,\
-                                                      const T* data,            \
-                                                      T* reordered_data,        \
-                                                     const size_t N);           \
-template void MaskZeroSequences<T>(cudaStream_t stream,                         \
-                                   const int32_t hidden_size,                   \
-                                   T* y_output_data,                            \
-                                   T* y_h_output_data,                          \
-                                   T* y_c_output_data,                          \
-                                   const int32_t* zeor_seq_index_cache,         \
-                                   const size_t N);
+#define SPECIALIZED_RNN_IMPL(T)                                                  \
+  template void ReverseBySequence<T>(cudaStream_t stream,                        \
+                                     const int32_t max_seq_length,               \
+                                     const int32_t* seq_lengths,                 \
+                                     const int32_t batch_size,                   \
+                                     const int32_t hidden_size,                  \
+                                     const T* data,                              \
+                                     T* reversed_data,                           \
+                                     const size_t N);                            \
+  template void ReorderBidirectionalDataInSequence<T>(cudaStream_t stream,       \
+                                                      const int32_t seq_length,  \
+                                                      const int32_t batch_size,  \
+                                                      const int32_t hidden_size, \
+                                                      const T* data,             \
+                                                      T* reordered_data,         \
+                                                      const size_t N);           \
+  template void MaskZeroSequences<T>(cudaStream_t stream,                        \
+                                     const int32_t hidden_size,                  \
+                                     T* y_output_data,                           \
+                                     T* y_h_output_data,                         \
+                                     T* y_c_output_data,                         \
+                                     const int32_t* zeor_seq_index_cache,        \
+                                     const size_t N);
 
 SPECIALIZED_RNN_IMPL(half)
 SPECIALIZED_RNN_IMPL(float)

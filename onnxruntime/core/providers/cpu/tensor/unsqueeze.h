@@ -19,7 +19,57 @@ class UnsqueezeBase {
     Tensor* output_tensor = nullptr;
   };
 
+#ifdef SHARED_PROVIDER
   Status PrepareCompute(OpKernelContext* context, Prepare& p) const;
+#else
+  template <typename KernelContextType>
+  inline Status PrepareCompute(KernelContextType* ctx, Prepare& p) const {
+    const auto* X = ctx->template Input<Tensor>(0);
+    ORT_ENFORCE(X != nullptr);
+    auto& input_tensor = *X;
+
+    TensorShapeVector axes;
+    size_t num_inputs = ctx->InputCount();
+    if (num_inputs == 2) {
+      const Tensor* axes_tensor = ctx->template Input<Tensor>(1);
+      ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
+      ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 0 ||
+                      axes_tensor->Shape().NumDimensions() == 1,
+                  "An axes tensor must be a scalar or a 1-D tensor.");
+      auto data_span = axes_tensor->template DataAsSpan<int64_t>();
+      axes.assign(data_span.begin(), data_span.end());
+    } else {
+      axes.assign(axes_.begin(), axes_.end());
+    }
+
+    TensorShapeVector output_dims(axes.size() + input_tensor.Shape().NumDimensions(), 0);
+
+    for (int64_t axis : axes) {
+      axis = HandleNegativeAxis(axis, onnxruntime::narrow<int64_t>(output_dims.size()));
+      if (axis < 0 || axis >= static_cast<int64_t>(output_dims.size()))
+        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "'axes' has an out of range axis");
+      if (output_dims[onnxruntime::narrow<size_t>(axis)] != 0)
+        return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "'axes' has a duplicate axis");
+      output_dims[onnxruntime::narrow<size_t>(axis)] = 1;
+    }
+
+    {
+      auto begin = input_tensor.Shape().GetDims().begin();
+      for (auto& axis_size : output_dims) {
+        if (axis_size == 0)
+          axis_size = *begin++;
+      }
+      assert(begin == input_tensor.Shape().GetDims().end());
+    }
+
+    TensorShape output_shape(output_dims);
+    p.output_tensor = ctx->Output(0, output_shape);
+    ORT_ENFORCE(nullptr != p.output_tensor);
+    p.input_tensor = &input_tensor;
+    return Status::OK();
+  }
+#endif
+
   static TensorShapeVector ComputeOutputShape(
       const TensorShape& input_shape,
       const TensorShapeVector& axes) {
@@ -51,7 +101,8 @@ class UnsqueezeBase {
   }
 
  protected:
-  UnsqueezeBase(const OpKernelInfo& info) {
+  template <typename KernelInfoType>
+  UnsqueezeBase(const KernelInfoType& info) {
     size_t num_inputs = info.GetInputCount();
     if (num_inputs == 1) {  // axes must be a valid attribute
       ORT_ENFORCE(info.GetAttrs("axes", axes_).IsOK(), "Missing/Invalid 'axes' attribute value");

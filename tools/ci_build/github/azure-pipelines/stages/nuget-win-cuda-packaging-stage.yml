@@ -13,7 +13,10 @@ parameters:
 
 - name: CudaVersion
   type: string
-  default: '11.8'
+  default: '13.0'
+  values:
+   - 12.8
+   - 13.0
 
 - name: win_cuda_home
   type: string
@@ -34,10 +37,34 @@ parameters:
 - name: buildJava
   type: boolean
 
+- name: PreReleaseVersionSuffixString
+  displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
+  type: string
+  values:
+  - alpha
+  - beta
+  - rc
+  - none
+
+- name: PreReleaseVersionSuffixNumber
+  displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
+  type: number
+
+- name: CudaArchs
+  type: string
+- name: win_cudnn_home
+  type: string
+  default: ''
+- name: IsReleaseBuild
+  type: boolean
+  default: false
+
 stages:
 # Windows CUDA without TensorRT Packaging
 - template: ../templates/win-ci.yml
   parameters:
+    PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+    PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
     ort_build_pool_name: 'onnxruntime-Win2022-GPU-A10'
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: CUDA
@@ -45,16 +72,22 @@ stages:
     msbuildPlatform: x64
     packageName: x64-cuda
     CudaVersion: ${{ parameters.CudaVersion }}
-    buildparameter: --use_cuda --cuda_home=${{ parameters.win_cuda_home }} --enable_onnx_tests --enable_wcos --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52-real;61-real;75-real;86-real;89-real;90-virtual"
+    ${{ if ne(parameters.win_cudnn_home, '') }}:
+      buildparameter: --use_cuda --cuda_home=${{ parameters.win_cuda_home }} --enable_onnx_tests --enable_wcos --nvcc_threads 1 --flash_nvcc_threads 1 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.CudaArchs }}" --cudnn_home=${{ parameters.win_cudnn_home }}
+    ${{ else }}:
+      buildparameter: --use_cuda --cuda_home=${{ parameters.win_cuda_home }} --enable_onnx_tests --enable_wcos --nvcc_threads 1 --flash_nvcc_threads 1 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.CudaArchs }}"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: ${{ parameters.buildJava }}
     java_artifact_id: onnxruntime_gpu
     UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
+
 # Windows CUDA with TensorRT Packaging
 - template: ../templates/win-ci.yml
   parameters:
+    PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+    PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
     ort_build_pool_name: 'onnxruntime-Win2022-GPU-A10'
     DoEsrp: ${{ parameters.DoEsrp }}
     stage_name_suffix: TensorRT
@@ -62,7 +95,10 @@ stages:
     msbuildPlatform: x64
     CudaVersion: ${{ parameters.CudaVersion }}
     packageName: x64-tensorrt
-    buildparameter: --use_tensorrt --tensorrt_home=${{ parameters.win_trt_home }} --cuda_home=${{ parameters.win_cuda_home }}  --enable_onnx_tests --enable_wcos --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52-real;61-real;75-real;86-real;89-real;90-virtual"
+    ${{ if ne(parameters.win_cudnn_home, '') }}:
+      buildparameter: --use_tensorrt --tensorrt_home=${{ parameters.win_trt_home }} --cuda_home=${{ parameters.win_cuda_home }} --enable_onnx_tests --enable_wcos --nvcc_threads 1 --flash_nvcc_threads 1 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.CudaArchs }}" --cudnn_home=${{ parameters.win_cudnn_home }}
+    ${{ else }}:
+      buildparameter: --use_tensorrt --tensorrt_home=${{ parameters.win_trt_home }} --cuda_home=${{ parameters.win_cuda_home }} --enable_onnx_tests --enable_wcos --nvcc_threads 1 --flash_nvcc_threads 1 --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=${{ parameters.CudaArchs }}"
     runTests: ${{ parameters.RunOnnxRuntimeTests }}
     buildJava: ${{ parameters.buildJava }}
     java_artifact_id: onnxruntime_gpu
@@ -86,10 +122,24 @@ stages:
     variables:
       CUDA_MODULE_LOADINGL: 'LAZY'
       GRADLE_OPTS: '-Dorg.gradle.daemon=false'
+      ${{ if eq(parameters.CudaVersion, '13.0') }}:
+        CUDA_VERSION_MAJOR: '13'
+      ${{ if eq(parameters.CudaVersion, '12.8') }}:
+        CUDA_VERSION_MAJOR: '12'
     steps:
     - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
     - checkout: onnxruntime-inference-examples # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime-inference-examples
       submodules: false
+
+    - task: PowerShell@2
+      displayName: 'Copy compliance config to workspace root'
+      inputs:
+        targetType: inline
+        script: |
+          New-Item -ItemType Directory -Force -Path "$(Build.SourcesDirectory)\.config" | Out-Null
+          Copy-Item -Path "$(Build.SourcesDirectory)\onnxruntime\.config\*" -Destination "$(Build.SourcesDirectory)\.config" -Recurse -Force
+
+    - template: ../templates/setup-feeds-and-python-steps.yml
 
     - script: dir $(Build.SourcesDirectory)
     - template: ../templates/jobs/download_win_gpu_library.yml
@@ -135,28 +185,30 @@ stages:
       displayName: 'Copy zip file to: $(Build.ArtifactStagingDirectory)'
       inputs:
         SourceFolder: '$(Build.BinariesDirectory)\zip-artifacts'
-        Contents: 'onnxruntime-win-x64-gpu-*.zip'
+        Contents: 'onnxruntime-win-x64-gpu_cuda*-*.zip'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
     - template: ../templates/validate-package.yml
       parameters:
         PackageType: 'zip'
         PackagePath: '$(Build.ArtifactStagingDirectory)'
-        PackageName: 'onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip'
+        PackageName: 'onnxruntime-win-x64-gpu_cuda$(CUDA_VERSION_MAJOR)-$(OnnxRuntimeVersion).zip'
         ScriptPath: '$(Build.SourcesDirectory)\onnxruntime\tools\nuget\validate_package.py'
         PlatformsSupported: 'win-x64'
         VerifyNugetSigning: false
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
 
     - task: BatchScript@1
       displayName: 'Test C API application for GPU package'
+      condition: and(succeeded(), ne(${{parameters.CudaVersion}}, '13.0'))
       inputs:
         filename: $(Build.SourcesDirectory)\onnxruntime-inference-examples\c_cxx\squeezenet\run_capi_application.bat
-        arguments: $(Build.SourcesDirectory)\onnxruntime $(Build.ArtifactStagingDirectory)\onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip $(Build.SourcesDirectory)\onnxruntime-inference-examples\c_cxx\squeezenet
+        arguments: $(Build.SourcesDirectory)\onnxruntime $(Build.ArtifactStagingDirectory)\onnxruntime-win-x64-gpu_cuda$(CUDA_VERSION_MAJOR)-$(OnnxRuntimeVersion).zip $(Build.SourcesDirectory)\onnxruntime-inference-examples\c_cxx\squeezenet
         workingFolder: '$(Build.ArtifactStagingDirectory)'
 
     - task: 1ES.PublishPipelineArtifact@1
       displayName: 'Publish Pipeline Combined GPU Package Artifact'
       inputs:
-        artifactName: 'onnxruntime-win-x64-gpu'
+        artifactName: 'onnxruntime-win-x64-gpu_cuda$(CUDA_VERSION_MAJOR)'
         targetPath: '$(Build.ArtifactStagingDirectory)'

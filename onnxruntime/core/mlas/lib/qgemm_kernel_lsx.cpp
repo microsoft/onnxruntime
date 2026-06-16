@@ -529,3 +529,390 @@ const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchLSX = {
     0,
     1  // aLSXmbly kernel M stride
 };
+
+//
+// S8S8 Kernel Implementations
+//
+
+struct MLAS_GEMM_S8S8_KERNEL_LSX
+{
+    typedef int16_t PackedAType;
+    typedef int16_t PackedBType;
+    typedef int8_t OffsetAType;
+    typedef int8_t OffsetBType;
+
+    static constexpr size_t PackedK = 2;
+    static constexpr MLAS_GEMM_QUANT_STRIDES Strides{ 12, 128, 128 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES PackedStrides{0, 0, 0};
+};
+
+constexpr size_t MLAS_GEMM_S8S8_KERNEL_LSX::PackedK;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_S8S8_KERNEL_LSX::Strides;
+
+template<>
+MLAS_FORCEINLINE constexpr
+int32_t
+MlasGemmQuantFixupZeroPointB<MLAS_GEMM_S8S8_KERNEL_LSX>(
+    int32_t ZeroPointB,
+    bool BIsSigned
+    )
+{
+    MLAS_UNREFERENCED_PARAMETER(BIsSigned); // B is always signed for S8S8
+    // No fixup needed for signed B
+    return ZeroPointB;
+}
+
+// PackA for S8S8 (Signed A)
+template<>
+void
+MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_LSX>(
+    MLAS_GEMM_S8S8_KERNEL_LSX::PackedAType* D,
+    const uint8_t* A, // Actually int8_t*
+    size_t lda,
+    size_t CountM,
+    size_t CountK,
+    int32_t* RowSumBuffer,
+    bool AIsSigned // Should be true for S8S8
+    )
+{
+    MLAS_UNREFERENCED_PARAMETER(AIsSigned);
+    const __m128i ZeroVector = __lsx_vrepli_d(0);
+    uint16_t val = 1;
+    const __m128i OnesWordBroadcast = __lsx_vreplgr2vr_h(val);
+    int8_t PaddedMatrixAData[8] = { 0 }; // Use int8_t for signed data
+
+    while (CountM > 0) {
+
+        const int8_t* a = reinterpret_cast<const int8_t*>(A); // Cast to signed
+        size_t k = CountK;
+        __m128i ReductionVector = ZeroVector;
+
+        while (k >= 8) {
+
+            __m128i Bytes = __lsx_vld((const __m128i*) & a[0], 0);
+            __lsx_vinsgr2vr_d(Bytes, 0, 1);
+            // Sign extend bytes to words
+            __m128i Words = __lsx_vsrai_h(__lsx_vilvl_b(Bytes, Bytes), 8);
+
+            ReductionVector = __lsx_vadd_h(ReductionVector, Words);
+
+            __lsx_vst(Words, (__m128i*) & D[0], 0);
+
+            a += 8;
+            D += 8;
+            k -= 8;
+        }
+
+        if (k > 0) {
+
+            int8_t* padded = PaddedMatrixAData;
+            int8_t* padded_end = padded + k;
+
+            do {
+                padded[0] = a[0];
+                padded++;
+                a++;
+            } while (padded < padded_end);
+
+            __m128i Bytes = __lsx_vld((__m128i*)PaddedMatrixAData, 0);
+            __lsx_vinsgr2vr_d(Bytes, 0, 1);
+            // Sign extend bytes to words
+            __m128i Words = __lsx_vsrai_h(__lsx_vilvl_b(Bytes, Bytes), 8);
+
+            ReductionVector = __lsx_vadd_h(ReductionVector, Words);
+
+            for (size_t pairs = (k + 1) / 2; pairs > 0; pairs--) {
+                __lsx_vstelm_w(Words, (int32_t*)D, 0 , 0);
+                D += 2;
+                Words = __lsx_vshuf4i_w(Words, 0x39); //(0, 3, 2, 1)
+            }
+        }
+
+        // Reduce the partial accumulators (same as U8X8)
+        __m128i tmp1 = ZeroVector, tmp2 = ZeroVector;
+        tmp1 = __lsx_vmaddwev_w_h(tmp1, ReductionVector, OnesWordBroadcast);
+        tmp2 = __lsx_vmaddwod_w_h(tmp2, ReductionVector, OnesWordBroadcast);
+        ReductionVector = __lsx_vadd_w(tmp1, tmp2);
+        ReductionVector = __lsx_vadd_w(ReductionVector,
+                                        __lsx_vshuf4i_w(ReductionVector, 0xee));
+        ReductionVector = __lsx_vadd_w(ReductionVector,
+                                        __lsx_vshuf4i_w(ReductionVector, 0x11));
+
+        __lsx_vstelm_w(ReductionVector, RowSumBuffer++, 0 , 0);
+
+        A += lda;
+        CountM -= 1;
+    }
+}
+
+// PackB for S8S8 (Signed B)
+template<>
+void
+MlasGemmQuantCopyPackB<MLAS_GEMM_S8S8_KERNEL_LSX>(
+    MLAS_GEMM_S8S8_KERNEL_LSX::PackedBType* D,
+    const uint8_t* B, // Actually int8_t*
+    size_t ldb,
+    size_t CountN,
+    size_t CountK,
+    int32_t* ColumnSumBuffer,
+    bool BIsSigned // Should be true for S8S8
+    )
+{
+    MLAS_UNREFERENCED_PARAMETER(BIsSigned);
+    uint16_t val = 1;
+    const __m128i OnesWordBroadcast = __lsx_vreplgr2vr_h(val);
+    // BitFlipVector is zero for signed B
+    const __m128i BitFlipVector = __lsx_vldi(0);
+
+    while (CountN >= 8) {
+
+        const int8_t* b = reinterpret_cast<const int8_t*>(B); // Cast to signed
+        size_t k = CountK;
+        __m128i ColumnSums[2];
+
+        ColumnSums[0] = __lsx_vldi(0);
+        ColumnSums[1] = __lsx_vldi(0);
+
+        while (k >= MLAS_GEMM_S8S8_KERNEL_LSX::PackedK) {
+
+            __m128i BytesRow0 = __lsx_vld((const __m128i*) & b[0], 0);
+            __lsx_vinsgr2vr_d(BytesRow0, 0, 1);
+            __m128i BytesRow1 = __lsx_vld((const __m128i*) & b[ldb], 0);
+            __lsx_vinsgr2vr_d(BytesRow1, 0, 1);
+
+            // Reuse the U8X8 helper, passing the correct BitFlipVector
+            MlasGemmU8X8CopyPackBProcessLSX(D, BytesRow0, BytesRow1, BitFlipVector, ColumnSums);
+
+            b += ldb * 2;
+            D += 16;
+            k -= 2;
+        }
+
+        if (k > 0) {
+            // Handle remaining row (sign extension happens in MlasGemmU8X8CopyPackBProcessLSX)
+            __m128i BytesRow0 = __lsx_vld((const __m128i*) & b[0], 0);
+             __lsx_vinsgr2vr_d(BytesRow0, 0, 1);
+            // Use BitFlipVector for the second row as it's zero padded and sign extended
+            MlasGemmU8X8CopyPackBProcessLSX(D, BytesRow0, BitFlipVector, BitFlipVector, ColumnSums);
+            D += 16;
+        }
+
+        // Reduce column sums (same as U8X8)
+        __m128i tmp1, tmp2;
+        tmp1 = tmp2 = __lsx_vldi(0);
+        tmp1 = __lsx_vmaddwev_w_h(tmp1, ColumnSums[0], OnesWordBroadcast);
+        tmp2 = __lsx_vmaddwod_w_h(tmp2, ColumnSums[0], OnesWordBroadcast);
+        ColumnSums[0]= __lsx_vadd_w(tmp1, tmp2);
+        tmp1 = tmp2 = __lsx_vldi(0);
+        tmp1 = __lsx_vmaddwev_w_h(tmp1, ColumnSums[1], OnesWordBroadcast);
+        tmp2 = __lsx_vmaddwod_w_h(tmp2, ColumnSums[1], OnesWordBroadcast);
+        ColumnSums[1]= __lsx_vadd_w(tmp1, tmp2);
+
+        __lsx_vst(ColumnSums[0], (__m128i*) & ColumnSumBuffer[0], 0);
+        __lsx_vst(ColumnSums[1], (__m128i*) & ColumnSumBuffer[4], 0);
+        ColumnSumBuffer += 8;
+
+        B += 8;
+        CountN -= 8;
+    }
+
+    if (CountN > 0) {
+
+        const int8_t* b = reinterpret_cast<const int8_t*>(B); // Cast to signed
+        size_t k = CountK;
+        __m128i ColumnSums[2];
+        int8_t PaddedMatrixBData[16]; // Use int8_t
+
+        // Initialize padding with zeros (BitFlipVector is zero)
+        __lsx_vst(BitFlipVector, (__m128i*)PaddedMatrixBData, 0);
+
+        ColumnSums[0] = __lsx_vldi(0);
+        ColumnSums[1] = __lsx_vldi(0);
+
+        while (k >= MLAS_GEMM_S8S8_KERNEL_LSX::PackedK) {
+
+            const int8_t* bcopy = b;
+            int8_t* padded = PaddedMatrixBData;
+            int8_t* padded_end = padded + CountN;
+
+            do {
+                padded[0] = bcopy[0];
+                padded[8] = bcopy[ldb];
+                padded++;
+                bcopy++;
+            } while (padded < padded_end);
+
+            __m128i BytesRow0 = __lsx_vld((__m128i*) & PaddedMatrixBData[0], 0);
+            __lsx_vinsgr2vr_d(BytesRow0, 0, 1);
+            __m128i BytesRow1 = __lsx_vld((__m128i*) & PaddedMatrixBData[8], 0);
+            __lsx_vinsgr2vr_d(BytesRow1, 0, 1);
+
+            MlasGemmU8X8CopyPackBProcessLSX(D, BytesRow0, BytesRow1, BitFlipVector, ColumnSums);
+
+            b += ldb * 2;
+            D += 16;
+            k -= 2;
+        }
+
+        if (k > 0) {
+
+            const int8_t* bcopy = b;
+            int8_t* padded = PaddedMatrixBData;
+            int8_t* padded_end = padded + CountN;
+
+            do {
+                padded[0] = bcopy[0];
+                padded++;
+                bcopy++;
+            } while (padded < padded_end);
+
+            __m128i BytesRow0 = __lsx_vld((__m128i*) & PaddedMatrixBData[0], 0);
+            __lsx_vinsgr2vr_d(BytesRow0, 0, 1);
+
+            MlasGemmU8X8CopyPackBProcessLSX(D, BytesRow0, BitFlipVector, BitFlipVector, ColumnSums);
+        }
+
+        // Reduce column sums (same as U8X8)
+        __m128i tmp1, tmp2;
+        tmp1 = tmp2 = __lsx_vldi(0);
+        tmp1 = __lsx_vmaddwev_w_h(tmp1, ColumnSums[0], OnesWordBroadcast);
+        tmp2 = __lsx_vmaddwod_w_h(tmp2, ColumnSums[0], OnesWordBroadcast);
+        ColumnSums[0]= __lsx_vadd_w(tmp1, tmp2);
+        tmp1 = tmp2 = __lsx_vldi(0);
+        tmp1 = __lsx_vmaddwev_w_h(tmp1, ColumnSums[1], OnesWordBroadcast);
+        tmp2 = __lsx_vmaddwod_w_h(tmp2, ColumnSums[1], OnesWordBroadcast);
+        ColumnSums[1]= __lsx_vadd_w(tmp1, tmp2);
+
+        __lsx_vst(ColumnSums[0], (__m128i*) & ColumnSumBuffer[0], 0);
+        __lsx_vst(ColumnSums[1], (__m128i*) & ColumnSumBuffer[4], 0);
+    }
+}
+
+// Kernel for S8S8 (reuses U8X8 kernel logic)
+template<>
+size_t
+MlasGemmQuantKernel<MLAS_GEMM_S8S8_KERNEL_LSX>(
+    const MLAS_GEMM_S8S8_KERNEL_LSX::PackedAType* A,
+    const MLAS_GEMM_S8S8_KERNEL_LSX::PackedBType* B,
+    int32_t* C,
+    size_t PackedCountK,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc,
+    const int32_t* RowSumBuffer,
+    const int32_t* ColumnSumBuffer,
+    const int32_t* ZeroPointB,
+    bool ZeroMode
+    )
+{
+    // The core computation logic is identical to U8X8 as it operates on int16 packed data
+    return MlasGemmQuantKernel<MLAS_GEMM_U8X8_KERNEL_LSX>(
+        A, B, C, PackedCountK, CountM, CountN, ldc, RowSumBuffer, ColumnSumBuffer, ZeroPointB, ZeroMode);
+}
+
+const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchLSX = {
+    MlasGemmQuantOperation<MLAS_GEMM_S8S8_KERNEL_LSX>,
+    nullptr,
+    nullptr,
+    MLAS_GEMM_S8S8_KERNEL_LSX::PackedK,
+    0,
+    1 // aLSXmbly kernel M stride
+};
+
+//
+// S8U8 Kernel Implementations
+//
+
+struct MLAS_GEMM_S8U8_KERNEL_LSX
+{
+    typedef int16_t PackedAType;
+    typedef int16_t PackedBType;
+    typedef int8_t OffsetAType;
+    typedef int8_t OffsetBType; // Note: B is uint8_t, but OffsetB is int8_t after fixup
+
+    static constexpr size_t PackedK = 2;
+    static constexpr MLAS_GEMM_QUANT_STRIDES Strides{ 12, 128, 128 };
+    static constexpr MLAS_GEMM_QUANT_STRIDES PackedStrides{0, 0, 0};
+};
+
+constexpr size_t MLAS_GEMM_S8U8_KERNEL_LSX::PackedK;
+constexpr MLAS_GEMM_QUANT_STRIDES MLAS_GEMM_S8U8_KERNEL_LSX::Strides;
+
+template<>
+MLAS_FORCEINLINE constexpr
+int32_t
+MlasGemmQuantFixupZeroPointB<MLAS_GEMM_S8U8_KERNEL_LSX>(
+    int32_t ZeroPointB,
+    bool BIsSigned // Should be false for S8U8
+    )
+{
+    // Fixup needed for unsigned B
+    if (!BIsSigned) {
+        ZeroPointB = MLAS_GEMM_S8U8_KERNEL_LSX::OffsetBType(ZeroPointB ^ 0x80);
+    }
+    return ZeroPointB;
+}
+
+// PackA for S8U8 (Signed A) - Reuse S8S8 implementation
+template<>
+void
+MlasGemmQuantCopyPackA<MLAS_GEMM_S8U8_KERNEL_LSX>(
+    MLAS_GEMM_S8U8_KERNEL_LSX::PackedAType* D,
+    const uint8_t* A, // Actually int8_t*
+    size_t lda,
+    size_t CountM,
+    size_t CountK,
+    int32_t* RowSumBuffer,
+    bool AIsSigned // Should be true for S8U8
+    )
+{
+    MlasGemmQuantCopyPackA<MLAS_GEMM_S8S8_KERNEL_LSX>(D, A, lda, CountM, CountK, RowSumBuffer, AIsSigned);
+}
+
+// PackB for S8U8 (Unsigned B) - Reuse U8X8 implementation
+template<>
+void
+MlasGemmQuantCopyPackB<MLAS_GEMM_S8U8_KERNEL_LSX>(
+    MLAS_GEMM_S8U8_KERNEL_LSX::PackedBType* D,
+    const uint8_t* B,
+    size_t ldb,
+    size_t CountN,
+    size_t CountK,
+    int32_t* ColumnSumBuffer,
+    bool BIsSigned // Should be false for S8U8
+    )
+{
+    MlasGemmQuantCopyPackB<MLAS_GEMM_U8X8_KERNEL_LSX>(D, B, ldb, CountN, CountK, ColumnSumBuffer, BIsSigned);
+}
+
+// Kernel for S8U8 (reuses U8X8 kernel logic)
+template<>
+size_t
+MlasGemmQuantKernel<MLAS_GEMM_S8U8_KERNEL_LSX>(
+    const MLAS_GEMM_S8U8_KERNEL_LSX::PackedAType* A,
+    const MLAS_GEMM_S8U8_KERNEL_LSX::PackedBType* B,
+    int32_t* C,
+    size_t PackedCountK,
+    size_t CountM,
+    size_t CountN,
+    size_t ldc,
+    const int32_t* RowSumBuffer,
+    const int32_t* ColumnSumBuffer,
+    const int32_t* ZeroPointB, // ZeroPointB is already fixed up
+    bool ZeroMode
+    )
+{
+    // The core computation logic is identical to U8X8 as it operates on int16 packed data
+    // and ZeroPointB has been adjusted.
+    return MlasGemmQuantKernel<MLAS_GEMM_U8X8_KERNEL_LSX>(
+        A, B, C, PackedCountK, CountM, CountN, ldc, RowSumBuffer, ColumnSumBuffer, ZeroPointB, ZeroMode);
+}
+
+const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8U8DispatchLSX = {
+    MlasGemmQuantOperation<MLAS_GEMM_S8U8_KERNEL_LSX>,
+    nullptr,
+    nullptr,
+    MLAS_GEMM_S8U8_KERNEL_LSX::PackedK,
+    0,
+    1 // aLSXmbly kernel M stride
+};

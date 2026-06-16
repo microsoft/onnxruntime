@@ -525,8 +525,8 @@ Status SparseTensor::Copy(const IDataTransfer& data_transfer, SparseTensor& dst_
 
   ORT_RETURN_IF_NOT(dst_tensor.Format() == SparseFormat::kUndefined, "Destination should be empty");
   ORT_RETURN_IF_NOT(dst_tensor.allocator_ != nullptr, "Destination must have a CPU allocator set");
-  ORT_RETURN_IF_NOT((!is_string || dst_tensor.Location().device.Type() == OrtDevice::CPU),
-                    "X-device copy of strings not supported");
+  ORT_RETURN_IF((is_string && !dst_tensor.Location().device.UsesCpuMemory()),
+                "X-device copy of strings not supported");
   ORT_RETURN_IF_NOT(dst_tensor.DataType() == DataType(), "Src and Dst must be of the same type");
   ORT_RETURN_IF_NOT(dst_tensor.dense_shape_.Size() == dense_shape_.Size(), "Must have the same shape");
 

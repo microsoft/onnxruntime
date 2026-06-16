@@ -298,7 +298,7 @@ class AttentionForONNX(nn.Module):
             "value_cache": numpy.ascontiguousarray(value_cache.detach().cpu().numpy()),
         }
 
-        from onnxruntime import InferenceSession, SessionOptions
+        from onnxruntime import InferenceSession, SessionOptions  # noqa: PLC0415
 
         sess_options = SessionOptions()
         ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CUDAExecutionProvider"])
@@ -323,7 +323,7 @@ def create_decoder_attention_graph(
     has_layer_state,
     has_key_padding_mask,
 ):
-    from onnx import TensorProto, helper
+    from onnx import TensorProto, helper  # noqa: PLC0415
 
     S, B, NH = query.size()  # noqa: N806
     S2 = key.size()[0]  # noqa: N806

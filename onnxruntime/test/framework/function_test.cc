@@ -1,24 +1,29 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
+#include <sstream>
+
+#include "core/graph/onnx_protobuf.h"
+#include "onnx/checker.h"
 #include "onnx/defs/parser.h"
 
 #include "core/common/span_utils.h"
 #include "core/framework/customregistry.h"
 #include "core/framework/op_kernel.h"
 #include "core/graph/model.h"
+#include "core/graph/model_helpers.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/inference_session.h"
 
-#include "test/test_environment.h"
-#include "test/framework/test_utils.h"
-#include "inference_session_wrapper.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/unittest_util/framework_test_utils.h"
+#include "test/internal_testing_ep/internal_testing_execution_provider.h"
+#include "test/test_environment.h"
 #include "test/util/include/asserts.h"
-
-#include "test/providers/internal_testing/internal_testing_execution_provider.h"
+#include "test/util/include/inference_session_wrapper.h"
 
 // Unit tests to check the implementation of functions, model-local functions,
 // function-inlining etc.
@@ -85,6 +90,44 @@ static void Check(const char* source,
       ASSERT_NEAR(data[i], output_values[i], threshold) << "at position i:" << i;
     }
   }
+}
+
+static Status LoadModel(const char* source) {
+  ONNX_NAMESPACE::OnnxParser parser(source);
+  ONNX_NAMESPACE::ModelProto model;
+  auto parse_status = parser.Parse(model);
+  if (!parse_status.IsOK()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to parse test model: ", parse_status.ErrorMessage());
+  }
+  if (!parser.EndOfInput()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Extra unparsed input unexpected.");
+  }
+
+  try {
+    ONNX_NAMESPACE::checker::check_model(model);
+  } catch (const std::exception& e) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ONNX model check failed: ", e.what());
+  }
+
+  std::string serialized_model;
+  if (!model.SerializeToString(&serialized_model) || serialized_model.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to serialize test model.");
+  }
+
+  SessionOptions session_options;
+  InferenceSession session_object{session_options, GetEnvironment()};
+  std::istringstream sstr(serialized_model);
+  return session_object.Load(sstr);
+}
+
+// A recursive/cyclic chain of model-local functions can be rejected by either layer:
+// ONNX 1.22+ detects the cycle in its own model checker ("Cycle detected in model-local
+// function references"), which runs before ORT's equivalent check ("must not be recursive").
+// Older ONNX versions don't catch it, so ORT's check fires instead. Accept either message so
+// the cycle-rejection tests pass regardless of which layer rejects the model.
+static testing::Matcher<const std::string&> HasCycleRejectionMessage() {
+  return testing::AnyOf(testing::HasSubstr("must not be recursive"),
+                        testing::HasSubstr("Cycle detected in model-local function references"));
 }
 
 namespace {
@@ -301,6 +344,370 @@ TEST(FunctionTest, CallInConditional) {
         )";
 
   Check(code, "x", {1.0, 2.0, 3.0}, "y", {6.0, 12.0, 18.0});
+}
+
+TEST(FunctionTest, RejectsSelfRecursiveLocalFunction) {
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y = local.self_recursive (x)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        self_recursive (lx) => (ly) {
+            ly = local.self_recursive (lx)
+        }
+        )";
+
+  const auto status = LoadModel(code);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), HasCycleRejectionMessage());
+}
+
+TEST(FunctionTest, RejectsMutuallyRecursiveLocalFunctions) {
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y = local.first (x)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        first (lx) => (ly) {
+            ly = local.second (lx)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        second (lx) => (ly) {
+            ly = local.first (lx)
+        }
+        )";
+
+  const auto status = LoadModel(code);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), HasCycleRejectionMessage());
+}
+
+TEST(FunctionTest, RejectsRecursionThroughSubgraph) {
+  // A local function that calls itself inside an If subgraph (then_branch).
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y = local.recursive_if (x)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        recursive_if (lx) => (ly) {
+            temp = Identity (lx)
+            cond = Constant <value = bool {1}> ()
+            ly = If (cond) <
+                then_branch = then_graph () => (float[N] then_out)
+                {
+                    then_out = local.recursive_if (temp)
+                },
+                else_branch = else_graph () => (float[N] else_out)
+                {
+                    else_out = Identity (temp)
+                }
+                >
+        }
+        )";
+
+  const auto status = LoadModel(code);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+}
+
+// --- Synthetic adjacency-list tests for ValidateCallGraphAcyclic ---
+// These test the cycle detection algorithm directly without constructing ONNX models.
+
+TEST(FunctionTest, CallGraphAcyclic_EmptyGraph) {
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphAcyclic(call_graph));
+}
+
+TEST(FunctionTest, CallGraphAcyclic_SingleNodeNoCalls) {
+  // Single function with no callees.
+  std::string a = "A";
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[a] = {};
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphAcyclic(call_graph));
+}
+
+TEST(FunctionTest, CallGraphAcyclic_SelfCycle) {
+  std::string a = "A";
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[a] = {a};
+  const auto status = onnxruntime::ValidateCallGraphAcyclic(call_graph);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("A -> A"));
+}
+
+TEST(FunctionTest, CallGraphAcyclic_MutualCycle) {
+  std::string a = "A", b = "B";
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[a] = {b};
+  call_graph[b] = {a};
+  const auto status = onnxruntime::ValidateCallGraphAcyclic(call_graph);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+}
+
+TEST(FunctionTest, CallGraphAcyclic_LongerCycle) {
+  // A -> B -> C -> A
+  std::string a = "A", b = "B", c = "C";
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[a] = {b};
+  call_graph[b] = {c};
+  call_graph[c] = {a};
+  const auto status = onnxruntime::ValidateCallGraphAcyclic(call_graph);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+  // The cycle path should include all three participants.
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("A"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("B"));
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("C"));
+}
+
+TEST(FunctionTest, CallGraphAcyclic_DiamondNoCycle) {
+  // A -> B, A -> C, B -> D, C -> D  (no cycle)
+  std::string a = "A", b = "B", c = "C", d = "D";
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[a] = {b, c};
+  call_graph[b] = {d};
+  call_graph[c] = {d};
+  call_graph[d] = {};
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphAcyclic(call_graph));
+}
+
+TEST(FunctionTest, CallGraphAcyclic_DeepChainNoCycle) {
+  // A -> B -> C -> D  (no cycle)
+  std::string a = "A", b = "B", c = "C", d = "D";
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[a] = {b};
+  call_graph[b] = {c};
+  call_graph[c] = {d};
+  call_graph[d] = {};
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphAcyclic(call_graph));
+}
+
+TEST(FunctionTest, CallGraphAcyclic_MultipleIndependentCycles) {
+  // Two independent cycles: A -> B -> A, C -> D -> C
+  std::string a = "A", b = "B", c = "C", d = "D";
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[a] = {b};
+  call_graph[b] = {a};
+  call_graph[c] = {d};
+  call_graph[d] = {c};
+  const auto status = onnxruntime::ValidateCallGraphAcyclic(call_graph);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("must not be recursive"));
+}
+
+TEST(FunctionTest, CallGraphAcyclic_SharedCallsDiamondNoCycle) {
+  // Regression test: acyclic model with shared function calls (diamond pattern).
+  // E -> A, E -> B, A -> C, B -> C, C -> D  (no cycle despite shared references to C)
+  std::string a = "A", b = "B", c = "C", d = "D", e = "E";
+  onnxruntime::LocalFunctionCallGraph call_graph;
+  call_graph[e] = {a, b};
+  call_graph[a] = {c};
+  call_graph[b] = {c};
+  call_graph[c] = {d};
+  call_graph[d] = {};
+  ASSERT_STATUS_OK(onnxruntime::ValidateCallGraphAcyclic(call_graph));
+}
+
+// --- Model-level integration tests ---
+
+TEST(FunctionTest, RejectsLongerCycle) {
+  // A -> B -> C -> A (three-function cycle)
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y = local.func_a (x)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_a (lx) => (ly) {
+            ly = local.func_b (lx)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_b (lx) => (ly) {
+            ly = local.func_c (lx)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_c (lx) => (ly) {
+            ly = local.func_a (lx)
+        }
+        )";
+
+  const auto status = LoadModel(code);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), HasCycleRejectionMessage());
+}
+
+TEST(FunctionTest, AcceptsAcyclicDiamond) {
+  // A -> B, A -> C, B -> D, C -> D (diamond, no cycle)
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y = local.func_a (x)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_a (lx) => (ly) {
+            t1 = local.func_b (lx)
+            ly = local.func_c (t1)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_b (lx) => (ly) {
+            ly = local.func_d (lx)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_c (lx) => (ly) {
+            ly = local.func_d (lx)
+        }
+
+        <
+        opset_import: [ "" : 16 ],
+        domain: "local"
+        >
+        func_d (lx) => (ly) {
+            ly = Identity (lx)
+        }
+        )";
+
+  ASSERT_STATUS_OK(LoadModel(code));
+}
+
+TEST(FunctionTest, AcceptsTrivialSingleNodeFunction) {
+  // A local function with a single Identity node — verifies that trivial
+  // (but non-empty) function bodies pass acyclicity validation.
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y = local.trivial_func (x)
+        }
+
+        <
+        opset_import: [ "" : 16 ],
+        domain: "local"
+        >
+        trivial_func (lx) => (ly) {
+            ly = Identity (lx)
+        }
+        )";
+
+  ASSERT_STATUS_OK(LoadModel(code));
+}
+
+TEST(FunctionTest, RejectsMultipleIndependentCycles) {
+  // Two independent cycles in the same model: A -> B -> A, C -> D -> C
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            t = local.func_a (x)
+            y = local.func_c (t)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_a (lx) => (ly) {
+            ly = local.func_b (lx)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_b (lx) => (ly) {
+            ly = local.func_a (lx)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_c (lx) => (ly) {
+            ly = local.func_d (lx)
+        }
+
+        <
+        opset_import: [ "" : 16, "local" : 1 ],
+        domain: "local"
+        >
+        func_d (lx) => (ly) {
+            ly = local.func_c (lx)
+        }
+        )";
+
+  const auto status = LoadModel(code);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), HasCycleRejectionMessage());
 }
 
 // Test use of attibute references, especially where source/target attribute
@@ -662,5 +1069,264 @@ TEST(FunctionTest, Test_GH_issue_16438) {
   status = session_object.Initialize();
   ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 }
+
+// Verify that when a function node with a layering annotation is inlined,
+// the inlined nodes inherit the parent function node's annotation.
+TEST(FunctionTest, InlinedNodesInheritLayeringAnnotation) {
+  // Parse and build a Model with a local function (multi-node body: Constant + Mul).
+  ONNX_NAMESPACE::OnnxParser parser(basic_code);
+  ONNX_NAMESPACE::ModelProto model_proto;
+  auto parse_status = parser.Parse(model_proto);
+  ASSERT_TRUE(parse_status.IsOK()) << parse_status.ErrorMessage();
+  ASSERT_TRUE(parser.EndOfInput()) << "Extra unparsed input unexpected.";
+
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, nullptr, logger));
+
+  Graph& graph = model->MainGraph();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // Find the function call node (local.myfun) and annotate it.
+  Node* func_node = nullptr;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "myfun") {
+      func_node = &node;
+      break;
+    }
+  }
+  ASSERT_NE(func_node, nullptr) << "Could not find function call node 'myfun'";
+  ASSERT_TRUE(func_node->CanBeInlined());
+
+  const std::string annotation = "TestLayerAnnotation";
+  func_node->SetLayeringAnnotation(annotation);
+
+  // Inline the function node.
+  ASSERT_STATUS_OK(graph.InlineFunction(*func_node));
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // After inlining, the original function call node is removed and replaced
+  // by the function body nodes (a Mul node; the Constant becomes an initializer).
+  // Verify every remaining node inherited the annotation.
+  int node_count = 0;
+  for (const auto& node : graph.Nodes()) {
+    ++node_count;
+    EXPECT_EQ(node.GetLayeringAnnotation(), annotation)
+        << "Node '" << node.Name() << "' (op: " << node.OpType()
+        << ") did not inherit the parent function's layering annotation.";
+  }
+  EXPECT_GT(node_count, 0) << "Expected at least one inlined node in the graph.";
+}
+
+// Verify that when a function node with no layering annotation is inlined,
+// the inlined nodes remain unannotated.
+TEST(FunctionTest, InlinedNodesNoAnnotationWhenParentUnannotated) {
+  ONNX_NAMESPACE::OnnxParser parser(basic_code);
+  ONNX_NAMESPACE::ModelProto model_proto;
+  auto parse_status = parser.Parse(model_proto);
+  ASSERT_TRUE(parse_status.IsOK()) << parse_status.ErrorMessage();
+  ASSERT_TRUE(parser.EndOfInput()) << "Extra unparsed input unexpected.";
+
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, nullptr, logger));
+
+  Graph& graph = model->MainGraph();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  Node* func_node = nullptr;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "myfun") {
+      func_node = &node;
+      break;
+    }
+  }
+  ASSERT_NE(func_node, nullptr);
+  // Do NOT set any annotation on the function node.
+  ASSERT_TRUE(func_node->GetLayeringAnnotation().empty());
+
+  ASSERT_STATUS_OK(graph.InlineFunction(*func_node));
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  for (const auto& node : graph.Nodes()) {
+    EXPECT_TRUE(node.GetLayeringAnnotation().empty())
+        << "Node '" << node.Name() << "' should not have a layering annotation "
+        << "when the parent function node was unannotated.";
+  }
+}
+
+// Verify annotation inheritance with two calls to the same function,
+// where each call has a different annotation.
+TEST(FunctionTest, InlinedNodesInheritDistinctAnnotationsPerCallSite) {
+  const char* code = R"(
+        <
+        ir_version: 8,
+        opset_import: [ "" : 16, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y1 = local.myfun (x)
+            y = local.myfun (y1)
+        }
+
+        <
+        opset_import: [ "" : 16 ],
+        domain: "local"
+        >
+        myfun (lx) => (ly) {
+            two = Constant <value = float[1] {2.0}> ()
+            ly = Mul (lx, two)
+        }
+        )";
+
+  ONNX_NAMESPACE::OnnxParser parser(code);
+  ONNX_NAMESPACE::ModelProto model_proto;
+  auto parse_status = parser.Parse(model_proto);
+  ASSERT_TRUE(parse_status.IsOK()) << parse_status.ErrorMessage();
+  ASSERT_TRUE(parser.EndOfInput());
+
+  auto& logger = DefaultLoggingManager().DefaultLogger();
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, nullptr, logger));
+
+  Graph& graph = model->MainGraph();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // Collect the two function call nodes in graph order.
+  std::vector<Node*> func_nodes;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "myfun") {
+      func_nodes.push_back(&node);
+    }
+  }
+  ASSERT_EQ(func_nodes.size(), 2u);
+
+  // Annotate each call site differently.
+  func_nodes[0]->SetLayeringAnnotation("AnnotationA");
+  func_nodes[1]->SetLayeringAnnotation("AnnotationB");
+
+  // Inline the first call, then the second.
+  ASSERT_STATUS_OK(graph.InlineFunction(*func_nodes[0]));
+  ASSERT_STATUS_OK(graph.InlineFunction(*func_nodes[1]));
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // After inlining both calls, the graph should have nodes from both expansions.
+  // Each group should carry its respective annotation.
+  bool found_a = false;
+  bool found_b = false;
+  for (const auto& node : graph.Nodes()) {
+    const auto& ann = node.GetLayeringAnnotation();
+    EXPECT_TRUE(ann == "AnnotationA" || ann == "AnnotationB")
+        << "Node '" << node.Name() << "' has unexpected annotation: '" << ann << "'";
+    if (ann == "AnnotationA") found_a = true;
+    if (ann == "AnnotationB") found_b = true;
+  }
+  EXPECT_TRUE(found_a) << "No node found with AnnotationA";
+  EXPECT_TRUE(found_b) << "No node found with AnnotationB";
+}
+
+// Test that overloaded functions (IR version 10+) are resolved correctly.
+// Two functions with the same domain and name but different overload identifiers.
+TEST(FunctionTest, OverloadedFunctions) {
+  const char* code = R"(
+        <
+        ir_version: 10,
+        opset_import: [ "" : 17, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y, float[N] z)
+        {
+            y = local.myfun:double_it (x)
+            z = local.myfun:triple_it (x)
+        }
+
+        <
+        opset_import: [ "" : 17 ],
+        domain: "local",
+        overload: "double_it"
+        >
+        myfun (lx) => (ly) {
+            two = Constant <value = float[1] {2.0}> ()
+            ly = Mul (lx, two)
+        }
+
+        <
+        opset_import: [ "" : 17 ],
+        domain: "local",
+        overload: "triple_it"
+        >
+        myfun (lx) => (ly) {
+            three = Constant <value = float[1] {3.0}> ()
+            ly = Mul (lx, three)
+        }
+        )";
+
+  // Serialize and then load model:
+  std::string serialized_model;
+  ParseOnnxSource(code, serialized_model);
+
+  SessionOptions session_options;
+  InferenceSession session_object{session_options, GetEnvironment()};
+
+  std::stringstream sstr(serialized_model);
+  auto status = session_object.Load(sstr);
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+  status = session_object.Initialize();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  RunOptions run_options;
+  run_options.run_tag = session_options.session_logid;
+
+  NameMLValMap feeds;
+  std::unique_ptr<CPUExecutionProvider> provider = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+  std::vector<float> input_values = {1.0f, 2.0f, 3.0f};
+  OrtValue ort_value;
+  CreateMLValue<float>(provider->CreatePreferredAllocators()[0], {int64_t(input_values.size())}, input_values, &ort_value);
+  feeds.insert(std::make_pair(std::string("x"), ort_value));
+
+  std::vector<OrtValue> fetches;
+  status = session_object.Run(run_options, feeds, AsSpan({std::string("y"), std::string("z")}), &fetches);
+  ASSERT_TRUE(status.IsOK()) << "Session Run failed: " << status.ErrorMessage() << std::endl;
+
+  // Check "y" output (doubled)
+  auto& tensor_y = fetches[0].Get<Tensor>();
+  auto* data_y = tensor_y.Data<float>();
+  EXPECT_NEAR(data_y[0], 2.0f, 0.001f);
+  EXPECT_NEAR(data_y[1], 4.0f, 0.001f);
+  EXPECT_NEAR(data_y[2], 6.0f, 0.001f);
+
+  // Check "z" output (tripled)
+  auto& tensor_z = fetches[1].Get<Tensor>();
+  auto* data_z = tensor_z.Data<float>();
+  EXPECT_NEAR(data_z[0], 3.0f, 0.001f);
+  EXPECT_NEAR(data_z[1], 6.0f, 0.001f);
+  EXPECT_NEAR(data_z[2], 9.0f, 0.001f);
+}
+
+// Test that non-overloaded functions (empty overload) still work as before.
+TEST(FunctionTest, OverloadedFunctionBackwardCompat) {
+  // Same as basic_code but with ir_version: 10 to verify backward compatibility
+  const char* code = R"(
+        <
+        ir_version: 10,
+        opset_import: [ "" : 17, "local" : 1 ]
+        >
+        agraph (float[N] x) => (float[N] y)
+        {
+            y = local.myfun (x)
+        }
+
+        <
+        opset_import: [ "" : 17 ],
+        domain: "local"
+        >
+        myfun (lx) => (ly) {
+            two = Constant <value = float[1] {2.0}> ()
+            ly = Mul (lx, two)
+        }
+        )";
+
+  Check(code, "x", {1.0, 2.0, 3.0}, "y", {2.0, 4.0, 6.0});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

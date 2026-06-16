@@ -97,6 +97,10 @@ export class WebNNBackend {
    * Temporary tensors for the current session.
    */
   private temporarySessionTensorIds: Map<number, TensorId[]> = new Map();
+  /**
+   * Maps from session id to MLOpSupportLimits.
+   */
+  private mlOpSupportLimitsBySessionId = new Map<number, MLOpSupportLimits>();
 
   constructor(env: Env) {
     configureLogger(env.logLevel!, !!env.debug);
@@ -172,6 +176,10 @@ export class WebNNBackend {
     }
     sessionIds.add(sessionId);
 
+    if (!this.mlOpSupportLimitsBySessionId.has(sessionId)) {
+      this.mlOpSupportLimitsBySessionId.set(sessionId, mlContext.opSupportLimits());
+    }
+
     if (this.temporaryGraphInputs.length > 0) {
       this.sessionGraphInputs.set(sessionId, this.temporaryGraphInputs);
       this.temporaryGraphInputs = [];
@@ -192,6 +200,7 @@ export class WebNNBackend {
     }
     this.tensorManager.releaseTensorsForSession(sessionId);
     this.mlContextBySessionId.delete(sessionId);
+    this.mlOpSupportLimitsBySessionId.delete(sessionId);
     const sessionIds = this.sessionIdsByMLContext.get(mlContext)!;
     sessionIds.delete(sessionId);
     if (sessionIds.size === 0) {
@@ -205,6 +214,10 @@ export class WebNNBackend {
 
   public getMLContext(sessionId: number): MLContext | undefined {
     return this.mlContextBySessionId.get(sessionId);
+  }
+
+  public getMLOpSupportLimits(sessionId: number): MLOpSupportLimits | undefined {
+    return this.mlOpSupportLimitsBySessionId.get(sessionId);
   }
 
   public reserveTensorId(): TensorId {
@@ -329,8 +342,7 @@ export class WebNNBackend {
         bufferView = new Float32Array(buffer);
         break;
       case 'float16':
-        bufferView =
-          typeof Float16Array !== 'undefined' && Float16Array.from ? new Float16Array(buffer) : new Uint16Array(buffer);
+        bufferView = typeof Float16Array !== 'undefined' ? new Float16Array(buffer) : new Uint16Array(buffer);
         break;
       case 'int32':
         bufferView = new Int32Array(buffer);
@@ -399,17 +411,17 @@ export class WebNNBackend {
   }
 
   public isGraphInputOutputTypeSupported(sessionId: number, type: Tensor.Type, isInput = true): boolean {
-    const context = this.mlContextBySessionId.get(sessionId);
     const dataType = onnxDataTypeToWebnnDataType.get(tensorDataTypeStringToEnum(type));
+    const opLimits = this.mlOpSupportLimitsBySessionId.get(sessionId);
 
     if (typeof dataType === 'undefined') {
       return false;
     }
 
     if (isInput) {
-      return !!context?.opSupportLimits().input.dataTypes.includes(dataType);
+      return !!opLimits?.input.dataTypes.includes(dataType);
     } else {
-      return !!context?.opSupportLimits().output.dataTypes.includes(dataType);
+      return !!opLimits?.output.dataTypes.includes(dataType);
     }
   }
 

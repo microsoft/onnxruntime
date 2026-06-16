@@ -9,19 +9,19 @@ import collections.abc
 import os
 import typing
 import warnings
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from enum import IntEnum
 from typing import Any
+
+import numpy as np
 
 from onnxruntime.capi import _pybind_state as C
 
 if typing.TYPE_CHECKING:
-    import numpy as np
     import numpy.typing as npt
 
-    import onnxruntime
 
-
-def get_ort_device_type(device_type: str, device_index) -> C.OrtDevice:
+def get_ort_device_type(device_type: str) -> int:
     if device_type == "cuda":
         return C.OrtDevice.cuda()
     elif device_type == "cann":
@@ -32,10 +32,36 @@ def get_ort_device_type(device_type: str, device_index) -> C.OrtDevice:
         return C.OrtDevice.dml()
     elif device_type == "webgpu":
         return C.OrtDevice.webgpu()
-    elif device_type == "ort":
-        return C.get_ort_device(device_index).device_type()
+    elif device_type == "gpu":
+        return C.OrtDevice.gpu()
+    elif device_type == "npu":
+        return C.OrtDevice.npu()
     else:
         raise Exception("Unsupported device type: " + device_type)
+
+
+class OrtDeviceVendorId(IntEnum):
+    """Vendor IDs aligned with OrtDevice::VendorIds in ortdevice.h."""
+
+    NONE = 0x0000
+    AMD = 0x1002
+    NVIDIA = 0x10DE
+    ARM = 0x13B5
+    MICROSOFT = 0x1414
+    HUAWEI = 0x19E5
+    QUALCOMM = 0x5143
+    INTEL = 0x8086
+
+
+def get_vendor_id_for_device_type(device_type: str) -> OrtDeviceVendorId | None:
+    if device_type == "cuda":
+        return OrtDeviceVendorId.NVIDIA
+    elif device_type == "dml":
+        return OrtDeviceVendorId.MICROSOFT
+    elif device_type == "cann":
+        return OrtDeviceVendorId.HUAWEI
+    else:
+        return None
 
 
 class AdapterFormat:
@@ -78,9 +104,15 @@ class AdapterFormat:
         return self._adapter.model_version
 
     def set_parameters(self, params: dict[str, OrtValue]) -> None:
+        """Set adapter parameters for export."""
         self._adapter.parameters = {k: v._ortvalue for k, v in params.items()}
 
     def get_parameters(self) -> dict[str, OrtValue]:
+        """Get adapter parameters as a dict of name -> OrtValue.
+
+        On read instances, the returned OrtValues are zero-copy views; the
+        backing memory stays alive as long as any returned OrtValue is referenced.
+        """
         return {k: OrtValue(v) for k, v in self._adapter.parameters.items()}
 
 
@@ -177,25 +209,37 @@ class Session:
         self._sess = None
         self._enable_fallback = enable_fallback
 
-    def get_session_options(self) -> onnxruntime.SessionOptions:
+    def get_session_options(self) -> C.SessionOptions:
         "Return the session options. See :class:`onnxruntime.SessionOptions`."
         return self._sess_options
 
-    def get_inputs(self) -> Sequence[onnxruntime.NodeArg]:
+    def get_inputs(self) -> Sequence[C.NodeArg]:
         "Return the inputs metadata as a list of :class:`onnxruntime.NodeArg`."
         return self._inputs_meta
 
-    def get_outputs(self) -> Sequence[onnxruntime.NodeArg]:
+    def get_outputs(self) -> Sequence[C.NodeArg]:
         "Return the outputs metadata as a list of :class:`onnxruntime.NodeArg`."
         return self._outputs_meta
 
-    def get_overridable_initializers(self) -> Sequence[onnxruntime.NodeArg]:
+    def get_overridable_initializers(self) -> Sequence[C.NodeArg]:
         "Return the inputs (including initializers) metadata as a list of :class:`onnxruntime.NodeArg`."
         return self._overridable_initializers
 
-    def get_modelmeta(self) -> onnxruntime.ModelMetadata:
+    def get_modelmeta(self) -> C.ModelMetadata:
         "Return the metadata. See :class:`onnxruntime.ModelMetadata`."
         return self._model_meta
+
+    def get_input_memory_infos(self) -> Sequence[C.OrtMemoryInfo]:
+        "Return the memory info for the inputs."
+        return self._input_meminfos
+
+    def get_output_memory_infos(self) -> Sequence[C.OrtMemoryInfo]:
+        "Return the memory info for the outputs."
+        return self._output_meminfos
+
+    def get_input_epdevices(self) -> Sequence[C.OrtEpDevice]:
+        "Return the execution providers for the inputs."
+        return self._input_epdevices
 
     def get_providers(self) -> Sequence[str]:
         "Return list of registered execution providers."
@@ -204,6 +248,15 @@ class Session:
     def get_provider_options(self):
         "Return registered execution providers' configurations."
         return self._provider_options
+
+    def get_provider_graph_assignment_info(self) -> Sequence[C.OrtEpAssignedSubgraph]:
+        """
+        Get information about the subgraphs assigned to each execution provider and the nodes within.
+
+        Application must enable the recording of graph assignment information by setting the session configuration
+        for the key "session.record_ep_graph_assignment_info" to "1".
+        """
+        return self._sess.get_provider_graph_assignment_info()
 
     def set_providers(self, providers=None, provider_options=None) -> None:
         """
@@ -383,6 +436,16 @@ class Session:
         """
         self._sess.run_with_iobinding(iobinding._iobinding, run_options)
 
+    def set_ep_dynamic_options(self, options: dict[str, str]):
+        """
+        Set dynamic options for execution providers.
+
+        :param options: Dictionary of key-value pairs where both keys and values are strings.
+                        These options will be passed to the execution providers to modify
+                        their runtime behavior.
+        """
+        self._sess.set_ep_dynamic_options(options)
+
     def get_tuning_results(self):
         return self._sess.get_tuning_results()
 
@@ -411,7 +474,7 @@ class InferenceSession(Session):
     def __init__(
         self,
         path_or_bytes: str | bytes | os.PathLike,
-        sess_options: onnxruntime.SessionOptions | None = None,
+        sess_options: C.SessionOptions | None = None,
         providers: Sequence[str | tuple[str, dict[Any, Any]]] | None = None,
         provider_options: Sequence[dict[Any, Any]] | None = None,
         **kwargs,
@@ -488,8 +551,42 @@ class InferenceSession(Session):
     def _create_inference_session(self, providers, provider_options, disabled_optimizers=None):
         available_providers = C.get_available_providers()
 
-        # Tensorrt can fall back to CUDA if it's explicitly assigned. All others fall back to CPU.
-        if "TensorrtExecutionProvider" in available_providers:
+        # Validate that TensorrtExecutionProvider and NvTensorRTRTXExecutionProvider are not both specified
+        if providers:
+            has_tensorrt = any(
+                provider == "TensorrtExecutionProvider"
+                or (isinstance(provider, tuple) and provider[0] == "TensorrtExecutionProvider")
+                for provider in providers
+            )
+            has_tensorrt_rtx = any(
+                provider == "NvTensorRTRTXExecutionProvider"
+                or (isinstance(provider, tuple) and provider[0] == "NvTensorRTRTXExecutionProvider")
+                for provider in providers
+            )
+            if has_tensorrt and has_tensorrt_rtx:
+                raise ValueError(
+                    "Cannot enable both 'TensorrtExecutionProvider' and 'NvTensorRTRTXExecutionProvider' "
+                    "in the same session."
+                )
+        # Tensorrt and TensorRT RTX can fall back to CUDA if it's explicitly assigned. All others fall back to CPU.
+        if "NvTensorRTRTXExecutionProvider" in available_providers:
+            if (
+                providers
+                and any(
+                    provider == "CUDAExecutionProvider"
+                    or (isinstance(provider, tuple) and provider[0] == "CUDAExecutionProvider")
+                    for provider in providers
+                )
+                and any(
+                    provider == "NvTensorRTRTXExecutionProvider"
+                    or (isinstance(provider, tuple) and provider[0] == "NvTensorRTRTXExecutionProvider")
+                    for provider in providers
+                )
+            ):
+                self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            else:
+                self._fallback_providers = ["CPUExecutionProvider"]
+        elif "TensorrtExecutionProvider" in available_providers:
             if (
                 providers
                 and any(
@@ -504,33 +601,6 @@ class InferenceSession(Session):
                 )
             ):
                 self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            else:
-                self._fallback_providers = ["CPUExecutionProvider"]
-        if "NvTensorRTRTXExecutionProvider" in available_providers:
-            if (
-                providers
-                and any(
-                    provider == "CUDAExecutionProvider"
-                    or (isinstance(provider, tuple) and provider[0] == "CUDAExecutionProvider")
-                    for provider in providers
-                )
-                and any(
-                    provider == "NvTensorRTRTXExecutionProvider"
-                    or (isinstance(provider, tuple) and provider[0] == "NvExecutionProvider")
-                    for provider in providers
-                )
-            ):
-                self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
-            else:
-                self._fallback_providers = ["CPUExecutionProvider"]
-        # MIGraphX can fall back to ROCM if it's explicitly assigned. All others fall back to CPU.
-        elif "MIGraphXExecutionProvider" in available_providers:
-            if providers and any(
-                provider == "ROCMExecutionProvider"
-                or (isinstance(provider, tuple) and provider[0] == "ROCMExecutionProvider")
-                for provider in providers
-            ):
-                self._fallback_providers = ["ROCMExecutionProvider", "CPUExecutionProvider"]
             else:
                 self._fallback_providers = ["CPUExecutionProvider"]
         else:
@@ -574,6 +644,9 @@ class InferenceSession(Session):
         self._inputs_meta = self._sess.inputs_meta
         self._outputs_meta = self._sess.outputs_meta
         self._overridable_initializers = self._sess.overridable_initializers
+        self._input_meminfos = self._sess.input_meminfos
+        self._output_meminfos = self._sess.output_meminfos
+        self._input_epdevices = self._sess.input_epdevices
         self._model_meta = self._sess.model_meta
         self._providers = self._sess.get_providers()
         self._provider_options = self._sess.get_provider_options()
@@ -587,6 +660,9 @@ class InferenceSession(Session):
         self._inputs_meta = None
         self._outputs_meta = None
         self._overridable_initializers = None
+        self._input_meminfos = None
+        self._output_meminfos = None
+        self._input_epdevices = None
         self._model_meta = None
         self._providers = None
         self._provider_options = None
@@ -618,6 +694,36 @@ class InferenceSession(Session):
                 C.register_nv_tensorrt_rtx_plugins_as_custom_ops(session_options, providers[i][1])
 
 
+def make_get_initializer_location_func_wrapper(
+    get_initializer_location_func: GetInitializerLocationFunc,
+) -> GetInitializerLocationWrapperFunc:
+    """
+    Wraps a user's "get initializer location" function. The returned wrapper function adheres to the
+    signature expected by ORT.
+
+    Need this wrapper to:
+      - Convert the `initializer_value` parameter from `C.OrtValue` to `onnxruntime.OrtValue`, which is more
+        convenient for the user's function to use.
+      - Allow the user's function to return the original `external_info` parameter (this wrapper makes a copy)
+    """
+
+    def get_initializer_location_func_wrapper(
+        initializer_name: str,
+        initializer_value: C.OrtValue,
+        external_info: C.OrtExternalInitializerInfo | None,
+    ) -> C.OrtExternalInitializerInfo | None:
+        ret_val: C.OrtExternalInitializerInfo | None = get_initializer_location_func(
+            initializer_name, OrtValue(initializer_value), external_info
+        )
+        if ret_val is not None and ret_val == external_info:
+            # User returned `external_info` (const and owned by ORT). ORT expects the returned value to be
+            # a new instance (that it deletes), so make a copy.
+            ret_val = C.OrtExternalInitializerInfo(ret_val.filepath, ret_val.file_offset, ret_val.byte_size)
+        return ret_val
+
+    return get_initializer_location_func_wrapper
+
+
 class ModelCompiler:
     """
     This class is used to compile an ONNX model. A compiled ONNX model has EPContext nodes that each
@@ -639,12 +745,14 @@ class ModelCompiler:
 
     def __init__(
         self,
-        sess_options: onnxruntime.SessionOptions,
+        sess_options: C.SessionOptions,
         input_model_path_or_bytes: str | os.PathLike | bytes,
         embed_compiled_data_into_model: bool = False,
         external_initializers_file_path: str | os.PathLike | None = None,
         external_initializers_size_threshold: int = 1024,
         flags: int = C.OrtCompileApiFlags.NONE,
+        graph_optimization_level: C.GraphOptimizationLevel = C.GraphOptimizationLevel.ORT_DISABLE_ALL,
+        get_initializer_location_func: GetInitializerLocationFunc | None = None,
     ):
         """
         Creates a ModelCompiler instance.
@@ -661,6 +769,27 @@ class ModelCompiler:
             is None or empty. Initializers larger than this threshold are stored in the external initializers file.
         :param flags: Additional boolean options to enable. Set this parameter to a bitwise OR of
             flags in onnxruntime.OrtCompileApiFlags.
+        :param graph_optimization_level: The graph optimization level.
+            Defaults to onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL.
+        :param get_initializer_location_func: Optional function called for every initializer to allow user to specify
+            whether an initializer should be stored within the model or externally. Example:
+            ```
+                def get_initializer_location(
+                    initializer_name: str,
+                    initializer_value: onnxrt.OrtValue,
+                    external_info: onnxrt.OrtExternalInitializerInfo | None,
+                ) -> onnxrt.OrtExternalInitializerInfo | None:
+                    byte_size = initializer_value.tensor_size_in_bytes()
+
+                    if byte_size < 64:
+                        return None  # Store small initializer within compiled model.
+
+                    # Else, write initializer to new external file.
+                    value_np = initializer_value.numpy()
+                    file_offset = ext_init_file.tell()
+                    ext_init_file.write(value_np.tobytes())
+                    return onnxrt.OrtExternalInitializerInfo(initializer_file_path, file_offset, byte_size)
+            ```
         """
         input_model_path: str | os.PathLike | None = None
         input_model_bytes: bytes | None = None
@@ -683,6 +812,18 @@ class ModelCompiler:
         else:
             external_initializers_file_path = ""
 
+        if get_initializer_location_func is not None:
+            if external_initializers_file_path:
+                raise ValueError(
+                    "Cannot initialize ModelCompiler with both `external_initializers_file_path` "
+                    "and `get_initializer_location_func`"
+                )
+            self.get_initializer_location_func_wrapper = make_get_initializer_location_func_wrapper(
+                get_initializer_location_func
+            )
+        else:
+            self.get_initializer_location_func_wrapper = None
+
         if input_model_path:
             self._model_compiler = C.ModelCompiler(
                 sess_options,
@@ -692,6 +833,8 @@ class ModelCompiler:
                 external_initializers_file_path,
                 external_initializers_size_threshold,
                 flags,
+                graph_optimization_level,
+                self.get_initializer_location_func_wrapper,
             )
         else:
             self._model_compiler = C.ModelCompiler(
@@ -702,6 +845,8 @@ class ModelCompiler:
                 external_initializers_file_path,
                 external_initializers_size_threshold,
                 flags,
+                graph_optimization_level,
+                self.get_initializer_location_func_wrapper,
             )
 
     def compile_to_file(self, output_model_path: str | None = None):
@@ -730,6 +875,14 @@ class ModelCompiler:
         :return: A bytes object representing the compiled ONNX model.
         """
         return self._model_compiler.compile_to_bytes()
+
+    def compile_to_stream(self, write_function: Callable[[bytes], None]):
+        """
+        Compiles the input model and writes the serialized ONNX bytes to a stream using the provided write function.
+        Raises an 'InvalidArgument' exception if the compilation options are invalid.
+        :param write_function: A callable that accepts a bytes buffer to write.
+        """
+        self._model_compiler.compile_to_stream(write_function)
 
 
 class IOBinding:
@@ -765,7 +918,7 @@ class IOBinding:
         self._iobinding.bind_input(
             name,
             C.OrtDevice(
-                get_ort_device_type(device_type, device_id),
+                get_ort_device_type(device_type),
                 C.OrtDevice.default_memory(),
                 device_id,
             ),
@@ -812,7 +965,7 @@ class IOBinding:
             self._iobinding.bind_output(
                 name,
                 C.OrtDevice(
-                    get_ort_device_type(device_type, device_id),
+                    get_ort_device_type(device_type),
                     C.OrtDevice.default_memory(),
                     device_id,
                 ),
@@ -823,7 +976,7 @@ class IOBinding:
             self._iobinding.bind_output(
                 name,
                 C.OrtDevice(
-                    get_ort_device_type(device_type, device_id),
+                    get_ort_device_type(device_type),
                     C.OrtDevice.default_memory(),
                     device_id,
                 ),
@@ -889,7 +1042,9 @@ class OrtValue:
         return self._ortvalue
 
     @classmethod
-    def ortvalue_from_numpy(cls, numpy_obj: np.ndarray, /, device_type="cpu", device_id=0) -> OrtValue:
+    def ortvalue_from_numpy(
+        cls, numpy_obj: np.ndarray, /, device_type="cpu", device_id=0, vendor_id: int | OrtDeviceVendorId = -1
+    ) -> OrtValue:
         """
         Factory method to construct an OrtValue (which holds a Tensor) from a given Numpy object
         A copy of the data in the Numpy object is held by the OrtValue only if the device is NOT cpu
@@ -897,6 +1052,7 @@ class OrtValue:
         :param numpy_obj: The Numpy object to construct the OrtValue from
         :param device_type: e.g. cpu, cuda, cann, cpu by default
         :param device_id: device id, e.g. 0
+        :param vendor_id: The device's PCI vendor id as an int or OrtDeviceVendorId. If provided, the device_type should be "gpu" or "npu".
         """
         # Hold a reference to the numpy object (if device_type is 'cpu') as the OrtValue
         # is backed directly by the data buffer of the numpy object and so the numpy object
@@ -904,11 +1060,7 @@ class OrtValue:
         return cls(
             C.OrtValue.ortvalue_from_numpy(
                 numpy_obj,
-                C.OrtDevice(
-                    get_ort_device_type(device_type, device_id),
-                    C.OrtDevice.default_memory(),
-                    device_id,
-                ),
+                OrtDevice.make(device_type, device_id, vendor_id)._get_c_device(),
             ),
             numpy_obj if device_type.lower() == "cpu" else None,
         )
@@ -929,7 +1081,13 @@ class OrtValue:
 
     @classmethod
     def ortvalue_from_shape_and_type(
-        cls, shape: Sequence[int], element_type, device_type: str = "cpu", device_id: int = 0
+        cls,
+        shape: Sequence[int],
+        element_type,
+        device_type: str = "cpu",
+        device_id: int = 0,
+        vendor_id: int | OrtDeviceVendorId = -1,
+        memory_info: C.OrtMemoryInfo | None = None,
     ) -> OrtValue:
         """
         Factory method to construct an OrtValue (which holds a Tensor) from given shape and element_type
@@ -938,7 +1096,34 @@ class OrtValue:
         :param element_type: The data type of the elements. It can be either numpy type (like numpy.float32) or an integer for onnx type (like onnx.TensorProto.BFLOAT16).
         :param device_type: e.g. cpu, cuda, cann, cpu by default
         :param device_id: device id, e.g. 0
+        :param vendor_id: The device's PCI vendor id as an int or OrtDeviceVendorId. If provided, the device type should be "gpu" or "npu".
+        :param memory_info: An OrtMemoryInfo from an OrtEpDevice (e.g. via ep_device.memory_info(OrtDeviceMemoryType.HOST_ACCESSIBLE)). When provided, the allocator matching this memory info is used directly, which allows allocating HOST_ACCESSIBLE memory for zero-copy numpy interop. The device_type, device_id, and vendor_id parameters are ignored when memory_info is provided.
         """
+
+        if memory_info is not None:
+            if device_type != "cpu" or device_id != 0 or vendor_id != -1:
+                warnings.warn(
+                    "device_type, device_id, and vendor_id are ignored when memory_info is provided.",
+                    stacklevel=2,
+                )
+            if isinstance(element_type, int):
+                return cls(
+                    C.OrtValue.ortvalue_from_shape_and_onnx_type_for_memory_info(
+                        shape,
+                        element_type,
+                        memory_info,
+                    )
+                )
+            return cls(
+                C.OrtValue.ortvalue_from_shape_and_type_for_memory_info(
+                    shape,
+                    element_type,
+                    memory_info,
+                )
+            )
+
+        device = OrtDevice.make(device_type, device_id, vendor_id)._get_c_device()
+
         # Integer for onnx element type (see https://onnx.ai/onnx/api/mapping.html).
         # This is helpful for some data type (like TensorProto.BFLOAT16) that is not available in numpy.
         if isinstance(element_type, int):
@@ -946,11 +1131,7 @@ class OrtValue:
                 C.OrtValue.ortvalue_from_shape_and_onnx_type(
                     shape,
                     element_type,
-                    C.OrtDevice(
-                        get_ort_device_type(device_type, device_id),
-                        C.OrtDevice.default_memory(),
-                        device_id,
-                    ),
+                    device,
                 )
             )
 
@@ -958,11 +1139,7 @@ class OrtValue:
             C.OrtValue.ortvalue_from_shape_and_type(
                 shape,
                 element_type,
-                C.OrtDevice(
-                    get_ort_device_type(device_type, device_id),
-                    C.OrtDevice.default_memory(),
-                    device_id,
-                ),
+                device,
             )
         )
 
@@ -1051,15 +1228,135 @@ class OrtValue:
         """
         return self._ortvalue.numpy()
 
-    def update_inplace(self, np_arr) -> None:
+    def __array__(self, dtype=None, copy=None) -> np.ndarray:
         """
-        Update the OrtValue in place with a new Numpy array. The numpy contents
-        are copied over to the device memory backing the OrtValue. It can be used
-        to update the input valuess for an InferenceSession with CUDA graph
-        enabled or other scenarios where the OrtValue needs to be updated while
-        the memory address can not be changed.
+        Supports ``numpy.asarray(ortvalue)`` and ``numpy.array(ortvalue)`` via the
+        `numpy __array__ protocol <https://numpy.org/devdocs/user/basics.interoperability.html>`_.
+
+        Valid only for OrtValues holding Tensors on CPU.
+
+        :param dtype: Optional numpy dtype to cast the result to.
+        :param copy: Optional bool (numpy >= 2.0). If ``False``, a copy will
+            only be made if necessary. If ``True``, a copy is always forced.
+            If ``None`` (default), a copy will be made only if needed.
+        :return: A numpy array with the same data as the OrtValue.
         """
-        self._ortvalue.update_inplace(np_arr)
+        arr = self.numpy()
+
+        if copy is not None:
+            # numpy >= 2.0 added the copy kwarg to np.asarray;
+            # np.array has always accepted it but with weaker semantics pre-2.0.
+            arr = np.array(arr, dtype=dtype, copy=copy)
+        elif dtype is not None:
+            # np.asarray avoids a copy when the dtype already matches,
+            # preserving memory sharing with the underlying OrtValue.
+            arr = np.asarray(arr, dtype=dtype)
+
+        return arr
+
+    def __dlpack__(self, *, stream=None):
+        """
+        Returns a DLPack capsule representing the tensor (part of the
+        `DLPack protocol <https://dmlc.github.io/dlpack/latest/>`_).
+
+        This enables interoperability with other frameworks via
+        ``from_dlpack(ortvalue)`` (e.g. ``torch.from_dlpack``,
+        ``jax.dlpack.from_dlpack``, ``numpy.from_dlpack``).
+
+        The OrtValue must hold a contiguous tensor. No data is copied;
+        the consumer shares memory with this OrtValue, which must remain
+        alive while the capsule is in use.
+
+        :param stream: Optional stream on which the tensor data is accessible.
+            Currently unused; included for protocol compliance.
+        :return: A PyCapsule holding a DLManagedTensor.
+        """
+        return self._ortvalue.__dlpack__(stream=stream)
+
+    def __dlpack_device__(self) -> tuple[int, int]:
+        """
+        Returns ``(device_type, device_id)`` indicating where the tensor data
+        resides (part of the `DLPack protocol
+        <https://dmlc.github.io/dlpack/latest/>`_).
+
+        :return: Tuple of ``(device_type, device_id)`` as ints following DLPack
+            ``DLDeviceType`` enum values.
+        """
+        return self._ortvalue.__dlpack_device__()
+
+    @classmethod
+    def from_dlpack(cls, data, /) -> OrtValue:
+        """
+        Construct an OrtValue from an object that implements the DLPack protocol.
+
+        Accepts either:
+
+        * An object with ``__dlpack__`` / ``__dlpack_device__`` methods
+          (e.g. a PyTorch tensor, JAX array, or numpy array).
+        * A raw DLPack PyCapsule (legacy path).
+
+        Boolean tensors are automatically detected when the source object
+        exposes a ``dtype`` attribute (numpy, PyTorch, etc.) or is an
+        ``OrtValue``. For raw DLPack capsules where the original dtype cannot
+        be inspected, bool tensors encoded as uint8 by older DLPack versions
+        are not distinguishable from true uint8 tensors and will be imported
+        as uint8.
+
+        No data is copied; the new OrtValue shares memory with the source.
+
+        :param data: A tensor object supporting the DLPack protocol, or a raw
+            DLPack PyCapsule.
+        :return: An OrtValue wrapping the tensor data.
+        """
+        # Detect boolean dtype from the source object before consuming it,
+        # because DLPack encodes bool as uint8 and the capsule alone cannot
+        # distinguish between the two.
+        is_bool = False
+        if isinstance(data, OrtValue):
+            is_bool = data.data_type() == "tensor(bool)"
+        elif hasattr(data, "dtype"):
+            dtype_obj = data.dtype
+            # Use .name when available (numpy, cupy, tensorflow all expose it).
+            # Fall back to str() for frameworks that don't (e.g. PyTorch).
+            dtype_name = getattr(dtype_obj, "name", str(dtype_obj))
+            is_bool = dtype_name in ("bool", "bool_", "torch.bool")
+
+        # If the input supports the __dlpack__ protocol, call it to get the capsule.
+        if hasattr(data, "__dlpack__"):
+            capsule = data.__dlpack__()
+        else:
+            capsule = data
+
+        return cls(C.OrtValue.from_dlpack(capsule, is_bool))
+
+    def update_inplace(self, data) -> None:
+        """
+        Update the OrtValue in place. The source data is copied over to the device
+        memory backing the OrtValue. It can be used to update the input values for
+        an InferenceSession with CUDA graph enabled or other scenarios where the
+        OrtValue needs to be updated while the memory address can not be changed.
+
+        :param data: The source data, which can be a Numpy array or another OrtValue.
+            When an OrtValue is provided, data can be copied between devices (e.g.,
+            GPU to GPU) without going through the CPU.
+        """
+        if isinstance(data, OrtValue):
+            self._ortvalue.update_inplace(data._ortvalue)
+            return
+
+        if not isinstance(data, np.ndarray):
+            raise TypeError("data must be a numpy.ndarray or an OrtValue.")
+
+        self._ortvalue.update_inplace(data)
+
+
+def copy_tensors(src: Sequence[OrtValue], dst: Sequence[OrtValue], stream=None) -> None:
+    """
+    Copy tensor data from source OrtValue sequence to destination OrtValue sequence.
+    """
+    c_sources = [s._get_c_value() for s in src]
+    c_dsts = [d._get_c_value() for d in dst]
+    C.copy_tensors(c_sources, c_dsts, stream)
 
 
 class OrtDevice:
@@ -1074,6 +1371,7 @@ class OrtDevice:
         if isinstance(c_ort_device, C.OrtDevice):
             self._ort_device = c_ort_device
         else:
+            # An end user won't hit this error
             raise ValueError(
                 "`Provided object` needs to be of type `onnxruntime.capi.onnxruntime_pybind11_state.OrtDevice`"
             )
@@ -1085,20 +1383,54 @@ class OrtDevice:
         return self._ort_device
 
     @staticmethod
-    def make(ort_device_name, device_id):
-        return OrtDevice(
-            C.OrtDevice(
-                get_ort_device_type(ort_device_name, device_id),
-                C.OrtDevice.default_memory(),
-                device_id,
+    def make(ort_device_name, device_id, vendor_id: int | OrtDeviceVendorId = -1):
+        if vendor_id < 0:
+            # Preserve the historical convenience aliases ("cuda", "dml", "cann")
+            # while making them work with plugin EP shared allocators. Those
+            # allocators are keyed by vendor-specific OrtDevice values even when the
+            # Python package itself was built without the corresponding built-in EP.
+            alias_vendor_id = get_vendor_id_for_device_type(ort_device_name)
+            if alias_vendor_id is not None:
+                return OrtDevice(
+                    C.OrtDevice(
+                        get_ort_device_type(ort_device_name),
+                        C.OrtDevice.default_memory(),
+                        int(alias_vendor_id),
+                        device_id,
+                    )
+                )
+
+            # backwards compatibility with generic predefined OrtDevice names
+            return OrtDevice(
+                C.OrtDevice(
+                    get_ort_device_type(ort_device_name),
+                    C.OrtDevice.default_memory(),
+                    device_id,
+                )
             )
-        )
+        else:
+            # generic. use GPU or NPU for ort_device_name and provide a vendor id.
+            # vendor id of 0 is valid in some cases (e.g. webgpu is generic and does not have a vendor id)
+            return OrtDevice(
+                C.OrtDevice(
+                    get_ort_device_type(ort_device_name),
+                    C.OrtDevice.default_memory(),
+                    int(vendor_id),
+                    device_id,
+                )
+            )
 
     def device_id(self):
         return self._ort_device.device_id()
 
     def device_type(self):
         return self._ort_device.device_type()
+
+    def device_vendor_id(self):
+        return self._ort_device.vendor_id()
+
+    def device_mem_type(self):
+        return self._ort_device.mem_type()
 
 
 class SparseTensor:
@@ -1282,3 +1614,14 @@ class SparseTensor:
         Returns the name of the device where the SparseTensor data buffers reside e.g. cpu, cuda
         """
         return self._tensor.device_name().lower()
+
+
+# Type hint for user-specified function that allows the user to specify initializer locations when compiling a model.
+GetInitializerLocationFunc = Callable[
+    [str, OrtValue, C.OrtExternalInitializerInfo | None], C.OrtExternalInitializerInfo | None
+]
+
+# Type hint that adheres to the signature expected by ORT.
+GetInitializerLocationWrapperFunc = Callable[
+    [str, C.OrtValue, C.OrtExternalInitializerInfo | None], C.OrtExternalInitializerInfo | None
+]

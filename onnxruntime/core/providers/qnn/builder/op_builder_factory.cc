@@ -51,7 +51,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("Sum", *this);
     CreateSimpleOpBuilder("Tanh", *this);
 
-    CreateSimpleOpBuilder("Concat", *this);
+    CreateConcatOpBuilder("Concat", *this);
 
     CreateSimpleOpBuilder("QuantizeLinear", *this);
     CreateSimpleOpBuilder("DequantizeLinear", *this);
@@ -65,6 +65,8 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("GridSample", *this);
 
     CreateSimpleOpBuilder("LpNormalization", *this);
+
+    CreateSimpleOpBuilder("ScatterElements", *this);
   }
 
   {
@@ -159,11 +161,19 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateRMSNormOpBuilder("RMSNormalization", *this);
+  }
+
+  {
     CreateLRNOpBuilder("LRN", *this);
   }
 
   {
     CreateTransposeOpBuilder("Transpose", *this);
+  }
+
+  {
+    CreateReciprocalOpBuilder("Reciprocal", *this);
   }
 
   {
@@ -183,7 +193,48 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateMeanOpBuilder("Mean", *this);
+  }
+
+  {
     CreateLSTMOpBuilder("LSTM", *this);
+  }
+
+  {
+    CreateCumSumOpBuilder("CumSum", *this);
+  }
+
+  {
+    CreateRandomUniformLikeOpBuilder("RandomUniformLike", *this);
+  }
+
+  {
+    CreateGatherNDOpBuilder("GatherND", *this);
+  }
+
+  {
+    CreateQuickGeluOpBuilder("QuickGelu", *this);
+  }
+
+  {
+    CreateModOpBuilder("Mod", *this);
+  }
+
+  {
+    CreateThresholdedReluOpBuilder("ThresholdedRelu", *this);
+  }
+
+  {
+    CreateSTFTOpBuilder("STFT", *this);
+  }
+
+  {
+    CreateInverseOpBuilder("Inverse", *this);
+  }
+
+  {
+    CreateFusedMatMulOpBuilder("FusedMatMul", *this);
+    CreateMatMulNBitsOpBuilder("MatMulNBits", *this);
   }
 }
 

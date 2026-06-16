@@ -4,8 +4,6 @@ This directory contains doxygen configuration to generate the C/C++ API docs for
 
 The actual generation is performed by a GitHub actions workflow: [publish-c-apidocs.yml](../../.github/workflows/publish-c-apidocs.yml).
 
-The workflow is currently manually triggered, and generates a PR to the gh-pages branch, for publication on https://onnxruntime.ai.
-
 # C/C++ API Documentation Conventions
 
 ## Handling API changes across versions

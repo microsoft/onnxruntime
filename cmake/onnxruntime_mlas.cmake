@@ -5,6 +5,13 @@ set(MLAS_ROOT ${ONNXRUNTIME_ROOT}/core/mlas)
 set(MLAS_SRC_DIR ${MLAS_ROOT}/lib)
 set(MLAS_INC_DIR ${MLAS_ROOT}/inc)
 
+
+# mlas_private_compile_definitions contains compile definitions that are private to onnxruntime_mlas and targets which
+# use internal MLAS headers like mlasi.h.
+set(mlas_private_compile_definitions)
+if(onnxruntime_BUILD_UNIT_TESTS)
+  list(APPEND mlas_private_compile_definitions MLAS_ENABLE_TEST_HOOKS)
+endif()
 #
 # All hardware agnostic source files here
 # hardware specific files would cause trouble in
@@ -19,6 +26,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/qgemm.cpp
   ${MLAS_SRC_DIR}/qdwconv.cpp
   ${MLAS_SRC_DIR}/convolve.cpp
+  ${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_greater_than_1.cpp
   ${MLAS_SRC_DIR}/convsym.cpp
   ${MLAS_SRC_DIR}/pooling.cpp
   ${MLAS_SRC_DIR}/transpose.cpp
@@ -30,7 +38,10 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/eltwise.h
   ${MLAS_SRC_DIR}/eltwise.cpp
   ${MLAS_SRC_DIR}/erf.cpp
+  ${MLAS_SRC_DIR}/silu.cpp
+  ${MLAS_SRC_DIR}/gelu.cpp
   ${MLAS_SRC_DIR}/compute.cpp
+  ${MLAS_SRC_DIR}/dequantize.cpp
   ${MLAS_SRC_DIR}/quantize.cpp
   ${MLAS_SRC_DIR}/qgemm_kernel_default.cpp
   ${MLAS_SRC_DIR}/qladd.cpp
@@ -40,9 +51,14 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/qdwconv_kernelsize.cpp
   ${MLAS_SRC_DIR}/qnbitgemm.h
   ${MLAS_SRC_DIR}/qnbitgemm.cpp
+  ${MLAS_SRC_DIR}/qlutgemm.h
+  ${MLAS_SRC_DIR}/qlutgemm.cpp
   ${MLAS_SRC_DIR}/sqnbitgemm_q8_block.h
   ${MLAS_SRC_DIR}/flashattn.cpp
+  ${MLAS_SRC_DIR}/flashattn_qkv.cpp
+  ${MLAS_SRC_DIR}/qkv_quant.cpp
   ${MLAS_SRC_DIR}/cast.cpp
+  ${MLAS_SRC_DIR}/layernorm.cpp
   ${MLAS_SRC_DIR}/rotary_embedding.h
   ${MLAS_SRC_DIR}/rotary_embedding.cpp
   ${MLAS_SRC_DIR}/softmax.h
@@ -54,6 +70,7 @@ target_sources(onnxruntime_mlas PRIVATE
   ${MLAS_INC_DIR}/mlas_gemm_postprocessor.h
   ${MLAS_INC_DIR}/mlas_q4.h
   ${MLAS_INC_DIR}/mlas_qnbit.h
+  ${MLAS_INC_DIR}/mlas_qkv_quant.h
   ${MLAS_INC_DIR}/mlas.h
 )
 
@@ -96,9 +113,13 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
         ${MLAS_SRC_DIR}/cast_kernel_neon.cpp
         ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16.cpp
+        ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16_8bit.cpp
         ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.h
         ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.cpp
         ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon_fp16.cpp
+        ${MLAS_SRC_DIR}/qkv_quant_kernel.h
+        ${MLAS_SRC_DIR}/qkv_quant_common.h
+        ${MLAS_SRC_DIR}/qkv_quant_kernel_neon.cpp
         ${MLAS_SRC_DIR}/hgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/halfgemm_kernel_neon_fp16.cpp
         ${MLAS_SRC_DIR}/softmax_kernel_neon.h
@@ -107,6 +128,8 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/eltwise_kernel_neon.h
         ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
         ${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
+        ${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_1.cpp
       )
 
       set(mlas_platform_preprocess_srcs
@@ -130,7 +153,11 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/arm64/SymQgemmS8KernelSDotLd64.asm
       )
 
-      if (onnxruntime_USE_KLEIDIAI)
+      if (onnxruntime_USE_ARM_NEON_NCHWC)
+		setup_arm_neon_nchwc()
+	  endif()
+
+	  if (onnxruntime_USE_KLEIDIAI)
         setup_kleidiai()
       endif()
     else()
@@ -187,6 +214,15 @@ function(setup_mlas_source_for_windows)
     )
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "/arch:AVX2")
 
+    set(mlas_platform_srcs_avx512
+      ${MLAS_SRC_DIR}/intrinsics/avx512/gelu_avx512f.cpp
+      ${MLAS_SRC_DIR}/intrinsics/avx512/silu_avx512f.cpp
+      ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
+      ${MLAS_SRC_DIR}/intrinsics/avx512/sconv_nchw_depthwise_multiplier_greater_than_1_avx512f.cpp
+    )
+
+    set_source_files_properties(${mlas_platform_srcs_avx512} PROPERTIES COMPILE_FLAGS "/arch:AVX512")
+
     target_sources(onnxruntime_mlas PRIVATE
       ${MLAS_SRC_DIR}/dgemm.cpp
       ${mlas_platform_srcs_avx}
@@ -194,14 +230,20 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.h
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
+      ${MLAS_SRC_DIR}/qkv_quant_kernel.h
+      ${MLAS_SRC_DIR}/qkv_quant_common.h
+      ${MLAS_SRC_DIR}/qkv_quant_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
-      ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
+      ${mlas_platform_srcs_avx512}
+      ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.h
+      ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
+      ${MLAS_SRC_DIR}/qkv_quant_kernel_avx512vnni.cpp
       ${MLAS_SRC_DIR}/amd64/QgemmU8S8KernelAmx.asm
       ${MLAS_SRC_DIR}/amd64/QgemmU8S8KernelAvx2.asm
       ${MLAS_SRC_DIR}/amd64/QgemmU8U8KernelAvx2.asm
@@ -266,22 +308,68 @@ function(setup_mlas_source_for_windows)
 endfunction()
 
 function(setup_kleidiai)
-  target_compile_definitions(onnxruntime_mlas PRIVATE USE_KLEIDIAI)
-
-  # Disable the KleidiAI tests
-  set(KLEIDIAI_BUILD_TESTS  OFF)
-
-  # Fetch KleidiAI sources:
-  if (NOT TARGET kleidiai)
-    onnxruntime_fetchcontent_declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai} EXCLUDE_FROM_ALL)
-  endif()
-  onnxruntime_fetchcontent_makeavailable(kleidiai)
-
   target_sources(onnxruntime_mlas PRIVATE
     ${MLAS_SRC_DIR}/kai_ukernel_interface.cpp
+    ${MLAS_SRC_DIR}/kleidiai/sgemm_kleidiai.cpp
+    ${MLAS_SRC_DIR}/kleidiai/sbgemm_kleidiai.cpp
+    ${MLAS_SRC_DIR}/kleidiai/convolve_kleidiai.cpp
+    ${MLAS_SRC_DIR}/kleidiai/qgemm_kleidiai.cpp
   )
   target_link_libraries(onnxruntime_mlas PRIVATE kleidiai)
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai)
+  if(onnxruntime_USE_QMX_KLEIDIAI_COEXIST)
+          target_link_libraries(onnxruntime_mlas PRIVATE  kleidiai-qmx)
+          target_compile_definitions(onnxruntime_mlas PRIVATE ENABLE_QMX_KERNELS=1)
+          list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai-qmx)
+  endif()
+  set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES} PARENT_SCOPE)
+
+  # If KLEIDIAI_DEBUG_LOGGING is enabled that implies both DEBUG and KERNEL messages.
+  if(onnxruntime_KLEIDIAI_DEBUG_LOGGING)
+    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_DEBUG_LOGGING=1)
+    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_KERNEL_LOGGING=1)
+  endif()
+  if(onnxruntime_KLEIDIAI_KERNEL_LOGGING)
+    target_compile_definitions(onnxruntime_mlas PRIVATE KLEIDIAI_KERNEL_LOGGING=1)
+  endif()
+
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS kleidiai EXPORT ${PROJECT_NAME}Targets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
+
+  if(onnxruntime_USE_QMX_KLEIDIAI_COEXIST)
+    install(TARGETS kleidiai-qmx EXPORT ${PROJECT_NAME}Targets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
 endfunction()
+
+function (setup_arm_neon_nchwc)
+  target_sources(onnxruntime_mlas PRIVATE
+   ${MLAS_SRC_DIR}/sconv_nchwc_kernel_neon.h
+   ${MLAS_SRC_DIR}/sconv_nchwc_kernel_neon.cpp
+   ${MLAS_SRC_DIR}/spool_nchwc_kernel_neon.cpp
+  )
+  if(NOT WIN32)
+    target_sources(onnxruntime_mlas PRIVATE
+     # Hand written AArch64 micro-kernel for NCHW convolution.  Using a
+     # separate assembly file allows tighter control over register allocation
+     # and avoids the overhead of C++/intrinsics based code generation.
+     ${MLAS_SRC_DIR}/aarch64/SconvKernelNeon.S
+     ${MLAS_SRC_DIR}/aarch64/SconvNchwcKernelNeon.S
+     ${MLAS_SRC_DIR}/aarch64/SconvDepthwiseKernelNeon.S
+     ${MLAS_SRC_DIR}/aarch64/SconvPointwiseKernelNeon.S
+     )
+  endif()
+  list(APPEND mlas_private_compile_definitions MLAS_USE_ARM_NEON_NCHWC)
+  set(mlas_private_compile_definitions ${mlas_private_compile_definitions} PARENT_SCOPE)
+endfunction ()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
@@ -307,7 +395,6 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
 elseif(MSVC)
   setup_mlas_source_for_windows()
 else()
-
     if(APPLE)
         get_target_property(ONNXRUNTIME_MLAS_OSX_ARCH onnxruntime_mlas OSX_ARCHITECTURES)
 
@@ -362,8 +449,12 @@ else()
           set(X86 TRUE)
         elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
           set(X86_64 TRUE)
+        elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^riscv64.*")
+          set(RISCV64 TRUE)
         elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^loongarch64.*")
           set(LOONGARCH64 TRUE)
+        elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^s390x$")
+          set(S390X TRUE)
         endif()
     endif()
 
@@ -422,17 +513,41 @@ else()
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.h
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.cpp
+          ${MLAS_SRC_DIR}/qkv_quant_kernel.h
+          ${MLAS_SRC_DIR}/qkv_quant_common.h
+          ${MLAS_SRC_DIR}/qkv_quant_kernel_neon.cpp
           ${MLAS_SRC_DIR}/hgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/softmax_kernel_neon.h
           ${MLAS_SRC_DIR}/softmax_kernel_neon.cpp
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.h
           ${MLAS_SRC_DIR}/eltwise_kernel_neon.cpp
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
+          ${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_1.cpp
         )
-        if (onnxruntime_USE_KLEIDIAI)
+
+        # Conditionally add the SVE implementation if compiler supports it
+        if (onnxruntime_USE_SVE)
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlasi_sve.h)
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve.cpp)
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/elementwise_sve_fp16.cpp)
+          list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/mlas_sve_fp16.h)
+          set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/sve/elementwise_sve_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
+          list(APPEND mlas_private_compile_definitions MLAS_USE_SVE)
+        endif()
+
+        if (onnxruntime_USE_ARM_NEON_NCHWC)
+		  setup_arm_neon_nchwc()
+		endif()
+
+		if (onnxruntime_USE_KLEIDIAI)
           setup_kleidiai()
         endif()
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
                                     PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
+        set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
+				    PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
+
         if (NOT APPLE)
           set(mlas_platform_srcs
             ${mlas_platform_srcs}
@@ -447,13 +562,26 @@ else()
             ${MLAS_SRC_DIR}/qgemm_kernel_smmla.cpp
             ${MLAS_SRC_DIR}/qgemm_kernel_ummla.cpp
             ${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp
+            ${MLAS_SRC_DIR}/sbconv_kernel_neon.cpp
             ${MLAS_SRC_DIR}/cast_kernel_neon.cpp
             ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16.cpp
+            ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16_8bit.cpp
             ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/halfgemm_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/softmax_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp
+            ${MLAS_SRC_DIR}/erf_neon_fp16.h
+            ${MLAS_SRC_DIR}/erf_neon_fp16.cpp
+            ${MLAS_SRC_DIR}/gelu_neon_fp16.h
+            ${MLAS_SRC_DIR}/gelu_neon_fp16.cpp
           )
+          if (onnxruntime_USE_ARM_NEON_NCHWC)
+            list(APPEND mlas_platform_srcs
+              ${MLAS_SRC_DIR}/aarch64/SconvDepthwiseKernelNeonBf16.S
+              ${MLAS_SRC_DIR}/aarch64/SconvKernelNeonBf16.S
+              ${MLAS_SRC_DIR}/aarch64/SconvPointwiseKernelNeonBf16.S
+            )
+          endif()
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelSmmla.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
           set_source_files_properties(${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUmmla.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
@@ -462,12 +590,21 @@ else()
           set_source_files_properties(${MLAS_SRC_DIR}/dwconv.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/pooling_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/sbconv_kernel_neon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/cast_kernel_neon.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16_8bit.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/rotary_embedding_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/halfgemm_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/softmax_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+          if (onnxruntime_USE_ARM_NEON_NCHWC)
+            set_source_files_properties(${MLAS_SRC_DIR}/aarch64/SconvDepthwiseKernelNeonBf16.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
+            set_source_files_properties(${MLAS_SRC_DIR}/aarch64/SconvKernelNeonBf16.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
+            set_source_files_properties(${MLAS_SRC_DIR}/aarch64/SconvPointwiseKernelNeonBf16.S PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+bf16 ")
+          endif()
+          set_source_files_properties(${MLAS_SRC_DIR}/erf_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/gelu_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
         endif()
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)
@@ -510,11 +647,16 @@ else()
             COMPILES_P10
           )
           if(COMPILES_P10)
+            enable_language(ASM)
             check_cxx_source_compiles("
               #ifdef _AIX
-              #define POWER_10       0x40000
-              #define POWER_10_ANDUP (POWER_10)
               #include <sys/systemcfg.h>
+              #if !defined(POWER_10)
+              #define POWER_10       0x40000
+              #endif
+              #if !defined(POWER_10_ANDUP)
+              #define POWER_10_ANDUP (POWER_10)
+              #endif
               #define __power_10_andup() (_system_configuration.implementation & POWER_10_ANDUP)
               int main() {
                 bool HasP10 = (__power_10_andup() && __power_mma_version() == MMA_V31);
@@ -539,6 +681,11 @@ else()
               ${MLAS_SRC_DIR}/power/DgemmKernelPOWER10.cpp
               ${MLAS_SRC_DIR}/power/qgemm_kernel_power10.cpp
             )
+	    # Only compile assembly on non-AIX systems
+            if (NOT AIX)
+              list(APPEND mlas_platform_srcs_power10 ${MLAS_SRC_DIR}/power/SgemmKernelPackA.S)
+              set_source_files_properties(${MLAS_SRC_DIR}/power/SgemmKernelPackA.S PROPERTIES COMPILE_FLAGS "-O2 -mcpu=power10")
+            endif()
             set_source_files_properties(${MLAS_SRC_DIR}/power/SgemmKernelPOWER10.cpp PROPERTIES COMPILE_FLAGS "-O2 -mcpu=power10 -DSINGLE")
             set_source_files_properties(${MLAS_SRC_DIR}/power/DgemmKernelPOWER10.cpp PROPERTIES COMPILE_FLAGS "-O2 -mcpu=power10")
             set_source_files_properties(${MLAS_SRC_DIR}/power/qgemm_kernel_power10.cpp PROPERTIES COMPILE_FLAGS "-O3 -mcpu=power10")
@@ -644,9 +791,14 @@ else()
           ${MLAS_SRC_DIR}/intrinsics/avx2/qdwconv_avx2.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx2/saturation_check_avx2.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
+          ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.h
+          ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.cpp
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.h
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
+          ${MLAS_SRC_DIR}/qkv_quant_kernel.h
+          ${MLAS_SRC_DIR}/qkv_quant_common.h
+          ${MLAS_SRC_DIR}/qkv_quant_kernel_avx2.cpp
         )
         if(CMAKE_CXX_COMPILER_VERSION GREATER_EQUAL 13.1 AND NOT(APPLE))
           set(mlas_platform_srcs_avx2
@@ -672,7 +824,10 @@ endif()
           ${MLAS_SRC_DIR}/x86_64/SoftmaxKernelAvx512F.S
           ${MLAS_SRC_DIR}/x86_64/SpoolKernelAvx512F.S
           ${MLAS_SRC_DIR}/x86_64/TransKernelAvx512F.S
+          ${MLAS_SRC_DIR}/intrinsics/avx512/gelu_avx512f.cpp
+          ${MLAS_SRC_DIR}/intrinsics/avx512/silu_avx512f.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
+          ${MLAS_SRC_DIR}/intrinsics/avx512/sconv_nchw_depthwise_multiplier_greater_than_1_avx512f.cpp
         )
         set_source_files_properties(${mlas_platform_srcs_avx512f} PROPERTIES COMPILE_FLAGS "-mavx512f")
 
@@ -687,6 +842,7 @@ endif()
 
         set(mlas_platform_srcs_avx512vnni
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
+          ${MLAS_SRC_DIR}/qkv_quant_kernel_avx512vnni.cpp
         )
         set_source_files_properties(${mlas_platform_srcs_avx512vnni} PROPERTIES COMPILE_FLAGS "-mfma -mavx512vnni -mavx512bw -mavx512dq -mavx512vl -mavx512f")
 
@@ -738,6 +894,7 @@ endif()
     if(LOONGARCH64 AND MLAS_SOURCE_IS_NOT_SET)
         set(mlas_platform_srcs
           ${MLAS_SRC_DIR}/qgemm_kernel_lsx.cpp
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_lasx.cpp
           ${MLAS_SRC_DIR}/loongarch64/SgemmKernelLasx.S
           ${MLAS_SRC_DIR}/loongarch64/DgemmKernelLsx.S
           ${MLAS_SRC_DIR}/loongarch64/DgemmKernelLasx.S
@@ -751,6 +908,97 @@ endif()
           ${MLAS_SRC_DIR}/loongarch64/SoftmaxKernelLasx.S
             )
             set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mlsx -mlasx")
+        if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
+          set(MLAS_SOURCE_IS_NOT_SET 0)
+        endif()
+    endif()
+    if(S390X AND MLAS_SOURCE_IS_NOT_SET)
+        set(mlas_platform_srcs
+          ${MLAS_SRC_DIR}/s390x/SgemmKernel.cpp
+          ${MLAS_SRC_DIR}/s390x/SgemmKernelZVECTOR.cpp
+          ${MLAS_SRC_DIR}/dgemm.cpp
+          ${MLAS_SRC_DIR}/s390x/DgemmKernel.cpp
+          ${MLAS_SRC_DIR}/s390x/Quantize.cpp
+          ${MLAS_SRC_DIR}/s390x/QuantizeZVECTOR.cpp
+          ${MLAS_SRC_DIR}/s390x/qgemm_kernel_zvector.cpp
+        )
+        set_source_files_properties(${MLAS_SRC_DIR}/s390x/SgemmKernel.cpp PROPERTIES COMPILE_FLAGS "-DSINGLE")
+        set_source_files_properties(${MLAS_SRC_DIR}/s390x/SgemmKernelZVECTOR.cpp PROPERTIES COMPILE_FLAGS "-DSINGLE")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mvx -mzvector -march=z15")
+
+        if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
+          set(MLAS_SOURCE_IS_NOT_SET 0)
+        endif()
+    endif()
+    if(RISCV64 AND MLAS_SOURCE_IS_NOT_SET)
+        file(GLOB_RECURSE mlas_platform_srcs CONFIGURE_DEPENDS
+          "${MLAS_SRC_DIR}/scalar/*.cpp")
+        # Remove scalar depthwise kernel; replaced by the vectorized version
+        list(REMOVE_ITEM mlas_platform_srcs
+          "${MLAS_SRC_DIR}/scalar/SconvDepthwiseKernelScalar.cpp")
+        list(APPEND mlas_platform_srcs
+          ${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_1.cpp)
+
+        if(onnxruntime_USE_RVV)
+          set(OLD_CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS}")
+          set(CMAKE_REQUIRED_FLAGS "${OLD_CMAKE_REQUIRED_FLAGS} -march=rv64gcv -mabi=lp64d")
+          check_cxx_source_compiles("
+            #include <stddef.h>
+            #include <riscv_vector.h>
+            int main() {
+              size_t vl = __riscv_vsetvl_e32m1(4);
+              return static_cast<int>(vl == 0);
+            }"
+            HAS_RISCV64_RVV
+          )
+          set(CMAKE_REQUIRED_FLAGS "${OLD_CMAKE_REQUIRED_FLAGS}")
+          unset(OLD_CMAKE_REQUIRED_FLAGS)
+
+          if(HAS_RISCV64_RVV)
+            list(APPEND mlas_platform_srcs
+              ${MLAS_SRC_DIR}/riscv64/sgemm_pack_b_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/sgemm_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/softmax_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/sconv_depthwise_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/sconv_nchwc_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/rotary_embedding_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/layernorm_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/qgemm_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/activation_kernel_rvv.cpp
+            )
+            list(REMOVE_ITEM mlas_platform_srcs
+              "${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_1.cpp")
+            set_source_files_properties(
+              ${MLAS_SRC_DIR}/riscv64/sgemm_pack_b_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/sgemm_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/softmax_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/sconv_depthwise_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/sconv_nchwc_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/rotary_embedding_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/layernorm_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/qgemm_kernel_rvv.cpp
+              ${MLAS_SRC_DIR}/riscv64/activation_kernel_rvv.cpp
+              PROPERTIES COMPILE_FLAGS "-march=rv64gcv -mabi=lp64d")
+            list(APPEND mlas_private_compile_definitions MLAS_USE_RVV=1)
+
+            if(onnxruntime_USE_RVV_ZVFH)
+              list(APPEND mlas_platform_srcs
+                ${MLAS_SRC_DIR}/riscv64/halfgemm_kernel_rvv.cpp
+                ${MLAS_SRC_DIR}/riscv64/cast_kernel_rvv.cpp
+              )
+              set_source_files_properties(
+                ${MLAS_SRC_DIR}/riscv64/halfgemm_kernel_rvv.cpp
+                ${MLAS_SRC_DIR}/riscv64/cast_kernel_rvv.cpp
+                PROPERTIES COMPILE_FLAGS "-march=rv64gcv_zvfh -mabi=lp64d")
+              list(APPEND mlas_private_compile_definitions MLAS_USE_RVV_ZVFH=1)
+            endif()
+          else()
+            message(
+              WARNING
+              "onnxruntime_USE_RVV was requested, but the compiler does not support rv64gcv RVV intrinsics. Falling back to scalar MLAS kernels.")
+          endif()
+        endif()
+
         if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH)
           set(MLAS_SOURCE_IS_NOT_SET 0)
         endif()
@@ -771,7 +1019,9 @@ endif()
 
 foreach(mlas_target ${ONNXRUNTIME_MLAS_LIBS})
     target_include_directories(${mlas_target} PRIVATE ${MLAS_INC_DIR} ${MLAS_SRC_DIR})
-    onnxruntime_add_include_to_target(${mlas_target} ${GSL_TARGET})
+    onnxruntime_add_include_to_target(${mlas_target} ${GSL_TARGET} safeint_interface)
+
+    target_compile_definitions(${mlas_target} PRIVATE ${mlas_private_compile_definitions})
 
     set_target_properties(${mlas_target} PROPERTIES FOLDER "ONNXRuntime")
 endforeach()
@@ -781,12 +1031,6 @@ if (WIN32)
   if (onnxruntime_ENABLE_STATIC_ANALYSIS)
     target_compile_options(onnxruntime_mlas PRIVATE  "$<$<COMPILE_LANGUAGE:CXX>:/analyze:stacksize 131072>")
   endif()
-endif()
-
-if (PLATFORM_NAME STREQUAL "macabi")
-  # Needed for maccatalyst C compilation
-  # i.e. the flags below add "--target=x86_64-apple-ios14.0-macabi -ffunction-sections -fdata-sections"
-  target_compile_options(onnxruntime_mlas PRIVATE ${CMAKE_C_FLAGS})
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)

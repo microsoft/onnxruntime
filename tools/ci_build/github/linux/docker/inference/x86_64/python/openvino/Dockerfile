@@ -1,5 +1,5 @@
 # Use the specified UBI8 base image with GCC 14
-ARG BASEIMAGE="onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_ubi8_gcc14:20250124.1"
+ARG BASEIMAGE="onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_almalinux8_gcc14:20251017.1"
 FROM ${BASEIMAGE}
 
 ARG BUILD_UID=1000
@@ -8,6 +8,9 @@ ARG BUILD_USER=onnxruntimedev
 # Switch to root for system-level installations
 USER root
 WORKDIR /
+
+# FIXME: base image should already have ccache installed
+RUN if ! command -v ccache; then dnf install -y ccache; fi
 
 RUN dnf install -y --nodocs \
         wget \
@@ -19,8 +22,8 @@ RUN dnf install -y --nodocs \
     && dnf clean all \
     && rm -rf /var/cache/dnf
 
-ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2025.1.0
-ARG OPENVINO_PACKAGE_URL=https://storage.openvinotoolkit.org/repositories/openvino/packages/2025.1/linux/openvino_toolkit_rhel8_2025.1.0.18503.6fec06580ab_x86_64.tgz
+ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2026.1.0
+ARG OPENVINO_PACKAGE_URL=https://storage.openvinotoolkit.org/repositories/openvino/packages/2026.1/linux/openvino_toolkit_rhel8_2026.1.0.21367.63e31528c62_x86_64.tgz
 ARG TEMP_DIR=/tmp/openvino_installer
 
 RUN mkdir -p ${TEMP_DIR} && \

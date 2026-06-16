@@ -121,8 +121,8 @@ class UnetOnnxModel(BertOnnxModel):
 
     def optimize(self, options: FusionOptions | None = None):
         if is_installed("tqdm"):
-            import tqdm
-            from tqdm.contrib.logging import logging_redirect_tqdm
+            import tqdm  # noqa: PLC0415
+            from tqdm.contrib.logging import logging_redirect_tqdm  # noqa: PLC0415
 
             with logging_redirect_tqdm():
                 steps = 18

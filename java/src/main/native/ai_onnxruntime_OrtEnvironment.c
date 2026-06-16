@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2025, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -58,6 +58,112 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEnvironment_getDefaultAllocator
     OrtAllocator* allocator;
     checkOrtStatus(jniEnv,api,api->GetAllocatorWithDefaultOptions(&allocator));
     return (jlong)allocator;
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtEnvironment
+ * Method:    registerExecutionProviderLibrary
+ * Signature: (JJLjava/lang/String;Ljava/lang/String;)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtEnvironment_registerExecutionProviderLibrary
+        (JNIEnv * jniEnv, jclass jobj, jlong apiHandle, jlong nativeHandle, jstring name, jstring libraryPath) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+    const OrtApi* api = (const OrtApi*) apiHandle;
+    OrtEnv* env = (OrtEnv*) nativeHandle;
+    const char* cName = (*jniEnv)->GetStringUTFChars(jniEnv, name, NULL);
+#ifdef _WIN32
+    const jchar* cPath = (*jniEnv)->GetStringChars(jniEnv, libraryPath, NULL);
+    size_t stringLength = (*jniEnv)->GetStringLength(jniEnv, libraryPath);
+    wchar_t* newString = (wchar_t*)calloc(stringLength + 1, sizeof(wchar_t));
+    if (newString == NULL) {
+      (*jniEnv)->ReleaseStringChars(jniEnv, libraryPath, cPath);
+      throwOrtException(jniEnv, 1, "Not enough memory");
+      return;
+    }
+    wcsncpy_s(newString, stringLength + 1, (const wchar_t*)cPath, stringLength);
+    checkOrtStatus(jniEnv, api, api->RegisterExecutionProviderLibrary(env, cName, newString));
+    free(newString);
+    (*jniEnv)->ReleaseStringChars(jniEnv, libraryPath, cPath);
+#else
+    const char* cPath = (*jniEnv)->GetStringUTFChars(jniEnv, libraryPath, NULL);
+    checkOrtStatus(jniEnv, api, api->RegisterExecutionProviderLibrary(env, cName, cPath));
+    (*jniEnv)->ReleaseStringUTFChars(jniEnv, libraryPath, cPath);
+#endif
+    (*jniEnv)->ReleaseStringUTFChars(jniEnv, name, cName);
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtEnvironment
+ * Method:    unregisterExecutionProviderLibrary
+ * Signature: (JJLjava/lang/String;)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtEnvironment_unregisterExecutionProviderLibrary
+        (JNIEnv * jniEnv, jclass jobj, jlong apiHandle, jlong nativeHandle, jstring name) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+    const OrtApi* api = (const OrtApi*) apiHandle;
+    OrtEnv* env = (OrtEnv*) nativeHandle;
+    const char* cName = (*jniEnv)->GetStringUTFChars(jniEnv, name, NULL);
+    checkOrtStatus(jniEnv, api, api->UnregisterExecutionProviderLibrary(env, cName));
+    (*jniEnv)->ReleaseStringUTFChars(jniEnv, name, cName);
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtEnvironment
+ * Method:    getEpDevices
+ * Signature: (JJ)[J
+ */
+JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_OrtEnvironment_getEpDevices
+        (JNIEnv * jniEnv, jclass jobj, jlong apiHandle, jlong nativeHandle) {
+    (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+    const OrtApi* api = (const OrtApi*) apiHandle;
+    OrtEnv* env = (OrtEnv*) nativeHandle;
+    size_t numDevices = 0;
+    const OrtEpDevice* const* devicesArr = NULL;
+    OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetEpDevices(env, &devicesArr, &numDevices));
+    if (code != ORT_OK) {
+        return NULL;
+    } else {
+        jsize numDevicesInt = safecast_size_t_to_jsize(numDevices);
+        jlongArray outputArr = (*jniEnv)->NewLongArray(jniEnv, numDevicesInt);
+        (*jniEnv)->SetLongArrayRegion(jniEnv, outputArr, 0, numDevicesInt, (jlong*)devicesArr);
+        return outputArr;
+    }
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtEnvironment
+ * Method:    getModelCompatibilityForEpDevices
+ * Signature: (J[JLjava/lang/String;)I
+ */
+JNIEXPORT jint JNICALL Java_ai_onnxruntime_OrtEnvironment_getModelCompatibilityForEpDevices
+    (JNIEnv * jniEnv, jclass jobj, jlong apiHandle, jlongArray epHandles, jstring modelInfo) {
+  (void) jobj; // Required JNI parameter not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*) apiHandle;
+
+  // convert pointers for EpDevice handles
+  jsize deviceCount = (*jniEnv)->GetArrayLength(jniEnv, epHandles);
+  const OrtEpDevice** devicePtrs = allocarray(deviceCount, sizeof(OrtEpDevice *));
+  jlong* deviceHandleElements = (*jniEnv)->GetLongArrayElements(jniEnv, epHandles, NULL);
+  for (jsize i = 0; i < deviceCount; i++) {
+    devicePtrs[i] = (OrtEpDevice*) deviceHandleElements[i];
+  }
+  (*jniEnv)->ReleaseLongArrayElements(jniEnv, epHandles, deviceHandleElements, JNI_ABORT);
+
+  // get utf-8 string
+  const char* modelStr = (*jniEnv)->GetStringUTFChars(jniEnv, modelInfo, NULL);
+
+  OrtCompiledModelCompatibility compatibility;
+  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetModelCompatibilityForEpDevices(devicePtrs, deviceCount, modelStr, &compatibility));
+
+  // cleanup
+  (*jniEnv)->ReleaseStringUTFChars(jniEnv, modelInfo, modelStr);
+  free((void*)devicePtrs);
+  if (code != ORT_OK) {
+    return -1;
+  } else {
+    jint returnVal = convertFromCompiledModelCompatibility(compatibility);
+    return returnVal;
+  }
 }
 
 /*

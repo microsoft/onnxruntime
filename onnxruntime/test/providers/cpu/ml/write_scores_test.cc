@@ -4,7 +4,7 @@
 #include "gtest/gtest.h"
 #include "core/framework/tensor.h"
 #include "core/providers/cpu/ml/ml_common.h"
-#include "test/framework/dummy_allocator.h"
+#include "test/unittest_util/dummy_allocator.h"
 #include <random>
 
 using namespace onnxruntime;

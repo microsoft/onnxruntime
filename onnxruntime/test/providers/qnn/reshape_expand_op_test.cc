@@ -14,18 +14,19 @@
 namespace onnxruntime {
 namespace test {
 
-// Runs a model with a Reshape/Expand operator on the QNN CPU backend. Checks the graph node assignment
+// Runs a model with a Reshape/Expand operator on the QNN CPU or GPU backends. Checks the graph node assignment
 // and that inference outputs for QNN EP and CPU EP match.
 template <typename DataType>
-static void RunReshapeExpandTestOnCPU(const std::string& op_type,
-                                      const TestInputDef<DataType>& input_def,
-                                      const TestInputDef<int64_t>& shape_def,
-                                      const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
-                                      ExpectedEPNodeAssignment expected_ep_assignment,
-                                      int opset = 19) {
+static void RunReshapeExpandTest(const std::string& op_type,
+                                 const TestInputDef<DataType>& input_def,
+                                 const TestInputDef<int64_t>& shape_def,
+                                 const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                                 ExpectedEPNodeAssignment expected_ep_assignment,
+                                 const std::string& backend_name = "cpu",
+                                 int opset = 19) {
   ProviderOptions provider_options;
 
-  provider_options["backend_type"] = "cpu";
+  provider_options["backend_type"] = backend_name;
   provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildOpTestCase<DataType, int64_t>(op_type, {input_def}, {shape_def}, attrs),
@@ -40,67 +41,131 @@ static void RunReshapeExpandTestOnCPU(const std::string& op_type,
 
 // Test that Reshape with a dynamic shape input is not supported by QNN EP.
 TEST_F(QnnCPUBackendTests, Reshape_DynamicShape_Unsupported) {
-  RunReshapeExpandTestOnCPU("Reshape",
-                            TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
-                            TestInputDef<int64_t>({2}, false /* is_initializer */, {1, 48}),
-                            {},                              // Attributes
-                            ExpectedEPNodeAssignment::None,  // Should not be assigned to QNN EP.
-                            19);                             // Opset
-}
-
-// Test that Reshape with an enabled 'allowzero' attribute is not supported by QNN EP.
-TEST_F(QnnCPUBackendTests, Reshape_AllowZeroAttr_Unsupported) {
-  RunReshapeExpandTestOnCPU("Reshape", TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
-                            TestInputDef<int64_t>({2}, true, {1, 48}),
-                            {utils::MakeAttribute("allowzero", static_cast<int64_t>(1))},
-                            ExpectedEPNodeAssignment::None,  // Should not be assigned to QNN EP.
-                            19);                             // Opset
+  RunReshapeExpandTest("Reshape",
+                       TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
+                       TestInputDef<int64_t>({2}, false /* is_initializer */, {1, 48}),
+                       {},                              // Attributes
+                       ExpectedEPNodeAssignment::None,  // Should not be assigned to QNN EP.
+                       "cpu",                           // Backend
+                       19);                             // Opset
 }
 
 // Test Reshape of rank 4 -> rank 2.
 TEST_F(QnnCPUBackendTests, Reshape_4D_f32) {
-  RunReshapeExpandTestOnCPU("Reshape", TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 48)),
-                            TestInputDef<int64_t>({2}, true, {1, 48}),
-                            {},  // Attributes
-                            ExpectedEPNodeAssignment::All,
-                            19);  // Opset
+  RunReshapeExpandTest("Reshape", TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 48)),
+                       TestInputDef<int64_t>({2}, true, {1, 48}),
+                       {},  // Attributes
+                       ExpectedEPNodeAssignment::All,
+                       "cpu",  // Backend
+                       19);    // Opset
 }
 
 // Test Expand with non-initializer shape input, not supported.
 TEST_F(QnnCPUBackendTests, Expand_NonIniShape) {
-  RunReshapeExpandTestOnCPU("Expand", TestInputDef<float>({1}, false, {1.0f}),
-                            TestInputDef<int64_t>({2}, false, {2, 2}),
-                            {},  // Attributes
-                            ExpectedEPNodeAssignment::None,
-                            19);  // Opset
+  RunReshapeExpandTest("Expand", TestInputDef<float>({1}, false, {1.0f}),
+                       TestInputDef<int64_t>({2}, false, {2, 2}),
+                       {},  // Attributes
+                       ExpectedEPNodeAssignment::None,
+                       "cpu",  // Backend
+                       19);    // Opset
 }
 
 // Test Expand with initializer shape input.
 TEST_F(QnnCPUBackendTests, Expand_IniShape) {
-  RunReshapeExpandTestOnCPU("Expand", TestInputDef<float>({1}, false, {1.0f}),
-                            TestInputDef<int64_t>({2}, true, {2, 3}),
-                            {},  // Attributes
-                            ExpectedEPNodeAssignment::All,
-                            19);  // Opset
+  RunReshapeExpandTest("Expand", TestInputDef<float>({1}, false, {1.0f}),
+                       TestInputDef<int64_t>({2}, true, {2, 3}),
+                       {},  // Attributes
+                       ExpectedEPNodeAssignment::All,
+                       "cpu",  // Backend
+                       19);    // Opset
 }
 
 // Test Expand with initializer shape input.
 TEST_F(QnnCPUBackendTests, Expand_Uint32) {
-  RunReshapeExpandTestOnCPU("Expand", TestInputDef<uint32_t>({1}, false, {1}),
-                            TestInputDef<int64_t>({2}, true, {2, 3}),
-                            {},  // Attributes
-                            ExpectedEPNodeAssignment::All,
-                            19);  // Opset
+  RunReshapeExpandTest("Expand", TestInputDef<uint32_t>({1}, false, {1}),
+                       TestInputDef<int64_t>({2}, true, {2, 3}),
+                       {},  // Attributes
+                       ExpectedEPNodeAssignment::All,
+                       "cpu",  // Backend
+                       19);    // Opset
 }
 
 // Test Expand with 6D output.
 TEST_F(QnnCPUBackendTests, Expand_6D) {
-  RunReshapeExpandTestOnCPU("Expand", TestInputDef<float>({3}, false, {1.0f, 2.0f, 3.0f}),
-                            TestInputDef<int64_t>({6}, true, {1, 2, 3, 4, 5, 3}),
-                            {},  // Attributes
-                            ExpectedEPNodeAssignment::All,
-                            19);  // Opset
+  RunReshapeExpandTest("Expand", TestInputDef<float>({3}, false, {1.0f, 2.0f, 3.0f}),
+                       TestInputDef<int64_t>({6}, true, {1, 2, 3, 4, 5, 3}),
+                       {},  // Attributes
+                       ExpectedEPNodeAssignment::All,
+                       "cpu",  // Backend
+                       19);    // Opset
 }
+
+#if defined(_M_ARM64)
+//
+// GPU tests:
+//
+
+// Test Reshape of rank 4 -> rank 2.
+TEST_F(QnnGPUBackendTests, Reshape_4D_f32) {
+  RunReshapeExpandTest("Reshape", TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 48)),
+                       TestInputDef<int64_t>({2}, true, {1, 48}),
+                       {},  // Attributes
+                       ExpectedEPNodeAssignment::All,
+                       "gpu",  // Backend
+                       19);    // Opset
+}
+
+// Test Expand with initializer shape input.
+TEST_F(QnnGPUBackendTests, Expand_IniShape) {
+  RunReshapeExpandTest("Expand", TestInputDef<float>({1}, false, {1.0f}),
+                       TestInputDef<int64_t>({2}, true, {2, 3}),
+                       {},  // Attributes
+                       ExpectedEPNodeAssignment::All,
+                       "gpu",  // Backend
+                       19);    // Opset
+}
+
+// Test Expand with FP16 data
+TEST_F(QnnGPUBackendTests, Expand_IniShape_Float16) {
+  RunReshapeExpandTest("Expand", TestInputDef<MLFloat16>({1}, false, {MLFloat16(1.0f)}),
+                       TestInputDef<int64_t>({2}, true, {2, 3}),
+                       {},  // Attributes
+                       ExpectedEPNodeAssignment::All,
+                       "gpu",  // Backend
+                       19);    // Opset
+}
+
+// Test Expand with 6D output.
+TEST_F(QnnGPUBackendTests, Expand_6D) {
+  RunReshapeExpandTest("Expand", TestInputDef<float>({3}, false, {1.0f, 2.0f, 3.0f}),
+                       TestInputDef<int64_t>({6}, true, {1, 2, 3, 4, 5, 3}),
+                       {},  // Attributes
+                       ExpectedEPNodeAssignment::All,
+                       "gpu",  // Backend
+                       19);    // Opset
+}
+
+// Test Expand with 6D output with FP16 data.
+TEST_F(QnnGPUBackendTests, Expand_6D_Float16) {
+  RunReshapeExpandTest("Expand", TestInputDef<MLFloat16>({3}, false, {MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f)}),
+                       TestInputDef<int64_t>({6}, true, {1, 2, 3, 4, 5, 3}),
+                       {},  // Attributes
+                       ExpectedEPNodeAssignment::All,
+                       "gpu",  // Backend
+                       19);    // Opset
+}
+
+// Test Expand with 4D output with FP16 data.
+TEST_F(QnnGPUBackendTests, Expand_4D_Float16) {
+  RunReshapeExpandTest("Expand", TestInputDef<MLFloat16>({1, 2, 1, 1}, false, {MLFloat16(1.0f), MLFloat16(2.0f)}),
+                       TestInputDef<int64_t>({4}, true, {1, 2, 128, 128}),
+                       {},  // Attributes
+                       ExpectedEPNodeAssignment::All,
+                       "gpu",  // Backend
+                       19);    // Opset
+}
+
+#endif  // defined(_M_ARM64) GPU tests
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 //
@@ -196,14 +261,24 @@ TEST_F(QnnHTPBackendTests, Reshape_DynamicShape_Unsupported) {
                                         19);                             // Opset
 }
 
-// Test that QDQ Reshape with an enabled 'allowzero' attribute is not supported by QNN EP.
-TEST_F(QnnHTPBackendTests, Reshape_AllowZeroAttr_Unsupported) {
+// Test that QDQ Reshape with allowzero=1 and a shape containing zeros is not supported by QNN EP.
+TEST_F(QnnHTPBackendTests, Reshape_AllowZeroAttr_WithZeros_Unsupported) {
+  RunReshapeExpandTestOnHTP<float>("Reshape",
+                                   TestInputDef<float>({2, 0, 3}, false, {}),
+                                   TestInputDef<int64_t>({2}, true, {6, 0}),
+                                   {utils::MakeAttribute("allowzero", static_cast<int64_t>(1))},
+                                   ExpectedEPNodeAssignment::None,
+                                   19);
+}
+
+// Test that QDQ Reshape with allowzero=1 but no zeros in shape IS supported by QNN EP.
+TEST_F(QnnHTPBackendTests, Reshape_AllowZeroAttr_NoZeros_Supported) {
   RunQDQReshapeExpandTestOnHTP<uint8_t>("Reshape",
-                                        TestInputDef<float>({1, 3, 4, 4}, false, -10.0f, 10.0f),
-                                        TestInputDef<int64_t>({2}, true, {1, 48}),
+                                        TestInputDef<float>({1, 3, 4, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 48)),
+                                        TestInputDef<int64_t>({2}, true, {1, 48}),  // concrete shape with no zeros
                                         {utils::MakeAttribute("allowzero", static_cast<int64_t>(1))},
-                                        ExpectedEPNodeAssignment::None,  // Should not be assigned to QNN EP.
-                                        19);                             // Opset
+                                        ExpectedEPNodeAssignment::All,
+                                        19);
 }
 
 // Test 8-bit QDQ Reshape of rank 4 -> rank 2.
@@ -287,6 +362,16 @@ TEST_F(QnnHTPBackendTests, Expand_HTP_int64) {
                                      {},  // Attributes
                                      ExpectedEPNodeAssignment::All,
                                      19);  // Opset
+}
+
+// Test that bool Expand runs on HTP backend.
+TEST_F(QnnHTPBackendTests, Expand_HTP_bool) {
+  RunReshapeExpandTestOnHTP<bool>("Expand",
+                                  TestInputDef<bool>({1}, false, {true}),
+                                  TestInputDef<int64_t>({3}, true, {1, 2, 3}),
+                                  {},  // Attributes
+                                  ExpectedEPNodeAssignment::All,
+                                  19);  // Opset
 }
 
 // Test QDQ Expand

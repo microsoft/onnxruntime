@@ -153,10 +153,31 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Loop);
 
 // Opset 23 added support for float4e2m1.
-// TODO(titaiwang): Add support for float4e2m1.
-ONNX_CPU_OPERATOR_KERNEL(
+// TODO: Add support for float4e2m1.
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Loop,
     23,
+    23,
+    KernelDefBuilder()
+        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIRv9()),
+    Loop);
+
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    Loop,
+    24,
+    24,
+    KernelDefBuilder()
+        .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
+        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIRv9()),
+    Loop);
+
+// Opset 25
+ONNX_CPU_OPERATOR_KERNEL(
+    Loop,
+    25,
     KernelDefBuilder()
         .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
         .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
@@ -525,7 +546,8 @@ Status LoopImpl::Execute(const FeedsFetchesManager& ffm) {
                                     context_.GetComputeStream(),
                                     // because the fetch[0] is the loop condition which we need to access on CPU,
                                     // have to perofrm a stream sync to make sure the data arrived.
-                                    true);
+                                    true,
+                                    context_.GetRunProfiler());
     ORT_RETURN_IF_ERROR(status);
 
     condition_mlvalue_ = fetches[0];

@@ -2,18 +2,25 @@
 // SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
+#include "test/util/include/default_providers.h"
+
 #include <memory>
-#include "default_providers.h"
-#include "providers.h"
+
+#include "core/framework/session_options.h"
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
 #ifdef USE_COREML
 #include "core/providers/coreml/coreml_provider_factory.h"
 #endif
 #ifdef USE_CUDA
-#include <core/providers/cuda/cuda_provider_options.h>
+#include "core/providers/cuda/cuda_provider_options.h"
+#endif
+#if defined(USE_WEBGPU)
+#include "core/graph/constants.h"
+#include "core/session/abi_session_options_impl.h"
 #endif
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/framework/session_options.h"
+#include "test/util/include/providers.h"
+#include "test/unittest_util/test_dynamic_plugin_ep.h"
 
 namespace onnxruntime {
 
@@ -80,18 +87,7 @@ std::unique_ptr<IExecutionProvider> TensorrtExecutionProviderWithOptions(const O
 
 std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider() {
 #ifdef USE_MIGRAPHX
-  OrtMIGraphXProviderOptions params{
-      0,
-      0,
-      0,
-      0,
-      nullptr,
-      1,
-      "./compiled_model.mxr",
-      1,
-      "./compiled_model.mxr",
-      1};
-  return MIGraphXProviderFactoryCreator::Create(&params)->CreateProvider();
+  return MIGraphXProviderFactoryCreator::Create(ProviderOptions{})->CreateProvider();
 #else
   return nullptr;
 #endif
@@ -99,7 +95,7 @@ std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> MIGraphXExecutionProviderWithOptions(const OrtMIGraphXProviderOptions* params) {
 #ifdef USE_MIGRAPHX
-  if (auto factory = MIGraphXProviderFactoryCreator::Create(params))
+  if (const auto factory = MIGraphXProviderFactoryCreator::Create(params); factory != nullptr)
     return factory->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(params);
@@ -219,29 +215,6 @@ std::unique_ptr<IExecutionProvider> DefaultAclExecutionProvider(bool enable_fast
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> DefaultArmNNExecutionProvider(bool enable_arena) {
-#ifdef USE_ARMNN
-  return ArmNNProviderFactoryCreator::Create(enable_arena)->CreateProvider();
-#else
-  ORT_UNUSED_PARAMETER(enable_arena);
-  return nullptr;
-#endif
-}
-
-std::unique_ptr<IExecutionProvider> DefaultRocmExecutionProvider(bool test_tunable_op) {
-#ifdef USE_ROCM
-  OrtROCMProviderOptions provider_options{};
-  provider_options.do_copy_in_default_stream = true;
-  provider_options.tunable_op_enable = test_tunable_op ? 1 : 0;
-  provider_options.tunable_op_tuning_enable = test_tunable_op ? 1 : 0;
-  provider_options.tunable_op_max_tuning_duration_ms = 0;
-  if (auto factory = RocmProviderFactoryCreator::Create(&provider_options))
-    return factory->CreateProvider();
-#endif
-  ORT_UNUSED_PARAMETER(test_tunable_op);
-  return nullptr;
-}
-
 std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider(bool use_mlprogram) {
   // To manually test CoreML model generation on a non-macOS platform, comment out the `&& defined(__APPLE__)` below.
   // The test will create a model but execution of it will obviously fail.
@@ -304,15 +277,75 @@ std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider() {
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider() {
-#ifdef USE_WEBGPU
+std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc) {
+#if defined(USE_WEBGPU)
   ConfigOptions config_options{};
-  // Disable storage buffer cache
-  ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kStorageBufferCacheMode,
-                                            webgpu::options::kBufferCacheMode_Disabled)
-                  .IsOK());
-  return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
+
+  // Helper to strip the EP prefix from config entry keys when building as a plugin EP.
+  // The full key is like "ep.webgpuexecutionprovider.storageBufferCacheMode", and the
+  // config entry expects just "storageBufferCacheMode" in the EP API build.
+  auto normalize_config_key = [](const char* key) -> std::string {
+#if defined(ORT_USE_EP_API_ADAPTERS)
+    std::string normalized_key = key;
+    std::string prefix = OrtSessionOptions::GetProviderOptionPrefix(kWebGpuExecutionProvider);
+    if (normalized_key.starts_with(prefix)) {
+      normalized_key.erase(0, prefix.length());
+    }
+    return normalized_key;
 #else
+    return key;
+#endif
+  };
+
+  // Disable storage buffer cache
+  ORT_THROW_IF_ERROR(config_options.AddConfigEntry(normalize_config_key(webgpu::options::kStorageBufferCacheMode).c_str(),
+                                                   webgpu::options::kBufferCacheMode_Disabled));
+  if (!is_nhwc) {
+    // Enable NCHW support
+    ORT_THROW_IF_ERROR(config_options.AddConfigEntry(normalize_config_key(webgpu::options::kPreferredLayout).c_str(),
+                                                     webgpu::options::kPreferredLayout_NCHW));
+  }
+
+  return WebGpuExecutionProviderWithOptions(config_options);
+#else
+  ORT_UNUSED_PARAMETER(is_nhwc);
+  return nullptr;
+#endif
+}
+
+std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const ConfigOptions& config_options) {
+#if defined(USE_WEBGPU)
+#if defined(ORT_USE_EP_API_ADAPTERS)
+  ConfigOptions normalized_config_options{};
+  const std::string prefix = OrtSessionOptions::GetProviderOptionPrefix(kWebGpuExecutionProvider);
+  for (const auto& [key, value] : config_options.GetConfigOptionsMap()) {
+    std::string normalized_key = key;
+    if (normalized_key.starts_with(prefix)) {
+      normalized_key.erase(0, prefix.length());
+    }
+    ORT_THROW_IF_ERROR(normalized_config_options.AddConfigEntry(normalized_key.c_str(), value.c_str()));
+  }
+
+  // Return nullptr (rather than throwing) when the dynamic plugin EP is uninitialized.
+  // Tests interpret nullptr as "WebGPU EP unavailable" and skip themselves, which matches
+  // the behavior of the non-plugin code path below when USE_WEBGPU is undefined.
+  //
+  // If the dynamic plugin EP is initialized to a different EP, fail fast. Many call sites pass
+  // this helper directly into ConfigEp/RegisterExecutionProvider and do not null-check, so
+  // silently returning nullptr here can lead to confusing downstream failures.
+  auto ep_name = dynamic_plugin_ep_infra::GetEpName();
+  if (!ep_name.has_value()) {
+    return nullptr;
+  }
+  ORT_ENFORCE(*ep_name == kWebGpuExecutionProvider,
+              "Dynamic plugin EP is not the WebGPU EP. Expected \"", kWebGpuExecutionProvider,
+              "\", got \"", *ep_name, "\"");
+  return dynamic_plugin_ep_infra::MakeEp(nullptr, &normalized_config_options);
+#else
+  return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
+#endif
+#else
+  ORT_UNUSED_PARAMETER(config_options);
   return nullptr;
 #endif
 }

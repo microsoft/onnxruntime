@@ -12,9 +12,9 @@ namespace cuda {
 // A more general block-wise dequantization implementation that supports
 // different block sizes and block orientations (row-wise/column-wise).
 template <
-  int Row_,    ///< rows of a matrix
-  int Column_  ///< columns of a matrix
-  >
+    int Row_,    ///< rows of a matrix
+    int Column_  ///< columns of a matrix
+    >
 struct Shape2D {
   static int const kRow = Row_;              ///< rows of a matrix
   static int const kColumn = Column_;        ///< columns of a matrix
@@ -30,17 +30,19 @@ struct Shape2D {
  *                        false: elements in a block come from one single row
  */
 template <
-  typename ElementT,
-  int32_t block_size,
-  int32_t qbits,
-  bool Columnwise>
+    typename ElementT,
+    int32_t block_size,
+    int32_t qbits,
+    bool Columnwise>
 struct BlkQuantTraits {
   // number of qbit elements to pack into whole bytes
-  static constexpr int kPackSize = (qbits == 8) ? 1 : (qbits == 4) ? 2 : (qbits == 2) ? 4 : 0;
+  static constexpr int kPackSize = (qbits == 8) ? 1 : (qbits == 4) ? 2
+                                                  : (qbits == 2)   ? 4
+                                                                   : 0;
   static_assert(kPackSize != 0, "Packing to whole bytes not supported for this qbits!");
 
   using QuantBlk = std::conditional_t<Columnwise, Shape2D<block_size, 1>, Shape2D<1, block_size>>;
-  
+
   using ThreadBlk = Shape2D<QuantBlk::kRow * kPackSize, QuantBlk::kColumn>;
 };
 
@@ -67,6 +69,26 @@ Status Dequantize8Bits(
     int n,
     int block_size,
     cudaStream_t stream);
+
+template <class T, typename ZeroT>
+Status DequantizeNBits(
+    int bits,
+    T* output,
+    const uint8_t* quant_data,
+    const T* scales_data,
+    const ZeroT* zero_points,
+    const int32_t* reorder_idx,
+    int k,
+    int n,
+    int block_size,
+    cudaStream_t stream) {
+  if (bits == 4) {
+    return Dequantize4Bits<T, ZeroT>(output, quant_data, scales_data, zero_points, reorder_idx, k, n, block_size, stream);
+  } else {
+    ORT_ENFORCE(bits == 8);
+    return Dequantize8Bits<T, ZeroT>(output, quant_data, scales_data, zero_points, reorder_idx, k, n, block_size, stream);
+  }
+}
 
 /**
  * @brief Dequantize a block-wise quantized matrix, and store the result in a

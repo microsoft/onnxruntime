@@ -9,8 +9,8 @@ from onnxruntime.training.ortmodule._graph_execution_manager_factory import Grap
 
 
 def is_all_or_nothing_fallback_enabled(model, policy=None):
-    from onnxruntime.training.ortmodule import ORTMODULE_FALLBACK_POLICY
-    from onnxruntime.training.ortmodule._fallback import _FallbackPolicy
+    from onnxruntime.training.ortmodule import ORTMODULE_FALLBACK_POLICY  # noqa: PLC0415
+    from onnxruntime.training.ortmodule._fallback import _FallbackPolicy  # noqa: PLC0415
 
     if os.getenv("ORTMODULE_FALLBACK_POLICY") == _FallbackPolicy.FALLBACK_DISABLE.name:
         return False

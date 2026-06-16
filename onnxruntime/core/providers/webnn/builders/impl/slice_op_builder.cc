@@ -72,9 +72,8 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     input_name = input_defs[input_idx]->Name();
     const auto& initializers(model_builder.GetInitializerTensors());
     const auto& tensor = *initializers.at(input_name);
-    if (!ReadIntArrayFrom1DTensor(tensor, data, logger)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Data type for starts and ends inputs is not supported in this build.");
-    }
+    ORT_RETURN_IF_NOT(ReadIntArrayFrom1DTensor(tensor, data, model_builder.GetGraphViewer(), logger),
+                      "Data type for starts or ends inputs is not supported in this build.");
 
     return Status::OK();
   };
@@ -115,8 +114,8 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
   emscripten::val output = reverse_output;
   if (is_slice_required) {
-    std::vector<uint32_t> starts = GetNarrowedIntfromInt64<uint32_t>(compute_metadata.starts_);
-    std::vector<uint32_t> steps = GetNarrowedIntfromInt64<uint32_t>(compute_metadata.steps_);
+    std::vector<uint32_t> starts = GetNarrowedIntFromInt64<uint32_t>(compute_metadata.starts_);
+    std::vector<uint32_t> steps = GetNarrowedIntFromInt64<uint32_t>(compute_metadata.steps_);
     std::vector<uint32_t> sizes(rank);
     std::transform(compute_metadata.ends_.cbegin(), compute_metadata.ends_.cend(), compute_metadata.starts_.cbegin(),
                    sizes.begin(), [](int64_t i, int64_t j) { return SafeInt<uint32_t>(i - j); });
@@ -137,10 +136,6 @@ bool SliceOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const No
   const auto& name = node.Name();
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
-  std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger)) {
-    return false;
-  }
 
   if (input_defs.size() < 3) {
     LOGS(logger, VERBOSE) << op_type << " [" << name << "] requires at least 3 inputs (data, starts, ends) but got "
@@ -167,25 +162,34 @@ bool SliceOpBuilder::HasSupportedInputsImpl(const GraphViewer& graph_viewer, con
                                             const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& input = *input_defs[0];
-  const std::string_view op_type = node.OpType();
-  int32_t input_type;
-  if (!GetType(input, input_type, logger))
+  std::vector<int64_t> input_shape;
+  if (!GetShape(*input_defs[0], input_shape, logger)) {
     return false;
+  }
+
+  int32_t input_type;
+  if (!GetType(input, input_type, logger)) {
+    return false;
+  }
+
+  const std::string_view op_type = node.OpType();
 
   // If there is step < 0, check data type support of reverse.
   if (TensorExists(input_defs, 4)) {
     std::vector<int64_t> steps;
     const auto* init = graph_viewer.GetConstantInitializer(input_defs[4]->Name());
-    if (!init || !ReadIntArrayFrom1DTensor(*init, steps, logger))
+    if (!init || !ReadIntArrayFrom1DTensor(*init, steps, graph_viewer, logger))
       return false;
     if (std::any_of(steps.begin(), steps.end(), [](int64_t step) { return step < 0; })) {
-      if (!IsDataTypeSupportedByWebNNOp(op_type, "reverse", input_type, wnn_limits, "input", "data", logger)) {
+      if (!IsDataTypeSupportedByWebNNOp(op_type, "reverse", input_type, wnn_limits, "input", "data", logger) ||
+          !IsInputRankSupported(wnn_limits, "reverse", "input", input_shape.size(), node.Name(), logger)) {
         return false;
       }
     }
   }
 
-  return IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "data", logger);
+  return IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "data", logger) &&
+         IsInputRankSupportedByOp(node, wnn_limits, logger);
 }
 
 void CreateSliceOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

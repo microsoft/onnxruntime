@@ -441,6 +441,8 @@ struct SliceIterator : public SliceIteratorBase {
 };
 
 inline void CopyCpuTensor(const Tensor* src, Tensor* tgt) {
+  ORT_ENFORCE(src->SizeInBytes() == tgt->SizeInBytes(), "Destination size does not match source.");
+
   void* target = tgt->MutableDataRaw();
   const void* source = src->DataRaw();
 
@@ -450,9 +452,7 @@ inline void CopyCpuTensor(const Tensor* src, Tensor* tgt) {
       auto* dst_string = tgt->MutableData<std::string>();
       std::copy(src_span.begin(), src_span.end(), dst_string);
     } else {
-      const auto element_size = src->DataType()->Size();
-      const auto elements = src->Shape().Size();
-      memcpy(target, source, SafeInt<size_t>(elements) * element_size);
+      memcpy(target, source, src->SizeInBytes());
     }
   }
 }

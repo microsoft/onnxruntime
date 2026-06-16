@@ -309,7 +309,8 @@ void VideoFrameToTensorConverter::VideoFrameToDX12Tensor(
         WINML_THROW_IF_FAILED(
           spVideoFrameTexture->SetPrivateDataInterface(d3d11_texture_GUID_, spSharedD3D11Texture.Get())
         );
-        WINML_THROW_IF_FAILED(spVideoFrameTexture->SetPrivateData(handle_GUID_, sizeof(shared_handle_), &shared_handle_)
+        WINML_THROW_IF_FAILED(
+          spVideoFrameTexture->SetPrivateData(handle_GUID_, sizeof(shared_handle_), &shared_handle_)
         );
       }
 
@@ -814,24 +815,28 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToCPUTensor(
   ImageTensorChannelType channelType = _winmli::GetChannelTypeFromSoftwareBitmap(softwareBitmap);
 
   if (tensorDesc.dataType == _winml::kImageTensorDataTypeFloat32) {
-    WINML_THROW_IF_FAILED(CpuTensorizer::TensorizeData<float>(
-      channelType,
-      tensorDesc.channelType,
-      tensorDesc.pixelRange,
-      pData,
-      bufferWidth,
-      inputBounds,
-      reinterpret_cast<float*>(pCPUTensor)
-    ));
+    WINML_THROW_IF_FAILED(
+      CpuTensorizer::TensorizeData<float>(
+        channelType,
+        tensorDesc.channelType,
+        tensorDesc.pixelRange,
+        pData,
+        bufferWidth,
+        inputBounds,
+        reinterpret_cast<float*>(pCPUTensor)
+      )
+    );
   } else if (tensorDesc.dataType == _winml::kImageTensorDataTypeFloat16) {
-    WINML_THROW_IF_FAILED(CpuTensorizer::TensorizeData<DirectX::PackedVector::HALF>(
-      channelType,
-      tensorDesc.channelType,
-      tensorDesc.pixelRange,
-      pData,
-      bufferWidth,
-      inputBounds,
-      reinterpret_cast<DirectX::PackedVector::HALF*>(pCPUTensor)
-    ));
+    WINML_THROW_IF_FAILED(
+      CpuTensorizer::TensorizeData<DirectX::PackedVector::HALF>(
+        channelType,
+        tensorDesc.channelType,
+        tensorDesc.pixelRange,
+        pData,
+        bufferWidth,
+        inputBounds,
+        reinterpret_cast<DirectX::PackedVector::HALF*>(pCPUTensor)
+      )
+    );
   }
 }

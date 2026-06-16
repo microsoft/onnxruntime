@@ -14,27 +14,28 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
-class GeneratePositionIDsProgram final : public Program<GeneratePositionIDsProgram> {
+class SplitPackedQKVWithRotaryEmbeddingProgram final : public Program<SplitPackedQKVWithRotaryEmbeddingProgram> {
  public:
-  GeneratePositionIDsProgram(bool is_first_prompt, bool is_subsequent_prompt) : Program{"GeneratePositionIDs"}, is_first_prompt_(is_first_prompt), is_subsequent_prompt_(is_subsequent_prompt) {}
+  SplitPackedQKVWithRotaryEmbeddingProgram(bool interleaved, uint32_t multi_rotary_cache_concat_offset)
+      : Program{"SplitPackedQKVWithRotaryEmbedding"},
+        interleaved_{interleaved},
+        multi_rotary_cache_concat_offset_{multi_rotary_cache_concat_offset} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"batch_size", ProgramUniformVariableDataType::Uint32}, {"sequence_length", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"sequence_length", ProgramUniformVariableDataType::Uint32},
+      {"hidden_size", ProgramUniformVariableDataType::Uint32},
+      {"kv_hidden_size", ProgramUniformVariableDataType::Uint32},
+      {"num_heads", ProgramUniformVariableDataType::Uint32},
+      {"kv_num_heads", ProgramUniformVariableDataType::Uint32},
+      {"head_size", ProgramUniformVariableDataType::Uint32},
+      {"half_rotary_dim", ProgramUniformVariableDataType::Uint32},
+      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
 
  private:
-  bool is_first_prompt_;
-  bool is_subsequent_prompt_;
-};
-
-class SplitPackedQKVProgram final : public Program<SplitPackedQKVProgram> {
- public:
-  SplitPackedQKVProgram() : Program{"SplitPackedQKV"} {}
-
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
-
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"hidden_size", ProgramUniformVariableDataType::Uint32},
-                                          {"kv_hidden_size", ProgramUniformVariableDataType::Uint32});
+  const bool interleaved_;
+  const uint32_t multi_rotary_cache_concat_offset_;
 };
 
 class GroupQueryAttention final : public WebGpuKernel {
@@ -57,6 +58,8 @@ class GroupQueryAttention final : public WebGpuKernel {
     use_smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
 
     local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
+
+    qk_norm_epsilon_ = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
   }
 
   int num_heads_;     // number of attention heads of Q
@@ -68,8 +71,14 @@ class GroupQueryAttention final : public WebGpuKernel {
   int local_window_size_;
 
   bool use_smooth_softmax_;
+  // Epsilon used by per-head RMSNorm when q_norm_weight / k_norm_weight (inputs 14 / 15) are
+  // provided. Consumed whenever those optional norm inputs are used (decode fast path or
+  // prefill fallback), and ignored otherwise.
+  float qk_norm_epsilon_;
   Status ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const override;
 };
+
+KernelCreateInfo CreateGroupQueryAttentionKernelInfo(bool enable_graph_capture);
 
 }  // namespace webgpu
 }  // namespace contrib

@@ -28,13 +28,25 @@ static inline std::string GetWaitKey(const OrtDevice::DeviceType notification_de
   return std::to_string(notification_device_type) + ":" + std::to_string(executor_device_type);
 }
 
+static const std::shared_ptr<const int>& GetDeviceStreamPoolThreadToken() {
+  // Use a thread-lifetime token instead of std::thread::id so a bucket from a
+  // dead thread cannot be accidentally reused if the runtime later reuses the
+  // same thread id value for a different thread.
+  thread_local const auto thread_token = std::make_shared<const int>(0);
+  return thread_token;
+}
+
 class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
  public:
   // Wait is a little special as we need to consider the source stream the notification generated,
   // and the stream we are waiting.
   // i.e., for an cuda event what notify the memory copy, it could be wait on a CPU stream, or on another cuda stream.
-  WaitNotificationFn GetWaitHandle(const OrtDevice::DeviceType notification_owner_device_type,
-                                   const OrtDevice::DeviceType executor_device_type) const override {
+  WaitNotificationFn GetWaitHandle(const OrtDevice& notification_owner_device,
+                                   const OrtDevice& executor_device) const override {
+    auto notification_owner_device_type = notification_owner_device.UsesCpuMemory() ? OrtDevice::CPU
+                                                                                    : notification_owner_device.Type();
+    auto executor_device_type = executor_device.UsesCpuMemory() ? OrtDevice::CPU : executor_device.Type();
+
     auto it = notification_wait_map_.find(GetWaitKey(notification_owner_device_type, executor_device_type));
     return it == notification_wait_map_.end() ? nullptr : it->second;
   }
@@ -85,7 +97,8 @@ SessionState::SessionState(Graph& graph,
                            profiling::Profiler& profiler,
                            const SessionOptions& sess_options,
                            PrepackedWeightsContainer* prepacked_weights_container,
-                           AllocatorMap* parent_allocators)
+                           AllocatorMap* parent_allocators,
+                           AllocatorMap* parent_initializer_allocators)
     : graph_(graph),
       execution_providers_(execution_providers),
       logger_(logger),
@@ -105,16 +118,26 @@ SessionState::SessionState(Graph& graph,
                         sess_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
   if (parent_allocators) {
     allocators_ = parent_allocators;
+    initializer_allocators_ = parent_initializer_allocators;
   } else {
     allocators_unique_ptr_ = std::make_unique<AllocatorMap>();
     allocators_ = allocators_unique_ptr_.get();
+
+    initializer_allocators_unique_ptr_ = std::make_unique<AllocatorMap>();
+    initializer_allocators_ = initializer_allocators_unique_ptr_.get();
+
     // The allocator registration rule:
     // Each location (OrtDevice) will only have 1 allocator used for whole session.
-    // The EP which is registered first will have higher priority
+    // The EP which is registered first will have higher priority.
+    // Allocators with a OrtAllocatorType of OrtReadOnlyAllocator go in the initializer allocators
     for (auto& ep : execution_providers_) {
       auto allocators = ep->CreatePreferredAllocators();
       for (auto& alloc : allocators) {
-        allocators_->insert({alloc->Info().device, alloc});  // DON'T overwrite existing key
+        if (alloc->Info().alloc_type == OrtReadOnlyAllocator) {
+          initializer_allocators_->insert({alloc->Info().device, alloc});  // DON'T overwrite existing key
+        } else {
+          allocators_->insert({alloc->Info().device, alloc});  // DON'T overwrite existing key
+        }
       }
     }
   }
@@ -126,13 +149,29 @@ AllocatorPtr SessionState::GetAllocator(const OrtMemoryInfo& location) const noe
 
 AllocatorPtr SessionState::GetAllocator(const OrtDevice& device) const noexcept {
   auto it = allocators_->find(device);
-  if (it != allocators_->end()) return it->second;
+  if (it != allocators_->end()) {
+    return it->second;
+  }
+
   return nullptr;
+}
+
+AllocatorPtr SessionState::GetInitializerAllocator(const OrtDevice& device) const noexcept {
+  auto it = initializer_allocators_->find(device);
+  if (it != initializer_allocators_->end()) {
+    return it->second;
+  }
+
+  return GetAllocator(device);
 }
 
 void SessionState::UpdateAllocatorsWithEnvAllocators(const std::vector<AllocatorPtr>& env_allocators) {
   for (const auto& env_alloc : env_allocators) {
-    (*allocators_)[env_alloc->Info().device] = env_alloc;
+    if (env_alloc->Info().alloc_type == OrtReadOnlyAllocator) {
+      (*initializer_allocators_)[env_alloc->Info().device] = env_alloc;
+    } else {
+      (*allocators_)[env_alloc->Info().device] = env_alloc;
+    }
   }
 }
 
@@ -195,13 +234,22 @@ Status SessionState::PopulateKernelCreateInfo(const KernelRegistryManager& kerne
   for (auto& node : graph_.Nodes()) {
     const KernelCreateInfo* kci = nullptr;
     auto status = kernel_registry_manager.SearchKernelRegistry(node, logger_, &kci);
-    if (!status.IsOK() && saving_ort_format) {
-      // if we didn't find the kernel and are saving to ORT format an EP that compiles nodes is enabled.
-      // in that case we assigned the node to that EP but do not compile it into a fused node.
-      // this keeps the original node and prevents level 2 and level 3 optimizers from modifying it.
-      // we now revert to the CPU EP kernel as a fallback.
-      // at runtime when the model is loaded in a minimal build, the compiling EP will replace this node if possible.
-      // if that's not possible for some reason we can fallback to the CPU EP implementation.
+
+    // There are two cases where we allow fallback to CPU EP kernels:
+    //
+    // 1. if we didn't find the kernel and are saving to ORT format an EP that compiles nodes is enabled.
+    // in that case we assigned the node to that EP but do not compile it into a fused node.
+    // this keeps the original node and prevents level 2 and level 3 optimizers from modifying it.
+    // we now revert to the CPU EP kernel as a fallback.
+    // at runtime when the model is loaded in a minimal build, the compiling EP will replace this node if possible.
+    // if that's not possible for some reason we can fallback to the CPU EP implementation.
+    //
+    // 2. If the node is a memcpy node.
+    // EPs may provide their own memcpy kernels. The CPU EP provides a generic version to fall back to if the EP does
+    // not provide one.
+    const bool allow_cpu_ep_kernel_fallback = saving_ort_format || utils::IsMemcpyNode(node);
+
+    if (!status.IsOK() && allow_cpu_ep_kernel_fallback) {
       node.SetExecutionProviderType(kCpuExecutionProvider);
       status = kernel_registry_manager.SearchKernelRegistry(node, logger_, &kci);
     }
@@ -300,16 +348,12 @@ const std::vector<AllocPlanPerValue>& SessionState::GetPerValueAllocPlan() const
   return p_seq_exec_plan_->allocation_plan;
 }
 
-Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& ort_value, const OrtCallback* d,
+Status SessionState::AddInitializedTensor(int ort_value_index, const OrtValue& ort_value,
                                           bool constant, bool sparse) {
   auto p = initialized_tensors_.insert({ort_value_index, ort_value});
   if (!p.second)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "duplicated ort_value index:", ort_value_index,
                            ". Do you have duplicated calls to SessionState::AddInitializedTensor function?");
-
-  if (d != nullptr && d->f != nullptr) {
-    deleter_for_initialized_tensors_.insert_or_assign(ort_value_index, *d);
-  }
 
   if (constant) {
     constant_initialized_tensors_.insert({ort_value_index, ort_value});
@@ -385,16 +429,23 @@ void SessionState::CleanInitializedTensorsFromGraph() {
 static Status KernelUseSharedPrePackedBuffers(OpKernel& kernel, int input_idx,
                                               const PrePackedWeights& prepacked_weights,
                                               const std::string& node_name) {
-  std::vector<BufferUniquePtr> shared_prepacked_buffers;
-  shared_prepacked_buffers.reserve(4);  // Unlikely to see more than 4 prepacked buffers per initializer
+  const size_t num_buffers = prepacked_weights.buffers_.size();
+  assert(prepacked_weights.buffer_sizes_.size() == num_buffers);
 
-  for (const auto& prepacked_buffer : prepacked_weights.buffers_) {
+  std::vector<BufferUniquePtr> shared_prepacked_buffers;
+  std::vector<size_t> shared_prepacked_buffer_sizes;
+  shared_prepacked_buffers.reserve(num_buffers);
+  shared_prepacked_buffer_sizes.reserve(num_buffers);
+
+  for (size_t i = 0; i < num_buffers; i++) {
     // BufferDeleter is nullptr because the kernel should not delete the shared buffer - it can only use it
-    shared_prepacked_buffers.emplace_back(prepacked_buffer.get(), BufferDeleter(nullptr));
+    shared_prepacked_buffers.emplace_back(prepacked_weights.buffers_[i].get(), BufferDeleter(nullptr));
+    shared_prepacked_buffer_sizes.push_back(prepacked_weights.buffer_sizes_[i]);
   }
 
   bool used_shared_buffers = false;
-  ORT_RETURN_IF_ERROR(kernel.UseSharedPrePackedBuffers(shared_prepacked_buffers, input_idx, used_shared_buffers));
+  ORT_RETURN_IF_ERROR(kernel.UseSharedPrePackedBuffers(shared_prepacked_buffers, shared_prepacked_buffer_sizes,
+                                                       input_idx, used_shared_buffers));
 
   // BUG CHECK: Ensure that the kernel used the provided shared buffers
   // Mostly a debug check to ensure that the kernel has an overridden implementation of the
@@ -552,7 +603,7 @@ Status SessionState::PrepackConstantInitializedTensors(
                   // within this session. Or if the weight is not present on disk,
                   // we store the newly minted pre-packed data.
 
-                  AllocatorPtr session_cpu_alloc = GetAllocator(kernel->Info().GetDevice(OrtMemType::OrtMemTypeDefault));
+                  AllocatorPtr session_initializer_alloc = GetInitializerAllocator(kernel->Info().GetDevice(OrtMemType::OrtMemTypeDefault));
                   PrePackedWeights weights_to_be_filled_in;
                   // The reason we invoke PrePack() before looking into the container for any pre-packed weight
                   // cached by another instance of the same op_type (for the same constant initializer) is because
@@ -560,7 +611,7 @@ Status SessionState::PrepackConstantInitializedTensors(
                   // pre-packed weight with the pre-packed weight generated by this instance of the same op_type because
                   // other static properties of the node like node attributes could play a role in the pre-packed
                   // weights' contents.
-                  ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, session_cpu_alloc,
+                  ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, session_initializer_alloc,
                                                       is_packed,
                                                       &weights_to_be_filled_in));
 
@@ -1140,11 +1191,15 @@ const InlinedHashSet<NodeIndex>* SessionState::GetToBeExecutedRange(
 Status SessionState::CreateSubgraphSessionState() {
   for (auto& node : graph_.Nodes()) {
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
-      const auto& ep = node.GetExecutionProviderType();
-      if (!ep.empty() &&
-          ep != kCpuExecutionProvider && ep != kCudaExecutionProvider &&
-          ep != kRocmExecutionProvider && ep != kDmlExecutionProvider &&
-          ep != kJsExecutionProvider && ep != kWebGpuExecutionProvider) {
+      const auto& ep_type = node.GetExecutionProviderType();
+      const IExecutionProvider* ep = execution_providers_.Get(ep_type);
+      const bool is_plugin_ep = ep != nullptr && ep->GetOrtEp() != nullptr;
+
+      if (!ep_type.empty() &&
+          ep_type != kCpuExecutionProvider && ep_type != kCudaExecutionProvider &&
+          ep_type != kDmlExecutionProvider &&
+          ep_type != kJsExecutionProvider && ep_type != kWebGpuExecutionProvider &&
+          !is_plugin_ep) {
         // SessionState is only used when ORT is executing the subgraph. If a non-ORT EP has taken the control flow
         // node containing the subgraph it will create whatever state it needs internally.
         continue;
@@ -1158,7 +1213,7 @@ Status SessionState::CreateSubgraphSessionState() {
           std::make_unique<SessionState>(*subgraph, execution_providers_,
                                          thread_pool_, inter_op_thread_pool_, data_transfer_mgr_,
                                          external_data_loader_mgr_, logger_, profiler_, sess_options_,
-                                         prepacked_weights_container_, allocators_);
+                                         prepacked_weights_container_, allocators_, initializer_allocators_);
 
       // Pass fused function manager to subgraph
       subgraph_session_state->fused_funcs_mgr_.SetFusedFuncs(fused_funcs_mgr_);
@@ -1210,10 +1265,41 @@ using NodePlacementSet = std::unordered_set<std::string>;
 
 static Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_verbose,
                                                  NodePlacementMap& node_placements,
-                                                 NodePlacementSet& node_placement_provider_set) {
+                                                 NodePlacementSet& node_placement_provider_set,
+                                                 const ExecutionProviders& providers) {
   for (const auto& node : graph.Nodes()) {
     const auto& node_provider = node.GetExecutionProviderType();
     if (node_provider.empty()) {
+      // Provide a more descriptive error for EPContext nodes that were not assigned to an EP.
+      if (node.OpType() == "EPContext") {
+        // Get information about who generated the EPContext node from the 'source' attribute.
+        // Commonly, 'source' will be the name of the EP that generated the node, but that is not required.
+        // An EP may choose to use a different source identifier.
+        std::string source = "(unknown)";
+        const auto& attrs = node.GetAttributes();
+        auto it = attrs.find("source");
+
+        if (it != attrs.end() && it->second.has_s()) {
+          source = it->second.s();
+        }
+
+        const auto& ep_ids = providers.GetIds();
+        std::ostringstream session_ep_names;
+
+        for (size_t i = 0; i < ep_ids.size(); ++i) {
+          if (i > 0) {
+            session_ep_names << ", ";
+          }
+          session_ep_names << ep_ids[i];
+        }
+
+        return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                               "EPContext node generated by '", source, "' is not ",
+                               "compatible with any execution provider added to the session. ",
+                               "EPContext node name: '", node.Name(), "'. Available session execution providers: [",
+                               session_ep_names.str(), "].");
+      }
+
       return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                              "Could not find an implementation for ",
                              node.OpType(), "(", node.SinceVersion(), ") node with name '", node.Name(), "'");
@@ -1233,7 +1319,7 @@ static Status VerifyEachNodeIsAssignedToAnEpImpl(const Graph& graph, bool is_ver
       const auto subgraphs = node.GetSubgraphs();
       for (const auto& subgraph : subgraphs) {
         ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(*subgraph, is_verbose, node_placements,
-                                                               node_placement_provider_set));
+                                                               node_placement_provider_set, providers));
       }
     }
   }
@@ -1252,7 +1338,8 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
   const bool is_verbose_mode = false;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-  ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(graph, is_verbose_mode, node_placements, node_placement_provider_set));
+  ORT_RETURN_IF_ERROR(VerifyEachNodeIsAssignedToAnEpImpl(graph, is_verbose_mode, node_placements,
+                                                         node_placement_provider_set, providers));
 
 #if !defined(ORT_MINIMAL_BUILD)
   // print placement info
@@ -1620,16 +1707,16 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
       Env::Default(), graph_location, *graph_viewer_,
       GetAllocator(OrtDevice()),
       ort_value_name_idx_map_, initializer_allocation_order, *tensor_allocator,
-      [this, remove_initializers](const std::string& name, int idx, const OrtValue& value, const OrtCallback& d,
+      [this, remove_initializers](const std::string& name, int idx, const OrtValue& value,
                                   bool constant, bool sparse) -> Status {
-        ORT_RETURN_IF_ERROR(AddInitializedTensor(idx, value, &d, constant, sparse));
+        ORT_RETURN_IF_ERROR(AddInitializedTensor(idx, value, constant, sparse));
         if (remove_initializers) {
           graph_.RemoveInitializedTensor(name);
         }
         return Status::OK();
       },
       logger_, data_transfer_mgr_, external_data_loader_mgr_, *p_seq_exec_plan_, session_options,
-      memory_profile_func, name_to_buffered_tensor_, graph_.GetPrepacked()));
+      memory_profile_func, graph_.GetPrepacked()));
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Record Weight allocation info on device
@@ -1730,16 +1817,25 @@ static void BindToDeviceStream(const SequentialExecutionPlan& execution_plan,
 
 std::unique_ptr<DeviceStreamCollection> SessionState::AcquireDeviceStreamCollection() const {
   if (has_device_stream_enabled_ep_) {
+    const auto& thread_token = GetDeviceStreamPoolThreadToken();
+    const void* thread_key = thread_token.get();
+
     std::lock_guard<std::mutex> lock(device_stream_pool_mutex_);
-    if (!device_stream_pool_.empty()) {
-      auto device_stream = std::move(device_stream_pool_.back());
-      device_stream_pool_.pop_back();
-      return device_stream;
-    } else {
-      auto device_stream = std::make_unique<DeviceStreamCollection>(this->GetExecutionPlan()->execution_plan.size(), *allocators_, graph_viewer_->ParentNode() == nullptr);
-      BindToDeviceStream(*this->GetExecutionPlan(), *device_stream, *stream_handles_registry_);
+    PruneExpiredDeviceStreamPoolsLocked();
+
+    auto it = device_stream_pools_.find(thread_key);
+    if (it != device_stream_pools_.end() && !it->second.device_streams.empty()) {
+      auto device_stream = std::move(it->second.device_streams.back());
+      it->second.device_streams.pop_back();
+      if (it->second.device_streams.empty()) {
+        device_stream_pools_.erase(it);
+      }
       return device_stream;
     }
+
+    auto device_stream = std::make_unique<DeviceStreamCollection>(this->GetExecutionPlan()->execution_plan.size(), *allocators_, graph_viewer_->ParentNode() == nullptr);
+    BindToDeviceStream(*this->GetExecutionPlan(), *device_stream, *stream_handles_registry_);
+    return device_stream;
   } else {
     // no reusing of device stream is needed, just return nullptr, the caller will handle it
     return nullptr;
@@ -1749,10 +1845,27 @@ std::unique_ptr<DeviceStreamCollection> SessionState::AcquireDeviceStreamCollect
 void SessionState::RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCollection> device_stream_collection) const {
   // if no need to reuse the device stream, don't perform the recycle
   if (has_device_stream_enabled_ep_) {
+    const auto& thread_token = GetDeviceStreamPoolThreadToken();
+    const void* thread_key = thread_token.get();
+
     std::lock_guard<std::mutex> lock(device_stream_pool_mutex_);
-    device_stream_pool_.push_back(std::move(device_stream_collection));
+    PruneExpiredDeviceStreamPoolsLocked();
+    auto& bucket = device_stream_pools_[thread_key];
+    bucket.thread_token = thread_token;
+    bucket.device_streams.push_back(std::move(device_stream_collection));
   } else {
     device_stream_collection.reset(nullptr);
+  }
+}
+
+void SessionState::PruneExpiredDeviceStreamPoolsLocked() const {
+  for (auto it = device_stream_pools_.begin(); it != device_stream_pools_.end();) {
+    if (it->second.thread_token.expired()) {
+      auto expired_it = it++;
+      device_stream_pools_.erase(expired_it);
+    } else {
+      ++it;
+    }
   }
 }
 #endif

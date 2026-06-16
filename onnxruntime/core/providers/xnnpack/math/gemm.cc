@@ -36,6 +36,10 @@ bool Gemm::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& gra
     const NodeArg* A_arg = input_defs[0];
     const NodeArg* B_arg = input_defs[1];
     const NodeArg* C_arg = input_defs.size() == 2 ? nullptr : input_defs[2];
+    // Single source of truth for "is C actually present?". Matches the kernel
+    // constructor's C_matrix_exists_ = C_arg && C_arg->Exists() contract and the
+    // has_bias convention used in xnnpack/nn/conv_base.cc.
+    const bool has_c = (C_arg != nullptr && C_arg->Exists());
 
     // we only support float currently
     const auto* A_type = A_arg->TypeAsProto();
@@ -51,14 +55,13 @@ bool Gemm::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& gra
       break;
     }
 
-    if (input_defs.size() == 3 && !graph.IsConstantInitializer(C_arg->Name(), true)) {
+    if (has_c && !graph.IsConstantInitializer(C_arg->Name(), true)) {
       break;
     }
 
     // making sure we are dealing with MatMul
     const ONNX_NAMESPACE::TensorShapeProto* A_shape = A_arg->Shape();
     const ONNX_NAMESPACE::TensorShapeProto* B_shape = B_arg->Shape();
-    const ONNX_NAMESPACE::TensorShapeProto* C_shape = C_arg->Shape();
 
     if (!A_shape || A_shape->dim_size() >= 3) {
       break;
@@ -68,12 +71,27 @@ bool Gemm::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& gra
       break;
     }
 
-    if (!C_shape || C_shape->dim_size() >= 3) {
-      break;
-    }
+    // Optional C: if the input slot is absent (2-input Gemm) C_arg is null and we must not
+    // call Shape() on it. If C_arg exists but Exists() is false (empty optional input slot)
+    // we treat it identically: per ONNX, an empty optional input is equivalent to omitting
+    // the input. The kernel constructor's C_matrix_exists_ contract agrees.
+    if (has_c) {
+      const ONNX_NAMESPACE::TensorShapeProto* C_shape = C_arg->Shape();
+      if (!C_shape || C_shape->dim_size() >= 3) {
+        break;
+      }
 
-    if (C_arg && C_arg->Exists() && (C_shape->dim(0).dim_value() != B_shape->dim(1).dim_value() && C_shape->dim(0).dim_value() != B_shape->dim(0).dim_value())) {
-      break;
+      // Rank-0 C would be out of bounds on the C_shape->dim(0) check below and the
+      // xnn_create_fully_connected_nc_* bias path requires a length-N vector, so reject
+      // and fall back to the CPU EP.
+      if (C_shape->dim_size() == 0) {
+        break;
+      }
+
+      if (C_shape->dim(0).dim_value() != B_shape->dim(1).dim_value() &&
+          C_shape->dim(0).dim_value() != B_shape->dim(0).dim_value()) {
+        break;
+      }
     }
 
     supported = true;
@@ -139,7 +157,6 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
 
   // flags - 1 - for no transpose - 0 for transpose
   uint32_t flags = trans_B_ == CblasTrans ? 0 : XNN_FLAG_TRANSPOSE_WEIGHTS;
-  auto code_cache = GetCodeCache();
   auto weights_cache = GetWeightsCache();
   xnn_status status = xnn_status::xnn_status_uninitialized;
   struct xnn_operator* p = nullptr;
@@ -159,7 +176,7 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
         bias_data,                                                   // const float* bias,
         foutput_min, foutput_max,
         flags,
-        code_cache, weights_cache,
+        weights_cache,
         &p);
   } else if (op_compute_type_ == OpComputeType::op_compute_type_fp16) {
     const MLFloat16* bias_data = nullptr;
@@ -175,7 +192,7 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
         bias_data,                                                   // const float* bias,
         foutput_min, foutput_max,
         flags,
-        code_cache, weights_cache,
+        weights_cache,
         &p);
   }
 

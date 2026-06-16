@@ -18,12 +18,16 @@ class BinaryElementwiseProgram final : public Program<BinaryElementwiseProgram> 
                            const bool is_broadcast,
                            const bool is_lhs_scalar,
                            const bool is_rhs_scalar,
+                           const bool is_lhs_use_4_components,
+                           const bool is_rhs_use_4_components,
                            const bool vectorize) : Program{kernel_name},
                                                    expression_{expression},
                                                    additional_impl_{additional_impl},
                                                    is_broadcast_{is_broadcast},
                                                    is_lhs_scalar_{is_lhs_scalar},
                                                    is_rhs_scalar_{is_rhs_scalar},
+                                                   is_lhs_use_4_components_{is_lhs_use_4_components},
+                                                   is_rhs_use_4_components_{is_rhs_use_4_components},
                                                    vectorize_{vectorize} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -36,6 +40,8 @@ class BinaryElementwiseProgram final : public Program<BinaryElementwiseProgram> 
   bool is_broadcast_;
   bool is_lhs_scalar_;
   bool is_rhs_scalar_;
+  bool is_lhs_use_4_components_;
+  bool is_rhs_use_4_components_;
   bool vectorize_;
 };
 

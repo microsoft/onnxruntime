@@ -2,7 +2,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <cub/cub.cuh>
 #include <cublas_v2.h>
 #include <cuda_fp16.h>
 #include <math_constants.h>

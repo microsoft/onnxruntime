@@ -29,6 +29,30 @@ TEST(UnsqueezeOpTest, Unsqueeze_1_int32) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+#ifdef USE_WEBGPU
+TEST(UnsqueezeOpTest, Unsqueeze_1_int64) {
+  OpTester test("Unsqueeze");
+
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddInput<int64_t>("input", {2, 3, 4}, std::vector<int64_t>(2 * 3 * 4, 1));
+  test.AddOutput<int64_t>("output", {2, 1, 3, 4}, std::vector<int64_t>(2 * 3 * 4, 1));
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+#endif
+
+TEST(UnsqueezeOpTest, Unsqueeze_1_bool) {
+  OpTester test("Unsqueeze");
+
+  test.AddAttribute("axes", std::vector<int64_t>{1});
+  test.AddInput<bool>("input", {2, 3, 4}, {true, false, true, false, false, true, false, true, false, true, true, false, true, false, false, true, true, true, true, false, true, false, false, true});
+  test.AddOutput<bool>("output", {2, 1, 3, 4}, {true, false, true, false, false, true, false, true, false, true, true, false, true, false, false, true, true, true, true, false, true, false, false, true});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(UnsqueezeOpTest, Unsqueeze_2) {
   OpTester test("Unsqueeze");
 
@@ -44,6 +68,22 @@ TEST(UnsqueezeOpTest, Unsqueeze_3) {
   test.AddAttribute("axes", std::vector<int64_t>{2, 1, 0});
   test.AddInput<float>("input", {2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
   test.AddOutput<float>("output", {1, 1, 1, 2, 3, 4}, std::vector<float>(2 * 3 * 4, 1.0f));
+  test.Run();
+}
+
+TEST(UnsqueezeOpTest, Unsqueeze_21) {
+  OpTester test("Unsqueeze", 21);
+  test.AddInput<float>("input", {}, std::vector<float>{1.0f});
+  test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{0}, true);
+  test.AddOutput<float>("output", {1}, std::vector<float>{1.0f});
+  test.Run();
+}
+
+TEST(UnsqueezeOpTest, Unsqueeze_23) {
+  OpTester test("Unsqueeze", 23);
+  test.AddInput<float>("input", {}, std::vector<float>{1.0f});
+  test.AddInput<int64_t>("axes", {1}, std::vector<int64_t>{0}, true);
+  test.AddOutput<float>("output", {1}, std::vector<float>{1.0f});
   test.Run();
 }
 

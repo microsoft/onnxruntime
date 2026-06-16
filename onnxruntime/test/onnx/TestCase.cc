@@ -632,7 +632,7 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::TensorProto& test_data_
   void* p = len == 0 ? nullptr : b.AllocMemory(len);
   Ort::Value v1{nullptr};
   onnxruntime::test::OrtCallback d;
-  OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
+  OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), OrtMemTypeDefault);
   status = onnxruntime::test::TensorProtoToMLValue(test_data_pb, onnxruntime::test::MemBuffer(p, len, cpu_memory_info),
                                                    v1, d);
   if (!status.IsOK()) {
@@ -683,7 +683,7 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_dat
     void* p = len == 0 ? nullptr : b.AllocMemory(len);
     Ort::Value v1{nullptr};
     onnxruntime::test::OrtCallback d;
-    OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
+    OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), OrtMemTypeDefault);
     status = onnxruntime::test::TensorProtoToMLValue(*it, onnxruntime::test::MemBuffer(p, len, cpu_memory_info),
                                                      v1, d);
     if (!status.IsOK()) {
@@ -948,6 +948,70 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"slice_neg_steps",
        "Type parameter (Tind) bound to different types (tensor(int64) and tensor(int32) in node ()."},
       {"cast_BFLOAT16_to_FLOAT", "Unexpected input data type"},
+      {"cast_FLOAT16_to_INT4", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_FLOAT16_to_UINT4", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_FLOAT_to_INT4", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_FLOAT_to_UINT4", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_INT4_to_FLOAT", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_INT4_to_FLOAT16", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_INT4_to_INT8", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_UINT4_to_FLOAT", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_UINT4_to_FLOAT16", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      {"cast_UINT4_to_UINT8", "Skipped until onnxruntime/cmake/external/onnx points to onnx 1.19 which should include @onnx/onnx/pull/7074"},
+      // Spec-leading: PR #28379 fixed CPU Attention to match the corrected
+      // scale -> softcap -> bias/mask -> softmax ordering established by
+      // onnx/onnx#7867 (softcap before mask) and onnx/onnx#7913
+      // (qk_matmul_output_mode values 1<->2 swap). The bundled
+      // cmake/external/onnx is v1.21.0, which predates both PRs. The fixtures
+      // below were regenerated upstream to match the new semantics; our impl
+      // now produces the new-spec output, which disagrees with the still-old
+      // fixtures shipped in v1.21.0. Skip until cmake/external/onnx is bumped
+      // to >= v1.22.
+      // TODO(onnx-v1.22): remove this block when cmake/external/onnx is bumped to v1.22+ which includes ONNX PRs #7867 + #7913.
+      {"attention_3d_with_past_and_present_qk_matmul_softcap",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7867)"},
+      {"attention_3d_with_past_and_present_qk_matmul_softcap_expanded",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7867)"},
+      {"attention_4d_with_qk_matmul_softcap",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7867)"},
+      {"attention_4d_with_qk_matmul_softcap_expanded",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7867)"},
+      {"attention_3d_with_past_and_present_qk_matmul_bias",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_3d_with_past_and_present_qk_matmul_bias_expanded",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_4d_with_qk_matmul_bias",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_4d_with_qk_matmul_bias_expanded",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_4d_with_past_and_present_qk_matmul_bias",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_4d_with_past_and_present_qk_matmul_bias_expanded",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_4d_with_past_and_present_qk_matmul_bias_3d_mask",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_expanded",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal_expanded",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_expanded",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      {"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal_expanded",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7913)"},
+      // Pre-#7867 fixture: the bundled v1.21.0 mask4d_padded_kv fixture was
+      // generated with the old softcap/mask ordering; our impl now produces
+      // the post-#7867 output. Will be re-enabled when cmake/external/onnx
+      // is bumped to >= v1.22.
+      {"attention_4d_diff_heads_mask4d_padded_kv",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7867)"},
+      {"attention_4d_diff_heads_mask4d_padded_kv_expanded",
+       "Skipped until cmake/external/onnx >= v1.22 (includes onnx/onnx#7867)"},
       {"loop13_seq", "Creation of empty sequences is currently not supported in the test runner"},
       {"sequence_insert_at_front", "shape mismatch, expect {4} got {3}"},
       {"cast_FLOAT_to_BFLOAT16", "expect uint16 got bfloat16"},
@@ -1393,66 +1457,15 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
   }
 
   if (provider_name == "qnn") {
-    broken_tests->insert({"gemm_default_no_bias", "result differs"});
     broken_tests->insert({"resize_downsample_scales_linear", "result differs"});
-    broken_tests->insert({"resize_downsample_scales_linear_antialias", "result differs"});
-    broken_tests->insert({"resize_downsample_sizes_linear_antialias", "result differs"});
-    broken_tests->insert({"sce_NCd1_mean_weight_negative_ii", "result differs"});
-    broken_tests->insert({"sce_NCd1_mean_weight_negative_ii_expanded", "result differs"});
-    broken_tests->insert({"sce_NCd1_mean_weight_negative_ii_log_prob", "result differs"});
-    broken_tests->insert({"sce_NCd1_mean_weight_negative_ii_log_prob_expanded", "result differs"});
-    broken_tests->insert({"sce_mean", "result differs"});
-    broken_tests->insert({"sce_mean_3d", "result differs"});
-    broken_tests->insert({"sce_mean_3d_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_3d_log_prob", "result differs"});
-    broken_tests->insert({"sce_mean_3d_log_prob_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_log_prob", "result differs"});
-    broken_tests->insert({"sce_mean_log_prob_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_no_weight_ii", "result differs"});
-    broken_tests->insert({"sce_mean_no_weight_ii_3d", "result differs"});
-    broken_tests->insert({"sce_mean_no_weight_ii_3d_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_no_weight_ii_3d_log_prob", "result differs"});
-    broken_tests->insert({"sce_mean_no_weight_ii_3d_log_prob_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_no_weight_ii_4d", "result differs"});
-    broken_tests->insert({"sce_mean_no_weight_ii_4d_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_no_weight_ii_4d_log_prob", "result differs"});
-    broken_tests->insert({"sce_mean_no_weight_ii_4d_log_prob_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_no_weight_ii_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_no_weight_ii_log_prob", "result differs"});
-    broken_tests->insert({"sce_mean_no_weight_ii_log_prob_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_weight", "result differs"});
-    broken_tests->insert({"sce_mean_weight_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_weight_ii", "result differs"});
-    broken_tests->insert({"sce_mean_weight_ii_3d", "result differs"});
-    broken_tests->insert({"sce_mean_weight_ii_3d_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_weight_ii_3d_log_prob", "result differs"});
-    broken_tests->insert({"sce_mean_weight_ii_3d_log_prob_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_weight_ii_4d", "result differs"});
-    broken_tests->insert({"sce_mean_weight_ii_4d_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_weight_ii_4d_log_prob", "result differs"});
-    broken_tests->insert({"sce_mean_weight_ii_4d_log_prob_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_weight_ii_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_weight_ii_log_prob", "result differs"});
-    broken_tests->insert({"sce_mean_weight_ii_log_prob_expanded", "result differs"});
-    broken_tests->insert({"sce_mean_weight_log_prob", "result differs"});
-    broken_tests->insert({"sce_mean_weight_log_prob_expanded", "result differs"});
-    broken_tests->insert({"sce_none", "result differs"});
-    broken_tests->insert({"sce_none_expanded", "result differs"});
-    broken_tests->insert({"sce_none_log_prob", "result differs"});
-    broken_tests->insert({"sce_none_log_prob_expanded", "result differs"});
-    broken_tests->insert({"sce_sum", "result differs"});
-    broken_tests->insert({"sce_sum_expanded", "result differs"});
-    broken_tests->insert({"sce_sum_log_prob", "result differs"});
-    broken_tests->insert({"sce_sum_log_prob_expanded", "result differs"});
-    broken_tests->insert({"gridsample_reflection_padding", "result differs"});
     broken_tests->insert({"gridsample_volumetric_nearest_align_corners_0", "unknown version"});
     broken_tests->insert({"gridsample_volumetric_nearest_align_corners_1", "unknown version"});
     broken_tests->insert({"rotary_embedding_no_position_ids_expanded", "unknown version"});
     broken_tests->insert({"rotary_embedding_no_position_ids_interleaved_expanded", "unknown version"});
-    broken_tests->insert({"spacetodepth", "result differs"});
-    broken_tests->insert({"reduce_sum_square_empty_set_expanded", "unknown version"});
-    // Fails with QNN SDK 2.17.0:
+    broken_tests->insert({"rotary_embedding_no_position_ids_rotary_dim", "unknown version"});
+    broken_tests->insert({"rotary_embedding_with_interleaved_rotary_dim", "unknown version"});
+    broken_tests->insert({"rotary_embedding_with_rotary_dim", "unknown version"});
+    // Fails since QNN SDK 2.17.0:
     // expected 7.70947 (40f6b3f3), got 7.84096 (40fae920), diff: 0.131491, tol=0.00870947 idx=419. 100 of 1715 differ
     broken_tests->insert({"facedetection_op8_qdq", "result differs"});
     // Fails with QNN SDK 2.34.0:
@@ -1460,13 +1473,7 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"gemm_default_vector_bias", "result differs with 2.34"});
     // expected 0.0505495 (3d4f0d00), got 0.0506369 (3d4f68ae), diff: 8.74326e-05, tol=6.05495e-05 idx=448
     broken_tests->insert({"mobilenetv2-1.0", "result differs with 2.34"});
-    broken_tests->insert({"facedetection_op8", "segfault with CPU backend, will be fixed by QNN 2.36"});
 
-#if defined(_WIN32) && defined(_M_AMD64)
-    // Fails with QNN SDK 2.17.0 on Windows x64:
-    // expected 13.5 (41580000), got 0 (0), diff: 13.5, tol=0.0145 idx=3. 3 of 4 differ
-    broken_tests->insert({"averagepool_2d_ceil", "result differs"});
-#endif
     // These next 3 Resize tests fail on CPU backend with QNN SDK 2.22.0 due to inaccuracy.
     // output=Y:expected 1 (3f800000), got 3 (40400000), diff: 2, tol=0.002 idx=24. 8 of 56 differ
     broken_tests->insert({"resize_upsample_sizes_nearest", "result differs"});
@@ -1478,15 +1485,43 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"convtranspose_group_2_image_3", "Segmentation fault (core dumped). CPU test passed."});
     // Fails with QNN 2.31 on Windows x64 for CPU
     broken_tests->insert({"gelu_tanh_2", "y:expected -0.0131778 (bc57e7d5), got -0.0136333 (bc5f5e38), diff: 0.000455472, tol=2.31778e-05."});
-    broken_tests->insert({"convtranspose_pad", "Access violation 0xc000005 from call graphAddNode."});
-    broken_tests->insert({"convtranspose_pads", "Access violation 0xc000005 from call graphAddNode."});
-    broken_tests->insert({"convtranspose_output_shape", "Access violation 0xc000005 from call graphAddNode."});
-    broken_tests->insert({"convtranspose_kernel_shape", "Access violation 0xc000005 from call graphAddNode."});
-    broken_tests->insert({"convtranspose_1d", "Access violation 0xc000005 from call graphAddNode."});
-    broken_tests->insert({"convtranspose", "Access violation 0xc000005 from call graphAddNode."});
     broken_tests->insert({"averagepool_2d_ceil", "result differs. expected 13.5 (41580000), got 0 (0)"});
-    // Fails with QNN 2.32
-    broken_tests->insert({"resize_upsample_scales_linear", "expected 1 (3f800000), got 0.25 (3e800000)"});
+    broken_tests->insert({"scatter_elements_with_negative_indices", "unknown version"});
+    // Fails since ONNX==1.19.0
+    broken_tests->insert({"l2normalization_axis_0", "unknown version"});
+    broken_tests->insert({"attention_3d_gqa", "unknown version"});
+    broken_tests->insert({"attention_3d_gqa_attn_mask", "unknown version"});
+    broken_tests->insert({"attention_3d_gqa_causal", "unknown version"});
+    broken_tests->insert({"attention_3d_gqa_scaled", "unknown version"});
+    broken_tests->insert({"attention_3d_gqa_softcap", "unknown version"});
+    broken_tests->insert({"attention_3d_gqa_with_past_and_present", "unknown version"});
+    broken_tests->insert({"attention_4d_gqa", "unknown version"});
+    broken_tests->insert({"attention_4d_gqa_attn_mask", "unknown version"});
+    broken_tests->insert({"attention_4d_gqa_causal", "unknown version"});
+    broken_tests->insert({"attention_4d_gqa_scaled", "unknown version"});
+    broken_tests->insert({"attention_4d_gqa_softcap", "unknown version"});
+    broken_tests->insert({"attention_4d_gqa_with_past_and_present", "unknown version"});
+    broken_tests->insert({"attention_4d_gqa_with_past_and_present_fp16", "unknown version"});
+    broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal", "unknown version"});
+    broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal", "unknown version"});
+    broken_tests->insert({"attention_4d_diff_heads_mask4d_padded_kv", "need nonpad_kv_seqlen "});
+    broken_tests->insert({"rms_normalization_2d_axis1", "unknown version"});
+    broken_tests->insert({"rms_normalization_2d_axis_negative_1", "unknown version"});
+    broken_tests->insert({"rms_normalization_3d_axis2_epsilon", "unknown version"});
+    broken_tests->insert({"rms_normalization_3d_axis_negative_1_epsilon", "unknown version"});
+    broken_tests->insert({"rms_normalization_4d_axis3", "unknown version"});
+    broken_tests->insert({"rms_normalization_4d_axis_negative_1", "unknown version"});
+    broken_tests->insert({"rms_normalization_default_axis", "unknown version"});
+    // Fails since ONNX==1.20.0
+    broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal_expanded", "unknown version"});
+    broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal_expanded", "unknown version"});
+    broken_tests->insert({"convinteger_with_padding", "unknown version"});
+    // Fails since ONNX==1.21.0
+    broken_tests->insert({"dft_irfft", "unknown version"});
+    broken_tests->insert({"dft_irfft_opset19", "unknown version"});
+    broken_tests->insert({"dft_rfft", "unknown version"});
+    broken_tests->insert({"dft_rfft_opset19", "unknown version"});
+    broken_tests->insert({"bitcast_bool_to_uint8", "ORT BitCast kernel does not register bool type"});
   }
 
 #ifdef DISABLE_CONTRIB_OPS

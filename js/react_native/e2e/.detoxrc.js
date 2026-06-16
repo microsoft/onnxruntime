@@ -14,13 +14,13 @@ module.exports = {
       type: 'ios.app',
       binaryPath: 'ios/build/Build/Products/Debug-iphonesimulator/OnnxruntimeModuleExample.app',
       build:
-        'xcodebuild ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO -workspace ios/OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -configuration Debug -sdk iphonesimulator -derivedDataPath ios/build',
+        'xcodebuild ARCHS=arm64 ONLY_ACTIVE_ARCH=NO -workspace ios/OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -configuration Debug -sdk iphonesimulator -derivedDataPath ios/build',
     },
     'ios.release': {
       type: 'ios.app',
       binaryPath: 'ios/build/Build/Products/Release-iphonesimulator/OnnxruntimeModuleExample.app',
       build:
-        'xcodebuild ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO -workspace ios/OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -configuration Release -sdk iphonesimulator -derivedDataPath ios/build',
+        'xcodebuild ARCHS=arm64 ONLY_ACTIVE_ARCH=NO -workspace ios/OnnxruntimeModuleExample.xcworkspace -scheme OnnxruntimeModuleExample -configuration Release -sdk iphonesimulator -derivedDataPath ios/build',
     },
     'android.debug': {
       type: 'android.apk',
@@ -40,6 +40,13 @@ module.exports = {
       device: {
         type: 'iPhone 15',
         os: 'iOS 17.4',
+      },
+    },
+    simulator_ios_18_6: {
+      type: 'ios.simulator',
+      device: {
+        type: 'iPhone 16',
+        os: 'iOS 18.6',
       },
     },
     attached: {
@@ -62,6 +69,10 @@ module.exports = {
     },
     'ios.sim.release': {
       device: 'simulator',
+      app: 'ios.release',
+    },
+    'ios.sim_18_6.release': {
+      device: 'simulator_ios_18_6',
       app: 'ios.release',
     },
     'android.att.debug': {

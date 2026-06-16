@@ -168,7 +168,15 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
     filtered_node_inputs_including_initializers_.reserve(metadef->inputs.size());
 
     for (const auto& input : metadef->inputs) {
-      const auto* nodearg = graph.GetNodeArg(input);
+      // NodeArgs from the current scope or any outer scopes should be handled correctly.
+      //
+      // There is an edge case where the model consists of a graph with subgraphs nested across three levels.
+      // In this scenario, a third-layer subgraph consumes an input from the first-layer graph (not an initializer).
+      // When constructing a new GraphViewer for the second- and third-layer subgraphs,
+      // the second-layer graph may not have the corresponding value_info for that first-layer input,
+      // because the second-layer graph itself doesn't consume it.
+      // Therefore, when working within the second-layer graph, we need to search outer scopes for the missing value_info.
+      const auto* nodearg = graph.GetNodeArgIncludingParentGraphs(input);
       ORT_ENFORCE(nodearg, "Mismatch between Graph and IndexedSubGraph. Input not found:", input);
       filtered_node_inputs_including_initializers_.push_back(nodearg);
       if (!graph.IsInitializedTensor(input)) {
@@ -177,7 +185,7 @@ GraphViewer::GraphViewer(const Graph& graph, const IndexedSubGraph* filter_info)
     }
 
     for (const auto& output : metadef->outputs) {
-      const auto* nodearg = graph.GetNodeArg(output);
+      const auto* nodearg = graph.GetNodeArgIncludingParentGraphs(output);
       ORT_ENFORCE(nodearg, "Mismatch between Graph and IndexedSubGraph. Output not found:", output);
       filtered_node_outputs_.push_back(nodearg);
     }

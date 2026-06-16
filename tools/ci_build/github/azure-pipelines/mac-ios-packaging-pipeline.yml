@@ -56,20 +56,16 @@ extends:
     # Update the pool with your team's 1ES hosted pool.
     pool:
       name: "Azure Pipelines"
-      image: "macOS-14"
+      image: "macOS-15"
       os: macOS
     sdl:
       sourceAnalysisPool:
-        name: onnxruntime-Win-CPU-2022
+        name: onnxruntime-Win-CPU-VS2022-Latest
         os: windows
     stages:
 
     - template: templates/stages/mac-ios-packaging-build-stage.yml
       parameters:
-        packageVariant: Full
         buildType: ${{ parameters.buildType }}
-
-    - template: templates/stages/mac-ios-packaging-build-stage.yml
-      parameters:
-        packageVariant: Training
-        buildType: ${{ parameters.buildType }}
+        xcodeVersion: "16.4"
+        iosSimulatorRuntimeVersion: "18.5"

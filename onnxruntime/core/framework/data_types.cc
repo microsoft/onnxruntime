@@ -37,6 +37,7 @@ const MLFloat16 MLFloat16::NegativeNaN(MLFloat16::FromBits(MLFloat16::kNegativeQ
 const MLFloat16 MLFloat16::Infinity(MLFloat16::FromBits(MLFloat16::kPositiveInfinityBits));
 const MLFloat16 MLFloat16::NegativeInfinity(MLFloat16::FromBits(MLFloat16::kNegativeInfinityBits));
 const MLFloat16 MLFloat16::MaxValue(MLFloat16::FromBits(MLFloat16::kMaxValueBits));
+const MLFloat16 MLFloat16::MinValue(MLFloat16::FromBits(MLFloat16::kMinValueBits));
 const MLFloat16 MLFloat16::Zero(MLFloat16::FromBits(0));
 const MLFloat16 MLFloat16::One(MLFloat16::FromBits(MLFloat16::kOneBits));
 const MLFloat16 MLFloat16::MinusOne(MLFloat16::FromBits(MLFloat16::kMinusOneBits));
@@ -46,6 +47,7 @@ const BFloat16 BFloat16::NegativeNaN(BFloat16::FromBits(BFloat16::kNegativeQNaNB
 const BFloat16 BFloat16::Infinity(BFloat16::FromBits(BFloat16::kPositiveInfinityBits));
 const BFloat16 BFloat16::NegativeInfinity(BFloat16::FromBits(BFloat16::kNegativeInfinityBits));
 const BFloat16 BFloat16::MaxValue(BFloat16::FromBits(BFloat16::kMaxValueBits));
+const BFloat16 BFloat16::MinValue(BFloat16::FromBits(BFloat16::kMinValueBits));
 const BFloat16 BFloat16::Zero(BFloat16::FromBits(0));
 const BFloat16 BFloat16::One(BFloat16::FromBits(BFloat16::kOneBits));
 const BFloat16 BFloat16::MinusOne(BFloat16::FromBits(BFloat16::kMinusOneBits));
@@ -634,9 +636,18 @@ ORT_REGISTER_TENSOR_TYPE(Float8E4M3FN);
 ORT_REGISTER_TENSOR_TYPE(Float8E4M3FNUZ);
 ORT_REGISTER_TENSOR_TYPE(Float8E5M2);
 ORT_REGISTER_TENSOR_TYPE(Float8E5M2FNUZ);
+ORT_REGISTER_TENSOR_TYPE(Float8E8M0);
 #endif
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+ORT_REGISTER_TENSOR_TYPE(Float4E2M1x2);
+#endif
+
 ORT_REGISTER_TENSOR_TYPE(Int4x2);
 ORT_REGISTER_TENSOR_TYPE(UInt4x2);
+
+ORT_REGISTER_TENSOR_TYPE(Int2x4);
+ORT_REGISTER_TENSOR_TYPE(UInt2x4);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 ORT_REGISTER_SPARSE_TENSOR_TYPE(int32_t);
@@ -659,6 +670,7 @@ ORT_REGISTER_SPARSE_TENSOR_TYPE(Float8E4M3FN);
 ORT_REGISTER_SPARSE_TENSOR_TYPE(Float8E4M3FNUZ);
 ORT_REGISTER_SPARSE_TENSOR_TYPE(Float8E5M2);
 ORT_REGISTER_SPARSE_TENSOR_TYPE(Float8E5M2FNUZ);
+ORT_REGISTER_SPARSE_TENSOR_TYPE(Float8E8M0);
 #endif
 
 #endif
@@ -695,11 +707,15 @@ ORT_REGISTER_SEQ_TENSOR_TYPE(Float8E4M3FN);
 ORT_REGISTER_SEQ_TENSOR_TYPE(Float8E4M3FNUZ);
 ORT_REGISTER_SEQ_TENSOR_TYPE(Float8E5M2);
 ORT_REGISTER_SEQ_TENSOR_TYPE(Float8E5M2FNUZ);
+ORT_REGISTER_SEQ_TENSOR_TYPE(Float8E8M0);
 
 #endif
 
 ORT_REGISTER_SEQ_TENSOR_TYPE(Int4x2);
 ORT_REGISTER_SEQ_TENSOR_TYPE(UInt4x2);
+
+ORT_REGISTER_SEQ_TENSOR_TYPE(Int2x4);
+ORT_REGISTER_SEQ_TENSOR_TYPE(UInt2x4);
 
 #if !defined(DISABLE_ML_OPS)
 ORT_REGISTER_SEQ(VectorMapStringToFloat);
@@ -727,8 +743,11 @@ ORT_REGISTER_SEQ(VectorMapInt64ToFloat);
   ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float8E4M3FNUZ); \
   ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float8E5M2);     \
   ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float8E5M2FNUZ); \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Float8E8M0);     \
   ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Int4x2);         \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, UInt4x2);
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, UInt4x2);        \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Int2x4);         \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, UInt2x4);
 
 #else
 
@@ -748,7 +767,9 @@ ORT_REGISTER_SEQ(VectorMapInt64ToFloat);
   ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, MLFloat16);   \
   ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, BFloat16);    \
   ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Int4x2);      \
-  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, UInt4x2);
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, UInt4x2);     \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, Int2x4);      \
+  ORT_REGISTER_OPTIONAL_TYPE(ORT_TYPE, UInt2x4);
 
 #endif
 
@@ -812,9 +833,15 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_TENSOR_PROTO(Float8E4M3FNUZ, reg_fn);
   REGISTER_TENSOR_PROTO(Float8E5M2, reg_fn);
   REGISTER_TENSOR_PROTO(Float8E5M2FNUZ, reg_fn);
+  REGISTER_TENSOR_PROTO(Float8E8M0, reg_fn);
+#endif
+#if !defined(DISABLE_FLOAT4_TYPES)
+  REGISTER_TENSOR_PROTO(Float4E2M1x2, reg_fn);
 #endif
   REGISTER_TENSOR_PROTO(Int4x2, reg_fn);
   REGISTER_TENSOR_PROTO(UInt4x2, reg_fn);
+  REGISTER_TENSOR_PROTO(Int2x4, reg_fn);
+  REGISTER_TENSOR_PROTO(UInt2x4, reg_fn);
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   REGISTER_SPARSE_TENSOR_PROTO(int32_t, reg_fn);
@@ -836,6 +863,7 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_SPARSE_TENSOR_PROTO(Float8E4M3FNUZ, reg_fn);
   REGISTER_SPARSE_TENSOR_PROTO(Float8E5M2, reg_fn);
   REGISTER_SPARSE_TENSOR_PROTO(Float8E5M2FNUZ, reg_fn);
+  REGISTER_SPARSE_TENSOR_PROTO(Float8E8M0, reg_fn);
 #endif
 #endif
 
@@ -871,11 +899,14 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_SEQ_TENSOR_PROTO(Float8E4M3FNUZ, reg_fn);
   REGISTER_SEQ_TENSOR_PROTO(Float8E5M2, reg_fn);
   REGISTER_SEQ_TENSOR_PROTO(Float8E5M2FNUZ, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(Float8E8M0, reg_fn);
 
 #endif
 
   REGISTER_SEQ_TENSOR_PROTO(Int4x2, reg_fn);
   REGISTER_SEQ_TENSOR_PROTO(UInt4x2, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(Int2x4, reg_fn);
+  REGISTER_SEQ_TENSOR_PROTO(UInt2x4, reg_fn);
 
 #if !defined(DISABLE_ML_OPS)
   REGISTER_ONNX_PROTO(VectorMapStringToFloat, reg_fn);
@@ -905,8 +936,11 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E4M3FNUZ, reg_fn); \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E5M2, reg_fn);     \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E5M2FNUZ, reg_fn); \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Float8E8M0, reg_fn);     \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int4x2, reg_fn);         \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, UInt4x2, reg_fn);
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, UInt4x2, reg_fn);        \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int2x4, reg_fn);         \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, UInt2x4, reg_fn);
 
 #else
 
@@ -926,7 +960,9 @@ void RegisterAllProtos(const std::function<void(MLDataType)>& reg_fn) {
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, MLFloat16, reg_fn);    \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, BFloat16, reg_fn);     \
   REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int4x2, reg_fn);       \
-  REGISTER_OPTIONAL_PROTO(ORT_TYPE, UInt4x2, reg_fn);
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, UInt4x2, reg_fn);      \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, Int2x4, reg_fn);       \
+  REGISTER_OPTIONAL_PROTO(ORT_TYPE, UInt2x4, reg_fn);
 
 #endif
 
@@ -987,10 +1023,18 @@ const char* DataTypeImpl::ToString(MLDataType type) {
         return "Float8E5M2";
       case TensorProto_DataType_FLOAT8E5M2FNUZ:
         return "Float8E5M2FNUZ";
+      case TensorProto_DataType_FLOAT8E8M0:
+        return "Float8E8M0";
+      case TensorProto_DataType_FLOAT4E2M1:
+        return "Float4E2M1";
       case TensorProto_DataType_INT4:
         return "Int4x2";
       case TensorProto_DataType_UINT4:
         return "UInt4x2";
+      case TensorProto_DataType_INT2:
+        return "Int2x4";
+      case TensorProto_DataType_UINT2:
+        return "UInt2x4";
       default:
         break;
     }
@@ -1048,7 +1092,6 @@ const TensorTypeBase* DataTypeImpl::TensorTypeFromONNXEnum(int type) {
       return DataTypeImpl::GetTensorType<BFloat16>()->AsTensorType();
 
 #if !defined(DISABLE_FLOAT8_TYPES)
-
     case TensorProto_DataType_FLOAT8E4M3FN:
       return DataTypeImpl::GetTensorType<Float8E4M3FN>()->AsTensorType();
     case TensorProto_DataType_FLOAT8E4M3FNUZ:
@@ -1057,12 +1100,21 @@ const TensorTypeBase* DataTypeImpl::TensorTypeFromONNXEnum(int type) {
       return DataTypeImpl::GetTensorType<Float8E5M2>()->AsTensorType();
     case TensorProto_DataType_FLOAT8E5M2FNUZ:
       return DataTypeImpl::GetTensorType<Float8E5M2FNUZ>()->AsTensorType();
-
+    case TensorProto_DataType_FLOAT8E8M0:
+      return DataTypeImpl::GetTensorType<Float8E8M0>()->AsTensorType();
+#endif
+#if !defined(DISABLE_FLOAT4_TYPES)
+    case TensorProto_DataType_FLOAT4E2M1:
+      return DataTypeImpl::GetTensorType<Float4E2M1x2>()->AsTensorType();
 #endif
     case TensorProto_DataType_INT4:
       return DataTypeImpl::GetTensorType<Int4x2>()->AsTensorType();
     case TensorProto_DataType_UINT4:
       return DataTypeImpl::GetTensorType<UInt4x2>()->AsTensorType();
+    case TensorProto_DataType_INT2:
+      return DataTypeImpl::GetTensorType<Int2x4>()->AsTensorType();
+    case TensorProto_DataType_UINT2:
+      return DataTypeImpl::GetTensorType<UInt2x4>()->AsTensorType();
 
     default:
       ORT_NOT_IMPLEMENTED("tensor type ", type, " is not supported");
@@ -1110,12 +1162,18 @@ const SequenceTensorTypeBase* DataTypeImpl::SequenceTensorTypeFromONNXEnum(int t
       return DataTypeImpl::GetSequenceTensorType<Float8E5M2>()->AsSequenceTensorType();
     case TensorProto_DataType_FLOAT8E5M2FNUZ:
       return DataTypeImpl::GetSequenceTensorType<Float8E5M2FNUZ>()->AsSequenceTensorType();
+    case TensorProto_DataType_FLOAT8E8M0:
+      return DataTypeImpl::GetSequenceTensorType<Float8E8M0>()->AsSequenceTensorType();
 
 #endif
     case TensorProto_DataType_INT4:
       return DataTypeImpl::GetSequenceTensorType<Int4x2>()->AsSequenceTensorType();
     case TensorProto_DataType_UINT4:
       return DataTypeImpl::GetSequenceTensorType<UInt4x2>()->AsSequenceTensorType();
+    case TensorProto_DataType_INT2:
+      return DataTypeImpl::GetSequenceTensorType<Int2x4>()->AsSequenceTensorType();
+    case TensorProto_DataType_UINT2:
+      return DataTypeImpl::GetSequenceTensorType<UInt2x4>()->AsSequenceTensorType();
 
     default:
       ORT_NOT_IMPLEMENTED("sequence tensor type ", type, " is not supported");
@@ -1164,6 +1222,8 @@ const SparseTensorTypeBase* DataTypeImpl::SparseTensorTypeFromONNXEnum(int type)
       return DataTypeImpl::GetSparseTensorType<Float8E5M2>()->AsSparseTensorType();
     case TensorProto_DataType_FLOAT8E5M2FNUZ:
       return DataTypeImpl::GetSparseTensorType<Float8E5M2FNUZ>()->AsSparseTensorType();
+    case TensorProto_DataType_FLOAT8E8M0:
+      return DataTypeImpl::GetSparseTensorType<Float8E8M0>()->AsSparseTensorType();
 
 #endif
 
@@ -1207,10 +1267,20 @@ ORT_REGISTER_PRIM_TYPE(Float8E4M3FN);
 ORT_REGISTER_PRIM_TYPE(Float8E4M3FNUZ);
 ORT_REGISTER_PRIM_TYPE(Float8E5M2);
 ORT_REGISTER_PRIM_TYPE(Float8E5M2FNUZ);
+ORT_REGISTER_PRIM_TYPE(Float8E8M0);
 
 #endif
+
+#if !defined(DISABLE_FLOAT4_TYPES)
+
+ORT_REGISTER_PRIM_SUBBYTE_TYPE(Float4E2M1x2, 2);
+
+#endif
+
 ORT_REGISTER_PRIM_SUBBYTE_TYPE(Int4x2, 2);
 ORT_REGISTER_PRIM_SUBBYTE_TYPE(UInt4x2, 2);
+ORT_REGISTER_PRIM_SUBBYTE_TYPE(Int2x4, 4);
+ORT_REGISTER_PRIM_SUBBYTE_TYPE(UInt2x4, 4);
 
 namespace {
 template <typename... ElementTypes>
@@ -1304,6 +1374,18 @@ const std::vector<MLDataType>& DataTypeImpl::AllTensorTypesIRv9() {
 const std::vector<MLDataType>& DataTypeImpl::AllTensorTypesIRv10() {
   static std::vector<MLDataType> all_tensor_types =
       GetTensorTypesFromTypeList<element_type_lists::AllIRv10>();
+  return all_tensor_types;
+}
+
+const std::vector<MLDataType>& DataTypeImpl::AllTensorTypesIRv11() {
+  static std::vector<MLDataType> all_tensor_types =
+      GetTensorTypesFromTypeList<element_type_lists::AllIRv11>();
+  return all_tensor_types;
+}
+
+const std::vector<MLDataType>& DataTypeImpl::AllTensorTypesIRv13() {
+  static std::vector<MLDataType> all_tensor_types =
+      GetTensorTypesFromTypeList<element_type_lists::AllIRv13>();
   return all_tensor_types;
 }
 

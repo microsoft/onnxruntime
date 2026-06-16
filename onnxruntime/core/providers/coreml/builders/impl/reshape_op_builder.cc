@@ -27,6 +27,8 @@ class ReshapeOpBuilder : public BaseOpBuilder {
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 5; }
 
   bool SupportsMLProgram() const override { return true; }
+
+  bool IsTrivial(const Node& /*node*/) const override { return true; }
 };
 
 void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
@@ -44,7 +46,7 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   const auto& data_name = input_defs[0]->Name();
   const auto& new_shape_name = input_defs[1]->Name();
-  Initializer unpacked_tensor(*model_builder.GetConstantInitializer(new_shape_name));
+  Initializer unpacked_tensor(model_builder.GetGraphViewer().GetGraph(), *model_builder.GetConstantInitializer(new_shape_name));
   TensorShapeVector new_shape = ToShapeVector(unpacked_tensor.DataAsSpan<int64_t>());
 
   // ReshapeHelper applies the ONNX rules to create the concrete output shape
@@ -75,7 +77,8 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   return Status::OK();
 }
 
-bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
+bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node,
+                                         const OpBuilderInputParams& input_params,
                                          const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& new_shape_name = input_defs[1]->Name();
@@ -87,7 +90,7 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
     return false;
   }
 
-  Initializer unpacked_tensor(*new_shape_tensor);
+  Initializer unpacked_tensor(input_params.graph_viewer.GetGraph(), *new_shape_tensor);
   auto new_shape = unpacked_tensor.DataAsSpan<int64_t>();
   if (new_shape.empty()) {
     LOGS(logger, VERBOSE) << "New shape of reshape cannot be empty";

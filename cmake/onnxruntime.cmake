@@ -5,6 +5,8 @@ if(UNIX)
   set(SYMBOL_FILE ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime.lds)
   if(APPLE)
     set(OUTPUT_STYLE xcode)
+  elseif(CMAKE_SYSTEM_NAME MATCHES "AIX")
+    set(OUTPUT_STYLE aix)
   else()
     set(OUTPUT_STYLE gcc)
   endif()
@@ -24,10 +26,16 @@ function(get_c_cxx_api_headers HEADERS_VAR)
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_c_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_inline.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_env_config_keys.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_ep_c_api.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_ep_device_ep_metadata_keys.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_error_code.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_experimental_c_api.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_experimental_c_api.inc"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_float16.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h"
-    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h"
   )
 
   if (onnxruntime_ENABLE_TRAINING_APIS)
@@ -40,7 +48,7 @@ function(get_c_cxx_api_headers HEADERS_VAR)
   foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
     # The header files in include/onnxruntime/core/providers/cuda directory cannot be flattened to the same directory
     # with onnxruntime_c_api.h . Most other EPs probably also do not work in this way.
-    if((NOT f STREQUAL cuda) AND (NOT f STREQUAL rocm))
+    if(NOT f STREQUAL cuda)
       file(GLOB _provider_headers CONFIGURE_DEPENDS
         "${REPO_ROOT}/include/onnxruntime/core/providers/${f}/*.h"
       )
@@ -63,7 +71,6 @@ if(onnxruntime_BUILD_SHARED_LIB)
     list(APPEND SYMBOL_FILES "${ONNXRUNTIME_ROOT}/core/providers/${f}/symbols.txt")
   endforeach()
 
-  if(NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
   add_custom_command(OUTPUT ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c
     COMMAND ${Python_EXECUTABLE} "${REPO_ROOT}/tools/ci_build/gen_def.py"
       --version_file "${ONNXRUNTIME_ROOT}/../VERSION_NUMBER" --src_root "${ONNXRUNTIME_ROOT}"
@@ -73,7 +80,6 @@ if(onnxruntime_BUILD_SHARED_LIB)
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
   add_custom_target(onnxruntime_generate_def ALL DEPENDS ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
-  endif()
   if(WIN32)
     onnxruntime_add_shared_library(onnxruntime
       ${SYMBOL_FILE}
@@ -119,11 +125,7 @@ if(onnxruntime_BUILD_SHARED_LIB)
       # Note: The PUBLIC_HEADER and VERSION properties for the 'onnxruntime' target will be set later in this file.
     )
   else()
-    if(CMAKE_SYSTEM_NAME MATCHES "AIX")
-      onnxruntime_add_shared_library(onnxruntime ${ONNXRUNTIME_ROOT}/core/session/onnxruntime_c_api.cc)
-    else()
-      onnxruntime_add_shared_library(onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c )
-    endif()
+    onnxruntime_add_shared_library(onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
     if(NOT APPLE)
       include(CheckLinkerFlag)
       check_linker_flag(CXX "LINKER:-rpath=\$ORIGIN" LINKER_SUPPORT_RPATH)
@@ -133,11 +135,7 @@ if(onnxruntime_BUILD_SHARED_LIB)
     endif()
   endif()
 
-  if(CMAKE_SYSTEM_NAME MATCHES "AIX")
-    add_dependencies(onnxruntime ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  else()
-    add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
-  endif()
+  add_dependencies(onnxruntime onnxruntime_generate_def ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime>")
 
 
@@ -146,8 +144,11 @@ if(onnxruntime_BUILD_SHARED_LIB)
   if(UNIX)
     if (APPLE)
       target_link_options(onnxruntime PRIVATE "LINKER:-dead_strip")
-    elseif(NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
-      target_link_options(onnxruntime PRIVATE  "LINKER:--version-script=${SYMBOL_FILE}" "LINKER:--no-undefined" "LINKER:--gc-sections")
+    elseif(CMAKE_SYSTEM_NAME MATCHES "AIX")
+      set_property(TARGET onnxruntime PROPERTY AIX_EXPORT_ALL_SYMBOLS OFF)
+      target_link_options(onnxruntime PRIVATE "LINKER:-bE:${SYMBOL_FILE}")
+    else()
+      target_link_options(onnxruntime PRIVATE  "LINKER:--version-script=${SYMBOL_FILE}" "LINKER:--no-undefined" "LINKER:--gc-sections" "LINKER:-z,noexecstack")
     endif()
   else()
     target_link_options(onnxruntime PRIVATE  "-DEF:${SYMBOL_FILE}")
@@ -215,7 +216,6 @@ endif()
 
 set(onnxruntime_INTERNAL_PROVIDER_LIBRARIES
   ${PROVIDERS_ACL}
-  ${PROVIDERS_ARMNN}
   ${PROVIDERS_COREML}
   ${PROVIDERS_DML}
   ${PROVIDERS_NNAPI}
@@ -223,7 +223,6 @@ set(onnxruntime_INTERNAL_PROVIDER_LIBRARIES
   ${PROVIDERS_RKNPU}
   ${PROVIDERS_VSINPU}
   ${PROVIDERS_XNNPACK}
-  ${PROVIDERS_WEBGPU}
   ${PROVIDERS_WEBNN}
   ${PROVIDERS_AZURE}
   ${PROVIDERS_INTERNAL_TESTING}
@@ -231,6 +230,10 @@ set(onnxruntime_INTERNAL_PROVIDER_LIBRARIES
 
 if (onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND onnxruntime_INTERNAL_PROVIDER_LIBRARIES onnxruntime_providers_qnn)
+endif()
+
+if (onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
+  list(APPEND onnxruntime_INTERNAL_PROVIDER_LIBRARIES onnxruntime_providers_webgpu)
 endif()
 
 # This list is a reversed topological ordering of library dependencies.
@@ -253,6 +256,10 @@ set(onnxruntime_INTERNAL_LIBRARIES
 
 if (CMAKE_SYSTEM_NAME MATCHES "AIX")
   list(APPEND onnxruntime_INTERNAL_LIBRARIES  iconv)
+endif()
+
+if(NOT onnxruntime_MINIMAL_BUILD AND TARGET model_package)
+  list(APPEND onnxruntime_INTERNAL_LIBRARIES model_package)
 endif()
 
 if (onnxruntime_USE_EXTENSIONS)
@@ -281,23 +288,15 @@ if(WIN32)
   target_link_options(onnxruntime PRIVATE ${onnxruntime_DELAYLOAD_FLAGS})
 endif()
 #See: https://cmake.org/cmake/help/latest/prop_tgt/SOVERSION.html
-if(NOT APPLE AND NOT WIN32)
-  if(CMAKE_SYSTEM_NAME MATCHES "AIX")
-    set_target_properties(onnxruntime PROPERTIES
-      PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
-      VERSION ${ORT_VERSION}
-      SOVERSION 1
-      FOLDER "ONNXRuntime")
-  else()
-    set_target_properties(onnxruntime PROPERTIES
-      PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
-      LINK_DEPENDS ${SYMBOL_FILE}
-      VERSION ${ORT_VERSION}
-      SOVERSION 1
-      FOLDER "ONNXRuntime")
-  endif()
+if(NOT WIN32)
+  set_target_properties(onnxruntime PROPERTIES
+    PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
+    LINK_DEPENDS ${SYMBOL_FILE}
+    VERSION ${ORT_VERSION}
+    SOVERSION 1
+    FOLDER "ONNXRuntime")
 else()
-  # Omit the SOVERSION setting in Windows/macOS/iOS/.. build
+  # Omit the SOVERSION setting in Windows build
   set_target_properties(onnxruntime PROPERTIES
     PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
     LINK_DEPENDS ${SYMBOL_FILE}
@@ -348,8 +347,19 @@ if (winml_is_inbox)
   endif()
 endif()
 
-# Assemble the Apple static framework (iOS and macOS)
+# Assemble the Apple static framework
 if(onnxruntime_BUILD_APPLE_FRAMEWORK)
+  if (NOT CMAKE_SYSTEM_NAME MATCHES "Darwin|iOS|visionOS|tvOS")
+    message(FATAL_ERROR "onnxruntime_BUILD_APPLE_FRAMEWORK can only be enabled for macOS or iOS or visionOS or tvOS.")
+  endif()
+
+  list(LENGTH CMAKE_OSX_ARCHITECTURES CMAKE_OSX_ARCHITECTURES_LEN)
+  if (CMAKE_OSX_ARCHITECTURES_LEN GREATER 1)
+    # We stitch multiple static libraries together when onnxruntime_BUILD_APPLE_FRAMEWORK is true,
+    # but that would not work for universal static libraries
+    message(FATAL_ERROR "universal binary is not supported for apple framework")
+  endif()
+
   # when building for mac catalyst, the CMAKE_OSX_SYSROOT is set to MacOSX as well, to avoid duplication,
   # we specify as `-macabi` in the name of the output static apple framework directory.
   if (PLATFORM_NAME STREQUAL "macabi")

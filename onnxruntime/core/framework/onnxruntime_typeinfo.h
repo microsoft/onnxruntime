@@ -14,8 +14,9 @@ class DataTypeImpl;
 }  // namespace onnxruntime
 
 namespace ONNX_NAMESPACE {
+class TensorProto;
 class TypeProto;
-}
+}  // namespace ONNX_NAMESPACE
 
 // These types are only present in the winml adapter c api, so they are forward declared.
 struct OrtMapTypeInfo;

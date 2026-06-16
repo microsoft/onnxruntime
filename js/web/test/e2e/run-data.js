@@ -77,6 +77,8 @@ const BUNDLER_TEST_CASES = [
   ['./dist/rollup_umd_js/ort-test-e2e.bundle.js', 'iife'],
   ['./dist/parcel_esm_js/main.js', 'esm'],
   ['./dist/parcel_umd_js/main.js', 'iife'],
+  ['./dist/vite_esm_js/ort-test-e2e.bundle.mjs', 'esm'],
+  ['./dist/vite_umd_js/ort-test-e2e.bundle.js', 'iife'],
 ];
 
 module.exports = {

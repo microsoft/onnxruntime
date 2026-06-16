@@ -34,6 +34,19 @@ JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxRuntime_initialiseTrainingAPIBas
 
 /*
  * Class:     ai_onnxruntime_OnnxRuntime
+ * Method:    initialiseCompileAPIBase
+ * Signature: (J)J
+ */
+JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OnnxRuntime_initialiseCompileAPIBase
+  (JNIEnv * jniEnv, jclass clazz, jlong apiHandle) {
+  (void)jniEnv; (void)clazz;  // required JNI parameters not needed by functions which don't call back into Java.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  const OrtCompileApi* compileApi = api->GetCompileApi();
+  return (jlong) compileApi;
+}
+
+/*
+ * Class:     ai_onnxruntime_OnnxRuntime
  * Method:    getAvailableProviders
  * Signature: (J)[Ljava/lang/String;
  */

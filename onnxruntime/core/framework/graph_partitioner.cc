@@ -5,22 +5,28 @@
 
 #include <cassert>
 #include <functional>
+#include <string>
+#include <vector>
 
 #include "core/common/inlined_containers.h"
 #include "core/common/string_utils.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/ep_context_utils.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/func_kernel.h"
 #include "core/framework/kernel_lookup.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/layering_annotations.h"
 #include "core/framework/resource_accountant.h"
 #include "core/graph/function.h"
 #include "core/graph/function_utils.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
-#include "core/graph/model_saving_options.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/util/protobuf_parsing_utils.h"
 
 // uncomment this line to count non-CUDA ops in ONNX domain
 // #define COUNT_NON_CUDA_OPS
@@ -64,6 +70,8 @@ struct PartitionParams {
   std::reference_wrapper<const layout_transformation::TransformLayoutFunction> transform_layout_function;
   std::reference_wrapper<const layout_transformation::DebugGraphFn> debug_graph_fn;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  std::reference_wrapper<const OnPartitionAssignmentFunction> on_partition_assignment_fn;
+  LayeringIndex* layering_index;
 };
 }  // namespace
 
@@ -86,7 +94,8 @@ static void BuildFusedKernelDef(KernelDefBuilder& builder, const IndexedSubGraph
 /// <param name="capability">Indexed subgraph which needs to be assigned</param>
 /// <param name="provider_type">The EP to assign the Indexed subgraph to</param>
 static bool TryAssignNodes(Graph& graph, const IndexedSubGraph& capability,
-                           const std::string& provider_type) {
+                           const std::string& provider_type,
+                           InlinedVector<NodeIndex>* newly_assigned_nodes = nullptr) {
   // Before assigning the ep to any node, first walk through all the nodes and ensure
   // none of the nodes have already been assigned. If a node is assigned, simply return.
   for (auto node_index : capability.nodes) {
@@ -97,15 +106,37 @@ static bool TryAssignNodes(Graph& graph, const IndexedSubGraph& capability,
     }
   }
 
+  // When newly_assigned_nodes is provided, this call performs the tentative first-pass
+  // tagging of the NHWC two-pass partitioning flow. Those tags only exist so the layout
+  // transformer and the second GetCapability pass can recognize the candidate nodes; they
+  // may be dropped again before any partition is committed. Tentative tags must therefore
+  // not commit resource-accountant budget here. The budget for nodes that survive the
+  // second pass is committed later (see the deferred-commit step in GetCapabilityForEP).
+  const bool is_tentative_pass = (newly_assigned_nodes != nullptr);
   const bool acc_enabled = capability.IsAccountingEnabled();
   for (size_t i = 0, limit = capability.nodes.size(); i < limit; ++i) {
     auto* node = graph.GetNode(capability.nodes[i]);
+    const bool was_unassigned = node->GetExecutionProviderType().empty();
     node->SetExecutionProviderType(provider_type);
-    if (acc_enabled) {
+    if (newly_assigned_nodes != nullptr && was_unassigned) {
+      newly_assigned_nodes->push_back(node->Index());
+    }
+    if (acc_enabled && !is_tentative_pass) {
       capability.AccountForNode(i);
     }
   }
   return true;
+}
+
+static void ClearExecutionProviderAssignments(Graph& graph,
+                                              const InlinedVector<NodeIndex>& node_indices,
+                                              const std::string& provider_type) {
+  for (NodeIndex node_index : node_indices) {
+    auto* node = graph.GetNode(node_index);
+    if (node != nullptr && node->GetExecutionProviderType() == provider_type) {
+      node->SetExecutionProviderType("");
+    }
+  }
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -145,6 +176,7 @@ struct GetCapabilityForEPParams {
   IResourceAccountant* resource_accountant;
   std::reference_wrapper<const GraphOptimizerRegistry> graph_optimizer_registry;
   std::reference_wrapper<const CheckLoadCancellationFn> check_load_cancellation_fn;
+  LayeringIndex* layering_index;  // Added member
 };
 
 auto get_capabilities = [](const IExecutionProvider& ep,
@@ -188,10 +220,94 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
   auto& capabilities = params.capabilities.get();
   const auto& graph_optimizer_registry = params.graph_optimizer_registry.get();
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  InlinedVector<NodeIndex> assigned_filtered_in_nodes;
+  InlinedVector<const Node*> filtered_in_nodes;
+#endif
+  // Helper to create a GraphViewer that filters nodes based on layering_index if present.
+  auto create_graph_viewer = [&](std::unique_ptr<IndexedSubGraph>& out_sub_graph,
+                                 std::unique_ptr<GraphViewer>& out_viewer) -> Status {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+    if (params.layering_index) {
+      assigned_filtered_in_nodes.clear();
+      filtered_in_nodes.clear();
+      filtered_in_nodes.reserve(graph.NumberOfNodes());
+
+      auto rules_opt = params.layering_index->GetLayeringRulesForThisEp(ep_type);
+      if (rules_opt) {
+        assigned_filtered_in_nodes.reserve(rules_opt->get().size());
+      }
+
+      for (auto& node : graph.Nodes()) {
+        auto rule_idx_opt = params.layering_index->GetNodeAssignment(graph, node.Index());
+        bool include = true;
+        if (rule_idx_opt) {
+          // If node has an assignment, include it only if it is assigned to this EP
+          if (!rules_opt || rules_opt->get().count(*rule_idx_opt) == 0) {
+            include = false;
+          } else {
+            assigned_filtered_in_nodes.push_back(node.Index());
+          }
+        }
+        // If node has no assignment, it is included (available to any EP)
+
+        if (include) {
+          filtered_in_nodes.push_back(&node);
+        }
+      }
+      ORT_RETURN_IF_ERROR(graph_utils::CreateFilteredIndexedGraph(filtered_in_nodes, graph, out_sub_graph));
+      out_viewer = std::make_unique<GraphViewer>(graph, *out_sub_graph);
+      return Status::OK();
+    }
+#else
+    ORT_UNUSED_PARAMETER(out_sub_graph);
+#endif
+    out_viewer = std::make_unique<GraphViewer>(graph);
+    return Status::OK();
+  };
+  // Helper to un-assign nodes that were assigned to this EP but not claimed by updated capabilities.
+  auto reset_assignment_unclaimed_nodes = [&]() {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+    if (params.layering_index) {
+      auto rules_opt = params.layering_index->GetLayeringRulesForThisEp(ep_type);
+      if (rules_opt) {
+        const auto& ep_rules = rules_opt->get();
+        InlinedHashSet<NodeIndex> claimed;
+        for (const auto& cap : capabilities) {
+          if (cap && cap->sub_graph) {
+            for (auto idx : cap->sub_graph->nodes) claimed.insert(idx);
+          }
+        }
+
+        // Check if all assigned filtered-in nodes are claimed
+        // and if not make them available for subsequent EPs
+        for (auto& node_index : assigned_filtered_in_nodes) {
+          if (claimed.count(node_index) == 0) {
+            auto rule_idx_opt = params.layering_index->GetNodeAssignment(graph, node_index);
+            if (rule_idx_opt && ep_rules.count(*rule_idx_opt) > 0) {
+              params.layering_index->MakeNodeUnassigned(graph, node_index);
+            }
+          }
+        }
+        assigned_filtered_in_nodes.clear();
+      }
+    }
+#endif
+  };
+
   {
-    const GraphViewer graph_viewer(graph);
-    capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, params.resource_accountant,
+    std::unique_ptr<IndexedSubGraph> sub_graph_holder;
+    std::unique_ptr<GraphViewer> graph_viewer;
+    ORT_RETURN_IF_ERROR(create_graph_viewer(sub_graph_holder, graph_viewer));
+
+    if (params.resource_accountant) {
+      params.resource_accountant->ResetForNewPass();
+    }
+    capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup, params.resource_accountant,
                                     graph_optimizer_registry);
+
+    reset_assignment_unclaimed_nodes();
+
     if (params.check_load_cancellation_fn()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
                              "Graph partitioning was canceled by user request");
@@ -207,16 +323,22 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
   // CPU EP layout transformation happens later when level 3 transformers are run.
   if (params.mode != GraphPartitioner::Mode::kAssignOnly && params.transform_layout.get() &&
       current_ep.GetPreferredLayout() == DataLayout::NHWC) {
+    InlinedVector<NodeIndex> nodes_temporarily_assigned_to_ep;
     for (auto& capability : capabilities) {
-      TryAssignNodes(graph, *capability->sub_graph, ep_type);
+      TryAssignNodes(graph, *capability->sub_graph, ep_type, &nodes_temporarily_assigned_to_ep);
     }
 
     const NodeIndex first_new_node = graph.MaxNodeIndex();
 
     // Perform layout transformation on the specific EP assigned graph
     bool modified = false;
-    ORT_RETURN_IF_ERROR(params.transform_layout(graph, modified, current_ep, params.debug_graph_fn));
+    auto transform_status = params.transform_layout(graph, modified, current_ep, params.debug_graph_fn);
+    if (!transform_status.IsOK()) {
+      ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
+      return transform_status;
+    }
     if (params.check_load_cancellation_fn()) {
+      ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
       return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
                              "GetCapabilities was canceled by user request");
     }
@@ -234,22 +356,109 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
 
     const NodeIndex end_node = graph.MaxNodeIndex();
 
+    // Pass-1 tags were applied tentatively without committing any resource-accountant
+    // budget (see TryAssignNodes). Capture the per-node costs computed during pass-1,
+    // keyed by node index, so the budget for the nodes that survive the second pass can
+    // be committed after the drop step below. The costs must be captured here because
+    // capabilities.clear() destroys the pass-1 capabilities (and their costs) next.
+    InlinedHashMap<NodeIndex, ResourceCount> pass1_node_costs;
+    if (params.resource_accountant != nullptr) {
+      for (const auto& capability : capabilities) {
+        const auto& sub_graph = *capability->sub_graph;
+        if (sub_graph.IsAccountingEnabled()) {
+          for (size_t i = 0, limit = sub_graph.nodes.size(); i < limit; ++i) {
+            pass1_node_costs.insert_or_assign(sub_graph.nodes[i], sub_graph.GetNodeCost(i));
+          }
+        }
+      }
+    }
+
+    // Keep pass-1 EP assignments through the second GetCapability call so that EPs can
+    // recognize already-tagged nodes (e.g. nodes transformed into kMSInternalNHWCDomain).
     capabilities.clear();
 
-    const GraphViewer graph_viewer(graph);
-    capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, params.resource_accountant,
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+    if (params.layering_index && end_node > first_new_node) {
+      // We need to update the LayeringIndex with newly created nodes
+      // as the layout transformation may have created new nodes
+      // with inherited annotations
+      InlinedVector<NodeIndex> new_node_indices;
+      for (NodeIndex idx = first_new_node; idx < end_node; ++idx) {
+        if (graph.GetNode(idx) != nullptr) {
+          new_node_indices.push_back(idx);
+        }
+      }
+      params.layering_index->Update(graph, new_node_indices);
+    }
+#endif
+
+    std::unique_ptr<IndexedSubGraph> sub_graph_holder;
+    std::unique_ptr<GraphViewer> graph_viewer;
+    ORT_RETURN_IF_ERROR(create_graph_viewer(sub_graph_holder, graph_viewer));
+
+    if (params.resource_accountant) {
+      params.resource_accountant->ResetForNewPass();
+    }
+    capabilities = get_capabilities(current_ep, *graph_viewer, kernel_lookup, params.resource_accountant,
                                     graph_optimizer_registry);
+
+    reset_assignment_unclaimed_nodes();
+
     if (params.check_load_cancellation_fn()) {
+      ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
       return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
                              "GetCapabilities was canceled by user request");
     }
 
-    // all nodes with an index >= first_new_node with domain of kMSInternalNHWCDomain should be in the capabilities
+    // Collect pass-2 node indices and track new nodes for NHWC domain validation.
+    InlinedHashSet<NodeIndex> pass2_node_indices;
     InlinedHashSet<NodeIndex> new_nodes_in_capabilities;
     for (const auto& capability : capabilities) {
       for (auto node_index : capability->sub_graph->nodes) {
+        pass2_node_indices.insert(node_index);
         if (node_index >= first_new_node) {
           new_nodes_in_capabilities.insert(node_index);
+        }
+      }
+    }
+
+    // Clear pass-1 temporary assignments for nodes NOT re-claimed in pass 2.
+    // Nodes present in both passes keep their EP tag for correct downstream assignment.
+    for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
+      if (pass2_node_indices.count(node_index) == 0) {
+        auto* node = graph.GetNode(node_index);
+        if (node != nullptr && node->GetExecutionProviderType() == ep_type) {
+          node->SetExecutionProviderType("");
+        }
+      }
+    }
+
+    // Commit resource-accountant budget for pass-1 tentatively-tagged nodes that survived
+    // the second pass (still claimed by this EP). Pass-1 deliberately deferred this commit
+    // (TryAssignNodes skipped accounting) so that nodes dropped in the loop above never
+    // leak phantom budget into later accounting decisions. New nodes introduced for the
+    // second pass (e.g. NHWC ops) carry their own costs and are accounted normally when
+    // their partitions are placed, so they are intentionally excluded here.
+    //
+    // Only the consumed total is adjusted here (AddConsumedAmount); the per-node initializer
+    // weight tracking (CommitWeightsForNode) is intentionally not replayed. The pending weight
+    // state computed in pass 1 is discarded by ResetForNewPass before pass 2 and cannot be
+    // committed for survivors without re-probing, which pass 2 does not do for already-tagged
+    // nodes. Leaving those weights uncommitted is the safe direction: in ad-hoc accounting mode
+    // a shared initializer may be re-counted in a later partitioning iteration (a conservative
+    // over-estimate) but is never under-counted, so the configured budget can never be exceeded.
+    if (params.resource_accountant != nullptr) {
+      for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
+        if (pass2_node_indices.count(node_index) == 0) {
+          continue;
+        }
+        const auto* node = graph.GetNode(node_index);
+        if (node == nullptr || node->GetExecutionProviderType() != ep_type) {
+          continue;
+        }
+        auto cost_it = pass1_node_costs.find(node_index);
+        if (cost_it != pass1_node_costs.end()) {
+          params.resource_accountant->AddConsumedAmount(cost_it->second);
         }
       }
     }
@@ -383,13 +592,13 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
 
       fused_node->SetExecutionProviderType(provider_type);
       if (acc_enabled) {
-        // We account for the fused node. We operate under assumption
-        // that the fused node would use no more memory when the nodes we are fusing.
-        // and potentially less than that, and therefore, no threshold check is needed here.
-        // All threshold checks are done within the EP.
-        capability.ComputeAndAccountForNode(*fused_node);
+        // Account for all constituent nodes using the per-node costs computed
+        // during GetCapability() (which already includes within-pass weight dedup).
+        // Computing the cost for the newly created fused node would undercount
+        // because the fused node often doesn't expose all original initializers,
+        // and would commit weights for the wrong node index.
+        capability.AccountForAllNodes();
       }
-
       result = fused_node;
     } else {
       // assign the nodes in the indexed subgraph to the current EP so that level 2+ optimizers will not change them.
@@ -422,9 +631,11 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                            const layout_transformation::TransformLayoutFunction& transform_layout_fn,
                                            const layout_transformation::DebugGraphFn& debug_graph_fn,
                                            const CheckLoadCancellationFn& check_load_cancellation_fn,
+                                           const OnPartitionAssignmentFunction& on_partition_assignment_fn,
                                            const logging::Logger& logger, IResourceAccountant* resource_accountant,
                                            const GraphOptimizerRegistry& graph_optimizer_registry,
-                                           bool disable_model_compile) {
+                                           bool disable_model_compile,
+                                           LayeringIndex* layering_index) {  // Added arg
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
   if (graph.NumberOfNodes() == 0) {
@@ -440,8 +651,10 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                                        fused_kernel_registry, current_ep, mode, fused_node_unique_id,
                                                        transform_layout_fn, debug_graph_fn,
                                                        check_load_cancellation_fn,
+                                                       on_partition_assignment_fn,
                                                        logger, resource_accountant,
-                                                       graph_optimizer_registry, disable_model_compile));
+                                                       graph_optimizer_registry, disable_model_compile,
+                                                       layering_index));  // Pass through
     }
   }
 
@@ -467,7 +680,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       std::cref(debug_graph_fn),
       resource_accountant,
       std::ref(graph_optimizer_registry),
-      std::cref(check_load_cancellation_fn)};
+      std::cref(check_load_cancellation_fn),
+      layering_index};  // Pass param
 
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(get_capability_params, logger));
   if (capabilities.empty()) {
@@ -514,6 +728,12 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
 
     Node* n = nullptr;
     if (sub_graph_available_for_assignment) {
+      if (on_partition_assignment_fn) {
+        // Call custom function provided by owner of GraphPartitioner whenever a subgraph is assigned to an EP.
+        // This can be used, for example, to collect partitioning information.
+        on_partition_assignment_fn(graph, *capability, type);
+      }
+
       n = PlaceNode(graph, *capability->sub_graph, fusion_style, type, mode, fused_node_unique_id);
     }
 
@@ -641,17 +861,17 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
 }
 
 // expand any nodes that have an ONNX function definition but no matching ORT kernel
-static Status InlineNodes(Graph& graph, bool& modified_graph) {
+static Status InlineNodes(Graph& graph, bool& modified_graph, LayeringIndex* layering_index) {
   // recurse into nested graphs first so we process from bottom up
   for (auto& node : graph.Nodes()) {
     for (auto& entry : node.GetAttributeNameToMutableSubgraphMap()) {
       Graph* subgraph = entry.second;
-      ORT_RETURN_IF_ERROR(InlineNodes(*subgraph, modified_graph));
+      ORT_RETURN_IF_ERROR(InlineNodes(*subgraph, modified_graph, layering_index));
     }
   }
 
-  // See if the node with no provider can be inlined. If one such nodes can be
-  // successfully inlined, we re-run the partitioner on the modified graph.
+  // See if the node with no provider can be inlined. If one such nodes can be successfully inlined,
+  // we re-run the partitioner on the modified graph.
   // NOTE: Inlining the function will change the nodes in the Graph instance, so we can't do that while iterating
   // using graph.Nodes().
   InlinedVector<Node*> nodes_to_inline;
@@ -661,9 +881,50 @@ static Status InlineNodes(Graph& graph, bool& modified_graph) {
     }
   }
 
+  // Collect new node indices for nodes inlined from annotated parents so we can
+  // update the LayeringIndex in one batch.
+  InlinedVector<NodeIndex> new_node_indices;
+
   for (auto* node : nodes_to_inline) {
+    // Check for an effective layering assignment: either from an explicit annotation
+    // on the node, or from an inherited assignment via the LayeringIndex (e.g., a function
+    // call node inside an annotated If/Loop subgraph that inherited its parent's rule).
+    const bool has_explicit_annotation = !node->GetLayeringAnnotation().empty();
+    bool has_effective_assignment = has_explicit_annotation;
+
+    if (layering_index != nullptr && !has_explicit_annotation) {
+      // The node may have an inherited-only assignment with no stored annotation string.
+      // Materialize the annotation on the node so Graph::InlineFunction propagates it
+      // to the newly created inlined nodes.
+      auto rule_idx = layering_index->GetNodeAssignment(graph, node->Index());
+      if (rule_idx) {
+        has_effective_assignment = true;
+        const auto& rules = layering_index->GetRules();
+        if (*rule_idx < rules.rules.size()) {
+          node->SetLayeringAnnotation(rules.rules[*rule_idx].annotation);
+        }
+      }
+    }
+
+    const int max_before = has_effective_assignment ? graph.MaxNodeIndex() : 0;
+
     ORT_RETURN_IF_ERROR(graph.InlineFunction(*node));
     modified_graph = true;
+
+    if (has_effective_assignment) {
+      const int max_after = graph.MaxNodeIndex();
+      for (int i = max_before; i < max_after; ++i) {
+        if (graph.GetNode(static_cast<NodeIndex>(i)) != nullptr) {
+          new_node_indices.push_back(static_cast<NodeIndex>(i));
+        }
+      }
+    }
+  }
+
+  // Update the LayeringIndex so the next partitioning round filters correctly
+  // for the newly inlined nodes that inherited their parent's annotation.
+  if (layering_index != nullptr && !new_node_indices.empty()) {
+    layering_index->Update(graph, new_node_indices);
   }
 
   return Status::OK();
@@ -751,7 +1012,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
         ++inlined_count;
       } else {
         // OpType is the same as function name.
-        auto function_id = function_utils::GetFunctionIdentifier(node->Domain(), node->OpType());
+        auto function_id = function_utils::GetFunctionIdentifier(node->Domain(), node->OpType(), node->Overload());
         ORT_IGNORE_RETURN_VALUE(not_inlined.insert(std::move(function_id)));
       }
     }
@@ -764,6 +1025,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
 }
 
 // Validate the ep_context_path to make sure it is file path and check whether the file exist already
+// TODO: Move function to ep_context_utils.h/cc
 static Status GetValidatedEpContextPath(const std::filesystem::path& ep_context_path,
                                         const std::filesystem::path& model_path,
                                         std::filesystem::path& context_cache_path,
@@ -792,9 +1054,10 @@ static Status GetValidatedEpContextPath(const std::filesystem::path& ep_context_
   return Status::OK();
 }
 
+// TODO: Move function to ep_context_utils.h/cc
 static Status CreateEpContextModel(const ExecutionProviders& execution_providers,
                                    const Graph& graph,
-                                   const EpContextModelGenerationOptions& ep_context_gen_options,
+                                   const epctx::ModelGenOptions& ep_context_gen_options,
                                    const logging::Logger& logger) {
   InlinedVector<const Node*> all_ep_context_nodes;
   for (const auto& ep : execution_providers) {
@@ -805,11 +1068,11 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   if (all_ep_context_nodes.size() < 1) {
     auto action_if_no_compiled_nodes = ep_context_gen_options.action_if_no_compiled_nodes;
 
-    ORT_RETURN_IF(action_if_no_compiled_nodes == EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kReturnError,
+    ORT_RETURN_IF(action_if_no_compiled_nodes == epctx::ModelGenOptions::ActionIfNoCompiledNodes::kReturnError,
                   "Unable to compile any nodes. Check that the session EPs support compilation and can execute "
                   "at least one subgraph in the model.");
 
-    if (action_if_no_compiled_nodes == EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kDontGenerateModel) {
+    if (action_if_no_compiled_nodes == epctx::ModelGenOptions::ActionIfNoCompiledNodes::kDontGenerateModel) {
       LOGS(logger, WARNING) << "Unable to compile any nodes. ONNX Runtime will not generate a compiled model. "
                                "Either the session EPs do not support compilation or the model is already compiled.";
       // Note: this path is only taken if a model is compiled with the original compilation approach that uses
@@ -819,7 +1082,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     }
 
     // Assert so that this is caught in a test in DEBUG builds (in case a new enum value is added)
-    assert(action_if_no_compiled_nodes == EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kGenerateModel);
+    assert(action_if_no_compiled_nodes == epctx::ModelGenOptions::ActionIfNoCompiledNodes::kGenerateModel);
     LOGS(logger, INFO) << "Unable to compile any nodes but will still generate an output model. "
                           "Either the session EPs do not support compilation or the model is already compiled.";
   }
@@ -833,15 +1096,26 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     return std::make_pair(false, static_cast<const Node*>(nullptr));
   };
 
-  bool saving_to_buffer = ep_context_gen_options.output_model_buffer_ptr != nullptr &&
-                          ep_context_gen_options.output_model_buffer_size_ptr != nullptr &&
-                          ep_context_gen_options.output_model_buffer_allocator != nullptr;
+  const epctx::BufferHolder* output_buffer_holder = ep_context_gen_options.TryGetOutputModelBuffer();
+  const epctx::BufferWriteFuncHolder* output_write_func_holder = ep_context_gen_options.TryGetOutputModelWriteFunc();
+  const std::filesystem::path* output_model_path_ptr = ep_context_gen_options.TryGetOutputModelPath();
 
-  std::filesystem::path context_cache_path;
-  if (!saving_to_buffer || !graph.ModelPath().empty()) {
-    ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.output_model_file_path,
+  // Determine whether we need to resolve/validate a file system path for the output model.
+  // A path is needed when:
+  //   - Writing the output model to a file (not to a buffer or write function)
+  //   - Writing initializers to an external file (needs the model path to compute the external file location)
+  const bool output_is_to_file = (output_buffer_holder == nullptr && output_write_func_holder == nullptr);
+  const bool needs_path_for_external_initializers =
+      (ep_context_gen_options.TryGetExternalInitializerFileInfo() != nullptr);
+
+  std::filesystem::path valid_output_model_path;
+  if ((output_is_to_file || needs_path_for_external_initializers) &&
+      (output_model_path_ptr != nullptr || !graph.ModelPath().empty())) {
+    std::filesystem::path output_model_path = (output_model_path_ptr != nullptr) ? *output_model_path_ptr
+                                                                                 : std::filesystem::path("");
+    ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(output_model_path,
                                                   graph.ModelPath(),
-                                                  context_cache_path,
+                                                  valid_output_model_path,
                                                   ep_context_gen_options.error_if_output_file_exists));
   }
 
@@ -902,42 +1176,95 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   }
 
   // handle initializers
-  for (const auto& initialized_tensor : graph.GetAllInitializedTensors()) {
-    if (ep_graph.GetNodeArg(initialized_tensor.first) != nullptr) {
-      ep_graph.AddInitializedTensor(*initialized_tensor.second);
+  for (const auto& [name, _] : graph.GetAllInitializedTensors()) {
+    if (ep_graph.GetNodeArg(name) != nullptr) {
+      graph_utils::MakeInitializerCopyIfNotExist(graph, ep_graph, name);
     }
   }
 
-  size_t ini_size_threshold = ep_context_gen_options.output_external_initializer_size_threshold;
-  std::filesystem::path external_ini_path = ep_context_gen_options.output_external_initializers_file_path;
-  if (external_ini_path.empty()) {
-    // Set the threshold to the max so all initializers are forced into the Onnx file
-    ini_size_threshold = SIZE_MAX;
-    external_ini_path = "./model_ext_ini.bin";
+  ORT_RETURN_IF_ERROR(ep_graph.Resolve());
+
+  // Generate EP compatibility strings for OrtEp types and add to model metadata
+  // At this point, the graph has been populated with all the EPContext nodes
+  {
+    const GraphViewer graph_viewer(ep_graph);
+    for (const auto& ep : execution_providers) {
+      try {
+        // Generate the compatibility string for this EP
+        std::string compatibility_string = ep->GetCompiledModelCompatibilityInfo(graph_viewer);
+        if (!compatibility_string.empty()) {
+          // Create a unique key for this EP's compatibility info
+          // Use format: "ep_compatibility_info.<EP_TYPE>"
+          // All EPs in a session must have a unique Type() value, so this will be unique for the generated model
+          std::string metadata_key = std::string(kOrtModelMetadata_EpCompatibilityInfoPrefix) + ep->Type();
+          auto& model_metadata = ep_context_model.MetaData();
+          auto [it, was_inserted] =
+              model_metadata.insert_or_assign(metadata_key, compatibility_string);
+          if (!was_inserted) {
+            LOGS(logger, WARNING) << "Overwriting existing EP compatibility info for key: " << metadata_key << " (EP: " << ep->Type() << ")";
+          }
+          LOGS(logger, VERBOSE) << "Added EP compatibility info for " << ep->Type() << " with key: " << metadata_key;
+        }
+      } catch (const std::exception& ex) {
+        LOGS(logger, WARNING) << "Failed to generate compatibility string for EP " << ep->Type() << ": " << ex.what();
+      }
+    }
   }
 
-  ModelSavingOptions model_saving_options{ini_size_threshold};
+  ONNX_NAMESPACE::ModelProto model_proto;
+  ORT_RETURN_IF_ERROR(EpContextModelToProto(ep_context_model, valid_output_model_path, ep_context_gen_options,
+                                            /*out*/ model_proto));
 
-  if (saving_to_buffer) {
-    ORT_RETURN_IF_ERROR(ep_context_model.MainGraph().Resolve());
-    // TODO(adrianlizarraga): Investigate if we can make this more memory efficient.
-    // May be able to use allocator to directly allocate the ModelProto to avoid a copy.
-    ONNX_NAMESPACE::ModelProto model_proto = ep_context_model.ToGraphProtoWithExternalInitializers(external_ini_path,
-                                                                                                   context_cache_path,
-                                                                                                   model_saving_options);
+  if (output_buffer_holder != nullptr) {
+    // Write output model into a buffer ORT allocates for the user.
     size_t buffer_size = model_proto.ByteSizeLong();
     ORT_RETURN_IF(buffer_size > static_cast<size_t>(std::numeric_limits<int>::max()),
                   "Cannot serialize ONNX ModelProto larger than 2GB");
 
-    AllocatorPtr allocator = ep_context_gen_options.output_model_buffer_allocator;
+    AllocatorPtr allocator = output_buffer_holder->buffer_allocator;
     IAllocatorUniquePtr<void> buffer = IAllocator::MakeUniquePtr<void>(allocator, buffer_size);
     model_proto.SerializeToArray(buffer.get(), static_cast<int>(buffer_size));
 
-    *ep_context_gen_options.output_model_buffer_size_ptr = buffer_size;
-    *ep_context_gen_options.output_model_buffer_ptr = buffer.release();
+    *output_buffer_holder->buffer_size_ptr = buffer_size;
+    *output_buffer_holder->buffer_ptr = buffer.release();
+  } else if (output_write_func_holder != nullptr) {
+    // Write output model to user's output stream.
+    size_t buffer_size = model_proto.ByteSizeLong();
+    ORT_RETURN_IF(buffer_size > static_cast<size_t>(std::numeric_limits<int>::max()),
+                  "Cannot serialize ONNX ModelProto larger than 2GB");
+
+    auto out_stream_buf = std::make_unique<epctx::OutStreamBuf>(*output_write_func_holder);
+    std::ostream out_stream(out_stream_buf.get());
+
+    model_proto.SerializeToOstream(&out_stream);
+    out_stream.flush();
+    ORT_RETURN_IF_ERROR(out_stream_buf->GetStatus());
   } else {
-    ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(ep_context_model, context_cache_path,
-                                                            external_ini_path, model_saving_options));
+    // Write output model to a file.
+    int fd = 0;
+    Status status = Env::Default().FileOpenWr(valid_output_model_path, fd);
+    ORT_RETURN_IF_ERROR(status);
+
+    ORT_TRY {
+      google::protobuf::io::FileOutputStream output(fd);
+      bool serialize_result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
+      if (!serialize_result) {
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_PROTOBUF,
+                                 "Protobuf serialization failed when generating EPContext model ",
+                                 valid_output_model_path);
+      }
+    }
+    ORT_CATCH(const std::exception& ex) {
+      ORT_HANDLE_EXCEPTION([&]() {
+        status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, ex.what());
+      });
+    }
+    if (!status.IsOK()) {
+      GSL_SUPPRESS(es .84)
+      ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
+      return status;
+    }
+    ORT_RETURN_IF_ERROR(Env::Default().FileClose(fd));
   }
 
   return Status::OK();
@@ -948,7 +1275,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                        KernelRegistryManager& kernel_registry_manager,
                                        const std::optional<ResourceAccountantMap>& acc_map,
                                        const GraphOptimizerRegistry& graph_optimizer_registry,
-                                       const logging::Logger& logger, bool disable_model_compile) {
+                                       const logging::Logger& logger, bool disable_model_compile) {  // Added arg
   bool modified_graph = false;
 
   auto& graph = partition_params.graph.get();
@@ -957,13 +1284,22 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
   auto& fused_node_unique_id = partition_params.fused_node_unique_id.get();
   const auto& transform_layout_function = partition_params.transform_layout_function;
   const CheckLoadCancellationFn& check_load_cancellation_fn = partition_params.check_load_cancellation_fn;
+  const OnPartitionAssignmentFunction& on_partition_assignment_fn = partition_params.on_partition_assignment_fn;
 
   do {
     // process full graph with each EP
     for (const auto& ep : execution_providers) {
       IResourceAccountant* resource_accountant = nullptr;
       if (acc_map.has_value()) {
-        auto hit = acc_map->find(ep->Type());
+        // Plugin EPs have a different Type() than the in-tree EP they replace
+        // (e.g., kCudaPluginExecutionProvider vs kCudaExecutionProvider), but the
+        // accountant is registered under the in-tree EP name. Translate the key
+        // so plugin EPs find the correct accountant.
+        const auto& ep_type = ep->Type();
+        const auto accountant_key = ep_type == kCudaPluginExecutionProvider
+                                        ? std::string{kCudaExecutionProvider}
+                                        : ep_type;
+        auto hit = acc_map->find(accountant_key);
         if (hit != acc_map->end()) {
           resource_accountant = hit->second.get();
         }
@@ -973,13 +1309,15 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                                        transform_layout_function,
                                                        partition_params.debug_graph_fn,
                                                        check_load_cancellation_fn,
+                                                       on_partition_assignment_fn,
                                                        logger, resource_accountant, graph_optimizer_registry,
-                                                       disable_model_compile));
+                                                       disable_model_compile,
+                                                       partition_params.layering_index));  // Pass param
     }
 
     // expand any nodes that have an ONNX function definition but no matching ORT kernel.
     modified_graph = false;
-    ORT_RETURN_IF_ERROR(InlineNodes(graph, modified_graph));
+    ORT_RETURN_IF_ERROR(InlineNodes(graph, modified_graph, partition_params.layering_index));
 
     // Resolve and rerun graph partitioning and inlining if there was a change
     if (modified_graph) {
@@ -1029,7 +1367,8 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       nullptr,
       std::ref(graph_optimizer_registry),
-      partition_params.check_load_cancellation_fn
+      partition_params.check_load_cancellation_fn,
+      partition_params.layering_index
   };
   // clang-format on
 
@@ -1063,7 +1402,7 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
       Node& fused_node = graph.BeginFuseSubGraph(indexed_sub_graph, node_name);
       fused_node.SetExecutionProviderType(type);
       if (indexed_sub_graph.IsAccountingEnabled()) {
-        indexed_sub_graph.ComputeAndAccountForNode(fused_node);
+        indexed_sub_graph.AccountForAllNodes();
       }
 
       // create filtered graph viewer for this set of nodes
@@ -1071,6 +1410,7 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
       // TODO: Could avoid the topological sort in the GraphViewer ctor by constructing from an existing
       // GraphViewer instance instead of the Graph (copying the topological order instead of recalculating).
       auto viewer = std::make_unique<GraphViewer>(graph, indexed_sub_graph);
+
       compilation_entries.push_back(CompilationEntry{std::move(viewer), fused_node, *capability});
 #else   // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Compiling capabilities is not supported in this build.");
@@ -1081,7 +1421,6 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // We will compile the fused nodes one by one, and fuse the subgraph if successful.
   for (const auto& compilation_entry : compilation_entries) {
-    const bool acc_enabled = compilation_entry.capability.get().sub_graph->IsAccountingEnabled();
     Node& node = compilation_entry.fused_node;
     std::vector<NodeComputeInfo> single_node_compute_func;
     ORT_RETURN_IF_ERROR(current_ep.Compile({IExecutionProvider::FusedNodeAndGraph{node, *compilation_entry.viewer}},
@@ -1112,9 +1451,7 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
 
     // now that we're done compiling we can remove the original nodes from the Graph and wire in the new one
     graph.FinalizeFuseSubGraph(indexed_sub_graph, node);
-    if (acc_enabled) {
-      compilation_entry.capability.get().sub_graph->ComputeAndAccountForNode(node);
-    }
+    // accounting was already done via AccountForAllNodes() when the fused node was created above.
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
@@ -1187,9 +1524,10 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                                    const layout_transformation::TransformLayoutFunction& transform_layout_function,
                                    const ConfigOptions& config_options,
                                    const logging::Logger& logger,
+                                   LayeringIndex* layering_index,
                                    Mode mode,
-                                   const EpContextModelGenerationOptions& ep_context_gen_options,
-                                   const layout_transformation::DebugGraphFn& debug_graph_fn) const {
+                                   const epctx::ModelGenOptions& ep_context_gen_options,
+                                   const layout_transformation::DebugGraphFn& debug_graph_fn) const {  // Added arg
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
   // 2. All sub-graphs that an execution provider returns will be assigned to it if it's not assigned yet.
@@ -1219,7 +1557,9 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
       std::ref(*fused_kernel_registry),
       std::ref(fused_node_unique_id),
       std::cref(transform_layout_function),
-      std::cref(debug_graph_fn)};
+      std::cref(debug_graph_fn),
+      std::cref(on_partition_assignment_fn_),
+      layering_index};
 
 #else  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
@@ -1229,29 +1569,33 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
   PartitionParams partition_params{
       std::ref(graph),
       std::cref(check_load_cancellation_fn),
-  };
+      std::cref(on_partition_assignment_fn_),
+      layering_index};
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   if (mode == Mode::kNormal || mode == Mode::kAssignOnly) {
 #if !defined(ORT_MINIMAL_BUILD)
-    if (ep_context_gen_options.enable && ep_context_gen_options.output_model_buffer_ptr == nullptr) {
-      // Check before EP compile graphs
-      std::filesystem::path context_cache_path;
-      ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.output_model_file_path, graph.ModelPath(),
-                                                    context_cache_path,
-                                                    ep_context_gen_options.error_if_output_file_exists));
+    if (ep_context_gen_options.enable) {
+      if (const std::filesystem::path* output_model_path_ptr = ep_context_gen_options.TryGetOutputModelPath();
+          output_model_path_ptr != nullptr) {
+        // Check before EP compile graphs
+        std::filesystem::path context_cache_path;
+        ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(*output_model_path_ptr, graph.ModelPath(),
+                                                      context_cache_path,
+                                                      ep_context_gen_options.error_if_output_file_exists));
+      }
     }
 
     // We use this only if Resource Aware Partitioning is enabled for any of the EPs
     // The map is empty if not created if not enabled
     std::optional<ResourceAccountantMap> ep_acc_map;
-    ORT_RETURN_IF_ERROR(NodeStatsRecorder::CreateAccountants(config_options, graph.ModelPath(), ep_acc_map));
+    ORT_RETURN_IF_ERROR(CreateAccountants(config_options, graph.ModelPath(), ep_acc_map));
 
     bool disable_model_compile = config_options.GetConfigOrDefault(kOrtSessionOptionsDisableModelCompile, "0") == "1";
     ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(partition_params, mode, providers_, kernel_registry_mgr_,
                                                  ep_acc_map, *graph_optimizer_registry_, logger,
-                                                 disable_model_compile));
+                                                 disable_model_compile));  // Pass param
 
     if (ep_context_gen_options.enable) {
       ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_gen_options, logger));

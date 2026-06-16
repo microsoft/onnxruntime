@@ -147,7 +147,7 @@ def create_test_dir(
 
         # try and enable onnxruntime-extensions if present
         try:
-            import onnxruntime_extensions
+            import onnxruntime_extensions  # noqa: PLC0415
 
             so.register_custom_ops_library(onnxruntime_extensions.get_library_path())
 

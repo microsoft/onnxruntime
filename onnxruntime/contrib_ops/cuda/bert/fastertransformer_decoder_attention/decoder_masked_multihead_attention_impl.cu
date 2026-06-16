@@ -212,13 +212,13 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
       }
     }
 
-    if (params.rotary_embedding_dim > 0) {
-      const bool do_rotary = !is_masked && QK_VEC_SIZE * tidx < params.rotary_embedding_dim;
+    if (params.rotary_dim > 0) {
+      const bool do_rotary = !is_masked && QK_VEC_SIZE * tidx < params.rotary_dim;
 
       T* q_smem = reinterpret_cast<T*>(smem_);
-      T* k_smem = q_smem + params.rotary_embedding_dim;
+      T* k_smem = q_smem + params.rotary_dim;
 
-      const int half_rotary_dim = params.rotary_embedding_dim / 2;
+      const int half_rotary_dim = params.rotary_dim / 2;
       const int half_idx = (tidx * QK_VEC_SIZE) / half_rotary_dim;
       const int intra_half_idx = (tidx * QK_VEC_SIZE) % half_rotary_dim;
       const int smem_pitch = half_rotary_dim;
@@ -240,7 +240,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
         vec_from_smem_transpose(k, k_smem, transpose_idx, smem_pitch);
 
         apply_rotary_embedding(
-            q, k, transpose_idx / tidx_factor, params.rotary_embedding_dim, params.t_step);
+            q, k, transpose_idx / tidx_factor, params.rotary_dim, params.t_step);
 
         write_smem_transpose(k, k_smem, transpose_idx, smem_pitch);
         write_smem_transpose(q, q_smem, transpose_idx, smem_pitch);
@@ -793,6 +793,79 @@ template void __global__ masked_multihead_attention_kernel<uint16_t, float, 128,
 template void __global__ masked_multihead_attention_kernel<uint16_t, half, 128, 4, 16, 64>(DecoderMaskedMultiHeadAttentionParameters params);
 template void __global__ masked_multihead_attention_kernel<uint16_t, half, 128, 2, 16, 128>(DecoderMaskedMultiHeadAttentionParameters params);
 template void __global__ masked_multihead_attention_kernel<uint16_t, half, 128, 1, 16, 256>(DecoderMaskedMultiHeadAttentionParameters params);
+
+// QK BFloat16 templates
+template void __global__ masked_multihead_attention_kernel<float, onnxruntime::BFloat16, 32, 4, 8, 64>(DecoderMaskedMultiHeadAttentionParameters params);
+template void __global__ masked_multihead_attention_kernel<float, onnxruntime::BFloat16, 32, 2, 8, 128>(DecoderMaskedMultiHeadAttentionParameters params);
+template void __global__ masked_multihead_attention_kernel<float, onnxruntime::BFloat16, 32, 1, 8, 256>(DecoderMaskedMultiHeadAttentionParameters params);
+
+template void __global__ masked_multihead_attention_kernel<uint16_t, onnxruntime::BFloat16, 32, 4, 4, 64>(DecoderMaskedMultiHeadAttentionParameters params);
+template void __global__ masked_multihead_attention_kernel<uint16_t, onnxruntime::BFloat16, 32, 2, 4, 128>(DecoderMaskedMultiHeadAttentionParameters params);
+template void __global__ masked_multihead_attention_kernel<uint16_t, onnxruntime::BFloat16, 32, 1, 4, 256>(DecoderMaskedMultiHeadAttentionParameters params);
+
+template void __global__ masked_multihead_attention_kernel<float, onnxruntime::BFloat16, 64, 4, 16, 64>(DecoderMaskedMultiHeadAttentionParameters params);
+template void __global__ masked_multihead_attention_kernel<float, onnxruntime::BFloat16, 64, 2, 16, 128>(DecoderMaskedMultiHeadAttentionParameters params);
+template void __global__ masked_multihead_attention_kernel<float, onnxruntime::BFloat16, 64, 1, 16, 256>(DecoderMaskedMultiHeadAttentionParameters params);
+
+template void __global__ masked_multihead_attention_kernel<uint16_t, onnxruntime::BFloat16, 64, 4, 8, 64>(DecoderMaskedMultiHeadAttentionParameters params);
+template void __global__ masked_multihead_attention_kernel<uint16_t, onnxruntime::BFloat16, 64, 2, 8, 128>(DecoderMaskedMultiHeadAttentionParameters params);
+template void __global__ masked_multihead_attention_kernel<uint16_t, onnxruntime::BFloat16, 64, 1, 8, 256>(DecoderMaskedMultiHeadAttentionParameters params);
+
+template void __global__ masked_multihead_attention_kernel<float, onnxruntime::BFloat16, 128, 4, 32, 64>(DecoderMaskedMultiHeadAttentionParameters params);
+template void __global__ masked_multihead_attention_kernel<float, onnxruntime::BFloat16, 128, 2, 32, 128>(DecoderMaskedMultiHeadAttentionParameters params);
+template void __global__ masked_multihead_attention_kernel<float, onnxruntime::BFloat16, 128, 1, 32, 256>(DecoderMaskedMultiHeadAttentionParameters params);
+
+template void __global__ masked_multihead_attention_kernel<uint16_t, onnxruntime::BFloat16, 128, 4, 16, 64>(DecoderMaskedMultiHeadAttentionParameters params);
+template void __global__ masked_multihead_attention_kernel<uint16_t, onnxruntime::BFloat16, 128, 2, 16, 128>(DecoderMaskedMultiHeadAttentionParameters params);
+template void __global__ masked_multihead_attention_kernel<uint16_t, onnxruntime::BFloat16, 128, 1, 16, 256>(DecoderMaskedMultiHeadAttentionParameters params);
+
+#define MMHA_LAUNCH_KERNEL_FOR_HEAD(T, QK, HEAD_SIZE, THDS_PER_KEY, THDS_PER_VALUE, THDS_PER_BLOCK) \
+  size_t dynamic_block_memory = CalcDynamicBlockMemory<T>(params, THDS_PER_VALUE, THDS_PER_BLOCK);  \
+  dim3 grid(params.num_heads, params.batch_size);                                                   \
+  masked_multihead_attention_kernel<T,                                                              \
+                                    QK,                                                             \
+                                    HEAD_SIZE,                                                      \
+                                    THDS_PER_KEY,                                                   \
+                                    THDS_PER_VALUE,                                                 \
+                                    THDS_PER_BLOCK>                                                 \
+      <<<grid, THDS_PER_BLOCK, dynamic_block_memory, stream>>>(params)
+
+template <typename T, typename QK, int head_size>
+void mmha_launch_kernel(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream) {
+  constexpr int THREADS_PER_VALUE = ThreadsPerValue<T, head_size>::value;
+  const int total_sequence_length = params.total_sequence_length;
+
+  if (total_sequence_length < 32) {
+    MMHA_LAUNCH_KERNEL_FOR_HEAD(T, QK, head_size, 4, THREADS_PER_VALUE, 64);
+  } else if (total_sequence_length < 2048) {
+    MMHA_LAUNCH_KERNEL_FOR_HEAD(T, QK, head_size, 2, THREADS_PER_VALUE, 128);
+  } else {
+    MMHA_LAUNCH_KERNEL_FOR_HEAD(T, QK, head_size, 1, THREADS_PER_VALUE, 256);
+  }
+}
+
+#undef MMHA_LAUNCH_KERNEL_FOR_HEAD
+
+template void mmha_launch_kernel<float, float, 32>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
+template void mmha_launch_kernel<float, half, 32>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
+template void mmha_launch_kernel<float, onnxruntime::BFloat16, 32>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
+template void mmha_launch_kernel<uint16_t, float, 32>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
+template void mmha_launch_kernel<uint16_t, half, 32>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
+template void mmha_launch_kernel<uint16_t, onnxruntime::BFloat16, 32>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
+
+template void mmha_launch_kernel<float, float, 64>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
+template void mmha_launch_kernel<float, half, 64>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
+template void mmha_launch_kernel<float, onnxruntime::BFloat16, 64>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
+template void mmha_launch_kernel<uint16_t, float, 64>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
+template void mmha_launch_kernel<uint16_t, half, 64>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
+template void mmha_launch_kernel<uint16_t, onnxruntime::BFloat16, 64>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
+
+template void mmha_launch_kernel<float, float, 128>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
+template void mmha_launch_kernel<float, half, 128>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
+template void mmha_launch_kernel<float, onnxruntime::BFloat16, 128>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
+template void mmha_launch_kernel<uint16_t, float, 128>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
+template void mmha_launch_kernel<uint16_t, half, 128>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
+template void mmha_launch_kernel<uint16_t, onnxruntime::BFloat16, 128>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib
