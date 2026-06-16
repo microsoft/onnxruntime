@@ -65,6 +65,7 @@ You do **not** need `--update` when only modifying existing `.cc`/`.h` files —
 | `--build_wheel` | Build the Python wheel package |
 | `--use_cuda` | Enable CUDA EP. Requires `--cuda_home`/`--cudnn_home` or `CUDA_HOME`/`CUDNN_HOME` env vars. On Windows, only `cuda_home`/`CUDA_HOME` is validated. |
 | `--target T` | Build a specific CMake target (requires `--build`; e.g., `onnxruntime_common`, `onnxruntime_test_all`) |
+| `--use_webgpu` | Enable WebGPU EP. To run its tests locally on Linux without a GPU, see the `webgpu-local-testing` skill. |
 | `--build_dir` | Build output directory |
 
 ## Build output path
