@@ -1,0 +1,9 @@
+// Common utilities template
+fn get_triangle_color(index: u32) -> vec4f {
+    let colors = array<vec4f, 3>(
+        vec4f(1.0, 0.0, 0.0, 1.0), // Red
+        vec4f(0.0, 1.0, 0.0, 1.0), // Green
+        vec4f(0.0, 0.0, 1.0, 1.0)  // Blue
+    );
+    return colors[index % 3u];
+}
