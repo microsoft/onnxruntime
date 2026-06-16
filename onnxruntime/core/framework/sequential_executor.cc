@@ -434,20 +434,26 @@ class KernelScope {
            concurrency::ThreadPool::StopProfiling(session_state_.GetThreadPool())},
       };
 
-      // Emit memory stats after kernel execution
+      // Emit memory stats after kernel execution.
+      // Wrapped in try/catch because ~KernelScope is noexcept and plugin EP
+      // allocators (IAllocatorWrappingOrtAllocator) can throw from GetStats.
       if (has_meaningful_stats_) {
-        AllocatorStats stats_after;
-        ep_allocator_->GetStats(&stats_after);
-        // Actual bytes requested by user code (excludes internal padding/fragmentation)
-        event_args["mem_bytes_requested_in_use"] = std::to_string(stats_after.bytes_requested_in_use);
-        event_args["mem_requested_in_use_delta"] = std::to_string(stats_after.bytes_requested_in_use - mem_requested_in_use_before_);
-        // Bytes in use including arena internal padding
-        event_args["mem_bytes_in_use"] = std::to_string(stats_after.bytes_in_use);
-        event_args["mem_in_use_delta"] = std::to_string(stats_after.bytes_in_use - mem_in_use_before_);
-        event_args["mem_in_use_peak"] = std::to_string(stats_after.max_bytes_in_use);
-        // Total device memory held by the allocator (not available to other applications)
-        event_args["mem_arena_held"] = std::to_string(stats_after.total_allocated_bytes);
-        event_args["mem_arena_held_delta"] = std::to_string(stats_after.total_allocated_bytes - mem_total_allocated_before_);
+        try {
+          AllocatorStats stats_after;
+          ep_allocator_->GetStats(&stats_after);
+          // Actual bytes requested by user code (excludes internal padding/fragmentation)
+          event_args["mem_bytes_requested_in_use"] = std::to_string(stats_after.bytes_requested_in_use);
+          event_args["mem_requested_in_use_delta"] = std::to_string(stats_after.bytes_requested_in_use - mem_requested_in_use_before_);
+          // Bytes in use including arena internal padding
+          event_args["mem_bytes_in_use"] = std::to_string(stats_after.bytes_in_use);
+          event_args["mem_in_use_delta"] = std::to_string(stats_after.bytes_in_use - mem_in_use_before_);
+          event_args["mem_in_use_peak"] = std::to_string(stats_after.max_bytes_in_use);
+          // Total device memory held by the allocator (not available to other applications)
+          event_args["mem_arena_held"] = std::to_string(stats_after.total_allocated_bytes);
+          event_args["mem_arena_held_delta"] = std::to_string(stats_after.total_allocated_bytes - mem_total_allocated_before_);
+        } catch (...) {
+          // Swallow errors — profiling stats are best-effort and must not crash.
+        }
       }
 
       session_scope_.StopProfilingIfEnabled(profiling::NODE_EVENT,
