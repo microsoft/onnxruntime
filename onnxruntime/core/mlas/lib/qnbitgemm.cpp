@@ -1023,12 +1023,14 @@ SQ2BitGemm_CompInt8(
     const std::byte* QuantA = per_gemm_quant_a_workspace->QuantData + RangeStartM * lda;
     const float* QuantAScale = per_gemm_quant_a_workspace->QuantScale + RangeStartM * k_blks;
 
-    // The packed-B and BlkSum layouts both group N-cols in multiples of 4
-    // (kNCols4 in the W2 kernel; same convention as SQ4BitGemm_CompInt8).
-    // The work partitioner produces aligned RangeStartN values, so this
-    // assert is invariant; it documents the contract and would catch a
-    // future partitioner regression.
-    assert(RangeStartN % 4 == 0);
+    // QuantBBlkSum uses the width-16 chunked layout produced by
+    // ComputePackBlkSum (BlockSum[n] lives at chunk (n/16) at intra-chunk
+    // offset n%16), so the flat `QuantBBlkSum + RangeStartN * k_blks`
+    // addressing below is only correct when RangeStartN is a multiple of 16.
+    // The work partitioner enforces this via MLAS_QGEMM_STRIDEN_THREAD_ALIGN
+    // (= 16); the assert documents the contract and would catch a future
+    // partitioner regression.
+    assert(RangeStartN % 16 == 0);
     const std::byte* QuantBData = static_cast<const std::byte*>(DataParams->PackedQuantBData) + RangeStartN * ldb;
     const float* QuantBScale = DataParams->QuantBScale + RangeStartN * k_blks_eff;
     const float* ABlockSum = per_gemm_quant_a_workspace->BlockSum + RangeStartM * k_blks;
