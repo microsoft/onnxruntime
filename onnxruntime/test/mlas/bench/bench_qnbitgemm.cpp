@@ -134,9 +134,9 @@ static void QNBitGemmArgs(benchmark::internal::Benchmark* b) {
   });
 }
 
-// Standard sweep for the native W2 kernel. W2 has fewer free dimensions than
-// W4 (symmetric-only, BlkLen=64 only, SQNBIT_CompInt8 only), so the grid
-// uses fixed values for those axes and sweeps the rest like QNBitGemmArgs.
+// Standard sweep for the native W2 kernel. W2 has fewer free dimensions
+// than W4 (symmetric-only, SQNBIT_CompInt8 only), so the grid uses fixed
+// values for those axes and sweeps the rest like QNBitGemmArgs.
 static void QNBit2BitArgs(benchmark::internal::Benchmark* b) {
   b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "HasBias", "ComputeType"});
 

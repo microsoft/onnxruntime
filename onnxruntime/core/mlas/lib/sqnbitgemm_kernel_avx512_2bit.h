@@ -15,11 +15,14 @@ Abstract:
     four fixed `vpsrlw+vpand` pairs (instead of the current per-block
     broadcast + variable shift).
 
-    Layout summary (BlkLen=64 only):
+    Layout summary (BlkLen ∈ {32, 64, 128}):
 
-      * Each "block-group" packs FOUR consecutive K-blocks (256 weights total).
-      * Total storage per block-group = kBlkBytes * 4 = 64 bytes (identical to
-        4 separately-packed blocks under the current scheme).
+      * Each "block-group" packs FOUR consecutive K-blocks.
+      * Total storage per block-group = kBlkBytes * 4 bytes (kBlkBytes is
+        BlkLen-dependent: 8 bytes at BlkLen=32, 16 bytes at BlkLen=64, 32
+        bytes at BlkLen=128). Identical to 4 separately-packed blocks under
+        the per-block scheme, just relaid out so all four blocks are reachable
+        with one ZMM load.
       * Byte b of the block-group holds:
           bits[0..1] = block_0.weight[b]
           bits[2..3] = block_1.weight[b]
@@ -31,13 +34,16 @@ Abstract:
 
     Restrictions:
 
-      * BlkLen == 64 only.
-      * BlockCountK must be a multiple of kBlockGroupBlks = 4. The
-        path returns 0 from the pack-size helper for non-multiples; the
-        caller falls back to the existing W2 path.
-      * Typical W2 production K dimensions (e.g. 384, 1024, 4096) are all
-        multiples of 256 (= kBlockGroupBlks * 64) and therefore satisfy this
-        constraint.
+      * BlkLen ∈ {32, 64, 128}.
+      * No constraint on BlockCountK. The pack-size helper rounds BlockCountK
+        up to a multiple of kBlockGroupBlks = 4 internally, and the SIMD
+        K-loop processes the padded blocks via the 4-block accumulator with
+        zero ZMM for the missing A blocks (K-tail handler).
+      * Typical W2 production K dimensions (e.g. 384, 1024, 4096) at
+        BlkLen=64 are all multiples of 256 (= kBlockGroupBlks * 64) and so
+        do not exercise the K-tail handler; smaller K (or BlkLen=32 / 128
+        shapes whose K is not a multiple of kBlockGroupBlks * BlkLen) take
+        the K-tail path and are exercised by the unit tests.
 
 --*/
 

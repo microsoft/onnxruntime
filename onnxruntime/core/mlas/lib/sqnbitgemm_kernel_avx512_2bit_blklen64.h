@@ -22,11 +22,16 @@ Abstract:
 
     Constraints (SIMD):
       * BlkLen == 64 only.
-      * BlockCountK must be a multiple of kBlockGroupBlks (= 4).
-      * CountM must be a multiple of 2 (R2 tile); CountN must be a multiple
-        of 4 (C4 tile). Tail handling is provided by the same R2xC1/R1xC4/
-        R1xC1 helpers as the existing W2 kernel via a downgrade path the
-        dispatcher will pick when these constraints don't hold.
+      * BlockCountK has no alignment requirement. The pack helper rounds
+        BlockCountK up to a multiple of kBlockGroupBlks (= 4); the SIMD
+        K-loop processes the padded blocks via the 4-block accumulator with
+        zero ZMM for the missing A blocks (K-tail handler).
+      * CountM has no alignment requirement (R2xC4 head + optional R1xC4
+        tail picks up the trailing odd row).
+      * CountN has no alignment requirement (R2/R1 xC4 main covers
+        NMain = floor(CountN/4)*4; a per-1-col tail tile picks up the
+        trailing 1-3 N-cols, including the NMain=0 case where N in
+        {1, 2, 3}).
 
     Layout reference:
       * 64-byte block-group: byte b holds 2-bit weight b from each of 4
