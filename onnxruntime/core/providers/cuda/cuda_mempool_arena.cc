@@ -209,7 +209,14 @@ void CudaMempoolArena::GetStats(AllocatorStats* stats) {
   if (!stats) return;
   std::lock_guard<std::mutex> lock(mutex_);
   stats->num_allocs = num_allocs_;
-  stats->total_allocated_bytes = total_allocated_;
+  // Query the actual reserved pool size from CUDA rather than using the
+  // monotonically-increasing total_allocated_ counter.
+  size_t reserved = 0;
+  if (CUDA_CALL(cudaMemPoolGetAttribute(pool_, cudaMemPoolAttrReservedMemCurrent, &reserved)).IsOK()) {
+    stats->total_allocated_bytes = static_cast<int64_t>(reserved);
+  } else {
+    stats->total_allocated_bytes = total_allocated_;
+  }
   stats->bytes_in_use = in_use_bytes_;
   stats->bytes_requested_in_use = in_use_bytes_;  // No padding in mempool; requested == actual
   stats->max_bytes_in_use = max_bytes_in_use_;
