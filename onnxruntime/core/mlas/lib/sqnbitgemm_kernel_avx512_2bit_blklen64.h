@@ -382,8 +382,9 @@ Q2Int8GemmR1xC4BlkLen64Avx512(
 //
 // R2 x C4 tile -- the main hot path for prefill (M >= 2). Iterates the K
 // dimension in block-group strides of kBlockGroupBlks (= 4) K-blocks at a
-// time. Assumes BlockCountK is a multiple of kBlockGroupBlks; the dispatcher
-// must verify this before selecting the block-group kernel.
+// time, and handles K-tails (BlockCountK % kBlockGroupBlks != 0) via the
+// shared 4-block accumulator with zero-padded A/scale slots for the
+// missing trailing K-blocks.
 //
 template <bool kVnni>
 MLAS_FORCEINLINE void

@@ -169,7 +169,11 @@ void LUTGEMM_COMPUTE(benchmark::State& state) {
     // when LUT is gated out for the given shape (e.g. N % n_div != 0).
     state.SetLabel("path=Dequant+SGEMM");
 
-    std::vector<float> DequantB(K * N);  // [K, N] row-major
+    // MlasDequantizeBlockwise(columnwise=true, K, N) emits B in [N, K] row-major
+    // layout (equivalently [K, N] column-major) -- this is "B^T" from the
+    // MatMul perspective and matches what matmul_nbits.cc::ComputeBUnpacked
+    // feeds to MlasGemmBatch.
+    std::vector<float> DequantB(K * N);
 
     // Time dequant+SGEMM as a unit (this is what the runtime pays per call,
     // since the dequantized buffer is not cached across MatMulNBits calls).
@@ -180,11 +184,15 @@ void LUTGEMM_COMPUTE(benchmark::State& state) {
           static_cast<int>(BlkLen), /*columnwise*/ true,
           static_cast<int>(K), static_cast<int>(N), tp.get());
 
-      MlasGemm(CblasNoTrans, CblasNoTrans,
+      // DequantB is [N, K] row-major; use CblasTrans + ldb=K to match
+      // matmul_nbits.cc::ComputeBUnpacked (which calls
+      // MlasGemmBatch(CblasNoTrans, CblasTrans, ..., ldb=K, ...) on the
+      // same dequantized buffer).
+      MlasGemm(CblasNoTrans, CblasTrans,
                M, N, K,
                1.0f,
                A.data(), K,
-               DequantB.data(), N,
+               DequantB.data(), K,
                0.0f,
                C.data(), N,
                tp.get(), nullptr);

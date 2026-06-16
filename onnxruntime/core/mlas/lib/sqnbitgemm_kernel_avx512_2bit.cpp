@@ -17,10 +17,10 @@ Abstract:
     per-block broadcast + variable shift unpack with a single 64-byte load +
     four fixed-shift+mask pairs).
 
-    This translation unit is scalar / portable. The vectorized inner loop
-    that consumes the block-group layout lives in a separate header
-    (sqnbitgemm_kernel_avx512_2bit_blklen64.h) and is wired into the AVX-512
-    and AVX-512-VNNI dispatch tables.
+    This translation unit is scalar / portable. The vectorized inner loops
+    that consume the block-group layout live in separate headers
+    (sqnbitgemm_kernel_avx512_2bit_blklen{32,64,128}.h) and are wired into the
+    AVX-512 and AVX-512-VNNI dispatch tables.
 
 --*/
 
@@ -40,19 +40,23 @@ namespace sq2bit_avx512 {
 
 //
 // Workspace / pack-buffer size for the block-group W2 path. Returns 0 if any
-// of the configuration constraints is violated; the caller (MlasQNBitGemmPackQuantBDataSize)
-// treats that as "unsupported" and falls back to the original W2 path.
+// of the configuration constraints is violated; the caller
+// (MlasQNBitGemmPackQuantBDataSize) treats that as "unsupported" and falls
+// back to LUT (if opted in and the shape is LUT-eligible) or to the fp32
+// dequant + SGEMM path in MatMulNBits::ComputeBUnpacked.
 //
 // Constraints:
-//   * BlkLen == 64
+//   * BlkLen ∈ {32, 64, 128}
 //   * ComputeType == SQNBIT_CompInt8
 //
 // K-tail handling: BlockCountK is rounded UP to a multiple of kBlockGroupBlks
 // for the storage that the inner K-loop walks (PackedQuantBData,
 // PackedQuantBScale). Padding slots hold zeroed weights and scales, so they
-// contribute exactly 0 to the dot product. The BlkSum buffer is kept at the
-// LOGICAL BlockCountK because it is consumed by the SGEMM correction step,
-// not by the inner K-loop.
+// contribute exactly 0 to the dot product. The BlkSum buffer is *physically*
+// sized with the padded BlockCountK so its offset within the combined
+// workspace is consistent with the caller's PackedQuantBDataStruct layout
+// (which uses one BlockCountK value for the whole struct); the SGEMM
+// correction step still reads only the logical BlockCountK entries from it.
 //
 // Storage matches the original W2 layout total bytes when BlockCountK is a
 // multiple of 4. When not a multiple of 4, storage grows by at most 3 K-blocks
@@ -60,7 +64,8 @@ namespace sq2bit_avx512 {
 //
 //   [PackedQuantBData]  N * BlockCountKPadded * kBlkBytes
 //   [PackedQuantBScale] N * BlockCountKPadded * sizeof(float)
-//   [QuantBBlkSum]      roundup_16(N) * BlockCountK (logical) * 16 floats
+//   [QuantBBlkSum]      roundup_16(N) * BlockCountKPadded * 16 floats (only
+//                       the first BlockCountK entries per N are populated)
 //
 size_t MLASCALL
 Q2BitGemmPackQuantBDataSize_Avx512(
