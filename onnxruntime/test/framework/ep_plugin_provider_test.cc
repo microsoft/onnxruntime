@@ -62,7 +62,10 @@ static void CheckFileIsEmpty(const PathString& filename) {
   EXPECT_TRUE(content.empty());
 }
 
-static void ExpectOrtStatus(OrtStatus* status_ptr, OrtErrorCode expected_code, const char* expected_message) {
+// Asserts that `status_ptr` is a failure status with the expected error code and message substring.
+// Takes ownership of `status_ptr` (wraps it in an Ort::Status that releases it on scope exit), so callers should pass
+// the OrtStatus* returned directly by the API under test without releasing it themselves.
+static void ExpectFailureOrtStatus(OrtStatus* status_ptr, OrtErrorCode expected_code, const char* expected_message) {
   Ort::Status status{status_ptr};
   ASSERT_FALSE(status.IsOK());
   EXPECT_EQ(status.GetErrorCode(), expected_code);
@@ -1781,11 +1784,11 @@ TEST(PluginExecutionProviderTest, EpContextDataReadFuncIsReturnedByEpApi) {
 
   auto set_read_func = Ort::Experimental::Get_OrtApi_SessionOptions_SetEpContextDataReadFunc_SinceV28_Fn(&ort_api);
   auto get_config = Ort::Experimental::Get_OrtEpApi_SessionOptions_GetEpContextConfig_SinceV28_Fn(&ort_api);
-  auto release_config_fn = Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_Fn(&ort_api);
+  auto release_config_func = Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_Fn(&ort_api);
   auto get_read_func = Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataReadFunc_SinceV28_Fn(&ort_api);
   ASSERT_NE(set_read_func, nullptr);
   ASSERT_NE(get_config, nullptr);
-  ASSERT_NE(release_config_fn, nullptr);
+  ASSERT_NE(release_config_func, nullptr);
   ASSERT_NE(get_read_func, nullptr);
 
   EpContextReadCallbackState callback_state{
@@ -1797,7 +1800,7 @@ TEST(PluginExecutionProviderTest, EpContextDataReadFuncIsReturnedByEpApi) {
 
   OrtEpContextConfig* ep_context_config = nullptr;
   ASSERT_ORTSTATUS_OK(get_config(session_options, &ep_context_config));
-  auto release_config = gsl::finally([&]() { release_config_fn(ep_context_config); });
+  auto release_config = gsl::finally([&]() { release_config_func(ep_context_config); });
 
   OrtReadNamedBufferFunc read_func = nullptr;
   void* callback_state_out = nullptr;
@@ -1826,43 +1829,44 @@ TEST(PluginExecutionProviderTest, EpContextDataApiRejectsInvalidArguments) {
   const auto& ort_api = Ort::GetApi();
 
   auto get_config = Ort::Experimental::Get_OrtEpApi_SessionOptions_GetEpContextConfig_SinceV28_Fn(&ort_api);
-  auto release_config_fn = Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_Fn(&ort_api);
+  auto release_config_func = Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_Fn(&ort_api);
   auto get_read_func = Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataReadFunc_SinceV28_Fn(&ort_api);
   auto get_write_func = Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc_SinceV28_Fn(&ort_api);
   auto set_read_func = Ort::Experimental::Get_OrtApi_SessionOptions_SetEpContextDataReadFunc_SinceV28_Fn(&ort_api);
   ASSERT_NE(get_config, nullptr);
-  ASSERT_NE(release_config_fn, nullptr);
+  ASSERT_NE(release_config_func, nullptr);
   ASSERT_NE(get_read_func, nullptr);
   ASSERT_NE(get_write_func, nullptr);
   ASSERT_NE(set_read_func, nullptr);
 
   Ort::SessionOptions session_options;
   OrtEpContextConfig* ep_context_config = nullptr;
-  ExpectOrtStatus(get_config(nullptr, &ep_context_config), ORT_INVALID_ARGUMENT, "OrtSessionOptions is NULL");
-  ExpectOrtStatus(get_config(session_options, nullptr), ORT_INVALID_ARGUMENT, "Output OrtEpContextConfig is NULL");
+  ExpectFailureOrtStatus(get_config(nullptr, &ep_context_config), ORT_INVALID_ARGUMENT, "OrtSessionOptions is NULL");
+  ExpectFailureOrtStatus(get_config(session_options, nullptr), ORT_INVALID_ARGUMENT,
+                         "Output OrtEpContextConfig is NULL");
 
-  ExpectOrtStatus(set_read_func(nullptr, EpContextReadCallback, nullptr),
+  ExpectFailureOrtStatus(set_read_func(nullptr, EpContextReadCallback, nullptr),
                   ORT_INVALID_ARGUMENT, "'options' parameter must not be NULL");
   // A null read_func is allowed: it clears any previously set callback (covered by
   // EpContextDataReadFuncCanBeCleared), so it is not rejected here.
 
   ASSERT_ORTSTATUS_OK(get_config(session_options, &ep_context_config));
-  auto release_config = gsl::finally([&]() { release_config_fn(ep_context_config); });
+  auto release_config = gsl::finally([&]() { release_config_func(ep_context_config); });
 
   OrtReadNamedBufferFunc read_func = nullptr;
   OrtWriteNamedBufferFunc write_func = nullptr;
   void* state = nullptr;
-  ExpectOrtStatus(get_read_func(nullptr, &read_func, &state),
+  ExpectFailureOrtStatus(get_read_func(nullptr, &read_func, &state),
                   ORT_INVALID_ARGUMENT, "OrtEpContextConfig is NULL");
-  ExpectOrtStatus(get_read_func(ep_context_config, nullptr, &state),
+  ExpectFailureOrtStatus(get_read_func(ep_context_config, nullptr, &state),
                   ORT_INVALID_ARGUMENT, "Output read_func is NULL");
-  ExpectOrtStatus(get_read_func(ep_context_config, &read_func, nullptr),
+  ExpectFailureOrtStatus(get_read_func(ep_context_config, &read_func, nullptr),
                   ORT_INVALID_ARGUMENT, "Output state is NULL");
-  ExpectOrtStatus(get_write_func(nullptr, &write_func, &state),
+  ExpectFailureOrtStatus(get_write_func(nullptr, &write_func, &state),
                   ORT_INVALID_ARGUMENT, "OrtEpContextConfig is NULL");
-  ExpectOrtStatus(get_write_func(ep_context_config, nullptr, &state),
+  ExpectFailureOrtStatus(get_write_func(ep_context_config, nullptr, &state),
                   ORT_INVALID_ARGUMENT, "Output write_func is NULL");
-  ExpectOrtStatus(get_write_func(ep_context_config, &write_func, nullptr),
+  ExpectFailureOrtStatus(get_write_func(ep_context_config, &write_func, nullptr),
                   ORT_INVALID_ARGUMENT, "Output state is NULL");
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -1871,9 +1875,9 @@ TEST(PluginExecutionProviderTest, EpContextDataApiRejectsInvalidArguments) {
   auto set_write_func =
       Ort::Experimental::Get_OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteFunc_SinceV28_Fn(&ort_api);
   ASSERT_NE(set_write_func, nullptr);
-  ExpectOrtStatus(set_write_func(nullptr, EpContextWriteCallback, nullptr),
+  ExpectFailureOrtStatus(set_write_func(nullptr, EpContextWriteCallback, nullptr),
                   ORT_INVALID_ARGUMENT, "OrtModelCompilationOptions is NULL");
-  ExpectOrtStatus(set_write_func(compilation_options, nullptr, nullptr),
+  ExpectFailureOrtStatus(set_write_func(compilation_options, nullptr, nullptr),
                   ORT_INVALID_ARGUMENT, "OrtWriteNamedBufferFunc function is NULL");
 #endif  // !defined(ORT_MINIMAL_BUILD)
 }
@@ -1883,17 +1887,17 @@ TEST(PluginExecutionProviderTest, EpContextDataAccessorsReturnNullWhenCallbacksU
   Ort::SessionOptions session_options;
 
   auto get_config = Ort::Experimental::Get_OrtEpApi_SessionOptions_GetEpContextConfig_SinceV28_Fn(&ort_api);
-  auto release_config_fn = Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_Fn(&ort_api);
+  auto release_config_func = Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_Fn(&ort_api);
   auto get_read_func = Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataReadFunc_SinceV28_Fn(&ort_api);
   auto get_write_func = Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc_SinceV28_Fn(&ort_api);
   ASSERT_NE(get_config, nullptr);
-  ASSERT_NE(release_config_fn, nullptr);
+  ASSERT_NE(release_config_func, nullptr);
   ASSERT_NE(get_read_func, nullptr);
   ASSERT_NE(get_write_func, nullptr);
 
   OrtEpContextConfig* ep_context_config = nullptr;
   ASSERT_ORTSTATUS_OK(get_config(session_options, &ep_context_config));
-  auto release_config = gsl::finally([&]() { release_config_fn(ep_context_config); });
+  auto release_config = gsl::finally([&]() { release_config_func(ep_context_config); });
 
   OrtReadNamedBufferFunc read_func = EpContextReadCallback;
   OrtWriteNamedBufferFunc write_func = EpContextWriteCallback;
@@ -1914,12 +1918,12 @@ TEST(PluginExecutionProviderTest, EpContextConfigReturnsConfiguredCallbacks) {
 
   auto set_read_func = Ort::Experimental::Get_OrtApi_SessionOptions_SetEpContextDataReadFunc_SinceV28_Fn(&ort_api);
   auto get_config = Ort::Experimental::Get_OrtEpApi_SessionOptions_GetEpContextConfig_SinceV28_Fn(&ort_api);
-  auto release_config_fn = Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_Fn(&ort_api);
+  auto release_config_func = Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_Fn(&ort_api);
   auto get_read_func = Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataReadFunc_SinceV28_Fn(&ort_api);
   auto get_write_func = Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc_SinceV28_Fn(&ort_api);
   ASSERT_NE(set_read_func, nullptr);
   ASSERT_NE(get_config, nullptr);
-  ASSERT_NE(release_config_fn, nullptr);
+  ASSERT_NE(release_config_func, nullptr);
   ASSERT_NE(get_read_func, nullptr);
   ASSERT_NE(get_write_func, nullptr);
 
@@ -1928,7 +1932,7 @@ TEST(PluginExecutionProviderTest, EpContextConfigReturnsConfiguredCallbacks) {
 
   OrtEpContextConfig* ep_context_config = nullptr;
   ASSERT_ORTSTATUS_OK(get_config(session_options, &ep_context_config));
-  auto release_config = gsl::finally([&]() { release_config_fn(ep_context_config); });
+  auto release_config = gsl::finally([&]() { release_config_func(ep_context_config); });
 
   OrtReadNamedBufferFunc read_func = nullptr;
   void* read_state = nullptr;
@@ -1949,11 +1953,11 @@ TEST(PluginExecutionProviderTest, EpContextDataReadFuncCanBeCleared) {
 
   auto set_read_func = Ort::Experimental::Get_OrtApi_SessionOptions_SetEpContextDataReadFunc_SinceV28_Fn(&ort_api);
   auto get_config = Ort::Experimental::Get_OrtEpApi_SessionOptions_GetEpContextConfig_SinceV28_Fn(&ort_api);
-  auto release_config_fn = Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_Fn(&ort_api);
+  auto release_config_func = Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_Fn(&ort_api);
   auto get_read_func = Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataReadFunc_SinceV28_Fn(&ort_api);
   ASSERT_NE(set_read_func, nullptr);
   ASSERT_NE(get_config, nullptr);
-  ASSERT_NE(release_config_fn, nullptr);
+  ASSERT_NE(release_config_func, nullptr);
   ASSERT_NE(get_read_func, nullptr);
 
   EpContextReadCallbackState callback_state{};
@@ -1965,7 +1969,7 @@ TEST(PluginExecutionProviderTest, EpContextDataReadFuncCanBeCleared) {
 
   OrtEpContextConfig* ep_context_config = nullptr;
   ASSERT_ORTSTATUS_OK(get_config(session_options, &ep_context_config));
-  auto release_config = gsl::finally([&]() { release_config_fn(ep_context_config); });
+  auto release_config = gsl::finally([&]() { release_config_func(ep_context_config); });
 
   OrtReadNamedBufferFunc read_func = EpContextReadCallback;
   void* read_state = reinterpret_cast<void*>(0x1);
@@ -1984,11 +1988,11 @@ TEST(PluginExecutionProviderTest, EpContextDataWriteFuncIsReturnedByEpApi) {
   auto set_write_func =
       Ort::Experimental::Get_OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteFunc_SinceV28_Fn(&ort_api);
   auto get_config = Ort::Experimental::Get_OrtEpApi_SessionOptions_GetEpContextConfig_SinceV28_Fn(&ort_api);
-  auto release_config_fn = Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_Fn(&ort_api);
+  auto release_config_func = Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_Fn(&ort_api);
   auto get_write_func = Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc_SinceV28_Fn(&ort_api);
   ASSERT_NE(set_write_func, nullptr);
   ASSERT_NE(get_config, nullptr);
-  ASSERT_NE(release_config_fn, nullptr);
+  ASSERT_NE(release_config_func, nullptr);
   ASSERT_NE(get_write_func, nullptr);
 
   EpContextWriteCallbackState callback_state{};
@@ -1999,7 +2003,7 @@ TEST(PluginExecutionProviderTest, EpContextDataWriteFuncIsReturnedByEpApi) {
 
   OrtEpContextConfig* ep_context_config = nullptr;
   ASSERT_ORTSTATUS_OK(get_config(&internal_options->GetSessionOptions(), &ep_context_config));
-  auto release_config = gsl::finally([&]() { release_config_fn(ep_context_config); });
+  auto release_config = gsl::finally([&]() { release_config_func(ep_context_config); });
 
   OrtWriteNamedBufferFunc write_func = nullptr;
   void* callback_state_out = nullptr;
@@ -2022,11 +2026,11 @@ TEST(PluginExecutionProviderTest, EpContextDataReturnedReadFuncAllowsEmptyPayloa
 
   auto set_read_func = Ort::Experimental::Get_OrtApi_SessionOptions_SetEpContextDataReadFunc_SinceV28_Fn(&ort_api);
   auto get_config = Ort::Experimental::Get_OrtEpApi_SessionOptions_GetEpContextConfig_SinceV28_Fn(&ort_api);
-  auto release_config_fn = Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_Fn(&ort_api);
+  auto release_config_func = Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_Fn(&ort_api);
   auto get_read_func = Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataReadFunc_SinceV28_Fn(&ort_api);
   ASSERT_NE(set_read_func, nullptr);
   ASSERT_NE(get_config, nullptr);
-  ASSERT_NE(release_config_fn, nullptr);
+  ASSERT_NE(release_config_func, nullptr);
   ASSERT_NE(get_read_func, nullptr);
 
   EpContextReadCallbackState callback_state{};
@@ -2034,7 +2038,7 @@ TEST(PluginExecutionProviderTest, EpContextDataReturnedReadFuncAllowsEmptyPayloa
 
   OrtEpContextConfig* ep_context_config = nullptr;
   ASSERT_ORTSTATUS_OK(get_config(session_options, &ep_context_config));
-  auto release_config = gsl::finally([&]() { release_config_fn(ep_context_config); });
+  auto release_config = gsl::finally([&]() { release_config_func(ep_context_config); });
 
   OrtReadNamedBufferFunc read_func = nullptr;
   void* read_state = nullptr;

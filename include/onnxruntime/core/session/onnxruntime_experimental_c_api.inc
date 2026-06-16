@@ -319,8 +319,12 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_SessionOptions_SetEpContextDataRea
  * operation that may call the callback. If the same state may be used by multiple EPs or threads, the application is
  * responsible for synchronization.
  *
+ * Unlike OrtApi_SessionOptions_SetEpContextDataReadFunc, which accepts a NULL callback to clear a previously set one,
+ * write_func must not be NULL here: compilation options are configured once per compile, so there is no prior
+ * callback to clear and a NULL write_func is rejected with ORT_INVALID_ARGUMENT.
+ *
  * \param[in] model_compile_options The OrtModelCompilationOptions instance.
- * \param[in] write_func The OrtWriteNamedBufferFunc callback used to write EPContext bytes.
+ * \param[in] write_func The OrtWriteNamedBufferFunc callback used to write EPContext bytes. Must not be NULL.
  * \param[in] state Opaque state passed to write_func. Can be NULL.
  *
  * \snippet{doc} snippets.dox OrtStatus Return Value

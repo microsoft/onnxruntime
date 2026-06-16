@@ -75,16 +75,10 @@ ORT_API_STATUS_IMPL(OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteF
                     _In_ OrtWriteNamedBufferFunc write_func, _In_opt_ void* state) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
+  ORT_API_RETURN_IF(ort_model_compile_options == nullptr, ORT_INVALID_ARGUMENT, "OrtModelCompilationOptions is NULL");
+  ORT_API_RETURN_IF(write_func == nullptr, ORT_INVALID_ARGUMENT, "OrtWriteNamedBufferFunc function is NULL");
+
   auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
-
-  if (model_compile_options == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtModelCompilationOptions is NULL");
-  }
-
-  if (write_func == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtWriteNamedBufferFunc function is NULL");
-  }
-
   model_compile_options->SetEpContextDataWriteFunc(write_func, state);
   return nullptr;
 #else

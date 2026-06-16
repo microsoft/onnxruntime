@@ -246,8 +246,21 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   }
   RETURN_IF_ERROR(get_ep_context_config(session_options, &ep_context_config));
 
-  auto dummy_ep = std::make_unique<ExampleEp>(*factory, factory->ep_name_, config, *logger,
-                                              ep_context_config);
+  // Own the config locally until ExampleEp takes ownership below, so it is released if ExampleEp construction throws.
+  // (A future Ort::Experimental::EpContextConfig RAII wrapper would replace this manual guard.)
+  auto release_ep_context_config = [factory](OrtEpContextConfig* config) {
+    if (config == nullptr) {
+      return;
+    }
+    if (auto* release_fn = Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_Fn(&factory->ort_api)) {
+      release_fn(config);
+    }
+  };
+  std::unique_ptr<OrtEpContextConfig, decltype(release_ep_context_config)> ep_context_config_guard(
+      ep_context_config, release_ep_context_config);
+
+  auto dummy_ep = std::make_unique<ExampleEp>(*factory, factory->ep_name_, config, *logger, ep_context_config);
+  ep_context_config_guard.release();  // ExampleEp now owns the config and releases it in its destructor.
 
   *ep = dummy_ep.release();
   return nullptr;

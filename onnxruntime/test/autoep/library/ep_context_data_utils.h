@@ -13,13 +13,29 @@
 #include <vector>
 
 #ifdef _WIN32
+// Define NOMINMAX (and WIN32_LEAN_AND_MEAN) before <windows.h> so the min/max macros it would otherwise pull in do
+// not clobber std::numeric_limits<...>::max() and std::min/std::max used in this header.
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #endif
 
 #include "plugin_ep_utils.h"
 #include "onnxruntime_experimental_c_api.h"
 
-// Sample-only EPContext data helpers. These are intentionally outside the ORT C and EP ABI.
+// Sample-only EPContext data helpers shared by the example plugin EP and its tests. These are intentionally outside
+// the ORT C and EP ABI and are provided as a reference for EP authors that need to handle external (non-embedded)
+// EPContext binary data.
+//
+// The intended entry points for EP implementers are the ReadEpContextDataWithFileFallback /
+// WriteEpContextDataWithFileFallback overloads: they prefer an application-supplied OrtReadNamedBufferFunc /
+// OrtWriteNamedBufferFunc (carried by OrtEpContextConfig) and fall back to file I/O when no callback is configured.
+// The other functions are lower-level building blocks. Production EPs should additionally apply their own sandboxing,
+// size limits, and path policies; see the per-function notes on how untrusted, model-derived names are treated.
 namespace ep_context_data_utils {
 
 #ifdef _WIN32
@@ -169,8 +185,15 @@ inline OrtStatus* ResolveEpContextDataOutputPath(const OrtApi& api, const char* 
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not contain path traversal");
   }
 
-  if (graph == nullptr || data_path.is_absolute()) {
+  // Trusted direct callers (graph == nullptr) may supply an absolute physical path. When a graph is present, the
+  // name may be model-derived (untrusted), so reject absolute paths for symmetry with the read-side
+  // ResolveEpContextDataPath instead of writing to an attacker-chosen absolute location.
+  if (graph == nullptr) {
     return nullptr;
+  }
+
+  if (data_path.is_absolute()) {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute");
   }
 
   const ORTCHAR_T* model_path = nullptr;
@@ -296,6 +319,11 @@ inline OrtStatus* ReadEpContextDataWithFileFallback(
   return nullptr;
 }
 
+// Reads EPContext binary data named `file_name`. If the session configured an OrtReadNamedBufferFunc (carried by
+// `ep_context_config`), it is used; otherwise the data is read from a file. When `graph` is non-null it is the
+// EPContext model graph: untrusted absolute/traversal names are rejected and relative names are resolved against the
+// model directory. Pass `graph == nullptr` only for trusted callers supplying a physical path. `data` is cleared
+// first and receives the bytes on success.
 inline OrtStatus* ReadEpContextDataWithFileFallback(
     const OrtApi& api,
     const OrtEpContextConfig* ep_context_config,
@@ -350,6 +378,11 @@ inline OrtStatus* WriteEpContextDataWithFileFallback(
   return WriteEpContextDataToResolvedFile(api, data_path, buffer, buffer_size);
 }
 
+// Writes EPContext binary data. If the compilation configured an OrtWriteNamedBufferFunc (carried by
+// `ep_context_config`), it is used and `file_name` is passed through unmodified as the logical name. Otherwise the
+// data is written to a file at `fallback_file_name`, which is resolved against the model directory when `graph` is
+// non-null (and rejected if absolute in that case). `graph == nullptr` denotes a trusted caller that may supply an
+// absolute physical path. `buffer` may be null only when `buffer_size` is 0.
 inline OrtStatus* WriteEpContextDataWithFileFallback(
     const OrtApi& api,
     const OrtEpContextConfig* ep_context_config,
@@ -372,6 +405,7 @@ inline OrtStatus* WriteEpContextDataWithFileFallback(
                                             buffer_size);
 }
 
+// Convenience overload that uses `file_name` as both the logical callback name and the file-fallback path.
 inline OrtStatus* WriteEpContextDataWithFileFallback(
     const OrtApi& api,
     const OrtEpContextConfig* ep_context_config,
