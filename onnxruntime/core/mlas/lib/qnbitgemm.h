@@ -46,19 +46,30 @@ MlasAlignAddress(void* addr, const size_t alignment)
     return addr;
 }
 
+// Number of consecutive K-blocks bundled into a single packed slot by the
+// AVX-512 W2 native kernel. The pack helper rounds BlockCountK up to a
+// multiple of this value so the kernel can iterate the padded count without
+// bounds checks. This must match onnxruntime::mlas::sq2bit_avx512::kBlockGroupBlks
+// in sqnbitgemm_kernel_avx512_2bit.h; a static_assert at each dispatch wiring
+// site keeps the two definitions in sync.
+inline constexpr size_t kSq2BitAvx512WeightKBlockGroup = 4;
+
 template <typename T, int BlkBitWidth>
 struct PackedQuantBDataStruct {
     PackedQuantBDataStruct(void* PackedQuantBWorkspace, size_t N, size_t BlockCountK, size_t BlkLen, bool QuantAUnsigned)
         : QuantBWorkspace_(PackedQuantBWorkspace), N_(N), BlockCountK_(BlockCountK), BlkLen_(BlkLen)
     {
-        // For 2-bit weights, the AVX-512 W2 packed layout groups 4 consecutive
-        // K-blocks into a single 64-byte slot so the SIMD unpack is one ZMM
-        // load + four fixed shift/mask pairs. The pack-size dispatch
-        // (Q2BitGemmPackQuantBDataSize_Avx512) rounds BlockCountK up to a
-        // multiple of 4 internally; we mirror that rounding here so the
-        // allocated buffer always matches the slab layout computed below.
+        // For 2-bit weights, the AVX-512 W2 packed layout groups
+        // kSq2BitAvx512WeightKBlockGroup (=4) consecutive K-blocks into a
+        // single 64-byte slot so the SIMD unpack is one ZMM load + four fixed
+        // shift/mask pairs. The pack-size dispatch
+        // (Q2BitGemmPackQuantBDataSize_Avx512) rounds BlockCountK up to that
+        // multiple internally; we mirror that rounding here so the allocated
+        // buffer always matches the slab layout computed below.
         const size_t EffectiveBlockCountK =
-            (BlkBitWidth == 2) ? ((BlockCountK + 3) / 4) * 4 : BlockCountK;
+            (BlkBitWidth == 2)
+                ? MlasDivRoundup(BlockCountK, kSq2BitAvx512WeightKBlockGroup) * kSq2BitAvx512WeightKBlockGroup
+                : BlockCountK;
         const size_t PackedQuantBDataSize = N * EffectiveBlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
         size_t BlkSumSize = MlasDivRoundup(N, 16) * EffectiveBlockCountK * 16 * sizeof(T);
 #if defined(MLAS_TARGET_AMD64_IX86)
@@ -475,7 +486,9 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     //
 
     /** Gets size of packed quantized B data containing 2-bit integers. See MlasQNBitGemmPackQuantBDataSize(). */
-    Q4BitGemmPackQuantBDataSize_Fn* Q2BitGemmPackQuantBDataSize = nullptr;
+    // The W2 pack-size signature matches the W4 one; alias for self-documentation.
+    using Q2BitGemmPackQuantBDataSize_Fn = Q4BitGemmPackQuantBDataSize_Fn;
+    Q2BitGemmPackQuantBDataSize_Fn* Q2BitGemmPackQuantBDataSize = nullptr;
 
     /** Packs quantized B data + per-block sums for the 2-bit CompInt8 kernel. */
     typedef void(SQ2BitGemmPackQuantBDataAndSumBlk_Fn)(
@@ -504,7 +517,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
      *        stride of `effective_block_count * <bytes-per-block | sizeof(float)>`,
      *        and so does the dispatcher's per-N-tile pointer arithmetic. The
      *        AVX-512 W2 kernel rounds BlockCountK up to a multiple of 4
-     *        internally to amortise unpack cost across 4 consecutive K-blocks;
+     *        internally to amortize unpack cost across 4 consecutive K-blocks;
      *        the buffer is sized accordingly (see PackedQuantBDataStruct, which
      *        always pads for BlkBitWidth==2) so the dispatcher must use the
      *        matching stride or it will step past the data when n != 0.

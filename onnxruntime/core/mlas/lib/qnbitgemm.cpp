@@ -1003,7 +1003,7 @@ SQ2BitGemm_CompInt8(
 
     // The packed-B-data and per-block-scale buffers may use a layout that
     // addresses each N-col at a stride larger than `k_blks` (e.g. the AVX-512
-    // W2 kernel rounds up to a multiple of 4 to amortise unpack across 4
+    // W2 kernel rounds up to a multiple of 4 to amortize unpack across 4
     // K-blocks). Ask the dispatch for the effective per-N-col block count;
     // default to logical k_blks if the dispatch doesn't override.
     // BlkSum keeps the logical stride because the SGEMM correction step

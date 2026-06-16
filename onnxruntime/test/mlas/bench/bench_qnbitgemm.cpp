@@ -156,9 +156,10 @@ BENCHMARK(QNBITGEMM<float, 8>)->Apply(QNBitGemmArgs<float>)->UseRealTime();
 BENCHMARK(QNBITGEMM<MLAS_FP16, 4>)->Apply(QNBitGemmArgs<MLAS_FP16>)->UseRealTime();
 BENCHMARK(QNBITGEMM<float, 2>)->Apply(QNBit2BitArgs)->UseRealTime();
 
-// Customer MatMulNBits shapes mirrored at 4-bit for a head-to-head comparison
-// vs the W2 LUT path (LUTGEMM_COMPUTE/CUSTOMER). Customer model uses BlkLen=64.
-// Five distinct (K, N) pairs:
+// Representative MatMulNBits shapes mirrored at 4-bit for a head-to-head
+// comparison vs the W2 LUT path (LUTGEMM_COMPUTE/RealisticShapes). These
+// shapes use BlkLen=64 and reflect proportions that appear in real W2
+// production models. Five distinct (K, N) pairs:
 //   (K=384,  N=1024): 20 nodes
 //   (K=1024, N=192):  40 nodes
 //   (K=1024, N=384):  20 nodes
@@ -166,7 +167,7 @@ BENCHMARK(QNBITGEMM<float, 2>)->Apply(QNBit2BitArgs)->UseRealTime();
 //   (K=4096, N=1024): 20 nodes
 // Both M=1 (decode) and M=128 (prefill) are exercised — paired with the W2
 // rows below so we get a 3-way (W2 / W4 / W8) comparison at each M.
-static void QNBitGemmCustomerArgs(benchmark::internal::Benchmark* b) {
+static void QNBitGemmRealisticShapesArgs(benchmark::internal::Benchmark* b) {
   b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "HasBias", "ComputeType"});
   const int64_t BlkLen = 64;
   const int64_t Threads = 8;
@@ -185,13 +186,14 @@ static void QNBitGemmCustomerArgs(benchmark::internal::Benchmark* b) {
   }
 }
 
-BENCHMARK(QNBITGEMM<float, 4>)->Apply(QNBitGemmCustomerArgs)->UseRealTime();
+BENCHMARK(QNBITGEMM<float, 4>)->Apply(QNBitGemmRealisticShapesArgs)->UseRealTime();
 
-// 2-bit weight rows for the customer shapes. Exercises the AVX-512 W2 native
-// path (VNNI variant on AVX-512-VNNI hosts; non-VNNI variant on AVX-512BW
-// hosts). W2 is registered only for SQNBIT_CompInt8 and BlkLen=64, so we
-// emit just that one ComputeType. Covers both M=1 (decode) and M=128 (prefill).
-static void QNBit2BitCustomerArgs(benchmark::internal::Benchmark* b) {
+// 2-bit weight rows for the same representative shapes. Exercises the AVX-512
+// W2 native path (VNNI variant on AVX-512-VNNI hosts; non-VNNI variant on
+// AVX-512BW hosts). W2 is registered only for SQNBIT_CompInt8 and BlkLen=64,
+// so we emit just that one ComputeType. Covers both M=1 (decode) and M=128
+// (prefill).
+static void QNBit2BitRealisticShapesArgs(benchmark::internal::Benchmark* b) {
   b->ArgNames({"BlkLen", "M", "N", "K", "Threads", "Symmetric", "HasBias", "ComputeType"});
   const int64_t BlkLen = 64;
   const int64_t Threads = 8;
@@ -208,7 +210,7 @@ static void QNBit2BitCustomerArgs(benchmark::internal::Benchmark* b) {
   }
 }
 
-BENCHMARK(QNBITGEMM<float, 2>)->Apply(QNBit2BitCustomerArgs)->UseRealTime();
+BENCHMARK(QNBITGEMM<float, 2>)->Apply(QNBit2BitRealisticShapesArgs)->UseRealTime();
 
 // This test gets benchmark arguments from environment variables.
 template <typename AType, size_t BlkBitWidth>

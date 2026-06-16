@@ -462,14 +462,14 @@ SQ8BitGemmPackQuantBDataAndBlkSum512vnni(
 }
 
 //
-// Unit-test entry point for the AVX-512-VNNI W2 kernel
-// (sqnbitgemm_kernel_avx512_2bit_blklen64.h). Exposed for
-// direct invocation from tests; production wiring (Phase 4) will add the
-// runtime dispatcher integration.
+// BlkLen-routing wrapper for the W2 CompInt8 AVX-512-VNNI dispatch entry
+// (sqnbitgemm_kernel_avx512_2bit_blklen64.h and friends). Production code
+// reaches this via the MLAS dispatch table; tests call it directly via the
+// namespace.
 //
 namespace onnxruntime::mlas::sq2bit_avx512 {
 size_t MLASCALL
-SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_TestEntry(
+SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_Dispatch(
     size_t BlkLen,
     const std::byte* QuantA,
     const float* QuantAScale,
@@ -528,10 +528,15 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni = []() {
     // 64-byte ZMM load + four fixed shift/mask pairs to unpack 4 K-blocks at
     // once, with VNNI's `vpdpbusd` for the integer MAC. See the matching
     // comment in sqnbitgemm_kernel_avx512.cpp for the K-padding contract.
+    static_assert(
+        onnxruntime::mlas::sq2bit_avx512::kBlockGroupBlks == kSq2BitAvx512WeightKBlockGroup,
+        "kBlockGroupBlks (kernel-internal) must match kSq2BitAvx512WeightKBlockGroup (qnbitgemm.h).");
     d.Q2BitGemmPackQuantBDataSize       = onnxruntime::mlas::sq2bit_avx512::Q2BitGemmPackQuantBDataSize_Avx512;
     d.SQ2BitGemmPackQuantBDataAndBlkSum = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmPackQuantBDataAndBlkSum_Scalar;
-    d.SQ2BitGemmKernel_BlkSum_CompInt8  = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_TestEntry;
-    d.Q2BitGemmEffectiveBlockCountK     = [](size_t BlockCountK) { return ((BlockCountK + 3) / 4) * 4; };
+    d.SQ2BitGemmKernel_BlkSum_CompInt8  = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_Dispatch;
+    d.Q2BitGemmEffectiveBlockCountK     = [](size_t BlockCountK) {
+        return MlasDivRoundup(BlockCountK, kSq2BitAvx512WeightKBlockGroup) * kSq2BitAvx512WeightKBlockGroup;
+    };
 
     return d;
 }();

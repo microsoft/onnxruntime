@@ -35,8 +35,9 @@ Abstract:
       * BlockCountK must be a multiple of kBlockGroupBlks = 4. The
         path returns 0 from the pack-size helper for non-multiples; the
         caller falls back to the existing W2 path.
-      * The customer model's K dimensions (384, 1024, 4096) are all multiples
-        of 256 (= 4 * 64), so all customer shapes satisfy this constraint.
+      * Typical W2 production K dimensions (e.g. 384, 1024, 4096) are all
+        multiples of 256 (= kBlockGroupBlks * 64) and therefore satisfy this
+        constraint.
 
 --*/
 
@@ -438,13 +439,15 @@ SQ2BitGemmKernel_BlkSum_CompInt8_Scalar(
 );
 
 //
-// Unit-test forwarders for the AVX-512 SIMD block-group kernels. Same gating
-// rules as the existing W2 test entries: the caller MUST verify
+// BlkLen-routing wrappers for the W2 CompInt8 dispatch entries.
+// Production code calls these via the MLAS dispatch table
+// (MlasSQNBitGemmDispatchAvx512 / Avx512vnni); tests call them directly
+// via the namespace. The caller MUST verify
 // GetMlasPlatform().Avx512Supported_ (and, for the VNNI variant, that the
 // active dispatch is the AVX-512-VNNI one) before invoking these symbols.
 //
 size_t MLASCALL
-SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_TestEntry(
+SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_Dispatch(
     size_t BlkLen,
     const std::byte* QuantA,
     const float* QuantAScale,
@@ -463,7 +466,7 @@ SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_TestEntry(
 );
 
 size_t MLASCALL
-SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_TestEntry(
+SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_Dispatch(
     size_t BlkLen,
     const std::byte* QuantA,
     const float* QuantAScale,

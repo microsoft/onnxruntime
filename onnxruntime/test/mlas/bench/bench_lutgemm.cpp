@@ -233,7 +233,8 @@ static void LutGemmComputeArgs(benchmark::internal::Benchmark* b) {
   });
 }
 
-// Customer 2-bit MatMulNBits shapes (BlkLen=64). Five distinct (K, N) pairs:
+// Representative 2-bit MatMulNBits shapes (BlkLen=64) drawn from real W2
+// production models. Five distinct (K, N) pairs:
 //   (K=384,  N=1024): 20 nodes
 //   (K=1024, N=192):  40 nodes
 //   (K=1024, N=384):  20 nodes
@@ -241,12 +242,12 @@ static void LutGemmComputeArgs(benchmark::internal::Benchmark* b) {
 //   (K=4096, N=1024): 20 nodes
 // Covers both M=1 (decode) and M=128 (prefill) so the LUT path can be
 // compared apples-to-apples against the W4 CompInt8 and W2 kernels
-// (QNBITGEMM<float, 4>/QNBitGemmCustomerArgs and
-// QNBITGEMM<float, 2>/QNBit2BitCustomerArgs).
-static void LutGemmCustomerArgs(benchmark::internal::Benchmark* b) {
+// (QNBITGEMM<float, 4>/QNBitGemmRealisticShapesArgs and
+// QNBITGEMM<float, 2>/QNBit2BitRealisticShapesArgs).
+static void LutGemmRealisticShapesArgs(benchmark::internal::Benchmark* b) {
   b->ArgNames(lutgemm_compute_arg_names);
   // Separate Args() entries so we only run the exact (M, K, N) tuples that
-  // appear in the customer model.
+  // appear in the representative production model.
   const int64_t BlkLen = 64;
   const int64_t Threads = 8;
   const int64_t HasZP = 0;
@@ -267,7 +268,7 @@ static void LutGemmCustomerArgs(benchmark::internal::Benchmark* b) {
   if (is_lutgemm_supported) {
     BENCHMARK(LUTGEMM_PACK<2>)->Apply(LutGemmPackArgs)->UseRealTime();
     BENCHMARK(LUTGEMM_COMPUTE<2>)->Apply(LutGemmComputeArgs)->UseRealTime();
-    BENCHMARK(LUTGEMM_COMPUTE<2>)->Apply(LutGemmCustomerArgs)->UseRealTime();
+    BENCHMARK(LUTGEMM_COMPUTE<2>)->Apply(LutGemmRealisticShapesArgs)->UseRealTime();
     return true;
   }
   return false;

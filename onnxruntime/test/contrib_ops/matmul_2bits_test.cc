@@ -1098,6 +1098,15 @@ TEST(MatMul2Bits, Float32_2b_Accuracy4) {
   TestMatMul2BitsTyped<float, 100, 288, 16, 16, 4>();
 }
 
+// NOTE on host-coverage of the new W2 op-level tests below.
+// These tests run unconditionally on DefaultCpuExecutionProvider() and compute
+// the expected output via dequant + matmul (see TestOptions2Bits / RunTest2Bits).
+// The new native AVX-512(+VNNI) W2 kernel is dispatched only on hosts where
+// GetMlasPlatform().Avx512Supported_ is true; on other hosts the op falls back
+// to dequant + SGEMM and the same correctness check still passes. So these
+// tests guard correctness everywhere and exercise the new SIMD path on
+// AVX-512(+VNNI) CI machines and dev boxes.
+
 // MatMulNBits operator-level coverage for the native AVX-512 W2 CPU kernel.
 // The kernel is gated on (BlkBitWidth=2, BlkLen=64, ComputeType=SQNBIT_CompInt8)
 // and is reachable through the public MatMulNBits op when accuracy_level=4 and
@@ -1110,7 +1119,7 @@ TEST(MatMul2Bits, Float32_2b_Accuracy4) {
 //   * Single block (BlockCountK=1)         -> K=64
 //   * BlockCountK=2,3 not multiple of 4    -> K=128, K=192 (K-tail handler)
 //   * Exact block-group multiples          -> K=256, K=512, K=1024
-//   * BlockCountK=6 (1 full + 2 tail)      -> K=384  (matches customer model)
+//   * BlockCountK=6 (1 full + 2 tail)      -> K=384  (non-aligned tail case)
 // and combinations of M ∈ {1 (decode), 2, 4, 100 (prefill)} and
 // N ∈ {16 (N-tail R1xC1/R2xC1), 32, 288, 1024 (kNCols4 multiples)}.
 //
@@ -1134,10 +1143,10 @@ TEST(MatMul2Bits, Float32_2b_BlkLen64_Accuracy4) {
   TestMatMul2BitsTyped<float, 1, 288, 512, 64, 4>();
   TestMatMul2BitsTyped<float, 4, 32, 1024, 64, 4>();
 
-  // Customer-model proportion: BlockCountK=6 = 1 full block-group + 2-block tail.
+  // Realistic-shape proportion: BlockCountK=6 = 1 full block-group + 2-block tail.
   TestMatMul2BitsTyped<float, 1, 288, 384, 64, 4>();
 
-  // Larger M (multiple R2 tile iterations) and customer-shape K=1024.
+  // Larger M (multiple R2 tile iterations) and representative K=1024.
   TestMatMul2BitsTyped<float, 100, 32, 256, 64, 4>();
   TestMatMul2BitsTyped<float, 100, 288, 1024, 64, 4>();
 }
@@ -1194,7 +1203,7 @@ TEST(MatMul2Bits, Float32_2b_BlkLen128_Accuracy4) {
   // BlockCountK=6 = 1 full block-group + 2-block tail.
   TestMatMul2BitsTyped<float, 1, 288, 768, 128, 4>();
 
-  // Larger M (multi-iter R2 tile) at customer-shape proportions.
+  // Larger M (multi-iter R2 tile) at representative-shape proportions.
   TestMatMul2BitsTyped<float, 100, 32, 512, 128, 4>();
   TestMatMul2BitsTyped<float, 100, 288, 1024, 128, 4>();
 }
@@ -1221,7 +1230,7 @@ TEST(MatMul2Bits, Float32_2b_BlkLen128_Accuracy0) {
 
 // MatMulNBits op-level coverage for the BlkLen=32 path. K multiples of 32.
 // Same coverage matrix as BlkLen=64/128 (single-block, K-tail, exact group
-// multiples, customer-shape proportions, single-row decode, M=100 prefill).
+// multiples, representative-shape proportions, single-row decode, M=100 prefill).
 TEST(MatMul2Bits, Float32_2b_BlkLen32_Accuracy4) {
   // Single-block K (K = BlkLen = 32).
   TestMatMul2BitsTyped<float, 1, 16, 32, 32, 4>();

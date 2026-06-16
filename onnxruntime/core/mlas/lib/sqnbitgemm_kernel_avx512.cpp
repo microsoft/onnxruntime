@@ -480,12 +480,14 @@ SQ8BitGemmPackQuantBDataAndBlkSum512(
 }
 
 //
-// Unit-test entry point for the AVX-512BW (non-VNNI) W2 kernel.
+// BlkLen-routing wrapper for the W2 CompInt8 AVX-512BW (non-VNNI) dispatch
+// entry. Production code reaches this via the MLAS dispatch table; tests
+// call it directly via the namespace.
 // Sibling of the VNNI variant in sqnbitgemm_kernel_avx512vnni.cpp.
 //
 namespace onnxruntime::mlas::sq2bit_avx512 {
 size_t MLASCALL
-SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_TestEntry(
+SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_Dispatch(
     size_t BlkLen,
     const std::byte* QuantA,
     const float* QuantAScale,
@@ -542,10 +544,15 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512 = []() {
     // once. Packs B with the K dimension rounded up to a multiple of
     // kBlockGroupBlks (= 4); the kernel iterates the padded count, so the
     // dispatcher reports the rounded-up stride via Q2BitGemmEffectiveBlockCountK.
+    static_assert(
+        onnxruntime::mlas::sq2bit_avx512::kBlockGroupBlks == kSq2BitAvx512WeightKBlockGroup,
+        "kBlockGroupBlks (kernel-internal) must match kSq2BitAvx512WeightKBlockGroup (qnbitgemm.h).");
     d.Q2BitGemmPackQuantBDataSize       = onnxruntime::mlas::sq2bit_avx512::Q2BitGemmPackQuantBDataSize_Avx512;
     d.SQ2BitGemmPackQuantBDataAndBlkSum = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmPackQuantBDataAndBlkSum_Scalar;
-    d.SQ2BitGemmKernel_BlkSum_CompInt8  = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_TestEntry;
-    d.Q2BitGemmEffectiveBlockCountK     = [](size_t BlockCountK) { return ((BlockCountK + 3) / 4) * 4; };
+    d.SQ2BitGemmKernel_BlkSum_CompInt8  = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_Dispatch;
+    d.Q2BitGemmEffectiveBlockCountK     = [](size_t BlockCountK) {
+        return MlasDivRoundup(BlockCountK, kSq2BitAvx512WeightKBlockGroup) * kSq2BitAvx512WeightKBlockGroup;
+    };
 
     return d;
 }();

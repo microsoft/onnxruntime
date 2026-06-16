@@ -304,9 +304,9 @@ void RunW2Case(size_t M, size_t N, size_t K, bool WithBias, uint32_t seed,
 
 //
 // Scalar block-group test, no zero-points. Covers the same small synthetic
-// shapes + customer prefill sizes used by the production W2 tests. All shapes
-// have K as a multiple of (kBlkLen * kBlockGroupBlks) = 256. Customer K=384
-// is NOT a multiple of 256 so it's excluded; that shape will need a tail
+// shapes + representative prefill sizes used by the production W2 tests. All
+// shapes have K as a multiple of (kBlkLen * kBlockGroupBlks) = 256. K=384 is
+// NOT a multiple of 256 so it's excluded; that shape will need a tail
 // handler in a follow-up.
 //
 TEST(MlasSq2BitTest, Scalar_BlkLen64) {
@@ -322,7 +322,7 @@ TEST(MlasSq2BitTest, Scalar_BlkLen64) {
       {7, 17, 256},
       {16, 64, 512},
       {32, 128, 256},
-      // Customer prefill (only the K values that are multiples of 256).
+      // Representative prefill (only the K values that are multiples of 256).
       {1, 1024, 1024},
       {1, 192, 1024},
       {1, 384, 1024},
@@ -399,22 +399,23 @@ TEST(MlasSq2BitTest, Scalar_BlkLen64_WithZeroPoints) {
 //     trailing slots so they contribute 0 to the dot product; the tile loads
 //     only valid A blocks (zero ZMM for missing ones) to avoid OOB.
 //
-// Customer prefill shapes (M in {1, 128}, N in {192, 384, 1024, 4096}, K in
+// Representative prefill shapes (M in {1, 128}, N in {192, 384, 1024, 4096},
+// K in
 // {1024, 4096}) are all covered. M=3 and M=5 exercise the M-tail path.
 //
 // K-tail handler (BlockCountK not a multiple of kBlockGroupBlks=4): the
 // pack helper zero-pads the trailing 1-3 K-block slots; the SIMD K-loop
 // processes them via the 4-block accumulator with zero ZMM for the missing
 // A blocks. GroupStride uses BlockCountKPadded so N-group advances land on
-// the right packed-B address regardless of K % 4. Customer K=384 and the
+// the right packed-B address regardless of K % 4. K=384 and the
 // synthetic K=320, K=448 shapes exercise this path.
 //
 constexpr struct {
   size_t M, N, K;
 } kSimdShapes[] = {
     {1, 16, 256},     // R1 only
-    {1, 192, 1024},   // R1 only, customer N
-    {1, 1024, 4096},  // R1 only, customer N
+    {1, 192, 1024},   // R1 only, representative N
+    {1, 1024, 4096},  // R1 only, representative N
     {2, 16, 256},
     {2, 32, 256},
     {2, 64, 512},
@@ -425,14 +426,14 @@ constexpr struct {
     {5, 64, 512},  // R2 head (2 pairs) + R1 tail
     {16, 64, 512},
     {32, 128, 256},
-    // Customer prefill (M=128) at all (K, N) pairs, including K=384.
+    // Representative prefill (M=128) at all (K, N) pairs, including K=384.
     {128, 1024, 384},  // K-tail: BlockCountK=6, 1 full group + tail of 2 blocks
     {128, 1024, 1024},
     {128, 192, 1024},
     {128, 384, 1024},
     {128, 4096, 1024},
     {128, 1024, 4096},
-    // Customer decode (M=1) at K=384 (the case the K%4 gate previously blocked).
+    // Representative decode (M=1) at K=384 (the case the K%4 gate previously blocked).
     {1, 1024, 384},
     // Synthetic K-tail stress shapes covering all (TailBlocks in {1, 2, 3}).
     {2, 16, 320},  // tail=1
@@ -476,7 +477,7 @@ TEST(MlasSq2BitTest, BlkLen64_Avx512) {
       for (bool bias : {false, true}) {
         RunW2Case(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
                   /*WithZeroPoints=*/false,
-                  sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_TestEntry,
+                  sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_Dispatch,
                   "AVX-512BW");
       }
     }
@@ -492,7 +493,7 @@ TEST(MlasSq2BitTest, BlkLen64_Avx512_WithZeroPoints) {
       for (bool bias : {false, true}) {
         RunW2Case(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
                   /*WithZeroPoints=*/true,
-                  sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_TestEntry,
+                  sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_Dispatch,
                   "AVX-512BW");
       }
     }
@@ -512,7 +513,7 @@ TEST(MlasSq2BitTest, BlkLen64_Avx512Vnni) {
       for (bool bias : {false, true}) {
         RunW2Case(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
                   /*WithZeroPoints=*/false,
-                  sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_TestEntry,
+                  sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_Dispatch,
                   "AVX-512-VNNI");
       }
     }
@@ -528,7 +529,7 @@ TEST(MlasSq2BitTest, BlkLen64_Avx512Vnni_WithZeroPoints) {
       for (bool bias : {false, true}) {
         RunW2Case(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
                   /*WithZeroPoints=*/true,
-                  sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_TestEntry,
+                  sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_Dispatch,
                   "AVX-512-VNNI");
       }
     }
@@ -760,7 +761,7 @@ constexpr struct {
     {1, 16, 128},     // R1, BlockCountK=1
     {1, 32, 256},     // R1, BlockCountK=2 (K-tail, no full group)
     {1, 1024, 1024},  // R1, BlockCountK=8
-    {1, 1024, 4096},  // R1, BlockCountK=32 (customer N)
+    {1, 1024, 4096},  // R1, BlockCountK=32 (representative N)
     {2, 16, 128},
     {2, 32, 256},
     {2, 64, 512},  // BlockCountK=4 (one full group)
@@ -770,7 +771,7 @@ constexpr struct {
     {4, 32, 256},
     {16, 64, 512},
     {32, 128, 256},
-    // M=128 prefill at customer-like shapes (K multiples of 128)
+    // M=128 prefill at representative shapes (K multiples of 128)
     {128, 1024, 1024},
     {128, 1024, 4096},
     {128, 192, 1024},
@@ -778,7 +779,7 @@ constexpr struct {
     // K-tail stress (BlockCountK not a multiple of 4)
     {2, 16, 384},  // tail=3
     {4, 16, 384},
-    {128, 1024, 384},  // tail=3 at customer M
+    {128, 1024, 384},  // tail=3 at representative M
     {2, 16, 640},      // tail=1
     {4, 16, 640},
     {2, 16, 768},  // tail=2
@@ -839,7 +840,7 @@ TEST(MlasSq2BitTest, BlkLen128_Avx512) {
       for (bool bias : {false, true}) {
         RunW2Case_BlkLen128(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
                             /*WithZeroPoints=*/false,
-                            sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_TestEntry,
+                            sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_Dispatch,
                             "AVX-512BW");
       }
     }
@@ -855,7 +856,7 @@ TEST(MlasSq2BitTest, BlkLen128_Avx512_WithZeroPoints) {
       for (bool bias : {false, true}) {
         RunW2Case_BlkLen128(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
                             /*WithZeroPoints=*/true,
-                            sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_TestEntry,
+                            sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_Dispatch,
                             "AVX-512BW");
       }
     }
@@ -871,7 +872,7 @@ TEST(MlasSq2BitTest, BlkLen128_Avx512Vnni) {
       for (bool bias : {false, true}) {
         RunW2Case_BlkLen128(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
                             /*WithZeroPoints=*/false,
-                            sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_TestEntry,
+                            sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_Dispatch,
                             "AVX-512-VNNI");
       }
     }
@@ -887,7 +888,7 @@ TEST(MlasSq2BitTest, BlkLen128_Avx512Vnni_WithZeroPoints) {
       for (bool bias : {false, true}) {
         RunW2Case_BlkLen128(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
                             /*WithZeroPoints=*/true,
-                            sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_TestEntry,
+                            sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_Dispatch,
                             "AVX-512-VNNI");
       }
     }
@@ -1193,7 +1194,7 @@ TEST(MlasSq2BitTest, BlkLen32_Avx512) {
       for (bool bias : {false, true}) {
         RunW2Case_BlkLen32(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
                            /*WithZeroPoints=*/false,
-                           sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_TestEntry,
+                           sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_Dispatch,
                            "AVX-512BW");
       }
     }
@@ -1209,7 +1210,7 @@ TEST(MlasSq2BitTest, BlkLen32_Avx512_WithZeroPoints) {
       for (bool bias : {false, true}) {
         RunW2Case_BlkLen32(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
                            /*WithZeroPoints=*/true,
-                           sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_TestEntry,
+                           sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512_Dispatch,
                            "AVX-512BW");
       }
     }
@@ -1225,7 +1226,7 @@ TEST(MlasSq2BitTest, BlkLen32_Avx512Vnni) {
       for (bool bias : {false, true}) {
         RunW2Case_BlkLen32(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
                            /*WithZeroPoints=*/false,
-                           sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_TestEntry,
+                           sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_Dispatch,
                            "AVX-512-VNNI");
       }
     }
@@ -1241,7 +1242,7 @@ TEST(MlasSq2BitTest, BlkLen32_Avx512Vnni_WithZeroPoints) {
       for (bool bias : {false, true}) {
         RunW2Case_BlkLen32(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
                            /*WithZeroPoints=*/true,
-                           sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_TestEntry,
+                           sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Avx512Vnni_Dispatch,
                            "AVX-512-VNNI");
       }
     }
