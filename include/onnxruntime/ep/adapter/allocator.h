@@ -7,12 +7,12 @@
 #error "This header should not be included directly. Include ep/adapters.h instead."
 #endif
 
-#include <cstdlib>
-#include <cstring>
 #include <mutex>
+#include <string_view>
 #include <utility>
 #include <vector>
 
+#include "core/common/parse_string.h"
 #include "core/framework/allocator.h"
 
 namespace onnxruntime {
@@ -68,30 +68,9 @@ class IAllocatorWrappingOrtAllocator final : public IAllocator {
       kvps.GetKeyValuePairs(keys, values);
       const size_t n = keys.size() < values.size() ? keys.size() : values.size();
       for (size_t i = 0; i < n; ++i) {
-        char* end = nullptr;
-        const int64_t val = std::strtoll(values[i], &end, 10);
-        if (end == values[i] || *end != '\0') continue;  // skip unparseable entries
-        if (std::strcmp(keys[i], "Limit") == 0) {
-          stats->bytes_limit = val;
-        } else if (std::strcmp(keys[i], "InUse") == 0) {
-          stats->bytes_in_use = val;
-        } else if (std::strcmp(keys[i], "RequestedInUse") == 0) {
-          stats->bytes_requested_in_use = val;
-        } else if (std::strcmp(keys[i], "TotalAllocated") == 0) {
-          stats->total_allocated_bytes = val;
-        } else if (std::strcmp(keys[i], "MaxInUse") == 0) {
-          stats->max_bytes_in_use = val;
-        } else if (std::strcmp(keys[i], "NumAllocs") == 0) {
-          stats->num_allocs = val;
-        } else if (std::strcmp(keys[i], "NumReserves") == 0) {
-          stats->num_reserves = val;
-        } else if (std::strcmp(keys[i], "NumArenaExtensions") == 0) {
-          stats->num_arena_extensions = val;
-        } else if (std::strcmp(keys[i], "NumArenaShrinkages") == 0) {
-          stats->num_arena_shrinkages = val;
-        } else if (std::strcmp(keys[i], "MaxAllocSize") == 0) {
-          stats->max_alloc_size = val;
-        }
+        int64_t val = 0;
+        if (!TryParseStringWithClassicLocale(std::string_view(values[i]), val)) continue;
+        stats->SetFromKeyValue(keys[i], val);
       }
     } catch (...) {
       // If plugin doesn't implement GetStats, AllocatorGetStats returns empty KVPs.

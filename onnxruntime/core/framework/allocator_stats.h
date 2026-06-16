@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cstring>
 #include <string>
 #include <sstream>
 
@@ -37,6 +38,34 @@ struct AllocatorStats {
     this->max_alloc_size = 0;
     this->bytes_limit = 0;
     this->total_allocated_bytes = 0;
+  }
+
+  // Assign a stat field by its key name. Returns true if the key was recognized.
+  bool SetFromKeyValue(const char* key, int64_t val) {
+    if (std::strcmp(key, "Limit") == 0) {
+      bytes_limit = val;
+    } else if (std::strcmp(key, "InUse") == 0) {
+      bytes_in_use = val;
+    } else if (std::strcmp(key, "RequestedInUse") == 0) {
+      bytes_requested_in_use = val;
+    } else if (std::strcmp(key, "TotalAllocated") == 0) {
+      total_allocated_bytes = val;
+    } else if (std::strcmp(key, "MaxInUse") == 0) {
+      max_bytes_in_use = val;
+    } else if (std::strcmp(key, "NumAllocs") == 0) {
+      num_allocs = val;
+    } else if (std::strcmp(key, "NumReserves") == 0) {
+      num_reserves = val;
+    } else if (std::strcmp(key, "NumArenaExtensions") == 0) {
+      num_arena_extensions = val;
+    } else if (std::strcmp(key, "NumArenaShrinkages") == 0) {
+      num_arena_shrinkages = val;
+    } else if (std::strcmp(key, "MaxAllocSize") == 0) {
+      max_alloc_size = val;
+    } else {
+      return false;
+    }
+    return true;
   }
 
   std::string DebugString() const {
