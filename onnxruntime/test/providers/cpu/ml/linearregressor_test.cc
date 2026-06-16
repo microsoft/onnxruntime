@@ -223,9 +223,9 @@ TEST(MLOpTest, LinearRegressorMismatchedInterceptsIgnored) {
 TEST(MLOpTest, LinearRegressorCoefficientsOverflow) {
   OpTester test("LinearRegressor", 1, onnxruntime::kMLDomain);
 
-  // Use a large targets value. With a large input dimension, the product overflows.
-  // targets = max_ptrdiff / 2, input features = 3 -> product overflows size_t
-  constexpr int64_t large_targets = static_cast<int64_t>(std::numeric_limits<std::ptrdiff_t>::max() / 2);
+  // Use a targets value that is valid per constructor checks (<= ptrdiff_t::max) but
+  // will overflow when multiplied by num_features (3) after casting to size_t.
+  constexpr int64_t large_targets = static_cast<int64_t>(std::numeric_limits<std::ptrdiff_t>::max());
   test.AddAttribute("targets", large_targets);
   test.AddAttribute("coefficients", std::vector<float>{1.f, 2.f, 3.f});
 
