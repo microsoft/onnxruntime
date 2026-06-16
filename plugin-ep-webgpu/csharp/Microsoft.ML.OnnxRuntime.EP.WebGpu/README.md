@@ -10,6 +10,17 @@ core package (e.g. `Microsoft.ML.OnnxRuntime`) of version `@min_onnxruntime_vers
 If the referenced ONNX Runtime is incompatible, the plugin EP will report an error when its library is
 registered.
 
+On Linux, a system Vulkan loader (`libvulkan.so.1`) must be installed and available at runtime.
+
+### Supported Platforms
+
+| Runtime Identifier (RID) |
+|---|
+| win-x64 |
+| win-arm64 |
+| linux-x64 |
+| osx-arm64 |
+
 ### Installation
 
 ```bash
@@ -51,24 +62,11 @@ sessionOptions.AppendExecutionProvider(env, new[] { webGpuDevice }, new Dictiona
 using var session = new InferenceSession("model.onnx", sessionOptions);
 ```
 
-### Supported Platforms
-
-| Runtime Identifier | Native Library |
-|---|---|
-| win-x64 | `onnxruntime_providers_webgpu.dll`, `dxil.dll`, `dxcompiler.dll` |
-| win-arm64 | `onnxruntime_providers_webgpu.dll`, `dxil.dll`, `dxcompiler.dll` |
-| linux-x64 | `libonnxruntime_providers_webgpu.so` |
-| osx-arm64 | `libonnxruntime_providers_webgpu.dylib` |
-
-On Windows, `dxil.dll` and `dxcompiler.dll` (DirectX Shader Compiler) are bundled with the package. On Linux, a
-system Vulkan loader (`libvulkan.so.1`) is required at runtime and is **not** bundled — install it via your
-distribution's package manager.
-
 ### Troubleshooting
 
 - **`No WebGPU device found`** — the plugin EP loaded but no compatible adapter was discovered. On Linux this
-  usually means the Vulkan loader (`libvulkan.so.1`) is not installed. On Windows it may indicate a missing or
-  outdated GPU driver.
+  usually means the Vulkan loader (`libvulkan.so.1`) is not installed; install it via your distribution's package
+  manager. On Windows it may indicate a missing or outdated GPU driver.
 - **`ORT runtime version "..." is below the minimum required version "@min_onnxruntime_version@"`** — the
-  referenced `Microsoft.ML.OnnxRuntime` package is older than `@min_onnxruntime_version@`. Upgrade the core package
-  reference.
+  referenced `Microsoft.ML.OnnxRuntime` package is older than `@min_onnxruntime_version@`. Upgrade with
+  `dotnet add package Microsoft.ML.OnnxRuntime --version @min_onnxruntime_version@`.

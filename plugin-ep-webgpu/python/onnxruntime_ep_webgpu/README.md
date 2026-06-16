@@ -1,7 +1,6 @@
 # ONNX Runtime WebGPU Plugin Execution Provider
 
-WebGPU Execution Provider plugin for ONNX Runtime. Install alongside `onnxruntime` to enable WebGPU
-acceleration.
+WebGPU Plugin Execution Provider for [ONNX Runtime](https://github.com/microsoft/onnxruntime).
 
 ## Prerequisites
 
@@ -11,18 +10,16 @@ This package provides the WebGPU plugin EP only. You must separately install an 
 If the installed ONNX Runtime is incompatible, the plugin EP will report an error when its library is
 registered.
 
+On Linux, a system Vulkan loader (`libvulkan.so.1`) must be installed and available at runtime.
+
 ## Supported Platforms
 
-| Platform | Native library |
-|---|---|
-| Windows x64 | `onnxruntime_providers_webgpu.dll`, `dxil.dll`, `dxcompiler.dll` |
-| Windows arm64 | `onnxruntime_providers_webgpu.dll`, `dxil.dll`, `dxcompiler.dll` |
-| Linux x64 (manylinux) | `libonnxruntime_providers_webgpu.so` |
-| macOS arm64 | `libonnxruntime_providers_webgpu.dylib` |
-
-On Windows, `dxil.dll` and `dxcompiler.dll` (DirectX Shader Compiler) are bundled with the wheel. On Linux, a system
-Vulkan loader (`libvulkan.so.1`) is required at runtime and is **not** bundled — install it via your distribution
-(e.g. `libvulkan1` on Debian/Ubuntu, `vulkan-loader` on Fedora).
+| Platform |
+|---|
+| Windows x64 |
+| Windows arm64 |
+| Linux x64 (manylinux) |
+| macOS arm64 |
 
 ## Installation
 
