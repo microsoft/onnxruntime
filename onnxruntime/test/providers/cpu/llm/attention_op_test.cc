@@ -3874,8 +3874,11 @@ TEST(AttentionTest, Attention_Unfused_FiniteNegativeBias_NotZeroed_FP16_CUDA) {
 // Structural fully-masked rows with NO attn_mask: is_causal bottom-right + nonpad_kv_seqlen < q
 // leaves the early query rows with an empty causal frontier (offset = nonpad - q_seq < 0), so
 // they must output zero per onnx#8068 even though no attn_mask is present. fp32 head_size=4 +
-// total_sequence_length=4 routes to the MEA path, exercising the ungated (is_causal) fully-masked
-// guard. q_seq=4, nonpad=2: rows 0,1 see zero allowed keys -> 0; row 2 sees key 0; row 3 sees
+// total_sequence_length=4 routes to the UNFUSED path (fp32 disables Flash at attention.cc:114, and
+// head_size=4 fails MEA's (head_size&7)==0 eligibility at memory_efficient_attention.h:68, so it
+// falls through to the unified unfused path at attention.cc:1463/1482 — verified via verbose
+// dispatch logging), exercising the ungated (is_causal) fully-masked guard on that path.
+// q_seq=4, nonpad=2: rows 0,1 see zero allowed keys -> 0; row 2 sees key 0; row 3 sees
 // keys 0,1. Constant Q/K make retained rows the uniform mean of the allowed V rows.
 TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_StructuralEmptyRows_Zero_CUDA) {
   if (!HasCudaEnvironment(0)) {
@@ -3919,7 +3922,10 @@ TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_StructuralEmptyRows_Zero_CUD
 
 // Structural fully-masked rows routed through the FLASH path, SINGLE-TILE epilogue (regression for
 // #28958). Unlike Attention_Causal_NonPadKVSeqLen_StructuralEmptyRows_Zero_CUDA (fp32, head_size=4
-// -> MEA), this uses fp16 + head_size=64 (== v_head_size) + is_causal=1 + nonpad_kv_seqlen < q_seq +
+// -> UNFUSED: fp32 disables Flash at attention.cc:114, and head_size=4 fails MEA's (head_size&7)==0
+// eligibility at memory_efficient_attention.h:68, so it routes to the unified unfused path at
+// attention.cc:1463/1482 — verified via verbose dispatch logging), this uses fp16 + head_size=64
+// (== v_head_size) + is_causal=1 + nonpad_kv_seqlen < q_seq +
 // NO attn_mask + NO past_key, which satisfies flash_eligible (cuda/llm/attention.cc:1385-1397) and
 // routes to RunFlashAttention nonpad Path-1 (mha_fwd_kvcache with seqlens_k). The Flash path has no
 // host-side LaunchZeroFullyMaskedRows guard (that runs only on MEA/unfused), so a structurally empty
@@ -4076,6 +4082,407 @@ TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_FlashStructuralEmptyRows_Zer
   execution_providers.push_back(DefaultCudaExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
+
+// ============================================================================
+// Memory-Efficient Attention (MEA / cutlass FMHA) negative-offset regression tests (#28958).
+//
+// The _FlashStructuralEmptyRows_ tests above use head_size=64, which is Flash-eligible in a normal
+// full build (flash_api.cc:415: head_size%8==0 && head_size<=256) and therefore routes to FA2.
+// They only exercise the buggy MEA path when QUICK_BUILD=ON disables the hdim-64 flash kernel.
+//
+// The tests below force the MEA path in EVERY build config by construction, so coverage of the MEA
+// negative causal_diagonal_offset guard (kernel_forward.h:926) does not depend on the QUICK_BUILD CI
+// leg. The primary mechanism is head_size=512: Flash caps at head_size<=256 in ALL builds and arches
+// (flash_api.cc:415 -> attention.cc:1388 flash_eligible=false), while MEA allows head_size<=1024
+// (memory_efficient_attention.h:14,68-73 has_memory_efficient_attention -> attention.cc:1415-1429
+// mea_eligible=true -> attention.cc:1457 RunMemoryEfficientAttention). With batch=heads=1, fp16/bf16,
+// no attn_mask, no past_key and non-GQA, every MEA-eligibility term is statically true, so the only
+// other reachable branch (the correct unfused path at attention.cc:1463) is unreachable -- this
+// structural guarantee replaces a runtime "which kernel ran" assertion (the unfused fallback would
+// otherwise be a silent false-green because it computes the same frontier correctly). For the same
+// reason every test below is wrapped in SKIP_IF_MEA_NOT_COMPILED(): if MEA is compiled out
+// (onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION=OFF) dispatch falls to the correct unfused path and a
+// value assertion alone could not prove the MEA offset guard ran -- so we SKIP rather than false-pass.
+//
+// MAINTAINER NOTE: if MEA head_size eligibility ever regresses (e.g. kEfficientAttentionMaxHeadSize
+// drops below 512, or a new gate excludes these shapes), dispatch silently falls to the CORRECT
+// unfused path -> these head_size=512 tests would still PASS while no longer guarding the MEA offset
+// fix (false-green). The ...ForceFlashDisabled_{FP16,BF16} tests below (head_size=64 +
+// ORT_DISABLE_FLASH_ATTENTION=1) are the deliberate cross-check for that regime -- keep them.
+//
+// Negative offset = nonpad_kv_seqlen(2) - q_sequence_length(4) = -2 reproduces the bug: pre-fix the
+// uint32_t causal_diagonal_offset wraps, row 2 attends keys 0 AND 1 -> mean(V0,V1)=2 instead of V0=1
+// (row 2 flat index 1024 for head_size=512). Post-fix the int32_t offset keeps -2 signed, row 2 ->
+// V0=1. Expected frontier per query row: {0, 0, 1, 2} (rows 0,1 structurally empty -> 0; row2 ->
+// V0=1; row3 -> mean(V0,V1)=2).
+
+// SKIP (not pass) when MEA is not compiled: without it dispatch falls to the unfused path, which
+// computes the same frontier correctly, so the value assertions below cannot prove the MEA negative
+// causal_diagonal_offset guard ran. Defined here, #undef'd after the last MEA test in this block.
+#if USE_MEMORY_EFFICIENT_ATTENTION
+#define SKIP_IF_MEA_NOT_COMPILED() ((void)0)
+#else
+#define SKIP_IF_MEA_NOT_COMPILED() \
+  GTEST_SKIP() << "Memory Efficient Attention not compiled (onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION=OFF)"
+#endif
+
+TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_MEA_NegOffset_HeadSize512_FP16_CUDA) {
+  SKIP_IF_MEA_NOT_COMPILED();
+  if (!HasCudaEnvironment(530)) {
+    return;  // MEA fp16 requires SM 5.3+ (memory_efficient_attention.h:has_memory_efficient_attention)
+  }
+  constexpr int kHeadSize = 512;  // > 256 -> Flash-ineligible in ALL builds; <= 1024 -> MEA-eligible
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(1));
+
+  std::vector<int64_t> q_shape = {1, 1, 4, kHeadSize};
+  std::vector<int64_t> k_shape = {1, 1, 4, kHeadSize};
+  std::vector<int64_t> v_shape = {1, 1, 4, kHeadSize};
+
+  std::vector<float> q(1 * 1 * 4 * kHeadSize, 1.0f);
+  std::vector<float> k(1 * 1 * 4 * kHeadSize, 1.0f);
+  // V row 0 = 1, V row 1 = 3 (V rows 2,3 are padding beyond nonpad=2 and never attended). The
+  // padding values 7,9 are deliberately distinct nonzero "poison" values: if a boundary row
+  // over-attends into the padding (the pre-fix wrap bug), the output shifts visibly off {0,0,1,2}.
+  const float v_row_values[4] = {1.0f, 3.0f, 7.0f, 9.0f};
+  std::vector<float> v;
+  v.reserve(4 * kHeadSize);
+  for (int s = 0; s < 4; ++s)
+    for (int h = 0; h < kHeadSize; ++h) v.push_back(v_row_values[s]);
+
+  test.AddInput<MLFloat16>("Q", q_shape, ToFloat16(q));
+  test.AddInput<MLFloat16>("K", k_shape, ToFloat16(k));
+  test.AddInput<MLFloat16>("V", v_shape, ToFloat16(v));
+  test.AddOptionalInputEdge<bool>();       // attn_mask (none -> keeps MEA eligible, no bias path)
+  test.AddOptionalInputEdge<MLFloat16>();  // past_key
+  test.AddOptionalInputEdge<MLFloat16>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {1}, {2});
+
+  // Rows 0,1 structurally empty -> 0. Row 2 -> V[0]=1. Row 3 -> mean(V[0],V[1])=2.
+  std::vector<float> expected_y_f;
+  expected_y_f.reserve(4 * kHeadSize);
+  const float expected_row[4] = {0.0f, 0.0f, 1.0f, 2.0f};
+  for (int s = 0; s < 4; ++s)
+    for (int h = 0; h < kHeadSize; ++h) expected_y_f.push_back(expected_row[s]);
+  test.AddOutput<MLFloat16>("Y", {1, 1, 4, kHeadSize}, ToFloat16(expected_y_f), false, 0, 0.02f);
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_key
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// BFloat16 counterpart of the head_size=512 MEA negative-offset regression above. BFloat16 MEA
+// requires SM 8.0+. Same shapes/expectations; exercises the same int32_t causal_diagonal_offset guard.
+// Tolerance is 0.03 here vs 0.02 for fp16 because bf16's narrower 7-bit mantissa (vs fp16's 10-bit)
+// gives a coarser representation of the averaged outputs.
+TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_MEA_NegOffset_HeadSize512_BF16_CUDA) {
+  SKIP_IF_MEA_NOT_COMPILED();
+  if (!HasCudaEnvironment(800)) {
+    return;  // BFloat16 MEA requires SM 8.0+
+  }
+  constexpr int kHeadSize = 512;  // > 256 -> Flash-ineligible in ALL builds; <= 1024 -> MEA-eligible
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(1));
+
+  std::vector<int64_t> q_shape = {1, 1, 4, kHeadSize};
+  std::vector<int64_t> k_shape = {1, 1, 4, kHeadSize};
+  std::vector<int64_t> v_shape = {1, 1, 4, kHeadSize};
+
+  std::vector<float> q(1 * 1 * 4 * kHeadSize, 1.0f);
+  std::vector<float> k(1 * 1 * 4 * kHeadSize, 1.0f);
+  const float v_row_values[4] = {1.0f, 3.0f, 7.0f, 9.0f};
+  std::vector<float> v;
+  v.reserve(4 * kHeadSize);
+  for (int s = 0; s < 4; ++s)
+    for (int h = 0; h < kHeadSize; ++h) v.push_back(v_row_values[s]);
+
+  test.AddInput<BFloat16>("Q", q_shape, FloatsToBFloat16s(q));
+  test.AddInput<BFloat16>("K", k_shape, FloatsToBFloat16s(k));
+  test.AddInput<BFloat16>("V", v_shape, FloatsToBFloat16s(v));
+  test.AddOptionalInputEdge<bool>();      // attn_mask (none)
+  test.AddOptionalInputEdge<BFloat16>();  // past_key
+  test.AddOptionalInputEdge<BFloat16>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {1}, {2});
+
+  std::vector<float> expected_y_f;
+  expected_y_f.reserve(4 * kHeadSize);
+  const float expected_row[4] = {0.0f, 0.0f, 1.0f, 2.0f};
+  for (int s = 0; s < 4; ++s)
+    for (int h = 0; h < kHeadSize; ++h) expected_y_f.push_back(expected_row[s]);
+  test.AddOutput<BFloat16>("Y", {1, 1, 4, kHeadSize}, FloatsToBFloat16s(expected_y_f), false, 0, 0.03f);
+  test.AddOptionalOutputEdge<BFloat16>();  // present_key
+  test.AddOptionalOutputEdge<BFloat16>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Defense-in-depth: zero offset (nonpad_kv_seqlen == q_sequence_length -> offset = 0). FIX_int32_offset
+// asserts offset >= 0 paths are bit-identical (no value ever wrapped). This locks that the int32_t
+// change did not regress the standard bottom-right == top-left causal case through the MEA path.
+// No structurally empty rows: every query attends a non-empty key prefix.
+TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_MEA_ZeroOffset_HeadSize512_FP16_CUDA) {
+  SKIP_IF_MEA_NOT_COMPILED();
+  if (!HasCudaEnvironment(530)) {
+    return;  // MEA fp16 requires SM 5.3+
+  }
+  constexpr int kHeadSize = 512;
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(1));
+
+  std::vector<int64_t> q_shape = {1, 1, 4, kHeadSize};
+  std::vector<int64_t> k_shape = {1, 1, 4, kHeadSize};
+  std::vector<int64_t> v_shape = {1, 1, 4, kHeadSize};
+
+  std::vector<float> q(1 * 1 * 4 * kHeadSize, 1.0f);
+  std::vector<float> k(1 * 1 * 4 * kHeadSize, 1.0f);
+  // All 4 keys are non-pad (nonpad == q_seq). V rows = {1,3,5,7}.
+  const float v_row_values[4] = {1.0f, 3.0f, 5.0f, 7.0f};
+  std::vector<float> v;
+  v.reserve(4 * kHeadSize);
+  for (int s = 0; s < 4; ++s)
+    for (int h = 0; h < kHeadSize; ++h) v.push_back(v_row_values[s]);
+
+  test.AddInput<MLFloat16>("Q", q_shape, ToFloat16(q));
+  test.AddInput<MLFloat16>("K", k_shape, ToFloat16(k));
+  test.AddInput<MLFloat16>("V", v_shape, ToFloat16(v));
+  test.AddOptionalInputEdge<bool>();       // attn_mask (none)
+  test.AddOptionalInputEdge<MLFloat16>();  // past_key
+  test.AddOptionalInputEdge<MLFloat16>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {1}, {4});
+
+  // offset = 4 - 4 = 0. Row i attends keys 0..i: row0 -> V0=1; row1 -> mean(V0,V1)=2;
+  // row2 -> mean(V0,V1,V2)=3; row3 -> mean(V0..V3)=4.
+  std::vector<float> expected_y_f;
+  expected_y_f.reserve(4 * kHeadSize);
+  const float expected_row[4] = {1.0f, 2.0f, 3.0f, 4.0f};
+  for (int s = 0; s < 4; ++s)
+    for (int h = 0; h < kHeadSize; ++h) expected_y_f.push_back(expected_row[s]);
+  test.AddOutput<MLFloat16>("Y", {1, 1, 4, kHeadSize}, ToFloat16(expected_y_f), false, 0, 0.02f);
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_key
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Defense-in-depth: positive offset (nonpad_kv_seqlen > q_sequence_length -> offset > 0, the
+// external-KV-cache-longer-than-query frontier). offset = nonpad(6) - q_seq(4) = +2. Confirms the
+// int32_t change leaves the positive-offset bottom-right alignment unchanged through MEA.
+TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_MEA_PositiveOffset_HeadSize512_FP16_CUDA) {
+  SKIP_IF_MEA_NOT_COMPILED();
+  if (!HasCudaEnvironment(530)) {
+    return;  // MEA fp16 requires SM 5.3+
+  }
+  constexpr int kHeadSize = 512;
+  constexpr int kKvSeqLen = 6;  // all 6 KV positions non-pad; offset = 6 - 4 = +2
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(1));
+
+  std::vector<int64_t> q_shape = {1, 1, 4, kHeadSize};
+  std::vector<int64_t> k_shape = {1, 1, kKvSeqLen, kHeadSize};
+  std::vector<int64_t> v_shape = {1, 1, kKvSeqLen, kHeadSize};
+
+  std::vector<float> q(1 * 1 * 4 * kHeadSize, 1.0f);
+  std::vector<float> k(1 * 1 * kKvSeqLen * kHeadSize, 1.0f);
+  // V rows = {1,3,5,7,9,11}.
+  const float v_row_values[kKvSeqLen] = {1.0f, 3.0f, 5.0f, 7.0f, 9.0f, 11.0f};
+  std::vector<float> v;
+  v.reserve(kKvSeqLen * kHeadSize);
+  for (int s = 0; s < kKvSeqLen; ++s)
+    for (int h = 0; h < kHeadSize; ++h) v.push_back(v_row_values[s]);
+
+  test.AddInput<MLFloat16>("Q", q_shape, ToFloat16(q));
+  test.AddInput<MLFloat16>("K", k_shape, ToFloat16(k));
+  test.AddInput<MLFloat16>("V", v_shape, ToFloat16(v));
+  test.AddOptionalInputEdge<bool>();       // attn_mask (none)
+  test.AddOptionalInputEdge<MLFloat16>();  // past_key
+  test.AddOptionalInputEdge<MLFloat16>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {1}, {kKvSeqLen});
+
+  // Row i attends keys 0..(i+2): row0 -> mean(V0,V1,V2)=3; row1 -> mean(V0..V3)=4;
+  // row2 -> mean(V0..V4)=5; row3 -> mean(V0..V5)=6.
+  std::vector<float> expected_y_f;
+  expected_y_f.reserve(4 * kHeadSize);
+  const float expected_row[4] = {3.0f, 4.0f, 5.0f, 6.0f};
+  for (int s = 0; s < 4; ++s)
+    for (int h = 0; h < kHeadSize; ++h) expected_y_f.push_back(expected_row[s]);
+  test.AddOutput<MLFloat16>("Y", {1, 1, 4, kHeadSize}, ToFloat16(expected_y_f), false, 0, 0.02f);
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_key
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Fallback / additional coverage: pins the head_size=64 MEA regime (the exact CI QUICK_BUILD
+// scenario) in a FULL build by forcing Flash off via ORT_DISABLE_FLASH_ATTENTION=1. ScopedEnvironment
+// Variables is re-read per run because DefaultCudaExecutionProvider() builds a fresh EP each Run, so
+// AttentionKernelOptions::InitializeOnce (std::call_once per EP) re-parses the env (validated). With
+// Flash disabled, head_size=64 + negative offset routes to RunMemoryEfficientAttention exactly as the
+// head_size=512 tests, but locks the head_size<=256 dimension the QUICK_BUILD leg used to own.
+TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_MEA_NegOffset_ForceFlashDisabled_FP16_CUDA) {
+  SKIP_IF_MEA_NOT_COMPILED();
+  if (!HasCudaEnvironment(530)) {
+    return;  // MEA fp16 requires SM 5.3+
+  }
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{{onnxruntime::contrib::attention::kDisableFlashAttention, "1"}}};
+
+  constexpr int kHeadSize = 64;
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(1));
+
+  std::vector<int64_t> q_shape = {1, 1, 4, kHeadSize};
+  std::vector<int64_t> k_shape = {1, 1, 4, kHeadSize};
+  std::vector<int64_t> v_shape = {1, 1, 4, kHeadSize};
+
+  std::vector<float> q(1 * 1 * 4 * kHeadSize, 1.0f);
+  std::vector<float> k(1 * 1 * 4 * kHeadSize, 1.0f);
+  const float v_row_values[4] = {1.0f, 3.0f, 7.0f, 9.0f};
+  std::vector<float> v;
+  v.reserve(4 * kHeadSize);
+  for (int s = 0; s < 4; ++s)
+    for (int h = 0; h < kHeadSize; ++h) v.push_back(v_row_values[s]);
+
+  test.AddInput<MLFloat16>("Q", q_shape, ToFloat16(q));
+  test.AddInput<MLFloat16>("K", k_shape, ToFloat16(k));
+  test.AddInput<MLFloat16>("V", v_shape, ToFloat16(v));
+  test.AddOptionalInputEdge<bool>();       // attn_mask (none)
+  test.AddOptionalInputEdge<MLFloat16>();  // past_key
+  test.AddOptionalInputEdge<MLFloat16>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {1}, {2});
+
+  std::vector<float> expected_y_f;
+  expected_y_f.reserve(4 * kHeadSize);
+  const float expected_row[4] = {0.0f, 0.0f, 1.0f, 2.0f};
+  for (int s = 0; s < 4; ++s)
+    for (int h = 0; h < kHeadSize; ++h) expected_y_f.push_back(expected_row[s]);
+  test.AddOutput<MLFloat16>("Y", {1, 1, 4, kHeadSize}, ToFloat16(expected_y_f), false, 0, 0.02f);
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_key
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// BFloat16 counterpart of the head_size=64 ORT_DISABLE_FLASH_ATTENTION force-MEA test above,
+// completing the force-MEA {FP16, BF16} matrix for the QUICK_BUILD head_size<=256 regime. BFloat16
+// MEA requires SM 8.0+. Same negative-offset frontier {0,0,1,2}; exercises the same int32_t
+// causal_diagonal_offset guard with Flash forced off in a full build.
+TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_MEA_NegOffset_ForceFlashDisabled_BF16_CUDA) {
+  SKIP_IF_MEA_NOT_COMPILED();
+  if (!HasCudaEnvironment(800)) {
+    return;  // BFloat16 MEA requires SM 8.0+
+  }
+  ScopedEnvironmentVariables scoped_env_vars{
+      EnvVarMap{{onnxruntime::contrib::attention::kDisableFlashAttention, "1"}}};
+
+  constexpr int kHeadSize = 64;
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(1));
+
+  std::vector<int64_t> q_shape = {1, 1, 4, kHeadSize};
+  std::vector<int64_t> k_shape = {1, 1, 4, kHeadSize};
+  std::vector<int64_t> v_shape = {1, 1, 4, kHeadSize};
+
+  std::vector<float> q(1 * 1 * 4 * kHeadSize, 1.0f);
+  std::vector<float> k(1 * 1 * 4 * kHeadSize, 1.0f);
+  const float v_row_values[4] = {1.0f, 3.0f, 7.0f, 9.0f};
+  std::vector<float> v;
+  v.reserve(4 * kHeadSize);
+  for (int s = 0; s < 4; ++s)
+    for (int h = 0; h < kHeadSize; ++h) v.push_back(v_row_values[s]);
+
+  test.AddInput<BFloat16>("Q", q_shape, FloatsToBFloat16s(q));
+  test.AddInput<BFloat16>("K", k_shape, FloatsToBFloat16s(k));
+  test.AddInput<BFloat16>("V", v_shape, FloatsToBFloat16s(v));
+  test.AddOptionalInputEdge<bool>();      // attn_mask (none)
+  test.AddOptionalInputEdge<BFloat16>();  // past_key
+  test.AddOptionalInputEdge<BFloat16>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {1}, {2});
+
+  std::vector<float> expected_y_f;
+  expected_y_f.reserve(4 * kHeadSize);
+  const float expected_row[4] = {0.0f, 0.0f, 1.0f, 2.0f};
+  for (int s = 0; s < 4; ++s)
+    for (int h = 0; h < kHeadSize; ++h) expected_y_f.push_back(expected_row[s]);
+  test.AddOutput<BFloat16>("Y", {1, 1, 4, kHeadSize}, FloatsToBFloat16s(expected_y_f), false, 0, 0.03f);
+  test.AddOptionalOutputEdge<BFloat16>();  // present_key
+  test.AddOptionalOutputEdge<BFloat16>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Per-batch coverage of the production RightPaddingBatchHook: batch=2 with mixed nonpad_kv_seqlen
+// {2, 6} and a shared kv_seq=6. Each batch entry computes its OWN causal_diagonal_offset =
+// nonpad_kv_seqlen[b] - q_sequence_length, so batch 0 gets a NEGATIVE offset (2 - 4 = -2, the wrap
+// bug regime) while batch 1 gets a POSITIVE offset (6 - 4 = +2). This exercises the per-batch offset
+// path that the batch=1 tests cannot reach. head_size=512 keeps it flag-free MEA by construction.
+// Batch 0 frontier {0, 0, 1, 2} (rows 0,1 structurally empty; row2 -> V0; row3 -> mean(V0,V1));
+// keys 2..5 are padding (poison V = 7,9,13,15) and must never leak. Batch 1 has all 6 keys valid:
+// row i attends keys 0..(i+2) -> {mean(V0..V2), mean(V0..V3), mean(V0..V4), mean(V0..V5)} = {3,4,5,6}.
+TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_MEA_MixedBatchOffsets_HeadSize512_FP16_CUDA) {
+  SKIP_IF_MEA_NOT_COMPILED();
+  if (!HasCudaEnvironment(530)) {
+    return;  // MEA fp16 requires SM 5.3+
+  }
+  constexpr int kHeadSize = 512;
+  constexpr int kBatch = 2;
+  constexpr int kQSeq = 4;
+  constexpr int kKvSeq = 6;
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(1));
+
+  std::vector<int64_t> q_shape = {kBatch, 1, kQSeq, kHeadSize};
+  std::vector<int64_t> k_shape = {kBatch, 1, kKvSeq, kHeadSize};
+  std::vector<int64_t> v_shape = {kBatch, 1, kKvSeq, kHeadSize};
+
+  std::vector<float> q(kBatch * kQSeq * kHeadSize, 1.0f);
+  std::vector<float> k(kBatch * kKvSeq * kHeadSize, 1.0f);
+  // Batch 0: V rows {1,3,7,9,13,15} -- only rows 0,1 are non-pad (nonpad=2); 7,9,13,15 are poison.
+  // Batch 1: V rows {1,3,5,7,9,11} -- all 6 non-pad (nonpad=6).
+  const float v_row_values[kBatch][kKvSeq] = {{1.0f, 3.0f, 7.0f, 9.0f, 13.0f, 15.0f},
+                                              {1.0f, 3.0f, 5.0f, 7.0f, 9.0f, 11.0f}};
+  std::vector<float> v;
+  v.reserve(kBatch * kKvSeq * kHeadSize);
+  for (int b = 0; b < kBatch; ++b)
+    for (int s = 0; s < kKvSeq; ++s)
+      for (int h = 0; h < kHeadSize; ++h) v.push_back(v_row_values[b][s]);
+
+  test.AddInput<MLFloat16>("Q", q_shape, ToFloat16(q));
+  test.AddInput<MLFloat16>("K", k_shape, ToFloat16(k));
+  test.AddInput<MLFloat16>("V", v_shape, ToFloat16(v));
+  test.AddOptionalInputEdge<bool>();       // attn_mask (none)
+  test.AddOptionalInputEdge<MLFloat16>();  // past_key
+  test.AddOptionalInputEdge<MLFloat16>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {kBatch}, {2, 6});
+
+  // Batch 0 (offset -2): {0,0,1,2}. Batch 1 (offset +2): {3,4,5,6}.
+  const float expected_rows[kBatch][kQSeq] = {{0.0f, 0.0f, 1.0f, 2.0f}, {3.0f, 4.0f, 5.0f, 6.0f}};
+  std::vector<float> expected_y_f;
+  expected_y_f.reserve(kBatch * kQSeq * kHeadSize);
+  for (int b = 0; b < kBatch; ++b)
+    for (int s = 0; s < kQSeq; ++s)
+      for (int h = 0; h < kHeadSize; ++h) expected_y_f.push_back(expected_rows[b][s]);
+  test.AddOutput<MLFloat16>("Y", {kBatch, 1, kQSeq, kHeadSize}, ToFloat16(expected_y_f), false, 0, 0.02f);
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_key
+  test.AddOptionalOutputEdge<MLFloat16>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+#undef SKIP_IF_MEA_NOT_COMPILED
 
 }  // namespace test
 }  // namespace onnxruntime
