@@ -55,16 +55,30 @@ LinearClassifier::LinearClassifier(const OpKernelInfo& info)
   }
 
   // Validate that the class labels array is consistent with the number of classes.
-  // For binary classification (class_count == 1), classlabels may have 2 elements (positive/negative).
+  // For binary classification (class_count == 1), the compute path uses labels only when
+  // the array has exactly 2 elements (negative/positive). Any other non-empty size would be
+  // silently ignored, so reject it to catch misconfigured models.
   // For multi-class, classlabels must have at least class_count elements.
   if (using_strings_) {
-    ORT_ENFORCE(classlabels_strings_.size() >= static_cast<size_t>(class_count_),
-                "LinearClassifier: classlabels_strings has ", classlabels_strings_.size(),
-                " elements but intercepts defines ", class_count_, " classes.");
+    if (class_count_ == 1) {
+      ORT_ENFORCE(classlabels_strings_.size() == 2,
+                  "LinearClassifier: classlabels_strings must have exactly 2 elements for binary ",
+                  "classification, got ", classlabels_strings_.size(), ".");
+    } else {
+      ORT_ENFORCE(classlabels_strings_.size() >= static_cast<size_t>(class_count_),
+                  "LinearClassifier: classlabels_strings has ", classlabels_strings_.size(),
+                  " elements but intercepts defines ", class_count_, " classes.");
+    }
   } else if (!classlabels_ints_.empty()) {
-    ORT_ENFORCE(classlabels_ints_.size() >= static_cast<size_t>(class_count_),
-                "LinearClassifier: classlabels_ints has ", classlabels_ints_.size(),
-                " elements but intercepts defines ", class_count_, " classes.");
+    if (class_count_ == 1) {
+      ORT_ENFORCE(classlabels_ints_.size() == 2,
+                  "LinearClassifier: classlabels_ints must have exactly 2 elements for binary ",
+                  "classification, got ", classlabels_ints_.size(), ".");
+    } else {
+      ORT_ENFORCE(classlabels_ints_.size() >= static_cast<size_t>(class_count_),
+                  "LinearClassifier: classlabels_ints has ", classlabels_ints_.size(),
+                  " elements but intercepts defines ", class_count_, " classes.");
+    }
   }
 
   // Validate that coefficients size is consistent with the number of classes.

@@ -350,6 +350,45 @@ TEST(MLOpTest, LinearClassifierMulticlassNoClassLabelsFails) {
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "classlabels_ints or classlabels_strings must be provided");
 }
+
+// Regression test: binary classification with 1 label (not 2) should be rejected.
+TEST(MLOpTest, LinearClassifierBinaryWrongLabelCountFails) {
+  OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
+
+  // 1 intercept => binary, but only 1 label instead of required 2.
+  std::vector<float> coefficients = {1.f, 2.f};
+  std::vector<float> intercepts = {0.f};
+
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("intercepts", intercepts);
+  test.AddAttribute("classlabels_ints", std::vector<int64_t>{42});
+
+  test.AddInput<float>("X", {1, 2}, {1.f, 2.f});
+  test.AddOutput<int64_t>("Y", {1}, {0LL});
+  test.AddOutput<float>("Z", {1, 1}, {0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "classlabels_ints must have exactly 2 elements for binary classification");
+}
+
+// Regression test: binary classification with 3 string labels should be rejected.
+TEST(MLOpTest, LinearClassifierBinaryTooManyStringLabelsFails) {
+  OpTester test("LinearClassifier", 1, onnxruntime::kMLDomain);
+
+  std::vector<float> coefficients = {1.f, 2.f};
+  std::vector<float> intercepts = {0.f};
+
+  test.AddAttribute("coefficients", coefficients);
+  test.AddAttribute("intercepts", intercepts);
+  test.AddAttribute("classlabels_strings", std::vector<std::string>{"a", "b", "c"});
+
+  test.AddInput<float>("X", {1, 2}, {1.f, 2.f});
+  test.AddOutput<std::string>("Y", {1}, {std::string("a")});
+  test.AddOutput<float>("Z", {1, 1}, {0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "classlabels_strings must have exactly 2 elements for binary classification");
+}
 #endif  // !defined(ORT_NO_EXCEPTIONS)
 
 // Input must be 1-D or 2-D. 3-D input should fail at runtime.
