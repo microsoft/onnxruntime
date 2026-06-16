@@ -431,6 +431,8 @@ ORT_API_STATUS_IMPL(SetGlobalIntraOpThreadAffinity, _Inout_ OrtThreadingOptions*
 ORT_API_STATUS_IMPL(SetPerSessionThreadPoolCallbacks, _Inout_ OrtEnv* ort_env,
                     _In_ const OrtThreadPoolCallbacksConfig* config);
 
+ORT_API_STATUS_IMPL(SessionReleaseCapturedGraph, _In_ OrtSession* session, _In_ int graph_annotation_id);
+
 ORT_API_STATUS_IMPL(RegisterCustomOpsLibrary_V2, _Inout_ OrtSessionOptions* options,
                     _In_ const ORTCHAR_T* library_name);
 ORT_API_STATUS_IMPL(RegisterCustomOpsUsingFunction, _Inout_ OrtSessionOptions* options,
@@ -822,5 +824,8 @@ ORT_API_STATUS_IMPL(GetTensorElementTypeAndShapeDataReference, _In_ const OrtVal
                     _Out_ ONNXTensorElementDataType* elem_type,
                     _Outptr_result_maybenull_ const int64_t** shape_data,
                     _Out_ size_t* shape_data_count);
+
+// Experimental API
+ORT_API(OrtExperimentalFnPtr, GetExperimentalFunction, _In_ const char* name);
 
 }  // namespace OrtApis

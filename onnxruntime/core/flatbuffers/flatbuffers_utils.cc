@@ -282,6 +282,7 @@ Status LoadValueInfoOrtFormat(const fbs::ValueInfo& fbs_value_info,
 Status LoadOpsetImportOrtFormat(const flatbuffers::Vector<flatbuffers::Offset<fbs::OperatorSetId>>* fbs_op_set_ids,
                                 std::unordered_map<std::string, int>& domain_to_version) {
   ORT_RETURN_IF(nullptr == fbs_op_set_ids, "Model must have opset imports. Invalid ORT format model.");
+  ORT_RETURN_IF_ERROR(ValidateRequiredTableOffsets(fbs_op_set_ids, "opset import"));
 
   domain_to_version.clear();
   domain_to_version.reserve(fbs_op_set_ids->size());

@@ -38,6 +38,8 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   CreateUnaryOpBuilder("Round", op_registrations);
   CreateUnaryOpBuilder("Sqrt", op_registrations);
   CreateUnaryOpBuilder("Exp", op_registrations);
+  CreateUnaryOpBuilder("Sin", op_registrations);
+  CreateUnaryOpBuilder("Cos", op_registrations);
   CreateUnaryOpBuilder("Ceil", op_registrations);
 
   // Binary elementwise ops
@@ -67,6 +69,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   CreateNormalizationOpBuilder("InstanceNormalization", op_registrations);
   CreateNormalizationOpBuilder("LayerNormalization", op_registrations);
 
+  CreateLogicalOpBuilder("And", op_registrations);
   CreateArgMaxOpBuilder("ArgMax", op_registrations);
   CreateCastOpBuilder("Cast", op_registrations);
   CreateClipOpBuilder("Clip", op_registrations);
@@ -76,6 +79,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   CreateDepthToSpaceOpBuilder("DepthToSpace", op_registrations);
   CreateFlattenOpBuilder("Flatten", op_registrations);
   CreateGatherOpBuilder("Gather", op_registrations);
+  CreateGatherNDOpBuilder("GatherND", op_registrations);
   CreateGemmOpBuilder("Gemm", op_registrations);
   CreateGridSampleOpBuilder("GridSample", op_registrations);
   CreateIdentityOpBuilder("Identity", op_registrations);
@@ -92,6 +96,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   CreateTileOpBuilder("Tile", op_registrations);
   CreateTransposeOpBuilder("Transpose", op_registrations);
   CreateSqueezeOpBuilder("Unsqueeze", op_registrations);
+  CreateWhereOpBuilder("Where", op_registrations);
 
   return op_registrations;
 }

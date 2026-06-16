@@ -151,16 +151,26 @@ class LoraAdapter {
   }
 
  private:
-  void InitializeParamsValues();
+  // Build a fresh parameter map from the supplied adapter pointer (which must alias
+  // memory the caller is keeping alive). Throws on validation failure. Does not
+  // touch this->params_values_ / buffer_ / adapter_; callers are responsible for
+  // committing the result only after they have also committed the new backing
+  // storage. Keeping this function free of side effects on *this is what gives
+  // Load()/MemoryMap() the strong exception guarantee.
+  std::unordered_map<std::string, Param> BuildParamsValues(const adapters::Adapter* adapter) const;
 
   struct BufferHolder {
-    explicit BufferHolder(std::vector<uint8_t> buffer) : buffer_(std::move(buffer)) {}
+    explicit BufferHolder(std::vector<uint8_t> buffer) noexcept : buffer_(std::move(buffer)) {}
+    BufferHolder(BufferHolder&&) noexcept = default;
+    BufferHolder& operator=(BufferHolder&&) noexcept = default;
     std::vector<uint8_t> buffer_;
   };
 
   struct MemMapHolder {
-    MemMapHolder(Env::MappedMemoryPtr mapped_memory, size_t file_size)
+    MemMapHolder(Env::MappedMemoryPtr mapped_memory, size_t file_size) noexcept
         : mapped_memory_(std::move(mapped_memory)), file_size_(file_size) {}
+    MemMapHolder(MemMapHolder&&) noexcept = default;
+    MemMapHolder& operator=(MemMapHolder&&) noexcept = default;
     Env::MappedMemoryPtr mapped_memory_;
     size_t file_size_;
   };

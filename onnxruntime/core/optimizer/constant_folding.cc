@@ -249,15 +249,72 @@ static int64_t EstimateIdentityOutputSizeInBytes(const Node& node) {
   return EstimateTensorSizeInBytes(*input_defs[0]);
 }
 
+// ConstantOfShape's output shape is determined by the values of its first input (a shape tensor),
+// which is required to be a constant initializer for the node to be eligible for constant folding.
+// Compute the output byte size directly from that initializer so we do not have to rely on ONNX
+// shape inference having propagated the shape onto the output NodeArg (which is not guaranteed
+// for all opsets, all shapes-as-initializers, or all build configurations).
+static int64_t EstimateConstantOfShapeOutputSizeInBytes(const Node& node, const Graph& graph) {
+  const auto& input_defs = node.InputDefs();
+  if (input_defs.empty() || input_defs[0] == nullptr || !input_defs[0]->Exists()) {
+    return -1;
+  }
+
+  constexpr bool check_outer_scope = true;
+  const ONNX_NAMESPACE::TensorProto* shape_init =
+      graph.GetConstantInitializer(input_defs[0]->Name(), check_outer_scope);
+  if (shape_init == nullptr) {
+    return -1;
+  }
+
+  Initializer shape_data{graph, *shape_init, graph.ModelPath()};
+  if (shape_data.data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+    return -1;
+  }
+
+  SafeInt<int64_t> num_elements = 1;
+  for (int64_t dim : shape_data.DataAsSpan<int64_t>()) {
+    if (dim < 0) {
+      return -1;  // Invalid shape value; let the kernel reject it.
+    }
+    num_elements *= dim;
+  }
+
+  // Determine the element size of the output. The ONNX spec for ConstantOfShape defaults the
+  // element type to float when the optional 'value' attribute is absent.
+  size_t element_size = sizeof(float);
+  const auto& attrs = node.GetAttributes();
+  auto it = attrs.find("value");
+  if (it != attrs.end() && it->second.type() == ONNX_NAMESPACE::AttributeProto::TENSOR) {
+    const auto elem_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(
+        it->second.t().data_type());
+    const size_t es = GetElementSizeForConstantFolding(elem_type);
+    if (es != 0) {
+      element_size = es;
+    }
+  }
+
+  return num_elements * static_cast<int64_t>(element_size);
+}
+
 // Estimate the total output size in bytes for a node using shape inference results.
 // Returns -1 if the output size cannot be estimated (e.g., unknown shapes or types).
-static int64_t EstimateNodeOutputSizeInBytes(const Node& node) {
+static int64_t EstimateNodeOutputSizeInBytes(const Node& node, const Graph& graph) {
   if (node.OpType() == "Identity" && node.Domain().empty()) {
     return EstimateIdentityOutputSizeInBytes(node);
   }
 
   if (node.OpType() == "Unique" && node.Domain().empty()) {
     return EstimateUniqueOutputSizeInBytes(node);
+  }
+
+  if (node.OpType() == "ConstantOfShape" && node.Domain().empty()) {
+    const int64_t size = EstimateConstantOfShapeOutputSizeInBytes(node, graph);
+    if (size >= 0) {
+      return size;
+    }
+    // Fall through to the generic estimator if we could not derive a size from the input
+    // initializer (e.g., the shape input is not a recognizable constant initializer).
   }
 
   SafeInt<int64_t> total_size = 0;
@@ -391,7 +448,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       if (max_output_size > 0) {
         int64_t estimated_size = -1;
         try {
-          estimated_size = EstimateNodeOutputSizeInBytes(*node);
+          estimated_size = EstimateNodeOutputSizeInBytes(*node, graph);
         } catch (const std::exception&) {
           // SafeInt overflow means the size is astronomically large - definitely skip
           LOGS(logger, WARNING) << "Integer overflow while estimating output size of "
