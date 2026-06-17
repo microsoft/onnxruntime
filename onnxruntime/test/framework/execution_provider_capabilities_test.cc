@@ -64,9 +64,17 @@ class TuningEp : public IExecutionProvider, public ITuningCapability {
     return const_cast<TuningEp*>(this);
   }
 
-  // ITuningCapability. Returns nullptr (no real tuning state) -- the test only
-  // needs to prove the call path is reachable through the mix-in.
-  ITuningContext* GetTuningContext() const override { return nullptr; }
+  // ITuningCapability. Returns nullptr (no real tuning state); a call counter
+  // proves the call is routed to the concrete implementation through the mix-in.
+  ITuningContext* GetTuningContext() const override {
+    ++tuning_query_count_;
+    return nullptr;
+  }
+
+  int tuning_query_count() const { return tuning_query_count_; }
+
+ private:
+  mutable int tuning_query_count_ = 0;
 };
 
 // An EP that supports only a data-layout preference.
@@ -86,6 +94,74 @@ class DataLayoutEp : public IExecutionProvider, public IDataLayoutCapability {
     if (target_data_layout == DataLayout::NHWC && op_type == "Conv") {
       return true;
     }
+    return std::nullopt;
+  }
+};
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+// An EP that supports only subgraph compilation. Call markers prove the calls
+// route to the concrete implementation through the mix-in.
+class CompileEp : public IExecutionProvider, public ICompileCapability {
+ public:
+  CompileEp() : IExecutionProvider(kFakeEpType) {}
+
+  ICompileCapability* GetCompileCapability() noexcept override { return this; }
+
+  // ICompileCapability
+  common::Status Compile(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
+                         std::vector<NodeComputeInfo>& /*node_compute_funcs*/) override {
+    last_fused_count_ = fused_nodes_and_graphs.size();
+    ++compile_call_count_;
+    return Status::OK();
+  }
+  std::string GetCompiledModelCompatibilityInfo(const GraphViewer& /*graph_viewer*/) const override {
+    return kCompatInfo;
+  }
+  common::Status ValidateCompiledModelCompatibilityInfo(
+      const std::string& compatibility_info,
+      OrtCompiledModelCompatibility& model_compatibility) const override {
+    model_compatibility = (compatibility_info == kCompatInfo)
+                              ? OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL
+                              : OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+    return Status::OK();
+  }
+
+  static constexpr const char* kCompatInfo = "fake-compat-v1";
+  int compile_call_count() const { return compile_call_count_; }
+  size_t last_fused_count() const { return last_fused_count_; }
+
+ private:
+  int compile_call_count_ = 0;
+  size_t last_fused_count_ = 0;
+};
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+// An EP that implements two capabilities at once. Used to verify the hooks
+// return the correct, independent mix-in subobjects under multiple inheritance.
+class GraphCaptureAndDataLayoutEp : public IExecutionProvider,
+                                    public IGraphCaptureCapability,
+                                    public IDataLayoutCapability {
+ public:
+  GraphCaptureAndDataLayoutEp() : IExecutionProvider(kFakeEpType) {}
+
+  IGraphCaptureCapability* GetGraphCaptureCapability() noexcept override { return this; }
+  IDataLayoutCapability* GetDataLayoutCapability() const noexcept override {
+    return const_cast<GraphCaptureAndDataLayoutEp*>(this);
+  }
+
+  // IGraphCaptureCapability
+  bool IsGraphCaptureEnabled() const override { return true; }
+  bool IsGraphCaptured(int /*graph_annotation_id*/) const override { return false; }
+  common::Status ReplayGraph(int /*graph_annotation_id*/, bool /*sync*/) override { return Status::OK(); }
+  common::Status ReleaseCapturedGraph(int /*graph_annotation_id*/) override { return Status::OK(); }
+  OrtGraphCaptureNodeAssignmentPolicy GetGraphCaptureNodeAssignmentPolicy() const override {
+    return OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP;
+  }
+
+  // IDataLayoutCapability
+  DataLayout GetPreferredLayout() const override { return DataLayout::NHWC; }
+  std::optional<bool> ShouldConvertDataLayoutForOp(std::string_view /*domain*/, std::string_view /*op_type*/,
+                                                   DataLayout /*target_data_layout*/) const override {
     return std::nullopt;
   }
 };
@@ -144,6 +220,44 @@ TEST(ExecutionProviderCapabilitiesTest, DataLayoutCapabilityIsQueryableAndUsable
   EXPECT_FALSE(dl->ShouldConvertDataLayoutForOp("", "Add", DataLayout::NHWC).has_value());
 }
 
+// An EP that supports tuning is queryable through the base interface, and the
+// call routes to the concrete implementation through the narrow mix-in.
+TEST(ExecutionProviderCapabilitiesTest, TuningCapabilityIsQueryableAndUsable) {
+  TuningEp ep;
+  IExecutionProvider& base = ep;
+
+  ITuningCapability* tc = base.GetTuningCapability();
+  ASSERT_NE(tc, nullptr) << "EP advertising tuning must return a non-null capability.";
+
+  EXPECT_EQ(tc->GetTuningContext(), nullptr);
+  EXPECT_EQ(ep.tuning_query_count(), 1) << "GetTuningContext must reach the concrete implementation.";
+}
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+// An EP that supports subgraph compilation is queryable through the base
+// interface and usable through the narrow mix-in.
+TEST(ExecutionProviderCapabilitiesTest, CompileCapabilityIsQueryableAndUsable) {
+  CompileEp ep;
+  IExecutionProvider& base = ep;
+
+  ICompileCapability* compile = base.GetCompileCapability();
+  ASSERT_NE(compile, nullptr) << "EP advertising compilation must return a non-null capability.";
+
+  std::vector<NodeComputeInfo> node_compute_funcs;
+  ASSERT_TRUE(compile->Compile(/*fused_nodes_and_graphs*/ {}, node_compute_funcs).IsOK());
+  EXPECT_EQ(ep.compile_call_count(), 1) << "Compile must reach the concrete implementation.";
+  EXPECT_EQ(ep.last_fused_count(), 0u);
+
+  OrtCompiledModelCompatibility match = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+  ASSERT_TRUE(compile->ValidateCompiledModelCompatibilityInfo(CompileEp::kCompatInfo, match).IsOK());
+  EXPECT_EQ(match, OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL);
+
+  OrtCompiledModelCompatibility mismatch = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+  ASSERT_TRUE(compile->ValidateCompiledModelCompatibilityInfo("other", mismatch).IsOK());
+  EXPECT_EQ(mismatch, OrtCompiledModelCompatibility_EP_UNSUPPORTED);
+}
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
 // Capabilities are independent: an EP that implements only graph capture must
 // not be mistaken for supporting tuning or compilation, and vice versa.
 TEST(ExecutionProviderCapabilitiesTest, CapabilitiesAreIndependent) {
@@ -161,12 +275,41 @@ TEST(ExecutionProviderCapabilitiesTest, CapabilitiesAreIndependent) {
   EXPECT_NE(tuning_base.GetTuningCapability(), nullptr);
   EXPECT_EQ(tuning_base.GetGraphCaptureCapability(), nullptr);
   EXPECT_EQ(tuning_base.GetDataLayoutCapability(), nullptr);
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  EXPECT_EQ(tuning_base.GetCompileCapability(), nullptr);
+#endif
 
   DataLayoutEp data_layout_ep;
   IExecutionProvider& data_layout_base = data_layout_ep;
   EXPECT_NE(data_layout_base.GetDataLayoutCapability(), nullptr);
   EXPECT_EQ(data_layout_base.GetGraphCaptureCapability(), nullptr);
   EXPECT_EQ(data_layout_base.GetTuningCapability(), nullptr);
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  EXPECT_EQ(data_layout_base.GetCompileCapability(), nullptr);
+#endif
+}
+
+// A single EP may implement multiple capabilities at once. Each hook must return
+// the correct mix-in subobject (correct multiple-inheritance dispatch), and the
+// unimplemented capabilities must remain null.
+TEST(ExecutionProviderCapabilitiesTest, MultipleCapabilitiesCoexist) {
+  GraphCaptureAndDataLayoutEp ep;
+  IExecutionProvider& base = ep;
+
+  IGraphCaptureCapability* gc = base.GetGraphCaptureCapability();
+  IDataLayoutCapability* dl = base.GetDataLayoutCapability();
+  ASSERT_NE(gc, nullptr);
+  ASSERT_NE(dl, nullptr);
+
+  // Each hook routes to the correct subobject.
+  EXPECT_TRUE(gc->IsGraphCaptureEnabled());
+  EXPECT_EQ(dl->GetPreferredLayout(), DataLayout::NHWC);
+
+  // Unimplemented capabilities remain null.
+  EXPECT_EQ(base.GetTuningCapability(), nullptr);
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  EXPECT_EQ(base.GetCompileCapability(), nullptr);
+#endif
 }
 
 }  // namespace test
