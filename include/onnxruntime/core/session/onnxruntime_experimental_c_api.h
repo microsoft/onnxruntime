@@ -3,11 +3,16 @@
 
 // Experimental C API consumer header.
 //
-// This header provides typedefs, name constants, and (for C++) typed inline accessors for experimental ORT functions.
+// This header provides C function pointer typedefs and name constants for experimental ORT functions.
 // It should be used together with the experimental header lookup function `OrtApi::GetExperimentalFunction()`.
 //
-// This header contains code generated from onnxruntime_experimental_c_api.inc, which defines the list of experimental
-// API functions.
+// For C++ consumers, the companion header onnxruntime_experimental_cxx_api.h provides typed inline accessors in the
+// Ort::Experimental namespace (including throwing variants).
+//
+// The per-function typedefs and name constants are produced from onnxruntime_experimental_c_api.inc (which defines the
+// list of experimental API functions) by the detail header onnxruntime_experimental_c_api_fns.h, which this header
+// includes. Hand-written auxiliary declarations (e.g. opaque types the experimental APIs use) live directly in this
+// header.
 //
 // IMPORTANT: Experimental functions are NOT part of the stable ABI. They may be added, changed, or removed between
 // releases without notice. A function's availability should always be checked at runtime (the lookup returns nullptr
@@ -21,7 +26,7 @@
 //     OrtStatusPtr status = fn(&result);
 //   }
 //
-// C++ usage:
+// C++ usage (see onnxruntime_experimental_cxx_api.h):
 //   if (auto* fn = Ort::Experimental::Get_OrtApi_ExperimentalApiTest_SinceV28_Fn(api)) {
 //     Ort::Status status(fn(&result));
 //   }
@@ -46,59 +51,10 @@ ORT_RUNTIME_CLASS(ModelPackageComponentContext);
 //
 // C: function pointer typedefs and name constants
 //
+// Generated from onnxruntime_experimental_c_api.inc. Kept in a separate detail header so this header stays focused on
+// the curated, hand-written surface (auxiliary declarations above, plus any custom helpers). The define/undef guard
+// enforces that the detail header is only ever pulled in through this header.
 
-// For each ORT_EXPERIMENTAL_API(VER, RET, NAME, ...) entry in the .inc file, this generates:
-//
-//   // Function pointer typedef:
-//   typedef RET(ORT_API_CALL* OrtExperimental_<NAME>_SinceV<VER>_Fn)(...) NO_EXCEPTION;
-//
-//   // Name constant for lookup:
-//   static const char* const kOrtExperimental_<NAME>_SinceV<VER>_FnName = "<NAME>_SinceV<VER>";
-//
-// Example: ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, _Out_ int64_t* out) produces:
-//   typedef OrtStatusPtr(ORT_API_CALL* OrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_Fn)(
-//       _Out_ int64_t* out) NO_EXCEPTION;
-//   static const char* const kOrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_FnName =
-//       "OrtApi_ExperimentalApiTest_SinceV28";
-#define ORT_EXPERIMENTAL_API(VER, RET, NAME, ...)                                                 \
-  typedef RET(ORT_API_CALL* OrtExperimental_##NAME##_SinceV##VER##_Fn)(__VA_ARGS__) NO_EXCEPTION; \
-  static const char* const kOrtExperimental_##NAME##_SinceV##VER##_FnName = #NAME "_SinceV" #VER;
-
-#include "onnxruntime_experimental_c_api.inc"
-
-#undef ORT_EXPERIMENTAL_API
-
-//
-// C++: typed inline accessors
-//
-
-#ifdef __cplusplus
-
-namespace Ort {
-namespace Experimental {
-
-// For each .inc entry, this generates a typed accessor in Ort::Experimental:
-//
-//   inline OrtExperimental_<NAME>_SinceV<VER>_Fn Get_<NAME>_SinceV<VER>_Fn(const OrtApi* api);
-//
-// Example: ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, ...) produces:
-//   inline OrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_Fn
-//   Get_OrtApi_ExperimentalApiTest_SinceV28_Fn(const OrtApi* api) {
-//     return reinterpret_cast<OrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_Fn>(
-//         api->GetExperimentalFunction(kOrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_FnName));
-//   }
-#define ORT_EXPERIMENTAL_API(VER, RET, NAME, ...)                                      \
-  inline OrtExperimental_##NAME##_SinceV##VER##_Fn Get_##NAME##_SinceV##VER##_Fn(      \
-      const OrtApi* api) {                                                             \
-    return reinterpret_cast<OrtExperimental_##NAME##_SinceV##VER##_Fn>(                \
-        api->GetExperimentalFunction(kOrtExperimental_##NAME##_SinceV##VER##_FnName)); \
-  }
-
-#include "onnxruntime_experimental_c_api.inc"
-
-#undef ORT_EXPERIMENTAL_API
-
-}  // namespace Experimental
-}  // namespace Ort
-
-#endif  // __cplusplus
+#define ORT_INCLUDING_EXPERIMENTAL_C_API_FNS
+#include "onnxruntime_experimental_c_api_fns.h"
+#undef ORT_INCLUDING_EXPERIMENTAL_C_API_FNS

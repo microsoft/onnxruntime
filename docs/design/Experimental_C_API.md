@@ -103,17 +103,50 @@ ORT_EXPERIMENTAL_API(22, OrtStatusPtr, OrtApi_AnotherThing,
     _In_ const OrtEnv* env, _In_ const char* name, _Out_ OrtValue** out)
 ```
 
-### Experimental Consumer Header (generated from `.inc`)
+### Experimental Consumer Headers (generated from `.inc`)
 
-A single header serves both C and C++ experimental API consumers. The C section provides typedefs and name
-constants; the C++ section (guarded by `#ifdef __cplusplus`) adds typed inline accessors in the `Ort::Experimental`
-namespace.
+Four headers serve experimental API consumers, mirroring the `onnxruntime_c_api.h` / `onnxruntime_cxx_api.h` split. Each
+public header is paired with a `_fns.h` detail header that holds only the mechanical, X-macro-generated per-function
+plumbing, so the public header stays focused on the curated, hand-written surface:
+
+- `onnxruntime_experimental_c_api.h` — pure C, public. Holds hand-written auxiliary declarations (e.g. opaque types the
+  experimental APIs require) and includes the C detail header.
+  - `onnxruntime_experimental_c_api_fns.h` — detail header: the X-macro pass that produces the function pointer
+    typedefs and name constants. Not included directly by consumers.
+- `onnxruntime_experimental_cxx_api.h` — C++ companion, public. Includes the C header (and `onnxruntime_cxx_api.h`),
+  includes the C++ detail header, and is where hand-written C++ helpers live.
+  - `onnxruntime_experimental_cxx_api_fns.h` — detail header: the X-macro passes that produce the typed accessors in
+    the `Ort::Experimental` namespace. Not included directly by consumers.
+
+The `.inc` file remains the single source of truth; the `_fns.h` headers are "do not hand-edit except the macro
+template." Splitting the generated plumbing out keeps each public header as the place a contributor edits by hand
+(auxiliary type declarations, convenience helpers) without wading through macro expansions. Direct inclusion of a
+`_fns.h` header triggers a `#error`: each public header defines a short `ORT_INCLUDING_*` guard macro around its detail
+include, and the detail header checks for it.
 
 ```c
-// onnxruntime_experimental_c_api.h
+// onnxruntime_experimental_c_api.h  (public)
 #pragma once
 
-// Declare any new, auxiliary opaque types required by the experimental APIs in this header too.
+#include "onnxruntime_c_api.h"
+
+// Declare any new, auxiliary opaque types required by the experimental APIs here, before the detail include.
+// ORT_RUNTIME_CLASS(...);
+
+// Per-function typedefs and name constants (X-macro pass over the .inc) live in the detail header. The define/undef
+// guard enforces that the detail header is only included through this header.
+#define ORT_INCLUDING_EXPERIMENTAL_C_API_FNS
+#include "onnxruntime_experimental_c_api_fns.h"
+#undef ORT_INCLUDING_EXPERIMENTAL_C_API_FNS
+```
+
+```c
+// onnxruntime_experimental_c_api_fns.h  (detail — included by the header above)
+#pragma once
+
+#ifndef ORT_INCLUDING_EXPERIMENTAL_C_API_FNS
+#error "Include onnxruntime_experimental_c_api.h; do not include this detail header directly."
+#endif
 
 // --- C: function pointer typedefs and name constants ---
 #define ORT_EXPERIMENTAL_API(VER, RET, NAME, ...)                                                    \
@@ -127,35 +160,82 @@ namespace.
 //       ...) NO_EXCEPTION;
 //   static const char* const kOrtExperimental_OrtApi_SomeNewThing_SinceV22_FnName =
 //       "OrtApi_SomeNewThing_SinceV22";
+```
 
-#ifdef __cplusplus
+The C++ header generates two accessor flavors per function: a nullable accessor (returns `nullptr` if the function is
+unavailable) and a throwing accessor (`...FnOrThrow`, throws `Ort::Exception` with `ORT_NOT_IMPLEMENTED` if the function
+is unavailable). The nullable accessor is for runtime availability checks; the throwing accessor is for when the
+function is required.
+
+```cpp
+// onnxruntime_experimental_cxx_api.h  (public)
+#pragma once
+
+#include "onnxruntime_experimental_c_api.h"
+#include "onnxruntime_cxx_api.h"  // for Ort::Exception / ORT_CXX_API_THROW
+
+// Typed accessors (nullable + throwing) live in the detail header, which declares them in Ort::Experimental.
+// Hand-written C++ helpers can be added in their own Ort::Experimental namespace block.
+#define ORT_INCLUDING_EXPERIMENTAL_CXX_API_FNS
+#include "onnxruntime_experimental_cxx_api_fns.h"
+#undef ORT_INCLUDING_EXPERIMENTAL_CXX_API_FNS
+```
+
+```cpp
+// onnxruntime_experimental_cxx_api_fns.h  (detail — included by the header above)
+#pragma once
+
+#ifndef ORT_INCLUDING_EXPERIMENTAL_CXX_API_FNS
+#error "Include onnxruntime_experimental_cxx_api.h; do not include this detail header directly."
+#endif
+
 namespace Ort {
 namespace Experimental {
 
-// --- C++: typed inline accessors (reuses the C typedefs above) ---
-#define ORT_EXPERIMENTAL_API(VER, RET, NAME, ...)                                                   \
-  inline OrtExperimental_##NAME##_SinceV##VER##_Fn Get_##NAME##_SinceV##VER##_Fn(             \
-      const OrtApi* api) {                                                                          \
-    return reinterpret_cast<OrtExperimental_##NAME##_SinceV##VER##_Fn>(                          \
-        api->GetExperimentalFunction(kOrtExperimental_##NAME##_SinceV##VER##_FnName));           \
+// --- C++: nullable typed inline accessors (reuses the C typedefs) ---
+#define ORT_EXPERIMENTAL_API(VER, RET, NAME, ...)                                       \
+  inline OrtExperimental_##NAME##_SinceV##VER##_Fn Get_##NAME##_SinceV##VER##_Fn(       \
+      const OrtApi* api) {                                                              \
+    return reinterpret_cast<OrtExperimental_##NAME##_SinceV##VER##_Fn>(                 \
+        api->GetExperimentalFunction(kOrtExperimental_##NAME##_SinceV##VER##_FnName));  \
   }
 #include "onnxruntime_experimental_c_api.inc"
 #undef ORT_EXPERIMENTAL_API
 
-}  // namespace Experimental
-}  // namespace Ort
+// --- C++: throwing typed inline accessors (reuse the nullable accessors) ---
+#define ORT_EXPERIMENTAL_API(VER, RET, NAME, ...)                                          \
+  inline OrtExperimental_##NAME##_SinceV##VER##_Fn Get_##NAME##_SinceV##VER##_FnOrThrow(   \
+      const OrtApi* api) {                                                                 \
+    auto* fn = Get_##NAME##_SinceV##VER##_Fn(api);                                         \
+    if (fn == nullptr) {                                                                   \
+      ORT_CXX_API_THROW(                                                                   \
+          "Experimental function " #NAME "_SinceV" #VER " is not available in this build", \
+          ORT_NOT_IMPLEMENTED);                                                            \
+    }                                                                                      \
+    return fn;                                                                             \
+  }
+#include "onnxruntime_experimental_c_api.inc"
+#undef ORT_EXPERIMENTAL_API
 
 // Produces (for SinceVersion=22, Name=OrtApi_SomeNewThing):
-// namespace Ort {
-// namespace Experimental {
 //   inline OrtExperimental_OrtApi_SomeNewThing_SinceV22_Fn
 //   Get_OrtApi_SomeNewThing_SinceV22_Fn(const OrtApi* api) {
 //     return reinterpret_cast<OrtExperimental_OrtApi_SomeNewThing_SinceV22_Fn>(
 //         api->GetExperimentalFunction(kOrtExperimental_OrtApi_SomeNewThing_SinceV22_FnName));
 //   }
-// }
-// }
-#endif  // __cplusplus
+//   inline OrtExperimental_OrtApi_SomeNewThing_SinceV22_Fn
+//   Get_OrtApi_SomeNewThing_SinceV22_FnOrThrow(const OrtApi* api) {
+//     auto* fn = Get_OrtApi_SomeNewThing_SinceV22_Fn(api);
+//     if (fn == nullptr) {
+//       ORT_CXX_API_THROW(
+//           "Experimental function OrtApi_SomeNewThing_SinceV22 is not available in this build",
+//           ORT_NOT_IMPLEMENTED);
+//     }
+//     return fn;
+//   }
+
+}  // namespace Experimental
+}  // namespace Ort
 ```
 
 C usage:
@@ -169,12 +249,19 @@ if (fn) {
 }
 ```
 
-C++ usage:
+C++ usage (nullable):
 
 ```cpp
 if (auto* fn = Ort::Experimental::Get_OrtApi_SomeNewThing_SinceV22_Fn(api)) {
   Ort::Status status(fn(session, &result));
 }
+```
+
+C++ usage (throwing):
+
+```cpp
+auto* fn = Ort::Experimental::Get_OrtApi_SomeNewThing_SinceV22_FnOrThrow(api);
+Ort::Status status(fn(session, &result));
 ```
 
 ### Implementation Side (generated from `.inc`)
