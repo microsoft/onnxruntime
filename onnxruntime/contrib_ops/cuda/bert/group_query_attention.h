@@ -36,6 +36,8 @@ class GroupQueryAttention final : public CudaKernel {
   bool disable_memory_efficient_attention_;
   bool disable_flash_decode_;
   bool enable_xqa_;
+  bool enable_cudnn_flash_attention_;       // cuDNN SDPA explicitly enabled (env / sdpa_kernel)
+  bool auto_enable_cudnn_flash_attention_;  // auto-prefer cuDNN SDPA on SM>=90 when no explicit kernel pinned
 
   KVQuantizationType k_quant_type_;
   KVQuantizationType v_quant_type_;

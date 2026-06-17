@@ -4948,6 +4948,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The limit used to clamp inputs in SwiGLU. It is infinite when limit is not provided.</dd>
 <dt><tt>use_sparse_mixer</tt> : int</dt>
 <dd>Whether to use sparse mixer</dd>
+<dt><tt>weights_prepacked</tt> : int</dt>
+<dd>Only meaningful when quant_type='int'. Tri-state control over the layout of the int4/int8 fc1/fc2 weight initializers. The concrete prepacked layouts selected by -1 and 1 are determined by the execution provider. 0: the initializers are raw, un-prepacked [E, N, K/pack] tensors as produced by quantize_matmul_{4,8}bits. Defaults to -1.</dd>
 </dl>
 
 #### Inputs (6 - 21)

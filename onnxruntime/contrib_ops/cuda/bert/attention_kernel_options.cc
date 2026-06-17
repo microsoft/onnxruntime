@@ -15,6 +15,8 @@ using namespace onnxruntime::contrib::attention;
 
 namespace onnxruntime {
 void AttentionKernelOptions::Initialize(int value, bool use_build_flag, bool check_cudnn_version) {
+  has_explicit_kernel_selection_ = (value > 0);
+  disable_auto_cudnn_flash_attention_ = false;
   if (value > 0) {
     use_flash_attention_ = (value & static_cast<int>(AttentionBackend::FLASH_ATTENTION)) > 0;
 #if USE_LEAN_ATTENTION
@@ -37,7 +39,13 @@ void AttentionKernelOptions::Initialize(int value, bool use_build_flag, bool che
 #endif
     use_efficient_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableMemoryEfficientAttention, false);
     use_trt_fused_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableFusedSelfAttention, false);
-    use_cudnn_flash_attention_ = ParseEnvironmentVariableWithDefault<bool>(kEnableCudnnFlashAttention, false);
+    const auto cudnn_flash_attention_env = ParseEnvironmentVariable<bool>(kEnableCudnnFlashAttention);
+    if (cudnn_flash_attention_env.has_value()) {
+      use_cudnn_flash_attention_ = *cudnn_flash_attention_env;
+      disable_auto_cudnn_flash_attention_ = !use_cudnn_flash_attention_;
+    } else {
+      use_cudnn_flash_attention_ = false;
+    }
 
     use_unfused_ = true;
     use_trt_flash_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableTrtFlashAttention, false);

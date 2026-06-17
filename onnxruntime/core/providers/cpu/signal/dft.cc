@@ -524,14 +524,15 @@ template <typename T, typename U>
 static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_onesided, bool /*inverse*/) {
   // Attr("onesided"): default = 1
   // Input(0, "signal") type = T1
-  // Input(1, "frame_length") type = T2
+  // Input(1, "frame_step") type = T2
   // Input(2, "window") type = T1, optional
-  // Input(3, "frame_step") type = T2
+  // Input(3, "frame_length") type = T2
   // Output(0, "output") type = T1
 
   // Get signal
   const auto* signal = ctx->Input<Tensor>(0);
   const auto frame_step = signal::get_scalar_value_from_tensor<int64_t>(ctx->Input<Tensor>(1));
+  ORT_RETURN_IF_NOT(frame_step > 0, "frame_step must be greater than zero.");
   const auto* window = ctx->Input<Tensor>(2);
   const auto* frame_length_tensor = ctx->Input<Tensor>(3);
 
@@ -596,8 +597,11 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
   // Run each dft of each batch as if it was a real-valued batch size 1 dft operation
   for (int64_t batch_idx = 0; batch_idx < batch_size; batch_idx++) {
     for (int64_t i = 0; i < n_dfts; i++) {
-      auto input_frame_begin =
-          signal_data + (batch_idx * signal_size * signal_components) + (i * frame_step * signal_components);
+      const auto frame_start = i * frame_step;
+      // Defensive check before creating a non-owning tensor view. n_dfts derivation should keep this in bounds.
+      ORT_RETURN_IF_NOT(frame_start <= signal_size - window_size, "STFT input frame is out of bounds.");
+      // signal_data is U*, so one increment advances one input sample, including both lanes for complex input.
+      auto input_frame_begin = signal_data + (batch_idx * signal_size) + frame_start;
 
       auto output_frame_begin = Y_data + (batch_idx * n_dfts * dft_output_size * output_components) +
                                 (i * dft_output_size * output_components);
@@ -619,9 +623,9 @@ static Status short_time_fourier_transform(OpKernelContext* ctx, bool is_oneside
 Status STFT::Compute(OpKernelContext* ctx) const {
   // Attr("onesided"): default = 1
   // Input(0, "signal") type = T1
-  // Input(1, "frame_length") type = T2
+  // Input(1, "frame_step") type = T2
   // Input(2, "window") type = T1, optional
-  // Input(3, "frame_step") type = T2
+  // Input(3, "frame_length") type = T2
   // Output(0, "output") type = T1
 
   // Get signal shape

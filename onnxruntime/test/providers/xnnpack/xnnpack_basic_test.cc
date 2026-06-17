@@ -441,7 +441,7 @@ TEST(XnnpackEP, TestConvTranspose_With_OutputShape) {
     auto* output_arg = builder.MakeOutput();
     Node& pool_node = builder.AddNode("ConvTranspose", {input_arg, weight_arg}, {output_arg});
     pool_node.AddAttribute("pads", std::vector<int64_t>{2, 2, 2, 2});
-    pool_node.AddAttribute("output_shape", std::vector<int64_t>{1, 4, 28, 29});
+    pool_node.AddAttribute("output_shape", std::vector<int64_t>{28, 29});
     pool_node.AddAttribute("strides", std::vector<int64_t>{2, 2});
     pool_node.AddAttribute("group", int64_t(2));
   };

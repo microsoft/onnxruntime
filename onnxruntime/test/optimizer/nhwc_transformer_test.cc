@@ -81,9 +81,15 @@ static bool HasFloatNhwcNoTransposeSupport(const std::vector<int64_t>& input_sha
     return false;
   }
 
-  if (has_sum_input || group != 1 || input_shape.size() != 4 || weight_shape.size() != 4) {
+  if (has_sum_input || group <= 0 || input_shape.size() != 4 || weight_shape.size() != 4) {
     return false;
   }
+  const auto group_count = narrow<size_t>(group);
+
+  if (weight_shape[0] <= 0 || weight_shape[0] % group != 0) {
+    return false;
+  }
+  const auto filter_count = narrow<size_t>(weight_shape[0] / group);
 
   std::array<size_t, 2> input_spatial_shape{
       narrow<size_t>(input_shape[2]),
@@ -169,13 +175,13 @@ static bool HasFloatNhwcNoTransposeSupport(const std::vector<int64_t>& input_sha
   return MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
       /*Dimensions*/ 2,
       narrow<size_t>(input_shape[0]),
-      /*GroupCount*/ 1,
+      group_count,
       input_spatial_shape.data(),
       kernel_spatial_shape.data(),
       dilations_size_t.data(),
       pads_size_t.data(),
       strides_size_t.data(),
-      narrow<size_t>(weight_shape[0]),
+      filter_count,
       /*Beta*/ 0.0f);
 #else
   ORT_UNUSED_PARAMETER(input_shape);
@@ -407,7 +413,7 @@ TEST(NhwcTransformerTests, ConvGlobalAveragePool) {
                     TransformerLevel::Level3);
 }
 
-TEST(NhwcTransformerTests, ConvDepthwiseFloat_SkipNhwc) {
+TEST(NhwcTransformerTests, ConvDepthwiseFloat_UsesHelperCapability) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
     auto* weight_arg = builder.MakeInitializer<float>({8, 1, 3, 3}, -1.0f, 1.0f);
@@ -424,6 +430,90 @@ TEST(NhwcTransformerTests, ConvDepthwiseFloat_SkipNhwc) {
     const int expected_transposes = expect_nhwc ? 2 : 0;
     EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expected_nhwc_fused_conv);
     EXPECT_EQ(op_to_count["Transpose"], expected_transposes);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6);
+}
+
+TEST(NhwcTransformerTests, ConvDepthwiseFloat_AsymmetricPaddingSkipsNhwc) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInitializer<float>({8, 1, 3, 3}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    Node& conv_node = builder.AddConvNode(input_arg, weight_arg, output_arg);
+    conv_node.AddAttribute("group", static_cast<int64_t>(8));
+    conv_node.AddAttribute("pads", std::vector<int64_t>{0, 1, 1, 1});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const bool expect_nhwc = HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {8, 1, 3, 3}, {0, 1, 1, 1}, {}, {}, 8);
+    EXPECT_FALSE(expect_nhwc);
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 0);
+    EXPECT_EQ(op_to_count["Transpose"], 0);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6);
+}
+
+TEST(NhwcTransformerTests, ConvGroupedFloat_SkipNhwc) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInitializer<float>({8, 2, 3, 3}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    Node& conv_node = builder.AddConvNode(input_arg, weight_arg, output_arg);
+    conv_node.AddAttribute("group", static_cast<int64_t>(4));
+    conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const bool expect_nhwc = HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {8, 2, 3, 3}, {1, 1, 1, 1}, {}, {}, 4);
+    EXPECT_FALSE(expect_nhwc);
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 0);
+    EXPECT_EQ(op_to_count["Transpose"], 0);
+  };
+
+  TransformerTester(build_test_case,
+                    check_nhwc_graph,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 12,
+                    /*per_sample_tolerance*/ 1e-6,
+                    /*relative_per_sample_tolerance*/ 1e-6);
+}
+
+TEST(NhwcTransformerTests, ConvDepthwiseMultiplier2Float_SkipNhwc) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
+    auto* weight_arg = builder.MakeInitializer<float>({16, 1, 3, 3}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+
+    Node& conv_node = builder.AddConvNode(input_arg, weight_arg, output_arg);
+    conv_node.AddAttribute("group", static_cast<int64_t>(8));
+    conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  };
+
+  auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    const bool expect_nhwc = HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {16, 1, 3, 3}, {1, 1, 1, 1}, {}, {}, 8);
+    EXPECT_FALSE(expect_nhwc);
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 0);
+    EXPECT_EQ(op_to_count["Transpose"], 0);
   };
 
   TransformerTester(build_test_case,

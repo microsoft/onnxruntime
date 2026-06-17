@@ -26,11 +26,14 @@ function(get_c_cxx_api_headers HEADERS_VAR)
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_c_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_inline.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_env_config_keys.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_ep_c_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_ep_device_ep_metadata_keys.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_error_code.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_experimental_c_api.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_experimental_c_api.inc"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_float16.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h"
-    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_env_config_keys.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h"
   )
@@ -285,7 +288,7 @@ if(WIN32)
   target_link_options(onnxruntime PRIVATE ${onnxruntime_DELAYLOAD_FLAGS})
 endif()
 #See: https://cmake.org/cmake/help/latest/prop_tgt/SOVERSION.html
-if(NOT WIN32) 
+if(NOT WIN32)
   set_target_properties(onnxruntime PROPERTIES
     PUBLIC_HEADER "${ONNXRUNTIME_PUBLIC_HEADERS}"
     LINK_DEPENDS ${SYMBOL_FILE}

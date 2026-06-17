@@ -41,12 +41,9 @@ $MAIN {
 #endif
 
 #if prepare_indirect_dispatch
-  // Prepare indirect dispatch buffer for thread 0
   if (global_idx == 0u) {
     let num_total_seq_length_tile = (total_seqlen + uniforms.tile_size - 1u) / uniforms.tile_size;
-    indirect_buffer[0] = num_total_seq_length_tile;
-    indirect_buffer[1] = uniforms.num_heads;
-    indirect_buffer[2] = 1u;
+    normalize_dispatch_group_size(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);
   }
 #endif
 

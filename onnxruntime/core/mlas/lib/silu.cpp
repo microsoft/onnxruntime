@@ -40,7 +40,7 @@ MlasComputeSilu(
     size_t N
     )
 {
-#if defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_RISCV64)
     // TODO: Add an intermediate fused AVX2/FMA3 SiLU path on AMD64. Today the
     // dispatch jumps from the generic two-pass implementation to AVX512F, so
     // non-AVX512 x64 machines fall back to the generic kernel.
