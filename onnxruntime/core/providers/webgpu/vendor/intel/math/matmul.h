@@ -16,12 +16,12 @@ class MatMulSubgroupProgram final : public Program<MatMulSubgroupProgram> {
  public:
   MatMulSubgroupProgram(const Activation& activation,
                         bool bias,
-                        bool is_vec4,
+                        uint32_t vec_size,
                         const gsl::span<int64_t>& elements_per_thread)
       : Program{"MatMulSubgroup"},
         activation_(activation),
         has_bias_{bias},
-        is_vec4_{is_vec4},
+        vec_size_{vec_size},
         elements_per_thread_(elements_per_thread.begin(), elements_per_thread.end()) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -32,11 +32,11 @@ class MatMulSubgroupProgram final : public Program<MatMulSubgroupProgram> {
  private:
   const Activation activation_;
   const bool has_bias_;
-  const bool is_vec4_;
+  const uint32_t vec_size_;
   const InlinedVector<int64_t> elements_per_thread_;
 };
 
-bool CanApplyMatMulIntel(const ComputeContext& context, int64_t M, int64_t N, int64_t K);
+bool CanApplyMatMulIntel(const ComputeContext& context, int64_t batch_count, int64_t M, int64_t N, int64_t K);
 
 Status ApplyMatMulIntel(ComputeContext& context,
                         const Activation& activation,
