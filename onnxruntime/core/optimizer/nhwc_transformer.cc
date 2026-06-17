@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <deque>
+#include <limits>
 #include <vector>
 #include "core/common/cpuid_info.h"
 #include "core/graph/constants.h"
@@ -191,9 +192,14 @@ bool FloatNhwcWrapperFilter(const onnx_transpose_optimization::api::GraphRef& gr
   }
 
   const auto group = node.GetAttributeInt("group").value_or(1);
-  if (group != 1) {
+  if (group <= 0) {
     return false;
   }
+  constexpr uint64_t kSizeTMax = static_cast<uint64_t>(std::numeric_limits<size_t>::max());
+  if (static_cast<uint64_t>(group) > kSizeTMax) {
+    return false;
+  }
+  const auto group_count = narrow<size_t>(group);
 
   std::array<size_t, 2> input_spatial_shape{};
   std::array<size_t, 2> kernel_spatial_shape{};
@@ -201,16 +207,21 @@ bool FloatNhwcWrapperFilter(const onnx_transpose_optimization::api::GraphRef& gr
   std::array<size_t, 2> strides{1, 1};
   std::array<size_t, 4> pads{};
   size_t batch_count = 0;
-  size_t filter_count = 0;
+  size_t total_filter_count = 0;
 
   if (!TryGetDimValueAsSizeT(*input_shape, 0, batch_count) ||
       !TryGetDimValueAsSizeT(*input_shape, 2, input_spatial_shape[0]) ||
       !TryGetDimValueAsSizeT(*input_shape, 3, input_spatial_shape[1]) ||
-      !TryGetDimValueAsSizeT(*weight_shape, 0, filter_count) ||
+      !TryGetDimValueAsSizeT(*weight_shape, 0, total_filter_count) ||
       !TryGetDimValueAsSizeT(*weight_shape, 2, kernel_spatial_shape[0]) ||
       !TryGetDimValueAsSizeT(*weight_shape, 3, kernel_spatial_shape[1])) {
     return false;
   }
+
+  if (total_filter_count == 0 || total_filter_count % group_count != 0) {
+    return false;
+  }
+  const size_t filter_count = total_filter_count / group_count;
 
   const auto dilations_opt = node.GetAttributeInts("dilations");
   if (dilations_opt.has_value() && !TryReadPositiveInts(*dilations_opt, dilations)) {
@@ -229,7 +240,7 @@ bool FloatNhwcWrapperFilter(const onnx_transpose_optimization::api::GraphRef& gr
   return MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
       /*Dimensions*/ 2,
       batch_count,
-      /*GroupCount*/ 1,
+      group_count,
       input_spatial_shape.data(),
       kernel_spatial_shape.data(),
       dilations.data(),

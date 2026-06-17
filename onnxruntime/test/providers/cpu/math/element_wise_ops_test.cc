@@ -16,6 +16,15 @@
 #include <limits>
 #include <math.h>
 
+#if defined(USE_WEBGPU)
+// Pull in the deviceless shared-trailing-dimension helper from the WebGPU EP so it can be
+// unit-tested without a device. This lightweight header carries only the inline helper (no
+// Dawn/WebGPU headers), so including it here keeps this CPU test translation unit free of Dawn
+// and adds no link dependency on the webgpu provider library (which is not linked into
+// onnxruntime_provider_test in every build configuration, e.g. the plugin build). See issue #28969.
+#include "core/providers/webgpu/math/binary_elementwise_broadcast_utils.h"
+#endif
+
 namespace onnxruntime {
 namespace test {
 
@@ -1501,6 +1510,123 @@ TEST(MathOpTest, Pow_float_float16) {
 #endif
 
 #if defined(USE_WEBGPU)
+// Deviceless regression for issue #28969: the shared-trailing-dimension count must never exceed
+// either operand's rank. When operands have unequal ranks, an exhausted operand's implicit size-1
+// dimension is a broadcast, not a shared dimension, and previously over-extended the shared run,
+// underflowing the downstream reshape math (size_t wrap to SIZE_MAX).
+TEST(MathOpTest, WebGpu_CountSharedTrailingDimensions) {
+  int64_t shared_product = -1;
+
+  // The crashing corner: lhs=[1,1,6,6], rhs=[6,6]. Only the two trailing 6s are shared; once rhs
+  // is exhausted, lhs's leading unit dims are broadcasts and must not be counted.
+  const TensorShape lhs_4d({1, 1, 6, 6});
+  const TensorShape rhs_2d({6, 6});
+  size_t num_shared = onnxruntime::webgpu::CountSharedTrailingDimensions(
+      lhs_4d, rhs_2d, /*output_rank=*/4, shared_product);
+  EXPECT_EQ(num_shared, static_cast<size_t>(2));
+  EXPECT_EQ(shared_product, static_cast<int64_t>(36));
+  // The core invariant: the count never exceeds the smaller operand's rank (derived from the
+  // shapes, not hard-coded), which is exactly what keeps the downstream reshape from underflowing.
+  EXPECT_LE(num_shared, std::min(lhs_4d.NumDimensions(), rhs_2d.NumDimensions()));
+
+  // Operand-order symmetry: shorter operand on the left ([6,6] vs [1,1,6,6]) exercises the
+  // ns == lhs_rank branch and must yield the same count/product and respect the same invariant.
+  num_shared = onnxruntime::webgpu::CountSharedTrailingDimensions(
+      rhs_2d, lhs_4d, /*output_rank=*/4, shared_product);
+  EXPECT_EQ(num_shared, static_cast<size_t>(2));
+  EXPECT_EQ(shared_product, static_cast<int64_t>(36));
+  EXPECT_LE(num_shared, std::min(rhs_2d.NumDimensions(), lhs_4d.NumDimensions()));
+
+  // Equal ranks: counting stops at output_rank - 1, leaving at least one outer dimension.
+  num_shared = onnxruntime::webgpu::CountSharedTrailingDimensions(
+      TensorShape({2, 3, 4}), TensorShape({2, 3, 4}), /*output_rank=*/3, shared_product);
+  EXPECT_EQ(num_shared, static_cast<size_t>(2));
+  EXPECT_EQ(shared_product, static_cast<int64_t>(12));
+
+  // A genuine mismatch stops the run immediately.
+  num_shared = onnxruntime::webgpu::CountSharedTrailingDimensions(
+      TensorShape({2, 3, 4}), TensorShape({1, 4}), /*output_rank=*/3, shared_product);
+  EXPECT_EQ(num_shared, static_cast<size_t>(1));
+  EXPECT_EQ(shared_product, static_cast<int64_t>(4));
+}
+
+// End-to-end regression for issue #28969 on the WebGPU EP. Pre-fix this crashed with an
+// ORT_ENFORCE in TensorShape::SizeFromDimension: the trailing product 36 is divisible by 4
+// (taking the vectorized shared-dim path) while the last dim 6 is not, and the unequal ranks plus
+// leading unit dims caused num_shared_dimension to exceed rhs's rank, underflowing the reshape.
+TEST(MathOpTest, Add_Broadcast_WebGpu_UnequalRank_LeadingUnitDims) {
+  OpTester test("Add");
+  const std::vector<int64_t> lhs_dims{1, 1, 6, 6};
+  const std::vector<int64_t> rhs_dims{6, 6};
+  std::vector<float> lhs_values(36);
+  std::vector<float> rhs_values(36);
+  std::vector<float> out_values(36);
+  for (int i = 0; i < 36; ++i) {
+    lhs_values[i] = static_cast<float>(i);
+    rhs_values[i] = static_cast<float>(2 * i);
+    out_values[i] = static_cast<float>(3 * i);
+  }
+  test.AddInput<float>("A", lhs_dims, lhs_values);
+  test.AddInput<float>("B", rhs_dims, rhs_values);
+  test.AddOutput<float>("C", lhs_dims, out_values);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Companion to the regression above: the leading dim is REAL (2), not a unit dim. It must survive
+// the trailing reshape (the shared run is only the two trailing 6s), guarding against
+// over-collapsing the outer dimension when it is not a broadcast. Trailing product 36 still hits
+// the divisible-by-4 vectorized reshape path.
+TEST(MathOpTest, Add_Broadcast_WebGpu_UnequalRank_LeadingNonUnitDim) {
+  OpTester test("Add");
+  const std::vector<int64_t> lhs_dims{2, 1, 6, 6};  // 72 elements
+  const std::vector<int64_t> rhs_dims{6, 6};        // 36 elements, broadcast over the leading [2,1]
+  std::vector<float> lhs_values(72);
+  std::vector<float> rhs_values(36);
+  std::vector<float> out_values(72);
+  for (int i = 0; i < 36; ++i) {
+    rhs_values[i] = static_cast<float>(2 * i);
+  }
+  for (int i = 0; i < 72; ++i) {
+    lhs_values[i] = static_cast<float>(i);
+    out_values[i] = lhs_values[i] + rhs_values[i % 36];
+  }
+  test.AddInput<float>("A", lhs_dims, lhs_values);
+  test.AddInput<float>("B", rhs_dims, rhs_values);
+  test.AddOutput<float>("C", lhs_dims, out_values);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Operand-order symmetry for the regression: the shorter operand is on the LHS ([6,6] + [1,1,6,6]),
+// exercising the ns == lhs_rank branch of the reshape. Must produce correct results without
+// underflowing, mirroring Add_Broadcast_WebGpu_UnequalRank_LeadingUnitDims.
+TEST(MathOpTest, Add_Broadcast_WebGpu_UnequalRank_ShorterLhs) {
+  OpTester test("Add");
+  const std::vector<int64_t> lhs_dims{6, 6};        // 36 elements
+  const std::vector<int64_t> rhs_dims{1, 1, 6, 6};  // 36 elements
+  const std::vector<int64_t> out_dims{1, 1, 6, 6};
+  std::vector<float> lhs_values(36);
+  std::vector<float> rhs_values(36);
+  std::vector<float> out_values(36);
+  for (int i = 0; i < 36; ++i) {
+    lhs_values[i] = static_cast<float>(i);
+    rhs_values[i] = static_cast<float>(2 * i);
+    out_values[i] = static_cast<float>(3 * i);
+  }
+  test.AddInput<float>("A", lhs_dims, lhs_values);
+  test.AddInput<float>("B", rhs_dims, rhs_values);
+  test.AddOutput<float>("C", out_dims, out_values);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 // WebGPU EP currently handles a special case for supporting Pow op:
 // A Pow followed by a Cast to int64 type.
 TEST(MathOpTest, Pow_float_sqrt) {

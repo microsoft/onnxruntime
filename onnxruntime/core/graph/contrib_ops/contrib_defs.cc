@@ -1519,6 +1519,13 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "fc*_scales inputs contain MXFP4 block scales, and fc*_global_scale inputs must be provided.",
               AttributeProto::STRING,
               std::string("int"))
+        .Attr("weights_prepacked",
+              "Only meaningful when quant_type='int'. Tri-state control over the layout of the "
+              "int4/int8 fc1/fc2 weight initializers. The concrete prepacked layouts selected by "
+              "-1 and 1 are determined by the execution provider. 0: the initializers are raw, "
+              "un-prepacked [E, N, K/pack] tensors as produced by quantize_matmul_{4,8}bits. Defaults to -1.",
+              AttributeProto::INT,
+              static_cast<int64_t>(-1))
         .Input(0,
                "input",
                "2D tensor with shape (num_tokens, hidden_size), or "
@@ -2846,6 +2853,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(CropAndResize, 1,
                                   }
                                   if (crop_size_shape.dim_size() != 1) {
                                     fail_shape_inference("crop_size shape input tensor has wrong dimension");
+                                  }
+                                  if (crop_size_shape.dim(0).has_dim_value() &&
+                                      crop_size_shape.dim(0).dim_value() != 2) {
+                                    fail_shape_inference("crop_size input tensor must have exactly 2 elements; got ",
+                                                         crop_size_shape.dim(0).dim_value());
                                   }
                                 })
                                 .SetDoc(R"DOC(

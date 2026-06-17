@@ -149,7 +149,6 @@ option(onnxruntime_USE_XNNPACK "Build with XNNPACK support. Provides an alternat
 option(onnxruntime_USE_WEBNN "Build with WebNN support. Enable hardware acceleration in web browsers." OFF)
 option(onnxruntime_USE_WEBGPU "Build with WebGPU support. Enable WebGPU via C/C++ interface." OFF)
 option(onnxruntime_USE_EP_API_ADAPTERS "Build EP (e.g. WebGPU) as a plugin EP shared library using EP API adapters" OFF)
-option(onnxruntime_WGSL_TEMPLATE "Specify the code generator for WGSL template. Default is static." "static")
 option(onnxruntime_USE_EXTERNAL_DAWN "Build with treating Dawn as external dependency. Will not link Dawn at build time." OFF)
 option(onnxruntime_CUSTOM_DAWN_SRC_PATH "Path to custom Dawn src dir.")
 option(onnxruntime_BUILD_DAWN_SHARED_LIBRARY "Build Dawn as a shared library" OFF)
@@ -675,11 +674,17 @@ else()
   if (NOT APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_target_platform STREQUAL "aarch64")
    check_cxx_compiler_flag(-march=armv8.2-a+bf16 HAS_ARM64_BFLOAT16)
    if(NOT HAS_ARM64_BFLOAT16)
-     message(FATAL_ERROR  "The compiler doesn't support BFLOAT16!!!")
+     message(FATAL_ERROR "The compiler/assembler does not support the aarch64 +bf16 ISA extension. "
+       "On aarch64 this typically requires GCC >= 12 paired with a sufficiently recent binutils "
+       "(the capability is gated by the assembler, not the compiler alone). "
+       "See https://github.com/microsoft/onnxruntime/issues/22837 for details.")
    endif()
    check_cxx_compiler_flag(-march=armv8.2-a+fp16 HAS_ARM64_FLOAT16)
    if(NOT HAS_ARM64_FLOAT16)
-     message(FATAL_ERROR  "The compiler doesn't support FLOAT16!!!")
+     message(FATAL_ERROR "The compiler/assembler does not support the aarch64 +fp16 ISA extension. "
+       "On aarch64 this typically requires GCC >= 12 paired with a sufficiently recent binutils "
+       "(the capability is gated by the assembler, not the compiler alone). "
+       "See https://github.com/microsoft/onnxruntime/issues/22837 for details.")
    endif()
   endif()
 

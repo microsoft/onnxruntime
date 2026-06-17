@@ -178,3 +178,164 @@ stages:
           win_x64: ${{ parameters.build_windows_x64 }}
           linux_x64: ${{ parameters.build_linux_x64 }}
           linux_aarch64: ${{ parameters.build_linux_aarch64 }}
+
+    # Create zip packages for Foundry Local consumption.
+    - ${{ if or(eq(parameters.build_windows_x64, true), eq(parameters.build_linux_x64, true)) }}:
+      - stage: Package_Foundry_Local_CUDA_Zips
+        displayName: 'Package Foundry Local CUDA Plugin-EP Zips'
+        dependsOn:
+          - ${{ if eq(parameters.build_windows_x64, true) }}:
+            - Win_plugin_cuda_x64_Build
+          - ${{ if eq(parameters.build_linux_x64, true) }}:
+            - Linux_plugin_cuda_x64
+          # TODO: win-arm64 and linux-aarch64 are still being developed.
+          # - ${{ if eq(parameters.build_windows_arm64, true) }}:
+          #   - Win_plugin_cuda_arm64_Build
+          # - ${{ if eq(parameters.build_linux_aarch64, true) }}:
+          #   - Linux_plugin_cuda_aarch64
+          # NOTE: macOS arm64 (Apple Silicon) does not have CUDA support since
+          # Apple devices do not use Nvidia GPUs.
+        jobs:
+        - job: CreateZipPackages
+          displayName: 'Create Foundry Local CUDA Plugin-EP Zip Packages'
+          pool:
+            name: 'onnxruntime-Win-CPU-VS2022-Latest'
+            os: windows
+          templateContext:
+            outputs:
+            - output: pipelineArtifact
+              targetPath: $(Build.ArtifactStagingDirectory)/cuda-deps-package
+              artifactName: foundry-local-cuda-plugin-ep-zips
+          steps:
+          # The 1ES TSA SDL task expects .config/tsaoptions.json in the source directory.
+          # Use a sparse checkout to pull only the .config directory (avoids full repo clone).
+          - checkout: self
+            fetchDepth: 1
+            lfs: false
+            submodules: false
+            sparseCheckoutDirectories: .config
+
+          - ${{ if eq(parameters.build_windows_x64, true) }}:
+            - task: DownloadPipelineArtifact@2
+              displayName: 'Download cuda_plugin_win_x64'
+              inputs:
+                artifactName: cuda_plugin_win_x64
+                targetPath: $(Build.SourcesDirectory)/cuda-plugin-win-x64
+
+          - ${{ if eq(parameters.build_linux_x64, true) }}:
+            - task: DownloadPipelineArtifact@2
+              displayName: 'Download cuda_plugin_linux_x64'
+              inputs:
+                artifactName: cuda_plugin_linux_x64
+                targetPath: $(Build.SourcesDirectory)/cuda-plugin-linux-x64
+
+          # TODO: win-arm64 and linux-aarch64 are still being developed.
+          # - ${{ if eq(parameters.build_windows_arm64, true) }}:
+          #   - task: DownloadPipelineArtifact@2
+          #     displayName: 'Download cuda_plugin_win_arm64'
+          #     inputs:
+          #       artifactName: cuda_plugin_win_arm64
+          #       targetPath: $(Build.SourcesDirectory)/cuda-plugin-win-arm64
+
+          # - ${{ if eq(parameters.build_linux_aarch64, true) }}:
+          #   - task: DownloadPipelineArtifact@2
+          #     displayName: 'Download cuda_plugin_linux_aarch64'
+          #     inputs:
+          #       artifactName: cuda_plugin_linux_aarch64
+          #       targetPath: $(Build.SourcesDirectory)/cuda-plugin-linux-aarch64
+
+          - task: PowerShell@2
+            displayName: 'Create version.json and zip packages for each platform'
+            inputs:
+              targetType: inline
+              script: |
+                $outputDir = '$(Build.ArtifactStagingDirectory)/cuda-deps-package'
+                New-Item -ItemType Directory -Path $outputDir -Force
+
+                # Add new platforms here as they are implemented.
+                # NOTE: macOS arm64 (Apple Silicon) is excluded — no CUDA support since Apple devices do not use Nvidia GPUs.
+                $platforms = @(
+                  @{ name = 'win-x64';        dir = '$(Build.SourcesDirectory)/cuda-plugin-win-x64' },
+                  @{ name = 'linux-x64';      dir = '$(Build.SourcesDirectory)/cuda-plugin-linux-x64' }
+                  # TODO: win-arm64 and linux-aarch64 are still being developed.
+                  # @{ name = 'win-arm64';      dir = '$(Build.SourcesDirectory)/cuda-plugin-win-arm64' },
+                  # @{ name = 'linux-aarch64';  dir = '$(Build.SourcesDirectory)/cuda-plugin-linux-aarch64' }
+                )
+
+                $resolvedVersion = $null
+
+                foreach ($platform in $platforms) {
+                  $depsDir = $platform.dir
+                  $platformName = $platform.name
+
+                  if (-not (Test-Path $depsDir)) {
+                    Write-Host "Skipping $platformName (not built)"
+                    continue
+                  }
+
+                  $binDir = Join-Path $depsDir "bin"
+                  $versionDir = Join-Path $depsDir "version"
+
+                  if (-not (Test-Path $binDir)) {
+                    throw "Bin directory not found for $platformName $binDir"
+                  }
+
+                  Write-Host "--- Processing $platformName ---"
+
+                  $versionString = "Unknown"
+                  if (Test-Path $versionDir) {
+                     $versionFile = Get-ChildItem -Path $versionDir -File | Select-Object -First 1
+                     if ($versionFile) {
+                         $versionString = $versionFile.Name.Trim()
+                     }
+                  }
+
+                  # Track the resolved version (all platforms must agree)
+                  # Version formats (full -> filename):
+                  #   release: 0.1.0 -> 0.1.0
+                  #   dev:     0.1.0-dev.20260401+2a1ffff2 -> 0.1.0.dev.20260401.2a1ffff2
+                  # Dev versions have - and + replaced with . for filename compatibility.
+                  # Full version string is preserved in version.json.
+                  $filenameVersion = $versionString -replace '[-+]', '.'
+                  if ($null -eq $resolvedVersion) {
+                    $resolvedVersion = $filenameVersion
+                  } elseif ($resolvedVersion -ne $filenameVersion) {
+                    throw "Version mismatch across platforms: expected '$resolvedVersion' but $platformName has '$filenameVersion'"
+                  }
+
+                  $versionInfo = @{
+                    version = $versionString
+                  }
+
+                  $json = $versionInfo | ConvertTo-Json
+                  $versionPath = Join-Path $binDir "version.json"
+                  Set-Content -Path $versionPath -Value $json -Encoding UTF8
+                  Write-Host "Created version.json:"
+                  Write-Host $json
+
+                  # Collect only native binaries (.dll, .so, .dylib) and version.json
+                  $filesToZip = Get-ChildItem -Path $binDir -File | Where-Object {
+                    $_.Extension -in '.dll', '.so', '.dylib' -or $_.Name -eq 'version.json'
+                  }
+
+                  $zipPath = Join-Path $outputDir "cuda_ep_${filenameVersion}_${platformName}.zip"
+                  if ($filesToZip) {
+                    $filesToZip | Compress-Archive -DestinationPath $zipPath -Force
+                    Write-Host "Created zip: $zipPath ($((Get-Item $zipPath).Length) bytes)"
+                  } else {
+                    throw "No files found to zip for $platformName in $binDir"
+                  }
+                  Write-Host ""
+                }
+
+                if ($null -eq $resolvedVersion) {
+                  throw "No platforms were processed — cannot determine version."
+                }
+
+                # Create a version folder in the output artifact with a file whose name is the version string.
+                # This follows the same convention as the per-platform artifacts (e.g. cuda_plugin_win_x64/version/)
+                # and allows downstream pipelines to read the version without parsing zip filenames.
+                $versionOutputDir = Join-Path $outputDir "version"
+                New-Item -ItemType Directory -Path $versionOutputDir -Force
+                New-Item -ItemType File -Path (Join-Path $versionOutputDir $resolvedVersion) -Force | Out-Null
+                Write-Host "Created version marker: $versionOutputDir/$resolvedVersion"

@@ -62,7 +62,7 @@ enum ResizeNearestMode {
 // Tolerance for detecting .5 ties in nearest-mode rounding (ROUND_PREFER_CEIL / ROUND_PREFER_FLOOR).
 // Coordinate transforms such as half_pixel use float division which introduces rounding error,
 // e.g. (4.5f / 0.3f - 0.5f) yields ~14.4999 instead of the exact 14.5.
-// This epsilon is used in both CPU (upsamplebase.h) and CUDA (resize_impl.cu) nearest-pixel functions.
+// This epsilon is used in CPU (upsamplebase.h), CUDA (resize_impl.cu) and WebGPU (resize_impl.cc) nearest-pixel functions.
 constexpr float kNearestModeEps = 1e-6f;
 
 enum class AspectRatioPolicy {
@@ -233,6 +233,9 @@ class UpsampleBase {
       // guard against unit tests that can add an attribute
       auto axes = info.template GetAttrsOrDefault<int64_t>("axes");
       axes_.assign(axes.cbegin(), axes.cend());
+      // Uniqueness of axes is enforced after negative-axis normalization in
+      // ValidateAndNormalizeAxes, so two raw entries that collide after canonicalization
+      // (e.g. {-1, rank-1}) are still rejected.
     }
 
     extrapolation_value_ = info.template GetAttrOrDefault<float>("extrapolation_value", 0.0f);
@@ -301,6 +304,12 @@ class UpsampleBase {
         auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
         rank = static_cast<int64_t>(tensor_info.GetDimensionsCount());
       }
+      // When axes are present and the input rank is statically known, validate axes and cache
+      // the normalized form so the inference hot path can skip the bitmap allocation.
+      if (rank > 0 && !axes_.empty()) {
+        ORT_THROW_IF_ERROR(ValidateAndNormalizeAxes(rank, normalized_axes_));
+        normalized_axes_rank_ = rank;
+      }
       if (get_scale && scale->Shape().Size() > 0 && ((opset < 18) || (rank > 0 && opset >= 18))) {
         ORT_THROW_IF_ERROR(ParseScalesData(scale, scales_, rank));
         scales_cached_ = true;
@@ -335,6 +344,8 @@ class UpsampleBase {
   InlinedVector<float> scales_;
   InlinedVector<float> roi_;
   TensorShapeVector axes_;
+  TensorShapeVector normalized_axes_;
+  int64_t normalized_axes_rank_ = -1;
 
   bool scales_cached_;
   bool roi_cached_;
@@ -497,7 +508,37 @@ class UpsampleBase {
     }
   }
 
+  // Resolve negative entries in axes_ against the supplied rank, verify each is in range,
+  // and verify that no two entries collide after normalization. Populates normalized_axes
+  // with the canonical non-negative indices in the original order. When the input rank is
+  // statically known, the constructor pre-populates normalized_axes_ and this call becomes
+  // a copy on the inference hot path.
+  Status ValidateAndNormalizeAxes(int64_t rank, TensorShapeVector& normalized_axes) const {
+    ORT_RETURN_IF_NOT(rank > 0, "Rank must be positive when axes is provided.");
+    if (rank == normalized_axes_rank_) {
+      normalized_axes = normalized_axes_;
+      return Status::OK();
+    }
+    normalized_axes.clear();
+    normalized_axes.reserve(axes_.size());
+    InlinedVector<bool> seen(static_cast<size_t>(rank), false);
+    for (int64_t raw_axis : axes_) {
+      ORT_RETURN_IF_NOT(IsAxisInRange(raw_axis, rank), "axis ", raw_axis,
+                        " is not in valid range [-", rank, ",", rank - 1, "]");
+      const int64_t axis = raw_axis < 0 ? raw_axis + rank : raw_axis;
+      const auto idx = static_cast<size_t>(axis);
+      ORT_RETURN_IF(seen[idx], "axes attribute contains duplicate axis ", axis,
+                    " after negative-axis normalization (rank=", rank, ").");
+      seen[idx] = true;
+      normalized_axes.push_back(axis);
+    }
+    return Status::OK();
+  }
+
   [[nodiscard]] Status ScalesValidation(gsl::span<const float> scales, const UpsampleMode mode) const {
+    for (auto& scale : scales) {
+      ORT_RETURN_IF_NOT(std::isfinite(scale), "Scale value must be finite.");
+    }
     if (!is_resize_) {
       for (auto& scale : scales) {
         ORT_RETURN_IF_NOT(scale >= 1, "Scale value should be greater than or equal to 1.");
@@ -571,9 +612,10 @@ class UpsampleBase {
                           "Number of elements in scales should be equal to number of axes.");
 
         InlinedVector<float> new_scales(size_t(rank), 1.0f);
-        for (size_t i = 0; i < axes_.size(); i++) {
-          const int64_t axis = HandleNegativeAxis(axes_[i], rank);
-          new_scales[static_cast<size_t>(axis)] = scales[i];
+        TensorShapeVector normalized_axes;
+        ORT_RETURN_IF_ERROR(ValidateAndNormalizeAxes(rank, normalized_axes));
+        for (size_t i = 0; i < normalized_axes.size(); i++) {
+          new_scales[static_cast<size_t>(normalized_axes[i])] = scales[i];
         }
         scales.swap(new_scales);
       }
@@ -598,11 +640,14 @@ class UpsampleBase {
                       "Resize: input tensor's rank does not match the output tensor's rank.");
 
     if (axes_.size()) {
+      ORT_RETURN_IF_NOT(axes_.size() == size_span.size(),
+                        "Number of elements in sizes should be equal to number of axes.");
       output_dims.assign(input_dims.begin(), input_dims.end());
       const int64_t rank = static_cast<int64_t>(output_dims.size());
-      for (size_t i = 0; i < axes_.size(); i++) {
-        const int64_t axis = HandleNegativeAxis(axes_[i], rank);
-        output_dims[static_cast<size_t>(axis)] = size_span[i];
+      TensorShapeVector normalized_axes;
+      ORT_RETURN_IF_ERROR(ValidateAndNormalizeAxes(rank, normalized_axes));
+      for (size_t i = 0; i < normalized_axes.size(); i++) {
+        output_dims[static_cast<size_t>(normalized_axes[i])] = size_span[i];
       }
     } else {
       std::copy(size_span.begin(), size_span.end(), output_dims.begin());
@@ -651,21 +696,33 @@ class UpsampleBase {
 
   // Roi is redefined in Opset-18, we have a concept of axes.
   // So we need to update it accordingly.
-  void ComputeROIWithAxes(InlinedVector<float>& roi_array, size_t rank) const {
+  Status ComputeROIWithAxes(InlinedVector<float>& roi_array, size_t rank) const {
     if (axes_.size()) {
-      InlinedVector<float> roi_tmp(rank * 2, 0);
-      for (size_t i = rank; i < rank * 2; ++i) {
-        roi_tmp[i] = 1;
-      }
+      // Per-axis ROI is supplied as a flat [start..., end...] of length 2 * len(axes).
+      // The default-ROI path fills roi_array with [0..., 1...] of length 2 * rank, in which
+      // case the canonical full-rank ROI is already correct and no scatter is needed.
+      const bool per_axis_roi = roi_array.size() == 2 * axes_.size();
+      ORT_RETURN_IF_NOT(per_axis_roi || roi_array.size() == 2 * rank,
+                        "roi input length (", roi_array.size(),
+                        ") must be either 2 * rank (", 2 * rank,
+                        ") or 2 * number of axes (", 2 * axes_.size(), ").");
       const int64_t rank_i64 = static_cast<int64_t>(rank);
-      for (size_t i = 0; i < axes_.size(); i++) {
-        const int64_t axis = HandleNegativeAxis(axes_[i], rank_i64);
-        auto v_in_axes = static_cast<size_t>(axis);
-        roi_tmp[v_in_axes] = (roi_array[i]);
-        roi_tmp[rank + v_in_axes] = (roi_array[axes_.size() + i]);
+      TensorShapeVector normalized_axes;
+      ORT_RETURN_IF_ERROR(ValidateAndNormalizeAxes(rank_i64, normalized_axes));
+      if (per_axis_roi) {
+        InlinedVector<float> roi_tmp(rank * 2, 0);
+        for (size_t i = rank; i < rank * 2; ++i) {
+          roi_tmp[i] = 1;
+        }
+        for (size_t i = 0; i < normalized_axes.size(); i++) {
+          const auto v_in_axes = static_cast<size_t>(normalized_axes[i]);
+          roi_tmp[v_in_axes] = roi_array[i];
+          roi_tmp[rank + v_in_axes] = roi_array[axes_.size() + i];
+        }
+        roi_array.swap(roi_tmp);
       }
-      roi_array.swap(roi_tmp);
     }
+    return Status::OK();
   }
 
  public:

@@ -30,7 +30,7 @@ variables:
 resources:
   pipelines:
   - pipeline: build
-    source: 'Zip-Nuget-Java-Nodejs Packaging Pipeline'
+    source: 'Nuget - Packaging - CUDA13'
     trigger: true
     branch: main
   repositories:
@@ -98,11 +98,11 @@ extends:
           runCodesignValidationInjection: false
         timeoutInMinutes: 10
         steps:
-    #    This pipeline usually are triggered by Zip-Nuget-Java-Nodejs Packaging Pipeline,
-    #    The NPM_packages is from Android_Java_API_AAR_Packaging_QNN, not from RN_CI
+    #    This pipeline is triggered by the Nuget - Packaging - CUDA13 pipeline.
+    #    The NPM_packages is from the Nodejs_Packaging stage.
         - download: build
           artifact: 'NPM_packages'
-          displayName: 'Download NPM_packages from Zip-Nuget-Java-Nodejs Packaging Pipeline Pipeline Artifact'
+          displayName: 'Download NPM_packages from CUDA 13 Packaging Pipeline Artifact'
 
         - task: CopyFiles@2
           inputs:
