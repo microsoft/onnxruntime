@@ -1,0 +1,15 @@
+
+
+
+
+const pi_value = 3.14159;
+const buffer_size = 1024;
+var<uniform> version: u32 = 450;
+
+fn calculate_area(radius: f32) -> f32 {
+    return 3.14159 * radius * radius;
+}
+
+fn check_bounds(size: u32) -> bool {
+    return size <= 1024;
+}
