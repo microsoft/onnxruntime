@@ -1,0 +1,33 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// TurboQuant 4-bit codebook constants and dequantization helpers.
+// Shared between turbo_quant_hadamard (quantize) and flash_attention (dequantize).
+//
+// KV cache layout per head (HEAD_SIZE elements):
+//   Word 0:      bitcast<u32>(fp32 L2 norm)
+//   Words 1..N:  HEAD_SIZE × 4-bit centroid indices packed 8-per-u32
+//   Total words: HEAD_SIZE / 8 + 1
+
+// 16 MSE-optimal centroids for unit-sphere coordinates (symmetric: C[i] = -C[15-i])
+const TQ_CENTROIDS = array<f32, 16>(
+    -0.2377, -0.1809, -0.1419, -0.1104, -0.0829, -0.0578, -0.0342, -0.0113,
+     0.0113,  0.0342,  0.0578,  0.0829,  0.1104,  0.1419,  0.1809,  0.2377);
+
+// 15 interior decision boundaries for branchless quantization
+const TQ_BOUNDARIES = array<f32, 15>(
+    -0.2093, -0.1614, -0.1261, -0.0966, -0.0704, -0.0460, -0.0227,
+     0.0000,  0.0227,  0.0460,  0.0704,  0.0966,  0.1261,  0.1614,  0.2093);
+
+// Branchless centroid index lookup (0..15) for a unit-normalized value.
+// Counts how many boundaries the value exceeds — no divergence across threads.
+fn snap_to_centroid_index(x: f32) -> u32 {
+  return u32(x > TQ_BOUNDARIES[0])  + u32(x > TQ_BOUNDARIES[1])  +
+         u32(x > TQ_BOUNDARIES[2])  + u32(x > TQ_BOUNDARIES[3])  +
+         u32(x > TQ_BOUNDARIES[4])  + u32(x > TQ_BOUNDARIES[5])  +
+         u32(x > TQ_BOUNDARIES[6])  + u32(x > TQ_BOUNDARIES[7])  +
+         u32(x > TQ_BOUNDARIES[8])  + u32(x > TQ_BOUNDARIES[9])  +
+         u32(x > TQ_BOUNDARIES[10]) + u32(x > TQ_BOUNDARIES[11]) +
+         u32(x > TQ_BOUNDARIES[12]) + u32(x > TQ_BOUNDARIES[13]) +
+         u32(x > TQ_BOUNDARIES[14]);
+}

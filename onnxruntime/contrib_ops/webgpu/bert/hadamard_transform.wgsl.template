@@ -1,0 +1,67 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Fast Walsh-Hadamard Transform (FWHT) applied along the last dimension.
+// Reads from a const input buffer, writes to a separate output buffer.
+// Each workgroup processes one contiguous slice of size 1 << hadamard_size_log2.
+
+#param hadamard_size_log2
+#param components
+
+const HADAMARD_SIZE : u32 = 1u << hadamard_size_log2;
+const HADAMARD_SIZE_VEC : u32 = HADAMARD_SIZE / components;
+
+#use .getByOffset .setByOffset
+
+var<workgroup> hadamard_buffer : array<input_element_t, HADAMARD_SIZE>;
+
+#include "bert/hadamard_transform_common.wgsl.template"
+
+$MAIN {
+  let slice_idx = workgroup_idx;
+  if (slice_idx >= uniforms.num_slices) {
+    return;
+  }
+
+  let base_offset = slice_idx * HADAMARD_SIZE_VEC;
+
+  // Load from input into shared memory.
+  for (var i = local_idx; i < HADAMARD_SIZE_VEC; i += workgroup_size_x) {
+    let val = input.getByOffset(base_offset + i);
+#if components == 4
+    hadamard_buffer[i * 4u + 0u] = val[0];
+    hadamard_buffer[i * 4u + 1u] = val[1];
+    hadamard_buffer[i * 4u + 2u] = val[2];
+    hadamard_buffer[i * 4u + 3u] = val[3];
+#elif components == 2
+    hadamard_buffer[i * 2u + 0u] = val[0];
+    hadamard_buffer[i * 2u + 1u] = val[1];
+#else
+    hadamard_buffer[i] = val;
+#endif
+  }
+  workgroupBarrier();
+
+  // Walsh-Hadamard Transform butterfly passes.
+  wht_butterfly(local_idx, workgroup_size_x);
+
+  // Normalize by 1/sqrt(HADAMARD_SIZE) to make the transform orthogonal.
+  let norm = input_element_t(1) / input_element_t(sqrt(f32(HADAMARD_SIZE)));
+
+  // Write results to output buffer.
+  for (var i = local_idx; i < HADAMARD_SIZE_VEC; i += workgroup_size_x) {
+#if components == 4
+    let v0 = hadamard_buffer[i * 4u + 0u] * norm;
+    let v1 = hadamard_buffer[i * 4u + 1u] * norm;
+    let v2 = hadamard_buffer[i * 4u + 2u] * norm;
+    let v3 = hadamard_buffer[i * 4u + 3u] * norm;
+    output.setByOffset(base_offset + i, output_value_t(v0, v1, v2, v3));
+#elif components == 2
+    let v0 = hadamard_buffer[i * 2u + 0u] * norm;
+    let v1 = hadamard_buffer[i * 2u + 1u] * norm;
+    output.setByOffset(base_offset + i, output_value_t(v0, v1));
+#else
+    output.setByOffset(base_offset + i, output_value_t(hadamard_buffer[i] * norm));
+#endif
+  }
+} // MAIN
