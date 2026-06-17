@@ -13,12 +13,14 @@
 //
 // Two accessor flavors are generated for each experimental function:
 //
-//   1. Get_<NAME>_SinceV<VER>_Fn(api)        -> returns the typed function pointer, or nullptr if the function is not
-//                                               available in this build. Use this to check availability at runtime.
+//   1. Get_<NAME>_SinceV<VER>_Fn(api)
+//      Returns the typed function pointer, or nullptr if the function is not available in this build.
+//      Use this to check availability at runtime.
 //
-//   2. Get_<NAME>_SinceV<VER>_FnOrThrow(api) -> returns the typed function pointer, or throws Ort::Exception
-//                                               (ORT_NOT_IMPLEMENTED) if the function is not available in this build.
-//                                               Use this when the function is required.
+//   2. Get_<NAME>_SinceV<VER>_FnOrThrow(api)
+//      Returns the typed function pointer, or throws Ort::Exception (ORT_NOT_IMPLEMENTED) if the function is not
+//      available in this build.
+//      Use this when the function is required.
 //
 // C++ usage (nullable):
 //   if (auto* fn = Ort::Experimental::Get_OrtApi_ExperimentalApiTest_SinceV28_Fn(api)) {
@@ -103,7 +105,7 @@ namespace Experimental {
 //
 // Auxiliary types and helpers
 //
-// If C++ wrapper types or helpers are needed in the future, add them here in the `Ort::Experimental` namespace.
+// C++ wrapper types or helpers go here in the `Ort::Experimental` namespace.
 //
 
 }  // namespace Experimental

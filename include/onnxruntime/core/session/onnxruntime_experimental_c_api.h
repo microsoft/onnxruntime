@@ -47,7 +47,7 @@ ORT_RUNTIME_CLASS(ModelPackageContext);
 ORT_RUNTIME_CLASS(ModelPackageComponentContext);
 
 //
-// C: function pointer typedefs and name constants
+// C function pointer typedefs and name constants
 //
 
 // For each ORT_EXPERIMENTAL_API(VER, RET, NAME, ...) entry in the .inc file, this generates:
