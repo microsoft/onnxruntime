@@ -22,7 +22,6 @@
 #include <vector>
 #include <algorithm>
 #include <cmath>
-#include <numeric>
 
 namespace {
 inline uint8_t GetPackedZeroPointValue(int64_t num_bits, uint8_t zero_point) {
@@ -1124,13 +1123,24 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   }
 
   const int max_expert_threads = tp ? concurrency::ThreadPool::DegreeOfParallelism(tp) : 1;
-  const int64_t total_expert_work = std::accumulate(expert_token_map.begin(), expert_token_map.end(), 0LL,
-                                                    [](int64_t sum, const std::vector<int64_t>& tokens) { return sum + static_cast<int64_t>(tokens.size()); });
-  const int64_t expert_thread_divisor = std::max(1, max_expert_threads * 8);
-  const int64_t min_expert_work_per_thread = std::max(int64_t{16}, total_expert_work / expert_thread_divisor);
 
-  int num_expert_threads = (tp == nullptr || total_expert_work < min_expert_work_per_thread) ? 1 : std::min(narrow<int>(total_expert_work / std::max(int64_t{1}, min_expert_work_per_thread)), std::min(narrow<int>(num_experts), max_expert_threads));
-  if (num_expert_threads == 0) num_expert_threads = 1;
+  // Number of experts that actually received tokens; only these do work in the expert loop.
+  int num_active_experts = 0;
+  for (const auto& tokens : expert_token_map) {
+    if (!tokens.empty()) ++num_active_experts;
+  }
+
+  // Parallelize the expert loop across the active experts, one expert (batch) per thread. This is
+  // the key lever for decode (batch=seq=1): only top_k experts are active, and each per-expert GEMM
+  // is effectively a GEMV (M==1) that MLAS does not thread internally, so giving the whole pool to
+  // the inner op would leave most cores idle. Spreading active experts across threads instead keeps
+  // the cores busy. Nested parallelism (outer expert loop + inner GEMM/dequant on the same pool) can
+  // livelock ORT's Eigen pool (see PR #29081), so only one level may use the session pool tp: when
+  // the expert loop runs multi-threaded the inner ops run serially (inner_tp == nullptr); when a
+  // single expert is active the loop is serial and the inner GEMM gets the full pool (inner_tp == tp).
+  // This must be decided BEFORE the per-thread workspaces below, which are sized by num_expert_threads.
+  int num_expert_threads = std::max(1, std::min(num_active_experts, max_expert_threads));
+  concurrency::ThreadPool* inner_tp = (num_expert_threads > 1) ? nullptr : tp;
 
   auto thread_local_outputs_ptr = IAllocator::MakeUniquePtr<float>(allocator, static_cast<size_t>(num_expert_threads) * output_buffer_size);
   float* thread_local_outputs = thread_local_outputs_ptr.get();
@@ -1284,22 +1294,11 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
   }
 
   std::vector<std::pair<int64_t, size_t>> expert_workload;
-  size_t total_work = 0;
-
   for (int64_t i = 0; i < num_experts; ++i) {
     const size_t token_count = expert_token_map[static_cast<size_t>(i)].size();
     if (token_count > 0) {
       expert_workload.emplace_back(i, token_count);
-      total_work += token_count;
     }
-  }
-
-  if (total_work < 48) {
-    num_expert_threads = 1;
-  } else if (total_work < 192) {
-    num_expert_threads = std::min(num_expert_threads, 2);
-  } else if (total_work < 512) {
-    num_expert_threads = std::min(num_expert_threads, 4);
   }
 
   std::sort(expert_workload.begin(), expert_workload.end(),
@@ -1343,11 +1342,11 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
       float* B1_dequant = C2 + C2_size;
       float* B2_dequant = B1_dequant + B1_dequant_size;
 
-      const int64_t dynamic_block_size = GetOptimalBlockSize(num_expert_tokens, tp ? concurrency::ThreadPool::DegreeOfParallelism(tp) : 1);
+      const int64_t dynamic_block_size = GetOptimalBlockSize(num_expert_tokens, inner_tp ? concurrency::ThreadPool::DegreeOfParallelism(inner_tp) : 1);
       const int64_t num_blocks = (num_expert_tokens + dynamic_block_size - 1) / dynamic_block_size;
 
-      if (num_expert_tokens >= 8 && num_blocks > 1 && tp != nullptr) {
-        concurrency::ThreadPool::TrySimpleParallelFor(tp, narrow<int>(num_blocks), [&](std::ptrdiff_t block_idx) {
+      if (num_expert_tokens >= 8 && num_blocks > 1 && inner_tp != nullptr) {
+        concurrency::ThreadPool::TrySimpleParallelFor(inner_tp, narrow<int>(num_blocks), [&](std::ptrdiff_t block_idx) {
           const int64_t start_idx = block_idx * dynamic_block_size;
           const int64_t end_idx = std::min(start_idx + dynamic_block_size, num_expert_tokens);
 
@@ -1420,7 +1419,7 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
                         fc1_out_features, hidden_size, fc1_packed_cols,
                         block_size_, fc1_scales_dims[2],
                         thread_lut_packed_buffer, thread_lut_scale_buffer,
-                        num_expert_tokens, tp)) {
+                        num_expert_tokens, inner_tp)) {
         goto fc1_bias_handling;
       }
 
@@ -1444,7 +1443,7 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
             const uint8_t* packed_b = static_cast<const uint8_t*>(fc1_direct_q4_cache_ptr) + expert_idx * packed_size;
 
             Status gemm_status = DirectQ4Gemm(A1, packed_b, fc1_bias_float, C1,
-                                              num_expert_tokens, fc1_out_features, hidden_size, fc1_direct_qtype, tp);
+                                              num_expert_tokens, fc1_out_features, hidden_size, fc1_direct_qtype, inner_tp);
             if (gemm_status.IsOK()) {
               goto fc1_gemm_done;
             }
@@ -1465,7 +1464,7 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
                  1.0f, A1, k,
                  B1_dequant, n,
                  0.0f, C1, n,
-                 tp, &mlas_backend_kernel_selector_config_);
+                 inner_tp, &mlas_backend_kernel_selector_config_);
 
         goto fc1_bias_handling;
       }
@@ -1501,7 +1500,7 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
           }
 
           Status gemm_status = DirectQ4Gemm(A1, mlas_packed_fc1.get(), fc1_bias_float, C1,
-                                            num_expert_tokens, fc1_out_features, hidden_size, q_type, tp);
+                                            num_expert_tokens, fc1_out_features, hidden_size, q_type, inner_tp);
 
           if (gemm_status.IsOK()) {
             goto fc1_gemm_done;
@@ -1512,7 +1511,7 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
 
       // Traditional approach: dequantize + regular GEMM
       if (num_dequant_blocks > 1 && fc1_out_features >= 32) {
-        concurrency::ThreadPool::TrySimpleParallelFor(tp, narrow<int>(num_dequant_blocks), [&](std::ptrdiff_t block_idx) {
+        concurrency::ThreadPool::TrySimpleParallelFor(inner_tp, narrow<int>(num_dequant_blocks), [&](std::ptrdiff_t block_idx) {
           const int64_t start_row = block_idx * dequant_block_size;
           const int64_t end_row = std::min(start_row + dequant_block_size, fc1_out_features);
           const auto offset = expert_idx * fc1_out_features * fc1_packed_cols + start_row * fc1_packed_cols;
@@ -1533,14 +1532,14 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
                           current_scales_ptr,
                           current_zp_ptr,
                           is_fc1_block_wise ? block_size_ : 0, expert_weight_bits_,
-                          end_row - start_row, hidden_size, B1_dequant + start_row * hidden_size, tp);
+                          end_row - start_row, hidden_size, B1_dequant + start_row * hidden_size, inner_tp);
         });
       } else {
         DequantizeBlock(fc1_weights_data + expert_idx * fc1_out_features * fc1_packed_cols,
                         fc1_scales_ptr,
                         fc1_zp_ptr,
                         is_fc1_block_wise ? block_size_ : 0, expert_weight_bits_,
-                        fc1_out_features, hidden_size, B1_dequant, tp);
+                        fc1_out_features, hidden_size, B1_dequant, inner_tp);
       }
 
       MlasGemm(CblasNoTrans, CblasTrans,
@@ -1548,7 +1547,7 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
                1.0f, A1, k,
                B1_dequant, k,
                0.0f, C1, n,
-               tp, &mlas_backend_kernel_selector_config_);
+               inner_tp, &mlas_backend_kernel_selector_config_);
 
     fc1_bias_handling:
 
@@ -1593,12 +1592,12 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
 
       if (activation_type_ == ActivationType::SwiGLU) {
         const int64_t activation_threshold = std::max(int64_t{4}, 256 / std::max(int64_t{1}, inter_size));
-        if (num_expert_tokens >= activation_threshold && tp != nullptr) {
+        if (num_expert_tokens >= activation_threshold && inner_tp != nullptr) {
           const int64_t activation_block_size = std::max(int64_t{1}, std::min(int64_t{64}, activation_threshold));
           const int64_t num_activation_blocks = (num_expert_tokens + activation_block_size - 1) / activation_block_size;
 
           if (num_activation_blocks > 1) {
-            concurrency::ThreadPool::TrySimpleParallelFor(tp, narrow<int>(num_activation_blocks), [&](std::ptrdiff_t block_idx) {
+            concurrency::ThreadPool::TrySimpleParallelFor(inner_tp, narrow<int>(num_activation_blocks), [&](std::ptrdiff_t block_idx) {
               const int64_t start_token = block_idx * activation_block_size;
               const int64_t end_token = std::min(start_token + activation_block_size, num_expert_tokens);
 
@@ -1664,7 +1663,7 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
                         hidden_size, inter_size, fc2_packed_cols,
                         block_size_, fc2_scales_dims[2],
                         thread_lut_packed_buffer, thread_lut_scale_buffer,
-                        num_expert_tokens, tp)) {
+                        num_expert_tokens, inner_tp)) {
         goto fc2_gemm_done;
       }
 
@@ -1688,7 +1687,7 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
             const uint8_t* packed_b = static_cast<const uint8_t*>(fc2_direct_q4_cache_ptr) + expert_idx * packed_size;
 
             Status gemm_status = DirectQ4Gemm(A2, packed_b, fc2_bias_float, C2,
-                                              num_expert_tokens, hidden_size, inter_size, fc2_direct_qtype, tp);
+                                              num_expert_tokens, hidden_size, inter_size, fc2_direct_qtype, inner_tp);
             if (gemm_status.IsOK()) {
               fc2_bias_added_by_mlas = true;
               goto fc2_gemm_done;
@@ -1710,7 +1709,7 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
                  1.0f, A2, k2,
                  B2_dequant, n2,
                  0.0f, C2, n2,
-                 tp, &mlas_backend_kernel_selector_config_);
+                 inner_tp, &mlas_backend_kernel_selector_config_);
 
         goto fc2_gemm_done;
       }
@@ -1746,7 +1745,7 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
           }
 
           Status gemm_status = DirectQ4Gemm(A2, mlas_packed_fc2.get(), fc2_bias_float, C2,
-                                            num_expert_tokens, hidden_size, inter_size, q_type2, tp);
+                                            num_expert_tokens, hidden_size, inter_size, q_type2, inner_tp);
 
           if (gemm_status.IsOK()) {
             fc2_bias_added_by_mlas = true;
@@ -1759,7 +1758,7 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
 
       // Traditional approach: dequantize + regular GEMM
       if (num_fc2_dequant_blocks > 1 && hidden_size >= 32) {
-        concurrency::ThreadPool::TrySimpleParallelFor(tp, narrow<int>(num_fc2_dequant_blocks), [&](std::ptrdiff_t block_idx) {
+        concurrency::ThreadPool::TrySimpleParallelFor(inner_tp, narrow<int>(num_fc2_dequant_blocks), [&](std::ptrdiff_t block_idx) {
           const int64_t start_row = block_idx * fc2_dequant_block_size;
           const int64_t end_row = std::min(start_row + fc2_dequant_block_size, hidden_size);
           const auto offset = expert_idx * hidden_size * fc2_packed_cols + start_row * fc2_packed_cols;
@@ -1780,14 +1779,14 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
                           current_scales_ptr,
                           current_zp_ptr,
                           is_fc2_block_wise ? block_size_ : 0, expert_weight_bits_,
-                          end_row - start_row, inter_size, B2_dequant + start_row * inter_size, tp);
+                          end_row - start_row, inter_size, B2_dequant + start_row * inter_size, inner_tp);
         });
       } else {
         DequantizeBlock(fc2_weights_data + expert_idx * hidden_size * fc2_packed_cols,
                         fc2_scales_ptr,
                         fc2_zp_ptr,
                         is_fc2_block_wise ? block_size_ : 0, expert_weight_bits_,
-                        hidden_size, inter_size, B2_dequant, tp);
+                        hidden_size, inter_size, B2_dequant, inner_tp);
       }
 
       MlasGemm(CblasNoTrans, CblasTrans,
@@ -1795,7 +1794,7 @@ Status QMoECPU<T>::ComputeCommon(OpKernelContext* context, const ComputeInputs& 
                1.0f, A2, k2,
                B2_dequant, k2,
                0.0f, C2, n2,
-               tp, &mlas_backend_kernel_selector_config_);
+               inner_tp, &mlas_backend_kernel_selector_config_);
 
     fc2_gemm_done:
 
