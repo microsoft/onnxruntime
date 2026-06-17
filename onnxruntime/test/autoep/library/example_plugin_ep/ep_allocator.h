@@ -15,7 +15,7 @@ struct AllocatorStats {
   int64_t num_reserves;            // Number of reserves. (Number of calls to Reserve() in arena-based allocators)
   int64_t num_arena_extensions;    // Number of arena extensions (Relevant only for arena based allocators)
   int64_t num_arena_shrinkages;    // Number of arena shrinkages (Relevant only for arena based allocators)
-  int64_t bytes_in_use;            // Number of bytes in use (includes internal fragmentation/padding).
+  int64_t bytes_in_use;            // Number of bytes in use (includes padding).
   int64_t bytes_requested_in_use;  // Number of bytes actually requested by user code (excludes padding).
   int64_t total_allocated_bytes;   // The total number of allocated bytes by the allocator.
   int64_t max_bytes_in_use;        // The maximum bytes in use.

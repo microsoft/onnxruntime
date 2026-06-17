@@ -435,12 +435,20 @@ class KernelScope {
       };
 
       // Emit memory stats after kernel execution.
-      // Wrapped in try/catch because ~KernelScope is noexcept and plugin EP
-      // allocators (IAllocatorWrappingOrtAllocator) can throw from GetStats.
+      // ~KernelScope is noexcept, and plugin EP allocators (IAllocatorWrappingOrtAllocator)
+      // can throw from GetStats. Catch only that call and skip mem_* args on failure.
       if (has_meaningful_stats_) {
-        try {
-          AllocatorStats stats_after;
+        AllocatorStats stats_after;
+        bool has_stats_after = false;
+        ORT_TRY {
           ep_allocator_->GetStats(&stats_after);
+          has_stats_after = true;
+        }
+        ORT_CATCH(...) {
+          // Swallow GetStats errors — profiling stats are best-effort and must not crash.
+        }
+
+        if (has_stats_after) {
           // Actual bytes requested by user code (excludes internal padding/fragmentation)
           event_args["mem_bytes_requested_in_use"] = std::to_string(stats_after.bytes_requested_in_use);
           event_args["mem_requested_in_use_delta"] = std::to_string(stats_after.bytes_requested_in_use - mem_requested_in_use_before_);
@@ -451,8 +459,6 @@ class KernelScope {
           // Total device memory held by the allocator (not available to other applications)
           event_args["mem_arena_held"] = std::to_string(stats_after.total_allocated_bytes);
           event_args["mem_arena_held_delta"] = std::to_string(stats_after.total_allocated_bytes - mem_total_allocated_before_);
-        } catch (...) {
-          // Swallow errors — profiling stats are best-effort and must not crash.
         }
       }
 
