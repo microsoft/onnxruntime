@@ -127,6 +127,7 @@ dot_accumulate_4blk_w2_blklen128(
 {
     __m512i d0, d1, d2, d3;
     if constexpr (kVnni) {
+        // dpbusd: 2nd operand (bv=unsigned [0,3]) x 3rd operand (av=signed int8); consistent with maddubs(bv, av) below
         d0 = _mm512_dpbusd_epi32(_mm512_setzero_si512(), bv0_lo, av0_lo);
         d0 = _mm512_dpbusd_epi32(d0, bv0_hi, av0_hi);
         d1 = _mm512_dpbusd_epi32(_mm512_setzero_si512(), bv1_lo, av1_lo);
@@ -162,8 +163,8 @@ dot_accumulate_4blk_w2_blklen128(
     const __m512 s2 = _mm512_set1_ps(scale_a[2] * scale_b[2]);
     const __m512 s3 = _mm512_set1_ps(scale_a[3] * scale_b[3]);
 
-    __m512 acc_lo = _mm512_fmadd_ps(_mm512_cvtepi32_ps(d0), s0, _mm512_setzero_ps());
-    __m512 acc_hi = _mm512_fmadd_ps(_mm512_cvtepi32_ps(d1), s1, _mm512_setzero_ps());
+    __m512 acc_lo = _mm512_mul_ps(_mm512_cvtepi32_ps(d0), s0);
+    __m512 acc_hi = _mm512_mul_ps(_mm512_cvtepi32_ps(d1), s1);
     acc_lo = _mm512_fmadd_ps(_mm512_cvtepi32_ps(d2), s2, acc_lo);
     acc_hi = _mm512_fmadd_ps(_mm512_cvtepi32_ps(d3), s3, acc_hi);
     acc = _mm512_add_ps(acc, _mm512_add_ps(acc_lo, acc_hi));
@@ -347,6 +348,9 @@ Q2Int8GemmR1xC4BlkLen128Avx512(
                 const __m512i av01_hi = load_hi(1);
                 const __m512i av02_lo = load_lo(2);
                 const __m512i av02_hi = load_hi(2);
+                // TailBlocks = BlockCountK % kBlockGroupBlks in [1,3], so block 3 is never a real tail
+                // block. Keep av03 hardcoded to zero. The unpacked bv3 can still be non-zero,
+                // but its contribution is zeroed twice: by av03==0 and scale_a0_safe[3]==0.
                 const __m512i av03_lo = zero;
                 const __m512i av03_hi = zero;
 
@@ -538,6 +542,9 @@ Q2Int8GemmR2xC4BlkLen128Avx512(
                 const __m512i av01_hi = load_a_hi(0, 1);
                 const __m512i av02_lo = load_a_lo(0, 2);
                 const __m512i av02_hi = load_a_hi(0, 2);
+                // TailBlocks = BlockCountK % kBlockGroupBlks in [1,3], so block 3 is never a real tail
+                // block. Keep av03 hardcoded to zero. The unpacked bv3 can still be non-zero,
+                // but its contribution is zeroed twice: by av03==0 and scale_a0_safe[3]==0.
                 const __m512i av03_lo = zero;
                 const __m512i av03_hi = zero;
 
@@ -706,6 +713,9 @@ Q2Int8GemmRMxC_Tail_BlkLen128Avx512(
                 const __m512i av01_hi = load_hi(1);
                 const __m512i av02_lo = load_lo(2);
                 const __m512i av02_hi = load_hi(2);
+                // TailBlocks = BlockCountK % kBlockGroupBlks in [1,3], so block 3 is never a real tail
+                // block. Keep av03 hardcoded to zero. The unpacked bv3 can still be non-zero,
+                // but its contribution is zeroed twice: by av03==0 and scale_a0_safe[3]==0.
                 const __m512i av03_lo = zero;
                 const __m512i av03_hi = zero;
 

@@ -121,6 +121,7 @@ dot_accumulate_4blk_w2(const __m512i& av0_64_epi8, const __m512i& av1_64_epi8,
 {
     __m512i d0, d1, d2, d3;
     if constexpr (kVnni) {
+        // dpbusd: 2nd operand (bv=unsigned [0,3]) x 3rd operand (av=signed int8); consistent with maddubs(bv, av) below
         d0 = _mm512_dpbusd_epi32(_mm512_setzero_si512(), bv0_64_epi8, av0_64_epi8);
         d1 = _mm512_dpbusd_epi32(_mm512_setzero_si512(), bv1_64_epi8, av1_64_epi8);
         d2 = _mm512_dpbusd_epi32(_mm512_setzero_si512(), bv2_64_epi8, av2_64_epi8);
@@ -148,8 +149,8 @@ dot_accumulate_4blk_w2(const __m512i& av0_64_epi8, const __m512i& av1_64_epi8,
 
     // Two interleaved sub-accumulators: lo gets blocks {0, 2}, hi gets {1, 3}.
     // Each sub-accumulator chain is 2 FMAs deep (~8c) vs the 4-FMA single chain.
-    __m512 acc_lo = _mm512_fmadd_ps(_mm512_cvtepi32_ps(d0), s0, _mm512_setzero_ps());
-    __m512 acc_hi = _mm512_fmadd_ps(_mm512_cvtepi32_ps(d1), s1, _mm512_setzero_ps());
+    __m512 acc_lo = _mm512_mul_ps(_mm512_cvtepi32_ps(d0), s0);
+    __m512 acc_hi = _mm512_mul_ps(_mm512_cvtepi32_ps(d1), s1);
     acc_lo = _mm512_fmadd_ps(_mm512_cvtepi32_ps(d2), s2, acc_lo);
     acc_hi = _mm512_fmadd_ps(_mm512_cvtepi32_ps(d3), s3, acc_hi);
     acc = _mm512_add_ps(acc, _mm512_add_ps(acc_lo, acc_hi));
@@ -326,7 +327,10 @@ Q2Int8GemmR1xC4BlkLen64Avx512(
                 const __m512i av02 = (TailBlocks > 2)
                     ? _mm512_loadu_si512(reinterpret_cast<const __m512i*>(QuantAPtr + 2 * kBlkLen))
                     : zero;
-                const __m512i av03 = zero;  // TailBlocks at most 3
+                // TailBlocks = BlockCountK % kBlockGroupBlks in [1,3], so block 3 is never a real tail
+                // block. Keep av03 hardcoded to zero. The unpacked bv3 can still be non-zero,
+                // but its contribution is zeroed twice: by av03==0 and scale_a0_safe[3]==0.
+                const __m512i av03 = zero;
 
                 // Bounded scale_a copy.
                 float scale_a0_safe[kBlockGroupBlks] = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -503,6 +507,9 @@ Q2Int8GemmR2xC4BlkLen64Avx512(
                 const __m512i av02 = (TailBlocks > 2)
                     ? _mm512_loadu_si512(reinterpret_cast<const __m512i*>(QuantAPtr + 2 * kBlkLen))
                     : zero;
+                // TailBlocks = BlockCountK % kBlockGroupBlks in [1,3], so block 3 is never a real tail
+                // block. Keep av03 hardcoded to zero. The unpacked bv3 can still be non-zero,
+                // but its contribution is zeroed twice: by av03==0 and scale_a0_safe[3]==0.
                 const __m512i av03 = zero;
                 const __m512i av10 = _mm512_loadu_si512(
                     reinterpret_cast<const __m512i*>(QuantAPtr + lda + 0 * kBlkLen));
@@ -667,6 +674,9 @@ Q2Int8GemmRMxC_Tail_BlkLen64Avx512(
                 const __m512i av02 = (TailBlocks > 2)
                     ? _mm512_loadu_si512(reinterpret_cast<const __m512i*>(QuantAPtr + 2 * kBlkLen))
                     : zero;
+                // TailBlocks = BlockCountK % kBlockGroupBlks in [1,3], so block 3 is never a real tail
+                // block. Keep av03 hardcoded to zero. The unpacked bv3 can still be non-zero,
+                // but its contribution is zeroed twice: by av03==0 and scale_a0_safe[3]==0.
                 const __m512i av03 = zero;
 
                 float scale_a0_safe[kBlockGroupBlks] = {0.0f, 0.0f, 0.0f, 0.0f};

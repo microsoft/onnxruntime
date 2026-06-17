@@ -119,6 +119,7 @@ dot_accumulate_4blk_w2_blklen32(
 {
     __m512i d0, d1, d2, d3;
     if constexpr (kVnni) {
+        // dpbusd: 2nd operand (bv=unsigned [0,3]) × 3rd operand (av=signed int8); consistent with maddubs(bv, av) below
         d0 = _mm512_dpbusd_epi32(_mm512_setzero_si512(), bv0, av0);
         d1 = _mm512_dpbusd_epi32(_mm512_setzero_si512(), bv1, av1);
         d2 = _mm512_dpbusd_epi32(_mm512_setzero_si512(), bv2, av2);
@@ -140,8 +141,8 @@ dot_accumulate_4blk_w2_blklen32(
     const __m512 s2 = _mm512_set1_ps(scale_a[2] * scale_b[2]);
     const __m512 s3 = _mm512_set1_ps(scale_a[3] * scale_b[3]);
 
-    __m512 acc_lo = _mm512_fmadd_ps(_mm512_cvtepi32_ps(d0), s0, _mm512_setzero_ps());
-    __m512 acc_hi = _mm512_fmadd_ps(_mm512_cvtepi32_ps(d1), s1, _mm512_setzero_ps());
+    __m512 acc_lo = _mm512_mul_ps(_mm512_cvtepi32_ps(d0), s0);
+    __m512 acc_hi = _mm512_mul_ps(_mm512_cvtepi32_ps(d1), s1);
     acc_lo = _mm512_fmadd_ps(_mm512_cvtepi32_ps(d2), s2, acc_lo);
     acc_hi = _mm512_fmadd_ps(_mm512_cvtepi32_ps(d3), s3, acc_hi);
     acc = _mm512_add_ps(acc, _mm512_add_ps(acc_lo, acc_hi));
@@ -273,6 +274,9 @@ Q2Int8GemmR1xC4BlkLen32Avx512(
                 const __m512i av00 = load_a(0);
                 const __m512i av01 = load_a(1);
                 const __m512i av02 = load_a(2);
+                // TailBlocks = BlockCountK % kBlockGroupBlks ∈ [1,3], so block 3 is never a real tail
+                // block — hardcode av03 = zero. The unpacked bv3 is still non-zero, but its
+                // contribution is zeroed twice: by av03==0 here and scale_a0_safe[3]==0 below.
                 const __m512i av03 = zero;
 
                 float scale_a0_safe[kBlockGroupBlks] = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -419,6 +423,9 @@ Q2Int8GemmR2xC4BlkLen32Avx512(
                 const __m512i av00 = load_a(0, 0);
                 const __m512i av01 = load_a(0, 1);
                 const __m512i av02 = load_a(0, 2);
+                // TailBlocks = BlockCountK % kBlockGroupBlks ∈ [1,3], so block 3 is never a real tail
+                // block — hardcode av03 = zero. The unpacked bv3 is still non-zero, but its
+                // contribution is zeroed twice: by av03==0 here and scale_a0_safe[3]==0 below.
                 const __m512i av03 = zero;
                 const __m512i av10 = load_a(lda, 0);
                 const __m512i av11 = load_a(lda, 1);
@@ -550,6 +557,9 @@ Q2Int8GemmRMxC_Tail_BlkLen32Avx512(
                 const __m512i av00 = load_a(0);
                 const __m512i av01 = load_a(1);
                 const __m512i av02 = load_a(2);
+                // TailBlocks = BlockCountK % kBlockGroupBlks ∈ [1,3], so block 3 is never a real tail
+                // block — hardcode av03 = zero. The unpacked bv3 is still non-zero, but its
+                // contribution is zeroed twice: by av03==0 here and scale_a0_safe[3]==0 below.
                 const __m512i av03 = zero;
 
                 float scale_a0_safe[kBlockGroupBlks] = {0.0f, 0.0f, 0.0f, 0.0f};
