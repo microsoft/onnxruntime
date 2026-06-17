@@ -214,7 +214,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     const logging::Logger& logger,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable,
     [[maybe_unused]] concurrency::ThreadPool* intra_op_thread_pool,
-    const ExecutionProviders* execution_providers) {
+    [[maybe_unused]] const ExecutionProviders* execution_providers) {
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
   const bool disable_quant_qdq =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
@@ -454,31 +454,40 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       transformers.emplace_back(std::make_unique<MatMulNBitsFusion>(cpu_ep));
       transformers.emplace_back(std::make_unique<GroupQueryAttentionPreNormFusion>(
           InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
-      // Check if MatMulNBitsMlp kernel is available on WebGPU EP.
-      // If not available, the fusion will skip pattern matching at transform time.
       bool has_matmul_nbits_mlp_kernel = false;
+      bool has_matmul_nbits_qkv_kernel = false;
       if (execution_providers != nullptr) {
         const auto* webgpu_ep = execution_providers->Get(onnxruntime::kWebGpuExecutionProvider);
         if (webgpu_ep != nullptr) {
           auto registry = webgpu_ep->GetKernelRegistry();
-          if (registry &&
-              registry->TryFindKernel(onnxruntime::kWebGpuExecutionProvider,
-                                      "MatMulNBitsMlp",
-                                      kMSDomain,
-                                      1,
-                                      KernelRegistry::TypeConstraintMap{},
-                                      logger,
-                                      nullptr)
-                  .IsOK()) {
-            has_matmul_nbits_mlp_kernel = true;
+          if (registry) {
+            has_matmul_nbits_mlp_kernel = registry->TryFindKernel(onnxruntime::kWebGpuExecutionProvider,
+                                                                  "MatMulNBitsMlp",
+                                                                  kMSDomain,
+                                                                  1,
+                                                                  KernelRegistry::TypeConstraintMap{},
+                                                                  logger,
+                                                                  nullptr)
+                                              .IsOK();
+            has_matmul_nbits_qkv_kernel = registry->TryFindKernel(onnxruntime::kWebGpuExecutionProvider,
+                                                                  "MatMulNBitsQkv",
+                                                                  kMSDomain,
+                                                                  1,
+                                                                  KernelRegistry::TypeConstraintMap{},
+                                                                  logger,
+                                                                  nullptr)
+                                              .IsOK();
           }
         }
       }
-      transformers.emplace_back(std::make_unique<MatMulNBitsMlpFusion>(
-          InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider},
-          has_matmul_nbits_mlp_kernel));
-      transformers.emplace_back(std::make_unique<MatMulNBitsQkvFusion>(
-          InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
+      if (has_matmul_nbits_mlp_kernel) {
+        transformers.emplace_back(std::make_unique<MatMulNBitsMlpFusion>(
+            InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
+      }
+      if (has_matmul_nbits_qkv_kernel) {
+        transformers.emplace_back(std::make_unique<MatMulNBitsQkvFusion>(
+            InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
+      }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
       // The QDQFinalCleanupTransformer must run AFTER other transformers that fuse Q/DQ nodes. Otherwise, their

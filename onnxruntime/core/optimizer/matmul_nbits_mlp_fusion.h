@@ -30,14 +30,11 @@ namespace onnxruntime {
 class MatMulNBitsMlpFusion : public GraphTransformer {
  public:
   explicit MatMulNBitsMlpFusion(
-      const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
-      bool has_matmul_nbits_mlp_kernel = false) noexcept
-      : GraphTransformer("MatMulNBitsMlpFusion", compatible_execution_providers),
-        has_matmul_nbits_mlp_kernel_(has_matmul_nbits_mlp_kernel) {}
+      const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
+      : GraphTransformer("MatMulNBitsMlpFusion", compatible_execution_providers) {}
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
-  bool has_matmul_nbits_mlp_kernel_;
 };
 
 }  // namespace onnxruntime
