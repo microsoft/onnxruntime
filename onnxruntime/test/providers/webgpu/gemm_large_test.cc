@@ -27,6 +27,7 @@ static float GetBiasValue(const std::vector<float>& c_vals, const TensorShape& c
     if (c_shape[0] == 1 && c_shape[1] == N)
       return c_vals[n];
   }
+  ADD_FAILURE() << "Unsupported bias shape in test reference";
   return 0.0f;
 }
 
@@ -110,21 +111,33 @@ void RunBothTypes(std::initializer_list<int64_t> a_dims, int64_t a_trans,
   RunTestTyped<MLFloat16, version>(a_dims, a_trans, b_dims, b_trans, c_dims, alpha, beta);
 }
 
-// Comprehensive shape coverage: aligned/unaligned, transA/transB, various bias broadcasts, alpha/beta.
-TEST(Gemm_Large, DISABLED_AllShapes) {
-  // Large aligned shapes with various bias broadcasts
+// Aligned dimensions and baseline large shapes.
+TEST(Gemm_Large, DISABLED_Aligned) {
   RunBothTypes({512, 1024}, 0, {1024, 1024}, 0, {512, 1024});
   RunBothTypes({127, 1024}, 0, {1024, 1024}, 0, {1024});
+}
+
+// Unaligned dimensions and edge shapes.
+TEST(Gemm_Large, DISABLED_Unaligned) {
   RunBothTypes({127, 1023}, 0, {1023, 1023}, 0, {1023});
   RunBothTypes({511, 1024}, 0, {1024, 1023}, 0, {511, 1});
+  RunBothTypes({6, 1024}, 0, {1024, 192}, 0, {6, 1});
+  RunBothTypes({49, 1024}, 0, {1024, 600}, 0, {49, 600});
+}
 
-  // Transpose variations
+// Transpose combinations and transposed bias cases.
+TEST(Gemm_Large, DISABLED_TransAB) {
   RunBothTypes({1024, 512}, 1, {1024, 1024}, 0, {512, 1});
   RunBothTypes({512, 1024}, 0, {1024, 1024}, 1, {512, 1});
   RunBothTypes({1024, 512}, 1, {1024, 1024}, 1, {512, 1});
   RunBothTypes({1024, 512}, 1, {1024, 1024}, 1, {512, 1}, 1.5f, 1.3f);
+  RunBothTypes({1024, 16}, 1, {1024, 192}, 0, {192});
+  RunBothTypes({16, 1024}, 0, {192, 1024}, 1, {192});
+  RunBothTypes({1024, 16}, 1, {192, 1024}, 1, {192});
+}
 
-  // Various bias broadcast patterns
+// Bias broadcast coverage, including no-bias and alpha/beta scaling.
+TEST(Gemm_Large, DISABLED_BiasBroadcast) {
   RunBothTypes({16, 1024}, 0, {1024, 191}, 0, {1, 191});
   RunBothTypes({15, 1024}, 0, {1024, 191}, 0, {15, 191});
   RunBothTypes({15, 1024}, 0, {1024, 192}, 0, {15, 1});
@@ -133,20 +146,12 @@ TEST(Gemm_Large, DISABLED_AllShapes) {
   RunBothTypes({16, 1024}, 0, {1024, 192}, 0, {1, 192});
   RunBothTypes({16, 1024}, 0, {1024, 192}, 0, {192});
   RunBothTypes({16, 1024}, 0, {1024, 192}, 0, {16, 192});
-  RunBothTypes({6, 1024}, 0, {1024, 192}, 0, {6, 1});
   RunBothTypes({16, 1024}, 0, {1024, 600}, 0, {1, 600});
-  RunBothTypes({49, 1024}, 0, {1024, 600}, 0, {49, 600});
 
-  // Non-default alpha/beta
   RunBothTypes({16, 1024}, 0, {1024, 192}, 0, {16, 1}, 1.5f, 1.3f);
   RunBothTypes({16, 1024}, 0, {1024, 192}, 0, {1, 192}, 1.5f, 1.3f);
   RunBothTypes({16, 1024}, 0, {1024, 192}, 0, {192}, 1.5f, 1.3f);
   RunBothTypes({16, 1024}, 0, {1024, 192}, 0, {16, 192}, 1.5f, 1.3f);
-
-  // Transpose with 1D bias
-  RunBothTypes({1024, 16}, 1, {1024, 192}, 0, {192});
-  RunBothTypes({16, 1024}, 0, {192, 1024}, 1, {192});
-  RunBothTypes({1024, 16}, 1, {192, 1024}, 1, {192});
 }
 
 }  // namespace test

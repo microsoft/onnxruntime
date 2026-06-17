@@ -81,27 +81,35 @@ void RunTestTyped(std::initializer_list<int64_t> a_dims, std::initializer_list<i
   test.ConfigEp(std::move(webgpu_ep)).RunWithConfig();
 }
 
-// 2D, 3D, and 4D shapes with broadcasting, aligned and unaligned dimensions.
-TEST(MatMul_Large, DISABLED_AllShapes) {
-  const std::vector<std::pair<std::initializer_list<int64_t>, std::initializer_list<int64_t>>> tests = {
-      // 2D
-      {{128, 64}, {64, 1024}},
-      {{127, 64}, {64, 1024}},
-      {{127, 63}, {63, 1023}},
-      // 3D with broadcast
-      {{2, 128, 64}, {64, 1024}},
-      {{2, 128, 64}, {2, 64, 1024}},
-      {{2, 128, 64}, {64, 1023}},
-      {{2, 128, 64}, {2, 64, 1023}},
-      // 4D with broadcast
-      {{2, 2, 128, 64}, {2, 64, 1024}},
-      {{2, 2, 128, 64}, {2, 64, 1023}},
-  };
+template <int version = 13>
+void RunBothTypes(std::initializer_list<int64_t> a_dims, std::initializer_list<int64_t> b_dims) {
+  RunTestTyped<float, version>(a_dims, b_dims);
+  RunTestTyped<MLFloat16, version>(a_dims, b_dims);
+}
 
-  for (const auto& [a_dims, b_dims] : tests) {
-    RunTestTyped<float>(a_dims, b_dims);
-    RunTestTyped<MLFloat16>(a_dims, b_dims);
-  }
+// 2D aligned baseline shapes.
+TEST(MatMul_Large, DISABLED_Aligned) {
+  RunBothTypes({128, 64}, {64, 1024});
+}
+
+// 2D unaligned edge shapes.
+TEST(MatMul_Large, DISABLED_Unaligned) {
+  RunBothTypes({127, 64}, {64, 1024});
+  RunBothTypes({127, 63}, {63, 1023});
+}
+
+// 3D broadcast and non-broadcast cases.
+TEST(MatMul_Large, DISABLED_Broadcast3D) {
+  RunBothTypes({2, 128, 64}, {64, 1024});
+  RunBothTypes({2, 128, 64}, {2, 64, 1024});
+  RunBothTypes({2, 128, 64}, {64, 1023});
+  RunBothTypes({2, 128, 64}, {2, 64, 1023});
+}
+
+// 4D broadcast cases.
+TEST(MatMul_Large, DISABLED_Broadcast4D) {
+  RunBothTypes({2, 2, 128, 64}, {2, 64, 1024});
+  RunBothTypes({2, 2, 128, 64}, {2, 64, 1023});
 }
 
 }  // namespace test

@@ -52,19 +52,22 @@ Status ApplyMatMulIntel(ComputeContext& context,
   ORT_THROW_IF_ERROR(helper.Compute(a_shape, b_shape));
   int64_t batchA = a_shape.SizeToDimension(a_shape.NumDimensions() - 2);
   int64_t batchB = b_shape.SizeToDimension(b_shape.NumDimensions() - 2);
-
   TensorShape output_shape = helper.OutputShape();
 
   // When B is a matrix (batch is 1), we fold batchA into the M dimension for better
   // performance (e.g., [2,3,5] → [1,6,5]).
-  // Don't fold to workaround for Xe-LPG/Xe-3LPG when the proportion of workgroups
-  // containing invalid (out-of-bounds) threads is relatively small .
+  // On Xe-LPG/3LPG, folding a batched matmul into a single large M loses Z-dispatch
+  // parallelism. Only fold when each per-batch M leaves a large fraction of invalid
+  // threads in its trailing workgroup (m_mod_32 ∈ [1, 24] = 25%–97% wasted), so the
+  // fold actually claws that waste back. Otherwise the Z-dispatch path wins.
   const int64_t M = output_shape[output_shape.NumDimensions() - 2];
+  const auto& arch = context.AdapterInfo().architecture;
+  const bool is_xe_lpg_or_xe_3lpg = arch == std::string_view("xe-lpg") ||
+                                    arch == std::string_view("xe-3lpg");
+  // 32 = kSubgroupLogicalWorkGroupSizeY * ElementsPerThreadY(M > 32) on Xe-LPG/3LPG
   const int64_t m_mod_32 = M % 32;
-  if (batchA != 1 && batchB == 1 &&
-      (!(context.AdapterInfo().architecture == std::string_view("xe-lpg") ||
-         context.AdapterInfo().architecture == std::string_view("xe-3lpg")) ||
-       (m_mod_32 > 0 && m_mod_32 <= 24))) {
+  const bool xe_lpg_or_xe_3lpg_fold_ok = (m_mod_32 > 0 && m_mod_32 <= 24);
+  if (batchA != 1 && batchB == 1 && (!is_xe_lpg_or_xe_3lpg || xe_lpg_or_xe_3lpg_fold_ok)) {
     // dimensions of A: [`batchA` * M, K]
     int64_t batchAndM = a_shape.SizeToDimension(a_shape.NumDimensions() - 1);
     TensorShapeVector dims_a = {batchAndM, helper.K()};
