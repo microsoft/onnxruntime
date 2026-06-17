@@ -3,7 +3,9 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "core/common/status.h"
@@ -74,6 +76,32 @@ class ITuningCapability {
 
   /** Return the tuning context which holds all TunableOp state. */
   virtual ITuningContext* GetTuningContext() const = 0;
+};
+
+/**
+ * Data-layout preference capability.
+ *
+ * Only a subset of EPs prefer a non-default (non-NCHW) data layout. Such an EP
+ * advertises its preferred layout and decides, per op, whether ORT should
+ * convert an associated node's data layout during layout transformation. The
+ * two methods are coupled: ShouldConvertDataLayoutForOp is driven by the
+ * preferred layout reported by GetPreferredLayout.
+ */
+class IDataLayoutCapability {
+ public:
+  virtual ~IDataLayoutCapability() = default;
+
+  /** Return the data layout preferred by this EP. */
+  virtual DataLayout GetPreferredLayout() const = 0;
+
+  /**
+   * Decide whether an op (with the given `domain` and `op_type`) should have its
+   * data layout converted to `target_data_layout`. Return std::nullopt to leave
+   * the decision to ORT.
+   */
+  virtual std::optional<bool> ShouldConvertDataLayoutForOp(std::string_view domain,
+                                                           std::string_view op_type,
+                                                           DataLayout target_data_layout) const = 0;
 };
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

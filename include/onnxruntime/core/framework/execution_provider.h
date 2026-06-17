@@ -74,6 +74,7 @@ enum class DataLayout {
 // Segregated optional-capability mix-in interfaces. See execution_provider_capabilities.h.
 class IGraphCaptureCapability;
 class ITuningCapability;
+class IDataLayoutCapability;
 class ICompileCapability;
 
 class IExecutionProvider {
@@ -485,6 +486,9 @@ class IExecutionProvider {
 
   /** Return this EP's TunableOp tuning capability, or nullptr if unsupported. */
   virtual ITuningCapability* GetTuningCapability() const noexcept { return nullptr; }
+
+  /** Return this EP's data-layout preference capability, or nullptr if unsupported. */
+  virtual IDataLayoutCapability* GetDataLayoutCapability() const noexcept { return nullptr; }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /** Return this EP's subgraph-compilation capability, or nullptr if unsupported. */

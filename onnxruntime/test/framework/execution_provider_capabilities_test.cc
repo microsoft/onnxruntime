@@ -69,6 +69,27 @@ class TuningEp : public IExecutionProvider, public ITuningCapability {
   ITuningContext* GetTuningContext() const override { return nullptr; }
 };
 
+// An EP that supports only a data-layout preference.
+class DataLayoutEp : public IExecutionProvider, public IDataLayoutCapability {
+ public:
+  DataLayoutEp() : IExecutionProvider(kFakeEpType) {}
+
+  IDataLayoutCapability* GetDataLayoutCapability() const noexcept override {
+    return const_cast<DataLayoutEp*>(this);
+  }
+
+  // IDataLayoutCapability
+  DataLayout GetPreferredLayout() const override { return DataLayout::NHWC; }
+  std::optional<bool> ShouldConvertDataLayoutForOp(std::string_view /*domain*/,
+                                                   std::string_view op_type,
+                                                   DataLayout target_data_layout) const override {
+    if (target_data_layout == DataLayout::NHWC && op_type == "Conv") {
+      return true;
+    }
+    return std::nullopt;
+  }
+};
+
 }  // namespace
 
 // A capability-less EP returns nullptr from every query hook.
@@ -78,6 +99,7 @@ TEST(ExecutionProviderCapabilitiesTest, UnsupportedCapabilitiesReturnNull) {
 
   EXPECT_EQ(base.GetGraphCaptureCapability(), nullptr);
   EXPECT_EQ(base.GetTuningCapability(), nullptr);
+  EXPECT_EQ(base.GetDataLayoutCapability(), nullptr);
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   EXPECT_EQ(base.GetCompileCapability(), nullptr);
 #endif
@@ -103,6 +125,25 @@ TEST(ExecutionProviderCapabilitiesTest, GraphCaptureCapabilityIsQueryableAndUsab
   EXPECT_EQ(ep.replay_count(), 1) << "Replay must reach the concrete implementation.";
 }
 
+// An EP that supports a data-layout preference is queryable through the base
+// interface and usable through the narrow mix-in.
+TEST(ExecutionProviderCapabilitiesTest, DataLayoutCapabilityIsQueryableAndUsable) {
+  DataLayoutEp ep;
+  IExecutionProvider& base = ep;
+
+  IDataLayoutCapability* dl = base.GetDataLayoutCapability();
+  ASSERT_NE(dl, nullptr) << "EP advertising a data-layout preference must return a non-null capability.";
+
+  EXPECT_EQ(dl->GetPreferredLayout(), DataLayout::NHWC);
+
+  const std::optional<bool> conv_decision = dl->ShouldConvertDataLayoutForOp("", "Conv", DataLayout::NHWC);
+  ASSERT_TRUE(conv_decision.has_value());
+  EXPECT_TRUE(*conv_decision);
+
+  // An op the EP has no opinion on leaves the decision to ORT (std::nullopt).
+  EXPECT_FALSE(dl->ShouldConvertDataLayoutForOp("", "Add", DataLayout::NHWC).has_value());
+}
+
 // Capabilities are independent: an EP that implements only graph capture must
 // not be mistaken for supporting tuning or compilation, and vice versa.
 TEST(ExecutionProviderCapabilitiesTest, CapabilitiesAreIndependent) {
@@ -110,6 +151,7 @@ TEST(ExecutionProviderCapabilitiesTest, CapabilitiesAreIndependent) {
   IExecutionProvider& graph_base = graph_ep;
   EXPECT_NE(graph_base.GetGraphCaptureCapability(), nullptr);
   EXPECT_EQ(graph_base.GetTuningCapability(), nullptr);
+  EXPECT_EQ(graph_base.GetDataLayoutCapability(), nullptr);
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   EXPECT_EQ(graph_base.GetCompileCapability(), nullptr);
 #endif
@@ -118,6 +160,13 @@ TEST(ExecutionProviderCapabilitiesTest, CapabilitiesAreIndependent) {
   IExecutionProvider& tuning_base = tuning_ep;
   EXPECT_NE(tuning_base.GetTuningCapability(), nullptr);
   EXPECT_EQ(tuning_base.GetGraphCaptureCapability(), nullptr);
+  EXPECT_EQ(tuning_base.GetDataLayoutCapability(), nullptr);
+
+  DataLayoutEp data_layout_ep;
+  IExecutionProvider& data_layout_base = data_layout_ep;
+  EXPECT_NE(data_layout_base.GetDataLayoutCapability(), nullptr);
+  EXPECT_EQ(data_layout_base.GetGraphCaptureCapability(), nullptr);
+  EXPECT_EQ(data_layout_base.GetTuningCapability(), nullptr);
 }
 
 }  // namespace test
