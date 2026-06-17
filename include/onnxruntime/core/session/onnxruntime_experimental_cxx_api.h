@@ -3,13 +3,10 @@
 
 // Experimental C++ API consumer header.
 //
-// This header provides typed inline accessors in the Ort::Experimental namespace for experimental ORT functions. It is
-// the C++ companion to onnxruntime_experimental_c_api.h, which provides the underlying C function pointer typedefs and
-// name constants.
+// This header provides typed inline accessors in the Ort::Experimental namespace for experimental ORT API functions,
+// and any C++ wrapper types associated with the experimental API functions.
 //
-// The per-function accessors are produced from onnxruntime_experimental_c_api.inc (which defines the list of
-// experimental API functions) by the detail header onnxruntime_experimental_cxx_api_fns.h, which this header includes
-// inside the Ort::Experimental namespace. Hand-written C++ helpers/wrappers live directly in this header.
+// It is the C++ companion to onnxruntime_experimental_c_api.h.
 //
 // IMPORTANT: Experimental functions are NOT part of the stable ABI. They may be added, changed, or removed between
 // releases without notice.
@@ -37,14 +34,77 @@
 #include "onnxruntime_experimental_c_api.h"
 #include "onnxruntime_cxx_api.h"
 
-//
-// Typed accessors (nullable and throwing)
-//
-// Generated from onnxruntime_experimental_c_api.inc and declared in the Ort::Experimental namespace. Kept in a separate
-// detail header so this header stays focused on the curated, hand-written surface. Custom C++ helpers can be added
-// below in their own `namespace Ort { namespace Experimental { ... } }` block. The define/undef guard enforces that the
-// detail header is only ever pulled in through this header.
+namespace Ort {
+namespace Experimental {
 
-#define ORT_INCLUDING_EXPERIMENTAL_CXX_API_FNS
-#include "onnxruntime_experimental_cxx_api_fns.h"
-#undef ORT_INCLUDING_EXPERIMENTAL_CXX_API_FNS
+//
+// Nullable typed accessors
+//
+
+// For each .inc entry, this generates a typed accessor in Ort::Experimental:
+//
+//   inline OrtExperimental_<NAME>_SinceV<VER>_Fn Get_<NAME>_SinceV<VER>_Fn(const OrtApi* api);
+//
+// Example: ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, ...) produces:
+//   inline OrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_Fn
+//   Get_OrtApi_ExperimentalApiTest_SinceV28_Fn(const OrtApi* api) {
+//     return reinterpret_cast<OrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_Fn>(
+//         api->GetExperimentalFunction(kOrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_FnName));
+//   }
+#define ORT_EXPERIMENTAL_API(VER, RET, NAME, ...)                                      \
+  inline OrtExperimental_##NAME##_SinceV##VER##_Fn Get_##NAME##_SinceV##VER##_Fn(      \
+      const OrtApi* api) {                                                             \
+    return reinterpret_cast<OrtExperimental_##NAME##_SinceV##VER##_Fn>(                \
+        api->GetExperimentalFunction(kOrtExperimental_##NAME##_SinceV##VER##_FnName)); \
+  }
+
+#include "onnxruntime_experimental_c_api.inc"
+
+#undef ORT_EXPERIMENTAL_API
+
+//
+// Throwing typed accessors
+//
+
+// For each .inc entry, this generates a throwing accessor in Ort::Experimental:
+//
+//   inline OrtExperimental_<NAME>_SinceV<VER>_Fn Get_<NAME>_SinceV<VER>_FnOrThrow(const OrtApi* api);
+//
+// It returns the non-null typed function pointer, or throws Ort::Exception (ORT_NOT_IMPLEMENTED) if the function is
+// not available in this build.
+//
+// Example: ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, ...) produces:
+//   inline OrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_Fn
+//   Get_OrtApi_ExperimentalApiTest_SinceV28_FnOrThrow(const OrtApi* api) {
+//     auto* fn = Get_OrtApi_ExperimentalApiTest_SinceV28_Fn(api);
+//     if (fn == nullptr) {
+//       ORT_CXX_API_THROW(
+//           "Experimental function OrtApi_ExperimentalApiTest_SinceV28 is not available in this build",
+//           ORT_NOT_IMPLEMENTED);
+//     }
+//     return fn;
+//   }
+#define ORT_EXPERIMENTAL_API(VER, RET, NAME, ...)                                          \
+  inline OrtExperimental_##NAME##_SinceV##VER##_Fn Get_##NAME##_SinceV##VER##_FnOrThrow(   \
+      const OrtApi* api) {                                                                 \
+    auto* fn = Get_##NAME##_SinceV##VER##_Fn(api);                                         \
+    if (fn == nullptr) {                                                                   \
+      ORT_CXX_API_THROW(                                                                   \
+          "Experimental function " #NAME "_SinceV" #VER " is not available in this build", \
+          ORT_NOT_IMPLEMENTED);                                                            \
+    }                                                                                      \
+    return fn;                                                                             \
+  }
+
+#include "onnxruntime_experimental_c_api.inc"
+
+#undef ORT_EXPERIMENTAL_API
+
+//
+// Auxiliary types and helpers
+//
+// If C++ wrapper types or helpers are needed in the future, add them here in the `Ort::Experimental` namespace.
+//
+
+}  // namespace Experimental
+}  // namespace Ort

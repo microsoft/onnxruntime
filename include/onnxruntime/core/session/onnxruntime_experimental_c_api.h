@@ -3,20 +3,18 @@
 
 // Experimental C API consumer header.
 //
-// This header provides C function pointer typedefs and name constants for experimental ORT functions.
-// It should be used together with the experimental header lookup function `OrtApi::GetExperimentalFunction()`.
+// This header provides C function pointer typedefs and name constants for experimental ORT API functions, as well as
+// any auxiliary declarations required by the experimental API functions.
 //
-// For C++ consumers, the companion header onnxruntime_experimental_cxx_api.h provides typed inline accessors in the
-// Ort::Experimental namespace (including throwing variants).
+// The function pointer typedefs and name constants should be used together with the experimental API lookup function
+// `OrtApi::GetExperimentalFunction()`. A function's availability should always be checked at runtime (the lookup
+// returns nullptr if the function is not present).
 //
-// The per-function typedefs and name constants are produced from onnxruntime_experimental_c_api.inc (which defines the
-// list of experimental API functions) by the detail header onnxruntime_experimental_c_api_fns.h, which this header
-// includes. Hand-written auxiliary declarations (e.g. opaque types the experimental APIs use) live directly in this
-// header.
+// C++ API consumers should use the companion header, onnxruntime_experimental_cxx_api.h, which provides typed
+// accessors for the experimental API functions.
 //
 // IMPORTANT: Experimental functions are NOT part of the stable ABI. They may be added, changed, or removed between
-// releases without notice. A function's availability should always be checked at runtime (the lookup returns nullptr
-// if the function is not present).
+// releases without notice. Anything in this file should be treated as experimental and unstable.
 //
 // C usage:
 //   OrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_Fn fn =
@@ -51,10 +49,24 @@ ORT_RUNTIME_CLASS(ModelPackageComponentContext);
 //
 // C: function pointer typedefs and name constants
 //
-// Generated from onnxruntime_experimental_c_api.inc. Kept in a separate detail header so this header stays focused on
-// the curated, hand-written surface (auxiliary declarations above, plus any custom helpers). The define/undef guard
-// enforces that the detail header is only ever pulled in through this header.
 
-#define ORT_INCLUDING_EXPERIMENTAL_C_API_FNS
-#include "onnxruntime_experimental_c_api_fns.h"
-#undef ORT_INCLUDING_EXPERIMENTAL_C_API_FNS
+// For each ORT_EXPERIMENTAL_API(VER, RET, NAME, ...) entry in the .inc file, this generates:
+//
+//   // Function pointer typedef:
+//   typedef RET(ORT_API_CALL* OrtExperimental_<NAME>_SinceV<VER>_Fn)(...) NO_EXCEPTION;
+//
+//   // Name constant for lookup:
+//   static const char* const kOrtExperimental_<NAME>_SinceV<VER>_FnName = "<NAME>_SinceV<VER>";
+//
+// Example: ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, _Out_ int64_t* out) produces:
+//   typedef OrtStatusPtr(ORT_API_CALL* OrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_Fn)(
+//       _Out_ int64_t* out) NO_EXCEPTION;
+//   static const char* const kOrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_FnName =
+//       "OrtApi_ExperimentalApiTest_SinceV28";
+#define ORT_EXPERIMENTAL_API(VER, RET, NAME, ...)                                                 \
+  typedef RET(ORT_API_CALL* OrtExperimental_##NAME##_SinceV##VER##_Fn)(__VA_ARGS__) NO_EXCEPTION; \
+  static const char* const kOrtExperimental_##NAME##_SinceV##VER##_FnName = #NAME "_SinceV" #VER;
+
+#include "onnxruntime_experimental_c_api.inc"
+
+#undef ORT_EXPERIMENTAL_API
