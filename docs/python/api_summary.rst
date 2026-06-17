@@ -58,6 +58,64 @@ profiling on the session:
 	)
 
 
+Loading a model from object storage (Backblaze B2)
+--------------------------------------------------
+
+ONNX Runtime has no built-in object-storage client. `InferenceSession`
+accepts either a filesystem path or the serialized model as a byte string,
+so loading an ONNX artifact from object storage is a two-step pattern:
+fetch the bytes with an S3 client, then hand them to ONNX Runtime.
+
+Because `Backblaze B2 <https://www.backblaze.com/cloud-storage?utm_source=onnxruntime-docs&utm_medium=referral&utm_campaign=ai_artifacts&utm_content=b2ai-onnxruntime>`_
+exposes an S3-compatible API, the same boto3 code works against AWS S3 or
+Backblaze B2; only the endpoint and credentials change. Point boto3 at the
+provider endpoint, download the object, and pass the body to
+`InferenceSession`:
+
+.. code-block:: python
+
+	import os
+	import boto3
+	import onnxruntime as rt
+
+	s3 = boto3.client(
+		"s3",
+		endpoint_url=os.environ.get(
+			"B2_ENDPOINT",
+			"https://s3.us-west-001.backblazeb2.com",
+		),
+		aws_access_key_id=os.environ["B2_APPLICATION_KEY_ID"],
+		aws_secret_access_key=os.environ["B2_APPLICATION_KEY"],
+		region_name=os.environ.get("B2_REGION", "us-west-001"),
+	)
+
+	obj = s3.get_object(Bucket=os.environ["B2_BUCKET_NAME"], Key="models/resnet50.onnx")
+	model_bytes = obj["Body"].read()
+
+	session = rt.InferenceSession(
+		model_bytes,
+		providers=rt.get_available_providers(),
+	)
+
+For AWS S3, set ``endpoint_url`` to the regional S3 endpoint (or omit it to
+use the default) and supply the matching AWS credentials.
+
+The example above reads the whole model into memory. For large models,
+stream the object to a local file first and pass the path to
+`InferenceSession` instead, which avoids holding the full payload in process
+memory:
+
+.. code-block:: python
+
+	local_path = "/tmp/resnet50.onnx"
+	s3.download_file(os.environ["B2_BUCKET_NAME"], "models/resnet50.onnx", local_path)
+	session = rt.InferenceSession(local_path, providers=rt.get_available_providers())
+
+For repeated loads, cache the downloaded model on disk, configure a
+bucket-scoped application key with read-only permission, and rely on the
+standard boto3 retry policy.
+
+
 Data inputs and outputs
 -----------------------
 
