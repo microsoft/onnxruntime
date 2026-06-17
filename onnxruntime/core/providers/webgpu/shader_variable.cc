@@ -367,7 +367,7 @@ std::string ShaderVariableHelper::GetByOffsetImpl(std::string_view offset) const
   return SS_GET(ss);
 }
 
-std::string ShaderVariableHelper::SetByOffsetImpl(std::string_view offset, std::string_view value) const {
+std::string ShaderVariableHelper::SetByOffsetImpl(std::string_view offset, std::string_view value, bool use_storage_type) const {
   SS(ss, kStringInitialSizeSetByOffsetImpl);
 
   if (usage_ & ShaderUsage::UseSetByOffsetSegments) {
@@ -379,7 +379,13 @@ std::string ShaderVariableHelper::SetByOffsetImpl(std::string_view offset, std::
       ORT_THROW("Invalid type");
       break;
     case onnxruntime::webgpu::ProgramVariableDataType::Int64:
-      ss << name_ << "[" << offset << "]=vec2<u32>(u32(" << value << "), select(0u, 0xFFFFFFFFu, i32(" << value << ") < 0));";
+      if (use_storage_type) {
+        // Value is already storage type (vec2<u32>), use directly
+        ss << name_ << "[" << offset << "]=" << value << ";";
+      } else {
+        // Value is i32, sign-extend to int64 (vec2<u32>)
+        ss << name_ << "[" << offset << "]=vec2<u32>(u32(" << value << "), select(0u, 0xFFFFFFFFu, i32(" << value << ") < 0));";
+      }
       break;
     case onnxruntime::webgpu::ProgramVariableDataType::Uint64:
       ss << name_ << "[" << offset << "]=vec2<u32>(u32(" << value << "), 0u);";

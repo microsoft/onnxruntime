@@ -1,0 +1,11 @@
+
+
+
+
+
+
+const result1 = (a + b) * (c - d) / 2.0;
+const result2 = "hello world";
+const result3 = @#$%^&*(){}[];
+const result4 = sin(x * PI / 180.0);
+const result5 = data[index * 2 + 1];

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <cstring>
+#include <limits>
 #include <type_traits>
 
 #include "boost/mp11.hpp"
@@ -63,7 +64,8 @@ void TestCastOp(gsl::span<const SrcType> input,
                 const std::string& expected_failure_string = "",
                 int opset = 21,
                 Saturate saturate = Saturate::None,
-                bool cuda_only = false) {
+                bool cuda_only = false,
+                const std::unordered_set<std::string>& additional_excluded_providers = {}) {
   OpTester test("Cast", opset);
   test.AddAttribute<int64_t>("to", utils::ToTensorProtoElementType<DstType>());
   test.AddInput<SrcType>("input", dimensions, input.data(), input.size());
@@ -83,6 +85,9 @@ void TestCastOp(gsl::span<const SrcType> input,
     // The OpenVINO doesn't support 0 size input
     excluded_provider_types.insert(kOpenVINOExecutionProvider);
   }
+
+  // Add any additional excluded providers
+  excluded_provider_types.insert(additional_excluded_providers.begin(), additional_excluded_providers.end());
 
   if (cuda_only && (excluded_provider_types.count(kCudaExecutionProvider) > 0)) {
     return;
@@ -3496,6 +3501,266 @@ TEST(CastOpTest, FloatToFloat8E8M0_ExactMax) {
 }
 
 #endif  // !defined(DISABLE_FLOAT8_TYPES)
+
+TEST(CastOpTest, Float32ToInt64_LargeValues) {
+  const std::vector<int64_t> shape{8};
+  const std::vector<float> input = {
+      1099511627776.0f,     // 2^40, exact in f32
+      -1099511627776.0f,    // -2^40, exact in f32
+      140737488355328.0f,   // 2^47, exact in f32
+      -140737488355328.0f,  // -2^47, exact in f32
+      9007199254740992.0f,  // 2^53
+      0.0f,                 // zero
+      1.5f,                 // truncates to 1
+      -1.5f,                // truncates to -1
+  };
+  const std::vector<int64_t> expected = {
+      1099511627776LL,
+      -1099511627776LL,
+      140737488355328LL,
+      -140737488355328LL,
+      static_cast<int64_t>(9007199254740992.0f),
+      0LL,
+      1LL,
+      -1LL,
+  };
+  TestCastOp(gsl::make_span(input), gsl::make_span(expected), shape);
+}
+
+TEST(CastOpTest, Float32ToInt64_PowersOfTwo) {
+  const std::vector<int64_t> shape{4};
+  const std::vector<float> input = {
+      8589934592.0f,   // 2^33
+      17179869184.0f,  // 2^34
+      4294967296.0f,   // 2^32
+      -4294967296.0f,  // -2^32
+  };
+  const std::vector<int64_t> expected = {
+      8589934592LL,
+      17179869184LL,
+      4294967296LL,
+      -4294967296LL,
+  };
+  TestCastOp(gsl::make_span(input), gsl::make_span(expected), shape);
+}
+
+TEST(CastOpTest, Float32ToInt64_VeryLargeValues) {
+  const std::vector<int64_t> shape{8};
+  const std::vector<float> input = {
+      36028797018963968.0f,     // 2^55, boundary into the exp >= 32 branch
+      -36028797018963968.0f,    // -2^55
+      1152921504606846976.0f,   // 2^60
+      -1152921504606846976.0f,  // -2^60
+      4611686018427387904.0f,   // 2^62, largest power of two < 2^63
+      -4611686018427387904.0f,  // -2^62
+      18014398509481984.0f,     // 2^54, last value still in the exp > 0 branch
+      -18014398509481984.0f,    // -2^54
+  };
+  const std::vector<int64_t> expected = {
+      36028797018963968LL,
+      -36028797018963968LL,
+      1152921504606846976LL,
+      -1152921504606846976LL,
+      4611686018427387904LL,
+      -4611686018427387904LL,
+      18014398509481984LL,
+      -18014398509481984LL,
+  };
+  TestCastOp(gsl::make_span(input), gsl::make_span(expected), shape);
+}
+
+TEST(CastOpTest, Float32ToInt64_MantissaBoundary) {
+  const std::vector<int64_t> shape{4};
+  const std::vector<float> input = {
+      8388608.0f,   // 2^23, boundary into the exp == 0 branch
+      8388609.0f,   // 2^23 + 1
+      -8388609.0f,  // -(2^23 + 1)
+      16777215.0f,  // 2^24 - 1, last value before exp > 0
+  };
+  const std::vector<int64_t> expected = {
+      8388608LL,
+      8388609LL,
+      -8388609LL,
+      16777215LL,
+  };
+  TestCastOp(gsl::make_span(input), gsl::make_span(expected), shape);
+}
+
+TEST(CastOpTest, Float32ToInt64_TinyValues) {
+  const std::vector<int64_t> shape{4};
+  const std::vector<float> input = {
+      0.5f,
+      -0.5f,
+      0.999f,
+      1e-20f,  // far below the exp > -24 cutoff -> 0
+  };
+  const std::vector<int64_t> expected = {
+      0LL,
+      0LL,
+      0LL,
+      0LL,
+  };
+  TestCastOp(gsl::make_span(input), gsl::make_span(expected), shape);
+}
+
+TEST(CastOpTest, Float16ToInt64_LargeValues) {
+  const std::vector<int64_t> shape{4};
+  const std::vector<MLFloat16> input = {
+      MLFloat16(32768.0f),   // 2^15, exact in f16
+      MLFloat16(-32768.0f),  // -2^15
+      MLFloat16(65504.0f),   // f16 max finite
+      MLFloat16(-65504.0f),  // f16 min finite
+  };
+  const std::vector<int64_t> expected = {
+      32768LL,
+      -32768LL,
+      65504LL,
+      -65504LL,
+  };
+  TestCastOp(gsl::make_span(input), gsl::make_span(expected), shape);
+}
+
+TEST(CastOpTest, Float32ToInt64_SpecialValues) {
+  // float infinity/NaN -> int64 is undefined behavior in C++.
+  // Only test well-defined conversions here (zero, small values).
+  const std::vector<int64_t> shape{4};
+  const std::vector<float> input = {
+      0.0f,
+      -0.0f,
+      1.0f,
+      -1.0f,
+  };
+  const std::vector<int64_t> expected = {
+      0LL,
+      0LL,
+      1LL,
+      -1LL,
+  };
+  TestCastOp(gsl::make_span(input), gsl::make_span(expected), shape);
+}
+
+TEST(CastOpTest, Int32ToInt64) {
+  // int32 -> int64 must sign-extend
+  const std::vector<int64_t> shape{8};
+  const std::vector<int32_t> input = {
+      0,
+      1,
+      -1,
+      std::numeric_limits<int32_t>::max(),  // 2^31 - 1
+      std::numeric_limits<int32_t>::min(),  // -2^31
+      -12345,
+      32767,
+      -32768,
+  };
+  const std::vector<int64_t> expected = {
+      0LL,
+      1LL,
+      -1LL,
+      2147483647LL,
+      -2147483648LL,
+      -12345LL,
+      32767LL,
+      -32768LL,
+  };
+  TestCastOp(gsl::make_span(input), gsl::make_span(expected), shape);
+}
+
+TEST(CastOpTest, UInt32ToInt64) {
+  // uint32 -> int64 must zero-extend
+  const std::vector<int64_t> shape{8};
+  const std::vector<uint32_t> input = {
+      0u,
+      1u,
+      0x80000000u,                           // 2^31, top bit set
+      std::numeric_limits<uint32_t>::max(),  // 2^32 - 1
+      123456u,
+      0x7FFFFFFFu,  // 2^31 - 1
+      0xFFFFFFFEu,  // 2^32 - 2
+      0xC0000000u,  // 3 * 2^30
+  };
+  const std::vector<int64_t> expected = {
+      0LL,
+      1LL,
+      2147483648LL,
+      4294967295LL,
+      123456LL,
+      2147483647LL,
+      4294967294LL,
+      3221225472LL,
+  };
+  // QNN EP doesn't correctly handle UINT_32 to INT_64 cast (sign-extends instead of zero-extends).
+  TestCastOp(gsl::make_span(input), gsl::make_span(expected), shape,
+             OpTester::ExpectResult::kExpectSuccess, "", 21, Saturate::None, false, {kQnnExecutionProvider});
+}
+
+TEST(CastOpTest, BoolToInt64) {
+  // bool -> int64 zero-extends to 0 or 1.
+  const std::vector<int64_t> shape{4};
+  const bool bool_input[] = {false, true, true, false};
+  const gsl::span<const bool> bool_input_span(bool_input);
+  const std::vector<int64_t> expected = {
+      0LL,
+      1LL,
+      1LL,
+      0LL,
+  };
+  TestCastOp(bool_input_span, gsl::make_span(expected), shape);
+}
+
+// Regression tests for int64 non-multiple-of-4 element counts.
+// size % 4 == 2
+TEST(CastOpTest, Float32ToInt64_SizeMod4Eq2) {
+  const std::vector<int64_t> shape{2};
+  const std::vector<float> input = {1.5f, -2.5f};
+  const std::vector<int64_t> expected = {1LL, -2LL};
+  TestCastOp(gsl::make_span(input), gsl::make_span(expected), shape);
+}
+
+TEST(CastOpTest, Float32ToInt64_SizeMod4Eq2_Large) {
+  const std::vector<int64_t> shape{6};
+  const std::vector<float> input = {
+      4294967296.0f,   // 2^32
+      -4294967296.0f,  // -2^32
+      8589934592.0f,   // 2^33
+      1.0f,
+      -1.0f,
+      1099511627776.0f,  // 2^40
+  };
+  const std::vector<int64_t> expected = {
+      4294967296LL,
+      -4294967296LL,
+      8589934592LL,
+      1LL,
+      -1LL,
+      1099511627776LL,
+  };
+  TestCastOp(gsl::make_span(input), gsl::make_span(expected), shape);
+}
+
+TEST(CastOpTest, Int32ToInt64_SizeMod4Eq2) {
+  const std::vector<int64_t> shape{2};
+  const std::vector<int32_t> input = {-1, std::numeric_limits<int32_t>::min()};
+  const std::vector<int64_t> expected = {-1LL, -2147483648LL};
+  TestCastOp(gsl::make_span(input), gsl::make_span(expected), shape);
+}
+
+TEST(CastOpTest, UInt32ToInt64_SizeMod4Eq2) {
+  const std::vector<int64_t> shape{2};
+  const std::vector<uint32_t> input = {0x80000000u, std::numeric_limits<uint32_t>::max()};
+  const std::vector<int64_t> expected = {2147483648LL, 4294967295LL};
+
+  // QNN EP doesn't correctly handle UINT_32 to INT_64 cast (sign-extends instead of zero-extends).
+  TestCastOp(gsl::make_span(input), gsl::make_span(expected), shape,
+             OpTester::ExpectResult::kExpectSuccess, "", 21, Saturate::None, false, {kQnnExecutionProvider});
+}
+
+// size % 4 == 1
+TEST(CastOpTest, Int32ToInt64_SizeMod4Eq1) {
+  const std::vector<int64_t> shape{5};
+  const std::vector<int32_t> input = {0, -1, 1, std::numeric_limits<int32_t>::min(), 42};
+  const std::vector<int64_t> expected = {0LL, -1LL, 1LL, -2147483648LL, 42LL};
+  TestCastOp(gsl::make_span(input), gsl::make_span(expected), shape);
+}
 
 }  // namespace test
 }  // namespace onnxruntime

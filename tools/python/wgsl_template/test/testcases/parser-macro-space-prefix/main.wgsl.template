@@ -1,0 +1,15 @@
+// Test #define with space at beginning of line
+ #define PI 3.14159
+ #define MAX_SIZE 1024
+
+const pi_value = PI;
+const buffer_size = MAX_SIZE;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let index = global_id.x;
+    let area = PI * f32(index) * f32(index);
+    if (index < MAX_SIZE) {
+        // Process within bounds
+    }
+}
