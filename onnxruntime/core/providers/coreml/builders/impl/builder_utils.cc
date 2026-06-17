@@ -89,9 +89,10 @@ Status HandleAutoPad(const std::vector<int64_t> input_shape,
 }
 
 Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
-                          const ONNX_NAMESPACE::TensorProto& tensor) {
+                          const ONNX_NAMESPACE::TensorProto& tensor,
+                          const ModelBuilder& model_builder) {
   const auto data_type = tensor.data_type();
-  Initializer unpacked_tensor(tensor);
+  const auto unpacked_tensor = model_builder.CreateInitializer(tensor);
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       CreateCoreMLWeight(weight, unpacked_tensor.DataAsSpan<float>());
