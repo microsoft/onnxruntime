@@ -79,3 +79,4 @@ Python test naming convention: `test_<method>_<expected_behavior>_[when_<conditi
 - **Redirect test output to a file** (e.g., `> test_output.txt 2>&1`) — output can be large.
 - For C++ tests, verify the build directory exists and a prior build completed before running.
 - Use `--gtest_filter` to run a targeted subset when the full suite takes too long.
+- **Running WebGPU tests locally on Linux without a GPU** — WebGPU op tests build into `onnxruntime_provider_test` and can run against a software Vulkan adapter (Mesa lavapipe). See the `webgpu-local-testing` skill.

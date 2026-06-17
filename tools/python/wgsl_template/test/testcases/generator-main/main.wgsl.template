@@ -1,0 +1,5 @@
+$MAIN {
+    let index = global_id.x;
+    // Main compute logic goes here
+    output[index] = input[index] * 2.0;
+}
