@@ -186,6 +186,10 @@ static bool HasFloatNhwcNoTransposeSupport(const std::vector<int64_t>& input_sha
     return true;
   }
 
+  if (weight_shape[1] <= 0) {
+    return false;
+  }
+
   const auto input_channels_per_group = narrow<size_t>(weight_shape[1]);
   return MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
       /*Dimensions*/ 2,

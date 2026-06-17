@@ -1413,7 +1413,7 @@ MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
     size_t Dimensions,
     size_t BatchCount,
     size_t GroupCount,
-    size_t InputChannels,
+    size_t InputChannelsPerGroup,
     const size_t* InputShape,
     const size_t* KernelShape,
     const size_t* DilationShape,
@@ -1426,7 +1426,7 @@ MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
     MLAS_UNREFERENCED_PARAMETER(Dimensions);
     MLAS_UNREFERENCED_PARAMETER(BatchCount);
     MLAS_UNREFERENCED_PARAMETER(GroupCount);
-    MLAS_UNREFERENCED_PARAMETER(InputChannels);
+    MLAS_UNREFERENCED_PARAMETER(InputChannelsPerGroup);
     MLAS_UNREFERENCED_PARAMETER(InputShape);
     MLAS_UNREFERENCED_PARAMETER(KernelShape);
     MLAS_UNREFERENCED_PARAMETER(DilationShape);
@@ -1439,7 +1439,7 @@ MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
     MLAS_UNREFERENCED_PARAMETER(Dimensions);
     MLAS_UNREFERENCED_PARAMETER(BatchCount);
     MLAS_UNREFERENCED_PARAMETER(GroupCount);
-    MLAS_UNREFERENCED_PARAMETER(InputChannels);
+    MLAS_UNREFERENCED_PARAMETER(InputChannelsPerGroup);
     MLAS_UNREFERENCED_PARAMETER(InputShape);
     MLAS_UNREFERENCED_PARAMETER(KernelShape);
     MLAS_UNREFERENCED_PARAMETER(DilationShape);

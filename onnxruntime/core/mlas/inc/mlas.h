@@ -960,7 +960,7 @@ MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
     size_t Dimensions,
     size_t BatchCount,
     size_t GroupCount,
-    size_t InputChannels,
+    size_t InputChannelsPerGroup,
     const size_t* InputShape,
     const size_t* KernelShape,
     const size_t* DilationShape,
