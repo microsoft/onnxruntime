@@ -247,6 +247,11 @@ bool IsFuseCandidateQuickGelu(const Graph& graph,
 
 Status MatMulNBitsMlpFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
                                        const logging::Logger& logger) const {
+  // Skip fusion if MatMulNBitsMlp kernel is not available on the target EP.
+  if (!has_matmul_nbits_mlp_kernel_) {
+    return Status::OK();
+  }
+
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 

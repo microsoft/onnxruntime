@@ -355,7 +355,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionFusesSimplifiedWebGpuPatter
       BuildMatMulNBitsMlpSimplifiedWebGpuPattern,
       21,
       *logger_,
-      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}, true),
       TransformerLevel::Level2,
       1,
       nullptr,
@@ -367,7 +367,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionFusesSkipWebGpuPattern) {
       BuildMatMulNBitsMlpSkipWebGpuPattern,
       21,
       *logger_,
-      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}, true),
       TransformerLevel::Level2,
       1,
       nullptr,
@@ -379,11 +379,24 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionFusesSkipWebGpuPatternWithR
       BuildMatMulNBitsMlpSkipOutputPassthroughWebGpuPattern,
       21,
       *logger_,
-      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}, true),
       TransformerLevel::Level2,
       1,
       nullptr,
       CheckMatMulNBitsMlpSkipOutputPassthroughFusedGraph));
+}
+
+// Test that fusion is skipped when kernel availability flag is false.
+TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionSkipsWhenKernelUnavailable) {
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      BuildMatMulNBitsMlpSimplifiedWebGpuPattern,
+      21,
+      *logger_,
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}, false),
+      TransformerLevel::Level2,
+      1,
+      nullptr,
+      CheckMatMulNBitsMlpSimplifiedPatternNotFusedGraph));
 }
 
 TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionMatchesUnfusedSimplifiedWebGpuResults) {
@@ -403,7 +416,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionMatchesUnfusedSimplifiedWeb
       21,
       1e-3,
       1e-3,
-      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}, true),
       []() { return DefaultWebGpuExecutionProvider(); });
 }
 
@@ -424,7 +437,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionMatchesUnfusedSkipWebGpuRes
       21,
       1e-3,
       1e-3,
-      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}, true),
       []() { return DefaultWebGpuExecutionProvider(); });
 }
 
@@ -450,7 +463,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionMatchesUnfusedSkipWebGpuRes
       21,
       1e-3,
       1e-3,
-      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}, true),
       []() { return DefaultWebGpuExecutionProvider(); },
       add_session_options);
 }
@@ -472,7 +485,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionMatchesUnfusedSimplifiedWeb
       21,
       1e-3,
       1e-3,
-      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}, true),
       []() { return DefaultWebGpuExecutionProvider(); });
 }
 
@@ -493,7 +506,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionMatchesUnfusedSkipWebGpuRes
       21,
       1e-3,
       1e-3,
-      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}, true),
       []() { return DefaultWebGpuExecutionProvider(); });
 }
 
@@ -519,7 +532,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionMatchesUnfusedSkipWebGpuRes
       21,
       1e-3,
       1e-3,
-      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}, true),
       []() { return DefaultWebGpuExecutionProvider(); },
       add_session_options);
 }
@@ -533,7 +546,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionFusesSimplifiedQuickGeluWeb
       BuildMatMulNBitsMlpSimplifiedQuickGeluWebGpuPattern,
       21,
       *logger_,
-      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}, true),
       TransformerLevel::Level2,
       1,
       nullptr,
@@ -545,7 +558,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionFusesSkipQuickGeluWebGpuPat
       BuildMatMulNBitsMlpSkipQuickGeluWebGpuPattern,
       21,
       *logger_,
-      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}, true),
       TransformerLevel::Level2,
       1,
       nullptr,
@@ -574,7 +587,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionMatchesUnfusedSimplifiedQui
       21,
       1.5e-2,
       1.5e-2,
-      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}, true),
       []() { return DefaultWebGpuExecutionProvider(); });
 }
 
@@ -595,7 +608,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionMatchesUnfusedSkipQuickGelu
       21,
       5e-3,
       5e-3,
-      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}, true),
       []() { return DefaultWebGpuExecutionProvider(); });
 }
 
@@ -604,7 +617,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionDoesNotFuseSkipWebGpuPatter
       BuildMatMulNBitsMlpSkipWebGpuPatternWithSkipNormBias,
       21,
       *logger_,
-      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}, true),
       TransformerLevel::Level2,
       0,
       nullptr,
@@ -616,7 +629,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsMlpFusionDoesNotFuseSimplifiedWebGpu
       BuildMatMulNBitsMlpSimplifiedWebGpuPatternWithNormAxisZero,
       21,
       *logger_,
-      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}),
+      std::make_unique<MatMulNBitsMlpFusion>(InlinedHashSet<std::string_view>{kWebGpuExecutionProvider}, true),
       TransformerLevel::Level2,
       0,
       nullptr,
