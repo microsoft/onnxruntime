@@ -546,13 +546,14 @@ TEST(NhwcTransformerTests, FusedConvFloat_UsesNhwcOnlyWithKleidi) {
     EXPECT_EQ(op_to_count["Transpose"], 2);
   };
 
-  // Different optimizer paths can change accumulation order, so allow a slightly larger absolute tolerance
+  // This compares a Level 3 layout-optimized FusedConv+Relu path with the Level 2 baseline, which can use a different FP accumulation order.
+  // The NCHWc-selected path showed deterministic FP rounding drift just over 1e-6, so use a slightly wider but still narrow margin.
   TransformerTester(build_test_case,
                     check_nhwc_graph,
                     TransformerLevel::Level2,
                     TransformerLevel::Level3,
                     /*opset_version*/ 12,
-                    /*per_sample_tolerance*/ 2e-6,
+                    /*per_sample_tolerance*/ 1.25e-6,
                     /*relative_per_sample_tolerance*/ 1e-6);
 }
 
