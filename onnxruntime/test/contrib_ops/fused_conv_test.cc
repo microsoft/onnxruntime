@@ -196,31 +196,34 @@ bool HasFloatNhwcNoTransposeSupport(const vector<int64_t>& input_shape,
   };
 
   const size_t group_count = narrow<size_t>(group);
-  const size_t input_channels_per_group = narrow<size_t>(weight_shape[1]);
   const size_t filter_count = narrow<size_t>(weight_shape[0] / group);
-  return MlasConvSupportsKleidiAIImatmulChannelsLast2DFloatKernel(
-             /*Dimensions*/ 2,
-             narrow<size_t>(input_shape[0]),
-             group_count,
-             input_spatial_shape.data(),
-             kernel_spatial_shape.data(),
-             dilations.data(),
-             pads_size_t.data(),
-             strides_size_t.data(),
-             filter_count,
-             /*Beta*/ 0.0f) ||
-         MlasConvSupportsKleidiAIDepthwiseChannelsLast2DFloatKernel(
-             /*Dimensions*/ 2,
-             narrow<size_t>(input_shape[0]),
-             group_count,
-             input_channels_per_group,
-             input_spatial_shape.data(),
-             kernel_spatial_shape.data(),
-             dilations.data(),
-             pads_size_t.data(),
-             strides_size_t.data(),
-             filter_count,
-             /*Beta*/ 0.0f);
+  if (MlasConvSupportsDenseChannelsLast2DFloatKernel(
+          /*Dimensions*/ 2,
+          narrow<size_t>(input_shape[0]),
+          group_count,
+          input_spatial_shape.data(),
+          kernel_spatial_shape.data(),
+          dilations.data(),
+          pads_size_t.data(),
+          strides_size_t.data(),
+          filter_count,
+          /*Beta*/ 0.0f)) {
+    return true;
+  }
+
+  const size_t input_channels_per_group = narrow<size_t>(weight_shape[1]);
+  return MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
+      /*Dimensions*/ 2,
+      narrow<size_t>(input_shape[0]),
+      group_count,
+      input_channels_per_group,
+      input_spatial_shape.data(),
+      kernel_spatial_shape.data(),
+      dilations.data(),
+      pads_size_t.data(),
+      strides_size_t.data(),
+      filter_count,
+      /*Beta*/ 0.0f);
 }
 #endif
 

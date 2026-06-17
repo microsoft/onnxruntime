@@ -320,7 +320,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
   const size_t filter_count_per_group = narrow<size_t>(M / conv_attrs_.group);
   const bool nhwc_fastpath =
       wants_channels_last && !sum_present &&
-      (MlasConvSupportsKleidiAIImatmulChannelsLast2DFloatKernel(
+      (MlasConvSupportsDenseChannelsLast2DFloatKernel(
            kernel_rank,
            narrow<size_t>(N),
            group_count,
@@ -331,7 +331,7 @@ Status Conv<float>::Compute(OpKernelContext* context) const {
            strides_size_t.data(),
            filter_count_per_group,
            /*Beta*/ 0.0f) ||
-       MlasConvSupportsKleidiAIDepthwiseChannelsLast2DFloatKernel(
+       MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
            kernel_rank,
            narrow<size_t>(N),
            group_count,

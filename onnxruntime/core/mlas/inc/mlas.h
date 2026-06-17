@@ -942,7 +942,7 @@ MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
 
 bool
 MLASCALL
-MlasConvSupportsKleidiAIImatmulChannelsLast2DFloatKernel(
+MlasConvSupportsDenseChannelsLast2DFloatKernel(
     size_t Dimensions,
     size_t BatchCount,
     size_t GroupCount,
@@ -956,25 +956,11 @@ MlasConvSupportsKleidiAIImatmulChannelsLast2DFloatKernel(
 
 bool
 MLASCALL
-MlasConvSupportsKleidiAIDepthwiseChannelsLast2DFloatKernel(
+MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
     size_t Dimensions,
     size_t BatchCount,
     size_t GroupCount,
     size_t InputChannels,
-    const size_t* InputShape,
-    const size_t* KernelShape,
-    const size_t* DilationShape,
-    const size_t* Padding,
-    const size_t* StrideShape,
-    size_t FilterCount,
-    float Beta);
-
-bool
-MLASCALL
-MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
-    size_t Dimensions,
-    size_t BatchCount,
-    size_t GroupCount,
     const size_t* InputShape,
     const size_t* KernelShape,
     const size_t* DilationShape,

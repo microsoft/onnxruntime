@@ -1345,7 +1345,7 @@ static constexpr size_t ComputeChannelsLastConvOutSize(size_t input, size_t kern
 
 bool
 MLASCALL
-MlasConvSupportsKleidiAIImatmulChannelsLast2DFloatKernel(
+MlasConvSupportsDenseChannelsLast2DFloatKernel(
     size_t Dimensions,
     size_t BatchCount,
     size_t GroupCount,
@@ -1409,7 +1409,7 @@ MlasConvSupportsKleidiAIImatmulChannelsLast2DFloatKernel(
 
 bool
 MLASCALL
-MlasConvSupportsKleidiAIDepthwiseChannelsLast2DFloatKernel(
+MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
     size_t Dimensions,
     size_t BatchCount,
     size_t GroupCount,
@@ -1422,6 +1422,20 @@ MlasConvSupportsKleidiAIDepthwiseChannelsLast2DFloatKernel(
     size_t FilterCount,
     float Beta)
 {
+#if !defined(USE_KLEIDIAI) || !defined(MLAS_TARGET_ARM64)
+    MLAS_UNREFERENCED_PARAMETER(Dimensions);
+    MLAS_UNREFERENCED_PARAMETER(BatchCount);
+    MLAS_UNREFERENCED_PARAMETER(GroupCount);
+    MLAS_UNREFERENCED_PARAMETER(InputChannels);
+    MLAS_UNREFERENCED_PARAMETER(InputShape);
+    MLAS_UNREFERENCED_PARAMETER(KernelShape);
+    MLAS_UNREFERENCED_PARAMETER(DilationShape);
+    MLAS_UNREFERENCED_PARAMETER(Padding);
+    MLAS_UNREFERENCED_PARAMETER(StrideShape);
+    MLAS_UNREFERENCED_PARAMETER(FilterCount);
+    MLAS_UNREFERENCED_PARAMETER(Beta);
+    return false;
+#else
     MLAS_UNREFERENCED_PARAMETER(Dimensions);
     MLAS_UNREFERENCED_PARAMETER(BatchCount);
     MLAS_UNREFERENCED_PARAMETER(GroupCount);
@@ -1434,35 +1448,11 @@ MlasConvSupportsKleidiAIDepthwiseChannelsLast2DFloatKernel(
     MLAS_UNREFERENCED_PARAMETER(FilterCount);
     MLAS_UNREFERENCED_PARAMETER(Beta);
 
-    // Regression fix: keep depthwise/grouped convolutions out of the Arm® KleidiAI™
-    // NHWC path until the dedicated depthwise kernel is integrated.
+    // TODO: enable only for shapes supported by the dedicated
+    // depthwise kernel. Until then, keep depthwise/grouped convolutions out of
+    // the Arm® KleidiAI™ NHWC path.
     return false;
-}
-
-bool
-MLASCALL
-MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
-    size_t Dimensions,
-    size_t BatchCount,
-    size_t GroupCount,
-    const size_t* InputShape,
-    const size_t* KernelShape,
-    const size_t* DilationShape,
-    const size_t* Padding,
-    const size_t* StrideShape,
-    size_t FilterCount,
-    float Beta)
-{
-    return MlasConvSupportsKleidiAIImatmulChannelsLast2DFloatKernel(Dimensions,
-                                                                    BatchCount,
-                                                                    GroupCount,
-                                                                    InputShape,
-                                                                    KernelShape,
-                                                                    DilationShape,
-                                                                    Padding,
-                                                                    StrideShape,
-                                                                    FilterCount,
-                                                                    Beta);
+#endif
 }
 
 void

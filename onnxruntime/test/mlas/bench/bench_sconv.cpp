@@ -238,7 +238,7 @@ void SCONV_NHWC_KLEIDIAI(benchmark::State& state, const char* /*dummy*/) {
   const auto strides_size_t = ToSizeT(args.strides);
   const auto dilations_size_t = ToSizeT(args.dilations);
 
-  if (!(MlasConvSupportsKleidiAIImatmulChannelsLast2DFloatKernel(
+  if (!(MlasConvSupportsDenseChannelsLast2DFloatKernel(
             static_cast<size_t>(args.rank),
             static_cast<size_t>(args.batch_size),
             static_cast<size_t>(args.groups),
@@ -249,7 +249,7 @@ void SCONV_NHWC_KLEIDIAI(benchmark::State& state, const char* /*dummy*/) {
             strides_size_t.data(),
             static_cast<size_t>(args.output_channels_per_group),
             0.0f) ||
-        MlasConvSupportsKleidiAIDepthwiseChannelsLast2DFloatKernel(
+        MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
             static_cast<size_t>(args.rank),
             static_cast<size_t>(args.batch_size),
             static_cast<size_t>(args.groups),

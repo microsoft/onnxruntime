@@ -125,7 +125,7 @@ static bool CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
         return false;
     }
 
-    if (!MlasConvSupportsKleidiAIImatmulChannelsLast2DFloatKernel(
+    if (!MlasConvSupportsDenseChannelsLast2DFloatKernel(
             Parameters->Dimensions,
             Parameters->BatchCount,
             Parameters->GroupCount,

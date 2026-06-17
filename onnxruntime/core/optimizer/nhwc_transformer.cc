@@ -237,7 +237,7 @@ bool FloatNhwcWrapperFilter(const onnx_transpose_optimization::api::GraphRef& gr
     return false;
   }
 
-  if (MlasConvSupportsKleidiAIImatmulChannelsLast2DFloatKernel(
+  if (MlasConvSupportsDenseChannelsLast2DFloatKernel(
           /*Dimensions*/ 2,
           batch_count,
           group_count,
@@ -256,7 +256,7 @@ bool FloatNhwcWrapperFilter(const onnx_transpose_optimization::api::GraphRef& gr
     return false;
   }
 
-  return MlasConvSupportsKleidiAIDepthwiseChannelsLast2DFloatKernel(
+  return MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
       /*Dimensions*/ 2,
       batch_count,
       group_count,
