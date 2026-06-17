@@ -172,17 +172,30 @@ static bool HasFloatNhwcNoTransposeSupport(const std::vector<int64_t>& input_sha
     }
   }
 
-  return MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
-      /*Dimensions*/ 2,
-      narrow<size_t>(input_shape[0]),
-      group_count,
-      input_spatial_shape.data(),
-      kernel_spatial_shape.data(),
-      dilations_size_t.data(),
-      pads_size_t.data(),
-      strides_size_t.data(),
-      filter_count,
-      /*Beta*/ 0.0f);
+  const auto input_channels_per_group = narrow<size_t>(weight_shape[1]);
+  return MlasConvSupportsKleidiAIImatmulChannelsLast2DFloatKernel(
+             /*Dimensions*/ 2,
+             narrow<size_t>(input_shape[0]),
+             group_count,
+             input_spatial_shape.data(),
+             kernel_spatial_shape.data(),
+             dilations_size_t.data(),
+             pads_size_t.data(),
+             strides_size_t.data(),
+             filter_count,
+             /*Beta*/ 0.0f) ||
+         MlasConvSupportsKleidiAIDepthwiseChannelsLast2DFloatKernel(
+             /*Dimensions*/ 2,
+             narrow<size_t>(input_shape[0]),
+             group_count,
+             input_channels_per_group,
+             input_spatial_shape.data(),
+             kernel_spatial_shape.data(),
+             dilations_size_t.data(),
+             pads_size_t.data(),
+             strides_size_t.data(),
+             filter_count,
+             /*Beta*/ 0.0f);
 #else
   ORT_UNUSED_PARAMETER(input_shape);
   ORT_UNUSED_PARAMETER(weight_shape);
