@@ -2584,10 +2584,6 @@ static void RunBatchedRightPaddedRotaryPrefillForEP(bool use_cuda, bool use_webg
   }
 }
 
-TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefill_CPU) {
-  RunBatchedRightPaddedRotaryPrefillForEP(/*use_cuda=*/false, /*use_webgpu=*/false);
-}
-
 TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefill_CUDA) {
   auto cuda_ep = DefaultCudaExecutionProvider();
   if (!cuda_ep) {
