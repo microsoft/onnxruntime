@@ -4,6 +4,7 @@
 #include <functional>
 #include <iostream>
 #include <set>
+#include <array>
 
 #include "core/common/common.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -275,6 +276,50 @@ TEST(CApiTest, CreateGetSeqStringTensors) {
     }
   }
   ASSERT_EQ(string_set, std::set<std::string>(std::begin(string_input_data), std::end(string_input_data)));
+}
+
+// Regression test for MSRC 119491: GetValue() on a sequence of packed sub-byte tensors
+// (int4/uint4) must copy only the packed storage bytes. Previously it copied
+// element_type->Size() * logical_element_count bytes, which over-counts ~2x for sub-byte
+// types and caused a heap over-read of the source and overflow of the destination.
+// Uses an odd logical length (7 elements -> ceil(7/2) = 4 packed bytes) to exercise the
+// packing edge. Best run under AddressSanitizer, where the pre-fix overflow is detected.
+TEST(CApiTest, CreateGetSeqSubByteTensors) {
+  auto default_allocator = std::make_unique<MockedOrtAllocator>();
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  auto run_for_type = [&](ONNXTensorElementDataType elem_type, const std::array<uint8_t, 4>& packed) {
+    const std::vector<int64_t> dims{7};  // 7 4-bit elements -> 4 packed bytes
+    constexpr int N = 2;
+
+    std::vector<Ort::Value> in;
+    for (int i = 0; i < N; ++i) {
+      Ort::Value tensor = Ort::Value::CreateTensor(info, const_cast<uint8_t*>(packed.data()), packed.size(),
+                                                   dims.data(), dims.size(), elem_type);
+      in.push_back(std::move(tensor));
+    }
+
+    Ort::Value seq_ort = Ort::Value::CreateSequence(in);
+
+    for (int idx = 0; idx < N; ++idx) {
+      Ort::Value out = seq_ort.GetValue(idx, default_allocator.get());
+
+      auto type_info = out.GetTypeInfo();
+      auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+      ASSERT_EQ(tensor_info.GetElementType(), elem_type);
+      ASSERT_EQ(tensor_info.GetShape(), dims);
+
+      const auto* ret = out.GetTensorData<uint8_t>();
+      for (size_t i = 0; i < packed.size(); ++i) {
+        ASSERT_EQ(ret[i], packed[i]);
+      }
+    }
+  };
+
+  // {0, 1, 2, 3, -8, 7, 6, pad_0}
+  run_for_type(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4, {0x10, 0x32, 0x78, 0x06});
+  // {0, 1, 2, 3, 4, 5, 15, pad_0}
+  run_for_type(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4, {0x10, 0x32, 0x54, 0x0F});
 }
 
 TEST(CApiTest, TypeInfoSequence) {
