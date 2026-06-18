@@ -237,10 +237,30 @@ bool FloatNhwcWrapperFilter(const onnx_transpose_optimization::api::GraphRef& gr
     return false;
   }
 
-  return MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
+  if (MlasConvSupportsDenseChannelsLast2DFloatKernel(
+          /*Dimensions*/ 2,
+          batch_count,
+          group_count,
+          input_spatial_shape.data(),
+          kernel_spatial_shape.data(),
+          dilations.data(),
+          pads.data(),
+          strides.data(),
+          filter_count,
+          /*Beta*/ 0.0f)) {
+    return true;
+  }
+
+  size_t input_channels_per_group = 0;
+  if (!TryGetDimValueAsSizeT(*weight_shape, 1, input_channels_per_group)) {
+    return false;
+  }
+
+  return MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
       /*Dimensions*/ 2,
       batch_count,
       group_count,
+      input_channels_per_group,
       input_spatial_shape.data(),
       kernel_spatial_shape.data(),
       dilations.data(),
