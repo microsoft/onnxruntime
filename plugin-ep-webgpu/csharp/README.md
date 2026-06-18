@@ -21,7 +21,7 @@ csharp/
 ## Prerequisites
 
 - .NET SDK 8.0 or later
-- A built WebGPU plugin EP shared library
+- Pre-built WebGPU plugin EP binaries (from CI or a local build)
 
 ## Building the NuGet Package
 
@@ -64,12 +64,7 @@ subdirectory per platform), use `--artifacts-dir` instead of the individual `--b
 python pack_nuget.py --version 0.1.0-dev --artifacts-dir <path-to-artifacts-root>
 ```
 
-## Versioning
-
-The package version is supplied to `pack_nuget.py` via `--version`. In the packaging pipeline, the release or
-pre-release version is derived from [`plugin-ep-webgpu/VERSION_NUMBER`](../VERSION_NUMBER).
-
-## Testing the Package
+## Testing
 
 The test app registers the WebGPU EP, creates a session, runs a simple Mul model, and validates the output.
 
@@ -107,11 +102,8 @@ python test/WebGpuEpNuGetTest/generate_mul_model.py
 
 Requires the `onnx` Python package.
 
-## Native Binaries Per Platform
+## Versioning
 
-See the [Supported Platforms table in the package readme](Microsoft.ML.OnnxRuntime.EP.WebGpu/README.md#supported-platforms)
-for the list of native libraries required per RID.
-
-On Windows, `dxil.dll` and `dxcompiler.dll` are the DirectX Shader Compiler binaries downloaded from the
-[DXC GitHub releases](https://github.com/microsoft/DirectXShaderCompiler/releases). The CI pipeline handles this
-automatically.
+The package version is supplied to `pack_nuget.py` via `--version`. In the packaging pipeline, that version is
+derived from [`../VERSION_NUMBER`](../VERSION_NUMBER) (see
+[`set-plugin-ep-build-variables-step.yml`](../../tools/ci_build/github/azure-pipelines/templates/set-plugin-ep-build-variables-step.yml)).

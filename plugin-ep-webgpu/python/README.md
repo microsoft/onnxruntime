@@ -1,4 +1,4 @@
-# WebGPU Plugin EP Python Package
+# WebGPU Plugin EP — Python Packaging
 
 This directory contains the packaging source for the `onnxruntime-ep-webgpu` Python package.
 

@@ -29,6 +29,9 @@ build (`--use_webgpu shared_lib`). The resulting binaries are then packaged into
 - A multi-platform NuGet package `Microsoft.ML.OnnxRuntime.EP.WebGpu`, built from [`csharp/`](csharp/).
 - Per-platform zip packages for Foundry Local consumption.
 
+On Windows, the packages also bundle the DirectX Shader Compiler runtime (`dxil.dll`, `dxcompiler.dll`) from the
+[DXC GitHub releases](https://github.com/microsoft/DirectXShaderCompiler/releases); CI fetches these automatically.
+
 Packaging is driven by the *WebGPU Plugin EP Packaging Pipeline*
 ([`plugin-webgpu-pipeline.yml`](../tools/ci_build/github/azure-pipelines/plugin-webgpu-pipeline.yml)),
 and post-build smoke tests run in the companion *WebGPU Plugin EP Test Pipeline*
