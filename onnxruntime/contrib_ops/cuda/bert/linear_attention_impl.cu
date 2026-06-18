@@ -686,10 +686,11 @@ __global__ void LinearAttentionRecurrentKernelFixedShape(
 // Unlike the recurrent kernels above (one block per head, state cached in shared
 // memory across the token loop, block-wide __syncthreads barriers), this kernel
 // parallelizes the d_v output columns across many warps/blocks so the whole GPU
-// is saturated at decode (batch=1) and there are no block-wide barriers — only
-// warp shuffles. This mirrors the flash-linear-attention / llama.cpp decode
-// design and is far better for the latency-bound seq_len<=few case where the
-// shared-memory state caching of the recurrent kernels yields no amortization.
+// is saturated at decode (batch=1). This v1 warp-per-column kernel has no
+// block-wide barriers, only warp shuffles. It mirrors the flash-linear-attention
+// / llama.cpp decode design and is far better for the latency-bound
+// seq_len<=few case where the shared-memory state caching of the recurrent
+// kernels yields no amortization.
 //
 // Grid:  (batch_size, kv_num_heads, ceil(d_v / kWarpsPerBlock))
 // Block: (32, kWarpsPerBlock)
@@ -841,7 +842,8 @@ __global__ void LinearAttentionDecodeKernel(
 // consecutive threads read consecutive addresses (i*d_v + col), so the state
 // load/store is fully COALESCED — no transpose required. Per-column reductions
 // (S^T@k, S^T@q) are sequential within the thread, so there are no cross-thread
-// reductions; the only shared data are the per-token k/q/decay broadcasts.
+// reductions; the only shared data are the per-token k/q/decay broadcasts, with
+// block-wide barriers around those cooperative loads.
 //
 // Grid:  (batch_size, kv_num_heads, ceil(d_v / kColsPerBlock))
 // Block: (kColsPerBlock)
@@ -1021,10 +1023,11 @@ Status LaunchLinearAttentionKernel(
   // longer prefill-like runs benefit from amortizing state in shared memory below.
   constexpr int kDecodeSeqThreshold = 16;
   if (seq_len <= kDecodeSeqThreshold && (d_k == 64 || d_k == 128 || d_k == 256)) {
-    // v2 (column-per-thread, coalesced row-major state) is the default. It
-    // requires d_v % kColsPerBlock == 0; otherwise fall back to the v1
-    // warp-per-column kernel (which handles any d_v).
-    if (d_v % kColsPerBlock == 0) {
+    // v2 (column-per-thread, coalesced row-major state) is the default for
+    // DK <= 128. It requires d_v % kColsPerBlock == 0; otherwise fall back
+    // to the v1 warp-per-column kernel (which handles any d_v). DK=256 also
+    // uses v1 to avoid the high per-thread register footprint of s_col[256].
+    if (d_k <= 128 && d_v % kColsPerBlock == 0) {
       const dim3 decode_grid(batch_size, kv_num_heads,
                              (d_v + kColsPerBlock - 1) / kColsPerBlock);
       const dim3 decode_block(kColsPerBlock, 1, 1);
@@ -1042,8 +1045,6 @@ Status LaunchLinearAttentionKernel(
         return launch_col(std::integral_constant<int, 64>{});
       } else if (d_k == 128) {
         return launch_col(std::integral_constant<int, 128>{});
-      } else {  // d_k == 256
-        return launch_col(std::integral_constant<int, 256>{});
       }
     }
 

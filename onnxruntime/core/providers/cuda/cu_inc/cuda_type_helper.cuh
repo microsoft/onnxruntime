@@ -14,7 +14,7 @@ namespace {
 
 // Convert half/bfloat16 to float
 template <typename T>
-__device__ __forceinline__ float to_float(T val);
+__device__ __forceinline__ float to_float(T val) = delete;
 
 template <>
 __device__ __forceinline__ float to_float(float val) { return val; }
@@ -29,7 +29,7 @@ __device__ __forceinline__ float to_float(__nv_bfloat16 val) { return __bfloat16
 
 // Convert float to half/bfloat16/float
 template <typename T>
-__device__ __forceinline__ T from_float(float val);
+__device__ __forceinline__ T from_float(float val) = delete;
 
 template <>
 __device__ __forceinline__ float from_float(float val) { return val; }
