@@ -757,15 +757,10 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // computes variance internally). If the exponent is connected via a graph edge
     // (Constant node or Cast-from-constant), remove that edge before FinalizeNodeFusion
     // so that MoveAllNodeInputEdges doesn't try to move it to the fused node.
-    for (auto it = pow_node.InputEdgesBegin(), end = pow_node.InputEdgesEnd(); it != end; ++it) {
-      if (it->GetDstArgIndex() == 1) {
-        graph.RemoveEdge(it->GetNode().Index(), pow_node.Index(),
-                         it->GetSrcArgIndex(), it->GetDstArgIndex());
-        break;
-      }
-    }
+    auto pow_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(pow_node, 1);
+    graph_utils::GraphEdge::RemoveGraphEdges(graph, pow_input_edges);
 
-    // move input edges to add (first in list) across to the layer_norm_node.
+    // move input edges from the first node in nodes_to_remove to the layer_norm_node.
     // move output definitions and output edges from mul_node (last in list) to layer_norm_node.
     // remove all the other nodes.
     graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, layer_norm_node);
