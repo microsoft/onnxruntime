@@ -981,6 +981,77 @@ TEST(MatMul2Bits, MLFloat16_2b_MLFloat16ZP_Fallback) {
       .RunWithConfig();
 }
 
+// MLFloat16 activation + uint8 zero point fallback test.
+// Exercises the nbits_ == 2 arm of MatMulNBits<MLFloat16>::ComputeBUnpacked
+// (MlasDequantizeBlockwise<float, 2>) for the uint8-ZP path.
+TEST(MatMul2Bits, MLFloat16_2b_Uint8ZP_Fallback) {
+  RandomValueGenerator random{1234};
+  const int64_t M = 1, N = 32, K = 32, block_size = 16;
+  std::vector<float> input0_fp32_vals(random.Gaussian<float>(AsSpan({M, K}), 0.0f, 0.25f));
+  std::vector<float> input1_fp32_vals(random.Gaussian<float>(AsSpan({K, N}), 0.0f, 0.25f));
+
+  int q_rows, q_cols;
+  MlasBlockwiseQuantizedShape<float, QBits>(static_cast<int>(block_size), true,
+                                            static_cast<int>(K), static_cast<int>(N),
+                                            q_rows, q_cols);
+  size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
+  MlasBlockwiseQuantizedBufferSizes<QBits>(static_cast<int>(block_size), true,
+                                           static_cast<int>(K), static_cast<int>(N),
+                                           q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
+
+  std::vector<uint8_t> input1_vals(q_data_size_in_bytes);
+  std::vector<float> scales(q_scale_size);
+  std::vector<uint8_t> zero_points(q_zp_size_in_bytes);
+
+  auto& ortenv = **ort_env.get();
+  onnxruntime::concurrency::ThreadPool* tp = ortenv.GetEnvironment().GetIntraOpThreadPool();
+
+  MlasQuantizeBlockwise<float, QBits>(
+      input1_vals.data(), scales.data(), zero_points.data(),
+      input1_fp32_vals.data(), static_cast<int32_t>(block_size),
+      true, static_cast<int32_t>(K), static_cast<int32_t>(N),
+      static_cast<int32_t>(N), tp);
+
+  // Reference dequant via MLAS (matches the kernel's MlasDequantizeBlockwise<float, 2> arm).
+  MlasDequantizeBlockwise<float, QBits>(
+      input1_fp32_vals.data(), input1_vals.data(), scales.data(), zero_points.data(),
+      static_cast<int32_t>(block_size), true,
+      static_cast<int32_t>(K), static_cast<int32_t>(N), tp);
+
+  std::vector<float> expected_vals(M * N);
+  for (int64_t m = 0; m < M; m++) {
+    for (int64_t n = 0; n < N; n++) {
+      float sum = 0.0f;
+      for (int64_t k = 0; k < K; k++) {
+        sum += input0_fp32_vals[m * K + k] * input1_fp32_vals[n * K + k];
+      }
+      expected_vals[m * N + n] = sum;
+    }
+  }
+
+  int64_t k_blocks = (K + block_size - 1) / block_size;
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", static_cast<int64_t>(0));
+
+  test.AddInput<MLFloat16>("A", {M, K}, FloatsToMLFloat16s(input0_fp32_vals), false);
+  test.AddInput<uint8_t>("B", {q_cols, k_blocks, q_rows / k_blocks}, input1_vals, true);
+  test.AddInput<MLFloat16>("scales", {N, k_blocks}, FloatsToMLFloat16s(scales), true);
+  test.AddInput<uint8_t>("zero_points",
+                         {N, static_cast<int64_t>(q_zp_size_in_bytes) / N}, zero_points, true);
+
+  test.AddOutput<MLFloat16>("Y", {M, N}, FloatsToMLFloat16s(expected_vals));
+  test.SetOutputAbsErr("Y", 0.1f);
+  test.SetOutputRelErr("Y", 0.02f);
+
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
+}
+
 TEST(MatMul2Bits, Float32_2b_Accuracy0) {
   TestMatMul2BitsTyped<float, 1, 1, 16, 16, 0>();
   TestMatMul2BitsTyped<float, 1, 2, 16, 16, 0>();
@@ -1025,6 +1096,184 @@ TEST(MatMul2Bits, Float32_2b_Accuracy4) {
   TestMatMul2BitsTyped<float, 100, 32, 32, 16, 4>();
   TestMatMul2BitsTyped<float, 100, 32, 16, 128, 4>();
   TestMatMul2BitsTyped<float, 100, 288, 16, 16, 4>();
+}
+
+// NOTE on host-coverage of the new W2 op-level tests below.
+// These tests run unconditionally on DefaultCpuExecutionProvider() and compute
+// the expected output via dequant + matmul (see TestOptions2Bits / RunTest2Bits).
+// The new native AVX-512(+VNNI) W2 kernel is dispatched only on hosts where
+// GetMlasPlatform().Avx512Supported_ is true; on other hosts the op falls back
+// to dequant + SGEMM and the same correctness check still passes. So these
+// tests guard correctness everywhere and exercise the new SIMD path on
+// AVX-512(+VNNI) CI machines and dev boxes.
+
+// MatMulNBits operator-level coverage for the native AVX-512 W2 CPU kernel.
+// The kernel is gated on (BlkBitWidth=2, BlkLen=64, ComputeType=SQNBIT_CompInt8)
+// and is reachable through the public MatMulNBits op when accuracy_level=4 and
+// block_size=64 (so the platform dispatcher picks the CompInt8 path on AVX-512
+// hosts). On non-AVX-512 hosts the path is unavailable and the op falls back
+// to LUT or scalar -- the OpTester correctness check still passes because the
+// expected output is computed via dequantize-and-matmul.
+//
+// The K-values are chosen to exercise:
+//   * Single block (BlockCountK=1)         -> K=64
+//   * BlockCountK=2,3 not multiple of 4    -> K=128, K=192 (K-tail handler)
+//   * Exact block-group multiples          -> K=256, K=512, K=1024
+//   * BlockCountK=6 (1 full + 2 tail)      -> K=384  (non-aligned tail case)
+// and combinations of M ∈ {1 (decode), 2, 4, 100 (prefill)} and
+// N ∈ {16 (N-tail R1xC1/R2xC1), 32, 288, 1024 (kNCols4 multiples)}.
+//
+// TestMatMul2BitsTyped fans each shape out to 4 sub-tests: ±has_zero_point
+// crossed with ±has_bias.
+TEST(MatMul2Bits, Float32_2b_BlkLen64_Accuracy4) {
+  // Single-block K (K = BlkLen = 64).
+  TestMatMul2BitsTyped<float, 1, 16, 64, 64, 4>();
+  TestMatMul2BitsTyped<float, 1, 32, 64, 64, 4>();
+  TestMatMul2BitsTyped<float, 2, 16, 64, 64, 4>();
+  TestMatMul2BitsTyped<float, 4, 32, 64, 64, 4>();
+
+  // BlockCountK=2,3 -- exercises K-tail handler (BlockCountK not a multiple
+  // of kBlockGroupBlks=4).
+  TestMatMul2BitsTyped<float, 1, 32, 128, 64, 4>();
+  TestMatMul2BitsTyped<float, 1, 32, 192, 64, 4>();
+  TestMatMul2BitsTyped<float, 2, 16, 128, 64, 4>();
+
+  // Exact block-group multiples (BlockCountK = 4, 8, 16; no K-tail).
+  TestMatMul2BitsTyped<float, 1, 32, 256, 64, 4>();
+  TestMatMul2BitsTyped<float, 1, 288, 512, 64, 4>();
+  TestMatMul2BitsTyped<float, 4, 32, 1024, 64, 4>();
+
+  // Realistic-shape proportion: BlockCountK=6 = 1 full block-group + 2-block tail.
+  TestMatMul2BitsTyped<float, 1, 288, 384, 64, 4>();
+
+  // Larger M (multiple R2 tile iterations) and representative K=1024.
+  TestMatMul2BitsTyped<float, 100, 32, 256, 64, 4>();
+  TestMatMul2BitsTyped<float, 100, 288, 1024, 64, 4>();
+}
+
+// Same BlkLen=64 grid at accuracy_level=0. accuracy_level=0 lets the runtime
+// pick the best path; for BlkBitWidth=2 + BlkLen=64 it still routes to the
+// native W2 CompInt8 kernel on AVX-512 hosts. This catches any dispatch-table
+// wiring bug that only manifests when accuracy_level isn't explicitly 4.
+TEST(MatMul2Bits, Float32_2b_BlkLen64_Accuracy0) {
+  TestMatMul2BitsTyped<float, 1, 16, 64, 64, 0>();
+  TestMatMul2BitsTyped<float, 1, 32, 64, 64, 0>();
+  TestMatMul2BitsTyped<float, 2, 16, 64, 64, 0>();
+  TestMatMul2BitsTyped<float, 4, 32, 64, 64, 0>();
+
+  TestMatMul2BitsTyped<float, 1, 32, 128, 64, 0>();
+  TestMatMul2BitsTyped<float, 1, 32, 192, 64, 0>();
+  TestMatMul2BitsTyped<float, 2, 16, 128, 64, 0>();
+
+  TestMatMul2BitsTyped<float, 1, 32, 256, 64, 0>();
+  TestMatMul2BitsTyped<float, 1, 288, 512, 64, 0>();
+  TestMatMul2BitsTyped<float, 4, 32, 1024, 64, 0>();
+
+  TestMatMul2BitsTyped<float, 1, 288, 384, 64, 0>();
+
+  TestMatMul2BitsTyped<float, 100, 32, 256, 64, 0>();
+  TestMatMul2BitsTyped<float, 100, 288, 1024, 64, 0>();
+}
+
+// MatMulNBits op-level coverage for the BlkLen=128 path. Same coverage matrix
+// as the BlkLen=64 tests above, adjusted so that K is always a multiple of
+// 128 (BlkLen=128 constraint). Exercises:
+//   * Single-block K (BlockCountK=1)         -> K=128
+//   * BlockCountK=2,3 not multiple of 4      -> K=256, K=384 (K-tail handler)
+//   * Exact block-group multiples            -> K=512, K=1024, K=2048
+//   * BlockCountK=6 (1 full + 2 tail)        -> K=768
+// and the same M/N combinations as BlkLen=64.
+TEST(MatMul2Bits, Float32_2b_BlkLen128_Accuracy4) {
+  // Single-block K (K = BlkLen = 128).
+  TestMatMul2BitsTyped<float, 1, 16, 128, 128, 4>();
+  TestMatMul2BitsTyped<float, 1, 32, 128, 128, 4>();
+  TestMatMul2BitsTyped<float, 2, 16, 128, 128, 4>();
+  TestMatMul2BitsTyped<float, 4, 32, 128, 128, 4>();
+
+  // BlockCountK=2,3 -- exercises K-tail handler.
+  TestMatMul2BitsTyped<float, 1, 32, 256, 128, 4>();
+  TestMatMul2BitsTyped<float, 1, 32, 384, 128, 4>();
+  TestMatMul2BitsTyped<float, 2, 16, 256, 128, 4>();
+
+  // Exact block-group multiples (BlockCountK = 4, 8, 16).
+  TestMatMul2BitsTyped<float, 1, 32, 512, 128, 4>();
+  TestMatMul2BitsTyped<float, 1, 288, 1024, 128, 4>();
+  TestMatMul2BitsTyped<float, 4, 32, 2048, 128, 4>();
+
+  // BlockCountK=6 = 1 full block-group + 2-block tail.
+  TestMatMul2BitsTyped<float, 1, 288, 768, 128, 4>();
+
+  // Larger M (multi-iter R2 tile) at representative-shape proportions.
+  TestMatMul2BitsTyped<float, 100, 32, 512, 128, 4>();
+  TestMatMul2BitsTyped<float, 100, 288, 1024, 128, 4>();
+}
+
+TEST(MatMul2Bits, Float32_2b_BlkLen128_Accuracy0) {
+  TestMatMul2BitsTyped<float, 1, 16, 128, 128, 0>();
+  TestMatMul2BitsTyped<float, 1, 32, 128, 128, 0>();
+  TestMatMul2BitsTyped<float, 2, 16, 128, 128, 0>();
+  TestMatMul2BitsTyped<float, 4, 32, 128, 128, 0>();
+
+  TestMatMul2BitsTyped<float, 1, 32, 256, 128, 0>();
+  TestMatMul2BitsTyped<float, 1, 32, 384, 128, 0>();
+  TestMatMul2BitsTyped<float, 2, 16, 256, 128, 0>();
+
+  TestMatMul2BitsTyped<float, 1, 32, 512, 128, 0>();
+  TestMatMul2BitsTyped<float, 1, 288, 1024, 128, 0>();
+  TestMatMul2BitsTyped<float, 4, 32, 2048, 128, 0>();
+
+  TestMatMul2BitsTyped<float, 1, 288, 768, 128, 0>();
+
+  TestMatMul2BitsTyped<float, 100, 32, 512, 128, 0>();
+  TestMatMul2BitsTyped<float, 100, 288, 1024, 128, 0>();
+}
+
+// MatMulNBits op-level coverage for the BlkLen=32 path. K multiples of 32.
+// Same coverage matrix as BlkLen=64/128 (single-block, K-tail, exact group
+// multiples, representative-shape proportions, single-row decode, M=100 prefill).
+TEST(MatMul2Bits, Float32_2b_BlkLen32_Accuracy4) {
+  // Single-block K (K = BlkLen = 32).
+  TestMatMul2BitsTyped<float, 1, 16, 32, 32, 4>();
+  TestMatMul2BitsTyped<float, 1, 32, 32, 32, 4>();
+  TestMatMul2BitsTyped<float, 2, 16, 32, 32, 4>();
+  TestMatMul2BitsTyped<float, 4, 32, 32, 32, 4>();
+
+  // BlockCountK=2,3 -- K-tail handler (BlockCountK not a multiple of 4).
+  TestMatMul2BitsTyped<float, 1, 32, 64, 32, 4>();
+  TestMatMul2BitsTyped<float, 1, 32, 96, 32, 4>();
+  TestMatMul2BitsTyped<float, 2, 16, 64, 32, 4>();
+
+  // Exact block-group multiples (BlockCountK = 4, 8, 16).
+  TestMatMul2BitsTyped<float, 1, 32, 128, 32, 4>();
+  TestMatMul2BitsTyped<float, 1, 288, 256, 32, 4>();
+  TestMatMul2BitsTyped<float, 4, 32, 512, 32, 4>();
+
+  // BlockCountK=6 = 1 full block-group + 2-block tail.
+  TestMatMul2BitsTyped<float, 1, 288, 192, 32, 4>();
+
+  // Larger M.
+  TestMatMul2BitsTyped<float, 100, 32, 128, 32, 4>();
+  TestMatMul2BitsTyped<float, 100, 288, 256, 32, 4>();
+}
+
+TEST(MatMul2Bits, Float32_2b_BlkLen32_Accuracy0) {
+  TestMatMul2BitsTyped<float, 1, 16, 32, 32, 0>();
+  TestMatMul2BitsTyped<float, 1, 32, 32, 32, 0>();
+  TestMatMul2BitsTyped<float, 2, 16, 32, 32, 0>();
+  TestMatMul2BitsTyped<float, 4, 32, 32, 32, 0>();
+
+  TestMatMul2BitsTyped<float, 1, 32, 64, 32, 0>();
+  TestMatMul2BitsTyped<float, 1, 32, 96, 32, 0>();
+  TestMatMul2BitsTyped<float, 2, 16, 64, 32, 0>();
+
+  TestMatMul2BitsTyped<float, 1, 32, 128, 32, 0>();
+  TestMatMul2BitsTyped<float, 1, 288, 256, 32, 0>();
+  TestMatMul2BitsTyped<float, 4, 32, 512, 32, 0>();
+
+  TestMatMul2BitsTyped<float, 1, 288, 192, 32, 0>();
+
+  TestMatMul2BitsTyped<float, 100, 32, 128, 32, 0>();
+  TestMatMul2BitsTyped<float, 100, 288, 256, 32, 0>();
 }
 
 #if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
