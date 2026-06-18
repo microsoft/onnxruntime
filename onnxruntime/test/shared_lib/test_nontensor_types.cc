@@ -278,12 +278,8 @@ TEST(CApiTest, CreateGetSeqStringTensors) {
   ASSERT_EQ(string_set, std::set<std::string>(std::begin(string_input_data), std::end(string_input_data)));
 }
 
-// Regression test for MSRC 119491: GetValue() on a sequence of packed sub-byte tensors
-// (int4/uint4) must copy only the packed storage bytes. Previously it copied
-// element_type->Size() * logical_element_count bytes, which over-counts ~2x for sub-byte
-// types and caused a heap over-read of the source and overflow of the destination.
-// Uses an odd logical length (7 elements -> ceil(7/2) = 4 packed bytes) to exercise the
-// packing edge. Best run under AddressSanitizer, where the pre-fix overflow is detected.
+// Test - GetValue() on a sequence of packed sub-byte tensors
+// (int4/uint4) must copy only the packed storage bytes.
 TEST(CApiTest, CreateGetSeqSubByteTensors) {
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
