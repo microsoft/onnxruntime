@@ -160,6 +160,70 @@ namespace Experimental {
 
 #undef ORT_EXPERIMENTAL_API
 
+//
+// C++ wrapper types for the experimental APIs
+//
+
+// Move-only RAII owner for an OrtEpContextConfig handle obtained from OrtEpApi_SessionOptions_GetEpContextConfig.
+// Releases the handle via OrtEpApi_ReleaseEpContextConfig when destroyed.
+//
+// Note: intentionally lightweight and exception-free so this header (which only depends on the C API) can be included
+// by ORT-internal code without pulling in onnxruntime_cxx_api.h.
+class EpContextConfig {
+ public:
+  EpContextConfig() noexcept = default;
+
+  // Takes ownership of `config`. `api` is used to release it; both may be null (an empty wrapper).
+  EpContextConfig(const OrtApi* api, OrtEpContextConfig* config) noexcept : api_{api}, config_{config} {}
+
+  EpContextConfig(EpContextConfig&& other) noexcept : api_{other.api_}, config_{other.config_} {
+    other.api_ = nullptr;
+    other.config_ = nullptr;
+  }
+
+  EpContextConfig& operator=(EpContextConfig&& other) noexcept {
+    if (this != &other) {
+      reset();
+      api_ = other.api_;
+      config_ = other.config_;
+      other.api_ = nullptr;
+      other.config_ = nullptr;
+    }
+    return *this;
+  }
+
+  EpContextConfig(const EpContextConfig&) = delete;
+  EpContextConfig& operator=(const EpContextConfig&) = delete;
+
+  ~EpContextConfig() { reset(); }
+
+  OrtEpContextConfig* get() const noexcept { return config_; }
+  explicit operator bool() const noexcept { return config_ != nullptr; }
+
+  // Relinquishes ownership of the handle without releasing it.
+  OrtEpContextConfig* release() noexcept {
+    OrtEpContextConfig* released = config_;
+    api_ = nullptr;
+    config_ = nullptr;
+    return released;
+  }
+
+  // Releases any owned handle and resets to empty.
+  void reset() noexcept {
+    if (api_ != nullptr && config_ != nullptr) {
+      if (auto* release_fn = Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_Fn(api_)) {
+        release_fn(config_);
+      }
+    }
+    api_ = nullptr;
+    config_ = nullptr;
+  }
+
+ private:
+  const OrtApi* api_ = nullptr;
+  OrtEpContextConfig* config_ = nullptr;
+};
+
 }  // namespace Experimental
 }  // namespace Ort
 

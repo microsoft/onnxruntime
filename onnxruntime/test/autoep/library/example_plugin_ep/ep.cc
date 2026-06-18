@@ -11,6 +11,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "../ep_context_data_utils.h"
@@ -169,14 +170,14 @@ struct EpContextNodeComputeInfo : NodeComputeInfoBase {
 };
 
 ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const Config& config, const OrtLogger& logger,
-                     OrtEpContextConfig* ep_context_config)
+                     Ort::Experimental::EpContextConfig ep_context_config)
     : OrtEp{},  // explicitly call the struct ctor to ensure all optional values are default initialized
       ApiPtrs{static_cast<const ApiPtrs&>(factory)},
       factory_{factory},
       name_{name},
       config_{config},
       logger_{logger},
-      ep_context_config_{ep_context_config} {
+      ep_context_config_{std::move(ep_context_config)} {
   ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
 
   // Initialize the execution provider's function table
@@ -194,15 +195,6 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const C
                                              OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
                                              ("ExampleEp has been created with name " + name_).c_str(),
                                              ORT_FILE, __LINE__, __FUNCTION__));
-}
-
-ExampleEp::~ExampleEp() {
-  if (ep_context_config_ != nullptr) {
-    if (auto* release_ep_context_config =
-            Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_Fn(&ort_api)) {
-      release_ep_context_config(ep_context_config_);
-    }
-  }
 }
 
 /*static*/
@@ -432,7 +424,7 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
 
         std::vector<char> ep_context_data;
         RETURN_IF_ERROR(ep_context_data_utils::ReadEpContextDataWithFileFallback(
-            ep->ort_api, ep->ep_context_config_, ep_cache_context.c_str(), ort_graphs[0],
+            ep->ort_api, ep->ep_context_config_.get(), ep_cache_context.c_str(), ort_graphs[0],
             ep_context_data));
       }
 
@@ -560,7 +552,7 @@ OrtStatus* ExampleEp::CreateEpContextNodes(const OrtGraph* graph,
           fallback_graph = nullptr;
         }
         RETURN_IF_ERROR(ep_context_data_utils::WriteEpContextDataWithFileFallback(
-            ort_api, ep_context_config_, ep_ctx.c_str(), fallback_ep_ctx.c_str(), fallback_graph,
+            ort_api, ep_context_config_.get(), ep_ctx.c_str(), fallback_ep_ctx.c_str(), fallback_graph,
             ep_context_data.data(), ep_context_data.size()));
       }
       attributes[0] = Ort::OpAttr("ep_cache_context", ep_ctx.data(), static_cast<int>(ep_ctx.size()),
