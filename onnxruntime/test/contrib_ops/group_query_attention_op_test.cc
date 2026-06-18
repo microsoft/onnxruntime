@@ -17,6 +17,27 @@
 namespace onnxruntime {
 namespace test {
 
+// Selects which EP backs a GQA test helper. Modelled as a single enum (rather
+// than two bools) so adding a new EP later does not silently fall through to
+// CPU and callers cannot accidentally select two backends at once.
+enum class GqaTargetEp { kCpu, kCuda, kWebGpu };
+
+// Builds the default EP for the chosen backend. Centralized so that adding a
+// new enumerator only requires updating one switch; the `ORT_THROW` default
+// turns a missed update into a loud runtime failure instead of a silent
+// empty-provider fallback inside OpTester.
+static std::unique_ptr<IExecutionProvider> MakeExecutionProviderForGqaTest(GqaTargetEp target_ep) {
+  switch (target_ep) {
+    case GqaTargetEp::kCuda:
+      return DefaultCudaExecutionProvider();
+    case GqaTargetEp::kWebGpu:
+      return DefaultWebGpuExecutionProvider();
+    case GqaTargetEp::kCpu:
+      return DefaultCpuExecutionProvider();
+  }
+  ORT_THROW("Unhandled GqaTargetEp");
+}
+
 // Helper to build a minimal GQA OpTester with given seqlens_k and total_seq_len.
 // Uses num_heads=1, kv_num_heads=1, and head_size=8; past may be provided via
 // provide_past/past_seq_len.
@@ -778,8 +799,7 @@ static std::vector<float> RunGQASharedKV(
     int num_heads,
     int kv_num_heads,
     int head_size,
-    bool use_cuda = false,
-    bool use_webgpu = false) {
+    GqaTargetEp target_ep = GqaTargetEp::kCpu) {
   const int hidden_size = num_heads * head_size;
   const int total_seq_len = past_seq_len;  // all KV data is in past
 
@@ -822,13 +842,7 @@ static std::vector<float> RunGQASharedKV(
   tester.SetOutputTolerance(1e6f);  // We compare fetched outputs ourselves
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  if (use_cuda) {
-    execution_providers.push_back(DefaultCudaExecutionProvider());
-  } else if (use_webgpu) {
-    execution_providers.push_back(DefaultWebGpuExecutionProvider());
-  } else {
-    execution_providers.push_back(DefaultCpuExecutionProvider());
-  }
+  execution_providers.push_back(MakeExecutionProviderForGqaTest(target_ep));
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 
   auto fetches = tester.GetFetches();
@@ -922,7 +936,7 @@ TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_CPU) {
 
   auto output = RunGQASharedKV(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false);
+      num_heads, kv_num_heads, head_size);
 
   // Verify non-zero and no NaN
   bool all_zero = true;
@@ -952,7 +966,7 @@ TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_Prompt_CPU) {
 
   auto output = RunGQASharedKV(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false);
+      num_heads, kv_num_heads, head_size);
 
   bool all_zero = true;
   for (size_t i = 0; i < output.size(); i++) {
@@ -991,7 +1005,7 @@ TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_CUDA) {
 
   auto cpu_output = RunGQASharedKV(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false);
+      num_heads, kv_num_heads, head_size);
 
   ExpectOutputsMatch(cuda_output, cpu_output, 0.05f, "SharedKV_CUDA_vs_CPU");
 }
@@ -1015,7 +1029,7 @@ TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_LargeHeadSize_CPU) {
 
   auto output = RunGQASharedKV(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false);
+      num_heads, kv_num_heads, head_size);
 
   bool all_zero = true;
   for (size_t i = 0; i < output.size(); i++) {
@@ -1044,7 +1058,7 @@ TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_GQARatio8_CPU) {
 
   auto output = RunGQASharedKV(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false);
+      num_heads, kv_num_heads, head_size);
 
   bool all_zero = true;
   for (size_t i = 0; i < output.size(); i++) {
@@ -1073,7 +1087,7 @@ TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_Batched_CPU) {
 
   auto output = RunGQASharedKV(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false);
+      num_heads, kv_num_heads, head_size);
 
   bool all_zero = true;
   for (size_t i = 0; i < output.size(); i++) {
@@ -1155,7 +1169,7 @@ TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_Prompt_CUDA) {
       num_heads, kv_num_heads, head_size);
   auto cpu_output = RunGQASharedKV(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false);
+      num_heads, kv_num_heads, head_size);
 
   ExpectOutputsMatch(cuda_output, cpu_output, 0.05f, "SharedKV_Prompt_CUDA_vs_CPU");
 }
@@ -1187,7 +1201,7 @@ TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_LargeHeadSize_CUDA) {
       num_heads, kv_num_heads, head_size);
   auto cpu_output = RunGQASharedKV(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false);
+      num_heads, kv_num_heads, head_size);
 
   ExpectOutputsMatch(cuda_output, cpu_output, 0.05f, "SharedKV_LargeHead_CUDA_vs_CPU");
 }
@@ -1219,7 +1233,7 @@ TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_GQARatio8_CUDA) {
       num_heads, kv_num_heads, head_size);
   auto cpu_output = RunGQASharedKV(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false);
+      num_heads, kv_num_heads, head_size);
 
   ExpectOutputsMatch(cuda_output, cpu_output, 0.15f, "SharedKV_GQA8_CUDA_vs_CPU");
 }
@@ -1240,8 +1254,7 @@ static std::vector<float> RunGQASharedKVWithRotary(
     int num_heads,
     int kv_num_heads,
     int head_size,
-    bool use_cuda = false,
-    bool use_webgpu = false) {
+    GqaTargetEp target_ep = GqaTargetEp::kCpu) {
   const int hidden_size = num_heads * head_size;
   const int total_seq_len = past_seq_len;
   const int rotary_dim = head_size;           // full rotary
@@ -1307,13 +1320,7 @@ static std::vector<float> RunGQASharedKVWithRotary(
   tester.SetOutputTolerance(1e6f);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  if (use_cuda) {
-    execution_providers.push_back(DefaultCudaExecutionProvider());
-  } else if (use_webgpu) {
-    execution_providers.push_back(DefaultWebGpuExecutionProvider());
-  } else {
-    execution_providers.push_back(DefaultCpuExecutionProvider());
-  }
+  execution_providers.push_back(MakeExecutionProviderForGqaTest(target_ep));
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 
   auto fetches = tester.GetFetches();
@@ -1423,12 +1430,12 @@ TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_Rotary_CPU) {
 
   auto output = RunGQASharedKVWithRotary(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false);
+      num_heads, kv_num_heads, head_size);
 
   // Output with rotary should differ from without rotary (RoPE changes Q projections)
   auto output_no_rotary = RunGQASharedKV(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false);
+      num_heads, kv_num_heads, head_size);
 
   bool all_zero = true;
   bool differs_from_no_rotary = false;
@@ -1468,7 +1475,7 @@ TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_Rotary_CUDA) {
       num_heads, kv_num_heads, head_size);
   auto cpu_output = RunGQASharedKVWithRotary(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false);
+      num_heads, kv_num_heads, head_size);
 
   ExpectOutputsMatch(cuda_output, cpu_output, 0.05f, "SharedKV_Rotary_CUDA_vs_CPU");
 }
@@ -1500,7 +1507,7 @@ TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_Rotary_Prompt_CUDA) {
       num_heads, kv_num_heads, head_size);
   auto cpu_output = RunGQASharedKVWithRotary(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false);
+      num_heads, kv_num_heads, head_size);
 
   ExpectOutputsMatch(cuda_output, cpu_output, 0.05f, "SharedKV_Rotary_Prompt_CUDA_vs_CPU");
 }
@@ -2191,10 +2198,10 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_Decode) {
 
   auto webgpu_output = RunGQASharedKV(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false, /*use_webgpu=*/true);
+      num_heads, kv_num_heads, head_size, GqaTargetEp::kWebGpu);
   auto cpu_output = RunGQASharedKV(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false, /*use_webgpu=*/false);
+      num_heads, kv_num_heads, head_size, GqaTargetEp::kCpu);
 
   ExpectOutputsMatch(webgpu_output, cpu_output, 0.05f, "SharedKV_WebGPU_vs_CPU");
 }
@@ -2223,10 +2230,10 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_Prefill) {
 
   auto webgpu_output = RunGQASharedKV(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false, /*use_webgpu=*/true);
+      num_heads, kv_num_heads, head_size, GqaTargetEp::kWebGpu);
   auto cpu_output = RunGQASharedKV(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false, /*use_webgpu=*/false);
+      num_heads, kv_num_heads, head_size, GqaTargetEp::kCpu);
 
   ExpectOutputsMatch(webgpu_output, cpu_output, 0.05f, "SharedKV_Prompt_WebGPU_vs_CPU");
 }
@@ -2255,10 +2262,10 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_Rotary) {
 
   auto webgpu_output = RunGQASharedKVWithRotary(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false, /*use_webgpu=*/true);
+      num_heads, kv_num_heads, head_size, GqaTargetEp::kWebGpu);
   auto cpu_output = RunGQASharedKVWithRotary(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false, /*use_webgpu=*/false);
+      num_heads, kv_num_heads, head_size, GqaTargetEp::kCpu);
 
   ExpectOutputsMatch(webgpu_output, cpu_output, 0.05f, "SharedKV_Rotary_WebGPU_vs_CPU");
 }
@@ -2288,10 +2295,10 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_Rotary_Prefill) {
 
   auto webgpu_output = RunGQASharedKVWithRotary(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false, /*use_webgpu=*/true);
+      num_heads, kv_num_heads, head_size, GqaTargetEp::kWebGpu);
   auto cpu_output = RunGQASharedKVWithRotary(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false, /*use_webgpu=*/false);
+      num_heads, kv_num_heads, head_size, GqaTargetEp::kCpu);
 
   ExpectOutputsMatch(webgpu_output, cpu_output, 0.05f, "SharedKV_Rotary_Prefill_WebGPU_vs_CPU");
 }
@@ -2321,10 +2328,10 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_Rotary_MultiBatch) {
 
   auto webgpu_output = RunGQASharedKVWithRotary(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false, /*use_webgpu=*/true);
+      num_heads, kv_num_heads, head_size, GqaTargetEp::kWebGpu);
   auto cpu_output = RunGQASharedKVWithRotary(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false, /*use_webgpu=*/false);
+      num_heads, kv_num_heads, head_size, GqaTargetEp::kCpu);
 
   ExpectOutputsMatch(webgpu_output, cpu_output, 0.05f, "SharedKV_Rotary_MultiBatch_WebGPU_vs_CPU");
 }
@@ -2446,8 +2453,7 @@ static std::vector<float> RunGQAPackedQKVRotaryPrefill(
     int head_size,
     const std::vector<int32_t>& seqlens_k_data,
     const std::vector<float>& packed_qkv_data,
-    bool use_cuda = false,
-    bool use_webgpu = false) {
+    GqaTargetEp target_ep = GqaTargetEp::kCpu) {
   const int hidden_size = num_heads * head_size;
   const int kv_hidden_size = kv_num_heads * head_size;
   const int qkv_hidden = hidden_size + 2 * kv_hidden_size;
@@ -2501,13 +2507,7 @@ static std::vector<float> RunGQAPackedQKVRotaryPrefill(
   tester.SetOutputTolerance(1e6f);  // We fetch and compare outputs ourselves.
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  if (use_cuda) {
-    execution_providers.push_back(DefaultCudaExecutionProvider());
-  } else if (use_webgpu) {
-    execution_providers.push_back(DefaultWebGpuExecutionProvider());
-  } else {
-    execution_providers.push_back(DefaultCpuExecutionProvider());
-  }
+  execution_providers.push_back(MakeExecutionProviderForGqaTest(target_ep));
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 
   auto fetches = tester.GetFetches();
@@ -2520,7 +2520,7 @@ static std::vector<float> RunGQAPackedQKVRotaryPrefill(
 // output matches its single-prompt reference. Both reference and batched runs
 // go through the same EP, so this validates per-batch consistency within each
 // EP rather than cross-EP equivalence.
-static void RunBatchedRightPaddedRotaryPrefillForEP(bool use_cuda, bool use_webgpu) {
+static void RunBatchedRightPaddedRotaryPrefillForEP(GqaTargetEp target_ep) {
   constexpr int batch_size = 3;
   constexpr int num_heads = 4;
   constexpr int kv_num_heads = 2;
@@ -2553,7 +2553,7 @@ static void RunBatchedRightPaddedRotaryPrefillForEP(bool use_cuda, bool use_webg
         /*batch_size=*/1, /*sequence_length=*/real_len,
         num_heads, kv_num_heads, head_size,
         /*seqlens_k_data=*/{static_cast<int32_t>(real_len - 1)},
-        packed_single, use_cuda, use_webgpu);
+        packed_single, target_ep);
   }
 
   // Now run all batches together with right-padding.
@@ -2563,7 +2563,7 @@ static void RunBatchedRightPaddedRotaryPrefillForEP(bool use_cuda, bool use_webg
   }
   const auto batched_output = RunGQAPackedQKVRotaryPrefill(
       batch_size, sequence_length, num_heads, kv_num_heads, head_size,
-      seqlens_k_data, packed_batched, use_cuda, use_webgpu);
+      seqlens_k_data, packed_batched, target_ep);
 
   // Each batch's real-last-token output (used to predict next token) must match
   // its single-prompt reference. The tolerance is loose enough for fp16 rounding
@@ -2589,7 +2589,7 @@ TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefill_CUDA) {
   if (!cuda_ep) {
     GTEST_SKIP() << "CUDA EP not available";
   }
-  RunBatchedRightPaddedRotaryPrefillForEP(/*use_cuda=*/true, /*use_webgpu=*/false);
+  RunBatchedRightPaddedRotaryPrefillForEP(GqaTargetEp::kCuda);
 }
 
 TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefill_WebGPU) {
@@ -2597,7 +2597,7 @@ TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefill_WebGPU) {
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
-  RunBatchedRightPaddedRotaryPrefillForEP(/*use_cuda=*/false, /*use_webgpu=*/true);
+  RunBatchedRightPaddedRotaryPrefillForEP(GqaTargetEp::kWebGpu);
 }
 
 }  // namespace test

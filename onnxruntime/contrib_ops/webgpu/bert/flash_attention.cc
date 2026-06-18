@@ -608,6 +608,13 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 
 bool CanApplyFlashAttention(const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k) {
   const bool kv_empty = parameters.kv_sequence_length_ == 0;
+  // FlashAttention here does not implement right-padded per-batch prefill, so the
+  // first disjunction restricts it to inputs where padding cannot occur:
+  //   - batch_size_ == 1: single sequence, no padding possible.
+  //   - seqlen_k == nullptr: no per-batch lengths, padding inexpressible.
+  //   - kv_empty (shared-KV layer): FA is mandatory; that path takes a different shader.
+  // The remaining conjuncts exclude packed-QKV (handled by a separate rotary kernel),
+  // mismatched head/value sizes, and head_size alignments unsupported by the kernel.
   return (parameters.batch_size_ == 1 || seqlen_k == nullptr || kv_empty) &&
          !parameters.is_packed_qkv_ &&
          parameters.head_size_ == parameters.v_head_size_ &&
