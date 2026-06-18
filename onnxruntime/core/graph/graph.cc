@@ -3975,7 +3975,7 @@ Status Graph::AddInitializedOrtValue(const ONNX_NAMESPACE::TensorProto& tensor_p
                       "TensorProto without in-memory external data cannot have an allocated ortvalue_initializer");
   }
 
-  if (ortvalue_initializer.IsAllocated()) {
+  if (has_data_in_memory) {
     const auto element_type = static_cast<int32_t>(utils::GetTensorElementType(tensor_proto));
     const auto& tensor = ortvalue_initializer.Get<Tensor>();
     ORT_RETURN_IF_NOT(tensor.GetElementType() == element_type,
