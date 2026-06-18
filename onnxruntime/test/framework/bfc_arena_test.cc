@@ -21,6 +21,18 @@ static void CheckStats(BFCArena* a, int64_t num_allocs, int64_t bytes_in_use,
   EXPECT_EQ(stats.max_alloc_size, max_alloc_size);
 }
 
+static void CheckStatsDetailed(BFCArena* a, int64_t num_allocs, int64_t bytes_in_use,
+                               int64_t bytes_requested_in_use, int64_t max_bytes_in_use,
+                               int64_t max_alloc_size) {
+  AllocatorStats stats;
+  a->GetStats(&stats);
+  EXPECT_EQ(stats.bytes_in_use, bytes_in_use);
+  EXPECT_EQ(stats.bytes_requested_in_use, bytes_requested_in_use);
+  EXPECT_EQ(stats.max_bytes_in_use, max_bytes_in_use);
+  EXPECT_EQ(stats.num_allocs, num_allocs);
+  EXPECT_EQ(stats.max_alloc_size, max_alloc_size);
+}
+
 TEST(BFCArenaTest, NoDups) {
   BFCArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30);
   CheckStats(&a, 0, 0, 0, 0);
@@ -289,6 +301,57 @@ TEST(BFCArenaTest, TestReserve) {
   AllocatorStats stats;
   a.GetStats(&stats);
   EXPECT_EQ(stats.total_allocated_bytes, 1048576);
+}
+
+TEST(BFCArenaTest, BytesRequestedInUse) {
+  // Use kSameAsRequested to avoid large arena extensions that complicate byte counts.
+  BFCArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30, ArenaExtendStrategy::kSameAsRequested);
+
+  // Initially everything is zero.
+  CheckStatsDetailed(&a, 0, 0, 0, 0, 0);
+
+  // Allocate 100 bytes. BFC rounds up to 256-byte chunk, but requested is 100.
+  void* p1 = a.Alloc(100);
+  AllocatorStats stats;
+  a.GetStats(&stats);
+  EXPECT_EQ(stats.num_allocs, 1);
+  EXPECT_EQ(stats.bytes_requested_in_use, 100);
+  EXPECT_GE(stats.bytes_in_use, 100);  // bytes_in_use >= requested due to rounding
+
+  // Allocate 200 bytes. Requested cumulative = 300.
+  void* p2 = a.Alloc(200);
+  a.GetStats(&stats);
+  EXPECT_EQ(stats.num_allocs, 2);
+  EXPECT_EQ(stats.bytes_requested_in_use, 300);
+  EXPECT_GE(stats.bytes_in_use, 300);
+
+  // Free first allocation. Requested drops by 100.
+  a.Free(p1);
+  a.GetStats(&stats);
+  EXPECT_EQ(stats.bytes_requested_in_use, 200);
+
+  // Free second allocation. Requested drops to 0.
+  a.Free(p2);
+  a.GetStats(&stats);
+  EXPECT_EQ(stats.bytes_requested_in_use, 0);
+  EXPECT_EQ(stats.bytes_in_use, 0);
+}
+
+TEST(BFCArenaTest, BytesRequestedInUseWithReserve) {
+  BFCArena a(std::unique_ptr<IAllocator>(new CPUAllocator()), 1 << 30);
+
+  // Reserve bypasses BFC (no rounding), so requested == actual.
+  const size_t reserve_size = 4096;
+  void* p = a.Reserve(reserve_size);
+  AllocatorStats stats;
+  a.GetStats(&stats);
+  EXPECT_EQ(stats.bytes_requested_in_use, static_cast<int64_t>(reserve_size));
+  EXPECT_EQ(stats.bytes_in_use, static_cast<int64_t>(reserve_size));
+
+  a.Free(p);
+  a.GetStats(&stats);
+  EXPECT_EQ(stats.bytes_requested_in_use, 0);
+  EXPECT_EQ(stats.bytes_in_use, 0);
 }
 
 TEST(BFCArenaTest, TestShrink) {
