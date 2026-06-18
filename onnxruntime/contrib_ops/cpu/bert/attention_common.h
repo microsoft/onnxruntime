@@ -105,7 +105,6 @@ enum class AttentionBackend : int {
   // The following TRT kernels might be deprecated in the future.
   TRT_FLASH_ATTENTION = 32,
   TRT_CROSS_ATTENTION = 64,
-  TRT_CAUSAL_ATTENTION = 128,
 
   // Experimental kernels
   LEAN_ATTENTION = 256,
@@ -124,7 +123,7 @@ constexpr const char* kDisableFusedCrossAttention = "ORT_DISABLE_FUSED_CROSS_ATT
 // Environment variable to enable or disable cuDNN flash attention.
 constexpr const char* kEnableCudnnFlashAttention = "ORT_ENABLE_CUDNN_FLASH_ATTENTION";
 
-// Environment variable to enable or disable TRT flash attention. This applies to both self and causal attention. Default is 0 (enabled).
+// Environment variable to enable or disable TRT flash attention. Default is 0 (enabled).
 constexpr const char* kDisableTrtFlashAttention = "ORT_DISABLE_TRT_FLASH_ATTENTION";
 
 // Environment variable to enable or disable cutlass memory efficient attention. Default is 0 (enabled).
