@@ -179,14 +179,11 @@ jobs:
 
   react_native_ci_ios_build:
     name: React Native CI iOS Build
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 120
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-
-      - name: Use Xcode 15.3.0
-        run: sudo xcode-select --switch /Applications/Xcode_15.3.0.app/Contents/Developer
 
       - name: Use Python 3.12
         uses: actions/setup-python@v6
@@ -222,7 +219,7 @@ jobs:
   react_native_ci_ios_e2e_tests:
     name: React Native CI iOS E2E Tests
     needs: react_native_ci_ios_build
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 90
     steps:
       - name: Checkout repository
@@ -233,9 +230,6 @@ jobs:
         with:
           name: ios_pod
           path: ${{ runner.temp }}/ios_pod
-
-      - name: Use Xcode 15.3.0
-        run: sudo xcode-select --switch /Applications/Xcode_15.3.0.app/Contents/Developer
 
       - name: Use Node.js 22.x
         uses: actions/setup-node@v6
