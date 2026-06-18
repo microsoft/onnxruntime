@@ -1884,6 +1884,36 @@ TEST_F(GraphTest, ReplaceInitializedTensor) {
   }
 }
 
+TEST_F(GraphTest, ReplaceInitializedTensorRejectsMissingOrtValueForExternalDataInMemory) {
+  Model model{"GraphUpdateTest_ExternalData", false, *logger_};
+  auto& graph = model.MainGraph();
+  const std::string initializer_name = "initializer";
+  constexpr int64_t kTensorSize = 64;
+
+  ONNX_NAMESPACE::TensorProto original{};
+  original.set_data_type(TensorProto_DataType_INT32);
+  original.add_dims(kTensorSize);
+  for (int32_t i = 0; i < kTensorSize; ++i) {
+    original.add_int32_data(i);
+  }
+  original.set_name(initializer_name);
+  graph.AddInitializedTensor(original);
+
+  auto allocator = CPUAllocator::DefaultInstance();
+  TensorShape shape({kTensorSize});
+  OrtValue ort_value;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), shape, allocator, ort_value);
+  auto* data = ort_value.GetMutable<Tensor>()->MutableData<int32_t>();
+  for (int32_t i = 0; i < kTensorSize; ++i) {
+    data[i] = i + 1;
+  }
+
+  auto replacement = utils::TensorToTensorProto(ort_value.Get<Tensor>(), initializer_name, true);
+  Status status = graph.ReplaceInitializedTensor(replacement, OrtValue());
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("requires an allocated OrtValue"));
+}
+
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
 namespace {
@@ -2397,6 +2427,32 @@ TEST_F(GraphTest, AddInitializedOrtValueWithExternalData) {
   ASSERT_NE(retrieved_proto, nullptr);
   ASSERT_EQ(retrieved_proto->name(), external_data_init);
   ASSERT_TRUE(utils::HasExternalDataInMemory(tensor_proto));
+}
+
+TEST_F(GraphTest, AddInitializedTensorRejectsExternalDataInMemoryWithoutOrtValue) {
+  Model model("TestAddInitializedTensorRejectsExternalDataInMemory", false, *logger_);
+  Graph& graph = model.MainGraph();
+
+  auto allocator = CPUAllocator::DefaultInstance();
+  TensorProto tensor_proto;
+  OrtValue ort_value;
+  CreateIntializerWithDataInMemory("external_data_init", allocator, 256, tensor_proto, ort_value);
+
+  EXPECT_THROW(graph.AddInitializedTensor(tensor_proto), OnnxRuntimeException);
+}
+
+TEST_F(GraphTest, AddInitializedOrtValueRejectsMissingOrtValueForExternalDataInMemory) {
+  Model model("TestAddInitializedOrtValueRejectsMissingOrtValue", false, *logger_);
+  Graph& graph = model.MainGraph();
+
+  auto allocator = CPUAllocator::DefaultInstance();
+  TensorProto tensor_proto;
+  OrtValue ort_value;
+  CreateIntializerWithDataInMemory("external_data_init", allocator, 256, tensor_proto, ort_value);
+
+  Status status = graph.AddInitializedOrtValue(tensor_proto, OrtValue());
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("requires an allocated ortvalue_initializer"));
 }
 
 TEST_F(GraphTest, AddInitializedOrtValueMismatch) {

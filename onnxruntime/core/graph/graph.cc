@@ -3935,13 +3935,12 @@ void Graph::AddInitializedTensor(const TensorProto& tensor) {
     return;
   }
 
-  // This overload is used when the tensor does not point to an OrtValue which
-  // would need to be updated, but it is okay if it is pointing to flatbuffers or some other place at the moment.
-  // However, if an ort_value present for the name, it must be replaced.
+  // This overload is only for TensorProtos that own/embed their data. TensorProtos with
+  // in-memory external data must be added together with the backing OrtValue.
   if (utils::HasExternalDataInMemory(tensor)) {
-    if (ortvalue_initializers_.count(tensor.name()) > 0) {
-      ORT_THROW("OrtValue needs to be inserted. Use the overload that takes both TensorProto and OrtValue with data");
-    }
+    ORT_THROW(
+        "TensorProto with in-memory external data requires an OrtValue. "
+        "Use the overload that takes both TensorProto and OrtValue.");
   }
   const gsl::not_null<TensorProto*> tensor_added{graph_proto_->add_initializer()};
   *(tensor_added) = tensor;
@@ -3967,8 +3966,16 @@ Status Graph::AddInitializedOrtValue(const ONNX_NAMESPACE::TensorProto& tensor_p
   *(tensor_added) = tensor_proto;
   name_to_initial_tensor_.emplace(tensor_proto.name(), tensor_added);
 
+  const bool has_data_in_memory = utils::HasExternalDataInMemory(tensor_proto);
+  if (has_data_in_memory) {
+    ORT_RETURN_IF_NOT(ortvalue_initializer.IsAllocated(),
+                      "TensorProto with in-memory external data requires an allocated ortvalue_initializer");
+  } else {
+    ORT_RETURN_IF_NOT(!ortvalue_initializer.IsAllocated(),
+                      "TensorProto without in-memory external data cannot have an allocated ortvalue_initializer");
+  }
+
   if (ortvalue_initializer.IsAllocated()) {
-    const bool has_data_in_memory = utils::HasExternalDataInMemory(tensor_proto);
     ORT_RETURN_IF_NOT(has_data_in_memory,
                       "TensorProto is expected to refer to the ortvalue_initializer");
     const auto element_type = static_cast<int32_t>(utils::GetTensorElementType(tensor_proto));
@@ -4147,8 +4154,13 @@ Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initi
 
   // New initializers data generally are within OrtValues
   // Small initializers are still stored inside TensorProto
-  ORT_RETURN_IF_NOT(utils::HasExternalDataInMemory(new_initializer) || !ort_value.IsAllocated(),
-                    "All TensorProtos are expected to point to an OrtValue");
+  if (utils::HasExternalDataInMemory(new_initializer)) {
+    ORT_RETURN_IF_NOT(ort_value.IsAllocated(),
+                      "TensorProto with in-memory external data requires an allocated OrtValue");
+  } else {
+    ORT_RETURN_IF_NOT(!ort_value.IsAllocated(),
+                      "TensorProto without in-memory external data cannot have an allocated OrtValue");
+  }
 
   ORT_RETURN_IF_NOT(dims_eq(), "Replacement tensor's dimensions do not match.");
   ORT_RETURN_IF_NOT(old_initializer.data_type() == new_initializer.data_type(),
