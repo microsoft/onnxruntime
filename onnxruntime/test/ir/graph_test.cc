@@ -2296,8 +2296,8 @@ TEST_F(GraphTest, SubgraphOutputIsOuterScopeValue) {
               ::testing::ContainsRegex("Subgraph output \\(.*\\) is an outer scope value being returned directly."));
 }
 
-static void CreateIntializerWithDataInMemory(const std::string& name, const AllocatorPtr& allocator, int64_t size,
-                                             TensorProto& tensor_proto, OrtValue& ort_value) {
+static void CreateInitializerWithDataInMemory(const std::string& name, const AllocatorPtr& allocator, int64_t size,
+                                              TensorProto& tensor_proto, OrtValue& ort_value) {
   TensorShape shape({size});
   Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), shape, allocator, ort_value);
   float v = 0;
@@ -2320,7 +2320,7 @@ TEST(GraphGetOrtValueInitializerTest, ReturnsOrtValueForExistingInitializer) {
   constexpr const int64_t kTensorSize = 256;
   TensorProto tensor_proto;
   OrtValue ort_value;
-  CreateIntializerWithDataInMemory(name, allocator, kTensorSize, tensor_proto, ort_value);
+  CreateInitializerWithDataInMemory(name, allocator, kTensorSize, tensor_proto, ort_value);
 
   ASSERT_STATUS_OK(graph.AddInitializedOrtValue(tensor_proto, ort_value));
 
@@ -2361,7 +2361,7 @@ TEST(GraphGetOrtValueInitializerTest, ReturnsOrtValueFromOuterScope) {
   constexpr const int64_t kTensorSize = 256;
   TensorProto tensor_proto;
   OrtValue ort_value;
-  CreateIntializerWithDataInMemory(outer_init_name, allocator, kTensorSize, tensor_proto, ort_value);
+  CreateInitializerWithDataInMemory(outer_init_name, allocator, kTensorSize, tensor_proto, ort_value);
 
   ASSERT_STATUS_OK(parent_graph.AddInitializedOrtValue(tensor_proto, ort_value));
 
@@ -2407,7 +2407,7 @@ TEST_F(GraphTest, AddInitializedOrtValueWithExternalData) {
   constexpr const int64_t kTensorSize = 256;
   TensorProto tensor_proto;
   OrtValue ort_value;
-  CreateIntializerWithDataInMemory(external_data_init, allocator, kTensorSize, tensor_proto, ort_value);
+  CreateInitializerWithDataInMemory(external_data_init, allocator, kTensorSize, tensor_proto, ort_value);
 
   // Test adding the initialized OrtValue with external data reference
   ASSERT_STATUS_OK(graph.AddInitializedOrtValue(tensor_proto, ort_value));
@@ -2436,7 +2436,7 @@ TEST_F(GraphTest, AddInitializedTensorRejectsExternalDataInMemoryWithoutOrtValue
   auto allocator = CPUAllocator::DefaultInstance();
   TensorProto tensor_proto;
   OrtValue ort_value;
-  CreateIntializerWithDataInMemory("external_data_init", allocator, 256, tensor_proto, ort_value);
+  CreateInitializerWithDataInMemory("external_data_init", allocator, 256, tensor_proto, ort_value);
 
   EXPECT_THROW(graph.AddInitializedTensor(tensor_proto), OnnxRuntimeException);
 }
@@ -2448,7 +2448,7 @@ TEST_F(GraphTest, AddInitializedOrtValueRejectsMissingOrtValueForExternalDataInM
   auto allocator = CPUAllocator::DefaultInstance();
   TensorProto tensor_proto;
   OrtValue ort_value;
-  CreateIntializerWithDataInMemory("external_data_init", allocator, 256, tensor_proto, ort_value);
+  CreateInitializerWithDataInMemory("external_data_init", allocator, 256, tensor_proto, ort_value);
 
   Status status = graph.AddInitializedOrtValue(tensor_proto, OrtValue());
   ASSERT_FALSE(status.IsOK());
@@ -2466,7 +2466,7 @@ TEST_F(GraphTest, AddInitializedOrtValueMismatch) {
   TensorProto tensor_proto;
   OrtValue ort_value;
   TensorShape shape({kTensorSize});
-  CreateIntializerWithDataInMemory(name, allocator, kTensorSize, tensor_proto, ort_value);
+  CreateInitializerWithDataInMemory(name, allocator, kTensorSize, tensor_proto, ort_value);
 
   OrtValue ort_value_diff;
   // Now try to create a value that has a different data type
@@ -2493,7 +2493,7 @@ TEST_F(GraphTest, AddInitializedOrtValueDuplicate) {
   auto allocator = CPUAllocator::DefaultInstance();
   TensorProto tensor_proto;
   OrtValue ort_value;
-  CreateIntializerWithDataInMemory(name, allocator, kTensorSize, tensor_proto, ort_value);
+  CreateInitializerWithDataInMemory(name, allocator, kTensorSize, tensor_proto, ort_value);
 
   // Add the first initializer successfully
   ASSERT_STATUS_OK(graph.AddInitializedOrtValue(tensor_proto, ort_value));
