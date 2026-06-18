@@ -169,10 +169,6 @@ Status Attention<T>::ConvertAttnMaskToBias(
     int64_t num_elements = attn_mask->Shape().Size();
     converted_mask_buffer = GetScratchBuffer<void>(
         num_elements * sizeof(NativeCudaT), GetComputeStream(context));
-    // CUTLASS online softmax multiplies attention scores by kLog2e (≈1.4427).
-    // For float/bf16, |lowest() × kLog2e| > FLT_MAX, overflowing to -inf and
-    // causing s_prime=0 → NaN for fully-masked batches. Cap to prevent this.
-    // See kCutlassSafeMaskFilterValue in memory_efficient_attention.h for details.
     float mask_filter_value = llm_attention_detail::MaskedBiasSentinel<T>();
     ORT_RETURN_IF_ERROR(LaunchConvertBoolMaskToAttentionBias<NativeCudaT>(
         attn_mask->Data<bool>(),
