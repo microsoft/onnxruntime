@@ -73,12 +73,25 @@ class MoEBase {
 
     block_size_ = op_kernel_info.GetAttrOrDefault<int64_t>("block_size", 0);
 
+    // Number of always-on shared experts fused into the op. When > 0, the last
+    // ``num_shared_experts_`` expert slots in the fc1/fc2 weight arrays are the
+    // shared experts, and the last ``num_shared_experts_`` columns of
+    // ``router_probs`` carry their (raw, pre-sigmoid) per-token gate logits. The
+    // shared experts are always selected with an independent sigmoid gate and are
+    // excluded from the routed softmax / top-k / normalization. See
+    // SoftmaxTopKKernel for the routing assembly.
+    num_shared_experts_ = op_kernel_info.GetAttrOrDefault<int64_t>("num_shared_experts", 0);
+    ORT_ENFORCE(num_shared_experts_ >= 0, "num_shared_experts must be >= 0, but got ", num_shared_experts_);
+    ORT_ENFORCE(!(use_sparse_mixer_ && num_shared_experts_ > 0),
+                "Shared experts (num_shared_experts > 0) are not supported with use_sparse_mixer.");
+
     sm_ = device_prop.major * 10 + device_prop.minor;
   }
 
   bool normalize_routing_weights_;
   bool use_sparse_mixer_;
   int64_t k_;
+  int64_t num_shared_experts_{0};
   onnxruntime::llm::kernels::cutlass_kernels::ActivationType activation_type_;
   float activation_alpha_;
   float activation_beta_;

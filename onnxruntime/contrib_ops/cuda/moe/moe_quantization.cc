@@ -434,6 +434,17 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   bool use_awq = (fc1_zeros != nullptr) || (packed_fc1_bias_ != nullptr);
   onnxruntime::llm::kernels::cutlass_kernels::MOEParallelismConfig parallelism_config{};
 
+  // Shared-expert fusion: the last ``num_shared_experts_`` expert slots are
+  // always-on shared experts (see SoftmaxTopKKernel). Each token is routed to
+  // its ``k_`` routed experts plus all ``num_shared_experts_`` shared experts,
+  // so every per-token "selected experts" buffer holds ``k_total`` entries and
+  // the grouped GEMM / finalize operate over ``moe_params.num_experts`` (which
+  // already includes the shared slots, derived from router_probs' column count).
+  ORT_RETURN_IF_NOT(num_shared_experts_ < moe_params.num_experts,
+                    "num_shared_experts (", num_shared_experts_, ") must be < num_experts (",
+                    moe_params.num_experts, ").");
+  const int64_t k_total = k_ + num_shared_experts_;
+
   // Profile and capture the best tactics under the profiler mutex, then release the mutex so
   // that scratch allocation, weight dequantization, scale prepping, softmax, and other
   // CPU-bound work can proceed concurrently across QMoE inferences. The mutex is reacquired
@@ -456,7 +467,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       AllocatorPtr allocator;
       ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
       mGemmProfiler.setAllocator(std::move(allocator));
-      mGemmProfiler.setProfilerParams(static_cast<int>(moe_params.num_experts), static_cast<int>(k_),
+      mGemmProfiler.setProfilerParams(static_cast<int>(moe_params.num_experts), static_cast<int>(k_total),
                                       static_cast<int64_t>(moe_params.hidden_size), static_cast<int64_t>(moe_params.inter_size),
                                       static_cast<int64_t>(block_size_), activation_type_,
                                       false, true, parallelism_config, sm_);
@@ -513,17 +524,17 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     }
 
     workspace_size = m_moe_runner->getWorkspaceSize(
-        moe_params.num_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_,
+        moe_params.num_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_total,
         activation_type_, parallelism_config, use_awq);
   }
   // Lock released — concurrent QMoE inferences can now run prep work in parallel.
 
   // Scratch buffer for workspace + expert_scales + expert_indices
-  // expert_scales: num_rows * k * sizeof(float)
-  // expert_indices: num_rows * k * sizeof(int)
-  size_t scales_bytes = moe_params.num_rows * k_ * sizeof(float);
-  size_t indices_bytes = moe_params.num_rows * k_ * sizeof(int);
-  size_t permutation_bytes = moe_params.num_rows * k_ * sizeof(int);
+  // expert_scales: num_rows * k_total * sizeof(float)
+  // expert_indices: num_rows * k_total * sizeof(int)
+  size_t scales_bytes = moe_params.num_rows * k_total * sizeof(float);
+  size_t indices_bytes = moe_params.num_rows * k_total * sizeof(int);
+  size_t permutation_bytes = moe_params.num_rows * k_total * sizeof(int);
   size_t total_scratch_bytes = workspace_size + scales_bytes + indices_bytes + permutation_bytes;
 
   auto work_space = GetScratchBuffer<void>(total_scratch_bytes, GetComputeStream(context));
@@ -547,7 +558,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         static_cast<int>(moe_params.num_experts),
         static_cast<int>(k_),
         normalize_routing_weights_,
-        stream);
+        stream,
+        static_cast<int>(num_shared_experts_));
   } else if (is_bf16) {
     LaunchSoftmaxTopK(
         reinterpret_cast<const __nv_bfloat16*>(router_probs->DataRaw()),
@@ -557,7 +569,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         static_cast<int>(moe_params.num_experts),
         static_cast<int>(k_),
         normalize_routing_weights_,
-        stream);
+        stream,
+        static_cast<int>(num_shared_experts_));
   } else {
     // Fallback for float
     LaunchSoftmaxTopK(
@@ -568,7 +581,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         static_cast<int>(moe_params.num_experts),
         static_cast<int>(k_),
         normalize_routing_weights_,
-        stream);
+        stream,
+        static_cast<int>(num_shared_experts_));
   }
 
   // Holders for packed tensors (if packing is needed for SwiGLU)
@@ -1022,7 +1036,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         moe_params.hidden_size,
         moe_params.inter_size,
         moe_params.num_experts,
-        k_,
+        k_total,
         workspace_ptr,
         output->MutableDataRaw(),
         unpermuted_row_to_permuted_row,

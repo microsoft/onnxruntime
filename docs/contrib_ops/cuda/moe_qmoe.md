@@ -29,6 +29,7 @@ and have been significantly modified for ONNX Runtime — see
 14. [Build Configuration](#14-build-configuration)
 15. [Limitations & Known Issues](#15-limitations--known-issues)
 16. [Differences vs. TensorRT-LLM](#16-differences-vs-tensorrt-llm)
+17. [Shared-Expert Fusion](#17-shared-expert-fusion)
 
 ---
 
@@ -44,6 +45,10 @@ Two contrib ops are registered in the `com.microsoft` domain:
 Both ops share the same CUTLASS-based runner ([CutlassMoeFCRunner](onnxruntime/contrib_ops/cuda/llm/moe_gemm/moe_kernels.h)), routing engine,
 and sort/permute infrastructure. They differ only in how the weight tensors are
 interpreted.
+
+Both ops also support **always-on shared experts** (Qwen3-style) via the
+`num_shared_experts` attribute, which fuses one or more shared experts into the
+same grouped GEMM as the routed experts. See [§17](#17-shared-expert-fusion).
 
 The execution pipeline is:
 
@@ -65,6 +70,7 @@ input tokens → router (top-k softmax) → permute by expert
 | `activation_type` | string | `"relu"` | One of `"relu"`, `"gelu"`, `"silu"`, `"swiglu"`, `"identity"`. These are the only values accepted end-to-end (attribute parsing); other kernel-internal types are not reachable from ONNX. |
 | `normalize_routing_weights` | int | 0 | Re-normalize the top-k weights to sum to 1. |
 | `use_sparse_mixer` | int | 0 | Enable sparse-mixer routing variant. |
+| `num_shared_experts` | int | 0 | Number of always-on shared experts fused into the op. When > 0, the last `num_shared_experts` expert slots are shared experts and the last `num_shared_experts` columns of `router_probs` carry their raw (pre-sigmoid) gate logits. Mutually exclusive with `use_sparse_mixer`. See [§17](#17-shared-expert-fusion). |
 | `swiglu_fusion` | int | 0 | 0=no fusion, 1=interleaved (Gate/Value), 2=block (Gate;Value). See [§8](#8-swiglu-fusion). |
 | `activation_alpha` | float | `1.0` | SwiGLU alpha. Default `1.0` (Standard SwiGLU); GPT-OSS uses `1.702`. |
 | `activation_beta` | float | `0.0` | SwiGLU beta. Default `0.0` (Standard SwiGLU); GPT-OSS uses `1.0`. |
@@ -119,6 +125,11 @@ for FP8 weights. `fusion = 2` for `swiglu_fusion=1`, otherwise `1`.
 is used only for top-K selection and `router_weights` provides the mixing
 weights gathered at the selected expert indices. When omitted, `router_probs`
 is used for both (backward compatible).
+
+When `num_shared_experts > 0`, `router_probs` and the weight tensors are still
+shaped over `num_experts`, but the last `num_shared_experts` of those slots are
+the shared experts: their `router_probs` columns hold raw (pre-sigmoid) gate
+logits rather than routed-softmax logits. See [§17](#17-shared-expert-fusion).
 
 ### 2.4 Input 3/6/9 interpretation by `quant_type`
 
@@ -1030,6 +1041,7 @@ onnxruntime/test/python/transformers/profile_qmoe_gemv.sh \
 | [test_qmoe_fp4_cuda.py](onnxruntime/test/python/transformers/test_qmoe_fp4_cuda.py) | MXFP4 QMoE: quantization utilities, packing, FP16/BF16, SiLU/SwiGLU, top-k and expert-count variants. End-to-end runs on SM120; on SM<120 the dequant fallback is exercised. |
 | [test_qmoe_fp8_cuda.py](onnxruntime/test/python/transformers/test_qmoe_fp8_cuda.py) | FP8 W8A16 QMoE on SM90+ native path and SM<90 dequant fallback. |
 | [test_qmoe_wfp4afp8_cuda.py](onnxruntime/test/python/transformers/test_qmoe_wfp4afp8_cuda.py) | WFP4AFP8 — native Blackwell path requires SM100+; SM<100 exercises the dequant fallback. |
+| [test_moe_shared_expert_cuda.py](onnxruntime/test/python/transformers/test_moe_shared_expert_cuda.py) | Shared-expert fusion (`num_shared_experts`) parity for both `MoE` (`TestSharedExpertFusion`, fp32) and `QMoE` (`TestSharedExpertFusionQMoE`, INT4 fp16). Compares the fused op against a routed-only run plus per-shared-expert runs combined with the sigmoid gate in numpy. See [§17](#17-shared-expert-fusion). |
 
 ### Reference computation
 
@@ -1193,3 +1205,73 @@ The CUTLASS kernels are derived from TensorRT-LLM (CUTLASS 4.4.2, commit
   `BlockScaleParams`)
 - `Deep Gemm`, standalone FP4 GEMM, FP8 block-scale GEMM, fused gated GEMM
   directories (the relevant pieces are inlined into the MoE runner).
+
+---
+
+## 17. Shared-Expert Fusion
+
+Both the **MoE** and **QMoE** operators support **always-on shared experts**
+(as used by Qwen3-style MoE blocks) through the `num_shared_experts` attribute.
+A shared expert is applied to *every* token in addition to the routed top-k
+experts, with its own independent sigmoid gate. The attribute parsing,
+validation, and routing plumbing live in the shared base class
+([moe_base.h](onnxruntime/contrib_ops/cuda/moe/moe_base.h)); both ops drive the
+same `SoftmaxTopK` routing kernels
+([qmoe_kernels.cu](onnxruntime/contrib_ops/cuda/moe/qmoe_kernels.cu)) and the
+same CUTLASS grouped GEMM.
+
+### 17.1 Computation
+
+For each token `x`:
+
+```
+out = sum_{i in top-k}( w_i * RoutedExpert_i(x) )           # routed branch
+    + sum_{j in shared}( sigmoid(gate_j) * SharedExpert_j(x) )  # shared branch
+```
+
+- `w_i` are the routed gate weights (softmax over the routed experts, optionally
+  re-normalized over the top-k when `normalize_routing_weights=1`).
+- `gate_j` is the raw (pre-sigmoid) logit for shared expert `j`; the shared
+  weight is `sigmoid(gate_j)` and is **not** part of the routed softmax, top-k,
+  or normalization.
+
+### 17.2 Tensor layout convention
+
+When `num_shared_experts = S > 0` and the op is built over `num_experts = E`
+total expert slots (`E` is derived from the `router_probs` column count and the
+weight tensors' leading dimension):
+
+| Region | Slots | Meaning |
+|--------|-------|---------|
+| Routed experts | `0 … E-S-1` | Selected per token by softmax + top-k. |
+| Shared experts | `E-S … E-1`  | Always selected for every token. |
+
+- **Weights / biases / scales**: the last `S` expert slots of `fc1`/`fc2` (and
+  any bias / scale tensors) are the shared experts. They must use the same
+  `inter_size` as the routed experts (single grouped GEMM).
+- **`router_probs`**: the first `E-S` columns are routed logits (fed to the
+  softmax / top-k); the last `S` columns are the shared experts' raw gate logits
+  (fed to `sigmoid`).
+
+Internally the per-token selection buffers (`expert_scales` / `expert_indices` /
+permutation map) are sized for `k_total = k + S` entries: the top-k routed
+experts followed by all `S` shared experts. The grouped GEMM and finalize then
+operate over all `E` experts as usual.
+
+### 17.3 Constraints
+
+- `num_shared_experts >= 0` (default `0` disables the feature).
+- `num_shared_experts < num_experts`.
+- Mutually exclusive with `use_sparse_mixer` (enforced at construction).
+- Supported on all routing dispatch paths (warp-bitonic, warp-merge, block-merge,
+  and the 1-D fallback `SoftmaxTopK` kernels) for FP16 / BF16 / FP32 router
+  probabilities.
+
+### 17.4 Testing
+
+[test_moe_shared_expert_cuda.py](onnxruntime/test/python/transformers/test_moe_shared_expert_cuda.py)
+provides parity tests for both ops (`TestSharedExpertFusion` for `MoE`,
+`TestSharedExpertFusionQMoE` for `QMoE`). Each test builds the reference output
+by running the *same* op for the routed-only branch (`num_shared_experts=0` over
+the routed experts) and for each shared expert in isolation, then combines them
+in numpy with the sigmoid gate — isolating exactly the routing-fusion logic.
