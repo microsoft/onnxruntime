@@ -107,24 +107,38 @@ struct FakeEpContextConfigCallbacks {
   void* write_state = nullptr;
 };
 
-const OrtEpContextConfig* FakeEpContextConfig(FakeEpContextConfigCallbacks& callbacks) {
-  return reinterpret_cast<const OrtEpContextConfig*>(&callbacks);
-}
+// The low-level *WithFileFallback overloads treat the OrtEpContextConfig as an opaque token that is only forwarded
+// to the injected getter; they never dereference it. These tests therefore pair a real (empty) OrtEpContextConfig
+// with getters that return callbacks from this holder, instead of reinterpret_casting a foreign struct to
+// OrtEpContextConfig* (which is undefined behavior). gtest runs these serially, so a single shared pointer is safe.
+const FakeEpContextConfigCallbacks* g_fake_ep_context_callbacks = nullptr;
 
-OrtStatus* ORT_API_CALL FakeEpContextConfigGetReadFunc(const OrtEpContextConfig* config,
+OrtStatus* ORT_API_CALL FakeEpContextConfigGetReadFunc(const OrtEpContextConfig* /*config*/,
                                                        OrtReadNamedBufferFunc* read_func, void** state) noexcept {
-  auto* callbacks = reinterpret_cast<const FakeEpContextConfigCallbacks*>(config);
-  *read_func = callbacks->read_func;
-  *state = callbacks->read_state;
+  *read_func = g_fake_ep_context_callbacks->read_func;
+  *state = g_fake_ep_context_callbacks->read_state;
   return nullptr;
 }
 
-OrtStatus* ORT_API_CALL FakeEpContextConfigGetWriteFunc(const OrtEpContextConfig* config,
+OrtStatus* ORT_API_CALL FakeEpContextConfigGetWriteFunc(const OrtEpContextConfig* /*config*/,
                                                         OrtWriteNamedBufferFunc* write_func, void** state) noexcept {
-  auto* callbacks = reinterpret_cast<const FakeEpContextConfigCallbacks*>(config);
-  *write_func = callbacks->write_func;
-  *state = callbacks->write_state;
+  *write_func = g_fake_ep_context_callbacks->write_func;
+  *state = g_fake_ep_context_callbacks->write_state;
   return nullptr;
+}
+
+// Returns a real, empty OrtEpContextConfig (owned by the returned wrapper) to use as the opaque token passed to the
+// fake getters above.
+Ort::Experimental::EpContextConfig MakeEmptyEpContextConfig() {
+  const auto& api = Ort::GetApi();
+  auto get_config = Ort::Experimental::Get_OrtEpApi_SessionOptions_GetEpContextConfig_SinceV28_Fn(&api);
+  EXPECT_NE(get_config, nullptr);
+  OrtEpContextConfig* raw = nullptr;
+  if (get_config != nullptr) {
+    Ort::SessionOptions session_options;
+    EXPECT_TRUE(Ort::Status{get_config(session_options, &raw)}.IsOK());
+  }
+  return Ort::Experimental::EpContextConfig{&api, raw};
 }
 
 // Invokes the experimental EPContext read setter on the public C API.
@@ -772,17 +786,19 @@ TEST(OrtEpLibrary, EpContextDataUtils_CallbackFallbackUsesCallbacks) {
   EpContextDataCallbackState write_callback_state;
   FakeEpContextConfigCallbacks callbacks{LoadEpContextDataCallback, &read_callback_state,
                                          StoreEpContextDataCallback, &write_callback_state};
+  g_fake_ep_context_callbacks = &callbacks;
+  const Ort::Experimental::EpContextConfig fake_config = MakeEmptyEpContextConfig();
 
   std::vector<char> data;
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextDataWithFileFallback(
-      api, FakeEpContextConfigGetReadFunc, FakeEpContextConfig(callbacks), "callback_context.bin", nullptr, data));
+      api, FakeEpContextConfigGetReadFunc, fake_config.get(), "callback_context.bin", nullptr, data));
   ASSERT_TRUE(read_callback_state.read_called);
   EXPECT_EQ(read_callback_state.read_file_name, "callback_context.bin");
   EXPECT_EQ(data, read_callback_state.payload);
 
   const std::string payload = "callback write payload";
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataWithFileFallback(
-      api, FakeEpContextConfigGetWriteFunc, FakeEpContextConfig(callbacks), "callback_write_context.bin", nullptr,
+      api, FakeEpContextConfigGetWriteFunc, fake_config.get(), "callback_write_context.bin", nullptr,
       payload.data(), payload.size()));
   ASSERT_TRUE(write_callback_state.write_called);
   EXPECT_EQ(write_callback_state.write_file_name, "callback_write_context.bin");
@@ -791,7 +807,7 @@ TEST(OrtEpLibrary, EpContextDataUtils_CallbackFallbackUsesCallbacks) {
   write_callback_state = {};
   const std::string payload_with_unused_fallback = "callback write payload with unused fallback";
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataWithFileFallback(
-      api, FakeEpContextConfigGetWriteFunc, FakeEpContextConfig(callbacks),
+      api, FakeEpContextConfigGetWriteFunc, fake_config.get(),
       "callback_write_context_unused_fallback.bin", "", nullptr,
       payload_with_unused_fallback.data(), payload_with_unused_fallback.size()));
   ASSERT_TRUE(write_callback_state.write_called);
@@ -805,10 +821,12 @@ TEST(OrtEpLibrary, EpContextDataUtils_ReadCallbackRejectsNullBufferForNonEmptyPa
 
   EpContextDataCallbackState read_callback_state;
   FakeEpContextConfigCallbacks callbacks{LoadInvalidEpContextDataCallback, &read_callback_state, nullptr, nullptr};
+  g_fake_ep_context_callbacks = &callbacks;
+  const Ort::Experimental::EpContextConfig fake_config = MakeEmptyEpContextConfig();
 
   std::vector<char> data;
   ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataWithFileFallback(
-                           api, FakeEpContextConfigGetReadFunc, FakeEpContextConfig(callbacks),
+                           api, FakeEpContextConfigGetReadFunc, fake_config.get(),
                            "invalid_callback_context.bin", nullptr, data),
                        ORT_FAIL, "OrtReadNamedBufferFunc returned a null buffer for non-empty EPContext data");
   ASSERT_TRUE(read_callback_state.read_called);
