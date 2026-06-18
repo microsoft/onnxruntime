@@ -3658,7 +3658,7 @@ TEST_F(GraphTest, InlineIfSubgraphTransfersOrtValues) {
   auto* else_graph = else_attr->mutable_g();
   else_graph->set_name("else_graph");
 
-  // Small initializer in the else branch (won't be used)
+  // Large initializer in the else branch (won't be used since condition is true)
   auto* else_init = else_graph->add_initializer();
   else_init->set_name("else_weight");
   else_init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
