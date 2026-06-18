@@ -104,10 +104,15 @@ class CPUIDInfo {
     return has_fp16_;
   }
 
+  /**
+   * @brief Releases resources allocated by cpuinfo. Call during DLL/process teardown only.
+   *        After this call, GetCPUIDInfo() must not be called — behavior is undefined.
+   *        Use this instead of GetCPUIDInfo().Shutdown() to avoid creating the singleton during unload.
+   */
   static void ShutdownCpuInfo() {
     // Don't create the singleton during DLL unload.
     if (!InstanceCreated().load(std::memory_order_acquire)) return;
-    Instance().ShutDown();
+    Instance().Shutdown();
   }
 
  private:
@@ -128,7 +133,7 @@ class CPUIDInfo {
     return cpuid_info;
   }
 
-  void ShutDown();
+  void Shutdown();
 
   void VendorInfoInit();
 

@@ -37,7 +37,7 @@ BOOL APIENTRY DllMain(HMODULE /*hModule*/,
         onnxruntime::CPUIDInfo::ShutdownCpuInfo();
 #endif
       } else {
-        // Cleanup protobuf library.
+        // Cleanup protobuf library and cpuinfo.
         // NOTE: it might be too early to do so, as all function local statics and global objects are not destroyed yet.
         ::google::protobuf::ShutdownProtobufLibrary();
         onnxruntime::CPUIDInfo::ShutdownCpuInfo();

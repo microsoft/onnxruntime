@@ -406,13 +406,11 @@ CPUIDInfo::CPUIDInfo() {
 #endif  // defined(CPUIDINFO_ARCH_RISCV64)
 }
 
-void CPUIDInfo::ShutDown() {
+void CPUIDInfo::Shutdown() {
 #if defined(CPUINFO_SUPPORTED)
-  static bool is_shutdown = false;
-  if (!is_shutdown && pytorch_cpuinfo_init_) {
+  if (pytorch_cpuinfo_init_) {
     cpuinfo_deinitialize();
     pytorch_cpuinfo_init_ = false;
-    is_shutdown = true;
   }
 #endif
 }

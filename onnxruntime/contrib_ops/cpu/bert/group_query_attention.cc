@@ -239,20 +239,11 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       for (int b = 0; b < batch_size; b++) {
         const int total_seqlen = seqlens_k->Data<int32_t>()[b] + 1;
         const int past_seqlen = total_seqlen - sequence_length;
-
-        // Handle inconsistent random data in seqlens_k, when past_seqlen becomes negative
-        if (past_seqlen < 0) {
-          // Fallback: generate consecutive position IDs starting from 0
-          for (int s = 0; s < sequence_length; s++) {
-            default_pos_ids[b * sequence_length + s] = static_cast<int64_t>(s);
-          }
-        } else {
-          for (int s = 0; s < sequence_length; s++) {
-            if (past_seqlen + s < total_seqlen) {
-              default_pos_ids[b * sequence_length + s] = static_cast<int64_t>(past_seqlen) + s;
-            } else {
-              default_pos_ids[b * sequence_length + s] = static_cast<int64_t>(1);
-            }
+        for (int s = 0; s < sequence_length; s++) {
+          if (past_seqlen + s < total_seqlen) {
+            default_pos_ids[b * sequence_length + s] = static_cast<int64_t>(past_seqlen) + s;
+          } else {
+            default_pos_ids[b * sequence_length + s] = static_cast<int64_t>(1);
           }
         }
       }
