@@ -461,22 +461,18 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         if (webgpu_ep != nullptr) {
           auto registry = webgpu_ep->GetKernelRegistry();
           if (registry) {
-            has_matmul_nbits_mlp_kernel = registry->TryFindKernel(onnxruntime::kWebGpuExecutionProvider,
-                                                                  "MatMulNBitsMlp",
-                                                                  kMSDomain,
-                                                                  1,
-                                                                  KernelRegistry::TypeConstraintMap{},
-                                                                  logger,
-                                                                  nullptr)
-                                              .IsOK();
-            has_matmul_nbits_qkv_kernel = registry->TryFindKernel(onnxruntime::kWebGpuExecutionProvider,
-                                                                  "MatMulNBitsQkv",
-                                                                  kMSDomain,
-                                                                  1,
-                                                                  KernelRegistry::TypeConstraintMap{},
-                                                                  logger,
-                                                                  nullptr)
-                                              .IsOK();
+            auto has_webgpu_kernel = [&](std::string_view op_type) {
+              return registry->TryFindKernel(onnxruntime::kWebGpuExecutionProvider,
+                                             op_type,
+                                             kMSDomain,
+                                             1,
+                                             KernelRegistry::TypeConstraintMap{},
+                                             logger,
+                                             nullptr)
+                  .IsOK();
+            };
+            has_matmul_nbits_mlp_kernel = has_webgpu_kernel("MatMulNBitsMlp");
+            has_matmul_nbits_qkv_kernel = has_webgpu_kernel("MatMulNBitsQkv");
           }
         }
       }
