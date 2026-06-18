@@ -446,7 +446,7 @@ TEST(NhwcTransformerTests, ConvDepthwiseFloat_SkipNhwcUntilDepthwiseKernelEnable
   auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
     EXPECT_FALSE(HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {8, 1, 3, 3}, {}, {}, {}, 8));
-    EXPECT_EQ(op_to_count["Conv"], 1);
+    EXPECT_EQ(op_to_count["Conv"] + op_to_count["com.microsoft.nchwc.Conv"], 1);
     EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 0);
     EXPECT_EQ(op_to_count["Transpose"], 0);
   };
