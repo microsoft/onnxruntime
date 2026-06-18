@@ -32,7 +32,9 @@ runs:
             fi
 
             echo "apt-get attempt ${attempt}/${retries} failed. Retrying..."
-            sleep $((attempt * 10))
+            if [[ "${attempt}" -lt "${retries}" ]]; then
+              sleep $((attempt * 5))
+            fi
           done
 
           return 1
@@ -40,7 +42,7 @@ runs:
 
         if ! retry_apt_install; then
           echo "Falling back to archive.ubuntu.com mirror and retrying apt install."
-          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
+          sudo sed -i 's|https\\?://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
           retry_apt_install
         fi
 
