@@ -6439,6 +6439,9 @@ Status Graph::InlineFunction(Node& callnode) {
       if (OrtValue ort_value; subgraph.GetOrtValueInitializer(name, ort_value)) {
         ORT_RETURN_IF_ERROR(AddInitializedOrtValue(tensor_proto_to_add, ort_value));
       } else {
+        ORT_RETURN_IF_NOT(!utils::HasExternalDataInMemory(tensor_proto_to_add),
+                          "Initializer '", name, "' has external data in memory but no cached OrtValue. ",
+                          "This is an invalid state.");
         AddInitializedTensor(tensor_proto_to_add);
       }
     }
