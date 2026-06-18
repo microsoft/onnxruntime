@@ -314,39 +314,42 @@ TEST(ShapeInferenceV2Test, ShapeMulMultiElementNoScalarCollapseTest) {
 // The decline is made OBSERVABLE through a rank-lowering Squeeze:
 //   Shape(X) -> Gather([[ -1 ]]) -> Squeeze -> Range(0, K, 1)
 // With the correct decline, nothing is propagated, Squeeze has no value to lower, and Range's limit
-// stays symbolic -- so the Range output length is an UNKNOWN dimension. If the decline were relaxed
-// to emit a rank-1 [1] value, Squeeze would lower it to the scalar 2000 and Range would resolve to a
-// concrete length 2000. Asserting the length is NOT the concrete 2000 discriminates the correct
-// decline from the rank-fabricating bug -- real end-to-end coverage of the decline branch (no
-// shared-helper abstraction, no tautological unit test).
+// stays symbolic -- so the Range output dimension is UNKNOWN (it carries no concrete dim_value). If
+// the decline were relaxed to emit a rank-1 [1] value, Squeeze would lower it to the scalar 2000 and
+// Range would resolve to a concrete length 2000. Asserting the dimension has no concrete value
+// discriminates the correct decline from the rank-fabricating bug -- real end-to-end coverage of the
+// decline branch (no shared-helper abstraction, no tautological unit test).
 //
-// This runs ONLY at ORT_DISABLE_ALL: the chain is entirely constant (a static input shape feeding
-// Shape/Gather/Squeeze/Range over initializers), so at ORT_ENABLE_BASIC and above constant folding
-// resolves Range to 2000 regardless of data propagation, which would mask the decline. Data
-// propagation runs in the pre-optimization Graph::Resolve pass, so ORT_DISABLE_ALL exercises the
-// decline branch in isolation.
+// This drives the decline through onnxruntime::Model::Load (which runs Graph::Resolve) and inspects
+// the resulting output NodeArg shape directly -- no InferenceSession, so none of the session's
+// arena / execution-provider / kernel-registry allocations are created (microsoft/onnxruntime#29139:
+// the single-process onnxruntime_test_all run sits near the AddressSanitizer size-class ceiling, so
+// each added test must stay lean). Data propagation runs inside Graph::Resolve
+// (Graph::InferAndVerifyTypeMatch -> data-propagation RunInferencing); constant folding is a separate
+// session-level optimizer pass that never runs here, so Resolve alone exercises the decline branch in
+// isolation with no folding to mask it.
 TEST(ShapeInferenceV2Test, GatherRank2IndexDeclineTest) {
   auto model_path = ORT_TSTR("testdata/test_shape_data_propagation_gather_rank2_decline.onnx");
 
-  Ort::SessionOptions session_options{};
-  session_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+  std::shared_ptr<onnxruntime::Model> model;
+  // Model::Load runs Graph::Resolve, which performs data propagation. A correct decline keeps the
+  // Range length symbolic, so the resolve (and therefore the load) succeeds.
+  ASSERT_STATUS_OK(onnxruntime::Model::Load(model_path, model, nullptr,
+                                            DefaultLoggingManager().DefaultLogger()));
 
-  Ort::Session session(*ort_env, model_path, session_options);
+  const auto& graph_outputs = model->MainGraph().GetOutputs();
+  ASSERT_EQ(graph_outputs.size(), static_cast<size_t>(1));
+  const TensorShapeProto* output_shape = graph_outputs[0]->Shape();
+  ASSERT_NE(output_shape, nullptr) << "Range output should have an inferred (rank-1) shape";
 
-  ORT_ENFORCE(session.GetOutputCount() == 1);
-
-  Ort::TypeInfo type_info = session.GetOutputTypeInfo(0);
-  auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
-  std::vector<int64_t> output_shape = tensor_info.GetShape();
-
-  // Range output is 1-D; its length must stay symbolic (unknown, reported as -1) because the rank-2
-  // Gather index declines rather than propagating a (rank-fabricated) concrete K. A relaxed decline
-  // would fabricate a rank-1 value that Squeeze lowers to scalar 2000, making the length concretely
-  // 2000 -- which this assertion rejects.
-  EXPECT_TRUE(output_shape.size() == 1) << "Range output should be a 1-D tensor";
-  EXPECT_EQ(output_shape[0], -1)
-      << "Range length must stay symbolic (reported as -1); the rank-2 Gather index must decline "
-         "rather than fabricate a concrete K (a relaxed decline concretizes it to 2000)";
+  // Range output is 1-D; its single dimension must stay SYMBOLIC (no concrete dim_value) because the
+  // rank-2 Gather index declines rather than propagating a (rank-fabricated) concrete K. A relaxed
+  // decline would fabricate a rank-1 value that Squeeze lowers to scalar 2000, giving the dimension a
+  // concrete value 2000 -- which these assertions reject.
+  EXPECT_EQ(output_shape->dim_size(), 1) << "Range output should be a 1-D tensor";
+  EXPECT_FALSE(output_shape->dim(0).has_dim_value())
+      << "Range length must stay symbolic; the rank-2 Gather index must decline rather than "
+         "fabricate a concrete K (a relaxed decline concretizes it to 2000)";
 }
 
 // Regression for microsoft/onnxruntime#29072.
@@ -360,37 +363,40 @@ TEST(ShapeInferenceV2Test, GatherRank2IndexDeclineTest) {
 // The decline is made OBSERVABLE through a rank-lowering Squeeze:
 //   Shape(X) -> Gather([-1]) -> Unsqueeze([0]) -> Squeeze -> Range(0, K, 1)
 // With the correct decline, no value is propagated past Unsqueeze, Squeeze has nothing to lower, and
-// Range's limit stays symbolic, so the model loads with an unknown Range length. A relaxed decline
+// Range's limit stays symbolic, so the graph resolves with an unknown Range length. A relaxed decline
 // that fabricated [1, 2000] would propagate a non-scalar value to Range, which ONNX Range shape
-// inference rejects ("Input to 'Range' op should be scalars") -- the model then fails to load. So
-// the decline IS observable: correct -> loads with a symbolic length; relaxed -> load error. This
-// test asserts the model loads and the length is not the (rank-fabricated) concrete 2000.
+// inference rejects ("Input to 'Range' op should be scalars") -- Graph::Resolve then returns a
+// non-OK status and the load fails. So the decline IS observable: correct -> loads with a symbolic
+// length; relaxed -> load error. This test asserts the model loads and the length stays symbolic.
 //
-// Like GatherRank2IndexDeclineTest this runs ONLY at ORT_DISABLE_ALL: the chain is entirely constant
-// over a static input shape, so at ORT_ENABLE_BASIC and above constant folding resolves Range
-// regardless of data propagation, masking the decline.
+// Like GatherRank2IndexDeclineTest this drives the decline through onnxruntime::Model::Load (which
+// runs Graph::Resolve) and inspects the output NodeArg shape directly -- no InferenceSession, so the
+// session arena / EP / kernel-registry allocations are never created (microsoft/onnxruntime#29139).
+// Data propagation runs inside Graph::Resolve; constant folding is a separate session-level optimizer
+// pass that never runs here, so Resolve alone exercises the decline branch with no folding to mask it.
 TEST(ShapeInferenceV2Test, UnsqueezeSingleValueDeclineTest) {
   auto model_path = ORT_TSTR("testdata/test_shape_data_propagation_unsqueeze_decline.onnx");
 
-  Ort::SessionOptions session_options{};
-  session_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
+  std::shared_ptr<onnxruntime::Model> model;
+  // Model::Load runs Graph::Resolve. A correct decline keeps Range's input scalar so the resolve (and
+  // therefore the load) succeeds; a relaxed decline makes Range's input non-scalar, which Range shape
+  // inference rejects, so Resolve returns non-OK and this assertion fails on the load itself.
+  ASSERT_STATUS_OK(onnxruntime::Model::Load(model_path, model, nullptr,
+                                            DefaultLoggingManager().DefaultLogger()));
 
-  Ort::Session session(*ort_env, model_path, session_options);
+  const auto& graph_outputs = model->MainGraph().GetOutputs();
+  ASSERT_EQ(graph_outputs.size(), static_cast<size_t>(1));
+  const TensorShapeProto* output_shape = graph_outputs[0]->Shape();
+  ASSERT_NE(output_shape, nullptr) << "Range output should have an inferred (rank-1) shape";
 
-  ORT_ENFORCE(session.GetOutputCount() == 1);
-
-  Ort::TypeInfo type_info = session.GetOutputTypeInfo(0);
-  auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
-  std::vector<int64_t> output_shape = tensor_info.GetShape();
-
-  // Range output is 1-D; its length must stay symbolic because Unsqueeze declines rather than
-  // fabricating a rank >= 2 value. A relaxed decline fabricates [1, 2000], which makes Range's input
-  // non-scalar and the model fails to load -- so any regression here is caught either as a load
-  // failure or as a concrete length below.
-  EXPECT_TRUE(output_shape.size() == 1) << "Range output should be a 1-D tensor";
-  EXPECT_EQ(output_shape[0], -1)
-      << "Range length must stay symbolic (reported as -1); unsqueezing a single-element value "
-         "must decline (a relaxed decline fabricates [1, value] and the model fails to load)";
+  // Range output is 1-D; its single dimension must stay SYMBOLIC because Unsqueeze declines rather
+  // than fabricating a rank >= 2 value. A relaxed decline fabricates [1, 2000], which makes Range's
+  // input non-scalar and the load fails above -- so any regression here is caught either as a load
+  // failure or as a concrete dim_value below.
+  EXPECT_EQ(output_shape->dim_size(), 1) << "Range output should be a 1-D tensor";
+  EXPECT_FALSE(output_shape->dim(0).has_dim_value())
+      << "Range length must stay symbolic; unsqueezing a single-element value must decline "
+         "(a relaxed decline fabricates [1, value] and the model fails to load)";
 }
 
 // Lock test for the Shape -> Gather(1-D index) -> Squeeze -> Range chain.
