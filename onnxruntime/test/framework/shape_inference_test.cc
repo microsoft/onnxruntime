@@ -346,7 +346,7 @@ TEST(ShapeInferenceV2Test, GatherRank2IndexDeclineTest) {
   // rank-2 Gather index declines rather than propagating a (rank-fabricated) concrete K. A relaxed
   // decline would fabricate a rank-1 value that Squeeze lowers to scalar 2000, giving the dimension a
   // concrete value 2000 -- which these assertions reject.
-  EXPECT_EQ(output_shape->dim_size(), 1) << "Range output should be a 1-D tensor";
+  ASSERT_EQ(output_shape->dim_size(), 1) << "Range output should be a 1-D tensor";
   EXPECT_FALSE(output_shape->dim(0).has_dim_value())
       << "Range length must stay symbolic; the rank-2 Gather index must decline rather than "
          "fabricate a concrete K (a relaxed decline concretizes it to 2000)";
@@ -393,7 +393,7 @@ TEST(ShapeInferenceV2Test, UnsqueezeSingleValueDeclineTest) {
   // than fabricating a rank >= 2 value. A relaxed decline fabricates [1, 2000], which makes Range's
   // input non-scalar and the load fails above -- so any regression here is caught either as a load
   // failure or as a concrete dim_value below.
-  EXPECT_EQ(output_shape->dim_size(), 1) << "Range output should be a 1-D tensor";
+  ASSERT_EQ(output_shape->dim_size(), 1) << "Range output should be a 1-D tensor";
   EXPECT_FALSE(output_shape->dim(0).has_dim_value())
       << "Range length must stay symbolic; unsqueezing a single-element value must decline "
          "(a relaxed decline fabricates [1, value] and the model fails to load)";
