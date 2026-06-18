@@ -42,7 +42,7 @@ runs:
 
         if ! retry_apt_install; then
           echo "Falling back to archive.ubuntu.com mirror and retrying apt install."
-          sudo sed -i 's|https\\?://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
+          sudo sed -i 's|https\?://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
           retry_apt_install
         fi
 
