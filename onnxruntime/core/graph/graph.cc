@@ -6064,7 +6064,17 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
     }
 #endif
 
+    // Extract the OrtValue (if any) from the source graph BEFORE erasing from
+    // name_to_initial_tensor_, so that the invariant "HasExternalDataInMemory implies
+    // a findable OrtValue" is never broken.
+    OrtValue src_ort_value;
+    const bool had_ort_value = graph_to_inline.GetOrtValueInitializer(src_name, src_ort_value);
+
     graph_to_inline.name_to_initial_tensor_.erase(src_name);
+    if (had_ort_value) {
+      graph_to_inline.ortvalue_initializers_.erase(src_name);
+    }
+
     const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
     *tensor = std::move(*initializer);
 
@@ -6082,20 +6092,9 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
       tensor->set_name(std::move(new_name));
     }
 
-    // We have the following cases:
-    // No external data, just copy the proto. If it was too big,
-    // it would have already been converted to OrtInitializer.
-    // External data in file - copy the proto, it can be loaded during session finalization
-    //          or it would be loaded by EP
-    // External data in memory two cases
-    // - points to flatbuffers ort format (no OrtValue), simply copy the proto
-    // - points to external data in memory (OrtValue), create a copy of OrtValue and tensor_proto
-
-    if (utils::HasExternalDataInMemory(*tensor)) {
-      OrtValue ort_value;
-      if (graph_to_inline.GetOrtValueInitializer(src_name, ort_value)) {
-        ortvalue_initializers_.insert_or_assign(tensor->name(), std::move(ort_value));
-      }
+    // Restore the OrtValue in the destination graph under the (possibly renamed) name.
+    if (had_ort_value) {
+      ortvalue_initializers_.insert_or_assign(tensor->name(), std::move(src_ort_value));
     }
 
     auto insert_result = name_to_initial_tensor_.emplace(tensor->name(), tensor);
