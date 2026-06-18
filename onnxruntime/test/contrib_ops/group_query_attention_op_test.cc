@@ -17,10 +17,12 @@
 namespace onnxruntime {
 namespace test {
 
-// Selects which EP backs a GQA test helper. Modelled as a single enum (rather
+// Selects which EP backs a GQA test helper. Modeled as a single enum (rather
 // than two bools) so adding a new EP later does not silently fall through to
 // CPU and callers cannot accidentally select two backends at once.
-enum class GqaTargetEp { kCpu, kCuda, kWebGpu };
+enum class GqaTargetEp { kCpu,
+                         kCuda,
+                         kWebGpu };
 
 // Builds the default EP for the chosen backend. Centralized so that adding a
 // new enumerator only requires updating one switch; the `ORT_THROW` default
