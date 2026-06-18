@@ -1846,7 +1846,7 @@ TEST(PluginExecutionProviderTest, EpContextDataApiRejectsInvalidArguments) {
                          "Output OrtEpContextConfig is NULL");
 
   ExpectFailureOrtStatus(set_read_func(nullptr, EpContextReadCallback, nullptr),
-                  ORT_INVALID_ARGUMENT, "'options' parameter must not be NULL");
+                         ORT_INVALID_ARGUMENT, "'options' parameter must not be NULL");
   // A null read_func is allowed: it clears any previously set callback (covered by
   // EpContextDataReadFuncCanBeCleared), so it is not rejected here.
 
@@ -1857,17 +1857,17 @@ TEST(PluginExecutionProviderTest, EpContextDataApiRejectsInvalidArguments) {
   OrtWriteNamedBufferFunc write_func = nullptr;
   void* state = nullptr;
   ExpectFailureOrtStatus(get_read_func(nullptr, &read_func, &state),
-                  ORT_INVALID_ARGUMENT, "OrtEpContextConfig is NULL");
+                         ORT_INVALID_ARGUMENT, "OrtEpContextConfig is NULL");
   ExpectFailureOrtStatus(get_read_func(ep_context_config, nullptr, &state),
-                  ORT_INVALID_ARGUMENT, "Output read_func is NULL");
+                         ORT_INVALID_ARGUMENT, "Output read_func is NULL");
   ExpectFailureOrtStatus(get_read_func(ep_context_config, &read_func, nullptr),
-                  ORT_INVALID_ARGUMENT, "Output state is NULL");
+                         ORT_INVALID_ARGUMENT, "Output state is NULL");
   ExpectFailureOrtStatus(get_write_func(nullptr, &write_func, &state),
-                  ORT_INVALID_ARGUMENT, "OrtEpContextConfig is NULL");
+                         ORT_INVALID_ARGUMENT, "OrtEpContextConfig is NULL");
   ExpectFailureOrtStatus(get_write_func(ep_context_config, nullptr, &state),
-                  ORT_INVALID_ARGUMENT, "Output write_func is NULL");
+                         ORT_INVALID_ARGUMENT, "Output write_func is NULL");
   ExpectFailureOrtStatus(get_write_func(ep_context_config, &write_func, nullptr),
-                  ORT_INVALID_ARGUMENT, "Output state is NULL");
+                         ORT_INVALID_ARGUMENT, "Output state is NULL");
 
 #if !defined(ORT_MINIMAL_BUILD)
   Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "EpContextDataApiRejectsInvalidArguments"};
@@ -1876,9 +1876,9 @@ TEST(PluginExecutionProviderTest, EpContextDataApiRejectsInvalidArguments) {
       Ort::Experimental::Get_OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteFunc_SinceV28_Fn(&ort_api);
   ASSERT_NE(set_write_func, nullptr);
   ExpectFailureOrtStatus(set_write_func(nullptr, EpContextWriteCallback, nullptr),
-                  ORT_INVALID_ARGUMENT, "OrtModelCompilationOptions is NULL");
+                         ORT_INVALID_ARGUMENT, "OrtModelCompilationOptions is NULL");
   ExpectFailureOrtStatus(set_write_func(compilation_options, nullptr, nullptr),
-                  ORT_INVALID_ARGUMENT, "OrtWriteNamedBufferFunc function is NULL");
+                         ORT_INVALID_ARGUMENT, "OrtWriteNamedBufferFunc function is NULL");
 #endif  // !defined(ORT_MINIMAL_BUILD)
 }
 
