@@ -726,6 +726,76 @@ bool
 MLASCALL
 MlasIsDynamicQGemmAvailable(const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
 
+/**
+ * @brief Parameters that define the shape of an FP8 GEMM operation.
+ */
+struct MLAS_FP8_GEMM_SHAPE_PARAMS {
+    size_t M = 0; /**< Row size of matrix A */
+    size_t N = 0; /**< Column size of matrix B */
+    size_t K = 0; /**< Column size of matrix A and row size of matrix B */
+};
+
+// FP8 mode is aligned with Arm KleidiAI format/overflow modes.
+// Defined here to keep MLAS FP8 APIs platform-agnostic.
+#ifndef MLAS_FP8_MODE_DEFINED
+#define MLAS_FP8_MODE_DEFINED
+enum mlas_fp8_mode : uint8_t {
+    MLAS_FP8_MODE_E4M3_INF = 0,  ///< E4M3 with NaN/Inf on overflow.
+    MLAS_FP8_MODE_E4M3_SAT,      ///< E4M3 with saturation on overflow.
+    MLAS_FP8_MODE_E5M2_INF,      ///< E5M2 with NaN/Inf on overflow.
+    MLAS_FP8_MODE_E5M2_SAT,      ///< E5M2 with saturation on overflow.
+    MLAS_FP8_MODE_END,           ///< End marker. Do not use.
+};
+#endif  // MLAS_FP8_MODE_DEFINED
+
+/**
+ * @brief Parameters that define the data buffers and layout for an FP8 GEMM.
+ */
+struct MLAS_FP8_GEMM_DATA_PARAMS {
+    const void* A = nullptr;
+    size_t lda = 0;
+    const void* B = nullptr;
+    size_t ldb = 0;
+    void* C = nullptr;
+    size_t ldc = 0;
+    // Block-wise scales for A, indexed as block_m * ScaleAStrideM + block_k * ScaleAStrideK.
+    const float* ScaleA = nullptr;
+    // Block-wise scales for B, indexed as block_k * ScaleBStrideK + block_n * ScaleBStrideN.
+    const float* ScaleB = nullptr;
+    const float* ScaleY = nullptr;      // Scalar scale for Y.
+    mlas_fp8_mode Fp8Type = static_cast<mlas_fp8_mode>(0);
+    size_t BlockSizeM = 128;  // Block size along M for A quantization.
+    size_t BlockSizeK = 128;  // Block size along K for A/B quantization.
+    size_t BlockSizeN = 128;  // Block size along N for B quantization.
+    size_t BlocksM = 0;       // Number of blocks along M (ceil(M / BlockSizeM)).
+    size_t BlocksK = 0;       // Number of blocks along K (ceil(K / BlockSizeK)).
+    size_t BlocksN = 0;       // Number of blocks along N (ceil(N / BlockSizeN)).
+    size_t ScaleAStrideK = 0;     // ScaleA stride between K blocks (elements).
+    size_t ScaleAStrideM = 0;     // ScaleA stride between M blocks (elements).
+    size_t ScaleBStrideN = 0;     // ScaleB stride between N blocks (elements).
+    size_t ScaleBStrideK = 0;     // ScaleB stride between K blocks (elements).
+};
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+void
+MLASCALL
+MlasFp8GemmBatch(
+    const MLAS_FP8_GEMM_SHAPE_PARAMS& Shape,
+    const MLAS_FP8_GEMM_DATA_PARAMS* DataParams,
+    const size_t BatchN,
+    MLAS_THREADPOOL* ThreadPool
+);
+
+inline void
+MlasFp8Gemm(
+    const MLAS_FP8_GEMM_SHAPE_PARAMS& Shape,
+    const MLAS_FP8_GEMM_DATA_PARAMS* DataParams,
+    MLAS_THREADPOOL* ThreadPool
+) {
+    MlasFp8GemmBatch(Shape, DataParams, 1, ThreadPool);
+}
+#endif  // !defined(DISABLE_FLOAT8_TYPES)
+
 //
 // Symmetric QGEMM has limited buffer overrun.
 // Currently only supported in ARM64

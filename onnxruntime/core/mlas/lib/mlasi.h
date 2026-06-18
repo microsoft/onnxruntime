@@ -119,6 +119,33 @@ Abstract:
 
 #define MLAS_UNREFERENCED_PARAMETER(parameter) ((void)(parameter))
 
+//
+// Reports whether multiplying two size_t values would overflow.
+//
+
+MLAS_FORCEINLINE
+bool
+MlasMultiplyOverflowsSizeT(
+    size_t a,
+    size_t b,
+    size_t* out
+    )
+{
+#if defined(__has_builtin)
+#if __has_builtin(__builtin_mul_overflow)
+    size_t result;
+    return __builtin_mul_overflow(a, b, out != nullptr ? out : &result);
+#endif
+#endif
+    if (b != 0 && a > std::numeric_limits<size_t>::max() / b) {
+        return true;
+    }
+    if (out != nullptr) {
+        *out = a * b;
+    }
+    return false;
+}
+
 #ifdef MLAS_NO_EXCEPTION
 
 MLAS_FORCEINLINE void

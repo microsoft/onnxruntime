@@ -24,6 +24,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/sgemm.cpp
   ${MLAS_SRC_DIR}/halfgemm.cpp
   ${MLAS_SRC_DIR}/qgemm.cpp
+  ${MLAS_SRC_DIR}/qgemm_fp8.cpp
   ${MLAS_SRC_DIR}/qdwconv.cpp
   ${MLAS_SRC_DIR}/convolve.cpp
   ${MLAS_SRC_DIR}/sconv_nchw_depthwise_multiplier_greater_than_1.cpp
