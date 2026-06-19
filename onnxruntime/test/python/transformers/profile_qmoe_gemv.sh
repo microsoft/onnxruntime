@@ -66,7 +66,7 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: $0 [--list-cases] [--case NAME] [--disable-splitk2-swiglu] [--batch-size N] [--sequence-length N] [--hidden-size N] [--intermediate-size N] [--num-experts N] [--top-k N] [--dtype FLOAT16|BFLOAT16] [--quant-bits 4|8] [--block-size 0|32|64|128] [--warmup N] [--repeat N] [--python PYTHON] [-o NAME]"
+            echo "Usage: $0 [--list-cases] [--case NAME] [--splitk2-swiglu] [--disable-splitk2-swiglu] [--batch-size N] [--sequence-length N] [--hidden-size N] [--intermediate-size N] [--num-experts N] [--top-k N] [--dtype FLOAT16|BFLOAT16] [--quant-bits 4|8] [--block-size 0|32|64|128] [--warmup N] [--repeat N] [--python PYTHON] [-o NAME]"
             exit 1
             ;;
     esac

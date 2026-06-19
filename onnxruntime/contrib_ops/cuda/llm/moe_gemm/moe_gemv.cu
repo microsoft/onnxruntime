@@ -801,7 +801,12 @@ void launch_moe_gemv_int_symmetric_interleaved_swiglu(
   ORT_UNUSED_PARAMETER(sm);
   using Details = typename DetailsForTAndWeight<T, WeightType>::Details;
   using TypeA = typename DetailsForTAndWeight<T, WeightType>::TypeA;
-  if (splitk_partials != nullptr) {
+  // Accumulate in fp32 by default (see launch_moe_gemv_int_symmetric for the policy).
+  bool const use_fp32_accum = !std::is_same_v<T, half> || !MoeGemvUseFp16Accum();
+  // The split-K2 two-pass path always reduces FP32 partials, so it is only valid under fp32
+  // accumulation. When ORT_MOE_GEMV_FP16_ACCUM=1 requests 16-bit accumulation, fall back to the
+  // single-kernel path below so that env knob continues to behave as documented.
+  if (splitk_partials != nullptr && use_fp32_accum) {
     if constexpr (std::is_same_v<T, half>) {
       fiv::dispatch_moe_gemv_splitk_twopass_swiglu_group_size<Details, kCtaN, kThreads, 2, TypeA>(
           const_cast<TypeA*>(reinterpret_cast<TypeA const*>(act)),
@@ -814,8 +819,6 @@ void launch_moe_gemv_int_symmetric_interleaved_swiglu(
       return;
     }
   }
-  // Accumulate in fp32 by default (see launch_moe_gemv_int_symmetric for the policy).
-  bool const use_fp32_accum = !std::is_same_v<T, half> || !MoeGemvUseFp16Accum();
   auto launch = [&](auto acc_tag) {
     using AccT = typename decltype(acc_tag)::type;
     fiv::dispatch_moe_gemv_interleaved_swiglu_group_size<Details, kCtaN, kThreads, TypeA, AccT>(
