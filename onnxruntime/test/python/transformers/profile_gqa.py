@@ -20,10 +20,18 @@ Usage:
 """
 
 import argparse
+import os
 import time
 
 import torch
-from test_sparse_attention import GroupQueryAttentionConfig, OrtGroupQueryAttention
+
+try:
+    from gqa_test_helper import GroupQueryAttentionConfig, OrtGroupQueryAttention
+except ImportError:
+    import sys
+
+    sys.path.insert(0, os.path.dirname(__file__))
+    from gqa_test_helper import GroupQueryAttentionConfig, OrtGroupQueryAttention
 
 # Optional NVTX support for nsys range markers
 try:

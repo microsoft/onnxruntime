@@ -168,5 +168,6 @@ CUDA parity tests live in
 - `TestXQAQuantizedParity` — XQA per-tensor int8 quantized decode parity.
 - `TestXQAHeadSinkParity` — non-quantized XQA decode parity with a `head_sink` (attention sink) input.
 
-Both classes set `ORT_ENABLE_XQA=1` so the XQA path is exercised, and compare against a PyTorch
-reference (`attention_ref` with `smooth_softmax_ref`).
+`TestXQAQuantizedParity` sets `ORT_ENABLE_XQA=1` to force the XQA path. `TestXQAHeadSinkParity`
+instead clears `ORT_ENABLE_XQA` to validate that XQA is enabled by default when a `head_sink` input
+is present. Both compare against a PyTorch reference (`attention_ref` with `smooth_softmax_ref`).
