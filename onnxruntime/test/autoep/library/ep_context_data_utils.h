@@ -104,6 +104,10 @@ inline bool ContainsPathTraversal(const std::filesystem::path& path) {
   return false;
 }
 
+inline bool HasAbsoluteOrRootedPath(const std::filesystem::path& path) {
+  return path.is_absolute() || path.has_root_name() || path.has_root_directory();
+}
+
 inline OrtStatus* ValidateEpContextDataName(const OrtApi& api, const char* file_name,
                                             std::filesystem::path& data_name) {
   data_name.clear();
@@ -117,8 +121,8 @@ inline OrtStatus* ValidateEpContextDataName(const OrtApi& api, const char* file_
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name is not a valid path");
   }
 
-  if (candidate_path.is_absolute()) {
-    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute");
+  if (HasAbsoluteOrRootedPath(candidate_path)) {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
   }
 
   if (ContainsPathTraversal(candidate_path)) {
@@ -154,8 +158,8 @@ inline OrtStatus* ResolveEpContextDataPath(const OrtApi& api, const char* file_n
     return nullptr;
   }
 
-  if (candidate_path.is_absolute()) {
-    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute");
+  if (HasAbsoluteOrRootedPath(candidate_path)) {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
   }
 
   const ORTCHAR_T* model_path = nullptr;
@@ -186,14 +190,14 @@ inline OrtStatus* ResolveEpContextDataOutputPath(const OrtApi& api, const char* 
   }
 
   // Trusted direct callers (graph == nullptr) may supply an absolute physical path. When a graph is present, the
-  // name may be model-derived (untrusted), so reject absolute paths for symmetry with the read-side
-  // ResolveEpContextDataPath instead of writing to an attacker-chosen absolute location.
+  // name may be model-derived (untrusted), so reject absolute/rooted paths for symmetry with the read-side
+  // ResolveEpContextDataPath instead of writing to an attacker-chosen absolute or rooted location.
   if (graph == nullptr) {
     return nullptr;
   }
 
-  if (data_path.is_absolute()) {
-    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute");
+  if (HasAbsoluteOrRootedPath(data_path)) {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
   }
 
   const ORTCHAR_T* model_path = nullptr;
@@ -321,9 +325,9 @@ inline OrtStatus* ReadEpContextDataWithFileFallback(
 
 // Reads EPContext binary data named `file_name`. If the session configured an OrtReadNamedBufferFunc (carried by
 // `ep_context_config`), it is used; otherwise the data is read from a file. When `graph` is non-null it is the
-// EPContext model graph: untrusted absolute/traversal names are rejected and relative names are resolved against the
-// model directory. Pass `graph == nullptr` only for trusted callers supplying a physical path. `data` is cleared
-// first and receives the bytes on success.
+// EPContext model graph: untrusted absolute/rooted/traversal names are rejected and relative names are resolved
+// against the model directory. Pass `graph == nullptr` only for trusted callers supplying a physical path. `data` is
+// cleared first and receives the bytes on success.
 inline OrtStatus* ReadEpContextDataWithFileFallback(
     const OrtApi& api,
     const OrtEpContextConfig* ep_context_config,
@@ -381,8 +385,8 @@ inline OrtStatus* WriteEpContextDataWithFileFallback(
 // Writes EPContext binary data. If the compilation configured an OrtWriteNamedBufferFunc (carried by
 // `ep_context_config`), it is used and `file_name` is passed through unmodified as the logical name. Otherwise the
 // data is written to a file at `fallback_file_name`, which is resolved against the model directory when `graph` is
-// non-null (and rejected if absolute in that case). `graph == nullptr` denotes a trusted caller that may supply an
-// absolute physical path. `buffer` may be null only when `buffer_size` is 0.
+// non-null (and rejected if absolute or rooted in that case). `graph == nullptr` denotes a trusted caller that may
+// supply an absolute physical path. `buffer` may be null only when `buffer_size` is 0.
 inline OrtStatus* WriteEpContextDataWithFileFallback(
     const OrtApi& api,
     const OrtEpContextConfig* ep_context_config,
@@ -407,8 +411,8 @@ inline OrtStatus* WriteEpContextDataWithFileFallback(
 
 // Convenience overload that uses `file_name` as both the logical callback name and the file-fallback path.
 // Because `file_name` doubles as the fallback path, it must be a safe relative name (this overload validates it and
-// rejects absolute paths and `..` traversal). To write the file fallback to an absolute physical path (a trusted
-// caller with `graph == nullptr`), use the overload above that takes a separate `fallback_file_name`.
+// rejects absolute/rooted paths and `..` traversal). To write the file fallback to an absolute physical path (a
+// trusted caller with `graph == nullptr`), use the overload above that takes a separate `fallback_file_name`.
 inline OrtStatus* WriteEpContextDataWithFileFallback(
     const OrtApi& api,
     const OrtEpContextConfig* ep_context_config,

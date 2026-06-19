@@ -156,18 +156,29 @@ TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathRejectsUnsafeNames) {
 
 #ifdef _WIN32
   const char* absolute_file_name = "C:\\temp\\escape.ctx";
+  const char* drive_relative_file_name = "C:escape.ctx";
+  const char* root_relative_file_name = "\\escape.ctx";
 #else
   const char* absolute_file_name = "/tmp/escape.ctx";
 #endif
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::ResolveEpContextDataPath(api, absolute_file_name, nullptr, data_path));
   EXPECT_TRUE(data_path.is_absolute());
 
+#ifdef _WIN32
+  ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(
+                           api, nullptr, drive_relative_file_name, "unused.ctx", nullptr, nullptr, 0),
+               ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
+  ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(
+                           api, nullptr, root_relative_file_name, "unused.ctx", nullptr, nullptr, 0),
+               ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
+#endif
+
   std::vector<char> data;
   ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataFromFile(api, "../escape.ctx", nullptr, data),
                        ORT_INVALID_ARGUMENT, "EPContext data file name must not contain path traversal");
   ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(
                            api, nullptr, absolute_file_name, "unused.ctx", nullptr, nullptr, 0),
-                       ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute");
+               ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
 }
 
 TEST(OrtEpLibrary, EpContextDataUtils_FileFallbackReadsAndWrites) {
