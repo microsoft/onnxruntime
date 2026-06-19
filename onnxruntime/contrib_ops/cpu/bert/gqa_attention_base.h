@@ -881,7 +881,7 @@ class GQAAttentionBase {
                                                    ? packed_batch_stride
                                                    : static_cast<ptrdiff_t>(SafeInt<ptrdiff_t>(num_heads_) * sequence_length * head_size);
         args.query = Q + static_cast<size_t>(b) * static_cast<size_t>(q_batch_stride_elems);
-        args.q_batch_stride = SafeInt<size_t>(num_heads_) * sequence_length * head_size;
+        args.q_batch_stride = static_cast<size_t>(q_batch_stride_elems);
         args.k_cache = present_key_data +
                        static_cast<size_t>(b) * kv_num_heads_ * seqlen_present_kv_cache * packed_row_bytes;
         args.v_cache = present_value_data +
