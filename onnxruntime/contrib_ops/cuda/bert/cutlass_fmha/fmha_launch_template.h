@@ -75,6 +75,8 @@ struct RightPaddingBatchHook {
     }
 
     if (p.custom_mask_type == AttentionKernel::CausalFromBottomRight) {
+      // May be negative when num_keys < num_queries (nonpad external KV cache, onnx#8068 / ORT #28904).
+      // causal_diagonal_offset is int32_t so the negative value is preserved (no unsigned wrap).
       p.causal_diagonal_offset = p.num_keys - p.num_queries;
     }
     if (p.custom_mask_type == AttentionKernel::CausalFromTopLeft ||

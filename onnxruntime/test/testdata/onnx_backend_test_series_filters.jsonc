@@ -41,6 +41,20 @@
         "^test_attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal*",  // location of infinities
         "^test_attention_4d_attn_mask_3d_causal_expanded*", // webgpu
         "^test_attention_4d_diff_heads_mask4d_padded_kv*", // Need nonpad_kv_seqlen
+        // #28904: preemptive skip — onnx pinned at v1.21.0 lacks these #8068 tests; de-skip when the onnx pin is bumped to a release containing #8068
+        // bottom-right is_causal + nonpad_kv_seqlen and composed is_causal+attn_mask fully-masked-row->0 (onnx#8068). The "^" prefix also matches the _expanded (function-body) and EP-suffixed variants.
+        "^test_attention_4d_gqa_causal_nonpad_decode",            // #28904 bottom-right decode
+        "^test_attention_4d_gqa_causal_nonpad_decode_fp16",       // #28904 bottom-right decode (fp16)
+        "^test_attention_4d_causal_nonpad_continued_prefill",     // #28904 bottom-right continued-prefill
+        "^test_attention_causal_boolmask_nan_robustness",         // #28904 fully-masked-row -> 0 (Bug-2, opset-24)
+        "^test_attention_23_boolmask_fullymasked_row_nan_robustness", // #28904 fully-masked-row -> 0 (Bug-2, opset-23 errata)
+        // #28994: preemptive skip — onnx pinned at v1.21.0 lacks these #8068 mode-3 tests; the
+        // regex is a no-op today and prevents CI breakage the moment the onnx pin is bumped past
+        // #8068. CUDA returns NOT_IMPLEMENTED for qk_matmul_output modes beyond kQK
+        // (cuda/llm/attention.cc:1477). De-skip when mode>kQK is supported (#27712). See #28994 Section A.
+        // Matches: test_attention_{23,24}_fullymasked_qk_matmul_output_mode3_zero[_expanded] and
+        // test_attention_24_qk_matmul_output_mode3_softmax_precision[_expanded].
+        "^test_attention_(23|24)_.*qk_matmul_output_mode3", // #28994 CUDA NOT_IMPLEMENTED mode>kQK (attention.cc:1477); #27712 to support
         // TODO: support qk_matmul_output modes beyond kQK in Attention-cuda (see issue #27712)
         // Tests combining qk_matmul with softcap need unfused-path qk_matmul support (deferred).
         "^test_attention_3d_with_past_and_present_qk_matmul_softcap_cuda", // qk_matmul modes beyond kQK not supported
