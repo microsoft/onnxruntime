@@ -3,6 +3,7 @@
 
 #ifdef USE_GDS
 
+#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/gpu_external_data_loader.h"
 
 #include <fcntl.h>
@@ -10,8 +11,6 @@
 #include <cufile.h>
 
 #include "core/framework/tensor.h"
-#include "core/common/common.h"
-#include "core/common/logging/logging.h"
 
 namespace onnxruntime {
 namespace cuda {
