@@ -87,6 +87,10 @@ class GQAConfig:
     softcap: float = 0.0
     use_smooth_softmax: bool = False
     has_head_sink: bool = False
+    # When True, head_sink is baked into the model as a constant initializer (instead of a runtime
+    # input). This exercises the GroupQueryAttention::PrePack path that converts the constant
+    # head_sink to a cached FP32 XQA buffer.
+    head_sink_as_initializer: bool = False
     kv_cache_type: str = ""
     share_buffer: bool = True
     share_kv_scale: bool = False
@@ -190,12 +194,23 @@ def apply_rotary_embedding(x, cos, sin, pos, interleaved, device="cpu"):
 # #################################################################################################
 
 
+def make_head_sink_initializer(head_sink, ort_type, num_heads):
+    """Build a constant head_sink initializer (fp16/bf16) so GroupQueryAttention::PrePack runs.
+
+    The 16-bit float bits are reinterpreted as uint16 and stored as raw bytes, which works for
+    both float16 and bfloat16 without relying on numpy bfloat16 support.
+    """
+    raw = head_sink.detach().reshape(num_heads).cpu().contiguous().view(torch.uint16).numpy().tobytes()
+    return helper.make_tensor(name="head_sink", data_type=ort_type, dims=[num_heads], vals=raw, raw=True)
+
+
 def create_gqa_node_and_io(
     config: GQAConfig,
     ort_type,
     share_buffer=True,
     is_past=False,
     output_qk: int = 0,  # CUDA does not support output_qk for GQA
+    head_sink_values=None,
 ):
     if is_past:
         if share_buffer:
@@ -210,6 +225,8 @@ def create_gqa_node_and_io(
 
     if not config.kv_cache_type:
         config.kv_cache_type = "float16" if ort_type == TensorProto.FLOAT16 else "bfloat16"
+
+    initializers = []
 
     # --- Node Definition ---
     outputs = [
@@ -348,7 +365,11 @@ def create_gqa_node_and_io(
             )
         )
     if config.has_head_sink:
-        graph_input.append(helper.make_tensor_value_info("head_sink", ort_type, [config.num_heads]))
+        if config.head_sink_as_initializer and head_sink_values is not None:
+            # Constant initializer (not a graph input) so ORT treats it as a constant and PrePack runs.
+            initializers.append(make_head_sink_initializer(head_sink_values, ort_type, config.num_heads))
+        else:
+            graph_input.append(helper.make_tensor_value_info("head_sink", ort_type, [config.num_heads]))
 
     # --- Graph Outputs ---
     output_k_shape = [config.batch_size, config.kv_num_heads, present_kv_seqlen, config.head_size]
@@ -372,19 +393,23 @@ def create_gqa_node_and_io(
             )
         )
 
-    return node, graph_input, graph_output
+    return node, graph_input, graph_output, initializers
 
 
 def create_group_query_attention_graph_prompt(config: GQAConfig, ort_type, share_buffer=True):
-    node, graph_input, graph_output = create_gqa_node_and_io(config, ort_type, share_buffer, is_past=False)
-    graph = helper.make_graph([node], "GroupQueryAttention_Graph", graph_input, graph_output)
+    node, graph_input, graph_output, initializers = create_gqa_node_and_io(
+        config, ort_type, share_buffer, is_past=False
+    )
+    graph = helper.make_graph([node], "GroupQueryAttention_Graph", graph_input, graph_output, initializer=initializers)
     model = helper.make_model(graph)
     return model.SerializeToString()
 
 
-def create_group_query_attention_graph_past(config: GQAConfig, ort_type, share_buffer=True):
-    node, graph_input, graph_output = create_gqa_node_and_io(config, ort_type, share_buffer, is_past=True)
-    graph = helper.make_graph([node], "GroupQueryAttention_Graph", graph_input, graph_output)
+def create_group_query_attention_graph_past(config: GQAConfig, ort_type, share_buffer=True, head_sink_values=None):
+    node, graph_input, graph_output, initializers = create_gqa_node_and_io(
+        config, ort_type, share_buffer, is_past=True, head_sink_values=head_sink_values
+    )
+    graph = helper.make_graph([node], "GroupQueryAttention_Graph", graph_input, graph_output, initializer=initializers)
     model = helper.make_model(graph)
     return model.SerializeToString()
 
@@ -605,10 +630,12 @@ def gqa_past_func(
     if not config.kv_cache_type:
         config.kv_cache_type = "float16" if ort_type == TensorProto.FLOAT16 else "bfloat16"
 
+    head_sink_as_initializer = config.has_head_sink and config.head_sink_as_initializer and head_sink is not None
     onnx_model_str = create_group_query_attention_graph_past(
         config=config,
         ort_type=ort_type,
         share_buffer=share_buffer,
+        head_sink_values=head_sink if head_sink_as_initializer else None,
     )
 
     q = torch.reshape(q, (config.batch_size, config.q_sequence_length, -1))
@@ -671,7 +698,7 @@ def gqa_past_func(
     if config.has_attention_bias and attention_bias is not None:
         bind_tensor(io_binding, "attention_bias", attention_bias, device, ort_type)
 
-    if config.has_head_sink and head_sink is not None:
+    if config.has_head_sink and head_sink is not None and not head_sink_as_initializer:
         bind_tensor(io_binding, "head_sink", head_sink, device, ort_type)
 
     # 6. Quantization
@@ -1948,6 +1975,11 @@ def has_flash_attention(bf16=False):
     return True
 
 
+def has_xqa():
+    # The XQA decode kernels require Ampere (SM 8.0) or newer.
+    return has_cuda_device(80)
+
+
 rtol = {
     "fp16": 5e-3,
     "bf16": 5e-2,
@@ -2331,6 +2363,120 @@ class TestXQAQuantizedParity(unittest.TestCase):
             causal=True,
             rtol=rtol["int8_bf16"] if torch_type == torch.bfloat16 else rtol["int8_fp16"],
             atol=atol["int8_bf16"] if torch_type == torch.bfloat16 else atol["int8_fp16"],
+            std=0.1,
+        )
+
+
+def gqa_xqa_head_sink_test_cases():
+    # Non-quantized global decode with a head_sink (attention sink) input.
+    # These configs exercise the XQA attention-sink path added for GPT-OSS style models:
+    # seq_len=1, shared KV buffer, no softcap, no local window, head_size in {64, 128, 256},
+    # and 64 % group_size == 0.
+    for torch_type, ort_type in [(torch.float16, TensorProto.FLOAT16), (torch.bfloat16, TensorProto.BFLOAT16)]:
+        for group_size in [1, 4, 8]:
+            for head_size in [64, 128]:
+                for rotary in [False, True]:
+                    kv_num_heads = 4
+                    num_heads = kv_num_heads * group_size
+                    config = GQAConfig(
+                        batch_size=2,
+                        q_sequence_length=1,
+                        kv_sequence_length=1,
+                        num_heads=num_heads,
+                        kv_num_heads=kv_num_heads,
+                        head_size=head_size,
+                        past_kv_sequence_length=4,
+                        buffer_sequence_length=4 + 128,
+                        rotary=rotary,
+                        packed=False,
+                        share_buffer=True,
+                        has_head_sink=True,
+                    )
+                    type_str = "bf16" if torch_type == torch.bfloat16 else "fp16"
+                    rot_str = "rot" if rotary else "norot"
+                    name = f"{type_str}_g{group_size}_h{head_size}_{rot_str}"
+                    yield name, config, torch_type, ort_type
+
+
+def gqa_xqa_head_sink_prepack_test_cases():
+    # Same XQA attention-sink decode path as gqa_xqa_head_sink_test_cases(), but head_sink is baked
+    # into the model as a constant initializer. This exercises GroupQueryAttention::PrePack, which
+    # converts the constant head_sink once into the cached FP32 XQA buffer (use_prepacked_xqa_head_sink),
+    # instead of the per-launch conversion scratch path used for runtime head_sink inputs.
+    for torch_type, ort_type in [(torch.float16, TensorProto.FLOAT16), (torch.bfloat16, TensorProto.BFLOAT16)]:
+        for group_size in [1, 4]:
+            for rotary in [False, True]:
+                kv_num_heads = 4
+                num_heads = kv_num_heads * group_size
+                config = GQAConfig(
+                    batch_size=2,
+                    q_sequence_length=1,
+                    kv_sequence_length=1,
+                    num_heads=num_heads,
+                    kv_num_heads=kv_num_heads,
+                    head_size=128,
+                    past_kv_sequence_length=4,
+                    buffer_sequence_length=4 + 128,
+                    rotary=rotary,
+                    packed=False,
+                    share_buffer=True,
+                    has_head_sink=True,
+                    head_sink_as_initializer=True,
+                )
+                type_str = "bf16" if torch_type == torch.bfloat16 else "fp16"
+                rot_str = "rot" if rotary else "norot"
+                name = f"{type_str}_g{group_size}_h128_{rot_str}_prepack"
+                yield name, config, torch_type, ort_type
+
+
+@unittest.skipIf(not has_xqa(), "XQA is not available, skipping tests.")
+@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+class TestXQAHeadSinkParity(unittest.TestCase):
+    """Verify the non-quantized XQA attention-sink (head_sink) decode path matches the reference."""
+
+    def setUp(self):
+        # XQA is enabled by default when a head_sink input is present, so this path is exercised
+        # without ORT_ENABLE_XQA. Clear it (saving the previous value) to test the real default.
+        self._prev_enable_xqa = os.environ.pop("ORT_ENABLE_XQA", None)
+
+    def tearDown(self):
+        # Restore the environment so other tests run with the default XQA setting.
+        if self._prev_enable_xqa is None:
+            os.environ.pop("ORT_ENABLE_XQA", None)
+        else:
+            os.environ["ORT_ENABLE_XQA"] = self._prev_enable_xqa
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+        gc.collect()
+
+    @parameterized.expand(gqa_xqa_head_sink_test_cases())
+    def test_xqa_head_sink_parity(self, name, config, torch_type, ort_type):
+        """Test XQA non-quantized parity with a head_sink (attention sink) input."""
+        parity_check_gqa_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch_type,
+            ort_type=ort_type,
+            causal=True,
+            rtol=rtol["bf16"] if torch_type == torch.bfloat16 else rtol["fp16"],
+            atol=atol["bf16"] if torch_type == torch.bfloat16 else atol["fp16"],
+            std=0.1,
+        )
+
+    @parameterized.expand(gqa_xqa_head_sink_prepack_test_cases())
+    def test_xqa_head_sink_prepack_parity(self, name, config, torch_type, ort_type):
+        """Test XQA parity when head_sink is a constant initializer (exercises PrePack)."""
+        parity_check_gqa_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch_type,
+            ort_type=ort_type,
+            causal=True,
+            rtol=rtol["bf16"] if torch_type == torch.bfloat16 else rtol["fp16"],
+            atol=atol["bf16"] if torch_type == torch.bfloat16 else atol["fp16"],
             std=0.1,
         )
 
