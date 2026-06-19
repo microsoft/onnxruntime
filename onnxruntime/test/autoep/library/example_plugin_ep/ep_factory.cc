@@ -442,7 +442,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateExternalResourceImporterForDevic
 namespace {
 
 // Field keys for the example EP's compatibility string format
-// "ExampleEP;version=X;ort_api_version=Y;hardware_architecture=Z". Using named constants (rather than literal
+// "<ep_name>;version=X;ort_api_version=Y;hardware_architecture=Z". Using named constants (rather than literal
 // offsets) keeps the parser robust if a key is renamed.
 constexpr std::string_view kVersionKey = "version=";
 constexpr std::string_view kOrtApiVersionKey = "ort_api_version=";
