@@ -41,6 +41,8 @@ namespace webgpu {
 
 void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
   std::call_once(init_flag_, [this, &config]() {
+    max_num_pending_dispatches_ = config.max_num_pending_dispatches;
+
     if (device_ == nullptr) {
       // Create wgpu::Adapter
       wgpu::RequestAdapterOptions req_adapter_options = {};
@@ -174,6 +176,16 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       query_type_ = TimestampQueryType::None;
     }
   });
+
+  if (max_num_pending_dispatches_ != config.max_num_pending_dispatches) {
+    LOGS_DEFAULT(WARNING)
+        << "WebGPU context is already initialized with "
+        << "maxNumPendingDispatches="
+        << max_num_pending_dispatches_
+        << ". Requested value "
+        << config.max_num_pending_dispatches
+        << " will be ignored.";
+  }
 }
 
 Status WebGpuContext::Wait(wgpu::Future f) {

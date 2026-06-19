@@ -8,6 +8,7 @@
 #include "core/common/logging/logging.h"
 
 #include <algorithm>
+#include <limits>
 #include <queue>
 #include <string>
 #include <vector>
@@ -409,6 +410,14 @@ const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const s
   const auto& attrs = node.GetAttributes();
   const auto iter = attrs.find(attr_name);
   return iter == attrs.end() ? nullptr : &iter->second;
+}
+
+bool IsFullShapeNode(const Node& node) {
+  const auto* start_attr = GetNodeAttribute(node, "start");
+  const auto* end_attr = GetNodeAttribute(node, "end");
+  // end=INT64_MAX is the runtime default meaning "all dimensions" (full shape).
+  return (!start_attr || start_attr->i() == 0) &&
+         (!end_attr || end_attr->i() == std::numeric_limits<int64_t>::max());
 }
 
 static NodeArg& GetOrCreateNodeArg(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {

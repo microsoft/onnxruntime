@@ -391,6 +391,19 @@ class KernelScope {
       CalculateTotalInputSizes(&kernel_context, &kernel_,
                                input_activation_sizes_, input_parameter_sizes_,
                                node_name_, input_type_shape_);
+
+      // Sample allocator memory stats before kernel execution
+      ep_allocator_ = session_state_.GetAllocator(kernel_.Info().GetDevice(OrtMemTypeDefault));
+      if (ep_allocator_) {
+        AllocatorStats stats_before;
+        ep_allocator_->GetStats(&stats_before);
+        if (stats_before.num_allocs > 0 || stats_before.bytes_limit != 0) {
+          has_meaningful_stats_ = true;
+          mem_in_use_before_ = stats_before.bytes_in_use;
+          mem_requested_in_use_before_ = stats_before.bytes_requested_in_use;
+          mem_total_allocated_before_ = stats_before.total_allocated_bytes;
+        }
+      }
     }
   }
 
@@ -420,6 +433,34 @@ class KernelScope {
           {"thread_scheduling_stats",
            concurrency::ThreadPool::StopProfiling(session_state_.GetThreadPool())},
       };
+
+      // Emit memory stats after kernel execution.
+      // ~KernelScope is noexcept, and plugin EP allocators (IAllocatorWrappingOrtAllocator)
+      // can throw from GetStats. Catch only that call and skip mem_* args on failure.
+      if (has_meaningful_stats_) {
+        AllocatorStats stats_after;
+        bool has_stats_after = false;
+        ORT_TRY {
+          ep_allocator_->GetStats(&stats_after);
+          has_stats_after = true;
+        }
+        ORT_CATCH(...) {
+          // Swallow GetStats errors — profiling stats are best-effort and must not crash.
+        }
+
+        if (has_stats_after) {
+          // Actual bytes requested by user code (excludes internal padding/fragmentation)
+          event_args["mem_bytes_requested_in_use"] = std::to_string(stats_after.bytes_requested_in_use);
+          event_args["mem_requested_in_use_delta"] = std::to_string(stats_after.bytes_requested_in_use - mem_requested_in_use_before_);
+          // Bytes in use including arena internal padding
+          event_args["mem_bytes_in_use"] = std::to_string(stats_after.bytes_in_use);
+          event_args["mem_in_use_delta"] = std::to_string(stats_after.bytes_in_use - mem_in_use_before_);
+          event_args["mem_in_use_peak"] = std::to_string(stats_after.max_bytes_in_use);
+          // Total device memory held by the allocator (not available to other applications)
+          event_args["mem_arena_held"] = std::to_string(stats_after.total_allocated_bytes);
+          event_args["mem_arena_held_delta"] = std::to_string(stats_after.total_allocated_bytes - mem_total_allocated_before_);
+        }
+      }
 
       session_scope_.StopProfilingIfEnabled(profiling::NODE_EVENT,
                                             node_name_ + "_kernel_time",
@@ -458,6 +499,16 @@ class KernelScope {
   size_t input_parameter_sizes_{};
   size_t total_output_sizes_{};
   std::string input_type_shape_;
+
+  // Memory profiling: allocator stats sampled before/after kernel execution.
+  // has_meaningful_stats_ is true when the allocator has been used (num_allocs > 0) or reports a
+  // memory limit (bytes_limit != 0), indicating it implements stats tracking. This avoids emitting
+  // empty stats for allocators that don't support GetStats() or haven't been used yet.
+  AllocatorPtr ep_allocator_;
+  bool has_meaningful_stats_{false};
+  int64_t mem_in_use_before_{0};
+  int64_t mem_requested_in_use_before_{0};
+  int64_t mem_total_allocated_before_{0};
 
 #ifdef CONCURRENCY_VISUALIZER
   diagnostic::span span_;

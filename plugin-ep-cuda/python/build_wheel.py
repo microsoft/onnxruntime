@@ -13,7 +13,10 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).parent
 MIN_ONNXRUNTIME_VERSION_FILE = SCRIPT_DIR.parent / "MIN_ONNXRUNTIME_VERSION"
 
-_TEMPLATE_VARIABLE_PATTERN = re.compile(r"@(\w+)@")
+# Import the shared template helper from _packaging_utils.py in the parent directory.
+sys.path.insert(0, str(SCRIPT_DIR.parent))
+from _packaging_utils import gen_file_from_template  # noqa: E402 (path setup must precede import)
+
 BINARY_PATTERNS = [
     "onnxruntime_providers_cuda_plugin.dll",
     "libonnxruntime_providers_cuda_plugin.so",
@@ -38,27 +41,6 @@ AUDITWHEEL_EXCLUDE = [
 ]
 
 
-def gen_file_from_template(template_file: Path, output_file: Path, variable_substitutions: dict[str, str]) -> None:
-    content = template_file.read_text(encoding="utf-8")
-    variables_in_file: set[str] = set()
-
-    def replace(match: re.Match[str]) -> str:
-        name = match.group(1)
-        variables_in_file.add(name)
-        return variable_substitutions.get(name, match.group(0))
-
-    content = _TEMPLATE_VARIABLE_PATTERN.sub(replace, content)
-    if variables_in_file != variable_substitutions.keys():
-        provided = set(variable_substitutions.keys())
-        raise ValueError(
-            f"Template variables and substitution keys do not match for {template_file}. "
-            f"Only in template: {sorted(variables_in_file - provided)}. "
-            f"Only in substitutions: {sorted(provided - variables_in_file)}."
-        )
-
-    output_file.write_text(content, encoding="utf-8")
-
-
 def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str, package_name: str) -> None:
     staging_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(SCRIPT_DIR / "setup.py", staging_dir / "setup.py")
@@ -79,10 +61,19 @@ def prepare_staging_dir(staging_dir: Path, binary_dir: Path, version: str, packa
     if not min_ort_version:
         raise ValueError(f"{MIN_ONNXRUNTIME_VERSION_FILE} is empty")
 
+    # Substitute the minimum ORT version into the staged README in place.
+    staged_readme = package_dir / "README.md"
+    gen_file_from_template(
+        staged_readme,
+        staged_readme,
+        {"min_onnxruntime_version": min_ort_version},
+    )
+
+    # Render pyproject.toml from its template
     gen_file_from_template(
         SCRIPT_DIR / "pyproject.toml.in",
         staging_dir / "pyproject.toml",
-        {"package_name": package_name, "version": version, "min_onnxruntime_version": min_ort_version},
+        {"package_name": package_name, "version": version},
     )
 
 

@@ -12,6 +12,7 @@
 #include "gtest/gtest.h"
 
 #include "core/session/model_package/model_package_context.h"
+#include "core/session/onnxruntime_experimental_c_api.h"
 #include "core/session/abi_devices.h"
 #include "test/autoep/test_autoep_utils.h"
 #include "test/util/include/asserts.h"
@@ -22,6 +23,90 @@ extern std::unique_ptr<Ort::Env> ort_env;
 namespace onnxruntime {
 namespace test {
 namespace {
+
+// Typed function pointers for every OrtModelPackageApi_* experimental entry,
+// resolved once via the experimental name-based lookup.
+struct ModelPackageFns {
+  OrtExperimental_OrtModelPackageApi_CreateModelPackageOptionsFromSessionOptions_SinceV28_Fn
+      CreateModelPackageOptionsFromSessionOptions{nullptr};
+  OrtExperimental_OrtModelPackageApi_ReleaseModelPackageOptions_SinceV28_Fn
+      ReleaseModelPackageOptions{nullptr};
+  OrtExperimental_OrtModelPackageApi_CreateModelPackageContext_SinceV28_Fn
+      CreateModelPackageContext{nullptr};
+  OrtExperimental_OrtModelPackageApi_ReleaseModelPackageContext_SinceV28_Fn
+      ReleaseModelPackageContext{nullptr};
+  OrtExperimental_OrtModelPackageApi_ModelPackage_GetSchemaVersion_SinceV28_Fn
+      ModelPackage_GetSchemaVersion{nullptr};
+  OrtExperimental_OrtModelPackageApi_ModelPackage_GetComponentCount_SinceV28_Fn
+      ModelPackage_GetComponentCount{nullptr};
+  OrtExperimental_OrtModelPackageApi_ModelPackage_GetComponentNames_SinceV28_Fn
+      ModelPackage_GetComponentNames{nullptr};
+  OrtExperimental_OrtModelPackageApi_ModelPackage_GetVariantCount_SinceV28_Fn
+      ModelPackage_GetVariantCount{nullptr};
+  OrtExperimental_OrtModelPackageApi_ModelPackage_GetVariantNames_SinceV28_Fn
+      ModelPackage_GetVariantNames{nullptr};
+  OrtExperimental_OrtModelPackageApi_ModelPackage_GetVariantEpName_SinceV28_Fn
+      ModelPackage_GetVariantEpName{nullptr};
+  OrtExperimental_OrtModelPackageApi_SelectComponent_SinceV28_Fn
+      SelectComponent{nullptr};
+  OrtExperimental_OrtModelPackageApi_ReleaseModelPackageComponentContext_SinceV28_Fn
+      ReleaseModelPackageComponentContext{nullptr};
+  OrtExperimental_OrtModelPackageApi_ModelPackageComponent_GetSelectedVariantName_SinceV28_Fn
+      ModelPackageComponent_GetSelectedVariantName{nullptr};
+  OrtExperimental_OrtModelPackageApi_ModelPackageComponent_GetSelectedVariantFolderPath_SinceV28_Fn
+      ModelPackageComponent_GetSelectedVariantFolderPath{nullptr};
+  OrtExperimental_OrtModelPackageApi_CreateSession_SinceV28_Fn
+      CreateSession{nullptr};
+};
+
+inline const ModelPackageFns& GetModelPackageFns() {
+  static const ModelPackageFns fns = []() {
+    const OrtApi* api = &Ort::GetApi();
+    ModelPackageFns f;
+#define RESOLVE(member, getter)                                              \
+  do {                                                                       \
+    f.member = Ort::Experimental::getter(api);                               \
+    if (f.member == nullptr) {                                               \
+      throw std::runtime_error(std::string("Failed to resolve experimental " \
+                                           "OrtModelPackageApi_") +          \
+                               #member "_SinceV28");                         \
+    }                                                                        \
+  } while (0)
+    RESOLVE(CreateModelPackageOptionsFromSessionOptions,
+            Get_OrtModelPackageApi_CreateModelPackageOptionsFromSessionOptions_SinceV28_Fn);
+    RESOLVE(ReleaseModelPackageOptions,
+            Get_OrtModelPackageApi_ReleaseModelPackageOptions_SinceV28_Fn);
+    RESOLVE(CreateModelPackageContext,
+            Get_OrtModelPackageApi_CreateModelPackageContext_SinceV28_Fn);
+    RESOLVE(ReleaseModelPackageContext,
+            Get_OrtModelPackageApi_ReleaseModelPackageContext_SinceV28_Fn);
+    RESOLVE(ModelPackage_GetSchemaVersion,
+            Get_OrtModelPackageApi_ModelPackage_GetSchemaVersion_SinceV28_Fn);
+    RESOLVE(ModelPackage_GetComponentCount,
+            Get_OrtModelPackageApi_ModelPackage_GetComponentCount_SinceV28_Fn);
+    RESOLVE(ModelPackage_GetComponentNames,
+            Get_OrtModelPackageApi_ModelPackage_GetComponentNames_SinceV28_Fn);
+    RESOLVE(ModelPackage_GetVariantCount,
+            Get_OrtModelPackageApi_ModelPackage_GetVariantCount_SinceV28_Fn);
+    RESOLVE(ModelPackage_GetVariantNames,
+            Get_OrtModelPackageApi_ModelPackage_GetVariantNames_SinceV28_Fn);
+    RESOLVE(ModelPackage_GetVariantEpName,
+            Get_OrtModelPackageApi_ModelPackage_GetVariantEpName_SinceV28_Fn);
+    RESOLVE(SelectComponent,
+            Get_OrtModelPackageApi_SelectComponent_SinceV28_Fn);
+    RESOLVE(ReleaseModelPackageComponentContext,
+            Get_OrtModelPackageApi_ReleaseModelPackageComponentContext_SinceV28_Fn);
+    RESOLVE(ModelPackageComponent_GetSelectedVariantName,
+            Get_OrtModelPackageApi_ModelPackageComponent_GetSelectedVariantName_SinceV28_Fn);
+    RESOLVE(ModelPackageComponent_GetSelectedVariantFolderPath,
+            Get_OrtModelPackageApi_ModelPackageComponent_GetSelectedVariantFolderPath_SinceV28_Fn);
+    RESOLVE(CreateSession,
+            Get_OrtModelPackageApi_CreateSession_SinceV28_Fn);
+#undef RESOLVE
+    return f;
+  }();
+  return fns;
+}
 // ------------------------------------------------------------------
 // Helpers to build a test model package on disk
 // ------------------------------------------------------------------
@@ -233,26 +318,25 @@ std::filesystem::path CreateModelPackageApiTestPackage(bool multi_file_variant =
 TEST(ModelPackageApiTest, PackageContextQueries) {
   const auto package_root = CreateModelPackageApiTestPackage();
 
-  const OrtModelPackageApi* pkg_api = Ort::GetApi().GetModelPackageApi();
-  ASSERT_NE(pkg_api, nullptr);
+  const auto& pkg_api = GetModelPackageFns();
 
-  auto context_deleter = [pkg_api](OrtModelPackageContext* p) {
-    if (p) pkg_api->ReleaseModelPackageContext(p);
+  auto context_deleter = [&pkg_api](OrtModelPackageContext* p) {
+    if (p) pkg_api.ReleaseModelPackageContext(p);
   };
   std::unique_ptr<OrtModelPackageContext, decltype(context_deleter)> model_pkg_context(nullptr, context_deleter);
 
   OrtModelPackageContext* raw_context = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageContext(package_root.c_str(), &raw_context));
+  ASSERT_ORTSTATUS_OK(pkg_api.CreateModelPackageContext(package_root.c_str(), &raw_context));
   model_pkg_context.reset(raw_context);
 
   // Query: component count + names
   size_t component_count = 0;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetComponentCount(model_pkg_context.get(), &component_count));
+  ASSERT_ORTSTATUS_OK(pkg_api.ModelPackage_GetComponentCount(model_pkg_context.get(), &component_count));
   ASSERT_EQ(component_count, 1u);
 
   const char* const* component_names = nullptr;
   size_t component_name_count = 0;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetComponentNames(
+  ASSERT_ORTSTATUS_OK(pkg_api.ModelPackage_GetComponentNames(
       model_pkg_context.get(), &component_names, &component_name_count));
   ASSERT_EQ(component_name_count, 1u);
   ASSERT_NE(component_names, nullptr);
@@ -261,13 +345,13 @@ TEST(ModelPackageApiTest, PackageContextQueries) {
 
   // Query: variant count + names
   size_t variant_count = 0;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetVariantCount(
+  ASSERT_ORTSTATUS_OK(pkg_api.ModelPackage_GetVariantCount(
       model_pkg_context.get(), "model_1", &variant_count));
   ASSERT_EQ(variant_count, 2u);
 
   const char* const* variant_names = nullptr;
   size_t variant_name_count = 0;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetVariantNames(
+  ASSERT_ORTSTATUS_OK(pkg_api.ModelPackage_GetVariantNames(
       model_pkg_context.get(), "model_1", &variant_names, &variant_name_count));
   ASSERT_EQ(variant_name_count, 2u);
 
@@ -294,17 +378,16 @@ TEST(ModelPackageApiTest, SingleFileVariantInComponent_SelectComponentAndCreateS
   std::unordered_map<std::string, std::string> ep_options;
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
-  const OrtModelPackageApi* pkg_api = Ort::GetApi().GetModelPackageApi();
-  ASSERT_NE(pkg_api, nullptr);
+  const auto& pkg_api = GetModelPackageFns();
 
-  auto options_deleter = [pkg_api](OrtModelPackageOptions* p) {
-    if (p) pkg_api->ReleaseModelPackageOptions(p);
+  auto options_deleter = [&pkg_api](OrtModelPackageOptions* p) {
+    if (p) pkg_api.ReleaseModelPackageOptions(p);
   };
-  auto context_deleter = [pkg_api](OrtModelPackageContext* p) {
-    if (p) pkg_api->ReleaseModelPackageContext(p);
+  auto context_deleter = [&pkg_api](OrtModelPackageContext* p) {
+    if (p) pkg_api.ReleaseModelPackageContext(p);
   };
-  auto component_context_deleter = [pkg_api](OrtModelPackageComponentContext* p) {
-    if (p) pkg_api->ReleaseModelPackageComponentContext(p);
+  auto component_context_deleter = [&pkg_api](OrtModelPackageComponentContext* p) {
+    if (p) pkg_api.ReleaseModelPackageComponentContext(p);
   };
 
   std::unique_ptr<OrtModelPackageOptions, decltype(options_deleter)> model_pkg_options(nullptr, options_deleter);
@@ -312,25 +395,25 @@ TEST(ModelPackageApiTest, SingleFileVariantInComponent_SelectComponentAndCreateS
   std::unique_ptr<OrtModelPackageComponentContext, decltype(component_context_deleter)> component_context(nullptr, component_context_deleter);
 
   OrtModelPackageOptions* raw_options = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageOptionsFromSessionOptions(*ort_env, session_options, &raw_options));
+  ASSERT_ORTSTATUS_OK(pkg_api.CreateModelPackageOptionsFromSessionOptions(*ort_env, session_options, &raw_options));
   model_pkg_options.reset(raw_options);
 
   OrtModelPackageContext* raw_context = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageContext(package_root.c_str(), &raw_context));
+  ASSERT_ORTSTATUS_OK(pkg_api.CreateModelPackageContext(package_root.c_str(), &raw_context));
   model_pkg_context.reset(raw_context);
 
   OrtModelPackageComponentContext* raw_component_context = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->SelectComponent(model_pkg_context.get(),
-                                               "model_1",
-                                               model_pkg_options.get(),
-                                               &raw_component_context));
+  ASSERT_ORTSTATUS_OK(pkg_api.SelectComponent(model_pkg_context.get(),
+                                              "model_1",
+                                              model_pkg_options.get(),
+                                              &raw_component_context));
   component_context.reset(raw_component_context);
 
   OrtSession* raw_session = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->CreateSession(*ort_env,
-                                             component_context.get(),
-                                             session_options,
-                                             &raw_session));
+  ASSERT_ORTSTATUS_OK(pkg_api.CreateSession(*ort_env,
+                                            component_context.get(),
+                                            session_options,
+                                            &raw_session));
   Ort::Session session(raw_session);
 
   Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
@@ -921,33 +1004,32 @@ TEST(ModelPackageApiTest, GetVariantEpName_ReturnsSingleEp) {
     os << R"({"filename":"mul_1.onnx"})";
   }
 
-  const OrtModelPackageApi* pkg_api = Ort::GetApi().GetModelPackageApi();
-  ASSERT_NE(pkg_api, nullptr);
+  const auto& pkg_api = GetModelPackageFns();
 
-  auto context_deleter = [pkg_api](OrtModelPackageContext* p) {
-    if (p) pkg_api->ReleaseModelPackageContext(p);
+  auto context_deleter = [&pkg_api](OrtModelPackageContext* p) {
+    if (p) pkg_api.ReleaseModelPackageContext(p);
   };
   std::unique_ptr<OrtModelPackageContext, decltype(context_deleter)> ctx(nullptr, context_deleter);
   OrtModelPackageContext* raw_ctx = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageContext(package_root.c_str(), &raw_ctx));
+  ASSERT_ORTSTATUS_OK(pkg_api.CreateModelPackageContext(package_root.c_str(), &raw_ctx));
   ctx.reset(raw_ctx);
 
   // variant_1 targets example_ep
   const char* ep1 = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetVariantEpName(
+  ASSERT_ORTSTATUS_OK(pkg_api.ModelPackage_GetVariantEpName(
       ctx.get(), "model_1", "variant_1", &ep1));
   ASSERT_NE(ep1, nullptr);
   EXPECT_STREQ(ep1, "example_ep");
 
   // variant_2 targets other_ep
   const char* ep2 = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetVariantEpName(
+  ASSERT_ORTSTATUS_OK(pkg_api.ModelPackage_GetVariantEpName(
       ctx.get(), "model_1", "variant_2", &ep2));
   ASSERT_NE(ep2, nullptr);
   EXPECT_STREQ(ep2, "other_ep");
 
   // Optional out-parameter: callers can pass NULL.
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackage_GetVariantEpName(
+  ASSERT_ORTSTATUS_OK(pkg_api.ModelPackage_GetVariantEpName(
       ctx.get(), "model_1", "variant_1", nullptr));
 
   std::filesystem::remove_all(package_root, ec);
@@ -990,32 +1072,31 @@ TEST(ModelPackageTest, VariantSelector_TieBreakIsDeterministic) {
     std::unordered_map<std::string, std::string> ep_options;
     session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
-    const OrtModelPackageApi* pkg_api = Ort::GetApi().GetModelPackageApi();
-    ASSERT_NE(pkg_api, nullptr);
+    const auto& pkg_api = GetModelPackageFns();
 
-    auto options_deleter = [pkg_api](OrtModelPackageOptions* p) { if (p) pkg_api->ReleaseModelPackageOptions(p); };
-    auto context_deleter = [pkg_api](OrtModelPackageContext* p) { if (p) pkg_api->ReleaseModelPackageContext(p); };
-    auto component_context_deleter = [pkg_api](OrtModelPackageComponentContext* p) {
-      if (p) pkg_api->ReleaseModelPackageComponentContext(p);
+    auto options_deleter = [&pkg_api](OrtModelPackageOptions* p) { if (p) pkg_api.ReleaseModelPackageOptions(p); };
+    auto context_deleter = [&pkg_api](OrtModelPackageContext* p) { if (p) pkg_api.ReleaseModelPackageContext(p); };
+    auto component_context_deleter = [&pkg_api](OrtModelPackageComponentContext* p) {
+      if (p) pkg_api.ReleaseModelPackageComponentContext(p);
     };
     std::unique_ptr<OrtModelPackageOptions, decltype(options_deleter)> mp_opts(nullptr, options_deleter);
     std::unique_ptr<OrtModelPackageContext, decltype(context_deleter)> ctx(nullptr, context_deleter);
     std::unique_ptr<OrtModelPackageComponentContext, decltype(component_context_deleter)> comp_ctx(nullptr, component_context_deleter);
 
     OrtModelPackageOptions* raw_mp_opts = nullptr;
-    ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageOptionsFromSessionOptions(*ort_env, session_options, &raw_mp_opts));
+    ASSERT_ORTSTATUS_OK(pkg_api.CreateModelPackageOptionsFromSessionOptions(*ort_env, session_options, &raw_mp_opts));
     mp_opts.reset(raw_mp_opts);
 
     OrtModelPackageContext* raw_ctx = nullptr;
-    ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageContext(package_root.c_str(), &raw_ctx));
+    ASSERT_ORTSTATUS_OK(pkg_api.CreateModelPackageContext(package_root.c_str(), &raw_ctx));
     ctx.reset(raw_ctx);
 
     OrtModelPackageComponentContext* raw_comp_ctx = nullptr;
-    ASSERT_ORTSTATUS_OK(pkg_api->SelectComponent(ctx.get(), "model_1", mp_opts.get(), &raw_comp_ctx));
+    ASSERT_ORTSTATUS_OK(pkg_api.SelectComponent(ctx.get(), "model_1", mp_opts.get(), &raw_comp_ctx));
     comp_ctx.reset(raw_comp_ctx);
 
     const ORTCHAR_T* selected_folder = nullptr;
-    ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFolderPath(comp_ctx.get(), &selected_folder));
+    ASSERT_ORTSTATUS_OK(pkg_api.ModelPackageComponent_GetSelectedVariantFolderPath(comp_ctx.get(), &selected_folder));
     ASSERT_NE(selected_folder, nullptr);
 
     // Path looks like .../models/model_1/<variant_x> -- the folder name is the variant.
@@ -1082,28 +1163,27 @@ TEST(ModelPackageTest, VariantSessionOptions_DispatchedThroughAddSessionConfigEn
   std::unordered_map<std::string, std::string> ep_options;
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
-  const OrtModelPackageApi* pkg_api = Ort::GetApi().GetModelPackageApi();
-  ASSERT_NE(pkg_api, nullptr);
+  const auto& pkg_api = GetModelPackageFns();
 
-  auto options_deleter = [pkg_api](OrtModelPackageOptions* p) { if (p) pkg_api->ReleaseModelPackageOptions(p); };
-  auto context_deleter = [pkg_api](OrtModelPackageContext* p) { if (p) pkg_api->ReleaseModelPackageContext(p); };
-  auto component_context_deleter = [pkg_api](OrtModelPackageComponentContext* p) {
-    if (p) pkg_api->ReleaseModelPackageComponentContext(p);
+  auto options_deleter = [&pkg_api](OrtModelPackageOptions* p) { if (p) pkg_api.ReleaseModelPackageOptions(p); };
+  auto context_deleter = [&pkg_api](OrtModelPackageContext* p) { if (p) pkg_api.ReleaseModelPackageContext(p); };
+  auto component_context_deleter = [&pkg_api](OrtModelPackageComponentContext* p) {
+    if (p) pkg_api.ReleaseModelPackageComponentContext(p);
   };
   std::unique_ptr<OrtModelPackageOptions, decltype(options_deleter)> mp_opts(nullptr, options_deleter);
   std::unique_ptr<OrtModelPackageContext, decltype(context_deleter)> ctx(nullptr, context_deleter);
   std::unique_ptr<OrtModelPackageComponentContext, decltype(component_context_deleter)> comp_ctx(nullptr, component_context_deleter);
 
   OrtModelPackageOptions* raw_mp_opts = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageOptionsFromSessionOptions(*ort_env, session_options, &raw_mp_opts));
+  ASSERT_ORTSTATUS_OK(pkg_api.CreateModelPackageOptionsFromSessionOptions(*ort_env, session_options, &raw_mp_opts));
   mp_opts.reset(raw_mp_opts);
 
   OrtModelPackageContext* raw_ctx = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageContext(package_root.c_str(), &raw_ctx));
+  ASSERT_ORTSTATUS_OK(pkg_api.CreateModelPackageContext(package_root.c_str(), &raw_ctx));
   ctx.reset(raw_ctx);
 
   OrtModelPackageComponentContext* raw_comp_ctx = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->SelectComponent(ctx.get(), "model_1", mp_opts.get(), &raw_comp_ctx));
+  ASSERT_ORTSTATUS_OK(pkg_api.SelectComponent(ctx.get(), "model_1", mp_opts.get(), &raw_comp_ctx));
   comp_ctx.reset(raw_comp_ctx);
 
   // CreateSession iterates the per-file session_options and dispatches each through OrtApis::AddSessionConfigEntry.
@@ -1111,7 +1191,7 @@ TEST(ModelPackageTest, VariantSessionOptions_DispatchedThroughAddSessionConfigEn
   // Pass nullptr for session_options so the metadata-merge path runs (it is skipped when the caller
   // supplies their own session_options).
   OrtSession* raw_session = nullptr;
-  OrtStatus* st = pkg_api->CreateSession(*ort_env, comp_ctx.get(), /*session_options=*/nullptr, &raw_session);
+  OrtStatus* st = pkg_api.CreateSession(*ort_env, comp_ctx.get(), /*session_options=*/nullptr, &raw_session);
   // Clean up session first to avoid leaks if assertion fails.
   if (raw_session != nullptr) {
     Ort::GetApi().ReleaseSession(raw_session);
@@ -1128,60 +1208,6 @@ TEST(ModelPackageTest, VariantSessionOptions_DispatchedThroughAddSessionConfigEn
       err_msg.find("intra_op_num_threads") != std::string::npos;
   EXPECT_TRUE(mentions_dispatch) << "error did not mention typed dispatch: " << err_msg;
 
-  std::filesystem::remove_all(package_root, ec);
-}
-
-// Test that the C++ RAII wrappers (Ort::ModelPackageContext, etc.) work correctly.
-TEST(ModelPackageApiTest, CxxWrappers_PackageContextQueries) {
-  const auto package_root = CreateModelPackageApiTestPackage();
-
-  Ort::ModelPackageContext ctx(package_root.c_str());
-
-  // Component queries
-  EXPECT_EQ(ctx.GetComponentCount(), 1u);
-  auto component_names = ctx.GetComponentNames();
-  ASSERT_EQ(component_names.size(), 1u);
-  EXPECT_EQ(component_names[0], "model_1");
-
-  // Variant queries
-  EXPECT_EQ(ctx.GetVariantCount("model_1"), 2u);
-  auto variant_names = ctx.GetVariantNames("model_1");
-  ASSERT_EQ(variant_names.size(), 2u);
-  std::unordered_set<std::string> variant_set(variant_names.begin(), variant_names.end());
-  EXPECT_EQ(variant_set.count("variant_1"), 1u);
-  EXPECT_EQ(variant_set.count("variant_2"), 1u);
-
-  std::error_code ec;
-  std::filesystem::remove_all(package_root, ec);
-}
-
-TEST(ModelPackageApiTest, CxxWrappers_SelectComponentAndQueryFileAccessors) {
-  const auto package_root = CreateModelPackageApiTestPackage();
-
-  RegisteredEpDeviceUniquePtr example_ep;
-  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
-  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
-
-  Ort::SessionOptions so;
-  std::unordered_map<std::string, std::string> ep_options;
-  so.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
-  Ort::ModelPackageOptions pkg_opts(*ort_env, so);
-
-  Ort::ModelPackageContext ctx(package_root.c_str());
-  auto cix = ctx.SelectComponent("model_1", pkg_opts);
-
-  // Folder path should be non-empty
-  auto folder = cix.GetSelectedVariantFolderPath();
-  EXPECT_FALSE(folder.empty());
-
-  // Selected variant name should not throw
-  auto variant_name = cix.GetSelectedVariantName();
-  EXPECT_FALSE(variant_name.empty());
-
-  // CreateSession via C++ wrapper
-  auto session = cix.CreateSession(*ort_env, so);
-
-  std::error_code ec;
   std::filesystem::remove_all(package_root, ec);
 }
 
@@ -1221,31 +1247,29 @@ TEST(ModelPackageApiTest, FolderPath_ReturnsCorrectPath_WhenVariantJsonAbsent) {
   Ort::SessionOptions so;
   std::unordered_map<std::string, std::string> ep_options;
   so.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
-  Ort::ModelPackageOptions pkg_opts(*ort_env, so);
 
-  const OrtModelPackageApi* pkg_api = Ort::GetApi().GetModelPackageApi();
-  ASSERT_NE(pkg_api, nullptr);
+  const auto& pkg_api = GetModelPackageFns();
 
   OrtModelPackageOptions* raw_mp_opts = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageOptionsFromSessionOptions(*ort_env, so, &raw_mp_opts));
-  auto options_deleter = [pkg_api](OrtModelPackageOptions* p) { if (p) pkg_api->ReleaseModelPackageOptions(p); };
+  ASSERT_ORTSTATUS_OK(pkg_api.CreateModelPackageOptionsFromSessionOptions(*ort_env, so, &raw_mp_opts));
+  auto options_deleter = [&pkg_api](OrtModelPackageOptions* p) { if (p) pkg_api.ReleaseModelPackageOptions(p); };
   std::unique_ptr<OrtModelPackageOptions, decltype(options_deleter)> mp_opts(raw_mp_opts, options_deleter);
 
   OrtModelPackageContext* raw_ctx = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->CreateModelPackageContext(package_root.c_str(), &raw_ctx));
-  auto context_deleter = [pkg_api](OrtModelPackageContext* p) { if (p) pkg_api->ReleaseModelPackageContext(p); };
+  ASSERT_ORTSTATUS_OK(pkg_api.CreateModelPackageContext(package_root.c_str(), &raw_ctx));
+  auto context_deleter = [&pkg_api](OrtModelPackageContext* p) { if (p) pkg_api.ReleaseModelPackageContext(p); };
   std::unique_ptr<OrtModelPackageContext, decltype(context_deleter)> ctx(raw_ctx, context_deleter);
 
   OrtModelPackageComponentContext* raw_comp_ctx = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->SelectComponent(ctx.get(), "model_1", mp_opts.get(), &raw_comp_ctx));
-  auto component_context_deleter = [pkg_api](OrtModelPackageComponentContext* p) {
-    if (p) pkg_api->ReleaseModelPackageComponentContext(p);
+  ASSERT_ORTSTATUS_OK(pkg_api.SelectComponent(ctx.get(), "model_1", mp_opts.get(), &raw_comp_ctx));
+  auto component_context_deleter = [&pkg_api](OrtModelPackageComponentContext* p) {
+    if (p) pkg_api.ReleaseModelPackageComponentContext(p);
   };
   std::unique_ptr<OrtModelPackageComponentContext, decltype(component_context_deleter)> comp_ctx(raw_comp_ctx, component_context_deleter);
 
   // GetSelectedVariantFolderPath should return the variant directory even without variant.json.
   const ORTCHAR_T* selected_folder = nullptr;
-  ASSERT_ORTSTATUS_OK(pkg_api->ModelPackageComponent_GetSelectedVariantFolderPath(comp_ctx.get(), &selected_folder));
+  ASSERT_ORTSTATUS_OK(pkg_api.ModelPackageComponent_GetSelectedVariantFolderPath(comp_ctx.get(), &selected_folder));
   ASSERT_NE(selected_folder, nullptr);
 
   const auto result_path = std::filesystem::path(selected_folder);

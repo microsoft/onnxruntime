@@ -90,12 +90,21 @@ class MoeGemmProfiler {
     sm_ = sm;
   }
 
-  // Profile tactics for a GEMM problem using GemmProfilerBackend
-  void profileTactics(CutlassMoeFCRunnerInterface* runner, onnxruntime::llm::nvinfer::DataType dtype,
+  // Profile tactics for a GEMM problem using GemmProfilerBackend.
+  // Profiles (and caches) the best config for the M bucket that contains dims.maxM. The first
+  // call for a new (GemmId, M-bucket) pair runs the profiler; subsequent calls return immediately.
+  // The data/weight types are taken from gemmId, so no separate dtype argument is needed.
+  void profileTactics(CutlassMoeFCRunnerInterface* runner,
                       weight_only::GemmDims const& dims, MoeGemmId const& gemmId);
 
-  // Get best config for a given M and GemmId
+  // Get best config for a given M and GemmId. Selects the config profiled for the M bucket that
+  // contains m, so small-M (decode) GEMMs use a decode-tuned tile instead of a prefill-tuned one.
   std::optional<Config> getBestConfig(int m, MoeGemmId const& id) const;
+
+  // Snap a row count M to a representative profiling bucket. Decode (small M) and prefill
+  // (large M) favor very different CUTLASS tile shapes, so we keep a separate best config per
+  // bucket rather than reusing a single shape-only config. Buckets are powers of two.
+  static int bucketM(int64_t m);
 
  private:
   // Initialize backend for profiling
@@ -108,8 +117,8 @@ class MoeGemmProfiler {
   GemmProfilerBackend backend_;
   CutlassMoeFCRunnerInterface* runner_{nullptr};
 
-  // Cached results: (M, GemmId) -> best config
-  mutable std::unordered_map<MoeGemmId, std::optional<Config>, MoeGemmIdHash> config_cache_;
+  // Cached results: GemmId -> (M bucket -> best config)
+  mutable std::unordered_map<MoeGemmId, std::unordered_map<int, std::optional<Config>>, MoeGemmIdHash> config_cache_;
 
   // Profiler parameters
   int num_experts_{0};

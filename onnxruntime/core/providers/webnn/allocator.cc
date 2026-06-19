@@ -20,6 +20,7 @@ void* WebNNTensorAllocator::Alloc(size_t size) {
   allocations_[p] = size;
   stats_.num_allocs++;
   stats_.bytes_in_use += SafeInt<int64_t>(size);
+  stats_.bytes_requested_in_use += SafeInt<int64_t>(size);
   return p;
 }
 
@@ -30,6 +31,7 @@ void WebNNTensorAllocator::Free(void* p) {
   EM_ASM({ Module.webnnReleaseTensorId($0); }, p);
   size_t size = allocations_[p];
   stats_.bytes_in_use -= size;
+  stats_.bytes_requested_in_use -= size;
   allocations_.erase(p);
 }
 

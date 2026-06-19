@@ -44,7 +44,7 @@ CudaSyncStream::CudaSyncStream(CudaEpFactory& factory, int device_id,
     : OrtSyncStreamImpl{},
       factory_(factory),
       device_id_(device_id) {
-  ort_version_supported = kCudaPluginEpMinOrtApiVersion;
+  ort_version_supported = ORT_API_VERSION;
   GetHandle = GetHandleImpl;
   CreateNotification = CreateNotificationImpl;
   Flush = FlushImpl;
@@ -354,7 +354,7 @@ OrtStatus* CudaSyncStream::CleanupDeferredCPUBuffers() noexcept {
 CudaSyncNotification::CudaSyncNotification(CudaSyncStream& stream)
     : OrtSyncNotificationImpl{},
       stream_(stream) {
-  ort_version_supported = kCudaPluginEpMinOrtApiVersion;
+  ort_version_supported = ORT_API_VERSION;
   Activate = ActivateImpl;
   WaitOnDevice = WaitOnDeviceImpl;
   WaitOnHost = WaitOnHostImpl;

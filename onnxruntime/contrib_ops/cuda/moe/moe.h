@@ -24,8 +24,6 @@ class MoE final : public CudaKernel, public MoEBase {
 
  private:
   mutable onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler mGemmProfiler;
-  mutable onnxruntime::llm::kernels::cutlass_kernels::MoeGemmId mGemmId1;
-  mutable onnxruntime::llm::kernels::cutlass_kernels::MoeGemmId mGemmId2;
   mutable std::mutex mGemmProfilerMutex;
 };
 

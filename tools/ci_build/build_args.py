@@ -830,9 +830,9 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     )
     webgpu_group.add_argument(
         "--wgsl_template",
-        choices=["static", "dynamic"],
-        default="static",  # By default, use static WGSL template generation
-        help="Specify the generator for WebGPU WGSL template generation.",
+        choices=["static"],
+        default="static",
+        help="Deprecated no-op. WGSL template generation is always static; kept for backward compatibility.",
     )
 
     # --- XNNPACK ---
