@@ -1535,13 +1535,34 @@ class TestONNXAttentionGQALargeHeadUnfused(unittest.TestCase):
         self.assertLess(out.float().max().item(), 1.0)
 
 
-@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping large head MEA fallback tests.")
+@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping large head MEA tests.")
 @patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1", "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION": "0"})
-class TestONNXAttentionGQALargeHeadNonpadMEAFallback(unittest.TestCase):
-    """head_size=512 with nonpad_kv_seqlen must fall back instead of launching MEA."""
+class TestONNXAttentionGQALargeHeadNonpadMEA(unittest.TestCase):
+    """Large-head normal and right-padding MEA kernels initialize independently."""
 
-    def test_gqa_large_head_nonpad_seqlen_falls_back_from_mea_fp16(self):
-        config = AttentionConfig(
+    def test_gqa_large_head_nonpad_seqlen_after_default_mea_fp16(self):
+        default_config = AttentionConfig(
+            batch_size=2,
+            q_sequence_length=32,
+            kv_sequence_length=32,
+            past_kv_sequence_length=0,
+            q_num_heads=8,
+            kv_num_heads=4,
+            head_size=512,
+            is_causal=0,
+        )
+        parity_check_gqa_prompt(
+            config=default_config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=False,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+        nonpad_config = AttentionConfig(
             batch_size=2,
             q_sequence_length=32,
             kv_sequence_length=32,
@@ -1555,7 +1576,7 @@ class TestONNXAttentionGQALargeHeadNonpadMEAFallback(unittest.TestCase):
         nonpad_seqlens = torch.tensor([32, 19], dtype=torch.int64, device="cuda")
 
         parity_check_gqa_prompt_with_nonpad_kv_seqlen(
-            config=config,
+            config=nonpad_config,
             nonpad_seqlens=nonpad_seqlens,
             ep="CUDAExecutionProvider",
             device="cuda",

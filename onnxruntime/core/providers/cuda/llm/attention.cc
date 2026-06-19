@@ -1381,12 +1381,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         // Fall back to unfused attention when they differ.
         (!is_gqa || parameters.head_size == parameters.v_head_size) &&
         (past_key == nullptr || parameters.head_size == parameters.v_head_size) &&
-        // The nonpad_kv_seqlen path uses CUTLASS FMHA custom right-padding.
-        // For large heads this variant can exceed the per-SM dynamic shared
-        // memory opt-in limit on smaller architectures. Let the unified
-        // unfused path handle those cases instead of launching an over-budget
-        // MEA kernel.
-        (nonpad_kv_seqlen == nullptr || parameters.head_size <= 256) &&
         // GQA+MEA requires LaunchUngroup which only has fp16/bf16 instantiations.
         // FP32 GQA must fall through to the unfused path.
         !(is_gqa && std::is_same<T, float>::value);
