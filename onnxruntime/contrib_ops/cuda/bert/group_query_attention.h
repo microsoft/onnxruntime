@@ -39,6 +39,7 @@ class GroupQueryAttention final : public CudaKernel {
   bool disable_memory_efficient_attention_;
   bool disable_flash_decode_;
   bool enable_xqa_;
+  bool xqa_force_disabled_;                 // True when ORT_ENABLE_XQA=0 is explicitly set (overrides default-on paths).
   bool enable_cudnn_flash_attention_;       // cuDNN SDPA explicitly enabled (env / sdpa_kernel)
   bool auto_enable_cudnn_flash_attention_;  // auto-prefer cuDNN SDPA on SM>=90 when no explicit kernel pinned
 
@@ -48,8 +49,9 @@ class GroupQueryAttention final : public CudaKernel {
 
   static constexpr int kZerosCount = 256;  // In prompt case we create a zero buffer of size 256 for seqlen (assume batch_size <= 256)
   IAllocatorUniquePtr<int> zeros_;
+  // FP32 head_sink cached in PrePack for the XQA path (empty when head_sink is not a constant initializer).
   IAllocatorUniquePtr<float> xqa_head_sink_;
-  int xqa_head_sink_count_ = 0;
+  int xqa_head_sink_count_ = 0;  // Number of elements in xqa_head_sink_ (0 when not prepacked).
   const AttentionKernelOptions* kernel_options_;
 };
 

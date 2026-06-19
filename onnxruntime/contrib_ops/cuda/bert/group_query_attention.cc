@@ -111,8 +111,15 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   kv_cache_bit_width_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("kv_cache_bit_width", 0));
 
   bool is_quantized = (k_quant_type_ != KVQuantizationType::NONE || v_quant_type_ != KVQuantizationType::NONE);
-  int default_enable_xqa = is_quantized ? 1 : 0;
-  enable_xqa_ = (std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>) && ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", default_enable_xqa) != 0;
+  // XQA enablement:
+  //  - An explicit ORT_ENABLE_XQA overrides everything (1 = on, 0 = off, including the head_sink default-on path).
+  //  - When unset, XQA defaults on for the quantized KV cache path and off for the non-quantized path
+  //    (the non-quantized head_sink decode path is additionally enabled per-Run in ComputeInternal).
+  constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
+  const int xqa_env = ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", -1);  // -1 means unset
+  xqa_force_disabled_ = (xqa_env == 0);
+  const int effective_enable_xqa = (xqa_env == -1) ? (is_quantized ? 1 : 0) : xqa_env;
+  enable_xqa_ = kIsFp16OrBf16 && (effective_enable_xqa != 0);
 
   kernel_options_ = this->GetAttentionKernelOptions();
 
@@ -122,7 +129,6 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   disable_memory_efficient_attention_ = !kernel_options_->UseEfficientAttention();
 
   // cuDNN SDPA (cudnn_frontend) supports FP16 and BF16 and is auto-preferred on SM>=90.
-  constexpr bool kIsFp16OrBf16 = std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value;
   enable_cudnn_flash_attention_ = kIsFp16OrBf16 && kernel_options_->UseCudnnFlashAttention();
   auto_enable_cudnn_flash_attention_ = kIsFp16OrBf16 && kernel_options_->AllowCudnnFlashAttentionAuto();
 
@@ -138,12 +144,17 @@ template <typename T, typename U>
 Status GroupQueryAttention<T, U>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                                           bool& is_packed, PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
+  // Keep is_packed=false so the original fp16/bf16 head_sink remains available to the Flash/fallback
+  // paths (which are used when XQA is disabled or ineligible). We only cache an extra FP32 copy for XQA.
   is_packed = false;
 
   if (input_idx != kHeadSinkInputIndex) {
     return Status::OK();
   }
 
+  // XQA consumes the attention sink as FP32. When head_sink is a constant initializer, convert it once
+  // here into a cached device buffer (xqa_head_sink_) to avoid a per-launch conversion. Dynamic /
+  // non-initializer head_sink inputs are not prepacked and fall back to the per-launch scratch path.
   if constexpr (std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>) {
     const auto& shape = tensor.Shape();
     ORT_RETURN_IF_NOT(shape.NumDimensions() == 1,
@@ -152,6 +163,8 @@ Status GroupQueryAttention<T, U>::PrePack(const Tensor& tensor, int input_idx, A
                       "head_sink dimension 0 must be equal to the num heads, got ", shape[0]);
     ORT_RETURN_IF_NOT(tensor.IsDataType<T>(), "head_sink type must match GroupQueryAttention input type");
 
+    // Derive the element count from the tensor itself (one sink per head) rather than num_heads_.
+    const int head_sink_count = static_cast<int>(shape.Size());
     const size_t head_sink_bytes = tensor.SizeInBytes();
     const void* head_sink_data = tensor.DataRaw();
     IAllocatorUniquePtr<void> head_sink_gpu;
@@ -164,13 +177,13 @@ Status GroupQueryAttention<T, U>::PrePack(const Tensor& tensor, int input_idx, A
       head_sink_data = head_sink_gpu.get();
     }
 
-    xqa_head_sink_ = IAllocator::MakeUniquePtr<float>(alloc, static_cast<size_t>(num_heads_), true);
+    xqa_head_sink_ = IAllocator::MakeUniquePtr<float>(alloc, static_cast<size_t>(head_sink_count), true);
     using CudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
     ORT_RETURN_IF_ERROR(LaunchConvertHeadSinkToFloat<CudaT>(
-        reinterpret_cast<const CudaT*>(head_sink_data), xqa_head_sink_.get(), num_heads_, stream,
+        reinterpret_cast<const CudaT*>(head_sink_data), xqa_head_sink_.get(), head_sink_count, stream,
         GetDeviceProp().maxThreadsPerBlock));
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
-    xqa_head_sink_count_ = num_heads_;
+    xqa_head_sink_count_ = head_sink_count;
   }
 
   return Status::OK();
@@ -385,7 +398,14 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // 7. No local window attention (global attention only).
   const bool use_xqa_attention_sinks = head_sink != nullptr && !is_inputs_quantized;
   const bool is_xqa_smooth_softmax_supported = !parameters.use_smooth_softmax || use_xqa_attention_sinks;
-  if (enable_xqa_ &&
+  // XQA is opt-in for the non-quantized path (ORT_ENABLE_XQA), but a head_sink (attention sink) input
+  // signals a GPT-OSS style decode model that benefits from XQA, so enable it by default in that case.
+  // An explicit ORT_ENABLE_XQA=0 (xqa_force_disabled_) still wins and turns XQA off entirely.
+  // The dtype guard mirrors enable_xqa_ (XQA only supports fp16/bf16); ineligible cases fall back below.
+  constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
+  const bool xqa_enabled_for_run =
+      !xqa_force_disabled_ && (enable_xqa_ || (kIsFp16OrBf16 && use_xqa_attention_sinks));
+  if (xqa_enabled_for_run &&
       (device_prop.major >= 8) &&
       !parameters.is_first_prompt &&
       parameters.sequence_length == 1 &&
@@ -451,6 +471,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       const bool convert_xqa_head_sink = use_xqa_attention_sinks && !use_prepacked_xqa_head_sink;
       size_t xqa_head_sink_bytes = 0;
       if (convert_xqa_head_sink) {
+        // No prepacked FP32 head_sink (dynamic input): reserve scratch for the per-launch conversion.
         xqa_head_sink_bytes = parameters.num_heads * sizeof(float);
         xqa_head_sink_bytes = (xqa_head_sink_bytes + 255) / 256 * 256;
         xqa_total_bytes += xqa_head_sink_bytes;
