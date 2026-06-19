@@ -46,7 +46,8 @@ void SetEpContextDataReadFunc(Ort::SessionOptions& session_options, OrtReadNamed
 void SetEpContextDataWriteFunc(Ort::ModelCompilationOptions& compile_options, OrtWriteNamedBufferFunc write_func,
                                void* state) {
   auto set_write_func =
-      Ort::Experimental::Get_OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteFunc_SinceV28_Fn(&Ort::GetApi());
+      Ort::Experimental::Get_OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteFunc_SinceV28_Fn(
+          &Ort::GetApi());
   ASSERT_NE(set_write_func, nullptr);
   ASSERT_ORTSTATUS_OK(set_write_func(compile_options, write_func, state));
 }

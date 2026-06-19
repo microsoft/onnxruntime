@@ -233,6 +233,7 @@ TEST(OrtEpLibrary, EpContextDataUtils_CallbackFallbackUsesCallbacks) {
   FakeEpContextConfigCallbacks callbacks{LoadEpContextDataCallback, &read_callback_state,
                                          StoreEpContextDataCallback, &write_callback_state};
   g_fake_ep_context_callbacks = &callbacks;
+  auto reset_fake_callbacks = gsl::finally([]() { g_fake_ep_context_callbacks = nullptr; });
   const Ort::Experimental::EpContextConfig fake_config = MakeEmptyEpContextConfig();
 
   std::vector<char> data;
@@ -268,6 +269,7 @@ TEST(OrtEpLibrary, EpContextDataUtils_ReadCallbackRejectsNullBufferForNonEmptyPa
   EpContextDataCallbackState read_callback_state;
   FakeEpContextConfigCallbacks callbacks{LoadInvalidEpContextDataCallback, &read_callback_state, nullptr, nullptr};
   g_fake_ep_context_callbacks = &callbacks;
+  auto reset_fake_callbacks = gsl::finally([]() { g_fake_ep_context_callbacks = nullptr; });
   const Ort::Experimental::EpContextConfig fake_config = MakeEmptyEpContextConfig();
 
   std::vector<char> data;

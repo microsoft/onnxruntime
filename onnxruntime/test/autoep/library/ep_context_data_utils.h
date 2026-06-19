@@ -406,6 +406,9 @@ inline OrtStatus* WriteEpContextDataWithFileFallback(
 }
 
 // Convenience overload that uses `file_name` as both the logical callback name and the file-fallback path.
+// Because `file_name` doubles as the fallback path, it must be a safe relative name (this overload validates it and
+// rejects absolute paths and `..` traversal). To write the file fallback to an absolute physical path (a trusted
+// caller with `graph == nullptr`), use the overload above that takes a separate `fallback_file_name`.
 inline OrtStatus* WriteEpContextDataWithFileFallback(
     const OrtApi& api,
     const OrtEpContextConfig* ep_context_config,
