@@ -545,7 +545,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::ValidateCompiledModelCompatibilityInfo
     return nullptr;
   }
 
-  // The expected format is "ExampleEP;version=0.1.0;ort_api_version=24;hardware_architecture=arch1".
+  // The expected format is "<ep_name>;version=<semver>;ort_api_version=<ORT_API_VERSION>;hardware_architecture=<arch>".
   std::string info(compatibility_info);
   if (info.find(factory.ep_name_ + ";") != 0) {
     *model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
