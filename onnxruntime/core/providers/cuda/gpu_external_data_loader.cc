@@ -3,14 +3,15 @@
 
 #ifdef USE_GDS
 
-#include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/gpu_external_data_loader.h"
 
+#include <cstdio>
 #include <fcntl.h>
 #include <unistd.h>
 #include <cufile.h>
 
 #include "core/framework/tensor.h"
+#include "core/common/common.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -24,8 +25,8 @@ GpuExternalDataLoader::GpuExternalDataLoader(int device_id) : device_id_(device_
   if (status.err == CU_FILE_SUCCESS) {
     driver_open_ = true;
   } else {
-    LOGS_DEFAULT(WARNING) << "cuFileDriverOpen failed (err=" << status.err
-                          << "). GDS direct loading will not be available.";
+    fprintf(stderr, "cuFileDriverOpen failed (err=%d). GDS direct loading will not be available.\n",
+            static_cast<int>(status.err));
   }
 }
 
