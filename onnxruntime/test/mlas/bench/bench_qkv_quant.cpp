@@ -554,6 +554,7 @@ static void BM_GQA_Flash(benchmark::State& state) {
   args.buffer = buffer.data();
   args.buffer_size_per_thread = buffer_size_per_thread;
   args.query = query.data();
+  args.q_batch_stride = static_cast<size_t>(num_heads) * seq_len * head_size;
   args.k_cache = k_cache.data();
   args.v_cache = v_cache.data();
   args.k_scale = k_scale.data();

@@ -493,6 +493,7 @@ class MlasFlashAttentionQuantizedKVTest : public MlasTestBase {
     args.buffer = flash_buffer;
     args.buffer_size_per_thread = buffer_size_per_thread;
     args.query = Q;
+    args.q_batch_stride = seq_len * head_size;
     args.k_cache = k_quant;
     args.v_cache = v_quant;
     args.k_scale = k_scale;
@@ -592,6 +593,7 @@ class MlasFlashAttentionQuantizedKVTest : public MlasTestBase {
     args.buffer = flash_buffer;
     args.buffer_size_per_thread = buffer_size_per_thread;
     args.query = Q;
+    args.q_batch_stride = head_size;
     args.k_cache = k_quant;
     args.v_cache = v_quant;
     args.k_scale = k_scale_buf;
