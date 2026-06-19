@@ -985,8 +985,8 @@ Every case reported `has_invalid_output=false`.
 
 - Code commit: `f1d6718be719c1237be392c0389874b6a8926a3c`
   (`Experiment QMoE split-K SwiGLU GEMV`).
-- Added default Split-K2 route with opt-out env knob:
-  `ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU=1`.
+- Added Split-K2 route with opt-in env knob:
+  `ORT_MOE_GEMV_SPLITK2_SWIGLU=1`.
 - Scope: FP16 INT4/interleaved-SwiGLU FC1 GEMV path for decode-shaped QMoE.
 - Implementation:
   - First pass launches `moe_gemv_splitk_partials_kernel` with `SplitK=2` and
@@ -996,8 +996,8 @@ Every case reported `has_invalid_output=false`.
   - Second pass launches `moe_gemv_splitk_reduce_swiglu_kernel` to reduce the
     partials in fp32, add optional bias, and apply SwiGLU.
   - FC2 remains on the existing `moe_gemv_kernel`.
-  - Scratch is allocated only for the supported Split-K2 route. Setting
-    `ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU=1` restores the previous single-kernel
+  - Scratch is allocated only for the supported Split-K2 route. Leaving
+    `ORT_MOE_GEMV_SPLITK2_SWIGLU` unset or setting it to `0` keeps the previous single-kernel
     FC1 SwiGLU GEMV path.
 
 ### Repro Notes
@@ -1034,7 +1034,7 @@ Both modes reported `has_invalid_output=false`.
 
 | Mode | Env | Latency ms |
 |------|-----|------------|
-| Baseline | `ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU=1` | 0.072344 |
+| Baseline | unset | 0.072344 |
 | Split-K2 | none | 0.073816 |
 
 The short helper was slightly slower with split-K2, so Nsight was required to
@@ -1054,7 +1054,7 @@ Command shape:
   -o /tmp/qmoe_gptoss_splitk_final --export=sqlite \
   ~/onnxruntime/.venv_cu130/bin/python \
   ~/onnxruntime/onnxruntime/test/python/transformers/profile_qmoe_gemv.py \
-    --case gpt_oss_20b_m1_top4_fp16_2880x2880_e32 --warmup 3 --repeat 30 --nvtx
+    --case gpt_oss_20b_m1_top4_fp16_2880x2880_e32 --warmup 3 --repeat 30 --nvtx --splitk2-swiglu
 ```
 
 Parsed with `parse_nsys.py --nvtx-range benchmark --pattern '%'`.
@@ -1089,7 +1089,7 @@ ORT_FORCE_DETERMINISTIC_MOE=1 \
 bash scripts/bench_gpt_oss_ort_decode.sh
 ```
 
-Baseline additionally set `ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU=1`.
+Baseline left `ORT_MOE_GEMV_SPLITK2_SWIGLU` unset.
 
 | Run | Mode | Decode latency ms/token | Decode throughput tok/s |
 |-----|------|-------------------------|-------------------------|
@@ -1103,8 +1103,7 @@ pair showed about `+1.6%`. Since the focused helper reported valid output and
 the model-level gain repeated in the same direction, even this modest gain is
 worth enabling for GPT-OSS-20B decode while keeping an opt-out for A/B checks.
 
-After flipping Split-K2 to the default and adding
-`ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU=1` as the opt-out, three more paired
+After testing Split-K2 as the selected route, three more paired
 CUDA-graph model runs were collected with `REPS=10`, `WARMUP=3`, prompt length
 512, and generation length 128:
 
@@ -1174,22 +1173,21 @@ fp16 Split-K2 again sat between the fp16 single-kernel path and the
 A 1000-sample `match_mmlu` smoke was run with the local parallel eval harness on
 all eight H200 GPUs, using the same GPT-OSS-20B INT4 QMoE model package and the
 current ORT build package. The default Split-K2 run scored `0.8380` pooled
-accuracy; the opt-out fallback with `ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU=1`
+accuracy; the non-Split-K fallback with `ORT_MOE_GEMV_SPLITK2_SWIGLU` unset
 scored `0.8350`. The small positive difference is within smoke-test noise, and
-there is no accuracy regression signal from enabling Split-K2 by default.
+there is no accuracy regression signal from enabling Split-K2.
 
 ### Decision
 
-- Enable Split-K2 by default for its supported fp16 INT4 interleaved-SwiGLU GEMV
-  scope when `ORT_MOE_GEMV_FP32_ACCUM=1` selects fp32 accumulation.
+- Keep Split-K2 available for its supported fp16 INT4 interleaved-SwiGLU GEMV
+  scope when `ORT_MOE_GEMV_SPLITK2_SWIGLU=1` enables it.
 - Keep the fp16-accumulation Split-K2 variant available. It is slower than the
   single-kernel fp16-accumulation path on the GPT-OSS shape, but faster than the
   fp32-accumulation Split-K2 route and may be selected by future per-shape
   autotuning.
-- With default fp16 accumulation, use the single-kernel FC1 SwiGLU path unless
-  `ORT_MOE_GEMV_SPLITK2_SWIGLU=1` forces Split-K2. Keep
-  `ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU=1` as the fp32-accumulation fallback and
-  A/B knob.
+- Use two binary route controls: `ORT_MOE_GEMV_FP32_ACCUM=1` enables fp32
+  accumulation, and `ORT_MOE_GEMV_SPLITK2_SWIGLU=1` enables Split-K2. Both
+  default to `0`.
 - The 1000-sample MMLU smoke matched the opt-out fallback within noise, so the
   default flip has an accuracy sanity check in addition to focused-helper valid
   output.

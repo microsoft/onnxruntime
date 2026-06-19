@@ -75,12 +75,12 @@ def main():
     parser.add_argument(
         "--splitk2-swiglu",
         action="store_true",
-        help="Force split-K2 two-pass FC1 SwiGLU GEMV by setting ORT_MOE_GEMV_SPLITK2_SWIGLU=1",
+        help="Enable split-K2 two-pass FC1 SwiGLU GEMV by setting ORT_MOE_GEMV_SPLITK2_SWIGLU=1",
     )
     parser.add_argument(
-        "--disable-splitk2-swiglu",
+        "--fp32-accum",
         action="store_true",
-        help="Disable split-K2 two-pass FC1 SwiGLU GEMV by setting ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU=1",
+        help="Enable fp32 GEMV accumulation by setting ORT_MOE_GEMV_FP32_ACCUM=1",
     )
     parser.add_argument(
         "--nvtx",
@@ -111,11 +111,12 @@ def main():
     else:
         os.environ.pop("ORT_DISABLE_MOE_GEMV", None)
 
-    if args.disable_splitk2_swiglu:
-        os.environ["ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU"] = "1"
+    if args.fp32_accum:
+        os.environ["ORT_MOE_GEMV_FP32_ACCUM"] = "1"
     else:
-        os.environ.pop("ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU", None)
-    if args.splitk2_swiglu and not args.disable_splitk2_swiglu:
+        os.environ.pop("ORT_MOE_GEMV_FP32_ACCUM", None)
+
+    if args.splitk2_swiglu:
         os.environ["ORT_MOE_GEMV_SPLITK2_SWIGLU"] = "1"
     else:
         os.environ.pop("ORT_MOE_GEMV_SPLITK2_SWIGLU", None)

@@ -1006,10 +1006,10 @@ accuracy at 0.8260 for both modes.
 #### Split-K2 SwiGLU GEMV route
 
 The fp16 INT4 interleaved-SwiGLU GEMV path can use a two-pass Split-K2 FC1 kernel
-for supported decode shapes. With the default fp16 accumulation policy, the
-single-kernel FC1 SwiGLU path is used unless `ORT_MOE_GEMV_SPLITK2_SWIGLU=1`
-forces Split-K2. With `ORT_MOE_GEMV_FP32_ACCUM=1`, Split-K2 is used by default
-unless `ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU=1` disables it.
+for supported decode shapes. `ORT_MOE_GEMV_FP32_ACCUM=1` enables fp32
+accumulation, and `ORT_MOE_GEMV_SPLITK2_SWIGLU=1` enables Split-K2. Both default
+to `0`, so the default route is fp16 accumulation with the single-kernel FC1
+SwiGLU path.
 
 The first pass computes two K-split
 partials into QMoE workspace using the same accumulator type as the normal GEMV
@@ -1018,19 +1018,19 @@ selected, and the fp32 fallback uses fp32 partials. The second pass reduces thos
 partials in fp32, adds optional bias, and applies the interleaved SwiGLU
 epilogue. FC2 stays on the regular `moe_gemv_kernel` path.
 
-Use `ORT_MOE_GEMV_SPLITK2_SWIGLU=1` and
-`ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU=1` before process start for A/B
-benchmarking or bisecting numerical differences. On GPT-OSS-20B, Split-K2
+Use the two binary knobs before process start for A/B benchmarking or bisecting
+numerical differences. The focused profiler exposes the same controls as
+`--fp32-accum` and `--splitk2-swiglu`. On GPT-OSS-20B, Split-K2
 reduced FC1 kernel work from about 21.42 us to 19.98 us in the fp32-accumulation
 route and improved repeated CUDA-graph decode throughput by about 0.9% to 1.6%
-with valid focused-helper output. A 1000-sample MMLU smoke matched the opt-out
+with valid focused-helper output. A 1000-sample MMLU smoke matched the non-Split-K
 fallback within noise. A future autotuner can replace this hand-selected routing
 with per-shape route selection.
 
 ```bash
 onnxruntime/test/python/transformers/profile_qmoe_gemv.py \
   --case gpt_oss_20b_m1_top4_fp16_2880x2880_e32 \
-  --splitk2-swiglu --warmup 5 --repeat 100 --nvtx
+  --fp32-accum --splitk2-swiglu --warmup 5 --repeat 100 --nvtx
 ```
 
 #### Experiments rejected after profiling

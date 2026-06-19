@@ -2486,8 +2486,8 @@ def run_qmoe_gemv_benchmark(case):
         "case": case["name"],
         "block_size": case.get("block_size", 0),
         "disable_gemv": os.getenv("ORT_DISABLE_MOE_GEMV") == "1",
-        "disable_splitk2_swiglu": os.getenv("ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU") == "1",
-        "force_splitk2_swiglu": os.getenv("ORT_MOE_GEMV_SPLITK2_SWIGLU") == "1",
+        "fp32_accum": os.getenv("ORT_MOE_GEMV_FP32_ACCUM", "0"),
+        "splitk2_swiglu": os.getenv("ORT_MOE_GEMV_SPLITK2_SWIGLU", "0"),
         "expanded_num_rows": case["batch_size"] * case["sequence_length"] * case["top_k"],
         "has_invalid_output": bool(torch.isnan(output).any() or torch.isinf(output).any()),
         "latency_ms": qmoe.last_ort_latency_ms,
@@ -2514,24 +2514,19 @@ class TestQMoEGemvBenchmark(unittest.TestCase):
         self.assertFalse(result["has_invalid_output"])
         print(_QMOE_GEMV_BENCHMARK_RESULT_PREFIX + json.dumps(result, sort_keys=True))
 
-    @unittest.skipIf(
-        os.getenv("ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU") == "1",
-        "Unset ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU to run the default split-K2 SwiGLU GEMV benchmark.",
-    )
     def test_splitk2_swiglu_decode_latency(self):
-        previous_force_splitk2 = os.environ.get("ORT_MOE_GEMV_SPLITK2_SWIGLU")
+        previous_splitk2 = os.environ.get("ORT_MOE_GEMV_SPLITK2_SWIGLU")
         os.environ["ORT_MOE_GEMV_SPLITK2_SWIGLU"] = "1"
         try:
             result = run_qmoe_gemv_benchmark_case("gpt_oss_20b_m1_top4_fp16_2880x2880_e32")
-            self.assertFalse(result["disable_splitk2_swiglu"])
-            self.assertTrue(result["force_splitk2_swiglu"])
+            self.assertEqual(result["splitk2_swiglu"], "1")
             self.assertFalse(result["has_invalid_output"])
             print(_QMOE_GEMV_BENCHMARK_RESULT_PREFIX + json.dumps(result, sort_keys=True))
         finally:
-            if previous_force_splitk2 is None:
+            if previous_splitk2 is None:
                 os.environ.pop("ORT_MOE_GEMV_SPLITK2_SWIGLU", None)
             else:
-                os.environ["ORT_MOE_GEMV_SPLITK2_SWIGLU"] = previous_force_splitk2
+                os.environ["ORT_MOE_GEMV_SPLITK2_SWIGLU"] = previous_splitk2
 
 
 @unittest.skipIf(True, "Skipping QMoE benchmark tests")

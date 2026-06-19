@@ -677,10 +677,17 @@ inline bool MoeGemvUseFp32Accum() {
   return enabled;
 }
 
-inline bool MoeGemvForceSplitK2SwiGLU() {
+inline bool MoeGemvUseSplitK2SwiGLU() {
   // Parsed once via ORT's environment helper (consistent parsing/thread-safety across platforms).
-  static bool const enabled =
-      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_MOE_GEMV_SPLITK2_SWIGLU", 0) == 1;
+  static bool const enabled = [] {
+    auto const value = onnxruntime::ParseEnvironmentVariable<int>("ORT_MOE_GEMV_SPLITK2_SWIGLU");
+    if (!value.has_value()) {
+      return false;
+    }
+    ORT_ENFORCE(*value == 0 || *value == 1,
+                "ORT_MOE_GEMV_SPLITK2_SWIGLU must be 0 or 1, but got ", *value);
+    return *value == 1;
+  }();
   return enabled;
 }
 
@@ -810,7 +817,7 @@ void launch_moe_gemv_int_symmetric_interleaved_swiglu(
   using TypeA = typename DetailsForTAndWeight<T, WeightType>::TypeA;
   // Accumulation policy matches launch_moe_gemv_int_symmetric.
   bool const use_fp32_accum = !std::is_same_v<T, half> || MoeGemvUseFp32Accum();
-  if (splitk_partials != nullptr && (use_fp32_accum || MoeGemvForceSplitK2SwiGLU())) {
+  if (splitk_partials != nullptr && MoeGemvUseSplitK2SwiGLU()) {
     if constexpr (std::is_same_v<T, half>) {
       auto launch_splitk = [&](auto acc_tag) {
         using AccT = typename decltype(acc_tag)::type;

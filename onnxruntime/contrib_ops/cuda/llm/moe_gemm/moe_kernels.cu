@@ -83,11 +83,18 @@ inline bool MoeGemvDisabledByEnv() {
   return disabled;
 }
 
-inline bool MoeGemvSplitK2SwiGLUDisabledByEnv() {
+inline bool MoeGemvSplitK2SwiGLUEnabledByEnv() {
   // Parsed once via ORT's environment helper (consistent parsing/thread-safety across platforms).
-  static bool const disabled =
-      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU", 0) == 1;
-  return disabled;
+  static bool const enabled = [] {
+    auto const value = onnxruntime::ParseEnvironmentVariable<int>("ORT_MOE_GEMV_SPLITK2_SWIGLU");
+    if (!value.has_value()) {
+      return false;
+    }
+    ORT_ENFORCE(*value == 0 || *value == 1,
+                "ORT_MOE_GEMV_SPLITK2_SWIGLU must be 0 or 1, but got ", *value);
+    return *value == 1;
+  }();
+  return enabled;
 }
 
 template <typename T, typename WeightType, typename ScaleBiasType>
@@ -2185,7 +2192,7 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
   size_t const fc1_result_dedicated_size = (glu_inter_elems > 0) ? fc1_result_size : 0;
 
   static constexpr int kMoeGemvSplitK = 2;
-  size_t const moe_gemv_splitk_partials_size = is_gated_activation && !MoeGemvSplitK2SwiGLUDisabledByEnv() &&
+  size_t const moe_gemv_splitk_partials_size = is_gated_activation && MoeGemvSplitK2SwiGLUEnabledByEnv() &&
                                                        MoeGemvSplitK2SwiGLUSupported<T, WeightType, ScaleBiasType>()
                                                    ? kMoeGemvSplitK * glu_inter_elems * sizeof(float)
                                                    : 0;
@@ -2476,7 +2483,7 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
       alpha_scale_ptr_array = computeFP8DequantScale(
           alpha_scale_ptr_array, num_experts_per_node, quant_params.groupwise.fc1.alpha, stream);
     }
-    bool const use_splitk_swiglu_gemv = !MoeGemvSplitK2SwiGLUDisabledByEnv() &&
+    bool const use_splitk_swiglu_gemv = MoeGemvSplitK2SwiGLUEnabledByEnv() &&
                                         MoeGemvSplitK2SwiGLUSupported<T, WeightType, ScaleBiasType>();
     ORT_ENFORCE(!use_splitk_swiglu_gemv || moe_gemv_splitk_partials != nullptr,
                 "Split-K2 SwiGLU GEMV requires split-K GEMV workspace");

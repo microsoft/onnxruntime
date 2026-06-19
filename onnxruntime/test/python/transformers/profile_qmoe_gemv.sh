@@ -11,7 +11,8 @@
 #   ./profile_qmoe_gemv.sh --list-cases
 #   ./profile_qmoe_gemv.sh --case m8_top2_fp16_128x256 --warmup 5 --repeat 200
 #   ./profile_qmoe_gemv.sh --case gpt_oss_20b_m1_top4_fp16_2880x2880_e32 --warmup 5 --repeat 100
-#   ./profile_qmoe_gemv.sh --case gpt_oss_20b_m1_top4_fp16_2880x2880_e32 --disable-splitk2-swiglu --warmup 5 --repeat 100
+#   ./profile_qmoe_gemv.sh --case gpt_oss_20b_m1_top4_fp16_2880x2880_e32 --splitk2-swiglu --warmup 5 --repeat 100
+#   ./profile_qmoe_gemv.sh --case gpt_oss_20b_m1_top4_fp16_2880x2880_e32 --fp32-accum --splitk2-swiglu --warmup 5 --repeat 100
 #   ./profile_qmoe_gemv.sh --batch-size 1 --sequence-length 1 --hidden-size 1024 --intermediate-size 4096 --num-experts 8 --top-k 2 --quant-bits 8 --block-size 128
 #   CUDA_VISIBLE_DEVICES=1 ./profile_qmoe_gemv.sh -o /tmp/qmoe_gemv
 #
@@ -27,8 +28,8 @@ OUTPUT_NAME="qmoe_gemv_profile"
 PY="${PYTHON:-python}"
 EXTRA_ARGS=()
 LIST_CASES=0
-DISABLE_SPLITK2_SWIGLU=0
-FORCE_SPLITK2_SWIGLU=0
+FP32_ACCUM=0
+SPLITK2_SWIGLU=0
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -40,12 +41,10 @@ while [[ "$#" -gt 0 ]]; do
             LIST_CASES=1
             ;;
         --splitk2-swiglu)
-            FORCE_SPLITK2_SWIGLU=1
-            DISABLE_SPLITK2_SWIGLU=0
+            SPLITK2_SWIGLU=1
             ;;
-        --disable-splitk2-swiglu)
-            DISABLE_SPLITK2_SWIGLU=1
-            FORCE_SPLITK2_SWIGLU=0
+        --fp32-accum)
+            FP32_ACCUM=1
             ;;
         --batch-size|--sequence-length|--hidden-size|--intermediate-size|--num-experts|--top-k|--dtype|--quant-bits|--block-size)
             EXTRA_ARGS+=("$1" "$2")
@@ -69,7 +68,7 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: $0 [--list-cases] [--case NAME] [--disable-splitk2-swiglu] [--batch-size N] [--sequence-length N] [--hidden-size N] [--intermediate-size N] [--num-experts N] [--top-k N] [--dtype FLOAT16|BFLOAT16] [--quant-bits 4|8] [--block-size 0|32|64|128] [--warmup N] [--repeat N] [--python PYTHON] [-o NAME]"
+            echo "Usage: $0 [--list-cases] [--case NAME] [--fp32-accum] [--splitk2-swiglu] [--batch-size N] [--sequence-length N] [--hidden-size N] [--intermediate-size N] [--num-experts N] [--top-k N] [--dtype FLOAT16|BFLOAT16] [--quant-bits 4|8] [--block-size 0|32|64|128] [--warmup N] [--repeat N] [--python PYTHON] [-o NAME]"
             exit 1
             ;;
     esac
@@ -109,22 +108,26 @@ fi
 if [[ "${#EXTRA_ARGS[@]}" -gt 0 ]]; then
     echo "Custom args: ${EXTRA_ARGS[*]}"
 fi
-if [[ "${DISABLE_SPLITK2_SWIGLU}" -eq 1 ]]; then
-    echo "Split-K2 SwiGLU: disabled for GEMV mode"
-elif [[ "${FORCE_SPLITK2_SWIGLU}" -eq 1 ]]; then
-    echo "Split-K2 SwiGLU: forced for GEMV mode"
+if [[ "${FP32_ACCUM}" -eq 1 ]]; then
+    echo "GEMV accumulation: fp32"
+fi
+if [[ "${SPLITK2_SWIGLU}" -eq 1 ]]; then
+    echo "Split-K2 SwiGLU: enabled for GEMV mode"
 fi
 
 profile_one() {
     local mode="$1"
     local disable_arg=""
+    local fp32_accum_arg=""
     local splitk2_arg=""
     local base="${OUTPUT_NAME}_${mode}"
     if [[ "${mode}" == "gemm" ]]; then
         disable_arg="--disable-gemv"
-    elif [[ "${DISABLE_SPLITK2_SWIGLU}" -eq 1 ]]; then
-        splitk2_arg="--disable-splitk2-swiglu"
-    elif [[ "${FORCE_SPLITK2_SWIGLU}" -eq 1 ]]; then
+    fi
+    if [[ "${FP32_ACCUM}" -eq 1 ]]; then
+        fp32_accum_arg="--fp32-accum"
+    fi
+    if [[ "${SPLITK2_SWIGLU}" -eq 1 ]]; then
         splitk2_arg="--splitk2-swiglu"
     fi
 
@@ -134,7 +137,7 @@ profile_one() {
     nsys profile -t cuda,nvtx --force-overwrite true -o "${base}" --export=sqlite \
         "${PY}" "${SCRIPT_DIR}/profile_qmoe_gemv.py" \
             --case "${CASE}" "${EXTRA_ARGS[@]}" --warmup "${WARMUP}" --repeat "${REPEAT}" --nvtx \
-            ${disable_arg} ${splitk2_arg}
+            ${disable_arg} ${fp32_accum_arg} ${splitk2_arg}
 
     echo ""
     echo "---- Kernel results (${mode}) ----"
