@@ -24,6 +24,11 @@
 
 const KaiF32IMatmulKernel& imatmul_conv = GetKleidiAIF32IMatmulUKernel();
 
+// Bound for the per-thread packed LHS scratch buffer used by the chunked IGEMM path.
+// This is a heuristic budget (chosen because 2 MiB is a common L2 cache size) which limits
+// temporary memory growth while keeping chunks large enough to be worth the KAI packing overhead.
+// If one m_step block already exceeds the budget, processing is done one m_step at a time.
+constexpr size_t kMaxLhsPackedChunkBytes = 2 * 1024 * 1024;
 
 // Left-hand-side (input indirection) cache key
 struct LhsCacheKey {
@@ -140,7 +145,31 @@ static bool CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
         return false;
     }
 
-    return true;
+    const auto route_selection = ArmKleidiAI::SelectConvRoute(Parameters);
+    const auto route = route_selection.route;
+
+    if (route == ArmKleidiAI::ConvRoute::IGemm) {
+        // ensure LHS packed buffer size is non-zero
+        const size_t d_kh = route_selection.effective_kernel_h;
+        const size_t d_kw = route_selection.effective_kernel_w;
+        const size_t m_step = imatmul_conv.ukernel.get_m_step();
+
+        const size_t bytes_per_m_step = kai_get_lhs_packed_size_lhs_imatmul_pack_x32p2vlx1_x32p_sme(
+            m_step, d_kh * d_kw, Parameters->InputChannels);
+
+        if (bytes_per_m_step == 0) {
+            KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSME returning false on zero LHS packed size");
+            return false;
+        }
+        return true;
+    }
+
+    if (route == ArmKleidiAI::ConvRoute::SGemmFallback) {
+        KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSme returning false to prefer SGEMM-backed conv path.");
+    } else {
+        KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSme returning false on functional or optimization checks.");
+    }
+    return false;
 }
 
 //General purpose axis swapping
@@ -265,37 +294,6 @@ static std::unique_ptr<float[]> NChwToNhwc(const size_t n,
     }
 
     return t;
-}
-
-static void MultiThreadedLHSPackSme(MLAS_THREADPOOL* ThreadPool, const size_t ci, const size_t m, const size_t kh,
-                                    const size_t kw, const void * const* lhs_ptrs, std::byte* lhs_data,
-                                    const float* in_data,
-                                    const float* pad_ptr) {
-    size_t m_step = imatmul_conv.ukernel.get_m_step();
-
-    // Minimize the kernel call count for the number of available threads
-    auto RequiredTiles = MlasDivRoundup(m, m_step);
-    auto MaxTiles = std::min(static_cast<size_t>(MlasGetMaximumThreadCount(ThreadPool)), RequiredTiles);
-    m_step *= MlasDivRoundup(RequiredTiles, MaxTiles);
-    RequiredTiles = MlasDivRoundup(m, m_step);
-
-    MlasTrySimpleParallel(ThreadPool, static_cast<ptrdiff_t>(RequiredTiles), [&](ptrdiff_t tid) {
-
-        auto m_idx = static_cast<size_t>(tid) * m_step;
-        auto offset = kai_get_lhs_packed_offset_lhs_imatmul_pack_x32p2vlx1_x32p_sme(m_idx,kh*kw,ci);
-
-        KLEIDIAI_KERNEL_LOG("kai_run_lhs_imatmul_pack_x32p2vlx1_x32p_sme"
-                            << " M=" << (m < (m_idx + m_step) ? m - m_idx : m_step)
-                            << " k_chunk_count=" << (kh * kw)
-                            << " k_chunk_length=" << ci);
-        kai_run_lhs_imatmul_pack_x32p2vlx1_x32p_sme(
-            m < (m_idx + m_step) ? m - m_idx : m_step, kh * kw, ci,
-            lhs_ptrs + m_idx * kh * kw,
-            reinterpret_cast<size_t>(in_data),
-            reinterpret_cast<const void*>(pad_ptr),
-            lhs_data + offset
-        );
-    });
 }
 
 size_t
@@ -434,61 +432,26 @@ static std::shared_ptr<const void*[]> LhsPtrFill(const size_t ci, const size_t i
     return lhs_ptrs;
 }
 
-static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const size_t ih, const size_t iw,
-                                                        const size_t kh, const size_t kw, const size_t sh,
-                                                        const size_t sw, const size_t padding, const float* in,
-                                                        bool input_is_channels_last,
-                                                        MLAS_THREADPOOL* ThreadPool)
-{
+static const float* GetOrCreatePadDataSme(const size_t ci) {
     size_t padsize = 256;
-    if(ci > padsize)
-    {
-        // figure out how many blocks needed to correctly fill padding
-        padsize = ((ci + padsize - 1) / padsize) * padsize;
+    if (ci > padsize) {
+        padsize = MlasDivRoundup(ci, padsize) * padsize;
     }
 
     // pad_ptr must be at least 'ci' floats for padding pixels.
-    // Using a thread_local grow-only buffer to avoid cross-thread interference and ensure sizing is correct.
-    //
-    // The pad buffer contents are always zero. Since the buffer is grow-only and never written with non-zero data,
-    // we only need to zero-initialize newly-grown elements.
+    // The buffer is grow-only and zero-initializes newly-grown elements.
     thread_local std::vector<float> pad_ptr;
-
     if (pad_ptr.size() < padsize) {
         pad_ptr.resize(padsize, 0.f);
     }
 
-    //create lhs in format required for imatmul
-    const auto m = ComputeConvOutSize(ih, kh, padding, sh) * ComputeConvOutSize(iw, kw, padding, sw);
+    return pad_ptr.data();
+}
 
-    const auto lhs_size = kai_get_lhs_packed_size_lhs_imatmul_pack_x32p2vlx1_x32p_sme(m,kh*kw,ci);
-    auto lhs = std::make_unique<std::byte[]>(lhs_size);
-
-    std::unique_ptr<float[]> nhwc_holder;
-    const float* activation_src = nullptr;
-    if (input_is_channels_last) {
-        activation_src = in;
-    } else {
-        nhwc_holder = NChwToNhwc(1, ci, ih, iw, in, 1, 1, false, ThreadPool);
-        activation_src = nhwc_holder.get();
-    }
-
-    // Cache of computed lhs ptr offsets. thread_local to prevent interference from parallel sessions.
-    //
-    // Entries include pointers to the pad buffer for out-of-bounds pixels, so we must not reuse entries after the
-    // pad buffer is reallocated. To avoid clearing the entire cache, we group caches by pad buffer identity and
-    // invalidate only the old group when the pad buffer moves.
-    using LhsPtrsCache = std::unordered_map<LhsCacheKey, std::shared_ptr<const void*[]>>;
-    thread_local std::unordered_map<const float*, LhsPtrsCache> lhs_ptrs_cache_by_pad;
-
-    // If pad_ptr moved (vector reallocation), drop only the old group to avoid accumulating unreachable entries.
-    thread_local const float* last_pad_ptr = nullptr;
-    const float* cur_pad_ptr = pad_ptr.data();
-    if (last_pad_ptr != nullptr && last_pad_ptr != cur_pad_ptr) {
-        lhs_ptrs_cache_by_pad.erase(last_pad_ptr);
-    }
-    last_pad_ptr = cur_pad_ptr;
-
+static std::shared_ptr<const void*[]> GetOrCreateLhsPtrTableSme(const size_t ci, const size_t ih, const size_t iw,
+                                                                const size_t kh, const size_t kw, const size_t sh,
+                                                                const size_t sw, const size_t padding, const float* pad_ptr) {
+    // LhsPtrFill stores geometry offsets only; the current input base is supplied when packing.
     LhsCacheKey key = {
         ci, ih, iw,
         padding, sh, sw,
@@ -496,19 +459,28 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const s
         1, 1
     };
 
+    // Setting up LHS ptr cache and tracking value of last passed pad_ptr
+    using LhsPtrsCache = std::unordered_map<LhsCacheKey, std::shared_ptr<const void*[]>>;
+    thread_local std::unordered_map<const float*, LhsPtrsCache> lhs_ptrs_cache_by_pad;
+    thread_local const float* last_pad_ptr = nullptr;
+
+    // If pad_ptr moved (vector reallocation), drop only the old group to avoid accumulating unreachable entries.
+    const float* cur_pad_ptr = pad_ptr;
+    if (last_pad_ptr != nullptr && last_pad_ptr != cur_pad_ptr) {
+        lhs_ptrs_cache_by_pad.erase(last_pad_ptr);
+    }
+    last_pad_ptr = cur_pad_ptr;
+
     auto& lhs_ptrs_cache = lhs_ptrs_cache_by_pad[cur_pad_ptr];
 
     std::shared_ptr<const void*[]> lhs_ptrs;
     if (auto found = lhs_ptrs_cache.find(key); found != lhs_ptrs_cache.end()) {
         lhs_ptrs = found->second;
     } else {
-        lhs_ptrs = LhsPtrFill(ci, ih, iw, kh, kw, sh, sw, padding, &pad_ptr[0]);
+        lhs_ptrs = LhsPtrFill(ci, ih, iw, kh, kw, sh, sw, padding, pad_ptr);
         lhs_ptrs_cache[key] = lhs_ptrs;
     }
-
-    MultiThreadedLHSPackSme(ThreadPool, ci, m, kh, kw, &lhs_ptrs[0], &lhs[0], activation_src, &pad_ptr[0]);
-
-    return lhs;
+    return lhs_ptrs;
 }
 
 static void ConvolveSme(const size_t co, //channels out
@@ -533,8 +505,8 @@ static void ConvolveSme(const size_t co, //channels out
                         bool input_is_channels_last,
                         MLAS_THREADPOOL* ThreadPool) {
 
-    //RhsPackWeightsBiasSme() - to perform dilation increases kernel size and masks unused weights
-    //compute corrected dimensions of dilated kernel
+    //dilation expands the logical kernel shape; RHS packing masks the inserted unused weights.
+    //this way, compute corrected dimensions of dilated kernel
     const auto d_kh = ComputeKernelSize(dilationh, kh);
     const auto d_kw = ComputeKernelSize(dilationw, kw);
 
@@ -545,6 +517,12 @@ static void ConvolveSme(const size_t co, //channels out
     size_t n_step = imatmul_conv.ukernel.get_n_step();
     size_t m_step = imatmul_conv.ukernel.get_m_step();
 
+    // Query the packed LHS buffer size for exactly one m_step block.
+    const size_t bytes_per_m_step = kai_get_lhs_packed_size_lhs_imatmul_pack_x32p2vlx1_x32p_sme(
+        m_step, d_kh * d_kw, ci);
+    // Sanity check to ensure data passed to the function is valid and won't cause a zero division error.
+    assert(bytes_per_m_step != 0);
+
     // tile iteration dimensions
     std::array<size_t,3> dim;
     dim[0] = 1;                          // B
@@ -552,19 +530,19 @@ static void ConvolveSme(const size_t co, //channels out
     dim[2] = MlasDivRoundup(co, n_step); // N
 
     //Minimize the kernel call count for the number of available threads
-    auto RequiredTiles = std::min(static_cast<size_t>(MlasGetMaximumThreadCount(ThreadPool)), dim[0]*dim[1]*dim[2]);
+    auto required_tiles = std::min(static_cast<size_t>(MlasGetMaximumThreadCount(ThreadPool)), dim[0]*dim[1]*dim[2]);
 
     //scale required tiles over available tile processors
-    dim[1] = MlasDivRoundup(RequiredTiles * dim[1], dim[1] * dim[2]);
-    dim[2] = MlasDivRoundup(RequiredTiles * dim[2], dim[1] * dim[2]);
+    dim[1] = MlasDivRoundup(required_tiles * dim[1], dim[1] * dim[2]);
+    dim[2] = MlasDivRoundup(required_tiles * dim[2], dim[1] * dim[2]);
 
     //compute new step sizes
-    m_step *= MlasDivRoundup(MlasDivRoundup(m, dim[1]), m_step);
-    n_step *= MlasDivRoundup(MlasDivRoundup(co, dim[2]), n_step);
+    size_t m_tile_step = m_step * MlasDivRoundup(MlasDivRoundup(m, dim[1]), m_step);
+    size_t n_tile_step = n_step * MlasDivRoundup(MlasDivRoundup(co, dim[2]), n_step);
 
     //update tile iterations
-    dim[1] = MlasDivRoundup(m, m_step);
-    dim[2] = MlasDivRoundup(co, n_step);
+    dim[1] = MlasDivRoundup(m, m_tile_step);
+    dim[2] = MlasDivRoundup(co, n_tile_step);
 
     const bool grouped_channels_last = input_is_channels_last && groups > 1;
     const size_t input_channels_total = ci * groups;
@@ -592,10 +570,17 @@ static void ConvolveSme(const size_t co, //channels out
             result = tmp_mlas_aligned;
         }
 
-        auto lhs = LhsPackImageDataSme(ci, ih, iw, d_kh, d_kw, sh, sw, padding,
-                                      input_group,
-                                      input_is_channels_last,
-                                      ThreadPool);
+        // LHS packing data
+        const float* pad_data = GetOrCreatePadDataSme(ci);
+        std::unique_ptr<float[]> nhwc_holder;
+        const float* activation_src = input_group;
+        if (!input_is_channels_last) {
+            nhwc_holder = NChwToNhwc(1, ci, ih, iw, input_group, 1, 1, false, ThreadPool);
+            activation_src = nhwc_holder.get();
+        }
+        auto lhs_ptrs = GetOrCreateLhsPtrTableSme(ci, ih, iw, d_kh, d_kw, sh, sw, padding, pad_data);
+
+        // RHS packing data
         const std::byte* rhs_data = packed_rhs ? packed_rhs + g * packed_rhs_group_stride : nullptr;
         std::unique_ptr<std::byte[]> rhs_storage;
         if (rhs_data == nullptr) {
@@ -614,40 +599,75 @@ static void ConvolveSme(const size_t co, //channels out
         MlasTrySimpleParallel(ThreadPool, static_cast<ptrdiff_t>(dim[0] * dim[1] * dim[2]), [&](ptrdiff_t tid) {
             //compute B,M,N index from iteration index
             //ptrdiff_t BIdx = tid / (dim[1] * dim[2]);
-            ptrdiff_t MIdx = (tid % (dim[1] * dim[2])) / dim[2];
-            ptrdiff_t NIdx = (tid % (dim[1] * dim[2])) % dim[2];
+            const size_t m_idx = static_cast<size_t>((tid % (dim[1] * dim[2])) / dim[2]);
+            const size_t n_idx = static_cast<size_t>((tid % (dim[1] * dim[2])) % dim[2]);
 
             // Get rhs tile, B
             const size_t rhs_packed_offset =
-                imatmul_conv.ukernel.get_rhs_packed_offset(NIdx * n_step, d_kh * d_kw, ci);
+                imatmul_conv.ukernel.get_rhs_packed_offset(n_idx * n_tile_step, d_kh * d_kw, ci);
 
-            auto BTile = reinterpret_cast<const void*>(
+            auto b_tile = reinterpret_cast<const void*>(
                 rhs_data + rhs_packed_offset
             );
 
-            // Get lhs tile, A
-            const size_t lhs_packed_offset =
-                imatmul_conv.ukernel.get_lhs_packed_offset(MIdx * m_step, d_kh * d_kw, ci);
+            // Calculate lhs tile chunks
+            auto tile_size_n = (n_idx + 1) * n_tile_step > co ? (co - n_idx * n_tile_step) : n_tile_step;
 
-            auto ATile = reinterpret_cast<const float*>(
-                reinterpret_cast<const std::byte*>(lhs.get()) + lhs_packed_offset
-            );
+            // Compute the starting row index of the current M tile
+            size_t tile_m_start = m_idx * m_tile_step;
+            // Actual number of rows in this tile (may be smaller for the last tile)
+            size_t tile_m_size = std::min(m_tile_step, m - tile_m_start);
 
-            auto TileSizeM = (MIdx + 1) * m_step > m ? (m - MIdx * m_step) : m_step;
-            auto TileSizeN = (NIdx + 1) * n_step > co ? (co - NIdx * n_step) : n_step;
+            // Determine how many rows we can pack in one chunk.
+            const size_t max_m_step_chunks = kMaxLhsPackedChunkBytes / bytes_per_m_step;
+            // If bytes_per_m_step exceeds kMaxLhsPackedChunkBytes, process m_step at a time
+            size_t m_chunk = max_m_step_chunks == 0 ? m_step : m_step * max_m_step_chunks;
 
-            // Get result tile, C
-            auto CTile = &reinterpret_cast<std::byte*>(result)[
-                MIdx * m_step * co * sizeof(float) +
-                NIdx * n_step * sizeof(float)];
+            // Do not exceed the number of rows available in this tile
+            m_chunk = std::min<size_t>(tile_m_size, m_chunk);
 
-            KLEIDIAI_KERNEL_LOG(imatmul_conv.name
-                                << " M=" << TileSizeM << " N=" << TileSizeN
-                                << " k_chunk_count=" << (d_kh * d_kw) << " k_chunk_length=" << ci);
-            imatmul_conv.ukernel.run_imatmul(
-                TileSizeM, TileSizeN, d_kh * d_kw, ci, ATile, BTile, CTile, co * sizeof(float),
-                -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
-            );
+            // Compute the exact packed buffer size for m_chunk rows.
+            const size_t lhs_buffer_bytes = kai_get_lhs_packed_size_lhs_imatmul_pack_x32p2vlx1_x32p_sme(
+                m_chunk, d_kh * d_kw, ci);
+
+            // Thread-local grow-only reusable buffer for LHS packing
+            thread_local std::vector<std::byte> lhs_buffer;
+            if (lhs_buffer.size() < lhs_buffer_bytes) {
+                lhs_buffer.resize(lhs_buffer_bytes);
+            }
+            auto* lhs = lhs_buffer.data();
+
+            // Interpret the packed LHS buffer as the input A tile
+            // for the matrix multiplication kernel.
+            auto a_tile = reinterpret_cast<const float*>(lhs);
+
+            for (size_t m_base = 0; m_base < tile_m_size; m_base += m_chunk) {
+                // Actual number of rows processed in this iteration.
+                // The last chunk may be smaller than m_chunk.
+                const size_t tile_size_m = std::min(m_chunk, tile_m_size - m_base);
+
+                // Pack tile_size_m rows of the LHS matrix into a temporary buffer.
+                kai_run_lhs_imatmul_pack_x32p2vlx1_x32p_sme(tile_size_m,
+                                                            d_kh * d_kw,
+                                                            ci,
+                                                            lhs_ptrs.get() + (tile_m_start + m_base) * d_kh * d_kw,
+                                                            reinterpret_cast<size_t>(activation_src),
+                                                            reinterpret_cast<const void*>(pad_data),
+                                                            lhs);
+
+                // Get result tile, C
+                auto c_tile = &reinterpret_cast<std::byte*>(result)[
+                    (tile_m_start + m_base) * co * sizeof(float) +
+                    n_idx * n_tile_step * sizeof(float)];
+
+                KLEIDIAI_KERNEL_LOG(imatmul_conv.name
+                    << " M=" << tile_size_m << " N=" << tile_size_n
+                    << " k_chunk_count=" << (d_kh * d_kw) << " k_chunk_length=" << ci);
+
+                imatmul_conv.ukernel.run_imatmul(tile_size_m, tile_size_n, d_kh * d_kw, ci, a_tile, b_tile,
+                                                 c_tile, co * sizeof(float), -std::numeric_limits<float>::max(),
+                                                 std::numeric_limits<float>::max());
+            }
         });
 
         if (grouped_channels_last) {
