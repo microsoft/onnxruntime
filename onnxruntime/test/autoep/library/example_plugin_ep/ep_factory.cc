@@ -244,6 +244,12 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
     return factory->ort_api.CreateStatus(ORT_NOT_IMPLEMENTED,
                                          "OrtEpApi_SessionOptions_GetEpContextConfig is not available");
   }
+  // Ensure the matching release function is available before creating a handle so the RAII wrapper can free it.
+  // Otherwise GetEpContextConfig would return a handle that can never be released (silent leak).
+  if (Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_Fn(&factory->ort_api) == nullptr) {
+    return factory->ort_api.CreateStatus(ORT_NOT_IMPLEMENTED,
+                                         "OrtEpApi_ReleaseEpContextConfig is not available");
+  }
   RETURN_IF_ERROR(get_ep_context_config(session_options, &ep_context_config));
 
   // ExampleEp takes ownership of the config via the RAII wrapper; if construction throws, the temporary wrapper

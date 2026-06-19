@@ -67,6 +67,7 @@ static void CheckFileIsEmpty(const PathString& filename) {
 // the OrtStatus* returned directly by the API under test without releasing it themselves.
 static void ExpectFailureOrtStatus(OrtStatus* status_ptr, OrtErrorCode expected_code, const char* expected_message) {
   Ort::Status status{status_ptr};
+  ASSERT_NE(status_ptr, nullptr) << "Expected a failure status, but the API returned nullptr (OK).";
   ASSERT_FALSE(status.IsOK());
   EXPECT_EQ(status.GetErrorCode(), expected_code);
   EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr(expected_message));
