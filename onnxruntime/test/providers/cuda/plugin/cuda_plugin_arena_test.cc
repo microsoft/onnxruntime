@@ -309,6 +309,32 @@ TEST_F(CudaPluginArenaTest, DeviceAllocator_StatsTrackBytesInUse) {
   EXPECT_LE(inuse_after, inuse_before);
 }
 
+// Verify GetStats reports RequestedInUse correctly (actual requested bytes, excludes padding).
+TEST_F(CudaPluginArenaTest, DeviceAllocator_StatsTrackBytesRequestedInUse) {
+  auto device_memory_info = cuda_device_.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+  auto allocator = ort_env->GetSharedAllocator(device_memory_info);
+  ASSERT_NE(allocator, nullptr);
+
+  auto stats_before = allocator.GetStats();
+  int64_t requested_before = GetStatInt(stats_before, "RequestedInUse");
+
+  constexpr size_t kBytes = 100;  // intentionally not a power-of-2 to highlight rounding difference
+  void* p = allocator.Alloc(kBytes);
+  ASSERT_NE(p, nullptr);
+
+  auto stats_during = allocator.GetStats();
+  int64_t requested_during = GetStatInt(stats_during, "RequestedInUse");
+  int64_t inuse_during = GetStatInt(stats_during, "InUse");
+  EXPECT_EQ(requested_during - requested_before, static_cast<int64_t>(kBytes));
+  EXPECT_GE(inuse_during, requested_during);  // InUse >= RequestedInUse due to rounding
+
+  allocator.Free(p);
+
+  auto stats_after = allocator.GetStats();
+  int64_t requested_after = GetStatInt(stats_after, "RequestedInUse");
+  EXPECT_EQ(requested_after, requested_before);
+}
+
 // Verify arena can be replaced via CreateSharedAllocator with custom config.
 // Restores the default allocator at the end to avoid affecting shuffled test ordering.
 TEST_F(CudaPluginArenaTest, DeviceAllocator_ReplaceWithCustomConfig) {
