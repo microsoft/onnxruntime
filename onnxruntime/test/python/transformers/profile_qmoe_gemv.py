@@ -75,7 +75,7 @@ def main():
     parser.add_argument(
         "--splitk2-swiglu",
         action="store_true",
-        help="Deprecated compatibility flag; split-K2 two-pass FC1 SwiGLU GEMV is enabled by default when supported",
+        help="Force split-K2 two-pass FC1 SwiGLU GEMV by setting ORT_MOE_GEMV_SPLITK2_SWIGLU=1",
     )
     parser.add_argument(
         "--disable-splitk2-swiglu",
@@ -115,7 +115,10 @@ def main():
         os.environ["ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU"] = "1"
     else:
         os.environ.pop("ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU", None)
-    os.environ.pop("ORT_MOE_GEMV_SPLITK2_SWIGLU", None)
+    if args.splitk2_swiglu and not args.disable_splitk2_swiglu:
+        os.environ["ORT_MOE_GEMV_SPLITK2_SWIGLU"] = "1"
+    else:
+        os.environ.pop("ORT_MOE_GEMV_SPLITK2_SWIGLU", None)
 
     result = run_qmoe_gemv_benchmark(case)
     if result["has_invalid_output"]:

@@ -1124,10 +1124,10 @@ decode throughput and `-1.28%` decode latency versus the opt-out fallback.
 
 ### FP16 Accumulation Follow-Up
 
-After the normal QMoE GEMV path was changed to support fp16 accumulation, the
-Split-K2 route was rechecked with `ORT_MOE_GEMV_FP16_ACCUM=1` on the same
-GPT-OSS-20B decode shape. Sequential focused-helper runs with `--repeat 100`
-showed Split-K2 behind the single-kernel path:
+After the normal QMoE GEMV path changed to use fp16 accumulation by default, the
+Split-K2 route was rechecked on the same GPT-OSS-20B decode shape. Sequential
+focused-helper runs with `--repeat 100` showed Split-K2 behind the single-kernel
+path:
 
 | Run | Mode | Latency ms/inference |
 |-----|------|----------------------|
@@ -1149,9 +1149,9 @@ A short CUDA-graph model-level pair with `REPS=5`, `WARMUP=2`, prompt length
 | Split-K2 disabled | 2.816800 | 355.012723 |
 
 Although the single-kernel path was faster for this GPT-OSS focused helper,
-Split-K2 with fp16 accumulation was still faster than the fp32-accumulation
-Split-K2 route. The fp16 Split-K2 variant is kept so a future autotuner can
-choose it for shapes where the extra K parallelism wins.
+Split-K2 with default fp16 accumulation was still faster than the
+`ORT_MOE_GEMV_FP32_ACCUM=1` Split-K2 route. The fp16 Split-K2 variant is kept so
+a future autotuner can choose it for shapes where the extra K parallelism wins.
 
 The same focused profiler check was run for Qwen3.6-35B-A3B and Gemma4-26B-A4B
 decode-shaped configs with `--repeat 100`:
@@ -1166,8 +1166,8 @@ decode-shaped configs with `--repeat 100`:
 | Gemma4-26B-A4B | fp32 Split-K2 | 0.059571 |
 
 Both additional shapes produced valid output. In these focused helper runs,
-fp16 Split-K2 again sat between the fp16 single-kernel path and the fp32 Split-K2
-path.
+fp16 Split-K2 again sat between the fp16 single-kernel path and the
+`ORT_MOE_GEMV_FP32_ACCUM=1` Split-K2 path.
 
 ### Accuracy Smoke
 
@@ -1181,12 +1181,15 @@ there is no accuracy regression signal from enabling Split-K2 by default.
 ### Decision
 
 - Enable Split-K2 by default for its supported fp16 INT4 interleaved-SwiGLU GEMV
-  scope.
+  scope when `ORT_MOE_GEMV_FP32_ACCUM=1` selects fp32 accumulation.
 - Keep the fp16-accumulation Split-K2 variant available. It is slower than the
   single-kernel fp16-accumulation path on the GPT-OSS shape, but faster than the
   fp32-accumulation Split-K2 route and may be selected by future per-shape
   autotuning.
-- Keep `ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU=1` as the fallback and A/B knob.
+- With default fp16 accumulation, use the single-kernel FC1 SwiGLU path unless
+  `ORT_MOE_GEMV_SPLITK2_SWIGLU=1` forces Split-K2. Keep
+  `ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU=1` as the fp32-accumulation fallback and
+  A/B knob.
 - The 1000-sample MMLU smoke matched the opt-out fallback within noise, so the
   default flip has an accuracy sanity check in addition to focused-helper valid
   output.
@@ -1195,3 +1198,56 @@ there is no accuracy regression signal from enabling Split-K2 by default.
     default.
   - Try a launch-fused reduction strategy or cooperative approach to keep the
     FC1 parallelism benefit without the extra reduce launch.
+
+## 2026-06-19 FP16 Accumulation Default: SM90, GPT-OSS Decode Shape
+
+### Setup
+
+- Goal: make fp16 accumulation the default for fp16 QMoE GEMV, while preserving
+  the previous fp32 accumulation path behind `ORT_MOE_GEMV_FP32_ACCUM=1`.
+- GPU: single H200 (SM90).
+- ONNX Runtime build: `~/onnxruntime/build/cu130/Release`, CUDA 13.0.
+- QMoE helper case: `gpt_oss_20b_m1_top4_fp16_2880x2880_e32`, warmup 5,
+  repeat 20.
+- Full-model case: GPT-OSS-20B INT4 QMoE, batch 1, prompt 512, generation 128,
+  warmup 2, repeat 5, CUDA graph enabled, XQA enabled, deterministic MoE tactic
+  selection.
+
+### Standalone QMoE Helper
+
+Lower is better. Both modes reported `has_invalid_output=false`.
+
+| Mode | Helper latency ms | FC1 SwiGLU GEMV avg us | FC2 GEMV avg us |
+|------|------------------:|-----------------------:|----------------:|
+| default fp16 accumulation | 0.0708 | 13.93 | 10.14 |
+| `ORT_MOE_GEMV_FP32_ACCUM=1` | 0.0812 | 21.57 | 12.24 |
+
+The new default is about 12.8% faster than the fp32 fallback in the isolated
+GPT-OSS decode-shaped QMoE helper. The gain comes from the expected GEMV rows:
+FC1 interleaved SwiGLU is about 35% faster and FC2 GEMV is about 17% faster.
+
+### Full GPT-OSS Decode
+
+| Mode | Decode latency ms/token | Decode throughput tok/s |
+|------|-------------------------:|-------------------------:|
+| default fp16 accumulation | 2.588930 | 386.259956 |
+| `ORT_MOE_GEMV_FP32_ACCUM=1` | 2.827260 | 353.699315 |
+
+The full-model A/B shows the default fp16 accumulation path is about 9.2% faster
+in decode throughput than the fp32 fallback in this run.
+
+### Accuracy Smoke
+
+Prior 1000-sample MMLU runs found no pooled-accuracy difference between the old
+fp32 default and the fp16-accumulation experiment:
+
+| Mode | Output dir | Pooled accuracy |
+|------|------------|-----------------|
+| fp32 accumulation | `~/eval_runs/mmlu1000_default_20260619_001348` | 0.8260 |
+| fp16 accumulation | `~/eval_runs/mmlu1000_fp16accum_20260619_001352` | 0.8260 |
+
+### Decision
+
+- Make fp16 accumulation the default for fp16 QMoE GEMV.
+- Keep bf16 on fp32 accumulation.
+- Keep `ORT_MOE_GEMV_FP32_ACCUM=1` as the opt-in numerical fallback and A/B knob.

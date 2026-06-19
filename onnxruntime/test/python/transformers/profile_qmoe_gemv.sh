@@ -28,6 +28,7 @@ PY="${PYTHON:-python}"
 EXTRA_ARGS=()
 LIST_CASES=0
 DISABLE_SPLITK2_SWIGLU=0
+FORCE_SPLITK2_SWIGLU=0
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -39,10 +40,12 @@ while [[ "$#" -gt 0 ]]; do
             LIST_CASES=1
             ;;
         --splitk2-swiglu)
+            FORCE_SPLITK2_SWIGLU=1
             DISABLE_SPLITK2_SWIGLU=0
             ;;
         --disable-splitk2-swiglu)
             DISABLE_SPLITK2_SWIGLU=1
+            FORCE_SPLITK2_SWIGLU=0
             ;;
         --batch-size|--sequence-length|--hidden-size|--intermediate-size|--num-experts|--top-k|--dtype|--quant-bits|--block-size)
             EXTRA_ARGS+=("$1" "$2")
@@ -108,6 +111,8 @@ if [[ "${#EXTRA_ARGS[@]}" -gt 0 ]]; then
 fi
 if [[ "${DISABLE_SPLITK2_SWIGLU}" -eq 1 ]]; then
     echo "Split-K2 SwiGLU: disabled for GEMV mode"
+elif [[ "${FORCE_SPLITK2_SWIGLU}" -eq 1 ]]; then
+    echo "Split-K2 SwiGLU: forced for GEMV mode"
 fi
 
 profile_one() {
@@ -119,6 +124,8 @@ profile_one() {
         disable_arg="--disable-gemv"
     elif [[ "${DISABLE_SPLITK2_SWIGLU}" -eq 1 ]]; then
         splitk2_arg="--disable-splitk2-swiglu"
+    elif [[ "${FORCE_SPLITK2_SWIGLU}" -eq 1 ]]; then
+        splitk2_arg="--splitk2-swiglu"
     fi
 
     echo ""
