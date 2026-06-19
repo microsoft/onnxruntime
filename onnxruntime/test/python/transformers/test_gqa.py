@@ -22,6 +22,7 @@ import numpy
 import torch
 from cuda_plugin_ep_helper import get_cuda_provider_name, resolve_cuda_plugin_ep
 from einops import rearrange, repeat
+from env_var_helper import scoped_env_var
 
 # --- ONNX and Torch/Numpy Dtype Mappings ---
 from gqa_test_helper import (
@@ -2020,17 +2021,17 @@ class TestFlashGQA(unittest.TestCase):
             print("-" * 20)
             print(f"test_case: {name}\n{config}")
 
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
-        parity_check_gqa_prompt(
-            config=config,
-            ep="CUDAExecutionProvider",
-            device="cuda",
-            torch_type=torch.float16,
-            ort_type=TensorProto.FLOAT16,
-            causal=True,
-            rtol=rtol["fp16"],
-            atol=atol["fp16"],
-        )
+        with scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "0"):
+            parity_check_gqa_prompt(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=True,
+                rtol=rtol["fp16"],
+                atol=atol["fp16"],
+            )
 
     @parameterized.expand(gqa_cuda_past_test_cases())
     def test_gqa_past_flash_attention(self, name, config):
@@ -2038,17 +2039,17 @@ class TestFlashGQA(unittest.TestCase):
             print("-" * 20)
             print(f"test_case: {name}\n{config}")
 
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
-        parity_check_gqa_past(
-            config=config,
-            ep="CUDAExecutionProvider",
-            device="cuda",
-            torch_type=torch.float16,
-            ort_type=TensorProto.FLOAT16,
-            causal=True,
-            rtol=rtol["fp16"],
-            atol=atol["fp16"],
-        )
+        with scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "0"):
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=True,
+                rtol=rtol["fp16"],
+                atol=atol["fp16"],
+            )
 
 
 @unittest.skipIf(not has_flash_attention(bf16=True), "Flash Attention is not available, skipping tests.")
@@ -2069,17 +2070,17 @@ class TestFlashGQABF16(unittest.TestCase):
             print(f"test_case: {name}\n{config}")
 
         config.kv_cache_type = "bfloat16"
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
-        parity_check_gqa_prompt(
-            config=config,
-            ep="CUDAExecutionProvider",
-            device="cuda",
-            torch_type=torch.bfloat16,
-            ort_type=TensorProto.BFLOAT16,
-            causal=True,
-            rtol=rtol["bf16"],
-            atol=atol["bf16"],
-        )
+        with scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "0"):
+            parity_check_gqa_prompt(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.bfloat16,
+                ort_type=TensorProto.BFLOAT16,
+                causal=True,
+                rtol=rtol["bf16"],
+                atol=atol["bf16"],
+            )
 
     @parameterized.expand(gqa_cuda_past_test_cases())
     def test_gqa_past_flash_attention_bf16(self, name, config):
@@ -2091,17 +2092,17 @@ class TestFlashGQABF16(unittest.TestCase):
             print(f"test_case: {name}\n{config}")
 
         config.kv_cache_type = "bfloat16"
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
-        parity_check_gqa_past(
-            config=config,
-            ep="CUDAExecutionProvider",
-            device="cuda",
-            torch_type=torch.bfloat16,
-            ort_type=TensorProto.BFLOAT16,
-            causal=True,
-            rtol=rtol["bf16"],
-            atol=atol["bf16"],
-        )
+        with scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "0"):
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.bfloat16,
+                ort_type=TensorProto.BFLOAT16,
+                causal=True,
+                rtol=rtol["bf16"],
+                atol=atol["bf16"],
+            )
 
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
@@ -2132,17 +2133,17 @@ class TestFlashGQABF16QuantizedKV(unittest.TestCase):
 
         self.manual_seed()
 
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
-        parity_check_gqa_prompt(
-            config=config,
-            ep="CUDAExecutionProvider",
-            device="cuda",
-            torch_type=torch.bfloat16,
-            ort_type=TensorProto.BFLOAT16,
-            causal=True,
-            rtol=rtol[f"{config.kv_cache_type}_bf16"],
-            atol=atol[f"{config.kv_cache_type}_bf16"],
-        )
+        with scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "0"):
+            parity_check_gqa_prompt(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.bfloat16,
+                ort_type=TensorProto.BFLOAT16,
+                causal=True,
+                rtol=rtol[f"{config.kv_cache_type}_bf16"],
+                atol=atol[f"{config.kv_cache_type}_bf16"],
+            )
 
     @parameterized.expand(gqa_cuda_quantized_test_cases(is_past=True))
     def test_gqa_quantized_past_bf16(self, name, config):
@@ -2152,17 +2153,17 @@ class TestFlashGQABF16QuantizedKV(unittest.TestCase):
 
         self.manual_seed()
 
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
-        parity_check_gqa_past(
-            config=config,
-            ep="CUDAExecutionProvider",
-            device="cuda",
-            torch_type=torch.bfloat16,
-            ort_type=TensorProto.BFLOAT16,
-            causal=True,
-            rtol=rtol[f"{config.kv_cache_type}_bf16"],
-            atol=atol[f"{config.kv_cache_type}_bf16"],
-        )
+        with scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "0"):
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.bfloat16,
+                ort_type=TensorProto.BFLOAT16,
+                causal=True,
+                rtol=rtol[f"{config.kv_cache_type}_bf16"],
+                atol=atol[f"{config.kv_cache_type}_bf16"],
+            )
 
 
 @unittest.skipIf(not has_cuda_device(53), "Memory Efficient Attention is not available, skipping tests.")
@@ -2173,17 +2174,17 @@ class TestMemoryEfficientGQA(unittest.TestCase):
             print("-" * 20)
             print(f"test_case: {name}\n{config}")
 
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
-        parity_check_gqa_prompt(
-            config=config,
-            ep="CUDAExecutionProvider",
-            device="cuda",
-            torch_type=torch.float16,
-            ort_type=TensorProto.FLOAT16,
-            causal=True,
-            rtol=rtol["fp16"],
-            atol=atol["fp16"],
-        )
+        with scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "1"):
+            parity_check_gqa_prompt(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=True,
+                rtol=rtol["fp16"],
+                atol=atol["fp16"],
+            )
 
     @parameterized.expand(gqa_cuda_past_test_cases(allow_head_sink=False))
     def test_gqa_past_memory_efficient(self, name, config):
@@ -2191,17 +2192,17 @@ class TestMemoryEfficientGQA(unittest.TestCase):
             print("-" * 20)
             print(f"test_case: {name}\n{config}")
 
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
-        parity_check_gqa_past(
-            config=config,
-            ep="CUDAExecutionProvider",
-            device="cuda",
-            torch_type=torch.float16,
-            ort_type=TensorProto.FLOAT16,
-            causal=True,
-            rtol=rtol["fp16"],
-            atol=atol["fp16"],
-        )
+        with scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "1"):
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=True,
+                rtol=rtol["fp16"],
+                atol=atol["fp16"],
+            )
 
 
 @unittest.skipIf(not has_cuda_device(80), "BF16 requires Ampere or higher GPU, skipping tests.")
@@ -2212,17 +2213,17 @@ class TestBF16MemoryEfficientGQA(unittest.TestCase):
             print("-" * 20)
             print(f"test_case: {name}\n{config}")
 
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
-        parity_check_gqa_past(
-            config=config,
-            ep="CUDAExecutionProvider",
-            device="cuda",
-            torch_type=torch.bfloat16,
-            ort_type=TensorProto.BFLOAT16,
-            causal=True,
-            rtol=rtol["bf16"],
-            atol=atol["bf16"],
-        )
+        with scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "1"):
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.bfloat16,
+                ort_type=TensorProto.BFLOAT16,
+                causal=True,
+                rtol=rtol["bf16"],
+                atol=atol["bf16"],
+            )
 
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
@@ -2232,8 +2233,8 @@ class TestFlashGQAPaddingPrompt(unittest.TestCase):
             print("-" * 20)
             print("test_case: test_gqa_padding_prompt_flash_attention")
 
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
-        parity_test_gqa_padding_prompt()
+        with scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "0"):
+            parity_test_gqa_padding_prompt()
 
 
 @unittest.skipIf(not has_cuda_device(53), "Memory Efficient Attention is not available, skipping tests.")
@@ -2243,8 +2244,8 @@ class TestMemoryEfficientGQAPaddingPrompt(unittest.TestCase):
             print("-" * 20)
             print("test_case: test_gqa_padding_prompt_memory_efficient_attention")
 
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
-        parity_test_gqa_padding_prompt()
+        with scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "1"):
+            parity_test_gqa_padding_prompt()
 
 
 # #################################################################################################
@@ -2352,19 +2353,18 @@ class TestXQAQuantizedParity(unittest.TestCase):
     @parameterized.expand(gqa_xqa_test_cases())
     def test_xqa_quantized_parity(self, name, config, torch_type, ort_type):
         """Test XQA per-tensor INT8 quantized parity."""
-        os.environ["ORT_ENABLE_XQA"] = "1"
-
-        parity_check_gqa_past(
-            config=config,
-            ep="CUDAExecutionProvider",
-            device="cuda",
-            torch_type=torch_type,
-            ort_type=ort_type,
-            causal=True,
-            rtol=rtol["int8_bf16"] if torch_type == torch.bfloat16 else rtol["int8_fp16"],
-            atol=atol["int8_bf16"] if torch_type == torch.bfloat16 else atol["int8_fp16"],
-            std=0.1,
-        )
+        with scoped_env_var("ORT_ENABLE_XQA", "1"):
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch_type,
+                ort_type=ort_type,
+                causal=True,
+                rtol=rtol["int8_bf16"] if torch_type == torch.bfloat16 else rtol["int8_fp16"],
+                atol=atol["int8_bf16"] if torch_type == torch.bfloat16 else atol["int8_fp16"],
+                std=0.1,
+            )
 
 
 def gqa_xqa_head_sink_test_cases():
@@ -2600,17 +2600,17 @@ class TestGQARegressions(unittest.TestCase):
         ort_type = TensorProto.FLOAT16
         device = "cuda"
 
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
-        parity_check_gqa_past(
-            config=config,
-            ep="CUDAExecutionProvider",
-            device=device,
-            torch_type=torch_type,
-            ort_type=ort_type,
-            causal=True,
-            rtol=rtol["fp16"],
-            atol=atol["fp16"],
-        )
+        with scoped_env_var("ORT_DISABLE_FLASH_ATTENTION", "0"):
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device=device,
+                torch_type=torch_type,
+                ort_type=ort_type,
+                causal=True,
+                rtol=rtol["fp16"],
+                atol=atol["fp16"],
+            )
 
     @unittest.skipIf(not has_cuda_device(89) or not has_fp8_kv_cache, "FP8 KV cache is not available, skipping tests.")
     def test_gqa_fp8_kv_cache(self):
