@@ -77,10 +77,9 @@ namespace onnxruntime::llm::kernels::cutlass_kernels {
 // Master switch for the symmetric INT MoE GEMV fast path. Enabled by default;
 // set ORT_DISABLE_MOE_GEMV=1 to fall back to the CUTLASS grouped GEMM.
 inline bool MoeGemvDisabledByEnv() {
-  static bool const disabled = []() {
-    char const* v = std::getenv("ORT_DISABLE_MOE_GEMV");
-    return v != nullptr && v[0] == '1';
-  }();
+  // Parsed once via ORT's environment helper (consistent parsing/thread-safety across platforms).
+  static bool const disabled =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DISABLE_MOE_GEMV", 0) == 1;
   return disabled;
 }
 
@@ -2470,7 +2469,8 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
         activation_params, stream);
 
     // Run the GEMM with activation function overridden with `Identity`, we do the activation separately.
-    // Fast path: int4 per-channel MoE GEMV for small expanded-row counts (e.g. batch-1 decode).
+    // Fast path: symmetric INT4/INT8 (per-column or block-wise) MoE GEMV for small expanded-row counts
+    // (e.g. batch-1 decode).
     bool const fc1_did_gemv = fc1_did_fused_gemv || tryLaunchMoeGemvIntSymmetric<T, WeightType, ScaleBiasType>(
                                                         input, fc1_expert_weights,
                                                         quant_params.groupwise.group_size > 0
@@ -2573,7 +2573,8 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
 
   ActivationParameters activation_params;  // Here assume gemm2 has no activation
                                            // Note: expanded_num_rows, to check this value, it's greater than num_rows * num_experts_per_node
-                                           // Fast path: int4 per-channel MoE GEMV (no bias here; fc2 bias applied in finalizeMoeRouting).
+                                           // Fast path: symmetric INT4/INT8 (per-column or block-wise) MoE GEMV
+                                           // (no bias here; fc2 bias applied in finalizeMoeRouting).
                                            // Keep the decode GEMV path single-EP until token-drop/all-to-all
                                            // cases are profiled and validated.
   bool const fc2_did_gemv = tryLaunchMoeGemvIntSymmetric<T, WeightType, ScaleBiasType>(

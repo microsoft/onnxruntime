@@ -372,7 +372,21 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
     return Status::OK();
   }
 
-  bool use_naive_reduction = name_ == "ArgMin" || name_ == "ArgMax" || (reduce_size < 32 && output_size > 1024) || is_input_empty || input_tensor->Shape().NumDimensions() == 0;
+  // Prefer the naive Reduce path when the shared path would pay extra overhead (transposing non-innermost reduce axes).
+  constexpr size_t kReduceNaiveMaxReduceSize = 128;
+  constexpr size_t kReduceNaiveMinOutputSize = 20000;
+  bool are_axes_innermost = true;
+  size_t axes_rank = input_axes.size();
+  for (size_t i = 0; i < input_axes.size() && are_axes_innermost; ++i) {
+    if (input_axes[axes_rank - 1 - i] != rank - 1 - i) {
+      are_axes_innermost = false;
+      break;
+    }
+  }
+  bool use_naive_reduction = name_ == "ArgMin" || name_ == "ArgMax" || (reduce_size < 32 && output_size > 1024) ||
+                             (!are_axes_innermost && reduce_size <= kReduceNaiveMaxReduceSize &&
+                              output_size > kReduceNaiveMinOutputSize) ||
+                             is_input_empty || input_tensor->Shape().NumDimensions() == 0;
 
   if (use_naive_reduction) {
     ReduceNaiveProgram program(name_, reduce_op_type, keepdims_, noop_with_empty_axes_, input_axes, is_input_empty);
@@ -395,14 +409,6 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
 
     return context.RunProgram(program);
   } else {
-    bool are_axes_innermost = true;
-    size_t axes_rank = input_axes.size();
-    for (size_t i = 0; i < input_axes.size() && are_axes_innermost; ++i) {
-      if (input_axes[axes_rank - 1 - i] != rank - 1 - i) {
-        are_axes_innermost = false;
-        break;
-      }
-    }
     Tensor input_transpose;
     if (!are_axes_innermost) {
       InlinedVector<size_t> perm;

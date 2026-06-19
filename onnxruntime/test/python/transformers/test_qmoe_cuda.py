@@ -1104,8 +1104,14 @@ class SparseMoeBlockORTHelper(nn.Module):
                 use_quant=True,  # Always use QMoE
                 quant_bits=self.quant_bits,
                 # We use swiglu_fusion=1 (fused and interleaved) based on the kernel implementation.
-                # This matches the behavior of the Cutlass/MLAS kernels used in ORT.
-                swiglu_fusion=getattr(self, "swiglu_fusion", 0),
+                # This matches the behavior of the Cutlass/MLAS kernels used in ORT. Tests may set
+                # onnx_swiglu_fusion_override to emit a different attribute value (e.g. 0) while keeping
+                # the interleaved weight layout, to exercise the kernel's backward-compat remap.
+                swiglu_fusion=(
+                    self.onnx_swiglu_fusion_override
+                    if getattr(self, "onnx_swiglu_fusion_override", None) is not None
+                    else getattr(self, "swiglu_fusion", 0)
+                ),
                 block_size=self.block_size,  # Add block_size for block-wise quantization
             )
         except Exception as e:
@@ -1903,6 +1909,64 @@ class TestSwigluQMoE(unittest.TestCase):
         self.assertFalse(torch.isinf(torch_result).any())
 
         swiglu_moe.parity_check()
+
+    def test_swiglu_qmoe_fusion0_remap_parity(self):
+        # Backward-compat regression: the published gpt-oss-20b model emits no swiglu_fusion attribute
+        # (defaulting to 0) but stores FC1 in the interleaved SwiGLU layout. The CUDA QMoE op remaps
+        # swiglu_fusion=0 -> 1 for SwiGLU activation. Here we build an interleaved block, emit
+        # swiglu_fusion=0 in the ONNX graph, and verify parity still holds against the interleaved
+        # reference. Without the remap this would compute the wrong (non-interleaved) result.
+        torch.manual_seed(1234)
+        numpy.random.seed(1234)
+
+        config = SwigluMoeConfig(hidden_size=128, intermediate_size=256, num_local_experts=4, num_experts_per_token=2)
+
+        swiglu_moe = SwigluMoEBlock(
+            config,
+            batch_size=1,
+            sequence_length=32,
+            quant_bits=4,
+            onnx_dtype=TensorProto.FLOAT16,
+            use_asymmetric_quant=False,
+        )
+        # Keep the interleaved reference and weight layout (swiglu_fusion == 1) but emit swiglu_fusion=0
+        # in the ONNX attribute so the op's backward-compatibility remap path is exercised.
+        self.assertEqual(swiglu_moe.swiglu_fusion, 1)
+        swiglu_moe.onnx_swiglu_fusion_override = 0
+
+        hidden_states = torch.randn(1, 32, config.hidden_size).to(device).to(torch.float16)
+        _ = swiglu_moe.forward(hidden_states)
+
+        swiglu_moe.parity_check()
+
+    def test_swiglu_qmoe_int_partial_ktile_rejected(self):
+        # NaN-hardening regression: the INT4/INT8 weight-only path stores B in the column-interleaved
+        # layout, whose CUTLASS K iterator requires each GEMM reduction dim to be a whole multiple of the
+        # 64-element interleave tile (fc1.K == hidden_size, fc2.K == inter_size). A partial final K tile
+        # is read past the valid range and silently produces garbage/NaN. QMoE now rejects such shapes up
+        # front with a clear error instead of computing wrong results. Here inter_size 544 (== 17*32) is
+        # block-quant valid (block_size=32) but 544 % 64 == 32, so the op must raise.
+        torch.manual_seed(4321)
+        numpy.random.seed(4321)
+
+        config = SwigluMoeConfig(hidden_size=512, intermediate_size=544, num_local_experts=4, num_experts_per_token=2)
+
+        swiglu_moe = SwigluMoEBlock(
+            config,
+            batch_size=1,
+            sequence_length=1,
+            quant_bits=8,
+            onnx_dtype=TensorProto.FLOAT16,
+            block_size=32,
+            use_asymmetric_quant=False,
+        )
+
+        # Build the ONNX model + session (the interleaved-layout guard fires at run time in
+        # ComputeInternal, not during session creation), then assert the run is rejected.
+        self.assertTrue(swiglu_moe.recreate_onnx_model())
+        hidden_states = torch.randn(1, 1, config.hidden_size).to(device).to(torch.float16)
+        with self.assertRaisesRegex(Exception, "inter_size to be a multiple of 64"):
+            swiglu_moe.ort_forward(hidden_states)
 
     @parameterized.expand(swiglu_test_cases)
     def test_swiglu_qmoe_parity_bf16(self, batch_size, sequence_length, quant_bits):
@@ -2746,7 +2810,9 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
         self.assertLess(numpy.abs(out).max(), 10.0, "Output magnitude is implausibly large")
 
     def test_int4_swiglu_interleaved_small(self):
-        self._run_one(hidden_size=64, inter_size=32, num_experts=4, top_k=2, swiglu_fusion=1, batch_size=8)
+        # inter_size must be a multiple of 64 (the interleaved-weight K tile) for the INT path; a
+        # partial final K tile is now rejected up front by QMoE's hardening check.
+        self._run_one(hidden_size=64, inter_size=64, num_experts=4, top_k=2, swiglu_fusion=1, batch_size=8)
 
     def test_int4_swiglu_interleaved_medium(self):
         self._run_one(hidden_size=128, inter_size=64, num_experts=8, top_k=2, swiglu_fusion=1, batch_size=16)

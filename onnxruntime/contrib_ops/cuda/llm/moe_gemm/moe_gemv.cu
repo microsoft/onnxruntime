@@ -4,11 +4,14 @@
 #include "contrib_ops/cuda/llm/moe_gemm/moe_gemv.h"
 
 #include <cuda_fp16.h>
-#include <cstdlib>
 #include <type_traits>
 
 #include "core/common/common.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/dispatcher.h"
+// Include env_var_utils.h after dispatcher.h: dispatcher.h transitively pulls in provider_api.h,
+// which defines SHARED_PROVIDER. That guard suppresses env_var_utils.h's own logging.h include and
+// avoids redefining CREATE_MESSAGE / LOGS_CATEGORY (which would fail under -Werror).
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime::llm {
 namespace kernels {
@@ -398,10 +401,9 @@ struct TypeTag {
 // fp32. Honored only for fp16 activations (bf16 always accumulates in fp32). Set
 // ORT_MOE_GEMV_FP16_ACCUM=1 to measure the perf/accuracy tradeoff of 16-bit accumulation.
 inline bool MoeGemvUseFp16Accum() {
-  static bool const enabled = []() {
-    char const* v = std::getenv("ORT_MOE_GEMV_FP16_ACCUM");
-    return v != nullptr && v[0] == '1';
-  }();
+  // Parsed once via ORT's environment helper (consistent parsing/thread-safety across platforms).
+  static bool const enabled =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_MOE_GEMV_FP16_ACCUM", 0) == 1;
   return enabled;
 }
 
@@ -441,6 +443,16 @@ bool is_moe_gemv_supported(int sm, int64_t expanded_num_rows, int64_t n, int64_t
   if (interleaved_k % step_k != 0) {
     return false;
   }
+
+  // The interleaved kernel reads K in whole tiles of kTileSizeK (64). Each group of participating
+  // threads covers one kTileSizeK-wide K tile via sub-offsets {0, kTileSizeK/2, ...}; the per-thread
+  // activation iterator unconditionally loads StepK elements at real_offset_k. When k is not a multiple
+  // of kTileSizeK the final partial tile makes the upper-half threads read past the valid k range of the
+  // activation row (e.g. k=32 reads act[..32..63]), yielding garbage/NaN. Require complete K tiles.
+  if (k % kTileSizeK != 0) {
+    return false;
+  }
+
   return true;
 }
 

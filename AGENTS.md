@@ -66,6 +66,15 @@ Use `reserve()` not `resize()`. Do not use `absl::` directly — use the ORT typ
 - Prefer `gsl::span<const T>` over `const std::vector<T>&` for input parameters
 - Prefer `std::string_view` by value over `const std::string&`
 - `SafeInt<size_t>` (from `core/common/safeint.h`) for memory size arithmetic
+- **Signed vs unsigned on negative-capable differences.** Any expression of the form `a - b`
+  that can be negative (an offset or remaining-budget computed from counts, e.g.
+  `num_keys - num_queries`) must be stored and compared using a **signed** type
+  (`int32_t`/`int64_t`), and any unsigned operand must be `static_cast` to signed *before*
+  the subtraction/comparison. An unsigned result silently wraps to a huge value (`~4.29e9`
+  for `uint32_t`), which can permanently satisfy or skip a relational guard with **no crash
+  and no warning** — a correct-looking-but-wrong result. Concrete ORT instance + the exact
+  fix sites: CUTLASS FMHA `causal_diagonal_offset`, see the `cuda-attention-kernel-patterns`
+  skill §12.
 - Don't use `else` after `return`
 - Avoid `long` (ambiguous width) — use `int64_t` for dimensions, `size_t` for counts
 - `using namespace` allowed in limited scope but never at global scope in headers
