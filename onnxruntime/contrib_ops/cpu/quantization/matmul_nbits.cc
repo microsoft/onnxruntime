@@ -163,6 +163,15 @@ class MatMulNBits final : public OpKernel {
   const bool column_wise_quant_{true};
   IAllocatorUniquePtr<void> packed_b_{};
   size_t packed_b_size_{0};
+  // Address of the packed B buffer this kernel instance produced in its own PrePack(B), captured
+  // before the buffer is moved into the pre-packed weights container. UseSharedPrePackedBuffers uses
+  // it to tell whether the buffer handed back is our own (still needs the staged scale/zero-point
+  // packing) or one another session already finalized (see packed_b_is_shared_).
+  const void* self_prepacked_b_data_{nullptr};
+  // True when packed_b_ was adopted from another session's already-finalized shared buffer. The
+  // CompInt8 scale/zero-point packing is stateful and single-shot (it consumes the partial block sum
+  // produced during B packing), so it must not be re-run on a buffer another session finalized.
+  bool packed_b_is_shared_{false};
   IAllocatorUniquePtr<float> scales_fp32_{};
   IAllocatorUniquePtr<float> bias_fp32_{};
 
@@ -365,6 +374,9 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
         }
       }
 #endif  // MLAS_TARGET_ARM64
+      // Remember the buffer we packed so UseSharedPrePackedBuffers can distinguish it from a
+      // finalized buffer shared by another session.
+      self_prepacked_b_data_ = packed_b_.get();
     }
     is_packed = true;
 
@@ -389,7 +401,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     }();
 
     if (should_pack_scale_and_zp_inputs) {
-      if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
+      if (input_idx == InputIndex::scales && packed_b_ != nullptr && !packed_b_is_shared_) {
         auto sptr = tensor.Data<float>();
         MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(), sptr,
                                     has_zp_input_, nullptr, nullptr, &mlas_backend_kernel_selector_config_);
@@ -397,7 +409,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       }
 
       // Packing zero_point
-      if (input_idx == InputIndex::zero_points && packed_b_ != nullptr) {
+      if (input_idx == InputIndex::zero_points && packed_b_ != nullptr && !packed_b_is_shared_) {
         auto zptr = tensor.Data<uint8_t>();
         MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(), nullptr,
                                     has_zp_input_, zptr, nullptr, &mlas_backend_kernel_selector_config_);
@@ -437,7 +449,8 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       // After this PrePack returns is_packed=true, ORT may erase scales from the constant
       // input table (use count drops to 0), making them unavailable in later PrePack calls.
       // Zero points haven't been PrePacked yet so they are still accessible.
-      if (has_zp_input_ && nbits_ == 4) {
+      // Skip when packed_b_ was adopted from another session - it already carries BZpCorr.
+      if (has_zp_input_ && nbits_ == 4 && !packed_b_is_shared_) {
         const Tensor* zp_tensor = nullptr;
         OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zp_tensor);
         if (zp_tensor != nullptr) {
@@ -502,7 +515,8 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
         // Pack scales separately only for 8-bit. For 4-bit on ARM64, scales are already packed
         // during B packing or used as a raw pointer at compute time (matching standard
         // SQNBIT_CompInt8 behavior where should_pack_scale_and_zp_inputs = (nbits_ == 8) on ARM64).
-        if (nbits_ == 8) {
+        // Skip when packed_b_ was adopted from another session - it is already finalized.
+        if (nbits_ == 8 && !packed_b_is_shared_) {
           MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, SQNBIT_CompInt8, nullptr, packed_b_.get(),
                                       scales_fp32_.get(), has_zp_input_, nullptr, nullptr,
                                       &mlas_backend_kernel_selector_config_);
@@ -513,7 +527,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 
     // Pack zero_points separately only for 8-bit (matching standard SQNBIT_CompInt8 behavior).
     // For 4-bit, zero_points are passed directly in data params or handled via KleidiAI BZpCorr.
-    if (input_idx == InputIndex::zero_points && packed_b_ != nullptr && nbits_ == 8) {
+    if (input_idx == InputIndex::zero_points && packed_b_ != nullptr && nbits_ == 8 && !packed_b_is_shared_) {
       auto zptr = tensor.Data<uint8_t>();
       MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, SQNBIT_CompInt8, nullptr, packed_b_.get(), nullptr,
                                   has_zp_input_, zptr, nullptr, &mlas_backend_kernel_selector_config_);
@@ -633,6 +647,9 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
     }
 #endif  // MLAS_TARGET_ARM64
 
+    // Remember the buffer we packed so UseSharedPrePackedBuffers can distinguish it from a
+    // finalized buffer shared by another session.
+    self_prepacked_b_data_ = packed_b_.get();
     is_packed = true;
 
     if (prepacked_weights != nullptr) {
@@ -649,11 +666,11 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
     }();
 
     if (should_pack_scale_and_zp) {
-      if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
+      if (input_idx == InputIndex::scales && packed_b_ != nullptr && !packed_b_is_shared_) {
         MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(),
                                     scales_fp32_.get(), has_zp_input_, nullptr, nullptr, &mlas_backend_kernel_selector_config_);
         is_packed = false;
-      } else if (input_idx == InputIndex::zero_points && packed_b_ != nullptr) {
+      } else if (input_idx == InputIndex::zero_points && packed_b_ != nullptr && !packed_b_is_shared_) {
         auto zptr = tensor.Data<uint8_t>();
         MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, nullptr, packed_b_.get(),
                                     nullptr, has_zp_input_, zptr, nullptr, &mlas_backend_kernel_selector_config_);
@@ -674,6 +691,11 @@ Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& 
   used_shared_buffers = false;
 
   if (input_idx == InputIndex::B && !prepacked_buffers.empty()) {
+    // If the buffer handed back is not the one this kernel packed in its own PrePack(B), it is a
+    // finalized buffer produced and shared by another session. The staged CompInt8 scale/zero-point
+    // packing must not be re-run on it (that would corrupt the already-folded block sums), so flag it
+    // and skip those steps in the scale/zero-point PrePack calls.
+    packed_b_is_shared_ = prepacked_buffers[0].get() != self_prepacked_b_data_;
     packed_b_ = std::move(prepacked_buffers[0]);
     used_shared_buffers = true;
 
