@@ -15,9 +15,8 @@ struct AttentionKernelDebugInfo {
   std::optional<bool> use_cudnn_flash_attention = std::nullopt;
   std::optional<bool> use_trt_flash_attention = std::nullopt;
   std::optional<bool> use_trt_cross_attention = std::nullopt;
-  std::optional<bool> use_trt_causal_attention = std::nullopt;
   std::optional<bool> use_decoder_attention = std::nullopt;
-  void SetTrtFusedKernel(bool causal, bool enable_trt_flash_attention, int sequence_length);
+  void SetTrtFusedKernel(bool enable_trt_flash_attention, int sequence_length);
   void Print(const char* operator_name, const std::string& node_name, bool is_float16, bool is_bfloat16) const;
 };
 
@@ -33,7 +32,6 @@ class AttentionKernelOptions {
   bool UseUnfusedAttention() const { return use_unfused_; }
   bool UseTrtFlashAttention() const { return use_trt_flash_attention_; }
   bool UseTrtCrossAttention() const { return use_trt_cross_attention_; }
-  bool UseTrtCausalAttention() const { return use_trt_causal_attention_; }
   bool UseDecoderAttention() const { return use_decoder_attention_; }
 
   // True when the SDPA kernel was explicitly selected via the sdpa_kernel provider option
@@ -67,8 +65,6 @@ class AttentionKernelOptions {
 
   bool use_trt_flash_attention_{true};
   bool use_trt_cross_attention_{true};
-  // Causal attention is disabled by default in #14732.
-  bool use_trt_causal_attention_{false};
 
   bool use_decoder_attention_{true};
 
