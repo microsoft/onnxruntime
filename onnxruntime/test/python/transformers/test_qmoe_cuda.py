@@ -2486,6 +2486,7 @@ def run_qmoe_gemv_benchmark(case):
         "case": case["name"],
         "block_size": case.get("block_size", 0),
         "disable_gemv": os.getenv("ORT_DISABLE_MOE_GEMV") == "1",
+        "disable_splitk2_swiglu": os.getenv("ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU") == "1",
         "expanded_num_rows": case["batch_size"] * case["sequence_length"] * case["top_k"],
         "has_invalid_output": bool(torch.isnan(output).any() or torch.isinf(output).any()),
         "latency_ms": qmoe.last_ort_latency_ms,
@@ -2509,6 +2510,16 @@ def run_qmoe_gemv_benchmark_case(case_name=None):
 class TestQMoEGemvBenchmark(unittest.TestCase):
     def test_decode_latency(self):
         result = run_qmoe_gemv_benchmark_case()
+        self.assertFalse(result["has_invalid_output"])
+        print(_QMOE_GEMV_BENCHMARK_RESULT_PREFIX + json.dumps(result, sort_keys=True))
+
+    @unittest.skipIf(
+        os.getenv("ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU") == "1",
+        "Unset ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU to run the default split-K2 SwiGLU GEMV benchmark.",
+    )
+    def test_splitk2_swiglu_decode_latency(self):
+        result = run_qmoe_gemv_benchmark_case("gpt_oss_20b_m1_top4_fp16_2880x2880_e32")
+        self.assertFalse(result["disable_splitk2_swiglu"])
         self.assertFalse(result["has_invalid_output"])
         print(_QMOE_GEMV_BENCHMARK_RESULT_PREFIX + json.dumps(result, sort_keys=True))
 
