@@ -450,7 +450,7 @@ constexpr std::string_view kHardwareArchKey = "hardware_architecture=";
 
 // Extracts the value of `key` from a ';'-delimited "k=v;k=v;..." string, or std::nullopt if the key is absent.
 // The key must appear at the start of a field (string start or right after a ';'), so "version=" does NOT match
-// the "version=" embedded in "ort_api_version=", and the value is terminated at the next ';' (not the string end).
+// the "version=" embedded in "ort_api_version=", and the value ends at the next ';' if present (otherwise the rest of the string).
 std::optional<std::string> GetField(const std::string& info, std::string_view key) {
   for (size_t search = 0;;) {
     size_t pos = info.find(key.data(), search, key.size());
