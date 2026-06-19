@@ -989,6 +989,20 @@ per-column INT4, block-wise INT4/INT8, and interleaved-SwiGLU GEMV kernels.
 | Kernel instantiation | `moe_gemv.cu` adds `__nv_bfloat16` details/instantiations (group sizes 0/32/64/128, INT4/INT8, bias on/off) under `ENABLE_BF16`. | The custom FC1/FC2 GEMV kernels run for BF16; no grouped-GEMM fallback when the FP16 gate would route. |
 | Profiling | GPT-OSS-20B, Qwen3.6-35B-A3B, and Gemma model shapes profiled with `block_size=64` for both dtypes. | BF16 matches FP16 routing and latency within noise (about 1.3x–1.5x faster than grouped GEMM); SwiGLU BF16 parity tests pass. |
 
+#### Accumulation policy
+
+The QMoE GEMV fast path accumulates fp16 activations in fp16 by default. Set
+`ORT_MOE_GEMV_FP32_ACCUM=1` before process start to restore the previous fp32
+accumulation path for fp16 activations. BF16 activations always use fp32
+accumulation because bf16 accumulation is too lossy.
+
+On the GPT-OSS-20B decode-shaped helper case
+`gpt_oss_20b_m1_top4_fp16_2880x2880_e32`, the default fp16-accumulation path was
+0.0708 ms versus 0.0812 ms with `ORT_MOE_GEMV_FP32_ACCUM=1`. In a full GPT-OSS
+CUDA-graph decode run, default fp16 accumulation reached 386.26 tok/s versus
+353.70 tok/s with the fp32 fallback. A 1000-sample MMLU smoke test matched pooled
+accuracy at 0.8260 for both modes.
+
 #### Experiments rejected after profiling
 
 | Experiment | Why it was rejected |
