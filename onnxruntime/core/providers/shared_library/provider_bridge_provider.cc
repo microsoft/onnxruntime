@@ -300,6 +300,14 @@ Status IDataTransfer::CopySparseTensors(const std::vector<SparseSrcDstPair>& src
 }
 #endif
 
+Status IExternalDataLoader::LoadTensor([[maybe_unused]] const Env& env,
+                                       [[maybe_unused]] const std::filesystem::path& data_file_path,
+                                       [[maybe_unused]] FileOffsetType data_offset,
+                                       [[maybe_unused]] SafeInt<size_t> data_length,
+                                       [[maybe_unused]] Tensor& tensor) const {
+  ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+}
+
 const Node& OpKernel::Node() const { return g_host->OpKernel__Node(this); }
 
 TensorShape::TensorShape(gsl::span<const int64_t> dims) {
