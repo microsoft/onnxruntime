@@ -10,6 +10,7 @@ import logging
 import os
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
@@ -28,6 +29,13 @@ POLL_INTERVAL_SECONDS = 60
 KUSTO_CLUSTER = "maia-cicd.westus3"
 KUSTO_DATABASE = "ci-logs"
 KUSTO_TABLE = "onnx_pipeline_run_status"
+
+# Canonical orchestrator build modes. Each pipeline maps these to its own template parameters via
+# PipelineConfig.build_mode_parameters.
+BUILD_MODE_NIGHTLY = "nightly"
+BUILD_MODE_RELEASE = "release"
+BUILD_MODE_PRERELEASE = "prerelease"
+BUILD_MODES = (BUILD_MODE_NIGHTLY, BUILD_MODE_RELEASE, BUILD_MODE_PRERELEASE)
 
 
 class BuildResult(Enum):
@@ -51,14 +59,37 @@ class PipelineConfig:
     name: str
     key: str  # Unique key for pipeline
     project: str = DEFAULT_PROJECT
+    # Mode-independent template parameters applied in every build mode.
     template_parameters: dict[str, Any] = field(default_factory=dict)
     variables: dict[str, str] = field(default_factory=dict)
-    supports_pre_release: bool = False
+    # Per build-mode template parameters, keyed by "nightly" / "release" / "prerelease".
+    # A missing key means the pipeline does not support that mode and is skipped for it.
+    build_mode_parameters: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # Optional translator from the (suffix_string, suffix_number) pre-release suffix into this
+    # pipeline's own template parameters. Only consulted in "prerelease" mode. None means the
+    # pipeline derives nothing from the suffix (the suffix is ignored, with a warning).
+    prerelease_suffix_resolver: Callable[[str, int], dict[str, Any]] | None = None
+
+
+@dataclass
+class ResolvedPipelineConfig:
+    """A pipeline with its build mode fully resolved into a final template parameter set.
+
+    Produced by resolve_pipeline_configs() from a PipelineConfig: template_parameters here is the merge
+    of the config's mode-independent parameters, the selected build mode's parameters, and any resolved
+    pre-release suffix. This is what actually gets triggered.
+    """
+
+    id: int
+    name: str
+    project: str
+    template_parameters: dict[str, Any]
+    variables: dict[str, str]
 
 
 @dataclass
 class TriggeredRun:
-    config: PipelineConfig
+    config: ResolvedPipelineConfig
     run_id: int
     web_url: str
     state: BuildState = BuildState.UNKNOWN
@@ -78,55 +109,79 @@ class PipelineStatusRecord:
     Url: str
 
 
+def nuget_prerelease_suffix(suffix_string: str, suffix_number: int) -> dict[str, Any]:
+    """Translate the canonical pre-release suffix into the Nuget pipelines' template parameters."""
+    return {
+        "PreReleaseVersionSuffixString": suffix_string,
+        "PreReleaseVersionSuffixNumber": suffix_number,
+    }
+
+
+# Shared build-mode parameter maps. These are read-only; resolve_pipeline_configs never mutates them.
+_PYTHON_BUILD_MODE_PARAMETERS: dict[str, dict[str, Any]] = {
+    BUILD_MODE_NIGHTLY: {"is_nightly_build": True},
+    BUILD_MODE_RELEASE: {"is_nightly_build": False},
+    # No "prerelease" entry: Python wheels have no RC versioning yet, so they are skipped on prerelease.
+}
+
+_NUGET_BUILD_MODE_PARAMETERS: dict[str, dict[str, Any]] = {
+    BUILD_MODE_NIGHTLY: {"IsReleaseBuild": False},
+    BUILD_MODE_RELEASE: {"IsReleaseBuild": True},
+    BUILD_MODE_PRERELEASE: {"IsReleaseBuild": True},
+}
+
+
 PIPELINE_REGISTRY: list[PipelineConfig] = [
     PipelineConfig(
         id=841,
         name="Python packaging pipeline",
         key="python_packaging",
+        build_mode_parameters=_PYTHON_BUILD_MODE_PARAMETERS,
     ),
     PipelineConfig(
         id=940,
         name="Zip-Nuget-Java-Nodejs Packaging Pipeline",
         key="nuget_cuda12_packaging",
         template_parameters={
-            "IsReleaseBuild": True,
             "NugetPackageSuffix": "NONE",
         },
-        supports_pre_release=True,
+        build_mode_parameters=_NUGET_BUILD_MODE_PARAMETERS,
+        prerelease_suffix_resolver=nuget_prerelease_suffix,
     ),
     PipelineConfig(
         id=2138,
         name="Nuget - Packaging - CUDA13",
         key="nuget_cuda13_packaging",
         template_parameters={
-            "IsReleaseBuild": True,
             "NugetPackageSuffix": "NONE",
         },
-        supports_pre_release=True,
+        build_mode_parameters=_NUGET_BUILD_MODE_PARAMETERS,
+        prerelease_suffix_resolver=nuget_prerelease_suffix,
     ),
     PipelineConfig(
         id=1299,
         name="Python-CUDA-Packaging-Pipeline",
         key="python_cuda12_packaging",
+        build_mode_parameters=_PYTHON_BUILD_MODE_PARAMETERS,
     ),
     PipelineConfig(
         id=2104,
         name="Python CUDA 13 Packaging Pipeline",
         key="python_cuda13_packaging",
+        build_mode_parameters=_PYTHON_BUILD_MODE_PARAMETERS,
     ),
     PipelineConfig(
         id=1625,
         name="Python DML Packaging Pipeline",
         key="python_dml_packaging",
+        build_mode_parameters=_PYTHON_BUILD_MODE_PARAMETERS,
     ),
     PipelineConfig(
         id=1234,
         name="QNN_Nuget_Windows",
         key="qnn_nuget_packaging",
-        template_parameters={
-            "IsReleaseBuild": True,
-        },
-        supports_pre_release=True,
+        build_mode_parameters=_NUGET_BUILD_MODE_PARAMETERS,
+        prerelease_suffix_resolver=nuget_prerelease_suffix,
     ),
     PipelineConfig(
         id=1994,
@@ -134,30 +189,34 @@ PIPELINE_REGISTRY: list[PipelineConfig] = [
         key="dml_nuget_packaging",
         template_parameters={
             "DoEsrp": True,
-            "IsReleaseBuild": True,
         },
-        supports_pre_release=True,
+        build_mode_parameters=_NUGET_BUILD_MODE_PARAMETERS,
+        prerelease_suffix_resolver=nuget_prerelease_suffix,
     ),
     PipelineConfig(
         id=1080,
         name="Npm Packaging Pipeline",
         key="npm_packaging",
-        template_parameters={
-            "NpmPublish": "production (@latest)",
+        build_mode_parameters={
+            BUILD_MODE_NIGHTLY: {"NpmPublish": "nightly (@dev)"},
+            BUILD_MODE_RELEASE: {"NpmPublish": "production (@latest)"},
+            BUILD_MODE_PRERELEASE: {"NpmPublish": "release candidate (@rc)"},
         },
     ),
     PipelineConfig(
         id=995,
         name="onnxruntime-ios-packaging-pipeline",
         key="ios_packaging",
-        template_parameters={
-            "buildType": "release",
+        build_mode_parameters={
+            BUILD_MODE_NIGHTLY: {"buildType": "normal"},
+            BUILD_MODE_RELEASE: {"buildType": "release"},
         },
     ),
     PipelineConfig(
         id=2107,
         name="WebGPU Python Packaging Pipeline",
         key="webgpu_python_packaging",
+        build_mode_parameters=_PYTHON_BUILD_MODE_PARAMETERS,
     ),
 ]
 assert len({cfg.id for cfg in PIPELINE_REGISTRY}) == len(PIPELINE_REGISTRY), "Pipeline IDs must be unique"
@@ -178,7 +237,7 @@ def _headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 
-def trigger_pipeline(config: PipelineConfig, branch: str, token: str) -> TriggeredRun | None:
+def trigger_pipeline(config: ResolvedPipelineConfig, branch: str, token: str) -> TriggeredRun | None:
     logger.info(
         "Triggering '%s' (ID %d) on branch '%s' in project '%s'...", config.name, config.id, branch, config.project
     )
@@ -349,19 +408,101 @@ def build_parser() -> argparse.ArgumentParser:
         help="Enable/disable a pipeline by its registry key. Can be repeated.",
     )
     parser.add_argument(
+        "--build-mode",
+        choices=list(BUILD_MODES),
+        default=BUILD_MODE_NIGHTLY,
+        help="Canonical build mode applied per-pipeline. Default: nightly (dev).",
+    )
+    parser.add_argument(
         "--pre-release-suffix-string",
         type=str,
-        choices=["alpha", "beta", "rc", "none"],
+        choices=["alpha", "beta", "rc"],
         default=None,
-        help="Pre-release version suffix (alpha, beta, rc, none). Applied to pipelines that support it.",
+        help="Pre-release version suffix (alpha, beta, rc). Required for and only valid with "
+        "--build-mode prerelease. Applied to pipelines that support it.",
     )
     parser.add_argument(
         "--pre-release-suffix-number",
         type=int,
         default=0,
-        help="Pre-release version suffix number. 0 means no number suffix (e.g. -rc vs -rc.1).",
+        help="Pre-release version suffix number; only valid with --build-mode prerelease. "
+        "0 means no number suffix (e.g. -rc vs -rc.1).",
     )
     return parser
+
+
+def validate_prerelease_suffix(build_mode: str, suffix_string: str | None, suffix_number: int) -> bool:
+    """Check that the pre-release suffix is supplied if and only if build_mode is "prerelease".
+
+    A pre-release suffix string is required for "prerelease" mode and rejected otherwise. A non-zero
+    suffix number is only meaningful in "prerelease" mode and is rejected otherwise. Logs an error and
+    returns False on an inconsistent request (no coercion); returns True when the request is valid.
+    """
+    has_suffix = suffix_string is not None
+    if build_mode == BUILD_MODE_PRERELEASE:
+        if not has_suffix:
+            logger.error("##[error]--build-mode prerelease requires --pre-release-suffix-string (alpha, beta, rc).")
+            return False
+        return True
+
+    if has_suffix:
+        logger.error(
+            "##[error]--pre-release-suffix-string '%s' is only valid with --build-mode prerelease "
+            "(got --build-mode %s).",
+            suffix_string,
+            build_mode,
+        )
+        return False
+    if suffix_number:
+        logger.error(
+            "##[error]--pre-release-suffix-number %s is only valid with --build-mode prerelease (got --build-mode %s).",
+            suffix_number,
+            build_mode,
+        )
+        return False
+    return True
+
+
+def resolve_pipeline_configs(
+    configs: list[PipelineConfig],
+    build_mode: str,
+    suffix_string: str | None,
+    suffix_number: int,
+) -> list[ResolvedPipelineConfig]:
+    """Resolve each config's parameters for the requested build mode.
+
+    Pipelines that do not support the requested mode are dropped (logged). The per-pipeline
+    prerelease_suffix_resolver, if present, translates the suffix into that pipeline's own parameters;
+    a pipeline that supports prerelease but has no resolver ignores the suffix (with a warning).
+    """
+    selected: list[ResolvedPipelineConfig] = []
+    for cfg in configs:
+        mode_params = cfg.build_mode_parameters.get(build_mode)
+        if mode_params is None:
+            logger.info("Skipping [%d] %s — no '%s' build-mode support.", cfg.id, cfg.name, build_mode)
+            continue
+        params = {**cfg.template_parameters, **mode_params}
+        if build_mode == BUILD_MODE_PRERELEASE and suffix_string:
+            if cfg.prerelease_suffix_resolver is not None:
+                params.update(cfg.prerelease_suffix_resolver(suffix_string, suffix_number))
+            else:
+                logger.warning(
+                    "##[warning]Pipeline [%d] %s has no prerelease suffix resolver; ignoring suffix '%s'/%s.",
+                    cfg.id,
+                    cfg.name,
+                    suffix_string,
+                    suffix_number,
+                )
+        selected.append(
+            ResolvedPipelineConfig(
+                id=cfg.id,
+                name=cfg.name,
+                project=cfg.project,
+                template_parameters=params,
+                variables=dict(cfg.variables),
+            )
+        )
+    return selected
 
 
 def _parse_enable_flags(raw: list[str]) -> dict[int, bool]:
@@ -409,6 +550,9 @@ def main() -> int:
     args = parser.parse_args()
     branch = f"refs/heads/{args.branch}"
 
+    if not validate_prerelease_suffix(args.build_mode, args.pre_release_suffix_string, args.pre_release_suffix_number):
+        return 1
+
     configs = list(PIPELINE_REGISTRY)
 
     # No explicit pipeline enable/disable -> use everything.
@@ -421,16 +565,18 @@ def main() -> int:
     if enable_flags:
         configs = [cfg for cfg in configs if enable_flags.get(cfg.id, False)]
 
-    if args.pre_release_suffix_string:
-        for cfg in configs:
-            if cfg.supports_pre_release:
-                cfg.template_parameters["PreReleaseVersionSuffixString"] = args.pre_release_suffix_string
-                cfg.template_parameters["PreReleaseVersionSuffixNumber"] = args.pre_release_suffix_number
+    resolved_configs = resolve_pipeline_configs(
+        configs,
+        args.build_mode,
+        args.pre_release_suffix_string,
+        args.pre_release_suffix_number,
+    )
 
     logger.info("Branch    : %s", branch)
-    logger.info("Pipelines : %d", len(configs))
+    logger.info("Build mode: %s", args.build_mode)
+    logger.info("Pipelines : %d", len(resolved_configs))
 
-    for cfg in configs:
+    for cfg in resolved_configs:
         logger.info("  [%d] %s (project: %s)", cfg.id, cfg.name, cfg.project)
         if cfg.template_parameters:
             logger.info("       Template params: %s", cfg.template_parameters)
@@ -441,7 +587,13 @@ def main() -> int:
         kusto_client = _create_kusto_client()
         if kusto_client is not None:
             test_run = TriggeredRun(
-                config=PipelineConfig(id=0, name="dry-run-connectivity-test", key="", project=""),
+                config=ResolvedPipelineConfig(
+                    id=0,
+                    name="dry-run-connectivity-test",
+                    project="",
+                    template_parameters={},
+                    variables={},
+                ),
                 run_id=0,
                 web_url="",
                 state=BuildState.COMPLETED,
@@ -456,8 +608,8 @@ def main() -> int:
     kusto_client = _create_kusto_client()
 
     triggered: list[TriggeredRun] = []
-    trigger_failed: list[PipelineConfig] = []
-    for cfg in configs:
+    trigger_failed: list[ResolvedPipelineConfig] = []
+    for cfg in resolved_configs:
         run = trigger_pipeline(cfg, branch, token)
         if run:
             triggered.append(run)
