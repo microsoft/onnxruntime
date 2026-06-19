@@ -2422,6 +2422,50 @@ class TestGQARegressions(unittest.TestCase):
             atol=5e-2,
         )
 
+    def test_gqa_local_window_large_context_decode(self):
+        """
+        Regression test for FlashDecode split planning with a local attention window.
+
+        Mirrors a gpt-oss-style decode step: a large past KV context combined with a small
+        sliding (local) window. The split-K planning is clamped to the local window length,
+        so only the windowed portion of the KV cache participates in the decode. This verifies
+        that the narrowed split planning still produces correct results.
+        """
+        if not has_flash_attention():
+            self.skipTest("Flash Attention is not available")
+
+        # Decode (q_sequence_length=1) with a large past context but a small local window.
+        config = GQAConfig(
+            batch_size=2,
+            num_heads=64,
+            kv_num_heads=8,
+            head_size=64,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            past_kv_sequence_length=4096,
+            buffer_sequence_length=4096 + 8,
+            local_window_size=128,
+            rotary=True,
+            rotary_interleaved=False,
+            share_buffer=True,
+        )
+
+        torch_type = torch.float16
+        ort_type = TensorProto.FLOAT16
+        device = "cuda"
+
+        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
+        parity_check_gqa_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device=device,
+            torch_type=torch_type,
+            ort_type=ort_type,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
     @unittest.skipIf(not has_cuda_device(89) or not has_fp8_kv_cache, "FP8 KV cache is not available, skipping tests.")
     def test_gqa_fp8_kv_cache(self):
         """

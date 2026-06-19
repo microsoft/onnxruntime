@@ -452,8 +452,13 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     size_t softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
 
     int num_heads_for_split = data.use_flash_attention_fast_decode ? parameters.kv_num_heads : parameters.num_heads;
+    size_t sequence_length_for_split = static_cast<size_t>(parameters.total_sequence_length);
+    if (data.use_flash_attention_fast_decode && parameters.local_window_size > 0) {
+      sequence_length_for_split = std::min(sequence_length_for_split, static_cast<size_t>(parameters.local_window_size));
+    }
+
     auto [num_splits, softmax_lse_accum_bytes, out_accum_bytes] = onnxruntime::flash::get_num_splits_and_buffer_sizes(
-        parameters.batch_size, parameters.sequence_length, parameters.total_sequence_length, num_heads_for_split,
+        parameters.batch_size, parameters.sequence_length, sequence_length_for_split, num_heads_for_split,
         parameters.head_size, device_prop.multiProcessorCount);
 
     parameters.num_splits = static_cast<int>(num_splits);
