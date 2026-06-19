@@ -22,6 +22,7 @@
 #include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
+#include "test/contrib_ops/matmul_nbits_prepack_sharing_test_util.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/ort_env.h"
 #include "core/util/qmath.h"
@@ -86,6 +87,10 @@ struct TestOptions {
   bool has_bias{false};
 
   bool legacy_shape{false};  // for backward compatibility
+
+  // When set, RunTest validates cross-session sharing of the pre-packed weights instead of doing a
+  // single run. The model is run in two sessions that use the same pre-packed weights container.
+  std::optional<PrepackSharingMode> prepack_sharing_mode{};
 
   std::optional<float> output_abs_error{};
   std::optional<float> output_rel_error{};
@@ -267,6 +272,13 @@ void RunTest(const TestOptions& opts,
 
   if (opts.output_rel_error.has_value()) {
     test.SetOutputRelErr("Y", *opts.output_rel_error);
+  }
+
+  if (opts.prepack_sharing_mode.has_value()) {
+    // Pre-packed weight sharing is a CPU-EP-only feature; the helper runs the model on the CPU EP
+    // in two sessions and validates the sharing counters.
+    CheckSharedPrepackedWeights(test, *opts.prepack_sharing_mode, {N, k_blocks, blob_size}, input1_vals);
+    return;
   }
 
   if (!explicit_eps.empty()) {
@@ -596,6 +608,103 @@ TEST(MatMulNBits, Float32_4b_Accuracy4_Batch) {
   opts.has_bias = true;
   RunTest<float>(opts);
 }
+
+#ifndef ENABLE_TRAINING
+// Pre-packing (and therefore cross-session sharing of pre-packed weights) is disabled in a full
+// training build, so there is nothing to exercise there.
+
+namespace {
+// Builds a representative MatMulNBits TestOptions for the pre-packed weight sharing tests.
+TestOptions MakeSharingTestOptions(int64_t N, int64_t K, int64_t block_size, int64_t accuracy_level,
+                                   bool has_zero_point, bool has_bias, PrepackSharingMode mode) {
+  TestOptions opts{};
+  opts.M = 8;
+  opts.N = N;
+  opts.K = K;
+  opts.block_size = block_size;
+  opts.accuracy_level = accuracy_level;
+  opts.has_zero_point = has_zero_point;
+  opts.zp_is_4bit = true;
+  opts.has_bias = has_bias;
+  opts.prepack_sharing_mode = mode;
+  opts.output_abs_error = 0.1f;
+  opts.output_rel_error = 0.02f;
+  return opts;
+}
+}  // namespace
+
+// Hash-based sharing: session.share_all_prepacked_cpu_initializers = "1" with no AddInitializer call.
+// This is the path used by the DQ + MatMul -> MatMulNBits fusion, whose weights are synthesized at
+// session-creation time with auto-generated names. Covers symmetric/asymmetric quantization, with and
+// without bias, across several block sizes.
+TEST(MatMulNBits, SharedPrepackedWeights_ShareAll_Float32) {
+  for (bool has_zero_point : {false, true}) {
+    for (bool has_bias : {false, true}) {
+      for (int64_t block_size : {16, 32, 128}) {
+        RunTest<float>(MakeSharingTestOptions(32, 256, block_size, /*accuracy_level*/ 0, has_zero_point,
+                                              has_bias, PrepackSharingMode::kShareAllCpuInitializers));
+      }
+    }
+  }
+}
+
+TEST(MatMulNBits, SharedPrepackedWeights_ShareAll_Float16) {
+  for (bool has_zero_point : {false, true}) {
+    for (bool has_bias : {false, true}) {
+      for (int64_t block_size : {16, 32, 128}) {
+        RunTest<MLFloat16>(MakeSharingTestOptions(32, 256, block_size, /*accuracy_level*/ 0, has_zero_point,
+                                                  has_bias, PrepackSharingMode::kShareAllCpuInitializers));
+      }
+    }
+  }
+}
+
+// Hash-based sharing across different accuracy levels. Each accuracy level selects a different MLAS
+// compute type and therefore a different packed-weight layout, all of which must share correctly.
+// accuracy_level 4 (DP4A/int8) requires block_size % 32 == 0, K % 128 == 0 and N % 16 == 0.
+TEST(MatMulNBits, SharedPrepackedWeights_ShareAll_AccuracyLevels) {
+  for (int64_t accuracy_level : {0, 1, 4}) {
+    RunTest<float>(MakeSharingTestOptions(32, 128, /*block_size*/ 32, accuracy_level, /*has_zero_point*/ true,
+                                          /*has_bias*/ false, PrepackSharingMode::kShareAllCpuInitializers));
+  }
+}
+
+// Hash-based sharing for the fp16 + accuracy_level 4 path (HQNBIT_CompInt8). This is distinct from
+// the fp32 int8 path: fp16 scales are converted to fp32 at pack time, and on ARM64 KleidiAI the
+// asymmetric 4-bit case packs scales as a separate placeholder buffer and folds the zero points in
+// via BZpCorr during B packing. Cover symmetric/asymmetric (BZpCorr) with and without bias.
+TEST(MatMulNBits, SharedPrepackedWeights_ShareAll_Float16_AccuracyLevel4) {
+  for (bool has_zero_point : {false, true}) {
+    for (bool has_bias : {false, true}) {
+      RunTest<MLFloat16>(MakeSharingTestOptions(32, 128, /*block_size*/ 32, /*accuracy_level*/ 4, has_zero_point,
+                                                has_bias, PrepackSharingMode::kShareAllCpuInitializers));
+    }
+  }
+}
+
+// Legacy sharing path: the weight B is registered as a shared initializer via
+// SessionOptions::AddInitializer. Covers float and float16 activations, symmetric/asymmetric, +/- bias.
+TEST(MatMulNBits, SharedPrepackedWeights_AddInitializer) {
+  for (bool has_zero_point : {false, true}) {
+    for (bool has_bias : {false, true}) {
+      RunTest<float>(MakeSharingTestOptions(32, 256, /*block_size*/ 32, /*accuracy_level*/ 0, has_zero_point,
+                                            has_bias, PrepackSharingMode::kAddInitializer));
+      RunTest<MLFloat16>(MakeSharingTestOptions(32, 256, /*block_size*/ 32, /*accuracy_level*/ 0, has_zero_point,
+                                                has_bias, PrepackSharingMode::kAddInitializer));
+    }
+  }
+}
+
+// Negative control: with the shared container present but neither opt-in mechanism enabled, no
+// pre-packed weights are shared across sessions.
+TEST(MatMulNBits, SharedPrepackedWeights_NotSharedWithoutOptIn) {
+  RunTest<float>(MakeSharingTestOptions(32, 256, /*block_size*/ 32, /*accuracy_level*/ 0, /*has_zero_point*/ true,
+                                        /*has_bias*/ true, PrepackSharingMode::kNoSharing));
+  RunTest<MLFloat16>(MakeSharingTestOptions(32, 256, /*block_size*/ 32, /*accuracy_level*/ 0,
+                                            /*has_zero_point*/ false, /*has_bias*/ false,
+                                            PrepackSharingMode::kNoSharing));
+}
+#endif  // !ENABLE_TRAINING
 
 #endif
 #endif

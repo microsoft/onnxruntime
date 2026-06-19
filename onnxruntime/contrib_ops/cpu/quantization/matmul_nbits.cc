@@ -4,6 +4,7 @@
 #include "contrib_ops/cpu/quantization/matmul_nbits_impl.h"
 
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <type_traits>
 
@@ -227,7 +228,6 @@ template <typename T1>
 Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                                 /*out*/ bool& is_packed,
                                 /*out*/ PrePackedWeights* prepacked_weights) {
-  ORT_UNUSED_PARAMETER(prepacked_weights);
   is_packed = false;
   if (has_g_idx_) {
     return Status::OK();
@@ -341,6 +341,14 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       }
 
       packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
+      // The CompInt8 packed layout is populated across several PrePack() calls (B data here, then
+      // scales and zero_points). Pre-packed weight sharing keys this buffer by a content hash taken
+      // right after this B pack returns, so any bytes not yet written (later-packed regions and
+      // alignment padding) must be deterministic. The allocation above uses reserve and is not
+      // zero-filled, so zero it here to keep the hash identical across sessions and enable sharing.
+      if (effective_compute_type == SQNBIT_CompInt8) {
+        std::memset(packed_b_.get(), 0, packed_b_size_);
+      }
       MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, effective_compute_type, qptr, packed_b_.get(), scale_ptr,
                                   has_zp_input_, nullptr, threadpool_ptr, &mlas_backend_kernel_selector_config_);
 
@@ -359,6 +367,11 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 #endif  // MLAS_TARGET_ARM64
     }
     is_packed = true;
+
+    if (prepacked_weights != nullptr) {
+      prepacked_weights->buffers_.push_back(std::move(packed_b_));
+      prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
+    }
   } else if (compute_type_ == SQNBIT_CompInt8 && !prefer_lut_gemm_) {
     // Packing scales and zero points
     // Guard: for LUT-eligible nodes, scales/ZP are already packed inside
@@ -412,6 +425,14 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       scales_are_packed_ = true;
       is_packed = true;
 
+      // The scales have already been absorbed into the shared packed B buffer.
+      // Push a nullptr placeholder so the framework's sharing logic recognizes this
+      // input as participating in pre-packing without allocating an additional buffer.
+      if (prepacked_weights != nullptr) {
+        prepacked_weights->buffers_.push_back(nullptr);
+        prepacked_weights->buffer_sizes_.push_back(0);
+      }
+
       // For KleidiAI asymmetric 4-bit path: compute BZpCorr now while scales are still accessible.
       // After this PrePack returns is_packed=true, ORT may erase scales from the constant
       // input table (use count drops to 0), making them unavailable in later PrePack calls.
@@ -458,6 +479,16 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
         // BZpCorr was already computed during B packing in Step 1 (if applicable).
         scales_are_packed_ = true;
         is_packed = true;
+
+        // The scales have already been absorbed into the packed B buffer (and BZpCorr folded in
+        // during B packing), so there is no separate buffer to cache. Push a nullptr placeholder
+        // so the pre-packed weight sharing logic recognizes this input as participating in
+        // pre-packing, mirroring the SQNBIT_CompInt8 path above. Without it the shared-container
+        // path asserts (buffers_.size() > 0) because is_packed is true but no buffer was provided.
+        if (prepacked_weights != nullptr) {
+          prepacked_weights->buffers_.push_back(nullptr);
+          prepacked_weights->buffer_sizes_.push_back(0);
+        }
       } else
 #endif  // MLAS_TARGET_ARM64
       {
@@ -540,8 +571,6 @@ template <>
 Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                                        /*out*/ bool& is_packed,
                                        /*out*/ PrePackedWeights* prepacked_weights) {
-  ORT_UNUSED_PARAMETER(prepacked_weights);
-
   if (input_idx == InputIndex::scales || input_idx == InputIndex::bias) {
     auto sptr = tensor.Data<MLFloat16>();
     auto tensor_size = static_cast<size_t>(tensor.Shape().Size());
@@ -581,6 +610,11 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
     }
     auto qptr = tensor.DataRaw();
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
+    // See the primary PrePack() above: zero CompInt8 buffers so the pre-packed weight sharing
+    // content hash (taken right after this B pack) is stable across sessions.
+    if (compute_type_ == SQNBIT_CompInt8 || compute_type_ == HQNBIT_CompInt8) {
+      std::memset(packed_b_.get(), 0, packed_b_size_);
+    }
     MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(),
                                 scales_fp32_.get(), has_zp_input_, nullptr, nullptr, &mlas_backend_kernel_selector_config_);
 
@@ -600,6 +634,11 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
 #endif  // MLAS_TARGET_ARM64
 
     is_packed = true;
+
+    if (prepacked_weights != nullptr) {
+      prepacked_weights->buffers_.push_back(std::move(packed_b_));
+      prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
+    }
   } else if (compute_type_ == SQNBIT_CompInt8) {
     bool should_pack_scale_and_zp = [&]() {
 #if defined(MLAS_TARGET_AMD64_IX86)
@@ -642,6 +681,13 @@ Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& 
       MlasInitLutGemmKernelConfig(N_, K_, nbits_, block_size_, has_zp_input_);
       packed_b_size_ = MlasLutGemmPackedSize(N_, K_, nbits_, block_size_, has_zp_input_);
     }
+  } else if (input_idx == InputIndex::scales) {
+    // When the scales were absorbed into the shared packed B buffer (see PrePack),
+    // a nullptr placeholder is pushed to keep the framework's sharing bookkeeping
+    // consistent. There is no separate buffer to adopt here - the packed B buffer
+    // (already populated via UseSharedPrePackedBuffers for input_idx == B) carries
+    // the packed scales.
+    used_shared_buffers = true;
   }
 
   return Status::OK();
