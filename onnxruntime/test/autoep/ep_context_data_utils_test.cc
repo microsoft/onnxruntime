@@ -167,10 +167,10 @@ TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathRejectsUnsafeNames) {
 #ifdef _WIN32
   ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(
                            api, nullptr, drive_relative_file_name, "unused.ctx", nullptr, nullptr, 0),
-               ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
+                       ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
   ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(
                            api, nullptr, root_relative_file_name, "unused.ctx", nullptr, nullptr, 0),
-               ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
+                       ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
 #endif
 
   std::vector<char> data;
@@ -178,7 +178,7 @@ TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathRejectsUnsafeNames) {
                        ORT_INVALID_ARGUMENT, "EPContext data file name must not contain path traversal");
   ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(
                            api, nullptr, absolute_file_name, "unused.ctx", nullptr, nullptr, 0),
-               ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
+                       ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
 }
 
 TEST(OrtEpLibrary, EpContextDataUtils_FileFallbackReadsAndWrites) {
