@@ -21,6 +21,9 @@ class GroupQueryAttention final : public CudaKernel {
   GroupQueryAttention(const OpKernelInfo& info);
   Status ComputeInternal(OpKernelContext* context) const override;
 
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool& is_packed, PrePackedWeights* prepacked_weights) override;
+
  protected:
   int num_heads_;     // number of attention heads
   int kv_num_heads_;  // different for k and v for group query attention
@@ -45,6 +48,8 @@ class GroupQueryAttention final : public CudaKernel {
 
   static constexpr int kZerosCount = 256;  // In prompt case we create a zero buffer of size 256 for seqlen (assume batch_size <= 256)
   IAllocatorUniquePtr<int> zeros_;
+  IAllocatorUniquePtr<float> xqa_head_sink_;
+  int xqa_head_sink_count_ = 0;
   const AttentionKernelOptions* kernel_options_;
 };
 

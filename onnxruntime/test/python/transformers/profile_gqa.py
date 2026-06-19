@@ -62,6 +62,7 @@ def create_gqa_config(
     local_window_size: int = -1,
     is_packed_qkv: bool = False,
     do_rotary: bool = True,
+    has_head_sink: bool = False,
     device: str = "cuda",
     share_kv_scale: bool = False,
 ) -> GroupQueryAttentionConfig:
@@ -103,6 +104,7 @@ def create_gqa_config(
         dtype=dtype,
         is_packed_qkv=is_packed_qkv,
         use_smooth_softmax=False,
+        has_head_sink=has_head_sink,
         device=device,
         k_quant_type=k_quant_type,
         v_quant_type=v_quant_type,
@@ -147,6 +149,7 @@ def run_comparison(args):
     print(f"{'=' * 70}")
     print(f"Config: batch={args.batch_size}, seq_len={args.sequence_length}, past_seq={args.past_sequence_length}")
     print(f"        num_heads={args.num_heads}, kv_heads={args.kv_num_heads}, head_size={args.head_size}")
+    print(f"        packed_qkv={args.is_packed_qkv}, rotary={not args.no_rotary}, head_sink={args.head_sink}")
     print(f"        warmup={args.warmup}, repeat={args.repeat}")
     print(f"{'=' * 70}\n")
 
@@ -166,6 +169,7 @@ def run_comparison(args):
             local_window_size=args.local_window_size,
             is_packed_qkv=args.is_packed_qkv,
             do_rotary=not args.no_rotary,
+            has_head_sink=args.head_sink,
             share_kv_scale=args.share_kv_scale,
         )
         avg_ms = benchmark_gqa(config, warmup=args.warmup, repeat=args.repeat, mode=mode)
@@ -203,6 +207,7 @@ def main():
     parser.add_argument("--warmup", type=int, default=50, help="Warmup iterations")
     parser.add_argument("--repeat", type=int, default=100, help="Benchmark iterations")
     parser.add_argument("--is-packed-qkv", action="store_true", help="Use packed QKV")
+    parser.add_argument("--head-sink", action="store_true", help="Add a head_sink input")
 
     parser.add_argument("--no-rotary", action="store_true", help="Disable rotary embeddings")
     parser.add_argument("--share-kv-scale", action="store_true", help="Share KV scale tensor for XQA")

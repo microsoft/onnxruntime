@@ -206,6 +206,8 @@ struct GroupQueryAttentionData {
   // XQA buffer
   void* xqa_buffer = nullptr;
   size_t xqa_buffer_bytes = 0;
+  float* xqa_head_sink = nullptr;
+  bool xqa_head_sink_needs_conversion = false;
 
   // Unfused fallback buffers (see LaunchUnfusedAttention in unfused_attention.h):
   //   unfused_q_bnsh : [B, N_q, S_q, H]   (Q transposed from BSNH to BNSH)
