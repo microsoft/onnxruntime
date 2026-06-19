@@ -990,9 +990,11 @@ Every case reported `has_invalid_output=false`.
 - Scope: FP16 INT4/interleaved-SwiGLU FC1 GEMV path for decode-shaped QMoE.
 - Implementation:
   - First pass launches `moe_gemv_splitk_partials_kernel` with `SplitK=2` and
-    writes FP32 partials into QMoE workspace.
+    writes accumulator-typed partials into QMoE workspace. This follows the
+    normal GEMV accumulation policy: fp16 partials for fp16 accumulation, fp32
+    partials for the fp32 fallback.
   - Second pass launches `moe_gemv_splitk_reduce_swiglu_kernel` to reduce the
-    partials, add optional bias, and apply SwiGLU.
+    partials in fp32, add optional bias, and apply SwiGLU.
   - FC2 remains on the existing `moe_gemv_kernel`.
   - Scratch is allocated only for the supported Split-K2 route. Setting
     `ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU=1` restores the previous single-kernel
@@ -1120,6 +1122,53 @@ CUDA-graph model runs were collected with `REPS=10`, `WARMUP=3`, prompt length
 The default Split-K2 route was faster in all three pairs, averaging `+1.29%`
 decode throughput and `-1.28%` decode latency versus the opt-out fallback.
 
+### FP16 Accumulation Follow-Up
+
+After the normal QMoE GEMV path was changed to support fp16 accumulation, the
+Split-K2 route was rechecked with `ORT_MOE_GEMV_FP16_ACCUM=1` on the same
+GPT-OSS-20B decode shape. Sequential focused-helper runs with `--repeat 100`
+showed Split-K2 behind the single-kernel path:
+
+| Run | Mode | Latency ms/inference |
+|-----|------|----------------------|
+| R1 | Split-K2 | 0.061761 |
+| R1 | Split-K2 disabled | 0.060108 |
+| R2 | Split-K2 | 0.062862 |
+| R2 | Split-K2 disabled | 0.060989 |
+| R3 | Split-K2 | 0.064595 |
+| R3 | Split-K2 disabled | 0.060464 |
+| Average | Split-K2 | 0.063073 |
+| Average | Split-K2 disabled | 0.060520 |
+
+A short CUDA-graph model-level pair with `REPS=5`, `WARMUP=2`, prompt length
+512, and generation length 128 showed the same direction:
+
+| Mode | Decode latency ms/token | Decode throughput tok/s |
+|------|-------------------------|-------------------------|
+| Split-K2 | 2.848148 | 351.105318 |
+| Split-K2 disabled | 2.816800 | 355.012723 |
+
+Although the single-kernel path was faster for this GPT-OSS focused helper,
+Split-K2 with fp16 accumulation was still faster than the fp32-accumulation
+Split-K2 route. The fp16 Split-K2 variant is kept so a future autotuner can
+choose it for shapes where the extra K parallelism wins.
+
+The same focused profiler check was run for Qwen3.6-35B-A3B and Gemma4-26B-A4B
+decode-shaped configs with `--repeat 100`:
+
+| Case | Mode | Latency ms/inference |
+|------|------|----------------------|
+| Qwen3.6-35B-A3B | fp16 Split-K2 | 0.049207 |
+| Qwen3.6-35B-A3B | fp16 Split-K2 disabled | 0.047403 |
+| Qwen3.6-35B-A3B | fp32 Split-K2 | 0.052055 |
+| Gemma4-26B-A4B | fp16 Split-K2 | 0.053503 |
+| Gemma4-26B-A4B | fp16 Split-K2 disabled | 0.050732 |
+| Gemma4-26B-A4B | fp32 Split-K2 | 0.059571 |
+
+Both additional shapes produced valid output. In these focused helper runs,
+fp16 Split-K2 again sat between the fp16 single-kernel path and the fp32 Split-K2
+path.
+
 ### Accuracy Smoke
 
 A 1000-sample `match_mmlu` smoke was run with the local parallel eval harness on
@@ -1133,6 +1182,10 @@ there is no accuracy regression signal from enabling Split-K2 by default.
 
 - Enable Split-K2 by default for its supported fp16 INT4 interleaved-SwiGLU GEMV
   scope.
+- Keep the fp16-accumulation Split-K2 variant available. It is slower than the
+  single-kernel fp16-accumulation path on the GPT-OSS shape, but faster than the
+  fp32-accumulation Split-K2 route and may be selected by future per-shape
+  autotuning.
 - Keep `ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU=1` as the fallback and A/B knob.
 - The 1000-sample MMLU smoke matched the opt-out fallback within noise, so the
   default flip has an accuracy sanity check in addition to focused-helper valid

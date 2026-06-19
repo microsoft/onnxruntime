@@ -992,10 +992,12 @@ per-column INT4, block-wise INT4/INT8, and interleaved-SwiGLU GEMV kernels.
 #### Split-K2 SwiGLU GEMV default path
 
 The fp16 INT4 interleaved-SwiGLU GEMV path uses a two-pass Split-K2 FC1 kernel by
-default for supported decode shapes. The first pass computes two K-split FP32
-partials into QMoE workspace, and the second pass reduces those partials, adds
-optional bias, and applies the interleaved SwiGLU epilogue. FC2 stays on the
-regular `moe_gemv_kernel` path.
+default for supported decode shapes. The first pass computes two K-split
+partials into QMoE workspace using the same accumulator type as the normal GEMV
+path: fp16 activations use fp16 partials when the fp16-accumulation route is
+selected, and the fp32 fallback uses fp32 partials. The second pass reduces those
+partials in fp32, adds optional bias, and applies the interleaved SwiGLU
+epilogue. FC2 stays on the regular `moe_gemv_kernel` path.
 
 Set `ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU=1` before process start to force the
 previous single-kernel FC1 SwiGLU GEMV path for debugging, A/B benchmarking, or
