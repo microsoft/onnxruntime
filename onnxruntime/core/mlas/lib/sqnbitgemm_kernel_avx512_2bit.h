@@ -4,6 +4,10 @@ Copyright (c) Microsoft Corporation. All rights reserved.
 
 Licensed under the MIT License.
 
+// CI-CACHE-BUSTER 2026-06-19T22:50: force ccache/sccache miss after wrapping
+// W2 scalar reference tests in #if 0. Safe to delete once cache invalidation
+// is confirmed in the next CI run.
+
 Module Name:
 
     sqnbitgemm_kernel_avx512_2bit.h

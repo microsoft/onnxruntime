@@ -4,6 +4,10 @@ Copyright (c) Microsoft Corporation. All rights reserved.
 
 Licensed under the MIT License.
 
+// CI-CACHE-BUSTER 2026-06-19T22:50: pair with sqnbitgemm_kernel_avx512_2bit.h
+// to force ccache/sccache invalidation after wrapping W2 scalar reference
+// tests in #if 0.
+
 Module Name:
 
     test_sqnbitgemm_2bit.cpp
