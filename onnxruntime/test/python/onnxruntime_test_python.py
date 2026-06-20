@@ -286,6 +286,18 @@ class TestInferenceSession(unittest.TestCase):
         (res,) = sess.run(["Z"], {"X": x, "Y": x})
         np.testing.assert_allclose(res, x * x)
 
+        # Creating a session at Verbose severity must have produced ORT log messages that
+        # were actually routed to the callback (otherwise the callback is a no-op).
+        self.assertGreater(len(messages), 0, "logging callback was never invoked")
+        # Each record must match the documented (severity, category, logid, code_location,
+        # message) signature.
+        for severity, category, logid, code_location, message in messages:
+            self.assertIsInstance(severity, int)
+            self.assertIsInstance(category, str)
+            self.assertIsInstance(logid, str)
+            self.assertIsInstance(code_location, str)
+            self.assertIsInstance(message, str)
+
         # Resetting to None restores the default platform logger and should not raise.
         onnxrt.set_default_logger_callback(None)
 
