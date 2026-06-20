@@ -13,6 +13,15 @@
 #   ./profile_gqa.sh --bf16 --num-heads 64 --kv-num-heads 8
 #   CUDA_VISIBLE_DEVICES=1 PYTHON=python3 ./profile_gqa.sh --int4
 #
+# Compare the new sliding-window XQA decode kernel against the FlashDecode baseline
+# on a GPT-OSS-20B sliding-window layer shape (head_size=64, 64 query / 8 KV heads,
+# head_sink, local_window_size=128). --compare-xqa profiles each mode twice:
+# once with ORT_ENABLE_XQA=0 (FlashDecode) and once with ORT_ENABLE_XQA=1 (XQA):
+#
+#   ./profile_gqa.sh --gpt-oss --compare-xqa
+#   ./profile_gqa.sh --fp16 --compare-xqa --head-sink --head-size 64 \
+#       --num-heads 64 --kv-num-heads 8 --local-window-size 128 --qkv
+#
 
 set -e
 set -o pipefail
@@ -35,7 +44,13 @@ PACKED_QKV=""
 SHARE_KV_SCALE=""
 NUM_HEADS=""
 KV_NUM_HEADS=""
+HEAD_SIZE=""
+HEAD_SINK=""
 LOCAL_WINDOW_SIZE=""
+
+# When true, profile each mode twice: ORT_ENABLE_XQA=0 (FlashDecode) vs
+# ORT_ENABLE_XQA=1 (XQA, incl. the new sliding-window path).
+COMPARE_XQA=false
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --fp16)
@@ -57,6 +72,22 @@ while [[ "$#" -gt 0 ]]; do
         --bf16)
             RUN_BF16=true
             echo "==== 🚀 BF16 run enabled ===="
+            ;;
+        --gpt-oss)
+            # GPT-OSS-20B sliding-window attention layer shape (fp16, head_sink,
+            # 64 query / 8 KV heads, head_size 64, local_window_size 128, packed QKV).
+            RUN_FP16=true
+            NUM_HEADS="--num-heads 64"
+            KV_NUM_HEADS="--kv-num-heads 8"
+            HEAD_SIZE="--head-size 64"
+            HEAD_SINK="--head-sink"
+            LOCAL_WINDOW_SIZE="--local-window-size 128"
+            PACKED_QKV="--is-packed-qkv"
+            echo "==== 🚀 GPT-OSS-20B sliding-window layer preset enabled ===="
+            ;;
+        --compare-xqa)
+            COMPARE_XQA=true
+            echo "==== 🔬 XQA on/off comparison enabled ===="
             ;;
         --all)
             RUN_FP16=true
@@ -99,6 +130,15 @@ while [[ "$#" -gt 0 ]]; do
             echo "==== KV Num Heads: $2 ===="
             shift
             ;;
+        --head-size)
+            HEAD_SIZE="--head-size $2"
+            echo "==== Head size: $2 ===="
+            shift
+            ;;
+        --head-sink)
+            HEAD_SINK="--head-sink"
+            echo "==== Head sink enabled ===="
+            ;;
         -w|--local-window-size)
             LOCAL_WINDOW_SIZE="--local-window-size $2"
             echo "==== Local window size: $2 ===="
@@ -113,7 +153,7 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 # Build extra args string
-EXTRA_ARGS="${BATCH_SIZE} ${SEQUENCE_LENGTH} ${PAST_SEQUENCE_LENGTH} ${PACKED_QKV} ${SHARE_KV_SCALE} ${NUM_HEADS} ${KV_NUM_HEADS} ${LOCAL_WINDOW_SIZE}"
+EXTRA_ARGS="${BATCH_SIZE} ${SEQUENCE_LENGTH} ${PAST_SEQUENCE_LENGTH} ${PACKED_QKV} ${SHARE_KV_SCALE} ${NUM_HEADS} ${KV_NUM_HEADS} ${HEAD_SIZE} ${HEAD_SINK} ${LOCAL_WINDOW_SIZE}"
 
 if ! command -v nsys >/dev/null; then
     echo "Error: nsys not found. Install NVIDIA Nsight Systems or add it to PATH."
@@ -157,22 +197,40 @@ profile_one() {
     fi
 }
 
+# run_mode <mode> <tag> <output_base> [env_var=value ...]
+# When --compare-xqa is set, profile the same config twice: ORT_ENABLE_XQA=0 (the
+# FlashDecode baseline) and ORT_ENABLE_XQA=1 (XQA, including the new sliding-window
+# path), so the kernel latency of the new path is shown side by side.
+run_mode() {
+    local mode="$1"
+    local tag="$2"
+    local base="$3"
+    shift 3
+
+    if [ "$COMPARE_XQA" = true ]; then
+        profile_one "${mode}" "${tag}/XQA=0(FlashDecode)" "${base}_xqa0" ORT_ENABLE_XQA=0 "$@"
+        profile_one "${mode}" "${tag}/XQA=1(XQA)" "${base}_xqa1" ORT_ENABLE_XQA=1 "$@"
+    else
+        profile_one "${mode}" "${tag}" "${base}" "$@"
+    fi
+}
+
 if [ "$RUN_FP16" = true ]; then
-    profile_one fp16 Fp16 gqa_fp16
+    run_mode fp16 Fp16 gqa_fp16
 fi
 
 if [ "$RUN_BF16" = true ]; then
-    profile_one bf16 Bf16 gqa_bf16
+    run_mode bf16 Bf16 gqa_bf16
 fi
 
 if [ "$RUN_INT8" = true ]; then
-    profile_one int8 Int8 gqa_int8 ORT_FLASH_ATTENTION_QUERY_DYNAMIC_QUANT=0
+    run_mode int8 Int8 gqa_int8 ORT_FLASH_ATTENTION_QUERY_DYNAMIC_QUANT=0
 fi
 
 if [ "$RUN_INT8_QUANT" = true ]; then
-    profile_one int8 Int8Q gqa_int8_quant ORT_FLASH_ATTENTION_QUERY_DYNAMIC_QUANT=1
+    run_mode int8 Int8Q gqa_int8_quant ORT_FLASH_ATTENTION_QUERY_DYNAMIC_QUANT=1
 fi
 
 if [ "$RUN_INT4" = true ]; then
-    profile_one int4 Int4 gqa_int4
+    run_mode int4 Int4 gqa_int4
 fi
