@@ -6,11 +6,14 @@
 #include <cuda_bf16.h>
 #include <math_constants.h>
 
-#include <cstdlib>
-
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
+
+// Include env_var_utils.h after cuda_common.h: the latter transitively pulls in provider_api.h,
+// which defines SHARED_PROVIDER. That guard suppresses env_var_utils.h's own logging.h include and
+// avoids redefining CREATE_MESSAGE/LOGS_CATEGORY in this provider-bridge translation unit.
+#include "core/platform/env_var_utils.h"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -25,8 +28,8 @@ constexpr int kGptOssRouterK = 2880;
 constexpr int kGptOssRouterBlockSize = 32;
 
 static bool GptOssRouterGemvSpecializationDisabled() {
-  const char* value = std::getenv("ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION");
-  return value != nullptr && value[0] == '1';
+  // Use ORT's cross-platform env var helper instead of std::getenv, which is unsafe on Windows.
+  return ParseEnvironmentVariableWithDefault<bool>("ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION", false);
 }
 
 static bool IsGptOssRouterGemvShape(const uint8_t* zero_points, int m, int n, int k, int block_size) {
@@ -514,6 +517,38 @@ template bool TryMatMul4Bits<nv_bfloat16>(
     int block_size,
     size_t shared_mem_per_block,
     cudaStream_t stream);
+
+template <typename T>
+__global__ void MatMulNBitsBiasAddKernel(T* output, const T* bias_data, int n, int64_t total) {
+  const int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (idx >= total) {
+    return;
+  }
+  const int col = static_cast<int>(idx % n);
+  // Accumulate in float to stay accurate for half/bfloat16.
+  output[idx] = static_cast<T>(static_cast<float>(output[idx]) + static_cast<float>(bias_data[col]));
+}
+
+template <class T>
+void LaunchMatMulNBitsBiasAdd(T* output, const T* bias_data, int m, int n, cudaStream_t stream) {
+  const int64_t total = static_cast<int64_t>(m) * static_cast<int64_t>(n);
+  if (total == 0) {
+    return;
+  }
+  constexpr int kThreadsPerBlock = 256;
+  const int64_t num_blocks = (total + kThreadsPerBlock - 1) / kThreadsPerBlock;
+  MatMulNBitsBiasAddKernel<T><<<static_cast<unsigned int>(num_blocks), kThreadsPerBlock, 0, stream>>>(
+      output, bias_data, n, total);
+}
+
+template void LaunchMatMulNBitsBiasAdd<float>(
+    float* output, const float* bias_data, int m, int n, cudaStream_t stream);
+
+template void LaunchMatMulNBitsBiasAdd<half>(
+    half* output, const half* bias_data, int m, int n, cudaStream_t stream);
+
+template void LaunchMatMulNBitsBiasAdd<nv_bfloat16>(
+    nv_bfloat16* output, const nv_bfloat16* bias_data, int m, int n, cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib

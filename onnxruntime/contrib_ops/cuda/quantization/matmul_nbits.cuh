@@ -68,6 +68,16 @@ bool TryMatMulNBits(
   return false;
 }
 
+// Adds a per-column bias of shape [n] to the output of shape [m, n] (row-major).
+// Used as a fallback when the fused bias GEMV specialization does not apply.
+template <class T>
+void LaunchMatMulNBitsBiasAdd(
+    T* output,
+    const T* bias_data,
+    int m,
+    int n,
+    cudaStream_t stream);
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

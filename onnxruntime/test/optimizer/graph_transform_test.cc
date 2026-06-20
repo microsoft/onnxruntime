@@ -10790,10 +10790,6 @@ TEST_F(GraphTransformationTests, GatherToSliceFusion) {
 #if !defined(DISABLE_CONTRIB_OPS)
 
 TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
-  ScopedEnvironmentVariables scoped_env_vars{
-      EnvVarMap{{"ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION", optional<std::string>{}},
-                {"ORT_DISABLE_QMOE_ROUTER_BIAS_FUSION", optional<std::string>{}}}};
-
   struct TestOptions {
     bool bias_is_first_add_input{false};
     bool add_produces_graph_output{false};
@@ -10897,173 +10893,15 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
       opts.add_produces_graph_output = add_produces_graph_output;
       run_test(opts);
 
+      // CUDA now fuses bias generically for any shape (the kernel adds the bias with a
+      // separate kernel when the fused GEMV fast path does not apply).
       opts.use_cuda_ep = true;
+      run_test(opts);
+
       opts.use_gpt_oss_router_shape = true;
       run_test(opts);
     }
   }
-}
-
-TEST_F(GraphTransformationTests, MatMulNBitsBiasFusionDoesNotFuseUnsupportedCudaShape) {
-  auto build_test_case = [](ModelTestBuilder& builder) {
-    constexpr size_t qbits = 4;
-    constexpr size_t block_size = 32;
-
-    constexpr int64_t M = 2, K = 4, N = 8;
-
-    int q_rows, q_cols;
-    MlasBlockwiseQuantizedShape<float, qbits>(block_size, /* columnwise */ true,
-                                              static_cast<int>(K), static_cast<int>(N),
-                                              q_rows, q_cols);
-
-    size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
-    MlasBlockwiseQuantizedBufferSizes<qbits>(block_size, /* columnwise */ true,
-                                             static_cast<int>(K), static_cast<int>(N),
-                                             q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
-
-    auto* A = builder.MakeInput<float>(std::vector{M, K}, "A");
-    auto* B_data = builder.MakeInitializer<uint8_t>({int64_t{q_rows}, int64_t{q_cols}},
-                                                    uint8_t{0}, uint8_t{255});
-    auto* B_scales = builder.MakeInitializer<float>({static_cast<int64_t>(q_scale_size)},
-                                                    1.0f, 2.0f);
-    auto* B_zero_points = builder.MakeInitializer<uint8_t>({static_cast<int64_t>(q_zp_size_in_bytes)},
-                                                           uint8_t{0}, uint8_t{255});
-
-    auto* matmul_output = builder.MakeIntermediate();
-    auto& matmul = builder.AddNode("MatMulNBits",
-                                   {A, B_data, B_scales, B_zero_points},
-                                   {matmul_output},
-                                   kMSDomain);
-    matmul.AddAttribute("N", N);
-    matmul.AddAttribute("K", K);
-    matmul.AddAttribute("block_size", static_cast<int64_t>(block_size));
-    matmul.AddAttribute("bits", static_cast<int64_t>(qbits));
-    matmul.SetExecutionProviderType(kCudaExecutionProvider);
-
-    auto* Bias = builder.MakeInput<float>(std::vector{N}, "Bias");
-    auto* add_output = builder.MakeOutput();
-    auto& add = builder.AddNode("Add", {matmul_output, Bias}, {add_output});
-    add.SetExecutionProviderType(kCudaExecutionProvider);
-  };
-
-  auto post_graph_checker = [](Graph& graph) {
-    auto op_count = CountOpsInGraph(graph);
-    EXPECT_EQ(op_count["Add"], 1);
-    return Status::OK();
-  };
-
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 21, *logger_, std::make_unique<MatMulNBitsFusion>(),
-                                        TransformerLevel::Level2, 0, nullptr, post_graph_checker));
-}
-
-// The CUDA bias fusion fast path only handles the router GEMV (M == 1). Even when
-// N/K/block_size/bits match the router specialization, a non-GEMV A input (M > 1) must
-// not be fused, otherwise the CUDA kernel would throw at runtime.
-TEST_F(GraphTransformationTests, MatMulNBitsBiasFusionDoesNotFuseCudaRouterShapeWhenMGreaterThanOne) {
-  ScopedEnvironmentVariables scoped_env_vars{
-      EnvVarMap{{"ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION", optional<std::string>{}},
-                {"ORT_DISABLE_QMOE_ROUTER_BIAS_FUSION", optional<std::string>{}}}};
-
-  auto build_test_case = [](ModelTestBuilder& builder) {
-    constexpr size_t qbits = 4;
-    constexpr size_t block_size = 32;
-
-    // Exact GPT-OSS router N/K but with M > 1 (not a GEMV).
-    constexpr int64_t M = 2, K = 2880, N = 32;
-
-    int q_rows, q_cols;
-    MlasBlockwiseQuantizedShape<float, qbits>(block_size, /* columnwise */ true,
-                                              static_cast<int>(K), static_cast<int>(N),
-                                              q_rows, q_cols);
-
-    size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
-    MlasBlockwiseQuantizedBufferSizes<qbits>(block_size, /* columnwise */ true,
-                                             static_cast<int>(K), static_cast<int>(N),
-                                             q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
-
-    auto* A = builder.MakeInput<float>(std::vector{M, K}, "A");
-    auto* B_data = builder.MakeInitializer<uint8_t>({int64_t{q_rows}, int64_t{q_cols}},
-                                                    uint8_t{0}, uint8_t{255});
-    auto* B_scales = builder.MakeInitializer<float>({static_cast<int64_t>(q_scale_size)},
-                                                    1.0f, 2.0f);
-
-    auto* matmul_output = builder.MakeIntermediate();
-    auto& matmul = builder.AddNode("MatMulNBits",
-                                   {A, B_data, B_scales, builder.MakeEmptyInput()},
-                                   {matmul_output},
-                                   kMSDomain);
-    matmul.AddAttribute("N", N);
-    matmul.AddAttribute("K", K);
-    matmul.AddAttribute("block_size", static_cast<int64_t>(block_size));
-    matmul.AddAttribute("bits", static_cast<int64_t>(qbits));
-    matmul.SetExecutionProviderType(kCudaExecutionProvider);
-
-    auto* Bias = builder.MakeInput<float>(std::vector{N}, "Bias");
-    auto* add_output = builder.MakeOutput();
-    auto& add = builder.AddNode("Add", {matmul_output, Bias}, {add_output});
-    add.SetExecutionProviderType(kCudaExecutionProvider);
-  };
-
-  auto post_graph_checker = [](Graph& graph) {
-    auto op_count = CountOpsInGraph(graph);
-    EXPECT_EQ(op_count["Add"], 1);
-    return Status::OK();
-  };
-
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 21, *logger_, std::make_unique<MatMulNBitsFusion>(),
-                                        TransformerLevel::Level2, 0, nullptr, post_graph_checker));
-}
-
-TEST_F(GraphTransformationTests, MatMulNBitsBiasFusionCanDisableCudaRouterFusion) {
-  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_DISABLE_QMOE_ROUTER_BIAS_FUSION", "1"}}};
-
-  auto build_test_case = [](ModelTestBuilder& builder) {
-    constexpr size_t qbits = 4;
-    constexpr size_t block_size = 32;
-
-    constexpr int64_t M = 1, K = 2880, N = 32;
-
-    int q_rows, q_cols;
-    MlasBlockwiseQuantizedShape<float, qbits>(block_size, /* columnwise */ true,
-                                              static_cast<int>(K), static_cast<int>(N),
-                                              q_rows, q_cols);
-
-    size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
-    MlasBlockwiseQuantizedBufferSizes<qbits>(block_size, /* columnwise */ true,
-                                             static_cast<int>(K), static_cast<int>(N),
-                                             q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
-
-    auto* A = builder.MakeInput<float>(std::vector{M, K}, "A");
-    auto* B_data = builder.MakeInitializer<uint8_t>({int64_t{q_rows}, int64_t{q_cols}},
-                                                    uint8_t{0}, uint8_t{255});
-    auto* B_scales = builder.MakeInitializer<float>({static_cast<int64_t>(q_scale_size)},
-                                                    1.0f, 2.0f);
-
-    auto* matmul_output = builder.MakeIntermediate();
-    auto& matmul = builder.AddNode("MatMulNBits",
-                                   {A, B_data, B_scales, builder.MakeEmptyInput()},
-                                   {matmul_output},
-                                   kMSDomain);
-    matmul.AddAttribute("N", N);
-    matmul.AddAttribute("K", K);
-    matmul.AddAttribute("block_size", static_cast<int64_t>(block_size));
-    matmul.AddAttribute("bits", static_cast<int64_t>(qbits));
-    matmul.SetExecutionProviderType(kCudaExecutionProvider);
-
-    auto* Bias = builder.MakeInput<float>(std::vector{N}, "Bias");
-    auto* add_output = builder.MakeOutput();
-    auto& add = builder.AddNode("Add", {matmul_output, Bias}, {add_output});
-    add.SetExecutionProviderType(kCudaExecutionProvider);
-  };
-
-  auto post_graph_checker = [](Graph& graph) {
-    auto op_count = CountOpsInGraph(graph);
-    EXPECT_EQ(op_count["Add"], 1);
-    return Status::OK();
-  };
-
-  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 21, *logger_, std::make_unique<MatMulNBitsFusion>(),
-                                        TransformerLevel::Level2, 0, nullptr, post_graph_checker));
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
