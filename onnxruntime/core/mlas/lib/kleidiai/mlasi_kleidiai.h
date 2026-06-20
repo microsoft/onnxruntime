@@ -7,7 +7,6 @@
 #pragma once
 
 #include "../mlasi.h"
-#include <iostream>
 
 // Fix to ensure compatibility with MSVC build
 #if defined(_MSC_VER)
@@ -25,6 +24,7 @@
 #endif
 
 #if KLEIDIAI_DEBUG_LOGGING ||KLEIDIAI_KERNEL_LOGGING
+#include <iostream>
 #define KLEIDIAI_LOG(tag, msg) \
     do { \
         std::cout << "[KLEIDIAI " << tag << "]: " << __FILE__ << " : " << __LINE__ << " : " << msg << std::endl; \
@@ -55,6 +55,143 @@ namespace ArmKleidiAI {
 inline const bool UseSME2 = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2();
 inline const bool UseSME = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME();
 inline const std::string_view vendor_name = MLAS_CPUIDINFO::GetCPUIDInfo().GetCPUVendor();
+
+// Selects the convolution route for Arm® KleidiAI™
+enum class ConvRoute {
+    NoKleidiAi,    // decline the conv, caller runs unchanged
+    IGemm,         // handle the whole conv via SME IGEMM kernel
+    SGemmFallback, // decline IGEMM, but still route the per-segment SGEMM slices through MlasGemm
+                   // so that the Arm® KleidiAI™ SGEMM backend override can pick them up
+};
+
+struct ConvRouteSelection {
+    ConvRoute route = ConvRoute::NoKleidiAi;
+    size_t effective_kernel_h = 0;
+    size_t effective_kernel_w = 0;
+};
+
+// Heuristic default for SME IGEMM selection. Work is estimated as
+// output_m * effective_k * filter_count; larger workloads use the SGEMM-backed
+// fallback to avoid IGEMM packing overhead on large effective-k convolutions.
+inline constexpr size_t ConvIgemmMaxWorkDefault = 1'000'000ULL;
+
+inline bool TryComputeDilatedKernelSize(size_t dilation, size_t kernel, size_t* result) {
+    if (dilation == 0 || kernel == 0) return false;
+
+    // using formula: dilated_kernel_size = dilation * (kernel - 1) + 1
+    size_t scaled_kernel;
+    if (MlasMultiplyOverflowsSizeT(kernel - 1, dilation, &scaled_kernel)) return false;
+
+    if (scaled_kernel == SIZE_MAX) return false;
+
+    *result = scaled_kernel + 1;
+    return true;
+}
+
+inline bool TryComputeConvOutputSize(size_t input, size_t kernel, size_t padding, size_t stride, size_t* result) {
+
+    if (stride == 0) return false;
+
+    size_t double_padding;
+    if (MlasMultiplyOverflowsSizeT(padding, 2, &double_padding)) return false;
+
+    if (double_padding > (SIZE_MAX - input)) return false;
+    const size_t padded_input = double_padding + input;
+
+    if (padded_input < kernel) return false;
+
+    // using formula: output_size = ((2*padding + input - kernel) / stride) + 1
+    const size_t output_minus_one = (padded_input - kernel) / stride;
+    if (output_minus_one == SIZE_MAX) return false;
+    *result = output_minus_one + 1;
+    return true;
+}
+
+inline ConvRouteSelection SelectConvRoute(const MLAS_CONV_PARAMETERS* Parameters) {
+    if ((Parameters->Dimensions != 2) ||
+        (Parameters->BatchCount != 1) ||
+        (Parameters->Beta != 0.f) ||
+        (Parameters->Padding[0] != Parameters->Padding[1]) ||
+        (Parameters->Padding[0] != Parameters->Padding[2]) ||
+        (Parameters->Padding[0] != Parameters->Padding[3])) {
+        return ConvRouteSelection{};
+    }
+
+    size_t effective_kernel_h;
+    size_t effective_kernel_w;
+    if (!TryComputeDilatedKernelSize(Parameters->DilationShape[0], Parameters->KernelShape[0], &effective_kernel_h) ||
+        !TryComputeDilatedKernelSize(Parameters->DilationShape[1], Parameters->KernelShape[1], &effective_kernel_w)) {
+        return ConvRouteSelection{};
+    }
+
+    size_t output_m;
+    size_t output_h_size;
+    size_t output_w_size;
+    if (!TryComputeConvOutputSize(Parameters->InputShape[0],
+                                  effective_kernel_h,
+                                  Parameters->Padding[0],
+                                  Parameters->StrideShape[0],
+                                  &output_h_size) ||
+        !TryComputeConvOutputSize(Parameters->InputShape[1],
+                                  effective_kernel_w,
+                                  Parameters->Padding[1],
+                                  Parameters->StrideShape[1],
+                                  &output_w_size) ||
+        MlasMultiplyOverflowsSizeT(output_h_size, output_w_size, &output_m)) {
+        return ConvRouteSelection{};
+    }
+
+    if (output_m == 0) {
+        return ConvRouteSelection{};
+    }
+
+    if (Parameters->KernelShape[0] < 3 || Parameters->KernelShape[1] < 3) {
+        return ConvRouteSelection{};
+    }
+
+    const auto filter_count = Parameters->FilterCount;
+    if (filter_count == 0) {
+        return ConvRouteSelection{};
+    }
+
+    size_t effective_k;
+    if (MlasMultiplyOverflowsSizeT(Parameters->InputChannels, effective_kernel_h, &effective_k) ||
+        MlasMultiplyOverflowsSizeT(effective_k, effective_kernel_w, &effective_k)) {
+        return ConvRouteSelection{};
+    }
+    if (effective_k == 0) {
+        return ConvRouteSelection{};
+    }
+
+    // Currently, the fallback routes assume NCHW layout, so keep valid NHWC convolutions on IGEMM
+    if (Parameters->ChannelsLast) {
+        return ConvRouteSelection{ConvRoute::IGemm, effective_kernel_h, effective_kernel_w};
+    }
+
+    if (filter_count == 1) {
+        // Single-output-channel convolutions do not fill the SME IGEMM N tile efficiently,
+        // so defer to the default convolution route.
+        return ConvRouteSelection{};
+    }
+
+    size_t total_work;
+    if (MlasMultiplyOverflowsSizeT(output_m, effective_k, &total_work) ||
+        MlasMultiplyOverflowsSizeT(total_work, filter_count, &total_work)) {
+        // Total work calculation overflow means total work is too large, fall back
+        return ConvRouteSelection{ConvRoute::SGemmFallback, effective_kernel_h, effective_kernel_w};
+    }
+
+    const size_t conv_igemm_max_work =
+        Parameters->BackendKernelSelectorConfig != nullptr &&
+        Parameters->BackendKernelSelectorConfig->kleidiai_conv_igemm_max_work != 0
+            ? Parameters->BackendKernelSelectorConfig->kleidiai_conv_igemm_max_work
+            : ConvIgemmMaxWorkDefault;
+    if (total_work > conv_igemm_max_work) {
+        return ConvRouteSelection{ConvRoute::SGemmFallback, effective_kernel_h, effective_kernel_w};
+    }
+
+    return ConvRouteSelection{ConvRoute::IGemm, effective_kernel_h, effective_kernel_w};
+}
 
 // Buffer packing routines.
 //
@@ -224,38 +361,18 @@ MlasConvSymmetricChannelsLast2DFloatPackW(
     size_t PackedFilterGroupStride,
     MLAS_THREADPOOL* ThreadPool
     );
+
+inline MLAS_CONV_SGEMM_ROUTE
+MLASCALL
+MlasConvSGemmRoute(const MLAS_CONV_PARAMETERS* Parameters) {
+    if (Parameters->BackendKernelSelectorConfig &&
+        !Parameters->BackendKernelSelectorConfig->use_kleidiai) {
+        return MlasConvSGemmRouteDirect;
+    }
+
+    return ArmKleidiAI::SelectConvRoute(Parameters).route == ArmKleidiAI::ConvRoute::SGemmFallback
+        ? MlasConvSGemmRouteDispatch
+        : MlasConvSGemmRouteDirect;
+}
 }
 
-/*++
-
-Routine Description:
-
-    This routine determines if a wraparound will occur when multiplying two size_t variables
-    Uses __builtin_mul_overflow if available on the current system and if not falls back
-    to a default implementation to check this wraparound.
-
-Arguments:
-
-    a - Supplies the first number to be muliplied.
-
-    b - Supplies the second number to be muliplied.
-
-    out - pointer to a size_t which acts as the return value in success cases.
-
-Return Value:
-
-    Returns false if the operation was successful
-    Returns true if wraparound of size_t was detected
-
---*/
-inline bool mul_overflow_size_t_builtin(size_t a, size_t b, size_t* out) {
-#if defined(__has_builtin)
-#  if __has_builtin(__builtin_mul_overflow)
-    return __builtin_mul_overflow(a, b, out);
-#  endif
-#endif
-    // Fallback to manual check if builtin not available
-    if (b != 0 && a > SIZE_MAX / b) return true;
-    if (out) *out = a * b;
-    return false;
-}

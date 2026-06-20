@@ -76,6 +76,7 @@ REGISTER_KERNEL_TYPED(BFloat16, uint8_t)
 #endif
 
 constexpr const char* kDisableFlashDecode = "ORT_DISABLE_FLASH_DECODE";
+constexpr int kHeadSinkInputIndex = 11;
 
 // Group Query Attention (GQA) Operator
 //
@@ -110,8 +111,15 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   kv_cache_bit_width_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("kv_cache_bit_width", 0));
 
   bool is_quantized = (k_quant_type_ != KVQuantizationType::NONE || v_quant_type_ != KVQuantizationType::NONE);
-  int default_enable_xqa = is_quantized ? 1 : 0;
-  enable_xqa_ = (std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>) && ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", default_enable_xqa) != 0;
+  // XQA enablement:
+  //  - An explicit ORT_ENABLE_XQA overrides everything (1 = on, 0 = off, including the head_sink default-on path).
+  //  - When unset, XQA defaults on for the quantized KV cache path and off for the non-quantized path
+  //    (the non-quantized head_sink decode path is additionally enabled per-Run in ComputeInternal).
+  constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
+  const int xqa_env = ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", -1);  // -1 means unset
+  xqa_force_disabled_ = (xqa_env == 0);
+  const int effective_enable_xqa = (xqa_env == -1) ? (is_quantized ? 1 : 0) : xqa_env;
+  enable_xqa_ = kIsFp16OrBf16 && (effective_enable_xqa != 0);
 
   kernel_options_ = this->GetAttentionKernelOptions();
 
@@ -121,7 +129,6 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   disable_memory_efficient_attention_ = !kernel_options_->UseEfficientAttention();
 
   // cuDNN SDPA (cudnn_frontend) supports FP16 and BF16 and is auto-preferred on SM>=90.
-  constexpr bool kIsFp16OrBf16 = std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value;
   enable_cudnn_flash_attention_ = kIsFp16OrBf16 && kernel_options_->UseCudnnFlashAttention();
   auto_enable_cudnn_flash_attention_ = kIsFp16OrBf16 && kernel_options_->AllowCudnnFlashAttentionAuto();
 
@@ -131,6 +138,55 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   }
 
   disable_flash_decode_ = ParseEnvironmentVariableWithDefault<bool>(kDisableFlashDecode, false);
+}
+
+template <typename T, typename U>
+Status GroupQueryAttention<T, U>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                                          bool& is_packed, PrePackedWeights* prepacked_weights) {
+  ORT_UNUSED_PARAMETER(prepacked_weights);
+  // Keep is_packed=false so the original fp16/bf16 head_sink remains available to the Flash/fallback
+  // paths (which are used when XQA is disabled or ineligible). We only cache an extra FP32 copy for XQA.
+  is_packed = false;
+
+  if (input_idx != kHeadSinkInputIndex) {
+    return Status::OK();
+  }
+
+  // XQA consumes the attention sink as FP32. When head_sink is a constant initializer, convert it once
+  // here into a cached device buffer (xqa_head_sink_) to avoid a per-launch conversion. Dynamic /
+  // non-initializer head_sink inputs are not prepacked and fall back to the per-launch scratch path.
+  if constexpr (std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>) {
+    const auto& shape = tensor.Shape();
+    ORT_RETURN_IF_NOT(shape.NumDimensions() == 1,
+                      "head_sink must be a 1D tensor, got ", shape.NumDimensions(), " dimensions");
+    ORT_RETURN_IF_NOT(shape[0] == num_heads_,
+                      "head_sink dimension 0 must be equal to the num heads, got ", shape[0]);
+    ORT_RETURN_IF_NOT(tensor.IsDataType<T>(), "head_sink type must match GroupQueryAttention input type");
+
+    // Derive the element count from the tensor itself (one sink per head) rather than num_heads_.
+    const int head_sink_count = static_cast<int>(shape.Size());
+    const size_t head_sink_bytes = tensor.SizeInBytes();
+    const void* head_sink_data = tensor.DataRaw();
+    IAllocatorUniquePtr<void> head_sink_gpu;
+    cudaStream_t stream = cudaStreamLegacy;
+
+    if (tensor.Location().device.Type() == OrtDevice::CPU) {
+      head_sink_gpu = IAllocator::MakeUniquePtr<void>(alloc, head_sink_bytes, true);
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(head_sink_gpu.get(), head_sink_data, head_sink_bytes,
+                                           cudaMemcpyHostToDevice, stream));
+      head_sink_data = head_sink_gpu.get();
+    }
+
+    xqa_head_sink_ = IAllocator::MakeUniquePtr<float>(alloc, static_cast<size_t>(head_sink_count), true);
+    using CudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
+    ORT_RETURN_IF_ERROR(LaunchConvertHeadSinkToFloat<CudaT>(
+        reinterpret_cast<const CudaT*>(head_sink_data), xqa_head_sink_.get(), head_sink_count, stream,
+        GetDeviceProp().maxThreadsPerBlock));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+    xqa_head_sink_count_ = head_sink_count;
+  }
+
+  return Status::OK();
 }
 
 // ComputeInternal executes the GQA kernel.
@@ -338,16 +394,25 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // 3. Sequence length is 1.
   // 4. Past and Present KV cache share the same buffer (required for XQA specific memory access).
   // 5. No Softcap (XQA doesn't support softcap).
-  // 6. Standard Softmax (no smooth softmax).
+  // 6. Standard Softmax, or smooth softmax represented by a head_sink tensor.
   // 7. No local window attention (global attention only).
-  if (enable_xqa_ &&
+  const bool use_xqa_attention_sinks = head_sink != nullptr && !is_inputs_quantized;
+  const bool is_xqa_smooth_softmax_supported = !parameters.use_smooth_softmax || use_xqa_attention_sinks;
+  // XQA is opt-in for the non-quantized path (ORT_ENABLE_XQA), but a head_sink (attention sink) input
+  // signals a GPT-OSS style decode model that benefits from XQA, so enable it by default in that case.
+  // An explicit ORT_ENABLE_XQA=0 (xqa_force_disabled_) still wins and turns XQA off entirely.
+  // The dtype guard mirrors enable_xqa_ (XQA only supports fp16/bf16); ineligible cases fall back below.
+  constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
+  const bool xqa_enabled_for_run =
+      !xqa_force_disabled_ && (enable_xqa_ || (kIsFp16OrBf16 && use_xqa_attention_sinks));
+  if (xqa_enabled_for_run &&
       (device_prop.major >= 8) &&
       !parameters.is_first_prompt &&
       parameters.sequence_length == 1 &&
       parameters.kv_sequence_length > 0 &&  // Shared KV (kv_seq=0) has no new K/V to append
       parameters.past_present_share_buffer &&
       parameters.softcap == 0.0f &&
-      !parameters.use_smooth_softmax &&
+      is_xqa_smooth_softmax_supported &&
       parameters.local_window_size == -1) {
     int group_size = parameters.num_heads / parameters.kv_num_heads;
 
@@ -389,23 +454,43 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       assert(xqa_internal_bytes > 0);
       // Calculate additional scratch needed for manual RoPE/Append in ExtremeDecoding
       size_t xqa_total_bytes = xqa_internal_bytes;
+      size_t q_bytes = 0;
+      size_t k_bytes = 0;
       if (parameters.do_rotary) {
         // 1. Q_rotated buffer: B * N * H * sizeof(T) (if rotary)
         // 2. K_rotated buffer: B * Nk * H * sizeof(T) (if rotary)
         size_t element_size = sizeof(CudaT);
-        size_t q_bytes = parameters.batch_size * parameters.num_heads * parameters.head_size * element_size;
-        size_t k_bytes = parameters.batch_size * parameters.kv_num_heads * parameters.head_size * element_size;
+        q_bytes = parameters.batch_size * parameters.num_heads * parameters.head_size * element_size;
+        k_bytes = parameters.batch_size * parameters.kv_num_heads * parameters.head_size * element_size;
         q_bytes = (q_bytes + 255) / 256 * 256;
         k_bytes = (k_bytes + 255) / 256 * 256;
         xqa_total_bytes += q_bytes + k_bytes;
+      }
+      const bool use_prepacked_xqa_head_sink =
+          use_xqa_attention_sinks && xqa_head_sink_ != nullptr && xqa_head_sink_count_ == parameters.num_heads;
+      const bool convert_xqa_head_sink = use_xqa_attention_sinks && !use_prepacked_xqa_head_sink;
+      size_t xqa_head_sink_bytes = 0;
+      if (convert_xqa_head_sink) {
+        // No prepacked FP32 head_sink (dynamic input): reserve scratch for the per-launch conversion.
+        xqa_head_sink_bytes = parameters.num_heads * sizeof(float);
+        xqa_head_sink_bytes = (xqa_head_sink_bytes + 255) / 256 * 256;
+        xqa_total_bytes += xqa_head_sink_bytes;
       }
 
       xqa_scratch_buffer = this->GetScratchBuffer<void>(xqa_total_bytes, GetComputeStream(context));
       data.xqa_buffer = xqa_scratch_buffer.get();
       data.xqa_buffer_bytes = xqa_internal_bytes;
 
+      char* xqa_extra_buffer = reinterpret_cast<char*>(data.xqa_buffer) + xqa_internal_bytes;
       if (parameters.do_rotary) {
-        data.qkv_buffer = reinterpret_cast<CudaT*>(reinterpret_cast<char*>(data.xqa_buffer) + xqa_internal_bytes);
+        data.qkv_buffer = reinterpret_cast<CudaT*>(xqa_extra_buffer);
+        xqa_extra_buffer += q_bytes + k_bytes;
+      }
+      if (use_prepacked_xqa_head_sink) {
+        data.xqa_head_sink = xqa_head_sink_.get();
+      } else if (convert_xqa_head_sink) {
+        data.xqa_head_sink = reinterpret_cast<float*>(xqa_extra_buffer);
+        data.xqa_head_sink_needs_conversion = true;
       }
     }
   }
@@ -452,8 +537,13 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     size_t softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(parameters.sequence_length, parameters.batch_size, parameters.num_heads);
 
     int num_heads_for_split = data.use_flash_attention_fast_decode ? parameters.kv_num_heads : parameters.num_heads;
+    size_t sequence_length_for_split = static_cast<size_t>(parameters.total_sequence_length);
+    if (data.use_flash_attention_fast_decode && parameters.local_window_size > 0) {
+      sequence_length_for_split = std::min(sequence_length_for_split, static_cast<size_t>(parameters.local_window_size));
+    }
+
     auto [num_splits, softmax_lse_accum_bytes, out_accum_bytes] = onnxruntime::flash::get_num_splits_and_buffer_sizes(
-        parameters.batch_size, parameters.sequence_length, parameters.total_sequence_length, num_heads_for_split,
+        parameters.batch_size, parameters.sequence_length, sequence_length_for_split, num_heads_for_split,
         parameters.head_size, device_prop.multiProcessorCount);
 
     parameters.num_splits = static_cast<int>(num_splits);
@@ -601,6 +691,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
   if (kernel_options_->AllowDebugInfo()) {
     AttentionKernelDebugInfo debug_info;
+    debug_info.use_xqa = data.use_xqa;
     debug_info.use_flash_attention = data.use_flash_attention;
     debug_info.use_efficient_attention = data.use_memory_efficient_attention;
     debug_info.use_cudnn_flash_attention = data.use_cudnn_sdpa;

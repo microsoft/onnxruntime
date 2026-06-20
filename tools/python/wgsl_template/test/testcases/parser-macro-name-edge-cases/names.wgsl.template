@@ -1,0 +1,13 @@
+#define _ 1
+#define _underscore_start 2
+#define A 3
+#define A123 4
+#define ABC_123_DEF 5
+#define __double_underscore__ 6
+
+const test1 = _;
+const test2 = _underscore_start;
+const test3 = A;
+const test4 = A123;
+const test5 = ABC_123_DEF;
+const test6 = __double_underscore__;

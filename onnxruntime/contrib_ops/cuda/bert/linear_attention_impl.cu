@@ -26,42 +26,68 @@
 #include <math.h>
 #include <type_traits>
 #include "contrib_ops/cuda/bert/linear_attention_impl.h"
+#include "core/providers/cuda/cu_inc/common.cuh"
+#include "core/providers/cuda/cu_inc/cuda_type_helper.cuh"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
 namespace {
+// Full-warp sum reduction (result broadcast to all lanes).
+__device__ __forceinline__ float warp_reduce_sum(float v) {
+#pragma unroll
+  for (int offset = 16; offset > 0; offset >>= 1) {
+    v += onnxruntime::cuda::WARP_SHFL_XOR(v, offset);
+  }
+  return v;
+}
 
-// Convert half/bfloat16 to float
 template <typename T>
-__device__ __forceinline__ float to_float(T val);
+__device__ __forceinline__ float ComputeLinearAttentionDeltaColumn(
+    const T* value,
+    const T* beta_in,
+    int64_t batch_token_offset,
+    int value_hidden,
+    int kv_head,
+    int d_v,
+    int col,
+    int kv_num_heads,
+    bool needs_beta,
+    bool beta_per_head,
+    float retrieval_col) {
+  const float value_col = to_float(value[batch_token_offset * value_hidden + kv_head * d_v + col]);
+  if (!needs_beta) {
+    return value_col;
+  }
 
-template <>
-__device__ __forceinline__ float to_float(float val) { return val; }
+  const float beta_value = beta_per_head ? to_float(beta_in[batch_token_offset * kv_num_heads + kv_head])
+                                         : to_float(beta_in[batch_token_offset]);
+  return beta_value * (value_col - retrieval_col);
+}
 
-template <>
-__device__ __forceinline__ float to_float(half val) { return __half2float(val); }
+struct LinearAttentionReadoutHeads {
+  int query_head;
+  int output_head;
+};
 
-#if __CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__)
-template <>
-__device__ __forceinline__ float to_float(__nv_bfloat16 val) { return __bfloat162float(val); }
-#endif
+__device__ __forceinline__ int GetLinearAttentionReadoutHeadCount(int q_num_heads, int kv_num_heads) {
+  return q_num_heads >= kv_num_heads ? q_num_heads / kv_num_heads : 1;
+}
 
-// Convert float to half/bfloat16/float
-template <typename T>
-__device__ __forceinline__ T from_float(float val);
+__device__ __forceinline__ LinearAttentionReadoutHeads GetLinearAttentionReadoutHeads(
+    int kv_head,
+    int q_num_heads,
+    int kv_num_heads,
+    int group_index) {
+  if (q_num_heads >= kv_num_heads) {
+    const int heads_per_group = q_num_heads / kv_num_heads;
+    const int query_head = kv_head * heads_per_group + group_index;
+    return {query_head, query_head};
+  }
 
-template <>
-__device__ __forceinline__ float from_float(float val) { return val; }
-
-template <>
-__device__ __forceinline__ half from_float(float val) { return __float2half(val); }
-
-#if __CUDA_ARCH__ >= 800 || !defined(__CUDA_ARCH__)
-template <>
-__device__ __forceinline__ __nv_bfloat16 from_float(float val) { return __float2bfloat16(val); }
-#endif
+  return {kv_head * q_num_heads / kv_num_heads, kv_head};
+}
 
 // =============================================================================
 // Fused recurrent linear attention kernel
@@ -654,6 +680,305 @@ __global__ void LinearAttentionRecurrentKernelFixedShape(
   }
 }
 
+// =============================================================================
+// Decode-optimized kernel (small seq_len).
+//
+// Unlike the recurrent kernels above (one block per head, state cached in shared
+// memory across the token loop, block-wide __syncthreads barriers), this kernel
+// parallelizes the d_v output columns across many warps/blocks so the whole GPU
+// is saturated at decode (batch=1). This v1 warp-per-column kernel has no
+// block-wide barriers, only warp shuffles. It mirrors the flash-linear-attention
+// / llama.cpp decode design and is far better for the latency-bound
+// seq_len<=few case where the shared-memory state caching of the recurrent
+// kernels yields no amortization.
+//
+// Grid:  (batch_size, kv_num_heads, ceil(d_v / kWarpsPerBlock))
+// Block: (32, kWarpsPerBlock)
+// Each warp owns exactly one output column `col`. The recurrent state column
+// S[:, col] is sharded into registers across the warp's 32 lanes (DK/32 rows per
+// lane). Matrix-vector reductions (S^T@k, S^T@q) use warp_reduce_sum.
+//
+// Requires DK % 32 == 0. State global layout is unchanged (row-major [DK, d_v]),
+// so the present_state is bit-compatible with the recurrent kernels above and
+// can be freely interchanged between prefill and decode steps.
+// =============================================================================
+constexpr int kWarpsPerBlock = 4;
+
+template <typename T, int DK>
+__global__ void LinearAttentionDecodeKernel(
+    const T* __restrict__ query,
+    const T* __restrict__ key,
+    const T* __restrict__ value,
+    T* __restrict__ state,
+    const T* __restrict__ decay,
+    const T* __restrict__ beta_in,
+    T* __restrict__ output,
+    int seq_len,
+    int q_num_heads,
+    int kv_num_heads,
+    int n_k_heads,
+    int d_v,
+    int output_hidden,
+    float scale,
+    bool needs_decay,
+    bool decay_per_key_dim,
+    bool needs_beta,
+    bool beta_per_head,
+    bool needs_retrieval) {
+  static_assert(DK % 32 == 0, "DK must be a multiple of warp size (32)");
+  constexpr int ROWS = DK / 32;
+
+  const int b = blockIdx.x;
+  const int h_kv = blockIdx.y;
+  const int lane = threadIdx.x;
+  const int col = blockIdx.z * kWarpsPerBlock + threadIdx.y;
+  if (col >= d_v) {
+    return;
+  }
+
+  const int kv_per_k = kv_num_heads / n_k_heads;
+  const int h_k = h_kv / kv_per_k;
+
+  // State column S[:, col] sharded into registers: lane holds rows {r*32 + lane}.
+  T* S_col = state + ((int64_t)b * kv_num_heads + h_kv) * DK * d_v + col;
+  float s_shard[ROWS];
+#pragma unroll
+  for (int r = 0; r < ROWS; ++r) {
+    s_shard[r] = to_float(S_col[(int64_t)(r * 32 + lane) * d_v]);
+  }
+
+  const int k_hidden = n_k_heads * DK;
+  const int q_hidden = q_num_heads * DK;
+  const int v_hidden = kv_num_heads * d_v;
+
+  for (int t = 0; t < seq_len; ++t) {
+    const int64_t bt = (int64_t)b * seq_len + t;
+
+    // Load this lane's key shard.
+    float k_reg[ROWS];
+#pragma unroll
+    for (int r = 0; r < ROWS; ++r) {
+      k_reg[r] = to_float(key[bt * k_hidden + h_k * DK + (r * 32 + lane)]);
+    }
+
+    // Per-row decay multipliers (scalar broadcast or per-key-dim).
+    float exp_g[ROWS];
+    if (needs_decay) {
+      if (decay_per_key_dim) {
+#pragma unroll
+        for (int r = 0; r < ROWS; ++r) {
+          exp_g[r] = expf(to_float(decay[bt * (kv_num_heads * DK) + h_kv * DK + (r * 32 + lane)]));
+        }
+      } else {
+        float g = expf(to_float(decay[bt * kv_num_heads + h_kv]));
+#pragma unroll
+        for (int r = 0; r < ROWS; ++r) {
+          exp_g[r] = g;
+        }
+      }
+#pragma unroll
+      for (int r = 0; r < ROWS; ++r) {
+        s_shard[r] *= exp_g[r];
+      }
+    }
+
+    // Retrieval: r_col = sum_i (decayed S[i][col]) * k[i].
+    float r_col = 0.0f;
+    if (needs_retrieval) {
+      float partial = 0.0f;
+#pragma unroll
+      for (int r = 0; r < ROWS; ++r) {
+        partial += s_shard[r] * k_reg[r];
+      }
+      r_col = warp_reduce_sum(partial);
+    }
+
+    const float delta_col = ComputeLinearAttentionDeltaColumn(
+        value, beta_in, bt, v_hidden, h_kv, d_v, col, kv_num_heads, needs_beta, beta_per_head, r_col);
+
+    // State update: S[i][col] = decayed S[i][col] + k[i] * delta_col.
+#pragma unroll
+    for (int r = 0; r < ROWS; ++r) {
+      s_shard[r] += k_reg[r] * delta_col;
+    }
+
+    // Readout: output = scale * sum_i S[i][col] * q[i].
+    const int head_count = GetLinearAttentionReadoutHeadCount(q_num_heads, kv_num_heads);
+    for (int group_index = 0; group_index < head_count; ++group_index) {
+      const LinearAttentionReadoutHeads readout_heads =
+          GetLinearAttentionReadoutHeads(h_kv, q_num_heads, kv_num_heads, group_index);
+      float partial = 0.0f;
+#pragma unroll
+      for (int r = 0; r < ROWS; ++r) {
+        float q_reg = to_float(query[bt * q_hidden + readout_heads.query_head * DK + (r * 32 + lane)]);
+        partial += s_shard[r] * q_reg;
+      }
+      float acc = warp_reduce_sum(partial);
+      if (lane == 0) {
+        output[bt * output_hidden + readout_heads.output_head * d_v + col] = from_float<T>(scale * acc);
+      }
+    }
+  }
+
+  // Write the updated state column back (row-major layout, strided).
+#pragma unroll
+  for (int r = 0; r < ROWS; ++r) {
+    S_col[(int64_t)(r * 32 + lane) * d_v] = from_float<T>(s_shard[r]);
+  }
+}
+
+// =============================================================================
+// Decode-optimized kernel v2 — column-per-thread, coalesced row-major state.
+//
+// The v1 warp-per-column kernel above shards the state column across a warp's
+// lanes (DK/32 rows each). In the row-major [DK, d_v] state layout a column is
+// strided by d_v, so the per-token state load/store is fully uncoalesced (32
+// lanes hit 32 separate sectors). llama.cpp avoids this by storing the state
+// transposed, but that would change this op's present_state output layout.
+//
+// This v2 keeps the state layout unchanged (row-major [DK, d_v], contract and
+// parity preserved) and instead maps ONE THREAD per output column. Thread `col`
+// owns the whole column S[:, col] in registers (DK values). For a fixed row i,
+// consecutive threads read consecutive addresses (i*d_v + col), so the state
+// load/store is fully COALESCED — no transpose required. Per-column reductions
+// (S^T@k, S^T@q) are sequential within the thread, so there are no cross-thread
+// reductions; the only shared data are the per-token k/q/decay broadcasts, with
+// block-wide barriers around those cooperative loads.
+//
+// Grid:  (batch_size, kv_num_heads, ceil(d_v / kColsPerBlock))
+// Block: (kColsPerBlock)
+// Requires d_v % kColsPerBlock == 0 (so every thread maps to a valid column and
+// all threads participate in the cooperative broadcast loads / __syncthreads).
+// =============================================================================
+constexpr int kColsPerBlock = 32;
+
+template <typename T, int DK>
+__global__ void LinearAttentionDecodeColKernel(
+    const T* __restrict__ query,
+    const T* __restrict__ key,
+    const T* __restrict__ value,
+    T* __restrict__ state,
+    const T* __restrict__ decay,
+    const T* __restrict__ beta_in,
+    T* __restrict__ output,
+    int seq_len,
+    int q_num_heads,
+    int kv_num_heads,
+    int n_k_heads,
+    int d_v,
+    int output_hidden,
+    float scale,
+    bool needs_decay,
+    bool decay_per_key_dim,
+    bool needs_beta,
+    bool beta_per_head,
+    bool needs_retrieval) {
+  const int b = blockIdx.x;
+  const int h_kv = blockIdx.y;
+  const int tid = threadIdx.x;
+  const int col = blockIdx.z * kColsPerBlock + tid;
+  // d_v is required to be a multiple of kColsPerBlock by the dispatcher, so all
+  // threads have a valid column and may participate in the barriers below.
+
+  const int kv_per_k = kv_num_heads / n_k_heads;
+  const int h_k = h_kv / kv_per_k;
+
+  // This thread owns column `col`: S[i][col] lives at i*d_v + col (row-major).
+  T* S_head = state + ((int64_t)b * kv_num_heads + h_kv) * DK * d_v + col;
+  float s_col[DK];
+#pragma unroll
+  for (int i = 0; i < DK; ++i) {
+    s_col[i] = to_float(S_head[(int64_t)i * d_v]);
+  }
+
+  // Per-token broadcasts shared across all columns of this (b, h_kv).
+  __shared__ float k_sh[DK];
+  __shared__ float q_sh[DK];
+  __shared__ float g_sh[DK];
+  __shared__ float scalar_g;
+
+  const int k_hidden = n_k_heads * DK;
+  const int q_hidden = q_num_heads * DK;
+  const int v_hidden = kv_num_heads * d_v;
+
+  for (int t = 0; t < seq_len; ++t) {
+    const int64_t bt = (int64_t)b * seq_len + t;
+
+    for (int i = tid; i < DK; i += kColsPerBlock) {
+      k_sh[i] = to_float(key[bt * k_hidden + h_k * DK + i]);
+    }
+    if (needs_decay) {
+      if (decay_per_key_dim) {
+        for (int i = tid; i < DK; i += kColsPerBlock) {
+          g_sh[i] = expf(to_float(decay[bt * (kv_num_heads * DK) + h_kv * DK + i]));
+        }
+      } else if (tid == 0) {
+        scalar_g = expf(to_float(decay[bt * kv_num_heads + h_kv]));
+      }
+    }
+    __syncthreads();
+
+    // Decay.
+    if (needs_decay) {
+      if (decay_per_key_dim) {
+#pragma unroll
+        for (int i = 0; i < DK; ++i) {
+          s_col[i] *= g_sh[i];
+        }
+      } else {
+        const float g = scalar_g;
+#pragma unroll
+        for (int i = 0; i < DK; ++i) {
+          s_col[i] *= g;
+        }
+      }
+    }
+
+    // Retrieval: r_col = sum_i (decayed S[i][col]) * k[i].
+    float r_col = 0.0f;
+    if (needs_retrieval) {
+#pragma unroll
+      for (int i = 0; i < DK; ++i) {
+        r_col += s_col[i] * k_sh[i];
+      }
+    }
+
+    const float delta_col = ComputeLinearAttentionDeltaColumn(
+        value, beta_in, bt, v_hidden, h_kv, d_v, col, kv_num_heads, needs_beta, beta_per_head, r_col);
+
+    // State update: S[i][col] = decayed S[i][col] + k[i] * delta_col.
+#pragma unroll
+    for (int i = 0; i < DK; ++i) {
+      s_col[i] += k_sh[i] * delta_col;
+    }
+
+    // Readout: output = scale * sum_i S[i][col] * q[i].
+    const int head_count = GetLinearAttentionReadoutHeadCount(q_num_heads, kv_num_heads);
+    for (int group_index = 0; group_index < head_count; ++group_index) {
+      const LinearAttentionReadoutHeads readout_heads =
+          GetLinearAttentionReadoutHeads(h_kv, q_num_heads, kv_num_heads, group_index);
+      __syncthreads();
+      for (int i = tid; i < DK; i += kColsPerBlock) {
+        q_sh[i] = to_float(query[bt * q_hidden + readout_heads.query_head * DK + i]);
+      }
+      __syncthreads();
+      float acc = 0.0f;
+#pragma unroll
+      for (int i = 0; i < DK; ++i) {
+        acc += s_col[i] * q_sh[i];
+      }
+      output[bt * output_hidden + readout_heads.output_head * d_v + col] = from_float<T>(scale * acc);
+    }
+    __syncthreads();  // before next token overwrites k_sh/g_sh
+  }
+
+  // Store the updated column back (coalesced).
+#pragma unroll
+  for (int i = 0; i < DK; ++i) {
+    S_head[(int64_t)i * d_v] = from_float<T>(s_col[i]);
+  }
+}
+
 }  // anonymous namespace
 
 template <typename T>
@@ -684,6 +1009,66 @@ Status LaunchLinearAttentionKernel(
   const dim3 grid(batch_size, kv_num_heads, 1);
 
   int output_hidden = std::max(q_num_heads, kv_num_heads) * d_v;
+
+  // ---------------------------------------------------------------------------
+  // Decode fast path: small seq_len is latency-bound. The recurrent kernels keep
+  // state in shared memory across the token loop (great for prefill) but at
+  // decode that caching yields no amortization while only using kv_num_heads
+  // blocks. The column-parallel decode kernel increases occupancy with
+  // finer-grained work distribution. Engaged for the common decode shapes
+  // (DK in {64,128,256});
+  // everything else falls through to the recurrent kernels below.
+  // ---------------------------------------------------------------------------
+  // This cutoff keeps short decode/continuation runs on the column-parallel kernels;
+  // longer prefill-like runs benefit from amortizing state in shared memory below.
+  constexpr int kDecodeSeqThreshold = 16;
+  if (seq_len <= kDecodeSeqThreshold && (d_k == 64 || d_k == 128 || d_k == 256)) {
+    // v2 (column-per-thread, coalesced row-major state) is the default for
+    // DK <= 128. It requires d_v % kColsPerBlock == 0; otherwise fall back
+    // to the v1 warp-per-column kernel (which handles any d_v). DK=256 also
+    // uses v1 to avoid the high per-thread register footprint of s_col[256].
+    if (d_k <= 128 && d_v % kColsPerBlock == 0) {
+      const dim3 decode_grid(batch_size, kv_num_heads,
+                             (d_v + kColsPerBlock - 1) / kColsPerBlock);
+      const dim3 decode_block(kColsPerBlock, 1, 1);
+
+      auto launch_col = [&](auto dk_tag) -> Status {
+        constexpr int DK = decltype(dk_tag)::value;
+        LinearAttentionDecodeColKernel<T, DK><<<decode_grid, decode_block, 0, stream>>>(
+            query, key, value, present_state, decay, beta, output,
+            seq_len, q_num_heads, kv_num_heads, n_k_heads, d_v, output_hidden, scale,
+            needs_decay, decay_per_key_dim, needs_beta, beta_per_head, needs_retrieval);
+        return CUDA_CALL(cudaGetLastError());
+      };
+
+      if (d_k == 64) {
+        return launch_col(std::integral_constant<int, 64>{});
+      } else if (d_k == 128) {
+        return launch_col(std::integral_constant<int, 128>{});
+      }
+    }
+
+    const dim3 decode_grid(batch_size, kv_num_heads,
+                           (d_v + kWarpsPerBlock - 1) / kWarpsPerBlock);
+    const dim3 decode_block(32, kWarpsPerBlock, 1);
+
+    auto launch_decode = [&](auto dk_tag) -> Status {
+      constexpr int DK = decltype(dk_tag)::value;
+      LinearAttentionDecodeKernel<T, DK><<<decode_grid, decode_block, 0, stream>>>(
+          query, key, value, present_state, decay, beta, output,
+          seq_len, q_num_heads, kv_num_heads, n_k_heads, d_v, output_hidden, scale,
+          needs_decay, decay_per_key_dim, needs_beta, beta_per_head, needs_retrieval);
+      return CUDA_CALL(cudaGetLastError());
+    };
+
+    if (d_k == 64) {
+      return launch_decode(std::integral_constant<int, 64>{});
+    } else if (d_k == 128) {
+      return launch_decode(std::integral_constant<int, 128>{});
+    } else {  // d_k == 256
+      return launch_decode(std::integral_constant<int, 256>{});
+    }
+  }
 
   auto launch_fixed = [&](auto dk_tag, auto dv_tag) -> Status {
     constexpr int DK = decltype(dk_tag)::value;

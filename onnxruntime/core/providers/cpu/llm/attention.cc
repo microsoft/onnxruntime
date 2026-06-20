@@ -6,6 +6,7 @@
 #include "core/providers/cpu/llm/attention_softmax.h"
 
 #include "core/common/common.h"
+#include "core/common/inlined_containers.h"
 #include "core/common/safeint.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
@@ -14,6 +15,7 @@
 #include "core/providers/cpu/math/gemm.h"
 
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 using onnxruntime::attention_helper::AttentionParameters;
@@ -346,9 +348,14 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
   T* mask_data = nullptr;
   bool delete_mask_data = false;
   bool causal = parameters.is_causal && parameters.q_sequence_length > 1;
+  // When nonpad_kv_seqlen is present the causal frontier is offset-aware
+  // (bottom-right) and per-batch, so it cannot be baked into the batch-shared mask
+  // buffer here; it is applied per-batch in the main loop below. Skip the top-left
+  // overlay in that case (see ONNX opset-24 / onnx#8068).
+  const bool shared_causal_overlay = causal && !parameters.has_nonpad_kv_seqlen;
   if (mask_index == nullptr) {
-    // No external mask: allocate only if causal behavior needed.
-    if (causal) {
+    // No external mask: allocate only if a batch-shared causal overlay is needed.
+    if (shared_causal_overlay) {
       size_t mask_bytes = SafeInt<size_t>(parameters.q_sequence_length) * parameters.total_sequence_length * sizeof(T);
       void* raw = allocator->Alloc(mask_bytes);
       memset(raw, 0, mask_bytes);  // start all allowed
@@ -362,7 +369,7 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
     }
   } else {
     const bool is_bool_mask = mask_index->IsDataType<bool>();
-    const bool need_copy = is_bool_mask || causal;  // copy if we must convert or overlay causal pattern
+    const bool need_copy = is_bool_mask || shared_causal_overlay;  // copy if we must convert or overlay causal pattern
     if (need_copy) {
       size_t mask_bytes = SafeInt<size_t>(mask_index->Shape().Size()) * sizeof(T);
       mask_data = static_cast<T*>(allocator->Alloc(mask_bytes));
@@ -372,7 +379,7 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
       } else {
         make_copy(mask_data, mask_index->Data<T>(), SafeInt<size_t>(mask_index->Shape().Size()));
       }
-      if (causal) {
+      if (shared_causal_overlay) {
         // Overlay causal -inf above diagonal for every broadcast slice
         int slices = mask_batch_size * mask_num_heads;
         for (int slice = 0; slice < slices; ++slice) {
@@ -532,10 +539,28 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
       // `onnxruntime/core/providers/cpu/llm/attention.h`). The CPU softmax uses this finite sentinel
       // (not IEEE -inf) because MLAS' softmax kernel expects only finite inputs; the value is small
       // enough relative to any softcap-saturated score that the corresponding softmax weight is 0.
+      //
+      // When is_causal is also set, the causal frontier on this external/static KV-cache path is
+      // bottom-right (offset-aware) per ONNX opset-24 / onnx#8068: query s attends key t iff
+      // `t <= s + offset`, where `offset = nonpad_kv_seqlen[b] - q_sequence_length` (clamped to >= 0).
+      // The first masked key for row s is therefore `min(valid_kv_len, s + offset + 1)`. This folds
+      // the bottom-right causal mask together with the per-batch valid-key bound. The `past_key`
+      // decode path (no nonpad_kv_seqlen) and the initial full-prefill (offset == 0) are unaffected:
+      // they keep using the batch-shared top-left overlay built above and never enter this block.
+      // Per-row first-masked-key index from the nonpad/causal frontier. Retained so the
+      // fully-masked-row guard below can reuse the exact same frontier that was just masked.
+      InlinedVector<int> first_masked_kv_per_row;
       if (parameters.has_nonpad_kv_seqlen) {
-        int valid_kv_len = static_cast<int>(parameters.nonpad_kv_seqlen_data[batch_i]);
+        const int valid_kv_len = static_cast<int>(parameters.nonpad_kv_seqlen_data[batch_i]);
+        first_masked_kv_per_row.resize(static_cast<size_t>(parameters.q_sequence_length));
         for (int s = 0; s < parameters.q_sequence_length; ++s) {
-          std::fill(output + s * parameters.total_sequence_length + valid_kv_len,
+          int first_masked_kv = valid_kv_len;
+          if (causal) {
+            const int causal_frontier = s + valid_kv_len - parameters.q_sequence_length + 1;
+            first_masked_kv = std::min(first_masked_kv, std::max(causal_frontier, 0));
+          }
+          first_masked_kv_per_row[static_cast<size_t>(s)] = first_masked_kv;
+          std::fill(output + s * parameters.total_sequence_length + first_masked_kv,
                     output + (s + 1) * parameters.total_sequence_length,
                     mask_filter_value<T>());
         }
@@ -547,7 +572,70 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
         memcpy(out_qk, output, SafeInt<size_t>(probs_matrix_size) * sizeof(T));
       }
 
+      // Bug-2 (ONNX opset-24 / onnx#8068): a fully-masked query row — one with no key allowed by the
+      // composed mask/causal/nonpad constraints — must produce a zero output row, not the mean-of-V
+      // that softmax over an all-sentinel row would otherwise yield (the CPU sentinel
+      // `mask_filter_value<T>()` is finite, so softmax does not naturally collapse such a row to 0).
+      //
+      // The row is classified with an EXACT structural predicate — never a magnitude threshold on the
+      // combined QK+bias score: a key is "masked" iff its additive mask-bias slot is either the
+      // internal sentinel (`mask_filter_value<T>()`, a finite large negative) OR an IEEE negative
+      // infinity supplied directly in a user float `attn_mask`. A row with zero unmasked keys is fully
+      // masked. A finite (even very negative, e.g. `-40000`) user bias is neither the sentinel nor
+      // `-inf`, so its key stays unmasked and the row is never zeroed. This matches the onnx#8068
+      // reference (`isneginf` of the additive-bias row max), and agrees with the CUDA guard for the
+      // two cases that matter here — a user `-inf` and the internal sentinel. (It is NOT bit-for-bit
+      // identical to CUDA for every finite bias: the CUDA guard masks any `bias <= masked_bias_value`,
+      // whose value is capped at `kCutlassSafeMaskFilterValue` (-1e30), so CUDA also masks finite
+      // biases in `(lowest(), -1e30]`; this CPU predicate, like the reference `isneginf`, does not.)
+      const bool apply_fully_masked_guard = (mask_data != nullptr) || parameters.has_nonpad_kv_seqlen;
+      InlinedVector<bool> fully_masked_row;
+      if (apply_fully_masked_guard) {
+        fully_masked_row.resize(static_cast<size_t>(parameters.q_sequence_length), false);
+        const T* mask_slice = (mask_data != nullptr) ? mask_data + mask_data_offset : nullptr;
+        const T sentinel = mask_filter_value<T>();
+        // Portable conversion to float so the IEEE -inf test works for both float and MLFloat16.
+        const auto to_float = [](const T v) -> float {
+          if constexpr (std::is_same<T, MLFloat16>::value) {
+            return v.ToFloat();
+          } else {
+            return static_cast<float>(v);
+          }
+        };
+        for (int s = 0; s < parameters.q_sequence_length; ++s) {
+          const int frontier = parameters.has_nonpad_kv_seqlen
+                                   ? first_masked_kv_per_row[static_cast<size_t>(s)]
+                                   : parameters.total_sequence_length;
+          bool has_unmasked_key = false;
+          for (int t = 0; t < frontier; ++t) {
+            if (mask_slice == nullptr) {
+              has_unmasked_key = true;
+              break;
+            }
+            const T mask_value = mask_slice[s * parameters.total_sequence_length + t];
+            const float mask_value_f = to_float(mask_value);
+            const bool key_masked =
+                (mask_value == sentinel) || (std::isinf(mask_value_f) && mask_value_f < 0.0f);
+            if (!key_masked) {
+              has_unmasked_key = true;
+              break;
+            }
+          }
+          fully_masked_row[static_cast<size_t>(s)] = !has_unmasked_key;
+        }
+      }
+
       ComputeAttentionSoftmaxInplace(output, parameters.q_sequence_length, parameters.total_sequence_length, nullptr, allocator);
+
+      if (apply_fully_masked_guard) {
+        for (int s = 0; s < parameters.q_sequence_length; ++s) {
+          if (fully_masked_row[static_cast<size_t>(s)]) {
+            std::fill(output + s * parameters.total_sequence_length,
+                      output + (s + 1) * parameters.total_sequence_length,
+                      static_cast<T>(0.0f));
+          }
+        }
+      }
 
       // Snapshot kPostSoftMax (post-softmax).
       if (out_qk != nullptr &&
