@@ -10913,12 +10913,12 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusionDoesNotFuseUnsupportedCuda
 
     int q_rows, q_cols;
     MlasBlockwiseQuantizedShape<float, qbits>(block_size, /* columnwise */ true,
-                                              K, N,
+                                              static_cast<int>(K), static_cast<int>(N),
                                               q_rows, q_cols);
 
     size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
     MlasBlockwiseQuantizedBufferSizes<qbits>(block_size, /* columnwise */ true,
-                                             K, N,
+                                             static_cast<int>(K), static_cast<int>(N),
                                              q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
 
     auto* A = builder.MakeInput<float>(std::vector{M, K}, "A");
@@ -10973,12 +10973,12 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusionDoesNotFuseCudaRouterShape
 
     int q_rows, q_cols;
     MlasBlockwiseQuantizedShape<float, qbits>(block_size, /* columnwise */ true,
-                                              K, N,
+                                              static_cast<int>(K), static_cast<int>(N),
                                               q_rows, q_cols);
 
     size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
     MlasBlockwiseQuantizedBufferSizes<qbits>(block_size, /* columnwise */ true,
-                                             K, N,
+                                             static_cast<int>(K), static_cast<int>(N),
                                              q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
 
     auto* A = builder.MakeInput<float>(std::vector{M, K}, "A");
@@ -11025,12 +11025,12 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusionCanDisableCudaRouterFusion
 
     int q_rows, q_cols;
     MlasBlockwiseQuantizedShape<float, qbits>(block_size, /* columnwise */ true,
-                                              K, N,
+                                              static_cast<int>(K), static_cast<int>(N),
                                               q_rows, q_cols);
 
     size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
     MlasBlockwiseQuantizedBufferSizes<qbits>(block_size, /* columnwise */ true,
-                                             K, N,
+                                             static_cast<int>(K), static_cast<int>(N),
                                              q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
 
     auto* A = builder.MakeInput<float>(std::vector{M, K}, "A");

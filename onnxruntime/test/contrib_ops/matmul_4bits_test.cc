@@ -818,7 +818,7 @@ TEST(MatMulNBits, Fp16_Int4_GptOssRouterShapeNoZeroPoint) {
 
   {
     ScopedEnvironmentVariables scoped_env_vars{
-        EnvVarMap{{"ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION", optional<std::string>{}}}};
+        EnvVarMap{{"ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION", std::optional<std::string>{}}}};
     std::vector<std::unique_ptr<IExecutionProvider>> eps;
     eps.push_back(DefaultCudaExecutionProvider());
     RunTest<MLFloat16>(opts, std::move(eps));
@@ -834,7 +834,7 @@ TEST(MatMulNBits, Fp16_Int4_GptOssRouterShapeNoZeroPoint) {
   {
     opts.has_bias = true;
     ScopedEnvironmentVariables scoped_env_vars{
-        EnvVarMap{{"ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION", optional<std::string>{}}}};
+        EnvVarMap{{"ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION", std::optional<std::string>{}}}};
     std::vector<std::unique_ptr<IExecutionProvider>> eps;
     eps.push_back(DefaultCudaExecutionProvider());
     RunTest<MLFloat16>(opts, std::move(eps));
