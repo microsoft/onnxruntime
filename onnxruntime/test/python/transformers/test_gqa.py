@@ -14,6 +14,9 @@ import math
 import os
 import platform
 import random
+import re
+import sys
+import threading
 import unittest
 from copy import deepcopy
 from dataclasses import dataclass
@@ -68,6 +71,53 @@ enable_deterministic_check = True
 # #################################################################################################
 #  Configuration and Helper Classes
 # #################################################################################################
+
+
+class CaptureStdout:
+    def __init__(self):
+        self.fd = 1
+        self.chunk_size = 1024
+        self.output = b""
+
+    def _capture(self):
+        chunks = []
+        while chunk := os.read(self._pipe_reader, self.chunk_size):
+            chunks.append(chunk)
+        self.output = b"".join(chunks)
+
+    def __enter__(self):
+        sys.stdout.flush()
+        self._duped_fd = os.dup(self.fd)
+        self._pipe_reader, pipe_writer = os.pipe()
+        os.dup2(pipe_writer, self.fd)
+        os.close(pipe_writer)
+        self._capture_thread = threading.Thread(target=self._capture)
+        self._capture_thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        sys.stdout.flush()
+        os.dup2(self._duped_fd, self.fd)
+        self._capture_thread.join()
+        os.close(self._pipe_reader)
+        os.close(self._duped_fd)
+
+
+def get_sdpa_kernel_from_debug_info(run_func):
+    captured_text = None
+    with scoped_env_var("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", "1"):
+        with CaptureStdout() as captured:
+            run_func()
+        captured_text = captured.output.decode(errors="replace")
+
+    if captured_text is not None:
+        match = re.search(r"SdpaKernel=(?P<kernel>[A-Z_]+)", captured_text)
+        if match is not None:
+            return match.group("kernel")
+
+        print("Failed to get sdpa kernel from debug info:", captured_text)
+
+    return None
 
 
 @dataclass
@@ -2537,9 +2587,8 @@ class TestXQASlidingWindowParity(unittest.TestCase):
     @parameterized.expand(gqa_xqa_sliding_window_test_cases())
     def test_xqa_sliding_window_parity(self, name, config, torch_type, ort_type):
         """Test XQA non-quantized parity with a sliding (local) attention window."""
-        # ORT_ENABLE_XQA=1 forces XQA selection so the sliding-window path is exercised even when
-        # no head_sink input is present (a head_sink input alone would also enable XQA by default).
-        with scoped_env_var("ORT_ENABLE_XQA", "1"):
+
+        def run_parity_check():
             parity_check_gqa_past(
                 config=config,
                 ep="CUDAExecutionProvider",
@@ -2551,6 +2600,11 @@ class TestXQASlidingWindowParity(unittest.TestCase):
                 atol=atol["bf16"] if torch_type == torch.bfloat16 else atol["fp16"],
                 std=0.1,
             )
+
+        # ORT_ENABLE_XQA=1 forces XQA selection so the sliding-window path is exercised even when
+        # no head_sink input is present (a head_sink input alone would also enable XQA by default).
+        with scoped_env_var("ORT_ENABLE_XQA", "1"):
+            self.assertEqual("XQA", get_sdpa_kernel_from_debug_info(run_parity_check))
 
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")

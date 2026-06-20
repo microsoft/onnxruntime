@@ -208,8 +208,13 @@ run_mode() {
     shift 3
 
     if [ "$COMPARE_XQA" = true ]; then
-        profile_one "${mode}" "${tag}/XQA=0(FlashDecode)" "${base}_xqa0" ORT_ENABLE_XQA=0 "$@"
-        profile_one "${mode}" "${tag}/XQA=1(XQA)" "${base}_xqa1" ORT_ENABLE_XQA=1 "$@"
+        if [[ "${mode}" == "fp16" || "${mode}" == "bf16" ]]; then
+            profile_one "${mode}" "${tag}/XQA=0(FlashDecode)" "${base}_xqa0" ORT_ENABLE_XQA=0 "$@"
+            profile_one "${mode}" "${tag}/XQA=1(XQA)" "${base}_xqa1" ORT_ENABLE_XQA=1 "$@"
+        else
+            echo "---- ${tag}: skipping XQA on/off comparison for quantized KV-cache mode ----"
+            profile_one "${mode}" "${tag}" "${base}" "$@"
+        fi
     else
         profile_one "${mode}" "${tag}" "${base}" "$@"
     fi
