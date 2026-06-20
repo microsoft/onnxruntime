@@ -5,7 +5,7 @@ the CUDA kernel backends and how one is selected, and the attention-sink (`head_
 that is accelerated by the XQA kernel.
 
 For CPU-specific implementation details (including the quantized KV-cache flash path), see
-[cpu/gqa.md](cpu/gqa.md).
+[cpu/gqa.md](../cpu/gqa.md).
 
 ---
 
@@ -40,10 +40,10 @@ group of `num_heads / kv_num_heads` query heads. The operator also supports:
 - Smooth softmax, including a per-head attention sink (`head_sink`)
 
 The operator schema is defined in
-[onnxruntime/core/graph/contrib_ops/bert_defs.cc](../../onnxruntime/core/graph/contrib_ops/bert_defs.cc).
+[onnxruntime/core/graph/contrib_ops/bert_defs.cc](../../../onnxruntime/core/graph/contrib_ops/bert_defs.cc).
 The CUDA kernel is implemented in
-[onnxruntime/contrib_ops/cuda/bert/group_query_attention.cc](../../onnxruntime/contrib_ops/cuda/bert/group_query_attention.cc)
-and [group_query_attention_impl.cu](../../onnxruntime/contrib_ops/cuda/bert/group_query_attention_impl.cu).
+[onnxruntime/contrib_ops/cuda/bert/group_query_attention.cc](../../../onnxruntime/contrib_ops/cuda/bert/group_query_attention.cc)
+and [group_query_attention_impl.cu](../../../onnxruntime/contrib_ops/cuda/bert/group_query_attention_impl.cu).
 
 ## 2. Operator Schema
 
@@ -383,10 +383,10 @@ Located in `onnxruntime/test/python/transformers/`:
 
 | Script | Purpose |
 |--------|---------|
-| [profile_gqa.py](../../onnxruntime/test/python/transformers/profile_gqa.py) | Profile GQA (incl. quantized KV cache) with NVTX markers; examples for Nsight Compute (`ncu`) and Nsight Systems (`nsys`). |
-| [benchmark_gqa.py](../../onnxruntime/test/python/transformers/benchmark_gqa.py) | Triton-based throughput comparison across dense / local / packed-QKV and INT4/INT8/FP8 variants. |
-| [benchmark_gqa_windows.py](../../onnxruntime/test/python/transformers/benchmark_gqa_windows.py) | GQA benchmark variant for Windows. |
-| [benchmark_gqa_cpu_flash.py](../../onnxruntime/test/python/transformers/benchmark_gqa_cpu_flash.py) | CPU flash-vs-naive GQA benchmark. |
+| [profile_gqa.py](../../../onnxruntime/test/python/transformers/profile_gqa.py) | Profile GQA (incl. quantized KV cache) with NVTX markers; examples for Nsight Compute (`ncu`) and Nsight Systems (`nsys`). |
+| [benchmark_gqa.py](../../../onnxruntime/test/python/transformers/benchmark_gqa.py) | Triton-based throughput comparison across dense / local / packed-QKV and INT4/INT8/FP8 variants. |
+| [benchmark_gqa_windows.py](../../../onnxruntime/test/python/transformers/benchmark_gqa_windows.py) | GQA benchmark variant for Windows. |
+| [benchmark_gqa_cpu_flash.py](../../../onnxruntime/test/python/transformers/benchmark_gqa_cpu_flash.py) | CPU flash-vs-naive GQA benchmark. |
 
 Example kernel-level and timeline profiling:
 
@@ -432,7 +432,7 @@ Other ways to shorten the iteration loop:
 ## 12. Testing
 
 CUDA parity tests live in
-[onnxruntime/test/python/transformers/test_gqa.py](../../onnxruntime/test/python/transformers/test_gqa.py):
+[onnxruntime/test/python/transformers/test_gqa.py](../../../onnxruntime/test/python/transformers/test_gqa.py):
 
 - `TestXQAQuantizedParity` — XQA per-tensor int8 quantized decode parity.
 - `TestXQAHeadSinkParity` — non-quantized XQA decode parity with a `head_sink` (attention sink) input.
