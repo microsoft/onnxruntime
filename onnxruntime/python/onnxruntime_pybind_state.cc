@@ -150,10 +150,14 @@ static Env& platform_env = Env::Default();
 
 using PyCallback = std::function<void(std::vector<py::object>, py::object user_data, std::string)>;
 
-// Global reference to the user-provided Python logging callback.
-// Stored as py::object to prevent garbage collection of the callable.
-// Protected by g_logging_mutex.
-static py::object g_user_logging_callback;
+// Owning reference to the user-provided Python logging callback (Py_None when none is
+// installed).  Stored as a raw PyObject* rather than a py::object so that its reference is
+// never released during static destruction / module unload, which can run after the Python
+// interpreter has been finalized (a DECREF at that point can crash).  The reference is
+// intentionally leaked at process shutdown, mirroring how the global OrtEnv (ort_env) is
+// handled.  All INCREF/DECREF on this pointer happen while the GIL is held.  Protected by
+// g_logging_mutex.
+static PyObject* g_user_logging_callback = nullptr;
 static std::mutex g_logging_mutex;
 
 // A logging sink that can dynamically switch between a Python callable and the platform
@@ -173,20 +177,30 @@ class PythonCallbackSink : public onnxruntime::logging::ISink {
 
   // Replace the active callback.  Pass a None py::object to revert to the platform sink.
   void SetCallback(py::object callback) {
-    std::lock_guard<std::mutex> lock(g_logging_mutex);
-    g_user_logging_callback = std::move(callback);
+    // The caller (the Python-exposed set_default_logger_callback) already holds the GIL, so
+    // it is safe to mutate Python refcounts here.  Steal the reference out of the py::object
+    // so ownership transfers to the global, swap it under the mutex, then release the old
+    // reference while the GIL is still held.
+    PyObject* new_ref = callback.release().ptr();
+    PyObject* old_ref = nullptr;
+    {
+      std::lock_guard<std::mutex> lock(g_logging_mutex);
+      old_ref = g_user_logging_callback;
+      g_user_logging_callback = new_ref;
+    }
+    Py_XDECREF(old_ref);
   }
 
   void SendImpl(const onnxruntime::logging::Timestamp& timestamp, const std::string& logger_id,
                 const onnxruntime::logging::Capture& message) override {
-    // Cheap pre-check: reading the handle pointer (operator bool / is_none) does not touch
-    // Python refcounts, so it is safe to do without the GIL.  This lets us avoid acquiring
-    // the GIL on the common path where no Python callback is installed.  A null handle is
-    // treated the same as None (no callback installed).
+    // Cheap pre-check: comparing the stored raw pointer against nullptr / Py_None does not
+    // touch Python refcounts, so it is safe to do under the mutex alone without the GIL.  This
+    // lets us avoid acquiring the GIL on the common path where no Python callback is installed.
+    // A null pointer is treated the same as Py_None (no callback installed).
     bool has_callback;
     {
       std::lock_guard<std::mutex> lock(g_logging_mutex);
-      has_callback = static_cast<bool>(g_user_logging_callback) && !g_user_logging_callback.is_none();
+      has_callback = g_user_logging_callback != nullptr && g_user_logging_callback != Py_None;
     }
     if (!has_callback) {
       // No Python callback installed: delegate to the platform sink (outside the lock to
@@ -201,22 +215,26 @@ class PythonCallbackSink : public onnxruntime::logging::ISink {
     std::string code_location = message.Location().ToString();
     const std::string msg = message.Message();
 
-    // Acquire the GIL before touching the py::object.  Copying the callback (Py_INCREF) and
-    // destroying the local copy (Py_DECREF) must both happen while the GIL is held, otherwise
-    // we would mutate Python refcounts from a non-Python worker thread (undefined behavior).
-    // py::gil_scoped_acquire is reentrant, so this is safe even when the current thread
-    // already holds the GIL.  Lock order is always GIL -> g_logging_mutex (SetCallback uses
-    // the same order), so there is no deadlock.
+    // Acquire the GIL before touching the callback's refcount.  Copying the callback
+    // (Py_INCREF) and destroying the local copy (Py_DECREF) must both happen while the GIL is
+    // held, otherwise we would mutate Python refcounts from a non-Python worker thread
+    // (undefined behavior).  py::gil_scoped_acquire is reentrant, so this is safe even when the
+    // current thread already holds the GIL.  The refcount-free pre-check above runs under the
+    // mutex alone; whenever both locks are held the order is GIL -> g_logging_mutex (SetCallback
+    // uses the same order), so there is no deadlock.
     py::gil_scoped_acquire acquire;
 
     // Re-read the callback under the lock now that the GIL is held.  It may have been cleared
-    // between the pre-check and here; if so, fall back to the platform sink.
+    // between the pre-check and here; if so, fall back to the platform sink.  reinterpret_borrow
+    // performs the Py_INCREF while the GIL is held.
     py::object cb;
     {
       std::lock_guard<std::mutex> lock(g_logging_mutex);
-      cb = g_user_logging_callback;
+      if (g_user_logging_callback != nullptr && g_user_logging_callback != Py_None) {
+        cb = py::reinterpret_borrow<py::object>(g_user_logging_callback);
+      }
     }
-    if (!cb || cb.is_none()) {
+    if (!cb) {
       platform_sink_->Send(timestamp, logger_id, message);
       return;
     }
@@ -250,14 +268,14 @@ std::unique_ptr<onnxruntime::logging::ISink> CreateAndRegisterPythonCallbackSink
     std::unique_ptr<onnxruntime::logging::ISink> platform_sink) {
   auto sink = std::make_unique<PythonCallbackSink>(std::move(platform_sink));
   g_python_callback_sink = sink.get();
-  // Initialize the global callback to None so the "no callback installed" fast path in
-  // SendImpl is taken until the user installs one.  Without this the handle would be a null
-  // py::object, for which is_none() is false, and the first log message would try to invoke
-  // an empty callable.  This runs at module import time while the GIL is held, so touching
-  // Python objects here is safe.
+  // Initialize the global callback to Py_None so the "no callback installed" fast path in
+  // SendImpl is taken until the user installs one.  Without this the pointer would be null,
+  // which is treated the same as Py_None.  This runs at module import time while the GIL is
+  // held, so touching Python objects / refcounts here is safe.
   {
     std::lock_guard<std::mutex> lock(g_logging_mutex);
-    g_user_logging_callback = py::none();
+    Py_INCREF(Py_None);
+    g_user_logging_callback = Py_None;
   }
   return sink;
 }
@@ -1820,7 +1838,8 @@ Args:
 
 Note:
     The callback may be invoked from a non-Python thread; the GIL is
-    acquired automatically before each call.)pbdoc");
+    acquired automatically before each call.
+)pbdoc");
   m.def(
       "get_all_providers", []() -> const std::vector<std::string>& { return GetAllExecutionProviderNames(); },
       "Return list of Execution Providers that this version of Onnxruntime can support. "
