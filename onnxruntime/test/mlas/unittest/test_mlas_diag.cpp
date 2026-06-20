@@ -244,8 +244,20 @@ class MlasDiagEnvironment : public ::testing::Environment {
   }
 };
 
-// Register at program startup so it runs before any TEST() body executes.
-const ::testing::Environment* const kMlasDiagEnv =
-    ::testing::AddGlobalTestEnvironment(new MlasDiagEnvironment());
-
 }  // namespace
+
+// Externally-visible entry point so test_main.cpp can force this TU to link
+// and register the diagnostic GTest environment. Without an externally
+// referenced symbol, the MSVC linker will discard the anonymous-namespace
+// static initializer that registers the environment, which is exactly what
+// happened in CI: the local test process showed MLAS-DIAG: output but the
+// CI test binary did not, because nothing referenced this TU.
+void RegisterMlasDiagEnvironment() {
+  // ::testing::AddGlobalTestEnvironment takes ownership of the pointer.
+  static bool registered = false;
+  if (registered) {
+    return;
+  }
+  registered = true;
+  ::testing::AddGlobalTestEnvironment(new MlasDiagEnvironment());
+}
