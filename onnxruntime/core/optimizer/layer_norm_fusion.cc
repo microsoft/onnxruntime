@@ -752,10 +752,36 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // Assign provider to this new node. Provider should be same as the provider for old node.
     layer_norm_node.SetExecutionProviderType(reduce_mean_node.GetExecutionProviderType());
 
-    // move input edges to add (first in list) across to the layer_norm_node.
+    // FinalizeNodeFusion moves every input edge of the first node by NodeArg name. Disconnect inputs
+    // that the replacement does not use, such as a Pow exponent produced by a mixed-precision Cast.
+    // Keep track of their producers so they can be removed if this fusion makes them dead.
+    InlinedVector<NodeIndex> unused_input_node_indices;
+    const auto first_node_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(nodes_to_remove.front().get());
+    for (const auto& input_edge : first_node_input_edges) {
+      const bool is_replacement_input =
+          std::any_of(layer_norm_input_defs.cbegin(), layer_norm_input_defs.cend(),
+                      [&input_edge](const NodeArg* input) { return input->Name() == input_edge.arg_name; });
+      if (!is_replacement_input) {
+        unused_input_node_indices.push_back(input_edge.src_node);
+        graph.RemoveEdge(input_edge.src_node, input_edge.dst_node,
+                         input_edge.src_arg_index, input_edge.dst_arg_index);
+      }
+    }
+
+    // move input edges to pow (first in list) across to the layer_norm_node.
     // move output definitions and output edges from mul_node (last in list) to layer_norm_node.
     // remove all the other nodes.
     graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, layer_norm_node);
+
+    // Remove unused input producers and any newly dead upstream nodes only after their final consumer is
+    // fused. A producer can be shared by multiple matched subgraphs, so it must remain while it still has users.
+    for (const NodeIndex unused_input_node_index : unused_input_node_indices) {
+      Node* unused_input_node = graph.GetNode(unused_input_node_index);
+      if (unused_input_node != nullptr && unused_input_node->GetOutputEdgesCount() == 0 &&
+          !graph.NodeProducesGraphOutput(*unused_input_node)) {
+        graph_utils::RemoveNodesWithOneOutputBottomUp(graph, *unused_input_node);
+      }
+    }
 
 #ifdef ENABLE_TRAINING_CORE
     // add one extra output def, so we have 2 output defs that match what gradient builder expected

@@ -493,6 +493,63 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
   }
 }
 
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionSharedCastPowExponent) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* pow_exponent_fp16 =
+        builder.MakeInitializer<MLFloat16>({}, {MLFloat16(2.0f)});
+    auto* pow_exponent = builder.MakeIntermediate();
+    builder.AddNode("Cast", {pow_exponent_fp16}, {pow_exponent})
+        .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+
+    auto* epsilon = builder.MakeInitializer<float>({}, {1e-5f});
+    auto* scale = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
+
+    auto add_simplified_layer_norm = [&](NodeArg* input) {
+      auto* pow_out = builder.MakeIntermediate();
+      auto* reduce_mean_out = builder.MakeIntermediate();
+      auto* add_out = builder.MakeIntermediate();
+      auto* sqrt_out = builder.MakeIntermediate();
+      auto* div_out = builder.MakeIntermediate();
+      auto* output = builder.MakeOutput();
+
+      builder.AddNode("Pow", {input, pow_exponent}, {pow_out});
+      builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out})
+          .AddAttribute("axes", std::vector<int64_t>{-1});
+      builder.AddNode("Add", {reduce_mean_out, epsilon}, {add_out});
+      builder.AddNode("Sqrt", {add_out}, {sqrt_out});
+      builder.AddNode("Div", {input, sqrt_out}, {div_out});
+      builder.AddNode("Mul", {div_out, scale}, {output});
+    };
+
+    add_simplified_layer_norm(builder.MakeInput<float>({{2, 4}}));
+    add_simplified_layer_norm(builder.MakeInput<float>({{2, 4}}));
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("Cast") == 1);
+    TEST_RETURN_IF_NOT(op_to_count.at("Pow") == 2);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count.at("SimplifiedLayerNormalization") == 2);
+    TEST_RETURN_IF_NOT(op_to_count.find("Cast") == op_to_count.end());
+    TEST_RETURN_IF_NOT(op_to_count.find("Pow") == op_to_count.end());
+    TEST_RETURN_IF_NOT(op_to_count.find("ReduceMean") == op_to_count.end());
+    TEST_RETURN_IF_NOT(op_to_count.find("Add") == op_to_count.end());
+    TEST_RETURN_IF_NOT(op_to_count.find("Sqrt") == op_to_count.end());
+    TEST_RETURN_IF_NOT(op_to_count.find("Div") == op_to_count.end());
+    TEST_RETURN_IF_NOT(op_to_count.find("Mul") == op_to_count.end());
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 17, *logger_, std::make_unique<SimplifiedLayerNormFusion>(),
+      TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
+}
+
 // It tests the scenario when scale or bias are not Graph Inputs and not initialized in Graph
 // To test this added a Identity node after Scale and Bias terms to ensure LayerNormFusion works properly
 TEST_F(GraphTransformationTests, LayerNormScaleBiasTest) {
