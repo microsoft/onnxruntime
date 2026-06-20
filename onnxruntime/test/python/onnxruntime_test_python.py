@@ -300,6 +300,9 @@ class TestInferenceSession(unittest.TestCase):
 
         # Resetting to None restores the default platform logger and should not raise.
         onnxrt.set_default_logger_callback(None)
+        # Restore the default (Warning) severity so the Verbose level set above does not leak
+        # into the rest of the test / suite.
+        onnxrt.set_default_logger_severity(2)
 
         # After reset, further inference still works.
         (res,) = sess.run(["Z"], {"X": x, "Y": x})
@@ -332,8 +335,10 @@ class TestInferenceSession(unittest.TestCase):
         # the callback raises.
         onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
 
-        # Clean up: restore platform default logger.
+        # Clean up: restore platform default logger and the default (Warning) severity so the
+        # Verbose level set above does not leak into the rest of the Python test suite.
         onnxrt.set_default_logger_callback(None)
+        onnxrt.set_default_logger_severity(2)
 
     def test_deserialization_from_path_object(self):
         # path object is allowed
