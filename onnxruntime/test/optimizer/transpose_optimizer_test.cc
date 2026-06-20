@@ -3796,7 +3796,7 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearNoZeroPoint) {
 
   // output_dtype requires ONNX opset 21.
   TransformerTester(build_test_case, check_optimized_graph, TransformerLevel::Default,
-                    TransformerLevel::Level1, /*opsets*/ {21});
+                    TransformerLevel::Level1, /*opset_version*/ 21);
 }
 
 TEST(TransposeOptimizerTests, TestCast) {
