@@ -56,6 +56,7 @@ inline Status Launch(
     [[maybe_unused]] const float scale,
     [[maybe_unused]] const bool is_bsnh,
     [[maybe_unused]] const int* past_seq_lens,
+    [[maybe_unused]] const float* attention_sinks,
     [[maybe_unused]] const float* kv_cache_scale,
     [[maybe_unused]] void* workspace,
     [[maybe_unused]] size_t workspace_size) {
@@ -97,7 +98,7 @@ inline Status Launch(
       scale,
       out_ptr,
       q_ptr,
-      nullptr,  // attentionSinks
+      attention_sinks,
       k_ptr,
       v_ptr,
       is_bsnh,
