@@ -45,12 +45,41 @@ std::optional<int64_t> GetIntAttribute(const Node& node, const std::string& attr
   return attr->i();
 }
 
+// The CUDA MatMulNBits kernel only accepts a fused bias on the exact router GEMV fast path,
+// which requires M == 1 (M is the product of all A dimensions except the last, K). If bias
+// is fused when M > 1 (or M is dynamic/unknown), TryMatMul4Bits rejects the bias path and
+// MatMulNBits::ComputeInternal throws at runtime. Only allow fusion when A's M is statically 1.
+bool MatMulNBitsHasStaticGemvShape(const Node& node) {
+  const auto& input_defs = node.InputDefs();
+  if (input_defs.empty() || !input_defs[0]->Exists()) {
+    return false;
+  }
+
+  const auto* a_shape = input_defs[0]->Shape();
+  if (a_shape == nullptr || a_shape->dim_size() < 1) {
+    return false;
+  }
+
+  // Every leading dimension (everything except the last K dim) must be statically 1.
+  for (int i = 0; i < a_shape->dim_size() - 1; ++i) {
+    if (!utils::HasDimValue(a_shape->dim(i)) || a_shape->dim(i).dim_value() != 1) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 bool IsSupportedCudaGptOssRouterMatMulNBits(const Node& node) {
   if (GptOssRouterGemvSpecializationDisabled() || GptOssRouterBiasFusionDisabled()) {
     return false;
   }
 
   if (HasInput(node, 3) || HasInput(node, 4)) {
+    return false;
+  }
+
+  if (!MatMulNBitsHasStaticGemvShape(node)) {
     return false;
   }
 
