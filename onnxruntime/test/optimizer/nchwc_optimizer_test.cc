@@ -236,6 +236,16 @@ void NchwcOptimizerTester(const std::function<void(NchwcTestHelper& helper)>& bu
 
 #ifndef DISABLE_CONTRIB_OPS
 
+// Regression test for #28392: NchwcTransformer must not crash when a node's schema is unresolved (node.Op() == nullptr).
+TEST(NchwcOptimizerTests, MatMulCastDoesNotCrashOnUnresolvedSchema) {
+  SessionOptions session_options;
+  session_options.graph_optimization_level = TransformerLevel::Level3;
+  session_options.session_logid = "NchwcOptimizerTests";
+  InferenceSessionWrapper session{session_options, GetEnvironment()};
+  ASSERT_STATUS_OK(session.Load(ORT_TSTR("testdata/transform/transpose_cast_matmul_fp16.onnx")));
+  ASSERT_STATUS_OK(session.Initialize());
+}
+
 TEST(NchwcOptimizerTests, ConvNchw) {
   auto test_case = [&](const std::string& activation_op_type) {
     auto build_test_case = [&](NchwcTestHelper& helper) {
