@@ -8,6 +8,7 @@
 
 namespace onnxruntime {
 struct AttentionKernelDebugInfo {
+  std::optional<bool> use_xqa = std::nullopt;
   std::optional<bool> use_flash_attention = std::nullopt;
   std::optional<bool> use_lean_attention = std::nullopt;
   std::optional<bool> use_efficient_attention = std::nullopt;
