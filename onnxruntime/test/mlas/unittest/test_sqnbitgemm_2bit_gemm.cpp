@@ -310,16 +310,6 @@ void RunW2Case(size_t M, size_t N, size_t K, bool WithBias, uint32_t seed,
 // handler in a follow-up.
 //
 TEST(MlasSq2BitTest, Scalar_BlkLen64) {
-  // The scalar entry point lives in sqnbitgemm_kernel_avx512_2bit.cpp, which is
-  // compiled with AVX-512 flags so its SIMD siblings can use intrinsics. The
-  // compiler may autovectorize this "scalar" function to AVX-512 instructions.
-  // Calling it directly here bypasses MlasIsQNBitGemmAvailable, so on hosts
-  // that do not safely expose AVX-512 this can SIGILL. Mirror the AVX-512
-  // SIMD test guard. Long-term fix: split the TU so the scalar entry has
-  // flag-neutral codegen.
-  if (!GetMlasPlatform().Avx512Supported_) {
-    GTEST_SKIP() << "W2 scalar reference TU is compiled with AVX-512 flags; skip on non-AVX-512 hosts.";
-  }
   struct Shape {
     size_t M, N, K;
   };
@@ -361,10 +351,6 @@ TEST(MlasSq2BitTest, Scalar_BlkLen64) {
 // Same coverage with per-block non-default zero points.
 //
 TEST(MlasSq2BitTest, Scalar_BlkLen64_WithZeroPoints) {
-  // See Scalar_BlkLen64 comment.
-  if (!GetMlasPlatform().Avx512Supported_) {
-    GTEST_SKIP() << "W2 scalar reference TU is compiled with AVX-512 flags; skip on non-AVX-512 hosts.";
-  }
   struct Shape {
     size_t M, N, K;
   };
@@ -820,10 +806,6 @@ constexpr struct {
 }  // namespace
 
 TEST(MlasSq2BitTest, Scalar_BlkLen128) {
-  // See Scalar_BlkLen64 comment.
-  if (!GetMlasPlatform().Avx512Supported_) {
-    GTEST_SKIP() << "W2 scalar reference TU is compiled with AVX-512 flags; skip on non-AVX-512 hosts.";
-  }
   for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
     for (const auto& s : kSimdShapes_BlkLen128) {
       for (bool bias : {false, true}) {
@@ -837,10 +819,6 @@ TEST(MlasSq2BitTest, Scalar_BlkLen128) {
 }
 
 TEST(MlasSq2BitTest, Scalar_BlkLen128_WithZeroPoints) {
-  // See Scalar_BlkLen64 comment.
-  if (!GetMlasPlatform().Avx512Supported_) {
-    GTEST_SKIP() << "W2 scalar reference TU is compiled with AVX-512 flags; skip on non-AVX-512 hosts.";
-  }
   for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
     for (const auto& s : kSimdShapes_BlkLen128) {
       for (bool bias : {false, true}) {
@@ -1182,10 +1160,6 @@ constexpr struct {
 }  // namespace
 
 TEST(MlasSq2BitTest, Scalar_BlkLen32) {
-  // See Scalar_BlkLen64 comment.
-  if (!GetMlasPlatform().Avx512Supported_) {
-    GTEST_SKIP() << "W2 scalar reference TU is compiled with AVX-512 flags; skip on non-AVX-512 hosts.";
-  }
   for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
     for (const auto& s : kSimdShapes_BlkLen32) {
       for (bool bias : {false, true}) {
@@ -1199,10 +1173,6 @@ TEST(MlasSq2BitTest, Scalar_BlkLen32) {
 }
 
 TEST(MlasSq2BitTest, Scalar_BlkLen32_WithZeroPoints) {
-  // See Scalar_BlkLen64 comment.
-  if (!GetMlasPlatform().Avx512Supported_) {
-    GTEST_SKIP() << "W2 scalar reference TU is compiled with AVX-512 flags; skip on non-AVX-512 hosts.";
-  }
   for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
     for (const auto& s : kSimdShapes_BlkLen32) {
       for (bool bias : {false, true}) {

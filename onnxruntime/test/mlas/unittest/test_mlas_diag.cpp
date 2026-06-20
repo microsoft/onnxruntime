@@ -25,6 +25,7 @@
 // out of CI logs.
 //
 
+#include <cstdarg>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -44,48 +45,63 @@ namespace {
 
 constexpr const char* kTag = "MLAS-DIAG: ";
 
+// Print a formatted message to both stdout and stderr. CI infrastructures
+// often capture only one of the two; doing both maximizes the chance the
+// diagnostic shows up.
+void PrintBoth(const char* fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  va_list ap2;
+  va_copy(ap2, ap);
+  std::vfprintf(stderr, fmt, ap);
+  std::vfprintf(stdout, fmt, ap2);
+  va_end(ap);
+  va_end(ap2);
+  std::fflush(stderr);
+  std::fflush(stdout);
+}
+
 void PrintBuildMacros() {
-  std::fprintf(stderr, "%sbuild macros:", kTag);
+  PrintBoth("%sbuild macros:", kTag);
 #if defined(__AVX__)
-  std::fprintf(stderr, " __AVX__");
+  PrintBoth(" __AVX__");
 #endif
 #if defined(__AVX2__)
-  std::fprintf(stderr, " __AVX2__");
+  PrintBoth(" __AVX2__");
 #endif
 #if defined(__FMA__)
-  std::fprintf(stderr, " __FMA__");
+  PrintBoth(" __FMA__");
 #endif
 #if defined(__AVX512F__)
-  std::fprintf(stderr, " __AVX512F__");
+  PrintBoth(" __AVX512F__");
 #endif
 #if defined(__AVX512BW__)
-  std::fprintf(stderr, " __AVX512BW__");
+  PrintBoth(" __AVX512BW__");
 #endif
 #if defined(__AVX512DQ__)
-  std::fprintf(stderr, " __AVX512DQ__");
+  PrintBoth(" __AVX512DQ__");
 #endif
 #if defined(__AVX512VL__)
-  std::fprintf(stderr, " __AVX512VL__");
+  PrintBoth(" __AVX512VL__");
 #endif
 #if defined(__AVX512VNNI__)
-  std::fprintf(stderr, " __AVX512VNNI__");
+  PrintBoth(" __AVX512VNNI__");
 #endif
 #if defined(__GNUC__)
-  std::fprintf(stderr, " __GNUC__=%d", __GNUC__);
+  PrintBoth(" __GNUC__=%d", __GNUC__);
 #endif
 #if defined(_MSC_VER)
-  std::fprintf(stderr, " _MSC_VER=%d", _MSC_VER);
+  PrintBoth(" _MSC_VER=%d", _MSC_VER);
 #endif
-  std::fprintf(stderr, "\n");
+  PrintBoth("\n");
 }
 
 void PrintMlasPlatform() {
   const auto& p = GetMlasPlatform();
-  std::fprintf(stderr,
-               "%sMlasPlatform: Avx2Supported_=%d Avx512Supported_=%d\n",
-               kTag,
-               static_cast<int>(p.Avx2Supported_),
-               static_cast<int>(p.Avx512Supported_));
+  PrintBoth("%sMlasPlatform: Avx2Supported_=%d Avx512Supported_=%d\n",
+            kTag,
+            static_cast<int>(p.Avx2Supported_),
+            static_cast<int>(p.Avx512Supported_));
 
   const void* dispatch = static_cast<const void*>(p.QNBitGemmDispatch);
   const char* name = "unknown/null";
@@ -102,9 +118,8 @@ void PrintMlasPlatform() {
     name = "null";
   }
 #endif
-  std::fprintf(stderr,
-               "%sQNBitGemmDispatch=%p (%s)\n",
-               kTag, dispatch, name);
+  PrintBoth("%sQNBitGemmDispatch=%p (%s)\n",
+            kTag, dispatch, name);
 }
 
 #if defined(__linux__) && (defined(__x86_64__) || defined(__i386__))
@@ -119,11 +134,11 @@ void PrintRawCpuid() {
   };
   uint32_t a, b, c, d;
   cpuid(1, 0, a, b, c, d);
-  std::fprintf(stderr, "%sCPUID(1,0): eax=%08x ebx=%08x ecx=%08x edx=%08x\n",
-               kTag, a, b, c, d);
+  PrintBoth("%sCPUID(1,0): eax=%08x ebx=%08x ecx=%08x edx=%08x\n",
+            kTag, a, b, c, d);
   cpuid(7, 0, a, b, c, d);
-  std::fprintf(stderr, "%sCPUID(7,0): eax=%08x ebx=%08x ecx=%08x edx=%08x\n",
-               kTag, a, b, c, d);
+  PrintBoth("%sCPUID(7,0): eax=%08x ebx=%08x ecx=%08x edx=%08x\n",
+            kTag, a, b, c, d);
 }
 
 // Async-signal-safe writer: integer -> hex into a small buffer.
@@ -155,12 +170,14 @@ void SafeWriteStr(const char* s) {
   size_t n = 0;
   while (s[n] != '\0') ++n;
   (void)write(STDERR_FILENO, s, n);
+  (void)write(STDOUT_FILENO, s, n);
 }
 
 void SafeWriteHex(uintptr_t v) {
   char buf[20];
   size_t n = HexWrite(v, buf, sizeof(buf));
   (void)write(STDERR_FILENO, buf, n);
+  (void)write(STDOUT_FILENO, buf, n);
 }
 
 void SigillHandler(int sig, siginfo_t* info, void* /*ucontext*/) {
@@ -193,13 +210,14 @@ void SigillHandler(int sig, siginfo_t* info, void* /*ucontext*/) {
     SafeWriteStr("bytes@si_addr:");
     const unsigned char* p = static_cast<const unsigned char*>(info->si_addr);
     for (int i = 0; i < 16; ++i) {
-      char two[3];
+      char two[4];
       static const char kHex[] = "0123456789abcdef";
-      two[0] = kHex[(p[i] >> 4) & 0xF];
-      two[1] = kHex[p[i] & 0xF];
-      two[2] = ' ';
-      (void)write(STDERR_FILENO, " ", 1);
+      two[0] = ' ';
+      two[1] = kHex[(p[i] >> 4) & 0xF];
+      two[2] = kHex[p[i] & 0xF];
+      two[3] = '\0';
       (void)write(STDERR_FILENO, two, 3);
+      (void)write(STDOUT_FILENO, two, 3);
     }
     SafeWriteStr("\n");
   }
@@ -213,15 +231,22 @@ void SigillHandler(int sig, siginfo_t* info, void* /*ucontext*/) {
 }
 
 void InstallSigillHandler() {
+  static bool installed = false;
+  if (installed) return;
+  installed = true;
   struct sigaction sa{};
   sa.sa_sigaction = &SigillHandler;
   sa.sa_flags = SA_SIGINFO | SA_RESETHAND;
   sigemptyset(&sa.sa_mask);
   if (sigaction(SIGILL, &sa, nullptr) != 0) {
     std::fprintf(stderr, "%sfailed to install SIGILL handler\n", kTag);
+    std::fprintf(stdout, "%sfailed to install SIGILL handler\n", kTag);
   } else {
     std::fprintf(stderr, "%sSIGILL handler installed\n", kTag);
+    std::fprintf(stdout, "%sSIGILL handler installed\n", kTag);
   }
+  std::fflush(stderr);
+  std::fflush(stdout);
 }
 
 #else  // !linux x86
@@ -234,13 +259,14 @@ void InstallSigillHandler() {}
 class MlasDiagEnvironment : public ::testing::Environment {
  public:
   void SetUp() override {
-    std::fprintf(stderr, "%s---- MLAS diagnostic dump ----\n", kTag);
+    PrintBoth("%s---- MLAS diagnostic dump ----\n", kTag);
     PrintBuildMacros();
     PrintRawCpuid();
     PrintMlasPlatform();
     InstallSigillHandler();
-    std::fprintf(stderr, "%s---- end MLAS diagnostic dump ----\n", kTag);
+    PrintBoth("%s---- end MLAS diagnostic dump ----\n", kTag);
     std::fflush(stderr);
+    std::fflush(stdout);
   }
 };
 
@@ -248,11 +274,24 @@ class MlasDiagEnvironment : public ::testing::Environment {
 
 // Externally-visible entry point so test_main.cpp can force this TU to link
 // and register the diagnostic GTest environment. Without an externally
-// referenced symbol, the MSVC linker will discard the anonymous-namespace
-// static initializer that registers the environment, which is exactly what
-// happened in CI: the local test process showed MLAS-DIAG: output but the
-// CI test binary did not, because nothing referenced this TU.
+// referenced symbol, the linker may discard the anonymous-namespace static
+// initializer that registers the environment.
 void RegisterMlasDiagEnvironment() {
+  // Install the SIGILL handler as soon as we are called -- before GTest
+  // even sets up the environment. This way a fault during static init or
+  // very early test setup is still captured.
+  InstallSigillHandler();
+
+  // Also print the basic platform dump immediately so CI logs have it
+  // even if a crash kills us before the Environment::SetUp() runs.
+  PrintBoth("%s---- MLAS early diagnostic dump ----\n", kTag);
+  PrintBuildMacros();
+  PrintRawCpuid();
+  PrintMlasPlatform();
+  PrintBoth("%s---- end MLAS early diagnostic dump ----\n", kTag);
+  std::fflush(stderr);
+  std::fflush(stdout);
+
   // ::testing::AddGlobalTestEnvironment takes ownership of the pointer.
   static bool registered = false;
   if (registered) {
