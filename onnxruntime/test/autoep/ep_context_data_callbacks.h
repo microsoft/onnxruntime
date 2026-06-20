@@ -31,6 +31,10 @@ inline OrtStatus* ORT_API_CALL StoreEpContextDataCallback(void* state, const cha
   callback_state->write_file_name = file_name;
   callback_state->payload.clear();
   if (buffer_size != 0) {
+    if (buffer == nullptr) {
+      return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT,
+                                        "StoreEpContextDataCallback received a null buffer for non-empty data");
+    }
     callback_state->payload.assign(static_cast<const char*>(buffer), static_cast<const char*>(buffer) + buffer_size);
   }
   return nullptr;

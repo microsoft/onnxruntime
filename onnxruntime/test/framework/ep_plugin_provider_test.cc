@@ -114,6 +114,10 @@ static OrtStatus* ORT_API_CALL EpContextWriteCallback(void* state, const char* f
   write_state->file_name = file_name;
   write_state->payload.clear();
   if (buffer_size != 0) {
+    if (buffer == nullptr) {
+      return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT,
+                                        "EpContextWriteCallback received a null buffer for non-empty data");
+    }
     write_state->payload.assign(static_cast<const char*>(buffer), static_cast<const char*>(buffer) + buffer_size);
   }
   return nullptr;
