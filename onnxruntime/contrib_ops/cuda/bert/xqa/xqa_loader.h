@@ -34,6 +34,7 @@ Status LaunchXQAKernel(
     const int head_size,
     const int max_seq_len,  // Max sequence length of cache
     const float scale,
+    const int local_window_size,   // Sliding window size; -1 means global attention (no sliding window)
     const bool is_bsnh,            // Layout of KV cache
     const int* past_seq_lens,      // Past sequence lengths [BatchSize]
     const float* attention_sinks,  // Attention sink per query head, nullptr if not used

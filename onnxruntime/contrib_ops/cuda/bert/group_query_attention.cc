@@ -395,7 +395,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // 4. Past and Present KV cache share the same buffer (required for XQA specific memory access).
   // 5. No Softcap (XQA doesn't support softcap).
   // 6. Standard Softmax, or smooth softmax represented by a head_sink tensor.
-  // 7. No local window attention (global attention only).
+  // 7. Local window (sliding window) attention is supported on the non-quantized path; the
+  //    quantized (INT8/FP8) paths remain global-only (see the per-variant checks below).
   const bool use_xqa_attention_sinks = head_sink != nullptr && !is_inputs_quantized;
   const bool is_xqa_smooth_softmax_supported = !parameters.use_smooth_softmax || use_xqa_attention_sinks;
   // XQA is opt-in for the non-quantized path (ORT_ENABLE_XQA), but a head_sink (attention sink) input
@@ -412,11 +413,14 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       parameters.kv_sequence_length > 0 &&  // Shared KV (kv_seq=0) has no new K/V to append
       parameters.past_present_share_buffer &&
       parameters.softcap == 0.0f &&
-      is_xqa_smooth_softmax_supported &&
-      parameters.local_window_size == -1) {
+      is_xqa_smooth_softmax_supported) {
     int group_size = parameters.num_heads / parameters.kv_num_heads;
 
-    bool is_int8_quantized_supported = is_int8 &&
+    // Sliding window (local_window_size > 0) is only wired into the non-quantized XQA kernels.
+    // The quantized variants stay restricted to global attention.
+    const bool is_global_attention = parameters.local_window_size == -1;
+
+    bool is_int8_quantized_supported = is_int8 && is_global_attention &&
                                        (k_quant_type_ == KVQuantizationType::PER_TENSOR &&
                                         v_quant_type_ == KVQuantizationType::PER_TENSOR &&
                                         data.k_scale == data.v_scale &&  // XQA requires k_scale and v_scale to be the same. Here requires k_scale and v_scale are same tensor.
@@ -424,7 +428,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                         (group_size == 4 || group_size == 8 || group_size == 16 || group_size == 32));
 
 #ifdef USE_FP8_KV_CACHE
-    bool is_fp8_quantized_supported = is_fp8 &&
+    bool is_fp8_quantized_supported = is_fp8 && is_global_attention &&
                                       (k_quant_type_ == KVQuantizationType::PER_TENSOR &&
                                        v_quant_type_ == KVQuantizationType::PER_TENSOR &&
                                        data.k_scale == data.v_scale &&
