@@ -39,6 +39,7 @@ OrtStatus* ORT_API_CALL LoadInvalidEpContextDataCallback(void* state, const char
 
 void ExpectOrtStatusError(OrtStatus* status_ptr, OrtErrorCode expected_code, std::string_view expected_message) {
   Ort::Status status{status_ptr};
+  ASSERT_NE(status_ptr, nullptr) << "Expected a failure status, but the API returned nullptr (OK).";
   ASSERT_FALSE(status.IsOK());
   EXPECT_EQ(status.GetErrorCode(), expected_code);
   EXPECT_THAT(std::string{status.GetErrorMessage()}, ::testing::HasSubstr(std::string{expected_message}));
