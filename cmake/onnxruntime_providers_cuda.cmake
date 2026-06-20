@@ -238,6 +238,11 @@
       get_filename_component(_dst_dir "${dst}" DIRECTORY)
       file(MAKE_DIRECTORY "${_dst_dir}")
       file(WRITE "${dst}" "${_content}")
+    elseif (EXISTS "${dst}")
+      # The toolkit header no longer matches the offending pattern (e.g. after a CUDA
+      # upgrade in an existing build tree). Remove any previously generated copy so a
+      # stale patched header does not keep shadowing the toolkit header.
+      file(REMOVE "${dst}")
     endif()
   endfunction()
 
@@ -417,7 +422,8 @@
           ort_cuda13_patch_cccl_header(
             "${inc_dir}/cccl/cub/device/dispatch/tuning/tuning_transform.cuh"
             "${_ort_cccl_fix_dir}/cub/device/dispatch/tuning/tuning_transform.cuh")
-          if (EXISTS "${_ort_cccl_fix_dir}/cub/device/device_transform.cuh")
+          if (EXISTS "${_ort_cccl_fix_dir}/cub/device/device_transform.cuh" OR
+              EXISTS "${_ort_cccl_fix_dir}/cub/device/dispatch/tuning/tuning_transform.cuh")
             target_include_directories(${target} BEFORE PRIVATE "${_ort_cccl_fix_dir}")
           endif()
 
