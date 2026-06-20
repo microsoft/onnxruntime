@@ -303,15 +303,6 @@ void RunW2Case(size_t M, size_t N, size_t K, bool WithBias, uint32_t seed,
 }  // namespace
 
 //
-// W2 scalar reference tests. These call internal scalar W2 symbols directly,
-// bypassing MlasIsQNBitGemmAvailable. The scalar reference TU
-// (sqnbitgemm_kernel_avx512_2bit.cpp) is compiled with AVX-512-capable
-// flags so its SIMD siblings can use intrinsics; the compiler may
-// autovectorize the scalar functions into AVX-512 instructions. To avoid
-// SIGILL on hosts that do not expose AVX-512 these tests are gated on
-// GetMlasPlatform().Avx512Supported_, matching the SIMD test guards in
-// this file.
-//
 // Scalar block-group test, no zero-points. Covers the same small synthetic
 // shapes + representative prefill sizes used by the production W2 tests. All
 // shapes have K as a multiple of (kBlkLen * kBlockGroupBlks) = 256. K=384 is

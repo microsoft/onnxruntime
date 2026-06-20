@@ -842,29 +842,13 @@ endif()
           ${MLAS_SRC_DIR}/x86_64/QgemmU8X8KernelAvx512Core.S
           ${MLAS_SRC_DIR}/x86_64/ConvSymKernelAvx512Core.S
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
-          # NOTE: sqnbitgemm_kernel_avx512_2bit_blklen{32,64,128}.h are also AVX-512
-          # only, but they are header files included by sqnbitgemm_kernel_avx512.cpp
-          # and sqnbitgemm_kernel_avx512vnni.cpp, so they pick up those TUs'
-          # AVX-512 compile flags automatically. Listing them here just adds
-          # them to IDE project files for navigation.
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.h
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen64.h
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen128.h
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen32.h
         )
         set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_FLAGS "-mfma -mavx512vnni -mavx512bw -mavx512dq -mavx512vl")
-
-        # sqnbitgemm_kernel_avx512_2bit.cpp is named "avx512" but is intentionally
-        # pure scalar C++ -- it implements the W2 pack helper and a scalar
-        # reference oracle (see file header comment). It must NOT be compiled
-        # with AVX-512 flags, otherwise the compiler may autovectorize it to
-        # AVX-512 (e.g. VNNI vpdpbusd) instructions that some virtualized
-        # hosts do not accept, producing SIGILL when tests call those symbols
-        # directly.
-        set(mlas_platform_srcs_w2_scalar
-          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
-        )
-        set_source_files_properties(${mlas_platform_srcs_w2_scalar} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c")
 
         set(mlas_platform_srcs_avx512vnni
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
@@ -883,7 +867,6 @@ endif()
           ${mlas_platform_srcs_avx2}
           ${mlas_platform_srcs_avx512f}
           ${mlas_platform_srcs_avx512core}
-          ${mlas_platform_srcs_w2_scalar}
           ${mlas_platform_srcs_avx512vnni}
         )
 
