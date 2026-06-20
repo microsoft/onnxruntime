@@ -272,7 +272,6 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   const uint8_t* blob_data = is_prepacked_weight_ ? nullptr : b->Data<uint8_t>();
   const auto* scales_data = is_prepacked_scale_ ? nullptr : scales->Data<T>();
   const auto* zero_points_data = (is_prepacked_zero_point_ || zero_points == nullptr) ? nullptr : zero_points->DataRaw();
-  const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T>();
 #else
   const Tensor* b = ctx->Input<Tensor>(1);
   const Tensor* scales = ctx->Input<Tensor>(2);
@@ -281,10 +280,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   const auto* scales_data = scales->Data<T>();
   const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
 #endif
-
-  if (bias != nullptr) {
-    ORT_THROW("MatMulNBits does not support bias in CUDA kernel");
-  }
+  const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T>();
 
   ORT_RETURN_IF_ERROR(matmul_nbits_helper::CheckInputs<Tensor>(
       a, b, scales, zero_points, reorder_idx, bias, N_, K_, block_size_, nbits_));
@@ -383,6 +379,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             blob_data,
             reinterpret_cast<const CudaT*>(scales_data),
             static_cast<const uint8_t*>(zero_points_data),
+            reinterpret_cast<const CudaT*>(bias_data),
             m,
             n,
             k,
@@ -391,6 +388,10 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             stream)) {
       return Status::OK();
     }
+  }
+
+  if (bias != nullptr) {
+    ORT_THROW("MatMulNBits CUDA kernel only supports bias for the exact GPT-OSS router GEMV path");
   }
 
   int64_t K_padded = (K_ + block_size_ - 1) / block_size_ * block_size_;

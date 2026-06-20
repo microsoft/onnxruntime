@@ -5,6 +5,9 @@
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
 #include <math_constants.h>
+
+#include <cstdlib>
+
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
@@ -15,6 +18,21 @@ using namespace cub;
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+constexpr int kGptOssRouterM = 1;
+constexpr int kGptOssRouterN = 32;
+constexpr int kGptOssRouterK = 2880;
+constexpr int kGptOssRouterBlockSize = 32;
+
+static bool GptOssRouterGemvSpecializationDisabled() {
+  const char* value = std::getenv("ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION");
+  return value != nullptr && value[0] == '1';
+}
+
+static bool IsGptOssRouterGemvShape(const uint8_t* zero_points, int m, int n, int k, int block_size) {
+  return zero_points == nullptr && m == kGptOssRouterM && n == kGptOssRouterN &&
+         k == kGptOssRouterK && block_size == kGptOssRouterBlockSize;
+}
 
 template <typename T>
 __device__ __forceinline__ T WarpUniform(T value) {
@@ -326,12 +344,77 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
 }  // namespace cuda
 
 template <class T>
+__global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt4RouterKernel(
+    T* output,
+    const T* a_data,
+    const uint8_t* b_data_quant,
+    const T* scales_data,
+    const T* bias_data) {
+  constexpr int kHiddenSize = kGptOssRouterK;
+  constexpr int kBlockSize = kGptOssRouterBlockSize;
+  constexpr int kBlocksPerK = kHiddenSize / kBlockSize;
+  constexpr int kPerIter = kWarpSize * kElementsPerThreadPerIteration;
+
+  const int lane_id = threadIdx.x;
+  const int warp_id = WarpUniform(threadIdx.y);
+  const int n_id = blockIdx.x * kColsPerThreadBlock + warp_id;
+
+  a_data += lane_id << 3;
+  b_data_quant += n_id * kBlocksPerK * (kBlockSize / 2) + lane_id * 4;
+  scales_data += n_id * kBlocksPerK;
+
+  T sums[8] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+  int k_id = 0;
+  int scale_id = lane_id * 8 / kBlockSize;
+
+#define RouterUnRollReduction(unroll_size)                                                      \
+  do {                                                                                          \
+    constexpr int kUnroll = unroll_size;                                                        \
+    constexpr int kUnrollStep = kUnroll * kPerIter;                                             \
+    const int k_unroll_bound = kHiddenSize - kHiddenSize % kUnrollStep;                         \
+    for (; k_id < k_unroll_bound; k_id += kUnrollStep) {                                        \
+      _Pragma("unroll") for (int i = 0; i < kUnroll; i++) {                                     \
+        uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + kPerIter / 2 * i)); \
+        T scale = scales_data[scale_id + kPerIter / kBlockSize * i];                            \
+        AccumulateEightElements4b(value, scale, 8, a_data + k_id + i * kPerIter, sums);         \
+      }                                                                                         \
+      b_data_quant += kPerIter / 2 * kUnroll;                                                   \
+      scale_id += kPerIter / kBlockSize * kUnroll;                                              \
+    }                                                                                           \
+  } while (false)
+
+  RouterUnRollReduction(16);
+  RouterUnRollReduction(4);
+  RouterUnRollReduction(1);
+#undef RouterUnRollReduction
+
+  if (k_id + lane_id * 8 < kHiddenSize) {
+    uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant));
+    T scale = scales_data[scale_id];
+    AccumulateEightElements4b(value, scale, 8, a_data + k_id, sums);
+  }
+
+  float sum = static_cast<float>(sums[0] + sums[1] + sums[2] + sums[3] + sums[4] + sums[5] + sums[6] + sums[7]);
+  for (int i = kWarpSize / 2; i > 0; i = i / 2) {
+    sum += WARP_SHFL_DOWN(sum, i);
+  }
+
+  if (lane_id == 0) {
+    if (bias_data != nullptr) {
+      sum += static_cast<float>(bias_data[n_id]);
+    }
+    output[n_id] = sum;
+  }
+}
+
+template <class T>
 bool TryMatMul4Bits(
     T* output,
     const T* a_data,
     const uint8_t* b_data_quant,
     const T* scales_data,
     const uint8_t* zero_points,
+    const T* bias_data,
     int m,
     int n,
     int k,
@@ -341,6 +424,20 @@ bool TryMatMul4Bits(
   if (n % kColsPerThreadBlock != 0 || k % 8 != 0 || m > 1) {
     return false;
   }
+
+  if (IsGptOssRouterGemvShape(zero_points, m, n, k, block_size) &&
+      !GptOssRouterGemvSpecializationDisabled()) {
+    dim3 blocks(kGptOssRouterN / kColsPerThreadBlock, 1);
+    dim3 threads(GPU_WARP_SIZE_HOST, kColsPerThreadBlock);
+    MatMulFloatInt4RouterKernel<T><<<blocks, threads, 0, stream>>>(
+        output, a_data, b_data_quant, scales_data, bias_data);
+    return true;
+  }
+
+  if (bias_data != nullptr) {
+    return false;
+  }
+
   dim3 blocks((n + kColsPerThreadBlock - 1) / kColsPerThreadBlock, m);
   dim3 threads(GPU_WARP_SIZE_HOST, kColsPerThreadBlock);
   int blocks_per_K = (k + block_size - 1) / block_size;
@@ -382,6 +479,7 @@ template bool TryMatMul4Bits<float>(
     const uint8_t* b_data_quant,
     const float* scales_data,
     const uint8_t* zero_points,
+    const float* bias_data,
     int m,
     int n,
     int k,
@@ -395,6 +493,7 @@ template bool TryMatMul4Bits<half>(
     const uint8_t* b_data_quant,
     const half* scales_data,
     const uint8_t* zero_points,
+    const half* bias_data,
     int m,
     int n,
     int k,
@@ -408,6 +507,7 @@ template bool TryMatMul4Bits<nv_bfloat16>(
     const uint8_t* b_data_quant,
     const nv_bfloat16* scales_data,
     const uint8_t* zero_points,
+    const nv_bfloat16* bias_data,
     int m,
     int n,
     int k,
