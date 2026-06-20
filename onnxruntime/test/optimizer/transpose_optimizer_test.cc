@@ -3790,13 +3790,18 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearNoZeroPoint) {
     transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
   };
 
-  auto check_optimized_graph = [](InferenceSessionWrapper& session) {
+  // opset 21: output_dtype pins the inserted Q's type and the transposes cancel.
+  auto check_cancelled = [](InferenceSessionWrapper& session) {
     EXPECT_EQ(EstimateTransposeCost(session.GetGraph()), 0);
   };
-
-  // output_dtype requires ONNX opset 21.
-  TransformerTester(build_test_case, check_optimized_graph, TransformerLevel::Default,
+  TransformerTester(build_test_case, check_cancelled, TransformerLevel::Default,
                     TransformerLevel::Level1, /*opset_version*/ 21);
+
+  // Pre-opset-21 has no output_dtype, so the optimizer must skip the push-through rather than emit
+  // an invalid QuantizeLinear; the model must still initialize (no type-inference crash).
+  auto check_valid = [](InferenceSessionWrapper& /*session*/) {};
+  TransformerTester(build_test_case, check_valid, TransformerLevel::Default,
+                    TransformerLevel::Level1, /*opset_version*/ 19);
 }
 
 TEST(TransposeOptimizerTests, TestCast) {
