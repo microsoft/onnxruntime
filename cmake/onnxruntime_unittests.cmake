@@ -1847,6 +1847,12 @@ endif()
       )
     endif()
     target_compile_definitions(onnxruntime_mlas_test PRIVATE ${mlas_private_compile_definitions})
+    # CI-CACHE-BUSTER: force rebuild of every TU in onnxruntime_mlas_test when
+    # a persistent /build directory would otherwise reuse stale .obj files.
+    # Bump the timestamp to invalidate. Safe to remove once the
+    # W2 scalar-test #if 0 wrapping is confirmed in CI.
+    target_compile_definitions(onnxruntime_mlas_test PRIVATE
+        MLAS_TEST_REBUILD_TAG=20260619T2310)
     target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}
             ${CMAKE_CURRENT_BINARY_DIR})
     target_link_libraries(onnxruntime_mlas_test PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common)
