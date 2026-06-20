@@ -57,6 +57,8 @@ Do not modify directly.*
   * <a href="#com.microsoft.MatMulInteger16">com.microsoft.MatMulInteger16</a>
   * <a href="#com.microsoft.MatMulIntegerToFloat">com.microsoft.MatMulIntegerToFloat</a>
   * <a href="#com.microsoft.MatMulNBits">com.microsoft.MatMulNBits</a>
+  * <a href="#com.microsoft.MatMulNBitsMlp">com.microsoft.MatMulNBitsMlp</a>
+  * <a href="#com.microsoft.MatMulNBitsQkv">com.microsoft.MatMulNBitsQkv</a>
   * <a href="#com.microsoft.MaxpoolWithMask">com.microsoft.MaxpoolWithMask</a>
   * <a href="#com.microsoft.MoE">com.microsoft.MoE</a>
   * <a href="#com.microsoft.MulInteger">com.microsoft.MulInteger</a>
@@ -2625,6 +2627,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>left_window_size for local attention (like Mistral). Default value is -1 meaning unused.</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for q</dd>
+<dt><tt>qk_norm_epsilon</tt> : float</dt>
+<dd>Epsilon used by the per-head RMS norm applied to Q and K when q_norm_weight and k_norm_weight inputs are provided. Default value is 1e-6.</dd>
 <dt><tt>qk_output</tt> : int</dt>
 <dd>Output values of QK matrix multiplication before (1) or after (2) softmax normalization. Default value is 0 (don't output).</dd>
 <dt><tt>rotary_interleaved</tt> : int</dt>
@@ -2639,7 +2643,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Quantization type for V cache. One of 'NONE', 'PER_TENSOR', 'PER_CHANNEL'.</dd>
 </dl>
 
-#### Inputs (7 - 14)
+#### Inputs (7 - 16)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -2670,6 +2674,10 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Scale tensor for past_key.</dd>
 <dt><tt>v_scale</tt> (optional) : T_KV_SCALE</dt>
 <dd>Scale tensor for past_value.</dd>
+<dt><tt>q_norm_weight</tt> (optional) : T</dt>
+<dd>Optional 1D tensor of shape (head_size). When provided together with k_norm_weight, the kernel applies a per-head RMS normalization to Q (and K) before any rotary embedding. Used by Qwen3-style models that wrap their Q/K projections in a Reshape -> SimplifiedLayerNormalization -> Reshape stack; downstream graph fusion folds that pattern into this input. Currently honored by the native WebGPU execution provider only; JSEP WebGPU/JS and other EPs must reject the node when this input is set.</dd>
+<dt><tt>k_norm_weight</tt> (optional) : T</dt>
+<dd>Optional 1D tensor of shape (head_size). See q_norm_weight. Must be provided together with q_norm_weight.</dd>
 </dl>
 
 #### Outputs (1 - 4)
@@ -3147,7 +3155,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>accuracy_level</tt> : int</dt>
 <dd>The minimum accuracy level of input A, can be: 0(unset), 1(fp32), 2(fp16), 3(bf16), or 4(int8) (default unset). It is used to control how input A is quantized or downcast internally while doing computation, for example: 0 means input A will not be quantized or downcast while doing computation. 4 means input A can be quantized with the same block_size to int8 internally from type T1.</dd>
 <dt><tt>bits</tt> : int</dt>
-<dd>Bit-width used to quantize the weights (valid range: 2~8)</dd>
+<dd>Bit-width used to quantize the weights (supported values: 2, 4, 8)</dd>
 <dt><tt>block_size</tt> : int (required)</dt>
 <dd>Size of each quantization block along the K (input feature) dimension. Must be a power of two and ≥ 16 (e.g., 16, 32, 64, 128).</dd>
 </dl>
@@ -3187,6 +3195,196 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Constrain quantized zero point types to uint8 or float tensors.</dd>
 <dt><tt>T4</tt> : tensor(int32)</dt>
 <dd>the index tensor.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulNBitsMlp"></a><a name="com.microsoft.matmulnbitsmlp">**com.microsoft.MatMulNBitsMlp**</a>
+
+  MatMulNBitsMlp fuses two MatMulNBits projections that share the same input and computes
+  
+      gate = MatMulNBits(A, gate_weight) + gate_bias
+      up = MatMulNBits(A, up_weight) + up_bias
+      Y = activation(gate) * up
+  
+  It can also optionally fuse SimplifiedLayerNormalization or SkipSimplifiedLayerNormalization before the
+  two projections:
+  
+    A_norm = SimplifiedLayerNormalization(A, norm_scale, epsilon)
+      gate = MatMulNBits(A_norm, gate_weight) + gate_bias
+      up = MatMulNBits(A_norm, up_weight) + up_bias
+      Y = activation(gate) * up
+  
+    A_norm = SkipSimplifiedLayerNormalization(A, skip, norm_scale, epsilon)
+      gate = MatMulNBits(A_norm, gate_weight) + gate_bias
+      up = MatMulNBits(A_norm, up_weight) + up_bias
+      Y = activation(gate) * up
+  
+  This operator is intended for decoder MLP patterns such as Qwen-style gate and up projections, but it remains
+  semantically valid for both prefill and decode because the output shape is the standard MatMul result shape
+  derived from the runtime shape of A and the shared attributes K and N.
+  
+  The operator contract includes a string attribute describing the fused gate activation.
+  
+  When fused from SkipSimplifiedLayerNormalization, the optional residual-sum output may also be materialized:
+  
+    A_norm, input_skip_bias_sum = SkipSimplifiedLayerNormalization(A, skip, norm_scale, epsilon)
+    gate = MatMulNBits(A_norm, gate_weight) + gate_bias
+    up = MatMulNBits(A_norm, up_weight) + up_bias
+    Y = activation(gate) * up
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>K</tt> : int (required)</dt>
+<dd>Input feature dimension shared by both quantized weight matrices.</dd>
+<dt><tt>N</tt> : int (required)</dt>
+<dd>Output feature dimension shared by both quantized weight matrices.</dd>
+<dt><tt>accuracy_level</tt> : int</dt>
+<dd>The minimum accuracy level of input A. It follows the same semantics as MatMulNBits.</dd>
+<dt><tt>activation</tt> : string (required)</dt>
+<dd>Activation applied to the gate projection.</dd>
+<dt><tt>bits</tt> : int</dt>
+<dd>Bit-width used to quantize both weight matrices. Currently only bits=4 is supported by the WebGPU kernel.</dd>
+<dt><tt>block_size</tt> : int (required)</dt>
+<dd>Size of each quantization block along the K dimension. Currently only block_size=32 is supported by the WebGPU kernel.</dd>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Epsilon used by the optional fused (Skip)SimplifiedLayerNormalization. Defaults to 1e-5.</dd>
+</dl>
+
+#### Inputs (8 - 9)
+
+<dl>
+<dt><tt>A</tt> : T1</dt>
+<dd>The shared input tensor.</dd>
+<dt><tt>skip</tt> (optional) : T1</dt>
+<dd>Optional skip input used by SkipSimplifiedLayerNormalization.</dd>
+<dt><tt>norm_scale</tt> (optional) : T1</dt>
+<dd>Optional RMSNorm scale with shape [K] used by SimplifiedLayerNormalization or SkipSimplifiedLayerNormalization.</dd>
+<dt><tt>gate_B</tt> : T2</dt>
+<dd>Packed uint8 tensor for the gate projection weights.</dd>
+<dt><tt>gate_scales</tt> : T1</dt>
+<dd>Per-block scaling factors for the gate projection.</dd>
+<dt><tt>gate_bias</tt> (optional) : T1</dt>
+<dd>Optional bias for the gate projection with shape [N].</dd>
+<dt><tt>up_B</tt> : T2</dt>
+<dd>Packed uint8 tensor for the up projection weights.</dd>
+<dt><tt>up_scales</tt> : T1</dt>
+<dd>Per-block scaling factors for the up projection.</dd>
+<dt><tt>up_bias</tt> (optional) : T1</dt>
+<dd>Optional bias for the up projection with shape [N].</dd>
+</dl>
+
+#### Outputs (1 - 2)
+
+<dl>
+<dt><tt>Y</tt> : T1</dt>
+<dd>The fused gated MLP output tensor.</dd>
+<dt><tt>input_skip_bias_sum</tt> (optional) : T1</dt>
+<dd>Optional residual-sum output for SkipSimplifiedLayerNormalization.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>T2</tt> : tensor(uint8)</dt>
+<dd>Constrain quantized weight types to uint8.</dd>
+</dl>
+
+
+### <a name="com.microsoft.MatMulNBitsQkv"></a><a name="com.microsoft.matmulnbitsqkv">**com.microsoft.MatMulNBitsQkv**</a>
+
+  MatMulNBitsQkv fuses either SimplifiedLayerNormalization (RMSNorm)
+  or SkipSimplifiedLayerNormalization with three MatMulNBits projections that share the
+  same normalized activation.
+  
+    A_norm = SimplifiedLayerNormalization(A, norm_scale, epsilon)
+    Q = MatMulNBits(A_norm, q_weight) + q_bias
+    K = MatMulNBits(A_norm, k_weight) + k_bias
+    V = MatMulNBits(A_norm, v_weight) + v_bias
+  
+  If skip is provided, the operator computes the SkipSimplifiedLayerNormalization variant
+  and may also return the input+skip residual sum as output 3.
+  
+  This operator is intended as a decode-oriented QKV fusion primitive.
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>K</tt> : int (required)</dt>
+<dd>Input feature dimension shared by the normalized input and all projection weights.</dd>
+<dt><tt>Nkv</tt> : int (required)</dt>
+<dd>Output feature dimension shared by the K and V projections.</dd>
+<dt><tt>Nq</tt> : int (required)</dt>
+<dd>Output feature dimension of the Q projection.</dd>
+<dt><tt>accuracy_level</tt> : int</dt>
+<dd>The minimum accuracy level of input A. It follows the same semantics as MatMulNBits.</dd>
+<dt><tt>bits</tt> : int</dt>
+<dd>Bit-width used to quantize all weight matrices. Currently only bits=4 is supported by the WebGPU kernel.</dd>
+<dt><tt>block_size</tt> : int (required)</dt>
+<dd>Size of each quantization block along the K dimension. Currently only block_size=32 is supported by the WebGPU kernel.</dd>
+<dt><tt>epsilon</tt> : float</dt>
+<dd>Epsilon used by the simplified layer norm reduction.</dd>
+</dl>
+
+#### Inputs (11 - 12)
+
+<dl>
+<dt><tt>A</tt> : T1</dt>
+<dd>The shared input tensor.</dd>
+<dt><tt>skip</tt> (optional) : T1</dt>
+<dd>Optional residual input for SkipSimplifiedLayerNormalization.</dd>
+<dt><tt>norm_scale</tt> : T1</dt>
+<dd>Scale input for the simplified layer norm with shape [K].</dd>
+<dt><tt>q_B</tt> : T2</dt>
+<dd>Packed uint8 tensor for the Q projection weights.</dd>
+<dt><tt>q_scales</tt> : T1</dt>
+<dd>Per-block scaling factors for the Q projection.</dd>
+<dt><tt>q_bias</tt> (optional) : T1</dt>
+<dd>Optional bias for the Q projection with shape [Nq].</dd>
+<dt><tt>k_B</tt> : T2</dt>
+<dd>Packed uint8 tensor for the K projection weights.</dd>
+<dt><tt>k_scales</tt> : T1</dt>
+<dd>Per-block scaling factors for the K projection.</dd>
+<dt><tt>k_bias</tt> (optional) : T1</dt>
+<dd>Optional bias for the K projection with shape [Nkv].</dd>
+<dt><tt>v_B</tt> : T2</dt>
+<dd>Packed uint8 tensor for the V projection weights.</dd>
+<dt><tt>v_scales</tt> : T1</dt>
+<dd>Per-block scaling factors for the V projection.</dd>
+<dt><tt>v_bias</tt> (optional) : T1</dt>
+<dd>Optional bias for the V projection with shape [Nkv].</dd>
+</dl>
+
+#### Outputs (3 - 4)
+
+<dl>
+<dt><tt>Q</tt> : T1</dt>
+<dd>The Q projection output tensor.</dd>
+<dt><tt>K</tt> : T1</dt>
+<dd>The K projection output tensor.</dd>
+<dt><tt>V</tt> : T1</dt>
+<dd>The V projection output tensor.</dd>
+<dt><tt>input_skip_bias_sum</tt> (optional) : T1</dt>
+<dd>Optional residual-sum output for SkipSimplifiedLayerNormalization.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T1</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>T2</tt> : tensor(uint8)</dt>
+<dd>Constrain quantized weight types to uint8.</dd>
 </dl>
 
 
@@ -4750,6 +4948,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>The limit used to clamp inputs in SwiGLU. It is infinite when limit is not provided.</dd>
 <dt><tt>use_sparse_mixer</tt> : int</dt>
 <dd>Whether to use sparse mixer</dd>
+<dt><tt>weights_prepacked</tt> : int</dt>
+<dd>Only meaningful when quant_type='int'. Tri-state control over the layout of the int4/int8 fc1/fc2 weight initializers. The concrete prepacked layouts selected by -1 and 1 are determined by the execution provider. 0: the initializers are raw, un-prepacked [E, N, K/pack] tensors as produced by quantize_matmul_{4,8}bits. Defaults to -1.</dd>
 </dl>
 
 #### Inputs (6 - 21)

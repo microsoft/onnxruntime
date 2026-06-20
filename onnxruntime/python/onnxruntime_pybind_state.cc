@@ -278,13 +278,12 @@ py::object GetPyObjFromTensor(const OrtValue& ort_value,
     return py::cast<py::object>(result);
   }
 
-  const auto device_type = device.Type();
   // Create a numpy array on top of the OrtValue memory, no copy,
   // but only when the tensor owns the buffer. When the tensor wraps external
   // memory (e.g. a numpy input array passed through as output), the buffer
   // lifetime is not tied to the OrtValue and zero-copy would create a
   // dangling pointer. See https://github.com/microsoft/onnxruntime/issues/21922
-  if (device_type == OrtDevice::CPU) {
+  if (device.UsesCpuMemory()) {
     if (tensor.OwnsBuffer() || zero_copy_non_owning) {
       py::array result = PrimitiveTensorToNumpyOverOrtValue(ort_value);
       return py::cast<py::object>(result);

@@ -1023,12 +1023,14 @@ class InferenceSession {
       uint32_t device_id = 0;            // PCI device ID (0 when unavailable)
       std::string vendor;                // e.g. "Qualcomm"
       std::string ep_vendor;             // e.g. "Qualcomm" (from OrtEpDevice)
+      std::string ep_version;            // e.g. "1.2.3" (from OrtEpFactory::GetVersion, empty when unavailable)
       int assigned_node_count = 0;       // # graph nodes assigned to this EP type
     };
     std::vector<EpDeviceInfo> ep_device_info_;
     // Pre-formatted comma-separated summaries used to enrich SessionCreation.
     std::string ep_device_types_summary_;       // "NPU,CPU"
     std::string ep_device_vendor_ids_summary_;  // "0x5143,0x0000"
+    std::string ep_versions_summary_;           // "QNNExecutionProvider:1.2.3,CPUExecutionProvider:"
   } telemetry_;
 
   mutable std::mutex telemetry_mutex_;  // to ensure thread-safe access to telemetry data
@@ -1109,9 +1111,9 @@ class InferenceSession {
       return cached_execution_provider_for_graph_replay_ != nullptr && graph_annotation_id != kGraphAnnotationSkip;
     }
 
-    Status ReplayGraph(int graph_annotation_id) {
+    Status ReplayGraph(int graph_annotation_id, bool sync = true) {
       if (cached_execution_provider_for_graph_replay_) {
-        return cached_execution_provider_for_graph_replay_->ReplayGraph(graph_annotation_id);
+        return cached_execution_provider_for_graph_replay_->ReplayGraph(graph_annotation_id, sync);
       }
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cached EP instance for graph replay is not set yet before calling ReplayGraph()");
     }

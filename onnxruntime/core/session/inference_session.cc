@@ -78,6 +78,7 @@
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session_utils.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/session/user_logging_sink.h"
@@ -871,7 +872,7 @@ InferenceSession::~InferenceSession() {
         telemetry_provider.LogEpDeviceUsage(
             session_id_, ep_info.ep_type, ep_info.hardware_device_type,
             ep_info.vendor_id, ep_info.device_id, ep_info.vendor, ep_info.ep_vendor,
-            ep_info.assigned_node_count,
+            ep_info.ep_version, ep_info.assigned_node_count,
             telemetry_.total_runs_since_last_, telemetry_.total_run_duration_since_last_);
       }
     }
@@ -1651,8 +1652,9 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   std::optional<LayeringIndex> layering_index_storage;
   const auto layering_config = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsLayerAssignmentSettings, "");
-  if (!layering_config.empty()) {
-    ORT_RETURN_IF_ERROR_SESSIONID_(LayeringIndex::Create(graph, layering_config, {}, execution_providers_,
+  const auto name_based_config = session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsNameBasedLayerAssignment, "");
+  if (!layering_config.empty() || !name_based_config.empty()) {
+    ORT_RETURN_IF_ERROR_SESSIONID_(LayeringIndex::Create(graph, layering_config, name_based_config, {}, execution_providers_,
                                                          *session_logger_, layering_index_storage));
     if (layering_index_storage) {
       layering_index = &layering_index_storage.value();
@@ -2778,6 +2780,7 @@ common::Status InferenceSession::Initialize() {
         graph.DomainToVersionMap(), model_file_name, graph.Name(), model_weight_type, model_graph_hash, model_weight_hash,
         model_->MetaData(), telemetry_.event_name_, execution_providers_.GetIds(),
         telemetry_.ep_device_types_summary_, telemetry_.ep_device_vendor_ids_summary_,
+        telemetry_.ep_versions_summary_,
         model_has_fp16_inputs, false);
 
     // Emit one initial EpDeviceUsage event per (EP, device) pair with run counts of 0.
@@ -2787,7 +2790,7 @@ common::Status InferenceSession::Initialize() {
       env.GetTelemetryProvider().LogEpDeviceUsage(
           session_id_, ep_info.ep_type, ep_info.hardware_device_type,
           ep_info.vendor_id, ep_info.device_id, ep_info.vendor, ep_info.ep_vendor,
-          ep_info.assigned_node_count, 0, 0);
+          ep_info.ep_version, ep_info.assigned_node_count, 0, 0);
     }
 
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
@@ -3268,7 +3271,10 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
                                  << " with graph annotation id: " << graph_annotation_id;
     // log evaluation start to trace logging provider
     env.GetTelemetryProvider().LogEvaluationStart(session_id_);
-    ORT_RETURN_IF_ERROR_SESSIONID_(cached_execution_provider_for_graph_replay_.ReplayGraph(graph_annotation_id));
+    bool sync_graph_replay = run_options.config_options.GetConfigOrDefault(
+                                 kOrtRunOptionsConfigDisableSynchronizeExecutionProviders, "0") == "0";
+    ORT_RETURN_IF_ERROR_SESSIONID_(cached_execution_provider_for_graph_replay_.ReplayGraph(graph_annotation_id,
+                                                                                           sync_graph_replay));
   } else {
     InlinedVector<IExecutionProvider*> exec_providers_to_stop;
     exec_providers_to_stop.reserve(execution_providers_.NumProviders());
@@ -3453,7 +3459,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
           env.GetTelemetryProvider().LogEpDeviceUsage(
               session_id_, ep_info.ep_type, ep_info.hardware_device_type,
               ep_info.vendor_id, ep_info.device_id, ep_info.vendor, ep_info.ep_vendor,
-              ep_info.assigned_node_count,
+              ep_info.ep_version, ep_info.assigned_node_count,
               telemetry_.total_runs_since_last_, telemetry_.total_run_duration_since_last_);
         }
         // reset counters
@@ -3467,6 +3473,10 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
                                                      Telemetry::kRuntimePerfMaxInterval);
       }
     }
+  } else {
+    // Log runtime error with EP versions
+    env.GetTelemetryProvider().LogRuntimeInferenceError(session_id_, retval, telemetry_.ep_versions_summary_,
+                                                        telemetry_.ep_device_types_summary_);
   }
 
   // log evaluation stop to trace logging provider
@@ -4084,6 +4094,7 @@ void InferenceSession::PopulateEpDeviceInfo(const onnxruntime::Graph& graph) {
   telemetry_.ep_device_info_.clear();
   telemetry_.ep_device_types_summary_.clear();
   telemetry_.ep_device_vendor_ids_summary_.clear();
+  telemetry_.ep_versions_summary_.clear();
 
   // First, count nodes assigned to each EP type after graph partitioning.
   // The graph node only carries the EP type string, so when a single EP targets
@@ -4121,6 +4132,10 @@ void InferenceSession::PopulateEpDeviceInfo(const onnxruntime::Graph& graph) {
         Telemetry::EpDeviceInfo entry;
         entry.ep_type = ep_type;
         entry.ep_vendor = ep_device->ep_vendor;
+        auto it = ep_device->ep_metadata.Entries().find(kOrtEpDevice_EpMetadataKey_Version);
+        if (it != ep_device->ep_metadata.Entries().end()) {
+          entry.ep_version = it->second;
+        }
         if (ep_device->device != nullptr) {
           entry.hardware_device_type = HardwareDeviceTypeToString(ep_device->device->type);
           entry.vendor_id = ep_device->device->vendor_id;
@@ -4155,11 +4170,13 @@ void InferenceSession::PopulateEpDeviceInfo(const onnxruntime::Graph& graph) {
   // by position against the existing executionProviderIds field.
   std::ostringstream types_oss;
   std::ostringstream vendor_ids_oss;
+  std::ostringstream versions_oss;
   bool first = true;
   for (const auto& entry : telemetry_.ep_device_info_) {
     if (!first) {
       types_oss << ',';
       vendor_ids_oss << ',';
+      versions_oss << ',';
     }
     first = false;
     types_oss << entry.hardware_device_type;
@@ -4167,9 +4184,11 @@ void InferenceSession::PopulateEpDeviceInfo(const onnxruntime::Graph& graph) {
     vendor_ids_oss << "0x" << std::hex << std::uppercase << std::setw(4)
                    << std::setfill('0') << entry.vendor_id
                    << std::dec << std::nouppercase << std::setfill(' ');
+    versions_oss << entry.ep_type << ':' << entry.ep_version;
   }
   telemetry_.ep_device_types_summary_ = types_oss.str();
   telemetry_.ep_device_vendor_ids_summary_ = vendor_ids_oss.str();
+  telemetry_.ep_versions_summary_ = versions_oss.str();
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -4311,7 +4330,8 @@ common::Status InferenceSession::AddPredefinedTransformers(
         transformers_to_register = [&]() {
           return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
                                                        optimizers_to_disable_,
-                                                       GetIntraOpThreadPoolToUse());
+                                                       GetIntraOpThreadPoolToUse(),
+                                                       &execution_providers_);
         };
       }
     } else {
@@ -4325,7 +4345,8 @@ common::Status InferenceSession::AddPredefinedTransformers(
           if (use_full_build_optimizations) {
             return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
                                                          optimizers_to_disable_,
-                                                         GetIntraOpThreadPoolToUse());
+                                                         GetIntraOpThreadPoolToUse(),
+                                                         &execution_providers_);
           } else {
             const auto sat_context =
                 minimal_build_optimization_handling ==
@@ -4416,6 +4437,7 @@ void InferenceSession::LogAllSessions() {
           graph.DomainToVersionMap(), model_file_name, graph.Name(), model_weight_type, model_graph_hash, model_weight_hash,
           model->MetaData(), session->telemetry_.event_name_, session->execution_providers_.GetIds(),
           session->telemetry_.ep_device_types_summary_, session->telemetry_.ep_device_vendor_ids_summary_,
+          session->telemetry_.ep_versions_summary_,
           model_has_fp16_inputs, true);
     }
 

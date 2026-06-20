@@ -6,6 +6,7 @@
 #include <cassert>
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "core/common/inlined_containers.h"
 #include "core/common/string_utils.h"
@@ -93,7 +94,8 @@ static void BuildFusedKernelDef(KernelDefBuilder& builder, const IndexedSubGraph
 /// <param name="capability">Indexed subgraph which needs to be assigned</param>
 /// <param name="provider_type">The EP to assign the Indexed subgraph to</param>
 static bool TryAssignNodes(Graph& graph, const IndexedSubGraph& capability,
-                           const std::string& provider_type) {
+                           const std::string& provider_type,
+                           InlinedVector<NodeIndex>* newly_assigned_nodes = nullptr) {
   // Before assigning the ep to any node, first walk through all the nodes and ensure
   // none of the nodes have already been assigned. If a node is assigned, simply return.
   for (auto node_index : capability.nodes) {
@@ -104,15 +106,37 @@ static bool TryAssignNodes(Graph& graph, const IndexedSubGraph& capability,
     }
   }
 
+  // When newly_assigned_nodes is provided, this call performs the tentative first-pass
+  // tagging of the NHWC two-pass partitioning flow. Those tags only exist so the layout
+  // transformer and the second GetCapability pass can recognize the candidate nodes; they
+  // may be dropped again before any partition is committed. Tentative tags must therefore
+  // not commit resource-accountant budget here. The budget for nodes that survive the
+  // second pass is committed later (see the deferred-commit step in GetCapabilityForEP).
+  const bool is_tentative_pass = (newly_assigned_nodes != nullptr);
   const bool acc_enabled = capability.IsAccountingEnabled();
   for (size_t i = 0, limit = capability.nodes.size(); i < limit; ++i) {
     auto* node = graph.GetNode(capability.nodes[i]);
+    const bool was_unassigned = node->GetExecutionProviderType().empty();
     node->SetExecutionProviderType(provider_type);
-    if (acc_enabled) {
+    if (newly_assigned_nodes != nullptr && was_unassigned) {
+      newly_assigned_nodes->push_back(node->Index());
+    }
+    if (acc_enabled && !is_tentative_pass) {
       capability.AccountForNode(i);
     }
   }
   return true;
+}
+
+static void ClearExecutionProviderAssignments(Graph& graph,
+                                              const InlinedVector<NodeIndex>& node_indices,
+                                              const std::string& provider_type) {
+  for (NodeIndex node_index : node_indices) {
+    auto* node = graph.GetNode(node_index);
+    if (node != nullptr && node->GetExecutionProviderType() == provider_type) {
+      node->SetExecutionProviderType("");
+    }
+  }
 }
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -299,16 +323,22 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
   // CPU EP layout transformation happens later when level 3 transformers are run.
   if (params.mode != GraphPartitioner::Mode::kAssignOnly && params.transform_layout.get() &&
       current_ep.GetPreferredLayout() == DataLayout::NHWC) {
+    InlinedVector<NodeIndex> nodes_temporarily_assigned_to_ep;
     for (auto& capability : capabilities) {
-      TryAssignNodes(graph, *capability->sub_graph, ep_type);
+      TryAssignNodes(graph, *capability->sub_graph, ep_type, &nodes_temporarily_assigned_to_ep);
     }
 
     const NodeIndex first_new_node = graph.MaxNodeIndex();
 
     // Perform layout transformation on the specific EP assigned graph
     bool modified = false;
-    ORT_RETURN_IF_ERROR(params.transform_layout(graph, modified, current_ep, params.debug_graph_fn));
+    auto transform_status = params.transform_layout(graph, modified, current_ep, params.debug_graph_fn);
+    if (!transform_status.IsOK()) {
+      ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
+      return transform_status;
+    }
     if (params.check_load_cancellation_fn()) {
+      ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
       return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
                              "GetCapabilities was canceled by user request");
     }
@@ -326,6 +356,25 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
 
     const NodeIndex end_node = graph.MaxNodeIndex();
 
+    // Pass-1 tags were applied tentatively without committing any resource-accountant
+    // budget (see TryAssignNodes). Capture the per-node costs computed during pass-1,
+    // keyed by node index, so the budget for the nodes that survive the second pass can
+    // be committed after the drop step below. The costs must be captured here because
+    // capabilities.clear() destroys the pass-1 capabilities (and their costs) next.
+    InlinedHashMap<NodeIndex, ResourceCount> pass1_node_costs;
+    if (params.resource_accountant != nullptr) {
+      for (const auto& capability : capabilities) {
+        const auto& sub_graph = *capability->sub_graph;
+        if (sub_graph.IsAccountingEnabled()) {
+          for (size_t i = 0, limit = sub_graph.nodes.size(); i < limit; ++i) {
+            pass1_node_costs.insert_or_assign(sub_graph.nodes[i], sub_graph.GetNodeCost(i));
+          }
+        }
+      }
+    }
+
+    // Keep pass-1 EP assignments through the second GetCapability call so that EPs can
+    // recognize already-tagged nodes (e.g. nodes transformed into kMSInternalNHWCDomain).
     capabilities.clear();
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -356,16 +405,60 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     reset_assignment_unclaimed_nodes();
 
     if (params.check_load_cancellation_fn()) {
+      ClearExecutionProviderAssignments(graph, nodes_temporarily_assigned_to_ep, ep_type);
       return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
                              "GetCapabilities was canceled by user request");
     }
 
-    // all nodes with an index >= first_new_node with domain of kMSInternalNHWCDomain should be in the capabilities
+    // Collect pass-2 node indices and track new nodes for NHWC domain validation.
+    InlinedHashSet<NodeIndex> pass2_node_indices;
     InlinedHashSet<NodeIndex> new_nodes_in_capabilities;
     for (const auto& capability : capabilities) {
       for (auto node_index : capability->sub_graph->nodes) {
+        pass2_node_indices.insert(node_index);
         if (node_index >= first_new_node) {
           new_nodes_in_capabilities.insert(node_index);
+        }
+      }
+    }
+
+    // Clear pass-1 temporary assignments for nodes NOT re-claimed in pass 2.
+    // Nodes present in both passes keep their EP tag for correct downstream assignment.
+    for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
+      if (pass2_node_indices.count(node_index) == 0) {
+        auto* node = graph.GetNode(node_index);
+        if (node != nullptr && node->GetExecutionProviderType() == ep_type) {
+          node->SetExecutionProviderType("");
+        }
+      }
+    }
+
+    // Commit resource-accountant budget for pass-1 tentatively-tagged nodes that survived
+    // the second pass (still claimed by this EP). Pass-1 deliberately deferred this commit
+    // (TryAssignNodes skipped accounting) so that nodes dropped in the loop above never
+    // leak phantom budget into later accounting decisions. New nodes introduced for the
+    // second pass (e.g. NHWC ops) carry their own costs and are accounted normally when
+    // their partitions are placed, so they are intentionally excluded here.
+    //
+    // Only the consumed total is adjusted here (AddConsumedAmount); the per-node initializer
+    // weight tracking (CommitWeightsForNode) is intentionally not replayed. The pending weight
+    // state computed in pass 1 is discarded by ResetForNewPass before pass 2 and cannot be
+    // committed for survivors without re-probing, which pass 2 does not do for already-tagged
+    // nodes. Leaving those weights uncommitted is the safe direction: in ad-hoc accounting mode
+    // a shared initializer may be re-counted in a later partitioning iteration (a conservative
+    // over-estimate) but is never under-counted, so the configured budget can never be exceeded.
+    if (params.resource_accountant != nullptr) {
+      for (NodeIndex node_index : nodes_temporarily_assigned_to_ep) {
+        if (pass2_node_indices.count(node_index) == 0) {
+          continue;
+        }
+        const auto* node = graph.GetNode(node_index);
+        if (node == nullptr || node->GetExecutionProviderType() != ep_type) {
+          continue;
+        }
+        auto cost_it = pass1_node_costs.find(node_index);
+        if (cost_it != pass1_node_costs.end()) {
+          params.resource_accountant->AddConsumedAmount(cost_it->second);
         }
       }
     }

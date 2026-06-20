@@ -172,10 +172,12 @@ if (MSVC)
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>"
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4211>"
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>"
+        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>"
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>"
     )
 
     target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
+        "$<$<COMPILE_LANGUAGE:CXX>:/Zc:preprocessor>"
         # /permissive is required for CUTLASS cute headers (cute::stride.hpp, cute::Layout etc.)
         "$<$<COMPILE_LANGUAGE:CXX>:/permissive>"
         # /permissive disables C++ alternative tokens (or, and, not, etc.).
@@ -228,6 +230,7 @@ if (MSVC)
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>"
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4211>"
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>"
             "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>"
     )
 endif()
@@ -241,9 +244,11 @@ if(ORT_HAS_SM90_OR_LATER)
     "$<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-w>"
     "$<$<COMPILE_LANGUAGE:CUDA>:-DCUTLASS_ENABLE_GDC_FOR_SM90=1>")
   target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_HOPPER_TMA_GEMMS)
-  target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_HOPPER_TMA_GROUPED_GEMMS)
+  if(NOT MSVC)
+    target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_HOPPER_TMA_GROUPED_GEMMS)
+  endif()
 endif()
-if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
+if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG AND NOT MSVC)
   target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS)
 endif()
 
@@ -371,12 +376,17 @@ onnxruntime_add_include_to_target(
     flatbuffers::flatbuffers
 )
 
+# Ensure generated headers (e.g. onnx-ml.pb.h) are available before compiling.
+add_dependencies(onnxruntime_providers_cuda_plugin ${onnxruntime_EXTERNAL_DEPENDENCIES})
+
 # Link libraries
 target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE
     CUDA::cudart
     CUDA::cublas
     CUDA::cublasLt
     CUDA::cufft
+    CUDA::nvrtc
+    CUDA::cuda_driver
     CUDNN::cudnn_all
     cudnn_frontend
     Boost::mp11
@@ -402,8 +412,27 @@ if(NOT DEFINED onnxruntime_PLUGIN_EP_VERSION)
   set(onnxruntime_PLUGIN_EP_VERSION "${ORT_VERSION}-dev")
 endif()
 
+# Bake the minimum compatible ORT version (the single source of truth lives in
+# plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION) into the EP DLL so it can be enforced at runtime by
+# onnxruntime::ep::ApiInit(). Format is strict "MAJOR.MINOR.PATCH".
+set(_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION_FILE "${REPO_ROOT}/plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION")
+# Re-run CMake configure when the version file changes so the baked-in value stays in sync.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION_FILE}")
+file(STRINGS "${_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION_FILE}" _ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION LIMIT_COUNT 1)
+string(STRIP "${_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION}" _ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION)
+if(NOT _ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION)
+  message(FATAL_ERROR "CUDA plugin EP minimum ORT version file is missing or empty: "
+                      "${_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION_FILE}")
+endif()
+# ApiInit() strictly parses "MAJOR.MINOR.PATCH"; fail fast on any malformed value.
+if(NOT _ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+  message(FATAL_ERROR "CUDA plugin EP minimum ORT version must be \"MAJOR.MINOR.PATCH\", got "
+                      "\"${_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION}\" from "
+                      "${_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION_FILE}")
+endif()
+
 # Symbol visibility — only export CreateEpFactories and ReleaseEpFactory
-target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE ORT_API_MANUAL_INIT BUILD_CUDA_EP_AS_PLUGIN ORT_USE_EP_API_ADAPTERS=1 ONNX_ML=1 ONNX_NAMESPACE=onnx ONNX_USE_LITE_PROTO=1 ORT_PLUGIN_EP_VERSION="${onnxruntime_PLUGIN_EP_VERSION}")
+target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE ORT_API_MANUAL_INIT BUILD_CUDA_EP_AS_PLUGIN ORT_USE_EP_API_ADAPTERS=1 ONNX_ML=1 ONNX_NAMESPACE=onnx ONNX_USE_LITE_PROTO=1 ORT_PLUGIN_EP_VERSION="${onnxruntime_PLUGIN_EP_VERSION}" ORT_PLUGIN_EP_MIN_ORT_VERSION="${_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION}")
 
 if (onnxruntime_USE_CUDA_NHWC_OPS)
     target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE ENABLE_CUDA_NHWC_OPS)

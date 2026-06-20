@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -776,6 +777,74 @@ TEST(MoETest, MoETest_Mixtral) {
   RunMoETest(input, router_probs, fc1_experts_weights, fc2_experts_weights, fc3_experts_weights, {}, {}, output,
              num_rows, num_experts, hidden_size, inter_size, "silu", 1, /*normalize_routing_weights*/
              2 /*top_k*/);
+}
+
+TEST(MoETest, QMoETest_CUDA_Int4_DisablePrepackingFailsLoudly) {
+  constexpr int min_cuda_arch = 700;
+  if (!HasCudaEnvironment(min_cuda_arch)) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+  }
+
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider not available";
+  }
+
+  constexpr int64_t num_rows = 1;
+  constexpr int64_t num_experts = 1;
+  constexpr int64_t hidden_size = 128;
+  constexpr int64_t inter_size = 128;
+  constexpr int64_t expert_weight_bits = 4;
+  constexpr int64_t pack_size = 8 / expert_weight_bits;
+
+  const std::vector<float> input(num_rows * hidden_size, 0.0f);
+  const std::vector<float> router_probs(num_rows * num_experts, 1.0f);
+  const std::vector<uint8_t> fc1_experts_weights(num_experts * inter_size * (hidden_size / pack_size), 0);
+  const std::vector<uint8_t> fc2_experts_weights(num_experts * hidden_size * (inter_size / pack_size), 0);
+  const std::vector<float> fc1_scales(num_experts * inter_size, 1.0f);
+  const std::vector<float> fc2_scales(num_experts * hidden_size, 1.0f);
+  const std::vector<float> dummy_output(num_rows * hidden_size, 0.0f);
+
+  OpTester cuda_tester("QMoE", 1, onnxruntime::kMSDomain);
+  cuda_tester.AddAttribute<int64_t>("k", 1);
+  cuda_tester.AddAttribute<std::string>("activation_type", "identity");
+  cuda_tester.AddAttribute<int64_t>("normalize_routing_weights", 1);
+  cuda_tester.AddAttribute<int64_t>("expert_weight_bits", expert_weight_bits);
+  cuda_tester.AddAttribute<std::string>("quant_type", "int");
+  cuda_tester.AddAttribute<int64_t>("weights_prepacked", 0);
+
+  const std::vector<int64_t> input_dims = {num_rows, hidden_size};
+  const std::vector<int64_t> router_probs_dims = {num_rows, num_experts};
+  const std::vector<int64_t> fc1_experts_weights_dims = {num_experts, inter_size, hidden_size / pack_size};
+  const std::vector<int64_t> fc2_experts_weights_dims = {num_experts, hidden_size, inter_size / pack_size};
+  const std::vector<int64_t> fc1_scales_dims = {num_experts, inter_size};
+  const std::vector<int64_t> fc2_scales_dims = {num_experts, hidden_size};
+  const std::vector<int64_t> output_dims = {num_rows, hidden_size};
+
+  cuda_tester.AddInput<MLFloat16>("input", input_dims, ToFloat16(input));
+  cuda_tester.AddInput<MLFloat16>("router_probs", router_probs_dims, ToFloat16(router_probs));
+  cuda_tester.AddInput<uint8_t>("fc1_experts_weights", fc1_experts_weights_dims, fc1_experts_weights);
+  cuda_tester.AddInput<MLFloat16>("fc1_scales", fc1_scales_dims, ToFloat16(fc1_scales));
+  cuda_tester.AddOptionalInputEdge<MLFloat16>();
+  cuda_tester.AddInput<uint8_t>("fc2_experts_weights", fc2_experts_weights_dims, fc2_experts_weights);
+  cuda_tester.AddInput<MLFloat16>("fc2_scales", fc2_scales_dims, ToFloat16(fc2_scales));
+  cuda_tester.AddOptionalInputEdge<MLFloat16>();
+  cuda_tester.AddOptionalInputEdge<uint8_t>();
+  cuda_tester.AddOptionalInputEdge<MLFloat16>();
+  cuda_tester.AddOptionalInputEdge<MLFloat16>();
+  cuda_tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(dummy_output));
+
+  SessionOptions session_options;
+  session_options.config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = "1";
+
+  std::vector<std::unique_ptr<IExecutionProvider>> cuda_execution_providers;
+  cuda_execution_providers.push_back(std::move(cuda_ep));
+  cuda_tester.Run(session_options,
+                  OpTester::ExpectResult::kExpectFailure,
+                  "QMoE weights_prepacked=0 requires PrePack to run",
+                  {},
+                  nullptr,
+                  &cuda_execution_providers);
 }
 
 TEST(MoETest, QMoETest_Mixtral_Int4) {

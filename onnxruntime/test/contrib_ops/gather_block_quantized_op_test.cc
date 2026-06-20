@@ -759,6 +759,70 @@ TEST(GatherBlockQuantizedOpTest, WebGpu_GatherAxis0NoZeroPoints_2Bits_Uint8) {
                                                 /*block_size=*/16, /*bits=*/2, output, output_shape);
 }
 
+TEST(GatherBlockQuantizedOpTest, WebGpu_EmptyIndices_8Bits_Uint8) {
+  // An empty indices tensor produces an empty output. The kernel must not dispatch a
+  // (0, 1, 1) workgroup in that case. See issue #28772.
+  std::vector<uint8_t> data(2 * 16, 128);
+  std::vector<int64_t> data_shape = {2, 16};
+  std::vector<int32_t> indices = {};
+  std::vector<int64_t> indices_shape = {0};
+  std::vector<float> scales = {1.0f, 2.0f};
+  std::vector<int64_t> scales_shape = {2, 1};
+
+  std::vector<float> output = {};
+  std::vector<int64_t> output_shape = {0, 16};
+
+  std::vector<uint8_t> zero_points = {};
+  std::vector<int64_t> zero_points_shape = {};
+  RunGatherBlockQuantizedWebGpu<float, int32_t>(data, data_shape, indices, indices_shape, scales, scales_shape,
+                                                zero_points, zero_points_shape,
+                                                /*gather_axis=*/0, /*quantize_axis=*/1,
+                                                /*block_size=*/16, /*bits=*/8, output, output_shape);
+}
+
+TEST(GatherBlockQuantizedOpTest, WebGpu_InvalidIndices_2Bits_Uint8) {
+  auto pack4 = [](int v0, int v1, int v2, int v3) -> uint8_t {
+    auto enc = [](int v) { return static_cast<uint8_t>((v + 2) & 0x3); };
+    return static_cast<uint8_t>(enc(v0) | (enc(v1) << 2) | (enc(v2) << 4) | (enc(v3) << 6));
+  };
+
+  std::vector<uint8_t> data;
+  data.reserve(2 * 3 * 4);
+  auto push_row = [&](std::vector<int> row) {
+    ORT_ENFORCE(row.size() == 16);
+    for (size_t i = 0; i < 16; i += 4) {
+      data.push_back(pack4(row[i], row[i + 1], row[i + 2], row[i + 3]));
+    }
+  };
+  push_row({-2, -1, 0, 1, -2, -1, 0, 1, -2, -1, 0, 1, -2, -1, 0, 1});
+  push_row({1, 0, -1, -2, 1, 0, -1, -2, 1, 0, -1, -2, 1, 0, -1, -2});
+  push_row({0, 1, -2, -1, 0, 1, -2, -1, 0, 1, -2, -1, 0, 1, -2, -1});
+  push_row({-1, -2, 1, 0, -1, -2, 1, 0, -1, -2, 1, 0, -1, -2, 1, 0});
+  push_row({1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1});
+  push_row({-2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2, -2});
+
+  std::vector<int64_t> data_shape = {2, 3, 4};
+  std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
+  std::vector<int64_t> scales_shape = {2, 3, 1};
+  std::vector<uint8_t> zero_points = {};
+  std::vector<int64_t> zero_points_shape = {};
+  std::vector<float> output(2 * 3 * 16, 0.0f);
+  std::vector<int64_t> output_shape = {2, 3, 16};
+
+  std::vector<int32_t> indices_i32 = {2, -3};
+  std::vector<int64_t> indices_shape = {2};
+  RunGatherBlockQuantizedWebGpu<float, int32_t>(data, data_shape, indices_i32, indices_shape, scales, scales_shape,
+                                                zero_points, zero_points_shape,
+                                                /*gather_axis=*/0, /*quantize_axis=*/2,
+                                                /*block_size=*/16, /*bits=*/2, output, output_shape);
+
+  std::vector<int64_t> indices_i64 = {2, -3};
+  RunGatherBlockQuantizedWebGpu<float, int64_t>(data, data_shape, indices_i64, indices_shape, scales, scales_shape,
+                                                zero_points, zero_points_shape,
+                                                /*gather_axis=*/0, /*quantize_axis=*/2,
+                                                /*block_size=*/16, /*bits=*/2, output, output_shape);
+}
+
 TEST(GatherBlockQuantizedOpTest, WebGpu_GatherAxis0WithZeroPoints_2Bits_Uint8_PackedZpNotMultipleOf4) {
   // WebGPU companion to GatherAxis0WithZeroPoints_2Bits_Uint8_PackedZpNotMultipleOf4.
   // scale_qaxis_dim = 5 (not a multiple of 4); packed zero_points last dim = (5+3)/4 = 2 bytes.

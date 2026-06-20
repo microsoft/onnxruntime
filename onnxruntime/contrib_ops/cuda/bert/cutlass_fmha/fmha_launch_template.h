@@ -75,6 +75,8 @@ struct RightPaddingBatchHook {
     }
 
     if (p.custom_mask_type == AttentionKernel::CausalFromBottomRight) {
+      // May be negative when num_keys < num_queries (nonpad external KV cache, onnx#8068 / ORT #28904).
+      // causal_diagonal_offset is int32_t so the negative value is preserved (no unsigned wrap).
       p.causal_diagonal_offset = p.num_keys - p.num_queries;
     }
     if (p.custom_mask_type == AttentionKernel::CausalFromTopLeft ||
@@ -181,9 +183,9 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
       // causal_from_top_left=true: past_seq==0, use CausalFromTopLeft (offset=0).
       // causal_from_top_left=false: past_seq>0 or S_q==S_kv, use CausalFromBottomRight
       //   (offset = num_keys - num_queries, which is 0 when square).
-      p.custom_mask_type = params.causal_from_top_left
-                               ? Attention::CausalFromTopLeft
-                               : Attention::CausalFromBottomRight;
+      p.custom_mask_type = static_cast<uint8_t>(params.causal_from_top_left
+                                                    ? Attention::CausalFromTopLeft
+                                                    : Attention::CausalFromBottomRight);
     }
 
     // We use max_sequence_length to calculate KV stride

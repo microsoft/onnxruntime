@@ -119,6 +119,33 @@ Abstract:
 
 #define MLAS_UNREFERENCED_PARAMETER(parameter) ((void)(parameter))
 
+//
+// Reports whether multiplying two size_t values would overflow.
+//
+
+MLAS_FORCEINLINE
+bool
+MlasMultiplyOverflowsSizeT(
+    size_t a,
+    size_t b,
+    size_t* out
+    )
+{
+#if defined(__has_builtin)
+#if __has_builtin(__builtin_mul_overflow)
+    size_t result;
+    return __builtin_mul_overflow(a, b, out != nullptr ? out : &result);
+#endif
+#endif
+    if (b != 0 && a > std::numeric_limits<size_t>::max() / b) {
+        return true;
+    }
+    if (out != nullptr) {
+        *out = a * b;
+    }
+    return false;
+}
+
 #ifdef MLAS_NO_EXCEPTION
 
 MLAS_FORCEINLINE void
@@ -891,6 +918,18 @@ bool
     MLAS_THREADPOOL* ThreadPool
     );
 
+enum MLAS_CONV_SGEMM_ROUTE {
+    MlasConvSGemmRouteDirect,   // call MlasSgemmOperation directly
+    MlasConvSGemmRouteDispatch, // call MlasGemm so backend SGEMM overrides may be selected
+};
+
+typedef
+MLAS_CONV_SGEMM_ROUTE
+(MLASCALL MLAS_CONV_SGEMM_ROUTE_OVERRIDE)(
+    const MLAS_CONV_PARAMETERS* Parameters
+    );
+
+
 typedef
 bool
 (MLASCALL MLAS_SGEMM_BATCH_OVERRIDE)(
@@ -1111,7 +1150,7 @@ extern "C" {
 #if defined(MLAS_TARGET_AMD64)
     MLAS_SGEMM_KERNEL_M1_ROUTINE MlasSgemmKernelM1Avx;
     MLAS_SGEMM_KERNEL_M1_ROUTINE MlasSgemmKernelM1TransposeBAvx;
-#elif defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_WASM)
+#elif defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_WASM) || defined(MLAS_TARGET_RISCV64)
     MLAS_GEMV_FLOAT_KERNEL MlasGemvFloatKernel;
 #endif
 
@@ -1224,6 +1263,12 @@ extern "C" {
     MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelRvv;
     MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelRvv;
     MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelRvv;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernelRvv;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasLogisticKernelRvv;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasGeluErfKernelRvv;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasSiluKernelRvv;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasTanhKernelRvv;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelRvv;
 #endif
 #if defined(MLAS_TARGET_AMD64)
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx;
@@ -1330,6 +1375,7 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUmmla;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSmmla;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmRelaxedSimd;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmQuantDispatchRvv;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmQuantDispatchDefault;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemm8X8DispatchPOWER10;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemm8X8DispatchZVECTOR;
@@ -1513,6 +1559,7 @@ struct MLAS_PLATFORM {
     // MLAS Conv overrides
     MLAS_CONV_PREPARE_FLOAT_OVERRIDE* MlasConvPrepareOverride = nullptr;
     MLAS_CONV_FLOAT_OVERRIDE* MlasConvOverride = nullptr;
+    MLAS_CONV_SGEMM_ROUTE_OVERRIDE* MlasConvSGemmRouteOverride = nullptr;
 #if defined(__aarch64__) && defined(__linux__)
     // SBGemm overrides
     MLAS_SBGEMM_BATCH_OVERRIDE* MlasSBGemmBatchOverride = nullptr;
@@ -1542,7 +1589,7 @@ struct MLAS_PLATFORM {
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeLogSoftmaxOutputF32Kernel;
     uint32_t NchwcBlockSize;
 #endif
-#if defined(MLAS_TARGET_AMD64_IX86)
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_RISCV64)
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8S8Dispatch;
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8U8Dispatch;
     const MLAS_GEMM_QUANT_DISPATCH* GemmS8S8Dispatch{&MlasGemmQuantDispatchDefault};
@@ -1594,6 +1641,15 @@ struct MLAS_PLATFORM {
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeLogSoftmaxOutputF32Kernel;
     MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeSoftmaxOutputF32Kernel;
 #endif
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_RISCV64)
+    // Hoisted under combined guard so future "shared between AMD64 and RISCV64"
+    // changes won't produce duplicate-member errors. Each platform's init code
+    // assigns these fields independently in platform.cpp.
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* GeluErfKernelRoutine;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* SiluKernelRoutine;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* TanhKernelRoutine;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ComputeExpF32Kernel;
+#endif
 
 #if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
     MLAS_CONV_FLOAT_KERNEL* ConvNchwFloatKernel;
@@ -1609,8 +1665,8 @@ MLAS_COMPUTE_GELU_FP16_KERNEL* GeluFP16KernelRoutine = nullptr;
 MLAS_COMPUTE_TANH_FP16_KERNEL* TanhFP16KernelRoutine = nullptr;
 
 #if defined(MLAS_TARGET_AMD64)
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* GeluErfKernelRoutine;
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* SiluKernelRoutine;
+    // GeluErfKernelRoutine / SiluKernelRoutine / TanhKernelRoutine /
+    // ComputeExpF32Kernel are declared in the shared AMD64+RISCV64 block above.
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1Routine;
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1TransposeBRoutine;
     MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* TransposePackB16x4Routine;
@@ -1627,8 +1683,6 @@ MLAS_COMPUTE_TANH_FP16_KERNEL* TanhFP16KernelRoutine = nullptr;
     MLAS_POOL_FLOAT_KERNEL* PoolFloatKernel[MlasPoolingKindCount];
     MLAS_QLINEAR_BINARY_OP_S8_KERNEL* QLinearAddS8Kernel;
     MLAS_QLINEAR_BINARY_OP_U8_KERNEL* QLinearAddU8Kernel;
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ComputeExpF32Kernel;
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* TanhKernelRoutine;
     MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL* ReduceMinimumMaximumF32Kernel;
     MLAS_QUANTIZE_LINEAR_S8_KERNEL* QuantizeLinearS8Kernel;
     MLAS_QUANTIZE_LINEAR_U8_KERNEL* QuantizeLinearU8Kernel;

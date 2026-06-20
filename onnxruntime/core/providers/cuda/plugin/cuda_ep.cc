@@ -9,6 +9,7 @@
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/framework/allocator.h"
 #include "ep/get_capability_utils.h"
+#include "ep/api.h"  // onnxruntime::ep::CurrentOrtApiVersion()
 
 #include <cstring>
 #include <limits>
@@ -20,6 +21,7 @@
 #include <unordered_set>
 
 #include "core/graph/constants.h"
+#include "core/providers/cuda/cuda_nhwc_ops.h"
 
 namespace onnxruntime {
 namespace cuda_plugin {
@@ -108,36 +110,68 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
       name_(factory.GetEpName()),
       config_(config),
       logger_(logger) {
-  ort_version_supported = kCudaPluginEpMinOrtApiVersion;
+  // ort_version_supported reports the ORT API version this plugin was compiled with (ORT_API_VERSION).
+  // ORT uses it to avoid reading OrtEp struct fields that did not exist when the plugin was compiled.
+  ort_version_supported = ORT_API_VERSION;
 
-  // Set function pointers for kernel-registry-based EP
+  // The plugin is compiled against the latest ORT headers (ORT_API_VERSION) but may be loaded by an
+  // older ORT runtime, down to the floor declared in plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION. Some
+  // OrtEp callbacks below — and the OrtEpApi functions their implementations call — only exist in
+  // newer ORT versions. The guard against calling an OrtEpApi function the runtime does not provide
+  // is the runtime API version, not ort_version_supported. We therefore gate such callbacks on the
+  // version negotiated with the runtime (onnxruntime::ep::CurrentOrtApiVersion()): only advertise a
+  // callback when the runtime is new enough to (a) know about the OrtEp struct field and (b) provide
+  // every OrtEpApi function the callback relies on. Leaving the pointer null on older runtimes
+  // disables only that optional capability while the EP stays fully functional.
+  const uint32_t ort_version = ::onnxruntime::ep::CurrentOrtApiVersion();
+
+  // Kernel-registry-based EP callbacks (all introduced in ORT <= 1.24).
   GetName = GetNameImpl;
   GetCapability = GetCapabilityImpl;
   GetKernelRegistry = GetKernelRegistryImpl;
   GetPreferredDataLayout = GetPreferredDataLayoutImpl;
   ShouldConvertDataLayoutForOp = ShouldConvertDataLayoutForOpImpl;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
-  Sync = SyncImpl;
   IsConcurrentRunSupported = IsConcurrentRunSupportedImpl;
   OnRunStart = config_.enable_cuda_graph ? OnRunStartImpl : nullptr;
   OnRunEnd = config_.enable_cuda_graph ? OnRunEndImpl : nullptr;
+
+  // OrtEp::Sync is \since ORT 1.25. A runtime older than 1.25 does not know about this OrtEp field and
+  // ignores it regardless of its value. We still gate it on the runtime version to keep the
+  // minimum-version dependency explicit at each assignment and consistent with the callbacks below.
+  Sync = (ort_version >= 25) ? SyncImpl : nullptr;
 
   // Not a compile-based EP
   Compile = nullptr;
   ReleaseNodeComputeInfos = nullptr;
 
-  // Graph capture/replay — always set so ORT can query capabilities
-  IsGraphCaptureEnabled = IsGraphCaptureEnabledImpl;
-  IsGraphCaptured = IsGraphCapturedImpl;
-  ReplayGraph = ReplayGraphImpl;
-  GetGraphCaptureNodeAssignmentPolicy = GetGraphCaptureNodeAssignmentPolicyImpl;
+  // Graph capture/replay (OrtEp::IsGraphCaptureEnabled/IsGraphCaptured/ReplayGraph/
+  // GetGraphCaptureNodeAssignmentPolicy) and device-resource accounting
+  // (OrtEp::GetAvailableResource + OrtResourceCount) are \since ORT 1.26. Only advertise them when the
+  // negotiated runtime is >= 1.26; older runtimes neither expose these OrtEp fields nor support
+  // EP-driven graph capture, so leaving them null preserves the same behavior explicitly.
+  if (ort_version >= 26) {
+    IsGraphCaptureEnabled = IsGraphCaptureEnabledImpl;
+    IsGraphCaptured = IsGraphCapturedImpl;
+    ReplayGraph = ReplayGraphImpl;
+    GetGraphCaptureNodeAssignmentPolicy = GetGraphCaptureNodeAssignmentPolicyImpl;
+    GetAvailableResource = GetAvailableResourceImpl;
+  } else {
+    IsGraphCaptureEnabled = nullptr;
+    IsGraphCaptured = nullptr;
+    ReplayGraph = nullptr;
+    GetGraphCaptureNodeAssignmentPolicy = nullptr;
+    GetAvailableResource = nullptr;
+  }
 
-  // Resource accounting — allows ORT to query available device memory for budget enforcement
-  GetAvailableResource = GetAvailableResourceImpl;
-
-  // Profiling — CUPTI-based GPU activity tracing when profiling is enabled at build time
+  // Profiling — CUPTI-based GPU activity tracing when profiling is enabled at build time.
+  // The EP profiler API (OrtEp::CreateProfiler, OrtEpProfilerImpl, and the OrtEpApi
+  // CreateProfilingEvent / ProfilingEventsContainer_AddEvents / ReleaseProfilingEvent functions that
+  // CudaPluginEpProfiler calls) is \since ORT 1.25. Only advertise the profiler when the negotiated
+  // runtime supports it; this single guard makes every 1.25 profiler API call unreachable on older
+  // runtimes (the profiler is never created), so inference still runs without EP-level GPU profiling.
 #if defined(ENABLE_CUDA_PROFILING)
-  CreateProfiler = CreateProfilerImpl;
+  CreateProfiler = (ort_version >= 25) ? CreateProfilerImpl : nullptr;
 #else
   CreateProfiler = nullptr;
 #endif
@@ -162,6 +196,7 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   adapter_config.fuse_conv_bias = config_.fuse_conv_bias;
   adapter_config.sdpa_kernel = config_.sdpa_kernel;
   adapter_config.device_id = config_.device_id;
+  adapter_config.do_copy_in_default_stream = config_.do_copy_in_default_stream;
   onnxruntime::cuda::SetCudaKernelAdapterRuntimeConfigForProvider(
       static_cast<const void*>(EpImpl()), adapter_config);
 
@@ -214,7 +249,7 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
   tentative_nodes.reserve(all_nodes.size());
 
   for (const auto& node : all_nodes) {
-    std::string ep_name = node.GetEpName();
+    const std::string& ep_name = node.GetEpName();
     if (!ep_name.empty()) {
       if (ep_name == ep->name_) {
         candidate_nodes.push_back(node);
@@ -229,6 +264,18 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
     if (kernel_def != nullptr) {
       candidate_nodes.push_back(node);
       tentative_nodes.push_back(node);
+    } else {
+      // Emit a diagnostic when an NHWC-domain node has no matching kernel.
+      // This helps identify gaps between the layout conversion allowlist and
+      // the actually-registered NHWC kernels in the plugin build.
+      const std::string& node_domain = node.GetDomain();
+      if (node_domain == kMSInternalNHWCDomain) {
+        ORT_CXX_LOGF(Ort::Logger(&ep->logger_), ORT_LOGGING_LEVEL_WARNING,
+                     "NHWC kernel miss: op=%s domain=%s version=%d node=%s - "
+                     "no matching kernel registered in the CUDA plugin EP.",
+                     node.GetOperatorType().c_str(), node_domain.c_str(),
+                     node.GetSinceVersion(), node.GetName().c_str());
+      }
     }
   }
 
@@ -308,36 +355,11 @@ OrtStatus* ORT_API_CALL CudaEp::ShouldConvertDataLayoutForOpImpl(
     return nullptr;
   }
 
-  // ONNX domain ops that have NHWC kernel registrations.
-  static const std::unordered_set<std::string_view> cuda_nhwc_onnx_ops{
-      "BatchNormalization",
-      "Conv",
-      "ConvTranspose",
-      "GlobalMaxPool",
-      "MaxPool",
-      "GlobalAveragePool",
-      "AveragePool",
-      "GridSample",
-      "DepthToSpace",
-      "SpaceToDepth",
-      "LRN",
-  };
-
-  // Check ONNX domain (empty string) or MS domain (com.microsoft)
-  bool is_onnx_domain = (safe_domain[0] == '\0');
-  bool is_ms_domain = (std::strcmp(safe_domain, "com.microsoft") == 0);
-
-  if (is_onnx_domain && cuda_nhwc_onnx_ops.count(safe_op_type) > 0) {
+  if (cuda::IsNhwcEligible(safe_domain, safe_op_type)) {
     *should_convert = 1;  // Convert
-    return nullptr;
+  } else {
+    *should_convert = 0;  // Explicitly decline conversion for unsupported NHWC ops.
   }
-
-  if (is_ms_domain && std::strcmp(safe_op_type, "GridSample") == 0) {
-    *should_convert = 1;  // Convert
-    return nullptr;
-  }
-
-  *should_convert = 0;  // Explicitly decline conversion for unsupported NHWC ops.
   return nullptr;
 #endif
 }
@@ -369,7 +391,11 @@ OrtStatus* ORT_API_CALL CudaEp::CreateSyncStreamForDeviceImpl(
 
   auto cuda_stream = std::make_unique<CudaSyncStream>(ep->factory_, device_id, this_ptr);
 
-  if (ep->config_.enable_cuda_graph) {
+  if (ep->config_.has_user_compute_stream && ep->config_.user_compute_stream != nullptr) {
+    // Wrap the user-provided external CUDA stream with full cuBLAS/cuDNN handles.
+    RETURN_IF_ERROR(cuda_stream->InitHandlesWithUserStream(
+        static_cast<cudaStream_t>(ep->config_.user_compute_stream)));
+  } else if (ep->config_.enable_cuda_graph) {
     // When CUDA graph capture is enabled, all operations on this thread must go
     // through the thread's graph stream so capture/replay sees the same stream
     // as kernels.
@@ -417,8 +443,11 @@ OrtStatus* ORT_API_CALL CudaEp::IsConcurrentRunSupportedImpl(
     return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "is_supported must not be null.");
   }
 
-  ORT_UNUSED_PARAMETER(this_ptr);
-  *is_supported = true;
+  auto* ep = static_cast<CudaEp*>(this_ptr);
+  // When a unified stream is in use (either from user_compute_stream, external
+  // allocator, or explicit use_ep_level_unified_stream), all operations share a
+  // single stream so concurrent runs are not safe.
+  *is_supported = !ep->config_.use_ep_level_unified_stream;
   return nullptr;
 }
 
@@ -599,7 +628,10 @@ OrtStatus* ORT_API_CALL CudaEp::ReplayGraphImpl(OrtEp* this_ptr, int graph_annot
         ORT_EP_FAIL, "ReplayGraph called but CUDA graph manager is not initialized");
   }
   PL_CUDA_CALL_THROW(cudaSetDevice(ep->config_.device_id));
-  return ep->GetPerThreadContext().cuda_graph.Replay(graph_annotation_id);
+  // Launch graph without sync. The caller (PluginExecutionProvider::ReplayGraph)
+  // handles synchronization based on disable_synchronize_execution_providers.
+  // This function is only called from that bridge code path.
+  return ep->GetPerThreadContext().cuda_graph.Replay(graph_annotation_id, /*sync=*/false);
 
   EXCEPTION_TO_STATUS_END
 }

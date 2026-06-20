@@ -1362,7 +1362,125 @@ TEST_F(GraphTest, UnusedSparseInitializerIsIgnored) {
   auto& graph_proto = graph2.ToGraphProto();
   ASSERT_TRUE(graph_proto.sparse_initializer().empty());
 }
+
+// Regression test for issue #28617: a SparseTensorProto loaded from a model protobuf must not
+// be allowed to carry an ORT in-memory address marker on its values or indices sub-tensors.
+// Those markers are an ORT-internal mechanism for trusted in-memory buffers (.ort flatbuffer
+// load). Accepting them on a crafted .onnx protobuf would let the model make ORT dereference
+// an attacker-supplied pointer during sparse-to-dense conversion.
+static void RunRejectInMemoryMarkerOnSparseInitializerTest(bool marker_on_indices,
+                                                           const onnxruntime::logging::Logger& logger) {
+  Model model("RejectInMemoryMarkerOnSparseInitializer", false, logger);
+  auto model_proto = model.ToProto();
+  auto* m_graph = model_proto.mutable_graph();
+  ConstructASimpleAddGraph(*m_graph, nullptr);
+
+  auto* m_sparse_initializer = m_graph->add_sparse_initializer();
+  ConstructSparseTensor("in_memory_marker_sparse", *m_sparse_initializer);
+
+  // Overwrite either values or indices to declare external data pointing at an in-memory marker.
+  // Allocate a real backing buffer so even an accidental dereference of "offset" stays in-process.
+  static std::vector<uint8_t> backing(64, 0);
+  auto* sub = marker_on_indices ? m_sparse_initializer->mutable_indices()
+                                : m_sparse_initializer->mutable_values();
+  sub->clear_raw_data();
+  sub->clear_int64_data();
+  sub->clear_float_data();
+  sub->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  auto* loc = sub->add_external_data();
+  loc->set_key("location");
+  loc->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag));
+  auto* off = sub->add_external_data();
+  off->set_key("offset");
+  off->set_value(std::to_string(reinterpret_cast<intptr_t>(backing.data())));
+  auto* len = sub->add_external_data();
+  len->set_key("length");
+  len->set_value(std::to_string(backing.size()));
+
+  std::string s1;
+  model_proto.SerializeToString(&s1);
+
+  ModelProto model_proto_1;
+  ASSERT_TRUE(model_proto_1.ParseFromString(s1));
+
+  std::shared_ptr<onnxruntime::Model> p_tmp_model;
+  // The Graph ctor must reject the marker — Model::Load is expected to return a non-OK status
+  // (Graph ctor's ORT_THROW is caught at the C++/Status boundary).
+  ORT_TRY {
+    auto status = onnxruntime::Model::Load(model_proto_1, p_tmp_model, nullptr, logger);
+    EXPECT_FALSE(status.IsOK()) << "Loading a model with an in-memory marker on a sparse "
+                                << (marker_on_indices ? "indices" : "values")
+                                << " sub-tensor must fail.";
+    if (!status.IsOK()) {
+      EXPECT_THAT(status.ErrorMessage(),
+                  ::testing::HasSubstr("in-memory address marker"));
+    }
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      EXPECT_THAT(std::string(ex.what()),
+                  ::testing::HasSubstr("in-memory address marker"));
+    });
+  }
+}
+
+TEST_F(GraphTest, RejectInMemoryMarkerOnSparseInitializerValues) {
+  RunRejectInMemoryMarkerOnSparseInitializerTest(/*marker_on_indices=*/false, *logger_);
+}
+
+TEST_F(GraphTest, RejectInMemoryMarkerOnSparseInitializerIndices) {
+  RunRejectInMemoryMarkerOnSparseInitializerTest(/*marker_on_indices=*/true, *logger_);
+}
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
+
+// Regression test: ORT in-memory address markers are an in-process sentinel only; they must never
+// appear in a dense initializer deserialized from an .onnx protobuf. The Graph ctor must reject
+// such a model.
+TEST_F(GraphTest, RejectInMemoryMarkerOnDenseInitializer) {
+  Model model("RejectInMemoryMarkerOnDenseInitializer", false, *logger_);
+  auto model_proto = model.ToProto();
+  auto* m_graph = model_proto.mutable_graph();
+  ConstructASimpleAddGraph(*m_graph, nullptr);
+
+  static std::vector<uint8_t> backing(64, 0);
+
+  auto* init = m_graph->add_initializer();
+  init->set_name("in_memory_marker_dense");
+  init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  init->add_dims(static_cast<int64_t>(backing.size() / sizeof(float)));
+  init->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  auto* loc = init->add_external_data();
+  loc->set_key("location");
+  loc->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag));
+  auto* off = init->add_external_data();
+  off->set_key("offset");
+  off->set_value(std::to_string(reinterpret_cast<intptr_t>(backing.data())));
+  auto* len = init->add_external_data();
+  len->set_key("length");
+  len->set_value(std::to_string(backing.size()));
+
+  std::string s1;
+  model_proto.SerializeToString(&s1);
+
+  ModelProto model_proto_1;
+  ASSERT_TRUE(model_proto_1.ParseFromString(s1));
+
+  std::shared_ptr<onnxruntime::Model> p_tmp_model;
+  ORT_TRY {
+    auto status = onnxruntime::Model::Load(model_proto_1, p_tmp_model, nullptr, *logger_);
+    EXPECT_FALSE(status.IsOK()) << "Loading a model with an in-memory marker on a dense initializer must fail.";
+    if (!status.IsOK()) {
+      EXPECT_THAT(status.ErrorMessage(),
+                  ::testing::HasSubstr("in-memory address marker"));
+    }
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      EXPECT_THAT(std::string(ex.what()),
+                  ::testing::HasSubstr("in-memory address marker"));
+    });
+  }
+}
 
 TEST_F(GraphTest, GraphConstruction_CheckIsNotAcyclic) {
   // A cyclic graph

@@ -372,6 +372,16 @@ Status LoadInitializerOrtFormat(const fbs::Tensor& fbs_tensor, TensorProto& init
   } else {
     const auto* fbs_raw_data = fbs_tensor.raw_data();
     if (fbs_raw_data) {
+      size_t expected_num_bytes = 0;
+      ORT_RETURN_IF_ERROR(GetSizeInBytesFromFbsTensor(fbs_tensor, expected_num_bytes));
+      const auto* fbs_name = fbs_tensor.name();
+      const char* tensor_name = fbs_name ? fbs_name->c_str() : "<unnamed>";
+      ORT_RETURN_IF(
+          fbs_raw_data->size() != expected_num_bytes,
+          "Initializer raw data size mismatch for tensor '", tensor_name,
+          "'. Expected ", expected_num_bytes, " bytes but found ", fbs_raw_data->size(),
+          ". Invalid ORT format model.");
+
       if (load_options.can_use_flatbuffer_for_initializers && fbs_raw_data->size() > 127) {
         static_assert(sizeof(void*) <= sizeof(ExternalDataInfo::OFFSET_TYPE));
         const void* data_offset = fbs_raw_data->Data();
@@ -418,17 +428,27 @@ Status LoadSparseInitializerOrtFormat(const fbs::SparseTensor& fbs_sparse_tensor
                                       SparseTensorProto& initializer,
                                       const OrtFormatLoadOptions& load_options) {
   SparseTensorProto loaded_initializer;
+
+  // Sparse sub-tensors must never carry the in-memory address marker. The marker would point into
+  // the mmap'd flatbuffer buffer; allowing it here would force every downstream consumer of the
+  // sparse->dense conversion to validate the marker, and would conflate the trust boundary
+  // (sparse markers from untrusted .onnx input are an arbitrary-memory-read vector). Force the
+  // inner loader to materialize a normal inline raw_data copy regardless of size; the cost is
+  // small because sparse->dense conversion immediately copies the bytes again.
+  OrtFormatLoadOptions sub_tensor_options = load_options;
+  sub_tensor_options.can_use_flatbuffer_for_initializers = false;
+
   auto fbs_values_tensor = fbs_sparse_tensor.values();
   ORT_RETURN_IF(nullptr == fbs_values_tensor, "Missing values for sparse initializer. Invalid ORT format model.");
   auto* values_tensor = loaded_initializer.mutable_values();
-  ORT_RETURN_IF_ERROR(LoadInitializerOrtFormat(*fbs_values_tensor, *values_tensor, load_options));
+  ORT_RETURN_IF_ERROR(LoadInitializerOrtFormat(*fbs_values_tensor, *values_tensor, sub_tensor_options));
   ORT_RETURN_IF(values_tensor->name().empty(), "Missing name for SparseTensor initializer. Invalid ORT format model.");
 
   auto fbs_indicies_tensor = fbs_sparse_tensor.indices();
   ORT_RETURN_IF(nullptr == fbs_indicies_tensor, "Missing indicies for sparse initializer: ", "'", values_tensor->name(), "'",
                 "Invalid ORT format model.");
   auto* indicies_tensor = loaded_initializer.mutable_indices();
-  ORT_RETURN_IF_ERROR(LoadInitializerOrtFormat(*fbs_indicies_tensor, *indicies_tensor, load_options));
+  ORT_RETURN_IF_ERROR(LoadInitializerOrtFormat(*fbs_indicies_tensor, *indicies_tensor, sub_tensor_options));
 
   auto fbs_dims = fbs_sparse_tensor.dims();
   ORT_RETURN_IF(nullptr == fbs_dims, "Missing dims for sparse initializer: ", "'", values_tensor->name(), "'",

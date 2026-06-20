@@ -56,6 +56,10 @@ namespace wgsl_gen {
 
 #else  // Use dynamic generator
 
+// TODO(danielsongmicrosoft): Remove the dynamic WGSL generator and its duktape
+// dependency. The static Python generator is the only supported mode, so
+// ORT_WGSL_TEMPLATE_DYNAMIC is never defined and everything below is unreachable.
+
 #include "duktape.h"
 
 namespace {

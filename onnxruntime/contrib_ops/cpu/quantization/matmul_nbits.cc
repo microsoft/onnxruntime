@@ -104,7 +104,8 @@ class MatMulNBits final : public OpKernel {
         nbits_{narrow<size_t>(info.GetAttr<int64_t>("bits"))},
         has_g_idx_{info.GetInputCount() > InputIndex::g_idx && info.node().InputDefs()[InputIndex::g_idx]->Exists()},
         has_bias_{info.GetInputCount() > InputIndex::bias && info.node().InputDefs()[InputIndex::bias]->Exists()},
-        prefer_lut_gemm_{info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasLutGemm) == "1" &&
+        prefer_lut_gemm_{std::is_same_v<T1, float> &&
+                         info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasLutGemm) == "1" &&
                          MlasIsLutGemmAvailable(narrow<size_t>(info.GetAttr<int64_t>("N")),
                                                 narrow<size_t>(info.GetAttr<int64_t>("K")),
                                                 narrow<size_t>(info.GetAttr<int64_t>("bits")),
@@ -192,6 +193,7 @@ class MatMulNBits final : public OpKernel {
                         const MatMulComputeHelper& helper) const;
 
   Status ComputeBPackedLUT(const Tensor* a,
+                           const Tensor* bias,
                            Tensor* y,
                            concurrency::ThreadPool* thread_pool,
                            const MatMulComputeHelper& helper) const;
@@ -357,8 +359,14 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 #endif  // MLAS_TARGET_ARM64
     }
     is_packed = true;
-  } else if (compute_type_ == SQNBIT_CompInt8) {
+  } else if (compute_type_ == SQNBIT_CompInt8 && !prefer_lut_gemm_) {
     // Packing scales and zero points
+    // Guard: for LUT-eligible nodes, scales/ZP are already packed inside
+    // packed_b_ by the LUT branch above (or by the LUT scale-pack path at
+    // the bottom of this function). Re-running the non-LUT pack here would
+    // corrupt the LUT-packed buffer (overwrite the LUT layout with W2 layout
+    // bytes), so the LUT compute path would then read garbage. prefer_lut_gemm_
+    // is gated to T1==float (see ctor), so checking it here is sufficient.
     bool should_pack_scale_and_zp_inputs = [&]() {
 #if defined(MLAS_TARGET_AMD64_IX86)
       return true;
@@ -641,6 +649,7 @@ Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& 
 
 template <typename T1>
 Status MatMulNBits<T1>::ComputeBPackedLUT(const Tensor* a,
+                                          const Tensor* bias,
                                           Tensor* y,
                                           concurrency::ThreadPool* thread_pool,
                                           const MatMulComputeHelper& helper) const {
@@ -650,7 +659,21 @@ Status MatMulNBits<T1>::ComputeBPackedLUT(const Tensor* a,
   const int N = static_cast<int>(helper.N());
   const int K = static_cast<int>(helper.K());
 
-  MlasLutGemm(a_data, block_size_, packed_b_.get(), y_data, K, M, N, has_zp_input_, thread_pool);
+  // Bias is fused into MlasLutGemm: it is broadcast-added per output-feature tile inside
+  // the same parallel loop that runs the GEMM, so the bias addition is multi-threaded and
+  // operates on data that is still hot in cache. MlasLutGemm currently only supports fp32
+  // activations/outputs; reject any other type when a bias is present.
+  const float* bias_data = nullptr;
+  if (bias != nullptr) {
+    if constexpr (std::is_same_v<T1, float>) {
+      bias_data = bias->Data<float>();
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "MatMulNBits LUT GEMM path does not support non-fp32 bias.");
+    }
+  }
+
+  MlasLutGemm(a_data, block_size_, packed_b_.get(), y_data, K, M, N, has_zp_input_, thread_pool, bias_data);
   return Status::OK();
 }
 
@@ -1057,7 +1080,18 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_, true);
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<MLFloat16>())) {
-    if (nbits_ == 4) {
+    if (nbits_ == 2) {
+      MlasDequantizeBlockwise<float, 2>(
+          tmp_b_data_ptr.get(),                           // dequantized output
+          b_data,                                         // quantized input
+          scales_ptr,                                     // quantization scales
+          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+          static_cast<int32_t>(block_size_),              // quantization block size
+          column_wise_quant_,                             // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),                       // number of rows in quantized input
+          static_cast<int32_t>(N_),                       // number of columns in quantized input
+          thread_pool);
+    } else if (nbits_ == 4) {
       MlasDequantizeBlockwise<float, 4>(
           tmp_b_data_ptr.get(),                           // dequantized output
           b_data,                                         // quantized input
@@ -1068,7 +1102,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
           static_cast<int32_t>(K_),                       // number of rows in quantized input
           static_cast<int32_t>(N_),                       // number of columns in quantized input
           thread_pool);
-    } else {  // If it isn't 4bit, it has to be 8-bit quantization
+    } else {  // If it isn't 2bit or 4bit, it has to be 8-bit quantization
       ORT_ENFORCE(nbits_ == 8);
       MlasDequantizeBlockwise<float, 8>(
           tmp_b_data_ptr.get(),                           // dequantized output
@@ -1227,7 +1261,7 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
                     // MlasQNBitGemmPackQuantBDataSize() returns 0, we can consider calling MlasQNBitGemmBatch()
                     // with B directly too.
     if (prefer_lut_gemm_) {
-      return ComputeBPackedLUT(a, y, thread_pool, helper);
+      return ComputeBPackedLUT(a, bias, y, thread_pool, helper);
     }
 
     if (MlasIsQNBitGemmAvailable(nbits_, block_size_, compute_type_)) {

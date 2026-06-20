@@ -37,6 +37,7 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/attention_softmax.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
+#include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "contrib_ops/cuda/bert/unfused_attention.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
@@ -66,6 +67,26 @@ namespace cuda {
 // ============================================================================
 // QKV Preprocessing Helpers
 // ============================================================================
+
+template <typename T>
+__global__ void ConvertHeadSinkToFloatKernel(const T* input, float* output, int count) {
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < count) {
+    output[i] = static_cast<float>(input[i]);
+  }
+}
+
+template <typename T>
+Status LaunchConvertHeadSinkToFloat(
+    const T* input,
+    float* output,
+    int count,
+    cudaStream_t stream,
+    int max_threads_per_block) {
+  int blocks = (count + max_threads_per_block - 1) / max_threads_per_block;
+  ConvertHeadSinkToFloatKernel<T><<<blocks, max_threads_per_block, 0, stream>>>(input, output, count);
+  return CUDA_CALL(cudaGetLastError());
+}
 
 // Internal helper to get Q, K, V pointers, handling packed input
 //
@@ -654,6 +675,13 @@ Status ExtremeDecoding(
   void* xqa_workspace = data.xqa_buffer;
   size_t xqa_workspace_size = data.xqa_buffer_bytes;
 
+  if (data.xqa_head_sink_needs_conversion) {
+    ORT_ENFORCE(data.xqa_head_sink != nullptr, "XQA head_sink conversion buffer was not allocated.");
+    ORT_ENFORCE(data.head_sink != nullptr, "XQA head_sink input was not available for conversion.");
+    ORT_RETURN_IF_ERROR(LaunchConvertHeadSinkToFloat<T>(
+        data.head_sink, data.xqa_head_sink, num_heads, stream, device_prop.maxThreadsPerBlock));
+  }
+
   constexpr bool is_fp8 = std::is_same<U, __nv_fp8_e4m3>::value;
   using onnxruntime::contrib::cuda::XqaQuantType;
   // 5. Launch XQA
@@ -672,6 +700,7 @@ Status ExtremeDecoding(
       scale,
       past_bsnh,
       data.past_seq_lens,
+      data.xqa_head_sink,
       data.k_scale,  // kv_cache_scale
       // Map cache type to XqaQuantType: NONE->kNone, Float8E4M3FN->kFp8, int8->kInt8
       (parameters.k_quant_type == KVQuantizationType::NONE) ? XqaQuantType::kNone : (is_fp8 ? XqaQuantType::kFp8 : XqaQuantType::kInt8),
@@ -1183,6 +1212,81 @@ Status UnfusedGqaAttention(
 
 ////////// API Functions
 
+// ============================================================================
+// CudnnSdpaAttention: cuDNN scaled-dot-product-attention (cudnn_frontend) path.
+//
+// Preferred on SM>=90 (Hopper/Blackwell) for non-quantized FP16/BF16 GQA. cuDNN handles
+// grouped-query attention natively (no KV head expansion) and applies causal masking through the
+// diagonal-band API. The present KV cache (BNSH, padded to seqlen_present_kv_cache) is passed with
+// the capacity as the KV sequence length so strides match the physical buffer; a per-batch padding
+// mask (total_seq_lens) ignores the unused tail. RoPE / packed-QKV unpack and the new-token append
+// are performed by PrepareQKV.
+//
+// Not handled here (excluded by op-level eligibility, caller falls through elsewhere):
+//   - Quantized KV cache (U != T), softcap, smooth softmax / head sink, sliding window.
+// ============================================================================
+template <typename T, typename U>
+Status CudnnSdpaAttention(
+    const cudaDeviceProp& device_prop,
+    cudaStream_t stream,
+    Stream* ort_stream,
+    GroupQueryAttentionParameters& parameters,
+    GroupQueryAttentionData<T, U>& data,
+    float scale) {
+  if constexpr (!std::is_same<T, U>::value) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "cuDNN SDPA GQA path requires a non-quantized KV cache (T == U).");
+  } else {
+    ORT_GQA_TRACE("CudnnSdpaAttention");
+
+    const int max_threads_per_block = device_prop.maxThreadsPerBlock;
+
+    // Prepare Q (optional RoPE) and append the new K/V into the present cache (BNSH, padded to
+    // seqlen_present_kv_cache). After this, present_key/value hold the full KV history.
+    const T* q_prep = nullptr;
+    ORT_RETURN_IF_ERROR((PrepareQKV<T, U>(stream, max_threads_per_block, parameters, data, q_prep)));
+
+    ORT_RETURN_IF(data.cudnn_handle == nullptr || data.allocator == nullptr,
+                  "cuDNN SDPA GQA path is missing the cuDNN handle or temp-space allocator.");
+
+    constexpr bool is_bf16 = std::is_same<T, __nv_bfloat16>::value;
+
+    // First prompt may right-pad the query, so its valid query length equals total_seq_lens.
+    // Otherwise every one of the sequence_length query tokens is valid and the wrapper synthesizes a
+    // full-length (no-op) query padding mask.
+    int* seq_len_q = parameters.is_first_prompt ? data.total_seq_lens : nullptr;
+    int* seq_len_kv = data.total_seq_lens;
+
+    ::onnxruntime::cudnn_sdpa::run(
+        reinterpret_cast<void*>(data.output),
+        const_cast<void*>(reinterpret_cast<const void*>(q_prep)),
+        reinterpret_cast<void*>(data.present_key),
+        reinterpret_cast<void*>(data.present_value),
+        /*attn_bias=*/nullptr,
+        seq_len_q,
+        seq_len_kv,
+        parameters.batch_size,
+        parameters.num_heads,                // num_heads_q
+        parameters.kv_num_heads,             // num_heads_kv
+        parameters.head_size,                // head_size_qk
+        parameters.head_size,                // head_size_v (GQA: v_head_size == head_size)
+        parameters.sequence_length,          // sequence_length_q
+        parameters.seqlen_present_kv_cache,  // sequence_length_kv (capacity, matches buffer strides)
+        scale,
+        /*is_causal=*/true,
+        is_bf16,
+        /*broadcast_attn_bias_dim_0=*/false,
+        /*broadcast_attn_bias_dim_1=*/false,
+        /*sliding_window=*/0,
+        AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH,
+        static_cast<cudnnHandle_t>(data.cudnn_handle),
+        ort_stream,
+        data.allocator);
+
+    return Status::OK();
+  }
+}
+
 template <typename T, typename U>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
@@ -1194,6 +1298,10 @@ Status QkvToContext(
   const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size)) : parameters.scale;
   if (data.use_xqa) {
     return ExtremeDecoding(device_prop, stream, parameters, data, scale);
+  }
+
+  if (data.use_cudnn_sdpa) {
+    return CudnnSdpaAttention<T, U>(device_prop, stream, ort_stream, parameters, data, scale);
   }
 
 #if USE_FLASH_ATTENTION
@@ -1235,6 +1343,20 @@ Status QkvToContext(
 template struct GroupQueryAttentionData<half, half>;
 template struct GroupQueryAttentionData<__nv_bfloat16, __nv_bfloat16>;
 template struct GroupQueryAttentionData<half, int8_t>;
+
+template Status LaunchConvertHeadSinkToFloat<half>(
+    const half* input,
+    float* output,
+    int count,
+    cudaStream_t stream,
+    int max_threads_per_block);
+
+template Status LaunchConvertHeadSinkToFloat<__nv_bfloat16>(
+    const __nv_bfloat16* input,
+    float* output,
+    int count,
+    cudaStream_t stream,
+    int max_threads_per_block);
 
 template Status QkvToContext<half, half>(
     const cudaDeviceProp& device_prop,

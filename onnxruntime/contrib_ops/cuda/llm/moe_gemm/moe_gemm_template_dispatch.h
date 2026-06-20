@@ -86,6 +86,30 @@
 
 namespace onnxruntime::llm::kernels::cutlass_kernels {
 
+#ifdef COMPILE_HOPPER_TMA_GROUPED_GEMMS
+inline constexpr bool kCompileHopperTmaGroupedGemms = true;
+#else
+inline constexpr bool kCompileHopperTmaGroupedGemms = false;
+#endif
+
+#ifdef COMPILE_BLACKWELL_TMA_GROUPED_GEMMS
+inline constexpr bool kCompileBlackwellTmaGroupedGemms = true;
+#else
+inline constexpr bool kCompileBlackwellTmaGroupedGemms = false;
+#endif
+
+#ifdef COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS
+inline constexpr bool kCompileBlackwellSm120TmaGroupedGemms = true;
+#else
+inline constexpr bool kCompileBlackwellSm120TmaGroupedGemms = false;
+#endif
+
+inline bool isTmaWarpSpecializedGroupedGemmCompiledForSm(int sm) {
+  return (sm == 90 && kCompileHopperTmaGroupedGemms) ||
+         (sm >= 100 && sm < 120 && kCompileBlackwellTmaGroupedGemms) ||
+         ((sm == 120 || sm == 121) && kCompileBlackwellSm120TmaGroupedGemms);
+}
+
 // ============================= Variable batched Gemm things ===========================
 template <typename T, typename WeightType, typename GemmOutputType, typename arch, cutlass::WeightOnlyQuantOp QuantOp,
           typename EpilogueTag, typename ThreadblockShape, typename WarpShape, int Stages>
@@ -628,6 +652,18 @@ MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::getTmaWarpSpecializedCo
   auto config_type_param = static_cast<CutlassGemmConfig::CandidateConfigTypeParam>(weight_only_flag | simt_only_flag | grouped_gemm_flag | enable_blackwell | enable_hopper | fp8_only_flag | fp4_only_flag);
   ORT_ENFORCE(!(enable_blackwell && enable_hopper), "Blackwell and hopper flags are mutually exclusive");
 
+  if (!isTmaWarpSpecializedGroupedGemmCompiledForSm(config_sm)) {
+    if constexpr (use_w4afp8 || use_wfp4a16 || use_wfp4afp8 || use_wfp8a16 ||
+                  use_fp4) {
+      ORT_THROW(
+          "TMA WS grouped MoE GEMM for SM%d is not compiled, and this QMoE configuration has no SM80 fallback",
+          config_sm);
+    }
+    ORT_LLM_LOG_DEBUG(
+        "TMA WS grouped MoE GEMM is not compiled for this SM, not selecting any TMA WS implementations");
+    return {};
+  }
+
   if (config_sm >= 100 && config_sm < 120 && !kernels::cutlass_kernels::isValidBlackwellMOESpecialisation<T, WeightType>()) {
     ORT_LLM_LOG_DEBUG("Blackwell is not supported for this configuration, not selecting any TMA WS implementations");
     return {};
@@ -656,6 +692,11 @@ bool MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::isTmaWarpSpecializ
 template <typename T, typename WeightType, typename OutputType, typename ScaleBiasType>
 bool MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::supportsTmaWarpSpecialized() const {
   ORT_LLM_LOG_ENTRY();
+  int const config_sm = use_wfp4a16 && sm_ >= 120 ? 90 : sm_;
+  if (!isTmaWarpSpecializedGroupedGemmCompiledForSm(config_sm)) {
+    return false;
+  }
+
   if constexpr (use_wfp4a16) {
     return sm_ >= 120 && kernels::cutlass_kernels::isValidHopperMOESpecialisation<T, WeightType>();
   } else {

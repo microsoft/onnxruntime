@@ -127,8 +127,8 @@ stages:
               --skip_submodule_sync
               --cmake_generator "$(VSGenerator)"
               --parallel
-              --nvcc_threads 4
-              --flash_nvcc_threads 2
+              --nvcc_threads 1
+              --flash_nvcc_threads 1
               --use_vcpkg
               --use_vcpkg_ms_internal_asset_cache
               --use_binskim_compliant_compile_flags
@@ -155,8 +155,8 @@ stages:
               --skip_submodule_sync
               --cmake_generator "$(VSGenerator)"
               --parallel
-              --nvcc_threads 4
-              --flash_nvcc_threads 2
+              --nvcc_threads 1
+              --flash_nvcc_threads 1
               --use_vcpkg
               --use_vcpkg_ms_internal_asset_cache
               --use_binskim_compliant_compile_flags
