@@ -153,7 +153,19 @@ TEST_F(ActivationOpTest, QuickGelu) {
 }
 
 TEST_F(ActivationOpTest, QuickGelu_fp16) {
-  std::vector<float> input_values{-1.0f, 0.0f, 1.0f, 2.5f, -2.5f, 5.0f, -5.0f, 0.3f};
+  // Use enough elements to cross the 4096-element chunk boundary used by the
+  // QuickGelu<MLFloat16>::Compute() specialization. 8205 = 2 * 4096 + 13 exercises
+  // the multi-task path as well as a final partial (tail) chunk.
+  constexpr int64_t element_count = 2 * 4096 + 13;
+  std::vector<float> input_values;
+  input_values.reserve(element_count);
+  // Seed with corner values, then fill the remainder with a varied ramp.
+  const std::vector<float> seed_values{-1.0f, 0.0f, 1.0f, 2.5f, -2.5f, 5.0f, -5.0f, 0.3f};
+  input_values.insert(input_values.end(), seed_values.begin(), seed_values.end());
+  for (int64_t i = static_cast<int64_t>(seed_values.size()); i < element_count; ++i) {
+    // Range roughly [-6, 6] to cover both saturation tails and the linear region.
+    input_values.push_back(static_cast<float>(((i % 121) - 60)) * 0.1f);
+  }
   std::vector<int64_t> dims{static_cast<int64_t>(input_values.size())};
 
   auto quick_gelu = [](float x, float alpha) {

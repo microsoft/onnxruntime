@@ -88,7 +88,7 @@ Status QuickGelu<MLFloat16>::Compute(OpKernelContext* context) const {
 
 #define REGISTER_QUICKGELU_KERNEL(data_type)                                            \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                        \
-      QuickGelu, kMSDomain, 1, data_type, kCpuExecutionProvider,                       \
+      QuickGelu, kMSDomain, 1, data_type, kCpuExecutionProvider,                        \
       KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<data_type>()), \
       QuickGelu<data_type>);
 
