@@ -284,13 +284,13 @@ TEST(CApiTest, CreateGetSeqSubByteTensors) {
   auto default_allocator = std::make_unique<MockedOrtAllocator>();
   Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
-  auto run_for_type = [&](ONNXTensorElementDataType elem_type, const std::array<uint8_t, 4>& packed) {
+  auto run_for_type = [&](ONNXTensorElementDataType elem_type, std::array<uint8_t, 4> packed) {
     const std::vector<int64_t> dims{7};  // 7 4-bit elements -> 4 packed bytes
     constexpr int N = 2;
 
     std::vector<Ort::Value> in;
     for (int i = 0; i < N; ++i) {
-      Ort::Value tensor = Ort::Value::CreateTensor(info, const_cast<uint8_t*>(packed.data()), packed.size(),
+      Ort::Value tensor = Ort::Value::CreateTensor(info, packed.data(), packed.size(),
                                                    dims.data(), dims.size(), elem_type);
       in.push_back(std::move(tensor));
     }
@@ -305,8 +305,12 @@ TEST(CApiTest, CreateGetSeqSubByteTensors) {
       ASSERT_EQ(tensor_info.GetElementType(), elem_type);
       ASSERT_EQ(tensor_info.GetShape(), dims);
 
-      const auto* ret = out.GetTensorData<uint8_t>();
-      for (size_t i = 0; i < packed.size(); ++i) {
+      // Compare the packed bytes directly. GetTensorData<T>() does not support sub-byte
+      // types, so use the raw pointer and the packing-aware byte size.
+      const size_t out_bytes = out.GetTensorSizeInBytes();
+      ASSERT_EQ(out_bytes, packed.size());
+      const auto* ret = static_cast<const uint8_t*>(out.GetTensorRawData());
+      for (size_t i = 0; i < out_bytes; ++i) {
         ASSERT_EQ(ret[i], packed[i]);
       }
     }
