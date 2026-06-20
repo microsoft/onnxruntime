@@ -528,9 +528,18 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
     inputs.push_back(zp_input.value());
   }
 
+  // No zero-point: pin output_dtype to the DQ's type so the new Q doesn't default to uint8.
+  std::optional<int64_t> q_output_dtype;
+  if (!zp_input.has_value() && IsOnnxDomain(dq_domain)) {
+    api::DataType dq_input_dtype = graph.GetValueInfo(dq_inputs[0])->DType();
+    if (dq_input_dtype != api::DataType::UNDEFINED && dq_input_dtype != api::DataType::UINT8) {
+      q_output_dtype = static_cast<int64_t>(dq_input_dtype);
+    }
+  }
+
   // Add Q
   auto new_q_node = MakeQuantizeOp(graph, dq_domain, inputs, axis, dq_node.GetAttributeInt("block_size"),
-                                   dq_node.GetAttributeInt("output_dtype"), dq_node.GetAttributeInt("saturate"));
+                                   q_output_dtype, dq_node.GetAttributeInt("saturate"));
   new_q_node->SetLayeringAnnotation(dq_node.GetLayeringAnnotation());
   auto q_node_outputs = new_q_node->Outputs();
 
