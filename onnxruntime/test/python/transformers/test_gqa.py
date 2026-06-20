@@ -2481,6 +2481,79 @@ class TestXQAHeadSinkParity(unittest.TestCase):
         )
 
 
+def gqa_xqa_sliding_window_test_cases():
+    # Non-quantized sliding-window (local attention) decode through the XQA kernel.
+    #
+    # The XQA decode path now supports local_window_size > 0 on the non-quantized fp16/bf16
+    # path (GPT-OSS style sliding-window layers). XQA selection requires: decode (q_seq=1),
+    # a shared KV buffer, softcap==0, head_size in {64, 128, 256} and 64 % group_size == 0.
+    #
+    # Two window/past relationships are covered:
+    #   past > window  -> the sliding mask drops the oldest keys (the new code path).
+    #   past <= window -> the window spans the whole cache (parity with global attention).
+    # has_head_sink toggles the GPT-OSS attention-sink input, which composes with the window
+    # in-kernel; both with and without a sink are exercised.
+    for torch_type, ort_type in [(torch.float16, TensorProto.FLOAT16), (torch.bfloat16, TensorProto.BFLOAT16)]:
+        for head_size in [64, 128]:
+            for group_size in [4, 8]:
+                for past_kv_sequence_length, local_window_size in [(512, 128), (64, 128)]:
+                    for has_head_sink in [False, True]:
+                        kv_num_heads = 4
+                        num_heads = kv_num_heads * group_size
+                        config = GQAConfig(
+                            batch_size=2,
+                            q_sequence_length=1,
+                            kv_sequence_length=1,
+                            num_heads=num_heads,
+                            kv_num_heads=kv_num_heads,
+                            head_size=head_size,
+                            past_kv_sequence_length=past_kv_sequence_length,
+                            buffer_sequence_length=past_kv_sequence_length + 128,
+                            local_window_size=local_window_size,
+                            rotary=True,
+                            rotary_interleaved=False,
+                            packed=False,
+                            share_buffer=True,
+                            has_head_sink=has_head_sink,
+                        )
+                        type_str = "bf16" if torch_type == torch.bfloat16 else "fp16"
+                        sink_str = "sink" if has_head_sink else "nosink"
+                        win_str = f"past{past_kv_sequence_length}_win{local_window_size}"
+                        name = f"{type_str}_g{group_size}_h{head_size}_{win_str}_{sink_str}"
+                        yield name, config, torch_type, ort_type
+
+
+@unittest.skipIf(not has_xqa(), "XQA is not available, skipping tests.")
+@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+class TestXQASlidingWindowParity(unittest.TestCase):
+    """Verify the non-quantized XQA sliding-window (local attention) decode path matches the reference."""
+
+    def tearDown(self):
+        """Clear CUDA cache after each test to prevent memory corruption in batch runs."""
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+        gc.collect()
+
+    @parameterized.expand(gqa_xqa_sliding_window_test_cases())
+    def test_xqa_sliding_window_parity(self, name, config, torch_type, ort_type):
+        """Test XQA non-quantized parity with a sliding (local) attention window."""
+        # ORT_ENABLE_XQA=1 forces XQA selection so the sliding-window path is exercised even when
+        # no head_sink input is present (a head_sink input alone would also enable XQA by default).
+        with scoped_env_var("ORT_ENABLE_XQA", "1"):
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch_type,
+                ort_type=ort_type,
+                causal=True,
+                rtol=rtol["bf16"] if torch_type == torch.bfloat16 else rtol["fp16"],
+                atol=atol["bf16"] if torch_type == torch.bfloat16 else atol["fp16"],
+                std=0.1,
+            )
+
+
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
 @unittest.skipIf(not has_quantized_kv_cache(), "Quantized KV Cache is not available, skipping tests.")
 class TestGQARegressions(unittest.TestCase):
