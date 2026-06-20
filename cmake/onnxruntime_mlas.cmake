@@ -796,11 +796,6 @@ else()
           ${MLAS_SRC_DIR}/intrinsics/avx2/qdwconv_avx2.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx2/saturation_check_avx2.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
-          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.h
-          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
-          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen64.h
-          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen128.h
-          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen32.h
           ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.h
           ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.cpp
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.h
@@ -847,6 +842,11 @@ endif()
           ${MLAS_SRC_DIR}/x86_64/QgemmU8X8KernelAvx512Core.S
           ${MLAS_SRC_DIR}/x86_64/ConvSymKernelAvx512Core.S
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.h
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen64.h
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen128.h
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen32.h
         )
         set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_FLAGS "-mfma -mavx512vnni -mavx512bw -mavx512dq -mavx512vl")
 
