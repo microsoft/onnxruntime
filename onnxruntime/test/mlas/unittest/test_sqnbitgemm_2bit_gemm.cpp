@@ -4,10 +4,6 @@ Copyright (c) Microsoft Corporation. All rights reserved.
 
 Licensed under the MIT License.
 
-// CI-CACHE-BUSTER 2026-06-19T22:50: pair with sqnbitgemm_kernel_avx512_2bit.h
-// to force ccache/sccache invalidation after wrapping W2 scalar reference
-// tests in #if 0.
-
 Module Name:
 
     test_sqnbitgemm_2bit.cpp
@@ -306,45 +302,26 @@ void RunW2Case(size_t M, size_t N, size_t K, bool WithBias, uint32_t seed,
 
 }  // namespace
 
-// =============================================================================
-// W2 scalar reference tests -- temporarily disabled via #if 0.
 //
-// These tests call internal scalar W2 symbols directly, bypassing
-// MlasIsQNBitGemmAvailable. The scalar reference TU
+// W2 scalar reference tests. These call internal scalar W2 symbols directly,
+// bypassing MlasIsQNBitGemmAvailable. The scalar reference TU
 // (sqnbitgemm_kernel_avx512_2bit.cpp) is compiled with AVX-512-capable
-// flags and the build uses LTO, so the compiler may autovectorize these
-// "scalar" functions into AVX-512 instructions. On some virtualized Linux
-// hosts (e.g. Azure Standard_D32ads_v6 / Zen 4 CI image) certain AVX-512
-// VNNI encodings still SIGILL even when CPUID reports support, killing the
-// whole onnxruntime_mlas_test binary and blocking all downstream test
-// suites including the production-path MatMul2Bits op tests in
-// onnxruntime_test_all.
-//
-// Note: GTest's DISABLED_ prefix did not skip these in CI in practice
-// (binary still showed [ RUN ] for the original name even after rename),
-// so we wrap them out of the binary completely via #if 0.
-//
-// Production paths are unaffected:
-//   * SQ2BitGemmKernel_BlkSum_CompInt8_Scalar is not installed in any
-//     dispatch table -- it is only used as an oracle in these tests.
-//   * SQ2BitGemmPackQuantBDataAndBlkSum_Scalar runs at model load time
-//     under the AVX-512 dispatch path, which is only selected on hosts
-//     where it has been observed to be safe in practice.
-//
-// TODO(W2-scalar-disabled): re-enable once the W2 scalar reference TU
-// codegen is pinned away from AVX-512 autovectorization, e.g. by adding
-// __attribute__((target("..."))) on the scalar entry points or by
-// excluding the TU from LTO.
-// =============================================================================
-
-#if 0
+// flags so its SIMD siblings can use intrinsics; the compiler may
+// autovectorize the scalar functions into AVX-512 instructions. To avoid
+// SIGILL on hosts that do not expose AVX-512 these tests are gated on
+// GetMlasPlatform().Avx512Supported_, matching the SIMD test guards in
+// this file.
 //
 // Scalar block-group test, no zero-points. Covers the same small synthetic
 // shapes + representative prefill sizes used by the production W2 tests. All
 // shapes have K as a multiple of (kBlkLen * kBlockGroupBlks) = 256. K=384 is
 // NOT a multiple of 256 so it's excluded; that shape will need a tail
 // handler in a follow-up.
+//
 TEST(MlasSq2BitTest, Scalar_BlkLen64) {
+  if (!GetMlasPlatform().Avx512Supported_) {
+    GTEST_SKIP() << "AVX-512 not available on this host";
+  }
   struct Shape {
     size_t M, N, K;
   };
@@ -385,8 +362,10 @@ TEST(MlasSq2BitTest, Scalar_BlkLen64) {
 //
 // Same coverage with per-block non-default zero points.
 //
-// See DISABLED_Scalar_BlkLen64 comment.
 TEST(MlasSq2BitTest, Scalar_BlkLen64_WithZeroPoints) {
+  if (!GetMlasPlatform().Avx512Supported_) {
+    GTEST_SKIP() << "AVX-512 not available on this host";
+  }
   struct Shape {
     size_t M, N, K;
   };
@@ -422,7 +401,6 @@ TEST(MlasSq2BitTest, Scalar_BlkLen64_WithZeroPoints) {
     }
   }
 }
-#endif  // W2 scalar reference tests (BlkLen64 pair)
 
 //
 // SIMD block-group shape coverage. Phase-3+K-tail kernel requires:
@@ -842,9 +820,10 @@ constexpr struct {
 
 }  // namespace
 
-#if 0  // See top-of-file W2 scalar reference tests note.
-// See top-of-file note for why these are disabled.
 TEST(MlasSq2BitTest, Scalar_BlkLen128) {
+  if (!GetMlasPlatform().Avx512Supported_) {
+    GTEST_SKIP() << "AVX-512 not available on this host";
+  }
   for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
     for (const auto& s : kSimdShapes_BlkLen128) {
       for (bool bias : {false, true}) {
@@ -857,8 +836,10 @@ TEST(MlasSq2BitTest, Scalar_BlkLen128) {
   }
 }
 
-// See top-of-file note for why these are disabled.
 TEST(MlasSq2BitTest, Scalar_BlkLen128_WithZeroPoints) {
+  if (!GetMlasPlatform().Avx512Supported_) {
+    GTEST_SKIP() << "AVX-512 not available on this host";
+  }
   for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
     for (const auto& s : kSimdShapes_BlkLen128) {
       for (bool bias : {false, true}) {
@@ -870,7 +851,6 @@ TEST(MlasSq2BitTest, Scalar_BlkLen128_WithZeroPoints) {
     }
   }
 }
-#endif  // W2 scalar reference tests (BlkLen128 pair)
 
 TEST(MlasSq2BitTest, BlkLen128_Avx512) {
   if (!GetMlasPlatform().Avx512Supported_) {
@@ -1200,9 +1180,10 @@ constexpr struct {
 
 }  // namespace
 
-#if 0  // See top-of-file W2 scalar reference tests note.
-// See top-of-file note for why these are disabled.
 TEST(MlasSq2BitTest, Scalar_BlkLen32) {
+  if (!GetMlasPlatform().Avx512Supported_) {
+    GTEST_SKIP() << "AVX-512 not available on this host";
+  }
   for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
     for (const auto& s : kSimdShapes_BlkLen32) {
       for (bool bias : {false, true}) {
@@ -1215,8 +1196,10 @@ TEST(MlasSq2BitTest, Scalar_BlkLen32) {
   }
 }
 
-// See top-of-file note for why these are disabled.
 TEST(MlasSq2BitTest, Scalar_BlkLen32_WithZeroPoints) {
+  if (!GetMlasPlatform().Avx512Supported_) {
+    GTEST_SKIP() << "AVX-512 not available on this host";
+  }
   for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
     for (const auto& s : kSimdShapes_BlkLen32) {
       for (bool bias : {false, true}) {
@@ -1228,7 +1211,6 @@ TEST(MlasSq2BitTest, Scalar_BlkLen32_WithZeroPoints) {
     }
   }
 }
-#endif  // W2 scalar reference tests (BlkLen32 pair)
 
 TEST(MlasSq2BitTest, BlkLen32_Avx512) {
   if (!GetMlasPlatform().Avx512Supported_) {

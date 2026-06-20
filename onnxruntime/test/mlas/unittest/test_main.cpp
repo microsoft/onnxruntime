@@ -56,12 +56,6 @@ bool AddTestRegister(TestRegister test_register) {
   return true;
 }
 
-// Defined in test_mlas_diag.cpp. Forces that TU to be linked in even when
-// the linker would otherwise discard it (it has no externally-referenced
-// symbols of its own). The diagnostic environment is registered as a side
-// effect of this call.
-void RegisterMlasDiagEnvironment();
-
 int main(int argc, char** argv) {
   bool is_short_execute = (argc <= 1 || strcmp("--long", argv[1]) != 0);
   std::cout << "-------------------------------------------------------" << std::endl;
@@ -72,8 +66,6 @@ int main(int argc, char** argv) {
   auto test_count = LongShortExecuteManager::instance().RegisterAll(is_short_execute);
   std::cout << "----Total " << test_count << " tests registered programmably!" << std::endl;
   std::cout << "-------------------------------------------------------" << std::endl;
-
-  RegisterMlasDiagEnvironment();
 
   ::testing::InitGoogleTest(&argc, argv);
 
