@@ -2524,7 +2524,6 @@ def gqa_xqa_sliding_window_test_cases():
 
 
 @unittest.skipIf(not has_xqa(), "XQA is not available, skipping tests.")
-@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
 class TestXQASlidingWindowParity(unittest.TestCase):
     """Verify the non-quantized XQA sliding-window (local attention) decode path matches the reference."""
 
