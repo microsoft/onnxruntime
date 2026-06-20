@@ -571,7 +571,7 @@ def gqa_prompt_func(
     if config.has_head_sink and head_sink is not None:
         bind_tensor(io_binding, "head_sink", head_sink, device, ort_type)
 
-    if config.has_qk_norm and q_norm_weight is not None:
+    if config.has_qk_norm and q_norm_weight is not None and k_norm_weight is not None:
         bind_tensor(io_binding, "q_norm_weight", q_norm_weight, device, ort_type)
         bind_tensor(io_binding, "k_norm_weight", k_norm_weight, device, ort_type)
 
@@ -742,7 +742,7 @@ def gqa_past_func(
     if config.has_head_sink and head_sink is not None and not head_sink_as_initializer:
         bind_tensor(io_binding, "head_sink", head_sink, device, ort_type)
 
-    if config.has_qk_norm and q_norm_weight is not None:
+    if config.has_qk_norm and q_norm_weight is not None and k_norm_weight is not None:
         bind_tensor(io_binding, "q_norm_weight", q_norm_weight, device, ort_type)
         bind_tensor(io_binding, "k_norm_weight", k_norm_weight, device, ort_type)
 

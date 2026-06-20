@@ -269,7 +269,7 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionFusesCudaAssign
   auto build = [](ModelTestBuilder& builder) {
     BuildQwenQkPostNormPattern(builder, BuildOptions{});
     for (auto& node : builder.graph_.Nodes()) {
-      const_cast<Node&>(node).SetExecutionProviderType(kCudaExecutionProvider);
+      node.SetExecutionProviderType(kCudaExecutionProvider);
     }
   };
   ASSERT_STATUS_OK(TestGraphTransformer(
