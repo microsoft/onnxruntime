@@ -527,14 +527,18 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionSharedCastPowExponent)
 
   auto pre_graph_checker = [](Graph& graph) {
     const auto op_to_count = CountOpsInGraph(graph);
-    TEST_RETURN_IF_NOT(op_to_count.at("Cast") == 1);
-    TEST_RETURN_IF_NOT(op_to_count.at("Pow") == 2);
+    const auto cast_it = op_to_count.find("Cast");
+    TEST_RETURN_IF_NOT(cast_it != op_to_count.end() && cast_it->second == 1);
+    const auto pow_it = op_to_count.find("Pow");
+    TEST_RETURN_IF_NOT(pow_it != op_to_count.end() && pow_it->second == 2);
     return Status::OK();
   };
 
   auto post_graph_checker = [](Graph& graph) {
     const auto op_to_count = CountOpsInGraph(graph);
-    TEST_RETURN_IF_NOT(op_to_count.at("SimplifiedLayerNormalization") == 2);
+    const auto simplified_layer_norm_it = op_to_count.find("SimplifiedLayerNormalization");
+    TEST_RETURN_IF_NOT(simplified_layer_norm_it != op_to_count.end() &&
+                       simplified_layer_norm_it->second == 2);
     TEST_RETURN_IF_NOT(op_to_count.find("Cast") == op_to_count.end());
     TEST_RETURN_IF_NOT(op_to_count.find("Pow") == op_to_count.end());
     TEST_RETURN_IF_NOT(op_to_count.find("ReduceMean") == op_to_count.end());

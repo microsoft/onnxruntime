@@ -768,7 +768,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       }
     }
 
-    // move input edges to pow (first in list) across to the layer_norm_node.
+    // move input edges from the first node in nodes_to_remove to layer_norm_node.
     // move output definitions and output edges from mul_node (last in list) to layer_norm_node.
     // remove all the other nodes.
     graph_utils::FinalizeNodeFusion(graph, nodes_to_remove, layer_norm_node);
