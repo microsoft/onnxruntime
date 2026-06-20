@@ -1541,6 +1541,8 @@ class TestONNXAttentionGQALargeHeadNonpadMEA(unittest.TestCase):
     """Large-head normal and right-padding MEA kernels initialize independently."""
 
     def test_gqa_large_head_nonpad_seqlen_after_default_mea_fp16(self):
+        # Keep this order: the regression requires the default kernel to opt in
+        # first, then verifies that the distinct right-padding kernel does too.
         default_config = AttentionConfig(
             batch_size=2,
             q_sequence_length=32,
