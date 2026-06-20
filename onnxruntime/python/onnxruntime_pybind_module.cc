@@ -38,9 +38,21 @@ static Status CreateOrtEnv() {
   Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, ORT_LOGGING_LEVEL_WARNING, "Default"};
   Status status;
+
+  // Detect whether a process-wide OrtEnv already exists.  An embedding application may have
+  // created one via the C/C++ API before importing the Python module; in that case existing
+  // sessions/threads may already hold loggers backed by its LoggingManager, so tearing that
+  // manager down and replacing it below could invalidate those loggers (use-after-free).
+  // TryGetInstance() bumps the refcount only for the duration of this expression.
+  const bool env_preexisted = OrtEnv::TryGetInstance() != nullptr;
+
   ort_env = OrtEnv::GetOrCreateInstance(lm_info, status, use_global_tp ? &global_tp_options : nullptr).release();
   if (!status.IsOK()) return status;
 
+  // Only install the PythonCallbackSink when this module actually created the OrtEnv.  When
+  // the env pre-existed we leave its LoggingManager untouched; g_python_callback_sink then
+  // stays null and set_default_logger_callback() reports that the sink is unavailable.
+  //
   // Immediately replace the default logging manager with one backed by a PythonCallbackSink.
   // The PythonCallbackSink wraps the platform default sink and can be updated later via
   // set_default_logger_callback() without needing to recreate the LoggingManager (which is
@@ -56,7 +68,7 @@ static Status CreateOrtEnv() {
   //
   // This is safe at this point because no ORT sessions or background threads have
   // been created yet, so there is no concurrent logging activity.
-  {
+  if (!env_preexisted) {
     using namespace onnxruntime::logging;
     auto python_sink = CreateAndRegisterPythonCallbackSink(MakePlatformDefaultLogSink());
     constexpr auto kDefaultSeverity = Severity::kWARNING;
