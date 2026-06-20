@@ -127,7 +127,9 @@ struct GQABufferRequirements {
     }
 
     // Unfused fallback: needs Q buffer for rotary embedding output.
-    if (req.qkv_buffer_bytes == 0 && (params.do_rotary || params.is_packed_qkv)) {
+    // QK-Norm also requires a materialized Q buffer to hold the normalized (and optionally rotated) Q,
+    // even when rotary is disabled and the input is not packed.
+    if (req.qkv_buffer_bytes == 0 && (params.do_rotary || params.is_packed_qkv || params.use_qk_norm)) {
       req.qkv_buffer_bytes = elem_size * q_elements;
     }
 
