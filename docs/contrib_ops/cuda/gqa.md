@@ -141,8 +141,9 @@ numerical stability and the result is cast back to the operator type `T`.
 - The normalization is fused into the `PrepareQKV` prologue (`UnpackRoPEAppend` for the new-KV path,
   or a standalone per-head RMSNorm kernel for the shared-buffer Q-only decode case), so it composes
   with packed QKV, RoPE, KV-head expansion, and the quantized KV cache.
-- Because the fused decode kernels (XQA and Flash-Decoding) do their own RoPE/append internally and
-  bypass `PrepareQKV`, they are disabled when QK-Norm is present (see §6).
+- Because the Flash-Decoding fast path does its own RoPE/append internally and bypasses `PrepareQKV`,
+  it is disabled when QK-Norm is present (see §6). The non-quantized XQA decode path can still run
+  with QK-Norm: CUDA normalizes Q/K in the `UnpackRoPEAppend` preprocess before launching XQA.
 
 ## 4. KV Cache and Quantization
 
@@ -223,10 +224,12 @@ order and the first eligible backend wins:
 The selected backend is reported in the kernel debug info as `SdpaKernel=...` when debug info is
 enabled (see §10).
 
-> **QK-Norm interaction.** When `q_norm_weight` / `k_norm_weight` are present (see §3), the fused
-> decode paths that bypass `PrepareQKV` — **XQA** and the **Flash-Decoding fast path** — are
-> disabled so the QK-Norm prologue always runs. Such nodes therefore route to Flash Attention
-> (or cuDNN SDPA / MEA / Unfused), all of which consume the normalized Q/K produced by `PrepareQKV`.
+> **QK-Norm interaction.** When `q_norm_weight` / `k_norm_weight` are present (see §3), the
+> Flash-Decoding fast path is disabled so the QK-Norm prologue always runs. Non-quantized XQA decode
+> remains eligible for supported shapes: the `UnpackRoPEAppend` preprocess normalizes Q/K, applies
+> RoPE, appends K/V, and then XQA consumes the normalized Q and cache. Quantized-cache QK-Norm decode
+> still falls back to Flash Attention (or cuDNN SDPA / MEA / Unfused) until normalized-K scale
+> handling is validated for XQA.
 
 ### 6.1 XQA
 
@@ -451,9 +454,8 @@ popular LLMs. Listed roughly by impact.
 
 1. **Fused QK-Norm (per-head Q/K RMSNorm prologue).** *Implemented.* The CUDA kernel applies the
    fused per-head RMSNorm to Q and K before RoPE when `q_norm_weight` / `k_norm_weight` are provided
-   (see §3), matching **Qwen3, Gemma 2/3, OLMo2, SmolLM3**, etc. Remaining limitation: QK-Norm
-   disables the fused decode kernels (XQA and Flash-Decoding) and routes through Flash / cuDNN /
-   MEA instead, so QK-Norm decode does not yet get the XQA fast path.
+    (see §3), matching **Qwen3, Gemma 2/3, OLMo2, SmolLM3**, etc. Remaining limitation: QK-Norm
+    disables Flash-Decoding, and quantized-cache QK-Norm does not yet get the XQA fast path.
 2. **Sliding-window + attention-sink on the fused decode path.** XQA requires global attention
    (`local_window_size == -1`), so **GPT-OSS / Mistral / Gemma 2** layers that combine a sliding
    window with a `head_sink` fall back to Flash / Flash-Decoding instead of XQA. Unifying sliding

@@ -387,12 +387,12 @@ class GroupQueryAttentionConfig(AttentionConfig):
 
         if self.has_qk_norm:
             generator = torch.Generator(device=self.device).manual_seed(7)
-            feeds["q_norm_weight"] = (1.0 + 0.1 * torch.randn(
-                self.head_size, generator=generator, device=self.device, dtype=torch.float32
-            )).to(self.dtype)
-            feeds["k_norm_weight"] = (1.0 + 0.1 * torch.randn(
-                self.head_size, generator=generator, device=self.device, dtype=torch.float32
-            )).to(self.dtype)
+            feeds["q_norm_weight"] = (
+                1.0 + 0.1 * torch.randn(self.head_size, generator=generator, device=self.device, dtype=torch.float32)
+            ).to(self.dtype)
+            feeds["k_norm_weight"] = (
+                1.0 + 0.1 * torch.randn(self.head_size, generator=generator, device=self.device, dtype=torch.float32)
+            ).to(self.dtype)
 
         # Generate quantized cache and scales if quantization is enabled
         if self.k_quant_type != "NONE":

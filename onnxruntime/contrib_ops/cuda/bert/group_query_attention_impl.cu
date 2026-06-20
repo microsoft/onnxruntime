@@ -736,9 +736,7 @@ Status ExtremeDecoding(
       parameters.rotary_interleaved,
       !past_bsnh,  // is_cache_bnsh
       parameters.k_quant_type,
-      // XQA does not support the QK-Norm prologue and is disabled when q/k norm weights are present,
-      // so no normalization is applied on this path.
-      nullptr, nullptr, parameters.qk_norm_epsilon,
+      data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,
       stream,
       device_prop.maxThreadsPerBlock)));
 

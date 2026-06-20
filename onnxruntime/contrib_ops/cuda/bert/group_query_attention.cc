@@ -427,11 +427,13 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // An explicit ORT_ENABLE_XQA=0 (xqa_force_disabled_) still wins and turns XQA off entirely.
   // The dtype guard mirrors enable_xqa_ (XQA only supports fp16/bf16); ineligible cases fall back below.
   constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
-  // The XQA decode kernel performs its own RoPE/append and bypasses PrepareQKV, so it cannot apply
-  // the fused QK-Norm prologue. Disable XQA when q/k norm weights are present and fall back to the
-  // Flash/cuDNN/MEA paths (all of which route through PrepareQKV's normalization).
+  // QK-Norm can use XQA for the non-quantized KV-cache path: ExtremeDecoding runs the same
+  // UnpackRoPEAppend preprocess before XQA, so Q/K can be normalized before the XQA kernel consumes
+  // Q and the appended cache. Keep quantized QK-Norm off the XQA route until scale correctness is
+  // validated for normalized K before quantized-cache append.
+  const bool xqa_qk_norm_supported = !parameters.use_qk_norm || !is_inputs_quantized;
   const bool xqa_enabled_for_run =
-      !xqa_force_disabled_ && !parameters.use_qk_norm &&
+      !xqa_force_disabled_ && xqa_qk_norm_supported &&
       (enable_xqa_ || (kIsFp16OrBf16 && use_xqa_attention_sinks));
   if (xqa_enabled_for_run &&
       (device_prop.major >= 8) &&

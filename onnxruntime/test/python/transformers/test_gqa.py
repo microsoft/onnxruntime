@@ -2258,6 +2258,68 @@ class TestGQAQKNorm(unittest.TestCase):
                 atol=atol["fp16"],
             )
 
+    def test_gqa_qk_norm_past_xqa(self):
+        config = GQAConfig(
+            batch_size=2,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            past_kv_sequence_length=127,
+            buffer_sequence_length=136,
+            num_heads=32,
+            kv_num_heads=8,
+            head_size=128,
+            rotary=True,
+            rotary_interleaved=False,
+            packed=False,
+            share_buffer=True,
+            has_qk_norm=True,
+        )
+
+        with scoped_env_var("ORT_ENABLE_XQA", "1"):
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=True,
+                rtol=rtol["fp16"],
+                atol=atol["fp16"],
+            )
+
+    def test_gqa_qk_norm_past_xqa_bf16(self):
+        if not torch.cuda.is_bf16_supported():
+            self.skipTest("BFloat16 not supported on this device")
+
+        config = GQAConfig(
+            batch_size=2,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            past_kv_sequence_length=127,
+            buffer_sequence_length=136,
+            num_heads=32,
+            kv_num_heads=8,
+            head_size=128,
+            rotary=True,
+            rotary_interleaved=False,
+            packed=False,
+            share_buffer=True,
+            has_qk_norm=True,
+        )
+        config.kv_cache_type = "bfloat16"
+
+        with scoped_env_var("ORT_ENABLE_XQA", "1"):
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.bfloat16,
+                ort_type=TensorProto.BFLOAT16,
+                causal=True,
+                rtol=rtol["bf16"],
+                atol=atol["bf16"],
+            )
+
     @parameterized.expand(gqa_qk_norm_test_cases(is_past=True))
     def test_gqa_qk_norm_past_bf16(self, name, config):
         if not torch.cuda.is_bf16_supported():

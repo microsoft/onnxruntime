@@ -1324,7 +1324,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Optional 1D tensor of shape (head_size). When provided together with k_norm_weight, the kernel applies a "
                "per-head RMS normalization to Q (and K) before any rotary embedding. Used by Qwen3-style models that wrap "
                "their Q/K projections in a Reshape -> SimplifiedLayerNormalization -> Reshape stack; downstream graph fusion "
-               "folds that pattern into this input. Currently honored by the native WebGPU execution provider only; "
+               "folds that pattern into this input. Currently honored by the CUDA and native WebGPU execution providers; "
                "JSEP WebGPU/JS and other EPs must reject the node when this input is set.",
                "T",
                OpSchema::Optional)

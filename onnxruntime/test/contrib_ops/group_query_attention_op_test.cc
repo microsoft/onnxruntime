@@ -492,7 +492,7 @@ static void ApplyPerHeadRmsNormBSNH(std::vector<float>& data,
 }
 
 // Runs GroupQueryAttention with do_rotary=1 and optional q/k norm weights.
-// If q_norm_weight/k_norm_weight are provided, this exercises the WebGPU-only
+// If q_norm_weight/k_norm_weight are provided, this exercises the EP-specific
 // q/k norm input contract. CPU callers should pass nullptr for both and feed
 // pre-normalized Q/K values instead.
 static std::vector<float> RunGQARotaryWithOptionalQKNorm(
