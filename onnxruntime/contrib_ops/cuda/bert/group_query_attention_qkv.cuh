@@ -166,11 +166,17 @@ __global__ void UnpackRoPEAppend(
     __syncthreads();
     // blockDim.x == head_size / elements_per_thread is small (<= 64). A linear reduction is robust
     // for any (possibly non-power-of-two) thread count and avoids tree-reduction edge cases.
-    float sumsq = 0.0f;
-    for (int t = 0; t < blockDim.x; ++t) {
-      sumsq += s_qk_reduce[t];
+    // Reduce once in tid==0 and broadcast inv_rms via shared memory to avoid the redundant
+    // O(blockDim.x^2) shared reads that result from every thread summing the partials.
+    if (tid == 0) {
+      float sumsq = 0.0f;
+      for (int t = 0; t < blockDim.x; ++t) {
+        sumsq += s_qk_reduce[t];
+      }
+      s_qk_reduce[0] = rsqrtf(sumsq / static_cast<float>(head_size) + qk_norm_epsilon);
     }
-    const float inv_rms = rsqrtf(sumsq / static_cast<float>(head_size) + qk_norm_epsilon);
+    __syncthreads();
+    const float inv_rms = s_qk_reduce[0];
     if (valid) {
 #pragma unroll
       for (int i = 0; i < elements_per_thread; ++i) {

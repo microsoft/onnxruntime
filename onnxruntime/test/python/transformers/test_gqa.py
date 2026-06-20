@@ -2214,7 +2214,7 @@ def gqa_qk_norm_test_cases(is_past: bool):
                 yield name, config
 
 
-@unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
+@unittest.skipIf(not has_cuda_device(80), "CUDA GQA QK-Norm requires Ampere or higher GPU, skipping tests.")
 class TestGQAQKNorm(unittest.TestCase):
     def tearDown(self):
         if torch.cuda.is_available():
