@@ -397,13 +397,11 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // 7. No local window attention (global attention only).
   const bool use_xqa_attention_sinks = head_sink != nullptr && !is_inputs_quantized;
   const bool is_xqa_smooth_softmax_supported = !parameters.use_smooth_softmax || use_xqa_attention_sinks;
-  // XQA is opt-in for the non-quantized path (ORT_ENABLE_XQA), but a head_sink (attention sink) input
-  // signals a GPT-OSS style decode model that benefits from XQA, so enable it by default in that case.
-  // An explicit ORT_ENABLE_XQA=0 (xqa_force_disabled_) still wins and turns XQA off entirely.
-  // The dtype guard mirrors enable_xqa_ (XQA only supports fp16/bf16); ineligible cases fall back below.
+  // XQA is enabled by default (enable_xqa_=true when ORT_ENABLE_XQA is unset).
+  // An explicit ORT_ENABLE_XQA=0 (xqa_force_disabled_) overrides everything and turns XQA off entirely.
+  // Ineligible shapes/group sizes fall back via data.use_xqa below.
   constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
-  const bool xqa_enabled_for_run =
-      !xqa_force_disabled_ && (enable_xqa_ || (kIsFp16OrBf16 && use_xqa_attention_sinks));
+  const bool xqa_enabled_for_run = !xqa_force_disabled_ && enable_xqa_;
   if (xqa_enabled_for_run &&
       (device_prop.major >= 8) &&
       !parameters.is_first_prompt &&
