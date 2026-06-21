@@ -755,14 +755,20 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     // FinalizeNodeFusion moves every input edge of the first node by NodeArg name. Disconnect inputs
     // that the replacement does not use, such as a Pow exponent produced by a mixed-precision Cast.
     // Keep track of their producers so they can be removed if this fusion makes them dead.
-    InlinedVector<NodeIndex> unused_input_node_indices;
+    InlinedHashSet<NodeIndex> unused_input_node_indices;
+    // Pow may follow a leading Cast and not be the first node finalized. Track its exponent producer
+    // explicitly because removing Pow will disconnect that edge without moving it to the replacement.
+    if (const Node* pow_exponent_input_node = graph_utils::GetInputNode(pow_node, 1)) {
+      unused_input_node_indices.insert(pow_exponent_input_node->Index());
+    }
+
     const auto first_node_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(nodes_to_remove.front().get());
     for (const auto& input_edge : first_node_input_edges) {
       const bool is_replacement_input =
           std::any_of(layer_norm_input_defs.cbegin(), layer_norm_input_defs.cend(),
                       [&input_edge](const NodeArg* input) { return input->Name() == input_edge.arg_name; });
       if (!is_replacement_input) {
-        unused_input_node_indices.push_back(input_edge.src_node);
+        unused_input_node_indices.insert(input_edge.src_node);
         graph.RemoveEdge(input_edge.src_node, input_edge.dst_node,
                          input_edge.src_arg_index, input_edge.dst_arg_index);
       }
