@@ -110,15 +110,9 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   v_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("v_quant_type", "NONE"));
   kv_cache_bit_width_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("kv_cache_bit_width", 0));
 
-  bool is_quantized = (k_quant_type_ != KVQuantizationType::NONE || v_quant_type_ != KVQuantizationType::NONE);
-  // XQA enablement:
-  //  - An explicit ORT_ENABLE_XQA overrides everything (1 = on, 0 = off, including the head_sink default-on path).
-  //  - When unset, XQA defaults on for both quantized and non-quantized fp16/bf16 paths.
   constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
-  const int xqa_env = ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", -1);  // -1 means unset
-  xqa_force_disabled_ = (xqa_env == 0);
-  const int effective_enable_xqa = (xqa_env == -1) ? 1 : xqa_env;
-  enable_xqa_ = kIsFp16OrBf16 && (effective_enable_xqa != 0);
+  // XQA defaults on for fp16/bf16; ORT_ENABLE_XQA=0 disables it explicitly.
+  enable_xqa_ = kIsFp16OrBf16 && (ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", 1) != 0);
 
   kernel_options_ = this->GetAttentionKernelOptions();
 
@@ -397,12 +391,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // 7. No local window attention (global attention only).
   const bool use_xqa_attention_sinks = head_sink != nullptr && !is_inputs_quantized;
   const bool is_xqa_smooth_softmax_supported = !parameters.use_smooth_softmax || use_xqa_attention_sinks;
-  // XQA is enabled by default (enable_xqa_=true when ORT_ENABLE_XQA is unset).
-  // An explicit ORT_ENABLE_XQA=0 (xqa_force_disabled_) overrides everything and turns XQA off entirely.
-  // Ineligible shapes/group sizes fall back via data.use_xqa below.
-  constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
-  const bool xqa_enabled_for_run = !xqa_force_disabled_ && enable_xqa_;
-  if (xqa_enabled_for_run &&
+  // XQA is enabled when enable_xqa_=true; ineligible shapes/group sizes fall back via data.use_xqa below.
+  if (enable_xqa_ &&
       (device_prop.major >= 8) &&
       !parameters.is_first_prompt &&
       parameters.sequence_length == 1 &&

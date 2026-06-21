@@ -2435,8 +2435,8 @@ class TestXQAHeadSinkParity(unittest.TestCase):
     """Verify the non-quantized XQA attention-sink (head_sink) decode path matches the reference."""
 
     def setUp(self):
-        # XQA is enabled by default when a head_sink input is present, so this path is exercised
-        # without ORT_ENABLE_XQA. Clear it (saving the previous value) to test the real default.
+        # XQA is enabled by default for fp16/bf16 (ORT_ENABLE_XQA defaults to 1).
+        # Pop any override so we exercise the real default behavior.
         self._prev_enable_xqa = os.environ.pop("ORT_ENABLE_XQA", None)
 
     def tearDown(self):
