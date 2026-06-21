@@ -6,16 +6,24 @@
 
 #pragma once
 
+#include <algorithm>
+
 #include "onnxruntime_c_api.h"
 #include "onnxruntime_cxx_api.h"
 
 #include "core/common/common.h"
 
-// The minimum ORT API version required by the CUDA plugin EP.
-// This matches MIN_ONNXRUNTIME_VERSION (1.26.0) and must be used in GetApi()
-// and ort_version_supported so that the plugin is compatible with ORT 1.26+
-// without requesting v27-only OrtApi entries that ORT 1.26 does not provide.
-static constexpr uint32_t kCudaPluginEpMinOrtApiVersion = 26;
+// Every EP-facing callback struct (OrtEpFactory, OrtEp, OrtAllocator, OrtSyncStreamImpl,
+// OrtSyncNotificationImpl, OrtDataTransferImpl, OrtEpProfilerImpl, OrtLoopKernelHelper,
+// OrtScanKernelHelper) initializes its ort_version_supported/version field to ORT_API_VERSION
+// (the ORT API version the plugin was compiled with). ORT uses this only to avoid reading struct
+// fields that did not exist when the plugin was compiled.
+//
+// Whether the plugin may *call* a given OrtApi/OrtEpApi function depends on the API version of the
+// runtime it was loaded into, which can be older than ORT_API_VERSION (down to the floor in
+// plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION). That guard uses onnxruntime::ep::CurrentOrtApiVersion()
+// at each version-dependent call site (e.g. the OrtEp callback gating in cuda_ep.cc), not
+// ort_version_supported.
 
 #include <cuda_runtime_api.h>
 #include <cublas_v2.h>

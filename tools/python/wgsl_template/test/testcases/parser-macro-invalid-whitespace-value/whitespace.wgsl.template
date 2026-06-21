@@ -1,0 +1,9 @@
+#define SPACES_ONLY    
+#define TABS_ONLY		
+#define MIXED_SPACES  	   
+#define VALID_MACRO actual_value
+
+const test1 = SPACES_ONLY;
+const test2 = TABS_ONLY;
+const test3 = MIXED_SPACES;
+const test4 = VALID_MACRO;

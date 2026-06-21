@@ -68,6 +68,26 @@ namespace cuda {
 // QKV Preprocessing Helpers
 // ============================================================================
 
+template <typename T>
+__global__ void ConvertHeadSinkToFloatKernel(const T* input, float* output, int count) {
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < count) {
+    output[i] = static_cast<float>(input[i]);
+  }
+}
+
+template <typename T>
+Status LaunchConvertHeadSinkToFloat(
+    const T* input,
+    float* output,
+    int count,
+    cudaStream_t stream,
+    int max_threads_per_block) {
+  int blocks = (count + max_threads_per_block - 1) / max_threads_per_block;
+  ConvertHeadSinkToFloatKernel<T><<<blocks, max_threads_per_block, 0, stream>>>(input, output, count);
+  return CUDA_CALL(cudaGetLastError());
+}
+
 // Internal helper to get Q, K, V pointers, handling packed input
 //
 // This function orchestrates the preparation of Q, K, and V tensors for attention kernels.
@@ -655,6 +675,13 @@ Status ExtremeDecoding(
   void* xqa_workspace = data.xqa_buffer;
   size_t xqa_workspace_size = data.xqa_buffer_bytes;
 
+  if (data.xqa_head_sink_needs_conversion) {
+    ORT_ENFORCE(data.xqa_head_sink != nullptr, "XQA head_sink conversion buffer was not allocated.");
+    ORT_ENFORCE(data.head_sink != nullptr, "XQA head_sink input was not available for conversion.");
+    ORT_RETURN_IF_ERROR(LaunchConvertHeadSinkToFloat<T>(
+        data.head_sink, data.xqa_head_sink, num_heads, stream, device_prop.maxThreadsPerBlock));
+  }
+
   constexpr bool is_fp8 = std::is_same<U, __nv_fp8_e4m3>::value;
   using onnxruntime::contrib::cuda::XqaQuantType;
   // 5. Launch XQA
@@ -673,6 +700,7 @@ Status ExtremeDecoding(
       scale,
       past_bsnh,
       data.past_seq_lens,
+      data.xqa_head_sink,
       data.k_scale,  // kv_cache_scale
       // Map cache type to XqaQuantType: NONE->kNone, Float8E4M3FN->kFp8, int8->kInt8
       (parameters.k_quant_type == KVQuantizationType::NONE) ? XqaQuantType::kNone : (is_fp8 ? XqaQuantType::kFp8 : XqaQuantType::kInt8),
@@ -1315,6 +1343,20 @@ Status QkvToContext(
 template struct GroupQueryAttentionData<half, half>;
 template struct GroupQueryAttentionData<__nv_bfloat16, __nv_bfloat16>;
 template struct GroupQueryAttentionData<half, int8_t>;
+
+template Status LaunchConvertHeadSinkToFloat<half>(
+    const half* input,
+    float* output,
+    int count,
+    cudaStream_t stream,
+    int max_threads_per_block);
+
+template Status LaunchConvertHeadSinkToFloat<__nv_bfloat16>(
+    const __nv_bfloat16* input,
+    float* output,
+    int count,
+    cudaStream_t stream,
+    int max_threads_per_block);
 
 template Status QkvToContext<half, half>(
     const cudaDeviceProp& device_prop,

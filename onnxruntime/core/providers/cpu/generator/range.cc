@@ -46,9 +46,24 @@ ONNX_OPERATOR_KERNEL_EX(
 
 #endif
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Range,
     11,
+    26,
+    KernelDefBuilder()
+        .TypeConstraint("T",
+                        BuildKernelDefConstraintsFromTypeList<EnabledRangeDataTypes>()),
+    Range);
+
+// Opset 27 added float16/bfloat16 to the type constraint and a stash_type attribute.
+// This kernel continues to natively support the common numeric types only; a native
+// float16/bfloat16 kernel is a follow-up enhancement. Note that float16/bfloat16 Range
+// models still execute correctly today: Range-27 carries an ONNX function body that ORT
+// expands into primitive ops at graph-partition time, so the follow-up is about adding an
+// efficient native kernel, not about fixing broken functionality.
+ONNX_CPU_OPERATOR_KERNEL(
+    Range,
+    27,
     KernelDefBuilder()
         .TypeConstraint("T",
                         BuildKernelDefConstraintsFromTypeList<EnabledRangeDataTypes>()),

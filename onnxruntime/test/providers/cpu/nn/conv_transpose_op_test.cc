@@ -7,6 +7,11 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "default_providers.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/graph/model.h"
+#include "core/graph/node_attr_utils.h"
+#include "core/session/inference_session.h"
+#include "test/unittest_util/framework_test_utils.h"
+#include "test/util/include/test_environment.h"
 
 namespace onnxruntime {
 namespace test {
@@ -313,7 +318,7 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_1) {
   ConvTransposeOpAttributes attrs = {
       std::vector<int64_t>{3, 3},        // kernel_shape
       {},                                // output_padding
-      std::vector<int64_t>{1, 3, 4, 4},  // output_shape
+      std::vector<int64_t>{4, 4},        // output_shape
       std::vector<int64_t>{0, 0, 0, 0},  // pads
       std::vector<int64_t>{1, 1},        // strides
       std::vector<int64_t>{1, 1},        // dilations
@@ -354,14 +359,14 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_1) {
 
 TEST(ConvTransposeTest, ConvTranspose_1D_OutputShape_1_group_2_for_transpose_path) {
   ConvTransposeOpAttributes attrs = {
-      std::vector<int64_t>{3},        // kernel_shape
-      {},                             // output_padding
-      std::vector<int64_t>{1, 6, 4},  // output_shape
-      std::vector<int64_t>{0, 0},     // pads
-      std::vector<int64_t>{1},        // strides
-      std::vector<int64_t>{1},        // dilations
-      2,                              // group
-      "NOTSET"                        // auto_pad
+      std::vector<int64_t>{3},     // kernel_shape
+      {},                          // output_padding
+      std::vector<int64_t>{4},     // output_shape
+      std::vector<int64_t>{0, 0},  // pads
+      std::vector<int64_t>{1},     // strides
+      std::vector<int64_t>{1},     // dilations
+      2,                           // group
+      "NOTSET"                     // auto_pad
   };
   int image_size = 4;
   int input_channels = 3 * 2;
@@ -397,7 +402,7 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_1_group_2_for_transpose_pat
   ConvTransposeOpAttributes attrs = {
       std::vector<int64_t>{3, 3},        // kernel_shape
       {},                                // output_padding
-      std::vector<int64_t>{1, 6, 4, 4},  // output_shape
+      std::vector<int64_t>{4, 4},        // output_shape
       std::vector<int64_t>{0, 0, 0, 0},  // pads
       std::vector<int64_t>{1, 1},        // strides
       std::vector<int64_t>{1, 1},        // dilations
@@ -451,14 +456,14 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_1_group_2_for_transpose_pat
 
 TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2) {
   ConvTransposeOpAttributes attrs = {
-      std::vector<int64_t>{1, 5},         // kernel_shape
-      {},                                 // output_padding
-      std::vector<int64_t>{1, 1, 1, 14},  // output_shape
-      std::vector<int64_t>{0, 0, 0, 0},   // pads
-      std::vector<int64_t>{1, 1},         // strides
-      std::vector<int64_t>{1, 1},         // dilations
-      1,                                  // group
-      "NOTSET"                            // auto_pad
+      std::vector<int64_t>{1, 5},        // kernel_shape
+      {},                                // output_padding
+      std::vector<int64_t>{1, 14},       // output_shape
+      std::vector<int64_t>{0, 0, 0, 0},  // pads
+      std::vector<int64_t>{1, 1},        // strides
+      std::vector<int64_t>{1, 1},        // dilations
+      1,                                 // group
+      "NOTSET"                           // auto_pad
   };
   std::vector<float> X = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
   std::vector<int64_t> X_shape = {1, 1, 1, 10};
@@ -473,6 +478,82 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2) {
                       {kOpenVINOExecutionProvider, kCudaNHWCExecutionProvider, kQnnExecutionProvider});
 }
 
+TEST(ConvTransposeTest, ConvTranspose_RankPlus2_OutputShape_DynamicRankInput_Runtime) {
+  // Regression cover for the runtime-reachable rank+2 output_shape branch in
+  // ConvTransposeAttributes::PrepareForCompute (conv_transpose_attributes.h). OpTester always assigns a
+  // static input rank, so under ONNX 1.22 strict shape inference a rank+2 output_shape is rejected at
+  // Graph::Resolve and the branch is unreachable through OpTester. Here X is declared WITHOUT a shape
+  // (unknown rank), so ONNX's convTransposeShapeInference early-returns (hasNInputShapes is false) and the
+  // rank+2 output_shape survives to the kernel. This verifies the legacy rank+2 form still runs and
+  // produces the same result as the spatial-only ConvTranspose_2D_OutputShape_2.
+  onnxruntime::Model model("convtranspose_rankplus2_dynamic_rank", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), {{kOnnxDomain, 11}}, {},
+                           DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+
+  // X: float tensor with UNKNOWN rank (no shape set) -> defeats static-rank shape inference.
+  ONNX_NAMESPACE::TypeProto x_type;
+  x_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  // X, W, B declared by element type only; X's unknown rank alone makes hasNInputShapes false so ONNX
+  // skips the strict size check.
+  ONNX_NAMESPACE::TypeProto float_type;
+  float_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  auto& x_arg = graph.GetOrCreateNodeArg("X", &x_type);
+  auto& w_arg = graph.GetOrCreateNodeArg("W", &float_type);
+  auto& b_arg = graph.GetOrCreateNodeArg("B", &float_type);
+  auto& y_arg = graph.GetOrCreateNodeArg("Y", &float_type);
+
+  // rank+2 (N, C, H, W) output_shape -- the legacy ORT form; spatial dims are H=1, W=14.
+  NodeAttributes attrs;
+  attrs["kernel_shape"] = utils::MakeAttribute("kernel_shape", std::vector<int64_t>{1, 5});
+  attrs["output_shape"] = utils::MakeAttribute("output_shape", std::vector<int64_t>{1, 1, 1, 14});
+  attrs["pads"] = utils::MakeAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  attrs["strides"] = utils::MakeAttribute("strides", std::vector<int64_t>{1, 1});
+  attrs["dilations"] = utils::MakeAttribute("dilations", std::vector<int64_t>{1, 1});
+  attrs["group"] = utils::MakeAttribute("group", int64_t{1});
+
+  graph.AddNode("convtranspose", "ConvTranspose", "rank+2 output_shape, dynamic-rank input",
+                {&x_arg, &w_arg, &b_arg}, {&y_arg}, &attrs, onnxruntime::kOnnxDomain);
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_str;
+  ASSERT_TRUE(model.ToProto().SerializeToString(&model_str));
+  std::stringstream sstr(model_str);
+
+  SessionOptions so;
+  so.session_logid = "ConvTranspose_RankPlus2_DynamicRankInput";
+  InferenceSession session(so, GetEnvironment());
+  ASSERT_STATUS_OK(session.Load(sstr));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  auto cpu_alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  OrtValue x_val, w_val, b_val;
+  CreateMLValue<float>(cpu_alloc, std::vector<int64_t>{1, 1, 1, 10},
+                       std::vector<float>{0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f}, &x_val);
+  CreateMLValue<float>(cpu_alloc, std::vector<int64_t>{1, 1, 1, 5},
+                       std::vector<float>{1.0f, 2.0f, 3.0f, 2.0f, 1.0f}, &w_val);
+  CreateMLValue<float>(cpu_alloc, std::vector<int64_t>{1}, std::vector<float>{1.0f}, &b_val);
+
+  NameMLValMap feeds{{"X", x_val}, {"W", w_val}, {"B", b_val}};
+  std::vector<std::string> output_names{"Y"};
+  std::vector<OrtValue> fetches;
+  RunOptions run_options;
+  ASSERT_STATUS_OK(session.Run(run_options, feeds, output_names, &fetches));
+
+  ASSERT_EQ(fetches.size(), 1u);
+  const Tensor& y = fetches[0].Get<Tensor>();
+  ASSERT_EQ(y.Shape(), TensorShape({1, 1, 1, 14}));
+  // Same expected output as the spatial-only ConvTranspose_2D_OutputShape_2.
+  const std::vector<float> expected_vals = {1.0f, 2.0f, 5.0f, 11.0f, 19.0f, 28.0f, 37.0f,
+                                            46.0f, 55.0f, 64.0f, 63.0f, 51.0f, 27.0f, 10.0f};
+  auto span = y.DataAsSpan<float>();
+  ASSERT_EQ(static_cast<size_t>(span.size()), expected_vals.size());
+  for (size_t i = 0; i < expected_vals.size(); ++i) {
+    EXPECT_FLOAT_EQ(span[i], expected_vals[i]) << "mismatch at index " << i;
+  }
+}
+
 TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2_OpSet22_CUDA) {
   auto cuda_ep = DefaultCudaExecutionProvider();
   if (!cuda_ep) {
@@ -483,7 +564,7 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2_OpSet22_CUDA) {
   test.AddAttribute("kernel_shape", std::vector<int64_t>{1, 5});
   test.AddAttribute("group", int64_t{1});
   test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
-  test.AddAttribute("output_shape", std::vector<int64_t>{1, 1, 1, 14});
+  test.AddAttribute("output_shape", std::vector<int64_t>{1, 14});
   test.AddAttribute("strides", std::vector<int64_t>{1, 1});
   test.AddAttribute("dilations", std::vector<int64_t>{1, 1});
 
@@ -511,14 +592,14 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_2_OpSet22_CUDA) {
 
 TEST(ConvTransposeTest, ConvTranspose_2D_OutputShapeWithBatchSize) {
   ConvTransposeOpAttributes attrs = {
-      std::vector<int64_t>{1, 5},         // kernel_shape
-      {},                                 // output_padding
-      std::vector<int64_t>{2, 1, 1, 14},  // output_shape
-      std::vector<int64_t>{0, 0, 0, 0},   // pads
-      std::vector<int64_t>{1, 1},         // strides
-      std::vector<int64_t>{1, 1},         // dilations
-      1,                                  // group
-      "NOTSET"                            // auto_pad
+      std::vector<int64_t>{1, 5},        // kernel_shape
+      {},                                // output_padding
+      std::vector<int64_t>{1, 14},       // output_shape
+      std::vector<int64_t>{0, 0, 0, 0},  // pads
+      std::vector<int64_t>{1, 1},        // strides
+      std::vector<int64_t>{1, 1},        // dilations
+      1,                                 // group
+      "NOTSET"                           // auto_pad
   };
   std::vector<float> X = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f,
                           10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f, 19.0f};
@@ -537,14 +618,14 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShapeWithBatchSize) {
 
 TEST(ConvTransposeTest, ConvTranspose_InvalidKernelShape) {
   ConvTransposeOpAttributes attrs = {
-      std::vector<int64_t>{1, 1, 1, 5},   // invalid kernel_shape, should be [1, 5]
-      {},                                 // output_padding
-      std::vector<int64_t>{2, 1, 1, 14},  // output_shape
-      std::vector<int64_t>{0, 0, 0, 0},   // pads
-      std::vector<int64_t>{1, 1},         // strides
-      std::vector<int64_t>{1, 1},         // dilations
-      1,                                  // group
-      "NOTSET"                            // auto_pad
+      std::vector<int64_t>{1, 1, 1, 5},  // invalid kernel_shape, should be [1, 5]
+      {},                                // output_padding
+      std::vector<int64_t>{1, 14},       // output_shape
+      std::vector<int64_t>{0, 0, 0, 0},  // pads
+      std::vector<int64_t>{1, 1},        // strides
+      std::vector<int64_t>{1, 1},        // dilations
+      1,                                 // group
+      "NOTSET"                           // auto_pad
   };
   std::vector<float> X = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f,
                           10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f, 19.0f};
@@ -558,23 +639,26 @@ TEST(ConvTransposeTest, ConvTranspose_InvalidKernelShape) {
                                       11.0f, 32.0f, 65.0f, 91.0f, 109.0f, 118.0f, 127.0f, 136.0f, 145.0f, 154.0f, 143.0f, 111.0f, 57.0f, 20.0f};
   TestConvTransposeOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape,
                       OpTester::ExpectResult::kExpectFailure,
-                      // error message will end in "W: {1,1,1,5}" or "W: {1,1,5,1} depending on whether NCHW or NHWC,
-                      // so drop the part that differs from the expected string
-                      "kernel_shape num_dims is not compatible with W num_dims. kernel_shape: {1,1,1,5} W: {1,1,",
+                      // As of ONNX 1.22, ConvTranspose shape inference rejects the kernel_shape/W
+                      // rank mismatch at Graph::Resolve (before the CPU kernel runs), so the failure
+                      // surfaces with ONNX's shape-inference message instead of the kernel's
+                      // "kernel_shape num_dims is not compatible with W num_dims" text. kernel_shape
+                      // has no N,C-prefixed form, so adopting ONNX's strictness here is correct.
+                      "Attribute kernel_shape has incorrect size",
                       {kTensorrtExecutionProvider, kQnnExecutionProvider,
                        kDmlExecutionProvider, kOpenVINOExecutionProvider});  // TODO: Unskip when fixed #41968513
 }
 
 TEST(ConvTransposeTest, ConvTranspose_InvalidBiasShape_1) {
   ConvTransposeOpAttributes attrs = {
-      std::vector<int64_t>{1, 5},         // kernel_shape
-      {},                                 // output_padding
-      std::vector<int64_t>{2, 1, 1, 14},  // output_shape
-      std::vector<int64_t>{0, 0, 0, 0},   // pads
-      std::vector<int64_t>{1, 1},         // strides
-      std::vector<int64_t>{1, 1},         // dilations
-      1,                                  // group
-      "NOTSET"                            // auto_pad
+      std::vector<int64_t>{1, 5},        // kernel_shape
+      {},                                // output_padding
+      std::vector<int64_t>{1, 14},       // output_shape
+      std::vector<int64_t>{0, 0, 0, 0},  // pads
+      std::vector<int64_t>{1, 1},        // strides
+      std::vector<int64_t>{1, 1},        // dilations
+      1,                                 // group
+      "NOTSET"                           // auto_pad
   };
   std::vector<float> X = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f,
                           10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f, 19.0f};
@@ -601,14 +685,14 @@ TEST(ConvTransposeTest, ConvTranspose_InvalidBiasShape_1) {
 
 TEST(ConvTransposeTest, ConvTranspose_InvalidBiasShape_2) {
   ConvTransposeOpAttributes attrs = {
-      std::vector<int64_t>{1, 5},         // kernel_shape
-      {},                                 // output_padding
-      std::vector<int64_t>{2, 1, 1, 14},  // output_shape
-      std::vector<int64_t>{0, 0, 0, 0},   // pads
-      std::vector<int64_t>{1, 1},         // strides
-      std::vector<int64_t>{1, 1},         // dilations
-      1,                                  // group
-      "NOTSET"                            // auto_pad
+      std::vector<int64_t>{1, 5},        // kernel_shape
+      {},                                // output_padding
+      std::vector<int64_t>{1, 14},       // output_shape
+      std::vector<int64_t>{0, 0, 0, 0},  // pads
+      std::vector<int64_t>{1, 1},        // strides
+      std::vector<int64_t>{1, 1},        // dilations
+      1,                                 // group
+      "NOTSET"                           // auto_pad
   };
   std::vector<float> X = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f,
                           10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f, 17.0f, 18.0f, 19.0f};
@@ -1301,7 +1385,7 @@ TEST(ConvTransposeTest, SharedPrepackedWeights) {
   test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
   test.AddAttribute("group", static_cast<int64_t>(2));
   test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
-  test.AddAttribute("output_shape", std::vector<int64_t>{1, 6, 4, 4});
+  test.AddAttribute("output_shape", std::vector<int64_t>{4, 4});
 
   int image_size = 4 * 4;
   int input_channels = 3 * 2;
