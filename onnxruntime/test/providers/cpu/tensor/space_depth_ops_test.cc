@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <string>
+#include <unordered_set>
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "core/providers/cpu/tensor/space_depth_ops.h"
@@ -222,7 +225,14 @@ TYPED_TEST(TensorOpTest, SpaceToDepthTest_int) {
   }
 
   // Exclude the QNN EP, which does not support all of the tested element types (e.g. MLFloat16 and 8-bit integer).
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
+  std::unordered_set<std::string> excluded_eps = {kQnnExecutionProvider};
+  if constexpr (std::is_same<TypeParam, int8_t>::value) {
+    // TensorRT does not reject int8 input up front (as it does for uint8); instead it accepts the node
+    // and then fails at engine build time because int8 I/O without Q/DQ layers needs a calibrator or a
+    // set dynamic range. This op's 8-bit integer support targets the CPU EP, so exclude TensorRT here.
+    excluded_eps.insert(kTensorrtExecutionProvider);
+  }
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_eps);
 }
 
 // Explicitly exercises the opset 13 SpaceToDepth kernel registration with the supported element types.
@@ -267,7 +277,14 @@ TYPED_TEST(TensorOpTest, SpaceToDepthTest_int_opset13) {
   }
 
   // Exclude the QNN EP, which does not support all of the tested element types (e.g. MLFloat16 and 8-bit integer).
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
+  std::unordered_set<std::string> excluded_eps = {kQnnExecutionProvider};
+  if constexpr (std::is_same<TypeParam, int8_t>::value) {
+    // TensorRT does not reject int8 input up front (as it does for uint8); instead it accepts the node
+    // and then fails at engine build time because int8 I/O without Q/DQ layers needs a calibrator or a
+    // set dynamic range. This op's 8-bit integer support targets the CPU EP, so exclude TensorRT here.
+    excluded_eps.insert(kTensorrtExecutionProvider);
+  }
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_eps);
 }
 
 // Explicitly exercises the opset 13 DepthToSpace kernel registration with the supported element types.
@@ -312,7 +329,14 @@ TYPED_TEST(TensorOpTest, DepthToSpaceTest_int_opset13) {
   }
 
   // Exclude the QNN EP, which does not support all of the tested element types (e.g. MLFloat16 and 8-bit integer).
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
+  std::unordered_set<std::string> excluded_eps = {kQnnExecutionProvider};
+  if constexpr (std::is_same<TypeParam, int8_t>::value) {
+    // TensorRT does not reject int8 input up front (as it does for uint8); instead it accepts the node
+    // and then fails at engine build time because int8 I/O without Q/DQ layers needs a calibrator or a
+    // set dynamic range. This op's 8-bit integer support targets the CPU EP, so exclude TensorRT here.
+    excluded_eps.insert(kTensorrtExecutionProvider);
+  }
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_eps);
 }
 
 TEST(TensorOpTest, DepthToSpaceTest_1) {
@@ -491,7 +515,14 @@ TYPED_TEST(TensorOpTest, DepthToSpaceTest_3) {
   }
 
   // type not supported by QNN EP: MLFloat16 and unsigned char
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
+  std::unordered_set<std::string> excluded_eps = {kQnnExecutionProvider};
+  if constexpr (std::is_same<TypeParam, int8_t>::value) {
+    // TensorRT does not reject int8 input up front (as it does for uint8); instead it accepts the node
+    // and then fails at engine build time because int8 I/O without Q/DQ layers needs a calibrator or a
+    // set dynamic range. This op's 8-bit integer support targets the CPU EP, so exclude TensorRT here.
+    excluded_eps.insert(kTensorrtExecutionProvider);
+  }
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_eps);
 }
 
 TYPED_TEST(TensorOpTest, DepthToSpaceTest_4) {
@@ -566,7 +597,14 @@ TYPED_TEST(TensorOpTest, DepthToSpaceTest_4) {
   }
 
   // type not supported by QNN EP: MLFloat16 and unsigned char
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
+  std::unordered_set<std::string> excluded_eps = {kQnnExecutionProvider};
+  if constexpr (std::is_same<TypeParam, int8_t>::value) {
+    // TensorRT does not reject int8 input up front (as it does for uint8); instead it accepts the node
+    // and then fails at engine build time because int8 I/O without Q/DQ layers needs a calibrator or a
+    // set dynamic range. This op's 8-bit integer support targets the CPU EP, so exclude TensorRT here.
+    excluded_eps.insert(kTensorrtExecutionProvider);
+  }
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_eps);
 }
 
 TYPED_TEST(TensorOpTest, DepthToSpaceTest_5) {
@@ -619,7 +657,14 @@ TYPED_TEST(TensorOpTest, DepthToSpaceTest_5) {
   }
 
   // type not supported by QNN EP: MLFloat16 and unsigned char
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
+  std::unordered_set<std::string> excluded_eps = {kQnnExecutionProvider};
+  if constexpr (std::is_same<TypeParam, int8_t>::value) {
+    // TensorRT does not reject int8 input up front (as it does for uint8); instead it accepts the node
+    // and then fails at engine build time because int8 I/O without Q/DQ layers needs a calibrator or a
+    // set dynamic range. This op's 8-bit integer support targets the CPU EP, so exclude TensorRT here.
+    excluded_eps.insert(kTensorrtExecutionProvider);
+  }
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_eps);
 }
 
 TEST(TensorOpTest, DepthToSpaceTest_CRD_Batched) {
