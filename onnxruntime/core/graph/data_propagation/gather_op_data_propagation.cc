@@ -73,18 +73,16 @@ Status GatherOpDataPropagation::infer() {
           //   * a 0-D scalar index   -> a scalar output value,
           //   * a 1-D index          -> a rank-1 [1] output value (so consumers that require a
           //     1-D tensor, e.g. TopK's K input, still observe the correct rank),
-          //   * a rank >= 2 index (or an unknown rank) -> decline, because the single-value
-          //     channel cannot represent a rank >= 2 Gather output; falling back to ONNX data
-          //     propagation is safer than fabricating a rank-1 value.
+          //   * a rank >= 2 index    -> decline: leave the output value unset so the dimension
+          //     stays symbolic, because the single-value channel cannot represent a rank >= 2
+          //     Gather output and emitting a rank-1 value would fabricate a misleading rank.
           //
-          // The index rank is sourced canonically from the same constant initializer the index
-          // value came from (indices_num_dims). If that is unavailable (sentinel < 0), fall back
-          // to the indices NodeArg shape; an unknown shape then routes to decline.
-          int effective_num_dims = indices_num_dims;
-          if (effective_num_dims < 0) {
-            const ONNX_NAMESPACE::TensorShapeProto* indices_shape = input_1->Shape();
-            effective_num_dims = (indices_shape != nullptr) ? indices_shape->dim_size() : -1;
-          }
+          // The index rank (indices_num_dims) is sourced canonically from the same constant
+          // initializer the index value came from. Reading that initializer is exactly what makes
+          // indices.size() == 1 reachable here, and it always reports a concrete rank
+          // (TensorShape::NumDimensions(), >= 0), so indices_num_dims is always >= 0 here and no
+          // unknown-rank (< 0) handling is needed.
+          const int effective_num_dims = indices_num_dims;
 
           if (effective_num_dims == 0) {
             // 0-D scalar index -> a scalar output value.
@@ -93,9 +91,9 @@ Status GatherOpDataPropagation::infer() {
             // 1-D index -> a rank-1 [1] output value.
             SetSinglePropagatedShapeValue(output_def_, dim.dim_value(), /*is_rank1=*/true);
           }
-          // rank >= 2 or unknown index rank (effective_num_dims < 0): leave the output unset and
-          // let ONNX data propagation handle it. The single-value channel cannot represent a
-          // rank >= 2 Gather output, so emitting a rank-1 value would fabricate a misleading rank.
+          // rank >= 2 index: leave the output value unset so the dimension remains symbolic --
+          // the correct decline behavior, since the single-value channel cannot represent a
+          // rank >= 2 Gather output and there is no ONNX fallback once this custom propagator runs.
         }
       }
     }
