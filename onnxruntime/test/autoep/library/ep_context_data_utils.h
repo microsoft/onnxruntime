@@ -186,9 +186,10 @@ inline OrtStatus* ValidateEpContextDataName(const OrtApi& api, const char* file_
 //
 // When `graph` is null the caller is trusted and owns the path: `file_name` is returned as-is and may be absolute (a
 // lexical ".." is still rejected as a coarse guard). When `graph` is non-null, `file_name` originates from the
-// untrusted EPContext model "ep_cache_context" attribute: it must be relative, and after combining it with the
-// model's directory the result must stay within that directory. Symlinks and ".." are resolved (via
-// weakly_canonical), so a name that escapes the model directory - including through a symlink - is rejected.
+// untrusted EPContext model "ep_cache_context" attribute: the graph must have a model path, the name must be
+// relative, and after combining it with the model's directory the result must stay within that directory. Symlinks and
+// ".." are resolved (via weakly_canonical), so a name that escapes the model directory - including through a symlink -
+// is rejected.
 // Production EPs should still apply their own sandboxing and size limits.
 inline OrtStatus* ResolveEpContextDataPath(const OrtApi& api, const char* file_name, const OrtGraph* graph,
                                            std::filesystem::path& data_path) {
@@ -221,8 +222,8 @@ inline OrtStatus* ResolveEpContextDataPath(const OrtApi& api, const char* file_n
   const ORTCHAR_T* model_path = nullptr;
   RETURN_IF_ERROR(api.Graph_GetModelPath(graph, &model_path));
   if (model_path == nullptr || model_path[0] == 0) {
-    data_path = candidate_path;
-    return nullptr;
+    return api.CreateStatus(ORT_INVALID_ARGUMENT,
+                            "EPContext data file fallback requires a model path to resolve relative names");
   }
 
   const std::filesystem::path base_dir = std::filesystem::path{model_path}.parent_path();
@@ -402,6 +403,9 @@ inline OrtStatus* WriteEpContextDataWithFileFallback(
     return write_func(write_state, file_name, buffer, buffer_size);
   }
 
+  // Even when the physical fallback path is supplied separately, `file_name` is the logical name written into the
+  // EPContext model's ep_cache_context attribute. Validate it as a safe relative name so a generated model cannot
+  // contain an unsafe logical reference that later reaches the read-side resolver.
   std::filesystem::path logical_path;
   RETURN_IF_ERROR(ValidateEpContextDataName(api, file_name, logical_path));
 

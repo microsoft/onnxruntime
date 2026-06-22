@@ -12,6 +12,7 @@
 #include <gsl/gsl>
 #include <gtest/gtest.h>
 
+#include "core/graph/model_editor_api_types.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_experimental_cxx_api.h"
 
@@ -183,6 +184,11 @@ TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathRejectsUnsafeNames) {
   ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(
                            api, nullptr, absolute_file_name, "unused.ctx", nullptr, nullptr, 0),
                        ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
+
+  ModelEditorGraph empty_model_path_graph;
+  ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, "../escape.ctx",
+                                                                       empty_model_path_graph.ToExternal(), data_path),
+                       ORT_INVALID_ARGUMENT, "requires a model path");
 }
 
 TEST(OrtEpLibrary, EpContextDataUtils_FileFallbackReadsAndWrites) {
@@ -216,6 +222,14 @@ TEST(OrtEpLibrary, EpContextDataUtils_FileFallbackReadsAndWrites) {
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataWithFileFallback(
       api, nullptr, "logical_context_data.bin", fallback_data_file_name.c_str(), nullptr, payload.data(),
       payload.size()));
+
+  const std::filesystem::path unsafe_logical_fallback_path = test_dir / "unsafe_logical_context_data.bin";
+  const std::string unsafe_logical_fallback_file_name =
+      ep_context_data_utils::PathToUtf8String(unsafe_logical_fallback_path);
+  ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(
+                           api, nullptr, "../logical_context_data.bin",
+                           unsafe_logical_fallback_file_name.c_str(), nullptr, payload.data(), payload.size()),
+                       ORT_INVALID_ARGUMENT, "EPContext data file name must not contain path traversal");
 
   data.clear();
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextDataFromFile(api, fallback_data_file_name.c_str(), nullptr,
