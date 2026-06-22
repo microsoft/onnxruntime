@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <string>
+#include <unordered_set>
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "core/providers/cpu/tensor/space_depth_ops.h"
@@ -13,7 +16,7 @@ template <typename T>
 class TensorOpTest : public ::testing::Test {
 };
 
-using TensorOpTestTypes = ::testing::Types<float, MLFloat16, uint8_t>;
+using TensorOpTestTypes = ::testing::Types<float, MLFloat16, uint8_t, int8_t>;
 TYPED_TEST_SUITE(TensorOpTest, TensorOpTestTypes);
 
 TEST(TensorOpTest, SpaceToDepthTest_1) {
@@ -157,6 +160,183 @@ TEST(TensorOpTest, SpaceToDepthTest_3) {
   test.AddOutput<float>("output", {N, C * blocksize * blocksize, H / blocksize, W / blocksize}, result);
 
   test.Run();
+}
+
+TYPED_TEST(TensorOpTest, SpaceToDepthTest_int) {
+  // Same data as SpaceToDepthTest_2 (values 0..107 fit in both int8_t and uint8_t).
+  // The typed suite covers float, MLFloat16, uint8_t and int8_t. The CPU kernel under
+  // test supports float/uint8_t/int8_t; MLFloat16 only runs on EPs that support it (e.g. CUDA).
+  OpTester test("SpaceToDepth");
+  constexpr int64_t blocksize = 3;
+  test.AddAttribute("blocksize", blocksize);
+  constexpr int64_t N = 2, C = 3, H = 3, W = 6;
+  const std::vector<float> X = {
+      0., 1., 2., 3., 4., 5., 6., 7., 8., 9., 10.,
+      11., 12., 13., 14., 15., 16., 17., 18., 19., 20., 21.,
+      22., 23., 24., 25., 26., 27., 28., 29., 30., 31., 32.,
+      33., 34., 35., 36., 37., 38., 39., 40., 41., 42., 43.,
+      44., 45., 46., 47., 48., 49., 50., 51., 52., 53., 54.,
+      55., 56., 57., 58., 59., 60., 61., 62., 63., 64., 65.,
+      66., 67., 68., 69., 70., 71., 72., 73., 74., 75., 76.,
+      77., 78., 79., 80., 81., 82., 83., 84., 85., 86., 87.,
+      88., 89., 90., 91., 92., 93., 94., 95., 96., 97., 98.,
+      99., 100., 101., 102., 103., 104., 105., 106., 107.};
+
+  const std::vector<float> result = {
+      0., 3., 18., 21., 36., 39., 1., 4., 19., 22., 37.,
+      40., 2., 5., 20., 23., 38., 41., 6., 9., 24., 27.,
+      42., 45., 7., 10., 25., 28., 43., 46., 8., 11., 26.,
+      29., 44., 47., 12., 15., 30., 33., 48., 51., 13., 16.,
+      31., 34., 49., 52., 14., 17., 32., 35., 50., 53., 54.,
+      57., 72., 75., 90., 93., 55., 58., 73., 76., 91., 94.,
+      56., 59., 74., 77., 92., 95., 60., 63., 78., 81., 96.,
+      99., 61., 64., 79., 82., 97., 100., 62., 65., 80., 83.,
+      98., 101., 66., 69., 84., 87., 102., 105., 67., 70., 85.,
+      88., 103., 106., 68., 71., 86., 89., 104., 107.};
+
+  const std::vector<int64_t> output_shape = {2, 27, 1, 2};
+
+  if constexpr (std::is_same<TypeParam, float>::value) {
+    test.AddInput<float>("input", {N, C, H, W}, X);
+    test.AddOutput<float>("output", output_shape, result);
+  } else if constexpr (std::is_same<TypeParam, MLFloat16>::value) {
+    std::vector<TypeParam> X_fp16(X.size());
+    std::vector<TypeParam> result_fp16(result.size());
+    ConvertFloatToMLFloat16(X.data(), X_fp16.data(), X.size());
+    ConvertFloatToMLFloat16(result.data(), result_fp16.data(), result.size());
+    test.AddInput<TypeParam>("input", {N, C, H, W}, X_fp16);
+    test.AddOutput<TypeParam>("output", output_shape, result_fp16);
+  } else if constexpr (std::is_same<TypeParam, uint8_t>::value) {
+    std::vector<uint8_t> X_u8(X.size());
+    std::vector<uint8_t> result_u8(result.size());
+    ConvertFloatToUint8_t(X.data(), X_u8.data(), X.size());
+    ConvertFloatToUint8_t(result.data(), result_u8.data(), result.size());
+    test.AddInput<uint8_t>("input", {N, C, H, W}, X_u8);
+    test.AddOutput<uint8_t>("output", output_shape, result_u8);
+  } else if constexpr (std::is_same<TypeParam, int8_t>::value) {
+    std::vector<int8_t> X_i8(X.size());
+    std::vector<int8_t> result_i8(result.size());
+    ConvertFloatToInt8_t(X.data(), X_i8.data(), X.size());
+    ConvertFloatToInt8_t(result.data(), result_i8.data(), result.size());
+    test.AddInput<int8_t>("input", {N, C, H, W}, X_i8);
+    test.AddOutput<int8_t>("output", output_shape, result_i8);
+  } else {
+    ORT_THROW("Type not supported");
+  }
+
+  // Exclude the QNN EP, which does not support all of the tested element types (e.g. MLFloat16 and 8-bit integer).
+  std::unordered_set<std::string> excluded_eps = {kQnnExecutionProvider};
+  if constexpr (std::is_same<TypeParam, int8_t>::value) {
+    // TensorRT does not reject int8 input up front (as it does for uint8); instead it accepts the node
+    // and then fails at engine build time because int8 I/O without Q/DQ layers needs a calibrator or a
+    // set dynamic range. This op's 8-bit integer support targets the CPU EP, so exclude TensorRT here.
+    excluded_eps.insert(kTensorrtExecutionProvider);
+  }
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_eps);
+}
+
+// Explicitly exercises the opset 13 SpaceToDepth kernel registration with the supported element types.
+// Uses small data within int8_t's range [-128, 127] so the float -> int8_t conversion is exact.
+TYPED_TEST(TensorOpTest, SpaceToDepthTest_int_opset13) {
+  OpTester test("SpaceToDepth", 13);  // create an opset 13 model
+  constexpr int64_t blocksize = 2;
+  test.AddAttribute("blocksize", blocksize);
+  constexpr int64_t N = 1, C = 2, H = 2, W = 4;
+  const std::vector<float> X = {0., 1., 2., 3., 4., 5., 6., 7.,
+                                8., 9., 10., 11., 12., 13., 14., 15.};
+  const std::vector<float> result = {0., 2., 8., 10., 1., 3., 9., 11.,
+                                     4., 6., 12., 14., 5., 7., 13., 15.};
+  const std::vector<int64_t> output_shape = {N, C * blocksize * blocksize, H / blocksize, W / blocksize};
+
+  if constexpr (std::is_same<TypeParam, float>::value) {
+    test.AddInput<float>("input", {N, C, H, W}, X);
+    test.AddOutput<float>("output", output_shape, result);
+  } else if constexpr (std::is_same<TypeParam, MLFloat16>::value) {
+    std::vector<TypeParam> X_fp16(X.size());
+    std::vector<TypeParam> result_fp16(result.size());
+    ConvertFloatToMLFloat16(X.data(), X_fp16.data(), X.size());
+    ConvertFloatToMLFloat16(result.data(), result_fp16.data(), result.size());
+    test.AddInput<TypeParam>("input", {N, C, H, W}, X_fp16);
+    test.AddOutput<TypeParam>("output", output_shape, result_fp16);
+  } else if constexpr (std::is_same<TypeParam, uint8_t>::value) {
+    std::vector<uint8_t> X_u8(X.size());
+    std::vector<uint8_t> result_u8(result.size());
+    ConvertFloatToUint8_t(X.data(), X_u8.data(), X.size());
+    ConvertFloatToUint8_t(result.data(), result_u8.data(), result.size());
+    test.AddInput<uint8_t>("input", {N, C, H, W}, X_u8);
+    test.AddOutput<uint8_t>("output", output_shape, result_u8);
+  } else if constexpr (std::is_same<TypeParam, int8_t>::value) {
+    std::vector<int8_t> X_i8(X.size());
+    std::vector<int8_t> result_i8(result.size());
+    ConvertFloatToInt8_t(X.data(), X_i8.data(), X.size());
+    ConvertFloatToInt8_t(result.data(), result_i8.data(), result.size());
+    test.AddInput<int8_t>("input", {N, C, H, W}, X_i8);
+    test.AddOutput<int8_t>("output", output_shape, result_i8);
+  } else {
+    ORT_THROW("Type not supported");
+  }
+
+  // Exclude the QNN EP, which does not support all of the tested element types (e.g. MLFloat16 and 8-bit integer).
+  std::unordered_set<std::string> excluded_eps = {kQnnExecutionProvider};
+  if constexpr (std::is_same<TypeParam, int8_t>::value) {
+    // TensorRT does not reject int8 input up front (as it does for uint8); instead it accepts the node
+    // and then fails at engine build time because int8 I/O without Q/DQ layers needs a calibrator or a
+    // set dynamic range. This op's 8-bit integer support targets the CPU EP, so exclude TensorRT here.
+    excluded_eps.insert(kTensorrtExecutionProvider);
+  }
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_eps);
+}
+
+// Explicitly exercises the opset 13 DepthToSpace kernel registration with the supported element types.
+// Uses small data within int8_t's range [-128, 127] so the float -> int8_t conversion is exact.
+TYPED_TEST(TensorOpTest, DepthToSpaceTest_int_opset13) {
+  OpTester test("DepthToSpace", 13);  // create an opset 13 model (default mode = "DCR")
+  constexpr int64_t blocksize = 2;
+  test.AddAttribute("blocksize", blocksize);
+  constexpr int64_t N = 1, C = 8, H = 1, W = 2;
+  const std::vector<float> X = {0., 1., 2., 3., 4., 5., 6., 7.,
+                                8., 9., 10., 11., 12., 13., 14., 15.};
+  const std::vector<float> result = {0., 4., 1., 5., 8., 12., 9., 13.,
+                                     2., 6., 3., 7., 10., 14., 11., 15.};
+  const std::vector<int64_t> output_shape = {N, C / (blocksize * blocksize), H * blocksize, W * blocksize};
+
+  if constexpr (std::is_same<TypeParam, float>::value) {
+    test.AddInput<float>("input", {N, C, H, W}, X);
+    test.AddOutput<float>("output", output_shape, result);
+  } else if constexpr (std::is_same<TypeParam, MLFloat16>::value) {
+    std::vector<TypeParam> X_fp16(X.size());
+    std::vector<TypeParam> result_fp16(result.size());
+    ConvertFloatToMLFloat16(X.data(), X_fp16.data(), X.size());
+    ConvertFloatToMLFloat16(result.data(), result_fp16.data(), result.size());
+    test.AddInput<TypeParam>("input", {N, C, H, W}, X_fp16);
+    test.AddOutput<TypeParam>("output", output_shape, result_fp16);
+  } else if constexpr (std::is_same<TypeParam, uint8_t>::value) {
+    std::vector<uint8_t> X_u8(X.size());
+    std::vector<uint8_t> result_u8(result.size());
+    ConvertFloatToUint8_t(X.data(), X_u8.data(), X.size());
+    ConvertFloatToUint8_t(result.data(), result_u8.data(), result.size());
+    test.AddInput<uint8_t>("input", {N, C, H, W}, X_u8);
+    test.AddOutput<uint8_t>("output", output_shape, result_u8);
+  } else if constexpr (std::is_same<TypeParam, int8_t>::value) {
+    std::vector<int8_t> X_i8(X.size());
+    std::vector<int8_t> result_i8(result.size());
+    ConvertFloatToInt8_t(X.data(), X_i8.data(), X.size());
+    ConvertFloatToInt8_t(result.data(), result_i8.data(), result.size());
+    test.AddInput<int8_t>("input", {N, C, H, W}, X_i8);
+    test.AddOutput<int8_t>("output", output_shape, result_i8);
+  } else {
+    ORT_THROW("Type not supported");
+  }
+
+  // Exclude the QNN EP, which does not support all of the tested element types (e.g. MLFloat16 and 8-bit integer).
+  std::unordered_set<std::string> excluded_eps = {kQnnExecutionProvider};
+  if constexpr (std::is_same<TypeParam, int8_t>::value) {
+    // TensorRT does not reject int8 input up front (as it does for uint8); instead it accepts the node
+    // and then fails at engine build time because int8 I/O without Q/DQ layers needs a calibrator or a
+    // set dynamic range. This op's 8-bit integer support targets the CPU EP, so exclude TensorRT here.
+    excluded_eps.insert(kTensorrtExecutionProvider);
+  }
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_eps);
 }
 
 TEST(TensorOpTest, DepthToSpaceTest_1) {
@@ -319,12 +499,30 @@ TYPED_TEST(TensorOpTest, DepthToSpaceTest_3) {
     ConvertFloatToUint8_t(result.data(), result_u8.data(), result.size());
     test.AddInput<uint8_t>("input", {N, C, H, W}, X_u8);
     test.AddOutput<uint8_t>("output", {2, 3, 6, 4}, result_u8);
+  } else if constexpr (std::is_same<TypeParam, int8_t>::value) {
+    // Note: this shared float data runs up to 143, outside int8_t's range [-128, 127], so the
+    // float -> int8_t conversion of those values is implementation-defined. That is intentional and
+    // harmless here: DepthToSpace is a pure permutation and the same conversion is applied to both the
+    // input and the expected output, so the values wrap identically on both sides and still match.
+    std::vector<int8_t> X_i8(X.size());
+    std::vector<int8_t> result_i8(result.size());
+    ConvertFloatToInt8_t(X.data(), X_i8.data(), X.size());
+    ConvertFloatToInt8_t(result.data(), result_i8.data(), result.size());
+    test.AddInput<int8_t>("input", {N, C, H, W}, X_i8);
+    test.AddOutput<int8_t>("output", {2, 3, 6, 4}, result_i8);
   } else {
     ORT_THROW("Type not supported");
   }
 
   // type not supported by QNN EP: MLFloat16 and unsigned char
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
+  std::unordered_set<std::string> excluded_eps = {kQnnExecutionProvider};
+  if constexpr (std::is_same<TypeParam, int8_t>::value) {
+    // TensorRT does not reject int8 input up front (as it does for uint8); instead it accepts the node
+    // and then fails at engine build time because int8 I/O without Q/DQ layers needs a calibrator or a
+    // set dynamic range. This op's 8-bit integer support targets the CPU EP, so exclude TensorRT here.
+    excluded_eps.insert(kTensorrtExecutionProvider);
+  }
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_eps);
 }
 
 TYPED_TEST(TensorOpTest, DepthToSpaceTest_4) {
@@ -383,12 +581,30 @@ TYPED_TEST(TensorOpTest, DepthToSpaceTest_4) {
     ConvertFloatToUint8_t(result.data(), result_u8.data(), result.size());
     test.AddInput<uint8_t>("input", {N, C, H, W}, X_u8);
     test.AddOutput<uint8_t>("output", {2, 3, 6, 4}, result_u8);
+  } else if constexpr (std::is_same<TypeParam, int8_t>::value) {
+    // Note: this shared float data runs up to 143, outside int8_t's range [-128, 127], so the
+    // float -> int8_t conversion of those values is implementation-defined. That is intentional and
+    // harmless here: DepthToSpace is a pure permutation and the same conversion is applied to both the
+    // input and the expected output, so the values wrap identically on both sides and still match.
+    std::vector<int8_t> X_i8(X.size());
+    std::vector<int8_t> result_i8(result.size());
+    ConvertFloatToInt8_t(X.data(), X_i8.data(), X.size());
+    ConvertFloatToInt8_t(result.data(), result_i8.data(), result.size());
+    test.AddInput<int8_t>("input", {N, C, H, W}, X_i8);
+    test.AddOutput<int8_t>("output", {2, 3, 6, 4}, result_i8);
   } else {
     ORT_THROW("Type not supported");
   }
 
   // type not supported by QNN EP: MLFloat16 and unsigned char
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
+  std::unordered_set<std::string> excluded_eps = {kQnnExecutionProvider};
+  if constexpr (std::is_same<TypeParam, int8_t>::value) {
+    // TensorRT does not reject int8 input up front (as it does for uint8); instead it accepts the node
+    // and then fails at engine build time because int8 I/O without Q/DQ layers needs a calibrator or a
+    // set dynamic range. This op's 8-bit integer support targets the CPU EP, so exclude TensorRT here.
+    excluded_eps.insert(kTensorrtExecutionProvider);
+  }
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_eps);
 }
 
 TYPED_TEST(TensorOpTest, DepthToSpaceTest_5) {
@@ -429,12 +645,26 @@ TYPED_TEST(TensorOpTest, DepthToSpaceTest_5) {
     ConvertFloatToUint8_t(result.data(), result_u8.data(), result.size());
     test.AddInput<uint8_t>("input", {N, C, H, W}, X_u8);
     test.AddOutput<uint8_t>("output", {1, 1, 4, 6}, result_u8);
+  } else if constexpr (std::is_same<TypeParam, int8_t>::value) {
+    std::vector<int8_t> X_i8(X.size());
+    std::vector<int8_t> result_i8(result.size());
+    ConvertFloatToInt8_t(X.data(), X_i8.data(), X.size());
+    ConvertFloatToInt8_t(result.data(), result_i8.data(), result.size());
+    test.AddInput<int8_t>("input", {N, C, H, W}, X_i8);
+    test.AddOutput<int8_t>("output", {1, 1, 4, 6}, result_i8);
   } else {
     ORT_THROW("Type not supported");
   }
 
   // type not supported by QNN EP: MLFloat16 and unsigned char
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
+  std::unordered_set<std::string> excluded_eps = {kQnnExecutionProvider};
+  if constexpr (std::is_same<TypeParam, int8_t>::value) {
+    // TensorRT does not reject int8 input up front (as it does for uint8); instead it accepts the node
+    // and then fails at engine build time because int8 I/O without Q/DQ layers needs a calibrator or a
+    // set dynamic range. This op's 8-bit integer support targets the CPU EP, so exclude TensorRT here.
+    excluded_eps.insert(kTensorrtExecutionProvider);
+  }
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_eps);
 }
 
 TEST(TensorOpTest, DepthToSpaceTest_CRD_Batched) {
