@@ -311,6 +311,11 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_SessionOptions_SetEpContextDataRea
  * When EPContext embed mode is disabled, execution providers can retrieve this callback from OrtEpContextConfig and
  * call it instead of writing EPContext binary data directly to disk.
  *
+ * This callback may be used together with OrtApi::ModelCompilationOptions_SetEpContextBinaryInformation. The binary
+ * information still describes the compiled model/output location that EPs may use to generate stable logical
+ * EPContext data names or as a file-fallback location. If this callback is configured, EPs should call it for
+ * EPContext binary data instead of writing that data to the fallback file path.
+ *
  * Writing happens only at compile time, so this callback is configured on OrtModelCompilationOptions. The
  * corresponding read callback runs at session load and is configured on OrtSessionOptions via
  * OrtApi_SessionOptions_SetEpContextDataReadFunc.

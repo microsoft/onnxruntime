@@ -2016,6 +2016,54 @@ TEST(PluginExecutionProviderTest, EpContextDataWriteFuncIsReturnedByEpApi) {
   EXPECT_EQ(callback_state.file_name, "engine.bin");
   EXPECT_EQ(callback_state.payload, payload);
 }
+
+TEST(PluginExecutionProviderTest, EpContextDataWriteFuncCanBeUsedWithEpContextBinaryInformation) {
+  const auto& ort_api = Ort::GetApi();
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "EpContextDataWriteFuncCanBeUsedWithEpContextBinaryInformation"};
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compilation_options{env, session_options};
+
+  auto set_write_func =
+      Ort::Experimental::Get_OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteFunc_SinceV28_Fn(&ort_api);
+  auto get_config = Ort::Experimental::Get_OrtEpApi_SessionOptions_GetEpContextConfig_SinceV28_Fn(&ort_api);
+  auto release_config_func = Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_Fn(&ort_api);
+  auto get_write_func = Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc_SinceV28_Fn(&ort_api);
+  ASSERT_NE(set_write_func, nullptr);
+  ASSERT_NE(get_config, nullptr);
+  ASSERT_NE(release_config_func, nullptr);
+  ASSERT_NE(get_write_func, nullptr);
+
+  ASSERT_NO_THROW(compilation_options.SetEpContextBinaryInformation(ORT_TSTR("ep_context_dir/"),
+                                                                    ORT_TSTR("compiled_model.onnx")));
+
+  EpContextWriteCallbackState callback_state{};
+  ASSERT_ORTSTATUS_OK(set_write_func(compilation_options, EpContextWriteCallback, &callback_state));
+
+  const auto* internal_options = reinterpret_cast<const onnxruntime::ModelCompilationOptions*>(
+      static_cast<OrtModelCompilationOptions*>(compilation_options));
+  const auto& internal_session_options = internal_options->GetSessionOptions();
+
+  std::string ep_context_file_path;
+  ASSERT_TRUE(internal_session_options.value.config_options.TryGetConfigEntry(kOrtSessionOptionEpContextFilePath,
+                                                                              ep_context_file_path));
+  EXPECT_THAT(ep_context_file_path, ::testing::HasSubstr("compiled_model.onnx"));
+
+  OrtEpContextConfig* ep_context_config = nullptr;
+  ASSERT_ORTSTATUS_OK(get_config(&internal_session_options, &ep_context_config));
+  auto release_config = gsl::finally([&]() { release_config_func(ep_context_config); });
+
+  OrtWriteNamedBufferFunc write_func = nullptr;
+  void* callback_state_out = nullptr;
+  ASSERT_ORTSTATUS_OK(get_write_func(ep_context_config, &write_func, &callback_state_out));
+  ASSERT_EQ(write_func, EpContextWriteCallback);
+  ASSERT_EQ(callback_state_out, &callback_state);
+
+  const std::vector<char> payload{'c', 't', 'x'};
+  ASSERT_ORTSTATUS_OK(write_func(callback_state_out, "logical_context.bin", payload.data(), payload.size()));
+  EXPECT_TRUE(callback_state.called);
+  EXPECT_EQ(callback_state.file_name, "logical_context.bin");
+  EXPECT_EQ(callback_state.payload, payload);
+}
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 TEST(PluginExecutionProviderTest, EpContextDataReturnedReadFuncAllowsEmptyPayloads) {
