@@ -2421,9 +2421,9 @@ def gqa_xqa_head_sink_test_cases():
     # Non-quantized global decode with a head_sink (attention sink) input.
     # These configs exercise the XQA attention-sink path added for GPT-OSS style models:
     # seq_len=1, shared KV buffer, no softcap, no local window, head_size in {64, 128},
-    # and 64 % group_size == 0.
+    # and group_size in {1, 2, 4, 5, 8, 16, 32}.
     for torch_type, ort_type in [(torch.float16, TensorProto.FLOAT16), (torch.bfloat16, TensorProto.BFLOAT16)]:
-        for group_size in [1, 4, 8]:
+        for group_size in [1, 4, 5, 8]:
             for head_size in [64, 128]:
                 for rotary in [False, True]:
                     kv_num_heads = 4
@@ -2485,8 +2485,8 @@ class TestXQAHeadSinkParity(unittest.TestCase):
     """Verify the non-quantized XQA attention-sink (head_sink) decode path matches the reference."""
 
     def setUp(self):
-        # XQA is enabled by default when a head_sink input is present, so this path is exercised
-        # without ORT_ENABLE_XQA. Clear it (saving the previous value) to test the real default.
+        # XQA is enabled by default for fp16/bf16 (ORT_ENABLE_XQA defaults to 1).
+        # Pop any override so we exercise the real default behavior.
         self._prev_enable_xqa = os.environ.pop("ORT_ENABLE_XQA", None)
 
     def tearDown(self):

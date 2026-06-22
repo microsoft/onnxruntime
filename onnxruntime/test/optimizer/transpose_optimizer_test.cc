@@ -3773,6 +3773,37 @@ TEST(TransposeOptimizerTests, TestDequantizeLinearNoAxis) {
 #endif
 }
 
+// Regression test for #28716: pushing a Transpose through a zero-point-less int8 DequantizeLinear
+// inserts a QuantizeLinear that must set output_dtype, else it defaults to uint8 and Resolve() fails.
+TEST(TransposeOptimizerTests, TestDequantizeLinearNoZeroPoint) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<int8_t>(builder, {{2, -1, 6, 3}}, {2, 4, 6, 3}, -128, 127);
+    auto* scale_arg = MakeInput<float>(builder, std::vector<int64_t>{}, std::vector<int64_t>{}, {0.05f});
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* dq_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    builder.AddNode("DequantizeLinear", {transpose_1_out_0, scale_arg}, {dq_out_0});  // no zero-point
+    auto& transpose_2 = builder.AddNode("Transpose", {dq_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  // opset 21: output_dtype pins the inserted Q's type and the transposes cancel.
+  auto check_cancelled = [](InferenceSessionWrapper& session) {
+    EXPECT_EQ(EstimateTransposeCost(session.GetGraph()), 0);
+  };
+  TransformerTester(build_test_case, check_cancelled, TransformerLevel::Default,
+                    TransformerLevel::Level1, /*opset_version*/ 21);
+
+  // Pre-opset-21 has no output_dtype, so the optimizer must skip the push-through rather than emit
+  // an invalid QuantizeLinear; the model must still initialize (no type-inference crash).
+  auto check_valid = [](InferenceSessionWrapper& /*session*/) {};
+  TransformerTester(build_test_case, check_valid, TransformerLevel::Default,
+                    TransformerLevel::Level1, /*opset_version*/ 19);
+}
+
 TEST(TransposeOptimizerTests, TestCast) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<int32_t>(builder, {{-1, 4, -1, 5}}, {2, 4, 6, 5}, -1, 5);
