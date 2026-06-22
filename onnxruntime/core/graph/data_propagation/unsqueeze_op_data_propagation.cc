@@ -41,7 +41,7 @@ Status UnsqueezeOpDataPropagation::infer() {
     // single-value channel cannot represent. Multi-element shape vectors (dim_size > 1) are
     // legitimate and left untouched.
     //
-    // This decline is locked end to end by UnsqueezeSingleValueDeclineTest via a rank-lowering
+    // This decline is locked end to end by GatherUnsqueezeDeclineTest (Branch B) via a rank-lowering
     // Squeeze (Shape -> Gather([-1]) -> Unsqueeze -> Squeeze -> Range): with the decline, Range's
     // length stays symbolic; relaxing it fabricates [1, value], which makes the downstream Range
     // input non-scalar and the model fails to load -- so the behavior IS observable and the test
