@@ -6676,5 +6676,49 @@ TEST(QDQTransformerTests, QDQ_Selector_Test_Clip_With_Quantized_MinMax) {
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
+// Regression test for https://github.com/microsoft/onnxruntime/issues/28717
+// PadNodeGroupSelector must reject (return nullopt) when there are no DQ inputs.
+TEST(QDQTransformerTests, QDQ_Selector_Test_Pad_NoDQInputs_ReturnsNullopt) {
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+
+  // Build a graph: float input -> Pad -> Q output
+  // The Pad node has NO DQ inputs — only a float data input and a constant pads input.
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* data_input = builder.MakeInput<float>({1, 3, 4, 4}, -1.0f, 1.0f);
+    auto* pads_input = builder.MakeInitializer<int64_t>({8}, {0, 0, 1, 1, 0, 0, 1, 1});
+
+    auto* pad_output = builder.MakeIntermediate();
+    builder.AddNode("Pad", {data_input, pads_input}, {pad_output});
+
+    auto* output_q = builder.MakeOutput();
+    builder.AddQuantizeLinearNode<uint8_t>(pad_output, 0.0078f, static_cast<uint8_t>(128), output_q, false);
+  };
+
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 18;
+  Model model("PadNoDQTest", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+              domain_to_version, {}, logger);
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+  build_test_case(helper);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+  const GraphViewer whole_graph_viewer(graph);
+
+  const Node* pad_node = nullptr;
+  for (const auto& node : graph.Nodes()) {
+    if (node.OpType() == "Pad") {
+      pad_node = &node;
+      break;
+    }
+  }
+  ASSERT_NE(nullptr, pad_node);
+
+  // PadNodeGroupSelector must return nullopt (not selected) when there are no DQ inputs.
+  onnxruntime::QDQ::PadNodeGroupSelector pad_selector;
+  const auto result = pad_selector.GetQDQSelection(whole_graph_viewer, *pad_node);
+  ASSERT_FALSE(result.has_value());
+}
+
 }  // namespace test
 }  // namespace onnxruntime
