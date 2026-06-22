@@ -344,6 +344,22 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                     "QMoE requires 0 < k <= num_experts, got k=", k_,
                     " and num_experts=", moe_params.num_experts);
 
+  // The INT4/INT8 weight-only path stores B in the column-interleaved layout (ColumnMajorTileInterleave),
+  // whose CUTLASS pitchlinear iterators require the GEMM reduction dim K to be a whole multiple of the
+  // interleave tile (kInterleaveKTile == 64 for fp16/bf16 activations). For the two MoE GEMMs the
+  // reduction dims are fc1.K == hidden_size and fc2.K == inter_size. A partial final K tile is read past
+  // the valid range and silently yields garbage/NaN (the single-matrix fpA_intB GEMM throws on this; the
+  // grouped MoE GEMM and the decode GEMV have no such guard), so reject it up front with a clear error.
+  if (quant_type_ == "int") {
+    constexpr int64_t kInterleaveKTile = 64;
+    ORT_RETURN_IF_NOT(moe_params.hidden_size % kInterleaveKTile == 0,
+                      "QMoE int weight-only quantization requires hidden_size to be a multiple of ",
+                      kInterleaveKTile, " (the interleaved-weight K tile), got hidden_size=", moe_params.hidden_size, ".");
+    ORT_RETURN_IF_NOT(moe_params.inter_size % kInterleaveKTile == 0,
+                      "QMoE int weight-only quantization requires inter_size to be a multiple of ",
+                      kInterleaveKTile, " (the interleaved-weight K tile), got inter_size=", moe_params.inter_size, ".");
+  }
+
   if (uses_fp4_weight_scales) {
     constexpr int64_t fp4_block_size = 32;
     const int64_t fc1_out_size = is_fused_swiglu ? moe_params.inter_size * 2 : moe_params.inter_size;
@@ -518,13 +534,15 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   }
   // Lock released — concurrent QMoE inferences can now run prep work in parallel.
 
-  // Scratch buffer for workspace + expert_scales + expert_indices
+  // Scratch buffer for workspace + expert_scales + expert_indices + permutation_map.
+  // Use checked arithmetic: these byte counts derive adjacent pointer offsets inside one allocation.
   // expert_scales: num_rows * k * sizeof(float)
   // expert_indices: num_rows * k * sizeof(int)
-  size_t scales_bytes = moe_params.num_rows * k_ * sizeof(float);
-  size_t indices_bytes = moe_params.num_rows * k_ * sizeof(int);
-  size_t permutation_bytes = moe_params.num_rows * k_ * sizeof(int);
-  size_t total_scratch_bytes = workspace_size + scales_bytes + indices_bytes + permutation_bytes;
+  size_t expanded_rows = SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_);
+  size_t scales_bytes = expanded_rows * sizeof(float);
+  size_t indices_bytes = expanded_rows * sizeof(int);
+  size_t permutation_bytes = expanded_rows * sizeof(int);
+  size_t total_scratch_bytes = SafeInt<size_t>(workspace_size) + scales_bytes + indices_bytes + permutation_bytes;
 
   auto work_space = GetScratchBuffer<void>(total_scratch_bytes, GetComputeStream(context));
   char* workspace_ptr = reinterpret_cast<char*>(work_space.get());

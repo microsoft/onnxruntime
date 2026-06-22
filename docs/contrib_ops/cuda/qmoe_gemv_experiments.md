@@ -2,6 +2,11 @@
 
 This file records QMoE INT4/INT8 GEMV profiling results so future kernel and dispatch changes can be compared against a stable baseline.
 
+> **Note**: These are **point-in-time** measurements captured on the specific GPU, driver, CUDA
+> toolkit, and ORT build noted in each section header. Treat the numbers as a historical baseline
+> for regression comparison, not as current performance guidance — re-run the benchmark script on
+> your own hardware before drawing conclusions.
+
 ## 2026-06-12 Baseline: SM90, Warmup 5, Repeat 100
 
 ### Setup
@@ -973,3 +978,56 @@ Every case reported `has_invalid_output=false`.
   per-column case for INT4 and INT8.
 - Per-column INT8 W8A16 decode shapes route to GEMV for both FP16 and BF16 and
   beat the grouped-GEMM fallback at every profiled shape.
+
+## 2026-06-19 FP16 Accumulation Default: SM90, GPT-OSS Decode Shape
+
+### Setup
+
+- Goal: make fp16 accumulation the default for fp16 QMoE GEMV, while preserving
+  the previous fp32 accumulation path behind `ORT_MOE_GEMV_FP32_ACCUM=1`.
+- GPU: single H200 (SM90).
+- ONNX Runtime build: `~/onnxruntime/build/cu130/Release`, CUDA 13.0.
+- QMoE helper case: `gpt_oss_20b_m1_top4_fp16_2880x2880_e32`, warmup 5,
+  repeat 20.
+- Full-model case: GPT-OSS-20B INT4 QMoE, batch 1, prompt 512, generation 128,
+  warmup 2, repeat 5, CUDA graph enabled, XQA enabled, deterministic MoE tactic
+  selection.
+
+### Standalone QMoE Helper
+
+Lower is better. Both modes reported `has_invalid_output=false`.
+
+| Mode | Helper latency ms | FC1 SwiGLU GEMV avg us | FC2 GEMV avg us |
+|------|------------------:|-----------------------:|----------------:|
+| default fp16 accumulation | 0.0708 | 13.93 | 10.14 |
+| `ORT_MOE_GEMV_FP32_ACCUM=1` | 0.0812 | 21.57 | 12.24 |
+
+The new default is about 12.8% faster than the fp32 fallback in the isolated
+GPT-OSS decode-shaped QMoE helper. The gain comes from the expected GEMV rows:
+FC1 interleaved SwiGLU is about 35% faster and FC2 GEMV is about 17% faster.
+
+### Full GPT-OSS Decode
+
+| Mode | Decode latency ms/token | Decode throughput tok/s |
+|------|-------------------------:|-------------------------:|
+| default fp16 accumulation | 2.588930 | 386.259956 |
+| `ORT_MOE_GEMV_FP32_ACCUM=1` | 2.827260 | 353.699315 |
+
+The full-model A/B shows the default fp16 accumulation path is about 9.2% faster
+in decode throughput than the fp32 fallback in this run.
+
+### Accuracy Smoke
+
+Prior 1000-sample MMLU runs found no pooled-accuracy difference between the old
+fp32 default and the fp16-accumulation experiment:
+
+| Mode | Output dir | Pooled accuracy |
+|------|------------|-----------------|
+| fp32 accumulation | `~/eval_runs/mmlu1000_default_20260619_001348` | 0.8260 |
+| fp16 accumulation | `~/eval_runs/mmlu1000_fp16accum_20260619_001352` | 0.8260 |
+
+### Decision
+
+- Make fp16 accumulation the default for fp16 QMoE GEMV.
+- Keep bf16 on fp32 accumulation.
+- Keep `ORT_MOE_GEMV_FP32_ACCUM=1` as the opt-in numerical fallback and A/B knob.

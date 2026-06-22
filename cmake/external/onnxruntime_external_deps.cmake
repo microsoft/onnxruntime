@@ -797,6 +797,19 @@ if (onnxruntime_USE_WEBGPU)
           #
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_buffer_fix_injection.patch &&
 
+          # The dawn_parallel_build_fix.patch contains the following changes:
+          #
+          # - (private) Fix parallel build race condition in emdawnwebgpu header copy
+          #   The emdawnwebgpu_headers_gen_add macro's add_custom_command uses cmake -E copy
+          #   without ensuring the destination directory exists first. When building with
+          #   parallel jobs (-j32), the copy commands for webgpu_glfw.h and
+          #   webgpu_enum_class_bitmasks.h can run before any DawnJSONGenerator command
+          #   has created gen/src/emdawnwebgpu/include/webgpu/, causing the copy to fail.
+          #   This patch adds cmake -E make_directory before the copy so the directory is
+          #   always present regardless of parallel build ordering.
+          #
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_parallel_build_fix.patch &&
+
           # Remove the test folder to speed up potential file scan operations (70k+ files not needed for build).
           # Using <SOURCE_DIR> token ensures the correct absolute path regardless of working directory.
           ${CMAKE_COMMAND} -E rm -rf <SOURCE_DIR>/test)

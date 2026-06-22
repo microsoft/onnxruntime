@@ -28,6 +28,14 @@ Status LaunchUnpackQKV(const T* packed_qkv, T* unpacked_q, T* unpacked_k, T* unp
                        const int kv_num_heads, const int head_size, const int sequence_length, const int batch_size,
                        cudaStream_t stream, const int max_threads_per_block);
 
+template <typename T>
+Status LaunchConvertHeadSinkToFloat(
+    const T* input,
+    float* output,
+    int count,
+    cudaStream_t stream,
+    int max_threads_per_block);
+
 // ============================================================================
 // GQABufferRequirements: Centralized buffer size calculation
 // ============================================================================
