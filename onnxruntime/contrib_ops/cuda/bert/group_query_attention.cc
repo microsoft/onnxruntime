@@ -100,6 +100,8 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   is_past_bsnh_ = false;
   is_unidirectional_ = true;
   local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
+  ORT_ENFORCE(local_window_size_ == -1 || local_window_size_ > 0,
+              "local_window_size must be -1 or greater than 0.");
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);

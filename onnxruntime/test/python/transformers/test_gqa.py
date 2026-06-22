@@ -2612,6 +2612,31 @@ class TestXQASlidingWindowParity(unittest.TestCase):
 class TestGQARegressions(unittest.TestCase):
     """Specific regression tests for historical bugs."""
 
+    def test_gqa_cuda_rejects_zero_local_window_size(self):
+        if not has_cuda_provider():
+            self.skipTest("CUDA required")
+
+        config = GQAConfig(
+            batch_size=1,
+            num_heads=4,
+            kv_num_heads=4,
+            head_size=64,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            past_kv_sequence_length=0,
+            buffer_sequence_length=1,
+            local_window_size=0,
+            share_buffer=True,
+        )
+        onnx_model_str = create_group_query_attention_graph_prompt(config, TensorProto.FLOAT16)
+
+        with self.assertRaisesRegex(Exception, "local_window_size must be -1 or greater than 0"):
+            InferenceSession(
+                onnx_model_str,
+                SessionOptions(),
+                providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")],
+            )
+
     def test_gqa_rope_separate_qkv_bug(self):
         """
         Regression test for separate QKV + RoPE + FlashAttention bug.
