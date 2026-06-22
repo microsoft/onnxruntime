@@ -191,6 +191,33 @@ TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathRejectsUnsafeNames) {
                        ORT_INVALID_ARGUMENT, "requires a model path");
 }
 
+TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathRejectsSymlinkEscape) {
+  const auto& api = Ort::GetApi();
+  const std::filesystem::path test_dir = PrepareTempTestDir("ort_ep_context_data_utils_symlink_escape_test");
+  auto cleanup = gsl::finally([&]() { std::filesystem::remove_all(test_dir); });
+
+  const std::filesystem::path model_dir = test_dir / "model_dir";
+  const std::filesystem::path outside_dir = test_dir / "outside_dir";
+  ASSERT_TRUE(std::filesystem::create_directories(model_dir));
+  ASSERT_TRUE(std::filesystem::create_directories(outside_dir));
+
+  const std::filesystem::path symlink_path = model_dir / "linked_outside";
+  std::error_code symlink_error;
+  std::filesystem::create_directory_symlink(outside_dir, symlink_path, symlink_error);
+  if (symlink_error) {
+    GTEST_SKIP() << "Unable to create directory symlink for containment test: " << symlink_error.message();
+  }
+
+  ModelEditorGraph graph;
+  graph.model_path = model_dir / "model.onnx";
+
+  std::filesystem::path data_path;
+  ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, "linked_outside/escape.ctx",
+                                                                       graph.ToExternal(), data_path),
+                       ORT_INVALID_ARGUMENT, "resolve to a path within the model directory");
+  EXPECT_TRUE(data_path.empty());
+}
+
 TEST(OrtEpLibrary, EpContextDataUtils_FileFallbackReadsAndWrites) {
   const auto& api = Ort::GetApi();
   const std::filesystem::path test_dir = PrepareTempTestDir("ort_ep_context_data_utils_file_fallback_test");
