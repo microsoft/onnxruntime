@@ -2463,11 +2463,12 @@ static std::vector<float> RunGQAPackedQKVRotaryPrefill(
   const int half_rotary = head_size / 2;
   const int max_seq_len = sequence_length + 8;
 
-  // The CUDA/WebGPU GQA kernels only register for MLFloat16/BFloat16, so float
-  // inputs silently fall back to the CPU EP. To genuinely exercise the GPU
-  // kernels (which is the point of the *_CUDA / *_WebGPU tests), feed fp16
-  // tensors when targeting a GPU EP.
-  const bool use_fp16 = target_ep != GqaTargetEp::kCpu;
+  // The CUDA GQA kernel only registers for MLFloat16/BFloat16, so float inputs
+  // silently fall back to the CPU EP. Feed fp16 tensors when targeting CUDA so
+  // the *_CUDA test genuinely exercises the CUDA kernel. The CPU and WebGPU
+  // kernels both support float (WebGpuSupportedFloatTypes = {float, MLFloat16}),
+  // so those paths keep fp32 for tighter numeric comparison.
+  const bool use_fp16 = target_ep == GqaTargetEp::kCuda;
 
   OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
