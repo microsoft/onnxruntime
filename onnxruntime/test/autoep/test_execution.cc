@@ -688,8 +688,10 @@ TEST(OrtEpLibrary, PluginEp_GenAndLoadEpContextModel_ExternalDataUsesFileFallbac
   ASSERT_FALSE(ep_cache_context_attr->s().empty());
 
   const std::filesystem::path output_model_dir = std::filesystem::path{output_model_file}.parent_path();
-  const std::filesystem::path context_data_path = output_model_dir /
-                                                  ep_context_data_utils::Utf8Path(ep_cache_context_attr->s().c_str());
+  std::filesystem::path ep_cache_context_rel;
+  ASSERT_ORTSTATUS_OK(
+      ep_context_data_utils::Utf8Path(Ort::GetApi(), ep_cache_context_attr->s().c_str(), ep_cache_context_rel));
+  const std::filesystem::path context_data_path = output_model_dir / ep_cache_context_rel;
   files_to_cleanup.push_back(context_data_path);
   ASSERT_TRUE(std::filesystem::exists(context_data_path));
 

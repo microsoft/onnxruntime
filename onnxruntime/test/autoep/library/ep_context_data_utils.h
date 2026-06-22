@@ -39,26 +39,36 @@
 namespace ep_context_data_utils {
 
 #ifdef _WIN32
-inline std::wstring Utf8ToWideString(std::string_view value) {
-  if (value.empty() || value.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
-    return {};
+// Converts a UTF-8 string to a wide string. Reports conversion failures (e.g., invalid UTF-8) via OrtStatus* instead
+// of silently returning an empty string. An empty input yields an empty output and a success status.
+inline OrtStatus* Utf8ToWideString(const OrtApi& api, std::string_view value, std::wstring& wide_value) {
+  wide_value.clear();
+  if (value.empty()) {
+    return nullptr;
+  }
+  if (value.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name is too long to convert");
   }
 
   const int wide_length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
                                               static_cast<int>(value.size()), nullptr, 0);
   if (wide_length <= 0) {
-    return {};
+    return api.CreateStatus(ORT_INVALID_ARGUMENT,
+                            "EPContext data file name is not valid UTF-8 or could not be converted to a wide string");
   }
 
-  std::wstring wide_value(static_cast<size_t>(wide_length), L'\0');
+  wide_value.resize(static_cast<size_t>(wide_length));
   const int converted = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
                                             static_cast<int>(value.size()), wide_value.data(), wide_length);
   if (converted != wide_length) {
-    return {};
+    wide_value.clear();
+    return api.CreateStatus(ORT_FAIL, "Failed to convert EPContext data file name to a wide string");
   }
-  return wide_value;
+  return nullptr;
 }
 
+// Converts a wide string to UTF-8. This is used only to render already-valid paths into diagnostic messages, so it is
+// intentionally best-effort: on the rare conversion failure it returns an empty string rather than an OrtStatus*.
 inline std::string WideToUtf8String(std::wstring_view value) {
   if (value.empty() || value.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
     return {};
@@ -80,16 +90,23 @@ inline std::string WideToUtf8String(std::wstring_view value) {
 }
 #endif
 
-inline std::filesystem::path Utf8Path(const char* path) {
+// Converts a UTF-8 path to a std::filesystem::path. A null or empty input yields an empty path and a success status;
+// conversion failures are reported via OrtStatus*.
+inline OrtStatus* Utf8Path(const OrtApi& api, const char* path, std::filesystem::path& out_path) {
+  out_path.clear();
   if (path == nullptr || path[0] == '\0') {
-    return {};
+    return nullptr;
   }
 
 #ifdef _WIN32
-  return std::filesystem::path{Utf8ToWideString(path)};
+  std::wstring wide_path;
+  RETURN_IF_ERROR(Utf8ToWideString(api, path, wide_path));
+  out_path = std::filesystem::path{wide_path};
 #else
-  return std::filesystem::path{path};
+  (void)api;
+  out_path = std::filesystem::path{path};
 #endif
+  return nullptr;
 }
 
 inline std::string PathToUtf8String(const std::filesystem::path& path) {
@@ -146,7 +163,8 @@ inline OrtStatus* ValidateEpContextDataName(const OrtApi& api, const char* file_
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
   }
 
-  const auto candidate_path = Utf8Path(file_name);
+  std::filesystem::path candidate_path;
+  RETURN_IF_ERROR(Utf8Path(api, file_name, candidate_path));
   if (candidate_path.empty()) {
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name is not a valid path");
   }
@@ -180,7 +198,8 @@ inline OrtStatus* ResolveEpContextDataPath(const OrtApi& api, const char* file_n
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
   }
 
-  const auto candidate_path = Utf8Path(file_name);
+  std::filesystem::path candidate_path;
+  RETURN_IF_ERROR(Utf8Path(api, file_name, candidate_path));
   if (candidate_path.empty()) {
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name is not a valid path");
   }

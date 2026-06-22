@@ -542,12 +542,14 @@ OrtStatus* ExampleEp::CreateEpContextNodes(const OrtGraph* graph,
         std::string fallback_ep_ctx = ep_ctx;
         const OrtGraph* fallback_graph = graph;
         if (!config_.ep_context_output_model_path.empty()) {
-          const std::filesystem::path output_model_path =
-              ep_context_data_utils::Utf8Path(config_.ep_context_output_model_path.c_str());
+          std::filesystem::path output_model_path;
+          RETURN_IF_ERROR(ep_context_data_utils::Utf8Path(ort_api, config_.ep_context_output_model_path.c_str(),
+                                                          output_model_path));
           const std::filesystem::path output_model_dir = output_model_path.parent_path();
           if (!output_model_dir.empty()) {
-            fallback_ep_ctx = ep_context_data_utils::PathToUtf8String(
-                output_model_dir / ep_context_data_utils::Utf8Path(ep_ctx.c_str()));
+            std::filesystem::path ep_ctx_path;
+            RETURN_IF_ERROR(ep_context_data_utils::Utf8Path(ort_api, ep_ctx.c_str(), ep_ctx_path));
+            fallback_ep_ctx = ep_context_data_utils::PathToUtf8String(output_model_dir / ep_ctx_path);
           }
           fallback_graph = nullptr;
         }

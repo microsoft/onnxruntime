@@ -89,22 +89,32 @@ Ort::Experimental::EpContextConfig MakeEmptyEpContextConfig() {
 }  // namespace
 
 TEST(OrtEpLibrary, EpContextDataUtils_PathHelpersRoundTrip) {
+  const auto& api = Ort::GetApi();
   const std::string file_name = "context_data.bin";
 
 #ifdef _WIN32
-  const std::wstring wide_file_name = ep_context_data_utils::Utf8ToWideString(file_name);
+  std::wstring wide_file_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::Utf8ToWideString(api, file_name, wide_file_name));
   ASSERT_FALSE(wide_file_name.empty());
   EXPECT_EQ(ep_context_data_utils::WideToUtf8String(wide_file_name), file_name);
 
   const std::string invalid_utf8(1, static_cast<char>(0xff));
-  EXPECT_TRUE(ep_context_data_utils::Utf8ToWideString(invalid_utf8).empty());
+  std::wstring invalid_wide;
+  ExpectOrtStatusError(ep_context_data_utils::Utf8ToWideString(api, invalid_utf8, invalid_wide),
+                       ORT_INVALID_ARGUMENT, "not valid UTF-8");
+  EXPECT_TRUE(invalid_wide.empty());
 #endif
 
-  const std::filesystem::path file_path = ep_context_data_utils::Utf8Path(file_name.c_str());
+  std::filesystem::path file_path;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::Utf8Path(api, file_name.c_str(), file_path));
   ASSERT_FALSE(file_path.empty());
   EXPECT_EQ(ep_context_data_utils::PathToUtf8String(file_path), file_name);
-  EXPECT_TRUE(ep_context_data_utils::Utf8Path(nullptr).empty());
-  EXPECT_TRUE(ep_context_data_utils::Utf8Path("").empty());
+
+  std::filesystem::path empty_path;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::Utf8Path(api, nullptr, empty_path));
+  EXPECT_TRUE(empty_path.empty());
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::Utf8Path(api, "", empty_path));
+  EXPECT_TRUE(empty_path.empty());
 }
 
 TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathAndInvalidArguments) {
