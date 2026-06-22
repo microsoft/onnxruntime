@@ -111,16 +111,9 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   v_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("v_quant_type", "NONE"));
   kv_cache_bit_width_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("kv_cache_bit_width", 0));
 
-  bool is_quantized = (k_quant_type_ != KVQuantizationType::NONE || v_quant_type_ != KVQuantizationType::NONE);
-  // XQA enablement:
-  //  - An explicit ORT_ENABLE_XQA overrides everything (1 = on, 0 = off, including the head_sink default-on path).
-  //  - When unset, XQA defaults on for the quantized KV cache path and off for the non-quantized path
-  //    (the non-quantized head_sink decode path is additionally enabled per-Run in ComputeInternal).
   constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
-  const int xqa_env = ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", -1);  // -1 means unset
-  xqa_force_disabled_ = (xqa_env == 0);
-  const int effective_enable_xqa = (xqa_env == -1) ? (is_quantized ? 1 : 0) : xqa_env;
-  enable_xqa_ = kIsFp16OrBf16 && (effective_enable_xqa != 0);
+  // XQA defaults on for fp16/bf16; ORT_ENABLE_XQA=0 disables it explicitly.
+  enable_xqa_ = kIsFp16OrBf16 && (ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_XQA", 1) != 0);
 
   kernel_options_ = this->GetAttentionKernelOptions();
 
@@ -420,30 +413,20 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // 5. No Softcap (XQA doesn't support softcap).
   // 6. Standard Softmax, or smooth softmax represented by a head_sink tensor.
   // 7. No local window attention (global attention only).
-  const bool use_xqa_attention_sinks = head_sink != nullptr && !is_inputs_quantized;
-  const bool is_xqa_smooth_softmax_supported = !parameters.use_smooth_softmax || use_xqa_attention_sinks;
-  // XQA is opt-in for the non-quantized path (ORT_ENABLE_XQA), but a head_sink (attention sink) input
-  // signals a GPT-OSS style decode model that benefits from XQA, so enable it by default in that case.
-  // An explicit ORT_ENABLE_XQA=0 (xqa_force_disabled_) still wins and turns XQA off entirely.
-  // The dtype guard mirrors enable_xqa_ (XQA only supports fp16/bf16); ineligible cases fall back below.
-  constexpr bool kIsFp16OrBf16 = std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>;
   // QK-Norm can use XQA for the non-quantized KV-cache path: ExtremeDecoding runs the same
   // UnpackRoPEAppend preprocess before XQA, so Q/K can be normalized before the XQA kernel consumes
   // Q and the appended cache. Keep quantized QK-Norm off the XQA route until scale correctness is
   // validated for normalized K before quantized-cache append.
-  const bool xqa_qk_norm_supported = !parameters.use_qk_norm || !is_inputs_quantized;
-  const bool xqa_enabled_for_run =
-      !xqa_force_disabled_ && xqa_qk_norm_supported &&
-      (enable_xqa_ || (kIsFp16OrBf16 && use_xqa_attention_sinks));
-  if (xqa_enabled_for_run &&
+  if (enable_xqa_ &&
       (device_prop.major >= 8) &&
       !parameters.is_first_prompt &&
       parameters.sequence_length == 1 &&
       parameters.kv_sequence_length > 0 &&  // Shared KV (kv_seq=0) has no new K/V to append
       parameters.past_present_share_buffer &&
       parameters.softcap == 0.0f &&
-      is_xqa_smooth_softmax_supported &&
-      parameters.local_window_size == -1) {
+      parameters.local_window_size == -1 &&
+      (!parameters.use_qk_norm || !is_inputs_quantized) &&
+      (!parameters.use_smooth_softmax || (head_sink != nullptr && !is_inputs_quantized))) {
     int group_size = parameters.num_heads / parameters.kv_num_heads;
 
     bool is_int8_quantized_supported = is_int8 &&
@@ -467,7 +450,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
     bool is_non_quantized_supported = !is_inputs_quantized &&
                                       (parameters.head_size == 256 || parameters.head_size == 128 || parameters.head_size == 64) &&
-                                      (64 % group_size == 0);
+                                      (group_size == 1 || group_size == 2 || group_size == 4 || group_size == 5 ||
+                                       group_size == 8 || group_size == 16 || group_size == 32);
 
     data.use_xqa = (is_non_quantized_supported || is_int8_quantized_supported || is_fp8_quantized_supported);
 
