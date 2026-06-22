@@ -348,6 +348,10 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   // kernel to avoid materializing the full attention score matrix. Falls back to the
   // naive path when an unsupported feature is requested (softcap, smooth softmax,
   // head sink, or QK output).
+  //
+  // The flash path is currently used for prefill only (sequence_length > 1). Single-token
+  // decode (sequence_length == 1) falls back to the naive path; a dedicated decode kernel
+  // is added in a follow-up change.
   if constexpr (std::is_same_v<T, float>) {
     // Restrict the flash path to prefill / chunked-prefill (query length > 1). Single-token
     // decode (sequence_length == 1) has no flash benefit: the naive score matrix is only
