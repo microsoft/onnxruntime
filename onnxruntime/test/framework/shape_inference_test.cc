@@ -302,101 +302,75 @@ TEST(ShapeInferenceV2Test, ShapeMulMultiElementNoScalarCollapseTest) {
 }
 
 // Regression for microsoft/onnxruntime#29072.
-// End-to-end lock for Gather's custom data-propagation DECLINE on a rank-2 index.
+// End-to-end lock for BOTH custom data-propagation DECLINE paths -- Gather on a rank-2 index and
+// Unsqueeze on a single-element value -- driven through a SINGLE shared model so the coverage costs
+// one onnxruntime::Model::Load instead of two (microsoft/onnxruntime#29139: the single-process
+// onnxruntime_test_all run sits near the AddressSanitizer size-class ceiling, so the two decline
+// fixtures are folded into one graph to minimize the live Model/Graph footprint).
 //
-// The Gather index is the constant [[-1]] of shape [1, 1] (rank 2), so the Gather output rank is
-// data_rank - 1 + index_rank = 1 - 1 + 2 = 2. The single-value data-propagation channel can carry
-// only rank-0 (scalar) and rank-1 [1] values, so Gather's custom propagation must DECLINE rather
-// than fabricate a rank-1 value. The index is a raw graph initializer (not surfaced through the
-// data-propagation getInputData channel), so ONNX's own Gather data propagator bails and control
-// reaches our custom decline branch.
+// One rank-3 input X drives a shared Shape(X) -> S (the 1-D vector [3, 4, 2000]); two independent
+// branches gather from S and route into a rank-lowering Squeeze -> Range so each decline is
+// observable end to end:
 //
-// The decline is made OBSERVABLE through a rank-lowering Squeeze:
-//   Shape(X) -> Gather([[ -1 ]]) -> Squeeze -> Range(0, K, 1)
-// With the correct decline, nothing is propagated, Squeeze has no value to lower, and Range's limit
-// stays symbolic -- so the Range output dimension is UNKNOWN (it carries no concrete dim_value). If
-// the decline were relaxed to emit a rank-1 [1] value, Squeeze would lower it to the scalar 2000 and
-// Range would resolve to a concrete length 2000. Asserting the dimension has no concrete value
-// discriminates the correct decline from the rank-fabricating bug -- real end-to-end coverage of the
-// decline branch (no shared-helper abstraction, no tautological unit test).
+//   Branch A (Gather rank-2 index -> output RA): S -> Gather([[ -1 ]]) -> Squeeze -> Range(0, K, 1)
+//     The index [[-1]] has shape [1, 1] (rank 2), so the Gather output rank is
+//     data_rank - 1 + index_rank = 1 - 1 + 2 = 2 -- a rank-2 single-element value the single-value
+//     channel cannot represent, so Gather's custom propagation must DECLINE. With the correct
+//     decline nothing propagates, Squeeze has no value to lower, and RA's length stays SYMBOLIC. A
+//     relaxed decline would emit a rank-1 [1] value that Squeeze lowers to the scalar 2000,
+//     concretizing RA to length 2000 -- so asserting RA stays symbolic discriminates the correct
+//     decline from the rank-fabricating bug.
 //
-// This drives the decline through onnxruntime::Model::Load (which runs Graph::Resolve) and inspects
-// the resulting output NodeArg shape directly -- no InferenceSession, so none of the session's
-// arena / execution-provider / kernel-registry allocations are created (microsoft/onnxruntime#29139:
-// the single-process onnxruntime_test_all run sits near the AddressSanitizer size-class ceiling, so
-// each added test must stay lean). Data propagation runs inside Graph::Resolve
-// (Graph::InferAndVerifyTypeMatch -> data-propagation RunInferencing); constant folding is a separate
-// session-level optimizer pass that never runs here, so Resolve alone exercises the decline branch in
-// isolation with no folding to mask it.
-TEST(ShapeInferenceV2Test, GatherRank2IndexDeclineTest) {
-  auto model_path = ORT_TSTR("testdata/test_shape_data_propagation_gather_rank2_decline.onnx");
+//   Branch B (Unsqueeze single value -> output RB): S -> Gather([-1]) -> Unsqueeze([0]) -> Squeeze ->
+//     Range(0, K, 1). Gather([-1]) is a rank-1 single-element value (the last dimension of X, 2000);
+//     unsqueezing it would yield a rank >= 2 result ([1, 2000]) the single-value channel cannot
+//     represent, so Unsqueeze's custom propagation must DECLINE. With the correct decline nothing
+//     propagates past Unsqueeze, RB's length stays SYMBOLIC, and the model loads. A relaxed decline
+//     would fabricate [1, 2000], which Squeeze lowers into a non-scalar Range limit that ONNX Range
+//     shape inference rejects ("Input to 'Range' op should be scalars"), so Graph::Resolve (and
+//     therefore Model::Load) FAILS. So Branch B is observable either as a load failure or, were that
+//     to pass, as a concrete RB length.
+//
+// Both Gather indices are raw graph initializers (not surfaced through the data-propagation
+// getInputData channel), so ONNX's own Gather data propagator bails and control reaches our custom
+// decline branches. The branches are independent: a regression in either is caught (Branch A as a
+// concrete RA dimension, Branch B as a failed load), so this one combined model keeps the full
+// discriminating power of the two original per-path fixtures.
+//
+// The decline is driven through onnxruntime::Model::Load (which runs Graph::Resolve) and the output
+// NodeArg shapes are inspected directly -- no InferenceSession, so none of the session's arena /
+// execution-provider / kernel-registry allocations are created. Data propagation runs inside
+// Graph::Resolve (Graph::InferAndVerifyTypeMatch -> data-propagation RunInferencing); constant
+// folding is a separate session-level optimizer pass that never runs here, so Resolve alone
+// exercises the decline branches in isolation with no folding to mask them.
+TEST(ShapeInferenceV2Test, GatherUnsqueezeDeclineTest) {
+  auto model_path = ORT_TSTR("testdata/test_shape_data_propagation_decline_combined.onnx");
 
   std::shared_ptr<onnxruntime::Model> model;
-  // Model::Load runs Graph::Resolve, which performs data propagation. A correct decline keeps the
-  // Range length symbolic, so the resolve (and therefore the load) succeeds.
+  // Model::Load runs Graph::Resolve, which performs data propagation. A correct decline on BOTH
+  // branches keeps each Range length symbolic, so the resolve (and therefore the load) succeeds. A
+  // relaxed Unsqueeze decline (Branch B) makes Range's input non-scalar, which Range shape inference
+  // rejects, so Resolve returns non-OK and this assertion fails on the load itself.
   ASSERT_STATUS_OK(onnxruntime::Model::Load(model_path, model, nullptr,
                                             DefaultLoggingManager().DefaultLogger()));
 
   const auto& graph_outputs = model->MainGraph().GetOutputs();
-  ASSERT_EQ(graph_outputs.size(), static_cast<size_t>(1));
-  const TensorShapeProto* output_shape = graph_outputs[0]->Shape();
-  ASSERT_NE(output_shape, nullptr) << "Range output should have an inferred (rank-1) shape";
+  ASSERT_EQ(graph_outputs.size(), static_cast<size_t>(2));
 
-  // Range output is 1-D; its single dimension must stay SYMBOLIC (no concrete dim_value) because the
-  // rank-2 Gather index declines rather than propagating a (rank-fabricated) concrete K. A relaxed
-  // decline would fabricate a rank-1 value that Squeeze lowers to scalar 2000, giving the dimension a
-  // concrete value 2000 -- which these assertions reject.
-  ASSERT_EQ(output_shape->dim_size(), 1) << "Range output should be a 1-D tensor";
-  EXPECT_FALSE(output_shape->dim(0).has_dim_value())
-      << "Range length must stay symbolic; the rank-2 Gather index must decline rather than "
-         "fabricate a concrete K (a relaxed decline concretizes it to 2000)";
-}
-
-// Regression for microsoft/onnxruntime#29072.
-// End-to-end lock for Unsqueeze's custom data-propagation DECLINE on a single-element value.
-//
-// Shape(X) -> Gather([-1]) produces a rank-1 single-element value (the last dimension of X, 2000).
-// Unsqueezing that single-element (scalar-like, rank-1 [1]) value would yield a rank >= 2 result
-// ([1, 2000]) that the single-value channel cannot faithfully represent, so Unsqueeze's custom
-// propagation must DECLINE rather than fabricate the misleading [1, value].
-//
-// The decline is made OBSERVABLE through a rank-lowering Squeeze:
-//   Shape(X) -> Gather([-1]) -> Unsqueeze([0]) -> Squeeze -> Range(0, K, 1)
-// With the correct decline, no value is propagated past Unsqueeze, Squeeze has nothing to lower, and
-// Range's limit stays symbolic, so the graph resolves with an unknown Range length. A relaxed decline
-// that fabricated [1, 2000] would propagate a non-scalar value to Range, which ONNX Range shape
-// inference rejects ("Input to 'Range' op should be scalars") -- Graph::Resolve then returns a
-// non-OK status and the load fails. So the decline IS observable: correct -> loads with a symbolic
-// length; relaxed -> load error. This test asserts the model loads and the length stays symbolic.
-//
-// Like GatherRank2IndexDeclineTest this drives the decline through onnxruntime::Model::Load (which
-// runs Graph::Resolve) and inspects the output NodeArg shape directly -- no InferenceSession, so the
-// session arena / EP / kernel-registry allocations are never created (microsoft/onnxruntime#29139).
-// Data propagation runs inside Graph::Resolve; constant folding is a separate session-level optimizer
-// pass that never runs here, so Resolve alone exercises the decline branch with no folding to mask it.
-TEST(ShapeInferenceV2Test, UnsqueezeSingleValueDeclineTest) {
-  auto model_path = ORT_TSTR("testdata/test_shape_data_propagation_unsqueeze_decline.onnx");
-
-  std::shared_ptr<onnxruntime::Model> model;
-  // Model::Load runs Graph::Resolve. A correct decline keeps Range's input scalar so the resolve (and
-  // therefore the load) succeeds; a relaxed decline makes Range's input non-scalar, which Range shape
-  // inference rejects, so Resolve returns non-OK and this assertion fails on the load itself.
-  ASSERT_STATUS_OK(onnxruntime::Model::Load(model_path, model, nullptr,
-                                            DefaultLoggingManager().DefaultLogger()));
-
-  const auto& graph_outputs = model->MainGraph().GetOutputs();
-  ASSERT_EQ(graph_outputs.size(), static_cast<size_t>(1));
-  const TensorShapeProto* output_shape = graph_outputs[0]->Shape();
-  ASSERT_NE(output_shape, nullptr) << "Range output should have an inferred (rank-1) shape";
-
-  // Range output is 1-D; its single dimension must stay SYMBOLIC because Unsqueeze declines rather
-  // than fabricating a rank >= 2 value. A relaxed decline fabricates [1, 2000], which makes Range's
-  // input non-scalar and the load fails above -- so any regression here is caught either as a load
-  // failure or as a concrete dim_value below.
-  ASSERT_EQ(output_shape->dim_size(), 1) << "Range output should be a 1-D tensor";
-  EXPECT_FALSE(output_shape->dim(0).has_dim_value())
-      << "Range length must stay symbolic; unsqueezing a single-element value must decline "
-         "(a relaxed decline fabricates [1, value] and the model fails to load)";
+  // Both Range outputs are 1-D; each single dimension must stay SYMBOLIC (no concrete dim_value)
+  // because its branch declines rather than propagating a (rank-fabricated) concrete K. RA[0] would
+  // concretize to 2000 if the rank-2 Gather index stopped declining; RB[0] would concretize to 2000
+  // (or the load would fail) if the single-value Unsqueeze stopped declining.
+  for (const NodeArg* output : graph_outputs) {
+    const TensorShapeProto* output_shape = output->Shape();
+    ASSERT_NE(output_shape, nullptr) << "Range output '" << output->Name()
+                                     << "' should have an inferred (rank-1) shape";
+    ASSERT_EQ(output_shape->dim_size(), 1) << "Range output '" << output->Name()
+                                           << "' should be a 1-D tensor";
+    EXPECT_FALSE(output_shape->dim(0).has_dim_value())
+        << "Range length '" << output->Name() << "' must stay symbolic; the decline must not "
+                                                 "fabricate a concrete K (a relaxed decline concretizes it to 2000)";
+  }
 }
 
 // Lock test for the Shape -> Gather(1-D index) -> Squeeze -> Range chain.
