@@ -201,34 +201,32 @@ TEST(ShapeInferenceV2Test, PartialDataPropagationTest) {
 // "K input must be a one-dimensional tensor of size 1." at model load time.
 //
 // The failure reproduces even at ORT_DISABLE_ALL (constant folding never runs there), which
-// proves the cause is shape-inference data propagation, not constant folding. This test loads
-// the model at the disabled, basic, and all-optimization levels, which bracket the data-propagation
-// path: data propagation runs in the pre-optimization Graph::Resolve pass, so it is independent of
-// the graph-optimization level (ORT_ENABLE_ALL already applies the extended and layout transformers,
-// so they need not be enumerated separately). The test asserts the rank-1 K shape is preserved so the
-// model loads and TopK output shapes are inferred correctly.
+// proves the cause is shape-inference data propagation, not constant folding. Data propagation runs
+// in the pre-optimization Graph::Resolve pass, so it is independent of the graph-optimization level;
+// loading at ORT_DISABLE_ALL therefore fully exercises the data-propagation path (enumerating
+// ORT_ENABLE_BASIC/ALL would only re-run the same propagation behind additional optimizer passes, at
+// the cost of extra InferenceSession allocations -- see microsoft/onnxruntime#29139). The test
+// asserts the rank-1 K shape is preserved so the model loads and TopK output shapes are inferred
+// correctly.
 TEST(ShapeInferenceV2Test, GatherToTopKRankPreservationTest) {
   auto model_path = ORT_TSTR("testdata/test_shape_data_propagation_gather_topk.onnx");
 
-  for (auto opt_level : {ORT_DISABLE_ALL, ORT_ENABLE_BASIC, ORT_ENABLE_ALL}) {
-    Ort::SessionOptions session_options{};
-    session_options.SetGraphOptimizationLevel(opt_level);
+  Ort::SessionOptions session_options{};
+  session_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
 
-    // Loading must succeed at each level; before the fix this threw a
-    // ShapeInferenceError at ORT_DISABLE_ALL (and above).
-    Ort::Session session(*ort_env, model_path, session_options);
+  // Loading must succeed; before the fix this threw a ShapeInferenceError at ORT_DISABLE_ALL.
+  Ort::Session session(*ort_env, model_path, session_options);
 
-    ORT_ENFORCE(session.GetOutputCount() == 2);
+  ORT_ENFORCE(session.GetOutputCount() == 2);
 
-    // K is data-propagated as the last dimension of X (2000), so both TopK outputs are 1-D
-    // tensors of length 2000.
-    for (size_t output_index = 0; output_index < 2; ++output_index) {
-      Ort::TypeInfo type_info = session.GetOutputTypeInfo(output_index);
-      auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
-      std::vector<int64_t> output_shape = tensor_info.GetShape();
-      EXPECT_TRUE(output_shape.size() == 1) << "TopK output should be a 1-D tensor";
-      EXPECT_TRUE(output_shape[0] == 2000) << "TopK output length should be the inferred K value (2000)";
-    }
+  // K is data-propagated as the last dimension of X (2000), so both TopK outputs are 1-D
+  // tensors of length 2000.
+  for (size_t output_index = 0; output_index < 2; ++output_index) {
+    Ort::TypeInfo type_info = session.GetOutputTypeInfo(output_index);
+    auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+    std::vector<int64_t> output_shape = tensor_info.GetShape();
+    EXPECT_TRUE(output_shape.size() == 1) << "TopK output should be a 1-D tensor";
+    EXPECT_TRUE(output_shape[0] == 2000) << "TopK output length should be the inferred K value (2000)";
   }
 }
 
@@ -246,25 +244,24 @@ TEST(ShapeInferenceV2Test, GatherToTopKRankPreservationTest) {
 TEST(ShapeInferenceV2Test, GatherMulToTopKRankPreservationTest) {
   auto model_path = ORT_TSTR("testdata/test_shape_data_propagation_gather_mul_topk.onnx");
 
-  for (auto opt_level : {ORT_DISABLE_ALL, ORT_ENABLE_BASIC, ORT_ENABLE_ALL}) {
-    Ort::SessionOptions session_options{};
-    session_options.SetGraphOptimizationLevel(opt_level);
+  // Data propagation runs in the pre-optimization Graph::Resolve pass, so ORT_DISABLE_ALL exercises
+  // the full chain; see GatherToTopKRankPreservationTest above and microsoft/onnxruntime#29139.
+  Ort::SessionOptions session_options{};
+  session_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
 
-    // Loading must succeed at each level; before the fix this threw a
-    // ShapeInferenceError at ORT_DISABLE_ALL (and above).
-    Ort::Session session(*ort_env, model_path, session_options);
+  // Loading must succeed; before the fix this threw a ShapeInferenceError at ORT_DISABLE_ALL.
+  Ort::Session session(*ort_env, model_path, session_options);
 
-    ORT_ENFORCE(session.GetOutputCount() == 2);
+  ORT_ENFORCE(session.GetOutputCount() == 2);
 
-    // K = 50 * 40 = 2000 is data-propagated through the two Gathers and the Mul, so both TopK
-    // outputs are 1-D tensors of length 2000.
-    for (size_t output_index = 0; output_index < 2; ++output_index) {
-      Ort::TypeInfo type_info = session.GetOutputTypeInfo(output_index);
-      auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
-      std::vector<int64_t> output_shape = tensor_info.GetShape();
-      EXPECT_TRUE(output_shape.size() == 1) << "TopK output should be a 1-D tensor";
-      EXPECT_TRUE(output_shape[0] == 2000) << "TopK output length should be the propagated K value (2000)";
-    }
+  // K = 50 * 40 = 2000 is data-propagated through the two Gathers and the Mul, so both TopK
+  // outputs are 1-D tensors of length 2000.
+  for (size_t output_index = 0; output_index < 2; ++output_index) {
+    Ort::TypeInfo type_info = session.GetOutputTypeInfo(output_index);
+    auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+    std::vector<int64_t> output_shape = tensor_info.GetShape();
+    EXPECT_TRUE(output_shape.size() == 1) << "TopK output should be a 1-D tensor";
+    EXPECT_TRUE(output_shape[0] == 2000) << "TopK output length should be the propagated K value (2000)";
   }
 }
 
@@ -281,24 +278,24 @@ TEST(ShapeInferenceV2Test, GatherMulToTopKRankPreservationTest) {
 TEST(ShapeInferenceV2Test, ShapeMulMultiElementNoScalarCollapseTest) {
   auto model_path = ORT_TSTR("testdata/test_shape_data_propagation_shape_mul_constantofshape.onnx");
 
-  for (auto opt_level : {ORT_DISABLE_ALL, ORT_ENABLE_BASIC, ORT_ENABLE_ALL}) {
-    Ort::SessionOptions session_options{};
-    session_options.SetGraphOptimizationLevel(opt_level);
+  // Data propagation runs in the pre-optimization Graph::Resolve pass, so ORT_DISABLE_ALL exercises
+  // the full chain; see GatherToTopKRankPreservationTest above and microsoft/onnxruntime#29139.
+  Ort::SessionOptions session_options{};
+  session_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
 
-    Ort::Session session(*ort_env, model_path, session_options);
+  Ort::Session session(*ort_env, model_path, session_options);
 
-    ORT_ENFORCE(session.GetOutputCount() == 1);
+  ORT_ENFORCE(session.GetOutputCount() == 1);
 
-    Ort::TypeInfo type_info = session.GetOutputTypeInfo(0);
-    auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
-    std::vector<int64_t> output_shape = tensor_info.GetShape();
+  Ort::TypeInfo type_info = session.GetOutputTypeInfo(0);
+  auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+  std::vector<int64_t> output_shape = tensor_info.GetShape();
 
-    // ConstantOfShape(Mul(Shape(X), Shape(X))) == ConstantOfShape([9, 16]) -> rank-2 [9, 16].
-    // A collapse of the multi-element value to a scalar would yield rank 1 here.
-    EXPECT_TRUE(output_shape.size() == 2) << "Output should stay rank 2; the multi-element value must not collapse";
-    EXPECT_TRUE(output_shape.size() == 2 && output_shape[0] == 9 && output_shape[1] == 16)
-        << "ConstantOfShape output should be the propagated multi-element shape [9, 16]";
-  }
+  // ConstantOfShape(Mul(Shape(X), Shape(X))) == ConstantOfShape([9, 16]) -> rank-2 [9, 16].
+  // A collapse of the multi-element value to a scalar would yield rank 1 here.
+  EXPECT_TRUE(output_shape.size() == 2) << "Output should stay rank 2; the multi-element value must not collapse";
+  EXPECT_TRUE(output_shape.size() == 2 && output_shape[0] == 9 && output_shape[1] == 16)
+      << "ConstantOfShape output should be the propagated multi-element shape [9, 16]";
 }
 
 // Regression for microsoft/onnxruntime#29072.
@@ -384,23 +381,23 @@ TEST(ShapeInferenceV2Test, GatherUnsqueezeDeclineTest) {
 TEST(ShapeInferenceV2Test, GatherSqueezeRangeRankPreservationTest) {
   auto model_path = ORT_TSTR("testdata/test_shape_data_propagation_gather_squeeze_range.onnx");
 
-  for (auto opt_level : {ORT_DISABLE_ALL, ORT_ENABLE_BASIC, ORT_ENABLE_ALL}) {
-    Ort::SessionOptions session_options{};
-    session_options.SetGraphOptimizationLevel(opt_level);
+  // Data propagation runs in the pre-optimization Graph::Resolve pass, so ORT_DISABLE_ALL exercises
+  // the full chain; see GatherToTopKRankPreservationTest above and microsoft/onnxruntime#29139.
+  Ort::SessionOptions session_options{};
+  session_options.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
 
-    Ort::Session session(*ort_env, model_path, session_options);
+  Ort::Session session(*ort_env, model_path, session_options);
 
-    ORT_ENFORCE(session.GetOutputCount() == 1);
+  ORT_ENFORCE(session.GetOutputCount() == 1);
 
-    Ort::TypeInfo type_info = session.GetOutputTypeInfo(0);
-    auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
-    std::vector<int64_t> output_shape = tensor_info.GetShape();
+  Ort::TypeInfo type_info = session.GetOutputTypeInfo(0);
+  auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+  std::vector<int64_t> output_shape = tensor_info.GetShape();
 
-    // Range(0, Squeeze(Gather(Shape(X), [-1])), 1) == Range(0, 2000, 1) -> 1-D length 2000.
-    EXPECT_TRUE(output_shape.size() == 1) << "Range output should be a 1-D tensor";
-    EXPECT_TRUE(output_shape.size() == 1 && output_shape[0] == 2000)
-        << "Range length should be the scalar K (2000) propagated through Squeeze";
-  }
+  // Range(0, Squeeze(Gather(Shape(X), [-1])), 1) == Range(0, 2000, 1) -> 1-D length 2000.
+  EXPECT_TRUE(output_shape.size() == 1) << "Range output should be a 1-D tensor";
+  EXPECT_TRUE(output_shape.size() == 1 && output_shape[0] == 2000)
+      << "Range length should be the scalar K (2000) propagated through Squeeze";
 }
 
 // Unit test for the single-element guard in TryGetSinglePropagatedShapeValue, the helper shared by
