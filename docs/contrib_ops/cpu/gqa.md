@@ -58,7 +58,7 @@ Both the non-quantized and quantized paths have two execution strategies:
 - **Naive (full materialization)**: Computes the full `[S, T]` attention score matrix, applies masking and softmax, then computes the SV product. Simple but memory-intensive for long sequences.
 - **Flash Attention (tiled, online softmax)**: Processes K/V in L2-cache-sized blocks using the online softmax algorithm (Milakov & Gimelshein, 2018). Avoids materializing the full attention matrix, reducing peak memory from O(S×T) to O(S×Bc) per head. Multi-threaded via the MLAS thread pool.
 
-The quantized path uses `MlasFlashAttentionQuantizedKV` (`flashattn_qkv.cpp`); the non-quantized FP32 path uses `MlasFlashAttentionGQA` (`flashattn_gqa.cpp`). Both share the same tiling, masking, online-softmax, and flash-decoding structure.
+The quantized path uses `MlasFlashAttentionQuantizedKV` (`flashattn_qkv.cpp`); the non-quantized FP32 path uses `MlasFlashAttentionGQA` (`flashattn_gqa.cpp`). Both share the same tiling, masking, and online-softmax structure. The quantized path additionally provides a two-phase flash-decoding strategy for single-token decode; the non-quantized FP32 path is limited to prefill (`sequence_length > 1`) and uses the naive path for decode.
 
 The flash path is selected by default when conditions are met (see below). Set `ORT_GQA_DISABLE_FLASH_ATTENTION=1` to force the naive path (applies to both the quantized and non-quantized paths).
 
@@ -213,7 +213,7 @@ The partials buffer is allocated alongside the per-thread scratch in a single al
 
 ## Non-Quantized Flash Attention Path
 
-The non-quantized flash attention path (`MlasFlashAttentionGQA`, in `flashattn_gqa.cpp`) is the FP32-KV-cache counterpart of the quantized path. It is selected for the `float` kernel specialization and reuses the same tiling, online-softmax, masking, and flash-decoding structure.
+The non-quantized flash attention path (`MlasFlashAttentionGQA`, in `flashattn_gqa.cpp`) is the FP32-KV-cache counterpart of the quantized path. It is selected for the `float` kernel specialization and reuses the same tiling, online-softmax, and masking structure. Unlike the quantized path, it is limited to prefill / chunked-prefill (`sequence_length > 1`); single-token decode (`sequence_length == 1`) uses the naive path, which is why there is no flash-decoding variant here.
 
 ### Differences from the Quantized Path
 
@@ -242,8 +242,7 @@ computes a per-q_block bound
 `ir >= kv_causal_limit`, instead of computing and then discarding the masked upper-triangle
 QK/SV GEMMs. This skips roughly half of the QK/SV work for square prefill (S = T) and is the
 main reason the FP32 flash path is faster than naive even at short sequence lengths
-(see the benchmark results below). Decode (q_block of size 1 at the cache tail) attends to all
-KV positions, so the bound equals `total_seqlen` and nothing is skipped.
+(see the benchmark results below).
 
 ### Activation Conditions
 
@@ -251,18 +250,18 @@ The non-quantized flash path is selected when ALL of the following hold:
 
 - The kernel specialization is `float` (FP16 uses the naive path)
 - `ORT_GQA_DISABLE_FLASH_ATTENTION` environment variable is not set (or set to `0`)
-- `total_sequence_length > 1`
+- `sequence_length > 1` (prefill / chunked-prefill; single-token decode uses the naive path)
 - No softcap
 - No smooth softmax
 - No head sink
 - No output QK capture
 - `present_key` and `present_value` are provided
 
-Attention bias, causal masking, local window attention, GQA head grouping (`num_heads != kv_num_heads`), ragged per-batch sequence lengths, shared past/present buffers, and flash decoding are all supported, mirroring the quantized flash path. When any condition is not met, the kernel falls back to the naive full-materialization path.
+Attention bias, causal masking, local window attention, GQA head grouping (`num_heads != kv_num_heads`), ragged per-batch sequence lengths, and shared past/present buffers are all supported, mirroring the quantized flash path. When any condition is not met, the kernel falls back to the naive full-materialization path.
 
-### Block Sizes, Threading, and Flash Decoding
+### Block Sizes and Threading
 
-Block-size selection (`kv_block_size`, `q_block_size`), `(batch, head, q_block)` task partitioning, the per-thread working buffer layout (`l`, `m`, `scores`, `temp_output`), and the two-phase flash-decoding strategy for single-token decode are identical to the quantized path described above. The only difference is that the per-thread `temp_output` tile is accumulated directly by the SV SGEMM rather than via a fused dequantization.
+Block-size selection (`kv_block_size`, `q_block_size`), `(batch, head, q_block)` task partitioning, and the per-thread working buffer layout (`l`, `m`, `scores`, `temp_output`) are identical to the quantized path described above. The only difference is that the per-thread `temp_output` tile is accumulated directly by the SV SGEMM rather than via a fused dequantization. Because this path is prefill-only, it does not include the quantized path's two-phase flash-decoding strategy for single-token decode.
 
 ## MLAS Dispatch Paths
 
@@ -514,14 +513,13 @@ offsets the intrinsic per-KV-block online-softmax overhead (running max/exp/outp
 The same advantage holds single-threaded (1.4\u20131.8x at threads=1), confirming the gain is
 algorithmic rather than purely from threading.
 
-#### Latency — Decode (S = 1, token generation)
+#### Decode (S = 1, token generation)
 
-For single-token decode at this head configuration (`batch\u00d7heads = 16 > threads = 8`, so
-flash decoding KV-partitioning is not active), the workload per `Run` is tiny and dominated
-by KV-cache concatenation overhead. Operator-level decode latency is therefore noisy and
-roughly at parity between the two paths, with longer total sequence lengths (T\u22652049)
-tending to favor flash. The FP32 decode path is not the target of the prefill-oriented
-causal early-termination optimization.
+Single-token decode (`sequence_length == 1`) is **not** handled by the FP32 flash path; it falls
+back to the naive path. Decode produces only a `[1, total_sequence_length]` score row per head,
+so there is nothing to tile away, and the extra online-softmax bookkeeping made the flash kernel
+slower and noisier in practice. Restricting the flash path to prefill (`sequence_length > 1`) keeps
+the consistent prefill win without regressing decode.
 ## Current CPU Limitations
 
 The current CPU GroupQueryAttention implementation has a few important limitations:
