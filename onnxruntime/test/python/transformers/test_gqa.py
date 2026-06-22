@@ -513,8 +513,9 @@ def gqa_prompt_func(
 
     q = torch.reshape(q, (config.batch_size, config.q_sequence_length, -1))
     if new_k is not None:
-        new_k = torch.reshape(new_k, (config.batch_size, config.kv_sequence_length, -1))
-        new_v = torch.reshape(new_v, (config.batch_size, config.kv_sequence_length, -1))
+        kv_hidden_size = config.kv_num_heads * config.head_size
+        new_k = torch.reshape(new_k, (config.batch_size, config.kv_sequence_length, kv_hidden_size))
+        new_v = torch.reshape(new_v, (config.batch_size, config.kv_sequence_length, kv_hidden_size))
 
     sess_options = SessionOptions()
     ort_session = InferenceSession(onnx_model_str, sess_options, providers=[resolve_cuda_plugin_ep(ep)])
@@ -681,8 +682,9 @@ def gqa_past_func(
 
     q = torch.reshape(q, (config.batch_size, config.q_sequence_length, -1))
     if new_k is not None:
-        new_k = torch.reshape(new_k, (config.batch_size, config.q_sequence_length, -1))
-        new_v = torch.reshape(new_v, (config.batch_size, config.q_sequence_length, -1))
+        kv_hidden_size = config.kv_num_heads * config.head_size
+        new_k = torch.reshape(new_k, (config.batch_size, config.kv_sequence_length, kv_hidden_size))
+        new_v = torch.reshape(new_v, (config.batch_size, config.kv_sequence_length, kv_hidden_size))
 
     sess_options = SessionOptions()
     # sess_options.log_severity_level = 0
@@ -690,7 +692,7 @@ def gqa_past_func(
     io_binding = ort_session.io_binding()
 
     # Common inputs
-    total_seq_len = config.past_kv_sequence_length + config.q_sequence_length
+    total_seq_len = config.past_kv_sequence_length + config.kv_sequence_length
 
     # 1. Bind 'query'
     bind_tensor(io_binding, "query", q, device, ort_type)
@@ -1328,7 +1330,7 @@ def parity_check_gqa_past(
     new_k = (
         torch.randn(
             config.batch_size,
-            config.q_sequence_length,
+            config.kv_sequence_length,
             config.kv_num_heads,
             config.head_size,
             device=device,
@@ -1383,7 +1385,7 @@ def parity_check_gqa_past(
         k_ro = apply_rotary_embedding(k_ro.clone(), cos, sin, cache_seqlens, config.rotary_interleaved, device)
 
     position_ids, attention_bias = None, None
-    total_seq_len = config.past_kv_sequence_length + config.q_sequence_length
+    total_seq_len = config.past_kv_sequence_length + config.kv_sequence_length
     if config.has_position_ids:
         position_ids = (cache_seqlens.unsqueeze(1) + torch.arange(config.q_sequence_length, device=device)).long()
     if config.has_attention_bias:
@@ -1397,7 +1399,7 @@ def parity_check_gqa_past(
     arange = rearrange(torch.arange(config.buffer_sequence_length, device=device), "s -> 1 s")
     cache_seqlens_expanded = rearrange(cache_seqlens, "b -> b 1")
     update_mask = torch.logical_and(
-        cache_seqlens_expanded <= arange, arange < cache_seqlens_expanded + config.q_sequence_length
+        cache_seqlens_expanded <= arange, arange < cache_seqlens_expanded + config.kv_sequence_length
     )
 
     k_to_cache = k_ro
@@ -1425,7 +1427,7 @@ def parity_check_gqa_past(
 
     k_cache_ref[update_mask] = rearrange(k_to_cache, "b s ... -> (b s) ...").to(k_cache_ref.dtype)
     v_cache_ref[update_mask] = rearrange(v_to_cache, "b s ... -> (b s) ...").to(v_cache_ref.dtype)
-    key_padding_mask = arange < cache_seqlens_expanded + config.q_sequence_length
+    key_padding_mask = arange < cache_seqlens_expanded + config.kv_sequence_length
 
     out_ref, _ = attention_ref(
         q=q_ro,
@@ -1461,7 +1463,7 @@ def parity_check_gqa_past(
         k_ort = k_ort.contiguous()
         v_ort = v_ort.contiguous()
 
-    ort_seqlens = cache_seqlens + config.q_sequence_length - 1
+    ort_seqlens = cache_seqlens + config.kv_sequence_length - 1
 
     out, present_k, present_v = gqa_past_func(
         q=q_ort,
@@ -2270,6 +2272,34 @@ class TestGQAQKNorm(unittest.TestCase):
             head_size=128,
             rotary=True,
             rotary_interleaved=False,
+            packed=False,
+            share_buffer=True,
+            has_qk_norm=True,
+        )
+
+        with scoped_env_var("ORT_ENABLE_XQA", "1"):
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                causal=True,
+                rtol=rtol["fp16"],
+                atol=atol["fp16"],
+            )
+
+    def test_gqa_qk_norm_past_shared_kv(self):
+        config = GQAConfig(
+            batch_size=2,
+            q_sequence_length=1,
+            kv_sequence_length=0,
+            past_kv_sequence_length=127,
+            buffer_sequence_length=135,
+            num_heads=8,
+            kv_num_heads=2,
+            head_size=64,
+            rotary=False,
             packed=False,
             share_buffer=True,
             has_qk_norm=True,

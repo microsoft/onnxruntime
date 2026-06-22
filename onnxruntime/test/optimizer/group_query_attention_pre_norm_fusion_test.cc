@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <cmath>
+#include <limits>
 #include <vector>
 
 #include "core/graph/node_attr_utils.h"
@@ -356,6 +357,26 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionRejectsEpsilonM
   BuildOptions opts;
   opts.q_epsilon = 1e-6f;
   opts.k_epsilon = 1e-5f;
+  auto build = [opts](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, opts); };
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeWebGpuTransformer(),
+      TransformerLevel::Level2, /*steps=*/1, nullptr, CheckUnfusedGraph));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionRejectsNonPositiveEpsilon) {
+  BuildOptions opts;
+  opts.q_epsilon = 0.0f;
+  opts.k_epsilon = 0.0f;
+  auto build = [opts](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, opts); };
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build, /*opset_version=*/21, *logger_, MakeWebGpuTransformer(),
+      TransformerLevel::Level2, /*steps=*/1, nullptr, CheckUnfusedGraph));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionPreNormFusionRejectsNonFiniteEpsilon) {
+  BuildOptions opts;
+  opts.q_epsilon = std::numeric_limits<float>::quiet_NaN();
+  opts.k_epsilon = std::numeric_limits<float>::quiet_NaN();
   auto build = [opts](ModelTestBuilder& builder) { BuildQwenQkPostNormPattern(builder, opts); };
   ASSERT_STATUS_OK(TestGraphTransformer(
       build, /*opset_version=*/21, *logger_, MakeWebGpuTransformer(),

@@ -1,9 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <vector>
-#include <algorithm>
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
@@ -106,6 +107,8 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
   use_smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
   qk_norm_epsilon_ = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
+  ORT_ENFORCE(std::isfinite(qk_norm_epsilon_) && qk_norm_epsilon_ > 0.0f,
+              "GroupQueryAttention (CUDA): qk_norm_epsilon must be finite and positive.");
 
   k_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("k_quant_type", "NONE"));
   v_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("v_quant_type", "NONE"));
@@ -304,7 +307,6 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
   // Validate and enable the per-head Q/K RMSNorm (QK-Norm) prologue (inputs 14/15). Both weights
   // must be 1D tensors of shape (head_size) with element type T (shared across all heads).
-  parameters.use_qk_norm = false;
   if (q_norm_weight != nullptr) {
     const auto& q_norm_shape = q_norm_weight->Shape();
     const auto& k_norm_shape = k_norm_weight->Shape();
@@ -417,6 +419,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // UnpackRoPEAppend preprocess before XQA, so Q/K can be normalized before the XQA kernel consumes
   // Q and the appended cache. Keep quantized QK-Norm off the XQA route until scale correctness is
   // validated for normalized K before quantized-cache append.
+  const bool xqa_qk_norm_ok = !parameters.use_qk_norm || !is_inputs_quantized;
+  const bool use_xqa_attention_sinks = parameters.use_smooth_softmax && head_sink != nullptr && !is_inputs_quantized;
+  const bool xqa_smooth_softmax_ok = !parameters.use_smooth_softmax || (head_sink != nullptr && !is_inputs_quantized);
   if (enable_xqa_ &&
       (device_prop.major >= 8) &&
       !parameters.is_first_prompt &&
@@ -425,8 +430,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       parameters.past_present_share_buffer &&
       parameters.softcap == 0.0f &&
       parameters.local_window_size == -1 &&
-      (!parameters.use_qk_norm || !is_inputs_quantized) &&
-      (!parameters.use_smooth_softmax || (head_sink != nullptr && !is_inputs_quantized))) {
+      xqa_qk_norm_ok &&
+      xqa_smooth_softmax_ok) {
     int group_size = parameters.num_heads / parameters.kv_num_heads;
 
     bool is_int8_quantized_supported = is_int8 &&
