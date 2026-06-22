@@ -6,7 +6,7 @@
 #include <gsl/span>
 
 #include "../plugin_ep_utils.h"
-#include "onnxruntime_experimental_c_api.h"
+#include "onnxruntime_experimental_cxx_api.h"
 
 class ExampleEpFactory;
 

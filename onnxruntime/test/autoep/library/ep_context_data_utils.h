@@ -25,7 +25,7 @@
 #endif
 
 #include "plugin_ep_utils.h"
-#include "onnxruntime_experimental_c_api.h"
+#include "onnxruntime_experimental_cxx_api.h"
 
 // Sample-only EPContext data helpers shared by the example plugin EP and its tests. These are intentionally outside
 // the ORT C and EP ABI and are provided as a reference for EP authors that need to handle external (non-embedded)

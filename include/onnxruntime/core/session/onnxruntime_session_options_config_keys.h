@@ -420,6 +420,21 @@ static const char* const kOrtSessionOptionsResourceCudaPartitioningSettings =
 /// </summary>
 static const char* const kOrtSessionOptionsLayerAssignmentSettings = "session.layer_assignment_settings";
 
+/// <summary>
+/// Name-based layer assignment. Uses the same device(pattern1, pattern2, ...); ... grammar
+/// as kOrtSessionOptionsLayerAssignmentSettings but performs SUBSTRING matching against
+/// Node::Name() instead of prefix/exact matching against node metadata annotations.
+/// The '=' prefix (exact match) from the annotation-based grammar is rejected with an error
+/// — all patterns are treated as substrings.
+/// Longest matching pattern wins when multiple patterns match the same node name.
+/// No subgraph inheritance is applied — each node is matched independently by its name.
+///
+/// MUTUALLY EXCLUSIVE with kOrtSessionOptionsLayerAssignmentSettings. Setting both returns
+/// INVALID_ARGUMENT. Use annotation-based matching for models with explicit layer annotations,
+/// or name-based matching for models with structured node names (HuggingFace, PyTorch exports).
+/// </summary>
+static const char* const kOrtSessionOptionsNameBasedLayerAssignment = "session.name_based_layer_assignment";
+
 // Enable EP context feature to dump the partitioned graph which includes the EP context into Onnx file.
 // The dumped Onnx model with EP context can be used for future inference to avoid the EP graph partitioning/compile overhead.
 // "0": disable. (default)
@@ -482,6 +497,14 @@ static const char* const kOrtSessionOptionsMlasLutGemm = "mlas.use_lut_gemm";
 // - "0": Use KleidiAI kernels when available. [DEFAULT]
 // - "1": Disable KleidiAI kernels even if available.
 static const char* const kOrtSessionOptionsMlasDisableKleidiAi = "mlas.disable_kleidiai";
+
+// Power-user tuning option for the Arm® KleidiAI™ SME IGEMM convolution route on Arm64.
+// For 2D convolutions where both SME IGEMM and the MlasGemm SGEMM fallback are valid routes, work is estimated as:
+//  output_h * output_w * input_channels * dilated_kernel_h * dilated_kernel_w * filter_count.
+// Work above this threshold routes through the SGEMM fallback; work at or below it stays on IGEMM.
+// "0" or unset uses the MLAS default heuristic, intended for typical workloads.
+// This option exists for perf experimentation; the default may be retuned in future ORT releases.
+static const char* const kOrtSessionOptionsMlasKleidiAiConvIgemmMaxWork = "mlas.kleidiai.conv_igemm_max_work";
 
 // When converting DQ + MatMul -> MatMulNBits, the accuracy level of the MatMulNBits is controlled by this option.
 // Refer to MatMulNBits op schema for more details.

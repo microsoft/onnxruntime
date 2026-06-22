@@ -237,28 +237,16 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   config.ep_context_output_model_path = std::move(ep_context_output_model_path);
   config.enable_weightless_ep_context_nodes = weightless_ep_context_nodes_enable == "1";
 
-  OrtEpContextConfig* ep_context_config = nullptr;
-  auto* get_ep_context_config =
-      Ort::Experimental::Get_OrtEpApi_SessionOptions_GetEpContextConfig_SinceV28_Fn(&factory->ort_api);
-  if (get_ep_context_config == nullptr) {
-    return factory->ort_api.CreateStatus(ORT_NOT_IMPLEMENTED,
-                                         "OrtEpApi_SessionOptions_GetEpContextConfig is not available");
+  // The EpContextConfig wrapper extracts the EPContext callbacks from the session options and owns the handle. It
+  // throws if the experimental functions are unavailable or extraction fails, so convert that to an OrtStatus here.
+  try {
+    auto dummy_ep = std::make_unique<ExampleEp>(
+        *factory, factory->ep_name_, config, *logger,
+        Ort::Experimental::EpContextConfig{session_options});
+    *ep = dummy_ep.release();
+  } catch (const Ort::Exception& e) {
+    return factory->ort_api.CreateStatus(e.GetOrtErrorCode(), e.what());
   }
-  // Ensure the matching release function is available before creating a handle so the RAII wrapper can free it.
-  // Otherwise GetEpContextConfig would return a handle that can never be released (silent leak).
-  if (Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_Fn(&factory->ort_api) == nullptr) {
-    return factory->ort_api.CreateStatus(ORT_NOT_IMPLEMENTED,
-                                         "OrtEpApi_ReleaseEpContextConfig is not available");
-  }
-  RETURN_IF_ERROR(get_ep_context_config(session_options, &ep_context_config));
-
-  // ExampleEp takes ownership of the config via the RAII wrapper; if construction throws, the temporary wrapper
-  // releases the config.
-  auto dummy_ep = std::make_unique<ExampleEp>(
-      *factory, factory->ep_name_, config, *logger,
-      Ort::Experimental::EpContextConfig{&factory->ort_api, ep_context_config});
-
-  *ep = dummy_ep.release();
   return nullptr;
 }
 

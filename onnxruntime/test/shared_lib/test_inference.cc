@@ -3079,9 +3079,6 @@ TEST(CApiTest, create_tensor_with_data_int4) {
   auto query_dims = tensor_info.GetShape();
   ASSERT_EQ(query_dims, dims);
   ASSERT_EQ(tensor_info.GetElementType(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4);
-
-  uint8_t pair_2 = tensor.At<uint8_t>({2});
-  ASSERT_EQ(values[2], pair_2);
 }
 
 // Test creating an Ort::Value with UINT4 data.
@@ -3101,9 +3098,101 @@ TEST(CApiTest, create_tensor_with_data_uint4) {
   auto query_dims = tensor_info.GetShape();
   ASSERT_EQ(query_dims, dims);
   ASSERT_EQ(tensor_info.GetElementType(), ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4);
+}
 
-  uint8_t pair_2 = tensor.At<uint8_t>({2});
-  ASSERT_EQ(values[2], pair_2);
+// Test that TensorAt rejects sub-byte packed types to prevent OOB pointer returns.
+TEST(CApiTest, tensor_at_rejects_subbyte_types) {
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  // Int4: 7 logical elements packed into 4 bytes
+  {
+    std::array<uint8_t, 4> values = {0x10, 0x32, 0x78, 0x06};
+    std::vector<int64_t> dims = {7};
+    Ort::Value tensor = Ort::Value::CreateTensor(info, values.data(), values.size(), dims.data(), dims.size(),
+                                                 ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4);
+    try {
+      tensor.At<uint8_t>({0});
+      FAIL() << "Expected TensorAt to reject int4 sub-byte packed type";
+    } catch (const Ort::Exception& excpt) {
+      EXPECT_EQ(excpt.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
+      EXPECT_THAT(excpt.what(), testing::HasSubstr("does not support sub-byte packed types"));
+    }
+  }
+
+  // UInt4: 7 logical elements packed into 4 bytes
+  {
+    std::array<uint8_t, 4> values = {0x10, 0x32, 0x54, 0x0F};
+    std::vector<int64_t> dims = {7};
+    Ort::Value tensor = Ort::Value::CreateTensor(info, values.data(), values.size(), dims.data(), dims.size(),
+                                                 ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4);
+    try {
+      tensor.At<uint8_t>({0});
+      FAIL() << "Expected TensorAt to reject uint4 sub-byte packed type";
+    } catch (const Ort::Exception& excpt) {
+      EXPECT_EQ(excpt.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
+      EXPECT_THAT(excpt.what(), testing::HasSubstr("does not support sub-byte packed types"));
+    }
+  }
+}
+
+// TensorAt provides direct element access for normal (non-sub-byte) types.
+TEST(CApiTest, tensor_at_with_data_float) {
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  std::vector<float> values = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<int64_t> dims = {4};
+  Ort::Value tensor = Ort::Value::CreateTensor<float>(info, values.data(), values.size(), dims.data(), dims.size());
+  ASSERT_EQ(1.0f, tensor.At<float>({0}));
+  ASSERT_EQ(4.0f, tensor.At<float>({3}));
+}
+
+TEST(CApiTest, tensor_at_with_data_int32) {
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  std::vector<int32_t> values = {10, 20, 30};
+  std::vector<int64_t> dims = {3};
+  Ort::Value tensor = Ort::Value::CreateTensor<int32_t>(info, values.data(), values.size(), dims.data(), dims.size());
+  ASSERT_EQ(10, tensor.At<int32_t>({0}));
+  ASSERT_EQ(30, tensor.At<int32_t>({2}));
+}
+
+TEST(CApiTest, tensor_at_with_data_int8) {
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  std::vector<int8_t> values = {-1, 0, 1, 127};
+  std::vector<int64_t> dims = {4};
+  Ort::Value tensor = Ort::Value::CreateTensor<int8_t>(info, values.data(), values.size(), dims.data(), dims.size());
+  ASSERT_EQ(-1, tensor.At<int8_t>({0}));
+  ASSERT_EQ(127, tensor.At<int8_t>({3}));
+}
+
+// Test that TensorAt bounds checking rejects out-of-range indices for normal types.
+TEST(CApiTest, tensor_at_bounds_check) {
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  std::vector<float> values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  std::vector<int64_t> dims = {2, 3};
+  Ort::Value tensor = Ort::Value::CreateTensor<float>(info, values.data(), values.size(), dims.data(), dims.size());
+
+  // Valid access works
+  ASSERT_EQ(1.0f, tensor.At<float>({0, 0}));
+  ASSERT_EQ(6.0f, tensor.At<float>({1, 2}));
+
+  auto expect_at_throws = [&tensor](const std::vector<int64_t>& location, const std::string& expected_message) {
+    try {
+      tensor.At<float>(location);
+      FAIL() << "Expected TensorAt to throw for the given location";
+    } catch (const Ort::Exception& excpt) {
+      EXPECT_EQ(excpt.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
+      EXPECT_THAT(excpt.what(), testing::HasSubstr(expected_message));
+    }
+  };
+
+  // Out-of-range indices throw
+  expect_at_throws({2, 0}, "invalid location range");   // row out of range
+  expect_at_throws({0, 3}, "invalid location range");   // col out of range
+  expect_at_throws({-1, 0}, "invalid location range");  // negative index
+
+  // Wrong number of dimensions throws
+  expect_at_throws({0}, "location dimensions do not match shape size");
+  expect_at_throws({0, 0, 0}, "location dimensions do not match shape size");
 }
 
 TEST(CApiTest, access_tensor_data_elements) {
@@ -3237,6 +3326,84 @@ TEST(CApiTest, get_profiling_start_time) {
 
   // the profiler's start time needs to be between before_time and after_time
   ASSERT_TRUE(before_start_time <= profiling_start_time && profiling_start_time <= after_start_time);
+}
+
+// Test that profiling events include memory stats (mem_bytes_in_use, mem_arena_held, etc.)
+// when an arena allocator is in use.
+TEST(CApiTest, profiling_memory_stats) {
+  // Use add_mul_add.onnx: 3 nodes (Add, Mul, Add), inputs A[3,2] and B[3,2], output C[3,2]
+  constexpr PATH_TYPE model_uri = TSTR("testdata/add_mul_add.onnx");
+
+  Ort::SessionOptions session_options;
+#ifdef _WIN32
+  session_options.EnableProfiling(L"mem_profile_test");
+#else
+  session_options.EnableProfiling("mem_profile_test");
+#endif
+
+  Ort::Session session(*ort_env, model_uri, session_options);
+
+  // Prepare inputs
+  Ort::MemoryInfo mem_info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  std::vector<float> input_data(3 * 2, 1.0f);
+  std::array<int64_t, 2> input_shape = {3, 2};
+
+  auto input_a = Ort::Value::CreateTensor<float>(mem_info, input_data.data(), input_data.size(),
+                                                 input_shape.data(), input_shape.size());
+  auto input_b = Ort::Value::CreateTensor<float>(mem_info, input_data.data(), input_data.size(),
+                                                 input_shape.data(), input_shape.size());
+
+  // Run inference
+  const char* input_names[] = {"A", "B"};
+  const char* output_names[] = {"C"};
+  std::array<Ort::Value, 2> inputs = {std::move(input_a), std::move(input_b)};
+  auto outputs = session.Run(Ort::RunOptions{}, input_names, inputs.data(), 2, output_names, 1);
+
+  // End profiling and get the profile file path
+  auto allocator = std::make_unique<MockedOrtAllocator>();
+  auto profile_file = session.EndProfilingAllocated(allocator.get());
+  std::string profile_path(profile_file.get());
+  ASSERT_FALSE(profile_path.empty());
+
+  // RAII cleanup: remove profile file regardless of test outcome
+  auto cleanup = [&profile_path]() noexcept {
+    if (!profile_path.empty()) {
+      std::error_code ec;
+      std::filesystem::remove(profile_path, ec);
+    }
+  };
+  struct ScopeGuard {
+    std::function<void()> fn;
+    ~ScopeGuard() { fn(); }
+  } guard{cleanup};
+
+  // Read the profile JSON file
+  std::ifstream file(profile_path);
+  ASSERT_TRUE(file.is_open()) << "Could not open profile file: " << profile_path;
+  std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  file.close();
+  ASSERT_FALSE(content.empty()) << "Profile file is empty";
+
+  // Memory stats are only emitted when an arena allocator is in use.
+  // Arena is deterministically unavailable on 32-bit, jemalloc/mimalloc, or ASan builds.
+#if defined(USE_JEMALLOC) || defined(USE_MIMALLOC)
+  GTEST_SKIP() << "Arena allocator disabled (jemalloc/mimalloc build)";
+#elif defined(ABSL_HAVE_ADDRESS_SANITIZER)
+  GTEST_SKIP() << "Arena allocator disabled (ASan build)";
+#else
+  if constexpr (sizeof(void*) < 8) {
+    GTEST_SKIP() << "Arena allocator disabled (32-bit build)";
+  }
+#endif
+
+  // Verify memory stat keys are present in the profiling output
+  EXPECT_NE(content.find("\"mem_bytes_in_use\""), std::string::npos) << "Expected mem_bytes_in_use in profiling output";
+  EXPECT_NE(content.find("\"mem_bytes_requested_in_use\""), std::string::npos) << "Expected mem_bytes_requested_in_use in profiling output";
+  EXPECT_NE(content.find("\"mem_requested_in_use_delta\""), std::string::npos) << "Expected mem_requested_in_use_delta in profiling output";
+  EXPECT_NE(content.find("\"mem_arena_held\""), std::string::npos) << "Expected mem_arena_held in profiling output";
+  EXPECT_NE(content.find("\"mem_in_use_delta\""), std::string::npos) << "Expected mem_in_use_delta in profiling output";
+  EXPECT_NE(content.find("\"mem_in_use_peak\""), std::string::npos) << "Expected mem_in_use_peak in profiling output";
+  EXPECT_NE(content.find("\"mem_arena_held_delta\""), std::string::npos) << "Expected mem_arena_held_delta in profiling output";
 }
 
 TEST(CApiTest, model_metadata) {

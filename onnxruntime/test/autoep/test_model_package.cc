@@ -12,7 +12,7 @@
 #include "gtest/gtest.h"
 
 #include "core/session/model_package/model_package_context.h"
-#include "core/session/onnxruntime_experimental_c_api.h"
+#include "core/session/onnxruntime_experimental_cxx_api.h"
 #include "core/session/abi_devices.h"
 #include "test/autoep/test_autoep_utils.h"
 #include "test/util/include/asserts.h"
@@ -62,47 +62,38 @@ struct ModelPackageFns {
 inline const ModelPackageFns& GetModelPackageFns() {
   static const ModelPackageFns fns = []() {
     const OrtApi* api = &Ort::GetApi();
+    namespace Exp = Ort::Experimental;
     ModelPackageFns f;
-#define RESOLVE(member, getter)                                              \
-  do {                                                                       \
-    f.member = Ort::Experimental::getter(api);                               \
-    if (f.member == nullptr) {                                               \
-      throw std::runtime_error(std::string("Failed to resolve experimental " \
-                                           "OrtModelPackageApi_") +          \
-                               #member "_SinceV28");                         \
-    }                                                                        \
-  } while (0)
-    RESOLVE(CreateModelPackageOptionsFromSessionOptions,
-            Get_OrtModelPackageApi_CreateModelPackageOptionsFromSessionOptions_SinceV28_Fn);
-    RESOLVE(ReleaseModelPackageOptions,
-            Get_OrtModelPackageApi_ReleaseModelPackageOptions_SinceV28_Fn);
-    RESOLVE(CreateModelPackageContext,
-            Get_OrtModelPackageApi_CreateModelPackageContext_SinceV28_Fn);
-    RESOLVE(ReleaseModelPackageContext,
-            Get_OrtModelPackageApi_ReleaseModelPackageContext_SinceV28_Fn);
-    RESOLVE(ModelPackage_GetSchemaVersion,
-            Get_OrtModelPackageApi_ModelPackage_GetSchemaVersion_SinceV28_Fn);
-    RESOLVE(ModelPackage_GetComponentCount,
-            Get_OrtModelPackageApi_ModelPackage_GetComponentCount_SinceV28_Fn);
-    RESOLVE(ModelPackage_GetComponentNames,
-            Get_OrtModelPackageApi_ModelPackage_GetComponentNames_SinceV28_Fn);
-    RESOLVE(ModelPackage_GetVariantCount,
-            Get_OrtModelPackageApi_ModelPackage_GetVariantCount_SinceV28_Fn);
-    RESOLVE(ModelPackage_GetVariantNames,
-            Get_OrtModelPackageApi_ModelPackage_GetVariantNames_SinceV28_Fn);
-    RESOLVE(ModelPackage_GetVariantEpName,
-            Get_OrtModelPackageApi_ModelPackage_GetVariantEpName_SinceV28_Fn);
-    RESOLVE(SelectComponent,
-            Get_OrtModelPackageApi_SelectComponent_SinceV28_Fn);
-    RESOLVE(ReleaseModelPackageComponentContext,
-            Get_OrtModelPackageApi_ReleaseModelPackageComponentContext_SinceV28_Fn);
-    RESOLVE(ModelPackageComponent_GetSelectedVariantName,
-            Get_OrtModelPackageApi_ModelPackageComponent_GetSelectedVariantName_SinceV28_Fn);
-    RESOLVE(ModelPackageComponent_GetSelectedVariantFolderPath,
-            Get_OrtModelPackageApi_ModelPackageComponent_GetSelectedVariantFolderPath_SinceV28_Fn);
-    RESOLVE(CreateSession,
-            Get_OrtModelPackageApi_CreateSession_SinceV28_Fn);
-#undef RESOLVE
+    f.CreateModelPackageOptionsFromSessionOptions =
+        Exp::Get_OrtModelPackageApi_CreateModelPackageOptionsFromSessionOptions_SinceV28_FnOrThrow(api);
+    f.ReleaseModelPackageOptions =
+        Exp::Get_OrtModelPackageApi_ReleaseModelPackageOptions_SinceV28_FnOrThrow(api);
+    f.CreateModelPackageContext =
+        Exp::Get_OrtModelPackageApi_CreateModelPackageContext_SinceV28_FnOrThrow(api);
+    f.ReleaseModelPackageContext =
+        Exp::Get_OrtModelPackageApi_ReleaseModelPackageContext_SinceV28_FnOrThrow(api);
+    f.ModelPackage_GetSchemaVersion =
+        Exp::Get_OrtModelPackageApi_ModelPackage_GetSchemaVersion_SinceV28_FnOrThrow(api);
+    f.ModelPackage_GetComponentCount =
+        Exp::Get_OrtModelPackageApi_ModelPackage_GetComponentCount_SinceV28_FnOrThrow(api);
+    f.ModelPackage_GetComponentNames =
+        Exp::Get_OrtModelPackageApi_ModelPackage_GetComponentNames_SinceV28_FnOrThrow(api);
+    f.ModelPackage_GetVariantCount =
+        Exp::Get_OrtModelPackageApi_ModelPackage_GetVariantCount_SinceV28_FnOrThrow(api);
+    f.ModelPackage_GetVariantNames =
+        Exp::Get_OrtModelPackageApi_ModelPackage_GetVariantNames_SinceV28_FnOrThrow(api);
+    f.ModelPackage_GetVariantEpName =
+        Exp::Get_OrtModelPackageApi_ModelPackage_GetVariantEpName_SinceV28_FnOrThrow(api);
+    f.SelectComponent =
+        Exp::Get_OrtModelPackageApi_SelectComponent_SinceV28_FnOrThrow(api);
+    f.ReleaseModelPackageComponentContext =
+        Exp::Get_OrtModelPackageApi_ReleaseModelPackageComponentContext_SinceV28_FnOrThrow(api);
+    f.ModelPackageComponent_GetSelectedVariantName =
+        Exp::Get_OrtModelPackageApi_ModelPackageComponent_GetSelectedVariantName_SinceV28_FnOrThrow(api);
+    f.ModelPackageComponent_GetSelectedVariantFolderPath =
+        Exp::Get_OrtModelPackageApi_ModelPackageComponent_GetSelectedVariantFolderPath_SinceV28_FnOrThrow(api);
+    f.CreateSession =
+        Exp::Get_OrtModelPackageApi_CreateSession_SinceV28_FnOrThrow(api);
     return f;
   }();
   return fns;

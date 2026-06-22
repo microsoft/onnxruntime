@@ -14,7 +14,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/session/onnxruntime_experimental_c_api.h"
+#include "core/session/onnxruntime_experimental_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "nlohmann/json.hpp"

@@ -34,6 +34,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "onnxruntime_error_code.h"
+
 /** \brief The API version defined in this header
  *
  * This value is used by some API functions to behave as this version of the header expects.
@@ -262,24 +264,6 @@ typedef enum OrtLoggingLevel {
   ORT_LOGGING_LEVEL_ERROR,    ///< Error messages.
   ORT_LOGGING_LEVEL_FATAL,    ///< Fatal error messages (most severe).
 } OrtLoggingLevel;
-
-typedef enum OrtErrorCode {
-  ORT_OK,
-  ORT_FAIL,
-  ORT_INVALID_ARGUMENT,
-  ORT_NO_SUCHFILE,
-  ORT_NO_MODEL,
-  ORT_ENGINE_ERROR,
-  ORT_RUNTIME_EXCEPTION,
-  ORT_INVALID_PROTOBUF,
-  ORT_MODEL_LOADED,
-  ORT_NOT_IMPLEMENTED,
-  ORT_INVALID_GRAPH,
-  ORT_EP_FAIL,
-  ORT_MODEL_LOAD_CANCELED,
-  ORT_MODEL_REQUIRES_COMPILATION,
-  ORT_NOT_FOUND,
-} OrtErrorCode;
 
 typedef enum OrtOpAttrType {
   ORT_OP_ATTR_UNDEFINED = 0,
@@ -3017,6 +3001,7 @@ struct OrtApi {
    * For example, given a tensor with shape of [3,224,224], a pointer to the element at location [2,150,128] can be retrieved
    *
    * This function only works for numeric type tensors (No strings, etc).
+   * This function does not support sub-byte packed types (e.g., int4).
    * This is a no-copy method whose returned pointer is valid until the passed in ::OrtValue is free'd.
    *
    * \param[in] value

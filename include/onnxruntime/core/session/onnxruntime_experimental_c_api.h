@@ -3,15 +3,18 @@
 
 // Experimental C API consumer header.
 //
-// This header provides typedefs, name constants, and (for C++) typed inline accessors for experimental ORT functions.
-// It should be used together with the experimental header lookup function `OrtApi::GetExperimentalFunction()`.
+// This header provides C function pointer typedefs and name constants for experimental ORT API functions, as well as
+// any auxiliary declarations required by the experimental API functions.
 //
-// This header contains code generated from onnxruntime_experimental_c_api.inc, which defines the list of experimental
-// API functions.
+// The function pointer typedefs and name constants should be used together with the experimental API lookup function
+// `OrtApi::GetExperimentalFunction()`. A function's availability should always be checked at runtime (the lookup
+// returns nullptr if the function is not present).
+//
+// C++ API consumers should use the companion header, onnxruntime_experimental_cxx_api.h, which provides typed
+// accessors for the experimental API functions.
 //
 // IMPORTANT: Experimental functions are NOT part of the stable ABI. They may be added, changed, or removed between
-// releases without notice. A function's availability should always be checked at runtime (the lookup returns nullptr
-// if the function is not present).
+// releases without notice. Anything in this file should be treated as experimental and unstable.
 //
 // C usage:
 //   OrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_Fn fn =
@@ -21,7 +24,7 @@
 //     OrtStatusPtr status = fn(&result);
 //   }
 //
-// C++ usage:
+// C++ usage (see onnxruntime_experimental_cxx_api.h):
 //   if (auto* fn = Ort::Experimental::Get_OrtApi_ExperimentalApiTest_SinceV28_Fn(api)) {
 //     Ort::Status status(fn(&result));
 //   }
@@ -106,7 +109,7 @@ typedef OrtStatus*(ORT_API_CALL* OrtReadNamedBufferFunc)(_In_ void* state,
                                                          _Out_ size_t* data_size);
 
 //
-// C: function pointer typedefs and name constants
+// C function pointer typedefs and name constants
 //
 
 // For each ORT_EXPERIMENTAL_API(VER, RET, NAME, ...) entry in the .inc file, this generates:
@@ -129,102 +132,3 @@ typedef OrtStatus*(ORT_API_CALL* OrtReadNamedBufferFunc)(_In_ void* state,
 #include "onnxruntime_experimental_c_api.inc"
 
 #undef ORT_EXPERIMENTAL_API
-
-//
-// C++: typed inline accessors
-//
-
-#ifdef __cplusplus
-
-namespace Ort {
-namespace Experimental {
-
-// For each .inc entry, this generates a typed accessor in Ort::Experimental:
-//
-//   inline OrtExperimental_<NAME>_SinceV<VER>_Fn Get_<NAME>_SinceV<VER>_Fn(const OrtApi* api);
-//
-// Example: ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, ...) produces:
-//   inline OrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_Fn
-//   Get_OrtApi_ExperimentalApiTest_SinceV28_Fn(const OrtApi* api) {
-//     return reinterpret_cast<OrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_Fn>(
-//         api->GetExperimentalFunction(kOrtExperimental_OrtApi_ExperimentalApiTest_SinceV28_FnName));
-//   }
-#define ORT_EXPERIMENTAL_API(VER, RET, NAME, ...)                                      \
-  inline OrtExperimental_##NAME##_SinceV##VER##_Fn Get_##NAME##_SinceV##VER##_Fn(      \
-      const OrtApi* api) {                                                             \
-    return reinterpret_cast<OrtExperimental_##NAME##_SinceV##VER##_Fn>(                \
-        api->GetExperimentalFunction(kOrtExperimental_##NAME##_SinceV##VER##_FnName)); \
-  }
-
-#include "onnxruntime_experimental_c_api.inc"
-
-#undef ORT_EXPERIMENTAL_API
-
-//
-// C++ wrapper types for the experimental APIs
-//
-
-// Move-only RAII owner for an OrtEpContextConfig handle obtained from OrtEpApi_SessionOptions_GetEpContextConfig.
-// Releases the handle via OrtEpApi_ReleaseEpContextConfig when destroyed.
-//
-// Note: intentionally lightweight and exception-free so this header (which only depends on the C API) can be included
-// by ORT-internal code without pulling in onnxruntime_cxx_api.h.
-class EpContextConfig {
- public:
-  EpContextConfig() noexcept = default;
-
-  // Takes ownership of `config`. `api` is used to release it; both may be null (an empty wrapper).
-  EpContextConfig(const OrtApi* api, OrtEpContextConfig* config) noexcept : api_{api}, config_{config} {}
-
-  EpContextConfig(EpContextConfig&& other) noexcept : api_{other.api_}, config_{other.config_} {
-    other.api_ = nullptr;
-    other.config_ = nullptr;
-  }
-
-  EpContextConfig& operator=(EpContextConfig&& other) noexcept {
-    if (this != &other) {
-      reset();
-      api_ = other.api_;
-      config_ = other.config_;
-      other.api_ = nullptr;
-      other.config_ = nullptr;
-    }
-    return *this;
-  }
-
-  EpContextConfig(const EpContextConfig&) = delete;
-  EpContextConfig& operator=(const EpContextConfig&) = delete;
-
-  ~EpContextConfig() { reset(); }
-
-  OrtEpContextConfig* get() const noexcept { return config_; }
-  explicit operator bool() const noexcept { return config_ != nullptr; }
-
-  // Relinquishes ownership of the handle without releasing it.
-  OrtEpContextConfig* release() noexcept {
-    OrtEpContextConfig* released = config_;
-    api_ = nullptr;
-    config_ = nullptr;
-    return released;
-  }
-
-  // Releases any owned handle and resets to empty.
-  void reset() noexcept {
-    if (api_ != nullptr && config_ != nullptr) {
-      if (auto* release_fn = Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_Fn(api_)) {
-        release_fn(config_);
-      }
-    }
-    api_ = nullptr;
-    config_ = nullptr;
-  }
-
- private:
-  const OrtApi* api_ = nullptr;
-  OrtEpContextConfig* config_ = nullptr;
-};
-
-}  // namespace Experimental
-}  // namespace Ort
-
-#endif  // __cplusplus

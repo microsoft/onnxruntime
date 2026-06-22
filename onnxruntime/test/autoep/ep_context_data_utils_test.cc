@@ -13,7 +13,7 @@
 #include <gtest/gtest.h>
 
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/session/onnxruntime_experimental_c_api.h"
+#include "core/session/onnxruntime_experimental_cxx_api.h"
 
 #include "test/autoep/ep_context_data_callbacks.h"
 #include "test/autoep/library/ep_context_data_utils.h"
@@ -82,15 +82,8 @@ OrtStatus* ORT_API_CALL FakeEpContextConfigGetWriteFunc(const OrtEpContextConfig
 // Returns a real, empty OrtEpContextConfig (owned by the returned wrapper) to use as the opaque token passed to the
 // fake getters above.
 Ort::Experimental::EpContextConfig MakeEmptyEpContextConfig() {
-  const auto& api = Ort::GetApi();
-  auto get_config = Ort::Experimental::Get_OrtEpApi_SessionOptions_GetEpContextConfig_SinceV28_Fn(&api);
-  EXPECT_NE(get_config, nullptr);
-  OrtEpContextConfig* raw = nullptr;
-  if (get_config != nullptr) {
-    Ort::SessionOptions session_options;
-    EXPECT_TRUE(Ort::Status{get_config(session_options, &raw)}.IsOK());
-  }
-  return Ort::Experimental::EpContextConfig{&api, raw};
+  Ort::SessionOptions session_options;
+  return Ort::Experimental::EpContextConfig{session_options};
 }
 
 }  // namespace

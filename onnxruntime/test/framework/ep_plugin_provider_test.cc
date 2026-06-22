@@ -26,7 +26,7 @@
 #include "core/session/abi_devices.h"
 #include "core/session/model_compilation_options.h"
 #include "core/session/onnxruntime_cxx_api.h"
-#include "core/session/onnxruntime_experimental_c_api.h"
+#include "core/session/onnxruntime_experimental_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
@@ -1788,13 +1788,7 @@ TEST(PluginExecutionProviderTest, EpContextDataReadFuncIsReturnedByEpApi) {
   Ort::SessionOptions session_options;
 
   auto set_read_func = Ort::Experimental::Get_OrtApi_SessionOptions_SetEpContextDataReadFunc_SinceV28_Fn(&ort_api);
-  auto get_config = Ort::Experimental::Get_OrtEpApi_SessionOptions_GetEpContextConfig_SinceV28_Fn(&ort_api);
-  auto release_config_func = Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_Fn(&ort_api);
-  auto get_read_func = Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataReadFunc_SinceV28_Fn(&ort_api);
   ASSERT_NE(set_read_func, nullptr);
-  ASSERT_NE(get_config, nullptr);
-  ASSERT_NE(release_config_func, nullptr);
-  ASSERT_NE(get_read_func, nullptr);
 
   EpContextReadCallbackState callback_state{
       false,
@@ -1803,13 +1797,12 @@ TEST(PluginExecutionProviderTest, EpContextDataReadFuncIsReturnedByEpApi) {
   };
   ASSERT_ORTSTATUS_OK(set_read_func(session_options, EpContextReadCallback, &callback_state));
 
-  OrtEpContextConfig* ep_context_config = nullptr;
-  ASSERT_ORTSTATUS_OK(get_config(session_options, &ep_context_config));
-  auto release_config = gsl::finally([&]() { release_config_func(ep_context_config); });
-
+  // The Ort::Experimental::EpContextConfig wrapper extracts the config from the session options and exposes the
+  // callbacks via GetReadFunc(), hiding the experimental Get_*_Fn lookups and the manual release.
+  Ort::Experimental::EpContextConfig ep_context_config{session_options};
   OrtReadNamedBufferFunc read_func = nullptr;
   void* callback_state_out = nullptr;
-  ASSERT_ORTSTATUS_OK(get_read_func(ep_context_config, &read_func, &callback_state_out));
+  ep_context_config.GetReadFunc(read_func, callback_state_out);
   ASSERT_EQ(read_func, EpContextReadCallback);
   ASSERT_EQ(callback_state_out, &callback_state);
 

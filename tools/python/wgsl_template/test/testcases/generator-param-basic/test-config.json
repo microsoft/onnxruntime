@@ -1,0 +1,22 @@
+{
+  "type": "generator",
+  "description": "Test basic parameter substitution in template generation",
+  "entries": {
+    "compute-param.wgsl.template": {
+      "generators": {
+        "static-cpp-literal": {
+          "expectedParams": [
+            "BUFFER_SIZE"
+          ]
+        }
+      }
+    },
+    "compute-no-param.wgsl.template": {
+      "generators": {
+        "static-cpp-literal": {
+          "expectedParams": []
+        }
+      }
+    }
+  }
+}

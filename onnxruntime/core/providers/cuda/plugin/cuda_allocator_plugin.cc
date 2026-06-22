@@ -31,7 +31,7 @@ void RestoreDeviceIfKnown(bool restore_prev_device, int prev_device) noexcept {
 CudaDeviceAllocator::CudaDeviceAllocator(const OrtMemoryInfo* memory_info, int device_id)
     : CudaAllocatorBase(CudaAllocatorKind::kDevice, memory_info),
       device_id_(device_id) {
-  version = kCudaPluginEpMinOrtApiVersion;
+  version = ORT_API_VERSION;
   Alloc = AllocImpl;
   Free = FreeImpl;
   Info = InfoImpl;
@@ -96,7 +96,7 @@ CudaExternalDeviceAllocator::CudaExternalDeviceAllocator(const OrtMemoryInfo* me
       alloc_fn_(reinterpret_cast<ExternalAlloc>(alloc_fn)),
       free_fn_(reinterpret_cast<ExternalFree>(free_fn)),
       empty_cache_fn_(reinterpret_cast<ExternalEmptyCache>(empty_cache_fn)) {
-  version = kCudaPluginEpMinOrtApiVersion;
+  version = ORT_API_VERSION;
   Alloc = AllocImpl;
   Free = FreeImpl;
   Info = InfoImpl;
@@ -171,7 +171,7 @@ CudaExternalDeviceAllocator::CudaExternalDeviceAllocator(const OrtMemoryInfo* me
 
 CudaPinnedAllocator::CudaPinnedAllocator(const OrtMemoryInfo* memory_info)
     : CudaAllocatorBase(CudaAllocatorKind::kPinned, memory_info) {
-  version = kCudaPluginEpMinOrtApiVersion;
+  version = ORT_API_VERSION;
   Alloc = AllocImpl;
   Free = FreeImpl;
   Info = InfoImpl;
