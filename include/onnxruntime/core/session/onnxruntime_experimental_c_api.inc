@@ -336,8 +336,8 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtCompileApi_ModelCompilationOptions_Set
 /** \brief Extracts the EPContext configuration (callbacks and state) from an OrtSessionOptions instance.
  *
  * The EP should call this during CreateEp() while session_options is still valid, and store the returned handle for
- * use during Compile(). The returned config is always non-NULL and must be released with
- * OrtEpApi_ReleaseEpContextConfig.
+ * use during Compile(). On success, `*config` is set to a non-NULL handle that must be released with
+ * OrtEpApi_ReleaseEpContextConfig. On failure, an error status is returned and `*config` is not modified.
  *
  * The returned handle owns only ORT's copy of callback function pointers and opaque state pointer values. It does not
  * own the application-provided state. The application is responsible for keeping callback state valid and
