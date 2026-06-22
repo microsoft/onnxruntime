@@ -269,13 +269,7 @@ XQA (a highly optimized cross/decode attention kernel) is used only when **all**
 (int8 / fp8) paths explicitly reject a non-null attention sink, so a GQA node with both `head_sink`
 and a quantized cache falls back to Flash/Flash-Decoding.
 
-XQA selection defaults are:
-
-- **Quantized KV cache (int8 / fp8):** on by default.
-- **Non-quantized with a `head_sink` input:** on by default (GPT-OSS style decode).
-- **Non-quantized without `head_sink`:** opt-in via `ORT_ENABLE_XQA=1`.
-
-Setting `ORT_ENABLE_XQA=0` disables XQA for the non-quantized path regardless of `head_sink`.
+XQA selection is on by default. Setting `ORT_ENABLE_XQA=0` disables XQA.
 
 ## 8. XQA `head_sink` PrePack
 
@@ -322,7 +316,7 @@ sess = ort.InferenceSession(
 
 | Variable | Effect |
 |----------|--------|
-| `ORT_ENABLE_XQA` | `1` enables the XQA decode path for the non-quantized KV cache; `0` disables XQA entirely (including the quantized and `head_sink` default-on paths). Unset: on for quantized / `head_sink`, off otherwise (see §7). |
+| `ORT_ENABLE_XQA` | `1` enables the XQA decode; `0` disables XQA entirely. Unset: on by default. |
 | `ORT_DISABLE_FLASH_ATTENTION` | `1` disables Flash Attention. |
 | `ORT_DISABLE_FLASH_DECODE` | `1` disables the Flash-Decoding split-KV optimization. |
 | `ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION` | `1` disables Memory Efficient Attention. |
