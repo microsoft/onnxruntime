@@ -56,3 +56,64 @@ index 1234567..abcdefg 100644
    seed += uint16_t{0xad53};
    return seed;
  }
+diff --git a/absl/container/internal/common.h b/absl/container/internal/common.h
+index 1234567..abcdefg 100644
+--- a/absl/container/internal/common.h
++++ b/absl/container/internal/common.h
+@@ -67,6 +67,13 @@ struct IfRRef<T&&> {
+   using AddPtr = Other*;
+ };
+
++// Workaround for NVCC (cudafe++) which fails to parse
++// `IfRRef<concrete_type>::AddPtr<Dependent>` when used as a template argument
++// inside a heavily macro-expanded template parameter list. Top-level alias
++// defers the member-template lookup outside the surrounding template-id.
++template <class T, class Other>
++using IfRRefAddPtr = typename IfRRef<T>::template AddPtr<Other>;
++
+ template <class, class = void>
+ struct IsTransparent : std::false_type {};
+ template <class T>
+diff --git a/absl/container/internal/raw_hash_map.h b/absl/container/internal/raw_hash_map.h
+index 1234567..abcdefg 100644
+--- a/absl/container/internal/raw_hash_map.h
++++ b/absl/container/internal/raw_hash_map.h
+@@ -106,8 +106,8 @@
+       typename K = key_type, class V = mapped_type,                            \
+       ABSL_INTERNAL_IF_##KValue##_NOR_##VValue(                                \
+           int = (EnableIf<LifetimeBoundKV<K, KValue, V, VValue,                \
+-                                          IfRRef<int KQual>::AddPtr<K>,        \
+-                                          IfRRef<int VQual>::AddPtr<V>>>()),   \
++                                          IfRRefAddPtr<int KQual, K>,          \
++                                          IfRRefAddPtr<int VQual, V>>>()),     \
+           ABSL_INTERNAL_SINGLE_ARG(                                            \
+               int &...,                                                        \
+               decltype(EnableIf<LifetimeBoundKV<K, KValue, V, VValue>>()) =    \
+diff --git a/absl/container/internal/btree_container.h b/absl/container/internal/btree_container.h
+index 1234567..abcdefg 100644
+--- a/absl/container/internal/btree_container.h
++++ b/absl/container/internal/btree_container.h
+@@ -497,8 +497,8 @@
+       typename K = key_type, class M,                                        \
+       ABSL_INTERNAL_IF_##KValue##_NOR_##MValue(                              \
+           int = (EnableIf<LifetimeBoundKV<K, KValue, M, MValue,              \
+-                                          IfRRef<int KQual>::AddPtr<K>,      \
+-                                          IfRRef<int MQual>::AddPtr<M>>>()), \
++                                          IfRRefAddPtr<int KQual, K>,        \
++                                          IfRRefAddPtr<int MQual, M>>>()),   \
+           ABSL_INTERNAL_SINGLE_ARG(                                          \
+               int &...,                                                      \
+               decltype(EnableIf<LifetimeBoundKV<K, KValue, M, MValue>>()) =  \
+@@ -598,10 +598,10 @@
+       ABSL_INTERNAL_IF_##KValue(                                               \
+           class... Args,                                                       \
+           int = (EnableIf<                                                     \
+-                 LifetimeBoundK<K, KValue, IfRRef<int KQual>::AddPtr<K>>>())), \
++                 LifetimeBoundK<K, KValue, IfRRefAddPtr<int KQual, K>>>())),   \
+       ABSL_INTERNAL_IF_##KValue(                                               \
+           decltype(EnableIf<LifetimeBoundK<                                    \
+-                       K, KValue, IfRRef<int KQual>::AddPtr<K>>>()) = 0,       \
++                       K, KValue, IfRRefAddPtr<int KQual, K>>>()) = 0,         \
+           class... Args),                                                      \
+       std::enable_if_t<!std::is_convertible<K, const_iterator>::value, int> =  \
+           0>                                                                   \
