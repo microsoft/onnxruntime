@@ -1,0 +1,39 @@
+.vscode/*
+
+#data files
+*result*
+calc_output_file.tsv
+onnx performs better than dlis/*
+
+#pycache files
+model/__pycache__/*
+model/wrapper/__pycache__/*
+
+
+for_testing/*
+cache_models/*
+
+#dlis files
+dlis/*
+dlis_tokenizer/*
+
+#model files
+model_files/*
+onnx_model/*
+
+#appg files
+model/calc_appg.py
+model/appg_model_eval.py
+
+#tokenizer files
+tokenizer_files/*
+
+#env files
+e4benchmark_gpt2_LM/*
+
+tokenizer_files/*
+
+#test queries
+10_queries.tsv
+compare_results.py
+
