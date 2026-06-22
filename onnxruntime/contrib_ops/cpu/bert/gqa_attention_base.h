@@ -1096,18 +1096,18 @@ class GQAAttentionBase {
     size_t partials_buffer_bytes = 0;
     if (use_flash_decoding) {
       // Flash decoding: per-thread scratch only needs scores[kv_block_size]
-      buffer_size_per_thread = static_cast<size_t>(kv_block_size) * sizeof(float);
+      buffer_size_per_thread = SafeInt<size_t>(kv_block_size) * sizeof(float);
       // Partials: [batch * num_heads * kv_chunk_count * (2 + head_size)] floats
-      partials_buffer_bytes = static_cast<size_t>(batch_size) * num_heads_ *
+      partials_buffer_bytes = SafeInt<size_t>(batch_size) * num_heads_ *
                               kv_chunk_count * (2 + head_size) * sizeof(float);
     } else {
       buffer_size_per_thread =
-          (static_cast<size_t>(q_block_size) * 2 +                                   // l + m
-           static_cast<size_t>(q_block_size) * static_cast<size_t>(kv_block_size) +  // scores
-           static_cast<size_t>(q_block_size) * static_cast<size_t>(head_size)) *     // temp_output
+          (SafeInt<size_t>(q_block_size) * 2 +              // l + m
+           SafeInt<size_t>(q_block_size) * kv_block_size +  // scores
+           SafeInt<size_t>(q_block_size) * head_size) *     // temp_output
           sizeof(float);
     }
-    size_t total_buffer_bytes = buffer_size_per_thread * thread_count + partials_buffer_bytes;
+    size_t total_buffer_bytes = SafeInt<size_t>(buffer_size_per_thread) * thread_count + partials_buffer_bytes;
     auto flash_buffer_alloc = allocator->Alloc(total_buffer_bytes);
     BufferUniquePtr flash_buffer(flash_buffer_alloc, BufferDeleter(allocator));
 
