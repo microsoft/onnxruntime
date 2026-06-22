@@ -233,6 +233,18 @@ For each (batch, head, q_block) tile:
 4. **SV accumulate** — `MlasSgemmOperation(..., beta)` accumulates `softmax(QK_block) × V_block` into the output tile
 5. **Finalize** — Normalize accumulated output by `1/l` after all KV blocks are processed
 
+#### Causal early-termination
+
+During prefill, every KV block whose start index is at or beyond the largest global query
+position in the current q_block is fully causally masked and contributes nothing. The kernel
+computes a per-q_block bound
+`kv_causal_limit = past_seqlen + q_idx + row_size_q` and breaks out of the KV loop once
+`ir >= kv_causal_limit`, instead of computing and then discarding the masked upper-triangle
+QK/SV GEMMs. This skips roughly half of the QK/SV work for square prefill (S = T) and is the
+main reason the FP32 flash path is faster than naive even at short sequence lengths
+(see the benchmark results below). Decode (q_block of size 1 at the cache tail) attends to all
+KV positions, so the bound equals `total_seqlen` and nothing is skipped.
+
 ### Activation Conditions
 
 The non-quantized flash path is selected when ALL of the following hold:
@@ -476,7 +488,40 @@ Flash decoding IS active (batch×heads=4 < threads=8, KV partitioned across idle
 | 4096 (N=32) | +2131 | +87 | 24.5x |
 
 **Summary**: The flash path's primary benefit for prefill is **memory reduction** — avoiding the full O(N×S×T) attention matrix. For S=4096 with 16 heads, the naive path allocates ~1 GB for attention scores while the flash path uses ~80 MB regardless of sequence length. The prefill latency speedup (1.2–2.7x at kernel level, 1.2–1.9x at operator level) comes from improved cache locality. For decode, the tiled kernel provides 1.2–1.8x kernel-level speedup from fused single-pass KV access; at operator level the gain is visible for T≥1024 but masked by KV concat overhead at shorter sequences. When flash decoding is active (batch×heads < threads), KV partitioning across idle threads yields an additional 2–5x speedup for long sequences.
+### Non-Quantized (FP32) Flash Attention vs Naive benchmark results
 
+Measured on an AMD EPYC 7763 (32 logical / 16 physical cores), threads=8, FP32 KV cache,
+`B=1, num_heads=16, kv_num_heads=8, head_size=128`. Operator-level, measured with:
+
+```bash
+python onnxruntime/test/python/transformers/benchmark_gqa_cpu_flash.py \
+  --fp32 --prompt_only --warmup 10 --repeats 30
+```
+
+#### Latency — Prefill (S = T, prompt phase)
+
+| Seq Length | Naive (ms) | Flash (ms) | Speedup |
+|---:|---:|---:|---:|
+| 512  | 5.8\u20138.4   | 4.2\u20135.3   | 1.4\u20131.6x |
+| 1024 | 25\u201329     | 13\u201318     | 1.6\u20132.0x |
+| 2048 | 87\u2013118    | 52\u201365     | 1.5\u20132.0x |
+| 4096 | 365\u2013380   | 213\u2013234   | 1.6\u20131.7x |
+
+The FP32 flash path is faster than naive across all measured prefill lengths. With the causal
+early-termination described above, roughly half of the QK/SV work (the causally masked
+upper triangle of the square prefill attention matrix) is skipped entirely, which more than
+offsets the intrinsic per-KV-block online-softmax overhead (running max/exp/output rescale).
+The same advantage holds single-threaded (1.4\u20131.8x at threads=1), confirming the gain is
+algorithmic rather than purely from threading.
+
+#### Latency — Decode (S = 1, token generation)
+
+For single-token decode at this head configuration (`batch\u00d7heads = 16 > threads = 8`, so
+flash decoding KV-partitioning is not active), the workload per `Run` is tiny and dominated
+by KV-cache concatenation overhead. Operator-level decode latency is therefore noisy and
+roughly at parity between the two paths, with longer total sequence lengths (T\u22652049)
+tending to favor flash. The FP32 decode path is not the target of the prefill-oriented
+causal early-termination optimization.
 ## Current CPU Limitations
 
 The current CPU GroupQueryAttention implementation has a few important limitations:

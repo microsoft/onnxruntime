@@ -126,8 +126,20 @@ MlasFlashAttentionGQAThreaded(
             static_cast<size_t>(head_idx) * static_cast<size_t>(sequence_length) * static_cast<size_t>(head_size) +
             static_cast<size_t>(q_idx) * static_cast<size_t>(head_size);
 
+        // Causal early-termination bound: the largest global query position in this
+        // q_block is (past_seqlen + q_idx + row_size_q - 1), so it can attend to KV
+        // positions up to that index inclusive. Any KV block starting at or beyond
+        // (past_seqlen + q_idx + row_size_q) is fully causally masked for every row in
+        // the block, so it contributes nothing and can be skipped. This avoids the
+        // wasted QK/SV GEMMs over the causal upper triangle during prefill.
+        const ptrdiff_t kv_causal_limit =
+            past_seqlen + q_idx + static_cast<ptrdiff_t>(row_size_q);
+
         // Iterate over KV blocks
         for (ptrdiff_t ir = 0; ir < total_seqlen; ir += kv_block_size) {
+            if (ir >= kv_causal_limit) {
+                break;
+            }
             const size_t row_size_kv = static_cast<size_t>(std::min(kv_block_size, total_seqlen - ir));
 
             // Step 1: QK^T GEMM with FP32 K block
