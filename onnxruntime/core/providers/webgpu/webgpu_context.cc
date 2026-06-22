@@ -1075,14 +1075,31 @@ void WebGpuContextFactory::ReleaseContext(int context_id) {
 void WebGpuContextFactory::Cleanup() {
   std::lock_guard<std::mutex> lock(mutex_);
 
-  if (contexts_ != nullptr) {
-    delete contexts_;
-    contexts_ = nullptr;
+  // Detach the static state first so the factory is left in a clean, reusable
+  // state even if a destructor throws during teardown. On macOS, releasing
+  // Dawn's Metal objects can raise an Objective-C NSException (caught here by
+  // `catch (...)`); without detaching first, a throw in `delete contexts_`
+  // would leak `default_instance_` and leave the statics dangling, breaking any
+  // subsequent re-initialization and leaking a WGPUInstance per
+  // register/unregister cycle. Guard each release independently so a throw in
+  // one cannot leak the other.
+  auto* contexts = contexts_;
+  contexts_ = nullptr;
+  WGPUInstance instance = default_instance_;
+  default_instance_ = nullptr;
+
+  try {
+    delete contexts;
+  } catch (...) {
+    LOGS_DEFAULT(WARNING) << "Exception while destroying WebGPU contexts during teardown; ignoring.";
   }
 
-  if (default_instance_ != nullptr) {
-    wgpuInstanceRelease(default_instance_);
-    default_instance_ = nullptr;
+  if (instance != nullptr) {
+    try {
+      wgpuInstanceRelease(instance);
+    } catch (...) {
+      LOGS_DEFAULT(WARNING) << "Exception while releasing WebGPU instance during teardown; ignoring.";
+    }
   }
 }
 
