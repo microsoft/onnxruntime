@@ -856,7 +856,7 @@ endif()
         # (non-VNNI) hosts via the AVX-512 W2 dispatch. TU is pure C++ -- no
         # AVX-512 intrinsics inside.
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp PROPERTIES
-          COMPILE_FLAGS "-mfma -mavx512bw -mavx512dq -mavx512vl -mavx512f")
+          COMPILE_FLAGS "-mfma -mavx512bw -mavx512dq -mavx512vl")
 
         set(mlas_platform_srcs_avx512vnni
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
