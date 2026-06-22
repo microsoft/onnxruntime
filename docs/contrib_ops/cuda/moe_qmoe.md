@@ -536,6 +536,15 @@ The operator supports three fusion modes via the `swiglu_fusion` attribute:
 | 1 (interleaved) | `fc1`, `fc2` | `[Gate_0, Value_0, Gate_1, Value_1, …]` — `[E, 2×inter, hidden]` | GPT-OSS layout. |
 | 2 (block) | `fc1`, `fc2` | `[Gate_0…Gate_N | Value_0…Value_N]` — `[E, 2×inter, hidden]` | Concatenated halves; Llama/Gemma layout. |
 
+> **Backward-compatibility remap (`swiglu_fusion=0` + SwiGLU)**: The published gpt-oss-20b
+> model before June 2025 uses **interleaved** SwiGLU layout but `swiglu_fusion` attribute to `0`.
+> To keep those models working, when `activation_type="swiglu"` and `swiglu_fusion=0`,
+> the CUDA op treats the FC1 weights as interleaved (i.e. as if `swiglu_fusion=1`):
+> unconditionally for **QMoE** (which never has a separate `fc3`).
+> A one-time warning is logged. Consequently a SwiGLU model that genuinely intended the
+> non-interleaved split must provide a separate `fc3` (standard MoE) rather than rely on
+> `swiglu_fusion=0`. New exporters should set `swiglu_fusion` explicitly.
+
 > **CPU note**: The CPU MoE/QMoE implementation only supports the **interleaved**
 > SwiGLU layout (`swiglu_fusion=1`). The concatenated layout (`swiglu_fusion=2`)
 > throws `ORT_NOT_IMPLEMENTED` on CPU; use the CUDA EP for concatenated SwiGLU.
@@ -979,6 +988,20 @@ per-column INT4, block-wise INT4/INT8, and interleaved-SwiGLU GEMV kernels.
 | Gate relaxation | `tryLaunchMoeGemvIntSymmetric` and the interleaved-SwiGLU variant accept `__nv_bfloat16` activations with `ScaleBiasType == T`. | For a given shape, BF16 routes to GEMV exactly where FP16 does. |
 | Kernel instantiation | `moe_gemv.cu` adds `__nv_bfloat16` details/instantiations (group sizes 0/32/64/128, INT4/INT8, bias on/off) under `ENABLE_BF16`. | The custom FC1/FC2 GEMV kernels run for BF16; no grouped-GEMM fallback when the FP16 gate would route. |
 | Profiling | GPT-OSS-20B, Qwen3.6-35B-A3B, and Gemma model shapes profiled with `block_size=64` for both dtypes. | BF16 matches FP16 routing and latency within noise (about 1.3x–1.5x faster than grouped GEMM); SwiGLU BF16 parity tests pass. |
+
+#### Accumulation policy
+
+The QMoE GEMV fast path accumulates fp16 activations in fp16 by default. Set
+`ORT_MOE_GEMV_FP32_ACCUM=1` before process start to restore the previous fp32
+accumulation path for fp16 activations. BF16 activations always use fp32
+accumulation because bf16 accumulation is too lossy.
+
+On the GPT-OSS-20B decode-shaped helper case
+`gpt_oss_20b_m1_top4_fp16_2880x2880_e32`, the default fp16-accumulation path was
+0.0708 ms versus 0.0812 ms with `ORT_MOE_GEMV_FP32_ACCUM=1`. In a full GPT-OSS
+CUDA-graph decode run, default fp16 accumulation reached 386.26 tok/s versus
+353.70 tok/s with the fp32 fallback. A 1000-sample MMLU smoke test matched pooled
+accuracy at 0.8260 for both modes.
 
 #### Experiments rejected after profiling
 

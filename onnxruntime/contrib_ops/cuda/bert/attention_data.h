@@ -206,6 +206,12 @@ struct GroupQueryAttentionData {
   // XQA buffer
   void* xqa_buffer = nullptr;
   size_t xqa_buffer_bytes = 0;
+  // FP32 per-head attention sink consumed by the XQA kernel (nullptr when no head_sink input).
+  // Either points to a PrePack-cached buffer or to scratch that is filled at launch time.
+  float* xqa_head_sink = nullptr;
+  // When true, head_sink was not prepacked (e.g. dynamic/non-initializer input) and the FP16/BF16
+  // head_sink must be converted to xqa_head_sink (FP32 scratch) before launching XQA.
+  bool xqa_head_sink_needs_conversion = false;
 
   // Unfused fallback buffers (see LaunchUnfusedAttention in unfused_attention.h):
   //   unfused_q_bnsh : [B, N_q, S_q, H]   (Q transposed from BSNH to BNSH)

@@ -574,6 +574,9 @@ Return Value:
     const size_t FilterCount = Parameters->FilterCount;
     const size_t OutputSize = Parameters->OutputSize;
     const size_t K = Parameters->K;
+    const bool use_gemm_batch_override =
+        GetMlasPlatform().MlasConvSGemmRouteOverride != nullptr &&
+        GetMlasPlatform().MlasConvSGemmRouteOverride(Parameters) == MlasConvSGemmRouteDispatch;
 
     //
     // Compute the strides to step through slices of the local segment.
@@ -637,9 +640,15 @@ Return Value:
                     SegmentStartN + n, CountN);
             }
 
-            MlasSgemmOperation(CblasNoTrans, CblasNoTrans, FilterCount, CountN,
-                CountK, 1.0f, Filter + k, K, ColumnBuffer, CountN, beta,
-                SegmentOutput, OutputSize);
+            if (use_gemm_batch_override) {
+                MlasGemm(CblasNoTrans, CblasNoTrans, FilterCount, CountN,
+                    CountK, 1.0f, Filter + k, K, ColumnBuffer, CountN, beta,
+                    SegmentOutput, OutputSize, nullptr, Parameters->BackendKernelSelectorConfig);
+            } else {
+                MlasSgemmOperation(CblasNoTrans, CblasNoTrans, FilterCount, CountN,
+                    CountK, 1.0f, Filter + k, K, ColumnBuffer, CountN, beta,
+                    SegmentOutput, OutputSize);
+            }
 
             beta = 1.0f;
         }
@@ -1345,7 +1354,7 @@ static constexpr size_t ComputeChannelsLastConvOutSize(size_t input, size_t kern
 
 bool
 MLASCALL
-MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
+MlasConvSupportsDenseChannelsLast2DFloatKernel(
     size_t Dimensions,
     size_t BatchCount,
     size_t GroupCount,
@@ -1381,7 +1390,16 @@ MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
         return false;
     }
 
-    if (Padding[0] != Padding[2] || Padding[1] != Padding[3]) {
+    if (GroupCount != 1 || FilterCount <= 1) {
+        return false;
+    }
+
+    // The channels-last float convolution path is only implemented by the Arm® KleidiAI™
+    // SME conv override, which currently uses a single padding value in its LHS indirection table.
+    // Require uniform padding until separate H/W padding is supported there.
+    if (Padding[0] != Padding[2] ||
+        Padding[1] != Padding[3] ||
+        Padding[0] != Padding[1]) {
         return false;
     }
 
@@ -1395,20 +1413,59 @@ MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
         return false;
     }
 
-    const bool is_depthwise = GroupCount > 1;
-    if (is_depthwise) {
-        if (FilterCount != 1) {
-            return false;
-        }
-    } else if (FilterCount <= 1) {
-        return false;
-    }
-
     if (KernelShape[0] < 3 || KernelShape[1] < 3) {
         return false;
     }
 
     return true;
+#endif
+}
+
+bool
+MLASCALL
+MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    size_t InputChannelsPerGroup,
+    const size_t* InputShape,
+    const size_t* KernelShape,
+    const size_t* DilationShape,
+    const size_t* Padding,
+    const size_t* StrideShape,
+    size_t FilterCount,
+    float Beta)
+{
+#if !defined(USE_KLEIDIAI) || !defined(MLAS_TARGET_ARM64)
+    MLAS_UNREFERENCED_PARAMETER(Dimensions);
+    MLAS_UNREFERENCED_PARAMETER(BatchCount);
+    MLAS_UNREFERENCED_PARAMETER(GroupCount);
+    MLAS_UNREFERENCED_PARAMETER(InputChannelsPerGroup);
+    MLAS_UNREFERENCED_PARAMETER(InputShape);
+    MLAS_UNREFERENCED_PARAMETER(KernelShape);
+    MLAS_UNREFERENCED_PARAMETER(DilationShape);
+    MLAS_UNREFERENCED_PARAMETER(Padding);
+    MLAS_UNREFERENCED_PARAMETER(StrideShape);
+    MLAS_UNREFERENCED_PARAMETER(FilterCount);
+    MLAS_UNREFERENCED_PARAMETER(Beta);
+    return false;
+#else
+    MLAS_UNREFERENCED_PARAMETER(Dimensions);
+    MLAS_UNREFERENCED_PARAMETER(BatchCount);
+    MLAS_UNREFERENCED_PARAMETER(GroupCount);
+    MLAS_UNREFERENCED_PARAMETER(InputChannelsPerGroup);
+    MLAS_UNREFERENCED_PARAMETER(InputShape);
+    MLAS_UNREFERENCED_PARAMETER(KernelShape);
+    MLAS_UNREFERENCED_PARAMETER(DilationShape);
+    MLAS_UNREFERENCED_PARAMETER(Padding);
+    MLAS_UNREFERENCED_PARAMETER(StrideShape);
+    MLAS_UNREFERENCED_PARAMETER(FilterCount);
+    MLAS_UNREFERENCED_PARAMETER(Beta);
+
+    // TODO: enable only for shapes supported by the dedicated
+    // depthwise kernel. Until then, keep depthwise/grouped convolutions out of
+    // the Arm® KleidiAI™ NHWC path.
+    return false;
 #endif
 }
 

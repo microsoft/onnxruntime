@@ -1535,6 +1535,60 @@ class TestONNXAttentionGQALargeHeadUnfused(unittest.TestCase):
         self.assertLess(out.float().max().item(), 1.0)
 
 
+@unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping large head MEA tests.")
+@patch.dict(os.environ, {"ORT_DISABLE_FLASH_ATTENTION": "1", "ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION": "0"})
+class TestONNXAttentionGQALargeHeadNonpadMEA(unittest.TestCase):
+    """Large-head normal and right-padding MEA kernels initialize independently."""
+
+    def test_gqa_large_head_nonpad_seqlen_after_default_mea_fp16(self):
+        # Keep this order: the regression requires the default kernel to opt in
+        # first, then verifies that the distinct right-padding kernel does too.
+        default_config = AttentionConfig(
+            batch_size=2,
+            q_sequence_length=32,
+            kv_sequence_length=32,
+            past_kv_sequence_length=0,
+            q_num_heads=8,
+            kv_num_heads=4,
+            head_size=512,
+            is_causal=0,
+        )
+        parity_check_gqa_prompt(
+            config=default_config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=False,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+        nonpad_config = AttentionConfig(
+            batch_size=2,
+            q_sequence_length=32,
+            kv_sequence_length=32,
+            past_kv_sequence_length=0,
+            q_num_heads=8,
+            kv_num_heads=4,
+            head_size=512,
+            is_causal=0,
+            has_nonpad_kv_seqlen=True,
+        )
+        nonpad_seqlens = torch.tensor([32, 19], dtype=torch.int64, device="cuda")
+
+        parity_check_gqa_prompt_with_nonpad_kv_seqlen(
+            config=nonpad_config,
+            nonpad_seqlens=nonpad_seqlens,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+
 class TestONNXAttentionGQALargeHeadUnfusedCPU(unittest.TestCase):
     """CPU twin of TestONNXAttentionGQALargeHeadUnfused.
 

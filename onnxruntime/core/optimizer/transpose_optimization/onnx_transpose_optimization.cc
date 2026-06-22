@@ -454,6 +454,23 @@ static std::optional<DQToLookPast> GetDQWithConstInitializerInputAndSingleConsum
   return result;
 }
 
+// Element types that ONNX QuantizeLinear can produce as its output.
+static bool IsQuantizeLinearOutputType(api::DataType dtype) {
+  switch (dtype) {
+    case api::DataType::INT8:
+    case api::DataType::UINT8:
+    case api::DataType::INT16:
+    case api::DataType::UINT16:
+    case api::DataType::FLOAT8E4M3FN:
+    case api::DataType::FLOAT8E4M3FNUZ:
+    case api::DataType::FLOAT8E5M2:
+    case api::DataType::FLOAT8E5M2FNUZ:
+      return true;
+    default:
+      return false;
+  }
+}
+
 /// <summary>
 /// Insert a Q -> DQ pair after the node following the DQ by using scale and zp info from the preceding DQ node.
 /// DQ -> next node => DQ -> next node -> Q -> DQ.
@@ -528,9 +545,26 @@ static bool MakeQDQNodeUnit(api::GraphRef& graph, const api::NodeRef& dq_node) {
     inputs.push_back(zp_input.value());
   }
 
+  // A zero-point-less DQ with a non-uint8 type needs the new Q's output_dtype pinned, or Q type
+  // inference defaults to uint8 and clashes with the int8 value-info copied below. output_dtype is
+  // ONNX opset 21+ only; if it can't be expressed (older opset, non-ONNX domain, or a type that
+  // QuantizeLinear can't output), skip the push-through so the graph stays valid.
+  std::optional<int64_t> q_output_dtype;
+  if (!zp_input.has_value()) {
+    const api::DataType dq_input_dtype = graph.GetValueInfo(dq_inputs[0])->DType();
+    if (dq_input_dtype != api::DataType::UNDEFINED && dq_input_dtype != api::DataType::UINT8) {
+      const std::optional<int64_t> domain_opset = graph.Opset(dq_domain);
+      if (!IsOnnxDomain(dq_domain) || !domain_opset || *domain_opset < 21 ||
+          !IsQuantizeLinearOutputType(dq_input_dtype)) {
+        return false;
+      }
+      q_output_dtype = static_cast<int64_t>(dq_input_dtype);
+    }
+  }
+
   // Add Q
   auto new_q_node = MakeQuantizeOp(graph, dq_domain, inputs, axis, dq_node.GetAttributeInt("block_size"),
-                                   dq_node.GetAttributeInt("output_dtype"), dq_node.GetAttributeInt("saturate"));
+                                   q_output_dtype, dq_node.GetAttributeInt("saturate"));
   new_q_node->SetLayeringAnnotation(dq_node.GetLayeringAnnotation());
   auto q_node_outputs = new_q_node->Outputs();
 

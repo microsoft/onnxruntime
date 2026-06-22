@@ -45,6 +45,40 @@ Status LaunchZeroOutputForFullyMaskedBatches(
     cudaStream_t stream,
     int max_threads_per_block);
 
+// Zero output rows that are fully masked by the intersection of the causal frontier
+// and an explicit attention bias (composed is_causal + attn_mask), per onnx/onnx#8068
+// "fully-masked-row -> 0" (Bug-2). The MEA/CUTLASS path applies a finite mask sentinel
+// (kCutlassSafeMaskFilterValue) rather than -inf, so a query row with no allowed key
+// softmaxes to a uniform mean-of-V instead of zero. For each (batch, head, query) this
+// kernel reconstructs the per-batch bottom-right/top-left causal frontier and checks the
+// additive bias over the causally-allowed keys; if every such key is masked
+// (bias <= masked_bias_value) the corresponding output row is overwritten with zeros
+// (select-not-multiply). Output is BSNH: [batch_size, q_sequence_length, num_heads, v_head_size].
+//
+// seqlens_k: per-batch valid key count (external cache); pass nullptr to use
+//   total_sequence_length for every batch.
+// is_causal / causal_from_top_left: causal frontier selection matching the MEA params.
+// broadcast_bias_dim_0 / broadcast_bias_dim_1: attn_bias broadcast over batch / head.
+// masked_bias_value: the additive-bias sentinel used for masked keys (a key counts as
+//   masked when bias <= this value); use the same value passed to the mask conversion.
+template <typename T>
+Status LaunchZeroFullyMaskedRows(
+    T* output,
+    const T* attn_bias,
+    const int* seqlens_k,
+    int batch_size,
+    int num_heads,
+    int q_sequence_length,
+    int total_sequence_length,
+    int v_head_size,
+    bool is_causal,
+    bool causal_from_top_left,
+    bool broadcast_bias_dim_0,
+    bool broadcast_bias_dim_1,
+    float masked_bias_value,
+    cudaStream_t stream,
+    int max_threads_per_block);
+
 // Fill an int32 buffer with a constant value entirely on device.
 // CUDA-graph-capturable alternative to host vector + cudaMemcpyAsync.
 Status LaunchFillInt32(int* output, int value, int count, cudaStream_t stream, int max_threads_per_block);

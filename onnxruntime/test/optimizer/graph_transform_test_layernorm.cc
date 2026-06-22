@@ -9,7 +9,7 @@
 
 #include "gtest/gtest.h"
 
-#include "onnx/defs/schema.h"
+#include "core/graph/onnx_protobuf.h"
 
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
@@ -695,9 +695,12 @@ TEST_F(GraphTransformationTests, LayerNormFusionCurrentOpsetTest) {
   const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
   // LayerNorm fusion at Level1 when opset >= 17 (ONNX LayerNormalization available).
   // At Level2, it skips if fuse_in_level_1 is true.
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
                                         std::make_unique<LayerNormFusion>(no_limit_empty_ep_list, TransformerLevel::Level1),
-                                        TransformerLevel::Level1, 1, nullptr, post_graph_checker));
+                                        TransformerLevel::Level1, 1, nullptr, post_graph_checker,
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 }
 
 TEST_F(GraphTransformationTests, SkipLayerNormFusionCurrentOpsetTest) {
@@ -734,9 +737,12 @@ TEST_F(GraphTransformationTests, SkipLayerNormFusionCurrentOpsetTest) {
                            " or skip this opset in the test if the fusion is not expected to apply.");
   };
 
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
                                         std::make_unique<SkipLayerNormFusion>(),
-                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker,
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 }
 
 TEST_F(GraphTransformationTests, SkipLayerNormFusionTest) {
@@ -1457,7 +1463,12 @@ static void LoadModelAtCurrentOpset(const ORTCHAR_T* base_model_uri,
     node.mutable_attribute()->RemoveLast();
   }
 
-  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), p_model, nullptr, logger));
+  // EmbedLayerNorm fixtures are rewritten to the current ONNX opset, which may still be
+  // under development (e.g. opset 27 in ONNX 1.22). Allow the unreleased opset so the model
+  // loads on strict (ALLOW_RELEASED_ONNX_OPSET_ONLY default) CI legs as well.
+  // Remove once opset 27 is released. Tracked by #28966.
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), p_model, nullptr, logger,
+                               ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 }
 
 TEST_F(GraphTransformationTests, EmbedLayerNormFusionFormat1CurrentOpset) {

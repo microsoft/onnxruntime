@@ -207,6 +207,7 @@ MlasActivation(
 
 struct MLAS_BACKEND_KERNEL_SELECTOR_CONFIG {
     bool use_kleidiai = true; /**< Flag to use KleidiAI backend kernels if available */
+    size_t kleidiai_conv_igemm_max_work = 0; /**< Optional SME IGEMM route threshold override; 0 uses default */
 };
 
 //
@@ -942,10 +943,25 @@ MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
 
 bool
 MLASCALL
-MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
+MlasConvSupportsDenseChannelsLast2DFloatKernel(
     size_t Dimensions,
     size_t BatchCount,
     size_t GroupCount,
+    const size_t* InputShape,
+    const size_t* KernelShape,
+    const size_t* DilationShape,
+    const size_t* Padding,
+    const size_t* StrideShape,
+    size_t FilterCount,
+    float Beta);
+
+bool
+MLASCALL
+MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    size_t InputChannelsPerGroup,
     const size_t* InputShape,
     const size_t* KernelShape,
     const size_t* DilationShape,

@@ -254,7 +254,6 @@ Status FusedTrtSelfAttention(
 
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
-  const bool causal = parameters.is_unidirectional;
 
   const int32_t* sequence_offset = data.cumulated_sequence_length_q_cache;
   if (parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING) {
@@ -274,18 +273,13 @@ Status FusedTrtSelfAttention(
 
   FusedMHARunnerFP16v2* fused_fp16_runner = reinterpret_cast<FusedMHARunnerFP16v2*>(data.fused_runner);
 
-  const int s = causal ? sequence_length : fused_fp16_runner->NormalizeSequenceLength(sequence_length);
+  const int s = fused_fp16_runner->NormalizeSequenceLength(sequence_length);
 
   // B = 2 * batch_size when there is padding in input, and B = batch_size when padding is removed.
   const int b = (nullptr == data.mask_index ? batch_size : 2 * batch_size);
 
-  if (!causal) {
-    assert(data.qkv_format == AttentionQkvFormat::QKV_BSN3H);
-    fused_fp16_runner->Run(b, s, data.q, sequence_offset, data.output, stream);
-  } else {
-    assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH_QKV_BS3NH);
-    fused_fp16_runner->Run(b, s, data.gemm_buffer, sequence_offset, data.output, stream);
-  }
+  assert(data.qkv_format == AttentionQkvFormat::QKV_BSN3H);
+  fused_fp16_runner->Run(b, s, data.q, sequence_offset, data.output, stream);
 
   return Status::OK();
 }
@@ -802,8 +796,7 @@ Status ConcatPastToPresent(int batch_size, int num_heads, int qk_head_size, int 
   // When there is past state, the head size for Q/K/V shall be same: H == H_v.
 
   if (nullptr != data.present) {  // Attention op
-    assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH ||
-           data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH_QKV_BS3NH);
+    assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH);
 
     ORT_RETURN_IF_ERROR(
         LaunchConcatTensorToTensor(

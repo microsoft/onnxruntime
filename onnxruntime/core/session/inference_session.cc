@@ -4330,7 +4330,8 @@ common::Status InferenceSession::AddPredefinedTransformers(
         transformers_to_register = [&]() {
           return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
                                                        optimizers_to_disable_,
-                                                       GetIntraOpThreadPoolToUse());
+                                                       GetIntraOpThreadPoolToUse(),
+                                                       &execution_providers_);
         };
       }
     } else {
@@ -4344,7 +4345,8 @@ common::Status InferenceSession::AddPredefinedTransformers(
           if (use_full_build_optimizations) {
             return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
                                                          optimizers_to_disable_,
-                                                         GetIntraOpThreadPoolToUse());
+                                                         GetIntraOpThreadPoolToUse(),
+                                                         &execution_providers_);
           } else {
             const auto sat_context =
                 minimal_build_optimization_handling ==

@@ -310,6 +310,7 @@ class GroupQueryAttentionConfig(AttentionConfig):
         v_quant_type: str = "NONE",
         kv_cache_type: str = "float16",
         share_kv_scale: bool = False,
+        has_head_sink: bool = False,
     ):
         super().__init__(
             "GroupQueryAttention",
@@ -341,6 +342,7 @@ class GroupQueryAttentionConfig(AttentionConfig):
         self.k_quant_type = k_quant_type
         self.v_quant_type = v_quant_type
         self.share_kv_scale = share_kv_scale
+        self.has_head_sink = has_head_sink
         # Determine bit width from cache type if applicable
         if kv_cache_type == "int4":
             self.kv_cache_bit_width = 4
@@ -359,6 +361,8 @@ class GroupQueryAttentionConfig(AttentionConfig):
                 "seqlens_k": (self.batch_size,),
             }
         )
+        if self.has_head_sink:
+            shapes["head_sink"] = (self.num_heads,)
         # Note: We don't adjust shapes for int4 here because the parent's random_inputs
         # creates float tensors first, then quantization will pack them
         return shapes
@@ -371,6 +375,8 @@ class GroupQueryAttentionConfig(AttentionConfig):
                 "seqlens_k": k_seqlens - 1,
             }
         )
+        if self.has_head_sink:
+            feeds["head_sink"] = torch.rand((self.num_heads,), device=self.device, dtype=self.dtype)
 
         # Generate quantized cache and scales if quantization is enabled
         if self.k_quant_type != "NONE":
@@ -423,7 +429,7 @@ def create_group_query_attention_onnx_model(config: GroupQueryAttentionConfig):
         "sin_cache" if config.do_rotary else "",
         "",  # position_ids (optional, not used in benchmark)
         "",  # attention_bias (optional, not used in benchmark)
-        "",  # head_sink (optional, not used in benchmark)
+        "head_sink" if config.has_head_sink else "",
         "k_scale" if config.k_quant_type != "NONE" else "",
         "v_scale" if config.v_quant_type != "NONE" else "",
     ]
@@ -511,6 +517,9 @@ def create_group_query_attention_onnx_model(config: GroupQueryAttentionConfig):
             helper.make_tensor_value_info("cos_cache", float_type, list(shape_dict["cos_cache"])),
             helper.make_tensor_value_info("sin_cache", float_type, list(shape_dict["sin_cache"])),
         ]
+
+    if config.has_head_sink:
+        graph_input.append(helper.make_tensor_value_info("head_sink", float_type, list(shape_dict["head_sink"])))
 
     # Add scale inputs for quantization
     # Shape depends on quantization type:

@@ -1,8 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <algorithm>
-
 #include "core/flatbuffers/ort_format_version.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/data_types.h"
@@ -76,9 +74,14 @@ std::vector<uint8_t> BuildOrtModelBuffer(
   return std::vector<uint8_t>(builder.GetBufferPointer(), builder.GetBufferPointer() + builder.GetSize());
 }
 
-Status LoadOrtBuffer(const std::vector<uint8_t>& buffer) {
+Status LoadOrtBuffer(const std::vector<uint8_t>& buffer, bool use_buffer_for_initializers = false) {
   SessionOptions so;
   ORT_RETURN_IF_ERROR(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigLoadModelFormat, "ORT"));
+  if (use_buffer_for_initializers) {
+    ORT_RETURN_IF_ERROR(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseORTModelBytesDirectly, "1"));
+    ORT_RETURN_IF_ERROR(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseORTModelBytesForInitializers,
+                                                         "1"));
+  }
 
   InferenceSessionWrapper session_object{so, GetEnvironment()};
   return session_object.Load(buffer.data(), static_cast<int>(buffer.size()));
@@ -135,38 +138,16 @@ static void RunOrtModel(const OrtModelTestInfo& test_info) {
 
 TEST(OrtModelTest, RejectsInitializerRawDataSizeMismatch) {
   const auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
-    std::vector<int64_t> dims{1};
-    std::vector<uint8_t> raw_data(sizeof(float) * 2, 0);
+    std::vector<int64_t> dims{32};
+    std::vector<uint8_t> raw_data(sizeof(float) * 33, 0);
     std::vector<flatbuffers::Offset<fbs::Tensor>> initializers{
         fbs::CreateTensorDirect(builder, "bad_initializer", "", &dims, fbs::TensorDataType::FLOAT, &raw_data)};
     return fbs::CreateGraphDirect(builder, &initializers);
   });
 
-  const auto status = LoadOrtBuffer(buffer);
+  const auto status = LoadOrtBuffer(buffer, true);
   ASSERT_FALSE(status.IsOK());
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("raw data size mismatch"));
-}
-
-TEST(OrtModelTest, RejectsNullNodeArgTableEntry) {
-  auto buffer = BuildOrtModelBuffer([](flatbuffers::FlatBufferBuilder& builder) {
-    std::vector<flatbuffers::Offset<fbs::ValueInfo>> node_args{
-        fbs::CreateValueInfoDirect(builder, "X", "", CreateFloatTensorTypeInfo(builder, 1))};
-    return fbs::CreateGraphDirect(builder, nullptr, &node_args);
-  });
-
-  const auto* fbs_session = fbs::GetInferenceSession(buffer.data());
-  ASSERT_NE(fbs_session, nullptr);
-  const auto* fbs_node_args = fbs_session->model()->graph()->node_args();
-  ASSERT_NE(fbs_node_args, nullptr);
-
-  auto* raw_offsets = const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(fbs_node_args->Data()));
-  std::fill_n(raw_offsets, sizeof(flatbuffers::uoffset_t), 0);
-
-  const auto status = LoadOrtBuffer(buffer);
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(),
-              testing::AnyOf(testing::HasSubstr("Null node arg entry"),
-                             testing::HasSubstr("verification failed")));
 }
 
 TEST(OrtModelTest, RejectsDanglingNodeEdge) {

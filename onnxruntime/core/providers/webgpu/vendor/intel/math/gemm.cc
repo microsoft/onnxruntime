@@ -84,7 +84,7 @@ Status ApplyGemmIntel(const Tensor* a,
     c_is_scalar = c_shape.Size() == 1;
   }
 
-  InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, intel::ElementsPerThreadY(is_vec4, M), 1});
+  InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, intel::ElementsPerThreadY(context, M), 1});
   const uint32_t dispatch_x = narrow<uint32_t>((N + kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0] - 1) /
                                                (kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0]));
   const uint32_t dispatch_y = narrow<uint32_t>((M + kSubgroupLogicalWorkGroupSizeY * elements_per_thread[1] - 1) /
