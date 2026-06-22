@@ -491,8 +491,8 @@ void MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph, con
             // add the initializer to the destination graph
             ORT_THROW_IF_ERROR(dst_graph.AddInitializedOrtValue(*initializer, ort_value));
           } else {
-            // Data may be in memory, but stored in flatbuffers etc.
-            dst_graph.AddInitializedTensor(*initializer);
+            ORT_THROW("Initializer '", name, "' has external data in memory but no cached OrtValue. ",
+                      "This is an invalid state.");
           }
           GetOrCreateNodeArg(dst_graph, *initializer);
         }
