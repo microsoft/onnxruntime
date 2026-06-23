@@ -35,7 +35,9 @@ class SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram final : public Program<S
       {"half_rotary_dim", ProgramUniformVariableDataType::Uint32},
       {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
       {"tile_size", ProgramUniformVariableDataType::Uint32},
-      {"dispatch_size", ProgramUniformVariableDataType::Uint32});
+      {"dispatch_size", ProgramUniformVariableDataType::Uint32},
+      {"batch_size", ProgramUniformVariableDataType::Uint32},
+      {"num_q_tiles", ProgramUniformVariableDataType::Uint32});
 
  private:
   const bool interleaved_;
@@ -56,7 +58,9 @@ class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
                                           {"total_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"tile_size", ProgramUniformVariableDataType::Uint32},
-                                          {"num_heads", ProgramUniformVariableDataType::Uint32});
+                                          {"num_heads", ProgramUniformVariableDataType::Uint32},
+                                          {"batch_size", ProgramUniformVariableDataType::Uint32},
+                                          {"num_q_tiles", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_past_;
@@ -138,11 +142,14 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   int max_k_step_;
 };
 
-class FlashAttentionDecodeQKTProgram final : public Program<FlashAttentionDecodeQKTProgram> {
+class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecodeQKVProgram> {
  public:
-  FlashAttentionDecodeQKTProgram(const std::string& kernel_name,
-                                 bool has_attention_bias, uint32_t tile_size, bool use_indirect_dispatch)
-      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), use_indirect_dispatch_(use_indirect_dispatch) {
+  FlashAttentionDecodeQKVProgram(const std::string& kernel_name,
+                                 bool has_attention_bias, uint32_t tile_size, int head_size_vec,
+                                 bool use_indirect_dispatch, bool q_BNSH = false,
+                                 bool is_unidirectional = false,
+                                 uint32_t m_tile = 1)
+      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), head_size_vec_(head_size_vec), use_indirect_dispatch_(use_indirect_dispatch), q_BNSH_(q_BNSH), is_unidirectional_(is_unidirectional), m_tile_(m_tile) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -156,41 +163,23 @@ class FlashAttentionDecodeQKTProgram final : public Program<FlashAttentionDecode
                                           {"num_heads", ProgramUniformVariableDataType::Uint32},
                                           {"batch_size", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim0", ProgramUniformVariableDataType::Uint32},
-                                          {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32});
+                                          {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32},
+                                          {"new_sequence_length", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_attention_bias_;
   uint32_t tile_size_;
-  bool use_indirect_dispatch_;
-};
-
-class FlashAttentionDecodeSplitVxProgram final : public Program<FlashAttentionDecodeSplitVxProgram> {
- public:
-  FlashAttentionDecodeSplitVxProgram(const std::string& kernel_name, uint32_t tile_size, int head_size_vec, bool use_indirect_dispatch, bool has_head_sink = false)
-      : Program{kernel_name}, tile_size_(tile_size), head_size_vec_(head_size_vec), use_indirect_dispatch_(use_indirect_dispatch), has_head_sink_(has_head_sink) {
-  }
-
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
-
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"total_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"head_size_vec", ProgramUniformVariableDataType::Uint32},
-                                          {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"n_reps", ProgramUniformVariableDataType::Uint32},
-                                          {"num_present_sequence_length_tile", ProgramUniformVariableDataType::Uint32},
-                                          {"batch_heads", ProgramUniformVariableDataType::Uint32},
-                                          {"num_heads", ProgramUniformVariableDataType::Uint32});
-
- private:
-  uint32_t tile_size_;
   int head_size_vec_;
   bool use_indirect_dispatch_;
-  bool has_head_sink_;
+  bool q_BNSH_;
+  bool is_unidirectional_;
+  uint32_t m_tile_;
 };
 
 class FlashAttentionDecodeVxReduceProgram final : public Program<FlashAttentionDecodeVxReduceProgram> {
  public:
-  FlashAttentionDecodeVxReduceProgram(const std::string& kernel_name, uint32_t tile_size, uint32_t seq_tile_size, bool use_indirect_dispatch)
-      : Program{kernel_name}, tile_size_(tile_size), seq_tile_size_(seq_tile_size), use_indirect_dispatch_(use_indirect_dispatch) {
+  FlashAttentionDecodeVxReduceProgram(const std::string& kernel_name, uint32_t tile_size, uint32_t seq_tile_size, bool use_indirect_dispatch, bool has_head_sink = false, uint32_t m_tile = 1)
+      : Program{kernel_name}, tile_size_(tile_size), seq_tile_size_(seq_tile_size), use_indirect_dispatch_(use_indirect_dispatch), has_head_sink_(has_head_sink), m_tile_(m_tile) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -199,12 +188,16 @@ class FlashAttentionDecodeVxReduceProgram final : public Program<FlashAttentionD
                                           {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32},
                                           {"num_present_sequence_length_tile", ProgramUniformVariableDataType::Uint32},
                                           {"num_head_size_tile", ProgramUniformVariableDataType::Uint32},
-                                          {"batch_heads", ProgramUniformVariableDataType::Uint32});
+                                          {"batch_heads", ProgramUniformVariableDataType::Uint32},
+                                          {"new_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"num_heads", ProgramUniformVariableDataType::Uint32});
 
  private:
   uint32_t tile_size_;
   uint32_t seq_tile_size_;
   bool use_indirect_dispatch_;
+  bool has_head_sink_;
+  uint32_t m_tile_;
 };
 
 Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
@@ -212,7 +205,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                            const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k = nullptr,
                            const Tensor* cos_cache = nullptr, const Tensor* sin_cache = nullptr, const Tensor* head_sink = nullptr);
 
-bool CanApplyFlashAttention(const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context);
+bool CanApplyFlashAttention(const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k = nullptr);
 
 // Split packed QKV with Q/K rotary embedding and copy KV cache fusion
 Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::ComputeContext& context,
@@ -225,7 +218,7 @@ Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::Comput
                                                      Tensor* present_key,
                                                      Tensor* present_value,
                                                      Tensor* indirect_buffer,
-                                                     uint32_t tile_size);
+                                                     uint32_t tile_size, uint32_t num_q_tiles);
 }  // namespace webgpu
 }  // namespace contrib
 }  // namespace onnxruntime

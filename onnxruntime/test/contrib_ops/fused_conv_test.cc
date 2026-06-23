@@ -3,10 +3,18 @@
 
 #include "gtest/gtest.h"
 
+#include <array>
+
+#include "core/common/narrow.h"
+#include "core/framework/kernel_registry.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+
+#if defined(USE_KLEIDIAI) && defined(MLAS_TARGET_ARM64)
+#include "core/mlas/lib/mlasi.h"
+#endif
 
 namespace onnxruntime {
 namespace test {
@@ -121,6 +129,110 @@ void RunConvOp(const ConvOpAndTestAttributes& attributes,
 }
 
 #ifdef USE_KLEIDIAI
+namespace {
+
+#if defined(MLAS_TARGET_ARM64)
+bool HasFloatNhwcFusedConvKernel() {
+  auto cpu_ep = DefaultCpuExecutionProvider();
+  if (cpu_ep == nullptr) {
+    return false;
+  }
+
+  auto kernel_registry = cpu_ep->GetKernelRegistry();
+  if (!kernel_registry) {
+    return false;
+  }
+
+  KernelRegistry::TypeConstraintMap type_constraints{
+      {"T", DataTypeImpl::GetTensorType<float>()},
+  };
+
+  const KernelCreateInfo* kernel_create_info{};
+  const auto status = kernel_registry->TryFindKernel(
+      kCpuExecutionProvider,
+      "NhwcFusedConv",
+      kMSDomain,
+      1,
+      type_constraints,
+      DefaultLoggingManager().DefaultLogger(),
+      &kernel_create_info);
+
+  return status.IsOK() && kernel_create_info != nullptr;
+}
+
+bool HasFloatNhwcNoTransposeSupport(const vector<int64_t>& input_shape,
+                                    const vector<int64_t>& weight_shape,
+                                    const vector<int64_t>& pads,
+                                    const vector<int64_t>& strides,
+                                    int64_t group) {
+  if (!HasFloatNhwcFusedConvKernel() || !MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
+    return false;
+  }
+
+  if (group <= 0 || input_shape.size() != 4 || weight_shape.size() != 4 ||
+      pads.size() != 4 || strides.size() != 2 ||
+      weight_shape[0] <= 0 || weight_shape[0] % group != 0) {
+    return false;
+  }
+
+  std::array<size_t, 2> input_spatial_shape{
+      narrow<size_t>(input_shape[1]),
+      narrow<size_t>(input_shape[2]),
+  };
+  std::array<size_t, 2> kernel_spatial_shape{
+      narrow<size_t>(weight_shape[2]),
+      narrow<size_t>(weight_shape[3]),
+  };
+  std::array<size_t, 2> dilations{1, 1};
+  std::array<size_t, 2> strides_size_t{
+      narrow<size_t>(strides[0]),
+      narrow<size_t>(strides[1]),
+  };
+  std::array<size_t, 4> pads_size_t{
+      narrow<size_t>(pads[0]),
+      narrow<size_t>(pads[1]),
+      narrow<size_t>(pads[2]),
+      narrow<size_t>(pads[3]),
+  };
+
+  const size_t group_count = narrow<size_t>(group);
+  const size_t filter_count = narrow<size_t>(weight_shape[0] / group);
+  if (MlasConvSupportsDenseChannelsLast2DFloatKernel(
+          /*Dimensions*/ 2,
+          narrow<size_t>(input_shape[0]),
+          group_count,
+          input_spatial_shape.data(),
+          kernel_spatial_shape.data(),
+          dilations.data(),
+          pads_size_t.data(),
+          strides_size_t.data(),
+          filter_count,
+          /*Beta*/ 0.0f)) {
+    return true;
+  }
+
+  if (weight_shape[1] <= 0) {
+    return false;
+  }
+
+  const size_t input_channels_per_group = narrow<size_t>(weight_shape[1]);
+  return MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
+      /*Dimensions*/ 2,
+      narrow<size_t>(input_shape[0]),
+      group_count,
+      input_channels_per_group,
+      input_spatial_shape.data(),
+      kernel_spatial_shape.data(),
+      dilations.data(),
+      pads_size_t.data(),
+      strides_size_t.data(),
+      filter_count,
+      /*Beta*/ 0.0f);
+}
+#endif
+
+}  // namespace
+
 void TestNhwcFusedConvFloatOp(const ConvOpAndTestAttributes& attributes,
                               const vector<vector<float>>& inputs,
                               const vector<vector<int64_t>>& input_shapes,
@@ -371,6 +483,84 @@ TEST(FusedConvTest, Cpu_NhwcConv2D_AutoPadSameUpper) {
                         12.0f, 15.0f, 15.0f, 15.0f, 8.0f};
   TestNhwcFusedConvFloatOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
   TestNhwcFusedConvFloatOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
+}
+
+TEST(FusedConvTest, Cpu_NhwcDepthwiseConv2D_SymmetricPadding) {
+#if !defined(MLAS_TARGET_ARM64)
+  GTEST_SKIP() << "Float NHWC depthwise fast-path requires Arm64.";
+#else
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      2,                            // group
+      vector<int64_t>{3, 3},        // kernel_shape
+      vector<int64_t>{1, 1, 1, 1},  // pads
+      vector<int64_t>{1, 1},        // strides
+      "Relu"                        // activation
+  };
+
+  vector<int64_t> X_shape = {1, 3, 3, 2};
+  vector<float> X = {1.0f, 10.0f, 2.0f, 20.0f, 3.0f, 30.0f,
+                     4.0f, 40.0f, 5.0f, 50.0f, 6.0f, 60.0f,
+                     7.0f, 70.0f, 8.0f, 80.0f, 9.0f, 90.0f};
+  vector<int64_t> W_shape = {2, 1, 3, 3};
+  vector<float> W = {1.0f, 1.0f, 1.0f,
+                     1.0f, 1.0f, 1.0f,
+                     1.0f, 1.0f, 1.0f,
+                     1.0f, 0.0f, 1.0f,
+                     0.0f, 2.0f, 0.0f,
+                     1.0f, 0.0f, 1.0f};
+  vector<int64_t> Y_shape = {1, 3, 3, 2};
+  auto expected_vals = {12.0f, 70.0f, 21.0f, 140.0f, 16.0f, 110.0f,
+                        27.0f, 180.0f, 45.0f, 300.0f, 33.0f, 220.0f,
+                        24.0f, 190.0f, 39.0f, 260.0f, 28.0f, 230.0f};
+
+  if (!HasFloatNhwcNoTransposeSupport(X_shape, W_shape, attrs.pads, attrs.strides, attrs.group)) {
+    GTEST_SKIP() << "Float NHWC depthwise fast-path is not available on this configuration.";
+  }
+
+  TestNhwcFusedConvFloatOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  TestNhwcFusedConvFloatOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
+#endif
+}
+
+TEST(FusedConvTest, Cpu_NhwcDepthwiseConv2D_Relu_NegativePreActivation) {
+#if !defined(MLAS_TARGET_ARM64)
+  GTEST_SKIP() << "Float NHWC depthwise fast-path requires Arm64.";
+#else
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      2,                            // group
+      vector<int64_t>{3, 3},        // kernel_shape
+      vector<int64_t>{1, 1, 1, 1},  // pads
+      vector<int64_t>{1, 1},        // strides
+      "Relu"                        // activation
+  };
+
+  vector<int64_t> X_shape = {1, 3, 3, 2};
+  vector<float> X = {1.0f, 10.0f, 2.0f, 20.0f, 3.0f, 30.0f,
+                     4.0f, 40.0f, 5.0f, 50.0f, 6.0f, 60.0f,
+                     7.0f, 70.0f, 8.0f, 80.0f, 9.0f, 90.0f};
+  vector<int64_t> W_shape = {2, 1, 3, 3};
+  vector<float> W = {-1.0f, -1.0f, -1.0f,
+                     -1.0f, -1.0f, -1.0f,
+                     -1.0f, -1.0f, -1.0f,
+                     1.0f, 1.0f, 1.0f,
+                     1.0f, 1.0f, 1.0f,
+                     1.0f, 1.0f, 1.0f};
+  vector<int64_t> Y_shape = {1, 3, 3, 2};
+  auto expected_vals = {0.0f, 120.0f, 0.0f, 210.0f, 0.0f, 160.0f,
+                        0.0f, 270.0f, 0.0f, 450.0f, 0.0f, 330.0f,
+                        0.0f, 240.0f, 0.0f, 390.0f, 0.0f, 280.0f};
+
+  if (!HasFloatNhwcNoTransposeSupport(X_shape, W_shape, attrs.pads, attrs.strides, attrs.group)) {
+    GTEST_SKIP() << "Float NHWC depthwise fast-path is not available on this configuration.";
+  }
+
+  TestNhwcFusedConvFloatOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+  TestNhwcFusedConvFloatOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
+#endif
 }
 #endif
 

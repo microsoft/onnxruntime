@@ -13,10 +13,33 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace cuda {
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     Range,
     kOnnxDomain,
     11,
+    26,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 0)  // start
+        .InputMemoryType(OrtMemTypeCPUInput, 1)  // limit
+        .InputMemoryType(OrtMemTypeCPUInput, 2)  // delta
+        .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                              DataTypeImpl::GetTensorType<double>(),
+                              DataTypeImpl::GetTensorType<int16_t>(),
+                              DataTypeImpl::GetTensorType<int32_t>(),
+                              DataTypeImpl::GetTensorType<int64_t>()}),
+    Range);
+
+// Opset 27 added float16/bfloat16 to the type constraint and a stash_type attribute.
+// This kernel continues to natively support the common numeric types only; a native
+// float16/bfloat16 CUDA kernel (range_impl.cu specialization) is a follow-up enhancement.
+// Note that float16/bfloat16 Range models still execute correctly today: Range-27 carries
+// an ONNX function body that ORT expands into primitive ops at graph-partition time, so the
+// follow-up is about adding an efficient native kernel, not about fixing broken functionality.
+ONNX_OPERATOR_KERNEL_EX(
+    Range,
+    kOnnxDomain,
+    27,
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)  // start

@@ -43,7 +43,8 @@ Status SqueezeOpDataPropagation::infer() {
       if (node_.InputDefs().size() > 1) {
         const auto* input_1 = node_.InputDefs()[1];
         ORT_TRY {
-          ORT_RETURN_IF_ERROR(get_initialized_input_values_func_(input_1->Name(), axes));
+          [[maybe_unused]] int axes_num_dims = -1;
+          ORT_RETURN_IF_ERROR(get_initialized_input_values_func_(input_1->Name(), axes, axes_num_dims));
         }
         ORT_CATCH(const std::exception& ex) {
           ORT_HANDLE_EXCEPTION([&]() {

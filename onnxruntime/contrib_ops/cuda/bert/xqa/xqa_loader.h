@@ -34,9 +34,10 @@ Status LaunchXQAKernel(
     const int head_size,
     const int max_seq_len,  // Max sequence length of cache
     const float scale,
-    const bool is_bsnh,           // Layout of KV cache
-    const int* past_seq_lens,     // Past sequence lengths [BatchSize]
-    const float* kv_cache_scale,  // KV cache dequant scale (nullptr for FP16/BF16, per-tensor float for INT8)
+    const bool is_bsnh,            // Layout of KV cache
+    const int* past_seq_lens,      // Past sequence lengths [BatchSize]
+    const float* attention_sinks,  // Attention sink per query head, nullptr if not used
+    const float* kv_cache_scale,   // KV cache dequant scale (nullptr for FP16/BF16, per-tensor float for INT8)
     const XqaQuantType kv_quant_type,
     void* workspace = nullptr,  // Scratch memory
     size_t workspace_size = 0   // Size of scratch memory
