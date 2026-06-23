@@ -359,23 +359,24 @@ __global__ void ValidateCSRIndicesKernel(
     const int32_t* r = csr_row_indices + block_id * stride_row;
 
     if (tid == 0 && r[0] != 0) {
-      atomicExch(error_flag, kCSRValidationRowFirstNotZero);
+      atomicCAS(error_flag, kCSRValidationOk, kCSRValidationRowFirstNotZero);
       return;
     }
 
     // All threads check row monotonicity in strided fashion.
     for (int i = tid; i < max_blocks; i += num_threads) {
       if (r[i] < 0 || r[i] > r[i + 1] || r[i + 1] > col_count) {
-        atomicExch(error_flag, kCSRValidationRowNonMonotonic);
+        atomicCAS(error_flag, kCSRValidationOk, kCSRValidationRowNonMonotonic);
         return;
       }
     }
 
-    // All threads check col indices in strided fashion.
+    // All threads check col indices in strided fashion (only the used [0, nnz) entries).
+    const int nnz = r[max_blocks];
     const int32_t* c = csr_col_indices + block_id * col_count;
-    for (int i = tid; i < col_count; i += num_threads) {
+    for (int i = tid; i < nnz; i += num_threads) {
       if (c[i] < 0 || c[i] >= max_blocks) {
-        atomicExch(error_flag, kCSRValidationColOutOfRange);
+        atomicCAS(error_flag, kCSRValidationOk, kCSRValidationColOutOfRange);
         return;
       }
     }
@@ -386,7 +387,7 @@ __global__ void ValidateCSRIndicesKernel(
     for (int i = tid; i < batch_size; i += num_threads) {
       int key_length = seqlens_k_total[i];
       if (key_length < min_key_length || key_length > total_sequence_length) {
-        atomicExch(error_flag, kCSRValidationKeyLengthOutOfRange);
+        atomicCAS(error_flag, kCSRValidationOk, kCSRValidationKeyLengthOutOfRange);
         return;
       }
     }

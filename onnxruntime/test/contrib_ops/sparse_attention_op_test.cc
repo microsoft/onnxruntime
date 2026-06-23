@@ -265,7 +265,7 @@ TEST(SparseAttentionTest, RejectsZeroDimBlockRowIndices) {
 // These tests validate that element values in block_row_indices and block_col_indices are checked.
 // Note: these tests expect failure via ORT_RETURN_IF which does not throw when exceptions are disabled,
 // so they are safe to run in no-exceptions builds.
-void RunSparseAttentionCSRValidationTest(
+static void RunSparseAttentionCSRValidationTest(
     const std::vector<int32_t>& block_row_indices_data,
     const std::vector<int64_t>& block_row_indices_dims,
     const std::vector<int32_t>& block_col_indices_data,

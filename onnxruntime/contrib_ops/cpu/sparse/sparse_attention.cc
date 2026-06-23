@@ -66,7 +66,8 @@ Status ValidateCSRIndices(const SparseAttentionParameters& parameters,
       }
     }
     const int32_t* c = col_data + l * col_count;
-    for (int k = 0; k < col_count; ++k) {
+    const int nnz = r[max_blocks];
+    for (int k = 0; k < nnz; ++k) {
       if (c[k] < 0 || c[k] >= max_blocks) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "block_col_indices[", l, "][", k, "]=", c[k],
