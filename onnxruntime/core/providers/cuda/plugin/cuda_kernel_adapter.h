@@ -1062,10 +1062,12 @@ class CudaKernel : public OpKernel {
 #else
     // The framework Stream type is incomplete in NVCC translation units, so the
     // PluginStreamShim that bridges a raw cudaStream_t to a framework Stream*
-    // cannot be constructed here. Scratch requested from .cu kernels is short
-    // lived and released within the same Run, so a stream-agnostic allocation
-    // is safe for these call sites.
-    (void)s;
+    // cannot be constructed here. Do not silently drop a non-null stream:
+    // stream-aware allocators rely on the allocation stream for ordered reuse/free.
+    if (s != nullptr) {
+      ORT_THROW("Plugin CUDA GetScratchBuffer cannot allocate with a non-null stream from an NVCC "
+                "translation unit.");
+    }
     return ::onnxruntime::IAllocator::MakeUniquePtr<T>(
         Info().GetAllocator(OrtMemType::OrtMemTypeDefault), cnt, /*use_reserve*/ false,
         /*stream*/ nullptr);

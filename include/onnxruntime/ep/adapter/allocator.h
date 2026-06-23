@@ -41,21 +41,19 @@ class IAllocatorWrappingOrtAllocator final : public IAllocator {
   }
 
   bool IsStreamAware() const override {
-    return false;
-
-    // TODO: Enable once AllocOnStream() is implemented.
-    // static constexpr uint32_t kOrtAllocatorAllocOnStreamMinVersion = 23;
-    // const OrtAllocator* raw = ort_allocator_;
-    // return raw->version >= kOrtAllocatorAllocOnStreamMinVersion && raw->AllocOnStream != nullptr;
+    static constexpr uint32_t kOrtAllocatorAllocOnStreamMinVersion = 23;
+    const OrtAllocator* raw = ort_allocator_;
+    return raw->version >= kOrtAllocatorAllocOnStreamMinVersion && raw->AllocOnStream != nullptr;
   }
 
-  void* AllocOnStream(size_t /*size*/, Stream* /*stream*/) override {
-    // TODO: Implement AllocOnStream().
-    // The internal `onnxruntime::IAllocator::AllocOnStream` signature takes an internal `onnxruntime::Stream*`
-    // argument, while the public `::OrtAllocator::AllocOnStream` signature takes an `::OrtSyncStream*` argument.
-    // We need to properly map from one to the other.
-    // `::OrtSyncStream*` should be treated as an opaque type from the plugin EP's perspective.
-    ORT_NOT_IMPLEMENTED("IAllocatorWrappingOrtAllocator::AllocOnStream is not implemented yet.");
+  void* AllocOnStream(size_t size, Stream* stream) override {
+    static constexpr uint32_t kOrtAllocatorAllocOnStreamMinVersion = 23;
+    OrtAllocator* raw = ort_allocator_;
+    if (raw->version >= kOrtAllocatorAllocOnStreamMinVersion && raw->AllocOnStream != nullptr) {
+      return raw->AllocOnStream(raw, size, reinterpret_cast<OrtSyncStream*>(stream));
+    }
+
+    return raw->Alloc(raw, size);
   }
 
   void GetStats(AllocatorStats* stats) override {
