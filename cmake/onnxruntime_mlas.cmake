@@ -118,6 +118,8 @@ function(setup_mlas_source_for_windows)
         # these portable functions until per-backend NEON / i8mm kernels land.
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.h
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
+        # W2 CompInt8 DotProd kernel (NEON FEAT_DotProd backend).
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_2bit.cpp
         ${MLAS_SRC_DIR}/cast_kernel_neon.cpp
         ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16.cpp
         ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16_8bit.cpp
@@ -528,6 +530,10 @@ else()
           # ARM64 builds (Linux, macOS).
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.h
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
+          # W2 CompInt8 DotProd kernel (NEON FEAT_DotProd backend). Compiled
+          # with -march=armv8.2-a+dotprod on this branch -- see flag override
+          # further below alongside the W4/W8 dotprod TU.
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_2bit.cpp
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.h
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.cpp
           ${MLAS_SRC_DIR}/qkv_quant_kernel.h
@@ -561,6 +567,8 @@ else()
           setup_kleidiai()
         endif()
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
+                                    PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
+        set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_2bit.cpp
                                     PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
 				    PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")

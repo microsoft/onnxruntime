@@ -661,16 +661,28 @@ GetMlasQNBitGemmDispatchNeon(
             d.SQ8BitGemmKernel_BlkSum_CompInt8 = sqnbitgemm_neon::SQ8BitGemmKernel_BlkSum_CompInt8<false>;
         }
 
-        // W2 native CompInt8 path. Scaffold: until per-backend NEON / i8mm
-        // kernels land in subsequent commits, the dispatch reuses the portable
-        // scalar pack helpers and reference kernel that already back the
-        // AVX-512 W2 dispatch. The pointers are gated on a CompInt8-capable
-        // backend being present so MlasIsQNBitGemmAvailable matches the W4/W8
-        // dispatch-pointer-driven contract on ARM64.
+        // W2 native CompInt8 path.
+        //
+        // Pack-size, pack-and-blksum, and EffectiveBlockCountK use the
+        // portable AVX-512-namespaced helpers (the file is misleadingly
+        // named -- the TU contains no x86 intrinsics) which serve as the
+        // cross-arch layout authority for W2.
+        //
+        // SQ2BitGemmKernel_BlkSum_CompInt8 is wired to the native NEON
+        // DotProd kernel when FEAT_DotProd is available. The kernel
+        // routes BlkLen=64 through native SDOT and delegates BlkLen=32
+        // and BlkLen=128 to the portable scalar oracle until native
+        // kernels for those BlkLens land in subsequent checkpoints.
+        //
+        // On hosts with only i8mm (no DotProd) we fall back to the
+        // portable scalar reference for all BlkLens; the i8mm kernel
+        // arrives in a later checkpoint.
         if (InitializeWithDotSupport || InitializeWithI8MMSupport) {
             d.Q2BitGemmPackQuantBDataSize       = onnxruntime::mlas::sq2bit_avx512::Q2BitGemmPackQuantBDataSize_Avx512;
             d.SQ2BitGemmPackQuantBDataAndBlkSum = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmPackQuantBDataAndBlkSum_Scalar;
-            d.SQ2BitGemmKernel_BlkSum_CompInt8  = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmKernel_BlkSum_CompInt8_Scalar;
+            d.SQ2BitGemmKernel_BlkSum_CompInt8  = InitializeWithDotSupport
+                ? sqnbitgemm_neon::SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd
+                : onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmKernel_BlkSum_CompInt8_Scalar;
             d.Q2BitGemmEffectiveBlockCountK     = [](size_t BlockCountK) {
                 return MlasDivRoundup(BlockCountK, kSq2BitAvx512WeightKBlockGroup) * kSq2BitAvx512WeightKBlockGroup;
             };

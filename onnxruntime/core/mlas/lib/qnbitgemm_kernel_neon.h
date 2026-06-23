@@ -195,6 +195,28 @@ SQ4BitGemmKernel_CompInt8(
     const float* Bias
 );
 
+// W2 CompInt8 kernel entry point (DotProd backend). Implemented in
+// sqnbitgemm_kernel_neon_int8_2bit.cpp. Signature matches the
+// SQ4BitGemmKernel_BlkSum_CompInt8_Fn typedef in qnbitgemm.h.
+size_t
+SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd(
+    size_t BlkLen,
+    const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    const std::byte* QuantBZeroPoint,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t CountK,
+    size_t BlockCountK,
+    const float* Bias,
+    size_t ldc,
+    const float* ABlockSum,
+    const float* QuantBBlkSum
+);
+
 #ifdef USE_KLEIDIAI
 void
 QuantizeA_Packed_CompInt8(

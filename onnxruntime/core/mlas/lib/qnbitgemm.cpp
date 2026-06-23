@@ -1155,7 +1155,17 @@ InitializeWorkspace_CompInt8<float>(
     } else {
         // TODO(hasesh): Clean-up the following logic so that it is clean AND it works as expected on all platforms
         if (BlkBitWidth == 4 || BlkBitWidth == 2) {
-            if (QuantizeARow) {
+            // W2 requires the W8-style separate-scale layout produced by
+            // QuantizeARowComputeBlkSum_CompInt8 because the W2 SQ2BitGemm
+            // kernel reads QuantData (M*K int8 flat) and QuantScale
+            // (M*BlockCountK float) as independent buffers. The W4-style
+            // interleaved layout produced by QuantizeARow_CompInt8 packs the
+            // scale inside each Q8Blk and is therefore incompatible. On hosts
+            // that register both (e.g. NEON FEAT_DotProd, which uses
+            // QuantizeARow for the W4 path and QuantizeARowComputeBlkSum for
+            // W8), force W2 down the W8-compatible branch.
+            const bool prefer_compute_blksum = (BlkBitWidth == 2);
+            if (QuantizeARow && !prefer_compute_blksum) {
                 MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
                     const auto& data = DataParams[gemm_idx];
 
