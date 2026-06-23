@@ -75,6 +75,11 @@ Status SparseAttention<T>::Compute(OpKernelContext* context) const {
                                                            block_col_indices,
                                                            total_key_lengths,
                                                            total_seq_len));
+  ORT_RETURN_IF_ERROR(sparse_attention_helper::ValidateCSRIndices(parameters,
+                                                                  *block_row_indices,
+                                                                  *block_col_indices));
+  ORT_RETURN_IF_ERROR(sparse_attention_helper::ValidateKeyLengths(parameters,
+                                                                  *total_key_lengths));
 
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;

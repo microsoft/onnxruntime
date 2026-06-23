@@ -258,5 +258,112 @@ TEST(SparseAttentionTest, RejectsZeroDimBlockRowIndices) {
            {}, nullptr, &execution_providers);
 }
 
+// Helper for CSR value-validation tests.
+// Uses: num_heads=2, kv_num_heads=2, sparse_block_size=16, head_size=8.
+// block_row_indices shape: (1, max_blocks+1), block_col_indices shape: (1, col_count).
+// max_sequence_length = max_blocks * 16 must be >= total_sequence_length.
+// These tests validate that element values in block_row_indices and block_col_indices are checked.
+// Note: these tests expect failure via ORT_RETURN_IF which does not throw when exceptions are disabled,
+// so they are safe to run in no-exceptions builds.
+void RunSparseAttentionCSRValidationTest(
+    const std::vector<int32_t>& block_row_indices_data,
+    const std::vector<int64_t>& block_row_indices_dims,
+    const std::vector<int32_t>& block_col_indices_data,
+    const std::vector<int64_t>& block_col_indices_dims,
+    const std::string& expected_error) {
+  OpTester test("SparseAttention", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("num_heads", 2);
+  test.AddAttribute<int64_t>("kv_num_heads", 2);
+  test.AddAttribute<int64_t>("sparse_block_size", 16);
+  test.AddAttribute<float>("scale", 1.0f);
+  test.AddAttribute<int64_t>("do_rotary", 0);
+  test.AddAttribute<int64_t>("rotary_interleaved", 0);
+
+  // head_size=8, num_heads=2 => hidden_size=16
+  // sequence_length=1, batch_size=1
+  test.AddInput<float>("query", {1, 1, 16}, std::vector<float>(16, 0.0f));
+  test.AddInput<float>("key", {1, 1, 16}, std::vector<float>(16, 0.0f));
+  test.AddInput<float>("value", {1, 1, 16}, std::vector<float>(16, 0.0f));
+  // past_key/value: (batch_size=1, kv_num_heads=2, max_cache_seq_len=32, head_size=8)
+  test.AddInput<float>("past_key", {1, 2, 32, 8}, std::vector<float>(512, 0.0f));
+  test.AddInput<float>("past_value", {1, 2, 32, 8}, std::vector<float>(512, 0.0f));
+  test.AddInput<int32_t>("block_row_indices", block_row_indices_dims, block_row_indices_data);
+  test.AddInput<int32_t>("block_col_indices", block_col_indices_dims, block_col_indices_data);
+  test.AddInput<int32_t>("total_sequence_length", {1}, {2});
+  test.AddInput<int32_t>("key_total_sequence_lengths", {1}, {2});
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+
+  test.AddOutput<float>("output", {1, 1, 16}, std::vector<float>(16, 0.0f));
+  test.AddOutput<float>("present_key", {1, 2, 32, 8}, std::vector<float>(512, 0.0f));
+  test.AddOutput<float>("present_value", {1, 2, 32, 8}, std::vector<float>(512, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, expected_error, {}, nullptr, &execution_providers);
+}
+
+// block_row_indices[0][0] must be 0.
+TEST(SparseAttentionTest, RejectsBlockRowIndicesFirstElementNonZero) {
+  // shape (1, 3) => max_blocks=2, max_sequence_length=32
+  RunSparseAttentionCSRValidationTest(
+      {1, 1, 2}, {1, 3},  // row indices: first element is 1, not 0
+      {0, 1}, {1, 2},     // col indices: valid
+      "block_row_indices[0][0] must be 0");
+}
+
+// block_row_indices must be monotonically non-decreasing.
+TEST(SparseAttentionTest, RejectsBlockRowIndicesNonMonotonic) {
+  // shape (1, 3) => max_blocks=2
+  RunSparseAttentionCSRValidationTest(
+      {0, 2, 1}, {1, 3},  // row indices: 2 > 1 at row 1 (non-monotonic)
+      {0, 1}, {1, 2},     // col indices: valid
+      "block_row_indices values are not monotonically non-decreasing");
+}
+
+// block_row_indices values must not exceed block_col_indices column count.
+TEST(SparseAttentionTest, RejectsBlockRowIndicesExceedsColCount) {
+  // shape (1, 3) => max_blocks=2, col_count=2
+  RunSparseAttentionCSRValidationTest(
+      {0, 1, 3}, {1, 3},  // row indices: last element 3 > col_count=2
+      {0, 1}, {1, 2},     // col indices shape (1, 2)
+      "block_row_indices values are not monotonically non-decreasing");
+}
+
+// block_col_indices values must be in [0, max_blocks).
+TEST(SparseAttentionTest, RejectsBlockColIndicesOutOfRange) {
+  // shape (1, 3) => max_blocks=2
+  RunSparseAttentionCSRValidationTest(
+      {0, 1, 2}, {1, 3},  // row indices: valid
+      {0, 2}, {1, 2},     // col indices: value 2 >= max_blocks=2
+      "block_col_indices[0][1]=2 is out of valid range [0, 2)");
+}
+
+// block_col_indices negative values must be rejected.
+TEST(SparseAttentionTest, RejectsBlockColIndicesNegative) {
+  // shape (1, 3) => max_blocks=2
+  RunSparseAttentionCSRValidationTest(
+      {0, 1, 2}, {1, 3},  // row indices: valid
+      {0, -1}, {1, 2},    // col indices: negative value
+      "block_col_indices[0][1]=-1 is out of valid range [0, 2)");
+}
+
+// block_row_indices with negative values.
+TEST(SparseAttentionTest, RejectsBlockRowIndicesNegative) {
+  RunSparseAttentionCSRValidationTest(
+      {0, -1, 2}, {1, 3},  // row indices: negative value at index 1
+      {0, 1}, {1, 2},      // col indices: valid
+      "block_row_indices values are not monotonically non-decreasing");
+}
+
+// block_col_indices with large OOB value (the original vulnerability scenario).
+TEST(SparseAttentionTest, RejectsBlockColIndicesLargeValue) {
+  // shape (1, 3) => max_blocks=2
+  RunSparseAttentionCSRValidationTest(
+      {0, 2, 2}, {1, 3},     // row indices: valid CSR format
+      {0, 1048576}, {1, 2},  // col indices: 0x100000 far out of range
+      "block_col_indices[0][1]=1048576 is out of valid range [0, 2)");
+}
+
 }  // namespace test
 }  // namespace onnxruntime

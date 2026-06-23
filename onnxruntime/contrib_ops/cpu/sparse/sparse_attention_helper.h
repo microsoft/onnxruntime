@@ -198,24 +198,11 @@ Status CheckInputs(void* params,
                            past_key_dims[3]);
   }
 
-  // Check the shape and values of total_key_sequence_lengths.
+  // Check the shape of total_key_sequence_lengths.
   const auto& k_len_dim = total_key_lengths->Shape().GetDims();
   if (k_len_dim.size() != 1 || k_len_dim[0] != batch_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "key_total_sequence_lengths must have shape (batch_size).");
-  }
-
-  const auto* key_len_data = total_key_lengths->Data<int32_t>();
-  const bool is_prompt = (sequence_length == total_sequence_length);
-  const int min_key_length = is_prompt ? 1 : sequence_length;
-  for (int i = 0; i < batch_size; ++i) {
-    const int key_length = key_len_data[i];
-    if (key_length < min_key_length || key_length > total_sequence_length) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "key_total_sequence_lengths value ", key_length,
-                             " at batch index ", i,
-                             " is out of range [", min_key_length, ", ", total_sequence_length, "].");
-    }
   }
 
   int rotary_dim = 0;
@@ -276,6 +263,70 @@ Status CheckInputs(void* params,
   parameters->num_sparse_layout = static_cast<int>(block_row_indices_dim[0]);
   parameters->stride_row_indices = static_cast<int>(block_row_indices_dim[1]);
   parameters->stride_col_indices = static_cast<int>(block_col_indices_dim[1]);
+
+  return Status::OK();
+}
+
+// Validate CSR row-pointer monotonicity and column-index range on CPU-accessible tensors.
+// This must be called after CheckInputs has populated the parameters struct.
+// On CUDA EP, equivalent validation is performed on-device by ValidateCSRIndicesOnDevice.
+Status ValidateCSRIndices(const SparseAttentionParameters& parameters,
+                          const Tensor& block_row_indices,
+                          const Tensor& block_col_indices) {
+  const int num_layout = parameters.num_sparse_layout;
+  const int max_blocks = parameters.stride_row_indices - 1;
+  const int col_count = parameters.stride_col_indices;
+
+  const int32_t* row_data = block_row_indices.Data<int32_t>();
+  const int32_t* col_data = block_col_indices.Data<int32_t>();
+  for (int l = 0; l < num_layout; ++l) {
+    const int32_t* r = row_data + l * (max_blocks + 1);
+    if (r[0] != 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "block_row_indices[", l, "][0] must be 0, got ", r[0]);
+    }
+    for (int i = 0; i < max_blocks; ++i) {
+      if (r[i] < 0 || r[i] > r[i + 1] || r[i + 1] > col_count) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "block_row_indices values are not monotonically non-decreasing or exceed "
+                               "block_col_indices columns at layout ",
+                               l, " row ", i,
+                               ": r[", i, "]=", r[i], ", r[", i + 1, "]=", r[i + 1],
+                               ", col_count=", col_count);
+      }
+    }
+    const int32_t* c = col_data + l * col_count;
+    for (int k = 0; k < col_count; ++k) {
+      if (c[k] < 0 || c[k] >= max_blocks) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "block_col_indices[", l, "][", k, "]=", c[k],
+                               " is out of valid range [0, ", max_blocks, ")");
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
+// Validate total_key_lengths element values on CPU-accessible tensor.
+Status ValidateKeyLengths(const SparseAttentionParameters& parameters,
+                          const Tensor& total_key_lengths) {
+  const int batch_size = parameters.batch_size;
+  const int sequence_length = parameters.sequence_length;
+  const int total_sequence_length = parameters.total_sequence_length;
+
+  const auto* key_len_data = total_key_lengths.Data<int32_t>();
+  const bool is_prompt = (sequence_length == total_sequence_length);
+  const int min_key_length = is_prompt ? 1 : sequence_length;
+  for (int i = 0; i < batch_size; ++i) {
+    const int key_length = key_len_data[i];
+    if (key_length < min_key_length || key_length > total_sequence_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "key_total_sequence_lengths value ", key_length,
+                             " at batch index ", i,
+                             " is out of range [", min_key_length, ", ", total_sequence_length, "].");
+    }
+  }
 
   return Status::OK();
 }

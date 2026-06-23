@@ -215,6 +215,23 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.kernel_layout.csr_col_indices = block_col_indices->Data<int32_t>();
   data.kernel_layout.csr_row_indices = block_row_indices->Data<int32_t>();
 
+  // Validate CSR indices and key lengths on device to prevent out-of-bounds access.
+  {
+    auto csr_error_buffer = GetScratchBuffer<int32_t>(1, GetComputeStream(context));
+    ORT_RETURN_IF_ERROR(ValidateCSRIndicesOnDevice(
+        cuda_stream,
+        data.kernel_layout.csr_row_indices,
+        data.kernel_layout.csr_col_indices,
+        seqlens_k_total->Data<int32_t>(),
+        parameters.num_sparse_layout,
+        parameters.stride_row_indices - 1,  // max_blocks
+        parameters.stride_col_indices,      // col_count
+        parameters.batch_size,
+        parameters.sequence_length,
+        parameters.total_sequence_length,
+        csr_error_buffer.get()));
+  }
+
   size_t rotary_buffer_bytes = 0;
   if (do_rotary_) {
     rotary_buffer_bytes = 2 * sizeof(T) * parameters.batch_size * parameters.num_heads *

@@ -333,6 +333,110 @@ template Status QkvToContext<BFloat16>(
     contrib::SparseAttentionParameters& parameters,
     SparseAttentionData<BFloat16>& data);
 
+// Validation kernel for CSR sparse layout indices and key sequence lengths.
+// Each block handles one layout. Thread 0 checks row indices, thread 1 checks col indices.
+// Block with block_id == num_layout validates key lengths (thread 0 only).
+// Writes a CSRValidationError code to *error_flag if any check fails.
+__global__ void ValidateCSRIndicesKernel(
+    const int32_t* csr_row_indices,
+    const int32_t* csr_col_indices,
+    const int32_t* seqlens_k_total,
+    int max_blocks,
+    int col_count,
+    int num_layout,
+    int batch_size,
+    int sequence_length,
+    int total_sequence_length,
+    int32_t* error_flag) {
+  int block_id = blockIdx.x;
+  int tid = threadIdx.x;
+  int num_threads = blockDim.x;
+
+  if (block_id < num_layout) {
+    // Validate CSR indices for this layout.
+    // Thread 0 checks row[0] == 0, then all threads cooperate on row monotonicity and col range.
+    const int stride_row = max_blocks + 1;
+    const int32_t* r = csr_row_indices + block_id * stride_row;
+
+    if (tid == 0 && r[0] != 0) {
+      atomicExch(error_flag, kCSRValidationRowFirstNotZero);
+      return;
+    }
+
+    // All threads check row monotonicity in strided fashion.
+    for (int i = tid; i < max_blocks; i += num_threads) {
+      if (r[i] < 0 || r[i] > r[i + 1] || r[i + 1] > col_count) {
+        atomicExch(error_flag, kCSRValidationRowNonMonotonic);
+        return;
+      }
+    }
+
+    // All threads check col indices in strided fashion.
+    const int32_t* c = csr_col_indices + block_id * col_count;
+    for (int i = tid; i < col_count; i += num_threads) {
+      if (c[i] < 0 || c[i] >= max_blocks) {
+        atomicExch(error_flag, kCSRValidationColOutOfRange);
+        return;
+      }
+    }
+  } else if (block_id == num_layout) {
+    // Validate key lengths. All threads cooperate in strided fashion.
+    bool is_prompt = (sequence_length == total_sequence_length);
+    int min_key_length = is_prompt ? 1 : sequence_length;
+    for (int i = tid; i < batch_size; i += num_threads) {
+      int key_length = seqlens_k_total[i];
+      if (key_length < min_key_length || key_length > total_sequence_length) {
+        atomicExch(error_flag, kCSRValidationKeyLengthOutOfRange);
+        return;
+      }
+    }
+  }
+}
+
+Status ValidateCSRIndicesOnDevice(
+    cudaStream_t stream,
+    const int32_t* csr_row_indices,
+    const int32_t* csr_col_indices,
+    const int32_t* seqlens_k_total,
+    int num_layout,
+    int max_blocks,
+    int col_count,
+    int batch_size,
+    int sequence_length,
+    int total_sequence_length,
+    int32_t* d_error_flag) {
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(d_error_flag, 0, sizeof(int32_t), stream));
+
+  // Launch num_layout blocks for CSR validation + 1 block for key-length validation.
+  // Each block uses a full warp (32 threads) with strided iteration over elements.
+  ValidateCSRIndicesKernel<<<num_layout + 1, 32, 0, stream>>>(
+      csr_row_indices, csr_col_indices, seqlens_k_total,
+      max_blocks, col_count, num_layout,
+      batch_size, sequence_length, total_sequence_length,
+      d_error_flag);
+  CUDA_RETURN_IF_ERROR(cudaGetLastError());
+
+  // Copy error flag back to host.
+  int32_t h_error_flag = 0;
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(&h_error_flag, d_error_flag, sizeof(int32_t),
+                                       cudaMemcpyDeviceToHost, stream));
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+
+  if (h_error_flag != kCSRValidationOk) {
+    const char* msg = (h_error_flag == kCSRValidationRowFirstNotZero)
+                          ? "block_row_indices[0] must be 0"
+                      : (h_error_flag == kCSRValidationRowNonMonotonic)
+                          ? "block_row_indices values are not monotonically non-decreasing or exceed "
+                            "block_col_indices columns"
+                      : (h_error_flag == kCSRValidationColOutOfRange)
+                          ? "block_col_indices value is out of valid range"
+                          : "key_total_sequence_lengths value is out of valid range";
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, msg);
+  }
+
+  return Status::OK();
+}
+
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
