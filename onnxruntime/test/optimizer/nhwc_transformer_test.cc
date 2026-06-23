@@ -172,10 +172,30 @@ static bool HasFloatNhwcNoTransposeSupport(const std::vector<int64_t>& input_sha
     }
   }
 
-  return MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
+  if (MlasConvSupportsDenseChannelsLast2DFloatKernel(
+          /*Dimensions*/ 2,
+          narrow<size_t>(input_shape[0]),
+          group_count,
+          input_spatial_shape.data(),
+          kernel_spatial_shape.data(),
+          dilations_size_t.data(),
+          pads_size_t.data(),
+          strides_size_t.data(),
+          filter_count,
+          /*Beta*/ 0.0f)) {
+    return true;
+  }
+
+  if (weight_shape[1] <= 0) {
+    return false;
+  }
+
+  const auto input_channels_per_group = narrow<size_t>(weight_shape[1]);
+  return MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
       /*Dimensions*/ 2,
       narrow<size_t>(input_shape[0]),
       group_count,
+      input_channels_per_group,
       input_spatial_shape.data(),
       kernel_spatial_shape.data(),
       dilations_size_t.data(),
@@ -413,7 +433,7 @@ TEST(NhwcTransformerTests, ConvGlobalAveragePool) {
                     TransformerLevel::Level3);
 }
 
-TEST(NhwcTransformerTests, ConvDepthwiseFloat_UsesHelperCapability) {
+TEST(NhwcTransformerTests, ConvDepthwiseFloat_SkipNhwcUntilDepthwiseKernelEnabled) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>({1, 8, 7, 7}, -1.0f, 1.0f);
     auto* weight_arg = builder.MakeInitializer<float>({8, 1, 3, 3}, -1.0f, 1.0f);
@@ -425,11 +445,10 @@ TEST(NhwcTransformerTests, ConvDepthwiseFloat_UsesHelperCapability) {
 
   auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
-    const bool expect_nhwc = HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {8, 1, 3, 3}, {}, {}, {}, 8);
-    const int expected_nhwc_fused_conv = expect_nhwc ? 1 : 0;
-    const int expected_transposes = expect_nhwc ? 2 : 0;
-    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expected_nhwc_fused_conv);
-    EXPECT_EQ(op_to_count["Transpose"], expected_transposes);
+    EXPECT_FALSE(HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {8, 1, 3, 3}, {}, {}, {}, 8));
+    EXPECT_EQ(op_to_count["Conv"] + op_to_count["com.microsoft.nchwc.Conv"], 1);
+    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], 0);
+    EXPECT_EQ(op_to_count["Transpose"], 0);
   };
 
   TransformerTester(build_test_case,
@@ -537,11 +556,23 @@ TEST(NhwcTransformerTests, ConvFloat_UsesNhwcOnlyWithKleidi) {
 
   auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
-    const bool expect_nhwc = HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {16, 8, 3, 3}, {1, 1, 1, 1});
-    const int expected_nhwc_fused_conv = expect_nhwc ? 1 : 0;
-    const int expected_transposes = expect_nhwc ? 2 : 0;
-    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expected_nhwc_fused_conv);
-    EXPECT_EQ(op_to_count["Transpose"], expected_transposes);
+
+    const bool kleidi_supported = HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {16, 8, 3, 3}, {1, 1, 1, 1});
+    const int nhwc_count = op_to_count["com.microsoft.NhwcFusedConv"];
+
+    // Other Level 3 layout optimizers may consume the Conv node in the graph before NhwcTransformer.
+    // If NHWC is selected, validate that it's only used with Arm® KleidiAI™ support and that
+    // the expected transpose-boundary graph shape is produced. Otherwise, don't validate the graph shape.
+    if (nhwc_count == 0) {
+      // When the Arm® KleidiAI™ NHWC Conv path is available but no NHWC ops were produced,
+      // ensure that some other optimizer ran and consumed the Conv node instead
+      EXPECT_TRUE(!kleidi_supported || op_to_count["Conv"] == 0);
+      return;
+    }
+
+    EXPECT_TRUE(kleidi_supported);
+    EXPECT_EQ(nhwc_count, 1);
+    EXPECT_EQ(op_to_count["Transpose"], 2);
   };
 
   TransformerTester(build_test_case,
@@ -605,20 +636,33 @@ TEST(NhwcTransformerTests, FusedConvFloat_UsesNhwcOnlyWithKleidi) {
 
   auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
     auto op_to_count = CountOpsInGraph(session.GetGraph());
-    const bool expect_nhwc = HasFloatNhwcNoTransposeSupport(
-        {1, 8, 7, 7}, {16, 8, 3, 3}, {1, 1, 1, 1}, {1, 1});
-    const int expected_nhwc_fused_conv = expect_nhwc ? 1 : 0;
-    const int expected_transposes = expect_nhwc ? 2 : 0;
-    EXPECT_EQ(op_to_count["com.microsoft.NhwcFusedConv"], expected_nhwc_fused_conv);
-    EXPECT_EQ(op_to_count["Transpose"], expected_transposes);
+
+    const bool kleidi_supported = HasFloatNhwcNoTransposeSupport({1, 8, 7, 7}, {16, 8, 3, 3}, {1, 1, 1, 1}, {1, 1});
+    const int nhwc_count = op_to_count["com.microsoft.NhwcFusedConv"];
+
+    // Other Level 3 layout optimizers may consume the FusedConv node in the graph before NhwcTransformer.
+    // If NHWC is selected, validate that it's only used with Arm® KleidiAI™ support and that
+    // the expected transpose-boundary graph shape is produced. Otherwise, don't validate the graph shape.
+    if (nhwc_count == 0) {
+      // When the Arm® KleidiAI™ NHWC Conv path is available but no NHWC ops were produced,
+      // ensure that some other optimizer ran and consumed the FusedConv node instead
+      EXPECT_TRUE(!kleidi_supported || op_to_count["com.microsoft.FusedConv"] == 0);
+      return;
+    }
+
+    EXPECT_TRUE(kleidi_supported);
+    EXPECT_EQ(nhwc_count, 1);
+    EXPECT_EQ(op_to_count["Transpose"], 2);
   };
 
+  // This compares a Level 3 layout-optimized FusedConv+Relu path with the Level 2 baseline, which can use a different FP accumulation order.
+  // The NCHWc-selected path showed deterministic FP rounding drift just over 1e-6, so use a slightly wider but still narrow margin.
   TransformerTester(build_test_case,
                     check_nhwc_graph,
                     TransformerLevel::Level2,
                     TransformerLevel::Level3,
                     /*opset_version*/ 12,
-                    /*per_sample_tolerance*/ 1e-6,
+                    /*per_sample_tolerance*/ 1.25e-6,
                     /*relative_per_sample_tolerance*/ 1e-6);
 }
 

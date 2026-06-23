@@ -51,19 +51,21 @@ static_assert(!std::is_polymorphic_v<CudaAllocatorBase>,
 
 /// Allocator statistics tracked by arena allocators.
 struct AllocatorStats {
-  int64_t num_allocs = 0;
-  int64_t num_reserves = 0;
-  int64_t num_arena_extensions = 0;
-  int64_t num_arena_shrinkages = 0;
-  int64_t bytes_in_use = 0;
-  int64_t total_allocated_bytes = 0;
-  int64_t max_bytes_in_use = 0;
-  int64_t max_alloc_size = 0;
-  int64_t bytes_limit = 0;
+  int64_t num_allocs = 0;              // Number of allocations.
+  int64_t num_reserves = 0;            // Number of reserves. (Number of calls to Reserve() in arena-based allocators)
+  int64_t num_arena_extensions = 0;    // Number of arena extensions (Relevant only for arena based allocators)
+  int64_t num_arena_shrinkages = 0;    // Number of arena shrinkages (Relevant only for arena based allocators)
+  int64_t bytes_in_use = 0;            // Number of bytes in use (includes padding).
+  int64_t bytes_requested_in_use = 0;  // Number of bytes actually requested by user code (excludes padding).
+  int64_t total_allocated_bytes = 0;   // The total number of allocated bytes by the allocator.
+  int64_t max_bytes_in_use = 0;        // The maximum bytes in use.
+  int64_t max_alloc_size = 0;          // The max single allocation seen.
+  int64_t bytes_limit = 0;             // The upper limit what the allocator can allocate (0 if unknown).
 
   void ToKeyValuePairs(const OrtApi& api, OrtKeyValuePairs* kvps) const {
     api.AddKeyValuePair(kvps, "Limit", std::to_string(bytes_limit).c_str());
     api.AddKeyValuePair(kvps, "InUse", std::to_string(bytes_in_use).c_str());
+    api.AddKeyValuePair(kvps, "RequestedInUse", std::to_string(bytes_requested_in_use).c_str());
     api.AddKeyValuePair(kvps, "TotalAllocated", std::to_string(total_allocated_bytes).c_str());
     api.AddKeyValuePair(kvps, "MaxInUse", std::to_string(max_bytes_in_use).c_str());
     api.AddKeyValuePair(kvps, "NumAllocs", std::to_string(num_allocs).c_str());
@@ -77,6 +79,7 @@ struct AllocatorStats {
     std::ostringstream ss;
     ss << "Limit:                    " << bytes_limit << "\n"
        << "InUse:                    " << bytes_in_use << "\n"
+       << "RequestedInUse:           " << bytes_requested_in_use << "\n"
        << "TotalAllocated:           " << total_allocated_bytes << "\n"
        << "MaxInUse:                 " << max_bytes_in_use << "\n"
        << "NumAllocs:                " << num_allocs << "\n"

@@ -104,7 +104,7 @@ class TFusedMultiHeadAttentionXMMAKernel {
     }
 
     loadXMMAKernels(mSM);
-    
+
     // sm_86 chips prefer sm_86 kernel, but can also use sm_80 kernel if sm_86 not exist.
     // sm_89 will reuse sm_80 kernels
     if (mSM == kSM_86 || mSM == kSM_89) {
@@ -116,9 +116,8 @@ class TFusedMultiHeadAttentionXMMAKernel {
     return (mValidSequences.find(s) != mValidSequences.end());
   }
 
-  virtual void run(TKernelParam& params, cudaStream_t ss, bool flash_attention = false, bool causal_mask = false) const {
+  virtual void run(TKernelParam& params, cudaStream_t ss, bool flash_attention = false) const {
     ORT_UNUSED_PARAMETER(flash_attention);
-    ORT_UNUSED_PARAMETER(causal_mask);
 
     const auto findIter = mFunctions.find(hashID(params.s, params.d));
     ORT_ENFORCE(findIter != mFunctions.end());
@@ -165,7 +164,7 @@ class TFusedMHAKernelFactory {
       std::unique_ptr<TFusedMHAKernelList> newKernel(new TFusedMHAKernelList{pKernelList, nbKernels, type, sm});
       newKernel->loadXMMAKernels();
       TFusedMHAKernelList* ret = newKernel.get();
-      mKernels.emplace(id, std::move(newKernel));      
+      mKernels.emplace(id, std::move(newKernel));
       return ret;
     }
     return findIter->second.get();

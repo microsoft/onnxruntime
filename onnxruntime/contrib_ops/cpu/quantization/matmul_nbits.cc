@@ -359,8 +359,14 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 #endif  // MLAS_TARGET_ARM64
     }
     is_packed = true;
-  } else if (compute_type_ == SQNBIT_CompInt8) {
+  } else if (compute_type_ == SQNBIT_CompInt8 && !prefer_lut_gemm_) {
     // Packing scales and zero points
+    // Guard: for LUT-eligible nodes, scales/ZP are already packed inside
+    // packed_b_ by the LUT branch above (or by the LUT scale-pack path at
+    // the bottom of this function). Re-running the non-LUT pack here would
+    // corrupt the LUT-packed buffer (overwrite the LUT layout with W2 layout
+    // bytes), so the LUT compute path would then read garbage. prefer_lut_gemm_
+    // is gated to T1==float (see ctor), so checking it here is sufficient.
     bool should_pack_scale_and_zp_inputs = [&]() {
 #if defined(MLAS_TARGET_AMD64_IX86)
       return true;
@@ -1074,7 +1080,18 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_, true);
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<MLFloat16>())) {
-    if (nbits_ == 4) {
+    if (nbits_ == 2) {
+      MlasDequantizeBlockwise<float, 2>(
+          tmp_b_data_ptr.get(),                           // dequantized output
+          b_data,                                         // quantized input
+          scales_ptr,                                     // quantization scales
+          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+          static_cast<int32_t>(block_size_),              // quantization block size
+          column_wise_quant_,                             // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),                       // number of rows in quantized input
+          static_cast<int32_t>(N_),                       // number of columns in quantized input
+          thread_pool);
+    } else if (nbits_ == 4) {
       MlasDequantizeBlockwise<float, 4>(
           tmp_b_data_ptr.get(),                           // dequantized output
           b_data,                                         // quantized input
@@ -1085,7 +1102,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
           static_cast<int32_t>(K_),                       // number of rows in quantized input
           static_cast<int32_t>(N_),                       // number of columns in quantized input
           thread_pool);
-    } else {  // If it isn't 4bit, it has to be 8-bit quantization
+    } else {  // If it isn't 2bit or 4bit, it has to be 8-bit quantization
       ORT_ENFORCE(nbits_ == 8);
       MlasDequantizeBlockwise<float, 8>(
           tmp_b_data_ptr.get(),                           // dequantized output

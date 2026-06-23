@@ -46,10 +46,9 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionB
   constexpr bool kIsBf16 = std::is_same<T, BFloat16>::value;
   constexpr bool kIs16bit = kIsFp16 || kIsBf16;
 
-  // We only support FP16 for TRT fused/flash/causal attention.
+  // We only support FP16 for TRT fused/flash attention.
   disable_fused_self_attention_ = !kIsFp16 || !kernel_options_->UseTrtFusedAttention();
   enable_trt_flash_attention_ = kIsFp16 && kernel_options_->UseTrtFlashAttention();
-  enable_fused_causal_attention_ = kIsFp16 && kernel_options_->UseTrtCausalAttention();
 
   disable_memory_efficient_attention_ = kIsBf16 || !kernel_options_->UseEfficientAttention();
 
@@ -151,57 +150,29 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   auto out_accum_buffer = GetScratchBuffer<void>(0, GetComputeStream(context));          // nullptr
 #endif
 
-  if (!use_flash_attention) {
-    if (is_unidirectional_) {  // GPT
-      if (enable_fused_causal_attention_) {
-        // GPT fused kernels requires left side padding. mask can be:
-        //     none (no padding), 1D sequence lengths or 2d mask.
-        // Fused kernels don't support different sequence lengths of q and kv, so only apply to the first token
-        // where past state is empty.
-        bool is_mask_2d_key_padding = parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING;
-        bool use_causal_fused_runner = (nullptr == mask_index || is_mask_1d_seq_len || is_mask_2d_key_padding) &&
-                                       nullptr == attention_bias &&
-                                       parameters.past_sequence_length == 0 &&
-                                       parameters.hidden_size == parameters.v_hidden_size &&
-                                       FusedMHARunnerFP16v2::IsSupported(sm, parameters.head_size, sequence_length,
-                                                                         enable_trt_flash_attention_, true);
-        if (use_causal_fused_runner) {
-          // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
-          if (nullptr == fused_fp16_runner_.get()) {
-            std::call_once(fused_fp16_runner_created_, [&]() {
-              fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
-                                                                enable_trt_flash_attention_, parameters.scale);
-            });
-          }
+  if (!use_flash_attention && !is_unidirectional_) {  // BERT
+    bool use_fused_runner = !disable_fused_self_attention_ &&
+                            (nullptr == mask_index || is_mask_1d_seq_len) &&
+                            nullptr == past &&
+                            nullptr == present &&
+                            nullptr == attention_bias &&
+                            parameters.hidden_size == parameters.v_hidden_size &&
+                            FusedMHARunnerFP16v2::IsSupported(sm, parameters.head_size, sequence_length,
+                                                              enable_trt_flash_attention_);
 
-          // Here we assume all causal kernels can be loaded into shared memory. TODO: add a function to check.
-          fused_runner = fused_fp16_runner_.get();
-        }
+    if (use_fused_runner) {
+      // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
+      if (nullptr == fused_fp16_runner_.get()) {
+        std::call_once(fused_fp16_runner_created_, [&]() {
+          fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm,
+                                                            enable_trt_flash_attention_, parameters.scale);
+        });
       }
-    } else {  // BERT
-      bool use_fused_runner = !disable_fused_self_attention_ &&
-                              (nullptr == mask_index || is_mask_1d_seq_len) &&
-                              nullptr == past &&
-                              nullptr == present &&
-                              nullptr == attention_bias &&
-                              parameters.hidden_size == parameters.v_hidden_size &&
-                              FusedMHARunnerFP16v2::IsSupported(sm, parameters.head_size, sequence_length,
-                                                                enable_trt_flash_attention_, false);
 
-      if (use_fused_runner) {
-        // Here we assume that num_heads, head_size and is_unidirectional does not change for an Attention node.
-        if (nullptr == fused_fp16_runner_.get()) {
-          std::call_once(fused_fp16_runner_created_, [&]() {
-            fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
-                                                              enable_trt_flash_attention_, parameters.scale);
-          });
-        }
-
-        // In case some kernel not loaded due to shared memory limit, we need to double check here.
-        const int normalized_seq_len = fused_fp16_runner_->NormalizeSequenceLength(sequence_length);
-        if (fused_fp16_runner_->IsValid(normalized_seq_len)) {
-          fused_runner = fused_fp16_runner_.get();
-        }
+      // In case some kernel not loaded due to shared memory limit, we need to double check here.
+      const int normalized_seq_len = fused_fp16_runner_->NormalizeSequenceLength(sequence_length);
+      if (fused_fp16_runner_->IsValid(normalized_seq_len)) {
+        fused_runner = fused_fp16_runner_.get();
       }
     }
   }
@@ -227,7 +198,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     debug_info.use_flash_attention = use_flash_attention;
     debug_info.use_efficient_attention = use_memory_efficient_attention;
     if (fused_runner != nullptr) {
-      debug_info.SetTrtFusedKernel(is_unidirectional_, enable_trt_flash_attention_, sequence_length);
+      debug_info.SetTrtFusedKernel(enable_trt_flash_attention_, sequence_length);
     }
 
     debug_info.Print("Attention",

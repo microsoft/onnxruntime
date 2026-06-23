@@ -1104,6 +1104,28 @@ TEST(QDQTransformerTests, MaxpoolDontDropQDQForNegativeScale) {
   RunMaxPoolNegativeScaleDropQDQTestCase<uint16_t>();
 }
 
+// Q/DQ around a MaxPool must still be dropped for the opset-22 MaxPool schema, not only MaxPool-12.
+TEST(QDQTransformerTests, MaxpoolDropQDQOpset22) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<uint8_t>({1, 17, 17, 3}, 0, 255);
+    auto* dq_output = builder.MakeIntermediate();
+    auto* maxpool_output = builder.MakeIntermediate();
+
+    builder.AddDequantizeLinearNode<uint8_t>(input_arg, 0.003f, 128, dq_output);
+    builder.AddNode("MaxPool", {dq_output}, {maxpool_output}).AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+    builder.AddQuantizeLinearNode<uint8_t>(maxpool_output, 0.003f, 128, builder.MakeOutput());
+  };
+
+  auto check_graph = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["MaxPool"], 1);
+    EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
+    EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+  };
+
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, 22);
+}
+
 // Runs a test case that checks if Q/DQ nodes are dropped from DQ -> (Un)Squeeze -> Q.
 template <typename QuantType>
 static void RunSqueezeUnsqueezeDropQDQTestCase(const std::string& squeeze_type,

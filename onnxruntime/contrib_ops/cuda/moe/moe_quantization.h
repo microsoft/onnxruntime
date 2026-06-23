@@ -117,8 +117,6 @@ class QMoE final : public CudaKernel, public MoEBase {
   IAllocatorUniquePtr<void> packed_fc2_act_scale_;
 
   mutable onnxruntime::llm::kernels::cutlass_kernels::MoeGemmProfiler mGemmProfiler;
-  mutable onnxruntime::llm::kernels::cutlass_kernels::MoeGemmId mGemmId1;
-  mutable onnxruntime::llm::kernels::cutlass_kernels::MoeGemmId mGemmId2;
   mutable std::mutex mGemmProfilerMutex;
 };
 
