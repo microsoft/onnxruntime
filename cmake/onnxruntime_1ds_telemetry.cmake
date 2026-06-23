@@ -16,8 +16,8 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
 
     message(STATUS "Enabling 1DS telemetry for non-Windows platforms")
 
-    # Add compile definition so C++ code can detect 1DS telemetry at compile time
-    add_compile_definitions(USE_1DS_TELEMETRY)
+    # USE_1DS_TELEMETRY is defined on the onnxruntime_common target in onnxruntime_common.cmake
+    # (its only consumer is core/platform/posix/env.cc), so it is not added globally here.
 
     # Platform-specific status messages
     if(APPLE)

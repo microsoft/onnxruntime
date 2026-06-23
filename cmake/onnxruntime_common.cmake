@@ -252,7 +252,7 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
       )
     endif()
   else()
-    message(WARNING "Telemetry enabled but no 1DS SDK target ('MSTelemetry::mat' or 'mat') was found")
+    message(FATAL_ERROR "Telemetry enabled but no 1DS SDK target ('MSTelemetry::mat' or 'mat') was found")
   endif()
 endif()
 

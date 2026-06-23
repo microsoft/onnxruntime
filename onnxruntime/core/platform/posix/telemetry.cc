@@ -21,6 +21,8 @@
 #include <fstream>
 #endif
 
+#include <cstdint>
+#include <cstdlib>
 #include <thread>
 #include <sstream>
 #include <iomanip>
@@ -177,12 +179,18 @@ class EventBuilder {
   EventProperties Build() { return std::move(props_); }
 };
 
-// Hash a device ID string using std::hash and format as fixed-width hex.
+// Hash a device ID with a stable, platform-independent algorithm (FNV-1a 64-bit) and format as
+// fixed-width hex, so the same device maps to the same anonymized id across runs and platforms.
+// std::hash is implementation-defined (and may be process-salted), so it is unsuitable here.
 // Ensures raw device identifiers are never sent over the wire.
 static std::string HashDeviceId(const std::string& id) {
-  size_t hash = std::hash<std::string>{}(id);
+  uint64_t hash = 14695981039346656037ULL;  // FNV-1a offset basis
+  for (unsigned char c : id) {
+    hash ^= static_cast<uint64_t>(c);
+    hash *= 1099511628211ULL;  // FNV-1a prime
+  }
   std::ostringstream oss;
-  oss << std::hex << std::setfill('0') << std::setw(sizeof(size_t) * 2) << hash;
+  oss << std::hex << std::setfill('0') << std::setw(16) << hash;
   return oss.str();
 }
 
