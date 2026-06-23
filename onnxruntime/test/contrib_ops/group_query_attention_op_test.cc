@@ -2463,18 +2463,32 @@ static std::vector<float> RunGQAPackedQKVRotaryPrefill(
   const int half_rotary = head_size / 2;
   const int max_seq_len = sequence_length + 8;
 
+  // The CUDA GQA kernel only registers for MLFloat16/BFloat16, so float inputs
+  // silently fall back to the CPU EP. Feed fp16 tensors when targeting CUDA so
+  // the *_CUDA test genuinely exercises the CUDA kernel. The CPU and WebGPU
+  // kernels both support float (WebGpuSupportedFloatTypes = {float, MLFloat16}),
+  // so those paths keep fp32 for tighter numeric comparison.
+  const bool use_fp16 = target_ep == GqaTargetEp::kCuda;
+
   OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
   tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
   tester.AddAttribute<int64_t>("do_rotary", static_cast<int64_t>(1));
 
   // Packed QKV: pass through `query` input, leave key/value as optional edges.
-  tester.AddInput<float>("query", {batch_size, sequence_length, qkv_hidden}, packed_qkv_data);
-  tester.AddOptionalInputEdge<float>();  // key (signals packed)
-  tester.AddOptionalInputEdge<float>();  // value (signals packed)
-
-  tester.AddOptionalInputEdge<float>();  // past_key
-  tester.AddOptionalInputEdge<float>();  // past_value
+  if (use_fp16) {
+    tester.AddInput<MLFloat16>("query", {batch_size, sequence_length, qkv_hidden}, ToFloat16(packed_qkv_data));
+    tester.AddOptionalInputEdge<MLFloat16>();  // key (signals packed)
+    tester.AddOptionalInputEdge<MLFloat16>();  // value (signals packed)
+    tester.AddOptionalInputEdge<MLFloat16>();  // past_key
+    tester.AddOptionalInputEdge<MLFloat16>();  // past_value
+  } else {
+    tester.AddInput<float>("query", {batch_size, sequence_length, qkv_hidden}, packed_qkv_data);
+    tester.AddOptionalInputEdge<float>();  // key (signals packed)
+    tester.AddOptionalInputEdge<float>();  // value (signals packed)
+    tester.AddOptionalInputEdge<float>();  // past_key
+    tester.AddOptionalInputEdge<float>();  // past_value
+  }
 
   tester.AddInput<int32_t>("seqlens_k", {batch_size}, seqlens_k_data);
   tester.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length},
@@ -2490,21 +2504,40 @@ static std::vector<float> RunGQAPackedQKVRotaryPrefill(
       sin_cache[pos * half_rotary + d] = std::sin(static_cast<float>(pos) * freq);
     }
   }
-  tester.AddInput<float>("cos_cache", {max_seq_len, half_rotary}, cos_cache);
-  tester.AddInput<float>("sin_cache", {max_seq_len, half_rotary}, sin_cache);
+  if (use_fp16) {
+    tester.AddInput<MLFloat16>("cos_cache", {max_seq_len, half_rotary}, ToFloat16(cos_cache));
+    tester.AddInput<MLFloat16>("sin_cache", {max_seq_len, half_rotary}, ToFloat16(sin_cache));
+  } else {
+    tester.AddInput<float>("cos_cache", {max_seq_len, half_rotary}, cos_cache);
+    tester.AddInput<float>("sin_cache", {max_seq_len, half_rotary}, sin_cache);
+  }
 
   tester.AddOptionalInputEdge<int64_t>();  // position_ids
-  tester.AddOptionalInputEdge<float>();    // attention_bias
-  tester.AddOptionalInputEdge<float>();    // head_sink
+  if (use_fp16) {
+    tester.AddOptionalInputEdge<MLFloat16>();  // attention_bias
+    tester.AddOptionalInputEdge<MLFloat16>();  // head_sink
+  } else {
+    tester.AddOptionalInputEdge<float>();  // attention_bias
+    tester.AddOptionalInputEdge<float>();  // head_sink
+  }
 
   const int output_size = batch_size * sequence_length * hidden_size;
-  tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
-                          std::vector<float>(output_size, 0.0f));
   const int present_size = batch_size * kv_num_heads * total_sequence_length * head_size;
-  tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size},
-                          std::vector<float>(present_size, 0.0f));
-  tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, total_sequence_length, head_size},
-                          std::vector<float>(present_size, 0.0f));
+  if (use_fp16) {
+    tester.AddOutput<MLFloat16>("output", {batch_size, sequence_length, hidden_size},
+                                std::vector<MLFloat16>(output_size, MLFloat16(0.0f)));
+    tester.AddOutput<MLFloat16>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                                std::vector<MLFloat16>(present_size, MLFloat16(0.0f)));
+    tester.AddOutput<MLFloat16>("present_value", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                                std::vector<MLFloat16>(present_size, MLFloat16(0.0f)));
+  } else {
+    tester.AddOutput<float>("output", {batch_size, sequence_length, hidden_size},
+                            std::vector<float>(output_size, 0.0f));
+    tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                            std::vector<float>(present_size, 0.0f));
+    tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, total_sequence_length, head_size},
+                            std::vector<float>(present_size, 0.0f));
+  }
 
   tester.SetOutputTolerance(1e6f);  // We fetch and compare outputs ourselves.
 
@@ -2513,8 +2546,17 @@ static std::vector<float> RunGQAPackedQKVRotaryPrefill(
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 
   auto fetches = tester.GetFetches();
-  const float* out_data = fetches[0].Get<Tensor>().Data<float>();
-  return std::vector<float>(out_data, out_data + output_size);
+  std::vector<float> result(output_size);
+  if (use_fp16) {
+    const MLFloat16* out_data = fetches[0].Get<Tensor>().Data<MLFloat16>();
+    for (int i = 0; i < output_size; ++i) {
+      result[i] = out_data[i].ToFloat();
+    }
+  } else {
+    const float* out_data = fetches[0].Get<Tensor>().Data<float>();
+    std::copy_n(out_data, output_size, result.begin());
+  }
+  return result;
 }
 
 // Inner helper: builds packed-QKV inputs, computes per-prompt references, runs
