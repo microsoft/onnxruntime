@@ -446,6 +446,27 @@ TEST(BeamSearchTest, DummyT5WithSequenceInputIds) {
   tester.RunWithConfig();
 }
 
+TEST(BeamSearchTest, DummyWhisperWithSequenceInputIds) {
+  // dummy_whisper_with_sequence_input_ids.onnx model generated using following command:
+  // python onnxruntime/test/testdata/dummy_whisper_model_generator.py \
+  //     --output-path dummy_whisper_with_sequence_input_ids.onnx --sequence-as-input
+  // The decoder subgraph leaves input_ids second dim symbolic, so the decoder feeds are built from the
+  // running sequence (use_sequence_as_input_ids_ == true), exercising the multi-token initial feed path.
+  ModelTester tester(CurrentTestName(), ORT_TSTR("testdata/dummy_whisper_with_sequence_input_ids.onnx"));
+  tester.ConfigEp(DefaultCpuExecutionProvider());
+  tester.AddInput("input_features", {1, 8, 5},
+                  {-0.3f, -0.2f, -0.1f, 0.0f, 0.1f, 0.2f, 0.3f, -0.3f, -0.2f, -0.1f,
+                   0.0f, 0.1f, 0.2f, 0.3f, -0.3f, -0.2f, -0.1f, 0.0f, 0.1f, 0.2f,
+                   0.3f, -0.3f, -0.2f, -0.1f, 0.0f, 0.1f, 0.2f, 0.3f, -0.3f, -0.2f,
+                   -0.1f, 0.0f, 0.1f, 0.2f, 0.3f, -0.3f, -0.2f, -0.1f, 0.0f, 0.1f});
+  tester.AddInput("decoder_input_ids", {1, 2}, {2, 5});
+  tester.AddOutput("sequences", {1, 1, 10}, {2, 5, 1, 1, 1, 1, 1, 1, 1, 1});
+#ifdef USE_CUDA
+  tester.ConfigEp(DefaultCudaExecutionProvider());
+#endif
+  tester.RunWithConfig();
+}
+
 TEST(BeamSearchTest, DummyT5PointerGenerator) {
   // dummy_t5_pointer_generator.onnx model generated using following command:
   // python onnxruntime/test/testdata/dummy_t5_generator.py --output-path dummy_t5_pointer_generator.onnx --decoder-needs-input-ids
