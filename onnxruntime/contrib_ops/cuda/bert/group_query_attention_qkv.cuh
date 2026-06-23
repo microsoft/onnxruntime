@@ -231,7 +231,9 @@ __global__ void UnpackRoPEAppend(
     } else {
       // Store K or V into the KV cache at index (past_seqlen + s)
       const int cache_s = past_seq_lens[b] + s;
-      if (cache_s < max_seqlen) {
+      // Two-sided bound: the lower check mirrors the position guard above and prevents a
+      // negative offset from being sign-extended into the cache index arithmetic below.
+      if (cache_s >= 0 && cache_s < max_seqlen) {
         void* cache_ptr = (head_type == KEY) ? k_cache : v_cache;
         if (cache_ptr != nullptr) {
           int64_t cache_idx;
