@@ -74,6 +74,13 @@ enable_deterministic_check = True
 
 
 class CaptureStdout:
+    """Capture output written to OS file descriptor 1 (C++ stdout).
+
+    Uses fd-level dup2 redirection rather than contextlib.redirect_stdout because the kernel
+    debug info is emitted by the native ONNX Runtime library directly to fd 1, which Python's
+    redirect_stdout (which only swaps sys.stdout) cannot intercept.
+    """
+
     def __init__(self):
         self.fd = 1
         self.chunk_size = 1024
@@ -2805,12 +2812,14 @@ def gqa_xqa_sliding_window_test_cases():
     # Two window/past relationships are covered:
     #   past > window  -> the sliding mask drops the oldest keys (the new code path).
     #   past <= window -> the window spans the whole cache (parity with global attention).
+    #   past + 1 == window -> the exact guard boundary (cacheSeqLen == slidingWinSize) that locks
+    #                         down the kernel's `>` vs `>=` window comparison.
     # has_head_sink toggles the GPT-OSS attention-sink input, which composes with the window
     # in-kernel; both with and without a sink are exercised.
     for torch_type, ort_type in [(torch.float16, TensorProto.FLOAT16), (torch.bfloat16, TensorProto.BFLOAT16)]:
         for head_size in [64, 128]:
             for group_size in [4, 8]:
-                for past_kv_sequence_length, local_window_size in [(512, 128), (64, 128)]:
+                for past_kv_sequence_length, local_window_size in [(512, 128), (64, 128), (127, 128)]:
                     for has_head_sink in [False, True]:
                         kv_num_heads = 4
                         num_heads = kv_num_heads * group_size
@@ -2880,6 +2889,7 @@ def gqa_xqa_quantized_sliding_window_test_cases():
     # Two window/past relationships are covered:
     #   past > window  -> the sliding mask drops the oldest keys (the new code path).
     #   past <= window -> the window spans the whole cache (parity with global attention).
+    #   past + 1 == window -> the exact guard boundary (cacheSeqLen == slidingWinSize).
     kv_cache_types = ["int8"]
     if has_fp8_kv_cache:
         kv_cache_types.append("fp8")
@@ -2887,7 +2897,7 @@ def gqa_xqa_quantized_sliding_window_test_cases():
         for torch_type, ort_type in [(torch.float16, TensorProto.FLOAT16), (torch.bfloat16, TensorProto.BFLOAT16)]:
             for head_size in [64, 128]:
                 for group_size in [4, 8]:
-                    for past_kv_sequence_length, local_window_size in [(512, 128), (64, 128)]:
+                    for past_kv_sequence_length, local_window_size in [(512, 128), (64, 128), (127, 128)]:
                         kv_num_heads = 4
                         num_heads = kv_num_heads * group_size
                         config = GQAConfig(

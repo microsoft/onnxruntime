@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <vector>
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
@@ -100,9 +101,12 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   kv_num_heads_ = static_cast<int>(kv_num_heads);
   is_past_bsnh_ = false;
   is_unidirectional_ = true;
-  local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
-  ORT_ENFORCE(local_window_size_ == -1 || local_window_size_ > 0,
-              "local_window_size must be -1 or greater than 0.");
+  const int64_t local_window_size_attr = info.GetAttrOrDefault<int64_t>("local_window_size", -1);
+  // Validate before narrowing to int so an out-of-range attribute cannot wrap to a valid-looking
+  // small window (e.g. 2^32 + 128) and silently run a different window than the model specifies.
+  ORT_ENFORCE(local_window_size_attr == -1 || (local_window_size_attr > 0 && local_window_size_attr <= std::numeric_limits<int>::max()),
+              "local_window_size must be -1 or greater than 0 (and not exceed INT_MAX).");
+  local_window_size_ = static_cast<int>(local_window_size_attr);
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
