@@ -139,6 +139,8 @@ if(WIN32)
     set_property(TARGET onnxruntime_common PROPERTY CXX_STANDARD 23)
     target_compile_options(onnxruntime_common PRIVATE "/Zc:char8_t-")
   endif()
+  # windows/telemetry.cc's svchost service-name fallback uses CommandLineToArgvW, which lives in shell32.
+  target_link_libraries(onnxruntime_common PRIVATE shell32)
 endif()
 
 if(NOT WIN32 AND NOT APPLE AND NOT ANDROID AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")

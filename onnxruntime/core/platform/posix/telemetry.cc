@@ -326,8 +326,9 @@ void PosixTelemetry::Initialize() {
   logger->SetContext("Platform", GetPlatformInfo());
 
   // Publish the fully-configured logger atomically; concurrent readers observe it only now.
+  // enabled_ is left to its default / the runtime EnableTelemetryEvents()/DisableTelemetryEvents()
+  // opt-in state rather than being force-set here.
   logger_.store(logger, std::memory_order_release);
-  enabled_ = true;
 }
 
 void PosixTelemetry::Shutdown() {

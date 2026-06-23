@@ -177,6 +177,9 @@ void DeviceId::InitializeInternal() {
     if (outfile.good()) {
       outfile << device_id_;
       outfile.close();
+      // Restrict to owner read/write (0600): this is a stable identifier and should not be
+      // world-readable regardless of the process umask.
+      chmod(file_path.c_str(), S_IRUSR | S_IWUSR);
       status_ = DeviceIdStatus::New;
     } else {
       status_ = DeviceIdStatus::Failed;
