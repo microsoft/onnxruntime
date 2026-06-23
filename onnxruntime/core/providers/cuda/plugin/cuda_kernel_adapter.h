@@ -1023,7 +1023,7 @@ class CudaKernel : public OpKernel {
   template <typename T>
   using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
   template <typename T>
-  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t cnt, void* s) const {
+  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t cnt, void* /*stream*/) const {
     if (cnt == 0) return IAllocatorUniquePtr<T>(nullptr, [](T*) {});
 
     // Route kernel scratch/workspace allocations through the EP allocator
@@ -1043,36 +1043,26 @@ class CudaKernel : public OpKernel {
     // "GPU memory was allocated during CUDA graph capture" detector would trip.
     // This now matches the built-in (non-plugin) CUDA EP, which also obtains
     // scratch from Info().GetAllocator() (see core/providers/cuda/cuda_kernel.h).
-    //
-    // Forward the compute stream so the allocation (and any stream-aware free)
-    // is ordered on the same stream the kernel enqueues work on. The plugin
-    // device arena is stream-aware: it tracks chunk-to-stream assignments and,
-    // for a CUDA mempool arena, issues cudaMallocFromPoolAsync/cudaFreeAsync on
-    // the allocation stream. Allocating/freeing on a different stream than the
-    // consuming kernel can race and lead to use-after-free. This also matches
-    // the built-in CUDA EP, which forwards its compute stream to MakeUniquePtr.
     // The overflow check that the previous hand-rolled path performed is still
     // enforced inside MakeUniquePtr via ValidatedCalcMemSizeForArray (it throws
     // on cnt * sizeof(T) overflow).
-#ifndef __CUDACC__
-    onnxruntime::OrtStreamAdapter ort_stream(s);
-    return ::onnxruntime::IAllocator::MakeUniquePtr<T>(
-        Info().GetAllocator(OrtMemType::OrtMemTypeDefault), cnt, /*use_reserve*/ false,
-        ort_stream.get());
-#else
-    // The framework Stream type is incomplete in NVCC translation units, so the
-    // PluginStreamShim that bridges a raw cudaStream_t to a framework Stream*
-    // cannot be constructed here. Do not silently drop a non-null stream:
-    // stream-aware allocators rely on the allocation stream for ordered reuse/free.
-    if (s != nullptr) {
-      ORT_THROW(
-          "Plugin CUDA GetScratchBuffer cannot allocate with a non-null stream from an NVCC "
-          "translation unit.");
-    }
+    //
+    // The compute stream is intentionally NOT forwarded to the allocator here. A
+    // plugin kernel only has the raw cudaStream_t (KernelContext::GetGPUComputeStream),
+    // not the framework OrtSyncStream* that the stream-aware arena persists in each
+    // chunk (CudaArena stores `chunk->stream` and later dereferences it through the
+    // EP stream API, e.g. SyncStream_GetImpl/SyncStream_GetSyncId). Wrapping the raw
+    // handle in a temporary framework Stream shim and passing it down would be unsafe
+    // on two counts: (1) the shim is stack-allocated and would dangle after this
+    // function returns while the arena still holds the pointer, and (2) it is
+    // type-confused — the arena would reinterpret a framework Stream* as an
+    // OrtSyncStream* that was never created by ORT for this stream. The arena
+    // therefore tracks scratch chunks with a null stream (freely reusable, the same
+    // semantics as a plain non-stream-aware BFC arena). This is safe for the CUDA
+    // graph path this routing targets, which runs on a single unified stream.
     return ::onnxruntime::IAllocator::MakeUniquePtr<T>(
         Info().GetAllocator(OrtMemType::OrtMemTypeDefault), cnt, /*use_reserve*/ false,
         /*stream*/ nullptr);
-#endif
   }
   template <typename T>
   inline IAllocatorUniquePtr<T> GetTransientScratchBuffer(size_t cnt) const {
