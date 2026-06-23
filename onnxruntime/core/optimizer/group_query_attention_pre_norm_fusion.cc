@@ -167,6 +167,9 @@ bool MatchPreNormReshapeChain(Graph& graph,
   }
   const auto* sln_eps_attr = graph_utils::GetNodeAttribute(*sln, "epsilon");
   const float sln_eps = (sln_eps_attr == nullptr) ? 1e-5f : sln_eps_attr->f();
+  if (!std::isfinite(sln_eps) || sln_eps <= 0.0f) {
+    return false;
+  }
 
   // Inner reshape (between projection and SLN).
   if (sln->InputDefs().empty() || sln->InputDefs()[0] == nullptr) {
