@@ -9,6 +9,7 @@
 #include <mutex>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 // Forward declarations of 1DS SDK types
@@ -163,7 +164,7 @@ class PosixTelemetry : public Telemetry {
   // Telemetry SDK instances.
   // log_manager_ is owned by LogManagerProvider; logger_ is owned by log_manager_.
   static ::Microsoft::Applications::Events::ILogManager* log_manager_;
-  static ::Microsoft::Applications::Events::ILogger* logger_;
+  static std::atomic<::Microsoft::Applications::Events::ILogger*> logger_;
 
   // SDK configuration — must outlive log_manager_ (LogManagerImpl holds a reference).
   static std::unique_ptr<::Microsoft::Applications::Events::ILogConfiguration> config_;

@@ -40,7 +40,7 @@ std::atomic<uint32_t> PosixTelemetry::global_register_count_{0};
 std::mutex PosixTelemetry::global_mutex_;
 std::mutex PosixTelemetry::mutex_;
 ::Microsoft::Applications::Events::ILogManager* PosixTelemetry::log_manager_ = nullptr;
-::Microsoft::Applications::Events::ILogger* PosixTelemetry::logger_ = nullptr;
+std::atomic<::Microsoft::Applications::Events::ILogger*> PosixTelemetry::logger_{nullptr};
 std::unique_ptr<::Microsoft::Applications::Events::ILogConfiguration> PosixTelemetry::config_;
 std::atomic<bool> PosixTelemetry::enabled_{true};
 std::atomic<uint32_t> PosixTelemetry::projection_{0};
@@ -226,8 +226,14 @@ PosixTelemetry::~PosixTelemetry() {
 }
 
 void PosixTelemetry::LogEventAsync(Microsoft::Applications::Events::EventProperties&& props) const {
+  // Load the shared logger once; it is an atomic pointer so this read is well-defined even if
+  // Shutdown() concurrently clears it (Shutdown only runs at process teardown).
+  auto* logger = logger_.load(std::memory_order_acquire);
+  if (logger == nullptr) {
+    return;
+  }
   try {
-    logger_->LogEvent(std::move(props));
+    logger->LogEvent(std::move(props));
   } catch (const std::exception& ex) {
     LOGS_DEFAULT(WARNING) << "[Telemetry] Failed to log event: " << ex.what();
   }
@@ -280,8 +286,8 @@ void PosixTelemetry::Initialize() {
   }
 
   // Get logger for our tenant
-  logger_ = log_manager_->GetLogger(TENANT_TOKEN);
-  if (!logger_) {
+  auto* logger = log_manager_->GetLogger(TENANT_TOKEN);
+  if (logger == nullptr) {
     LOGS_DEFAULT(WARNING) << "Failed to get telemetry logger";
     LogManagerProvider::Release(*config_);
     log_manager_ = nullptr;
@@ -315,10 +321,12 @@ void PosixTelemetry::Initialize() {
   }
 
   // Set application information as logger context (attached to all events)
-  logger_->SetContext("AppName", "ONNXRuntime");
-  logger_->SetContext("AppVersion", ORT_VERSION);
-  logger_->SetContext("Platform", GetPlatformInfo());
+  logger->SetContext("AppName", "ONNXRuntime");
+  logger->SetContext("AppVersion", ORT_VERSION);
+  logger->SetContext("Platform", GetPlatformInfo());
 
+  // Publish the fully-configured logger atomically; concurrent readers observe it only now.
+  logger_.store(logger, std::memory_order_release);
   enabled_ = true;
 }
 
@@ -517,7 +525,8 @@ void PosixTelemetry::SetLanguageProjection(uint32_t projection) const {
 }
 
 bool PosixTelemetry::IsEnabled() const {
-  return enabled_;
+  // Reflect actual readiness: the opt-out flag AND a successfully-initialized logger.
+  return enabled_ && logger_.load(std::memory_order_acquire) != nullptr;
 }
 
 unsigned char PosixTelemetry::Level() const {
