@@ -111,6 +111,13 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/qnbitgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_fp32.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
+        # Portable W2 scalar pack / reference kernel. Misleadingly Avx512-named
+        # because the AVX-512 W2 path was the first consumer, but the TU itself
+        # contains no x86 intrinsics (see sqnbitgemm_kernel_avx512_2bit.cpp).
+        # ARM64 W2 dispatch wires its pack-size, pack, and kernel pointers to
+        # these portable functions until per-backend NEON / i8mm kernels land.
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.h
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
         ${MLAS_SRC_DIR}/cast_kernel_neon.cpp
         ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16.cpp
         ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16_8bit.cpp
@@ -516,6 +523,11 @@ else()
           ${MLAS_SRC_DIR}/qnbitgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_fp32.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
+          # Portable W2 scalar pack / reference kernel. See ARM64 (Windows) branch
+          # above for the rationale; this is the matching entry for non-Windows
+          # ARM64 builds (Linux, macOS).
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.h
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.h
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.cpp
           ${MLAS_SRC_DIR}/qkv_quant_kernel.h

@@ -1249,6 +1249,8 @@ TEST(MlasSq2BitTest, BlkLen32_Avx512Vnni_WithZeroPoints) {
   }
 }
 
+#endif  // defined(MLAS_TARGET_AMD64)
+
 //
 // Availability contract test for W2 + SQNBIT_CompInt8.
 //
@@ -1259,9 +1261,18 @@ TEST(MlasSq2BitTest, BlkLen32_Avx512Vnni_WithZeroPoints) {
 // availability return true for shapes that Q2BitGemmPackQuantBDataSize_Avx512
 // would refuse to size (returning 0).
 //
+// The contract is platform-agnostic: it must hold wherever a W2 dispatch is
+// installed (AVX-512 on x86_64, NEON+DotProd or i8mm on ARM64). We skip on
+// hosts where no W2 dispatch is wired in (e.g. pure-NEON-only ARM, or x86
+// without AVX-512) -- there is nothing to assert about a feature that is
+// uniformly unavailable.
+//
 TEST(MlasSq2BitTest, AvailabilityContract_BlkLens) {
-  if (!GetMlasPlatform().Avx512Supported_) {
-    GTEST_SKIP() << "W2 native dispatch is AVX-512-only on x86_64";
+  // Probe a representative supported BlkLen to detect whether ANY W2 dispatch
+  // is installed on this host. This mirrors the dispatch-pointer-identity
+  // guard pattern that the W4/W8 tests use.
+  if (!MlasIsQNBitGemmAvailable(2, 64, SQNBIT_CompInt8)) {
+    GTEST_SKIP() << "No W2 native dispatch on this host";
   }
 
   // Supported BlkLens.
@@ -1277,5 +1288,3 @@ TEST(MlasSq2BitTest, AvailabilityContract_BlkLens) {
   EXPECT_FALSE(MlasIsQNBitGemmAvailable(2, 64, SQNBIT_CompFp32));
   EXPECT_FALSE(MlasIsQNBitGemmAvailable(2, 64, HQNBIT_CompFp16));
 }
-
-#endif  // defined(MLAS_TARGET_AMD64)

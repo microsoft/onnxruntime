@@ -27,6 +27,12 @@ Abstract:
 #include "qnbitgemm.h"
 #include "sqnbitgemm_q8_block.h"
 
+// Scaffold: the W2 block-group pack helpers and scalar reference kernel
+// declared here are pure C++ (no x86 intrinsics) despite the file name. They
+// are reused on ARM64 in this commit to validate the W2 dispatch plumbing
+// end-to-end before native NEON/i8mm kernels land in subsequent commits.
+#include "sqnbitgemm_kernel_avx512_2bit.h"
+
 #ifdef USE_KLEIDIAI
 #include "kai/kai_common.h"
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0.h"
@@ -653,6 +659,21 @@ GetMlasQNBitGemmDispatchNeon(
             d.Q8BitGemmPackQuantBDataSize = sqnbitgemm_neon::QNBitGemmPackQuantBDataSize<8, false>;
             d.QuantizeARowComputeBlkSum_CompInt8 = sqnbitgemm_neon::QuantizeARowComputeBlkSum_CompInt8<false>;
             d.SQ8BitGemmKernel_BlkSum_CompInt8 = sqnbitgemm_neon::SQ8BitGemmKernel_BlkSum_CompInt8<false>;
+        }
+
+        // W2 native CompInt8 path. Scaffold: until per-backend NEON / i8mm
+        // kernels land in subsequent commits, the dispatch reuses the portable
+        // scalar pack helpers and reference kernel that already back the
+        // AVX-512 W2 dispatch. The pointers are gated on a CompInt8-capable
+        // backend being present so MlasIsQNBitGemmAvailable matches the W4/W8
+        // dispatch-pointer-driven contract on ARM64.
+        if (InitializeWithDotSupport || InitializeWithI8MMSupport) {
+            d.Q2BitGemmPackQuantBDataSize       = onnxruntime::mlas::sq2bit_avx512::Q2BitGemmPackQuantBDataSize_Avx512;
+            d.SQ2BitGemmPackQuantBDataAndBlkSum = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmPackQuantBDataAndBlkSum_Scalar;
+            d.SQ2BitGemmKernel_BlkSum_CompInt8  = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmKernel_BlkSum_CompInt8_Scalar;
+            d.Q2BitGemmEffectiveBlockCountK     = [](size_t BlockCountK) {
+                return MlasDivRoundup(BlockCountK, kSq2BitAvx512WeightKBlockGroup) * kSq2BitAvx512WeightKBlockGroup;
+            };
         }
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
