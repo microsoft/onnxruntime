@@ -2,8 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/platform/windows/telemetry.h"
+#include <winapifamily.h>
 #include <cwchar>
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
 #include <shellapi.h>
+#endif
 #include <winsvc.h>
 #include <mutex>
 #include <string>
@@ -79,6 +82,7 @@ std::string ConvertWideStringToUtf8(const std::wstring& wide) {
 // Parse the command line for -s (service name) and -k (service group) arguments.
 // These are svchost.exe conventions and may not be present for all services.
 std::string GetServiceNamesFromCommandLine() {
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
   LPCWSTR cmd_line = ::GetCommandLineW();
   if (cmd_line == nullptr)
     return {};
@@ -103,6 +107,11 @@ std::string GetServiceNamesFromCommandLine() {
 
   ::LocalFree(argv);
   return ConvertWideStringToUtf8(aggregated);
+#else
+  // CommandLineToArgvW lives in shell32 and is only available on the desktop partition; the
+  // svchost -s/-k service-name convention does not apply on non-desktop Windows (UWP/GDK).
+  return {};
+#endif
 }
 
 std::string GetServiceNamesForCurrentProcess() {
