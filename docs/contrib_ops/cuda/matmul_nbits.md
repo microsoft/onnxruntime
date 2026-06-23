@@ -12,10 +12,10 @@ layers (including MoE routers and LM heads).
 
 Source files:
 
-- [onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.cc](onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.cc) — operator, `ComputeInternal`, dispatch chain, dequant+GEMM fallback.
-- [onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.h](onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.h) — kernel class, constructor-time configuration, environment-variable parsing.
-- [onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.cuh](onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.cuh) — `TryMatMulNBits` fast-path entry and bias-add launcher.
-- [onnxruntime/contrib_ops/cuda/quantization/matmul_4bits.cu](onnxruntime/contrib_ops/cuda/quantization/matmul_4bits.cu) — 4-bit fast GEMV kernels (generic + router specialization).
+- [onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.cc](../../../onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.cc) — operator, `ComputeInternal`, dispatch chain, dequant+GEMM fallback.
+- [onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.h](../../../onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.h) — kernel class, constructor-time configuration, environment-variable parsing.
+- [onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.cuh](../../../onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.cuh) — `TryMatMulNBits` fast-path entry and bias-add launcher.
+- [onnxruntime/contrib_ops/cuda/quantization/matmul_4bits.cu](../../../onnxruntime/contrib_ops/cuda/quantization/matmul_4bits.cu) — 4-bit fast GEMV kernels (generic + router specialization).
 
 ---
 
@@ -100,13 +100,13 @@ The fast fused path is only attempted when there is **no** `reorder_idx` and the
 
 ## 4. Fast Path — Fused GEMV
 
-`TryMatMulNBits` ([matmul_nbits.cuh](onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.cuh))
+`TryMatMulNBits` ([matmul_nbits.cuh](../../../onnxruntime/contrib_ops/cuda/quantization/matmul_nbits.cuh))
 dispatches by bit width:
 
 - `bits == 8` → `TryMatMul8Bits` (no bias support; returns `false` if bias set).
 - `bits == 4` → `TryMatMul4Bits`.
 
-`TryMatMul4Bits` ([matmul_4bits.cu](onnxruntime/contrib_ops/cuda/quantization/matmul_4bits.cu))
+`TryMatMul4Bits` ([matmul_4bits.cu](../../../onnxruntime/contrib_ops/cuda/quantization/matmul_4bits.cu))
 first applies a guard common to all fused kernels:
 
 ```
