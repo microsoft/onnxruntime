@@ -143,6 +143,10 @@ option(onnxruntime_USE_WINML "Build with WinML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
+# Optional 1DS ingestion token for non-Windows telemetry. Leave empty to compile in the default
+# throwaway token from core/platform/posix/telemetry.cc; official pipelines override it at compile
+# time by setting this to the real token (injected from a pipeline secret).
+set(onnxruntime_1DS_TENANT_TOKEN "" CACHE STRING "Override the compiled-in 1DS telemetry ingestion token (non-Windows)")
 cmake_dependent_option(onnxruntime_USE_MIMALLOC "Override new/delete and arena allocator with mimalloc" OFF "WIN32;NOT onnxruntime_USE_CUDA;NOT onnxruntime_USE_OPENVINO" OFF)
 option(onnxruntime_USE_CANN "Build with CANN support" OFF)
 option(onnxruntime_USE_XNNPACK "Build with XNNPACK support. Provides an alternative math library on ARM, WebAssembly and x86." OFF)

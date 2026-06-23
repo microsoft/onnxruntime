@@ -155,6 +155,11 @@ if (onnxruntime_USE_TELEMETRY)
     set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
   else()
     target_compile_definitions(onnxruntime_common PRIVATE USE_1DS_TELEMETRY)
+    if(onnxruntime_1DS_TENANT_TOKEN)
+      # Official builds inject the real ingestion token (from a pipeline secret) at compile time,
+      # overriding the default throwaway token defined in core/platform/posix/telemetry.cc.
+      target_compile_definitions(onnxruntime_common PRIVATE ORT_1DS_TENANT_TOKEN="${onnxruntime_1DS_TENANT_TOKEN}")
+    endif()
   endif()
 endif()
 if (onnxruntime_USE_MIMALLOC)
