@@ -16,6 +16,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <pwd.h>
+#include <fcntl.h>
 
 #ifdef __APPLE__
 #include <TargetConditionals.h>
@@ -192,15 +193,23 @@ void DeviceId::InitializeInternal() {
     // Create directory tree
     CreateDirectoryTree(dir_path);
 
-    // Write to file
-    std::ofstream outfile(file_path);
-    if (outfile.good()) {
-      outfile << device_id_;
-      outfile.close();
-      // Restrict to owner read/write (0600): this is a stable identifier and should not be
-      // world-readable regardless of the process umask.
-      chmod(file_path.c_str(), S_IRUSR | S_IWUSR);
-      status_ = DeviceIdStatus::New;
+    // Persist with owner-only (0600) permissions from creation. Using open() with mode 0600 (and
+    // fchmod to also tighten a pre-existing file) avoids the window where std::ofstream would create
+    // the file using the process umask and only chmod it afterwards — during which the device id
+    // could briefly be world-readable. fchmod runs before any write, so content is never exposed.
+    const bool regenerated_from_corruption = (status_ == DeviceIdStatus::Corrupted);
+    const int fd = ::open(file_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+    if (fd >= 0) {
+      ::fchmod(fd, S_IRUSR | S_IWUSR);
+      const ssize_t written = ::write(fd, device_id_.data(), device_id_.size());
+      ::close(fd);
+      if (written == static_cast<ssize_t>(device_id_.size())) {
+        // Preserve Corrupted (defined as "invalid and regenerated") instead of overwriting it with
+        // New, so callers/telemetry can still observe that the persisted id had to be regenerated.
+        status_ = regenerated_from_corruption ? DeviceIdStatus::Corrupted : DeviceIdStatus::New;
+      } else {
+        status_ = DeviceIdStatus::Failed;
+      }
     } else {
       status_ = DeviceIdStatus::Failed;
     }
