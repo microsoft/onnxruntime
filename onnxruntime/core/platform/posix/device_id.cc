@@ -3,6 +3,8 @@
 
 #include "core/platform/posix/device_id.h"
 
+#include "core/common/common.h"
+
 #include <fstream>
 #include <sstream>
 #include <random>
@@ -120,7 +122,7 @@ void DeviceId::InitializeInternal() {
   if (initialized_) return;
   initialized_ = true;
 
-  try {
+  ORT_TRY {
     // Use compile-time platform detection to select the appropriate storage path.
     // This matches the mobile/desktop selection in posix/env.cc.
 #if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
@@ -184,7 +186,8 @@ void DeviceId::InitializeInternal() {
     } else {
       status_ = DeviceIdStatus::Failed;
     }
-  } catch (...) {
+  }
+  ORT_CATCH(...) {
     status_ = DeviceIdStatus::Failed;
     // Keep device_id_ if generated — it's still valid for this session (in-memory only).
   }
