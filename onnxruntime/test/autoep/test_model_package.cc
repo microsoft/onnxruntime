@@ -50,6 +50,8 @@ struct ModelPackageFns {
       ModelPackage_GetVariantNames{nullptr};
   OrtExperimental_OrtModelPackageApi_ModelPackage_GetVariantEpName_SinceV28_Fn
       ModelPackage_GetVariantEpName{nullptr};
+  OrtExperimental_OrtModelPackageApi_ModelPackage_ResolveStringRef_SinceV28_Fn
+      ModelPackage_ResolveStringRef{nullptr};
   OrtExperimental_OrtModelPackageApi_SelectComponent_SinceV28_Fn
       SelectComponent{nullptr};
   OrtExperimental_OrtModelPackageApi_ReleaseModelPackageComponentContext_SinceV28_Fn
@@ -95,6 +97,8 @@ inline const ModelPackageFns& GetModelPackageFns() {
             Get_OrtModelPackageApi_ModelPackage_GetVariantNames_SinceV28_Fn);
     RESOLVE(ModelPackage_GetVariantEpName,
             Get_OrtModelPackageApi_ModelPackage_GetVariantEpName_SinceV28_Fn);
+    RESOLVE(ModelPackage_ResolveStringRef,
+            Get_OrtModelPackageApi_ModelPackage_ResolveStringRef_SinceV28_Fn);
     RESOLVE(SelectComponent,
             Get_OrtModelPackageApi_SelectComponent_SinceV28_Fn);
     RESOLVE(ReleaseModelPackageComponentContext,
@@ -266,6 +270,64 @@ TEST(ModelPackageApiTest, PackageContextQueries) {
   }
   EXPECT_EQ(variant_name_set.count("variant_1"), 1u);
   EXPECT_EQ(variant_name_set.count("variant_2"), 1u);
+
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+}
+
+TEST(ModelPackageApiTest, ResolveStringRef) {
+  const auto package_root = std::filesystem::temp_directory_path() / "ort_model_package_resolve_test";
+  std::vector<VariantSpec> variants;
+  variants.push_back(VariantSpec{"variant_1", "example_ep", "cpu", "", "testdata/mul_1.onnx", {}, {}});
+  BuildPackage(package_root, "model_1", variants);
+
+  // A content-addressed shared asset, discovered by convention at shared_assets/sha256-<hex>/.
+  const std::string digest(64, 'a');
+  const auto asset_dir = package_root / "shared_assets" / ("sha256-" + digest);
+  std::filesystem::create_directories(asset_dir);
+  {
+    std::ofstream os(asset_dir / "asset.txt", std::ios::binary);
+    os << "hello";
+  }
+
+  const auto& pkg_api = GetModelPackageFns();
+  ASSERT_NE(pkg_api.ModelPackage_ResolveStringRef, nullptr) << "Model package experimental API is not available";
+
+  auto context_deleter = [&pkg_api](OrtModelPackageContext* p) {
+    if (p) pkg_api.ReleaseModelPackageContext(p);
+  };
+  std::unique_ptr<OrtModelPackageContext, decltype(context_deleter)> ctx(nullptr, context_deleter);
+  OrtModelPackageContext* raw_context = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api.CreateModelPackageContext(package_root.c_str(), &raw_context));
+  ctx.reset(raw_context);
+
+  const char* resolved = nullptr;
+
+  // "sha256:<hex>" resolves to the shared asset directory (override/discovery aware).
+  ASSERT_ORTSTATUS_OK(pkg_api.ModelPackage_ResolveStringRef(
+      ctx.get(), nullptr, ("sha256:" + digest).c_str(), /*must_exist=*/1, &resolved));
+  ASSERT_NE(resolved, nullptr);
+  EXPECT_EQ(std::filesystem::canonical(resolved), std::filesystem::canonical(asset_dir));
+
+  // "sha256:<hex>/<tail>" resolves the confined tail under the asset directory.
+  ASSERT_ORTSTATUS_OK(pkg_api.ModelPackage_ResolveStringRef(
+      ctx.get(), nullptr, ("sha256:" + digest + "/asset.txt").c_str(), /*must_exist=*/1, &resolved));
+  ASSERT_NE(resolved, nullptr);
+  EXPECT_EQ(std::filesystem::canonical(resolved), std::filesystem::canonical(asset_dir / "asset.txt"));
+
+  // A plain relative path resolves against base_dir.
+  const auto variant_dir = package_root / "model_1" / "variant_1";
+  ASSERT_ORTSTATUS_OK(pkg_api.ModelPackage_ResolveStringRef(
+      ctx.get(), variant_dir.string().c_str(), "mul_1.onnx", /*must_exist=*/1, &resolved));
+  ASSERT_NE(resolved, nullptr);
+  EXPECT_EQ(std::filesystem::canonical(resolved), std::filesystem::canonical(variant_dir / "mul_1.onnx"));
+
+  // An undeclared sha256 asset is rejected even when must_exist is false.
+  const std::string missing_digest(64, 'b');
+  OrtStatus* status = pkg_api.ModelPackage_ResolveStringRef(
+      ctx.get(), nullptr, ("sha256:" + missing_digest).c_str(), /*must_exist=*/0, &resolved);
+  EXPECT_NE(status, nullptr);
+  if (status != nullptr) Ort::GetApi().ReleaseStatus(status);
 
   std::error_code ec;
   std::filesystem::remove_all(package_root, ec);

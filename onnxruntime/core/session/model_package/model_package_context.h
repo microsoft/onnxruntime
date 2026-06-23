@@ -206,7 +206,25 @@ class ModelPackageContext {
     return model_variant_infos_;
   }
 
+  // Resolves a path reference from the package against the model_package library's rules:
+  // a "sha256:<hex>[/tail]" content-addressed shared-asset reference (honoring manifest
+  // overrides), or a plain relative path resolved against `base_dir` (empty base_dir falls
+  // back to the package root). When `must_exist` is true the resolved path must exist on
+  // disk. The returned pointer is owned by this context and stays valid until the next
+  // ResolveStringRef call. The underlying package handle is kept open for the context's
+  // lifetime so no reopen/reparse happens per call.
+  Status ResolveStringRef(const std::string& base_dir, const std::string& input,
+                          bool must_exist, const char*& out_path) const;
+
  private:
+  // The open model_package library handle, kept alive for this context's lifetime so path
+  // references can be resolved on demand. Stored type-erased (void*) to keep the
+  // model_package C header out of this ORT header; the deleter defined in the .cc closes it
+  // via ModelPackage_Close.
+  std::unique_ptr<void, void (*)(void*)> package_handle_;
+  std::filesystem::path package_root_{};
+  mutable std::string resolve_string_ref_cache_{};
+
   ModelPackageInfo model_package_info_{};
   std::vector<VariantInfo> model_variant_infos_;
 

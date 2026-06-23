@@ -29,6 +29,15 @@
 namespace onnxruntime {
 
 namespace {
+// Deleter for the type-erased model_package handle held by ModelPackageContext.
+void CloseModelPackageHandle(void* handle) {
+  if (handle != nullptr) {
+    ::ModelPackage_Close(static_cast<::ModelPackage*>(handle));
+  }
+}
+}  // namespace
+
+namespace {
 
 Status FillOptionCachesFromMap(
     const std::optional<std::unordered_map<std::string, std::string>>& options_map,
@@ -356,16 +365,18 @@ Status ModelPackageComponentContext::GetSelectedVariantExternalDataFolder(
   return Status::OK();
 }
 
-ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_root) {
-  // Open the package via the model_package C API. RAII guard ensures the handle is
-  // released even on exception paths during conversion to ORT-internal types.
+ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_root)
+    : package_handle_(nullptr, &CloseModelPackageHandle), package_root_(package_root) {
+  // Open the package via the model_package C API and keep the handle open for this context's
+  // lifetime (owned by package_handle_) so path references can be resolved later without
+  // reopening. The unique_ptr releases the handle even on exception paths during conversion.
   ::ModelPackage* pkg = nullptr;
   if (::ModelPackageStatus* st = ::ModelPackage_Open(package_root.string().c_str(), nullptr, &pkg)) {
     std::string msg = ::ModelPackageStatus_Message(st) ? ::ModelPackageStatus_Message(st) : "unknown error";
     ::ModelPackageStatus_Release(st);
     ORT_THROW("Failed to open model package at '", package_root.string(), "': ", msg);
   }
-  std::unique_ptr<::ModelPackage, decltype(&::ModelPackage_Close)> pkg_guard(pkg, &::ModelPackage_Close);
+  package_handle_.reset(pkg);
 
   const ::ModelPackageInfo* pkg_info = ::ModelPackage_Info(pkg);
   model_package_info_.schema_version = pkg_info ? pkg_info->schema_version : 0;
@@ -524,6 +535,29 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
 
 size_t ModelPackageContext::GetComponentCount() const noexcept {
   return model_package_info_.components.size();
+}
+
+Status ModelPackageContext::ResolveStringRef(const std::string& base_dir,
+                                             const std::string& input,
+                                             bool must_exist,
+                                             const char*& out_path) const {
+  out_path = nullptr;
+  auto* pkg = static_cast<::ModelPackage*>(package_handle_.get());
+  if (pkg == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model package handle is not open");
+  }
+  const char* resolved = nullptr;
+  if (::ModelPackageStatus* st = ::ModelPackage_ResolveStringRef(
+          pkg, base_dir.empty() ? nullptr : base_dir.c_str(), input.c_str(), must_exist, &resolved)) {
+    std::string msg = ::ModelPackageStatus_Message(st) ? ::ModelPackageStatus_Message(st) : "unknown error";
+    ::ModelPackageStatus_Release(st);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to resolve '", input, "' in model package: ", msg);
+  }
+  // Copy out of the library's transient buffer into a context-owned cache so the returned
+  // pointer stays valid until the next ResolveStringRef call.
+  resolve_string_ref_cache_ = resolved ? resolved : "";
+  out_path = resolve_string_ref_cache_.c_str();
+  return Status::OK();
 }
 
 Status ModelPackageContext::GetComponentNames(gsl::span<const std::string>& out_names) const {
