@@ -416,8 +416,8 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // 4. Past and Present KV cache share the same buffer (required for XQA specific memory access).
   // 5. No Softcap (XQA doesn't support softcap).
   // 6. Standard Softmax, or smooth softmax represented by a head_sink tensor.
-  // 7. Local window (sliding window) attention is supported on the non-quantized path; the
-  //    quantized (INT8/FP8) paths remain global-only (see the per-variant checks below).
+  // 7. Local window (sliding window) attention is supported on both the non-quantized and the
+  //    quantized (INT8/FP8) XQA paths (local_window_size == -1 means global attention).
   // QK-Norm can use XQA for the non-quantized KV-cache path: ExtremeDecoding runs the same
   // UnpackRoPEAppend preprocess before XQA, so Q/K can be normalized before the XQA kernel consumes
   // Q and the appended cache. Keep quantized QK-Norm off the XQA route until scale correctness is
@@ -437,11 +437,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       is_xqa_smooth_softmax_supported) {
     int group_size = parameters.num_heads / parameters.kv_num_heads;
 
-    // Sliding window (local_window_size > 0) is only wired into the non-quantized XQA kernels.
-    // The quantized variants stay restricted to global attention.
-    const bool is_global_attention = parameters.local_window_size == -1;
-
-    bool is_int8_quantized_supported = is_int8 && is_global_attention &&
+    // Sliding window (local_window_size > 0) is wired through to the quantized XQA kernels as well,
+    // so the INT8/FP8 variants no longer need to be restricted to global attention.
+    bool is_int8_quantized_supported = is_int8 &&
                                        (k_quant_type_ == KVQuantizationType::PER_TENSOR &&
                                         v_quant_type_ == KVQuantizationType::PER_TENSOR &&
                                         data.k_scale == data.v_scale &&  // XQA requires k_scale and v_scale to be the same. Here requires k_scale and v_scale are same tensor.
@@ -449,7 +447,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                         (group_size == 4 || group_size == 8 || group_size == 16 || group_size == 32));
 
 #ifdef USE_FP8_KV_CACHE
-    bool is_fp8_quantized_supported = is_fp8 && is_global_attention &&
+    bool is_fp8_quantized_supported = is_fp8 &&
                                       (k_quant_type_ == KVQuantizationType::PER_TENSOR &&
                                        v_quant_type_ == KVQuantizationType::PER_TENSOR &&
                                        data.k_scale == data.v_scale &&

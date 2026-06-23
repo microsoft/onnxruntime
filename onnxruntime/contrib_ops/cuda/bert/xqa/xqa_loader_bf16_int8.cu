@@ -23,6 +23,7 @@ Status LaunchXQAInt8KernelBF16(
     const int head_size,
     const int max_seq_len,
     const float scale,
+    const int local_window_size,
     const bool is_bsnh,
     const int* past_seq_lens,
     const float* kv_cache_scale,
@@ -44,6 +45,7 @@ Status LaunchXQAInt8KernelBF16(
     const int head_size,
     const int max_seq_len,
     const float scale,
+    const int local_window_size,
     const bool is_bsnh,
     const int* past_seq_lens,
     const float* kv_cache_scale,
@@ -65,6 +67,7 @@ Status LaunchXQAInt8KernelBF16(
     const int head_size,
     const int max_seq_len,
     const float scale,
+    const int local_window_size,
     const bool is_bsnh,
     const int* past_seq_lens,
     const float* kv_cache_scale,
@@ -86,17 +89,18 @@ Status LaunchXQAInt8KernelBF16(
     const int head_size,
     const int max_seq_len,
     const float scale,
+    const int local_window_size,
     const bool is_bsnh,
     const int* past_seq_lens,
     const float* kv_cache_scale,
     void* workspace,
     size_t workspace_size) {
   if (head_size == 256) {
-    return H256::LaunchXQAInt8KernelBF16(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, kv_cache_scale, workspace, workspace_size);
+    return H256::LaunchXQAInt8KernelBF16(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, local_window_size, is_bsnh, past_seq_lens, kv_cache_scale, workspace, workspace_size);
   } else if (head_size == 128) {
-    return H128::LaunchXQAInt8KernelBF16(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, kv_cache_scale, workspace, workspace_size);
+    return H128::LaunchXQAInt8KernelBF16(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, local_window_size, is_bsnh, past_seq_lens, kv_cache_scale, workspace, workspace_size);
   } else if (head_size == 64) {
-    return H64::LaunchXQAInt8KernelBF16(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, kv_cache_scale, workspace, workspace_size);
+    return H64::LaunchXQAInt8KernelBF16(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, local_window_size, is_bsnh, past_seq_lens, kv_cache_scale, workspace, workspace_size);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "XQA INT8 BF16 only supports head_size=64, 128, or 256. Input has ", head_size);
   }
