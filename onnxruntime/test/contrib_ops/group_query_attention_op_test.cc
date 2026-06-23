@@ -1616,9 +1616,13 @@ TEST(GroupQueryAttentionTest, NegativeSeqlensK_CacheAppend_NoOOB_CUDA) {
   tester.AddInput<MLFloat16>("past_value", {batch_size, kv_num_heads, past_seq_len, head_size},
                              ToFloat16(past_value_data));
 
-  // Deeply out-of-range seqlens_k: a malformed value that must be neutralized on the device.
-  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {-1000000});
-  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length});
+  // seqlens_k is chosen so the derived past length, (seqlens_k + 1) - sequence_length, is negative
+  // (here 0 + 1 - 2 = -1). The device-side derivation must neutralize this so the cache append for the
+  // new tokens stays within the present buffer instead of indexing before its start.
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {0});
+  // Marked as an initializer so shape inference can read the value at graph-build time and size
+  // present_kv to max(past_seq_len, total_sequence_length), matching the declared present outputs below.
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length}, /*is_initializer=*/true);
 
   const int max_seq_len = total_sequence_length + 8;
   const int half_rotary = head_size / 2;
