@@ -13,6 +13,8 @@
 
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
+#include <pwd.h>
 
 #ifdef __APPLE__
 #include <TargetConditionals.h>
@@ -92,9 +94,16 @@ bool DeviceId::IsValidGUID(const std::string& str) {
 }
 
 std::string DeviceId::GetStorageDirectory(bool mobile) {
-  const char* h = std::getenv("HOME");
-  if (!h || !h[0]) return "";
-  std::string home(h);
+  // Prefer $HOME; fall back to the password database (getpwuid) for contexts where HOME is unset,
+  // e.g. system services/daemons under systemd/launchd.
+  std::string home;
+  if (const char* h = std::getenv("HOME"); h != nullptr && h[0] != '\0') {
+    home = h;
+  } else if (const struct passwd* pw = ::getpwuid(::getuid());
+             pw != nullptr && pw->pw_dir != nullptr && pw->pw_dir[0] != '\0') {
+    home = pw->pw_dir;
+  }
+  if (home.empty()) return "";
 
   if (mobile) {
     return home + "/.onnxruntime";
