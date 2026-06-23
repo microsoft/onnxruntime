@@ -20,6 +20,11 @@
 #define TOKENS_PER_PAGE 0
 #define INPUT_FP16 1
 #define ALLOW_MULTI_BLOCK_MODE 1
+// Compile the non-quantized fp16 XQA kernels with sliding-window support so the same
+// kernels can serve both global attention (local_window_size == -1, mapped to a window
+// >= max_seq_len -> zero masking overhead) and sliding-window models (GPT-OSS / Mistral /
+// Gemma2). Attention sinks (head_sink) already work and compose with the window in-kernel.
+#define SLIDING_WINDOW 1
 
 #pragma nv_diag_suppress 177
 #pragma nv_diag_suppress 20012
@@ -118,6 +123,7 @@ Status LaunchXQAInt8Kernel(
     const int head_size,
     const int max_seq_len,
     const float scale,
+    const int local_window_size,
     const bool is_bsnh,
     const int* past_seq_lens,
     const float* kv_cache_scale,
@@ -139,6 +145,7 @@ Status LaunchXQAFp8Kernel(
     const int head_size,
     const int max_seq_len,
     const float scale,
+    const int local_window_size,
     const bool is_bsnh,
     const int* past_seq_lens,
     const float* kv_cache_scale,
@@ -164,6 +171,7 @@ Status LaunchXQAKernelImpl(
     const int head_size,
     const int max_seq_len,
     const float scale,
+    const int local_window_size,
     const bool is_bsnh,
     const int* past_seq_lens,
     const float* attention_sinks,
@@ -177,7 +185,7 @@ Status LaunchXQAKernelImpl(
   if (kv_quant_type == XqaQuantType::kInt8) {
     ORT_RETURN_IF(attention_sinks != nullptr, "XQA attention sinks are not supported with INT8 KV cache.");
     if constexpr (std::is_same<T, half>::value) {
-      return LaunchXQAInt8Kernel(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, kv_cache_scale, workspace, workspace_size);
+      return LaunchXQAInt8Kernel(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, local_window_size, is_bsnh, past_seq_lens, kv_cache_scale, workspace, workspace_size);
     } else {
       // BF16 case is handled in xqa_loader_bf16.cu via specialization
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "XQA INT8 path mismatch.");
@@ -189,7 +197,7 @@ Status LaunchXQAKernelImpl(
   if (kv_quant_type == XqaQuantType::kFp8) {
     ORT_RETURN_IF(attention_sinks != nullptr, "XQA attention sinks are not supported with FP8 KV cache.");
     if constexpr (std::is_same<T, half>::value) {
-      return LaunchXQAFp8Kernel(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, kv_cache_scale, workspace, workspace_size);
+      return LaunchXQAFp8Kernel(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, local_window_size, is_bsnh, past_seq_lens, kv_cache_scale, workspace, workspace_size);
     } else {
       // BF16 case is handled in xqa_loader_bf16.cu via specialization
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "XQA FP8 path mismatch.");
@@ -200,19 +208,19 @@ Status LaunchXQAKernelImpl(
   int group_size = num_heads / kv_num_heads;
   switch (group_size) {
     case 1:
-      return grp1_fp16::Launch<T>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, attention_sinks, kv_cache_scale, workspace, workspace_size);
+      return grp1_fp16::Launch<T>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, attention_sinks, kv_cache_scale, workspace, workspace_size, local_window_size);
     case 2:
-      return grp2_fp16::Launch<T>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, attention_sinks, kv_cache_scale, workspace, workspace_size);
+      return grp2_fp16::Launch<T>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, attention_sinks, kv_cache_scale, workspace, workspace_size, local_window_size);
     case 4:
-      return grp4_fp16::Launch<T>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, attention_sinks, kv_cache_scale, workspace, workspace_size);
+      return grp4_fp16::Launch<T>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, attention_sinks, kv_cache_scale, workspace, workspace_size, local_window_size);
     case 5:
-      return grp5_fp16::Launch<T>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, attention_sinks, kv_cache_scale, workspace, workspace_size);
+      return grp5_fp16::Launch<T>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, attention_sinks, kv_cache_scale, workspace, workspace_size, local_window_size);
     case 8:
-      return grp8_fp16::Launch<T>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, attention_sinks, kv_cache_scale, workspace, workspace_size);
+      return grp8_fp16::Launch<T>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, attention_sinks, kv_cache_scale, workspace, workspace_size, local_window_size);
     case 16:
-      return grp16_fp16::Launch<T>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, attention_sinks, kv_cache_scale, workspace, workspace_size);
+      return grp16_fp16::Launch<T>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, attention_sinks, kv_cache_scale, workspace, workspace_size, local_window_size);
     case 32:
-      return grp32_fp16::Launch<T>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, attention_sinks, kv_cache_scale, workspace, workspace_size);
+      return grp32_fp16::Launch<T>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, attention_sinks, kv_cache_scale, workspace, workspace_size, local_window_size);
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "XQA supports group_size 1, 2, 4, 5, 8, 16, 32. Input has ", group_size);
   }

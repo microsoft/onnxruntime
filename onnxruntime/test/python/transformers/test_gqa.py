@@ -14,6 +14,9 @@ import math
 import os
 import platform
 import random
+import re
+import sys
+import threading
 import unittest
 from copy import deepcopy
 from dataclasses import dataclass
@@ -68,6 +71,60 @@ enable_deterministic_check = True
 # #################################################################################################
 #  Configuration and Helper Classes
 # #################################################################################################
+
+
+class CaptureStdout:
+    """Capture output written to OS file descriptor 1 (C++ stdout).
+
+    Uses fd-level dup2 redirection rather than contextlib.redirect_stdout because the kernel
+    debug info is emitted by the native ONNX Runtime library directly to fd 1, which Python's
+    redirect_stdout (which only swaps sys.stdout) cannot intercept.
+    """
+
+    def __init__(self):
+        self.fd = 1
+        self.chunk_size = 1024
+        self.output = b""
+
+    def _capture(self):
+        chunks = []
+        while chunk := os.read(self._pipe_reader, self.chunk_size):
+            chunks.append(chunk)
+        self.output = b"".join(chunks)
+
+    def __enter__(self):
+        sys.stdout.flush()
+        self._duped_fd = os.dup(self.fd)
+        self._pipe_reader, pipe_writer = os.pipe()
+        os.dup2(pipe_writer, self.fd)
+        os.close(pipe_writer)
+        self._capture_thread = threading.Thread(target=self._capture)
+        self._capture_thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        sys.stdout.flush()
+        os.dup2(self._duped_fd, self.fd)
+        self._capture_thread.join()
+        os.close(self._pipe_reader)
+        os.close(self._duped_fd)
+
+
+def get_sdpa_kernel_from_debug_info(run_func):
+    captured_text = None
+    with scoped_env_var("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", "1"):
+        with CaptureStdout() as captured:
+            run_func()
+        captured_text = captured.output.decode(errors="replace")
+
+    if captured_text is not None:
+        match = re.search(r"SdpaKernel=(?P<kernel>[A-Z_]+)", captured_text)
+        if match is not None:
+            return match.group("kernel")
+
+        print("Failed to get sdpa kernel from debug info:", captured_text)
+
+    return None
 
 
 @dataclass
@@ -2277,17 +2334,16 @@ class TestGQAQKNorm(unittest.TestCase):
             has_qk_norm=True,
         )
 
-        with scoped_env_var("ORT_ENABLE_XQA", "1"):
-            parity_check_gqa_past(
-                config=config,
-                ep="CUDAExecutionProvider",
-                device="cuda",
-                torch_type=torch.float16,
-                ort_type=TensorProto.FLOAT16,
-                causal=True,
-                rtol=rtol["fp16"],
-                atol=atol["fp16"],
-            )
+        parity_check_gqa_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
 
     def test_gqa_qk_norm_past_shared_kv(self):
         config = GQAConfig(
@@ -2305,17 +2361,16 @@ class TestGQAQKNorm(unittest.TestCase):
             has_qk_norm=True,
         )
 
-        with scoped_env_var("ORT_ENABLE_XQA", "1"):
-            parity_check_gqa_past(
-                config=config,
-                ep="CUDAExecutionProvider",
-                device="cuda",
-                torch_type=torch.float16,
-                ort_type=TensorProto.FLOAT16,
-                causal=True,
-                rtol=rtol["fp16"],
-                atol=atol["fp16"],
-            )
+        parity_check_gqa_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
 
     def test_gqa_qk_norm_past_xqa_bf16(self):
         if not torch.cuda.is_bf16_supported():
@@ -2338,17 +2393,16 @@ class TestGQAQKNorm(unittest.TestCase):
         )
         config.kv_cache_type = "bfloat16"
 
-        with scoped_env_var("ORT_ENABLE_XQA", "1"):
-            parity_check_gqa_past(
-                config=config,
-                ep="CUDAExecutionProvider",
-                device="cuda",
-                torch_type=torch.bfloat16,
-                ort_type=TensorProto.BFLOAT16,
-                causal=True,
-                rtol=rtol["bf16"],
-                atol=atol["bf16"],
-            )
+        parity_check_gqa_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.bfloat16,
+            ort_type=TensorProto.BFLOAT16,
+            causal=True,
+            rtol=rtol["bf16"],
+            atol=atol["bf16"],
+        )
 
     @parameterized.expand(gqa_qk_norm_test_cases(is_past=True))
     def test_gqa_qk_norm_past_bf16(self, name, config):
@@ -2611,8 +2665,17 @@ def gqa_xqa_test_cases():
 class TestXQAQuantizedParity(unittest.TestCase):
     """Tests that verify fused kernels produce the same results as unfused kernels."""
 
+    def setUp(self):
+        # Force XQA on so the test is hermetic even if ORT_ENABLE_XQA=0 is set in the environment.
+        self._prev_enable_xqa = os.environ.get("ORT_ENABLE_XQA")
+        os.environ["ORT_ENABLE_XQA"] = "1"
+
     def tearDown(self):
         """Clear CUDA cache after each test to prevent memory corruption in batch runs."""
+        if self._prev_enable_xqa is None:
+            os.environ.pop("ORT_ENABLE_XQA", None)
+        else:
+            os.environ["ORT_ENABLE_XQA"] = self._prev_enable_xqa
         if torch.cuda.is_available():
             torch.cuda.synchronize()
             torch.cuda.empty_cache()
@@ -2621,18 +2684,17 @@ class TestXQAQuantizedParity(unittest.TestCase):
     @parameterized.expand(gqa_xqa_test_cases())
     def test_xqa_quantized_parity(self, name, config, torch_type, ort_type):
         """Test XQA per-tensor INT8 quantized parity."""
-        with scoped_env_var("ORT_ENABLE_XQA", "1"):
-            parity_check_gqa_past(
-                config=config,
-                ep="CUDAExecutionProvider",
-                device="cuda",
-                torch_type=torch_type,
-                ort_type=ort_type,
-                causal=True,
-                rtol=rtol["int8_bf16"] if torch_type == torch.bfloat16 else rtol["int8_fp16"],
-                atol=atol["int8_bf16"] if torch_type == torch.bfloat16 else atol["int8_fp16"],
-                std=0.1,
-            )
+        parity_check_gqa_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch_type,
+            ort_type=ort_type,
+            causal=True,
+            rtol=rtol["int8_bf16"] if torch_type == torch.bfloat16 else rtol["int8_fp16"],
+            atol=atol["int8_bf16"] if torch_type == torch.bfloat16 else atol["int8_fp16"],
+            std=0.1,
+        )
 
 
 def gqa_xqa_head_sink_test_cases():
@@ -2749,10 +2811,211 @@ class TestXQAHeadSinkParity(unittest.TestCase):
         )
 
 
+def gqa_xqa_sliding_window_test_cases():
+    # Non-quantized sliding-window (local attention) decode through the XQA kernel.
+    #
+    # The XQA decode path now supports local_window_size > 0 on the non-quantized fp16/bf16
+    # path (GPT-OSS style sliding-window layers). XQA selection requires: decode (q_seq=1),
+    # a shared KV buffer, softcap==0, head_size in {64, 128, 256} and 64 % group_size == 0.
+    #
+    # Two window/past relationships are covered:
+    #   past > window  -> the sliding mask drops the oldest keys (the new code path).
+    #   past <= window -> the window spans the whole cache (parity with global attention).
+    #   past + 1 == window -> the exact guard boundary (cacheSeqLen == slidingWinSize) that locks
+    #                         down the kernel's `>` vs `>=` window comparison.
+    # has_head_sink toggles the GPT-OSS attention-sink input, which composes with the window
+    # in-kernel; both with and without a sink are exercised.
+    for torch_type, ort_type in [(torch.float16, TensorProto.FLOAT16), (torch.bfloat16, TensorProto.BFLOAT16)]:
+        for head_size in [64, 128]:
+            for group_size in [4, 8]:
+                for past_kv_sequence_length, local_window_size in [(512, 128), (64, 128), (127, 128)]:
+                    for has_head_sink in [False, True]:
+                        kv_num_heads = 4
+                        num_heads = kv_num_heads * group_size
+                        config = GQAConfig(
+                            batch_size=2,
+                            q_sequence_length=1,
+                            kv_sequence_length=1,
+                            num_heads=num_heads,
+                            kv_num_heads=kv_num_heads,
+                            head_size=head_size,
+                            past_kv_sequence_length=past_kv_sequence_length,
+                            buffer_sequence_length=past_kv_sequence_length + 128,
+                            local_window_size=local_window_size,
+                            rotary=True,
+                            rotary_interleaved=False,
+                            packed=False,
+                            share_buffer=True,
+                            has_head_sink=has_head_sink,
+                        )
+                        type_str = "bf16" if torch_type == torch.bfloat16 else "fp16"
+                        sink_str = "sink" if has_head_sink else "nosink"
+                        win_str = f"past{past_kv_sequence_length}_win{local_window_size}"
+                        name = f"{type_str}_g{group_size}_h{head_size}_{win_str}_{sink_str}"
+                        yield name, config, torch_type, ort_type
+
+
+@unittest.skipIf(not has_xqa(), "XQA is not available, skipping tests.")
+class TestXQASlidingWindowParity(unittest.TestCase):
+    """Verify the non-quantized XQA sliding-window (local attention) decode path matches the reference."""
+
+    def setUp(self):
+        # Force XQA on so the test is hermetic even if ORT_ENABLE_XQA=0 is set in the environment.
+        self._prev_enable_xqa = os.environ.get("ORT_ENABLE_XQA")
+        os.environ["ORT_ENABLE_XQA"] = "1"
+
+    def tearDown(self):
+        """Clear CUDA cache after each test to prevent memory corruption in batch runs."""
+        if self._prev_enable_xqa is None:
+            os.environ.pop("ORT_ENABLE_XQA", None)
+        else:
+            os.environ["ORT_ENABLE_XQA"] = self._prev_enable_xqa
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+        gc.collect()
+
+    @parameterized.expand(gqa_xqa_sliding_window_test_cases())
+    def test_xqa_sliding_window_parity(self, name, config, torch_type, ort_type):
+        """Test XQA non-quantized parity with a sliding (local) attention window."""
+
+        def run_parity_check():
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch_type,
+                ort_type=ort_type,
+                causal=True,
+                rtol=rtol["bf16"] if torch_type == torch.bfloat16 else rtol["fp16"],
+                atol=atol["bf16"] if torch_type == torch.bfloat16 else atol["fp16"],
+                std=0.1,
+            )
+
+        # XQA is enabled by default for fp16/bf16, so no head_sink input is required to select it.
+        self.assertEqual("XQA", get_sdpa_kernel_from_debug_info(run_parity_check))
+
+
+def gqa_xqa_quantized_sliding_window_test_cases():
+    # Quantized (INT8 / FP8) sliding-window (local attention) decode through the XQA kernel.
+    #
+    # The XQA decode path now supports local_window_size > 0 on the quantized KV-cache paths as
+    # well. Quantized XQA selection requires: decode (q_seq=1), a shared KV buffer, per-tensor
+    # k/v scales that are the same tensor, head_size in {64, 128, 256} and group_size in
+    # {4, 8, 16, 32}. Attention sinks are not supported with quantized KV cache, so no head_sink.
+    #
+    # Two window/past relationships are covered:
+    #   past > window  -> the sliding mask drops the oldest keys (the new code path).
+    #   past <= window -> the window spans the whole cache (parity with global attention).
+    #   past + 1 == window -> the exact guard boundary (cacheSeqLen == slidingWinSize).
+    kv_cache_types = ["int8"]
+    if has_fp8_kv_cache:
+        kv_cache_types.append("fp8")
+    for kv_cache_type in kv_cache_types:
+        for torch_type, ort_type in [(torch.float16, TensorProto.FLOAT16), (torch.bfloat16, TensorProto.BFLOAT16)]:
+            for head_size in [64, 128]:
+                for group_size in [4, 8]:
+                    for past_kv_sequence_length, local_window_size in [(512, 128), (64, 128), (127, 128)]:
+                        kv_num_heads = 4
+                        num_heads = kv_num_heads * group_size
+                        config = GQAConfig(
+                            batch_size=2,
+                            q_sequence_length=1,
+                            kv_sequence_length=1,
+                            num_heads=num_heads,
+                            kv_num_heads=kv_num_heads,
+                            head_size=head_size,
+                            past_kv_sequence_length=past_kv_sequence_length,
+                            buffer_sequence_length=past_kv_sequence_length + 128,
+                            local_window_size=local_window_size,
+                            rotary=True,
+                            rotary_interleaved=False,
+                            packed=False,
+                            share_buffer=True,
+                            k_quant_type="PER_TENSOR",
+                            v_quant_type="PER_TENSOR",
+                            kv_cache_type=kv_cache_type,
+                            share_kv_scale=True,
+                        )
+                        type_str = "bf16" if torch_type == torch.bfloat16 else "fp16"
+                        win_str = f"past{past_kv_sequence_length}_win{local_window_size}"
+                        name = f"{kv_cache_type}_{type_str}_g{group_size}_h{head_size}_{win_str}"
+                        yield name, config, torch_type, ort_type
+
+
+@unittest.skipIf(not has_xqa(), "XQA is not available, skipping tests.")
+@unittest.skipIf(not has_quantized_kv_cache(), "Quantized KV Cache is not available, skipping tests.")
+class TestXQAQuantizedSlidingWindowParity(unittest.TestCase):
+    """Verify the quantized (INT8/FP8) XQA sliding-window (local attention) decode path matches the reference."""
+
+    def setUp(self):
+        # Force XQA on so the test is hermetic even if ORT_ENABLE_XQA=0 is set in the environment.
+        self._prev_enable_xqa = os.environ.get("ORT_ENABLE_XQA")
+        os.environ["ORT_ENABLE_XQA"] = "1"
+
+    def tearDown(self):
+        """Clear CUDA cache after each test to prevent memory corruption in batch runs."""
+        if self._prev_enable_xqa is None:
+            os.environ.pop("ORT_ENABLE_XQA", None)
+        else:
+            os.environ["ORT_ENABLE_XQA"] = self._prev_enable_xqa
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
+        gc.collect()
+
+    @parameterized.expand(gqa_xqa_quantized_sliding_window_test_cases())
+    def test_xqa_quantized_sliding_window_parity(self, name, config, torch_type, ort_type):
+        """Test XQA quantized parity with a sliding (local) attention window."""
+        type_str = "bf16" if torch_type == torch.bfloat16 else "fp16"
+        rtol_key = f"{config.kv_cache_type}_{type_str}"
+
+        def run_parity_check():
+            parity_check_gqa_past(
+                config=config,
+                ep="CUDAExecutionProvider",
+                device="cuda",
+                torch_type=torch_type,
+                ort_type=ort_type,
+                causal=True,
+                rtol=rtol[rtol_key],
+                atol=atol[rtol_key],
+                std=0.1,
+            )
+
+        # XQA is enabled by default for fp16/bf16, so the quantized sliding-window path is selected.
+        self.assertEqual("XQA", get_sdpa_kernel_from_debug_info(run_parity_check))
+
+
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
 @unittest.skipIf(not has_quantized_kv_cache(), "Quantized KV Cache is not available, skipping tests.")
 class TestGQARegressions(unittest.TestCase):
     """Specific regression tests for historical bugs."""
+
+    def test_gqa_cuda_rejects_zero_local_window_size(self):
+        if not has_cuda_provider():
+            self.skipTest("CUDA required")
+
+        config = GQAConfig(
+            batch_size=1,
+            num_heads=4,
+            kv_num_heads=4,
+            head_size=64,
+            q_sequence_length=1,
+            kv_sequence_length=1,
+            past_kv_sequence_length=0,
+            buffer_sequence_length=1,
+            local_window_size=0,
+            share_buffer=True,
+        )
+        onnx_model_str = create_group_query_attention_graph_prompt(config, TensorProto.FLOAT16)
+
+        with self.assertRaisesRegex(Exception, "local_window_size must be -1 or greater than 0"):
+            InferenceSession(
+                onnx_model_str,
+                SessionOptions(),
+                providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")],
+            )
 
     def test_gqa_rope_separate_qkv_bug(self):
         """
