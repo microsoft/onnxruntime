@@ -40,19 +40,9 @@ jobs:
         with:
           node-version: 20
 
-      - name: Setup CCache
-        uses: actions/cache@v5
+      - uses: ./.github/actions/ccache-and-vcpkg-cache
         with:
-          # Fully qualify by workflow. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
-          key: ccache | linux_minimal_build.yml | build_full_ort
-          path: ~/.cache/ccache
-
-      - name: Setup VCPKG Cache
-        uses: actions/cache@v5
-        with:
-          # ostensibly should be able to use the same cache for most of these, but in practice the hash does not match.
-          key: vcpkg-cache | linux_minimal_build.yml | build_full_ort
-          path: ~/.cache/vcpkg
+          key: linux_minimal_build.yml | build_full_ort
 
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
@@ -96,17 +86,9 @@ jobs:
         with:
           node-version: 20
 
-      - name: Setup CCache
-        uses: actions/cache@v5
+      - uses: ./.github/actions/ccache-and-vcpkg-cache
         with:
-          key: ccache | linux_minimal_build.yml | build_minimal_exceptions_disabled
-          path: ~/.cache/ccache
-
-      - name: Setup VCPKG Cache
-        uses: actions/cache@v5
-        with:
-          key: vcpkg-cache | linux_minimal_build.yml | build_minimal_exceptions_disabled
-          path: ~/.cache/vcpkg
+          key: linux_minimal_build.yml | build_minimal_exceptions_disabled
 
       - name: Get Docker Image using Action
         uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
@@ -173,17 +155,9 @@ jobs:
         with:
           node-version: 20
 
-      - name: Setup CCache
-        uses: actions/cache@v5
+      - uses: ./.github/actions/ccache-and-vcpkg-cache
         with:
-          key: ccache | linux_minimal_build.yml | build_minimal_custom_ops
-          path: ~/.cache/ccache
-
-      - name: Setup VCPKG Cache
-        uses: actions/cache@v5
-        with:
-          key: vcpkg-cache | linux_minimal_build.yml | build_minimal_custom_ops
-          path: ~/.cache/vcpkg
+          key: linux_minimal_build.yml | build_minimal_custom_ops
 
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
@@ -225,17 +199,9 @@ jobs:
         with:
           node-version: 20
 
-      - name: Setup CCache
-        uses: actions/cache@v5
+      - uses: ./.github/actions/ccache-and-vcpkg-cache
         with:
-          key: ccache | linux_minimal_build.yml | build_minimal_type_reduction
-          path: ~/.cache/ccache
-
-      - name: Setup VCPKG Cache
-        uses: actions/cache@v5
-        with:
-          key: vcpkg-cache | linux_minimal_build.yml | build_minimal_type_reduction
-          path: ~/.cache/vcpkg
+          key: linux_minimal_build.yml | build_minimal_type_reduction
 
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
@@ -276,17 +242,9 @@ jobs:
         with:
           node-version: 20
 
-      - name: Setup CCache
-        uses: actions/cache@v5
+      - uses: ./.github/actions/ccache-and-vcpkg-cache
         with:
-          key: ccache | linux_minimal_build.yml | build_minimal_globally_allowed_types
-          path: ~/.cache/ccache
-
-      - name: Setup VCPKG Cache
-        uses: actions/cache@v5
-        with:
-          key: vcpkg-cache | linux_minimal_build.yml | build_minimal_globally_allowed_types
-          path: ~/.cache/vcpkg
+          key: linux_minimal_build.yml | build_minimal_globally_allowed_types
 
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
@@ -328,17 +286,9 @@ jobs:
         with:
           node-version: 20
 
-      - name: Setup CCache
-        uses: actions/cache@v5
+      - uses: ./.github/actions/ccache-and-vcpkg-cache
         with:
-          key: ccache | linux_minimal_build.yml | build_extended_minimal
-          path: ~/.cache/ccache
-
-      - name: Setup VCPKG Cache
-        uses: actions/cache@v5
-        with:
-          key: vcpkg-cache | linux_minimal_build.yml | build_extended_minimal
-          path: ~/.cache/vcpkg
+          key: linux_minimal_build.yml | build_extended_minimal
 
       - name: Get Docker Image using Action
         uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
@@ -429,17 +379,9 @@ jobs:
           mkdir -p ${{ runner.temp }}/.test_data
           touch ${{ runner.temp }}/.test_data/include_no_operators.config
 
-      - name: Setup CCache
-        uses: actions/cache@v5
+      - uses: ./.github/actions/ccache-and-vcpkg-cache
         with:
-          key: ccache | linux_minimal_build.yml | build_regular_no_optional
-          path: ~/.cache/ccache
-
-      - name: Setup VCPKG Cache
-        uses: actions/cache@v5
-        with:
-          key: vcpkg-cache | linux_minimal_build.yml | build_regular_no_optional
-          path: ~/.cache/vcpkg
+          key: linux_minimal_build.yml | build_regular_no_optional
 
       - name: Run Build 6a (Update)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
@@ -527,17 +469,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup CCache
-        uses: actions/cache@v5
+      - uses: ./.github/actions/ccache-and-vcpkg-cache
         with:
-          key: ccache | linux_minimal_build.yml | build_minimal_no_optional
-          path: ~/.cache/ccache
-
-      - name: Setup VCPKG Cache
-        uses: actions/cache@v5
-        with:
-          key: vcpkg-cache | linux_minimal_build.yml | build_minimal_no_optional
-          path: ~/.cache/vcpkg
+          key: linux_minimal_build.yml | build_minimal_no_optional
 
       - name: Run Build 6b (Update)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
@@ -620,17 +554,9 @@ jobs:
           mkdir -p ${{ runner.temp }}/.test_data
           touch ${{ runner.temp }}/.test_data/include_no_operators.config
 
-      - name: Setup CCache
-        uses: actions/cache@v5
+      - uses: ./.github/actions/ccache-and-vcpkg-cache
         with:
-          key: ccache | linux_minimal_build.yml | build_extended_minimal_no_optional
-          path: ~/.cache/ccache
-
-      - name: Setup VCPKG Cache
-        uses: actions/cache@v5
-        with:
-          key: vcpkg-cache | linux_minimal_build.yml | build_extended_minimal_no_optional
-          path: ~/.cache/vcpkg
+          key: linux_minimal_build.yml | build_extended_minimal_no_optional
 
       - name: Run Build 6c (Update)
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
@@ -717,17 +643,10 @@ jobs:
           ndk-version: 28.0.13004108
           # Use default android-sdk-root if not specified
 
-      - name: Setup CCache
-        uses: actions/cache@v5
-        with:
-          key: ccache | linux_minimal_build.yml | build_extended_minimal_android
-          path: ~/.cache/ccache
 
-      - name: Setup VCPKG Cache
-        uses: actions/cache@v5
+      - uses: ./.github/actions/ccache-and-vcpkg-cache
         with:
-          key: vcpkg-cache | linux_minimal_build.yml | build_extended_minimal_android
-          path: ~/.cache/vcpkg
+          key: linux_minimal_build.yml | build_extended_minimal_android
 
       - name: Run Build 7 (Using docker run)
         shell: bash

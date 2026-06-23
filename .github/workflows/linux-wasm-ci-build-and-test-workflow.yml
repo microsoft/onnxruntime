@@ -82,19 +82,6 @@ jobs:
       - name: Install python dependencies
         run: python -m pip install flatbuffers
 
-      - name: Setup CCache
-        uses: actions/cache@v5
-        with:
-          # Fully qualify by workflow. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
-          key: ccache | web.yml | ${{ inputs.job_name }}
-          path: ~/.cache/ccache
-
-      - name: Setup VCPKG Cache
-        uses: actions/cache@v5
-        with:
-          key: vcpkg-cache | web.yml | ${{ inputs.job_name }}
-          path: ~/.cache/vcpkg
-
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         with:
           ccache-version: 4.13.1
@@ -105,6 +92,10 @@ jobs:
           cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
           add-cmake-to-path: 'true'
           disable-terrapin: 'true'
+
+      - uses: ./.github/actions/ccache-and-vcpkg-cache
+        with:
+          key: web.yml | ${{ inputs.job_name }}
 
       - name: Build (simd + threads)
         shell: bash

@@ -98,17 +98,9 @@ jobs:
           xcode_version: ${{ env.xcode_version }}
           use_cache: true
 
-      - name: Setup CCache
-        uses: actions/cache@v5
+      - uses: ./.github/actions/ccache-and-vcpkg-cache
         with:
-          key: ccache | macos-ci-build-and-test-workflow.yml | build-and-test | ${{ matrix.machine }}-${{ matrix.target }}-${{ matrix.build_config }}
-          path: ~/.cache/ccache
-
-      - name: Setup VCPKG Cache
-        uses: actions/cache@v5
-        with:
-          key: vcpkg-cache | macos-ci-build-and-test-workflow.yml | build-and-test | ${{ matrix.machine }}-${{ matrix.target }}-${{ matrix.build_config }}
-          path: ~/.cache/vcpkg
+          key: macos-ci-build-and-test-workflow.yml | build-and-test | ${{ matrix.machine }}-${{ matrix.target }}-${{ matrix.build_config }}
 
       - uses: actions/cache@v5
         id: onnx-node-tests-cache

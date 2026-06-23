@@ -104,18 +104,8 @@ runs:
       #       Add git's bin dir to the PATH so that `actions/cache`'s invoke of `tar` can find `gzip`.
       echo "PATH=${env:PATH};C:\\Program Files\\Git\\usr\\bin" >> "${env:GITHUB_ENV}"
 
-  # n.b. Caller is responsible for building w/ ccache enabled via `--use_cache`
-  #      We could set the env var `ORT_BUILD_WITH_CACHE` to indirectly enable it, but this hack seems deprecated.
-  #      Ideally ccache should be auto-enabled by the build system if ccache/sccache is detected on the PATH.
-  - name: Setup CCache
-    uses: actions/cache@v5
+  - uses: ./.github/actions/ccache-and-vcpkg-cache
     with:
-      # Fully qualify by `cache_key`. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
-      key: ccache | ${{ inputs.cache_key }}
-      path: ${{ runner.temp }}/.ccache # ensure this is coordinated/matches w/ env-vars step above
-
-  - name: Setup VCPKG Cache
-    uses: actions/cache@v5
-    with:
-      key: vcpkg-cache | ${{ inputs.cache_key }}
-      path: ${{ runner.temp }}/.vcpkg-cache
+      key: ${{ inputs.cache_key }}
+      ccache_dir: ${{ runner.temp }}/.ccache # ensure this is coordinated/matches w/ env-vars step above
+      vcpkg_dir: ${{ runner.temp }}/.vcpkg-cache
