@@ -2,8 +2,9 @@
 
 A standalone C library for **reading, authoring, validating, and committing**
 ONNX Runtime model packages. The library has no dependency on ONNX Runtime
-itself, so any consumer (ORT, publisher tools, ...) can link against it
-without dragging in a session runtime.
+itself, so any consumer (ORT, publisher tools, ...) can compile it in
+without dragging in a session runtime. It is distributed and consumed as
+**source** (see [Versioning and compatibility](#versioning-and-compatibility)).
 
 The library owns three things:
 
@@ -400,21 +401,6 @@ mutation" rule.
 return pointers into a per-thread scratch slot; copy before the next call on
 the same thread.
 
-### Schema versioning and source distribution
-
-The library is consumed **as source** — each consumer compiles `model_package`
-into its own binary. There is no published shared library, so the POD structs
-have no binary boundary to maintain: no `struct_size`, no SOVERSION, no ABI
-versioning. Compatibility is governed solely by the on-disk **`schema_version`**.
-
-`schema_version` is a `"<major>.<minor>"` string. The library accepts any package
-whose **major** is within its supported range and **any minor**. Evolution within
-a major is additive and backward-compatible: newer minors only add optional
-fields, so one parser reads every minor (a newer-than-known minor's unknown
-fields are tolerated, not rejected). Consumers read `info->schema_version_major` /
-`_minor` to decide which optional fields a package may carry. A breaking format
-change bumps the major.
-
 ### Commit modes
 
 `ModelPackage_Commit(pkg, dest, mode)`:
@@ -465,6 +451,84 @@ structural checks and returns a JSON report
 | `MODEL_PACKAGE_VALIDATE_ALL`            | All of the above. |
 
 Errors cause a non-NULL status return; warnings alone return success.
+
+---
+
+## Versioning and compatibility
+
+### Distributed as source
+
+The library is meant to be **vendored and compiled into each consumer's own
+binary** (ORT, publisher tooling, third-party loaders). No prebuilt shared
+library (`.so`/`.dll`) is published as the supported interface.
+
+A direct consequence is that the public POD structs in `model_package.h` have
+**no binary boundary** to defend: within any single build there is exactly one
+definition of every struct, so there is nothing for two separately-compiled
+artifacts to disagree about. The library therefore carries **none** of the usual
+ABI machinery — no per-struct `struct_size`/`cbSize`, no `abi_version`, no
+library SOVERSION, and no offset `static_assert`s. Collections are exposed as
+plain array members (`components`/`num_components`, `variants`/`num_variants`,
+…) rather than count+index accessors, since accessors only earn their keep when
+the library owns the struct stride across a binary boundary.
+
+The **only** compatibility contract is the on-disk data format, expressed by
+`schema_version`. Everything a consumer needs to know about which fields and
+objects a package may contain follows from that one value.
+
+### `schema_version`
+
+`schema_version` is a `"<major>.<minor>"` string in `manifest.json` (a bare
+integer `N` is accepted and treated as `N.0`). It is parsed into
+`ModelPackageInfo.schema_version_major` and `schema_version_minor`.
+
+- **major** — the data contract. Incremented only for a **breaking** change
+  (a field removed, renamed, retyped, or given new semantics). A consumer that
+  understands major *N* can read any `N.x` package.
+- **minor** — additive evolution within a major. Incremented when a new
+  **optional** field or object is added. It never removes or reinterprets
+  anything, so it is fully backward- and forward-compatible within the major.
+
+Consumers should branch **solely on `schema_version_major` / `schema_version_minor`**
+to decide which optional fields a package may carry — not on the presence or
+absence of individual fields, and never on any library version.
+
+### What the parser enforces
+
+Each build declares the majors it understands as a closed range
+(`kMinSupportedSchemaMajor … kMaxSupportedSchemaMajor` in `manifest_parser.cc`)
+plus the highest minor it authored (`kMaxKnownSchemaMinor`):
+
+- **Unsupported major** → `ModelPackage_Open` fails with
+  `MODEL_PACKAGE_ERR_VERSION`. A consumer never silently misreads a package
+  whose contract it does not understand.
+- **Any minor is accepted.** When the minor is **newer** than this build knows
+  (`minor > kMaxKnownSchemaMinor`), unknown-field strictness is relaxed for that
+  package so the additive fields a newer authoring tool wrote are **tolerated**
+  (read through, preserved on round-trip via the JSON getters) instead of
+  rejected. An older library can therefore load a newer-minor package and ignore
+  the fields it does not recognize.
+
+### Supporting a major version bump
+
+When a breaking change requires a new major, deployed packages do **not** have to
+be rewritten and consumers do **not** have to upgrade in lockstep. The library is
+designed to support a **range** of majors simultaneously:
+
+1. Bump `kMaxSupportedSchemaMajor` and add the new major's parse/serialize path,
+   keeping the existing major's path in place. The supported range now spans both.
+2. Existing `N.x` packages keep loading unchanged through the old path; new
+   `(N+1).x` packages load through the new path.
+3. Consumers branch on `schema_version_major` to pick the field set they read.
+   Code that only supports major *N* simply declines `(N+1).x` packages (the open
+   call returns `MODEL_PACKAGE_ERR_VERSION` for it) rather than misreading them.
+4. A major is dropped from the supported range only when its packages are no
+   longer in circulation — an explicit, opt-in deprecation, never an implicit
+   break.
+
+This keeps already-published packages valid for as long as the library advertises
+their major, which is the backward-compatibility guarantee external publishers
+depend on.
 
 ---
 
