@@ -62,6 +62,8 @@ if (!factory.arena_allocator_) {
 
 **Stream-aware allocation.** `ArenaImpl::AllocOnStream(size, stream)` tracks which chunks are assigned to which stream. `ResetChunksUsingStream(stream_impl)` is called from `OrtSyncStreamImpl::OnSessionRunEnd` to release chunk-to-stream assignments when a session run completes.
 
+**Kernel-side consumption of the arena.** Migrated CUDA kernels obtain scratch/workspace memory from this arena through `CudaKernel::GetScratchBuffer`, which calls `Info().GetAllocator(OrtMemTypeDefault)` and forwards the compute stream. Inside the plugin build that allocator is exposed to internal code as an `IAllocatorWrappingOrtAllocator` (`include/onnxruntime/ep/adapter/allocator.h`), which now implements `IsStreamAware()`/`AllocOnStream()` by forwarding to the underlying `OrtAllocator`'s `AllocOnStream` (ORT ≥ 1.23), falling back to plain `Alloc` otherwise. So a stream-forwarded scratch request reaches `ArenaImpl::AllocOnStream` and participates in the same chunk-to-stream tracking and `ResetChunksUsingStream` reset described above. This is what keeps scratch allocations served from already-reserved chunks during CUDA graph capture.
+
 **Read-only allocator bypasses arena.** The factory creates a plain `CustomAllocator` (no arena) for `OrtReadOnlyAllocator` (initializers), since initializer memory doesn't benefit from arena allocation.
 
 ### 2.2 How ORT Core Calls the Factory
