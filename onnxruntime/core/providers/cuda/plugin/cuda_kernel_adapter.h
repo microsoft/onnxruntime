@@ -1065,8 +1065,9 @@ class CudaKernel : public OpKernel {
     // cannot be constructed here. Do not silently drop a non-null stream:
     // stream-aware allocators rely on the allocation stream for ordered reuse/free.
     if (s != nullptr) {
-      ORT_THROW("Plugin CUDA GetScratchBuffer cannot allocate with a non-null stream from an NVCC "
-                "translation unit.");
+      ORT_THROW(
+          "Plugin CUDA GetScratchBuffer cannot allocate with a non-null stream from an NVCC "
+          "translation unit.");
     }
     return ::onnxruntime::IAllocator::MakeUniquePtr<T>(
         Info().GetAllocator(OrtMemType::OrtMemTypeDefault), cnt, /*use_reserve*/ false,
