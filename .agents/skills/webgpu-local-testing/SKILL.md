@@ -1,6 +1,6 @@
 ---
 name: webgpu-local-testing
-description: Build and run ONNX Runtime WebGPU provider tests on Linux WITHOUT a real GPU, using a software Vulkan adapter (Mesa lavapipe). Use when you need to exercise WebGPU EP kernels off-Mac — the Linux webgpu CI leg is build-only, so software Vulkan is how you actually run WebGPU correctness tests locally. SCOPE: lavapipe only validates host-side enforce/shape bugs and MatMul-free kernels; any graph containing MatMul (including the expanded-Attention node tests) crashes lavapipe and runs ONLY on macOS-arm64 Metal, which is the source of truth for those. Covers install (dnf on Azure Linux), the --use_webgpu build flag, the onnxruntime_provider_test target, VK_ICD_FILENAMES, and the lavapipe MatMul crash gotcha.
+description: "Build and run ONNX Runtime WebGPU provider tests on Linux WITHOUT a real GPU, using a software Vulkan adapter (Mesa lavapipe). Use when you need to exercise WebGPU EP kernels off-Mac — the Linux webgpu CI leg is build-only, so software Vulkan is how you actually run WebGPU correctness tests locally. SCOPE - lavapipe only validates host-side enforce/shape bugs and MatMul-free kernels; any graph containing MatMul (including the expanded-Attention node tests) crashes lavapipe and runs ONLY on macOS-arm64 Metal, which is the source of truth for those. Covers install (dnf on Azure Linux), the --use_webgpu build flag, the onnxruntime_provider_test target, VK_ICD_FILENAMES, and the lavapipe MatMul crash gotcha."
 ---
 
 # Running ONNX Runtime WebGPU Tests Locally on Linux (No GPU)
