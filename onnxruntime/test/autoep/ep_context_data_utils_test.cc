@@ -202,8 +202,13 @@ TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathRejectsSymlinkEscape) {
   ASSERT_TRUE(std::filesystem::create_directories(outside_dir));
 
   const std::filesystem::path symlink_path = model_dir / "linked_outside";
+  // The symlink target must be absolute. A relative target is stored verbatim and resolved by the OS relative to the
+  // link's own directory (model_dir), not the test's working directory, which would make "linked_outside" a dangling
+  // link. weakly_canonical() does not traverse a dangling symlink, so the containment check would treat
+  // "linked_outside/escape.ctx" as an ordinary (non-existent) child of model_dir and fail to detect the escape.
+  const std::filesystem::path symlink_target = std::filesystem::absolute(outside_dir);
   std::error_code symlink_error;
-  std::filesystem::create_directory_symlink(outside_dir, symlink_path, symlink_error);
+  std::filesystem::create_directory_symlink(symlink_target, symlink_path, symlink_error);
   if (symlink_error) {
     GTEST_SKIP() << "Unable to create directory symlink for containment test: " << symlink_error.message();
   }
