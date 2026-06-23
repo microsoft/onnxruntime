@@ -49,7 +49,7 @@ namespace onnxruntime {
 // Static member initialization
 std::atomic<uint32_t> PosixTelemetry::global_register_count_{0};
 std::mutex PosixTelemetry::global_mutex_;
-std::mutex PosixTelemetry::mutex_;
+std::shared_mutex PosixTelemetry::mutex_;
 ::Microsoft::Applications::Events::ILogManager* PosixTelemetry::log_manager_ = nullptr;
 std::atomic<::Microsoft::Applications::Events::ILogger*> PosixTelemetry::logger_{nullptr};
 std::unique_ptr<::Microsoft::Applications::Events::ILogConfiguration> PosixTelemetry::config_;
@@ -251,8 +251,10 @@ PosixTelemetry::~PosixTelemetry() {
 }
 
 void PosixTelemetry::LogEventAsync(Microsoft::Applications::Events::EventProperties&& props) const {
-  // Load the shared logger once; it is an atomic pointer so this read is well-defined even if
-  // Shutdown() concurrently clears it (Shutdown only runs at process teardown).
+  // Hold a shared (reader) lock for the duration of the LogEvent call so the logger and its owning
+  // log manager cannot be torn down underneath us: Initialize()/Shutdown() take this lock
+  // exclusively. The shared lock still allows multiple threads to log concurrently.
+  std::shared_lock<std::shared_mutex> lock(mutex_);
   auto* logger = logger_.load(std::memory_order_acquire);
   if (logger == nullptr) {
     return;
@@ -268,7 +270,7 @@ void PosixTelemetry::LogEventAsync(Microsoft::Applications::Events::EventPropert
 }
 
 void PosixTelemetry::Initialize() {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::unique_lock<std::shared_mutex> lock(mutex_);
 
   // NOTE: On Android, the Java layer must be initialized before calling this:
   //   System.loadLibrary("maesdk");
@@ -360,7 +362,7 @@ void PosixTelemetry::Initialize() {
 }
 
 void PosixTelemetry::Shutdown() {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::unique_lock<std::shared_mutex> lock(mutex_);
 
   // Disable logging first to prevent new events during shutdown
   enabled_ = false;

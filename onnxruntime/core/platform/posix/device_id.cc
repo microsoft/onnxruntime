@@ -10,6 +10,7 @@
 #include <random>
 #include <iomanip>
 #include <cstdlib>
+#include <vector>
 
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -99,9 +100,17 @@ std::string DeviceId::GetStorageDirectory(bool mobile) {
   std::string home;
   if (const char* h = std::getenv("HOME"); h != nullptr && h[0] != '\0') {
     home = h;
-  } else if (const struct passwd* pw = ::getpwuid(::getuid());
-             pw != nullptr && pw->pw_dir != nullptr && pw->pw_dir[0] != '\0') {
-    home = pw->pw_dir;
+  } else {
+    // getpwuid() returns a pointer to shared static storage and is not thread-safe; use the
+    // reentrant getpwuid_r() with a caller-provided buffer so concurrent callers don't race.
+    struct passwd pwd;
+    struct passwd* result = nullptr;
+    const long sc = ::sysconf(_SC_GETPW_R_SIZE_MAX);
+    std::vector<char> buf(sc > 0 ? static_cast<size_t>(sc) : 16384);
+    if (::getpwuid_r(::getuid(), &pwd, buf.data(), buf.size(), &result) == 0 &&
+        result != nullptr && result->pw_dir != nullptr && result->pw_dir[0] != '\0') {
+      home = result->pw_dir;
+    }
   }
   if (home.empty()) return "";
 

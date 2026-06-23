@@ -7,6 +7,7 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -159,7 +160,7 @@ class PosixTelemetry : public Telemetry {
   // single owner regardless of how many PosixTelemetry objects exist.
 
   // Mutex for thread-safe init/shutdown of the shared SDK state.
-  static std::mutex mutex_;
+  static std::shared_mutex mutex_;
 
   // Telemetry SDK instances.
   // log_manager_ is owned by LogManagerProvider; logger_ is owned by log_manager_.
