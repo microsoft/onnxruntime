@@ -546,7 +546,7 @@ void PosixTelemetry::SetLanguageProjection(uint32_t projection) const {
 
 bool PosixTelemetry::IsEnabled() const {
   // Reflect actual readiness: the opt-out flag AND a successfully-initialized logger.
-  return enabled_ && logger_.load(std::memory_order_acquire) != nullptr;
+  return enabled_.load(std::memory_order_acquire) && logger_.load(std::memory_order_acquire) != nullptr;
 }
 
 unsigned char PosixTelemetry::Level() const {
@@ -560,7 +560,7 @@ uint64_t PosixTelemetry::Keyword() const {
 void PosixTelemetry::LogProcessInfo() const {
   // LogProcessInfo only collects system metadata, but it must still honor the
   // runtime opt-out (DisableTelemetryEvents) like every other event.
-  if (!enabled_ || !logger_) {
+  if (!IsEnabled()) {
     return;
   }
 
@@ -589,7 +589,7 @@ void PosixTelemetry::LogProcessInfo() const {
 }
 
 void PosixTelemetry::LogSessionCreationStart(uint32_t session_id) const {
-  if (!enabled_ || !logger_) {
+  if (!IsEnabled()) {
     return;
   }
 
@@ -603,7 +603,7 @@ void PosixTelemetry::LogSessionCreationStart(uint32_t session_id) const {
 }
 
 void PosixTelemetry::LogEvaluationStop(uint32_t session_id) const {
-  if (!enabled_ || !logger_) {
+  if (!IsEnabled()) {
     return;
   }
 
@@ -620,7 +620,7 @@ void PosixTelemetry::LogEvaluationStop(uint32_t session_id) const {
 }
 
 void PosixTelemetry::LogEvaluationStart(uint32_t session_id) const {
-  if (!enabled_ || !logger_) {
+  if (!IsEnabled()) {
     return;
   }
 
@@ -651,7 +651,7 @@ void PosixTelemetry::LogSessionCreation(
     const std::string& hardware_vendor_ids,
     const std::string& ep_versions,
     bool use_fp16, bool captureState) const {
-  if (!enabled_ || !logger_) {
+  if (!IsEnabled()) {
     return;
   }
 
@@ -693,7 +693,7 @@ void PosixTelemetry::LogCompileModelStart(
     bool embed_ep_context,
     bool has_external_initializers_file,
     const std::vector<std::string>& execution_provider_ids) const {
-  if (!enabled_ || !logger_) {
+  if (!IsEnabled()) {
     return;
   }
 
@@ -719,7 +719,7 @@ void PosixTelemetry::LogCompileModelComplete(
     uint32_t error_code,
     uint32_t error_category,
     const std::string& error_message) const {
-  if (!enabled_ || !logger_) {
+  if (!IsEnabled()) {
     return;
   }
 
@@ -739,7 +739,7 @@ void PosixTelemetry::LogCompileModelComplete(
 void PosixTelemetry::LogRuntimeError(
     uint32_t session_id, const common::Status& status,
     const char* file, const char* function, uint32_t line) const {
-  if (!enabled_ || !logger_) {
+  if (!IsEnabled()) {
     return;
   }
 
@@ -761,7 +761,7 @@ void PosixTelemetry::LogRuntimeError(
 void PosixTelemetry::LogRuntimeInferenceError(uint32_t session_id, const common::Status& status,
                                               const std::string& ep_versions,
                                               const std::string& ep_device_types) const {
-  if (!enabled_ || !logger_) {
+  if (!IsEnabled()) {
     return;
   }
 
@@ -784,7 +784,7 @@ void PosixTelemetry::LogRuntimePerf(
     uint32_t session_id, uint32_t total_runs_since_last,
     int64_t total_run_duration_since_last,
     const std::unordered_map<int64_t, long long>& duration_per_batch_size) const {
-  if (!enabled_ || !logger_) {
+  if (!IsEnabled()) {
     return;
   }
 
@@ -819,7 +819,7 @@ void PosixTelemetry::LogAutoEpSelection(
     uint32_t session_id, const std::string& selection_policy,
     const std::vector<std::string>& requested_execution_provider_ids,
     const std::vector<std::string>& available_execution_provider_ids) const {
-  if (!enabled_ || !logger_) {
+  if (!IsEnabled()) {
     return;
   }
 
@@ -839,7 +839,7 @@ void PosixTelemetry::LogProviderOptions(
     const std::string& provider_id,
     const std::string& provider_options_string,
     bool captureState) const {
-  if (!enabled_ || !logger_) {
+  if (!IsEnabled()) {
     return;
   }
 
@@ -856,7 +856,7 @@ void PosixTelemetry::LogProviderOptions(
 }
 
 void PosixTelemetry::LogModelLoadStart(uint32_t session_id) const {
-  if (!enabled_ || !logger_) {
+  if (!IsEnabled()) {
     return;
   }
 
@@ -870,7 +870,7 @@ void PosixTelemetry::LogModelLoadStart(uint32_t session_id) const {
 }
 
 void PosixTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& status) const {
-  if (!enabled_ || !logger_) {
+  if (!IsEnabled()) {
     return;
   }
 
@@ -888,7 +888,7 @@ void PosixTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& 
 }
 
 void PosixTelemetry::LogSessionCreationEnd(uint32_t session_id, const common::Status& status) const {
-  if (!enabled_ || !logger_) {
+  if (!IsEnabled()) {
     return;
   }
 
@@ -917,7 +917,7 @@ void PosixTelemetry::LogEpDeviceUsage(
     int assigned_node_count,
     uint32_t total_runs_since_last,
     int64_t total_run_duration_since_last) const {
-  if (!enabled_ || !logger_) {
+  if (!IsEnabled()) {
     return;
   }
 
@@ -941,7 +941,7 @@ void PosixTelemetry::LogEpDeviceUsage(
 }
 
 void PosixTelemetry::LogRegisterEpLibraryStart(const std::string& registration_name) const {
-  if (!enabled_ || !logger_) {
+  if (!IsEnabled()) {
     return;
   }
 
@@ -956,7 +956,7 @@ void PosixTelemetry::LogRegisterEpLibraryStart(const std::string& registration_n
 
 void PosixTelemetry::LogRegisterEpLibraryEnd(const std::string& registration_name,
                                              const common::Status& status) const {
-  if (!enabled_ || !logger_) {
+  if (!IsEnabled()) {
     return;
   }
 
@@ -975,7 +975,7 @@ void PosixTelemetry::LogRegisterEpLibraryEnd(const std::string& registration_nam
 
 void PosixTelemetry::LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
                                                      const std::string& lib_path) const {
-  if (!enabled_ || !logger_) {
+  if (!IsEnabled()) {
     return;
   }
 
@@ -990,7 +990,7 @@ void PosixTelemetry::LogRegisterEpLibraryWithLibPath(const std::string& registra
 }
 
 void PosixTelemetry::LogSystemMetrics(uint32_t session_id) const {
-  if (!enabled_ || !logger_) {
+  if (!IsEnabled()) {
     return;
   }
 
