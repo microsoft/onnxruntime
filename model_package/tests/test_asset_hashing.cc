@@ -212,11 +212,8 @@ bool test_directory_hash_rejects_symlink() {
 }
 
 bool test_directory_hash_known_value_single_file() {
-  // Construct a known answer:
-  // Content "hello\n" has sha256 = 5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03
-  // Wait that's "hello" without newline. Let me use a known value.
-  // sha256("alpha") = d5b25f47abbfe11f9c46c2e0f7c2d3d3c5f7e1b5d0d9e88e3e1b1e2e1f3e8b7b... unknown.
-  // Easier: compute expected manifest manually.
+  // Known-answer check: the directory URI hashes a manifest of "<file_hex>  <name>\n"
+  // lines, so compute the expected value the same way and compare.
   Sandbox s;
   s.Write("a.txt", "alpha");
 

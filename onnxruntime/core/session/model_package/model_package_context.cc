@@ -156,9 +156,9 @@ Status ModelPackageComponentContext::GetSelectedVariantFilePath(std::filesystem:
                 "Selected variant index out of range for component: ", component_model_name_);
 
   const auto& selected_variant = component_model_info_.variants[selected_idx];
-  ORT_RETURN_IF(!selected_variant.file.has_value(),
+  ORT_RETURN_IF(!selected_variant.file.has_value() || selected_variant.file->identifier.empty(),
                 "Selected variant '", selected_variant.variant_name,
-                "' has no executor_info[\"ort\"] entry or it lacks 'model_file'. Component: ",
+                "' has no executor_info[\"ort\"][\"model_file\"]. Component: ",
                 component_model_name_);
 
   out_path = selected_variant.file->model_file_path;

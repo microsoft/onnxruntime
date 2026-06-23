@@ -57,10 +57,10 @@ ModelPackageStatus* ResolvePath(const fs::path& base_dir,
   fs::path raw(input);
 
   if (!opts.allow_external_paths) {
-    if (raw.is_absolute()) {
+    if (raw.is_absolute() || raw.has_root_name()) {
       return model_package::MakeStatus(
           MODEL_PACKAGE_ERR_PATH_CONFINEMENT,
-          std::string("ResolvePath: absolute path '") + input +
+          std::string("ResolvePath: absolute or drive-rooted path '") + input +
               "' is not allowed in portable layout.");
     }
     if (ContainsParentRefSegment(raw)) {
@@ -71,7 +71,7 @@ ModelPackageStatus* ResolvePath(const fs::path& base_dir,
     }
   }
 
-  fs::path joined = raw.is_absolute() ? raw : (base_dir / raw);
+  fs::path joined = (raw.is_absolute() || raw.has_root_name()) ? raw : (base_dir / raw);
 
   std::error_code ec;
   fs::path canonical;

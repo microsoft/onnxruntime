@@ -180,7 +180,9 @@ MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_ResolveAssetUri(const ModelPa
 ///   - relative path                -> resolved against `base_dir` (or
 ///                                     `package_root` when `base_dir == NULL`),
 ///                                     confined to `package_root` in portable layout
-///   - absolute path / `..` segments -> only allowed in installed layout
+///   - absolute path / `..` segments -> only allowed in installed layout, or in
+///                                     any layout when the package was opened with
+///                                     `ModelPackageOpenOptions.allow_external_paths`
 ///
 /// `must_exist` controls whether a missing target is `MODEL_PACKAGE_ERR_NOT_FOUND`
 /// or the lexically-normalized path is returned anyway.
@@ -316,10 +318,13 @@ MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_Commit(ModelPackage*,
                                                           const char* dest_root_or_null,
                                                           ModelPackageWriteMode mode);
 
-/// Reclaim unreferenced files under `<package_root>/shared_assets/` and tracked
-/// orphan variant/component directories left behind by RemoveVariant,
-/// RemoveComponent, SetVariant or SetComponentExternal. Only paths registered
-/// through this API and inside `package_root` are touched.
+/// Reclaim stale `.tmp.<suffix>` staging directories under
+/// `<package_root>/shared_assets/` (left by interrupted commits, after a grace
+/// window) and tracked orphan variant/component directories left behind by
+/// RemoveVariant, RemoveComponent, SetVariant or SetComponentExternal. Only
+/// paths registered through this API and inside `package_root` are touched.
+/// Content-addressed shared-asset (`sha256-<hex>`) directories are never removed
+/// — use ModelPackage_RemoveSharedAsset to reclaim those.
 MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_Prune(ModelPackage*);
 
 typedef enum {
