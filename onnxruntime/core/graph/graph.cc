@@ -2739,6 +2739,10 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
   }
 
   TypeProto* getOutputType(size_t index) override {
+    if (index >= node_output_types_.size()) {
+      fail_type_inference("output index ", index, " is out of range; node has ",
+                          node_output_types_.size(), " outputs");
+    }
     return &node_output_types_[index];
   }
 
