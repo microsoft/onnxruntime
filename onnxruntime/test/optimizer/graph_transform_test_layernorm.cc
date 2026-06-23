@@ -541,6 +541,12 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionSharedCastPowExponent)
     };
 
     auto pre_graph_checker = [has_leading_cast](Graph& graph) {
+      if (has_leading_cast) {
+        for (Node& node : graph.Nodes()) {
+          node.SetExecutionProviderType(kCudaExecutionProvider);
+        }
+      }
+
       const auto op_to_count = CountOpsInGraph(graph);
       const auto cast_it = op_to_count.find("Cast");
       const int expected_cast_count = has_leading_cast ? 3 : 1;
@@ -550,7 +556,7 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionSharedCastPowExponent)
       return Status::OK();
     };
 
-    auto post_graph_checker = [](Graph& graph) {
+    auto post_graph_checker = [has_leading_cast](Graph& graph) {
       const auto op_to_count = CountOpsInGraph(graph);
       const auto simplified_layer_norm_it = op_to_count.find("SimplifiedLayerNormalization");
       TEST_RETURN_IF_NOT(simplified_layer_norm_it != op_to_count.end() &&
@@ -562,14 +568,118 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionSharedCastPowExponent)
       TEST_RETURN_IF_NOT(op_to_count.find("Sqrt") == op_to_count.end());
       TEST_RETURN_IF_NOT(op_to_count.find("Div") == op_to_count.end());
       TEST_RETURN_IF_NOT(op_to_count.find("Mul") == op_to_count.end());
+
+      if (has_leading_cast) {
+        for (const Node& node : graph.Nodes()) {
+          if (node.OpType() == "SimplifiedLayerNormalization") {
+            TEST_RETURN_IF_NOT(node.GetExecutionProviderType() == kCudaExecutionProvider);
+          }
+        }
+      }
+
       return Status::OK();
     };
 
     const InlinedHashSet<std::string_view> compatible_eps;
     ASSERT_STATUS_OK(TestGraphTransformer(
         build_test_case, 17, *logger_,
-        std::make_unique<SimplifiedLayerNormFusion>(compatible_eps, has_leading_cast),
+        std::make_unique<SimplifiedLayerNormFusion>(compatible_eps),
         TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
+  }
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionAddEpsilonInput0) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2, 4}});
+    auto* pow_exponent = builder.MakeInitializer<float>({}, {2.0f});
+    auto* epsilon = builder.MakeInitializer<float>({}, {1e-4f});
+    auto* scale = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
+
+    auto* pow_out = builder.MakeIntermediate();
+    auto* reduce_mean_out = builder.MakeIntermediate();
+    auto* add_out = builder.MakeIntermediate();
+    auto* sqrt_out = builder.MakeIntermediate();
+    auto* div_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Pow", {input, pow_exponent}, {pow_out});
+    builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out})
+        .AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Add", {epsilon, reduce_mean_out}, {add_out});
+    builder.AddNode("Sqrt", {add_out}, {sqrt_out});
+    builder.AddNode("Div", {input, sqrt_out}, {div_out});
+    builder.AddNode("Mul", {div_out, scale}, {output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    const auto simplified_layer_norm_it = op_to_count.find("SimplifiedLayerNormalization");
+    TEST_RETURN_IF_NOT(simplified_layer_norm_it != op_to_count.end() &&
+                       simplified_layer_norm_it->second == 1);
+
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == "SimplifiedLayerNormalization") {
+        const auto& attributes = node.GetAttributes();
+        const auto epsilon_it = attributes.find("epsilon");
+        TEST_RETURN_IF_NOT(epsilon_it != attributes.end());
+        TEST_RETURN_IF_NOT(epsilon_it->second.f() == 1e-4f);
+      }
+    }
+
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 17, *logger_,
+      std::make_unique<SimplifiedLayerNormFusion>(),
+      TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionRequiresPowExponentTwo) {
+  for (const bool has_cast_exponent : {false, true}) {
+    auto build_test_case = [has_cast_exponent](ModelTestBuilder& builder) {
+      auto* input = builder.MakeInput<float>({{2, 4}});
+      NodeArg* pow_exponent = nullptr;
+      if (has_cast_exponent) {
+        auto* pow_exponent_fp16 = builder.MakeInitializer<MLFloat16>({}, {MLFloat16(3.0f)});
+        pow_exponent = builder.MakeIntermediate();
+        builder.AddNode("Cast", {pow_exponent_fp16}, {pow_exponent})
+            .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+      } else {
+        pow_exponent = builder.MakeInitializer<float>({}, {3.0f});
+      }
+
+      auto* epsilon = builder.MakeInitializer<float>({}, {1e-5f});
+      auto* scale = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
+
+      auto* pow_out = builder.MakeIntermediate();
+      auto* reduce_mean_out = builder.MakeIntermediate();
+      auto* add_out = builder.MakeIntermediate();
+      auto* sqrt_out = builder.MakeIntermediate();
+      auto* div_out = builder.MakeIntermediate();
+      auto* output = builder.MakeOutput();
+
+      builder.AddNode("Pow", {input, pow_exponent}, {pow_out});
+      builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out})
+          .AddAttribute("axes", std::vector<int64_t>{-1});
+      builder.AddNode("Add", {reduce_mean_out, epsilon}, {add_out});
+      builder.AddNode("Sqrt", {add_out}, {sqrt_out});
+      builder.AddNode("Div", {input, sqrt_out}, {div_out});
+      builder.AddNode("Mul", {div_out, scale}, {output});
+    };
+
+    auto post_graph_checker = [](Graph& graph) {
+      const auto op_to_count = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_to_count.find("SimplifiedLayerNormalization") == op_to_count.end());
+      const auto pow_it = op_to_count.find("Pow");
+      TEST_RETURN_IF_NOT(pow_it != op_to_count.end() && pow_it->second == 1);
+      return Status::OK();
+    };
+
+    ASSERT_STATUS_OK(TestGraphTransformer(
+        build_test_case, 17, *logger_,
+        std::make_unique<SimplifiedLayerNormFusion>(),
+        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
   }
 }
 

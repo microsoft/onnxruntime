@@ -78,6 +78,74 @@ static std::vector<int64_t> GetAxesFromReduceMeanNode(Node& reduce_mean_node, co
   return axes_values;
 };
 
+static bool TryGetScalarInitializerAsDouble(const Graph& graph, const NodeArg& node_arg, double& value) {
+  const auto* tensor_proto = graph_utils::GetConstantInitializer(graph, node_arg.Name());
+  if (tensor_proto == nullptr) {
+    return false;
+  }
+
+  Initializer initializer{graph, *tensor_proto, graph.ModelPath()};
+  if (initializer.size() != 1) {
+    return false;
+  }
+
+  switch (tensor_proto->data_type()) {
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      value = static_cast<double>(initializer.data<float>()[0]);
+      return true;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+      value = static_cast<double>(initializer.data<MLFloat16>()[0]);
+      return true;
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+      value = initializer.data<double>()[0];
+      return true;
+    case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
+      value = static_cast<double>(initializer.data<BFloat16>()[0]);
+      return true;
+    default:
+      return false;
+  }
+}
+
+static bool IsPowExponentTwo(const Graph& graph, const Node& pow_node) {
+  const auto& pow_inputs = pow_node.InputDefs();
+  if (pow_inputs.size() < 2 || pow_inputs[1] == nullptr) {
+    return false;
+  }
+
+  double exponent_value = 0.0;
+  if (TryGetScalarInitializerAsDouble(graph, *pow_inputs[1], exponent_value)) {
+    return exponent_value == 2.0;
+  }
+
+  const Node* exponent_input_node = graph_utils::GetInputNode(pow_node, 1);
+  if (exponent_input_node == nullptr ||
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*exponent_input_node, "Cast", {9, 13, 19, 21, 23, 24, 25}) ||
+      exponent_input_node->InputDefs().empty() || exponent_input_node->InputDefs()[0] == nullptr) {
+    return false;
+  }
+
+  return TryGetScalarInitializerAsDouble(graph, *exponent_input_node->InputDefs()[0], exponent_value) &&
+         exponent_value == 2.0;
+}
+
+static const NodeArg* GetOtherAddInput(const Node& add_node, const NodeArg& known_input) {
+  const auto& add_inputs = add_node.InputDefs();
+  if (add_inputs.size() < 2) {
+    return nullptr;
+  }
+
+  if (add_inputs[0] != nullptr && add_inputs[0]->Name() == known_input.Name()) {
+    return add_inputs[1];
+  }
+
+  if (add_inputs[1] != nullptr && add_inputs[1]->Name() == known_input.Name()) {
+    return add_inputs[0];
+  }
+
+  return nullptr;
+}
+
 /**
 Layer Normalization will fuse LayerNormalization into one node :
 +---------------------+
@@ -558,7 +626,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_node, "Pow", {7, 12, 13, 15}) ||
         !graph_utils::IsSupportedProvider(pow_node, GetCompatibleExecutionProviders()) ||
         !optimizer_utils::CheckOutputEdges(graph, pow_node, 1) || graph.NodeProducesGraphOutput(pow_node) ||
-        !IsSupportedDataType(pow_node)) {
+        !IsSupportedDataType(pow_node) || !IsPowExponentTwo(graph, pow_node)) {
       continue;
     }
     nodes_to_remove.push_back(pow_node);
@@ -589,6 +657,11 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
       continue;
     }
     nodes_to_remove.push_back(add_node);
+
+    const NodeArg* epsilon_input = GetOtherAddInput(add_node, *reduce_mean_node.MutableOutputDefs()[0]);
+    if (epsilon_input == nullptr) {
+      continue;
+    }
 
     const Node* p_sqrt = graph_utils::FirstChildByType(add_node, "Sqrt");
     if (p_sqrt == nullptr) {
@@ -728,7 +801,7 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
 
     // Get constant "epsilon" from "Add" node if available. Else, default value will be used.
     const ONNX_NAMESPACE::TensorProto* tensor_proto =
-        graph_utils::GetConstantInitializer(graph, add_node.MutableInputDefs()[1]->Name());
+        graph_utils::GetConstantInitializer(graph, epsilon_input->Name());
     if (tensor_proto != nullptr && tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       Initializer initializer{graph, *tensor_proto, graph.ModelPath()};
       // epsilon must be a scalar/1-element tensor; fall back to default otherwise.
