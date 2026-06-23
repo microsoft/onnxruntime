@@ -612,6 +612,7 @@ void PosixTelemetry::LogSessionCreation(
     const std::vector<std::string>& execution_provider_ids,
     const std::string& hardware_device_types,
     const std::string& hardware_vendor_ids,
+    const std::string& ep_versions,
     bool use_fp16, bool captureState) const {
   if (!enabled_ || !logger_) {
     return;
@@ -640,6 +641,7 @@ void PosixTelemetry::LogSessionCreation(
                      .AddStringList("executionProviderIds", execution_provider_ids)
                      .AddString("hardwareDeviceTypes", hardware_device_types)
                      .AddString("hardwareVendorIds", hardware_vendor_ids)
+                     .AddString("executionProviderVersions", ep_versions)
                      .AddBool("useFp16", use_fp16);
 
   LogEventAsync(builder.Build());
@@ -714,6 +716,28 @@ void PosixTelemetry::LogRuntimeError(
                    .AddString("file", file ? file : "")
                    .AddString("function", function ? function : "")
                    .AddUInt32("line", line)
+                   .Build();
+
+  LogEventAsync(std::move(event));
+}
+
+void PosixTelemetry::LogRuntimeInferenceError(uint32_t session_id, const common::Status& status,
+                                              const std::string& ep_versions,
+                                              const std::string& ep_device_types) const {
+  if (!enabled_ || !logger_) {
+    return;
+  }
+
+  auto event = EventBuilder("RuntimeInferenceError", EventPriority::HIGH,
+                            PDT_ProductAndServicePerformance)
+                   .AddCommonContext(this)
+                   .AddUInt32("sessionId", session_id)
+                   .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
+                   .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
+                   .AddString("errorMessage", status.ErrorMessage())
+                   .AddString("executionProviderVersions", ep_versions)
+                   .AddString("executionProviderDeviceTypes", ep_device_types)
+                   .AddString("runtimeVersion", ORT_VERSION)
                    .Build();
 
   LogEventAsync(std::move(event));
@@ -852,6 +876,7 @@ void PosixTelemetry::LogEpDeviceUsage(
     uint32_t hardware_device_id,
     const std::string& hardware_vendor,
     const std::string& ep_vendor,
+    const std::string& ep_version,
     int assigned_node_count,
     uint32_t total_runs_since_last,
     int64_t total_run_duration_since_last) const {
@@ -869,6 +894,7 @@ void PosixTelemetry::LogEpDeviceUsage(
                    .AddUInt32("hardwareDeviceId", hardware_device_id)
                    .AddString("hardwareVendor", hardware_vendor)
                    .AddString("epVendor", ep_vendor)
+                   .AddString("epVersion", ep_version)
                    .AddInt32("assignedNodeCount", assigned_node_count)
                    .AddUInt32("totalRunsSinceLast", total_runs_since_last)
                    .AddInt64("totalRunDurationSinceLast", total_run_duration_since_last)
