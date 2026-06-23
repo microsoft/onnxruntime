@@ -177,7 +177,7 @@ std::filesystem::path BuildPackage(const std::filesystem::path& package_root,
   components_obj[component_name] = std::move(component_obj);
 
   ojson manifest = ojson::object();
-  manifest["schema_version"] = 1;
+  manifest["schema_version"] = "1.0";
   manifest["components"] = std::move(components_obj);
 
   std::ofstream os(package_root / "manifest.json", std::ios::binary);

@@ -481,7 +481,6 @@ ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg,
   // Re-parse the newly written package into a fresh state and swap in.
   ModelPackageOpenOptions opts{};
   opts.struct_size = sizeof(ModelPackageOpenOptions);
-  opts.abi_version = MODEL_PACKAGE_ABI_VERSION;
   opts.allow_external_paths = pkg->allow_external_paths;
   opts.follow_symlinks = pkg->follow_symlinks;
   opts.strict_unknown_fields = pkg->strict_unknown_fields;
@@ -505,7 +504,8 @@ ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg,
   std::swap(pkg->description_cache, fresh.description_cache);
   std::swap(pkg->layout_cache, fresh.layout_cache);
   std::swap(pkg->additional_metadata_cache, fresh.additional_metadata_cache);
-  std::swap(pkg->schema_version, fresh.schema_version);
+  std::swap(pkg->schema_version_major, fresh.schema_version_major);
+  std::swap(pkg->schema_version_minor, fresh.schema_version_minor);
   pkg->pending_shared_asset_copies.clear();
   pkg->info_cache.reset();
 

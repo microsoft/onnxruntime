@@ -35,15 +35,21 @@ extern "C" {
 #endif
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ABI version
+// Struct evolution / ABI compatibility
 // ─────────────────────────────────────────────────────────────────────────────
-
-/// ABI version of the POD structs in this header. Every struct carries an
-/// `abi_version` field documented as this value, giving callers and the library
-/// a single source of truth. Forward/backward compatibility of the structs is
-/// governed by `struct_size` (fields are only ever appended); `abi_version` is
-/// bumped only on a breaking reinterpretation of existing fields.
-#define MODEL_PACKAGE_ABI_VERSION 1
+//
+// Every struct in this header begins with `size_t struct_size`. That field is the
+// sole ABI-compatibility mechanism:
+//   * Callers set `struct_size = sizeof(T)` on option structs they pass in; the
+//     library reads only the fields that fit within the caller's `struct_size`
+//     and applies defaults for the rest. A caller built against an older header
+//     therefore interoperates with a newer library.
+//   * The library sets `struct_size` on the Info structs it returns; a caller
+//     built against an older header reads only the prefix it knows and ignores
+//     trailing fields a newer library appended.
+// New fields are only ever appended, never reordered or resized, so `struct_size`
+// alone fully describes what a given party understands. There is intentionally no
+// separate struct version field.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Opaque handle
@@ -69,7 +75,6 @@ MODEL_PACKAGE_API void ModelPackageStatus_Release(ModelPackageStatus*);
 
 typedef struct ModelPackageOpenOptions {
   size_t struct_size;          ///< sizeof(ModelPackageOpenOptions)
-  int abi_version;             ///< 1
   bool allow_external_paths;   ///< default false; unlocks absolute paths and `..` segments
   bool follow_symlinks;        ///< default true
   bool strict_unknown_fields;  ///< default true; relax to round-trip newer schemas
@@ -87,19 +92,26 @@ MODEL_PACKAGE_API ModelPackageStatus* ModelPackage_New(ModelPackage** out);
 MODEL_PACKAGE_API void ModelPackage_Close(ModelPackage* pkg);
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Data model — POD structs walked from ModelPackage_Info()
+// Data model — POD structs read from ModelPackage_Info()
 // ─────────────────────────────────────────────────────────────────────────────
+//
+// Each struct exposes scalar fields directly. Collections (a package's
+// components and shared assets, a component's variants, a variant's executor
+// infos) are NOT exposed as raw arrays: a consumer obtains each element through
+// the count + index accessors below, so the library owns the array stride. That
+// lets the library append fields to these element structs within a single
+// SOVERSION without breaking already-compiled consumers (they keep reading the
+// fields they know via the accessor-returned pointer). Index-walking a raw array
+// would bake the element size into the consumer and break on any field addition.
 
 typedef struct ModelExecutorInfoEntry {
   size_t struct_size;         ///< sizeof(ModelExecutorInfoEntry)
-  int abi_version;            ///< 1
   const char* namespace_key;  ///< executor namespace name (e.g. "ort")
   const char* json;           ///< canonical JSON value as string (object, array, etc.)
 } ModelExecutorInfoEntry;
 
 typedef struct ModelVariantInfo {
   size_t struct_size;  ///< sizeof(ModelVariantInfo)
-  int abi_version;     ///< 1
   const char* name;
   /// Resolved absolute path to the variant's on-disk directory, or NULL when
   /// no directory has been declared and the default location does not exist.
@@ -108,45 +120,58 @@ typedef struct ModelVariantInfo {
   const char* device;                    ///< NULL when unset
   const char* compatibility_string;      ///< NULL when unset
   const char* additional_metadata_json;  ///< NULL when unset
-  size_t num_executor_infos;
-  const ModelExecutorInfoEntry* executor_infos;
+  // executor infos: use ModelVariantInfo_GetExecutorInfoCount / _GetExecutorInfo.
 } ModelVariantInfo;
 
 typedef struct ModelComponentInfo {
   size_t struct_size;  ///< sizeof(ModelComponentInfo)
-  int abi_version;     ///< 1
   const char* name;
   const char* additional_metadata_json;  ///< NULL when unset
-  size_t num_variants;
-  const ModelVariantInfo* variants;
+  // variants: use ModelComponentInfo_GetVariantCount / _GetVariant.
 } ModelComponentInfo;
 
 typedef struct ModelSharedAssetInfo {
   size_t struct_size;         ///< sizeof(ModelSharedAssetInfo)
-  int abi_version;            ///< 1
   const char* uri;            ///< "sha256:<hex>"
   const char* resolved_path;  ///< absolute on-disk directory path
 } ModelSharedAssetInfo;
 
 typedef struct ModelPackageInfo {
-  size_t struct_size;  ///< sizeof(ModelPackageInfo)
-  int abi_version;     ///< 1
-  int64_t schema_version;
+  size_t struct_size;                    ///< sizeof(ModelPackageInfo)
+  int64_t schema_version_major;          ///< parsed from on-disk "<major>.<minor>"; gates compatibility
+  int64_t schema_version_minor;          ///< informational; indicates which optional fields may be present
   const char* package_name;              ///< NULL when unset
   const char* package_version;           ///< NULL when unset
   const char* description;               ///< NULL when unset
   const char* layout;                    ///< "portable" or "installed"
   const char* additional_metadata_json;  ///< NULL when unset
-
-  size_t num_components;
-  const ModelComponentInfo* components;
-  size_t num_shared_assets;
-  const ModelSharedAssetInfo* shared_assets;
+  // components: use ModelPackageInfo_GetComponentCount / _GetComponent.
+  // shared assets: use ModelPackageInfo_GetSharedAssetCount / _GetSharedAsset.
 } ModelPackageInfo;
 
 /// Return the package-level info tree. Pointer is owned by the package and is
 /// invalidated by any mutation.
 MODEL_PACKAGE_API const ModelPackageInfo* ModelPackage_Info(const ModelPackage* pkg);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Collection accessors (count + index). The returned element pointers are owned
+// by the package and invalidated by any mutation. An out-of-range index returns
+// NULL. The library computes element addresses with its own element size, so
+// these stay correct across additive struct evolution within a SOVERSION.
+// ─────────────────────────────────────────────────────────────────────────────
+
+MODEL_PACKAGE_API size_t ModelPackageInfo_GetComponentCount(const ModelPackageInfo*);
+MODEL_PACKAGE_API const ModelComponentInfo* ModelPackageInfo_GetComponent(const ModelPackageInfo*,
+                                                                          size_t index);
+MODEL_PACKAGE_API size_t ModelPackageInfo_GetSharedAssetCount(const ModelPackageInfo*);
+MODEL_PACKAGE_API const ModelSharedAssetInfo* ModelPackageInfo_GetSharedAsset(const ModelPackageInfo*,
+                                                                              size_t index);
+MODEL_PACKAGE_API size_t ModelComponentInfo_GetVariantCount(const ModelComponentInfo*);
+MODEL_PACKAGE_API const ModelVariantInfo* ModelComponentInfo_GetVariant(const ModelComponentInfo*,
+                                                                        size_t index);
+MODEL_PACKAGE_API size_t ModelVariantInfo_GetExecutorInfoCount(const ModelVariantInfo*);
+MODEL_PACKAGE_API const ModelExecutorInfoEntry* ModelVariantInfo_GetExecutorInfo(const ModelVariantInfo*,
+                                                                                 size_t index);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Convenience lookups

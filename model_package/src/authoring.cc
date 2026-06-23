@@ -26,6 +26,11 @@ using nlohmann::ordered_json;
 
 namespace {
 
+// Schema version stamped into newly authored packages, written as a "<major>.<minor>"
+// string. Keep in sync with the parser's supported major + highest known minor
+// (manifest_parser.cc: kMaxSupportedSchemaMajor / kMaxKnownSchemaMinor).
+constexpr const char* kAuthoredSchemaVersion = "1.0";
+
 ModelPackageStatus* NullArg(const char* name) {
   return MakeStatus(MODEL_PACKAGE_ERR_INVALID_ARG,
                     std::string("model_package: '") + name + "' must not be null.");
@@ -101,7 +106,8 @@ ModelPackageStatus* ModelPackage_New(ModelPackage** out) {
   if (!out) return NullArg("out");
   auto pkg = std::make_unique<ModelPackage>();
   pkg->manifest = ordered_json::object();
-  pkg->manifest["schema_version"] = 1;
+  // Authored at this build's schema version, written as a "<major>.<minor>" string.
+  pkg->manifest["schema_version"] = kAuthoredSchemaVersion;
   pkg->manifest["layout"] = "portable";
   pkg->manifest["components"] = ordered_json::object();
   pkg->layout = "portable";

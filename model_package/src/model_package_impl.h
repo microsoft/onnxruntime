@@ -82,14 +82,43 @@ struct SharedAssetRecord {
 /// Materialized POD-struct tree returned by ModelPackage_Info(). Owns all
 /// backing storage (extra strings and array buffers) so pointers stay valid
 /// until the next mutation drops the cache.
-struct InfoViewCache {
-  // Per-variant arrays. Indexed [component_idx][variant_idx].
-  std::vector<std::vector<ModelExecutorInfoEntry>> executor_infos_storage;
-  std::vector<std::vector<ModelVariantInfo>> variants_storage;
+///
+/// Collections are exposed to the C API through count + index accessors rather
+/// than raw arrays, so the library owns the element stride and can append fields
+/// to the public element structs without breaking compiled consumers. To let an
+/// accessor reach an element's children from just the public element pointer,
+/// each element with children is stored as a "view": the public POD struct as
+/// the first member (so a `reinterpret_cast` between the public pointer and the
+/// view is well defined), followed by private pointers/counts to its children.
+struct VariantView {
+  ModelVariantInfo pub{};  ///< MUST be the first member.
+  const ModelExecutorInfoEntry* executor_infos{nullptr};
+  size_t num_executor_infos{0};
+};
 
-  std::vector<ModelComponentInfo> components;
+struct ComponentView {
+  ModelComponentInfo pub{};  ///< MUST be the first member.
+  const VariantView* variants{nullptr};
+  size_t num_variants{0};
+};
+
+struct PackageInfoView {
+  ModelPackageInfo pub{};  ///< MUST be the first member.
+  const ComponentView* components{nullptr};
+  size_t num_components{0};
+  const ModelSharedAssetInfo* shared_assets{nullptr};
+  size_t num_shared_assets{0};
+};
+
+struct InfoViewCache {
+  // Per-component flat executor-info storage. Indexed [component_idx].
+  std::vector<std::vector<ModelExecutorInfoEntry>> executor_infos_storage;
+  // Per-component variant views. Indexed [component_idx].
+  std::vector<std::vector<VariantView>> variants_storage;
+
+  std::vector<ComponentView> components;
   std::vector<ModelSharedAssetInfo> shared_assets;
-  ModelPackageInfo info{};
+  PackageInfoView root{};
 };
 
 }  // namespace model_package
@@ -109,7 +138,8 @@ struct ModelPackage {
   bool strict_unknown_fields{true};
 
   // Package-level parsed data and stable string buffers.
-  int64_t schema_version{0};
+  int64_t schema_version_major{0};
+  int64_t schema_version_minor{0};
   std::optional<std::string> package_name_cache;
   std::optional<std::string> package_version_cache;
   std::optional<std::string> description_cache;

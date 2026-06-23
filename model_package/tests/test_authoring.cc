@@ -112,9 +112,10 @@ bool test_new_creates_empty_package() {
   PkgHandle p(raw);
   const ModelPackageInfo* info = ModelPackage_Info(p.get());
   CHECK(info != nullptr);
-  CHECK(info->schema_version == 1);
-  CHECK(info->num_components == 0);
-  CHECK(info->num_shared_assets == 0);
+  CHECK(info->schema_version_major == 0);
+  CHECK(info->schema_version_minor == 0);
+  CHECK(ModelPackageInfo_GetComponentCount(info) == 0);
+  CHECK(ModelPackageInfo_GetSharedAssetCount(info) == 0);
   CHECK(std::string(info->layout) == "portable");
   return true;
 }
@@ -130,11 +131,11 @@ bool test_set_component_inline_basic() {
 
   CHECK_OK(ModelPackage_SetComponentInline(p.get(), "encoder",
                                            R"({"variants": {}})"));
-  CHECK(ModelPackage_Info(p.get())->num_components == 1);
+  CHECK(ModelPackageInfo_GetComponentCount(ModelPackage_Info(p.get())) == 1);
   const ModelComponentInfo* c = ModelPackage_FindComponent(ModelPackage_Info(p.get()), "encoder");
   CHECK(c != nullptr);
   CHECK(std::string(c->name) == "encoder");
-  CHECK(c->num_variants == 0);
+  CHECK(ModelComponentInfo_GetVariantCount(c) == 0);
   return true;
 }
 
@@ -146,9 +147,9 @@ bool test_set_component_inline_replaces_existing() {
   CHECK_OK(ModelPackage_SetComponentInline(p.get(), "c", R"({"variants": {}})"));
   CHECK_OK(ModelPackage_SetComponentInline(p.get(), "c",
                                            R"({"variants": {"v1": {"variant_directory": "."}}})"));
-  CHECK(ModelPackage_Info(p.get())->num_components == 1);
+  CHECK(ModelPackageInfo_GetComponentCount(ModelPackage_Info(p.get())) == 1);
   const ModelComponentInfo* c = ModelPackage_FindComponent(ModelPackage_Info(p.get()), "c");
-  CHECK(c->num_variants == 1);
+  CHECK(ModelComponentInfo_GetVariantCount(c) == 1);
   return true;
 }
 
@@ -159,7 +160,7 @@ bool test_set_component_inline_rejects_unknown_field() {
   CHECK_ERR(ModelPackage_SetComponentInline(p.get(), "c",
                                             R"({"variants": {}, "typo_field": 1})"),
             MODEL_PACKAGE_ERR_SCHEMA);
-  CHECK(ModelPackage_Info(p.get())->num_components == 0);
+  CHECK(ModelPackageInfo_GetComponentCount(ModelPackage_Info(p.get())) == 0);
   return true;
 }
 
@@ -178,9 +179,9 @@ bool test_remove_component() {
   PkgHandle p(raw);
   CHECK_OK(ModelPackage_SetComponentInline(p.get(), "a", R"({"variants": {}})"));
   CHECK_OK(ModelPackage_SetComponentInline(p.get(), "b", R"({"variants": {}})"));
-  CHECK(ModelPackage_Info(p.get())->num_components == 2);
+  CHECK(ModelPackageInfo_GetComponentCount(ModelPackage_Info(p.get())) == 2);
   CHECK_OK(ModelPackage_RemoveComponent(p.get(), "a"));
-  CHECK(ModelPackage_Info(p.get())->num_components == 1);
+  CHECK(ModelPackageInfo_GetComponentCount(ModelPackage_Info(p.get())) == 1);
   const ModelPackageInfo* info = ModelPackage_Info(p.get());
   CHECK(ModelPackage_FindComponent(info, "a") == nullptr);
   CHECK(ModelPackage_FindComponent(info, "b") != nullptr);
@@ -208,7 +209,7 @@ bool test_set_variant_upsert() {
   CHECK_OK(ModelPackage_SetVariant(p.get(), "c", "v1",
                                    R"({"variant_directory": ".", "ep": "CPU"})"));
   const ModelComponentInfo* c = ModelPackage_FindComponent(ModelPackage_Info(p.get()), "c");
-  CHECK(c->num_variants == 1);
+  CHECK(ModelComponentInfo_GetVariantCount(c) == 1);
   const ModelVariantInfo* v = ModelComponentInfo_FindVariant(c, "v1");
   CHECK(v != nullptr);
   CHECK(std::string(v->ep) == "CPU");
@@ -217,7 +218,7 @@ bool test_set_variant_upsert() {
   CHECK_OK(ModelPackage_SetVariant(p.get(), "c", "v1",
                                    R"({"variant_directory": ".", "ep": "CUDA"})"));
   c = ModelPackage_FindComponent(ModelPackage_Info(p.get()), "c");
-  CHECK(c->num_variants == 1);
+  CHECK(ModelComponentInfo_GetVariantCount(c) == 1);
   v = ModelComponentInfo_FindVariant(c, "v1");
   CHECK(std::string(v->ep) == "CUDA");
   return true;
@@ -240,7 +241,7 @@ bool test_remove_variant() {
   CHECK_OK(ModelPackage_SetVariant(p.get(), "c", "v1", R"({"variant_directory": "."})"));
   CHECK_OK(ModelPackage_RemoveVariant(p.get(), "c", "v1"));
   const ModelComponentInfo* c = ModelPackage_FindComponent(ModelPackage_Info(p.get()), "c");
-  CHECK(c->num_variants == 0);
+  CHECK(ModelComponentInfo_GetVariantCount(c) == 0);
   return true;
 }
 
@@ -397,7 +398,7 @@ bool test_add_shared_asset_copy_in_false_installed_ok() {
                                        nullptr, /*copy_in=*/false, &uri));
   CHECK(uri != nullptr);
   // Surfaced as a manifest override -> shared_assets count should be 1.
-  CHECK(ModelPackage_Info(p.get())->num_shared_assets == 1);
+  CHECK(ModelPackageInfo_GetSharedAssetCount(ModelPackage_Info(p.get())) == 1);
   return true;
 }
 
@@ -429,9 +430,9 @@ bool test_remove_shared_asset() {
   CHECK_OK(ModelPackage_AddSharedAsset(p.get(), (s.root() / "src").c_str(),
                                        nullptr, /*copy_in=*/false, &uri));
   std::string uri_copy(uri);
-  CHECK(ModelPackage_Info(p.get())->num_shared_assets == 1);
+  CHECK(ModelPackageInfo_GetSharedAssetCount(ModelPackage_Info(p.get())) == 1);
   CHECK_OK(ModelPackage_RemoveSharedAsset(p.get(), uri_copy.c_str()));
-  CHECK(ModelPackage_Info(p.get())->num_shared_assets == 0);
+  CHECK(ModelPackageInfo_GetSharedAssetCount(ModelPackage_Info(p.get())) == 0);
   return true;
 }
 

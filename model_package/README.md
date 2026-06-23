@@ -76,7 +76,7 @@ unless `layout == "installed"`.
 
 ```jsonc
 {
-  "schema_version": 1,                   // required, must equal 1
+  "schema_version": "1.0",               // required, "<major>.<minor>" (major gates compat)
   "package_name":   "phi-4-mini",        // optional, free-form
   "package_version":"4.0.0",             // optional, free-form
   "description":    "Phi-4 mini reasoning model.",  // optional
@@ -99,7 +99,7 @@ Field reference:
 
 | Field                | Type            | Required | Notes |
 | -------------------- | --------------- | -------- | ----- |
-| `schema_version`     | integer         | yes      | Must be `1`. Anything else is an `ERR_VERSION`. |
+| `schema_version`     | string          | yes      | `"<major>.<minor>"` (e.g. `"1.0"`). The library accepts any package whose **major** is in its supported range and any **minor**; a major outside the range is an `ERR_VERSION`. A bare integer is accepted as `"<major>.0"`. Major gates compatibility; minor tells consumers which optional fields may be present. |
 | `package_name`       | string          | no       | Human label. Not used for resolution. |
 | `package_version`    | string          | no       | Human label. Not used for resolution. |
 | `description`        | string          | no       | Free-form. |
@@ -340,18 +340,19 @@ if (ModelPackageStatus* st = ModelPackage_Open("/path/to/pkg", NULL, &pkg)) {
 }
 
 const ModelPackageInfo* info = ModelPackage_Info(pkg);
-printf("schema=%lld layout=%s\n", (long long)info->schema_version, info->layout);
-for (size_t i = 0; i < info->num_components; ++i) {
-    const ModelComponentInfo* c = &info->components[i];
-    printf("component %s (%zu variants)\n", c->name, c->num_variants);
-    for (size_t v = 0; v < c->num_variants; ++v) {
-        const ModelVariantInfo* var = &c->variants[v];
+printf("schema=%lld.%lld layout=%s\n",
+       (long long)info->schema_version_major, (long long)info->schema_version_minor, info->layout);
+for (size_t i = 0; i < ModelPackageInfo_GetComponentCount(info); ++i) {
+    const ModelComponentInfo* c = ModelPackageInfo_GetComponent(info, i);
+    printf("component %s (%zu variants)\n", c->name, ModelComponentInfo_GetVariantCount(c));
+    for (size_t v = 0; v < ModelComponentInfo_GetVariantCount(c); ++v) {
+        const ModelVariantInfo* var = ModelComponentInfo_GetVariant(c, v);
         printf("  variant %s  dir=%s  ep=%s\n",
                var->name,
                var->variant_directory ? var->variant_directory : "(unset)",
                var->ep ? var->ep : "(unset)");
-        for (size_t e = 0; e < var->num_executor_infos; ++e) {
-            const ModelExecutorInfoEntry* ei = &var->executor_infos[e];
+        for (size_t e = 0; e < ModelVariantInfo_GetExecutorInfoCount(var); ++e) {
+            const ModelExecutorInfoEntry* ei = ModelVariantInfo_GetExecutorInfo(var, e);
             printf("    executor_info[%s] = %s\n", ei->namespace_key, ei->json);
         }
     }
@@ -398,6 +399,33 @@ mutation" rule.
 `ModelPackage_ResolveStringRef` and `ModelPackage_ComputeDirectoryHash`
 return pointers into a per-thread scratch slot; copy before the next call on
 the same thread.
+
+### Schema versioning and ABI compatibility
+
+Two independent version axes:
+
+- **`schema_version` (on-disk data contract).** A `"<major>.<minor>"` string. The
+  library accepts any package whose **major** is within its supported range and
+  **any minor**. Evolution within a major is additive and backward-compatible:
+  newer minors only add optional fields, so one parser reads every minor (a
+  newer-than-known minor's unknown fields are tolerated, not rejected).
+  Consumers read `info->schema_version_major` / `_minor` to decide which optional
+  fields a package may carry. A breaking format change bumps the major.
+
+- **C ABI (binary compatibility).** Governed by the library's **SOVERSION** plus
+  the `struct_size`-first POD structs:
+  - Every struct begins with `size_t struct_size`. Option structs the caller
+    passes in are read with a copy-if-fits rule (only fields within the caller's
+    `struct_size` are consumed); returned structs let an older caller read the
+    prefix it knows.
+  - **Collections are reached through count + index accessors**
+    (`ModelPackageInfo_GetComponent`, `ModelComponentInfo_GetVariant`, …), never
+    by indexing a raw array. The library owns the element stride, so fields can be
+    **appended** to the element structs within a SOVERSION without breaking an
+    already-compiled consumer.
+  - Layout is **append-only** (enforced by `static_assert`s on field offsets).
+    Reordering, removing, or reinterpreting an existing field is a breaking change
+    and bumps the **SOVERSION**; a `.so.N` consumer will not load `.so.(N+1)`.
 
 ### Commit modes
 

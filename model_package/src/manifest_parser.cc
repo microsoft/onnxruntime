@@ -21,7 +21,19 @@ namespace model_package {
 
 namespace {
 
-constexpr int64_t kSupportedSchemaVersion = 1;
+// The on-disk schema_version is a "<major>.<minor>" string (e.g. "1.0"). The major gates
+// compatibility; the minor is informational and tells consumers which optional fields may
+// be present. This build understands schema majors in [kMinSupportedSchemaMajor,
+// kMaxSupportedSchemaMajor] and any minor: schema evolution within a major is additive and
+// backward-compatible (newer minors only add optional fields), so a single parser reads
+// every minor. A package whose major is below the minimum predates a breaking change and
+// must be re-authored; one above the maximum was produced by a newer toolchain this build
+// does not understand. kMaxKnownSchemaMinor is the highest minor this build authored/knows;
+// a package with a higher minor is still accepted but may carry unknown optional fields,
+// which are tolerated rather than rejected.
+constexpr int64_t kMinSupportedSchemaMajor = 1;
+constexpr int64_t kMaxSupportedSchemaMajor = 1;
+constexpr int64_t kMaxKnownSchemaMinor = 0;
 constexpr const char* kManifestFileName = "manifest.json";
 constexpr const char* kComponentFileName = "component.json";
 
@@ -416,24 +428,69 @@ ModelPackageStatus* LoadSharedAssets(ModelPackage* pkg, const PathResolverOption
   return nullptr;
 }
 
-ModelPackageStatus* PopulatePackageMetadata(ModelPackage* pkg) {
+ModelPackageStatus* ParseSchemaVersion(ModelPackage* pkg) {
   auto sv_it = pkg->manifest.find(kSchemaVersionKey);
   if (sv_it == pkg->manifest.end()) {
     return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
                       "manifest: missing required 'schema_version'.");
   }
-  if (!sv_it->is_number_integer() && !sv_it->is_number_unsigned()) {
+
+  // schema_version is a "<major>.<minor>" string (e.g. "1.0"). A bare integer is accepted
+  // as shorthand for "<major>.0".
+  int64_t major = 0;
+  int64_t minor = 0;
+  if (sv_it->is_string()) {
+    const std::string sv = sv_it->get<std::string>();
+    const size_t dot = sv.find('.');
+    const std::string major_str = (dot == std::string::npos) ? sv : sv.substr(0, dot);
+    const std::string minor_str = (dot == std::string::npos) ? std::string("0") : sv.substr(dot + 1);
+    auto parse_part = [](const std::string& s, int64_t* out) -> bool {
+      if (s.empty() || s.find_first_not_of("0123456789") != std::string::npos) return false;
+      try {
+        *out = std::stoll(s);
+      } catch (const std::exception&) {
+        return false;
+      }
+      return true;
+    };
+    if (dot != std::string::npos && minor_str.find('.') != std::string::npos) {
+      return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
+                        "manifest: 'schema_version' must be a \"<major>.<minor>\" string.");
+    }
+    if (!parse_part(major_str, &major) || !parse_part(minor_str, &minor)) {
+      return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
+                        "manifest: 'schema_version' must be a \"<major>.<minor>\" string.");
+    }
+  } else if (sv_it->is_number_integer() || sv_it->is_number_unsigned()) {
+    major = sv_it->get<int64_t>();
+    minor = 0;
+  } else {
     return MakeStatus(MODEL_PACKAGE_ERR_SCHEMA,
-                      "manifest: 'schema_version' must be an integer.");
-  }
-  pkg->schema_version = sv_it->get<int64_t>();
-  if (pkg->schema_version != kSupportedSchemaVersion) {
-    return MakeStatus(MODEL_PACKAGE_ERR_VERSION,
-                      "manifest: schema_version " + std::to_string(pkg->schema_version) +
-                          " is not supported (this build supports " +
-                          std::to_string(kSupportedSchemaVersion) + ").");
+                      "manifest: 'schema_version' must be a \"<major>.<minor>\" string.");
   }
 
+  if (major < kMinSupportedSchemaMajor || major > kMaxSupportedSchemaMajor) {
+    std::string supported = (kMinSupportedSchemaMajor == kMaxSupportedSchemaMajor)
+                                ? std::to_string(kMinSupportedSchemaMajor)
+                                : std::to_string(kMinSupportedSchemaMajor) + "-" +
+                                      std::to_string(kMaxSupportedSchemaMajor);
+    return MakeStatus(MODEL_PACKAGE_ERR_VERSION,
+                      "manifest: schema_version major " + std::to_string(major) +
+                          " is not supported (this build supports major " + supported + ").");
+  }
+  pkg->schema_version_major = major;
+  pkg->schema_version_minor = minor;
+
+  // A package authored at a newer minor than this build knows may carry optional fields this
+  // build does not recognize. Those are additive and must be tolerated rather than rejected,
+  // so relax unknown-field strictness for a newer minor.
+  if (minor > kMaxKnownSchemaMinor) {
+    pkg->strict_unknown_fields = false;
+  }
+  return nullptr;
+}
+
+ModelPackageStatus* PopulatePackageMetadata(ModelPackage* pkg) {
   auto stropt = [&](const char* key, std::optional<std::string>* dst) -> ModelPackageStatus* {
     auto it = pkg->manifest.find(key);
     if (it == pkg->manifest.end()) {
@@ -624,6 +681,10 @@ ModelPackageStatus* ParsePackage(const fs::path& package_root,
   if (auto* s = ParseJsonFile(manifest_path, &pkg->manifest)) return s;
   if (auto* s = ExpectObject(pkg->manifest, "manifest")) return s;
 
+  // Validate the schema version first so an unsupported package fails fast, before any
+  // component/asset parsing. May relax pkg->strict_unknown_fields for a newer minor.
+  if (auto* s = ParseSchemaVersion(pkg)) return s;
+
   // Layout pre-read for path-resolver options. Done before strict-unknown
   // check because we need the layout value to decide path-confinement.
   PathResolverOptions presolve_opts;
@@ -638,7 +699,7 @@ ModelPackageStatus* ParsePackage(const fs::path& package_root,
   }
 
   if (auto* s = CheckUnknownFields(pkg->manifest, kManifestKnownKeys, "manifest",
-                                   opts.strict_unknown_fields))
+                                   pkg->strict_unknown_fields))
     return s;
 
   // Components.
@@ -653,7 +714,7 @@ ModelPackageStatus* ParsePackage(const fs::path& package_root,
   for (auto e = comps_it->begin(); e != comps_it->end(); ++e) {
     std::unique_ptr<ComponentRecord> rec;
     if (auto* s = LoadComponentForEntry(pkg->package_root, pkg->package_root,
-                                        presolve_opts, opts.strict_unknown_fields,
+                                        presolve_opts, pkg->strict_unknown_fields,
                                         e.key(), e.value(), &rec)) {
       return s;
     }

@@ -132,11 +132,11 @@ bool test_commit_inplace_basic_roundtrip() {
   ModelPackage* re = nullptr;
   CHECK_OK(ModelPackage_Open(s.path("pkg").c_str(), nullptr, &re));
   PkgHandle rep(re);
-  CHECK(ModelPackage_Info(rep.get())->num_components == 1);
+  CHECK(ModelPackageInfo_GetComponentCount(ModelPackage_Info(rep.get())) == 1);
   const ModelPackageInfo* info = ModelPackage_Info(rep.get());
   const ModelComponentInfo* c = ModelPackage_FindComponent(info, "encoder");
   CHECK(c != nullptr);
-  CHECK(c->num_variants == 1);
+  CHECK(ModelComponentInfo_GetVariantCount(c) == 1);
   const ModelVariantInfo* v = ModelComponentInfo_FindVariant(c, "v1");
   CHECK(std::string(v->ep) == "CPU");
   return true;
