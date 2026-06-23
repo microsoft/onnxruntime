@@ -9,6 +9,7 @@
 #include <sstream>
 #include <random>
 #include <iomanip>
+#include <cstdint>
 #include <cstdlib>
 #include <vector>
 
@@ -59,7 +60,9 @@ std::string DeviceId::GetStatusString() {
 std::string DeviceId::GenerateUUID() {
   std::random_device rd;
   std::mt19937 gen(rd());
-  std::uniform_int_distribution<uint32_t> dist(0, UINT32_MAX);
+  // Default-constructed distribution covers the full [0, uint32_t max] range without relying on a
+  // max-value macro being transitively included.
+  std::uniform_int_distribution<uint32_t> dist;
 
   uint32_t data1 = dist(gen);
   uint16_t data2 = static_cast<uint16_t>(dist(gen) & 0xFFFF);
