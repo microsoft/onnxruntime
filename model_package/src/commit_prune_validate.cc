@@ -157,7 +157,10 @@ ModelPackageStatus* CheckPortableConfinement(const fs::path& root,
   if (c.is_absolute()) {
     // Confirm c is under r.
     auto rel = fs::relative(c, r, ec);
-    if (ec || rel.empty() || rel.native()[0] == '.') {
+    // An empty relative path, or one whose first component is "..", escapes the root.
+    // (Checking only the first character would wrongly reject in-root dot-prefixed names
+    // such as ".hidden/component.json".)
+    if (ec || rel.empty() || rel.begin()->string() == "..") {
       return MakeStatus(MODEL_PACKAGE_ERR_PATH_CONFINEMENT,
                         where + ": absolute path '" + c.string() +
                             "' escapes package_root '" + r.string() + "' (portable layout).");
@@ -478,7 +481,7 @@ ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg,
   // Re-parse the newly written package into a fresh state and swap in.
   ModelPackageOpenOptions opts{};
   opts.struct_size = sizeof(ModelPackageOpenOptions);
-  opts.abi_version = 1;
+  opts.abi_version = MODEL_PACKAGE_ABI_VERSION;
   opts.allow_external_paths = pkg->allow_external_paths;
   opts.follow_symlinks = pkg->follow_symlinks;
   opts.strict_unknown_fields = pkg->strict_unknown_fields;

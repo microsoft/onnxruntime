@@ -82,8 +82,16 @@ ModelPackageStatus* ResolvePath(const fs::path& base_dir,
           MODEL_PACKAGE_ERR_NOT_FOUND,
           std::string("ResolvePath: '") + joined.string() + "' does not exist.");
     }
-    // Best-effort: lexically-normalize so we at least drop redundant separators.
-    canonical = joined.lexically_normal();
+    // Missing leaf (common during authoring/commit). When following symlinks, use
+    // weakly_canonical so any existing symlinks in the path prefix are still resolved;
+    // lexically_normal would leave a symlinked prefix unresolved and let it escape
+    // package_root undetected. Fall back to lexical normalization if that fails.
+    if (opts.follow_symlinks) {
+      canonical = fs::weakly_canonical(joined, ec);
+      if (ec) canonical = joined.lexically_normal();
+    } else {
+      canonical = joined.lexically_normal();
+    }
   } else if (opts.follow_symlinks) {
     canonical = fs::canonical(joined, ec);
     if (ec) {
@@ -98,8 +106,13 @@ ModelPackageStatus* ResolvePath(const fs::path& base_dir,
     }
   }
 
-  if (!opts.allow_external_paths && exists_on_disk) {
-    // Confinement check: canonical must live under package_root's canonical form.
+  if (!opts.allow_external_paths && !package_root.empty()) {
+    // Confinement check: canonical must live under package_root's canonical form. This runs
+    // whether or not the leaf exists, so a not-yet-created path that resolves outside
+    // package_root (e.g. through a symlinked prefix) is still rejected. It is skipped when
+    // package_root is empty, which happens for in-memory authoring before a package has been
+    // anchored to a directory (there is no on-disk root to confine against yet); the
+    // absolute-path and ".." lexical checks above still apply in that case.
     fs::path canonical_root = fs::weakly_canonical(package_root, ec);
     if (ec) canonical_root = package_root.lexically_normal();
 

@@ -35,6 +35,17 @@ extern "C" {
 #endif
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ABI version
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// ABI version of the POD structs in this header. Every struct carries an
+/// `abi_version` field documented as this value, giving callers and the library
+/// a single source of truth. Forward/backward compatibility of the structs is
+/// governed by `struct_size` (fields are only ever appended); `abi_version` is
+/// bumped only on a breaking reinterpretation of existing fields.
+#define MODEL_PACKAGE_ABI_VERSION 1
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Opaque handle
 // ─────────────────────────────────────────────────────────────────────────────
 

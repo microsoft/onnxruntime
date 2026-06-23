@@ -89,7 +89,7 @@ const InfoViewCache& BuildOrGetViewCache(const ModelPackage* pkg) {
       for (const auto& [ns_str, body_json] : var.executor_info_resolved) {
         ModelExecutorInfoEntry entry{};
         entry.struct_size = sizeof(ModelExecutorInfoEntry);
-        entry.abi_version = 1;
+        entry.abi_version = MODEL_PACKAGE_ABI_VERSION;
         entry.namespace_key = ns_str.c_str();
         entry.json = body_json.c_str();
         cache.executor_infos_storage[ci].push_back(entry);
@@ -119,7 +119,7 @@ const InfoViewCache& BuildOrGetViewCache(const ModelPackage* pkg) {
       ModelVariantInfo& vi_out = cache.variants_storage[ci][vi];
       vi_out = ModelVariantInfo{};
       vi_out.struct_size = sizeof(ModelVariantInfo);
-      vi_out.abi_version = 1;
+      vi_out.abi_version = MODEL_PACKAGE_ABI_VERSION;
       vi_out.name = var.name_cache.c_str();
       vi_out.variant_directory =
           var.resolved_directory_cache.has_value() ? var.resolved_directory_cache->c_str() : nullptr;
@@ -136,7 +136,7 @@ const InfoViewCache& BuildOrGetViewCache(const ModelPackage* pkg) {
     ModelComponentInfo& ci_out = cache.components[ci];
     ci_out = ModelComponentInfo{};
     ci_out.struct_size = sizeof(ModelComponentInfo);
-    ci_out.abi_version = 1;
+    ci_out.abi_version = MODEL_PACKAGE_ABI_VERSION;
     ci_out.name = comp.name_cache.c_str();
     ci_out.additional_metadata_json = OptStr(comp.additional_metadata_cache);
     ci_out.num_variants = num_variants;
@@ -150,7 +150,7 @@ const InfoViewCache& BuildOrGetViewCache(const ModelPackage* pkg) {
     ModelSharedAssetInfo& sa = cache.shared_assets[i];
     sa = ModelSharedAssetInfo{};
     sa.struct_size = sizeof(ModelSharedAssetInfo);
-    sa.abi_version = 1;
+    sa.abi_version = MODEL_PACKAGE_ABI_VERSION;
     sa.uri = rec.uri_cache.c_str();
     sa.resolved_path = rec.resolved_path_cache.c_str();
   }
@@ -158,7 +158,7 @@ const InfoViewCache& BuildOrGetViewCache(const ModelPackage* pkg) {
   ModelPackageInfo& info = cache.info;
   info = ModelPackageInfo{};
   info.struct_size = sizeof(ModelPackageInfo);
-  info.abi_version = 1;
+  info.abi_version = MODEL_PACKAGE_ABI_VERSION;
   info.schema_version = pkg->schema_version;
   info.package_name = OptStr(pkg->package_name_cache);
   info.package_version = OptStr(pkg->package_version_cache);
@@ -204,7 +204,7 @@ ModelPackageStatus* ModelPackage_Open(const char* package_root,
 
   ModelPackageOpenOptions effective{};
   effective.struct_size = sizeof(ModelPackageOpenOptions);
-  effective.abi_version = 1;
+  effective.abi_version = MODEL_PACKAGE_ABI_VERSION;
   effective.allow_external_paths = false;
   effective.follow_symlinks = true;
   effective.strict_unknown_fields = true;
