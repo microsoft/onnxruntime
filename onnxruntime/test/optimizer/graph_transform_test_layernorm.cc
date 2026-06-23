@@ -6,6 +6,8 @@
 #endif
 
 #include <algorithm>
+#include <cstdint>
+#include <type_traits>
 
 #include "gtest/gtest.h"
 
@@ -633,6 +635,53 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionAddEpsilonInput0) {
       build_test_case, 17, *logger_,
       std::make_unique<SimplifiedLayerNormFusion>(),
       TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionAllowsIntegerPowExponentTwo) {
+  auto run_test = [this](auto exponent_value) {
+    using T = std::decay_t<decltype(exponent_value)>;
+
+    auto build_test_case = [exponent_value](ModelTestBuilder& builder) {
+      auto* input = builder.MakeInput<float>({{2, 4}});
+      auto* pow_exponent = builder.MakeInitializer<T>({}, {exponent_value});
+      auto* epsilon = builder.MakeInitializer<float>({}, {1e-5f});
+      auto* scale = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
+
+      auto* pow_out = builder.MakeIntermediate();
+      auto* reduce_mean_out = builder.MakeIntermediate();
+      auto* add_out = builder.MakeIntermediate();
+      auto* sqrt_out = builder.MakeIntermediate();
+      auto* div_out = builder.MakeIntermediate();
+      auto* output = builder.MakeOutput();
+
+      builder.AddNode("Pow", {input, pow_exponent}, {pow_out});
+      builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out})
+          .AddAttribute("axes", std::vector<int64_t>{-1});
+      builder.AddNode("Add", {reduce_mean_out, epsilon}, {add_out});
+      builder.AddNode("Sqrt", {add_out}, {sqrt_out});
+      builder.AddNode("Div", {input, sqrt_out}, {div_out});
+      builder.AddNode("Mul", {div_out, scale}, {output});
+    };
+
+    auto post_graph_checker = [](Graph& graph) {
+      const auto op_to_count = CountOpsInGraph(graph);
+      const auto simplified_layer_norm_it = op_to_count.find("SimplifiedLayerNormalization");
+      TEST_RETURN_IF_NOT(simplified_layer_norm_it != op_to_count.end() &&
+                         simplified_layer_norm_it->second == 1);
+      TEST_RETURN_IF_NOT(op_to_count.find("Pow") == op_to_count.end());
+      return Status::OK();
+    };
+
+    ASSERT_STATUS_OK(TestGraphTransformer(
+        build_test_case, 17, *logger_,
+        std::make_unique<SimplifiedLayerNormFusion>(),
+        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+  };
+
+  run_test(int8_t{2});
+  run_test(uint8_t{2});
+  run_test(int32_t{2});
+  run_test(int64_t{2});
 }
 
 TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionRequiresPowExponentTwo) {

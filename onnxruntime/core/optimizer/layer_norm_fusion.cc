@@ -6,6 +6,7 @@
 #include "core/optimizer/utils.h"
 #include "float.h"
 #include <algorithm>
+#include <cstdint>
 #include <deque>
 
 using namespace ONNX_NAMESPACE;
@@ -101,6 +102,30 @@ static bool TryGetScalarInitializerAsDouble(const Graph& graph, const NodeArg& n
       return true;
     case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:
       value = static_cast<double>(initializer.data<BFloat16>()[0]);
+      return true;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+      value = static_cast<double>(initializer.data<int8_t>()[0]);
+      return true;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT16:
+      value = static_cast<double>(initializer.data<int16_t>()[0]);
+      return true;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+      value = static_cast<double>(initializer.data<int32_t>()[0]);
+      return true;
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+      value = static_cast<double>(initializer.data<int64_t>()[0]);
+      return true;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+      value = static_cast<double>(initializer.data<uint8_t>()[0]);
+      return true;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
+      value = static_cast<double>(initializer.data<uint16_t>()[0]);
+      return true;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+      value = static_cast<double>(initializer.data<uint32_t>()[0]);
+      return true;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
+      value = static_cast<double>(initializer.data<uint64_t>()[0]);
       return true;
     default:
       return false;
@@ -623,10 +648,12 @@ Status SimplifiedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int gr
     Node& pow_node = *p_pow;
     ORT_RETURN_IF_ERROR(Recurse(pow_node, modified, graph_level, logger));
 
+    // Only the Pow base/output type must be supported by SimplifiedLayerNormalization. The exponent can
+    // be an integer scalar 2 per the Pow schema and is validated separately.
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(pow_node, "Pow", {7, 12, 13, 15}) ||
         !graph_utils::IsSupportedProvider(pow_node, GetCompatibleExecutionProviders()) ||
         !optimizer_utils::CheckOutputEdges(graph, pow_node, 1) || graph.NodeProducesGraphOutput(pow_node) ||
-        !IsSupportedDataType(pow_node) || !IsPowExponentTwo(graph, pow_node)) {
+        !IsSupportedDataType(pow_node, 1) || !IsPowExponentTwo(graph, pow_node)) {
       continue;
     }
     nodes_to_remove.push_back(pow_node);
