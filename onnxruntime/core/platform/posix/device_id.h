@@ -43,6 +43,11 @@ class DeviceId {
   // Mobile: ~/.onnxruntime
   static std::string GetStorageDirectory(bool mobile = false);
 
+  // Same as GetStorageDirectory(), but also creates the directory tree (0700) if it does not exist.
+  // Returns "" if no suitable location is available. Use before writing into the directory (e.g. the
+  // telemetry offline cache, which the 1DS SDK opens during initialization).
+  static std::string EnsureStorageDirectory(bool mobile = false);
+
  private:
   DeviceId() = default;
   ~DeviceId() = default;

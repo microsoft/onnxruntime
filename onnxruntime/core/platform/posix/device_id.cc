@@ -129,6 +129,14 @@ std::string DeviceId::GetStorageDirectory(bool mobile) {
 #endif
 }
 
+std::string DeviceId::EnsureStorageDirectory(bool mobile) {
+  std::string dir = GetStorageDirectory(mobile);
+  if (!dir.empty()) {
+    CreateDirectoryTree(dir);
+  }
+  return dir;
+}
+
 void DeviceId::CreateDirectoryTree(const std::string& path) {
   if (path.empty()) return;
 

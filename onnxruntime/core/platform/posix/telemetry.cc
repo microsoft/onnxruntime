@@ -299,7 +299,7 @@ void PosixTelemetry::Initialize() {
 #else
     constexpr bool is_mobile = false;
 #endif
-    std::string cache_dir = DeviceId::GetStorageDirectory(is_mobile);
+    std::string cache_dir = DeviceId::EnsureStorageDirectory(is_mobile);
     if (!cache_dir.empty()) {
       std::string cache_path = cache_dir + "/telemetry_cache.db";
       config[CFG_STR_CACHE_FILE_PATH] = cache_path;
