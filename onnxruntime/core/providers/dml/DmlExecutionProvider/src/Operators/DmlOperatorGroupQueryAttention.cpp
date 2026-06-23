@@ -34,6 +34,13 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() >= 1);
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() >= 1);
 
+        constexpr uint32_t qNormWeightIndex = 14;
+        constexpr uint32_t kNormWeightIndex = 15;
+        const bool hasQNormWeight = kernelCreationContext.GetInputCount() > qNormWeightIndex && kernelCreationContext.IsInputValid(qNormWeightIndex);
+        const bool hasKNormWeight = kernelCreationContext.GetInputCount() > kNormWeightIndex && kernelCreationContext.IsInputValid(kNormWeightIndex);
+        ML_CHECK_VALID_ARGUMENT(!hasQNormWeight && !hasKNormWeight,
+            "GroupQueryAttention (DML): q_norm_weight / k_norm_weight inputs are not supported.");
+
         std::vector<std::optional<uint32_t>> inputIndices(inputCount);
         inputIndices[queryIndex] = queryIndex;
         inputIndices[keyIndex] = keyIndex;

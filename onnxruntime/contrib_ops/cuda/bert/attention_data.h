@@ -157,6 +157,12 @@ struct GroupQueryAttentionData {
   const T* sin_cache = nullptr;
   const T* head_sink = nullptr;
 
+  // Optional per-head Q/K RMSNorm (QK-Norm) weights, shape (head_size,), shared across heads.
+  // Both are non-null together (validated in the op) and trigger the fused normalization before RoPE.
+  const T* q_norm_weight = nullptr;
+  const T* k_norm_weight = nullptr;
+  float qk_norm_epsilon = 1e-6f;
+
   const float* k_scale = nullptr;
   const float* v_scale = nullptr;
 

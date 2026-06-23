@@ -116,7 +116,7 @@ static void RunGQASeqlensKTest(
   tester.Run(expect, expected_message, {}, nullptr, &execution_providers);
 }
 
-// CPU GroupQueryAttention does not implement the WebGPU-only fused Q/K RMS-norm prologue
+// CPU GroupQueryAttention does not implement the CUDA/WebGPU fused Q/K RMS-norm prologue
 // inputs (q_norm_weight/k_norm_weight at indices 14/15). Ensure we reject these explicitly.
 TEST(GroupQueryAttentionTest, CpuRejectsQKNormWeightInputs) {
   constexpr int batch_size = 1;
@@ -168,9 +168,14 @@ TEST(GroupQueryAttentionTest, CpuRejectsQKNormWeightInputs) {
              {}, nullptr, &execution_providers);
 }
 
-// CUDA GroupQueryAttention also does not implement the WebGPU-only fused Q/K RMS-norm
-// prologue inputs (q_norm_weight/k_norm_weight at indices 14/15). Ensure the guard is covered.
-TEST(GroupQueryAttentionTest, CudaRejectsQKNormWeightInputs) {
+static void RunCudaQKNormInputContractTest(
+    OpTester::ExpectResult expect,
+    const std::string& expected_message,
+    std::optional<float> qk_norm_epsilon = std::nullopt,
+    bool include_q_norm_weight = true,
+    bool include_k_norm_weight = true,
+    int q_norm_weight_size = 8,
+    int k_norm_weight_size = 8) {
   auto cuda_ep = DefaultCudaExecutionProvider();
   if (!cuda_ep) {
     GTEST_SKIP() << "CUDA EP not available";
@@ -187,6 +192,9 @@ TEST(GroupQueryAttentionTest, CudaRejectsQKNormWeightInputs) {
   OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
   tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+  if (qk_norm_epsilon.has_value()) {
+    tester.AddAttribute<float>("qk_norm_epsilon", *qk_norm_epsilon);
+  }
 
   tester.AddInput<MLFloat16>("query", {batch_size, sequence_length, hidden_size},
                              std::vector<MLFloat16>(batch_size * sequence_length * hidden_size, MLFloat16(0.1f)));
@@ -208,8 +216,16 @@ TEST(GroupQueryAttentionTest, CudaRejectsQKNormWeightInputs) {
   tester.AddOptionalInputEdge<MLFloat16>();  // k_scale
   tester.AddOptionalInputEdge<MLFloat16>();  // v_scale
 
-  tester.AddInput<MLFloat16>("q_norm_weight", {head_size}, std::vector<MLFloat16>(head_size, MLFloat16(1.0f)));
-  tester.AddInput<MLFloat16>("k_norm_weight", {head_size}, std::vector<MLFloat16>(head_size, MLFloat16(1.0f)));
+  if (include_q_norm_weight) {
+    tester.AddInput<MLFloat16>("q_norm_weight", {q_norm_weight_size},
+                               std::vector<MLFloat16>(q_norm_weight_size, MLFloat16(1.0f)));
+  } else if (include_k_norm_weight) {
+    tester.AddOptionalInputEdge<MLFloat16>();
+  }
+  if (include_k_norm_weight) {
+    tester.AddInput<MLFloat16>("k_norm_weight", {k_norm_weight_size},
+                               std::vector<MLFloat16>(k_norm_weight_size, MLFloat16(1.0f)));
+  }
 
   tester.AddOutput<MLFloat16>("output", {batch_size, sequence_length, hidden_size},
                               std::vector<MLFloat16>(batch_size * sequence_length * hidden_size, MLFloat16(0.0f)));
@@ -218,11 +234,50 @@ TEST(GroupQueryAttentionTest, CudaRejectsQKNormWeightInputs) {
   tester.AddOutput<MLFloat16>("present_value", {batch_size, kv_num_heads, sequence_length, head_size},
                               std::vector<MLFloat16>(batch_size * kv_num_heads * sequence_length * head_size, MLFloat16(0.0f)));
 
+  if (expect == OpTester::ExpectResult::kExpectSuccess) {
+    // This is an input-contract smoke test. The dedicated QK-Norm functional tests cover numerical equivalence.
+    tester.SetOutputTolerance(1e6f);
+  }
+
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCudaExecutionProvider());
-  tester.Run(OpTester::ExpectResult::kExpectFailure,
-             "q_norm_weight / k_norm_weight inputs are not supported",
-             {}, nullptr, &execution_providers);
+  execution_providers.push_back(std::move(cuda_ep));
+  tester.Run(expect, expected_message, {}, nullptr, &execution_providers);
+}
+
+// CUDA GroupQueryAttention implements the fused Q/K RMS-norm prologue inputs
+// (q_norm_weight/k_norm_weight at indices 14/15). Ensure the input contract is accepted.
+TEST(GroupQueryAttentionTest, CudaAcceptsQKNormWeightInputs) {
+  RunCudaQKNormInputContractTest(OpTester::ExpectResult::kExpectSuccess, "");
+}
+
+TEST(GroupQueryAttentionTest, CudaRejectsQKNormMissingKWeight) {
+  RunCudaQKNormInputContractTest(OpTester::ExpectResult::kExpectFailure,
+                                 "q_norm_weight and k_norm_weight must be provided together",
+                                 std::nullopt,
+                                 /*include_q_norm_weight=*/true,
+                                 /*include_k_norm_weight=*/false);
+}
+
+TEST(GroupQueryAttentionTest, CudaRejectsQKNormWrongKWeightShape) {
+  RunCudaQKNormInputContractTest(OpTester::ExpectResult::kExpectFailure,
+                                 "k_norm_weight must be a 1D tensor of shape",
+                                 std::nullopt,
+                                 /*include_q_norm_weight=*/true,
+                                 /*include_k_norm_weight=*/true,
+                                 /*q_norm_weight_size=*/8,
+                                 /*k_norm_weight_size=*/9);
+}
+
+TEST(GroupQueryAttentionTest, CudaRejectsZeroQKNormEpsilon) {
+  RunCudaQKNormInputContractTest(OpTester::ExpectResult::kExpectFailure,
+                                 "qk_norm_epsilon must be finite and positive",
+                                 0.0f);
+}
+
+TEST(GroupQueryAttentionTest, CudaRejectsNegativeQKNormEpsilon) {
+  RunCudaQKNormInputContractTest(OpTester::ExpectResult::kExpectFailure,
+                                 "qk_norm_epsilon must be finite and positive",
+                                 -1.0e-6f);
 }
 
 // Regression: negative seqlens_k wraps to huge size_t, causing GEMM OOB.
@@ -515,7 +570,7 @@ static void ApplyPerHeadRmsNormBSNH(std::vector<float>& data,
 }
 
 // Runs GroupQueryAttention with do_rotary=1 and optional q/k norm weights.
-// If q_norm_weight/k_norm_weight are provided, this exercises the WebGPU-only
+// If q_norm_weight/k_norm_weight are provided, this exercises the EP-specific
 // q/k norm input contract. CPU callers should pass nullptr for both and feed
 // pre-normalized Q/K values instead.
 static std::vector<float> RunGQARotaryWithOptionalQKNorm(

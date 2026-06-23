@@ -10,7 +10,9 @@
 #   ./profile_gqa.sh --all
 #   ./profile_gqa.sh --fp16 --int8
 #   ./profile_gqa.sh --fp16 --past-sequence-length 8192 --local-window-size 128
-#   ./profile_gqa.sh --bf16 --num-heads 64 --kv-num-heads 8
+#   ./profile_gqa.sh --bf16 --num-heads 64 --kv-num-heads 8 --head-size 128
+#   ./profile_gqa.sh --fp16 --compare-qk-norm --past-sequence-length 2048
+#   NSYS=~/cuda13.0/bin/nsys ./profile_gqa.sh --fp16 --qk-norm
 #   CUDA_VISIBLE_DEVICES=1 PYTHON=python3 ./profile_gqa.sh --int4
 #
 # Compare the new sliding-window XQA decode kernel against the FlashDecode baseline
@@ -28,6 +30,7 @@ set -o pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PY="${PYTHON:-python}"
+NSYS="${NSYS:-}"
 
 # Parse arguments
 RUN_FP16=false
@@ -40,13 +43,20 @@ RUN_BF16=false
 BATCH_SIZE=""
 SEQUENCE_LENGTH=""
 PAST_SEQUENCE_LENGTH=""
+MAX_SEQUENCE_LENGTH=""
 PACKED_QKV=""
 SHARE_KV_SCALE=""
 NUM_HEADS=""
 KV_NUM_HEADS=""
 HEAD_SIZE=""
-HEAD_SINK=""
 LOCAL_WINDOW_SIZE=""
+HEAD_SINK=""
+NO_ROTARY=""
+QK_NORM=false
+COMPARE_QK_NORM=false
+QK_NORM_EPSILON=""
+WARMUP=5
+REPEAT=100
 
 # When true, profile each mode twice: ORT_ENABLE_XQA=0 (FlashDecode) vs
 # ORT_ENABLE_XQA=1 (XQA, incl. the new sliding-window path).
@@ -97,6 +107,29 @@ while [[ "$#" -gt 0 ]]; do
             RUN_BF16=true
             echo "==== 🚀 All runs enabled ===="
             ;;
+        --qk-norm)
+            QK_NORM=true
+            echo "==== QK-Norm enabled ===="
+            ;;
+        --compare-qk-norm)
+            COMPARE_QK_NORM=true
+            echo "==== Compare baseline vs QK-Norm enabled ===="
+            ;;
+        --qk-norm-epsilon)
+            QK_NORM_EPSILON="--qk-norm-epsilon $2"
+            echo "==== QK-Norm epsilon: $2 ===="
+            shift
+            ;;
+        --warmup)
+            WARMUP="$2"
+            echo "==== Warmup iterations: $2 ===="
+            shift
+            ;;
+        --repeat)
+            REPEAT="$2"
+            echo "==== Repeat iterations: $2 ===="
+            shift
+            ;;
         -b|--batch-size)
             BATCH_SIZE="--batch-size $2"
             echo "==== Batch size: $2 ===="
@@ -110,6 +143,11 @@ while [[ "$#" -gt 0 ]]; do
         -p|--past-sequence-length)
             PAST_SEQUENCE_LENGTH="--past-sequence-length $2"
             echo "==== Past sequence length: $2 ===="
+            shift
+            ;;
+        --max-sequence-length)
+            MAX_SEQUENCE_LENGTH="--max-sequence-length $2"
+            echo "==== Max sequence length: $2 ===="
             shift
             ;;
         --qkv)
@@ -135,14 +173,18 @@ while [[ "$#" -gt 0 ]]; do
             echo "==== Head size: $2 ===="
             shift
             ;;
-        --head-sink)
-            HEAD_SINK="--head-sink"
-            echo "==== Head sink enabled ===="
-            ;;
         -w|--local-window-size)
             LOCAL_WINDOW_SIZE="--local-window-size $2"
             echo "==== Local window size: $2 ===="
             shift
+            ;;
+        --head-sink)
+            HEAD_SINK="--head-sink"
+            echo "==== Head sink enabled ===="
+            ;;
+        --no-rotary)
+            NO_ROTARY="--no-rotary"
+            echo "==== Rotary disabled ===="
             ;;
         *)
             echo "Unknown option: $1"
@@ -153,10 +195,19 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 # Build extra args string
-EXTRA_ARGS="${BATCH_SIZE} ${SEQUENCE_LENGTH} ${PAST_SEQUENCE_LENGTH} ${PACKED_QKV} ${SHARE_KV_SCALE} ${NUM_HEADS} ${KV_NUM_HEADS} ${HEAD_SIZE} ${HEAD_SINK} ${LOCAL_WINDOW_SIZE}"
+EXTRA_ARGS="${BATCH_SIZE} ${SEQUENCE_LENGTH} ${PAST_SEQUENCE_LENGTH} ${MAX_SEQUENCE_LENGTH} ${PACKED_QKV} ${SHARE_KV_SCALE} ${NUM_HEADS} ${KV_NUM_HEADS} ${HEAD_SIZE} ${LOCAL_WINDOW_SIZE} ${HEAD_SINK} ${NO_ROTARY} ${QK_NORM_EPSILON}"
 
-if ! command -v nsys >/dev/null; then
+if [[ -z "${NSYS}" ]]; then
+    if command -v nsys >/dev/null; then
+        NSYS="$(command -v nsys)"
+    elif [[ -x "${HOME}/cuda13.0/bin/nsys" ]]; then
+        NSYS="${HOME}/cuda13.0/bin/nsys"
+    fi
+fi
+
+if [[ -z "${NSYS}" || ! -x "${NSYS}" ]]; then
     echo "Error: nsys not found. Install NVIDIA Nsight Systems or add it to PATH."
+    echo "       Or set NSYS=/path/to/nsys (for example NSYS=~/cuda13.0/bin/nsys)."
     exit 1
 fi
 
@@ -169,12 +220,13 @@ else
     echo "      Falling back to --skip-first to exclude warmup-like first calls."
 fi
 
-# profile_one <mode> <tag> <output_base> [env_var=value ...]
+# profile_one <mode> <tag> <output_base> <extra_cli_args> [env_var=value ...]
 profile_one() {
     local mode="$1"
     local tag="$2"
     local base="$3"
-    shift 3
+    local cli_extra="$4"
+    shift 4
 
     local env_args=()
     local e
@@ -185,15 +237,37 @@ profile_one() {
     echo ""
     echo "---- Profiling ${mode} ----"
     rm -f "${base}.nsys-rep" "${base}.sqlite"
-    nsys profile -t cuda,nvtx --force-overwrite true "${env_args[@]}" -o "${base}" --export=sqlite \
-        "${PY}" "${SCRIPT_DIR}/profile_gqa.py" --mode "${mode}" --warmup 5 --repeat 100 ${EXTRA_ARGS}
+    "${NSYS}" profile -t cuda,nvtx --force-overwrite true "${env_args[@]}" -o "${base}" --export=sqlite \
+        "${PY}" "${SCRIPT_DIR}/profile_gqa.py" --mode "${mode}" --warmup "${WARMUP}" --repeat "${REPEAT}" ${EXTRA_ARGS} ${cli_extra}
 
     echo ""
     echo "---- Kernel results (${mode}) ----"
+    local range_name="benchmark_${mode}"
+    if [[ "${cli_extra}" == *"--qk-norm"* ]]; then
+        range_name="benchmark_${mode}_qknorm"
+    fi
     if [[ "${HAVE_NVTX}" -eq 1 ]]; then
-        "${PY}" "${SCRIPT_DIR}/parse_nsys.py" "${base}.sqlite" --nvtx-range "benchmark_${mode}" --tag "${tag}"
+        "${PY}" "${SCRIPT_DIR}/parse_nsys.py" "${base}.sqlite" --nvtx-range "${range_name}" --tag "${tag}" \
+            --pattern "%onnxruntime%" --pattern "%cudnn%"
     else
-        "${PY}" "${SCRIPT_DIR}/parse_nsys.py" "${base}.sqlite" --skip-first 5 --tag "${tag}"
+        "${PY}" "${SCRIPT_DIR}/parse_nsys.py" "${base}.sqlite" --skip-first "${WARMUP}" --tag "${tag}" \
+            --pattern "%onnxruntime%" --pattern "%cudnn%"
+    fi
+}
+
+profile_mode() {
+    local mode="$1"
+    local tag="$2"
+    local base="$3"
+    shift 3
+
+    if [[ "${COMPARE_QK_NORM}" == true ]]; then
+        profile_one "${mode}" "${tag}" "${base}" "" "$@"
+        profile_one "${mode}" "${tag}QK" "${base}_qknorm" "--qk-norm" "$@"
+    elif [[ "${QK_NORM}" == true ]]; then
+        profile_one "${mode}" "${tag}QK" "${base}_qknorm" "--qk-norm" "$@"
+    else
+        profile_one "${mode}" "${tag}" "${base}" "" "$@"
     fi
 }
 
@@ -209,14 +283,14 @@ run_mode() {
 
     if [ "$COMPARE_XQA" = true ]; then
         if [[ "${mode}" == "fp16" || "${mode}" == "bf16" ]]; then
-            profile_one "${mode}" "${tag}/XQA=0(FlashDecode)" "${base}_xqa0" ORT_ENABLE_XQA=0 "$@"
-            profile_one "${mode}" "${tag}/XQA=1(XQA)" "${base}_xqa1" ORT_ENABLE_XQA=1 "$@"
+            profile_mode "${mode}" "${tag}/XQA=0(FlashDecode)" "${base}_xqa0" ORT_ENABLE_XQA=0 "$@"
+            profile_mode "${mode}" "${tag}/XQA=1(XQA)" "${base}_xqa1" ORT_ENABLE_XQA=1 "$@"
         else
             echo "---- ${tag}: skipping XQA on/off comparison for quantized KV-cache mode ----"
-            profile_one "${mode}" "${tag}" "${base}" "$@"
+            profile_mode "${mode}" "${tag}" "${base}" "$@"
         fi
     else
-        profile_one "${mode}" "${tag}" "${base}" "$@"
+        profile_mode "${mode}" "${tag}" "${base}" "$@"
     fi
 }
 
