@@ -70,6 +70,20 @@ class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
   bool use_seqlen_k_;
 };
 
+class PrepareIndirectDispatchProgram final : public Program<PrepareIndirectDispatchProgram> {
+ public:
+  PrepareIndirectDispatchProgram()
+      : Program{"PrepareIndirectDispatch"} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"tile_size", ProgramUniformVariableDataType::Uint32},
+      {"num_heads", ProgramUniformVariableDataType::Uint32},
+      {"num_q_tiles", ProgramUniformVariableDataType::Uint32},
+      {"batch_size", ProgramUniformVariableDataType::Uint32});
+};
+
 class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
  public:
   FlashAttentionProgram(const std::string& kernel_name,
