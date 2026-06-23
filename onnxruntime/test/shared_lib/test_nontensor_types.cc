@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
 #include <functional>
 #include <iostream>
 #include <set>
@@ -102,13 +103,13 @@ TEST(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output typ
   constexpr int64_t NUM_KV_PAIRS = 4;
   std::vector<Ort::Value> in;
   const char* keys_arr[NUM_KV_PAIRS] = {"abc", "def", "ghi", "jkl"};
-  std::vector<std::string> keys{keys_arr, keys_arr + NUM_KV_PAIRS};
-  std::vector<int64_t> dims = {NUM_KV_PAIRS};
-  std::vector<float> values{3.0f, 1.0f, 2.f, 0.f};
+  std::array<int64_t, 1> dims = {NUM_KV_PAIRS};
+  std::array<float, NUM_KV_PAIRS> values{3.0f, 1.0f, 2.f, 0.f};
   for (size_t i = 0; i < N; ++i) {
     // create key tensor
-    Ort::Value keys_tensor = Ort::Value::CreateTensor(info, keys.data(), keys.size() * sizeof(std::string),
-                                                      dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+    Ort::Value keys_tensor = Ort::Value::CreateTensor(Ort::AllocatorWithDefaultOptions(), dims.data(), dims.size(),
+                                                      ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+    keys_tensor.FillStringTensor(keys_arr, NUM_KV_PAIRS);
     // create value tensor
     Ort::Value values_tensor = Ort::Value::CreateTensor(info, values.data(), values.size() * sizeof(float),
                                                         dims.data(), dims.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
@@ -147,7 +148,7 @@ TEST(CApiTest, CreateGetVectorOfMapsStringFloat) {  // support zipmap output typ
       std::string stemp(s + start, count);
       keys_ret.insert(stemp);
     }
-    ASSERT_EQ(keys_ret, std::set<std::string>(std::begin(keys), std::end(keys)));
+    ASSERT_EQ(keys_ret, std::set<std::string>(std::begin(keys_arr), std::end(keys_arr)));
 
     // second fetch the values
     Ort::Value values_ort = map_out.GetValue(1, default_allocator.get());
