@@ -117,16 +117,16 @@ bool test_open_minimal_inline() {
   CHECK(info->schema_version_minor == 0);
   CHECK(std::string(info->package_name) == "test");
   CHECK(std::string(info->layout) == "portable");
-  CHECK(ModelPackageInfo_GetComponentCount(info) == 1);
-  CHECK(ModelPackageInfo_GetSharedAssetCount(info) == 0);
+  CHECK((info)->num_components == 1);
+  CHECK((info)->num_shared_assets == 0);
   CHECK(info->additional_metadata_json == nullptr);
 
-  const ModelComponentInfo* c = ModelPackageInfo_GetComponent(info, 0);
+  const ModelComponentInfo* c = &(info)->components[0];
   CHECK(c != nullptr);
   CHECK(std::string(c->name) == "alpha");
-  CHECK(ModelComponentInfo_GetVariantCount(c) == 1);
+  CHECK((c)->num_variants == 1);
 
-  const ModelVariantInfo* v = ModelComponentInfo_GetVariant(c, 0);
+  const ModelVariantInfo* v = &(c)->variants[0];
   CHECK(v != nullptr);
   CHECK(std::string(v->name) == "cpu");
   CHECK(v->ep == nullptr);
@@ -208,7 +208,7 @@ bool test_external_component_file() {
   CHECK_OK(ModelPackage_Open(s.root().c_str(), nullptr, &pkg));
   const ModelComponentInfo* c = ModelPackage_FindComponent(ModelPackage_Info(pkg), "decoder");
   CHECK(c != nullptr);
-  CHECK(ModelComponentInfo_GetVariantCount(c) == 1);
+  CHECK((c)->num_variants == 1);
   ModelPackage_Close(pkg);
   return true;
 }
@@ -224,7 +224,7 @@ bool test_external_component_directory() {
   })");
   ModelPackage* pkg = nullptr;
   CHECK_OK(ModelPackage_Open(s.root().c_str(), nullptr, &pkg));
-  CHECK(ModelPackageInfo_GetComponentCount(ModelPackage_Info(pkg)) == 1);
+  CHECK((ModelPackage_Info(pkg))->num_components == 1);
   ModelPackage_Close(pkg);
   return true;
 }
@@ -326,7 +326,7 @@ bool test_installed_layout_allows_absolute() {
 
   ModelPackage* pkg = nullptr;
   CHECK_OK(ModelPackage_Open(s.root().c_str(), nullptr, &pkg));
-  CHECK(ModelPackageInfo_GetComponentCount(ModelPackage_Info(pkg)) == 1);
+  CHECK((ModelPackage_Info(pkg))->num_components == 1);
   ModelPackage_Close(pkg);
   return true;
 }
@@ -355,14 +355,14 @@ bool test_shared_assets_resolve() {
 
   ModelPackage* pkg = nullptr;
   CHECK_OK(ModelPackage_Open(s.root().c_str(), nullptr, &pkg));
-  CHECK(ModelPackageInfo_GetSharedAssetCount(ModelPackage_Info(pkg)) == 2);
+  CHECK((ModelPackage_Info(pkg))->num_shared_assets == 2);
 
-  const ModelSharedAssetInfo* a = ModelPackageInfo_GetSharedAsset(ModelPackage_Info(pkg), 0);
+  const ModelSharedAssetInfo* a = &(ModelPackage_Info(pkg))->shared_assets[0];
   CHECK(a != nullptr);
   CHECK(std::string(a->uri).find("aaaa") != std::string::npos);
   CHECK(std::string(a->resolved_path).find("assets/a") != std::string::npos);
 
-  const ModelSharedAssetInfo* b = ModelPackageInfo_GetSharedAsset(ModelPackage_Info(pkg), 1);
+  const ModelSharedAssetInfo* b = &(ModelPackage_Info(pkg))->shared_assets[1];
   CHECK(b != nullptr);
   CHECK(std::string(b->uri).find("bbbb") != std::string::npos);
   // Default convention path: shared_assets/sha256-<hex>
@@ -400,7 +400,6 @@ bool test_unknown_field_tolerated_lenient() {
     "components": { "x": {"variants": {"cpu": {"typo_field": 1}}} }
   })");
   ModelPackageOpenOptions opts{};
-  opts.struct_size = sizeof(opts);
   opts.strict_unknown_fields = false;
   opts.follow_symlinks = true;
   ModelPackage* pkg = nullptr;
@@ -440,7 +439,6 @@ bool test_round_trip_preserves_unknown_fields_lenient() {
     "components": { "x": {"variants": {"cpu": {"future_field":"keepme"}}} }
   })");
   ModelPackageOpenOptions opts{};
-  opts.struct_size = sizeof(opts);
   opts.strict_unknown_fields = false;
   opts.follow_symlinks = true;
   ModelPackage* pkg = nullptr;

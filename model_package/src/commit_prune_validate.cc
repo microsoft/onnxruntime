@@ -480,7 +480,6 @@ ModelPackageStatus* CommitToDestRoot(ModelPackage* pkg,
 
   // Re-parse the newly written package into a fresh state and swap in.
   ModelPackageOpenOptions opts{};
-  opts.struct_size = sizeof(ModelPackageOpenOptions);
   opts.allow_external_paths = pkg->allow_external_paths;
   opts.follow_symlinks = pkg->follow_symlinks;
   opts.strict_unknown_fields = pkg->strict_unknown_fields;

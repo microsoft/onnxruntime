@@ -383,9 +383,9 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
   model_package_info_.components.clear();
   component_name_to_index_.clear();
 
-  const size_t component_count = pkg_info ? ::ModelPackageInfo_GetComponentCount(pkg_info) : 0;
+  const size_t component_count = pkg_info ? pkg_info->num_components : 0;
   for (size_t ci = 0; ci < component_count; ++ci) {
-    const ::ModelComponentInfo* component = ::ModelPackageInfo_GetComponent(pkg_info, ci);
+    const ::ModelComponentInfo* component = &pkg_info->components[ci];
 
     std::string component_name = component->name ? component->name : "";
     const size_t component_idx = model_package_info_.components.size();
@@ -395,9 +395,9 @@ ModelPackageContext::ModelPackageContext(const std::filesystem::path& package_ro
     ort_component.component_name = component_name;
     ort_component.selected_variant_index.reset();
 
-    const size_t variant_count = ::ModelComponentInfo_GetVariantCount(component);
+    const size_t variant_count = component->num_variants;
     for (size_t vi = 0; vi < variant_count; ++vi) {
-      const ::ModelVariantInfo* variant = ::ModelComponentInfo_GetVariant(component, vi);
+      const ::ModelVariantInfo* variant = &component->variants[vi];
 
       VariantInfo ort_variant{};
       ort_variant.component_name = component_name;
