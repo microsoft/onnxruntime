@@ -72,6 +72,14 @@ namespace HEAD_DIM_NAMESPACE {
 #undef GRP_SIZE
 #undef M_TILESIZE
 
+#define NAMESPACE_NAME grp5_bf16
+#define GRP_SIZE 5
+#define M_TILESIZE 8
+#include "xqa_impl_gen.cuh"
+#undef NAMESPACE_NAME
+#undef GRP_SIZE
+#undef M_TILESIZE
+
 #define NAMESPACE_NAME grp8_bf16
 #define GRP_SIZE 8
 #define M_TILESIZE 8
@@ -215,6 +223,8 @@ Status LaunchXQAKernelImpl<__nv_bfloat16>(
       return grp2_bf16::Launch<__nv_bfloat16>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, attention_sinks, kv_cache_scale, workspace, workspace_size);
     case 4:
       return grp4_bf16::Launch<__nv_bfloat16>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, attention_sinks, kv_cache_scale, workspace, workspace_size);
+    case 5:
+      return grp5_bf16::Launch<__nv_bfloat16>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, attention_sinks, kv_cache_scale, workspace, workspace_size);
     case 8:
       return grp8_bf16::Launch<__nv_bfloat16>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, attention_sinks, kv_cache_scale, workspace, workspace_size);
     case 16:
@@ -222,7 +232,7 @@ Status LaunchXQAKernelImpl<__nv_bfloat16>(
     case 32:
       return grp32_bf16::Launch<__nv_bfloat16>(device_prop, stream, query, key_cache, value_cache, output, batch_size, num_heads, kv_num_heads, head_size, max_seq_len, scale, is_bsnh, past_seq_lens, attention_sinks, kv_cache_scale, workspace, workspace_size);
     default:
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "XQA supports group_size 1, 2, 4, 8, 16, 32. Input has ", group_size);
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "XQA supports group_size 1, 2, 4, 5, 8, 16, 32. Input has ", group_size);
   }
 }
 

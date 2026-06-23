@@ -32,6 +32,7 @@ function(get_c_cxx_api_headers HEADERS_VAR)
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_error_code.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_experimental_c_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_experimental_c_api.inc"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_experimental_cxx_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_float16.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h"
