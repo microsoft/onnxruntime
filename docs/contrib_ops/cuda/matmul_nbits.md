@@ -142,13 +142,11 @@ GEMVs (`output(1, N) = A(1, K) · dequant(B(N, K)) + bias(N)`). It is selected b
 
 - `zero_points == nullptr` (symmetric), `M == 1`,
 - `block_size ∈ {32, 64}` and `K % block_size == 0`,
-- the `(N, K)` pair matches a known router shape:
+- the `(N, K)` pair matches the exact-gated router shape:
 
 | Model | `N` (experts) | `K` (hidden size) |
 |-------|---------------|-------------------|
 | gpt-oss-20b | 32 | 2880 |
-| Qwen3.6-35B-A3B | 256 | 2048 |
-| gemma-4-26B-A4B | 128 | 2112 |
 
 Design notes:
 

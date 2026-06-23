@@ -1163,9 +1163,11 @@ Result: `1 test passed`.
   router shape with no zero-points or `g_idx` input.
 - The exact router GEMV kernel now accepts an optional bias pointer and adds the
   `[32]` bias before storing the router logits.
-- `ORT_DISABLE_QMOE_ROUTER_BIAS_FUSION=1` disables only this CUDA router bias
-  fusion. `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION=1` still disables both
-  the exact router GEMV specialization and this bias fusion.
+- The only runtime control is `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION=1`,
+  which disables the exact router GEMV specialization; the fused bias then falls
+  back to a separate bias-add in the generic path. The graph-level
+  `MatMulNBits + Add` rewrite itself is performed by the `MatMulNBitsFusion`
+  transformer and has no dedicated opt-out env var.
 
 ### Graph Validation
 
@@ -1183,10 +1185,10 @@ python <export-and-count-script>
 | Mode | Total `Add` nodes | Router `MatMulNBits` nodes with bias |
 |------|------------------:|--------------------------------------:|
 | enabled | 48 | 24 |
-| `ORT_DISABLE_QMOE_ROUTER_BIAS_FUSION=1` | 72 | 0 |
+| router bias fusion disabled | 72 | 0 |
 
-This confirms all 24 real GPT-OSS router bias Adds are fused and the opt-out
-restores the unfused graph.
+This confirms all 24 real GPT-OSS router bias Adds are fused and disabling the
+fusion restores the unfused graph.
 
 ### Model-Level Decode Benchmark With CUDA Graph
 
@@ -1205,7 +1207,7 @@ bash scripts/h200_18/bench_gpt_oss_ort_decode.sh
 | Mode | Decode latency ms/token | Decode throughput tok/s |
 |------|-------------------------:|-------------------------:|
 | enabled | 2.822998 | 354.233302 |
-| `ORT_DISABLE_QMOE_ROUTER_BIAS_FUSION=1` | 2.829066 | 353.473500 |
+| router bias fusion disabled | 2.829066 | 353.473500 |
 
 ### Decision
 
