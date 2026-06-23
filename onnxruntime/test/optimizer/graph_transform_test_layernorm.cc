@@ -14,6 +14,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/optimizer/initializer.h"
 
 #include "core/optimizer/bias_skip_layer_norm_fusion.h"
@@ -21,6 +22,7 @@
 #include "core/optimizer/group_query_attention_fusion.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "test/capturing_sink.h"
 #include "test/unittest_util/framework_test_utils.h"
@@ -569,6 +571,112 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionSharedCastPowExponent)
         std::make_unique<SimplifiedLayerNormFusion>(compatible_eps, has_leading_cast),
         TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
   }
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionOptimizationLoopSharedPowExponent) {
+  if (MlasFp16AccelerationSupported()) {
+    GTEST_SKIP() << "Skipping test because FP16 acceleration support can avoid the CPU fp16 fallback path.";
+  }
+
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* pow_exponent = builder.MakeInitializer<MLFloat16>({}, {MLFloat16(2.0f)});
+
+    auto add_simplified_layer_norm = [&](const std::vector<MLFloat16>& input_data) {
+      auto* input = builder.MakeInput<MLFloat16>({2, 4}, input_data);
+      auto* epsilon = builder.MakeInitializer<MLFloat16>({}, {MLFloat16(1e-4f)});
+      auto* scale = builder.MakeInitializer<MLFloat16>(
+          {4}, {MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f)});
+
+      auto* pow_out = builder.MakeIntermediate();
+      auto* reduce_mean_out = builder.MakeIntermediate();
+      auto* add_out = builder.MakeIntermediate();
+      auto* sqrt_out = builder.MakeIntermediate();
+      auto* div_out = builder.MakeIntermediate();
+      auto* output = builder.MakeOutput();
+
+      builder.AddNode("Pow", {input, pow_exponent}, {pow_out});
+      builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out})
+          .AddAttribute("axes", std::vector<int64_t>{-1});
+      builder.AddNode("Add", {reduce_mean_out, epsilon}, {add_out});
+      builder.AddNode("Sqrt", {add_out}, {sqrt_out});
+      builder.AddNode("Div", {input, sqrt_out}, {div_out});
+      builder.AddNode("Mul", {div_out, scale}, {output});
+    };
+
+    add_simplified_layer_norm({MLFloat16(0.5f), MLFloat16(1.0f), MLFloat16(1.5f), MLFloat16(2.0f),
+                               MLFloat16(2.5f), MLFloat16(3.0f), MLFloat16(3.5f), MLFloat16(4.0f)});
+    add_simplified_layer_norm({MLFloat16(1.0f), MLFloat16(1.25f), MLFloat16(1.5f), MLFloat16(1.75f),
+                               MLFloat16(2.0f), MLFloat16(2.25f), MLFloat16(2.5f), MLFloat16(2.75f)});
+
+    // This independent branch provides FuseInitializersTransformer with single-consumer FP16
+    // initializer Casts to fold at L4. With loop level 1, that L4 modification triggers the next L2 pass.
+    std::vector<MLFloat16> conv_input_data(25, MLFloat16(1.0f));
+    auto* conv_input = builder.MakeInput<MLFloat16>({1, 1, 5, 5}, conv_input_data);
+    auto* conv_weight = builder.MakeInitializer<MLFloat16>(
+        {1, 1, 3, 3}, std::vector<MLFloat16>(9, MLFloat16(0.25f)));
+    auto* conv_bias = builder.MakeInitializer<MLFloat16>({1}, {MLFloat16(0.0f)});
+    auto* conv_output = builder.MakeOutput();
+    builder.AddNode("Conv", {conv_input, conv_weight, conv_bias}, {conv_output});
+  };
+
+  auto op_count = [](const std::map<std::string, int>& op_to_count, const std::string& op_type) {
+    const auto it = op_to_count.find(op_type);
+    return it == op_to_count.end() ? 0 : it->second;
+  };
+
+  auto set_graph_optimization_loop_level = [](const char* loop_level) {
+    return [loop_level](SessionOptions& session_options) {
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+          kOrtSessionOptionsGraphOptimizationsLoopLevel, loop_level));
+    };
+  };
+
+  auto check_without_l2_repeat = [&](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_count(op_to_count, "SimplifiedLayerNormalization"), 0);
+    EXPECT_EQ(op_count(op_to_count, "Pow"), 2);
+
+    int cpu_pow_count = 0;
+    for (const Node& node : session.GetGraph().Nodes()) {
+      if (node.OpType() == "Pow") {
+        EXPECT_EQ(node.GetExecutionProviderType(), kCpuExecutionProvider);
+        ++cpu_pow_count;
+      }
+    }
+    EXPECT_EQ(cpu_pow_count, 2);
+  };
+
+  auto check_with_l2_repeat = [&](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_count(op_to_count, "SimplifiedLayerNormalization"), 2);
+    EXPECT_EQ(op_count(op_to_count, "Pow"), 0);
+    EXPECT_EQ(op_count(op_to_count, "ReduceMean"), 0);
+    EXPECT_EQ(op_count(op_to_count, "Add"), 0);
+    EXPECT_EQ(op_count(op_to_count, "Sqrt"), 0);
+    EXPECT_EQ(op_count(op_to_count, "Div"), 0);
+    EXPECT_EQ(op_count(op_to_count, "Mul"), 0);
+
+    int cpu_simplified_layer_norm_count = 0;
+    int inserted_cast_count = 0;
+    for (const Node& node : session.GetGraph().Nodes()) {
+      if (node.OpType() == "SimplifiedLayerNormalization") {
+        EXPECT_EQ(node.GetExecutionProviderType(), kCpuExecutionProvider);
+        ++cpu_simplified_layer_norm_count;
+      } else if (node.OpType() == "Cast" &&
+                 node.Name().find("InsertedPrecisionFreeCast_") == 0) {
+        ++inserted_cast_count;
+      }
+    }
+    EXPECT_EQ(cpu_simplified_layer_norm_count, 2);
+    EXPECT_GE(inserted_cast_count, 2);
+  };
+
+  TransformerTester(build_test_case, check_without_l2_repeat,
+                    TransformerLevel::Level1, TransformerLevel::MaxLevel, 17,
+                    1e-3, 1e-3, nullptr, set_graph_optimization_loop_level("0"));
+  TransformerTester(build_test_case, check_with_l2_repeat,
+                    TransformerLevel::Level1, TransformerLevel::MaxLevel, 17,
+                    1e-3, 1e-3, nullptr, set_graph_optimization_loop_level("1"));
 }
 
 // It tests the scenario when scale or bias are not Graph Inputs and not initialized in Graph
