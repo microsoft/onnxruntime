@@ -117,6 +117,11 @@ namespace Experimental {
 class EpContextConfig {
  public:
   EpContextConfig() noexcept = default;
+  explicit EpContextConfig(std::nullptr_t) noexcept {}
+
+  explicit EpContextConfig(const SessionOptions& session_options) : EpContextConfig{session_options.GetConst()} {}
+  explicit EpContextConfig(ConstSessionOptions session_options)
+      : EpContextConfig{static_cast<const OrtSessionOptions*>(session_options)} {}
 
   // Extracts the EPContext config from `session_options`. Throws Ort::Exception (ORT_NOT_IMPLEMENTED) if the
   // experimental functions are not available in this build, or propagates any error from the extraction.

@@ -696,7 +696,9 @@ TEST(OrtEpLibrary, PluginEp_GenAndLoadEpContextModel_ExternalDataUsesFileFallbac
   ASSERT_TRUE(std::filesystem::exists(context_data_path));
 
   std::vector<char> context_data;
-  const std::string context_data_file_name = ep_context_data_utils::PathToUtf8String(context_data_path);
+  std::string context_data_file_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(Ort::GetApi(), context_data_path,
+                                                              context_data_file_name));
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextDataFromFile(Ort::GetApi(), context_data_file_name.c_str(),
                                                                        nullptr, context_data));
   EXPECT_EQ(std::string(context_data.begin(), context_data.end()), "binary_data");

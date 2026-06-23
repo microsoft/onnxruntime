@@ -97,7 +97,9 @@ TEST(OrtEpLibrary, EpContextDataUtils_PathHelpersRoundTrip) {
   std::wstring wide_file_name;
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::Utf8ToWideString(api, file_name, wide_file_name));
   ASSERT_FALSE(wide_file_name.empty());
-  EXPECT_EQ(ep_context_data_utils::WideToUtf8String(wide_file_name), file_name);
+  std::string round_tripped_file_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::WideToUtf8String(api, wide_file_name, round_tripped_file_name));
+  EXPECT_EQ(round_tripped_file_name, file_name);
 
   const std::string invalid_utf8(1, static_cast<char>(0xff));
   std::wstring invalid_wide;
@@ -109,7 +111,9 @@ TEST(OrtEpLibrary, EpContextDataUtils_PathHelpersRoundTrip) {
   std::filesystem::path file_path;
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::Utf8Path(api, file_name.c_str(), file_path));
   ASSERT_FALSE(file_path.empty());
-  EXPECT_EQ(ep_context_data_utils::PathToUtf8String(file_path), file_name);
+  std::string round_tripped_path;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, file_path, round_tripped_path));
+  EXPECT_EQ(round_tripped_path, file_name);
 
   std::filesystem::path empty_path;
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::Utf8Path(api, nullptr, empty_path));
@@ -133,7 +137,9 @@ TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathAndInvalidArguments) {
   EXPECT_TRUE(data_path.empty());
 
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::ResolveEpContextDataPath(api, "relative.ctx", nullptr, data_path));
-  EXPECT_EQ(ep_context_data_utils::PathToUtf8String(data_path), "relative.ctx");
+  std::string resolved_data_path;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, data_path, resolved_data_path));
+  EXPECT_EQ(resolved_data_path, "relative.ctx");
 
   ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataToFile(api, "unused.ctx", nullptr, nullptr, 1),
                        ORT_INVALID_ARGUMENT, "EPContext data buffer must not be null for non-empty data");
@@ -230,7 +236,8 @@ TEST(OrtEpLibrary, EpContextDataUtils_FileFallbackReadsAndWrites) {
 
   const std::string payload = "file fallback payload";
   const std::filesystem::path data_path = test_dir / "context_data.bin";
-  const std::string data_file_name = ep_context_data_utils::PathToUtf8String(data_path);
+  std::string data_file_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, data_path, data_file_name));
 
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataToFile(api, data_file_name.c_str(), nullptr,
                                                                       payload.data(), payload.size()));
@@ -240,7 +247,8 @@ TEST(OrtEpLibrary, EpContextDataUtils_FileFallbackReadsAndWrites) {
   EXPECT_EQ(std::string(data.begin(), data.end()), payload);
 
   const std::filesystem::path wrapper_data_path = test_dir / "wrapper_context_data.bin";
-  const std::string wrapper_data_file_name = ep_context_data_utils::PathToUtf8String(wrapper_data_path);
+  std::string wrapper_data_file_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, wrapper_data_path, wrapper_data_file_name));
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataWithFileFallback(
       api, nullptr, wrapper_data_file_name.c_str(), nullptr, payload.data(), payload.size()));
 
@@ -250,14 +258,16 @@ TEST(OrtEpLibrary, EpContextDataUtils_FileFallbackReadsAndWrites) {
   EXPECT_EQ(std::string(data.begin(), data.end()), payload);
 
   const std::filesystem::path fallback_data_path = test_dir / "fallback_context_data.bin";
-  const std::string fallback_data_file_name = ep_context_data_utils::PathToUtf8String(fallback_data_path);
+  std::string fallback_data_file_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, fallback_data_path, fallback_data_file_name));
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataWithFileFallback(
       api, nullptr, "logical_context_data.bin", fallback_data_file_name.c_str(), nullptr, payload.data(),
       payload.size()));
 
   const std::filesystem::path unsafe_logical_fallback_path = test_dir / "unsafe_logical_context_data.bin";
-  const std::string unsafe_logical_fallback_file_name =
-      ep_context_data_utils::PathToUtf8String(unsafe_logical_fallback_path);
+  std::string unsafe_logical_fallback_file_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, unsafe_logical_fallback_path,
+                                                              unsafe_logical_fallback_file_name));
   ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(
                            api, nullptr, "../logical_context_data.bin",
                            unsafe_logical_fallback_file_name.c_str(), nullptr, payload.data(), payload.size()),
@@ -269,7 +279,8 @@ TEST(OrtEpLibrary, EpContextDataUtils_FileFallbackReadsAndWrites) {
   EXPECT_EQ(std::string(data.begin(), data.end()), payload);
 
   const std::filesystem::path empty_data_path = test_dir / "empty_context_data.bin";
-  const std::string empty_data_file_name = ep_context_data_utils::PathToUtf8String(empty_data_path);
+  std::string empty_data_file_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, empty_data_path, empty_data_file_name));
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataWithFileFallback(
       api, nullptr, empty_data_file_name.c_str(), nullptr, nullptr, 0));
 
@@ -279,7 +290,8 @@ TEST(OrtEpLibrary, EpContextDataUtils_FileFallbackReadsAndWrites) {
   EXPECT_TRUE(data.empty());
 
   const std::filesystem::path missing_data_path = test_dir / "missing_context_data.bin";
-  const std::string missing_data_file_name = ep_context_data_utils::PathToUtf8String(missing_data_path);
+  std::string missing_data_file_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, missing_data_path, missing_data_file_name));
   ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataFromFile(api, missing_data_file_name.c_str(), nullptr,
                                                                         data),
                        ORT_FAIL, "Failed to open EPContext data file for read");

@@ -10,6 +10,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #ifdef _WIN32
@@ -38,7 +39,16 @@
 // size limits, and path policies; see the per-function notes on how untrusted, model-derived names are treated.
 namespace ep_context_data_utils {
 
+using GetEpContextDataReadFunc = OrtStatus*(ORT_API_CALL*)(const OrtEpContextConfig* config,
+                                                           OrtReadNamedBufferFunc* read_func, void** state);
+using GetEpContextDataWriteFunc = OrtStatus*(ORT_API_CALL*)(const OrtEpContextConfig* config,
+                                                            OrtWriteNamedBufferFunc* write_func, void** state);
+
 #ifdef _WIN32
+inline std::string WindowsLastErrorMessage(std::string_view message, DWORD error_code) {
+  return std::string{message} + " GetLastError=" + std::to_string(error_code);
+}
+
 // Converts a UTF-8 string to a wide string. Reports conversion failures (e.g., invalid UTF-8) via OrtStatus* instead
 // of silently returning an empty string. An empty input yields an empty output and a success status.
 inline OrtStatus* Utf8ToWideString(const OrtApi& api, std::string_view value, std::wstring& wide_value) {
@@ -53,8 +63,9 @@ inline OrtStatus* Utf8ToWideString(const OrtApi& api, std::string_view value, st
   const int wide_length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(),
                                               static_cast<int>(value.size()), nullptr, 0);
   if (wide_length <= 0) {
-    return api.CreateStatus(ORT_INVALID_ARGUMENT,
-                            "EPContext data file name is not valid UTF-8 or could not be converted to a wide string");
+    const std::string message = WindowsLastErrorMessage(
+        "EPContext data file name is not valid UTF-8 or could not be converted to a wide string.", GetLastError());
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, message.c_str());
   }
 
   wide_value.resize(static_cast<size_t>(wide_length));
@@ -62,31 +73,42 @@ inline OrtStatus* Utf8ToWideString(const OrtApi& api, std::string_view value, st
                                             static_cast<int>(value.size()), wide_value.data(), wide_length);
   if (converted != wide_length) {
     wide_value.clear();
-    return api.CreateStatus(ORT_FAIL, "Failed to convert EPContext data file name to a wide string");
+    const std::string message = WindowsLastErrorMessage("Failed to convert EPContext data file name to a wide string.",
+                                                        GetLastError());
+    return api.CreateStatus(ORT_FAIL, message.c_str());
   }
   return nullptr;
 }
 
-// Converts a wide string to UTF-8. This is used only to render already-valid paths into diagnostic messages, so it is
-// intentionally best-effort: on the rare conversion failure it returns an empty string rather than an OrtStatus*.
-inline std::string WideToUtf8String(std::wstring_view value) {
-  if (value.empty() || value.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
-    return {};
+// Converts a wide string to UTF-8. Reports conversion failures via OrtStatus* instead of silently returning an empty
+// string. An empty input yields an empty output and a success status.
+inline OrtStatus* WideToUtf8String(const OrtApi& api, std::wstring_view value, std::string& utf8_value) {
+  utf8_value.clear();
+  if (value.empty()) {
+    return nullptr;
+  }
+  if (value.size() > static_cast<size_t>(std::numeric_limits<int>::max())) {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name is too long to convert");
   }
 
   const int utf8_length = WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()),
                                               nullptr, 0, nullptr, nullptr);
   if (utf8_length <= 0) {
-    return {};
+    const std::string message = WindowsLastErrorMessage(
+        "EPContext data file name could not be converted to UTF-8.", GetLastError());
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, message.c_str());
   }
 
-  std::string utf8_value(static_cast<size_t>(utf8_length), '\0');
+  utf8_value.resize(static_cast<size_t>(utf8_length));
   const int converted = WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()),
                                             utf8_value.data(), utf8_length, nullptr, nullptr);
   if (converted != utf8_length) {
-    return {};
+    utf8_value.clear();
+    const std::string message = WindowsLastErrorMessage("Failed to convert EPContext data file name to UTF-8.",
+                                                        GetLastError());
+    return api.CreateStatus(ORT_FAIL, message.c_str());
   }
-  return utf8_value;
+  return nullptr;
 }
 #endif
 
@@ -109,18 +131,28 @@ inline OrtStatus* Utf8Path(const OrtApi& api, const char* path, std::filesystem:
   return nullptr;
 }
 
-inline std::string PathToUtf8String(const std::filesystem::path& path) {
+inline OrtStatus* PathToUtf8String(const OrtApi& api, const std::filesystem::path& path, std::string& utf8_path) {
+  utf8_path.clear();
 #ifdef _WIN32
-  return WideToUtf8String(path.wstring());
+  RETURN_IF_ERROR(WideToUtf8String(api, path.wstring(), utf8_path));
 #else
-  return path.string();
+  (void)api;
+  utf8_path = path.string();
 #endif
+  return nullptr;
 }
 
-// Lexical check for a ".." component. This is a coarse guard used for logical (callback-namespace) names and for
-// trusted (graph == nullptr) paths. It is NOT a containment mechanism: it does not resolve symlinks and it rejects
-// benign cases such as "a/b/c/../file.txt". Filesystem containment against a base directory is done by
-// IsResolvedPathWithinBase() below, which the untrusted (model-relative) resolution path uses.
+inline std::string PathToUtf8StringForMessage(const std::filesystem::path& path) {
+  std::string utf8_path;
+  Ort::Status status{PathToUtf8String(Ort::GetApi(), path, utf8_path)};
+  return status.IsOK() ? utf8_path : std::string{"<path conversion failed>"};
+}
+
+// Lexical check for a ".." component. This is a coarse guard used when there is no filesystem base directory to
+// contain against: logical callback-namespace names and trusted (graph == nullptr) physical paths. It is NOT a
+// containment mechanism: it does not resolve symlinks and it rejects benign cases such as "a/b/c/../file.txt".
+// Filesystem containment against a model directory is done by IsResolvedPathWithinBase() below, which the untrusted
+// (model-relative) resolution path uses.
 inline bool ContainsPathTraversal(const std::filesystem::path& path) {
   const std::filesystem::path parent_dir{".."};
   for (const auto& component : path) {
@@ -147,12 +179,17 @@ inline bool IsResolvedPathWithinBase(const std::filesystem::path& base, const st
   if (ec) {
     return false;
   }
-  resolved = std::filesystem::weakly_canonical(candidate_full, ec);
+  std::filesystem::path candidate_resolved = std::filesystem::weakly_canonical(candidate_full, ec);
   if (ec) {
     return false;
   }
-  const std::filesystem::path relative = resolved.lexically_relative(canonical_base);
-  return !relative.empty() && *relative.begin() != std::filesystem::path{".."};
+  const std::filesystem::path relative = candidate_resolved.lexically_relative(canonical_base);
+  if (relative.empty() || *relative.begin() == std::filesystem::path{".."}) {
+    return false;
+  }
+
+  resolved = std::move(candidate_resolved);
+  return true;
 }
 
 inline OrtStatus* ValidateEpContextDataName(const OrtApi& api, const char* file_name,
@@ -190,7 +227,9 @@ inline OrtStatus* ValidateEpContextDataName(const OrtApi& api, const char* file_
 // relative, and after combining it with the model's directory the result must stay within that directory. Symlinks and
 // ".." are resolved (via weakly_canonical), so a name that escapes the model directory - including through a symlink -
 // is rejected.
-// Production EPs should still apply their own sandboxing and size limits.
+// This helper only decides whether a model-derived file name resolves inside the model directory. Production EPs
+// should still choose an application-approved storage root (sandbox), reject special files/locations as appropriate,
+// and cap the number of bytes they will read or write for a single EPContext payload.
 inline OrtStatus* ResolveEpContextDataPath(const OrtApi& api, const char* file_name, const OrtGraph* graph,
                                            std::filesystem::path& data_path) {
   data_path.clear();
@@ -242,7 +281,7 @@ inline OrtStatus* WriteEpContextDataToResolvedFile(const OrtApi& api, const std:
   std::ofstream output_stream(data_path, std::ios::binary);
   if (!output_stream) {
     const std::string message = "Failed to open EPContext data file for write: " +
-                                PathToUtf8String(data_path);
+                                PathToUtf8StringForMessage(data_path);
     return api.CreateStatus(ORT_FAIL, message.c_str());
   }
 
@@ -254,7 +293,7 @@ inline OrtStatus* WriteEpContextDataToResolvedFile(const OrtApi& api, const std:
     output_stream.write(static_cast<const char*>(buffer), static_cast<std::streamsize>(buffer_size));
     if (!output_stream) {
       const std::string message = "Failed to write EPContext data file: " +
-                                  PathToUtf8String(data_path);
+                                  PathToUtf8StringForMessage(data_path);
       return api.CreateStatus(ORT_FAIL, message.c_str());
     }
   }
@@ -272,14 +311,14 @@ inline OrtStatus* ReadEpContextDataFromFile(const OrtApi& api, const char* file_
   std::ifstream input_stream(data_path, std::ios::binary);
   if (!input_stream) {
     const std::string message = "Failed to open EPContext data file for read: " +
-                                PathToUtf8String(data_path);
+                                PathToUtf8StringForMessage(data_path);
     return api.CreateStatus(ORT_FAIL, message.c_str());
   }
 
   data.assign(std::istreambuf_iterator<char>{input_stream}, std::istreambuf_iterator<char>{});
   if (!input_stream) {
     const std::string message = "Failed to read EPContext data file: " +
-                                PathToUtf8String(data_path);
+                                PathToUtf8StringForMessage(data_path);
     return api.CreateStatus(ORT_FAIL, message.c_str());
   }
 
@@ -302,7 +341,7 @@ inline OrtStatus* WriteEpContextDataToFile(const OrtApi& api, const char* file_n
 // `ep_context_config` is an opaque token only forwarded to `get_read_func` (never dereferenced here).
 inline OrtStatus* ReadEpContextDataWithFileFallback(
     const OrtApi& api,
-    OrtExperimental_OrtEpApi_EpContextConfig_GetEpContextDataReadFunc_SinceV28_Fn get_read_func,
+    GetEpContextDataReadFunc get_read_func,
     const OrtEpContextConfig* ep_context_config,
     const char* file_name, const OrtGraph* graph,
     std::vector<char>& data) {
@@ -374,7 +413,7 @@ inline OrtStatus* ReadEpContextDataWithFileFallback(
 // `ep_context_config` is an opaque token only forwarded to `get_write_func` (never dereferenced here).
 inline OrtStatus* WriteEpContextDataWithFileFallback(
     const OrtApi& api,
-    OrtExperimental_OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc_SinceV28_Fn get_write_func,
+    GetEpContextDataWriteFunc get_write_func,
     const OrtEpContextConfig* ep_context_config,
     const char* file_name, const char* fallback_file_name,
     const OrtGraph* graph,
@@ -437,7 +476,7 @@ inline OrtStatus* WriteEpContextDataWithFileFallback(
 
 inline OrtStatus* WriteEpContextDataWithFileFallback(
     const OrtApi& api,
-    OrtExperimental_OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc_SinceV28_Fn get_write_func,
+    GetEpContextDataWriteFunc get_write_func,
     const OrtEpContextConfig* ep_context_config,
     const char* file_name, const OrtGraph* graph,
     const void* buffer, size_t buffer_size) {

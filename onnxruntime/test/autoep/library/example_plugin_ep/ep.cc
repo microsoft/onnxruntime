@@ -549,7 +549,8 @@ OrtStatus* ExampleEp::CreateEpContextNodes(const OrtGraph* graph,
           if (!output_model_dir.empty()) {
             std::filesystem::path ep_ctx_path;
             RETURN_IF_ERROR(ep_context_data_utils::Utf8Path(ort_api, ep_ctx.c_str(), ep_ctx_path));
-            fallback_ep_ctx = ep_context_data_utils::PathToUtf8String(output_model_dir / ep_ctx_path);
+            RETURN_IF_ERROR(ep_context_data_utils::PathToUtf8String(ort_api, output_model_dir / ep_ctx_path,
+                                                                    fallback_ep_ctx));
           }
           fallback_graph = nullptr;
         }
