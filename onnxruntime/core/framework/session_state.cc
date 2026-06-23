@@ -603,7 +603,8 @@ Status SessionState::PrepackConstantInitializedTensors(
                   // within this session. Or if the weight is not present on disk,
                   // we store the newly minted pre-packed data.
 
-                  AllocatorPtr session_initializer_alloc = GetInitializerAllocator(kernel->Info().GetDevice(OrtMemType::OrtMemTypeDefault));
+                  AllocatorPtr session_initializer_alloc = GetInitializerAllocator(
+                      kernel->Info().GetDevice(OrtMemType::OrtMemTypeDefault));
                   PrePackedWeights weights_to_be_filled_in;
                   // The reason we invoke PrePack() before looking into the container for any pre-packed weight
                   // cached by another instance of the same op_type (for the same constant initializer) is because

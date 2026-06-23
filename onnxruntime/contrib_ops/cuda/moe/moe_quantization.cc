@@ -1064,6 +1064,12 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   ORT_UNUSED_PARAMETER(prepacked_weights);
   is_packed = false;
 
+  // In the plugin EP build the AllocatorPtr passed by the framework can arrive null across the
+  // library boundary. Fall back to the kernel's own default-memory allocator, which is always valid.
+  if (!alloc) {
+    alloc = this->Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
+  }
+
   cudaStream_t stream = 0;  // Use default stream for PrePack operations
 
   DUMP_TENSOR_INIT();

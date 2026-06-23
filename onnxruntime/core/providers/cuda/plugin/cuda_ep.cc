@@ -83,20 +83,29 @@ void DestroyCudaStreamForDevice(cudaStream_t stream, int device_id) {
 }  // namespace
 
 struct CudaEp::PerThreadContext {
-  explicit PerThreadContext(int device_id)
+  // When external_graph_stream is non-null (user_compute_stream combined with CUDA graph),
+  // capture and replay happen on that user-owned stream so they see the same stream as the
+  // kernels; the context neither creates nor destroys it. Otherwise the context creates and
+  // owns a dedicated graph stream.
+  explicit PerThreadContext(int device_id, cudaStream_t external_graph_stream = nullptr)
       : device_id(device_id),
-        graph_stream(CreateCudaStreamForDevice(device_id)),
+        owns_graph_stream(external_graph_stream == nullptr),
+        graph_stream(external_graph_stream != nullptr ? external_graph_stream
+                                                      : CreateCudaStreamForDevice(device_id)),
         cuda_graph(graph_stream) {
   }
 
   ~PerThreadContext() {
     // Destroy captured graph execs before destroying the stream they replay on.
     cuda_graph.Reset();
-    DestroyCudaStreamForDevice(graph_stream, device_id);
+    if (owns_graph_stream) {
+      DestroyCudaStreamForDevice(graph_stream, device_id);
+    }
     graph_stream = nullptr;
   }
 
   int device_id;
+  bool owns_graph_stream;
   cudaStream_t graph_stream = nullptr;
   CudaGraphManager cuda_graph;
   size_t pre_capture_free_mem = 0;
@@ -392,7 +401,9 @@ OrtStatus* ORT_API_CALL CudaEp::CreateSyncStreamForDeviceImpl(
   auto cuda_stream = std::make_unique<CudaSyncStream>(ep->factory_, device_id, this_ptr);
 
   if (ep->config_.has_user_compute_stream && ep->config_.user_compute_stream != nullptr) {
-    // Wrap the user-provided external CUDA stream with full cuBLAS/cuDNN handles.
+    // Wrap the user-provided external CUDA stream with full cuBLAS/cuDNN handles. When CUDA
+    // graph capture is also enabled, capture/replay run on this same user stream (see
+    // GetPerThreadContext), so kernels and graph capture share one stream.
     RETURN_IF_ERROR(cuda_stream->InitHandlesWithUserStream(
         static_cast<cudaStream_t>(ep->config_.user_compute_stream)));
   } else if (ep->config_.enable_cuda_graph) {
@@ -467,7 +478,14 @@ CudaEp::PerThreadContext& CudaEp::GetPerThreadContext() const {
     return *cached_context_it->second;
   }
 
-  auto context = std::make_shared<PerThreadContext>(config_.device_id);
+  // When a user compute stream is combined with CUDA graph capture, capture/replay must run on
+  // the user's stream (the same stream the kernels are issued to) rather than a separate
+  // EP-owned stream. The user owns the stream's lifetime, so the context must not destroy it.
+  cudaStream_t external_graph_stream =
+      (config_.has_user_compute_stream && config_.enable_cuda_graph)
+          ? static_cast<cudaStream_t>(config_.user_compute_stream)
+          : nullptr;
+  auto context = std::make_shared<PerThreadContext>(config_.device_id, external_graph_stream);
   PerThreadContext& context_ref = *context;
   {
     std::lock_guard<std::mutex> lock(per_thread_contexts_mutex_);

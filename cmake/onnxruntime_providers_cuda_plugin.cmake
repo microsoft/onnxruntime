@@ -88,10 +88,11 @@ list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/sequence_op\\.cc$")
 # in the CPU provider and is not linked into the plugin.
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/size\\.cc$")
 
-# Permanently excluded — pure CPU ops, handled by GetCpuPreferredNodes.
-# shape_op.cc inherits from onnxruntime::OpKernel (framework)
-# which cannot convert to ep::adapter::OpKernel in the plugin build.
-list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/shape_op\\.cc$")
+# shape_op.cc is INCLUDED in the plugin build. It provides an adapter-based
+# Shape kernel under #ifdef BUILD_CUDA_EP_AS_PLUGIN (the CPU onnxruntime::Shape
+# class, which derives from the framework OpKernel, is only used in the
+# non-plugin build). Registering Shape on the EP keeps it off the CPU EP and
+# avoids Memcpy nodes that would otherwise break CUDA Graph capture.
 
 # Exclude contrib training ops (shrunken_gather depends on provider_api.h in header).
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/tensor/shrunken_gather\\.cc$")
