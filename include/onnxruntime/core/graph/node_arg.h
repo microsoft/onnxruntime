@@ -121,6 +121,9 @@ class NodeArg {
   /** Sets the inferred shape scalar value */
   void SetInferredShapeScalarValue(int64_t value) noexcept { inferred_scalar_value_ = value; }
 
+  /** Clears the inferred shape scalar value */
+  void ClearInferredShapeScalarValue() noexcept { inferred_scalar_value_.reset(); }
+
   /** Gets a flag indicating whether this NodeArg exists or not.
   Optional inputs are allowed in ONNX and an empty #Name represents a non-existent input argument. */
   bool Exists() const noexcept;
