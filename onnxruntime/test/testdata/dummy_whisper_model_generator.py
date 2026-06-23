@@ -256,9 +256,7 @@ def create_decoder(vocab_size, embed_dim, num_heads, head_size, sequence_as_inpu
         onnx.helper.make_node("Transpose", ["self_state"], ["single_key_self_0"], perm=[0, 2, 1, 3]),
         onnx.helper.make_node("Transpose", ["self_state"], ["single_value_self_0"], perm=[0, 2, 1, 3]),
         onnx.helper.make_node("Concat", ["past_key_self_0", "single_key_self_0"], ["present_key_self_0"], axis=2),
-        onnx.helper.make_node(
-            "Concat", ["past_value_self_0", "single_value_self_0"], ["present_value_self_0"], axis=2
-        ),
+        onnx.helper.make_node("Concat", ["past_value_self_0", "single_value_self_0"], ["present_value_self_0"], axis=2),
     ]
 
     graph = onnx.helper.make_graph(nodes, "decoder", inputs, outputs, initializers)
@@ -269,9 +267,9 @@ def run_model(model_path, feature_size):
     ort_session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
     encode_length = 5
     # Fixed, deterministic inputs so a C++ regression test can reproduce the exact golden outputs.
-    input_features = (
-        ((np.arange(feature_size * encode_length, dtype=np.float32) % 7) - 3.0) * 0.1
-    ).reshape(1, feature_size, encode_length)
+    input_features = (((np.arange(feature_size * encode_length, dtype=np.float32) % 7) - 3.0) * 0.1).reshape(
+        1, feature_size, encode_length
+    )
     decoder_input_ids = np.array([[2, 5]], dtype=np.int32)
     sequences, scores = ort_session.run(
         None, {"input_features": input_features, "decoder_input_ids": decoder_input_ids}
