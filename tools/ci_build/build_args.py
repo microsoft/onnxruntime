@@ -870,7 +870,9 @@ def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
     )
     # Telemetry arguments (cross-platform)
     parser.add_argument(
-        "--use_telemetry", action="store_true", help="Enable telemetry (ETW on Windows, 1DS on other platforms)."
+        "--use_telemetry",
+        action="store_true",
+        help="Enable telemetry (ETW on Windows; 1DS on Linux, macOS, Android, and iOS).",
     )
 
 

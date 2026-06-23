@@ -137,7 +137,10 @@ void DeviceId::CreateDirectoryTree(const std::string& path) {
     CreateDirectoryTree(path.substr(0, pos));
   }
 
-  mkdir(path.c_str(), 0755);
+  // Owner-only (0700): this tree holds the persistent device id and the telemetry offline cache, so
+  // it should not be listable/traversable by other users. mkdir only sets the mode for directories
+  // it actually creates; pre-existing directories are left untouched.
+  mkdir(path.c_str(), 0700);
 }
 
 void DeviceId::InitializeInternal() {
