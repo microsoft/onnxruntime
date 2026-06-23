@@ -530,6 +530,54 @@ This keeps already-published packages valid for as long as the library advertise
 their major, which is the backward-compatibility guarantee external publishers
 depend on.
 
+### How a major bump maps onto the structs
+
+A natural question is how a single C struct can represent two majors with
+different fields. It can't — and it never has to, because **there is only one
+struct definition in any given build**. The "old major" exists only as JSON on
+disk; it is never a second C type in the consumer's binary. Since the library is
+compiled from source, every consumer compiles exactly one definition of
+`ModelPackageInfo`/`ModelVariantInfo`/etc. — the current one. Reconciling an
+old-major package with that one definition is a **parse-time** job, not a
+struct-layout one.
+
+The single struct is the **superset / newest** shape, and divergence between
+majors is absorbed in three places:
+
+1. **Additive differences (common).** A field a new major added is present in the
+   struct and is simply `NULL`/`0`/empty when an older-major package lacks it —
+   the same mechanism as a minor bump. The consumer treats absence as "not
+   provided".
+
+2. **Parse-time normalization (preferred).** When a new major is added, its
+   parser path is added alongside the existing one, and **both populate the same
+   struct**. An older-major package is mapped up to the current in-memory model
+   (defaults filled, renamed fields mapped to their current names) before the
+   consumer sees it, so reads are uniform. `schema_version_major` then records the
+   *source* contract — useful for write-back and provenance — rather than
+   selecting a layout.
+
+3. **Non-migratable changes (rare).** A field whose *type* changes, or one
+   removed with no equivalent, cannot reuse the same name (C gives one field one
+   type). Add a new field for the new representation, populate the old field only
+   for old-major packages and the new field only for new-major packages, and let
+   the consumer branch on `schema_version_major`:
+
+   ```c
+   // e.g. major 1 stored a single compatibility string; major 2 stores a list
+   const char* compatibility_string;    // set when schema_version_major == 1
+   const char* const* compatibilities;  // set when schema_version_major == 2
+   size_t num_compatibilities;
+   ```
+
+**Escape hatch.** If a major bump is sweeping enough that the superset becomes
+unwieldy, the standard move is **per-major typed structs** (e.g. a
+`ModelPackageInfoV2` returned by a versioned accessor) — a deliberate API
+expansion reserved for a wholesale redesign, not the default. In practice: prefer
+normalizing old majors up to the newest struct at parse time; fall back to extra
+nullable fields plus `schema_version_major` branching only when a change cannot be
+auto-migrated.
+
 ---
 
 ## What the library deliberately does NOT do
