@@ -2664,10 +2664,22 @@ static void RunBatchedRightPaddedRotaryPrefillForEP(GqaTargetEp target_ep) {
       batch_size, sequence_length, num_heads, kv_num_heads, head_size,
       seqlens_k_data, packed_batched, target_ep);
 
+  // Guard the regression deterministically: every element of the batched output
+  // (including padding rows) must be finite. The CPU root cause is uninitialized
+  // attention-probs memory, so a NaN/Inf at any padding position would otherwise
+  // depend on the allocator returning non-zero pages.
+  for (size_t i = 0; i < batched_output.size(); ++i) {
+    ASSERT_TRUE(std::isfinite(batched_output[i]))
+        << "non-finite value at index " << i << " in batched GQA output";
+  }
+
   // Each batch's real-last-token output (used to predict next token) must match
-  // its single-prompt reference. The tolerance is loose enough for fp16 rounding
-  // while still catching the underflow bug (which produces values that differ
-  // by orders of magnitude or are NaN/Inf).
+  // its single-prompt reference. Tolerance is loose enough for fp16 rounding,
+  // tight enough to catch the right-padding regressions across EPs:
+  //   - CPU: uninitialized attention-probs reads at padding positions -> NaN.
+  //   - WebGPU: u32 underflow on rotary past_seqlen -> out-of-range cos/sin
+  //     index -> garbage Q/K (see PR #29002).
+  // Both manifest as NaN/Inf or values differing by orders of magnitude.
   constexpr float tolerance = 5e-3f;
   for (int b = 0; b < batch_size; ++b) {
     const int real_len = real_lens[b];
@@ -2681,6 +2693,10 @@ static void RunBatchedRightPaddedRotaryPrefillForEP(GqaTargetEp target_ep) {
           << " channel " << c << " mismatch";
     }
   }
+}
+
+TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefill_CPU) {
+  RunBatchedRightPaddedRotaryPrefillForEP(GqaTargetEp::kCpu);
 }
 
 TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefill_CUDA) {

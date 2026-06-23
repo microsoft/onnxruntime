@@ -429,13 +429,19 @@ class GQAAttentionBase {
           for (size_t seq = 0; seq < static_cast<size_t>(sequence_length); seq++) {
             size_t seq_causal_length = causal_past_seqlen + seq + 1;
 
+            // Cap effective causal length at total_seqlen so the softmax window stays within
+            // the region filled by the QK GEMM. For right-padded batched prompts, padding
+            // positions have seq_causal_length > total_seqlen; without this cap the softmax
+            // would read uninitialized memory and produce NaN.
+            const size_t effective_causal_length = std::min(seq_causal_length, total_seqlen);
+
             const bool apply_local = local_window_size_ >= 0 &&
-                                     seq_causal_length > static_cast<size_t>(local_window_size_);
-            const size_t start_off = apply_local ? seq_causal_length - local_window_size_ : 0;
-            const size_t win_size = apply_local ? local_window_size_ : seq_causal_length;
+                                     effective_causal_length > static_cast<size_t>(local_window_size_);
+            const size_t start_off = apply_local ? effective_causal_length - local_window_size_ : 0;
+            const size_t win_size = apply_local ? local_window_size_ : effective_causal_length;
 
             if (apply_local) {
-              for (size_t t = 0; t < seq_causal_length - local_window_size_; t++) {
+              for (size_t t = 0; t < effective_causal_length - local_window_size_; t++) {
                 sm[t] = 0.f;
               }
             }
@@ -448,7 +454,7 @@ class GQAAttentionBase {
               ApplyAttentionBias(sm + start_off, attn_bias + start_off, static_cast<int>(win_size));
             }
 
-            for (size_t t = seq_causal_length; t < total_seqlen; t++) {
+            for (size_t t = effective_causal_length; t < total_seqlen; t++) {
               sm[t] = 0.f;
             }
 
@@ -1084,15 +1090,21 @@ class GQAAttentionBase {
         for (size_t seq = 0; seq < sequence_length; seq++) {
           size_t seq_causal_length = causal_past_seqlen + seq + 1;
 
-          const bool should_apply_local_window = local_window_size_ >= 0 &&
-                                                 seq_causal_length > static_cast<size_t>(local_window_size_);
+          // For right-padded batched prompts, padding positions have seq_causal_length > total_seqlen.
+          // The GEMM only fills columns [0, total_seqlen); beyond that the buffer is uninitialized.
+          // Cap the effective causal length so the softmax window stays within the filled region,
+          // preventing NaN from uninitialized memory propagating into the output.
+          const size_t effective_causal_length = std::min(seq_causal_length, total_seqlen);
 
-          const size_t start_offset = should_apply_local_window ? seq_causal_length - local_window_size_ : 0;
-          const size_t window_size = should_apply_local_window ? local_window_size_ : seq_causal_length;
+          const bool should_apply_local_window = local_window_size_ >= 0 &&
+                                                 effective_causal_length > static_cast<size_t>(local_window_size_);
+
+          const size_t start_offset = should_apply_local_window ? effective_causal_length - local_window_size_ : 0;
+          const size_t window_size = should_apply_local_window ? local_window_size_ : effective_causal_length;
 
           // Mask everything before local window, if local window should be applied
           if (should_apply_local_window) {
-            for (size_t total_seq_id = 0; total_seq_id < seq_causal_length - local_window_size_; total_seq_id++) {
+            for (size_t total_seq_id = 0; total_seq_id < effective_causal_length - local_window_size_; total_seq_id++) {
               if constexpr (std::is_same<U, float>::value) {
                 output_softmax[total_seq_id] = 0.f;
               } else {
@@ -1120,8 +1132,8 @@ class GQAAttentionBase {
             }
           }
 
-          // set causal [seq_causal_length, total_seqlen) to 0.f
-          for (size_t total_seq_id = seq_causal_length; total_seq_id < total_seqlen; total_seq_id++) {
+          // set causal [effective_causal_length, total_seqlen) to 0.f
+          for (size_t total_seq_id = effective_causal_length; total_seq_id < total_seqlen; total_seq_id++) {
             if constexpr (std::is_same<U, float>::value) {
               output_softmax[total_seq_id] = 0.f;
             } else {
