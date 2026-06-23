@@ -2665,8 +2665,17 @@ def gqa_xqa_test_cases():
 class TestXQAQuantizedParity(unittest.TestCase):
     """Tests that verify fused kernels produce the same results as unfused kernels."""
 
+    def setUp(self):
+        # Force XQA on so the test is hermetic even if ORT_ENABLE_XQA=0 is set in the environment.
+        self._prev_enable_xqa = os.environ.get("ORT_ENABLE_XQA")
+        os.environ["ORT_ENABLE_XQA"] = "1"
+
     def tearDown(self):
         """Clear CUDA cache after each test to prevent memory corruption in batch runs."""
+        if self._prev_enable_xqa is None:
+            os.environ.pop("ORT_ENABLE_XQA", None)
+        else:
+            os.environ["ORT_ENABLE_XQA"] = self._prev_enable_xqa
         if torch.cuda.is_available():
             torch.cuda.synchronize()
             torch.cuda.empty_cache()
@@ -2850,8 +2859,17 @@ def gqa_xqa_sliding_window_test_cases():
 class TestXQASlidingWindowParity(unittest.TestCase):
     """Verify the non-quantized XQA sliding-window (local attention) decode path matches the reference."""
 
+    def setUp(self):
+        # Force XQA on so the test is hermetic even if ORT_ENABLE_XQA=0 is set in the environment.
+        self._prev_enable_xqa = os.environ.get("ORT_ENABLE_XQA")
+        os.environ["ORT_ENABLE_XQA"] = "1"
+
     def tearDown(self):
         """Clear CUDA cache after each test to prevent memory corruption in batch runs."""
+        if self._prev_enable_xqa is None:
+            os.environ.pop("ORT_ENABLE_XQA", None)
+        else:
+            os.environ["ORT_ENABLE_XQA"] = self._prev_enable_xqa
         if torch.cuda.is_available():
             torch.cuda.synchronize()
             torch.cuda.empty_cache()
@@ -2930,8 +2948,17 @@ def gqa_xqa_quantized_sliding_window_test_cases():
 class TestXQAQuantizedSlidingWindowParity(unittest.TestCase):
     """Verify the quantized (INT8/FP8) XQA sliding-window (local attention) decode path matches the reference."""
 
+    def setUp(self):
+        # Force XQA on so the test is hermetic even if ORT_ENABLE_XQA=0 is set in the environment.
+        self._prev_enable_xqa = os.environ.get("ORT_ENABLE_XQA")
+        os.environ["ORT_ENABLE_XQA"] = "1"
+
     def tearDown(self):
         """Clear CUDA cache after each test to prevent memory corruption in batch runs."""
+        if self._prev_enable_xqa is None:
+            os.environ.pop("ORT_ENABLE_XQA", None)
+        else:
+            os.environ["ORT_ENABLE_XQA"] = self._prev_enable_xqa
         if torch.cuda.is_available():
             torch.cuda.synchronize()
             torch.cuda.empty_cache()

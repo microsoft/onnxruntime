@@ -215,7 +215,7 @@ order and the first eligible backend wins:
 
 | Priority | Backend | Selected when (summary) |
 |----------|---------|-------------------------|
-| 1 | **XQA** | Single-token decode (`seq_len == 1`), shared KV buffer. Supports sliding-window attention on the non-quantized path; quantized (INT8/FP8) variants remain global-only. Fastest decode path; the only backend that serves a quantized KV cache. |
+| 1 | **XQA** | Single-token decode (`seq_len == 1`), shared KV buffer. Supports sliding-window attention on both the non-quantized and quantized (INT8/FP8) paths (attention sink remains non-quantized-only). Fastest decode path; the only backend that serves a quantized KV cache. |
 | 2 | **cuDNN SDPA** | Non-quantized FP16/BF16 causal attention. Auto-preferred on SM≥90 (Hopper/Blackwell). |
 | 3 | **Flash Attention** | General FP16/BF16 prompt and decode, including local window, softcap, and packed QKV. |
 | 4 | **Memory Efficient Attention (MEA)** | Fallback for FP16/FP32 (and BF16 on SM80+). |
@@ -233,9 +233,9 @@ enabled (see §10).
 
 ### 6.1 XQA
 
-Checked first. Used only for single-token decode under the conditions detailed in §7 (global decode,
-or sliding-window decode on the non-quantized path). When XQA is selected, no other backend is
-considered.
+Checked first. Used only for single-token decode under the conditions detailed in §7 (global or
+sliding-window decode; sliding window is supported on both the non-quantized and quantized paths).
+When XQA is selected, no other backend is considered.
 
 ### 6.2 cuDNN SDPA
 
@@ -295,8 +295,8 @@ XQA (a highly optimized cross/decode attention kernel) is used only when **all**
 4. Past and present KV cache share the same buffer.
 5. No softcap.
 6. Standard softmax, **or** smooth softmax expressed via a `head_sink` tensor (non-quantized KV cache).
-7. Global attention, **or** local (sliding) window attention (`local_window_size > 0`) on the
-   non-quantized path. The quantized (INT8/FP8) variants remain global-only.
+7. Global attention, **or** local (sliding) window attention (`local_window_size > 0`), supported on
+   both the non-quantized and quantized (INT8/FP8) paths.
 8. Supported `head_size` (64, 128, or 256) and group size.
 
 `head_sink` (attention sink) is supported on the non-quantized XQA path only. Quantized KV cache
@@ -452,12 +452,11 @@ popular LLMs. Listed roughly by impact.
    fused per-head RMSNorm to Q and K before RoPE when `q_norm_weight` / `k_norm_weight` are provided
     (see §3), matching **Qwen3, Gemma 2/3, OLMo2, SmolLM3**, etc. Remaining limitation: QK-Norm
     disables Flash-Decoding, and quantized-cache QK-Norm does not yet get the XQA fast path.
-2. **Sliding-window on the quantized fused decode path.** The non-quantized XQA decode path now
-   serves sliding-window attention (`local_window_size > 0`), including in combination with a
-   `head_sink`. The quantized (INT8/FP8) XQA variants still require global attention
-   (`local_window_size == -1`), so quantized **GPT-OSS / Mistral / Gemma 2** sliding-window layers
-   fall back to Flash / Flash-Decoding. Wiring sliding window into the quantized kernels would close
-   this gap.
+2. **Sliding-window on the quantized fused decode path.** *Implemented.* The XQA decode path now
+   serves sliding-window attention (`local_window_size > 0`) on both the non-quantized and the
+   quantized (INT8/FP8) paths. Remaining limitation: the attention sink (`head_sink`) is still
+   non-quantized-only, so quantized **GPT-OSS / Mistral / Gemma 2** sliding-window layers that also
+   use an attention sink fall back to Flash / Flash-Decoding.
 3. **Softcap on the fastest kernels.** Logit soft-capping (**Gemma 2**) disables both XQA and cuDNN
    SDPA, forcing the Flash / MEA / unfused paths. Adding softcap support to XQA and cuDNN would
    recover decode throughput.
