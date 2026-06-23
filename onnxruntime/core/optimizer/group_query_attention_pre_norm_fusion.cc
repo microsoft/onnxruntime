@@ -79,7 +79,7 @@ bool MatchPreNormReshapeChain(Graph& graph,
 
   Node* reshape_outer = graph.GetMutableProducerNode(consumer_input->Name());
   if (reshape_outer == nullptr ||
-      !graph_utils::IsSupportedOptypeVersionAndDomain(*reshape_outer, "Reshape", {5, 13, 14, 19, 21, 23})) {
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*reshape_outer, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25})) {
     return false;
   }
   if (reshape_outer->GetOutputEdgesCount() != 1) {
@@ -167,6 +167,9 @@ bool MatchPreNormReshapeChain(Graph& graph,
   }
   const auto* sln_eps_attr = graph_utils::GetNodeAttribute(*sln, "epsilon");
   const float sln_eps = (sln_eps_attr == nullptr) ? 1e-5f : sln_eps_attr->f();
+  if (!std::isfinite(sln_eps) || sln_eps <= 0.0f) {
+    return false;
+  }
 
   // Inner reshape (between projection and SLN).
   if (sln->InputDefs().empty() || sln->InputDefs()[0] == nullptr) {
@@ -174,7 +177,7 @@ bool MatchPreNormReshapeChain(Graph& graph,
   }
   Node* reshape_inner = graph.GetMutableProducerNode(sln->InputDefs()[0]->Name());
   if (reshape_inner == nullptr ||
-      !graph_utils::IsSupportedOptypeVersionAndDomain(*reshape_inner, "Reshape", {5, 13, 14, 19, 21, 23})) {
+      !graph_utils::IsSupportedOptypeVersionAndDomain(*reshape_inner, "Reshape", {5, 13, 14, 19, 21, 23, 24, 25})) {
     return false;
   }
   if (reshape_inner->GetOutputEdgesCount() != 1) {

@@ -31,11 +31,10 @@ constexpr int kMinSequenceLengthFlashAttention = 385;
 
 class MHARunner {
  public:
-  MHARunner(int num_heads, int head_size, bool causal, float scale)
+  MHARunner(int num_heads, int head_size, float scale)
       : num_heads_(num_heads),
         head_size_(head_size),
-        scale_(scale == 0.0f ? 1.f / sqrtf(static_cast<float>(head_size)) : scale),
-        is_causal_(causal) {
+        scale_(scale == 0.0f ? 1.f / sqrtf(static_cast<float>(head_size)) : scale) {
   }
 
   virtual ~MHARunner() = default;
@@ -55,7 +54,6 @@ class MHARunner {
   int num_heads_;
   int head_size_;
   float scale_;
-  bool is_causal_;
 };
 
 class FusedMHARunnerFP16v2 : public MHARunner {
@@ -63,18 +61,16 @@ class FusedMHARunnerFP16v2 : public MHARunner {
   FusedMHARunnerFP16v2(int num_heads,
                        int head_size,
                        int sm,
-                       bool causal,
                        bool enable_flash_attention,
                        float scale);
 
   ~FusedMHARunnerFP16v2() = default;  // for impl_
 
-  static bool IsSupported(int sm, int head_size, int sequence_length, bool enable_flash_attention, bool causal);
+  static bool IsSupported(int sm, int head_size, int sequence_length, bool enable_flash_attention);
 
   static std::unique_ptr<MHARunner> Create(int num_heads,
                                            int head_size,
                                            int sm,
-                                           bool causal,
                                            bool enable_flash_attention,
                                            float scale);
 

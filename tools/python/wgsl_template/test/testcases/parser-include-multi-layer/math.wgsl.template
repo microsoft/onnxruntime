@@ -1,0 +1,10 @@
+// Math utilities that depend on basic constants
+#include "constants.wgsl.template"
+
+fn normalize_value(value: f32) -> f32 {
+    return clamp(value / MAX_VALUE, 0.0, 1.0);
+}
+
+fn multiply_vec3(v: vec3<f32>, factor: f32) -> vec3<f32> {
+    return v * factor * SCALE_FACTOR;
+}

@@ -57,7 +57,6 @@
 #include "core/session/ort_env.h"
 #include "core/session/ort_version_check.h"
 #include "core/session/utils.h"
-#include "core/session/model_package_api.h"
 
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 #include "core/providers/cuda/cuda_provider_factory.h"
@@ -2541,6 +2540,13 @@ ORT_API_STATUS_IMPL(OrtApis::TensorAt, _Inout_ OrtValue* value, const int64_t* l
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "this API does not support strings");
   }
 
+  const auto* prim_type = tensor->DataType()->AsPrimitiveDataType();
+  if (prim_type != nullptr && prim_type->HasSubElems()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "this API does not support sub-byte packed types (e.g., int4). "
+                                 "Use OrtValue::GetTensorMutableData and manual unpacking instead.");
+  }
+
   const auto& tensor_shape = tensor->Shape();
   const auto num_dimensions = tensor_shape.NumDimensions();
   if (location_values_count != num_dimensions) {
@@ -3687,10 +3693,6 @@ ORT_API(const OrtModelEditorApi*, OrtApis::GetModelEditorApi) {
 
 ORT_API(const OrtCompileApi*, OrtApis::GetCompileApi) {
   return OrtCompileAPI::GetCompileApi();
-}
-
-ORT_API(const OrtModelPackageApi*, OrtApis::GetModelPackageApi) {
-  return OrtModelPackageAPI::GetModelPackageApi();
 }
 
 ORT_API(void, OrtApis::CreateKeyValuePairs, _Outptr_ OrtKeyValuePairs** out) {
@@ -4911,8 +4913,9 @@ static constexpr OrtApi ort_api_1_to_28 = {
     &OrtApis::GetMemPatternEnabled,
     &OrtApis::GetSessionExecutionMode,
     &OrtApis::SessionReleaseCapturedGraph,
-    &OrtApis::GetModelPackageApi,
     // End of Version 27 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::GetExperimentalFunction,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

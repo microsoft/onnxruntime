@@ -226,5 +226,37 @@ TEST(SparseAttentionTest, AcceptsPromptKeyTotalSequenceLengthsForPaddedBatch) {
   RunSparseAttentionPromptInputTest({5, 2}, 2, 5, 5);
 }
 
+TEST(SparseAttentionTest, RejectsZeroDimBlockRowIndices) {
+  OpTester test("SparseAttention", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("num_heads", 4);
+  test.AddAttribute<int64_t>("kv_num_heads", 4);
+  test.AddAttribute<int64_t>("sparse_block_size", 1);
+  test.AddAttribute<float>("scale", 1.0f);
+  test.AddAttribute<int64_t>("do_rotary", 0);
+  test.AddAttribute<int64_t>("rotary_interleaved", 0);
+
+  test.AddInput<float>("query", {1, 1, 32}, std::vector<float>(32, 0.0f));
+  test.AddInput<float>("key", {1, 1, 32}, std::vector<float>(32, 0.0f));
+  test.AddInput<float>("value", {1, 1, 32}, std::vector<float>(32, 0.0f));
+  test.AddInput<float>("past_key", {1, 4, 4, 8}, std::vector<float>(128, 0.0f));
+  test.AddInput<float>("past_value", {1, 4, 4, 8}, std::vector<float>(128, 0.0f));
+  test.AddInput<int32_t>("block_row_indices", {0, 2}, {});
+  test.AddInput<int32_t>("block_col_indices", {0, 1}, {});
+  test.AddInput<int32_t>("total_sequence_length", {1}, {4});
+  test.AddInput<int32_t>("key_total_sequence_lengths", {1}, {4});
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+
+  test.AddOutput<float>("output", {1, 1, 32}, std::vector<float>(32, 0.0f));
+  test.AddOutput<float>("present_key", {1, 4, 4, 8}, std::vector<float>(128, 0.0f));
+  test.AddOutput<float>("present_value", {1, 4, 4, 8}, std::vector<float>(128, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "block_row_indices must have shape (num_layout, max_blocks + 1) where num_heads is divisible by num_layout.",
+           {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

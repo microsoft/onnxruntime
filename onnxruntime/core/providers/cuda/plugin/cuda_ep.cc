@@ -9,6 +9,7 @@
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/framework/allocator.h"
 #include "ep/get_capability_utils.h"
+#include "ep/api.h"  // onnxruntime::ep::CurrentOrtApiVersion()
 
 #include <cstring>
 #include <limits>
@@ -109,36 +110,68 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
       name_(factory.GetEpName()),
       config_(config),
       logger_(logger) {
-  ort_version_supported = kCudaPluginEpMinOrtApiVersion;
+  // ort_version_supported reports the ORT API version this plugin was compiled with (ORT_API_VERSION).
+  // ORT uses it to avoid reading OrtEp struct fields that did not exist when the plugin was compiled.
+  ort_version_supported = ORT_API_VERSION;
 
-  // Set function pointers for kernel-registry-based EP
+  // The plugin is compiled against the latest ORT headers (ORT_API_VERSION) but may be loaded by an
+  // older ORT runtime, down to the floor declared in plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION. Some
+  // OrtEp callbacks below — and the OrtEpApi functions their implementations call — only exist in
+  // newer ORT versions. The guard against calling an OrtEpApi function the runtime does not provide
+  // is the runtime API version, not ort_version_supported. We therefore gate such callbacks on the
+  // version negotiated with the runtime (onnxruntime::ep::CurrentOrtApiVersion()): only advertise a
+  // callback when the runtime is new enough to (a) know about the OrtEp struct field and (b) provide
+  // every OrtEpApi function the callback relies on. Leaving the pointer null on older runtimes
+  // disables only that optional capability while the EP stays fully functional.
+  const uint32_t ort_version = ::onnxruntime::ep::CurrentOrtApiVersion();
+
+  // Kernel-registry-based EP callbacks (all introduced in ORT <= 1.24).
   GetName = GetNameImpl;
   GetCapability = GetCapabilityImpl;
   GetKernelRegistry = GetKernelRegistryImpl;
   GetPreferredDataLayout = GetPreferredDataLayoutImpl;
   ShouldConvertDataLayoutForOp = ShouldConvertDataLayoutForOpImpl;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
-  Sync = SyncImpl;
   IsConcurrentRunSupported = IsConcurrentRunSupportedImpl;
   OnRunStart = config_.enable_cuda_graph ? OnRunStartImpl : nullptr;
   OnRunEnd = config_.enable_cuda_graph ? OnRunEndImpl : nullptr;
+
+  // OrtEp::Sync is \since ORT 1.25. A runtime older than 1.25 does not know about this OrtEp field and
+  // ignores it regardless of its value. We still gate it on the runtime version to keep the
+  // minimum-version dependency explicit at each assignment and consistent with the callbacks below.
+  Sync = (ort_version >= 25) ? SyncImpl : nullptr;
 
   // Not a compile-based EP
   Compile = nullptr;
   ReleaseNodeComputeInfos = nullptr;
 
-  // Graph capture/replay — always set so ORT can query capabilities
-  IsGraphCaptureEnabled = IsGraphCaptureEnabledImpl;
-  IsGraphCaptured = IsGraphCapturedImpl;
-  ReplayGraph = ReplayGraphImpl;
-  GetGraphCaptureNodeAssignmentPolicy = GetGraphCaptureNodeAssignmentPolicyImpl;
+  // Graph capture/replay (OrtEp::IsGraphCaptureEnabled/IsGraphCaptured/ReplayGraph/
+  // GetGraphCaptureNodeAssignmentPolicy) and device-resource accounting
+  // (OrtEp::GetAvailableResource + OrtResourceCount) are \since ORT 1.26. Only advertise them when the
+  // negotiated runtime is >= 1.26; older runtimes neither expose these OrtEp fields nor support
+  // EP-driven graph capture, so leaving them null preserves the same behavior explicitly.
+  if (ort_version >= 26) {
+    IsGraphCaptureEnabled = IsGraphCaptureEnabledImpl;
+    IsGraphCaptured = IsGraphCapturedImpl;
+    ReplayGraph = ReplayGraphImpl;
+    GetGraphCaptureNodeAssignmentPolicy = GetGraphCaptureNodeAssignmentPolicyImpl;
+    GetAvailableResource = GetAvailableResourceImpl;
+  } else {
+    IsGraphCaptureEnabled = nullptr;
+    IsGraphCaptured = nullptr;
+    ReplayGraph = nullptr;
+    GetGraphCaptureNodeAssignmentPolicy = nullptr;
+    GetAvailableResource = nullptr;
+  }
 
-  // Resource accounting — allows ORT to query available device memory for budget enforcement
-  GetAvailableResource = GetAvailableResourceImpl;
-
-  // Profiling — CUPTI-based GPU activity tracing when profiling is enabled at build time
+  // Profiling — CUPTI-based GPU activity tracing when profiling is enabled at build time.
+  // The EP profiler API (OrtEp::CreateProfiler, OrtEpProfilerImpl, and the OrtEpApi
+  // CreateProfilingEvent / ProfilingEventsContainer_AddEvents / ReleaseProfilingEvent functions that
+  // CudaPluginEpProfiler calls) is \since ORT 1.25. Only advertise the profiler when the negotiated
+  // runtime supports it; this single guard makes every 1.25 profiler API call unreachable on older
+  // runtimes (the profiler is never created), so inference still runs without EP-level GPU profiling.
 #if defined(ENABLE_CUDA_PROFILING)
-  CreateProfiler = CreateProfilerImpl;
+  CreateProfiler = (ort_version >= 25) ? CreateProfilerImpl : nullptr;
 #else
   CreateProfiler = nullptr;
 #endif

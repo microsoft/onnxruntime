@@ -132,6 +132,7 @@ Status CheckInputs(void* params,
   // Check block_row_indices
   const auto& block_row_indices_dim = block_row_indices->Shape().GetDims();
   if (!(block_row_indices_dim.size() == 2 &&
+        block_row_indices_dim[0] > 0 &&
         block_row_indices_dim[1] > 1 &&
         (static_cast<int64_t>(num_heads) % block_row_indices_dim[0] == 0L))) {
     return ORT_MAKE_STATUS(
