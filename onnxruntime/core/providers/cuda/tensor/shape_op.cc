@@ -19,9 +19,13 @@ namespace cuda {
 // derives from the framework `OpKernel`) and only marks its output as CPU
 // memory. That class cannot be registered through the plugin EP's adapter
 // kernel machinery, so the plugin build provides an adapter-based Shape kernel
-// with identical semantics. Registering Shape on the EP (rather than letting it
-// fall back to the CPU EP) avoids the Memcpy nodes that an isolated CPU Shape
-// node would introduce, which would otherwise prevent CUDA Graph capture.
+// with identical semantics. Shape only reads the input's shape metadata (never
+// its data) and writes the dims to a CPU output, so registering it on the CUDA
+// EP keeps the node inside the device partition and avoids the device->host
+// Memcpy node that the framework would otherwise insert to feed an isolated CPU
+// Shape node -- a Memcpy that would prevent CUDA Graph capture. The output is
+// still CPU memory, so a downstream device consumer may still need a copy; this
+// removes the graph-breaking input-side Memcpy, it does not eliminate all copies.
 class Shape final : public CudaKernel {
  public:
   explicit Shape(const OpKernelInfo& info) : CudaKernel(info) {
