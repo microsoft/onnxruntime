@@ -311,6 +311,8 @@ class GroupQueryAttentionConfig(AttentionConfig):
         kv_cache_type: str = "float16",
         share_kv_scale: bool = False,
         has_head_sink: bool = False,
+        has_qk_norm: bool = False,
+        qk_norm_epsilon: float = 1e-6,
     ):
         super().__init__(
             "GroupQueryAttention",
@@ -343,6 +345,8 @@ class GroupQueryAttentionConfig(AttentionConfig):
         self.v_quant_type = v_quant_type
         self.share_kv_scale = share_kv_scale
         self.has_head_sink = has_head_sink
+        self.has_qk_norm = has_qk_norm
+        self.qk_norm_epsilon = qk_norm_epsilon
         # Determine bit width from cache type if applicable
         if kv_cache_type == "int4":
             self.kv_cache_bit_width = 4
@@ -363,6 +367,9 @@ class GroupQueryAttentionConfig(AttentionConfig):
         )
         if self.has_head_sink:
             shapes["head_sink"] = (self.num_heads,)
+        if self.has_qk_norm:
+            shapes["q_norm_weight"] = (self.head_size,)
+            shapes["k_norm_weight"] = (self.head_size,)
         # Note: We don't adjust shapes for int4 here because the parent's random_inputs
         # creates float tensors first, then quantization will pack them
         return shapes
@@ -377,6 +384,15 @@ class GroupQueryAttentionConfig(AttentionConfig):
         )
         if self.has_head_sink:
             feeds["head_sink"] = torch.rand((self.num_heads,), device=self.device, dtype=self.dtype)
+
+        if self.has_qk_norm:
+            generator = torch.Generator(device=self.device).manual_seed(7)
+            feeds["q_norm_weight"] = (
+                1.0 + 0.1 * torch.randn(self.head_size, generator=generator, device=self.device, dtype=torch.float32)
+            ).to(self.dtype)
+            feeds["k_norm_weight"] = (
+                1.0 + 0.1 * torch.randn(self.head_size, generator=generator, device=self.device, dtype=torch.float32)
+            ).to(self.dtype)
 
         # Generate quantized cache and scales if quantization is enabled
         if self.k_quant_type != "NONE":
@@ -432,6 +448,8 @@ def create_group_query_attention_onnx_model(config: GroupQueryAttentionConfig):
         "head_sink" if config.has_head_sink else "",
         "k_scale" if config.k_quant_type != "NONE" else "",
         "v_scale" if config.v_quant_type != "NONE" else "",
+        "q_norm_weight" if config.has_qk_norm else "",
+        "k_norm_weight" if config.has_qk_norm else "",
     ]
     # Remove trailing empty strings
     while node_inputs and node_inputs[-1] == "":
@@ -448,6 +466,9 @@ def create_group_query_attention_onnx_model(config: GroupQueryAttentionConfig):
         "smooth_softmax": 1 if config.use_smooth_softmax else 0,
         "domain": "com.microsoft",
     }
+
+    if config.has_qk_norm:
+        node_attrs["qk_norm_epsilon"] = config.qk_norm_epsilon
 
     # Add quantization attributes if enabled
     if config.k_quant_type != "NONE":
@@ -520,6 +541,14 @@ def create_group_query_attention_onnx_model(config: GroupQueryAttentionConfig):
 
     if config.has_head_sink:
         graph_input.append(helper.make_tensor_value_info("head_sink", float_type, list(shape_dict["head_sink"])))
+
+    if config.has_qk_norm:
+        graph_input.extend(
+            [
+                helper.make_tensor_value_info("q_norm_weight", float_type, list(shape_dict["q_norm_weight"])),
+                helper.make_tensor_value_info("k_norm_weight", float_type, list(shape_dict["k_norm_weight"])),
+            ]
+        )
 
     # Add scale inputs for quantization
     # Shape depends on quantization type:

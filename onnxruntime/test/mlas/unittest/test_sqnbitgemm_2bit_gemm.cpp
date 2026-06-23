@@ -310,6 +310,9 @@ void RunW2Case(size_t M, size_t N, size_t K, bool WithBias, uint32_t seed,
 // handler in a follow-up.
 //
 TEST(MlasSq2BitTest, Scalar_BlkLen64) {
+  if (!GetMlasPlatform().Avx512Supported_) {
+    GTEST_SKIP() << "AVX-512 not available on this host";
+  }
   struct Shape {
     size_t M, N, K;
   };
@@ -351,6 +354,9 @@ TEST(MlasSq2BitTest, Scalar_BlkLen64) {
 // Same coverage with per-block non-default zero points.
 //
 TEST(MlasSq2BitTest, Scalar_BlkLen64_WithZeroPoints) {
+  if (!GetMlasPlatform().Avx512Supported_) {
+    GTEST_SKIP() << "AVX-512 not available on this host";
+  }
   struct Shape {
     size_t M, N, K;
   };
@@ -806,6 +812,9 @@ constexpr struct {
 }  // namespace
 
 TEST(MlasSq2BitTest, Scalar_BlkLen128) {
+  if (!GetMlasPlatform().Avx512Supported_) {
+    GTEST_SKIP() << "AVX-512 not available on this host";
+  }
   for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
     for (const auto& s : kSimdShapes_BlkLen128) {
       for (bool bias : {false, true}) {
@@ -819,6 +828,9 @@ TEST(MlasSq2BitTest, Scalar_BlkLen128) {
 }
 
 TEST(MlasSq2BitTest, Scalar_BlkLen128_WithZeroPoints) {
+  if (!GetMlasPlatform().Avx512Supported_) {
+    GTEST_SKIP() << "AVX-512 not available on this host";
+  }
   for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
     for (const auto& s : kSimdShapes_BlkLen128) {
       for (bool bias : {false, true}) {
@@ -1160,6 +1172,9 @@ constexpr struct {
 }  // namespace
 
 TEST(MlasSq2BitTest, Scalar_BlkLen32) {
+  if (!GetMlasPlatform().Avx512Supported_) {
+    GTEST_SKIP() << "AVX-512 not available on this host";
+  }
   for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
     for (const auto& s : kSimdShapes_BlkLen32) {
       for (bool bias : {false, true}) {
@@ -1173,6 +1188,9 @@ TEST(MlasSq2BitTest, Scalar_BlkLen32) {
 }
 
 TEST(MlasSq2BitTest, Scalar_BlkLen32_WithZeroPoints) {
+  if (!GetMlasPlatform().Avx512Supported_) {
+    GTEST_SKIP() << "AVX-512 not available on this host";
+  }
   for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
     for (const auto& s : kSimdShapes_BlkLen32) {
       for (bool bias : {false, true}) {
