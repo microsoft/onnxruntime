@@ -348,12 +348,17 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       }
 
       packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
-      // The CompInt8 packed layout has alignment padding between its sub-regions that the packing
-      // routines never write. Pre-packed weight sharing content-hashes this buffer, so the padding
-      // must be deterministic for two sessions to produce the same key. The allocation above uses
-      // reserve and is not zero-filled, so zero it here. This only matters when the framework asks
-      // for the buffer to be cached for sharing (prepacked_weights != nullptr).
-      if (prepacked_weights != nullptr && effective_compute_type == SQNBIT_CompInt8) {
+      // The framework content-hashes this packed buffer to deduplicate pre-packed weights, both
+      // within a session and across sessions (the shared container). The session-state prepack pass
+      // (SessionState::PrepackConstantInitializedTensors) passes a non-null prepacked_weights on both
+      // the container and the default single-session paths, so this zero-fill runs on essentially
+      // every prepack at load, not only when a sharing container is configured -- the guard below
+      // only skips a caller that asks for no cacheable buffer. The pack routines need not write every
+      // byte (alignment padding between the CompInt8 sub-regions; any layout could gain padding) and
+      // the reserve allocation is not zero-filled, so the hash would otherwise depend on uninitialized
+      // bytes. Zeroing the whole buffer is a one-time O(packed_b_size_) load cost (the pack overwrites
+      // the data regions, leaving only padding zeroed); inference is unaffected.
+      if (prepacked_weights != nullptr) {
         std::memset(packed_b_.get(), 0, packed_b_size_);
       }
       MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, effective_compute_type, qptr, packed_b_.get(), scale_ptr,
@@ -645,12 +650,13 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
     }
     auto qptr = tensor.DataRaw();
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
-    // See the primary PrePack() above: the CompInt8 packed layout has alignment padding that the
-    // packing routines never write, so zero the buffer to keep the sharing content hash (taken right
-    // after this B pack) deterministic. Only needed when the framework asks to cache the buffer for
-    // sharing (prepacked_weights != nullptr).
-    if (prepacked_weights != nullptr &&
-        (compute_type_ == SQNBIT_CompInt8 || compute_type_ == HQNBIT_CompInt8)) {
+    // See the primary PrePack() above: SessionState::PrepackConstantInitializedTensors passes a
+    // non-null prepacked_weights on both the container and the default single-session paths, so this
+    // zero-fill runs on essentially every prepack at load (the guard only skips a caller that asks for
+    // no cacheable buffer). It keeps the dedup content hash reproducible regardless of bytes the pack
+    // leaves uninitialized (alignment padding), for any compute type. One-time O(packed_b_size_) load
+    // cost; inference is unaffected.
+    if (prepacked_weights != nullptr) {
       std::memset(packed_b_.get(), 0, packed_b_size_);
     }
     MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(),

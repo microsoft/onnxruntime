@@ -25,9 +25,9 @@ void CheckSharedPrepackedWeights(OpTester& test, PrepackSharingMode mode,
   OrtValue b_ortvalue;
 
   switch (mode) {
-    case PrepackSharingMode::kShareAllCpuInitializers:
-      // Opt in to hash-based sharing of every CPU constant initializer that gets pre-packed.
-      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsShareAllPrepackedCpuInitializers, "1"));
+    case PrepackSharingMode::kShareMatMulNBitsPrepackedWeights:
+      // Opt in to hash-based sharing of MatMulNBits pre-packed weights.
+      ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsShareMatMulNBitsPrepackedWeights, "1"));
       break;
     case PrepackSharingMode::kAddInitializer:
       // Register B as an explicitly shared initializer (the pre-existing sharing mechanism).

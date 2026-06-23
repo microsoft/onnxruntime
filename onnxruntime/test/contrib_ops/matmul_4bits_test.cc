@@ -636,7 +636,7 @@ TestOptions MakeSharingTestOptions(int64_t N, int64_t K, int64_t block_size, int
 }
 }  // namespace
 
-// Hash-based sharing: session.share_all_prepacked_cpu_initializers = "1" with no AddInitializer call.
+// Hash-based sharing: session.share_matmulnbits_prepacked_weights = "1" with no AddInitializer call.
 // This is the path used by the DQ + MatMul -> MatMulNBits fusion, whose weights are synthesized at
 // session-creation time with auto-generated names. Covers symmetric/asymmetric quantization, with and
 // without bias, across several block sizes.
@@ -645,7 +645,7 @@ TEST(MatMulNBits, SharedPrepackedWeights_ShareAll_Float32) {
     for (bool has_bias : {false, true}) {
       for (int64_t block_size : {16, 32, 128}) {
         RunTest<float>(MakeSharingTestOptions(32, 256, block_size, /*accuracy_level*/ 0, has_zero_point,
-                                              has_bias, PrepackSharingMode::kShareAllCpuInitializers));
+                                              has_bias, PrepackSharingMode::kShareMatMulNBitsPrepackedWeights));
       }
     }
   }
@@ -656,7 +656,7 @@ TEST(MatMulNBits, SharedPrepackedWeights_ShareAll_Float16) {
     for (bool has_bias : {false, true}) {
       for (int64_t block_size : {16, 32, 128}) {
         RunTest<MLFloat16>(MakeSharingTestOptions(32, 256, block_size, /*accuracy_level*/ 0, has_zero_point,
-                                                  has_bias, PrepackSharingMode::kShareAllCpuInitializers));
+                                                  has_bias, PrepackSharingMode::kShareMatMulNBitsPrepackedWeights));
       }
     }
   }
@@ -668,7 +668,7 @@ TEST(MatMulNBits, SharedPrepackedWeights_ShareAll_Float16) {
 TEST(MatMulNBits, SharedPrepackedWeights_ShareAll_AccuracyLevels) {
   for (int64_t accuracy_level : {0, 1, 4}) {
     RunTest<float>(MakeSharingTestOptions(32, 128, /*block_size*/ 32, accuracy_level, /*has_zero_point*/ true,
-                                          /*has_bias*/ false, PrepackSharingMode::kShareAllCpuInitializers));
+                                          /*has_bias*/ false, PrepackSharingMode::kShareMatMulNBitsPrepackedWeights));
   }
 }
 
@@ -680,7 +680,7 @@ TEST(MatMulNBits, SharedPrepackedWeights_ShareAll_Float16_AccuracyLevel4) {
   for (bool has_zero_point : {false, true}) {
     for (bool has_bias : {false, true}) {
       RunTest<MLFloat16>(MakeSharingTestOptions(32, 128, /*block_size*/ 32, /*accuracy_level*/ 4, has_zero_point,
-                                                has_bias, PrepackSharingMode::kShareAllCpuInitializers));
+                                                has_bias, PrepackSharingMode::kShareMatMulNBitsPrepackedWeights));
     }
   }
 }
@@ -751,14 +751,14 @@ void BuildMatMulNBitsModelBytes(int64_t M, int64_t N, int64_t K, int64_t block_s
 }
 
 // Loads and runs the given serialized MatMulNBits model on the CPU EP with
-// share_all_prepacked_cpu_initializers enabled, backed by the supplied shared pre-packed weights
+// share_matmulnbits_prepacked_weights enabled, backed by the supplied shared pre-packed weights
 // container. Returns the single "Y" output and the number of pre-packed weights this session served
 // from the shared container.
 void RunSharedPrepackSession(const std::string& model_bytes, const NameMLValMap& feeds,
                              PrepackedWeightsContainer& container, std::vector<OrtValue>& fetches,
                              size_t& used_shared_count) {
   SessionOptions so;
-  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsShareAllPrepackedCpuInitializers, "1"));
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsShareMatMulNBitsPrepackedWeights, "1"));
 
   InferenceSessionWrapper session{so, GetEnvironment()};
   ASSERT_STATUS_OK(session.AddPrePackedWeightsContainer(&container));
