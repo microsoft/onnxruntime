@@ -27,6 +27,7 @@
 #include <sstream>
 #include <iomanip>
 
+#include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
 #include "onnxruntime_config.h"
@@ -34,6 +35,16 @@
 using namespace Microsoft::Applications::Events;
 
 namespace onnxruntime {
+
+// PosixTelemetry can be constructed during early Env initialization (before logging registers a
+// default logger) and destroyed late at process exit, so only emit warnings when a default logger
+// exists, to avoid touching a missing/destroyed LoggingManager.
+#define ORT_TELEMETRY_WARN(stream_expr)                               \
+  do {                                                                \
+    if (::onnxruntime::logging::LoggingManager::HasDefaultLogger()) { \
+      LOGS_DEFAULT(WARNING) << stream_expr;                           \
+    }                                                                 \
+  } while (0)
 
 // Static member initialization
 std::atomic<uint32_t> PosixTelemetry::global_register_count_{0};
@@ -201,12 +212,14 @@ PosixTelemetry::PosixTelemetry() {
   global_register_count_++;
 
   if (global_register_count_ == 1) {
-    try {
+    ORT_TRY {
       Initialize();
-    } catch (const std::exception& ex) {
-      // Log error but don't fail construction
-      // Telemetry failures should not break application functionality
-      LOGS_DEFAULT(WARNING) << "Failed to initialize telemetry: " << ex.what();
+    }
+    ORT_CATCH(const std::exception& ex) {
+      // Telemetry failures should not break application functionality.
+      ORT_HANDLE_EXCEPTION([&]() {
+        ORT_TELEMETRY_WARN("Failed to initialize telemetry: " << ex.what());
+      });
     }
   }
 }
@@ -216,11 +229,14 @@ PosixTelemetry::~PosixTelemetry() {
 
   global_register_count_--;
   if (global_register_count_ == 0) {
-    try {
+    ORT_TRY {
       Shutdown();
-    } catch (const std::exception& ex) {
-      // Log error but don't throw from destructor
-      LOGS_DEFAULT(WARNING) << "Error during telemetry shutdown: " << ex.what();
+    }
+    ORT_CATCH(const std::exception& ex) {
+      // Don't throw from a destructor.
+      ORT_HANDLE_EXCEPTION([&]() {
+        ORT_TELEMETRY_WARN("Error during telemetry shutdown: " << ex.what());
+      });
     }
   }
 }
@@ -232,10 +248,13 @@ void PosixTelemetry::LogEventAsync(Microsoft::Applications::Events::EventPropert
   if (logger == nullptr) {
     return;
   }
-  try {
+  ORT_TRY {
     logger->LogEvent(std::move(props));
-  } catch (const std::exception& ex) {
-    LOGS_DEFAULT(WARNING) << "[Telemetry] Failed to log event: " << ex.what();
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      ORT_TELEMETRY_WARN("[Telemetry] Failed to log event: " << ex.what());
+    });
   }
 }
 
@@ -280,7 +299,7 @@ void PosixTelemetry::Initialize() {
   status_t status;
   log_manager_ = LogManagerProvider::CreateLogManager(*config_, status);
   if (status != STATUS_SUCCESS || !log_manager_) {
-    LOGS_DEFAULT(WARNING) << "Failed to create telemetry LogManager, status: " << status;
+    ORT_TELEMETRY_WARN("Failed to create telemetry LogManager, status: " << status);
     config_.reset();
     return;
   }
@@ -288,7 +307,7 @@ void PosixTelemetry::Initialize() {
   // Get logger for our tenant
   auto* logger = log_manager_->GetLogger(TENANT_TOKEN);
   if (logger == nullptr) {
-    LOGS_DEFAULT(WARNING) << "Failed to get telemetry logger";
+    ORT_TELEMETRY_WARN("Failed to get telemetry logger");
     LogManagerProvider::Release(*config_);
     log_manager_ = nullptr;
     config_.reset();
