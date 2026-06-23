@@ -152,16 +152,6 @@ Status GroupQueryAttention<T, U>::PrePack(const Tensor& tensor, int input_idx, A
   // XQA consumes the attention sink as FP32. When head_sink is a constant initializer, convert it once
   // here into a cached device buffer (xqa_head_sink_) to avoid a per-launch conversion. Dynamic /
   // non-initializer head_sink inputs are not prepacked and fall back to the per-launch scratch path.
-  // In the plugin EP build the AllocatorPtr passed by the framework can arrive null across the
-  // library boundary. Fall back to the kernel's own default-memory allocator, which is always valid.
-  // This kernel keeps is_packed=false and never populates prepacked_weights, so the framework does
-  // not register a PrePackedWeights container for this input and there is no disk externalization of
-  // the result. The allocator is used only to materialize the cached FP32 sink in device memory (an
-  // H2D copy followed by a conversion kernel), so a default-memory (device) allocator is exactly the
-  // kind required here -- a CPU allocator would be wrong.
-  if (!alloc) {
-    alloc = this->Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
-  }
   if constexpr (std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>) {
     const auto& shape = tensor.Shape();
     ORT_RETURN_IF_NOT(shape.NumDimensions() == 1,

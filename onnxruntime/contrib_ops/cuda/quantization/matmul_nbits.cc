@@ -105,11 +105,6 @@ Status MatMulNBits<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr
                                /*out*/ bool& is_packed,
                                /*out*/ PrePackedWeights* /*prepacked_weights*/) {
   is_packed = false;
-  // In the plugin EP build the AllocatorPtr passed by the framework can arrive null across the
-  // library boundary. Fall back to the kernel's own default-memory allocator, which is always valid.
-  if (!alloc) {
-    alloc = this->Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
-  }
   if constexpr (std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>) {
     if (has_fpA_intB_gemm_) {
       cudaStream_t stream = cudaStreamLegacy;  // Use default stream for prepacking.
