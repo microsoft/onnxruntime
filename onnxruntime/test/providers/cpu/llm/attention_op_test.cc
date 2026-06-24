@@ -2332,6 +2332,45 @@ TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_Decode_BottomRight) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+// q_len=1 with nonpad_kv_seqlen keeps bottom-right decode behavior: the single
+// query attends every valid key. If the no-nonpad upper-left overlay is applied
+// here, this returns 1.0 instead of the expected 1/6.
+TEST(AttentionTest, Attention_Causal_NonPadKVSeqLen_SingleQueryKeepsBottomRight_CPU) {
+  OpTester test("Attention", 24, onnxruntime::kOnnxDomain);
+  test.AddAttribute<int64_t>("is_causal", static_cast<int64_t>(1));
+
+  constexpr int batch_size = 1;
+  constexpr int q_num_heads = 1;
+  constexpr int kv_num_heads = 1;
+  constexpr int q_sequence_length = 1;
+  constexpr int kv_sequence_length = 6;
+  constexpr int head_size = 8;
+
+  std::vector<float> q(batch_size * q_num_heads * q_sequence_length * head_size, 0.0f);
+  std::vector<float> k(batch_size * kv_num_heads * kv_sequence_length * head_size, 0.0f);
+  std::vector<float> v(batch_size * kv_num_heads * kv_sequence_length * head_size, 0.0f);
+  std::fill_n(v.begin(), head_size, 1.0f);
+
+  test.AddInput<float>("Q", {batch_size, q_num_heads, q_sequence_length, head_size}, q);
+  test.AddInput<float>("K", {batch_size, kv_num_heads, kv_sequence_length, head_size}, k);
+  test.AddInput<float>("V", {batch_size, kv_num_heads, kv_sequence_length, head_size}, v);
+  test.AddOptionalInputEdge<bool>();   // attn_mask
+  test.AddOptionalInputEdge<float>();  // past_key
+  test.AddOptionalInputEdge<float>();  // past_value
+  test.AddInput<int64_t>("nonpad_kv_seqlen", {batch_size}, {kv_sequence_length});
+
+  std::vector<float> expected_y(batch_size * q_num_heads * q_sequence_length * head_size,
+                                1.0f / static_cast<float>(kv_sequence_length));
+  test.AddOutput<float>("Y", {batch_size, q_num_heads, q_sequence_length, head_size}, expected_y, false, 0,
+                        1e-4f);
+  test.AddOptionalOutputEdge<float>();  // present_key
+  test.AddOptionalOutputEdge<float>();  // present_value
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 // Continued / chunked prefill (S_q=2) into a partially-filled static cache.
 // nonpad=[4], S_q=2 -> offset = 4 - 2 = 2: query 0 attends keys {0,1,2}, query 1
 // attends {0,1,2,3}. The old top-left alignment would mask everything past the

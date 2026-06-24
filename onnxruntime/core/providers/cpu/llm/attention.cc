@@ -347,9 +347,11 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
 
   T* mask_data = nullptr;
   bool delete_mask_data = false;
-  // For the nonpad_kv_seqlen path, keep the existing q_len=1 behavior: the
-  // TensorScatter decode tests expect bottom-right alignment where the single
-  // query can see all valid keys.
+  // In the nonpad_kv_seqlen path, q_len=1 is external KV-cache decode with
+  // bottom-right alignment. The single query's causal frontier is the valid
+  // length, so nonpad masking alone leaves exactly all valid keys visible.
+  // Keep causal=false for that case to avoid applying the batch-shared
+  // upper-left overlay used by the no-nonpad path.
   bool causal = parameters.is_causal &&
                 (parameters.has_nonpad_kv_seqlen
                      ? parameters.q_sequence_length > 1
