@@ -14,7 +14,6 @@
 #include "core/session/provider_bridge_ort.h"
 #include "core/framework/provider_options.h"
 #include "core/platform/env.h"
-#include "core/platform/logging/make_platform_default_log_sink.h"
 #include "core/common/inlined_containers.h"
 
 namespace onnxruntime {
@@ -53,39 +52,10 @@ static Status CreateOrtEnv() {
   // the env pre-existed we leave its LoggingManager untouched; g_python_callback_sink then
   // stays null and set_default_logger_callback() reports that the sink is unavailable.
   //
-  // Immediately replace the default logging manager with one backed by a PythonCallbackSink.
-  // The PythonCallbackSink wraps the platform default sink and can be updated later via
-  // set_default_logger_callback() without needing to recreate the LoggingManager (which is
-  // a singleton guarded by a check in its constructor).
-  //
-  // The sequence here is:
-  //   1. Create the PythonCallbackSink wrapping the platform default sink.
-  //   2. Call SetLoggingManager(nullptr) to destroy the just-created default manager.
-  //      The LoggingManager destructor explicitly resets the singleton guard (the
-  //      DefaultLoggerManagerInstance atomic pointer) to nullptr, allowing a new
-  //      Default-type manager to be constructed.
-  //   3. Construct a new LoggingManager with the PythonCallbackSink and install it.
-  //
   // This is safe at this point because no ORT sessions or background threads have
   // been created yet, so there is no concurrent logging activity.
   if (!env_preexisted) {
-    using namespace onnxruntime::logging;
-    auto python_sink = CreateAndRegisterPythonCallbackSink(MakePlatformDefaultLogSink());
-    constexpr auto kDefaultSeverity = Severity::kWARNING;
-    auto etw_severity = OverrideLevelWithEtw(kDefaultSeverity);
-    auto combined_sink = EnhanceSinkWithEtw(std::move(python_sink), kDefaultSeverity, etw_severity);
-    std::string logger_id{"Default"};
-    ort_env->SetLoggingManager(nullptr);  // Destroys the old Default-type LoggingManager.
-    // The LoggingManager destructor explicitly resets the internal singleton guard
-    // (DefaultLoggerManagerInstance atomic pointer in logging.cc) to nullptr, which allows
-    // a new Default-type LoggingManager to be constructed below.  If that implementation
-    // detail ever changes, this sequence will need to be revisited.
-    ort_env->SetLoggingManager(std::make_unique<LoggingManager>(
-        std::move(combined_sink),
-        std::min(kDefaultSeverity, etw_severity),
-        false,
-        LoggingManager::InstanceType::Default,
-        &logger_id));
+    InstallPythonCallbackLoggingSink(*ort_env);
   }
 
   // Keep the ort_env alive, don't free it. It's ok to leak the memory.
