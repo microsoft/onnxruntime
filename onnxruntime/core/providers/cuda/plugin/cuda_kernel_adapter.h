@@ -1050,12 +1050,12 @@ class CudaKernel : public OpKernel {
     // The compute stream is intentionally NOT forwarded to the allocator here. This is a
     // bookkeeping decision, NOT a synchronization bug: the `stream` argument to a stream-aware
     // arena is only metadata used to decide when a freed chunk may be reused on a *different*
-    // stream without an intervening sync. It does not change where the kernel runs — the returned
-    // buffer is still consumed by the kernel on the real compute stream. The CUDA graph path this
-    // routing targets runs on a single unified stream, where alloc/free/reuse ordering is implicit
-    // (the stream serializes everything), so there is no cross-stream chunk to race on. Tagging
-    // chunks with a null stream (freely reusable, the same semantics as a plain non-stream-aware
-    // BFC arena) is therefore correct and safe here.
+    // stream without an intervening sync. It does not change where the kernel runs - the returned
+    // buffer is still consumed by the kernel on the real compute stream. In a serialized run (and
+    // within one graph-capture run), alloc/free/reuse ordering is implicit on that stream, so there
+    // is no cross-stream chunk to race on. Tagging chunks with a null stream (freely reusable, the
+    // same semantics as a plain non-stream-aware BFC arena) is therefore correct and safe as long
+    // as the EP does not advertise concurrent Session::Run() support.
     //
     // It is also currently the only safe option, because of a C-API type constraint: a plugin
     // kernel only has the raw cudaStream_t (KernelContext::GetGPUComputeStream), not the framework
@@ -1070,7 +1070,7 @@ class CudaKernel : public OpKernel {
     // the arena would reinterpret a framework Stream* as an OrtSyncStream* that was never created
     // by ORT for this stream.
     //
-    // Properly stream-tagging scratch chunks (needed only if/when this path supports concurrent
+    // Properly stream-tagging scratch chunks (needed before this path can support concurrent
     // multi-stream runs) requires new C-API surface to expose the framework OrtSyncStream* to
     // plugin kernels. See docs/cuda_plugin_ep/arena_allocator_migration_design.md ("Scratch buffer
     // stream tagging") for the limitation and future work.
