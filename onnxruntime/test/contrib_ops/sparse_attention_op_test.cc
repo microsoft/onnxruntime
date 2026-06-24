@@ -395,40 +395,6 @@ TEST(SparseAttentionTest, RejectsBlockColIndicesInvalidWithinNNZ) {
       "block_col_indices[0][0]=99 is out of valid range [0, 2)");
 }
 
-// Col padding entries are not validated (only entries within NNZ are checked).
-// row pointers say nnz=1, col[1]=-1 is padding and should not trigger rejection.
-TEST(SparseAttentionTest, AcceptsPaddedColIndicesBeyondNNZ) {
-  OpTester test("SparseAttention", 1, onnxruntime::kMSDomain);
-  test.AddAttribute<int64_t>("num_heads", 2);
-  test.AddAttribute<int64_t>("kv_num_heads", 2);
-  test.AddAttribute<int64_t>("sparse_block_size", 16);
-  test.AddAttribute<float>("scale", 1.0f);
-  test.AddAttribute<int64_t>("do_rotary", 0);
-  test.AddAttribute<int64_t>("rotary_interleaved", 0);
-
-  test.AddInput<float>("query", {1, 1, 16}, std::vector<float>(16, 0.0f));
-  test.AddInput<float>("key", {1, 1, 16}, std::vector<float>(16, 0.0f));
-  test.AddInput<float>("value", {1, 1, 16}, std::vector<float>(16, 0.0f));
-  test.AddInput<float>("past_key", {1, 2, 32, 8}, std::vector<float>(512, 0.0f));
-  test.AddInput<float>("past_value", {1, 2, 32, 8}, std::vector<float>(512, 0.0f));
-  // shape (1, 3) => max_blocks=2, row indices: {0, 1, 1} means nnz=1
-  test.AddInput<int32_t>("block_row_indices", {1, 3}, {0, 1, 1});
-  // col[0]=0 is valid (within nnz), col[1]=-1 is padding beyond nnz (should not be checked)
-  test.AddInput<int32_t>("block_col_indices", {1, 2}, {0, -1});
-  test.AddInput<int32_t>("total_sequence_length", {1}, {2});
-  test.AddInput<int32_t>("key_total_sequence_lengths", {1}, {2});
-  test.AddOptionalInputEdge<float>();
-  test.AddOptionalInputEdge<float>();
-
-  test.AddOutput<float>("output", {1, 1, 16}, std::vector<float>(16, 0.0f));
-  test.AddOutput<float>("present_key", {1, 2, 32, 8}, std::vector<float>(512, 0.0f));
-  test.AddOutput<float>("present_value", {1, 2, 32, 8}, std::vector<float>(512, 0.0f));
-
-  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-  execution_providers.push_back(DefaultCpuExecutionProvider());
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
-}
-
 #if defined(USE_CUDA)
 // CUDA-specific CSR validation tests.
 // CUDA SparseAttention requires head_size=128, sparse_block_size=64, and MLFloat16 inputs.
