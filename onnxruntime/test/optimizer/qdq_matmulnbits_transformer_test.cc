@@ -1463,6 +1463,119 @@ TEST(QDQTransformerTests, DQGemmNotConvertedToMatMulNBits_Alpha) {
                     1e-5, 2e-5);
 }
 
+// ---------------------------------------------------------------------------
+// Cross-session pre-packed weight sharing for fusion-generated MatMulNBits.
+//
+// The DQ -> MatMulNBits fusion tags the generated B initializer with a stable, content-derived
+// sharing identity (see ComputeMatMulNBitsSharingIdentity and Graph::AddSharedInitializerIdentity).
+// When two sessions of the same model share a PrepackedWeightsContainer, the second session adopts
+// the first session's pre-packed B buffer instead of re-packing it. Two weights that differ in any
+// way that changes the compute semantics (e.g. different scales or zero points) get distinct
+// identities and therefore never share.
+// ---------------------------------------------------------------------------
+namespace {
+
+// Builds and serializes a model: input -> MatMul(input, DQ(weight[, scale, zp])) -> output, with a
+// constant int4 weight so the DQ -> MatMulNBits fusion converts it. The scales are filled with
+// scale_value so callers can produce models that share (same value) or differ (different value).
+std::string BuildDQMatMulModelData(const std::vector<int64_t>& input_shape,
+                                   const std::vector<int64_t>& weight_shape,
+                                   int64_t block_size,
+                                   float scale_value,
+                                   bool use_zp) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 21;
+  domain_to_version[kMSDomain] = 1;
+  Model model("MatMulNBitsSharing", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  auto* input_arg = builder.MakeInput<float>(input_shape, -1.0f, 1.0f);
+  auto* output_arg = builder.MakeOutput();
+
+  NodeAttributes attrs;
+  utils::SetNodeAttribute(utils::MakeAttribute("axis", static_cast<int64_t>(0)), attrs);
+  utils::SetNodeAttribute(utils::MakeAttribute("block_size", block_size), attrs);
+
+  auto scale_shape = std::vector<int64_t>{weight_shape};
+  scale_shape[0] = (scale_shape[0] + block_size - 1) / block_size;
+  const int64_t scale_count = scale_shape[0] * scale_shape[1];
+
+  // Weights use the builder's fixed-seed RNG, so the same weight bytes are produced across builds;
+  // only the explicitly provided scales (and presence of zero points) vary between models.
+  auto* weight_arg = builder.MakeInitializer<Int4x2>(weight_shape, Int4x2(Int4x2::min_val, 0),
+                                                     Int4x2(Int4x2::max_val, 0));
+  auto* scale_arg =
+      builder.MakeInitializer<float>(scale_shape, std::vector<float>(static_cast<size_t>(scale_count), scale_value));
+  auto* dq_output = builder.MakeIntermediate();
+  if (use_zp) {
+    auto* zp_arg = builder.MakeInitializer<Int4x2>(scale_shape, Int4x2(0, 0), Int4x2(2, 0));
+    builder.AddNode("DequantizeLinear", {weight_arg, scale_arg, zp_arg}, {dq_output}, "", &attrs);
+  } else {
+    builder.AddNode("DequantizeLinear", {weight_arg, scale_arg}, {dq_output}, "", &attrs);
+  }
+  builder.AddNode("MatMul", {input_arg, dq_output}, {output_arg});
+
+  builder.SetGraphOutputs();
+  EXPECT_STATUS_OK(graph.Resolve());
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+  return model_data;
+}
+
+// Loads serialized model bytes into an InferenceSession sharing the given container, running Level2
+// optimizations on the CPU EP (so the DQ -> MatMulNBits fusion executes), and returns how many
+// pre-packed weights this session adopted from the shared container.
+size_t LoadSharedAndCountReuse(const std::string& model_data,
+                               PrepackedWeightsContainer& container,
+                               int64_t accuracy_level) {
+  SessionOptions so;
+  so.graph_optimization_level = TransformerLevel::Level2;
+  EXPECT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel,
+                                                    std::to_string(accuracy_level).c_str()));
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  EXPECT_STATUS_OK(session.AddPrePackedWeightsContainer(&container));
+  EXPECT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+  EXPECT_STATUS_OK(session.Initialize());
+
+  // Confirm the fusion actually produced a MatMulNBits (otherwise the test is vacuous).
+  auto op_to_count = CountOpsInGraph(session.GetGraph());
+  EXPECT_EQ(op_to_count["com.microsoft.MatMulNBits"], 1);
+
+  return session.GetSessionState().GetUsedSharedPrePackedWeightCounter();
+}
+
+}  // namespace
+
+// Two sessions of the same model that share a container: the second session adopts the first
+// session's pre-packed MatMulNBits B buffer instead of re-packing it.
+TEST(QDQTransformerTests, MatMulNBitsPrepackSharing_SameModelShares) {
+  for (bool use_zp : {false, true}) {
+    const std::string model_data = BuildDQMatMulModelData({12, 37}, {37, 12}, 16, 8.0f, use_zp);
+
+    PrepackedWeightsContainer container;
+    // First session populates the shared container; it reuses nothing.
+    EXPECT_EQ(LoadSharedAndCountReuse(model_data, container, 0), static_cast<size_t>(0));
+    // Second session loads the identical model and adopts the shared B buffer.
+    EXPECT_EQ(LoadSharedAndCountReuse(model_data, container, 0), static_cast<size_t>(1));
+  }
+}
+
+// Two models that differ only in their scales get distinct sharing identities, so the second
+// session does NOT adopt the first session's buffer even though they share a container.
+TEST(QDQTransformerTests, MatMulNBitsPrepackSharing_DifferentWeightsDoNotShare) {
+  const std::string model_data_a = BuildDQMatMulModelData({12, 37}, {37, 12}, 16, 8.0f, false);
+  const std::string model_data_b = BuildDQMatMulModelData({12, 37}, {37, 12}, 16, 9.0f, false);
+
+  PrepackedWeightsContainer container;
+  EXPECT_EQ(LoadSharedAndCountReuse(model_data_a, container, 0), static_cast<size_t>(0));
+  // Different scales -> different identity -> no false sharing.
+  EXPECT_EQ(LoadSharedAndCountReuse(model_data_b, container, 0), static_cast<size_t>(0));
+}
+
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 
 }  // namespace test
