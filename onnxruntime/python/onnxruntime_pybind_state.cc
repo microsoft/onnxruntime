@@ -30,6 +30,7 @@
 #include "core/framework/TensorSeq.h"
 #include "core/graph/graph_viewer.h"
 #include "core/platform/env.h"
+#include "core/platform/logging/make_platform_default_log_sink.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/providers/providers.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
@@ -278,6 +279,38 @@ std::unique_ptr<onnxruntime::logging::ISink> CreateAndRegisterPythonCallbackSink
     g_user_logging_callback = Py_None;
   }
   return sink;
+}
+
+// Replaces the Default LoggingManager of the given OrtEnv with one backed by a
+// PythonCallbackSink (wrapping the platform default sink and any ETW sink).  This lets
+// set_default_logger_callback() route ORT log messages to a user-provided Python callable
+// without rebuilding the LoggingManager (a Default-type singleton).
+//
+// Must only be called when this Python module actually created the OrtEnv (i.e., no
+// pre-existing env created by an embedding C/C++ app whose loggers may still be in use) and
+// before any ORT sessions or background threads exist, so there is no concurrent logging.
+//
+// The sequence is:
+//   1. Create the PythonCallbackSink wrapping the platform default sink (+ optional ETW).
+//   2. SetLoggingManager(nullptr) destroys the existing Default-type manager.  Its destructor
+//      resets the internal singleton guard (DefaultLoggerManagerInstance atomic pointer in
+//      logging.cc) to nullptr, allowing a new Default-type manager to be constructed.  If that
+//      implementation detail ever changes, this sequence will need to be revisited.
+//   3. Construct and install a new LoggingManager backed by the PythonCallbackSink.
+void InstallPythonCallbackLoggingSink(OrtEnv& ort_env) {
+  using namespace onnxruntime::logging;
+  auto python_sink = CreateAndRegisterPythonCallbackSink(MakePlatformDefaultLogSink());
+  constexpr auto kDefaultSeverity = Severity::kWARNING;
+  auto etw_severity = OverrideLevelWithEtw(kDefaultSeverity);
+  auto combined_sink = EnhanceSinkWithEtw(std::move(python_sink), kDefaultSeverity, etw_severity);
+  std::string logger_id{"Default"};
+  ort_env.SetLoggingManager(nullptr);  // Destroys the old Default-type LoggingManager.
+  ort_env.SetLoggingManager(std::make_unique<LoggingManager>(
+      std::move(combined_sink),
+      std::min(kDefaultSeverity, etw_severity),
+      false,
+      LoggingManager::InstanceType::Default,
+      &logger_id));
 }
 
 struct AsyncResource {
