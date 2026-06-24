@@ -343,6 +343,31 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   // Compute the attention score and apply the score to V
   const T* k_data = packed_qkv ? nullptr : k_rotary;
   const T* v_data = packed_qkv ? nullptr : V.Get<Tensor>().Data<T>();
+
+  // Non-quantized flash attention path (float only). Uses the tiled online-softmax
+  // kernel to avoid materializing the full attention score matrix. Falls back to the
+  // naive path when an unsupported feature is requested (softcap, smooth softmax,
+  // head sink, or QK output).
+  if constexpr (std::is_same_v<T, float>) {
+    // Restrict the flash path to prefill / chunked-prefill (query length > 1). Single-token
+    // decode (sequence_length == 1) has no flash benefit: the naive score matrix is only
+    // [1, total_sequence_length] per head, so there is nothing to tile away, and the extra
+    // online-softmax bookkeeping makes it slower in practice.
+    const bool use_flash = !disable_gqa_flash_ &&
+                           parameters.sequence_length > 1 &&
+                           softcap_ == 0.0f &&
+                           !use_smooth_softmax_ &&
+                           head_sink_data == nullptr &&
+                           output_qk == nullptr &&
+                           present_k != nullptr && present_v != nullptr;
+    if (use_flash) {
+      return ApplyAttentionFlash(q_rotary, k_data, v_data,
+                                 attention_bias, past_key, past_value,
+                                 output, present_k, present_v, seqlens_k,
+                                 parameters, allocator, context);
+    }
+  }
+
   return ApplyAttention(q_rotary, k_data, v_data,
                         head_sink_data, attention_bias, past_key, past_value, output, present_k, present_v,
                         output_qk, seqlens_k, parameters, allocator, context);
