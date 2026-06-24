@@ -1047,19 +1047,33 @@ class CudaKernel : public OpKernel {
     // enforced inside MakeUniquePtr via ValidatedCalcMemSizeForArray (it throws
     // on cnt * sizeof(T) overflow).
     //
-    // The compute stream is intentionally NOT forwarded to the allocator here. A
-    // plugin kernel only has the raw cudaStream_t (KernelContext::GetGPUComputeStream),
-    // not the framework OrtSyncStream* that the stream-aware arena persists in each
-    // chunk (CudaArena stores `chunk->stream` and later dereferences it through the
-    // EP stream API, e.g. SyncStream_GetImpl/SyncStream_GetSyncId). Wrapping the raw
-    // handle in a temporary framework Stream shim and passing it down would be unsafe
-    // on two counts: (1) the shim is stack-allocated and would dangle after this
-    // function returns while the arena still holds the pointer, and (2) it is
-    // type-confused — the arena would reinterpret a framework Stream* as an
-    // OrtSyncStream* that was never created by ORT for this stream. The arena
-    // therefore tracks scratch chunks with a null stream (freely reusable, the same
-    // semantics as a plain non-stream-aware BFC arena). This is safe for the CUDA
-    // graph path this routing targets, which runs on a single unified stream.
+    // The compute stream is intentionally NOT forwarded to the allocator here. This is a
+    // bookkeeping decision, NOT a synchronization bug: the `stream` argument to a stream-aware
+    // arena is only metadata used to decide when a freed chunk may be reused on a *different*
+    // stream without an intervening sync. It does not change where the kernel runs — the returned
+    // buffer is still consumed by the kernel on the real compute stream. The CUDA graph path this
+    // routing targets runs on a single unified stream, where alloc/free/reuse ordering is implicit
+    // (the stream serializes everything), so there is no cross-stream chunk to race on. Tagging
+    // chunks with a null stream (freely reusable, the same semantics as a plain non-stream-aware
+    // BFC arena) is therefore correct and safe here.
+    //
+    // It is also currently the only safe option, because of a C-API type constraint: a plugin
+    // kernel only has the raw cudaStream_t (KernelContext::GetGPUComputeStream), not the framework
+    // OrtSyncStream* that the stream-aware arena persists in each chunk (CudaArena stores
+    // `chunk->stream` and later dereferences it through the EP stream API, e.g.
+    // SyncStream_GetImpl/SyncStream_GetSyncId). Note that OrtSyncStream (the ORT-core wrapper,
+    // `struct OrtSyncStream : public onnxruntime::Stream`) is a DIFFERENT object from the plugin's
+    // CudaSyncStream (an OrtSyncStreamImpl); CudaSyncStream::FromCudaStream() recovers the latter,
+    // not the former. Wrapping the raw handle in a temporary framework Stream shim and passing it
+    // down would be unsafe on two counts: (1) the shim is stack-allocated and would dangle after
+    // this function returns while the arena still holds the pointer, and (2) it is type-confused —
+    // the arena would reinterpret a framework Stream* as an OrtSyncStream* that was never created
+    // by ORT for this stream.
+    //
+    // Properly stream-tagging scratch chunks (needed only if/when this path supports concurrent
+    // multi-stream runs) requires new C-API surface to expose the framework OrtSyncStream* to
+    // plugin kernels. See docs/cuda_plugin_ep/arena_allocator_migration_design.md ("Scratch buffer
+    // stream tagging") for the limitation and future work.
     return ::onnxruntime::IAllocator::MakeUniquePtr<T>(
         Info().GetAllocator(OrtMemType::OrtMemTypeDefault), cnt, /*use_reserve*/ false,
         /*stream*/ nullptr);
