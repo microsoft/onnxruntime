@@ -18,14 +18,13 @@ Abstract:
     C++ and serve as the cross-arch layout authority for W2.
 
     Scope of this checkpoint:
-      * `BlkLen == 64`: native NEON dotprod (SDOT) inner loop. The 64-byte
-        block-group is loaded as 4x int8x16, the in-block-group selector is
-        applied with one shift + mask per 16-byte chunk, and the per-block
-        int8 dot is computed with 4 SDOTs.
-      * `BlkLen == 32` and `BlkLen == 128`: delegate to the portable scalar
-        reference (`SQ2BitGemmKernel_BlkSum_CompInt8_Scalar`) so the
-        availability contract holds; subsequent checkpoints add native
-        kernels for the other two BlkLens.
+      * `BlkLen == 32`, `BlkLen == 64`, `BlkLen == 128`: native NEON dotprod
+        (SDOT) inner loops. The packed B layout is the same 4-K-block group
+        with bit positions {0..1, 2..3, 4..5, 6..7} per byte for all three
+        BlkLens (only the bytes-per-K-block scales with BlkLen). One block-
+        group is loaded as 2 / 4 / 8 int8x16 chunks respectively, the in-
+        block-group selector is applied with one shift + mask per 16-byte
+        chunk, and the per-block int8 dot is computed with 2 / 4 / 8 SDOTs.
 
     Tile shape: R1xC1 to start (single-row, single-column inner loop).
     Wider tiles (R2xC4 main + R1xC4 tail, etc.) are a follow-up
@@ -335,14 +334,439 @@ SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd_BlkLen64(
     return CountM;
 }
 
+// -----------------------------------------------------------------------------
+// BlkLen=128 helpers + inner kernel.
+//
+// One K-block holds 128 weights = 8 int8x16 chunks. One block-group holds 4
+// K-blocks = 128 packed bytes. Layout (bit-positions of the in-block-group
+// selector) is identical to BlkLen=64; only the bytes-per-K-block scales.
+// -----------------------------------------------------------------------------
+
+constexpr size_t kBlkLen128VecsPerBlk = 8;  // 128 / 16
+
+MLAS_FORCEINLINE int32_t
+DotInt8_BlkLen128_DotProd(const int8_t* a_blk, const uint8x16_t bw[kBlkLen128VecsPerBlk])
+{
+    int32x4_t acc = vdupq_n_s32(0);
+    for (size_t i = 0; i < kBlkLen128VecsPerBlk; ++i) {
+        const int8x16_t a = vld1q_s8(a_blk + i * 16);
+        const int8x16_t b = vreinterpretq_s8_u8(bw[i]);
+        acc = vdotq_s32(acc, a, b);
+    }
+    return vaddvq_s32(acc);
+}
+
+template <size_t BlkInGroup>
+MLAS_FORCEINLINE void
+UnpackBlockGroupSliceBlkLen128_DotProd(const std::byte* group, uint8x16_t out[kBlkLen128VecsPerBlk])
+{
+    static_assert(BlkInGroup < sq2::kBlockGroupBlks, "BlkInGroup must be in [0, 4)");
+
+    const uint8x16_t mask03 = vdupq_n_u8(0x03);
+    const uint8_t* p = reinterpret_cast<const uint8_t*>(group);
+    for (size_t i = 0; i < kBlkLen128VecsPerBlk; ++i) {
+        const uint8x16_t v = vld1q_u8(p + i * 16);
+        if constexpr (BlkInGroup == 0) {
+            out[i] = vandq_u8(v, mask03);
+        } else {
+            constexpr int kShift = 2 * static_cast<int>(BlkInGroup);
+            out[i] = vandq_u8(vshrq_n_u8(v, kShift), mask03);
+        }
+    }
+}
+
+MLAS_FORCEINLINE void
+AccumOneBlockGroup_BlkLen128_DotProd(float& acc,
+                                      const std::byte* group,
+                                      const int8_t* a_blk_base,
+                                      const float* a_scale_row,
+                                      const float* a_blksum_row,
+                                      const float* b_scale_for_group,
+                                      const float b_blksum_for_4_blks[sq2::kBlockGroupBlks],
+                                      size_t blk0)
+{
+    uint8x16_t bw[kBlkLen128VecsPerBlk];
+
+    UnpackBlockGroupSliceBlkLen128_DotProd<0>(group, bw);
+    {
+        const int32_t dot = DotInt8_BlkLen128_DotProd(a_blk_base + 0 * sq2::kBlkLen128, bw);
+        acc += a_scale_row[blk0 + 0] * b_scale_for_group[0] * static_cast<float>(dot);
+        acc += a_blksum_row[blk0 + 0] * b_blksum_for_4_blks[0];
+    }
+    UnpackBlockGroupSliceBlkLen128_DotProd<1>(group, bw);
+    {
+        const int32_t dot = DotInt8_BlkLen128_DotProd(a_blk_base + 1 * sq2::kBlkLen128, bw);
+        acc += a_scale_row[blk0 + 1] * b_scale_for_group[1] * static_cast<float>(dot);
+        acc += a_blksum_row[blk0 + 1] * b_blksum_for_4_blks[1];
+    }
+    UnpackBlockGroupSliceBlkLen128_DotProd<2>(group, bw);
+    {
+        const int32_t dot = DotInt8_BlkLen128_DotProd(a_blk_base + 2 * sq2::kBlkLen128, bw);
+        acc += a_scale_row[blk0 + 2] * b_scale_for_group[2] * static_cast<float>(dot);
+        acc += a_blksum_row[blk0 + 2] * b_blksum_for_4_blks[2];
+    }
+    UnpackBlockGroupSliceBlkLen128_DotProd<3>(group, bw);
+    {
+        const int32_t dot = DotInt8_BlkLen128_DotProd(a_blk_base + 3 * sq2::kBlkLen128, bw);
+        acc += a_scale_row[blk0 + 3] * b_scale_for_group[3] * static_cast<float>(dot);
+        acc += a_blksum_row[blk0 + 3] * b_blksum_for_4_blks[3];
+    }
+}
+
+MLAS_FORCEINLINE void
+AccumLastBlockGroup_BlkLen128_DotProd(float& acc,
+                                       const std::byte* group,
+                                       const int8_t* a_blk_base,
+                                       const float* a_scale_row,
+                                       const float* a_blksum_row,
+                                       const float* b_scale_for_group,
+                                       const float b_blksum_for_4_blks[sq2::kBlockGroupBlks],
+                                       size_t blk0,
+                                       size_t blocks_in_tail)
+{
+    assert(blocks_in_tail >= 1 && blocks_in_tail <= sq2::kBlockGroupBlks);
+
+    uint8x16_t bw[kBlkLen128VecsPerBlk];
+
+    if (blocks_in_tail >= 1) {
+        UnpackBlockGroupSliceBlkLen128_DotProd<0>(group, bw);
+        const int32_t dot = DotInt8_BlkLen128_DotProd(a_blk_base + 0 * sq2::kBlkLen128, bw);
+        acc += a_scale_row[blk0 + 0] * b_scale_for_group[0] * static_cast<float>(dot);
+        acc += a_blksum_row[blk0 + 0] * b_blksum_for_4_blks[0];
+    }
+    if (blocks_in_tail >= 2) {
+        UnpackBlockGroupSliceBlkLen128_DotProd<1>(group, bw);
+        const int32_t dot = DotInt8_BlkLen128_DotProd(a_blk_base + 1 * sq2::kBlkLen128, bw);
+        acc += a_scale_row[blk0 + 1] * b_scale_for_group[1] * static_cast<float>(dot);
+        acc += a_blksum_row[blk0 + 1] * b_blksum_for_4_blks[1];
+    }
+    if (blocks_in_tail >= 3) {
+        UnpackBlockGroupSliceBlkLen128_DotProd<2>(group, bw);
+        const int32_t dot = DotInt8_BlkLen128_DotProd(a_blk_base + 2 * sq2::kBlkLen128, bw);
+        acc += a_scale_row[blk0 + 2] * b_scale_for_group[2] * static_cast<float>(dot);
+        acc += a_blksum_row[blk0 + 2] * b_blksum_for_4_blks[2];
+    }
+}
+
+size_t
+SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd_BlkLen128(
+    const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t BlockCountK,
+    const float* Bias,
+    size_t ldc,
+    const float* ABlockSum,
+    const float* QuantBBlkSum)
+{
+    if (BlockCountK == 0) {
+        return 0;
+    }
+
+    const size_t BlockGroupCountKPadded =
+        MlasDivRoundup(BlockCountK, sq2::kBlockGroupBlks);
+    const size_t BlockCountKPadded = BlockGroupCountKPadded * sq2::kBlockGroupBlks;
+    const size_t NMainLocal = (CountN / sq2::kNCols4) * sq2::kNCols4;
+
+    const size_t MainBlockGroups = BlockCountK / sq2::kBlockGroupBlks;
+    const size_t TailBlocks = BlockCountK % sq2::kBlockGroupBlks;
+
+    const size_t lda = BlockCountK * sq2::kBlkLen128;
+    const size_t lda_scale = BlockCountK;
+
+    for (size_t m = 0; m < CountM; ++m) {
+        const int8_t* a_row = reinterpret_cast<const int8_t*>(QuantA + m * lda);
+        const float* a_scale_row = QuantAScale + m * lda_scale;
+        const float* a_blksum_row = ABlockSum + m * lda_scale;
+        float* c_row = C + m * ldc;
+
+        for (size_t n = 0; n < CountN; ++n) {
+            float acc = (Bias != nullptr) ? Bias[n] : 0.0f;
+
+            for (size_t g = 0; g < MainBlockGroups; ++g) {
+                const size_t blk0 = g * sq2::kBlockGroupBlks;
+
+                const size_t b_offset = sq2::PackedQuantBOffsetBytes_W2_BlkLen128(
+                    n, g, BlockGroupCountKPadded, NMainLocal);
+                const std::byte* group = QuantBData + b_offset;
+
+                float b_scale_for_group[sq2::kBlockGroupBlks];
+                for (size_t i = 0; i < sq2::kBlockGroupBlks; ++i) {
+                    b_scale_for_group[i] = QuantBScale[sq2::PackedQuantBScaleOffset_W2(
+                        n, blk0 + i, BlockCountKPadded, NMainLocal)];
+                }
+
+                float b_blksum_for_4_blks[sq2::kBlockGroupBlks];
+                for (size_t i = 0; i < sq2::kBlockGroupBlks; ++i) {
+                    const size_t off = ((n / 16) * BlockCountK + (blk0 + i)) * 16 + (n % 16);
+                    b_blksum_for_4_blks[i] = QuantBBlkSum[off];
+                }
+
+                AccumOneBlockGroup_BlkLen128_DotProd(
+                    acc, group,
+                    a_row + blk0 * sq2::kBlkLen128,
+                    a_scale_row, a_blksum_row,
+                    b_scale_for_group, b_blksum_for_4_blks, blk0);
+            }
+
+            if (TailBlocks != 0) {
+                const size_t g = MainBlockGroups;
+                const size_t blk0 = g * sq2::kBlockGroupBlks;
+
+                const size_t b_offset = sq2::PackedQuantBOffsetBytes_W2_BlkLen128(
+                    n, g, BlockGroupCountKPadded, NMainLocal);
+                const std::byte* group = QuantBData + b_offset;
+
+                float b_scale_for_group[sq2::kBlockGroupBlks] = {};
+                for (size_t i = 0; i < TailBlocks; ++i) {
+                    b_scale_for_group[i] = QuantBScale[sq2::PackedQuantBScaleOffset_W2(
+                        n, blk0 + i, BlockCountKPadded, NMainLocal)];
+                }
+
+                float b_blksum_for_4_blks[sq2::kBlockGroupBlks] = {};
+                for (size_t i = 0; i < TailBlocks; ++i) {
+                    const size_t off = ((n / 16) * BlockCountK + (blk0 + i)) * 16 + (n % 16);
+                    b_blksum_for_4_blks[i] = QuantBBlkSum[off];
+                }
+
+                AccumLastBlockGroup_BlkLen128_DotProd(
+                    acc, group,
+                    a_row + blk0 * sq2::kBlkLen128,
+                    a_scale_row, a_blksum_row,
+                    b_scale_for_group, b_blksum_for_4_blks, blk0, TailBlocks);
+            }
+
+            c_row[n] = acc;
+        }
+    }
+
+    return CountM;
+}
+
+// -----------------------------------------------------------------------------
+// BlkLen=32 helpers + inner kernel.
+//
+// One K-block holds 32 weights = 2 int8x16 chunks. One block-group holds 4
+// K-blocks = 32 packed bytes (fits in two NEON registers). Same bit-position
+// layout as BlkLen=64/128.
+// -----------------------------------------------------------------------------
+
+constexpr size_t kBlkLen32VecsPerBlk = 2;  // 32 / 16
+
+MLAS_FORCEINLINE int32_t
+DotInt8_BlkLen32_DotProd(const int8_t* a_blk, const uint8x16_t bw[kBlkLen32VecsPerBlk])
+{
+    int32x4_t acc = vdupq_n_s32(0);
+    const int8x16_t a0 = vld1q_s8(a_blk + 0);
+    const int8x16_t a1 = vld1q_s8(a_blk + 16);
+    acc = vdotq_s32(acc, a0, vreinterpretq_s8_u8(bw[0]));
+    acc = vdotq_s32(acc, a1, vreinterpretq_s8_u8(bw[1]));
+    return vaddvq_s32(acc);
+}
+
+template <size_t BlkInGroup>
+MLAS_FORCEINLINE void
+UnpackBlockGroupSliceBlkLen32_DotProd(const std::byte* group, uint8x16_t out[kBlkLen32VecsPerBlk])
+{
+    static_assert(BlkInGroup < sq2::kBlockGroupBlks, "BlkInGroup must be in [0, 4)");
+
+    const uint8x16_t mask03 = vdupq_n_u8(0x03);
+    const uint8_t* p = reinterpret_cast<const uint8_t*>(group);
+    const uint8x16_t v0 = vld1q_u8(p + 0);
+    const uint8x16_t v1 = vld1q_u8(p + 16);
+
+    if constexpr (BlkInGroup == 0) {
+        out[0] = vandq_u8(v0, mask03);
+        out[1] = vandq_u8(v1, mask03);
+    } else {
+        constexpr int kShift = 2 * static_cast<int>(BlkInGroup);
+        out[0] = vandq_u8(vshrq_n_u8(v0, kShift), mask03);
+        out[1] = vandq_u8(vshrq_n_u8(v1, kShift), mask03);
+    }
+}
+
+MLAS_FORCEINLINE void
+AccumOneBlockGroup_BlkLen32_DotProd(float& acc,
+                                     const std::byte* group,
+                                     const int8_t* a_blk_base,
+                                     const float* a_scale_row,
+                                     const float* a_blksum_row,
+                                     const float* b_scale_for_group,
+                                     const float b_blksum_for_4_blks[sq2::kBlockGroupBlks],
+                                     size_t blk0)
+{
+    uint8x16_t bw[kBlkLen32VecsPerBlk];
+
+    UnpackBlockGroupSliceBlkLen32_DotProd<0>(group, bw);
+    {
+        const int32_t dot = DotInt8_BlkLen32_DotProd(a_blk_base + 0 * sq2::kBlkLen32, bw);
+        acc += a_scale_row[blk0 + 0] * b_scale_for_group[0] * static_cast<float>(dot);
+        acc += a_blksum_row[blk0 + 0] * b_blksum_for_4_blks[0];
+    }
+    UnpackBlockGroupSliceBlkLen32_DotProd<1>(group, bw);
+    {
+        const int32_t dot = DotInt8_BlkLen32_DotProd(a_blk_base + 1 * sq2::kBlkLen32, bw);
+        acc += a_scale_row[blk0 + 1] * b_scale_for_group[1] * static_cast<float>(dot);
+        acc += a_blksum_row[blk0 + 1] * b_blksum_for_4_blks[1];
+    }
+    UnpackBlockGroupSliceBlkLen32_DotProd<2>(group, bw);
+    {
+        const int32_t dot = DotInt8_BlkLen32_DotProd(a_blk_base + 2 * sq2::kBlkLen32, bw);
+        acc += a_scale_row[blk0 + 2] * b_scale_for_group[2] * static_cast<float>(dot);
+        acc += a_blksum_row[blk0 + 2] * b_blksum_for_4_blks[2];
+    }
+    UnpackBlockGroupSliceBlkLen32_DotProd<3>(group, bw);
+    {
+        const int32_t dot = DotInt8_BlkLen32_DotProd(a_blk_base + 3 * sq2::kBlkLen32, bw);
+        acc += a_scale_row[blk0 + 3] * b_scale_for_group[3] * static_cast<float>(dot);
+        acc += a_blksum_row[blk0 + 3] * b_blksum_for_4_blks[3];
+    }
+}
+
+MLAS_FORCEINLINE void
+AccumLastBlockGroup_BlkLen32_DotProd(float& acc,
+                                      const std::byte* group,
+                                      const int8_t* a_blk_base,
+                                      const float* a_scale_row,
+                                      const float* a_blksum_row,
+                                      const float* b_scale_for_group,
+                                      const float b_blksum_for_4_blks[sq2::kBlockGroupBlks],
+                                      size_t blk0,
+                                      size_t blocks_in_tail)
+{
+    assert(blocks_in_tail >= 1 && blocks_in_tail <= sq2::kBlockGroupBlks);
+
+    uint8x16_t bw[kBlkLen32VecsPerBlk];
+
+    if (blocks_in_tail >= 1) {
+        UnpackBlockGroupSliceBlkLen32_DotProd<0>(group, bw);
+        const int32_t dot = DotInt8_BlkLen32_DotProd(a_blk_base + 0 * sq2::kBlkLen32, bw);
+        acc += a_scale_row[blk0 + 0] * b_scale_for_group[0] * static_cast<float>(dot);
+        acc += a_blksum_row[blk0 + 0] * b_blksum_for_4_blks[0];
+    }
+    if (blocks_in_tail >= 2) {
+        UnpackBlockGroupSliceBlkLen32_DotProd<1>(group, bw);
+        const int32_t dot = DotInt8_BlkLen32_DotProd(a_blk_base + 1 * sq2::kBlkLen32, bw);
+        acc += a_scale_row[blk0 + 1] * b_scale_for_group[1] * static_cast<float>(dot);
+        acc += a_blksum_row[blk0 + 1] * b_blksum_for_4_blks[1];
+    }
+    if (blocks_in_tail >= 3) {
+        UnpackBlockGroupSliceBlkLen32_DotProd<2>(group, bw);
+        const int32_t dot = DotInt8_BlkLen32_DotProd(a_blk_base + 2 * sq2::kBlkLen32, bw);
+        acc += a_scale_row[blk0 + 2] * b_scale_for_group[2] * static_cast<float>(dot);
+        acc += a_blksum_row[blk0 + 2] * b_blksum_for_4_blks[2];
+    }
+}
+
+size_t
+SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd_BlkLen32(
+    const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t BlockCountK,
+    const float* Bias,
+    size_t ldc,
+    const float* ABlockSum,
+    const float* QuantBBlkSum)
+{
+    if (BlockCountK == 0) {
+        return 0;
+    }
+
+    const size_t BlockGroupCountKPadded =
+        MlasDivRoundup(BlockCountK, sq2::kBlockGroupBlks);
+    const size_t BlockCountKPadded = BlockGroupCountKPadded * sq2::kBlockGroupBlks;
+    const size_t NMainLocal = (CountN / sq2::kNCols4) * sq2::kNCols4;
+
+    const size_t MainBlockGroups = BlockCountK / sq2::kBlockGroupBlks;
+    const size_t TailBlocks = BlockCountK % sq2::kBlockGroupBlks;
+
+    const size_t lda = BlockCountK * sq2::kBlkLen32;
+    const size_t lda_scale = BlockCountK;
+
+    for (size_t m = 0; m < CountM; ++m) {
+        const int8_t* a_row = reinterpret_cast<const int8_t*>(QuantA + m * lda);
+        const float* a_scale_row = QuantAScale + m * lda_scale;
+        const float* a_blksum_row = ABlockSum + m * lda_scale;
+        float* c_row = C + m * ldc;
+
+        for (size_t n = 0; n < CountN; ++n) {
+            float acc = (Bias != nullptr) ? Bias[n] : 0.0f;
+
+            for (size_t g = 0; g < MainBlockGroups; ++g) {
+                const size_t blk0 = g * sq2::kBlockGroupBlks;
+
+                const size_t b_offset = sq2::PackedQuantBOffsetBytes_W2_BlkLen32(
+                    n, g, BlockGroupCountKPadded, NMainLocal);
+                const std::byte* group = QuantBData + b_offset;
+
+                float b_scale_for_group[sq2::kBlockGroupBlks];
+                for (size_t i = 0; i < sq2::kBlockGroupBlks; ++i) {
+                    b_scale_for_group[i] = QuantBScale[sq2::PackedQuantBScaleOffset_W2(
+                        n, blk0 + i, BlockCountKPadded, NMainLocal)];
+                }
+
+                float b_blksum_for_4_blks[sq2::kBlockGroupBlks];
+                for (size_t i = 0; i < sq2::kBlockGroupBlks; ++i) {
+                    const size_t off = ((n / 16) * BlockCountK + (blk0 + i)) * 16 + (n % 16);
+                    b_blksum_for_4_blks[i] = QuantBBlkSum[off];
+                }
+
+                AccumOneBlockGroup_BlkLen32_DotProd(
+                    acc, group,
+                    a_row + blk0 * sq2::kBlkLen32,
+                    a_scale_row, a_blksum_row,
+                    b_scale_for_group, b_blksum_for_4_blks, blk0);
+            }
+
+            if (TailBlocks != 0) {
+                const size_t g = MainBlockGroups;
+                const size_t blk0 = g * sq2::kBlockGroupBlks;
+
+                const size_t b_offset = sq2::PackedQuantBOffsetBytes_W2_BlkLen32(
+                    n, g, BlockGroupCountKPadded, NMainLocal);
+                const std::byte* group = QuantBData + b_offset;
+
+                float b_scale_for_group[sq2::kBlockGroupBlks] = {};
+                for (size_t i = 0; i < TailBlocks; ++i) {
+                    b_scale_for_group[i] = QuantBScale[sq2::PackedQuantBScaleOffset_W2(
+                        n, blk0 + i, BlockCountKPadded, NMainLocal)];
+                }
+
+                float b_blksum_for_4_blks[sq2::kBlockGroupBlks] = {};
+                for (size_t i = 0; i < TailBlocks; ++i) {
+                    const size_t off = ((n / 16) * BlockCountK + (blk0 + i)) * 16 + (n % 16);
+                    b_blksum_for_4_blks[i] = QuantBBlkSum[off];
+                }
+
+                AccumLastBlockGroup_BlkLen32_DotProd(
+                    acc, group,
+                    a_row + blk0 * sq2::kBlkLen32,
+                    a_scale_row, a_blksum_row,
+                    b_scale_for_group, b_blksum_for_4_blks, blk0, TailBlocks);
+            }
+
+            c_row[n] = acc;
+        }
+    }
+
+    return CountM;
+}
+
 }  // unnamed namespace
 
 //
 // W2 CompInt8 kernel entry point (DotProd backend).
 //
-// Routes BlkLen=64 to the native NEON dotprod kernel above; BlkLen=32 and
-// BlkLen=128 still go through the portable scalar oracle until native NEON
-// kernels for those BlkLens land in subsequent checkpoints.
+// All three BlkLens ({32, 64, 128}) route to native NEON dotprod kernels.
 //
 size_t
 SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd(
@@ -367,9 +791,20 @@ SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd(
             QuantA, QuantAScale, QuantBData, QuantBScale,
             C, CountM, CountN, BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum);
     }
+    if (BlkLen == sq2::kBlkLen128) {
+        return SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd_BlkLen128(
+            QuantA, QuantAScale, QuantBData, QuantBScale,
+            C, CountM, CountN, BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum);
+    }
+    if (BlkLen == sq2::kBlkLen32) {
+        return SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd_BlkLen32(
+            QuantA, QuantAScale, QuantBData, QuantBScale,
+            C, CountM, CountN, BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum);
+    }
 
-    // BlkLen 32 / 128: delegate to the portable scalar oracle. Same
-    // dispatch the AVX-512 W2 path uses for its non-BlkLen=64 BlkLens.
+    // Unsupported BlkLen for W2 -- defer to the portable scalar reference.
+    // Should be unreachable: the W2 dispatch advertises only BlkLen
+    // in {32, 64, 128} via MlasIsQNBitGemmAvailable.
     return sq2::SQ2BitGemmKernel_BlkSum_CompInt8_Scalar(
         BlkLen, QuantA, QuantAScale, QuantBData, QuantBScale, QuantBZeroPoint,
         C, CountM, CountN, CountK, BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum);

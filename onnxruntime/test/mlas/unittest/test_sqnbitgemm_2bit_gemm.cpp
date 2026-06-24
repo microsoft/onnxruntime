@@ -536,10 +536,15 @@ TEST(MlasSq2BitTest, BlkLen64_Avx512Vnni_WithZeroPoints) {
   }
 }
 
+#endif  // defined(MLAS_TARGET_AMD64)
+
 // =============================================================================
 // BlkLen=128 coverage. Mirrors the BlkLen=64 tests above. The helpers are
 // duplicated rather than templated to keep the BlkLen=64 path bit-identical;
 // the diff is purely additive.
+//
+// The helper namespace is intentionally cross-arch (not under MLAS_TARGET_AMD64)
+// so the ARM64 NEON DotProd tests in this file can reuse RunW2Case_BlkLen128.
 // =============================================================================
 
 namespace {
@@ -805,6 +810,8 @@ constexpr struct {
 
 }  // namespace
 
+#if defined(MLAS_TARGET_AMD64)
+
 TEST(MlasSq2BitTest, Scalar_BlkLen128) {
   for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
     for (const auto& s : kSimdShapes_BlkLen128) {
@@ -895,10 +902,15 @@ TEST(MlasSq2BitTest, BlkLen128_Avx512Vnni_WithZeroPoints) {
   }
 }
 
+#endif  // defined(MLAS_TARGET_AMD64)
+
 // =============================================================================
 // BlkLen=32 coverage. Mirrors BlkLen=128 above with per-block byte width 8
 // and per-group bytes 32. Helpers duplicated (rather than templated) to keep
 // the BlkLen=64 hot path bit-identical.
+//
+// The helper namespace is intentionally cross-arch (not under MLAS_TARGET_AMD64)
+// so the ARM64 NEON DotProd tests in this file can reuse RunW2Case_BlkLen32.
 // =============================================================================
 
 namespace {
@@ -1158,6 +1170,8 @@ constexpr struct {
 };
 
 }  // namespace
+
+#if defined(MLAS_TARGET_AMD64)
 
 TEST(MlasSq2BitTest, Scalar_BlkLen32) {
   for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
@@ -1443,6 +1457,79 @@ TEST(MlasSq2BitTest, NeonDotProd_DispatchE2E_BlkLen64) {
         << "MlasQNBitGemmBatch W2 NEON-DotProd mismatch at i=" << i
         << " (m=" << (i / N) << ", n=" << (i % N) << ")"
         << " out=" << C[i] << " ref=" << CRef[i];
+  }
+}
+
+//
+// Direct-call kernel coverage for the BlkLen=128 NEON DotProd path. Reuses
+// RunW2Case_BlkLen128 (cross-arch helper) -- the dispatch path is identical
+// to BlkLen=64 from the kernel-signature POV, only the per-block byte width
+// and per-group byte count change.
+//
+TEST(MlasSq2BitTest, NeonDotProd_BlkLen128) {
+  if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
+    GTEST_SKIP() << "ARM NEON FEAT_DotProd not available on this host";
+  }
+  for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+    for (const auto& s : kSimdShapes_BlkLen128) {
+      for (bool bias : {false, true}) {
+        RunW2Case_BlkLen128(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                            /*WithZeroPoints=*/false,
+                            sqnbitgemm_neon::SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd,
+                            "NEON-DotProd");
+      }
+    }
+  }
+}
+
+TEST(MlasSq2BitTest, NeonDotProd_BlkLen128_WithZeroPoints) {
+  if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
+    GTEST_SKIP() << "ARM NEON FEAT_DotProd not available on this host";
+  }
+  for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+    for (const auto& s : kSimdShapes_BlkLen128) {
+      for (bool bias : {false, true}) {
+        RunW2Case_BlkLen128(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                            /*WithZeroPoints=*/true,
+                            sqnbitgemm_neon::SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd,
+                            "NEON-DotProd");
+      }
+    }
+  }
+}
+
+//
+// Direct-call kernel coverage for the BlkLen=32 NEON DotProd path.
+//
+TEST(MlasSq2BitTest, NeonDotProd_BlkLen32) {
+  if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
+    GTEST_SKIP() << "ARM NEON FEAT_DotProd not available on this host";
+  }
+  for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+    for (const auto& s : kSimdShapes_BlkLen32) {
+      for (bool bias : {false, true}) {
+        RunW2Case_BlkLen32(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                           /*WithZeroPoints=*/false,
+                           sqnbitgemm_neon::SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd,
+                           "NEON-DotProd");
+      }
+    }
+  }
+}
+
+TEST(MlasSq2BitTest, NeonDotProd_BlkLen32_WithZeroPoints) {
+  if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
+    GTEST_SKIP() << "ARM NEON FEAT_DotProd not available on this host";
+  }
+  for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+    for (const auto& s : kSimdShapes_BlkLen32) {
+      for (bool bias : {false, true}) {
+        RunW2Case_BlkLen32(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                           /*WithZeroPoints=*/true,
+                           sqnbitgemm_neon::SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd,
+                           "NEON-DotProd");
+      }
+    }
   }
 }
 
