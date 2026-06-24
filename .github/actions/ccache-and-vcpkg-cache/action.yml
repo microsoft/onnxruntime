@@ -12,6 +12,9 @@ inputs:
     description: 'Path to the vcpkg directory'
     default: ~/.cache/vcpkg
     required: true
+  save_cache:
+    description: 'If true, saves the cache; otherwise only restores it.'
+    default: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/rel-') }}
 runs:
   using: "composite"
   steps:
@@ -19,7 +22,21 @@ runs:
   #      We could set the env var `ORT_BUILD_WITH_CACHE` to indirectly enable it, but this hack seems deprecated.
   #      Ideally ccache should be auto-enabled by the build system if ccache/sccache is detected on the PATH.
   - name: Setup CCache
+    # only save caches for `main` and `rel-*`` branches. total cache size is limited.
     uses: actions/cache@v5
+    # HACK: input is of type string and there's no way to specify it needs to be a bool. Why is this so half baked?
+    if: ${{ inputs.save_cache == 'true' }}
+    with:
+      # Fully qualify by `cache_key`. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
+      key: ccache | ${{ inputs.key }} | ${{ github.run_id }}
+      path: ${{ inputs.ccache_dir }}
+      restore-keys: |
+        ccache | ${{ inputs.key }}
+
+  - name: Setup CCache
+    # only save caches for `main` and `rel-*`` branches. total cache size is limited.
+    uses: actions/cache/restore@v5
+    if: ${{ inputs.save_cache == 'false' }}
     with:
       # Fully qualify by `cache_key`. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
       key: ccache | ${{ inputs.key }} | ${{ github.run_id }}
@@ -29,6 +46,16 @@ runs:
 
   - name: Setup VCPKG Cache
     uses: actions/cache@v5
+    if: ${{ inputs.save_cache == 'true' }}
+    with:
+      key: vcpkg-cache | ${{ inputs.key }} | ${{ github.run_id }}
+      path: ${{ inputs.vcpkg_dir }}
+      restore-keys: |
+        vcpkg-cache | ${{ inputs.key }}
+
+  - name: Setup VCPKG Cache
+    uses: actions/cache/restore@v5
+    if: ${{ inputs.save_cache == 'false' }}
     with:
       key: vcpkg-cache | ${{ inputs.key }} | ${{ github.run_id }}
       path: ${{ inputs.vcpkg_dir }}
