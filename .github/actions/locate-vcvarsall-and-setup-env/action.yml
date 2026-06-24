@@ -112,7 +112,20 @@ runs:
   #     vcpkg_dir: ${{ runner.temp }}/.vcpkg-cache
 
   - name: Setup CCache
+    # only save caches for `main`. total cache size is limited.
     uses: actions/cache@v5
+    if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/rel-') }}
+    with:
+      # Fully qualify by `cache_key`. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
+      key: ccache | ${{ inputs.cache_key }} | ${{ github.run_id }}
+      path: ${{ runner.temp }}/.ccache
+      restore-keys: |
+        ccache | ${{ inputs.cache_key }}
+
+  - name: Setup CCache
+    # only save caches for `main`. total cache size is limited.
+    uses: actions/cache/restore@v5
+    if: ${{ ! (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/rel-')) }}
     with:
       # Fully qualify by `cache_key`. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
       key: ccache | ${{ inputs.cache_key }} | ${{ github.run_id }}
@@ -121,7 +134,19 @@ runs:
         ccache | ${{ inputs.cache_key }}
 
   - name: Setup VCPKG Cache
+    # only save caches for `main`. total cache size is limited.
     uses: actions/cache@v5
+    if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/rel-') }}
+    with:
+      key: vcpkg-cache | ${{ inputs.cache_key }} | ${{ github.run_id }}
+      path: ${{ runner.temp }}/.vcpkg-cache
+      restore-keys: |
+        vcpkg-cache | ${{ inputs.cache_key }}
+
+  - name: Setup VCPKG Cache
+    # only save caches for `main`. total cache size is limited.
+    uses: actions/cache/restore@v5
+    if: ${{ ! (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/rel-')) }}
     with:
       key: vcpkg-cache | ${{ inputs.cache_key }} | ${{ github.run_id }}
       path: ${{ runner.temp }}/.vcpkg-cache
