@@ -146,8 +146,8 @@ jobs:
       # onnxruntime_provider_test is built into the artifact and links the plugin tests
       # (gated by ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP). The user-stream + CUDA graph test
       # registers the plugin .so via GetSharedLibraryFileName("onnxruntime_providers_cuda_plugin"),
-      # which is resolved relative to the binary directory, so the test must run from
-      # /build/Release/Release where the .so lives.
+      # which returns the platform-specific filename without a directory component. Run from
+      # /build/Release/Release so that filename resolves to the plugin .so built there.
       - name: Run CUDA Plugin EP C++ Tests
         run: |
           docker run --rm --gpus all \

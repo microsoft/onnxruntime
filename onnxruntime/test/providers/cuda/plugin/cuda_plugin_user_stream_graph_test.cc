@@ -220,7 +220,6 @@ TEST_F(CudaPluginUserStreamGraphTest, CaptureAndReplayOnUserStream) {
   // Update the input in place on the user stream and replay again.
   const std::array<float, kNumElements> x1 = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
   upload_input(x1);
-  binding.SynchronizeInputs();
   session.Run(Ort::RunOptions{}, binding);
   read_output(y);
   for (size_t i = 0; i < kNumElements; ++i) {
