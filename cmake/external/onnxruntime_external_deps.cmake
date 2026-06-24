@@ -903,6 +903,10 @@ endif()
 
 # 1DS SDK (cpp_client_telemetry) for cross-platform telemetry on non-Windows platforms
 if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    message(FATAL_ERROR "onnxruntime_USE_TELEMETRY is not supported for WebAssembly/Emscripten builds: "
+                        "the 1DS telemetry SDK is excluded on Emscripten. Disable telemetry for WASM builds.")
+  endif()
   if(onnxruntime_USE_VCPKG)
     # Consume the 1DS SDK from the vcpkg port "cpp-client-telemetry", which exposes the
     # MSTelemetry::mat target with its include directories and transitive dependencies

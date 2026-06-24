@@ -356,7 +356,12 @@ def generate_build_tree(
     disable_float4_types = args.android or ("float4" in types_to_disable)
     disable_optional_type = "optional" in types_to_disable
     disable_sparse_tensors = "sparsetensor" in types_to_disable
-    # Telemetry: On Windows uses ETW, on non-Windows uses 1DS
+    # Telemetry: On Windows uses ETW, on non-Windows uses 1DS. Telemetry is unsupported on
+    # WebAssembly/Emscripten (the 1DS vcpkg feature excludes it), so fail fast on that combination.
+    if args.use_telemetry and args.build_wasm:
+        raise BuildError(
+            "Telemetry is not supported for WebAssembly (Emscripten) builds; omit --use_telemetry when using --build_wasm."
+        )
     cmake_args += [
         "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
     ]
