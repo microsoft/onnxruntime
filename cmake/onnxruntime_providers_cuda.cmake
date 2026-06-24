@@ -399,7 +399,9 @@
           message( WARNING "To compile with NHWC ops enabled please compile against cuDNN 9 or newer." )
         endif()
       endif()
-      target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas CUDNN::cudnn_all cudnn_frontend CUDA::curand CUDA::cufft CUDA::cudart CUDA::nvrtc CUDA::cuda_driver
+      target_compile_definitions(${target} PRIVATE NV_CUDNN_FRONTEND_USE_DYNAMIC_LOADING)
+      target_include_directories(${target} PRIVATE ${CUDNN_INCLUDE_DIR})
+      target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas cudnn_frontend CUDA::curand CUDA::cufft CUDA::cudart CUDA::nvrtc CUDA::cuda_driver
               ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
     endif()
 

@@ -3,6 +3,7 @@
 
 #include "cuda_ep.h"
 #include "cuda_ep_factory.h"
+#include "core/providers/cuda/cudnn_loader.h"
 #include "cuda_stream_plugin.h"
 #include "cuda_graph_plugin.h"
 #include "core/providers/cuda/plugin/cuda_kernel_adapter.h"
@@ -127,6 +128,8 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   // ORT uses it to avoid reading OrtEp struct fields that did not exist when the plugin was compiled.
   ort_version_supported = ORT_API_VERSION;
 
+  onnxruntime::cuda::CudnnLibrary::Get().Configure(config_.enable_cudnn, config_.cudnn_path);
+
   // The plugin is compiled against the latest ORT headers (ORT_API_VERSION) but may be loaded by an
   // older ORT runtime, down to the floor declared in plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION. Some
   // OrtEp callbacks below — and the OrtEpApi functions their implementations call — only exist in
@@ -206,6 +209,7 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   adapter_config.cudnn_conv_algo = config_.cudnn_conv_algo;
   adapter_config.cudnn_conv_use_max_workspace = config_.cudnn_conv_use_max_workspace;
   adapter_config.cudnn_conv1d_pad_to_nc1d = config_.cudnn_conv1d_pad_to_nc1d;
+  adapter_config.enable_cudnn = config_.enable_cudnn;
   adapter_config.fuse_conv_bias = config_.fuse_conv_bias;
   adapter_config.sdpa_kernel = config_.sdpa_kernel;
   adapter_config.device_id = config_.device_id;
@@ -402,7 +406,7 @@ OrtStatus* ORT_API_CALL CudaEp::CreateSyncStreamForDeviceImpl(
     return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, error.c_str());
   }
 
-  auto cuda_stream = std::make_unique<CudaSyncStream>(ep->factory_, device_id, this_ptr);
+  auto cuda_stream = std::make_unique<CudaSyncStream>(ep->factory_, device_id, ep->config_.enable_cudnn, this_ptr);
 
   if (ep->config_.has_user_compute_stream) {
     // A user-provided compute stream is honored for kernels regardless of whether CUDA graph

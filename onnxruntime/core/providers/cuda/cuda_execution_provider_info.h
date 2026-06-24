@@ -6,6 +6,7 @@
 
 #include <functional>
 #include <limits>
+#include <string>
 
 #include "core/common/hash_combine.h"
 #include "core/framework/arena_extend_strategy.h"
@@ -69,6 +70,9 @@ struct CUDAExecutionProviderInfo {
   // By default, for Conv1D, will pad [N,C,D] to [N,C,D,1], if turn on, will pad to [N,C,1,D].
   bool cudnn_conv1d_pad_to_nc1d{false};
 
+  bool enable_cudnn{true};
+  std::string cudnn_path;
+
   cuda::TunableOpInfo tunable_op{};
 
   bool enable_skip_layer_norm_strict_mode{false};
@@ -115,6 +119,8 @@ struct std::hash<::onnxruntime::CUDAExecutionProviderInfo> {
     onnxruntime::HashCombine(info.gpu_mem_limit, value);
     onnxruntime::HashCombine(info.tunable_op.max_tuning_duration_ms, value);
     onnxruntime::HashCombine(info.sdpa_kernel, value);
+    onnxruntime::HashCombine(info.enable_cudnn, value);
+    onnxruntime::HashCombine(info.cudnn_path, value);
 
     // Memory pointers
     onnxruntime::HashCombine(reinterpret_cast<size_t>(info.user_compute_stream), value);
