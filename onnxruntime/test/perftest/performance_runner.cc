@@ -109,6 +109,38 @@ void PerformanceResult::DumpToFile(const std::basic_string<ORTCHAR_T>& path, boo
 
     output_stats(std::cout);
   }
+
+  // Per-shape statistics (when --data_shape is used)
+  if (!per_shape_time_costs_total.empty() && f_include_statistics) {
+    auto output_per_shape = [&](std::ostream& ostream) {
+      for (size_t g = 0; g < per_shape_time_costs_total.size(); g++) {
+        const auto& shape_costs = per_shape_time_costs_total[g];
+        if (shape_costs.empty()) continue;
+
+        std::vector<double> sorted = shape_costs;
+        std::sort(sorted.begin(), sorted.end());
+        size_t count = sorted.size();
+        size_t s50 = static_cast<size_t>(count * 0.5);
+        size_t s90 = static_cast<size_t>(count * 0.9);
+        size_t s95 = static_cast<size_t>(count * 0.95);
+        size_t s99 = static_cast<size_t>(count * 0.99);
+
+        ostream << "\nShape group " << (g + 1) << " (" << count << " iterations):\n";
+        ostream << "  Min Latency: " << sorted[0] << " s\n";
+        ostream << "  Max Latency: " << sorted[count - 1] << " s\n";
+        ostream << "  P50 Latency: " << sorted[s50] << " s\n";
+        ostream << "  P90 Latency: " << sorted[s90] << " s\n";
+        ostream << "  P95 Latency: " << sorted[s95] << " s\n";
+        ostream << "  P99 Latency: " << sorted[s99] << " s" << std::endl;
+      }
+    };
+
+    if (have_file) {
+      output_per_shape(outfile);
+    }
+
+    output_per_shape(std::cout);
+  }
 }
 
 void PerformanceRunner::LogSessionCreationTime() {
@@ -116,14 +148,71 @@ void PerformanceRunner::LogSessionCreationTime() {
   std::cout << "\nSession creation time cost: " << session_create_duration.count() << " s\n";
 }
 
+void PerformanceRunner::PrintPerShapeStats() const {
+  const auto& shape_groups = performance_test_config_.run_config.data_shape_groups;
+  const auto& per_shape_costs = performance_result_.per_shape_time_costs_total;
+  size_t num_groups = per_shape_costs.size();
+
+  std::cout << "\nLatency per shape group:" << std::endl;
+
+  for (size_t g = 0; g < num_groups; g++) {
+    // Build label: "input_name : [d0,d1,...]"
+    std::string label;
+    for (const auto& [input_name, groups] : shape_groups) {
+      if (!label.empty()) label += ", ";
+      label += input_name + " : [";
+      const auto& dims = groups[g];
+      for (size_t d = 0; d < dims.size(); d++) {
+        if (d > 0) label += ",";
+        label += std::to_string(dims[d]);
+      }
+      label += "]";
+    }
+
+    std::cout << "  " << (g + 1) << ". " << label << std::endl;
+
+    const auto& time_costs = per_shape_costs[g];
+    if (time_costs.empty()) {
+      std::cout << "      (no data)" << std::endl;
+      continue;
+    }
+
+    std::vector<double> sorted_time = time_costs;
+    std::sort(sorted_time.begin(), sorted_time.end());
+    size_t total = sorted_time.size();
+    size_t n50 = static_cast<size_t>(total * 0.5);
+    size_t n90 = static_cast<size_t>(total * 0.9);
+    size_t n95 = static_cast<size_t>(total * 0.95);
+    size_t n99 = static_cast<size_t>(total * 0.99);
+
+    double avg = std::accumulate(sorted_time.begin(), sorted_time.end(), 0.0) / static_cast<double>(total);
+
+    std::cout << "      Iterations: " << total << "\n"
+              << "      Average Latency: " << avg * 1000.0 << " ms\n"
+              << "      Min Latency: " << sorted_time[0] * 1000.0 << " ms\n"
+              << "      Max Latency: " << sorted_time[total - 1] * 1000.0 << " ms\n"
+              << "      P50 Latency: " << sorted_time[n50] * 1000.0 << " ms\n"
+              << "      P90 Latency: " << sorted_time[n90] * 1000.0 << " ms\n"
+              << "      P95 Latency: " << sorted_time[n95] * 1000.0 << " ms\n"
+              << "      P99 Latency: " << sorted_time[n99] * 1000.0 << " ms"
+              << std::endl;
+  }
+}
+
 Status PerformanceRunner::Run() {
   if (!Initialize()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "failed to initialize.");
   }
 
-  // warm up
+  // warm up — run one iteration per shape group to ensure all shapes are warmed
+  size_t warmup_count = 1;
+  if (!performance_test_config_.run_config.data_shape_groups.empty()) {
+    warmup_count = performance_test_config_.run_config.data_shape_groups.begin()->second.size();
+  }
   initial_inference_result_.start = std::chrono::high_resolution_clock::now();
-  ORT_RETURN_IF_ERROR(RunOneIteration<true>());
+  for (size_t w = 0; w < warmup_count; w++) {
+    ORT_RETURN_IF_ERROR(RunOneIteration<true>());
+  }
   initial_inference_result_.end = std::chrono::high_resolution_clock::now();
 
   // TODO: start profiling
@@ -170,6 +259,10 @@ Status PerformanceRunner::Run() {
             << "Avg CPU usage: " << performance_result_.average_CPU_usage << " %\n"
             << "Peak working set size: " << performance_result_.peak_workingset_size << " bytes"
             << std::endl;
+
+  if (!performance_result_.per_shape_time_costs_total.empty()) {
+    PrintPerShapeStats();
+  }
 
   return Status::OK();
 }
@@ -306,9 +399,20 @@ bool PerformanceRunner::Initialize() {
   test_case_ = CreateOnnxTestCase(narrow_model_name, std::move(test_model_info_), 0.0, 0.0);
 
   if (performance_test_config_.run_config.generate_model_input_binding) {
-    return static_cast<OnnxRuntimeTestSession*>(
-               session_.get())
-        ->PopulateGeneratedInputTestData(performance_test_config_.run_config.random_seed_for_input_data);
+    auto* ort_session = static_cast<OnnxRuntimeTestSession*>(session_.get());
+    if (!performance_test_config_.run_config.data_shape_groups.empty()) {
+      if (!ort_session->PopulateMultiShapeInputTestData(
+              performance_test_config_.run_config.random_seed_for_input_data,
+              performance_test_config_.run_config.data_shape_groups)) {
+        return false;
+      }
+      // Pre-size per-shape timing vectors
+      size_t num_groups = performance_test_config_.run_config.data_shape_groups.begin()->second.size();
+      performance_result_.per_shape_time_costs_total.resize(num_groups);
+      return true;
+    }
+    return ort_session->PopulateGeneratedInputTestData(
+        performance_test_config_.run_config.random_seed_for_input_data);
   }
 
   // TODO: Place input tensor on cpu memory if dnnl provider type to avoid CopyTensor logic in CopyInputAcrossDevices
@@ -317,11 +421,10 @@ bool PerformanceRunner::Initialize() {
     std::cout << "there is no test data for model " << test_case_->GetTestCaseName() << std::endl;
     return false;
   }
+  int input_count = test_model_info->GetInputCount();
   for (size_t test_data_id = 0; test_data_id != test_data_count; ++test_data_id) {
     std::unordered_map<std::string, Ort::Value> feeds;
     test_case_->LoadTestData(test_data_id /* id */, b_, feeds, true);
-    // Discard the names in feeds
-    int input_count = test_model_info->GetInputCount();
     for (int i = 0; i != input_count; ++i) {
       auto iter = feeds.find(test_model_info->GetInputName(i));
       if (iter == feeds.end()) {
@@ -331,6 +434,71 @@ bool PerformanceRunner::Initialize() {
       }
       session_->PreLoadTestData(test_data_id, static_cast<size_t>(i), std::move(iter->second));
     }
+  }
+
+  // When --data_shape is specified without -I, select only the test data sets
+  // whose tensor shapes match the requested shape groups.
+  const auto& data_shape_groups = performance_test_config_.run_config.data_shape_groups;
+  if (!data_shape_groups.empty()) {
+    auto* ort_session = static_cast<OnnxRuntimeTestSession*>(session_.get());
+    size_t num_groups = data_shape_groups.begin()->second.size();
+
+    // Build input name -> index map
+    std::unordered_map<std::string, size_t> input_name_to_idx;
+    for (int i = 0; i < input_count; ++i) {
+      input_name_to_idx[test_model_info->GetInputName(i)] = static_cast<size_t>(i);
+    }
+
+    // Validate that all names in data_shape_groups exist in the model
+    for (const auto& [name, groups] : data_shape_groups) {
+      if (input_name_to_idx.find(name) == input_name_to_idx.end()) {
+        std::cerr << "Error: --data_shape specifies unknown input '" << name << "'." << std::endl;
+        return false;
+      }
+    }
+
+    // For each shape group, find the matching test data set
+    std::vector<size_t> selected_ids;
+    for (size_t g = 0; g < num_groups; ++g) {
+      bool found = false;
+      for (size_t test_data_id = 0; test_data_id < test_data_count; ++test_data_id) {
+        bool match = true;
+        for (const auto& [input_name, shape_list] : data_shape_groups) {
+          size_t input_idx = input_name_to_idx[input_name];
+          auto loaded_shape = ort_session->GetLoadedInputShape(test_data_id, input_idx);
+          if (loaded_shape != shape_list[g]) {
+            match = false;
+            break;
+          }
+        }
+        if (match) {
+          if (std::find(selected_ids.begin(), selected_ids.end(), test_data_id) != selected_ids.end()) {
+            std::cerr << "Error: --data_shape shape group " << (g + 1)
+                      << " matches a test data set already selected. "
+                      << "Duplicate shape groups are not supported when selecting from test data." << std::endl;
+            return false;
+          }
+          selected_ids.push_back(test_data_id);
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        std::cerr << "No test data found matching shape [";
+        const auto& first_input = data_shape_groups.begin();
+        const auto& dims = first_input->second[g];
+        for (size_t d = 0; d < dims.size(); ++d) {
+          if (d > 0) std::cerr << ",";
+          std::cerr << dims[d];
+        }
+        std::cerr << "] for input '" << first_input->first << "'." << std::endl;
+        return false;
+      }
+    }
+
+    ort_session->SelectTestDataSets(selected_ids);
+    ort_session->SetUseRoundRobin(true);
+    performance_result_.per_shape_time_costs_total.resize(num_groups);
   }
 
   return true;
