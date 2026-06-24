@@ -462,7 +462,7 @@ TEST(BeamSearchTest, DummyWhisperWithSequenceInputIds) {
   tester.AddInput("decoder_input_ids", {1, 2}, {2, 5});
   tester.AddOutput("sequences", {1, 1, 10}, {2, 5, 1, 1, 1, 1, 1, 1, 1, 1});
   tester.AddOutput<float>("scores", {1, 1}, {-0.05625312775373459f}, false /* sort_output */, 1e-4f /* rel_error */,
-                         1e-4f /* abs_error */);
+                          1e-4f /* abs_error */);
 #ifdef USE_CUDA
   tester.ConfigEp(DefaultCudaExecutionProvider());
 #endif
