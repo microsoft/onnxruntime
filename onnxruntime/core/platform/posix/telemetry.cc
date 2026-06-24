@@ -100,7 +100,8 @@ class EventBuilder {
     // Set latency/priority
     props_.SetLatency(static_cast<EventLatency>(priority));
 
-    // Set schema version for compatibility with Windows
+    // Default schemaVersion is 0; events that have evolved call SetSchemaVersion() to match the
+    // Windows provider's per-event versions.
     props_.SetProperty("schemaVersion", static_cast<int64_t>(0));
 
     // All ORT telemetry is required system metadata (no PII)
@@ -108,6 +109,12 @@ class EventBuilder {
 
     // Privacy data tags for GDPR compliance classification
     props_.SetProperty(COMMONFIELDS_EVENT_PRIVTAGS, static_cast<int64_t>(privacy_tags));
+  }
+
+  // Override the default schemaVersion (0) to match the Windows provider's per-event versions.
+  EventBuilder& SetSchemaVersion(uint8_t schema_version) {
+    props_.SetProperty("schemaVersion", static_cast<int64_t>(schema_version));
+    return *this;
   }
 
   EventBuilder& AddString(const char* key, const std::string& value) {
@@ -612,6 +619,7 @@ void PosixTelemetry::LogSessionCreationStart(uint32_t session_id) const {
 
   auto event = EventBuilder("SessionCreationStart", EventPriority::CRITICAL,
                             PDT_SoftwareSetupAndInventory | PDT_ProductAndServicePerformance)
+                   .SetSchemaVersion(2)
                    .AddCommonContext(this)
                    .AddUInt32("sessionId", session_id)
                    .Build();
@@ -716,6 +724,7 @@ void PosixTelemetry::LogCompileModelStart(
 
   auto event = EventBuilder("CompileModelStart", EventPriority::NORMAL,
                             PDT_SoftwareSetupAndInventory | PDT_ProductAndServicePerformance)
+                   .SetSchemaVersion(1)
                    .AddCommonContext(this)
                    .AddUInt32("sessionId", session_id)
                    .AddString("inputSource", input_source)
@@ -769,6 +778,7 @@ void PosixTelemetry::LogRuntimeError(
 
   auto event = EventBuilder("RuntimeError", EventPriority::HIGH,
                             PDT_ProductAndServicePerformance)
+                   .SetSchemaVersion(1)
                    .AddCommonContext(this)
                    .AddUInt32("sessionId", session_id)
                    .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
@@ -814,6 +824,7 @@ void PosixTelemetry::LogRuntimePerf(
 
   auto event = EventBuilder("RuntimePerf", EventPriority::NORMAL,
                             PDT_ProductAndServicePerformance)
+                   .SetSchemaVersion(1)
                    .AddCommonContext(this)
                    .AddUInt32("sessionId", session_id)
                    .AddUInt32("totalRunsSinceLast", total_runs_since_last)
@@ -886,6 +897,7 @@ void PosixTelemetry::LogModelLoadStart(uint32_t session_id) const {
 
   auto event = EventBuilder("ModelLoadStart", EventPriority::NORMAL,
                             PDT_ProductAndServiceUsage)
+                   .SetSchemaVersion(1)
                    .AddCommonContext(this)
                    .AddUInt32("sessionId", session_id)
                    .Build();
@@ -947,6 +959,7 @@ void PosixTelemetry::LogEpDeviceUsage(
 
   auto event = EventBuilder("EpDeviceUsage", EventPriority::NORMAL,
                             PDT_ProductAndServiceUsage)
+                   .SetSchemaVersion(1)
                    .AddCommonContext(this)
                    .AddUInt32("sessionId", session_id)
                    .AddString("executionProviderType", ep_type)
@@ -971,6 +984,7 @@ void PosixTelemetry::LogRegisterEpLibraryStart(const std::string& registration_n
 
   auto event = EventBuilder("RegisterEpLibraryStart", EventPriority::NORMAL,
                             PDT_ProductAndServiceUsage)
+                   .SetSchemaVersion(1)
                    .AddCommonContext(this)
                    .AddString("registrationName", registration_name)
                    .Build();
