@@ -19,6 +19,8 @@
 #include "core/common/common.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 
+#include <type_traits>
+
 namespace onnxruntime::llm {
 namespace kernels {
 namespace fpA_intB_gemv {
@@ -39,6 +41,10 @@ struct MathWrapper<FP16DetailsA> {
 
   __device__ __forceinline__ static Type2 to_vec2(Type const& v) {
     return __half2half2(v);
+  }
+
+  __device__ __forceinline__ static float2 to_float2(Type2 const& v) {
+    return __half22float2(v);
   }
 
   __device__ __forceinline__ static Type2 fma2(Type2 const& a, Type2 const& b, Type2 const& c) {
@@ -62,6 +68,14 @@ struct MathWrapper<BF16DetailsA> {
     uint32_t val = 0;
     Type2 ret = reinterpret_cast<Type2&>(val);
     return ret;
+#endif
+  }
+
+  __device__ __forceinline__ static float2 to_float2(Type2 const& v) {
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800))
+    return __bfloat1622float2(v);
+#else
+    return float2{0.f, 0.f};
 #endif
   }
 
@@ -147,22 +161,44 @@ __device__ __forceinline__ void pack_to_vec2(void* dst, void* src, int n) {
   }
 }
 
-template <typename Details, int M, int N, int K>
+template <typename Details, int M, int N, int K,
+          typename AccT = typename MathWrapper<typename Details::TypeDetailsA>::Type>
 __device__ __forceinline__ void mma(void* acc, void* w_pack2, void* act) {
   using Type = typename MathWrapper<typename Details::TypeDetailsA>::Type;
   using Type2 = typename MathWrapper<typename Details::TypeDetailsA>::Type2;
   static_assert(N % 2 == 0);
   static constexpr int VecN = N / 2;
+  if constexpr (std::is_same_v<AccT, float>) {
+    // fp32 accumulation: keep the per-thread K-dimension dot product in float to avoid
+    // the precision loss of accumulating a long chain in 16-bit (especially bf16).
 #pragma unroll
-  for (int m = 0; m < M; ++m) {
+    for (int m = 0; m < M; ++m) {
 #pragma unroll
-    for (int n = 0; n < VecN; ++n) {
+      for (int n = 0; n < VecN; ++n) {
+        float2 acc2 = reinterpret_cast<float2*>(acc)[m * VecN + n];
 #pragma unroll
-      for (int k = 0; k < K; ++k) {
-        reinterpret_cast<Type2*>(acc)[m * VecN + n] = MathWrapper<typename Details::TypeDetailsA>::fma2(
-            reinterpret_cast<Type2*>(w_pack2)[n * K + k],
-            MathWrapper<typename Details::TypeDetailsA>::to_vec2(reinterpret_cast<Type*>(act)[m * K + k]),
-            reinterpret_cast<Type2*>(acc)[m * VecN + n]);
+        for (int k = 0; k < K; ++k) {
+          float const a = static_cast<float>(reinterpret_cast<Type*>(act)[m * K + k]);
+          float2 const w = MathWrapper<typename Details::TypeDetailsA>::to_float2(
+              reinterpret_cast<Type2*>(w_pack2)[n * K + k]);
+          acc2.x += w.x * a;
+          acc2.y += w.y * a;
+        }
+        reinterpret_cast<float2*>(acc)[m * VecN + n] = acc2;
+      }
+    }
+  } else {
+#pragma unroll
+    for (int m = 0; m < M; ++m) {
+#pragma unroll
+      for (int n = 0; n < VecN; ++n) {
+#pragma unroll
+        for (int k = 0; k < K; ++k) {
+          reinterpret_cast<Type2*>(acc)[m * VecN + n] = MathWrapper<typename Details::TypeDetailsA>::fma2(
+              reinterpret_cast<Type2*>(w_pack2)[n * K + k],
+              MathWrapper<typename Details::TypeDetailsA>::to_vec2(reinterpret_cast<Type*>(act)[m * K + k]),
+              reinterpret_cast<Type2*>(acc)[m * VecN + n]);
+        }
       }
     }
   }
@@ -180,7 +216,8 @@ __device__ __forceinline__ T warp_reduce_sum(T& val) {
   return val;
 }
 
-template <typename Details, int CtaM, int CtaN, int Threads, bool EnableBias, bool ApplyAlphaInAdvance>
+template <typename Details, int CtaM, int CtaN, int Threads, bool EnableBias, bool ApplyAlphaInAdvance,
+          typename AccT = typename MathWrapper<typename Details::TypeDetailsA>::Type>
 __device__ __forceinline__ void epilogue(void* out, int stride, void* tile_acc, void* bias, float alpha) {
   using Type = typename MathWrapper<typename Details::TypeDetailsA>::Type;
   static constexpr int Interleave = Details::kInterleave;
@@ -195,7 +232,7 @@ __device__ __forceinline__ void epilogue(void* out, int stride, void* tile_acc, 
   for (int m = 0; m < CtaM; ++m) {
 #pragma unroll
     for (int n = 0; n < CtaN; ++n) {
-      float v = static_cast<float>(reinterpret_cast<Type*>(tile_acc)[m * CtaN + n]);
+      float v = static_cast<float>(reinterpret_cast<AccT*>(tile_acc)[m * CtaN + n]);
       v = warp_reduce_sum<Interleave, ThreadsPerInterleavedTile>(v);
       if (lane_id < Interleave * ThreadsPerInterleavedTile && lane_id % ThreadsPerInterleavedTile == 0) {
         shmem[warp_id * CtaM * CtaN * Interleave + m * CtaN * Interleave + n * Interleave + lane_id / ThreadsPerInterleavedTile] = v;

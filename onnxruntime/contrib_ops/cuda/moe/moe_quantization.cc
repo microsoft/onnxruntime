@@ -23,11 +23,22 @@
 
 #include <cstring>
 #include <limits>
+#include <mutex>
 #include <vector>
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
+
+namespace {
+void LogQMoESwigluFusionRemapOnce() {
+  static std::once_flag log_warning;
+  std::call_once(log_warning, []() {
+    LOGS_DEFAULT(WARNING) << "QMoE swiglu_fusion is 0; assuming interleaved SwiGLU layout "
+                             "for backward compatibility.";
+  });
+}
+}  // namespace
 
 namespace onnxruntime {
 namespace contrib {
@@ -258,6 +269,18 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
               "QMoE in CUDA execution provider does not support separate fc3_experts_weights. "
               "Gate and up projection weights must be pre-concatenated into fc1.");
 
+  // Backward compatibility: the published gpt-oss-20b model (and any model exported by ORT < 1.27)
+  // hard-coded the interleaved SwiGLU fusion layout and did not emit a swiglu_fusion attribute, so it
+  // falls back to the default of 0 ("not fused"). QMoE never has a separate FC3 (enforced above), so a
+  // SwiGLU activation with swiglu_fusion == 0 means the gate and value projections are actually pre-fused
+  // into FC1 (interleaved layout). Treat this as swiglu_fusion == 1 so those legacy models keep working.
+  int swiglu_fusion = swiglu_fusion_;
+  if (activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu &&
+      swiglu_fusion == 0) {
+    swiglu_fusion = 1;
+    LogQMoESwigluFusionRemapOnce();
+  }
+
   const Tensor* fc1_zeros = packed_fc1_bias_ ? nullptr : context->Input<Tensor>(11);
   const Tensor* fc2_zeros = packed_fc2_bias_ ? nullptr : context->Input<Tensor>(12);
 
@@ -299,10 +322,10 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                            "QMoE row-wise quantization (block_size <= 0) does not support zero_points. "
                            "Remove fc*_zero_points or use block-wise quantization.");
   }
-  if (block_size_ > 0 && block_size_ < 64 && has_any_zero_point) {
+  if (block_size_ > 0 && block_size_ < 32 && has_any_zero_point) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "QMoE asymmetric zero_points are currently supported only when block_size >= 64. "
-                           "Use block_size >= 64 or remove fc*_zero_points.");
+                           "QMoE asymmetric zero_points are currently supported only when block_size >= 32. "
+                           "Use block_size >= 32 or remove fc*_zero_points.");
   }
 
   int64_t pack_size = expert_weight_bits_ == 4 ? 2 : 1;
@@ -317,6 +340,25 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       &fc2_shape, fc2_experts_bias_optional, fc2_scales, fc2_zeros,
       nullptr, nullptr, nullptr, nullptr,
       pack_size, is_fused_swiglu, block_size_));
+  ORT_RETURN_IF_NOT(k_ > 0 && k_ <= moe_params.num_experts,
+                    "QMoE requires 0 < k <= num_experts, got k=", k_,
+                    " and num_experts=", moe_params.num_experts);
+
+  // The INT4/INT8 weight-only path stores B in the column-interleaved layout (ColumnMajorTileInterleave),
+  // whose CUTLASS pitchlinear iterators require the GEMM reduction dim K to be a whole multiple of the
+  // interleave tile (kInterleaveKTile == 64 for fp16/bf16 activations). For the two MoE GEMMs the
+  // reduction dims are fc1.K == hidden_size and fc2.K == inter_size. A partial final K tile is read past
+  // the valid range and silently yields garbage/NaN (the single-matrix fpA_intB GEMM throws on this; the
+  // grouped MoE GEMM and the decode GEMV have no such guard), so reject it up front with a clear error.
+  if (quant_type_ == "int") {
+    constexpr int64_t kInterleaveKTile = 64;
+    ORT_RETURN_IF_NOT(moe_params.hidden_size % kInterleaveKTile == 0,
+                      "QMoE int weight-only quantization requires hidden_size to be a multiple of ",
+                      kInterleaveKTile, " (the interleaved-weight K tile), got hidden_size=", moe_params.hidden_size, ".");
+    ORT_RETURN_IF_NOT(moe_params.inter_size % kInterleaveKTile == 0,
+                      "QMoE int weight-only quantization requires inter_size to be a multiple of ",
+                      kInterleaveKTile, " (the interleaved-weight K tile), got inter_size=", moe_params.inter_size, ".");
+  }
 
   if (uses_fp4_weight_scales) {
     constexpr int64_t fp4_block_size = 32;
@@ -465,23 +507,23 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
       // GEMM 1: N=fc1_out_size (doubled for gated), K=hidden_size
       MoeGemmId id1(static_cast<int>(fc1_out_size), static_cast<int>(moe_params.hidden_size), dtype, wtype, MoeGemmId::GemmType::Gemm1);
-      if (mGemmId1 != id1) {
-        mGemmId1 = id1;
+      {
+        // profileTactics caches per (GemmId, M bucket); calling it every forward lets decode
+        // (small M) and prefill (large M) each profile and select their own best tile shape.
         GemmDims dims(static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.num_rows),
                       fc1_out_size, static_cast<int64_t>(moe_params.hidden_size));
-        mGemmProfiler.profileTactics(m_moe_runner.get(), dtype, dims, id1);
+        mGemmProfiler.profileTactics(m_moe_runner.get(), dims, id1);
       }
-      config1 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), mGemmId1);
+      config1 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), id1);
 
       // GEMM 2
       MoeGemmId id2(static_cast<int>(moe_params.hidden_size), static_cast<int>(moe_params.inter_size), dtype, wtype, MoeGemmId::GemmType::Gemm2);
-      if (mGemmId2 != id2) {
-        mGemmId2 = id2;
+      {
         GemmDims dims(static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.num_rows),
                       static_cast<int64_t>(moe_params.hidden_size), static_cast<int64_t>(moe_params.inter_size));
-        mGemmProfiler.profileTactics(m_moe_runner.get(), dtype, dims, id2);
+        mGemmProfiler.profileTactics(m_moe_runner.get(), dims, id2);
       }
-      config2 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), mGemmId2);
+      config2 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), id2);
 
       m_moe_runner->setTactic(config1, config2);
     }
@@ -492,13 +534,15 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   }
   // Lock released — concurrent QMoE inferences can now run prep work in parallel.
 
-  // Scratch buffer for workspace + expert_scales + expert_indices
+  // Scratch buffer for workspace + expert_scales + expert_indices + permutation_map.
+  // Use checked arithmetic: these byte counts derive adjacent pointer offsets inside one allocation.
   // expert_scales: num_rows * k * sizeof(float)
   // expert_indices: num_rows * k * sizeof(int)
-  size_t scales_bytes = moe_params.num_rows * k_ * sizeof(float);
-  size_t indices_bytes = moe_params.num_rows * k_ * sizeof(int);
-  size_t permutation_bytes = moe_params.num_rows * k_ * sizeof(int);
-  size_t total_scratch_bytes = workspace_size + scales_bytes + indices_bytes + permutation_bytes;
+  size_t expanded_rows = SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_);
+  size_t scales_bytes = expanded_rows * sizeof(float);
+  size_t indices_bytes = expanded_rows * sizeof(int);
+  size_t permutation_bytes = expanded_rows * sizeof(int);
+  size_t total_scratch_bytes = SafeInt<size_t>(workspace_size) + scales_bytes + indices_bytes + permutation_bytes;
 
   auto work_space = GetScratchBuffer<void>(total_scratch_bytes, GetComputeStream(context));
   char* workspace_ptr = reinterpret_cast<char*>(work_space.get());
@@ -1005,7 +1049,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
           onnxruntime::llm::kernels::cutlass_kernels::ActivationParams params(activation_type_);
           params.alpha = activation_alpha_;
           params.beta = activation_beta_;
-          params.swiglu_fusion = swiglu_fusion_;
+          params.swiglu_fusion = swiglu_fusion;
           params.limit = swiglu_limit_;
           return params;
         }(),

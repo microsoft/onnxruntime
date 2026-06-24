@@ -15,6 +15,15 @@ build.bat --cmake_generator "Visual Studio 17 2022" --config Release --build_whe
           --cmake_extra_defines "onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON"
 ```
 
+## Minimum ONNX Runtime Version
+
+The plugin is compiled against the ONNX Runtime headers in this repository, but it is designed to load into an **older** ONNX Runtime runtime as well. The minimum compatible version is declared in [`plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION`](../../plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION) (currently **1.24.4**) and is the single source of truth:
+
+- It is baked into the plugin library at build time (`ORT_PLUGIN_EP_MIN_ORT_VERSION`) and enforced at load time.
+- It is documented as the minimum core ONNX Runtime version in the `onnxruntime-ep-cuda12`/`onnxruntime-ep-cuda13` Python wheel and NuGet package READMEs. The plugin packages do **not** declare a hard dependency on the core `onnxruntime` package, so you install a compatible `onnxruntime` (version `>=<min>`) separately.
+
+At load time, `CreateEpFactories()` negotiates the API version with the runtime: it reads the runtime's reported version, enforces the minimum, and requests the `OrtApi` that matches the **runtime** (not the build). If the runtime is older than the minimum, registration fails with a descriptive error instead of crashing. As a result, the same plugin binary works with any ONNX Runtime from the minimum version onward, including runtimes newer than the version it was built against (API versions are backward compatible because they are only appended to).
+
 ## Running
 
 When the plugin is built, it will produce `libonnxruntime_providers_cuda_plugin.so` (or `.dll` on Windows) in the build output directory alongside `libonnxruntime.so`.
@@ -149,6 +158,25 @@ python test_cuda_plugin_ep.py
 ```
 
 The script validates plugin registration, device enumeration, provider options, operator coverage, and that key nodes are actually assigned to `CudaPluginExecutionProvider`.
+
+### Test against the minimum supported ORT version
+
+The plugin must keep working on the oldest supported ONNX Runtime (see [Minimum ONNX Runtime Version](#minimum-onnx-runtime-version)), not just the version it was built against. To validate this locally, install the minimum base runtime and run the same test against the freshly built plugin library:
+
+```bash
+# 1. Build the plugin (see "Build Instructions"). This produces the plugin .so and installs the
+#    matching, freshly built onnxruntime wheel.
+
+# 2. Replace the base runtime with the minimum supported version.
+pip install "onnxruntime==$(cat plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION)" --force-reinstall
+
+# 3. Point the test at the freshly built plugin library and run it.
+export ORT_CUDA_PLUGIN_PATH=/path/to/build/Release/libonnxruntime_providers_cuda_plugin.so
+cd onnxruntime/test/python/transformers
+python test_cuda_plugin_ep.py
+```
+
+This loads the plugin (compiled against the latest headers) into the minimum supported ONNX Runtime, exercising the API-version negotiation in `CreateEpFactories()`. If the plugin accidentally depends on an API newer than the declared minimum, the test fails here. The same check runs automatically in the `Test Linux CUDA Plugin EP` CI stage.
 
 
 ## Verification

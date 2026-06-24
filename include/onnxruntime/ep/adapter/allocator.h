@@ -8,8 +8,11 @@
 #endif
 
 #include <mutex>
+#include <string_view>
 #include <utility>
+#include <vector>
 
+#include "core/common/parse_string.h"
 #include "core/framework/allocator.h"
 
 namespace onnxruntime {
@@ -55,14 +58,31 @@ class IAllocatorWrappingOrtAllocator final : public IAllocator {
     ORT_NOT_IMPLEMENTED("IAllocatorWrappingOrtAllocator::AllocOnStream is not implemented yet.");
   }
 
+  void GetStats(AllocatorStats* stats) override {
+    if (!stats) return;
+    *stats = {};
+
+    // GetStats was added in OrtAllocator version 23. For older allocators the function pointer
+    // may be uninitialized, so we must not call through it.
+    const OrtAllocator* raw = ort_allocator_;
+    if (raw->version < 23 || !raw->GetStats) return;
+
+    Ort::KeyValuePairs kvps = ort_allocator_.GetStats();
+    std::vector<const char*> keys, values;
+    kvps.GetKeyValuePairs(keys, values);
+    const size_t n = keys.size() < values.size() ? keys.size() : values.size();
+    for (size_t i = 0; i < n; ++i) {
+      int64_t val = 0;
+      if (!TryParseStringWithClassicLocale(std::string_view(values[i]), val)) continue;
+      stats->SetFromKeyValue(keys[i], val);
+    }
+  }
+
  private:
   static const Ort::Allocator& EnsureOrtAllocatorHasValue(const Ort::Allocator& ort_allocator) {
     ORT_ENFORCE(ort_allocator != nullptr, "Ort::Allocator must contain a non-nullptr OrtAllocator.");
     return ort_allocator;
   }
-
-  // TODO: Consider adding GetStats() override. Requires parsing OrtKeyValuePairs from the C API
-  // into AllocatorStats; see GetStatsFromOrtAllocator() in allocator_adapters.cc for reference.
 
   Ort::Allocator ort_allocator_;
 

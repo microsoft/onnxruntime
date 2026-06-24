@@ -41,6 +41,8 @@ namespace webgpu {
 
 void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
   std::call_once(init_flag_, [this, &config]() {
+    max_num_pending_dispatches_ = config.max_num_pending_dispatches;
+
     if (device_ == nullptr) {
       // Create wgpu::Adapter
       wgpu::RequestAdapterOptions req_adapter_options = {};
@@ -148,12 +150,14 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     buffer_mgr_ = BufferManagerFactory::Create(*this,
                                                config.buffer_cache_config.storage.mode,
                                                config.buffer_cache_config.uniform.mode,
-                                               config.buffer_cache_config.query_resolve.mode);
+                                               config.buffer_cache_config.query_resolve.mode,
+                                               config.buffer_cache_config.default_entry.mode);
 
     // create initializer buffer manager.
     initializer_buffer_mgr_ = BufferManagerFactory::Create(*this,
                                                            BufferCacheMode::LazyRelease,
                                                            BufferCacheMode::LazyRelease,
+                                                           BufferCacheMode::Disabled,
                                                            BufferCacheMode::Disabled);
 
     // create program manager
@@ -174,6 +178,16 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       query_type_ = TimestampQueryType::None;
     }
   });
+
+  if (max_num_pending_dispatches_ != config.max_num_pending_dispatches) {
+    LOGS_DEFAULT(WARNING)
+        << "WebGPU context is already initialized with "
+        << "maxNumPendingDispatches="
+        << max_num_pending_dispatches_
+        << ". Requested value "
+        << config.max_num_pending_dispatches
+        << " will be ignored.";
+  }
 }
 
 Status WebGpuContext::Wait(wgpu::Future f) {
@@ -627,6 +641,11 @@ void WebGpuContext::StartProfiling() {
   }
 
   is_profiling_ = true;
+  // profiling_start_time_ is supplied separately via SetProfilingStartTime, which is
+  // driven by WebGpuProfiler::StartProfiling and carries the ORT profiler's CPU time
+  // base for both session-level and run-level profiling.
+  gpu_timestamp_offset_ = 0;
+  profiling_first_submit_cpu_offset_us_ = -1;
 
   const uint32_t query_count = max_num_pending_dispatches_ * 2;
 
@@ -650,6 +669,13 @@ void WebGpuContext::StartProfiling() {
 
 void WebGpuContext::CollectProfilingData(profiling::Events& events) {
   if (!pending_queries_.empty()) {
+    // Shift GPU timestamps (which start from 0 at the first submit) onto the ORT
+    // profiler's CPU timeline by adding the CPU elapsed time from profiling_start_time_
+    // to that first submit. This keeps GPU events aligned with ORT CPU events.
+    int64_t cpu_offset_us = profiling_first_submit_cpu_offset_us_ > 0
+                                ? profiling_first_submit_cpu_offset_us_
+                                : 0;
+
     for (const auto& pending_query : pending_queries_) {
       const auto& pending_kernels = pending_query.kernels;
       const auto& query_read_buffer = pending_query.query_buffer;
@@ -678,7 +704,6 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
 
         if (gpu_timestamp_offset_ == 0) {
           gpu_timestamp_offset_ = mapped_data[i * 2];
-          // TODO: apply CPU-GPU time offset so that timestamps are aligned
         }
         uint64_t start_time = mapped_data[i * 2] - gpu_timestamp_offset_;
         uint64_t end_time = mapped_data[i * 2 + 1] - gpu_timestamp_offset_;
@@ -692,7 +717,7 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
                                      -1,
                                      -1,
                                      pending_kernel_info.name,
-                                     static_cast<int64_t>(std::round(start_time / 1000.0)),
+                                     static_cast<int64_t>(std::round(start_time / 1000.0)) + cpu_offset_us,
                                      static_cast<int64_t>(std::round((end_time - start_time) / 1000.0)),
                                      event_args);
         events.emplace_back(std::move(event));
@@ -757,6 +782,12 @@ void WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr) {
     ORT_ENFORCE(num_pending_dispatches_ == pending_kernels_.size(),
                 "Number of pending dispatches (", num_pending_dispatches_,
                 ") does not match pending kernels size (", pending_kernels_.size(), ")");
+
+    // Capture the CPU elapsed time from the ORT profiler's start to this first submit.
+    // Used in CollectProfilingData to offset GPU timestamps onto the ORT CPU timeline.
+    if (profiling_first_submit_cpu_offset_us_ < 0) {
+      profiling_first_submit_cpu_offset_us_ = TimeDiffMicroSeconds(profiling_start_time_);
+    }
 
     uint32_t query_count = num_pending_dispatches_ * 2;
     current_command_encoder_.ResolveQuerySet(

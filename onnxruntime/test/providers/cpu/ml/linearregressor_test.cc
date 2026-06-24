@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cstdint>
+#include <limits>
+
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 
@@ -136,6 +139,114 @@ TEST(MLOpTest, LinearRegressorInvalidTargets) {
   test.AddOutput<float>("Y", {1, 1}, {0.f});
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "targets must be in range [1,");
+}
+
+// 1D input: treated as single batch with num_features = shape.Size()
+TEST(MLOpTest, LinearRegressor1DInput) {
+  OpTester test("LinearRegressor", 1, onnxruntime::kMLDomain);
+
+  // coefficients for 1 target, 3 features: [1, 2, 3]
+  // input: [1, 2, 3] -> dot product = 1*1 + 2*2 + 3*3 = 14, + intercept 1 = 15
+  test.AddAttribute("targets", static_cast<int64_t>(1));
+  test.AddAttribute("coefficients", std::vector<float>{1.f, 2.f, 3.f});
+  test.AddAttribute("intercepts", std::vector<float>{1.f});
+
+  test.AddInput<float>("X", {3}, {1.f, 2.f, 3.f});
+  test.AddOutput<float>("Y", {1, 1}, {15.f});
+
+  test.Run();
+}
+
+// 1D input with undersized coefficients should fail validation
+TEST(MLOpTest, LinearRegressor1DInputUndersizedCoefficients) {
+  OpTester test("LinearRegressor", 1, onnxruntime::kMLDomain);
+
+  test.AddAttribute("targets", static_cast<int64_t>(1));
+  test.AddAttribute("coefficients", std::vector<float>{1.f});  // needs 3
+  test.AddAttribute("intercepts", std::vector<float>{0.f});
+
+  test.AddInput<float>("X", {3}, {1.f, 2.f, 3.f});
+  test.AddOutput<float>("Y", {1, 1}, {0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "LinearRegressor: coefficients length (1) must be at least targets (1) * features (3)");
+}
+
+// Zero batches: input shape {0, 2} should produce output shape {0, targets}
+TEST(MLOpTest, LinearRegressorZeroBatches) {
+  OpTester test("LinearRegressor", 1, onnxruntime::kMLDomain);
+
+  test.AddAttribute("targets", static_cast<int64_t>(1));
+  test.AddAttribute("coefficients", std::vector<float>{1.f, 2.f});
+  test.AddAttribute("intercepts", std::vector<float>{0.f});
+
+  test.AddInput<float>("X", {0, 2}, {});
+  test.AddOutput<float>("Y", {0, 1}, {});
+
+  test.Run();
+}
+
+// No intercepts provided: the GEMM path without bias
+TEST(MLOpTest, LinearRegressorNoIntercepts) {
+  OpTester test("LinearRegressor", 1, onnxruntime::kMLDomain);
+
+  // coefficients for 1 target, 2 features: [2, 3]
+  // input: [1, 4] -> 2*1 + 3*4 = 14
+  test.AddAttribute("targets", static_cast<int64_t>(1));
+  test.AddAttribute("coefficients", std::vector<float>{2.f, 3.f});
+  // No intercepts attribute added
+
+  test.AddInput<float>("X", {1, 2}, {1.f, 4.f});
+  test.AddOutput<float>("Y", {1, 1}, {14.f});
+
+  test.Run();
+}
+
+// Mismatched intercepts size: intercepts are silently ignored (not equal to num_targets)
+TEST(MLOpTest, LinearRegressorMismatchedInterceptsIgnored) {
+  OpTester test("LinearRegressor", 1, onnxruntime::kMLDomain);
+
+  // 2 targets, but intercepts has 1 element -> intercepts ignored
+  // coefficients: target0=[1,0], target1=[0,1]
+  // input: [3, 7] -> target0=3, target1=7 (no intercept added)
+  test.AddAttribute("targets", static_cast<int64_t>(2));
+  test.AddAttribute("coefficients", std::vector<float>{1.f, 0.f, 0.f, 1.f});
+  test.AddAttribute("intercepts", std::vector<float>{100.f});  // wrong size, ignored
+
+  test.AddInput<float>("X", {1, 2}, {3.f, 7.f});
+  test.AddOutput<float>("Y", {1, 2}, {3.f, 7.f});
+
+  test.Run();
+}
+
+// Overflow: num_targets * num_features overflows size_t
+TEST(MLOpTest, LinearRegressorCoefficientsOverflow) {
+  OpTester test("LinearRegressor", 1, onnxruntime::kMLDomain);
+
+  // Use a targets value that is valid per constructor checks (<= ptrdiff_t::max) but
+  // will overflow when multiplied by num_features (3) after casting to size_t.
+  constexpr int64_t large_targets = static_cast<int64_t>(std::numeric_limits<std::ptrdiff_t>::max());
+  test.AddAttribute("targets", large_targets);
+  test.AddAttribute("coefficients", std::vector<float>{1.f, 2.f, 3.f});
+
+  test.AddInput<float>("X", {1, 3}, {1.f, 2.f, 3.f});
+  test.AddOutput<float>("Y", {1, 1}, {0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "overflows");
+}
+
+// 3D input is rejected
+TEST(MLOpTest, LinearRegressorInvalidInputDims) {
+  OpTester test("LinearRegressor", 1, onnxruntime::kMLDomain);
+
+  test.AddAttribute("targets", static_cast<int64_t>(1));
+  test.AddAttribute("coefficients", std::vector<float>{1.f, 2.f});
+  test.AddAttribute("intercepts", std::vector<float>{0.f});
+
+  test.AddInput<float>("X", {1, 1, 2}, {1.f, 2.f});
+  test.AddOutput<float>("Y", {1, 1}, {0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "more than 2 dimension");
 }
 
 }  // namespace test

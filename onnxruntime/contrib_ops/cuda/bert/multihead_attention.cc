@@ -432,14 +432,14 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
       parameters.hidden_size == parameters.v_hidden_size &&
       parameters.sequence_length == parameters.kv_sequence_length &&  // self attention only for fused runner
       FusedMHARunnerFP16v2::IsSupported(sm, parameters.head_size, sequence_length,
-                                        enable_trt_flash_attention_, is_unidirectional_);
+                                        enable_trt_flash_attention_);
 
   DUMP_STRING("Use fused runner = ", (use_fused_runner == true));
   if (use_fused_runner) {
     // Here we assume that num_heads and head_size does not change for a MultiHeadAttention node.
     if (nullptr == fused_fp16_runner_.get()) {
       std::call_once(fused_fp16_runner_created_, [&]() {
-        fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
+        fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm,
                                                           enable_trt_flash_attention_, parameters.scale);
       });
     }
@@ -568,7 +568,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
     debug_info.use_trt_cross_attention = fused_cross_attention_kernel != nullptr;
     debug_info.use_efficient_attention = use_memory_efficient_attention;
     if (fused_fp16_runner_ != nullptr) {
-      debug_info.SetTrtFusedKernel(is_unidirectional_, enable_trt_flash_attention_, sequence_length);
+      debug_info.SetTrtFusedKernel(enable_trt_flash_attention_, sequence_length);
     }
     debug_info.Print("MultiHeadAttention",
                      this->Node().Name(),

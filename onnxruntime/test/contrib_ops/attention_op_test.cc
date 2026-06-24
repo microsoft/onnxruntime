@@ -1,12 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/platform/env_var_utils.h"
 #include "gtest/gtest.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/util/include/scoped_env_vars.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "test/contrib_ops/attention_op_test_helper.h"
 
@@ -875,41 +873,12 @@ TEST(ContribOpAttentionTest, Causal_EmptyPastState) {
   int past_sequence_length = 0;
   bool use_float16 = true;
 
-  // Unfused kernel
-  {
-    ScopedEnvironmentVariables scoped_env_vars{
-        EnvVarMap{
-            {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
-            {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "0"},
-            {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"}}};
-    RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
-                     batch_size, sequence_length, hidden_size, number_of_heads, use_float16, is_unidirectional,
-                     use_past_state, past_sequence_length, &past_data, &present_data);
-  }
-
-  // Fused kernel
-  {
-    ScopedEnvironmentVariables scoped_env_vars{
-        EnvVarMap{
-            {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
-            {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "1"},
-            {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "0"}}};
-    RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
-                     batch_size, sequence_length, hidden_size, number_of_heads, use_float16, is_unidirectional,
-                     use_past_state, past_sequence_length, &past_data, &present_data);
-  }
-
-  // Fused kernel (fall back to regular fmha since head_size <=64 and sequence_length <= 128)
-  {
-    ScopedEnvironmentVariables scoped_env_vars{
-        EnvVarMap{
-            {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "0"},
-            {onnxruntime::contrib::attention::kEnableFusedCausalAttention, "1"},
-            {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "0"}}};
-    RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
-                     batch_size, sequence_length, hidden_size, number_of_heads, use_float16, is_unidirectional,
-                     use_past_state, past_sequence_length, &past_data, &present_data);
-  }
+  // The TRT fused self attention kernels do not support causal (unidirectional) attention, so the
+  // kDisableTrtFlashAttention / kDisableFusedSelfAttention environment variables do not affect kernel
+  // selection here. A single run is sufficient.
+  RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
+                   batch_size, sequence_length, hidden_size, number_of_heads, use_float16, is_unidirectional,
+                   use_past_state, past_sequence_length, &past_data, &present_data);
 }
 
 TEST(ContribOpAttentionTest, AttentionEmptyPastState) {
