@@ -161,5 +161,38 @@ TEST(ContribOpTest, MaxPoolWithMask_MaskEmptyBatchDim) {
            "Mask N and C dimensions must be greater than 0");
 }
 
+TEST(ContribOpTest, MaxPoolWithMask_KernelRankMismatch) {
+  OpTester test("MaxpoolWithMask", 1, onnxruntime::kMSDomain);
+
+  // AddShapeToTensorData(false) omits input shape from the graph so ONNX shape inference is bypassed
+  // (convPoolShapeInference returns early when hasInputShape is false). This lets the model pass
+  // Graph::Resolve() and reach Compute() where the kernel-rank guard fires.
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  // 2D kernel_shape, but X has only one spatial dimension (rank 3).
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{8, 8});
+
+  // Input X has shape {1, 1, 8} (rank 3 => one spatial dim)
+  std::vector<int64_t> x_dims = {1, 1, 8};
+  std::vector<float> x_vals(8, 1.0f);
+
+  // Mask M matches X shape so the earlier spatial/rank guards pass and we reach the kernel-rank guard.
+  std::vector<int64_t> m_dims = {1, 1, 8};
+  std::vector<int32_t> m_vals(8, 1);
+
+  // Placeholder output shape and values (not validated since we expect failure)
+  std::vector<int64_t> expected_dims = {1, 1, 1, 1};
+  std::vector<float> expected_vals = {1.0f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddInput<int32_t>("M", m_dims, m_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(BaseTester::ExpectResult::kExpectFailure,
+           "Pooling kernel rank must equal input spatial rank");
+}
+
 }  // namespace test
 }  // namespace onnxruntime

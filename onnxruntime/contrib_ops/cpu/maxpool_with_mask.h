@@ -216,6 +216,11 @@ class MaxpoolWithMask : public OpKernel, public PoolBase {
                         "Mask and input spatial dimensions mismatch at dimension ", i,
                         ": mask=", m_shape[i], " input=", x_shape[i]);
     }
+    // The pooling kernel rank drives the 1D/2D/3D dispatch below, which reads x_shape[2..4] and
+    // output_dims[2..4]. Require it to match the input spatial rank so those reads stay in bounds.
+    ORT_RETURN_IF_NOT(pool_attrs_.kernel_shape.size() == x_shape.NumDimensions() - 2,
+                      "Pooling kernel rank must equal input spatial rank. Got kernel rank: ",
+                      pool_attrs_.kernel_shape.size(), " input spatial rank: ", x_shape.NumDimensions() - 2);
 
     TensorShapeVector pads = pool_attrs_.pads;
     TensorShapeVector kernel_shape = pool_attrs_.kernel_shape;
