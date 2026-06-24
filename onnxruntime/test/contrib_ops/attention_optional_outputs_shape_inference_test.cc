@@ -67,25 +67,42 @@ void ExpectInferredElemType(const NodeArg* output) {
 }  // namespace
 
 // MultiHeadAttention with present_key kept and present_value omitted (exactly two outputs).
+// past_key (input 6), past_value (input 7) and past_sequence_length (input 8) are supplied with
+// shapes so the present-output branch is active; with only two outputs declared, inference must not
+// reference the absent present_value (output 2). Inputs 1-5 are optional and left empty.
 TEST(AttentionOptionalOutputsShapeInferenceTest, MultiHeadAttentionPresentValueOmitted) {
   BuildResolveAndVerify([](ModelTestBuilder& builder) {
+    NodeArg& empty = builder.graph_.GetOrCreateNodeArg("", nullptr);
     NodeArg* query = builder.MakeInput<float>(std::vector<int64_t>{2, 1, 4});
+    NodeArg* past_key = builder.MakeInput<float>(std::vector<int64_t>{2, 2, 3, 2});
+    NodeArg* past_value = builder.MakeInput<float>(std::vector<int64_t>{2, 2, 3, 2});
+    NodeArg* past_sequence_length = builder.MakeInput<int32_t>(std::vector<int64_t>{1});
     NodeArg* output = builder.MakeOutput<float>(std::nullopt);
     NodeArg* present_key = builder.MakeOutput<float>(std::nullopt);
-    Node& node = builder.AddNode("MultiHeadAttention", {query}, {output, present_key}, kMSDomain);
+    std::vector<NodeArg*> inputs = {query,    &empty,     &empty, &empty, &empty, &empty,
+                                    past_key, past_value, past_sequence_length};
+    Node& node = builder.AddNode("MultiHeadAttention", inputs, {output, present_key}, kMSDomain);
     node.AddAttribute("num_heads", static_cast<int64_t>(2));
   });
 }
 
 // DecoderMaskedMultiHeadAttention with present_key kept and present_value omitted.
+// past_key (input 5) and past_value (input 6) are supplied with shapes and past buffer sharing is
+// enabled so the present-output branch is active; with only two outputs declared, inference must not
+// reference the absent present_value (output 2). Inputs 1-4 are optional and left empty.
 TEST(AttentionOptionalOutputsShapeInferenceTest, DecoderMaskedMultiHeadAttentionPresentValueOmitted) {
   BuildResolveAndVerify([](ModelTestBuilder& builder) {
+    NodeArg& empty = builder.graph_.GetOrCreateNodeArg("", nullptr);
     NodeArg* query = builder.MakeInput<float>(std::vector<int64_t>{2, 1, 4});
+    NodeArg* past_key = builder.MakeInput<float>(std::vector<int64_t>{2, 2, 3, 2});
+    NodeArg* past_value = builder.MakeInput<float>(std::vector<int64_t>{2, 2, 3, 2});
     NodeArg* output = builder.MakeOutput<float>(std::nullopt);
     NodeArg* present_key = builder.MakeOutput<float>(std::nullopt);
-    Node& node = builder.AddNode("DecoderMaskedMultiHeadAttention", {query}, {output, present_key},
+    std::vector<NodeArg*> inputs = {query, &empty, &empty, &empty, &empty, past_key, past_value};
+    Node& node = builder.AddNode("DecoderMaskedMultiHeadAttention", inputs, {output, present_key},
                                  kMSDomain);
     node.AddAttribute("num_heads", static_cast<int64_t>(2));
+    node.AddAttribute("past_present_share_buffer", static_cast<int64_t>(1));
   });
 }
 
