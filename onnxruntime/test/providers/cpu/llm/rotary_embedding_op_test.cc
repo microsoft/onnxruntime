@@ -1438,7 +1438,8 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_RejectsCosCacheExceedsHiddenSize) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "cos_cache dimension", {}, nullptr, &execution_providers);
+           "Input 'cos_cache' dimension 1 should be same as head_size / 2 or rotary_embedding_dim / 2",
+           {}, nullptr, &execution_providers);
 }
 
 }  // namespace test

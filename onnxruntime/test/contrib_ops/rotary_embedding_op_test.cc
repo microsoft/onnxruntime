@@ -1034,7 +1034,7 @@ TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_RejectsRank3MalformedCacheWidth
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "cos_cache dimension",
+           "exceeds head_size",
            {}, nullptr, &execution_providers);
 }
 
@@ -1051,7 +1051,7 @@ TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_RejectsRank4MalformedCacheWidth
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "cos_cache dimension",
+           "exceeds head_size",
            {}, nullptr, &execution_providers);
 }
 
@@ -1197,7 +1197,7 @@ TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_RejectsCosCacheExceedsHiddenSiz
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultCpuExecutionProvider());
   test.Run(OpTester::ExpectResult::kExpectFailure,
-           "cos_cache dimension", {}, nullptr, &execution_providers);
+           "exceeds head_size", {}, nullptr, &execution_providers);
 }
 
 }  // namespace test

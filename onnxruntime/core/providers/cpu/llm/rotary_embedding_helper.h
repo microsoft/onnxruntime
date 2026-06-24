@@ -132,19 +132,6 @@ Status CheckInputs(const T* input,
                              "head_size");
     }
 
-    // Validate that the rotary embedding dimension derived from cos_cache does not exceed head_size.
-    if (rotary_embedding_dim == 0 && head_size > 0) {
-      int cache_width = static_cast<int>(cos_cache_dims[2]);
-      int effective_rotary_dim = cache_width * 2;
-      if (effective_rotary_dim > head_size) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "RotaryEmbedding: cos_cache dimension (", cache_width,
-                               " * 2 = ", effective_rotary_dim,
-                               ") exceeds head_size (", head_size,
-                               ") when rotary_embedding_dim is 0");
-      }
-    }
-
     // Check cos_cache input shapes
     if (cos_cache_dims[2] != (rotary_embedding_dim > 0 ? rotary_embedding_dim : head_size) / 2) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'cos_cache' dimension 2 should be same as ",
@@ -178,20 +165,6 @@ Status CheckInputs(const T* input,
     if (rotary_embedding_dim > 0 && rotary_embedding_dim > head_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "rotary_embedding_dim must be less than or equal to ",
                              "head_size");
-    }
-
-    // Validate that the rotary embedding dimension derived from cos_cache does not exceed head_size,
-    // which would cause an out-of-bounds read on the input tensor.
-    if (rotary_embedding_dim == 0 && head_size > 0) {
-      int cache_width = static_cast<int>(cos_cache_dims[1]);
-      int effective_rotary_dim = cache_width * 2;
-      if (effective_rotary_dim > head_size) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "RotaryEmbedding: cos_cache dimension (", cache_width,
-                               " * 2 = ", effective_rotary_dim,
-                               ") exceeds head_size (", head_size,
-                               ") when rotary_embedding_dim is 0");
-      }
     }
 
     int position_ids_batch = 0;
