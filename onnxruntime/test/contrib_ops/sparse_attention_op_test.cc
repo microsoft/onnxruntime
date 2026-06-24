@@ -263,8 +263,8 @@ TEST(SparseAttentionTest, RejectsZeroDimBlockRowIndices) {
 // block_row_indices shape: (1, max_blocks+1), block_col_indices shape: (1, col_count).
 // max_sequence_length = max_blocks * 16 must be >= total_sequence_length.
 // These tests validate that element values in block_row_indices and block_col_indices are checked.
-// Note: these tests expect failure via ORT_RETURN_IF which does not throw when exceptions are disabled,
-// so they are safe to run in no-exceptions builds.
+// Note: these tests expect failure via a returned Status (ORT_MAKE_STATUS), so they are safe in
+// both exceptions-enabled and no-exceptions builds.
 static void RunSparseAttentionCSRValidationTest(
     const std::vector<int32_t>& block_row_indices_data,
     const std::vector<int64_t>& block_row_indices_dims,
@@ -401,6 +401,9 @@ TEST(SparseAttentionTest, RejectsBlockColIndicesInvalidWithinNNZ) {
 // These tests verify that the device-side ValidateCSRIndicesOnDevice kernel correctly
 // rejects invalid CSR indices. Error messages are less detailed than CPU (no per-element info)
 // because the CUDA kernel reports via a single error code.
+// Note: OpTester does not share past/present buffers (no IOBinding), but that is fine here
+// because the CSR validation runs before the shared-buffer check in ComputeInternal.
+// These tests expect failure from validation, not from compute.
 static void RunSparseAttentionCudaCSRValidationTest(
     const std::vector<int32_t>& block_row_indices_data,
     const std::vector<int64_t>& block_row_indices_dims,
