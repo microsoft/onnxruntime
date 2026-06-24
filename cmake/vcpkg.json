@@ -102,6 +102,11 @@
         {
           "name": "cpp-client-telemetry",
           "platform": "!windows & !emscripten & !uwp"
+        },
+        {
+          "name": "sqlite3",
+          "default-features": false,
+          "platform": "!windows & !emscripten & !uwp"
         }
       ]
     }
