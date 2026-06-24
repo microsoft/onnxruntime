@@ -315,10 +315,12 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
           static_cast<std::byte*>(packed_b_.get()),
           threadpool_ptr);
 
-      if (prepacked_weights != nullptr) {
-        prepacked_weights->buffers_.push_back(std::move(packed_b_));
-        prepacked_weights->buffer_sizes_.push_back(packed_b_size_);
-      }
+      // Do not append packed_b_ here. Both the LUT and non-LUT branches share the single append
+      // after this if/else, so each records exactly one buffer. Appending here as well would move
+      // packed_b_ out now and then have the shared append record a second, moved-from/null buffer
+      // with a non-zero packed_b_size_. PrePackedWeights::GetHash() skips null buffers so sharing
+      // appears to work, but the prepacked-blob save path writes buffer_sizes_[i] bytes from
+      // buffers_[i].get() and would dereference that null pointer.
     } else {
       // For HQNBIT_CompInt8, route through SQNBIT_CompInt8 for sizing and packing.
       // This gets KleidiAI-sized buffer when available for 4-bit and packs B+scales correctly.
