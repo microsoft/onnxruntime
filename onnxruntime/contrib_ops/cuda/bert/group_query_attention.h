@@ -33,6 +33,7 @@ class GroupQueryAttention final : public CudaKernel {
   bool do_rotary_;
   bool rotary_interleaved_;
   bool use_smooth_softmax_;
+  float qk_norm_epsilon_;  // epsilon for the per-head Q/K RMSNorm (QK-Norm) prologue
   float scale_;
   float softcap_;
   bool disable_flash_attention_;
