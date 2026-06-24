@@ -470,15 +470,7 @@ static std::string GenerateKeyForPrepackedWeightsMap(const std::string& op_type,
 Status SessionState::PrepackConstantInitializedTensors(
     InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
     const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map) {
-  // When set, MatMulNBits pre-packed weights are content-addressed into the shared
-  // OrtPrepackedWeightsContainer for cross-session sharing. Needed for fusion-synthesized weights (e.g.
-  // DQ + MatMul -> MatMulNBits) whose auto-generated names can't be pre-registered via AddInitializer.
-  const bool share_matmulnbits_prepacked_weights =
-      sess_options_.config_options.GetConfigOrDefault(
-          kOrtSessionOptionsShareMatMulNBitsPrepackedWeights, "0") == "1";
-
-  auto prepacked_constant_weights = [this, &constant_initializers_use_count, &initializers_to_share_map,
-                                     share_matmulnbits_prepacked_weights](
+  auto prepacked_constant_weights = [this, &constant_initializers_use_count, &initializers_to_share_map](
                                         bool should_cache_prepacked_weights_for_shared_initializers) -> Status {
     for (auto& node : GetGraphViewer().Nodes()) {
       if (sess_options_.IsLoadCancellationFlagSet()) {
@@ -506,14 +498,12 @@ Status SessionState::PrepackConstantInitializedTensors(
                 auto iter = initializers_to_share_map.find(input_name);
                 bool is_shared_initializer = (iter != initializers_to_share_map.end());
 
-                // CPU EP only. By default only AddInitializer-registered initializers (is_shared_initializer)
-                // participate; share_matmulnbits_prepacked_weights also enrolls MatMulNBits weights,
-                // deduplicated content-addressed via hash(packed_bytes). Enrollment is restricted to
-                // MatMulNBits because content-addressed sharing is only safe when packed bytes fully
-                // determine Compute (which MatMulNBits satisfies); this also keeps the BUG CHECK below valid.
-                const bool enroll_matmulnbits_initializer =
-                    share_matmulnbits_prepacked_weights && node.OpType() == "MatMulNBits";
-                if ((is_shared_initializer || enroll_matmulnbits_initializer) &&
+                // CPU EP only. An initializer joins the shared pre-packed container either when it was
+                // registered via OrtApi::AddInitializer (is_shared_initializer) or when a graph transformer
+                // tagged this synthesized initializer with a sharing identity (tagged_share_id).
+                const std::string* tagged_share_id = st->graph_.GetSharedPrepackInitializerId(input_name);
+                const bool enroll_tagged_initializer = (tagged_share_id != nullptr);
+                if ((is_shared_initializer || enroll_tagged_initializer) &&
                     should_cache_prepacked_weights_for_shared_initializers &&
                     node.GetExecutionProviderType() == kCpuExecutionProvider) {
                   // caching of pre-packed weights' turned ON
@@ -545,12 +535,12 @@ Status SessionState::PrepackConstantInitializedTensors(
                     // TODO: Check if some version of the ONNX IR allows op_type to be empty
                     ORT_ENFORCE(!op_type.empty(), "The op type of a node cannot be empty");
 
-                    // The key for the pre-packed weights container lookup is the op_type + hash of the prepacked-weight
-                    // that we just got by invoking PrePack() on this kernel.
-
+                    // Tagged initializers are keyed by their sharing identity; AddInitializer ones by the
+                    // packed-bytes hash. Both carry the op_type prefix.
                     const std::string prepacked_weights_container_key =
-                        GenerateKeyForPrepackedWeightsMap(op_type,
-                                                          weights_to_be_filled_in);
+                        enroll_tagged_initializer
+                            ? (op_type + "+id+" + *tagged_share_id)
+                            : GenerateKeyForPrepackedWeightsMap(op_type, weights_to_be_filled_in);
 
                     bool container_contains_packed_weight = prepacked_weights_container_->HasWeight(
                         prepacked_weights_container_key);

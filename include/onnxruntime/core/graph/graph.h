@@ -1608,6 +1608,18 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     return *prepacked_weights_for_graph_;
   }
 
+  // Tags a fusion-generated initializer (whose name is not stable across sessions) with a stable,
+  // content-derived identity that SessionState uses to key cross-session pre-pack sharing.
+  void SetSharedPrepackInitializerId(const std::string& initializer_name, std::string share_id) {
+    generated_shared_prepack_ids_[initializer_name] = std::move(share_id);
+  }
+
+  // Returns the sharing identity for a generated initializer, or nullptr if it was not tagged.
+  const std::string* GetSharedPrepackInitializerId(const std::string& initializer_name) const {
+    auto it = generated_shared_prepack_ids_.find(initializer_name);
+    return it == generated_shared_prepack_ids_.end() ? nullptr : &it->second;
+  }
+
   /** Returns the Node containing the GraphProto for this Graph instance if IsSubgraph is true */
   const Node* ParentNode() const { return parent_node_; }
 
@@ -2010,6 +2022,10 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // names and their pre-packed blobs (via keys).
   // This is optional due to delayed construction.
   std::optional<PrepackedWeightsForGraph> prepacked_weights_for_graph_;
+
+  // Maps a fusion-generated initializer name to its cross-session sharing identity.
+  // See SetSharedPrepackInitializerId.
+  InlinedHashMap<std::string, std::string> generated_shared_prepack_ids_;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // Runtime optimization storage.

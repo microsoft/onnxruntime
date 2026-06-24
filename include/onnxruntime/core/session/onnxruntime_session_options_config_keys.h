@@ -372,23 +372,6 @@ static const char* const kOrtSessionOptionsModelExternalInitializersFileFolderPa
 static const char* const kOrtSessionOptionsSavePrePackedConstantInitializers =
     "session.save_external_prepacked_constant_initializers";
 
-// Enables cross-session sharing of MatMulNBits pre-packed weights via an OrtPrepackedWeightsContainer,
-// content-addressed by hash(packed_bytes) so weights with auto-generated names still deduplicate. This
-// covers MatMulNBits weights synthesized at session-creation time (e.g. by the DQ + MatMul -> MatMulNBits
-// fusion), whose names are not known ahead of time and so cannot be registered via OrtApi::AddInitializer.
-//
-// Scoped to MatMulNBits: content-addressed sharing is only safe when a kernel's packed bytes fully
-// determine its Compute result, which MatMulNBits satisfies. Other CPU kernels are unaffected.
-//
-// Requires the session to be created via OrtApi::CreateSessionWithPrepackedWeightsContainer, with this
-// option set consistently across all sharing sessions using the same container.
-//
-// - "0": Default. Only AddInitializer-registered initializers share pre-packed weights cross-session.
-// - "1": Also share MatMulNBits pre-packed weights cross-session via the container.
-// Sample usage: sess_options.add_session_config_entry(kOrtSessionOptionsShareMatMulNBitsPrepackedWeights, "1")
-static const char* const kOrtSessionOptionsShareMatMulNBitsPrepackedWeights =
-    "session.share_matmulnbits_prepacked_weights";
-
 // Use this config when you want to collect memory stats for each node in the graph.
 // The file format is a CSV file with the following columns:
 // The file will be created if it does not exist, and will be overwritten if it does.

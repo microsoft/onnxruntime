@@ -710,31 +710,6 @@ TestOptions8Bits MakeSharingTestOptions8Bits(int64_t block_size, bool has_zero_p
 }
 }  // namespace
 
-// Hash-based sharing for 8-bit weights: session.share_matmulnbits_prepacked_weights = "1" with no
-// AddInitializer call. Covers symmetric/asymmetric quantization, with and without bias, across
-// several block sizes.
-TEST(MatMulNBits, SharedPrepackedWeights_8b_ShareAll_Float32) {
-  for (bool has_zero_point : {false, true}) {
-    for (bool has_bias : {false, true}) {
-      for (int64_t block_size : {16, 32, 128}) {
-        RunTest8Bits<float>(MakeSharingTestOptions8Bits(block_size, has_zero_point, has_bias,
-                                                        PrepackSharingMode::kShareMatMulNBitsPrepackedWeights));
-      }
-    }
-  }
-}
-
-TEST(MatMulNBits, SharedPrepackedWeights_8b_ShareAll_Float16) {
-  for (bool has_zero_point : {false, true}) {
-    for (bool has_bias : {false, true}) {
-      for (int64_t block_size : {16, 32, 128}) {
-        RunTest8Bits<MLFloat16>(MakeSharingTestOptions8Bits(block_size, has_zero_point, has_bias,
-                                                            PrepackSharingMode::kShareMatMulNBitsPrepackedWeights));
-      }
-    }
-  }
-}
-
 // Legacy sharing path for 8-bit weights: B is registered as a shared initializer via
 // SessionOptions::AddInitializer.
 TEST(MatMulNBits, SharedPrepackedWeights_8b_AddInitializer) {

@@ -12,11 +12,6 @@ class OpTester;
 
 // How two sessions are configured to share the pre-packed weights of a MatMulNBits node.
 enum class PrepackSharingMode {
-  // session.share_matmulnbits_prepacked_weights = "1": MatMulNBits pre-packed weights participate in the
-  // shared container, content-addressed by hash(packed_bytes). No OrtApi::AddInitializer call is required.
-  // This is the path used by the DQ + MatMul -> MatMulNBits fusion, whose weights are synthesized at
-  // session-creation time with auto-generated names.
-  kShareMatMulNBitsPrepackedWeights,
   // Legacy path: the weight is explicitly registered as a shared initializer via
   // SessionOptions::AddInitializer.
   kAddInitializer,
