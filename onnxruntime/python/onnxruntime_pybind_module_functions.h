@@ -3,6 +3,8 @@
 #include "core/common/logging/isink.h"
 #include "core/framework/provider_options.h"
 
+struct OrtEnv;
+
 namespace onnxruntime {
 class InferenceSession;
 namespace python {
@@ -25,6 +27,11 @@ void addOpKernelSubmodule(pybind11::module& m);
 // the LoggingManager; the raw pointer is also stored internally for future updates.
 std::unique_ptr<onnxruntime::logging::ISink> CreateAndRegisterPythonCallbackSink(
     std::unique_ptr<onnxruntime::logging::ISink> platform_sink);
+
+// Replaces the Default LoggingManager of ort_env with one backed by a PythonCallbackSink so
+// that set_default_logger_callback() can route ORT log messages to a Python callable.  Only
+// call this when this Python module created the OrtEnv and before any sessions/threads exist.
+void InstallPythonCallbackLoggingSink(OrtEnv& ort_env);
 
 }  // namespace python
 }  // namespace onnxruntime
