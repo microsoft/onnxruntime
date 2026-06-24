@@ -56,6 +56,8 @@ SparseAttention<T>::SparseAttention(const OpKernelInfo& info)
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
   disable_v1_kernel_ = ParseEnvironmentVariableWithDefault<bool>(sparse_attention::kDisableSparseAttentionV1, false);
+  disable_input_validation_ = ParseEnvironmentVariableWithDefault<bool>(
+      sparse_attention::kDisableInputValidation, false);
 }
 
 template <typename T>
@@ -216,7 +218,7 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.kernel_layout.csr_row_indices = block_row_indices->Data<int32_t>();
 
   // Validate CSR indices and key lengths on device to prevent out-of-bounds access.
-  {
+  if (!disable_input_validation_) {
     auto csr_error_buffer = GetScratchBuffer<int32_t>(1, GetComputeStream(context));
     ORT_RETURN_IF_ERROR(ValidateCSRIndicesOnDevice(
         cuda_stream,
