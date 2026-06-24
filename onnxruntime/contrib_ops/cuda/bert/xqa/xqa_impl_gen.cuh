@@ -59,7 +59,10 @@ inline Status Launch(
     [[maybe_unused]] const float* attention_sinks,
     [[maybe_unused]] const float* kv_cache_scale,
     [[maybe_unused]] void* workspace,
-    [[maybe_unused]] size_t workspace_size) {
+    [[maybe_unused]] size_t workspace_size,
+    // No default: every caller must thread local_window_size through explicitly so a future
+    // caller that forgets it fails to compile instead of silently running global attention.
+    [[maybe_unused]] const int local_window_size) {
 #ifdef XQA_HAS_SM80_TARGET
   const InputHead* q_ptr = reinterpret_cast<const InputHead*>(query);
   GMemKVCacheHead* k_ptr = reinterpret_cast<GMemKVCacheHead*>(const_cast<void*>(key_cache));
@@ -92,9 +95,26 @@ inline Status Launch(
     cudaMemsetAsync(semaphores, 0, semaphore_size, stream);
   }
 
+#if SLIDING_WINDOW
+  // SLIDING_WINDOW is #defined to 1 only by the fp16/bf16/int8/fp8 xqa_loader_*_impl.cuh headers
+  // that include this file; it defaults to 0 in defines.h, so this block is dead (and
+  // local_window_size is unused) in any translation unit that does not opt in.
+  // ORT local_window_size semantics: -1 => global attention; >0 => each query attends to the
+  // last local_window_size tokens (including the current one). XQA's slidingWinSize uses the
+  // same "last N tokens incl. current" definition, so pass it through directly. For global
+  // attention, use max_seq_len so the kernel's runtime guard (cacheSeqLen > slidingWinSize) is
+  // never taken and no masking work is performed (numerically identical to the global kernel).
+  uint32_t const sliding_win_size = (local_window_size > 0)
+                                        ? static_cast<uint32_t>(local_window_size)
+                                        : static_cast<uint32_t>(max_seq_len);
+#endif
+
   launchMHA(
       device_prop,
       static_cast<uint32_t>(kv_num_heads),
+#if SLIDING_WINDOW
+      sliding_win_size,
+#endif
       scale,
       out_ptr,
       q_ptr,

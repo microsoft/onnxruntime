@@ -805,6 +805,46 @@ TEST(MatMulNBits, Fp16_Int4_NoZeroPoint) {
   }
 }
 
+TEST(MatMulNBits, Fp16_Int4_GptOssRouterShapeNoZeroPoint) {
+  constexpr float abs_error = 0.1f;
+
+  // IsSupportedRouterGemvShape enables the specialization for block_size 32 and 64, so exercise both
+  // to keep the MatMulFloatInt4RouterKernel<T, 32> and <T, 64> instantiations covered.
+  for (auto block_size : {32, 64}) {
+    TestOptions opts{};
+    opts.M = 1, opts.N = 32, opts.K = 2880;
+    opts.block_size = block_size;
+    opts.has_zero_point = false;
+    opts.zp_is_4bit = true;
+    opts.output_abs_error = abs_error;
+    opts.output_rel_error = 0.02f;
+
+    {
+      ScopedEnvironmentVariables scoped_env_vars{
+          EnvVarMap{{"ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION", std::optional<std::string>{}}}};
+      std::vector<std::unique_ptr<IExecutionProvider>> eps;
+      eps.push_back(DefaultCudaExecutionProvider());
+      RunTest<MLFloat16>(opts, std::move(eps));
+    }
+
+    {
+      ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION", "1"}}};
+      std::vector<std::unique_ptr<IExecutionProvider>> eps;
+      eps.push_back(DefaultCudaExecutionProvider());
+      RunTest<MLFloat16>(opts, std::move(eps));
+    }
+
+    {
+      opts.has_bias = true;
+      ScopedEnvironmentVariables scoped_env_vars{
+          EnvVarMap{{"ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION", std::optional<std::string>{}}}};
+      std::vector<std::unique_ptr<IExecutionProvider>> eps;
+      eps.push_back(DefaultCudaExecutionProvider());
+      RunTest<MLFloat16>(opts, std::move(eps));
+    }
+  }
+}
+
 TEST(MatMulNBits, BFloat16_Int4_NoZeroPoint) {
   if (!HasCudaEnvironment(800)) {
     GTEST_SKIP() << "Skipping BFloat16 8-bit MatMul tests on CUDA < 8.0";

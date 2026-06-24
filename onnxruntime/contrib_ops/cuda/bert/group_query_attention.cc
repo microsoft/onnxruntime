@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <vector>
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
@@ -100,7 +101,12 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   kv_num_heads_ = static_cast<int>(kv_num_heads);
   is_past_bsnh_ = false;
   is_unidirectional_ = true;
-  local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
+  const int64_t local_window_size_attr = info.GetAttrOrDefault<int64_t>("local_window_size", -1);
+  // Validate before narrowing to int so an out-of-range attribute cannot wrap to a valid-looking
+  // small window (e.g. 2^32 + 128) and silently run a different window than the model specifies.
+  ORT_ENFORCE(local_window_size_attr == -1 || (local_window_size_attr > 0 && local_window_size_attr <= std::numeric_limits<int>::max()),
+              "local_window_size must be -1 or greater than 0 (and not exceed INT_MAX).");
+  local_window_size_ = static_cast<int>(local_window_size_attr);
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
@@ -414,14 +420,16 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // 4. Past and Present KV cache share the same buffer (required for XQA specific memory access).
   // 5. No Softcap (XQA doesn't support softcap).
   // 6. Standard Softmax, or smooth softmax represented by a head_sink tensor.
-  // 7. No local window attention (global attention only).
+  // 7. Local window (sliding window) attention is supported on both the non-quantized and the
+  //    quantized (INT8/FP8) XQA paths (local_window_size == -1 means global attention).
   // QK-Norm can use XQA for the non-quantized KV-cache path: ExtremeDecoding runs the same
   // UnpackRoPEAppend preprocess before XQA, so Q/K can be normalized before the XQA kernel consumes
   // Q and the appended cache. Keep quantized QK-Norm off the XQA route until scale correctness is
   // validated for normalized K before quantized-cache append.
   const bool xqa_qk_norm_ok = !parameters.use_qk_norm || !is_inputs_quantized;
-  const bool use_xqa_attention_sinks = parameters.use_smooth_softmax && head_sink != nullptr && !is_inputs_quantized;
-  const bool xqa_smooth_softmax_ok = !parameters.use_smooth_softmax || (head_sink != nullptr && !is_inputs_quantized);
+  const bool use_xqa_attention_sinks = head_sink != nullptr && !is_inputs_quantized;
+  const bool is_xqa_smooth_softmax_supported = !parameters.use_smooth_softmax || use_xqa_attention_sinks;
+  // XQA is enabled when enable_xqa_=true; ineligible shapes/group sizes fall back via data.use_xqa below.
   if (enable_xqa_ &&
       (device_prop.major >= 8) &&
       !parameters.is_first_prompt &&
@@ -429,11 +437,12 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       parameters.kv_sequence_length > 0 &&  // Shared KV (kv_seq=0) has no new K/V to append
       parameters.past_present_share_buffer &&
       parameters.softcap == 0.0f &&
-      parameters.local_window_size == -1 &&
       xqa_qk_norm_ok &&
-      xqa_smooth_softmax_ok) {
+      is_xqa_smooth_softmax_supported) {
     int group_size = parameters.num_heads / parameters.kv_num_heads;
 
+    // Sliding window (local_window_size > 0) is wired through to the quantized XQA kernels as well,
+    // so the INT8/FP8 variants no longer need to be restricted to global attention.
     bool is_int8_quantized_supported = is_int8 &&
                                        (k_quant_type_ == KVQuantizationType::PER_TENSOR &&
                                         v_quant_type_ == KVQuantizationType::PER_TENSOR &&
