@@ -248,6 +248,37 @@ static bool CheckIfAnyOfRequiredGQANodesDoesNotExist(Node* rotary_node_1, Node* 
   return rotary_node_1 == nullptr || rotary_node_2 == nullptr || q_node == nullptr || k_node == nullptr || v_node == nullptr;
 }
 
+static bool TryGetRotaryEmbeddingCacheArgs(Node& rotary_node, NodeArg*& cos_cache_arg, NodeArg*& sin_cache_arg) {
+  if (rotary_node.OpType() != "RotaryEmbedding") {
+    return false;
+  }
+
+  auto& input_defs = rotary_node.MutableInputDefs();
+  if (rotary_node.Domain() == kMSDomain) {
+    // com.microsoft.RotaryEmbedding inputs:
+    //   input, position_ids, cos_cache, sin_cache
+    if (input_defs.size() < 4) {
+      return false;
+    }
+    cos_cache_arg = input_defs[2];
+    sin_cache_arg = input_defs[3];
+    return true;
+  }
+
+  if (rotary_node.Domain() == kOnnxDomain) {
+    // ONNX RotaryEmbedding inputs:
+    //   X, cos_cache, sin_cache, optional position_ids
+    if (input_defs.size() < 3) {
+      return false;
+    }
+    cos_cache_arg = input_defs[1];
+    sin_cache_arg = input_defs[2];
+    return true;
+  }
+
+  return false;
+}
+
 static void FusePreGQANodes(Graph& graph, Node* q_node, Node* k_node, Node* v_node, Node* rotary_node_1, Node* rotary_node_2, Node* new_node, NodeArg& new_node_output_arg) {
   graph_utils::MoveAllNodeInputEdges(graph, *q_node, *new_node);
 
@@ -334,7 +365,9 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     for (auto pre_gqa_node = node.InputNodesBegin(); pre_gqa_node != node.InputNodesEnd(); ++pre_gqa_node) {
       Node& rotary_or_v_node = *graph.GetNode(pre_gqa_node->Index());
 
-      if (rotary_or_v_node.OpType() == "RotaryEmbedding") {
+      NodeArg* rotary_cos_cache_arg = nullptr;
+      NodeArg* rotary_sin_cache_arg = nullptr;
+      if (TryGetRotaryEmbeddingCacheArgs(rotary_or_v_node, rotary_cos_cache_arg, rotary_sin_cache_arg)) {
         if (!rotary_node_1) {
           rotary_node_1 = &rotary_or_v_node;
         } else {
@@ -358,18 +391,19 @@ Status GroupQueryAttentionFusion::ApplyImpl(
         }
 
         if (cos_cache_arg == nullptr) {
-          cos_cache_arg = rotary_or_v_node.MutableInputDefs()[2];
+          cos_cache_arg = rotary_cos_cache_arg;
         }
 
         if (sin_cache_arg == nullptr) {
-          sin_cache_arg = rotary_or_v_node.MutableInputDefs()[3];
+          sin_cache_arg = rotary_sin_cache_arg;
         }
       } else if (rotary_or_v_node.OpType() == "MatMulNBits" || rotary_or_v_node.OpType() == "MatMul") {
         v_node = &rotary_or_v_node;
       }
     }
 
-    if (CheckIfAnyOfRequiredGQANodesDoesNotExist(rotary_node_1, rotary_node_2, q_node, k_node, v_node)) {
+    if (CheckIfAnyOfRequiredGQANodesDoesNotExist(rotary_node_1, rotary_node_2, q_node, k_node, v_node) ||
+        cos_cache_arg == nullptr || sin_cache_arg == nullptr) {
       // Some of the required pre-GQA nodes required for fusion were not retrieved,
       // this can be expected if the model has extra nodes in between MatMuls and rotary embeddings.
       continue;
