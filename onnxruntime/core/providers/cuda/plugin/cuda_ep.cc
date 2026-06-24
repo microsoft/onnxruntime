@@ -404,10 +404,12 @@ OrtStatus* ORT_API_CALL CudaEp::CreateSyncStreamForDeviceImpl(
 
   auto cuda_stream = std::make_unique<CudaSyncStream>(ep->factory_, device_id, this_ptr);
 
-  if (ep->config_.has_user_compute_stream && ep->config_.user_compute_stream != nullptr) {
+  if (ep->config_.has_user_compute_stream) {
     // A user-provided compute stream is honored for kernels regardless of whether CUDA graph
-    // capture is enabled — this branch is taken in both graph and non-graph runs. Wrap the
-    // external CUDA stream with full cuBLAS/cuDNN handles. When CUDA graph capture is also enabled,
+    // capture is enabled - this branch is taken in both graph and non-graph runs. Use the caller's
+    // intent flag rather than checking the handle for non-null: cudaStream_t(0) / nullptr is the
+    // valid CUDA default stream and can be selected explicitly by the user. Wrap the external CUDA
+    // stream with full cuBLAS/cuDNN handles. When CUDA graph capture is also enabled,
     // capture/replay run on this same user stream (see GetPerThreadContext), so kernels and graph
     // capture share one stream.
     RETURN_IF_ERROR(cuda_stream->InitHandlesWithUserStream(
