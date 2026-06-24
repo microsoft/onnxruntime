@@ -54,8 +54,11 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
   EXPECT_NE(allocated, nullptr) << "KernelContext_GetAllocator() can successfully allocate some memory";
   allocator.Free(allocated);
 
+  OrtSyncStream* sync_stream = ctx.GetSyncStream();
+
   // Do computation
 #ifdef USE_CUDA
+  EXPECT_NE(sync_stream, nullptr) << "KernelContext_GetSyncStream() returns the kernel compute stream";
   // Launch on stream 0 or user provided stream
   void* stream;
   Ort::ThrowOnError(ort_.KernelContext_GetGPUComputeStream(context, &stream));
@@ -70,6 +73,7 @@ void MyCustomKernel::Compute(OrtKernelContext* context) {
   //     and use the same compute stream to launch the custom op.
   // Here, an example for (1) is shown (See test_inference.cc to see how this custom op is used.)
 #else
+  EXPECT_EQ(sync_stream, nullptr) << "CPU custom ops do not have a compute stream";
   ORT_UNUSED_PARAMETER(ort_);
   for (int64_t i = 0; i < size; i++) {
     out[i] = X[i] + Y[i];
