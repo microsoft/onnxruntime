@@ -283,7 +283,8 @@ class TestInferenceSession(unittest.TestCase):
         # Running inference while the callback is active should not crash.
         sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
         x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
-        (res,) = sess.run(["Z"], {"X": x, "Y": x})
+        # mul_1.onnx has a single input "X" and output "Y" (Y = X * [[1,2],[3,4],[5,6]]).
+        (res,) = sess.run(["Y"], {"X": x})
         np.testing.assert_allclose(res, x * x)
 
         # Creating a session at Verbose severity must have produced ORT log messages that
@@ -305,7 +306,7 @@ class TestInferenceSession(unittest.TestCase):
         onnxrt.set_default_logger_severity(2)
 
         # After reset, further inference still works.
-        (res,) = sess.run(["Z"], {"X": x, "Y": x})
+        (res,) = sess.run(["Y"], {"X": x})
         np.testing.assert_allclose(res, x * x)
 
         # Lambda callables are accepted.
