@@ -28,6 +28,9 @@ Status GetAnyVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& n
     return Status::OK();
   }
 
+  ORT_RETURN_IF(utils::HasExternalData(proto),
+                "Tensor attribute ", name, " with external data is not supported.");
+
   const SafeInt<size_t> tensor_size(n_elements);
   data.clear();
   data.resize(tensor_size);

@@ -452,5 +452,59 @@ TEST(MLOpTest, TreeEnsembleIssue25400) {
   test.Run();
 }
 
+// External data in tensor attributes is not supported. In no-exceptions builds, the enforcement
+// calls abort() so these tests cannot run.
+#if !defined(ORT_NO_EXCEPTIONS)
+
+TEST(MLOpTest, TreeEnsembleRejectsExternalDataInTensorAttribute) {
+  OpTester test("TreeEnsemble", 5, onnxruntime::kMLDomain);
+
+  // nodes_splits with external data location
+  ONNX_NAMESPACE::TensorProto splits_proto;
+  splits_proto.set_name("nodes_splits");
+  splits_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  splits_proto.add_dims(3);
+  splits_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  auto* entry = splits_proto.add_external_data();
+  entry->set_key("location");
+  entry->set_value("some_file.bin");
+  test.AddAttribute("nodes_splits", splits_proto);
+
+  // Minimal valid structure for remaining attributes
+  ONNX_NAMESPACE::TensorProto leaf_weights_proto;
+  leaf_weights_proto.set_name("leaf_weights");
+  leaf_weights_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  leaf_weights_proto.add_dims(2);
+  leaf_weights_proto.add_float_data(1.0f);
+  leaf_weights_proto.add_float_data(2.0f);
+  test.AddAttribute("leaf_weights", leaf_weights_proto);
+
+  ONNX_NAMESPACE::TensorProto modes_proto;
+  modes_proto.set_name("nodes_modes");
+  modes_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+  modes_proto.add_dims(1);
+  modes_proto.add_int32_data(0);
+  test.AddAttribute("nodes_modes", modes_proto);
+
+  test.AddAttribute("aggregate_function", static_cast<int64_t>(1));
+  test.AddAttribute("leaf_targetids", std::vector<int64_t>{0, 0});
+  test.AddAttribute("n_targets", static_cast<int64_t>(1));
+  test.AddAttribute("nodes_falseleafs", std::vector<int64_t>{1});
+  test.AddAttribute("nodes_falsenodeids", std::vector<int64_t>{1});
+  test.AddAttribute("nodes_featureids", std::vector<int64_t>{0});
+  test.AddAttribute("nodes_trueleafs", std::vector<int64_t>{1});
+  test.AddAttribute("nodes_truenodeids", std::vector<int64_t>{0});
+  test.AddAttribute("post_transform", static_cast<int64_t>(0));
+  test.AddAttribute("tree_roots", std::vector<int64_t>{0});
+
+  std::vector<float> X = {1.f};
+  test.AddInput<float>("X", {1, 1}, X);
+  test.AddOutput<float>("Y", {1, 1}, {0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "external data is not supported");
+}
+
+#endif  // !defined(ORT_NO_EXCEPTIONS)
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -756,5 +756,167 @@ TEST(LabelEncoder, EmptyInputOpset4) {
   test.Run();
 }
 
+// External data in tensor attributes is not supported. The kernel must reject such attributes
+// during construction. These tests verify the rejection.
+// In no-exceptions builds, ORT_ENFORCE calls abort() so these tests cannot run.
+#if !defined(ORT_NO_EXCEPTIONS)
+
+TEST(LabelEncoder, RejectsExternalDataInKeysTensorOpset4) {
+  OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
+
+  // Create keys_tensor with external data location
+  ONNX_NAMESPACE::TensorProto keys_proto;
+  keys_proto.set_name("keys_tensor");
+  keys_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  keys_proto.add_dims(2);
+  keys_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  auto* entry = keys_proto.add_external_data();
+  entry->set_key("location");
+  entry->set_value("some_file.bin");
+  test.AddAttribute("keys_tensor", keys_proto);
+
+  // Normal values_tensor
+  ONNX_NAMESPACE::TensorProto values_proto;
+  values_proto.set_name("values_tensor");
+  values_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  values_proto.add_dims(2);
+  values_proto.add_int64_data(10);
+  values_proto.add_int64_data(20);
+  test.AddAttribute("values_tensor", values_proto);
+
+  ONNX_NAMESPACE::TensorProto default_proto;
+  default_proto.set_name("default_tensor");
+  default_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  default_proto.add_dims(1);
+  default_proto.add_int64_data(0);
+  test.AddAttribute("default_tensor", default_proto);
+
+  test.AddInput<int64_t>("X", {1, 2}, {1, 2});
+  test.AddOutput<int64_t>("Y", {1, 2}, {10, 20});
+
+  // CUDA EP uses a different code path that doesn't hit this issue, exclude it.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "external data is not supported",
+           {kCudaExecutionProvider});
+}
+
+TEST(LabelEncoder, RejectsExternalDataInDefaultTensorOpset4) {
+  OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
+
+  test.AddAttribute("keys_int64s", std::vector<int64_t>{1, 2});
+  test.AddAttribute("values_int64s", std::vector<int64_t>{10, 20});
+
+  // default_tensor with external data location
+  ONNX_NAMESPACE::TensorProto default_proto;
+  default_proto.set_name("default_tensor");
+  default_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  default_proto.add_dims(1);
+  default_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  auto* entry = default_proto.add_external_data();
+  entry->set_key("location");
+  entry->set_value("some_file.bin");
+  test.AddAttribute("default_tensor", default_proto);
+
+  test.AddInput<int64_t>("X", {1, 2}, {1, 3});
+  test.AddOutput<int64_t>("Y", {1, 2}, {10, 0});
+
+  // CUDA EP uses a different code path that doesn't hit this issue, exclude it.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "external data is not supported",
+           {kCudaExecutionProvider});
+}
+
+TEST(LabelEncoder, RejectsExternalDataInValuesTensorOpset4) {
+  OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
+
+  // Normal keys_tensor
+  ONNX_NAMESPACE::TensorProto keys_proto;
+  keys_proto.set_name("keys_tensor");
+  keys_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  keys_proto.add_dims(2);
+  keys_proto.add_int64_data(1);
+  keys_proto.add_int64_data(2);
+  test.AddAttribute("keys_tensor", keys_proto);
+
+  // values_tensor with external data location
+  ONNX_NAMESPACE::TensorProto values_proto;
+  values_proto.set_name("values_tensor");
+  values_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  values_proto.add_dims(2);
+  values_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  auto* entry = values_proto.add_external_data();
+  entry->set_key("location");
+  entry->set_value("some_file.bin");
+  test.AddAttribute("values_tensor", values_proto);
+
+  ONNX_NAMESPACE::TensorProto default_proto;
+  default_proto.set_name("default_tensor");
+  default_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  default_proto.add_dims(1);
+  default_proto.add_int64_data(0);
+  test.AddAttribute("default_tensor", default_proto);
+
+  test.AddInput<int64_t>("X", {1, 2}, {1, 2});
+  test.AddOutput<int64_t>("Y", {1, 2}, {10, 20});
+
+  // CUDA EP uses a different code path that doesn't hit this issue, exclude it.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "external data is not supported",
+           {kCudaExecutionProvider});
+}
+
+#endif  // !defined(ORT_NO_EXCEPTIONS)
+
+// Duplicate keys: emplace() keeps the first occurrence. Verify this behavior.
+TEST(LabelEncoder, DuplicateKeysFirstWinsOpset4) {
+  std::vector<std::int64_t> dims{1, 3};
+
+  std::vector<int64_t> input{1, 2, 3};
+  // key 1 maps to 10 (first), not 99 (second duplicate)
+  std::vector<int64_t> output{10, 20, 42};
+  std::vector<int64_t> key_data{1, 2, 1};  // duplicate key 1
+  std::vector<int64_t> value_data{10, 20, 99};
+
+  OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
+
+  test.AddAttribute("keys_int64s", key_data);
+  test.AddAttribute("values_int64s", value_data);
+
+  ONNX_NAMESPACE::TensorProto default_proto;
+  default_proto.set_name("default_tensor");
+  default_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  default_proto.add_dims(1);
+  default_proto.add_int64_data(42);
+  test.AddAttribute("default_tensor", default_proto);
+
+  test.AddInput<int64_t>("X", dims, input);
+  test.AddOutput<int64_t>("Y", dims, output);
+
+  test.Run();
+}
+
+// Scalar (zero-rank) default_tensor — single element with no dims
+TEST(LabelEncoder, ScalarDefaultTensorOpset4) {
+  std::vector<std::int64_t> dims{1, 3};
+
+  std::vector<int64_t> input{1, 2, 99};
+  std::vector<int64_t> output{10, 20, -7};
+
+  OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
+
+  test.AddAttribute("keys_int64s", std::vector<int64_t>{1, 2});
+  test.AddAttribute("values_int64s", std::vector<int64_t>{10, 20});
+
+  // Scalar default_tensor: no dims, single element
+  ONNX_NAMESPACE::TensorProto default_proto;
+  default_proto.set_name("default_tensor");
+  default_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  // No add_dims() — zero-rank tensor (scalar)
+  default_proto.add_int64_data(-7);
+  test.AddAttribute("default_tensor", default_proto);
+
+  test.AddInput<int64_t>("X", dims, input);
+  test.AddOutput<int64_t>("Y", dims, output);
+
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -1081,5 +1081,53 @@ TEST(MLOpTest, TreeEnsembleRegressorBaseValuesWrongSize) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "base_values should have 0 or 2 values.");
 }
 
+// External data in tensor attributes is not supported. The kernel must reject such attributes
+// during construction. In no-exceptions builds, ORT_ENFORCE/ORT_THROW_IF_ERROR calls abort().
+#if !defined(ORT_NO_EXCEPTIONS)
+
+TEST(MLOpTest, TreeEnsembleRegressorRejectsExternalDataInTensorAttribute) {
+  OpTester test("TreeEnsembleRegressor", 3, onnxruntime::kMLDomain);
+
+  // Minimal valid tree structure
+  std::vector<int64_t> lefts = {1, 0, 0};
+  std::vector<int64_t> rights = {2, 0, 0};
+  std::vector<int64_t> treeids = {0, 0, 0};
+  std::vector<int64_t> nodeids = {0, 1, 2};
+  std::vector<int64_t> featureids = {0, 0, 0};
+  std::vector<std::string> modes = {"BRANCH_LEQ", "LEAF", "LEAF"};
+
+  test.AddAttribute("nodes_truenodeids", lefts);
+  test.AddAttribute("nodes_falsenodeids", rights);
+  test.AddAttribute("nodes_treeids", treeids);
+  test.AddAttribute("nodes_nodeids", nodeids);
+  test.AddAttribute("nodes_featureids", featureids);
+  test.AddAttribute("nodes_values", std::vector<float>{0.5f, 0.f, 0.f});
+  test.AddAttribute("nodes_modes", modes);
+  test.AddAttribute("target_treeids", std::vector<int64_t>{0, 0});
+  test.AddAttribute("target_nodeids", std::vector<int64_t>{1, 2});
+  test.AddAttribute("target_ids", std::vector<int64_t>{0, 0});
+  test.AddAttribute("target_weights", std::vector<float>{1.f, 2.f});
+  test.AddAttribute("n_targets", static_cast<int64_t>(1));
+
+  // nodes_values_as_tensor with external data location
+  ONNX_NAMESPACE::TensorProto values_proto;
+  values_proto.set_name("nodes_values_as_tensor");
+  values_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  values_proto.add_dims(3);
+  values_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  auto* entry = values_proto.add_external_data();
+  entry->set_key("location");
+  entry->set_value("some_file.bin");
+  test.AddAttribute("nodes_values_as_tensor", values_proto);
+
+  std::vector<float> X = {1.f};
+  test.AddInput<float>("X", {1, 1}, X);
+  test.AddOutput<float>("Y", {1, 1}, {0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "external data is not supported");
+}
+
+#endif  // !defined(ORT_NO_EXCEPTIONS)
+
 }  // namespace test
 }  // namespace onnxruntime
