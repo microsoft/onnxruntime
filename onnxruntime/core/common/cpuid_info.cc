@@ -406,7 +406,7 @@ CPUIDInfo::CPUIDInfo() {
 #endif  // defined(CPUIDINFO_ARCH_RISCV64)
 }
 
-void CPUIDInfo::Shutdown() {
+CPUIDInfo::~CPUIDInfo() {
 #if defined(CPUINFO_SUPPORTED)
   if (pytorch_cpuinfo_init_) {
     cpuinfo_deinitialize();

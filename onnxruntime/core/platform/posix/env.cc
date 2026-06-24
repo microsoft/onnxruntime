@@ -657,6 +657,11 @@ class PosixEnv : public Env {
       }
     }
   }
+  ~PosixEnv() {
+    if (cpuinfo_available_) {
+      cpuinfo_deinitialize();
+    }
+  }
   bool cpuinfo_available_{false};
 #endif  // ORT_USE_CPUINFO
 };
