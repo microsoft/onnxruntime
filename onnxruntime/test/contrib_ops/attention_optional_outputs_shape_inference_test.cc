@@ -79,7 +79,7 @@ TEST(AttentionOptionalOutputsShapeInferenceTest, MultiHeadAttentionPresentValueO
     NodeArg* past_sequence_length = builder.MakeInput<int32_t>(std::vector<int64_t>{1});
     NodeArg* output = builder.MakeOutput<float>(std::nullopt);
     NodeArg* present_key = builder.MakeOutput<float>(std::nullopt);
-    std::vector<NodeArg*> inputs = {query,    &empty,     &empty, &empty, &empty, &empty,
+    std::vector<NodeArg*> inputs = {query, &empty, &empty, &empty, &empty, &empty,
                                     past_key, past_value, past_sequence_length};
     Node& node = builder.AddNode("MultiHeadAttention", inputs, {output, present_key}, kMSDomain);
     node.AddAttribute("num_heads", static_cast<int64_t>(2));
@@ -150,7 +150,7 @@ TEST(AttentionOptionalOutputsShapeInferenceTest, MultiHeadAttentionAllPresentOut
         present_key = builder.MakeOutput();
         present_value = builder.MakeOutput();
 
-        std::vector<NodeArg*> inputs = {query,    &empty,     &empty, &empty, &empty, &empty,
+        std::vector<NodeArg*> inputs = {query, &empty, &empty, &empty, &empty, &empty,
                                         past_key, past_value, past_sequence_length};
         Node& node = builder.AddNode("MultiHeadAttention", inputs,
                                      {output, present_key, present_value}, kMSDomain);
