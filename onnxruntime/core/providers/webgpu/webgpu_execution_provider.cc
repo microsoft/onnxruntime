@@ -804,6 +804,7 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
             context_,
             webgpu::BufferCacheMode::Graph,
             webgpu::BufferCacheMode::GraphSimple,
+            webgpu::BufferCacheMode::Disabled,
             webgpu::BufferCacheMode::Disabled);
         if (session_buffer_pool_) {
           session_buffer_pool_->SeedInto(*it->second);

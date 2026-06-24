@@ -150,12 +150,14 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     buffer_mgr_ = BufferManagerFactory::Create(*this,
                                                config.buffer_cache_config.storage.mode,
                                                config.buffer_cache_config.uniform.mode,
-                                               config.buffer_cache_config.query_resolve.mode);
+                                               config.buffer_cache_config.query_resolve.mode,
+                                               config.buffer_cache_config.default_entry.mode);
 
     // create initializer buffer manager.
     initializer_buffer_mgr_ = BufferManagerFactory::Create(*this,
                                                            BufferCacheMode::LazyRelease,
                                                            BufferCacheMode::LazyRelease,
+                                                           BufferCacheMode::Disabled,
                                                            BufferCacheMode::Disabled);
 
     // create program manager
