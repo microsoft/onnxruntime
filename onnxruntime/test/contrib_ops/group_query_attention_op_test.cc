@@ -1659,8 +1659,8 @@ TEST(GroupQueryAttentionTest, NegativeSeqlensK_CacheAppend_NoOOB_CUDA) {
   // attention complete without indexing outside their buffers (which a sanitizer build would otherwise
   // flag). Verify only that a correctly shaped result is produced.
   tester.SetOutputTolerance(1e6f);
-  tester.SetCustomOutputVerifier([output_size](const std::vector<OrtValue>& fetches,
-                                               const std::string& /*provider*/) {
+  tester.SetCustomOutputVerifier([](const std::vector<OrtValue>& fetches,
+                                    const std::string& /*provider*/) {
     ASSERT_FALSE(fetches.empty());
     ASSERT_TRUE(fetches[0].IsTensor());
     EXPECT_EQ(fetches[0].Get<Tensor>().Shape().Size(), static_cast<int64_t>(output_size));
