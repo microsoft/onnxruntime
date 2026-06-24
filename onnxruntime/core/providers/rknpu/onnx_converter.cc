@@ -11,6 +11,7 @@
 #include <memory>
 #include <vector>
 #include "core/common/logging/logging.h"
+#include "core/common/safeint.h"
 #include "onnx_converter.h"
 #include "node_attr_helper.h"
 
@@ -117,6 +118,24 @@ OnnxConverter::CreateRknnTensor(const std::string& name,
   attr->qntParamAffineAsymmetric.scale.push_back(scale);
   attr->qntParamSymmetric.scale.push_back(scale);
   return graph_->CreateTensor(attr, (void*)data);
+}
+
+// Allocates a zero-initialized buffer holding `count` elements of `element_size`
+// bytes each, used as an implicit (all-zero) bias when a Conv/Gemm node omits
+// its bias input. A malicious model can specify a weight dimension large enough
+// that `element_size * count` overflows size_t and wraps to a tiny allocation,
+// which would cause a heap buffer overflow when the buffer is later consumed.
+// SafeInt throws on overflow, and the allocation result is null-checked.
+static void* AllocZeroedBias(size_t element_size, uint32_t count) {
+  const size_t num_bytes = SafeInt<size_t>(element_size) * count;
+  void* ptr = malloc(num_bytes);
+  if (ptr == nullptr && num_bytes != 0) {
+    throw std::runtime_error("RKNPU: failed to allocate implicit bias buffer");
+  }
+  if (ptr != nullptr) {
+    memset(ptr, 0, num_bytes);
+  }
+  return ptr;
 }
 
 void OnnxConverter::HandleInitializer() {
@@ -944,8 +963,7 @@ void OnnxConverter::AddLayerConvImpl(const std::string& input,
     }
   } else {
     uint32_t dim = shaper_[weight][0];
-    void* ptr = (void*)malloc(sizeof(float) * dim);
-    memset(ptr, 0, sizeof(float) * dim);
+    void* ptr = AllocZeroedBias(sizeof(float), dim);
     free_list_.push_back(ptr);
 
     std::vector<uint32_t> dims = {dim};
@@ -1053,8 +1071,7 @@ void OnnxConverter::AddLayerQLinearConvImpl(const string& input,
     }
   } else {
     uint32_t dim = shaper_[weight][0];
-    void* ptr = (void*)malloc(sizeof(int32_t) * dim);
-    memset(ptr, 0, sizeof(int32_t) * dim);
+    void* ptr = AllocZeroedBias(sizeof(int32_t), dim);
     free_list_.push_back(ptr);
 
     std::vector<uint32_t> dims = {dim};
@@ -1142,8 +1159,7 @@ void OnnxConverter::AddLayerDepthwiseConvImpl(
     }
   } else {
     uint32_t dim = shaper_[weight][0];
-    void* ptr = (void*)malloc(sizeof(float) * dim);
-    memset(ptr, 0, sizeof(float) * dim);
+    void* ptr = AllocZeroedBias(sizeof(float), dim);
     free_list_.push_back(ptr);
 
     std::vector<uint32_t> dims = {dim};
@@ -1376,8 +1392,7 @@ void OnnxConverter::AddLayerFC(const std::string& input,
     }
   } else {
     uint32_t dim = shaper_[weight][0];
-    void* ptr = (void*)malloc(sizeof(float) * dim);
-    memset(ptr, 0, sizeof(float) * dim);
+    void* ptr = AllocZeroedBias(sizeof(float), dim);
     free_list_.push_back(ptr);
 
     std::vector<uint32_t> dims = {dim};
