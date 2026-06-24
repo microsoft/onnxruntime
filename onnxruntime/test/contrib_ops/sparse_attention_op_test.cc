@@ -24,10 +24,10 @@ namespace test {
 
 namespace {
 
-void RunSparseAttentionInvalidInputTest(const std::vector<int32_t>& total_key_lengths_data,
-                                        const std::vector<int64_t>& total_key_lengths_dims,
-                                        const std::string& expected_error,
-                                        int32_t total_sequence_length = 4) {
+void RunSparseAttentionInvalidKeyLengthsTest(const std::vector<int32_t>& total_key_lengths_data,
+                                             const std::vector<int64_t>& total_key_lengths_dims,
+                                             const std::string& expected_error,
+                                             int32_t total_sequence_length = 4) {
   OpTester test("SparseAttention", 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("num_heads", 2);
   test.AddAttribute<int64_t>("kv_num_heads", 2);
@@ -42,7 +42,7 @@ void RunSparseAttentionInvalidInputTest(const std::vector<int32_t>& total_key_le
   test.AddInput<float>("past_key", {1, 2, 4, 8}, std::vector<float>(64, 0.0f));
   test.AddInput<float>("past_value", {1, 2, 4, 8}, std::vector<float>(64, 0.0f));
   test.AddInput<int32_t>("block_row_indices", {1, 5}, {0, 1, 2, 3, 4});
-  test.AddInput<int32_t>("block_col_indices", {1, 1}, {0});
+  test.AddInput<int32_t>("block_col_indices", {1, 4}, {0, 1, 2, 3});
   test.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length});
   test.AddInput<int32_t>("key_total_sequence_lengths", total_key_lengths_dims, total_key_lengths_data);
   test.AddOptionalInputEdge<float>();
@@ -209,17 +209,17 @@ void RunSparseAttentionPromptInputTest(const std::vector<int32_t>& total_key_len
 }  // namespace
 
 TEST(SparseAttentionTest, RejectsOutOfRangeKeyTotalSequenceLengths) {
-  RunSparseAttentionInvalidInputTest({-5}, {1}, "key_total_sequence_lengths value -5 at batch index 0 is out of range [1, 4]");
+  RunSparseAttentionInvalidKeyLengthsTest({-5}, {1}, "key_total_sequence_lengths value -5 at batch index 0 is out of range [1, 4]");
 }
 
 TEST(SparseAttentionTest, RejectsKeyTotalSequenceLengthsShapeMismatch) {
-  RunSparseAttentionInvalidInputTest({4, 4}, {2}, "key_total_sequence_lengths must have shape (batch_size)");
+  RunSparseAttentionInvalidKeyLengthsTest({4, 4}, {2}, "key_total_sequence_lengths must have shape (batch_size)");
 }
 
 TEST(SparseAttentionTest, RejectsPromptKeyTotalSequenceLengthsShorterThanSequenceLength) {
-  RunSparseAttentionInvalidInputTest({0}, {1},
-                                     "key_total_sequence_lengths value 0 at batch index 0 is out of range [1, 1]",
-                                     1);
+  RunSparseAttentionInvalidKeyLengthsTest({0}, {1},
+                                          "key_total_sequence_lengths value 0 at batch index 0 is out of range [1, 1]",
+                                          1);
 }
 
 TEST(SparseAttentionTest, AcceptsPromptKeyTotalSequenceLengthsForPaddedBatch) {
@@ -363,6 +363,70 @@ TEST(SparseAttentionTest, RejectsBlockColIndicesLargeValue) {
       {0, 2, 2}, {1, 3},     // row indices: valid CSR format
       {0, 1048576}, {1, 2},  // col indices: 0x100000 far out of range
       "block_col_indices[0][1]=1048576 is out of valid range [0, 2)");
+}
+
+// Multi-layout: invalid col index in second layout only.
+TEST(SparseAttentionTest, RejectsBlockColIndicesInvalidInSecondLayout) {
+  // shape (2, 3) => num_layout=2, max_blocks=2
+  // num_heads=2, so num_heads % num_layout == 0
+  RunSparseAttentionCSRValidationTest(
+      {0, 1, 2, 0, 1, 2}, {2, 3},  // row indices: valid for both layouts
+      {0, 1, 0, 5}, {2, 2},        // col indices: layout 0 valid, layout 1 has 5 >= max_blocks=2
+      "block_col_indices[1][1]=5 is out of valid range [0, 2)");
+}
+
+// Multi-layout: invalid row pointer in second layout only.
+TEST(SparseAttentionTest, RejectsBlockRowIndicesInvalidInSecondLayout) {
+  // shape (2, 3) => num_layout=2, max_blocks=2
+  RunSparseAttentionCSRValidationTest(
+      {0, 1, 2, 1, 1, 2}, {2, 3},  // row indices: layout 0 valid, layout 1 starts with 1 != 0
+      {0, 1, 0, 1}, {2, 2},        // col indices: valid
+      "block_row_indices[1][0] must be 0");
+}
+
+// Col index invalid within NNZ range but padding would be fine.
+// row pointers say nnz=1, col[0] is invalid, col[1] is padding (not checked).
+TEST(SparseAttentionTest, RejectsBlockColIndicesInvalidWithinNNZ) {
+  // shape (1, 3) => max_blocks=2, row indices: {0, 1, 1} means row 0 has 1 entry, row 1 has 0
+  // nnz = r[max_blocks] = r[2] = 1, so only col[0] is validated
+  RunSparseAttentionCSRValidationTest(
+      {0, 1, 1}, {1, 3},  // row indices: valid, nnz=1
+      {99, 0}, {1, 2},    // col[0]=99 is out of range, col[1]=0 is padding (not checked)
+      "block_col_indices[0][0]=99 is out of valid range [0, 2)");
+}
+
+// Col padding entries are not validated (only entries within NNZ are checked).
+// row pointers say nnz=1, col[1]=-1 is padding and should not trigger rejection.
+TEST(SparseAttentionTest, AcceptsPaddedColIndicesBeyondNNZ) {
+  OpTester test("SparseAttention", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("num_heads", 2);
+  test.AddAttribute<int64_t>("kv_num_heads", 2);
+  test.AddAttribute<int64_t>("sparse_block_size", 16);
+  test.AddAttribute<float>("scale", 1.0f);
+  test.AddAttribute<int64_t>("do_rotary", 0);
+  test.AddAttribute<int64_t>("rotary_interleaved", 0);
+
+  test.AddInput<float>("query", {1, 1, 16}, std::vector<float>(16, 0.0f));
+  test.AddInput<float>("key", {1, 1, 16}, std::vector<float>(16, 0.0f));
+  test.AddInput<float>("value", {1, 1, 16}, std::vector<float>(16, 0.0f));
+  test.AddInput<float>("past_key", {1, 2, 32, 8}, std::vector<float>(512, 0.0f));
+  test.AddInput<float>("past_value", {1, 2, 32, 8}, std::vector<float>(512, 0.0f));
+  // shape (1, 3) => max_blocks=2, row indices: {0, 1, 1} means nnz=1
+  test.AddInput<int32_t>("block_row_indices", {1, 3}, {0, 1, 1});
+  // col[0]=0 is valid (within nnz), col[1]=-1 is padding beyond nnz (should not be checked)
+  test.AddInput<int32_t>("block_col_indices", {1, 2}, {0, -1});
+  test.AddInput<int32_t>("total_sequence_length", {1}, {2});
+  test.AddInput<int32_t>("key_total_sequence_lengths", {1}, {2});
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+
+  test.AddOutput<float>("output", {1, 1, 16}, std::vector<float>(16, 0.0f));
+  test.AddOutput<float>("present_key", {1, 2, 32, 8}, std::vector<float>(512, 0.0f));
+  test.AddOutput<float>("present_value", {1, 2, 32, 8}, std::vector<float>(512, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 }  // namespace test

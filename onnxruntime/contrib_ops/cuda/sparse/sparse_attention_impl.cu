@@ -334,8 +334,8 @@ template Status QkvToContext<BFloat16>(
     SparseAttentionData<BFloat16>& data);
 
 // Validation kernel for CSR sparse layout indices and key sequence lengths.
-// Each block handles one layout. Thread 0 checks row indices, thread 1 checks col indices.
-// Block with block_id == num_layout validates key lengths (thread 0 only).
+// Each block handles one layout (blocks [0, num_layout)) or key lengths (block num_layout).
+// All threads in a warp cooperate via strided iteration over elements.
 // Writes a CSRValidationError code to *error_flag if any check fails.
 __global__ void ValidateCSRIndicesKernel(
     const int32_t* csr_row_indices,
@@ -354,24 +354,33 @@ __global__ void ValidateCSRIndicesKernel(
 
   if (block_id < num_layout) {
     // Validate CSR indices for this layout.
-    // Thread 0 checks row[0] == 0, then all threads cooperate on row monotonicity and col range.
     const int stride_row = max_blocks + 1;
     const int32_t* r = csr_row_indices + block_id * stride_row;
 
-    if (tid == 0 && r[0] != 0) {
-      atomicCAS(error_flag, kCSRValidationOk, kCSRValidationRowFirstNotZero);
-      return;
-    }
-
-    // All threads check row monotonicity in strided fashion.
-    for (int i = tid; i < max_blocks; i += num_threads) {
-      if (r[i] < 0 || r[i] > r[i + 1] || r[i + 1] > col_count) {
-        atomicCAS(error_flag, kCSRValidationOk, kCSRValidationRowNonMonotonic);
-        return;
+    // Phase 1: thread 0 validates all row pointers sequentially.
+    // Row arrays are small (max_blocks+1 elements), so single-thread scan is sufficient.
+    // All threads must reach __syncthreads before proceeding to col validation.
+    __shared__ int row_valid;
+    if (tid == 0) {
+      row_valid = 1;
+      if (r[0] != 0) {
+        atomicCAS(error_flag, kCSRValidationOk, kCSRValidationRowFirstNotZero);
+        row_valid = 0;
+      } else {
+        for (int i = 0; i < max_blocks; ++i) {
+          if (r[i] < 0 || r[i] > r[i + 1] || r[i + 1] > col_count) {
+            atomicCAS(error_flag, kCSRValidationOk, kCSRValidationRowNonMonotonic);
+            row_valid = 0;
+            break;
+          }
+        }
       }
     }
+    __syncthreads();
+    if (!row_valid) return;
 
-    // All threads check col indices in strided fashion (only the used [0, nnz) entries).
+    // Phase 2: row pointers are validated, r[max_blocks] is safe to use as NNZ bound.
+    // All threads cooperate on the potentially larger col-index array.
     const int nnz = r[max_blocks];
     const int32_t* c = csr_col_indices + block_id * col_count;
     for (int i = tid; i < nnz; i += num_threads) {
@@ -425,7 +434,7 @@ Status ValidateCSRIndicesOnDevice(
 
   if (h_error_flag != kCSRValidationOk) {
     const char* msg = (h_error_flag == kCSRValidationRowFirstNotZero)
-                          ? "block_row_indices[0] must be 0"
+                          ? "block_row_indices first element must be 0 for all layouts"
                       : (h_error_flag == kCSRValidationRowNonMonotonic)
                           ? "block_row_indices values are not monotonically non-decreasing or exceed "
                             "block_col_indices columns"
