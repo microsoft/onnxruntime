@@ -2377,12 +2377,9 @@ TEST(TransposeOptimizerTests, TestGatherScalarIndices) {
                     /*opset_version*/ {13, 18, 23});
 }
 
-// Negative axis: ONNX Gather permits axis in [-r, r-1]. NormalizeAndValidateAxis must convert
-// to a non-negative value before the perm-remap. perm[3] = 2, so the rewritten Gather should
-// run on axis 2. SqueezePerm({2},[0,3,1,2]) = [0,1,?] — work it out:
-//   removed={2}; is_removed=[F,F,T,F]; axes_map=[0,1,_,2]; perm=[0,3,1,2]
-//   walk: 0->0; 3->2; 1->1; 2 removed (skip)  =>  [0, 2, 1]
-// User's downstream Transpose [0,2,1] cancels the rewrite-emitted [0,2,1], cost=0.
+// Negative axis: ONNX Gather permits axis in [-r, r-1]. The handler must normalize the axis
+// before remapping under perm. Here axis=-1 on a rank-4 input means axis 3, and perm[3]=2.
+// The rewrite cancels the user's downstream Transpose, so the final graph has zero transpose cost.
 TEST(TransposeOptimizerTests, TestGatherNegativeAxis) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = builder.MakeInput<float>({2, 4, 6, 5}, 0.0, 1.0);
@@ -2431,7 +2428,24 @@ TEST(TransposeOptimizerTests, TestGatherRank1IndicesNoOpt) {
   };
 
   auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
-    ORT_UNUSED_PARAMETER(session);
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count.at("Transpose"), 2);
+    EXPECT_EQ(op_to_count.at("Gather"), 1);
+
+    // Assert the Transpose perms are unchanged — guards against in-place attribute mutation
+    // or node-swap that would preserve op counts but alter the graph.
+    std::vector<std::vector<int64_t>> transpose_perms;
+    for (const auto& node : session.GetGraph().Nodes()) {
+      if (node.OpType() != "Transpose") continue;
+      const auto& attrs = node.GetAttributes();
+      auto it = attrs.find("perm");
+      ASSERT_TRUE(it != attrs.end());
+      ASSERT_EQ(it->second.type(), ONNX_NAMESPACE::AttributeProto_AttributeType_INTS);
+      transpose_perms.emplace_back(it->second.ints().begin(), it->second.ints().end());
+    }
+    std::sort(transpose_perms.begin(), transpose_perms.end());
+    std::vector<std::vector<int64_t>> expected{{0, 1, 3, 2}, {0, 3, 1, 2}};
+    EXPECT_EQ(transpose_perms, expected);
   };
 
   TransformerTester(build_test_case_1,
@@ -2459,7 +2473,24 @@ TEST(TransposeOptimizerTests, TestGatherNonconstIndicesNoOpt) {
   };
 
   auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
-    ORT_UNUSED_PARAMETER(session);
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count.at("Transpose"), 2);
+    EXPECT_EQ(op_to_count.at("Gather"), 1);
+
+    // Assert the Transpose perms are unchanged — guards against in-place attribute mutation
+    // or node-swap that would preserve op counts but alter the graph.
+    std::vector<std::vector<int64_t>> transpose_perms;
+    for (const auto& node : session.GetGraph().Nodes()) {
+      if (node.OpType() != "Transpose") continue;
+      const auto& attrs = node.GetAttributes();
+      auto it = attrs.find("perm");
+      ASSERT_TRUE(it != attrs.end());
+      ASSERT_EQ(it->second.type(), ONNX_NAMESPACE::AttributeProto_AttributeType_INTS);
+      transpose_perms.emplace_back(it->second.ints().begin(), it->second.ints().end());
+    }
+    std::sort(transpose_perms.begin(), transpose_perms.end());
+    std::vector<std::vector<int64_t>> expected{{0, 2, 1}, {0, 3, 1, 2}};
+    EXPECT_EQ(transpose_perms, expected);
   };
 
   TransformerTester(build_test_case_1,
