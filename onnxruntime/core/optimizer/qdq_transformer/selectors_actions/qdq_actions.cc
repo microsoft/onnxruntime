@@ -7,6 +7,7 @@
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_actions.h"
 #include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/optimizer/initializer.h"
+#include "core/optimizer/matmul_nbits_sharing_identity.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/graph/graph_utils.h"
 #include "core/framework/tensorprotoutils.h"
@@ -647,8 +648,21 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
       graph, *dq_node, "fused_DQ_MatMul", intra_op_thread_pool_, effective_bs, transposed));
 
   auto& input_defs = replacement_node.MutableInputDefs();
-  input_defs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, transposed.weight_proto, std::move(transposed.weight)));
+
+  // Compute a stable sharing identity from the source-derived quantized tensors BEFORE they are
+  // moved into the graph, then tag the generated B initializer with it. This lets SessionState
+  // enroll the pre-packed B weight into the cross-session shared container keyed by a
+  // content-derived identity rather than by a hash of the kernel's packed bytes. See
+  // ComputeMatMulNBitsSharingIdentity and Graph::AddSharedInitializerIdentity.
+  const std::string weight_sharing_identity = ComputeMatMulNBitsSharingIdentity(
+      transposed.weight, transposed.scale,
+      transposed.zero_point.has_value() ? &transposed.zero_point.value() : nullptr);
+
+  NodeArg& weight_arg =
+      graph_utils::AddInitializerWithOrtValue(graph, transposed.weight_proto, std::move(transposed.weight));
+  input_defs.push_back(&weight_arg);
   replacement_node.MutableInputArgsCount().push_back(1);
+  graph.AddSharedInitializerIdentity(weight_arg.Name(), weight_sharing_identity);
 
   input_defs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, transposed.scale_proto, std::move(transposed.scale)));
   replacement_node.MutableInputArgsCount().push_back(1);

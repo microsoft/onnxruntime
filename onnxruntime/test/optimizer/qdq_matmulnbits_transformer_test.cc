@@ -6,6 +6,7 @@
 #include "core/common/span_utils.h"
 #include "core/common/float16.h"
 #include "core/framework/int4.h"
+#include "core/framework/prepacked_weights_container.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selector_action_transformer.h"

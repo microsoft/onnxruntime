@@ -498,8 +498,22 @@ Status SessionState::PrepackConstantInitializedTensors(
                 auto iter = initializers_to_share_map.find(input_name);
                 bool is_shared_initializer = (iter != initializers_to_share_map.end());
 
+                // A graph transformer (e.g. the DQ+MatMul -> MatMulNBits fusion) may tag an
+                // initializer it synthesized with a stable sharing identity that is a pure function
+                // of the source tensors. Such tagged initializers are also eligible for cross-session
+                // pre-packed weight sharing, but keyed by that identity rather than by a hash of the
+                // packed bytes. Keying on the source identity makes sharing correctness independent of
+                // whether the kernel's packed-byte representation fully captures the compute semantics:
+                // any semantic difference (e.g. different zero points) changes the source and thus the
+                // identity, so two weights can collide only if their sources are identical.
+                // See Graph::AddSharedInitializerIdentity.
+                const std::string* shared_initializer_identity =
+                    st->graph_.GetSharedInitializerIdentity(input_name);
+                bool is_tagged_initializer = (shared_initializer_identity != nullptr);
+
                 // Caching pre-packed weights is limited to shared initializers associated with the CPU EP for now
-                if (is_shared_initializer && should_cache_prepacked_weights_for_shared_initializers &&
+                if ((is_shared_initializer || is_tagged_initializer) &&
+                    should_cache_prepacked_weights_for_shared_initializers &&
                     node.GetExecutionProviderType() == kCpuExecutionProvider) {
                   // caching of pre-packed weights' turned ON
 
@@ -531,11 +545,15 @@ Status SessionState::PrepackConstantInitializedTensors(
                     ORT_ENFORCE(!op_type.empty(), "The op type of a node cannot be empty");
 
                     // The key for the pre-packed weights container lookup is the op_type + hash of the prepacked-weight
-                    // that we just got by invoking PrePack() on this kernel.
+                    // that we just got by invoking PrePack() on this kernel. For transformer-tagged
+                    // initializers we instead key on the op_type + the stable sharing identity, so the
+                    // lookup does not depend on the packed bytes.
 
                     const std::string prepacked_weights_container_key =
-                        GenerateKeyForPrepackedWeightsMap(op_type,
-                                                          weights_to_be_filled_in);
+                        is_tagged_initializer
+                            ? (op_type + "+sid+" + *shared_initializer_identity)
+                            : GenerateKeyForPrepackedWeightsMap(op_type,
+                                                                weights_to_be_filled_in);
 
                     bool container_contains_packed_weight = prepacked_weights_container_->HasWeight(
                         prepacked_weights_container_key);

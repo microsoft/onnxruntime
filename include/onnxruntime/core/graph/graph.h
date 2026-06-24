@@ -846,6 +846,35 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /** Gets all the initializer tensors in this Graph. */
   const InitializedTensorSet& GetAllInitializedTensors() const noexcept { return name_to_initial_tensor_; }
 
+  /// <summary>
+  /// Tags an initializer this Graph produced (e.g. a graph transformer fusing DQ+MatMul into
+  /// MatMulNBits and synthesizing the packed B/scales/zero-point initializers) with a stable
+  /// "sharing identity" string. The identity must be a pure function of the source tensors the
+  /// initializer was derived from, so that the same logical weight in two sessions of the same
+  /// model produces the same identity, while any difference that changes the compute semantics
+  /// (e.g. different zero points) produces a different identity.
+  ///
+  /// SessionState uses these tags to enroll only transformer-generated initializers into the
+  /// cross-session pre-packed weights container, keyed by identity rather than by a hash of the
+  /// packed bytes. This is runtime-only state: it is not serialized into the GraphProto and does
+  /// not survive graph save/load.
+  /// </summary>
+  void AddSharedInitializerIdentity(const std::string& name, const std::string& identity) {
+    shared_initializer_identities_[name] = identity;
+  }
+
+  /// <summary>
+  /// Returns the sharing identity registered for an initializer via AddSharedInitializerIdentity,
+  /// or nullptr if the initializer was not tagged.
+  /// </summary>
+  const std::string* GetSharedInitializerIdentity(const std::string& name) const {
+    auto it = shared_initializer_identities_.find(name);
+    if (it == shared_initializer_identities_.end()) {
+      return nullptr;
+    }
+    return &it->second;
+  }
+
   /** Removes all initializer tensors from this Graph and releases the memory they were using. */
   void CleanAllInitializedTensors() noexcept;
 
@@ -1985,6 +2014,12 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   ONNX_NAMESPACE::GraphProto deserialized_proto_data_;
 
   InitializedTensorSet name_to_initial_tensor_;
+
+  // Runtime-only map from an initializer name to a stable "sharing identity" string, populated by
+  // graph transformers that synthesize initializers (see AddSharedInitializerIdentity). Used by
+  // SessionState to enroll transformer-generated pre-packed weights into the cross-session shared
+  // container keyed by identity. Not serialized into the GraphProto.
+  std::unordered_map<std::string, std::string> shared_initializer_identities_;
 
   // Initializers that are external to the Graph.
   // e.g. created from existing memory using CreateTensorWithDataAndDeleterAsOrtValue in the ORT API.

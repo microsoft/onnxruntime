@@ -12,6 +12,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/optimizer/initializer.h"
+#include "core/optimizer/matmul_nbits_sharing_identity.h"
 #include "core/optimizer/utils.h"
 
 #include <cmath>
@@ -576,9 +577,20 @@ void ApplyReshapeTransposeFusions(
     utils::SetNodeAttribute(utils::MakeAttribute("bits", static_cast<int64_t>(4)), mnb_attrs);
     utils::SetNodeAttribute(utils::MakeAttribute("block_size", block_size), mnb_attrs);
 
+    // Compute a stable, content-derived sharing identity from the quantized tensors BEFORE they are
+    // moved into the graph, then tag the generated B initializer with it so SessionState can enroll
+    // its pre-packed buffer into the cross-session shared container keyed by identity. The zero point
+    // is included only when it is an actual input (when the default UINT4 zp8 is elided, both sessions
+    // use the same implicit default, so excluding it keeps the identity consistent).
+    const std::string weight_sharing_identity = ComputeMatMulNBitsSharingIdentity(
+        weight_dst, scale_dst,
+        (zp_dst && !elide_default_uint4_zp8_input) ? &zp_dst.value() : nullptr);
+
     std::vector<NodeArg*> mnb_inputs;
     mnb_inputs.push_back(const_cast<NodeArg*>(mm_node->InputDefs()[0]));
-    mnb_inputs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, weight_mnb_tp, std::move(weight_dst)));
+    NodeArg& weight_mnb_arg = graph_utils::AddInitializerWithOrtValue(graph, weight_mnb_tp, std::move(weight_dst));
+    mnb_inputs.push_back(&weight_mnb_arg);
+    graph.AddSharedInitializerIdentity(weight_mnb_arg.Name(), weight_sharing_identity);
     mnb_inputs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, scale_mnb_tp, std::move(scale_dst)));
     if (zp_mnb_tp) {
       mnb_inputs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, zp_mnb_tp.value(), std::move(*zp_dst)));
@@ -756,9 +768,17 @@ void ApplyDirectDQFusions(
     utils::SetNodeAttribute(utils::MakeAttribute("bits", static_cast<int64_t>(4)), mnb_attrs);
     utils::SetNodeAttribute(utils::MakeAttribute("block_size", block_size), mnb_attrs);
 
+    // Compute a stable, content-derived sharing identity (see the reshape/transpose path above) and
+    // tag the generated B initializer so SessionState can share its pre-packed buffer across
+    // sessions keyed by identity. The zero point is included only when it is an actual input.
+    const std::string weight_sharing_identity = ComputeMatMulNBitsSharingIdentity(
+        weight_dst, scale_dst, (zp_dst && !elide_zp) ? &zp_dst.value() : nullptr);
+
     std::vector<NodeArg*> mnb_inputs;
     mnb_inputs.push_back(const_cast<NodeArg*>(mm_node->InputDefs()[0]));
-    mnb_inputs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, weight_mnb_tp, std::move(weight_dst)));
+    NodeArg& weight_mnb_arg = graph_utils::AddInitializerWithOrtValue(graph, weight_mnb_tp, std::move(weight_dst));
+    mnb_inputs.push_back(&weight_mnb_arg);
+    graph.AddSharedInitializerIdentity(weight_mnb_arg.Name(), weight_sharing_identity);
     mnb_inputs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, scale_mnb_tp, std::move(scale_dst)));
     if (zp_mnb_tp) {
       mnb_inputs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, zp_mnb_tp.value(), std::move(*zp_dst)));
