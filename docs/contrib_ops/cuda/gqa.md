@@ -58,6 +58,7 @@ Selected attributes:
 | `local_window_size` | Left window size for local attention. `-1` means global attention. |
 | `do_rotary` / `rotary_interleaved` | Enable RoPE and select interleaved vs. half-rotary layout. |
 | `smooth_softmax` | Add a smooth factor to the softmax denominator. |
+| `qk_norm_epsilon` | Epsilon for the fused per-head Q/K RMSNorm (QK-Norm) prologue. Defaults to `1e-6`. |
 | `k_quant_type` / `v_quant_type` | KV cache quantization mode: `NONE`, `PER_TENSOR`, or `PER_CHANNEL`. |
 | `kv_cache_bit_width` | Bit width of the quantized KV cache (`8` or `4`). |
 
@@ -73,6 +74,7 @@ Selected inputs (see the schema for the full list and shapes):
 | 7, 8 | `cos_cache`, `sin_cache` | RoPE caches. |
 | 11 | `head_sink` | `(num_heads,)` per-head attention sink (see §5). |
 | 12, 13 | `k_scale`, `v_scale` | FP32 dequant scales for the quantized KV cache. |
+| 14, 15 | `q_norm_weight`, `k_norm_weight` | `(head_size,)` per-head Q/K RMSNorm weights (QK-Norm, see §3). Both must be present together. |
 
 Outputs are `output`, `present_key`, `present_value`, and optional `output_qk`.
 
@@ -117,6 +119,31 @@ last dimension is `(head_size + 1) / 2` because two nibbles are packed per byte.
   buffer already holds the full KV cache).
 - RoPE, packed-QKV unpacking, and KV-head expansion are handled internally (`PrepareQKV`) before the
   selected backend runs, so every backend sees a consistent layout.
+
+### Fused QK-Norm (per-head Q/K RMSNorm)
+
+When the optional `q_norm_weight` (input 14) and `k_norm_weight` (input 15) tensors are provided, the
+CUDA kernel applies a fused per-head RMS normalization to Q and K **before** RoPE. This matches the
+QK-Norm used by **Qwen3, Gemma 2/3, OLMo2, SmolLM3**, etc. For each head, over the `head_size`
+channels:
+
+$$
+x_\text{norm}[c] = x[c] \cdot \frac{1}{\sqrt{\frac{1}{H}\sum_{j} x[j]^2 + \epsilon}} \cdot w[c]
+$$
+
+where `H = head_size`, `w` is the per-head weight vector (`q_norm_weight` for Q, `k_norm_weight` for
+K), and `epsilon = qk_norm_epsilon` (default `1e-6`). The sum of squares is reduced in FP32 for
+numerical stability and the result is cast back to the operator type `T`.
+
+- Both weights are 1D tensors of shape `(head_size,)`, share the operator's element type `T`
+  (`float16`/`bfloat16`), and are **shared across all heads**. They must be supplied together —
+  providing only one is rejected.
+- The normalization is fused into the `PrepareQKV` prologue (`UnpackRoPEAppend` for the new-KV path,
+  or a standalone per-head RMSNorm kernel for the shared-buffer Q-only decode case), so it composes
+  with packed QKV, RoPE, KV-head expansion, and the quantized KV cache.
+- Because the Flash-Decoding fast path does its own RoPE/append internally and bypasses `PrepareQKV`,
+  it is disabled when QK-Norm is present (see §6). The non-quantized XQA decode path can still run
+  with QK-Norm: CUDA normalizes Q/K in the `UnpackRoPEAppend` preprocess before launching XQA.
 
 ## 4. KV Cache and Quantization
 
@@ -196,6 +223,13 @@ order and the first eligible backend wins:
 
 The selected backend is reported in the kernel debug info as `SdpaKernel=...` when debug info is
 enabled (see §10).
+
+> **QK-Norm interaction.** When `q_norm_weight` / `k_norm_weight` are present (see §3), the
+> Flash-Decoding fast path is disabled so the QK-Norm prologue always runs. Non-quantized XQA decode
+> remains eligible for supported shapes: the `UnpackRoPEAppend` preprocess normalizes Q/K, applies
+> RoPE, appends K/V, and then XQA consumes the normalized Q and cache. Quantized-cache QK-Norm decode
+> still falls back to Flash Attention (or cuDNN SDPA / MEA / Unfused) until normalized-K scale
+> handling is validated for XQA.
 
 ### 6.1 XQA
 
@@ -402,10 +436,14 @@ CUDA parity tests live in
 
 - `TestXQAQuantizedParity` — XQA per-tensor int8 quantized decode parity.
 - `TestXQAHeadSinkParity` — non-quantized XQA decode parity with a `head_sink` (attention sink) input.
+- `TestGQAQKNorm` — fused per-head Q/K RMSNorm (QK-Norm) parity for prompt and decode (past), FP16 and
+  BF16, across packed/unpacked Q/K/V and with/without RoPE.
 
 `TestXQAQuantizedParity` sets `ORT_ENABLE_XQA=1` to force the XQA path. `TestXQAHeadSinkParity`
 instead clears `ORT_ENABLE_XQA` to validate that XQA is enabled by default when a `head_sink` input
 is present. Both compare against a PyTorch reference (`attention_ref` with `smooth_softmax_ref`).
+`TestGQAQKNorm` applies the RMSNorm-before-RoPE reference to Q and K and compares against the CUDA
+output.
 
 ## 13. Future Work and Known Limitations
 
@@ -414,9 +452,10 @@ popular LLMs. Listed roughly by impact.
 
 ### High impact
 
-1. **Fused QK-Norm (per-head Q/K RMSNorm prologue).** The CUDA kernel rejects `q_norm_weight` /
-   `k_norm_weight`; only the WebGPU EP implements the fused prologue. Required by **Qwen3,
-   Gemma 2/3, OLMo2, SmolLM3**, etc., which otherwise run the normalization unfused.
+1. **Fused QK-Norm (per-head Q/K RMSNorm prologue).** *Implemented.* The CUDA kernel applies the
+   fused per-head RMSNorm to Q and K before RoPE when `q_norm_weight` / `k_norm_weight` are provided
+    (see §3), matching **Qwen3, Gemma 2/3, OLMo2, SmolLM3**, etc. Remaining limitation: QK-Norm
+    disables Flash-Decoding, and quantized-cache QK-Norm does not yet get the XQA fast path.
 2. **Sliding-window + attention-sink on the fused decode path.** XQA requires global attention
    (`local_window_size == -1`), so **GPT-OSS / Mistral / Gemma 2** layers that combine a sliding
    window with a `head_sink` fall back to Flash / Flash-Decoding instead of XQA. Unifying sliding
