@@ -290,6 +290,8 @@ void CPUIDInfo::ArmWindowsInit() {
       uint32_t uarch = cpuinfo_uarch_unknown;
       decodeMIDR(static_cast<uint32_t>(midr_values[i]), &uarch);
       core_uarchs_.push_back(uarch);
+      // Only A53/A55 cores have narrow 64-bit load/store devices.
+      // Wide cores (Oryon, Cortex-X series, etc.) fall into the else branch.
       if (uarch == cpuinfo_uarch_cortex_a53 || uarch == cpuinfo_uarch_cortex_a55r0 ||
           uarch == cpuinfo_uarch_cortex_a55) {
         is_armv8_narrow_ld_.push_back(true);
