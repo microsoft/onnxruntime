@@ -1654,10 +1654,11 @@ TEST(GroupQueryAttentionTest, NegativeSeqlensK_CacheAppend_NoOOB_CUDA) {
   tester.AddOutput<MLFloat16>("present_value", {batch_size, kv_num_heads, present_seq_len, head_size},
                               std::vector<MLFloat16>(present_size, MLFloat16(0.0f)));
 
-  // The malformed seqlens_k has no meaningful reference output and the degenerate attention it implies
-  // may produce non-finite values; that is acceptable. The regression point is that the cache append and
-  // attention complete without indexing outside their buffers (which a sanitizer build would otherwise
-  // flag). Verify only that a correctly shaped result is produced.
+  // The malformed seqlens_k drives the derived past length negative, which is the condition under test.
+  // That leaves the KV length under-specified for the query, so the attention is degenerate and its
+  // outputs may be non-finite; this is expected and intentionally not asserted. The regression point is
+  // that the cache append and attention complete without indexing outside their buffers (which a
+  // sanitizer build would otherwise flag), so only the output shape is verified.
   tester.SetOutputTolerance(1e6f);
   tester.SetCustomOutputVerifier([](const std::vector<OrtValue>& fetches,
                                     const std::string& /*provider*/) {
