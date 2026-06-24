@@ -104,8 +104,27 @@ runs:
       #       Add git's bin dir to the PATH so that `actions/cache`'s invoke of `tar` can find `gzip`.
       echo "PATH=${env:PATH};C:\\Program Files\\Git\\usr\\bin" >> "${env:GITHUB_ENV}"
 
-  - uses: ./.github/actions/ccache-and-vcpkg-cache
+  # HACK: Manually inline `/.github/actions/ccache-and-vcpkg-cache` as workaround for https://github.com/actions/runner/issues/2009
+  # - uses: ./.github/actions/ccache-and-vcpkg-cache
+  #   with:
+  #     key: ${{ inputs.cache_key }}
+  #     ccache_dir: ${{ runner.temp }}/.ccache # ensure this is coordinated/matches w/ env-vars step above
+  #     vcpkg_dir: ${{ runner.temp }}/.vcpkg-cache
+
+  - name: Setup CCache
+    uses: actions/cache@v5
     with:
-      key: ${{ inputs.cache_key }}
-      ccache_dir: ${{ runner.temp }}/.ccache # ensure this is coordinated/matches w/ env-vars step above
-      vcpkg_dir: ${{ runner.temp }}/.vcpkg-cache
+      # Fully qualify by `cache_key`. `actions/cache` does not isolate by workflow, unlike ADO cache actions.
+      key: ccache | ${{ inputs.cache_key }} | ${{ github.run_id }}
+      path: ${{ runner.temp }}/.ccache
+      restore-keys: |
+        ccache | ${{ inputs.cache_key }}
+
+  - name: Setup VCPKG Cache
+    uses: actions/cache@v5
+    with:
+      key: vcpkg-cache | ${{ inputs.cache_key }} | ${{ github.run_id }}
+      path: ${{ runner.temp }}/.vcpkg-cache
+      restore-keys: |
+        vcpkg-cache | ${{ inputs.cache_key }}
+  # HACK: Manually inline - end
