@@ -913,6 +913,7 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
     // reader observes a single, consistent value. Operate on the byte representation to avoid
     // loading a bool object that does not yet hold a valid value.
     auto* bool_bytes = reinterpret_cast<uint8_t*>(p_data);
+    static_assert(sizeof(bool) == 1, "Normalization loop writes expected_size bytes assuming 1 byte per bool element");
     for (size_t i = 0; i < expected_size; ++i) {
       bool_bytes[i] = bool_bytes[i] != 0 ? 1 : 0;
     }

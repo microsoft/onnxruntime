@@ -11,8 +11,6 @@ import argparse
 import numpy as np
 import onnx
 
-import onnxruntime as ort
-
 
 def create_model(
     vocab_size: int,
@@ -264,6 +262,9 @@ def create_decoder(vocab_size, embed_dim, num_heads, head_size, sequence_as_inpu
 
 
 def run_model(model_path, feature_size):
+    # Imported lazily so model *generation* only depends on `onnx`; running needs `onnxruntime`.
+    import onnxruntime as ort  # noqa: PLC0415
+
     ort_session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
     encode_length = 5
     # Fixed, deterministic inputs so a C++ regression test can reproduce the exact golden outputs.
@@ -296,6 +297,11 @@ def arg_parser():
     parser.add_argument("--max-length", type=int, default=10, help="Max length")
     parser.add_argument("--length-penalty", type=float, default=1.1, help="Length penalty")
     parser.add_argument("--sequence-as-input", action="store_true", help="Use sequence as input ids")
+    parser.add_argument(
+        "--no-run",
+        action="store_true",
+        help="Only generate and save the model; skip running it (avoids needing an onnxruntime install)",
+    )
 
     return parser.parse_args()
 
@@ -318,4 +324,5 @@ if __name__ == "__main__":
     )
     onnx.save(model, args.output_path)
 
-    run_model(args.output_path, args.feature_size)
+    if not args.no_run:
+        run_model(args.output_path, args.feature_size)
