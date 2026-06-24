@@ -327,6 +327,7 @@
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>")
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/bigobj>")
       # /permissive is required for CUTLASS cute headers and to work around MSVC template resolution
       # issues with abseil headers when compiled through nvcc.
       # See https://github.com/NVIDIA/cutlass/issues/3065

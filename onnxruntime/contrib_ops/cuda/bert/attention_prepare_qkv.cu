@@ -125,24 +125,18 @@ Status PrepareQkv_Attention(contrib::AttentionParameters& parameters,
   T* qkv = data.workspace;
 
   bool use_fused_kernel = (nullptr != fused_runner && !parameters.is_unidirectional);
-  bool use_fused_causal = (nullptr != fused_runner && parameters.is_unidirectional);
 
   // For fused TRT attention, transpose qkv to BxSxNx3xH (format 2)
   // For flash or memory efficient attention, transpose to 3xBxSxNxH (format 3)
   // For unfused kernel, transpose to 3xBxNxSxH (format 1)
-  // For fused causal kernel, use format 1 since we need have K and V to update present state,
-  //   at the same time, we update gemm_buffer BxSx3xNxH with bias which is used as input for fused causal kernel.
   const int format = (use_fused_kernel ? 2 : (use_flash_or_efficient_attention ? 3 : 1));
   data.qkv_format = use_fused_kernel
                         ? AttentionQkvFormat::QKV_BSN3H
                         : (use_flash_or_efficient_attention
                                ? AttentionQkvFormat::Q_K_V_BSNH
-                               : (use_fused_causal
-                                      ? AttentionQkvFormat::Q_K_V_BNSH_QKV_BS3NH
-                                      : AttentionQkvFormat::Q_K_V_BNSH));
+                               : AttentionQkvFormat::Q_K_V_BNSH);
 
-  // For fused causal, we will update gemm_buffer with bias directly.
-  T* qkv_add_bias = use_fused_causal ? data.gemm_buffer : nullptr;
+  T* qkv_add_bias = nullptr;
 
   int matrix_to_transpose = ((format == AttentionQkvFormat::Q_K_V_BNSH && past_present_share_buffer) ? 1 : 3);
   // format 1: BxSx(NH + NH + NH_v) => BxNxSxH + BxNxSxH + BxNxSxH_v

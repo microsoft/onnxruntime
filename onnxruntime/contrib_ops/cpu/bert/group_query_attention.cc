@@ -84,7 +84,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                   "kv_cache_bit_width must be 0 when quantization is disabled, got ", kv_cache_bit_width_);
   }
 
-  // q_norm_weight (input 14) / k_norm_weight (input 15) are populated by the WebGPU-only
+  // q_norm_weight (input 14) / k_norm_weight (input 15) are populated by the CUDA/WebGPU
   // GroupQueryAttentionPreNormFusion optimizer pass. The CPU kernel does not implement
   // the fused per-head Q/K RMS normalization prologue, so reject the node if either input
   // is present rather than silently dropping the normalization.
@@ -93,7 +93,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, INVALID_ARGUMENT,
         "GroupQueryAttention (CPU): q_norm_weight / k_norm_weight inputs are not supported. "
-        "The per-head Q/K RMS normalization prologue is implemented only on the WebGPU EP.");
+        "The per-head Q/K RMS normalization prologue is implemented only on the CUDA and WebGPU EPs.");
   }
 
   GroupQueryAttentionParameters parameters = {};

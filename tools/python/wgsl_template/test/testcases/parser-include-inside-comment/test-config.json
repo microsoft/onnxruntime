@@ -1,0 +1,4 @@
+{
+  "type": "parser",
+  "description": "Test that #include directives inside comments are ignored and not processed"
+}

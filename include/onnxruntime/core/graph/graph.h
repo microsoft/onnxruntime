@@ -774,7 +774,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  /** Add an initializer tensor to the Graph. */
+  /** Add an initializer tensor with embedded/owned data to the Graph. */
   void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
   /// <summary>
@@ -784,8 +784,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /// OrtValue would be unallocated in this case, and not added to ortvalue_initializers_.
   /// </summary>
   /// <param name="tensor_proto">tensor proto with external data pointing to OrtValue.</param>
-  /// <param name="ort_value_initializer">value that contains the initializer tensor. This may
-  /// be unallocated for small tensors.</param>
+  /// <param name="ort_value_initializer">value that contains the initializer tensor. This must
+  /// be allocated iff tensor_proto uses in-memory external data, and may be unallocated for
+  /// small tensors with embedded data.</param>
   Status AddInitializedOrtValue(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                 const OrtValue& ort_value_initializer);
 #endif

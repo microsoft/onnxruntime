@@ -97,6 +97,7 @@ struct WebGpuContextConfig {
   };
   bool validation_mode_explicitly_set{false};
   bool preserve_device{false};
+  uint32_t max_num_pending_dispatches{16};
   uint64_t max_storage_buffer_binding_size{0};
   WebGpuBufferCacheConfig buffer_cache_config{};
   int power_preference{static_cast<int>(WGPUPowerPreference_HighPerformance)};
@@ -348,7 +349,7 @@ class WebGpuContext final {
   std::unique_ptr<ProgramManager> program_mgr_;
 
   uint32_t num_pending_dispatches_ = 0;
-  const uint32_t max_num_pending_dispatches_ = 16;
+  uint32_t max_num_pending_dispatches_ = 16;
 
   std::unique_ptr<SplitKConfig> split_k_config_;
 

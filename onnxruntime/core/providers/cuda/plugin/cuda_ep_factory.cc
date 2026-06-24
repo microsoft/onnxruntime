@@ -27,7 +27,7 @@ CudaEpFactory::CudaEpFactory(const OrtApi& ort_api, const OrtEpApi& ep_api,
       ort_api_(ort_api),
       ep_api_(ep_api),
       default_logger_(default_logger) {
-  ort_version_supported = kCudaPluginEpMinOrtApiVersion;
+  ort_version_supported = ORT_API_VERSION;
 
   if (!::onnxruntime::ep::adapter::LoggingManager::HasDefaultLogger()) {
     ::onnxruntime::ep::adapter::LoggingManager::CreateDefaultLogger(&default_logger);

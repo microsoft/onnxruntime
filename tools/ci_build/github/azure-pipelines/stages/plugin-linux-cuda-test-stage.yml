@@ -71,3 +71,37 @@ stages:
             python3 -u /onnxruntime_src/plugin-ep-cuda/python/test/test_cuda_plugin_ep.py
           "
       displayName: 'Install and test Python package'
+
+    - script: |
+        set -e -x
+        docker run --rm --gpus all \
+          --volume "$(Build.SourcesDirectory):/onnxruntime_src" \
+          --volume "$(Build.BinariesDirectory):/build" \
+          --env PIP_INDEX_URL \
+          --env "NVIDIA_VISIBLE_DEVICES=all" \
+          --env "ORT_TEST_VERBOSE=$(OrtTestVerbose)" \
+          onnxruntimecuda$(CudaVersionNoDot)plugintestx64 \
+          /bin/bash -c "
+            set -e -x
+            # Validate that the plugin (built against the latest ORT headers) still loads and runs on
+            # the OLDEST supported ORT runtime declared in plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION. This
+            # guards against accidentally depending on an OrtApi/OrtEpApi function newer than the floor.
+            min_ver=\$(tr -d '[:space:]' < /onnxruntime_src/plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION)
+            echo \"Minimum supported ORT version: \$min_ver\"
+            python3 -m venv /build/test_venv_min
+            source /build/test_venv_min/bin/activate
+            python3 -m pip install onnx numpy
+            python3 -m pip install \"onnxruntime==\$min_ver\"
+            wheel=\$(find /build/python_wheel -name 'onnxruntime*ep*cuda*.whl' | head -1)
+            if [ -z \"\$wheel\" ]; then
+              echo 'ERROR: No matching wheel found in /build/python_wheel'
+              ls -la /build/python_wheel/
+              exit 1
+            fi
+            # The plugin wheel declares no dependency on a core onnxruntime package, so installing it
+            # leaves the onnxruntime pinned at the minimum version above untouched.
+            python3 -m pip install \"\$wheel\"
+            python3 -c \"import onnxruntime; print('Base onnxruntime runtime version:', onnxruntime.__version__)\"
+            python3 -u /onnxruntime_src/plugin-ep-cuda/python/test/test_cuda_plugin_ep.py
+          "
+      displayName: 'Install and test Python package against minimum ORT version'

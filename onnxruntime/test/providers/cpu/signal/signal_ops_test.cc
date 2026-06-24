@@ -233,6 +233,80 @@ TEST(SignalOpsTest, STFTFloat) {
   test.Run();
 }
 
+static void TestSTFTInvalidFrameStep(int64_t frame_step) {
+  OpTester test("STFT", kMinOpsetVersion);
+
+  vector<float> signal(64, 1);
+  test.AddInput<float>("signal", {1, 64, 1}, signal);
+  test.AddInput<int64_t>("frame_step", {}, {frame_step});
+  vector<float> window(16, 1);
+  test.AddInput<float>("window", {16}, window);
+  test.AddInput<int64_t>("frame_length", {}, {16});
+
+  vector<int64_t> output_shape = {1, 7, 9, 2};
+  vector<float> expected_output(1 * 7 * 9 * 2, 0.f);
+  test.AddOutput<float>("output", output_shape, expected_output);
+  test.Config(OpTester::ExpectResult::kExpectFailure, "frame_step must be greater than zero");
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
+}
+
+TEST(SignalOpsTest, STFTFrameStepMustBePositive) {
+  TestSTFTInvalidFrameStep(0);
+  TestSTFTInvalidFrameStep(-1);
+}
+
+template <typename T>
+static void TestSTFTComplexInputBatched() {
+  OpTester test("STFT", kMinOpsetVersion);
+  test.AddAttribute<int64_t>("onesided", static_cast<int64_t>(false));
+
+  constexpr int64_t batch_size = 2;
+  constexpr int64_t signal_size = 128;
+  constexpr int64_t signal_components = 2;
+  constexpr int64_t frame_length = 32;
+  constexpr int64_t frame_step = 16;
+  constexpr int64_t n_dfts = 7;
+  constexpr int64_t dft_output_size = frame_length;
+  constexpr int64_t output_components = 2;
+
+  vector<T> signal(batch_size * signal_size * signal_components, static_cast<T>(0));
+  for (int64_t batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
+    const T signal_value = batch_idx == 0 ? static_cast<T>(1) : static_cast<T>(99);
+    for (int64_t sample_idx = 0; sample_idx < signal_size; ++sample_idx) {
+      signal[(batch_idx * signal_size + sample_idx) * signal_components] = signal_value;
+    }
+  }
+
+  test.AddInput<T>("signal", {batch_size, signal_size, signal_components}, signal);
+  test.AddInput<int64_t>("frame_step", {}, {frame_step});
+  test.AddOptionalInputEdge<T>();
+  test.AddInput<int64_t>("frame_length", {}, {frame_length});
+
+  vector<int64_t> output_shape = {batch_size, n_dfts, dft_output_size, output_components};
+  vector<T> expected_output(batch_size * n_dfts * dft_output_size * output_components, static_cast<T>(0));
+  for (int64_t batch_idx = 0; batch_idx < batch_size; ++batch_idx) {
+    const T dc_value = (batch_idx == 0 ? static_cast<T>(1) : static_cast<T>(99)) * static_cast<T>(frame_length);
+    for (int64_t frame_idx = 0; frame_idx < n_dfts; ++frame_idx) {
+      expected_output[((batch_idx * n_dfts + frame_idx) * dft_output_size) * output_components] = dc_value;
+    }
+  }
+
+  test.AddOutput<T>("output", output_shape, expected_output);
+  test.SetOutputAbsErr("output", 0.001f);
+  // DML does not consistently match these CPU STFT validation/regression paths in Windows GPU CI.
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
+}
+
+TEST(SignalOpsTest, STFTFloatComplexInputBatched) {
+  TestSTFTComplexInputBatched<float>();
+}
+
+TEST(SignalOpsTest, STFTDoubleComplexInputBatched) {
+  TestSTFTComplexInputBatched<double>();
+}
+
 TEST(SignalOpsTest, HannWindowFloat) {
   OpTester test("HannWindow", kMinOpsetVersion);
 

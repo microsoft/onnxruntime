@@ -34,7 +34,10 @@ microsoft_gsl;https://github.com/microsoft/GSL/archive/refs/tags/v4.2.1.zip;1094
 microsoft_wil;https://github.com/microsoft/wil/archive/refs/tags/v1.0.250325.1.zip;826c8bd47c2258ec61b8b218e031e5b33d27f761
 mimalloc;https://github.com/microsoft/mimalloc/archive/refs/tags/v2.1.1.zip;d5ee7d34223d0567892db5179849939c8769dc41
 mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.82.0.zip;9bc9e01dffb64d9e0773b2e44d2f22c51aace063
-onnx;https://github.com/onnx/onnx/archive/refs/tags/v1.21.0.zip;321d4acc807c8e0fb0bbcc0424a143dffde1e846
+# ONNX pinned to the 1.22.0 final release (tag v1.22.0). rc2->final changed only CI
+# workflow yml + VERSION_NUMBER (no operator-schema, opset, or testdata change), so it is
+# pure version plumbing. The 7 CI requirements.txt files are pinned to onnx==1.22.0 (now on PyPI).
+onnx;https://github.com/onnx/onnx/archive/refs/tags/v1.22.0.zip;2b2cd58ac7a26df5371266149e0c76776330cdf1
 # Use the latest commit of 10.9-GA
 onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/d5dce67db7c2e64b07e055571f5ec06f7f254de2.zip;01114d3b67650857281fa50faa2e412130a63b69
 protobuf;https://github.com/protocolbuffers/protobuf/archive/refs/tags/v21.12.zip;7cf2733949036c7d52fda017badcab093fe73bfa
@@ -60,5 +63,4 @@ kleidiai;https://github.com/ARM-software/kleidiai/archive/refs/tags/v1.20.0.tar.
 # kleidiai-qmx is pinned to a specific commit as there are no tagged releases. When an appropriate tagged release becomes available,
 # this entry will be updated to use refs/tags/<version> instead of the raw commit hash.
 kleidiai-qmx;https://github.com/qualcomm/kleidiai/archive/2f10c9a8d32f81ffeeb6d4885a29cc35d2b0da87.zip;5e855730a2d69057a569f43dd7532db3b2d2a05c
-duktape;https://github.com/svaarala/duktape/releases/download/v2.7.0/duktape-2.7.0.tar.xz;8200c8e417dbab7adcc12c4dbdef7651cfc55794
 vulkan_headers;https://codeload.github.com/KhronosGroup/Vulkan-Headers/tar.gz/refs/tags/v1.4.344;57bc528ef7c4a3f7bfbb59e64a187e3734bd29d8

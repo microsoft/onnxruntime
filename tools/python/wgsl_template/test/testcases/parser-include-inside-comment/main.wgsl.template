@@ -1,0 +1,32 @@
+// This file contains #include directives inside comments
+// These should be ignored by the parser
+
+// Single-line comment with include: #include "nonexistent.wgsl.template"
+
+/*
+ * Multi-line comment with include
+ * #include "another-nonexistent.wgsl.template"
+ * This should also be ignored
+ */
+
+/*
+This is a multi-line comment where #include appears at line start:
+#include "linestart-nonexistent.wgsl.template"
+And another one:
+#include "second-linestart.wgsl.template"
+End of multi-line comment
+*/
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
+    let index = global_id.x;
+    // Another commented include: #include "utils.wgsl.template"
+    
+    /*
+     * Block comment with multiple includes:
+     * #include "math.wgsl.template"
+     * #include "graphics.wgsl.template"
+     */
+    
+    let result = f32(index) * 2.0;
+}

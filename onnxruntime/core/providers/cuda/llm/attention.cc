@@ -26,6 +26,17 @@ namespace cuda {
 
 namespace llm_attention_detail {
 
+// CUTLASS online softmax multiplies attention scores by kLog2e (≈1.4427); for float/bf16,
+// |lowest() × kLog2e| > FLT_MAX overflows to -inf and causes s_prime=0 → NaN for fully-masked
+// rows. The additive mask sentinel is therefore capped to kCutlassSafeMaskFilterValue. This is
+// also the exact value the fully-masked-row guard compares against to decide whether a key was
+// masked. See kCutlassSafeMaskFilterValue in memory_efficient_attention.h for details.
+template <typename T>
+float MaskedBiasSentinel() {
+  return std::max(static_cast<float>(std::numeric_limits<T>::lowest()),
+                  ::onnxruntime::contrib::cuda::kCutlassSafeMaskFilterValue);
+}
+
 template <typename NodeType>
 bool HasOutput(const NodeType& node, size_t output_index) {
   if constexpr (requires(const NodeType& candidate) { candidate.OutputCount(); candidate.OutputExists(output_index); }) {
@@ -158,12 +169,7 @@ Status Attention<T>::ConvertAttnMaskToBias(
     int64_t num_elements = attn_mask->Shape().Size();
     converted_mask_buffer = GetScratchBuffer<void>(
         num_elements * sizeof(NativeCudaT), GetComputeStream(context));
-    // CUTLASS online softmax multiplies attention scores by kLog2e (≈1.4427).
-    // For float/bf16, |lowest() × kLog2e| > FLT_MAX, overflowing to -inf and
-    // causing s_prime=0 → NaN for fully-masked batches. Cap to prevent this.
-    // See kCutlassSafeMaskFilterValue in memory_efficient_attention.h for details.
-    float mask_filter_value = std::max(static_cast<float>(std::numeric_limits<T>::lowest()),
-                                       ::onnxruntime::contrib::cuda::kCutlassSafeMaskFilterValue);
+    float mask_filter_value = llm_attention_detail::MaskedBiasSentinel<T>();
     ORT_RETURN_IF_ERROR(LaunchConvertBoolMaskToAttentionBias<NativeCudaT>(
         attn_mask->Data<bool>(),
         reinterpret_cast<NativeCudaT*>(converted_mask_buffer.get()),
@@ -797,15 +803,15 @@ Status Attention<T>::RunMemoryEfficientAttention(
     p.qk_head_size = parameters.head_size;
     p.v_head_size = parameters.v_head_size;
     p.causal = parameters.is_causal;
-    // ONNX spec: is_causal means upper-left alignment in the full attention matrix.
-    // When past_sequence_length == 0 and S_q != S_kv (cross-attention without KV cache),
-    // queries start at absolute position 0, so causal mask is upper-left.
-    // When past_sequence_length > 0 (decode with KV cache), queries start at position
-    // past_seq, so causal mask is effectively lower-right on the [S_q x total_kv] sub-matrix.
-    // NOTE: For external KV cache (TensorScatter), nonpad_kv_seqlen provides per-batch
-    // actual lengths and seqlens_k handles the masking — the causal_from_top_left flag
-    // is only consulted when params.causal is true, so it's correct here.
-    p.causal_from_top_left = (parameters.past_sequence_length == 0);
+    // External KV cache (nonpad_kv_seqlen) requires BOTTOM-RIGHT causal alignment per
+    // onnx/onnx#8068: query in-block index i attends key j iff j <= i + offset[b], with
+    // offset[b] = nonpad_kv_seqlen[b] - q_sequence_length. The CUTLASS kernel derives this
+    // automatically when causal_from_top_left is false: it sets
+    // causal_diagonal_offset = num_keys - num_queries, and num_keys is the per-batch
+    // seqlens_k value (== nonpad_kv_seqlen[b]) — so the offset equals offset[b] per batch.
+    // Do NOT key this off past_sequence_length (which is 0 for the external-cache path and
+    // would force the incorrect top-left frontier).
+    p.causal_from_top_left = false;
     p.scale = parameters.scale;
     p.softcap = parameters.softcap;
     p.seqlen_k_ptr = seqlens_k_buffer.get();
@@ -834,10 +840,6 @@ Status Attention<T>::RunMemoryEfficientAttention(
     // On the MEA (CUTLASS) path (used for both MHA and GQA when nonpad_kv_seqlen is provided),
     // zero out output for fully-masked batches to prevent NaN.
     // CUTLASS epilogue computes 1/s_prime where s_prime=0 for seqlens_k=0, producing NaN.
-    // TODO(titaiwang): ZeroOutputForFullyMaskedBatches outputs zeros for fully-masked
-    // batches (seqlens_k=0), which diverges from CPU/Unfused behavior (uniform mean of V).
-    // For cross-EP consistency, replace with LaunchMeanOfVForFullyMaskedBatches that
-    // computes mean(V[b,n,:,h]) for each masked batch. See issue #27516.
     {
       using CudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
       int64_t elements_per_batch = static_cast<int64_t>(parameters.q_sequence_length) *
@@ -849,6 +851,28 @@ Status Attention<T>::RunMemoryEfficientAttention(
           elements_per_batch,
           cuda_stream,
           device_prop.maxThreadsPerBlock));
+    }
+
+    // Fully-masked-row -> 0 guard (onnx#8068, Bug-2). A query row is fully masked when no key
+    // remains in its causal/seqlens frontier with a finite (non-sentinel) composed bias. Two
+    // causes, both handled by ZeroFullyMaskedRowsKernel: (a) STRUCTURAL — is_causal bottom-right
+    // with nonpad_kv_seqlen[b] < q_sequence_length leaves early rows with an empty frontier (no
+    // attn_mask needed); (b) every causally-allowed key is masked by the finite attn_bias
+    // sentinel. Both would otherwise yield NaN/mean-of-V. Fire whenever is_causal can produce an
+    // empty frontier OR a real attn_mask is present (matches the reference isneginf(max(attn_bias))
+    // which folds the causal -inf into attn_bias).
+    if (parameters.is_causal || attn_bias_data != nullptr) {
+      using CudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
+      float masked_bias_value = llm_attention_detail::MaskedBiasSentinel<T>();
+      ORT_RETURN_IF_ERROR(LaunchZeroFullyMaskedRows<CudaT>(
+          reinterpret_cast<CudaT*>(out_data),
+          reinterpret_cast<const CudaT*>(attn_bias_data),
+          seqlens_k_buffer.get(),
+          parameters.batch_size, parameters.q_num_heads, parameters.q_sequence_length,
+          parameters.total_sequence_length, parameters.v_head_size,
+          parameters.is_causal, /*causal_from_top_left=*/false,
+          broadcast_bias_dim_0, broadcast_bias_dim_1, masked_bias_value,
+          cuda_stream, device_prop.maxThreadsPerBlock));
     }
   }
   // Standard MEA path: float attention bias, bool mask (converted to bias), or no mask.
@@ -901,9 +925,27 @@ Status Attention<T>::RunMemoryEfficientAttention(
       p.workspace = nullptr;
     }
     onnxruntime::contrib::cuda::run_memory_efficient_attention(p);
-  }
 
-  // --- Transpose output BSNH → BNSH if input was 4D (BNSH) ---
+    // Fully-masked-row -> 0 guard (onnx#8068, Bug-2). No seqlens_k here, so the key bound is
+    // total_sequence_length and the causal frontier can never be empty (offset is 0 for top-left,
+    // or num_keys - q_seq >= 0 when past is present), so the only fully-masked cause is an
+    // attn_mask that masks every key. Gate on attn_bias presence only -- unlike the nonpad branch,
+    // is_causal alone cannot produce a structurally-empty row here, so firing on it would just be a
+    // guaranteed no-op launch.
+    if (attn_bias_data != nullptr) {
+      using CudaT = typename onnxruntime::cuda::OrtToCudaType<T>::type;
+      float masked_bias_value = llm_attention_detail::MaskedBiasSentinel<T>();
+      ORT_RETURN_IF_ERROR(LaunchZeroFullyMaskedRows<CudaT>(
+          reinterpret_cast<CudaT*>(out_data),
+          reinterpret_cast<const CudaT*>(attn_bias_data),
+          /*seqlens_k=*/nullptr,
+          parameters.batch_size, parameters.q_num_heads, parameters.q_sequence_length,
+          parameters.total_sequence_length, parameters.v_head_size,
+          parameters.is_causal, p.causal_from_top_left,
+          broadcast_bias_dim_0, broadcast_bias_dim_1, masked_bias_value,
+          cuda_stream, device_prop.maxThreadsPerBlock));
+    }
+  }
   if (!is_bsnh && out_bsnh_buffer != nullptr) {
     ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(
         parameters.batch_size, parameters.q_sequence_length,
@@ -1189,6 +1231,12 @@ Status Attention<T>::RunUnfusedAttention(
   p.scale = parameters.scale;
   p.softcap = parameters.softcap;
   p.seqlens_k = seqlens_k_ptr;
+  // Composed is_causal + attn_mask fully-masked-row -> 0 guard (onnx#8068, Bug-2). The bool
+  // mask is converted to a finite additive sentinel by ConvertAttnMaskToBias; pass that same
+  // sentinel so the softmax kernel zeros a row whose every in-range key is masked instead of
+  // producing mean-of-V. No mask -> 0 (disabled); a float -inf mask is handled by the kernel's
+  // -inf branch and does not depend on this value.
+  p.masked_bias_value = (attn_mask != nullptr) ? llm_attention_detail::MaskedBiasSentinel<T>() : 0.0f;
 
   NativeCudaT* output_qk_data = (output_qk != nullptr)
                                     ? reinterpret_cast<NativeCudaT*>(output_qk->MutableData<T>())
@@ -1307,37 +1355,25 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // acceptable per the ONNX spec.
 
   // Flash Attention uses lower-right (bottom-right) causal alignment with no option for
-  // upper-left. The ONNX spec requires upper-left alignment when there is no past context:
-  // query[0] attends only to key[0]. The difference only manifests when S_q != S_kv
-  // (cross-attention shape) with no past. Skip Flash for this case; MEA handles it correctly
-  // via the causal_from_top_left flag, and Unified Unfused uses past_kv_length=0.
-  // Defined here for visibility — only Flash needs this guard (MEA/Unfused handle upper-left natively).
+  // upper-left. The ONNX spec requires upper-left alignment when there is no past context
+  // AND no external cache: query[0] attends only to key[0]. The difference only manifests
+  // when S_q != S_kv (cross-attention shape) with no past. Skip Flash for that pure
+  // cross-attention case; MEA handles it via the causal_from_top_left flag and Unified
+  // Unfused uses past_kv_length=0. (When an external cache is present — nonpad_kv_seqlen —
+  // the required frontier IS bottom-right, so Flash is eligible; see below.)
   const bool causal_cross_no_past = parameters.is_causal &&
                                     parameters.q_sequence_length != parameters.total_sequence_length &&
                                     parameters.past_sequence_length == 0;
 
-  // Reject causal + TensorScatter decode (S_q < S_kv without past_key).
-  // Per ONNX spec, is_causal without past_key means upper-left alignment: q[i] attends
-  // only to kv[0..i]. For decode with external cache (S_q=1, S_kv=cache_size), this means
-  // q[0] sees only kv[0] — not meaningful for autoregressive generation.
-  //
-  // Why is_causal=0 is correct for external cache decode:
-  // - With S_q=1, there's only one query position at the end of the sequence
-  // - All KV positions are in the "past" relative to this query — nothing to mask
-  // - nonpad_kv_seqlen already bounds attention to valid cache positions
-  //
-  // For external cache prompt (S_q == S_kv), is_causal=1 works correctly (square matrix,
-  // upper-left == lower-right). For chunked prefill (S_q > 1 but S_q < S_kv), use an
-  // explicit attn_mask instead of is_causal.
-  if (causal_cross_no_past && nonpad_kv_seqlen != nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "Causal attention with TensorScatter (nonpad_kv_seqlen) and S_q != S_kv without "
-                           "past_key is not supported. Per ONNX spec, is_causal without past_key produces "
-                           "upper-left alignment where q[i] only attends to kv[0..i], which for decode (S_q=1) "
-                           "means q[0] sees only kv[0]. Use is_causal=0 for TensorScatter decode; the KV bounds "
-                           "are already enforced by nonpad_kv_seqlen without needing a causal mask. For chunked "
-                           "prefill with external cache, use an explicit attn_mask instead.");
-  }
+  // is_causal=1 + nonpad_kv_seqlen (external KV cache) without past_key defines a
+  // bottom-right causal frontier per onnx/onnx#8068: query in-block index i attends key j
+  // iff j <= i + offset[b], where offset[b] = nonpad_kv_seqlen[b] - q_sequence_length.
+  // This shape is computed (not rejected): Flash's mha_fwd_kvcache with seqlens_k already
+  // produces this frontier natively (preferred fast path), and the MEA fallback builds the
+  // same bottom-right alignment via causal_from_top_left=false (the CUTLASS kernel sets
+  // causal_diagonal_offset = num_keys - num_queries == offset[b] per batch). Pure
+  // cross-attention without an external cache (causal_cross_no_past && nonpad_kv_seqlen ==
+  // nullptr) keeps upper-left alignment and is handled by MEA/Unfused below.
 
 #if USE_FLASH_ATTENTION
   {
@@ -1349,7 +1385,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                             parameters.q_num_heads, parameters.kv_num_heads) &&
         parameters.head_size == parameters.v_head_size &&
         !has_output_qk &&
-        !causal_cross_no_past &&
+        // Upper-left causal cross-attention (no external cache) is excluded — Flash only does
+        // bottom-right. With an external cache (nonpad_kv_seqlen), the required frontier IS
+        // bottom-right, so Flash handles it via seqlens_k (onnx#8068).
+        (!causal_cross_no_past || nonpad_kv_seqlen != nullptr) &&
         // Flash does not support attention masks — reject when attn_mask is present.
         attn_mask == nullptr;
 

@@ -15,6 +15,7 @@
 
 #include "onnx/defs/parser.h"
 #include "onnx/defs/printer.h"
+#include "onnx/defs/schema.h"
 
 #include "core/common/span_utils.h"
 #include "core/framework/data_types.h"
@@ -6597,6 +6598,26 @@ TEST_F(GraphTransformationTests, AttentionFusionDistilBertTest) {
   EXPECT_EQ(op_to_count["Shape"], 0);
 }
 
+// These tests verify that attention fusions fire at the CURRENT max ONNX opset.
+// When the ONNX opset advances (e.g., via submodule update), nodes will report a new
+// SinceVersion(). If the optimizer's version lists are not updated, the fusion will
+// fail to match and these tests will fail.
+//
+// To fix: update the EdgeEndToMatch version lists in the indicated optimizer file
+// to include the new opset version for each affected op type.
+//
+// NOTE: GPT-2 and DistilBert attention models use attribute-based Unsqueeze/Squeeze
+// in their mask subgraphs (opset <= 12 only). Those patterns cannot be converted to
+// current opset without rewriting the mask matching logic. The MobileCLIP test
+// (programmatically built) covers the current-opset attention fusion paths.
+
+static int GetCurrentOnnxOpset() {
+  const auto& map = ONNX_NAMESPACE::OpSchemaRegistry::DomainToVersionRange::Instance().Map();
+  auto it = map.find(ONNX_NAMESPACE::ONNX_DOMAIN);
+  EXPECT_TRUE(it != map.end()) << "ONNX domain not found in OpSchemaRegistry";
+  return it != map.end() ? it->second.second : 0;
+}
+
 enum class MobileClipProjectionType {
   MatMulAdd,
   GemmWithReshapes,
@@ -6883,6 +6904,27 @@ TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaTest) {
                     std::make_unique<AttentionFusion>());
 }
 
+TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaCurrentOpsetTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::MatMulAdd);
+  };
+
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
+  TransformerTester(build_test_case,
+                    CheckMobileClipAttentionFusedSession,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    GetCurrentOnnxOpset(),
+                    1e-3,
+                    0.0,
+                    std::make_unique<AttentionFusion>(),
+                    /*add_session_options*/ {},
+                    /*disabled_optimizers*/ {},
+                    /*ep*/ nullptr,
+                    ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false});
+}
+
 TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionGemmTest) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::GemmWithReshapes);
@@ -6973,6 +7015,273 @@ TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionRewriteFa
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::make_unique<AttentionFusion>(),
                                         TransformerLevel::Level2, 1, nullptr,
                                         CheckMobileClipAttentionUnfusedMatMulGraph));
+}
+
+// Current-opset regression tests for fusion optimizers.
+// These construct minimal graphs at the current ONNX opset and verify the optimizer fires.
+// If ONNX bumps an op's since_version, the optimizer's version list will miss it and the test fails.
+
+TEST_F(GraphTransformationTests, GeluFusionCurrentOpsetTest) {
+  // Pattern: x -> Div(sqrt2) -> Erf -> Add(1) -> Mul(x) -> Mul(0.5) -> output
+  int current_opset = GetCurrentOnnxOpset();
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2, 3, 64}});
+    auto* sqrt2 = builder.MakeInitializer<float>({}, {1.4142135f});
+    auto* one = builder.MakeInitializer<float>({}, {1.0f});
+    auto* half = builder.MakeInitializer<float>({}, {0.5f});
+
+    auto* div_out = builder.MakeIntermediate();
+    auto* erf_out = builder.MakeIntermediate();
+    auto* add_out = builder.MakeIntermediate();
+    auto* mul1_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Div", {input, sqrt2}, {div_out});
+    builder.AddNode("Erf", {div_out}, {erf_out});
+    builder.AddNode("Add", {erf_out, one}, {add_out});
+    builder.AddNode("Mul", {input, add_out}, {mul1_out});
+    builder.AddNode("Mul", {mul1_out, half}, {output});
+  };
+
+  auto post_graph_checker = [current_opset](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    if (op_to_count["Gelu"] == 1 || op_to_count["com.microsoft.Gelu"] == 1) {
+      TEST_RETURN_IF_NOT(op_to_count["Div"] == 0);
+      TEST_RETURN_IF_NOT(op_to_count["Erf"] == 0);
+      TEST_RETURN_IF_NOT(op_to_count["Add"] == 0);
+      TEST_RETURN_IF_NOT(op_to_count["Mul"] == 0);
+      return Status::OK();
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Gelu fusion failed at opset ", current_opset,
+                           ". Remaining ops: Div=", op_to_count["Div"],
+                           " Erf=", op_to_count["Erf"],
+                           " Add=", op_to_count["Add"],
+                           " Mul=", op_to_count["Mul"],
+                           ". Either update version lists in "
+                           "onnxruntime/core/optimizer/gelu_fusion.cc"
+                           " or skip this opset in the test if the fusion is not expected to apply.");
+  };
+
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
+                                        std::make_unique<GeluFusion>(),
+                                        TransformerLevel::Level1, 1, nullptr, post_graph_checker,
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
+}
+
+TEST_F(GraphTransformationTests, FastGeluFusionCurrentOpsetTest) {
+  // FastGelu pattern: x*x*0.044715 + x -> mul(sqrt(2/pi)) -> tanh -> add(1) -> mul(0.5) -> mul(x)
+  int current_opset = GetCurrentOnnxOpset();
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2, 3, 64}});
+    auto* coeff = builder.MakeInitializer<float>({}, {0.044715f});
+    auto* sqrt2pi = builder.MakeInitializer<float>({}, {0.7978845f});  // sqrt(2/pi)
+    auto* one = builder.MakeInitializer<float>({}, {1.0f});
+    auto* half = builder.MakeInitializer<float>({}, {0.5f});
+    auto* three = builder.MakeInitializer<float>({}, {3.0f});
+
+    auto* pow_out = builder.MakeIntermediate();
+    auto* mul1_out = builder.MakeIntermediate();
+    auto* add1_out = builder.MakeIntermediate();
+    auto* mul2_out = builder.MakeIntermediate();
+    auto* tanh_out = builder.MakeIntermediate();
+    auto* add2_out = builder.MakeIntermediate();
+    auto* mul_half_out = builder.MakeIntermediate();
+    auto* mul_final_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Pow", {input, three}, {pow_out});
+    builder.AddNode("Mul", {pow_out, coeff}, {mul1_out});
+    builder.AddNode("Add", {input, mul1_out}, {add1_out});
+    builder.AddNode("Mul", {add1_out, sqrt2pi}, {mul2_out});
+    builder.AddNode("Tanh", {mul2_out}, {tanh_out});
+    builder.AddNode("Add", {tanh_out, one}, {add2_out});
+    builder.AddNode("Mul", {input, half}, {mul_half_out});
+    builder.AddNode("Mul", {mul_half_out, add2_out}, {mul_final_out});
+    builder.AddNode("Identity", {mul_final_out}, {output});
+  };
+
+  auto post_graph_checker = [current_opset](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    if (op_to_count["com.microsoft.FastGelu"] == 1) {
+      TEST_RETURN_IF_NOT(op_to_count["Tanh"] == 0);
+      TEST_RETURN_IF_NOT(op_to_count["Pow"] == 0);
+      return Status::OK();
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "FastGelu fusion failed at opset ", current_opset,
+                           ". Remaining ops: Tanh=", op_to_count["Tanh"],
+                           " Pow=", op_to_count["Pow"],
+                           " Mul=", op_to_count["Mul"],
+                           " Add=", op_to_count["Add"],
+                           ". Either update version lists in "
+                           "onnxruntime/core/optimizer/fast_gelu_fusion.cc"
+                           " or skip this opset in the test if the fusion is not expected to apply.");
+  };
+
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
+                                        std::make_unique<FastGeluFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker,
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
+}
+
+TEST_F(GraphTransformationTests, BiasGeluFusionCurrentOpsetTest) {
+  // BiasGelu pattern: Add(input, bias) -> Gelu -> output (requires opset >= 20 for ONNX Gelu)
+  int current_opset = GetCurrentOnnxOpset();
+  if (current_opset < 20) {
+    GTEST_SKIP() << "BiasGelu with ONNX Gelu requires opset >= 20";
+  }
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2, 3, 64}});
+    auto* bias = builder.MakeInitializer<float>({64}, -0.5f, 0.5f);
+    auto* add_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Add", {input, bias}, {add_out});
+    builder.AddNode("Gelu", {add_out}, {output});
+  };
+
+  auto post_graph_checker = [current_opset](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    if (op_to_count["com.microsoft.BiasGelu"] == 1) {
+      TEST_RETURN_IF_NOT(op_to_count["Add"] == 0);
+      TEST_RETURN_IF_NOT(op_to_count["Gelu"] == 0);
+      return Status::OK();
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "BiasGelu fusion failed at opset ", current_opset,
+                           ". Remaining ops: Add=", op_to_count["Add"],
+                           " Gelu=", op_to_count["Gelu"],
+                           ". Either update version lists in "
+                           "onnxruntime/core/optimizer/bias_gelu_fusion.cc"
+                           " or skip this opset in the test if the fusion is not expected to apply.");
+  };
+
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
+                                        std::make_unique<BiasGeluFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker,
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
+}
+
+TEST_F(GraphTransformationTests, MatMulAddFusionCurrentOpsetTest) {
+  // MatMul + Add -> Gemm fusion
+  int current_opset = GetCurrentOnnxOpset();
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2, 64}});
+    auto* weights = builder.MakeInitializer<float>({64, 32}, -1.0f, 1.0f);
+    auto* bias = builder.MakeInitializer<float>({32}, -0.5f, 0.5f);
+    auto* matmul_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("MatMul", {input, weights}, {matmul_out});
+    builder.AddNode("Add", {matmul_out, bias}, {output});
+  };
+
+  auto post_graph_checker = [current_opset](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    if (op_to_count["Gemm"] == 1) {
+      TEST_RETURN_IF_NOT(op_to_count["MatMul"] == 0);
+      TEST_RETURN_IF_NOT(op_to_count["Add"] == 0);
+      return Status::OK();
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "MatMulAdd fusion failed at opset ", current_opset,
+                           ". Remaining ops: MatMul=", op_to_count["MatMul"],
+                           " Add=", op_to_count["Add"],
+                           ". Either update version lists in "
+                           "onnxruntime/core/optimizer/matmul_add_fusion.cc"
+                           " or skip this opset in the test if the fusion is not expected to apply.");
+  };
+
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
+                                        std::make_unique<MatMulAddFusion>(),
+                                        TransformerLevel::Level1, 1, nullptr, post_graph_checker,
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
+}
+
+TEST_F(GraphTransformationTests, DivMulFusionCurrentOpsetTest) {
+  // 1/x * y -> y/x fusion
+  int current_opset = GetCurrentOnnxOpset();
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_x = builder.MakeInput<float>({{2, 64}});
+    auto* input_y = builder.MakeInput<float>({{2, 64}});
+    auto* one = builder.MakeInitializer<float>({}, {1.0f});
+    auto* div_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Div", {one, input_x}, {div_out});
+    builder.AddNode("Mul", {div_out, input_y}, {output});
+  };
+
+  auto post_graph_checker = [current_opset](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    if (op_to_count["Div"] == 1 && op_to_count["Mul"] == 0) {
+      return Status::OK();
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "DivMul fusion failed at opset ", current_opset,
+                           ". Remaining ops: Div=", op_to_count["Div"],
+                           " Mul=", op_to_count["Mul"],
+                           ". Either update version lists in "
+                           "onnxruntime/core/optimizer/div_mul_fusion.cc"
+                           " or skip this opset in the test if the fusion is not expected to apply.");
+  };
+
+  auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("DivMulFusionCurrentOpset");
+  ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<DivMulFusion>()));
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
+                                        std::move(rule_transformer),
+                                        TransformerLevel::Level1, 1, nullptr, post_graph_checker,
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
+}
+
+TEST_F(GraphTransformationTests, QuickGeluFusionCurrentOpsetTest) {
+  // x * Sigmoid(alpha * x) -> QuickGelu(x, alpha) fusion
+  int current_opset = GetCurrentOnnxOpset();
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2, 3, 64}});
+    auto* alpha = builder.MakeInitializer<float>({}, {1.702f});
+    auto* mul1_out = builder.MakeIntermediate();
+    auto* sigmoid_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Mul", {input, alpha}, {mul1_out});
+    builder.AddNode("Sigmoid", {mul1_out}, {sigmoid_out});
+    builder.AddNode("Mul", {input, sigmoid_out}, {output});
+  };
+
+  auto post_graph_checker = [current_opset](Graph& graph) {
+    auto op_to_count = CountOpsInGraph(graph);
+    if (op_to_count["com.microsoft.QuickGelu"] == 1) {
+      TEST_RETURN_IF_NOT(op_to_count["Mul"] == 0);
+      TEST_RETURN_IF_NOT(op_to_count["Sigmoid"] == 0);
+      return Status::OK();
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "QuickGelu fusion failed at opset ", current_opset,
+                           ". Remaining ops: Mul=", op_to_count["Mul"],
+                           " Sigmoid=", op_to_count["Sigmoid"],
+                           ". Either update version lists in "
+                           "onnxruntime/core/optimizer/quick_gelu_fusion.cc"
+                           " or skip this opset in the test if the fusion is not expected to apply.");
+  };
+
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
+                                        std::make_unique<QuickGeluFusion>(),
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker,
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 }
 
 TEST_F(GraphTransformationTests, GeluFusionTest) {
@@ -8219,8 +8528,14 @@ TEST_F(GraphTransformationTests, ReshapeFusionOpsetTest) {
     return Status::OK();
   };
 
-  const std::vector<int> opsets{11, 12, 13, 14, 15, 18};
-  bool shape_test_for_opset15 = false;
+  // Include the current max opset to ensure the fusion stays up-to-date.
+  // If this test fails at the current opset, update version lists in
+  // onnxruntime/core/optimizer/reshape_fusion.cc.
+  std::vector<int> opsets{11, 12, 13, 14, 15, 18, 19, 21, 23, 24, 25};
+  int current_opset = GetCurrentOnnxOpset();
+  if (std::find(opsets.begin(), opsets.end(), current_opset) == opsets.end()) {
+    opsets.push_back(current_opset);
+  }
 
   for (auto& opset : opsets) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
@@ -8245,14 +8560,7 @@ TEST_F(GraphTransformationTests, ReshapeFusionOpsetTest) {
 
       builder.AddNode("Add", {input_arg0, input_arg1}, {add_out});
       if (opset_version >= 15) {
-        if (shape_test_for_opset15) {
-          auto& shape_1 = builder.AddNode("Shape", {add_out}, {shape_out});
-          shape_1.AddAttribute("start", (int64_t)1);
-          shape_1.AddAttribute("end", (int64_t)2);
-        } else {
-          builder.AddNode("Shape", {add_out}, {shape_out}).AddAttribute("start", (int64_t)0);
-          shape_test_for_opset15 = true;
-        }
+        builder.AddNode("Shape", {add_out}, {shape_out}).AddAttribute("start", (int64_t)0);
       } else {
         builder.AddNode("Shape", {add_out}, {shape_out});
       }
@@ -8271,13 +8579,55 @@ TEST_F(GraphTransformationTests, ReshapeFusionOpsetTest) {
       builder.AddNode("Reshape", {add_out, concattraining1_out}, {out});
     };
 
+    // Test that the fusion fires for every opset.
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ReshapeFusion>();
-    if (opset >= 15 && shape_test_for_opset15) {
-      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                            pre_graph_checker, pre_graph_checker));
-    } else {
-      ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                            pre_graph_checker, post_graph_checker));
+    // The opset list includes the current ONNX opset, which may still be under development
+    // (e.g. opset 27 in ONNX 1.22). Allow the unreleased opset so the model loads on strict legs.
+    // Remove once opset 27 is released. Tracked by #28966.
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker,
+                                          ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
+
+    // For opset >= 15, also test that partial Shape (start=1, end=2) prevents fusion.
+    if (opset >= 15) {
+      auto build_partial_shape_case = [&](ModelTestBuilder& builder) {
+        auto* input_arg0 = builder.MakeInput<float>({{batch_size, seq_lenth, hidden_size}});
+        auto* input_arg1 = builder.MakeInput<float>({{hidden_size}});
+        auto* scalar_int_0 = builder.MakeInitializer<int64_t>({}, {0});
+        auto* scalar_int_1 = builder.MakeInitializer<int64_t>({}, {1});
+        auto* single_value_1d_int_0 = builder.MakeInitializer<int64_t>({1}, {0});
+        auto* single_value_1d_int_16 = builder.MakeInitializer<int64_t>({1}, {16});
+        auto* single_value_1d_int_64 = builder.MakeInitializer<int64_t>({1}, {64});
+        auto* add_out = builder.MakeIntermediate();
+        auto* shape_out = builder.MakeIntermediate();
+        auto* gather_out_0 = builder.MakeIntermediate();
+        auto* gather_out_1 = builder.MakeIntermediate();
+        auto* unsqueeze_out_0 = builder.MakeIntermediate();
+        auto* unsqueeze_out_1 = builder.MakeIntermediate();
+        auto* concattraining1_out = builder.MakeIntermediate();
+        auto* concattraining1_length = builder.MakeIntermediate();
+        auto* out = builder.MakeOutput();
+
+        builder.AddNode("Add", {input_arg0, input_arg1}, {add_out});
+        auto& shape_1 = builder.AddNode("Shape", {add_out}, {shape_out});
+        shape_1.AddAttribute("start", (int64_t)1);
+        shape_1.AddAttribute("end", (int64_t)2);
+        builder.AddNode("Gather", {shape_out, scalar_int_0}, {gather_out_0});
+        builder.AddNode("Gather", {shape_out, scalar_int_1}, {gather_out_1});
+        builder.AddNode("Unsqueeze", {gather_out_0, single_value_1d_int_0}, {unsqueeze_out_0});
+        builder.AddNode("Unsqueeze", {gather_out_1, single_value_1d_int_0}, {unsqueeze_out_1});
+        builder.AddNode("ConcatTraining", {unsqueeze_out_0, unsqueeze_out_1, single_value_1d_int_16, single_value_1d_int_64},
+                        {concattraining1_out, concattraining1_length}, "com.microsoft")
+            .AddAttribute("axis", static_cast<int64_t>(0));
+        builder.AddNode("Reshape", {add_out, concattraining1_out}, {out});
+      };
+
+      std::unique_ptr<GraphTransformer> transformer_no_fuse = std::make_unique<ReshapeFusion>();
+      // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+      // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
+      ASSERT_STATUS_OK(TestGraphTransformer(build_partial_shape_case, opset, *logger_, std::move(transformer_no_fuse),
+                                            TransformerLevel::Level1, 1, pre_graph_checker, pre_graph_checker,
+                                            ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
     }
   }
 }
@@ -10388,6 +10738,51 @@ TEST_F(GraphTransformationTests, GatherToSliceFusion) {
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSliceFusion>();
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
                                           TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
+  }
+
+  // OpSet-27, Tind is int64. Range gained an opset-27 schema in ONNX 1.22; ensure the fusion still matches it.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* data_arg = builder.MakeInput<float>({{8, 8, 8, 8}});
+      auto* range_input_1 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(0)});
+      auto* range_input_2 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(8)});
+      auto* range_input_3 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(1)});
+      auto* range_output = builder.MakeIntermediate();
+      auto* gather_output = builder.MakeOutput();
+
+      builder.AddNode("Range", {range_input_1, range_input_2, range_input_3}, {range_output});
+      builder.AddNode("Gather", {data_arg, range_output}, {gather_output})
+          .AddAttribute("axis", static_cast<int64_t>(2));
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      auto op_count_map = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_count_map["Range"] == 0);
+      TEST_RETURN_IF_NOT(op_count_map["Gather"] == 0);
+      TEST_RETURN_IF_NOT(op_count_map["Slice"] == 1);
+      for (auto& node : graph.Nodes()) {
+        if (node.OpType() == "Slice") {
+          const NodeArg& input_arg = *(node.InputDefs()[3]);
+          const ONNX_NAMESPACE::TensorProto* tensor_proto =
+              graph_utils::GetConstantInitializer(graph, input_arg.Name());
+          TEST_RETURN_IF_NOT(tensor_proto != nullptr);
+          Initializer init_const{graph, *tensor_proto, graph.ModelPath()};
+          TEST_RETURN_IF_NOT(tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64);
+          TEST_RETURN_IF_NOT(2 == static_cast<int32_t>(*(init_const.data<int64_t>())));
+        }
+      }
+      return Status::OK();
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSliceFusion>();
+    // Opset 27 is still under development in ONNX 1.22, so the default released-opset-only model load
+    // would throw on strict (ALLOW_RELEASED_ONNX_OPSET_ONLY!=0) legs. Allow the unreleased opset here so
+    // this sub-block exercises the opset-27 Range schema on every CI leg, not just the relaxed ones.
+    const ModelOptions allow_unreleased_opset{kAllowReleasedOpsetsOnly,
+                                              /*strict_shape_type_inference*/ false};
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 27, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker,
+                                          allow_unreleased_opset));
   }
 }
 
