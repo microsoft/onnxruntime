@@ -16,7 +16,35 @@ runs:
   steps:
     - name: Install coreutils and ninja
       shell: bash
-      run: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
+      run: |
+        set -euo pipefail
+
+        if command -v ninja >/dev/null 2>&1 && command -v realpath >/dev/null 2>&1; then
+          echo "ninja and coreutils are already available."
+          exit 0
+        fi
+
+        retry_apt_install() {
+          local retries=3
+          for attempt in $(seq 1 "${retries}"); do
+            if sudo apt-get update -y && sudo apt-get install -y --no-install-recommends coreutils ninja-build; then
+              return 0
+            fi
+
+            echo "apt-get attempt ${attempt}/${retries} failed. Retrying..."
+            if [[ "${attempt}" -lt "${retries}" ]]; then
+              sleep $((attempt * 5))
+            fi
+          done
+
+          return 1
+        }
+
+        if ! retry_apt_install; then
+          echo "Falling back to archive.ubuntu.com mirror and retrying apt install."
+          sudo sed -i 's|https\?://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list
+          retry_apt_install
+        fi
 
     - name: Install Android NDK
       shell: bash
