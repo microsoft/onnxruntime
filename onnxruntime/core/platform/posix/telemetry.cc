@@ -4,17 +4,24 @@
 #include "core/platform/posix/telemetry.h"
 #include "core/platform/posix/device_id.h"
 
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
+
 // 1DS SDK
 #include <LogManagerProvider.hpp>
 #include <ILogConfiguration.hpp>
+// ContextFieldsProvider is an internal SDK header (not part of the vcpkg-installed public headers);
+// it is only used on mobile to read the SDK's auto-generated device id.
+#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IOS)
 #include <api/ContextFieldsProvider.hpp>
+#endif
 
 #include <unistd.h>
 #include <sys/resource.h>
 
 #ifdef __APPLE__
 #include <sys/sysctl.h>
-#include <TargetConditionals.h>
 #endif
 
 #if defined(__linux__) || defined(__ANDROID__)
