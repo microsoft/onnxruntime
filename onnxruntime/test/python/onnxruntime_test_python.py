@@ -441,8 +441,6 @@ class TestInferenceSession(unittest.TestCase):
 
                 test_get_and_set_option_with_values("enable_cudnn", ["1", "0"])
 
-                test_get_and_set_option_with_values("cudnn_path", ["", "/tmp/ort_cudnn"])
-
                 test_get_and_set_option_with_values("do_copy_in_default_stream", [0, 1])
 
                 test_get_and_set_option_with_values("tunable_op_enable", ["1", "0"])

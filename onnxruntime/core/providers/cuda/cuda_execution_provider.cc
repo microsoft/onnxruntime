@@ -339,7 +339,7 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
 #endif
 
 #ifndef USE_CUDA_MINIMAL
-  cuda::CudnnLibrary::Get().Configure(info_.enable_cudnn, info_.cudnn_path);
+  cuda::CudnnLibrary::Get().Configure(info_.enable_cudnn);
 #endif
 
   CUDA_CALL_THROW(cudaSetDevice(info_.device_id));

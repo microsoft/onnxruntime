@@ -5,7 +5,6 @@
 
 #ifndef USE_CUDA_MINIMAL
 
-#include <utility>
 #include <vector>
 
 #ifdef _WIN32
@@ -17,22 +16,7 @@
 
 namespace {
 
-std::string JoinPath(std::string_view base, std::string_view child) {
-  if (base.empty()) {
-    return std::string(child);
-  }
-  const char last = base.back();
-  if (last == '/' || last == '\\') {
-    return std::string(base) + std::string(child);
-  }
-#ifdef _WIN32
-  return std::string(base) + "\\" + std::string(child);
-#else
-  return std::string(base) + "/" + std::string(child);
-#endif
-}
-
-std::vector<std::string> GetCandidateLibraryNames(std::string_view cudnn_path) {
+std::vector<std::string> GetCandidateLibraryNames() {
 #ifdef _WIN32
   constexpr const char* kCudnnLibraryName = "cudnn64_9.dll";
 #else
@@ -41,19 +25,6 @@ std::vector<std::string> GetCandidateLibraryNames(std::string_view cudnn_path) {
 #endif
 
   std::vector<std::string> candidates;
-  if (!cudnn_path.empty()) {
-    candidates.push_back(JoinPath(cudnn_path, kCudnnLibraryName));
-#ifdef _WIN32
-    candidates.push_back(JoinPath(JoinPath(cudnn_path, "bin"), kCudnnLibraryName));
-#else
-    candidates.push_back(JoinPath(cudnn_path, kCudnnUnversionedLibraryName));
-    candidates.push_back(JoinPath(JoinPath(cudnn_path, "lib"), kCudnnLibraryName));
-    candidates.push_back(JoinPath(JoinPath(cudnn_path, "lib"), kCudnnUnversionedLibraryName));
-    candidates.push_back(JoinPath(JoinPath(cudnn_path, "lib64"), kCudnnLibraryName));
-    candidates.push_back(JoinPath(JoinPath(cudnn_path, "lib64"), kCudnnUnversionedLibraryName));
-#endif
-  }
-
   candidates.push_back(kCudnnLibraryName);
 #ifndef _WIN32
   candidates.push_back(kCudnnUnversionedLibraryName);
@@ -116,16 +87,13 @@ CudnnLibrary& CudnnLibrary::Get() {
   return library;
 }
 
-void CudnnLibrary::Configure(bool enabled, std::string cudnn_path) {
+void CudnnLibrary::Configure(bool enabled) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (!enabled) {
     return;
   }
 
   enabled_ = enabled;
-  if (!load_attempted_) {
-    cudnn_path_ = std::move(cudnn_path);
-  }
 }
 
 bool CudnnLibrary::Available() {
@@ -155,7 +123,7 @@ bool CudnnLibrary::EnsureLoaded() {
 
   load_attempted_ = true;
   std::string last_error;
-  for (const auto& candidate : GetCandidateLibraryNames(cudnn_path_)) {
+  for (const auto& candidate : GetCandidateLibraryNames()) {
     handle_ = LoadLibraryCandidate(candidate, last_error);
     if (handle_ != nullptr) {
       available_ = true;
@@ -203,7 +171,7 @@ void* CudnnLibrary::ResolveSymbol(const char* symbol) {
 }
 
 const char* CudnnUnavailableErrorString() {
-  return "cuDNN is not available. Install cuDNN, set CUDA provider option cudnn_path, or set enable_cudnn=0 to force native CUDA paths where available.";
+  return "cuDNN is not available. Install cuDNN, update the system library search path, or set enable_cudnn=0 to force native CUDA paths where available.";
 }
 
 }  // namespace onnxruntime::cuda

@@ -71,7 +71,6 @@ struct CUDAExecutionProviderInfo {
   bool cudnn_conv1d_pad_to_nc1d{false};
 
   bool enable_cudnn{true};
-  std::string cudnn_path;
 
   cuda::TunableOpInfo tunable_op{};
 
@@ -120,7 +119,6 @@ struct std::hash<::onnxruntime::CUDAExecutionProviderInfo> {
     onnxruntime::HashCombine(info.tunable_op.max_tuning_duration_ms, value);
     onnxruntime::HashCombine(info.sdpa_kernel, value);
     onnxruntime::HashCombine(info.enable_cudnn, value);
-    onnxruntime::HashCombine(info.cudnn_path, value);
 
     // Memory pointers
     onnxruntime::HashCombine(reinterpret_cast<size_t>(info.user_compute_stream), value);

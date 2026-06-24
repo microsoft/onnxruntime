@@ -219,18 +219,17 @@ Loader responsibilities:
   dlopens its sub‑libraries.
 - Resolve each required symbol with `dlsym` / `GetProcAddress`.
 - If the umbrella library or any **required** symbol is missing, set `available_ = false`.
-- Honor an optional runtime directory provider option, `cudnn_path`, before falling back to
-  the default OS/library search paths. This mirrors the role of `onnxruntime_CUDNN_HOME` at
-  build time, but is deliberately runtime-only and points to the directory that contains the
-  cuDNN shared libraries (or to a cuDNN root directory with `bin` / `lib` children).
+- Do not accept a provider option that names a cuDNN runtime path. A provider-controlled
+  native library path is equivalent to a native code loading hook if provider options are
+  influenced by untrusted input.
 
 On Windows, cuDNN 9 is split into multiple DLLs. The loader should not rely on the process
-working directory or global `PATH`. If `cudnn_path` is set, first add that directory to the
-DLL search path for this load, or load the required cuDNN DLLs from that directory in a known
-order before loading `cudnn64_9.dll`. This is the C++ equivalent of the Python package's
-`preload_dlls()` behavior. On Linux, prefer loading the umbrella `libcudnn.so.9` from
-`cudnn_path` and let cuDNN resolve its own sub-libraries, matching the current Python preload
-behavior.
+working directory. Application or package code that needs an explicit directory should use a
+trusted process-level preload mechanism, such as Python `preload_dlls(cudnn=True,
+directory=...)`, before creating the session. On Linux, the C++ loader uses the default
+dynamic loader search behavior for the umbrella `libcudnn.so.9`; deployment should provide
+trusted library paths via the system loader, container image, package manager, or explicit
+application preload.
 
 The loader must not run when the CUDA provider option `enable_cudnn=0` is set (see §3.3).
 This keeps "force no cuDNN" tests deterministic even on machines where cuDNN is installed.
@@ -270,41 +269,29 @@ bool CudnnAvailable(const OpKernelContext* context);  // provider option && runt
 - `CudaErrString<cudnnStatus_t>` must not call `cudnnGetErrorString` when cuDNN is unavailable
   (route through the shim, which returns a static string in that case).
 
-### 3.3 CUDA provider options: `enable_cudnn` and `cudnn_path`
+### 3.3 CUDA provider option: `enable_cudnn`
 
 cuDNN can be disabled explicitly with a CUDA provider option:
 
 ```text
 enable_cudnn = 1  # default: try to load and use cuDNN when it is present
 enable_cudnn = 0  # do not load cuDNN; force native CUDA paths / Phase-1 NOT_IMPLEMENTED
-cudnn_path = /path/to/cudnn/lib-or-bin  # optional: runtime search directory for cuDNN DLLs/SOs
 ```
 
-`enable_cudnn` and `cudnn_path` serve different purposes:
-
-- `enable_cudnn` is the policy switch. When it is `0`, ORT must not attempt to load cuDNN,
-  even if `cudnn_path` is set.
-- `cudnn_path` is a location hint. When `enable_cudnn=1`, the lazy loader searches this
-  directory first, then falls back to default OS/library paths. It should not force cuDNN to
-  be required; if the directory is missing cuDNN, the loader reports cuDNN unavailable and
-  Phase-1/2/3 behavior proceeds normally.
-- `cudnn_path` accepts a directory, not a single library file. The implementation may accept
-  either the directory that directly contains the shared libraries (`bin` on Windows, `lib`
-  on Linux package layouts) or a cuDNN root directory and internally probe common children
-  such as `bin`, `lib`, and `lib64`.
+`enable_cudnn` is the policy switch. When it is `0`, ORT must not attempt to load cuDNN. ORT
+intentionally does not provide a `cudnn_path` provider option because provider options can be
+supplied by higher-level configuration systems, and allowing them to choose a native DLL/SO
+path would create a library-loading security risk.
 
 Implementation details:
 
 - Add `constexpr const char* kEnableCudnn = "enable_cudnn"` in
   `cuda::provider_option_names`.
-- Add `constexpr const char* kCudnnPath = "cudnn_path"` in `cuda::provider_option_names`.
 - Add `bool enable_cudnn{true};` to `CUDAExecutionProviderInfo`.
-- Add `std::string cudnn_path;` to `CUDAExecutionProviderInfo`.
 - Parse it with `ProviderOptionsParser::AddAssignmentToReference(...)` in
   `CUDAExecutionProviderInfo::FromProviderOptions(...)`.
-- Emit both values from `CUDAExecutionProviderInfo::ToProviderOptions(...)`.
-- Include both values in `std::hash<CUDAExecutionProviderInfo>` because they change the EP
-  behavior.
+- Emit it from `CUDAExecutionProviderInfo::ToProviderOptions(...)`.
+- Include it in `std::hash<CUDAExecutionProviderInfo>` because it changes the EP behavior.
 - Do **not** add a field to `OrtCUDAProviderOptionsV2` for Phase 1. That struct is public C
   ABI surface; string-key provider options are sufficient and can be set through existing
   provider-options APIs.
@@ -320,8 +307,9 @@ effective_cudnn_available = info.enable_cudnn && CudnnLibrary::Get().Available()
 ```
 
 If `enable_cudnn=0`, ORT must not call `dlopen` / `LoadLibrary` for cuDNN and must not create
-a cuDNN handle. If `enable_cudnn=1` and `cudnn_path` is empty, ORT uses the default search
-behavior. If `cudnn_path` is non-empty, ORT searches it first.
+a cuDNN handle. If `enable_cudnn=1`, ORT uses trusted process-level library discovery: the
+system loader search path, package/container deployment, or an explicit preload performed by
+application code before session creation.
 
 ### 3.4 Phase 1 fallback behavior (chosen: throw at Run time)
 
@@ -398,15 +386,14 @@ present, behavior is byte‑for‑byte identical to today.
 2. **Loader (`cudnn_loader.{h,cc}`).**
    - `dlopen`/`LoadLibrary` of the cuDNN umbrella lib with versioned name candidates
      (`libcudnn.so.9`, `libcudnn.so`, `cudnn64_9.dll`, …).
-   - Search `cudnn_path` first when it is set. Accept a directory that directly contains the
-     cuDNN runtime libraries, and optionally probe `bin`, `lib`, and `lib64` if the value is a
-     cuDNN root directory.
-   - On Windows, handle cuDNN 9 sub-DLL discovery explicitly: either add the chosen cuDNN
-     directory to the DLL search path for the duration of the load, or preload required
-     cuDNN sub-DLLs in dependency order before loading `cudnn64_9.dll`.
+   - Do not accept a provider-supplied cuDNN path. Rely on trusted deployment/library-search
+     mechanisms or application-controlled preloading.
+   - On Windows, avoid relying on the process working directory. Python package users who need
+     an explicit directory should call `preload_dlls(cudnn=True, directory=...)` from trusted
+     application code before creating a CUDA EP session.
    - Resolve all manifest symbols; populate function‑pointer table.
-   - `Available()` + thread‑safe one‑time init; report whether cuDNN was loaded from
-     `cudnn_path` or from the default search path for diagnostics.
+   - `Available()` + thread‑safe one‑time init; report loader diagnostics without exposing a
+     provider-controlled library path option.
    - Expose the raw library handle to `cudnn_frontend` dynamic-loading mode.
    - Define and maintain `cudnn_frontend::cudnn_dlhandle` in one ORT translation unit when
      `NV_CUDNN_FRONTEND_USE_DYNAMIC_LOADING` is enabled. Set it to the loader's cuDNN handle
@@ -473,19 +460,19 @@ present, behavior is byte‑for‑byte identical to today.
      `build_plans()`, or `execute()`.
 
 7. **Provider-option plumbing.**
-  - Add and parse `enable_cudnn` and `cudnn_path` in `CUDAExecutionProviderInfo`.
-  - Return them from `GetProviderOptions()` / `ToProviderOptions()`.
-  - Include them in the EP hash.
+  - Add and parse `enable_cudnn` in `CUDAExecutionProviderInfo`.
+  - Return it from `GetProviderOptions()` / `ToProviderOptions()`.
+  - Include it in the EP hash.
   - Add tests for parsing: `enable_cudnn` default true, `"0"` false, `"1"` true, invalid
-    values rejected; `cudnn_path` default empty and round-trips as a string.
+    values rejected.
 
 8. **Error‑string safety.**
    - Make `CudaErrString<cudnnStatus_t>` shim‑safe.
-  - Make `CudaErrString<cudnn_frontend::error_t>` report frontend dynamic-loading failures
-    without assuming cuDNN is available.
+   - Make `CudaErrString<cudnn_frontend::error_t>` report frontend dynamic-loading failures
+     without assuming cuDNN is available.
 
 9. **Docs & messaging.**
-   - Document the new behavior, `enable_cudnn`, and `cudnn_path`.
+   - Document the new behavior and `enable_cudnn`.
    - Update Python package guidance for `onnxruntime.preload_dlls(cuda=True, cudnn=True,
      directory=...)`: users can still preload a known cuDNN directory, but preloading is now
      optional for CUDA EP load because the provider itself lazy-loads cuDNN.
@@ -615,9 +602,6 @@ kernels; CUTLASS (already vendored) for conv/GEMM‑shaped work.
     need to physically remove cuDNN in CI.
   - "Disabled" is tested with CUDA provider option `enable_cudnn=0`; this should not touch
     the dynamic loader at all.
-  - `cudnn_path` is tested with a temporary directory / fake loader hook to verify search
-    precedence, missing-directory handling, and that `enable_cudnn=0` suppresses all loads
-    even when `cudnn_path` is set.
 - **Op‑level tests:** for each cuDNN op, assert the clear `NOT_IMPLEMENTED` error in the
   forced‑absent mode (Phase 1), and correctness in present mode.
 - **cuDNN frontend tests:** add a Conv / ConvTranspose test that exercises frontend graph
@@ -663,17 +647,21 @@ kernels; CUTLASS (already vendored) for conv/GEMM‑shaped work.
   symbols. *Mitigation:* after every `cudnn_frontend` update, grep/audit
   `cudnn_frontend_shim.h` and experimental shims, then update the frontend-symbol audit tests.
 - **cuDNN sub‑library packaging differences (v9 split libs; distro/conda/pip layouts).**
-  *Mitigation:* provide the `cudnn_path` provider option. On Linux, load only the umbrella
-  `libcudnn` and let cuDNN resolve its own sub‑libs. On Windows, add the chosen directory to
-  the DLL search path or preload required cuDNN sub-DLLs before `cudnn64_9.dll`, following the
-  same ordering already encoded in Python `preload_dlls()`.
+  *Mitigation:* rely on trusted deployment mechanisms for library discovery. Python users who
+  need a specific directory can call `onnxruntime.preload_dlls(cudnn=True, directory=...)`
+  from application code before creating the session; C++ deployments should use container,
+  package-manager, or system loader configuration.
+- **Native library path provider options can become code-loading hooks.** If an attacker can
+  influence a provider option that names a DLL/SO directory, they can potentially cause ORT
+  to load attacker-controlled native code. *Mitigation:* do not expose a `cudnn_path` provider
+  option. Keep custom library discovery at trusted process/deployment layers instead.
 - **Python preload behavior can conflict with optional cuDNN.** Today
   `onnxruntime.preload_dlls(cudnn=True)` tries to load cuDNN and prints installation guidance
   on failure. That is useful when the user requested preloading, but too alarming if cuDNN is
   optional. *Mitigation:* keep explicit preloading available, but avoid invoking or requiring
   cuDNN preload as part of normal optional-cuDNN package import / CUDA EP load. Update docs so
-  users who need a specific cuDNN directory can use either provider option `cudnn_path` or
-  `preload_dlls(cudnn=True, directory=...)` before creating the session.
+  users who need a specific cuDNN directory can call `preload_dlls(cudnn=True, directory=...)`
+  before creating the session.
 - **Python version metadata currently assumes cuDNN on Windows CUDA builds.**
   `cmake/onnxruntime_python.cmake` fails if no `cudnn64_*.dll` is found when generating
   `version_info.py`. *Mitigation:* make `cudnn_version` optional in that generated file.
@@ -714,8 +702,9 @@ kernels; CUTLASS (already vendored) for conv/GEMM‑shaped work.
 
 - Force-disabling cuDNN is a **CUDA provider option**, not a session option. Use
   `enable_cudnn=0`.
-- Providing a custom cuDNN runtime directory is also a **CUDA provider option**. Use
-  `cudnn_path=<directory>` while keeping `enable_cudnn=1`.
+- Providing a custom cuDNN runtime directory is **not** a CUDA provider option. Use trusted
+  deployment/library-search configuration, or Python `preload_dlls(cudnn=True, directory=...)`
+  from application code before creating the session.
 - No new "CUDA-minimal" wheel is required for Phase 1. cuDNN DLLs are not packed in the wheel
   today.
 - Keep the existing `USE_CUDA_MINIMAL` build-time path. It is used by RTX/TensorRT-related EP

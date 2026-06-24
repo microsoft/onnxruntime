@@ -420,18 +420,6 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
     }
   };
 
-  auto read_session_config_string = [&](std::initializer_list<std::string_view> keys, std::string& value) {
-    for (const auto& key : keys) {
-      auto raw_value = try_get_session_config(key);
-      if (!raw_value.has_value()) {
-        continue;
-      }
-
-      value = std::move(*raw_value);
-      return;
-    }
-  };
-
   auto read_cudnn_conv_algo = [&](std::initializer_list<std::string_view> keys, int& value) {
     for (const auto& key : keys) {
       auto raw_value = try_get_session_config(key);
@@ -500,7 +488,6 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   const std::string cudnn_conv_algo_key = ep_options_prefix + "cudnn_conv_algo";
   const std::string cudnn_conv_algo_search_key = ep_options_prefix + "cudnn_conv_algo_search";
   const std::string enable_cudnn_key = ep_options_prefix + "enable_cudnn";
-  const std::string cudnn_path_key = ep_options_prefix + "cudnn_path";
   const std::string fuse_conv_bias_key = ep_options_prefix + "fuse_conv_bias";
   const std::string sdpa_kernel_key = ep_options_prefix + "sdpa_kernel";
   const std::string enable_cuda_graph_key = ep_options_prefix + "enable_cuda_graph";
@@ -532,12 +519,9 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
       {cudnn_conv_algo_search_key, cudnn_conv_algo_key, "ep.cuda.cudnn_conv_algo_search", "ep.cuda.cudnn_conv_algo",
        "cudnn_conv_algo_search", "cudnn_conv_algo"},
       config.cudnn_conv_algo);
-    read_session_config_bool(
+  read_session_config_bool(
       {enable_cudnn_key, "ep.cuda.enable_cudnn", "enable_cudnn"},
       config.enable_cudnn);
-    read_session_config_string(
-      {cudnn_path_key, "ep.cuda.cudnn_path", "cudnn_path"},
-      config.cudnn_path);
   read_session_config_bool(
       {fuse_conv_bias_key, "ep.cuda.fuse_conv_bias", "fuse_conv_bias"},
       config.fuse_conv_bias);

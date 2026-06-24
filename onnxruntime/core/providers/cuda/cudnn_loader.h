@@ -17,7 +17,7 @@ class CudnnLibrary {
  public:
   static CudnnLibrary& Get();
 
-  void Configure(bool enabled, std::string cudnn_path);
+  void Configure(bool enabled);
   bool Available();
   const char* Error() const;
   void* Handle();
@@ -37,7 +37,6 @@ class CudnnLibrary {
   bool enabled_{true};
   bool load_attempted_{false};
   bool available_{false};
-  std::string cudnn_path_;
   std::string error_;
   void* handle_{nullptr};
   std::unordered_map<std::string, void*> symbols_;
