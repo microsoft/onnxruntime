@@ -16,6 +16,7 @@
 #pragma once
 
 #include <limits>
+#include <unordered_map>
 
 #include "core/common/status.h"
 #include "core/common/narrow.h"
@@ -53,6 +54,38 @@
 namespace onnxruntime {
 struct CudaStream;
 
+namespace cuda_plugin {
+namespace detail {
+inline thread_local std::unordered_map<void*, onnxruntime::Stream*> stream_to_framework_stream;
+inline thread_local void* current_cuda_stream = nullptr;
+inline thread_local onnxruntime::Stream* current_framework_stream = nullptr;
+
+inline void RegisterFrameworkStreamForCudaStream(void* cuda_stream, OrtSyncStream* framework_stream) {
+  current_cuda_stream = cuda_stream;
+  current_framework_stream = reinterpret_cast<onnxruntime::Stream*>(framework_stream);
+
+  if (current_framework_stream == nullptr) {
+    return;
+  }
+
+  stream_to_framework_stream[current_framework_stream] = current_framework_stream;
+
+  if (cuda_stream != nullptr) {
+    stream_to_framework_stream[cuda_stream] = current_framework_stream;
+  }
+}
+
+inline onnxruntime::Stream* GetFrameworkStreamForStreamArg(void* stream) {
+  if (stream == current_cuda_stream || stream == current_framework_stream) {
+    return current_framework_stream;
+  }
+
+  auto it = stream_to_framework_stream.find(stream);
+  return it == stream_to_framework_stream.end() ? nullptr : it->second;
+}
+}  // namespace detail
+}  // namespace cuda_plugin
+
 // Lightweight Stream shim for plugin build: wraps a raw cudaStream_t as a
 // framework-compatible Stream* that can be passed to _impl.cu functions which
 // call stream->GetHandle().  Stack-allocated; does NOT own the stream.
@@ -70,6 +103,11 @@ class OrtStreamAdapter {
   explicit OrtStreamAdapter(void* cuda_stream_handle)
       : plugin_stream_shim_(cuda_stream_handle), stream_(&plugin_stream_shim_) {}
 
+  OrtStreamAdapter(void* cuda_stream_handle, OrtSyncStream* framework_stream)
+      : plugin_stream_shim_(cuda_stream_handle),
+        stream_(framework_stream == nullptr ? static_cast<onnxruntime::Stream*>(&plugin_stream_shim_)
+                                            : reinterpret_cast<onnxruntime::Stream*>(framework_stream)) {}
+
   onnxruntime::Stream* get() const { return stream_; }
   operator onnxruntime::Stream*() const { return stream_; }
 
@@ -82,6 +120,10 @@ class OrtStreamAdapter {
  public:
   explicit OrtStreamAdapter(void* cuda_stream_handle)
       : stream_(static_cast<onnxruntime::Stream*>(cuda_stream_handle)) {}
+
+  OrtStreamAdapter(void* cuda_stream_handle, OrtSyncStream* framework_stream)
+      : stream_(framework_stream == nullptr ? static_cast<onnxruntime::Stream*>(cuda_stream_handle)
+                                            : reinterpret_cast<onnxruntime::Stream*>(framework_stream)) {}
 
   onnxruntime::Stream* get() const { return stream_; }
   operator onnxruntime::Stream*() const { return stream_; }
@@ -909,11 +951,16 @@ class CudaKernel : public OpKernel {
   // Returns an opaque stream pointer for passing to GetScratchBuffer/AddDeferredReleaseCPUPtr/CopyToGpu.
   // Returns void* for dual-build compatibility: framework wraps Stream*, plugin wraps cudaStream_t.
   inline void* GetComputeStream(OpKernelContext* ctx) const {
-    return ctx->GetGPUComputeStream();
+    void* cuda_stream = ctx->GetGPUComputeStream();
+    cuda_plugin::detail::RegisterFrameworkStreamForCudaStream(cuda_stream, ctx->GetSyncStream());
+    return cuda_stream;
   }
 
   inline onnxruntime::OrtStreamAdapter GetOrtStream(OpKernelContext* ctx) const {
-    return onnxruntime::OrtStreamAdapter(GetComputeStream(ctx));
+    void* cuda_stream = ctx->GetGPUComputeStream();
+    OrtSyncStream* framework_stream = ctx->GetSyncStream();
+    cuda_plugin::detail::RegisterFrameworkStreamForCudaStream(cuda_stream, framework_stream);
+    return onnxruntime::OrtStreamAdapter(cuda_stream, framework_stream);
   }
 
   static cudnnHandle_t GetCudnnHandle(cudaStream_t s) {
@@ -1023,7 +1070,7 @@ class CudaKernel : public OpKernel {
   template <typename T>
   using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
   template <typename T>
-  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t cnt, void* /*stream*/) const {
+  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t cnt, void* stream) const {
     if (cnt == 0) return IAllocatorUniquePtr<T>(nullptr, [](T*) {});
 
     // Route kernel scratch/workspace allocations through the EP allocator
@@ -1047,36 +1094,18 @@ class CudaKernel : public OpKernel {
     // enforced inside MakeUniquePtr via ValidatedCalcMemSizeForArray (it throws
     // on cnt * sizeof(T) overflow).
     //
-    // The compute stream is intentionally NOT forwarded to the allocator here. This is a
-    // bookkeeping decision, NOT a synchronization bug: the `stream` argument to a stream-aware
-    // arena is only metadata used to decide when a freed chunk may be reused on a *different*
-    // stream without an intervening sync. It does not change where the kernel runs - the returned
-    // buffer is still consumed by the kernel on the real compute stream. In a serialized run (and
-    // within one graph-capture run), alloc/free/reuse ordering is implicit on that stream, so there
-    // is no cross-stream chunk to race on. Tagging chunks with a null stream (freely reusable, the
-    // same semantics as a plain non-stream-aware BFC arena) is therefore correct and safe as long
-    // as the EP does not advertise concurrent Session::Run() support.
-    //
-    // It is also currently the only safe option, because of a C-API type constraint: a plugin
-    // kernel only has the raw cudaStream_t (KernelContext::GetGPUComputeStream), not the framework
-    // OrtSyncStream* that the stream-aware arena persists in each chunk (CudaArena stores
-    // `chunk->stream` and later dereferences it through the EP stream API, e.g.
-    // SyncStream_GetImpl/SyncStream_GetSyncId). Note that OrtSyncStream (the ORT-core wrapper,
-    // `struct OrtSyncStream : public onnxruntime::Stream`) is a DIFFERENT object from the plugin's
-    // CudaSyncStream (an OrtSyncStreamImpl); CudaSyncStream::FromCudaStream() recovers the latter,
-    // not the former. Wrapping the raw handle in a temporary framework Stream shim and passing it
-    // down would be unsafe on two counts: (1) the shim is stack-allocated and would dangle after
-    // this function returns while the arena still holds the pointer, and (2) it is type-confused —
-    // the arena would reinterpret a framework Stream* as an OrtSyncStream* that was never created
-    // by ORT for this stream.
-    //
-    // Properly stream-tagging scratch chunks (needed before this path can support concurrent
-    // multi-stream runs) requires new C-API surface to expose the framework OrtSyncStream* to
-    // plugin kernels. See docs/cuda_plugin_ep/arena_allocator_migration_design.md ("Scratch buffer
-    // stream tagging") for the limitation and future work.
+    // The `stream` argument is the raw cudaStream_t used by migrated CUDA kernels, or a Stream*
+    // from OrtStreamAdapter in code paths that need stream->GetHandle(). Stream-aware arena
+    // allocation needs the stable framework Stream* wrapper instead, because the arena stores it
+    // in each chunk and later queries sync ids through the EP stream API. GetComputeStream(ctx) and
+    // GetOrtStream(ctx) record the mapping from both argument forms to the framework stream for the
+    // current Compute call.
+    // If the negotiated ORT API version does not include KernelContext_GetSyncStream, the lookup
+    // returns null and allocation falls back to the non-stream-tagged path.
+    auto* framework_stream = cuda_plugin::detail::GetFrameworkStreamForStreamArg(stream);
     return ::onnxruntime::IAllocator::MakeUniquePtr<T>(
         Info().GetAllocator(OrtMemType::OrtMemTypeDefault), cnt, /*use_reserve*/ false,
-        /*stream*/ nullptr);
+        framework_stream);
   }
   template <typename T>
   inline IAllocatorUniquePtr<T> GetTransientScratchBuffer(size_t cnt) const {
