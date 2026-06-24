@@ -125,8 +125,7 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
       // The NCHW<->NHWC permutation depends only on rank. For Conv/ConvTranspose the data input and the weight share
       // the same rank, so an unknown input[0] rank can be recovered from the weight at input[1].
       std::optional<size_t> input_rank = api_graph->GetValueInfo(node->Inputs()[0])->ShapeRank();
-      if (!input_rank.has_value() && (op_type == "Conv" || op_type == "ConvTranspose") &&
-          node->Inputs().size() > 1 && !node->Inputs()[1].empty()) {
+      if (!input_rank.has_value() && (op_type == "Conv" || op_type == "ConvTranspose")) {
         input_rank = api_graph->GetValueInfo(node->Inputs()[1])->ShapeRank();
       }
 
