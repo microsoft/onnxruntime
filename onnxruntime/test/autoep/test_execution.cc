@@ -36,19 +36,17 @@ namespace {
 
 // Invokes the experimental EPContext read setter on the public C API.
 void SetEpContextDataReadFunc(Ort::SessionOptions& session_options, OrtReadNamedBufferFunc read_func, void* state) {
-  auto set_read_func =
-      Ort::Experimental::Get_OrtApi_SessionOptions_SetEpContextDataReadFunc_SinceV28_Fn(&Ort::GetApi());
-  ASSERT_NE(set_read_func, nullptr);
+  auto* set_read_func =
+      Ort::Experimental::Get_OrtApi_SessionOptions_SetEpContextDataReadFunc_SinceV28_FnOrThrow(&Ort::GetApi());
   ASSERT_ORTSTATUS_OK(set_read_func(session_options, read_func, state));
 }
 
 // Invokes the experimental EPContext write setter on the public C API.
 void SetEpContextDataWriteFunc(Ort::ModelCompilationOptions& compile_options, OrtWriteNamedBufferFunc write_func,
                                void* state) {
-  auto set_write_func =
-      Ort::Experimental::Get_OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteFunc_SinceV28_Fn(
+  auto* set_write_func =
+      Ort::Experimental::Get_OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteFunc_SinceV28_FnOrThrow(
           &Ort::GetApi());
-  ASSERT_NE(set_write_func, nullptr);
   ASSERT_ORTSTATUS_OK(set_write_func(compile_options, write_func, state));
 }
 
@@ -587,7 +585,8 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_EmbedModeDoesNotUseCallbacks) {
   EpContextDataCallbackState compile_read_callback_state;
   {
     Ort::SessionOptions session_options;
-    SetEpContextDataReadFunc(session_options, LoadEpContextDataCallback, &compile_read_callback_state);
+    ASSERT_NO_FATAL_FAILURE(
+        SetEpContextDataReadFunc(session_options, LoadEpContextDataCallback, &compile_read_callback_state));
 
     std::unordered_map<std::string, std::string> ep_options;
     session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
@@ -597,7 +596,8 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_EmbedModeDoesNotUseCallbacks) {
     compile_options.SetInputModelPath(input_model_file);
     compile_options.SetOutputModelPath(output_model_file);
     compile_options.SetEpContextEmbedMode(true);
-    SetEpContextDataWriteFunc(compile_options, StoreEpContextDataCallback, &write_callback_state);
+    ASSERT_NO_FATAL_FAILURE(
+        SetEpContextDataWriteFunc(compile_options, StoreEpContextDataCallback, &write_callback_state));
 
     ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
   }
@@ -626,7 +626,8 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_EmbedModeDoesNotUseCallbacks) {
   EpContextDataCallbackState load_read_callback_state;
   {
     Ort::SessionOptions session_options;
-    SetEpContextDataReadFunc(session_options, LoadEpContextDataCallback, &load_read_callback_state);
+    ASSERT_NO_FATAL_FAILURE(
+        SetEpContextDataReadFunc(session_options, LoadEpContextDataCallback, &load_read_callback_state));
 
     std::unordered_map<std::string, std::string> ep_options;
     session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
@@ -732,7 +733,7 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel_ExternalDataUsesWriteCallback) {
   compile_options.SetInputModelPath(input_model_file);
   compile_options.SetOutputModelPath(output_model_file);
   compile_options.SetEpContextEmbedMode(false);
-  SetEpContextDataWriteFunc(compile_options, StoreEpContextDataCallback, &callback_state);
+  ASSERT_NO_FATAL_FAILURE(SetEpContextDataWriteFunc(compile_options, StoreEpContextDataCallback, &callback_state));
 
   ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
   ASSERT_TRUE(std::filesystem::exists(output_model_file));
@@ -762,7 +763,8 @@ TEST(OrtEpLibrary, PluginEp_LoadEpContextModel_ExternalDataUsesReadCallback) {
     compile_options.SetInputModelPath(input_model_file);
     compile_options.SetOutputModelPath(compiled_model_file);
     compile_options.SetEpContextEmbedMode(false);
-    SetEpContextDataWriteFunc(compile_options, StoreEpContextDataCallback, &write_callback_state);
+    ASSERT_NO_FATAL_FAILURE(
+        SetEpContextDataWriteFunc(compile_options, StoreEpContextDataCallback, &write_callback_state));
 
     ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
     ASSERT_TRUE(std::filesystem::exists(compiled_model_file));
@@ -773,7 +775,7 @@ TEST(OrtEpLibrary, PluginEp_LoadEpContextModel_ExternalDataUsesReadCallback) {
   read_callback_state.payload = write_callback_state.payload;
   {
     Ort::SessionOptions session_options;
-    SetEpContextDataReadFunc(session_options, LoadEpContextDataCallback, &read_callback_state);
+    ASSERT_NO_FATAL_FAILURE(SetEpContextDataReadFunc(session_options, LoadEpContextDataCallback, &read_callback_state));
 
     std::unordered_map<std::string, std::string> ep_options;
     session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
