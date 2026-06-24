@@ -1,9 +1,9 @@
 {
-    "$comment": "Baseline bumped to pick up the cpp-client-telemetry port (POSIX 1DS telemetry), which did not exist in the prior baseline. ONNX Runtime's heavy dependencies are pinned via overlay-ports/overrides (see cmake/vcpkg.json), so this bump only floats benign minor versions; impact was verified with 'vcpkg install --dry-run'.",
+    "$comment": "Baseline pinned to the microsoft/vcpkg commit that ships the cpp-client-telemetry 3.10.173.1 port (PR #52568) for POSIX 1DS telemetry. ONNX Runtime's heavy dependencies are pinned via overlay-ports/overrides (see cmake/vcpkg.json), so this only floats benign minor versions; verified with 'vcpkg install --dry-run'.",
     "default-registry": {
         "kind": "git",
         "repository": "https://github.com/Microsoft/vcpkg",
-        "baseline": "22b8d099947ea6ee2fcb1aa1124b21f48f84232d"
+        "baseline": "18a4723aeb7adbbae84bcff0edf510883800f32f"
     },
     "overlay-ports": [
         "./vcpkg-ports"
