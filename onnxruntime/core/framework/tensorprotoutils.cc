@@ -752,6 +752,26 @@ Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
                                           reinterpret_cast<unsigned char*>(p_data));
 }
 
+// UnpackTensorWithExternalData<bool>
+// External data is copied verbatim and may contain bytes outside the canonical {0, 1} set.
+// Consumers rely on bool tensors holding {0, 1}; normalize any non-zero byte to 1 so every
+// reader observes a single, consistent value. Operate on the byte representation to avoid
+// loading a bool object that does not yet hold a valid value.
+template <>
+Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
+                                    const std::filesystem::path& tensor_proto_dir, size_t expected_num_elements,
+                                    /*out*/ bool* p_data) {
+  ORT_RETURN_IF_ERROR(UnpackTensorWithExternalDataImpl(tensor, tensor_proto_dir, expected_num_elements, sizeof(bool),
+                                                       reinterpret_cast<unsigned char*>(p_data)));
+  auto* bool_bytes = reinterpret_cast<uint8_t*>(p_data);
+  static_assert(sizeof(bool) == 1,
+                "Normalization loop writes expected_num_elements bytes assuming 1 byte per bool element");
+  for (size_t i = 0; i < expected_num_elements; ++i) {
+    bool_bytes[i] = bool_bytes[i] != 0 ? 1 : 0;
+  }
+  return Status::OK();
+}
+
 #define DEFINE_4BIT_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(FOUR_BIT_TYPE, CalcPairFun)                                    \
   template <>                                                                                                       \
   Status UnpackTensorWithExternalData<FOUR_BIT_TYPE>(const ONNX_NAMESPACE::TensorProto& tensor,                     \
@@ -800,7 +820,9 @@ INSTANTIATE_UNPACK_EXTERNAL_TENSOR(int32_t)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(int64_t)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(uint64_t)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(uint32_t)
-INSTANTIATE_UNPACK_EXTERNAL_TENSOR(bool)
+// bool is intentionally omitted: UnpackTensorWithExternalData<bool> is explicitly specialized
+// above (to normalize bytes to {0, 1}), so an explicit instantiation here would have no effect
+// and triggers -Werror,-Winstantiation-after-specialization.
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(MLFloat16)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(BFloat16)
 
