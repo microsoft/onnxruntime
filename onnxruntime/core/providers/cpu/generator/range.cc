@@ -80,7 +80,12 @@ static Status ComputeRange(
   if (delta == T{0}) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "delta in Range operator can not be zero!");
   }
-  int64_t n = static_cast<int64_t>(ceil((1.0 * (limit - start)) / delta));
+  double count = ceil((1.0 * (limit - start)) / delta);
+  if (!std::isfinite(count)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Range: the computed number of elements is not a finite value.");
+  }
+  int64_t n = static_cast<int64_t>(count);
   if (n <= 0)
     n = 0;
   TensorShape shape = {n};

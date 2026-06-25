@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cstring>
+
 #include "core/graph/constants.h"
 #include "core/session/inference_session.h"
 #include "gtest/gtest.h"
@@ -94,28 +96,53 @@ TEST(RangeTest, AlmostSameStartAndLimitHighDelta) {
 #ifndef DISABLE_CONTRIB_OPS
 
 namespace {
-// Adds a scalar double graph initializer whose raw_data is set to the provided bytes.
-// The bytes length is intentionally controllable so tests can supply a truncated payload
-// (shorter than sizeof(double)) to exercise input validation in shape inference.
-void AddDoubleScalarInitializerWithRawData(ONNX_NAMESPACE::GraphProto* graph,
-                                           const std::string& name,
-                                           const std::string& raw_bytes) {
+// Describes a single Range input supplied as a graph initializer: its declared dimensions
+// and the exact raw_data bytes. Tests use this to craft both well-formed and truncated
+// initializers (e.g. dims=[0] with empty raw_data) for the contrib Range schema.
+struct RangeInputSpec {
+  std::vector<int64_t> dims;
+  std::string raw_data;
+};
+
+// Serializes a scalar value to its raw_data byte representation.
+template <typename T>
+std::string ToRawData(T value) {
+  std::string bytes(sizeof(T), '\0');
+  std::memcpy(bytes.data(), &value, sizeof(T));
+  return bytes;
+}
+
+// A correctly-sized scalar initializer (no dims) holding a single value.
+template <typename T>
+RangeInputSpec ScalarInput(T value) {
+  return RangeInputSpec{{}, ToRawData(value)};
+}
+
+// A zero-element initializer (dims=[0]) whose raw_data is empty. The declared size matches
+// the (empty) payload, so initializer size validation accepts it; shape inference, however,
+// still attempts to read the first element.
+RangeInputSpec EmptyInput() {
+  return RangeInputSpec{{0}, std::string{}};
+}
+
+void AddInitializer(ONNX_NAMESPACE::GraphProto* graph, const std::string& name, int data_type,
+                    const RangeInputSpec& spec) {
   auto* initializer = graph->add_initializer();
   initializer->set_name(name);
-  initializer->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE);
-  initializer->set_raw_data(raw_bytes);
+  initializer->set_data_type(data_type);
+  for (int64_t dim : spec.dims) {
+    initializer->add_dims(dim);
+  }
+  initializer->set_raw_data(spec.raw_data);
 }
 
-std::string DoubleToRawData(double value) {
-  return std::string(reinterpret_cast<const char*>(&value), sizeof(double));
-}
-
-// Builds a single com.microsoft Range node model whose start/limit/delta inputs are
-// supplied as graph initializers, then loads and initializes it in a session.
-common::Status BuildAndInitializeContribRangeModel(const std::string& start_raw_data,
-                                                    const std::string& limit_raw_data,
-                                                    const std::string& delta_raw_data,
-                                                    InferenceSession& session_object) {
+// Builds a single com.microsoft Range node model whose start/limit/delta inputs are supplied
+// as graph initializers of the given element type, then loads and initializes it in a session.
+common::Status BuildAndInitializeContribRangeModel(int data_type,
+                                                   const RangeInputSpec& start,
+                                                   const RangeInputSpec& limit,
+                                                   const RangeInputSpec& delta,
+                                                   InferenceSession& session_object) {
   ONNX_NAMESPACE::ModelProto model;
   model.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   model.add_opset_import()->set_version(11);
@@ -126,13 +153,13 @@ common::Status BuildAndInitializeContribRangeModel(const std::string& start_raw_
   auto* graph = model.mutable_graph();
   graph->set_name("ContribRangeGraph");
 
-  AddDoubleScalarInitializerWithRawData(graph, "start", start_raw_data);
-  AddDoubleScalarInitializerWithRawData(graph, "limit", limit_raw_data);
-  AddDoubleScalarInitializerWithRawData(graph, "delta", delta_raw_data);
+  AddInitializer(graph, "start", data_type, start);
+  AddInitializer(graph, "limit", data_type, limit);
+  AddInitializer(graph, "delta", data_type, delta);
 
   auto* output = graph->add_output();
   output->set_name("Y");
-  output->mutable_type()->mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_DOUBLE);
+  output->mutable_type()->mutable_tensor_type()->set_elem_type(data_type);
 
   auto* range_node = graph->add_node();
   range_node->set_name("Range");
@@ -152,23 +179,20 @@ common::Status BuildAndInitializeContribRangeModel(const std::string& start_raw_
   ORT_RETURN_IF_ERROR(session_object.Load(model_stream));
   return session_object.Initialize();
 }
-}  // namespace
 
-// Verifies that Range shape inference rejects an initializer whose raw_data is shorter than
-// the element size for its declared data type, returning a clean failure status instead of
-// reading past the end of the buffer. The model must fail to load/initialize.
-TEST(RangeTest, ContribOp_TruncatedRawData_FailsCleanly) {
-  // 'start' carries fewer bytes than sizeof(double); 'limit'/'delta' are well formed.
-  const std::string truncated_start(sizeof(double) / 2, '\0');
-  SessionOptions so;
-  so.session_logid = "RangeTest.ContribOp_TruncatedRawData_FailsCleanly";
-  InferenceSession session_object{so, GetEnvironment()};
-  const auto status = BuildAndInitializeContribRangeModel(truncated_start,
-                                                          DoubleToRawData(5.0),
-                                                          DoubleToRawData(1.0),
-                                                          session_object);
-  ASSERT_FALSE(status.IsOK());
+// Returns the inferred dim_value of output Y after a successful Initialize, or -1 if absent.
+int64_t GetInferredOutputDim(const InferenceSession& session_object) {
+  const auto outputs = session_object.GetModelOutputs();
+  if (!outputs.first.IsOK() || outputs.second->size() != 1u) {
+    return -1;
+  }
+  const auto* shape = (*outputs.second)[0]->Shape();
+  if (shape == nullptr || shape->dim_size() != 1 || !shape->dim(0).has_dim_value()) {
+    return -1;
+  }
+  return shape->dim(0).dim_value();
 }
+}  // namespace
 
 // Verifies that shape inference clamps an empty/backward range to a zero-sized dimension,
 // matching the CPU kernel behavior, instead of emitting a negative dimension value.
@@ -177,21 +201,99 @@ TEST(RangeTest, ContribOp_BackwardRange_InfersZeroDim) {
   so.session_logid = "RangeTest.ContribOp_BackwardRange_InfersZeroDim";
   InferenceSession session_object{so, GetEnvironment()};
   // start > limit with a positive delta yields an empty range.
-  const auto status = BuildAndInitializeContribRangeModel(DoubleToRawData(5.0),
-                                                          DoubleToRawData(0.0),
-                                                          DoubleToRawData(1.0),
-                                                          session_object);
+  const auto status = BuildAndInitializeContribRangeModel(
+      ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, ScalarInput(5.0), ScalarInput(0.0),
+      ScalarInput(1.0), session_object);
   ASSERT_STATUS_OK(status);
-
-  const auto outputs = session_object.GetModelOutputs();
-  ASSERT_STATUS_OK(outputs.first);
-  ASSERT_EQ(outputs.second->size(), 1u);
-  const auto* shape = (*outputs.second)[0]->Shape();
-  ASSERT_NE(shape, nullptr);
-  ASSERT_EQ(shape->dim_size(), 1);
-  ASSERT_TRUE(shape->dim(0).has_dim_value());
-  ASSERT_EQ(shape->dim(0).dim_value(), 0);
+  ASSERT_EQ(GetInferredOutputDim(session_object), 0);
 }
+
+// Verifies that a correctly-sized raw_data initializer (exactly sizeof(T) bytes) loads
+// successfully and produces the expected inferred dimension, so the length check does not
+// over-reject valid models.
+TEST(RangeTest, ContribOp_ExactSizeRawData_LoadsSuccessfully) {
+  SessionOptions so;
+  so.session_logid = "RangeTest.ContribOp_ExactSizeRawData_LoadsSuccessfully";
+  InferenceSession session_object{so, GetEnvironment()};
+  const auto status = BuildAndInitializeContribRangeModel(
+      ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, ScalarInput(0.0), ScalarInput(5.0),
+      ScalarInput(1.0), session_object);
+  ASSERT_STATUS_OK(status);
+  ASSERT_EQ(GetInferredOutputDim(session_object), 5);
+}
+
+// The following tests exercise failure paths that surface via fail_shape_inference, which
+// reports the error by throwing an inference error. They are excluded from no-exception
+// builds where such a throw would abort rather than yield a failure Status.
+#if !defined(ORT_NO_EXCEPTIONS)
+
+// Verifies that Range shape inference rejects an initializer whose raw_data holds fewer bytes
+// than its declared data type requires (here: a zero-element initializer with empty raw_data,
+// which initializer size validation accepts), returning a clean failure status instead of
+// reading more bytes than the initializer declares. One test per input position.
+TEST(RangeTest, ContribOp_TruncatedStartRawData_FailsCleanly) {
+  SessionOptions so;
+  so.session_logid = "RangeTest.ContribOp_TruncatedStartRawData_FailsCleanly";
+  InferenceSession session_object{so, GetEnvironment()};
+  const auto status = BuildAndInitializeContribRangeModel(
+      ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, EmptyInput(), ScalarInput(5.0),
+      ScalarInput(1.0), session_object);
+  ASSERT_FALSE(status.IsOK());
+}
+
+TEST(RangeTest, ContribOp_TruncatedLimitRawData_FailsCleanly) {
+  SessionOptions so;
+  so.session_logid = "RangeTest.ContribOp_TruncatedLimitRawData_FailsCleanly";
+  InferenceSession session_object{so, GetEnvironment()};
+  const auto status = BuildAndInitializeContribRangeModel(
+      ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, ScalarInput(0.0), EmptyInput(),
+      ScalarInput(1.0), session_object);
+  ASSERT_FALSE(status.IsOK());
+}
+
+TEST(RangeTest, ContribOp_TruncatedDeltaRawData_FailsCleanly) {
+  SessionOptions so;
+  so.session_logid = "RangeTest.ContribOp_TruncatedDeltaRawData_FailsCleanly";
+  InferenceSession session_object{so, GetEnvironment()};
+  const auto status = BuildAndInitializeContribRangeModel(
+      ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, ScalarInput(0.0), ScalarInput(5.0),
+      EmptyInput(), session_object);
+  ASSERT_FALSE(status.IsOK());
+}
+
+// Exercises the length check for different sizeof(T) template instantiations (float, int64).
+TEST(RangeTest, ContribOp_TruncatedFloatRawData_FailsCleanly) {
+  SessionOptions so;
+  so.session_logid = "RangeTest.ContribOp_TruncatedFloatRawData_FailsCleanly";
+  InferenceSession session_object{so, GetEnvironment()};
+  const auto status = BuildAndInitializeContribRangeModel(
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT, EmptyInput(), ScalarInput(5.0f),
+      ScalarInput(1.0f), session_object);
+  ASSERT_FALSE(status.IsOK());
+}
+
+TEST(RangeTest, ContribOp_TruncatedInt64RawData_FailsCleanly) {
+  SessionOptions so;
+  so.session_logid = "RangeTest.ContribOp_TruncatedInt64RawData_FailsCleanly";
+  InferenceSession session_object{so, GetEnvironment()};
+  const auto status = BuildAndInitializeContribRangeModel(
+      ONNX_NAMESPACE::TensorProto_DataType_INT64, EmptyInput(), ScalarInput<int64_t>(5),
+      ScalarInput<int64_t>(1), session_object);
+  ASSERT_FALSE(status.IsOK());
+}
+
+// Verifies that a zero delta is rejected cleanly by shape inference.
+TEST(RangeTest, ContribOp_ZeroDelta_FailsCleanly) {
+  SessionOptions so;
+  so.session_logid = "RangeTest.ContribOp_ZeroDelta_FailsCleanly";
+  InferenceSession session_object{so, GetEnvironment()};
+  const auto status = BuildAndInitializeContribRangeModel(
+      ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, ScalarInput(0.0), ScalarInput(10.0),
+      ScalarInput(0.0), session_object);
+  ASSERT_FALSE(status.IsOK());
+}
+
+#endif  // !defined(ORT_NO_EXCEPTIONS)
 
 #endif  // DISABLE_CONTRIB_OPS
 
