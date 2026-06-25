@@ -196,6 +196,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
                                                        const OrtSessionOptions* session_options,
                                                        const OrtLogger* logger,
                                                        OrtEp** ep) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
   auto* factory = static_cast<ExampleEpFactory*>(this_ptr);
   *ep = nullptr;
 
@@ -238,16 +239,14 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   config.enable_weightless_ep_context_nodes = weightless_ep_context_nodes_enable == "1";
 
   // The EpContextConfig wrapper extracts the EPContext callbacks from the session options and owns the handle. It
-  // throws if the experimental functions are unavailable or extraction fails, so convert that to an OrtStatus here.
-  try {
-    auto dummy_ep = std::make_unique<ExampleEp>(
-        *factory, factory->ep_name_, config, *logger,
-        Ort::Experimental::EpContextConfig{Ort::ConstSessionOptions{session_options}});
-    *ep = dummy_ep.release();
-  } catch (const Ort::Exception& e) {
-    return factory->ort_api.CreateStatus(e.GetOrtErrorCode(), e.what());
-  }
+  // throws if the experimental functions are unavailable or extraction fails; EXCEPTION_TO_RETURNED_STATUS_END
+  // converts that (and any other exception thrown in this function) into an OrtStatus.
+  auto dummy_ep = std::make_unique<ExampleEp>(
+      *factory, factory->ep_name_, config, *logger,
+      Ort::Experimental::EpContextConfig{Ort::ConstSessionOptions{session_options}});
+  *ep = dummy_ep.release();
   return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 /*static*/
