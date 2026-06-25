@@ -205,12 +205,21 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   }
 
   auto host_index_out_of_bounds = AllocateBufferOnCPUPinned<int>(1);
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_index_out_of_bounds.get(), index_out_of_bounds.get(), sizeof(int),
-                                       cudaMemcpyDeviceToHost, param.stream));
-  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(param.stream));
-  ORT_RETURN_IF(*host_index_out_of_bounds.get() != 0,
-                "indices element out of data bounds. Each index must be within the inclusive range [",
-                -param.gather_axis_dim, ", ", param.gather_axis_dim - 1, "].");
+  // The device-side bounds check and kernel early-return above always run, so memory
+  // safety does not depend on the host readback below. The readback only upgrades a
+  // silently incorrect result into a clean error, and it requires a device-to-host copy
+  // plus a stream synchronize. Both are illegal while the stream is being captured for a
+  // CUDA graph, so skip the readback during capture and let the device-side guard stand.
+  cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+  CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(param.stream, &capture_status));
+  if (capture_status == cudaStreamCaptureStatusNone) {
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_index_out_of_bounds.get(), index_out_of_bounds.get(), sizeof(int),
+                                         cudaMemcpyDeviceToHost, param.stream));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(param.stream));
+    ORT_RETURN_IF(*host_index_out_of_bounds.get() != 0,
+                  "indices element out of data bounds. Each index must be within the inclusive range [",
+                  -param.gather_axis_dim, ", ", param.gather_axis_dim - 1, "].");
+  }
 
   return Status::OK();
 }
