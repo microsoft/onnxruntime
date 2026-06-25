@@ -55,11 +55,21 @@ jobs:
           dir
         shell: pwsh
 
-      - name: Download cuDNN headers for CUDA 13.0
+      - name: Prepare cuDNN SDK without runtime DLLs
         working-directory: ${{ runner.temp }}
         run: |
-          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cudnn_sdk/$env:CUDNN_FOLDER" .
-          dir
+          $cudnnSdkUri = "https://lotusscus.blob.core.windows.net/models/cudnn_sdk/$env:CUDNN_FOLDER"
+          azcopy.exe cp --recursive $cudnnSdkUri .
+          $cudnnRoot = Join-Path $env:RUNNER_TEMP $env:CUDNN_FOLDER
+          if (-not (Test-Path $cudnnRoot)) {
+            Write-Error "cuDNN SDK was not downloaded to the expected folder: $cudnnRoot"
+            exit 1
+          }
+          Get-ChildItem -Path $cudnnRoot -Recurse -Include "cudnn*.dll" | Remove-Item -Force
+          if (Get-ChildItem -Path $cudnnRoot -Recurse -Include "cudnn*.dll" -ErrorAction SilentlyContinue) {
+            Write-Error "cuDNN runtime DLLs must not be present in the no-cuDNN build environment"
+            exit 1
+          }
         shell: pwsh
 
       - name: Add CUDA to PATH
@@ -68,6 +78,13 @@ jobs:
           Write-Host "Adding CUDA to PATH without adding any cuDNN directory"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\bin"
           Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v13.0\extras\CUPTI\lib64"
+
+      - name: Install CUDA Visual Studio integration
+        shell: pwsh
+        run: |
+          $sourceDir = "$env:RUNNER_TEMP\v13.0\extras\visual_studio_integration\MSBuildExtensions"
+          $targetDir = "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise\MSBuild\Microsoft\VC\v170\BuildCustomizations"
+          Copy-Item -Path "$sourceDir\CUDA 13.0.*" -Destination $targetDir -Force
 
       - name: Set OnnxRuntimeBuildDirectory
         shell: pwsh
@@ -116,6 +133,13 @@ jobs:
           Remove-Item -Path "$outputDir\CMakeCache.txt" -Force -ErrorAction SilentlyContinue
           Remove-Item -Path "$outputDir\CMakeFiles" -Recurse -Force -ErrorAction SilentlyContinue
           Remove-Item -Path $outputDir -Include "*.obj" -Recurse
+
+          $cudnnArtifacts = Get-ChildItem -Path $outputDir -Recurse -Include "cudnn*.dll" -ErrorAction SilentlyContinue
+          if ($cudnnArtifacts) {
+            $cudnnArtifacts | ForEach-Object { Write-Host $_.FullName }
+            Write-Error "cuDNN runtime DLLs must not be present in no-cuDNN build artifacts"
+            exit 1
+          }
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
@@ -235,4 +259,3 @@ jobs:
       ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
       AZCOPY_AUTO_LOGIN_TYPE: MSI
       AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
-      CUDNN_FOLDER: 9.14.0.64_cuda13

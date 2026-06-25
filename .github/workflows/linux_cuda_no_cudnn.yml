@@ -87,14 +87,14 @@ jobs:
       - name: Verify CUDA provider has no direct cuDNN dependency
         run: |
           docker run --rm --gpus all \
-            -v "${{ runner.temp }}/Release:/onnxruntime_src/build/Release" \
+            -v "${{ runner.temp }}:/onnxruntime_src/build" \
             "${{ steps.build_docker_image_step.outputs.full-image-name }}" \
             bash -lc 'ldd /onnxruntime_src/build/Release/libonnxruntime_providers_cuda.so | tee /tmp/ldd.txt && ! grep -i cudnn /tmp/ldd.txt'
 
       - name: Run no-cuDNN CUDA EP smoke test
         run: |
           docker run --rm --gpus all \
-            -v "${{ runner.temp }}/Release:/onnxruntime_src/build/Release" \
+            -v "${{ runner.temp }}:/onnxruntime_src/build" \
             "${{ steps.build_docker_image_step.outputs.full-image-name }}" \
             bash -lc 'PATH=/opt/python/cp312-cp312/bin:$PATH PYTHONPATH=/onnxruntime_src/build/Release python -m pip install --no-cache-dir numpy onnx && PATH=/opt/python/cp312-cp312/bin:$PATH PYTHONPATH=/onnxruntime_src/build/Release python - <<"PY"
           import numpy as np

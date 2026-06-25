@@ -604,6 +604,30 @@
       )
   set_target_properties(onnxruntime_providers_cuda PROPERTIES
     PUBLIC_HEADER "${ONNXRUNTIME_CUDA_PROVIDER_PUBLIC_HEADERS}")
+  if(WIN32 AND NOT onnxruntime_CUDA_MINIMAL)
+    set(ORT_CUDNN_DLL_PATH "")
+    if(onnxruntime_CUDNN_HOME)
+      set(ORT_CUDNN_DLL_SEARCH_PATHS
+        "${onnxruntime_CUDNN_HOME}/bin/cudnn64_*.dll"
+        "${onnxruntime_CUDNN_HOME}/bin/x64/cudnn64_*.dll"
+        "${onnxruntime_CUDNN_HOME}/bin/${onnxruntime_CUDA_VERSION}/cudnn64_*.dll"
+        "${onnxruntime_CUDNN_HOME}/bin/${onnxruntime_CUDA_VERSION}/x64/cudnn64_*.dll"
+      )
+    else()
+      set(ORT_CUDNN_DLL_SEARCH_PATHS "${onnxruntime_CUDA_HOME}/bin/cudnn64_*.dll")
+    endif()
+    foreach(search_path ${ORT_CUDNN_DLL_SEARCH_PATHS})
+      file(GLOB ORT_CUDNN_DLL_PATH "${search_path}")
+      if(ORT_CUDNN_DLL_PATH)
+        break()
+      endif()
+    endforeach()
+    if(ORT_CUDNN_DLL_PATH)
+      add_custom_command(TARGET onnxruntime_providers_cuda POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ORT_CUDNN_DLL_PATH} $<TARGET_FILE_DIR:onnxruntime_providers_cuda>
+      )
+    endif()
+  endif()
   install(TARGETS onnxruntime_providers_cuda
           PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers/cuda
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
