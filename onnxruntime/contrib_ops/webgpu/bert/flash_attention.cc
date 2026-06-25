@@ -263,8 +263,7 @@ Status FlashAttentionDecodeQKVProgram::GenerateShaderCode(ShaderHelper& shader) 
   const auto& q = shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& present_key = shader.AddInput("present_key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   const auto& present_value = shader.AddInput("present_value", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  const bool needs_seqlens_k = use_indirect_dispatch_ || use_seqlen_k_;
-  if (needs_seqlens_k) {
+  if (use_seqlen_k_) {
     shader.AddInput("seqlens_k", ShaderUsage::None);
   }
   if (has_attention_bias_) {
@@ -310,8 +309,7 @@ Status ComputeFlashAttentionDecodeQKV(onnxruntime::webgpu::ComputeContext& conte
   program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, components},
                      {present_key, ProgramTensorMetadataDependency::TypeAndRank, components},
                      {present_value, ProgramTensorMetadataDependency::TypeAndRank, components}});
-  const bool needs_seqlens_k = use_indirect_dispatch || use_seqlen_k;
-  if (needs_seqlens_k) {
+  if (use_seqlen_k) {
     program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None});
   }
   if (has_attention_bias) {
@@ -358,8 +356,7 @@ Status ComputeFlashAttentionDecodeQKV(onnxruntime::webgpu::ComputeContext& conte
 Status FlashAttentionDecodeVxReduceProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform);
   const auto& metadata = shader.AddInput("metadata", ShaderUsage::UseUniform);
-  const bool needs_seqlens_k = use_indirect_dispatch_ || use_seqlen_k_;
-  if (needs_seqlens_k) {
+  if (use_seqlen_k_) {
     shader.AddInput("seqlens_k", ShaderUsage::None);
   }
   if (has_head_sink_) {
@@ -398,8 +395,7 @@ Status ComputeFlashAttentionDecodeVxReduce(onnxruntime::webgpu::ComputeContext& 
   FlashAttentionDecodeVxReduceProgram program{"FlashAttentionDecodeVxReduce", tile_size, seq_tile_size, use_indirect_dispatch, has_head_sink, m_tile, use_seqlen_k};
   program.AddInputs({{out_split_vx, ProgramTensorMetadataDependency::TypeAndRank, components},
                      {metadata, ProgramTensorMetadataDependency::TypeAndRank, 2}});
-  const bool needs_seqlens_k = use_indirect_dispatch || use_seqlen_k;
-  if (needs_seqlens_k) {
+  if (use_seqlen_k) {
     program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None});
   }
   if (has_head_sink) {
