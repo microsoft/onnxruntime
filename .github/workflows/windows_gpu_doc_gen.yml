@@ -47,7 +47,7 @@ jobs:
       AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
     runs-on: [
         "self-hosted",
-        "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
+        "1ES.Pool=github-ci-auth-tester",
         "JobId=windows-gpu-doc-gen-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
         ]
     timeout-minutes: 300
@@ -76,6 +76,8 @@ jobs:
       - name: Download CUDA SDK v12.8
         working-directory: ${{ runner.temp }}
         run: |
+          curl 'http://169.254.169.254/metadata/identity/oauth2/token?resource=https://management.core.windows.net&api-version=2018-02-01' -H "Metadata: true"
+          azcopy.exe login
           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.8" .
           dir
         shell: pwsh

@@ -48,6 +48,7 @@ jobs:
       - name: Download CUDA SDK v12.8
         working-directory: ${{ runner.temp }}
         run: |
+          az account show
           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.8" .
           dir
         shell: pwsh

