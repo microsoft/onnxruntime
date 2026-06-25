@@ -8,6 +8,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/test_environment.h"
+#include "default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -220,6 +221,40 @@ TEST(RangeTest, ContribOp_ExactSizeRawData_LoadsSuccessfully) {
       ScalarInput(1.0), session_object);
   ASSERT_STATUS_OK(status);
   ASSERT_EQ(GetInferredOutputDim(session_object), 5);
+}
+
+// The following two tests run the contrib Range CPU kernel with runtime (non-constant) inputs.
+// Because the inputs are not initializers, shape inference cannot fold the output length, so
+// the element-count guards in ComputeRange are exercised at execution time rather than at load.
+// They are pinned to the CPU execution provider because the contrib Range kernel is CPU-only.
+
+// Verifies that the kernel rejects an element count that exceeds the int64 range.
+TEST(RangeTest, ContribOp_Kernel_CountExceedsInt64Range_FailsAtRuntime) {
+  OpTester test("Range", 1, kMSDomain);
+  test.AddInput<double>("start", {}, {0.0});
+  test.AddInput<double>("limit", {}, {1e19});
+  test.AddInput<double>("delta", {}, {1.0});
+  test.AddOutput<double>("output", {0}, {});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Range: the computed number of elements exceeds the supported range.", {}, nullptr,
+           &execution_providers);
+}
+
+// Verifies that the kernel rejects a non-finite computed element count (the difference of the
+// two inputs overflows to infinity).
+TEST(RangeTest, ContribOp_Kernel_NonFiniteCount_FailsAtRuntime) {
+  OpTester test("Range", 1, kMSDomain);
+  test.AddInput<double>("start", {}, {-1e308});
+  test.AddInput<double>("limit", {}, {1e308});
+  test.AddInput<double>("delta", {}, {1.0});
+  test.AddOutput<double>("output", {0}, {});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Range: the computed number of elements is not a finite value.", {}, nullptr,
+           &execution_providers);
 }
 
 // The following tests exercise failure paths that surface via fail_shape_inference, which

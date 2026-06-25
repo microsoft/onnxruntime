@@ -80,7 +80,10 @@ static Status ComputeRange(
   if (delta == T{0}) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "delta in Range operator can not be zero!");
   }
-  double count = ceil((1.0 * (limit - start)) / delta);
+  // Compute the element count in double, mirroring the shape-inference path
+  // (core/graph/contrib_ops/range_schema_defs.cc CalcRangeDim) exactly. The operands are
+  // promoted to double before the subtraction so integral inputs cannot overflow in T.
+  double count = ceil((static_cast<double>(limit) - static_cast<double>(start)) / static_cast<double>(delta));
   if (!std::isfinite(count)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Range: the computed number of elements is not a finite value.");

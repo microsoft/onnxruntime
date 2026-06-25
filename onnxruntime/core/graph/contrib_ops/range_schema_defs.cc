@@ -82,9 +82,10 @@ static int64_t CalcRangeDim(const TensorProto* startShapeInitializer,
   if (delta == 0) {
     fail_shape_inference("delta in Range operator can not be zero!");
   }
-  // Mirror the CPU kernel (core/providers/cpu/generator/range.cc) which clamps empty or
-  // backward ranges to 0 so shape inference does not emit a negative dimension value.
-  double count = ceil((1.0 * (limit - start)) / delta);
+  // Mirror the CPU kernel (core/providers/cpu/generator/range.cc ComputeRange) exactly so the
+  // two paths stay byte-consistent: clamp empty or backward ranges to 0 and promote the
+  // operands to double before the subtraction. Keep this expression identical to the kernel.
+  double count = ceil((static_cast<double>(limit) - static_cast<double>(start)) / static_cast<double>(delta));
   if (!std::isfinite(count)) {
     fail_shape_inference("Range: the computed number of elements is not a finite value.");
   }
