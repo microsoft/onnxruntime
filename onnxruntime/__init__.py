@@ -150,25 +150,23 @@ def _extract_cuda_major_version(version_str: str) -> str:
     return version_str.split(".", maxsplit=1)[0] if version_str else "12"
 
 
-def _get_cufft_version(cuda_major: str) -> str:
+def _get_cufft_version(cuda_major_version: str) -> str:
     """Get cufft library version based on CUDA major version.
 
     Args:
-        cuda_major: CUDA major version as string (e.g., "12", "13")
+        cuda_major_version: CUDA major version as string (e.g., "12", "13")
 
     Returns:
         cufft version as string
     """
     # cufft versions: CUDA 12.x -> 11, CUDA 13.x -> 12
-    return "12" if cuda_major == "13" else "11"
+    return "12" if int(cuda_major_version) >= 13 else "11"
 
 
-def _get_nvidia_dll_paths(is_windows: bool, cuda: bool = True, cudnn: bool = True, build_cuda_version=None, arch=None):
+def _get_nvidia_dll_paths(is_windows: bool, cuda: bool = True, cudnn: bool = True):
     # Dynamically determine CUDA major version from build info.
     # build_cuda_version defaults to the version this package was built with; it is a parameter for testability.
-    cuda_major_version = _extract_cuda_major_version(
-        build_cuda_version if build_cuda_version is not None else cuda_version
-    )
+    cuda_major_version = _extract_cuda_major_version(cuda_version)
     cufft_version = _get_cufft_version(cuda_major_version)
 
     # Starting with CUDA 13, NVIDIA consolidated the per-component CUDA Toolkit wheels
@@ -182,10 +180,8 @@ def _get_nvidia_dll_paths(is_windows: bool, cuda: bool = True, cudnn: bool = Tru
     if use_consolidated_layout:
         cuda_dir = f"cu{cuda_major_version}"
         if is_windows:
-            if arch is None:
-                import platform  # noqa: PLC0415
-
-                arch = "arm64" if platform.machine().lower() in ("arm64", "aarch64") else "x86_64"
+            import platform  # noqa: PLC0415
+            arch = "arm64" if platform.machine().lower() in ("arm64", "aarch64") else "x86_64"
             cuda_dll_paths = [
                 ("nvidia", cuda_dir, "bin", arch, f"cublasLt64_{cuda_major_version}.dll"),
                 ("nvidia", cuda_dir, "bin", arch, f"cublas64_{cuda_major_version}.dll"),
