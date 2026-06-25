@@ -98,6 +98,8 @@ __device__ inline void LayerNorm(
   __syncthreads();
 
   for (int i = threadIdx.x; i < ld; i += TPB) {
+    // 64-bit global element offset: rows*ld (= batch*seq*hidden) can exceed 2^31 for large tensors.
+    // gamma/beta indices (i) stay int -- bounded by ld (hidden_size).
     const int64_t idx = offset + i;
     const float val = static_cast<float>(output[idx]);
     const float g = static_cast<float>(gamma[i]);
@@ -124,6 +126,7 @@ __device__ inline void SimplifiedLayerNorm(
   __syncthreads();
 
   for (int i = threadIdx.x; i < ld; i += TPB) {
+    // 64-bit element offset (see LayerNorm); large tensors can exceed 2^31. gamma index (i) stays int.
     const int64_t idx = offset + i;
     const float val = static_cast<float>(output[idx]);
     const float g = static_cast<float>(gamma[i]);
@@ -135,6 +138,7 @@ template <typename T, int TPB, int ILP>
 __device__ inline void LayerNormSmall(const T* input_v, const cub::KeyValuePair<float, float>& thread_data,
                                       const int ld, const int64_t idx, const T* beta, const T* gamma,
                                       const float epsilon, T* output) {
+  // idx is a 64-bit global element offset (caller passes row*ld = batch*seq*hidden, can exceed 2^31).
   // Assuming thread_data is already divided by ld
   // Small settings: the block covers the leading dimension TPB >= ld. The input
   // value is available in a register
@@ -184,6 +188,7 @@ __device__ inline void LayerNormSmall(const T* input_v, const cub::KeyValuePair<
 template <typename T, int TPB, int ILP>
 __device__ inline void SimplifiedLayerNormSmall(const T* input_v, const float& thread_data, const int ld,
                                                 const int64_t idx, const T* gamma, const float epsilon, T* output) {
+  // idx is a 64-bit global element offset (caller passes row*ld = batch*seq*hidden, can exceed 2^31).
   // Assuming thread_data is already divided by ld
   // Small settings: the block covers the leading dimension TPB >= ld. The input
   // value is available in a register
