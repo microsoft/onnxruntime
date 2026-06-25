@@ -609,12 +609,9 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
         "CUDA plugin EP does not support using both user_compute_stream and external allocator simultaneously.");
   }
 
-  // Validate: user_compute_stream and cuda graph cannot both be active.
-  if (config.has_user_compute_stream && config.enable_cuda_graph) {
-    return factory->ort_api_.CreateStatus(
-        ORT_INVALID_ARGUMENT,
-        "CUDA plugin EP does not support using both user_compute_stream and enable_cuda_graph simultaneously.");
-  }
+  // user_compute_stream and enable_cuda_graph CAN be combined: when both are set, CUDA graph
+  // capture/replay runs on the user-provided stream (the same stream kernels are issued to),
+  // matching the bundled CUDA EP behavior. See CudaEp::GetPerThreadContext.
 
   // When user_compute_stream is set, force unified stream mode (matches bundled EP behavior).
   if (config.has_user_compute_stream) {
