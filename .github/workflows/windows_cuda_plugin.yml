@@ -115,8 +115,8 @@ jobs:
           $cuptiDir = Join-Path $cudaStageDir "extras\CUPTI\lib64"
           New-Item -ItemType Directory -Path $cudaBinDir -Force | Out-Null
           New-Item -ItemType Directory -Path $cuptiDir -Force | Out-Null
-          Copy-Item -Path "$env:RUNNER_TEMP\v12.8\bin\*" -Destination $cudaBinDir -Recurse -Force
-          Copy-Item -Path "$env:RUNNER_TEMP\v12.8\extras\CUPTI\lib64\*" -Destination $cuptiDir -Recurse -Force
+          Copy-Item -Path "$env:RUNNER_TEMP\v12.8\bin\*" -Destination $cudaBinDir -Recurse -Force -ErrorAction Stop
+          Copy-Item -Path "$env:RUNNER_TEMP\v12.8\extras\CUPTI\lib64\*" -Destination $cuptiDir -Recurse -Force -ErrorAction Stop
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
