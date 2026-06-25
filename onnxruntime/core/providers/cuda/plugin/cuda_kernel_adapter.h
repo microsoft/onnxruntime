@@ -84,6 +84,12 @@ inline onnxruntime::Stream* GetFrameworkStreamForStreamArg(void* stream) {
   // the framework stream registered for this call so scratch chunks are still stream-tagged even
   // when the kernel runs on a non-default CUDA stream (where current_cuda_stream is non-null and a
   // nullptr arg would otherwise miss the map lookup and fall back to a null stream tag).
+  //
+  // current_framework_stream is scoped to a single CudaKernel::Compute invocation by
+  // ComputeStreamScope (see below). Outside any Compute call it is nullptr, so allocations made
+  // from kernel constructors (which also call GetScratchBuffer(..., nullptr)) fall back to the
+  // non-stream-tagged path instead of inheriting a stale framework stream pointer whose lifetime
+  // ended with a previous Session::Run().
   if (stream == nullptr || stream == current_cuda_stream || stream == current_framework_stream) {
     return current_framework_stream;
   }
@@ -91,6 +97,35 @@ inline onnxruntime::Stream* GetFrameworkStreamForStreamArg(void* stream) {
   auto it = stream_to_framework_stream.find(stream);
   return it == stream_to_framework_stream.end() ? nullptr : it->second;
 }
+
+// RAII guard that scopes the thread-local "current Compute call" framework stream to the lifetime
+// of a single CudaKernel::Compute invocation on a worker thread.
+//
+// On entry it clears current_cuda_stream/current_framework_stream so that scratch allocated before
+// the kernel registers its stream (via Stream(ctx)/GetComputeStream(ctx)/GetOrtStream(ctx)), or via
+// a nullptr stream argument, does not inherit a stale framework stream left over from a previous
+// Compute call on this worker thread. On exit it restores the previous values, which keeps nested
+// Compute calls (a kernel that invokes another kernel's Compute) correct and leaves the per-thread
+// "current" stream cleared once the outermost Compute returns. The borrowed framework stream is
+// only valid until its owning Session::Run() completes teardown, so it must not outlive the call.
+struct ComputeStreamScope {
+  ComputeStreamScope()
+      : saved_cuda_stream_(current_cuda_stream),
+        saved_framework_stream_(current_framework_stream) {
+    current_cuda_stream = nullptr;
+    current_framework_stream = nullptr;
+  }
+  ~ComputeStreamScope() {
+    current_cuda_stream = saved_cuda_stream_;
+    current_framework_stream = saved_framework_stream_;
+  }
+
+ private:
+  void* saved_cuda_stream_;
+  onnxruntime::Stream* saved_framework_stream_;
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ComputeStreamScope);
+};
 }  // namespace detail
 }  // namespace cuda_plugin
 
@@ -918,6 +953,11 @@ class CudaKernel : public OpKernel {
   }
   virtual ~CudaKernel() = default;
   Status Compute(OpKernelContext* ctx) const {
+    // Scope the thread-local "current Compute call" framework stream to this invocation so that
+    // scratch tagged via a nullptr stream argument never inherits a stale framework stream from a
+    // previous Compute call (or leaks one to a later kernel constructor) on this worker thread.
+    cuda_plugin::detail::ComputeStreamScope compute_stream_scope;
+
     // Ensure the correct CUDA device is active for this kernel.
     // Worker threads default to device 0; sessions on device > 0 need an
     // explicit cudaSetDevice. Skip during CUDA graph capture because
@@ -1110,9 +1150,9 @@ class CudaKernel : public OpKernel {
     // The `stream` argument is the raw cudaStream_t used by migrated CUDA kernels, or a Stream*
     // from OrtStreamAdapter in code paths that need stream->GetHandle(). Stream-aware arena
     // allocation needs the stable framework Stream* wrapper instead, because the arena stores it
-    // in each chunk and later queries sync ids through the EP stream API. GetComputeStream(ctx) and
-    // GetOrtStream(ctx) record the mapping from both argument forms to the framework stream for the
-    // current Compute call.
+    // in each chunk and later queries sync ids through the EP stream API. Stream(ctx),
+    // GetComputeStream(ctx) and GetOrtStream(ctx) record the mapping from both argument forms to
+    // the framework stream for the current Compute call.
     // If the negotiated ORT API version does not include KernelContext_GetSyncStream, the lookup
     // returns null and allocation falls back to the non-stream-tagged path.
     auto* framework_stream = cuda_plugin::detail::GetFrameworkStreamForStreamArg(stream);
