@@ -463,6 +463,22 @@ constexpr struct {
     {1, 17, 384},
     {4, 33, 384},
     {128, 19, 448},
+    // R*xC4 tile coverage (CountN % 8 in [4..7]). The per-BlkLen NEON tile
+    // dispatcher splits CountN into NMain8 + NMain4 + NTail; without these
+    // shapes the NMain4 region (R1xC4 / R2xC4 tiles) is never exercised.
+    // M={1,2,3} covers M-tail-only / M-pair-only / mixed M-pair+M-tail.
+    {1, 4, 256},   // R1xC4 only
+    {2, 4, 256},   // R2xC4 only
+    {3, 4, 256},   // R2xC4 + R1xC4
+    {1, 5, 256},   // R1xC4 + R1xC1
+    {2, 5, 256},   // R2xC4 + R2xC1
+    {3, 5, 256},   // R2xC4 + R2xC1 + R1xC4 + R1xC1
+    {1, 12, 256},  // R1xC8 + R1xC4
+    {2, 12, 256},  // R2xC8 + R2xC4
+    {3, 12, 256},  // R2xC8 + R2xC4 + R1xC8 + R1xC4
+    {1, 13, 256},  // R1xC8 + R1xC4 + R1xC1
+    {3, 13, 256},  // ALL 6 tiles (R2xC8 + R2xC4 + R2xC1 + R1xC8 + R1xC4 + R1xC1)
+    {3, 21, 384},  // ALL 6 tiles + K-tail
 };
 
 //
@@ -806,6 +822,22 @@ constexpr struct {
     {1, 17, 384},
     {4, 33, 384},
     {128, 19, 640},
+    // R*xC4 tile coverage (CountN % 8 in [4..7]). The per-BlkLen NEON tile
+    // dispatcher splits CountN into NMain8 + NMain4 + NTail; without these
+    // shapes the NMain4 region (R1xC4 / R2xC4 tiles) is never exercised.
+    // M={1,2,3} covers M-tail-only / M-pair-only / mixed M-pair+M-tail.
+    {1, 4, 256},   // R1xC4 only
+    {2, 4, 256},   // R2xC4 only
+    {3, 4, 256},   // R2xC4 + R1xC4
+    {1, 5, 256},   // R1xC4 + R1xC1
+    {2, 5, 256},   // R2xC4 + R2xC1
+    {3, 5, 256},   // R2xC4 + R2xC1 + R1xC4 + R1xC1
+    {1, 12, 256},  // R1xC8 + R1xC4
+    {2, 12, 256},  // R2xC8 + R2xC4
+    {3, 12, 256},  // R2xC8 + R2xC4 + R1xC8 + R1xC4
+    {1, 13, 256},  // R1xC8 + R1xC4 + R1xC1
+    {3, 13, 256},  // ALL 6 tiles (R2xC8 + R2xC4 + R2xC1 + R1xC8 + R1xC4 + R1xC1)
+    {3, 21, 384},  // ALL 6 tiles + K-tail
 };
 
 }  // namespace
@@ -1167,6 +1199,22 @@ constexpr struct {
     {1, 17, 96},
     {4, 33, 96},
     {128, 19, 160},
+    // R*xC4 tile coverage (CountN % 8 in [4..7]). The per-BlkLen NEON tile
+    // dispatcher splits CountN into NMain8 + NMain4 + NTail; without these
+    // shapes the NMain4 region (R1xC4 / R2xC4 tiles) is never exercised.
+    // M={1,2,3} covers M-tail-only / M-pair-only / mixed M-pair+M-tail.
+    {1, 4, 128},   // R1xC4 only
+    {2, 4, 128},   // R2xC4 only
+    {3, 4, 128},   // R2xC4 + R1xC4
+    {1, 5, 128},   // R1xC4 + R1xC1
+    {2, 5, 128},   // R2xC4 + R2xC1
+    {3, 5, 128},   // R2xC4 + R2xC1 + R1xC4 + R1xC1
+    {1, 12, 128},  // R1xC8 + R1xC4
+    {2, 12, 128},  // R2xC8 + R2xC4
+    {3, 12, 128},  // R2xC8 + R2xC4 + R1xC8 + R1xC4
+    {1, 13, 128},  // R1xC8 + R1xC4 + R1xC1
+    {3, 13, 128},  // ALL 6 tiles (R2xC8 + R2xC4 + R2xC1 + R1xC8 + R1xC4 + R1xC1)
+    {3, 21, 160},  // ALL 6 tiles + K-tail
 };
 
 }  // namespace

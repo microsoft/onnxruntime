@@ -17,7 +17,7 @@ Abstract:
     file naming "avx512_2bit" is historical: those pack helpers are pure
     C++ and serve as the cross-arch layout authority for W2.
 
-    Scope of this checkpoint:
+    Scope:
       * `BlkLen == 32`, `BlkLen == 64`, `BlkLen == 128`: native NEON dotprod
         (SDOT) inner loops. The packed B layout is the same 4-K-block group
         with bit positions {0..1, 2..3, 4..5, 6..7} per byte for all three
@@ -26,9 +26,21 @@ Abstract:
         block-group selector is applied with one shift + mask per 16-byte
         chunk, and the per-block int8 dot is computed with 2 / 4 / 8 SDOTs.
 
-    Tile shape: R1xC1 to start (single-row, single-column inner loop).
-    Wider tiles (R2xC4 main + R1xC4 tail, etc.) are a follow-up
-    optimization checkpoint.
+    Tile grid (per BlkLen):
+        R2xC8 (M-pair, main 8-N), R1xC8 (M-tail, main 8-N),
+        R2xC4 (M-pair, main 4-N), R1xC4 (M-tail, main 4-N),
+        R2xC1 (M-pair, 1..3-N tail), R1xC1 (M-tail, 1..3-N tail).
+    All six variants are template instantiations of a single tile kernel
+    (`Q2Int8GemmRxC_DotProd<BlkLen, NRows, NCols>`). The per-BlkLen
+    dispatcher splits CountN into 8-aligned, 4-aligned, and 1..3 tail
+    regions and CountM into M-pairs + odd-M-tail, then dispatches to up
+    to six tile-shape kernels.
+
+    Deviation vs. W4/W8 DotProd ARM reference: W4/W8 use R1-only on
+    DotProd (R2 reserved for I8MM). W2 adds R2 to DotProd too because
+    W2's B-unpack (8 weights/byte, 2 shifts+masks per chunk) is the
+    heaviest of any width and amortising it + the per-K-block scale /
+    BlkSum gather across an M-pair is a meaningful win.
 
 --*/
 
@@ -50,715 +62,425 @@ namespace
 
 namespace sq2 = onnxruntime::mlas::sq2bit_avx512;
 
+// ============================================================================
+// Shared templated tile machinery for the W2 DotProd kernel.
 //
-// Sum 4 SDOTs over 64 int8 activation values against 64 int8 weights in
-// [0, 3] and reduce to a single int32 dot product.
+// One templated tile kernel `Q2Int8GemmRxC_DotProd<BlkLen, NRows, NCols>`
+// covers all 18 BlkLen x tile combinations. The per-BlkLen public entries
+// each delegate to `SQ2BitGemm_Dispatch_NeonDotProd<BlkLen>`, which splits
+// the (M, N) plane into up to 6 sub-rectangles (R{1,2} x C{1,4,8}) and
+// dispatches one instantiation per piece.
 //
-MLAS_FORCEINLINE int32_t
-DotInt8_BlkLen64_DotProd(const int8_t* a_blk,
-                          const uint8x16_t bw_0_15,
-                          const uint8x16_t bw_16_31,
-                          const uint8x16_t bw_32_47,
-                          const uint8x16_t bw_48_63)
+// Layout (see sqnbitgemm_kernel_avx512_2bit.h):
+//   * Packed B is grouped into `kNCols4` (=4) col groups in the main region
+//     (n < NMain = floor(CountN / kNCols4) * kNCols4) and column-major in
+//     the tail region (n >= NMain). C8/C4 tiles operate entirely in the
+//     main region; the C1 tile handles 1..3 trailing cols in the tail.
+//   * `BlockCountK` is padded to a multiple of `kBlockGroupBlks` (=4) for
+//     storage; padding contributes 0 to dot products and to the BlkSum
+//     correction.
+//   * QuantBBlkSum uses the existing width-16 chunked layout consumed by
+//     the SGEMM correction step.
+// ============================================================================
+
+template <size_t BlkLen> struct BlkLenTraits;
+template <> struct BlkLenTraits<32>  { static constexpr size_t kVecsPerBlk = 2; };
+template <> struct BlkLenTraits<64>  { static constexpr size_t kVecsPerBlk = 4; };
+template <> struct BlkLenTraits<128> { static constexpr size_t kVecsPerBlk = 8; };
+
+template <size_t BlkLen> inline constexpr size_t kBlockGroupBytesV = 0;
+template <> inline constexpr size_t kBlockGroupBytesV<32>  = sq2::kBlockGroupBytes32;
+template <> inline constexpr size_t kBlockGroupBytesV<64>  = sq2::kBlockGroupBytes;
+template <> inline constexpr size_t kBlockGroupBytesV<128> = sq2::kBlockGroupBytes128;
+
+// Per-BlkLen packed-B byte offset (folds the BlkLen-specific overloads).
+template <size_t BlkLen>
+MLAS_FORCEINLINE size_t
+PackedBOffsetBytes(size_t n, size_t blk_group,
+                   size_t BlockGroupCountKPadded, size_t NMain)
 {
-    const int8x16_t a0 = vld1q_s8(a_blk + 0);
-    const int8x16_t a1 = vld1q_s8(a_blk + 16);
-    const int8x16_t a2 = vld1q_s8(a_blk + 32);
-    const int8x16_t a3 = vld1q_s8(a_blk + 48);
-
-    const int8x16_t b0 = vreinterpretq_s8_u8(bw_0_15);
-    const int8x16_t b1 = vreinterpretq_s8_u8(bw_16_31);
-    const int8x16_t b2 = vreinterpretq_s8_u8(bw_32_47);
-    const int8x16_t b3 = vreinterpretq_s8_u8(bw_48_63);
-
-    int32x4_t acc = vdupq_n_s32(0);
-    acc = vdotq_s32(acc, a0, b0);
-    acc = vdotq_s32(acc, a1, b1);
-    acc = vdotq_s32(acc, a2, b2);
-    acc = vdotq_s32(acc, a3, b3);
-    return vaddvq_s32(acc);
+    if constexpr (BlkLen == 32) {
+        return sq2::PackedQuantBOffsetBytes_W2_BlkLen32(
+            n, blk_group, BlockGroupCountKPadded, NMain);
+    } else if constexpr (BlkLen == 128) {
+        return sq2::PackedQuantBOffsetBytes_W2_BlkLen128(
+            n, blk_group, BlockGroupCountKPadded, NMain);
+    } else {
+        return sq2::PackedQuantBOffsetBytes_W2(
+            n, blk_group, BlockGroupCountKPadded, NMain);
+    }
 }
 
-//
-// Unpack one block_in_group (0..3) slice of a 64-byte block-group into 4
-// uint8x16 vectors of weights in [0, 3].
-//
-// Layout (matches sqnbitgemm_kernel_avx512_2bit.h): byte b of the block-group
-// holds the 2-bit weights of all 4 blocks at in-block position b at bit
-// positions {0..1, 2..3, 4..5, 6..7}.
-//
-template <size_t BlkInGroup>
+// Unpack one in-group block (BlkInGroup in [0,4)) into `kVecsPerBlk`
+// uint8x16_t vectors of 2-bit weights in [0, 3].
+template <size_t BlkLen, size_t BlkInGroup>
 MLAS_FORCEINLINE void
-UnpackBlockGroupSliceBlkLen64_DotProd(const std::byte* group,
-                                       uint8x16_t& out0_15,
-                                       uint8x16_t& out16_31,
-                                       uint8x16_t& out32_47,
-                                       uint8x16_t& out48_63)
+UnpackBlockGroupSlice_DotProd(const std::byte* group,
+                              uint8x16_t out[BlkLenTraits<BlkLen>::kVecsPerBlk])
 {
-    static_assert(BlkInGroup < sq2::kBlockGroupBlks, "BlkInGroup must be in [0, 4)");
-
+    static_assert(BlkInGroup < sq2::kBlockGroupBlks, "BlkInGroup must be < 4");
+    constexpr size_t kVecs = BlkLenTraits<BlkLen>::kVecsPerBlk;
     const uint8x16_t mask03 = vdupq_n_u8(0x03);
     const uint8_t* p = reinterpret_cast<const uint8_t*>(group);
-    const uint8x16_t v0 = vld1q_u8(p + 0);
-    const uint8x16_t v1 = vld1q_u8(p + 16);
-    const uint8x16_t v2 = vld1q_u8(p + 32);
-    const uint8x16_t v3 = vld1q_u8(p + 48);
-
-    if constexpr (BlkInGroup == 0) {
-        // No shift -- vshrq_n_u8 requires immediate shift count in [1, 8].
-        out0_15  = vandq_u8(v0, mask03);
-        out16_31 = vandq_u8(v1, mask03);
-        out32_47 = vandq_u8(v2, mask03);
-        out48_63 = vandq_u8(v3, mask03);
-    } else {
-        constexpr int kShift = 2 * static_cast<int>(BlkInGroup);
-        out0_15  = vandq_u8(vshrq_n_u8(v0, kShift), mask03);
-        out16_31 = vandq_u8(vshrq_n_u8(v1, kShift), mask03);
-        out32_47 = vandq_u8(vshrq_n_u8(v2, kShift), mask03);
-        out48_63 = vandq_u8(vshrq_n_u8(v3, kShift), mask03);
+    for (size_t v = 0; v < kVecs; ++v) {
+        const uint8x16_t raw = vld1q_u8(p + v * 16);
+        if constexpr (BlkInGroup == 0) {
+            // vshrq_n_u8 immediate must be in [1, 8] -- skip shift here.
+            out[v] = vandq_u8(raw, mask03);
+        } else {
+            constexpr int kShift = 2 * static_cast<int>(BlkInGroup);
+            out[v] = vandq_u8(vshrq_n_u8(raw, kShift), mask03);
+        }
     }
 }
 
-//
-// One (m, n) cell's contribution from a single block-group (4 K-blocks):
-// adds 4 * (a_scale * b_scale * int_dot + a_blksum * b_blksum) into acc.
-//
-// `blk0` is the logical K-block index of the first block in this group.
-// Caller guarantees `blk0 + 4 <= BlockCountK` (this is the main inner-loop
-// path); the K-tail handler covers groups where blk0 + 3 may exceed
-// BlockCountK.
-//
+// One in-group block's contribution to NRows x NCols scalar accumulators.
+// All A vecs for the K-block are pre-loaded once per row, then for each
+// output col we unpack one col's B and run NRows int dot+reduce paths.
+// Worst-case live NEON regs (R2xC*, BlkLen=128): 16 A + 8 B + 1 scratch = 25.
+template <size_t BlkLen, size_t NRows, size_t NCols, size_t BlkInGroup>
 MLAS_FORCEINLINE void
-AccumOneBlockGroup_BlkLen64_DotProd(float& acc,
-                                     const std::byte* group,
-                                     const int8_t* a_blk_base,
-                                     const float* a_scale_row,
-                                     const float* a_blksum_row,
-                                     const float* b_scale_for_group,
-                                     const float b_blksum_for_4_blks[sq2::kBlockGroupBlks],
-                                     size_t blk0)
+AccumOneBlock_RxC_DotProd(
+    float (&acc)[NRows][NCols],
+    const std::byte* const group_cols[NCols],
+    const int8_t* const a_blk_bases[NRows],
+    const float* const a_scale_rows[NRows],
+    const float* const a_blksum_rows[NRows],
+    const float b_scales[NCols][sq2::kBlockGroupBlks],
+    const float b_blksums[NCols][sq2::kBlockGroupBlks],
+    size_t blk0)
 {
-    uint8x16_t bw_0_15, bw_16_31, bw_32_47, bw_48_63;
+    constexpr size_t kVecs = BlkLenTraits<BlkLen>::kVecsPerBlk;
+    constexpr size_t kK = BlkLen;
 
-    // Block 0
-    UnpackBlockGroupSliceBlkLen64_DotProd<0>(group, bw_0_15, bw_16_31, bw_32_47, bw_48_63);
-    {
-        const int32_t dot = DotInt8_BlkLen64_DotProd(a_blk_base + 0 * sq2::kBlkLen,
-                                                     bw_0_15, bw_16_31, bw_32_47, bw_48_63);
-        acc += a_scale_row[blk0 + 0] * b_scale_for_group[0] * static_cast<float>(dot);
-        acc += a_blksum_row[blk0 + 0] * b_blksum_for_4_blks[0];
+    int8x16_t av[NRows][kVecs];
+    for (size_t r = 0; r < NRows; ++r) {
+        const int8_t* a = a_blk_bases[r] + BlkInGroup * kK;
+        for (size_t v = 0; v < kVecs; ++v) {
+            av[r][v] = vld1q_s8(a + v * 16);
+        }
     }
-    // Block 1
-    UnpackBlockGroupSliceBlkLen64_DotProd<1>(group, bw_0_15, bw_16_31, bw_32_47, bw_48_63);
-    {
-        const int32_t dot = DotInt8_BlkLen64_DotProd(a_blk_base + 1 * sq2::kBlkLen,
-                                                     bw_0_15, bw_16_31, bw_32_47, bw_48_63);
-        acc += a_scale_row[blk0 + 1] * b_scale_for_group[1] * static_cast<float>(dot);
-        acc += a_blksum_row[blk0 + 1] * b_blksum_for_4_blks[1];
-    }
-    // Block 2
-    UnpackBlockGroupSliceBlkLen64_DotProd<2>(group, bw_0_15, bw_16_31, bw_32_47, bw_48_63);
-    {
-        const int32_t dot = DotInt8_BlkLen64_DotProd(a_blk_base + 2 * sq2::kBlkLen,
-                                                     bw_0_15, bw_16_31, bw_32_47, bw_48_63);
-        acc += a_scale_row[blk0 + 2] * b_scale_for_group[2] * static_cast<float>(dot);
-        acc += a_blksum_row[blk0 + 2] * b_blksum_for_4_blks[2];
-    }
-    // Block 3
-    UnpackBlockGroupSliceBlkLen64_DotProd<3>(group, bw_0_15, bw_16_31, bw_32_47, bw_48_63);
-    {
-        const int32_t dot = DotInt8_BlkLen64_DotProd(a_blk_base + 3 * sq2::kBlkLen,
-                                                     bw_0_15, bw_16_31, bw_32_47, bw_48_63);
-        acc += a_scale_row[blk0 + 3] * b_scale_for_group[3] * static_cast<float>(dot);
-        acc += a_blksum_row[blk0 + 3] * b_blksum_for_4_blks[3];
+
+    for (size_t c = 0; c < NCols; ++c) {
+        uint8x16_t bw[kVecs];
+        UnpackBlockGroupSlice_DotProd<BlkLen, BlkInGroup>(group_cols[c], bw);
+        for (size_t r = 0; r < NRows; ++r) {
+            int32x4_t s = vdupq_n_s32(0);
+            for (size_t v = 0; v < kVecs; ++v) {
+                s = vdotq_s32(s, av[r][v], vreinterpretq_s8_u8(bw[v]));
+            }
+            const int32_t dot = vaddvq_s32(s);
+            const float a_s  = a_scale_rows[r][blk0 + BlkInGroup];
+            const float a_bs = a_blksum_rows[r][blk0 + BlkInGroup];
+            acc[r][c] += a_s * b_scales[c][BlkInGroup] * static_cast<float>(dot);
+            acc[r][c] += a_bs * b_blksums[c][BlkInGroup];
+        }
     }
 }
 
-//
-// Tail handler for the last (possibly partial) block-group at the K boundary
-// when BlockCountK % kBlockGroupBlks != 0. Only `blocks_in_tail` (1..3) of
-// the 4 blocks in the group correspond to real K-blocks; the rest are
-// zero-padded by the pack helper (both weights and scales) and the kernel
-// must NOT read A past blk = BlockCountK.
-//
+// Full block-group: 4 in-group blocks unrolled at compile time.
+template <size_t BlkLen, size_t NRows, size_t NCols>
 MLAS_FORCEINLINE void
-AccumLastBlockGroup_BlkLen64_DotProd(float& acc,
-                                      const std::byte* group,
-                                      const int8_t* a_blk_base,
-                                      const float* a_scale_row,
-                                      const float* a_blksum_row,
-                                      const float* b_scale_for_group,
-                                      const float b_blksum_for_4_blks[sq2::kBlockGroupBlks],
-                                      size_t blk0,
-                                      size_t blocks_in_tail)
+AccumOneBlockGroup_RxC_DotProd(
+    float (&acc)[NRows][NCols],
+    const std::byte* const group_cols[NCols],
+    const int8_t* const a_blk_bases[NRows],
+    const float* const a_scale_rows[NRows],
+    const float* const a_blksum_rows[NRows],
+    const float b_scales[NCols][sq2::kBlockGroupBlks],
+    const float b_blksums[NCols][sq2::kBlockGroupBlks],
+    size_t blk0)
+{
+    AccumOneBlock_RxC_DotProd<BlkLen, NRows, NCols, 0>(
+        acc, group_cols, a_blk_bases, a_scale_rows, a_blksum_rows, b_scales, b_blksums, blk0);
+    AccumOneBlock_RxC_DotProd<BlkLen, NRows, NCols, 1>(
+        acc, group_cols, a_blk_bases, a_scale_rows, a_blksum_rows, b_scales, b_blksums, blk0);
+    AccumOneBlock_RxC_DotProd<BlkLen, NRows, NCols, 2>(
+        acc, group_cols, a_blk_bases, a_scale_rows, a_blksum_rows, b_scales, b_blksums, blk0);
+    AccumOneBlock_RxC_DotProd<BlkLen, NRows, NCols, 3>(
+        acc, group_cols, a_blk_bases, a_scale_rows, a_blksum_rows, b_scales, b_blksums, blk0);
+}
+
+// K-tail block-group: only `blocks_in_tail` (1..3) in-group blocks are
+// real K-blocks (pack helper zero-padded the rest). We still must not
+// read A past BlockCountK, so the run-time gate stays.
+template <size_t BlkLen, size_t NRows, size_t NCols>
+MLAS_FORCEINLINE void
+AccumLastBlockGroup_RxC_DotProd(
+    float (&acc)[NRows][NCols],
+    const std::byte* const group_cols[NCols],
+    const int8_t* const a_blk_bases[NRows],
+    const float* const a_scale_rows[NRows],
+    const float* const a_blksum_rows[NRows],
+    const float b_scales[NCols][sq2::kBlockGroupBlks],
+    const float b_blksums[NCols][sq2::kBlockGroupBlks],
+    size_t blk0, size_t blocks_in_tail)
 {
     assert(blocks_in_tail >= 1 && blocks_in_tail <= sq2::kBlockGroupBlks);
-
-    uint8x16_t bw_0_15, bw_16_31, bw_32_47, bw_48_63;
-
     if (blocks_in_tail >= 1) {
-        UnpackBlockGroupSliceBlkLen64_DotProd<0>(group, bw_0_15, bw_16_31, bw_32_47, bw_48_63);
-        const int32_t dot = DotInt8_BlkLen64_DotProd(a_blk_base + 0 * sq2::kBlkLen,
-                                                     bw_0_15, bw_16_31, bw_32_47, bw_48_63);
-        acc += a_scale_row[blk0 + 0] * b_scale_for_group[0] * static_cast<float>(dot);
-        acc += a_blksum_row[blk0 + 0] * b_blksum_for_4_blks[0];
+        AccumOneBlock_RxC_DotProd<BlkLen, NRows, NCols, 0>(
+            acc, group_cols, a_blk_bases, a_scale_rows, a_blksum_rows,
+            b_scales, b_blksums, blk0);
     }
     if (blocks_in_tail >= 2) {
-        UnpackBlockGroupSliceBlkLen64_DotProd<1>(group, bw_0_15, bw_16_31, bw_32_47, bw_48_63);
-        const int32_t dot = DotInt8_BlkLen64_DotProd(a_blk_base + 1 * sq2::kBlkLen,
-                                                     bw_0_15, bw_16_31, bw_32_47, bw_48_63);
-        acc += a_scale_row[blk0 + 1] * b_scale_for_group[1] * static_cast<float>(dot);
-        acc += a_blksum_row[blk0 + 1] * b_blksum_for_4_blks[1];
+        AccumOneBlock_RxC_DotProd<BlkLen, NRows, NCols, 1>(
+            acc, group_cols, a_blk_bases, a_scale_rows, a_blksum_rows,
+            b_scales, b_blksums, blk0);
     }
     if (blocks_in_tail >= 3) {
-        UnpackBlockGroupSliceBlkLen64_DotProd<2>(group, bw_0_15, bw_16_31, bw_32_47, bw_48_63);
-        const int32_t dot = DotInt8_BlkLen64_DotProd(a_blk_base + 2 * sq2::kBlkLen,
-                                                     bw_0_15, bw_16_31, bw_32_47, bw_48_63);
-        acc += a_scale_row[blk0 + 2] * b_scale_for_group[2] * static_cast<float>(dot);
-        acc += a_blksum_row[blk0 + 2] * b_blksum_for_4_blks[2];
+        AccumOneBlock_RxC_DotProd<BlkLen, NRows, NCols, 2>(
+            acc, group_cols, a_blk_bases, a_scale_rows, a_blksum_rows,
+            b_scales, b_blksums, blk0);
     }
-    // blocks_in_tail == 4 is the main-loop case; the tail handler is only
-    // invoked when BlockCountK % 4 != 0, so we never need to process block 3
-    // here.
+    // blocks_in_tail == 4 is the main-loop case, not invoked here.
 }
 
-//
-// Native NEON dotprod inner kernel for BlkLen=64. Same external math as
-// SQ2BitGemmKernel_BlkSum_CompInt8_Scalar (sqnbitgemm_kernel_avx512_2bit.cpp).
-// R1xC1 iteration order; the caller (qnbitgemm.cpp) walks the (m, n) grid.
-//
-size_t
-SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd_BlkLen64(
+// Templated tile kernel for the sub-rectangle
+//   [m_start, m_start+m_count) x [n_start, n_start+n_count)
+// Caller guarantees: m_count is a multiple of NRows; n_count is a multiple
+// of NCols (for NCols==1 this is trivial -- the C1 tile iterates the 1..3
+// trailing cols one at a time).
+template <size_t BlkLen, size_t NRows, size_t NCols>
+MLAS_FORCEINLINE void
+Q2Int8GemmRxC_DotProd(
     const std::byte* QuantA,
     const float* QuantAScale,
     const std::byte* QuantBData,
     const float* QuantBScale,
     float* C,
-    size_t CountM,
-    size_t CountN,
+    size_t CountN,                // full N (for NMain calc + BlkSum width-16)
     size_t BlockCountK,
     const float* Bias,
     size_t ldc,
     const float* ABlockSum,
-    const float* QuantBBlkSum)
+    const float* QuantBBlkSum,
+    size_t m_start,
+    size_t m_count,
+    size_t n_start,
+    size_t n_count)
 {
-    if (BlockCountK == 0) {
-        return 0;
-    }
+    if (m_count == 0 || n_count == 0) return;
+
+    constexpr size_t kK = BlkLen;
+    constexpr size_t kBlockGroupBytes = kBlockGroupBytesV<BlkLen>;
+    // C8/C4 tiles operate fully in the main NCols4-grouped region; C1 tile
+    // operates fully in the column-major tail region.
+    constexpr bool kInMain = (NCols > 1);
+    constexpr size_t kGroupStrideBytes =
+        kInMain ? (sq2::kNCols4 * kBlockGroupBytes) : kBlockGroupBytes;
 
     const size_t BlockGroupCountKPadded =
         MlasDivRoundup(BlockCountK, sq2::kBlockGroupBlks);
     const size_t BlockCountKPadded = BlockGroupCountKPadded * sq2::kBlockGroupBlks;
     const size_t NMainLocal = (CountN / sq2::kNCols4) * sq2::kNCols4;
-
     const size_t MainBlockGroups = BlockCountK / sq2::kBlockGroupBlks;
-    const size_t TailBlocks = BlockCountK % sq2::kBlockGroupBlks;  // 0..3
-
-    const size_t lda = BlockCountK * sq2::kBlkLen;  // bytes per A row
+    const size_t TailBlocks = BlockCountK % sq2::kBlockGroupBlks;
+    const size_t lda = BlockCountK * kK;
     const size_t lda_scale = BlockCountK;
 
-    for (size_t m = 0; m < CountM; ++m) {
-        const int8_t* a_row = reinterpret_cast<const int8_t*>(QuantA + m * lda);
-        const float* a_scale_row = QuantAScale + m * lda_scale;
-        const float* a_blksum_row = ABlockSum + m * lda_scale;
-        float* c_row = C + m * ldc;
+    assert(m_count % NRows == 0);
 
-        for (size_t n = 0; n < CountN; ++n) {
-            float acc = (Bias != nullptr) ? Bias[n] : 0.0f;
+    for (size_t m = m_start; m < m_start + m_count; m += NRows) {
+        const int8_t* a_rows[NRows];
+        const float* a_scale_rows[NRows];
+        const float* a_blksum_rows[NRows];
+        float* c_rows[NRows];
+        for (size_t r = 0; r < NRows; ++r) {
+            a_rows[r] = reinterpret_cast<const int8_t*>(QuantA + (m + r) * lda);
+            a_scale_rows[r] = QuantAScale + (m + r) * lda_scale;
+            a_blksum_rows[r] = ABlockSum + (m + r) * lda_scale;
+            c_rows[r] = C + (m + r) * ldc;
+        }
 
-            // Main K-loop: full block-groups.
+        for (size_t n = n_start; n < n_start + n_count; n += NCols) {
+            float acc[NRows][NCols];
+            for (size_t r = 0; r < NRows; ++r) {
+                for (size_t c = 0; c < NCols; ++c) {
+                    acc[r][c] = (Bias != nullptr) ? Bias[n + c] : 0.0f;
+                }
+            }
+
+            // Per-col g=0 base pointers; per-group advance is `kGroupStrideBytes`
+            // (constant for this tile shape / region).
+            const std::byte* group_cols_g0[NCols];
+            for (size_t c = 0; c < NCols; ++c) {
+                group_cols_g0[c] = QuantBData + PackedBOffsetBytes<BlkLen>(
+                    n + c, 0, BlockGroupCountKPadded, NMainLocal);
+            }
+
             for (size_t g = 0; g < MainBlockGroups; ++g) {
                 const size_t blk0 = g * sq2::kBlockGroupBlks;
 
-                const size_t b_offset = sq2::PackedQuantBOffsetBytes_W2(
-                    n, g, BlockGroupCountKPadded, NMainLocal);
-                const std::byte* group = QuantBData + b_offset;
-
-                // Gather the 4 per-block scales for this (n, group). The
-                // scale layout matches the W2 contract -- one float per
-                // (n, blk) in PackedQuantBScale, addressed via
-                // PackedQuantBScaleOffset_W2.
-                float b_scale_for_group[sq2::kBlockGroupBlks];
-                for (size_t i = 0; i < sq2::kBlockGroupBlks; ++i) {
-                    b_scale_for_group[i] = QuantBScale[sq2::PackedQuantBScaleOffset_W2(
-                        n, blk0 + i, BlockCountKPadded, NMainLocal)];
+                const std::byte* group_cols[NCols];
+                for (size_t c = 0; c < NCols; ++c) {
+                    group_cols[c] = group_cols_g0[c] + g * kGroupStrideBytes;
                 }
 
-                // Same for the 4 per-block QuantBBlkSums (width-16
-                // SGEMM-style layout).
-                float b_blksum_for_4_blks[sq2::kBlockGroupBlks];
-                for (size_t i = 0; i < sq2::kBlockGroupBlks; ++i) {
-                    const size_t off = ((n / 16) * BlockCountK + (blk0 + i)) * 16 + (n % 16);
-                    b_blksum_for_4_blks[i] = QuantBBlkSum[off];
+                float b_scales[NCols][sq2::kBlockGroupBlks];
+                float b_blksums[NCols][sq2::kBlockGroupBlks];
+                for (size_t c = 0; c < NCols; ++c) {
+                    for (size_t i = 0; i < sq2::kBlockGroupBlks; ++i) {
+                        b_scales[c][i] = QuantBScale[sq2::PackedQuantBScaleOffset_W2(
+                            n + c, blk0 + i, BlockCountKPadded, NMainLocal)];
+                        const size_t off =
+                            (((n + c) / 16) * BlockCountK + (blk0 + i)) * 16 + ((n + c) % 16);
+                        b_blksums[c][i] = QuantBBlkSum[off];
+                    }
                 }
 
-                AccumOneBlockGroup_BlkLen64_DotProd(
-                    acc, group,
-                    a_row + blk0 * sq2::kBlkLen,
-                    a_scale_row, a_blksum_row,
-                    b_scale_for_group, b_blksum_for_4_blks, blk0);
+                const int8_t* a_blk_bases[NRows];
+                for (size_t r = 0; r < NRows; ++r) {
+                    a_blk_bases[r] = a_rows[r] + blk0 * kK;
+                }
+
+                AccumOneBlockGroup_RxC_DotProd<BlkLen, NRows, NCols>(
+                    acc, group_cols, a_blk_bases,
+                    a_scale_rows, a_blksum_rows,
+                    b_scales, b_blksums, blk0);
             }
 
-            // K-tail: process the trailing partial group (1..3 real blocks).
             if (TailBlocks != 0) {
                 const size_t g = MainBlockGroups;
                 const size_t blk0 = g * sq2::kBlockGroupBlks;
 
-                const size_t b_offset = sq2::PackedQuantBOffsetBytes_W2(
-                    n, g, BlockGroupCountKPadded, NMainLocal);
-                const std::byte* group = QuantBData + b_offset;
-
-                float b_scale_for_group[sq2::kBlockGroupBlks] = {};
-                for (size_t i = 0; i < TailBlocks; ++i) {
-                    b_scale_for_group[i] = QuantBScale[sq2::PackedQuantBScaleOffset_W2(
-                        n, blk0 + i, BlockCountKPadded, NMainLocal)];
+                const std::byte* group_cols[NCols];
+                for (size_t c = 0; c < NCols; ++c) {
+                    group_cols[c] = group_cols_g0[c] + g * kGroupStrideBytes;
                 }
 
-                float b_blksum_for_4_blks[sq2::kBlockGroupBlks] = {};
-                for (size_t i = 0; i < TailBlocks; ++i) {
-                    const size_t off = ((n / 16) * BlockCountK + (blk0 + i)) * 16 + (n % 16);
-                    b_blksum_for_4_blks[i] = QuantBBlkSum[off];
+                float b_scales[NCols][sq2::kBlockGroupBlks] = {};
+                float b_blksums[NCols][sq2::kBlockGroupBlks] = {};
+                for (size_t c = 0; c < NCols; ++c) {
+                    for (size_t i = 0; i < TailBlocks; ++i) {
+                        b_scales[c][i] = QuantBScale[sq2::PackedQuantBScaleOffset_W2(
+                            n + c, blk0 + i, BlockCountKPadded, NMainLocal)];
+                        const size_t off =
+                            (((n + c) / 16) * BlockCountK + (blk0 + i)) * 16 + ((n + c) % 16);
+                        b_blksums[c][i] = QuantBBlkSum[off];
+                    }
                 }
 
-                AccumLastBlockGroup_BlkLen64_DotProd(
-                    acc, group,
-                    a_row + blk0 * sq2::kBlkLen,
-                    a_scale_row, a_blksum_row,
-                    b_scale_for_group, b_blksum_for_4_blks, blk0, TailBlocks);
+                const int8_t* a_blk_bases[NRows];
+                for (size_t r = 0; r < NRows; ++r) {
+                    a_blk_bases[r] = a_rows[r] + blk0 * kK;
+                }
+
+                AccumLastBlockGroup_RxC_DotProd<BlkLen, NRows, NCols>(
+                    acc, group_cols, a_blk_bases,
+                    a_scale_rows, a_blksum_rows,
+                    b_scales, b_blksums, blk0, TailBlocks);
             }
 
-            c_row[n] = acc;
+            for (size_t r = 0; r < NRows; ++r) {
+                for (size_t c = 0; c < NCols; ++c) {
+                    c_rows[r][n + c] = acc[r][c];
+                }
+            }
         }
+    }
+}
+
+// Per-BlkLen tile-grid dispatcher. Splits (CountM, CountN) into up to 6
+// sub-rectangles and dispatches one tile-shape instantiation per piece.
+template <size_t BlkLen>
+size_t
+SQ2BitGemm_Dispatch_NeonDotProd(
+    const std::byte* QuantA, const float* QuantAScale,
+    const std::byte* QuantBData, const float* QuantBScale,
+    float* C, size_t CountM, size_t CountN, size_t BlockCountK,
+    const float* Bias, size_t ldc,
+    const float* ABlockSum, const float* QuantBBlkSum)
+{
+    if (BlockCountK == 0) return 0;
+    if (CountM == 0 || CountN == 0) return CountM;
+
+    const size_t NMain8 = (CountN / 8) * 8;
+    const size_t NRem   = CountN - NMain8;
+    const size_t NMain4 = (NRem / 4) * 4;    // 0 or 4
+    const size_t NTail  = NRem - NMain4;     // 0..3
+    const size_t M_main = (CountM / 2) * 2;
+    const size_t M_tail = CountM - M_main;
+    const size_t n_tail_start = NMain8 + NMain4;
+
+    if (NMain8 > 0) {
+        if (M_main > 0)
+            Q2Int8GemmRxC_DotProd<BlkLen, 2, 8>(
+                QuantA, QuantAScale, QuantBData, QuantBScale, C,
+                CountN, BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum,
+                0, M_main, 0, NMain8);
+        if (M_tail > 0)
+            Q2Int8GemmRxC_DotProd<BlkLen, 1, 8>(
+                QuantA, QuantAScale, QuantBData, QuantBScale, C,
+                CountN, BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum,
+                M_main, M_tail, 0, NMain8);
+    }
+    if (NMain4 > 0) {
+        if (M_main > 0)
+            Q2Int8GemmRxC_DotProd<BlkLen, 2, 4>(
+                QuantA, QuantAScale, QuantBData, QuantBScale, C,
+                CountN, BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum,
+                0, M_main, NMain8, NMain4);
+        if (M_tail > 0)
+            Q2Int8GemmRxC_DotProd<BlkLen, 1, 4>(
+                QuantA, QuantAScale, QuantBData, QuantBScale, C,
+                CountN, BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum,
+                M_main, M_tail, NMain8, NMain4);
+    }
+    if (NTail > 0) {
+        if (M_main > 0)
+            Q2Int8GemmRxC_DotProd<BlkLen, 2, 1>(
+                QuantA, QuantAScale, QuantBData, QuantBScale, C,
+                CountN, BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum,
+                0, M_main, n_tail_start, NTail);
+        if (M_tail > 0)
+            Q2Int8GemmRxC_DotProd<BlkLen, 1, 1>(
+                QuantA, QuantAScale, QuantBData, QuantBScale, C,
+                CountN, BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum,
+                M_main, M_tail, n_tail_start, NTail);
     }
 
     return CountM;
 }
 
-// -----------------------------------------------------------------------------
-// BlkLen=128 helpers + inner kernel.
-//
-// One K-block holds 128 weights = 8 int8x16 chunks. One block-group holds 4
-// K-blocks = 128 packed bytes. Layout (bit-positions of the in-block-group
-// selector) is identical to BlkLen=64; only the bytes-per-K-block scales.
-// -----------------------------------------------------------------------------
-
-constexpr size_t kBlkLen128VecsPerBlk = 8;  // 128 / 16
-
-MLAS_FORCEINLINE int32_t
-DotInt8_BlkLen128_DotProd(const int8_t* a_blk, const uint8x16_t bw[kBlkLen128VecsPerBlk])
+// Thin per-BlkLen public entry. Pins BlkLen at compile time so the templated
+// tile kernel constant-folds the BlkLen-specific layout.
+size_t
+SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd_BlkLen64(
+    const std::byte* QuantA, const float* QuantAScale,
+    const std::byte* QuantBData, const float* QuantBScale,
+    float* C, size_t CountM, size_t CountN, size_t BlockCountK,
+    const float* Bias, size_t ldc,
+    const float* ABlockSum, const float* QuantBBlkSum)
 {
-    int32x4_t acc = vdupq_n_s32(0);
-    for (size_t i = 0; i < kBlkLen128VecsPerBlk; ++i) {
-        const int8x16_t a = vld1q_s8(a_blk + i * 16);
-        const int8x16_t b = vreinterpretq_s8_u8(bw[i]);
-        acc = vdotq_s32(acc, a, b);
-    }
-    return vaddvq_s32(acc);
-}
-
-template <size_t BlkInGroup>
-MLAS_FORCEINLINE void
-UnpackBlockGroupSliceBlkLen128_DotProd(const std::byte* group, uint8x16_t out[kBlkLen128VecsPerBlk])
-{
-    static_assert(BlkInGroup < sq2::kBlockGroupBlks, "BlkInGroup must be in [0, 4)");
-
-    const uint8x16_t mask03 = vdupq_n_u8(0x03);
-    const uint8_t* p = reinterpret_cast<const uint8_t*>(group);
-    for (size_t i = 0; i < kBlkLen128VecsPerBlk; ++i) {
-        const uint8x16_t v = vld1q_u8(p + i * 16);
-        if constexpr (BlkInGroup == 0) {
-            out[i] = vandq_u8(v, mask03);
-        } else {
-            constexpr int kShift = 2 * static_cast<int>(BlkInGroup);
-            out[i] = vandq_u8(vshrq_n_u8(v, kShift), mask03);
-        }
-    }
-}
-
-MLAS_FORCEINLINE void
-AccumOneBlockGroup_BlkLen128_DotProd(float& acc,
-                                      const std::byte* group,
-                                      const int8_t* a_blk_base,
-                                      const float* a_scale_row,
-                                      const float* a_blksum_row,
-                                      const float* b_scale_for_group,
-                                      const float b_blksum_for_4_blks[sq2::kBlockGroupBlks],
-                                      size_t blk0)
-{
-    uint8x16_t bw[kBlkLen128VecsPerBlk];
-
-    UnpackBlockGroupSliceBlkLen128_DotProd<0>(group, bw);
-    {
-        const int32_t dot = DotInt8_BlkLen128_DotProd(a_blk_base + 0 * sq2::kBlkLen128, bw);
-        acc += a_scale_row[blk0 + 0] * b_scale_for_group[0] * static_cast<float>(dot);
-        acc += a_blksum_row[blk0 + 0] * b_blksum_for_4_blks[0];
-    }
-    UnpackBlockGroupSliceBlkLen128_DotProd<1>(group, bw);
-    {
-        const int32_t dot = DotInt8_BlkLen128_DotProd(a_blk_base + 1 * sq2::kBlkLen128, bw);
-        acc += a_scale_row[blk0 + 1] * b_scale_for_group[1] * static_cast<float>(dot);
-        acc += a_blksum_row[blk0 + 1] * b_blksum_for_4_blks[1];
-    }
-    UnpackBlockGroupSliceBlkLen128_DotProd<2>(group, bw);
-    {
-        const int32_t dot = DotInt8_BlkLen128_DotProd(a_blk_base + 2 * sq2::kBlkLen128, bw);
-        acc += a_scale_row[blk0 + 2] * b_scale_for_group[2] * static_cast<float>(dot);
-        acc += a_blksum_row[blk0 + 2] * b_blksum_for_4_blks[2];
-    }
-    UnpackBlockGroupSliceBlkLen128_DotProd<3>(group, bw);
-    {
-        const int32_t dot = DotInt8_BlkLen128_DotProd(a_blk_base + 3 * sq2::kBlkLen128, bw);
-        acc += a_scale_row[blk0 + 3] * b_scale_for_group[3] * static_cast<float>(dot);
-        acc += a_blksum_row[blk0 + 3] * b_blksum_for_4_blks[3];
-    }
-}
-
-MLAS_FORCEINLINE void
-AccumLastBlockGroup_BlkLen128_DotProd(float& acc,
-                                       const std::byte* group,
-                                       const int8_t* a_blk_base,
-                                       const float* a_scale_row,
-                                       const float* a_blksum_row,
-                                       const float* b_scale_for_group,
-                                       const float b_blksum_for_4_blks[sq2::kBlockGroupBlks],
-                                       size_t blk0,
-                                       size_t blocks_in_tail)
-{
-    assert(blocks_in_tail >= 1 && blocks_in_tail <= sq2::kBlockGroupBlks);
-
-    uint8x16_t bw[kBlkLen128VecsPerBlk];
-
-    if (blocks_in_tail >= 1) {
-        UnpackBlockGroupSliceBlkLen128_DotProd<0>(group, bw);
-        const int32_t dot = DotInt8_BlkLen128_DotProd(a_blk_base + 0 * sq2::kBlkLen128, bw);
-        acc += a_scale_row[blk0 + 0] * b_scale_for_group[0] * static_cast<float>(dot);
-        acc += a_blksum_row[blk0 + 0] * b_blksum_for_4_blks[0];
-    }
-    if (blocks_in_tail >= 2) {
-        UnpackBlockGroupSliceBlkLen128_DotProd<1>(group, bw);
-        const int32_t dot = DotInt8_BlkLen128_DotProd(a_blk_base + 1 * sq2::kBlkLen128, bw);
-        acc += a_scale_row[blk0 + 1] * b_scale_for_group[1] * static_cast<float>(dot);
-        acc += a_blksum_row[blk0 + 1] * b_blksum_for_4_blks[1];
-    }
-    if (blocks_in_tail >= 3) {
-        UnpackBlockGroupSliceBlkLen128_DotProd<2>(group, bw);
-        const int32_t dot = DotInt8_BlkLen128_DotProd(a_blk_base + 2 * sq2::kBlkLen128, bw);
-        acc += a_scale_row[blk0 + 2] * b_scale_for_group[2] * static_cast<float>(dot);
-        acc += a_blksum_row[blk0 + 2] * b_blksum_for_4_blks[2];
-    }
+    return SQ2BitGemm_Dispatch_NeonDotProd<64>(
+        QuantA, QuantAScale, QuantBData, QuantBScale, C, CountM, CountN,
+        BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum);
 }
 
 size_t
 SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd_BlkLen128(
-    const std::byte* QuantA,
-    const float* QuantAScale,
-    const std::byte* QuantBData,
-    const float* QuantBScale,
-    float* C,
-    size_t CountM,
-    size_t CountN,
-    size_t BlockCountK,
-    const float* Bias,
-    size_t ldc,
-    const float* ABlockSum,
-    const float* QuantBBlkSum)
+    const std::byte* QuantA, const float* QuantAScale,
+    const std::byte* QuantBData, const float* QuantBScale,
+    float* C, size_t CountM, size_t CountN, size_t BlockCountK,
+    const float* Bias, size_t ldc,
+    const float* ABlockSum, const float* QuantBBlkSum)
 {
-    if (BlockCountK == 0) {
-        return 0;
-    }
-
-    const size_t BlockGroupCountKPadded =
-        MlasDivRoundup(BlockCountK, sq2::kBlockGroupBlks);
-    const size_t BlockCountKPadded = BlockGroupCountKPadded * sq2::kBlockGroupBlks;
-    const size_t NMainLocal = (CountN / sq2::kNCols4) * sq2::kNCols4;
-
-    const size_t MainBlockGroups = BlockCountK / sq2::kBlockGroupBlks;
-    const size_t TailBlocks = BlockCountK % sq2::kBlockGroupBlks;
-
-    const size_t lda = BlockCountK * sq2::kBlkLen128;
-    const size_t lda_scale = BlockCountK;
-
-    for (size_t m = 0; m < CountM; ++m) {
-        const int8_t* a_row = reinterpret_cast<const int8_t*>(QuantA + m * lda);
-        const float* a_scale_row = QuantAScale + m * lda_scale;
-        const float* a_blksum_row = ABlockSum + m * lda_scale;
-        float* c_row = C + m * ldc;
-
-        for (size_t n = 0; n < CountN; ++n) {
-            float acc = (Bias != nullptr) ? Bias[n] : 0.0f;
-
-            for (size_t g = 0; g < MainBlockGroups; ++g) {
-                const size_t blk0 = g * sq2::kBlockGroupBlks;
-
-                const size_t b_offset = sq2::PackedQuantBOffsetBytes_W2_BlkLen128(
-                    n, g, BlockGroupCountKPadded, NMainLocal);
-                const std::byte* group = QuantBData + b_offset;
-
-                float b_scale_for_group[sq2::kBlockGroupBlks];
-                for (size_t i = 0; i < sq2::kBlockGroupBlks; ++i) {
-                    b_scale_for_group[i] = QuantBScale[sq2::PackedQuantBScaleOffset_W2(
-                        n, blk0 + i, BlockCountKPadded, NMainLocal)];
-                }
-
-                float b_blksum_for_4_blks[sq2::kBlockGroupBlks];
-                for (size_t i = 0; i < sq2::kBlockGroupBlks; ++i) {
-                    const size_t off = ((n / 16) * BlockCountK + (blk0 + i)) * 16 + (n % 16);
-                    b_blksum_for_4_blks[i] = QuantBBlkSum[off];
-                }
-
-                AccumOneBlockGroup_BlkLen128_DotProd(
-                    acc, group,
-                    a_row + blk0 * sq2::kBlkLen128,
-                    a_scale_row, a_blksum_row,
-                    b_scale_for_group, b_blksum_for_4_blks, blk0);
-            }
-
-            if (TailBlocks != 0) {
-                const size_t g = MainBlockGroups;
-                const size_t blk0 = g * sq2::kBlockGroupBlks;
-
-                const size_t b_offset = sq2::PackedQuantBOffsetBytes_W2_BlkLen128(
-                    n, g, BlockGroupCountKPadded, NMainLocal);
-                const std::byte* group = QuantBData + b_offset;
-
-                float b_scale_for_group[sq2::kBlockGroupBlks] = {};
-                for (size_t i = 0; i < TailBlocks; ++i) {
-                    b_scale_for_group[i] = QuantBScale[sq2::PackedQuantBScaleOffset_W2(
-                        n, blk0 + i, BlockCountKPadded, NMainLocal)];
-                }
-
-                float b_blksum_for_4_blks[sq2::kBlockGroupBlks] = {};
-                for (size_t i = 0; i < TailBlocks; ++i) {
-                    const size_t off = ((n / 16) * BlockCountK + (blk0 + i)) * 16 + (n % 16);
-                    b_blksum_for_4_blks[i] = QuantBBlkSum[off];
-                }
-
-                AccumLastBlockGroup_BlkLen128_DotProd(
-                    acc, group,
-                    a_row + blk0 * sq2::kBlkLen128,
-                    a_scale_row, a_blksum_row,
-                    b_scale_for_group, b_blksum_for_4_blks, blk0, TailBlocks);
-            }
-
-            c_row[n] = acc;
-        }
-    }
-
-    return CountM;
-}
-
-// -----------------------------------------------------------------------------
-// BlkLen=32 helpers + inner kernel.
-//
-// One K-block holds 32 weights = 2 int8x16 chunks. One block-group holds 4
-// K-blocks = 32 packed bytes (fits in two NEON registers). Same bit-position
-// layout as BlkLen=64/128.
-// -----------------------------------------------------------------------------
-
-constexpr size_t kBlkLen32VecsPerBlk = 2;  // 32 / 16
-
-MLAS_FORCEINLINE int32_t
-DotInt8_BlkLen32_DotProd(const int8_t* a_blk, const uint8x16_t bw[kBlkLen32VecsPerBlk])
-{
-    int32x4_t acc = vdupq_n_s32(0);
-    const int8x16_t a0 = vld1q_s8(a_blk + 0);
-    const int8x16_t a1 = vld1q_s8(a_blk + 16);
-    acc = vdotq_s32(acc, a0, vreinterpretq_s8_u8(bw[0]));
-    acc = vdotq_s32(acc, a1, vreinterpretq_s8_u8(bw[1]));
-    return vaddvq_s32(acc);
-}
-
-template <size_t BlkInGroup>
-MLAS_FORCEINLINE void
-UnpackBlockGroupSliceBlkLen32_DotProd(const std::byte* group, uint8x16_t out[kBlkLen32VecsPerBlk])
-{
-    static_assert(BlkInGroup < sq2::kBlockGroupBlks, "BlkInGroup must be in [0, 4)");
-
-    const uint8x16_t mask03 = vdupq_n_u8(0x03);
-    const uint8_t* p = reinterpret_cast<const uint8_t*>(group);
-    const uint8x16_t v0 = vld1q_u8(p + 0);
-    const uint8x16_t v1 = vld1q_u8(p + 16);
-
-    if constexpr (BlkInGroup == 0) {
-        out[0] = vandq_u8(v0, mask03);
-        out[1] = vandq_u8(v1, mask03);
-    } else {
-        constexpr int kShift = 2 * static_cast<int>(BlkInGroup);
-        out[0] = vandq_u8(vshrq_n_u8(v0, kShift), mask03);
-        out[1] = vandq_u8(vshrq_n_u8(v1, kShift), mask03);
-    }
-}
-
-MLAS_FORCEINLINE void
-AccumOneBlockGroup_BlkLen32_DotProd(float& acc,
-                                     const std::byte* group,
-                                     const int8_t* a_blk_base,
-                                     const float* a_scale_row,
-                                     const float* a_blksum_row,
-                                     const float* b_scale_for_group,
-                                     const float b_blksum_for_4_blks[sq2::kBlockGroupBlks],
-                                     size_t blk0)
-{
-    uint8x16_t bw[kBlkLen32VecsPerBlk];
-
-    UnpackBlockGroupSliceBlkLen32_DotProd<0>(group, bw);
-    {
-        const int32_t dot = DotInt8_BlkLen32_DotProd(a_blk_base + 0 * sq2::kBlkLen32, bw);
-        acc += a_scale_row[blk0 + 0] * b_scale_for_group[0] * static_cast<float>(dot);
-        acc += a_blksum_row[blk0 + 0] * b_blksum_for_4_blks[0];
-    }
-    UnpackBlockGroupSliceBlkLen32_DotProd<1>(group, bw);
-    {
-        const int32_t dot = DotInt8_BlkLen32_DotProd(a_blk_base + 1 * sq2::kBlkLen32, bw);
-        acc += a_scale_row[blk0 + 1] * b_scale_for_group[1] * static_cast<float>(dot);
-        acc += a_blksum_row[blk0 + 1] * b_blksum_for_4_blks[1];
-    }
-    UnpackBlockGroupSliceBlkLen32_DotProd<2>(group, bw);
-    {
-        const int32_t dot = DotInt8_BlkLen32_DotProd(a_blk_base + 2 * sq2::kBlkLen32, bw);
-        acc += a_scale_row[blk0 + 2] * b_scale_for_group[2] * static_cast<float>(dot);
-        acc += a_blksum_row[blk0 + 2] * b_blksum_for_4_blks[2];
-    }
-    UnpackBlockGroupSliceBlkLen32_DotProd<3>(group, bw);
-    {
-        const int32_t dot = DotInt8_BlkLen32_DotProd(a_blk_base + 3 * sq2::kBlkLen32, bw);
-        acc += a_scale_row[blk0 + 3] * b_scale_for_group[3] * static_cast<float>(dot);
-        acc += a_blksum_row[blk0 + 3] * b_blksum_for_4_blks[3];
-    }
-}
-
-MLAS_FORCEINLINE void
-AccumLastBlockGroup_BlkLen32_DotProd(float& acc,
-                                      const std::byte* group,
-                                      const int8_t* a_blk_base,
-                                      const float* a_scale_row,
-                                      const float* a_blksum_row,
-                                      const float* b_scale_for_group,
-                                      const float b_blksum_for_4_blks[sq2::kBlockGroupBlks],
-                                      size_t blk0,
-                                      size_t blocks_in_tail)
-{
-    assert(blocks_in_tail >= 1 && blocks_in_tail <= sq2::kBlockGroupBlks);
-
-    uint8x16_t bw[kBlkLen32VecsPerBlk];
-
-    if (blocks_in_tail >= 1) {
-        UnpackBlockGroupSliceBlkLen32_DotProd<0>(group, bw);
-        const int32_t dot = DotInt8_BlkLen32_DotProd(a_blk_base + 0 * sq2::kBlkLen32, bw);
-        acc += a_scale_row[blk0 + 0] * b_scale_for_group[0] * static_cast<float>(dot);
-        acc += a_blksum_row[blk0 + 0] * b_blksum_for_4_blks[0];
-    }
-    if (blocks_in_tail >= 2) {
-        UnpackBlockGroupSliceBlkLen32_DotProd<1>(group, bw);
-        const int32_t dot = DotInt8_BlkLen32_DotProd(a_blk_base + 1 * sq2::kBlkLen32, bw);
-        acc += a_scale_row[blk0 + 1] * b_scale_for_group[1] * static_cast<float>(dot);
-        acc += a_blksum_row[blk0 + 1] * b_blksum_for_4_blks[1];
-    }
-    if (blocks_in_tail >= 3) {
-        UnpackBlockGroupSliceBlkLen32_DotProd<2>(group, bw);
-        const int32_t dot = DotInt8_BlkLen32_DotProd(a_blk_base + 2 * sq2::kBlkLen32, bw);
-        acc += a_scale_row[blk0 + 2] * b_scale_for_group[2] * static_cast<float>(dot);
-        acc += a_blksum_row[blk0 + 2] * b_blksum_for_4_blks[2];
-    }
+    return SQ2BitGemm_Dispatch_NeonDotProd<128>(
+        QuantA, QuantAScale, QuantBData, QuantBScale, C, CountM, CountN,
+        BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum);
 }
 
 size_t
 SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd_BlkLen32(
-    const std::byte* QuantA,
-    const float* QuantAScale,
-    const std::byte* QuantBData,
-    const float* QuantBScale,
-    float* C,
-    size_t CountM,
-    size_t CountN,
-    size_t BlockCountK,
-    const float* Bias,
-    size_t ldc,
-    const float* ABlockSum,
-    const float* QuantBBlkSum)
+    const std::byte* QuantA, const float* QuantAScale,
+    const std::byte* QuantBData, const float* QuantBScale,
+    float* C, size_t CountM, size_t CountN, size_t BlockCountK,
+    const float* Bias, size_t ldc,
+    const float* ABlockSum, const float* QuantBBlkSum)
 {
-    if (BlockCountK == 0) {
-        return 0;
-    }
-
-    const size_t BlockGroupCountKPadded =
-        MlasDivRoundup(BlockCountK, sq2::kBlockGroupBlks);
-    const size_t BlockCountKPadded = BlockGroupCountKPadded * sq2::kBlockGroupBlks;
-    const size_t NMainLocal = (CountN / sq2::kNCols4) * sq2::kNCols4;
-
-    const size_t MainBlockGroups = BlockCountK / sq2::kBlockGroupBlks;
-    const size_t TailBlocks = BlockCountK % sq2::kBlockGroupBlks;
-
-    const size_t lda = BlockCountK * sq2::kBlkLen32;
-    const size_t lda_scale = BlockCountK;
-
-    for (size_t m = 0; m < CountM; ++m) {
-        const int8_t* a_row = reinterpret_cast<const int8_t*>(QuantA + m * lda);
-        const float* a_scale_row = QuantAScale + m * lda_scale;
-        const float* a_blksum_row = ABlockSum + m * lda_scale;
-        float* c_row = C + m * ldc;
-
-        for (size_t n = 0; n < CountN; ++n) {
-            float acc = (Bias != nullptr) ? Bias[n] : 0.0f;
-
-            for (size_t g = 0; g < MainBlockGroups; ++g) {
-                const size_t blk0 = g * sq2::kBlockGroupBlks;
-
-                const size_t b_offset = sq2::PackedQuantBOffsetBytes_W2_BlkLen32(
-                    n, g, BlockGroupCountKPadded, NMainLocal);
-                const std::byte* group = QuantBData + b_offset;
-
-                float b_scale_for_group[sq2::kBlockGroupBlks];
-                for (size_t i = 0; i < sq2::kBlockGroupBlks; ++i) {
-                    b_scale_for_group[i] = QuantBScale[sq2::PackedQuantBScaleOffset_W2(
-                        n, blk0 + i, BlockCountKPadded, NMainLocal)];
-                }
-
-                float b_blksum_for_4_blks[sq2::kBlockGroupBlks];
-                for (size_t i = 0; i < sq2::kBlockGroupBlks; ++i) {
-                    const size_t off = ((n / 16) * BlockCountK + (blk0 + i)) * 16 + (n % 16);
-                    b_blksum_for_4_blks[i] = QuantBBlkSum[off];
-                }
-
-                AccumOneBlockGroup_BlkLen32_DotProd(
-                    acc, group,
-                    a_row + blk0 * sq2::kBlkLen32,
-                    a_scale_row, a_blksum_row,
-                    b_scale_for_group, b_blksum_for_4_blks, blk0);
-            }
-
-            if (TailBlocks != 0) {
-                const size_t g = MainBlockGroups;
-                const size_t blk0 = g * sq2::kBlockGroupBlks;
-
-                const size_t b_offset = sq2::PackedQuantBOffsetBytes_W2_BlkLen32(
-                    n, g, BlockGroupCountKPadded, NMainLocal);
-                const std::byte* group = QuantBData + b_offset;
-
-                float b_scale_for_group[sq2::kBlockGroupBlks] = {};
-                for (size_t i = 0; i < TailBlocks; ++i) {
-                    b_scale_for_group[i] = QuantBScale[sq2::PackedQuantBScaleOffset_W2(
-                        n, blk0 + i, BlockCountKPadded, NMainLocal)];
-                }
-
-                float b_blksum_for_4_blks[sq2::kBlockGroupBlks] = {};
-                for (size_t i = 0; i < TailBlocks; ++i) {
-                    const size_t off = ((n / 16) * BlockCountK + (blk0 + i)) * 16 + (n % 16);
-                    b_blksum_for_4_blks[i] = QuantBBlkSum[off];
-                }
-
-                AccumLastBlockGroup_BlkLen32_DotProd(
-                    acc, group,
-                    a_row + blk0 * sq2::kBlkLen32,
-                    a_scale_row, a_blksum_row,
-                    b_scale_for_group, b_blksum_for_4_blks, blk0, TailBlocks);
-            }
-
-            c_row[n] = acc;
-        }
-    }
-
-    return CountM;
+    return SQ2BitGemm_Dispatch_NeonDotProd<32>(
+        QuantA, QuantAScale, QuantBData, QuantBScale, C, CountM, CountN,
+        BlockCountK, Bias, ldc, ABlockSum, QuantBBlkSum);
 }
 
 }  // unnamed namespace

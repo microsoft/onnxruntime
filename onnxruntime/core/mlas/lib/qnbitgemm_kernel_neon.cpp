@@ -669,14 +669,21 @@ GetMlasQNBitGemmDispatchNeon(
         // cross-arch layout authority for W2.
         //
         // SQ2BitGemmKernel_BlkSum_CompInt8 is wired to the native NEON
-        // DotProd kernel when FEAT_DotProd is available. The kernel
-        // routes BlkLen=64 through native SDOT and delegates BlkLen=32
-        // and BlkLen=128 to the portable scalar oracle until native
-        // kernels for those BlkLens land in subsequent checkpoints.
+        // DotProd kernel when FEAT_DotProd is available; the kernel
+        // handles BlkLen ∈ {32, 64, 128} natively via SDOT inner loops
+        // (B is re-centered to signed int8 in-kernel during the 2-bit
+        // unpack, so no post-kernel zero-point correction SGEMM is
+        // needed).
         //
-        // On hosts with only i8mm (no DotProd) we fall back to the
-        // portable scalar reference for all BlkLens; the i8mm kernel
-        // arrives in a later checkpoint.
+        // FEAT_I8MM hosts also take this path: FEAT_I8MM always implies
+        // FEAT_DotProd per the ARM spec, and USDOT and SDOT have identical
+        // throughput on every core that implements both -- a separate I8MM
+        // TU using USDOT would be pure duplication. The real I8MM-only
+        // throughput win lives in SMMLA (R2-tile 2×2 matrix-multiply,
+        // 2× the dots/cycle of SDOT), which is future work.
+        //
+        // The Scalar fall-back is defensive: an I8MM-without-DotProd host
+        // is unreachable on conformant ARMv8.2+ hardware.
         if (InitializeWithDotSupport || InitializeWithI8MMSupport) {
             d.Q2BitGemmPackQuantBDataSize       = onnxruntime::mlas::sq2bit_avx512::Q2BitGemmPackQuantBDataSize_Avx512;
             d.SQ2BitGemmPackQuantBDataAndBlkSum = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmPackQuantBDataAndBlkSum_Scalar;
