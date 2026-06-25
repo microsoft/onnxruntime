@@ -107,11 +107,28 @@ jobs:
           Remove-Item -Path $outputDir -Include "*.obj" -Recurse
         shell: pwsh
 
+      - name: Stage CUDA runtime test dependencies
+        shell: pwsh
+        run: |
+          $cudaStageDir = Join-Path ${{ runner.temp }} "cuda-test-deps\v12.8"
+          $cudaBinDir = Join-Path $cudaStageDir "bin"
+          $cuptiDir = Join-Path $cudaStageDir "extras\CUPTI\lib64"
+          New-Item -ItemType Directory -Path $cudaBinDir -Force | Out-Null
+          New-Item -ItemType Directory -Path $cuptiDir -Force | Out-Null
+          Copy-Item -Path "$env:RUNNER_TEMP\v12.8\bin\*" -Destination $cudaBinDir -Recurse -Force
+          Copy-Item -Path "$env:RUNNER_TEMP\v12.8\extras\CUPTI\lib64\*" -Destination $cuptiDir -Recurse -Force
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
         with:
           name: cuda-plugin-build-artifacts
           path: ${{ runner.temp }}\build
+
+      - name: Upload CUDA runtime test dependencies
+        uses: actions/upload-artifact@v6
+        with:
+          name: cuda-plugin-cuda-runtime
+          path: ${{ runner.temp }}\cuda-test-deps
     env:
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       setVcvars: true
@@ -141,6 +158,12 @@ jobs:
           name: cuda-plugin-build-artifacts
           path: ${{ runner.temp }}\build
 
+      - name: Download CUDA runtime test dependencies
+        uses: actions/download-artifact@v7
+        with:
+          name: cuda-plugin-cuda-runtime
+          path: ${{ runner.temp }}\cuda-test-deps
+
       - uses: actions/setup-python@v6
         with:
           python-version: '3.14'
@@ -161,20 +184,13 @@ jobs:
         working-directory: ${{ github.workspace }}
         shell: cmd
 
-      - name: Download CUDA SDK v12.8
-        working-directory: ${{ runner.temp }}
-        run: |
-          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.8" .
-          dir
-        shell: pwsh
-
       - name: Add CUDA to PATH
         shell: powershell
         run: |
           Write-Host "Adding CUDA to PATH"
-          Write-Host "CUDA Path: $env:RUNNER_TEMP\v12.8\bin"
-          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.8\bin"
-          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\v12.8\extras\CUPTI\lib64"
+          Write-Host "CUDA Path: $env:RUNNER_TEMP\cuda-test-deps\v12.8\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\cuda-test-deps\v12.8\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:RUNNER_TEMP\cuda-test-deps\v12.8\extras\CUPTI\lib64"
 
       - name: Set OnnxRuntimeBuildDirectory
         shell: pwsh
