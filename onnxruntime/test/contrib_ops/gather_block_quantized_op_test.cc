@@ -533,18 +533,21 @@ TEST(GatherBlockQuantizedOpTest, CudaInvalidIndices) {
 // block_size == 0 is accepted by the constructor but is an invalid divisor for block
 // mapping, so ComputeInternal must reject it with a clean status.
 TEST(GatherBlockQuantizedOpTest, CudaInvalidBlockSizeZero) {
-  Test_Fail_WithoutZeroPoints<UInt4x2, float, int32_t>(0, 2, 0);
-  Test_Fail_WithoutZeroPoints<Int4x2, float, int32_t>(0, 2, 0);
-  Test_Fail_WithoutZeroPoints<uint8_t, float, int32_t>(0, 2, 0);
+  Test_Fail_WithoutZeroPoints<UInt4x2, float, int32_t>(/*gather_axis=*/0, /*quantize_axis=*/2, /*block_size=*/0);
+  Test_Fail_WithoutZeroPoints<Int4x2, float, int32_t>(/*gather_axis=*/0, /*quantize_axis=*/2, /*block_size=*/0);
+  Test_Fail_WithoutZeroPoints<uint8_t, float, int32_t>(/*gather_axis=*/0, /*quantize_axis=*/2, /*block_size=*/0);
 }
 
 // uint8 data supports bits in {4, 8} and int4/uint4 supports bits == 4 on CUDA; other
 // values are rejected by the constructor before the 8 / bits division that derives the
 // uint8 packing factor.
 TEST(GatherBlockQuantizedOpTest, CudaUnsupportedBits) {
-  Test_Fail_WithoutZeroPoints<UInt4x2, float, int32_t>(0, 2, 16, 3);
-  Test_Fail_WithoutZeroPoints<Int4x2, float, int32_t>(0, 2, 16, 8);
-  Test_Fail_WithoutZeroPoints<uint8_t, float, int32_t>(0, 2, 16, 3);
+  Test_Fail_WithoutZeroPoints<UInt4x2, float, int32_t>(
+      /*gather_axis=*/0, /*quantize_axis=*/2, /*block_size=*/16, /*bits=*/3);
+  Test_Fail_WithoutZeroPoints<Int4x2, float, int32_t>(
+      /*gather_axis=*/0, /*quantize_axis=*/2, /*block_size=*/16, /*bits=*/8);
+  Test_Fail_WithoutZeroPoints<uint8_t, float, int32_t>(
+      /*gather_axis=*/0, /*quantize_axis=*/2, /*block_size=*/16, /*bits=*/3);
 }
 #endif
 
