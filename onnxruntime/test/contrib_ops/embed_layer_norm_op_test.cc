@@ -227,7 +227,7 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch_Distill) {
   RunTest(embedlayernorm::EmbedLayerNormBatch_Distill());
 }
 
-// Regression test: negative position_ids must be rejected to not cause OOB read.
+// Input validation test: a negative position id must be rejected rather than used to index the table.
 TEST(EmbedLayerNormTest, EmbedLayerNormNegativePositionIds) {
   int batch_size = 1;
   int sequence_size = 2;
@@ -282,12 +282,13 @@ TEST(EmbedLayerNormTest, EmbedLayerNormNegativePositionIds) {
   tester.AddOutput<float>("output", output_dims, std::vector<float>(batch_size * sequence_size * hidden_size, 0.0f));
   tester.AddOutput<int32_t>("mask_index", mask_index_dims, {0});
 
-  // Both CPU and CUDA reject the out-of-range position id via input validation; other EPs are
-  // not exercised here.
+  // Both CPU and CUDA reject the out-of-range position id via input validation. The CUDA NHWC EP
+  // shares the same validated kernel, so it is intentionally left enabled (skipped automatically if
+  // the kernel is not registered for that EP). Only DML and OpenVINO are excluded here.
   tester.Run(OpTester::ExpectResult::kExpectFailure, "", {kDmlExecutionProvider, kOpenVINOExecutionProvider});
 }
 
-// An input id that points outside the word_embedding table must be rejected rather than read.
+// An input id that points outside the word_embedding table must be rejected rather than indexed.
 // CPU validates per-index already; CUDA validates device-side and surfaces the same failure, so
 // this case runs on both EPs.
 TEST(EmbedLayerNormTest, EmbedLayerNormWordIdOutOfRange) {
