@@ -123,7 +123,8 @@ template <typename T, unsigned TPB>
 __global__ void EmbedLayerNormKernel(
     int hidden_size, const int* input_ids, const int* segment_ids, const T* beta, const T* gamma,
     const T* word_embedding, const T* position_embedding, const T* segment_embedding,
-    float epsilon, T* output, T* embedding_sum, const int* position_ids, const bool broadcast_position_ids) {
+    float epsilon, T* output, T* embedding_sum, const int* position_ids, const bool broadcast_position_ids,
+    int word_embedding_length, int position_embedding_length, int segment_embedding_length, int* error_flag) {
   KeyValuePairSum pair_sum;
   // 1. lookup word and segment of the block
   // blockIdx.x = position in the sequence
@@ -133,6 +134,7 @@ __global__ void EmbedLayerNormKernel(
   __shared__ int word_id;
   __shared__ int segment_id;
   __shared__ int position_id;
+  __shared__ bool is_valid_block;
 
   const float rld = 1.f / hidden_size;
   const int sequence_position = blockIdx.y * gridDim.x + blockIdx.x;
@@ -150,17 +152,30 @@ __global__ void EmbedLayerNormKernel(
     } else {
       position_id = position_ids[sequence_position];
     }
+
+    // Flag any id that is out of range of its embedding table so it is rejected instead of indexed.
+    is_valid_block = (word_id >= 0 && word_id < word_embedding_length) &&
+                     (position_id >= 0 && position_id < position_embedding_length) &&
+                     (nullptr == segment_embedding ||
+                      (segment_id >= 0 && segment_id < segment_embedding_length));
+    if (!is_valid_block) {
+      *error_flag = 1;
+    }
   }
   __syncthreads();
 
+  if (!is_valid_block) {
+    return;
+  }
+
   // 2. load pos/segment/word embeddings and add them together
   // offset into embeddings is given by word_id * hidden_size
-  const int position_offset = position_id * hidden_size;
+  const int64_t position_offset = static_cast<int64_t>(position_id) * hidden_size;
 
-  const int word_offset = word_id * hidden_size;
-  const int segment_offset = segment_id * hidden_size;
+  const int64_t word_offset = static_cast<int64_t>(word_id) * hidden_size;
+  const int64_t segment_offset = static_cast<int64_t>(segment_id) * hidden_size;
   // the output offset is given by b * (sequence_length * hidden_size) + s * hidden_size
-  const int output_offset = sequence_position * hidden_size;
+  const int64_t output_offset = static_cast<int64_t>(sequence_position) * hidden_size;
 
   cub::KeyValuePair<float, float> thread_data(0.f, 0.f);
 
@@ -182,7 +197,7 @@ __global__ void EmbedLayerNormKernel(
     thread_data = pair_sum(thread_data, cub::KeyValuePair<float, float>(rldval, rldval * val_f));
   }
 
-  // 3. layer norm on the sum
+  // 3. layer norm on the sum (64-bit output offset to support large tensors)
   LayerNorm<T, TPB>(thread_data, hidden_size, output_offset, beta, gamma, epsilon, output);
 }
 
@@ -192,7 +207,8 @@ Status EmbedSkipLayerNorm(
     const int* input_ids, const int* segment_ids, const T* beta, const T* gamma,
     const T* word_embedding, const T* position_embedding, const T* segment_embedding,
     float epsilon, T* output, T* embedding_sum, const int* position_ids,
-    const bool broadcast_position_ids) {
+    const bool broadcast_position_ids, int word_embedding_length, int position_embedding_length,
+    int segment_embedding_length, int* error_flag) {
   constexpr int tpb = 256;
   const dim3 grid(sequence_length, batch_size, 1);
   const dim3 block(tpb, 1, 1);
@@ -200,7 +216,9 @@ Status EmbedSkipLayerNorm(
   EmbedLayerNormKernel<T, tpb>
       <<<grid, block, 0, stream>>>(hidden_size, input_ids, segment_ids, beta, gamma,
                                    word_embedding, position_embedding, segment_embedding,
-                                   epsilon, output, embedding_sum, position_ids, broadcast_position_ids);
+                                   epsilon, output, embedding_sum, position_ids, broadcast_position_ids,
+                                   word_embedding_length, position_embedding_length,
+                                   segment_embedding_length, error_flag);
 
   return CUDA_CALL(cudaGetLastError());
 }
@@ -224,7 +242,11 @@ Status LaunchEmbedLayerNormKernel(
     const size_t element_size,
     void* embedding_sum,
     const int* position_ids,
-    const bool broadcast_position_ids) {
+    const bool broadcast_position_ids,
+    int word_embedding_length,
+    int position_embedding_length,
+    int segment_embedding_length,
+    int* error_flag) {
   if (mask_index != nullptr) {
     if (nullptr == input_mask) {
       CUDA_RETURN_IF_ERROR(cudaMemsetAsync(mask_index, 0, sizeof(int) * batch_size, stream));
@@ -241,7 +263,8 @@ Status LaunchEmbedLayerNormKernel(
         reinterpret_cast<const half*>(word_embedding), reinterpret_cast<const half*>(position_embedding),
         reinterpret_cast<const half*>(segment_embedding), epsilon,
         reinterpret_cast<half*>(output), reinterpret_cast<half*>(embedding_sum), position_ids,
-        broadcast_position_ids);
+        broadcast_position_ids, word_embedding_length, position_embedding_length,
+        segment_embedding_length, error_flag);
   } else {
     return EmbedSkipLayerNorm<float>(
         stream, hidden_size, batch_size, sequence_length, input_ids, segment_ids,
@@ -249,7 +272,8 @@ Status LaunchEmbedLayerNormKernel(
         reinterpret_cast<const float*>(word_embedding), reinterpret_cast<const float*>(position_embedding),
         reinterpret_cast<const float*>(segment_embedding), epsilon,
         reinterpret_cast<float*>(output), reinterpret_cast<float*>(embedding_sum), position_ids,
-        broadcast_position_ids);
+        broadcast_position_ids, word_embedding_length, position_embedding_length,
+        segment_embedding_length, error_flag);
   }
 }
 

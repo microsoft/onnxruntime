@@ -75,7 +75,8 @@ __global__ void SkipLayerNormKernel(
     T* output, T* sum_output, const T* input, const T* skip, const T* bias, const T* gamma, const T* beta,
     float epsilon, const int ld, int skip_size) {
   const float reverse_ld = 1.f / ld;
-  const int offset = blockIdx.x * ld;
+  // 64-bit global element offset: blockIdx.x*ld (= row*hidden) can exceed 2^31 for large tensors.
+  const int64_t offset = static_cast<int64_t>(blockIdx.x) * ld;
   const bool has_bias = (bias != nullptr);
 
   // Reduce sum of x and x^2, and the results are divided by ld.
@@ -84,7 +85,7 @@ __global__ void SkipLayerNormKernel(
   cub::KeyValuePair<float, float> thread_data(0.f, 0.f);
 
   for (int i = threadIdx.x; i < ld; i += TPB) {
-    const int idx = offset + i;
+    const int64_t idx = offset + i;
 
     T val = input[idx];
     if (has_bias) {
@@ -116,7 +117,8 @@ __global__ void SkipLayerNormKernelSmall(
     T* output, T* sum_output, const T* input, const T* skip, const T* bias, const T* gamma, const T* beta,
     float epsilon, int ld, int skip_size) {
   const float rld = 1.f / ld;
-  const int idx = blockIdx.x * ld + threadIdx.x * ILP;
+  // 64-bit element offset (see SkipLayerNormKernel); large tensors can exceed 2^31.
+  const int64_t idx = static_cast<int64_t>(blockIdx.x) * ld + threadIdx.x * ILP;
 
   using VecT = aligned_vector<T, ILP>;
   T sum_v[ILP];

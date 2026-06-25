@@ -227,7 +227,7 @@ TEST(EmbedLayerNormTest, EmbedLayerNormBatch_Distill) {
   RunTest(embedlayernorm::EmbedLayerNormBatch_Distill());
 }
 
-// Regression test: negative position_ids must be rejected to not cause OOB read.
+// Input validation test: a negative position id must be rejected rather than used to index the table.
 TEST(EmbedLayerNormTest, EmbedLayerNormNegativePositionIds) {
   int batch_size = 1;
   int sequence_size = 2;
@@ -282,8 +282,103 @@ TEST(EmbedLayerNormTest, EmbedLayerNormNegativePositionIds) {
   tester.AddOutput<float>("output", output_dims, std::vector<float>(batch_size * sequence_size * hidden_size, 0.0f));
   tester.AddOutput<int32_t>("mask_index", mask_index_dims, {0});
 
-  // Run CPU only - expect failure due to negative position_ids
-  tester.Run(OpTester::ExpectResult::kExpectFailure, "", {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kDmlExecutionProvider, kOpenVINOExecutionProvider});
+  // Both CPU and CUDA reject the out-of-range position id via input validation. The CUDA NHWC EP
+  // shares the same validated kernel, so it is intentionally left enabled (skipped automatically if
+  // the kernel is not registered for that EP). Only DML and OpenVINO are excluded here.
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "", {kDmlExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+// An input id that points outside the word_embedding table must be rejected rather than indexed.
+// CPU validates per-index already; CUDA validates device-side and surfaces the same failure, so
+// this case runs on both EPs.
+TEST(EmbedLayerNormTest, EmbedLayerNormWordIdOutOfRange) {
+  int batch_size = 1;
+  int sequence_size = 2;
+  int hidden_size = 4;
+
+  std::vector<int64_t> input_ids_dims = {batch_size, sequence_size};
+  std::vector<int64_t> word_embedding_dims = {6, hidden_size};
+  std::vector<int64_t> position_embedding_dims = {3, hidden_size};
+  std::vector<int64_t> segment_embedding_dims = {2, hidden_size};
+  std::vector<int64_t> gamma_dims = {hidden_size};
+  std::vector<int64_t> beta_dims = {hidden_size};
+  std::vector<int64_t> output_dims = {batch_size, sequence_size, hidden_size};
+  std::vector<int64_t> mask_index_dims = {batch_size};
+
+  OpTester tester("EmbedLayerNormalization", 1, onnxruntime::kMSDomain);
+  // Second id (99) is outside the 6-row word_embedding table.
+  tester.AddInput<int32_t>("input_ids", input_ids_dims, {1, 99});
+  tester.AddInput<int32_t>("segment_ids", input_ids_dims, {0, 1});
+  tester.AddInput<float>("word_embedding", word_embedding_dims,
+                         {0.2f, 0.1f, 0.4f, -0.6f,
+                          0.3f, 0.2f, 0.5f, 0.6f,
+                          0.6f, 0.7f, 0.0f, -0.1f,
+                          0.8f, 0.6f, 0.9f, 1.2f,
+                          0.1f, 0.3f, 0.5f, 0.9f,
+                          1.0f, -2.0f, 1.1f, 0.8f},
+                         /*is_initializer=*/true);
+  tester.AddInput<float>("position_embedding", position_embedding_dims,
+                         {0.1f, 0.1f, 0.4f, 0.6f,
+                          0.6f, 0.0f, 0.8f, 0.6f,
+                          0.3f, 0.9f, -2.0f, 0.8f},
+                         /*is_initializer=*/true);
+  tester.AddInput<float>("segment_embedding", segment_embedding_dims,
+                         {0.3f, 0.4f, 0.9f, 0.1f,
+                          0.7f, 0.3f, 0.5f, 0.2f},
+                         /*is_initializer=*/true);
+  tester.AddInput<float>("gamma", gamma_dims, {0.25f, 0.15f, 0.45f, -0.66f}, /*is_initializer=*/true);
+  tester.AddInput<float>("beta", beta_dims, {0.6f, 0.2f, 0.5f, -0.6f}, /*is_initializer=*/true);
+  tester.AddAttribute("epsilon", embedlayernorm::kEpsilon);
+
+  tester.AddOutput<float>("output", output_dims, std::vector<float>(batch_size * sequence_size * hidden_size, 0.0f));
+  tester.AddOutput<int32_t>("mask_index", mask_index_dims, {0});
+
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "", {kDmlExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+// Without position_ids, positions default to [0, sequence_length); a position_embedding table with
+// fewer rows than sequence_length is rejected by the shared input validation on both CPU and CUDA.
+TEST(EmbedLayerNormTest, EmbedLayerNormPositionEmbeddingTooFewRows) {
+  int batch_size = 1;
+  int sequence_size = 2;
+  int hidden_size = 4;
+
+  std::vector<int64_t> input_ids_dims = {batch_size, sequence_size};
+  std::vector<int64_t> word_embedding_dims = {6, hidden_size};
+  // Only 1 row, but sequence_size is 2 and no position_ids are supplied.
+  std::vector<int64_t> position_embedding_dims = {1, hidden_size};
+  std::vector<int64_t> segment_embedding_dims = {2, hidden_size};
+  std::vector<int64_t> gamma_dims = {hidden_size};
+  std::vector<int64_t> beta_dims = {hidden_size};
+  std::vector<int64_t> output_dims = {batch_size, sequence_size, hidden_size};
+  std::vector<int64_t> mask_index_dims = {batch_size};
+
+  OpTester tester("EmbedLayerNormalization", 1, onnxruntime::kMSDomain);
+  tester.AddInput<int32_t>("input_ids", input_ids_dims, {1, 3});
+  tester.AddInput<int32_t>("segment_ids", input_ids_dims, {0, 1});
+  tester.AddInput<float>("word_embedding", word_embedding_dims,
+                         {0.2f, 0.1f, 0.4f, -0.6f,
+                          0.3f, 0.2f, 0.5f, 0.6f,
+                          0.6f, 0.7f, 0.0f, -0.1f,
+                          0.8f, 0.6f, 0.9f, 1.2f,
+                          0.1f, 0.3f, 0.5f, 0.9f,
+                          1.0f, -2.0f, 1.1f, 0.8f},
+                         /*is_initializer=*/true);
+  tester.AddInput<float>("position_embedding", position_embedding_dims,
+                         {0.1f, 0.1f, 0.4f, 0.6f},
+                         /*is_initializer=*/true);
+  tester.AddInput<float>("segment_embedding", segment_embedding_dims,
+                         {0.3f, 0.4f, 0.9f, 0.1f,
+                          0.7f, 0.3f, 0.5f, 0.2f},
+                         /*is_initializer=*/true);
+  tester.AddInput<float>("gamma", gamma_dims, {0.25f, 0.15f, 0.45f, -0.66f}, /*is_initializer=*/true);
+  tester.AddInput<float>("beta", beta_dims, {0.6f, 0.2f, 0.5f, -0.6f}, /*is_initializer=*/true);
+  tester.AddAttribute("epsilon", embedlayernorm::kEpsilon);
+
+  tester.AddOutput<float>("output", output_dims, std::vector<float>(batch_size * sequence_size * hidden_size, 0.0f));
+  tester.AddOutput<int32_t>("mask_index", mask_index_dims, {0});
+
+  tester.Run(OpTester::ExpectResult::kExpectFailure, "", {kDmlExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 }  // namespace test

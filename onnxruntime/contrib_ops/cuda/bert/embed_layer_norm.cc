@@ -61,9 +61,18 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
   int sequence_length = static_cast<int>(input_dims[1]);
   size_t element_size = sizeof(T);
 
+  int word_embedding_length = static_cast<int>(word_embedding->Shape()[0]);
+  int position_embedding_length = static_cast<int>(position_embedding->Shape()[0]);
+  int segment_embedding_length =
+      (nullptr == segment_embedding) ? 0 : static_cast<int>(segment_embedding->Shape()[0]);
+
   const bool broadcast_position_ids = (nullptr != position_ids && position_ids->Shape()[0] == 1);
 
-  return LaunchEmbedLayerNormKernel(
+  // Device flag raised by the kernel when an input id is outside its embedding table.
+  auto error_flag = GetScratchBuffer<int>(1, context->GetComputeStream());
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(error_flag.get(), 0, sizeof(int), Stream(context)));
+
+  ORT_RETURN_IF_ERROR(LaunchEmbedLayerNormKernel(
       Stream(context),
       output->MutableData<T>(),
       nullptr == mask_index ? nullptr : mask_index->MutableData<int32_t>(),
@@ -82,7 +91,30 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
       element_size,
       embedding_sum == nullptr ? nullptr : embedding_sum->MutableData<T>(),
       position_ids == nullptr ? nullptr : position_ids->Data<int32_t>(),
-      broadcast_position_ids);
+      broadcast_position_ids,
+      word_embedding_length,
+      position_embedding_length,
+      segment_embedding_length,
+      error_flag.get()));
+
+  // The kernel always validates ids device-side and skips the embedding reads for any
+  // out-of-range id, so input safety does not depend on the readback below; the readback only
+  // upgrades a skipped (silently zeroed) row into a clean error status. cudaStreamSynchronize and
+  // device-to-host copies are not permitted on a stream that is capturing a CUDA graph, so skip the
+  // status readback while the stream is capturing. Ids are still kept in range device-side, and
+  // error surfacing resumes on normal (non-capturing) runs.
+  cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+  CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(Stream(context), &capture_status));
+  if (capture_status == cudaStreamCaptureStatusNone) {
+    auto host_error_flag = AllocateBufferOnCPUPinned<int>(1);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_error_flag.get(), error_flag.get(), sizeof(int),
+                                         cudaMemcpyDeviceToHost, Stream(context)));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(Stream(context)));
+    ORT_RETURN_IF(*host_error_flag.get() != 0,
+                  "input id is out of range of the corresponding embedding table.");
+  }
+
+  return Status::OK();
 }
 
 }  // namespace cuda
