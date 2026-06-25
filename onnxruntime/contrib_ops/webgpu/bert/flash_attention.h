@@ -208,7 +208,8 @@ class FlashAttentionDecodeVxReduceProgram final : public Program<FlashAttentionD
 Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
                            Tensor* output, const Tensor* past_key, Tensor* present_key, const Tensor* past_value, Tensor* present_value,
                            const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k = nullptr,
-                           const Tensor* cos_cache = nullptr, const Tensor* sin_cache = nullptr, const Tensor* head_sink = nullptr);
+                           const Tensor* cos_cache = nullptr, const Tensor* sin_cache = nullptr, const Tensor* head_sink = nullptr,
+                           const Tensor* total_seqlen = nullptr);
 
 bool CanApplyFlashAttention(const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context);
 
@@ -223,7 +224,8 @@ Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::Comput
                                                      Tensor* present_key,
                                                      Tensor* present_value,
                                                      Tensor* indirect_buffer,
-                                                     uint32_t tile_size, uint32_t num_q_tiles);
+                                                     uint32_t tile_size, uint32_t num_q_tiles,
+                                                     const Tensor* total_seqlen = nullptr);
 }  // namespace webgpu
 }  // namespace contrib
 }  // namespace onnxruntime

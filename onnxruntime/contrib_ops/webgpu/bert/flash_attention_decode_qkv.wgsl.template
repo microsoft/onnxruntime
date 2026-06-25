@@ -62,7 +62,7 @@ $MAIN {
   // total_sequence_length used for workgroup_idx slicing must match the host-side dispatch
   // grid, i.e. the global maximum across batches. Per-batch total is derived separately below.
   #if use_indirect_dispatch
-  let global_total_sequence_length = u32(seqlens_k[0]) + 1u;
+  let global_total_sequence_length = u32(total_sequence_length_input[0]);
   #else
   let global_total_sequence_length = uniforms.total_sequence_length;
   #endif

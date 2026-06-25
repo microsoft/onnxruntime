@@ -2531,7 +2531,9 @@ static std::vector<float> RunGQAPackedQKVRotaryPrefill(
   tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
   tester.AddAttribute<int64_t>("do_rotary", static_cast<int64_t>(1));
   if (smooth_softmax) {
-    // smooth_softmax disqualifies WebGPU CanApplyFlashAttention -> routes to ApplyAttention.
+    // smooth_softmax disqualifies the WebGPU FlashAttention path via the outer
+    // gating in GroupQueryAttention::ComputeInternal, routing this case through
+    // ApplyAttention instead.
     tester.AddAttribute<int64_t>("smooth_softmax", static_cast<int64_t>(1));
   }
 
@@ -2736,6 +2738,23 @@ TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefillFlashAttention_WebG
   // sequence_length = max(real_lens) = 33 > 32 -> FlashAttentionProgram path.
   // Mixed shorter batches (12, 20) ensure right-padding is non-trivial.
   RunBatchedRightPaddedRotaryPrefillForEP(GqaTargetEp::kWebGpu, {20, 12, 33});
+}
+
+// Stress the FlashAttention prefill path with a per-batch spread that exceeds
+// the indirect-dispatch tile size (64). batch 0 has the SHORTEST real length;
+// batch 2 has the LONGEST. This is the data pattern that would surface the
+// indirect-dispatch undersizing bug when graph capture is enabled (where the
+// dispatch grid is sized from a GPU buffer rather than the host scalar).
+// OpTester does not toggle graph capture, so this test exercises the new
+// total_sequence_length_input shader plumbing on the non-graph-capture path;
+// the graph-capture path is covered end-to-end by phi4-graph-prune verification.
+TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefillFlashAttentionLargeSpread_WebGPU) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  // spread = 96 - 20 = 76 > tile_size(64), batch 0 is not the max.
+  RunBatchedRightPaddedRotaryPrefillForEP(GqaTargetEp::kWebGpu, {20, 12, 96});
 }
 
 // Same property as BatchedRightPaddedRotaryPrefill_WebGPU, but with

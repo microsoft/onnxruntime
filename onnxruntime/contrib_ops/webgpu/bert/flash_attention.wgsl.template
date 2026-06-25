@@ -105,7 +105,7 @@ fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, he
   let stride_total_seq = uniforms.attn_bias_dim3;
   let offset_base = bias_batch_idx * uniforms.attn_bias_dim1 * uniforms.new_sequence_length * stride_total_seq +
                     bias_head_idx * uniforms.new_sequence_length * stride_total_seq + q_idx_global * stride_total_seq;
-  return q_element_t(attention_bias[min(offset_base + k_idx_global, offset_base + stride_total_seq)]);
+  return q_element_t(attention_bias[min(offset_base + k_idx_global, offset_base + stride_total_seq - 1u)]);
 }
  #endif
 
@@ -177,7 +177,7 @@ fn loadAttentionBias(batch_idx : u32, q_idx_global : u32, k_idx_global : u32, he
   let offset_base = bias_batch_idx * uniforms.attn_bias_dim1 * uniforms.new_sequence_length * stride_total_seq +
                     bias_head_idx * uniforms.new_sequence_length * stride_total_seq + q_idx_global * stride_total_seq;
   let offset = offset_base + k_idx_global;
-  let offset_max = offset_base + stride_total_seq;
+  let offset_max = offset_base + stride_total_seq - 1u;
   let c1 = q_element_t(attention_bias[min(offset, offset_max)]);
   let c2 = q_element_t(attention_bias[min(offset + 1, offset_max)]);
   let c3 = q_element_t(attention_bias[min(offset + 2, offset_max)]);
