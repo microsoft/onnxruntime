@@ -951,7 +951,8 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
           endif()
         endif()
         if(NOT DEFINED IOS_PLAT)
-          if(CMAKE_OSX_SYSROOT MATCHES "iPhoneSimulator")
+          string(TOLOWER "${CMAKE_OSX_SYSROOT}" IOS_SYSROOT_LOWER)
+          if(IOS_SYSROOT_LOWER MATCHES "iphonesimulator")
             set(IOS_PLAT "iphonesimulator" CACHE STRING "iOS platform for 1DS SDK" FORCE)
           else()
             set(IOS_PLAT "iphoneos" CACHE STRING "iOS platform for 1DS SDK" FORCE)
@@ -1019,7 +1020,6 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
           "${cpp_client_telemetry_SOURCE_DIR}/zlib/trees.c"
           "${cpp_client_telemetry_SOURCE_DIR}/zlib/uncompr.c"
           "${cpp_client_telemetry_SOURCE_DIR}/zlib/zutil.c"
-          "${cpp_client_telemetry_SOURCE_DIR}/zlib/simd_stub.c"
         )
         target_include_directories(onnxruntime_mat_zlib_bundled PUBLIC "${cpp_client_telemetry_SOURCE_DIR}/zlib")
         target_compile_options(onnxruntime_mat_zlib_bundled PRIVATE
