@@ -85,9 +85,18 @@ static Status ComputeRange(
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Range: the computed number of elements is not a finite value.");
   }
-  int64_t n = static_cast<int64_t>(count);
-  if (n <= 0)
-    n = 0;
+  // Empty or backward ranges clamp to 0; handle the non-positive case before the cast so a
+  // large-magnitude negative count can never reach (and overflow) the int64 conversion.
+  int64_t n = 0;
+  if (count > 0) {
+    // static_cast<double>(INT64_MAX) rounds up to 2^63 (9223372036854775808.0), which is not
+    // representable as int64_t, so reject any count at or above that boundary before the cast.
+    if (count >= 9223372036854775808.0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Range: the computed number of elements exceeds the supported range.");
+    }
+    n = static_cast<int64_t>(count);
+  }
   TensorShape shape = {n};
   T* y = ctx->Output(0, shape)->MutableData<T>();
   for (int64_t i = 0; i < n; ++i) {

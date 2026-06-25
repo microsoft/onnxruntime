@@ -88,11 +88,17 @@ static int64_t CalcRangeDim(const TensorProto* startShapeInitializer,
   if (!std::isfinite(count)) {
     fail_shape_inference("Range: the computed number of elements is not a finite value.");
   }
-  int64_t n = static_cast<int64_t>(count);
-  if (n <= 0) {
-    n = 0;
+  // Empty or backward ranges clamp to 0; handle the non-positive case before the cast so a
+  // large-magnitude negative count can never reach (and overflow) the int64 conversion below.
+  if (count <= 0) {
+    return 0;
   }
-  return n;
+  // static_cast<double>(INT64_MAX) rounds up to 2^63 (9223372036854775808.0), which is not
+  // representable as int64_t, so reject any count at or above that boundary before the cast.
+  if (count >= 9223372036854775808.0) {
+    fail_shape_inference("Range: the computed number of elements exceeds the supported range.");
+  }
+  return static_cast<int64_t>(count);
 }
 
 static int64_t CalcResultDim(const TensorProto* startShapeInitializer,

@@ -293,6 +293,18 @@ TEST(RangeTest, ContribOp_ZeroDelta_FailsCleanly) {
   ASSERT_FALSE(status.IsOK());
 }
 
+// Verifies that a finite element count that exceeds the int64 range is rejected cleanly,
+// rather than reaching an out-of-range conversion (start=0, limit=1e19, delta=1).
+TEST(RangeTest, ContribOp_CountExceedsInt64Range_FailsCleanly) {
+  SessionOptions so;
+  so.session_logid = "RangeTest.ContribOp_CountExceedsInt64Range_FailsCleanly";
+  InferenceSession session_object{so, GetEnvironment()};
+  const auto status = BuildAndInitializeContribRangeModel(
+      ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, ScalarInput(0.0), ScalarInput(1e19),
+      ScalarInput(1.0), session_object);
+  ASSERT_FALSE(status.IsOK());
+}
+
 #endif  // !defined(ORT_NO_EXCEPTIONS)
 
 #endif  // DISABLE_CONTRIB_OPS
