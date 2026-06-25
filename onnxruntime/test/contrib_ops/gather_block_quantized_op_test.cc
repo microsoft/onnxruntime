@@ -518,26 +518,16 @@ TEST(GatherBlockQuantizedOpTest, InvalidIndices) {
 // bounds on the device. These cases mirror the CPU coverage above but run on the CUDA
 // EP, which previously skipped these checks. They fall back to the CPU EP (which rejects
 // the same inputs) when no CUDA device is present.
-
-// Out-of-bounds gathered indices are runtime data values, so they cannot be caught by
-// shape inference; the device sets an error flag that ComputeInternal turns into a
-// failed Status. This path does not throw, so it runs in all builds.
-TEST(GatherBlockQuantizedOpTest, CudaInvalidIndices) {
-  Test_InvalidIndices_WithZeroPoints<UInt4x2, float, int32_t>();
-  Test_InvalidIndices_WithZeroPoints<Int4x2, float, int32_t>();
-  Test_InvalidIndices_WithZeroPoints<uint8_t, float, int32_t>();
-}
-
-#if !defined(ORT_NO_EXCEPTIONS)
-// The following cases reject their inputs by throwing: the shape mismatch and the
-// block_size == 0 case fail via fail_shape_inference during Graph::Resolve, and the
-// unsupported-bits case fails via an ORT_ENFORCE in the kernel constructor. A throw
-// aborts under ORT_NO_EXCEPTIONS, so these only run when exceptions are enabled, matching
-// the convention OpTester::ExpectResult::kExpectFailure relies on for throwing failures.
 TEST(GatherBlockQuantizedOpTest, CudaShapeMismatch) {
   Test_ShapeMismatch_WithZeroPoints<UInt4x2, float, int32_t>();
   Test_ShapeMismatch_WithZeroPoints<Int4x2, float, int32_t>();
   Test_ShapeMismatch_WithZeroPoints<uint8_t, float, int32_t>();
+}
+
+TEST(GatherBlockQuantizedOpTest, CudaInvalidIndices) {
+  Test_InvalidIndices_WithZeroPoints<UInt4x2, float, int32_t>();
+  Test_InvalidIndices_WithZeroPoints<Int4x2, float, int32_t>();
+  Test_InvalidIndices_WithZeroPoints<uint8_t, float, int32_t>();
 }
 
 // block_size == 0 is an invalid divisor for relating data and scales shapes, so shape
@@ -559,8 +549,7 @@ TEST(GatherBlockQuantizedOpTest, CudaUnsupportedBits) {
   Test_Fail_WithoutZeroPoints<uint8_t, float, int32_t>(
       /*gather_axis=*/0, /*quantize_axis=*/2, /*block_size=*/16, /*bits=*/3);
 }
-#endif  // !defined(ORT_NO_EXCEPTIONS)
-#endif  // USE_CUDA
+#endif
 
 template <typename T1, typename T2, typename Tind>
 void Test_GatherAxis0_WithZeroPoints(int bits = 4) {
