@@ -47,6 +47,15 @@ template <typename T1, typename T2, typename Tind>
 GatherBlockQuantized<T1, T2, Tind>::GatherBlockQuantized(const OpKernelInfo& info) : CudaKernel(info) {
   ORT_ENFORCE(info.GetAttr("bits", &bits_).IsOK());
 
+  // bits_ is used as the divisor in 8 / bits_ to derive the uint8 packing factor, so it must
+  // be one of the supported widths. uint8 data packs 4 or 8 bit values; int4/uint4 are 4 bit.
+  if constexpr (std::is_same_v<T1, uint8_t>) {
+    ORT_ENFORCE(bits_ == 4 || bits_ == 8,
+                "GatherBlockQuantized with uint8 data only supports bits == 4 or 8.");
+  } else {
+    ORT_ENFORCE(bits_ == 4, "GatherBlockQuantized with int4/uint4 data only supports bits == 4.");
+  }
+
   block_size_ = info.GetAttrOrDefault<int64_t>("block_size", 0);
   gather_axis_ = info.GetAttrOrDefault<int64_t>("gather_axis", 0);
   quantize_axis_ = info.GetAttrOrDefault<int64_t>("quantize_axis", 0);

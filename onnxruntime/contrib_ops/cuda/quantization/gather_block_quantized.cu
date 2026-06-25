@@ -94,8 +94,10 @@ void LaunchGatherBlockQuantizedKernel(const T1* data,
   int blocksPerGrid = (int)(ceil(static_cast<float>(param.N) / GridDim::maxThreadsPerBlock));
   bool sign = std::is_same<T1, Int4x2>::value;
 
-  GatherBlockQuantizedKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, param.stream>>>(data, indices, scales, zero_points, output,
-                                                                                              param.after_gather_dim, param.gather_axis_dim, param.ind_dim, param.bits, param.block_size, param.gather_axis, param.N, sign, param.index_out_of_bounds);
+  GatherBlockQuantizedKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, param.stream>>>(
+      data, indices, scales, zero_points, output,
+      param.after_gather_dim, param.gather_axis_dim, param.ind_dim, param.bits, param.block_size,
+      param.gather_axis, param.N, sign, param.index_out_of_bounds);
 }
 
 template void LaunchGatherBlockQuantizedKernel<uint8_t, float, int32_t>(const uint8_t*, const int32_t*, const float*, const uint8_t*, float*, GatherBlockQuantizedParam);

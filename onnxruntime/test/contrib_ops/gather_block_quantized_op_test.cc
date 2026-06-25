@@ -375,6 +375,12 @@ TEST(GatherBlockQuantizedOpTest, UnsupportedTypes) {
 }
 #endif
 
+// Runs GatherBlockQuantized with inputs that are expected to be rejected (no zero_points).
+// Parameters:
+//   gather_axis   - value for the "gather_axis" attribute
+//   quantize_axis - value for the "quantize_axis" attribute
+//   block_size    - value for the "block_size" attribute
+//   bits          - value for the "bits" attribute (default 4)
 template <typename T1, typename T2, typename Tind>
 void Test_Fail_WithoutZeroPoints(int64_t gather_axis,
                                  int64_t quantize_axis,
@@ -530,6 +536,15 @@ TEST(GatherBlockQuantizedOpTest, CudaInvalidBlockSizeZero) {
   Test_Fail_WithoutZeroPoints<UInt4x2, float, int32_t>(0, 2, 0);
   Test_Fail_WithoutZeroPoints<Int4x2, float, int32_t>(0, 2, 0);
   Test_Fail_WithoutZeroPoints<uint8_t, float, int32_t>(0, 2, 0);
+}
+
+// uint8 data supports bits in {4, 8} and int4/uint4 supports bits == 4 on CUDA; other
+// values are rejected by the constructor before the 8 / bits division that derives the
+// uint8 packing factor.
+TEST(GatherBlockQuantizedOpTest, CudaUnsupportedBits) {
+  Test_Fail_WithoutZeroPoints<UInt4x2, float, int32_t>(0, 2, 16, 3);
+  Test_Fail_WithoutZeroPoints<Int4x2, float, int32_t>(0, 2, 16, 8);
+  Test_Fail_WithoutZeroPoints<uint8_t, float, int32_t>(0, 2, 16, 3);
 }
 #endif
 
