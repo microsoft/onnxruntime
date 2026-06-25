@@ -375,6 +375,12 @@ TEST(GatherBlockQuantizedOpTest, UnsupportedTypes) {
 }
 #endif
 
+// Runs GatherBlockQuantized with inputs that are expected to be rejected (no zero_points).
+// Parameters:
+//   gather_axis   - value for the "gather_axis" attribute
+//   quantize_axis - value for the "quantize_axis" attribute
+//   block_size    - value for the "block_size" attribute
+//   bits          - value for the "bits" attribute (default 4)
 template <typename T1, typename T2, typename Tind>
 void Test_Fail_WithoutZeroPoints(int64_t gather_axis,
                                  int64_t quantize_axis,
@@ -504,6 +510,44 @@ TEST(GatherBlockQuantizedOpTest, InvalidIndices) {
   Test_InvalidIndices_WithZeroPoints<UInt4x2, float, int32_t>();
   Test_InvalidIndices_WithZeroPoints<Int4x2, float, int32_t>();
   Test_InvalidIndices_WithZeroPoints<uint8_t, float, int32_t>();
+}
+#endif
+
+#ifdef USE_CUDA
+// The CUDA EP validates quantization-parameter shapes on the host and gathered-index
+// bounds on the device. These cases mirror the CPU coverage above but run on the CUDA
+// EP, which previously skipped these checks. They fall back to the CPU EP (which rejects
+// the same inputs) when no CUDA device is present.
+TEST(GatherBlockQuantizedOpTest, CudaShapeMismatch) {
+  Test_ShapeMismatch_WithZeroPoints<UInt4x2, float, int32_t>();
+  Test_ShapeMismatch_WithZeroPoints<Int4x2, float, int32_t>();
+  Test_ShapeMismatch_WithZeroPoints<uint8_t, float, int32_t>();
+}
+
+TEST(GatherBlockQuantizedOpTest, CudaInvalidIndices) {
+  Test_InvalidIndices_WithZeroPoints<UInt4x2, float, int32_t>();
+  Test_InvalidIndices_WithZeroPoints<Int4x2, float, int32_t>();
+  Test_InvalidIndices_WithZeroPoints<uint8_t, float, int32_t>();
+}
+
+// block_size == 0 is an invalid divisor for relating data and scales shapes, so shape
+// inference rejects it with fail_shape_inference during Graph::Resolve.
+TEST(GatherBlockQuantizedOpTest, CudaInvalidBlockSizeZero) {
+  Test_Fail_WithoutZeroPoints<UInt4x2, float, int32_t>(/*gather_axis=*/0, /*quantize_axis=*/2, /*block_size=*/0);
+  Test_Fail_WithoutZeroPoints<Int4x2, float, int32_t>(/*gather_axis=*/0, /*quantize_axis=*/2, /*block_size=*/0);
+  Test_Fail_WithoutZeroPoints<uint8_t, float, int32_t>(/*gather_axis=*/0, /*quantize_axis=*/2, /*block_size=*/0);
+}
+
+// uint8 data supports bits in {4, 8} and int4/uint4 supports bits == 4 on CUDA; other
+// values are rejected by the constructor before the 8 / bits division that derives the
+// uint8 packing factor.
+TEST(GatherBlockQuantizedOpTest, CudaUnsupportedBits) {
+  Test_Fail_WithoutZeroPoints<UInt4x2, float, int32_t>(
+      /*gather_axis=*/0, /*quantize_axis=*/2, /*block_size=*/16, /*bits=*/3);
+  Test_Fail_WithoutZeroPoints<Int4x2, float, int32_t>(
+      /*gather_axis=*/0, /*quantize_axis=*/2, /*block_size=*/16, /*bits=*/8);
+  Test_Fail_WithoutZeroPoints<uint8_t, float, int32_t>(
+      /*gather_axis=*/0, /*quantize_axis=*/2, /*block_size=*/16, /*bits=*/3);
 }
 #endif
 
