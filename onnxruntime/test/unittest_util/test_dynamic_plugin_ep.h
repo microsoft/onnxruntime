@@ -17,6 +17,7 @@
 namespace onnxruntime {
 struct IExecutionProviderFactory;
 class IExecutionProvider;
+struct ConfigOptions;
 
 namespace logging {
 class Logger;
@@ -27,6 +28,8 @@ namespace test {
 // `onnxruntime::test::dynamic_plugin_ep_infra` contains functions and types related to dynamically loaded plugin EP
 // unit testing infrastructure.
 namespace dynamic_plugin_ep_infra {
+
+inline constexpr std::string_view kCudaPluginExecutionProviderName{"CudaPluginExecutionProvider"};
 
 // Note: `Initialize()` and `Shutdown()` are not thread-safe.
 // They should be called before and after calls to most of the other functions in this namespace.
@@ -74,7 +77,8 @@ bool IsInitialized();
 void Shutdown();
 
 // Returns a dynamic plugin EP `IExecutionProvider` instance, or `nullptr` if uninitialized.
-std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger = nullptr);
+// `ep_options` provides additional EP-specific option overrides (key-value pairs) on top of the defaults.
+std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger = nullptr, const ConfigOptions* ep_options = nullptr);
 
 // Gets the dynamic plugin EP name, or `std::nullopt` if uninitialized.
 std::optional<std::string> GetEpName();

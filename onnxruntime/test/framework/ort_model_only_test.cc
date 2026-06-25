@@ -592,6 +592,16 @@ TEST(OrtModelOnlyTests, GithubIssue17000) {
   RunOrtModel(test_info);
 }
 
+// ICM 31000000518041.
+TEST(OrtModelOnlyTests, NullNodeArgNameCheck) {
+  auto ort_file = ORT_TSTR("testdata/icm-31000000518041.ort");
+
+  SessionOptions so;
+  InferenceSessionWrapper session_object{so, GetEnvironment()};
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session_object.Load(ort_file),
+                                      "NodeArg name is missing. Invalid ORT format model.");
+}
+
 #if !defined(DISABLE_ML_OPS)
 // test that we can deserialize and run a previously saved ORT format model
 // for a model with sequence and map outputs

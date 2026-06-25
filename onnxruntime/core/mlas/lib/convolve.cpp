@@ -42,6 +42,53 @@ struct MLAS_CONV_WORK_BLOCK {
     ptrdiff_t TargetThreadCount;
 };
 
+static
+void
+MlasDepthwiseMultiplierGreaterThan1Threaded(
+    void* Context,
+    ptrdiff_t Index
+    )
+{
+    MLAS_CONV_WORK_BLOCK* WorkBlock = (MLAS_CONV_WORK_BLOCK*)Context;
+
+    const MLAS_CONV_PARAMETERS* Parameters = WorkBlock->Parameters;
+    const float* Zeros = nullptr;
+
+    const size_t GroupCount = Parameters->GroupCount;
+    const size_t BatchGroupCount = Parameters->BatchCount * GroupCount;
+
+    size_t BatchGroupStart;
+    size_t BatchGroupRemaining;
+
+    MlasPartitionWork(Index, WorkBlock->TargetThreadCount, BatchGroupCount,
+        &BatchGroupStart, &BatchGroupRemaining);
+
+    const size_t BatchGroupEnd = BatchGroupStart + BatchGroupRemaining;
+
+    const size_t FilterCount = Parameters->FilterCount;
+    const size_t OutputSize = Parameters->OutputSize;
+    const size_t K = Parameters->K;
+
+    const size_t InputGroupSize = Parameters->InputChannels * Parameters->InputSize;
+    const size_t OutputGroupSize = FilterCount * OutputSize;
+    const size_t FilterGroupSize = FilterCount * K;
+
+    for (size_t bg = BatchGroupStart; bg < BatchGroupEnd; bg++) {
+        size_t group = bg % GroupCount;
+
+        const float* input = WorkBlock->Input + bg * InputGroupSize;
+        const float* filter = WorkBlock->Filter + group * FilterGroupSize;
+        float* output = WorkBlock->Output + bg * OutputGroupSize;
+        const float* bias = WorkBlock->Bias;
+        if (bias != nullptr) {
+            bias += group * FilterCount;
+        }
+
+        MlasConvDepthwiseWithMultiplierFloat_CHW(Parameters, input, filter, output, Zeros);
+        MlasActivation(Parameters->Activation, output, bias, FilterCount, OutputSize, OutputSize);
+    }
+}
+
 void
 MlasConvIm2Col(
     const MLAS_CONV_PARAMETERS* Parameters,
@@ -1106,6 +1153,30 @@ Return Value:
         return;
     }
 
+    if (Algorithm == MlasConvAlgorithmDepthwiseMultiplierGreaterThan1 && ((BatchCount > 1) || (GroupCount > 1))) {
+        const size_t BatchGroupCount = BatchCount * GroupCount;
+
+        ptrdiff_t TargetThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+
+        if (static_cast<size_t>(TargetThreadCount) >= BatchGroupCount) {
+            TargetThreadCount = static_cast<ptrdiff_t>(BatchGroupCount);
+        }
+
+        MLAS_CONV_WORK_BLOCK WorkBlock;
+
+        WorkBlock.Parameters = Parameters;
+        WorkBlock.Input = Input;
+        WorkBlock.Filter = Filter;
+        WorkBlock.Bias = Bias;
+        WorkBlock.WorkingBuffer = nullptr;
+        WorkBlock.Output = Output;
+        WorkBlock.TargetThreadCount = TargetThreadCount;
+
+        MlasExecuteThreaded(MlasDepthwiseMultiplierGreaterThan1Threaded, &WorkBlock, TargetThreadCount, ThreadPool);
+
+        return;
+    }
+
 
 #if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
 
@@ -1159,7 +1230,7 @@ Return Value:
 
                     MlasGemm(CblasNoTrans, Parameters->u.GemmDirect.TransB, FilterCount, OutputSize,
                              K, 1.0f, filter, K, Input, Parameters->u.GemmDirect.ldb,
-                             Parameters->Beta, Output, OutputSize, ThreadPool);
+                             Parameters->Beta, Output, OutputSize, ThreadPool, Parameters->BackendKernelSelectorConfig);
 
                     //
                     // Apply the activation with optional bias.
@@ -1186,7 +1257,7 @@ Return Value:
 
                     MlasGemm(CblasNoTrans, CblasNoTrans, FilterCount, OutputSize, K, 1.0f, filter,
                              K, WorkingBuffer, OutputSize, Parameters->Beta, Output, OutputSize,
-                             ThreadPool);
+                             ThreadPool, Parameters->BackendKernelSelectorConfig);
 
                     //
                     // Apply the activation with optional bias.
@@ -1195,6 +1266,14 @@ Return Value:
                     MlasActivation(Parameters->Activation, Output, bias, FilterCount,
                         OutputSize, OutputSize);
 
+                    break;
+                }
+
+                case MlasConvAlgorithmDepthwiseMultiplierGreaterThan1:
+                {
+                    const float* Zeros = nullptr;
+                    MlasConvDepthwiseWithMultiplierFloat_CHW(Parameters, Input, filter, Output, Zeros);
+                    MlasActivation(Parameters->Activation, Output, bias, FilterCount, OutputSize, OutputSize);
                     break;
                 }
 
@@ -1452,6 +1531,23 @@ Return Value:
         *WorkingBufferSize = OutputSize * K;
 
     } else {
+
+#if defined(MLAS_TARGET_AMD64)
+
+    if (Dimensions == 2
+        && GroupCount > 1
+        && Parameters->FilterCount == 2 && Parameters->InputChannels == 1
+        && Parameters->KernelShape[0] == 7 && Parameters->KernelShape[1] == 7
+        && Parameters->Padding[0] == 3 && Parameters->Padding[1] == 3
+        && Parameters->Padding[2] == 3 && Parameters->Padding[3] == 3
+        && Parameters->StrideShape[0] == 2 && Parameters->StrideShape[1] == 2
+        && Parameters->DilationShape[0] == 1 && Parameters->DilationShape[1] == 1
+        && GetMlasPlatform().ConvNchwFloatKernel == MlasConvNchwFloatKernelAvx512F) {
+
+        Parameters->Algorithm = MlasConvAlgorithmDepthwiseMultiplierGreaterThan1;
+        return;
+    }
+#endif
 
 #if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
 

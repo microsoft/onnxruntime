@@ -276,7 +276,8 @@ Status ConvTranspose<float>::DoConvTranspose(OpKernelContext* context, bool dyna
           Xdata + group_id * X_offset,
           0,
           col_buffer_data,
-          thread_pool);
+          thread_pool,
+          &mlas_backend_kernel_selector_config_);
 
       if (p.X->Shape().NumDimensions() == 4) {
         math::Col2im<float, CPUMathUtil, StorageOrder::NCHW>(

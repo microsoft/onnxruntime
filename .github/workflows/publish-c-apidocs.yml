@@ -9,7 +9,7 @@ on:
       - include/onnxruntime/core/session/**
       - orttraining/orttraining/training_api/include/**
   schedule:
-    - cron: '0 0 1,15 * *'
+    - cron: '0 0 * * 0'
   workflow_dispatch:
 
 concurrency:
@@ -53,4 +53,4 @@ jobs:
         with:
           name: onnxruntime-c-apidocs
           path: _site
-          retention-days: 30
+          retention-days: 10

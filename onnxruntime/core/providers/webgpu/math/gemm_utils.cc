@@ -16,7 +16,6 @@ namespace {
 void HandleMaybeHaveBiasForGEMM(ShaderHelper& shader,
                                 const ShaderVariableHelper& output,
                                 const ShaderVariableHelper* c,
-                                int c_components,
                                 int output_components,
                                 bool c_is_scalar) {
   shader.AdditionalImplementation() << "    let coords = vec2(u32(row), u32(colIn));\n";
@@ -27,7 +26,7 @@ void HandleMaybeHaveBiasForGEMM(ShaderHelper& shader,
     // There is only one case for c_components_ is not equal output_components.
     // I.g. the former is `1` and the latter is `4`.
     // That means the shape of `c` is either {M,1} or {1,1}
-    if (c_components == output_components) {
+    if (c->NumComponents() == output_components) {
       shader.AdditionalImplementation() << "output_value_t("
                                         << c->GetByOffset(c->BroadcastedIndicesToOffset("vec2(u32(row), u32(colIn))", output)) << ");\n";
     } else if (c_is_scalar) {
@@ -120,6 +119,23 @@ void InitializeLogicalWorkgroupIDAndGlobalID(ShaderHelper& shader) {
       << "  let logical_global_id = logical_workgroup_id * workgroupSize + local_id;\n";
 }
 
+void EmitMatMulWriteFnHeader(ShaderHelper& shader, const ShaderVariableHelper& output) {
+  const int output_components = output.NumComponents();
+  shader.AdditionalImplementation()
+      << "fn mm_write(batch: i32, row: i32, colIn: i32, valueIn: output_value_t) {\n";
+
+  shader.AdditionalImplementation() << "  let col = colIn * " << output_components << ";\n";
+
+  shader.AdditionalImplementation() << "  if(row < i32(uniforms.dim_a_outer) && col < i32(uniforms.dim_b_outer)) {\n"
+                                    << "    var value = valueIn;\n";
+}
+
+void EmitMatMulWriteFnFooter(ShaderHelper& shader) {
+  shader.AdditionalImplementation()
+      << "  }\n"
+      << "}\n\n";
+}
+
 }  // namespace
 
 void MatMulReadFnSource(ShaderHelper& shader,
@@ -173,45 +189,32 @@ void MatMulReadFnSource(ShaderHelper& shader,
   MatMulReadFnSource(shader, "mm_readB", b, "b", batch_dims, "uniforms.dim_inner", "uniforms.dim_b_outer", transB);
 }
 
-void MatMulWriteFnSource(ShaderHelper& shader,
-                         const ShaderVariableHelper& output,
-                         const ShaderVariableHelper* bias,
-                         bool is_gemm,
-                         int c_components,
-                         bool c_is_scalar,
-                         std::string activation_snippet,
-                         bool is_channels_last,
-                         bool use_split_k,
-                         ProgramVariableDataType output_variable_type) {
-  const int output_components = output.NumComponents();
-  shader.AdditionalImplementation()
-      << "fn mm_write(batch: i32, row: i32, colIn: i32, valueIn: output_value_t) {\n";
+void MatMulWriteFnSourceForMatMul(ShaderHelper& shader,
+                                  const ShaderVariableHelper& output,
+                                  const ShaderVariableHelper* bias,
+                                  std::string activation_snippet,
+                                  bool is_channels_last) {
+  EmitMatMulWriteFnHeader(shader, output);
+  HandleMaybeBiasForMatMul(shader, output, bias, activation_snippet, is_channels_last);
+  EmitMatMulWriteFnFooter(shader);
+}
 
-  shader.AdditionalImplementation() << "  let col = colIn * " << output_components << ";\n";
+void MatMulWriteFnSourceForGemm(ShaderHelper& shader,
+                                const ShaderVariableHelper& output,
+                                const ShaderVariableHelper* bias,
+                                bool c_is_scalar) {
+  EmitMatMulWriteFnHeader(shader, output);
+  HandleMaybeHaveBiasForGEMM(shader, output, bias, output.NumComponents(), c_is_scalar);
+  EmitMatMulWriteFnFooter(shader);
+}
 
-  shader.AdditionalImplementation() << "  if(row < i32(uniforms.dim_a_outer) && col < i32(uniforms.dim_b_outer)) {\n"
-                                    << "    var value = valueIn;\n";
-
-  if (use_split_k) {
-    // Set output when MatMul is performed with Split-K.
-    // When Split-K is used in MatMul, the bias will be handled in `MatMulFillBiasOrZeroBeforeSplitKProgram`
-    // instead of here, so `bias` and `is_channels_last` is not used for Split-K. Note that we
-    // still need to handle `bias` (and `is_channels_last` in the future) in
-    // `MatMulFillBiasOrZeroBeforeSplitKProgram`.
-    ORT_ENFORCE(bias == nullptr, "Bias is not supported in MatMulProgram when Split-K is enabled.");
-    if (!is_gemm) {
-      ORT_ENFORCE(is_channels_last, "Only channels-last is supported in MatMulProgram when Split-K is enabled in non-GEMM ops.");
-    }
-    HandleMatMulWithSplitK(shader, is_gemm, output, output_variable_type);
-  } else if (is_gemm) {
-    HandleMaybeHaveBiasForGEMM(shader, output, bias, c_components, output_components, c_is_scalar);
-  } else {
-    HandleMaybeBiasForMatMul(shader, output, bias, activation_snippet, is_channels_last);
-  }
-
-  shader.AdditionalImplementation()
-      << "  }\n"
-      << "}\n\n";
+void MatMulWriteFnSourceWithSplitK(ShaderHelper& shader,
+                                   const ShaderVariableHelper& output,
+                                   bool is_gemm,
+                                   ProgramVariableDataType output_variable_type) {
+  EmitMatMulWriteFnHeader(shader, output);
+  HandleMatMulWithSplitK(shader, is_gemm, output, output_variable_type);
+  EmitMatMulWriteFnFooter(shader);
 }
 
 Status MakeMatMulPackedVec4Source(ShaderHelper& shader,

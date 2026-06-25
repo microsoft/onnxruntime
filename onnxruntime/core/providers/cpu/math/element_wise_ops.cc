@@ -680,6 +680,20 @@ Status Mul<MLFloat16>::Compute(OpKernelContext* context) const {
 
 template <typename T>
 Status Div<T>::Compute(OpKernelContext* context) const {
+  // Integer division by zero is undefined behavior in C++ and causes a hardware exception.
+  // Check for zeros in the divisor before performing the division.
+  // Skip the check if the divisor was already validated as a constant initializer during kernel creation.
+  if constexpr (std::is_integral<T>::value) {
+    if (!divisor_is_validated_constant_) {
+      const Tensor& B = *context->Input<Tensor>(1);
+      const T* b_data = B.Data<T>();
+      const int64_t b_size = B.Shape().Size();
+      for (int64_t i = 0; i < b_size; ++i) {
+        ORT_RETURN_IF(b_data[i] == T{0}, "Integer division by zero");
+      }
+    }
+  }
+
   ProcessBroadcastSpanFuncs funcs{
       [](BroadcastHelper& per_iter_bh) {
         per_iter_bh.OutputEigen<T>() = per_iter_bh.ScalarInput0<T>() / per_iter_bh.EigenInput1<T>().array();
@@ -2060,19 +2074,13 @@ Status Erf<MLFloat16>::Compute(OpKernelContext* context) const {
 
 class Mod final : public OpKernel {
  public:
-  Mod(const OpKernelInfo& info) : OpKernel(info) {
-    int64_t fmod = 0;
-    Status s = info.GetAttr<int64_t>("fmod", &fmod);
-    if (s.IsOK()) {
-      ORT_ENFORCE((fmod == 0) || (fmod == 1), "fmod must have value either 0 or 1");
-      fmod_ = (fmod == 1);
-    }
-  }
+  Mod(const OpKernelInfo& info);
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
   bool fmod_{false};
+  bool divisor_is_validated_constant_{false};
 };
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
@@ -2220,6 +2228,21 @@ void BroadCastMLFloat16FMod(OpKernelContext* context) {
 template <class T, typename Enable = void>
 struct CallModImpl;
 
+// Check for zero values in the divisor tensor for integral types.
+template <class T>
+struct CheckZeroDivisorImpl {
+  Status operator()(const Tensor& B) const {
+    if constexpr (std::is_integral<T>::value) {
+      const T* b_data = B.Data<T>();
+      const int64_t b_size = B.Shape().Size();
+      for (int64_t i = 0; i < b_size; ++i) {
+        ORT_RETURN_IF(b_data[i] == T{0}, "Integer modulo by zero");
+      }
+    }
+    return Status::OK();
+  }
+};
+
 // Generic implementation of Mod kernel, non-floating point types
 template <class T>
 struct CallModImpl<T, typename std::enable_if<!std::is_floating_point<T>::value>::type> {
@@ -2252,9 +2275,39 @@ struct CallModImpl<MLFloat16> {
 
 }  // namespace mod_internal
 
+Mod::Mod(const OpKernelInfo& info) : OpKernel(info) {
+  int64_t fmod = 0;
+  Status s = info.GetAttr<int64_t>("fmod", &fmod);
+  if (s.IsOK()) {
+    ORT_ENFORCE((fmod == 0) || (fmod == 1), "fmod must have value either 0 or 1");
+    fmod_ = (fmod == 1);
+  }
+
+  // If the divisor is a constant initializer, validate for integer modulo by zero once
+  // during kernel creation instead of on every Compute call.
+  const Tensor* constant_divisor = nullptr;
+  if (info.TryGetConstantInput(1, &constant_divisor)) {
+    const auto dt_type = constant_divisor->GetElementType();
+    utils::MLTypeCallDispatcherFromTypeList<EnabledModTypes> check_disp(dt_type);
+    Status check_status = check_disp.InvokeRet<Status, mod_internal::CheckZeroDivisorImpl>(*constant_divisor);
+    ORT_THROW_IF_ERROR(check_status);
+    divisor_is_validated_constant_ = true;
+  }
+}
+
 Status Mod::Compute(OpKernelContext* context) const {
   const auto& X = *context->Input<Tensor>(0);
   const auto dt_type = X.GetElementType();
+
+  // Integer modulo by zero is undefined behavior in C++ and causes a hardware exception.
+  // Check for zeros in the divisor before performing the mod.
+  // Skip the check if the divisor was already validated as a constant initializer during kernel creation.
+  if (!divisor_is_validated_constant_) {
+    const Tensor& B = *context->Input<Tensor>(1);
+    utils::MLTypeCallDispatcherFromTypeList<EnabledModTypes> check_disp(dt_type);
+    Status check_status = check_disp.InvokeRet<Status, mod_internal::CheckZeroDivisorImpl>(B);
+    ORT_RETURN_IF_ERROR(check_status);
+  }
 
   utils::MLTypeCallDispatcherFromTypeList<EnabledModTypes> t_disp(dt_type);
   t_disp.Invoke<mod_internal::CallModImpl>(fmod_, context);

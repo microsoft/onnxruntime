@@ -253,6 +253,7 @@ def export_onnx(model, onnx_model_path, float16, hidden_size, num_attention_head
         dynamic_axes=dynamic_axes,
         opset_version=11,
         do_constant_folding=True,
+        dynamo=False,
     )
     print("exported:", onnx_model_path)
 

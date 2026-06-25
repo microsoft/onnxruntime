@@ -16,7 +16,8 @@ namespace contrib {
 class AttentionCPUBase : public AttentionBase {
  protected:
   AttentionCPUBase(const OpKernelInfo& info, bool require_same_hidden_size)
-      : AttentionBase(info, require_same_hidden_size) {}
+      : AttentionBase(info, require_same_hidden_size) {
+  }
 
   template <typename T>
   Status ApplyAttention(const T* Q,                // Q data with shape BxNxSxH
@@ -307,7 +308,7 @@ class AttentionCPUBase : public AttentionBase {
           math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_sequence_length, head_size, alpha,
                                     Q + q_input_chunk_length * i, k,
                                     (mask_data != nullptr || attn_bias_data != nullptr) ? 1.0f : 0.0f,
-                                    output, nullptr);
+                                    output, nullptr, &mlas_backend_kernel_selector_config_);
         }
       });
     }
@@ -402,7 +403,7 @@ class AttentionCPUBase : public AttentionBase {
             T* current_tmp_data = reinterpret_cast<T*>(tmp_buffer) + q_input_chunk_length * i;
             ptrdiff_t attention_probs_offset = SafeInt<ptrdiff_t>(sequence_length) * total_sequence_length * i;
             math::MatMul<T>(sequence_length, v_head_size, total_sequence_length,
-                            attention_probs + attention_probs_offset, v, current_tmp_data, nullptr);
+                            attention_probs + attention_probs_offset, v, current_tmp_data, nullptr, &mlas_backend_kernel_selector_config_);
 
             // Transpose: out(B, S, N, H_v) -> out_tmp(B, N, S, H_v)
             const int batch_index = static_cast<int>(i / num_heads_);

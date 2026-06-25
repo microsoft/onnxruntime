@@ -3,7 +3,7 @@ import os
 import time
 
 import torch
-from test_sparse_attention import GroupQueryAttentionConfig, OrtGroupQueryAttention
+from gqa_test_helper import GroupQueryAttentionConfig, OrtGroupQueryAttention
 
 
 def save_results(results, filename):

@@ -88,7 +88,7 @@ void WordConvEmbedding::ComputeConvMaxPoolWithActivation(
         static_cast<int>(words_unfolded_width), static_cast<int>(num_filters), static_cast<int>(unfolded_kernal_size), 1.0f,
         unfolded_buffer_p.get(), static_cast<int>(unfolded_kernal_size),
         weights, static_cast<int>(unfolded_kernal_size), 0.0f,
-        conv_buf_p, static_cast<int>(num_filters), tp);
+        conv_buf_p, static_cast<int>(num_filters), tp, &mlas_backend_kernel_selector_config_);
 
     for (int64_t unfolded_inx = 0; unfolded_inx < words_unfolded_width; unfolded_inx++)
       for (int64_t filter_inx = 0; filter_inx < num_filters; filter_inx++) {

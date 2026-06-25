@@ -18,9 +18,6 @@
 
 #include <algorithm>
 #include <cfloat>
-#include <cuda.h>  // for CUDA_VERSION
-#include <cuda_fp16.h>
-#include <math.h>
 #include <sstream>
 
 // Ignore CUTLASS warnings about type punning
@@ -36,12 +33,11 @@
 #pragma GCC diagnostic pop
 #endif
 
+#include "core/providers/cuda/cu_inc/common.cuh"
+
 #include "moe_kernel.h"
 
 #include <cuda_runtime_api.h>
-#include <cub/cub.cuh>
-#include <cub/device/device_radix_sort.cuh>
-#include <cub/util_type.cuh>
 
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 

@@ -495,6 +495,13 @@ bool IsScalar(const NodeArg& input_arg) {
   return dim_size == 0 || (dim_size == 1 && shape->dim(0).has_dim_value() && shape->dim(0).dim_value() == 1);
 }
 
+void DuplicateNodeAnnotation(const Node& src, Node& dst) {
+  const auto& src_annotation = src.GetLayeringAnnotation();
+  if (!src_annotation.empty()) {
+    dst.SetLayeringAnnotation(src_annotation);
+  }
+}
+
 template <typename T>
 bool GetScalarInitializerValue(const onnxruntime::Graph& graph, const onnxruntime::NodeArg& input_arg, T& value,
                                bool is_constant) {

@@ -316,8 +316,7 @@ if (onnxruntime_WINML_NAMESPACE_OVERRIDE STREQUAL "Windows")
   target_compile_definitions(winml_adapter PRIVATE "BUILD_INBOX=1")
 endif()
 
-# will requires C++17
-set_target_properties(winml_adapter PROPERTIES CXX_STANDARD 17)
+set_target_properties(winml_adapter PROPERTIES CXX_STANDARD 20)
 set_target_properties(winml_adapter PROPERTIES CXX_STANDARD_REQUIRED ON)
 
 # Compiler definitions
@@ -645,7 +644,7 @@ onnxruntime_add_static_library(winml_lib_common
   ${winml_lib_common_dir}/CommonDeviceHelpers.cpp
 )
 
-set_target_properties(winml_lib_common PROPERTIES CXX_STANDARD 17)
+set_target_properties(winml_lib_common PROPERTIES CXX_STANDARD 20)
 set_target_properties(winml_lib_common PROPERTIES CXX_STANDARD_REQUIRED ON)
 target_compile_options(winml_lib_common PRIVATE /GR- /await /bigobj /wd4238)
 target_link_libraries(winml_lib_common PRIVATE ${WIL_TARGET})
@@ -829,9 +828,9 @@ if (winml_is_inbox)
     target_link_libraries(${new_target} PRIVATE ${link_libraries})
     target_link_options(${new_target} PRIVATE ${link_options})
 
-    # Attempt to copy linker flags 
+    # Attempt to copy linker flags
     get_target_property(link_flags ${target} LINK_FLAGS)
-    
+
     if (NOT link_flags MATCHES ".*NOTFOUND")
       set_property(TARGET ${new_target} PROPERTY LINK_FLAGS "${link_flags}")
     endif()

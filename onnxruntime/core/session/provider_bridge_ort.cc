@@ -1295,11 +1295,6 @@ struct ProviderHostImpl : ProviderHost {
     return onnxruntime::utils::HasExternalDataInMemory(ten_proto);
   }
 
-  Status Utils__ValidateExternalDataPath(const std::filesystem::path& base_path,
-                                         const std::filesystem::path& location) override {
-    return onnxruntime::utils::ValidateExternalDataPath(base_path, location);
-  }
-
   // Model (wrapped)
   std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
                                           const IOnnxRuntimeOpSchemaRegistryList* local_registries,
@@ -1727,6 +1722,7 @@ struct ProviderHostImpl : ProviderHost {
   const UInt2x4* Tensor__Data_UInt2x4(const Tensor* p) override { return p->Data<UInt2x4>(); }
 
   gsl::span<const int64_t> Tensor__DataAsSpan_int64(const Tensor* p) override { return p->DataAsSpan<int64_t>(); }
+  gsl::span<const int32_t> Tensor__DataAsSpan_int32(const Tensor* p) override { return p->DataAsSpan<int32_t>(); }
 
   void* Tensor__MutableDataRaw(Tensor* p, MLDataType type) override { return p->MutableDataRaw(type); }
   const void* Tensor__DataRaw(const Tensor* p, MLDataType type) override { return p->DataRaw(type); }

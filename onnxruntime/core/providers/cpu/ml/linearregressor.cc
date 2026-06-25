@@ -26,6 +26,8 @@ LinearRegressor::LinearRegressor(const OpKernelInfo& info)
 
   // use the intercepts_ if they're valid
   use_intercepts_ = intercepts_.size() == static_cast<size_t>(num_targets_);
+
+  SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
 }
 
 // Use GEMM for the calculations, with broadcasting of intercepts
@@ -40,7 +42,8 @@ static Status ComputeImpl(const Tensor& input, ptrdiff_t num_batches, ptrdiff_t 
                           const std::vector<float>& coefficients,
                           const std::vector<float>* intercepts, Tensor& output,
                           POST_EVAL_TRANSFORM post_transform,
-                          concurrency::ThreadPool* threadpool) {
+                          concurrency::ThreadPool* threadpool,
+                          const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
   const T* input_data = input.Data<T>();
   T* output_data = output.MutableData<T>();
 
@@ -51,14 +54,14 @@ static Status ComputeImpl(const Tensor& input, ptrdiff_t num_batches, ptrdiff_t 
                                       1.f, input_data, coefficients.data(), 1.f,
                                       intercepts->data(), &intercepts_shape,
                                       output_data,
-                                      threadpool);
+                                      threadpool, mlas_backend_kernel_selector_config);
   } else {
     onnxruntime::Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE::CblasNoTrans, CBLAS_TRANSPOSE::CblasTrans,
                                       num_batches, num_targets, num_features,
                                       1.f, input_data, coefficients.data(), 1.f,
                                       nullptr, nullptr,
                                       output_data,
-                                      threadpool);
+                                      threadpool, mlas_backend_kernel_selector_config);
   }
 
   if (post_transform != POST_EVAL_TRANSFORM::NONE) {
@@ -92,7 +95,7 @@ Status LinearRegressor::Compute(OpKernelContext* ctx) const {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
       status = ComputeImpl<float>(X, num_batches, num_features, narrow<ptrdiff_t>(num_targets_), coefficients_,
                                   use_intercepts_ ? &intercepts_ : nullptr,
-                                  Y, post_transform_, tp);
+                                  Y, post_transform_, tp, &mlas_backend_kernel_selector_config_);
 
       break;
     }

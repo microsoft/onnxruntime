@@ -232,6 +232,7 @@ def run_packaging(package_type: str, build_dir: str):
             "platforms": [
                 {"path": "onnxruntime-java-linux-x64", "lib": "libcustom_op_library.so", "archive_lib": True},
                 {"path": "onnxruntime-java-linux-aarch64", "lib": "libcustom_op_library.so", "archive_lib": False},
+                {"path": "onnxruntime-java-osx-arm64", "lib": "libcustom_op_library.dylib", "archive_lib": True},
             ]
         },
         "gpu": {

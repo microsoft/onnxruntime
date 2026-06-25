@@ -237,8 +237,12 @@ Status Conv<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::TensorShap
     CUDNN_FE_CALL_THROW(s_.cudnn_fe_graph->build_operation_graph(handle));
     CUDNN_FE_CALL_THROW(s_.cudnn_fe_graph->create_execution_plans({heur_mode}));
   } catch (const std::exception& ex) {
-    std::string message = MakeString("Failed to initialize CUDNN Frontend", ex.what(),
-                                     "with the cudnn frontend json:\n", s_.cudnn_fe_graph->print());
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
+    std::string message = MakeString("Failed to initialize CUDNN Frontend: ", ex.what(),
+                                     " with the cudnn frontend json:\n", s_.cudnn_fe_graph->print());
+#else
+    std::string message = MakeString("Failed to initialize CUDNN Frontend: ", ex.what());
+#endif
     return Status(common::StatusCategory::ONNXRUNTIME, common::StatusCode::EP_FAIL, message);
   }
 
@@ -249,8 +253,12 @@ Status Conv<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::TensorShap
     CUDNN_FE_CALL_THROW(s_.cudnn_fe_graph->build_plans(handle));
   } catch (const std::exception& ex) {
     if (!fuse_bias && !fuse_act && use_tf32) {
-      std::string message = MakeString("OP not supported by CUDNN Frontend", ex.what(),
-                                       "with the cudnn frontend json:\n", s_.cudnn_fe_graph->print());
+#ifndef BUILD_CUDA_EP_AS_PLUGIN
+      std::string message = MakeString("OP not supported by CUDNN Frontend: ", ex.what(),
+                                       " with the cudnn frontend json:\n", s_.cudnn_fe_graph->print());
+#else
+      std::string message = MakeString("OP not supported by CUDNN Frontend: ", ex.what());
+#endif
       return Status(common::StatusCategory::ONNXRUNTIME, common::StatusCode::EP_FAIL, message);
     }
 
@@ -367,8 +375,6 @@ Status Conv<T, Layout>::UpdateState(OpKernelContext* context, bool bias_expected
     s_.Y = context->Output(0, TensorShape(s_.y_dims));
 
     s_.y_data = reinterpret_cast<CudaT*>(s_.Y->MutableData<T>());
-    const CUDAExecutionProvider* cuda_ep =
-        static_cast<const CUDAExecutionProvider*>(this->Info().GetExecutionProvider());
 
     TensorShapeVector x_dims_cudnn{x_dims.begin(), x_dims.end()};
     TensorShapeVector y_dims_cudnn{y_dims.begin(), y_dims.end()};
@@ -395,7 +401,7 @@ Status Conv<T, Layout>::UpdateState(OpKernelContext* context, bool bias_expected
       // PyTorch also pads to [N,C,1,D]. For inference build, we still pad it to [N, C, D, 1] as this seems
       // to be the sweet spot for all algo search options: EXHAUSTIVE, HEURISTIC, and DEFAULT.
       // See PR #7348 and #7702 for more context.
-      if (cuda_ep->GetCudnnConv1dPadToNc1d()) {
+      if (this->GetCudnnConv1dPadToNc1d()) {
         x_dims_cudnn.insert(x_dims_cudnn.begin() + 2, 1);
         y_dims_cudnn.insert(y_dims_cudnn.begin() + 2, 1);
         w_dims_cudnn.insert(w_dims_cudnn.begin() + 2, 1);
@@ -423,7 +429,7 @@ Status Conv<T, Layout>::UpdateState(OpKernelContext* context, bool bias_expected
 
     auto handle = GetCudnnHandle(context);
 
-    int cudnn_conv_algo = cuda_ep->GetCudnnConvAlgo();
+    int cudnn_conv_algo = this->GetCudnnConvAlgo();
 #if !defined(__CUDACC__)
     cudnn_frontend::HeurMode_t heur_mode;
     switch (cudnn_conv_algo) {
@@ -443,9 +449,9 @@ Status Conv<T, Layout>::UpdateState(OpKernelContext* context, bool bias_expected
         break;
     }
 
-    const auto use_tf32 = cuda_ep->UseTF32();
+    const auto use_tf32 = this->UseTF32();
     // fuse if this op is part of a FusedConv or if the EP is set to fuse ops
-    const auto fuse_bias = cuda_ep->IsFuseConvBias() || is_fused_node_;
+    const auto fuse_bias = this->IsFuseConvBias() || is_fused_node_;
     const auto fuse_act = is_fused_node_;
 
     ORT_RETURN_IF_ERROR(CreateCudnnFeExecutionPlan(x_dims_cudnn, w_dims_cudnn, B, Z, y_dims_cudnn, handle, heur_mode,
@@ -491,7 +497,7 @@ Status Conv<T, Layout>::ComputeInternal(OpKernelContext* context) const {
       CUDA_RETURN_IF_ERROR(cudaMemset(s_.y_data, 0, s_.Y->SizeInBytes()));
     }
   }
-  auto ws = GetWorkSpace(context->GetComputeStream());
+  auto ws = GetWorkSpace(GetComputeStream(context));
 
   CUDNN_FE_RETURN_IF_ERROR(s_.cudnn_fe_graph->execute(cudnn_handle,
                                                       s_.variant_pack,

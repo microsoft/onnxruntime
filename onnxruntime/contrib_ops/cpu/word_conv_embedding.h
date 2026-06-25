@@ -6,6 +6,7 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/tensor.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 
 namespace onnxruntime {
 namespace concurrency {
@@ -16,6 +17,7 @@ namespace contrib {
 class WordConvEmbedding final : public OpKernel {
  public:
   explicit WordConvEmbedding(const OpKernelInfo& info) : OpKernel(info) {
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -53,6 +55,7 @@ class WordConvEmbedding final : public OpKernel {
       const TensorShape& w_char_embedding_shape) const;
 
  private:
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
   int64_t embedding_size_{Info().GetAttrOrDefault<int64_t>("embedding_size", -1)};
   int64_t conv_window_size_{Info().GetAttrOrDefault<int64_t>("conv_window_size", -1)};
   int64_t char_embedding_size_{Info().GetAttrOrDefault<int64_t>("char_embedding_size", -1)};

@@ -939,7 +939,6 @@ Status SaveCheckpoint(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_ten
                       gsl::span<const ONNX_NAMESPACE::TensorProto> non_trainable_tensor_protos,
                       const PathString& checkpoint_path, const bool nominal_checkpoint,
                       const size_t external_data_threshold) {
-  ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ORT training checkpoint format only supports little-endian machines");
   return nominal_checkpoint
              ? save::FromTensorProtos(Nominalize(trainable_tensor_protos), Nominalize(non_trainable_tensor_protos),
                                       checkpoint_path, nominal_checkpoint, external_data_threshold)
@@ -950,29 +949,22 @@ Status SaveCheckpoint(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_ten
 
 Status SaveCheckpoint(const CheckpointState& states, const PathString& checkpoint_path,
                       const bool include_optimizer_state) {
-  ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ORT training checkpoint format only supports little-endian machines");
   return save::FromCheckpointState(states, checkpoint_path, include_optimizer_state);
 }
 
 Status LoadCheckpoint(const PathString& checkpoint_path, CheckpointState& checkpoint_states) {
-  ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ORT training checkpoint format only supports little-endian machines");
-
   InlinedVector<uint8_t> checkpoint_bytes;
   ORT_RETURN_IF_ERROR(load::FromFile(checkpoint_path, checkpoint_bytes));
   return load::ToCheckpointState(checkpoint_bytes, checkpoint_states, checkpoint_path);
 }
 
 Status LoadCheckpointFromBuffer(gsl::span<const uint8_t> checkpoint_bytes, CheckpointState& checkpoint_state) {
-  ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ORT training checkpoint format only supports little-endian machines");
-
   return load::ToCheckpointState(checkpoint_bytes, checkpoint_state, std::nullopt);
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
 Status LoadCheckpointToModel(const PathString& checkpoint_path,
                              ONNX_NAMESPACE::ModelProto& model_proto) {
-  ORT_RETURN_IF_NOT(FLATBUFFERS_LITTLEENDIAN, "ORT training checkpoint format only supports little-endian machines");
-
   InlinedVector<uint8_t> checkpoint_bytes;
   ORT_RETURN_IF_ERROR(load::FromFile(checkpoint_path, checkpoint_bytes));
   return load::ToModelProto(checkpoint_bytes, model_proto, checkpoint_path);

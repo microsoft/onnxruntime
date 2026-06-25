@@ -9,8 +9,9 @@ namespace onnxruntime {
 
 class SpaceDepthBase {
  protected:
-  explicit SpaceDepthBase(const OpKernelInfo& info) {
-    ORT_ENFORCE(info.GetAttr("blocksize", &blocksize_).IsOK(),
+  template <typename KernelInfoType>
+  explicit SpaceDepthBase(const KernelInfoType& info) {
+    ORT_ENFORCE(info.template GetAttr<int64_t>("blocksize", &blocksize_).IsOK(),
                 "Attribute blocksize is not set.");
   }
 

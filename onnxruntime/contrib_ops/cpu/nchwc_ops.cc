@@ -223,6 +223,7 @@ Status NchwcConv::Compute(OpKernelContext* context) const {
       &activation_,
       Sum == nullptr,
       context->GetOperatorThreadPool(),
+      &mlas_backend_kernel_selector_config_,
       use_bf16);
 
   return Status::OK();

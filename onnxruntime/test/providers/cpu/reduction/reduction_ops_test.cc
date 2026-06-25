@@ -648,6 +648,21 @@ TEST(ReductionOpTest, ReduceLogSum0DTensor) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(ReductionOpTest, ReduceLogSumExp1DTensor) {
+  OpTester test("ReduceLogSumExp");
+  test.AddInput<float>("data", {24},
+                       {-4.025670051574707f, -9.444348335266113f, -3.1193981170654297f,
+                        -5.943697929382324f, -0.3701804578304291f, -4.397126197814941f,
+                        -6.605968475341797f, -5.534277439117432f, -7.361471176147461f,
+                        -1.9987547397613525f, -9.093968391418457f, -8.693618774414062f,
+                        -8.416788101196289f, -1.010741114616394f, -9.814584732055664f,
+                        -9.725259780883789f, -9.157071113586426f, -0.001698818989098072f,
+                        -9.963415145874023f, -5.991659641265869f, -6.180599689483643f,
+                        -1.2336505651474f, -0.44234341382980347f, -6.990072250366211f});
+  test.AddOutput<float>("reduced", {1}, {1.1666961908340454f});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(ReductionOpTest, ReduceLogSumExp_default_axes_keepdims) {
   OpTester test("ReduceLogSumExp");
   test.AddAttribute("keepdims", (int64_t)1);

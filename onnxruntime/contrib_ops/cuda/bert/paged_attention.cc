@@ -54,6 +54,8 @@ PagedAttention<T>::PagedAttention(const OpKernelInfo& info)
 
 template <typename T>
 Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
+  auto ort_stream = GetOrtStream(context);
+
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);
@@ -151,10 +153,10 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
     softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(parameters.token_count,
                                                                  parameters.num_heads);
   }
-  auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
+  auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, GetComputeStream(context));
 #else
   constexpr bool use_flash_attention = false;
-  auto softmax_lse_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());  // nullptr
+  auto softmax_lse_buffer = GetScratchBuffer<void>(0, GetComputeStream(context));  // nullptr
 #endif
 
   if (!use_flash_attention) {
@@ -163,7 +165,7 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   size_t cumulative_seqlens_kv_bytes = sizeof(int) * (parameters.batch_size + 1);
-  auto cumulative_seqlens_kv_buffer = GetScratchBuffer<void>(cumulative_seqlens_kv_bytes, context->GetComputeStream());
+  auto cumulative_seqlens_kv_buffer = GetScratchBuffer<void>(cumulative_seqlens_kv_bytes, GetComputeStream(context));
 
   size_t workspace_buffer_bytes = 0;
   if (do_rotary_) {
@@ -171,7 +173,7 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   } else if (parameters.is_packed_qkv) {
     workspace_buffer_bytes = sizeof(T) * parameters.token_count * parameters.hidden_size;
   }
-  auto workspace_buffer = GetScratchBuffer<void>(workspace_buffer_bytes, context->GetComputeStream());
+  auto workspace_buffer = GetScratchBuffer<void>(workspace_buffer_bytes, GetComputeStream(context));
 
   // Print debug info
   if (kernel_options_->AllowDebugInfo()) {
@@ -210,7 +212,7 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   cublasHandle_t cublas = GetCublasHandle(context);
 
   return QkvToContext<CudaT>(
-      device_prop, cublas, context->GetComputeStream(), parameters, data);
+      device_prop, cublas, ort_stream.get(), parameters, data);
 }
 
 }  // namespace cuda

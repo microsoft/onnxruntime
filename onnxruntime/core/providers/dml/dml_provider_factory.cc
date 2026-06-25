@@ -21,6 +21,8 @@ using Microsoft::WRL::ComPtr;
 #include <wil/wrl.h>
 #include <wil/result.h>
 
+#include "core/providers/dml/DmlExecutionProvider/src/SafeMakeOrThrow.h"
+
 #include "core/providers/dml/dml_provider_factory.h"
 #include "core/providers/dml/dml_provider_factory_creator.h"
 #include "core/session/abi_session_options_impl.h"
@@ -89,11 +91,11 @@ std::unique_ptr<IExecutionProvider> DMLProviderFactory::CreateProvider() {
 
     // First, check if an I/O binding API that was used before this session or another session has already created a queue
     if (FAILED(d3d12_device->GetPrivateData(dml_execution_context_guid, &execution_context_ptr_size, execution_context.GetAddressOf()))) {
-      execution_context = wil::MakeOrThrow<Dml::ExecutionContext>(d3d12_device.Get(), dml_device_.Get(), cmd_queue_.Get(), true, true);
+      execution_context = Dml::SafeMakeOrThrow<Dml::ExecutionContext>(d3d12_device.Get(), dml_device_.Get(), cmd_queue_.Get(), true, true);
       ORT_THROW_IF_FAILED(d3d12_device->SetPrivateDataInterface(dml_execution_context_guid, execution_context.Get()));
     }
   } else {
-    execution_context = wil::MakeOrThrow<Dml::ExecutionContext>(d3d12_device.Get(), dml_device_.Get(), cmd_queue_.Get(), cpu_sync_spinning_enabled_, false);
+    execution_context = Dml::SafeMakeOrThrow<Dml::ExecutionContext>(d3d12_device.Get(), dml_device_.Get(), cmd_queue_.Get(), cpu_sync_spinning_enabled_, false);
   }
 
   auto provider = Dml::CreateExecutionProvider(dml_device_.Get(), execution_context.Get(), metacommands_enabled_, graph_capture_enabled_, cpu_sync_spinning_enabled_, disable_memory_arena_);

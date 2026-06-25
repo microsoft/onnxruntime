@@ -3,7 +3,9 @@
 
 #include "precomp.h"
 
+#include "core/common/endian.h"
 #include "core/framework/customregistry.h"
+#include "core/framework/endian_utils.h"
 #include "core/framework/execution_frame.h"
 #include "core/framework/TensorSeq.h"
 
@@ -868,7 +870,7 @@ namespace Windows::AI::MachineLearning::Adapter
               const onnx::TensorProto* tensorProto = &attributeProto->t();
 
               // An empty path is used as external weights are not currently supported in this case
-              Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(const_cast<onnx::TensorProto*>(tensorProto), std::filesystem::path());
+              Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = Dml::SafeMakeOrThrow<OnnxTensorWrapper>(const_cast<onnx::TensorProto*>(tensorProto), std::filesystem::path());
               *tensor = tensorWrapper.Detach();
               return S_OK;
             }
@@ -1580,7 +1582,31 @@ namespace Windows::AI::MachineLearning::Adapter
             onnxruntime::FileOffsetType fileOffset;
             SafeInt<size_t> safeTensorByteSize;
             THROW_IF_NOT_OK(onnxruntime::utils::GetExternalDataInfo(*impl,  modelPath, /*out*/ externalFilePath, /*out*/ fileOffset, /*out*/ safeTensorByteSize));
-            if (externalFilePath == onnxruntime::utils::kTensorProtoMemoryAddressTag)
+            if (externalFilePath == onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag)
+            {
+                if constexpr (onnxruntime::endian::native != onnxruntime::endian::little)
+                {
+                    m_unpackedTensor.reset(new std::byte[safeTensorByteSize]);
+
+                    auto src = gsl::make_span<const unsigned char>(reinterpret_cast<const unsigned char*>(fileOffset), safeTensorByteSize);
+                    auto dst = gsl::make_span<unsigned char>(reinterpret_cast<unsigned char*>(m_unpackedTensor.get()), safeTensorByteSize);
+                    size_t element_size = onnxruntime::utils::GetElementSizeOfTensor(static_cast<ONNX_NAMESPACE::TensorProto_DataType>(impl->data_type()));
+
+                    // If element size is unknown, set it to 1 to disable byteswapping
+                    if (element_size < 1) element_size = 1;
+
+                    THROW_IF_NOT_OK(onnxruntime::utils::ReadLittleEndian(element_size, src, dst));
+
+                    m_dataPtr = m_unpackedTensor.get();
+                    m_tensorByteSize = safeTensorByteSize;
+                }
+                else
+                {
+                    m_dataPtr = reinterpret_cast<std::byte*>(fileOffset);
+                    m_tensorByteSize = safeTensorByteSize;
+                }
+            }
+            else if (externalFilePath == onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag)
             {
                 m_dataPtr = reinterpret_cast<std::byte*>(fileOffset);
                 m_tensorByteSize = safeTensorByteSize;
@@ -1977,7 +2003,7 @@ namespace Windows::AI::MachineLearning::Adapter
                 auto inputTensor = m_impl->Input<onnxruntime::Tensor>(gsl::narrow_cast<int>(inputIndex));
                 if (inputTensor != nullptr)
                 {
-                    ComPtr<TensorWrapper> tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
+                    ComPtr<TensorWrapper> tensorWrapper = Dml::SafeMakeOrThrow<TensorWrapper>(
                         const_cast<onnxruntime::Tensor*>(inputTensor),
                         IsAllocationInterface(inputTensor->Location()),
                         m_winmlProvider.Get(),
@@ -2019,7 +2045,7 @@ namespace Windows::AI::MachineLearning::Adapter
                 auto elemTensor = const_cast<onnxruntime::Tensor*>(&inputTensorSeq->Get(sequenceIndex));
                 if (elemTensor != nullptr)
                 {
-                    ComPtr<TensorWrapper> tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
+                    ComPtr<TensorWrapper> tensorWrapper = Dml::SafeMakeOrThrow<TensorWrapper>(
                         elemTensor,
                         IsAllocationInterface(elemTensor->Location()),
                         m_winmlProvider.Get(),
@@ -2119,7 +2145,7 @@ namespace Windows::AI::MachineLearning::Adapter
                 auto elemTensor = const_cast<onnxruntime::Tensor*>(&outputTensorSeq->Get(sequenceIndex));
                 if (elemTensor != nullptr)
                 {
-                    ComPtr<TensorWrapper> tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
+                    ComPtr<TensorWrapper> tensorWrapper = Dml::SafeMakeOrThrow<TensorWrapper>(
                         elemTensor,
                         IsAllocationInterface(elemTensor->Location()),
                         m_winmlProvider.Get(),
@@ -2212,7 +2238,7 @@ namespace Windows::AI::MachineLearning::Adapter
                 auto outputTensor = m_impl->Output(outputIndex, shape);
                 if (outputTensor)
                 {
-                    ComPtr<TensorWrapper> tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
+                    ComPtr<TensorWrapper> tensorWrapper = Dml::SafeMakeOrThrow<TensorWrapper>(
                         const_cast<onnxruntime::Tensor*>(outputTensor),
                         IsAllocationInterface(outputTensor->Location()),
                         m_winmlProvider.Get(),
@@ -2377,7 +2403,7 @@ namespace Windows::AI::MachineLearning::Adapter
                 const onnxruntime::Tensor* tensor = nullptr;
                 if (kerneInfo.TryGetConstantInput(index, &tensor))
                 {
-                    tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
+                    tensorWrapper = Dml::SafeMakeOrThrow<TensorWrapper>(
                         const_cast<onnxruntime::Tensor*>(tensor),
                         IsAllocationInterface(tensor->Location()),
                         winmlProviderCapture.Get(),
@@ -2396,7 +2422,7 @@ namespace Windows::AI::MachineLearning::Adapter
             }
 
             // Create the kernel while allowing input shape and output shape queries according to options
-            ComPtr<OpKernelInfoWrapper> kernelInfoWrapper = wil::MakeOrThrow<OpKernelInfoWrapper>(
+            ComPtr<OpKernelInfoWrapper> kernelInfoWrapper = Dml::SafeMakeOrThrow<OpKernelInfoWrapper>(
                 &kerneInfo,
                 m_abiExecutionObject.Get(),
                 nullptr,
@@ -2443,7 +2469,7 @@ namespace Windows::AI::MachineLearning::Adapter
                     const auto* tensor = context->Input<onnxruntime::Tensor>(gsl::narrow_cast<int>(index));
                     if (tensor != nullptr)
                     {
-                        tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
+                        tensorWrapper = Dml::SafeMakeOrThrow<TensorWrapper>(
                             const_cast<onnxruntime::Tensor*>(tensor),
                             IsAllocationInterface(tensor->Location()),
                             winmlProviderCapture.Get(),
@@ -2464,7 +2490,7 @@ namespace Windows::AI::MachineLearning::Adapter
                         for (uint32_t sequenceIndex = 0; sequenceIndex < tensorSequence->Size(); ++sequenceIndex)
                         {
                             auto& tensor = tensorSequence->Get(sequenceIndex);
-                            auto tensorWrapper = wil::MakeOrThrow<TensorWrapper>(
+                            auto tensorWrapper = Dml::SafeMakeOrThrow<TensorWrapper>(
                                 const_cast<onnxruntime::Tensor*>(&tensor),
                                 IsAllocationInterface(tensor.Location()),
                                 winmlProviderCapture.Get(),
@@ -2491,7 +2517,7 @@ namespace Windows::AI::MachineLearning::Adapter
             }
 
             // Create the kernel while allowing input shape and output shape queries according to options
-            ComPtr<OpKernelInfoWrapper> kernelInfoWrapper = wil::MakeOrThrow<OpKernelInfoWrapper>(
+            ComPtr<OpKernelInfoWrapper> kernelInfoWrapper = Dml::SafeMakeOrThrow<OpKernelInfoWrapper>(
                 &Info(),
                 m_abiExecutionObject.Get(),
                 &inputShapes,
@@ -2569,7 +2595,7 @@ namespace Windows::AI::MachineLearning::Adapter
                 EdgeShapes localInferredOutputShapes;
                 ComPtr<IMLOperatorKernel> localKernel = inferShapesAndCreateKernel(local_input_shapes, localInferredOutputShapes);
 
-                ComPtr<OpKernelContextWrapper> kernelContextWrapper = wil::MakeOrThrow<OpKernelContextWrapper>(
+                ComPtr<OpKernelContextWrapper> kernelContextWrapper = Dml::SafeMakeOrThrow<OpKernelContextWrapper>(
                     context,
                     Info().GetExecutionProvider(),
                     m_internalOperator,
@@ -2588,7 +2614,7 @@ namespace Windows::AI::MachineLearning::Adapter
             }
         }
 
-        ComPtr<OpKernelContextWrapper> kernelContextWrapper = wil::MakeOrThrow<OpKernelContextWrapper>(
+        ComPtr<OpKernelContextWrapper> kernelContextWrapper = Dml::SafeMakeOrThrow<OpKernelContextWrapper>(
             context,
             Info().GetExecutionProvider(),
             m_internalOperator,
@@ -2811,7 +2837,7 @@ namespace Windows::AI::MachineLearning::Adapter
         onnxruntime::ProtoHelperNodeContext protoContext(node);
         onnxruntime::OpNodeProtoHelper<onnxruntime::ProtoHelperNodeContext> info(&protoContext);
 
-        ComPtr<MLKernelInferenceContext> inferenceContext = wil::MakeOrThrow<MLKernelInferenceContext>(&info, inputShapes, outputShapes, defaultAttributes, requiredConstantCpuInputs, constantInputGetter);
+        ComPtr<MLKernelInferenceContext> inferenceContext = Dml::SafeMakeOrThrow<MLKernelInferenceContext>(&info, inputShapes, outputShapes, defaultAttributes, requiredConstantCpuInputs, constantInputGetter);
 
         outputShapes.Reset(info.GetOutputCount());
 
@@ -2865,13 +2891,13 @@ namespace Windows::AI::MachineLearning::Adapter
             [ctx](uint32_t index)
             {
                 // An empty path is used as external weights are not currently supported in this case
-                Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(
+                Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = Dml::SafeMakeOrThrow<OnnxTensorWrapper>(
                     const_cast<onnx::TensorProto*>(ctx->getInputData(index)), std::filesystem::path());
                 return tensorWrapper;
             }
         );
 
-        return wil::MakeOrThrow<MLSchemaInferenceContext>(info, ctx, requiredConstantCpuInputs, mlOperatorTensorGetter);
+        return Dml::SafeMakeOrThrow<MLSchemaInferenceContext>(info, ctx, requiredConstantCpuInputs, mlOperatorTensorGetter);
     }
 
     MLSchemaInferenceContext::MLSchemaInferenceContext(
@@ -2952,7 +2978,7 @@ namespace Windows::AI::MachineLearning::Adapter
         const AttributeMap* defaultAttributes)
     {
         MLOperatorTensorGetter mLOperatorTensorGetter = MLOperatorTensorGetter();
-        return wil::MakeOrThrow<MLSupportQueryContext>(info, defaultAttributes, mLOperatorTensorGetter);
+        return Dml::SafeMakeOrThrow<MLSupportQueryContext>(info, defaultAttributes, mLOperatorTensorGetter);
     }
 
     MLSupportQueryContext::MLSupportQueryContext(

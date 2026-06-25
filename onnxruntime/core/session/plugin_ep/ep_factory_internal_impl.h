@@ -97,6 +97,19 @@ class EpFactoryInternalImpl {
     return nullptr;
   }
 
+  virtual OrtStatus* InitGraphicsInterop(_In_ const OrtEpDevice* /*ep_device*/,
+                                         _In_ const OrtGraphicsInteropConfig* /*config*/) noexcept {
+    // Default implementation: graphics interop not supported
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                                 "InitGraphicsInterop is not implemented for this EP factory.");
+  }
+
+  virtual OrtStatus* DeinitGraphicsInterop(_In_ const OrtEpDevice* /*ep_device*/) noexcept {
+    // Default implementation: graphics interop not supported
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                                 "DeinitGraphicsInterop is not implemented for this EP factory.");
+  }
+
   virtual OrtStatus* GetNumCustomOpDomains(_Out_ size_t* num_domains) const noexcept {
     *num_domains = 0;
     return nullptr;

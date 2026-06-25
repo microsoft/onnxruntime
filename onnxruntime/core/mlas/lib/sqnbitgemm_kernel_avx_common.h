@@ -13,7 +13,8 @@ QNBitGemmPackQuantBDataSize(
     size_t K,
     size_t BlkLen,
     bool /* HasZeroPoint */,
-    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /* BackendKernelSelectorConfig */
 )
 {
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
@@ -43,7 +44,8 @@ SQ4BitGemmPackQuantBData(
     MLAS_QNBIT_GEMM_COMPUTE_TYPE /* ComputeType*/,
     const std::byte* QuantBDataBegin,
     std::byte* PackedQuantBDataBegin,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /*BackendKernelSelectorConfig*/
 )
 {
     constexpr size_t BlkBitWidth = 4;
@@ -470,7 +472,8 @@ QNBitGemmPerGemmWorkspaceSize(
     size_t BlkLen,
     bool /* HasZeroPoint */,
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
-    size_t /* BlkBitWidth */
+    size_t /* BlkBitWidth */,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* /* BackendKernelSelectorConfig */
 )
 {
     MLAS_UNREFERENCED_PARAMETER(N);

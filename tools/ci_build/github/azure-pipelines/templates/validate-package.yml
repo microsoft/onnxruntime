@@ -4,6 +4,7 @@ parameters:
   PackageType: ''
   PackageName: ''
   PackagePath: ''
+  IsReleaseBuild: false
   ScriptPath: '$(Build.SourcesDirectory)/tools/nuget/validate_package.py'
   workingDirectory: "$(Build.BinariesDirectory)"
 
@@ -17,5 +18,5 @@ steps:
       displayName: 'Validate Package'
       inputs:
         scriptPath: '${{parameters.ScriptPath}}'
-        arguments: '--package_type ${{parameters.PackageType}} --package_name ${{parameters.PackageName}} --package_path ${{parameters.PackagePath}} --platforms_supported ${{parameters.PlatformsSupported}} --verify_nuget_signing ${{parameters.VerifyNugetSigning}}'
+        arguments: '--package_type ${{parameters.PackageType}} --package_name ${{parameters.PackageName}} --package_path ${{parameters.PackagePath}} --platforms_supported ${{parameters.PlatformsSupported}} --verify_nuget_signing ${{parameters.VerifyNugetSigning}} --is_release_build ${{parameters.IsReleaseBuild}}'
         workingDirectory: ${{parameters.workingDirectory}}

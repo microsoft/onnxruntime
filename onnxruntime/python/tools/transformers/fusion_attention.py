@@ -892,6 +892,13 @@ class FusionAttention(Fusion):
             add_before_layernorm = self.model.match_parent(normalize_node, "Add", 0)
             if add_before_layernorm is not None:
                 start_node = add_before_layernorm
+            elif self.model.find_graph_input(normalize_node.input[0]) is not None:
+                # Pre-LN first block: LN fed directly by graph input.  QKV matching will
+                # still fail from this (first) LN anchor because its inputs are weights, not
+                # the QKV projection path.  The real fusion happens when fuse() is called
+                # again from the second LN/SkipLN anchor after the residual Add, where the
+                # other_inputs and root_input changes (#2-#4) take effect.
+                start_node = normalize_node
             else:
                 return
 
@@ -917,7 +924,8 @@ class FusionAttention(Fusion):
         other_inputs = []
         for _i, node_input in enumerate(start_node.input):
             if node_input not in output_name_to_node:
-                continue
+                if self.model.find_graph_input(node_input) is None:
+                    continue
 
             if node_input == qkv_nodes[0].output[0]:
                 continue
@@ -946,7 +954,7 @@ class FusionAttention(Fusion):
                 root_input = mul_before_layernorm.output[0]
             else:
                 return
-        elif normalize_node.op_type == "LayerNormalization":
+        elif normalize_node.op_type in ("LayerNormalization", "SkipLayerNormalization"):
             children = input_name_to_nodes[root_input]
             for child in children:
                 if child.op_type == "LayerNormalization":
@@ -961,9 +969,10 @@ class FusionAttention(Fusion):
         #  |                                                                     |
         #  |                                                                     |
         #  +---------------------------------------------------------------------+
-        parent_node = output_name_to_node[root_input]
-        if parent_node.op_type == "SkipLayerNormalization" and len(parent_node.output) == 4:
-            root_input = parent_node.output[0]
+        if root_input in output_name_to_node:
+            parent_node = output_name_to_node[root_input]
+            if parent_node.op_type == "SkipLayerNormalization" and len(parent_node.output) == 4:
+                root_input = parent_node.output[0]
 
         children = input_name_to_nodes[root_input]
         children_types = [child.op_type for child in children]
@@ -1112,11 +1121,11 @@ class FusionAttention(Fusion):
             if (
                 (mul_val is None)
                 or not (isinstance(mul_val, np.ndarray) and mul_val.size == 1)
-                or (float(mul_val) >= 0)
+                or (mul_val.item() >= 0)
             ):
                 return
-            if float(mul_val) != -10000:
-                self.mask_filter_value = float(mul_val)
+            if mul_val.item() != -10000:
+                self.mask_filter_value = mul_val.item()
 
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_k.input[0] == root_input:
             mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0]) if not is_no_mask_attention else None

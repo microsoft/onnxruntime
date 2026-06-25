@@ -121,7 +121,7 @@ void Telemetry::LogRuntimeError(uint32_t session_id, const common::Status& statu
 }
 
 void Telemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last,
-                               std::unordered_map<int64_t, long long> duration_per_batch_size) const {
+                               const std::unordered_map<int64_t, long long>& duration_per_batch_size) const {
   ORT_UNUSED_PARAMETER(session_id);
   ORT_UNUSED_PARAMETER(total_runs_since_last);
   ORT_UNUSED_PARAMETER(total_run_duration_since_last);
@@ -155,6 +155,37 @@ void Telemetry::LogProviderOptions(const std::string& provider_id,
   ORT_UNUSED_PARAMETER(provider_id);
   ORT_UNUSED_PARAMETER(provider_options_string);
   ORT_UNUSED_PARAMETER(captureState);
+}
+
+void Telemetry::LogModelLoadStart(uint32_t session_id) const {
+  ORT_UNUSED_PARAMETER(session_id);
+}
+
+void Telemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& status) const {
+  ORT_UNUSED_PARAMETER(session_id);
+  ORT_UNUSED_PARAMETER(status);
+}
+
+void Telemetry::LogSessionCreationEnd(uint32_t session_id,
+                                      const common::Status& status) const {
+  ORT_UNUSED_PARAMETER(session_id);
+  ORT_UNUSED_PARAMETER(status);
+}
+
+void Telemetry::LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
+                                                const std::string& lib_path) const {
+  ORT_UNUSED_PARAMETER(registration_name);
+  ORT_UNUSED_PARAMETER(lib_path);
+}
+
+void Telemetry::LogRegisterEpLibraryStart(const std::string& registration_name) const {
+  ORT_UNUSED_PARAMETER(registration_name);
+}
+
+void Telemetry::LogRegisterEpLibraryEnd(const std::string& registration_name,
+                                        const common::Status& status) const {
+  ORT_UNUSED_PARAMETER(registration_name);
+  ORT_UNUSED_PARAMETER(status);
 }
 
 }  // namespace onnxruntime

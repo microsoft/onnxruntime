@@ -78,10 +78,12 @@ Status SVMRegressor<T>::Compute(OpKernelContext* ctx) const {
                                       1.f, tmp_data_span.data(), coefficients_.data(), 1.f,
                                       rho_.data(), &rho_shape,
                                       out.data(),
-                                      threadpool);
+                                      threadpool,
+                                      &mlas_backend_kernel_selector_config_);
   } else if (mode_ == SVM_TYPE::SVM_LINEAR) {
     // combine the coefficients with the input data and apply the kernel type
-    batched_kernel_dot<float>(x_data, coefficients_, num_batches, 1, feature_count_, rho_[0], out, threadpool);
+    batched_kernel_dot<float>(x_data, coefficients_, num_batches, 1, feature_count_, rho_[0], out,
+                              threadpool);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unexpected mode:", static_cast<int>(mode_));
   }

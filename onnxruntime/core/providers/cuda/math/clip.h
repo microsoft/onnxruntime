@@ -4,17 +4,27 @@
 #pragma once
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cpu/math/clip.h"
+#include <limits>
 
 namespace onnxruntime {
 namespace cuda {
 
 template <typename T>
-class Clip_6 final : public onnxruntime::clip_internal::Clip_6Base<T>, public CudaKernel {
+class Clip_6 final : public CudaKernel {
  public:
-  explicit Clip_6(const OpKernelInfo& info) : onnxruntime::clip_internal::Clip_6Base<T>(info), CudaKernel{info} {
+  explicit Clip_6(const OpKernelInfo& info) : CudaKernel(info) {
+    constexpr auto min_val = std::numeric_limits<T>::lowest();
+    constexpr auto max_val = std::numeric_limits<T>::max();
+    info.GetAttrOrDefault("min", &min_, min_val);
+    info.GetAttrOrDefault("max", &max_, max_val);
+    ORT_ENFORCE(min_ <= max_);
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
+
+ protected:
+  T max_;
+  T min_;
 };
 
 // Since version 11. Min and Max are inputs

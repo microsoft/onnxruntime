@@ -41,6 +41,13 @@ void DebugTrap() {
 }
 #endif
 
+bool ShouldRouteCudaToDynamicPluginEp(const std::optional<std::string>& dynamic_plugin_ep_name) {
+  // Route CUDA requests to the CUDA plugin EP when unit test main has initialized
+  // dynamic plugin EP infrastructure with the CUDA plugin registration.
+  return dynamic_plugin_ep_name.has_value() &&
+         *dynamic_plugin_ep_name == dynamic_plugin_ep_infra::kCudaPluginExecutionProviderName;
+}
+
 }  // namespace
 
 BaseTester::~BaseTester() {
@@ -74,7 +81,9 @@ void BaseTester::AddInitializers(onnxruntime::Graph& graph) {
         tensor_proto.add_string_data(string_data[i]);
       }
     } else {
-      auto buffer_size = tensor.DataType()->Size() * shape.Size();
+      // Note: need to use Tensor::CalculateTensorStorageSize (instead of shape.Size() * elem_size) to properly
+      // calculate the storage size for sub-byte types (e.g., Int4 or Int2)
+      auto buffer_size = Tensor::CalculateTensorStorageSize(tensor.DataType(), shape);
       utils::SetRawDataInTensorProto(tensor_proto, tensor.DataRaw(), buffer_size);
     }
 
@@ -424,7 +433,7 @@ void BaseTester::ExecuteModel(Model& model, SessionType& session,
 bool SetEpsForAllNodes(Graph& graph,
                        const std::vector<std::unique_ptr<IExecutionProvider>>& execution_providers,
                        const std::vector<std::shared_ptr<CustomRegistry>>* custom_registries,
-                       const std::function<bool(const IExecutionProvider&)>& ep_uses_kernel_registry_fn) {
+                       const std::function<bool(const IExecutionProvider&)>& ep_only_uses_kernel_registry_fn) {
   const OpSchemaKernelTypeStrResolver kernel_type_str_resolver{};
   const KernelRegistry::TypeConstraintMap type_constraint_map{};
 
@@ -440,7 +449,7 @@ bool SetEpsForAllNodes(Graph& graph,
 
       node.SetExecutionProviderType(provider_type);
 
-      if (!ep_uses_kernel_registry_fn(*ep)) {
+      if (!ep_only_uses_kernel_registry_fn(*ep)) {
         found = true;
         break;
       }
@@ -659,11 +668,15 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
 #endif
           kDnnlExecutionProvider,
           kTensorrtExecutionProvider,
+#ifdef USE_NV
+          // Only include NV TRT RTX EP when is ORT is built with the provider-bridge
+          // version of the EP (i.e., USE_NV is defined). This allows use of the plugin EP version of the EP
+          // when ORT is not built any provider-bridge EPs.
           kNvTensorRTRTXExecutionProvider,
+#endif
           kOpenVINOExecutionProvider,
           kDmlExecutionProvider,
           kAclExecutionProvider,
-          kArmNNExecutionProvider,
           kNnapiExecutionProvider,
           kVSINPUExecutionProvider,
           kCoreMLExecutionProvider,
@@ -671,7 +684,7 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           kQnnExecutionProvider,
           kSnpeExecutionProvider,
           kXnnpackExecutionProvider,
-#if defined(USE_WEBGPU) && defined(BUILD_WEBGPU_EP_STATIC_LIB)
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
           kWebGpuExecutionProvider,
 #endif
       };
@@ -683,9 +696,10 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
 #endif
 
       const auto dynamic_plugin_ep_name = dynamic_plugin_ep_infra::GetEpName();
+      const bool route_cuda_to_dynamic_plugin_ep = ShouldRouteCudaToDynamicPluginEp(dynamic_plugin_ep_name);
 
       std::optional<std::vector<std::string>> provider_types_including_dynamic_plugin_ep{};
-      if (dynamic_plugin_ep_name.has_value()) {
+      if (dynamic_plugin_ep_name.has_value() && !route_cuda_to_dynamic_plugin_ep) {
         ORT_ENFORCE(std::find(all_provider_types.begin(), all_provider_types.end(),
                               *dynamic_plugin_ep_name) == all_provider_types.end(),
                     "Dynamic plugin EP name conflicts with a known EP name: ", *dynamic_plugin_ep_name);
@@ -710,7 +724,7 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
         if (provider_type == onnxruntime::kCpuExecutionProvider)
           execution_provider = DefaultCpuExecutionProvider();
         else if (provider_type == onnxruntime::kCudaExecutionProvider)
-          execution_provider = DefaultCudaExecutionProvider();
+          execution_provider = route_cuda_to_dynamic_plugin_ep ? dynamic_plugin_ep_infra::MakeEp() : DefaultCudaExecutionProvider();
 #ifdef ENABLE_CUDA_NHWC_OPS
         else if (provider_type == onnxruntime::kCudaNHWCExecutionProvider)
           execution_provider = DefaultCudaNHWCExecutionProvider();
@@ -731,8 +745,6 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultRknpuExecutionProvider();
         else if (provider_type == onnxruntime::kAclExecutionProvider)
           execution_provider = DefaultAclExecutionProvider();
-        else if (provider_type == onnxruntime::kArmNNExecutionProvider)
-          execution_provider = DefaultArmNNExecutionProvider();
         else if (provider_type == onnxruntime::kCoreMLExecutionProvider)
           execution_provider = DefaultCoreMLExecutionProvider();
         else if (provider_type == kCoreMLExecutionProviderMLProgram)
@@ -745,10 +757,8 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultXnnpackExecutionProvider();
         else if (provider_type == onnxruntime::kDmlExecutionProvider)
           execution_provider = DefaultDmlExecutionProvider();
-#if !defined(USE_WEBGPU) || defined(BUILD_WEBGPU_EP_STATIC_LIB)
         else if (provider_type == onnxruntime::kWebGpuExecutionProvider)
           execution_provider = DefaultWebGpuExecutionProvider();
-#endif
         else if (provider_type == dynamic_plugin_ep_name) {
           execution_provider = dynamic_plugin_ep_infra::MakeEp();
         }
@@ -810,10 +820,19 @@ void BaseTester::ExecuteModelForEps(
     bool allow_released_onnx_opset_only,
     size_t* number_of_pre_packed_weights_counter,
     size_t* number_of_shared_pre_packed_weights_counter) {
+  const auto dynamic_plugin_ep_name = dynamic_plugin_ep_infra::GetEpName();
+  const bool route_cuda_to_dynamic_plugin_ep = ShouldRouteCudaToDynamicPluginEp(dynamic_plugin_ep_name);
+
   for (auto& entry : execution_providers) {
     // Be noted, entry in execution providers passed in OpTester will be std::moved in the first BaseTester::Run(),
     // To make the error more obvious to debug (instead of a segment fault), we do check explicitly here.
     ASSERT_TRUE(entry) << "Execution provider entry invalid.";
+
+    if (route_cuda_to_dynamic_plugin_ep && entry->Type() == kCudaExecutionProvider) {
+      auto plugin_ep = dynamic_plugin_ep_infra::MakeEp();
+      ASSERT_TRUE(plugin_ep) << "Failed to create CUDA plugin EP while routing from CUDAExecutionProvider.";
+      entry = std::move(plugin_ep);
+    }
 
     if (entry->Type() == kDmlExecutionProvider) {
       sess_options.enable_mem_pattern = false;
@@ -830,12 +849,15 @@ void BaseTester::ExecuteModelForEps(
 
   ASSERT_TRUE(!execution_providers.empty()) << "Empty execution providers vector.";
   if (try_assign_ep_for_nodes) {
-    auto ep_uses_kernel_registry = [](const IExecutionProvider& ep) {
+    auto ep_only_uses_kernel_registry = [](const IExecutionProvider& ep) {
       const auto& provider_type = ep.Type();
 
-      constexpr std::array kEpsThatDoNotUseKernelRegistry{
+      constexpr std::array kEpsThatCompileNodes{
           kOpenVINOExecutionProvider,
-          kTensorrtExecutionProvider,
+          kTensorrtExecutionProvider,  // uses kernel registry for Memcpy* nodes only
+#ifdef USE_NV
+          kNvTensorRTRTXExecutionProvider,  // uses kernel registry for Memcpy* nodes only
+#endif
           kNnapiExecutionProvider,
           kVSINPUExecutionProvider,
           kCoreMLExecutionProvider,
@@ -844,24 +866,33 @@ void BaseTester::ExecuteModelForEps(
           kSnpeExecutionProvider,
       };
 
-      // check list of known EPs that do not use a kernel registry
-      if (const auto ep_it = std::find(kEpsThatDoNotUseKernelRegistry.begin(), kEpsThatDoNotUseKernelRegistry.end(),
+      // check list of known EPs that compile nodes
+      if (const auto ep_it = std::find(kEpsThatCompileNodes.begin(), kEpsThatCompileNodes.end(),
                                        provider_type);
-          ep_it != kEpsThatDoNotUseKernelRegistry.end()) {
+          ep_it != kEpsThatCompileNodes.end()) {
         return false;
       }
 
-      // assume that a dynamic plugin EP which does not return a kernel registry does not use one
-      if (provider_type == dynamic_plugin_ep_infra::GetEpName() &&
-          ep.GetKernelRegistry() == nullptr) {
-        return false;
+      const OrtEp* ort_ep = ep.GetOrtEp();
+
+      if (ort_ep != nullptr) {  // This is a plugin EP
+
+        if (ep.GetKernelRegistry() == nullptr) {
+          // assume that a dynamic plugin EP which does not return a kernel registry does not use one
+          return false;
+        }
+
+        if (ort_ep->Compile != nullptr) {
+          // assume that a plugin EP that compiles nodes does not use a kernel registry for all nodes
+          return false;
+        }
       }
 
       // otherwise, assume that the EP uses a kernel registry
       return true;
     };
 
-    if (!SetEpsForAllNodes(model.MainGraph(), execution_providers, custom_registries, ep_uses_kernel_registry)) {
+    if (!SetEpsForAllNodes(model.MainGraph(), execution_providers, custom_registries, ep_only_uses_kernel_registry)) {
       std::string providers;
       for (const auto& ep : execution_providers) {
         providers.append(ep->Type() + " ");

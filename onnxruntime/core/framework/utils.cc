@@ -883,18 +883,21 @@ common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFet
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
                                Stream* parent_stream,
-                               bool sync_subgraph_fetches) {
+                               bool sync_subgraph_fetches,
+                               profiling::Profiler* run_profiler) {
 #ifdef ORT_ENABLE_STREAM
   DeviceStreamCollectionHolder device_stream_collection_holder(&session_state);
   DeviceStreamCollection* device_stream_collection = device_stream_collection_holder.p_.get();
 
   auto retval = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
-                                 execution_mode, terminate_flag, logger, device_stream_collection, false, parent_stream);
+                                 execution_mode, terminate_flag, logger, device_stream_collection, false, parent_stream,
+                                 run_profiler);
   if (device_stream_collection)
     ORT_CHECK_AND_SET_RETVAL(device_stream_collection->CleanUp(false));
 #else
   auto retval = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
-                                 execution_mode, terminate_flag, logger, false, parent_stream);
+                                 execution_mode, terminate_flag, logger, false, parent_stream,
+                                 run_profiler);
 #endif
   if (retval.IsOK() && sync_subgraph_fetches && parent_stream) {
     parent_stream->Flush();

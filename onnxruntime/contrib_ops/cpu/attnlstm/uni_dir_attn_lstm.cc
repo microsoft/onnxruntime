@@ -51,7 +51,8 @@ UniDirectionalAttnLstm<T>::UniDirectionalAttnLstm(AllocatorPtr allocator,
                                                   const ActivationFuncs::Entry& activation_func_g,
                                                   const ActivationFuncs::Entry& activation_func_h,
                                                   const float clip,
-                                                  onnxruntime::concurrency::ThreadPool* ttp)
+                                                  onnxruntime::concurrency::ThreadPool* ttp,
+                                                  const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config)
     : allocator_(allocator),
       logger_(logger),
       seq_length_(seq_length),
@@ -64,7 +65,8 @@ UniDirectionalAttnLstm<T>::UniDirectionalAttnLstm(AllocatorPtr allocator,
       use_bias_(!bias.empty()),
       use_peepholes_(!peephole_weights.empty()),
       attention_wrapper_(attention_wrapper),
-      ttp_(ttp) {
+      ttp_(ttp),
+      mlas_backend_kernel_selector_config_(mlas_backend_kernel_selector_config) {
   activation_f_ = {deepcpu::ActivationFuncByName(activation_func_f.name),
                    activation_func_f.alpha,
                    activation_func_f.beta};
@@ -260,7 +262,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
               input_weights.begin(), input_weights.end(),  // W[iofc]^T
               input_size_ + attention_size_, T{0.0},
               output_iofc_.begin(), output_iofc_.end(),
-              hidden_size_x4, ttp_);
+              hidden_size_x4, ttp_, mlas_backend_kernel_selector_config_);
 
   DumpMatrix("Xt*(W[iofc]^T)", output_iofc_.data(), total_rows, hidden_size_x4);
 
@@ -298,7 +300,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                   input_weights.begin() + input_size_, input_weights.end(),  // WA[iofc]
                   input_size_ + attention_size_, T{1.0},
                   step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
-                  hidden_size_x4, ttp_);
+                  hidden_size_x4, ttp_, mlas_backend_kernel_selector_config_);
 
       // calculate Xt*(W[iofc]^T) + Ht-1*R[iofc]
       ComputeGemm(batch_size_, hidden_size_x4, hidden_size_, T{1.0},
@@ -307,7 +309,7 @@ void UniDirectionalAttnLstm<T>::Compute(const gsl::span<const T>& inputs_arg,
                   recurrent_weights.begin(), recurrent_weights.end(),  // R[iofc]
                   hidden_size_, T{1.0},
                   step_out_IOFC, output_iofc_.end(),  // input contains Xt*(W[iofc]^T)
-                  hidden_size_x4, ttp_);
+                  hidden_size_x4, ttp_, mlas_backend_kernel_selector_config_);
 
       span_T_iter batched_output, batched_output_end;
       if (output_sequence) {

@@ -13,14 +13,13 @@ namespace webgpu {
 
 class GemmProgram final : public Program<GemmProgram> {
  public:
-  GemmProgram(bool transA, bool transB, float alpha, bool need_handle_bias, bool need_handle_matmul, int c_components, bool c_is_scalar, int output_components, bool is_vec4 = false, uint32_t split_dim_inner = 1)
+  GemmProgram(bool transA, bool transB, float alpha, bool need_handle_bias, bool need_handle_matmul, bool c_is_scalar, int output_components, bool is_vec4 = false, uint32_t split_dim_inner = 1)
       : Program{"Gemm"},
         transA_{transA},
         transB_{transB},
         alpha_{alpha},
         need_handle_bias_{need_handle_bias},
         need_handle_matmul_{need_handle_matmul},
-        c_components_(c_components),
         c_is_scalar_(c_is_scalar),
         output_components_(output_components),
         is_vec4_(is_vec4),
@@ -50,7 +49,6 @@ class GemmProgram final : public Program<GemmProgram> {
   float alpha_;
   bool need_handle_bias_;
   bool need_handle_matmul_;
-  int c_components_;
   bool c_is_scalar_ = false;
   int output_components_;
   bool is_vec4_ = false;

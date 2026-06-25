@@ -267,5 +267,95 @@ TEST(TensorOpTest, TileBoolType) { RunTestWrapperForBool(); }
 TEST(TensorOpTest, TileMLFloat16Type) { RunTestWrapper<MLFloat16>(); }
 #endif
 
+// Test that negative repeat values are rejected with an error
+TEST(TensorOpTest, TileNegativeRepeats) {
+  OpTester test("Tile", 13);
+  test.AddInput<float>("input", {3}, {1.0f, 2.0f, 3.0f});
+  test.AddInput<int64_t>("repeats", {1}, {-1});
+  test.AddOutput<float>("output", {0}, {});
+  test.Run(OpTester::ExpectResult::kExpectFailure);
+}
+
+// Test that negative repeat values are rejected for multi-dimensional input
+TEST(TensorOpTest, TileNegativeRepeats2D) {
+  OpTester test("Tile", 13);
+  test.AddInput<float>("input", {2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  test.AddInput<int64_t>("repeats", {2}, {2, -3});
+  test.AddOutput<float>("output", {0, 0}, {});
+  test.Run(OpTester::ExpectResult::kExpectFailure);
+}
+
+// Test that overflow in output dimension computation is caught by SafeInt.
+// input_dim=3 * repeat=6148914691236517206 would overflow int64_t:
+// 3 * 6148914691236517206 = 2^64 + 2, which wraps to 2 without overflow protection.
+// SafeInt should detect this and throw.
+TEST(TensorOpTest, TileOverflowRepeats1D) {
+  OpTester test("Tile", 13);
+  test.AddInput<float>("input", {3}, {1.0f, 2.0f, 3.0f});
+  // 6148914691236517206 = (2^64 + 2) / 3, so 3 * 6148914691236517206 overflows int64_t
+  test.AddInput<int64_t>("repeats", {1}, {int64_t{6148914691236517206}});
+  test.AddOutput<float>("output", {0}, {});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
+}
+
+// Test overflow detection with a 2D tensor where only one axis overflows
+TEST(TensorOpTest, TileOverflowRepeats2D) {
+  OpTester test("Tile", 13);
+  test.AddInput<float>("input", {2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  // Second axis: 3 * 6148914691236517206 overflows
+  test.AddInput<int64_t>("repeats", {2}, {1, int64_t{6148914691236517206}});
+  test.AddOutput<float>("output", {0, 0}, {});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
+}
+
+// Test overflow detection with large repeat on first axis
+TEST(TensorOpTest, TileOverflowRepeatsFirstAxis) {
+  OpTester test("Tile", 13);
+  test.AddInput<float>("input", {2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  // First axis: 2 * 4611686018427387904 = 2^63 which overflows signed int64_t
+  test.AddInput<int64_t>("repeats", {2}, {int64_t{4611686018427387904}, 1});
+  test.AddOutput<float>("output", {0, 0}, {});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
+}
+
+// Test overflow with int32 input type to ensure all fixed-size type paths are covered
+TEST(TensorOpTest, TileOverflowRepeatsInt32) {
+  OpTester test("Tile", 13);
+  test.AddInput<int32_t>("input", {3}, {1, 2, 3});
+  test.AddInput<int64_t>("repeats", {1}, {int64_t{6148914691236517206}});
+  test.AddOutput<int32_t>("output", {0}, {});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
+}
+
+// Test overflow with string input type
+TEST(TensorOpTest, TileOverflowRepeatsString) {
+  OpTester test("Tile", 13);
+  test.AddInput<std::string>("input", {3}, {"a", "b", "c"});
+  test.AddInput<int64_t>("repeats", {1}, {int64_t{6148914691236517206}});
+  test.AddOutput<std::string>("output", {0}, {});
+  test.Run(OpTester::ExpectResult::kExpectFailure);
+}
+
+// Test with INT64_MAX as repeat value (should overflow for any input dim > 1)
+TEST(TensorOpTest, TileOverflowMaxRepeat) {
+  OpTester test("Tile", 13);
+  test.AddInput<float>("input", {2}, {1.0f, 2.0f});
+  // INT64_MAX = 9223372036854775807; 2 * INT64_MAX overflows
+  test.AddInput<int64_t>("repeats", {1}, {std::numeric_limits<int64_t>::max()});
+  test.AddOutput<float>("output", {0}, {});
+  test.Run(OpTester::ExpectResult::kExpectFailure);
+}
+
+// Test overflow where multiple axes combine to create an impossibly large output
+TEST(TensorOpTest, TileOverflowMultipleAxes) {
+  OpTester test("Tile", 13);
+  test.AddInput<float>("input", {2, 2, 2}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f});
+  // Each axis: 2 * large_value overflows
+  int64_t large_repeat = int64_t{4611686018427387904};  // 2^62
+  test.AddInput<int64_t>("repeats", {3}, {large_repeat, 1, 1});
+  test.AddOutput<float>("output", {0, 0, 0}, {});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "", {kTensorrtExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

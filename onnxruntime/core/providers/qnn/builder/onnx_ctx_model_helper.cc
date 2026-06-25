@@ -269,7 +269,7 @@ Status CreateEPContextNodes(Model* model,
         }
 
         context_bin_path = context_bin_path + ToPathString("_qnn.bin");
-        context_cache_name = std::filesystem::path(context_bin_path).filename().string();
+        context_cache_name = PathToUTF8String(std::filesystem::path(context_bin_path).filename().native());
 
         // If generate ctx.onnx with share_ep_context enabled, all ctx.onnx should point to the same ctx.bin
         if (share_ep_contexts) {

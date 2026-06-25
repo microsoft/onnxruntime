@@ -60,14 +60,15 @@ class MlasSBGemmTest : public MlasTestBase {
   MatrixGuardBuffer<float> BufferFloatC;
   MLAS_THREADPOOL* threadpool_;
 
-  void* PackB(size_t N, size_t K, const BType* B, size_t ldb) {
-    size_t PackedBSize = MlasSBGemmPackBSize(N, K);
+  void* PackB(CBLAS_TRANSPOSE TransA, CBLAS_TRANSPOSE TransB, size_t N, size_t K, const BType* B, size_t ldb) {
+    const bool BIsfp32 = std::is_same<BType, float>::value;
+    size_t PackedBSize = MlasSBGemmPackBSize(TransA, TransB, BIsfp32, N, K, nullptr);
     if (PackedBSize == 0) {
       return nullptr;
     }
     void* PackedB = BufferBPacked.GetBuffer(PackedBSize);
     if (std::is_same<BType, float>::value) {
-      MlasSBGemmConvertPackB(N, K, (const float*)B, ldb, PackedB);
+      MlasSBGemmConvertPackB(TransA, TransB, BIsfp32, N, K, (const float*)B, ldb, PackedB, nullptr);
     } else {
     }
     return PackedB;
@@ -83,7 +84,10 @@ class MlasSBGemmTest : public MlasTestBase {
                   size_t ldb,
                   const float* Bias,
                   float* C,
-                  size_t ldc) {
+                  size_t ldc,
+                  bool ZeroMode = true) {
+    constexpr CBLAS_TRANSPOSE TransA = CblasNoTrans;
+    constexpr CBLAS_TRANSPOSE TransB = CblasNoTrans;
     std::vector<MLAS_SBGEMM_DATA_PARAMS> GemmParameters(BatchSize);
 
     for (size_t i = 0; i < GemmParameters.size(); i++) {
@@ -99,10 +103,13 @@ class MlasSBGemmTest : public MlasTestBase {
       params.ldc = ldc;
       params.AIsfp32 = true;
       params.BIsfp32 = true;
+      params.BIsPacked = false;
+      params.ZeroMode = ZeroMode;
 
       if (Packed) {
         ASSERT_EQ(BatchSize, size_t(1)) << "Packing B not supported in batching yet!";
-        params.B = PackB(N, K, B, ldb);
+        params.B = PackB(TransA, TransB, N, K, B, ldb);
+        params.BIsPacked = true;
         params.ldb = 0;
         params.BIsfp32 = false;
       } else {
@@ -111,7 +118,7 @@ class MlasSBGemmTest : public MlasTestBase {
       }
     }
 
-    MlasSBGemmBatch(M, N, K, BatchSize, GemmParameters.data(), threadpool_);
+    MlasSBGemmBatch(TransA, TransB, M, N, K, BatchSize, GemmParameters.data(), threadpool_, nullptr);
   }
 
   void ReferenceSgemm(size_t M,
@@ -186,12 +193,14 @@ class MlasSBGemmTest : public MlasTestBase {
     ReferenceSgemm(M, N, K, BatchSize, A, B, Bias, CReference);
     const float cosine_similarity_threshold = 0.98;
 
-    for (size_t batch = 0, f = 0; batch < BatchSize; batch++) {
+    for (size_t batch = 0; batch < BatchSize; batch++) {
       for (size_t m = 0; m < M; m++) {
-        for (size_t n = 0; n < N; n++, f++) {
+        for (size_t n = 0; n < N; n++) {
+          // Compute flat index to avoid desync if we break
+          const size_t f = batch * M * N + m * N + n;
           if (!(CloseEnough(float(C[f]), CReference[f]))) {
             float cos_sim = cosine_similarity(C, CReference, (BatchSize * M * N));
-            if (abs(cos_sim) < cosine_similarity_threshold) {
+            if (std::abs(cos_sim) < cosine_similarity_threshold) {
               ASSERT_TRUE(false) << "cosine similarity check failed" << cos_sim;
             } else {
               break;
@@ -206,6 +215,81 @@ class MlasSBGemmTest : public MlasTestBase {
     if (withBias) {
       ASSERT_EQ(std::memcmp(BiasTail, Bias + N * BatchSize, 16 * sizeof(float)), 0) << "Bias buffer overwritten!";
     }
+  }
+
+  void TestAccumulate(size_t M, size_t N, size_t K, size_t BatchSize) {
+    AType* A = BufferA.GetFilledBuffer(K * M * BatchSize + 16, SmallFloatFill<AType>);
+    AType Atail[16];
+    std::memcpy(Atail, A + K * M * BatchSize, 16 * sizeof(AType));
+
+    BType* B = BufferB.GetFilledBuffer(N * K * BatchSize + 16, SmallFloatFill<BType>);
+    BType Btail[16];
+    std::memcpy(Btail, B + N * K * BatchSize, 16 * sizeof(BType));
+
+    const float* Bias = BufferBias.GetFilledBuffer(N * BatchSize + 16, SmallFloatFill<float>);
+    float BiasTail[16];
+    std::memcpy(BiasTail, Bias + N * BatchSize, 16 * sizeof(float));
+
+    float* C = BufferC.GetFilledBuffer(N * M * BatchSize, SmallFloatFill<float>);
+    float* CReference = BufferCReference.GetFilledBuffer(
+        N * M * BatchSize,
+        [](float* start, size_t size) {
+          std::fill_n(start, size, -1.0f);
+        });
+
+    this->CallSBGemm(M, N, K, BatchSize, A, K, B, N, Bias, C, N, true);
+    ReferenceSgemm(M, N, K, BatchSize, A, B, Bias, CReference);
+
+    const float cosine_similarity_threshold = 0.98;
+    for (size_t batch = 0; batch < BatchSize; batch++) {
+      for (size_t m = 0; m < M; m++) {
+        for (size_t n = 0; n < N; n++) {
+          // Compute flat index to avoid desync if we break
+          const size_t f = batch * M * N + m * N + n;
+          if (!(CloseEnough(float(C[f]), CReference[f]))) {
+            float cos_sim = cosine_similarity(C, CReference, (BatchSize * M * N));
+            if (std::abs(cos_sim) < cosine_similarity_threshold) {
+              ASSERT_TRUE(false) << "cosine similarity check failed" << cos_sim;
+            } else {
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    float* CNoBias = BufferFloatC.GetFilledBuffer(
+        N * M * BatchSize,
+        [](float* start, size_t size) {
+          std::fill_n(start, size, -1.0f);
+        });
+    ReferenceSgemm(M, N, K, BatchSize, A, B, nullptr, CNoBias);
+    for (size_t i = 0, size = N * M * BatchSize; i < size; i++) {
+      CReference[i] += CNoBias[i];
+    }
+
+    this->CallSBGemm(M, N, K, BatchSize, A, K, B, N, Bias, C, N, false);
+
+    for (size_t batch = 0; batch < BatchSize; batch++) {
+      for (size_t m = 0; m < M; m++) {
+        for (size_t n = 0; n < N; n++) {
+          // Compute flat index to avoid desync if we break
+          const size_t f = batch * M * N + m * N + n;
+          if (!(CloseEnough(float(C[f]), CReference[f]))) {
+            float cos_sim = cosine_similarity(C, CReference, (BatchSize * M * N));
+            if (std::abs(cos_sim) < cosine_similarity_threshold) {
+              ASSERT_TRUE(false) << "cosine similarity check failed" << cos_sim;
+            } else {
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    ASSERT_EQ(std::memcmp(Atail, A + K * M * BatchSize, 16 * sizeof(AType)), 0) << "Matrix A buffer overwritten!";
+    ASSERT_EQ(std::memcmp(Btail, B + N * K * BatchSize, 16 * sizeof(BType)), 0) << "Matrix B buffer overwritten!";
+    ASSERT_EQ(std::memcmp(BiasTail, Bias + N * BatchSize, 16 * sizeof(float)), 0) << "Bias buffer overwritten!";
   }
 
  private:

@@ -79,36 +79,40 @@ template class Range<float>;
 template class Range<int32_t>;
 template class Range<int64_t>;
 
+namespace {
+
+template <typename T>
+Status CreateRangeKernel(FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) {
+  out = std::make_unique<Range<T>>(info);
+  return Status::OK();
+}
+
+template <typename T>
+KernelCreateInfo CreateRangeKernelInfo() {
+  return KernelCreateInfo(
+      KernelDefBuilder()
+          .SetName("Range")
+          .SetDomain(kOnnxDomain)
+          .SinceVersion(11)
+          .Provider(kWebGpuExecutionProvider)
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())
+          .InputMemoryType(OrtMemTypeCPU, 0)
+          .InputMemoryType(OrtMemTypeCPU, 1)
+          .InputMemoryType(OrtMemTypeCPU, 2)
+          .Build(),
+      CreateRangeKernel<T>);
+}
+
+}  // namespace
+
 void RegisterRangeKernels(KernelRegistry& kernel_registry, bool enable_int64) {
-  // Helper lambda to create kernel
-  auto create_range_kernel_info = [](auto type_tag) {
-    using T = decltype(type_tag);
-    KernelCreateFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
-      out = std::make_unique<Range<T>>(info);
-      return Status::OK();
-    };
-
-    return KernelCreateInfo(
-        KernelDefBuilder()
-            .SetName("Range")
-            .SetDomain(kOnnxDomain)
-            .SinceVersion(11)
-            .Provider(kWebGpuExecutionProvider)
-            .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())
-            .InputMemoryType(OrtMemTypeCPU, 0)
-            .InputMemoryType(OrtMemTypeCPU, 1)
-            .InputMemoryType(OrtMemTypeCPU, 2)
-            .Build(),
-        kernel_create_fn);
-  };
-
   // Always register float and int32_t
-  ORT_THROW_IF_ERROR(kernel_registry.Register(create_range_kernel_info(float{})));
-  ORT_THROW_IF_ERROR(kernel_registry.Register(create_range_kernel_info(int32_t{})));
+  ORT_THROW_IF_ERROR(kernel_registry.Register(CreateRangeKernelInfo<float>()));
+  ORT_THROW_IF_ERROR(kernel_registry.Register(CreateRangeKernelInfo<int32_t>()));
 
   // Register int64_t only if int64 support is enabled
   if (enable_int64) {
-    ORT_THROW_IF_ERROR(kernel_registry.Register(create_range_kernel_info(int64_t{})));
+    ORT_THROW_IF_ERROR(kernel_registry.Register(CreateRangeKernelInfo<int64_t>()));
   }
 }
 

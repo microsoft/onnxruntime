@@ -74,6 +74,15 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
   auto options = test_ep_device->EpOptions();
   ASSERT_STREQ(options.GetValue("run_really_fast"), "true");
 
+  // Verify the library path is present in the EP metadata
+  const char* metadata_library_path = metadata.GetValue(kOrtEpDevice_EpMetadataKey_LibraryPath);
+  ASSERT_NE(metadata_library_path, nullptr) << "Expected library_path to be present in EP metadata.";
+
+  // Verify the library path matches the registered path
+  std::filesystem::path metadata_path{metadata_library_path};
+  ASSERT_EQ(std::filesystem::canonical(metadata_path), std::filesystem::canonical(library_path))
+      << "Expected library_path in EP metadata to match the registered library path.";
+
   // the CPU device info will vary by machine so check for the lowest common denominator values
   Ort::ConstHardwareDevice device = test_ep_device->Device();
   ASSERT_EQ(device.Type(), OrtHardwareDeviceType_CPU);

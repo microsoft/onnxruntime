@@ -45,10 +45,14 @@ class IResourceAccountant {
   virtual ResourceCount GetConsumedAmount() const = 0;
   virtual void AddConsumedAmount(const ResourceCount& amount) = 0;
   virtual void RemoveConsumedAmount(const ResourceCount& amount) = 0;
-  virtual ResourceCount ComputeResourceCount(const Node& node) const = 0;
+  virtual ResourceCount ComputeResourceCount(const Node& node) = 0;
 
   std::optional<ResourceCount> GetThreshold() const {
     return threshold_;
+  }
+
+  void SetThreshold(const ResourceCount& threshold) {
+    threshold_ = threshold;
   }
 
   void SetStopAssignment() noexcept {
@@ -56,6 +60,15 @@ class IResourceAccountant {
   }
 
   bool IsStopIssued() const noexcept { return stop_assignment_; }
+
+  // Called before each GetCapability pass to discard pending weight tracking
+  // from a previous (discarded) pass. Default no-op for stats-based accountants.
+  virtual void ResetPendingWeights() {}
+
+  // Called when a node's cost is committed (AccountForNode/AccountForAllNodes).
+  // Moves the node's pending weights into the committed set so they persist
+  // across GetCapability passes. Default no-op for stats-based accountants.
+  virtual void CommitWeightsForNode(size_t /*node_index*/) {}
 
   static std::string MakeUniqueNodeName(const Node& node);
 
@@ -114,16 +127,16 @@ class NodeStatsRecorder {
 
   void DumpStats(const std::filesystem::path& model_path) const;
 
-  [[nodiscard]] static Status CreateAccountants(
-      const ConfigOptions& config_options,
-      const std::filesystem::path& model_path,
-      std::optional<ResourceAccountantMap>& acc_map);
-
  private:
   void DumpStats(std::ostream& os) const;
 
   struct Impl;
   std::unique_ptr<Impl> impl_;
 };
+
+Status CreateAccountants(
+    const ConfigOptions& config_options,
+    const std::filesystem::path& model_path,
+    std::optional<ResourceAccountantMap>& acc_map);
 
 }  // namespace onnxruntime

@@ -12,7 +12,7 @@ namespace Microsoft.ML.OnnxRuntime
     /// </summary>
     /// <remarks>
     /// This enum is used to determine whether a pre-compiled model can be used with specific execution providers
-    /// and devices, or if recompilation is needed. 
+    /// and devices, or if recompilation is needed.
     /// </remarks>
     public enum OrtCompiledModelCompatibility
     {
@@ -77,14 +77,14 @@ namespace Microsoft.ML.OnnxRuntime
     /// <summary>
     /// The singleton class OrtEnv contains the process-global ONNX Runtime environment.
     /// It sets up logging, creates system wide thread-pools (if Thread Pool options are provided)
-    /// and other necessary things for OnnxRuntime to function. 
-    /// 
+    /// and other necessary things for OnnxRuntime to function.
+    ///
     /// Create or access OrtEnv by calling the Instance() method. Instance() can be called multiple times.
     /// It would return the same instance.
-    /// 
+    ///
     /// CreateInstanceWithOptions() provides a way to create environment with options.
     /// It must be called once before Instance() is called, otherwise it would not have effect.
-    /// 
+    ///
     /// If the environment is not explicitly created, it will be created as needed, e.g.,
     /// when creating a SessionOptions instance.
     /// </summary>
@@ -92,6 +92,28 @@ namespace Microsoft.ML.OnnxRuntime
     {
         #region Static members
         private static readonly int ORT_PROJECTION_CSHARP = 2;
+
+        /// <summary>
+        /// Set this to <c>true</c> before accessing any OnnxRuntime type to prevent OnnxRuntime
+        /// from registering its own <c>DllImportResolver</c> via
+        /// <c>NativeLibrary.SetDllImportResolver</c>.
+        /// This is useful when the host application needs to register its own custom resolver
+        /// for the OnnxRuntime assembly. Must be set before any OnnxRuntime API is used
+        /// (i.e., before the internal NativeMethods static constructor runs).
+        /// </summary>
+        /// <example>
+        /// <code>
+        /// // Disable OnnxRuntime's built-in resolver before any ORT usage
+        /// OrtEnv.DisableDllImportResolver = true;
+        ///
+        /// // Register your own resolver
+        /// NativeLibrary.SetDllImportResolver(typeof(OrtEnv).Assembly, MyCustomResolver);
+        ///
+        /// // Now use OnnxRuntime normally
+        /// var env = OrtEnv.Instance();
+        /// </code>
+        /// </example>
+        public static bool DisableDllImportResolver { get; set; } = false;
 
         private static readonly byte[] _defaultLogId = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(@"CSharpOnnxRuntime");
 
@@ -274,7 +296,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Instantiates (if not already done so) a new OrtEnv instance with the default logging level
         /// and no other options. Otherwise returns the existing instance.
-        /// 
+        ///
         /// It returns the same instance on every call - `OrtEnv` is singleton
         /// </summary>
         /// <returns>Returns a singleton instance of OrtEnv that represents native OrtEnv object</returns>
@@ -502,6 +524,75 @@ namespace Microsoft.ML.OnnxRuntime
             return (OrtCompiledModelCompatibility)status;
         }
 
+        /// <summary>
+        /// Extract EP compatibility info from a precompiled model file.
+        /// </summary>
+        /// <remarks>
+        /// Parses the model file to extract the compatibility info string for a specific execution provider
+        /// from the model's metadata properties. This is only applicable to models that have been precompiled
+        /// for an EP. Standard ONNX models do not contain this information.
+        /// The compatibility info can then be passed to <see cref="GetModelCompatibilityForEpDevices"/> to
+        /// check if a precompiled model is compatible with the current system.
+        /// </remarks>
+        /// <param name="modelPath">Path to the ONNX model file.</param>
+        /// <param name="epType">The execution provider type string. Use <see cref="OrtEpDevice.EpName"/> to get this value.</param>
+        /// <returns>The compatibility info string, or null if no compatibility info exists for the specified EP.</returns>
+        /// <exception cref="ArgumentException">If modelPath or epType is null or empty.</exception>
+        /// <exception cref="OnnxRuntimeException">If the model file cannot be read or parsed.</exception>
+        public string GetCompatibilityInfoFromModel(string modelPath, string epType)
+        {
+            if (string.IsNullOrEmpty(modelPath))
+                throw new ArgumentException("modelPath must be non-empty", nameof(modelPath));
+            if (string.IsNullOrEmpty(epType))
+                throw new ArgumentException("epType must be non-empty", nameof(epType));
+
+            var allocator = OrtAllocator.DefaultInstance;
+            var pathBytes = NativeOnnxValueHelper.GetPlatformSerializedString(modelPath);
+            var epTypeUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(epType);
+
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtGetCompatibilityInfoFromModel(
+                    pathBytes, epTypeUtf8, allocator.Pointer, out IntPtr compatInfoPtr));
+
+            if (compatInfoPtr == IntPtr.Zero)
+                return null;
+
+            return NativeOnnxValueHelper.StringFromNativeUtf8(compatInfoPtr, allocator);
+        }
+
+        /// <summary>
+        /// Extract EP compatibility info from precompiled model bytes in memory.
+        /// </summary>
+        /// <remarks>
+        /// Same as <see cref="GetCompatibilityInfoFromModel"/> but reads from a memory buffer instead of a file.
+        /// Useful when precompiled models are loaded from encrypted storage, network, or other non-file sources.
+        /// </remarks>
+        /// <param name="modelData">The model data bytes.</param>
+        /// <param name="epType">The execution provider type string. Use <see cref="OrtEpDevice.EpName"/> to get this value.</param>
+        /// <returns>The compatibility info string, or null if no compatibility info exists for the specified EP.</returns>
+        /// <exception cref="ArgumentException">If modelData is null/empty or epType is null or empty.</exception>
+        /// <exception cref="OnnxRuntimeException">If the model data cannot be parsed.</exception>
+        public string GetCompatibilityInfoFromModelBytes(byte[] modelData, string epType)
+        {
+            if (modelData == null || modelData.Length == 0)
+                throw new ArgumentException("modelData must be non-empty", nameof(modelData));
+            if (string.IsNullOrEmpty(epType))
+                throw new ArgumentException("epType must be non-empty", nameof(epType));
+
+            var allocator = OrtAllocator.DefaultInstance;
+            var epTypeUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(epType);
+
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtGetCompatibilityInfoFromModelBytes(
+                    modelData, (UIntPtr)modelData.Length, epTypeUtf8,
+                    allocator.Pointer, out IntPtr compatInfoPtr));
+
+            if (compatInfoPtr == IntPtr.Zero)
+                return null;
+
+            return NativeOnnxValueHelper.StringFromNativeUtf8(compatInfoPtr, allocator);
+        }
+
 
         /// <summary>
         /// Get/Set log level property of OrtEnv instance
@@ -523,7 +614,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// A registered execution provider library can be used by all sessions created with the OrtEnv instance.
         /// Devices the execution provider can utilize are added to the values returned by GetEpDevices() and can
         /// be used in SessionOptions.AppendExecutionProvider to select an execution provider for a device.
-        /// 
+        ///
         /// Coming: A selection policy can be specified and ORT will automatically select the best execution providers
         /// and devices for the model.
         /// </summary>

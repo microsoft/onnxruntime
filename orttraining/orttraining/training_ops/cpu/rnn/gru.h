@@ -5,6 +5,7 @@
 
 #include "core/framework/op_kernel.h"
 #include "orttraining/training_ops/cpu/rnn/gru_io_utils.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 
 namespace onnxruntime::contrib {
 
@@ -12,12 +13,14 @@ template <typename T>
 class GRUTraining final : public OpKernel {
  public:
   GRUTraining(const OpKernelInfo& info) : OpKernel(info), attributes_(info) {
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
   }
 
   Status Compute(OpKernelContext* context) const override;
 
  private:
   gru::GRUAttributes attributes_;
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 };
 
 }  // namespace onnxruntime::contrib

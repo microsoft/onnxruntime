@@ -14,6 +14,7 @@ class InferenceSessionWrap : public Napi::ObjectWrap<InferenceSessionWrap> {
   static Napi::Object Init(Napi::Env env, Napi::Object exports);
 
   InferenceSessionWrap(const Napi::CallbackInfo& info);
+  ~InferenceSessionWrap();
 
  private:
   /**

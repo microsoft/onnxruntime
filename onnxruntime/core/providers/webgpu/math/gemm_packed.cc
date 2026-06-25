@@ -44,8 +44,12 @@ Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
     c = &shader.AddInput("c", ShaderUsage::UseUniform);
   }
 
-  const ProgramVariableDataType output_var_type = this->Outputs()[0].var_type;
-  MatMulWriteFnSource(shader, output, c, /* is_gemm = */ true, c_components_, c_is_scalar_, /*activation_snippet*/ "", /*is_channels_last*/ false, need_split_k, output_var_type);
+  if (need_split_k) {
+    const ProgramVariableDataType output_var_type = this->Outputs()[0].var_type;
+    MatMulWriteFnSourceWithSplitK(shader, output, /*is_gemm = */ true, output_var_type);
+  } else {
+    MatMulWriteFnSourceForGemm(shader, output, c, c_is_scalar_);
+  }
 
   return Status::OK();
 }
@@ -121,7 +125,7 @@ Status ApplyGemmPacked(const Tensor* a,
       const TensorShape output_shape = TensorShape{M, N / output_components_in_fill_bias_program};
 
       auto fill_bias_program = CreateMatMulFillBiasOrZeroBeforeSplitKProgram(
-          bias, y, /*is_gemm*/ true, beta, output_components_in_fill_bias_program, c_is_scalar, output_shape);
+          bias, y, /*is_gemm*/ true, beta, output_components_in_fill_bias_program, output_shape);
       ORT_RETURN_IF_ERROR(context.RunProgram(fill_bias_program));
 
       // When Split-K is used, `bias` will be handled in `MatMulFillBiasOrZeroBeforeSplitKProgram`
@@ -139,7 +143,7 @@ Status ApplyGemmPacked(const Tensor* a,
     }
   }
 
-  GemmProgram program{transA, transB, alpha, need_handle_bias, need_handle_matmul, c_components, c_is_scalar, output_components, is_vec4, split_dim_inner};
+  GemmProgram program{transA, transB, alpha, need_handle_bias, need_handle_matmul, c_is_scalar, output_components, is_vec4, split_dim_inner};
 
   if (need_handle_matmul) {
     program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, components},

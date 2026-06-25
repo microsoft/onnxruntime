@@ -69,24 +69,49 @@ struct TreeEnsembleAttributesV3 {
       target_class_nodeids = info.GetAttrsOrDefault<int64_t>("target_nodeids");
       target_class_treeids = info.GetAttrsOrDefault<int64_t>("target_treeids");
       target_class_weights = info.GetAttrsOrDefault<float>("target_weights");
-
-      ORT_ENFORCE(n_targets_or_classes > 0);
-      ORT_ENFORCE(nodes_falsenodeids.size() == nodes_featureids.size());
-      ORT_ENFORCE(nodes_falsenodeids.size() == nodes_modes_string.size());
-      ORT_ENFORCE(nodes_falsenodeids.size() == nodes_nodeids.size());
-      ORT_ENFORCE(nodes_falsenodeids.size() == nodes_treeids.size());
-      ORT_ENFORCE(nodes_falsenodeids.size() == nodes_truenodeids.size());
-      ORT_ENFORCE(nodes_falsenodeids.size() == nodes_values.size() ||
-                  nodes_falsenodeids.size() == nodes_values_as_tensor.size());
-      ORT_ENFORCE(target_class_ids.size() == target_class_nodeids.size());
-      ORT_ENFORCE(target_class_ids.size() == target_class_treeids.size());
-      ORT_ENFORCE(target_class_weights.empty() || target_class_ids.size() == target_class_weights.size());
-      ORT_ENFORCE(base_values.empty() || base_values_as_tensor.empty());
-      ORT_ENFORCE(nodes_hitrates.empty() || nodes_hitrates_as_tensor.empty());
-      ORT_ENFORCE(nodes_values.empty() || nodes_values_as_tensor.empty());
-      ORT_ENFORCE(target_class_weights.empty() || target_class_weights_as_tensor.empty());
-      ORT_ENFORCE(nodes_modes_string.size() < std::numeric_limits<uint32_t>::max());
     }
+
+    ORT_ENFORCE(n_targets_or_classes > 0,
+                "n_targets_or_classes must be positive, got ", n_targets_or_classes);
+    ORT_ENFORCE(nodes_falsenodeids.size() == nodes_featureids.size(),
+                "nodes_falsenodeids and nodes_featureids must have the same size, got ",
+                nodes_falsenodeids.size(), " and ", nodes_featureids.size());
+    ORT_ENFORCE(nodes_falsenodeids.size() == nodes_modes.size(),
+                "nodes_falsenodeids and nodes_modes must have the same size, got ",
+                nodes_falsenodeids.size(), " and ", nodes_modes.size());
+    ORT_ENFORCE(nodes_falsenodeids.size() == nodes_nodeids.size(),
+                "nodes_falsenodeids and nodes_nodeids must have the same size, got ",
+                nodes_falsenodeids.size(), " and ", nodes_nodeids.size());
+    ORT_ENFORCE(nodes_falsenodeids.size() == nodes_treeids.size(),
+                "nodes_falsenodeids and nodes_treeids must have the same size, got ",
+                nodes_falsenodeids.size(), " and ", nodes_treeids.size());
+    ORT_ENFORCE(nodes_falsenodeids.size() == nodes_truenodeids.size(),
+                "nodes_falsenodeids and nodes_truenodeids must have the same size, got ",
+                nodes_falsenodeids.size(), " and ", nodes_truenodeids.size());
+    ORT_ENFORCE(nodes_falsenodeids.size() == nodes_values.size() ||
+                    nodes_falsenodeids.size() == nodes_values_as_tensor.size(),
+                "nodes_falsenodeids size (", nodes_falsenodeids.size(),
+                ") must match nodes_values (", nodes_values.size(),
+                ") or nodes_values_as_tensor (", nodes_values_as_tensor.size(), ")");
+    ORT_ENFORCE(target_class_ids.size() == target_class_nodeids.size(),
+                "target_class_ids and target_class_nodeids must have the same size, got ",
+                target_class_ids.size(), " and ", target_class_nodeids.size());
+    ORT_ENFORCE(target_class_ids.size() == target_class_treeids.size(),
+                "target_class_ids and target_class_treeids must have the same size, got ",
+                target_class_ids.size(), " and ", target_class_treeids.size());
+    ORT_ENFORCE(target_class_weights.empty() || target_class_ids.size() == target_class_weights.size(),
+                "target_class_weights must be empty or match target_class_ids size, got ",
+                target_class_weights.size(), " and ", target_class_ids.size());
+    ORT_ENFORCE(base_values.empty() || base_values_as_tensor.empty(),
+                "base_values and base_values_as_tensor cannot both be non-empty");
+    ORT_ENFORCE(nodes_hitrates.empty() || nodes_hitrates_as_tensor.empty(),
+                "nodes_hitrates and nodes_hitrates_as_tensor cannot both be non-empty");
+    ORT_ENFORCE(nodes_values.empty() || nodes_values_as_tensor.empty(),
+                "nodes_values and nodes_values_as_tensor cannot both be non-empty");
+    ORT_ENFORCE(target_class_weights.empty() || target_class_weights_as_tensor.empty(),
+                "target_class_weights and target_class_weights_as_tensor cannot both be non-empty");
+    ORT_ENFORCE(nodes_modes.size() < std::numeric_limits<uint32_t>::max(),
+                "nodes_modes size (", nodes_modes.size(), ") exceeds uint32_t max");
   }
 
   std::string aggregate_function;
@@ -147,6 +172,7 @@ struct TreeEnsembleAttributesV5 {
     post_transform = info.GetAttrOrDefault<int64_t>("post_transform", 0);
     tree_roots = info.GetAttrsOrDefault<int64_t>("tree_roots");
 #else
+    ORT_UNUSED_PARAMETER(info);
     // GetVectorAttrsOrDefault is not part of the minimal build.
     // As a result, TreeEnsemble v5 cannot be available in this build.
     ORT_THROW("TreeEnsemble(ai.onnx.ml==5) is not supported with the minimal build.");

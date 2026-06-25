@@ -19,13 +19,16 @@
 
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/nn/conv_transpose_attributes.h"
+#include "core/providers/cpu/mlas_backend_kernel_selector_config_utils.h"
 
 namespace onnxruntime {
 
 template <typename T>
 class ConvTranspose : public OpKernel {
  public:
-  ConvTranspose(const OpKernelInfo& info) : OpKernel(info), conv_transpose_attrs_(info) {}
+  ConvTranspose(const OpKernelInfo& info) : OpKernel(info), conv_transpose_attrs_(info) {
+    SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+  }
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed,
@@ -46,6 +49,8 @@ class ConvTranspose : public OpKernel {
   // for pre-packing usage
   TensorShape filter_shape_;
   BufferUniquePtr transposed_filter_;
+
+  MLAS_BACKEND_KERNEL_SELECTOR_CONFIG mlas_backend_kernel_selector_config_;
 };
 
 }  // namespace onnxruntime

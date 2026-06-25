@@ -479,8 +479,12 @@ TEST_F(QnnHTPBackendTests, PadReflectModeNeg) {
                            has_constant_value_input);
 }
 
+/// Issue filed: https://github.com/microsoft/onnxruntime/issues/27683
+/// QNN accepts invalid input. However, this test runs CPU f32 first to get reference input
+/// which is no longer possible with invalid pads. The real issue is that QNN accepts invalid pads for reflect mode,
+/// which should be rejected as per ONNX spec.
 // Pad amount should not be greater than shape(input[0])[i] - 1
-TEST_F(QnnHTPBackendTests, PadReflectModeOutOfRangePadAmount) {
+TEST_F(QnnHTPBackendTests, DISABLED_PadReflectModeOutOfRangePadAmount) {
   bool has_constant_value_input = false;
   RunQDQPadOpTest<uint8_t>(TestInputDef<float>({3, 2}, false, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.6f}),
                            TestInputDef<int64_t>({4}, true, {0, 2, 0, 0}),

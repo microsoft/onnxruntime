@@ -17,6 +17,7 @@ from collections import OrderedDict
 import numpy
 import torch
 import torch.nn.functional as F
+from cuda_plugin_ep_helper import get_cuda_provider_name
 from onnx import TensorProto, helper
 from parameterized import parameterized
 from torch import nn
@@ -28,10 +29,19 @@ pipeline_mode = os.getenv("PIPELINE_MODE", "1") == "1"
 
 onnxruntime.preload_dlls()
 
+
 # Determine the execution provider and device based on CUDA availability.
-use_cuda = "CUDAExecutionProvider" in onnxruntime.get_available_providers() and torch.cuda.is_available()
+cuda_provider = get_cuda_provider_name()
+use_cuda = cuda_provider is not None
 device = torch.device("cuda:0" if use_cuda else "cpu")
-ort_provider = ["CUDAExecutionProvider"] if use_cuda else ["CPUExecutionProvider"]
+
+
+def get_ort_provider():
+    if not use_cuda:
+        return ["CPUExecutionProvider"]
+
+    return [cuda_provider]
+
 
 torch.manual_seed(42)
 numpy.random.seed(42)
@@ -586,11 +596,12 @@ class SparseMoeBlockORTHelper(nn.Module):
 
         sess_options = SessionOptions()
         sess_options.log_severity_level = 2
+        providers = get_ort_provider()
 
         try:
-            ort_session = InferenceSession(moe_onnx_graph, sess_options, providers=ort_provider)
+            ort_session = InferenceSession(moe_onnx_graph, sess_options, providers=providers)
         except Exception as e:
-            print(f"Failed to create ONNX Runtime session with provider {ort_provider}: {e}")
+            print(f"Failed to create ONNX Runtime session with provider {providers}: {e}")
             print("Skipping ONNX Runtime execution for this test case.")
             return None
 
@@ -1403,7 +1414,7 @@ class TestSwigluMoE(unittest.TestCase):
 
 
 def has_bf16_moe():
-    if "CUDAExecutionProvider" not in onnxruntime.get_available_providers() or not torch.cuda.is_available():
+    if not use_cuda or not torch.cuda.is_available():
         return False
     major, _ = torch.cuda.get_device_capability()
     return major >= 8

@@ -146,7 +146,8 @@ void ComputeGemm(const int M,
                  TSpanCIter C,
                  TSpanCIter C_end,
                  const int ldc,
-                 concurrency::ThreadPool* thread_pool) {
+                 concurrency::ThreadPool* thread_pool,
+                 const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
   // validate all the inputs
   // need to use the lda/ldb/ldc strides which should be >= the columns for the span
   ORT_ENFORCE(lda >= K && ldb >= K && ldc >= N);
@@ -159,7 +160,7 @@ void ComputeGemm(const int M,
       M, N, K, alpha,
       &*A, lda,
       &*B, ldb, beta,
-      &*C, ldc, thread_pool);
+      &*C, ldc, thread_pool, mlas_backend_kernel_selector_config);
 }
 
 struct PackedWeights {
@@ -241,7 +242,8 @@ void ComputeGemm(const int M,
                  const int ldc,
                  uint8_t* /* quantized_A_buffer */,
                  int32_t* /* quantize_agg_C_buffer */,
-                 concurrency::ThreadPool* thread_pool);
+                 concurrency::ThreadPool* thread_pool,
+                 const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config);
 
 void ComputeGemm(const int M,
                  const int N,
@@ -256,7 +258,8 @@ void ComputeGemm(const int M,
                  const int ldc,
                  uint8_t* quantized_A_buffer,
                  int32_t* quantize_agg_C_buffer,
-                 concurrency::ThreadPool* thread_pool);
+                 concurrency::ThreadPool* thread_pool,
+                 const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config);
 
 // helper to call the above pointer versions with spans
 template <typename GemmWeightsType>
@@ -271,7 +274,8 @@ inline void ComputeGemm(const int M,
                         const int ldc,
                         uint8_t* quantized_A_buffer,
                         int32_t* quantize_agg_C_buffer,
-                        concurrency::ThreadPool* thread_pool) {
+                        concurrency::ThreadPool* thread_pool,
+                        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config) {
   ComputeGemm(M,
               N,
               K,
@@ -283,7 +287,8 @@ inline void ComputeGemm(const int M,
               ldc,
               quantized_A_buffer,
               quantize_agg_C_buffer,
-              thread_pool);
+              thread_pool,
+              mlas_backend_kernel_selector_config);
 }
 
 // helper to convert a span to a raw pointer

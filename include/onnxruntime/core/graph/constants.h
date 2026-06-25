@@ -43,7 +43,6 @@ constexpr const char* kRknpuExecutionProvider = "RknpuExecutionProvider";
 constexpr const char* kDmlExecutionProvider = "DmlExecutionProvider";
 constexpr const char* kMIGraphXExecutionProvider = "MIGraphXExecutionProvider";
 constexpr const char* kAclExecutionProvider = "ACLExecutionProvider";
-constexpr const char* kArmNNExecutionProvider = "ArmNNExecutionProvider";
 constexpr const char* kCoreMLExecutionProvider = "CoreMLExecutionProvider";
 constexpr const char* kJsExecutionProvider = "JsExecutionProvider";
 constexpr const char* kSnpeExecutionProvider = "SNPEExecutionProvider";

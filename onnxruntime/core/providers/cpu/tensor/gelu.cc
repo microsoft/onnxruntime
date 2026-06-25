@@ -88,16 +88,9 @@ Status Gelu<T>::Compute(OpKernelContext* context) const {
           T* p_output = output_data + start;
           int64_t count = std::min(length_per_task, elem_count - start);
 
-          for (int64_t i = 0; i < count; i++) {
-            T value = p_input[i];
-            p_output[i] = value * static_cast<T>(M_SQRT1_2);
-          }
-
-          MlasComputeErf(p_output, p_output, narrow<size_t>(count));
-
-          for (int64_t i = 0; i < count; i++) {
-            p_output[i] = 0.5f * p_input[i] * (p_output[i] + 1.0f);
-          }
+          // MlasComputeGeluErf requires distinct input/output buffers. This
+          // call uses disjoint slices from the input and output tensors.
+          MlasComputeGeluErf(p_input, p_output, narrow<size_t>(count));
         },
         0);
     return Status::OK();

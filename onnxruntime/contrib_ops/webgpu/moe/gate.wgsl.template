@@ -5,7 +5,8 @@
 // MOE gate shader
 //
 // called with expert as local_idx and token_idx as workgroup_idx
-// in: router_values [num_tokens, num_experts], per expert float we multiply final results with
+// in: router_logits [num_tokens, num_experts], per expert float we multiply final results with
+// out: topk_values [num_tokens, num_experts], number of tokens assigned to each expert
 // out: gate_counts [num_experts], number of tokens assigned to each expert
 // out: gate_hidden [num_experts, num_tokens], token_idx assigned to each expert
 // uniform: rows(num_tokens), cols(num_experts), token_offset
@@ -21,7 +22,7 @@ const MAX_FLOAT: f16 = 65504.0;
 const MAX_FLOAT: f32 = 3.4028234663852886e+38;
 #endif
 
-var<workgroup> shared_vals: array<hidden_state_element_t, workgroup_size_x>;
+var<workgroup> shared_vals: array<router_logits_element_t, workgroup_size_x>;
 var<workgroup> shared_idxs: array<u32, workgroup_size_x>;
 
 $MAIN {
@@ -32,14 +33,14 @@ $MAIN {
     let cols = uniforms.cols;
     let output_base = row * cols;
 
-    var max_val: hidden_state_element_t = -MAX_FLOAT;
+    var max_val: router_logits_element_t = -MAX_FLOAT;
     var max_idx: u32 = 0u;
 
     if (global_idx < cols) {
         atomicStore(&tokencount_for_expert[global_idx], 0u);
     }
     if (local_idx < cols) {
-        max_val = hidden_state[(row + uniforms.token_offset) * cols + local_idx];
+        max_val = router_logits[(row + uniforms.token_offset) * cols + local_idx];
         max_idx = local_idx;
     }
     shared_vals[local_idx] = max_val;

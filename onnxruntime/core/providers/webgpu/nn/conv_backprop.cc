@@ -36,7 +36,7 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
            << "w_offset += 2;\n";
       } else if (a_components_ == 1) {
         ss << "let xValue = vec4<dy_element_t>(" << dy.GetByOffset("x_offset") << ", " << dy.GetByOffset("x_offset + 1u") << ", " << dy.GetByOffset("x_offset + 2u") << ", " << dy.GetByOffset("x_offset + 3u") << ");\n"
-           << "let wValue = vec4<dy_element_t>(" << w.GetByOffset("x_offset") << ", " << w.GetByOffset("x_offset + 1u") << ", " << w.GetByOffset("x_offset + 2u") << ", " << w.GetByOffset("x_offset + 3u") << ");\n"
+           << "let wValue = vec4<dy_element_t>(" << w.GetByOffset("w_offset") << ", " << w.GetByOffset("w_offset + 1u") << ", " << w.GetByOffset("w_offset + 2u") << ", " << w.GetByOffset("w_offset + 3u") << ");\n"
            << "dotProd = dotProd + dot(xValue, wValue);\n"
            << "x_offset += 4;\n"
            << "w_offset += 4;\n";
@@ -69,7 +69,7 @@ Status ConvTranspose2DProgram::GenerateShaderCode(ShaderHelper& shader) const {
       ORT_ENFORCE(pack_input_as4_, "Invalid input_channels_remainder: ", input_channels_remainder_);
       if (a_components_ == 1) {
         for (uint32_t i = 0; i < input_channels_remainder_; ++i) {
-          ss << "dotProd = dotProd + " << dy.GetByOffset("x_offset + " + std::to_string(i)) << ";\n";
+          ss << "dotProd = dotProd + " << dy.GetByOffset("x_offset + " + std::to_string(i)) << " * " << w.GetByOffset("w_offset + " + std::to_string(i)) << ";\n";
         }
       } else if (a_components_ == 2) {
         if (input_channels_remainder_ != 2) {

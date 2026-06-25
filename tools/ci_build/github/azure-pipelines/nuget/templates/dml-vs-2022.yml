@@ -49,8 +49,8 @@ stages:
         clean: true
         submodules: none
 
-      
-      - template: ../../templates/setup-build-tools.yml      
+
+      - template: ../../templates/setup-build-tools.yml
         parameters:
           host_cpu_arch: 'x64'
 

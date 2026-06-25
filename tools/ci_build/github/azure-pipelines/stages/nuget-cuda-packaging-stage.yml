@@ -186,6 +186,7 @@ stages:
         # 1* stands for version number. we use it to filter Gpu.Windows and Gpu.Linux packages
         PackageName: 'Microsoft.ML.OnnxRuntime.Gpu.1*nupkg'
         VerifyNugetSigning: false
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
 
     - template: ../templates/validate-package.yml
       parameters:
@@ -194,6 +195,7 @@ stages:
         PackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Windows.*nupkg'
         PlatformsSupported: 'win-x64'
         VerifyNugetSigning: false
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
 
     - template: ../templates/validate-package.yml
       parameters:
@@ -202,6 +204,7 @@ stages:
         PackageName: 'Microsoft.ML.OnnxRuntime.Gpu.Linux.*nupkg'
         PlatformsSupported: 'linux-x64'
         VerifyNugetSigning: false
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
 
     - task: MSBuild@1
       displayName: 'Clean C#'

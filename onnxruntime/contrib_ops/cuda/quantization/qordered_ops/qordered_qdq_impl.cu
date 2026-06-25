@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 #include "contrib_ops/cuda/quantization/qordered_ops/qordered_qdq_impl.h"
 
-#include <cub/cub.cuh>
-
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "contrib_ops/cuda/quantization/qordered_ops/qordered_common.cuh"

@@ -1701,6 +1701,8 @@ class ModelMetadefIdGenerator {
 
 template <>
 inline gsl::span<const int64_t> Tensor::DataAsSpan() const { return g_host->Tensor__DataAsSpan_int64(this); }
+template <>
+inline gsl::span<const int32_t> Tensor::DataAsSpan() const { return g_host->Tensor__DataAsSpan_int32(this); }
 
 }  // namespace onnxruntime
 

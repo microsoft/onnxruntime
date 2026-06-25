@@ -136,6 +136,7 @@ Status SparseAttention<T>::Compute(OpKernelContext* context) const {
   T* q_rotary = Q.GetMutable<Tensor>()->MutableData<T>();
   T* k_rotary = packed_qkv ? nullptr : K.GetMutable<Tensor>()->MutableData<T>();
   if (do_rotary_) {
+    ORT_ENFORCE(cos_cache != nullptr && sin_cache != nullptr, "cos_cache and sin_cache must be provided when do_rotary is true");
     rotary_embedding_helper::RotaryParameters rotary_params = {};
     rotary_params.batch_size = batch_size;
     rotary_params.sequence_length = sequence_length;
@@ -143,7 +144,7 @@ Status SparseAttention<T>::Compute(OpKernelContext* context) const {
     rotary_params.head_size = head_size;
     rotary_params.rotary_embedding_dim = parameters.rotary_dim;
     rotary_params.num_heads = num_heads_;
-    rotary_params.max_sequence_length = sequence_length;  // unused
+    rotary_params.max_sequence_length = parameters.max_rotary_sequence_length;
     rotary_params.seq_stride = head_size;
     rotary_params.head_stride = sequence_length * rotary_params.seq_stride;
     rotary_params.batch_stride = (packed_qkv ? (num_heads_ + 2 * kv_num_heads_) : num_heads_) *

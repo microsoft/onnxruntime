@@ -49,8 +49,6 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
       0));  // no block-wise quantization for regular MoE
 
   using CudaT = typename OrtToCudaType<T>::type;
-  auto stream = context->GetComputeStream();
-
   auto& device_prop = GetDeviceProp();
   const int sm = device_prop.major * 10 + device_prop.minor;
 
@@ -68,18 +66,13 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
   size_t expanded_source_row_to_expanded_dest_row_size = k_ * moe_params.num_rows * sizeof(int);
   size_t expert_for_source_row_size = k_ * moe_params.num_rows * sizeof(int);
 
-  AllocatorPtr allocator;
-  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
-
-  // TODO: allocate one buffer and reuse it.
-  IAllocatorUniquePtr<void> work_space = IAllocator::MakeUniquePtr<void>(allocator, ws_size, false, stream);
-  IAllocatorUniquePtr<void> fc2_output = IAllocator::MakeUniquePtr<void>(allocator, fc2_output_size, false, stream);
-  IAllocatorUniquePtr<void> expert_scales =
-      IAllocator::MakeUniquePtr<void>(allocator, expert_scales_size, false, stream);
+  IAllocatorUniquePtr<void> work_space = this->template GetScratchBuffer<void>(ws_size, this->GetComputeStream(context));
+  IAllocatorUniquePtr<void> fc2_output = this->template GetScratchBuffer<void>(fc2_output_size, this->GetComputeStream(context));
+  IAllocatorUniquePtr<void> expert_scales = this->template GetScratchBuffer<void>(expert_scales_size, this->GetComputeStream(context));
   IAllocatorUniquePtr<void> expanded_source_row_to_expanded_dest_row =
-      IAllocator::MakeUniquePtr<void>(allocator, expanded_source_row_to_expanded_dest_row_size, false, stream);
+      this->template GetScratchBuffer<void>(expanded_source_row_to_expanded_dest_row_size, this->GetComputeStream(context));
   IAllocatorUniquePtr<void> expert_for_source_row =
-      IAllocator::MakeUniquePtr<void>(allocator, expert_for_source_row_size, false, stream);
+      this->template GetScratchBuffer<void>(expert_for_source_row_size, this->GetComputeStream(context));
 
   const CudaT* fc_scales_ptr = nullptr;
 

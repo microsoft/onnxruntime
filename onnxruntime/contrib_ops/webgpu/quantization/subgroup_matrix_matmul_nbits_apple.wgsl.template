@@ -8,6 +8,7 @@
 #param has_zero_points
 #param has_bias
 #param has_weight_idx
+#param has_weight_idx_indirect
 
 #use .getByOffset .setByOffset
 
@@ -49,8 +50,13 @@ fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
     // 128 threads need to load 64 x 32. 2 threads per row or 16 col per thread.
     // Stored in column major fashion.
 #if has_weight_idx
-    let b_base_offset = uniforms.weight_idx * uniforms.K * uniforms.N;
-    let scale_offset = uniforms.weight_idx * uniforms.N * (uniforms.K / quantization_block_size);
+#if has_weight_idx_indirect
+    let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
+#else
+    let actual_weight_idx = uniforms.weight_idx;
+#endif
+    let b_base_offset = actual_weight_idx * uniforms.K * uniforms.N;
+    let scale_offset = actual_weight_idx * uniforms.N * (uniforms.K / quantization_block_size);
 #else
     const b_base_offset : u32 = 0;
     const scale_offset : u32 = 0;
@@ -86,8 +92,13 @@ fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
     // 128 threads need to load 64 x 32. 2 threads per row or 16 col per thread.
     // Stored in column major fashion.
 #if has_weight_idx
-    let b_base_offset = uniforms.weight_idx * uniforms.K * uniforms.N;
-    let scale_offset = uniforms.weight_idx * uniforms.N * (uniforms.K / quantization_block_size);
+#if has_weight_idx_indirect
+    let actual_weight_idx = weight_index_indirect[uniforms.weight_idx];
+#else
+    let actual_weight_idx = uniforms.weight_idx;
+#endif
+    let b_base_offset = actual_weight_idx * uniforms.K * uniforms.N;
+    let scale_offset = actual_weight_idx * uniforms.N * (uniforms.K / quantization_block_size);
 #else
     const b_base_offset : u32 = 0;
     const scale_offset : u32 = 0;
@@ -116,7 +127,11 @@ fn storeOutput(offset:u32, row: u32, col:u32, src_slot:u32, row_limit:i32) {
   if (row_limit > 0 && row < u32(row_limit)) {
     let col2 = col + 1;
 #if has_bias
+#if has_weight_idx_indirect
+    let col_base = offset % uniforms.N + weight_index_indirect[uniforms.weight_idx] * uniforms.N;
+#else
     let col_base = offset % uniforms.N + uniforms.weight_idx * uniforms.N;
+#endif
 
     output.setByOffset(offset + row * uniforms.N + col, output_element_t(scratch[src_slot][0][row * 8 + col]) + bias[col_base + col]);
     output.setByOffset(offset + row * uniforms.N + col + 8, output_element_t(scratch[src_slot][1][row * 8 + col]) + bias[col_base + col + 8]);

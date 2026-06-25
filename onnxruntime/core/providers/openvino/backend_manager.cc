@@ -185,7 +185,7 @@ void BackendManager::TryExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVi
       model_blob_str = std::move(ss).str();
     }
   } else {  // External blob
-    model_blob_str = shared_context_.GetBinPath().filename().string();
+    model_blob_str = PathToUTF8String(shared_context_.GetBinPath().filename().native());
   }
 
   auto status = ep_ctx_handle_.AddOVEPCtxNodeToGraph(graph_body_viewer,

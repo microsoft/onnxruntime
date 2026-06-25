@@ -57,6 +57,7 @@ stages:
     CudaVersion: ${{ parameters.CudaVersion }}
     buildJava: ${{ parameters.buildJava }}
     buildNodejs: ${{ parameters.buildNodejs }}
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
 
 - ${{ if eq(parameters.buildNodejs, 'true') }}:
   - template: nodejs-linux-packaging-stage.yml
@@ -71,6 +72,7 @@ stages:
     win_trt_home: ${{ parameters.win_trt_home }}
     win_cuda_home: ${{ parameters.win_cuda_home }}
     buildJava: ${{ parameters.buildJava }}
+    IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
     PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
     CudaArchs: ${{ parameters.CudaArchs }}

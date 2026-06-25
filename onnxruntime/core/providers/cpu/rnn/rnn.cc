@@ -196,7 +196,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
         W.Data<float>() + direction * hidden_size_ * input_size,
         1,
         x_matmul_w_buffer_data,
-        tp);
+        tp, &mlas_backend_kernel_selector_config_);
 
     for (int64_t t = 0; t < seq_length; t++) {
       int64_t time_step = isReverse ? (seq_length - t - 1) : t;
@@ -232,7 +232,7 @@ Status RNN<float>::Compute(OpKernelContext* ctx) const {
             R.Data<float>() + direction * hidden_size_ * hidden_size_,
             0,
             Y_buffer_data_current_frame,
-            tp);
+            tp, &mlas_backend_kernel_selector_config_);
       } else {
         math::Set<float, CPUMathUtil>(batch_size * SafeInt<size_t>(hidden_size_), 0, Y_buffer_data_current_frame, &CPUMathUtil::Instance());
       }

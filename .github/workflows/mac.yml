@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  python_version: 3.11
+  python_version: "3.14"
 
 jobs:
   cpu:
@@ -28,6 +28,7 @@ jobs:
           {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
           {"machine": "arm64", "target": "arm64", "build_config": "Release"}
         ]
+      python_version: "3.14"
 
   coreml:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
@@ -39,6 +40,7 @@ jobs:
           {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
           {"machine": "arm64", "target": "arm64", "build_config": "Release"}
         ]
+      python_version: "3.14"
 
   xnnpack:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
@@ -49,6 +51,7 @@ jobs:
         [
           {"machine": "arm64", "target": "arm64", "build_config": "Debug"}
         ]
+      python_version: "3.14"
 
   webgpu:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
@@ -60,6 +63,7 @@ jobs:
           {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
           {"machine": "arm64", "target": "arm64", "build_config": "Release"}
         ]
+      python_version: "3.14"
 
   iphone_simulator:
     runs-on: macos-15

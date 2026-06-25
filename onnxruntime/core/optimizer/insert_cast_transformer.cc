@@ -433,15 +433,37 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
 
         // If all the child nodes are either removed or another Cast node and we're not providing graph output,
         // we can remove this node. Connect those remaining child Cast nodes to current Cast node's input.
+        //
+        // However, we must NOT do this if any kept Cast child is on a different EP than the current node.
+        // Fusing across EP boundaries can produce a node whose input type is not supported by its EP.
+        // For example, Cast(int64->float, CPU) -> Cast(float->float16, WebGPU) would become
+        // Cast(int64->float16, WebGPU), but WebGPU doesn't support int64 inputs.
+        // See: https://github.com/microsoft/onnxruntime/issues/27291
         if (num_children > 0 && nodes_to_remove.size() + cast_nodes_to_keep.size() == num_children &&
             graph_outputs.find(node.OutputDefs()[0]) == graph_outputs_end) {
-          for (auto& n : cast_nodes_to_keep) {
-            Node& cast_node_to_keep = n;
-            graph.SetNodeArgType(*cast_node_to_keep.MutableInputDefs()[0], *node.InputDefs()[0]->TypeAsProto());
+          // Check that all kept Cast children are on the same EP as the current node.
+          // An empty EP means the node has not been assigned yet (e.g. pre-partitioning or in tests),
+          // so we only flag a cross-EP conflict when both EPs are explicitly assigned and different.
+          bool cross_ep = false;
+          const auto& current_ep = node.GetExecutionProviderType();
+          for (const auto& n : cast_nodes_to_keep) {
+            const Node& kept_node = n;
+            const auto& kept_ep = kept_node.GetExecutionProviderType();
+            if (!current_ep.empty() && !kept_ep.empty() && kept_ep != current_ep) {
+              cross_ep = true;
+              break;
+            }
           }
 
-          removed = graph_utils::RemoveNode(graph, node);
-          modified = true;
+          if (!cross_ep) {
+            for (auto& n : cast_nodes_to_keep) {
+              Node& cast_node_to_keep = n;
+              graph.SetNodeArgType(*cast_node_to_keep.MutableInputDefs()[0], *node.InputDefs()[0]->TypeAsProto());
+            }
+
+            removed = graph_utils::RemoveNode(graph, node);
+            modified = true;
+          }
         }
       }
 

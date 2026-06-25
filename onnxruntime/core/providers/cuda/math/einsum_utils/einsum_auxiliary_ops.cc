@@ -31,6 +31,10 @@ Status DataCopy(const Tensor& input, Tensor& output, void* einsum_cuda_assets) {
   return Status::OK();
 }
 
+std::unique_ptr<Tensor> CreateTensor(const DataTypeImpl* type, const TensorShape& shape, AllocatorPtr allocator) {
+  return Tensor::Create(type, shape, std::move(allocator));
+}
+
 // CUDA EP specific Zero buffer helper
 Status ZeroBuffer(Tensor& input, void* einsum_cuda_assets) {
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(input.MutableDataRaw(), 0, input.SizeInBytes(),
@@ -41,7 +45,7 @@ Status ZeroBuffer(Tensor& input, void* einsum_cuda_assets) {
 // CUDA EP specific Transpose helper
 Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input,
                  Tensor& output, const TensorShape* input_shape_override, void* einsum_cuda_assets) {
-  return cuda::Transpose::DoTranspose(static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetDeviceProp(),
+  return cuda::Transpose::DoTranspose(*static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->device_prop_,
                                       static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->GetCudaStream(),
                                       static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cublas_handle_,
                                       permutation, input, output, input_shape_override);
@@ -51,7 +55,8 @@ Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input
 template <typename T>
 Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
               size_t left_stride, size_t right_stride, size_t output_stride,
-              size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* /*tp*/,
+              size_t num_batches, size_t M, size_t K, size_t N,
+              concurrency::ThreadPool* /*tp*/, const void* /*mlas_backend_config*/,
               void* einsum_cuda_assets) {
   typedef typename cuda::ToCudaType<T>::MappedType CudaT;
 
@@ -77,8 +82,8 @@ Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
       static_cast<int>(N),
       static_cast<int>(output_stride),
       static_cast<int>(num_batches),
-      static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->GetDeviceProp(),
-      static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cuda_ep_->UseTF32()));
+      *static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->device_prop_,
+      static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->use_tf32_));
 
   return Status::OK();
 }
@@ -93,6 +98,7 @@ std::unique_ptr<Tensor> ReduceSum(const Tensor& input, gsl::span<const int64_t> 
                                               allocator, input, reduce_axes,  // TODO(leca): is this allocator the same as the 1st parameter?
                                               keep_dims, false, false, false,
                                               true, static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->ort_stream_,
+                                              static_cast<EinsumCudaAssets*>(einsum_cuda_assets)->cudnn_handle_,
                                               input_shape_override);
 }
 
@@ -160,7 +166,7 @@ template Status DeviceHelpers::CudaDeviceHelpers::MatMul<float>(
     const float* input_1_data, const float* input_2_data, float* output_data,
     size_t left_stride, size_t right_stride, size_t output_stride,
     size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-    void* einsum_cuda_assets);
+    const void* mlas_backend_config, void* einsum_cuda_assets);
 
 template std::unique_ptr<Tensor> DeviceHelpers::CudaDeviceHelpers::ReduceSum<float>(
     const Tensor& input, gsl::span<const int64_t> reduce_axes,
@@ -173,7 +179,7 @@ template Status DeviceHelpers::CudaDeviceHelpers::MatMul<double>(
     const double* input_1_data, const double* input_2_data, double* output_data,
     size_t left_stride, size_t right_stride, size_t output_stride,
     size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-    void* einsum_cuda_assets);
+    const void* mlas_backend_config, void* einsum_cuda_assets);
 
 template std::unique_ptr<Tensor> DeviceHelpers::CudaDeviceHelpers::ReduceSum<double>(
     const Tensor& input, gsl::span<const int64_t> reduce_axes,
@@ -186,7 +192,7 @@ template Status DeviceHelpers::CudaDeviceHelpers::MatMul<MLFloat16>(
     const MLFloat16* input_1_data, const MLFloat16* input_2_data, MLFloat16* output_data,
     size_t left_stride, size_t right_stride, size_t output_stride,
     size_t num_batches, size_t M, size_t K, size_t N, concurrency::ThreadPool* tp,
-    void* einsum_cuda_assets);
+    const void* mlas_backend_config, void* einsum_cuda_assets);
 
 template std::unique_ptr<Tensor> DeviceHelpers::CudaDeviceHelpers::ReduceSum<MLFloat16>(
     const Tensor& input, gsl::span<const int64_t> reduce_axes,

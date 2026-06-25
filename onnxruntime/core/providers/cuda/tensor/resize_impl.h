@@ -65,6 +65,17 @@ struct TransformCoordinate_TF_CROP_AND_RESIZE {
   }
 };
 
+struct TransformCoordinate_HALF_PIXEL_SYMMETRIC {
+  __device__ __host__ __forceinline__ float operator()(float x_resized, float x_scale, float length_resized,
+                                                       float length_original, float, float) const {
+    float output_width = x_scale * length_original;
+    float adjustment = length_resized / output_width;
+    float center = length_original / 2.0f;
+    float offset = center * (1.0f - adjustment);
+    return offset + ((x_resized + 0.5f) / x_scale) - 0.5f;
+  }
+};
+
 size_t CalcResizeBufferSize(const onnxruntime::UpsampleMode upsample_mode,
                             const gsl::span<const int64_t>& output_dims);
 

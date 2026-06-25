@@ -10,6 +10,7 @@
 #include "core/common/status.h"
 #include "core/common/path_string.h"
 #include "core/framework/allocator.h"
+#include "core/graph/model_editor_api_types.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -44,6 +45,14 @@ class ModelCompilationOptions {
   /// <param name="input_model_data">Buffer containing the input ONNX model</param>
   /// <param name="input_model_data_size">The size in bytes of the input model's buffer</param>
   void SetInputModelFromBuffer(const void* input_model_data, size_t input_model_data_size);
+
+  /// <summary>
+  /// Sets the OrtModel to compile.
+  /// The OrtModel is borrowed (not copied) - caller must keep it alive until CompileModel returns.
+  /// Overrides any previous call to SetInputModelPath(), SetInputModelFromBuffer(), or SetInputModel().
+  /// </summary>
+  /// <param name="model">The OrtModel to compile</param>
+  void SetInputModel(const OrtModel* model);
 
   /// <summary>
   /// Sets the file path to store the output/compiled ONNX model.
@@ -133,6 +142,18 @@ class ModelCompilationOptions {
   bool InputModelComesFromFile() const;
 
   /// <summary>
+  /// Returns true if the input model comes from an OrtModel pointer.
+  /// </summary>
+  /// <returns>true if input model comes from an OrtModel</returns>
+  bool InputModelComesFromOrtModel() const;
+
+  /// <summary>
+  /// Returns the OrtModel to compile, or nullptr if not set.
+  /// </summary>
+  /// <returns>pointer to the OrtModel or nullptr</returns>
+  const OrtModel* GetInputModel() const;
+
+  /// <summary>
   /// Returns the buffer that contains the bytes for the input ONNX model.
   /// Returns nullptr if the input model is not stored in a buffer.
   /// </summary>
@@ -162,9 +183,9 @@ class ModelCompilationOptions {
   // Telemetry helper methods
 
   /// <summary>
-  /// Returns a string describing the input source type: "file" or "buffer".
+  /// Returns a string describing the input source type: "file", "buffer", or "ort_model".
   /// </summary>
-  /// <returns>"file" or "buffer"</returns>
+  /// <returns>"file", "buffer", or "ort_model"</returns>
   std::string GetInputSourceForTelemetry() const;
 
   /// <summary>
@@ -205,6 +226,7 @@ class ModelCompilationOptions {
   std::filesystem::path input_model_path_;
   const void* input_model_data_ = nullptr;
   size_t input_model_data_size_ = 0;
+  const OrtModel* input_model_ = nullptr;  // Borrowed pointer
 };
 }  // namespace onnxruntime
 #endif  // !defined(ORT_MINIMAL_BUILD)

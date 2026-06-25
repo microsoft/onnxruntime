@@ -55,8 +55,34 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
   const int seq_stride = parameters.seq_stride;
   const int batch_stride = parameters.batch_stride;
   const int position_ids_format = parameters.position_ids_format;
+  const int max_sequence_length = parameters.max_sequence_length;
   const int rotary_emb_dim = parameters.rotary_embedding_dim;
   const int half_rotary_emb_dim = rotary_emb_dim / 2;
+
+  // Validate position_ids values are within cos/sin cache bounds
+  if (position_ids_format == 0) {
+    // Format 0: single offset, effective positions are [base_pos, base_pos + sequence_length - 1].
+    // Check without overflow: base_pos must be in [0, max_sequence_length - sequence_length].
+    int64_t base_pos = position_ids[0];
+    int64_t max_valid_base = static_cast<int64_t>(max_sequence_length) - static_cast<int64_t>(sequence_length);
+    if (base_pos < 0 || base_pos > max_valid_base) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "position_ids base value ", base_pos,
+                             " with sequence_length ", sequence_length,
+                             " exceeds cos/sin cache range [0, ", max_sequence_length, ")");
+    }
+  } else if (position_ids_format == 1) {
+    // Format 1: 2D array (batch_size, sequence_length)
+    for (int i = 0; i < batch_size * sequence_length; ++i) {
+      int64_t pos = position_ids[i];
+      if (pos < 0 || pos >= static_cast<int64_t>(max_sequence_length)) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "position_ids value ", pos, " at index ", i,
+                               " is out of range [0, ", max_sequence_length, ")");
+      }
+    }
+  }
+
   // Parallel to calculate based on head_size
   const int loop_len = batch_size * sequence_length * n_heads;
   // The cost is calculated as:

@@ -225,7 +225,7 @@ Status UpStreamReshapeGraphTransformer::RemoveOriginalReshapeNode(
 
 std::optional<ReshapeInfo> UpStreamReshapeGraphTransformer::IsSupportedForUpstream(
     Graph& graph, Node& node, const logging::Logger& logger) const {
-  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Reshape", {1, 5, 13, 14}, kOnnxDomain)) {
+  if (!graph_utils::IsSupportedOptypeVersionAndDomain(node, "Reshape", {1, 5, 13, 14, 19, 21, 23, 24, 25}, kOnnxDomain)) {
     return std::nullopt;
   }
 

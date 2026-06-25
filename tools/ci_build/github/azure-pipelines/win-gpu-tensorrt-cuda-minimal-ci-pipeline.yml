@@ -77,7 +77,7 @@ jobs:
       WithCache: True
       Today: $(TODAY)
       AdditionalKey: "gpu_tensorrt_cuda_minimal | RelWithDebInfo"
-      BuildPyArguments: '--config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder }}" --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --enable_cuda_minimal_build'
+      BuildPyArguments: '--config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder }}" --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --enable_cuda_minimal_build --disable_generation_ops'
       MsbuildArguments: $(MsbuildArguments)
       BuildArch: 'x64'
       Platform: 'x64'

@@ -254,6 +254,21 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       continue;
     }
 
+    // SkipLayerNormalization kernel requires gamma and beta to be 1D.
+    // Skip fusion if gamma or beta have more than 1 dimension.
+    const NodeArg* gamma_arg = ln_node.MutableInputDefs()[1];
+    const TensorShapeProto* gamma_shape = gamma_arg->Shape();
+    if (gamma_shape != nullptr && gamma_shape->dim_size() != 1) {
+      continue;
+    }
+    if (ln_node.MutableInputDefs().size() > 2) {
+      const NodeArg* beta_arg = ln_node.MutableInputDefs()[2];
+      const TensorShapeProto* beta_shape = beta_arg->Shape();
+      if (beta_shape != nullptr && beta_shape->dim_size() != 1) {
+        continue;
+      }
+    }
+
     NodeArg beta_place_holder("", nullptr);
 
     // Get the inputs for the new SkipLayerNormalization node.

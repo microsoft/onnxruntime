@@ -92,17 +92,62 @@ class SBGemmShortExecuteTest : public MlasTestFixture<MlasSBGemmTest<AType, BTyp
   bool hasBias_;
 };
 
+template <typename AType, typename BType, bool Packed, bool Threaded>
+class SBGemmAccumulateExecuteTest : public MlasTestFixture<MlasSBGemmTest<AType, BType, Packed, Threaded>> {
+ public:
+  explicit SBGemmAccumulateExecuteTest(size_t M, size_t N, size_t K, size_t Batch)
+      : M_(M), N_(N), K_(K), Batch_(Batch) {}
+
+  void TestBody() override {
+    MlasTestFixture<MlasSBGemmTest<AType, BType, Packed, Threaded>>::mlas_tester->TestAccumulate(M_, N_, K_, Batch_);
+  }
+
+  static size_t RegisterSingleTest(size_t M, size_t N, size_t K, size_t Batch) {
+    std::stringstream ss;
+    ss << "Accumulate/Batch" << Batch << "/M" << M << "xN" << N << "xK" << K;
+    auto test_name = ss.str();
+
+    testing::RegisterTest(
+        MlasSBGemmTest<AType, BType, Packed, Threaded>::GetTestSuiteName(),
+        test_name.c_str(),
+        nullptr,
+        test_name.c_str(),
+        __FILE__,
+        __LINE__,
+        // Important to use the fixture type as the return type here.
+        [=]() -> MlasTestFixture<MlasSBGemmTest<AType, BType, Packed, Threaded>>* {
+          return new SBGemmAccumulateExecuteTest<AType, BType, Packed, Threaded>(M, N, K, Batch);
+        });
+
+    return 1;
+  }
+
+  static size_t RegisterAccumulateTests() {
+    size_t test_registered = 0;
+    test_registered += RegisterSingleTest(1, 1, 1, 1);
+    test_registered += RegisterSingleTest(7, 9, 13, 1);
+    test_registered += RegisterSingleTest(32, 32, 32, 1);
+    if (!Packed) {
+      test_registered += RegisterSingleTest(5, 7, 3, 4);
+    }
+    return test_registered;
+  }
+
+ private:
+  size_t M_, N_, K_, Batch_;
+};
+
 static size_t SBGemmRegistLongExecute() {
   size_t count = 0;
 
   count += MlasLongExecuteTests<MlasSBGemmTest<float, float, false, false>>::RegisterLongExecute();
-  if (MlasSBGemmPackBSize(128, 128) > 0) {
+  if (MlasSBGemmPackBSize(CblasNoTrans, CblasNoTrans, true, 128, 128, nullptr) > 0) {
     count += MlasLongExecuteTests<MlasSBGemmTest<float, float, true, false>>::RegisterLongExecute();
   }
 
   if (GetMlasThreadPool() != nullptr) {
     count += MlasLongExecuteTests<MlasSBGemmTest<float, float, false, true>>::RegisterLongExecute();
-    if (MlasSBGemmPackBSize(128, 128) > 0) {
+    if (MlasSBGemmPackBSize(CblasNoTrans, CblasNoTrans, true, 128, 128, nullptr) > 0) {
       count += MlasLongExecuteTests<MlasSBGemmTest<float, float, true, true>>::RegisterLongExecute();
     }
   }
@@ -114,14 +159,18 @@ static size_t SBGemmRegistShortExecute() {
   size_t count = 0;
 
   count += SBGemmShortExecuteTest<float, float, false, false>::RegisterShortExecuteTests();
-  if (MlasSBGemmPackBSize(128, 128) > 0) {
+  count += SBGemmAccumulateExecuteTest<float, float, false, false>::RegisterAccumulateTests();
+  if (MlasSBGemmPackBSize(CblasNoTrans, CblasNoTrans, true, 128, 128, nullptr) > 0) {
     count += SBGemmShortExecuteTest<float, float, true, false>::RegisterShortExecuteTests();
+    count += SBGemmAccumulateExecuteTest<float, float, true, false>::RegisterAccumulateTests();
   }
 
   if (GetMlasThreadPool() != nullptr) {
     count += SBGemmShortExecuteTest<float, float, false, true>::RegisterShortExecuteTests();
-    if (MlasSBGemmPackBSize(128, 128) > 0) {
+    count += SBGemmAccumulateExecuteTest<float, float, false, true>::RegisterAccumulateTests();
+    if (MlasSBGemmPackBSize(CblasNoTrans, CblasNoTrans, true, 128, 128, nullptr) > 0) {
       count += SBGemmShortExecuteTest<float, float, true, true>::RegisterShortExecuteTests();
+      count += SBGemmAccumulateExecuteTest<float, float, true, true>::RegisterAccumulateTests();
     }
   }
 

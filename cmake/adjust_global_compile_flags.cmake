@@ -104,6 +104,11 @@ if (onnxruntime_CLIENT_PACKAGE_BUILD)
   add_compile_definitions(ORT_CLIENT_PACKAGE_BUILD)
 endif()
 
+# Enable optional callbacks around per-session thread pool work execution.
+if (onnxruntime_ENABLE_SESSION_THREADPOOL_CALLBACKS)
+  add_compile_definitions(ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS)
+endif()
+
 if (onnxruntime_ENABLE_LTO)
     include(CheckIPOSupported)
     check_ipo_supported(RESULT ipo_enabled OUTPUT ipo_output)

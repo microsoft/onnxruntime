@@ -15,7 +15,7 @@ class VitisaiProfiler final : public EpProfiler {
   bool StartProfiling(TimePoint) override;
   void EndProfiling(TimePoint, Events&) override;
   void Start(uint64_t) override {}
-  void Stop(uint64_t) override {}
+  void Stop(uint64_t, const EventRecord&) override {}
 };
 #endif
 

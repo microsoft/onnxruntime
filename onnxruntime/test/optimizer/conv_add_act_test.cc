@@ -36,8 +36,8 @@ void TestConvPath(const std::vector<int64_t>& input_shape, const std::vector<int
   TransformerTester(build_test_case,
                     check_graph,
                     TransformerLevel::Default,
-                    TransformerLevel::Level3, 12, 0.0001, 0.000001,
-                    0, {}, disabled_optimizers);
+                    TransformerLevel::Level3, {12, 22}, 0.0001, 0.000001,
+                    nullptr, {}, disabled_optimizers);
 }
 
 TEST(ConvAddActivationFusionTests, ConvExpandThenGemm) {

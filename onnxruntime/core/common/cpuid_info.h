@@ -168,7 +168,7 @@ class CPUIDInfo {
   bool has_arm_sme2_{false};
 
   std::string vendor_;
-  uint32_t vendor_id_;
+  uint32_t vendor_id_{0};
 };
 
 }  // namespace onnxruntime

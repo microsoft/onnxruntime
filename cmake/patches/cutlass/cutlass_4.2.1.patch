@@ -11,6 +11,21 @@ index cb161369..2fdff179 100644
                           [&](auto init, auto i){
                             if constexpr (is_constant_v<0, decltype(get<i>(flat_stride))>) { return append(init, i); }
                             else                                                           { return init;            }
+diff --git a/include/cutlass/cuda_host_adapter.hpp b/include/cutlass/cuda_host_adapter.hpp
+index a8af62be..22e7332d 100644
+--- a/include/cutlass/cuda_host_adapter.hpp
++++ b/include/cutlass/cuda_host_adapter.hpp
+@@ -394,6 +394,10 @@ protected:
+    * Fills a buffer in Global Memory with a byte sequence copied from host memory.
+    * This function can be overridden to dispatch to the appropriate cuMemsetD*Async API
+   */
++  // Patching to work around this error:
++  //   include\cutlass/cuda_host_adapter.hpp(414): error #20011-D: calling a __host__ function("memsetDeviceImpl")
++  //     from a __host__ __device__ function("memsetDevice") is not allowed
++  CUTLASS_HOST_DEVICE
+   virtual Status memsetDeviceImpl(
+     void* destination, ///< Device memory pointer to be filled
+     void const* fill_value, ///< Value to be filled in the buffer
 diff --git a/include/cutlass/exmy_base.h b/include/cutlass/exmy_base.h
 index be207a49..6028e01d 100644
 --- a/include/cutlass/exmy_base.h

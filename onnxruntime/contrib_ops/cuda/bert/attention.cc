@@ -58,6 +58,8 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info), AttentionB
 
 template <typename T>
 Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
+  auto ort_stream = GetOrtStream(context);
+
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
@@ -139,14 +141,14 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     softmax_lse_accum_bytes = slse_accum_bytes;
     out_accum_bytes = o_accum_bytes;
   }
-  auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
-  auto softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, context->GetComputeStream());
-  auto out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, context->GetComputeStream());
+  auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, GetComputeStream(context));
+  auto softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, GetComputeStream(context));
+  auto out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, GetComputeStream(context));
 #else
   constexpr bool use_flash_attention = false;
-  auto softmax_lse_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
-  auto softmax_lse_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());  // nullptr
-  auto out_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());          // nullptr
+  auto softmax_lse_buffer = GetScratchBuffer<void>(0, GetComputeStream(context));
+  auto softmax_lse_accum_buffer = GetScratchBuffer<void>(0, GetComputeStream(context));  // nullptr
+  auto out_accum_buffer = GetScratchBuffer<void>(0, GetComputeStream(context));          // nullptr
 #endif
 
   if (!use_flash_attention) {
@@ -238,12 +240,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 
-  AllocatorPtr allocator;
-  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
   int m = batch_size * sequence_length;
   int n = (parameters.hidden_size + parameters.hidden_size + parameters.v_hidden_size);
   int k = parameters.input_hidden_size;
-  IAllocatorUniquePtr<void> gemm_buffer = IAllocator::MakeUniquePtr<void>(allocator, static_cast<size_t>(m * n) * sizeof(T), false, context->GetComputeStream());
+  IAllocatorUniquePtr<void> gemm_buffer = GetScratchBuffer<void>(static_cast<size_t>(m * n) * sizeof(T), GetComputeStream(context));
 
   CudaT one = ToCudaType<T>::FromFloat(1.0f);
   CudaT zero = ToCudaType<T>::FromFloat(0.0f);
@@ -275,7 +275,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    use_memory_efficient_attention,
                                                    use_cudnn_flash_attention,
                                                    false);
-  IAllocatorUniquePtr<void> work_space = IAllocator::MakeUniquePtr<void>(allocator, workSpaceSize, false, context->GetComputeStream());
+  IAllocatorUniquePtr<void> work_space = GetScratchBuffer<void>(workSpaceSize, GetComputeStream(context));
 
   data.gemm_buffer = reinterpret_cast<CudaT*>(gemm_buffer.get());
   if (nullptr != bias) {
@@ -313,7 +313,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   cudnnHandle_t cudnn = GetCudnnHandle(context);
-  return QkvToContext<CudaT>(device_prop, cublas, cudnn, context->GetComputeStream(), parameters, data);
+  return QkvToContext<CudaT>(device_prop, cublas, cudnn, ort_stream.get(), parameters, data);
 }
 
 }  // namespace cuda

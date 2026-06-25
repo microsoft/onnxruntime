@@ -384,6 +384,9 @@ bool TreeEnsembleCommon<InputType, ThresholdType, OutputType>::CheckIfSubtreesAr
     gsl::span<const ThresholdType> nodes_values_as_tensor, gsl::span<const float> node_values,
     gsl::span<const float> target_class_weights, gsl::span<const ThresholdType> target_class_weights_as_tensor,
     const InlinedVector<TreeNodeElementId>& node_tree_ids, InlinedVector<std::pair<TreeNodeElementId, uint32_t>> indices) {
+  if (left_id == right_id) {
+    return true;
+  }
   // Leaves have values set at 0
   if (cmodes[left_id] != cmodes[right_id] || nodes_featureids[left_id] != nodes_featureids[right_id] ||
       (!nodes_values_as_tensor.empty() && nodes_values_as_tensor[left_id] != nodes_values_as_tensor[right_id]) ||

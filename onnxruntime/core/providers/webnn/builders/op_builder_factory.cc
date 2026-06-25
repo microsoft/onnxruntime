@@ -86,6 +86,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateCumSumOpBuilder("CumSum", op_registrations);
   }
 
+  {  // DepthToSpace
+    CreateDepthToSpaceOpBuilder("DepthToSpace", op_registrations);
+  }
+
   {  // Dropout
     CreateDropoutOpBuilder("Dropout", op_registrations);
   }

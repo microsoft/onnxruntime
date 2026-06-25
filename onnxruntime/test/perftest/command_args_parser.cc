@@ -343,8 +343,6 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
         test_config.machine_config.provider_type_name = onnxruntime::kDmlExecutionProvider;
       } else if (ep == "acl") {
         test_config.machine_config.provider_type_name = onnxruntime::kAclExecutionProvider;
-      } else if (ep == "armnn") {
-        test_config.machine_config.provider_type_name = onnxruntime::kArmNNExecutionProvider;
       } else if (ep == "migraphx") {
         test_config.machine_config.provider_type_name = onnxruntime::kMIGraphXExecutionProvider;
       } else if (ep == "xnnpack") {

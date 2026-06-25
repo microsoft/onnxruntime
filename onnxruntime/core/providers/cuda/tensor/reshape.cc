@@ -47,8 +47,12 @@ Status FuncReshape(
   void* dst_data = Y->MutableDataRaw();
   // If source and target pointers are not equal (non-inplace operation), we need to copy the data.
   if (src_data != dst_data) {
-    ORT_ENFORCE(ctx->GetComputeStream());
-    ORT_RETURN_IF_ERROR(cuda_kernel->CopyTensor(*X, *Y, *ctx->GetComputeStream()));
+    ORT_ENFORCE(cuda_kernel->GetComputeStream(ctx));
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data,
+                                         src_data,
+                                         X->SizeInBytes(),
+                                         cudaMemcpyDeviceToDevice,
+                                         cuda_kernel->Stream(ctx)));
   }
 
   return Status::OK();

@@ -1447,7 +1447,7 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
       return false;
     }
 
-    if (graph_utils::IsSupportedOptypeVersionAndDomain(*k_concat, "Transpose", {1, 13}, kOnnxDomain)) {
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(*k_concat, "Transpose", {1, 13, 21}, kOnnxDomain)) {
       transpose_optimized_pattern = true;
       DEBUG_LOG("Using transpose optimized pattern");
       opt_k_transpose = k_concat;

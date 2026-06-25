@@ -1095,5 +1095,66 @@ TEST(GRUTest, ONNXRuntime_TestGRUPositiveActivationAlphaBeta) {
   ctx.RunTest(X, batch_size, seq_length, sequence_length, &initial_h, expected_Y, expected_Y_h);
 }
 
+TEST(GRUTest, GRU_ForwardDefaultActivations_LinearBeforeReset_OpSet22_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    return;
+  }
+
+  // Simple forward GRU with linear_before_reset=1 (required by cuDNN).
+  // Uses the same weights/inputs as DefaultActivationsSimpleWeightsNoBias with linear_before_reset=true.
+  int64_t seq_length = 2;
+  int batch_size = 3;
+  int64_t input_size = 1;
+  int64_t hidden_size = 3;
+  int num_directions = 1;
+
+  std::vector<float> X_data = {1.f, 2.f, 3.f, 10.f, 11.f, 12.f};
+  std::vector<int64_t> X_dims = {seq_length, batch_size, input_size};
+
+  std::vector<float> W_data = {0.1f, 0.2f, 0.3f,
+                               1.f, 2.f, 3.f,
+                               10.f, 11.f, 12.f};
+  std::vector<int64_t> W_dims = {num_directions, 3 * hidden_size, input_size};
+
+  std::vector<float> R_data(num_directions * 3 * hidden_size * hidden_size, 0.1f);
+  std::vector<int64_t> R_dims = {num_directions, 3 * hidden_size, hidden_size};
+
+  // Expected output values from the forward part of BidirectionalDefaultActivationsSimpleWeightsNoBiasLinearBeforeReset.
+  std::vector<float> Y_data = {
+      0.4750208f, 0.450166f, 0.4255575f,
+      0.45016602f, 0.40131235f, 0.35434368f,
+      0.42555748f, 0.35434369f, 0.28905049f,
+      0.6027093f, 0.5083023f, 0.44950223f,
+      0.5754369f, 0.45485455f, 0.3747841f,
+      0.54791767f, 0.40301081f, 0.30608854f};
+  std::vector<int64_t> Y_dims = {seq_length, num_directions, batch_size, hidden_size};
+
+  std::vector<float> Y_h_data = {
+      0.6027093f, 0.5083023f, 0.44950223f,
+      0.5754369f, 0.45485455f, 0.3747841f,
+      0.54791767f, 0.40301081f, 0.30608854f};
+  std::vector<int64_t> Y_h_dims = {num_directions, batch_size, hidden_size};
+
+  OpTester test("GRU", 22);
+  test.AddShapeToTensorData();
+
+  test.AddAttribute<std::vector<string>>("activations", {"Sigmoid", "Tanh"});
+  test.AddAttribute("direction", string("forward"));
+  test.AddAttribute("hidden_size", hidden_size);
+  test.AddAttribute<int64_t>("linear_before_reset", 1);
+
+  test.AddInput<float>("X", X_dims, X_data);
+  test.AddInput<float>("W", W_dims, W_data, true);
+  test.AddInput<float>("R", R_dims, R_data, true);
+
+  test.AddOutput<float>("Y", Y_dims, Y_data);
+  test.AddOutput<float>("Y_h", Y_h_dims, Y_h_data);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

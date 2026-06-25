@@ -3,6 +3,8 @@
 
 #pragma once
 
+#if !defined(DISABLE_STRING_TYPE)
+
 #include "core/common/inlined_containers.h"
 #include "core/framework/op_kernel.h"
 
@@ -37,3 +39,5 @@ class StringNormalizer : public OpKernel {
 };
 
 }  // namespace onnxruntime
+
+#endif  // !defined(DISABLE_STRING_TYPE)

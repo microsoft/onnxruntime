@@ -113,7 +113,10 @@ endif()
 onnxruntime_add_include_to_target(onnxruntime_pybind11_state Python::Module)
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${pybind11_INCLUDE_DIRS})
 if(onnxruntime_USE_CUDA)
-    target_include_directories(onnxruntime_pybind11_state PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} ${CUDNN_INCLUDE_DIR})
+    target_include_directories(onnxruntime_pybind11_state PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+    if(NOT onnxruntime_CUDA_MINIMAL)
+      target_include_directories(onnxruntime_pybind11_state PRIVATE ${CUDNN_INCLUDE_DIR})
+    endif()
 endif()
 if(onnxruntime_USE_CANN)
     target_include_directories(onnxruntime_pybind11_state PRIVATE ${onnxruntime_CANN_HOME}/include)
@@ -190,7 +193,6 @@ set(onnxruntime_pybind11_state_static_providers
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
     ${PROVIDERS_ACL}
-    ${PROVIDERS_ARMNN}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_AZURE}
 )
@@ -198,7 +200,7 @@ set(onnxruntime_pybind11_state_static_providers
 if(onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_qnn)
 endif()
-if(onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+if(onnxruntime_USE_WEBGPU AND NOT onnxruntime_USE_EP_API_ADAPTERS)
   list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_webgpu)
 endif()
 if(WIN32)

@@ -371,5 +371,63 @@ TEST(TransformerTest, IsIsolatedFp16NodeOnCpuTest) {
   EXPECT_EQ(ops["Cast"], 4);
 }
 
+// Verify that RemoveDuplicateCastTransformer does not fuse consecutive Cast nodes
+// that are assigned to different execution providers.
+// Regression test for https://github.com/microsoft/onnxruntime/issues/27291
+TEST(TransformerTest, CrossEpCastNodesNotFused) {
+  auto model = std::make_shared<onnxruntime::Model>("test", false, DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model->MainGraph();
+
+  // Build: X(int64) -> Cast(int64->float32) -> Cast(float32->float16) -> Y(float16)
+  TypeProto tensor_int64;
+  tensor_int64.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT64);
+  TypeProto tensor_float32;
+  tensor_float32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  TypeProto tensor_float16;
+  tensor_float16.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT16);
+
+  onnxruntime::NodeArg x_def("X", &tensor_int64);
+  onnxruntime::NodeArg mid_def("mid", &tensor_float32);
+  onnxruntime::NodeArg y_def("Y", &tensor_float16);
+
+  NodeAttributes cast1_attrs = {
+      {"to", utils::MakeAttribute("to",
+                                  static_cast<int64_t>(TensorProto_DataType_FLOAT))}};
+  NodeAttributes cast2_attrs = {
+      {"to", utils::MakeAttribute("to",
+                                  static_cast<int64_t>(TensorProto_DataType_FLOAT16))}};
+
+  // Cast_1 on CPU EP, Cast_2 on WebGPU EP.
+  auto& cast1 = graph.AddNode("Cast_1", "Cast", "int64 to float32",
+                              ArgMap{&x_def}, ArgMap{&mid_def}, &cast1_attrs);
+  cast1.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+
+  auto& cast2 = graph.AddNode("Cast_2", "Cast", "float32 to float16",
+                              ArgMap{&mid_def}, ArgMap{&y_def}, &cast2_attrs);
+  cast2.SetExecutionProviderType(onnxruntime::kWebGpuExecutionProvider);
+
+  auto status = graph.Resolve();
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  // Run InsertCastTransformer (which internally runs RemoveDuplicateCastTransformer)
+  InsertCastTransformer transformer("Test", DefaultCpuExecutionProvider()->GetKernelRegistry().get());
+
+  bool modified = false;
+  status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  // Both Cast nodes must survive — they should NOT be fused across EP boundaries.
+  std::map<std::string, int> op_counts = CountOpsInGraph(graph);
+  EXPECT_EQ(op_counts["Cast"], 2) << "Cast nodes on different EPs must not be fused";
+
+  // Verify Cast_2's input is still float32 (not changed to int64)
+  const auto* cast2_input_type = cast2.InputDefs()[0]->TypeAsProto();
+  ASSERT_NE(cast2_input_type, nullptr);
+  EXPECT_EQ(cast2_input_type->tensor_type().elem_type(), TensorProto_DataType_FLOAT)
+      << "Cast_2 input should remain float32, not be changed to int64";
+}
+
 }  // namespace test
 }  // namespace onnxruntime

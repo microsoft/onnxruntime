@@ -64,6 +64,27 @@
 #include "cutlass/matrix_shape.h"
 #include "cutlass/platform/platform.h"
 #include "cutlass/transform/threadblock/predicated_tile_iterator.h"
+
+// Workaround for build error here:
+// https://github.com/NVIDIA/cutlass/blob/f3fde58372d33e9a5650ba7b80fc48b3b49d40c8/examples/41_fused_multi_head_attention/epilogue/epilogue_thread_apply_logsumexp.h#L87
+// epilogue_thread_apply_logsumexp.h(87): error : no suitable user-defined conversion from "const __half2" to
+//   "__nv_bfloat162" exists
+//          res_ptr[i] = h2exp(input_ptr[i]);
+//                             ^
+//
+// On architectures < sm_53, h2exp(__half2) is not available. The compiler may find the __nv_bfloat162 overload from
+// cuda_bf16.h, leading to a type mismatch.
+// Provide a fallback that decomposes the operation into two scalar expf calls via float conversion.
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 530)
+#include <cuda_fp16.h>
+
+inline __device__ __half2 h2exp(const __half2 x) {
+  float hi = __high2float(x);
+  float lo = __low2float(x);
+  return __floats2half2_rn(expf(lo), expf(hi));
+}
+#endif  // defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 530)
+
 #include "41_fused_multi_head_attention/debug_utils.h"
 #include "41_fused_multi_head_attention/epilogue/epilogue_pipelined.h"
 #include "41_fused_multi_head_attention/epilogue/epilogue_rescale_output.h"

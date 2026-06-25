@@ -56,7 +56,7 @@ TEST_P(MathGemmTest, GemmNoTransNoTrans) {
   constexpr float kZero = 0.0;
   math::Gemm<float>(CblasNoTrans, CblasNoTrans, 5, 6, 10, kOne,
                     VECTOR_HEAD(X), VECTOR_HEAD(W), kZero, VECTOR_HEAD(Y),
-                    tp.get());
+                    tp.get(), nullptr);
   EXPECT_EQ(Y.size(), 30u);
   for (size_t i = 0; i < Y.size(); ++i) {
     EXPECT_EQ(Y[i], 10) << i;
@@ -64,7 +64,7 @@ TEST_P(MathGemmTest, GemmNoTransNoTrans) {
   // Test Accumulate
   math::Gemm<float>(CblasNoTrans, CblasNoTrans, 5, 6, 10, kOne,
                     VECTOR_HEAD(X), VECTOR_HEAD(W), kPointFive,
-                    VECTOR_HEAD(Y), tp.get());
+                    VECTOR_HEAD(Y), tp.get(), nullptr);
   EXPECT_EQ(Y.size(), 30u);
   for (size_t i = 0; i < Y.size(); ++i) {
     EXPECT_EQ(Y[i], 15) << i;
@@ -73,7 +73,7 @@ TEST_P(MathGemmTest, GemmNoTransNoTrans) {
   math::Gemm<float>(CblasNoTrans, CblasNoTrans, 5, 6, 10,
                     kPointFive,
                     VECTOR_HEAD(X), VECTOR_HEAD(W), kOne, VECTOR_HEAD(Y),
-                    tp.get());
+                    tp.get(), nullptr);
   EXPECT_EQ(Y.size(), 30u);
   for (size_t i = 0; i < Y.size(); ++i) {
     EXPECT_EQ(Y[i], 20) << i;
@@ -101,7 +101,7 @@ TEST_P(MathGemmTest, GemmNoTransTrans) {
   constexpr float kZero = 0.0;
   math::Gemm<float>(CblasNoTrans, CblasTrans, 5, 6, 10, kOne,
                     VECTOR_HEAD(X), VECTOR_HEAD(W), kZero, VECTOR_HEAD(Y),
-                    tp.get());
+                    tp.get(), nullptr);
   EXPECT_EQ(Y.size(), 30u);
   for (size_t i = 0; i < Y.size(); ++i) {
     EXPECT_EQ(Y[i], 10) << i;
@@ -109,14 +109,14 @@ TEST_P(MathGemmTest, GemmNoTransTrans) {
   // Test Accumulate
   math::Gemm<float>(CblasNoTrans, CblasTrans, 5, 6, 10, kOne,
                     VECTOR_HEAD(X), VECTOR_HEAD(W), kPointFive,
-                    VECTOR_HEAD(Y), tp.get());
+                    VECTOR_HEAD(Y), tp.get(), nullptr);
   EXPECT_EQ(Y.size(), 30u);
   for (size_t i = 0; i < Y.size(); ++i) {
     EXPECT_EQ(Y[i], 15) << i;
   }
   math::Gemm<float>(CblasNoTrans, CblasTrans, 5, 6, 10, kPointFive,
                     VECTOR_HEAD(X), VECTOR_HEAD(W), kOne, VECTOR_HEAD(Y),
-                    tp.get());
+                    tp.get(), nullptr);
   EXPECT_EQ(Y.size(), 30u);
   for (size_t i = 0; i < Y.size(); ++i) {
     EXPECT_EQ(Y[i], 20) << i;

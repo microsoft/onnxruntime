@@ -3031,7 +3031,23 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
                                  "src_graph is a ModelEditorGraph which doesn't support Graph_GetGraphView.");
   }
   const GraphViewer& graph_viewer = ep_graph->GetGraphViewer();
-  const Graph& graph = graph_viewer.GetGraph();
+
+  // Create subgraph's node set and convert them to internal Node
+  InlinedHashSet<NodeIndex> node_set;
+  InlinedVector<const Node*> internal_nodes;
+  internal_nodes.reserve(num_nodes);
+  for (size_t i = 0; i < num_nodes; i++) {
+    const EpNode* ep_node = EpNode::ToInternal(nodes[i]);
+    if (ep_node != nullptr) {
+      const Node& node = ep_node->GetInternalNode();
+      node_set.insert(node.Index());
+      internal_nodes.push_back(&node);
+    } else {
+      std::ostringstream oss;
+      oss << "node indexed [" << i << "] appears to be a ModelEditorNode";
+      return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, oss.str().c_str());
+    }
+  }
 
   // Create a GraphViewer with filtered info
   // TODO: Investigate whether utils::MakeComputeCapability can be extended and reused instead
@@ -3040,178 +3056,93 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
   // Following data structures help determine the final inputs/outputs of the subgraph.
   // Note: The 'subgraph' here refers to a graph contains a subset of nodes in the 'src_graph'.
 
-  // Subgraph's node set
-  const std::unordered_set<size_t> node_set = [&]() {
-    std::unordered_set<size_t> node_set;
-    for (size_t i = 0; i < num_nodes; i++) {
-      const OrtNode* ort_node = nodes[i];
-      const EpNode* ep_node = EpNode::ToInternal(ort_node);
-      if (ep_node != nullptr) {
-        node_set.insert(ep_node->GetInternalNode().Index());
-      }
+  // Pre-pass: Identify all outputs produced by nodes within the subgraph.
+  // This allows O(1) checks to determine if an input is internal or from the boundary.
+  InlinedHashSet<const NodeArg*> internal_outputs;
+  for (size_t i = 0, lim = internal_nodes.size(); i < lim; i++) {
+    const auto& node = *internal_nodes[i];
+    for (const auto& output : node.OutputDefs()) {
+      internal_outputs.insert(output);
     }
-
-    return node_set;
-  }();
+  }
 
   // Source graph output names
-  std::unordered_set<std::string> graph_output_names;
+  InlinedHashSet<std::string> graph_output_names;
   for (const auto* output_arg : graph_viewer.GetOutputs()) {
     graph_output_names.insert(output_arg->Name());
   }
 
   // These maps store the inputs and outputs of the subgraph.
-  // Please note that the inputs and outputs of the maps will be dynamically updated during node iteration
-  // to determine the final inputs and outputs of the subgraph.
-  std::unordered_map<const NodeArg*, int> subgraph_inputs, subgraph_outputs;
+  // Value is order index to maintain deterministic order.
+  InlinedHashMap<const NodeArg*, int> subgraph_inputs, subgraph_outputs;
 
-  // This map stores the node's output that will be consumed by another node outside of this subgraph.
-  // So the node's output should be put into the subgraph's output list.
-  std::unordered_map<const NodeArg*, int> subgraph_outputs_to_add;
-
-  // This map stores the node's output that is original graph's output.
-  // So the node's output should be put into the subgraph's output list.
-  std::unordered_map<const NodeArg*, int> graph_outputs_to_add;
-
-  std::unordered_set<const NodeArg*> erased;
-
-  // This is the relative ordering that ensures node's input or output being added to the 'subgraph_inputs',
-  // 'subgraph_outputs', 'subgraph_outputs_to_add' and 'graph_outputs_to_add' maps is associated with a relative order index.
-  // Items added earlier receive a smaller order index than items added later.
-  // When constructing the final subgraph's input or output lists, entries with smaller
-  // order indices will appear before those with larger indices.
   int input_order = 0;
   int output_order = 0;
 
-  // node arg to its consumer nodes.
-  // Note: graph.GetConsumerNodes() is not available in minimal build, in order to use unified implementation across
-  //       all builds, this map is needed to determine if node arg is consumed by other nodes.
-  std::unordered_map<std::string, std::unordered_set<NodeIndex>> node_arg_to_consumer_nodes;
+  InlinedVector<std::string> initializers;
 
-  std::vector<std::string> initializers;
-
-  // Add nodes
-  for (size_t i = 0; i < num_nodes; i++) {
-    const OrtNode* ort_node = nodes[i];
-    const EpNode* ep_node = EpNode::ToInternal(ort_node);
-    if (ep_node == nullptr) {
-      return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT,
-                                   "node is a ModelEditorNode which doesn't support Graph_GetGraphView.");
-    }
-    const Node& node = ep_node->GetInternalNode();
+  // Add nodes and identify boundary inputs/outputs
+  for (size_t i = 0, lim = internal_nodes.size(); i < lim; i++) {
+    const auto& node = *internal_nodes[i];
     indexed_sub_graph->nodes.push_back(node.Index());
 
-    for (const auto& input : node.InputDefs()) {
-      if (!input->Exists()) {
-        continue;
-      }
+    // Process Inputs: If an input is not produced internally, it's a subgraph input.
+    auto process_inputs = [&](gsl::span<const NodeArg* const> inputs) {
+      for (const auto& input : inputs) {
+        if (!input->Exists()) continue;
 
-      if (graph_viewer.IsConstantInitializer(input->Name(), true)) {
-        initializers.push_back(input->Name());
-        continue;
-      }
-      const auto& it = subgraph_outputs.find(input);
-      if (it != subgraph_outputs.end()) {
-        subgraph_outputs.erase(it);
-        erased.insert(input);
-      } else if (erased.find(input) == erased.end()) {
-        // Only when input is neither in output list nor erased list, add the input to input list
-        subgraph_inputs.insert({input, input_order++});
-      }
-    }
+        if (graph_viewer.IsConstantInitializer(input->Name(), true)) {
+          initializers.push_back(input->Name());
+          continue;
+        }
 
-    for (const auto& input : node.ImplicitInputDefs()) {
-      if (!input->Exists()) {
-        continue;
+        // If not produced by this subgraph, it's a boundary input
+        if (internal_outputs.count(input) == 0) {
+          // Use insert to keep the first occurrence's order
+          auto p = subgraph_inputs.emplace(input, input_order);
+          if (p.second) {
+            input_order++;
+          }
+        }
       }
+    };
 
-      if (graph_viewer.IsConstantInitializer(input->Name(), true)) {
-        initializers.push_back(input->Name());
-        continue;
-      }
-      const auto& it = subgraph_outputs.find(input);
-      if (it != subgraph_outputs.end()) {
-        subgraph_outputs.erase(it);
-        erased.insert(input);
-      } else if (erased.find(input) == erased.end()) {
-        // Only when input is neither in output list nor erased list, add the input to input list
-        subgraph_inputs.insert({input, input_order++});
-      }
-    }
+    process_inputs(gsl::make_span(node.InputDefs().data(), node.InputDefs().size()));
+    process_inputs(gsl::make_span(node.ImplicitInputDefs().data(), node.ImplicitInputDefs().size()));
 
-    // For output searching, there are two special cases,
-    // One is, if subgraph's node output is parent graph's output. the node output should
-    // be also added to the subgraph's output list
-    // The other one is, if node's OutputEdges are more than its outputs, meaning certain output is used more than once,
-    // if the output is connected to nodes that don't belong to the subgraph, the output need to be added
-    // to the output list
+    // Process Outputs: If an output is graph output OR consumed externally, it's a subgraph output.
     for (const auto& output : node.OutputDefs()) {
-      if (!output->Exists()) {
-        continue;
-      }
+      if (!output->Exists()) continue;
 
-      const auto& it = subgraph_inputs.find(output);
-      if (it != subgraph_inputs.end()) {
-        subgraph_inputs.erase(it);
-        erased.insert(output);
-      } else if (erased.find(output) == erased.end()) {
-        auto has_consumer_nodes = [&](const std::string& node_arg_str) -> bool {
-          // Same implementation as Graph::PopulateNodeArgToProducerConsumerLookupsFromNodes()
-          if (node_arg_to_consumer_nodes.empty()) {
-            for (const auto& node : graph.Nodes()) {
-              node.ForEachDef([&](const NodeArg& node_arg, bool is_input) {
-                if (is_input) {
-                  node_arg_to_consumer_nodes[node_arg.Name()].insert(node.Index());
-                }
-              });
+      bool is_boundary_output = false;
+
+      // 1. Is it a graph output?
+      if (graph_output_names.count(output->Name()) > 0) {
+        is_boundary_output = true;
+      } else {
+        // 2. Is it consumed by any node outside the subgraph?
+        for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
+          // Check if the edge uses this specific output
+          if (it->GetSrcArgIndex() < static_cast<int>(node.OutputDefs().size()) &&
+              node.OutputDefs()[it->GetSrcArgIndex()] == output) {
+            if (node_set.count(it->GetNode().Index()) == 0) {
+              is_boundary_output = true;
+              break;
             }
           }
-          return node_arg_to_consumer_nodes.find(node_arg_str) != node_arg_to_consumer_nodes.end();
-        };
-
-        if (has_consumer_nodes(output->Name())) {
-          // Only when output is neither in input list nor erased list,
-          // and the output is consumed by another node, add the output to output list
-          subgraph_outputs.insert({output, output_order++});
         }
       }
 
-      if (graph_output_names.find(output->Name()) != graph_output_names.end()) {
-        // This output is the graph's output.
-        // So the output should be put into the subgraph's output list.
-        graph_outputs_to_add.insert({output, output_order++});
-      }
-    }
-
-    if (node.GetOutputEdgesCount() > node.OutputDefs().size()) {
-      for (auto it = node.OutputEdgesBegin(), end = node.OutputEdgesEnd(); it != end; ++it) {
-        const auto& node_idx = it->GetNode().Index();
-
-        if (node_set.find(node_idx) == node_set.end()) {
-          // This output will be consumed by another node outside of this subgraph.
-          // So the output should be put into the subgraph's output list.
-          const NodeArg* output = nullptr;
-
-          // The dst_arg_index from GetDstArgIndex() could be the index for explicit/implicit input defs of the node.
-          // We need to get the correct input index accordingly. (See Graph::BuildConnections() in graph.cc for more details)
-          if (it->GetDstArgIndex() < static_cast<int>(it->GetNode().InputDefs().size())) {
-            output = (it->GetNode()).InputDefs()[it->GetDstArgIndex()];
-          } else {
-            output = (it->GetNode()).ImplicitInputDefs()[it->GetDstArgIndex() - it->GetNode().InputDefs().size()];
-          }
-          subgraph_outputs_to_add.insert({output, output_order++});
-        }
+      if (is_boundary_output) {
+        subgraph_outputs.insert({output, output_order++});
       }
     }
   }
 
-  subgraph_outputs.insert(subgraph_outputs_to_add.begin(), subgraph_outputs_to_add.end());
-  subgraph_outputs.insert(graph_outputs_to_add.begin(), graph_outputs_to_add.end());
-
   std::multimap<int, const NodeArg*> inputs, outputs;
 
   // Get the input order of the original graph
-  std::unordered_map<const NodeArg*, int> original_inputs;
+  InlinedHashMap<const NodeArg*, int> original_inputs;
   int order = 0;
   for (const auto* input : graph_viewer.GetInputs()) {
     original_inputs[input] = order++;
@@ -3219,22 +3150,22 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
 
   // input order needs to be consistent with original graph's input order
   for (const auto& [node_arg, subgraph_input_order] : subgraph_inputs) {
-    const auto& original_input_it = original_inputs.find(node_arg);
+    const auto original_input_it = original_inputs.find(node_arg);
 
     if (original_input_it != original_inputs.end()) {
-      inputs.insert(std::make_pair(
+      inputs.emplace(
           original_input_it->second,  // input order from original graph
-          node_arg));
+          node_arg);
     } else {
-      inputs.insert(std::make_pair(
+      inputs.emplace(
           subgraph_input_order,  // input order from subgraph
-          node_arg));
+          node_arg);
     }
   }
 
   // Sort outputs by the order they were added
-  for (auto it = subgraph_outputs.begin(), end = subgraph_outputs.end(); it != end; ++it) {
-    outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
+  for (const auto& [node_arg, subgraph_output_order] : subgraph_outputs) {
+    outputs.emplace(subgraph_output_order, node_arg);
   }
 
   std::unique_ptr<IndexedSubGraph::MetaDef> meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
@@ -3259,7 +3190,8 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
   }
 
   indexed_sub_graph->SetMetaDef(std::move(meta_def));
-  auto new_graph_viewer = std::make_unique<GraphViewer>(graph, *indexed_sub_graph.get());
+  const Graph& graph = graph_viewer.GetGraph();
+  auto new_graph_viewer = std::make_unique<GraphViewer>(graph, *indexed_sub_graph);
 
   std::unique_ptr<EpGraph> result;
   ORT_API_RETURN_IF_STATUS_NOT_OK(EpGraph::Create(std::move(new_graph_viewer), std::move(indexed_sub_graph), result));
@@ -4260,6 +4192,27 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetMemoryInfoForOutputs, _In_ const OrtSessi
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SetPerSessionThreadPoolCallbacks, _Inout_ OrtEnv* ort_env,
+                    _In_ const OrtThreadPoolCallbacksConfig* config) {
+  API_IMPL_BEGIN
+  if (config == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "config must not be null");
+  }
+  if (config->version == 0 || config->version > ORT_API_VERSION) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "OrtThreadPoolCallbacksConfig requires version set to ORT_API_VERSION");
+  }
+#ifdef ORT_ENABLE_SESSION_THREADPOOL_CALLBACKS
+  return onnxruntime::ToOrtStatus(
+      ort_env->GetEnvironment().SetPerSessionWorkCallbacks(*config));
+#else
+  ORT_UNUSED_PARAMETER(ort_env);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                               "SetPerSessionThreadPoolCallbacks requires ORT built with --enable_session_threadpool_callbacks");
+#endif
+  API_IMPL_END
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString};
@@ -4807,6 +4760,9 @@ static constexpr OrtApi ort_api_1_to_25 = {
 
     &OrtApis::RunOptionsEnableProfiling,
     &OrtApis::RunOptionsDisableProfiling,
+    &OrtApis::KernelInfoGetAttributeArray_string,
+    &OrtApis::SetPerSessionThreadPoolCallbacks,
+    // End of Version 25 - DO NOT MODIFY ABOVE (see above text for more information)
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
@@ -4844,6 +4800,7 @@ static_assert(offsetof(OrtApi, SetEpDynamicOptions) / sizeof(void*) == 284, "Siz
 static_assert(offsetof(OrtApi, GetEpApi) / sizeof(void*) == 317, "Size of version 22 API cannot change");
 static_assert(offsetof(OrtApi, CreateExternalInitializerInfo) / sizeof(void*) == 389, "Size of version 23 API cannot change");
 static_assert(offsetof(OrtApi, GetTensorElementTypeAndShapeDataReference) / sizeof(void*) == 414, "Size of version 24 API cannot change");
+static_assert(offsetof(OrtApi, KernelInfoGetAttributeArray_string) / sizeof(void*) == 417, "Size of version 25 API cannot change");
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
 static_assert(std::string_view(ORT_VERSION) == "1.25.0",

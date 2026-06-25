@@ -57,6 +57,7 @@ jobs:
       ExceptionHandlingBuildArgs: '--enable_wasm_api_exception_catching'
     ${{ else }}:
       ExceptionHandlingBuildArgs: ''
+    reducedSizeBuildArgs: '--disable_ml_ops --disable_generation_ops --disable_types string float4 float8 optional sparsetensor --include_ops_by_config $(Build.SourcesDirectory)/onnxruntime/wasm/reduced_types.config --enable_reduced_operator_type_support'
     runCodesignValidationInjection: false
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
     ORT_CACHE_DIR: $(Agent.TempDirectory)/ort_ccache
@@ -91,6 +92,9 @@ jobs:
   - task: NodeTool@0
     inputs:
       versionSpec: '22.x'
+
+  - script: python -m pip install flatbuffers
+    displayName: 'Install python dependencies'
 
   - ${{if eq(parameters.WithCache, true)}}:
     - script: |
@@ -141,7 +145,7 @@ jobs:
         ${{ else }}:
           AdditionalKey: wasm_inferencing_webgpu | ${{ parameters.BuildConfig }}
         CacheDir: $(ORT_CACHE_DIR)/wasm_inferencing_webgpu
-        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing_webgpu --use_webgpu --use_webnn --target onnxruntime_webassembly $(ExceptionHandlingBuildArgs) --skip_tests'
+        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing_webgpu --use_webgpu --use_webnn --target onnxruntime_webassembly $(ExceptionHandlingBuildArgs) $(reducedSizeBuildArgs) --skip_tests'
         DisplayName: 'Build (simd + threads + WebGPU experimental)'
         WithCache: ${{ parameters.WithCache }}
 
@@ -154,7 +158,7 @@ jobs:
         ${{ else }}:
           AdditionalKey: wasm_inferencing_webgpu_jspi | ${{ parameters.BuildConfig }}
         CacheDir: $(ORT_CACHE_DIR)/wasm_inferencing_webgpu_jspi
-        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing_webgpu_jspi --use_webgpu --use_webnn --enable_wasm_jspi --target onnxruntime_webassembly --skip_tests'
+        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing_webgpu_jspi --use_webgpu --use_webnn --enable_wasm_jspi --target onnxruntime_webassembly $(reducedSizeBuildArgs) --skip_tests'
         DisplayName: 'Build (simd + threads + WebGPU experimental, JSPI)'
         WithCache: ${{ parameters.WithCache }}
 

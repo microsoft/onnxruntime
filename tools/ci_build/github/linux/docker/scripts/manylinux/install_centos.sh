@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-os_major_version=$(tr -dc '0-9.' < /etc/redhat-release |cut -d \. -f1)
+os_major_version=$(tr -dc '0-9.' </etc/redhat-release | cut -d \. -f1)
 
 echo "installing for os major version : $os_major_version"
 if [ "$os_major_version" -gt 7 ]; then
@@ -11,3 +11,7 @@ fi
 
 # Install automatic documentation generation dependencies
 $PACKAGE_MANAGER install -y graphviz
+
+if ! command -v ccache &>/dev/null; then
+    "$PACKAGE_MANAGER" install -y ccache # FIXME: base image should already have ccache installed
+fi

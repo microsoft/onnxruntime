@@ -44,21 +44,33 @@ class MatMulNBits final : public CudaKernel {
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("bits", &nbits_));
 
-    constexpr size_t kInputIndexScale = 2;
-    constexpr size_t kInputIndexZeroPoints = 3;
-    constexpr size_t kInputIndexGroupIndex = 4;
-    constexpr size_t kInputIndexBias = 5;
+    constexpr int kInputIndexScale = 2;
+    constexpr int kInputIndexZeroPoints = 3;
+    constexpr int kInputIndexGroupIndex = 4;
+    constexpr int kInputIndexBias = 5;
 
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+    // PLUGIN BUILD ADAPTATION: The adapter Node does not expose InputDefs(),
+    // so we cannot check whether optional inputs (zero_points, g_idx, bias)
+    // truly exist at construction time. Instead, we check input count here
+    // and verify actual tensor presence in ComputeInternal.
+    ORT_UNUSED_PARAMETER(kInputIndexScale);  // only used in non-plugin path for type checking
+    has_zero_points_ = info.GetInputCount() > kInputIndexZeroPoints;
+    has_g_idx_ = info.GetInputCount() > kInputIndexGroupIndex;
+    has_bias_ = info.GetInputCount() > kInputIndexBias;
+    // is_zero_points_scale_same_type_ defaults to false; checked at runtime in plugin path.
+#else
     has_zero_points_ = info.GetInputCount() > kInputIndexZeroPoints && info.node().InputDefs()[kInputIndexZeroPoints]->Exists();
     has_g_idx_ = info.GetInputCount() > kInputIndexGroupIndex && info.node().InputDefs()[kInputIndexGroupIndex]->Exists();
     has_bias_ = info.GetInputCount() > kInputIndexBias && info.node().InputDefs()[kInputIndexBias]->Exists();
-    sm_ = this->GetDeviceProp().major * 10 + this->GetDeviceProp().minor;
 
     if (has_zero_points_) {
       int32_t zero_point_type = info.node().InputDefs()[kInputIndexZeroPoints]->TypeAsProto()->tensor_type().elem_type();
       int32_t scale_type = info.node().InputDefs()[kInputIndexScale]->TypeAsProto()->tensor_type().elem_type();
       is_zero_points_scale_same_type_ = (zero_point_type == scale_type);
     }
+#endif
+    sm_ = this->GetDeviceProp().major * 10 + this->GetDeviceProp().minor;
 
 #if USE_FPA_INTB_GEMM
     if constexpr (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value) {

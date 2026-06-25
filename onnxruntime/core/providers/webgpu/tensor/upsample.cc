@@ -90,7 +90,7 @@ Status Upsample::ComputeInternal(ComputeContext& context) const {
 
   InlinedVector<float> scales_array(input_dims.size());
   // opset < 10
-  if (OpKernel::Node().InputDefs().size() == 1) {
+  if (OpKernel::Node().SinceVersion() < 10) {
     scales_array = scales_;
     // Compute output shape from scales attributes and input dims
     ComputeOutputShape(scales_array, input_dims, output_dims);

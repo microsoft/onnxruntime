@@ -49,6 +49,7 @@ def torch_onnx_export(
             keep_initializers_as_inputs=keep_initializers_as_inputs,
             custom_opsets=custom_opsets,
             export_modules_as_functions=export_modules_as_functions,
+            dynamo=False,
         )
     else:
         torch.onnx.export(

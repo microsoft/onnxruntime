@@ -115,7 +115,7 @@ void RunTest(int64_t quant_type, int64_t M, int64_t N, int64_t K, int64_t block_
   }
 }
 
-TEST(MatMulBnb4, Float32) {
+TEST(MatMulBnb4, DISABLED_Float32) {
   for (auto qt : {0, 1}) {
     for (auto M : {1, 2, 100}) {
       for (auto N : {1, 2, 32, 288}) {

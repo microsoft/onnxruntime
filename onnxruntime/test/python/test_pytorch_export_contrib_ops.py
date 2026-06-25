@@ -59,6 +59,9 @@ class ONNXExporterTest(unittest.TestCase):
         torch.manual_seed(0)
         pytorch_export_contrib_ops.register()
 
+    def tearDown(self):
+        pytorch_export_contrib_ops.unregister()
+
     def run_test(
         self,
         model,
@@ -101,6 +104,7 @@ class ONNXExporterTest(unittest.TestCase):
                 input_names=input_names,
                 output_names=output_names,
                 custom_opsets=custom_opsets,
+                dynamo=False,
             )
 
             # compute onnxruntime output prediction
@@ -143,12 +147,13 @@ class ONNXExporterTest(unittest.TestCase):
             f,
             opset_version=self.opset_version,
             custom_opsets={"com.microsoft": 1},
+            dynamo=False,
         )
         f.seek(0)
         onnx_model = onnx.load(f)
-        node = onnx_model.graph.node[0]
-        self.assertEqual(node.op_type, "Gelu")
-        self.assertEqual(node.domain, "com.microsoft")
+        # Default GELU should be mapped to ORT contrib Gelu for performance.
+        gelu_nodes = [n for n in onnx_model.graph.node if n.op_type == "Gelu" and n.domain == "com.microsoft"]
+        self.assertEqual(len(gelu_nodes), 1)
 
     @parameterized.parameterized.expand([("default_approximate", "none"), ("tanh_approximate", "tanh")])
     @unittest.skipIf(_torch_version_lower_than("1.12"), "Gelu's approximate parameter unsupported in PyTorch < 1.12")
@@ -230,8 +235,8 @@ class ONNXExporterTest(unittest.TestCase):
 # IR version 4 style export.
 ONNXExporterTest_opset9_IRv4 = type(
     "TestONNXRuntime_opset9_IRv4",
-    (unittest.TestCase,),
-    dict(ONNXExporterTest.__dict__, keep_initializers_as_inputs=False),
+    (ONNXExporterTest,),
+    dict(keep_initializers_as_inputs=False),
 )
 
 

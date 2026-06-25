@@ -134,6 +134,7 @@ class MlasNchwcConv2DTest : public MlasConv2DTest<Threaded> {
                   &Activation,
                   true,
                   MlasConv2DTest<Threaded>::threadpool_,
+                  nullptr,
                   UseBf16_);
 
     //

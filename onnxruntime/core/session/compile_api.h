@@ -41,5 +41,8 @@ ORT_API_STATUS_IMPL(ModelCompilationOptions_SetOutputModelWriteFunc,
 ORT_API_STATUS_IMPL(ModelCompilationOptions_SetOutputModelGetInitializerLocationFunc,
                     _In_ OrtModelCompilationOptions* model_compile_options,
                     _In_ OrtGetInitializerLocationFunc get_initializer_location_func, _In_ void* state);
+ORT_API_STATUS_IMPL(ModelCompilationOptions_SetInputModel,
+                    _In_ OrtModelCompilationOptions* model_compile_options,
+                    _In_ const OrtModel* model);
 
 }  // namespace OrtCompileAPI

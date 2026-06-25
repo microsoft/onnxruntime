@@ -4,6 +4,7 @@
 #include "core/providers/cpu/tensor/col2im.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
+#include "core/common/safeint.h"
 
 namespace onnxruntime {
 
@@ -45,20 +46,21 @@ Status Col2Im<T>::Compute(OpKernelContext* context) const {
     strides = strides_;
   }
 
-  int64_t image_shape_size = 1;
-  int64_t kernel_shape_size = 1;
+  SafeInt<int64_t> image_shape_size = 1;
+  SafeInt<int64_t> kernel_shape_size = 1;
   TensorShapeVector adjusted_kernel_shape_dims;
   auto image_dims = image_shape->Data<int64_t>();
   auto kernel_dims = kernel_shape->Data<int64_t>();
   for (size_t i = 0; i < image_dim_number; ++i) {
     image_shape_size *= image_dims[i];
     kernel_shape_size *= kernel_dims[i];
-    adjusted_kernel_shape_dims.push_back(dilations[i] * (kernel_dims[i] - 1) + 1);
+    adjusted_kernel_shape_dims.push_back(SafeInt<int64_t>(dilations[i]) * (kernel_dims[i] - 1) + 1);
   }
+  ORT_ENFORCE(kernel_shape_size > 0, "kernel_shape_size must be positive");
   TensorShape col_shape = col_tensor->Shape();
   const auto N = col_shape[0];
-  const int64_t C = col_shape[1] / kernel_shape_size;
-  const int64_t col_stride = C * image_shape_size;
+  const int64_t C = col_shape[1] / static_cast<int64_t>(kernel_shape_size);
+  const int64_t col_stride = SafeInt<int64_t>(C) * image_shape_size;
   TensorShape adjusted_kernel_shape(adjusted_kernel_shape_dims);
   const int64_t col_data_stride = col_shape.SizeFromDimension(1);
 

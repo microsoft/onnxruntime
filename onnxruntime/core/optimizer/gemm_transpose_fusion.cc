@@ -80,7 +80,8 @@ Status GemmTransposeFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& m
                                       "Fused Gemm with Transpose",
                                       new_gemm_input_defs,
                                       {},
-                                      {},
+                                      gemm_node,
+                                      nullptr,
                                       gemm_node.Domain());
   new_gemm_node.AddAttribute("transA", static_cast<int64_t>(transA));
   new_gemm_node.AddAttribute("transB", static_cast<int64_t>(transB));
@@ -104,7 +105,7 @@ bool GemmTransposeFusion::SatisfyCondition(const Graph& graph, const Node& node,
 
   // Fusion can be applied if there is a transpose at either of the inputs
   for (auto node_it = node.InputNodesBegin(); node_it != node.InputNodesEnd(); ++node_it) {
-    if (graph_utils::IsSupportedOptypeVersionAndDomain(*node_it, "Transpose", {1, 13}) &&
+    if (graph_utils::IsSupportedOptypeVersionAndDomain(*node_it, "Transpose", {1, 13, 21, 23, 24, 25}) &&
         !graph.NodeProducesGraphOutput(*node_it) &&
         // Make sure the two nodes do not span execution providers.
         node_it->GetExecutionProviderType() == node.GetExecutionProviderType()) {
@@ -128,7 +129,7 @@ bool GemmTransposeFusion::SatisfyCondition(const Graph& graph, const Node& node,
 
   const auto next_node_it = node.OutputNodesBegin();
   if (next_node_it != node.OutputNodesEnd() &&
-      graph_utils::IsSupportedOptypeVersionAndDomain(*next_node_it, "Transpose", {1, 13}) &&
+      graph_utils::IsSupportedOptypeVersionAndDomain(*next_node_it, "Transpose", {1, 13, 21, 23, 24, 25}) &&
       next_node_it->GetInputEdgesCount() == 1 &&
       // Make sure the two nodes do not span execution providers.
       next_node_it->GetExecutionProviderType() == node.GetExecutionProviderType()) {

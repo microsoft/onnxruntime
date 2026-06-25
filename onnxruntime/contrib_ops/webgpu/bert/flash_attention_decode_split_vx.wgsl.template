@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#param has_head_sink
 #param tile_size
 #param head_size_vec
 #param tile_size_k_vec
@@ -56,6 +57,11 @@ $MAIN {
 
   // Calculate the global max and sum in qk.
   var g_max = f32(-3.4028234663852886e+38f);
+#if has_head_sink
+  let head_idx = batch_head_idx % uniforms.num_heads;
+  let sink_value = f32(head_sink[head_idx]);
+  g_max = max(g_max, sink_value);
+#endif
   var g_sum = f32(0);
   for (var i = 0u; i < num_total_seq_length_tile; i++)
   {
@@ -68,6 +74,9 @@ $MAIN {
     let m_value = metadata[meta_offset];
     g_sum += exp(m_value.x - g_max) * m_value.y;
   }
+#if has_head_sink
+  g_sum += exp(sink_value - g_max);
+#endif
 
     if (total_seq_offset + local_idx < total_sequence_length) {
       tile_qk[local_idx] = present_value_element_t(exp(f32(qk[batch_head_idx * uniforms.present_sequence_length + total_seq_offset + local_idx]) - g_max) / g_sum);

@@ -209,7 +209,7 @@ __device__ void reduce_all(
   // the size of shared_memory equals to the number of warps.
 #pragma unroll
   for (int stride = MAX_NUM_WARPS_PER_BLOCK / 2; stride > 0; stride /= 2) {
-    if (tid_in_block + stride < num_warps_in_block) {
+    if (tid_in_block < stride && tid_in_block + stride < num_warps_in_block) {
       shared_memory[tid_in_block] += shared_memory[tid_in_block + stride];
     }
     __syncthreads();
