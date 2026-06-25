@@ -180,10 +180,10 @@ using ::onnxruntime::HandleNegativeAxis;
   {                                                                                                                                                                 \
     cudnnStatus_t _status = (expr);                                                                                                                                 \
     if (_status != CUDNN_STATUS_SUCCESS) {                                                                                                                          \
-      if (!onnxruntime::cuda::CudnnLibrary::Get().Available()) {                                                                                                     \
+      if (!onnxruntime::cuda::CudnnLibrary::Get().Available()) {                                                                                                    \
         return onnxruntime::common::Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,                                                  \
-                                           std::string("cuDNN is unavailable for CUDA Plugin Execution Provider: ") +                                                \
-                                               onnxruntime::cuda::CudnnLibrary::Get().Error());                                                                      \
+                                           std::string("cuDNN is unavailable for CUDA Plugin Execution Provider: ") +                                               \
+                                               onnxruntime::cuda::CudnnLibrary::Get().Error());                                                                     \
       }                                                                                                                                                             \
       return onnxruntime::common::Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, std::string("cuDNN error: ") + cudnnGetErrorString(_status)); \
     }                                                                                                                                                               \
@@ -952,7 +952,7 @@ class CudaKernel : public OpKernel {
     if (handle == nullptr) {
       ORT_THROW_IF_ERROR(onnxruntime::common::Status(
           onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
-            std::string("cuDNN is unavailable or disabled for CUDA Plugin Execution Provider: ") +
+          std::string("cuDNN is unavailable or disabled for CUDA Plugin Execution Provider: ") +
               onnxruntime::cuda::CudnnLibrary::Get().Error()));
     }
     if (handle != nullptr && stream != nullptr) {

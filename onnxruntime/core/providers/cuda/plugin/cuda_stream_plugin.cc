@@ -44,8 +44,8 @@ CudaSyncStream::CudaSyncStream(CudaEpFactory& factory, int device_id, bool enabl
                                const OrtEp* /*ep*/)
     : OrtSyncStreamImpl{},
       factory_(factory),
-  device_id_(device_id),
-  enable_cudnn_(enable_cudnn) {
+      device_id_(device_id),
+      enable_cudnn_(enable_cudnn) {
   ort_version_supported = ORT_API_VERSION;
   GetHandle = GetHandleImpl;
   CreateNotification = CreateNotificationImpl;

@@ -8,7 +8,9 @@
 #include <vector>
 
 #ifdef _WIN32
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <windows.h>
 #else
 #include <dlfcn.h>
@@ -89,10 +91,6 @@ CudnnLibrary& CudnnLibrary::Get() {
 
 void CudnnLibrary::Configure(bool enabled) {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (!enabled) {
-    return;
-  }
-
   enabled_ = enabled;
 }
 

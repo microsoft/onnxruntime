@@ -264,9 +264,14 @@ class CudaKernel : public OpKernel {
 
   static inline cudnnHandle_t RequireCudnnHandle(cudnnHandle_t handle) {
     if (handle == nullptr) {
+#ifndef USE_CUDA_MINIMAL
       ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                                          "cuDNN is unavailable or disabled for CUDA Execution Provider: ",
                                          cuda::CudnnLibrary::Get().Error()));
+#else
+      ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                                         "cuDNN is unavailable for CUDA Execution Provider in a CUDA minimal build."));
+#endif
     }
     return handle;
   }

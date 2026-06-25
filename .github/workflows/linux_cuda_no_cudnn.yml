@@ -33,7 +33,7 @@ jobs:
       docker_build_args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1'
       docker_image_repo: onnxruntimecuda13manylinuxbuild
       extra_build_flags: '--use_binskim_compliant_compile_flags --parallel --nvcc_threads 4 --flash_nvcc_threads 4 --cuda_version=13.0 --cuda_home=/usr/local/cuda-13.0 --cudnn_home=/usr/local/cuda-13.0 --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 onnxruntime_BUILD_UNIT_TESTS=ON'
-      python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
+      python_path_prefix: 'PATH=/opt/python/cp312-cp312/bin:$PATH'
       run_tests: false
       upload_build_output: true
       execution_providers: 'cuda'
@@ -96,7 +96,7 @@ jobs:
           docker run --rm --gpus all \
             -v "${{ runner.temp }}/Release:/onnxruntime_src/build/Release" \
             "${{ steps.build_docker_image_step.outputs.full-image-name }}" \
-            bash -lc 'PATH=/opt/python/cp310-cp310/bin:$PATH PYTHONPATH=/onnxruntime_src/build/Release python - <<"PY"
+            bash -lc 'PATH=/opt/python/cp312-cp312/bin:$PATH PYTHONPATH=/onnxruntime_src/build/Release python -m pip install --no-cache-dir numpy onnx && PATH=/opt/python/cp312-cp312/bin:$PATH PYTHONPATH=/onnxruntime_src/build/Release python - <<"PY"
           import numpy as np
           import onnx
           import onnxruntime as ort

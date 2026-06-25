@@ -120,23 +120,23 @@ inline bool TryGetCurrentCudaDevice(int& device_id) noexcept {
 #endif
 
 #ifndef PL_CUDNN_RETURN_IF_ERROR
-#define PL_CUDNN_RETURN_IF_ERROR(cudnn_call_expr) \
-  do {                                            \
-    cudnnStatus_t _cudnn_err = (cudnn_call_expr); \
-    if (_cudnn_err != CUDNN_STATUS_SUCCESS) {     \
-      if (!onnxruntime::cuda::CudnnLibrary::Get().Available()) { \
-        return Ort::GetApi().CreateStatus(        \
-            ORT_NOT_IMPLEMENTED,                  \
+#define PL_CUDNN_RETURN_IF_ERROR(cudnn_call_expr)                                       \
+  do {                                                                                  \
+    cudnnStatus_t _cudnn_err = (cudnn_call_expr);                                       \
+    if (_cudnn_err != CUDNN_STATUS_SUCCESS) {                                           \
+      if (!onnxruntime::cuda::CudnnLibrary::Get().Available()) {                        \
+        return Ort::GetApi().CreateStatus(                                              \
+            ORT_NOT_IMPLEMENTED,                                                        \
             (std::string("cuDNN is unavailable for CUDA Plugin Execution Provider: ") + \
-             onnxruntime::cuda::CudnnLibrary::Get().Error()) \
-                .c_str());                        \
-      }                                           \
-      return Ort::GetApi().CreateStatus(          \
-          ORT_EP_FAIL,                            \
-          (std::string("cuDNN error: ") +         \
-           cudnnGetErrorString(_cudnn_err))       \
-              .c_str());                          \
-    }                                             \
+             onnxruntime::cuda::CudnnLibrary::Get().Error())                            \
+                .c_str());                                                              \
+      }                                                                                 \
+      return Ort::GetApi().CreateStatus(                                                \
+          ORT_EP_FAIL,                                                                  \
+          (std::string("cuDNN error: ") +                                               \
+           cudnnGetErrorString(_cudnn_err))                                             \
+              .c_str());                                                                \
+    }                                                                                   \
   } while (0)
 #endif
 

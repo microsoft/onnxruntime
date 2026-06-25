@@ -35,7 +35,7 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.14'
+          python-version: '3.12'
           architecture: x64
 
       - name: Locate vcvarsall and Setup Env
@@ -154,7 +154,7 @@ jobs:
 
       - uses: actions/setup-python@v6
         with:
-          python-version: '3.14'
+          python-version: '3.12'
           architecture: x64
 
       - name: Locate vcvarsall and Setup Env

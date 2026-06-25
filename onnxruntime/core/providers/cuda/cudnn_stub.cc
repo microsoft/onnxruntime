@@ -5,8 +5,8 @@
 
 #ifndef USE_CUDA_MINIMAL
 
-#define ORT_CUDNN_FORWARD_STATUS(name, ...)              \
-  using Fn = decltype(&name);                            \
+#define ORT_CUDNN_FORWARD_STATUS(name, ...)                            \
+  using Fn = decltype(&name);                                          \
   auto fn = onnxruntime::cuda::CudnnLibrary::Get().Resolve<Fn>(#name); \
   return fn != nullptr ? fn(__VA_ARGS__) : CUDNN_STATUS_NOT_INITIALIZED
 
