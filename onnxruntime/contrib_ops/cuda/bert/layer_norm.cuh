@@ -78,7 +78,7 @@ struct KeyValuePairSum {
 
 template <typename T, int TPB>
 __device__ inline void LayerNorm(
-    const cub::KeyValuePair<float, float>& thread_data, const int ld, const int64_t offset, const T* beta,
+    const cub::KeyValuePair<float, float>& thread_data, const int ld, const int offset, const T* beta,
     const T* gamma, const float epsilon, T* output) {
   // Assuming thread_data is already divided by ld
   // Uses fp32 accumulation for mean/variance to avoid overflow in fp16/bf16.
@@ -98,7 +98,7 @@ __device__ inline void LayerNorm(
   __syncthreads();
 
   for (int i = threadIdx.x; i < ld; i += TPB) {
-    const int64_t idx = offset + i;
+    const int idx = offset + i;
     const float val = static_cast<float>(output[idx]);
     const float g = static_cast<float>(gamma[i]);
     const float b = (nullptr == beta) ? 0.f : static_cast<float>(beta[i]);
@@ -108,7 +108,7 @@ __device__ inline void LayerNorm(
 
 template <typename T, int TPB>
 __device__ inline void SimplifiedLayerNorm(
-    const float& thread_data, const int ld, const int64_t offset, const T* gamma, const float epsilon, T* output) {
+    const float& thread_data, const int ld, const int offset, const T* gamma, const float epsilon, T* output) {
   // Assuming thread_data is already divided by ld
   // Uses fp32 accumulation to avoid overflow in fp16/bf16.
 
@@ -124,7 +124,7 @@ __device__ inline void SimplifiedLayerNorm(
   __syncthreads();
 
   for (int i = threadIdx.x; i < ld; i += TPB) {
-    const int64_t idx = offset + i;
+    const int idx = offset + i;
     const float val = static_cast<float>(output[idx]);
     const float g = static_cast<float>(gamma[i]);
     output[idx] = static_cast<T>(g * val * rsigma);
@@ -133,7 +133,7 @@ __device__ inline void SimplifiedLayerNorm(
 
 template <typename T, int TPB, int ILP>
 __device__ inline void LayerNormSmall(const T* input_v, const cub::KeyValuePair<float, float>& thread_data,
-                                      const int ld, const int64_t idx, const T* beta, const T* gamma,
+                                      const int ld, const int idx, const T* beta, const T* gamma,
                                       const float epsilon, T* output) {
   // Assuming thread_data is already divided by ld
   // Small settings: the block covers the leading dimension TPB >= ld. The input
@@ -182,8 +182,8 @@ __device__ inline void LayerNormSmall(const T* input_v, const cub::KeyValuePair<
 }
 
 template <typename T, int TPB, int ILP>
-__device__ inline void SimplifiedLayerNormSmall(const T* input_v, const float& thread_data, const int ld,
-                                                const int64_t idx, const T* gamma, const float epsilon, T* output) {
+__device__ inline void SimplifiedLayerNormSmall(const T* input_v, const float& thread_data, const int ld, const int idx,
+                                                const T* gamma, const float epsilon, T* output) {
   // Assuming thread_data is already divided by ld
   // Small settings: the block covers the leading dimension TPB >= ld. The input
   // value is available in a register
