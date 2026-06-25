@@ -18,6 +18,15 @@ parameters:
   type: boolean
   default: false
 
+- name: build_mode
+  displayName: 'Build mode: nightly (dev), release (final), or prerelease (requires suffix below)'
+  type: string
+  default: nightly
+  values:
+  - nightly
+  - release
+  - prerelease
+
 - name: nuget_cuda12_packaging
   displayName: 'Run Zip-Nuget-Java-Nodejs Packaging Pipeline (940)'
   type: boolean
@@ -141,6 +150,8 @@ extends:
                 CMD+=(--dry-run)
               fi
 
+              CMD+=(--build-mode "${{ parameters.build_mode }}")
+
               if [ "$PRE_RELEASE_SUFFIX_STRING" != "none" ]; then
                 CMD+=(--pre-release-suffix-string "$PRE_RELEASE_SUFFIX_STRING")
                 CMD+=(--pre-release-suffix-number "$PRE_RELEASE_SUFFIX_NUMBER")
@@ -154,5 +165,6 @@ extends:
             PRE_RELEASE_SUFFIX_NUMBER: ${{ parameters.pre_release_suffix_number }}
             # pipeline enable/disable flags are auto-generated from parameters.
             ${{ each pair in parameters }}:
-              ${{ if and(ne(pair.key, 'branch'), ne(pair.key, 'dry_run'), ne(pair.key, 'pre_release_suffix_string'), ne(pair.key, 'pre_release_suffix_number')) }}:
+              # Skip the non-pipeline (control) parameters; everything else is a pipeline toggle.
+              ${{ if not(containsValue(split('branch,dry_run,build_mode,pre_release_suffix_string,pre_release_suffix_number', ','), pair.key)) }}:
                 ENABLE_${{ pair.key }}: ${{ pair.value }}
