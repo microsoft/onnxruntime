@@ -767,6 +767,7 @@ Status ExtremeDecoding(
       parameters.head_size,
       parameters.seqlen_present_kv_cache,  // max_seq_len (Capacity)
       scale,
+      parameters.local_window_size,  // -1 means global attention; >0 enables sliding window
       past_bsnh,
       data.past_seq_lens,
       data.xqa_head_sink,
