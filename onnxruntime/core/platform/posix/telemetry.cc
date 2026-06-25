@@ -3,6 +3,7 @@
 
 #include "core/platform/posix/telemetry.h"
 #include "core/platform/posix/device_id.h"
+#include "core/platform/telemetry_redaction.h"
 
 #ifdef __APPLE__
 #include <TargetConditionals.h>
@@ -763,7 +764,7 @@ void PosixTelemetry::LogCompileModelComplete(
                    .AddBool("success", success)
                    .AddUInt32("errorCode", error_code)
                    .AddUInt32("errorCategory", error_category)
-                   .AddString("errorMessage", error_message)
+                   .AddString("errorMessage", RedactAbsolutePathsForTelemetry(error_message))
                    .Build();
 
   LogEventAsync(std::move(event));
@@ -790,7 +791,7 @@ void PosixTelemetry::LogRuntimeError(
                    .AddUInt32("sessionId", session_id)
                    .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
                    .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
-                   .AddString("errorMessage", status.ErrorMessage())
+                   .AddString("errorMessage", RedactAbsolutePathsForTelemetry(status.ErrorMessage()))
                    .AddString("file", std::string(file_view))
                    .AddString("function", function ? function : "")
                    .AddUInt32("line", line)
@@ -812,7 +813,7 @@ void PosixTelemetry::LogRuntimeInferenceError(uint32_t session_id, const common:
                    .AddUInt32("sessionId", session_id)
                    .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
                    .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
-                   .AddString("errorMessage", status.ErrorMessage())
+                   .AddString("errorMessage", RedactAbsolutePathsForTelemetry(status.ErrorMessage()))
                    .AddString("executionProviderVersions", ep_versions)
                    .AddString("executionProviderDeviceTypes", ep_device_types)
                    .AddString("runtimeVersion", ORT_VERSION)
@@ -924,7 +925,7 @@ void PosixTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& 
                    .AddBool("isSuccess", status.IsOK())
                    .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
                    .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
-                   .AddString("errorMessage", status.ErrorMessage())
+                   .AddString("errorMessage", RedactAbsolutePathsForTelemetry(status.ErrorMessage()))
                    .Build();
 
   LogEventAsync(std::move(event));
@@ -942,7 +943,7 @@ void PosixTelemetry::LogSessionCreationEnd(uint32_t session_id, const common::St
                    .AddBool("isSuccess", status.IsOK())
                    .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
                    .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
-                   .AddString("errorMessage", status.ErrorMessage())
+                   .AddString("errorMessage", RedactAbsolutePathsForTelemetry(status.ErrorMessage()))
                    .Build();
 
   LogEventAsync(std::move(event));
@@ -1012,7 +1013,7 @@ void PosixTelemetry::LogRegisterEpLibraryEnd(const std::string& registration_nam
                    .AddBool("isSuccess", status.IsOK())
                    .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
                    .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
-                   .AddString("errorMessage", status.ErrorMessage())
+                   .AddString("errorMessage", RedactAbsolutePathsForTelemetry(status.ErrorMessage()))
                    .Build();
 
   LogEventAsync(std::move(event));
