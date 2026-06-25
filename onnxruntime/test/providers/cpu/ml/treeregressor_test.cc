@@ -1101,7 +1101,6 @@ TEST(MLOpTest, TreeEnsembleRegressorRejectsExternalDataInTensorAttribute) {
   test.AddAttribute("nodes_treeids", treeids);
   test.AddAttribute("nodes_nodeids", nodeids);
   test.AddAttribute("nodes_featureids", featureids);
-  test.AddAttribute("nodes_values", std::vector<float>{0.5f, 0.f, 0.f});
   test.AddAttribute("nodes_modes", modes);
   test.AddAttribute("target_treeids", std::vector<int64_t>{0, 0});
   test.AddAttribute("target_nodeids", std::vector<int64_t>{1, 2});
@@ -1109,7 +1108,7 @@ TEST(MLOpTest, TreeEnsembleRegressorRejectsExternalDataInTensorAttribute) {
   test.AddAttribute("target_weights", std::vector<float>{1.f, 2.f});
   test.AddAttribute("n_targets", static_cast<int64_t>(1));
 
-  // nodes_values_as_tensor with external data location
+  // Use nodes_values_as_tensor (without setting nodes_values) with external data location
   ONNX_NAMESPACE::TensorProto values_proto;
   values_proto.set_name("nodes_values_as_tensor");
   values_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);

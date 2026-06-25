@@ -19,6 +19,9 @@ Status GetAnyVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& n
   ONNX_NAMESPACE::TensorProto proto;
   auto result = info.GetAttr(name, &proto);
 
+  ORT_RETURN_IF(utils::HasExternalData(proto),
+                "Tensor attribute ", name, " with external data is not supported.");
+
   SafeInt<int64_t> n_elements(1);
   for (auto dim : proto.dims()) {
     n_elements *= dim;
@@ -27,9 +30,6 @@ Status GetAnyVectorAttrsOrDefault(const OpKernelInfo& info, const std::string& n
   if (proto.dims().empty()) {
     return Status::OK();
   }
-
-  ORT_RETURN_IF(utils::HasExternalData(proto),
-                "Tensor attribute ", name, " with external data is not supported.");
 
   const SafeInt<size_t> tensor_size(n_elements);
   data.clear();
