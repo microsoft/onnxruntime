@@ -4,7 +4,7 @@
 // Unit tests for the DQMatMulNBitsFusion graph transformer.
 // Tests Pattern 1: DQ(3D,axis=2)->Reshape->Transpose([1,0])->[Cast]->MatMul/Gemm -> MatMulNBits
 // Tests Pattern 2: DQ(2D,axis=0)->MatMul/Gemm -> MatMulNBits
- #include <unordered_map>
+#include <unordered_map>
 
 #include "core/common/span_utils.h"
 #include "core/framework/int4.h"
