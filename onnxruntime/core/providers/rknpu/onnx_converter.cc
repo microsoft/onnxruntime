@@ -138,9 +138,10 @@ static uint32_t ToRknpuDim(int64_t dim, const std::string& name) {
 // failure paths report element_size/count (and the byte count) to aid diagnosis.
 static void* AllocZeroedBias(size_t element_size, uint32_t count) {
   size_t num_bytes = 0;
-  try {
+  ORT_TRY {
     num_bytes = SafeInt<size_t>(element_size) * count;
-  } catch (const std::exception&) {
+  }
+  ORT_CATCH(const std::exception&) {
     ORT_THROW("RKNPU: implicit bias size overflow (element_size=", element_size,
               ", count=", count, ")");
   }
