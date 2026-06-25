@@ -447,6 +447,11 @@ static void SerializeDQMatMulModel(int64_t M, int64_t N, int64_t K, int64_t bloc
 static void RunSharedFusionSession(const std::string& model_bytes, PrepackedWeightsContainer& container,
                                    bool& produced_matmulnbits, size_t& used_shared_count) {
   SessionOptions so;
+  // This test exercises prepack-weight sharing, not parallel execution. Cap the intra-op thread pool
+  // to a single thread so we don't spin up one worker per core: under AddressSanitizer each thread adds
+  // fake-stack and thread-local allocator overhead, which on a high-core CI runner multiplies across the
+  // sessions every test creates (the sibling SessionStatePrepackingTest caps it for the same reason).
+  so.intra_op_param.thread_pool_size = 1;
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsEnableDQMatMulNBitsFusion, "1"));
 
   InferenceSessionWrapper session{so, GetEnvironment()};

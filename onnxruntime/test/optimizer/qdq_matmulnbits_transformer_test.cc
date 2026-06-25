@@ -1535,6 +1535,11 @@ static void RunDefaultPathSession(const std::string& model_bytes, PrepackedWeigh
                                   bool& produced_matmulnbits, std::string& b_tag, size_t& used_shared_count,
                                   int accuracy_level = -1) {
   SessionOptions so;
+  // This test exercises prepack-weight sharing, not parallel execution. Cap the intra-op thread pool
+  // to a single thread so we don't spin up one worker per core: under AddressSanitizer each thread adds
+  // fake-stack and thread-local allocator overhead, which on a high-core CI runner multiplies across the
+  // sessions every test creates (the sibling SessionStatePrepackingTest caps it for the same reason).
+  so.intra_op_param.thread_pool_size = 1;
   if (accuracy_level >= 0) {
     ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel,
                                                       std::to_string(accuracy_level).c_str()));
