@@ -123,6 +123,10 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     } else if (op_type == "Elu") {
       coreml_op_type = "elu";
       add_alpha = true;
+    } else if (op_type == "HardSigmoid") {
+      // CoreML MIL: sigmoid_hard(x, alpha, beta) = min(max(alpha*x + beta, 0), 1)
+      // ONNX HardSigmoid has the same definition with defaults alpha=0.2, beta=0.5.
+      coreml_op_type = "sigmoid_hard";
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
@@ -166,6 +170,20 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       AddOperationInput(*op, "mode", model_builder.AddScalarConstant(op->type(), "mode", std::string(approximate)));
     }
 
+    if (op_type == "HardSigmoid") {
+      NodeAttrHelper helper(node);
+      const float alpha = helper.Get("alpha", 0.2f);
+      const float beta = helper.Get("beta", 0.5f);
+      auto input_dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+      if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+        AddOperationInput(*op, "alpha", model_builder.AddScalarConstant(op->type(), "alpha", alpha));
+        AddOperationInput(*op, "beta", model_builder.AddScalarConstant(op->type(), "beta", beta));
+      } else {
+        AddOperationInput(*op, "alpha", model_builder.AddScalarConstant(op->type(), "alpha", MLFloat16(alpha)));
+        AddOperationInput(*op, "beta", model_builder.AddScalarConstant(op->type(), "beta", MLFloat16(beta)));
+      }
+    }
+
     AddOperationOutput(*op, *node.OutputDefs()[0]);
 
     model_builder.AddOperation(std::move(op));
@@ -188,6 +206,14 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
       auto* leaky_relu = layer->mutable_activation()->mutable_leakyrelu();
       leaky_relu->set_alpha(alpha);
+    } else if (op_type == "HardSigmoid") {
+      NodeAttrHelper helper(node);
+      const auto alpha = helper.Get("alpha", 0.2f);
+      const auto beta = helper.Get("beta", 0.5f);
+
+      auto* hard_sigmoid = layer->mutable_activation()->mutable_sigmoidhard();
+      hard_sigmoid->set_alpha(alpha);
+      hard_sigmoid->set_beta(beta);
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "ActivationOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
@@ -269,6 +295,18 @@ bool ActivationOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInp
       return false;
     }
   }
+  if (op_type == "HardSigmoid") {
+    // CoreML sigmoid_hard (MLProgram) and ActivationSigmoidHard (NN) both
+    // support float32 and float16 only. ONNX HardSigmoid also allows double
+    // and (opset 22+) bfloat16 — fall back to CPU for those.
+    const auto input_dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    if (input_dtype != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+        input_dtype != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+      LOGS(logger, VERBOSE) << "HardSigmoid input data type [" << input_dtype
+                            << "] is not supported by CoreML (float or float16 only)";
+      return false;
+    }
+  }
   if (op_type == "PRelu") {
     return IsPReluOpSupported(node, input_params, logger);
   }
@@ -300,6 +338,7 @@ void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistration
           "Gelu",
           "Softplus",
           "Elu",
+          "HardSigmoid",
       };
 
   op_registrations.builders.push_back(std::make_unique<ActivationOpBuilder>());

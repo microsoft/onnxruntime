@@ -1,0 +1,197 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param has_attention_bias
+#param v_head_size_vec
+#param is_unidirectional
+#param m_tile
+#param q_BNSH
+#param sub_tile_count
+#param tile_size
+#param tile_size_k_vec
+#param use_indirect_dispatch
+
+#use .getByOffset .setByOffset
+
+// Fused QK^T + softmax + V multiply shader.
+//
+// Each workgroup processes one KV tile (tile_size rows of present_key/value)
+// for m_tile Q rows. The computation has two phases:
+//
+// Phase 1: QK^T (dot product of Q with K, attention bias, causal mask,
+//          per-tile max/sum for online softmax)
+// Phase 2: Local softmax normalization + V multiply (using local max/sum,
+//          no cross-workgroup dependency)
+//
+// The VxReduce shader performs the final rescaling across tiles.
+
+var<workgroup> tile_q: array<array<q_value_t, tile_size_k_vec>, m_tile>;
+var<workgroup> inner_qk_values: array<array<array<q_element_t, tile_size_k_vec>, tile_size>, m_tile>;
+var<workgroup> tile_qk: array<array<present_value_element_t, tile_size>, m_tile>;
+var<workgroup> tile_output: array<array<present_value_value_t, v_head_size_vec>, m_tile>;
+var<workgroup> qkv_values: array<array<array<present_value_value_t, tile_size_k_vec>, sub_tile_count>, m_tile>;
+var<workgroup> tile_max: array<f32, m_tile>;
+var<workgroup> tile_sum: array<f32, m_tile>;
+
+#if has_attention_bias
+  fn loadAttentionBias(batch_idx: u32, head_idx: u32, q_idx: u32, k_idx: u32, total_seq_length: u32) -> q_element_t
+  {
+    let bias_batch_idx = select(batch_idx, 0u, batch_idx >= uniforms.attn_bias_dim0);
+    let bias_head_idx = select(head_idx, 0u, head_idx >= uniforms.attn_bias_dim1);
+    let offset = bias_batch_idx * uniforms.attn_bias_dim1 * uniforms.new_sequence_length * total_seq_length +
+                 bias_head_idx * uniforms.new_sequence_length * total_seq_length +
+                 q_idx * total_seq_length +
+                 k_idx;
+    return attention_bias[offset];
+  }
+#else
+  fn loadAttentionBias(batch_idx: u32, head_idx: u32, q_idx: u32, k_idx: u32, total_seq_length: u32) -> q_element_t
+  {
+    return q_element_t(0);
+  }
+#endif
+
+$MAIN {
+  let local_row = u32(local_idx / tile_size_k_vec);
+  let local_col = local_idx % tile_size_k_vec;
+  #if use_indirect_dispatch
+  let total_sequence_length = u32(seqlens_k[0]) + 1u;
+  #else
+  let total_sequence_length = uniforms.total_sequence_length;
+  #endif
+  let num_total_seq_length_tile = (total_sequence_length + tile_size - 1) / tile_size;
+  let num_q_tiles = (uniforms.new_sequence_length + m_tile - 1) / m_tile;
+  // Workgroup layout: [batch_heads, num_q_tiles, num_total_seq_length_tile]
+  let total_seq_offset = (workgroup_idx % num_total_seq_length_tile) * tile_size;
+  let q_tile_idx = (workgroup_idx / num_total_seq_length_tile) % num_q_tiles;
+  let q_base = q_tile_idx * m_tile;
+  let batch_head_idx = u32(workgroup_idx / (num_total_seq_length_tile * num_q_tiles));
+  let head_idx = batch_head_idx % uniforms.num_heads;
+  let batch_idx = batch_head_idx / uniforms.num_heads;
+  if (batch_idx >= uniforms.batch_size) {
+    return;
+  }
+  let present_key_offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * uniforms.head_size_vec;
+  let present_value_offset = u32(batch_head_idx / uniforms.n_reps) * v_head_size_vec * uniforms.present_sequence_length;
+
+  // ============================================================
+  // Phase 1: QK^T computation
+  // ============================================================
+  for (var k: u32 = 0u; k < uniforms.head_size_vec; k += tile_size_k_vec) {
+    for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
+      if (local_idx < tile_size_k_vec && k + local_idx < uniforms.head_size_vec) {
+        let q_idx = q_base + m;
+#if q_BNSH
+        let q_offset = batch_idx * uniforms.num_heads * uniforms.new_sequence_length * uniforms.head_size_vec +
+                       head_idx * uniforms.new_sequence_length * uniforms.head_size_vec +
+                       q_idx * uniforms.head_size_vec;
+#else
+        let q_offset = batch_idx * uniforms.new_sequence_length * uniforms.num_heads * uniforms.head_size_vec +
+                       q_idx * uniforms.num_heads * uniforms.head_size_vec +
+                       head_idx * uniforms.head_size_vec;
+#endif
+        tile_q[m][local_idx] = q.getByOffset(q_offset + k + local_idx);
+      }
+    }
+    workgroupBarrier();
+    if (k + local_col < uniforms.head_size_vec) {
+      for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_count) {
+        if (total_seq_offset + row_offset + local_row < total_sequence_length) {
+          let k_data = present_key.getByOffset(present_key_offset + (total_seq_offset + row_offset + local_row) * uniforms.head_size_vec + k + local_col);
+          for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
+            let q_data = tile_q[m][local_col] * q_element_t(uniforms.alpha);
+            inner_qk_values[m][row_offset + local_row][local_col] += dot(k_data, q_data);
+          }
+        }
+      }
+    }
+    workgroupBarrier();
+  }
+
+  // Reduce inner_qk_values to tile_qk, apply attention bias and causal mask
+  for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
+    let q_idx = q_base + m;
+    if (local_idx < tile_size && total_seq_offset + local_idx < total_sequence_length) {
+      var sum = q_element_t(0);
+      for (var i = 0u; i < tile_size_k_vec; i++) {
+        sum += inner_qk_values[m][local_idx][i];
+      }
+
+      sum = sum + loadAttentionBias(batch_idx, head_idx, q_idx, total_seq_offset + local_idx, total_sequence_length);
+#if is_unidirectional
+      if (total_seq_offset + local_idx > total_sequence_length - uniforms.new_sequence_length + q_idx) {
+        sum = q_element_t(-65504.0f);
+      }
+#endif
+      tile_qk[m][local_idx] = present_value_element_t(sum);
+    }
+    workgroupBarrier();
+
+    // Compute per-tile max and sum for online softmax
+    if (local_idx == 0u) {
+      var l_max = f32(-3.4028234663852886e+38f);
+      var l_sum = f32(0);
+      for (var i = 0u; i < tile_size && (total_seq_offset + i) < total_sequence_length; i++) {
+        l_max = max(l_max, f32(tile_qk[m][i]));
+      }
+      for (var i = 0u; i < tile_size && (total_seq_offset + i) < total_sequence_length; i++) {
+        l_sum += exp(f32(tile_qk[m][i]) - l_max);
+      }
+      tile_max[m] = l_max;
+      tile_sum[m] = l_sum;
+      let meta_offset = (batch_head_idx * uniforms.new_sequence_length + q_idx) * uniforms.num_present_sequence_length_tile + workgroup_idx % num_total_seq_length_tile;
+      metadata.setByOffset(meta_offset, metadata_value_t(l_max, l_sum));
+    }
+  }
+  workgroupBarrier();
+
+  // ============================================================
+  // Phase 2: Local softmax + V multiply
+  // ============================================================
+
+  // Normalize tile_qk with local max/sum
+  for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
+    if (local_idx < tile_size && total_seq_offset + local_idx < total_sequence_length) {
+      tile_qk[m][local_idx] = present_value_element_t(exp(f32(tile_qk[m][local_idx]) - tile_max[m]) / tile_sum[m]);
+    }
+  }
+  workgroupBarrier();
+
+  for (var k: u32 = 0u; k < v_head_size_vec; k += tile_size_k_vec) {
+    for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
+      qkv_values[m][local_row][local_col] = present_value_value_t(0);
+    }
+    workgroupBarrier();
+
+    if (k + local_col < v_head_size_vec) {
+      for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_count) {
+        if (total_seq_offset + row_offset + local_row < total_sequence_length) {
+          let v_data = present_value.getByOffset(present_value_offset + (total_seq_offset + row_offset + local_row) * v_head_size_vec + k + local_col);
+          for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
+            qkv_values[m][local_row][local_col] += v_data * tile_qk[m][row_offset + local_row];
+          }
+        }
+      }
+    }
+    workgroupBarrier();
+
+    if (local_idx < tile_size_k_vec) {
+      for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
+        for (var i = 0u; i < sub_tile_count; i++) {
+          tile_output[m][k + local_idx] += qkv_values[m][i][local_idx];
+        }
+      }
+    }
+    workgroupBarrier();
+  }
+
+  // Write output
+  let tile_idx = workgroup_idx % num_total_seq_length_tile;
+  for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
+    let q_idx = q_base + m;
+    let out_base = (batch_head_idx * uniforms.new_sequence_length + q_idx) * uniforms.num_present_sequence_length_tile * v_head_size_vec;
+    for (var i = local_idx; i < v_head_size_vec; i += workgroup_size_x) {
+      out_split_vx.setByOffset(out_base + tile_idx * v_head_size_vec + i, tile_output[m][i]);
+    }
+  }
+}

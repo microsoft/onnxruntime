@@ -373,6 +373,7 @@ struct CudaOrtAllocator : OrtAllocator {
     Reserve = AllocImpl;      // no special behavior for Reserve so use AllocImpl
     GetStats = nullptr;       // GetStatsImpl. The CUDA allocators don't have stats currently so we can skip.
     AllocOnStream = nullptr;  // TODO. Plugin EP arena to provide this.
+    Shrink = nullptr;
 
     const OrtEpApi& ep_api = *api.GetEpApi();
     const OrtMemoryDevice* mem_device = ep_api.MemoryInfo_GetMemoryDevice(mem_info);

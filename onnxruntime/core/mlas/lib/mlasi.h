@@ -119,6 +119,33 @@ Abstract:
 
 #define MLAS_UNREFERENCED_PARAMETER(parameter) ((void)(parameter))
 
+//
+// Reports whether multiplying two size_t values would overflow.
+//
+
+MLAS_FORCEINLINE
+bool
+MlasMultiplyOverflowsSizeT(
+    size_t a,
+    size_t b,
+    size_t* out
+    )
+{
+#if defined(__has_builtin)
+#if __has_builtin(__builtin_mul_overflow)
+    size_t result;
+    return __builtin_mul_overflow(a, b, out != nullptr ? out : &result);
+#endif
+#endif
+    if (b != 0 && a > std::numeric_limits<size_t>::max() / b) {
+        return true;
+    }
+    if (out != nullptr) {
+        *out = a * b;
+    }
+    return false;
+}
+
 #ifdef MLAS_NO_EXCEPTION
 
 MLAS_FORCEINLINE void
@@ -352,7 +379,8 @@ static_assert(sizeof(MLAS_FP16) == FP16_SIZE);
 //
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || \
-    defined(MLAS_TARGET_LARCH64) || defined(MLAS_TARGET_S390X)
+    defined(MLAS_TARGET_LARCH64) || defined(MLAS_TARGET_S390X) || \
+    defined(MLAS_TARGET_RISCV64)
 
 typedef
 size_t
@@ -611,6 +639,31 @@ void
     );
 
 typedef
+void
+(MLASCALL MLAS_COMPUTE_ERF_FP16_KERNEL)(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    size_t N
+);
+
+typedef
+void
+(MLASCALL MLAS_COMPUTE_GELU_FP16_KERNEL)(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    MLAS_FP16* Temp,
+    size_t N,
+    MLAS_GELU_ALGORITHM Algo
+);
+
+typedef void
+(MLASCALL MLAS_COMPUTE_TANH_FP16_KERNEL)(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    size_t N
+);
+
+typedef
 float
 (MLASCALL MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL)(
     const float* Input,
@@ -663,6 +716,18 @@ typedef void(MLASCALL MLAS_CAST_F32_TO_F16_KERNEL)(
     const float* Source,
     unsigned short* Destination,
     size_t Count
+);
+
+typedef void(MLASCALL MLAS_LAYERNORM_F32_KERNEL)(
+    const float* Input,
+    const float* Scale,
+    const float* Bias,
+    float* Output,
+    float* MeanOut,
+    float* InvStdDevOut,
+    size_t NormSize,
+    float Epsilon,
+    bool Simplified
 );
 
 typedef
@@ -827,6 +892,7 @@ void
     size_t FilterCount,
     const MLAS_ACTIVATION* Activation,
     size_t* WorkingBufferSize,
+    bool ChannelsLast,
     float Beta,
     MLAS_THREADPOOL* ThreadPool
     );
@@ -847,9 +913,22 @@ bool
     size_t FilterCount,
     const MLAS_ACTIVATION* Activation,
     size_t* WorkingBufferSize,
+    bool ChannelsLast,
     float Beta,
     MLAS_THREADPOOL* ThreadPool
     );
+
+enum MLAS_CONV_SGEMM_ROUTE {
+    MlasConvSGemmRouteDirect,   // call MlasSgemmOperation directly
+    MlasConvSGemmRouteDispatch, // call MlasGemm so backend SGEMM overrides may be selected
+};
+
+typedef
+MLAS_CONV_SGEMM_ROUTE
+(MLASCALL MLAS_CONV_SGEMM_ROUTE_OVERRIDE)(
+    const MLAS_CONV_PARAMETERS* Parameters
+    );
+
 
 typedef
 bool
@@ -993,6 +1072,36 @@ extern "C" {
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelLasx;
     MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeSoftmaxOutputF32KernelLasx;
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32KernelLasx;
+#elif defined(MLAS_TARGET_RISCV64)
+#if defined(MLAS_USE_RVV)
+    MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelRvv;
+    void MlasSgemmCopyPackBRvv(
+        float* D,
+        const float* B,
+        size_t ldb,
+        size_t CountX,
+        size_t CountY);
+#endif
+    size_t MLASCALL MlasSgemmKernelZero(
+        const float* A,
+        const float* B,
+        float* C,
+        size_t CountK,
+        size_t CountM,
+        size_t CountN,
+        size_t lda,
+        size_t ldc,
+        float alpha);
+    size_t MLASCALL MlasSgemmKernelAdd(
+        const float* A,
+        const float* B,
+        float* C,
+        size_t CountK,
+        size_t CountM,
+        size_t CountN,
+        size_t lda,
+        size_t ldc,
+        float alpha);
 #else
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
@@ -1024,7 +1133,10 @@ extern "C" {
     // AArch64 assembly micro-kernel for pointwise NCHWc convolution
     MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelNeonAsm;
 #endif
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(__linux__)
+    // AArch64 assembly fast-math micro-kernels
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwBf16KernelNeon;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseBf16KernelNeon;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseBf16KernelNeon;
 #endif
     MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelNeon;
@@ -1038,7 +1150,7 @@ extern "C" {
 #if defined(MLAS_TARGET_AMD64)
     MLAS_SGEMM_KERNEL_M1_ROUTINE MlasSgemmKernelM1Avx;
     MLAS_SGEMM_KERNEL_M1_ROUTINE MlasSgemmKernelM1TransposeBAvx;
-#elif defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_WASM)
+#elif defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_WASM) || defined(MLAS_TARGET_RISCV64)
     MLAS_GEMV_FLOAT_KERNEL MlasGemvFloatKernel;
 #endif
 
@@ -1116,6 +1228,7 @@ extern "C" {
     MLAS_QUANTIZE_LINEAR_U16_KERNEL MlasQuantizeLinearU16Kernel;
     MLAS_QUANTIZE_LINEAR_S4_KERNEL MlasQuantizeLinearS4Kernel;
     MLAS_QUANTIZE_LINEAR_U4_KERNEL MlasQuantizeLinearU4Kernel;
+
 #if defined(MLAS_TARGET_AMD64)
     MLAS_DEQUANTIZE_LINEAR_S8_KERNEL MlasDequantizeLinearS8Kernel;
     MLAS_DEQUANTIZE_LINEAR_U8_KERNEL MlasDequantizeLinearU8Kernel;
@@ -1138,6 +1251,25 @@ extern "C" {
 
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32Kernel;
     MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL MlasReduceMinimumMaximumF32Kernel;
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
+    MLAS_COMPUTE_SUMEXP_FLOAT_KERNEL MlasComputeSumExpF32KernelRvv;
+    MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelRvv;
+    MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeSoftmaxOutputF32KernelRvv;
+    MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL MlasComputeLogSoftmaxOutputF32KernelRvv;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelRvv;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelRvv;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelRvv;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelRvv;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolMaximumFloatKernelRvv;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageExcludePadFloatKernelRvv;
+    MLAS_POOL_FLOAT_KERNEL MlasPoolAverageIncludePadFloatKernelRvv;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasErfKernelRvv;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasLogisticKernelRvv;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasGeluErfKernelRvv;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasSiluKernelRvv;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasTanhKernelRvv;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL MlasComputeExpF32KernelRvv;
+#endif
 #if defined(MLAS_TARGET_AMD64)
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx;
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL MlasReduceMaximumF32KernelAvx512F;
@@ -1154,6 +1286,15 @@ extern "C" {
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
     MLAS_CAST_F16_TO_F32_KERNEL MlasCastF16ToF32KernelNeon;
     MLAS_CAST_F32_TO_F16_KERNEL MlasCastF32ToF16KernelNeon;
+#endif
+
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV_ZVFH)
+    MLAS_CAST_F16_TO_F32_KERNEL MlasCastF16ToF32KernelRvv;
+    MLAS_CAST_F32_TO_F16_KERNEL MlasCastF32ToF16KernelRvv;
+#endif
+
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
+    MLAS_LAYERNORM_F32_KERNEL MlasLayerNormKernelRvv;
 #endif
 }
 
@@ -1234,6 +1375,7 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUmmla;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSmmla;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmRelaxedSimd;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmQuantDispatchRvv;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmQuantDispatchDefault;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemm8X8DispatchPOWER10;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemm8X8DispatchZVECTOR;
@@ -1313,6 +1455,10 @@ struct MLAS_ROPE_DISPATCH;
 extern const MLAS_ROPE_DISPATCH MlasRopeDispatchNeon;
 extern const MLAS_ROPE_DISPATCH MlasRopeDispatchAvx2;
 
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
+extern const MLAS_ROPE_DISPATCH MlasRopeDispatchRvv;
+#endif
+
 //
 // half gemm dispatch structure
 //
@@ -1326,6 +1472,14 @@ extern const MLAS_SOFTMAX_DISPATCH MlasSoftmaxDispatchNeon;
 // eltwise dispatch structure
 struct MLAS_ELTWISE_DISPATCH;
 extern const MLAS_ELTWISE_DISPATCH MlasEltwiseDispatchNeon;
+
+//
+// Quantized KV-cache GEMM dispatch structure (QKGemm / SVGemm).
+//
+struct MLAS_KV_QUANT_GEMM_DISPATCH;
+extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchAvx2;
+extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchAvx512Vnni;
+extern const MLAS_KV_QUANT_GEMM_DISPATCH MlasKVQuantGemmDispatchNeon;
 
 //
 // Quantized depthwise convolution kernels.
@@ -1405,6 +1559,7 @@ struct MLAS_PLATFORM {
     // MLAS Conv overrides
     MLAS_CONV_PREPARE_FLOAT_OVERRIDE* MlasConvPrepareOverride = nullptr;
     MLAS_CONV_FLOAT_OVERRIDE* MlasConvOverride = nullptr;
+    MLAS_CONV_SGEMM_ROUTE_OVERRIDE* MlasConvSGemmRouteOverride = nullptr;
 #if defined(__aarch64__) && defined(__linux__)
     // SBGemm overrides
     MLAS_SBGEMM_BATCH_OVERRIDE* MlasSBGemmBatchOverride = nullptr;
@@ -1413,7 +1568,7 @@ struct MLAS_PLATFORM {
 #endif
 
 
-#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_S390X)
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_S390X) || defined(MLAS_TARGET_RISCV64)
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;
 #endif
 #if defined(MLAS_TARGET_LARCH64)
@@ -1434,7 +1589,7 @@ struct MLAS_PLATFORM {
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeLogSoftmaxOutputF32Kernel;
     uint32_t NchwcBlockSize;
 #endif
-#if defined(MLAS_TARGET_AMD64_IX86)
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_RISCV64)
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8S8Dispatch;
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8U8Dispatch;
     const MLAS_GEMM_QUANT_DISPATCH* GemmS8S8Dispatch{&MlasGemmQuantDispatchDefault};
@@ -1448,7 +1603,9 @@ struct MLAS_PLATFORM {
     MLAS_CONV_FLOAT_KERNEL* ConvNchwcFloatKernel;
     MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* ConvDepthwiseFloatKernel;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseFloatKernel;
-#if defined(__aarch64__) && defined(__linux__)
+#if defined(__linux__)
+    MLAS_CONV_FLOAT_KERNEL* ConvNchwBf16Kernel;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* ConvDepthwiseBf16Kernel;
     MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseBf16Kernel;
 #endif
     MLAS_POOL_FLOAT_KERNEL* PoolFloatKernel[MlasPoolingKindCount];
@@ -1476,7 +1633,7 @@ struct MLAS_PLATFORM {
     MLAS_QUANTIZE_LINEAR_U4_KERNEL* QuantizeLinearU4Kernel;
 #endif
 
-#if defined(MLAS_USE_SVE) || defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_USE_SVE) || defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_RISCV64)
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ErfKernelRoutine;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* LogisticKernelRoutine;
     MLAS_REDUCE_MAXIMUM_FLOAT_KERNEL* ReduceMaximumF32Kernel;
@@ -1484,9 +1641,32 @@ struct MLAS_PLATFORM {
     MLAS_COMPUTE_LOGSOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeLogSoftmaxOutputF32Kernel;
     MLAS_COMPUTE_SOFTMAX_OUTPUT_FLOAT_KERNEL* ComputeSoftmaxOutputF32Kernel;
 #endif
-#if defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_RISCV64)
+    // Hoisted under combined guard so future "shared between AMD64 and RISCV64"
+    // changes won't produce duplicate-member errors. Each platform's init code
+    // assigns these fields independently in platform.cpp.
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* GeluErfKernelRoutine;
     MLAS_COMPUTE_UNARY_FLOAT_KERNEL* SiluKernelRoutine;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* TanhKernelRoutine;
+    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ComputeExpF32Kernel;
+#endif
+
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
+    MLAS_CONV_FLOAT_KERNEL* ConvNchwFloatKernel;
+    MLAS_CONV_FLOAT_KERNEL* ConvNchwcFloatKernel;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* ConvDepthwiseFloatKernel;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseFloatKernel;
+    MLAS_POOL_FLOAT_KERNEL* PoolFloatKernel[MlasPoolingKindCount];
+    uint32_t NchwcBlockSize;
+#endif
+
+MLAS_COMPUTE_ERF_FP16_KERNEL* ErfFP16KernelRoutine = nullptr;
+MLAS_COMPUTE_GELU_FP16_KERNEL* GeluFP16KernelRoutine = nullptr;
+MLAS_COMPUTE_TANH_FP16_KERNEL* TanhFP16KernelRoutine = nullptr;
+
+#if defined(MLAS_TARGET_AMD64)
+    // GeluErfKernelRoutine / SiluKernelRoutine / TanhKernelRoutine /
+    // ComputeExpF32Kernel are declared in the shared AMD64+RISCV64 block above.
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1Routine;
     MLAS_SGEMM_KERNEL_M1_ROUTINE* KernelM1TransposeBRoutine;
     MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* TransposePackB16x4Routine;
@@ -1503,8 +1683,6 @@ struct MLAS_PLATFORM {
     MLAS_POOL_FLOAT_KERNEL* PoolFloatKernel[MlasPoolingKindCount];
     MLAS_QLINEAR_BINARY_OP_S8_KERNEL* QLinearAddS8Kernel;
     MLAS_QLINEAR_BINARY_OP_U8_KERNEL* QLinearAddU8Kernel;
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* ComputeExpF32Kernel;
-    MLAS_COMPUTE_UNARY_FLOAT_KERNEL* TanhKernelRoutine;
     MLAS_REDUCE_MINIMUM_MAXIMUM_FLOAT_KERNEL* ReduceMinimumMaximumF32Kernel;
     MLAS_QUANTIZE_LINEAR_S8_KERNEL* QuantizeLinearS8Kernel;
     MLAS_QUANTIZE_LINEAR_U8_KERNEL* QuantizeLinearU8Kernel;
@@ -1532,11 +1710,13 @@ struct MLAS_PLATFORM {
 
     MLAS_CAST_F16_TO_F32_KERNEL* CastF16ToF32Kernel;
     MLAS_CAST_F32_TO_F16_KERNEL* CastF32ToF16Kernel;
+    MLAS_LAYERNORM_F32_KERNEL* LayerNormF32Kernel{nullptr};
 
     const MLAS_ROPE_DISPATCH* RopeDispatch{nullptr};
     const MLAS_HGEMM_DISPATCH* HGemmDispatch{nullptr};
     const MLAS_SOFTMAX_DISPATCH* SoftmaxDispatch{nullptr};
     const MLAS_ELTWISE_DISPATCH* EltwiseDispatch{nullptr};
+    const MLAS_KV_QUANT_GEMM_DISPATCH* KVQuantGemmDispatch{nullptr};
 };
 
 inline
@@ -1687,7 +1867,7 @@ MlasFp32FromBits(
 #pragma warning(pop)
 #endif
 
-#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_RISCV64)
 void
 MLASCALL
 MlasConvDepthwiseFloat_CHW(
@@ -1730,7 +1910,7 @@ MlasConvDepthwiseMultiplier2CHWKernel7x7S2Avx512F(
 // Also define additional standard NEON intrinsics using the MSVC aliases.
 //
 
-#if defined(_M_ARM64)
+#if defined(_M_ARM64) && !defined(__clang__)
 #ifndef vmaxvq_f32
 #define vmaxvq_f32(src) neon_fmaxv(src)
 #endif

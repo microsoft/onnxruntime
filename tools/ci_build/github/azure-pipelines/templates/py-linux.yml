@@ -76,6 +76,9 @@ jobs:
     submodules: none
 
   - template: set-nightly-build-option-variable-step.yml
+  - template: setup-feeds-and-python-steps.yml
+    parameters:
+      architecture: ${{ parameters.arch }}
 
   - template: get-docker-image-steps.yml
     parameters:
@@ -86,6 +89,8 @@ jobs:
 
   - task: Bash@3
     displayName: 'Build Python Wheel'
+    env:
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
     inputs:
       targetType: filePath
       filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh

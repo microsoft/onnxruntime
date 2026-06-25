@@ -349,6 +349,7 @@ def generate_triplet_for_posix_platform(
     target_abi: str,
     osx_deployment_target: str,
     use_full_protobuf: bool,
+    telemetry_shared_sdk: bool = False,
 ) -> None:
     """
     Generate triplet file for POSIX platforms (Linux, macOS).
@@ -365,6 +366,7 @@ def generate_triplet_for_posix_platform(
         target_abi (str): The target ABI, which maps to the VCPKG_TARGET_ARCHITECTURE variable. Valid options include x86, x64, arm, arm64, arm64ec, s390x, ppc64le, riscv32, riscv64, loongarch32, loongarch64, mips64.
         osx_deployment_target (str, optional): The macOS deployment target version. The parameter sets the minimum macOS version for compiled binaries. It also changes what versions of the macOS platform SDK CMake will search for. See the CMake documentation for CMAKE_OSX_DEPLOYMENT_TARGET for more information.
         use_full_protobuf (bool): Flag indicating if full Protobuf is used.
+        telemetry_shared_sdk (bool): Flag indicating if the 1DS telemetry SDK (cpp-client-telemetry) should be built as a shared library (libmat.so) while its dependencies remain static.
     """
     folder_name_parts = []
     if enable_asan:
@@ -408,6 +410,14 @@ def generate_triplet_for_posix_platform(
             # VCPKG_LIBRARY_LINKAGE specifies the preferred library linkage.
             # Valid options are dynamic and static. Libraries can ignore this setting if they do not support the preferred linkage type.
             f.write("set(VCPKG_LIBRARY_LINKAGE static)\n")
+
+            if telemetry_shared_sdk:
+                # Build only the 1DS telemetry SDK (cpp-client-telemetry) as a shared library while
+                # keeping every other port (including the SDK's own OpenSSL/curl/sqlite3/zlib
+                # dependencies) static. This produces a self-contained libmat.so that several binaries
+                # (for example onnxruntime and onnxruntime-genai shipped together) can share instead of
+                # statically embedding the SDK and its TLS/HTTP stack into each one.
+                f.write('if(PORT STREQUAL "cpp-client-telemetry")\n    set(VCPKG_LIBRARY_LINKAGE dynamic)\nendif()\n')
 
             ldflags = []
 
@@ -764,7 +774,9 @@ def generate_windows_triplets(build_dir: str, configs: set[str], toolset_version
                                         )  # Pass enable_minimal_build
 
 
-def generate_linux_triplets(build_dir: str, configs: set[str], use_full_protobuf: bool) -> None:
+def generate_linux_triplets(
+    build_dir: str, configs: set[str], use_full_protobuf: bool, telemetry_shared_sdk: bool = False
+) -> None:
     """
     Generate triplet files for Linux platforms.
 
@@ -772,6 +784,7 @@ def generate_linux_triplets(build_dir: str, configs: set[str], use_full_protobuf
         build_dir (str): The directory to save the generated triplet files.
         configs (set[str]): The set of build configurations.
         use_full_protobuf (bool): Flag indicating if full Protobuf is used.
+        telemetry_shared_sdk (bool): Flag indicating if the 1DS telemetry SDK should be built as a shared library.
     """
     target_abis = ["x86", "x64", "arm", "arm64", "s390x", "ppc64le", "riscv64", "loongarch64", "mips64"]
     for enable_rtti in [True, False]:
@@ -797,11 +810,16 @@ def generate_linux_triplets(build_dir: str, configs: set[str], use_full_protobuf
                                 target_abi,
                                 None,
                                 use_full_protobuf=use_full_protobuf,
+                                telemetry_shared_sdk=telemetry_shared_sdk,
                             )
 
 
 def generate_macos_triplets(
-    build_dir: str, configs: set[str], osx_deployment_target: str, use_full_protobuf: bool
+    build_dir: str,
+    configs: set[str],
+    osx_deployment_target: str,
+    use_full_protobuf: bool,
+    telemetry_shared_sdk: bool = False,
 ) -> None:
     """
     Generate triplet files for macOS platforms.
@@ -810,6 +828,7 @@ def generate_macos_triplets(
         build_dir (str): The directory to save the generated triplet files.
         osx_deployment_target (str, optional): The macOS deployment target version.
         use_full_protobuf (bool): Flag indicating if full Protobuf is used.
+        telemetry_shared_sdk (bool): Flag indicating if the 1DS telemetry SDK should be built as a shared library.
     """
     target_abis = ["x64", "arm64", "universal2"]
     for enable_rtti in [True, False]:
@@ -836,4 +855,5 @@ def generate_macos_triplets(
                                 target_abi,
                                 osx_deployment_target,
                                 use_full_protobuf=use_full_protobuf,
+                                telemetry_shared_sdk=telemetry_shared_sdk,
                             )

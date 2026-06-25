@@ -20,7 +20,7 @@
 
 namespace onnxruntime {
 struct PrePackedWeights;
-struct TensorShape;
+class TensorShape;
 }  // namespace onnxruntime
 
 namespace onnxruntime {
@@ -155,7 +155,11 @@ struct OpKernelContext {
   }
   bool GetUseDeterministicCompute() const {
     // TODO(fs-eire): Implement GetUseDeterministicCompute().
+    // if (CurrentOrtApiVersion() >= 25) {
+    //   return /* TBD: wait for GetUseDeterministicCompute to be added in ORT API v25 */;
+    // } else {
     return false;
+    // }
   }
   void* GetGPUComputeStream() const {
     return context_.GetGPUComputeStream();

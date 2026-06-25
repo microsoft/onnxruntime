@@ -31,6 +31,10 @@ ModelCompilationOptions::ModelCompilationOptions(const onnxruntime::Environment&
   ORT_ENFORCE(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1").IsOK());
   ORT_ENFORCE(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionsDisableModelCompile, "0").IsOK());
 
+  // Signal EPs that this session is used solely for compilation (no inference).
+  // EPs that opt in can use this to skip GPU deserialization / execution context creation.
+  ORT_ENFORCE(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1").IsOK());
+
   session_options_.value.graph_optimization_level = TransformerLevel::Default;  // L0: required transformers only
 }
 

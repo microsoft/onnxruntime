@@ -16,8 +16,11 @@ limitations under the License.
 
 #include "core/platform/windows/env.h"
 
+#include "core/platform/env_var.h"
+
 #include <iostream>
 #include <fstream>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <thread>
@@ -422,6 +425,22 @@ Status WindowsEnv::MapFileIntoMemory(_In_z_ const ORTCHAR_T* file_path,
                            " - ", std::system_category().message(error_code));
   }
 
+  // Validate that the file is large enough for the requested mapping.
+  LARGE_INTEGER actual_size;
+  if (!GetFileSizeEx(file_handle.get(), &actual_size)) {
+    const auto error_code = GetLastError();
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "GetFileSizeEx ", ToUTF8String(Basename(file_path)),
+                           " fail, errcode = ", error_code,
+                           " - ", std::system_category().message(error_code));
+  }
+  const size_t requested_end = SafeInt<size_t>(offset) + length;
+  ORT_RETURN_IF(static_cast<ULONGLONG>(actual_size.QuadPart) < requested_end,
+                "File ", ToUTF8String(Basename(file_path)),
+                " is too small for the requested mapping (file size: ",
+                actual_size.QuadPart, " bytes, requested offset + length: ",
+                requested_end, " bytes).");
+
   wil::unique_hfile file_mapping_handle{
       CreateFileMappingW(file_handle.get(),
                          nullptr,
@@ -667,6 +686,136 @@ common::Status WindowsEnv::GetCanonicalPath(
   return Status::OK();
 }
 
+namespace {
+
+constexpr std::wstring_view kGlobalRootPrefix{L"\\\\?\\GLOBALROOT"};
+
+wil::unique_hfile OpenHandleForFinalPath(const std::filesystem::path& path) {
+  CREATEFILE2_EXTENDED_PARAMETERS params{};
+  params.dwSize = sizeof(params);
+  params.dwFileFlags = FILE_FLAG_BACKUP_SEMANTICS;
+  return wil::unique_hfile{::CreateFile2(path.c_str(),
+                                         FILE_READ_ATTRIBUTES,
+                                         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                         OPEN_EXISTING,
+                                         &params)};
+}
+
+// Final-path query using VOLUME_NAME_NT, prefixed with "\\?\GLOBALROOT" to stay a valid Win32 path.
+bool TryGetFinalPathNt(const std::filesystem::path& path, std::filesystem::path& result) {
+  wil::unique_hfile handle = OpenHandleForFinalPath(path);
+  if (handle.get() == INVALID_HANDLE_VALUE) {
+    return false;
+  }
+
+  std::wstring buffer(MAX_PATH, L'\0');
+  constexpr DWORD kFlags = FILE_NAME_NORMALIZED | VOLUME_NAME_NT;
+  DWORD needed = ::GetFinalPathNameByHandleW(handle.get(), buffer.data(),
+                                             static_cast<DWORD>(buffer.size()), kFlags);
+  if (needed != 0 && needed >= buffer.size()) {
+    buffer.resize(needed);
+    needed = ::GetFinalPathNameByHandleW(handle.get(), buffer.data(),
+                                         static_cast<DWORD>(buffer.size()), kFlags);
+  }
+
+  if (needed == 0 || needed >= buffer.size()) {
+    return false;
+  }
+  buffer.resize(needed);
+
+  std::wstring prefixed;
+  prefixed.reserve(kGlobalRootPrefix.size() + buffer.size());
+  prefixed.append(kGlobalRootPrefix);
+  prefixed.append(buffer);
+  result = std::filesystem::path(std::move(prefixed));
+  return true;
+}
+
+// weakly_canonical analogue using TryGetFinalPathNt for the existing prefix.
+bool TryWeaklyCanonicalPathNtVolume(const std::filesystem::path& input,
+                                    std::filesystem::path& result) {
+  std::filesystem::path head = input;
+  std::filesystem::path tail;
+  std::filesystem::path canonical_head;
+  bool found_existing_prefix = false;
+
+  while (true) {
+    std::error_code ec;
+    const bool exists = std::filesystem::exists(head, ec);
+    if (ec) {
+      return false;
+    }
+    if (exists) {
+      if (!TryGetFinalPathNt(head, canonical_head)) {
+        return false;
+      }
+      found_existing_prefix = true;
+      break;
+    }
+    if (head.empty()) {
+      break;
+    }
+    const auto parent = head.parent_path();
+    if (parent == head) {
+      break;
+    }
+    const auto leaf = head.filename();
+    if (!leaf.empty()) {
+      // path / empty would insert a trailing separator.
+      tail = tail.empty() ? leaf : (leaf / tail);
+    }
+    head = parent;
+  }
+
+  if (!found_existing_prefix) {
+    return false;
+  }
+
+  if (tail.empty()) {
+    result = std::move(canonical_head);
+  } else {
+    result = (canonical_head / tail).lexically_normal();
+  }
+  return true;
+}
+
+}  // namespace
+
+// On AppContainer, std::filesystem::weakly_canonical fails with ERROR_ACCESS_DENIED
+// because VOLUME_NAME_DOS goes through the Volume Mount Manager. Fall back to
+// VOLUME_NAME_NT, which preserves volume identity (cross-volume escape rejection in
+// ValidateExternalDataPath relies on this — do NOT use VOLUME_NAME_NONE).
+common::Status WindowsEnv::GetWeaklyCanonicalPath(
+    const PathString& path,
+    PathString& canonical_path) const {
+  std::filesystem::path fs_path{path};
+  std::error_code ec;
+  std::filesystem::path canonical = std::filesystem::weakly_canonical(fs_path, ec);
+  if (!ec) {
+    canonical_path = canonical.native();
+    return Status::OK();
+  }
+
+  if (ec.value() == ERROR_ACCESS_DENIED) {
+    std::filesystem::path fallback;
+    if (TryWeaklyCanonicalPathNtVolume(fs_path, fallback)) {
+      canonical_path = fallback.native();
+      return Status::OK();
+    }
+  }
+
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                         "Failed to get the weakly canonical path: ",
+                         ToUTF8String(path), " - ", ec.message());
+}
+
+namespace internal {
+bool WeaklyCanonicalPathNtVolumeFallbackForTesting(const std::filesystem::path& input,
+                                                   std::filesystem::path& result) {
+  return TryWeaklyCanonicalPathNtVolume(input, result);
+}
+}  // namespace internal
+
 // Return the path of the executable/shared library for the current running code. This is to make it
 // possible to load other shared libraries installed next to our core runtime code.
 PathString WindowsEnv::GetRuntimePath() const {
@@ -820,33 +969,7 @@ const Telemetry& WindowsEnv::GetTelemetryProvider() const {
 
 // \brief returns a value for the queried variable name (var_name)
 std::string WindowsEnv::GetEnvironmentVar(const std::string& var_name) const {
-  // Why getenv() should be avoided on Windows:
-  // https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/getenv-wgetenv
-  // Instead use the Win32 API: GetEnvironmentVariableA()
-
-  // Max limit of an environment variable on Windows including the null-terminating character
-  constexpr DWORD kBufferSize = 32767;
-
-  // Create buffer to hold the result
-  std::string buffer(kBufferSize, '\0');
-
-  // The last argument is the size of the buffer pointed to by the lpBuffer parameter, including the null-terminating character, in characters.
-  // If the function succeeds, the return value is the number of characters stored in the buffer pointed to by lpBuffer, not including the terminating null character.
-  // Therefore, If the function succeeds, kBufferSize should be larger than char_count.
-  auto char_count = GetEnvironmentVariableA(var_name.c_str(), buffer.data(), kBufferSize);
-
-  if (kBufferSize > char_count) {
-    buffer.resize(char_count);
-    return buffer;
-  }
-
-  // Else either the call was failed, or the buffer wasn't large enough.
-  // TODO: Understand the reason for failure by calling GetLastError().
-  // If it is due to the specified environment variable being found in the environment block,
-  // GetLastError() returns ERROR_ENVVAR_NOT_FOUND.
-  // For now, we assume that the environment variable is not found.
-
-  return std::string();
+  return detail::GetEnvironmentVar(var_name);
 }
 
 /*

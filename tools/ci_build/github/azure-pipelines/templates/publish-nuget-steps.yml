@@ -30,10 +30,7 @@ stages:
     - checkout: self
       submodules: false
 
-    - task: UsePythonVersion@0
-      inputs:
-        versionSpec: '3.12'
-        addToPath: true
+    - template: setup-feeds-and-python-steps.yml
 
     - template: set-version-number-variables-step.yml
 
@@ -130,5 +127,3 @@ stages:
         packageParentPath: '$(Build.BinariesDirectory)'
         publishVstsFeed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/7982ae20-ed19-4a35-a362-a96ac99897b7'
         allowPackageConflicts: true
-
-

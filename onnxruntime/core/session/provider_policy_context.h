@@ -40,13 +40,32 @@ class ProviderPolicyContext {
  public:
   ProviderPolicyContext() = default;
 
+  Status SelectEpDevices(std::vector<const OrtEpDevice*>& execution_devices, const OrtSessionOptions& options,
+                         OrtKeyValuePairs& model_metadata, std::vector<const OrtEpDevice*>& devices_selected);
   Status SelectEpsForSession(const Environment& env, const OrtSessionOptions& options, InferenceSession& sess);
-  Status AddEpDefaultOptionsToSession(InferenceSession& sess, std::vector<const OrtEpDevice*> devices);
+  Status SelectEpsForModelPackage(const Environment& env,
+                                  OrtSessionOptions& options,
+                                  OrtKeyValuePairs& model_metadata,
+                                  std::vector<const OrtEpDevice*>& execution_devices,
+                                  std::vector<const OrtEpDevice*>& devices_selected,
+                                  std::vector<std::unique_ptr<IExecutionProvider>>& providers);
+  Status AddEpDefaultOptionsToSession(SessionOptions& sess_options, std::vector<const OrtEpDevice*> devices);
   void RemoveOrtCpuDevice(std::vector<const OrtEpDevice*>& devices);
   Status CreateExecutionProvider(const Environment& env, OrtSessionOptions& options, const OrtLogger& logger,
                                  SelectionInfo& info, std::unique_ptr<IExecutionProvider>& ep);
   void FoldSelectedDevices(std::vector<const OrtEpDevice*> devices_selected,  // copy
                            std::vector<SelectionInfo>& eps_selected);
+
+  std::vector<const OrtEpDevice*> OrderDevices(const std::vector<const OrtEpDevice*>& devices);
+
+  Status LogTelemetry(InferenceSession& sess,
+                      const OrtSessionOptions& options,
+                      const std::vector<const OrtEpDevice*>& execution_devices,
+                      const std::vector<const OrtEpDevice*>& devices_selected);
+
+  Status CreateExecutionProviders(const Environment& env, InferenceSession& sess,
+                                  std::vector<const OrtEpDevice*>& devices_selected,
+                                  std::vector<std::unique_ptr<IExecutionProvider>>& providers);
 
  private:
 };

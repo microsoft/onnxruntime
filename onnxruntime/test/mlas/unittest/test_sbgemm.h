@@ -21,6 +21,8 @@ Abstract:
 
 #include "test_util.h"
 
+#include <limits>
+
 template <typename T>
 void SmallFloatFill(T* start, size_t size) {
   constexpr float MinimumFillValue = -11.0f;
@@ -169,6 +171,7 @@ class MlasSBGemmTest : public MlasTestBase {
 
   void Test(size_t M, size_t N, size_t K, size_t BatchSize, bool withBias) {
     AType* A = BufferA.GetFilledBuffer(K * M * BatchSize + 16, SmallFloatFill<AType>);
+    std::fill_n(A + K * M * BatchSize, 16, std::numeric_limits<AType>::quiet_NaN());
     AType Atail[16];
     std::memcpy(Atail, A + K * M * BatchSize, 16 * sizeof(AType));
 
@@ -219,6 +222,7 @@ class MlasSBGemmTest : public MlasTestBase {
 
   void TestAccumulate(size_t M, size_t N, size_t K, size_t BatchSize) {
     AType* A = BufferA.GetFilledBuffer(K * M * BatchSize + 16, SmallFloatFill<AType>);
+    std::fill_n(A + K * M * BatchSize, 16, std::numeric_limits<AType>::quiet_NaN());
     AType Atail[16];
     std::memcpy(Atail, A + K * M * BatchSize, 16 * sizeof(AType));
 

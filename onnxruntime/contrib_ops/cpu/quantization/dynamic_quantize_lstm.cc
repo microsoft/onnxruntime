@@ -17,6 +17,7 @@ class DynamicQuantizeLSTM : public OpKernel, public LSTMBase {
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
@@ -117,6 +118,7 @@ Status DynamicQuantizeLSTM::PrePack(const Tensor& tensor, int input_idx, Allocat
 }
 
 Status DynamicQuantizeLSTM::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                      gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                                       int input_idx,
                                                       /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;

@@ -629,6 +629,7 @@ namespace detail {
 ORT_DEFINE_RELEASE(Allocator);
 ORT_DEFINE_RELEASE(ArenaCfg);
 ORT_DEFINE_RELEASE(CustomOpDomain);
+ORT_DEFINE_RELEASE(DeviceEpIncompatibilityDetails);
 ORT_DEFINE_RELEASE(Env);
 ORT_DEFINE_RELEASE(ExternalInitializerInfo);
 ORT_DEFINE_RELEASE(Graph);
@@ -1048,6 +1049,7 @@ struct AllocatorImpl : Base<T> {
   using B::B;
 
   void* Alloc(size_t size);
+  void* Reserve(size_t size);
   MemoryAllocation GetAllocation(size_t size);
   void Free(void* p);
   ConstMemoryInfo GetInfo() const;
@@ -1057,6 +1059,12 @@ struct AllocatorImpl : Base<T> {
    * \return A pointer to a KeyValuePairs object that will be filled with the allocator statistics.
    */
   KeyValuePairs GetStats() const;
+
+  /** \brief Release unused memory held by the allocator.
+   *
+   * Calls the optional Shrink function pointer if available; does nothing otherwise.
+   */
+  void Shrink();
 };
 }  // namespace detail
 
@@ -1123,6 +1131,27 @@ struct HardwareDeviceImpl : Ort::detail::Base<T> {
  * \remarks HardwareDevice is always read-only for API users.
  */
 using ConstHardwareDevice = detail::HardwareDeviceImpl<Ort::detail::Unowned<const OrtHardwareDevice>>;
+
+namespace detail {
+template <typename T>
+struct DeviceEpIncompatibilityDetailsImpl : Ort::detail::Base<T> {
+  using B = Ort::detail::Base<T>;
+  using B::B;
+
+  uint32_t GetReasonsBitmask() const;  ///< Wraps DeviceEpIncompatibilityDetails_GetReasonsBitmask
+  const char* GetNotes() const;        ///< Wraps DeviceEpIncompatibilityDetails_GetNotes
+  int32_t GetErrorCode() const;        ///< Wraps DeviceEpIncompatibilityDetails_GetErrorCode
+};
+}  // namespace detail
+
+/** \brief Wrapper around ::OrtDeviceEpIncompatibilityDetails
+ * \remarks DeviceEpIncompatibilityDetails is always read-only for API users.
+ */
+struct DeviceEpIncompatibilityDetails : detail::DeviceEpIncompatibilityDetailsImpl<OrtDeviceEpIncompatibilityDetails> {
+  explicit DeviceEpIncompatibilityDetails(std::nullptr_t) {}  ///< No instance is created
+  explicit DeviceEpIncompatibilityDetails(OrtDeviceEpIncompatibilityDetails* p)
+      : DeviceEpIncompatibilityDetailsImpl<OrtDeviceEpIncompatibilityDetails>{p} {}  ///< Take ownership of a pointer created by C API
+};
 
 namespace detail {
 template <typename T>
@@ -1378,9 +1407,42 @@ struct Env : detail::Base<OrtEnv> {
 
   std::vector<ConstEpDevice> GetEpDevices() const;
 
+  /** \brief Get the number of available hardware devices.
+   *
+   * Returns the count of hardware devices discovered on the system.
+   * \return The number of hardware devices available.
+   * \throws Ort::Exception on error.
+   */
+  size_t GetNumHardwareDevices() const;  ///< Wraps OrtApi::GetNumHardwareDevices
+
+  /** \brief Get the list of available hardware devices.
+   *
+   * Enumerates hardware devices available on the system.
+   * \return A vector of hardware devices.
+   * \throws Ort::Exception on error.
+   */
+  std::vector<ConstHardwareDevice> GetHardwareDevices() const;  ///< Wraps OrtApi::GetHardwareDevices
+
+  /** \brief Check for known incompatibility issues between hardware device and a specific execution provider.
+   *
+   * If returned incompatibility details have non-zero reasons, it indicates the device is not compatible.
+   * However, if the returned details have reasons == 0, that does not guarantee 100% compatibility for all models.
+   *
+   * \param ep_name The name of the execution provider to check.
+   * \param hw The hardware device to check for incompatibility.
+   * \return DeviceEpIncompatibilityDetails containing reasons for incompatibility if any.
+   * \throws Ort::Exception on error.
+   */
+  DeviceEpIncompatibilityDetails GetHardwareDeviceEpIncompatibilityDetails(
+      const char* ep_name, ConstHardwareDevice hw) const;  ///< Wraps OrtApi::GetHardwareDeviceEpIncompatibilityDetails
+
   Status CopyTensors(const std::vector<Value>& src_tensors,
                      const std::vector<Value>& dst_tensors,
                      OrtSyncStream* stream) const;  ///< Wraps OrtApi::CopyTensors
+
+  /// Wraps OrtApi::CopyTensors
+  /// Copies only one src tensor to another dst tensor.
+  Status CopyTensor(const OrtValue* src_tensor, OrtValue* dst_tensor, OrtSyncStream* stream) const;
 
   /// \brief Wraps OrtApi::SetPerSessionThreadPoolCallbacks
   /// Stores work callbacks on the Env for per-session thread pools.
@@ -1559,6 +1621,9 @@ struct ConstSessionOptionsImpl : Base<T> {
   std::string GetConfigEntry(const char* config_key) const;  ///< Wraps OrtApi::GetSessionConfigEntry
   bool HasConfigEntry(const char* config_key) const;         ///< Wraps OrtApi::HasSessionConfigEntry
   std::string GetConfigEntryOrDefault(const char* config_key, const std::string& def) const;
+
+  bool GetMemPatternEnabled() const;       ///< Wraps OrtApi::GetMemPatternEnabled
+  ExecutionMode GetExecutionMode() const;  ///< Wraps OrtApi::GetSessionExecutionMode
 };
 
 template <typename T>
@@ -1940,6 +2005,14 @@ struct SessionImpl : ConstSessionImpl<T> {
 
   void FinalizeModelEditorSession(const Model& model, const SessionOptions& options,
                                   OrtPrepackedWeightsContainer* prepacked_weights_container = nullptr);
+
+  /** \brief Release a previously captured graph.
+   *
+   * Wraps OrtApi::SessionReleaseCapturedGraph
+   *
+   * \param[in] graph_annotation_id The annotation ID of the captured graph to release.
+   */
+  void ReleaseCapturedGraph(int graph_annotation_id);
 };
 
 }  // namespace detail
@@ -3464,13 +3537,21 @@ struct GraphImpl : ConstGraphImpl<T> {
   using B::B;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // <Wraps GetModelEditorApi().SetGraphInputs()
+  /// <Wraps GetModelEditorApi().SetGraphInputs(). Strong exception safety: on success the Graph
+  /// takes ownership of every ValueInfo in `inputs` and each element is reset to nullptr; on
+  /// failure (an exception is thrown) the Graph state and every element of `inputs` are unchanged.
   void SetInputs(std::vector<ValueInfo>& inputs);
-  // <Wraps GetModelEditorApi().SetGraphOutputs()
+  /// <Wraps GetModelEditorApi().SetGraphOutputs(). Strong exception safety: on success the Graph
+  /// takes ownership of every ValueInfo in `outputs` and each element is reset to nullptr; on
+  /// failure (an exception is thrown) the Graph state and every element of `outputs` are unchanged.
   void SetOutputs(std::vector<ValueInfo>& outputs);
-  // <Wraps GetModelEditorApi().AddInitializerToGraph()
+  /// <Wraps GetModelEditorApi().AddInitializerToGraph(). Strong exception safety: on success the
+  /// Graph takes ownership of `initializer` (which is reset to nullptr); on failure (an exception
+  /// is thrown) `initializer` is unchanged and still owned by the caller.
   void AddInitializer(const std::string& name, Value& initializer, bool data_is_external);  // Graph takes ownership of Value
-  // <Wraps GetModelEditorApi().AddNodeToGraph()
+  /// <Wraps GetModelEditorApi().AddNodeToGraph(). Strong exception safety: on success the Graph
+  /// takes ownership of `node` (which is reset to nullptr); on failure (an exception is thrown)
+  /// `node` is unchanged and still owned by the caller.
   void AddNode(Node& node);  // Graph takes ownership of Node
 #endif                       // !defined(ORT_MINIMAL_BUILD)
 };
@@ -3504,7 +3585,9 @@ struct ModelImpl : detail::Base<T> {
   using B::B;
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // <Wraps GetModelEditorApi().AddGraphToModel()
+  /// <Wraps GetModelEditorApi().AddGraphToModel(). Strong exception safety: on success the Model
+  /// takes ownership of `graph` (which is reset to nullptr); on failure (an exception is thrown)
+  /// `graph` is unchanged and still owned by the caller.
   void AddGraph(Graph& graph);
 #endif
 };
@@ -3718,5 +3801,6 @@ using UnownedSharedPrePackedWeightCache =
 
 ///< Wraps OrtEpApi::GetEnvConfigEntries()
 Ort::KeyValuePairs GetEnvConfigEntries();
+
 }  // namespace Ort
 #include "onnxruntime_cxx_inline.h"

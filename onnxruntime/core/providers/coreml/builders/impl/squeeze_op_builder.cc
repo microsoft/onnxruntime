@@ -29,6 +29,9 @@ class SqueezeOpBuilder : public BaseOpBuilder {
   bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                          const logging::Logger& logger) const override;
   bool SupportsMLProgram() const override { return true; }
+
+  // SqueezeOpBuilder handles both Squeeze and Unsqueeze; both are shape-only.
+  bool IsTrivial(const Node& /*node*/) const override { return true; }
 };
 
 namespace {

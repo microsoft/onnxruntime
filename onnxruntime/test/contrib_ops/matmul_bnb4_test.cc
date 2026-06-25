@@ -115,6 +115,88 @@ void RunTest(int64_t quant_type, int64_t M, int64_t N, int64_t K, int64_t block_
   }
 }
 
+TEST(MatMulBnb4, RejectsUndersizedBQuantTensor) {
+  // K=32, N=2 → numel=64, expected b_quant size = (64+1)/2 = 32
+  // Provide only 4 bytes (valid for K=4, N=2) but claim K=32, N=2
+  OpTester test("MatMulBnb4", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", 32LL);
+  test.AddAttribute<int64_t>("N", 2LL);
+  test.AddAttribute<int64_t>("block_size", 32LL);
+  test.AddAttribute<int64_t>("quant_type", 1LL);  // NF4
+
+  test.AddInput<float>("A", {1, 32}, std::vector<float>(32, 0.0f));
+  test.AddInput<uint8_t>("B", {4}, std::vector<uint8_t>(4, 0));  // too small
+  test.AddInput<float>("absmax", {2}, std::vector<float>(2, 1.0f));
+  test.AddOutput<float>("Y", {1, 2}, std::vector<float>(2, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "b_quant tensor size", {}, nullptr, &execution_providers);
+}
+
+TEST(MatMulBnb4, RejectsUndersizedAbsmaxTensor) {
+  // K=32, N=2, block_size=32 → numel=64, expected absmax size = (64+32-1)/32 = 2
+  // Provide only 1 absmax element
+  int64_t K = 32, N = 2, block_size = 32;
+  int64_t numel = K * N;
+  int64_t quantized_numel = (numel + 1) / 2;
+
+  OpTester test("MatMulBnb4", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("quant_type", 1LL);  // NF4
+
+  test.AddInput<float>("A", {1, K}, std::vector<float>(K, 0.0f));
+  test.AddInput<uint8_t>("B", {quantized_numel}, std::vector<uint8_t>(quantized_numel, 0));
+  test.AddInput<float>("absmax", {1}, std::vector<float>(1, 1.0f));  // too small
+  test.AddOutput<float>("Y", {1, N}, std::vector<float>(N, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "absmax tensor size", {}, nullptr, &execution_providers);
+}
+
+#if defined(USE_CUDA)
+TEST(MatMulBnb4, RejectsUndersizedBQuantTensorCuda) {
+  OpTester test("MatMulBnb4", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", 32LL);
+  test.AddAttribute<int64_t>("N", 2LL);
+  test.AddAttribute<int64_t>("block_size", 32LL);
+  test.AddAttribute<int64_t>("quant_type", 1LL);  // NF4
+
+  test.AddInput<float>("A", {1, 32}, std::vector<float>(32, 0.0f));
+  test.AddInput<uint8_t>("B", {4}, std::vector<uint8_t>(4, 0));  // too small
+  test.AddInput<float>("absmax", {2}, std::vector<float>(2, 1.0f));
+  test.AddOutput<float>("Y", {1, 2}, std::vector<float>(2, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "b_quant tensor size", {}, nullptr, &execution_providers);
+}
+
+TEST(MatMulBnb4, RejectsUndersizedAbsmaxTensorCuda) {
+  int64_t K = 32, N = 2, block_size = 32;
+  int64_t numel = K * N;
+  int64_t quantized_numel = (numel + 1) / 2;
+
+  OpTester test("MatMulBnb4", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("quant_type", 1LL);  // NF4
+
+  test.AddInput<float>("A", {1, K}, std::vector<float>(K, 0.0f));
+  test.AddInput<uint8_t>("B", {quantized_numel}, std::vector<uint8_t>(quantized_numel, 0));
+  test.AddInput<float>("absmax", {1}, std::vector<float>(1, 1.0f));  // too small
+  test.AddOutput<float>("Y", {1, N}, std::vector<float>(N, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, "absmax tensor size", {}, nullptr, &execution_providers);
+}
+#endif
+
 TEST(MatMulBnb4, DISABLED_Float32) {
   for (auto qt : {0, 1}) {
     for (auto M : {1, 2, 100}) {

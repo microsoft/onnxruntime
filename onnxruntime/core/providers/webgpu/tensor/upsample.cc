@@ -19,7 +19,7 @@ Status Upsample::BaseCompute(ComputeContext& context,
   auto dims = X->Shape().GetDims();
   ORT_ENFORCE(output_dims.size() == dims.size(), "Rank of input and output tensor should be same.");
 
-  if (dims.size() == 0) {
+  if (dims.empty()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
                   is_resize_ ? "Resize: input tensor cannot be scalar."
                              : "Upsample: input tensor cannot be scalar.");
@@ -86,7 +86,7 @@ Status Upsample::ComputeInternal(ComputeContext& context) const {
     }
   }
 
-  ComputeROIWithAxes(roi_array, input_dims.size());
+  ORT_RETURN_IF_ERROR(ComputeROIWithAxes(roi_array, input_dims.size()));
 
   InlinedVector<float> scales_array(input_dims.size());
   // opset < 10

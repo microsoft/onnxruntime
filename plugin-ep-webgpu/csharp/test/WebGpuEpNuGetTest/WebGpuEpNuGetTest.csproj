@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!--
+      Version of the EP package to test. CI overrides this with the exact version produced by
+      pack_nuget.py via -p:OrtWebGpuPackageVersion=<version> so the test consumes the freshly
+      built package deterministically. The floating fallback is for local development against
+      a single-package local feed.
+    -->
+    <OrtWebGpuPackageVersion Condition="'$(OrtWebGpuPackageVersion)' == ''">*-*</OrtWebGpuPackageVersion>
+    <!--
+      Version of the ONNX Runtime core package to test against. CI overrides this with
+      -p:OrtCoreTestVersion=<exact version> to pin the test to a specific version; the floating
+      fallback is for local development.
+    -->
+    <OrtCoreTestVersion Condition="'$(OrtCoreTestVersion)' == ''">*-*</OrtCoreTestVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The plugin EP package does not declare a hard dependency on a core ORT package, so reference
+         one explicitly here. -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="$(OrtCoreTestVersion)" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.EP.WebGpu" Version="$(OrtWebGpuPackageVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="mul.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!-- Uncomment to use project reference during local development -->
+  <!-- <ItemGroup>
+    <ProjectReference Include="..\..\Microsoft.ML.OnnxRuntime.EP.WebGpu\Microsoft.ML.OnnxRuntime.EP.WebGpu.csproj" />
+  </ItemGroup> -->
+
+</Project>

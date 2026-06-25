@@ -125,6 +125,7 @@ struct TestAllocator : public OrtAllocator {
 
     GetStats = nullptr;
     AllocOnStream = nullptr;
+    Shrink = nullptr;
   }
 
   // initializers that are used directly by the model. as there's no copy they must remain valid.
@@ -1081,4 +1082,331 @@ TEST(ModelEditorCompileAPITest, EmbedModeWithBufferOutputSatisfiesValidation) {
   if (output_buffer != nullptr) {
     allocator->Free(output_buffer);
   }
+}
+
+TEST(ModelEditorAPITest, CreateNode_DuplicateAttributePointer_Fails) {
+  const auto& api = Ort::GetApi();
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  float alpha_value = 1.0f;
+  OrtOpAttr* attr = nullptr;
+  Ort::ThrowOnError(api.CreateOpAttr("alpha", &alpha_value, 1, ORT_OP_ATTR_FLOAT, &attr));
+
+  std::vector<const char*> input_names = {"X"};
+  std::vector<const char*> output_names = {"Y"};
+  // Pass the same attribute pointer twice — should fail without releasing it
+  std::vector<OrtOpAttr*> attrs = {attr, attr};
+
+  OrtNode* node = nullptr;
+  Ort::Status status{model_editor_api.CreateNode("Relu", onnxruntime::kOnnxDomain, "relu1",
+                                                 input_names.data(), input_names.size(),
+                                                 output_names.data(), output_names.size(),
+                                                 attrs.data(), attrs.size(), &node)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("Duplicate"));
+  EXPECT_EQ(node, nullptr);
+
+  // Caller still owns the attribute since CreateNode failed before taking ownership
+  api.ReleaseOpAttr(attr);
+}
+
+TEST(ModelEditorAPITest, CreateNode_NullAttributeEntry_Fails) {
+  const auto& api = Ort::GetApi();
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  float alpha_value = 1.0f;
+  OrtOpAttr* attr = nullptr;
+  Ort::ThrowOnError(api.CreateOpAttr("alpha", &alpha_value, 1, ORT_OP_ATTR_FLOAT, &attr));
+
+  std::vector<const char*> input_names = {"X"};
+  std::vector<const char*> output_names = {"Y"};
+  std::vector<OrtOpAttr*> attrs = {attr, nullptr};
+
+  OrtNode* node = nullptr;
+  Ort::Status status{model_editor_api.CreateNode("Relu", onnxruntime::kOnnxDomain, "relu1",
+                                                 input_names.data(), input_names.size(),
+                                                 output_names.data(), output_names.size(),
+                                                 attrs.data(), attrs.size(), &node)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("null"));
+  EXPECT_EQ(node, nullptr);
+
+  api.ReleaseOpAttr(attr);
+}
+
+// Regression: passing the same OrtValue* twice to AddInitializerToGraph must be rejected.
+// Without the duplicate-pointer guard, the graph would own two unique_ptrs to the same allocation
+// and double-free on destruction.
+TEST(ModelEditorAPITest, AddInitializerToGraph_DuplicatePointer_Fails) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  Ort::Graph graph;
+
+  // Create a CPU tensor via the C++ API (RAII).
+  std::vector<float> data(4, 0.0f);
+  std::vector<int64_t> dims = {2, 2};
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+  Ort::Value value = Ort::Value::CreateTensor<float>(memory_info, data.data(), data.size(),
+                                                     dims.data(), dims.size());
+
+  // First add transfers ownership of the raw OrtValue* to the graph. Detach the C++ wrapper
+  // so it does not also try to release it on destruction.
+  OrtValue* raw = value;
+  Ort::ThrowOnError(model_editor_api.AddInitializerToGraph(graph, "W1", raw, /*data_is_external*/ false));
+  static_cast<void>(value.release());
+
+  // Second add of the same raw pointer (under a different name) must fail without taking ownership.
+  Ort::Status status{model_editor_api.AddInitializerToGraph(graph, "W2", raw, /*data_is_external*/ false)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("already been added"));
+}
+
+// Regression: passing the same OrtNode* twice to AddNodeToGraph must be rejected.
+TEST(ModelEditorAPITest, AddNodeToGraph_DuplicatePointer_Fails) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  Ort::Graph graph;
+  Ort::Node node("Relu", onnxruntime::kOnnxDomain, "relu1", {"X"}, {"Y"});
+
+  // First add transfers ownership of the raw OrtNode* to the graph. Detach the C++ wrapper.
+  OrtNode* raw = node;
+  Ort::ThrowOnError(model_editor_api.AddNodeToGraph(graph, raw));
+  static_cast<void>(node.release());
+
+  // Second add of the same raw pointer must fail without taking ownership.
+  Ort::Status status{model_editor_api.AddNodeToGraph(graph, raw)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("already been added"));
+}
+
+namespace {
+// Helper: create a CPU OrtValue tensor of `num_floats` zero floats backed by `storage`.
+// The returned Ort::Value owns only the OrtValue wrapper; the underlying buffer remains in
+// `storage`, so the caller must keep `storage` alive for as long as the tensor may be accessed.
+Ort::Value MakeCpuFloatTensor(std::vector<float>& storage, size_t num_floats,
+                              const std::vector<int64_t>& dims) {
+  storage.assign(num_floats, 0.0f);
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+  return Ort::Value::CreateTensor<float>(memory_info, storage.data(), storage.size(),
+                                         dims.data(), dims.size());
+}
+}  // namespace
+
+// Reject a second initializer with the same name (within the regular initializer map).
+TEST(ModelEditorAPITest, AddInitializerToGraph_DuplicateName_Fails) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+  Ort::Graph graph;
+
+  std::vector<float> storage_a, storage_b;
+  Ort::Value a = MakeCpuFloatTensor(storage_a, 4, {2, 2});
+  Ort::Value b = MakeCpuFloatTensor(storage_b, 4, {2, 2});
+
+  OrtValue* raw_a = a;
+  Ort::ThrowOnError(model_editor_api.AddInitializerToGraph(graph, "W", raw_a, /*data_is_external*/ false));
+  static_cast<void>(a.release());
+
+  OrtValue* raw_b = b;
+  Ort::Status status{model_editor_api.AddInitializerToGraph(graph, "W", raw_b, /*data_is_external*/ false)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("name"));
+  // Caller still owns `b` and Ort::Value's destructor releases it. No leak, no double-free.
+}
+
+// Reject a duplicate name that collides across the regular/external boundary.
+TEST(ModelEditorAPITest, AddInitializerToGraph_DuplicateNameAcrossExternal_Fails) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+  Ort::Graph graph;
+
+  // First initializer: regular, small.
+  std::vector<float> storage_small;
+  Ort::Value small = MakeCpuFloatTensor(storage_small, 4, {2, 2});
+  OrtValue* raw_small = small;
+  Ort::ThrowOnError(model_editor_api.AddInitializerToGraph(graph, "W", raw_small,
+                                                           /*data_is_external*/ false));
+  static_cast<void>(small.release());
+
+  // Second initializer: external, large enough to satisfy the size guard, same name.
+  std::vector<float> storage_big;
+  Ort::Value big = MakeCpuFloatTensor(storage_big, 64, {64});  // 256 bytes, > kSmallTensorExternalDataThreshold
+  OrtValue* raw_big = big;
+  Ort::Status status{model_editor_api.AddInitializerToGraph(graph, "W", raw_big,
+                                                            /*data_is_external*/ true)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("name"));
+}
+
+// data_is_external=true with a tensor at or below kSmallTensorExternalDataThreshold must be rejected
+// because the resulting in-memory external-data reference would be unusable by ONNX shape inferencing.
+TEST(ModelEditorAPITest, AddInitializerToGraph_SmallExternal_Fails) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+  Ort::Graph graph;
+
+  std::vector<float> storage;
+  Ort::Value small = MakeCpuFloatTensor(storage, 4, {2, 2});  // 16 bytes
+  OrtValue* raw = small;
+  Ort::Status status{model_editor_api.AddInitializerToGraph(graph, "W", raw,
+                                                            /*data_is_external*/ true)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("data_is_external"));
+  // Ownership not transferred; Ort::Value destructor releases `small`.
+}
+
+// AddInitializerToGraph rejects null arguments without taking ownership.
+TEST(ModelEditorAPITest, AddInitializerToGraph_NullArgs_Fails) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+  Ort::Graph graph;
+
+  std::vector<float> storage;
+  Ort::Value v = MakeCpuFloatTensor(storage, 4, {2, 2});
+  OrtValue* raw = v;
+
+  // Null graph.
+  {
+    Ort::Status status{model_editor_api.AddInitializerToGraph(nullptr, "W", raw, false)};
+    EXPECT_FALSE(status.IsOK());
+  }
+  // Null name.
+  {
+    Ort::Status status{model_editor_api.AddInitializerToGraph(graph, nullptr, raw, false)};
+    EXPECT_FALSE(status.IsOK());
+  }
+  // Empty name.
+  {
+    Ort::Status status{model_editor_api.AddInitializerToGraph(graph, "", raw, false)};
+    EXPECT_FALSE(status.IsOK());
+  }
+  // Null tensor.
+  {
+    Ort::Status status{model_editor_api.AddInitializerToGraph(graph, "W", nullptr, false)};
+    EXPECT_FALSE(status.IsOK());
+  }
+  // None of the above transferred ownership; Ort::Value destructor releases `v`.
+}
+
+// AddNodeToGraph rejects null arguments.
+TEST(ModelEditorAPITest, AddNodeToGraph_NullArgs_Fails) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+  Ort::Graph graph;
+  Ort::Node node("Relu", onnxruntime::kOnnxDomain, "relu1", {"X"}, {"Y"});
+
+  {
+    Ort::Status status{model_editor_api.AddNodeToGraph(nullptr, node)};
+    EXPECT_FALSE(status.IsOK());
+  }
+  {
+    Ort::Status status{model_editor_api.AddNodeToGraph(graph, nullptr)};
+    EXPECT_FALSE(status.IsOK());
+  }
+  // Ownership not transferred; Ort::Node destructor releases the node.
+}
+
+// AddGraphToModel rejects a second graph and rejects null arguments.
+TEST(ModelEditorAPITest, AddGraphToModel_Twice_Fails) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  std::vector<const char*> domains = {onnxruntime::kOnnxDomain};
+  std::vector<int> versions = {18};
+  OrtModel* raw_model = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateModel(domains.data(), versions.data(), domains.size(), &raw_model));
+  Ort::Model model{raw_model};
+
+  Ort::Graph g1;
+  OrtGraph* raw_g1 = g1;
+  Ort::ThrowOnError(model_editor_api.AddGraphToModel(model, raw_g1));
+  static_cast<void>(g1.release());
+
+  // Second AddGraphToModel must fail without taking ownership of g2.
+  Ort::Graph g2;
+  OrtGraph* raw_g2 = g2;
+  Ort::Status status{model_editor_api.AddGraphToModel(model, raw_g2)};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("graph"));
+  // g2 destructor releases the still-owned raw_g2.
+}
+
+TEST(ModelEditorAPITest, AddGraphToModel_NullArgs_Fails) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  std::vector<const char*> domains = {onnxruntime::kOnnxDomain};
+  std::vector<int> versions = {18};
+  OrtModel* raw_model = nullptr;
+  Ort::ThrowOnError(model_editor_api.CreateModel(domains.data(), versions.data(), domains.size(), &raw_model));
+  Ort::Model model{raw_model};
+
+  Ort::Graph graph;
+
+  {
+    Ort::Status status{model_editor_api.AddGraphToModel(nullptr, graph)};
+    EXPECT_FALSE(status.IsOK());
+  }
+  {
+    Ort::Status status{model_editor_api.AddGraphToModel(model, nullptr)};
+    EXPECT_FALSE(status.IsOK());
+  }
+}
+
+namespace {
+// Build a CPU float `Ort::ValueInfo` of rank-1 shape {1} for the given name.
+Ort::ValueInfo MakeFloatValueInfo(const char* name) {
+  Ort::TensorTypeAndShapeInfo tts(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, std::vector<int64_t>{1});
+  Ort::TypeInfo ti = Ort::TypeInfo::CreateTensorInfo(tts.GetConst());
+  return Ort::ValueInfo(name, ti.GetConst());
+}
+}  // namespace
+
+// Reject the same OrtValueInfo* appearing twice within the SetGraphInputs array.
+TEST(ModelEditorAPITest, SetGraphInputs_DuplicatePointerInArray_Fails) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  Ort::Graph graph;
+  Ort::ValueInfo vi = MakeFloatValueInfo("X");
+
+  // Implicit Base::operator T*() yields the raw pointer without releasing.
+  OrtValueInfo* raw = vi;
+  std::vector<OrtValueInfo*> inputs = {raw, raw};
+  Ort::Status status{model_editor_api.SetGraphInputs(graph, inputs.data(), inputs.size())};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("Duplicate"));
+  EXPECT_NE(inputs[0], nullptr);  // ownership not transferred on failure
+  EXPECT_NE(inputs[1], nullptr);
+
+  // `vi` destructor releases the still-owned OrtValueInfo. No double-free.
+}
+
+// Reject the same OrtValueInfo* appearing twice within the SetGraphOutputs array.
+TEST(ModelEditorAPITest, SetGraphOutputs_DuplicatePointerInArray_Fails) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  Ort::Graph graph;
+  Ort::ValueInfo vi = MakeFloatValueInfo("Y");
+
+  OrtValueInfo* raw = vi;
+  std::vector<OrtValueInfo*> outputs = {raw, raw};
+  Ort::Status status{model_editor_api.SetGraphOutputs(graph, outputs.data(), outputs.size())};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("Duplicate"));
+  EXPECT_NE(outputs[0], nullptr);
+  EXPECT_NE(outputs[1], nullptr);
+}
+
+// Reject reusing an OrtValueInfo* already owned by the graph (input -> output).
+TEST(ModelEditorAPITest, SetGraph_RejectsAlreadyOwnedPointer) {
+  const auto& model_editor_api = Ort::GetModelEditorApi();
+
+  Ort::Graph graph;
+  Ort::ValueInfo input_vi = MakeFloatValueInfo("X");
+
+  // Transfer to graph as an input via the C++ wrapper (which calls release() on success).
+  OrtValueInfo* still_owned_by_graph = input_vi;  // capture before release()
+  std::vector<Ort::ValueInfo> inputs;
+  inputs.emplace_back(std::move(input_vi));
+  graph.SetInputs(inputs);
+
+  // Re-using the same raw pointer (now owned by graph) as an output must be rejected.
+  std::vector<OrtValueInfo*> outputs = {still_owned_by_graph};
+  Ort::Status status{model_editor_api.SetGraphOutputs(graph, outputs.data(), outputs.size())};
+  EXPECT_FALSE(status.IsOK());
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("already been added"));
+  EXPECT_NE(outputs[0], nullptr);  // ownership not transferred on failure
+  // graph still owns the pointer; Graph destructor releases it.
 }

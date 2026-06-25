@@ -95,7 +95,9 @@ struct WebGpuContextConfig {
       webgpu::ValidationMode::Basic  // for release build, enable basic validation by default
 #endif  // !NDEBUG
   };
+  bool validation_mode_explicitly_set{false};
   bool preserve_device{false};
+  uint32_t max_num_pending_dispatches{16};
   uint64_t max_storage_buffer_binding_size{0};
   WebGpuBufferCacheConfig buffer_cache_config{};
   int power_preference{static_cast<int>(WGPUPowerPreference_HighPerformance)};
@@ -170,7 +172,7 @@ class WebGpuContext final {
 
   const wgpu::AdapterInfo& AdapterInfo() const { return adapter_info_; }
   const wgpu::Limits& DeviceLimits() const { return device_limits_; }
-  bool DeviceHasFeature(wgpu::FeatureName feature) const { return device_features_.find(feature) != device_features_.end(); }
+  bool DeviceHasFeature(wgpu::FeatureName feature) const { return device_features_.contains(feature); }
 #if !defined(__wasm__)
   const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const { return subgroup_matrix_configs_; }
 #endif
@@ -278,11 +280,13 @@ class WebGpuContext final {
   WebGpuContext(WGPUInstance instance,
                 WGPUDevice device,
                 webgpu::ValidationMode validation_mode,
+                bool validation_mode_explicitly_set,
                 bool preserve_device,
                 uint64_t max_storage_buffer_binding_size)
       : instance_{instance},
         device_{device},
         validation_mode_{validation_mode},
+        validation_mode_explicitly_set_{validation_mode_explicitly_set},
         query_type_{TimestampQueryType::None},
         preserve_device_{preserve_device},
         max_storage_buffer_binding_size_{max_storage_buffer_binding_size} {
@@ -327,6 +331,7 @@ class WebGpuContext final {
   wgpu::Device device_;
 
   webgpu::ValidationMode validation_mode_;
+  bool validation_mode_explicitly_set_;
 
   wgpu::Queue device_queue_;
   wgpu::AdapterInfo adapter_info_;
@@ -344,7 +349,7 @@ class WebGpuContext final {
   std::unique_ptr<ProgramManager> program_mgr_;
 
   uint32_t num_pending_dispatches_ = 0;
-  const uint32_t max_num_pending_dispatches_ = 16;
+  uint32_t max_num_pending_dispatches_ = 16;
 
   std::unique_ptr<SplitKConfig> split_k_config_;
 

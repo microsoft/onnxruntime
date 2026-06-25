@@ -10,7 +10,7 @@ or the `Github project <https://github.com/microsoft/onnxruntime/>`_.
 
 import contextlib
 
-__version__ = "1.25.0"
+__version__ = "1.28.0"
 __author__ = "Microsoft"
 
 # we need to do device version validation (for example to check Cuda version for an onnxruntime-training package).
@@ -147,7 +147,7 @@ def _extract_cuda_major_version(version_str: str) -> str:
     Returns:
         Major version as string, or "12" if parsing fails
     """
-    return version_str.split(".")[0] if version_str else "12"
+    return version_str.split(".", maxsplit=1)[0] if version_str else "12"
 
 
 def _get_cufft_version(cuda_major: str) -> str:
@@ -184,6 +184,7 @@ def _get_nvidia_dll_paths(is_windows: bool, cuda: bool = True, cudnn: bool = Tru
             ("nvidia", "cudnn", "bin", "cudnn_adv64_9.dll"),
             ("nvidia", "cudnn", "bin", "cudnn_graph64_9.dll"),
             ("nvidia", "cudnn", "bin", "cudnn64_9.dll"),
+            ("nvidia", "cudnn", "bin", "cudnn_engines_tensor_ir64_9.dll"),
         ]
     else:  # Linux
         # cublas64 depends on cublasLt64, so cublasLt64 should be loaded first.
@@ -404,6 +405,10 @@ def preload_dlls(cuda: bool = True, cudnn: bool = True, msvc: bool = True, direc
             except Exception as e:
                 print(f"Failed to load {dll_path}: {e}")
 
+    # cuDNN DLLs that only exist in newer cuDNN releases (e.g. >= 9.23) and are
+    # optional for inference. Missing them on older cuDNN must not be treated as a failure.
+    _optional_dll_filenames = {"cudnn_engines_tensor_ir64_9.dll"}
+
     # Try load DLLs with default path settings.
     has_failure = False
     for relative_path in dll_paths:
@@ -412,8 +417,9 @@ def preload_dlls(cuda: bool = True, cudnn: bool = True, msvc: bool = True, direc
             try:
                 _ = ctypes.CDLL(dll_filename)
             except Exception as e:
-                has_failure = True
-                print(f"Failed to load {dll_filename}: {e}")
+                if dll_filename not in _optional_dll_filenames:
+                    has_failure = True
+                    print(f"Failed to load {dll_filename}: {e}")
 
     if has_failure:
         print("Please follow https://onnxruntime.ai/docs/install/#cuda-and-cudnn to install CUDA and CuDNN.")

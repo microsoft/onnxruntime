@@ -21,8 +21,7 @@ enum class DeviceIdStatus {
  * The device ID is stored in a platform-appropriate location:
  * - macOS: ~/Library/Application Support/Microsoft/DeveloperTools/.onnxruntime/deviceid
  * - Linux: ~/Microsoft/DeveloperTools/.onnxruntime/deviceid
- * - iOS: ~/Library/Application Support/.onnxruntime/deviceid
- * - Android: ~/.onnxruntime/deviceid
+ * - iOS/Android: ~/.onnxruntime/deviceid (shorter path, avoids iCloud backup on iOS)
  *
  * Thread-safe singleton - use DeviceId::Instance() to access.
  */
@@ -41,9 +40,13 @@ class DeviceId {
 
   // Get the directory path for device ID / telemetry cache storage
   // Desktop: ~/Microsoft/DeveloperTools/.onnxruntime (or platform equivalent)
-  // iOS: ~/Library/Application Support/.onnxruntime
-  // Android: ~/.onnxruntime
+  // Mobile: ~/.onnxruntime
   static std::string GetStorageDirectory(bool mobile = false);
+
+  // Same as GetStorageDirectory(), but also creates the directory tree (0700) if it does not exist.
+  // Returns "" if no suitable location is available. Use before writing into the directory (e.g. the
+  // telemetry offline cache, which the 1DS SDK opens during initialization).
+  static std::string EnsureStorageDirectory(bool mobile = false);
 
  private:
   DeviceId() = default;

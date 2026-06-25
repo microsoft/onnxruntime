@@ -73,7 +73,10 @@ class Node {
     Fused = 1,      ///< The node refers to a function.
   };
 
-  explicit Node() = default;
+  // Constructor and destructor defined out-of-line in graph.cc so that Graph
+  // is a complete type when std::unique_ptr<Graph> in subgraphs_ is destroyed
+  // (required by libc++).
+  explicit Node();
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   Node(std::string_view name,
@@ -82,15 +85,10 @@ class Node {
        gsl::span<NodeArg* const> input_args,
        gsl::span<NodeArg* const> output_args,
        const NodeAttributes* attributes,
-       std::string_view domain) {
-    Init(name, op_type, description,
-         input_args,
-         output_args,
-         attributes, domain);
-  }
+       std::string_view domain);
 #endif
 
-  ~Node() = default;
+  ~Node();
 
   /**
   @class EdgeEnd
@@ -144,6 +142,14 @@ class Node {
    * @remarks If this is an ONNX operator the value will be kOnnxDomain not kOnnxDomainAlias
    */
   const std::string& Domain() const noexcept { return domain_; }
+
+  /** Gets the overload identifier for model-local function dispatch (IR version 10+).
+   * @remarks Empty string for non-overloaded operators.
+   */
+  const std::string& Overload() const noexcept { return overload_; }
+
+  /** Sets the overload identifier for model-local function dispatch. */
+  void SetOverload(std::string_view overload) { overload_ = overload; }
 
   /** Gets the path of the owning model if any. */
   const std::filesystem::path& ModelPath() const noexcept;
@@ -580,7 +586,7 @@ class Node {
   // NOTE: This friendship relationship should ONLY be used for calling methods of the Node class and not accessing
   // the data members directly, so that the Node can maintain its internal invariants.
   friend class Graph;
-  Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph), can_be_saved_(true) {}
+  Node(NodeIndex index, Graph& graph);
 
  protected:
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -638,6 +644,9 @@ class Node {
 
   // OperatorSet domain of op_type_.
   std::string domain_;
+
+  // Overload identifier for model-local function dispatch (IR version 10+).
+  std::string overload_;
 
 #if !defined(ORT_MINIMAL_BUILD)
   // OperatorSchema that <*this> node refers to.
@@ -765,7 +774,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  /** Add an initializer tensor to the Graph. */
+  /** Add an initializer tensor with embedded/owned data to the Graph. */
   void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
   /// <summary>
@@ -775,8 +784,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /// OrtValue would be unallocated in this case, and not added to ortvalue_initializers_.
   /// </summary>
   /// <param name="tensor_proto">tensor proto with external data pointing to OrtValue.</param>
-  /// <param name="ort_value_initializer">value that contains the initializer tensor. This may
-  /// be unallocated for small tensors.</param>
+  /// <param name="ort_value_initializer">value that contains the initializer tensor. This must
+  /// be allocated iff tensor_proto uses in-memory external data, and may be unallocated for
+  /// small tensors with embedded data.</param>
   Status AddInitializedOrtValue(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                 const OrtValue& ort_value_initializer);
 #endif

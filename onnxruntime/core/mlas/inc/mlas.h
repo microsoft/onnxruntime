@@ -60,6 +60,9 @@ Abstract:
 #if defined(__s390x__)
 #define MLAS_TARGET_S390X
 #endif
+#if defined(__riscv) && defined(__riscv_xlen) && (__riscv_xlen == 64)
+#define MLAS_TARGET_RISCV64
+#endif
 
 #if defined(__VSX__)
 #define MLAS_TARGET_POWER
@@ -204,6 +207,7 @@ MlasActivation(
 
 struct MLAS_BACKEND_KERNEL_SELECTOR_CONFIG {
     bool use_kleidiai = true; /**< Flag to use KleidiAI backend kernels if available */
+    size_t kleidiai_conv_igemm_max_work = 0; /**< Optional SME IGEMM route threshold override; 0 uses default */
 };
 
 //
@@ -878,7 +882,7 @@ enum MLAS_CONV_ALGORITHM {
     MlasConvAlgorithmExpandThenGemm,
     MlasConvAlgorithmExpandThenGemmSegmented,
     MlasConvAlgorithmDepthwiseMultiplierGreaterThan1,
-#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_RISCV64)
     MlasConvAlgorithmDepthwise,
 #endif
 };
@@ -889,6 +893,7 @@ struct MLAS_CONV_PARAMETERS {
     size_t BatchCount;
     size_t GroupCount;
     size_t InputChannels;
+    bool ChannelsLast;
     size_t InputShape[3];
     size_t KernelShape[3];
     size_t DilationShape[3];
@@ -903,6 +908,9 @@ struct MLAS_CONV_PARAMETERS {
     MLAS_CONV_ALGORITHM Algorithm;
     ptrdiff_t ThreadCount;
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig = nullptr;
+    const void* PackedFilter = nullptr;
+    size_t PackedFilterGroupStride = 0;
+    bool FilterIsPacked = false;
     union {
         struct {
             CBLAS_TRANSPOSE TransB;
@@ -929,8 +937,38 @@ MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
                 size_t FilterCount,
                 const MLAS_ACTIVATION* Activation,
                 size_t* WorkingBufferSize,
+                bool ChannelsLast,
                 float Beta,
                 MLAS_THREADPOOL* ThreadPool);
+
+bool
+MLASCALL
+MlasConvSupportsDenseChannelsLast2DFloatKernel(
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    const size_t* InputShape,
+    const size_t* KernelShape,
+    const size_t* DilationShape,
+    const size_t* Padding,
+    const size_t* StrideShape,
+    size_t FilterCount,
+    float Beta);
+
+bool
+MLASCALL
+MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    size_t InputChannelsPerGroup,
+    const size_t* InputShape,
+    const size_t* KernelShape,
+    const size_t* DilationShape,
+    const size_t* Padding,
+    const size_t* StrideShape,
+    size_t FilterCount,
+    float Beta);
 
 void
 MLASCALL
@@ -1644,6 +1682,27 @@ MlasRotaryEmbedOneRow(
 );
 
 /**
+ * @brief Compute LayerNorm or RMSNorm (simplified) for one row of float data.
+ *        Uses platform-optimized kernel if available, otherwise returns false.
+ *        Any platform (AMD64/ARM64/RISC-V) can register a LayerNormF32Kernel.
+ *
+ * @return true if an optimized kernel was used, false if caller should fall back
+ */
+bool
+MLASCALL
+MlasLayerNormF32(
+    const float* Input,
+    const float* Scale,
+    const float* Bias,
+    float* Output,
+    float* MeanOut,
+    float* InvStdDevOut,
+    size_t NormSize,
+    float Epsilon,
+    bool Simplified
+);
+
+/**
  * @brief Supply matrices data information to half precision gemm functions
  */
 struct MLAS_HGEMM_DATA_PARAMS {
@@ -2236,4 +2295,73 @@ MLASCALL
 MlasFlashAttention(
     MlasFlashAttentionThreadedArgs* args,
     MLAS_THREADPOOL* ThreadPool
+);
+
+/**
+ * @brief Enumeration of supported GELU algorithm variants.
+ *
+ * MlasGeluErf  - Exact GELU implementation using the error function (erf).
+ * MlasGeluTanh - Approximate GELU implementation using tanh-based formulation.
+ */
+typedef enum MLAS_GELU_ALGORITHM {
+    MlasGeluErf = 0,
+    MlasGeluTanh = 1
+} MLAS_GELU_ALGORITHM;
+
+/**
+ * @brief Computes element-wise FP16 error function (erf).
+ *
+ * This routine computes:
+ *     Output[i] = erf(Input[i])
+ * for N elements. Depending on platform capabilities, this may use
+ * vectorized FP16 intrinsics or fall back to a scalar FP32 conversion path.
+ *
+ * @param Input   Pointer to input buffer of N FP16 elements.
+ * @param Output  Pointer to output buffer of N FP16 elements.
+ * @param Input_tmp_fp32   Pointer to caller-allocated scratch buffer of N floats
+ *                    for FP32 input conversion (used only on fallback path).
+ * @param Output_tmp_fp32  Pointer to caller-allocated scratch buffer of N floats
+ *                    for FP32 output conversion (used only on fallback path).
+ * @param N       Number of elements to process.
+ */
+void
+MLASCALL
+MlasComputeFP16Erf(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    float* Input_tmp_fp32,
+    float* Output_tmp_fp32,
+    size_t N
+);
+
+/**
+ * @brief Computes element-wise FP16 GELU activation.
+ *
+ * This routine computes:
+ *
+ *   If algo == MlasGeluTanh (approximate):
+ *     GELU(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
+ *
+ *   If algo == MlasGeluErf (exact):
+ *     GELU(x) = 0.5 * x * (1 + erf(x / sqrt(2)))
+ *
+ * Depending on platform capabilities, this may use vectorized FP16 kernels
+ * (SVE/NEON) or fall back to a scalar FP32 conversion path.
+ *
+ * @param input   Pointer to input buffer of FP16 elements.
+ * @param output  Pointer to output buffer of FP16 elements.
+ * @param temp    Temporary scratch buffer of at least 'count' FP16 elements.
+ *                Required by certain vectorized implementations. May be unused
+ *                in scalar fallback paths.
+ * @param count   Number of elements to process.
+ * @param algo    GELU algorithm variant (exact erf or tanh approximation).
+ */
+void
+MLASCALL 
+MlasComputeFP16Gelu(
+    const MLAS_FP16* input,
+    MLAS_FP16* output,
+    MLAS_FP16* temp,
+    size_t count,
+    MLAS_GELU_ALGORITHM algo
 );

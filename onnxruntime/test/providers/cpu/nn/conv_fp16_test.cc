@@ -686,6 +686,8 @@ TEST(ConvFp16Test, Conv2D_AutoPad2) {
   TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
 }
 
+// TODO: Enable Conv3D fp16 tests for WebGPU when the test infrastructure supports
+// conditionally skipping based on device capabilities (e.g., wgpu::FeatureName::ShaderF16).
 TEST(ConvFp16Test, Conv3D_1) {
   ConvOpAndTestAttributes attrs = {
       "",                                 // auto_pad

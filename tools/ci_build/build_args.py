@@ -228,6 +228,12 @@ def add_testing_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--skip_winml_tests", action="store_true", help="Explicitly disable WinML related tests.")
     parser.add_argument("--skip_nodejs_tests", action="store_true", help="Explicitly disable Node.js binding tests.")
     parser.add_argument("--ctest_timeout", default="10800", help="Timeout provided to CTest --timeout (seconds).")
+    parser.add_argument(
+        "--test_parallel",
+        default=None,
+        type=int,
+        help="Max CTest parallel jobs. Defaults to --parallel. Optional value 0 uses num CPUs.",
+    )
     parser.add_argument("--enable_transformers_tool_test", action="store_true", help="Enable transformers tool test.")
     parser.add_argument("--build_micro_benchmarks", action="store_true", help="Build ONNXRuntime micro-benchmarks.")
     parser.add_argument("--code_coverage", action="store_true", help="Generate code coverage report (Android only).")
@@ -645,10 +651,15 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     cuda_group.add_argument("--enable_cuda_minimal_build", action="store_true", help="Enable CUDA minimal build.")
     cuda_group.add_argument(
         "--nvcc_threads",
-        nargs="?",
-        default=-1,  # -1 signifies auto-detect based on jobs/memory
+        default=4,
         type=int,
-        help="Max NVCC threads per parallel job (-1=auto).",
+        help="Max NVCC threads per parallel job (default is 4).",
+    )
+    cuda_group.add_argument(
+        "--flash_nvcc_threads",
+        default=-1,
+        type=int,
+        help="Max NVCC threads per parallel job for flash attention (default is same value of --nvcc_threads).",
     )
     # CUDA-specific profiling
     cuda_group.add_argument(
@@ -671,6 +682,11 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     # See https://github.com/microsoft/onnxruntime/pull/25580#issuecomment-3335056846 for benchmarking details.
     cpu_group.add_argument(
         "--enable_arm_neon_nchwc", action="store_true", help="Enables building with NCHWc ARM kernels."
+    )
+    cpu_group.add_argument(
+        "--enable_rvv",
+        action="store_true",
+        help="Enable riscv64 MLAS kernels that use the RISC-V Vector extension.",
     )
 
     # --- DNNL (formerly MKL-DNN / oneDNN) ---
@@ -813,9 +829,9 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     )
     webgpu_group.add_argument(
         "--wgsl_template",
-        choices=["static", "dynamic"],
-        default="static",  # By default, use static WGSL template generation
-        help="Specify the generator for WebGPU WGSL template generation.",
+        choices=["static"],
+        default="static",
+        help="Deprecated no-op. WGSL template generation is always static; kept for backward compatibility.",
     )
 
     # --- XNNPACK ---
@@ -854,7 +870,22 @@ def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
     )
     # Telemetry arguments (cross-platform)
     parser.add_argument(
-        "--use_telemetry", action="store_true", help="Enable telemetry (ETW on Windows, 1DS on other platforms)."
+        "--use_telemetry",
+        action="store_true",
+        help="Enable telemetry (ETW on Windows; 1DS on Linux, macOS, Android, and iOS).",
+    )
+    parser.add_argument(
+        "--telemetry_shared_sdk",
+        action="store_true",
+        help=(
+            "Build the non-Windows 1DS telemetry SDK (cpp-client-telemetry) as a shared library "
+            "(libmat.so) instead of statically linking it into libonnxruntime. This lets several "
+            "binaries that link the same SDK (for example onnxruntime and onnxruntime-genai shipped "
+            "together) share a single copy of the SDK and its TLS/HTTP stack instead of embedding it "
+            "in each. The SDK's own dependencies (OpenSSL/curl/sqlite3/zlib) stay static inside "
+            "libmat.so so it remains self-contained. Requires --use_telemetry and --use_vcpkg; "
+            "Linux/macOS only."
+        ),
     )
 
 
@@ -883,13 +914,17 @@ def parse_arguments() -> argparse.Namespace:
     """Parses command line arguments for the ONNX Runtime build."""
 
     class Parser(argparse.ArgumentParser):
-        # override argument file line parsing behavior - allow multiple arguments per line and handle quotes
-        def convert_arg_line_to_args(self, arg_line: str) -> list[str]:  # Use list[str] for Python 3.9+
+        # override argument file line parsing behavior
+        # - allow multiple arguments per line and handle quotes
+        # - allow comment lines starting with '#'
+        def convert_arg_line_to_args(self, arg_line: str) -> list[str]:
+            if arg_line.lstrip().startswith("#"):  # ignore comment lines
+                return []
             return shlex.split(arg_line)
 
     parser = Parser(
         description="ONNXRuntime CI build driver.",
-        usage="""
+        usage=f"""
         Default behavior is --update --build --test for native architecture builds.
         Default behavior is --update --build for cross-compiled builds.
 
@@ -898,6 +933,10 @@ def parse_arguments() -> argparse.Namespace:
         The Test phase will run all unit tests, and optionally the ONNX tests.
 
         Use the individual flags (--update, --build, --test) to only run specific stages.
+
+        Arguments can also be passed in an argument file prefixed with '@'.
+        E.g., `{sys.argv[0]} @arguments.txt`.
+        Argument files may contain comment lines starting with '#'. They will be ignored.
         """,
         fromfile_prefix_chars="@",  # Allow args from file (@filename)
     )

@@ -392,8 +392,12 @@ common::Status SaveInitializedTensors(
       if (OrtValue ort_value_from_graph;
           graph.GetOrtValueInitializer(name, ort_value_from_graph)) {
         const auto& memory_info = (alloc != nullptr) ? alloc->Info() : memory_buffer->GetAllocInfo();
-        if (memory_info.device == default_cpu_device) {
-          // This is on CPU use directly from the graph
+        const auto& graph_value_device = ort_value_from_graph.Get<Tensor>().Location().device;
+        if (memory_info.device == default_cpu_device || graph_value_device == memory_info.device) {
+          // Either the initializer is planned on CPU, or the user-supplied initializer (e.g. from
+          // AddExternalInitializers) already lives on the planned device. In both cases use it in
+          // place: no per-session device allocation or copy, and the underlying buffer can be
+          // shared across sessions that supply the same OrtValue (matching the AddInitializer path).
           ort_value = std::move(ort_value_from_graph);
         } else {
           TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);

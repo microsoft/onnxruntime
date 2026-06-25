@@ -134,6 +134,57 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
 
   return Status::OK();
 }
+
+Status MatMul<double>::Compute(OpKernelContext* ctx) const {
+  concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
+
+  const auto* a = ctx->Input<Tensor>(0);
+  const auto* b = ctx->Input<Tensor>(1);
+
+  // match CUDA kernel implementation, ignore transpose for vectors
+  const bool trans_a = trans_a_attr_ && a->Shape().NumDimensions() != 1;
+  const bool trans_b = trans_b_attr_ && b->Shape().NumDimensions() != 1;
+
+  MatMulComputeHelper helper;
+  ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b->Shape(), trans_a, trans_b, trans_batch_a_, trans_batch_b_));
+  Tensor* y = ctx->Output(0, helper.OutputShape());
+
+  // Bail out early if the output is going to be empty
+  if (y->Shape().Size() == 0)
+    return Status::OK();
+
+  if (helper.K() == 0) {
+    EigenMatrixMapRowMajor<double> dest(y->MutableData<double>(),
+                                        narrow<Eigen::Index>(helper.M()), narrow<Eigen::Index>(helper.N()));
+    dest.setZero();
+    return Status::OK();
+  }
+
+  const auto* a_data = a->Data<double>();
+  const auto* b_data = b->Data<double>();
+  auto* y_data = y->MutableData<double>();
+
+  const size_t max_len = helper.OutputOffsets().size();
+  const size_t lda = helper.Lda(trans_a);
+  const size_t ldb = helper.Ldb(trans_b);
+
+  for (size_t i = 0; i < max_len; i++) {
+    math::GemmEx<double, concurrency::ThreadPool>(
+        trans_a ? CblasTrans : CblasNoTrans,
+        trans_b ? CblasTrans : CblasNoTrans,
+        helper.M(), helper.N(), helper.K(),
+        static_cast<double>(alpha_attr_),
+        a_data + helper.LeftOffsets()[i], static_cast<int>(lda),
+        b_data + helper.RightOffsets()[i], static_cast<int>(ldb),
+        0.0,
+        y_data + helper.OutputOffsets()[i], helper.Ldc(),
+        thread_pool,
+        nullptr);
+  }
+
+  return Status::OK();
+}
+
 #if defined(__aarch64__) && defined(__linux__)
 bool GemmPackBBfloat16(AllocatorPtr& alloc,
                        const Tensor& tensor_b,
@@ -193,16 +244,9 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ Alloc
   if (input_idx == 1) {
     size_t packed_b_size;
 #if defined(__aarch64__) && defined(__linux__)
-    size_t dim1 = 0;
-    size_t dim2 = 0;
     TensorShape b_shape = tensor.Shape();
 
-    if (b_shape.NumDimensions() == 2) {
-      dim1 = static_cast<size_t>(b_shape[0]);
-      dim2 = static_cast<size_t>(b_shape[1]);
-    }
-
-    if (use_fastmath_mode_ && (trans_a_attr_ == 0) && (trans_b_attr_ == 0) && ((dim1 * dim2) >= kFastMathModeKernelsizeThreshold)) {
+    if (CanPackBForFastMathModeSBGemm(b_shape)) {
       is_packed = GemmPackBBfloat16(alloc, tensor, trans_a_attr_ != 0, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_, &mlas_backend_kernel_selector_config_);
     } else
 #endif
@@ -220,6 +264,7 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ Alloc
 }
 
 Status MatMul<float>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                                 int input_idx,
                                                 /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
@@ -271,7 +316,19 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   const size_t lda = helper.Lda(trans_a);
   const size_t ldb = helper.Ldb(trans_b);
 #if defined(__aarch64__) && defined(__linux__)
-  if (use_fastmath_mode_ && !trans_a && !trans_b && ((N * K) >= kFastMathModeKernelsizeThreshold)) {
+  const bool can_use_fastmath_sbgemm = CanUseFastMathModeSBGemm(N, K);
+  if (packed_b_) {
+    const bool packed_b_can_use_fastmath_sbgemm = CanPackBForFastMathModeSBGemm(b_shape);
+    if (packed_b_can_use_fastmath_sbgemm) {
+      ORT_ENFORCE(K == static_cast<size_t>(b_shape[0]),
+                  "MatMul fastmath PrePack/Compute K mismatch: packed B K=",
+                  b_shape[0], ", Compute K=", K);
+    }
+    ORT_ENFORCE(can_use_fastmath_sbgemm == packed_b_can_use_fastmath_sbgemm,
+                "MatMul fastmath PrePack/Compute eligibility mismatch.");
+  }
+
+  if (can_use_fastmath_sbgemm) {
     std::vector<MLAS_SBGEMM_DATA_PARAMS> data(max_len);
     for (size_t i = 0; i < max_len; i++) {
       data[i].BIsfp32 = !(bool(packed_b_));

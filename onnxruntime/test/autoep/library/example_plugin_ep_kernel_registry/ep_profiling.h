@@ -68,7 +68,9 @@ class EpEventManager {
     std::chrono::high_resolution_clock::time_point start_time;
     std::chrono::high_resolution_clock::time_point end_time;
     std::string ort_event_name;  // Set from the correlated ORT event
-    std::thread::id thread_id;   // Thread that created this event
+    int64_t ort_event_start_us = -1;
+    int64_t ort_event_duration_us = -1;
+    std::thread::id thread_id;  // Thread that created this event
   };
 
   static EpEventManager& GetInstance();
@@ -82,7 +84,8 @@ class EpEventManager {
   void UnregisterProfiler(uint64_t profiler_id);
 
   void PushOrtEvent(uint64_t profiler_id);
-  void PopOrtEvent(uint64_t profiler_id, const std::string& ort_event_name);
+  void PopOrtEvent(uint64_t profiler_id, const std::string& ort_event_name, int64_t ort_event_start_us,
+                   int64_t ort_event_duration_us);
 
   void AddEpEvent(uint64_t profiler_id, Event event);
 

@@ -150,10 +150,10 @@ if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE AND NOT onnxruntime_USE_VCPKG)
       if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
         onnxruntime_fetchcontent_declare(protoc_binary URL ${DEP_URL_protoc_linux_x64} URL_HASH SHA1=${DEP_SHA1_protoc_linux_x64} EXCLUDE_FROM_ALL)
         FetchContent_Populate(protoc_binary)
-      elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
+      elseif(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
         onnxruntime_fetchcontent_declare(protoc_binary URL ${DEP_URL_protoc_linux_x86} URL_HASH SHA1=${DEP_SHA1_protoc_linux_x86} EXCLUDE_FROM_ALL)
         FetchContent_Populate(protoc_binary)
-      elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^aarch64.*")
+      elseif(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^aarch64.*")
         onnxruntime_fetchcontent_declare(protoc_binary URL ${DEP_URL_protoc_linux_aarch64} URL_HASH SHA1=${DEP_SHA1_protoc_linux_aarch64} EXCLUDE_FROM_ALL)
         FetchContent_Populate(protoc_binary)
       endif()
@@ -275,6 +275,8 @@ onnxruntime_fetchcontent_declare(
   URL ${DEP_URL_date}
   URL_HASH SHA1=${DEP_SHA1_date}
   EXCLUDE_FROM_ALL
+  PATCH_COMMAND
+    ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/date/date.patch
   FIND_PACKAGE_ARGS 3...<4 NAMES date
 )
 onnxruntime_fetchcontent_makeavailable(date)
@@ -375,6 +377,18 @@ if (CPUINFO_SUPPORTED)
         ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/win_arm_fp16_detection_fallback.patch
       FIND_PACKAGE_ARGS NAMES cpuinfo
     )
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(STATUS "Applying sysfs fallback patch for cpuinfo on Linux")
+    onnxruntime_fetchcontent_declare(
+      pytorch_cpuinfo
+      URL ${DEP_URL_pytorch_cpuinfo}
+      URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+      EXCLUDE_FROM_ALL
+      PATCH_COMMAND
+        # https://github.com/microsoft/onnxruntime/issues/10038
+        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/fix_missing_sysfs_fallback.patch
+      FIND_PACKAGE_ARGS NAMES cpuinfo
+    )
   else()
     onnxruntime_fetchcontent_declare(
       pytorch_cpuinfo
@@ -392,24 +406,16 @@ if (CPUINFO_SUPPORTED)
   endif()
 endif()
 
-if(onnxruntime_USE_CUDA)
-  onnxruntime_fetchcontent_declare(
-    GSL
-    URL ${DEP_URL_microsoft_gsl}
-    URL_HASH SHA1=${DEP_SHA1_microsoft_gsl}
-    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/gsl/1064.patch
-    EXCLUDE_FROM_ALL
-    FIND_PACKAGE_ARGS 4.0 NAMES Microsoft.GSL
-  )
-else()
-  onnxruntime_fetchcontent_declare(
-    GSL
-    URL ${DEP_URL_microsoft_gsl}
-    URL_HASH SHA1=${DEP_SHA1_microsoft_gsl}
-    EXCLUDE_FROM_ALL
-    FIND_PACKAGE_ARGS 4.0 NAMES Microsoft.GSL
-  )
-endif()
+onnxruntime_fetchcontent_declare(
+  GSL
+  URL ${DEP_URL_microsoft_gsl}
+  URL_HASH SHA1=${DEP_SHA1_microsoft_gsl}
+  # Stringify fix for GSL_SUPPRESS on MSVC (C4875). Remove when GSL ships a release
+  # containing microsoft/GSL#1213 (commit 543d0dd).
+  PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/gsl/1213.patch
+  EXCLUDE_FROM_ALL
+  FIND_PACKAGE_ARGS 4.0 NAMES Microsoft.GSL
+)
 set(GSL_TARGET "Microsoft.GSL::GSL")
 set(GSL_INCLUDE_DIR "$<TARGET_PROPERTY:${GSL_TARGET},INTERFACE_INCLUDE_DIRECTORIES>")
 onnxruntime_fetchcontent_makeavailable(GSL)
@@ -611,10 +617,17 @@ endif()
 if(onnxruntime_ENABLE_TRAINING OR (onnxruntime_ENABLE_TRAINING_APIS AND onnxruntime_BUILD_UNIT_TESTS))
   # Once code under orttraining/orttraining/models dir is removed "onnxruntime_ENABLE_TRAINING" should be removed from
   # this conditional
+  if(Patch_FOUND)
+    set(ONNXRUNTIME_CXXOPTS_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/cxxopts/gcc-15-compat.patch)
+  else()
+    set(ONNXRUNTIME_CXXOPTS_PATCH_COMMAND "")
+  endif()
+
   onnxruntime_fetchcontent_declare(
     cxxopts
     URL ${DEP_URL_cxxopts}
     URL_HASH SHA1=${DEP_SHA1_cxxopts}
+    PATCH_COMMAND ${ONNXRUNTIME_CXXOPTS_PATCH_COMMAND}
     EXCLUDE_FROM_ALL
     FIND_PACKAGE_ARGS NAMES cxxopts
   )
@@ -785,6 +798,19 @@ if (onnxruntime_USE_WEBGPU)
           #
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_buffer_fix_injection.patch &&
 
+          # The dawn_parallel_build_fix.patch contains the following changes:
+          #
+          # - (private) Fix parallel build race condition in emdawnwebgpu header copy
+          #   The emdawnwebgpu_headers_gen_add macro's add_custom_command uses cmake -E copy
+          #   without ensuring the destination directory exists first. When building with
+          #   parallel jobs (-j32), the copy commands for webgpu_glfw.h and
+          #   webgpu_enum_class_bitmasks.h can run before any DawnJSONGenerator command
+          #   has created gen/src/emdawnwebgpu/include/webgpu/, causing the copy to fail.
+          #   This patch adds cmake -E make_directory before the copy so the directory is
+          #   always present regardless of parallel build ordering.
+          #
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_parallel_build_fix.patch &&
+
           # Remove the test folder to speed up potential file scan operations (70k+ files not needed for build).
           # Using <SOURCE_DIR> token ensures the correct absolute path regardless of working directory.
           ${CMAKE_COMMAND} -E rm -rf <SOURCE_DIR>/test)
@@ -814,27 +840,6 @@ if (onnxruntime_USE_WEBGPU)
 
   if (onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES webgpu_glfw glfw)
-  endif()
-
-  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
-    if(onnxruntime_USE_VCPKG)
-      find_package(unofficial-duktape CONFIG REQUIRED)
-      add_library(duktape_static ALIAS unofficial::duktape::duktape)
-    else()
-      onnxruntime_fetchcontent_declare(
-        duktape
-        URL ${DEP_URL_duktape}
-        URL_HASH SHA1=${DEP_SHA1_duktape}
-        EXCLUDE_FROM_ALL
-      )
-      onnxruntime_fetchcontent_makeavailable(duktape)
-
-      if(NOT TARGET duktape_static)
-        add_library(duktape_static STATIC "${duktape_SOURCE_DIR}/src/duktape.c")
-        target_compile_features(duktape_static PRIVATE c_std_99)
-        target_include_directories(duktape_static INTERFACE $<BUILD_INTERFACE:${duktape_SOURCE_DIR}/src>)
-      endif()
-    endif()
   endif()
 endif()
 
@@ -898,158 +903,170 @@ endif()
 
 # 1DS SDK (cpp_client_telemetry) for cross-platform telemetry on non-Windows platforms
 if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
-  set(BUILD_UNIT_TESTS_SAVED "${BUILD_UNIT_TESTS}")
-  set(BUILD_FUNC_TESTS_SAVED "${BUILD_FUNC_TESTS}")
-  set(BUILD_SAMPLES_SAVED "${BUILD_SAMPLES}")
-  set(BUILD_SHARED_LIBS_SAVED "${BUILD_SHARED_LIBS}")
-  set(BUILD_UNIT_TESTS OFF CACHE BOOL "Disable 1DS SDK unit tests" FORCE)
-  set(BUILD_FUNC_TESTS OFF CACHE BOOL "Disable 1DS SDK functional tests" FORCE)
-  set(BUILD_SAMPLES OFF CACHE BOOL "Disable 1DS SDK samples" FORCE)
-  # Build 1DS SDK as static library
-  set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build 1DS SDK as static library" FORCE)
-  # Disable optional 1DS modules that may not have source in the release archive
-  set(BUILD_PRIVACYGUARD OFF CACHE BOOL "Disable 1DS privacy guard module" FORCE)
-  set(BUILD_SANITIZER OFF CACHE BOOL "Disable 1DS sanitizer module" FORCE)
-  # Disable ObjC and Swift wrappers - we use the C++ API directly
-  set(BUILD_OBJC_WRAPPER OFF CACHE BOOL "Disable 1DS ObjC wrapper" FORCE)
-  set(BUILD_SWIFT_WRAPPER OFF CACHE BOOL "Disable 1DS Swift wrapper" FORCE)
-
-  # The 1DS SDK CMakeLists.txt expects specific variables on Apple platforms.
-  # For iOS: We set BUILD_IOS=YES so the 1DS SDK skips its CURL dependency
-  # (iOS uses NSURLSession instead). We disable FORCE_RESET_OSX_DEPLOYMENT_TARGET
-  # and provide IOS_DEPLOYMENT_TARGET to prevent the SDK from clearing cmake's
-  # deployment target or adding empty -miphoneos-version-min flags.
-  # The SDK's internal xcodebuild call may fail (license issues), but cmake's
-  # toolchain already provides the correct sysroot via CMAKE_OSX_SYSROOT.
-  if(APPLE)
-    if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-      set(BUILD_IOS YES CACHE BOOL "Tell 1DS SDK this is an iOS build" FORCE)
-      set(FORCE_RESET_OSX_DEPLOYMENT_TARGET NO CACHE BOOL "Don't let 1DS SDK clear deployment target" FORCE)
-      if(NOT DEFINED IOS_DEPLOYMENT_TARGET)
-        set(IOS_DEPLOYMENT_TARGET "${CMAKE_OSX_DEPLOYMENT_TARGET}" CACHE STRING "iOS deployment target for 1DS SDK" FORCE)
-      endif()
-      if(NOT DEFINED IOS_ARCH)
-        set(IOS_ARCH "${CMAKE_OSX_ARCHITECTURES}" CACHE STRING "iOS architecture for 1DS SDK" FORCE)
-        if(NOT IOS_ARCH)
-          set(IOS_ARCH "arm64" CACHE STRING "iOS architecture for 1DS SDK" FORCE)
-        endif()
-      endif()
-      if(NOT DEFINED IOS_PLAT)
-        if(CMAKE_OSX_SYSROOT MATCHES "iPhoneSimulator")
-          set(IOS_PLAT "iphonesimulator" CACHE STRING "iOS platform for 1DS SDK" FORCE)
-        else()
-          set(IOS_PLAT "iphoneos" CACHE STRING "iOS platform for 1DS SDK" FORCE)
-        endif()
-      endif()
-    else()
-      if(NOT DEFINED MAC_ARCH)
-        set(MAC_ARCH "${CMAKE_OSX_ARCHITECTURES}" CACHE STRING "Architecture for 1DS SDK on macOS" FORCE)
-        if(NOT MAC_ARCH)
-          set(MAC_ARCH "${CMAKE_SYSTEM_PROCESSOR}" CACHE STRING "Architecture for 1DS SDK on macOS" FORCE)
-        endif()
-      endif()
-    endif()
+  if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    message(FATAL_ERROR "onnxruntime_USE_TELEMETRY is not supported for WebAssembly/Emscripten builds: "
+                        "the 1DS telemetry SDK is excluded on Emscripten. Disable telemetry for WASM builds.")
   endif()
+  if(onnxruntime_USE_VCPKG)
+    # Consume the 1DS SDK from the vcpkg port "cpp-client-telemetry", which exposes the
+    # MSTelemetry::mat target with its include directories and transitive dependencies
+    # (curl/nlohmann-json/sqlite3/zlib) already wired up via vcpkg. None of the FetchContent
+    # workarounds below are needed on this path.
+    find_package(MSTelemetry CONFIG REQUIRED)
+  else()
+    set(BUILD_UNIT_TESTS_SAVED "${BUILD_UNIT_TESTS}")
+    set(BUILD_FUNC_TESTS_SAVED "${BUILD_FUNC_TESTS}")
+    set(BUILD_SAMPLES_SAVED "${BUILD_SAMPLES}")
+    set(BUILD_SHARED_LIBS_SAVED "${BUILD_SHARED_LIBS}")
+    set(BUILD_UNIT_TESTS OFF CACHE BOOL "Disable 1DS SDK unit tests" FORCE)
+    set(BUILD_FUNC_TESTS OFF CACHE BOOL "Disable 1DS SDK functional tests" FORCE)
+    set(BUILD_SAMPLES OFF CACHE BOOL "Disable 1DS SDK samples" FORCE)
+    # Build 1DS SDK as static library
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build 1DS SDK as static library" FORCE)
+    # Disable optional 1DS modules that may not have source in the release archive
+    set(BUILD_PRIVACYGUARD OFF CACHE BOOL "Disable 1DS privacy guard module" FORCE)
+    set(BUILD_SANITIZER OFF CACHE BOOL "Disable 1DS sanitizer module" FORCE)
+    # Disable ObjC and Swift wrappers - we use the C++ API directly
+    set(BUILD_OBJC_WRAPPER OFF CACHE BOOL "Disable 1DS ObjC wrapper" FORCE)
+    set(BUILD_SWIFT_WRAPPER OFF CACHE BOOL "Disable 1DS Swift wrapper" FORCE)
 
-  onnxruntime_fetchcontent_declare(
-    cpp_client_telemetry
-    URL ${DEP_URL_cpp_client_telemetry}
-    URL_HASH SHA1=${DEP_SHA1_cpp_client_telemetry}
-    EXCLUDE_FROM_ALL
-  )
-  onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
-
-  # cpp_client_telemetry's CMakeLists.txt uses include_directories(${CMAKE_SOURCE_DIR}) to find
-  # its bundled nlohmann/, sqlite/, and zlib/ headers. When built via FetchContent, CMAKE_SOURCE_DIR
-  # points to ORT's root instead. Fix by adding the actual source dir as an include path.
-  if(TARGET mat)
-    target_include_directories(mat PRIVATE ${cpp_client_telemetry_SOURCE_DIR})
-    # On iOS we ship the SDK's bundled sqlite3/zlib headers and pair them with a bundled
-    # zlib target below, so the vendored symbol-renaming `act_z_*` ABI is consistent.
-    # On macOS the system <zlib.h> / <sqlite3.h> (resolved via /usr/local/include from
-    # lib/CMakeLists.txt) is the right header to pair with the system `z` / `sqlite3`
-    # targets that the SDK imports; adding the vendored headers there would produce
-    # an `act_z_*` compile/link mismatch against system libz.
-    if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-      target_include_directories(mat PRIVATE ${cpp_client_telemetry_SOURCE_DIR}/sqlite)
-      target_include_directories(mat PRIVATE ${cpp_client_telemetry_SOURCE_DIR}/zlib)
+    # The 1DS SDK CMakeLists.txt expects specific variables on Apple platforms.
+    # For iOS: We set BUILD_IOS=YES so the 1DS SDK skips its CURL dependency
+    # (iOS uses NSURLSession instead). We disable FORCE_RESET_OSX_DEPLOYMENT_TARGET
+    # and provide IOS_DEPLOYMENT_TARGET to prevent the SDK from clearing cmake's
+    # deployment target or adding empty -miphoneos-version-min flags.
+    # The SDK's internal xcodebuild call may fail (license issues), but cmake's
+    # toolchain already provides the correct sysroot via CMAKE_OSX_SYSROOT.
+    if(APPLE)
+      if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        set(BUILD_IOS YES CACHE BOOL "Tell 1DS SDK this is an iOS build" FORCE)
+        set(FORCE_RESET_OSX_DEPLOYMENT_TARGET NO CACHE BOOL "Don't let 1DS SDK clear deployment target" FORCE)
+        if(NOT DEFINED IOS_DEPLOYMENT_TARGET)
+          set(IOS_DEPLOYMENT_TARGET "${CMAKE_OSX_DEPLOYMENT_TARGET}" CACHE STRING "iOS deployment target for 1DS SDK" FORCE)
+        endif()
+        if(NOT DEFINED IOS_ARCH)
+          set(IOS_ARCH "${CMAKE_OSX_ARCHITECTURES}" CACHE STRING "iOS architecture for 1DS SDK" FORCE)
+          if(NOT IOS_ARCH)
+            set(IOS_ARCH "arm64" CACHE STRING "iOS architecture for 1DS SDK" FORCE)
+          endif()
+        endif()
+        if(NOT DEFINED IOS_PLAT)
+          if(CMAKE_OSX_SYSROOT MATCHES "iPhoneSimulator")
+            set(IOS_PLAT "iphonesimulator" CACHE STRING "iOS platform for 1DS SDK" FORCE)
+          else()
+            set(IOS_PLAT "iphoneos" CACHE STRING "iOS platform for 1DS SDK" FORCE)
+          endif()
+        endif()
+      else()
+        if(NOT DEFINED MAC_ARCH)
+          set(MAC_ARCH "${CMAKE_OSX_ARCHITECTURES}" CACHE STRING "Architecture for 1DS SDK on macOS" FORCE)
+          if(NOT MAC_ARCH)
+            set(MAC_ARCH "${CMAKE_SYSTEM_PROCESSOR}" CACHE STRING "Architecture for 1DS SDK on macOS" FORCE)
+          endif()
+        endif()
+      endif()
     endif()
-    # ORT enables -ffast-math globally, which conflicts with
-    # std::numeric_limits<double>::infinity() in the 1DS SDK's bundled nlohmann/json.hpp.
-    # Also suppress warnings in the 1DS SDK code that ORT treats as errors.
-    target_compile_options(mat PRIVATE
-      -fno-finite-math-only
-      -Wno-unused-const-variable
-      $<$<CXX_COMPILER_ID:GNU>:-Wno-reorder>
-      $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-reorder-ctor>
+
+    onnxruntime_fetchcontent_declare(
+      cpp_client_telemetry
+      URL ${DEP_URL_cpp_client_telemetry}
+      URL_HASH SHA1=${DEP_SHA1_cpp_client_telemetry}
+      EXCLUDE_FROM_ALL
     )
-    # The vendored zlib headers always prefix exported symbols via names.h (act_z_*),
-    # so iOS cannot link mat against the system zlib. Mirror the SDK's Android build
-    # and provide a bundled zlib target for ORT's FetchContent build.
-    if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT TARGET onnxruntime_mat_zlib_bundled)
-      add_library(onnxruntime_mat_zlib_bundled STATIC
-        "${cpp_client_telemetry_SOURCE_DIR}/zlib/adler32.c"
-        "${cpp_client_telemetry_SOURCE_DIR}/zlib/compress.c"
-        "${cpp_client_telemetry_SOURCE_DIR}/zlib/crc32.c"
-        "${cpp_client_telemetry_SOURCE_DIR}/zlib/deflate.c"
-        "${cpp_client_telemetry_SOURCE_DIR}/zlib/gzclose.c"
-        "${cpp_client_telemetry_SOURCE_DIR}/zlib/gzlib.c"
-        "${cpp_client_telemetry_SOURCE_DIR}/zlib/gzread.c"
-        "${cpp_client_telemetry_SOURCE_DIR}/zlib/gzwrite.c"
-        "${cpp_client_telemetry_SOURCE_DIR}/zlib/infback.c"
-        "${cpp_client_telemetry_SOURCE_DIR}/zlib/inffast.c"
-        "${cpp_client_telemetry_SOURCE_DIR}/zlib/inflate.c"
-        "${cpp_client_telemetry_SOURCE_DIR}/zlib/inftrees.c"
-        "${cpp_client_telemetry_SOURCE_DIR}/zlib/trees.c"
-        "${cpp_client_telemetry_SOURCE_DIR}/zlib/uncompr.c"
-        "${cpp_client_telemetry_SOURCE_DIR}/zlib/zutil.c"
-        "${cpp_client_telemetry_SOURCE_DIR}/zlib/simd_stub.c"
-      )
-      target_include_directories(onnxruntime_mat_zlib_bundled PUBLIC "${cpp_client_telemetry_SOURCE_DIR}/zlib")
-      target_compile_options(onnxruntime_mat_zlib_bundled PRIVATE
-        -Wno-strict-prototypes
-        -Wno-deprecated-non-prototype
-        -Wno-implicit-function-declaration
-      )
-      target_link_libraries(mat PUBLIC onnxruntime_mat_zlib_bundled)
-    endif()
-    # The 1DS SDK's iOS path calls xcodebuild to find the sysroot, which can
-    # fail (license not accepted, missing tools) and leave CMAKE_OSX_SYSROOT
-    # empty in its scope. Force the correct sysroot via compile options.
-    if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND CMAKE_OSX_SYSROOT)
-      target_compile_options(mat PRIVATE "-isysroot" "${CMAKE_OSX_SYSROOT}")
-    endif()
-  endif()
+    onnxruntime_fetchcontent_makeavailable(cpp_client_telemetry)
 
-  # The 1DS SDK creates GLOBAL imported targets 'z' and 'sqlite3' without setting
-  # IMPORTED_LOCATION, which causes link errors on cross-compile. For Android,
-  # the 1DS CMake now builds from bundled source. For other platforms, resolve
-  # the imported targets if possible.
-  if(NOT ANDROID)
-    if(TARGET z)
-      get_target_property(_z_loc z IMPORTED_LOCATION)
-      if(NOT _z_loc OR _z_loc STREQUAL "_z_loc-NOTFOUND")
-        find_library(_z_lib z)
-        if(_z_lib)
-          set_target_properties(z PROPERTIES IMPORTED_LOCATION "${_z_lib}")
+    # cpp_client_telemetry's CMakeLists.txt uses include_directories(${CMAKE_SOURCE_DIR}) to find
+    # its bundled nlohmann/, sqlite/, and zlib/ headers. When built via FetchContent, CMAKE_SOURCE_DIR
+    # points to ORT's root instead. Fix by adding the actual source dir as an include path.
+    if(TARGET mat)
+      target_include_directories(mat PRIVATE ${cpp_client_telemetry_SOURCE_DIR})
+      # On iOS we ship the SDK's bundled sqlite3/zlib headers and pair them with a bundled
+      # zlib target below, so the vendored symbol-renaming `act_z_*` ABI is consistent.
+      # On macOS the system <zlib.h> / <sqlite3.h> (resolved via /usr/local/include from
+      # lib/CMakeLists.txt) is the right header to pair with the system `z` / `sqlite3`
+      # targets that the SDK imports; adding the vendored headers there would produce
+      # an `act_z_*` compile/link mismatch against system libz.
+      if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        target_include_directories(mat PRIVATE ${cpp_client_telemetry_SOURCE_DIR}/sqlite)
+        target_include_directories(mat PRIVATE ${cpp_client_telemetry_SOURCE_DIR}/zlib)
+      endif()
+      # ORT enables -ffast-math globally, which conflicts with
+      # std::numeric_limits<double>::infinity() in the 1DS SDK's bundled nlohmann/json.hpp.
+      # Also suppress warnings in the 1DS SDK code that ORT treats as errors.
+      target_compile_options(mat PRIVATE
+        -fno-finite-math-only
+        -Wno-unused-const-variable
+        $<$<CXX_COMPILER_ID:GNU>:-Wno-reorder>
+        $<$<CXX_COMPILER_ID:Clang,AppleClang>:-Wno-reorder-ctor>
+      )
+      # The vendored zlib headers always prefix exported symbols via names.h (act_z_*),
+      # so iOS cannot link mat against the system zlib. Mirror the SDK's Android build
+      # and provide a bundled zlib target for ORT's FetchContent build.
+      if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND NOT TARGET onnxruntime_mat_zlib_bundled)
+        add_library(onnxruntime_mat_zlib_bundled STATIC
+          "${cpp_client_telemetry_SOURCE_DIR}/zlib/adler32.c"
+          "${cpp_client_telemetry_SOURCE_DIR}/zlib/compress.c"
+          "${cpp_client_telemetry_SOURCE_DIR}/zlib/crc32.c"
+          "${cpp_client_telemetry_SOURCE_DIR}/zlib/deflate.c"
+          "${cpp_client_telemetry_SOURCE_DIR}/zlib/gzclose.c"
+          "${cpp_client_telemetry_SOURCE_DIR}/zlib/gzlib.c"
+          "${cpp_client_telemetry_SOURCE_DIR}/zlib/gzread.c"
+          "${cpp_client_telemetry_SOURCE_DIR}/zlib/gzwrite.c"
+          "${cpp_client_telemetry_SOURCE_DIR}/zlib/infback.c"
+          "${cpp_client_telemetry_SOURCE_DIR}/zlib/inffast.c"
+          "${cpp_client_telemetry_SOURCE_DIR}/zlib/inflate.c"
+          "${cpp_client_telemetry_SOURCE_DIR}/zlib/inftrees.c"
+          "${cpp_client_telemetry_SOURCE_DIR}/zlib/trees.c"
+          "${cpp_client_telemetry_SOURCE_DIR}/zlib/uncompr.c"
+          "${cpp_client_telemetry_SOURCE_DIR}/zlib/zutil.c"
+          "${cpp_client_telemetry_SOURCE_DIR}/zlib/simd_stub.c"
+        )
+        target_include_directories(onnxruntime_mat_zlib_bundled PUBLIC "${cpp_client_telemetry_SOURCE_DIR}/zlib")
+        target_compile_options(onnxruntime_mat_zlib_bundled PRIVATE
+          -Wno-strict-prototypes
+          -Wno-deprecated-non-prototype
+          -Wno-implicit-function-declaration
+        )
+        target_link_libraries(mat PUBLIC onnxruntime_mat_zlib_bundled)
+      endif()
+      # The 1DS SDK's iOS path calls xcodebuild to find the sysroot, which can
+      # fail (license not accepted, missing tools) and leave CMAKE_OSX_SYSROOT
+      # empty in its scope. Force the correct sysroot via compile options.
+      if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND CMAKE_OSX_SYSROOT)
+        target_compile_options(mat PRIVATE "-isysroot" "${CMAKE_OSX_SYSROOT}")
+      endif()
+    endif()
+
+    # The 1DS SDK creates GLOBAL imported targets 'z' and 'sqlite3' without setting
+    # IMPORTED_LOCATION, which causes link errors on cross-compile. For Android,
+    # the 1DS CMake now builds from bundled source. For other platforms, resolve
+    # the imported targets if possible.
+    if(NOT ANDROID)
+      if(TARGET z)
+        get_target_property(_z_loc z IMPORTED_LOCATION)
+        if(NOT _z_loc OR _z_loc STREQUAL "_z_loc-NOTFOUND")
+          find_library(_z_lib z)
+          if(_z_lib)
+            set_target_properties(z PROPERTIES IMPORTED_LOCATION "${_z_lib}")
+          endif()
+        endif()
+      endif()
+      if(TARGET sqlite3)
+        get_target_property(_sqlite3_loc sqlite3 IMPORTED_LOCATION)
+        if(NOT _sqlite3_loc OR _sqlite3_loc STREQUAL "_sqlite3_loc-NOTFOUND")
+          find_library(_sqlite3_lib sqlite3)
+          if(_sqlite3_lib)
+            set_target_properties(sqlite3 PROPERTIES IMPORTED_LOCATION "${_sqlite3_lib}")
+          endif()
         endif()
       endif()
     endif()
-    if(TARGET sqlite3)
-      get_target_property(_sqlite3_loc sqlite3 IMPORTED_LOCATION)
-      if(NOT _sqlite3_loc OR _sqlite3_loc STREQUAL "_sqlite3_loc-NOTFOUND")
-        find_library(_sqlite3_lib sqlite3)
-        if(_sqlite3_lib)
-          set_target_properties(sqlite3 PROPERTIES IMPORTED_LOCATION "${_sqlite3_lib}")
-        endif()
-      endif()
-    endif()
-  endif()
 
-  set(BUILD_UNIT_TESTS "${BUILD_UNIT_TESTS_SAVED}" CACHE BOOL "" FORCE)
-  set(BUILD_FUNC_TESTS "${BUILD_FUNC_TESTS_SAVED}" CACHE BOOL "" FORCE)
-  set(BUILD_SAMPLES "${BUILD_SAMPLES_SAVED}" CACHE BOOL "" FORCE)
-  set(BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS_SAVED}" CACHE BOOL "" FORCE)
+    set(BUILD_UNIT_TESTS "${BUILD_UNIT_TESTS_SAVED}" CACHE BOOL "" FORCE)
+    set(BUILD_FUNC_TESTS "${BUILD_FUNC_TESTS_SAVED}" CACHE BOOL "" FORCE)
+    set(BUILD_SAMPLES "${BUILD_SAMPLES_SAVED}" CACHE BOOL "" FORCE)
+    set(BUILD_SHARED_LIBS "${BUILD_SHARED_LIBS_SAVED}" CACHE BOOL "" FORCE)
+  endif()
 endif()
 
 FILE(TO_NATIVE_PATH ${CMAKE_BINARY_DIR} ORT_BINARY_DIR)

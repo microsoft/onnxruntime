@@ -9,18 +9,29 @@
 #include "gtest/gtest.h"
 
 #include "core/flatbuffers/schema/ort.fbs.h"
+#include "core/graph/constants.h"
+#include "core/graph/model.h"
 #include "core/graph/schema_registry.h"
+#include "core/optimizer/layout_transformation/layout_transformation_potentially_added_ops.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
+#include "test/test_environment.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/inference_session_wrapper.h"
+
+#include <filesystem>
+#include <fstream>
 
 namespace onnxruntime::test {
 
 static Status LoadLayoutTransformationRequiredOpsFromOpSchemas(KernelTypeStrResolver& kernel_type_str_resolver) {
-  const auto required_op_ids = kernel_type_str_resolver_utils::GetLayoutTransformationRequiredOpIdentifiers();
   const auto schema_registry = SchemaRegistryManager{};
-  for (const auto& op_id : required_op_ids) {
+  for (const auto& op_id : kLayoutTransformationPotentiallyAddedOps) {
     const auto* op_schema = schema_registry.GetSchema(std::string{op_id.op_type}, op_id.since_version,
                                                       std::string{op_id.domain});
-    ORT_RETURN_IF(op_schema == nullptr, "Failed to get op schema.");
+    ORT_RETURN_IF(op_schema == nullptr,
+                  "Failed to get op schema for domain='", op_id.domain,
+                  "', op_type='", op_id.op_type,
+                  "', since_version=", op_id.since_version, ".");
     ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterOpSchema(*op_schema));
   }
   return Status::OK();
@@ -48,6 +59,34 @@ TEST(KernelTypeStrResolverUtilsTest, VerifyLayoutTransformationRequiredOpsResolv
   }
 #endif  // !defined(DISABLE_CONTRIB_OPS)
 }
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+TEST(KernelTypeStrResolverUtilsTest, ResolveNhwcFusedConvFromLayoutTransformationRequiredOps) {
+  KernelTypeStrResolver resolver;
+  ASSERT_STATUS_OK(kernel_type_str_resolver_utils::AddLayoutTransformationRequiredOpsToKernelTypeStrResolver(resolver));
+
+  Model model("nhwc_fused_conv_layout_transform_resolver_test", false, DefaultLoggingManager().DefaultLogger());
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto float_tensor;
+  auto* tensor_type = float_tensor.mutable_tensor_type();
+  tensor_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  tensor_type->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& x = graph.GetOrCreateNodeArg("x", &float_tensor);
+  auto& w = graph.GetOrCreateNodeArg("w", &float_tensor);
+  auto& y = graph.GetOrCreateNodeArg("y", &float_tensor);
+
+  auto& nhwc_fused_conv = graph.AddNode(
+      "nhwc_fused_conv", "NhwcFusedConv", "test node", {&x, &w}, {&y}, nullptr, kMSDomain);
+  nhwc_fused_conv.SetSinceVersion(1);
+
+  gsl::span<const ArgTypeAndIndex> resolved_args;
+  ASSERT_STATUS_OK(resolver.ResolveKernelTypeStr(nhwc_fused_conv, "T", resolved_args));
+  ASSERT_FALSE(resolved_args.empty());
+}
+
+#endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
 
 // run this test manually to output a hard-coded byte array.
 // update AddLayoutTransformationRequiredOpsToKernelTypeStrResolver in

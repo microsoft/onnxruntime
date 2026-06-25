@@ -41,16 +41,16 @@ GetCapability::GetCapability(const EPCtxHandler& ep_ctx_handler,
     npu_qdq_optimizer_enabled = true;  // see data_ops.cc ~615 where we check for int16 types for gpu, this may change to a better approach later
   }
 
-#if OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR == 1
-  data_ops_ = std::make_unique<DataOps>(graph_viewer_, V_2025_1, device_type_, npu_qdq_optimizer_enabled);
-#elif OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR == 2
-  data_ops_ = std::make_unique<DataOps>(graph_viewer_, V_2025_2, device_type_, npu_qdq_optimizer_enabled);
-#elif OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR == 3
-  data_ops_ = std::make_unique<DataOps>(graph_viewer_, V_2025_3, device_type_, npu_qdq_optimizer_enabled);
+#if OPENVINO_VERSION_MAJOR == 2026 && OPENVINO_VERSION_MINOR == 1
+  data_ops_ = std::make_unique<DataOps>(graph_viewer_, V_2026_1, device_type_, npu_qdq_optimizer_enabled);
+#elif OPENVINO_VERSION_MAJOR == 2026 && OPENVINO_VERSION_MINOR == 0
+  data_ops_ = std::make_unique<DataOps>(graph_viewer_, V_2026_0, device_type_, npu_qdq_optimizer_enabled);
 #elif OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR == 4
   data_ops_ = std::make_unique<DataOps>(graph_viewer_, V_2025_4, device_type_, npu_qdq_optimizer_enabled);
+#elif OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR == 3
+  data_ops_ = std::make_unique<DataOps>(graph_viewer_, V_2025_3, device_type_, npu_qdq_optimizer_enabled);
 #else
-  data_ops_ = std::make_unique<DataOps>(graph_viewer_, V_2025_4, device_type_, npu_qdq_optimizer_enabled);
+  data_ops_ = std::make_unique<DataOps>(graph_viewer_, V_2026_1, device_type_, npu_qdq_optimizer_enabled);
 #endif
 }
 
@@ -77,6 +77,35 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
 
   // Check for EpContext nodes
   const auto& nodes = graph_viewer_.GetNodesInTopologicalOrder();
+
+  // Build set of all outputs actually produced by nodes in the graph
+  std::unordered_set<std::string> valid_node_outputs;
+  for (const auto& node_idx : nodes) {
+    const Node* n = graph_viewer_.GetNode(node_idx);
+    for (const auto* output_def : n->OutputDefs()) {
+      if (output_def) {
+        valid_node_outputs.insert(output_def->Name());
+      }
+    }
+  }
+
+  // Lambda to filter graph outputs, only including those with producer nodes
+  auto FilterValidOutputs = [&valid_node_outputs, &graph_viewer = graph_viewer_](std::vector<std::string>& outputs) {
+    for (const auto& output_node_arg : graph_viewer.GetOutputs()) {
+      const auto& output_name = output_node_arg->Name();
+      if (valid_node_outputs.count(output_name)) {
+        outputs.push_back(output_name);
+      }
+#ifndef NDEBUG
+      else {
+        if (openvino_ep::backend_utils::IsDebugEnabled()) {
+          std::cout << "Skipping orphaned graph output '" << output_name
+                    << "' - no producer node found" << std::endl;
+        }
+      }
+#endif
+    }
+  };
 
   // If all the nodes have been accounted for then no more processing is needed
   if (result.size() == nodes.size()) {
@@ -137,8 +166,8 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
       }
     }
 
-    // Fill outputs with names
-    Iterable2String(outputs, graph_viewer_.GetOutputs());
+    // Use filtered outputs to avoid orphaned graph outputs
+    FilterValidOutputs(outputs);
 
     // Create and add this graph to result.
     AppendClusterToSubGraph(graph_viewer_.GetNodesInTopologicalOrder(), inputs, outputs, result);

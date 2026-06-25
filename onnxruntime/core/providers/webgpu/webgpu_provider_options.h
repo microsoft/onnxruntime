@@ -11,6 +11,10 @@ namespace options {
 
 constexpr const char* kPreferredLayout = "ep.webgpuexecutionprovider.preferredLayout";
 constexpr const char* kEnableGraphCapture = "ep.webgpuexecutionprovider.enableGraphCapture";
+// Number of generations of buffers to retain in the per-session pool for reuse
+// across captured-graph lifetimes. 0 disables pooling. Default 1 caches one
+// generator's worth of intermediate buffers.
+constexpr const char* kSessionBufferPoolGenerations = "ep.webgpuexecutionprovider.sessionBufferPoolGenerations";
 constexpr const char* kEnableInt64 = "ep.webgpuexecutionprovider.enableInt64";
 constexpr const char* kMultiRotaryCacheConcatOffset = "ep.webgpuexecutionprovider.multiRotaryCacheConcatOffset";
 
@@ -36,6 +40,9 @@ constexpr const char* kEnablePIXCapture = "ep.webgpuexecutionprovider.enablePIXC
 constexpr const char* kPreserveDevice = "ep.webgpuexecutionprovider.preserveDevice";
 
 constexpr const char* kMaxStorageBufferBindingSize = "ep.webgpuexecutionprovider.maxStorageBufferBindingSize";
+// Valid range: 1-4096. Larger values are rejected to avoid excessive
+// query buffer sizing and unpredictable memory/performance behavior.
+constexpr const char* kMaxNumPendingDispatches = "ep.webgpuexecutionprovider.maxNumPendingDispatches";
 
 // The following are the possible values for the provider options.
 

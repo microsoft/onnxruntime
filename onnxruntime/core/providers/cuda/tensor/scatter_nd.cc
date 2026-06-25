@@ -5,51 +5,8 @@
 #include "core/providers/cuda/tensor/scatter_nd_impl.h"
 #include "core/providers/cuda/tensor/scatter_nd_common.h"
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
+#include "core/providers/cpu/tensor/scatter_nd.h"
 #include "core/providers/cpu/tensor/utils.h"
-
-#ifdef BUILD_CUDA_EP_AS_PLUGIN
-// PLUGIN BUILD ADAPTATION: SCATTER_ND_VALIDATE_SHAPES is defined in the CPU
-// provider (scatter_nd.h) which cannot be linked into the plugin. Inline the
-// same validation logic here. Keep in sync with ScatterND::ValidateShapes.
-namespace onnxruntime {
-namespace scatter_nd_plugin {
-inline Status ValidateShapes(const TensorShape& input_shape,
-                             const TensorShape& indice_shape,
-                             const TensorShape& update_shape) {
-  auto input_rank = input_shape.NumDimensions();
-  auto indice_rank = indice_shape.NumDimensions();
-  auto update_rank = update_shape.NumDimensions();
-  if (input_rank == 0 || indice_rank == 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "input tensor and indices tensor must have rank larger than 0. ",
-                           "input shape: ", input_shape, ", indices shape: ", indice_shape);
-  }
-  auto last_indice_dimension = indice_shape[indice_rank - 1];
-  if (last_indice_dimension > static_cast<int64_t>(input_rank)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "last dimension of indices must not be larger than rank of input tensor");
-  }
-  auto expected_update_rank = input_rank + indice_rank - 1 - static_cast<size_t>(last_indice_dimension);
-  if (update_rank != expected_update_rank) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "update tensor shape does not match expected shape");
-  }
-  if (indice_shape.Slice(0, indice_rank - 1) != update_shape.Slice(0, indice_rank - 1)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "update tensor shape mismatch with indices tensor shape");
-  }
-  if (input_shape.Slice(onnxruntime::narrow<size_t>(last_indice_dimension)) != update_shape.Slice(indice_rank - 1)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "update tensor shape mismatch with input tensor shape");
-  }
-  return Status::OK();
-}
-}  // namespace scatter_nd_plugin
-}  // namespace onnxruntime
-#define SCATTER_ND_VALIDATE_SHAPES onnxruntime::scatter_nd_plugin::ValidateShapes
-#else
-#define SCATTER_ND_VALIDATE_SHAPES onnxruntime::ScatterND::ValidateShapes
-#endif
 
 namespace onnxruntime {
 namespace cuda {
@@ -126,7 +83,7 @@ Status ScatterNDDisjointAndNoReduction::ComputeInternal(OpKernelContext* context
   const auto& updates_shape = updates_tensor->Shape();
 
   // Validate input shapes
-  ORT_RETURN_IF_ERROR(SCATTER_ND_VALIDATE_SHAPES(input_shape, indices_shape, updates_shape));
+  ORT_RETURN_IF_ERROR(scatter_nd_internal::ValidateShapes(input_shape, indices_shape, updates_shape));
 
   auto* output_tensor = context->Output(0, input_shape);
 
@@ -181,7 +138,7 @@ Status ScatterNDWithAtomicReduction::ComputeInternal(OpKernelContext* context) c
   const auto& updates_shape = updates_tensor->Shape();
 
   // Validate input shapes
-  ORT_RETURN_IF_ERROR(SCATTER_ND_VALIDATE_SHAPES(input_shape, indices_shape, updates_shape));
+  ORT_RETURN_IF_ERROR(scatter_nd_internal::ValidateShapes(input_shape, indices_shape, updates_shape));
 
   auto* output_tensor = context->Output(0, input_shape);
 

@@ -1,5 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+//
+// CUDA DeformConv kernel entry points (im2col, bias). Host pipeline and chunking: `deform_conv.cc`
+// (see CPU `nn/deform_conv.cc` for the same high-level im2col → GEMM → bias flow).
 
 #pragma once
 
@@ -10,7 +13,6 @@ namespace onnxruntime {
 namespace cuda {
 
 // Adds bias to output: Y[n,m,oh,ow] += B[m]. Y is [N, M, out_h, out_w], B is [M].
-// T may be float, double, MLFloat16 (FP16), or BFloat16.
 template <typename T>
 Status DeformConvAddBiasImpl(
     cudaStream_t stream,
@@ -19,22 +21,12 @@ Status DeformConvAddBiasImpl(
     int64_t N,
     int64_t M,
     int64_t out_h,
-    int64_t out_w);
+    int64_t out_w,
+    int64_t max_grid_y);
 
-// Copies GEMM output (row-major [M_per_group, cur_parallel*output_image_size]) to NCHW slice at Y_g.
-// T may be float, double, MLFloat16 (FP16), or BFloat16.
-template <typename T>
-Status DeformConvCopyGemmOutputRowMajorToNCHW(
-    cudaStream_t stream,
-    const T* gemm_output,
-    T* Y_g,
-    int64_t M,
-    int64_t M_per_group,
-    int64_t output_image_size,
-    int64_t cur_parallel);
-
-// Fills col_buffer with deformable im2col. col_buffer layout: row-major [C*kH*kW, parallel_imgs*out_h*out_w].
-// Called once per batch block; caller does GEMM and bias. T may be float, double, MLFloat16 (FP16), or BFloat16.
+// Fills col_buffer with deformable im2col. Row-major [C*kH*kW, parallel_imgs*out_h*out_w]:
+//   row = c * (kH*kW) + (i*kW + j),  col = n * (out_h*out_w) + (oh*out_w + ow),  same semantics as ONNX DeformConv im2col.
+// Called once per batch chunk; caller GEMM + bias.
 template <typename T>
 Status DeformConvIm2ColImpl(
     cudaStream_t stream,

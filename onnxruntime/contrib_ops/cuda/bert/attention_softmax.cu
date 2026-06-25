@@ -603,7 +603,7 @@ __global__ void MaskedSoftmaxKernelSmall(const int total_sequence_length,
   if (threadIdx.x == 0) {
     const int batch = blockIdx.y;
     start_position = mask_start != nullptr ? max(0, mask_start[batch]) : 0;
-    end_position = min(total_sequence_length, mask_end[batch]);
+    end_position = max(0, min(total_sequence_length, mask_end[batch]));
 
     // Attend to no word has same effect as attend to all words. This is added to get parity with CPU result.
     if (start_position >= end_position) {
@@ -735,7 +735,7 @@ __global__ void MaskedSoftmaxKernel(const int total_sequence_length,
   if (threadIdx.x == 0) {
     const int batch = blockIdx.y;
     start_position = mask_start != nullptr ? max(0, mask_start[batch]) : 0;
-    end_position = min(total_sequence_length, mask_end[batch]);
+    end_position = max(0, min(total_sequence_length, mask_end[batch]));
 
     // Attend to no word has same effect as attend to all words. This is added to get parity with CPU result.
     if (start_position >= end_position) {

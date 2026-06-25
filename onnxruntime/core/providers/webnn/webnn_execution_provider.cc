@@ -70,12 +70,6 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     ORT_THROW("Failed to create WebNN builder.");
   }
 
-  // Get all the NodeUnits in the graph_viewer
-  std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
-  std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
-
-  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph_viewer, logger);
-
   const auto supported_nodes = webnn::GetSupportedNodes(graph_viewer, wnn_builder, wnn_device_type_, wnn_limits_, logger);
 
   const auto gen_metadef_name = [&]() {
@@ -84,9 +78,10 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     return MakeString(WEBNN, "_", model_hash, "_", metadef_id);
   };
 
+  // Set node_unit_map to nullptr as WebNN EP does not use QDQ node unit for partitioning.
   auto result = utils::CreateSupportedPartitions(graph_viewer, supported_nodes, {},
                                                  gen_metadef_name, WEBNN, kWebNNExecutionProvider,
-                                                 &node_unit_map, /*drop_constant_initializers*/ true);
+                                                 /*node_unit_map*/ nullptr, /*drop_constant_initializers*/ true);
 
   // Release wnn_builder
   wnn_builder = emscripten::val::undefined();

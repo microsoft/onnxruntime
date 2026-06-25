@@ -10,15 +10,7 @@ cmake_policy(SET CMP0104 OLD)
 # Project
 project(onnxruntime C CXX ASM)
 
-# Set C/C++ standard versions
-if (NOT CMAKE_C_STANDARD)
-  # Needed for Java
-  set(CMAKE_C_STANDARD 99)
-endif()
-
-if (NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 20)
-endif()
+include(onnxruntime_language_standard_versions.cmake)
 
 # We don't use C++20 modules yet.
 # There are some known issues to address first:
@@ -97,6 +89,8 @@ option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_JSEP "Build with JavaScript implemented kernels support" OFF)
 option(onnxruntime_USE_SVE "Build with SVE support in MLAS" OFF)
+option(onnxruntime_USE_RVV "Build with RISC-V Vector support in MLAS" OFF)
+option(onnxruntime_USE_RVV_ZVFH "Build with RISC-V Zvfh (FP16 vector) support in MLAS" OFF)
 option(onnxruntime_USE_ARM_NEON_NCHWC "Build with ARM Neon NCHWc kernels in MLAS" OFF)
 
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
@@ -111,6 +105,8 @@ option(onnxruntime_USE_VSINPU "Build with VSINPU support" OFF)
 cmake_dependent_option(onnxruntime_USE_FLASH_ATTENTION "Build flash attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
 option(onnxruntime_USE_LEAN_ATTENTION "Build lean attention kernel for scaled dot product attention" OFF)
 cmake_dependent_option(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION "Build memory efficient attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
+option(onnxruntime_USE_FP4_QMOE "Build CUDA QMoE FP4 kernels" OFF)
+option(onnxruntime_USE_FP8_QMOE "Build CUDA QMoE FP8 kernels" OFF)
 option(onnxruntime_USE_FPA_INTB_GEMM "Build FpA IntB gemm cuda kernels" OFF)
 option(onnxruntime_USE_INT4_KV_CACHE "Build cuda kernels for int4 kv cache" OFF)
 option(onnxruntime_USE_FP8_KV_CACHE "Build cuda kernels for fp8 kv cache" ON)
@@ -147,13 +143,24 @@ option(onnxruntime_USE_WINML "Build with WinML support" OFF)
 option(onnxruntime_USE_ACL "Build with ACL support" OFF)
 option(onnxruntime_ENABLE_INSTRUMENT "Enable Instrument with Event Tracing for Windows (ETW)" OFF)
 option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
+# Optional 1DS ingestion token for non-Windows telemetry. Leave empty to compile in the default
+# throwaway token from core/platform/posix/telemetry.cc; official pipelines override it at compile
+# time by setting this to the real token (injected from a pipeline secret).
+set(onnxruntime_1DS_TENANT_TOKEN "" CACHE STRING "Override the compiled-in 1DS telemetry ingestion token (non-Windows)")
+# When building non-Windows telemetry, optionally build the 1DS SDK (cpp-client-telemetry) as a shared
+# library (libmat.so) instead of statically linking it into libonnxruntime. This lets several binaries
+# that link the same SDK (for example onnxruntime and onnxruntime-genai shipped together) share a single
+# copy of the SDK and its transitive TLS/HTTP stack, paying its footprint once instead of per-binary, and
+# avoids running two independent 1DS LogManager singletons in one process. The SDK's own dependencies
+# (OpenSSL/curl/sqlite3/zlib) stay static inside libmat.so so it remains self-contained. Requires the
+# vcpkg cpp-client-telemetry port. Off by default: a standalone onnxruntime is smaller/simpler fully static.
+cmake_dependent_option(onnxruntime_TELEMETRY_SHARED_SDK "Build the non-Windows 1DS telemetry SDK as a shared library so multiple binaries can share one copy" OFF "onnxruntime_USE_TELEMETRY;NOT WIN32" OFF)
 cmake_dependent_option(onnxruntime_USE_MIMALLOC "Override new/delete and arena allocator with mimalloc" OFF "WIN32;NOT onnxruntime_USE_CUDA;NOT onnxruntime_USE_OPENVINO" OFF)
 option(onnxruntime_USE_CANN "Build with CANN support" OFF)
 option(onnxruntime_USE_XNNPACK "Build with XNNPACK support. Provides an alternative math library on ARM, WebAssembly and x86." OFF)
 option(onnxruntime_USE_WEBNN "Build with WebNN support. Enable hardware acceleration in web browsers." OFF)
 option(onnxruntime_USE_WEBGPU "Build with WebGPU support. Enable WebGPU via C/C++ interface." OFF)
 option(onnxruntime_USE_EP_API_ADAPTERS "Build EP (e.g. WebGPU) as a plugin EP shared library using EP API adapters" OFF)
-option(onnxruntime_WGSL_TEMPLATE "Specify the code generator for WGSL template. Default is static." "static")
 option(onnxruntime_USE_EXTERNAL_DAWN "Build with treating Dawn as external dependency. Will not link Dawn at build time." OFF)
 option(onnxruntime_CUSTOM_DAWN_SRC_PATH "Path to custom Dawn src dir.")
 option(onnxruntime_BUILD_DAWN_SHARED_LIBRARY "Build Dawn as a shared library" OFF)
@@ -648,6 +655,7 @@ else()
   check_cxx_compiler_flag(-Wcatch-value HAS_CATCH_VALUE)
   check_cxx_compiler_flag(-Wclass-memaccess HAS_CLASS_MEMACCESS)
   check_cxx_compiler_flag(-Wcharacter-conversion HAS_CHARACTER_CONVERSION)
+  check_cxx_compiler_flag(-Wno-error=character-conversion HAS_NO_ERROR_CHARACTER_CONVERSION)
   check_cxx_compiler_flag(-Wdangling-reference HAS_DANGLING_REFERENCE)
   check_cxx_compiler_flag(-Wdeprecated-anon-enum-enum-conversion HAS_DEPRECATED_ANON_ENUM_ENUM_CONVERSION)
   check_cxx_compiler_flag(-Wdeprecated-builtins HAS_DEPRECATED_BUILTINS)
@@ -681,11 +689,17 @@ else()
   if (NOT APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_target_platform STREQUAL "aarch64")
    check_cxx_compiler_flag(-march=armv8.2-a+bf16 HAS_ARM64_BFLOAT16)
    if(NOT HAS_ARM64_BFLOAT16)
-     message(FATAL_ERROR  "The compiler doesn't support BFLOAT16!!!")
+     message(FATAL_ERROR "The compiler/assembler does not support the aarch64 +bf16 ISA extension. "
+       "On aarch64 this typically requires GCC >= 12 paired with a sufficiently recent binutils "
+       "(the capability is gated by the assembler, not the compiler alone). "
+       "See https://github.com/microsoft/onnxruntime/issues/22837 for details.")
    endif()
    check_cxx_compiler_flag(-march=armv8.2-a+fp16 HAS_ARM64_FLOAT16)
    if(NOT HAS_ARM64_FLOAT16)
-     message(FATAL_ERROR  "The compiler doesn't support FLOAT16!!!")
+     message(FATAL_ERROR "The compiler/assembler does not support the aarch64 +fp16 ISA extension. "
+       "On aarch64 this typically requires GCC >= 12 paired with a sufficiently recent binutils "
+       "(the capability is gated by the assembler, not the compiler alone). "
+       "See https://github.com/microsoft/onnxruntime/issues/22837 for details.")
    endif()
   endif()
 
@@ -795,8 +809,8 @@ if (onnxruntime_USE_CUDA)
     endif()
 
     if (onnxruntime_QUICK_BUILD)
-        message( STATUS "Quick build mode: Flash attention limited to head dimension 128 only")
-        list(APPEND ORT_PROVIDER_FLAGS -DORT_QUICK_BUILD=1)
+      message( STATUS "Quick build mode: reducing selected CUDA/CUTLASS kernel instantiations")
+      list(APPEND ORT_PROVIDER_FLAGS -DORT_QUICK_BUILD=1)
     endif()
 
     if (onnxruntime_USE_INT4_KV_CACHE)
@@ -1246,6 +1260,11 @@ function(onnxruntime_configure_target target_name)
     target_link_options(${target_name} PRIVATE "$<$<LINK_LANGUAGE:CXX,C>:/CETCOMPAT>")
   endif()
 
+  # Add compile features for minimum required language standard versions.
+  # Wrap in $<BUILD_INTERFACE:...> so the requirement is not exported to consumers of installed ORT targets.
+  target_compile_features(${target_name} PUBLIC
+                          $<BUILD_INTERFACE:${onnxruntime_c_std_compile_feature}>
+                          $<BUILD_INTERFACE:${onnxruntime_cxx_std_compile_feature}>)
 endfunction()
 
 function(onnxruntime_add_shared_library target_name)
@@ -1444,6 +1463,12 @@ if (Git_FOUND)
   if (onnxruntime_USE_FP8_KV_CACHE)
     string(APPEND ORT_BUILD_INFO "fp8-kv-cache=1, ")
   endif()
+  if (onnxruntime_USE_FP4_QMOE)
+    string(APPEND ORT_BUILD_INFO "fp4-qmoe=1, ")
+  endif()
+  if (onnxruntime_USE_FP8_QMOE)
+    string(APPEND ORT_BUILD_INFO "fp8-qmoe=1, ")
+  endif()
   if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
     string(APPEND ORT_BUILD_INFO "cuda-plugin-ep=1, ")
   endif()
@@ -1470,10 +1495,20 @@ if (onnxruntime_USE_CUDA)
   message(STATUS "CUDA Toolkit version is greater or equal than 11.8, enable -DENABLE_BF16 flag")
   add_definitions("-DENABLE_FP8")
   message(STATUS "CUDA Toolkit version is greater or equal than 11.8, enable -DENABLE_FP8 flag")
+  if(onnxruntime_USE_FP8_QMOE)
+    add_definitions("-DUSE_FP8_QMOE")
+    message(STATUS "CUDA FP8 QMoE kernels enabled")
+  endif()
 
   if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
     add_definitions("-DENABLE_FP4")
     message(STATUS "CUDA Toolkit version is greater or equal than 12.8, enable -DENABLE_FP4 flag")
+    if(onnxruntime_USE_FP4_QMOE)
+      add_definitions("-DUSE_FP4_QMOE")
+      message(STATUS "CUDA FP4 QMoE kernels enabled")
+    endif()
+  elseif(onnxruntime_USE_FP4_QMOE)
+    message(FATAL_ERROR "onnxruntime_USE_FP4_QMOE requires CUDA Toolkit version 12.8 or newer")
   endif()
 
   if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL "13.0")

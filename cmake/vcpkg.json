@@ -40,7 +40,10 @@
       "name": "mimalloc",
       "platform": "windows"
     },
-    "ms-gsl",
+    {
+      "name": "ms-gsl",
+      "version>=": "4.2.1"
+    },
     "nlohmann-json",
     "onnx",
     {
@@ -55,7 +58,6 @@
     "pybind11",
     "re2",
     "safeint",
-    "utf8-range",
     {
       "name": "vcpkg-cmake",
       "host": true
@@ -94,9 +96,19 @@
       "description": "Build with WebGPU EP",
       "dependencies": []
     },
-    "webgpu-ep-wgsl-template-dynamic": {
-      "description": "Build with WebGPU EP with dynamic WGSL template code generator",
-      "dependencies": ["duktape"]
+    "telemetry": {
+      "description": "Build with 1DS telemetry support (cpp-client-telemetry) on non-Windows platforms",
+      "dependencies": [
+        {
+          "name": "cpp-client-telemetry",
+          "platform": "!windows & !emscripten & !uwp"
+        },
+        {
+          "name": "sqlite3",
+          "default-features": false,
+          "platform": "!windows & !emscripten & !uwp"
+        }
+      ]
     }
   },
   "overrides": [
@@ -109,8 +121,8 @@
       "version": "23.5.26"
     },
     {
-      "name": "duktape",
-      "version": "2.7.0#2"
+      "name": "mimalloc",
+      "version": "2.1.1"
     }
   ]
 }

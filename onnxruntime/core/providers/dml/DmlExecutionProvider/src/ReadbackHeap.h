@@ -7,6 +7,11 @@ namespace Dml
 {
     class ExecutionContext;
 
+    namespace detail
+    {
+        size_t ComputeTotalReadbackSize(gsl::span<const size_t> sizes);
+    }
+
     // Because we never perform more than one readback at a time, we don't need anything fancy for managing the
     // readback heap - just maintain a single resource and reallocate it if it's not big enough.
     class ReadbackHeap
@@ -25,7 +30,7 @@ namespace Dml
         // Overload supporting batching
         void ReadbackFromGpu(
             gsl::span<void*> dst,
-            gsl::span<const uint32_t > dstSizes,
+            gsl::span<const size_t> dstSizes,
             gsl::span<ID3D12Resource*> src,
             D3D12_RESOURCE_STATES srcState);
 

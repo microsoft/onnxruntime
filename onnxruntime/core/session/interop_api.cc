@@ -438,7 +438,7 @@ static constexpr OrtInteropApi ort_interop_api = {
 static_assert(offsetof(OrtInteropApi, SignalSemaphore) / sizeof(void*) == 10,
               "Size of version 24 Api cannot change");  // initial version in ORT 1.24
 static_assert(offsetof(OrtInteropApi, DeinitGraphicsInteropForEpDevice) / sizeof(void*) == 12,
-              "Graphics interop functions at slots 11 and 12");
+              "Size of version 25 API cannot change");
 
 ORT_API(const OrtInteropApi*, OrtInteropAPI::GetInteropApi) {
   return &ort_interop_api;

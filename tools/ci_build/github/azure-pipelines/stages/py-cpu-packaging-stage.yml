@@ -25,26 +25,6 @@ parameters:
   type: boolean
   default: true
 
-- name: enable_windows_arm64_qnn
-  displayName: 'Whether Windows ARM64 package with QNN EP is built.'
-  type: boolean
-  default: true
-
-- name: enable_windows_arm64ec_qnn
-  displayName: 'Whether Windows ARM64EC package with QNN EP is built.'
-  type: boolean
-  default: true
-
-- name: enable_windows_x64_qnn
-  displayName: 'Whether Windows x86_64 package with QNN EP is built.'
-  type: boolean
-  default: true
-
-- name: enable_linux_x64_qnn
-  displayName: 'Whether Linux x86_64 package with QNN EP is built.'
-  type: boolean
-  default: true
-
 - name: cmake_build_type
   type: string
   displayName: 'Linux packages cmake build type. Linux Only.'
@@ -54,12 +34,6 @@ parameters:
    - Release
    - RelWithDebInfo
    - MinSizeRel
-
-# Only applies to QNN packages.
-- name: qnn_sdk_version
-  type: string
-  displayName: 'QNN SDK version. Only for QNN packages.'
-  default: 2.42.0.251225
 
 stages:
 - ${{ if eq(parameters.enable_windows_cpu, true) }}:
@@ -130,71 +104,6 @@ stages:
       parameters:
         arch: 'x86_64'
         machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
-        extra_build_arg: ${{ parameters.build_py_parameters }}
-        cmake_build_type: ${{ parameters.cmake_build_type }}
-        is1ES: true
-
-- ${{ if eq(parameters.enable_windows_arm64_qnn, true) }}:
-  - stage: Python_Packaging_Windows_ARM64_QNN
-    dependsOn: []
-    jobs:
-    - template: ../templates/py-win-arm64-qnn.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-qnn-windows-vs-2022-arm64'
-        QNN_SDK: ${{ parameters.qnn_sdk_version }}
-        BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
-        PYTHON_VERSION: '3.11'
-
-    - template: ../templates/py-win-arm64-qnn.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-qnn-windows-vs-2022-arm64'
-        QNN_SDK: ${{ parameters.qnn_sdk_version }}
-        BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
-        PYTHON_VERSION: '3.12'
-
-    - template: ../templates/py-win-arm64-qnn.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-qnn-windows-vs-2022-arm64'
-        QNN_SDK: ${{ parameters.qnn_sdk_version }}
-        BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
-        PYTHON_VERSION: '3.13'
-
-    - template: ../templates/py-win-arm64-qnn.yml
-      parameters:
-        MACHINE_POOL: 'onnxruntime-qnn-windows-vs-2022-arm64'
-        QNN_SDK: ${{ parameters.qnn_sdk_version }}
-        BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
-        PYTHON_VERSION: '3.14'
-
-- ${{ if eq(parameters.enable_windows_arm64ec_qnn, true) }}:
-  - stage: Python_Packaging_Windows_arm64ec_QNN
-    dependsOn: []
-    jobs:
-      - template: ../templates/py-win-arm64ec-qnn.yml
-        parameters:
-          MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
-          QNN_SDK: ${{ parameters.qnn_sdk_version }}
-          BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
-
-- ${{ if eq(parameters.enable_windows_x64_qnn, true) }}:
-  - stage: Python_Packaging_Windows_x64_QNN
-    dependsOn: []
-    jobs:
-      - template: ../templates/py-win-x64-qnn.yml
-        parameters:
-          MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
-          QNN_SDK: ${{ parameters.qnn_sdk_version }}
-          BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
-          is1ES: true
-
-- ${{ if eq(parameters.enable_linux_x64_qnn, true) }}:
-  - stage: Python_Packaging_Linux_x64_QNN
-    dependsOn: []
-    jobs:
-    - template: ../templates/py-linux-qnn.yml
-      parameters:
-        machine_pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
-        QnnSdk: ${{ parameters.qnn_sdk_version }}
         extra_build_arg: ${{ parameters.build_py_parameters }}
         cmake_build_type: ${{ parameters.cmake_build_type }}
         is1ES: true

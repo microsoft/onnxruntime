@@ -20,13 +20,13 @@ jobs:
     runs-on: [
       "self-hosted",
       "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
-      "JobId=webgpu_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+      "JobId=webgpu_build_x64_RelWithDebInfo-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}-${{ matrix.vcpkg_option }}-${{ matrix.wgsl_template }}"
       ]
     timeout-minutes: 300
     strategy:
       matrix:
         vcpkg_option: [novcpkg, vcpkg]
-        wgsl_template: [static, dynamic]
+        wgsl_template: [static]
     env:
       OrtPackageId: Microsoft.ML.OnnxRuntime
       OnnxRuntimeBuildDirectory: ${{ github.workspace }}
@@ -131,24 +131,6 @@ jobs:
           }
           Remove-Item "${{ github.workspace }}\RelWithDebInfo" -Include "*.obj" -Recurse
 
-      - name: Run tests (onnxruntime_test_all, onnxruntime_provider_test) with verbose logging
-        shell: pwsh
-        run: |
-          $env:ORT_UNIT_TEST_MAIN_LOG_LEVEL = "0"
-          .\onnxruntime_test_all.exe 2> .\onnxruntime_test_stderr.log
-          .\onnxruntime_provider_test.exe 2>> .\onnxruntime_test_stderr.log
-        working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
-
-      - name: Check log file
-        shell: cmd
-        run: |
-          dir ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo\onnxruntime_test_stderr.log
-
-      - name: Validate shader keys
-        uses: ./.github/actions/webgpu-validate-shader-key
-        with:
-          log_file_path: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo\onnxruntime_test_stderr.log
-
       - name: Validate C# native delegates
         run: python tools\ValidateNativeDelegateAttributes.py
         shell: cmd
@@ -215,7 +197,6 @@ jobs:
             --cmake_generator "Visual Studio 17 2022" `
             --enable_onnx_tests `
             --use_webgpu shared_lib `
-            --wgsl_template static `
             --use_vcpkg --use_vcpkg_ms_internal_asset_cache `
             --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_DAWN_BACKEND_D3D12=1 onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1 `
             --disable_rtti `

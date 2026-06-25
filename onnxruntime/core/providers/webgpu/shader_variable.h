@@ -14,8 +14,8 @@ namespace onnxruntime {
 namespace webgpu {
 
 template <typename TIdx,
-          typename TRank,
-          typename = std::enable_if_t<std::is_same_v<TRank, int> || std::is_same_v<TRank, size_t>>>
+          typename TRank>
+  requires(std::is_same_v<TRank, int> || std::is_same_v<TRank, size_t>)
 std::string GetElementAt(std::string_view var, const TIdx& idx, TRank rank, bool is_f16 = false) {
   if (var.starts_with("uniforms.")) {
     if (is_f16) {
@@ -177,8 +177,9 @@ class ShaderVariableHelper : public ShaderIndicesHelper {
   // create a WGSL statement for setting data at the given offset.
   // \param offset: a WGSL expression (u32) representing the offset.
   // \param value: the value ({varname}_value_t) to set.
+  // \param use_storage_type: for int64, if true expects vec2<u32> (storage type) instead of i32.
   template <typename TOffset, typename TValue>
-  inline std::string SetByOffset(TOffset&& offset, TValue&& value) const;
+  inline std::string SetByOffset(TOffset&& offset, TValue&& value, bool use_storage_type = false) const;
 
   // create a WGSL expression ({varname}_value_t) for getting data at the given indices.
   // \param indices: a list of indices values (u32).
@@ -200,7 +201,7 @@ class ShaderVariableHelper : public ShaderIndicesHelper {
   void Impl(OStringStream& ss) const;
 
   std::string GetByOffsetImpl(std::string_view offset) const;
-  std::string SetByOffsetImpl(std::string_view offset, std::string_view value) const;
+  std::string SetByOffsetImpl(std::string_view offset, std::string_view value, bool use_storage_type) const;
   std::string_view StorageType() const;
   std::string_view ValueType() const;
   std::string_view ElementType() const;
@@ -210,32 +211,25 @@ class ShaderVariableHelper : public ShaderIndicesHelper {
 
   friend class ShaderHelper;
 };
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstrict-aliasing"
-#endif
 
 inline ShaderUsage operator|(ShaderUsage a, ShaderUsage b) {
-  return (uint32_t)a.usage | (uint32_t)b.usage;
+  return static_cast<uint32_t>(a.usage) | static_cast<uint32_t>(b.usage);
 }
 inline ShaderUsage operator&(ShaderUsage a, ShaderUsage b) {
-  return (uint32_t)a.usage & (uint32_t)b.usage;
+  return static_cast<uint32_t>(a.usage) & static_cast<uint32_t>(b.usage);
 }
 inline ShaderUsage& operator|=(ShaderUsage& a, ShaderUsage b) {
-  (uint32_t&)a.usage |= (uint32_t)b.usage;
+  a = a | b;
   return a;
 }
 inline ShaderUsage& operator&=(ShaderUsage& a, ShaderUsage b) {
-  (uint32_t&)a.usage &= (uint32_t)b.usage;
+  a = a & b;
   return a;
 }
 
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
 namespace detail {
-template <typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
+template <typename T>
+  requires std::is_integral_v<T>
 std::string pass_as_string(T&& v) {
   return std::to_string(std::forward<T>(v));
 }
@@ -304,8 +298,8 @@ inline std::string ShaderIndicesHelper::IndicesGet(std::string_view indices_var,
 }
 
 template <typename TOffset, typename TValue>
-inline std::string ShaderVariableHelper::SetByOffset(TOffset&& offset, TValue&& value) const {
-  return SetByOffsetImpl(detail::pass_as_string(offset), detail::pass_as_string(value));
+inline std::string ShaderVariableHelper::SetByOffset(TOffset&& offset, TValue&& value, bool use_storage_type) const {
+  return SetByOffsetImpl(detail::pass_as_string(offset), detail::pass_as_string(value), use_storage_type);
 }
 
 template <typename... TIndicesAndValue>

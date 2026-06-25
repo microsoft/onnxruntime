@@ -469,6 +469,12 @@ template <>
 __device__ __inline__ BFloat16 _Log(BFloat16 a) { return logf(static_cast<float>(a)); }
 
 template <>
+__device__ __inline__ BFloat16 _Cos(BFloat16 a) { return cosf(static_cast<float>(a)); }
+
+template <>
+__device__ __inline__ BFloat16 _Sin(BFloat16 a) { return sinf(static_cast<float>(a)); }
+
+template <>
 __device__ __inline__ BFloat16 _Tanh(BFloat16 a) { return tanhf(static_cast<float>(a)); }
 
 template <>

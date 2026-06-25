@@ -1,31 +1,35 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#param has_head_sink
+#param m_tile
 #param seq_tile_size
 #param tile_size
 #param use_indirect_dispatch
 
-// Inputs are splits of the GQA output, split into num_total_seq_length_tiles
-// rows. This shader needs to add these splits across the row dimension to
-// arrive at the final result. The column is head size wide. The reduction
-// achieves maximum parallelization by splitting this task first into tile_size
-// columns that each workgroup is responsible for. Then within each workgroup
-// the task of summation over the num_total_seq_length_tile for the tile_size
-// columns is further split in two ways. First across the row dimension to have
-// WORKGROUP_SIZE/TILE_SIZE parallel computations of summation of TILE_SIZE
-// rows. Then across the column dimension where each thread is responsible for 1
-// column of the TILE_SIZE columns the workgroup is responsible for.
+#use .getByOffset .setByOffset
+
+// This shader reduces partial V outputs from the fused QKV shader.
+// Each tile produced a locally-normalized V contribution. To get the
+// correct global result, we rescale each tile's contribution using
+// per-tile metadata (max, sum) with online softmax:
+//
+//   global_max = max(local_max_i for all tiles)
+//   global_sum = sum(local_sum_i * exp(local_max_i - global_max))
+//   output[h] = sum(partial_i[h] * exp(local_max_i - global_max)) / global_sum
 
 var<workgroup> tile_input: array<array<output_value_t, tile_size>, tile_size>;
 
 $MAIN {
+  let num_q_tiles = (uniforms.new_sequence_length + m_tile - 1) / m_tile;
+  // Workgroup layout: [batch_heads, num_q_tiles, num_head_size_tile]
   let head_size_offset = (workgroup_idx % uniforms.num_head_size_tile) * tile_size;
-  let batch_head_idx = u32(workgroup_idx / uniforms.num_head_size_tile);
+  let q_tile_idx = (workgroup_idx / uniforms.num_head_size_tile) % num_q_tiles;
+  let q_base = q_tile_idx * m_tile;
+  let batch_head_idx = u32(workgroup_idx / (uniforms.num_head_size_tile * num_q_tiles));
   if (batch_head_idx >= uniforms.batch_heads) {
     return;
   }
-  let in_offset = batch_head_idx * uniforms.num_present_sequence_length_tile * uniforms.head_size_vec;
-  var value = output_value_t(0);
   let local_row = u32(local_idx / tile_size);
   let local_col = local_idx % tile_size;
   #if use_indirect_dispatch
@@ -35,23 +39,60 @@ $MAIN {
   let num_total_seq_length_tile = uniforms.num_total_seq_length_tile;
   #endif
 
-  if (head_size_offset + local_col < uniforms.head_size_vec) {
-    for (var r = 0u; r < num_total_seq_length_tile; r += tile_size) {
-      if (r + local_row < num_total_seq_length_tile) {
-        value += input[in_offset + (r + local_row) * uniforms.head_size_vec + head_size_offset + local_col];
+  for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
+    let q_idx = q_base + m;
+    let in_offset = (batch_head_idx * uniforms.new_sequence_length + q_idx) * uniforms.num_present_sequence_length_tile * uniforms.head_size_vec;
+    let meta_base = (batch_head_idx * uniforms.new_sequence_length + q_idx) * uniforms.num_present_sequence_length_tile;
+
+    // Compute global max across all tiles
+    var g_max = f32(-3.4028234663852886e+38f);
+#if has_head_sink
+    let head_idx_for_sink = batch_head_idx % uniforms.num_heads;
+    let sink_value = f32(head_sink[head_idx_for_sink]);
+    g_max = max(g_max, sink_value);
+#endif
+    for (var i = 0u; i < num_total_seq_length_tile; i++) {
+      g_max = max(g_max, metadata.getByOffset(meta_base + i).x);
+    }
+
+    // Compute global sum with rescaling
+    var g_sum = f32(0);
+    for (var i = 0u; i < num_total_seq_length_tile; i++) {
+      let m_value = metadata.getByOffset(meta_base + i);
+      g_sum += m_value.y * exp(m_value.x - g_max);
+    }
+#if has_head_sink
+    g_sum += exp(sink_value - g_max);
+#endif
+
+    // Accumulate rescaled partial outputs
+    var value = output_value_t(0);
+    if (head_size_offset + local_col < uniforms.head_size_vec) {
+      for (var r = 0u; r < num_total_seq_length_tile; r += tile_size) {
+        if (r + local_row < num_total_seq_length_tile) {
+          let tile_meta = metadata.getByOffset(meta_base + r + local_row);
+          let rescale_f32 = tile_meta.y * exp(tile_meta.x - g_max) / g_sum;
+          value += input.getByOffset(in_offset + (r + local_row) * uniforms.head_size_vec + head_size_offset + local_col) * output_value_t(output_element_t(rescale_f32));
+        }
       }
     }
-  }
 
-  tile_input[local_row][local_col] = value;
-  workgroupBarrier();
+    tile_input[local_row][local_col] = value;
+    workgroupBarrier();
 
-  if (local_idx < tile_size && head_size_offset + local_idx < uniforms.head_size_vec) {
-    value = output_value_t(0);
-    for (var i = 0u; i < tile_size; i++) {
-      value += tile_input[i][local_idx];
+    if (local_idx < tile_size && head_size_offset + local_idx < uniforms.head_size_vec) {
+      value = output_value_t(0);
+      for (var i = 0u; i < tile_size; i++) {
+        value += tile_input[i][local_idx];
+      }
+      let head_idx = batch_head_idx % uniforms.num_heads;
+      let batch_idx = batch_head_idx / uniforms.num_heads;
+      let output_id = batch_idx * uniforms.new_sequence_length * uniforms.num_heads * uniforms.head_size_vec +
+                      q_idx * uniforms.num_heads * uniforms.head_size_vec +
+                      head_idx * uniforms.head_size_vec +
+                      head_size_offset + local_idx;
+      output.setByOffset(output_id, value);
     }
-    let output_id = batch_head_idx * uniforms.head_size_vec + head_size_offset + local_idx;
-    output[output_id] = value;
+    workgroupBarrier();
   }
 }

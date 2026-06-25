@@ -16,6 +16,15 @@
 #include <limits>
 #include <math.h>
 
+#if defined(USE_WEBGPU)
+// Pull in the deviceless shared-trailing-dimension helper from the WebGPU EP so it can be
+// unit-tested without a device. This lightweight header carries only the inline helper (no
+// Dawn/WebGPU headers), so including it here keeps this CPU test translation unit free of Dawn
+// and adds no link dependency on the webgpu provider library (which is not linked into
+// onnxruntime_provider_test in every build configuration, e.g. the plugin build). See issue #28969.
+#include "core/providers/webgpu/math/binary_elementwise_broadcast_utils.h"
+#endif
+
 namespace onnxruntime {
 namespace test {
 
@@ -1501,6 +1510,123 @@ TEST(MathOpTest, Pow_float_float16) {
 #endif
 
 #if defined(USE_WEBGPU)
+// Deviceless regression for issue #28969: the shared-trailing-dimension count must never exceed
+// either operand's rank. When operands have unequal ranks, an exhausted operand's implicit size-1
+// dimension is a broadcast, not a shared dimension, and previously over-extended the shared run,
+// underflowing the downstream reshape math (size_t wrap to SIZE_MAX).
+TEST(MathOpTest, WebGpu_CountSharedTrailingDimensions) {
+  int64_t shared_product = -1;
+
+  // The crashing corner: lhs=[1,1,6,6], rhs=[6,6]. Only the two trailing 6s are shared; once rhs
+  // is exhausted, lhs's leading unit dims are broadcasts and must not be counted.
+  const TensorShape lhs_4d({1, 1, 6, 6});
+  const TensorShape rhs_2d({6, 6});
+  size_t num_shared = onnxruntime::webgpu::CountSharedTrailingDimensions(
+      lhs_4d, rhs_2d, /*output_rank=*/4, shared_product);
+  EXPECT_EQ(num_shared, static_cast<size_t>(2));
+  EXPECT_EQ(shared_product, static_cast<int64_t>(36));
+  // The core invariant: the count never exceeds the smaller operand's rank (derived from the
+  // shapes, not hard-coded), which is exactly what keeps the downstream reshape from underflowing.
+  EXPECT_LE(num_shared, std::min(lhs_4d.NumDimensions(), rhs_2d.NumDimensions()));
+
+  // Operand-order symmetry: shorter operand on the left ([6,6] vs [1,1,6,6]) exercises the
+  // ns == lhs_rank branch and must yield the same count/product and respect the same invariant.
+  num_shared = onnxruntime::webgpu::CountSharedTrailingDimensions(
+      rhs_2d, lhs_4d, /*output_rank=*/4, shared_product);
+  EXPECT_EQ(num_shared, static_cast<size_t>(2));
+  EXPECT_EQ(shared_product, static_cast<int64_t>(36));
+  EXPECT_LE(num_shared, std::min(rhs_2d.NumDimensions(), lhs_4d.NumDimensions()));
+
+  // Equal ranks: counting stops at output_rank - 1, leaving at least one outer dimension.
+  num_shared = onnxruntime::webgpu::CountSharedTrailingDimensions(
+      TensorShape({2, 3, 4}), TensorShape({2, 3, 4}), /*output_rank=*/3, shared_product);
+  EXPECT_EQ(num_shared, static_cast<size_t>(2));
+  EXPECT_EQ(shared_product, static_cast<int64_t>(12));
+
+  // A genuine mismatch stops the run immediately.
+  num_shared = onnxruntime::webgpu::CountSharedTrailingDimensions(
+      TensorShape({2, 3, 4}), TensorShape({1, 4}), /*output_rank=*/3, shared_product);
+  EXPECT_EQ(num_shared, static_cast<size_t>(1));
+  EXPECT_EQ(shared_product, static_cast<int64_t>(4));
+}
+
+// End-to-end regression for issue #28969 on the WebGPU EP. Pre-fix this crashed with an
+// ORT_ENFORCE in TensorShape::SizeFromDimension: the trailing product 36 is divisible by 4
+// (taking the vectorized shared-dim path) while the last dim 6 is not, and the unequal ranks plus
+// leading unit dims caused num_shared_dimension to exceed rhs's rank, underflowing the reshape.
+TEST(MathOpTest, Add_Broadcast_WebGpu_UnequalRank_LeadingUnitDims) {
+  OpTester test("Add");
+  const std::vector<int64_t> lhs_dims{1, 1, 6, 6};
+  const std::vector<int64_t> rhs_dims{6, 6};
+  std::vector<float> lhs_values(36);
+  std::vector<float> rhs_values(36);
+  std::vector<float> out_values(36);
+  for (int i = 0; i < 36; ++i) {
+    lhs_values[i] = static_cast<float>(i);
+    rhs_values[i] = static_cast<float>(2 * i);
+    out_values[i] = static_cast<float>(3 * i);
+  }
+  test.AddInput<float>("A", lhs_dims, lhs_values);
+  test.AddInput<float>("B", rhs_dims, rhs_values);
+  test.AddOutput<float>("C", lhs_dims, out_values);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Companion to the regression above: the leading dim is REAL (2), not a unit dim. It must survive
+// the trailing reshape (the shared run is only the two trailing 6s), guarding against
+// over-collapsing the outer dimension when it is not a broadcast. Trailing product 36 still hits
+// the divisible-by-4 vectorized reshape path.
+TEST(MathOpTest, Add_Broadcast_WebGpu_UnequalRank_LeadingNonUnitDim) {
+  OpTester test("Add");
+  const std::vector<int64_t> lhs_dims{2, 1, 6, 6};  // 72 elements
+  const std::vector<int64_t> rhs_dims{6, 6};        // 36 elements, broadcast over the leading [2,1]
+  std::vector<float> lhs_values(72);
+  std::vector<float> rhs_values(36);
+  std::vector<float> out_values(72);
+  for (int i = 0; i < 36; ++i) {
+    rhs_values[i] = static_cast<float>(2 * i);
+  }
+  for (int i = 0; i < 72; ++i) {
+    lhs_values[i] = static_cast<float>(i);
+    out_values[i] = lhs_values[i] + rhs_values[i % 36];
+  }
+  test.AddInput<float>("A", lhs_dims, lhs_values);
+  test.AddInput<float>("B", rhs_dims, rhs_values);
+  test.AddOutput<float>("C", lhs_dims, out_values);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Operand-order symmetry for the regression: the shorter operand is on the LHS ([6,6] + [1,1,6,6]),
+// exercising the ns == lhs_rank branch of the reshape. Must produce correct results without
+// underflowing, mirroring Add_Broadcast_WebGpu_UnequalRank_LeadingUnitDims.
+TEST(MathOpTest, Add_Broadcast_WebGpu_UnequalRank_ShorterLhs) {
+  OpTester test("Add");
+  const std::vector<int64_t> lhs_dims{6, 6};        // 36 elements
+  const std::vector<int64_t> rhs_dims{1, 1, 6, 6};  // 36 elements
+  const std::vector<int64_t> out_dims{1, 1, 6, 6};
+  std::vector<float> lhs_values(36);
+  std::vector<float> rhs_values(36);
+  std::vector<float> out_values(36);
+  for (int i = 0; i < 36; ++i) {
+    lhs_values[i] = static_cast<float>(i);
+    rhs_values[i] = static_cast<float>(2 * i);
+    out_values[i] = static_cast<float>(3 * i);
+  }
+  test.AddInput<float>("A", lhs_dims, lhs_values);
+  test.AddInput<float>("B", rhs_dims, rhs_values);
+  test.AddOutput<float>("C", out_dims, out_values);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 // WebGPU EP currently handles a special case for supporting Pow op:
 // A Pow followed by a Cast to int64 type.
 TEST(MathOpTest, Pow_float_sqrt) {
@@ -3674,6 +3800,127 @@ TEST(MathOpTest, Equal_string) {
   test.Run();
 }
 
+#ifdef USE_CUDA
+// Opset 19 tests for numeric types (CUDA EP)
+TEST(MathOpTest, Equal_19_bool) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    return;
+  }
+
+  OpTester test("Equal", 19);
+  std::vector<int64_t> dims{4};
+  test.AddInput<bool>("A", dims, {false, true, false, true});
+  test.AddInput<bool>("B", dims, {false, false, true, true});
+  test.AddOutput<bool>("C", dims, {true, false, false, true});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, Equal_19_int32) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    return;
+  }
+
+  OpTester test("Equal", 19);
+  std::vector<int64_t> dims{4};
+  test.AddInput<int32_t>("A", dims, {1, 0, -1, -1});
+  test.AddInput<int32_t>("B", dims, {1, 1, 2, -1});
+  test.AddOutput<bool>("C", dims, {true, false, false, true});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, Equal_19_int64) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    return;
+  }
+
+  OpTester test("Equal", 19);
+  std::vector<int64_t> dims{4};
+  test.AddInput<int64_t>("A", dims, {1, 0, -1, -1});
+  test.AddInput<int64_t>("B", dims, {1, 1, 2, -1});
+  test.AddOutput<bool>("C", dims, {true, false, false, true});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, Equal_19_float) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    return;
+  }
+
+  OpTester test("Equal", 19);
+  std::vector<int64_t> dims{4};
+  test.AddInput<float>("A", dims, {1.0f, 0.0f, -1.0f, -1.0f});
+  test.AddInput<float>("B", dims, {1.0f, 1.0f, 2.0f, -1.0f});
+  test.AddOutput<bool>("C", dims, {true, false, false, true});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, Equal_19_double) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    return;
+  }
+
+  OpTester test("Equal", 19);
+  std::vector<int64_t> dims{4};
+  test.AddInput<double>("A", dims, {1.0, 0.0, -1.0, -1.0});
+  test.AddInput<double>("B", dims, {1.0, 1.0, 2.0, -1.0});
+  test.AddOutput<bool>("C", dims, {true, false, false, true});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, Equal_19_float16) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    return;
+  }
+
+  OpTester test("Equal", 19);
+  std::vector<int64_t> dims{4};
+  test.AddInput<MLFloat16>("A", dims, {MLFloat16(1.0f), MLFloat16(0.0f), MLFloat16(-1.0f), MLFloat16(-1.0f)});
+  test.AddInput<MLFloat16>("B", dims, {MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(-1.0f)});
+  test.AddOutput<bool>("C", dims, {true, false, false, true});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, Equal_19_broadcastAB) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    return;
+  }
+
+  OpTester test("Equal", 19);
+  test.AddInput<int32_t>("A", {4, 2}, {1, 0, -1, -1, 1, 1, -1, 0});
+  test.AddInput<int32_t>("B", {2}, {1, 1});
+  test.AddOutput<bool>("C", {4, 2}, {true, false, false, false, true, true, false, false});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
+
 #if defined(USE_DNNL)
 TEST(MathOpTest, Equal_bfloat16) {
 #ifdef USE_DNNL
@@ -3938,6 +4185,50 @@ TEST(MathOpTest, CosFloat16) {
   }
 }
 
+TEST(MathOpTest, Sin_Opset22) {
+  OpTester test("Sin", 22);
+  TrigFloatTest<::sinf>(test, {1.1f, -1.1f, 2.2f, -2.2f});
+}
+
+TEST(MathOpTest, Cos_Opset22) {
+  OpTester test("Cos", 22);
+  TrigFloatTest<::cosf>(test, {1.1f, -1.1f, 2.2f, -2.2f});
+}
+
+#ifdef USE_CUDA
+TEST(MathOpTest, Sin_BFloat16_Opset22_CUDA) {
+  if (!HasCudaEnvironment(530)) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+
+  OpTester test("Sin", 22);
+  std::vector<int64_t> dims{4};
+  test.AddInput<BFloat16>("input", dims, MakeBFloat16({1.1f, -1.1f, 2.2f, -2.2f}));
+  test.AddOutput<BFloat16>("output", dims, MakeBFloat16({std::sin(1.1f), std::sin(-1.1f), std::sin(2.2f), std::sin(-2.2f)}));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, Cos_BFloat16_Opset22_CUDA) {
+  if (!HasCudaEnvironment(530)) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+
+  OpTester test("Cos", 22);
+  std::vector<int64_t> dims{4};
+  test.AddInput<BFloat16>("input", dims, MakeBFloat16({1.1f, -1.1f, 2.2f, -2.2f}));
+  test.AddOutput<BFloat16>("output", dims, MakeBFloat16({std::cos(1.1f), std::cos(-1.1f), std::cos(2.2f), std::cos(-2.2f)}));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
+
 TEST(MathOpTest, Tan) {
   OpTester test("Tan");
   TrigFloatTest<::tanf>(test, {-100.0f, -50.0f, 0.0f, 50.0f, 100.0f});
@@ -4062,6 +4353,29 @@ TEST(MathOpTest, ErfMoreData) {
       -0.999433f, -0.00105786f, 0.00133995f};
   std::vector<int64_t> dims{static_cast<int64_t>(inputs.size())};
 
+  test.AddInput<float>("A", dims, inputs);
+  test.AddOutput<float>("B", dims, outputs);
+  test.Run();
+}
+
+TEST(MathOpTest, ErfNaN) {
+  // Regression for #28462: NaN inputs were clamped to 1.0 on the FMA3 path.
+  OpTester test("Erf", 9);
+  constexpr float qnan = std::numeric_limits<float>::quiet_NaN();
+  constexpr int64_t size = 36;
+  std::vector<int64_t> dims{size};
+  std::vector<float> inputs(size);
+  std::vector<float> outputs(size);
+  for (int64_t i = 0; i < size; ++i) {
+    if (i % 5 == 0) {
+      inputs[i] = qnan;
+      outputs[i] = qnan;
+    } else {
+      const float v = 0.1f * static_cast<float>(i - size / 2);
+      inputs[i] = v;
+      outputs[i] = std::erf(v);
+    }
+  }
   test.AddInput<float>("A", dims, inputs);
   test.AddOutput<float>("B", dims, outputs);
   test.Run();
@@ -4418,6 +4732,62 @@ TEST(BitShiftOpTest, BroadcastXRight_Uint8) {
   test.AddInput<uint8_t>("Y", {3, 2}, {1, 2, 3, 4, 5, 6});
   test.AddOutput<uint8_t>("Z", {3, 2}, {32, 8, 8, 2, 2, 0});
   test.Run();
+}
+
+// Test that shift amounts >= bit width produce 0 (not undefined behavior).
+// DirectML EP has the same hardware-level shift masking behavior, so skip these tests for DML.
+TEST(BitShiftOpTest, RightShiftByBitWidth_Uint64) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint64_t>("X", {4}, {1000, 255, 1, 42});
+  test.AddInput<uint64_t>("Y", {4}, {64, 64, 64, 64});
+  test.AddOutput<uint64_t>("Z", {4}, {0, 0, 0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
+}
+
+TEST(BitShiftOpTest, LeftShiftByBitWidth_Uint64) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "LEFT");
+  test.AddInput<uint64_t>("X", {4}, {1000, 255, 1, 42});
+  test.AddInput<uint64_t>("Y", {4}, {64, 64, 64, 64});
+  test.AddOutput<uint64_t>("Z", {4}, {0, 0, 0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
+}
+
+TEST(BitShiftOpTest, RightShiftByBitWidth_Uint32) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint32_t>("X", {3}, {16, 4, 1});
+  test.AddInput<uint32_t>("Y", {3}, {32, 32, 32});
+  test.AddOutput<uint32_t>("Z", {3}, {0, 0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
+}
+
+TEST(BitShiftOpTest, RightShiftByMoreThanBitWidth_Uint64) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint64_t>("X", {2}, {1000, 42});
+  test.AddInput<uint64_t>("Y", {2}, {65, 128});
+  test.AddOutput<uint64_t>("Z", {2}, {0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
+}
+
+TEST(BitShiftOpTest, ScalarRightShiftByBitWidth_Uint64) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "RIGHT");
+  test.AddInput<uint64_t>("X", {1}, {1000});
+  test.AddInput<uint64_t>("Y", {3}, {64, 65, 128});
+  test.AddOutput<uint64_t>("Z", {3}, {0, 0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
+}
+
+TEST(BitShiftOpTest, ScalarLeftShiftByBitWidth_Uint64) {
+  OpTester test("BitShift", 11);
+  test.AddAttribute("direction", "LEFT");
+  test.AddInput<uint64_t>("X", {3}, {1000, 255, 42});
+  test.AddInput<uint64_t>("Y", {1}, {64});
+  test.AddOutput<uint64_t>("Z", {3}, {0, 0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kDmlExecutionProvider});
 }
 
 TEST(MathOpTest, BitwiseAnd) {

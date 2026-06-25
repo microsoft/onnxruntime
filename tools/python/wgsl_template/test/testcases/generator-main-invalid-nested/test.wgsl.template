@@ -1,0 +1,11 @@
+$MAIN {
+    let outer_index = global_id.x;
+    
+    $MAIN {
+        // Nested MAIN block - should cause an error
+        let inner_index = global_id.y;
+        result[inner_index] = data[inner_index];
+    }
+    
+    output[outer_index] = input[outer_index];
+}

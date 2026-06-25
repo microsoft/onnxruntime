@@ -95,6 +95,10 @@ Status InPlaceAccumulatorV2<T>::Compute(OpKernelContext* context) const {
   const Tensor* new_value = context->Input<Tensor>(1);
   const Tensor* overwrite_tensor = context->Input<Tensor>(2);
 
+  ORT_RETURN_IF_NOT(accumulation_buffer->Shape() == new_value->Shape(),
+                    "InPlaceAccumulatorV2: accumulation_buffer shape (", accumulation_buffer->Shape(),
+                    ") must match value shape (", new_value->Shape(), ").");
+
   void* accumulation_buffer_data = accumulation_buffer->template MutableData<T>();
   const bool overwrite = overwrite_tensor != nullptr ? *(overwrite_tensor->template Data<bool>()) : false;
 

@@ -303,6 +303,7 @@ struct DeleteOnUnloadPtr {
 
 constexpr const char* kOnnxDomain = "";
 constexpr const char* kMSDomain = "com.microsoft";
+constexpr const char* kMLDomain = "ai.onnx.ml";
 constexpr const char* kMSInternalNHWCDomain = "com.ms.internal.nhwc";
 constexpr const char* kPytorchAtenDomain = "org.pytorch.aten";
 constexpr const char* kNGraphDomain = "com.intel.ai";
@@ -459,6 +460,16 @@ inline Status GetTensorProtoWithDataIfInMemory(
 
 inline bool HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& ten_proto) {
   return g_host->Utils__HasExternalDataInMemory(ten_proto);
+}
+
+inline Status ValidateExternalDataPath(const std::filesystem::path& model_path,
+                                       const std::filesystem::path& external_data_path) {
+  return g_host->Utils__ValidateExternalDataPath(model_path, external_data_path);
+}
+
+inline Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
+                                              const std::filesystem::path& external_data_path) {
+  return g_host->Utils__ValidateExternalDataPathFromDir(model_dir, external_data_path);
 }
 
 }  // namespace utils

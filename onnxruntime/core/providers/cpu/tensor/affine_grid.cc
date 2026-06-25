@@ -4,6 +4,7 @@
 #include "core/providers/cpu/tensor/affine_grid.h"
 
 #include "core/common/common.h"
+#include "core/common/safeint.h"
 #include "core/providers/op_kernel_type_control.h"
 #include "core/util/math_cpuonly.h"
 #include <Eigen/Dense>
@@ -78,9 +79,10 @@ void affine_grid_generator_2d(const Tensor* theta, const Eigen::Matrix<T, 2, Eig
   const Eigen::Matrix<T, 2, 2, option> theta_R{{theta_data[0], theta_data[1]}, {theta_data[3], theta_data[4]}};  // 2x2
   const Eigen::Array<T, 2, 1> theta_T(theta_data[2], theta_data[5]);                                             // 2x1
 
-  auto grid_batch_offset = batch_num * H * W * 2;
+  const auto grid_batch_offset = static_cast<size_t>(SafeInt<size_t>(batch_num) * H * W * 2);
   T* grid_data = grid->MutableData<T>() + grid_batch_offset;
-  Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 2, option>> grid_matrix(grid_data, narrow<size_t>(H * W), 2);
+  Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 2, option>> grid_matrix(
+      grid_data, static_cast<size_t>(SafeInt<size_t>(H) * W), 2);
   grid_matrix = ((theta_R * base_grid_transposed).array().colwise() + theta_T).matrix().transpose();  // ((2x2 * 2xN).array().colwise() + 2x1).matrix().transpose() => Nx2
 }
 
@@ -97,9 +99,10 @@ void affine_grid_generator_3d(const Tensor* theta, const Eigen::Matrix<T, 3, Eig
 
   const Eigen::Array<T, 3, 1> theta_T(theta_data[3], theta_data[7], theta_data[11]);  // 3x1
 
-  auto grid_batch_offset = batch_num * D * H * W * 3;
+  const auto grid_batch_offset = static_cast<size_t>(SafeInt<size_t>(batch_num) * D * H * W * 3);
   T* grid_data = grid->MutableData<T>() + grid_batch_offset;
-  Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 3, option>> grid_matrix(grid_data, narrow<size_t>(D * H * W), 3);
+  Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, 3, option>> grid_matrix(
+      grid_data, static_cast<size_t>(SafeInt<size_t>(D) * H * W), 3);
   grid_matrix = ((theta_R * base_grid_transposed).array().colwise() + theta_T).matrix().transpose();
 }
 

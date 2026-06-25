@@ -352,7 +352,7 @@ TEST(MLOpTest, TreeEnsembleBigSet) {
   std::vector<int64_t> nodes_falsenodeids = {2, 2, 3};
   std::vector<int64_t> nodes_falseleafs = {1, 0, 1};
 
-  std::vector<int64_t> leaf_targetids = {0, 1, 2, 3};
+  std::vector<int64_t> leaf_targetids = {0, 0, 0, 0};
   std::vector<float> leaf_weights = {1.f, 10.f, 100.f, 1000.f};
   std::vector<float> member_ship_values(106);
   for (size_t i = 0; i < member_ship_values.size(); i++) {

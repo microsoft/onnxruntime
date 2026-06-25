@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "ep_profiling.h"
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <optional>
@@ -59,7 +60,8 @@ void EpEventManager::PushOrtEvent(uint64_t profiler_id) {
   tls_profiling_state_.profiler_id = profiler_id;
 }
 
-void EpEventManager::PopOrtEvent(uint64_t profiler_id, const std::string& ort_event_name) {
+void EpEventManager::PopOrtEvent(uint64_t profiler_id, const std::string& ort_event_name,
+                                 int64_t ort_event_start_us, int64_t ort_event_duration_us) {
   std::lock_guard<std::mutex> lock(mutex_);
 
   auto iter = profiler_state_.find(profiler_id);
@@ -77,6 +79,8 @@ void EpEventManager::PopOrtEvent(uint64_t profiler_id, const std::string& ort_ev
 
     if (ep_event.thread_id == current_thread_id && ep_event.ort_event_name.empty()) {
       ep_event.ort_event_name = ort_event_name;
+      ep_event.ort_event_start_us = ort_event_start_us;
+      ep_event.ort_event_duration_us = ort_event_duration_us;
     }
   }
 
@@ -169,9 +173,11 @@ OrtStatus* ORT_API_CALL ExampleKernelEpProfiler::StopEventImpl(OrtEpProfilerImpl
 
   Ort::ConstProfilingEvent ort_event(c_ort_event);
   const char* ort_event_name = ort_event.GetName();
+  const int64_t ort_event_start_us = ort_event.GetTimestampUs();
+  const int64_t ort_event_duration_us = ort_event.GetDurationUs();
 
   // Annotate all EP events that were collected during this ORT event with metadata from the ORT event.
-  ep_event_manager.PopOrtEvent(self->profiler_id, ort_event_name);
+  ep_event_manager.PopOrtEvent(self->profiler_id, ort_event_name, ort_event_start_us, ort_event_duration_us);
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }
@@ -208,6 +214,22 @@ OrtStatus* ORT_API_CALL ExampleKernelEpProfiler::EndProfilingImpl(
     int64_t dur_us = std::chrono::duration_cast<std::chrono::microseconds>(
                          raw_ep_event.end_time - raw_ep_event.start_time)
                          .count();
+
+    // The ORT-to-EP clock reconstruction can differ by a few microseconds on some platforms.
+    // Bound the EP event to the correlated ORT parent interval so the emitted child event remains
+    // properly nested without weakening the test's containment checks.
+    if (raw_ep_event.ort_event_start_us >= 0 && raw_ep_event.ort_event_duration_us >= 0) {
+      const int64_t parent_start_us = raw_ep_event.ort_event_start_us;
+      const int64_t parent_end_us = parent_start_us + raw_ep_event.ort_event_duration_us;
+
+      int64_t rel_end_us = rel_ts_us + std::max<int64_t>(dur_us, 0);
+      rel_ts_us = std::clamp(rel_ts_us, parent_start_us, parent_end_us);
+      rel_end_us = std::clamp(rel_end_us, parent_start_us, parent_end_us);
+      if (rel_end_us < rel_ts_us) {
+        rel_end_us = rel_ts_us;
+      }
+      dur_us = rel_end_us - rel_ts_us;
+    }
 
     // Set parent_name as an event arg. The parent_name is just the name of the correlated ORT event.
     std::unordered_map<std::string, std::string> args = {{"parent_name", raw_ep_event.ort_event_name.c_str()}};

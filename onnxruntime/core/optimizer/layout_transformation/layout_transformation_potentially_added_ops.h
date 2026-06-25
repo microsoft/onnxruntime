@@ -70,6 +70,7 @@ inline constexpr std::array kLayoutTransformationPotentiallyAddedOps = {
 #if !defined(DISABLE_CONTRIB_OPS)
     // kMSDomain ops
     OpIdentifierWithStringViews{kMSDomain, "DequantizeLinear", 1},
+    OpIdentifierWithStringViews{kMSDomain, "NhwcFusedConv", 1},
     OpIdentifierWithStringViews{kMSDomain, "NhwcMaxPool", 1},
     OpIdentifierWithStringViews{kMSDomain, "QLinearConv", 1},
     OpIdentifierWithStringViews{kMSDomain, "QuantizeLinear", 1},

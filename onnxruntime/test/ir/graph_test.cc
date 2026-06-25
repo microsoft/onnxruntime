@@ -5,10 +5,15 @@
 #include <fstream>
 #include "core/common/inlined_containers.h"
 #include "core/common/span_utils.h"
+#include "core/flatbuffers/ort_format_version.h"
+#include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph_flatbuffers_utils.h"
 #include "core/graph/graph_viewer.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
 #include "core/graph/op.h"
+#include "core/graph/ort_format_load_options.h"
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
 #include "test/providers/provider_test_utils.h"
@@ -1358,7 +1363,125 @@ TEST_F(GraphTest, UnusedSparseInitializerIsIgnored) {
   auto& graph_proto = graph2.ToGraphProto();
   ASSERT_TRUE(graph_proto.sparse_initializer().empty());
 }
+
+// Regression test for issue #28617: a SparseTensorProto loaded from a model protobuf must not
+// be allowed to carry an ORT in-memory address marker on its values or indices sub-tensors.
+// Those markers are an ORT-internal mechanism for trusted in-memory buffers (.ort flatbuffer
+// load). Accepting them on a crafted .onnx protobuf would let the model make ORT dereference
+// an attacker-supplied pointer during sparse-to-dense conversion.
+static void RunRejectInMemoryMarkerOnSparseInitializerTest(bool marker_on_indices,
+                                                           const onnxruntime::logging::Logger& logger) {
+  Model model("RejectInMemoryMarkerOnSparseInitializer", false, logger);
+  auto model_proto = model.ToProto();
+  auto* m_graph = model_proto.mutable_graph();
+  ConstructASimpleAddGraph(*m_graph, nullptr);
+
+  auto* m_sparse_initializer = m_graph->add_sparse_initializer();
+  ConstructSparseTensor("in_memory_marker_sparse", *m_sparse_initializer);
+
+  // Overwrite either values or indices to declare external data pointing at an in-memory marker.
+  // Allocate a real backing buffer so even an accidental dereference of "offset" stays in-process.
+  static std::vector<uint8_t> backing(64, 0);
+  auto* sub = marker_on_indices ? m_sparse_initializer->mutable_indices()
+                                : m_sparse_initializer->mutable_values();
+  sub->clear_raw_data();
+  sub->clear_int64_data();
+  sub->clear_float_data();
+  sub->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  auto* loc = sub->add_external_data();
+  loc->set_key("location");
+  loc->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag));
+  auto* off = sub->add_external_data();
+  off->set_key("offset");
+  off->set_value(std::to_string(reinterpret_cast<intptr_t>(backing.data())));
+  auto* len = sub->add_external_data();
+  len->set_key("length");
+  len->set_value(std::to_string(backing.size()));
+
+  std::string s1;
+  model_proto.SerializeToString(&s1);
+
+  ModelProto model_proto_1;
+  ASSERT_TRUE(model_proto_1.ParseFromString(s1));
+
+  std::shared_ptr<onnxruntime::Model> p_tmp_model;
+  // The Graph ctor must reject the marker — Model::Load is expected to return a non-OK status
+  // (Graph ctor's ORT_THROW is caught at the C++/Status boundary).
+  ORT_TRY {
+    auto status = onnxruntime::Model::Load(model_proto_1, p_tmp_model, nullptr, logger);
+    EXPECT_FALSE(status.IsOK()) << "Loading a model with an in-memory marker on a sparse "
+                                << (marker_on_indices ? "indices" : "values")
+                                << " sub-tensor must fail.";
+    if (!status.IsOK()) {
+      EXPECT_THAT(status.ErrorMessage(),
+                  ::testing::HasSubstr("in-memory address marker"));
+    }
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      EXPECT_THAT(std::string(ex.what()),
+                  ::testing::HasSubstr("in-memory address marker"));
+    });
+  }
+}
+
+TEST_F(GraphTest, RejectInMemoryMarkerOnSparseInitializerValues) {
+  RunRejectInMemoryMarkerOnSparseInitializerTest(/*marker_on_indices=*/false, *logger_);
+}
+
+TEST_F(GraphTest, RejectInMemoryMarkerOnSparseInitializerIndices) {
+  RunRejectInMemoryMarkerOnSparseInitializerTest(/*marker_on_indices=*/true, *logger_);
+}
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
+
+// Regression test: ORT in-memory address markers are an in-process sentinel only; they must never
+// appear in a dense initializer deserialized from an .onnx protobuf. The Graph ctor must reject
+// such a model.
+TEST_F(GraphTest, RejectInMemoryMarkerOnDenseInitializer) {
+  Model model("RejectInMemoryMarkerOnDenseInitializer", false, *logger_);
+  auto model_proto = model.ToProto();
+  auto* m_graph = model_proto.mutable_graph();
+  ConstructASimpleAddGraph(*m_graph, nullptr);
+
+  static std::vector<uint8_t> backing(64, 0);
+
+  auto* init = m_graph->add_initializer();
+  init->set_name("in_memory_marker_dense");
+  init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  init->add_dims(static_cast<int64_t>(backing.size() / sizeof(float)));
+  init->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  auto* loc = init->add_external_data();
+  loc->set_key("location");
+  loc->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag));
+  auto* off = init->add_external_data();
+  off->set_key("offset");
+  off->set_value(std::to_string(reinterpret_cast<intptr_t>(backing.data())));
+  auto* len = init->add_external_data();
+  len->set_key("length");
+  len->set_value(std::to_string(backing.size()));
+
+  std::string s1;
+  model_proto.SerializeToString(&s1);
+
+  ModelProto model_proto_1;
+  ASSERT_TRUE(model_proto_1.ParseFromString(s1));
+
+  std::shared_ptr<onnxruntime::Model> p_tmp_model;
+  ORT_TRY {
+    auto status = onnxruntime::Model::Load(model_proto_1, p_tmp_model, nullptr, *logger_);
+    EXPECT_FALSE(status.IsOK()) << "Loading a model with an in-memory marker on a dense initializer must fail.";
+    if (!status.IsOK()) {
+      EXPECT_THAT(status.ErrorMessage(),
+                  ::testing::HasSubstr("in-memory address marker"));
+    }
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      EXPECT_THAT(std::string(ex.what()),
+                  ::testing::HasSubstr("in-memory address marker"));
+    });
+  }
+}
 
 TEST_F(GraphTest, GraphConstruction_CheckIsNotAcyclic) {
   // A cyclic graph
@@ -1761,6 +1884,36 @@ TEST_F(GraphTest, ReplaceInitializedTensor) {
   }
 }
 
+TEST_F(GraphTest, ReplaceInitializedTensorRejectsMissingOrtValueForExternalDataInMemory) {
+  Model model{"GraphUpdateTest_ExternalData", false, *logger_};
+  auto& graph = model.MainGraph();
+  const std::string initializer_name = "initializer";
+  constexpr int64_t kTensorSize = 64;
+
+  ONNX_NAMESPACE::TensorProto original{};
+  original.set_data_type(TensorProto_DataType_INT32);
+  original.add_dims(kTensorSize);
+  for (int32_t i = 0; i < kTensorSize; ++i) {
+    original.add_int32_data(i);
+  }
+  original.set_name(initializer_name);
+  graph.AddInitializedTensor(original);
+
+  auto allocator = CPUAllocator::DefaultInstance();
+  TensorShape shape({kTensorSize});
+  OrtValue ort_value;
+  Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), shape, allocator, ort_value);
+  auto* data = ort_value.GetMutable<Tensor>()->MutableData<int32_t>();
+  for (int32_t i = 0; i < kTensorSize; ++i) {
+    data[i] = i + 1;
+  }
+
+  auto replacement = utils::TensorToTensorProto(ort_value.Get<Tensor>(), initializer_name, true);
+  Status status = graph.ReplaceInitializedTensor(replacement, OrtValue());
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("requires an allocated OrtValue"));
+}
+
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
 namespace {
@@ -2143,8 +2296,8 @@ TEST_F(GraphTest, SubgraphOutputIsOuterScopeValue) {
               ::testing::ContainsRegex("Subgraph output \\(.*\\) is an outer scope value being returned directly."));
 }
 
-static void CreateIntializerWithDataInMemory(const std::string& name, const AllocatorPtr& allocator, int64_t size,
-                                             TensorProto& tensor_proto, OrtValue& ort_value) {
+static void CreateInitializerWithDataInMemory(const std::string& name, const AllocatorPtr& allocator, int64_t size,
+                                              TensorProto& tensor_proto, OrtValue& ort_value) {
   TensorShape shape({size});
   Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), shape, allocator, ort_value);
   float v = 0;
@@ -2167,7 +2320,7 @@ TEST(GraphGetOrtValueInitializerTest, ReturnsOrtValueForExistingInitializer) {
   constexpr const int64_t kTensorSize = 256;
   TensorProto tensor_proto;
   OrtValue ort_value;
-  CreateIntializerWithDataInMemory(name, allocator, kTensorSize, tensor_proto, ort_value);
+  CreateInitializerWithDataInMemory(name, allocator, kTensorSize, tensor_proto, ort_value);
 
   ASSERT_STATUS_OK(graph.AddInitializedOrtValue(tensor_proto, ort_value));
 
@@ -2208,7 +2361,7 @@ TEST(GraphGetOrtValueInitializerTest, ReturnsOrtValueFromOuterScope) {
   constexpr const int64_t kTensorSize = 256;
   TensorProto tensor_proto;
   OrtValue ort_value;
-  CreateIntializerWithDataInMemory(outer_init_name, allocator, kTensorSize, tensor_proto, ort_value);
+  CreateInitializerWithDataInMemory(outer_init_name, allocator, kTensorSize, tensor_proto, ort_value);
 
   ASSERT_STATUS_OK(parent_graph.AddInitializedOrtValue(tensor_proto, ort_value));
 
@@ -2254,7 +2407,7 @@ TEST_F(GraphTest, AddInitializedOrtValueWithExternalData) {
   constexpr const int64_t kTensorSize = 256;
   TensorProto tensor_proto;
   OrtValue ort_value;
-  CreateIntializerWithDataInMemory(external_data_init, allocator, kTensorSize, tensor_proto, ort_value);
+  CreateInitializerWithDataInMemory(external_data_init, allocator, kTensorSize, tensor_proto, ort_value);
 
   // Test adding the initialized OrtValue with external data reference
   ASSERT_STATUS_OK(graph.AddInitializedOrtValue(tensor_proto, ort_value));
@@ -2276,6 +2429,32 @@ TEST_F(GraphTest, AddInitializedOrtValueWithExternalData) {
   ASSERT_TRUE(utils::HasExternalDataInMemory(tensor_proto));
 }
 
+TEST_F(GraphTest, AddInitializedTensorRejectsExternalDataInMemoryWithoutOrtValue) {
+  Model model("TestAddInitializedTensorRejectsExternalDataInMemory", false, *logger_);
+  Graph& graph = model.MainGraph();
+
+  auto allocator = CPUAllocator::DefaultInstance();
+  TensorProto tensor_proto;
+  OrtValue ort_value;
+  CreateInitializerWithDataInMemory("external_data_init", allocator, 256, tensor_proto, ort_value);
+
+  EXPECT_THROW(graph.AddInitializedTensor(tensor_proto), OnnxRuntimeException);
+}
+
+TEST_F(GraphTest, AddInitializedOrtValueRejectsMissingOrtValueForExternalDataInMemory) {
+  Model model("TestAddInitializedOrtValueRejectsMissingOrtValue", false, *logger_);
+  Graph& graph = model.MainGraph();
+
+  auto allocator = CPUAllocator::DefaultInstance();
+  TensorProto tensor_proto;
+  OrtValue ort_value;
+  CreateInitializerWithDataInMemory("external_data_init", allocator, 256, tensor_proto, ort_value);
+
+  Status status = graph.AddInitializedOrtValue(tensor_proto, OrtValue());
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("requires an allocated ortvalue_initializer"));
+}
+
 TEST_F(GraphTest, AddInitializedOrtValueMismatch) {
   Model model("TestAddInitializedOrtValue_Mismatch", false, *logger_);
   Graph& graph = model.MainGraph();
@@ -2287,7 +2466,7 @@ TEST_F(GraphTest, AddInitializedOrtValueMismatch) {
   TensorProto tensor_proto;
   OrtValue ort_value;
   TensorShape shape({kTensorSize});
-  CreateIntializerWithDataInMemory(name, allocator, kTensorSize, tensor_proto, ort_value);
+  CreateInitializerWithDataInMemory(name, allocator, kTensorSize, tensor_proto, ort_value);
 
   OrtValue ort_value_diff;
   // Now try to create a value that has a different data type
@@ -2314,7 +2493,7 @@ TEST_F(GraphTest, AddInitializedOrtValueDuplicate) {
   auto allocator = CPUAllocator::DefaultInstance();
   TensorProto tensor_proto;
   OrtValue ort_value;
-  CreateIntializerWithDataInMemory(name, allocator, kTensorSize, tensor_proto, ort_value);
+  CreateInitializerWithDataInMemory(name, allocator, kTensorSize, tensor_proto, ort_value);
 
   // Add the first initializer successfully
   ASSERT_STATUS_OK(graph.AddInitializedOrtValue(tensor_proto, ort_value));
@@ -2826,6 +3005,737 @@ TEST_F(GraphTest, ShapeInferenceAfterInitializerExternalization) {
   // With the fix, getInputData() materializes the external data for shape inference
   Status second_resolve = graph.Resolve();
   ASSERT_TRUE(second_resolve.IsOK()) << "Second resolve failed: " << second_resolve.ErrorMessage();
+}
+
+// Targeted test for the TensorToTensorProto defense-in-depth: calling with a string tensor
+// and use_tensor_buffer=true must produce a TensorProto with string_data (not external data).
+TEST_F(GraphTest, TensorToTensorProtoStringTensorDefenseInDepth) {
+  const int num_strings = 20;
+  TensorShape shape({num_strings});
+  Tensor string_tensor(DataTypeImpl::GetType<std::string>(), shape, CPUAllocator::DefaultInstance());
+  auto* data = string_tensor.MutableData<std::string>();
+  for (int i = 0; i < num_strings; ++i) {
+    data[i] = "test_value_" + std::to_string(i);
+  }
+
+  // Verify the tensor is large enough to normally trigger the external data path.
+  ASSERT_GT(string_tensor.SizeInBytes(), utils::kSmallTensorExternalDataThreshold);
+
+  // Call with use_tensor_buffer=true — defense-in-depth should still produce string_data.
+  auto tensor_proto = utils::TensorToTensorProto(string_tensor, "string_test", /*use_tensor_buffer=*/true);
+
+  ASSERT_EQ(tensor_proto.string_data_size(), num_strings)
+      << "TensorToTensorProto should populate string_data for string tensors even with use_tensor_buffer=true";
+  ASSERT_FALSE(utils::HasExternalDataInMemory(tensor_proto))
+      << "String tensor should not use external data in memory";
+
+  for (int i = 0; i < num_strings; ++i) {
+    EXPECT_EQ(tensor_proto.string_data(i), "test_value_" + std::to_string(i));
+  }
+}
+
+// Regression test: ConvertInitializersIntoOrtValues must skip string tensors because their
+// raw buffer contains std::string objects (with internal pointers), not serializable data.
+// Without the fix, string initializer data was lost when the TensorProto was replaced with
+// one using external data in memory, breaking ORT format model serialization.
+TEST_F(GraphTest, ConvertInitializersIntoOrtValuesSkipsStringTensors) {
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_version(17);
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("test_string_initializer_conversion");
+
+  // Create a string initializer with enough elements to exceed kSmallTensorExternalDataThreshold (127 bytes).
+  // sizeof(std::string) is typically 32 bytes (MSVC/libstdc++) or 24 bytes (libc++), so 20 elements
+  // will exceed 127 bytes on all major platforms (20 * 24 = 480 > 127).
+  const int num_strings = 20;
+  auto* string_initializer = graph_proto->add_initializer();
+  string_initializer->set_name("string_data");
+  string_initializer->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  string_initializer->add_dims(num_strings);
+  for (int i = 0; i < num_strings; ++i) {
+    string_initializer->add_string_data("value_" + std::to_string(i));
+  }
+
+  // Create a Gather node: Gather(string_data, indices) -> output
+  auto* gather_node = graph_proto->add_node();
+  gather_node->set_op_type("Gather");
+  gather_node->add_input("string_data");
+  gather_node->add_input("indices");
+  gather_node->add_output("output");
+  auto* axis_attr = gather_node->add_attribute();
+  axis_attr->set_name("axis");
+  axis_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+  axis_attr->set_i(0);
+
+  // Add graph input for indices
+  auto* input = graph_proto->add_input();
+  input->set_name("indices");
+  auto* input_type = input->mutable_type()->mutable_tensor_type();
+  input_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  input_type->mutable_shape()->add_dim()->set_dim_value(1);
+
+  // Add graph output
+  auto* output = graph_proto->add_output();
+  output->set_name("output");
+  auto* output_type = output->mutable_type()->mutable_tensor_type();
+  output_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  output_type->mutable_shape()->add_dim()->set_dim_value(1);
+
+  // Load and resolve
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // Verify string initializer has string_data before conversion
+  const ONNX_NAMESPACE::TensorProto* init_before = nullptr;
+  ASSERT_TRUE(graph.GetInitializedTensor("string_data", init_before));
+  ASSERT_EQ(init_before->string_data_size(), num_strings);
+  ASSERT_FALSE(utils::HasExternalDataInMemory(*init_before));
+
+  // Convert initializers into OrtValues
+  ASSERT_STATUS_OK(graph.ConvertInitializersIntoOrtValues());
+
+  // After conversion, string initializer should still have string_data intact
+  // (i.e., it should NOT have been replaced with external data in memory).
+  const ONNX_NAMESPACE::TensorProto* init_after = nullptr;
+  ASSERT_TRUE(graph.GetInitializedTensor("string_data", init_after));
+  ASSERT_EQ(init_after->string_data_size(), num_strings)
+      << "String initializer data was lost during ConvertInitializersIntoOrtValues";
+  ASSERT_FALSE(utils::HasExternalDataInMemory(*init_after))
+      << "String tensor should not use external data in memory";
+
+  // Verify the string content is preserved
+  for (int i = 0; i < num_strings; ++i) {
+    EXPECT_EQ(init_after->string_data(i), "value_" + std::to_string(i));
+  }
+
+  // End-to-end: save to ORT format and reload, verifying string data survives the round-trip.
+  flatbuffers::FlatBufferBuilder builder;
+  {
+    flatbuffers::Offset<fbs::Model> fbs_model_offset;
+    ASSERT_STATUS_OK(model->SaveToOrtFormat(builder, fbs_model_offset));
+    flatbuffers::Offset<fbs::InferenceSession> fbs_session_offset =
+        fbs::CreateInferenceSessionDirect(builder,
+                                          std::to_string(kOrtModelVersion).c_str(),
+                                          fbs_model_offset,
+                                          0);
+    builder.Finish(fbs_session_offset);
+  }
+
+  // Load back from ORT format buffer
+  {
+    const auto* fbs_buffer = builder.GetBufferPointer();
+    const auto* fbs_session = fbs::GetInferenceSession(fbs_buffer);
+    ASSERT_NE(fbs_session, nullptr);
+    ASSERT_NE(fbs_session->model(), nullptr);
+
+    OrtFormatLoadOptions load_options;
+    std::unique_ptr<Model> loaded_model;
+    ASSERT_STATUS_OK(Model::LoadFromOrtFormat(*fbs_session->model(),
+                                              nullptr,  // local_registries
+                                              load_options,
+                                              *logger_,
+                                              loaded_model));
+
+    // Verify the string initializer survived the ORT format round-trip
+    const auto& loaded_graph = loaded_model->MainGraph();
+    const ONNX_NAMESPACE::TensorProto* loaded_init = nullptr;
+    ASSERT_TRUE(loaded_graph.GetInitializedTensor("string_data", loaded_init));
+    ASSERT_EQ(loaded_init->string_data_size(), num_strings)
+        << "String initializer data was lost during ORT format save/load round-trip";
+    for (int i = 0; i < num_strings; ++i) {
+      EXPECT_EQ(loaded_init->string_data(i), "value_" + std::to_string(i));
+    }
+  }
+}
+
+// Regression test for https://github.com/microsoft/onnxruntime/issues/28158
+// Verifies that ToGraphProtoWithCustomInitializerHandling does not serialize
+// _ORT_MEM_ADDR_ in-memory markers into the output model after
+// ConvertInitializersIntoOrtValues has replaced large initializers.
+TEST_F(GraphTest, CustomInitializerHandlingAfterConvertToOrtValues) {
+  // Build a simple model with a large initializer (>127 bytes triggers conversion).
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_version(17);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("test_graph");
+
+  // Create a large initializer: 32 int64 values = 256 bytes (> 127 byte threshold).
+  auto* initializer = graph_proto->add_initializer();
+  initializer->set_name("large_init");
+  initializer->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  initializer->add_dims(32);
+  for (int64_t i = 0; i < 32; ++i) {
+    initializer->add_int64_data(i);
+  }
+
+  // Also add a small initializer (stays inline).
+  auto* small_init = graph_proto->add_initializer();
+  small_init->set_name("small_init");
+  small_init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  small_init->add_dims(1);
+  small_init->add_int64_data(42);
+
+  // Add node: output = input + large_init
+  auto* add_node = graph_proto->add_node();
+  add_node->set_op_type("Add");
+  add_node->set_name("add_node");
+  add_node->add_input("input");
+  add_node->add_input("large_init");
+  add_node->add_output("add_out");
+
+  // Add node: output2 = add_out + small_init
+  auto* add_node2 = graph_proto->add_node();
+  add_node2->set_op_type("Add");
+  add_node2->set_name("add_node2");
+  add_node2->add_input("add_out");
+  add_node2->add_input("small_init");
+  add_node2->add_output("output");
+
+  // Graph input
+  auto* input = graph_proto->add_input();
+  input->set_name("input");
+  auto* input_type = input->mutable_type()->mutable_tensor_type();
+  input_type->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  input_type->mutable_shape()->add_dim()->set_dim_value(32);
+
+  // Graph output
+  auto* output = graph_proto->add_output();
+  output->set_name("output");
+
+  // Load model and resolve
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // Convert large initializers into OrtValues — this creates _ORT_MEM_ADDR_ markers.
+  ASSERT_STATUS_OK(graph.ConvertInitializersIntoOrtValues());
+
+  const ONNX_NAMESPACE::TensorProto* large_tp = nullptr;
+  ASSERT_TRUE(graph.GetInitializedTensor("large_init", large_tp));
+  ASSERT_TRUE(utils::HasExternalDataInMemory(*large_tp))
+      << "large_init should have been externalized to in-memory OrtValue";
+
+  // Serialize with a custom initializer handler that inlines everything.
+  // Use a static function with ORT_API_CALL calling convention to match OrtGetInitializerLocationFunc.
+  struct InlineAllHandler {
+    static OrtStatus* ORT_API_CALL Func(void* /*state*/,
+                                        const char* /*name*/,
+                                        const OrtValue* /*value*/,
+                                        const OrtExternalInitializerInfo* /*ext_info*/,
+                                        OrtExternalInitializerInfo** new_ext_info) {
+      *new_ext_info = nullptr;
+      return nullptr;
+    }
+  };
+
+  // Use Model::ToGraphProtoWithCustomInitializerHandling which is the real code path that triggers the bug.
+  // It first copies model_proto_ (which contains the stale _ORT_MEM_ADDR_ initializers from
+  // ConvertInitializersIntoOrtValues) into the output ModelProto, then calls the Graph-level function
+  // on the pre-populated graph. Without the fix, the stale initializers remain alongside the newly
+  // added ones, producing duplicates with _ORT_MEM_ADDR_ markers.
+  ONNX_NAMESPACE::ModelProto output_model_proto;
+  ASSERT_STATUS_OK(model->ToGraphProtoWithCustomInitializerHandling(InlineAllHandler::Func, nullptr,
+                                                                    output_model_proto));
+
+  const auto& output_graph = output_model_proto.graph();
+
+  // Verify: no initializer in the output should have _ORT_MEM_ADDR_ markers,
+  // and there should be no duplicates.
+  ASSERT_EQ(output_graph.initializer_size(), 2) << "Expected both initializers in output without duplication";
+
+  size_t large_init_count = 0;
+  size_t small_init_count = 0;
+  for (const auto& init : output_graph.initializer()) {
+    if (init.name() == "large_init") {
+      ++large_init_count;
+    } else if (init.name() == "small_init") {
+      ++small_init_count;
+    }
+    EXPECT_FALSE(utils::HasExternalData(init))
+        << "Initializer '" << init.name() << "' should be inline, not external (no _ORT_MEM_ADDR_)";
+    EXPECT_TRUE(init.has_raw_data() || init.int64_data_size() > 0)
+        << "Initializer '" << init.name() << "' should have data";
+  }
+  EXPECT_EQ(large_init_count, 1u) << "large_init should appear exactly once";
+  EXPECT_EQ(small_init_count, 1u) << "small_init should appear exactly once";
+
+  // Verify the large initializer data was correctly serialized.
+  auto it = std::find_if(output_graph.initializer().begin(), output_graph.initializer().end(),
+                         [](const TensorProto& tp) { return tp.name() == "large_init"; });
+  ASSERT_NE(it, output_graph.initializer().end());
+  // The data should be in raw_data (SetRawDataInTensorProto writes to raw_data).
+  ASSERT_GT(it->raw_data().size(), 0u) << "large_init should have raw_data after inlining";
+  ASSERT_EQ(it->raw_data().size(), 32 * sizeof(int64_t));
+}
+
+// Test that a malformed model with an initializer that has no corresponding NodeArg
+// is properly rejected during graph loading.
+TEST_F(GraphTest, MalformedModelInitializerWithoutNodeArg) {
+  // Construct a model proto manually with ir_version < 4 where an initializer
+  // has no matching graph input (and therefore no NodeArg is created for it).
+  // The graph output references the orphaned initializer, but the output proto
+  // entry lacks type info so no NodeArg is created via the output loop either.
+  ModelProto model_proto;
+  model_proto.set_ir_version(3);  // ir_version < 4 requires initializers to be graph inputs
+  auto* opset = model_proto.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("test_graph");
+
+  // Add a valid graph input with type
+  auto* input = graph_proto->add_input();
+  input->set_name("X");
+  auto* input_type = input->mutable_type()->mutable_tensor_type();
+  input_type->set_elem_type(TensorProto_DataType_FLOAT);
+  input_type->mutable_shape()->add_dim()->set_dim_value(2);
+
+  // Add a node
+  auto* node = graph_proto->add_node();
+  node->add_input("X");
+  node->add_output("Y");
+  node->set_op_type("Identity");
+
+  // Add a normal graph output with type
+  auto* output = graph_proto->add_output();
+  output->set_name("Y");
+  auto* output_type = output->mutable_type()->mutable_tensor_type();
+  output_type->set_elem_type(TensorProto_DataType_FLOAT);
+  output_type->mutable_shape()->add_dim()->set_dim_value(2);
+
+  // Add an orphaned initializer (no matching graph input for ir_version < 4).
+  // This means no NodeArg is created for "orphan_init" in the constructor.
+  auto* initializer = graph_proto->add_initializer();
+  initializer->set_name("orphan_init");
+  initializer->set_data_type(TensorProto_DataType_FLOAT);
+  initializer->add_dims(2);
+  initializer->add_float_data(1.0f);
+  initializer->add_float_data(2.0f);
+
+  // Add a second output referencing the orphaned initializer.
+  // Intentionally omit type so that no NodeArg is created for it via the output loop.
+  auto* output2 = graph_proto->add_output();
+  output2->set_name("orphan_init");
+  // No type set - this means GetOrCreateNodeArg won't be called for this output
+
+  // Loading this model should fail with a proper error (not a crash)
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(
+      Model::Load(std::move(model_proto), model, nullptr, *logger_),
+      "orphan_init");
+}
+
+// Test that a model with an If node containing empty subgraphs
+// (present but empty GraphProto) is properly rejected.
+TEST_F(GraphTest, MalformedModelEmptySubgraph) {
+  // Construct a model with an If node whose then_branch and else_branch
+  // subgraphs are present but completely empty (no inputs, no outputs, no nodes).
+  ModelProto model_proto;
+  model_proto.set_ir_version(9);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_domain("");
+  opset->set_version(13);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("test_graph");
+
+  // Add a boolean condition input for the If node
+  auto* cond_input = graph_proto->add_input();
+  cond_input->set_name("cond");
+  auto* cond_type = cond_input->mutable_type()->mutable_tensor_type();
+  cond_type->set_elem_type(TensorProto_DataType_BOOL);
+  cond_type->mutable_shape();  // scalar
+
+  // Add an If node with empty then_branch and else_branch subgraphs
+  auto* node = graph_proto->add_node();
+  node->add_input("cond");
+  node->add_output("Y");
+  node->set_op_type("If");
+
+  // Add then_branch attribute with an empty GraphProto
+  auto* then_attr = node->add_attribute();
+  then_attr->set_name("then_branch");
+  then_attr->set_type(AttributeProto_AttributeType_GRAPH);
+  then_attr->mutable_g();  // allocate empty GraphProto
+
+  // Add else_branch attribute with an empty GraphProto
+  auto* else_attr = node->add_attribute();
+  else_attr->set_name("else_branch");
+  else_attr->set_type(AttributeProto_AttributeType_GRAPH);
+  else_attr->mutable_g();  // allocate empty GraphProto
+
+  // Add graph output
+  auto* output = graph_proto->add_output();
+  output->set_name("Y");
+  auto* output_type = output->mutable_type()->mutable_tensor_type();
+  output_type->set_elem_type(TensorProto_DataType_FLOAT);
+  output_type->mutable_shape()->add_dim()->set_dim_value(2);
+
+  // Loading the model should fail gracefully — not crash.
+  // The empty subgraphs have no outputs, which violates the If op spec.
+  std::shared_ptr<Model> model;
+  auto status = Model::Load(std::move(model_proto), model, nullptr, *logger_);
+  EXPECT_FALSE(status.IsOK());
+}
+
+// Test for GitHub issue #24880: subgraph referencing an initializer from the outer graph
+// should resolve successfully even without explicit value_info in the subgraph.
+// Uses a custom op with a GRAPH attribute but NO type inference function, so subgraph
+// type inferencing is never invoked. This directly exercises the verification-time
+// propagation in VerifyNodeAndOpMatch.
+TEST_F(GraphTest, OuterScopeInitializerTypeInfoPropagatedToSubgraph) {
+  // Register a custom op with a GRAPH attribute but no type/shape inference function.
+  // This simulates ops like BeamSearch whose schema inference does not invoke subgraph
+  // inferencing, so InferAndVerifySubgraphTypes is never called during type inference.
+  std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry> registry =
+      std::make_shared<OnnxRuntimeOpSchemaRegistry>();
+  std::vector<ONNX_NAMESPACE::OpSchema> schema = {
+      OpSchema()
+          .SetName("FakeSubgraphOp")
+          .SetDomain("FakeTestDomain")
+          .Input(0, "X", "Input tensor", "T")
+          .Output(0, "Y", "Output tensor", "T")
+          .Attr("body", "A subgraph", AttributeProto::GRAPH)
+          .TypeConstraint("T", OpSchema::all_tensor_types(),
+                          "Constrain input and output types to any tensor type.")};
+  ASSERT_TRUE(registry->RegisterOpSet(schema, "FakeTestDomain", 0, 1).IsOK());
+
+  // Build the model proto.
+  // Main graph: float input "x" [2,3], float initializer "weight" [2,3],
+  //             FakeSubgraphOp node with a subgraph that references "weight".
+  // The subgraph uses "weight" via implicit capture (no value_info for it in the subgraph).
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  ImportOpset(model_proto, "", 16);
+  ImportOpset(model_proto, "FakeTestDomain", 1);
+
+  GraphProto& main_graph = *model_proto.mutable_graph();
+  main_graph.set_name("main_graph");
+
+  // Main graph input: float tensor "x"
+  ValueInfoProto* x_input = main_graph.add_input();
+  x_input->set_name("x");
+  SetTypeAndShape(x_input->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {2, 3});
+
+  // Initializer "weight" in the main graph (float [2,3]).
+  // Not added as a graph input — ORT relaxes the ONNX requirement that initializers
+  // must also be listed as graph inputs.
+  TensorProto* weight_init = main_graph.add_initializer();
+  weight_init->set_name("weight");
+  weight_init->set_data_type(TensorProto_DataType_FLOAT);
+  weight_init->add_dims(2);
+  weight_init->add_dims(3);
+  for (int i = 0; i < 6; ++i) {
+    weight_init->add_float_data(static_cast<float>(i));
+  }
+
+  // Build subgraph: Identity(weight) -> result
+  // "weight" is from the outer scope — deliberately NO value_info for it in this subgraph.
+  // It will be picked up as an implicit input by BuildConnections.
+  GraphProto subgraph;
+  subgraph.set_name("body_subgraph");
+
+  // Subgraph output
+  ValueInfoProto* sg_output = subgraph.add_output();
+  sg_output->set_name("result");
+  SetTypeAndShape(sg_output->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {2, 3});
+
+  // Identity node: result = Identity(weight)
+  NodeProto* identity_node = subgraph.add_node();
+  identity_node->set_op_type("Identity");
+  *identity_node->add_input() = "weight";  // outer scope initializer
+  *identity_node->add_output() = "result";
+
+  // FakeSubgraphOp node: takes "x" as input, has "body" subgraph attribute
+  NodeProto* fake_node = main_graph.add_node();
+  fake_node->set_op_type("FakeSubgraphOp");
+  fake_node->set_domain("FakeTestDomain");
+  fake_node->set_name("fake_subgraph_node");
+  *fake_node->add_input() = "x";
+  *fake_node->add_output() = "y";
+
+  AttributeProto* body_attr = fake_node->add_attribute();
+  body_attr->set_name("body");
+  body_attr->set_type(AttributeProto_AttributeType_GRAPH);
+  *body_attr->mutable_g() = subgraph;
+
+  // Main graph output
+  ValueInfoProto* main_output = main_graph.add_output();
+  main_output->set_name("y");
+  SetTypeAndShape(main_output->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {2, 3});
+
+  // Load the model — this calls Graph::Resolve internally.
+  // Without the fix, this fails with:
+  //   "input arg (weight) does not have type information set by parent node"
+  // because FakeSubgraphOp has no type inference that propagates types to the subgraph.
+  // The fix propagates type info from implicit_input_defs during VerifyNodeAndOpMatch.
+  std::shared_ptr<Model> model;
+  std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>> regs = {registry};
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, &regs, *logger_));
+}
+
+// Negative companion to OuterScopeInitializerTypeInfoPropagatedToSubgraph.
+// The subgraph declares a value_info for the outer-scope initializer "weight"
+// with a conflicting element type (INT64 vs FLOAT).  Model::Load must fail and
+// the error message must identify the type conflict.
+TEST_F(GraphTest, OuterScopeInitializerConflictingTypeFails) {
+  // Same custom-op registration as the positive test.
+  std::shared_ptr<onnxruntime::OnnxRuntimeOpSchemaRegistry> registry =
+      std::make_shared<OnnxRuntimeOpSchemaRegistry>();
+  std::vector<ONNX_NAMESPACE::OpSchema> schema = {
+      OpSchema()
+          .SetName("FakeSubgraphOp2")
+          .SetDomain("FakeTestDomain")
+          .Input(0, "X", "Input tensor", "T")
+          .Output(0, "Y", "Output tensor", "T")
+          .Attr("body", "A subgraph", AttributeProto::GRAPH)
+          .TypeConstraint("T", OpSchema::all_tensor_types(),
+                          "Constrain input and output types to any tensor type.")};
+  ASSERT_TRUE(registry->RegisterOpSet(schema, "FakeTestDomain", 0, 1).IsOK());
+
+  // Build the model proto — identical outer graph to the positive test.
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  ImportOpset(model_proto, "", 16);
+  ImportOpset(model_proto, "FakeTestDomain", 1);
+
+  GraphProto& main_graph = *model_proto.mutable_graph();
+  main_graph.set_name("main_graph");
+
+  // Main graph input: float tensor "x" [2,3]
+  ValueInfoProto* x_input = main_graph.add_input();
+  x_input->set_name("x");
+  SetTypeAndShape(x_input->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {2, 3});
+
+  // Initializer "weight" in the main graph: FLOAT [2,3].
+  TensorProto* weight_init = main_graph.add_initializer();
+  weight_init->set_name("weight");
+  weight_init->set_data_type(TensorProto_DataType_FLOAT);
+  weight_init->add_dims(2);
+  weight_init->add_dims(3);
+  for (int i = 0; i < 6; ++i) {
+    weight_init->add_float_data(static_cast<float>(i));
+  }
+
+  // Build subgraph: Identity(weight) -> result.
+  // Unlike the positive test, we add a value_info for "weight" that declares
+  // it as INT64 [2,3] — conflicting with the outer-scope FLOAT type.
+  GraphProto subgraph;
+  subgraph.set_name("body_subgraph");
+
+  // Conflicting value_info: "weight" as INT64 [2,3] instead of FLOAT [2,3].
+  ValueInfoProto* weight_vi = subgraph.add_value_info();
+  weight_vi->set_name("weight");
+  SetTypeAndShape(weight_vi->mutable_type()->mutable_tensor_type(), TensorProto_DataType_INT64, {2, 3});
+
+  // Subgraph output
+  ValueInfoProto* sg_output = subgraph.add_output();
+  sg_output->set_name("result");
+  SetTypeAndShape(sg_output->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {2, 3});
+
+  // Identity node: result = Identity(weight)
+  NodeProto* identity_node = subgraph.add_node();
+  identity_node->set_op_type("Identity");
+  *identity_node->add_input() = "weight";
+  *identity_node->add_output() = "result";
+
+  // FakeSubgraphOp2 node
+  NodeProto* fake_node = main_graph.add_node();
+  fake_node->set_op_type("FakeSubgraphOp2");
+  fake_node->set_domain("FakeTestDomain");
+  fake_node->set_name("fake_subgraph_node");
+  *fake_node->add_input() = "x";
+  *fake_node->add_output() = "y";
+
+  AttributeProto* body_attr = fake_node->add_attribute();
+  body_attr->set_name("body");
+  body_attr->set_type(AttributeProto_AttributeType_GRAPH);
+  *body_attr->mutable_g() = subgraph;
+
+  // Main graph output
+  ValueInfoProto* main_output = main_graph.add_output();
+  main_output->set_name("y");
+  SetTypeAndShape(main_output->mutable_type()->mutable_tensor_type(), TensorProto_DataType_FLOAT, {2, 3});
+
+  // Model::Load must fail because the subgraph declares "weight" as INT64
+  // while the outer-scope initializer is FLOAT.  The strict UpdateTypeAndShape
+  // call in VerifyNodeAndOpMatch returns "Tensor element type mismatch" which
+  // is then wrapped with the subgraph context "[subgraph:body]".
+  std::shared_ptr<Model> model;
+  std::list<std::shared_ptr<IOnnxRuntimeOpSchemaCollection>> regs = {registry};
+  auto status = Model::Load(std::move(model_proto), model, &regs, *logger_);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Tensor element type mismatch"));
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("[subgraph:body]"));
+}
+
+// Regression test for https://github.com/microsoft/onnxruntime/issues/29071
+// InlineIfSubgraph must transfer OrtValues for initializers with in-memory external data
+// from the subgraph to the parent graph. Previously, the OrtValue lookup always failed
+// because name_to_initial_tensor_ was erased before GetOrtValueInitializer was called.
+TEST_F(GraphTest, InlineIfSubgraphTransfersOrtValues) {
+  // Build a model with an If node whose condition is a constant initializer (true).
+  // The "then" subgraph contains a large initializer (>127 bytes, triggering
+  // ConvertInitializersIntoOrtValues). When the If is constant-folded via
+  // InlineIfSubgraph, the large initializer must be transferred with its OrtValue.
+  ModelProto model_proto;
+  model_proto.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  auto* opset = model_proto.add_opset_import();
+  opset->set_version(13);
+
+  auto* graph_proto = model_proto.mutable_graph();
+  graph_proto->set_name("test_inline_if");
+
+  // Constant condition = true
+  auto* cond_init = graph_proto->add_initializer();
+  cond_init->set_name("cond");
+  cond_init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_BOOL);
+  cond_init->add_int32_data(1);  // true
+
+  // If node
+  auto* if_node = graph_proto->add_node();
+  if_node->set_op_type("If");
+  if_node->set_name("if_node");
+  if_node->add_input("cond");
+  if_node->add_output("if_out");
+
+  // Identity node after If to avoid naming conflicts during inlining
+  auto* id_node = graph_proto->add_node();
+  id_node->set_op_type("Identity");
+  id_node->set_name("post_if_identity");
+  id_node->add_input("if_out");
+  id_node->add_output("output");
+
+  // Helper to set type+shape on a ValueInfoProto's tensor_type
+  auto SetTypeAndShape = [](auto* tensor_type, int32_t elem_type, std::initializer_list<int64_t> dims) {
+    tensor_type->set_elem_type(elem_type);
+    auto* shape = tensor_type->mutable_shape();
+    for (auto d : dims) {
+      shape->add_dim()->set_dim_value(d);
+    }
+  };
+
+  // === then_branch subgraph ===
+  auto* then_attr = if_node->add_attribute();
+  then_attr->set_name("then_branch");
+  then_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  auto* then_graph = then_attr->mutable_g();
+  then_graph->set_name("then_graph");
+
+  // Large initializer in the then branch: 32 float values = 128 bytes (> 127 byte threshold)
+  auto* large_init = then_graph->add_initializer();
+  large_init->set_name("large_weight");
+  large_init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  large_init->add_dims(32);
+  for (int i = 0; i < 32; ++i) {
+    large_init->add_float_data(static_cast<float>(i));
+  }
+
+  // Identity node in the then branch: output = Identity(large_weight)
+  auto* then_id_node = then_graph->add_node();
+  then_id_node->set_op_type("Identity");
+  then_id_node->add_input("large_weight");
+  then_id_node->add_output("then_out");
+
+  auto* then_output = then_graph->add_output();
+  then_output->set_name("then_out");
+  SetTypeAndShape(then_output->mutable_type()->mutable_tensor_type(),
+                  TensorProto_DataType_FLOAT, {32});
+
+  // === else_branch subgraph (required by schema, but won't be taken) ===
+  auto* else_attr = if_node->add_attribute();
+  else_attr->set_name("else_branch");
+  else_attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_GRAPH);
+  auto* else_graph = else_attr->mutable_g();
+  else_graph->set_name("else_graph");
+
+  // Large initializer in the else branch (won't be used since condition is true)
+  auto* else_init = else_graph->add_initializer();
+  else_init->set_name("else_weight");
+  else_init->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  else_init->add_dims(32);
+  for (int i = 0; i < 32; ++i) {
+    else_init->add_float_data(0.0f);
+  }
+
+  auto* else_id_node = else_graph->add_node();
+  else_id_node->set_op_type("Identity");
+  else_id_node->add_input("else_weight");
+  else_id_node->add_output("else_out");
+
+  auto* else_output = else_graph->add_output();
+  else_output->set_name("else_out");
+  SetTypeAndShape(else_output->mutable_type()->mutable_tensor_type(),
+                  TensorProto_DataType_FLOAT, {32});
+
+  // Graph output
+  auto* output = graph_proto->add_output();
+  output->set_name("output");
+  SetTypeAndShape(output->mutable_type()->mutable_tensor_type(),
+                  TensorProto_DataType_FLOAT, {32});
+
+  // Load and resolve
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(std::move(model_proto), model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // Convert initializers to OrtValues (large ones get in-memory external data markers).
+  // This processes subgraphs too, so the then_branch's large_weight becomes external-in-memory.
+  ASSERT_STATUS_OK(graph.ConvertInitializersIntoOrtValues());
+
+  // Now inline the If subgraph (simulating what constant folding does).
+  // Before the fix, this would leave the large initializer with HasExternalDataInMemory==true
+  // but no cached OrtValue, causing a crash in SaveInitializedTensors.
+  Node* if_node_ptr = nullptr;
+  for (auto& node : graph.Nodes()) {
+    if (node.OpType() == "If") {
+      if_node_ptr = &node;
+      break;
+    }
+  }
+  ASSERT_NE(if_node_ptr, nullptr) << "If node should exist before inlining";
+
+  ASSERT_STATUS_OK(graph.InlineIfSubgraph(/*condition_value=*/true, *if_node_ptr, *logger_));
+
+  // Remove the If node (same as ConstantFoldIfNode does after inlining)
+  graph_utils::RemoveNodeOutputEdges(graph, *if_node_ptr);
+  graph.RemoveNode(if_node_ptr->Index());
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // Verify: the inlined initializer with in-memory external data must have a cached OrtValue
+  for (const auto& [name, tp] : graph.GetAllInitializedTensors()) {
+    if (utils::HasExternalDataInMemory(*tp)) {
+      OrtValue ort_value;
+      EXPECT_TRUE(graph.GetOrtValueInitializer(name, ort_value))
+          << "Initializer '" << name << "' has external data in memory but no cached OrtValue";
+      EXPECT_TRUE(ort_value.IsAllocated())
+          << "OrtValue for '" << name << "' should be allocated";
+    }
+  }
+}
+
+// End-to-end regression test for https://github.com/microsoft/onnxruntime/issues/29071
+// Loads the customer's repro model (which has an If node and triggers ConstantFolding)
+// and verifies that session initialization succeeds.
+// The model is generated by testdata/gh_issue_29071_if_constant_folding.py.
+TEST_F(GraphTest, GH_Issue_29071_HasExternalDataInMemory) {
+  SessionOptions so;
+  so.session_logid = "GraphTest.GH_Issue_29071_HasExternalDataInMemory";
+
+  InferenceSession session_object{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session_object.Load(ORT_TSTR("testdata/gh_issue_29071_if_constant_folding.onnx")));
+  ASSERT_STATUS_OK(session_object.Initialize());
 }
 
 }  // namespace test

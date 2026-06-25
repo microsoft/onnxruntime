@@ -30,6 +30,7 @@
 #define ERROR 0
 
 #include "core/session/onnxruntime_c_api.h"
+#include <iomanip>
 #include <wil/wrl.h>
 #ifndef _GAMING_XBOX
 #include <dxgi1_6.h>
@@ -42,6 +43,25 @@ using namespace Windows::AI::MachineLearning::Adapter;
 namespace Dml
 {
     using namespace onnxruntime::common;
+
+#ifndef ORT_NO_EXCEPTIONS
+    static Status HResultToStatus(HRESULT hr, const char* operation, const char* details)
+    {
+        const StatusCode status_code = hr == E_INVALIDARG ? INVALID_ARGUMENT : FAIL;
+        return Status(
+            ONNXRUNTIME,
+            status_code,
+            onnxruntime::MakeString(
+                operation,
+                " failed with HRESULT 0x",
+                std::setfill('0'),
+                std::uppercase,
+                std::hex,
+                std::setw(8),
+                static_cast<uint32_t>(hr), ": ", details
+            ));
+    }
+#endif
 
     ExecutionProvider::~ExecutionProvider()
     {
@@ -543,12 +563,12 @@ namespace Dml
         // Source and destination for batched GPU -> CPU copies
         std::vector<ID3D12Resource*> srcDatas;
         std::vector<void*> dstDatas;
-        std::vector<uint32_t> dataSizesInBytes;
+        std::vector<size_t> dataSizesInBytes;
 
         assert(!m_closed);
         auto provider = const_cast<ExecutionProviderImpl*>(this);
 
-        for (uint32_t i = 0; i < dst.size(); ++i)
+        for (size_t i = 0; i < dst.size(); ++i)
         {
             // This batching implementation only handles GPU -> CPU copies.  Other copies do not require synchronization
             // and are batched across multiple calls to CopyTensor.
@@ -559,15 +579,15 @@ namespace Dml
             }
 
             const size_t dataSizeInBytes = ComputeByteSizeFromTensor(*dst[i]);
-            ORT_THROW_HR_IF(E_INVALIDARG, dataSizeInBytes != ComputeByteSizeFromTensor(*src[i])); // Tensors must be the same size
+            const size_t srcSizeInBytes = ComputeByteSizeFromTensor(*src[i]);
+            ORT_THROW_HR_IF(E_INVALIDARG, dataSizeInBytes != srcSizeInBytes); // Tensors must be the same size
 
             if (dataSizeInBytes == 0)
             {
                 continue;
             }
 
-            dataSizesInBytes.push_back(static_cast<uint32_t>(ComputeByteSizeFromTensor(*dst[i])));
-            ORT_THROW_HR_IF(E_INVALIDARG, dataSizesInBytes.back() != ComputeByteSizeFromTensor(*src[i])); // Tensors must be the same size
+            dataSizesInBytes.push_back(dataSizeInBytes);
 
             dstDatas.push_back(dst[i]->GetData());
             const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(src[i]).GetDataInterface().Get());
@@ -959,12 +979,12 @@ namespace Dml
         // Source and destination for batched GPU -> CPU copies
         std::vector<ID3D12Resource*> srcDatas;
         std::vector<void*> dstDatas;
-        std::vector<uint32_t> dataSizesInBytes;
+        std::vector<size_t> dataSizesInBytes;
 
         assert(!m_closed);
         auto provider = const_cast<ExecutionProviderImpl*>(this);
 
-        for (uint32_t i = 0; i < src_dst_pairs.size(); ++i)
+        for (size_t i = 0; i < src_dst_pairs.size(); ++i)
         {
             // This batching implementation only handles GPU -> CPU copies.  Other copies do not require synchronization
             // and are batched across multiple calls to CopyTensor.
@@ -987,15 +1007,19 @@ namespace Dml
                 true);
 
             const size_t dataSizeInBytes = ComputeByteSizeFromTensor(dstWrapper);
-            ORT_THROW_HR_IF(E_INVALIDARG, dataSizeInBytes != ComputeByteSizeFromTensor(srcWrapper)); // Tensors must be the same size
+            const size_t srcSizeInBytes = ComputeByteSizeFromTensor(srcWrapper);
+            if (dataSizeInBytes != srcSizeInBytes)
+            {
+                return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "DML tensor size mismatch. src size: ",
+                                       srcSizeInBytes, " dst size: ", dataSizeInBytes);
+            }
 
             if (dataSizeInBytes == 0)
             {
-                return onnxruntime::common::Status::OK();
+                continue;
             }
 
-            dataSizesInBytes.push_back(static_cast<uint32_t>(ComputeByteSizeFromTensor(dstWrapper)));
-            ORT_THROW_HR_IF(E_INVALIDARG, dataSizesInBytes[i] != ComputeByteSizeFromTensor(srcWrapper)); // Tensors must be the same size
+            dataSizesInBytes.push_back(dataSizeInBytes);
 
             dstDatas.push_back(dstWrapper.GetData());
             const AllocationInfo* srcAllocInfo = m_allocator->DecodeDataHandle(MLOperatorTensor(&srcWrapper).GetDataInterface().Get());
@@ -1006,7 +1030,18 @@ namespace Dml
         const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
 
         // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer
-        m_readbackHeap->ReadbackFromGpu(dstDatas, dataSizesInBytes, srcDatas, srcState);
+#ifndef ORT_NO_EXCEPTIONS
+        ORT_TRY
+        {
+#endif
+            m_readbackHeap->ReadbackFromGpu(dstDatas, dataSizesInBytes, srcDatas, srcState);
+#ifndef ORT_NO_EXCEPTIONS
+        }
+        ORT_CATCH(const wil::ResultException& ex)
+        {
+            return HResultToStatus(ex.GetErrorCode(), "DML GPU readback", ex.what());
+        }
+#endif
 
         return onnxruntime::common::Status::OK();
     }

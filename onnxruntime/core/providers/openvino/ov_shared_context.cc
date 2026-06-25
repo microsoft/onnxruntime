@@ -42,6 +42,7 @@ const void* SharedContext::WeightsFile::TryGetOrCreateDeviceMapping(std::optiona
     dev_name = remote_context->get_device_name();
   }
 
+  std::unique_lock<std::mutex> lock(mutex_);
   auto [it, inserted] = imported_device_tensors_.emplace(dev_name, MappingContainer{});
   if (inserted) {
     if (dev_name == "NPU") {

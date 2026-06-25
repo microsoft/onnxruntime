@@ -47,5 +47,9 @@ Module["unmountExternalData"] = () => {
  */
 var SharedArrayBuffer =
   globalThis.SharedArrayBuffer ??
-  new WebAssembly.Memory({ initial: 0, maximum: 0, shared: true }).buffer
-    .constructor;
+  // prettier-ignore
+  //
+  // the line above is used to force prettier to skip formatting the next statement.
+  // this is because prettier will remove the quotes around the property names, but we need to keep them
+  // because otherwise closure compiler may rename them and break the code.
+  new WebAssembly.Memory({ "initial": 0, "maximum": 0, "shared": true }).buffer.constructor;

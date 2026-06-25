@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <array>
 #include <memory>
 #include <string>
 #include <sstream>
@@ -39,7 +40,7 @@ constexpr static const std::string_view STORAGE_TYPE_ARRAY[] = {
     "u32",        // Uint4x8
     "u32",        // Int4x8
 };
-constexpr static const auto STORAGE_TYPE = details::_to_std_array(STORAGE_TYPE_ARRAY);
+constexpr static const auto STORAGE_TYPE = std::to_array(STORAGE_TYPE_ARRAY);
 
 constexpr static const std::string_view VALUE_TYPE_ARRAY[] = {
     "f32",         // Float32
@@ -66,7 +67,7 @@ constexpr static const std::string_view VALUE_TYPE_ARRAY[] = {
     "u32",         // Uint4x8
     "u32",         // Int4x8
 };
-constexpr static const auto VALUE_TYPE = details::_to_std_array(VALUE_TYPE_ARRAY);
+constexpr static const auto VALUE_TYPE = std::to_array(VALUE_TYPE_ARRAY);
 
 constexpr static const std::string_view ELEMENT_TYPE_ARRAY[] = {
     "f32",   // Float32
@@ -93,7 +94,7 @@ constexpr static const std::string_view ELEMENT_TYPE_ARRAY[] = {
     "u32",   // Uint4x8
     "i32",   // Int4x8
 };
-constexpr static const auto ELEMENT_TYPE = details::_to_std_array(ELEMENT_TYPE_ARRAY);
+constexpr static const auto ELEMENT_TYPE = std::to_array(ELEMENT_TYPE_ARRAY);
 
 constexpr static const uint32_t BYTES_ARRAY[] = {
     4,   // Float32
@@ -120,7 +121,7 @@ constexpr static const uint32_t BYTES_ARRAY[] = {
     4,   // Uint4x8 (packed in u32)
     4,   // Int4x8 (packed in u32)
 };
-constexpr static const auto BYTES = details::_to_std_array(BYTES_ARRAY);
+constexpr static const auto BYTES = std::to_array(BYTES_ARRAY);
 
 inline std::string GetIndicesType(int rank) {
   return rank < 2 ? "u32"
@@ -366,7 +367,7 @@ std::string ShaderVariableHelper::GetByOffsetImpl(std::string_view offset) const
   return SS_GET(ss);
 }
 
-std::string ShaderVariableHelper::SetByOffsetImpl(std::string_view offset, std::string_view value) const {
+std::string ShaderVariableHelper::SetByOffsetImpl(std::string_view offset, std::string_view value, bool use_storage_type) const {
   SS(ss, kStringInitialSizeSetByOffsetImpl);
 
   if (usage_ & ShaderUsage::UseSetByOffsetSegments) {
@@ -378,7 +379,13 @@ std::string ShaderVariableHelper::SetByOffsetImpl(std::string_view offset, std::
       ORT_THROW("Invalid type");
       break;
     case onnxruntime::webgpu::ProgramVariableDataType::Int64:
-      ss << name_ << "[" << offset << "]=vec2<u32>(u32(" << value << "), select(0u, 0xFFFFFFFFu, i32(" << value << ") < 0));";
+      if (use_storage_type) {
+        // Value is already storage type (vec2<u32>), use directly
+        ss << name_ << "[" << offset << "]=" << value << ";";
+      } else {
+        // Value is i32, sign-extend to int64 (vec2<u32>)
+        ss << name_ << "[" << offset << "]=vec2<u32>(u32(" << value << "), select(0u, 0xFFFFFFFFu, i32(" << value << ") < 0));";
+      }
       break;
     case onnxruntime::webgpu::ProgramVariableDataType::Uint64:
       ss << name_ << "[" << offset << "]=vec2<u32>(u32(" << value << "), 0u);";

@@ -120,7 +120,7 @@ class SizeBasedStatsAccountant : public IResourceAccountant {
     }
   }
 
-  void ResetPendingWeights() override {
+  void ResetPendingWeightsImpl() override {
     pending_weights_.clear();
     pending_weights_by_node_.clear();
   }
@@ -315,6 +315,38 @@ std::string IResourceAccountant::MakeUniqueNodeName(const Node& node) {
   result.append(node_name).append("_").append(std::to_string(node_hash));
 
   return result;
+}
+
+ResourceCount AddResourceCounts(const ResourceCount& a, const ResourceCount& b) {
+  return std::visit(
+      [](auto lhs, auto rhs) -> ResourceCount {
+        static_assert(std::is_same_v<decltype(lhs), decltype(rhs)>,
+                      "AddResourceCounts requires both operands to hold the same type. "
+                      "Handle the new ResourceCount variant member.");
+        if constexpr (std::is_integral_v<decltype(lhs)>) {
+          return static_cast<decltype(lhs)>(SafeInt<decltype(lhs)>(lhs) + rhs);
+        } else {
+          return lhs + rhs;
+        }
+      },
+      a, b);
+}
+
+bool ResourceCountExceeds(const ResourceCount& a, const ResourceCount& b) {
+  return std::visit(
+      [](auto lhs, auto rhs) -> bool {
+        static_assert(std::is_same_v<decltype(lhs), decltype(rhs)>,
+                      "ResourceCountExceeds requires both operands to hold the same type. "
+                      "Handle the new ResourceCount variant member.");
+        return lhs > rhs;
+      },
+      a, b);
+}
+
+std::string FormatResourceCount(const ResourceCount& rc) {
+  return std::visit(
+      [](auto val) -> std::string { return std::to_string(val); },
+      rc);
 }
 
 }  // namespace onnxruntime

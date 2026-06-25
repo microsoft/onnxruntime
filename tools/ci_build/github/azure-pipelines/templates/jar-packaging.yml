@@ -15,15 +15,9 @@ steps:
 - checkout: self
   submodules: false
 
-- task: UsePythonVersion@0
-  inputs:
+- template: setup-feeds-and-python-steps.yml
+  parameters:
     versionSpec: '3.13'
-    addToPath: true
-
-- task: PipAuthenticate@1
-  displayName: 'Pip Authenticate'
-  inputs:
-    artifactFeeds: 'Lotus'
 
 - template: set-version-number-variables-step.yml
 

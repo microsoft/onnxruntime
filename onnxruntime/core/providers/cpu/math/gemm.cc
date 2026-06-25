@@ -296,6 +296,7 @@ Status Gemm<float>::PrePack(const Tensor& tensor, int input_idx,
 
 template <typename T>
 Status Gemm<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& /*prepacked_buffers*/,
+                                          gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                           int /*input_idx*/,
                                           /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
@@ -304,6 +305,7 @@ Status Gemm<T>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& /*prepac
 
 template <>
 Status Gemm<float>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                              gsl::span<const size_t> /*prepacked_buffer_sizes*/,
                                               int input_idx,
                                               /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;

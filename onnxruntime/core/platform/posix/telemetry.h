@@ -7,7 +7,10 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 
 // Forward declarations of 1DS SDK types
@@ -61,6 +64,9 @@ class PosixTelemetry : public Telemetry {
                           const std::unordered_map<std::string, std::string>& model_metadata,
                           const std::string& loadedFrom,
                           const std::vector<std::string>& execution_provider_ids,
+                          const std::string& hardware_device_types,
+                          const std::string& hardware_vendor_ids,
+                          const std::string& ep_versions,
                           bool use_fp16, bool captureState) const override;
 
   void LogCompileModelStart(uint32_t session_id,
@@ -81,6 +87,10 @@ class PosixTelemetry : public Telemetry {
   void LogRuntimeError(uint32_t session_id, const common::Status& status,
                        const char* file, const char* function, uint32_t line) const override;
 
+  void LogRuntimeInferenceError(uint32_t session_id, const common::Status& status,
+                                const std::string& ep_versions,
+                                const std::string& ep_device_types) const override;
+
   void LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last,
                       int64_t total_run_duration_since_last,
                       const std::unordered_map<int64_t, long long>& duration_per_batch_size) const override;
@@ -97,6 +107,29 @@ class PosixTelemetry : public Telemetry {
   void LogProviderOptions(const std::string& provider_id,
                           const std::string& provider_options_string,
                           bool captureState) const override;
+
+  void LogModelLoadStart(uint32_t session_id) const override;
+  void LogModelLoadEnd(uint32_t session_id, const common::Status& status) const override;
+
+  void LogSessionCreationEnd(uint32_t session_id, const common::Status& status) const override;
+
+  void LogEpDeviceUsage(uint32_t session_id,
+                        const std::string& ep_type,
+                        const std::string& hardware_device_type,
+                        uint32_t hardware_vendor_id,
+                        uint32_t hardware_device_id,
+                        const std::string& hardware_vendor,
+                        const std::string& ep_vendor,
+                        const std::string& ep_version,
+                        int assigned_node_count,
+                        uint32_t total_runs_since_last,
+                        int64_t total_run_duration_since_last) const override;
+
+  void LogRegisterEpLibraryStart(const std::string& registration_name) const override;
+  void LogRegisterEpLibraryEnd(const std::string& registration_name,
+                               const common::Status& status) const override;
+  void LogRegisterEpLibraryWithLibPath(const std::string& registration_name,
+                                       const std::string& lib_path) const override;
 
  private:
   // Initialize telemetry SDK logger
@@ -121,25 +154,33 @@ class PosixTelemetry : public Telemetry {
   // Log system resource metrics
   void LogSystemMetrics(uint32_t session_id) const;
 
-  // Mutex for thread-safe access
-  mutable std::mutex mutex_;
+  // All shared telemetry state below is static: PosixTelemetry is a process-wide singleton whose
+  // lifetime is gated by global_register_count_ (the first instance initializes the SDK, the last
+  // tears it down), matching WindowsTelemetry. Keeping the SDK handles and state static ensures a
+  // single owner regardless of how many PosixTelemetry objects exist.
+
+  // Mutex for thread-safe init/shutdown of the shared SDK state.
+  static std::shared_mutex mutex_;
 
   // Telemetry SDK instances.
   // log_manager_ is owned by LogManagerProvider; logger_ is owned by log_manager_.
-  ::Microsoft::Applications::Events::ILogManager* log_manager_ = nullptr;
-  ::Microsoft::Applications::Events::ILogger* logger_ = nullptr;
+  static ::Microsoft::Applications::Events::ILogManager* log_manager_;
+  static std::atomic<::Microsoft::Applications::Events::ILogger*> logger_;
 
   // SDK configuration — must outlive log_manager_ (LogManagerImpl holds a reference).
-  std::unique_ptr<::Microsoft::Applications::Events::ILogConfiguration> config_;
+  static std::unique_ptr<::Microsoft::Applications::Events::ILogConfiguration> config_;
 
   // State tracking
-  mutable std::atomic<bool> enabled_{true};
-  mutable std::atomic<uint32_t> projection_{0};
-  mutable std::atomic<unsigned char> level_{0};
-  mutable std::atomic<uint64_t> keyword_{0};
+  static std::atomic<bool> enabled_;
+  static std::atomic<uint32_t> projection_;
+  static std::atomic<unsigned char> level_;
+  static std::atomic<uint64_t> keyword_;
 
   // Process info tracking
-  mutable std::atomic<bool> process_info_logged_{false};
+  static std::atomic<bool> process_info_logged_;
+
+  // Sampling counter for the per-run SystemMetrics event (see LogSystemMetrics).
+  static std::atomic<uint32_t> system_metrics_sample_counter_;
 
   // Global registration count for singleton behavior
   static std::atomic<uint32_t> global_register_count_;

@@ -55,6 +55,7 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_apis.h"
 #include "core/session/ort_env.h"
+#include "core/session/ort_version_check.h"
 #include "core/session/utils.h"
 
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
@@ -431,6 +432,112 @@ union PtrConvert {
   const char** strings;
 };
 
+// Shared validation for COO indices used by both FillSparseTensorCoo and UseCooIndices.
+// Returns nullptr on success, OrtStatus* on validation failure.
+OrtStatus* ValidateCooIndices(const int64_t* indices_data, size_t indices_num,
+                              size_t values_size, const TensorShape& dense_shape) {
+  if (indices_num > 0 && indices_data == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "indices_data must not be null when indices_num > 0.");
+  }
+  if ((values_size == 0) != (indices_num == 0)) {
+    return OrtApis::CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        values_size == 0
+            ? "COO indices must be empty when the sparse tensor has no values."
+            : "COO indices must be provided when the sparse tensor has values.");
+  }
+  if (values_size > 0 && indices_num > 0) {
+    if (indices_num == values_size) {
+      const auto dense_size = dense_shape.Size();
+      for (size_t i = 0; i < indices_num; ++i) {
+        if (indices_data[i] < 0 || indices_data[i] >= dense_size) {
+          return OrtApis::CreateStatus(
+              ORT_INVALID_ARGUMENT,
+              MakeString("COO linear index out of bounds: ", indices_data[i],
+                         " must be in [0, ", dense_size, ")")
+                  .c_str());
+        }
+      }
+    } else if (indices_num / 2 == values_size && indices_num % 2 == 0) {
+      if (dense_shape.NumDimensions() != 2) {
+        return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                     "COO 2D indices require dense shape of 2 dimensions");
+      }
+      const auto rows = dense_shape.GetDims()[0];
+      const auto cols = dense_shape.GetDims()[1];
+      size_t tuple_idx = 0;
+      for (size_t i = 0; i < values_size; ++i, tuple_idx += 2) {
+        auto r = indices_data[tuple_idx];
+        auto c = indices_data[tuple_idx + 1];
+        if (r < 0 || r >= rows || c < 0 || c >= cols) {
+          return OrtApis::CreateStatus(
+              ORT_INVALID_ARGUMENT,
+              MakeString("COO 2D index out of bounds: (", r, ", ", c,
+                         ") must be in [0, ", rows, ") x [0, ", cols, ")")
+                  .c_str());
+        }
+      }
+    } else {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "COO indices count must be equal to or twice the values count.");
+    }
+  }
+  return nullptr;
+}
+
+// Shared validation for CSR indices used by both FillSparseTensorCsr and UseCsrIndices.
+// Returns nullptr on success, OrtStatus* on validation failure.
+OrtStatus* ValidateCsrIndices(const int64_t* inner_data, size_t inner_num,
+                              const int64_t* outer_data, size_t outer_num,
+                              const TensorShape& dense_shape) {
+  if (inner_num > 0 && inner_data == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "inner index data must not be null when inner index count > 0.");
+  }
+  if (outer_num > 0 && outer_data == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "outer index data must not be null when outer index count > 0.");
+  }
+  if (dense_shape.NumDimensions() == 2 && inner_num > 0) {
+    const auto cols = dense_shape.GetDims()[1];
+    for (size_t i = 0; i < inner_num; ++i) {
+      if (inner_data[i] < 0 || inner_data[i] >= cols) {
+        return OrtApis::CreateStatus(
+            ORT_INVALID_ARGUMENT,
+            MakeString("CSR inner index out of bounds: ", inner_data[i],
+                       " must be in [0, ", cols, ")")
+                .c_str());
+      }
+    }
+  }
+  if (outer_num > 0) {
+    if (outer_data[0] != 0) {
+      return OrtApis::CreateStatus(
+          ORT_INVALID_ARGUMENT,
+          MakeString("CSR outer index must start at 0, got: ", outer_data[0]).c_str());
+    }
+    if (outer_data[outer_num - 1] != static_cast<int64_t>(inner_num)) {
+      return OrtApis::CreateStatus(
+          ORT_INVALID_ARGUMENT,
+          MakeString("CSR outer index last element must equal inner index count (",
+                     inner_num, "), got: ", outer_data[outer_num - 1])
+              .c_str());
+    }
+    int64_t prev = 0;
+    for (size_t i = 0; i < outer_num; ++i) {
+      auto val = outer_data[i];
+      if (val < prev || val > static_cast<int64_t>(inner_num)) {
+        return OrtApis::CreateStatus(
+            ORT_INVALID_ARGUMENT,
+            MakeString("CSR outer index out of bounds or not monotonically non-decreasing: ", val).c_str());
+      }
+      prev = val;
+    }
+  }
+  return nullptr;
+}
+
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 }  // namespace
 
@@ -444,6 +551,11 @@ ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorCoo, _Inout_ OrtValue* ort_value, _
 
   auto values_size = narrow<size_t>(values_t_shape.Size());
   auto indices_span = gsl::make_span(indices_data, indices_num);
+
+  if (auto* status = ValidateCooIndices(indices_data, indices_num, values_size,
+                                        sparse_tensor.DenseShape())) {
+    return status;
+  }
 
   if (sparse_tensor.IsDataTypeString()) {
     PtrConvert conv(values);
@@ -480,6 +592,13 @@ ORT_API_STATUS_IMPL(OrtApis::FillSparseTensorCsr, _Inout_ OrtValue* ort_value, _
 
   auto inner_indices_span = gsl::make_span(inner_indices_data, inner_indices_num);
   auto outer_indices_span = gsl::make_span(outer_indices_data, outer_indices_num);
+
+  if (auto* status = ValidateCsrIndices(inner_indices_data, inner_indices_num,
+                                        outer_indices_data, outer_indices_num,
+                                        sparse_tensor.DenseShape())) {
+    return status;
+  }
+
   if (sparse_tensor.IsDataTypeString()) {
     PtrConvert conv(values);
     ORT_THROW_IF_ERROR(sparse_tensor.MakeCsrStrings(values_size, conv.strings, inner_indices_span, outer_indices_span));
@@ -591,6 +710,12 @@ ORT_API_STATUS_IMPL(OrtApis::UseCooIndices, _Inout_ OrtValue* ort_value, _Inout_
                           ? gsl::span<int64_t>()
                           : gsl::make_span(indices_data, indices_num);
 
+  if (auto* status = ValidateCooIndices(indices_data, indices_num,
+                                        sparse_tensor.NumValues(),
+                                        sparse_tensor.DenseShape())) {
+    return status;
+  }
+
   ORT_THROW_IF_ERROR(sparse_tensor.UseCooIndices(indices_span));
   return nullptr;
 #else
@@ -615,6 +740,12 @@ ORT_API_STATUS_IMPL(OrtApis::UseCsrIndices, _Inout_ OrtValue* ort_value,
   auto outer_span = (outer_num == 0 || outer_data == nullptr)
                         ? gsl::span<int64_t>()
                         : gsl::make_span(outer_data, outer_num);
+
+  if (auto* status = ValidateCsrIndices(inner_data, inner_num, outer_data, outer_num,
+                                        sparse_tensor.DenseShape())) {
+    return status;
+  }
+
   ORT_THROW_IF_ERROR(sparse_tensor.UseCsrIndices(inner_span, outer_span));
   return nullptr;
 #else
@@ -2409,6 +2540,13 @@ ORT_API_STATUS_IMPL(OrtApis::TensorAt, _Inout_ OrtValue* value, const int64_t* l
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "this API does not support strings");
   }
 
+  const auto* prim_type = tensor->DataType()->AsPrimitiveDataType();
+  if (prim_type != nullptr && prim_type->HasSubElems()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "this API does not support sub-byte packed types (e.g., int4). "
+                                 "Use OrtValue::GetTensorMutableData and manual unpacking instead.");
+  }
+
   const auto& tensor_shape = tensor->Shape();
   const auto num_dimensions = tensor_shape.NumDimensions();
   if (location_values_count != num_dimensions) {
@@ -3957,7 +4095,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetCompatibilityInfoFromModelBytes,
   }
 
   ONNX_NAMESPACE::ModelProto model_proto;
-  auto status = Model::LoadFromBytes(static_cast<int>(model_data_length), model_data, model_proto);
+  auto status = Model::LoadFromBytes(narrow<int32_t>(model_data_length), model_data, model_proto);
   if (!status.IsOK()) {
     return OrtApis::CreateStatus(ORT_INVALID_GRAPH, status.ErrorMessage().c_str());
   }
@@ -4213,6 +4351,13 @@ ORT_API_STATUS_IMPL(OrtApis::SetPerSessionThreadPoolCallbacks, _Inout_ OrtEnv* o
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SessionReleaseCapturedGraph, _In_ OrtSession* session, _In_ int graph_annotation_id) {
+  API_IMPL_BEGIN
+  auto* inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
+  return ToOrtStatus(inference_session->ReleaseCapturedGraph(graph_annotation_id));
+  API_IMPL_END
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString};
@@ -4256,7 +4401,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
     In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_25 = {
+static constexpr OrtApi ort_api_1_to_28 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -4763,6 +4908,14 @@ static constexpr OrtApi ort_api_1_to_25 = {
     &OrtApis::KernelInfoGetAttributeArray_string,
     &OrtApis::SetPerSessionThreadPoolCallbacks,
     // End of Version 25 - DO NOT MODIFY ABOVE (see above text for more information)
+    // End of Version 26 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::GetMemPatternEnabled,
+    &OrtApis::GetSessionExecutionMode,
+    &OrtApis::SessionReleaseCapturedGraph,
+    // End of Version 27 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::GetExperimentalFunction,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
@@ -4800,14 +4953,16 @@ static_assert(offsetof(OrtApi, SetEpDynamicOptions) / sizeof(void*) == 284, "Siz
 static_assert(offsetof(OrtApi, GetEpApi) / sizeof(void*) == 317, "Size of version 22 API cannot change");
 static_assert(offsetof(OrtApi, CreateExternalInitializerInfo) / sizeof(void*) == 389, "Size of version 23 API cannot change");
 static_assert(offsetof(OrtApi, GetTensorElementTypeAndShapeDataReference) / sizeof(void*) == 414, "Size of version 24 API cannot change");
-static_assert(offsetof(OrtApi, KernelInfoGetAttributeArray_string) / sizeof(void*) == 417, "Size of version 25 API cannot change");
+static_assert(offsetof(OrtApi, SetPerSessionThreadPoolCallbacks) / sizeof(void*) == 418, "Size of version 25 API cannot change");
+// no additions in version 26
+// no additions in version 27
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.25.0",
+static_assert(std::string_view(ORT_VERSION) == "1.28.0",
               "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
 //
-// 2. If there were any APIs added to ort_api_1_to_25 above:
+// 2. If there were any APIs added to ort_api_1_to_X above:
 //    a. Add the 'End of version #' markers (pattern above should be obvious)
 //    b. Add a static_assert in the directly above list of version sizes to ensure nobody adds any more functions to the just shipped API version
 //
@@ -4819,7 +4974,7 @@ static_assert(std::string_view(ORT_VERSION) == "1.25.0",
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_25;
+    return &ort_api_1_to_28;
 
   fprintf(stderr,
           "The requested API version [%u] is not available, only API versions [1, %u] are supported in this build."
@@ -4830,6 +4985,9 @@ ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
 }
 
 ORT_API(const char*, OrtApis::GetVersionString) {
+  static_assert(onnxruntime::version_check::IsOrtVersionValid(ORT_VERSION),
+                "ORT_VERSION must be in the format '1.Y.Z' where Y and Z are non-negative integers without leading "
+                "zeros, and Y must equal ORT_API_VERSION");
   return ORT_VERSION;
 }
 

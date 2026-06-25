@@ -4,15 +4,24 @@
 #include "cuda_ep.h"
 #include "cuda_ep_factory.h"
 #include "cuda_stream_plugin.h"
+#include "cuda_graph_plugin.h"
 #include "core/providers/cuda/plugin/cuda_kernel_adapter.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/framework/allocator.h"
 #include "ep/get_capability_utils.h"
+#include "ep/api.h"  // onnxruntime::ep::CurrentOrtApiVersion()
 
 #include <cstring>
+#include <limits>
+#include <memory>
+#include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
+
+#include "core/graph/constants.h"
+#include "core/providers/cuda/cuda_nhwc_ops.h"
 
 namespace onnxruntime {
 namespace cuda_plugin {
@@ -31,7 +40,67 @@ AllocatorPtr CreateCudaPluginTempSpaceCpuAllocator() {
   return ::onnxruntime::CPUAllocator::DefaultInstance();
 }
 
+void DestroyCudaStreamForDevice(cudaStream_t stream, int device_id);
+
+cudaStream_t CreateCudaStreamForDevice(int device_id) {
+  int prev_device = -1;
+  const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
+  cudaStream_t stream = nullptr;
+
+  try {
+    PL_CUDA_CALL_THROW(cudaSetDevice(device_id));
+    PL_CUDA_CALL_THROW(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+    if (restore_prev_device) {
+      PL_CUDA_CALL_THROW(cudaSetDevice(prev_device));
+    }
+  } catch (...) {
+    if (stream != nullptr) {
+      DestroyCudaStreamForDevice(stream, device_id);
+    }
+    if (restore_prev_device) {
+      static_cast<void>(cudaSetDevice(prev_device));
+    }
+    throw;
+  }
+
+  return stream;
+}
+
+void DestroyCudaStreamForDevice(cudaStream_t stream, int device_id) {
+  if (stream == nullptr) {
+    return;
+  }
+
+  int prev_device = -1;
+  const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
+  static_cast<void>(cudaSetDevice(device_id));
+  static_cast<void>(cudaStreamDestroy(stream));
+  if (restore_prev_device) {
+    static_cast<void>(cudaSetDevice(prev_device));
+  }
+}
+
 }  // namespace
+
+struct CudaEp::PerThreadContext {
+  explicit PerThreadContext(int device_id)
+      : device_id(device_id),
+        graph_stream(CreateCudaStreamForDevice(device_id)),
+        cuda_graph(graph_stream) {
+  }
+
+  ~PerThreadContext() {
+    // Destroy captured graph execs before destroying the stream they replay on.
+    cuda_graph.Reset();
+    DestroyCudaStreamForDevice(graph_stream, device_id);
+    graph_stream = nullptr;
+  }
+
+  int device_id;
+  cudaStream_t graph_stream = nullptr;
+  CudaGraphManager cuda_graph;
+  size_t pre_capture_free_mem = 0;
+};
 
 CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& logger)
     : onnxruntime::ep::adapter::Ep{CreateCudaPluginProvider(factory.GetEpName(), static_cast<const OrtEp*>(this)),
@@ -41,20 +110,71 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
       name_(factory.GetEpName()),
       config_(config),
       logger_(logger) {
+  // ort_version_supported reports the ORT API version this plugin was compiled with (ORT_API_VERSION).
+  // ORT uses it to avoid reading OrtEp struct fields that did not exist when the plugin was compiled.
   ort_version_supported = ORT_API_VERSION;
 
-  // Set function pointers for kernel-registry-based EP
+  // The plugin is compiled against the latest ORT headers (ORT_API_VERSION) but may be loaded by an
+  // older ORT runtime, down to the floor declared in plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION. Some
+  // OrtEp callbacks below — and the OrtEpApi functions their implementations call — only exist in
+  // newer ORT versions. The guard against calling an OrtEpApi function the runtime does not provide
+  // is the runtime API version, not ort_version_supported. We therefore gate such callbacks on the
+  // version negotiated with the runtime (onnxruntime::ep::CurrentOrtApiVersion()): only advertise a
+  // callback when the runtime is new enough to (a) know about the OrtEp struct field and (b) provide
+  // every OrtEpApi function the callback relies on. Leaving the pointer null on older runtimes
+  // disables only that optional capability while the EP stays fully functional.
+  const uint32_t ort_version = ::onnxruntime::ep::CurrentOrtApiVersion();
+
+  // Kernel-registry-based EP callbacks (all introduced in ORT <= 1.24).
   GetName = GetNameImpl;
   GetCapability = GetCapabilityImpl;
   GetKernelRegistry = GetKernelRegistryImpl;
   GetPreferredDataLayout = GetPreferredDataLayoutImpl;
   ShouldConvertDataLayoutForOp = ShouldConvertDataLayoutForOpImpl;
-  OnRunStart = nullptr;
-  OnRunEnd = nullptr;
+  CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
+  IsConcurrentRunSupported = IsConcurrentRunSupportedImpl;
+  OnRunStart = config_.enable_cuda_graph ? OnRunStartImpl : nullptr;
+  OnRunEnd = config_.enable_cuda_graph ? OnRunEndImpl : nullptr;
+
+  // OrtEp::Sync is \since ORT 1.25. A runtime older than 1.25 does not know about this OrtEp field and
+  // ignores it regardless of its value. We still gate it on the runtime version to keep the
+  // minimum-version dependency explicit at each assignment and consistent with the callbacks below.
+  Sync = (ort_version >= 25) ? SyncImpl : nullptr;
 
   // Not a compile-based EP
   Compile = nullptr;
   ReleaseNodeComputeInfos = nullptr;
+
+  // Graph capture/replay (OrtEp::IsGraphCaptureEnabled/IsGraphCaptured/ReplayGraph/
+  // GetGraphCaptureNodeAssignmentPolicy) and device-resource accounting
+  // (OrtEp::GetAvailableResource + OrtResourceCount) are \since ORT 1.26. Only advertise them when the
+  // negotiated runtime is >= 1.26; older runtimes neither expose these OrtEp fields nor support
+  // EP-driven graph capture, so leaving them null preserves the same behavior explicitly.
+  if (ort_version >= 26) {
+    IsGraphCaptureEnabled = IsGraphCaptureEnabledImpl;
+    IsGraphCaptured = IsGraphCapturedImpl;
+    ReplayGraph = ReplayGraphImpl;
+    GetGraphCaptureNodeAssignmentPolicy = GetGraphCaptureNodeAssignmentPolicyImpl;
+    GetAvailableResource = GetAvailableResourceImpl;
+  } else {
+    IsGraphCaptureEnabled = nullptr;
+    IsGraphCaptured = nullptr;
+    ReplayGraph = nullptr;
+    GetGraphCaptureNodeAssignmentPolicy = nullptr;
+    GetAvailableResource = nullptr;
+  }
+
+  // Profiling — CUPTI-based GPU activity tracing when profiling is enabled at build time.
+  // The EP profiler API (OrtEp::CreateProfiler, OrtEpProfilerImpl, and the OrtEpApi
+  // CreateProfilingEvent / ProfilingEventsContainer_AddEvents / ReleaseProfilingEvent functions that
+  // CudaPluginEpProfiler calls) is \since ORT 1.25. Only advertise the profiler when the negotiated
+  // runtime supports it; this single guard makes every 1.25 profiler API call unreachable on older
+  // runtimes (the profiler is never created), so inference still runs without EP-level GPU profiling.
+#if defined(ENABLE_CUDA_PROFILING)
+  CreateProfiler = (ort_version >= 25) ? CreateProfilerImpl : nullptr;
+#else
+  CreateProfiler = nullptr;
+#endif
 
   const OrtApi& ort_api = factory_.GetOrtApi();
   Ort::Status log_status(ort_api.Logger_LogMessage(&logger_, ORT_LOGGING_LEVEL_INFO,
@@ -76,11 +196,24 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   adapter_config.fuse_conv_bias = config_.fuse_conv_bias;
   adapter_config.sdpa_kernel = config_.sdpa_kernel;
   adapter_config.device_id = config_.device_id;
+  adapter_config.do_copy_in_default_stream = config_.do_copy_in_default_stream;
   onnxruntime::cuda::SetCudaKernelAdapterRuntimeConfigForProvider(
       static_cast<const void*>(EpImpl()), adapter_config);
+
+  // CUDA graph streams are created lazily per thread by PerThreadContext.
 }
 
-CudaEp::~CudaEp() = default;
+CudaEp::~CudaEp() {
+  std::lock_guard<std::mutex> lock(per_thread_contexts_mutex_);
+  for (const auto& cache_weak : per_thread_context_caches_) {
+    auto cache = cache_weak.lock();
+    if (!cache) {
+      continue;
+    }
+    ORT_IGNORE_RETURN_VALUE(cache->erase(this));
+  }
+  per_thread_context_caches_.clear();
+}
 
 /*static*/
 const char* ORT_API_CALL CudaEp::GetNameImpl(const OrtEp* this_ptr) noexcept {
@@ -116,7 +249,7 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
   tentative_nodes.reserve(all_nodes.size());
 
   for (const auto& node : all_nodes) {
-    std::string ep_name = node.GetEpName();
+    const std::string& ep_name = node.GetEpName();
     if (!ep_name.empty()) {
       if (ep_name == ep->name_) {
         candidate_nodes.push_back(node);
@@ -131,6 +264,18 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
     if (kernel_def != nullptr) {
       candidate_nodes.push_back(node);
       tentative_nodes.push_back(node);
+    } else {
+      // Emit a diagnostic when an NHWC-domain node has no matching kernel.
+      // This helps identify gaps between the layout conversion allowlist and
+      // the actually-registered NHWC kernels in the plugin build.
+      const std::string& node_domain = node.GetDomain();
+      if (node_domain == kMSInternalNHWCDomain) {
+        ORT_CXX_LOGF(Ort::Logger(&ep->logger_), ORT_LOGGING_LEVEL_WARNING,
+                     "NHWC kernel miss: op=%s domain=%s version=%d node=%s - "
+                     "no matching kernel registered in the CUDA plugin EP.",
+                     node.GetOperatorType().c_str(), node_domain.c_str(),
+                     node.GetSinceVersion(), node.GetName().c_str());
+      }
     }
   }
 
@@ -143,12 +288,15 @@ OrtStatus* ORT_API_CALL CudaEp::GetCapabilityImpl(
       cpu_preferred_nodes));
 
   // Phase 3: Add final supported nodes (tentative minus CPU-preferred).
+  // Resource budget enforcement is handled by the host after GetCapability returns.
+
   for (const OrtNode* ort_node : candidate_nodes) {
-    if (cpu_preferred_nodes.count(ort_node) == 0) {
-      Ort::ConstNode node{ort_node};
-      RETURN_IF_ERROR(ep_api.EpGraphSupportInfo_AddSingleNode(
-          graph_support_info, node));
+    if (cpu_preferred_nodes.count(ort_node) != 0) {
+      continue;
     }
+
+    RETURN_IF_ERROR(ep_api.EpGraphSupportInfo_AddSingleNode(
+        graph_support_info, ort_node));
   }
 
   return nullptr;
@@ -207,39 +355,362 @@ OrtStatus* ORT_API_CALL CudaEp::ShouldConvertDataLayoutForOpImpl(
     return nullptr;
   }
 
-  // ONNX domain ops that have NHWC kernel registrations.
-  static const std::unordered_set<std::string_view> cuda_nhwc_onnx_ops{
-      "BatchNormalization",
-      "Conv",
-      "ConvTranspose",
-      "GlobalMaxPool",
-      "MaxPool",
-      "GlobalAveragePool",
-      "AveragePool",
-      "GridSample",
-      "DepthToSpace",
-      "SpaceToDepth",
-      "LRN",
-  };
-
-  // Check ONNX domain (empty string) or MS domain (com.microsoft)
-  bool is_onnx_domain = (safe_domain[0] == '\0');
-  bool is_ms_domain = (std::strcmp(safe_domain, "com.microsoft") == 0);
-
-  if (is_onnx_domain && cuda_nhwc_onnx_ops.count(safe_op_type) > 0) {
+  if (cuda::IsNhwcEligible(safe_domain, safe_op_type)) {
     *should_convert = 1;  // Convert
-    return nullptr;
+  } else {
+    *should_convert = 0;  // Explicitly decline conversion for unsupported NHWC ops.
   }
-
-  if (is_ms_domain && std::strcmp(safe_op_type, "GridSample") == 0) {
-    *should_convert = 1;  // Convert
-    return nullptr;
-  }
-
-  *should_convert = 0;  // Explicitly decline conversion for unsupported NHWC ops.
   return nullptr;
 #endif
 }
+
+/*static*/
+OrtStatus* ORT_API_CALL CudaEp::CreateSyncStreamForDeviceImpl(
+    OrtEp* this_ptr, const OrtMemoryDevice* memory_device,
+    OrtSyncStreamImpl** stream) noexcept {
+  EXCEPTION_TO_STATUS_BEGIN
+
+  auto* ep = static_cast<CudaEp*>(this_ptr);
+  const OrtEpApi& ep_api = ep->factory_.GetEpApi();
+
+  auto mem_type = ep_api.MemoryDevice_GetMemoryType(memory_device);
+  if (mem_type != OrtDeviceMemoryType_DEFAULT) {
+    std::string error = "Invalid OrtMemoryDevice. Expected OrtDeviceMemoryType_DEFAULT(0). Got ";
+    error += std::to_string(mem_type);
+    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, error.c_str());
+  }
+
+  int device_id = ep_api.MemoryDevice_GetDeviceId(memory_device);
+  if (device_id != ep->config_.device_id) {
+    std::string error = "Invalid OrtMemoryDevice. Expected CUDA device ordinal ";
+    error += std::to_string(ep->config_.device_id);
+    error += " for this EP instance. Got ";
+    error += std::to_string(device_id);
+    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, error.c_str());
+  }
+
+  auto cuda_stream = std::make_unique<CudaSyncStream>(ep->factory_, device_id, this_ptr);
+
+  if (ep->config_.has_user_compute_stream && ep->config_.user_compute_stream != nullptr) {
+    // Wrap the user-provided external CUDA stream with full cuBLAS/cuDNN handles.
+    RETURN_IF_ERROR(cuda_stream->InitHandlesWithUserStream(
+        static_cast<cudaStream_t>(ep->config_.user_compute_stream)));
+  } else if (ep->config_.enable_cuda_graph) {
+    // When CUDA graph capture is enabled, all operations on this thread must go
+    // through the thread's graph stream so capture/replay sees the same stream
+    // as kernels.
+    RETURN_IF_ERROR(cuda_stream->InitHandlesWithExternalStream(ep->GetPerThreadContext().graph_stream));
+  } else {
+    RETURN_IF_ERROR(cuda_stream->InitHandles());
+  }
+
+  *stream = cuda_stream.release();
+  return nullptr;
+
+  EXCEPTION_TO_STATUS_END
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL CudaEp::SyncImpl(OrtEp* this_ptr) noexcept {
+  EXCEPTION_TO_STATUS_BEGIN
+
+  auto* ep = static_cast<CudaEp*>(this_ptr);
+
+  int prev_device = -1;
+  const bool restore_prev_device = TryGetCurrentCudaDevice(prev_device);
+
+  Ort::Status status = StatusFromCudaError(cudaSetDevice(ep->config_.device_id));
+  if (status.IsOK()) {
+    status = StatusFromCudaError(cudaDeviceSynchronize());
+  }
+
+  if (restore_prev_device) {
+    Ort::Status restore_status = StatusFromCudaError(cudaSetDevice(prev_device));
+    if (status.IsOK()) {
+      status = std::move(restore_status);
+    }
+  }
+
+  return status.release();
+
+  EXCEPTION_TO_STATUS_END
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL CudaEp::IsConcurrentRunSupportedImpl(
+    OrtEp* this_ptr, bool* is_supported) noexcept {
+  if (is_supported == nullptr) {
+    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "is_supported must not be null.");
+  }
+
+  auto* ep = static_cast<CudaEp*>(this_ptr);
+  // When a unified stream is in use (either from user_compute_stream, external
+  // allocator, or explicit use_ep_level_unified_stream), all operations share a
+  // single stream so concurrent runs are not safe.
+  *is_supported = !ep->config_.use_ep_level_unified_stream;
+  return nullptr;
+}
+
+// --- CUDA Graph callback implementations ---
+
+const std::shared_ptr<CudaEp::PerThreadContextMap>& CudaEp::PerThreadContextCache() {
+  thread_local const std::shared_ptr<PerThreadContextMap> per_thread_context_cache =
+      std::make_shared<PerThreadContextMap>();
+  return per_thread_context_cache;
+}
+
+CudaEp::PerThreadContext& CudaEp::GetPerThreadContext() const {
+  const auto& per_thread_context_cache = PerThreadContextCache();
+
+  auto cached_context_it = per_thread_context_cache->find(this);
+  if (cached_context_it != per_thread_context_cache->end()) {
+    return *cached_context_it->second;
+  }
+
+  auto context = std::make_shared<PerThreadContext>(config_.device_id);
+  PerThreadContext& context_ref = *context;
+  {
+    std::lock_guard<std::mutex> lock(per_thread_contexts_mutex_);
+    for (auto it = per_thread_context_caches_.begin(); it != per_thread_context_caches_.end();) {
+      if (it->expired()) {
+        it = per_thread_context_caches_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+    ORT_IGNORE_RETURN_VALUE(per_thread_context_caches_.insert(per_thread_context_cache));
+  }
+
+  auto insert_result = per_thread_context_cache->emplace(this, std::move(context));
+  ORT_ENFORCE(insert_result.second);
+  return context_ref;
+}
+
+CudaGraphAnnotation_t CudaEp::GetGraphAnnotationId(const OrtRunOptions* run_options) const {
+  if (run_options == nullptr) {
+    return kCudaGraphAnnotationDefault;
+  }
+  const char* value = factory_.GetOrtApi().GetRunConfigEntry(run_options, "gpu_graph_id");
+  if (value == nullptr) {
+    return kCudaGraphAnnotationDefault;
+  }
+  try {
+    return std::stoi(value);
+  } catch (const std::exception&) {
+    return kCudaGraphAnnotationDefault;
+  }
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL CudaEp::OnRunStartImpl(
+    OrtEp* this_ptr, const OrtRunOptions* run_options) noexcept {
+  EXCEPTION_TO_STATUS_BEGIN
+
+  auto* ep = static_cast<CudaEp*>(this_ptr);
+  if (!ep->config_.enable_cuda_graph) {
+    return nullptr;
+  }
+
+  // Recover from any previous failed run on this thread before deciding whether
+  // this run will enter capture mode.
+  IsThreadCapturingCudaGraph() = false;
+
+  auto& context = ep->GetPerThreadContext();
+  CudaGraphAnnotation_t id = ep->GetGraphAnnotationId(run_options);
+  if (!context.cuda_graph.IsGraphCaptured(id) &&
+      context.cuda_graph.IsGraphCaptureAllowed(id, ep->config_.min_num_runs_before_cuda_graph_capture)) {
+    // Keep the current CUDA device aligned with the graph stream for the full
+    // capture window. Kernel Compute() skips cudaSetDevice() while capturing.
+    PL_CUDA_CALL_THROW(cudaSetDevice(ep->config_.device_id));
+
+    // Record free GPU memory before capture for allocation-during-capture detection.
+    context.pre_capture_free_mem = 0;
+    size_t free_mem = 0;
+    size_t total_mem = 0;
+    if (cudaMemGetInfo(&free_mem, &total_mem) == cudaSuccess) {
+      context.pre_capture_free_mem = free_mem;
+    }
+    context.cuda_graph.CaptureBegin(id);
+    IsThreadCapturingCudaGraph() = true;
+  }
+
+  return nullptr;
+
+  EXCEPTION_TO_STATUS_END
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL CudaEp::OnRunEndImpl(
+    OrtEp* this_ptr, const OrtRunOptions* run_options, bool sync_stream) noexcept {
+  EXCEPTION_TO_STATUS_BEGIN
+
+  auto* ep = static_cast<CudaEp*>(this_ptr);
+  if (!ep->config_.enable_cuda_graph) {
+    return nullptr;
+  }
+
+  // Always clear the flag before leaving this callback so a failed capture or
+  // failed replay cannot poison later runs on the same thread.
+  IsThreadCapturingCudaGraph() = false;
+
+  auto& context = ep->GetPerThreadContext();
+  CudaGraphAnnotation_t id = ep->GetGraphAnnotationId(run_options);
+  bool replayed_graph = false;
+  if (!context.cuda_graph.IsGraphCaptured(id)) {
+    if (context.cuda_graph.IsGraphCaptureAllowed(id, ep->config_.min_num_runs_before_cuda_graph_capture)) {
+      context.cuda_graph.CaptureEnd(id);
+
+      // Check if GPU memory was allocated during capture (which would make the
+      // captured graph invalid since CUDA graph replay cannot reproduce allocations).
+      if (context.pre_capture_free_mem > 0) {
+        size_t post_free_mem = 0;
+        size_t total_mem = 0;
+        if (cudaMemGetInfo(&post_free_mem, &total_mem) == cudaSuccess) {
+          if (post_free_mem < context.pre_capture_free_mem) {
+            Ort::Status log_status(ep->factory_.GetOrtApi().Logger_LogMessage(
+                &ep->logger_, ORT_LOGGING_LEVEL_WARNING,
+                "GPU memory was allocated during CUDA graph capture. "
+                "Graph replay may produce incorrect results. Consider increasing "
+                "min_num_runs_before_cuda_graph_capture to allow allocations to stabilize.",
+                ORT_FILE, __LINE__, __FUNCTION__));
+          }
+        }
+        context.pre_capture_free_mem = 0;
+      }
+
+      // CUDA work issued to a capturing stream doesn't actually run on the GPU,
+      // so replay the captured graph to actually execute the work.
+      OrtStatus* status = context.cuda_graph.Replay(id, sync_stream);
+      if (status != nullptr) {
+        return status;
+      }
+      replayed_graph = true;
+    } else {
+      context.cuda_graph.IncrementRegularRunCount(id);
+    }
+  }
+
+  if (sync_stream && !replayed_graph) {
+    PL_CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(context.graph_stream));
+  }
+  return nullptr;
+
+  EXCEPTION_TO_STATUS_END
+}
+
+/*static*/
+bool ORT_API_CALL CudaEp::IsGraphCaptureEnabledImpl(const OrtEp* this_ptr) noexcept {
+  const auto* ep = static_cast<const CudaEp*>(this_ptr);
+  return ep->config_.enable_cuda_graph;
+}
+
+/*static*/
+bool ORT_API_CALL CudaEp::IsGraphCapturedImpl(const OrtEp* this_ptr, int graph_annotation_id) noexcept {
+  const auto* ep = static_cast<const CudaEp*>(this_ptr);
+  if (!ep->config_.enable_cuda_graph) {
+    return false;
+  }
+
+  try {
+    return ep->GetPerThreadContext().cuda_graph.IsGraphCaptured(graph_annotation_id);
+  } catch (...) {
+    return false;
+  }
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL CudaEp::ReplayGraphImpl(OrtEp* this_ptr, int graph_annotation_id) noexcept {
+  EXCEPTION_TO_STATUS_BEGIN
+
+  auto* ep = static_cast<CudaEp*>(this_ptr);
+  if (!ep->config_.enable_cuda_graph) {
+    return Ort::GetApi().CreateStatus(
+        ORT_EP_FAIL, "ReplayGraph called but CUDA graph manager is not initialized");
+  }
+  PL_CUDA_CALL_THROW(cudaSetDevice(ep->config_.device_id));
+  // Launch graph without sync. The caller (PluginExecutionProvider::ReplayGraph)
+  // handles synchronization based on disable_synchronize_execution_providers.
+  // This function is only called from that bridge code path.
+  return ep->GetPerThreadContext().cuda_graph.Replay(graph_annotation_id, /*sync=*/false);
+
+  EXCEPTION_TO_STATUS_END
+}
+
+/*static*/
+OrtGraphCaptureNodeAssignmentPolicy ORT_API_CALL CudaEp::GetGraphCaptureNodeAssignmentPolicyImpl(
+    const OrtEp* /*this_ptr*/) noexcept {
+  return OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES;
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL CudaEp::GetAvailableResourceImpl(
+    const OrtEp* this_ptr, OrtResourceCount* available) noexcept {
+  EXCEPTION_TO_STATUS_BEGIN
+
+  if (available == nullptr) {
+    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "`available` must not be null");
+  }
+
+  auto* ep = static_cast<const CudaEp*>(this_ptr);
+  int current_device = 0;
+  auto cuda_err = cudaGetDevice(&current_device);
+  if (cuda_err != cudaSuccess) {
+    return Ort::GetApi().CreateStatus(
+        ORT_RUNTIME_EXCEPTION,
+        (std::string("cudaGetDevice failed: ") + cudaGetErrorString(cuda_err)).c_str());
+  }
+
+  // Switch to the EP's configured device if needed
+  if (current_device != ep->config_.device_id) {
+    cuda_err = cudaSetDevice(ep->config_.device_id);
+    if (cuda_err != cudaSuccess) {
+      return Ort::GetApi().CreateStatus(
+          ORT_RUNTIME_EXCEPTION,
+          (std::string("cudaSetDevice failed: ") + cudaGetErrorString(cuda_err)).c_str());
+    }
+  }
+
+  size_t free_memory = 0;
+  size_t total_memory = 0;
+  cuda_err = cudaMemGetInfo(&free_memory, &total_memory);
+
+  // Restore the original device
+  if (current_device != ep->config_.device_id) {
+    cudaSetDevice(current_device);  // best-effort restore
+  }
+
+  if (cuda_err != cudaSuccess) {
+    return Ort::GetApi().CreateStatus(
+        ORT_RUNTIME_EXCEPTION,
+        (std::string("cudaMemGetInfo failed: ") + cudaGetErrorString(cuda_err)).c_str());
+  }
+
+  *available = OrtResourceCount::FromTotalBytes(static_cast<uint64_t>(free_memory));
+  return nullptr;
+
+  EXCEPTION_TO_STATUS_END
+}
+
+#if defined(ENABLE_CUDA_PROFILING)
+/*static*/
+OrtStatus* ORT_API_CALL CudaEp::CreateProfilerImpl(
+    OrtEp* this_ptr, OrtEpProfilerImpl** profiler) noexcept {
+  EXCEPTION_TO_STATUS_BEGIN
+
+  if (profiler == nullptr) {
+    return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "`profiler` must not be null");
+  }
+
+  *profiler = nullptr;
+
+  auto* ep = static_cast<CudaEp*>(this_ptr);
+  auto profiler_impl = std::make_unique<CudaPluginEpProfiler>(ep->factory_.GetEpApi());
+  *profiler = profiler_impl.release();
+  return nullptr;
+
+  EXCEPTION_TO_STATUS_END
+}
+#endif  // defined(ENABLE_CUDA_PROFILING)
 
 }  // namespace cuda_plugin
 }  // namespace onnxruntime

@@ -104,7 +104,8 @@ class MatMulNBits final : public OpKernel {
         nbits_{narrow<size_t>(info.GetAttr<int64_t>("bits"))},
         has_g_idx_{info.GetInputCount() > InputIndex::g_idx && info.node().InputDefs()[InputIndex::g_idx]->Exists()},
         has_bias_{info.GetInputCount() > InputIndex::bias && info.node().InputDefs()[InputIndex::bias]->Exists()},
-        prefer_lut_gemm_{info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasLutGemm) == "1" &&
+        prefer_lut_gemm_{std::is_same_v<T1, float> &&
+                         info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasLutGemm) == "1" &&
                          MlasIsLutGemmAvailable(narrow<size_t>(info.GetAttr<int64_t>("N")),
                                                 narrow<size_t>(info.GetAttr<int64_t>("K")),
                                                 narrow<size_t>(info.GetAttr<int64_t>("bits")),
@@ -123,8 +124,14 @@ class MatMulNBits final : public OpKernel {
       has_unquantized_zero_point_ = type != ONNX_NAMESPACE::TensorProto_DataType_UINT8;
     }
 
+    has_zp_arg_ = zero_point_arg != nullptr;
+
     ORT_ENFORCE(nbits_ == 2 || nbits_ == 4 || nbits_ == 8,
                 "Only 2b, 4b and 8b quantization is supported for MatMulNBits op, additional bits support is planned.");
+    ORT_ENFORCE(block_size_ == 16 || block_size_ == 32 || block_size_ == 64 ||
+                    block_size_ == 128 || block_size_ == 256,
+                "Only block sizes 16, 32, 64, 128, and 256 are supported for MatMulNBits op, got: ",
+                block_size_);
     const Tensor* tensor_zero_point = nullptr;
     has_zp_input_ = info.TryGetConstantInput(InputIndex::zero_points, &tensor_zero_point);
   }
@@ -135,7 +142,9 @@ class MatMulNBits final : public OpKernel {
                  /*out*/ bool& is_packed,
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
-  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
+  Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                   gsl::span<const size_t> /*prepacked_buffer_sizes*/,
+                                   int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
 
  private:
@@ -149,6 +158,7 @@ class MatMulNBits final : public OpKernel {
   const bool prefer_lut_gemm_{false};
   const MLAS_QNBIT_GEMM_COMPUTE_TYPE compute_type_;
   bool has_unquantized_zero_point_{false};
+  bool has_zp_arg_{false};  // true if the node has a zero_point input (constant or dynamic)
   const bool column_wise_quant_{true};
   IAllocatorUniquePtr<void> packed_b_{};
   size_t packed_b_size_{0};
@@ -183,10 +193,35 @@ class MatMulNBits final : public OpKernel {
                         const MatMulComputeHelper& helper) const;
 
   Status ComputeBPackedLUT(const Tensor* a,
+                           const Tensor* bias,
                            Tensor* y,
                            concurrency::ThreadPool* thread_pool,
                            const MatMulComputeHelper& helper) const;
 };
+
+// Helper to convert float/fp16 zero points to float32 for LUT GEMM prepack.
+// Returns pointer to float32 ZP data in the provided buffer.
+static const float* ConvertFloatZeroPointsForLutGemm(
+    const Tensor* zero_points,
+    size_t N, size_t K, size_t block_size,
+    std::vector<float>& zp_fp32_buf) {
+  size_t k_blocks = (K + block_size - 1) / block_size;
+  size_t zp_count = N * k_blocks;
+  ORT_ENFORCE(static_cast<size_t>(zero_points->Shape().Size()) == zp_count,
+              "Float zero_points tensor size mismatch: expected ", zp_count,
+              ", got ", zero_points->Shape().Size());
+  zp_fp32_buf.resize(zp_count);
+  if (zero_points->IsDataType<float>()) {
+    std::copy_n(zero_points->Data<float>(), zp_count, zp_fp32_buf.data());
+  } else if (zero_points->IsDataType<MLFloat16>()) {
+    MlasConvertHalfToFloatBuffer(zero_points->Data<MLFloat16>(), zp_fp32_buf.data(), zp_count);
+  } else {
+    ORT_THROW(
+        "Unsupported float zero_points type for LUT GEMM prepack. "
+        "Only float32 and float16 are supported.");
+  }
+  return zp_fp32_buf.data();
+}
 
 template <typename T1>
 Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
@@ -194,7 +229,17 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
                                 /*out*/ PrePackedWeights* prepacked_weights) {
   ORT_UNUSED_PARAMETER(prepacked_weights);
   is_packed = false;
-  if (has_g_idx_ || has_unquantized_zero_point_) {
+  if (has_g_idx_) {
+    return Status::OK();
+  }
+  if (has_unquantized_zero_point_ && !prefer_lut_gemm_) {
+    return Status::OK();
+  }
+
+  // LUT GEMM requires ZP to be a constant initializer for prepacking. If the node
+  // has a ZP input but it's dynamic, skip LUT packing and fall through to the
+  // unpacked dequant path at compute time (similar to KleidiAI's dynamic ZP fallback).
+  if (prefer_lut_gemm_ && has_zp_arg_ && !has_zp_input_) {
     return Status::OK();
   }
 
@@ -238,11 +283,20 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
 
       const float* scales_ptr = scales ? scales->Data<float>() : nullptr;
-      const uint8_t* zp_ptr = nullptr;
+      const void* zp_ptr = nullptr;
+      bool is_float_zp = false;
+      std::vector<float> zp_fp32_buf;
       if (scales_ptr != nullptr && has_zp_input_) {
         const Tensor* zero_points = nullptr;
         OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zero_points);
-        zp_ptr = zero_points ? zero_points->Data<uint8_t>() : nullptr;
+        if (zero_points != nullptr) {
+          if (has_unquantized_zero_point_) {
+            is_float_zp = true;
+            zp_ptr = ConvertFloatZeroPointsForLutGemm(zero_points, N_, K_, block_size_, zp_fp32_buf);
+          } else {
+            zp_ptr = zero_points->DataRaw();
+          }
+        }
       }
 
       MlasLutGemmPack(
@@ -250,6 +304,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
           static_cast<const std::byte*>(tensor.DataRaw()),
           scales_ptr,
           zp_ptr,
+          is_float_zp,
           static_cast<std::byte*>(packed_b_.get()),
           threadpool_ptr);
 
@@ -304,8 +359,14 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 #endif  // MLAS_TARGET_ARM64
     }
     is_packed = true;
-  } else if (compute_type_ == SQNBIT_CompInt8) {
+  } else if (compute_type_ == SQNBIT_CompInt8 && !prefer_lut_gemm_) {
     // Packing scales and zero points
+    // Guard: for LUT-eligible nodes, scales/ZP are already packed inside
+    // packed_b_ by the LUT branch above (or by the LUT scale-pack path at
+    // the bottom of this function). Re-running the non-LUT pack here would
+    // corrupt the LUT-packed buffer (overwrite the LUT layout with W2 layout
+    // bytes), so the LUT compute path would then read garbage. prefer_lut_gemm_
+    // is gated to T1==float (see ctor), so checking it here is sufficient.
     bool should_pack_scale_and_zp_inputs = [&]() {
 #if defined(MLAS_TARGET_AMD64_IX86)
       return true;
@@ -440,11 +501,20 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     // Pack scales/zero_points for LUT GEMM if B was already packed but scales weren't available then
     if (input_idx == InputIndex::scales && packed_b_ != nullptr) {
       auto scales_ptr = tensor.Data<float>();
-      const uint8_t* zp_ptr = nullptr;
+      const void* zp_ptr = nullptr;
+      bool is_float_zp = false;
+      std::vector<float> zp_fp32_buf;
       if (has_zp_input_) {
         const Tensor* zero_points = nullptr;
         OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zero_points);
-        zp_ptr = zero_points ? zero_points->Data<uint8_t>() : nullptr;
+        if (zero_points != nullptr) {
+          if (has_unquantized_zero_point_) {
+            is_float_zp = true;
+            zp_ptr = ConvertFloatZeroPointsForLutGemm(zero_points, N_, K_, block_size_, zp_fp32_buf);
+          } else {
+            zp_ptr = zero_points->DataRaw();
+          }
+        }
       }
       // Pack only scales (QuantBData is nullptr)
       MlasLutGemmPack(
@@ -452,6 +522,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
           nullptr,  // QuantBData already packed
           scales_ptr,
           zp_ptr,
+          is_float_zp,
           static_cast<std::byte*>(packed_b_.get()),
           nullptr);       // No threadpool needed for scales only
       is_packed = false;  // scales tensor can be released but not "packed" in the ORT sense
@@ -557,7 +628,9 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
 #endif  // end !MLAS_F16VEC_INTRINSICS_SUPPORTED || !MLAS_TARGET_ARM64
 
 template <typename T1>
-Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers, int input_idx,
+Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
+                                                  gsl::span<const size_t> /*prepacked_buffer_sizes*/,
+                                                  int input_idx,
                                                   /*out*/ bool& used_shared_buffers) {
   used_shared_buffers = false;
 
@@ -576,6 +649,7 @@ Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& 
 
 template <typename T1>
 Status MatMulNBits<T1>::ComputeBPackedLUT(const Tensor* a,
+                                          const Tensor* bias,
                                           Tensor* y,
                                           concurrency::ThreadPool* thread_pool,
                                           const MatMulComputeHelper& helper) const {
@@ -585,7 +659,21 @@ Status MatMulNBits<T1>::ComputeBPackedLUT(const Tensor* a,
   const int N = static_cast<int>(helper.N());
   const int K = static_cast<int>(helper.K());
 
-  MlasLutGemm(a_data, block_size_, packed_b_.get(), y_data, K, M, N, has_zp_input_, thread_pool);
+  // Bias is fused into MlasLutGemm: it is broadcast-added per output-feature tile inside
+  // the same parallel loop that runs the GEMM, so the bias addition is multi-threaded and
+  // operates on data that is still hot in cache. MlasLutGemm currently only supports fp32
+  // activations/outputs; reject any other type when a bias is present.
+  const float* bias_data = nullptr;
+  if (bias != nullptr) {
+    if constexpr (std::is_same_v<T1, float>) {
+      bias_data = bias->Data<float>();
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "MatMulNBits LUT GEMM path does not support non-fp32 bias.");
+    }
+  }
+
+  MlasLutGemm(a_data, block_size_, packed_b_.get(), y_data, K, M, N, has_zp_input_, thread_pool, bias_data);
   return Status::OK();
 }
 
@@ -866,23 +954,39 @@ Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
   } else {
     // Hitting any of the below is very rare
     ORT_ENFORCE(column_wise_quant_, "Row-wise quantization is not supported for now");
-    ORT_ENFORCE(nbits_ == 4,
-                "Only 4b quantization is supported for unpacked compute using "
+    ORT_ENFORCE(nbits_ == 2 || nbits_ == 4,
+                "Only 2b and 4b quantization is supported for unpacked compute using "
                 "non-MLAS de-quantization for now");
 
-    // !!!!!!!!!!!!!! naive implementation, need to be optimized !!!!!!!!!!!!!!
+    // Note: The kernel registration constrains T3 to {uint8_t, T1}, so for
+    // MatMulNBits<float> only float (not MLFloat16) ZP can reach this branch.
     if (zero_points && zero_points->IsDataType<float>()) {
-      DequantizeBlockwise<float, float>(
-          tmp_b_data_ptr.get(),                         // dequantized output
-          b_data,                                       // quantized input
-          scales_data,                                  // quantization scales
-          static_cast<const float*>(zero_points_data),  // quantization zero points
-          reorder_idx_data,
-          static_cast<int32_t>(block_size_),  // quantization block size
-          column_wise_quant_,                 // columnwise quantization or row-wise
-          static_cast<int32_t>(K_),           // number of rows in quantized input
-          static_cast<int32_t>(N_),           // number of columns in quantized input
-          thread_pool);
+      if (nbits_ == 2) {
+        ORT_ENFORCE(reorder_idx_data == nullptr,
+                    "g_idx (reorder index) is not supported for 2-bit quantization with floating-point zero points");
+        DequantizeBlockwise2Bits<float, float>(
+            tmp_b_data_ptr.get(),
+            b_data,
+            scales_data,
+            static_cast<const float*>(zero_points_data),
+            static_cast<int32_t>(block_size_),
+            column_wise_quant_,
+            static_cast<int32_t>(K_),
+            static_cast<int32_t>(N_),
+            thread_pool);
+      } else {
+        DequantizeBlockwise<float, float>(
+            tmp_b_data_ptr.get(),                         // dequantized output
+            b_data,                                       // quantized input
+            scales_data,                                  // quantization scales
+            static_cast<const float*>(zero_points_data),  // quantization zero points
+            reorder_idx_data,
+            static_cast<int32_t>(block_size_),  // quantization block size
+            column_wise_quant_,                 // columnwise quantization or row-wise
+            static_cast<int32_t>(K_),           // number of rows in quantized input
+            static_cast<int32_t>(N_),           // number of columns in quantized input
+            thread_pool);
+      }
     } else {
       DequantizeBlockwise<float, uint8_t>(
           tmp_b_data_ptr.get(),                           // dequantized output
@@ -976,7 +1080,18 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_, true);
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<MLFloat16>())) {
-    if (nbits_ == 4) {
+    if (nbits_ == 2) {
+      MlasDequantizeBlockwise<float, 2>(
+          tmp_b_data_ptr.get(),                           // dequantized output
+          b_data,                                         // quantized input
+          scales_ptr,                                     // quantization scales
+          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+          static_cast<int32_t>(block_size_),              // quantization block size
+          column_wise_quant_,                             // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),                       // number of rows in quantized input
+          static_cast<int32_t>(N_),                       // number of columns in quantized input
+          thread_pool);
+    } else if (nbits_ == 4) {
       MlasDequantizeBlockwise<float, 4>(
           tmp_b_data_ptr.get(),                           // dequantized output
           b_data,                                         // quantized input
@@ -987,7 +1102,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
           static_cast<int32_t>(K_),                       // number of rows in quantized input
           static_cast<int32_t>(N_),                       // number of columns in quantized input
           thread_pool);
-    } else {  // If it isn't 4bit, it has to be 8-bit quantization
+    } else {  // If it isn't 2bit or 4bit, it has to be 8-bit quantization
       ORT_ENFORCE(nbits_ == 8);
       MlasDequantizeBlockwise<float, 8>(
           tmp_b_data_ptr.get(),                           // dequantized output
@@ -1003,23 +1118,39 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
   } else {
     // Hitting any of the below is very rare
     ORT_ENFORCE(column_wise_quant_, "Row-wise quantization is not supported for now");
-    ORT_ENFORCE(nbits_ == 4,
-                "Only 4b quantization is supported for unpacked compute using "
+    ORT_ENFORCE(nbits_ == 2 || nbits_ == 4,
+                "Only 2b and 4b quantization is supported for unpacked compute using "
                 "non-MLAS de-quantization for now");
 
-    // !!!!!!!!!!!!!! naive implementation, need to be optimized !!!!!!!!!!!!!!
+    // Note: The kernel registration constrains T3 to {uint8_t, T1}, so for
+    // MatMulNBits<MLFloat16> only MLFloat16 (not float) ZP can reach this branch.
     if (zero_points && zero_points->IsDataType<MLFloat16>()) {
-      DequantizeBlockwise<float, MLFloat16>(
-          tmp_b_data_ptr.get(),                             // dequantized output
-          b_data,                                           // quantized input
-          scales_ptr,                                       // quantization scales
-          static_cast<const MLFloat16*>(zero_points_data),  // quantization zero points
-          reorder_idx_data,
-          static_cast<int32_t>(block_size_),  // quantization block size
-          column_wise_quant_,                 // columnwise quantization or row-wise
-          static_cast<int32_t>(K_),           // number of rows in quantized input
-          static_cast<int32_t>(N_),           // number of columns in quantized input
-          thread_pool);
+      if (nbits_ == 2) {
+        ORT_ENFORCE(reorder_idx_data == nullptr,
+                    "g_idx (reorder index) is not supported for 2-bit quantization with floating-point zero points");
+        DequantizeBlockwise2Bits<float, MLFloat16>(
+            tmp_b_data_ptr.get(),
+            b_data,
+            scales_ptr,
+            static_cast<const MLFloat16*>(zero_points_data),
+            static_cast<int32_t>(block_size_),
+            column_wise_quant_,
+            static_cast<int32_t>(K_),
+            static_cast<int32_t>(N_),
+            thread_pool);
+      } else {
+        DequantizeBlockwise<float, MLFloat16>(
+            tmp_b_data_ptr.get(),                             // dequantized output
+            b_data,                                           // quantized input
+            scales_ptr,                                       // quantization scales
+            static_cast<const MLFloat16*>(zero_points_data),  // quantization zero points
+            reorder_idx_data,
+            static_cast<int32_t>(block_size_),  // quantization block size
+            column_wise_quant_,                 // columnwise quantization or row-wise
+            static_cast<int32_t>(K_),           // number of rows in quantized input
+            static_cast<int32_t>(N_),           // number of columns in quantized input
+            thread_pool);
+      }
     } else {
       DequantizeBlockwise<float, uint8_t>(
           tmp_b_data_ptr.get(),                           // dequantized output
@@ -1096,7 +1227,7 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
   const bool is_b_prepacked = packed_b_size_ > 0;
   const Tensor* b = is_b_prepacked ? nullptr : ctx->Input<Tensor>(InputIndex::B);
   const Tensor* scales = (scales_are_packed_ || (prefer_lut_gemm_ && packed_b_)) ? nullptr : ctx->Input<Tensor>(InputIndex::scales);
-  const Tensor* zero_points = ctx->Input<Tensor>(InputIndex::zero_points);
+  const Tensor* zero_points = (prefer_lut_gemm_ && packed_b_) ? nullptr : ctx->Input<Tensor>(InputIndex::zero_points);
   const Tensor* reorder_idx = ctx->Input<Tensor>(InputIndex::g_idx);
   const Tensor* bias = ctx->Input<Tensor>(InputIndex::bias);
 
@@ -1130,7 +1261,7 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
                     // MlasQNBitGemmPackQuantBDataSize() returns 0, we can consider calling MlasQNBitGemmBatch()
                     // with B directly too.
     if (prefer_lut_gemm_) {
-      return ComputeBPackedLUT(a, y, thread_pool, helper);
+      return ComputeBPackedLUT(a, bias, y, thread_pool, helper);
     }
 
     if (MlasIsQNBitGemmAvailable(nbits_, block_size_, compute_type_)) {

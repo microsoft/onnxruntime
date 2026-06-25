@@ -26,6 +26,18 @@ struct Node;
 // for different EPs
 using ResourceCount = std::variant<size_t>;
 
+// Type-erased arithmetic for ResourceCount values.
+// Implementations use std::visit so the compiler enforces exhaustive handling
+// of all variant members — adding a new type to ResourceCount will produce
+// build errors at each call site that must be addressed.
+//
+// NOTE: These functions are NOT available through the provider bridge (shared library EPs).
+// Budget enforcement for bridge-based EPs (e.g., in-tree CUDA EP) will be moved to the
+// graph partitioner in a follow-up PR.
+ResourceCount AddResourceCounts(const ResourceCount& a, const ResourceCount& b);
+bool ResourceCountExceeds(const ResourceCount& a, const ResourceCount& b);
+std::string FormatResourceCount(const ResourceCount& rc);
+
 /// <summary>
 /// This class is used for graph partitioning by EPs
 /// It stores the cumulative amount of the resource such as
@@ -61,9 +73,14 @@ class IResourceAccountant {
 
   bool IsStopIssued() const noexcept { return stop_assignment_; }
 
-  // Called before each GetCapability pass to discard pending weight tracking
-  // from a previous (discarded) pass. Default no-op for stats-based accountants.
-  virtual void ResetPendingWeights() {}
+  // Called before each GetCapability pass to reset per-pass state:
+  // clears the stop flag (which only applies to the pass that set it)
+  // and discards pending weight tracking from a previous (discarded) pass.
+  // Subclasses override ResetPendingWeightsImpl for EP-specific cleanup.
+  void ResetForNewPass() {
+    stop_assignment_ = false;
+    ResetPendingWeightsImpl();
+  }
 
   // Called when a node's cost is committed (AccountForNode/AccountForAllNodes).
   // Moves the node's pending weights into the committed set so they persist
@@ -71,6 +88,11 @@ class IResourceAccountant {
   virtual void CommitWeightsForNode(size_t /*node_index*/) {}
 
   static std::string MakeUniqueNodeName(const Node& node);
+
+ protected:
+  // Override to discard EP-specific pending weight tracking.
+  // Default no-op for stats-based accountants.
+  virtual void ResetPendingWeightsImpl() {}
 
  private:
   bool stop_assignment_ = false;

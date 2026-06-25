@@ -22,6 +22,12 @@ inline void ConvertFloatToUint8_t(const float* f_datat, uint8_t* u8_data, size_t
   output_vector = in_vector.template cast<uint8_t>();
 }
 
+inline void ConvertFloatToInt8_t(const float* f_datat, int8_t* i8_data, size_t input_size) {
+  auto in_vector = ConstEigenVectorMap<float>(f_datat, input_size);
+  auto output_vector = EigenVectorMap<int8_t>(static_cast<int8_t*>(static_cast<void*>(i8_data)), input_size);
+  output_vector = in_vector.template cast<int8_t>();
+}
+
 inline void ConvertMLFloat16ToFloat(const MLFloat16* h_data, float* f_data, size_t input_size) {
   auto in_vector =
       ConstEigenVectorMap<Eigen::half>(static_cast<const Eigen::half*>(static_cast<const void*>(h_data)), input_size);

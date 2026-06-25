@@ -80,6 +80,12 @@ Status MatMulIntegerToFloatBase::ComputeCommon(OpKernelContext* ctx,
   if (y->Shape().Size() == 0)
     return Status::OK();
 
+  if (bias_tensor != nullptr) {
+    ORT_RETURN_IF_NOT(bias_tensor->Shape().Size() == static_cast<int64_t>(helper.N()),
+                      "bias tensor's element count must equal B's last dimension (",
+                      helper.N(), "), but got ", bias_tensor->Shape().Size());
+  }
+
   auto* y_data = y->MutableData<float>();
   const auto* bias_data = bias_tensor != nullptr ? bias_tensor->Data<float>() : nullptr;
 
@@ -306,8 +312,12 @@ Status DynamicQuantizeMatMul::Compute(OpKernelContext* ctx) const {
     // This evaluates to true if bias data was not provided as constant data for prepacking stage
     if (!dynamic_quant_mlas_bias_data_was_packed_) {
       if (ctx->Input<Tensor>(IN_BIAS) != nullptr) {
-        const auto biases = std::vector<float>(&ctx->Input<Tensor>(IN_BIAS)->Data<float>()[0],
-                                               &ctx->Input<Tensor>(IN_BIAS)->Data<float>()[gemm_shape.N]);
+        const Tensor* bias_t = ctx->Input<Tensor>(IN_BIAS);
+        ORT_RETURN_IF_NOT(bias_t->Shape().Size() == static_cast<int64_t>(gemm_shape.N),
+                          "bias tensor's element count must equal B's last dimension (",
+                          gemm_shape.N, "), but got ", bias_t->Shape().Size());
+        const auto biases = std::vector<float>(&bias_t->Data<float>()[0],
+                                               &bias_t->Data<float>()[gemm_shape.N]);
 
         // deferred adding of bias
         for (size_t gemm_idx = 0; gemm_idx < num_gemms; gemm_idx++) {

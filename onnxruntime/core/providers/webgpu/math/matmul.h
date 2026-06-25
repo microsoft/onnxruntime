@@ -14,7 +14,7 @@
 namespace onnxruntime {
 namespace webgpu {
 
-Status ComputeMatMul(ComputeContext* context, const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output, bool is_channels_last,
+Status ComputeMatMul(ComputeContext* context, const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output, bool is_channels_last = true,
                      const TensorShape& input_a_reshape = TensorShape(),
                      const TensorShape& input_b_reshape = TensorShape());
 
@@ -24,7 +24,8 @@ MatMulFillBiasOrZeroBeforeSplitKProgram CreateMatMulFillBiasOrZeroBeforeSplitKPr
     bool is_gemm,
     float beta,
     uint32_t output_components,
-    const TensorShape& output_shape);
+    const TensorShape& output_shape,
+    uint32_t batch_size = 1);
 
 class MatMul final : public WebGpuKernel {
  public:

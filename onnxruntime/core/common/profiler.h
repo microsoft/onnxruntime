@@ -114,10 +114,21 @@ class Profiler {
     if (ep_profiler) {
       ep_profilers_.push_back(std::move(ep_profiler));
       if (enabled_) {
-        ep_profilers_.back()->StartProfiling(profiling_start_time_);
+        auto status = ep_profilers_.back()->StartProfiling(profiling_start_time_);
+        if (!status.IsOK() && ep_start_profiling_status_.IsOK()) {
+          ep_start_profiling_status_ = status;
+        }
       }
     }
   }
+
+  /// Returns the aggregate status from calling StartProfiling on EP profilers.
+  /// OK if all EP profilers started successfully (or if none are registered).
+  /// Returns the first error status encountered otherwise.
+  const Status& GetEpProfilingStatus() const { return ep_start_profiling_status_; }
+
+  /// Returns true if at least one EP profiler was registered.
+  bool HasEpProfilers() const { return !ep_profilers_.empty(); }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Profiler);
@@ -156,6 +167,10 @@ class Profiler {
 #endif
 
   std::vector<std::unique_ptr<EpProfiler>> ep_profilers_;
+
+  // Aggregate status from EP profiler StartProfiling calls.
+  // Stores the first error encountered.
+  Status ep_start_profiling_status_;
 };
 
 }  // namespace profiling

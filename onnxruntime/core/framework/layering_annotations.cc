@@ -13,6 +13,7 @@
 #include "core/framework/execution_providers.h"
 #include "core/graph/graph.h"
 
+#include <algorithm>
 #include <limits>
 
 namespace onnxruntime {
@@ -166,6 +167,7 @@ struct EpDeviceView {
   OrtDevice::DeviceType device_type;  // OrtDevice::CPU, GPU, NPU, FPGA, or kDeviceTypeUnknown
   uint32_t vendor_id;
   OrtDevice::DeviceId device_id;
+  bool has_device_ordinal;         // true when device_id is a runtime ordinal (from device_memory_info)
   std::string_view vendor_string;  // from OrtHardwareDevice::vendor (empty if unavailable)
 };
 
@@ -183,13 +185,18 @@ bool MatchEpDevice(const EpDeviceView& ep,
     if (target_specifier.empty()) {
       if (ep.device_type == OrtDevice::GPU) return true;
       // Heuristic fallback for common GPU EPs if hardware info is missing
-      return ep.ep_name == kCudaExecutionProvider || ep.ep_name == kDmlExecutionProvider;
+      return ep.ep_name == kCudaExecutionProvider || ep.ep_name == kCudaPluginExecutionProvider ||
+             ep.ep_name == kDmlExecutionProvider;
     }
     // "gpu:<vendor>" or "gpu:<index>"
     if (ep.device_type == OrtDevice::GPU) {
       uint32_t index = std::numeric_limits<uint32_t>::max();
       if (TryParseIndex(std::string(target_specifier), index)) {
-        return ep.device_id == static_cast<OrtDevice::DeviceId>(index);
+        // Only match by ordinal index when the device_id is known to be a runtime
+        // ordinal (sourced from device_memory_info). OrtHardwareDevice::device_id is
+        // a PCI hardware-type identifier, not a device instance ordinal.
+        return ep.has_device_ordinal &&
+               ep.device_id == static_cast<OrtDevice::DeviceId>(index);
       }
       // gpu:<vendor>
       if (!ep.vendor_string.empty() && CaseInsensitiveCompare(ep.vendor_string, target_specifier)) {
@@ -203,7 +210,7 @@ bool MatchEpDevice(const EpDeviceView& ep,
           ep.vendor_id == OrtDevice::VendorIds::INTEL) return true;
       // Heuristic: gpu:nvidia -> CUDA
       if (CaseInsensitiveCompare(target_specifier, "nvidia") &&
-          ep.ep_name == kCudaExecutionProvider) return true;
+          (ep.ep_name == kCudaExecutionProvider || ep.ep_name == kCudaPluginExecutionProvider)) return true;
     }
     return false;
   }
@@ -225,7 +232,7 @@ bool MatchEpDevice(const EpDeviceView& ep,
   }
   // "cuda"
   if (CaseInsensitiveCompare(target_type_str, "cuda")) {
-    return ep.ep_name == kCudaExecutionProvider;
+    return ep.ep_name == kCudaExecutionProvider || ep.ep_name == kCudaPluginExecutionProvider;
   }
   // "dml"
   if (CaseInsensitiveCompare(target_type_str, "dml")) {
@@ -284,7 +291,13 @@ std::optional<std::string> EpLayeringMatcher::Match(gsl::span<const OrtEpDevice*
         ep_device.ep_name,
         device_type,
         has_hw ? ep_device.device->vendor_id : 0u,
-        has_hw ? static_cast<OrtDevice::DeviceId>(ep_device.device->device_id) : OrtDevice::DeviceId{},
+        // Use the device ordinal from device_memory_info (set by the EP factory to
+        // a runtime device ordinal such as a CUDA ordinal). OrtHardwareDevice::device_id
+        // is a PCI hardware-type identifier and must not be used for index-based matching.
+        ep_device.device_memory_info
+            ? ep_device.device_memory_info->device.Id()
+            : OrtDevice::DeviceId{},
+        /*has_device_ordinal=*/ep_device.device_memory_info != nullptr,
         has_hw ? std::string_view(ep_device.device->vendor) : std::string_view{}};
 
     if (MatchEpDevice(view, target_type_str, target_specifier, rule.device)) {
@@ -309,7 +322,8 @@ std::optional<std::string> EpLayeringMatcher::Match(const ExecutionProviders& pr
         device.Type(),
         device.Vendor(),
         device.Id(),
-        {}};  // no vendor string available from IExecutionProvider
+        /*has_device_ordinal=*/true,  // IExecutionProvider sets device Id to a runtime ordinal
+        {}};                          // no vendor string available from IExecutionProvider
 
     if (MatchEpDevice(view, target_type_str, target_specifier, rule.device)) {
       return std::string(ep.Type());
@@ -322,28 +336,62 @@ LayeringIndex LayeringIndex::Create(const Graph& graph,
                                     EpNameToLayeringIndices ep_map,
                                     LayeringIndexToEpName rule_map,
                                     LayeringRules layering_rules) {
-  // 1. Create LayeringIndex instance with pre-computed maps
   LayeringIndex index(std::move(layering_rules), std::move(ep_map), std::move(rule_map));
-
-  // 2. Traverse the graph and index nodes
   index.ProcessGraph(graph, std::nullopt);
+  return index;
+}
 
+LayeringIndex LayeringIndex::Create(const Graph& graph,
+                                    EpNameToLayeringIndices ep_map,
+                                    LayeringIndexToEpName rule_map,
+                                    LayeringRules layering_rules,
+                                    SubstringMatcher substring_matcher) {
+  LayeringIndex index(std::move(layering_rules), std::move(ep_map), std::move(rule_map),
+                      std::move(substring_matcher));
+  index.ProcessGraph(graph, std::nullopt);
   return index;
 }
 
 Status LayeringIndex::Create(const Graph& graph,
                              const std::string& config_string,
+                             const std::string& name_based_config_string,
                              gsl::span<const OrtEpDevice* const> ep_devices,
                              const ExecutionProviders& ep_providers,
                              const logging::Logger& logger,
                              std::optional<LayeringIndex>& layering_index) {
-  LayeringRules rules;
-  ORT_RETURN_IF_ERROR(LayeringRules::FromConfigString(config_string, rules));
+  // Annotation-based and name-based layer assignment are mutually exclusive.
+  if (!config_string.empty() && !name_based_config_string.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Cannot set both 'session.layer_assignment_settings' and "
+                           "'session.name_based_layer_assignment'. These options are mutually exclusive. "
+                           "Use annotation-based matching for models with explicit layer annotations, "
+                           "or name-based matching for models with structured node names.");
+  }
 
-  LOGS(logger, INFO) << "Parsed " << rules.rules.size() << " layering rules from config.";
+  const bool is_name_based = !name_based_config_string.empty();
+  const std::string& active_config = is_name_based ? name_based_config_string : config_string;
+
+  LayeringRules rules;
+  if (!active_config.empty()) {
+    ORT_RETURN_IF_ERROR(LayeringRules::FromConfigString(active_config, rules));
+
+    if (is_name_based) {
+      // Reject '=' (exact-match qualifier) in name-based rules — all patterns must be substrings
+      for (const auto& rule : rules.rules) {
+        if (!rule.prefix_match) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Name-based layer assignment does not support the '=' (exact-match) qualifier. "
+                                 "All patterns are treated as substrings. Remove the '=' prefix from pattern: '",
+                                 rule.annotation, "'");
+        }
+      }
+      LOGS(logger, INFO) << "Parsed " << rules.rules.size() << " name-based layering rules from config.";
+    } else {
+      LOGS(logger, INFO) << "Parsed " << rules.rules.size() << " annotation-based layering rules from config.";
+    }
+  }
 
   if (rules.rules.empty()) {
-    // Return no index indicating no layering
     layering_index.reset();
     return Status::OK();
   }
@@ -371,23 +419,32 @@ Status LayeringIndex::Create(const Graph& graph,
     if (matched_ep) {
       const std::string& ep_type = *matched_ep;
       ep_map[ep_type].insert(i);
-      // Ensure 1:1 mapping from rule index to EP type
-      // Note: A rule index refers to a unique entry in LayeringRules::rules vector.
-      // So 'i' is unique.
       rule_map[i] = ep_type;
       matched_rule_count++;
       LOGS(logger, VERBOSE) << "Layering Rule " << i << " (" << rule.device << " -> " << rule.annotation
                             << ") mapped to EP: " << ep_type;
     } else {
-      LOGS(logger, WARNING) << "Layering Rule " << i << " (" << rule.device << " -> " << rule.annotation
-                            << ") could not be mapped to any available Execution Provider.";
+      LOGS(logger, ERROR) << "Layering rule " << i << " (device='" << rule.device << "', annotation='" << rule.annotation
+                          << "') could not be mapped to any available Execution Provider. "
+                          << "If a numeric gpu index was specified (e.g. gpu:0), ensure an EP with a matching "
+                          << "device ordinal is registered and reports device_memory_info.";
     }
   }
 
   LOGS(logger, INFO) << "LayeringIndex created. Matched " << matched_rule_count
                      << " out of " << rules.rules.size() << " rules to available Execution Providers.";
 
-  layering_index = LayeringIndex::Create(graph, std::move(ep_map), std::move(rule_map), std::move(rules));
+  // Build SubstringMatcher for name-based mode
+  std::optional<SubstringMatcher> substring_matcher;
+  if (is_name_based) {
+    substring_matcher.emplace(rules);
+  }
+
+  // Create LayeringIndex — annotation mode uses matcher_ only, name-based uses substring_matcher_ only
+  LayeringIndex index(std::move(rules), std::move(ep_map), std::move(rule_map),
+                      std::move(substring_matcher));
+  index.ProcessGraph(graph, std::nullopt);
+  layering_index = std::move(index);
   return Status::OK();
 }
 
@@ -408,16 +465,23 @@ void LayeringIndex::ProcessGraph(const Graph& graph, std::optional<size_t> paren
   for (auto& node : graph.Nodes()) {
     std::optional<size_t> matched_rule_idx = std::nullopt;
 
-    // 4. For every node query its annotation
-    const std::string& annotation = node.GetLayeringAnnotation();
-    if (!annotation.empty()) {
-      // If it has an annotation try to match it
-      matched_rule_idx = matcher_.Match(annotation);
-    }
+    if (substring_matcher_) {
+      // Name-based mode: substring matching against node name, no inheritance.
+      // Node names are dense (virtually every node has one), so inheritance is
+      // unnecessary — each node is matched independently by its own name.
+      matched_rule_idx = substring_matcher_->Match(node.Name());
+    } else {
+      // Annotation-based mode: prefix/exact match against metadata annotation,
+      // with subgraph inheritance for unannotated nodes.
+      const std::string& annotation = node.GetLayeringAnnotation();
+      if (!annotation.empty()) {
+        matched_rule_idx = matcher_.Match(annotation);
+      }
 
-    // 5. If node has no annotation, inherit from subgraph parent node
-    if (!matched_rule_idx && parent_layer_id) {
-      matched_rule_idx = parent_layer_id;
+      // Inherit from subgraph parent node if no annotation match
+      if (!matched_rule_idx && parent_layer_id) {
+        matched_rule_idx = parent_layer_id;
+      }
     }
 
     // Record assignment if we have a match
@@ -470,28 +534,36 @@ void LayeringIndex::Update(const Graph& graph, gsl::span<const NodeIndex> nodes)
       continue;
     }
 
-    const std::string& annotation = node->GetLayeringAnnotation();
-    if (!annotation.empty()) {
-      auto matched_rule_idx = matcher_.Match(annotation);
+    std::optional<size_t> matched_rule_idx;
 
-      if (matched_rule_idx) {
-        const size_t rule_idx = *matched_rule_idx;
+    if (substring_matcher_) {
+      // Name-based mode: substring match against node name
+      matched_rule_idx = substring_matcher_->Match(node->Name());
+    } else {
+      // Annotation-based mode: prefix/exact match against metadata
+      const std::string& annotation = node->GetLayeringAnnotation();
+      if (!annotation.empty()) {
+        matched_rule_idx = matcher_.Match(annotation);
+      }
+    }
 
-        // Only assign if this rule maps to a valid EP in our configuration
-        if (layering_index_to_ep_name_.count(rule_idx)) {
-          // Check if already assigned to a DIFFERENT rule, if so clean up old mapping
-          auto prev_assign = current_graph_index.node_to_layering_index_.find(node_index);
-          if (prev_assign != current_graph_index.node_to_layering_index_.end()) {
-            size_t old_rule = prev_assign->second;
-            if (old_rule != rule_idx) {
-              current_graph_index.layer_to_node_ids_[old_rule].erase(node_index);
-            }
+    if (matched_rule_idx) {
+      const size_t rule_idx = *matched_rule_idx;
+
+      // Only assign if this rule maps to a valid EP in our configuration
+      if (layering_index_to_ep_name_.count(rule_idx)) {
+        // Check if already assigned to a DIFFERENT rule, if so clean up old mapping
+        auto prev_assign = current_graph_index.node_to_layering_index_.find(node_index);
+        if (prev_assign != current_graph_index.node_to_layering_index_.end()) {
+          size_t old_rule = prev_assign->second;
+          if (old_rule != rule_idx) {
+            current_graph_index.layer_to_node_ids_[old_rule].erase(node_index);
           }
-
-          ORT_IGNORE_RETURN_VALUE(current_graph_index.node_to_layering_index_.insert_or_assign(node_index, rule_idx));
-          ORT_IGNORE_RETURN_VALUE(current_graph_index.layer_to_node_ids_[rule_idx].insert(node_index));
-          was_updated = true;
         }
+
+        ORT_IGNORE_RETURN_VALUE(current_graph_index.node_to_layering_index_.insert_or_assign(node_index, rule_idx));
+        ORT_IGNORE_RETURN_VALUE(current_graph_index.layer_to_node_ids_[rule_idx].insert(node_index));
+        was_updated = true;
       }
     }
   }
@@ -527,6 +599,30 @@ void LayeringRuleMatcher::UpdateBestMatch(std::optional<size_t>& current_best, s
   if (!current_best || candidate < *current_best) {
     current_best = candidate;
   }
+}
+
+SubstringMatcher::SubstringMatcher(const LayeringRules& rules) {
+  for (size_t i = 0; i < rules.rules.size(); ++i) {
+    const auto& rule = rules.rules[i];
+    if (!rule.annotation.empty()) {
+      patterns_.push_back({rule.annotation, i});
+    }
+  }
+  // Sort by pattern length descending (longest first).
+  // Stable sort preserves config order as tiebreaker for same-length patterns.
+  std::stable_sort(patterns_.begin(), patterns_.end(),
+                   [](const PatternEntry& a, const PatternEntry& b) {
+                     return a.pattern.size() > b.pattern.size();
+                   });
+}
+
+std::optional<size_t> SubstringMatcher::Match(std::string_view node_name) const {
+  for (const auto& entry : patterns_) {
+    if (node_name.find(entry.pattern) != std::string_view::npos) {
+      return entry.rule_index;
+    }
+  }
+  return std::nullopt;
 }
 
 std::optional<std::reference_wrapper<const InlinedHashSet<size_t>>>

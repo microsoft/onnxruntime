@@ -37,6 +37,9 @@ inline Status GetAxis(const Tensor* axis_tensor, int64_t input_rank, int64_t& ax
   if (axis_tensor->Shape().NumDimensions() > 1)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Axis tensor should be 0D or 1D");
 
+  if (axis_tensor->Shape().Size() != 1)
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Axis tensor must contain exactly one element");
+
   if (axis_tensor->IsDataType<int32_t>()) {
     axis_out = static_cast<int64_t>(axis_tensor->Data<int32_t>()[0]);
   } else if (axis_tensor->IsDataType<int64_t>()) {

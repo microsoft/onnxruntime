@@ -8,45 +8,6 @@
 namespace onnxruntime {
 namespace cuda {
 
-// Convert a boolean attention mask to sequence lengths with a configurable offset.
-//
-// The mask is expected to have the following properties:
-// 1. It represents right-padding only (valid tokens first, padding at the end)
-// 2. All-false masks (zero-length sequence) are valid; otherwise mask should start with True
-// 3. True values should be contiguous, followed by contiguous False (padding) values
-// 4. The mask must be broadcastable to (batch_size, num_heads, q_seq_len, total_seq_len)
-//
-// For 2D mask (q_seq_len, total_seq_len): broadcasts over batch; uses first query position (row 0)
-// For 3D mask (num_heads, q_seq_len, total_seq_len): broadcasts across batches, uses first head/q
-// For 4D mask (B, H, q_seq_len, total_seq_len): uses first head, first q position
-//
-// seqlen_offset adjusts the raw token count:
-//   seqlens_k[b] = num_true_tokens + seqlen_offset
-//
-// Common offsets:
-//   0: total valid token count (for decode Step 4 where mha_fwd_kvcache reads from
-//      pre-populated cache with k_new=nullptr, and for MEA custom right padding)
-//  -N: subtract N from count (for decode with mha_fwd_kvcache where N=kv_sequence_length,
-//      giving the number of tokens already in cache BEFORE appending new ones)
-//
-// Note: Mask validity (right-padding convention, contiguous True/False)
-//   is checked via CUDA_KERNEL_ASSERT inside the kernel (debug builds only).
-//   In release builds, non-contiguous masks produce memory-safe but semantically incorrect output:
-//   seqlens_k is computed as the count of leading True values (up to the first False),
-//   ignoring any True values that appear after the first False.
-Status LaunchConvertMaskToFlashSeqlensK(
-    const bool* attn_mask_bool,
-    int* seqlens_k,
-    int batch_size,
-    int total_seq_len,
-    int mask_dims,
-    int64_t mask_dim0,
-    int64_t mask_dim1,
-    int64_t mask_dim2,
-    cudaStream_t stream,
-    int max_threads_per_block,
-    int seqlen_offset = 0);
-
 // Convert a boolean attention mask to an additive attention bias for the MHA path.
 // Maps true -> 0.0 (attend) and false -> mask_filter_value (mask out).
 // The output has the same shape as the input mask.
@@ -70,31 +31,51 @@ Status LaunchConvertNonpadKvSeqlenToFlashSeqlensK(
     cudaStream_t stream,
     int max_threads_per_block);
 
-// Convert nonpad_kv_seqlen to an additive attention bias for the MHA unfused path.
-// Generates a (batch_size, q_seq_len, total_seq_len) tensor where:
-//   position t < nonpad_kv_seqlen[b] → 0.0 (attend)
-//   position t >= nonpad_kv_seqlen[b] → mask_filter_value (mask out)
+// Zero output elements for batches where seqlens_k == 0 (fully masked).
+// Used in the MEA path only: CUTLASS epilogue computes 1/s_prime where s_prime=0,
+// producing NaN for fully-masked batches. This kernel overwrites those NaN outputs
+// with zeros. The unfused path produces valid finite output (mean-of-V via uniform
+// softmax) and does not need this. Flash handles it natively with an early-exit.
 template <typename T>
-Status LaunchConvertNonpadKvSeqlenToAttentionBias(
-    const int64_t* nonpad_kv_seqlen,
-    T* attention_bias,
+Status LaunchZeroOutputForFullyMaskedBatches(
+    T* output,
+    const int* seqlens_k,
     int batch_size,
-    int q_seq_len,
-    int total_seq_len,
-    float mask_filter_value,
+    int64_t elements_per_batch,
     cudaStream_t stream,
     int max_threads_per_block);
 
-// Additively compose an addend bias into an existing bias buffer in-place.
-// Supports cyclic broadcasting: addend of size [q, t] is repeated over batch
-// to compose with a bias of size [B, q, t]. When both have the same number
-// of elements (e.g. 4D mask [B, 1, q, t]), it performs a direct element-wise add.
+// Zero output rows that are fully masked by the intersection of the causal frontier
+// and an explicit attention bias (composed is_causal + attn_mask), per onnx/onnx#8068
+// "fully-masked-row -> 0" (Bug-2). The MEA/CUTLASS path applies a finite mask sentinel
+// (kCutlassSafeMaskFilterValue) rather than -inf, so a query row with no allowed key
+// softmaxes to a uniform mean-of-V instead of zero. For each (batch, head, query) this
+// kernel reconstructs the per-batch bottom-right/top-left causal frontier and checks the
+// additive bias over the causally-allowed keys; if every such key is masked
+// (bias <= masked_bias_value) the corresponding output row is overwritten with zeros
+// (select-not-multiply). Output is BSNH: [batch_size, q_sequence_length, num_heads, v_head_size].
+//
+// seqlens_k: per-batch valid key count (external cache); pass nullptr to use
+//   total_sequence_length for every batch.
+// is_causal / causal_from_top_left: causal frontier selection matching the MEA params.
+// broadcast_bias_dim_0 / broadcast_bias_dim_1: attn_bias broadcast over batch / head.
+// masked_bias_value: the additive-bias sentinel used for masked keys (a key counts as
+//   masked when bias <= this value); use the same value passed to the mask conversion.
 template <typename T>
-Status LaunchAddBiasInPlace(
-    T* bias,
-    const T* addend,
-    int64_t total_elements,
-    int64_t addend_elements,
+Status LaunchZeroFullyMaskedRows(
+    T* output,
+    const T* attn_bias,
+    const int* seqlens_k,
+    int batch_size,
+    int num_heads,
+    int q_sequence_length,
+    int total_sequence_length,
+    int v_head_size,
+    bool is_causal,
+    bool causal_from_top_left,
+    bool broadcast_bias_dim_0,
+    bool broadcast_bias_dim_1,
+    float masked_bias_value,
     cudaStream_t stream,
     int max_threads_per_block);
 

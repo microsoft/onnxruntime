@@ -2,6 +2,8 @@
 // Copyright (c) 2023 NVIDIA Corporation.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <string>
 #include <utility>
 
 #include "conv_transpose.h"
@@ -24,14 +26,16 @@
 namespace onnxruntime {
 namespace cuda {
 
-// Op Set 11 for ConvTranspose only update document to clarify default dilations and strides value.
-// which are already covered by op set 11 cpu version, so simply add declaration.
-#define REGISTER_KERNEL_TYPED(T, DOMAIN, NHWC)                                                                       \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                           \
-      ConvTranspose, DOMAIN, 1, 10, T, kCudaExecutionProvider,                                                       \
-      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), ConvTranspose<T, NHWC>);  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(ConvTranspose, DOMAIN, 11, T, kCudaExecutionProvider,                                \
-                                (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+// ConvTranspose opsets 11-22 share the same CUDA implementation for the currently supported types.
+#define REGISTER_KERNEL_TYPED(T, DOMAIN, NHWC)                                                                                 \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                                     \
+      ConvTranspose, DOMAIN, 1, 10, T, kCudaExecutionProvider,                                                                 \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), ConvTranspose<T, NHWC>);            \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(ConvTranspose, DOMAIN, 11, 21, T, kCudaExecutionProvider,                            \
+                                          (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
+                                          ConvTranspose<T, NHWC>);                                                             \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(ConvTranspose, DOMAIN, 22, T, kCudaExecutionProvider,                                          \
+                                (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()),           \
                                 ConvTranspose<T, NHWC>);
 
 REGISTER_KERNEL_TYPED(float, kOnnxDomain, false)
@@ -194,7 +198,8 @@ Status ConvTranspose<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::T
     CUDNN_FE_CALL_THROW(s_.cudnn_fe_graph->build_operation_graph(handle));
     CUDNN_FE_CALL_THROW(s_.cudnn_fe_graph->create_execution_plans({heur_mode}));
   } catch (const std::exception& ex) {
-    std::string message = MakeString("Failed to initialize CUDNN Frontend: ", ex.what());
+    std::string message = MakeString("Failed to initialize CUDNN Frontend: ", ex.what(),
+                                     " with the cudnn frontend json:\n", s_.cudnn_fe_graph->print());
     return Status(common::StatusCategory::ONNXRUNTIME, common::StatusCode::EP_FAIL, message);
   }
 
@@ -205,7 +210,8 @@ Status ConvTranspose<T, Layout>::CreateCudnnFeExecutionPlan(const onnxruntime::T
     CUDNN_FE_CALL_THROW(s_.cudnn_fe_graph->build_plans(handle));
   } catch (const std::exception& ex) {
     if (!fuse_bias && !fuse_act && use_tf32) {
-      std::string message = MakeString("OP not supported by CUDNN Frontend: ", ex.what());
+      std::string message = MakeString("OP not supported by CUDNN Frontend: ", ex.what(),
+                                       " with the cudnn frontend json:\n", s_.cudnn_fe_graph->print());
       return Status(common::StatusCategory::ONNXRUNTIME, common::StatusCode::EP_FAIL, message);
     }
 
@@ -265,9 +271,28 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
 
   const Tensor* Pads = dynamic_padding ? context->Input<Tensor>(2) : nullptr;
 
+  // ConvTranspose requires X shape (N x C x D1...Dn) and W shape (C x M/group x k1...kn),
+  // both must have at least 3 dimensions. Check before dims-changed comparison because
+  // a scalar (rank 0) has empty dims which matches the default-initialized last_x_dims,
+  // causing the validation block to be skipped entirely.
+  const size_t rank = x_shape.NumDimensions();
+  if (rank < 3) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Input X must have at least 3 dimensions (N x C x D1...Dn).",
+                           " X: ", x_shape.ToString().c_str());
+  }
+
+  if (w_shape.NumDimensions() < 3) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Filter W must have at least 3 dimensions (C x M/group x k1...kn).",
+                           " W: ", w_shape.ToString().c_str());
+  }
+
   bool input_dims_changed = (s_.last_x_dims != x_dims);
   bool w_dims_changed = (s_.last_w_dims != w_dims);
-  if (input_dims_changed || w_dims_changed) {
+  // When dynamic_padding is used, Pads can change between calls even when X/W shapes
+  // stay the same, so we must always recompute the output shape and re-validate.
+  if (input_dims_changed || w_dims_changed || dynamic_padding) {
     if (input_dims_changed)
       s_.last_x_dims = gsl::make_span(x_dims);
 
@@ -277,7 +302,6 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
 
     // The following code is from ConvTransposeAttributes::PrepareForCompute
 
-    const int rank = static_cast<int>(X->Shape().NumDimensions());
     TensorShape input_shape = X->Shape().Slice(channels_last ? 1 : 2, channels_last ? rank - 1 : rank);
     const int64_t num_input_channels = channels_last ? X->Shape()[rank - 1] : X->Shape()[1];
     const int64_t N = X->Shape()[0];
@@ -331,11 +355,35 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
     if (local_output_padding.empty()) {
       local_output_padding.resize(kernel_shape.size(), 0);
     }
+    if (local_output_padding.size() != kernel_shape.size()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "output_padding size (", local_output_padding.size(),
+                             ") does not match the number of spatial dimensions (", kernel_shape.size(), ").");
+    }
     ConvPadVector pads;
     pads.reserve(2 * (input_shape.NumDimensions()));
     if (dynamic_padding) {
-      for (int64_t i = 0; i < Pads->Shape().SizeFromDimension(0); ++i) {
-        pads.push_back(Pads->Data<int64_t>()[i]);
+      if (Pads == nullptr) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Pads input is required in dynamic padding mode.");
+      }
+      if (Pads->Shape().NumDimensions() != 1) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Dynamic pads tensor must be 1-D. Got rank: ", Pads->Shape().NumDimensions());
+      }
+      const int64_t expected_pads_size = static_cast<int64_t>(kernel_shape.size()) * 2;
+      if (Pads->Shape()[0] != expected_pads_size) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Dynamic pads tensor size (", Pads->Shape()[0],
+                               ") does not match expected size (2 * spatial_dims = ", expected_pads_size, ").");
+      }
+      const auto* pads_data = Pads->Data<int64_t>();
+      for (int64_t i = 0; i < Pads->Shape()[0]; ++i) {
+        if (pads_data[i] < 0) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Dynamic pads must be non-negative. Got pads[", i, "] = ", pads_data[i]);
+        }
+        pads.push_back(pads_data[i]);
       }
     } else {
       pads.assign(conv_transpose_attrs_.pads.begin(), conv_transpose_attrs_.pads.end());
@@ -352,10 +400,32 @@ Status ConvTranspose<T, Layout>::UpdateState(OpKernelContext* context, bool dyna
       strides.resize(kernel_shape.size(), 1);
     }
 
+    if (strides.size() != kernel_shape.size()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "strides size (", strides.size(),
+                             ") does not match the number of spatial dimensions (", kernel_shape.size(), ").");
+    }
+    if (dilations.size() != kernel_shape.size()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "dilations size (", dilations.size(),
+                             ") does not match the number of spatial dimensions (", kernel_shape.size(), ").");
+    }
+
+    // ONNX spec: "output_padding[i] should be less than max(stride[i], dilation[i])".
+    for (size_t i = 0; i < local_output_padding.size(); ++i) {
+      int64_t limit = std::max(strides[i], dilations[i]);
+      if (local_output_padding[i] >= limit) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "output_padding[", i, "] (", local_output_padding[i],
+                               ") must be less than max(stride, dilation) (", limit,
+                               ") for spatial dimension ", i, ".");
+      }
+    }
+
     TensorShapeVector y_dims;
 
-    conv_transpose_attrs_.ComputePadsAndOutputShape(input_shape, num_output_channels, kernel_shape,
-                                                    strides, dilations, local_output_padding, N, &pads, &y_dims, channels_last);
+    ORT_RETURN_IF_ERROR(conv_transpose_attrs_.ComputePadsAndOutputShape(input_shape, num_output_channels, kernel_shape,
+                                                                        strides, dilations, local_output_padding, N, &pads, &y_dims, channels_last));
 
     s_.y_dims = gsl::make_span(y_dims);
     s_.Y = context->Output(0, s_.y_dims);
