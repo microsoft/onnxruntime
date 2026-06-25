@@ -58,7 +58,7 @@ void MultiplyUpdateArray(std::vector<T>& data, int n, T inc = 0) {
 }
 
 template <typename T>
-void _multiply_update_childnode(std::vector<T>& childnodes, std::vector<T>& childleafs, std::vector<T>& otherchildleafs, int n) {
+void MultiplyUpdateChildnode(std::vector<T>& childnodes, std::vector<T>& childleafs, std::vector<T>& otherchildleafs, int n) {
   int64_t leafs_cnt = 0;
   int64_t nodes_cnt = childnodes.size();
   for (auto& childleaf : childleafs) {
@@ -88,7 +88,7 @@ void _multiply_update_childnode(std::vector<T>& childnodes, std::vector<T>& chil
 }
 
 template <typename T>
-void _multiply_arrays_values(std::vector<T>& data, int64_t val) {
+void MultiplyArraysValues(std::vector<T>& data, int64_t val) {
   for (auto& curr : data) {
     curr *= val;
   }
@@ -116,8 +116,8 @@ void GenTreeAndRunTest(const std::vector<T>& X, const std::vector<T>& Y, const i
     // Multiplies the number of trees to test the parallelization by trees.
     MultiplyUpdateArray(tree_roots, n_trees, (int64_t)nodes_truenodeids.size());
     MultiplyUpdateArray(nodes_featureids, n_trees);
-    _multiply_update_childnode(nodes_truenodeids, nodes_trueleafs, nodes_falseleafs, n_trees);
-    _multiply_update_childnode(nodes_falsenodeids, nodes_falseleafs, nodes_trueleafs, n_trees);
+    MultiplyUpdateChildnode(nodes_truenodeids, nodes_trueleafs, nodes_falseleafs, n_trees);
+    MultiplyUpdateChildnode(nodes_falsenodeids, nodes_falseleafs, nodes_trueleafs, n_trees);
     MultiplyUpdateArray(nodes_trueleafs, n_trees);
     MultiplyUpdateArray(nodes_falseleafs, n_trees);
     MultiplyUpdateArray(leaf_targetids, n_trees);
@@ -174,8 +174,8 @@ void GenTreeAndRunTestWithSetMembership(const std::vector<T>& X, const std::vect
     // Multiplies the number of trees to test the parallelization by trees.
     MultiplyUpdateArray(tree_roots, n_trees, (int64_t)nodes_truenodeids.size());
     MultiplyUpdateArray(nodes_featureids, n_trees);
-    _multiply_update_childnode(nodes_truenodeids, nodes_trueleafs, nodes_falseleafs, n_trees);
-    _multiply_update_childnode(nodes_falsenodeids, nodes_falseleafs, nodes_trueleafs, n_trees);
+    MultiplyUpdateChildnode(nodes_truenodeids, nodes_trueleafs, nodes_falseleafs, n_trees);
+    MultiplyUpdateChildnode(nodes_falsenodeids, nodes_falseleafs, nodes_trueleafs, n_trees);
     MultiplyUpdateArray(nodes_trueleafs, n_trees);
     MultiplyUpdateArray(nodes_falseleafs, n_trees);
     MultiplyUpdateArray(leaf_targetids, n_trees);
@@ -226,7 +226,7 @@ TEST(MLOpTest, TreeEnsembleDouble) {
   std::vector<double> Y = {5.23f, 0.f, 5.23f, 0.f, 0.f, 12.12f};
   GenTreeAndRunTest<double>(X, Y, 1, 1);
 
-  _multiply_arrays_values(Y, 3);
+  MultiplyArraysValues(Y, 3);
   GenTreeAndRunTest<double>(X, Y, 1, 3);
 }
 
@@ -241,7 +241,7 @@ TEST(MLOpTest, TreeEnsembleSetMembership) {
       0.f, 10.f, 0.f, 0.f};
   GenTreeAndRunTestWithSetMembership<double>(X, Y, 1, 1);
 
-  _multiply_arrays_values(Y, 5);
+  MultiplyArraysValues(Y, 5);
   GenTreeAndRunTestWithSetMembership<double>(X, Y, 1, 5);
 }
 
