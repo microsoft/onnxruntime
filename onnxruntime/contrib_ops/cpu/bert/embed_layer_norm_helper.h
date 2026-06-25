@@ -24,8 +24,13 @@ inline Status CheckInputs(const TOpKernelContext* context, bool quantizedVersion
   const Tensor* beta = context->template Input<Tensor>(6);
   const Tensor* mask = context->template Input<Tensor>(7);  // optional. nullptr if not provided
 
+  // Track whether explicit position ids are supplied. When they are not, positions default to
+  // [0, sequence_length) and must be covered by the position_embedding rows (checked below).
+  bool has_position_ids = false;
+
   if (!quantizedVersion) {
     const Tensor* position_ids = context->template Input<Tensor>(8);  // optional. nullptr if not provided
+    has_position_ids = (nullptr != position_ids);
 
     if (nullptr != position_ids) {
       if (input_ids->Shape()[1] != position_ids->Shape()[1]) {
@@ -67,6 +72,17 @@ inline Status CheckInputs(const TOpKernelContext* context, bool quantizedVersion
   if (position_embedding_dims.size() != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "position_embedding is expected to have 2 dimensions, got ", position_embedding_dims.size());
+  }
+
+  // When position_ids are not supplied, positions run over [0, sequence_length); the
+  // position_embedding table must have at least that many rows to be addressable.
+  if (!has_position_ids) {
+    int64_t sequence_length = input_ids->Shape()[1];
+    if (position_embedding_dims[0] < sequence_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "position_embedding must have at least sequence_length (", sequence_length,
+                             ") rows when position_ids is not provided, got ", position_embedding_dims[0]);
+    }
   }
 
   if (nullptr != segment_embedding) {
