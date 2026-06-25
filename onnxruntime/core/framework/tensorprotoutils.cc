@@ -725,6 +725,17 @@ void ConvertRawDataInTensorProto(TensorProto& tensor) {
   SwapByteOrderInplace(element_size, span);
 }
 
+// Bool tensors must hold canonical {0, 1} byte values. Data sourced from raw_data or external
+// files is copied verbatim and may contain other non-zero bytes; normalize any non-zero byte to 1
+// so every consumer observes a single, consistent value. Operate on the byte representation to
+// avoid loading a bool object that does not yet hold a valid value.
+static void NormalizeBoolBytes(uint8_t* bool_bytes, size_t num_elements) {
+  static_assert(sizeof(bool) == 1, "Normalization assumes 1 byte per bool element");
+  for (size_t i = 0; i < num_elements; ++i) {
+    bool_bytes[i] = bool_bytes[i] != 0 ? 1 : 0;
+  }
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 
 static Status UnpackTensorWithExternalDataImpl(const ONNX_NAMESPACE::TensorProto& tensor,
@@ -753,22 +764,15 @@ Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
 }
 
 // UnpackTensorWithExternalData<bool>
-// External data is copied verbatim and may contain bytes outside the canonical {0, 1} set.
-// Consumers rely on bool tensors holding {0, 1}; normalize any non-zero byte to 1 so every
-// reader observes a single, consistent value. Operate on the byte representation to avoid
-// loading a bool object that does not yet hold a valid value.
+// External data is copied verbatim and may contain bytes outside the canonical {0, 1} set, so
+// normalize them (see NormalizeBoolBytes).
 template <>
 Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
                                     const std::filesystem::path& tensor_proto_dir, size_t expected_num_elements,
                                     /*out*/ bool* p_data) {
   ORT_RETURN_IF_ERROR(UnpackTensorWithExternalDataImpl(tensor, tensor_proto_dir, expected_num_elements, sizeof(bool),
                                                        reinterpret_cast<unsigned char*>(p_data)));
-  auto* bool_bytes = reinterpret_cast<uint8_t*>(p_data);
-  static_assert(sizeof(bool) == 1,
-                "Normalization loop writes expected_num_elements bytes assuming 1 byte per bool element");
-  for (size_t i = 0; i < expected_num_elements; ++i) {
-    bool_bytes[i] = bool_bytes[i] != 0 ? 1 : 0;
-  }
+  NormalizeBoolBytes(reinterpret_cast<uint8_t*>(p_data), expected_num_elements);
   return Status::OK();
 }
 
@@ -930,15 +934,9 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
 
   if (raw_data != nullptr) {
     ORT_RETURN_IF_ERROR(UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data));
-    // raw_data is copied verbatim and may contain bytes outside the canonical {0, 1} set.
-    // Consumers rely on bool tensors holding {0, 1}; normalize any non-zero byte to 1 so every
-    // reader observes a single, consistent value. Operate on the byte representation to avoid
-    // loading a bool object that does not yet hold a valid value.
-    auto* bool_bytes = reinterpret_cast<uint8_t*>(p_data);
-    static_assert(sizeof(bool) == 1, "Normalization loop writes expected_size bytes assuming 1 byte per bool element");
-    for (size_t i = 0; i < expected_size; ++i) {
-      bool_bytes[i] = bool_bytes[i] != 0 ? 1 : 0;
-    }
+    // raw_data is copied verbatim and may contain bytes outside the canonical {0, 1} set (see
+    // NormalizeBoolBytes).
+    NormalizeBoolBytes(reinterpret_cast<uint8_t*>(p_data), expected_size);
     return Status::OK();
   }
 
@@ -1913,6 +1911,12 @@ Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_pa
     ORT_RETURN_IF_ERROR(GetExtDataFromTensorProto(env, model_path, tensor_proto, ort_value));
     const auto& ext_tensor = ort_value.Get<Tensor>();
     MakeCpuTensorCopy(ext_tensor, tensor);
+    // MakeCpuTensorCopy memcpy's external bytes verbatim. Bool external initializers may carry
+    // bytes outside the canonical {0, 1} set, so normalize them here as well (see NormalizeBoolBytes).
+    if (tensor.IsDataType<bool>()) {
+      NormalizeBoolBytes(reinterpret_cast<uint8_t*>(tensor.MutableDataRaw()),
+                         narrow<size_t>(tensor.Shape().Size()));
+    }
     return Status::OK();
   }
 
