@@ -173,30 +173,19 @@ TEST(EpContextDataApiTest, ApiRejectsInvalidArguments) {
 }
 
 TEST(EpContextDataApiTest, AccessorsReturnNullWhenCallbacksUnset) {
-  const auto& ort_api = Ort::GetApi();
   Ort::SessionOptions session_options;
-
-  auto* get_config = Ort::Experimental::Get_OrtEpApi_SessionOptions_GetEpContextConfig_SinceV28_FnOrThrow(&ort_api);
-  auto* release_config_func =
-      Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_FnOrThrow(&ort_api);
-  auto* get_read_func =
-      Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataReadFunc_SinceV28_FnOrThrow(&ort_api);
-  auto* get_write_func =
-      Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc_SinceV28_FnOrThrow(&ort_api);
-
-  OrtEpContextConfig* ep_context_config = nullptr;
-  ASSERT_ORTSTATUS_OK(get_config(session_options, &ep_context_config));
-  auto release_config = gsl::finally([&]() { release_config_func(ep_context_config); });
+  Ort::Experimental::EpContextConfig ep_context_config{session_options};
 
   OrtReadNamedBufferFunc read_func = EpContextReadCallback;
   OrtWriteNamedBufferFunc write_func = EpContextWriteCallback;
   void* state = reinterpret_cast<void*>(0x1);
 
-  ASSERT_ORTSTATUS_OK(get_read_func(ep_context_config, &read_func, &state));
+  ep_context_config.GetReadFunc(read_func, state);
   EXPECT_EQ(read_func, nullptr);
   EXPECT_EQ(state, nullptr);
 
-  ASSERT_ORTSTATUS_OK(get_write_func(ep_context_config, &write_func, &state));
+  state = reinterpret_cast<void*>(0x1);
+  ep_context_config.GetWriteFunc(write_func, state);
   EXPECT_EQ(write_func, nullptr);
   EXPECT_EQ(state, nullptr);
 }
@@ -207,30 +196,21 @@ TEST(EpContextDataApiTest, ConfigReturnsConfiguredCallbacks) {
 
   auto* set_read_func =
       Ort::Experimental::Get_OrtApi_SessionOptions_SetEpContextDataReadFunc_SinceV28_FnOrThrow(&ort_api);
-  auto* get_config = Ort::Experimental::Get_OrtEpApi_SessionOptions_GetEpContextConfig_SinceV28_FnOrThrow(&ort_api);
-  auto* release_config_func =
-      Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_FnOrThrow(&ort_api);
-  auto* get_read_func =
-      Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataReadFunc_SinceV28_FnOrThrow(&ort_api);
-  auto* get_write_func =
-      Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc_SinceV28_FnOrThrow(&ort_api);
 
   EpContextReadCallbackState callback_state{};
   ASSERT_ORTSTATUS_OK(set_read_func(session_options, EpContextReadCallback, &callback_state));
 
-  OrtEpContextConfig* ep_context_config = nullptr;
-  ASSERT_ORTSTATUS_OK(get_config(session_options, &ep_context_config));
-  auto release_config = gsl::finally([&]() { release_config_func(ep_context_config); });
+  Ort::Experimental::EpContextConfig ep_context_config{session_options};
 
   OrtReadNamedBufferFunc read_func = nullptr;
   void* read_state = nullptr;
-  ASSERT_ORTSTATUS_OK(get_read_func(ep_context_config, &read_func, &read_state));
+  ep_context_config.GetReadFunc(read_func, read_state);
   EXPECT_EQ(read_func, EpContextReadCallback);
   EXPECT_EQ(read_state, &callback_state);
 
   OrtWriteNamedBufferFunc write_func = nullptr;
   void* write_state = nullptr;
-  ASSERT_ORTSTATUS_OK(get_write_func(ep_context_config, &write_func, &write_state));
+  ep_context_config.GetWriteFunc(write_func, write_state);
   EXPECT_EQ(write_func, nullptr);
   EXPECT_EQ(write_state, nullptr);
 }
@@ -241,24 +221,16 @@ TEST(EpContextDataApiTest, ReadFuncCanBeCleared) {
 
   auto* set_read_func =
       Ort::Experimental::Get_OrtApi_SessionOptions_SetEpContextDataReadFunc_SinceV28_FnOrThrow(&ort_api);
-  auto* get_config = Ort::Experimental::Get_OrtEpApi_SessionOptions_GetEpContextConfig_SinceV28_FnOrThrow(&ort_api);
-  auto* release_config_func =
-      Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_FnOrThrow(&ort_api);
-  auto* get_read_func =
-      Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataReadFunc_SinceV28_FnOrThrow(&ort_api);
 
   EpContextReadCallbackState callback_state{};
   ASSERT_ORTSTATUS_OK(set_read_func(session_options, EpContextReadCallback, &callback_state));
 
   ASSERT_ORTSTATUS_OK(set_read_func(session_options, nullptr, &callback_state));
 
-  OrtEpContextConfig* ep_context_config = nullptr;
-  ASSERT_ORTSTATUS_OK(get_config(session_options, &ep_context_config));
-  auto release_config = gsl::finally([&]() { release_config_func(ep_context_config); });
-
+  Ort::Experimental::EpContextConfig ep_context_config{session_options};
   OrtReadNamedBufferFunc read_func = EpContextReadCallback;
   void* read_state = reinterpret_cast<void*>(0x1);
-  ASSERT_ORTSTATUS_OK(get_read_func(ep_context_config, &read_func, &read_state));
+  ep_context_config.GetReadFunc(read_func, read_state);
   EXPECT_EQ(read_func, nullptr);
   EXPECT_EQ(read_state, nullptr);
 }
@@ -336,22 +308,14 @@ TEST(EpContextDataApiTest, ReturnedReadFuncAllowsEmptyPayloads) {
 
   auto* set_read_func =
       Ort::Experimental::Get_OrtApi_SessionOptions_SetEpContextDataReadFunc_SinceV28_FnOrThrow(&ort_api);
-  auto* get_config = Ort::Experimental::Get_OrtEpApi_SessionOptions_GetEpContextConfig_SinceV28_FnOrThrow(&ort_api);
-  auto* release_config_func =
-      Ort::Experimental::Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_FnOrThrow(&ort_api);
-  auto* get_read_func =
-      Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataReadFunc_SinceV28_FnOrThrow(&ort_api);
 
   EpContextReadCallbackState callback_state{};
   ASSERT_ORTSTATUS_OK(set_read_func(session_options, EpContextReadCallback, &callback_state));
 
-  OrtEpContextConfig* ep_context_config = nullptr;
-  ASSERT_ORTSTATUS_OK(get_config(session_options, &ep_context_config));
-  auto release_config = gsl::finally([&]() { release_config_func(ep_context_config); });
-
+  Ort::Experimental::EpContextConfig ep_context_config{session_options};
   OrtReadNamedBufferFunc read_func = nullptr;
   void* read_state = nullptr;
-  ASSERT_ORTSTATUS_OK(get_read_func(ep_context_config, &read_func, &read_state));
+  ep_context_config.GetReadFunc(read_func, read_state);
   ASSERT_EQ(read_func, EpContextReadCallback);
   ASSERT_EQ(read_state, &callback_state);
 

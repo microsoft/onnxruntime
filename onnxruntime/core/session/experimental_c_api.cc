@@ -20,8 +20,9 @@
 #include "core/session/model_compilation_options.h"
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-// Opaque handle backing the experimental OrtEpApi_* EPContext data functions. Holds copies of the application's
-// EPContext read/write callbacks and opaque state extracted from an OrtSessionOptions instance.
+// Backing definition of the OrtEpContextConfig handle used by the experimental OrtEpApi_* EPContext data functions.
+// Holds copies of the application's EPContext read/write callbacks and opaque state extracted from an
+// OrtSessionOptions instance.
 struct OrtEpContextConfig {
   OrtWriteNamedBufferFunc write_func = nullptr;
   void* write_state = nullptr;

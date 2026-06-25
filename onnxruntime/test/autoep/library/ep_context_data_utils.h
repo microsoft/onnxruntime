@@ -364,13 +364,18 @@ inline OrtStatus* ReadEpContextDataWithFileFallback(
     return ReadEpContextDataFromFile(api, file_name, graph, data);
   }
 
-  Ort::AllocatorWithDefaultOptions allocator;
+  // Use the C allocator API (not Ort::AllocatorWithDefaultOptions, whose constructor throws) so this OrtStatus*-based
+  // helper stays exception-free. The default allocator is owned by ORT and must not be released here.
+  OrtAllocator* allocator = nullptr;
+  RETURN_IF_ERROR(api.GetAllocatorWithDefaultOptions(&allocator));
   void* ep_context_data = nullptr;
   size_t ep_context_data_size = 0;
   OrtStatus* status = read_func(read_state, file_name, allocator, &ep_context_data, &ep_context_data_size);
-  auto buffer_deleter = [&allocator](void* buffer_to_free) {
+  auto buffer_deleter = [&api, allocator](void* buffer_to_free) {
     if (buffer_to_free != nullptr) {
-      allocator.Free(buffer_to_free);
+      // Best-effort free during cleanup; release any returned status without throwing.
+      Ort::Status free_status{api.AllocatorFree(allocator, buffer_to_free)};
+      static_cast<void>(free_status);
     }
   };
   std::unique_ptr<void, decltype(buffer_deleter)> ep_context_data_guard(ep_context_data, buffer_deleter);
