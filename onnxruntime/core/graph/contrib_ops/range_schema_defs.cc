@@ -60,6 +60,9 @@ static T GetFirstElement(const TensorProto* shapeInitializer) {
 
   if (utils::HasRawData(*shapeInitializer)) {
     const std::string& bytes = shapeInitializer->raw_data();
+    if (bytes.size() < sizeof(T)) {
+      fail_shape_inference("Range: raw_data size is smaller than the element size for the given data type.");
+    }
     return *reinterpret_cast<const T*>(bytes.c_str());
   }
   return get_data<T>(shapeInitializer);
@@ -75,7 +78,13 @@ static int64_t CalcRangeDim(const TensorProto* startShapeInitializer,
   if (delta == 0) {
     fail_shape_inference("delta in Range operator can not be zero!");
   }
-  return static_cast<int64_t>(ceil((1.0 * (limit - start)) / delta));
+  // Mirror the CPU kernel (core/providers/cpu/generator/range.cc) which clamps empty or
+  // backward ranges to 0 so shape inference does not emit a negative dimension value.
+  int64_t n = static_cast<int64_t>(ceil((1.0 * (limit - start)) / delta));
+  if (n <= 0) {
+    n = 0;
+  }
+  return n;
 }
 
 static int64_t CalcResultDim(const TensorProto* startShapeInitializer,
