@@ -889,7 +889,11 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateSyncStreamForDeviceImpl(
 
   auto* factory = static_cast<CudaEpFactory*>(this_ptr);
   int req_device_id = factory->ep_api_.MemoryDevice_GetDeviceId(memory_device);
-  auto cuda_stream = std::make_unique<CudaSyncStream>(*factory, req_device_id, true, nullptr);
+  // Factory-level streams are not tied to a specific EP instance's enable_cudnn policy. Default cuDNN
+  // off here so this path never triggers a cuDNN load or handle creation; kernels that need cuDNN run
+  // on EP-owned streams created with the EP's actual enable_cudnn setting, and otherwise fall back to
+  // the per-thread default cuDNN handle.
+  auto cuda_stream = std::make_unique<CudaSyncStream>(*factory, req_device_id, false, nullptr);
 
   // Initialize CUDA handles (stream, cuBLAS, cuDNN)
   RETURN_IF_ERROR(cuda_stream->InitHandles());

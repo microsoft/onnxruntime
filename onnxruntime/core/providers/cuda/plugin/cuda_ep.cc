@@ -128,8 +128,6 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   // ORT uses it to avoid reading OrtEp struct fields that did not exist when the plugin was compiled.
   ort_version_supported = ORT_API_VERSION;
 
-  onnxruntime::cuda::CudnnLibrary::Get().Configure(config_.enable_cudnn);
-
   // The plugin is compiled against the latest ORT headers (ORT_API_VERSION) but may be loaded by an
   // older ORT runtime, down to the floor declared in plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION. Some
   // OrtEp callbacks below — and the OrtEpApi functions their implementations call — only exist in

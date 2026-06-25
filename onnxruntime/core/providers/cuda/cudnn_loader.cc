@@ -89,11 +89,6 @@ CudnnLibrary& CudnnLibrary::Get() {
   return library;
 }
 
-void CudnnLibrary::Configure(bool enabled) {
-  std::lock_guard<std::mutex> lock(mutex_);
-  enabled_ = enabled;
-}
-
 bool CudnnLibrary::Available() {
   return EnsureLoaded();
 }
@@ -109,12 +104,6 @@ void* CudnnLibrary::Handle() {
 
 bool CudnnLibrary::EnsureLoaded() {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (!enabled_) {
-    available_ = false;
-    error_ = "cuDNN was disabled by CUDA provider option enable_cudnn=0";
-    return false;
-  }
-
   if (load_attempted_) {
     return available_;
   }

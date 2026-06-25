@@ -17,7 +17,6 @@ class CudnnLibrary {
  public:
   static CudnnLibrary& Get();
 
-  void Configure(bool enabled);
   bool Available();
   const char* Error() const;
   void* Handle();
@@ -34,7 +33,6 @@ class CudnnLibrary {
   void* ResolveSymbol(const char* symbol);
 
   mutable std::mutex mutex_;
-  bool enabled_{true};
   bool load_attempted_{false};
   bool available_{false};
   std::string error_;

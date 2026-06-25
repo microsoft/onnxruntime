@@ -338,10 +338,6 @@ CUDAExecutionProvider::CUDAExecutionProvider(const CUDAExecutionProviderInfo& in
   ORT_ENFORCE(info_.prefer_nhwc == 0, "This build does not support NHWC layout");
 #endif
 
-#ifndef USE_CUDA_MINIMAL
-  cuda::CudnnLibrary::Get().Configure(info_.enable_cudnn);
-#endif
-
   CUDA_CALL_THROW(cudaSetDevice(info_.device_id));
 
   // must wait GPU idle, otherwise cudaGetDeviceProperties might fail
