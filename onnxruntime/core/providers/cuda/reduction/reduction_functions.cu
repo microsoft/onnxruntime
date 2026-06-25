@@ -513,6 +513,51 @@ INSTANTIATE_REDUCE_MATRIX_COLUMNS(double);
 INSTANTIATE_REDUCE_MATRIX_COLUMNS(BFloat16);
 #undef INSTANTIATE_REDUCE_MATRIX_COLUMNS
 
+namespace detail {
+template <typename TIn, bool IsArgMax>
+__global__ void arg_min_max_last_axis_kernel(const TIn* input, int64_t* output, int m, int n) {
+  const int row = blockIdx.x * blockDim.x + threadIdx.x;
+  if (row >= m) return;
+
+  const int64_t row_offset = static_cast<int64_t>(row) * n;
+  TIn best_value = input[row_offset];
+  int64_t best_index = 0;
+  for (int i = 1; i < n; ++i) {
+    const TIn value = input[row_offset + i];
+    if constexpr (IsArgMax) {
+      if (value > best_value) {
+        best_value = value;
+        best_index = i;
+      }
+    } else {
+      if (value < best_value) {
+        best_value = value;
+        best_index = i;
+      }
+    }
+  }
+
+  output[row] = best_index;
+}
+}  // namespace detail
+
+template <typename TIn, bool IsArgMax>
+Status arg_min_max_last_axis(cudaStream_t stream, const TIn* input, int64_t* output, int m, int n) {
+  if (m == 0) return Status::OK();
+  constexpr int block_size = 256;
+  const int grid_size = (m + block_size - 1) / block_size;
+  detail::arg_min_max_last_axis_kernel<TIn, IsArgMax><<<grid_size, block_size, 0, stream>>>(input, output, m, n);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+#define INSTANTIATE_ARG_MIN_MAX_LAST_AXIS(T)                                                                          \
+  template Status arg_min_max_last_axis<T, true>(cudaStream_t stream, const T* input, int64_t* output, int m, int n); \
+  template Status arg_min_max_last_axis<T, false>(cudaStream_t stream, const T* input, int64_t* output, int m, int n)
+INSTANTIATE_ARG_MIN_MAX_LAST_AXIS(half);
+INSTANTIATE_ARG_MIN_MAX_LAST_AXIS(float);
+INSTANTIATE_ARG_MIN_MAX_LAST_AXIS(double);
+#undef INSTANTIATE_ARG_MIN_MAX_LAST_AXIS
+
 }  // namespace cuda
 }  // namespace onnxruntime
 
