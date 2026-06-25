@@ -47,8 +47,26 @@ jobs:
       - name: Download CUDA SDK v12.8
         working-directory: ${{ runner.temp }}
         run: |
-          azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.8" .
-          dir
+          $cudaSdkDir = Join-Path $env:RUNNER_TEMP "v12.8"
+          $localCudaSdkDir = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8"
+
+          if (Test-Path (Join-Path $cudaSdkDir "bin\nvcc.exe")) {
+            Write-Host "CUDA SDK already present at $cudaSdkDir"
+          } else {
+            azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.8" .
+            $azcopyExitCode = $lastExitCode
+            if (($azcopyExitCode -ne 0) -and (Test-Path (Join-Path $localCudaSdkDir "bin\nvcc.exe"))) {
+              Write-Host "AzCopy download failed; falling back to local CUDA SDK at $localCudaSdkDir"
+              New-Item -ItemType Directory -Path $cudaSdkDir -Force | Out-Null
+              Copy-Item -Path (Join-Path $localCudaSdkDir "*") -Destination $cudaSdkDir -Recurse -Force -ErrorAction Stop
+              $azcopyExitCode = 0
+            }
+            if ($azcopyExitCode -ne 0) {
+              exit $azcopyExitCode
+            }
+          }
+
+          dir $cudaSdkDir
         shell: pwsh
 
       - name: Add CUDA to PATH
