@@ -637,28 +637,26 @@ TestOptions MakeSharingTestOptions(int64_t N, int64_t K, int64_t block_size, int
 }  // namespace
 
 // Legacy sharing path: the weight B is registered as a shared initializer via
-// SessionOptions::AddInitializer. Pre-packed B sharing depends on the activation dtype path and on the
-// zero points (which are folded into the packed B), but not on bias (bias is not pre-packed). Cover both
-// dtypes x both zero-point states with bias varied across the cases, rather than the full zp x bias x
-// dtype cross-product, to limit the number of InferenceSession constructions (the dominant memory cost
-// under AddressSanitizer).
+// SessionOptions::AddInitializer. Covers float and float16 activations, symmetric/asymmetric, +/- bias.
 TEST(MatMulNBits, SharedPrepackedWeights_AddInitializer) {
-  RunTest<float>(MakeSharingTestOptions(32, 256, /*block_size*/ 32, /*accuracy_level*/ 0, /*has_zero_point*/ true,
-                                        /*has_bias*/ true, PrepackSharingMode::kAddInitializer));
-  RunTest<float>(MakeSharingTestOptions(32, 256, /*block_size*/ 32, /*accuracy_level*/ 0, /*has_zero_point*/ false,
-                                        /*has_bias*/ false, PrepackSharingMode::kAddInitializer));
-  RunTest<MLFloat16>(MakeSharingTestOptions(32, 256, /*block_size*/ 32, /*accuracy_level*/ 0, /*has_zero_point*/ false,
-                                            /*has_bias*/ true, PrepackSharingMode::kAddInitializer));
-  RunTest<MLFloat16>(MakeSharingTestOptions(32, 256, /*block_size*/ 32, /*accuracy_level*/ 0, /*has_zero_point*/ true,
-                                            /*has_bias*/ false, PrepackSharingMode::kAddInitializer));
+  for (bool has_zero_point : {false, true}) {
+    for (bool has_bias : {false, true}) {
+      RunTest<float>(MakeSharingTestOptions(32, 256, /*block_size*/ 32, /*accuracy_level*/ 0, has_zero_point,
+                                            has_bias, PrepackSharingMode::kAddInitializer));
+      RunTest<MLFloat16>(MakeSharingTestOptions(32, 256, /*block_size*/ 32, /*accuracy_level*/ 0, has_zero_point,
+                                                has_bias, PrepackSharingMode::kAddInitializer));
+    }
+  }
 }
 
 // Negative control: with the shared container present but neither opt-in mechanism enabled, no
-// pre-packed weights are shared across sessions. Opt-in gating is independent of dtype/zp/bias, so a
-// single representative case suffices (keeping InferenceSession constructions low under AddressSanitizer).
+// pre-packed weights are shared across sessions.
 TEST(MatMulNBits, SharedPrepackedWeights_NotSharedWithoutOptIn) {
   RunTest<float>(MakeSharingTestOptions(32, 256, /*block_size*/ 32, /*accuracy_level*/ 0, /*has_zero_point*/ true,
                                         /*has_bias*/ true, PrepackSharingMode::kNoSharing));
+  RunTest<MLFloat16>(MakeSharingTestOptions(32, 256, /*block_size*/ 32, /*accuracy_level*/ 0,
+                                            /*has_zero_point*/ false, /*has_bias*/ false,
+                                            PrepackSharingMode::kNoSharing));
 }
 
 #endif  // !ENABLE_TRAINING
