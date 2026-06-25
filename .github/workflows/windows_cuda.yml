@@ -48,6 +48,8 @@ jobs:
       - name: Download CUDA SDK v12.8
         working-directory: ${{ runner.temp }}
         run: |
+          Remove-Item Env:AZCOPY_AUTO_LOGIN_TYPE -ErrorAction SilentlyContinue
+          Remove-Item Env:AZCOPY_MSI_CLIENT_ID -ErrorAction SilentlyContinue
           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.8" .
           dir
         shell: pwsh
@@ -199,6 +201,8 @@ jobs:
       - name: Download CUDA SDK v12.8
         working-directory: ${{ runner.temp }}
         run: |
+          Remove-Item Env:AZCOPY_AUTO_LOGIN_TYPE -ErrorAction SilentlyContinue
+          Remove-Item Env:AZCOPY_MSI_CLIENT_ID -ErrorAction SilentlyContinue
           azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.8" .
           dir
         shell: pwsh
