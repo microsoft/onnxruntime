@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstring>
 #include <fstream>
 #include <filesystem>
 #include <functional>
