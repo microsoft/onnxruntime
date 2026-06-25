@@ -641,10 +641,14 @@ def generate_build_tree(
                 osx_target = os.environ.get("MACOSX_DEPLOYMENT_TARGET")
             if osx_target is not None:
                 log.info(f"Setting VCPKG_OSX_DEPLOYMENT_TARGET to {osx_target}")
-            generate_macos_triplets(build_dir, configs, osx_target, args.use_full_protobuf, args.telemetry_shared_sdk)
+            generate_macos_triplets(
+                build_dir, configs, osx_target, args.use_full_protobuf, args.telemetry_shared_sdk, args.use_telemetry
+            )
         else:
             # Linux, *BSD, AIX or other platforms
-            generate_linux_triplets(build_dir, configs, args.use_full_protobuf, args.telemetry_shared_sdk)
+            generate_linux_triplets(
+                build_dir, configs, args.use_full_protobuf, args.telemetry_shared_sdk, args.use_telemetry
+            )
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", str(vcpkg_toolchain_path))
 
         # Choose the cmake triplet

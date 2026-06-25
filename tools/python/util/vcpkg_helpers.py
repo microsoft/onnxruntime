@@ -1,6 +1,32 @@
 import os
 from pathlib import Path
 
+# Compile-time options that shrink the sqlite3 build that the 1DS telemetry SDK
+# (cpp-client-telemetry) pulls in. sqlite3 is only ever built here as the SDK's offline-event
+# store, and the SDK uses it very narrowly: a single event table with parameter-bound
+# INSERT/SELECT/DELETE, a handful of PRAGMAs and VACUUM, UTF-8 only (no triggers, views, FTS,
+# JSON, ALTER, ATTACH, foreign keys, UTF-16, or extension loading). These feature reductions are
+# therefore safe for that usage, also harden it (no runtime extension loading), and all take
+# effect with the prebuilt sqlite amalgamation. Deeper grammar omits (triggers/views/window
+# functions) only shrink a build from canonical sources, so they are intentionally not applied here.
+# Some omits are deliberately excluded because they conflict with options the vcpkg sqlite3 port
+# enables: SQLITE_OMIT_DECLTYPE clashes with SQLITE_ENABLE_COLUMN_METADATA (all configs), and
+# SQLITE_OMIT_TRACE / SQLITE_UNTESTABLE clash with SQLITE_DEBUG / SELECTTRACE in Debug-config builds.
+# Verified: the SDK references none of the omitted APIs, so the trimmed sqlite still links cleanly.
+_SQLITE_TELEMETRY_MINIMAL_DEFINES = [
+    "-DSQLITE_OMIT_LOAD_EXTENSION",
+    "-DSQLITE_OMIT_DEPRECATED",
+    "-DSQLITE_OMIT_UTF16",
+    "-DSQLITE_OMIT_PROGRESS_CALLBACK",
+    "-DSQLITE_OMIT_SHARED_CACHE",
+    "-DSQLITE_OMIT_GET_TABLE",
+    "-DSQLITE_OMIT_COMPLETE",
+    "-DSQLITE_OMIT_TCL_VARIABLE",
+    "-DSQLITE_DQS=0",
+    "-DSQLITE_DEFAULT_MEMSTATUS=0",
+    "-DSQLITE_DEFAULT_FOREIGN_KEYS=0",
+]
+
 # The official vcpkg repository has about 80 different triplets. But ONNX Runtime has many more build variants. For example, in general, for each platform, we need to support builds with C++ exceptions, builds without C++ exceptions, builds with C++ RTTI, builds without C++ RTTI, linking to static C++ runtime, linking to dynamic (shared) C++ runtime, builds with address sanitizer, builds without address sanitizer, etc. Therefore, this script file was created to dynamically generate the triplet files on-the-fly.
 
 # Originally, we tried to check in all the generated files into our repository so that people could build onnxruntime without using build.py or any other Python scripts in the "/tools" directory. However, we encountered an issue when adding support for WASM builds. VCPKG has a limitation that when doing cross-compiling, the triplet file must specify the full path of the chain-loaded toolchain file. The file needs to be located either via environment variables (like ANDROID_NDK_HOME) or via an absolute path. Since environment variables are hard to track, we chose the latter approach. So the generated triplet files may contain absolute file paths that are only valid on the current build machine.
@@ -350,6 +376,7 @@ def generate_triplet_for_posix_platform(
     osx_deployment_target: str,
     use_full_protobuf: bool,
     telemetry_shared_sdk: bool = False,
+    use_telemetry: bool = False,
 ) -> None:
     """
     Generate triplet file for POSIX platforms (Linux, macOS).
@@ -367,6 +394,7 @@ def generate_triplet_for_posix_platform(
         osx_deployment_target (str, optional): The macOS deployment target version. The parameter sets the minimum macOS version for compiled binaries. It also changes what versions of the macOS platform SDK CMake will search for. See the CMake documentation for CMAKE_OSX_DEPLOYMENT_TARGET for more information.
         use_full_protobuf (bool): Flag indicating if full Protobuf is used.
         telemetry_shared_sdk (bool): Flag indicating if the 1DS telemetry SDK (cpp-client-telemetry) should be built as a shared library (libmat.so) while its dependencies remain static.
+        use_telemetry (bool): Flag indicating if telemetry is enabled; when set, sqlite3 (the telemetry SDK's offline store) is compiled with size-reducing feature omits.
     """
     folder_name_parts = []
     if enable_asan:
@@ -474,6 +502,16 @@ def generate_triplet_for_posix_platform(
                 f.write(f'set(VCPKG_CXX_FLAGS_RELEASE "{" ".join(cflags_release)}")\n')
                 f.write(f'set(VCPKG_C_FLAGS_RELWITHDEBINFO "{" ".join(cflags_release)}")\n')
                 f.write(f'set(VCPKG_CXX_FLAGS_RELWITHDEBINFO "{" ".join(cflags_release)}")\n')
+
+            if use_telemetry:
+                # sqlite3 is pulled in only as the 1DS telemetry SDK's offline store; compile it with
+                # the matching feature reductions (see _SQLITE_TELEMETRY_MINIMAL_DEFINES) to shrink the
+                # offline-storage footprint and drop runtime extension loading. Scoped per-PORT so it
+                # only affects sqlite3, and gated on telemetry so non-telemetry builds keep their cache.
+                sqlite_min_defines = " ".join(_SQLITE_TELEMETRY_MINIMAL_DEFINES)
+                f.write('if(PORT STREQUAL "sqlite3")\n')
+                f.write(f'    string(APPEND VCPKG_C_FLAGS " {sqlite_min_defines}")\n')
+                f.write("endif()\n")
 
             # Set target platform
             # VCPKG_CMAKE_SYSTEM_NAME specifies the target platform.
@@ -775,7 +813,11 @@ def generate_windows_triplets(build_dir: str, configs: set[str], toolset_version
 
 
 def generate_linux_triplets(
-    build_dir: str, configs: set[str], use_full_protobuf: bool, telemetry_shared_sdk: bool = False
+    build_dir: str,
+    configs: set[str],
+    use_full_protobuf: bool,
+    telemetry_shared_sdk: bool = False,
+    use_telemetry: bool = False,
 ) -> None:
     """
     Generate triplet files for Linux platforms.
@@ -785,6 +827,7 @@ def generate_linux_triplets(
         configs (set[str]): The set of build configurations.
         use_full_protobuf (bool): Flag indicating if full Protobuf is used.
         telemetry_shared_sdk (bool): Flag indicating if the 1DS telemetry SDK should be built as a shared library.
+        use_telemetry (bool): Flag indicating if telemetry is enabled (triggers a size-reduced sqlite3 build).
     """
     target_abis = ["x86", "x64", "arm", "arm64", "s390x", "ppc64le", "riscv64", "loongarch64", "mips64"]
     for enable_rtti in [True, False]:
@@ -811,6 +854,7 @@ def generate_linux_triplets(
                                 None,
                                 use_full_protobuf=use_full_protobuf,
                                 telemetry_shared_sdk=telemetry_shared_sdk,
+                                use_telemetry=use_telemetry,
                             )
 
 
@@ -820,6 +864,7 @@ def generate_macos_triplets(
     osx_deployment_target: str,
     use_full_protobuf: bool,
     telemetry_shared_sdk: bool = False,
+    use_telemetry: bool = False,
 ) -> None:
     """
     Generate triplet files for macOS platforms.
@@ -829,6 +874,7 @@ def generate_macos_triplets(
         osx_deployment_target (str, optional): The macOS deployment target version.
         use_full_protobuf (bool): Flag indicating if full Protobuf is used.
         telemetry_shared_sdk (bool): Flag indicating if the 1DS telemetry SDK should be built as a shared library.
+        use_telemetry (bool): Flag indicating if telemetry is enabled (triggers a size-reduced sqlite3 build).
     """
     target_abis = ["x64", "arm64", "universal2"]
     for enable_rtti in [True, False]:
@@ -856,4 +902,5 @@ def generate_macos_triplets(
                                 osx_deployment_target,
                                 use_full_protobuf=use_full_protobuf,
                                 telemetry_shared_sdk=telemetry_shared_sdk,
+                                use_telemetry=use_telemetry,
                             )
