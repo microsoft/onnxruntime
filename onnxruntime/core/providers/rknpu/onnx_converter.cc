@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <memory>
 #include <vector>
+#include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
 #include "onnx_converter.h"
@@ -122,11 +123,8 @@ OnnxConverter::CreateRknnTensor(const std::string& name,
 }
 
 static uint32_t ToRknpuDim(int64_t dim, const std::string& name) {
-  if (dim < 0 || dim > static_cast<int64_t>(std::numeric_limits<uint32_t>::max())) {
-    throw std::invalid_argument(
-        "RKNPU: tensor dimension out of uint32_t range (name=" + name +
-        ", dim=" + std::to_string(dim) + ")");
-  }
+  ORT_ENFORCE(dim >= 0 && dim <= static_cast<int64_t>(std::numeric_limits<uint32_t>::max()),
+              "RKNPU: tensor dimension out of uint32_t range (name=", name, ", dim=", dim, ")");
 
   return static_cast<uint32_t>(dim);
 }
