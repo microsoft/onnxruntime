@@ -248,7 +248,14 @@ static bool CheckIfAnyOfRequiredGQANodesDoesNotExist(Node* rotary_node_1, Node* 
   return rotary_node_1 == nullptr || rotary_node_2 == nullptr || q_node == nullptr || k_node == nullptr || v_node == nullptr;
 }
 
-static bool TryGetRotaryEmbeddingCacheArgs(Node& rotary_node, NodeArg*& cos_cache_arg, NodeArg*& sin_cache_arg) {
+static bool NodeArgExists(const NodeArg* node_arg) {
+  return node_arg != nullptr && node_arg->Exists();
+}
+
+static bool TryGetRotaryEmbeddingArgs(Node& rotary_node,
+                                      NodeArg*& cos_cache_arg,
+                                      NodeArg*& sin_cache_arg,
+                                      NodeArg*& position_ids_arg) {
   if (rotary_node.OpType() != "RotaryEmbedding") {
     return false;
   }
@@ -257,7 +264,7 @@ static bool TryGetRotaryEmbeddingCacheArgs(Node& rotary_node, NodeArg*& cos_cach
   if (rotary_node.Domain() == kMSDomain) {
     // com.microsoft.RotaryEmbedding inputs:
     //   input, position_ids, cos_cache, sin_cache
-    if (input_defs.size() < 4) {
+    if (input_defs.size() < 4 || !NodeArgExists(input_defs[2]) || !NodeArgExists(input_defs[3])) {
       return false;
     }
     cos_cache_arg = input_defs[2];
@@ -268,11 +275,15 @@ static bool TryGetRotaryEmbeddingCacheArgs(Node& rotary_node, NodeArg*& cos_cach
   if (rotary_node.Domain() == kOnnxDomain) {
     // ONNX RotaryEmbedding inputs:
     //   X, cos_cache, sin_cache, optional position_ids
-    if (input_defs.size() < 3) {
+    // If position_ids is omitted, ONNX RotaryEmbedding uses 3D per-batch caches, which are
+    // incompatible with GroupQueryAttention's 2D rotary cache inputs.
+    if (input_defs.size() < 4 || !NodeArgExists(input_defs[1]) || !NodeArgExists(input_defs[2]) ||
+        !NodeArgExists(input_defs[3])) {
       return false;
     }
     cos_cache_arg = input_defs[1];
     sin_cache_arg = input_defs[2];
+    position_ids_arg = input_defs[3];
     return true;
   }
 
@@ -349,6 +360,9 @@ Status GroupQueryAttentionFusion::ApplyImpl(
 
     NodeArg* cos_cache_arg = nullptr;
     NodeArg* sin_cache_arg = nullptr;
+    NodeArg* position_ids_arg = nullptr;
+    bool position_ids_arg_set = false;
+    bool position_ids_arg_mismatch = false;
     NodeArg* past_key_values_key_arg = node.MutableInputDefs()[3];
     NodeArg* past_key_values_value_arg = node.MutableInputDefs()[4];
     NodeArg* seqlens_k = node.MutableInputDefs()[5];
@@ -367,7 +381,11 @@ Status GroupQueryAttentionFusion::ApplyImpl(
 
       NodeArg* rotary_cos_cache_arg = nullptr;
       NodeArg* rotary_sin_cache_arg = nullptr;
-      if (TryGetRotaryEmbeddingCacheArgs(rotary_or_v_node, rotary_cos_cache_arg, rotary_sin_cache_arg)) {
+      NodeArg* rotary_position_ids_arg = nullptr;
+      if (TryGetRotaryEmbeddingArgs(rotary_or_v_node,
+                                    rotary_cos_cache_arg,
+                                    rotary_sin_cache_arg,
+                                    rotary_position_ids_arg)) {
         if (!rotary_node_1) {
           rotary_node_1 = &rotary_or_v_node;
         } else {
@@ -397,12 +415,20 @@ Status GroupQueryAttentionFusion::ApplyImpl(
         if (sin_cache_arg == nullptr) {
           sin_cache_arg = rotary_sin_cache_arg;
         }
+
+        if (!position_ids_arg_set) {
+          position_ids_arg = rotary_position_ids_arg;
+          position_ids_arg_set = true;
+        } else if (position_ids_arg != rotary_position_ids_arg) {
+          position_ids_arg_mismatch = true;
+        }
       } else if (rotary_or_v_node.OpType() == "MatMulNBits" || rotary_or_v_node.OpType() == "MatMul") {
         v_node = &rotary_or_v_node;
       }
     }
 
-    if (CheckIfAnyOfRequiredGQANodesDoesNotExist(rotary_node_1, rotary_node_2, q_node, k_node, v_node) ||
+    if (position_ids_arg_mismatch ||
+        CheckIfAnyOfRequiredGQANodesDoesNotExist(rotary_node_1, rotary_node_2, q_node, k_node, v_node) ||
         cos_cache_arg == nullptr || sin_cache_arg == nullptr) {
       // Some of the required pre-GQA nodes required for fusion were not retrieved,
       // this can be expected if the model has extra nodes in between MatMuls and rotary embeddings.
@@ -527,7 +553,7 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     std::string empty_name;
     auto& empty_node_arg = graph.GetOrCreateNodeArg(empty_name, nullptr);
 
-    const std::array gqa_input_defs{
+    std::vector<NodeArg*> gqa_input_defs{
         &matmul_or_nbits_output,
         &empty_node_arg,
         &empty_node_arg,
@@ -537,10 +563,16 @@ Status GroupQueryAttentionFusion::ApplyImpl(
         total_seq_len,
         cos_cache_arg,
         sin_cache_arg};
+    if (position_ids_arg != nullptr) {
+      gqa_input_defs.push_back(position_ids_arg);
+    }
 
     auto& gqa_input_args = node.MutableInputArgsCount();
     gqa_input_args[7] = 1;
     gqa_input_args[8] = 1;
+    if (position_ids_arg != nullptr) {
+      gqa_input_args[9] = 1;
+    }
 
     // Switch GQA input defs from unfused into the fused form.
     auto& gqa_node_input_defs = node.MutableInputDefs();
