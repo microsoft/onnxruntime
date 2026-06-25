@@ -7,6 +7,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
 #include <cmath>
+#include <cstring>
 #include <type_traits>
 
 namespace onnxruntime {
@@ -63,7 +64,10 @@ static T GetFirstElement(const TensorProto* shapeInitializer) {
     if (bytes.size() < sizeof(T)) {
       fail_shape_inference("Range: raw_data size is smaller than the element size for the given data type.");
     }
-    return *reinterpret_cast<const T*>(bytes.c_str());
+    // std::string data is only char-aligned, so copy the bytes into a properly aligned value.
+    T value;
+    std::memcpy(&value, bytes.data(), sizeof(T));
+    return value;
   }
   return get_data<T>(shapeInitializer);
 }
@@ -80,7 +84,11 @@ static int64_t CalcRangeDim(const TensorProto* startShapeInitializer,
   }
   // Mirror the CPU kernel (core/providers/cpu/generator/range.cc) which clamps empty or
   // backward ranges to 0 so shape inference does not emit a negative dimension value.
-  int64_t n = static_cast<int64_t>(ceil((1.0 * (limit - start)) / delta));
+  double count = ceil((1.0 * (limit - start)) / delta);
+  if (!std::isfinite(count)) {
+    fail_shape_inference("Range: the computed number of elements is not a finite value.");
+  }
+  int64_t n = static_cast<int64_t>(count);
   if (n <= 0) {
     n = 0;
   }
