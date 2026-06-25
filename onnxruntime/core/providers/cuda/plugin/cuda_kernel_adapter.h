@@ -68,8 +68,11 @@ inline void RegisterFrameworkStreamForCudaStream(void* cuda_stream, OrtSyncStrea
     return;
   }
 
-  stream_to_framework_stream[current_framework_stream] = current_framework_stream;
-
+  // Map only from the raw cudaStream_t handle to the current framework stream. The framework
+  // stream is already handled directly by GetFrameworkStreamForStreamArg, so we deliberately do
+  // not insert a framework_stream -> framework_stream entry: it would be unused and would grow the
+  // thread-local map without bound while retaining framework stream pointers past the
+  // Session::Run() teardown lifetime documented for KernelContext_GetSyncStream.
   if (cuda_stream != nullptr) {
     stream_to_framework_stream[cuda_stream] = current_framework_stream;
   }
@@ -950,7 +953,12 @@ class CudaKernel : public OpKernel {
 
   cudaStream_t Stream(OpKernelContext* ctx) const {
     if (!ctx) return nullptr;
-    return static_cast<cudaStream_t>(ctx->GetGPUComputeStream());
+    // Register the framework sync stream for this Compute call so that scratch allocated via
+    // GetTransientScratchBuffer()/GetScratchBuffer(..., nullptr) is still stream-tagged for kernels
+    // that call Stream(ctx) before GetComputeStream()/GetOrtStream() (e.g. conv algo search).
+    void* cuda_stream = ctx->GetGPUComputeStream();
+    cuda_plugin::detail::RegisterFrameworkStreamForCudaStream(cuda_stream, ctx->GetSyncStream());
+    return static_cast<cudaStream_t>(cuda_stream);
   }
 
   // Returns an opaque stream pointer for passing to GetScratchBuffer/AddDeferredReleaseCPUPtr/CopyToGpu.
