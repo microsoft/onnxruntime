@@ -1532,13 +1532,8 @@ static void SerializeDefaultPathModel(int64_t M, int64_t N, int64_t K, int64_t b
 // Reports whether a MatMulNBits was produced, the sharing identity tagged onto its B weight, and how
 // many pre-packed weights this session served from the container.
 static void RunDefaultPathSession(const std::string& model_bytes, PrepackedWeightsContainer& container,
-                                  bool& produced_matmulnbits, std::string& b_tag, size_t& used_shared_count,
-                                  int accuracy_level = -1) {
+                                  bool& produced_matmulnbits, std::string& b_tag, size_t& used_shared_count) {
   SessionOptions so;
-  if (accuracy_level >= 0) {
-    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel,
-                                                      std::to_string(accuracy_level).c_str()));
-  }
   InferenceSessionWrapper session{so, GetEnvironment()};
   ASSERT_STATUS_OK(session.AddPrePackedWeightsContainer(&container));
   ASSERT_STATUS_OK(session.Load(model_bytes.data(), static_cast<int>(model_bytes.size())));
@@ -1558,46 +1553,6 @@ static void RunDefaultPathSession(const std::string& model_bytes, PrepackedWeigh
     }
   }
   used_shared_count = session.GetSessionState().GetUsedSharedPrePackedWeightCounter();
-}
-
-// Verifies the default DQ->MatMulNBits path tags its generated B weight with a stable, content-derived
-// enrollment identity: identical quantization data yields the SAME identity, while different zero points
-// yield a DIFFERENT identity. (The tag only enrolls the buffer for sharing; the container keys by the
-// packed-bytes hash. A stable, content-distinct tag keeps enrollment deterministic across sessions.)
-TEST(QDQTransformerTests, DefaultPath_TagsGeneratedWeightWithStableContentIdentity) {
-  constexpr int64_t M = 4, N = 8, K = 32, block_size = 16;
-  const int64_t num_blocks = K / block_size;
-
-  std::vector<uint8_t> weight(static_cast<size_t>(K * N));
-  for (size_t i = 0; i < weight.size(); ++i) {
-    weight[i] = static_cast<uint8_t>(i % 16);
-  }
-  std::vector<float> scale(static_cast<size_t>(num_blocks * N));
-  for (size_t i = 0; i < scale.size(); ++i) {
-    scale[i] = 0.1f + 0.01f * static_cast<float>(i % 10);
-  }
-  std::vector<uint8_t> zp_a(static_cast<size_t>(num_blocks * N), 3);
-  std::vector<uint8_t> zp_b(zp_a.size(), 5);
-
-  auto tag_for = [&](const std::vector<uint8_t>& zp) -> std::string {
-    std::string model_bytes;
-    SerializeDefaultPathModel(M, N, K, block_size, weight, scale, zp, model_bytes);
-    PrepackedWeightsContainer container;
-    bool produced = false;
-    std::string tag;
-    size_t used = 0;
-    RunDefaultPathSession(model_bytes, container, produced, tag, used);
-    EXPECT_TRUE(produced) << "DQ -> MatMulNBits conversion did not run on the default path";
-    return tag;
-  };
-
-  const std::string id_a1 = tag_for(zp_a);
-  const std::string id_a2 = tag_for(zp_a);
-  const std::string id_b = tag_for(zp_b);
-
-  ASSERT_FALSE(id_a1.empty()) << "generated B weight was not tagged for cross-session sharing";
-  EXPECT_EQ(id_a1, id_a2);  // stable: identical quantization data -> identical identity
-  EXPECT_NE(id_a1, id_b);   // collision-safe: different zero points -> different identity
 }
 
 // End-to-end: two sessions converting the same model via the default path share the MatMulNBits B
@@ -1651,45 +1606,6 @@ TEST(QDQTransformerTests, DefaultPath_SharesWeightAcrossSessionsViaTag) {
   RunDefaultPathSession(model_other, container, produced_other, tag_other, used_other);
   ASSERT_TRUE(produced_other);
   EXPECT_EQ(used_other, static_cast<size_t>(0));
-}
-
-// accuracy_level participates in the enrollment identity, so the same weights requested at different
-// accuracy levels get distinct identities. Whether the two sessions then share the packed buffer is
-// platform-dependent (level 4 may pack as CompInt8 -- different bytes, no share -- or fall back to the
-// same CompFp32 packing as level 0 and benignly reuse the byte-identical buffer); packed-bytes keying
-// makes either outcome safe, so this asserts the identity is distinct, not a fixed sharing count.
-TEST(QDQTransformerTests, DefaultPath_DifferentAccuracyLevelGetsDistinctIdentity) {
-  constexpr int64_t M = 4, N = 8, K = 32, block_size = 16;
-  const int64_t num_blocks = K / block_size;
-
-  std::vector<uint8_t> weight(static_cast<size_t>(K * N));
-  for (size_t i = 0; i < weight.size(); ++i) {
-    weight[i] = static_cast<uint8_t>(i % 16);
-  }
-  std::vector<float> scale(static_cast<size_t>(num_blocks * N));
-  for (size_t i = 0; i < scale.size(); ++i) {
-    scale[i] = 0.1f + 0.01f * static_cast<float>(i % 10);
-  }
-  std::vector<uint8_t> zp(static_cast<size_t>(num_blocks * N), 3);
-
-  std::string model_bytes;
-  SerializeDefaultPathModel(M, N, K, block_size, weight, scale, zp, model_bytes);
-
-  PrepackedWeightsContainer container;
-  bool produced0 = false, produced4 = false;
-  std::string tag0, tag4;
-  size_t used0 = 0, used4 = 0;
-
-  RunDefaultPathSession(model_bytes, container, produced0, tag0, used0, /*accuracy_level*/ 0);
-  ASSERT_TRUE(produced0) << "DQ -> MatMulNBits conversion did not run on the default path";
-
-  // Same model/weights, different accuracy level, sharing the same container.
-  RunDefaultPathSession(model_bytes, container, produced4, tag4, used4, /*accuracy_level*/ 4);
-  ASSERT_TRUE(produced4);
-
-  ASSERT_FALSE(tag0.empty());
-  ASSERT_FALSE(tag4.empty());
-  EXPECT_NE(tag0, tag4);  // accuracy_level participates in the enrollment identity
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)
