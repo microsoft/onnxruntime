@@ -125,7 +125,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                                           {"alpha", ProgramUniformVariableDataType::Float32},
                                           {"num_seq_tile", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim0", ProgramUniformVariableDataType::Uint32},
-                                          {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32});
+                                          {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32},
+                                          {"attn_bias_dim3", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_attention_bias_;
@@ -165,6 +166,7 @@ class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecode
                                           {"batch_size", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim0", ProgramUniformVariableDataType::Uint32},
                                           {"attn_bias_dim1", ProgramUniformVariableDataType::Uint32},
+                                          {"attn_bias_dim3", ProgramUniformVariableDataType::Uint32},
                                           {"new_sequence_length", ProgramUniformVariableDataType::Uint32});
 
  private:
@@ -208,7 +210,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                            const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k = nullptr,
                            const Tensor* cos_cache = nullptr, const Tensor* sin_cache = nullptr, const Tensor* head_sink = nullptr);
 
-bool CanApplyFlashAttention(const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k = nullptr);
+bool CanApplyFlashAttention(const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context);
 
 // Split packed QKV with Q/K rotary embedding and copy KV cache fusion
 Status RunSplitPackedQKVWithRotaryEmbeddingAndCopyKV(onnxruntime::webgpu::ComputeContext& context,

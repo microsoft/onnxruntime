@@ -5,7 +5,6 @@
 #param m_tile
 #param seq_tile_size
 #param tile_size
-#param use_indirect_dispatch
 #param use_seqlen_k
 
 #use .getByOffset .setByOffset
@@ -41,12 +40,7 @@ $MAIN {
   let total_sequence_length = u32(seqlens_k[batch_idx_for_seqlen]) + 1u;
   let num_total_seq_length_tile = (total_sequence_length + seq_tile_size - 1) / seq_tile_size;
   #else
-  #if use_indirect_dispatch
-  let total_sequence_length = u32(seqlens_k[0]) + 1u;
-  let num_total_seq_length_tile = (total_sequence_length + seq_tile_size - 1) / seq_tile_size;
-  #else
   let num_total_seq_length_tile = uniforms.num_total_seq_length_tile;
-  #endif
   #endif
 
   for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {

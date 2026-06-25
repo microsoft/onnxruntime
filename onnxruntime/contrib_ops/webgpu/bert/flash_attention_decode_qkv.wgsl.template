@@ -39,9 +39,10 @@ var<workgroup> tile_sum: array<f32, m_tile>;
   {
     let bias_batch_idx = select(batch_idx, 0u, batch_idx >= uniforms.attn_bias_dim0);
     let bias_head_idx = select(head_idx, 0u, head_idx >= uniforms.attn_bias_dim1);
-    // The attention_bias tensor is allocated to the global max total_sequence_length,
-    // so stride math uses uniforms.total_sequence_length even when per-batch values are smaller.
-    let stride_total_seq = uniforms.total_sequence_length;
+    // Stride along the last dim of attention_bias matches its actual shape, which may
+    // differ from the per-step total_sequence_length (e.g. graph-capture sets that uniform
+    // to 0, or batches use a global max). The host passes attn_bias_dim3 explicitly.
+    let stride_total_seq = uniforms.attn_bias_dim3;
     let offset = bias_batch_idx * uniforms.attn_bias_dim1 * uniforms.new_sequence_length * stride_total_seq +
                  bias_head_idx * uniforms.new_sequence_length * stride_total_seq +
                  q_idx * stride_total_seq +

@@ -2619,7 +2619,8 @@ static std::vector<float> RunGQAPackedQKVRotaryPrefill(
 // output matches its single-prompt reference. Both reference and batched runs
 // go through the same EP, so this validates per-batch consistency within each
 // EP rather than cross-EP equivalence.
-static void RunBatchedRightPaddedRotaryPrefillForEP(GqaTargetEp target_ep) {
+static void RunBatchedRightPaddedRotaryPrefillForEP(GqaTargetEp target_ep,
+                                                    const std::vector<int>& real_lens = {4, 2, 6}) {
   constexpr int batch_size = 3;
   constexpr int num_heads = 4;
   constexpr int kv_num_heads = 2;
@@ -2628,10 +2629,10 @@ static void RunBatchedRightPaddedRotaryPrefillForEP(GqaTargetEp target_ep) {
   constexpr int kv_hidden_size = kv_num_heads * head_size;
   constexpr int qkv_hidden = hidden_size + 2 * kv_hidden_size;
 
-  // Real prompt lengths per batch; max = sequence_length (right-padding extends
+  // Per-batch real prompt lengths; max = sequence_length (right-padding extends
   // shorter batches up to this length). The bug only manifests when at least
   // one batch is shorter than sequence_length.
-  const std::vector<int> real_lens = {4, 2, 6};
+  ASSERT_EQ(static_cast<int>(real_lens.size()), batch_size);
   const int sequence_length = *std::max_element(real_lens.begin(), real_lens.end());
 
   std::vector<float> packed_batched;
@@ -2713,6 +2714,22 @@ TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefill_WebGPU) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
   RunBatchedRightPaddedRotaryPrefillForEP(GqaTargetEp::kWebGpu);
+}
+
+// Same property as BatchedRightPaddedRotaryPrefill_WebGPU, but with per-batch
+// real_lens whose max crosses the prefill threshold (sequence_length >= 32) so
+// the WebGPU EP picks FlashAttentionProgram (single-kernel prefill path with
+// subgroup shuffles) instead of the split-reduce decode path. This exercises
+// the prefill flash-attention kernel under right-padded batches with do_rotary,
+// which is the path used by Phi-style models during batched prefill.
+TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefillFlashAttention_WebGPU) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  // sequence_length = max(real_lens) = 33 > 32 -> FlashAttentionProgram path.
+  // Mixed shorter batches (12, 20) ensure right-padding is non-trivial.
+  RunBatchedRightPaddedRotaryPrefillForEP(GqaTargetEp::kWebGpu, {20, 12, 33});
 }
 
 }  // namespace test

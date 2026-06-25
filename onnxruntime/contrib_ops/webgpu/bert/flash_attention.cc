@@ -324,10 +324,12 @@ Status ComputeFlashAttentionDecodeQKV(onnxruntime::webgpu::ComputeContext& conte
 
   uint32_t attn_bias_dim0 = 1;
   uint32_t attn_bias_dim1 = 1;
+  uint32_t attn_bias_dim3 = 0;
   if (has_attention_bias) {
     const auto& bias_shape = attention_bias->Shape();
     attn_bias_dim0 = static_cast<uint32_t>(bias_shape[0]);
     attn_bias_dim1 = static_cast<uint32_t>(bias_shape[1]);
+    attn_bias_dim3 = static_cast<uint32_t>(bias_shape[3]);
   }
 
   if (use_indirect_dispatch) {
@@ -347,6 +349,7 @@ Status ComputeFlashAttentionDecodeQKV(onnxruntime::webgpu::ComputeContext& conte
                             {static_cast<uint32_t>(parameters.batch_size_)},
                             {attn_bias_dim0},
                             {attn_bias_dim1},
+                            {attn_bias_dim3},
                             {static_cast<uint32_t>(parameters.sequence_length_)}});
 
   return context.RunProgram(program);
@@ -369,7 +372,6 @@ Status FlashAttentionDecodeVxReduceProgram::GenerateShaderCode(ShaderHelper& sha
                              WGSL_TEMPLATE_PARAMETER(m_tile, m_tile_),
                              WGSL_TEMPLATE_PARAMETER(seq_tile_size, seq_tile_size_),
                              WGSL_TEMPLATE_PARAMETER(tile_size, tile_size_),
-                             WGSL_TEMPLATE_PARAMETER(use_indirect_dispatch, use_indirect_dispatch_),
                              WGSL_TEMPLATE_PARAMETER(use_seqlen_k, use_seqlen_k_),
                              WGSL_TEMPLATE_VARIABLE(input, input),
                              WGSL_TEMPLATE_VARIABLE(metadata, metadata),
@@ -445,12 +447,12 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     present_value = &internal_present_value;
   }
 
-  // Read seqlens_k per batch_idx in the shader whenever:
-  //   (a) graph capture is enabled (total_sequence_length_ is 0 on the host), OR
-  //   (b) batch_size > 1 (right-padded batches have distinct per-batch totals).
-  // Otherwise the kernels fall back to uniforms.total_sequence_length.
-  const bool use_seqlen_k = seqlen_k != nullptr &&
-                            (context.IsGraphCaptureEnabled() || parameters.batch_size_ > 1);
+  // Read seqlens_k per batch_idx in the shader whenever seqlens_k is supplied.
+  // This covers both graph-capture (total_sequence_length_ is 0 on the host) and
+  // right-padded batches (batch_size > 1 with distinct per-batch totals), and lets
+  // batch=1 share the same path. When seqlens_k is null, kernels fall back to
+  // uniforms.total_sequence_length.
+  const bool use_seqlen_k = seqlen_k != nullptr;
 
   // Declare query_output at function scope to ensure it persists throughout the function
   Tensor query_output;
@@ -568,10 +570,12 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 
     uint32_t attn_bias_dim0 = 1;
     uint32_t attn_bias_dim1 = 1;
+    uint32_t attn_bias_dim3 = 0;
     if (has_attention_bias) {
       const auto& bias_shape = attention_bias->Shape();
       attn_bias_dim0 = static_cast<uint32_t>(bias_shape[0]);
       attn_bias_dim1 = static_cast<uint32_t>(bias_shape[1]);
+      attn_bias_dim3 = static_cast<uint32_t>(bias_shape[3]);
     }
 
     program.SetDispatchGroupSize(parameters.batch_size_ * parameters.num_heads_ * num_seq_tile)
@@ -585,7 +589,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                               {alpha},
                               {num_seq_tile},
                               {attn_bias_dim0},
-                              {attn_bias_dim1}});
+                              {attn_bias_dim1},
+                              {attn_bias_dim3}});
 
     return context.RunProgram(program);
   }
@@ -619,8 +624,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   return Status::OK();
 }
 
-bool CanApplyFlashAttention(const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k) {
-  ORT_UNUSED_PARAMETER(seqlen_k);
+bool CanApplyFlashAttention(const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
   return !parameters.is_packed_qkv_ &&
          parameters.head_size_ == parameters.v_head_size_ &&
          ((context.AdapterInfo().vendor == std::string_view{"qualcomm"} && parameters.head_size_ % 8 == 0) || parameters.head_size_ % 4 == 0);
