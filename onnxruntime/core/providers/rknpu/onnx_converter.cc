@@ -141,17 +141,14 @@ static void* AllocZeroedBias(size_t element_size, uint32_t count) {
   try {
     num_bytes = SafeInt<size_t>(element_size) * count;
   } catch (const std::exception&) {
-    throw std::runtime_error(
-        "RKNPU: implicit bias size overflow (element_size=" +
-        std::to_string(element_size) + ", count=" + std::to_string(count) + ")");
+    ORT_THROW("RKNPU: implicit bias size overflow (element_size=", element_size,
+              ", count=", count, ")");
   }
   void* ptr = malloc(num_bytes);
-  if (ptr == nullptr && num_bytes != 0) {
-    throw std::runtime_error(
-        "RKNPU: failed to allocate " + std::to_string(num_bytes) +
-        " bytes for implicit bias (element_size=" + std::to_string(element_size) +
-        ", count=" + std::to_string(count) + ")");
-  }
+  ORT_ENFORCE(ptr != nullptr || num_bytes == 0,
+              "RKNPU: failed to allocate ", num_bytes,
+              " bytes for implicit bias (element_size=", element_size,
+              ", count=", count, ")");
   if (ptr != nullptr) {
     memset(ptr, 0, num_bytes);
   }
