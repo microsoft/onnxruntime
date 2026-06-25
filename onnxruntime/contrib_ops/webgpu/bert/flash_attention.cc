@@ -405,7 +405,6 @@ Status ComputeFlashAttentionDecodeVxReduce(onnxruntime::webgpu::ComputeContext& 
                                            uint32_t num_total_seq_length_tile,
                                            uint32_t num_present_sequence_length_tile,
                                            uint32_t seq_tile_size,
-                                           bool use_indirect_dispatch,
                                            const Tensor* head_sink,
                                            uint32_t m_tile,
                                            bool use_seqlen_k) {
@@ -413,7 +412,7 @@ Status ComputeFlashAttentionDecodeVxReduce(onnxruntime::webgpu::ComputeContext& 
   constexpr int tile_size = 8;
   int tile_head_size = tile_size * components;
   bool has_head_sink = head_sink != nullptr;
-  FlashAttentionDecodeVxReduceProgram program{"FlashAttentionDecodeVxReduce", tile_size, seq_tile_size, use_indirect_dispatch, has_head_sink, m_tile, use_seqlen_k};
+  FlashAttentionDecodeVxReduceProgram program{"FlashAttentionDecodeVxReduce", tile_size, seq_tile_size, has_head_sink, m_tile, use_seqlen_k};
   program.AddInputs({{out_split_vx, ProgramTensorMetadataDependency::TypeAndRank, components},
                      {metadata, ProgramTensorMetadataDependency::TypeAndRank, 2}});
   if (use_seqlen_k) {
@@ -426,7 +425,7 @@ Status ComputeFlashAttentionDecodeVxReduce(onnxruntime::webgpu::ComputeContext& 
   const uint32_t num_head_size_tile = static_cast<uint32_t>((parameters.v_head_size_ + tile_head_size - 1) / tile_head_size);
   const uint32_t batch_heads = static_cast<uint32_t>(parameters.batch_size_ * parameters.num_heads_);
   program.SetDispatchGroupSize(batch_heads * ((parameters.sequence_length_ + m_tile - 1) / m_tile) * num_head_size_tile)
-      .CacheHint(tile_size, seq_tile_size, use_indirect_dispatch, has_head_sink, m_tile, use_seqlen_k)
+      .CacheHint(tile_size, seq_tile_size, has_head_sink, m_tile, use_seqlen_k)
       .SetWorkgroupSize(tile_size * tile_size)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.v_head_size_ / components)},
                             num_total_seq_length_tile,
@@ -639,7 +638,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
 
   ORT_RETURN_IF_ERROR(ComputeFlashAttentionDecodeVxReduce(context, &out_split_vx, &metadata, output, seqlen_k, parameters,
                                                           num_total_seq_length_tile,
-                                                          num_present_sequence_length_tile, tile_size, use_indirect_dispatch,
+                                                          num_present_sequence_length_tile, tile_size,
                                                           head_sink, m_tile, use_seqlen_k));
 
   return Status::OK();
