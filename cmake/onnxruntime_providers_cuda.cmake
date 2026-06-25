@@ -306,6 +306,13 @@
       endif()
     endif()
 
+    if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.3)
+      if (MSVC)
+        # CCCL cub/config.cuh has a #pragma warning(pop) without matching push.
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4193>")
+      endif()
+    endif()
+
     if (UNIX)
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"
                   "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:-Wno-reorder>")
