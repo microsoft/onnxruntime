@@ -20,8 +20,11 @@ Abstract:
     attention, additive attention bias, and an optional flash-decoding split
     over the KV sequence dimension for single-token decode.
 
-    QK^T and S*V use the single-threaded SGEMM primitive MlasSgemmOperation;
-    the outer parallelism is provided by MlasExecuteThreaded.
+    For multi-token prefill (sequence_length > 1) QK^T and S*V use the
+    single-threaded SGEMM primitive MlasSgemmOperation. For single-token decode
+    (sequence_length == 1, including the flash-decoding KV split) the M == 1
+    GEMVs use the local MlasGQADecodeQK / MlasGQADecodeSV helpers to avoid SGEMM
+    packing overhead. The outer parallelism is provided by MlasExecuteThreaded.
 
 --*/
 

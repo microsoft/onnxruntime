@@ -1092,9 +1092,15 @@ class GQAAttentionBase {
     thread_count = std::max(thread_count, 1);
 
     // Flash decoding: for decode (sequence_length==1), partition KV across threads
-    // to improve parallelism when batch*heads < thread_count.
+    // to improve parallelism when batch*heads < thread_count. This KV-split is only
+    // wired into the unified kernel (common_past_seqlen >= 0); the ragged/per-batch
+    // fallback runs the single-pass decode kernel instead, which needs a larger
+    // per-thread scratch (scores[total_seqlen] + temp_output[head_size]). Gating on
+    // common_past_seqlen >= 0 keeps the per-thread buffer sizing below consistent
+    // with the kernel that actually runs.
     const int kv_chunk_count = (max_total_seqlen + kv_block_size - 1) / kv_block_size;
     const bool use_flash_decoding = (sequence_length == 1 &&
+                                     common_past_seqlen >= 0 &&
                                      batch_size * num_heads_ < thread_count &&
                                      kv_chunk_count > 1);
 
