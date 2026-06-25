@@ -19,6 +19,10 @@ struct GatherBlockQuantizedParam {
   int64_t block_size;
   int64_t gather_axis;
   int64_t N;
+  // Device buffer of a single int. The kernel sets it to 1 if any gathered index
+  // is outside the valid range [-gather_axis_dim, gather_axis_dim). The host reads
+  // it back after the launch and returns an error status when it is set.
+  int* index_out_of_bounds;
 };
 
 template <typename T1, typename T2, typename Tind>

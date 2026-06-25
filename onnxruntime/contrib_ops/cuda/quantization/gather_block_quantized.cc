@@ -71,6 +71,46 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
 
   ORT_ENFORCE(quantize_axis_ == static_cast<int64_t>(data_rank) - 1);
 
+  // block_size is used as a divisor when mapping an element to its quantization block,
+  // so it must be strictly positive (the constructor permits the unset default of 0).
+  ORT_RETURN_IF_NOT(block_size_ > 0, "'block_size' must be greater than 0.");
+
+  // When sub-byte data is packed into uint8_t, the last (quantize) dimension stores
+  // multiple values per stored element. components is the packing factor.
+  uint32_t components = 1;
+  if constexpr (std::is_same_v<T1, uint8_t>) {
+    components = 8 / static_cast<uint32_t>(bits_);
+  }
+
+  // Validate scales shape against data shape, matching the CPU kernel: every dimension
+  // must be equal except the quantize axis, which is divided into block_size blocks.
+  auto scales_shape = scales->Shape().GetDims();
+  ORT_RETURN_IF_NOT(data_rank == static_cast<int64_t>(scales->Shape().NumDimensions()),
+                    "data and scales must have the same rank.");
+  for (size_t i = 0; i < data_shape.size(); ++i) {
+    ORT_RETURN_IF_NOT(static_cast<int64_t>(i) == quantize_axis_
+                          ? (data_shape[i] * components + block_size_ - 1) / block_size_ == scales_shape[i]
+                          : data_shape[i] == scales_shape[i],
+                      "data and scales do not match shapes.");
+  }
+
+  // Validate zero_points shape against scales shape when provided.
+  if (zero_points != nullptr) {
+    auto zero_points_shape = zero_points->Shape().GetDims();
+    ORT_RETURN_IF_NOT(scales->Shape().NumDimensions() == zero_points->Shape().NumDimensions(),
+                      "scales and zero_points must have the same rank.");
+    for (size_t i = 0; i < scales_shape.size(); ++i) {
+      if (components > 1 && static_cast<int64_t>(i) == quantize_axis_) {
+        // For uint8_t with bits < 8, zero_points are packed components per stored element.
+        ORT_RETURN_IF_NOT((scales_shape[i] + components - 1) / components == zero_points_shape[i],
+                          "scales and zero_points shape does not match.");
+      } else {
+        ORT_RETURN_IF_NOT(scales_shape[i] == zero_points_shape[i],
+                          "scales and zero_points must have the same shape.");
+      }
+    }
+  }
+
   TensorShapeVector output_shape;
   output_shape.reserve(data_rank - 1 + indices_rank);
 
@@ -98,11 +138,8 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   }
 
   // Special int4‐in‐uint8 packing tweak: expand the last dim by components
-  if constexpr (std::is_same_v<T1, uint8_t>) {
-    uint32_t components = 8 / static_cast<int>(bits_);
-    if (components > 1) {
-      output_shape.back() *= components;
-    }
+  if (components > 1) {
+    output_shape.back() *= components;
   }
 
   Tensor* output = ctx->Output(0, TensorShape(output_shape));
@@ -123,11 +160,8 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   // after_gather_dim has to be adjusted to match
   // the unpacked output dims for correct kernel indexing
   int64_t after_gather_dim_unpacked = after_gather_dim;
-  if constexpr (std::is_same_v<T1, uint8_t>) {
-    uint32_t components = 8 / static_cast<int>(bits_);
-    if (components > 1) {
-      after_gather_dim_unpacked *= components;
-    }
+  if (components > 1) {
+    after_gather_dim_unpacked *= components;
   }
 
   GatherBlockQuantizedParam param;
@@ -139,6 +173,12 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
   param.block_size = block_size_;
   param.gather_axis = gather_axis_;
   param.N = N;
+
+  // Device flag the kernel sets when a gathered index is outside the valid range.
+  // It is initialized to 0 and read back after the launch to surface a clean status.
+  auto index_out_of_bounds = GetScratchBuffer<int>(1, ctx->GetComputeStream());
+  CUDA_RETURN_IF_ERROR(cudaMemsetAsync(index_out_of_bounds.get(), 0, sizeof(int), param.stream));
+  param.index_out_of_bounds = index_out_of_bounds.get();
 
   const auto dequantized_type = scales->GetElementType();
   if (dequantized_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
@@ -154,6 +194,14 @@ Status GatherBlockQuantized<T1, T2, Tind>::ComputeInternal(OpKernelContext* ctx)
     auto* output_ptr = static_cast<BFloat16*>(output->MutableDataRaw());
     LaunchGatherBlockQuantizedKernel(data_ptr, indices_ptr, scales_ptr, zero_points_ptr, output_ptr, param);
   }
+
+  auto host_index_out_of_bounds = AllocateBufferOnCPUPinned<int>(1);
+  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_index_out_of_bounds.get(), index_out_of_bounds.get(), sizeof(int),
+                                       cudaMemcpyDeviceToHost, param.stream));
+  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(param.stream));
+  ORT_RETURN_IF(*host_index_out_of_bounds.get() != 0,
+                "indices element out of data bounds. Each index must be within the inclusive range [",
+                -param.gather_axis_dim, ", ", param.gather_axis_dim - 1, "].");
 
   return Status::OK();
 }

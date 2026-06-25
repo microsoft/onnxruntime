@@ -507,6 +507,32 @@ TEST(GatherBlockQuantizedOpTest, InvalidIndices) {
 }
 #endif
 
+#ifdef USE_CUDA
+// The CUDA EP validates quantization-parameter shapes on the host and gathered-index
+// bounds on the device. These cases mirror the CPU coverage above but run on the CUDA
+// EP, which previously skipped these checks. They fall back to the CPU EP (which rejects
+// the same inputs) when no CUDA device is present.
+TEST(GatherBlockQuantizedOpTest, CudaShapeMismatch) {
+  Test_ShapeMismatch_WithZeroPoints<UInt4x2, float, int32_t>();
+  Test_ShapeMismatch_WithZeroPoints<Int4x2, float, int32_t>();
+  Test_ShapeMismatch_WithZeroPoints<uint8_t, float, int32_t>();
+}
+
+TEST(GatherBlockQuantizedOpTest, CudaInvalidIndices) {
+  Test_InvalidIndices_WithZeroPoints<UInt4x2, float, int32_t>();
+  Test_InvalidIndices_WithZeroPoints<Int4x2, float, int32_t>();
+  Test_InvalidIndices_WithZeroPoints<uint8_t, float, int32_t>();
+}
+
+// block_size == 0 is accepted by the constructor but is an invalid divisor for block
+// mapping, so ComputeInternal must reject it with a clean status.
+TEST(GatherBlockQuantizedOpTest, CudaInvalidBlockSizeZero) {
+  Test_Fail_WithoutZeroPoints<UInt4x2, float, int32_t>(0, 2, 0);
+  Test_Fail_WithoutZeroPoints<Int4x2, float, int32_t>(0, 2, 0);
+  Test_Fail_WithoutZeroPoints<uint8_t, float, int32_t>(0, 2, 0);
+}
+#endif
+
 template <typename T1, typename T2, typename Tind>
 void Test_GatherAxis0_WithZeroPoints(int bits = 4) {
   std::vector<int> data = {-8, -7, -6, -5, -8, -7, -6, -5, -8, -7, -6, -5, -8, -7, -6, -5, -8,

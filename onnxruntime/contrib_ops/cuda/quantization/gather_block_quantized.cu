@@ -44,7 +44,8 @@ __global__ void GatherBlockQuantizedKernel(
     int64_t block_size,
     int64_t gather_axis,
     int64_t N,
-    bool sign) {
+    bool sign,
+    int* index_out_of_bounds) {
   int64_t out_idx = blockDim.x * blockIdx.x + threadIdx.x;
   if (out_idx >= N) return;
 
@@ -53,6 +54,18 @@ __global__ void GatherBlockQuantizedKernel(
   int64_t idx_after = out_idx % after_gather_dim;
   int64_t idx = (out_idx % (after_gather_dim * ind_dim)) / after_gather_dim;
   int64_t idx_at_g = indices[idx];
+
+  // Validate the gathered index and normalize negatives, mirroring the CPU kernel.
+  // A negative index counts from the end of the gather axis; anything outside
+  // [-gather_axis_dim, gather_axis_dim) is reported via the device error flag.
+  if (idx_at_g < -gather_axis_dim || idx_at_g >= gather_axis_dim) {
+    *index_out_of_bounds = 1;
+    return;
+  }
+  if (idx_at_g < 0) {
+    idx_at_g += gather_axis_dim;
+  }
+
   int64_t in_idx = idx_before * gather_axis_dim * after_gather_dim + idx_at_g * after_gather_dim + idx_after;
 
   int64_t block_id = in_idx / block_size;
@@ -82,7 +95,7 @@ void LaunchGatherBlockQuantizedKernel(const T1* data,
   bool sign = std::is_same<T1, Int4x2>::value;
 
   GatherBlockQuantizedKernel<<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, param.stream>>>(data, indices, scales, zero_points, output,
-                                                                                              param.after_gather_dim, param.gather_axis_dim, param.ind_dim, param.bits, param.block_size, param.gather_axis, param.N, sign);
+                                                                                              param.after_gather_dim, param.gather_axis_dim, param.ind_dim, param.bits, param.block_size, param.gather_axis, param.N, sign, param.index_out_of_bounds);
 }
 
 template void LaunchGatherBlockQuantizedKernel<uint8_t, float, int32_t>(const uint8_t*, const int32_t*, const float*, const uint8_t*, float*, GatherBlockQuantizedParam);
