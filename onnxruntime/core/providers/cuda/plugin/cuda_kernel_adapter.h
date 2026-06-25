@@ -76,7 +76,12 @@ inline void RegisterFrameworkStreamForCudaStream(void* cuda_stream, OrtSyncStrea
 }
 
 inline onnxruntime::Stream* GetFrameworkStreamForStreamArg(void* stream) {
-  if (stream == current_cuda_stream || stream == current_framework_stream) {
+  // A null stream argument means "the compute stream of the current Compute call". This is the
+  // form used by GetTransientScratchBuffer and legacy GetScratchBuffer(..., nullptr). Map it to
+  // the framework stream registered for this call so scratch chunks are still stream-tagged even
+  // when the kernel runs on a non-default CUDA stream (where current_cuda_stream is non-null and a
+  // nullptr arg would otherwise miss the map lookup and fall back to a null stream tag).
+  if (stream == nullptr || stream == current_cuda_stream || stream == current_framework_stream) {
     return current_framework_stream;
   }
 

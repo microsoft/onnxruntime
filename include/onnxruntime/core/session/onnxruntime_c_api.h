@@ -7505,8 +7505,11 @@ struct OrtApi {
    *
    * \param[in] context OrtKernelContext instance.
    * \param[out] out Returns the framework synchronization stream, or nullptr if the kernel has no stream.
-   *                 Do not free or mutate the returned pointer. It is owned by the underlying session and is
-   *                 valid only for the duration of the kernel Compute call.
+   *                 Do not free or mutate the returned pointer. It is owned by the underlying session.
+   *                 The pointer may be stored and used for stream-aware allocation and synchronization
+   *                 bookkeeping beyond the Compute call (e.g. an allocator may persist it in arena
+   *                 chunks); it remains valid until the owning Session::Run() completes its teardown.
+   *                 Do not retain or dereference it after the run that produced this kernel context ends.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
