@@ -153,7 +153,7 @@ __global__ void EmbedLayerNormKernel(
       position_id = position_ids[sequence_position];
     }
 
-    // Reject ids that fall outside their embedding tables instead of reading past the buffers.
+    // Flag any id that is out of range of its embedding table so it is rejected instead of indexed.
     is_valid_block = (word_id >= 0 && word_id < word_embedding_length) &&
                      (position_id >= 0 && position_id < position_embedding_length) &&
                      (nullptr == segment_embedding ||
@@ -175,7 +175,7 @@ __global__ void EmbedLayerNormKernel(
   const int64_t word_offset = static_cast<int64_t>(word_id) * hidden_size;
   const int64_t segment_offset = static_cast<int64_t>(segment_id) * hidden_size;
   // the output offset is given by b * (sequence_length * hidden_size) + s * hidden_size
-  const int output_offset = sequence_position * hidden_size;
+  const int64_t output_offset = static_cast<int64_t>(sequence_position) * hidden_size;
 
   cub::KeyValuePair<float, float> thread_data(0.f, 0.f);
 
@@ -197,8 +197,8 @@ __global__ void EmbedLayerNormKernel(
     thread_data = pair_sum(thread_data, cub::KeyValuePair<float, float>(rldval, rldval * val_f));
   }
 
-  // 3. layer norm on the sum
-  LayerNorm<T, TPB>(thread_data, hidden_size, output_offset, beta, gamma, epsilon, output);
+  // 3. layer norm on the sum (LayerNorm takes an int offset; the widened offset fits the output)
+  LayerNorm<T, TPB>(thread_data, hidden_size, static_cast<int>(output_offset), beta, gamma, epsilon, output);
 }
 
 template <typename T>

@@ -29,7 +29,7 @@ Status LaunchEmbedLayerNormKernel(cudaStream_t stream,
                                   const bool broadcast_position_ids,   // Whether to broadcast position ids
                                   int word_embedding_length,           // number of rows in word_embedding
                                   int position_embedding_length,       // number of rows in position_embedding
-                                  int segment_embedding_length,        // number of rows in segment_embedding (0 if none)
+                                  int segment_embedding_length,        // rows in segment_embedding (0 if none)
                                   int* error_flag);                    // device flag set when an id is out of range
 
 }  // namespace cuda
