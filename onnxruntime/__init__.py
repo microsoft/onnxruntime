@@ -181,6 +181,7 @@ def _get_nvidia_dll_paths(is_windows: bool, cuda: bool = True, cudnn: bool = Tru
         cuda_dir = f"cu{cuda_major_version}"
         if is_windows:
             import platform  # noqa: PLC0415
+
             arch = "arm64" if platform.machine().lower() in ("arm64", "aarch64") else "x86_64"
             cuda_dll_paths = [
                 ("nvidia", cuda_dir, "bin", arch, f"cublasLt64_{cuda_major_version}.dll"),
