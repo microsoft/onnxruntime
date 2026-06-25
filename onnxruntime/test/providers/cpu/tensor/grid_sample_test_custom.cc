@@ -50,6 +50,24 @@ std::vector<std::unique_ptr<IExecutionProvider>> GetExecutionProviders() {
   return execution_providers;
 }
 
+// Only the CPU and CUDA GridSample kernels currently validate that input spatial dimensions
+// are non-empty. WebGPU/CoreML use separate kernels without that guard, so the expect-failure
+// test below must exclude them to avoid a false failure on those builds.
+std::vector<std::unique_ptr<IExecutionProvider>> GetCpuAndCudaExecutionProviders() {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+
+#ifdef USE_CUDA
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+#ifdef ENABLE_CUDA_NHWC_OPS
+  execution_providers.push_back(DefaultCudaNHWCExecutionProvider());
+#endif
+#endif
+
+  return execution_providers;
+}
+
 template <typename T>
 void RunTests(T& test, std::vector<std::unique_ptr<IExecutionProvider>>&& execution_providers) {
   for (size_t idx = 0; idx < execution_providers.size(); ++idx) {
@@ -610,8 +628,10 @@ TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_nearest_border_empty_spa
   test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
   test.AddOutput<TypeParam>("Y", Y_shape,
                             {TypeParam(0.0f), TypeParam(0.0f), TypeParam(0.0f), TypeParam(0.0f)});
+  // The zero-spatial-dim guard currently covers the CPU and CUDA kernels; other EPs (WebGPU/CoreML)
+  // are out of scope for this test, so restrict the expect-failure run to CPU + CUDA only.
   RunTestsExpectFailure(test, "Input spatial dimensions must be non-empty for sampling",
-                        GetExecutionProviders());
+                        GetCpuAndCudaExecutionProviders());
 }
 
 }  // namespace test
