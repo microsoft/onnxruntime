@@ -78,7 +78,7 @@ struct KeyValuePairSum {
 
 template <typename T, int TPB>
 __device__ inline void LayerNorm(
-    const cub::KeyValuePair<float, float>& thread_data, const int ld, const int offset, const T* beta,
+    const cub::KeyValuePair<float, float>& thread_data, const int ld, const int64_t offset, const T* beta,
     const T* gamma, const float epsilon, T* output) {
   // Assuming thread_data is already divided by ld
   // Uses fp32 accumulation for mean/variance to avoid overflow in fp16/bf16.
@@ -98,7 +98,7 @@ __device__ inline void LayerNorm(
   __syncthreads();
 
   for (int i = threadIdx.x; i < ld; i += TPB) {
-    const int idx = offset + i;
+    const int64_t idx = offset + i;
     const float val = static_cast<float>(output[idx]);
     const float g = static_cast<float>(gamma[i]);
     const float b = (nullptr == beta) ? 0.f : static_cast<float>(beta[i]);

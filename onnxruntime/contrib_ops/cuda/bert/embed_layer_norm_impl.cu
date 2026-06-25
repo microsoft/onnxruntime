@@ -197,8 +197,8 @@ __global__ void EmbedLayerNormKernel(
     thread_data = pair_sum(thread_data, cub::KeyValuePair<float, float>(rldval, rldval * val_f));
   }
 
-  // 3. layer norm on the sum (LayerNorm takes an int offset; the widened offset fits the output)
-  LayerNorm<T, TPB>(thread_data, hidden_size, static_cast<int>(output_offset), beta, gamma, epsilon, output);
+  // 3. layer norm on the sum (offset is int64 end-to-end to keep the output write index in range)
+  LayerNorm<T, TPB>(thread_data, hidden_size, output_offset, beta, gamma, epsilon, output);
 }
 
 template <typename T>
