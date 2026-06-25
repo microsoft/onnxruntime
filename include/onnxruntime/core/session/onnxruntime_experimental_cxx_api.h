@@ -116,21 +116,18 @@ namespace Experimental {
 // query the callbacks via GetReadFunc() / GetWriteFunc().
 class EpContextConfig {
  public:
-  EpContextConfig() noexcept = default;
   explicit EpContextConfig(std::nullptr_t) noexcept {}
 
   explicit EpContextConfig(const SessionOptions& session_options) : EpContextConfig{session_options.GetConst()} {}
-  explicit EpContextConfig(ConstSessionOptions session_options)
-      : EpContextConfig{static_cast<const OrtSessionOptions*>(session_options)} {}
 
   // Extracts the EPContext config from `session_options`. Throws Ort::Exception (ORT_NOT_IMPLEMENTED) if the
   // experimental functions are not available in this build, or propagates any error from the extraction.
-  explicit EpContextConfig(const OrtSessionOptions* session_options) {
+  explicit EpContextConfig(ConstSessionOptions session_options) {
     const OrtApi* api = &GetApi();
     // Ensure the release function is available before creating a handle, so the handle can always be freed.
     Get_OrtEpApi_ReleaseEpContextConfig_SinceV28_FnOrThrow(api);
     auto* get_config = Get_OrtEpApi_SessionOptions_GetEpContextConfig_SinceV28_FnOrThrow(api);
-    ThrowOnError(get_config(session_options, &config_));
+    ThrowOnError(get_config(static_cast<const OrtSessionOptions*>(session_options), &config_));
   }
 
   EpContextConfig(EpContextConfig&& other) noexcept : config_{other.config_} { other.config_ = nullptr; }

@@ -39,11 +39,6 @@
 // size limits, and path policies; see the per-function notes on how untrusted, model-derived names are treated.
 namespace ep_context_data_utils {
 
-using GetEpContextDataReadFunc = OrtStatus*(ORT_API_CALL*)(const OrtEpContextConfig* config,
-                                                           OrtReadNamedBufferFunc* read_func, void** state);
-using GetEpContextDataWriteFunc = OrtStatus*(ORT_API_CALL*)(const OrtEpContextConfig* config,
-                                                            OrtWriteNamedBufferFunc* write_func, void** state);
-
 #ifdef _WIN32
 inline std::string WindowsLastErrorMessage(std::string_view message, DWORD error_code) {
   return std::string{message} + " GetLastError=" + std::to_string(error_code);
@@ -336,27 +331,16 @@ inline OrtStatus* WriteEpContextDataToFile(const OrtApi& api, const char* file_n
   return WriteEpContextDataToResolvedFile(api, data_path, buffer, buffer_size);
 }
 
-// Low-level overload that takes the GetEpContextDataReadFunc accessor explicitly. Production code should use the
-// overload below that derives the accessor from `api`; this overload exists so unit tests can inject a fake accessor.
-// `ep_context_config` is an opaque token only forwarded to `get_read_func` (never dereferenced here).
+// Low-level overload that takes the read callback and its opaque state directly. Production EPs should use the
+// overload below that takes an OrtEpContextConfig; this overload exists so unit tests can inject a callback without
+// constructing an OrtEpContextConfig. When `read_func` is null the data is read from a file.
 inline OrtStatus* ReadEpContextDataWithFileFallback(
     const OrtApi& api,
-    GetEpContextDataReadFunc get_read_func,
-    const OrtEpContextConfig* ep_context_config,
+    OrtReadNamedBufferFunc read_func, void* read_state,
     const char* file_name, const OrtGraph* graph,
     std::vector<char>& data) {
   if (file_name == nullptr || file_name[0] == '\0') {
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
-  }
-
-  OrtReadNamedBufferFunc read_func = nullptr;
-  void* read_state = nullptr;
-  if (ep_context_config != nullptr && get_read_func == nullptr) {
-    return api.CreateStatus(ORT_NOT_IMPLEMENTED,
-                            "OrtEpApi_EpContextConfig_GetEpContextDataReadFunc is not available");
-  }
-  if (ep_context_config != nullptr) {
-    RETURN_IF_ERROR(get_read_func(ep_context_config, &read_func, &read_state));
   }
 
   if (read_func == nullptr) {
@@ -402,19 +386,26 @@ inline OrtStatus* ReadEpContextDataWithFileFallback(
     const OrtEpContextConfig* ep_context_config,
     const char* file_name, const OrtGraph* graph,
     std::vector<char>& data) {
-  return ReadEpContextDataWithFileFallback(
-      api,
-      Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataReadFunc_SinceV28_Fn(&api),
-      ep_context_config, file_name, graph, data);
+  OrtReadNamedBufferFunc read_func = nullptr;
+  void* read_state = nullptr;
+  if (ep_context_config != nullptr) {
+    auto get_read_func =
+        Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataReadFunc_SinceV28_Fn(&api);
+    if (get_read_func == nullptr) {
+      return api.CreateStatus(ORT_NOT_IMPLEMENTED,
+                              "OrtEpApi_EpContextConfig_GetEpContextDataReadFunc is not available");
+    }
+    RETURN_IF_ERROR(get_read_func(ep_context_config, &read_func, &read_state));
+  }
+  return ReadEpContextDataWithFileFallback(api, read_func, read_state, file_name, graph, data);
 }
 
-// Low-level overload that takes the GetEpContextDataWriteFunc accessor explicitly. Production code should use the
-// overload below that derives the accessor from `api`; this overload exists so unit tests can inject a fake accessor.
-// `ep_context_config` is an opaque token only forwarded to `get_write_func` (never dereferenced here).
+// Low-level overload that takes the write callback and its opaque state directly. Production EPs should use the
+// overloads below that take an OrtEpContextConfig; this overload exists so unit tests can inject a callback without
+// constructing an OrtEpContextConfig. When `write_func` is null the data is written to the file fallback.
 inline OrtStatus* WriteEpContextDataWithFileFallback(
     const OrtApi& api,
-    GetEpContextDataWriteFunc get_write_func,
-    const OrtEpContextConfig* ep_context_config,
+    OrtWriteNamedBufferFunc write_func, void* write_state,
     const char* file_name, const char* fallback_file_name,
     const OrtGraph* graph,
     const void* buffer, size_t buffer_size) {
@@ -424,16 +415,6 @@ inline OrtStatus* WriteEpContextDataWithFileFallback(
 
   if (buffer == nullptr && buffer_size != 0) {
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data buffer must not be null for non-empty data");
-  }
-
-  OrtWriteNamedBufferFunc write_func = nullptr;
-  void* write_state = nullptr;
-  if (ep_context_config != nullptr && get_write_func == nullptr) {
-    return api.CreateStatus(ORT_NOT_IMPLEMENTED,
-                            "OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc is not available");
-  }
-  if (ep_context_config != nullptr) {
-    RETURN_IF_ERROR(get_write_func(ep_context_config, &write_func, &write_state));
   }
 
   // The app-supplied write callback owns its own logical namespace, so file_name is passed through unmodified.
@@ -468,19 +449,18 @@ inline OrtStatus* WriteEpContextDataWithFileFallback(
     const char* file_name, const char* fallback_file_name,
     const OrtGraph* graph,
     const void* buffer, size_t buffer_size) {
-  return WriteEpContextDataWithFileFallback(
-      api,
-      Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc_SinceV28_Fn(&api),
-      ep_context_config, file_name, fallback_file_name, graph, buffer, buffer_size);
-}
-
-inline OrtStatus* WriteEpContextDataWithFileFallback(
-    const OrtApi& api,
-    GetEpContextDataWriteFunc get_write_func,
-    const OrtEpContextConfig* ep_context_config,
-    const char* file_name, const OrtGraph* graph,
-    const void* buffer, size_t buffer_size) {
-  return WriteEpContextDataWithFileFallback(api, get_write_func, ep_context_config, file_name, file_name, graph, buffer,
+  OrtWriteNamedBufferFunc write_func = nullptr;
+  void* write_state = nullptr;
+  if (ep_context_config != nullptr) {
+    auto get_write_func =
+        Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc_SinceV28_Fn(&api);
+    if (get_write_func == nullptr) {
+      return api.CreateStatus(ORT_NOT_IMPLEMENTED,
+                              "OrtEpApi_EpContextConfig_GetEpContextDataWriteFunc is not available");
+    }
+    RETURN_IF_ERROR(get_write_func(ep_context_config, &write_func, &write_state));
+  }
+  return WriteEpContextDataWithFileFallback(api, write_func, write_state, file_name, fallback_file_name, graph, buffer,
                                             buffer_size);
 }
 

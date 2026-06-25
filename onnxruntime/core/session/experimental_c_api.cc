@@ -72,12 +72,13 @@ ORT_API_STATUS_IMPL(OrtApi_SessionOptions_SetEpContextDataReadFunc_SinceV28, _In
 
 ORT_API_STATUS_IMPL(OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteFunc_SinceV28,
                     _In_ OrtModelCompilationOptions* ort_model_compile_options,
-                    _In_ OrtWriteNamedBufferFunc write_func, _In_opt_ void* state) {
+                    _In_opt_ OrtWriteNamedBufferFunc write_func, _In_opt_ void* state) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
   ORT_API_RETURN_IF(ort_model_compile_options == nullptr, ORT_INVALID_ARGUMENT, "OrtModelCompilationOptions is NULL");
-  ORT_API_RETURN_IF(write_func == nullptr, ORT_INVALID_ARGUMENT, "OrtWriteNamedBufferFunc function is NULL");
 
+  // A null write_func clears any previously set callback (symmetric with OrtApi_SessionOptions_SetEpContextDataReadFunc
+  // and consistent with calling this multiple times to overwrite the callback).
   auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
   model_compile_options->SetEpContextDataWriteFunc(write_func, state);
   return nullptr;

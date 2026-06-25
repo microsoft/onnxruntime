@@ -242,7 +242,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   try {
     auto dummy_ep = std::make_unique<ExampleEp>(
         *factory, factory->ep_name_, config, *logger,
-        Ort::Experimental::EpContextConfig{session_options});
+        Ort::Experimental::EpContextConfig{Ort::ConstSessionOptions{session_options}});
     *ep = dummy_ep.release();
   } catch (const Ort::Exception& e) {
     return factory->ort_api.CreateStatus(e.GetOrtErrorCode(), e.what());

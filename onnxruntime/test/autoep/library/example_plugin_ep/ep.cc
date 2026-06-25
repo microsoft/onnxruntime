@@ -422,6 +422,9 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
         std::string ep_cache_context;
         RETURN_IF_ERROR(ep_cache_context_attr.GetValue(ep_cache_context));
 
+        // This example only exercises the load-side read flow (callback first, file fallback otherwise) to show how
+        // an EP retrieves EPContext binary data during compile. A real EP would consume `ep_context_data` (e.g.,
+        // initialize a kernel/engine from it); here it is intentionally read and then discarded.
         std::vector<char> ep_context_data;
         RETURN_IF_ERROR(ep_context_data_utils::ReadEpContextDataWithFileFallback(
             ep->ort_api, ep->ep_context_config_.get(), ep_cache_context.c_str(), ort_graphs[0],

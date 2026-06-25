@@ -311,8 +311,8 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_SessionOptions_SetEpContextDataRea
  * When EPContext embed mode is disabled, execution providers can retrieve this callback from OrtEpContextConfig and
  * call it instead of writing EPContext binary data directly to disk.
  *
- * This callback may be used together with OrtApi::ModelCompilationOptions_SetEpContextBinaryInformation. The binary
- * information still describes the compiled model/output location that EPs may use to generate stable logical
+ * This callback may be used together with OrtCompileApi::ModelCompilationOptions_SetEpContextBinaryInformation. The
+ * binary information still describes the compiled model/output location that EPs may use to generate stable logical
  * EPContext data names or as a file-fallback location. If this callback is configured, EPs should call it for
  * EPContext binary data instead of writing that data to the fallback file path.
  *
@@ -324,19 +324,20 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_SessionOptions_SetEpContextDataRea
  * operation that may call the callback. If the same state may be used by multiple EPs or threads, the application is
  * responsible for synchronization.
  *
- * Unlike OrtApi_SessionOptions_SetEpContextDataReadFunc, which accepts a NULL callback to clear a previously set one,
- * write_func must not be NULL here: compilation options are configured once per compile, so there is no prior
- * callback to clear and a NULL write_func is rejected with ORT_INVALID_ARGUMENT.
+ * Like OrtApi_SessionOptions_SetEpContextDataReadFunc, passing a NULL write_func clears any previously set callback
+ * (any previously set state is cleared as well). Calling this multiple times overwrites the previously configured
+ * callback.
  *
  * \param[in] model_compile_options The OrtModelCompilationOptions instance.
- * \param[in] write_func The OrtWriteNamedBufferFunc callback used to write EPContext bytes. Must not be NULL.
- * \param[in] state Opaque state passed to write_func. Can be NULL.
+ * \param[in] write_func The OrtWriteNamedBufferFunc callback used to write EPContext bytes. Pass NULL to clear a
+ *                       previously set callback (any previously set state is cleared as well).
+ * \param[in] state Opaque state passed to write_func. Can be NULL. Ignored when write_func is NULL.
  *
  * \snippet{doc} snippets.dox OrtStatus Return Value
  */
 ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtCompileApi_ModelCompilationOptions_SetEpContextDataWriteFunc,
-                     _In_ OrtModelCompilationOptions* model_compile_options, _In_ OrtWriteNamedBufferFunc write_func,
-                     _In_opt_ void* state)
+                     _In_ OrtModelCompilationOptions* model_compile_options,
+                     _In_opt_ OrtWriteNamedBufferFunc write_func, _In_opt_ void* state)
 
 /** \brief Extracts the EPContext configuration (callbacks and state) from an OrtSessionOptions instance.
  *
