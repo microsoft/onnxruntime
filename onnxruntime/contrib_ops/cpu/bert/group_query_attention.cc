@@ -84,7 +84,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                   "kv_cache_bit_width must be 0 when quantization is disabled, got ", kv_cache_bit_width_);
   }
 
-  // q_norm_weight (input 14) / k_norm_weight (input 15) are populated by the WebGPU-only
+  // q_norm_weight (input 14) / k_norm_weight (input 15) are populated by the CUDA/WebGPU
   // GroupQueryAttentionPreNormFusion optimizer pass. The CPU kernel does not implement
   // the fused per-head Q/K RMS normalization prologue, so reject the node if either input
   // is present rather than silently dropping the normalization.
@@ -93,7 +93,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, INVALID_ARGUMENT,
         "GroupQueryAttention (CPU): q_norm_weight / k_norm_weight inputs are not supported. "
-        "The per-head Q/K RMS normalization prologue is implemented only on the WebGPU EP.");
+        "The per-head Q/K RMS normalization prologue is implemented only on the CUDA and WebGPU EPs.");
   }
 
   GroupQueryAttentionParameters parameters = {};
@@ -343,6 +343,31 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   // Compute the attention score and apply the score to V
   const T* k_data = packed_qkv ? nullptr : k_rotary;
   const T* v_data = packed_qkv ? nullptr : V.Get<Tensor>().Data<T>();
+
+  // Non-quantized flash attention path (float only). Uses the tiled online-softmax
+  // kernel to avoid materializing the full attention score matrix. Falls back to the
+  // naive path when an unsupported feature is requested (softcap, smooth softmax,
+  // head sink, or QK output).
+  if constexpr (std::is_same_v<T, float>) {
+    // Restrict the flash path to prefill / chunked-prefill (query length > 1). Single-token
+    // decode (sequence_length == 1) has no flash benefit: the naive score matrix is only
+    // [1, total_sequence_length] per head, so there is nothing to tile away, and the extra
+    // online-softmax bookkeeping makes it slower in practice.
+    const bool use_flash = !disable_gqa_flash_ &&
+                           parameters.sequence_length > 1 &&
+                           softcap_ == 0.0f &&
+                           !use_smooth_softmax_ &&
+                           head_sink_data == nullptr &&
+                           output_qk == nullptr &&
+                           present_k != nullptr && present_v != nullptr;
+    if (use_flash) {
+      return ApplyAttentionFlash(q_rotary, k_data, v_data,
+                                 attention_bias, past_key, past_value,
+                                 output, present_k, present_v, seqlens_k,
+                                 parameters, allocator, context);
+    }
+  }
+
   return ApplyAttention(q_rotary, k_data, v_data,
                         head_sink_data, attention_bias, past_key, past_value, output, present_k, present_v,
                         output_qk, seqlens_k, parameters, allocator, context);

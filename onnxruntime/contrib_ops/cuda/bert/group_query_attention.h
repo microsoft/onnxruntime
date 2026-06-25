@@ -33,13 +33,13 @@ class GroupQueryAttention final : public CudaKernel {
   bool do_rotary_;
   bool rotary_interleaved_;
   bool use_smooth_softmax_;
+  float qk_norm_epsilon_;  // epsilon for the per-head Q/K RMSNorm (QK-Norm) prologue
   float scale_;
   float softcap_;
   bool disable_flash_attention_;
   bool disable_memory_efficient_attention_;
   bool disable_flash_decode_;
-  bool enable_xqa_;
-  bool xqa_force_disabled_;                 // True when ORT_ENABLE_XQA=0 is explicitly set (overrides default-on paths).
+  bool enable_xqa_;                         // True when ORT_ENABLE_XQA != 0 (default: on) and T is fp16/bf16.
   bool enable_cudnn_flash_attention_;       // cuDNN SDPA explicitly enabled (env / sdpa_kernel)
   bool auto_enable_cudnn_flash_attention_;  // auto-prefer cuDNN SDPA on SM>=90 when no explicit kernel pinned
 

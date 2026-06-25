@@ -2297,6 +2297,57 @@ MlasFlashAttention(
     MLAS_THREADPOOL* ThreadPool
 );
 
+//
+// Flash Attention for non-quantized (FP32) GroupQueryAttention KV cache.
+//
+// Adapts the online-softmax tiled algorithm to operate on an FP32 present
+// K/V cache laid out as BNSH ([batch, kv_num_heads, seqlen_present, head_size]).
+// Supports GQA head grouping, causal masking, local window attention, and
+// additive attention bias. Intended for prefill / chunked-prefill
+// (sequence_length > 1).
+//
+struct MlasFlashAttentionGQAArgs {
+    int batch_size;
+    int num_heads;            // number of query heads
+    int kv_num_heads;         // number of key/value heads (num_heads % kv_num_heads == 0)
+    int sequence_length;      // number of new query tokens (S)
+    int total_seqlen;         // total tokens (past + new) for this invocation (T)
+    int head_size;            // per-head size (H)
+    int past_seqlen;          // causal offset (number of cached tokens before the new ones)
+    int local_window_size;    // -1 disables local window masking
+    int seqlen_present_kv;    // sequence dimension of the present K/V buffer
+    int q_block_size;         // query tile size (Br)
+    int kv_block_size;        // key/value tile size (Bc)
+    float scale;              // QK scaling factor
+    int thread_count;         // number of partitions / threads
+    float* buffer;            // per-thread scratch
+    size_t buffer_size_per_thread;
+
+    const float* query;       // [batch, num_heads, sequence_length, head_size] BNSH
+    size_t q_batch_stride;    // element stride between consecutive batches in `query`
+                              // (num_heads*S*H for unpacked, (num_heads+2*kv_num_heads)*S*H for packed QKV)
+    const float* k_cache;     // [batch, kv_num_heads, seqlen_present, head_size] FP32
+    const float* v_cache;     // [batch, kv_num_heads, seqlen_present, head_size] FP32
+    float* output;            // [batch, sequence_length, num_heads, head_size] BSNH
+
+    const float* attention_bias;  // [batch|1, num_heads|1, S, T] additive bias, or nullptr
+    int attention_bias_seqlen_stride;
+    bool attention_bias_broadcast_batch;
+    bool attention_bias_broadcast_head;
+};
+
+/**
+ * @brief FP32 Flash Attention for GroupQueryAttention with an FP32 KV cache.
+ * @param args         Arguments
+ * @param ThreadPool   Thread pool
+ */
+void
+MLASCALL
+MlasFlashAttentionGQA(
+    MlasFlashAttentionGQAArgs* args,
+    MLAS_THREADPOOL* ThreadPool
+);
+
 /**
  * @brief Enumeration of supported GELU algorithm variants.
  *

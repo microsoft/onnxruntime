@@ -887,11 +887,20 @@ TEST(ModelEditorCompileAPITest, CompileFromModelWithNoGraph_Fails) {
   EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("graph"));
 }
 
-// Test validation: model with empty inputs/outputs
-TEST(ModelEditorCompileAPITest, CompileFromModelWithEmptyInputsOutputs_Fails) {
-  // Create a model with a graph that has no inputs or outputs
+// Test validation: model with no outputs (one input but zero outputs).
+// 0 outputs is still rejected because compilation produces an output model that
+// would have no consumers for any computed values.
+TEST(ModelEditorCompileAPITest, CompileFromModelWithEmptyOutputs_Fails) {
   Ort::Graph graph;
-  // Don't set inputs or outputs
+
+  // Provide a single input but no outputs, to isolate the output-count check.
+  std::vector<ValueInfo> graph_inputs;
+  std::vector<int64_t> dims({4});
+  TensorTypeAndShapeInfo tensor_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, dims);
+  auto type_info = TypeInfo::CreateTensorInfo(tensor_info.GetConst());
+  graph_inputs.emplace_back("X", type_info.GetConst());
+  graph.SetInputs(graph_inputs);
+  // Intentionally do not call SetOutputs.
 
   std::vector<Model::DomainOpsetPair> opsets{{onnxruntime::kOnnxDomain, 18}};
   Model model(opsets);
@@ -909,8 +918,70 @@ TEST(ModelEditorCompileAPITest, CompileFromModelWithEmptyInputsOutputs_Fails) {
   compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
 
   Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
-  EXPECT_FALSE(status.IsOK()) << "Expected CompileModel to fail for model with empty inputs/outputs";
-  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("input"));
+  EXPECT_FALSE(status.IsOK()) << "Expected CompileModel to fail for model with no outputs";
+  EXPECT_THAT(status.GetErrorMessage(), ::testing::HasSubstr("at least one output"));
+}
+
+// Test: model with zero graph inputs is now accepted by CompileModel.
+// Mirrors what CreateSessionFromModel already accepts (e.g., a graph composed of
+// zero-input generator ops like RandomNormal that produces output without external input).
+// Regression test for https://github.com/microsoft/onnxruntime/issues/28135.
+//
+// Scope: this test exercises only the ORT-side validation in ModelCompilationOptions::Check().
+// EP-specific validation (e.g., whether the WebNN EP's partitioner accepts a 0-input subgraph)
+// is owned by the respective EP and is not covered here.
+TEST(ModelEditorCompileAPITest, CompileFromModelWithEmptyInputs_Succeeds) {
+  Ort::Graph graph;
+
+  // Zero graph inputs; one graph output produced by a RandomNormal node.
+  // RandomNormal takes 0 inputs and produces a tensor with shape specified via attribute.
+  // Use RandomNormal rather than Constant because Constant nodes are folded into initializers
+  // at load time (see graph.cc Graph::LoadFromModelEditorApiModel) and would not exercise
+  // the true 0-input producer path.
+  std::vector<int64_t> output_dims = {2, 3};
+  TensorTypeAndShapeInfo output_tensor_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+                                            output_dims);
+  auto output_type_info = TypeInfo::CreateTensorInfo(output_tensor_info.GetConst());
+
+  std::vector<ValueInfo> graph_outputs;
+  graph_outputs.emplace_back("Y", output_type_info.GetConst());
+  graph.SetOutputs(graph_outputs);
+  // Intentionally do not call SetInputs (zero graph inputs).
+
+  std::vector<OpAttr> attributes;
+  std::vector<int64_t> shape_attr_value = {2, 3};
+  attributes.push_back(OpAttr("shape", shape_attr_value.data(),
+                              static_cast<int>(shape_attr_value.size()),
+                              OrtOpAttrType::ORT_OP_ATTR_INTS));
+
+  Node node("RandomNormal", onnxruntime::kOnnxDomain, "RandomNormal1",
+            /*input_names*/ {}, /*output_names*/ {"Y"}, attributes);
+  graph.AddNode(node);
+
+  std::vector<Model::DomainOpsetPair> opsets{{onnxruntime::kOnnxDomain, 18}};
+  Model model(opsets);
+  model.AddGraph(graph);
+
+  Ort::SessionOptions session_options;
+  Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+
+  compile_options.SetInputModel(static_cast<const OrtModel*>(model));
+  compile_options.SetEpContextEmbedMode(true);
+
+  std::unique_ptr<MockedOrtAllocator> allocator = std::make_unique<MockedOrtAllocator>();
+  void* output_buffer = nullptr;
+  size_t output_size = 0;
+  compile_options.SetOutputModelBuffer(allocator.get(), &output_buffer, &output_size);
+
+  // Compile should succeed. No specific compiling EP is required; the default
+  // kGenerateModel action emits an output model even when no EPContext nodes are produced.
+  ASSERT_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
+
+  // Fatal: a compile that returns OK but produces no artifact bytes is a regression.
+  ASSERT_NE(output_buffer, nullptr);
+  ASSERT_GT(output_size, 0u);
+
+  allocator->Free(output_buffer);
 }
 
 // Test: model can be reused after compilation.

@@ -24,6 +24,7 @@ template Status HEAD_DIM_NAMESPACE::LaunchXQAKernelImpl<half>(
     const int head_size,
     const int max_seq_len,
     const float scale,
+    const int local_window_size,
     const bool is_bsnh,
     const int* past_seq_lens,
     const float* attention_sinks,
