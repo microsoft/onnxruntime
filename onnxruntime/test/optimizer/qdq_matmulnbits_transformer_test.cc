@@ -1564,8 +1564,7 @@ static void RunDefaultPathSession(const std::string& model_bytes, PrepackedWeigh
 // enrollment identity: identical quantization data yields the SAME identity, while different zero points
 // yield a DIFFERENT identity. (The tag only enrolls the buffer for sharing; the container keys by the
 // packed-bytes hash. A stable, content-distinct tag keeps enrollment deterministic across sessions.)
-// DISABLED_ to verify the Windows x64 ASan CI OOM is not caused by the new MatMulNBits tests.
-TEST(QDQTransformerTests, DISABLED_DefaultPath_TagsGeneratedWeightWithStableContentIdentity) {
+TEST(QDQTransformerTests, DefaultPath_TagsGeneratedWeightWithStableContentIdentity) {
   constexpr int64_t M = 4, N = 8, K = 32, block_size = 16;
   const int64_t num_blocks = K / block_size;
 
@@ -1607,8 +1606,7 @@ TEST(QDQTransformerTests, DISABLED_DefaultPath_TagsGeneratedWeightWithStableCont
 // zero-point-only difference is intentionally NOT used here: on the CompFp32 path the zero points are
 // applied at compute time and left out of the packed B, so two such models pack identically and would
 // correctly share -- packed-bytes keying only ever reuses byte-identical buffers.)
-// DISABLED_ to verify the Windows x64 ASan CI OOM is not caused by the new MatMulNBits tests.
-TEST(QDQTransformerTests, DISABLED_DefaultPath_SharesWeightAcrossSessionsViaTag) {
+TEST(QDQTransformerTests, DefaultPath_SharesWeightAcrossSessionsViaTag) {
   constexpr int64_t M = 4, N = 8, K = 32, block_size = 16;
   const int64_t num_blocks = K / block_size;
 
@@ -1660,8 +1658,7 @@ TEST(QDQTransformerTests, DISABLED_DefaultPath_SharesWeightAcrossSessionsViaTag)
 // platform-dependent (level 4 may pack as CompInt8 -- different bytes, no share -- or fall back to the
 // same CompFp32 packing as level 0 and benignly reuse the byte-identical buffer); packed-bytes keying
 // makes either outcome safe, so this asserts the identity is distinct, not a fixed sharing count.
-// DISABLED_ to verify the Windows x64 ASan CI OOM is not caused by the new MatMulNBits tests.
-TEST(QDQTransformerTests, DISABLED_DefaultPath_DifferentAccuracyLevelGetsDistinctIdentity) {
+TEST(QDQTransformerTests, DefaultPath_DifferentAccuracyLevelGetsDistinctIdentity) {
   constexpr int64_t M = 4, N = 8, K = 32, block_size = 16;
   const int64_t num_blocks = K / block_size;
 

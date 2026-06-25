@@ -711,27 +711,26 @@ TestOptions8Bits MakeSharingTestOptions8Bits(int64_t block_size, bool has_zero_p
 }  // namespace
 
 // Legacy sharing path for 8-bit weights: B is registered as a shared initializer via
-// SessionOptions::AddInitializer.
-// DISABLED_ to verify the Windows x64 ASan CI OOM is not caused by the new MatMulNBits tests.
-TEST(MatMulNBits, DISABLED_SharedPrepackedWeights_8b_AddInitializer) {
-  for (bool has_zero_point : {false, true}) {
-    for (bool has_bias : {false, true}) {
-      RunTest8Bits<float>(MakeSharingTestOptions8Bits(32, has_zero_point, has_bias,
+// SessionOptions::AddInitializer. As in the 4-bit SharedPrepackedWeights_AddInitializer test, cover both
+// dtypes x both zero-point states (zero points are folded into the packed B) with bias varied across the
+// cases, rather than the full cross-product, to limit InferenceSession constructions under AddressSanitizer.
+TEST(MatMulNBits, SharedPrepackedWeights_8b_AddInitializer) {
+  RunTest8Bits<float>(MakeSharingTestOptions8Bits(32, /*has_zero_point*/ true, /*has_bias*/ true,
+                                                  PrepackSharingMode::kAddInitializer));
+  RunTest8Bits<float>(MakeSharingTestOptions8Bits(32, /*has_zero_point*/ false, /*has_bias*/ false,
+                                                  PrepackSharingMode::kAddInitializer));
+  RunTest8Bits<MLFloat16>(MakeSharingTestOptions8Bits(32, /*has_zero_point*/ false, /*has_bias*/ true,
                                                       PrepackSharingMode::kAddInitializer));
-      RunTest8Bits<MLFloat16>(MakeSharingTestOptions8Bits(32, has_zero_point, has_bias,
-                                                          PrepackSharingMode::kAddInitializer));
-    }
-  }
+  RunTest8Bits<MLFloat16>(MakeSharingTestOptions8Bits(32, /*has_zero_point*/ true, /*has_bias*/ false,
+                                                      PrepackSharingMode::kAddInitializer));
 }
 
 // Negative control for 8-bit weights: with the shared container present but neither opt-in mechanism
-// enabled, no pre-packed weights are shared across sessions.
-// DISABLED_ to verify the Windows x64 ASan CI OOM is not caused by the new MatMulNBits tests.
-TEST(MatMulNBits, DISABLED_SharedPrepackedWeights_8b_NotSharedWithoutOptIn) {
+// enabled, no pre-packed weights are shared across sessions. Opt-in gating is independent of dtype/zp/bias,
+// so a single representative case suffices (keeping InferenceSession constructions low under AddressSanitizer).
+TEST(MatMulNBits, SharedPrepackedWeights_8b_NotSharedWithoutOptIn) {
   RunTest8Bits<float>(MakeSharingTestOptions8Bits(32, /*has_zero_point*/ true, /*has_bias*/ true,
                                                   PrepackSharingMode::kNoSharing));
-  RunTest8Bits<MLFloat16>(MakeSharingTestOptions8Bits(32, /*has_zero_point*/ false, /*has_bias*/ false,
-                                                      PrepackSharingMode::kNoSharing));
 }
 #endif  // !ENABLE_TRAINING
 #endif  // !USE_CUDA && !USE_WEBGPU
