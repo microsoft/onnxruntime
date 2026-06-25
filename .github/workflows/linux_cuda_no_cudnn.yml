@@ -96,7 +96,16 @@ jobs:
           docker run --rm --gpus all \
             -v "${{ runner.temp }}:/onnxruntime_src/build" \
             "${{ steps.build_docker_image_step.outputs.full-image-name }}" \
-            bash -lc 'PATH=/opt/python/cp312-cp312/bin:$PATH PYTHONPATH=/onnxruntime_src/build/Release python -m pip install --no-cache-dir numpy onnx && PATH=/opt/python/cp312-cp312/bin:$PATH PYTHONPATH=/onnxruntime_src/build/Release python - <<"PY"
+            bash -lc 'set -e
+          PATH=/opt/python/cp312-cp312/bin:$PATH
+          WHEEL_PATH=$(find /onnxruntime_src/build/Release -type f -name "onnxruntime_gpu-*.whl" | head -n 1)
+          if [ -z "$WHEEL_PATH" ]; then
+            echo "No built onnxruntime GPU wheel found under /onnxruntime_src/build/Release" >&2
+            exit 1
+          fi
+          echo "Installing $WHEEL_PATH"
+          python -m pip install --no-cache-dir --force-reinstall --no-deps numpy onnx "$WHEEL_PATH"
+          python - <<"PY"
           import numpy as np
           import onnx
           import onnxruntime as ort
