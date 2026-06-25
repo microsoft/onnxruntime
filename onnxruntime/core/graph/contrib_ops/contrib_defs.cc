@@ -4072,8 +4072,10 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
         if (quantize_axis < -r || quantize_axis >= r) {
           fail_shape_inference("quantize_axis must be in [-r, r-1]");
         }
-        if (block_size < 0) {
-          fail_shape_inference("block_size must be non-negative");
+        if (block_size <= 0) {
+          // block_size is used as a divisor below when relating data and scales shapes,
+          // so it must be strictly positive.
+          fail_shape_inference("block_size must be greater than 0");
         }
 
         gather_axis = (gather_axis + r) % r;
