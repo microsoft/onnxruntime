@@ -51,6 +51,8 @@ jobs:
       - name: Download QNN SDK
         working-directory: ${{ runner.temp }}
         run: |
+          Remove-Item Env:AZCOPY_AUTO_LOGIN_TYPE -ErrorAction SilentlyContinue
+          Remove-Item Env:AZCOPY_MSI_CLIENT_ID -ErrorAction SilentlyContinue
           azcopy.exe cp --recursive https://lotusscus.blob.core.windows.net/models/qnnsdk/qnn-v2.42.0.251225 .
           dir
         shell: pwsh
