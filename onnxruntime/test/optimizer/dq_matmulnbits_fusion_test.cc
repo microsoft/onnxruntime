@@ -366,7 +366,8 @@ TEST_F(DQMatMulNBitsFusionTest, Pattern1_MatMul_NoZP) {
 // identity, while a semantic difference -- here, different zero points -- yields a DIFFERENT identity.
 // (The tag only enrolls B into the shared container; the actual sharing is keyed by the packed-bytes
 // hash, so a stable, content-distinct tag just keeps enrollment deterministic across sessions.)
-TEST_F(DQMatMulNBitsFusionTest, TagsGeneratedWeightWithStableContentIdentity) {
+// DISABLED_ to verify the Windows x64 ASan CI OOM is not caused by the new MatMulNBits tests.
+TEST_F(DQMatMulNBitsFusionTest, DISABLED_TagsGeneratedWeightWithStableContentIdentity) {
   constexpr int64_t M = 4, N = 8, K = 32, block_size = 16;
   const int64_t num_blocks = K / block_size;
 
@@ -470,7 +471,8 @@ static void RunSharedFusionSession(const std::string& model_bytes, PrepackedWeig
 // to different bytes, so it gets a different key and must NOT share. (A zero-point-only difference is
 // intentionally NOT used: on the CompFp32 path the zero points are not folded into the packed B, so two
 // such models pack identically and would correctly share a byte-identical buffer.)
-TEST_F(DQMatMulNBitsFusionTest, SharesFusedWeightAcrossSessionsViaTag) {
+// DISABLED_ to verify the Windows x64 ASan CI OOM is not caused by the new MatMulNBits tests.
+TEST_F(DQMatMulNBitsFusionTest, DISABLED_SharesFusedWeightAcrossSessionsViaTag) {
   constexpr int64_t M = 4, N = 8, K = 32, block_size = 16;
   const int64_t num_blocks = K / block_size;
 

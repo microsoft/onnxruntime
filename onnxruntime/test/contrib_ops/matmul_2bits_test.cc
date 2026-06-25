@@ -474,7 +474,8 @@ TEST(MatMulNBitsLutGemm, Float32_2Bits_Asymmetric_Batch32_256x256_Bias) {
 // dereferencing the null pointer when mlas.use_lut_gemm=1. This drives mlas.use_lut_gemm=1 together with
 // session.save_external_prepacked_constant_initializers=1 and a non-empty optimized_model_filepath, and
 // asserts that initialization (which performs the save) and a subsequent run both succeed.
-TEST(MatMulNBitsLutGemm, Float32_2Bits_PrepackSaveDoesNotCrash) {
+// DISABLED_ to verify the Windows x64 ASan CI OOM is not caused by the new MatMulNBits tests.
+TEST(MatMulNBitsLutGemm, DISABLED_Float32_2Bits_PrepackSaveDoesNotCrash) {
   constexpr int64_t M = 1, N = 128, K = 128, block_size = 32;
   if (!MlasIsLutGemmAvailable(static_cast<size_t>(N), static_cast<size_t>(K), 2, static_cast<size_t>(block_size))) {
     GTEST_SKIP() << "LUT GEMM not available on this platform";

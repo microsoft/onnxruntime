@@ -638,7 +638,8 @@ TestOptions MakeSharingTestOptions(int64_t N, int64_t K, int64_t block_size, int
 
 // Legacy sharing path: the weight B is registered as a shared initializer via
 // SessionOptions::AddInitializer. Covers float and float16 activations, symmetric/asymmetric, +/- bias.
-TEST(MatMulNBits, SharedPrepackedWeights_AddInitializer) {
+// DISABLED_ to verify the Windows x64 ASan CI OOM is not caused by the new MatMulNBits tests.
+TEST(MatMulNBits, DISABLED_SharedPrepackedWeights_AddInitializer) {
   for (bool has_zero_point : {false, true}) {
     for (bool has_bias : {false, true}) {
       RunTest<float>(MakeSharingTestOptions(32, 256, /*block_size*/ 32, /*accuracy_level*/ 0, has_zero_point,
@@ -651,7 +652,8 @@ TEST(MatMulNBits, SharedPrepackedWeights_AddInitializer) {
 
 // Negative control: with the shared container present but neither opt-in mechanism enabled, no
 // pre-packed weights are shared across sessions.
-TEST(MatMulNBits, SharedPrepackedWeights_NotSharedWithoutOptIn) {
+// DISABLED_ to verify the Windows x64 ASan CI OOM is not caused by the new MatMulNBits tests.
+TEST(MatMulNBits, DISABLED_SharedPrepackedWeights_NotSharedWithoutOptIn) {
   RunTest<float>(MakeSharingTestOptions(32, 256, /*block_size*/ 32, /*accuracy_level*/ 0, /*has_zero_point*/ true,
                                         /*has_bias*/ true, PrepackSharingMode::kNoSharing));
   RunTest<MLFloat16>(MakeSharingTestOptions(32, 256, /*block_size*/ 32, /*accuracy_level*/ 0,

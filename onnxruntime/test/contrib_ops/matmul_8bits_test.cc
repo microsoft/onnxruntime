@@ -712,7 +712,8 @@ TestOptions8Bits MakeSharingTestOptions8Bits(int64_t block_size, bool has_zero_p
 
 // Legacy sharing path for 8-bit weights: B is registered as a shared initializer via
 // SessionOptions::AddInitializer.
-TEST(MatMulNBits, SharedPrepackedWeights_8b_AddInitializer) {
+// DISABLED_ to verify the Windows x64 ASan CI OOM is not caused by the new MatMulNBits tests.
+TEST(MatMulNBits, DISABLED_SharedPrepackedWeights_8b_AddInitializer) {
   for (bool has_zero_point : {false, true}) {
     for (bool has_bias : {false, true}) {
       RunTest8Bits<float>(MakeSharingTestOptions8Bits(32, has_zero_point, has_bias,
@@ -725,7 +726,8 @@ TEST(MatMulNBits, SharedPrepackedWeights_8b_AddInitializer) {
 
 // Negative control for 8-bit weights: with the shared container present but neither opt-in mechanism
 // enabled, no pre-packed weights are shared across sessions.
-TEST(MatMulNBits, SharedPrepackedWeights_8b_NotSharedWithoutOptIn) {
+// DISABLED_ to verify the Windows x64 ASan CI OOM is not caused by the new MatMulNBits tests.
+TEST(MatMulNBits, DISABLED_SharedPrepackedWeights_8b_NotSharedWithoutOptIn) {
   RunTest8Bits<float>(MakeSharingTestOptions8Bits(32, /*has_zero_point*/ true, /*has_bias*/ true,
                                                   PrepackSharingMode::kNoSharing));
   RunTest8Bits<MLFloat16>(MakeSharingTestOptions8Bits(32, /*has_zero_point*/ false, /*has_bias*/ false,
