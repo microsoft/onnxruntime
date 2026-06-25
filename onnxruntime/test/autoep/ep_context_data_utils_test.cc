@@ -161,6 +161,18 @@ TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathRejectsUnsafeNames) {
   ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, "../escape.ctx",
                                                                        empty_model_path_graph.ToExternal(), data_path),
                        ORT_INVALID_ARGUMENT, "requires a model path");
+
+  // A model-derived name that designates a directory ("." or a trailing separator with an empty filename) is
+  // rejected up front, rather than resolving to a directory and failing later with a confusing I/O error.
+  ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, ".", empty_model_path_graph.ToExternal(),
+                                                                       data_path),
+                       ORT_INVALID_ARGUMENT, "must refer to a file");
+  ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(
+                           api, nullptr, ".", "unused.ctx", nullptr, nullptr, 0),
+                       ORT_INVALID_ARGUMENT, "must refer to a file");
+  ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(
+                           api, nullptr, "sub/", "unused.ctx", nullptr, nullptr, 0),
+                       ORT_INVALID_ARGUMENT, "must refer to a file");
 }
 
 TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathRejectsSymlinkEscape) {

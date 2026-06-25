@@ -162,6 +162,15 @@ inline bool HasAbsoluteOrRootedPath(const std::filesystem::path& path) {
   return path.is_absolute() || path.has_root_name() || path.has_root_directory();
 }
 
+// Returns true if the final component of `path` is empty (e.g., a trailing separator like "sub/") or is the
+// current-directory entry ".", i.e. the name designates a directory rather than a file (".." is handled separately by
+// ContainsPathTraversal()). Such a name resolves to a directory and would only surface later as a confusing file I/O
+// failure, so model-derived names like these are rejected up front.
+inline bool IsDirectoryOrEmptyName(const std::filesystem::path& path) {
+  const std::filesystem::path leaf = path.filename();
+  return leaf.empty() || leaf == std::filesystem::path{"."};
+}
+
 // Returns true if `candidate_full` (a base-relative name already combined with `base`) resolves to a location inside
 // `base`. Both are normalized with std::filesystem::weakly_canonical, which resolves "." / ".." and any symlinks in
 // the existing portion of the path, so a name that escapes `base` directly or through a symlink is rejected. On
@@ -209,6 +218,10 @@ inline OrtStatus* ValidateEpContextDataName(const OrtApi& api, const char* file_
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not contain path traversal");
   }
 
+  if (IsDirectoryOrEmptyName(candidate_path)) {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must refer to a file, not a directory");
+  }
+
   data_name = candidate_path;
   return nullptr;
 }
@@ -251,6 +264,10 @@ inline OrtStatus* ResolveEpContextDataPath(const OrtApi& api, const char* file_n
   // Untrusted (model-derived) name: must be relative and must resolve within the model directory.
   if (HasAbsoluteOrRootedPath(candidate_path)) {
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
+  }
+
+  if (IsDirectoryOrEmptyName(candidate_path)) {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must refer to a file, not a directory");
   }
 
   const ORTCHAR_T* model_path = nullptr;
