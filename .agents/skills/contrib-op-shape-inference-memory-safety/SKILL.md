@@ -230,7 +230,7 @@ When reviewing or hardening any operator implementation or its shape inference:
 - **PR #28176** - "Fix ... in EmbedLayerNormalizationShapeInference": the precedent that fixed
   the identical `> 1` → `> 2` primitive in one site; the sibling attention sites were missed,
   motivating the sweep in §3.
-- **PR #29243** - this fix: guards corrected in `DecoderAttention` / `MultiHeadAttention` /
+- **PR #29268** - this fix: guards corrected in `DecoderAttention` / `MultiHeadAttention` /
   `DecoderMaskedMultiHeadAttention` shape inference, plus the `getOutputType` bounds check and
   non-vacuous regression tests.
 - Sibling skill: **`ort-test`** (test executables, `--gtest_filter`, contrib-op test layout);
