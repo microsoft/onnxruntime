@@ -429,13 +429,19 @@ class GQAAttentionBase {
           for (size_t seq = 0; seq < static_cast<size_t>(sequence_length); seq++) {
             size_t seq_causal_length = causal_past_seqlen + seq + 1;
 
+            // Cap effective causal length at total_seqlen so the softmax window stays within
+            // the region filled by the QK GEMM. For right-padded batched prompts, padding
+            // positions have seq_causal_length > total_seqlen; without this cap the softmax
+            // would read uninitialized memory and produce NaN.
+            const size_t effective_causal_length = std::min(seq_causal_length, total_seqlen);
+
             const bool apply_local = local_window_size_ >= 0 &&
-                                     seq_causal_length > static_cast<size_t>(local_window_size_);
-            const size_t start_off = apply_local ? seq_causal_length - local_window_size_ : 0;
-            const size_t win_size = apply_local ? local_window_size_ : seq_causal_length;
+                                     effective_causal_length > static_cast<size_t>(local_window_size_);
+            const size_t start_off = apply_local ? effective_causal_length - local_window_size_ : 0;
+            const size_t win_size = apply_local ? local_window_size_ : effective_causal_length;
 
             if (apply_local) {
-              for (size_t t = 0; t < seq_causal_length - local_window_size_; t++) {
+              for (size_t t = 0; t < effective_causal_length - local_window_size_; t++) {
                 sm[t] = 0.f;
               }
             }
@@ -448,7 +454,7 @@ class GQAAttentionBase {
               ApplyAttentionBias(sm + start_off, attn_bias + start_off, static_cast<int>(win_size));
             }
 
-            for (size_t t = seq_causal_length; t < total_seqlen; t++) {
+            for (size_t t = effective_causal_length; t < total_seqlen; t++) {
               sm[t] = 0.f;
             }
 
@@ -903,6 +909,290 @@ class GQAAttentionBase {
     return Status::OK();
   }
 
+  // Non-quantized flash attention path. Only supports T = float.
+  // Concatenates new K/V into the FP32 present cache, then runs the tiled
+  // online-softmax kernel MlasFlashAttentionGQA (QK^T + softmax + S*V fused).
+  Status ApplyAttentionFlash(
+      const float* Q,                // Q data [B, N, S, H] BNSH
+      const float* K,                // K data [B, N_kv, L, H] or nullptr for packed_qkv
+      const float* V,                // V data [B, N_kv, L, H] or nullptr for packed_qkv
+      const Tensor* attention_bias,  // additive bias [B|1, N|1, S, T] or nullptr
+      const Tensor* past_key,        // past K (float)
+      const Tensor* past_value,      // past V (float)
+      Tensor* output,                // output [B, S, N*H] float
+      Tensor* present_key,           // present K (float)
+      Tensor* present_value,         // present V (float)
+      const Tensor* seqlens_k,
+      GroupQueryAttentionParameters& parameters,
+      AllocatorPtr allocator,
+      OpKernelContext* context) const {
+    const bool is_prompt = parameters.is_first_prompt;
+    const int batch_size = parameters.batch_size;
+    const int sequence_length = parameters.sequence_length;
+    const int kv_sequence_length = parameters.kv_sequence_length;
+    const int head_size = parameters.head_size;
+    const int hidden_size = parameters.hidden_size;
+    const bool packed_qkv = parameters.is_packed_qkv;
+
+    auto* tp = context->GetOperatorThreadPool();
+
+    int seqlen_past_kv_cache = 0;
+    if (past_key != nullptr && past_value != nullptr) {
+      seqlen_past_kv_cache = static_cast<int>(past_key->Shape().GetDims()[2]);
+    }
+    int seqlen_present_kv_cache = present_key != nullptr
+                                      ? static_cast<int>(present_key->Shape().GetDims()[2])
+                                      : parameters.total_sequence_length;
+
+    if (kv_sequence_length == 0) {
+      ORT_ENFORCE(parameters.total_sequence_length <= seqlen_past_kv_cache,
+                  "total_seqlen (", parameters.total_sequence_length, ") exceeds past buffer size (",
+                  seqlen_past_kv_cache, ") in shared KV mode");
+    }
+
+    ORT_RETURN_IF(present_key == nullptr || present_value == nullptr,
+                  "present_key and present_value must be provided for flash attention");
+
+    const float* past_key_data = past_key != nullptr ? past_key->Data<float>() : nullptr;
+    float* present_key_data = present_key->MutableData<float>();
+    const float* past_value_data = past_value != nullptr ? past_value->Data<float>() : nullptr;
+    float* present_value_data = present_value->MutableData<float>();
+
+    bool past_present_share_buffer = (past_key_data == present_key_data) &&
+                                     (past_value_data == present_value_data);
+
+    const int32_t* seqlens_k_data = seqlens_k->Data<int32_t>();
+
+    // Attention bias setup
+    const float* attention_bias_data = nullptr;
+    int attention_bias_seqlen_stride = 0;
+    bool attention_bias_broadcast_batch = true;
+    bool attention_bias_broadcast_head = true;
+    if (attention_bias != nullptr) {
+      attention_bias_data = attention_bias->Data<float>();
+      auto bias_shape = attention_bias->Shape().GetDims();
+      attention_bias_seqlen_stride = static_cast<int>(bias_shape[3]);
+      attention_bias_broadcast_batch = (bias_shape[0] == 1);
+      attention_bias_broadcast_head = (bias_shape[1] == 1);
+    }
+
+    // K/V base pointers (FP32, new tokens)
+    const float* k_base = packed_qkv ? Q + num_heads_ * sequence_length * head_size : K;
+    const float* v_base = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
+
+    const ptrdiff_t packed_batch_stride =
+        packed_qkv ? SafeInt<ptrdiff_t>(num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size
+                   : SafeInt<ptrdiff_t>(0);
+    const size_t kv_input_chunk_length = SafeInt<size_t>(kv_sequence_length) * head_size;
+    const size_t past_buff_chunk_length = SafeInt<size_t>(seqlen_past_kv_cache) * head_size;
+    const size_t present_buff_chunk_length = SafeInt<size_t>(seqlen_present_kv_cache) * head_size;
+
+    // ---- Phase 1: Concat new K/V into present cache ----
+    // We must do this first so the flash attention kernel can read the full present cache.
+    if (present_key_data && !past_present_share_buffer) {
+      memset(present_key_data, 0,
+             SafeInt<size_t>(batch_size) * kv_num_heads_ * present_buff_chunk_length * sizeof(float));
+      memset(present_value_data, 0,
+             SafeInt<size_t>(batch_size) * kv_num_heads_ * present_buff_chunk_length * sizeof(float));
+    }
+
+    // Concat K and V caches (parallelize over batch * kv_num_heads)
+    {
+      const size_t concat_loop_len = batch_size * kv_num_heads_;
+      TensorOpCost concat_cost;
+      concat_cost.compute_cycles = static_cast<double>(kv_sequence_length * head_size);
+      concat_cost.bytes_loaded = static_cast<double>((past_buff_chunk_length + kv_input_chunk_length) * sizeof(float));
+      concat_cost.bytes_stored = static_cast<double>(present_buff_chunk_length * sizeof(float));
+
+      ThreadPool::TryParallelFor(tp, concat_loop_len, concat_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+        for (std::ptrdiff_t kv_idx = begin; kv_idx != end; ++kv_idx) {
+          const size_t batch_index = kv_idx / kv_num_heads_;
+          const size_t kv_head_index = kv_idx % kv_num_heads_;
+          const size_t total_seqlen = SafeInt<size_t>(seqlens_k_data[batch_index]) + 1;
+
+          size_t past_seqlen;
+          if (past_key == nullptr) {
+            past_seqlen = 0;
+          } else if (kv_sequence_length == 0) {
+            past_seqlen = total_seqlen;
+          } else if (is_prompt) {
+            past_seqlen = 0;
+          } else {
+            past_seqlen = total_seqlen - sequence_length;
+          }
+          const size_t past_chunk_length = past_seqlen * head_size;
+
+          // Concat K
+          const float* k_new;
+          if (packed_qkv) {
+            k_new = k_base + packed_batch_stride * batch_index +
+                    kv_input_chunk_length * kv_head_index;
+          } else {
+            k_new = k_base + kv_input_chunk_length * kv_idx;
+          }
+          ConcatStateChunkGQA(past_key_data, k_new, present_key_data,
+                              present_buff_chunk_length, past_buff_chunk_length,
+                              past_chunk_length, kv_input_chunk_length,
+                              past_present_share_buffer, kv_idx);
+
+          // Concat V
+          const float* v_new;
+          if (packed_qkv) {
+            v_new = v_base + packed_batch_stride * batch_index +
+                    kv_input_chunk_length * kv_head_index;
+          } else {
+            v_new = v_base + kv_input_chunk_length * kv_idx;
+          }
+          ConcatStateChunkGQA(past_value_data, v_new, present_value_data,
+                              present_buff_chunk_length, past_buff_chunk_length,
+                              past_chunk_length, kv_input_chunk_length,
+                              past_present_share_buffer, kv_idx);
+        }
+      });
+    }
+
+    // ---- Phase 2: Flash Attention with FP32 KV cache ----
+    // Compute L2-aware block sizes (same formula as MHA flash attention).
+    const auto& env = Env::Default();
+    int l2_cache_size = env.GetL2CacheSize();
+
+    int kv_block_size = l2_cache_size / (static_cast<int>(sizeof(float)) * 4 * (head_size + head_size));
+    kv_block_size = std::max(kv_block_size, 1);
+    int q_block_size = std::min(kv_block_size, 2 * head_size);
+
+    // The flash kernel uses a single (past_seqlen, total_seqlen) pair for all batch items.
+    // When batch items have different seqlens_k (ragged), fall back to per-batch invocation
+    // so each batch item gets its own correct causal offset.
+    int max_total_seqlen = 0;
+    int min_total_seqlen = std::numeric_limits<int>::max();
+    int common_past_seqlen = 0;
+    for (int b = 0; b < batch_size; ++b) {
+      int total_sl = seqlens_k_data[b] + 1;
+      max_total_seqlen = std::max(max_total_seqlen, total_sl);
+      min_total_seqlen = std::min(min_total_seqlen, total_sl);
+    }
+    const bool ragged_seqlens = (max_total_seqlen != min_total_seqlen);
+
+    if (ragged_seqlens) {
+      common_past_seqlen = -1;  // sentinel: per-batch
+    } else if (past_key == nullptr || is_prompt) {
+      common_past_seqlen = 0;
+    } else if (kv_sequence_length == 0) {
+      // Shared buffer mode: each batch item has its own past_seqlen.
+      common_past_seqlen = -1;  // sentinel: per-batch
+    } else {
+      common_past_seqlen = max_total_seqlen - sequence_length;
+    }
+
+    // Cap block sizes
+    kv_block_size = std::min(kv_block_size, max_total_seqlen);
+    q_block_size = std::min(q_block_size, sequence_length);
+
+    int thread_count = concurrency::ThreadPool::DegreeOfParallelism(tp);
+    thread_count = std::max(thread_count, 1);
+
+    // Per-thread scratch: l + m + scores[q_block_size * kv_block_size] + temp_output[q_block_size * head_size]
+    const size_t buffer_size_per_thread =
+        (SafeInt<size_t>(q_block_size) * 2 +              // l + m
+         SafeInt<size_t>(q_block_size) * kv_block_size +  // scores
+         SafeInt<size_t>(q_block_size) * head_size) *     // temp_output
+        sizeof(float);
+    size_t total_buffer_bytes = SafeInt<size_t>(buffer_size_per_thread) * thread_count;
+    auto flash_buffer_alloc = allocator->Alloc(total_buffer_bytes);
+    BufferUniquePtr flash_buffer(flash_buffer_alloc, BufferDeleter(allocator));
+
+    const float scale = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
+
+    // If all batch items share the same past_seqlen, use the unified flash kernel.
+    // Otherwise, fall back to per-batch invocation.
+    if (common_past_seqlen >= 0) {
+      MlasFlashAttentionGQAArgs args;
+      args.batch_size = batch_size;
+      args.num_heads = num_heads_;
+      args.kv_num_heads = kv_num_heads_;
+      args.sequence_length = sequence_length;
+      args.total_seqlen = max_total_seqlen;
+      args.head_size = head_size;
+      args.past_seqlen = common_past_seqlen;
+      args.local_window_size = local_window_size_;
+      args.seqlen_present_kv = seqlen_present_kv_cache;
+      args.q_block_size = q_block_size;
+      args.kv_block_size = kv_block_size;
+      args.scale = scale;
+      args.thread_count = thread_count;
+      args.buffer = reinterpret_cast<float*>(flash_buffer_alloc);
+      args.buffer_size_per_thread = buffer_size_per_thread;
+      args.query = Q;
+      args.q_batch_stride = packed_qkv
+                                ? static_cast<size_t>(packed_batch_stride)
+                                : static_cast<size_t>(SafeInt<size_t>(num_heads_) * sequence_length * head_size);
+      args.k_cache = present_key_data;
+      args.v_cache = present_value_data;
+      args.output = output->MutableData<float>();
+      args.attention_bias = attention_bias_data;
+      args.attention_bias_seqlen_stride = attention_bias_seqlen_stride;
+      args.attention_bias_broadcast_batch = attention_bias_broadcast_batch;
+      args.attention_bias_broadcast_head = attention_bias_broadcast_head;
+
+      MlasFlashAttentionGQA(&args, tp);
+    } else {
+      // Per-batch handling for variable past_seqlen (shared KV buffer mode or ragged seqlens)
+      for (int b = 0; b < batch_size; ++b) {
+        int total_sl = seqlens_k_data[b] + 1;
+        int batch_past_seqlen = (past_key == nullptr || is_prompt)
+                                    ? 0
+                                    : std::max(0, total_sl - sequence_length);
+
+        MlasFlashAttentionGQAArgs args;
+        args.batch_size = 1;
+        args.num_heads = num_heads_;
+        args.kv_num_heads = kv_num_heads_;
+        args.sequence_length = sequence_length;
+        args.total_seqlen = total_sl;
+        args.head_size = head_size;
+        args.past_seqlen = batch_past_seqlen;
+        args.local_window_size = local_window_size_;
+        args.seqlen_present_kv = seqlen_present_kv_cache;
+        args.q_block_size = q_block_size;
+        args.kv_block_size = std::min(kv_block_size, total_sl);
+        args.scale = scale;
+        args.thread_count = thread_count;
+        args.buffer = reinterpret_cast<float*>(flash_buffer_alloc);
+        args.buffer_size_per_thread = buffer_size_per_thread;
+
+        // Offset Q and output for this batch
+        const ptrdiff_t q_batch_stride_elems = packed_batch_stride > 0
+                                                   ? packed_batch_stride
+                                                   : static_cast<ptrdiff_t>(SafeInt<ptrdiff_t>(num_heads_) * sequence_length * head_size);
+        args.query = Q + static_cast<size_t>(b) * static_cast<size_t>(q_batch_stride_elems);
+        args.q_batch_stride = SafeInt<size_t>(num_heads_) * sequence_length * head_size;
+        args.k_cache = present_key_data +
+                       static_cast<size_t>(b) * kv_num_heads_ * present_buff_chunk_length;
+        args.v_cache = present_value_data +
+                       static_cast<size_t>(b) * kv_num_heads_ * present_buff_chunk_length;
+        args.output = output->MutableData<float>() +
+                      static_cast<size_t>(b) * sequence_length * hidden_size;
+
+        // Slice attention bias for this batch (the kernel sees batch_size=1, so batch_idx=0 inside).
+        // Bias shape is [batch|1, num_heads|1, S, T]; the batch stride uses the actual head
+        // extent (1 when the head dim is broadcast).
+        const float* batch_bias = attention_bias_data;
+        if (attention_bias_data != nullptr && !attention_bias_broadcast_batch) {
+          const size_t bias_head_extent = attention_bias_broadcast_head ? 1 : static_cast<size_t>(num_heads_);
+          batch_bias += static_cast<size_t>(b) * bias_head_extent * sequence_length * attention_bias_seqlen_stride;
+        }
+        args.attention_bias = batch_bias;
+        args.attention_bias_seqlen_stride = attention_bias_seqlen_stride;
+        args.attention_bias_broadcast_batch = true;  // batch offset handled above
+        args.attention_bias_broadcast_head = attention_bias_broadcast_head;
+
+        MlasFlashAttentionGQA(&args, tp);
+      }
+    }
+
+    return Status::OK();
+  }
+
  private:
   // Helper function to compute the attention probs. It does 2 things:
   //  attention_probs(B, N, S, T) = 1/sqrt(H) x Q(B, N, S, H) x K'(B, N, T, H -> B, N, H, T)
@@ -1084,15 +1374,21 @@ class GQAAttentionBase {
         for (size_t seq = 0; seq < sequence_length; seq++) {
           size_t seq_causal_length = causal_past_seqlen + seq + 1;
 
-          const bool should_apply_local_window = local_window_size_ >= 0 &&
-                                                 seq_causal_length > static_cast<size_t>(local_window_size_);
+          // For right-padded batched prompts, padding positions have seq_causal_length > total_seqlen.
+          // The GEMM only fills columns [0, total_seqlen); beyond that the buffer is uninitialized.
+          // Cap the effective causal length so the softmax window stays within the filled region,
+          // preventing NaN from uninitialized memory propagating into the output.
+          const size_t effective_causal_length = std::min(seq_causal_length, total_seqlen);
 
-          const size_t start_offset = should_apply_local_window ? seq_causal_length - local_window_size_ : 0;
-          const size_t window_size = should_apply_local_window ? local_window_size_ : seq_causal_length;
+          const bool should_apply_local_window = local_window_size_ >= 0 &&
+                                                 effective_causal_length > static_cast<size_t>(local_window_size_);
+
+          const size_t start_offset = should_apply_local_window ? effective_causal_length - local_window_size_ : 0;
+          const size_t window_size = should_apply_local_window ? local_window_size_ : effective_causal_length;
 
           // Mask everything before local window, if local window should be applied
           if (should_apply_local_window) {
-            for (size_t total_seq_id = 0; total_seq_id < seq_causal_length - local_window_size_; total_seq_id++) {
+            for (size_t total_seq_id = 0; total_seq_id < effective_causal_length - local_window_size_; total_seq_id++) {
               if constexpr (std::is_same<U, float>::value) {
                 output_softmax[total_seq_id] = 0.f;
               } else {
@@ -1120,8 +1416,8 @@ class GQAAttentionBase {
             }
           }
 
-          // set causal [seq_causal_length, total_seqlen) to 0.f
-          for (size_t total_seq_id = seq_causal_length; total_seq_id < total_seqlen; total_seq_id++) {
+          // set causal [effective_causal_length, total_seqlen) to 0.f
+          for (size_t total_seq_id = effective_causal_length; total_seq_id < total_seqlen; total_seq_id++) {
             if constexpr (std::is_same<U, float>::value) {
               output_softmax[total_seq_id] = 0.f;
             } else {

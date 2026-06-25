@@ -34,6 +34,7 @@ Session::Run()
 **Key design choices:**
 
 - Each thread gets its own dedicated graph `cudaStream_t`, `CudaGraphManager`, and capture bookkeeping for the EP instance. `CudaSyncStream::InitHandlesWithExternalStream()` wraps the thread's graph stream so graph capture sees the same stream as kernels. The manager stores captured `cudaGraphExec_t` executables keyed by annotation ID, allowing multiple graphs (e.g., different input shapes) for that thread.
+- When a `user_compute_stream` is supplied together with graph capture, the per-thread context adopts that user-owned stream as its graph stream instead of creating one, so capture/replay run on the same stream the caller drives. The context records that it does not own the stream and never destroys it. See [User Compute Stream + CUDA Graph](#user-compute-stream--cuda-graph).
 - Warm-up runs (default: 2) allow memory allocations to stabilize before capture begins.
 - Graph annotation IDs are parsed from `OrtRunOptions` key `"gpu_graph_id"`. ID `-1` skips capture; `0` is the default.
 
@@ -53,7 +54,30 @@ Session::Run()
 
 Legacy aliases `ep.cuda.enable_cuda_graph` and `enable_cuda_graph` are also supported. For the warm-up count, `ep.cuda.min_num_runs_before_cuda_graph_capture` is also accepted.
 
+The provider option `user_compute_stream` (a `cudaStream_t` passed as a pointer) may be combined with `enable_cuda_graph`. See [User Compute Stream + CUDA Graph](#user-compute-stream--cuda-graph).
+
 ---
+
+## User Compute Stream + CUDA Graph
+
+A caller can supply its own CUDA stream through the `user_compute_stream` provider option and enable CUDA graph capture at the same time. This combination was previously rejected with `ORT_INVALID_ARGUMENT`; it is now supported and matches the bundled (non-plugin) CUDA EP.
+
+When both options are set:
+
+- `CudaEpFactory::CreateEpImpl` no longer rejects the pair. Setting `user_compute_stream` still forces unified-stream mode (matching the bundled EP).
+- `CudaEp::CreateSyncStreamForDeviceImpl` wraps the user stream via `InitHandlesWithUserStream()`, attaching full cuBLAS/cuDNN/cuBLASLt handles to it.
+- `CudaEp::GetPerThreadContext()` builds the thread's `PerThreadContext` around the user stream (`external_graph_stream`) instead of creating an EP-owned graph stream. Capture and replay therefore run on the same stream the kernels are issued to.
+- The context records `owns_graph_stream = false`, so it tears down captured graph execs on destruction but never calls `cudaStreamDestroy` on the user-owned stream. Stream lifetime stays with the caller.
+
+Because the user supplies one stream, this mode is inherently single-stream; the per-thread graph isolation still applies if the same session is driven from multiple threads, but each thread must drive its own captures on the stream it provides.
+
+### `user_compute_stream` is not limited to the CUDA graph case
+
+A natural question when reading `GetPerThreadContext()` is why `use_external_stream` is gated on `has_user_compute_stream && enable_cuda_graph` — does that restrict a user compute stream to graph-enabled runs? It does not.
+
+- A user compute stream is honored for kernels in **both** graph and non-graph runs. That happens in `CudaEp::CreateSyncStreamForDeviceImpl`, whose first branch wraps `config_.user_compute_stream` via `InitHandlesWithUserStream()` **independently of `enable_cuda_graph`**.
+- The `enable_cuda_graph` term in `use_external_stream` only governs the `PerThreadContext`'s *graph stream*. `PerThreadContext` is a graph-capture-only object: `GetPerThreadContext()` is reached exclusively from the graph path (the `enable_cuda_graph` branch of `CreateSyncStreamForDeviceImpl`, `OnRunStart`/`OnRunEnd`, `IsGraphCaptured`, `ReplayGraph`). With graph disabled, no `PerThreadContext` is ever constructed, so its stream-ownership flag is irrelevant.
+- The flag therefore answers a narrower question — *"should the per-thread capture/replay graph stream adopt (and not destroy) the user's stream?"* — which is only meaningful when a graph is actually being captured.
 
 ## Implementation Summary
 
@@ -61,17 +85,19 @@ Legacy aliases `ep.cuda.enable_cuda_graph` and `enable_cuda_graph` are also supp
 
 | File | Change |
 |------|--------|
-| `onnxruntime/core/providers/cuda/plugin/cuda_ep.cc` | Implemented graph capture callbacks (`OnRunStartImpl`, `OnRunEndImpl`, `IsGraphCaptureEnabledImpl`, `IsGraphCapturedImpl`, `ReplayGraphImpl`, `IsConcurrentRunSupportedImpl`), updated `CreateSyncStreamForDeviceImpl` to use the current thread's graph stream when graph capture is enabled, added per-thread graph state, preserved `sync_stream` synchronization, and added a `cudaMemGetInfo` defensive allocation check |
+| `onnxruntime/core/providers/cuda/plugin/cuda_ep.cc` | Implemented graph capture callbacks (`OnRunStartImpl`, `OnRunEndImpl`, `IsGraphCaptureEnabledImpl`, `IsGraphCapturedImpl`, `ReplayGraphImpl`, `IsConcurrentRunSupportedImpl`), updated `CreateSyncStreamForDeviceImpl` to wrap a `user_compute_stream` or otherwise use the current thread's graph stream when graph capture is enabled, made `PerThreadContext` adopt the user stream as its (non-owned) graph stream when `user_compute_stream` + `enable_cuda_graph` are combined, added per-thread graph state, preserved `sync_stream` synchronization, and added a `cudaMemGetInfo` defensive allocation check |
 | `onnxruntime/core/providers/cuda/plugin/cuda_ep.h` | Added `enable_cuda_graph` and `min_num_runs_before_cuda_graph_capture` config fields, graph callback declarations, and a per-thread graph context cache |
 | `onnxruntime/core/providers/cuda/plugin/cuda_graph_plugin.cc` | **NEW** — Complete `CudaGraphSet` and `CudaGraphManager` implementation |
 | `onnxruntime/core/providers/cuda/plugin/cuda_graph_plugin.h` | **NEW** — Header for graph manager types and constants |
 | `onnxruntime/core/providers/cuda/plugin/cuda_stream_plugin.cc` | Added `InitHandlesWithExternalStream()`, updated destructor for `owns_stream_` |
 | `onnxruntime/core/providers/cuda/plugin/cuda_stream_plugin.h` | Added `InitHandlesWithExternalStream()` declaration, `owns_stream_` member |
-| `onnxruntime/core/providers/cuda/plugin/cuda_ep_factory.cc` | Added config parsing for `enable_cuda_graph` and `min_num_runs_before_cuda_graph_capture` |
+| `onnxruntime/core/providers/cuda/plugin/cuda_ep_factory.cc` | Added config parsing for `enable_cuda_graph` and `min_num_runs_before_cuda_graph_capture`; removed the validation that rejected `user_compute_stream` + `enable_cuda_graph` (the combination is now supported) |
+| `onnxruntime/core/providers/cuda/plugin/cuda_kernel_adapter.h` | `CudaKernel::GetScratchBuffer` now allocates through `Info().GetAllocator()` (the EP arena) with a null stream, instead of issuing a raw `cudaMallocAsync`/`cudaMalloc` per call, so scratch allocations are served from already-reserved arena chunks during capture |
+| `include/onnxruntime/ep/adapter/allocator.h` | Implemented `IAllocatorWrappingOrtAllocator::IsStreamAware`/`AllocOnStream` (previously `ORT_NOT_IMPLEMENTED`) so plugin adapters can forward stream-aware allocations when a framework stream is available; `GetScratchBuffer` still passes a null stream until plugin kernels can receive a stable framework `OrtSyncStream*` |
 | `include/onnxruntime/core/session/onnxruntime_ep_c_api.h` | Added `IsGraphCaptureEnabled`, `IsGraphCaptured`, `ReplayGraph`, `GetGraphCaptureNodeAssignmentPolicy` callbacks and `OrtGraphCaptureNodeAssignmentPolicy` enum to `OrtEp` |
 | `include/onnxruntime/core/framework/execution_provider.h` | Added `GetGraphCaptureNodeAssignmentPolicy()` virtual to `IExecutionProvider` |
 | `onnxruntime/core/session/inference_session.cc` | Replaced hard-coded EP name list with policy-driven graph capture validation loop; added bounded recursion via `RunImpl()` with `kMaxGraphCaptureWarmupRuns`; graph-enabled runs now reacquire stream collections through ORT core's thread-affine pool across internal warm-up/capture recursion |
-| `onnxruntime/core/framework/session_state.cc` | Sharded the `DeviceStreamCollection` cache by caller thread using per-thread lifetime tokens, so stream wrappers are only reused on the creating thread |
+| `onnxruntime/core/framework/session_state.cc` | Sharded the `DeviceStreamCollection` cache by caller thread using per-thread lifetime tokens, so stream wrappers are only reused on the creating thread; added a fallback in the PrePack loop to resolve the kernel's default-memory allocator (`Info().GetAllocator()`) when the device-keyed initializer-allocator lookup returns null for a separately-registered plugin EP |
 | `onnxruntime/core/framework/session_state.h` | Added thread-affine stream pool bucket state for `DeviceStreamCollection` reuse |
 | `onnxruntime/core/session/inference_session.h` | Added `RunImpl()` private method and `kMaxGraphCaptureWarmupRuns` constant |
 | `onnxruntime/core/session/plugin_ep/ep_plugin_provider_interfaces.cc` | Added version-gated `IsGraphCaptureEnabled`, `IsGraphCaptured`, `ReplayGraph`, `GetGraphCaptureNodeAssignmentPolicy` bridge implementations |
@@ -83,7 +109,8 @@ Legacy aliases `ep.cuda.enable_cuda_graph` and `enable_cuda_graph` are also supp
 - **Thread safety**: Mutable graph state and graph streams are stored per thread. ORT core's `DeviceStreamCollection` cache is also thread-affine, so graph-enabled runs can recycle stream wrappers without exposing them to a different thread.
 - **Scope**: Capture/replay pipeline plus allocator compatibility. Arena integration is complete — see the [Arena Allocator Integration](#arena-allocator-integration) section.
 - **Callback assignment**: `IsGraphCaptureEnabled` and `GetGraphCaptureNodeAssignmentPolicy` are always set. `OnRunStart`, `OnRunEnd` are conditional on `enable_cuda_graph`. `IsGraphCaptured` and `ReplayGraph` are always set (return false/error when disabled).
-- **Stream management**: `CreateSyncStreamForDevice` remains unconditional — it branches internally to use the current thread's graph stream (via `InitHandlesWithExternalStream`) when graph capture is enabled, or creates an owned stream when disabled.
+- **Stream management**: `CreateSyncStreamForDevice` remains unconditional — it branches internally: it wraps a user-provided `user_compute_stream` (via `InitHandlesWithUserStream`) when one is set, otherwise uses the current thread's graph stream (via `InitHandlesWithExternalStream`) when graph capture is enabled, or creates an owned stream when both are disabled.
+- **User compute stream + CUDA graph**: These options can now be combined (previously rejected at factory creation). When both are set, `CudaEp::GetPerThreadContext()` builds the `PerThreadContext` around the user's stream (`external_graph_stream`) so capture and replay run on the same stream the kernels use, and the context never destroys the user-owned stream (`owns_graph_stream = false`).
 - **Run-end synchronization**: `OnRunEndImpl` honors the `sync_stream` flag without double-synchronizing replayed graphs, preserving the normal EP completion contract.
 - **Stream collection reuse**: ORT core now recycles `DeviceStreamCollection` objects into a thread-affine session pool keyed by a per-thread lifetime token. Warm-up, capture, replay, and later user-visible `Run()` calls on the same thread can reuse the same stream wrappers, while dead-thread buckets are pruned before they can be reused by another thread.
 - **Per-thread context lifecycle**: Thread-local caches hold the strong `PerThreadContext` references, so CUDA streams and captured graph executables are released when the owning thread exits. The EP tracks weak references to those cache maps to remove stale entries during EP destruction without keeping the contexts alive.
@@ -101,6 +128,7 @@ CUDA graph capture requires that all memory allocations happen during warmup, no
 **Arena integration details (now implemented):**
 
 - Default CUDA device allocations come from the plugin-hosted arena (`CudaArenaAllocator`). During warmup runs, the arena grows to accommodate all needed chunks; during capture and replay, the same chunks are reused without `cudaMalloc` calls.
+- Kernel scratch/workspace allocations (`CudaKernel::GetScratchBuffer`) also flow through the EP arena via `Info().GetAllocator()`, rather than issuing a fresh `cudaMallocAsync`/`cudaMalloc` per call. After warmup the arena has reached its steady-state working set, so the capture run serves every scratch request from an already-reserved chunk and the device free-memory footprint stays stable across the capture window. This is what makes the `cudaMemGetInfo` allocation-during-capture detector pass for graphs that use scratch buffers, and it matches the bundled CUDA EP (which also obtains scratch from `Info().GetAllocator()`). `GetScratchBuffer` passes a **null stream** to the arena. This is *not* a synchronization bug: the `stream` argument is only bookkeeping metadata the stream-aware arena uses to decide when a freed chunk may be reused on a *different* stream without a sync - it does not change where the kernel runs (the buffer is still consumed on the real compute stream). In a serialized run (and within one graph-capture run), alloc/free/reuse are implicitly ordered on that stream, so a null-tagged ("freely reusable") chunk is correct and safe. It is also currently the only safe option, because a plugin kernel only has the raw `cudaStream_t` (`KernelContext::GetGPUComputeStream`), not the framework `OrtSyncStream*` the stream-aware arena persists per chunk and later dereferences through the EP stream API; note that the ORT-core `OrtSyncStream` (`struct OrtSyncStream : public onnxruntime::Stream`) is a different object from the plugin's `CudaSyncStream` (an `OrtSyncStreamImpl`). Synthesizing a temporary `Stream*` over the raw handle would dangle after `GetScratchBuffer` returns and be type-confused, so scratch chunks are tracked with a null stream (freely reusable, like a plain BFC arena). Capture stability comes from chunk reuse, not stream tagging. Properly stream-tagging scratch chunks (required before this path can support concurrent multi-stream runs) is **future work** that requires new C-API surface to expose the framework `OrtSyncStream*` to plugin kernels — see [arena_allocator_migration_design.md](arena_allocator_migration_design.md) ("Scratch buffer stream tagging — limitation and future work").
 - When `arena.use_cuda_mempool=1` is configured, CUDA device allocations come from `CudaMempoolOrtAllocator`, which wraps `cudaMallocFromPoolAsync`/`cudaFreeAsync`. These async allocation/free operations are CUDA-graph-safe since CUDA 11.4+ and become part of the captured graph topology.
 - Pinned allocations are also arena-backed, but remain non-stream-aware.
 - The graph stream created by `CudaEp::PerThreadContext` flows through `CudaSyncStream::InitHandlesWithExternalStream()` so stream-aware arena allocation uses the same `cudaStream_t` during warm-up, capture, and replay.
@@ -109,14 +137,12 @@ CUDA graph capture requires that all memory allocations happen during warmup, no
 
 ### Concurrent Run Support
 
-Concurrent `Session::Run()` is supported with CUDA graph enabled:
+Concurrent `Session::Run()` is intentionally **not** advertised by the CUDA plugin EP while migrated kernels route scratch/workspace allocations through the EP arena with a null stream tag.
 
-- `CudaEp::PerThreadContext` owns the graph stream, graph manager, warm-up run counts, and memory watermark for the current thread.
-- The current thread's cache owns the `PerThreadContext`; new threads get independent contexts, and exited threads release their contexts automatically.
-- `CreateSyncStreamForDeviceImpl()` wraps the current thread's graph stream, so warm-up, capture, and replay all use the same stream for that thread.
-- `CudaGraphManager::CaptureBegin()` uses `cudaStreamCaptureModeThreadLocal`, allowing overlapping capture scopes on different threads.
-- ORT core recycles graph-enabled `DeviceStreamCollection` objects into a thread-affine session pool, so internal warm-up/capture recursion and later top-level `Run()` calls on the same thread reuse the same stream wrappers without cross-thread leakage.
-- `IsGraphCaptured()` and `ReplayGraph()` resolve the current thread's graph context. If a new thread runs a graph-enabled session for the first time, that thread performs its own warm-up and capture before replaying.
+- `CudaEp::PerThreadContext` still owns graph stream, graph manager, warm-up run counts, and memory watermark state per thread. This keeps graph bookkeeping thread-local and avoids sharing captured graph executables across threads.
+- However, plugin kernels currently receive only the raw `cudaStream_t` (`KernelContext::GetGPUComputeStream`), not the framework `OrtSyncStream*` that the stream-aware arena stores in each chunk and later uses for safe cross-stream reuse checks.
+- Because `CudaKernel::GetScratchBuffer` cannot safely provide that framework stream, it passes a null stream tag. Null-tagged scratch chunks are freely reusable, which is safe for serialized runs and single-unified-stream graph capture but unsafe for overlapping runs on different CUDA streams.
+- Therefore `CudaEp::IsConcurrentRunSupportedImpl()` returns false. Re-enabling concurrent multi-stream runs is future work and requires new C-API surface to expose a stable framework stream (or equivalent sync id) to plugin kernels so scratch chunks can be properly stream-tagged.
 
 ## Verification
 
@@ -128,7 +154,9 @@ Concurrent `Session::Run()` is supported with CUDA graph enabled:
    - `test_cuda_graph_with_mempool` — graph capture with `arena.use_cuda_mempool=1`
    - `test_cuda_graph_annotation_id` — multiple graphs via `gpu_graph_id` run config
    - `test_cuda_graph_add_model` — graph capture with Add op (arena-backed)
+4. `onnxruntime/test/providers/cuda/plugin/cuda_plugin_user_stream_graph_test.cc` is a C++ test (gated by `ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP`) covering `user_compute_stream` combined with `enable_cuda_graph`: it verifies session creation succeeds with both options set (regression for the removed validation), capture + replay on the user stream produce correct results, and replay after an in-place input update on the user stream is correct.
 
 ## Future Work
 
 1. **Profiling integration**: CUDA graph replay currently bypasses the CUDA plugin EP profiler path because the CUDA plugin EP does not yet implement `OrtEp::CreateProfiler`. Wiring graph replay into that path is future work.
+2. **Stream-tagged scratch allocations**: `CudaKernel::GetScratchBuffer` passes a null stream to the EP arena because plugin kernels cannot currently obtain the framework `OrtSyncStream*` the stream-aware arena needs (they only have the raw `cudaStream_t`). This is correct and safe for serialized runs and within one graph-capture run, but it is why the EP does not advertise concurrent `Session::Run()` support. Supporting concurrent multi-stream runs that share one arena would require new C-API surface to expose the framework `OrtSyncStream*` (or its sync-id) to plugin kernels so scratch chunks can be properly stream-tagged. See [arena_allocator_migration_design.md](arena_allocator_migration_design.md) ("Scratch buffer stream tagging — limitation and future work").
