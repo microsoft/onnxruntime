@@ -97,13 +97,22 @@ Status EmbedLayerNorm<T>::ComputeInternal(OpKernelContext* context) const {
       segment_embedding_length,
       error_flag.get()));
 
-  // Surface any out-of-range id as a clean error instead of leaving an invalid output.
-  auto host_error_flag = AllocateBufferOnCPUPinned<int>(1);
-  CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_error_flag.get(), error_flag.get(), sizeof(int),
-                                       cudaMemcpyDeviceToHost, Stream(context)));
-  CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(Stream(context)));
-  ORT_RETURN_IF(*host_error_flag.get() != 0,
-                "input id is out of range of the corresponding embedding table.");
+  // The kernel always validates ids device-side and skips the embedding reads for any
+  // out-of-range id, so input safety does not depend on the readback below; the readback only
+  // upgrades a skipped (silently zeroed) row into a clean error status. cudaStreamSynchronize and
+  // device-to-host copies are not permitted on a stream that is capturing a CUDA graph, so skip the
+  // status readback while the stream is capturing. Ids are still kept in range device-side, and
+  // error surfacing resumes on normal (non-capturing) runs.
+  cudaStreamCaptureStatus capture_status = cudaStreamCaptureStatusNone;
+  CUDA_RETURN_IF_ERROR(cudaStreamIsCapturing(Stream(context), &capture_status));
+  if (capture_status == cudaStreamCaptureStatusNone) {
+    auto host_error_flag = AllocateBufferOnCPUPinned<int>(1);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(host_error_flag.get(), error_flag.get(), sizeof(int),
+                                         cudaMemcpyDeviceToHost, Stream(context)));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(Stream(context)));
+    ORT_RETURN_IF(*host_error_flag.get() != 0,
+                  "input id is out of range of the corresponding embedding table.");
+  }
 
   return Status::OK();
 }
