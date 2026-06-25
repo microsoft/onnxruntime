@@ -510,6 +510,10 @@ inline DefaultCudaHandles& GetDefaultCudaHandlesForDevice(int device_id) {
   // Fallback handles are only used for code paths that need cuBLAS/cuDNN
   // without an active CudaSyncStream. Keep them thread-local so they are not
   // shared across callers that may use the libraries concurrently.
+  //
+  // Only cuBLAS/cuBLASLt are created here. The cuDNN fallback handle is created
+  // lazily by GetDefaultCudnnHandleForDevice() so that cuBLAS-only paths (and
+  // sessions with enable_cudnn=0) never trigger a cuDNN load.
   thread_local std::unordered_map<int, DefaultCudaHandles> handles_by_device;
   auto [it, inserted] = handles_by_device.try_emplace(device_id);
   if (inserted) {
@@ -523,20 +527,7 @@ inline DefaultCudaHandles& GetDefaultCudaHandlesForDevice(int device_id) {
       handles_by_device.erase(it);
       ORT_THROW("Failed to create default cuBLAS handle for CUDA plugin device ", device_id);
     }
-    if (onnxruntime::cuda::CudnnLibrary::Get().Available()) {
-      if (cudnnCreate(&it->second.cudnn) != CUDNN_STATUS_SUCCESS) {
-        cublasDestroy(it->second.cublas);
-        it->second.cublas = nullptr;
-        if (get_device_result == cudaSuccess) {
-          cudaSetDevice(prev_device);
-        }
-        handles_by_device.erase(it);
-        ORT_THROW("Failed to create default cuDNN handle for CUDA plugin device ", device_id);
-      }
-    }
     if (cublasLtCreate(&it->second.cublas_lt) != CUBLAS_STATUS_SUCCESS) {
-      cudnnDestroy(it->second.cudnn);
-      it->second.cudnn = nullptr;
       cublasDestroy(it->second.cublas);
       it->second.cublas = nullptr;
       if (get_device_result == cudaSuccess) {
@@ -551,6 +542,31 @@ inline DefaultCudaHandles& GetDefaultCudaHandlesForDevice(int device_id) {
   }
 
   return it->second;
+}
+
+// Lazily creates the thread-local fallback cuDNN handle for the device. Callers
+// must check enable_cudnn and CudnnLibrary::Available() before invoking this so
+// that cuBLAS-only paths never trigger a cuDNN load.
+inline cudnnHandle_t GetDefaultCudnnHandleForDevice(int device_id) {
+  DefaultCudaHandles& handles = GetDefaultCudaHandlesForDevice(device_id);
+  if (handles.cudnn != nullptr) {
+    return handles.cudnn;
+  }
+
+  int prev_device = -1;
+  const cudaError_t get_device_result = cudaGetDevice(&prev_device);
+  PL_CUDA_CALL_THROW(cudaSetDevice(device_id));
+  cudnnHandle_t cudnn = nullptr;
+  const cudnnStatus_t status = cudnnCreate(&cudnn);
+  if (get_device_result == cudaSuccess) {
+    cudaSetDevice(prev_device);
+  }
+  if (status != CUDNN_STATUS_SUCCESS) {
+    ORT_THROW("Failed to create default cuDNN handle for CUDA plugin device ", device_id);
+  }
+
+  handles.cudnn = cudnn;
+  return cudnn;
 }
 
 inline const cudaDeviceProp& GetDevicePropForDevice(int device_id) {
@@ -904,7 +920,7 @@ class CudaKernel : public OpKernel {
     if (!runtime_config_->enable_cudnn || !onnxruntime::cuda::CudnnLibrary::Get().Available()) {
       return nullptr;
     }
-    return detail::GetDefaultCudaHandlesForDevice(device_id_).cudnn;
+    return detail::GetDefaultCudnnHandleForDevice(device_id_);
   }
   inline cublasLtHandle_t DefaultCublasLtHandle() const { return detail::GetDefaultCudaHandlesForDevice(device_id_).cublas_lt; }
 

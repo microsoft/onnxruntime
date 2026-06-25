@@ -36,7 +36,12 @@ std::vector<std::string> GetCandidateLibraryNames() {
 
 void* LoadLibraryCandidate(const std::string& candidate, std::string& error) {
 #ifdef _WIN32
-  HMODULE handle = LoadLibraryA(candidate.c_str());
+  // Use LOAD_LIBRARY_SEARCH_DEFAULT_DIRS so cuDNN is resolved only from the
+  // application directory, %WINDIR%\System32, and directories added via
+  // AddDllDirectory/SetDefaultDllDirectories. This deliberately excludes the
+  // current working directory from the search order to avoid loading an
+  // attacker-controlled DLL from the process CWD.
+  HMODULE handle = LoadLibraryExA(candidate.c_str(), nullptr, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
   if (handle == nullptr) {
     error = "LoadLibrary failed for " + candidate + " with error " + std::to_string(GetLastError());
   }
