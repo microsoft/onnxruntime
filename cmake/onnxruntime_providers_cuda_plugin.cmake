@@ -177,6 +177,13 @@ if (MSVC)
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>"
     )
 
+    if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.3)
+        # CCCL cub/config.cuh has a #pragma warning(pop) without matching push.
+        target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4193>"
+        )
+    endif()
+
     target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
         "$<$<COMPILE_LANGUAGE:CXX>:/Zc:preprocessor>"
         # /permissive is required for CUTLASS cute headers (cute::stride.hpp, cute::Layout etc.)
@@ -220,6 +227,15 @@ if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
     if (MSVC)
         list(APPEND _cuda_plugin_shared_compile_options
                 "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4505>"
+        )
+    endif()
+endif()
+
+if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
+    if (MSVC)
+        # CCCL cub/config.cuh has a #pragma warning(pop) without matching push.
+        list(APPEND _cuda_plugin_shared_compile_options
+                "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4193>"
         )
     endif()
 endif()
