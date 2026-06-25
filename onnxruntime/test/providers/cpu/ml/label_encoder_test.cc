@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "core/framework/tensorprotoutils.h"
 #include "test/providers/provider_test_utils.h"
+#include <fstream>
 
 namespace onnxruntime {
 namespace test {
@@ -761,19 +762,44 @@ TEST(LabelEncoder, EmptyInputOpset4) {
 // In no-exceptions builds, ORT_ENFORCE calls abort() so these tests cannot run.
 #if !defined(ORT_NO_EXCEPTIONS)
 
-TEST(LabelEncoder, RejectsExternalDataInKeysTensorOpset4) {
-  OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
+// RAII helper that creates a dummy binary file on construction and removes it on destruction.
+struct ScopedExternalDataFile {
+  std::string path;
+  ScopedExternalDataFile(const std::string& filename, size_t num_bytes) : path(filename) {
+    std::ofstream ofs(path, std::ios::binary);
+    std::vector<char> data(num_bytes, 0);
+    ofs.write(data.data(), static_cast<std::streamsize>(num_bytes));
+  }
+  ~ScopedExternalDataFile() { std::remove(path.c_str()); }
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ScopedExternalDataFile);
+};
 
-  // Create keys_tensor with external data location
-  ONNX_NAMESPACE::TensorProto keys_proto;
-  keys_proto.set_name("keys_tensor");
-  keys_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-  keys_proto.add_dims(2);
-  keys_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
-  auto* entry = keys_proto.add_external_data();
-  entry->set_key("location");
-  entry->set_value("some_file.bin");
-  test.AddAttribute("keys_tensor", keys_proto);
+// Helper: create a TensorProto that references external data in the given file.
+static ONNX_NAMESPACE::TensorProto MakeExternalInt64TensorProto(const std::string& name,
+                                                                const std::string& filename,
+                                                                int64_t num_elements) {
+  ONNX_NAMESPACE::TensorProto proto;
+  proto.set_name(name);
+  proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  proto.add_dims(num_elements);
+  proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  auto* loc = proto.add_external_data();
+  loc->set_key("location");
+  loc->set_value(filename);
+  auto* offset = proto.add_external_data();
+  offset->set_key("offset");
+  offset->set_value("0");
+  auto* length = proto.add_external_data();
+  length->set_key("length");
+  length->set_value(std::to_string(num_elements * static_cast<int64_t>(sizeof(int64_t))));
+  return proto;
+}
+
+TEST(LabelEncoder, RejectsExternalDataInKeysTensorOpset4) {
+  ScopedExternalDataFile ext_file("label_encoder_test_ext_keys.bin", 16);  // 2 x int64
+
+  OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
+  test.AddAttribute("keys_tensor", MakeExternalInt64TensorProto("keys_tensor", ext_file.path, 2));
 
   // Normal values_tensor
   ONNX_NAMESPACE::TensorProto values_proto;
@@ -800,21 +826,14 @@ TEST(LabelEncoder, RejectsExternalDataInKeysTensorOpset4) {
 }
 
 TEST(LabelEncoder, RejectsExternalDataInDefaultTensorOpset4) {
+  ScopedExternalDataFile ext_file("label_encoder_test_ext_default.bin", 8);  // 1 x int64
+
   OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
 
   test.AddAttribute("keys_int64s", std::vector<int64_t>{1, 2});
   test.AddAttribute("values_int64s", std::vector<int64_t>{10, 20});
 
-  // default_tensor with external data location
-  ONNX_NAMESPACE::TensorProto default_proto;
-  default_proto.set_name("default_tensor");
-  default_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-  default_proto.add_dims(1);
-  default_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
-  auto* entry = default_proto.add_external_data();
-  entry->set_key("location");
-  entry->set_value("some_file.bin");
-  test.AddAttribute("default_tensor", default_proto);
+  test.AddAttribute("default_tensor", MakeExternalInt64TensorProto("default_tensor", ext_file.path, 1));
 
   test.AddInput<int64_t>("X", {1, 2}, {1, 3});
   test.AddOutput<int64_t>("Y", {1, 2}, {10, 0});
@@ -825,6 +844,8 @@ TEST(LabelEncoder, RejectsExternalDataInDefaultTensorOpset4) {
 }
 
 TEST(LabelEncoder, RejectsExternalDataInValuesTensorOpset4) {
+  ScopedExternalDataFile ext_file("label_encoder_test_ext_values.bin", 16);  // 2 x int64
+
   OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
 
   // Normal keys_tensor
@@ -836,16 +857,7 @@ TEST(LabelEncoder, RejectsExternalDataInValuesTensorOpset4) {
   keys_proto.add_int64_data(2);
   test.AddAttribute("keys_tensor", keys_proto);
 
-  // values_tensor with external data location
-  ONNX_NAMESPACE::TensorProto values_proto;
-  values_proto.set_name("values_tensor");
-  values_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-  values_proto.add_dims(2);
-  values_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
-  auto* entry = values_proto.add_external_data();
-  entry->set_key("location");
-  entry->set_value("some_file.bin");
-  test.AddAttribute("values_tensor", values_proto);
+  test.AddAttribute("values_tensor", MakeExternalInt64TensorProto("values_tensor", ext_file.path, 2));
 
   ONNX_NAMESPACE::TensorProto default_proto;
   default_proto.set_name("default_tensor");
@@ -892,8 +904,8 @@ TEST(LabelEncoder, DuplicateKeysFirstWinsOpset4) {
   test.Run();
 }
 
-// Scalar (zero-rank) default_tensor — single element with no dims
-TEST(LabelEncoder, ScalarDefaultTensorOpset4) {
+// Singleton 1D default_tensor (dims=[1]) — the ONNX spec requires this shape
+TEST(LabelEncoder, SingletonDefaultTensorOpset4) {
   std::vector<std::int64_t> dims{1, 3};
 
   std::vector<int64_t> input{1, 2, 99};
@@ -904,11 +916,11 @@ TEST(LabelEncoder, ScalarDefaultTensorOpset4) {
   test.AddAttribute("keys_int64s", std::vector<int64_t>{1, 2});
   test.AddAttribute("values_int64s", std::vector<int64_t>{10, 20});
 
-  // Scalar default_tensor: no dims, single element
+  // 1D singleton default_tensor with dims=[1]
   ONNX_NAMESPACE::TensorProto default_proto;
   default_proto.set_name("default_tensor");
   default_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-  // No add_dims() — zero-rank tensor (scalar)
+  default_proto.add_dims(1);
   default_proto.add_int64_data(-7);
   test.AddAttribute("default_tensor", default_proto);
 

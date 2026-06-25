@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include <fstream>
 
 namespace onnxruntime {
 namespace test {
@@ -44,7 +45,7 @@ static ONNX_NAMESPACE::TensorProto make_tensor(std::vector<uint8_t> array, std::
 }
 
 template <typename T>
-void _multiply_update_array(std::vector<T>& data, int n, T inc = 0) {
+void MultiplyUpdateArray(std::vector<T>& data, int n, T inc = 0) {
   std::vector<T> copy = data;
   data.resize(copy.size() * n);
   T cst = 0;
@@ -113,16 +114,16 @@ void GenTreeAndRunTest(const std::vector<T>& X, const std::vector<T>& Y, const i
 
   if (n_trees > 1) {
     // Multiplies the number of trees to test the parallelization by trees.
-    _multiply_update_array(tree_roots, n_trees, (int64_t)nodes_truenodeids.size());
-    _multiply_update_array(nodes_featureids, n_trees);
+    MultiplyUpdateArray(tree_roots, n_trees, (int64_t)nodes_truenodeids.size());
+    MultiplyUpdateArray(nodes_featureids, n_trees);
     _multiply_update_childnode(nodes_truenodeids, nodes_trueleafs, nodes_falseleafs, n_trees);
     _multiply_update_childnode(nodes_falsenodeids, nodes_falseleafs, nodes_trueleafs, n_trees);
-    _multiply_update_array(nodes_trueleafs, n_trees);
-    _multiply_update_array(nodes_falseleafs, n_trees);
-    _multiply_update_array(leaf_targetids, n_trees);
-    _multiply_update_array(nodes_modes, n_trees);
-    _multiply_update_array(nodes_splits, n_trees);
-    _multiply_update_array(leaf_weights, n_trees);
+    MultiplyUpdateArray(nodes_trueleafs, n_trees);
+    MultiplyUpdateArray(nodes_falseleafs, n_trees);
+    MultiplyUpdateArray(leaf_targetids, n_trees);
+    MultiplyUpdateArray(nodes_modes, n_trees);
+    MultiplyUpdateArray(nodes_splits, n_trees);
+    MultiplyUpdateArray(leaf_weights, n_trees);
   }
 
   auto nodes_modes_as_tensor = make_tensor(nodes_modes, "nodes_modes");
@@ -171,17 +172,17 @@ void GenTreeAndRunTestWithSetMembership(const std::vector<T>& X, const std::vect
 
   if (n_trees > 1) {
     // Multiplies the number of trees to test the parallelization by trees.
-    _multiply_update_array(tree_roots, n_trees, (int64_t)nodes_truenodeids.size());
-    _multiply_update_array(nodes_featureids, n_trees);
+    MultiplyUpdateArray(tree_roots, n_trees, (int64_t)nodes_truenodeids.size());
+    MultiplyUpdateArray(nodes_featureids, n_trees);
     _multiply_update_childnode(nodes_truenodeids, nodes_trueleafs, nodes_falseleafs, n_trees);
     _multiply_update_childnode(nodes_falsenodeids, nodes_falseleafs, nodes_trueleafs, n_trees);
-    _multiply_update_array(nodes_trueleafs, n_trees);
-    _multiply_update_array(nodes_falseleafs, n_trees);
-    _multiply_update_array(leaf_targetids, n_trees);
-    _multiply_update_array(nodes_modes, n_trees);
-    _multiply_update_array(nodes_splits, n_trees);
-    _multiply_update_array(membership_values, n_trees);
-    _multiply_update_array(leaf_weights, n_trees);
+    MultiplyUpdateArray(nodes_trueleafs, n_trees);
+    MultiplyUpdateArray(nodes_falseleafs, n_trees);
+    MultiplyUpdateArray(leaf_targetids, n_trees);
+    MultiplyUpdateArray(nodes_modes, n_trees);
+    MultiplyUpdateArray(nodes_splits, n_trees);
+    MultiplyUpdateArray(membership_values, n_trees);
+    MultiplyUpdateArray(leaf_weights, n_trees);
   }
 
   auto nodes_modes_as_tensor = make_tensor(nodes_modes, "nodes_modes");
@@ -457,6 +458,17 @@ TEST(MLOpTest, TreeEnsembleIssue25400) {
 #if !defined(ORT_NO_EXCEPTIONS)
 
 TEST(MLOpTest, TreeEnsembleRejectsExternalDataInTensorAttribute) {
+  // RAII helper: creates a dummy binary file on construction, removes it on destruction.
+  struct ScopedFile {
+    std::string path;
+    ScopedFile(const std::string& p, size_t n) : path(p) {
+      std::ofstream ofs(path, std::ios::binary);
+      std::vector<char> data(n, 0);
+      ofs.write(data.data(), static_cast<std::streamsize>(n));
+    }
+    ~ScopedFile() { std::remove(path.c_str()); }
+  } ext_file("tree_ensemble_test_ext_splits.bin", 12);  // 3 x float
+
   OpTester test("TreeEnsemble", 5, onnxruntime::kMLDomain);
 
   // nodes_splits with external data location
@@ -465,9 +477,15 @@ TEST(MLOpTest, TreeEnsembleRejectsExternalDataInTensorAttribute) {
   splits_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   splits_proto.add_dims(3);
   splits_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
-  auto* entry = splits_proto.add_external_data();
-  entry->set_key("location");
-  entry->set_value("some_file.bin");
+  auto* loc = splits_proto.add_external_data();
+  loc->set_key("location");
+  loc->set_value(ext_file.path);
+  auto* offset = splits_proto.add_external_data();
+  offset->set_key("offset");
+  offset->set_value("0");
+  auto* length = splits_proto.add_external_data();
+  length->set_key("length");
+  length->set_value("12");
   test.AddAttribute("nodes_splits", splits_proto);
 
   // Minimal valid structure for remaining attributes
