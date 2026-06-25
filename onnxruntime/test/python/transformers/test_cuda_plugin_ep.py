@@ -1804,6 +1804,25 @@ class TestCudaPluginEP(unittest.TestCase):
         result = _run_model_test(target_device, "Softmax", model, feed, expected)
         self.assertEqual(result, TEST_PASS, "Softmax test failed")
 
+    def test_op_log_softmax(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "LogSoftmax",
+            [("X", TensorProto.FLOAT, [2, 5])],
+            [("Y", TensorProto.FLOAT, [2, 5])],
+            attrs={"axis": 1},
+            opset=13,
+        )
+        feed = {"X": np.random.rand(2, 5).astype(np.float32)}
+
+        def expected(f):
+            x = f["X"]
+            shifted = x - np.max(x, axis=1, keepdims=True)
+            return shifted - np.log(np.sum(np.exp(shifted), axis=1, keepdims=True))
+
+        result = _run_model_test(target_device, "LogSoftmax", model, feed, expected)
+        self.assertEqual(result, TEST_PASS, "LogSoftmax test failed")
+
     def test_op_relu(self):
         target_device = get_cuda_plugin_device()
         model = _make_simple_model(
@@ -1900,7 +1919,6 @@ class TestCudaPluginEP(unittest.TestCase):
         result = _run_model_test(target_device, "Flatten", model, feed, lambda f: f["X"].reshape(2, 12))
         self.assertEqual(result, TEST_PASS, "Flatten test failed")
 
-    @requires_cudnn
     def test_op_argmax(self):
         target_device = get_cuda_plugin_device()
         model = _make_simple_model(
@@ -1915,6 +1933,21 @@ class TestCudaPluginEP(unittest.TestCase):
             target_device, "ArgMax", model, feed, lambda f: np.argmax(f["X"], axis=1).reshape(3, 1)
         )
         self.assertEqual(result, TEST_PASS, "ArgMax test failed")
+
+    def test_op_argmin(self):
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "ArgMin",
+            [("X", TensorProto.FLOAT, [3, 5])],
+            [("Y", TensorProto.INT64, [3, 1])],
+            attrs={"axis": 1, "keepdims": 1},
+            opset=13,
+        )
+        feed = {"X": np.random.rand(3, 5).astype(np.float32)}
+        result = _run_model_test(
+            target_device, "ArgMin", model, feed, lambda f: np.argmin(f["X"], axis=1).reshape(3, 1)
+        )
+        self.assertEqual(result, TEST_PASS, "ArgMin test failed")
 
     def test_op_topk(self):
         target_device = get_cuda_plugin_device()
@@ -2030,37 +2063,35 @@ class TestCudaPluginEP(unittest.TestCase):
         result = _run_model_test(target_device, "ConvTranspose", model, feed, expected)
         self.assertEqual(result, TEST_PASS, "ConvTranspose test failed")
 
-    @requires_cudnn
     def test_op_reduce_mean(self):
         target_device = get_cuda_plugin_device()
         model = _make_simple_model(
             "ReduceMean",
             [("X", TensorProto.FLOAT, [3, 4, 5])],
-            [("Y", TensorProto.FLOAT, [3, 1, 5])],
-            attrs={"axes": [1], "keepdims": 1},
+            [("Y", TensorProto.FLOAT, [3, 4, 1])],
+            attrs={"axes": [2], "keepdims": 1},
             opset=13,
         )
         feed = {"X": np.random.rand(3, 4, 5).astype(np.float32)}
         result = _run_model_test(
-            target_device, "ReduceMean", model, feed, lambda f: np.mean(f["X"], axis=1, keepdims=True)
+            target_device, "ReduceMean", model, feed, lambda f: np.mean(f["X"], axis=2, keepdims=True)
         )
         self.assertEqual(result, TEST_PASS, "ReduceMean test failed")
 
-    @requires_cudnn
     def test_op_reduce_sum(self):
         target_device = get_cuda_plugin_device()
         model = _make_simple_model(
             "ReduceSum",
             [("X", TensorProto.FLOAT, [3, 4, 5]), ("axes", TensorProto.INT64, [1])],
-            [("Y", TensorProto.FLOAT, [3, 1, 5])],
+            [("Y", TensorProto.FLOAT, [3, 4, 1])],
             attrs={"keepdims": 1},
             opset=13,
         )
-        axes_init = helper.make_tensor("axes", TensorProto.INT64, [1], [1])
+        axes_init = helper.make_tensor("axes", TensorProto.INT64, [1], [2])
         model.graph.initializer.append(axes_init)
         feed = {"X": np.random.rand(3, 4, 5).astype(np.float32)}
         result = _run_model_test(
-            target_device, "ReduceSum", model, feed, lambda f: np.sum(f["X"], axis=1, keepdims=True)
+            target_device, "ReduceSum", model, feed, lambda f: np.sum(f["X"], axis=2, keepdims=True)
         )
         self.assertEqual(result, TEST_PASS, "ReduceSum test failed")
 

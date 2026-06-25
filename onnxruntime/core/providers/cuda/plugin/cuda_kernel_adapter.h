@@ -1070,6 +1070,20 @@ class CudaKernel : public OpKernel {
     return handle;
   }
 
+  cudnnHandle_t TryGetCudnnHandle(OpKernelContext* ctx) const {
+    auto stream = Stream(ctx);
+    auto handle = GetCudnnHandle(stream);
+    if (handle != nullptr) {
+      return handle;
+    }
+
+    handle = DefaultCudnnHandle();
+    if (handle != nullptr && stream != nullptr) {
+      CUDNN_CALL_THROW(cudnnSetStream(handle, stream));
+    }
+    return handle;
+  }
+
   static cublasHandle_t GetCublasHandle(cudaStream_t s) {
     auto* sync = cuda_plugin::CudaSyncStream::FromCudaStream(s);
     return sync ? sync->GetCublasHandle() : nullptr;

@@ -481,6 +481,29 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const CudaKernel* ke
     }
   }
 
+  if constexpr (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_FLATTENED_INDICES) {
+    if (axes.size() == 1) {
+      const int64_t rank = input_shape.NumDimensions();
+      const int64_t axis = HandleNegativeAxis(axes[0], rank);
+      if (axis == rank - 1) {
+        const int64_t m = input_shape.SizeToDimension(axis);
+        const int64_t n = input_shape[axis];
+        if (n > 0 && m <= std::numeric_limits<int>::max() && n <= std::numeric_limits<int>::max()) {
+          if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MAX) {
+            return arg_min_max_last_axis<CudaT, true>(stream, reinterpret_cast<const CudaT*>(input.Data<T>()),
+                                                      output.MutableData<int64_t>(), gsl::narrow_cast<int>(m),
+                                                      gsl::narrow_cast<int>(n));
+          }
+          if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MIN) {
+            return arg_min_max_last_axis<CudaT, false>(stream, reinterpret_cast<const CudaT*>(input.Data<T>()),
+                                                       output.MutableData<int64_t>(), gsl::narrow_cast<int>(m),
+                                                       gsl::narrow_cast<int>(n));
+          }
+        }
+      }
+    }
+  }
+
   // This reduction keep adding values to this buffer. If a non-zero value, say 1000, is here, the sum will start with 1000.
   // Therefore zeroing out the memory is required
   CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output.MutableDataRaw(), 0, output.SizeInBytes(), stream));
@@ -785,7 +808,7 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
   const bool fast_reduction = fast_reduction_ && !ctx->GetUseDeterministicCompute();
   return ReduceComputeCore<T, ReduceTensorIndices>(AllocatorPtr{}, this, *X, prepare_reduce_metadata, *Y, cudnn_reduce_op, axes,
                                                    calculate_log_, calculate_sqt_, log_sum_exp_, fast_reduction,
-                                                   Stream(ctx), GetComputeStream(ctx), GetCudnnHandle(ctx));
+                                                   Stream(ctx), GetComputeStream(ctx), TryGetCudnnHandle(ctx));
 }
 
 #define SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(T)                                                                           \
