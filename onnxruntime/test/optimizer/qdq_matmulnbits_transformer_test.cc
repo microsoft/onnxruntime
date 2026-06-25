@@ -1471,8 +1471,11 @@ TEST(QDQTransformerTests, DQGemmNotConvertedToMatMulNBits_Alpha) {
 // ---------------------------------------------------------------------------
 // DQMatMulToMatMulNBitsAction (in the QDQ selector/action transformer) runs without the
 // session.enable_dq_matmulnbits_fusion flag and synthesizes the MatMulNBits B/scales/zp initializers
-// with names that are NOT stable across sessions. It tags the generated B weight with a stable,
-// content-derived identity that SessionState uses to share the pre-packed buffer across sessions.
+// with names that are NOT stable across sessions. It tags the generated B weight with a sharing
+// identity that SessionState treats as the enrollment signal opting the buffer into the cross-session
+// container; the actual sharing is keyed by the packed-bytes hash (only byte-identical packed buffers
+// are reused, exactly like the AddInitializer path), so packings that differ by compute type/options
+// are never falsely shared.
 
 // Packs uint4 nibble values (row-major, 2 per byte) into UInt4x2 storage.
 static std::vector<UInt4x2> PackUint4Nibbles(const std::vector<uint8_t>& values) {
@@ -1558,8 +1561,9 @@ static void RunDefaultPathSession(const std::string& model_bytes, PrepackedWeigh
 }
 
 // Verifies the default DQ->MatMulNBits path tags its generated B weight with a stable, content-derived
-// identity: identical quantization data yields the SAME identity, while different zero points yield a
-// DIFFERENT identity (so two models differing only in zp must not falsely share a pre-packed buffer).
+// enrollment identity: identical quantization data yields the SAME identity, while different zero points
+// yield a DIFFERENT identity. (The tag only enrolls the buffer for sharing; the container keys by the
+// packed-bytes hash. A stable, content-distinct tag keeps enrollment deterministic across sessions.)
 TEST(QDQTransformerTests, DefaultPath_TagsGeneratedWeightWithStableContentIdentity) {
   constexpr int64_t M = 4, N = 8, K = 32, block_size = 16;
   const int64_t num_blocks = K / block_size;
@@ -1597,8 +1601,11 @@ TEST(QDQTransformerTests, DefaultPath_TagsGeneratedWeightWithStableContentIdenti
 }
 
 // End-to-end: two sessions converting the same model via the default path share the MatMulNBits B
-// pre-packed buffer through a common container (no session option). A model differing only in zero
-// points has a different identity and must not reuse the buffer.
+// pre-packed buffer through a common container (no session option). A model whose quantized weight
+// differs packs to different bytes -> different container key, so it must not reuse the buffer. (A
+// zero-point-only difference is intentionally NOT used here: on the CompFp32 path the zero points are
+// applied at compute time and left out of the packed B, so two such models pack identically and would
+// correctly share -- packed-bytes keying only ever reuses byte-identical buffers.)
 TEST(QDQTransformerTests, DefaultPath_SharesWeightAcrossSessionsViaTag) {
   constexpr int64_t M = 4, N = 8, K = 32, block_size = 16;
   const int64_t num_blocks = K / block_size;
@@ -1607,21 +1614,25 @@ TEST(QDQTransformerTests, DefaultPath_SharesWeightAcrossSessionsViaTag) {
   for (size_t i = 0; i < weight.size(); ++i) {
     weight[i] = static_cast<uint8_t>(i % 16);
   }
+  // A different quantized weight -> different packed B on every compute type (unlike a zp-only change).
+  std::vector<uint8_t> weight_other(weight.size());
+  for (size_t i = 0; i < weight_other.size(); ++i) {
+    weight_other[i] = static_cast<uint8_t>((i + 7) % 16);
+  }
   std::vector<float> scale(static_cast<size_t>(num_blocks * N));
   for (size_t i = 0; i < scale.size(); ++i) {
     scale[i] = 0.1f + 0.01f * static_cast<float>(i % 10);
   }
-  std::vector<uint8_t> zp_a(static_cast<size_t>(num_blocks * N), 3);
-  std::vector<uint8_t> zp_b(zp_a.size(), 5);  // differs only in zero points
+  std::vector<uint8_t> zp(static_cast<size_t>(num_blocks * N), 3);
 
-  std::string model_a, model_b;
-  SerializeDefaultPathModel(M, N, K, block_size, weight, scale, zp_a, model_a);
-  SerializeDefaultPathModel(M, N, K, block_size, weight, scale, zp_b, model_b);
+  std::string model_a, model_other;
+  SerializeDefaultPathModel(M, N, K, block_size, weight, scale, zp, model_a);
+  SerializeDefaultPathModel(M, N, K, block_size, weight_other, scale, zp, model_other);
 
   PrepackedWeightsContainer container;
-  bool produced1 = false, produced2 = false, produced_b = false;
-  std::string tag1, tag2, tag_b;
-  size_t used1 = 0, used2 = 0, used_b = 0;
+  bool produced1 = false, produced2 = false, produced_other = false;
+  std::string tag1, tag2, tag_other;
+  size_t used1 = 0, used2 = 0, used_other = 0;
 
   RunDefaultPathSession(model_a, container, produced1, tag1, used1);
   ASSERT_TRUE(produced1) << "DQ -> MatMulNBits conversion did not run on the default path";
@@ -1635,16 +1646,19 @@ TEST(QDQTransformerTests, DefaultPath_SharesWeightAcrossSessionsViaTag) {
   ASSERT_TRUE(produced2);
   EXPECT_GT(used2, static_cast<size_t>(0));
 
-  // A model differing only in zero points must NOT reuse the buffer.
-  RunDefaultPathSession(model_b, container, produced_b, tag_b, used_b);
-  ASSERT_TRUE(produced_b);
-  EXPECT_EQ(used_b, static_cast<size_t>(0));
+  // A model with a different quantized weight packs to different bytes -> different key, so it must NOT
+  // reuse the buffer (on any compute type).
+  RunDefaultPathSession(model_other, container, produced_other, tag_other, used_other);
+  ASSERT_TRUE(produced_other);
+  EXPECT_EQ(used_other, static_cast<size_t>(0));
 }
 
-// The sharing identity includes accuracy_level, so the same weights compiled for different compute
-// types (e.g. CompFp32 at level 0 vs CompInt8 at level 4) get DIFFERENT identities and must not share
-// a pre-packed buffer whose layout depends on that compute type.
-TEST(QDQTransformerTests, DefaultPath_DifferentAccuracyLevelDoesNotShare) {
+// accuracy_level participates in the enrollment identity, so the same weights requested at different
+// accuracy levels get distinct identities. Whether the two sessions then share the packed buffer is
+// platform-dependent (level 4 may pack as CompInt8 -- different bytes, no share -- or fall back to the
+// same CompFp32 packing as level 0 and benignly reuse the byte-identical buffer); packed-bytes keying
+// makes either outcome safe, so this asserts the identity is distinct, not a fixed sharing count.
+TEST(QDQTransformerTests, DefaultPath_DifferentAccuracyLevelGetsDistinctIdentity) {
   constexpr int64_t M = 4, N = 8, K = 32, block_size = 16;
   const int64_t num_blocks = K / block_size;
 
@@ -1675,8 +1689,7 @@ TEST(QDQTransformerTests, DefaultPath_DifferentAccuracyLevelDoesNotShare) {
 
   ASSERT_FALSE(tag0.empty());
   ASSERT_FALSE(tag4.empty());
-  EXPECT_NE(tag0, tag4);                     // accuracy_level participates in the identity
-  EXPECT_EQ(used4, static_cast<size_t>(0));  // different identity => no cross-accuracy sharing
+  EXPECT_NE(tag0, tag4);  // accuracy_level participates in the enrollment identity
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)

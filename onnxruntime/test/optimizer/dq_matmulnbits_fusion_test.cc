@@ -4,6 +4,7 @@
 // Unit tests for the DQMatMulNBitsFusion graph transformer.
 // Tests Pattern 1: DQ(3D,axis=2)->Reshape->Transpose([1,0])->[Cast]->MatMul/Gemm -> MatMulNBits
 // Tests Pattern 2: DQ(2D,axis=0)->MatMul/Gemm -> MatMulNBits
+ #include <unordered_map>
 
 #include "core/common/span_utils.h"
 #include "core/framework/int4.h"
@@ -361,9 +362,10 @@ TEST_F(DQMatMulNBitsFusionTest, Pattern1_MatMul_NoZP) {
 }
 
 // Validates the cross-session-sharing tag the fusion attaches to the generated B weight. The tag is a
-// stable, content-derived identity: identical source quantization groups must yield the SAME identity
-// (so two sessions optimizing the same model share the pre-packed B), while any semantic difference --
-// here, different zero points -- must yield a DIFFERENT identity (so they must not falsely share).
+// stable, content-derived enrollment identity: identical source quantization groups yield the SAME
+// identity, while a semantic difference -- here, different zero points -- yields a DIFFERENT identity.
+// (The tag only enrolls B into the shared container; the actual sharing is keyed by the packed-bytes
+// hash, so a stable, content-distinct tag just keeps enrollment deterministic across sessions.)
 TEST_F(DQMatMulNBitsFusionTest, TagsGeneratedWeightWithStableContentIdentity) {
   constexpr int64_t M = 4, N = 8, K = 32, block_size = 16;
   const int64_t num_blocks = K / block_size;
@@ -463,8 +465,11 @@ static void RunSharedFusionSession(const std::string& model_bytes, PrepackedWeig
 }
 
 // End-to-end: two sessions optimizing the same DQ+MatMul model share the fused MatMulNBits B weight
-// through a common container WITHOUT any session option -- the fusion tags it and SessionState enrolls
-// it by that identity. A session over a model that differs only in its zero points must NOT share.
+// through a common container WITHOUT any session option -- the fusion tags it to enroll it, and
+// SessionState keys the sharing by the packed-bytes hash. A model whose quantized weight differs packs
+// to different bytes, so it gets a different key and must NOT share. (A zero-point-only difference is
+// intentionally NOT used: on the CompFp32 path the zero points are not folded into the packed B, so two
+// such models pack identically and would correctly share a byte-identical buffer.)
 TEST_F(DQMatMulNBitsFusionTest, SharesFusedWeightAcrossSessionsViaTag) {
   constexpr int64_t M = 4, N = 8, K = 32, block_size = 16;
   const int64_t num_blocks = K / block_size;
@@ -473,20 +478,24 @@ TEST_F(DQMatMulNBitsFusionTest, SharesFusedWeightAcrossSessionsViaTag) {
   for (size_t i = 0; i < weight.size(); ++i) {
     weight[i] = static_cast<uint8_t>(i % 16);
   }
+  // A different quantized weight -> different packed B on every compute type (unlike a zp-only change).
+  std::vector<uint8_t> weight_other(weight.size());
+  for (size_t i = 0; i < weight_other.size(); ++i) {
+    weight_other[i] = static_cast<uint8_t>((i + 7) % 16);
+  }
   std::vector<float> scale(static_cast<size_t>(N * num_blocks));
   for (size_t i = 0; i < scale.size(); ++i) {
     scale[i] = 0.1f + 0.01f * static_cast<float>(i % 10);
   }
-  std::vector<uint8_t> zp_a(static_cast<size_t>(N * num_blocks), 3);
-  std::vector<uint8_t> zp_b(zp_a.size(), 5);  // differs only in zero points
+  std::vector<uint8_t> zp(static_cast<size_t>(N * num_blocks), 3);
 
-  std::string model_a, model_b;
-  SerializeDQMatMulModel(M, N, K, block_size, weight, scale, zp_a, model_a);
-  SerializeDQMatMulModel(M, N, K, block_size, weight, scale, zp_b, model_b);
+  std::string model_a, model_other;
+  SerializeDQMatMulModel(M, N, K, block_size, weight, scale, zp, model_a);
+  SerializeDQMatMulModel(M, N, K, block_size, weight_other, scale, zp, model_other);
 
   PrepackedWeightsContainer container;
-  bool fused1 = false, fused2 = false, fused_b = false;
-  size_t used1 = 0, used2 = 0, used_b = 0;
+  bool fused1 = false, fused2 = false, fused_other = false;
+  size_t used1 = 0, used2 = 0, used_other = 0;
 
   RunSharedFusionSession(model_a, container, fused1, used1);
   ASSERT_TRUE(fused1) << "DQ -> MatMulNBits fusion did not run";
@@ -500,10 +509,11 @@ TEST_F(DQMatMulNBitsFusionTest, SharesFusedWeightAcrossSessionsViaTag) {
   ASSERT_TRUE(fused2);
   EXPECT_GT(used2, static_cast<size_t>(0));
 
-  // A model differing only in zero points has a different identity and must NOT reuse the buffer.
-  RunSharedFusionSession(model_b, container, fused_b, used_b);
-  ASSERT_TRUE(fused_b);
-  EXPECT_EQ(used_b, static_cast<size_t>(0));
+  // A model with a different quantized weight packs to different bytes -> different key, so it must NOT
+  // reuse the buffer (on any compute type).
+  RunSharedFusionSession(model_other, container, fused_other, used_other);
+  ASSERT_TRUE(fused_other);
+  EXPECT_EQ(used_other, static_cast<size_t>(0));
 }
 
 TEST_F(DQMatMulNBitsFusionTest, Pattern1_MatMul_WithDefaultZP8) {

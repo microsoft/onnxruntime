@@ -500,9 +500,11 @@ Status SessionState::PrepackConstantInitializedTensors(
 
                 // CPU EP only. An initializer joins the shared pre-packed container either when it was
                 // registered via OrtApi::AddInitializer (is_shared_initializer) or when a graph transformer
-                // tagged this synthesized initializer with a sharing identity (tagged_share_id).
-                const std::string* tagged_share_id = st->graph_.GetSharedPrepackInitializerId(input_name);
-                const bool enroll_tagged_initializer = (tagged_share_id != nullptr);
+                // tagged this synthesized initializer with a sharing identity. Only the tag's *presence*
+                // matters here: it is the enrollment signal. The container key below is the packed-bytes
+                // hash, never the tag value (see the rationale at the key computation).
+                const bool enroll_tagged_initializer =
+                    (st->graph_.GetSharedPrepackInitializerId(input_name) != nullptr);
                 if ((is_shared_initializer || enroll_tagged_initializer) &&
                     should_cache_prepacked_weights_for_shared_initializers &&
                     node.GetExecutionProviderType() == kCpuExecutionProvider) {
@@ -535,12 +537,18 @@ Status SessionState::PrepackConstantInitializedTensors(
                     // TODO: Check if some version of the ONNX IR allows op_type to be empty
                     ORT_ENFORCE(!op_type.empty(), "The op type of a node cannot be empty");
 
-                    // Tagged initializers are keyed by their sharing identity; AddInitializer ones by the
-                    // packed-bytes hash. Both carry the op_type prefix.
+                    // Key by the packed-bytes hash (op_type + a hash of the packed buffer), exactly as the
+                    // AddInitializer path does, so only byte-identical packed buffers are ever shared. The
+                    // tag is solely the enrollment signal that opted this fusion-generated initializer into
+                    // the container; it must NOT be used as the key, because it is derived from the
+                    // *unpacked* initializer content and so cannot distinguish packings that differ by node
+                    // options/attributes that change the packed layout (e.g. mlas.use_lut_gemm or a CPU
+                    // backend-selector difference). Two sessions that share a container but differ in such an
+                    // option compute the same tag yet produce different packed bytes; keying by the packed
+                    // bytes gives them distinct keys and prevents reusing an incompatible buffer
+                    // (wrong results/crash).
                     const std::string prepacked_weights_container_key =
-                        enroll_tagged_initializer
-                            ? (op_type + "+id+" + *tagged_share_id)
-                            : GenerateKeyForPrepackedWeightsMap(op_type, weights_to_be_filled_in);
+                        GenerateKeyForPrepackedWeightsMap(op_type, weights_to_be_filled_in);
 
                     bool container_contains_packed_weight = prepacked_weights_container_->HasWeight(
                         prepacked_weights_container_key);
