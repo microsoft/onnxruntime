@@ -129,6 +129,7 @@ jobs:
         with:
           name: cuda-plugin-cuda-runtime
           path: ${{ runner.temp }}\cuda-test-deps
+          if-no-files-found: error
     env:
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       setVcvars: true
