@@ -256,12 +256,21 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     if(onnxruntime_TELEMETRY_SHARED_SDK)
       message(FATAL_ERROR "onnxruntime_TELEMETRY_SHARED_SDK requires the vcpkg cpp-client-telemetry port (build with --use_vcpkg); it is not supported with the FetchContent fallback.")
     endif()
-    target_link_libraries(onnxruntime_common PRIVATE mat)
+    # mat is a FetchContent target that is not installed/exported. Scope the link to the build
+    # interface so it is still absorbed into libonnxruntime (shared build) and in-tree executables,
+    # but is excluded from the installed onnxruntimeTargets export of the static onnxruntime_common
+    # (where mat cannot be shipped). Without this, install(EXPORT) fails for static telemetry builds
+    # with "target onnxruntime_common requires target mat that is not in any export set". The vcpkg
+    # path links the imported MSTelemetry::mat target, which is exportable and unaffected.
+    target_link_libraries(onnxruntime_common PRIVATE $<BUILD_INTERFACE:mat>)
     # cpp_client_telemetry uses include_directories() (directory-scoped) rather than
     # target_include_directories(), so include paths don't propagate via target_link_libraries.
-    # Add them explicitly for onnxruntime_common.
+    # Add them explicitly for onnxruntime_common. Mark them SYSTEM so the SDK's public headers are
+    # exempt from onnxruntime_common's -Wall -Wextra -Werror (they trip -Werror=unused-parameter in
+    # NullObjects.hpp / LogManagerProvider.hpp). The vcpkg MSTelemetry::mat path already propagates
+    # its includes as SYSTEM via the imported target.
     if(DEFINED cpp_client_telemetry_SOURCE_DIR)
-      target_include_directories(onnxruntime_common PRIVATE
+      target_include_directories(onnxruntime_common SYSTEM PRIVATE
         ${cpp_client_telemetry_SOURCE_DIR}/lib/include/public
         ${cpp_client_telemetry_SOURCE_DIR}/lib/include/mat
         ${cpp_client_telemetry_SOURCE_DIR}/lib
