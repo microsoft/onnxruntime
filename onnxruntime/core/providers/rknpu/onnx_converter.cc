@@ -1,6 +1,7 @@
 // Copyright 2020 rock-chips.com Inc.
 
 #include <fstream>
+#include <limits>
 #include <map>
 #include <numeric>
 #include <string>
@@ -120,6 +121,16 @@ OnnxConverter::CreateRknnTensor(const std::string& name,
   return graph_->CreateTensor(attr, (void*)data);
 }
 
+static uint32_t ToRknpuDim(int64_t dim, const std::string& name) {
+  if (dim < 0 || dim > static_cast<int64_t>(std::numeric_limits<uint32_t>::max())) {
+    throw std::invalid_argument(
+        "RKNPU: tensor dimension out of uint32_t range (name=" + name +
+        ", dim=" + std::to_string(dim) + ")");
+  }
+
+  return static_cast<uint32_t>(dim);
+}
+
 // Allocates a zero-initialized buffer holding `count` elements of `element_size`
 // bytes each, used as an implicit (all-zero) bias when a Conv/Gemm node omits
 // its bias input. A malicious model can specify a weight dimension large enough
@@ -154,7 +165,7 @@ void OnnxConverter::HandleInitializer() {
     const std::string name = tensor.name();
     std::vector<uint32_t> dims;
     for (const auto dim : tensor.dims()) {
-      dims.push_back(static_cast<uint32_t>(dim));
+      dims.push_back(ToRknpuDim(dim, name));
     }
     if (tensor.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
       const char* ptr = tensor.float_data().empty()
@@ -216,7 +227,7 @@ std::vector<std::shared_ptr<rk::nn::Tensor>> OnnxConverter::GetInputOfOnnxModel(
     for (const auto& dim : input.type().tensor_type().shape().dim()) {
       if (dim.value_case() ==
           ONNX_NAMESPACE::TensorShapeProto_Dimension::kDimValue) {
-        shape.push_back(static_cast<uint32_t>(dim.dim_value()));
+        shape.push_back(ToRknpuDim(dim.dim_value(), input.name()));
       } else {
         throw std::invalid_argument(
             "The input of graph doesn't have dim_value");
@@ -297,7 +308,7 @@ Shaper::Shape GetShape(const ONNX_NAMESPACE::ModelProto& model_proto,
 
       for (const auto& dim : value_info.type().tensor_type().shape().dim()) {
         if (dim.has_dim_value()) {
-          shape.push_back(dim.dim_value());
+          shape.push_back(ToRknpuDim(dim.dim_value(), value_info.name()));
         } else {
           break;
         }
@@ -578,7 +589,7 @@ std::vector<std::vector<int>> OnnxConverter::GetSupportedNodes(
     const std::string name = tensor.name();
     std::vector<uint32_t> dims;
     for (const auto dim : tensor.dims()) {
-      dims.push_back(static_cast<uint32_t>(dim));
+      dims.push_back(ToRknpuDim(dim, name));
     }
     tensor_dims_[name] = dims;
   }
