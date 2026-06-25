@@ -634,5 +634,31 @@ TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_nearest_border_empty_spa
                         GetCpuAndCudaExecutionProviders());
 }
 
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_5D_nearest_border_empty_spatial_rejected) {
+  // Same rejection as the 4-D case, but for a 5-D input with a zero-size spatial dimension. This keeps
+  // the 5-D branch of the guard (and the CUDA NCHW/NHWC layouts) covered: the output is sized by the
+  // grid, so a non-empty grid skips the empty-output early return, and spatial dimensions must be
+  // non-empty for sampling to produce valid sample indices.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("nearest"));
+  test.AddAttribute("padding_mode", std::string("border"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 0, 2, 2};
+  std::initializer_list<TypeParam> X_data{};
+  std::initializer_list<int64_t> Grid_shape{1, 1, 1, 2, 3};
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(0.0f), TypeParam(0.0f), TypeParam(0.0f),
+      TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f)};
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 1, 2};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(0.0f), TypeParam(0.0f)});
+  // Restrict the expect-failure run to CPU + CUDA only, matching the 4-D case above.
+  RunTestsExpectFailure(test, "Input spatial dimensions must be non-empty for sampling",
+                        GetCpuAndCudaExecutionProviders());
+}
+
 }  // namespace test
 }  // namespace onnxruntime
