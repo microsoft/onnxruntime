@@ -125,12 +125,23 @@ OnnxConverter::CreateRknnTensor(const std::string& name,
 // its bias input. A malicious model can specify a weight dimension large enough
 // that `element_size * count` overflows size_t and wraps to a tiny allocation,
 // which would cause a heap buffer overflow when the buffer is later consumed.
-// SafeInt throws on overflow, and the allocation result is null-checked.
+// SafeInt throws on overflow, and the allocation result is null-checked. Both
+// failure paths report element_size/count (and the byte count) to aid diagnosis.
 static void* AllocZeroedBias(size_t element_size, uint32_t count) {
-  const size_t num_bytes = SafeInt<size_t>(element_size) * count;
+  size_t num_bytes = 0;
+  try {
+    num_bytes = SafeInt<size_t>(element_size) * count;
+  } catch (const std::exception&) {
+    throw std::runtime_error(
+        "RKNPU: implicit bias size overflow (element_size=" +
+        std::to_string(element_size) + ", count=" + std::to_string(count) + ")");
+  }
   void* ptr = malloc(num_bytes);
   if (ptr == nullptr && num_bytes != 0) {
-    throw std::runtime_error("RKNPU: failed to allocate implicit bias buffer");
+    throw std::runtime_error(
+        "RKNPU: failed to allocate " + std::to_string(num_bytes) +
+        " bytes for implicit bias (element_size=" + std::to_string(element_size) +
+        ", count=" + std::to_string(count) + ")");
   }
   if (ptr != nullptr) {
     memset(ptr, 0, num_bytes);
