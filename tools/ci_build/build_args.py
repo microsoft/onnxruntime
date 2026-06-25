@@ -874,6 +874,19 @@ def add_other_feature_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Enable telemetry (ETW on Windows; 1DS on Linux, macOS, Android, and iOS).",
     )
+    parser.add_argument(
+        "--telemetry_shared_sdk",
+        action="store_true",
+        help=(
+            "Build the non-Windows 1DS telemetry SDK (cpp-client-telemetry) as a shared library "
+            "(libmat.so) instead of statically linking it into libonnxruntime. This lets several "
+            "binaries that link the same SDK (for example onnxruntime and onnxruntime-genai shipped "
+            "together) share a single copy of the SDK and its TLS/HTTP stack instead of embedding it "
+            "in each. The SDK's own dependencies (OpenSSL/curl/sqlite3/zlib) stay static inside "
+            "libmat.so so it remains self-contained. Requires --use_telemetry and --use_vcpkg; "
+            "Linux/macOS only."
+        ),
+    )
 
 
 def is_cross_compiling(args: argparse.Namespace) -> bool:

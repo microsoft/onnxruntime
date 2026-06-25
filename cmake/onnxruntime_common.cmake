@@ -244,7 +244,18 @@ if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
     # directories and transitive dependencies (curl/sqlite3/zlib/nlohmann-json), so no
     # manual include paths or system libraries are required here.
     target_link_libraries(onnxruntime_common PRIVATE MSTelemetry::mat)
+    if(onnxruntime_TELEMETRY_SHARED_SDK AND onnxruntime_BUILD_SHARED_LIB)
+      # The vcpkg triplet built the SDK as a shared library (libmat.so) so it can be shared by
+      # several binaries (e.g. onnxruntime and onnxruntime-genai) instead of being statically
+      # embedded in each. Ship it next to libonnxruntime; the $ORIGIN/@loader_path RPATH set on the
+      # onnxruntime target (see onnxruntime.cmake) resolves it at load time. IMPORTED_RUNTIME_ARTIFACTS
+      # installs the resolved soname and its symlinks.
+      install(IMPORTED_RUNTIME_ARTIFACTS MSTelemetry::mat LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    endif()
   elseif(TARGET mat)
+    if(onnxruntime_TELEMETRY_SHARED_SDK)
+      message(FATAL_ERROR "onnxruntime_TELEMETRY_SHARED_SDK requires the vcpkg cpp-client-telemetry port (build with --use_vcpkg); it is not supported with the FetchContent fallback.")
+    endif()
     target_link_libraries(onnxruntime_common PRIVATE mat)
     # cpp_client_telemetry uses include_directories() (directory-scoped) rather than
     # target_include_directories(), so include paths don't propagate via target_link_libraries.

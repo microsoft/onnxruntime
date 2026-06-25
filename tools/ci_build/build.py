@@ -362,8 +362,20 @@ def generate_build_tree(
         raise BuildError(
             "Telemetry is not supported for WebAssembly (Emscripten) builds; omit --use_telemetry when using --build_wasm."
         )
+    # The shared 1DS SDK (libmat.so) is provided by the vcpkg cpp-client-telemetry port and is only
+    # meaningful for the non-Windows 1DS path. Fail fast on unsupported combinations.
+    if args.telemetry_shared_sdk:
+        if not args.use_telemetry:
+            raise BuildError("--telemetry_shared_sdk requires --use_telemetry.")
+        if not args.use_vcpkg:
+            raise BuildError(
+                "--telemetry_shared_sdk requires --use_vcpkg; the shared 1DS SDK is built by the vcpkg cpp-client-telemetry port."
+            )
+        if args.android:
+            raise BuildError("--telemetry_shared_sdk is not supported for Android builds.")
     cmake_args += [
         "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
+        "-Donnxruntime_TELEMETRY_SHARED_SDK=" + ("ON" if args.telemetry_shared_sdk else "OFF"),
     ]
 
     disable_string_type = "string" in types_to_disable
@@ -629,10 +641,10 @@ def generate_build_tree(
                 osx_target = os.environ.get("MACOSX_DEPLOYMENT_TARGET")
             if osx_target is not None:
                 log.info(f"Setting VCPKG_OSX_DEPLOYMENT_TARGET to {osx_target}")
-            generate_macos_triplets(build_dir, configs, osx_target, args.use_full_protobuf)
+            generate_macos_triplets(build_dir, configs, osx_target, args.use_full_protobuf, args.telemetry_shared_sdk)
         else:
             # Linux, *BSD, AIX or other platforms
-            generate_linux_triplets(build_dir, configs, args.use_full_protobuf)
+            generate_linux_triplets(build_dir, configs, args.use_full_protobuf, args.telemetry_shared_sdk)
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", str(vcpkg_toolchain_path))
 
         # Choose the cmake triplet
