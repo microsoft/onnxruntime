@@ -36,7 +36,9 @@ jobs:
           python-version: ${{ env.python_version }}
 
       - name: check Xcode version and Python 3
+        shell: bash
         run: |
+          set -euxo pipefail
           /usr/bin/xcodebuild -version
           python3 --version
           python --version
@@ -61,7 +63,9 @@ jobs:
       #     mv protoc-21.12-osx-universal_binary/include/* /usr/local/include/
 
       - name: create directories to store the libraries
+        shell: bash
         run: |
+          set -euxo pipefail
           mkdir -p $HOME/onnxlibrary/${{ matrix.build_dir_name }}
 
       # - name: create release build
@@ -84,7 +88,9 @@ jobs:
       #       --path_to_protoc_exe=/usr/local/bin/protoc-3.21.12.0 ${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config
 
       - name: create ${{ matrix.variant }} release build
+        shell: bash
         run: |
+          set -euxo pipefail
           export PYTHONPATH=${{ github.workspace }}/tools/python:$PYTHONPATH
           pip install -r ${{ github.workspace }}/requirements-dev.txt
           python3 ${{ github.workspace }}/tools/ci_build/github/apple/build_apple_framework.py --config Release ${{ matrix.build_dynamic_flag }} --build_dir=$HOME/onnxlibrary/${{ matrix.build_dir_name }} \
@@ -92,7 +98,9 @@ jobs:
             ${{ github.workspace }}/tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
 
       - name: archive ${{ matrix.variant }} xcframework
+        shell: bash
         run: |
+          set -euxo pipefail
           cd $HOME/onnxlibrary/${{ matrix.build_dir_name }}/framework_out
           zip -r -y "${{ github.workspace }}/${{ matrix.zip_name }}" onnxruntime.xcframework
 
