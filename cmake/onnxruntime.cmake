@@ -355,13 +355,6 @@ function(print_target_properties tgt)
 
 endfunction(print_target_properties)
 
-message(STATUS "++++++++ Paco START")
-#print_target_properties(onnxruntime)
-MESSAGE( STATUS "CMAKE_CXX_FLAGS: " ${CMAKE_CXX_FLAGS} )
-MESSAGE( STATUS "CMAKE_C_FLAGS: " ${CMAKE_C_FLAGS} )
-message(STATUS "++++++++ Paco END")
-#message(FATAL_ERROR get_property(target_names DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY BUILDSYSTEM_TARGETS))
-
 # Assemble the Apple static framework (iOS and macOS)
 if(onnxruntime_BUILD_APPLE_FRAMEWORK)
   # when building for mac catalyst, the CMAKE_OSX_SYSROOT is set to MacOSX as well, to avoid duplication,

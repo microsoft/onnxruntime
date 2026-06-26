@@ -11,7 +11,7 @@ env:
 
 jobs:
   build_macabi_xcf:
-    runs-on: macos-14
+    runs-on: depot-macos-26
     env:
       xcode_version: 15
     steps:
@@ -69,32 +69,20 @@ jobs:
       #       --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
       #       --path_to_protoc_exe=/usr/local/bin/protoc-3.21.12.0 ${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config
 
-      - name: create dynamic release build
-        run: |
-          export PYTHONPATH=${{ github.workspace }}/tools/python:$PYTHONPATH
-          pip install -r ${{ github.workspace }}/requirements-dev.txt
-          python3 ${{ github.workspace }}/tools/ci_build/github/apple/build_apple_framework.py --config Release --build_dynamic_framework --build_dir=$HOME/onnxlibrary/macabi_release_dynamic_v20230327_2320 \
-            --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
-            ${{ github.workspace }}/tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
-
       - name: create static release build
         run: |
           export PYTHONPATH=${{ github.workspace }}/tools/python:$PYTHONPATH
+          pip install -r ${{ github.workspace }}/requirements-dev.txt
           python3 ${{ github.workspace }}/tools/ci_build/github/apple/build_apple_framework.py --config Release --build_dir=$HOME/onnxlibrary/macabi_release_static_v20230327_2320 \
             --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
             ${{ github.workspace }}/tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
 
-      - name: verify dynamic slices
+      - name: create dynamic release build
         run: |
-          set -euo pipefail
-          XCF=$HOME/onnxlibrary/macabi_release_dynamic_v20230327_2320/framework_out/onnxruntime.xcframework
-          file "$XCF/ios-arm64/onnxruntime.framework/onnxruntime" | grep "dynamically linked shared library"
-          lipo "$XCF/ios-arm64/onnxruntime.framework/onnxruntime" -verify_arch arm64
-          lipo "$XCF/ios-arm64_x86_64-simulator/onnxruntime.framework/onnxruntime" -verify_arch arm64 x86_64
-          lipo "$XCF/ios-arm64_x86_64-maccatalyst/onnxruntime.framework/onnxruntime" -verify_arch arm64 x86_64
-          test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64/onnxruntime.framework/Info.plist")" = "16.4"
-          test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64_x86_64-simulator/onnxruntime.framework/Info.plist")" = "16.4"
-          test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64_x86_64-maccatalyst/onnxruntime.framework/Versions/A/Resources/Info.plist")" = "16.4"
+          export PYTHONPATH=${{ github.workspace }}/tools/python:$PYTHONPATH
+          python3 ${{ github.workspace }}/tools/ci_build/github/apple/build_apple_framework.py --config Release --build_dynamic_framework --build_dir=$HOME/onnxlibrary/macabi_release_dynamic_v20230327_2320 \
+            --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
+            ${{ github.workspace }}/tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
 
       - name: verify static slices
         run: |
@@ -108,26 +96,38 @@ jobs:
           test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64_x86_64-simulator/onnxruntime.framework/Info.plist")" = "16.4"
           test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64_x86_64-maccatalyst/onnxruntime.framework/Versions/A/Resources/Info.plist")" = "16.4"
 
-      - name: archive dynamic xcframework
+      - name: verify dynamic slices
         run: |
-          cd $HOME/onnxlibrary/macabi_release_dynamic_v20230327_2320/framework_out
-          zip -r -y "${{ github.workspace }}/onnxruntime.xcframework.zip" onnxruntime.xcframework
+          set -euo pipefail
+          XCF=$HOME/onnxlibrary/macabi_release_dynamic_v20230327_2320/framework_out/onnxruntime.xcframework
+          file "$XCF/ios-arm64/onnxruntime.framework/onnxruntime" | grep "dynamically linked shared library"
+          lipo "$XCF/ios-arm64/onnxruntime.framework/onnxruntime" -verify_arch arm64
+          lipo "$XCF/ios-arm64_x86_64-simulator/onnxruntime.framework/onnxruntime" -verify_arch arm64 x86_64
+          lipo "$XCF/ios-arm64_x86_64-maccatalyst/onnxruntime.framework/onnxruntime" -verify_arch arm64 x86_64
+          test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64/onnxruntime.framework/Info.plist")" = "16.4"
+          test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64_x86_64-simulator/onnxruntime.framework/Info.plist")" = "16.4"
+          test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64_x86_64-maccatalyst/onnxruntime.framework/Versions/A/Resources/Info.plist")" = "16.4"
 
       - name: archive static xcframework
         run: |
           cd $HOME/onnxlibrary/macabi_release_static_v20230327_2320/framework_out
           zip -r -y "${{ github.workspace }}/onnxruntime-static.xcframework.zip" onnxruntime.xcframework
 
-      - name: upload dynamic xcframework artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: onnxruntime.xcframework
-          path: onnxruntime.xcframework.zip
-          if-no-files-found: error
+      - name: archive dynamic xcframework
+        run: |
+          cd $HOME/onnxlibrary/macabi_release_dynamic_v20230327_2320/framework_out
+          zip -r -y "${{ github.workspace }}/onnxruntime.xcframework.zip" onnxruntime.xcframework
 
       - name: upload static xcframework artifact
         uses: actions/upload-artifact@v4
         with:
           name: onnxruntime-static.xcframework
           path: onnxruntime-static.xcframework.zip
+          if-no-files-found: error
+
+      - name: upload dynamic xcframework artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: onnxruntime.xcframework
+          path: onnxruntime.xcframework.zip
           if-no-files-found: error
