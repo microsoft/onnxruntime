@@ -603,7 +603,16 @@ Status SessionState::PrepackConstantInitializedTensors(
                   // within this session. Or if the weight is not present on disk,
                   // we store the newly minted pre-packed data.
 
-                  AllocatorPtr session_initializer_alloc = GetInitializerAllocator(kernel->Info().GetDevice(OrtMemType::OrtMemTypeDefault));
+                  AllocatorPtr session_initializer_alloc = GetInitializerAllocator(
+                      kernel->Info().GetDevice(OrtMemType::OrtMemTypeDefault));
+                  // A plugin EP registered as a separate library may not have an initializer
+                  // allocator registered under the kernel's device key, so the lookup above can
+                  // return null. Fall back to the kernel's own default-memory allocator (resolved
+                  // through the EP), which is always valid. This keeps PrePack implementations from
+                  // each having to special-case a null allocator at the library boundary.
+                  if (!session_initializer_alloc) {
+                    session_initializer_alloc = kernel->Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
+                  }
                   PrePackedWeights weights_to_be_filled_in;
                   // The reason we invoke PrePack() before looking into the container for any pre-packed weight
                   // cached by another instance of the same op_type (for the same constant initializer) is because

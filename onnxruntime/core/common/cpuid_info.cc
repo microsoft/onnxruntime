@@ -405,4 +405,13 @@ CPUIDInfo::CPUIDInfo() {
 #endif
 #endif  // defined(CPUIDINFO_ARCH_RISCV64)
 }
+
+CPUIDInfo::~CPUIDInfo() {
+#if defined(CPUINFO_SUPPORTED)
+  if (pytorch_cpuinfo_init_) {
+    cpuinfo_deinitialize();
+    pytorch_cpuinfo_init_ = false;
+  }
+#endif
+}
 }  // namespace onnxruntime

@@ -1023,56 +1023,60 @@ class CudaKernel : public OpKernel {
   template <typename T>
   using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
   template <typename T>
-  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t cnt, void* s) const {
+  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t cnt, void* /*stream*/) const {
     if (cnt == 0) return IAllocatorUniquePtr<T>(nullptr, [](T*) {});
-    size_t sz = 0;
-    if (!detail::TryBytesForCount(cnt, detail::SizeOf<T>::value, sz)) {
-      ORT_THROW("CUDA scratch buffer allocation size overflow for ", cnt, " elements");
-    }
 
-    void* p = nullptr;
-    cudaError_t alloc_result = cudaSuccess;
-    bool used_async_alloc = false;
-    if (s) {
-      // Note: stream-ordered allocations (cudaMallocAsync/cudaFreeAsync) rely on CUDA Memory Pools,
-      // which are not supported on NVIDIA GPUs with Multi-Instance GPU (MIG) enabled.
-      // On such instances, this will return cudaErrorNotSupported.
-      alloc_result = cudaMallocAsync(&p, sz, static_cast<cudaStream_t>(s));
-      used_async_alloc = (alloc_result == cudaSuccess);
-      if (!used_async_alloc && (alloc_result == cudaErrorNotSupported || alloc_result == cudaErrorInvalidValue)) {
-        cudaGetLastError();  // Clear the thread-local error state
-        alloc_result = cudaMalloc(&p, sz);
-      }
-    } else {
-      alloc_result = cudaMalloc(&p, sz);
-    }
-
-    if (alloc_result != cudaSuccess) {
-      ORT_THROW("CUDA scratch buffer allocation failed for ", sz, " bytes: ", cudaGetErrorString(alloc_result));
-    }
-
-    return IAllocatorUniquePtr<T>(static_cast<T*>(p), [s, used_async_alloc](T* ptr) {
-      if (ptr) {
-        // Guard: only attempt async free if the stream is still registered.
-        // CudaSyncStream::~CudaSyncStream guarantees UnregisterStream() is
-        // called before cudaStreamDestroy(), so a non-null lookup here means
-        // the raw cudaStream_t handle is still valid.
-        if (used_async_alloc && s &&
-            cuda_plugin::CudaSyncStream::FromCudaStream(static_cast<cudaStream_t>(s)) != nullptr) {
-          // As noted above, cudaFreeAsync may also return cudaErrorNotSupported on MIG-enabled instances.
-          cudaError_t free_result = cudaFreeAsync(ptr, static_cast<cudaStream_t>(s));
-          if (free_result == cudaSuccess) {
-            return;
-          }
-          cudaGetLastError();  // Clear any error set by cudaFreeAsync
-        }
-
-        // Fall back to synchronous free if async free is unsupported or if the
-        // stream is no longer registered. cudaFree is valid for allocations
-        // returned by cudaMallocAsync and avoids using a stale stream handle.
-        cudaFree(ptr);
-      }
-    });
+    // Route kernel scratch/workspace allocations through the EP allocator
+    // (a BFC arena by default) instead of raw cudaMallocAsync/cudaMalloc.
+    //
+    // The arena pre-reserves device memory and reuses freed chunks across runs.
+    // Once the model has executed `min_num_runs_before_cuda_graph_capture`
+    // warmup runs, the arena has grown to its steady-state working set, so the
+    // capture run serves every scratch allocation from an already-reserved chunk
+    // without issuing a fresh cudaMalloc. This keeps the device free-memory
+    // footprint stable across the capture window, which is required for correct
+    // CUDA graph capture/replay.
+    //
+    // The previous behavior (cudaMallocAsync/cudaMalloc allocated-and-freed per
+    // call) allocated new device memory on every run, including the capture run,
+    // so no amount of warmup could stabilize it and the
+    // "GPU memory was allocated during CUDA graph capture" detector would trip.
+    // This now matches the built-in (non-plugin) CUDA EP, which also obtains
+    // scratch from Info().GetAllocator() (see core/providers/cuda/cuda_kernel.h).
+    // The overflow check that the previous hand-rolled path performed is still
+    // enforced inside MakeUniquePtr via ValidatedCalcMemSizeForArray (it throws
+    // on cnt * sizeof(T) overflow).
+    //
+    // The compute stream is intentionally NOT forwarded to the allocator here. This is a
+    // bookkeeping decision, NOT a synchronization bug: the `stream` argument to a stream-aware
+    // arena is only metadata used to decide when a freed chunk may be reused on a *different*
+    // stream without an intervening sync. It does not change where the kernel runs - the returned
+    // buffer is still consumed by the kernel on the real compute stream. In a serialized run (and
+    // within one graph-capture run), alloc/free/reuse ordering is implicit on that stream, so there
+    // is no cross-stream chunk to race on. Tagging chunks with a null stream (freely reusable, the
+    // same semantics as a plain non-stream-aware BFC arena) is therefore correct and safe as long
+    // as the EP does not advertise concurrent Session::Run() support.
+    //
+    // It is also currently the only safe option, because of a C-API type constraint: a plugin
+    // kernel only has the raw cudaStream_t (KernelContext::GetGPUComputeStream), not the framework
+    // OrtSyncStream* that the stream-aware arena persists in each chunk (CudaArena stores
+    // `chunk->stream` and later dereferences it through the EP stream API, e.g.
+    // SyncStream_GetImpl/SyncStream_GetSyncId). Note that OrtSyncStream (the ORT-core wrapper,
+    // `struct OrtSyncStream : public onnxruntime::Stream`) is a DIFFERENT object from the plugin's
+    // CudaSyncStream (an OrtSyncStreamImpl); CudaSyncStream::FromCudaStream() recovers the latter,
+    // not the former. Wrapping the raw handle in a temporary framework Stream shim and passing it
+    // down would be unsafe on two counts: (1) the shim is stack-allocated and would dangle after
+    // this function returns while the arena still holds the pointer, and (2) it is type-confused —
+    // the arena would reinterpret a framework Stream* as an OrtSyncStream* that was never created
+    // by ORT for this stream.
+    //
+    // Properly stream-tagging scratch chunks (needed before this path can support concurrent
+    // multi-stream runs) requires new C-API surface to expose the framework OrtSyncStream* to
+    // plugin kernels. See docs/cuda_plugin_ep/arena_allocator_migration_design.md ("Scratch buffer
+    // stream tagging") for the limitation and future work.
+    return ::onnxruntime::IAllocator::MakeUniquePtr<T>(
+        Info().GetAllocator(OrtMemType::OrtMemTypeDefault), cnt, /*use_reserve*/ false,
+        /*stream*/ nullptr);
   }
   template <typename T>
   inline IAllocatorUniquePtr<T> GetTransientScratchBuffer(size_t cnt) const {

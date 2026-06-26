@@ -3,12 +3,14 @@
 
 #include "core/providers/common.h"
 #include "core/providers/webgpu/math/binary_elementwise_ops.h"
+#include "core/providers/webgpu/math/binary_elementwise_broadcast_utils.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/string_macros.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 
 namespace onnxruntime {
 namespace webgpu {
+
 Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
@@ -156,16 +158,8 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
       vectorize = true;
     } else {
       int64_t shared_dimension = 1;
-      for (size_t i = 1; i < output_shape.NumDimensions(); i++) {
-        int64_t dimA = lhs_shape.NumDimensions() >= i ? lhs_shape[lhs_shape.NumDimensions() - i] : 1;
-        int64_t dimB = rhs_shape.NumDimensions() >= i ? rhs_shape[rhs_shape.NumDimensions() - i] : 1;
-        if (dimA == dimB) {
-          shared_dimension *= dimA;
-          num_shared_dimension++;
-        } else {
-          break;
-        }
-      }
+      num_shared_dimension = CountSharedTrailingDimensions(lhs_shape, rhs_shape,
+                                                           output_shape.NumDimensions(), shared_dimension);
       if (shared_dimension % 4 == 0) {
         shared_dimension_divisible_by_4 = true;
         vectorize = true;

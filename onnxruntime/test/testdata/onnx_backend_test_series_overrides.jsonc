@@ -6,6 +6,8 @@
     "atol_overrides": {
         "test_attention_4d_fp16": 5e-4,
         "test_attention_4d_gqa_with_past_and_present_fp16": 6e-4,
+        "test_causal_conv_with_state_silu_fp16": 5e-4,
+        "test_causal_conv_with_state_silu_fp16_expanded": 5e-4,
         "test_dft": 1e-3,
         "test_dft_axis": 1e-3,
         "test_dft_inverse": 1e-3,

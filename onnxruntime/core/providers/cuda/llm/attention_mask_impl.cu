@@ -141,6 +141,132 @@ template Status LaunchZeroOutputForFullyMaskedBatches<__half>(
 template Status LaunchZeroOutputForFullyMaskedBatches<__nv_bfloat16>(
     __nv_bfloat16*, const int*, int, int64_t, cudaStream_t, int);
 
+// Zero output rows fully masked by the intersection of the causal frontier and an
+// explicit additive attention bias (composed is_causal + attn_mask), per onnx#8068
+// "fully-masked-row -> 0" (Bug-2). The MEA/CUTLASS path uses a finite mask sentinel,
+// so a row with no allowed key softmaxes to mean-of-V; this overwrites it with zeros.
+// One (batch, head, query) row per loop iteration via a grid-stride loop, so every row
+// is covered even when batch_size * num_heads * q_sequence_length exceeds
+// gridDim.x * blockDim.x (the grid is capped at kMaxGridDimX). Output is BSNH.
+template <typename T>
+__global__ void ZeroFullyMaskedRowsKernel(
+    T* __restrict__ output,
+    const T* __restrict__ attn_bias,
+    const int* __restrict__ seqlens_k,
+    const int batch_size,
+    const int num_heads,
+    const int q_sequence_length,
+    const int total_sequence_length,
+    const int v_head_size,
+    const bool is_causal,
+    const bool causal_from_top_left,
+    const int bias_dim0,  // attn_bias extent along batch: broadcast ? 1 : batch_size
+    const int bias_dim1,  // attn_bias extent along head:  broadcast ? 1 : num_heads
+    const float masked_bias_value) {
+  const int64_t total_rows =
+      static_cast<int64_t>(batch_size) * num_heads * q_sequence_length;
+  for (int64_t row = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       row < total_rows;
+       row += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+    // Decode flattened index into (batch b, head n, query i) for BNS ordering.
+    const int i = static_cast<int>(row % q_sequence_length);
+    const int n = static_cast<int>((row / q_sequence_length) % num_heads);
+    const int b = static_cast<int>(row / (static_cast<int64_t>(q_sequence_length) * num_heads));
+
+    const int num_keys = (seqlens_k != nullptr) ? seqlens_k[b] : total_sequence_length;
+
+    // Causally-allowed keys are j in [0, key_upper). Bottom-right anchors the diagonal at
+    // offset = num_keys - q_sequence_length (== nonpad_kv_seqlen[b] - q_seq); top-left uses 0.
+    int key_upper;
+    if (is_causal) {
+      const int offset = causal_from_top_left ? 0 : (num_keys - q_sequence_length);
+      const int causal_last = i + offset;  // inclusive last causally-allowed key index
+      key_upper = min(num_keys, causal_last + 1);
+    } else {
+      key_upper = num_keys;
+    }
+
+    bool any_allowed = false;
+    if (key_upper > 0) {
+      if (attn_bias == nullptr) {
+        any_allowed = true;  // no explicit mask -> at least one causally-allowed key
+      } else {
+        const int b_idx = (bias_dim0 == 1) ? 0 : b;
+        const int n_idx = (bias_dim1 == 1) ? 0 : n;
+        const int64_t base =
+            ((static_cast<int64_t>(b_idx) * bias_dim1 + n_idx) * q_sequence_length + i) *
+            total_sequence_length;
+        for (int j = 0; j < key_upper; ++j) {
+          if (static_cast<float>(attn_bias[base + j]) > masked_bias_value) {
+            any_allowed = true;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!any_allowed) {
+      // Output is BSNH: zero the [b, i, n, :] row (select, not multiply).
+      const int64_t out_base =
+          ((static_cast<int64_t>(b) * q_sequence_length + i) * num_heads + n) * v_head_size;
+      for (int d = 0; d < v_head_size; ++d) {
+        output[out_base + d] = T(0.0f);
+      }
+    }
+  }
+}
+
+template <typename T>
+Status LaunchZeroFullyMaskedRows(
+    T* output,
+    const T* attn_bias,
+    const int* seqlens_k,
+    int batch_size,
+    int num_heads,
+    int q_sequence_length,
+    int total_sequence_length,
+    int v_head_size,
+    bool is_causal,
+    bool causal_from_top_left,
+    bool broadcast_bias_dim_0,
+    bool broadcast_bias_dim_1,
+    float masked_bias_value,
+    cudaStream_t stream,
+    int max_threads_per_block) {
+  const int64_t total_rows =
+      static_cast<int64_t>(batch_size) * num_heads * q_sequence_length;
+  if (total_rows == 0) {
+    return Status::OK();
+  }
+
+  const int bias_dim0 = broadcast_bias_dim_0 ? 1 : batch_size;
+  const int bias_dim1 = broadcast_bias_dim_1 ? 1 : num_heads;
+
+  int threads = static_cast<int>(std::min(static_cast<int64_t>(max_threads_per_block), total_rows));
+  int64_t blocks = (total_rows + threads - 1) / threads;
+  // Cap the grid at kMaxGridDimX; the kernel grid-strides over total_rows, so any rows
+  // beyond grid_size * threads are still covered (matches ZeroOutputForFullyMaskedBatches).
+  constexpr int64_t kMaxGridDimX = 65535;
+  unsigned int grid_size = static_cast<unsigned int>(std::min(blocks, kMaxGridDimX));
+
+  ZeroFullyMaskedRowsKernel<T><<<grid_size, threads, 0, stream>>>(
+      output, attn_bias, seqlens_k, batch_size, num_heads, q_sequence_length,
+      total_sequence_length, v_head_size, is_causal, causal_from_top_left,
+      bias_dim0, bias_dim1, masked_bias_value);
+
+  return CUDA_CALL(cudaGetLastError());
+}
+
+template Status LaunchZeroFullyMaskedRows<float>(
+    float*, const float*, const int*, int, int, int, int, int, bool, bool, bool, bool, float,
+    cudaStream_t, int);
+template Status LaunchZeroFullyMaskedRows<__half>(
+    __half*, const __half*, const int*, int, int, int, int, int, bool, bool, bool, bool, float,
+    cudaStream_t, int);
+template Status LaunchZeroFullyMaskedRows<__nv_bfloat16>(
+    __nv_bfloat16*, const __nv_bfloat16*, const int*, int, int, int, int, int, bool, bool, bool, bool,
+    float, cudaStream_t, int);
+
 // Simple kernel to fill an int32 buffer with a constant value on device.
 // Used for CUDA-graph-capturable seqlens_k initialization (no host memory).
 __global__ void FillInt32Kernel(int* __restrict__ output, const int value, const int count) {

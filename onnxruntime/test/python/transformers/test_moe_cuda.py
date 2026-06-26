@@ -152,9 +152,7 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True):
         q_weight_reshaped = q_weight.reshape(n, -1)
 
         # Pack weights for CUDA mixed-gemm kernel (FpA_IntB format), and qMoE kernel uses the same format.
-        # Pin arch=80: the QMoE grouped MoE GEMM always runs the Ampere (SM80) kernel -- even on SM90 --
-        # so it consumes the SM80 (column-interleaved) layout on every GPU. Auto-detect (force_arch=-1)
-        # would emit the non-interleaved SM90 layout on Hopper and produce wrong results.
+        # INT MoE/QMoE kernels consume the SM80 column-interleaved layout, including on newer GPUs.
         processed_q_weight = _quantize.pack_weights_for_cuda_mixed_gemm(q_weight_reshaped, n, k, 4, 80)
 
         # So we need to DEQUANTIZE back to get `result`.
@@ -235,10 +233,8 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True):
             )
 
         q_weight_reshaped = q_weight.reshape(n, -1)
-        # Pack weights for CUDA mixed-gemm kernel (FpA_IntB format).
-        # Pin arch=80: the QMoE grouped MoE GEMM always runs the Ampere (SM80) kernel -- even on SM90 --
-        # so it consumes the SM80 (column-interleaved) layout on every GPU. Auto-detect (force_arch=-1)
-        # would emit the non-interleaved SM90 layout on Hopper and produce wrong results.
+        # Pack weights for CUDA mixed-gemm kernel (FpA_IntB format)
+        # INT MoE/QMoE kernels consume the SM80 column-interleaved layout, including on newer GPUs.
         processed_q_weight = _quantize.pack_weights_for_cuda_mixed_gemm(q_weight_reshaped, n, k, 8, 80)
 
         # Dequantize for reference
@@ -1526,7 +1522,7 @@ class TestPhiMoE(unittest.TestCase):
 phi3_qmoe_test_cases = list(
     itertools.product(
         [1, 4],  # batch_size
-        [1, 8],  # sequence_length
+        [1, 8],  # sequence_length; keeps expanded rows <= 64 to exercise the INT4 MoE GEMV path
         [TensorProto.FLOAT16],  # onnx type, None mean fp32 for bits = 0, fp16 for bits > 0
         [True],  # normalize_routing_weights
     )
