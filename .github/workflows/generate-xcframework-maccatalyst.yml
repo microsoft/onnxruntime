@@ -77,46 +77,10 @@ jobs:
             --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
             ${{ github.workspace }}/tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
 
-      - name: create dynamic release build
-        run: |
-          export PYTHONPATH=${{ github.workspace }}/tools/python:$PYTHONPATH
-          python3 ${{ github.workspace }}/tools/ci_build/github/apple/build_apple_framework.py --config Release --build_dynamic_framework --build_dir=$HOME/onnxlibrary/macabi_release_dynamic_v20230327_2320 \
-            --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
-            ${{ github.workspace }}/tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
-
-      - name: verify static slices
-        run: |
-          set -euo pipefail
-          XCF=$HOME/onnxlibrary/macabi_release_static_v20230327_2320/framework_out/onnxruntime.xcframework
-          file "$XCF/ios-arm64/onnxruntime.framework/onnxruntime" | grep "current ar archive random library"
-          lipo "$XCF/ios-arm64/onnxruntime.framework/onnxruntime" -verify_arch arm64
-          lipo "$XCF/ios-arm64-simulator/onnxruntime.framework/onnxruntime" -verify_arch arm64
-          lipo "$XCF/ios-arm64_x86_64-maccatalyst/onnxruntime.framework/onnxruntime" -verify_arch arm64 x86_64
-          test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64/onnxruntime.framework/Info.plist")" = "16.4"
-          test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64-simulator/onnxruntime.framework/Info.plist")" = "16.4"
-          test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64_x86_64-maccatalyst/onnxruntime.framework/Versions/A/Resources/Info.plist")" = "16.4"
-
-      - name: verify dynamic slices
-        run: |
-          set -euo pipefail
-          XCF=$HOME/onnxlibrary/macabi_release_dynamic_v20230327_2320/framework_out/onnxruntime.xcframework
-          file "$XCF/ios-arm64/onnxruntime.framework/onnxruntime" | grep "dynamically linked shared library"
-          lipo "$XCF/ios-arm64/onnxruntime.framework/onnxruntime" -verify_arch arm64
-          lipo "$XCF/ios-arm64-simulator/onnxruntime.framework/onnxruntime" -verify_arch arm64
-          lipo "$XCF/ios-arm64_x86_64-maccatalyst/onnxruntime.framework/onnxruntime" -verify_arch arm64 x86_64
-          test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64/onnxruntime.framework/Info.plist")" = "16.4"
-          test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64-simulator/onnxruntime.framework/Info.plist")" = "16.4"
-          test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64_x86_64-maccatalyst/onnxruntime.framework/Versions/A/Resources/Info.plist")" = "16.4"
-
       - name: archive static xcframework
         run: |
           cd $HOME/onnxlibrary/macabi_release_static_v20230327_2320/framework_out
           zip -r -y "${{ github.workspace }}/onnxruntime-static.xcframework.zip" onnxruntime.xcframework
-
-      - name: archive dynamic xcframework
-        run: |
-          cd $HOME/onnxlibrary/macabi_release_dynamic_v20230327_2320/framework_out
-          zip -r -y "${{ github.workspace }}/onnxruntime.xcframework.zip" onnxruntime.xcframework
 
       - name: upload static xcframework artifact
         uses: actions/upload-artifact@v4
@@ -125,9 +89,53 @@ jobs:
           path: onnxruntime-static.xcframework.zip
           if-no-files-found: error
 
+      - name: create dynamic release build
+        run: |
+          export PYTHONPATH=${{ github.workspace }}/tools/python:$PYTHONPATH
+          python3 ${{ github.workspace }}/tools/ci_build/github/apple/build_apple_framework.py --config Release --build_dynamic_framework --build_dir=$HOME/onnxlibrary/macabi_release_dynamic_v20230327_2320 \
+            --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
+            ${{ github.workspace }}/tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
+
+      - name: archive dynamic xcframework
+        run: |
+          cd $HOME/onnxlibrary/macabi_release_dynamic_v20230327_2320/framework_out
+          zip -r -y "${{ github.workspace }}/onnxruntime.xcframework.zip" onnxruntime.xcframework
+
       - name: upload dynamic xcframework artifact
         uses: actions/upload-artifact@v4
         with:
           name: onnxruntime.xcframework
           path: onnxruntime.xcframework.zip
           if-no-files-found: error
+
+      - name: verify static slices
+        run: |
+          set -euxo pipefail
+          XCF=$HOME/onnxlibrary/macabi_release_static_v20230327_2320/framework_out/onnxruntime.xcframework
+          find "$XCF" -maxdepth 3 -type f | sort
+          file "$XCF/ios-arm64/onnxruntime.framework/onnxruntime" | grep "current ar archive random library"
+          lipo "$XCF/ios-arm64/onnxruntime.framework/onnxruntime" -info
+          lipo "$XCF/ios-arm64/onnxruntime.framework/onnxruntime" -verify_arch arm64
+          lipo "$XCF/ios-arm64-simulator/onnxruntime.framework/onnxruntime" -info
+          lipo "$XCF/ios-arm64-simulator/onnxruntime.framework/onnxruntime" -verify_arch arm64
+          lipo "$XCF/ios-arm64_x86_64-maccatalyst/onnxruntime.framework/onnxruntime" -info
+          lipo "$XCF/ios-arm64_x86_64-maccatalyst/onnxruntime.framework/onnxruntime" -verify_arch arm64 x86_64
+          test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64/onnxruntime.framework/Info.plist")" = "16.4"
+          test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64-simulator/onnxruntime.framework/Info.plist")" = "16.4"
+          test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64_x86_64-maccatalyst/onnxruntime.framework/Versions/A/Resources/Info.plist")" = "16.4"
+
+      - name: verify dynamic slices
+        run: |
+          set -euxo pipefail
+          XCF=$HOME/onnxlibrary/macabi_release_dynamic_v20230327_2320/framework_out/onnxruntime.xcframework
+          find "$XCF" -maxdepth 3 -type f | sort
+          file "$XCF/ios-arm64/onnxruntime.framework/onnxruntime" | grep "dynamically linked shared library"
+          lipo "$XCF/ios-arm64/onnxruntime.framework/onnxruntime" -info
+          lipo "$XCF/ios-arm64/onnxruntime.framework/onnxruntime" -verify_arch arm64
+          lipo "$XCF/ios-arm64-simulator/onnxruntime.framework/onnxruntime" -info
+          lipo "$XCF/ios-arm64-simulator/onnxruntime.framework/onnxruntime" -verify_arch arm64
+          lipo "$XCF/ios-arm64_x86_64-maccatalyst/onnxruntime.framework/onnxruntime" -info
+          lipo "$XCF/ios-arm64_x86_64-maccatalyst/onnxruntime.framework/onnxruntime" -verify_arch arm64 x86_64
+          test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64/onnxruntime.framework/Info.plist")" = "16.4"
+          test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64-simulator/onnxruntime.framework/Info.plist")" = "16.4"
+          test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64_x86_64-maccatalyst/onnxruntime.framework/Versions/A/Resources/Info.plist")" = "16.4"
