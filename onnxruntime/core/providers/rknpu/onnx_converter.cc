@@ -131,29 +131,12 @@ static uint32_t ToRknpuDim(int64_t dim, const std::string& name) {
 
 // Allocates a zero-initialized buffer holding `count` elements of `element_size`
 // bytes each, used as an implicit (all-zero) bias when a Conv/Gemm node omits
-// its bias input. A malicious model can specify a weight dimension large enough
-// that `element_size * count` overflows size_t and wraps to a tiny allocation,
-// which would cause a heap buffer overflow when the buffer is later consumed.
-// SafeInt throws on overflow, and the allocation result is null-checked. Both
-// failure paths report element_size/count (and the byte count) to aid diagnosis.
-static void* AllocZeroedBias(size_t element_size, uint32_t count) {
-  size_t num_bytes = 0;
-  ORT_TRY {
-    num_bytes = SafeInt<size_t>(element_size) * count;
-  }
-  ORT_CATCH(const std::exception&) {
-    ORT_THROW("RKNPU: implicit bias size overflow (element_size=", element_size,
-              ", count=", count, ")");
-  }
-  void* ptr = malloc(num_bytes);
-  ORT_ENFORCE(ptr != nullptr || num_bytes == 0,
-              "RKNPU: failed to allocate ", num_bytes,
-              " bytes for implicit bias (element_size=", element_size,
-              ", count=", count, ")");
-  if (ptr != nullptr) {
-    memset(ptr, 0, num_bytes);
-  }
-  return ptr;
+// its bias input. SafeInt throws OnnxRuntimeException if `element_size * count`
+// overflows size_t, guarding against a heap buffer overflow from a malicious
+// weight dimension. std::make_unique zero-initializes and owns the buffer.
+static std::unique_ptr<uint8_t[]> AllocZeroedBias(size_t element_size, uint32_t count) {
+  const size_t num_bytes = SafeInt<size_t>(element_size) * count;
+  return std::make_unique<uint8_t[]>(num_bytes);
 }
 
 void OnnxConverter::HandleInitializer() {
@@ -851,9 +834,6 @@ void OnnxConverter::Clear() {
   rk_tensors_.clear();
   shaper_.Clear();
 
-  for (const auto p : free_list_) {
-    if (p) free(p);
-  }
   free_list_.clear();
 }
 
@@ -981,8 +961,8 @@ void OnnxConverter::AddLayerConvImpl(const std::string& input,
     }
   } else {
     uint32_t dim = shaper_[weight][0];
-    void* ptr = AllocZeroedBias(sizeof(float), dim);
-    free_list_.push_back(ptr);
+    free_list_.push_back(AllocZeroedBias(sizeof(float), dim));
+    void* ptr = free_list_.back().get();
 
     std::vector<uint32_t> dims = {dim};
     auto rk_bias = CreateRknnTensor(bias, dims, ptr, rk::nn::TensorRole::CONST);
@@ -1089,8 +1069,8 @@ void OnnxConverter::AddLayerQLinearConvImpl(const string& input,
     }
   } else {
     uint32_t dim = shaper_[weight][0];
-    void* ptr = AllocZeroedBias(sizeof(int32_t), dim);
-    free_list_.push_back(ptr);
+    free_list_.push_back(AllocZeroedBias(sizeof(int32_t), dim));
+    void* ptr = free_list_.back().get();
 
     std::vector<uint32_t> dims = {dim};
     auto rk_bias = CreateRknnTensor(bias, dims, ptr, rk::nn::TensorRole::CONST,
@@ -1177,8 +1157,8 @@ void OnnxConverter::AddLayerDepthwiseConvImpl(
     }
   } else {
     uint32_t dim = shaper_[weight][0];
-    void* ptr = AllocZeroedBias(sizeof(float), dim);
-    free_list_.push_back(ptr);
+    free_list_.push_back(AllocZeroedBias(sizeof(float), dim));
+    void* ptr = free_list_.back().get();
 
     std::vector<uint32_t> dims = {dim};
     auto rk_bias = CreateRknnTensor(bias, dims, ptr, rk::nn::TensorRole::CONST);
@@ -1410,8 +1390,8 @@ void OnnxConverter::AddLayerFC(const std::string& input,
     }
   } else {
     uint32_t dim = shaper_[weight][0];
-    void* ptr = AllocZeroedBias(sizeof(float), dim);
-    free_list_.push_back(ptr);
+    free_list_.push_back(AllocZeroedBias(sizeof(float), dim));
+    void* ptr = free_list_.back().get();
 
     std::vector<uint32_t> dims = {dim};
     auto rk_bias = CreateRknnTensor(bias, dims, ptr, rk::nn::TensorRole::CONST);
