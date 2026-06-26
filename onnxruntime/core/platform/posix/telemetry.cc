@@ -292,16 +292,15 @@ void PosixTelemetry::LogEventAsync(Microsoft::Applications::Events::EventPropert
 void PosixTelemetry::Initialize() {
   std::unique_lock<std::shared_mutex> lock(mutex_);
 
-  // Environment opt-out: ORT_TELEMETRY_ENABLED set to a disabled value (0/false/off/no/disabled/n,
+  // Environment opt-out: ORT_TELEMETRY_DISABLED set to a truthy value (1/true/yes/on/y,
   // case-insensitive) disables telemetry at runtime without recompiling and skips creating the 1DS
-  // uploader entirely. Accepts the same value set as onnxruntime-genai's ORTGENAI_TELEMETRY_ENABLED.
-  if (const char* env = std::getenv("ORT_TELEMETRY_ENABLED"); env != nullptr) {
+  // uploader entirely. A single opt-out variable honored by both ONNX Runtime and onnxruntime-genai.
+  if (const char* env = std::getenv("ORT_TELEMETRY_DISABLED"); env != nullptr) {
     std::string value(env);
     for (char& ch : value) {
       ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
     }
-    if (value == "0" || value == "false" || value == "off" || value == "no" ||
-        value == "disabled" || value == "n") {
+    if (value == "1" || value == "true" || value == "yes" || value == "on" || value == "y") {
       enabled_.store(false, std::memory_order_release);
       return;
     }
