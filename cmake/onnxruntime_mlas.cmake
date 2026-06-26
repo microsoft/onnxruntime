@@ -816,13 +816,29 @@ else()
 message(STATUS "CMAKE_CXX_COMPILER_ID: ${CMAKE_CXX_COMPILER_ID}")
 message(STATUS "CMAKE_CXX_COMPILER_VERSION: ${CMAKE_CXX_COMPILER_VERSION}")
 
-if(NOT "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" OR CMAKE_CXX_COMPILER_VERSION VERSION_GREATER "11")
+        include(CheckCXXSourceCompiles)
+        set(OLD_CMAKE_REQUIRED_FLAGS_AVXVNNI "${CMAKE_REQUIRED_FLAGS}")
+        set(CMAKE_REQUIRED_FLAGS "${OLD_CMAKE_REQUIRED_FLAGS_AVXVNNI} -mavxvnni")
+        check_cxx_source_compiles("
+          #include <immintrin.h>
+          int main() {
+            __m256i a = _mm256_setzero_si256();
+            __m256i b = _mm256_setzero_si256();
+            (void)_mm256_dpbusds_avx_epi32(a, b, b);
+            return 0;
+          }"
+          MLAS_COMPILER_SUPPORTS_AVXVNNI
+        )
+        set(CMAKE_REQUIRED_FLAGS "${OLD_CMAKE_REQUIRED_FLAGS_AVXVNNI}")
+        unset(OLD_CMAKE_REQUIRED_FLAGS_AVXVNNI)
+
+        if(MLAS_COMPILER_SUPPORTS_AVXVNNI)
           message(STATUS "Using -mavx2 -mfma -mavxvnni flags")
           set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c -mavxvnni")
-else()
-          message(STATUS "Using -mavx2 -mfma flags")
+        else()
+          message(STATUS "Using -mavx2 -mfma flags (AVX-VNNI not supported by compiler/assembler)")
           set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c")
-endif()
+        endif()
         set(mlas_platform_srcs_avx512f
           ${MLAS_SRC_DIR}/x86_64/DgemmKernelAvx512F.S
           ${MLAS_SRC_DIR}/x86_64/SgemmKernelAvx512F.S
