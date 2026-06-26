@@ -336,7 +336,7 @@ TEST(MLOpTest, TreeEnsembleMinLeafTargetIdsOutsideBoundary) {
       2,
       2,
       {5},
-      "At least one value (5) in leaf_targetids is greater or equal to the number of targets (2)");
+      "At least one value (5) in target/class ids is greater or equal to the target/class count (2)");
 }
 
 TEST(MLOpTest, TreeEnsembleMaxLeafTargetIdsOutsideBoundary) {
@@ -344,7 +344,7 @@ TEST(MLOpTest, TreeEnsembleMaxLeafTargetIdsOutsideBoundary) {
       3,
       2,
       {5},
-      "At least one value (5) in leaf_targetids is greater or equal to the number of targets (2)");
+      "At least one value (5) in target/class ids is greater or equal to the target/class count (2)");
 }
 
 TEST(MLOpTest, TreeEnsembleNegativeLeafTargetIds) {
@@ -352,7 +352,7 @@ TEST(MLOpTest, TreeEnsembleNegativeLeafTargetIds) {
       1,
       2,
       {-1},
-      "leaf_targetids cannot have negative values (-1)");
+      "target/class ids cannot have negative values (-1)");
 }
 
 TEST(MLOpTest, TreeEnsembleZeroTargets) {
@@ -360,7 +360,7 @@ TEST(MLOpTest, TreeEnsembleZeroTargets) {
       1,
       0,
       {0},
-      "n_targets must be positive, got 0");
+      "target/class count must be positive, got 0");
 }
 
 TEST(MLOpTest, TreeEnsembleLeafLike) {

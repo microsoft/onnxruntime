@@ -3,13 +3,9 @@
 
 #pragma once
 
-#include <algorithm>
-#include <string_view>
 #include <unordered_map>
 #include <stack>
 #include <vector>
-
-#include "gsl/gsl"
 
 #include "core/common/inlined_containers.h"
 #include "core/common/common.h"
@@ -25,28 +21,6 @@ inline bool _isnan_(float x) { return std::isnan(x); }
 inline bool _isnan_(double x) { return std::isnan(x); }
 inline bool _isnan_(int64_t) { return false; }
 inline bool _isnan_(int32_t) { return false; }
-
-// Target count must be positive, and target ids must be in [0, target_count).
-inline void ValidateTargetIds(gsl::span<const int64_t> target_ids,
-                              int64_t target_count,
-                              std::string_view target_ids_name,
-                              std::string_view target_count_name,
-                              std::string_view target_count_display_name) {
-  ORT_ENFORCE(target_count > 0,
-              target_count_name, " must be positive, got ", target_count);
-
-  if (target_ids.empty()) {
-    return;
-  }
-
-  const auto [min_target_id, max_target_id] = std::minmax_element(target_ids.begin(), target_ids.end());
-  ORT_ENFORCE(*min_target_id >= 0,
-              target_ids_name, " cannot have negative values (", *min_target_id, ").");
-  ORT_ENFORCE(*max_target_id < target_count,
-              "At least one value (", *max_target_id, ") in ", target_ids_name,
-              " is greater or equal to ", target_count_display_name, " (",
-              target_count, ").");
-}
 
 template <typename ThresholdType>
 struct TreeEnsembleAttributesV3 {
@@ -98,8 +72,8 @@ struct TreeEnsembleAttributesV3 {
       target_class_weights = info.GetAttrsOrDefault<float>("target_weights");
     }
 
-    ValidateTargetIds(target_class_ids, n_targets_or_classes,
-                      "target_ids or class_ids", "n_targets_or_classes", "the number of targets or classes");
+    ORT_ENFORCE(n_targets_or_classes > 0,
+                "n_targets_or_classes must be positive, got ", n_targets_or_classes);
     ORT_ENFORCE(nodes_falsenodeids.size() == nodes_featureids.size(),
                 "nodes_falsenodeids and nodes_featureids must have the same size, got ",
                 nodes_falsenodeids.size(), " and ", nodes_featureids.size());
@@ -234,8 +208,6 @@ struct TreeEnsembleAttributesV5 {
 
   void convert_to_v3(TreeEnsembleAttributesV3<ThresholdType>& output) const {
     // Doing all transformations to get the old format.
-    ValidateTargetIds(leaf_targetids, n_targets,
-                      "leaf_targetids", "n_targets", "the number of targets");
     output.n_targets_or_classes = n_targets;
     output.aggregate_function = aggregateFunctionToString();
     output.post_transform = postTransformToString();
