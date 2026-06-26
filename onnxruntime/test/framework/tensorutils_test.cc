@@ -6,6 +6,7 @@
 #include "core/framework/endian_utils.h"
 #include "core/framework/prepacked_weights.h"
 #include "core/framework/prepacked_weights_container.h"
+#include "core/framework/tensor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "test/util/include/asserts.h"
@@ -247,6 +248,41 @@ TEST(TensorProtoUtilsTest, UnpackBoolTensorWithRawDataNormalizesToZeroOne) {
   EXPECT_EQ(bytes[1], 1);
   EXPECT_EQ(bytes[2], 1);
   EXPECT_EQ(bytes[3], 1);
+}
+
+// NormalizeBoolTensorIfNeeded normalizes a CPU bool tensor's bytes to {0, 1} in place. It backs the
+// external-initializer device-copy path (session_state_utils.cc), where bool bytes that may be
+// non-canonical are normalized in a writable CPU staging copy before being copied to the device.
+TEST(TensorProtoUtilsTest, NormalizeBoolTensorIfNeededNormalizesToZeroOne) {
+  auto cpu_allocator = std::make_shared<CPUAllocator>();
+
+  // Bool tensor: write non-canonical bytes, then normalize.
+  Tensor bool_tensor(DataTypeImpl::GetType<bool>(), TensorShape({4}), cpu_allocator);
+  unsigned char* bool_bytes = reinterpret_cast<unsigned char*>(bool_tensor.MutableDataRaw());
+  bool_bytes[0] = 0x00;
+  bool_bytes[1] = 0x01;
+  bool_bytes[2] = 0x02;
+  bool_bytes[3] = 0xFF;
+
+  NormalizeBoolTensorIfNeeded(bool_tensor);
+
+  EXPECT_EQ(bool_bytes[0], 0);
+  EXPECT_EQ(bool_bytes[1], 1);
+  EXPECT_EQ(bool_bytes[2], 1);
+  EXPECT_EQ(bool_bytes[3], 1);
+
+  // Non-bool tensor: bytes must be left untouched.
+  Tensor int32_tensor(DataTypeImpl::GetType<int32_t>(), TensorShape({3}), cpu_allocator);
+  int32_t* int32_data = int32_tensor.MutableData<int32_t>();
+  int32_data[0] = 0;
+  int32_data[1] = 2;
+  int32_data[2] = 255;
+
+  NormalizeBoolTensorIfNeeded(int32_tensor);
+
+  EXPECT_EQ(int32_data[0], 0);
+  EXPECT_EQ(int32_data[1], 2);
+  EXPECT_EQ(int32_data[2], 255);
 }
 
 namespace {

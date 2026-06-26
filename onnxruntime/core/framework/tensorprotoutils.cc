@@ -1913,10 +1913,7 @@ Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_pa
     MakeCpuTensorCopy(ext_tensor, tensor);
     // MakeCpuTensorCopy memcpy's external bytes verbatim. Bool external initializers may carry
     // bytes outside the canonical {0, 1} set, so normalize them here as well (see NormalizeBoolBytes).
-    if (tensor.IsDataType<bool>()) {
-      NormalizeBoolBytes(reinterpret_cast<uint8_t*>(tensor.MutableDataRaw()),
-                         narrow<size_t>(tensor.Shape().Size()));
-    }
+    NormalizeBoolTensorIfNeeded(tensor);
     return Status::OK();
   }
 
@@ -2224,6 +2221,13 @@ void MakeCpuTensorCopy(const Tensor& src_tensor, Tensor& dst_tensor) {
     std::copy(src_span.begin(), src_span.end(), dst_tensor.MutableDataAsSpan<std::string>().begin());
   } else {
     std::memcpy(dst_tensor.MutableDataRaw(), src_tensor.DataRaw(), src_tensor.SizeInBytes());
+  }
+}
+
+void NormalizeBoolTensorIfNeeded(Tensor& tensor) {
+  if (tensor.IsDataType<bool>()) {
+    NormalizeBoolBytes(reinterpret_cast<uint8_t*>(tensor.MutableDataRaw()),
+                       narrow<size_t>(tensor.Shape().Size()));
   }
 }
 
