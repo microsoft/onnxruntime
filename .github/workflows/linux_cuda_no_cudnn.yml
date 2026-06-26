@@ -32,7 +32,7 @@ jobs:
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
       docker_build_args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1'
       docker_image_repo: onnxruntimecuda13manylinuxbuild
-      extra_build_flags: '--use_binskim_compliant_compile_flags --parallel --nvcc_threads 4 --flash_nvcc_threads 4 --cuda_version=13.0 --cuda_home=/usr/local/cuda-13.0 --cudnn_home=/usr/local/cuda-13.0 --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 onnxruntime_BUILD_UNIT_TESTS=ON'
+      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --parallel --nvcc_threads 4 --flash_nvcc_threads 4 --cuda_version=13.0 --cuda_home=/usr/local/cuda-13.0 --cudnn_home=/usr/local/cuda-13.0 --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 onnxruntime_BUILD_UNIT_TESTS=ON'
       python_path_prefix: 'PATH=/opt/python/cp312-cp312/bin:$PATH'
       run_tests: false
       upload_build_output: true
@@ -87,20 +87,24 @@ jobs:
       - name: Verify CUDA provider has no direct cuDNN dependency
         run: |
           docker run --rm --gpus all \
-            -v "${{ runner.temp }}:/onnxruntime_src/build" \
+            -v "${{ runner.temp }}/Release:/build/Release" \
             "${{ steps.build_docker_image_step.outputs.full-image-name }}" \
-            bash -lc 'ldd /onnxruntime_src/build/Release/libonnxruntime_providers_cuda.so | tee /tmp/ldd.txt && ! grep -i cudnn /tmp/ldd.txt'
+            bash -lc 'set -euo pipefail
+          ldd /build/Release/Release/libonnxruntime_providers_cuda.so | tee /tmp/ldd.txt
+          ! grep -i cudnn /tmp/ldd.txt'
 
       - name: Run no-cuDNN CUDA EP smoke test
         run: |
           docker run --rm --gpus all \
-            -v "${{ runner.temp }}:/onnxruntime_src/build" \
+            -v "${{ runner.temp }}/Release:/build/Release" \
             "${{ steps.build_docker_image_step.outputs.full-image-name }}" \
             bash -lc 'set -e
           PATH=/opt/python/cp312-cp312/bin:$PATH
-          WHEEL_PATH=$(find /onnxruntime_src/build/Release -type f -name "onnxruntime_gpu-*.whl" | head -n 1)
+          LD_LIBRARY_PATH=/usr/local/cuda-13.0/lib64:${LD_LIBRARY_PATH:-}
+          export PATH LD_LIBRARY_PATH
+          WHEEL_PATH=$(find /build/Release/Release/dist -type f -name "onnxruntime_gpu-*.whl" | head -n 1)
           if [ -z "$WHEEL_PATH" ]; then
-            echo "No built onnxruntime GPU wheel found under /onnxruntime_src/build/Release" >&2
+            echo "No built onnxruntime GPU wheel found under /build/Release/Release/dist" >&2
             exit 1
           fi
           echo "Installing $WHEEL_PATH"
