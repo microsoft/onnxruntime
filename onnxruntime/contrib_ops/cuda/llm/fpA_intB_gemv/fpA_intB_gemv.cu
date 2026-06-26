@@ -75,6 +75,35 @@ void kernel_launcher(int arch, Params& params, cudaStream_t s) {
 #undef EXEC
 }
 
+// Dequantize the prepacked interleaved weight to a plain row-major [N, K] fp16/bf16 matrix in params.out.
+void dequant_weight_launcher(int arch, Params& params, cudaStream_t s) {
+#define EXEC_DEQ(KType, A, B, Layout, ConverterInterleave)                                                           \
+  if (params.type == KType) {                                                                                       \
+    dequant_select_gs<kernel_type_traits<KType>::isGroupwise, KernelDetails<A, B, Layout, ConverterInterleave, 64>>( \
+        params, s);                                                                                                 \
+    return;                                                                                                         \
+  }
+
+  ORT_ENFORCE(arch >= 75, "Unsupported CUDA architecture: ", arch);
+  if (arch < 80) {
+    EXEC_DEQ(KernelType::FP16Int8Groupwise, FP16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
+    EXEC_DEQ(KernelType::FP16Int4Groupwise, FP16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
+#ifndef EXCLUDE_SM_90
+  } else if (arch >= 90 && arch < 100) {
+    EXEC_DEQ(KernelType::FP16Int8Groupwise, FP16DetailsA, Int8DetailsW, ColumnMajorInterleavedForHopper, true);
+    EXEC_DEQ(KernelType::FP16Int4Groupwise, FP16DetailsA, Int4DetailsW, ColumnMajorInterleavedForHopper, true);
+    EXEC_DEQ(KernelType::BF16Int8Groupwise, BF16DetailsA, Int8DetailsW, ColumnMajorInterleavedForHopper, true);
+    EXEC_DEQ(KernelType::BF16Int4Groupwise, BF16DetailsA, Int4DetailsW, ColumnMajorInterleavedForHopper, true);
+#endif
+  } else {
+    EXEC_DEQ(KernelType::FP16Int8Groupwise, FP16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
+    EXEC_DEQ(KernelType::FP16Int4Groupwise, FP16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
+    EXEC_DEQ(KernelType::BF16Int8Groupwise, BF16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
+    EXEC_DEQ(KernelType::BF16Int4Groupwise, BF16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
+  }
+#undef EXEC_DEQ
+}
+
 bool is_supported(int arch, KernelType kernel_type) {
 #define SUPPORT(Type)      \
   if (kernel_type == Type) \

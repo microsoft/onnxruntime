@@ -72,6 +72,8 @@ struct Params {
 
 void kernel_launcher(int arch, Params& params, cudaStream_t s);
 
+void dequant_weight_launcher(int arch, Params& params, cudaStream_t s);
+
 bool is_supported(int arch, KernelType kernel_type);
 
 }  // namespace fpA_intB_gemv

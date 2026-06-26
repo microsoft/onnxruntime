@@ -459,9 +459,133 @@ void select_gs(Params& params, cudaStream_t s) {
   ORT_THROW("unsupported block_size: ", params.groupsize);
 }
 
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750)) || !defined(__CUDA_ARCH__)
+// Dequantize the interleaved 4-bit/8-bit weight back to a plain row-major [N, K] fp16/bf16 matrix
+// (out[n*k + kk] = Weight[n][kk]) so a large-M matmul can run as a single cuBLAS HGEMM. Reuses the GEMV's
+// exact weight/scale/zero iterators and dequantize() (which already undo the column-interleaved + sub-byte
+// layout and apply the per-block scale/zero), then writes each dequantized element to its real (n, k).
+template <typename Details, int CtaN, int Threads, int GroupSize, bool EnableZero,
+          typename TypeA = typename Details::TypeDetailsA::Type>
+__global__ void dequant_weight_kernel(uint8_t* weight, TypeA* scales, TypeA* zeros, TypeA* out, int n, int k) {
+  using AccessTypeW = typename Details::AccessTypeW;
+  static constexpr bool Mandatory = true;
+  static constexpr int StepK = Details::kStepK;
+  static constexpr int CtaK = StepK * Threads;
+  static constexpr int Interleave = Details::kInterleave;
+  static constexpr int TileSize = Details::LayoutDetails::kTileSize;
+
+  int const tile_id_n = blockIdx.x, tid = threadIdx.x;
+  int const interleaved_offset_n = tile_id_n * CtaN;
+  int const real_offset_n = interleaved_offset_n * Interleave + ((tid * StepK / TileSize) % Interleave);
+  int const real_offset_k =
+      (tid * StepK / (Interleave * TileSize)) * TileSize + ((tid * StepK) % TileSize);
+  int const interleaved_k = k * Interleave;
+  int const adv = CtaK / Interleave;
+
+  GMemIterator<Mandatory, AccessTypeW, CtaN, Details::kAccessNumW, uint8_t> weight_iterator(
+      weight, (interleaved_offset_n * interleaved_k + tid * StepK) / Details::kElemsPerByteW,
+      CtaK / Details::kElemsPerByteW, interleaved_k / Details::kElemsPerByteW);
+  GMemIterator<Mandatory, TypeA, CtaN, 1, TypeA> scales_iterator(
+      scales, (GroupSize != 0 ? real_offset_k / GroupSize * n : 0) + real_offset_n,
+      (GroupSize != 0 ? CtaK / Interleave / GroupSize * n : 0), Interleave);
+  GMemIterator<EnableZero, TypeA, CtaN, 1, TypeA> zeros_iterator(
+      zeros, (GroupSize != 0 ? real_offset_k / GroupSize * n : 0) + real_offset_n,
+      (GroupSize != 0 ? CtaK / Interleave / GroupSize * n : 0), Interleave);
+
+  // Two-phase shared-memory transpose so the global stores are coalesced. Phase 1: each thread reads its
+  // interleaved weight tile (GEMV-style, coalesced reads), dequantizes, and stores into a shared [colTile x
+  // adv] tile at its local (n, k). Phase 2: the block writes the shared tile to the row-major [N, K] output
+  // with adjacent threads writing adjacent K (coalesced). blockIdx.y selects the K-chunk (no reduction).
+  static constexpr int ColTile = CtaN * Interleave;
+  __shared__ TypeA smem[ColTile * adv];
+
+  typename Details::LayoutDetails::Mapper mapper;
+  int const iter = blockIdx.y;
+  if (iter * CtaK + tid * StepK < interleaved_k) {
+    TypeA vec_scale[CtaN], vec_zero[CtaN];
+    TypeA tile_w[StepK];
+    uint8_t tile_w_quantized[StepK / Details::kElemsPerByteW];
+#pragma unroll
+    for (int i = 0; i < CtaN; ++i) {
+      scales_iterator.load(vec_scale + i, iter, i);
+      zeros_iterator.load(vec_zero + i, iter, i);
+      weight_iterator.load(tile_w_quantized, iter, i);
+      dequantize<Details, 1, StepK, EnableZero, false>(tile_w, tile_w_quantized, vec_scale + i, vec_zero + i, 1.0f);
+      int const local_n = ((tid * StepK / TileSize) % Interleave) + i * Interleave;
+      int const local_k = real_offset_k;  // iter*adv is the block's k base; local_k in [0, adv)
+#pragma unroll
+      for (int kk = 0; kk < StepK; ++kk) {
+        smem[local_n * adv + local_k + kk] = tile_w[mapper(kk)];
+      }
+    }
+  }
+  __syncthreads();
+
+  int const block_n_base = tile_id_n * ColTile;
+  int const block_k_base = iter * adv;
+#pragma unroll
+  for (int nc = 0; nc < ColTile; ++nc) {
+    int const n_col = block_n_base + nc;
+    if (n_col >= n) continue;
+    // Each thread stores 8 consecutive halves (one 16-byte vector) so the writes are coalesced and vectorized.
+    for (int lk = tid * 8; lk < adv; lk += Threads * 8) {
+      int const k_real = block_k_base + lk;
+      if (k_real + 8 <= k) {
+        *reinterpret_cast<float4*>(&out[static_cast<size_t>(n_col) * k + k_real]) =
+            *reinterpret_cast<float4*>(&smem[nc * adv + lk]);
+      } else {
+#pragma unroll
+        for (int t2 = 0; t2 < 8; ++t2) {
+          if (k_real + t2 < k) out[static_cast<size_t>(n_col) * k + k_real + t2] = smem[nc * adv + lk + t2];
+        }
+      }
+    }
+  }
+}
+#endif
+
+template <typename Details, int GroupSize, bool EnableZero>
+void exec_dequant(Params& params, cudaStream_t s) {
+  constexpr int CtaN = 2;
+  constexpr int Threads = 64;
+  constexpr int Interleave = Details::kInterleave;
+  using TypeA = typename Details::TypeDetailsA::Type;
+  constexpr int StepK = Details::kStepK;
+  constexpr int CtaK = StepK * Threads;
+  int const interleaved_k = params.k * Interleave;
+  dim3 grid(params.n / (CtaN * Interleave), (interleaved_k + CtaK - 1) / CtaK);
+  dim3 block(Threads);
+  dequant_weight_kernel<Details, CtaN, Threads, GroupSize, EnableZero><<<grid, block, 0, s>>>(
+      reinterpret_cast<uint8_t*>(params.weight), reinterpret_cast<TypeA*>(params.scales),
+      reinterpret_cast<TypeA*>(params.zeros), reinterpret_cast<TypeA*>(params.out), params.n, params.k);
+}
+
+template <bool isGroupwise, typename Details>
+void dequant_select_gs(Params& params, cudaStream_t s) {
+  if constexpr (isGroupwise) {
+    bool const has_zero = params.zeros != nullptr;
+#define DEQUANT_GS(GS)                                              \
+  if (params.groupsize == GS) {                                    \
+    if (has_zero) {                                                \
+      exec_dequant<Details, GS, true>(params, s);                  \
+    } else {                                                       \
+      exec_dequant<Details, GS, false>(params, s);                 \
+    }                                                              \
+    return;                                                        \
+  }
+    DEQUANT_GS(32);
+    DEQUANT_GS(64);
+    DEQUANT_GS(128);
+#undef DEQUANT_GS
+  }
+  ORT_THROW("dequant unsupported block_size: ", params.groupsize);
+}
+
 #define INSTANTIATE_WEIGHT_ONLY_CUDA_DISPATCHERS(KType, A, B, Layout, ConverterInterleave, KTile) \
   template void select_gs<kernel_type_traits<KType>::isGroupwise,                                 \
-                          KernelDetails<A, B, Layout, ConverterInterleave, KTile>>(Params & params, cudaStream_t s);
+                          KernelDetails<A, B, Layout, ConverterInterleave, KTile>>(Params & params, cudaStream_t s); \
+  template void dequant_select_gs<kernel_type_traits<KType>::isGroupwise,                         \
+                                  KernelDetails<A, B, Layout, ConverterInterleave, KTile>>(Params & params, cudaStream_t s);
 
 }  // namespace fpA_intB_gemv
 }  // namespace kernels

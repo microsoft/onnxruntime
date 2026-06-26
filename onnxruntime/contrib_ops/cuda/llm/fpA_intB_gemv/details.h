@@ -234,6 +234,9 @@ struct ConverterWrapper {
 template <bool isGroupwise, typename Details>
 void select_gs(Params& params, cudaStream_t s);
 
+template <bool isGroupwise, typename Details>
+void dequant_select_gs(Params& params, cudaStream_t s);
+
 }  // namespace fpA_intB_gemv
 }  // namespace kernels
 }  // namespace onnxruntime::llm

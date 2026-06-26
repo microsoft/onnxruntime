@@ -320,7 +320,52 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
       ORT_ENFORCE(is_prepacked_weight_ && is_prepacked_scale_ && (is_prepacked_zero_point_ || !has_zero_points_),
                   "To use fpA_intB_gemm, prepacking must be done on weight, scale and zero point.");
 
-      auto const bestTactic = gemmProfiler_->getBestConfig(m, gemmId_);
+      using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
+      KernelType cuda_kernel_type;
+      if constexpr (std::is_same<T, MLFloat16>::value) {
+        cuda_kernel_type = nbits_ == 8 ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
+      } else {
+        cuda_kernel_type = nbits_ == 8 ? KernelType::BF16Int8Groupwise : KernelType::BF16Int4Groupwise;
+      }
+
+      // Large-M for block_size 32: the CUTLASS tensor-core GEMM cannot serve group_size 32, so dequantize
+      // the interleaved weight to a plain row-major [N,K] matrix once and run a single cuBLAS HGEMM. For
+      // group_size 64/128 the GEMM (with the split-K fixup below) is faster, so dequant is disabled there.
+      // Threshold overridable via ORT_FPA_DEQUANT_MINM.
+      int const dequant_minm =
+          ParseEnvironmentVariableWithDefault<int>("ORT_FPA_DEQUANT_MINM", block_size_ == 32 ? 16 : (1 << 30));
+      if (has_fpA_intB_gemv_ && dequant_minm > 0 && m >= dequant_minm) {
+        auto b_dequant = this->template GetScratchBuffer<T>(static_cast<size_t>(n) * k, this->GetComputeStream(ctx));
+        onnxruntime::llm::kernels::fpA_intB_gemv::Params deq_params(
+            nullptr, nullptr, fpA_intB_weight_buffer_.get(), fpA_intB_scale_buffer_.get(),
+            has_zero_points_ ? fpA_intB_zero_buffer_.get() : nullptr, nullptr,
+            reinterpret_cast<void*>(b_dequant.get()), 1.0f, m, n, k, SafeInt<int>(block_size_), cuda_kernel_type, false);
+        onnxruntime::llm::kernels::fpA_intB_gemv::dequant_weight_launcher(sm_, deq_params, stream);
+
+        const CudaT alpha = onnxruntime::cuda::OrtToCudaType<T>::FromFloat(1.f);
+        const CudaT zero = onnxruntime::cuda::OrtToCudaType<T>::FromFloat(0.f);
+        CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+            GetCublasHandle(ctx), CUBLAS_OP_T, CUBLAS_OP_N, n, m, k, &alpha,
+            reinterpret_cast<const CudaT*>(b_dequant.get()), k,
+            reinterpret_cast<const CudaT*>(a_data), k, &zero,
+            out_data, n, GetDeviceProp(), UseTF32()));
+        if (bias_data != nullptr) {
+          LaunchMatMulNBitsBiasAdd<CudaT>(out_data, reinterpret_cast<const CudaT*>(bias_data), m, n, stream);
+        }
+        return Status::OK();
+      }
+
+      auto bestTactic = gemmProfiler_->getBestConfig(m, gemmId_);
+
+      // The profiler tends to over-select split-K (extra K-partitions + a serial partial-sum reduction) which
+      // helps occupancy at small M but collapses large-M throughput (the wide reduction dominates). Past
+      // ORT_FPA_SPLITK_MAXM, drop to a single-pass GEMM (NO_SPLIT_K) so prefill runs at tensor-core speed.
+      int const splitk_maxm = ParseEnvironmentVariableWithDefault<int>("ORT_FPA_SPLITK_MAXM", 64);
+      if (bestTactic.has_value() && !bestTactic->enableCudaKernel && m > splitk_maxm &&
+          bestTactic->split_k_factor > 1) {
+        bestTactic->split_k_factor = 1;
+        bestTactic->split_k_style = onnxruntime::llm::cutlass_extensions::SplitKStyle::NO_SPLIT_K;
+      }
 
       // The profiler can mis-pick a tensor-core GEMM tactic over the CUDA-core GEMV at very small M (the
       // GEMM wastes most of its M-tile at M=1). Allow forcing the GEMV for m <= ORT_FPA_FORCE_GEMV_MAXM.
@@ -342,14 +387,6 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 #endif
 
       if (use_cuda_kernel) {
-        using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
-        KernelType cuda_kernel_type;
-        if constexpr (std::is_same<T, MLFloat16>::value) {
-          cuda_kernel_type = nbits_ == 8 ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
-        } else if constexpr (std::is_same<T, BFloat16>::value) {
-          cuda_kernel_type = nbits_ == 8 ? KernelType::BF16Int8Groupwise : KernelType::BF16Int4Groupwise;
-        }
-
         void const* pre_quant_scale_ptr = nullptr;
         bool apply_alpha_in_advance = false;
         float alpha = 1.0f;
