@@ -103,6 +103,7 @@ jobs:
             --cmake_extra_defines "VCPKG_INSTALL_OPTIONS=--x-feature=tests"
         env:
           VCPKG_OVERLAY_TRIPLETS: "${{ github.workspace }}/cmake/vcpkg-triplets/default"
+          VCPKG_BINARY_SOURCES: "clear"
         shell: pwsh
 
       - name: "Run vcpkg(arm64-windows)"
@@ -135,4 +136,5 @@ jobs:
             --cmake_extra_defines "VCPKG_INSTALL_OPTIONS=--x-feature=tests"
         env:
           VCPKG_OVERLAY_TRIPLETS: "${{ github.workspace }}/cmake/vcpkg-triplets/default"
+          VCPKG_BINARY_SOURCES: "clear"
         shell: pwsh
