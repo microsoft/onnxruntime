@@ -47,7 +47,9 @@ def _get_framework_dir(build_dir_current_arch, build_config, sysroot, build_dyna
     if sysroot == "macabi" and build_dynamic_framework:
         candidates.append(os.path.join(build_dir_current_arch, build_config, "onnxruntime.framework"))
 
-    candidates.append(os.path.join(build_dir_current_arch, build_config, build_config + "-" + sysroot, framework_subdir))
+    candidates.append(
+        os.path.join(build_dir_current_arch, build_config, build_config + "-" + sysroot, framework_subdir)
+    )
 
     for framework_dir in candidates:
         if os.path.exists(framework_dir):
