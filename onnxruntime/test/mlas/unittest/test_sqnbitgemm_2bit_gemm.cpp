@@ -393,6 +393,8 @@ TEST(MlasSq2BitTest, Scalar_BlkLen64_WithZeroPoints) {
   }
 }
 
+#endif  // defined(MLAS_TARGET_AMD64) -- kSimdShapes itself is cross-arch (also used by the ARM64 NEON DotProd W2 tests further down)
+
 //
 // SIMD block-group shape coverage. Phase-3+K-tail kernel requires:
 //   * BlkLen == 64
@@ -486,6 +488,8 @@ constexpr struct {
     {3, 13, 256},  // ALL 6 tiles (R2xC8 + R2xC4 + R2xC1 + R1xC8 + R1xC4 + R1xC1)
     {3, 21, 384},  // ALL 6 tiles + K-tail
 };
+
+#if defined(MLAS_TARGET_AMD64)
 
 //
 // AVX-512BW (non-VNNI) SIMD block-group kernel.
@@ -789,6 +793,10 @@ constexpr struct {
     {1, 32, 256},     // R1, BlockCountK=2 (K-tail, no full group)
     {1, 1024, 1024},  // R1, BlockCountK=8
     {1, 1024, 4096},  // R1, BlockCountK=32 (representative N)
+    // K < BlkLen coverage lives at the operator layer
+    // (MatMul2Bits.Float32_2b_BlkLen128_Accuracy4), which goes through the
+    // quantizer's K-pad-up path. This direct-kernel runner intentionally
+    // enforces K % BlkLen == 0.
     {2, 16, 128},
     {2, 32, 256},
     {2, 64, 512},  // BlockCountK=4 (one full group)
@@ -1336,38 +1344,28 @@ TEST(MlasSq2BitTest, BlkLen32_Avx512Vnni_WithZeroPoints) {
 #include "core/mlas/lib/qnbitgemm_kernel_neon.h"
 
 //
-// W2 NEON DotProd kernel direct-call tests. Use the BlkLen=64 helpers defined
-// near the top of this file (cross-arch since the helpers are pure scalar
-// C++). The kernel signature is the same SQ4BitGemmKernel_BlkSum_CompInt8_Fn
-// shape the AVX-512 tests already exercise, so RunW2Case (BlkLen=64) is
-// reusable without modification.
+// W2 NEON DotProd kernel direct-call tests. Mirror the AVX-512 layout
+// above: BlkLen 64 / 128 / 32, each with a no-zero-points and a
+// with-zero-points variant, all driven from the shared kSimdShapes*
+// shape tables and the cross-arch RunW2Case* helpers (which build the
+// packed B and quantized A in the layout the kernel expects).
 //
-// Skipped on ARM64 hosts that lack FEAT_DotProd -- the NEON DotProd kernel
-// emits SDOT instructions and would SIGILL on a pre-armv8.2 core.
+// End-to-end coverage through MlasQNBitGemmBatch is provided by the
+// MatMulNBits operator tests; this file only verifies the inner kernel.
 //
-TEST(MlasSq2BitTest, NeonDotProd_BlkLen64) {
+// Skipped on ARM64 hosts that lack FEAT_DotProd -- the NEON DotProd
+// kernel emits SDOT instructions and would SIGILL on a pre-armv8.2 core.
+//
+
+//
+// NEON DotProd SIMD block-group kernel, BlkLen=64.
+//
+TEST(MlasSq2BitTest, BlkLen64_NeonDotProd) {
   if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
     GTEST_SKIP() << "ARM NEON FEAT_DotProd not available on this host";
   }
-  struct Shape {
-    size_t M, N, K;
-  };
-  constexpr Shape shapes[] = {
-      {1, 16, 256},
-      {1, 32, 256},
-      {1, 64, 512},
-      {4, 16, 256},
-      {4, 33, 256},
-      {7, 17, 256},
-      {16, 64, 512},
-      {32, 128, 256},
-      {1, 1024, 1024},
-      {1, 192, 1024},
-      {1, 4096, 1024},
-      {1, 1024, 4096},
-  };
   for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
-    for (const Shape& s : shapes) {
+    for (const auto& s : kSimdShapes) {
       for (bool bias : {false, true}) {
         RunW2Case(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
                   /*WithZeroPoints=*/false,
@@ -1378,23 +1376,12 @@ TEST(MlasSq2BitTest, NeonDotProd_BlkLen64) {
   }
 }
 
-TEST(MlasSq2BitTest, NeonDotProd_BlkLen64_WithZeroPoints) {
+TEST(MlasSq2BitTest, BlkLen64_NeonDotProd_WithZeroPoints) {
   if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
     GTEST_SKIP() << "ARM NEON FEAT_DotProd not available on this host";
   }
-  struct Shape {
-    size_t M, N, K;
-  };
-  constexpr Shape shapes[] = {
-      {1, 16, 256},
-      {1, 64, 512},
-      {4, 33, 256},
-      {7, 17, 256},
-      {16, 64, 512},
-      {1, 1024, 1024},
-  };
   for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
-    for (const Shape& s : shapes) {
+    for (const auto& s : kSimdShapes) {
       for (bool bias : {false, true}) {
         RunW2Case(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
                   /*WithZeroPoints=*/true,
@@ -1406,133 +1393,9 @@ TEST(MlasSq2BitTest, NeonDotProd_BlkLen64_WithZeroPoints) {
 }
 
 //
-// End-to-end public-API test. Exercises MlasQNBitGemmBatch through the
-// production dispatch surface -- the dotprod path was wired in via
-// d.SQ2BitGemmKernel_BlkSum_CompInt8 = SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd
-// inside GetMlasQNBitGemmDispatchNeon. Output must match the integer-domain
-// ReferenceGemm_W2_CompInt8 oracle (independent of the kernel under test).
+// NEON DotProd SIMD block-group kernel, BlkLen=128.
 //
-TEST(MlasSq2BitTest, NeonDotProd_DispatchE2E_BlkLen64) {
-  if (!MlasIsQNBitGemmAvailable(2, /*BlkLen=*/64, SQNBIT_CompInt8)) {
-    GTEST_SKIP() << "No W2 SQNBIT_CompInt8 dispatch on this host";
-  }
-  if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
-    GTEST_SKIP() << "ARM NEON FEAT_DotProd not available on this host";
-  }
-
-  constexpr size_t M = 4;
-  constexpr size_t N = 17;
-  constexpr size_t K = 512;
-  constexpr size_t kLocalBlkLen = 64;
-  const size_t BlockCountK = (K + kLocalBlkLen - 1) / kLocalBlkLen;
-
-  std::mt19937 rng(0xCAFEBABEu);
-  std::uniform_real_distribution<float> a_dist(-1.0f, 1.0f);
-  std::uniform_int_distribution<uint32_t> w_dist(0, 3);
-  std::uniform_real_distribution<float> s_dist(0.05f, 0.5f);
-
-  std::vector<float> A(M * K);
-  for (auto& v : A) v = a_dist(rng);
-
-  std::vector<uint8_t> BWeights(N * K);
-  for (auto& v : BWeights) v = static_cast<uint8_t>(w_dist(rng));
-
-  std::vector<std::byte> QuantBData(N * BlockCountK * kBlkBytes, std::byte{0});
-  for (size_t n = 0; n < N; ++n) {
-    for (size_t blk = 0; blk < BlockCountK; ++blk) {
-      uint8_t blk_weights[kLocalBlkLen];
-      for (size_t kk = 0; kk < kLocalBlkLen; ++kk) {
-        blk_weights[kk] = BWeights[n * K + blk * kLocalBlkLen + kk];
-      }
-      PackSourceBlock_BlkLen64(blk_weights,
-                               QuantBData.data() + (n * BlockCountK + blk) * kBlkBytes);
-    }
-  }
-
-  std::vector<float> QuantBScale(N * BlockCountK);
-  for (auto& v : QuantBScale) v = s_dist(rng);
-
-  std::vector<uint8_t> BZeroPoints(N * BlockCountK);
-  for (auto& v : BZeroPoints) v = static_cast<uint8_t>(w_dist(rng));
-  const std::vector<std::byte> BZeroPointsPacked =
-      PackW2ZeroPoints(N, BlockCountK, BZeroPoints);
-
-  std::vector<float> Bias(N);
-  for (auto& v : Bias) v = a_dist(rng);
-
-  const size_t PackedSize = MlasQNBitGemmPackQuantBDataSize(
-      N, K, /*BlkBitWidth=*/2, kLocalBlkLen, /*HasZeroPoint=*/true,
-      SQNBIT_CompInt8, nullptr);
-  ASSERT_GT(PackedSize, 0u);
-  std::vector<std::byte> PackedBuf(PackedSize, std::byte{0});
-
-  // Mirror the matmul_nbits.cc 3-call prepack pattern (B, scales, ZP).
-  MlasQNBitGemmPackQuantBData(
-      N, K, /*BlkBitWidth=*/2, kLocalBlkLen, SQNBIT_CompInt8,
-      QuantBData.data(), PackedBuf.data(),
-      /*QuantBScale=*/nullptr, /*HasZeroPoint=*/true, /*QuantBZeroPoint=*/nullptr,
-      /*ThreadPool=*/nullptr, /*BackendKernelSelectorConfig=*/nullptr);
-  MlasQNBitGemmPackQuantBData(
-      N, K, /*BlkBitWidth=*/2, kLocalBlkLen, SQNBIT_CompInt8,
-      /*QuantBData=*/nullptr, PackedBuf.data(),
-      QuantBScale.data(), /*HasZeroPoint=*/true, /*QuantBZeroPoint=*/nullptr,
-      /*ThreadPool=*/nullptr, /*BackendKernelSelectorConfig=*/nullptr);
-  MlasQNBitGemmPackQuantBData(
-      N, K, /*BlkBitWidth=*/2, kLocalBlkLen, SQNBIT_CompInt8,
-      /*QuantBData=*/nullptr, PackedBuf.data(),
-      /*QuantBScale=*/nullptr, /*HasZeroPoint=*/true, BZeroPointsPacked.data(),
-      /*ThreadPool=*/nullptr, /*BackendKernelSelectorConfig=*/nullptr);
-
-  const size_t WorkspaceSize = MlasQNBitGemmBatchWorkspaceSize(
-      M, N, K, /*BatchN=*/1, /*BlkBitWidth=*/2, kLocalBlkLen,
-      /*HasZeroPoint=*/true, SQNBIT_CompInt8, nullptr);
-  std::vector<std::byte> Workspace(std::max<size_t>(WorkspaceSize, 1), std::byte{0});
-
-  std::vector<float> C(M * N, 0.0f);
-  MLAS_QNBIT_GEMM_DATA_PARAMS<float> params;
-  params.A = A.data();
-  params.lda = K;
-  // The W2 CompInt8 batch dispatcher reads Data->QuantBDataWorkspace and uses
-  // PackedQuantBDataStruct<float, 2> to re-point PackedQuantBData /
-  // QuantBScale / QuantBBlkSum into the slab. See qnbitgemm.cpp
-  // SQ2BitGemmVariant_CompInt8 branch.
-  params.QuantBDataWorkspace = PackedBuf.data();
-  params.PackedQuantBData = PackedBuf.data();  // overwritten by dispatcher; set for safety.
-  params.QuantBScale = nullptr;                // overwritten by dispatcher.
-  params.QuantBZeroPoint = nullptr;            // unused: ZP folded into BlkSum during pack.
-  params.Bias = Bias.data();
-  params.C = C.data();
-  params.ldc = N;
-  params.PostProcessor = nullptr;
-
-  MlasQNBitGemmBatch(M, N, K, /*BatchN=*/1, /*BlkBitWidth=*/2, kLocalBlkLen,
-                     SQNBIT_CompInt8, &params,
-                     WorkspaceSize > 0 ? Workspace.data() : nullptr,
-                     /*ThreadPool=*/nullptr, /*BackendKernelSelectorConfig=*/nullptr);
-
-  std::vector<float> CRef(M * N, 0.0f);
-  ReferenceGemm_W2_CompInt8(M, N, K, A.data(), BWeights, QuantBScale.data(),
-                            BZeroPoints.data(), Bias.data(), CRef.data());
-
-  const float abs_tol = 1e-4f;
-  const float rel_tol = 1e-4f;
-  for (size_t i = 0; i < M * N; ++i) {
-    const float diff = std::fabs(C[i] - CRef[i]);
-    const float bound = abs_tol + rel_tol * std::fabs(CRef[i]);
-    ASSERT_LE(diff, bound)
-        << "MlasQNBitGemmBatch W2 NEON-DotProd mismatch at i=" << i
-        << " (m=" << (i / N) << ", n=" << (i % N) << ")"
-        << " out=" << C[i] << " ref=" << CRef[i];
-  }
-}
-
-//
-// Direct-call kernel coverage for the BlkLen=128 NEON DotProd path. Reuses
-// RunW2Case_BlkLen128 (cross-arch helper) -- the dispatch path is identical
-// to BlkLen=64 from the kernel-signature POV, only the per-block byte width
-// and per-group byte count change.
-//
-TEST(MlasSq2BitTest, NeonDotProd_BlkLen128) {
+TEST(MlasSq2BitTest, BlkLen128_NeonDotProd) {
   if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
     GTEST_SKIP() << "ARM NEON FEAT_DotProd not available on this host";
   }
@@ -1548,7 +1411,7 @@ TEST(MlasSq2BitTest, NeonDotProd_BlkLen128) {
   }
 }
 
-TEST(MlasSq2BitTest, NeonDotProd_BlkLen128_WithZeroPoints) {
+TEST(MlasSq2BitTest, BlkLen128_NeonDotProd_WithZeroPoints) {
   if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
     GTEST_SKIP() << "ARM NEON FEAT_DotProd not available on this host";
   }
@@ -1565,9 +1428,9 @@ TEST(MlasSq2BitTest, NeonDotProd_BlkLen128_WithZeroPoints) {
 }
 
 //
-// Direct-call kernel coverage for the BlkLen=32 NEON DotProd path.
+// NEON DotProd SIMD block-group kernel, BlkLen=32.
 //
-TEST(MlasSq2BitTest, NeonDotProd_BlkLen32) {
+TEST(MlasSq2BitTest, BlkLen32_NeonDotProd) {
   if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
     GTEST_SKIP() << "ARM NEON FEAT_DotProd not available on this host";
   }
@@ -1583,7 +1446,7 @@ TEST(MlasSq2BitTest, NeonDotProd_BlkLen32) {
   }
 }
 
-TEST(MlasSq2BitTest, NeonDotProd_BlkLen32_WithZeroPoints) {
+TEST(MlasSq2BitTest, BlkLen32_NeonDotProd_WithZeroPoints) {
   if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
     GTEST_SKIP() << "ARM NEON FEAT_DotProd not available on this host";
   }

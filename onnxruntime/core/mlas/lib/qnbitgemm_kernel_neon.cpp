@@ -693,6 +693,11 @@ GetMlasQNBitGemmDispatchNeon(
             d.Q2BitGemmEffectiveBlockCountK     = [](size_t BlockCountK) {
                 return MlasDivRoundup(BlockCountK, kSq2BitAvx512WeightKBlockGroup) * kSq2BitAvx512WeightKBlockGroup;
             };
+            // W2 NEON DotProd kernel uses vdotq_s32 over A and so requires
+            // SIGNED int8 A. The shared QuantizeARowComputeBlkSum is wired
+            // to the UNSIGNED W8 variant on DotProd-only hosts; route W2
+            // through the signed variant explicitly.
+            d.QuantizeARowComputeBlkSum_CompInt8_W2 = sqnbitgemm_neon::QuantizeARowComputeBlkSum_CompInt8<false>;
         }
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)

@@ -371,7 +371,14 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 #if defined(MLAS_TARGET_AMD64_IX86)
       return true;
 #else
-      return (nbits_ == 8);
+      // W2 on ARM64 (NEON DotProd) uses the same 3-call prepack pattern as
+      // AVX-512: B in the input_idx==B call, scales+ZP in the separate
+      // input_idx==scales / input_idx==zero_points calls. Without this, the
+      // ZP tensor is silently dropped and QuantBBlkSum bakes in the symmetric
+      // default ZP=2 for every block, producing wrong outputs whenever the
+      // model's real ZPs ≠ 2. W4 stays out because it goes through the
+      // KleidiAI scale-baked path above and does not use the 3-call pattern.
+      return (nbits_ == 2 || nbits_ == 8);
 #endif
     }();
 

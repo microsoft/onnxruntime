@@ -1179,6 +1179,14 @@ InitializeWorkspace_CompInt8<float>(
                     }
                 });
             } else if (QuantizeARow2) {
+                // W2 needs SIGNED int8 A (NEON DotProd-only hosts wire the
+                // shared QuantizeARowComputeBlkSum_CompInt8 to the UNSIGNED
+                // u8 = i8+128 W8-compatible variant). Prefer the W2-specific
+                // override when set so the W2 kernel always sees signed A.
+                const auto QuantizeARow2_W2 =
+                    (BlkBitWidth == 2 && GetMlasPlatform().QNBitGemmDispatch->QuantizeARowComputeBlkSum_CompInt8_W2 != nullptr)
+                        ? GetMlasPlatform().QNBitGemmDispatch->QuantizeARowComputeBlkSum_CompInt8_W2
+                        : QuantizeARow2;
                 MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
                     const auto& data = DataParams[gemm_idx];
                     const float* ARowPtr = data.A;
@@ -1189,7 +1197,7 @@ InitializeWorkspace_CompInt8<float>(
                     float* QuantARowScalePtr = quant_a_data.QuantScale;
                     float* QuantARowBlkSum = quant_a_data.BlockSum;
                     for (size_t m = 0; m < M; ++m) {
-                        QuantizeARow2(BlkLen, ARowPtr, K, QuantARowPtr, QuantARowScalePtr, QuantARowBlkSum);
+                        QuantizeARow2_W2(BlkLen, ARowPtr, K, QuantARowPtr, QuantARowScalePtr, QuantARowBlkSum);
                         ARowPtr += data.lda;
                         QuantARowPtr += BlockCountK * BlkLen;
                         QuantARowScalePtr += BlockCountK;
