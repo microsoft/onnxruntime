@@ -319,13 +319,11 @@ void PosixTelemetry::Initialize() {
   auto& config = *config_;
 
   config[CFG_STR_COLLECTOR_URL] = "https://mobile.events.data.microsoft.com/OneCollector/1.0";
-  // Set for parity with onnxruntime-genai. Client-IP obfuscation is enforced as a OneCollector
-  // tenant/server-side setting; the bundled cpp_client_telemetry SDK version does not consume this
-  // key, so the flag is an inert no-op kept only to mirror genai's configuration.
-  config["enableIpScrubbing"] = true;
   config[CFG_INT_TRACE_LEVEL_MASK] = 0;                      // Disable SDK internal logging
   config[CFG_INT_SDK_MODE] = SdkModeTypes::SdkModeTypes_CS;  // Common Schema 4.0 mode
-  config[CFG_INT_MAX_TEARDOWN_TIME] = 10;                    // 10 seconds max for shutdown
+  // Do not block process teardown to upload; persisted events are sent on the next run. 0 keeps
+  // Shutdown non-blocking and avoids adding exit latency to host apps (matches onnxruntime-genai).
+  config[CFG_INT_MAX_TEARDOWN_TIME] = 0;
 
   // Configure cache for offline scenarios — use same directory as device ID storage
   {
