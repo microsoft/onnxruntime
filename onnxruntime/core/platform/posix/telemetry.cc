@@ -291,6 +291,17 @@ void PosixTelemetry::LogEventAsync(Microsoft::Applications::Events::EventPropert
 void PosixTelemetry::Initialize() {
   std::unique_lock<std::shared_mutex> lock(mutex_);
 
+  // Environment opt-out: ORT_TELEMETRY_ENABLED=0/false disables telemetry at runtime without
+  // recompiling and skips creating the 1DS uploader entirely. Mirrors onnxruntime-genai's
+  // ORTGENAI_TELEMETRY_ENABLED opt-out.
+  if (const char* env = std::getenv("ORT_TELEMETRY_ENABLED"); env != nullptr) {
+    const std::string value(env);
+    if (value == "0" || value == "false" || value == "FALSE") {
+      enabled_.store(false, std::memory_order_release);
+      return;
+    }
+  }
+
   // NOTE: On Android, the Java layer must be initialized before calling this:
   //   System.loadLibrary("maesdk");
   //   new HttpClient(getApplicationContext());
@@ -303,6 +314,7 @@ void PosixTelemetry::Initialize() {
   auto& config = *config_;
 
   config[CFG_STR_COLLECTOR_URL] = "https://mobile.events.data.microsoft.com/OneCollector/1.0";
+  config["enableIpScrubbing"] = true;                        // collector-side client-IP obfuscation
   config[CFG_INT_TRACE_LEVEL_MASK] = 0;                      // Disable SDK internal logging
   config[CFG_INT_SDK_MODE] = SdkModeTypes::SdkModeTypes_CS;  // Common Schema 4.0 mode
   config[CFG_INT_MAX_TEARDOWN_TIME] = 10;                    // 10 seconds max for shutdown
@@ -764,7 +776,7 @@ void PosixTelemetry::LogCompileModelComplete(
                    .AddBool("success", success)
                    .AddUInt32("errorCode", error_code)
                    .AddUInt32("errorCategory", error_category)
-                   .AddString("errorMessage", RedactAbsolutePathsForTelemetry(error_message))
+                   .AddString("errorMessage", ScrubErrorMessage(error_message))
                    .Build();
 
   LogEventAsync(std::move(event));
@@ -791,7 +803,7 @@ void PosixTelemetry::LogRuntimeError(
                    .AddUInt32("sessionId", session_id)
                    .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
                    .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
-                   .AddString("errorMessage", RedactAbsolutePathsForTelemetry(status.ErrorMessage()))
+                   .AddString("errorMessage", ScrubErrorMessage(status.ErrorMessage()))
                    .AddString("file", std::string(file_view))
                    .AddString("function", function ? function : "")
                    .AddUInt32("line", line)
@@ -813,7 +825,7 @@ void PosixTelemetry::LogRuntimeInferenceError(uint32_t session_id, const common:
                    .AddUInt32("sessionId", session_id)
                    .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
                    .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
-                   .AddString("errorMessage", RedactAbsolutePathsForTelemetry(status.ErrorMessage()))
+                   .AddString("errorMessage", ScrubErrorMessage(status.ErrorMessage()))
                    .AddString("executionProviderVersions", ep_versions)
                    .AddString("executionProviderDeviceTypes", ep_device_types)
                    .AddString("runtimeVersion", ORT_VERSION)
@@ -925,7 +937,7 @@ void PosixTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status& 
                    .AddBool("isSuccess", status.IsOK())
                    .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
                    .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
-                   .AddString("errorMessage", RedactAbsolutePathsForTelemetry(status.ErrorMessage()))
+                   .AddString("errorMessage", ScrubErrorMessage(status.ErrorMessage()))
                    .Build();
 
   LogEventAsync(std::move(event));
@@ -943,7 +955,7 @@ void PosixTelemetry::LogSessionCreationEnd(uint32_t session_id, const common::St
                    .AddBool("isSuccess", status.IsOK())
                    .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
                    .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
-                   .AddString("errorMessage", RedactAbsolutePathsForTelemetry(status.ErrorMessage()))
+                   .AddString("errorMessage", ScrubErrorMessage(status.ErrorMessage()))
                    .Build();
 
   LogEventAsync(std::move(event));
@@ -1013,7 +1025,7 @@ void PosixTelemetry::LogRegisterEpLibraryEnd(const std::string& registration_nam
                    .AddBool("isSuccess", status.IsOK())
                    .AddInt32("errorCode", static_cast<int32_t>(status.Code()))
                    .AddInt32("errorCategory", static_cast<int32_t>(status.Category()))
-                   .AddString("errorMessage", RedactAbsolutePathsForTelemetry(status.ErrorMessage()))
+                   .AddString("errorMessage", ScrubErrorMessage(status.ErrorMessage()))
                    .Build();
 
   LogEventAsync(std::move(event));
