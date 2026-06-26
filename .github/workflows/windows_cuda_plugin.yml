@@ -128,7 +128,7 @@ jobs:
       - name: Stage CUDA runtime test dependencies
         shell: pwsh
         run: |
-          $cudaStageDir = Join-Path ${{ runner.temp }} "cuda-test-deps\v12.8"
+          $cudaStageDir = Join-Path $env:RUNNER_TEMP "cuda-test-deps\v12.8"
           $cudaBinDir = Join-Path $cudaStageDir "bin"
           $cuptiDir = Join-Path $cudaStageDir "extras\CUPTI\lib64"
           New-Item -ItemType Directory -Path $cudaBinDir -Force | Out-Null
