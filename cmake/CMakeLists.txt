@@ -150,8 +150,9 @@ set(onnxruntime_1DS_TENANT_TOKEN "" CACHE STRING "Override the compiled-in 1DS t
 # When building non-Windows telemetry, optionally build the 1DS SDK (cpp-client-telemetry) as a shared
 # library (libmat.so) instead of statically linking it into libonnxruntime. This lets several binaries
 # that link the same SDK (for example onnxruntime and onnxruntime-genai shipped together) share a single
-# copy of the SDK and its transitive TLS/HTTP stack, paying its footprint once instead of per-binary, and
-# avoids running two independent 1DS LogManager singletons in one process. The SDK's own dependencies
+# copy of the SDK and its transitive TLS/HTTP stack, paying its footprint once instead of per-binary. Each
+# binary still runs its own named 1DS LogManager (onnxruntime and onnxruntime-genai use distinct factory
+# hosts), so the shared library shares only the SDK code, not telemetry state. The SDK's own dependencies
 # (OpenSSL/curl/sqlite3/zlib) stay static inside libmat.so so it remains self-contained. Requires the
 # vcpkg cpp-client-telemetry port. Off by default: a standalone onnxruntime is smaller/simpler fully static.
 cmake_dependent_option(onnxruntime_TELEMETRY_SHARED_SDK "Build the non-Windows 1DS telemetry SDK as a shared library so multiple binaries can share one copy" OFF "onnxruntime_USE_TELEMETRY;NOT WIN32" OFF)

@@ -344,7 +344,7 @@ void PosixTelemetry::Initialize() {
   // Create log manager via LogManagerProvider (recommended for production use,
   // per LogManager_Creation_and_Lifecycle_Management.md).
   status_t status;
-  log_manager_ = LogManagerProvider::CreateLogManager(*config_, status);
+  log_manager_ = LogManagerProvider::CreateLogManager("OnnxRuntime", true, *config_, status);
   if (status != STATUS_SUCCESS || !log_manager_) {
     ORT_TELEMETRY_WARN("Failed to create telemetry LogManager, status: " << status);
     config_.reset();
