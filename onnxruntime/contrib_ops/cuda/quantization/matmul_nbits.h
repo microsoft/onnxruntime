@@ -98,7 +98,7 @@ class MatMulNBits final : public CudaKernel {
     if constexpr (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value) {
       int option = ParseEnvironmentVariableWithDefault<int>(kFpAIntBGemmOption, 0);
       if ((option & (static_cast<int>(nbits_) | kFpAIntBGemmOption_All)) != 0 &&
-          (block_size_ == 64 || block_size_ == 128) &&
+          (block_size_ == 32 || block_size_ == 64 || block_size_ == 128) &&
           (nbits_ == 4 || nbits_ == 8) &&
           !has_g_idx_ && !has_bias_ &&
           N_ % (nbits_ == 8 ? 32 : 64) == 0 &&

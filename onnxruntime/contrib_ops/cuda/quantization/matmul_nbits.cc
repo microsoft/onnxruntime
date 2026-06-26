@@ -320,14 +320,28 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
       ORT_ENFORCE(is_prepacked_weight_ && is_prepacked_scale_ && (is_prepacked_zero_point_ || !has_zero_points_),
                   "To use fpA_intB_gemm, prepacking must be done on weight, scale and zero point.");
 
-      auto const& bestTactic = gemmProfiler_->getBestConfig(m, gemmId_);
+      auto const bestTactic = gemmProfiler_->getBestConfig(m, gemmId_);
+
+      // The profiler can mis-pick a tensor-core GEMM tactic over the CUDA-core GEMV at very small M (the
+      // GEMM wastes most of its M-tile at M=1). Allow forcing the GEMV for m <= ORT_FPA_FORCE_GEMV_MAXM.
+      int force_gemv_maxm = ParseEnvironmentVariableWithDefault<int>("ORT_FPA_FORCE_GEMV_MAXM", 0);
+
+      // The CUTLASS tensor-core GEMM only supports group_size 64/128 (its fine-grained scale iterator
+      // assumes one scale group per 64-element K tile). For block_size 32 it would produce wrong results,
+      // so it is never profiled there and getBestConfig returns no tactic for m>=16; route those (and any
+      // forced-small-m) through the CUDA-core GEMV instead (chunked over rows, since the GEMV handles m<=15).
+      bool const gemm_supports_group_size = (block_size_ == 64 || block_size_ == 128);
+      bool const has_gemm_tactic = bestTactic.has_value() && !bestTactic->enableCudaKernel;
+      bool use_cuda_kernel = (bestTactic.has_value() && bestTactic->enableCudaKernel) ||
+                             (has_fpA_intB_gemv_ &&
+                              (m <= force_gemv_maxm || !gemm_supports_group_size || !has_gemm_tactic));
 
 #if ORT_LLM_VERBOSE > 1
       std::cout << "Best tactic for m=" << m << ", n=" << n << ", k=" << k << "group_size=" << block_size_
                 << " is: " << bestTactic->toString() << std::endl;
 #endif
 
-      if (bestTactic->enableCudaKernel) {
+      if (use_cuda_kernel) {
         using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
         KernelType cuda_kernel_type;
         if constexpr (std::is_same<T, MLFloat16>::value) {
@@ -339,13 +353,20 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         void const* pre_quant_scale_ptr = nullptr;
         bool apply_alpha_in_advance = false;
         float alpha = 1.0f;
-        onnxruntime::llm::kernels::fpA_intB_gemv::Params params(
-            a_data, pre_quant_scale_ptr, fpA_intB_weight_buffer_.get(),
-            fpA_intB_scale_buffer_.get(), has_zero_points_ ? fpA_intB_zero_buffer_.get() : nullptr,
-            bias_data, out_data,
-            alpha, m, n, k, block_size_, cuda_kernel_type, apply_alpha_in_advance);
+        // The GEMV kernel dispatches m == 1..15; for larger m (e.g. prefill at block_size 32) run it in
+        // row chunks of <= kFpAGemvMaxM. Each chunk re-reads the weight, so this is only a correctness
+        // fallback for the group sizes the tensor-core GEMM cannot serve.
+        constexpr int kFpAGemvMaxM = 15;
+        for (int row0 = 0; row0 < m; row0 += kFpAGemvMaxM) {
+          int const cur_m = std::min(kFpAGemvMaxM, m - row0);
+          onnxruntime::llm::kernels::fpA_intB_gemv::Params params(
+              a_data + static_cast<size_t>(row0) * k, pre_quant_scale_ptr, fpA_intB_weight_buffer_.get(),
+              fpA_intB_scale_buffer_.get(), has_zero_points_ ? fpA_intB_zero_buffer_.get() : nullptr,
+              bias_data, out_data + static_cast<size_t>(row0) * n,
+              alpha, cur_m, n, k, block_size_, cuda_kernel_type, apply_alpha_in_advance);
 
-        onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(sm_, params, stream);
+          onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(sm_, params, stream);
+        }
       } else {
         const size_t workspace_size = weightOnlyGemmRunner_->getWorkspaceSize(m, n, k);
         auto workspace_buffer = this->template GetScratchBuffer<void>(workspace_size, this->GetComputeStream(ctx));
