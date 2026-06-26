@@ -493,11 +493,14 @@ __global__ void dequant_weight_kernel(uint8_t* weight, TypeA* scales, TypeA* zer
       (GroupSize != 0 ? CtaK / Interleave / GroupSize * n : 0), Interleave);
 
   // Two-phase shared-memory transpose so the global stores are coalesced. Phase 1: each thread reads its
-  // interleaved weight tile (GEMV-style, coalesced reads), dequantizes, and stores into a shared [colTile x
+  // interleaved weight tile (GEMV-style, coalesced reads), dequantizes, and stores into a shared [ColTile x
   // adv] tile at its local (n, k). Phase 2: the block writes the shared tile to the row-major [N, K] output
   // with adjacent threads writing adjacent K (coalesced). blockIdx.y selects the K-chunk (no reduction).
+  // The shared row stride is padded so consecutive ColTile rows land on different banks (adv in words is a
+  // multiple of 32, which would otherwise serialize the ColTile-way phase-1 stores onto one bank set).
   static constexpr int ColTile = CtaN * Interleave;
-  __shared__ TypeA smem[ColTile * adv];
+  static constexpr int SmemStride = (CtaK / Interleave) + 8;
+  __shared__ TypeA smem[ColTile * SmemStride];
 
   typename Details::LayoutDetails::Mapper mapper;
   int const iter = blockIdx.y;
@@ -513,9 +516,16 @@ __global__ void dequant_weight_kernel(uint8_t* weight, TypeA* scales, TypeA* zer
       dequantize<Details, 1, StepK, EnableZero, false>(tile_w, tile_w_quantized, vec_scale + i, vec_zero + i, 1.0f);
       int const local_n = ((tid * StepK / TileSize) % Interleave) + i * Interleave;
       int const local_k = real_offset_k;  // iter*adv is the block's k base; local_k in [0, adv)
+      TypeA ordered[StepK];
 #pragma unroll
       for (int kk = 0; kk < StepK; ++kk) {
-        smem[local_n * adv + local_k + kk] = tile_w[mapper(kk)];
+        ordered[kk] = tile_w[mapper(kk)];
+      }
+      // Vectorized 16-byte shared stores (local_k and SmemStride are multiples of 8).
+#pragma unroll
+      for (int kk = 0; kk < StepK; kk += 8) {
+        *reinterpret_cast<float4*>(&smem[local_n * SmemStride + local_k + kk]) =
+            *reinterpret_cast<float4*>(&ordered[kk]);
       }
     }
   }
@@ -532,11 +542,11 @@ __global__ void dequant_weight_kernel(uint8_t* weight, TypeA* scales, TypeA* zer
       int const k_real = block_k_base + lk;
       if (k_real + 8 <= k) {
         *reinterpret_cast<float4*>(&out[static_cast<size_t>(n_col) * k + k_real]) =
-            *reinterpret_cast<float4*>(&smem[nc * adv + lk]);
+            *reinterpret_cast<float4*>(&smem[nc * SmemStride + lk]);
       } else {
 #pragma unroll
         for (int t2 = 0; t2 < 8; ++t2) {
-          if (k_real + t2 < k) out[static_cast<size_t>(n_col) * k + k_real + t2] = smem[nc * adv + lk + t2];
+          if (k_real + t2 < k) out[static_cast<size_t>(n_col) * k + k_real + t2] = smem[nc * SmemStride + lk + t2];
         }
       }
     }

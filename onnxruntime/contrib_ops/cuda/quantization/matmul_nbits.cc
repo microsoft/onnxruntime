@@ -328,12 +328,22 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         cuda_kernel_type = nbits_ == 8 ? KernelType::BF16Int8Groupwise : KernelType::BF16Int4Groupwise;
       }
 
-      // Large-M for block_size 32: the CUTLASS tensor-core GEMM cannot serve group_size 32, so dequantize
-      // the interleaved weight to a plain row-major [N,K] matrix once and run a single cuBLAS HGEMM. For
-      // group_size 64/128 the GEMM (with the split-K fixup below) is faster, so dequant is disabled there.
+      // Large-M dequant+cuBLAS path. Used when the CUTLASS tensor-core GEMM is unavailable or under-occupied:
+      //  - block_size 32: the GEMM cannot serve group_size 32 (its fine-grained scale iterator needs
+      //    group_size >= the 64-element CTA-K tile), so dequant for all M >= 16.
+      //  - block_size 64/128 with small N: a single-pass GEMM produces only N/128 column tiles, too few to
+      //    fill the GPU at large M, so it falls behind a plain cuBLAS HGEMM. Dequant for M >= 256 there.
+      //  - block_size 64/128 with large N: the GEMM stays well-occupied and is faster, so dequant is disabled.
       // Threshold overridable via ORT_FPA_DEQUANT_MINM.
-      int const dequant_minm =
-          ParseEnvironmentVariableWithDefault<int>("ORT_FPA_DEQUANT_MINM", block_size_ == 32 ? 16 : (1 << 30));
+      int default_dequant_minm;
+      if (block_size_ == 32) {
+        default_dequant_minm = 16;
+      } else if (n <= 8192) {
+        default_dequant_minm = 256;
+      } else {
+        default_dequant_minm = (1 << 30);
+      }
+      int const dequant_minm = ParseEnvironmentVariableWithDefault<int>("ORT_FPA_DEQUANT_MINM", default_dequant_minm);
       if (has_fpA_intB_gemv_ && dequant_minm > 0 && m >= dequant_minm) {
         auto b_dequant = this->template GetScratchBuffer<T>(static_cast<size_t>(n) * k, this->GetComputeStream(ctx));
         onnxruntime::llm::kernels::fpA_intB_gemv::Params deq_params(
