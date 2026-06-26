@@ -109,7 +109,6 @@ jobs:
             --build_shared_lib `
             --build_wheel `
             --use_cuda `
-            --cuda_version=13.0 `
             --cuda_home="$env:RUNNER_TEMP\v13.0" `
             --cudnn_home="$env:RUNNER_TEMP\$env:CUDNN_FOLDER" `
             --skip_tests `
