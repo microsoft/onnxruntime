@@ -405,9 +405,9 @@ void dispatcher(Params& params, cudaStream_t s) {
     DISPATCHER_FOR_M(14, 14, 4, 128);
     DISPATCHER_FOR_M(15, 15, 4, 128);
   } else {
-    DISPATCHER_FOR_M(1, 1, 8, 128);
-    DISPATCHER_FOR_M(2, 2, 8, 128);
-    DISPATCHER_FOR_M(3, 3, 8, 128);
+    DISPATCHER_FOR_M(1, 1, 4, 128);
+    DISPATCHER_FOR_M(2, 2, 4, 128);
+    DISPATCHER_FOR_M(3, 3, 4, 128);
     DISPATCHER_FOR_M(4, 4, 8, 128);
     DISPATCHER_FOR_M(5, 5, 8, 128);
     DISPATCHER_FOR_M(6, 6, 8, 128);
