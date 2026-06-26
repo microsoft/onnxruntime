@@ -1455,7 +1455,7 @@ def generate_build_tree(
         # https://forums.developer.apple.com/forums/thread/122571
         if args.macos == "Catalyst":
             macabi_target = f"{args.osx_arch}-apple-ios{args.apple_deploy_target}-macabi"
-            macabi_warn_flags = "-Wno-overriding-option -Wno-deprecated-enum-enum-conversion"
+            macabi_warn_flags = "-Wno-overriding-t-option -Wno-deprecated-enum-enum-conversion"
             cmake_args += [
                 "-DCMAKE_CXX_COMPILER_TARGET=" + macabi_target,
                 "-DCMAKE_C_COMPILER_TARGET=" + macabi_target,

@@ -44,7 +44,7 @@ jobs:
         run: python tools\ci_build\build.py --windows_sdk_version 10.0.22621.0 --enable_training --build_java --config Debug --build_dir D:\b --skip_submodule_sync --build_csharp --update --build --parallel --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_pybind --use_cuda --cuda_home=${{ github.workspace }}\cuda_sdk\v12.2 --enable_cuda_profiling  --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75
 
   Vcpkg:
-    runs-on: "windows-latest"
+    runs-on: "windows-2022"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
