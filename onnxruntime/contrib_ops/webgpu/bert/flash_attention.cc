@@ -52,6 +52,16 @@ fn populate_indirect_dispatch_buffer(x: u32, y: u32, z: u32) {
 }
 )";
 
+// Emits kNormalizeDispatchGroupSizeFn into AdditionalImplementation and appends the two
+// WGSL lines that compute num_total_seq_length_tile and call normalize_dispatch_group_size.
+// `total_seq_len_expr` is the WGSL expression that evaluates to the total sequence length.
+static void AppendNormalizeDispatchShader(ShaderHelper& shader, std::string_view total_seq_len_expr) {
+  shader.AdditionalImplementation() << kNormalizeDispatchGroupSizeFn;
+  shader.MainFunctionBody()
+      << "  let num_total_seq_length_tile = (" << total_seq_len_expr << " + uniforms.tile_size - 1u) / uniforms.tile_size;\n"
+      << "  normalize_dispatch_group_size(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);\n";
+}
+
 Status SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& packed_qkv = sh.AddInput("packed_qkv", ShaderUsage::UseUniform);
   const auto& seqlens = sh.AddInput("seqlens", ShaderUsage::UseUniform);
@@ -162,10 +172,8 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
 Status PrepareIndirectDispatchProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("seqlen_k", ShaderUsage::None);
   shader.AddOutput("indirect_buffer", ShaderUsage::None);
-  shader.AdditionalImplementation() << kNormalizeDispatchGroupSizeFn;
-  shader.MainFunctionBody() << "  let total_seq_length = u32(seqlen_k[0u]) + 1u;\n"
-                            << "  let num_total_seq_length_tile = (total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;\n"
-                            << "  normalize_dispatch_group_size(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);\n";
+  shader.MainFunctionBody() << "  let total_seq_length = u32(seqlen_k[0u]) + 1u;\n";
+  AppendNormalizeDispatchShader(shader, "total_seq_length");
   return Status::OK();
 }
 
