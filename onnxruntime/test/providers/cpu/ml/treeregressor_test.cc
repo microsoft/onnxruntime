@@ -1084,6 +1084,9 @@ TEST(MLOpTest, TreeEnsembleRegressorBaseValuesWrongSize) {
 }
 
 // In-memory external data references in node attributes are rejected during initialization.
+// The ONNX checker (checker::check_node) runs during Graph::Resolve() before our
+// inlining code and validates that external data locations are regular files.
+// There is no way to disable this check. The error message comes from the ONNX checker.
 // In no-exceptions builds, ORT_RETURN_IF calls abort().
 #if !defined(ORT_NO_EXCEPTIONS)
 
@@ -1118,7 +1121,7 @@ TEST(MLOpTest, TreeEnsembleRegressorRejectsInMemoryExternalDataInTensorAttribute
   values_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
   auto* loc = values_proto.add_external_data();
   loc->set_key("location");
-  loc->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag));
+  loc->set_value(ToUTF8String(utils::kTensorProtoNativeEndianMemoryAddressTag));
   auto* offset = values_proto.add_external_data();
   offset->set_key("offset");
   offset->set_value("12345678");
@@ -1131,7 +1134,7 @@ TEST(MLOpTest, TreeEnsembleRegressorRejectsInMemoryExternalDataInTensorAttribute
   test.AddInput<float>("X", {1, 1}, X);
   test.AddOutput<float>("Y", {1, 1}, {0.f});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "in-memory external data reference");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "is not regular file");
 }
 
 #endif  // !defined(ORT_NO_EXCEPTIONS)

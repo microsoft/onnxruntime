@@ -459,6 +459,9 @@ TEST(MLOpTest, TreeEnsembleIssue25400) {
 #if !defined(ORT_NO_EXCEPTIONS)
 
 // In-memory external data references in node attributes are rejected during initialization.
+// The ONNX checker (checker::check_node) runs during Graph::Resolve() before our
+// inlining code and validates that external data locations are regular files.
+// There is no way to disable this check. The error message comes from the ONNX checker.
 TEST(MLOpTest, TreeEnsembleRejectsInMemoryExternalDataInTensorAttribute) {
   OpTester test("TreeEnsemble", 5, onnxruntime::kMLDomain);
 
@@ -510,7 +513,7 @@ TEST(MLOpTest, TreeEnsembleRejectsInMemoryExternalDataInTensorAttribute) {
   test.AddInput<float>("X", {1, 1}, X);
   test.AddOutput<float>("Y", {1, 1}, {0.f});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "in-memory external data reference");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "is not regular file");
 }
 
 #endif  // !defined(ORT_NO_EXCEPTIONS)
