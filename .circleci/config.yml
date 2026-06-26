@@ -25,7 +25,12 @@ jobs:
             python --version
             which python3
             echo $CIRCLE_WORKING_DIRECTORY
-      - checkout
+      - run:
+          name: checkout repository over HTTPS
+          command: |
+            git clone --filter=blob:none https://github.com/GoodNotes/onnxruntime.git .
+            git fetch --depth=1 origin "${CIRCLE_SHA1}"
+            git checkout --force "${CIRCLE_SHA1}"
       - run:
           name: create directory to store the library
           command: |
