@@ -40,11 +40,35 @@ parameters:
   default: false
 
 steps:
+
+    # Verify that the CMake build tree is present before install
+    - task: CmdLine@2
+      displayName: 'Verify CMake build tree location'
+      inputs:
+        script: |
+          if not exist "$(Build.BinariesDirectory)\${{parameters.buildConfig}}\CMakeCache.txt" (
+            echo ERROR: CMakeCache.txt not found at $(Build.BinariesDirectory)\${{parameters.buildConfig}}
+            echo This means the --install step below is pointed at the wrong directory.
+            exit /b 1
+          )
+          echo "Confirmed CMake build tree at $(Build.BinariesDirectory)\${{parameters.buildConfig}}"
+
+    # Run cmake --install to populate the "installed" tree used for packaging
+    - task: CmdLine@2
+      displayName: 'CMake install'
+      inputs:
+        script: |
+          cmake --install "$(Build.BinariesDirectory)\${{parameters.buildConfig}}" --config ${{parameters.buildConfig}} --prefix "$(Build.BinariesDirectory)\installed"
+          if errorlevel 1 (
+            echo ERROR: cmake --install failed
+            exit /b 1
+          )    
+
     # Publish symbols to Microsoft symbol server for main/rel-* branches
-    - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
+    - ${{ if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
       - template: publish-symbolrequestprod-api.yml
         parameters:
-          ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
+          ${{ if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
             symbolExpiryTime: 60
           includePublicSymbolServer: true
           symbolsArtifactName: ${{parameters.artifactNameNoVersionString}}
@@ -158,7 +182,7 @@ steps:
           mkdir %ARTIFACT%
 
           REM Copy DLLs (runtime) and all lib/ contents (libs, cmake, pdbs) into artifact\lib
-          xcopy /E /I /Y "%INSTALLED%\bin\*.dll"     "%ARTIFACT%\lib"
+          xcopy /I /Y "%INSTALLED%\bin\*.dll"    "%ARTIFACT%\lib"
           xcopy /E /I /Y "%INSTALLED%\lib\*"     "%ARTIFACT%\lib"
           REM Copy flattened headers into artifact\include
           xcopy /E /I /Y "%INSTALLED%\include\*" "%ARTIFACT%\include"

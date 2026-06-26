@@ -278,29 +278,6 @@ stages:
         workingDirectory: '$(Build.BinariesDirectory)/RelWithDebInfo/RelWithDebInfo'
         displayName: 'List built DLLs'
 
-      # Verify that the CMake build tree is present before install
-      - task: CmdLine@2
-        displayName: 'Verify CMake build tree location'
-        inputs:
-          script: |
-            if not exist "$(Build.BinariesDirectory)\RelWithDebInfo\CMakeCache.txt" (
-              echo ERROR: CMakeCache.txt not found at $(Build.BinariesDirectory)\RelWithDebInfo
-              echo This means the --install step below is pointed at the wrong directory.
-              exit /b 1
-            )
-            echo "Confirmed CMake build tree at $(Build.BinariesDirectory)\RelWithDebInfo"
-
-      # Run cmake --install to populate the "installed" tree used for packaging
-      - task: CmdLine@2
-        displayName: 'CMake install'
-        inputs:
-          script: |
-            cmake --install "$(Build.BinariesDirectory)\RelWithDebInfo" --config RelWithDebInfo --prefix "$(Build.BinariesDirectory)\installed"
-            if errorlevel 1 (
-              echo ERROR: cmake --install failed
-              exit /b 1
-            )
-
       # 12. Package the C-API artifact using the dedicated template
       - template: c-api-artifacts-package-and-publish-steps-windows.yml
         parameters:
