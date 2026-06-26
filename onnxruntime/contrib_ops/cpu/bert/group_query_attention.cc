@@ -348,13 +348,13 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   // kernel to avoid materializing the full attention score matrix. Falls back to the
   // naive path when an unsupported feature is requested (softcap, smooth softmax,
   // head sink, or QK output).
+  //
+  // Prefill (sequence_length > 1) uses the tiled kernel; single-token decode
+  // (sequence_length == 1 with total_sequence_length > 1) uses the dedicated GEMV
+  // decode kernel. Both are reached when total_sequence_length > 1.
   if constexpr (std::is_same_v<T, float>) {
-    // Restrict the flash path to prefill / chunked-prefill (query length > 1). Single-token
-    // decode (sequence_length == 1) has no flash benefit: the naive score matrix is only
-    // [1, total_sequence_length] per head, so there is nothing to tile away, and the extra
-    // online-softmax bookkeeping makes it slower in practice.
     const bool use_flash = !disable_gqa_flash_ &&
-                           parameters.sequence_length > 1 &&
+                           parameters.total_sequence_length > 1 &&
                            softcap_ == 0.0f &&
                            !use_smooth_softmax_ &&
                            head_sink_data == nullptr &&

@@ -410,10 +410,10 @@ impl Session {
     ///
     /// Note that ONNX models can have multiple inputs; a `Vec<_>` is thus
     /// used for the input data here.
-    pub fn run<'input, 'output>(
-        &'output self,
+    pub fn run<'input>(
+        &self,
         mut input_arrays: impl AsMut<[Box<dyn ConstructTensor + 'input>]> + 'input,
-    ) -> Result<Vec<OrtOutput<'output>>> {
+    ) -> Result<Vec<OrtOutput>> {
         let mut output_tensor_extractors_ptrs: Vec<*mut sys::OrtValue> =
             vec![std::ptr::null_mut(); self.outputs.len()];
 
