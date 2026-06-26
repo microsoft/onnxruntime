@@ -822,6 +822,22 @@ if (onnxruntime_USE_WEBGPU)
     endif()
 
     onnxruntime_fetchcontent_makeavailable(dawn)
+
+    # Pre-create the emdawnwebgpu include directory at configure time to prevent a parallel
+    # build race condition. Dawn's src/emdawnwebgpu/CMakeLists.txt registers add_custom_command
+    # rules that copy webgpu_glfw.h and webgpu_enum_class_bitmasks.h into
+    # gen/src/emdawnwebgpu/include/webgpu/ using cmake -E copy. With -j32 parallel builds
+    # those copy commands can be triggered from multiple Makefile targets simultaneously
+    # before DawnJSONGenerator has created the destination directory, causing:
+    #   Error copying file "…/webgpu_enum_class_bitmasks.h" to
+    #   "…/gen/src/emdawnwebgpu/include/webgpu/webgpu_enum_class_bitmasks.h"
+    # Creating the directory here (at configure time) ensures it already exists when the
+    # build starts, regardless of whether the dawn_parallel_build_fix.patch was applied to
+    # the cached Dawn source on this runner.
+    FetchContent_GetProperties(dawn)
+    if(dawn_POPULATED)
+      file(MAKE_DIRECTORY "${dawn_BINARY_DIR}/gen/src/emdawnwebgpu/include/webgpu")
+    endif()
   endif()
 
   if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
