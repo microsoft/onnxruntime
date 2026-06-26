@@ -238,6 +238,13 @@ struct ConvTransposeAttributes : public ConvAttributes {
                              "pads size (", p_pads->size(), ") does not match expected size (2 * ", rank, ").");
     }
 
+    // The 'rank + 2' (full N,C,H,W) output_shape form is a legacy ORT leniency that predates the ONNX
+    // spec clarification (onnx/onnx#5400: output_shape is spatial-only). As of ONNX 1.22, ConvTranspose
+    // shape inference rejects a rank+2 output_shape at Graph::Resolve, so this branch is
+    // load-UNREACHABLE for statically-ranked graphs. It is still RUNTIME-reachable when the input rank
+    // is unknown at load (ONNX convTransposeShapeInference early-returns before the size check via
+    // hasNInputShapes), so it must be retained for back-compat. N and C are ignored here (batch comes
+    // from the input, channels from the weight); only spatial dims are read.
     // output_shape attribute, if specified, must have either 'rank' or 'rank + 2' elements
     if (output_shape_size != 0 && output_shape_size != rank && output_shape_size != rank + 2) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

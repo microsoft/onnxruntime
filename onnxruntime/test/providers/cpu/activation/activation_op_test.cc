@@ -697,6 +697,37 @@ TEST_F(ActivationOpTest, Softplus) {
                           });
 }
 
+TEST_F(ActivationOpTest, Softplus_Opset22) {
+  TestActivationOp<float>("Softplus", {{-1.0f, 0.0f, 1.0f, -5.0f, 5.0f, -100.0f, 100.0f}}, [](float x) {
+                            if (x > 0)
+                              return x + log1pf(expf(-x));
+                            else
+                              return log1pf(expf(x)); }, {}, {}, /*is_tensorrt_supported=*/true, /*opset_version=*/22);
+}
+
+#if defined(USE_CUDA)
+TEST_F(ActivationOpTest, Softplus_bfloat16_Opset22) {
+  if (!HasCudaEnvironment(530)) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+
+  OpTester test("Softplus", 22);
+  std::vector<float> X = {-1.0f, 0.0f, 1.0f, -5.0f, 5.0f, -100.0f, 100.0f};
+  std::vector<float> Y;
+  for (float x : X) {
+    Y.push_back(x > 0 ? x + log1pf(expf(-x)) : log1pf(expf(x)));
+  }
+  std::vector<int64_t> dims{static_cast<int64_t>(X.size())};
+
+  test.AddInput<BFloat16>("X", dims, FloatsToBFloat16s(X));
+  test.AddOutput<BFloat16>("Y", dims, FloatsToBFloat16s(Y));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  // USE_CUDA
+
 TEST_F(ActivationOpNoInfTest, Softsign) {
   if constexpr (!SessionOptions::DEFAULT_USE_PER_SESSION_THREADS) {
     GTEST_SKIP() << "Skipping the test";
@@ -737,6 +768,41 @@ TEST_F(ActivationOpNoInfTest, Softsign) {
       },
       {}, {}, false);  // Disable TensorRT because result mismatches
 }
+
+TEST_F(ActivationOpNoInfTest, Softsign_Opset22) {
+  if constexpr (!SessionOptions::DEFAULT_USE_PER_SESSION_THREADS) {
+    GTEST_SKIP() << "Skipping the test";
+  }
+
+  TestActivationOp<float>(
+      "Softsign",
+      {{-1.0f, 0.0f, 1.0f, -5.0f, 5.0f, -100.0f, 100.0f}},
+      [](float x) { return x / (1 + std::abs(x)); },
+      {}, {}, /*is_tensorrt_supported=*/false, /*opset_version=*/22);
+}
+
+#if defined(USE_CUDA)
+TEST_F(ActivationOpNoInfTest, Softsign_bfloat16_Opset22) {
+  if (!HasCudaEnvironment(530)) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+
+  OpTester test("Softsign", 22);
+  std::vector<float> X = {-1.0f, 0.0f, 1.0f, -5.0f, 5.0f, -100.0f, 100.0f};
+  std::vector<float> Y;
+  for (float x : X) {
+    Y.push_back(x / (1 + std::abs(x)));
+  }
+  std::vector<int64_t> dims{static_cast<int64_t>(X.size())};
+
+  test.AddInput<BFloat16>("X", dims, FloatsToBFloat16s(X));
+  test.AddOutput<BFloat16>("Y", dims, FloatsToBFloat16s(Y));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif  // USE_CUDA
 
 #if defined(ENABLE_TRAINING_OPS)
 TEST(ReluGradInferenceTest, Basic) {

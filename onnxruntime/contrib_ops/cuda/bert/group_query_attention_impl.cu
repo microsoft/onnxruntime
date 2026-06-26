@@ -37,6 +37,7 @@ limitations under the License.
 #include "contrib_ops/cuda/bert/attention_softmax.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
+#include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 #include "contrib_ops/cuda/bert/unfused_attention.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
@@ -67,6 +68,83 @@ namespace cuda {
 // QKV Preprocessing Helpers
 // ============================================================================
 
+template <typename T>
+__global__ void ConvertHeadSinkToFloatKernel(const T* input, float* output, int count) {
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i < count) {
+    output[i] = static_cast<float>(input[i]);
+  }
+}
+
+template <typename T>
+Status LaunchConvertHeadSinkToFloat(
+    const T* input,
+    float* output,
+    int count,
+    cudaStream_t stream,
+    int max_threads_per_block) {
+  int blocks = (count + max_threads_per_block - 1) / max_threads_per_block;
+  ConvertHeadSinkToFloatKernel<T><<<blocks, max_threads_per_block, 0, stream>>>(input, output, count);
+  return CUDA_CALL(cudaGetLastError());
+}
+
+// Standalone per-head RMS normalization (QK-Norm prologue) for Q in BSNH layout.
+// Each block handles one (b, s, head) vector and normalizes over head_size:
+//   out[c] = in[c] * rsqrt(mean(in^2) + epsilon) * weight[c]
+// where weight has shape (head_size,) and is shared across heads. This is used by the shared-KV
+// (kv_sequence_length == 0) path, which processes Q only; the new-KV path folds the equivalent
+// normalization into UnpackRoPEAppend before RoPE.
+template <typename T>
+__global__ void PerHeadRMSNormBSNHKernel(
+    T* output, const T* input, const T* weight, const int head_size, const float epsilon) {
+  const int s = blockIdx.x;
+  const int b = blockIdx.y;
+  const int n = blockIdx.z;
+  const int sequence_length = gridDim.x;
+  const int num_heads = gridDim.z;
+  const int i = threadIdx.x;
+
+  const int64_t base = (((static_cast<int64_t>(b) * sequence_length + s) * num_heads) + n) * head_size;
+
+  extern __shared__ float s_sumsq[];
+  const float x = (i < head_size) ? static_cast<float>(input[base + i]) : 0.0f;
+  s_sumsq[i] = x * x;
+  __syncthreads();
+
+  // Tree reduction over a power-of-two block size; padded entries (i >= head_size) are zero.
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (i < stride) {
+      s_sumsq[i] += s_sumsq[i + stride];
+    }
+    __syncthreads();
+  }
+
+  if (i < head_size) {
+    const float inv_rms = rsqrtf(s_sumsq[0] / static_cast<float>(head_size) + epsilon);
+    output[base + i] = static_cast<T>(x * inv_rms * static_cast<float>(weight[i]));
+  }
+}
+
+template <typename T>
+Status LaunchPerHeadRMSNorm(
+    cudaStream_t stream, T* output, const T* input, const T* weight, const float epsilon,
+    const int batch_size, const int sequence_length, const int num_heads, const int head_size,
+    const int max_threads_per_block) {
+  // Round the thread count up to a power of two so the tree reduction is exact.
+  int tpb = 1;
+  while (tpb < head_size) {
+    tpb <<= 1;
+  }
+  if (tpb > max_threads_per_block) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "head_size (", head_size, ") exceeds max threads for QK-Norm.");
+  }
+  const dim3 grid(sequence_length, batch_size, num_heads);
+  const dim3 block(tpb);
+  const size_t smem = static_cast<size_t>(tpb) * sizeof(float);
+  PerHeadRMSNormBSNHKernel<T><<<grid, block, smem, stream>>>(output, input, weight, head_size, epsilon);
+  return CUDA_CALL(cudaGetLastError());
+}
+
 // Internal helper to get Q, K, V pointers, handling packed input
 //
 // This function orchestrates the preparation of Q, K, and V tensors for attention kernels.
@@ -95,7 +173,7 @@ Status PrepareQKV(
 
   T* q_out = reinterpret_cast<T*>(data.qkv_buffer);
 
-  if (!parameters.is_packed_qkv && !parameters.do_rotary) {
+  if (!parameters.is_packed_qkv && !parameters.do_rotary && !parameters.use_qk_norm) {
     q_out = nullptr;
   }
 
@@ -132,6 +210,16 @@ Status PrepareQKV(
   // above has already populated the present buffer with the shared KV data.
   // In both cases, only Q processing (RoPE if configured) is needed here.
   if (kv_sequence_length == 0) {
+    // QK-Norm: normalize Q (BSNH) into q_out before RoPE. K is already normalized in the shared cache
+    // (it was normalized when first appended), so only Q needs processing on this path.
+    const T* q_rope_input = data.query;
+    if (parameters.use_qk_norm) {
+      ORT_RETURN_IF_ERROR((LaunchPerHeadRMSNorm<T>(
+          stream, q_out, data.query, data.q_norm_weight, parameters.qk_norm_epsilon,
+          batch_size, sequence_length, num_heads, head_size, max_threads_per_block)));
+      // RoPE (if any) runs in-place on the normalized Q; the rotary kernel handles in-place safely.
+      q_rope_input = q_out;
+    }
     if (parameters.do_rotary && data.cos_cache != nullptr && data.sin_cache != nullptr) {
       // Apply RoPE to Q only using the standalone rotary embedding kernel.
       // Q is in BSNH format; the kernel writes rotated Q to q_out.
@@ -140,7 +228,7 @@ Status PrepareQKV(
       const int pos_format = data.position_ids != nullptr ? 1 : 2;
       if constexpr (std::is_same<T, __half>::value) {
         ORT_RETURN_IF_ERROR((LaunchRotaryEmbeddingKernel<half>(
-            stream, reinterpret_cast<half*>(q_out), reinterpret_cast<const half*>(data.query),
+            stream, reinterpret_cast<half*>(q_out), reinterpret_cast<const half*>(q_rope_input),
             data.position_ids, data.past_seq_lens,
             reinterpret_cast<const half*>(data.cos_cache), reinterpret_cast<const half*>(data.sin_cache),
             batch_size, sequence_length, num_heads, head_size, parameters.rotary_dim, max_cache_length,
@@ -148,7 +236,7 @@ Status PrepareQKV(
             max_threads_per_block, false /* is_input_bnsh_format: Q is BSNH */)));
       } else if constexpr (std::is_same<T, __nv_bfloat16>::value) {
         ORT_RETURN_IF_ERROR((LaunchRotaryEmbeddingKernel<onnxruntime::BFloat16>(
-            stream, reinterpret_cast<onnxruntime::BFloat16*>(q_out), reinterpret_cast<const onnxruntime::BFloat16*>(data.query),
+            stream, reinterpret_cast<onnxruntime::BFloat16*>(q_out), reinterpret_cast<const onnxruntime::BFloat16*>(q_rope_input),
             data.position_ids, data.past_seq_lens,
             reinterpret_cast<const onnxruntime::BFloat16*>(data.cos_cache), reinterpret_cast<const onnxruntime::BFloat16*>(data.sin_cache),
             batch_size, sequence_length, num_heads, head_size, parameters.rotary_dim, max_cache_length,
@@ -156,7 +244,7 @@ Status PrepareQKV(
             max_threads_per_block, false /* is_input_bnsh_format: Q is BSNH */)));
       }
     }
-    // If do_rotary is false, Q is used directly from data.query (q_out == nullptr).
+    // If do_rotary is false and QK-Norm is off, Q is used directly from data.query (q_out == nullptr).
     // K/V present buffers already point to the shared past — no work needed.
   } else {
     ORT_RETURN_IF_ERROR((LaunchUnpackRoPEAppend<T, U>(
@@ -170,6 +258,7 @@ Status PrepareQKV(
         reinterpret_cast<const T*>(data.cos_cache), reinterpret_cast<const T*>(data.sin_cache),
         parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
         is_cache_bnsh, parameters.k_quant_type,
+        data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,
         stream, max_threads_per_block)));
   }
 
@@ -552,13 +641,18 @@ __global__ void GetSequenceLengths(const int* total_seq_lens_minus_one,
                                    const bool is_first_prompt) {
   int i = threadIdx.x + blockIdx.x * blockDim.x;
   if (i < batch_size) {
-    const int total_len = total_seq_lens_minus_one[i] + 1;
+    // total_seq_lens_minus_one is the seqlens_k input and is not range-checked on the device.
+    // Clamp the negative case at the source so the derived lengths below stay non-negative and
+    // cannot flow as negative offsets into KV-cache or attention index computations.
+    const int seqlens_k = total_seq_lens_minus_one[i];
+    const int total_len = (seqlens_k > 0 ? seqlens_k : 0) + 1;
     total_seq_lens[i] = total_len;
     if (is_first_prompt) {
       past_seq_lens[i] = 0;
       padded_seq_lens[i] = sequence_length;
     } else {
-      past_seq_lens[i] = total_len - sequence_length;
+      const int past_len = total_len - sequence_length;
+      past_seq_lens[i] = past_len > 0 ? past_len : 0;
       padded_seq_lens[i] = 0;
     }
   }
@@ -647,12 +741,20 @@ Status ExtremeDecoding(
       parameters.rotary_interleaved,
       !past_bsnh,  // is_cache_bnsh
       parameters.k_quant_type,
+      data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,
       stream,
       device_prop.maxThreadsPerBlock)));
 
   // Determine workspace size for XQA
   void* xqa_workspace = data.xqa_buffer;
   size_t xqa_workspace_size = data.xqa_buffer_bytes;
+
+  if (data.xqa_head_sink_needs_conversion) {
+    ORT_ENFORCE(data.xqa_head_sink != nullptr, "XQA head_sink conversion buffer was not allocated.");
+    ORT_ENFORCE(data.head_sink != nullptr, "XQA head_sink input was not available for conversion.");
+    ORT_RETURN_IF_ERROR(LaunchConvertHeadSinkToFloat<T>(
+        data.head_sink, data.xqa_head_sink, num_heads, stream, device_prop.maxThreadsPerBlock));
+  }
 
   constexpr bool is_fp8 = std::is_same<U, __nv_fp8_e4m3>::value;
   using onnxruntime::contrib::cuda::XqaQuantType;
@@ -670,8 +772,10 @@ Status ExtremeDecoding(
       parameters.head_size,
       parameters.seqlen_present_kv_cache,  // max_seq_len (Capacity)
       scale,
+      parameters.local_window_size,  // -1 means global attention; >0 enables sliding window
       past_bsnh,
       data.past_seq_lens,
+      data.xqa_head_sink,
       data.k_scale,  // kv_cache_scale
       // Map cache type to XqaQuantType: NONE->kNone, Float8E4M3FN->kFp8, int8->kInt8
       (parameters.k_quant_type == KVQuantizationType::NONE) ? XqaQuantType::kNone : (is_fp8 ? XqaQuantType::kFp8 : XqaQuantType::kInt8),
@@ -865,6 +969,7 @@ Status DequantizeFlashAttentionFallback(
       parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
       (parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH),
       parameters.k_quant_type,
+      data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,
       stream, device_prop.maxThreadsPerBlock)));
 
   // Step 2: Dequantize Entire Cache
@@ -949,6 +1054,7 @@ Status FlashAttentionAndQuantizeKV(
       parameters.rotary_dim, data.position_ids, parameters.rotary_interleaved,
       false,  // BSNH for scratch
       KVQuantizationType::NONE,
+      data.q_norm_weight, data.k_norm_weight, parameters.qk_norm_epsilon,
       stream, max_threads_per_block)));
 
   // 2. Run Float Flash Attention
@@ -1183,6 +1289,81 @@ Status UnfusedGqaAttention(
 
 ////////// API Functions
 
+// ============================================================================
+// CudnnSdpaAttention: cuDNN scaled-dot-product-attention (cudnn_frontend) path.
+//
+// Preferred on SM>=90 (Hopper/Blackwell) for non-quantized FP16/BF16 GQA. cuDNN handles
+// grouped-query attention natively (no KV head expansion) and applies causal masking through the
+// diagonal-band API. The present KV cache (BNSH, padded to seqlen_present_kv_cache) is passed with
+// the capacity as the KV sequence length so strides match the physical buffer; a per-batch padding
+// mask (total_seq_lens) ignores the unused tail. RoPE / packed-QKV unpack and the new-token append
+// are performed by PrepareQKV.
+//
+// Not handled here (excluded by op-level eligibility, caller falls through elsewhere):
+//   - Quantized KV cache (U != T), softcap, smooth softmax / head sink, sliding window.
+// ============================================================================
+template <typename T, typename U>
+Status CudnnSdpaAttention(
+    const cudaDeviceProp& device_prop,
+    cudaStream_t stream,
+    Stream* ort_stream,
+    GroupQueryAttentionParameters& parameters,
+    GroupQueryAttentionData<T, U>& data,
+    float scale) {
+  if constexpr (!std::is_same<T, U>::value) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "cuDNN SDPA GQA path requires a non-quantized KV cache (T == U).");
+  } else {
+    ORT_GQA_TRACE("CudnnSdpaAttention");
+
+    const int max_threads_per_block = device_prop.maxThreadsPerBlock;
+
+    // Prepare Q (optional RoPE) and append the new K/V into the present cache (BNSH, padded to
+    // seqlen_present_kv_cache). After this, present_key/value hold the full KV history.
+    const T* q_prep = nullptr;
+    ORT_RETURN_IF_ERROR((PrepareQKV<T, U>(stream, max_threads_per_block, parameters, data, q_prep)));
+
+    ORT_RETURN_IF(data.cudnn_handle == nullptr || data.allocator == nullptr,
+                  "cuDNN SDPA GQA path is missing the cuDNN handle or temp-space allocator.");
+
+    constexpr bool is_bf16 = std::is_same<T, __nv_bfloat16>::value;
+
+    // First prompt may right-pad the query, so its valid query length equals total_seq_lens.
+    // Otherwise every one of the sequence_length query tokens is valid and the wrapper synthesizes a
+    // full-length (no-op) query padding mask.
+    int* seq_len_q = parameters.is_first_prompt ? data.total_seq_lens : nullptr;
+    int* seq_len_kv = data.total_seq_lens;
+
+    ::onnxruntime::cudnn_sdpa::run(
+        reinterpret_cast<void*>(data.output),
+        const_cast<void*>(reinterpret_cast<const void*>(q_prep)),
+        reinterpret_cast<void*>(data.present_key),
+        reinterpret_cast<void*>(data.present_value),
+        /*attn_bias=*/nullptr,
+        seq_len_q,
+        seq_len_kv,
+        parameters.batch_size,
+        parameters.num_heads,                // num_heads_q
+        parameters.kv_num_heads,             // num_heads_kv
+        parameters.head_size,                // head_size_qk
+        parameters.head_size,                // head_size_v (GQA: v_head_size == head_size)
+        parameters.sequence_length,          // sequence_length_q
+        parameters.seqlen_present_kv_cache,  // sequence_length_kv (capacity, matches buffer strides)
+        scale,
+        /*is_causal=*/true,
+        is_bf16,
+        /*broadcast_attn_bias_dim_0=*/false,
+        /*broadcast_attn_bias_dim_1=*/false,
+        /*sliding_window=*/0,
+        AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH,
+        static_cast<cudnnHandle_t>(data.cudnn_handle),
+        ort_stream,
+        data.allocator);
+
+    return Status::OK();
+  }
+}
+
 template <typename T, typename U>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
@@ -1194,6 +1375,10 @@ Status QkvToContext(
   const float scale = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size)) : parameters.scale;
   if (data.use_xqa) {
     return ExtremeDecoding(device_prop, stream, parameters, data, scale);
+  }
+
+  if (data.use_cudnn_sdpa) {
+    return CudnnSdpaAttention<T, U>(device_prop, stream, ort_stream, parameters, data, scale);
   }
 
 #if USE_FLASH_ATTENTION
@@ -1235,6 +1420,20 @@ Status QkvToContext(
 template struct GroupQueryAttentionData<half, half>;
 template struct GroupQueryAttentionData<__nv_bfloat16, __nv_bfloat16>;
 template struct GroupQueryAttentionData<half, int8_t>;
+
+template Status LaunchConvertHeadSinkToFloat<half>(
+    const half* input,
+    float* output,
+    int count,
+    cudaStream_t stream,
+    int max_threads_per_block);
+
+template Status LaunchConvertHeadSinkToFloat<__nv_bfloat16>(
+    const __nv_bfloat16* input,
+    float* output,
+    int count,
+    cudaStream_t stream,
+    int max_threads_per_block);
 
 template Status QkvToContext<half, half>(
     const cudaDeviceProp& device_prop,

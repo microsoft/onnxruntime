@@ -152,7 +152,8 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True):
         q_weight_reshaped = q_weight.reshape(n, -1)
 
         # Pack weights for CUDA mixed-gemm kernel (FpA_IntB format), and qMoE kernel uses the same format.
-        processed_q_weight = _quantize.pack_weights_for_cuda_mixed_gemm(q_weight_reshaped, n, k, 4)
+        # INT MoE/QMoE kernels consume the SM80 column-interleaved layout, including on newer GPUs.
+        processed_q_weight = _quantize.pack_weights_for_cuda_mixed_gemm(q_weight_reshaped, n, k, 4, 80)
 
         # So we need to DEQUANTIZE back to get `result`.
         # scale is [n, block_per_k]
@@ -233,7 +234,8 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True):
 
         q_weight_reshaped = q_weight.reshape(n, -1)
         # Pack weights for CUDA mixed-gemm kernel (FpA_IntB format)
-        processed_q_weight = _quantize.pack_weights_for_cuda_mixed_gemm(q_weight_reshaped, n, k, 8)
+        # INT MoE/QMoE kernels consume the SM80 column-interleaved layout, including on newer GPUs.
+        processed_q_weight = _quantize.pack_weights_for_cuda_mixed_gemm(q_weight_reshaped, n, k, 8, 80)
 
         # Dequantize for reference
         # (q - 128) * scale if using 128 offset? or (q) * scale if symmetric around 0?
@@ -1084,8 +1086,8 @@ class SparseMoeBlockORTHelper(nn.Module):
         ort_dtype_quant_bits_tolerance_map = {
             "FP32:0": (5e-3, 1e-3),
             "FP16:0": (0.3, 0.05),
-            "FP16:4": (3.0, 1e-2),
-            "FP16:8": (2.0, 1e-2),
+            "FP16:4": (0.5, 1e-2),
+            "FP16:8": (0.5, 1e-2),
             "BF16:0": (1.0, 1e-2),
             "BF16:4": (30.0, 1e-1),
             "BF16:8": (20.0, 1e-1),
@@ -1520,7 +1522,7 @@ class TestPhiMoE(unittest.TestCase):
 phi3_qmoe_test_cases = list(
     itertools.product(
         [1, 4],  # batch_size
-        [1, 8],  # sequence_length
+        [1, 8],  # sequence_length; keeps expanded rows <= 64 to exercise the INT4 MoE GEMV path
         [TensorProto.FLOAT16],  # onnx type, None mean fp32 for bits = 0, fp16 for bits > 0
         [True],  # normalize_routing_weights
     )

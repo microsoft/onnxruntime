@@ -99,6 +99,7 @@ __global__ void UnfusedSoftmaxKernel(
     const int past_kv_length,
     const float scale,
     const float softcap,
+    const float masked_bias_value,
     T* __restrict__ softmax_out) {
   // Grid: (N_q * S_q, B, 1). Block: (TPB, 1, 1).
   const int q_in_head = blockIdx.x % q_sequence_length;
@@ -151,8 +152,22 @@ __global__ void UnfusedSoftmaxKernel(
   __shared__ float s_max;
   __shared__ float s_inv_sum;
 
-  // Pass 1: compute max of masked values.
+  // A real additive mask sentinel is only in play when masked_bias_value is negative
+  // (composed is_causal + attn_mask). It is 0 for contrib GQA/MHA which pass no bias.
+  const bool mask_sentinel_active = has_bias && masked_bias_value < 0.0f;
+
+  // Pass 1: compute max of masked values, and detect whether any in-range key is retained.
+  // A key is "retained" iff its composed additive bias is strictly greater than the masked
+  // sentinel (i.e. it was not masked to -inf). When no real mask sentinel is active, every
+  // in-range key is trivially retained. This exact per-key test matches the MEA
+  // ZeroFullyMaskedRows kernel and the onnx/onnx#8068 reference (isneginf of the additive-bias
+  // row max), and replaces the prior fractional score-collapse heuristic that wrongly zeroed
+  // rows carrying a finite-but-very-negative user bias. The compare is exact because masked
+  // slots are ASSIGNED the sentinel verbatim (bool-false / causal-overlay write the same
+  // constant; the sentinel is finite, never NaN) while a legit user bias is passed through
+  // un-clamped, so only a true masked key trips the (bias_val > masked_bias_value) test.
   float thread_max = -CUDART_INF_F;
+  int thread_retained = 0;
   for (int i = threadIdx.x; i < total_kv_length; i += TPB) {
     if (i < start || i >= end) continue;
     float x = qk_in[row_offset + i] * scale;
@@ -160,7 +175,11 @@ __global__ void UnfusedSoftmaxKernel(
       x = softcap * tanhf(x / softcap);
     }
     if (has_bias) {
-      x += ToFloat(attn_bias[bias_row_offset + i]);
+      const float bias_val = ToFloat(attn_bias[bias_row_offset + i]);
+      x += bias_val;
+      if (!mask_sentinel_active || bias_val > masked_bias_value) thread_retained = 1;
+    } else {
+      thread_retained = 1;
     }
     if (x > thread_max) thread_max = x;
   }
@@ -171,10 +190,19 @@ __global__ void UnfusedSoftmaxKernel(
   block_max = BlockReduce(tmp_storage).Reduce(thread_max, cub::Max());
 #endif
   if (threadIdx.x == 0) s_max = block_max;
-  __syncthreads();
+  // __syncthreads_or() both publishes s_max (it is a full block barrier) and computes the
+  // block-wide OR of the per-thread "key retained" predicate in a single pass -- a boolean
+  // reduction that needs no shared memory and no cub float reduce. The result is identical to the
+  // prior BlockReduce(max) over a 0/1 float flag, only cheaper (tianleiwu review, onnx#28958).
+  const int any_retained = __syncthreads_or(thread_retained);
 
   // If the row is fully masked, emit zeros (match existing mask-of-zeros behavior).
-  if (s_max == -CUDART_INF_F) {
+  // A row is fully masked iff no in-range key is retained -- either:
+  //   (1) causal/window/seqlens leave no in-range key (s_max stays -inf), or
+  //   (2) composed is_causal + attn_mask masked every in-range key to the additive sentinel.
+  // Both collapse to any_retained == 0. onnx/onnx#8068 (Bug-2) requires a zero row here
+  // (otherwise softmax would emit a spurious uniform mean-of-V).
+  if (s_max == -CUDART_INF_F || any_retained == 0) {
     for (int i = threadIdx.x; i < total_kv_length; i += TPB) {
       softmax_out[row_offset + i] = T(0.f);
     }
@@ -245,6 +273,7 @@ void LaunchUnfusedSoftmax(
       params.past_kv_length,
       params.scale,
       params.softcap,
+      params.masked_bias_value,
       softmax_out);
 }
 

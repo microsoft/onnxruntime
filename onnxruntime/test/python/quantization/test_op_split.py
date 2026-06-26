@@ -38,7 +38,7 @@ class TestONNXModel(unittest.TestCase):
         # (output_1) (output_2) (output_3)
 
         initializers = []
-        input = helper.make_tensor_value_info("input", TensorProto.FLOAT, [6, 3])
+        input = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 1, 6, 3])
 
         output_1 = helper.make_tensor_value_info("output_1", TensorProto.FLOAT, [1, 12])
         output_2 = helper.make_tensor_value_info("output_2", TensorProto.FLOAT, [1, 12])
@@ -47,7 +47,7 @@ class TestONNXModel(unittest.TestCase):
         reshape_shape = "reshape_shape"
         initializers.append(
             onnx.numpy_helper.from_array(
-                np.random.randint(-1, 2, [6, 3]).astype(np.float32),
+                np.random.randint(-1, 2, [2, 1, 1, 1]).astype(np.float32),
                 name="conv_weight",
             )
         )
@@ -78,7 +78,7 @@ class TestONNXModel(unittest.TestCase):
         np.random.seed(1)
         model_fp32_path = "split_fp32.onnx"
         self.construct_model(model_fp32_path)
-        data_reader = input_feeds_neg_one_zero_one(1, {"input": [6, 3]})
+        data_reader = input_feeds_neg_one_zero_one(1, {"input": [1, 1, 6, 3]})
 
         activation_proto_qtype = TensorProto.UINT8 if activation_type == QuantType.QUInt8 else TensorProto.INT8
         activation_type_str = "u8" if (activation_type == QuantType.QUInt8) else "s8"

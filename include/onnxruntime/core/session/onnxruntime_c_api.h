@@ -34,6 +34,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "onnxruntime_error_code.h"
+
 /** \brief The API version defined in this header
  *
  * This value is used by some API functions to behave as this version of the header expects.
@@ -263,24 +265,6 @@ typedef enum OrtLoggingLevel {
   ORT_LOGGING_LEVEL_FATAL,    ///< Fatal error messages (most severe).
 } OrtLoggingLevel;
 
-typedef enum OrtErrorCode {
-  ORT_OK,
-  ORT_FAIL,
-  ORT_INVALID_ARGUMENT,
-  ORT_NO_SUCHFILE,
-  ORT_NO_MODEL,
-  ORT_ENGINE_ERROR,
-  ORT_RUNTIME_EXCEPTION,
-  ORT_INVALID_PROTOBUF,
-  ORT_MODEL_LOADED,
-  ORT_NOT_IMPLEMENTED,
-  ORT_INVALID_GRAPH,
-  ORT_EP_FAIL,
-  ORT_MODEL_LOAD_CANCELED,
-  ORT_MODEL_REQUIRES_COMPILATION,
-  ORT_NOT_FOUND,
-} OrtErrorCode;
-
 typedef enum OrtOpAttrType {
   ORT_OP_ATTR_UNDEFINED = 0,
   ORT_OP_ATTR_INT,
@@ -348,15 +332,22 @@ ORT_RUNTIME_CLASS(ExternalSemaphoreHandle);   // EP-imported view of shared exte
 ORT_RUNTIME_CLASS(DeviceEpIncompatibilityDetails);
 ORT_RUNTIME_CLASS(EpAssignedSubgraph);
 ORT_RUNTIME_CLASS(EpAssignedNode);
-ORT_RUNTIME_CLASS(ModelPackageOptions);
-ORT_RUNTIME_CLASS(ModelPackageContext);
-ORT_RUNTIME_CLASS(ModelPackageComponentContext);
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
 #else
 typedef OrtStatus* OrtStatusPtr;
 #endif
+
+/** \brief Generic function pointer type for experimental API lookup.
+ *
+ * Returned by OrtApi::GetExperimentalFunction. Cast to the correct function pointer type before calling.
+ * The experimental API function pointer types are defined in onnxruntime_experimental_c_api.h.
+ *
+ * This is a function pointer rather than \c void* because casting between function pointers and object
+ * pointers is undefined behavior in C and C++. Using a function pointer type keeps all casts well-defined.
+ */
+typedef void(ORT_API_CALL* OrtExperimentalFnPtr)(void);
 
 /** \brief Memory allocation interface
  *
@@ -927,9 +918,6 @@ typedef struct OrtCompileApi OrtCompileApi;
 
 struct OrtInteropApi;
 typedef struct OrtInteropApi OrtInteropApi;
-
-struct OrtModelPackageApi;
-typedef struct OrtModelPackageApi OrtModelPackageApi;
 
 struct OrtEpApi;
 typedef struct OrtEpApi OrtEpApi;
@@ -3013,6 +3001,7 @@ struct OrtApi {
    * For example, given a tensor with shape of [3,224,224], a pointer to the element at location [2,150,128] can be retrieved
    *
    * This function only works for numeric type tensors (No strings, etc).
+   * This function does not support sub-byte packed types (e.g., int4).
    * This is a no-copy method whose returned pointer is valid until the passed in ::OrtValue is free'd.
    *
    * \param[in] value
@@ -5415,13 +5404,11 @@ struct OrtApi {
   ORT_CLASS_RELEASE(Node);
 
   /** \brief Release an OrtGraph.
-   * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.22.
    */
   ORT_CLASS_RELEASE(Graph);
 
   /** \brief Release an OrtModel.
-   * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.22.
    */
   ORT_CLASS_RELEASE(Model);
@@ -7493,25 +7480,22 @@ struct OrtApi {
    */
   ORT_API2_STATUS(SessionReleaseCapturedGraph, _In_ OrtSession* session, _In_ int graph_annotation_id);
 
-  /** \brief Get the model package API table.
+  /** \brief Retrieve an experimental function pointer by name.
    *
-   * Returns a pointer to the ::OrtModelPackageApi function table, which provides APIs to:
-   * - create and release model package options and contexts,
-   * - inspect model package metadata (components/variants),
-   * - select a component/variant and query selected files/options,
-   * - create a session from model package selection results.
+   * Experimental functions are not part of the stable ABI and may be added or removed between releases without notice.
+   * Use the companion header onnxruntime_experimental_c_api.h for typedefs, name constants, and (for C++) typed
+   * accessors.
    *
-   * The returned pointer is owned by ONNX Runtime and is valid for the process lifetime.
-   * Do not free it.
+   * \param[in] name The null-terminated name of the experimental function to look up.
+   *                 Names follow the pattern "<target struct>_<function name>_SinceV<ORT API version added>".
+   *                 Name constants are defined in onnxruntime_experimental_c_api.h.
+   * \return The function pointer cast to ::OrtExperimentalFnPtr, or nullptr if the function is not available in this
+   *         build. The caller must cast the returned pointer to the correct function pointer type before calling.
+   *         Function pointer typedefs are defined in onnxruntime_experimental_c_api.h.
    *
-   * \note May return NULL if model package support is not available in the current build
-   *       (for example, minimal builds).
-   *
-   * \return Pointer to ::OrtModelPackageApi, or NULL if unsupported.
-   *
-   * \since Version 1.27.
+   * \since Version 1.28.
    */
-  const OrtModelPackageApi*(ORT_API_CALL* GetModelPackageApi)(void);
+  ORT_API_T(OrtExperimentalFnPtr, GetExperimentalFunction, _In_ const char* name);
 };
 
 /*
@@ -7772,7 +7756,12 @@ struct OrtModelEditorApi {
   /** \brief Set the inputs for the OrtGraph.
    *
    * Set the graph inputs. This will replace any existing inputs with the new values.
-   * The OrtGraph takes ownership of the OrtValueInfo instances and you should NOT call OrtApi::ReleaseValueInfo.
+   *
+   * Atomicity / all-or-nothing: on success, the OrtGraph takes ownership of every OrtValueInfo in
+   * `inputs`, and each entry in the array is reset to nullptr to make the transfer explicit. On any
+   * failure, the graph's previous inputs are preserved and ownership of NONE of the OrtValueInfo
+   * instances is transferred -- the caller remains responsible for releasing them. Calling
+   * OrtApi::ReleaseValueInfo on an entry whose array slot has been nulled out would cause a double-free.
    *
    * \param[in] graph The OrtGraph instance to update.
    * \param[in] inputs The input OrtValueInfo instances.
@@ -7783,12 +7772,17 @@ struct OrtModelEditorApi {
    * \since Version 1.22.
    */
   ORT_API2_STATUS(SetGraphInputs, _Inout_ OrtGraph* graph,
-                  _In_reads_(inputs_len) _In_ OrtValueInfo** inputs, _In_ size_t inputs_len);
+                  _In_reads_(inputs_len) _Inout_ OrtValueInfo** inputs, _In_ size_t inputs_len);
 
   /** \brief Set the outputs for the OrtGraph.
    *
    * Set the graph outputs. This will replace any existing outputs with the new values.
-   * The OrtGraph takes ownership of the OrtValueInfo instances provided and you should NOT call OrtApi::ReleaseValueInfo.
+   *
+   * Atomicity / all-or-nothing: on success, the OrtGraph takes ownership of every OrtValueInfo in
+   * `outputs`, and each entry in the array is reset to nullptr to make the transfer explicit. On any
+   * failure, the graph's previous outputs are preserved and ownership of NONE of the OrtValueInfo
+   * instances is transferred -- the caller remains responsible for releasing them. Calling
+   * OrtApi::ReleaseValueInfo on an entry whose array slot has been nulled out would cause a double-free.
    *
    * \param[in] graph The OrtGraph instance to update.
    * \param[in] outputs The output OrtValueInfo instances.
@@ -7799,14 +7793,17 @@ struct OrtModelEditorApi {
    * \since Version 1.22.
    */
   ORT_API2_STATUS(SetGraphOutputs, _Inout_ OrtGraph* graph,
-                  _In_reads_(outputs_len) _In_ OrtValueInfo** outputs, _In_ size_t outputs_len);
+                  _In_reads_(outputs_len) _Inout_ OrtValueInfo** outputs, _In_ size_t outputs_len);
 
   /** \brief Add an initializer to the OrtGraph
    *
-   * ORT will copy the OrtValue wrapper internally. The caller retains ownership of the OrtValue and should
-   * release it with OrtApi::ReleaseValue when done. Note that the underlying data buffer is not copied.
-   * If the OrtValue was created with a user-provided buffer (e.g., OrtApi::CreateTensorWithDataAsOrtValue),
-   * that buffer must remain valid for the duration of the inference session.
+   * Atomicity / all-or-nothing: on success, the OrtGraph takes ownership of `tensor` and the caller
+   * must NOT call OrtApi::ReleaseValue on it. On any failure, ownership is NOT transferred and the caller
+   * remains responsible for releasing the OrtValue. Calling OrtApi::ReleaseValue after a successful
+   * transfer would cause a double-free.
+   * Adding the same OrtValue pointer twice (under any name) is rejected with ORT_INVALID_ARGUMENT.
+   * Adding a duplicate initializer name is also rejected. The Model Editor API does not currently
+   * support removing or replacing an initializer once it has been added.
    *
    * Two options:
    *
@@ -7835,19 +7832,23 @@ struct OrtModelEditorApi {
    *
    * \param[in] graph The OrtGraph instance to update.
    * \param[in] name The value name for the initializer.
-   * \param[in] ort_value The OrtValue instance containing the tensor data.
-   * \param[in] data_is_external Set to true if the data is external and should not be serialized into the model.
+   * \param[in] tensor The OrtValue instance containing the tensor data.
+   * \param[in] data_is_external Set to true if the data is external and should not be copied.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.22.
    */
-  ORT_API2_STATUS(AddInitializerToGraph, _Inout_ OrtGraph* graph, _In_ const char* name,
-                  _In_ const OrtValue* ort_value, bool data_is_external);
+  ORT_API2_STATUS(AddInitializerToGraph, _Inout_ OrtGraph* graph, _In_ const char* name, _Inout_ OrtValue* tensor,
+                  bool data_is_external);
 
   /** \brief Add an OrtNode to an OrtGraph
    *
-   * Add the node to the graph. The OrtGraph will take ownership of OrtNode and you should NOT call OrtApi::ReleaseNode.
+   * Atomicity / all-or-nothing: on success, the OrtGraph takes ownership of `node` and the caller
+   * must NOT call OrtApi::ReleaseNode. On any failure, ownership is NOT transferred and the caller remains
+   * responsible for releasing the OrtNode. Calling OrtApi::ReleaseNode after a successful transfer would
+   * cause a double-free.
+   * Adding the same OrtNode pointer twice is rejected with ORT_INVALID_ARGUMENT.
    *
    * \param[in] graph The OrtGraph instance to update.
    * \param[in] node The OrtNode instance to add to the graph.
@@ -7856,7 +7857,7 @@ struct OrtModelEditorApi {
    *
    * \since Version 1.22.
    */
-  ORT_API2_STATUS(AddNodeToGraph, _Inout_ OrtGraph* graph, _In_ OrtNode* node);
+  ORT_API2_STATUS(AddNodeToGraph, _Inout_ OrtGraph* graph, _Inout_ OrtNode* node);
 
   /** \brief Create an OrtModel.
    *
@@ -7884,9 +7885,13 @@ struct OrtModelEditorApi {
 
   /** \brief Add an OrtGraph to an OrtModel.
    *
-   * Add the graph to a model. This should be called once when creating a new model.
+   * Add the graph to a model. Each OrtModel may hold at most one OrtGraph; a second call is rejected
+   * with ORT_INVALID_ARGUMENT.
    *
-   * The OrtModel takes ownership of the OrtGraph and you should NOT call OrtApi::ReleaseGraph.
+   * Atomicity / all-or-nothing: on success, the OrtModel takes ownership of `graph` and the caller
+   * must NOT call OrtApi::ReleaseGraph. On any failure, ownership is NOT transferred and the caller
+   * remains responsible for releasing the OrtGraph. Calling OrtApi::ReleaseGraph after a successful
+   * transfer would cause a double-free.
    *
    * \param[in] model The OrtModel instance to update.
    * \param[in] graph The OrtGraph instance to add to the model.
@@ -7895,7 +7900,7 @@ struct OrtModelEditorApi {
    *
    * \since Version 1.22.
    */
-  ORT_API2_STATUS(AddGraphToModel, _Inout_ OrtModel* model, _In_ OrtGraph* graph);
+  ORT_API2_STATUS(AddGraphToModel, _Inout_ OrtModel* model, _Inout_ OrtGraph* graph);
 
   /** \brief Create an OrtSession using the OrtModel.
    *
@@ -8597,250 +8602,6 @@ struct OrtInteropApi {
   ORT_API2_STATUS(DeinitGraphicsInteropForEpDevice, _In_ const OrtEpDevice* ep_device);
 
   /// @}
-};
-
-/** \brief API table for model package workflows.
- *
- * A model package is a directory containing one or more *components* (logical models).
- * Each component has one or more *variants*, where each variant targets a single
- * execution provider (EP). The package manifest declares the EP name, device type,
- * and an optional compatibility string for every variant so that the runtime can
- * automatically select the best variant for the hardware and EPs available in the
- * caller's session options.
- *
- * Obtain this table from OrtApi::GetModelPackageApi(). The APIs support:
- * - creating model package options that capture EP configuration from OrtSessionOptions,
- * - loading a package context (manifest + metadata) from a package root path,
- * - querying component/variant metadata including per-variant EP information,
- * - selecting a component (which also resolves the best-matching variant),
- * - querying the selected variant's name and folder path,
- * - creating an OrtSession from the selected component context.
- *
- * Typical flow:
- * 1) Create model package options:
- *    - CreateModelPackageOptionsFromSessionOptions()
- * 2) Load package metadata:
- *    - CreateModelPackageContext()
- * 3) Query metadata (optional):
- *    - ModelPackage_GetSchemaVersion()
- *    - ModelPackage_GetComponentCount()
- *    - ModelPackage_GetComponentNames()
- *    - ModelPackage_GetVariantCount()
- *    - ModelPackage_GetVariantNames()
- *    - ModelPackage_GetVariantEpName()
- * 4) Select a component and resolve variant:
- *    - SelectComponent()
- * 5) Query selected variant info (optional):
- *    - ModelPackageComponent_GetSelectedVariantName()
- *    - ModelPackageComponent_GetSelectedVariantFolderPath()
- * 6) Create session:
- *    - CreateSession()
- *
- * Ownership:
- * - Release objects created by this API with the corresponding release methods:
- *   ReleaseModelPackageOptions(), ReleaseModelPackageContext(),
- *   ReleaseModelPackageComponentContext().
- *
- * \since Version 1.27.
- */
-struct OrtModelPackageApi {
-  /// \name OrtModelPackageOptions
-  /// @{
-
-  /** \brief Create model package options from an existing OrtSessionOptions.
-   *
-   * Captures EP configuration (registered execution providers and their devices) from
-   * the session options for use during variant selection. The resulting OrtModelPackageOptions
-   * is passed to SelectComponent() to resolve the best variant for the available EPs.
-   *
-   * \param[in] env The ORT environment.
-   * \param[in] session_options Session options containing registered EPs.
-   * \param[out] out Receives the newly created OrtModelPackageOptions. Must be released
-   *             with ReleaseModelPackageOptions().
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(CreateModelPackageOptionsFromSessionOptions,
-                  _In_ const OrtEnv* env,
-                  _In_ const OrtSessionOptions* session_options,
-                  _Outptr_ OrtModelPackageOptions** out);
-
-  ORT_CLASS_RELEASE(ModelPackageOptions);
-  /// @}
-  /// \name OrtModelPackageContext
-  /// @{
-
-  /** \brief Create a model package context by parsing the package at the given root path.
-   *
-   * Parses the manifest.json and component metadata from the specified directory.
-   * The returned context provides read-only access to the package structure (components,
-   * variants, EP declarations).
-   *
-   * \param[in] package_root Path to the model package root directory (containing manifest.json).
-   * \param[out] out Receives the newly created OrtModelPackageContext. Must be released
-   *             with ReleaseModelPackageContext().
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(CreateModelPackageContext,
-                  _In_ const ORTCHAR_T* package_root,
-                  _Outptr_ OrtModelPackageContext** out);
-
-  ORT_CLASS_RELEASE(ModelPackageContext);
-
-  /** \brief Get the schema version declared in the model package manifest.
-   *
-   * \param[in] ctx The model package context.
-   * \param[out] out_version Receives the schema version number.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackage_GetSchemaVersion,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _Out_ int64_t* out_version);
-
-  /** \brief Get the number of components in the model package.
-   *
-   * \param[in] ctx The model package context.
-   * \param[out] out_count Receives the component count.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackage_GetComponentCount,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _Out_ size_t* out_count);
-
-  /** \brief Get the names of all components in the model package.
-   *
-   * Returns a pointer to an array of UTF-8 component name strings. The array and its
-   * strings are owned by `ctx` and remain valid until the context is released.
-   *
-   * \param[in] ctx The model package context.
-   * \param[out] out_names Receives a pointer to an array of component name strings.
-   * \param[out] out_count Receives the number of elements in the array.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackage_GetComponentNames,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_names,
-                  _Out_ size_t* out_count);
-
-  /** \brief Get the number of variants for a given component.
-   *
-   * \param[in] ctx The model package context.
-   * \param[in] component_name Name of the component to query.
-   * \param[out] out_count Receives the variant count.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackage_GetVariantCount,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _In_ const char* component_name,
-                  _Out_ size_t* out_count);
-
-  /** \brief Get the names of all variants for a given component.
-   *
-   * Returns a pointer to an array of UTF-8 variant name strings. The array and its
-   * strings are owned by `ctx` and remain valid until the context is released.
-   *
-   * \param[in] ctx The model package context.
-   * \param[in] component_name Name of the component to query.
-   * \param[out] out_variant_names Receives a pointer to an array of variant name strings.
-   * \param[out] out_count Receives the number of elements in the array.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackage_GetVariantNames,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _In_ const char* component_name,
-                  _Outptr_result_buffer_maybenull_(*out_count) const char* const** out_variant_names,
-                  _Out_ size_t* out_count);
-
-  /** \brief Get the EP name declared for a (component, variant) pair.
-   *
-   * Each variant targets a single EP. `out_ep` receives the EP name string.
-   * When the variant does not declare an EP, the returned pointer is NULL.
-   * String memory is owned by `ctx` and remains valid until the context is released.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackage_GetVariantEpName,
-                  _In_ const OrtModelPackageContext* ctx,
-                  _In_ const char* component_name,
-                  _In_ const char* variant_name,
-                  _Outptr_result_maybenull_ const char** out_ep);
-
-  /** \brief Select a component model and return an opaque component instance.
-   *
-   * The variant selection is also performed during this call based on the component metadata and the provided options.
-   * The returned `OrtModelPackgeComponentContext*` is independent of `context` lifetime and must be released via
-   * `ReleaseComponentInstance`.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(SelectComponent,
-                  _In_ const OrtModelPackageContext* context,
-                  _In_ const char* component_name,
-                  _In_ const OrtModelPackageOptions* options,
-                  _Outptr_ OrtModelPackageComponentContext** out);
-
-  ORT_CLASS_RELEASE(ModelPackageComponentContext);
-
-  /** \brief Get the name of the selected variant after SelectComponent has been called.
-   *
-   * String memory is owned by `ctx` and remains valid until the context is released.
-   *
-   * \param[in] ctx The component context returned by SelectComponent().
-   * \param[out] out_name Receives the selected variant's name string.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackageComponent_GetSelectedVariantName,
-                  _In_ const OrtModelPackageComponentContext* ctx,
-                  _Outptr_ const char** out_name);
-
-  /** \brief Get the folder path of the selected variant.
-   *
-   * Returns the resolved absolute path to the variant's directory on disk.
-   * The string is owned by `ctx` and remains valid until the context is released.
-   *
-   * \param[in] ctx The component context returned by SelectComponent().
-   * \param[out] folder_path Receives the variant folder path string.
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(ModelPackageComponent_GetSelectedVariantFolderPath,
-                  _In_ const OrtModelPackageComponentContext* ctx,
-                  _Outptr_ const ORTCHAR_T** folder_path);
-
-  /// @}
-  /** \brief Create an OrtSession for a selected file within a component model variant.
-   *
-   * The chosen variant (and thus its EP selection) is determined by `context`, which
-   * was built from an OrtSessionOptions via CreateModelPackageOptionsFromSessionOptions.
-   *
-   * Session options precedence:
-   *   1. session_options == NULL (default path):
-   *      ORT uses the OrtSessionOptions that was captured when `context` was created.
-   *      Any variant-specific session and provider options declared in the package
-   *      metadata are merged on top.
-   *
-   *   2. session_options != NULL (advanced path):
-   *      ORT uses the caller-provided OrtSessionOptions as-is. Variant-specific
-   *      session and provider options from the package metadata are NOT applied.
-   *      Use this when custom EP setup is required (e.g., shared CUDA streams,
-   *      shared QNN EP contexts, custom allocators).
-   *
-   * \since Version 1.27.
-   */
-  ORT_API2_STATUS(CreateSession,
-                  _In_ const OrtEnv* env,
-                  _In_ OrtModelPackageComponentContext* context,
-                  _In_opt_ const OrtSessionOptions* session_options,
-                  _Outptr_ OrtSession** session);
-
-  // End of Version 1.27 - DO NOT MODIFY ABOVE
 };
 
 /*

@@ -279,8 +279,16 @@ Return Value:
 
 #if defined(MLAS_TARGET_RISCV64)
     this->GemmFloatKernel = nullptr;
+    this->GemmU8S8Dispatch = &MlasGemmQuantDispatchDefault;
+    this->GemmU8U8Dispatch = &MlasGemmQuantDispatchDefault;
+    this->GemmS8S8Dispatch = &MlasGemmQuantDispatchDefault;
+    this->GemmS8U8Dispatch = &MlasGemmQuantDispatchDefault;
     this->ErfKernelRoutine = MlasErfKernel;
     this->LogisticKernelRoutine = MlasLogisticKernel;
+    this->GeluErfKernelRoutine = MlasGeluErfKernel;
+    this->SiluKernelRoutine = MlasSiluKernel;
+    this->TanhKernelRoutine = MlasTanhKernel;
+    this->ComputeExpF32Kernel = MlasComputeExpF32Kernel;
     this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
     this->ComputeSumExpF32Kernel = MlasComputeSumExpF32Kernel;
     this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
@@ -288,6 +296,16 @@ Return Value:
 
 #if defined(MLAS_USE_RVV)
     this->GemmFloatKernel = MlasGemmFloatKernelRvv;
+    this->GemmU8S8Dispatch = &MlasGemmQuantDispatchRvv;
+    this->GemmU8U8Dispatch = &MlasGemmQuantDispatchRvv;
+    this->GemmS8S8Dispatch = &MlasGemmQuantDispatchRvv;
+    this->GemmS8U8Dispatch = &MlasGemmQuantDispatchRvv;
+    this->ErfKernelRoutine = MlasErfKernelRvv;
+    this->LogisticKernelRoutine = MlasLogisticKernelRvv;
+    this->GeluErfKernelRoutine = MlasGeluErfKernelRvv;
+    this->SiluKernelRoutine = MlasSiluKernelRvv;
+    this->TanhKernelRoutine = MlasTanhKernelRvv;
+    this->ComputeExpF32Kernel = MlasComputeExpF32KernelRvv;
     this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelRvv;
     this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelRvv;
     this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32KernelRvv;
@@ -695,6 +713,7 @@ Return Value:
         this->MlasDynamicQGemmPackBOverride = ArmKleidiAI::MlasDynamicQGemmPackB;
         this->MlasConvPrepareOverride = ArmKleidiAI::MlasConvPrepare;
         this->MlasConvOverride = ArmKleidiAI::MlasConv;
+        this->MlasConvSGemmRouteOverride = ArmKleidiAI::MlasConvSGemmRoute;
 #if defined(__aarch64__) && defined(__linux__)
         // Currently only an SME2 variant of SBGEMM exists
         if (ArmKleidiAI::UseSME2){

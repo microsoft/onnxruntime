@@ -57,7 +57,6 @@
 #include "core/session/ort_env.h"
 #include "core/session/ort_version_check.h"
 #include "core/session/utils.h"
-#include "core/session/model_package_api.h"
 
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 #include "core/providers/cuda/cuda_provider_factory.h"
@@ -2541,6 +2540,13 @@ ORT_API_STATUS_IMPL(OrtApis::TensorAt, _Inout_ OrtValue* value, const int64_t* l
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "this API does not support strings");
   }
 
+  const auto* prim_type = tensor->DataType()->AsPrimitiveDataType();
+  if (prim_type != nullptr && prim_type->HasSubElems()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "this API does not support sub-byte packed types (e.g., int4). "
+                                 "Use OrtValue::GetTensorMutableData and manual unpacking instead.");
+  }
+
   const auto& tensor_shape = tensor->Shape();
   const auto num_dimensions = tensor_shape.NumDimensions();
   if (location_values_count != num_dimensions) {
@@ -2753,35 +2759,14 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSes
 }
 
 ORT_API(void, OrtApis::ReleaseValueInfo, _Frees_ptr_opt_ OrtValueInfo* value_info) {
-  if (value_info != nullptr) {
-    if (auto* me = onnxruntime::ModelEditorValueInfo::ToInternal(value_info);
-        me != nullptr && me->owned_) {
-      assert(false && "Releasing an OrtValueInfo that is owned by a graph");
-      return;
-    }
-  }
   delete value_info;
 }
 
 ORT_API(void, OrtApis::ReleaseNode, _Frees_ptr_opt_ OrtNode* node) {
-  if (node != nullptr) {
-    if (auto* me = onnxruntime::ModelEditorNode::ToInternal(node);
-        me != nullptr && me->owned_) {
-      assert(false && "Releasing an OrtNode that is owned by a graph");
-      return;
-    }
-  }
   delete node;
 }
 
 ORT_API(void, OrtApis::ReleaseGraph, _Frees_ptr_opt_ OrtGraph* graph) {
-  if (graph != nullptr) {
-    if (auto* me = onnxruntime::ModelEditorGraph::ToInternal(graph);
-        me != nullptr && me->owned_) {
-      assert(false && "Releasing an OrtGraph that is owned by a model");
-      return;
-    }
-  }
   delete graph;
 }
 
@@ -3708,10 +3693,6 @@ ORT_API(const OrtModelEditorApi*, OrtApis::GetModelEditorApi) {
 
 ORT_API(const OrtCompileApi*, OrtApis::GetCompileApi) {
   return OrtCompileAPI::GetCompileApi();
-}
-
-ORT_API(const OrtModelPackageApi*, OrtApis::GetModelPackageApi) {
-  return OrtModelPackageAPI::GetModelPackageApi();
 }
 
 ORT_API(void, OrtApis::CreateKeyValuePairs, _Outptr_ OrtKeyValuePairs** out) {
@@ -4932,8 +4913,9 @@ static constexpr OrtApi ort_api_1_to_28 = {
     &OrtApis::GetMemPatternEnabled,
     &OrtApis::GetSessionExecutionMode,
     &OrtApis::SessionReleaseCapturedGraph,
-    &OrtApis::GetModelPackageApi,
     // End of Version 27 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::GetExperimentalFunction,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

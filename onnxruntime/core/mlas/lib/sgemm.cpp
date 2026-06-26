@@ -1130,7 +1130,7 @@ Return Value:
             return;
         }
 
-#elif defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_WASM)
+#elif defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_WASM) || defined(MLAS_TARGET_RISCV64)
 
         if (TransB == CblasNoTrans) {
             MlasGemvFloatKernel(A, B, C, K, N, ldb, (beta == 0.0f));

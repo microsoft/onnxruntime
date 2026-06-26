@@ -54,6 +54,8 @@ stages:
     - checkout: self
       submodules: true
 
+    - template: ../templates/setup-feeds-and-python-steps.yml
+
     - script: |
         echo.>>.gitattributes
         echo /js/** text=auto eol=lf>>.gitattributes

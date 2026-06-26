@@ -323,7 +323,7 @@ struct GemmFpAIntB {
                                        {problem_size_k * kInterleave, params.problem_size.n() / kInterleave}, thread_idx, tb_offset_B,
                                        params.gather_B_indices);
 
-    typename MatrixCoord::Index scale_row_extent = isFinegrained(Mma::QuantOp) ? problem_size_k / 64 : 1;
+    typename MatrixCoord::Index scale_row_extent = isFinegrained(Mma::QuantOp) ? problem_size_k / params.group_size : 1;
     typename Mma::IteratorScale iterator_scale = initialize_scale<typename Mma::IteratorScale, Mma::QuantOp>(
         params.params_scale, params.ref_scale.data(), params.ref_zero.data(),
         {scale_row_extent, params.problem_size.n()}, thread_idx, tb_offset_scale, params.group_size);

@@ -52,21 +52,31 @@ Status ApplyMatMulIntel(ComputeContext& context,
   ORT_THROW_IF_ERROR(helper.Compute(a_shape, b_shape));
   int64_t batchA = a_shape.SizeToDimension(a_shape.NumDimensions() - 2);
   int64_t batchB = b_shape.SizeToDimension(b_shape.NumDimensions() - 2);
-
   TensorShape output_shape = helper.OutputShape();
 
   // When B is a matrix (batch is 1), we fold batchA into the M dimension for better
   // performance (e.g., [2,3,5] → [1,6,5]).
-  if (batchA != 1 && batchB == 1) {
-    // dimensions of A: [1,`batchA`, M, K]
+  // On Xe-LPG/3LPG, folding a batched matmul into a single large M loses Z-dispatch
+  // parallelism. Only fold when each per-batch M leaves a large fraction of invalid
+  // threads in its trailing workgroup (m_mod_32 ∈ [1, 24] = 25%–97% wasted), so the
+  // fold actually claws that waste back. Otherwise the Z-dispatch path wins.
+  const int64_t M = output_shape[output_shape.NumDimensions() - 2];
+  const auto& arch = context.AdapterInfo().architecture;
+  const bool is_xe_lpg_or_xe_3lpg = arch == std::string_view("xe-lpg") ||
+                                    arch == std::string_view("xe-3lpg");
+  // 32 = kSubgroupLogicalWorkGroupSizeY * ElementsPerThreadY(M > 32) on Xe-LPG/3LPG
+  const int64_t m_mod_32 = M % 32;
+  const bool xe_lpg_or_xe_3lpg_fold_ok = (m_mod_32 > 0 && m_mod_32 <= 24);
+  if (batchA != 1 && batchB == 1 && (!is_xe_lpg_or_xe_3lpg || xe_lpg_or_xe_3lpg_fold_ok)) {
+    // dimensions of A: [`batchA` * M, K]
     int64_t batchAndM = a_shape.SizeToDimension(a_shape.NumDimensions() - 1);
-    TensorShapeVector dims_a = {1, batchAndM, helper.K()};
-    // dimensions of B: [1,K,N]
-    TensorShapeVector dims_b = {1, helper.K(), helper.N()};
+    TensorShapeVector dims_a = {batchAndM, helper.K()};
+    // dimensions of B: [K, N]
+    TensorShapeVector dims_b = {helper.K(), helper.N()};
 
     a_shape = TensorShape(dims_a);
     b_shape = TensorShape(dims_b);
-    output_shape = {1, batchAndM, helper.N()};
+    output_shape = {batchAndM, helper.N()};
   }
 
   // helpful dimension variables
@@ -91,7 +101,7 @@ Status ApplyMatMulIntel(ComputeContext& context,
 
   // Always access A with 1-component when using subgroup.
   const bool is_vec4 = dim_b_outer % 4 == 0;
-  InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, intel::ElementsPerThreadY(is_vec4, dim_a_outer), 1});
+  InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, ElementsPerThreadY(context, dim_a_outer), 1});
 
   const uint32_t dispatch_x = narrow<uint32_t>((dim_b_outer + kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0] - 1) /
                                                (kSubgroupLogicalWorkGroupSizeX * elements_per_thread[0]));

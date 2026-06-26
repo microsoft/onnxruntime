@@ -16,6 +16,7 @@
 #include "core/graph/constants.h"
 #include "core/providers/providers.h"
 #include "core/providers/webgpu/buffer_manager.h"
+#include "core/providers/webgpu/session_buffer_pool.h"
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
 #include "core/providers/webgpu/webgpu_pix_frame_generator.h"
@@ -46,6 +47,10 @@ struct WebGpuExecutionProviderConfig {
   bool enable_pix_capture{false};                // PIX capture is disabled by default
   bool enable_int64{false};                      // int64 ops are not enabled by default
   uint32_t multi_rotary_cache_concat_offset{0};  // offset for concatenated multi rotary cache (0 = disabled)
+  // Number of generations of buffers to retain in the per-session pool for reuse
+  // across captured-graph lifetimes. 0 disables pooling. Default 1 caches one
+  // generator's worth of intermediate buffers.
+  size_t session_buffer_pool_generations{1};
   std::vector<std::string> force_cpu_node_names{};
 };
 
@@ -143,6 +148,11 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   // Each captured graph gets its own buffer manager so that buffer caches
   // are isolated between different generators.
   std::unordered_map<int, std::unique_ptr<webgpu::BufferManager>> per_graph_buffer_mgrs_;
+
+  // Per-session pool of buffers donated by retired per-graph BufferManagers,
+  // seeded into new per-graph BufferManagers to avoid device allocations for
+  // identically-shaped intermediate tensors across generators.
+  std::unique_ptr<webgpu::SessionBufferPool> session_buffer_pool_;
 
   // Store captured commands per graph annotation ID
   std::unordered_map<int, std::vector<webgpu::CapturedCommandInfo>> captured_graphs_;

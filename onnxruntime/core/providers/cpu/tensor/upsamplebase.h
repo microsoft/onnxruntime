@@ -62,7 +62,7 @@ enum ResizeNearestMode {
 // Tolerance for detecting .5 ties in nearest-mode rounding (ROUND_PREFER_CEIL / ROUND_PREFER_FLOOR).
 // Coordinate transforms such as half_pixel use float division which introduces rounding error,
 // e.g. (4.5f / 0.3f - 0.5f) yields ~14.4999 instead of the exact 14.5.
-// This epsilon is used in both CPU (upsamplebase.h) and CUDA (resize_impl.cu) nearest-pixel functions.
+// This epsilon is used in CPU (upsamplebase.h), CUDA (resize_impl.cu) and WebGPU (resize_impl.cc) nearest-pixel functions.
 constexpr float kNearestModeEps = 1e-6f;
 
 enum class AspectRatioPolicy {

@@ -906,6 +906,71 @@ TEST(QDQTransformerTests, Gemm_S8S8U8) {
   QDQTransformerGemmTests<int8_t, int8_t, uint8_t, uint8_t>();
 }
 
+// Verify that DQ nodes with rank > 1 scale/zero_point are not fused into QGemm.
+TEST(QDQTransformerTests, Gemm_NoQGemmFusionWithHighRankScaleZp) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    // Shapes: A is [2, 4], B is [4, 6]
+    auto* input_a = builder.MakeInput<float>({2, 4}, -1.f, 1.f);
+    auto* output_arg = builder.MakeOutput();
+
+    // DQ for A: scalar scale/zp (compatible with QGemm)
+    auto* q1_output = builder.MakeIntermediate();
+    auto* dq1_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint8_t>(input_a, .039f, 128, q1_output);
+    builder.AddDequantizeLinearNode<uint8_t>(q1_output, .039f, 128, dq1_output);
+
+    // DQ for B: rank-2 scale and zero_point (blockwise quantization, NOT compatible with QGemm)
+    // Weight shape [4, 6], block_size=2 along axis 0 => scale/zp shape [2, 6]
+    auto* weight_b = builder.MakeInitializer<uint8_t>({4, 6}, 0, 255);
+    auto* dq2_output = builder.MakeIntermediate();
+
+    // Create rank-2 scale and zero_point with shape [2, 6]
+    std::vector<float> scales_data(2 * 6, 0.04f);
+    std::vector<uint8_t> zp_data(2 * 6, 128);
+    NodeArg* scale_arg = builder.MakeInitializer<float>({2, 6}, scales_data);
+    NodeArg* zp_arg = builder.MakeInitializer<uint8_t>({2, 6}, zp_data);
+
+    std::vector<NodeArg*> dq_inputs = {weight_b, scale_arg, zp_arg};
+    NodeAttributes dq_attrs;
+    ONNX_NAMESPACE::AttributeProto axis_attr;
+    axis_attr.set_name("axis");
+    axis_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    axis_attr.set_i(0);
+    dq_attrs["axis"] = axis_attr;
+    ONNX_NAMESPACE::AttributeProto block_size_attr;
+    block_size_attr.set_name("block_size");
+    block_size_attr.set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    block_size_attr.set_i(2);
+    dq_attrs["block_size"] = block_size_attr;
+    builder.AddNode("DequantizeLinear", dq_inputs, {dq2_output}, "", &dq_attrs);
+
+    // Gemm node
+    auto* gemm_output = builder.MakeIntermediate();
+    builder.AddNode("Gemm", {dq1_output, dq2_output}, {gemm_output});
+
+    // Q for output
+    auto* q_out = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint8_t>(gemm_output, .039f, 128, q_out);
+    builder.AddDequantizeLinearNode<uint8_t>(q_out, .039f, 128, output_arg);
+  };
+
+  auto check_graph = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    // QGemm should not be created because DQ B has rank-2 scale/zero_point
+    EXPECT_EQ(op_to_count["com.microsoft.QGemm"], 0);
+    EXPECT_EQ(op_to_count["Gemm"], 1);
+  };
+
+  TransformerTester(build_test_case,
+                    check_graph,
+                    TransformerLevel::Level1,
+                    TransformerLevel::Level2,
+                    21 /*opset_version*/,
+                    0.01 /*per_sample_tolerance*/,
+                    0.01 /*relative_per_sample_tolerance*/,
+                    std::make_unique<QDQSelectorActionTransformer>(QDQIsInt8Allowed()));
+}
+
 // Runs a test case that checks if Q/DQ nodes are dropped from DQ -> Gather -> Q.
 template <typename QuantType>
 static void RunGatherDropQDQTestCase(const std::vector<int64_t>& input1_shape,
@@ -1037,6 +1102,28 @@ TEST(QDQTransformerTests, MaxpoolDontDropQDQForNegativeScale) {
   RunMaxPoolNegativeScaleDropQDQTestCase<uint8_t>();
   RunMaxPoolNegativeScaleDropQDQTestCase<int16_t>();
   RunMaxPoolNegativeScaleDropQDQTestCase<uint16_t>();
+}
+
+// Q/DQ around a MaxPool must still be dropped for the opset-22 MaxPool schema, not only MaxPool-12.
+TEST(QDQTransformerTests, MaxpoolDropQDQOpset22) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<uint8_t>({1, 17, 17, 3}, 0, 255);
+    auto* dq_output = builder.MakeIntermediate();
+    auto* maxpool_output = builder.MakeIntermediate();
+
+    builder.AddDequantizeLinearNode<uint8_t>(input_arg, 0.003f, 128, dq_output);
+    builder.AddNode("MaxPool", {dq_output}, {maxpool_output}).AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+    builder.AddQuantizeLinearNode<uint8_t>(maxpool_output, 0.003f, 128, builder.MakeOutput());
+  };
+
+  auto check_graph = [](InferenceSessionWrapper& session) {
+    auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_to_count["MaxPool"], 1);
+    EXPECT_EQ(op_to_count["QuantizeLinear"], 0);
+    EXPECT_EQ(op_to_count["DequantizeLinear"], 0);
+  };
+
+  TransformerTester(build_test_case, check_graph, TransformerLevel::Level1, TransformerLevel::Level2, 22);
 }
 
 // Runs a test case that checks if Q/DQ nodes are dropped from DQ -> (Un)Squeeze -> Q.
@@ -6605,6 +6692,95 @@ TEST(QDQTransformerTests, QDQ_Selector_Test_Clip_With_Quantized_MinMax) {
 
     ASSERT_EQ(clip_node->Index(), qdq_group.target_node);
     ASSERT_EQ(3, qdq_group.dq_nodes.size());
+    ASSERT_EQ(1, qdq_group.q_nodes.size());
+  }
+}
+
+TEST(QDQTransformerTests, QDQ_Selector_Test_Pad) {
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+
+  // Unquantized Pad : no DQ input (Pad -> Q)
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* data = builder.MakeInput<float>({1, 3, 4, 4}, -1.0f, 1.0f);
+      auto* pads = builder.MakeInitializer<int64_t>({8}, {0, 0, 1, 1, 0, 0, 1, 1});
+
+      auto* pad_output = builder.MakeIntermediate();
+      builder.AddNode("Pad", {data, pads}, {pad_output});
+
+      auto* output_q = builder.MakeOutput();
+      builder.AddQuantizeLinearNode<uint8_t>(pad_output, 0.0078f, static_cast<uint8_t>(128), output_q, false);
+    };
+
+    std::unordered_map<std::string, int> domain_to_version;
+    domain_to_version[kOnnxDomain] = 18;
+    Model model("PadQDQTest_NoDQ", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                domain_to_version, {}, logger);
+    Graph& graph = model.MainGraph();
+    ModelTestBuilder helper(graph);
+    build_test_case(helper);
+    helper.SetGraphOutputs();
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+    const GraphViewer whole_graph_viewer(graph);
+
+    const Node* pad_node = nullptr;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Pad") {
+        pad_node = &node;
+        break;
+      }
+    }
+    ASSERT_NE(nullptr, pad_node);
+
+    onnxruntime::QDQ::PadNodeGroupSelector pad_selector;
+    const auto result = pad_selector.GetQDQSelection(whole_graph_viewer, *pad_node);
+    ASSERT_FALSE(result.has_value());  // regression: must not crash and must not select
+  }
+
+  // Quantized Pad : DQ -> Pad -> Q, pads input is a plain (non-quantized) initializer
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* data_quant = builder.MakeInitializer<uint8_t>({1, 3, 4, 4}, std::numeric_limits<uint8_t>::min(),
+                                                          std::numeric_limits<uint8_t>::max());
+      auto* data_dq = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode<uint8_t>(data_quant, 0.0078f, static_cast<uint8_t>(128), data_dq, false);
+
+      auto* pads = builder.MakeInitializer<int64_t>({8}, {0, 0, 1, 1, 0, 0, 1, 1});
+
+      auto* pad_output = builder.MakeIntermediate();
+      builder.AddNode("Pad", {data_dq, pads}, {pad_output});
+
+      auto* output_q = builder.MakeOutput();
+      builder.AddQuantizeLinearNode<uint8_t>(pad_output, 0.0078f, static_cast<uint8_t>(128), output_q, false);
+    };
+
+    std::unordered_map<std::string, int> domain_to_version;
+    domain_to_version[kOnnxDomain] = 18;
+    Model model("PadQDQTest_OneDQ", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                domain_to_version, {}, logger);
+    Graph& graph = model.MainGraph();
+    ModelTestBuilder helper(graph);
+    build_test_case(helper);
+    helper.SetGraphOutputs();
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+    const GraphViewer whole_graph_viewer(graph);
+
+    const Node* pad_node = nullptr;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Pad") {
+        pad_node = &node;
+        break;
+      }
+    }
+    ASSERT_NE(nullptr, pad_node);
+
+    onnxruntime::QDQ::PadNodeGroupSelector pad_selector;
+    const auto result = pad_selector.GetQDQSelection(whole_graph_viewer, *pad_node);
+    ASSERT_TRUE(result.has_value());
+    const auto& qdq_group = *result;
+
+    ASSERT_EQ(pad_node->Index(), qdq_group.target_node);
+    ASSERT_EQ(1, qdq_group.dq_nodes.size());  // only data is quantized
     ASSERT_EQ(1, qdq_group.q_nodes.size());
   }
 }

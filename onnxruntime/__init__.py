@@ -29,9 +29,6 @@ try:
         GraphOptimizationLevel,  # noqa: F401
         LoraAdapter,  # noqa: F401
         ModelMetadata,  # noqa: F401
-        ModelPackageComponentContext,  # noqa: F401
-        ModelPackageContext,  # noqa: F401
-        ModelPackageOptions,  # noqa: F401
         NodeArg,  # noqa: F401
         OrtAllocatorType,  # noqa: F401
         OrtArenaCfg,  # noqa: F401

@@ -97,6 +97,7 @@ struct WebGpuContextConfig {
   };
   bool validation_mode_explicitly_set{false};
   bool preserve_device{false};
+  uint32_t max_num_pending_dispatches{16};
   uint64_t max_storage_buffer_binding_size{0};
   WebGpuBufferCacheConfig buffer_cache_config{};
   int power_preference{static_cast<int>(WGPUPowerPreference_HighPerformance)};
@@ -239,6 +240,11 @@ class WebGpuContext final {
     return *split_k_config_;
   }
 
+  // Set the CPU time base (ORT profiler's profiling_start_time) used to align GPU
+  // timestamps with ORT CPU events. Pushed in by WebGpuProfiler::StartProfiling, which
+  // is the only place that receives the framework's profiling start time for both
+  // session-level and run-level profiling.
+  void SetProfilingStartTime(TimePoint profiling_start_time) { profiling_start_time_ = profiling_start_time; }
   void StartProfiling();
   // Collect pending GPU profiling data into the given events vector.
   void CollectProfilingData(profiling::Events& events);
@@ -348,7 +354,7 @@ class WebGpuContext final {
   std::unique_ptr<ProgramManager> program_mgr_;
 
   uint32_t num_pending_dispatches_ = 0;
-  const uint32_t max_num_pending_dispatches_ = 16;
+  uint32_t max_num_pending_dispatches_ = 16;
 
   std::unique_ptr<SplitKConfig> split_k_config_;
 
@@ -363,6 +369,12 @@ class WebGpuContext final {
   std::vector<PendingQueryInfo> pending_queries_;
 
   uint64_t gpu_timestamp_offset_ = 0;
+  // ORT profiler's CPU time base, set via SetProfilingStartTime; GPU timestamps are
+  // aligned to it. See SetProfilingStartTime.
+  TimePoint profiling_start_time_;
+  // CPU elapsed time (us) from profiling_start_time_ to the first GPU submit, applied
+  // as an offset to GPU timestamps in CollectProfilingData. -1 until the first submit.
+  int64_t profiling_first_submit_cpu_offset_us_ = -1;
   bool is_profiling_ = false;
   // Shared GPU profiling events for run-level profiling.
   profiling::Events events_;

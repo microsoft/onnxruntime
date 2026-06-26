@@ -272,7 +272,6 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   const uint8_t* blob_data = is_prepacked_weight_ ? nullptr : b->Data<uint8_t>();
   const auto* scales_data = is_prepacked_scale_ ? nullptr : scales->Data<T>();
   const auto* zero_points_data = (is_prepacked_zero_point_ || zero_points == nullptr) ? nullptr : zero_points->DataRaw();
-  const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T>();
 #else
   const Tensor* b = ctx->Input<Tensor>(1);
   const Tensor* scales = ctx->Input<Tensor>(2);
@@ -281,10 +280,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   const auto* scales_data = scales->Data<T>();
   const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
 #endif
-
-  if (bias != nullptr) {
-    ORT_THROW("MatMulNBits does not support bias in CUDA kernel");
-  }
+  const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T>();
 
   ORT_RETURN_IF_ERROR(matmul_nbits_helper::CheckInputs<Tensor>(
       a, b, scales, zero_points, reorder_idx, bias, N_, K_, block_size_, nbits_));
@@ -376,6 +372,8 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 #endif
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<T>())) {
+    // First, try the fused fast path. It handles bias only for the GPT-OSS router GEMV
+    // specialization; for other shapes it fails when bias is present.
     if (TryMatMulNBits(
             static_cast<int>(nbits_),
             reinterpret_cast<CudaT*>(Y->MutableData<T>()),
@@ -383,6 +381,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             blob_data,
             reinterpret_cast<const CudaT*>(scales_data),
             static_cast<const uint8_t*>(zero_points_data),
+            reinterpret_cast<const CudaT*>(bias_data),
             m,
             n,
             k,
@@ -391,7 +390,38 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             stream)) {
       return Status::OK();
     }
+
+    // If bias prevented the fused path from running, retry the fast path without bias and
+    // add the bias with a separate kernel. This keeps the lightweight GEMV path for cases
+    // (e.g. 8-bit, or 4-bit non-router shapes) where only the bias was unsupported.
+    if (bias_data != nullptr &&
+        TryMatMulNBits(
+            static_cast<int>(nbits_),
+            reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+            reinterpret_cast<const CudaT*>(a_data),
+            blob_data,
+            reinterpret_cast<const CudaT*>(scales_data),
+            static_cast<const uint8_t*>(zero_points_data),
+            /*bias_data*/ static_cast<const CudaT*>(nullptr),
+            m,
+            n,
+            k,
+            SafeInt<int>(block_size_),
+            GetDeviceProp().sharedMemPerBlock,
+            stream)) {
+      LaunchMatMulNBitsBiasAdd<CudaT>(
+          reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+          reinterpret_cast<const CudaT*>(bias_data),
+          m,
+          n,
+          stream);
+      return Status::OK();
+    }
   }
+
+  // When bias is present but the fused router GEMV specialization above did not apply,
+  // fall back to the generic dequantize + GEMM path (which ignores bias) and add the
+  // bias with a separate kernel after the GEMM completes.
 
   int64_t K_padded = (K_ + block_size_ - 1) / block_size_ * block_size_;
 
@@ -576,6 +606,16 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
           helper.Ldc(),
           GetDeviceProp(),
           UseTF32()));
+    }
+
+    // Fallback bias handling: the generic dequant + GEMM path above ignores bias, so add it here.
+    if (bias_data != nullptr) {
+      LaunchMatMulNBitsBiasAdd<CudaT>(
+          reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+          reinterpret_cast<const CudaT*>(bias_data),
+          m,
+          n,
+          stream);
     }
   }
 

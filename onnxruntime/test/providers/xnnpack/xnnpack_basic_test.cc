@@ -205,6 +205,41 @@ static void RunModelTest(
                             helper.feeds_, params);
 }
 
+TEST(XnnpackEP, TestPoolReluFusionRejectedWithSideConsumer) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({1, 3, 8, 8}, -1.f, 1.f);
+    auto* pool_output = builder.MakeIntermediate();
+    auto* relu_output = builder.MakeIntermediate();
+    auto* output_arg = builder.MakeOutput();
+
+    Node& pool_node = builder.AddNode("MaxPool", {input_arg}, {pool_output});
+    pool_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+    pool_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+    pool_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+
+    builder.AddNode("Relu", {pool_output}, {relu_output});
+    builder.AddNode("Add", {pool_output, relu_output}, {output_arg});
+  };
+
+  // the fusion must be rejected: Relu should remain as a standalone node on the CPU EP
+  std::function<void(const Graph&)> verify = [](const Graph& graph) {
+    int num_relu = 0;
+    for (const auto& node : graph.Nodes()) {
+      if (node.OpType() == "Relu") {
+        ++num_relu;
+        EXPECT_EQ(node.GetExecutionProviderType(), kCpuExecutionProvider)
+            << "Relu should not have been taken by the XNNPACK EP";
+      }
+    }
+    EXPECT_EQ(num_relu, 1) << "Relu should not have been fused with MaxPool";
+  };
+
+  EPVerificationParams params;
+  params.graph_verifier = &verify;
+
+  RunModelTest(build_test_case, "xnnpack_pool_relu_fanout", params);
+}
+
 static void RunModelTestWithPath(const ORTCHAR_T* ort_model_path, const char* graph_name,
                                  std::function<void(const Graph&)> graph_verifier = nullptr,
                                  float abs_err_tolerance = .2f) {
@@ -441,7 +476,7 @@ TEST(XnnpackEP, TestConvTranspose_With_OutputShape) {
     auto* output_arg = builder.MakeOutput();
     Node& pool_node = builder.AddNode("ConvTranspose", {input_arg, weight_arg}, {output_arg});
     pool_node.AddAttribute("pads", std::vector<int64_t>{2, 2, 2, 2});
-    pool_node.AddAttribute("output_shape", std::vector<int64_t>{1, 4, 28, 29});
+    pool_node.AddAttribute("output_shape", std::vector<int64_t>{28, 29});
     pool_node.AddAttribute("strides", std::vector<int64_t>{2, 2});
     pool_node.AddAttribute("group", int64_t(2));
   };
