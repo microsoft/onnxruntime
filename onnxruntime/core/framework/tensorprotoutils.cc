@@ -907,7 +907,17 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
   }
 
   if (raw_data != nullptr) {
-    return UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data);
+    ORT_RETURN_IF_ERROR(UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data));
+    // raw_data is copied verbatim and may contain bytes outside the canonical {0, 1} set.
+    // Consumers rely on bool tensors holding {0, 1}; normalize any non-zero byte to 1 so every
+    // reader observes a single, consistent value. Operate on the byte representation to avoid
+    // loading a bool object that does not yet hold a valid value.
+    auto* bool_bytes = reinterpret_cast<uint8_t*>(p_data);
+    static_assert(sizeof(bool) == 1, "Normalization loop writes expected_size bytes assuming 1 byte per bool element");
+    for (size_t i = 0; i < expected_size; ++i) {
+      bool_bytes[i] = bool_bytes[i] != 0 ? 1 : 0;
+    }
+    return Status::OK();
   }
 
   if (static_cast<size_t>(tensor.int32_data_size()) != expected_size)
