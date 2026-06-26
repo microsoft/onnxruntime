@@ -71,6 +71,8 @@ static bool TryGetScalarTensorAttribute(const OpKernelInfo& info, const std::str
   auto* attr_tensor_proto = GetTensorProto(attr_tensor_holder);
   auto result = info.GetAttr(tensor_name, attr_tensor_proto);
   if (result.IsOK() && utils::HasDataType(*attr_tensor_proto)) {
+    ORT_ENFORCE(!utils::HasExternalData(*attr_tensor_proto),
+                "Tensor attribute ", tensor_name, " with external data is not supported.");
     const auto [raw_data, raw_data_len] = GetRawData(*attr_tensor_proto);
     result = utils::UnpackTensor<T>(*attr_tensor_proto, raw_data, raw_data_len, &value, 1);
     ORT_ENFORCE(result.IsOK(), "LabelEncoder could not unpack tensor attribute ", attr_name);
@@ -117,6 +119,8 @@ static std::vector<T> GetAttrOrTensor(const OpKernelInfo& info, const std::strin
   } else {
     ORT_ENFORCE(result.IsOK(), "LabelEncoder is missing attribute ", tensor_name, " or ", name);
   }
+  ORT_ENFORCE(!utils::HasExternalData(*attr_tensor_proto),
+              "Tensor attribute ", tensor_name, " with external data is not supported.");
   SafeInt<int64_t> element_count(1);
   for (auto dim : attr_tensor_proto->dims()) {
     element_count *= dim;

@@ -462,7 +462,7 @@ TEST(MLOpTest, TreeEnsembleRejectsExternalDataInTensorAttribute) {
   PathString filename(ORT_TSTR("ext_data_XXXXXX"));
   FILE* fp = nullptr;
   CreateTestFile(fp, filename);
-  std::vector<char> data(12, 0);  // 3 x float
+  std::vector<char> data(4, 0);  // 1 x float
   fwrite(data.data(), 1, data.size(), fp);
   fclose(fp);
   ScopedFileDeleter ext_deleter(filename);
@@ -470,11 +470,11 @@ TEST(MLOpTest, TreeEnsembleRejectsExternalDataInTensorAttribute) {
 
   OpTester test("TreeEnsemble", 5, onnxruntime::kMLDomain);
 
-  // nodes_splits with external data location
+  // nodes_splits with external data location (1 node)
   ONNX_NAMESPACE::TensorProto splits_proto;
   splits_proto.set_name("nodes_splits");
   splits_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
-  splits_proto.add_dims(3);
+  splits_proto.add_dims(1);
   splits_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
   auto* loc = splits_proto.add_external_data();
   loc->set_key("location");
@@ -484,7 +484,7 @@ TEST(MLOpTest, TreeEnsembleRejectsExternalDataInTensorAttribute) {
   offset->set_value("0");
   auto* length = splits_proto.add_external_data();
   length->set_key("length");
-  length->set_value("12");
+  length->set_value("4");
   test.AddAttribute("nodes_splits", splits_proto);
 
   // Minimal valid structure for remaining attributes

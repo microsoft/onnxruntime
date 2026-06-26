@@ -819,9 +819,7 @@ TEST(LabelEncoder, RejectsExternalDataInKeysTensorOpset4) {
   test.AddInput<int64_t>("X", {1, 2}, {1, 2});
   test.AddOutput<int64_t>("Y", {1, 2}, {10, 20});
 
-  // CUDA EP uses a different code path that doesn't hit this issue, exclude it.
-  test.Run(OpTester::ExpectResult::kExpectFailure, "external data is not supported",
-           {kCudaExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "external data is not supported");
 }
 
 TEST(LabelEncoder, RejectsExternalDataInDefaultTensorOpset4) {
@@ -837,9 +835,7 @@ TEST(LabelEncoder, RejectsExternalDataInDefaultTensorOpset4) {
   test.AddInput<int64_t>("X", {1, 2}, {1, 3});
   test.AddOutput<int64_t>("Y", {1, 2}, {10, 0});
 
-  // CUDA EP uses a different code path that doesn't hit this issue, exclude it.
-  test.Run(OpTester::ExpectResult::kExpectFailure, "external data is not supported",
-           {kCudaExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "external data is not supported");
 }
 
 TEST(LabelEncoder, RejectsExternalDataInValuesTensorOpset4) {
@@ -868,9 +864,7 @@ TEST(LabelEncoder, RejectsExternalDataInValuesTensorOpset4) {
   test.AddInput<int64_t>("X", {1, 2}, {1, 2});
   test.AddOutput<int64_t>("Y", {1, 2}, {10, 20});
 
-  // CUDA EP uses a different code path that doesn't hit this issue, exclude it.
-  test.Run(OpTester::ExpectResult::kExpectFailure, "external data is not supported",
-           {kCudaExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectFailure, "external data is not supported");
 }
 
 #endif  // !defined(ORT_NO_EXCEPTIONS)
