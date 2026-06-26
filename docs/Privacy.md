@@ -17,7 +17,7 @@ Telemetry is turned **ON** by default in the official Windows builds distributed
 The Windows provider uses the [TraceLogging](https://docs.microsoft.com/en-us/windows/win32/tracelogging/trace-logging-about) API for its implementation. This enables ONNX Runtime trace events to be collected by the operating system, and based on user consent, this data may be periodically sent to Microsoft servers following GDPR and privacy regulations for anonymity and data access controls. 
 
 Windows ML and onnxruntime C APIs allow Trace Logging to be turned on/off (see [API pages](../README.md#api-documentation) for details).
-For information on how to enable and disable telemetry, see [C API: Telemetry](./C_API.md#telemetry). 
+For the ways to disable telemetry, see the [Disabling Telemetry](#disabling-telemetry) section below. 
 There are equivalent APIs in the C#, Python, and Java language bindings as well.
 
 ### Disabling Telemetry
