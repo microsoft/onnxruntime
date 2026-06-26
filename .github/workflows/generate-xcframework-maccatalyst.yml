@@ -93,9 +93,19 @@ jobs:
           set -euxo pipefail
           export PYTHONPATH="${{ github.workspace }}/tools/python:${PYTHONPATH:-}"
           pip install -r ${{ github.workspace }}/requirements-dev.txt
-          python3 ${{ github.workspace }}/tools/ci_build/github/apple/build_apple_framework.py --config Release ${{ matrix.build_dynamic_flag }} --build_dir=$HOME/onnxlibrary/${{ matrix.build_dir_name }} \
-            --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
-            ${{ github.workspace }}/tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
+          for attempt in 1 2 3; do
+            if python3 ${{ github.workspace }}/tools/ci_build/github/apple/build_apple_framework.py --config Release ${{ matrix.build_dynamic_flag }} --build_dir=$HOME/onnxlibrary/${{ matrix.build_dir_name }} \
+              --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
+              ${{ github.workspace }}/tools/ci_build/github/apple/default_full_ios_framework_build_settings.json; then
+              break
+            fi
+
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+
+            sleep $((attempt * 30))
+          done
 
       - name: archive ${{ matrix.variant }} xcframework
         shell: bash
