@@ -529,10 +529,12 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   Tensor* indirect_buffer_ptr = nullptr;
   Tensor indirect_buffer;
 
-  // Prepare indirect dispatch buffer for the split-reduce path when the CPU-side
+  // Prepare indirect dispatch buffer for split-reduce path when CPU-side
   // total_sequence_length is unusable for dispatch sizing:
-  //   - past_present_share_buffer layers: graph capture keeps seqlen_k GPU-resident, so
-  //     total_sequence_length_ is 0 on CPU and the true value must be read from the GPU tensor.
+  //   - past_present_share_buffer layers: when graph capture is enabled,
+  //     total_sequence_length_ may be 0 (GPU-based seqlen_k), so the indirect
+  //     buffer computes dispatch sizes on GPU. Static KV cache (past_present_share_buffer_)
+  //     is guaranteed by GQA's ORT_ENFORCE when graph capture is enabled.
   //   - kv_empty layers: no KV tokens are appended, so total_sequence_length_ is always 0;
   //     using it directly would produce dispatch(0) and skip attention entirely.
   const bool use_indirect_dispatch = seqlen_k != nullptr &&

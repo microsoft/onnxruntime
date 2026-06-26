@@ -2822,7 +2822,8 @@ TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefill_CUDA) {
   RunBatchedRightPaddedRotaryPrefillForEP(GqaTargetEp::kCuda);
 }
 
-TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefill_WebGPU) {  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefill_WebGPU) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -3207,11 +3208,11 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_IndirectDispatch_Decode) {
   webgpu_tester.AddInput<float>("past_value", {batch_size, kv_num_heads, past_seq_len, head_size}, past_value_data);
   webgpu_tester.AddInput<int32_t>("seqlens_k", {batch_size}, {static_cast<int32_t>(past_seq_len - 1)});
   webgpu_tester.AddInput<int32_t>("total_sequence_length", {1}, {0});  // 0 → indirect dispatch path
-  webgpu_tester.AddOptionalInputEdge<float>();    // cos_cache
-  webgpu_tester.AddOptionalInputEdge<float>();    // sin_cache
-  webgpu_tester.AddOptionalInputEdge<int64_t>();  // position_ids
-  webgpu_tester.AddOptionalInputEdge<float>();    // attention_bias
-  webgpu_tester.AddOptionalInputEdge<float>();    // head_sink
+  webgpu_tester.AddOptionalInputEdge<float>();                         // cos_cache
+  webgpu_tester.AddOptionalInputEdge<float>();                         // sin_cache
+  webgpu_tester.AddOptionalInputEdge<int64_t>();                       // position_ids
+  webgpu_tester.AddOptionalInputEdge<float>();                         // attention_bias
+  webgpu_tester.AddOptionalInputEdge<float>();                         // head_sink
   const int output_size = batch_size * q_seq_len * hidden_size;
   const int present_size = batch_size * kv_num_heads * past_seq_len * head_size;
   webgpu_tester.AddOutput<float>("output", {batch_size, q_seq_len, hidden_size}, std::vector<float>(output_size, 0.0f));
@@ -3267,11 +3268,11 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_IndirectDispatch_LargerPast) {
   webgpu_tester.AddInput<float>("past_value", {batch_size, kv_num_heads, past_seq_len, head_size}, past_value_data);
   webgpu_tester.AddInput<int32_t>("seqlens_k", {batch_size}, {static_cast<int32_t>(past_seq_len - 1)});
   webgpu_tester.AddInput<int32_t>("total_sequence_length", {1}, {0});  // 0 → indirect dispatch path
-  webgpu_tester.AddOptionalInputEdge<float>();    // cos_cache
-  webgpu_tester.AddOptionalInputEdge<float>();    // sin_cache
-  webgpu_tester.AddOptionalInputEdge<int64_t>();  // position_ids
-  webgpu_tester.AddOptionalInputEdge<float>();    // attention_bias
-  webgpu_tester.AddOptionalInputEdge<float>();    // head_sink
+  webgpu_tester.AddOptionalInputEdge<float>();                         // cos_cache
+  webgpu_tester.AddOptionalInputEdge<float>();                         // sin_cache
+  webgpu_tester.AddOptionalInputEdge<int64_t>();                       // position_ids
+  webgpu_tester.AddOptionalInputEdge<float>();                         // attention_bias
+  webgpu_tester.AddOptionalInputEdge<float>();                         // head_sink
   const int output_size = batch_size * q_seq_len * hidden_size;
   const int present_size = batch_size * kv_num_heads * past_seq_len * head_size;
   webgpu_tester.AddOutput<float>("output", {batch_size, q_seq_len, hidden_size}, std::vector<float>(output_size, 0.0f));
