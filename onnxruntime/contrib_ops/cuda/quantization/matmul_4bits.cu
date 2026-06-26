@@ -754,6 +754,222 @@ bool TryMatMulSmallM4Bits(
   return true;
 }
 
+// ===== accuracy_level=4 path: int8-activation dp4a batched GEMV (W4A8) =====
+// Quantizes the fp16/bf16/float activation to int8 per row (symmetric), then runs a batched GEMV that
+// reuses each 4-bit weight (unpacked to int8) across CtaM rows via dp4a. dp4a has ~4x the throughput of
+// the fp16 FMA path, so the GEMV stays memory-bound (flat vs M) through the small-M verify range where
+// the fp16 CtaM kernel becomes compute-bound. Reads the same [N, blocks, blob] weight layout (no prepack).
+__device__ __forceinline__ float ToFloatAct(half v) { return __half2float(v); }
+__device__ __forceinline__ float ToFloatAct(nv_bfloat16 v) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  return __bfloat162float(v);
+#else
+  return float(v);
+#endif
+}
+__device__ __forceinline__ float ToFloatAct(float v) { return v; }
+
+// One block per activation row: int8 symmetric per-row quantization. aq[m][k], ascale[m] = maxabs/127.
+template <typename T>
+__global__ void QuantizeRowwiseInt8Kernel(const T* a, int8_t* aq, float* ascale, int m, int k) {
+  int row = blockIdx.x;
+  if (row >= m) return;
+  const T* arow = a + static_cast<size_t>(row) * k;
+  float maxabs = 0.f;
+  for (int i = threadIdx.x; i < k; i += blockDim.x) {
+    maxabs = fmaxf(maxabs, fabsf(ToFloatAct(arow[i])));
+  }
+  __shared__ float red[32];
+  for (int o = 16; o > 0; o >>= 1) maxabs = fmaxf(maxabs, __shfl_down_sync(0xffffffff, maxabs, o));
+  if ((threadIdx.x & 31) == 0) red[threadIdx.x >> 5] = maxabs;
+  __syncthreads();
+  if (threadIdx.x < 32) {
+    float v = (threadIdx.x < (blockDim.x + 31) / 32) ? red[threadIdx.x] : 0.f;
+    for (int o = 16; o > 0; o >>= 1) v = fmaxf(v, __shfl_down_sync(0xffffffff, v, o));
+    if (threadIdx.x == 0) red[0] = v;
+  }
+  __syncthreads();
+  float scale = red[0] / 127.f;
+  if (scale == 0.f) scale = 1e-8f;
+  if (threadIdx.x == 0) ascale[row] = scale;
+  float inv = 1.f / scale;
+  for (int i = threadIdx.x; i < k; i += blockDim.x) {
+    int q = __float2int_rn(ToFloatAct(arow[i]) * inv);
+    q = max(-127, min(127, q));
+    aq[static_cast<size_t>(row) * k + i] = static_cast<int8_t>(q);
+  }
+}
+
+template <typename T>
+void LaunchQuantizeRowwiseInt8(const T* a, int8_t* aq, float* ascale, int m, int k, cudaStream_t stream) {
+  QuantizeRowwiseInt8Kernel<T><<<m, 256, 0, stream>>>(a, aq, ascale, m, k);
+}
+
+// Batched int8 dp4a GEMV. Block (kWarpSize, kColsPerThreadBlock); grid (N/kColsPerThreadBlock, ceil(m/CtaM)).
+// Mirrors MatMulFloatInt4Kernel's shared scale/zp staging and packed-weight indexing; the per-lane K chunk
+// is dotted via dp4a against CtaM int8 activation rows, scaled by the block weight scale and row act scale.
+template <class T, int block_size, bool has_zero_point, int CtaM>
+__global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulInt4Dp4aKernel(
+    T* output,
+    const int8_t* aq,
+    const float* ascale,
+    const uint8_t* b_data_quant,
+    const T* scales_data,
+    const uint8_t* zero_points,
+    int m, int n, int k, int blocks_per_K) {
+  const int n_block_id = blockIdx.x;
+  const int m_base = blockIdx.y * CtaM;
+  const int lane_id = threadIdx.x;
+  const int warp_id = WarpUniform(threadIdx.y);
+  const int n_id = n_block_id * kColsPerThreadBlock + warp_id;
+  constexpr int k_per_iter = kWarpSize * kElementsPerThreadPerIteration;
+
+  extern __shared__ char shared_buffer[];
+  T* b_scale_vec = (T*)shared_buffer;
+  int offset = n_block_id * kColsPerThreadBlock * blocks_per_K;
+  for (int i = warp_id * kWarpSize + lane_id; i < kColsPerThreadBlock * blocks_per_K; i += kColsPerThreadBlock * kWarpSize) {
+    b_scale_vec[i] = scales_data[offset + i];
+  }
+  uint8_t* b_zp_vec;
+  (void)b_zp_vec;
+  if constexpr (has_zero_point) {
+    b_zp_vec = reinterpret_cast<uint8_t*>(b_scale_vec + kColsPerThreadBlock * blocks_per_K);
+    const int b_zp_k = (blocks_per_K + 1) / 2;
+    int zp_offset = n_block_id * kColsPerThreadBlock * b_zp_k;
+    for (int i = warp_id * kWarpSize + lane_id; i < kColsPerThreadBlock * b_zp_k; i += kColsPerThreadBlock * kWarpSize) {
+      b_zp_vec[2 * i] = (zero_points[zp_offset + i] & 0x0f);
+      b_zp_vec[2 * i + 1] = (zero_points[zp_offset + i] >> 4);
+    }
+    b_zp_vec += warp_id * b_zp_k * 2;
+  }
+  __syncthreads();
+
+  const int valid = m - m_base;
+  const int8_t* a_row[CtaM];
+#pragma unroll
+  for (int r = 0; r < CtaM; r++) a_row[r] = aq + static_cast<size_t>(m_base + r) * k + (lane_id << 3);
+  b_scale_vec += warp_id * blocks_per_K;
+
+  float facc[CtaM];
+#pragma unroll
+  for (int r = 0; r < CtaM; r++) facc[r] = 0.f;
+
+  int k_id = 0;
+  int t_meta_k = lane_id * 8 / block_size;
+  b_data_quant += n_id * blocks_per_K * (block_size / 2) + lane_id * 4;
+
+  for (; k_id + k_per_iter <= k; k_id += k_per_iter) {
+    uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant));
+    float wscale = static_cast<float>(b_scale_vec[t_meta_k]);
+    int zp = 8;
+    if constexpr (has_zero_point) zp = b_zp_vec[t_meta_k];
+    // unpack 8 nibbles -> 8 int8 (q - zp), packed as two int32 for dp4a
+    int8_t w8[8];
+#pragma unroll
+    for (int i = 0; i < 8; i++) w8[i] = static_cast<int8_t>(static_cast<int>((value >> (4 * i)) & 0xF) - zp);
+    int wlo = *reinterpret_cast<const int*>(w8);
+    int whi = *reinterpret_cast<const int*>(w8 + 4);
+#pragma unroll
+    for (int r = 0; r < CtaM; r++) {
+      if (r >= valid) continue;
+      const int8_t* ap = a_row[r] + k_id;
+      int alo = *reinterpret_cast<const int*>(ap);
+      int ahi = *reinterpret_cast<const int*>(ap + 4);
+      int dot = __dp4a(alo, wlo, 0);
+      dot = __dp4a(ahi, whi, dot);
+      facc[r] += wscale * static_cast<float>(dot);
+    }
+    b_data_quant += k_per_iter / 2;
+    t_meta_k += k_per_iter / block_size;
+  }
+
+  // remainder (k not a multiple of k_per_iter); k is a multiple of block_size so each lane's 8-chunk is valid
+  if (k_id + (lane_id << 3) < k) {
+    uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant));
+    float wscale = static_cast<float>(b_scale_vec[t_meta_k]);
+    int zp = 8;
+    if constexpr (has_zero_point) zp = b_zp_vec[t_meta_k];
+    int8_t w8[8];
+#pragma unroll
+    for (int i = 0; i < 8; i++) w8[i] = static_cast<int8_t>(static_cast<int>((value >> (4 * i)) & 0xF) - zp);
+    int wlo = *reinterpret_cast<const int*>(w8);
+    int whi = *reinterpret_cast<const int*>(w8 + 4);
+#pragma unroll
+    for (int r = 0; r < CtaM; r++) {
+      if (r >= valid) continue;
+      const int8_t* ap = a_row[r] + k_id;
+      int alo = *reinterpret_cast<const int*>(ap);
+      int ahi = *reinterpret_cast<const int*>(ap + 4);
+      int dot = __dp4a(alo, wlo, 0);
+      dot = __dp4a(ahi, whi, dot);
+      facc[r] += wscale * static_cast<float>(dot);
+    }
+  }
+
+#pragma unroll
+  for (int r = 0; r < CtaM; r++) {
+    if (r >= valid) continue;
+    float sum = facc[r];
+    for (int i = kWarpSize / 2; i > 0; i = i / 2) sum += WARP_SHFL_DOWN(sum, i);
+    if (lane_id == 0) output[static_cast<size_t>(m_base + r) * n + n_id] = static_cast<T>(sum * ascale[m_base + r]);
+  }
+}
+
+// Cap on M for the int8 dp4a verify path (kMatMulInt8Dp4aMaxM in matmul_nbits.cuh). dp4a keeps the batched
+// GEMV memory-bound (flat) through the spec-decode verify range; beyond it the per-row weight re-read makes
+// it lose to dequant+cuBLAS, so M>cap falls through. M==1 also uses it when accuracy_level=4 so the target
+// stays self-consistent across phases.
+
+template <class T>
+bool TryMatMulInt8Dp4a(
+    T* output,
+    const int8_t* aq,
+    const float* ascale,
+    const uint8_t* b_data_quant,
+    const T* scales_data,
+    const uint8_t* zero_points,
+    int m, int n, int k, int block_size,
+    size_t shared_mem_per_block,
+    cudaStream_t stream) {
+  if (m < 1 || m > kMatMulInt8Dp4aMaxM || n % kColsPerThreadBlock != 0 || k % kElementsPerThreadPerIteration != 0) {
+    return false;
+  }
+  if (k % block_size != 0) return false;  // exact per-lane block scale indexing
+  constexpr int k_per_iter = kWarpSize * kElementsPerThreadPerIteration;
+  if (k_per_iter % block_size != 0) return false;
+
+  int blocks_per_K = k / block_size;
+  size_t shared_mem_size = sizeof(T) * blocks_per_K * kColsPerThreadBlock +
+                           static_cast<size_t>(zero_points != nullptr ? (blocks_per_K + 1) / 2 * kColsPerThreadBlock * 2 : 0);
+  if (shared_mem_size > shared_mem_per_block) return false;
+
+  const int cta_m = (m <= 2) ? 2 : ((m <= 4) ? 4 : 8);
+  dim3 threads(GPU_WARP_SIZE_HOST, kColsPerThreadBlock);
+  dim3 blocks(n / kColsPerThreadBlock, (m + cta_m - 1) / cta_m);
+
+#define Int8Dp4aDispatch(BS, CM)                                                                       \
+  if (nullptr != zero_points) {                                                                        \
+    MatMulInt4Dp4aKernel<T, BS, true, CM><<<blocks, threads, shared_mem_size, stream>>>(               \
+        output, aq, ascale, b_data_quant, scales_data, zero_points, m, n, k, blocks_per_K);            \
+  } else {                                                                                             \
+    MatMulInt4Dp4aKernel<T, BS, false, CM><<<blocks, threads, shared_mem_size, stream>>>(              \
+        output, aq, ascale, b_data_quant, scales_data, zero_points, m, n, k, blocks_per_K);            \
+  }
+#define Int8Dp4aDispatchBlock(CM)        \
+  if (16 == block_size) { Int8Dp4aDispatch(16, CM) }      \
+  else if (32 == block_size) { Int8Dp4aDispatch(32, CM) } \
+  else if (64 == block_size) { Int8Dp4aDispatch(64, CM) } \
+  else if (128 == block_size) { Int8Dp4aDispatch(128, CM) } \
+  else { return false; }
+
+  if (cta_m == 2) { Int8Dp4aDispatchBlock(2) }
+  else if (cta_m == 4) { Int8Dp4aDispatchBlock(4) }
+  else { Int8Dp4aDispatchBlock(8) }
+#undef Int8Dp4aDispatchBlock
+#undef Int8Dp4aDispatch
+  return true;
+}
+
 template <class T>
 bool TryMatMul4Bits(
     T* output,
@@ -874,6 +1090,15 @@ template bool TryMatMul4Bits<nv_bfloat16>(
     int block_size,
     size_t shared_mem_per_block,
     cudaStream_t stream);
+
+#define INSTANTIATE_INT8_DP4A(T)                                                            \
+  template void LaunchQuantizeRowwiseInt8<T>(const T*, int8_t*, float*, int, int, cudaStream_t); \
+  template bool TryMatMulInt8Dp4a<T>(T*, const int8_t*, const float*, const uint8_t*, const T*, \
+                                     const uint8_t*, int, int, int, int, size_t, cudaStream_t)
+INSTANTIATE_INT8_DP4A(float);
+INSTANTIATE_INT8_DP4A(half);
+INSTANTIATE_INT8_DP4A(nv_bfloat16);
+#undef INSTANTIATE_INT8_DP4A
 
 template <typename T>
 __global__ void MatMulNBitsBiasAddKernel(T* output, const T* bias_data, int n, int64_t total) {
