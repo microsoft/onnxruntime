@@ -135,7 +135,7 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.MainFunctionBody() << "  if (global_idx == 0u) {\n"
                               << "    let global_total_seq_length = u32(total_sequence_length_input[0]);\n"
                               << "    let num_total_seq_length_tile = (global_total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;\n"
-                              << "    normalize_dispatch_group_size(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);\n"
+                              << "    populate_indirect_dispatch_buffer(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);\n"
                               << "  }\n\n";
   }
 
