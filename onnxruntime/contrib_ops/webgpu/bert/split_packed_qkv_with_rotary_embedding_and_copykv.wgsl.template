@@ -6,6 +6,10 @@
 #use guardAgainstOutOfBoundsWorkgroupSizes
 #use .setByIndices .getByIndices .getByOffset
 
+#if prepare_indirect_dispatch
+#include "bert/indirect_dispatch_common.wgsl.template"
+#endif
+
 $MAIN {
   guardAgainstOutOfBoundsWorkgroupSizes(uniforms.dispatch_size);
 

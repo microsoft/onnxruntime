@@ -17,6 +17,7 @@ constexpr const char* kEnableGraphCapture = "ep.webgpuexecutionprovider.enableGr
 constexpr const char* kSessionBufferPoolGenerations = "ep.webgpuexecutionprovider.sessionBufferPoolGenerations";
 constexpr const char* kEnableInt64 = "ep.webgpuexecutionprovider.enableInt64";
 constexpr const char* kMultiRotaryCacheConcatOffset = "ep.webgpuexecutionprovider.multiRotaryCacheConcatOffset";
+constexpr const char* kKvCacheQuantizationBits = "ep.webgpuexecutionprovider.kvCacheQuantizationBits";
 
 constexpr const char* kDawnProcTable = "ep.webgpuexecutionprovider.dawnProcTable";
 
@@ -66,6 +67,12 @@ constexpr const char* kEnablePIXCapture_OFF = "0";
 
 constexpr const char* kPreserveDevice_ON = "1";
 constexpr const char* kPreserveDevice_OFF = "0";
+
+// kKvCacheQuantizationBits value is the number of quantization bits as a string.
+// "0" disables quantization; "4" enables 4-bit KV cache quantization.
+// (Future: "8" for 8-bit.)
+constexpr const char* kKvCacheQuantizationBits_OFF = "0";
+constexpr const char* kKvCacheQuantizationBits_4Bit = "4";
 
 constexpr const char* kBufferCacheMode_Disabled = "disabled";
 constexpr const char* kBufferCacheMode_LazyRelease = "lazyRelease";
