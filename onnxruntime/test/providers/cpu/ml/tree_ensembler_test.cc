@@ -3,7 +3,8 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/util/include/file_util.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/platform/path_lib.h"
 
 namespace onnxruntime {
 namespace test {
@@ -457,20 +458,11 @@ TEST(MLOpTest, TreeEnsembleIssue25400) {
 // calls abort() so these tests cannot run.
 #if !defined(ORT_NO_EXCEPTIONS)
 
-TEST(MLOpTest, TreeEnsembleRejectsExternalDataInTensorAttribute) {
-  // Create a unique temp file so the ONNX checker passes file-existence validation.
-  PathString filename(ORT_TSTR("ext_data_XXXXXX"));
-  FILE* fp = nullptr;
-  CreateTestFile(fp, filename);
-  std::vector<char> data(4, 0);  // 1 x float
-  fwrite(data.data(), 1, data.size(), fp);
-  fclose(fp);
-  ScopedFileDeleter ext_deleter(filename);
-  std::string ext_path = ToUTF8String(filename);
-
+// In-memory external data references in node attributes are rejected during initialization.
+TEST(MLOpTest, TreeEnsembleRejectsInMemoryExternalDataInTensorAttribute) {
   OpTester test("TreeEnsemble", 5, onnxruntime::kMLDomain);
 
-  // nodes_splits with external data location (1 node)
+  // nodes_splits with in-memory external data reference (should be rejected)
   ONNX_NAMESPACE::TensorProto splits_proto;
   splits_proto.set_name("nodes_splits");
   splits_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
@@ -478,10 +470,10 @@ TEST(MLOpTest, TreeEnsembleRejectsExternalDataInTensorAttribute) {
   splits_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
   auto* loc = splits_proto.add_external_data();
   loc->set_key("location");
-  loc->set_value(ext_path);
+  loc->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag));
   auto* offset = splits_proto.add_external_data();
   offset->set_key("offset");
-  offset->set_value("0");
+  offset->set_value("12345678");
   auto* length = splits_proto.add_external_data();
   length->set_key("length");
   length->set_value("4");
@@ -518,7 +510,7 @@ TEST(MLOpTest, TreeEnsembleRejectsExternalDataInTensorAttribute) {
   test.AddInput<float>("X", {1, 1}, X);
   test.AddOutput<float>("Y", {1, 1}, {0.f});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "external data is not supported");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "in-memory external data reference");
 }
 
 #endif  // !defined(ORT_NO_EXCEPTIONS)

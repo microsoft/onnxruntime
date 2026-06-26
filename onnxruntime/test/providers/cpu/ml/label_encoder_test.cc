@@ -5,6 +5,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/file_util.h"
+#include "core/platform/path_lib.h"
 
 namespace onnxruntime {
 namespace test {
@@ -763,12 +764,11 @@ TEST(LabelEncoder, EmptyInputOpset4) {
 #if !defined(ORT_NO_EXCEPTIONS)
 
 // RAII helper that creates a unique dummy binary file and removes it on destruction.
-static std::pair<std::string, ScopedFileDeleter> CreateExternalDataFile(size_t num_bytes) {
+static std::pair<std::string, ScopedFileDeleter> CreateExternalDataFile(const void* data, size_t num_bytes) {
   PathString filename(ORT_TSTR("ext_data_XXXXXX"));
   FILE* fp = nullptr;
   CreateTestFile(fp, filename);
-  std::vector<char> data(num_bytes, 0);
-  fwrite(data.data(), 1, num_bytes, fp);
+  fwrite(data, 1, num_bytes, fp);
   fclose(fp);
   return {ToUTF8String(filename), ScopedFileDeleter(filename)};
 }
@@ -794,13 +794,60 @@ static ONNX_NAMESPACE::TensorProto MakeExternalInt64TensorProto(const std::strin
   return proto;
 }
 
-TEST(LabelEncoder, RejectsExternalDataInKeysTensorOpset4) {
-  auto [ext_path, ext_deleter] = CreateExternalDataFile(16);  // 2 x int64
+// Helper: create a TensorProto with in-memory external data reference (should be rejected).
+static ONNX_NAMESPACE::TensorProto MakeInMemoryExternalTensorProto(const std::string& name,
+                                                                   int64_t num_elements) {
+  ONNX_NAMESPACE::TensorProto proto;
+  proto.set_name(name);
+  proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  proto.add_dims(num_elements);
+  proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  auto* loc = proto.add_external_data();
+  loc->set_key("location");
+  loc->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag));
+  auto* offset = proto.add_external_data();
+  offset->set_key("offset");
+  offset->set_value("12345678");
+  auto* length = proto.add_external_data();
+  length->set_key("length");
+  length->set_value(std::to_string(num_elements * static_cast<int64_t>(sizeof(int64_t))));
+  return proto;
+}
+
+// Valid external data in tensor attributes should be loaded and inlined during session initialization.
+TEST(LabelEncoder, ExternalDataInKeysTensorOpset4) {
+  std::vector<int64_t> key_data{1, 2};
+  auto [ext_path, ext_deleter] = CreateExternalDataFile(key_data.data(), key_data.size() * sizeof(int64_t));
 
   OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
   test.AddAttribute("keys_tensor", MakeExternalInt64TensorProto("keys_tensor", ext_path, 2));
 
-  // Normal values_tensor
+  ONNX_NAMESPACE::TensorProto values_proto;
+  values_proto.set_name("values_tensor");
+  values_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  values_proto.add_dims(2);
+  values_proto.add_int64_data(10);
+  values_proto.add_int64_data(20);
+  test.AddAttribute("values_tensor", values_proto);
+
+  ONNX_NAMESPACE::TensorProto default_proto;
+  default_proto.set_name("default_tensor");
+  default_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  default_proto.add_dims(1);
+  default_proto.add_int64_data(42);
+  test.AddAttribute("default_tensor", default_proto);
+
+  test.AddInput<int64_t>("X", {1, 3}, {1, 2, 99});
+  test.AddOutput<int64_t>("Y", {1, 3}, {10, 20, 42});
+
+  test.Run();
+}
+
+// In-memory external data references in node attributes are rejected during initialization.
+TEST(LabelEncoder, RejectsInMemoryExternalDataInKeysTensorOpset4) {
+  OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
+  test.AddAttribute("keys_tensor", MakeInMemoryExternalTensorProto("keys_tensor", 2));
+
   ONNX_NAMESPACE::TensorProto values_proto;
   values_proto.set_name("values_tensor");
   values_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
@@ -819,52 +866,7 @@ TEST(LabelEncoder, RejectsExternalDataInKeysTensorOpset4) {
   test.AddInput<int64_t>("X", {1, 2}, {1, 2});
   test.AddOutput<int64_t>("Y", {1, 2}, {10, 20});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "external data is not supported");
-}
-
-TEST(LabelEncoder, RejectsExternalDataInDefaultTensorOpset4) {
-  auto [ext_path, ext_deleter] = CreateExternalDataFile(8);  // 1 x int64
-
-  OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
-
-  test.AddAttribute("keys_int64s", std::vector<int64_t>{1, 2});
-  test.AddAttribute("values_int64s", std::vector<int64_t>{10, 20});
-
-  test.AddAttribute("default_tensor", MakeExternalInt64TensorProto("default_tensor", ext_path, 1));
-
-  test.AddInput<int64_t>("X", {1, 2}, {1, 3});
-  test.AddOutput<int64_t>("Y", {1, 2}, {10, 0});
-
-  test.Run(OpTester::ExpectResult::kExpectFailure, "external data is not supported");
-}
-
-TEST(LabelEncoder, RejectsExternalDataInValuesTensorOpset4) {
-  auto [ext_path, ext_deleter] = CreateExternalDataFile(16);  // 2 x int64
-
-  OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
-
-  // Normal keys_tensor
-  ONNX_NAMESPACE::TensorProto keys_proto;
-  keys_proto.set_name("keys_tensor");
-  keys_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-  keys_proto.add_dims(2);
-  keys_proto.add_int64_data(1);
-  keys_proto.add_int64_data(2);
-  test.AddAttribute("keys_tensor", keys_proto);
-
-  test.AddAttribute("values_tensor", MakeExternalInt64TensorProto("values_tensor", ext_path, 2));
-
-  ONNX_NAMESPACE::TensorProto default_proto;
-  default_proto.set_name("default_tensor");
-  default_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-  default_proto.add_dims(1);
-  default_proto.add_int64_data(0);
-  test.AddAttribute("default_tensor", default_proto);
-
-  test.AddInput<int64_t>("X", {1, 2}, {1, 2});
-  test.AddOutput<int64_t>("Y", {1, 2}, {10, 20});
-
-  test.Run(OpTester::ExpectResult::kExpectFailure, "external data is not supported");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "in-memory external data reference");
 }
 
 #endif  // !defined(ORT_NO_EXCEPTIONS)

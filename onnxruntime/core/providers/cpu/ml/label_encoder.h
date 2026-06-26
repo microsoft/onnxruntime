@@ -119,8 +119,6 @@ std::vector<T> GetAttribute(const OpKernelInfo& info, const std::string& name, c
   } else {
     ORT_ENFORCE(result.IsOK(), "LabelEncoder is missing attribute ", tensor_name, " or ", name);
   }
-  ORT_ENFORCE(!utils::HasExternalData(attr_tensor_proto),
-              "Tensor attribute ", tensor_name, " with external data is not supported.");
   SafeInt<int64_t> element_count(1);
   for (auto dim : attr_tensor_proto.dims()) {
     element_count *= dim;
@@ -137,8 +135,6 @@ T GetDefault(const OpKernelInfo& info, const std::string& attr_name, const T& ba
   ONNX_NAMESPACE::TensorProto attr_tensor_proto;
   auto result = info.GetAttr("default_tensor", &attr_tensor_proto);
   if (result.IsOK() && utils::HasDataType(attr_tensor_proto)) {
-    ORT_ENFORCE(!utils::HasExternalData(attr_tensor_proto),
-                "Tensor attribute default_tensor with external data is not supported.");
     T default_value;
     result = utils::UnpackTensor<T>(attr_tensor_proto, std::filesystem::path(), &default_value, 1);
     ORT_ENFORCE(result.IsOK(), "LabelEncoder could not unpack default tensor ", attr_name);

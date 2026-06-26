@@ -3,7 +3,8 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
-#include "test/util/include/file_util.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/platform/path_lib.h"
 
 namespace onnxruntime {
 namespace test {
@@ -1082,21 +1083,11 @@ TEST(MLOpTest, TreeEnsembleRegressorBaseValuesWrongSize) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "base_values should have 0 or 2 values.");
 }
 
-// External data in tensor attributes is not supported. The kernel must reject such attributes
-// during construction. In no-exceptions builds, ORT_ENFORCE/ORT_THROW_IF_ERROR calls abort().
+// In-memory external data references in node attributes are rejected during initialization.
+// In no-exceptions builds, ORT_RETURN_IF calls abort().
 #if !defined(ORT_NO_EXCEPTIONS)
 
-TEST(MLOpTest, TreeEnsembleRegressorRejectsExternalDataInTensorAttribute) {
-  // Create a unique temp file so the ONNX checker passes file-existence validation.
-  PathString filename(ORT_TSTR("ext_data_XXXXXX"));
-  FILE* fp = nullptr;
-  CreateTestFile(fp, filename);
-  std::vector<char> data(12, 0);  // 3 x float
-  fwrite(data.data(), 1, data.size(), fp);
-  fclose(fp);
-  ScopedFileDeleter ext_deleter(filename);
-  std::string ext_path = ToUTF8String(filename);
-
+TEST(MLOpTest, TreeEnsembleRegressorRejectsInMemoryExternalDataInTensorAttribute) {
   OpTester test("TreeEnsembleRegressor", 3, onnxruntime::kMLDomain);
 
   // Minimal valid tree structure
@@ -1119,7 +1110,7 @@ TEST(MLOpTest, TreeEnsembleRegressorRejectsExternalDataInTensorAttribute) {
   test.AddAttribute("target_weights", std::vector<float>{1.f, 2.f});
   test.AddAttribute("n_targets", static_cast<int64_t>(1));
 
-  // Use nodes_values_as_tensor (without setting nodes_values) with external data location
+  // nodes_values_as_tensor with in-memory external data reference (should be rejected)
   ONNX_NAMESPACE::TensorProto values_proto;
   values_proto.set_name("nodes_values_as_tensor");
   values_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
@@ -1127,10 +1118,10 @@ TEST(MLOpTest, TreeEnsembleRegressorRejectsExternalDataInTensorAttribute) {
   values_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
   auto* loc = values_proto.add_external_data();
   loc->set_key("location");
-  loc->set_value(ext_path);
+  loc->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag));
   auto* offset = values_proto.add_external_data();
   offset->set_key("offset");
-  offset->set_value("0");
+  offset->set_value("12345678");
   auto* length = values_proto.add_external_data();
   length->set_key("length");
   length->set_value("12");
@@ -1140,7 +1131,7 @@ TEST(MLOpTest, TreeEnsembleRegressorRejectsExternalDataInTensorAttribute) {
   test.AddInput<float>("X", {1, 1}, X);
   test.AddOutput<float>("Y", {1, 1}, {0.f});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "external data is not supported");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "in-memory external data reference");
 }
 
 #endif  // !defined(ORT_NO_EXCEPTIONS)
