@@ -214,6 +214,18 @@ struct TreeEnsembleAttributesV5 {
 
   void convert_to_v3(TreeEnsembleAttributesV3<ThresholdType>& output) const {
     // Doing all transformations to get the old format.
+    ORT_ENFORCE(n_targets > 0,
+                "n_targets must be positive, got ", n_targets);
+    if (!leaf_targetids.empty()) {
+      const int64_t min_target_id = *std::min_element(leaf_targetids.begin(), leaf_targetids.end());
+      ORT_ENFORCE(min_target_id >= 0,
+                  "leaf_targetids cannot have negative values (", min_target_id, ").");
+      const int64_t max_target_id = *std::max_element(leaf_targetids.begin(), leaf_targetids.end());
+      ORT_ENFORCE(max_target_id < n_targets,
+                  "At least one value (", max_target_id,
+                  ") in leaf_targetids is greater or equal to the number of targets (",
+                  n_targets, ").");
+    }
     output.n_targets_or_classes = n_targets;
     output.aggregate_function = aggregateFunctionToString();
     output.post_transform = postTransformToString();

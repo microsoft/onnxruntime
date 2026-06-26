@@ -290,7 +290,7 @@ class TreeAggregatorSum : public TreeAggregator<InputType, ThresholdType, Output
                                  gsl::span<const SparseValue<ThresholdType>> weights) const {
     auto it = weights.begin() + root.truenode_or_weight.weight_data.weight;
     for (int32_t i = 0; i < root.truenode_or_weight.weight_data.n_weights; ++i, ++it) {
-      ORT_ENFORCE(it->i < (int64_t)predictions.size());
+      ORT_ENFORCE(it->i >= 0 && it->i < static_cast<int64_t>(predictions.size()));
       predictions[onnxruntime::narrow<size_t>(it->i)].score += it->value;
       predictions[onnxruntime::narrow<size_t>(it->i)].has_score = 1;
     }
@@ -393,6 +393,7 @@ class TreeAggregatorMin : public TreeAggregator<InputType, ThresholdType, Output
                                  gsl::span<const SparseValue<ThresholdType>> weights) const {
     auto it = weights.begin() + root.truenode_or_weight.weight_data.weight;
     for (int32_t i = 0; i < root.truenode_or_weight.weight_data.n_weights; ++i, ++it) {
+      ORT_ENFORCE(it->i >= 0 && it->i < static_cast<int64_t>(predictions.size()));
       predictions[onnxruntime::narrow<size_t>(it->i)].score =
           (!predictions[onnxruntime::narrow<size_t>(it->i)].has_score || it->value < predictions[onnxruntime::narrow<size_t>(it->i)].score)
               ? it->value
@@ -449,6 +450,7 @@ class TreeAggregatorMax : public TreeAggregator<InputType, ThresholdType, Output
                                  gsl::span<const SparseValue<ThresholdType>> weights) const {
     auto it = weights.begin() + root.truenode_or_weight.weight_data.weight;
     for (int32_t i = 0; i < root.truenode_or_weight.weight_data.n_weights; ++i, ++it) {
+      ORT_ENFORCE(it->i >= 0 && it->i < static_cast<int64_t>(predictions.size()));
       predictions[onnxruntime::narrow<size_t>(it->i)].score =
           (!predictions[onnxruntime::narrow<size_t>(it->i)].has_score || it->value > predictions[onnxruntime::narrow<size_t>(it->i)].score)
               ? it->value
