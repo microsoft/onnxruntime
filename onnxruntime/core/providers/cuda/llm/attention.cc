@@ -1361,9 +1361,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // cross-attention case; MEA handles it via the causal_from_top_left flag and Unified
   // Unfused uses past_kv_length=0. (When an external cache is present — nonpad_kv_seqlen —
   // the required frontier IS bottom-right, so Flash is eligible; see below.)
-  const bool causal_cross_no_past = parameters.is_causal &&
-                                    parameters.q_sequence_length != parameters.total_sequence_length &&
-                                    parameters.past_sequence_length == 0;
+  [[maybe_unused]] const bool causal_cross_no_past =
+      parameters.is_causal &&
+      parameters.q_sequence_length != parameters.total_sequence_length &&
+      parameters.past_sequence_length == 0;
 
   // is_causal=1 + nonpad_kv_seqlen (external KV cache) without past_key defines a
   // bottom-right causal frontier per onnx/onnx#8068: query in-block index i attends key j

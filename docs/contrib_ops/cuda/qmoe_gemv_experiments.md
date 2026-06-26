@@ -1031,3 +1031,208 @@ fp32 default and the fp16-accumulation experiment:
 - Make fp16 accumulation the default for fp16 QMoE GEMV.
 - Keep bf16 on fp32 accumulation.
 - Keep `ORT_MOE_GEMV_FP32_ACCUM=1` as the opt-in numerical fallback and A/B knob.
+
+## 2026-06-19: Exact-Shape GPT-OSS Router GEMV Specialization
+
+### Change Under Test
+
+- Scope: standalone `MatMulNBits` router projection used before each GPT-OSS
+  `QMoE` node.
+- Exact shape: `M=1`, `N=32`, `K=2880`, `block_size=32`, 4-bit weights, no
+  zero points.
+- Added CUDA provider kernel: `MatMulFloatInt4RouterKernel<T>`.
+- Dispatch: `TryMatMul4Bits` selects the specialized kernel only for the exact
+  shape above. For clean A/B measurement, set
+  `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION=1` to force the generic
+  `MatMulFloatInt4Kernel` route.
+- Motivation: avoiding 32 router logits in global memory is small. The more
+  direct win is reducing overhead in the special `N=32`, `K=2880` int4 router
+  GEMV itself.
+
+### Build and Sync
+
+```bash
+cd ~/onnxruntime
+git diff --check
+cmake --build build/cu130/Release --target onnxruntime_providers_cuda --parallel $(nproc)
+cp build/cu130/Release/libonnxruntime_providers_cuda.so \
+  build/cu130/Release/onnxruntime/capi/libonnxruntime_providers_cuda.so
+cp build/cu130/Release/libonnxruntime_providers_cuda.so \
+  .venv_cu130/lib/python3.14/site-packages/onnxruntime/capi/libonnxruntime_providers_cuda.so
+```
+
+### Nsight Route Check
+
+Profile command:
+
+```bash
+cd ~/onnxruntime
+PYTHONPATH=~/onnxruntime/build/cu130/Release \
+MODEL=models/gpt-oss-20b/variants/cuda_int4_int4_qmoe_rtn_matmul_only \
+GPU=0 PROMPT_LEN=512 GEN_LEN=8 REPS=1 WARMUP=0 CUDA_GRAPH=0 XQA=1 SYNC_LIB=0 \
+ORT_FORCE_DETERMINISTIC_MOE=1 \
+~/cuda13.0/bin/nsys profile --trace=cuda,nvtx --sample=none --cpuctxsw=none \
+  --force-overwrite=true --export=sqlite -o /tmp/gptoss_routergemv_special_cg0 \
+  bash scripts/h200_18/bench_gpt_oss_ort_decode.sh
+```
+
+Nsight artifacts:
+
+- `/tmp/gptoss_routergemv_special_cg0.nsys-rep`
+- `/tmp/gptoss_routergemv_special_cg0.sqlite`
+- `/tmp/gptoss_routergemv_special_stats_cuda_gpu_kern_sum.csv`
+
+Kernel summary rows from the no-CUDA-graph profile:
+
+| Kernel | Total ns | Instances | Avg ns |
+|--------|---------:|----------:|-------:|
+| generic `MatMulFloatInt4Kernel<__half, 32, false>` | 3318180 | 343 | 9674.0 |
+| specialized `MatMulFloatInt4RouterKernel<__half>` | 655863 | 168 | 3903.9 |
+| `SoftmaxTopKWarpBitonicKernel<__half, 8>` | 439868 | 192 | 2291.0 |
+
+The `168` specialized router calls correspond to decode router projections in
+the measured `GEN_LEN=8` no-CUDA-graph run. The generic int4 GEMV row remains for
+other `MatMulNBits` projections.
+
+### Model-Level Decode Benchmark With CUDA Graph
+
+Both comparisons used the same rebuilt provider, CUDA graph enabled, XQA enabled,
+and deterministic MoE tactic selection:
+
+```bash
+PYTHONPATH=~/onnxruntime/build/cu130/Release \
+MODEL=models/gpt-oss-20b/variants/cuda_int4_int4_qmoe_rtn_matmul_only \
+GPU=0 PROMPT_LEN=512 GEN_LEN=128 REPS=10 WARMUP=3 CUDA_GRAPH=1 XQA=1 SYNC_LIB=0 \
+ORT_FORCE_DETERMINISTIC_MOE=1 \
+bash scripts/h200_18/bench_gpt_oss_ort_decode.sh
+```
+
+The disabled runs additionally set
+`ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION=1`.
+
+| Run order | Mode | Decode latency ms/token | Decode throughput tok/s | Output CSV |
+|-----------|------|-------------------------:|-------------------------:|------------|
+| off then on | disabled | 2.870915 | 348.321025 | `~/ort_gptoss_routergemv_special_off.csv` |
+| off then on | enabled | 2.819178 | 354.713290 | `~/ort_gptoss_routergemv_special_on.csv` |
+| on then off | enabled | 2.824963 | 353.986941 | `~/ort_gptoss_routergemv_special_on_2.csv` |
+| on then off | disabled | 2.870436 | 348.379097 | `~/ort_gptoss_routergemv_special_off_2.csv` |
+
+### Decision
+
+- Keep this as the current positive router experiment. The two CUDA-graph A/B
+  pairs show about `+1.6%` to `+1.8%` model-level decode throughput.
+- This is more useful than the earlier node-only router graph fusion because it
+  reduces actual router GEMV kernel time and is exercised by the active GenAI
+  benchmark through provider dispatch.
+- The specialization is deliberately exact-shape gated. Broader routing should
+  wait for more model shapes and correctness coverage.
+- The earlier fused-router QMoE graph rewrite remains a separate prototype. Its
+  main value is future launch reduction if GEMV, bias, softmax, and top-k are
+  fused into one kernel; avoiding only the 32-float logits write is not expected
+  to be the dominant win.
+
+### Quality Follow-Up
+
+- The dispatch logic now uses named GPT-OSS router shape constants and a helper
+  predicate instead of repeating raw `M/N/K/block_size` literals at the launch
+  site.
+- Added C++ CUDA coverage:
+  `MatMulNBits.Fp16_Int4_GptOssRouterShapeNoZeroPoint`. The test runs the exact
+  `M=1`, `N=32`, `K=2880`, `block_size=32`, no-zero-point FP16 shape with the
+  specialization enabled and then with
+  `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION=1` to cover the generic fallback.
+
+Validation command:
+
+```bash
+cd ~/onnxruntime/build/cu130/Release
+./onnxruntime_provider_test --gtest_filter='MatMulNBits.Fp16_Int4_GptOssRouterShapeNoZeroPoint'
+```
+
+Result: `1 test passed`.
+
+## 2026-06-19: Router Bias Fusion Into Exact-Shape GEMV
+
+### Change Under Test
+
+- Scope: GPT-OSS router chain `MatMulNBits(K=2880, N=32, bits=4, block_size=32)`
+  followed by `Add([32] bias)` before `QMoE`.
+- Reuses the existing `MatMulNBitsFusion` graph transformer to rewrite
+  `MatMulNBits + Add -> MatMulNBits` with bias input slot 5.
+- CPU behavior remains unchanged. CUDA fusion is gated to the exact GPT-OSS
+  router shape with no zero-points or `g_idx` input.
+- The exact router GEMV kernel now accepts an optional bias pointer and adds the
+  `[32]` bias before storing the router logits.
+- The only runtime control is `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION=1`,
+  which disables the exact router GEMV specialization; the fused bias then falls
+  back to a separate bias-add in the generic path. The graph-level
+  `MatMulNBits + Add` rewrite itself is performed by the `MatMulNBitsFusion`
+  transformer and has no dedicated opt-out env var.
+
+### Graph Validation
+
+Optimized model export used the rebuilt Python runtime directly from
+`build/cu130/Release`:
+
+```bash
+cd /tmp
+source ~/onnxruntime/.venv_cu130/bin/activate
+PYTHONPATH=~/onnxruntime/build/cu130/Release \
+LD_LIBRARY_PATH=~/onnxruntime/build/cu130/Release:~/onnxruntime/build/cu130/Release/onnxruntime/capi:$LD_LIBRARY_PATH \
+python <export-and-count-script>
+```
+
+| Mode | Total `Add` nodes | Router `MatMulNBits` nodes with bias |
+|------|------------------:|--------------------------------------:|
+| enabled | 48 | 24 |
+| router bias fusion disabled | 72 | 0 |
+
+This confirms all 24 real GPT-OSS router bias Adds are fused and disabling the
+fusion restores the unfused graph.
+
+### Model-Level Decode Benchmark With CUDA Graph
+
+Both runs used the rebuilt runtime, CUDA graph enabled, XQA enabled, and
+deterministic MoE tactic selection:
+
+```bash
+PYTHONPATH=~/onnxruntime/build/cu130/Release \
+LD_LIBRARY_PATH=~/onnxruntime/build/cu130/Release:~/onnxruntime/build/cu130/Release/onnxruntime/capi:$LD_LIBRARY_PATH \
+MODEL=models/gpt-oss-20b/variants/cuda_int4_int4_qmoe_rtn_matmul_only \
+GPU=0 PROMPT_LEN=512 GEN_LEN=128 REPS=10 WARMUP=3 CUDA_GRAPH=1 XQA=1 SYNC_LIB=0 \
+ORT_FORCE_DETERMINISTIC_MOE=1 \
+bash scripts/h200_18/bench_gpt_oss_ort_decode.sh
+```
+
+| Mode | Decode latency ms/token | Decode throughput tok/s |
+|------|-------------------------:|-------------------------:|
+| enabled | 2.822998 | 354.233302 |
+| router bias fusion disabled | 2.829066 | 353.473500 |
+
+### Decision
+
+- Keep the change. The gain is intentionally small, about `+0.2%` in this
+  CUDA-graph run, but the implementation is exact-shape gated, tested, and
+  removes 24 router Add kernels from the optimized graph.
+- This result also bounds the value of router-only graph fusion: after the exact
+  GEMV specialization, the remaining separate router bias Add is measurable but
+  much smaller than the GEMV and softmax/top-k work.
+- The next router/QMoE task should fuse more of the router tail, especially
+  GEMV plus softmax/top-k, so the 32 logits can remain in registers or shared
+  memory and avoid a separate top-k launch.
+
+### Validation
+
+```bash
+cmake --build ~/onnxruntime/build/cu130/Release \
+  --target onnxruntime_test_all onnxruntime_pybind11_state onnxruntime_provider_test \
+  --parallel $(nproc)
+
+cd ~/onnxruntime/build/cu130/Release
+./onnxruntime_test_all \
+  --gtest_filter='GraphTransformationTests.MatMulNBitsBiasFusion:GraphTransformationTests.MatMulNBitsBiasFusionDoesNotFuseUnsupportedCudaShape:GraphTransformationTests.MatMulNBitsBiasFusionCanDisableCudaRouterFusion'
+./onnxruntime_provider_test \
+  --gtest_filter='MatMulNBits.Fp16_Int4_GptOssRouterShapeNoZeroPoint'
+```
+
+Result: graph transformer tests `3 passed`; provider test `1 passed`.

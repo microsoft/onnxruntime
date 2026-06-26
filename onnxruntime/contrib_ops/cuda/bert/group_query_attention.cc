@@ -1,9 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <cstdint>
-#include <vector>
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <limits>
+#include <vector>
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
@@ -99,12 +101,20 @@ GroupQueryAttention<T, U>::GroupQueryAttention(const OpKernelInfo& info)
   kv_num_heads_ = static_cast<int>(kv_num_heads);
   is_past_bsnh_ = false;
   is_unidirectional_ = true;
-  local_window_size_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1));
+  const int64_t local_window_size_attr = info.GetAttrOrDefault<int64_t>("local_window_size", -1);
+  // Validate before narrowing to int so an out-of-range attribute cannot wrap to a valid-looking
+  // small window (e.g. 2^32 + 128) and silently run a different window than the model specifies.
+  ORT_ENFORCE(local_window_size_attr == -1 || (local_window_size_attr > 0 && local_window_size_attr <= std::numeric_limits<int>::max()),
+              "local_window_size must be -1 or greater than 0 (and not exceed INT_MAX).");
+  local_window_size_ = static_cast<int>(local_window_size_attr);
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
   use_smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
+  qk_norm_epsilon_ = info.GetAttrOrDefault<float>("qk_norm_epsilon", 1e-6f);
+  ORT_ENFORCE(std::isfinite(qk_norm_epsilon_) && qk_norm_epsilon_ > 0.0f,
+              "GroupQueryAttention (CUDA): qk_norm_epsilon must be finite and positive.");
 
   k_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("k_quant_type", "NONE"));
   v_quant_type_ = StringToKVQuantizationType(info.GetAttrOrDefault<std::string>("v_quant_type", "NONE"));
@@ -222,16 +232,17 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   const Tensor* k_scale = context->Input<Tensor>(12);
   const Tensor* v_scale = context->Input<Tensor>(13);
 
-  // q_norm_weight (input 14) / k_norm_weight (input 15) are populated by the WebGPU-only
-  // GroupQueryAttentionPreNormFusion optimizer pass. The CUDA kernel does not implement
-  // the fused per-head Q/K RMS normalization prologue, so reject the node if either input
-  // is present rather than silently dropping the normalization.
-  if ((context->InputCount() > 14 && context->Input<Tensor>(14) != nullptr) ||
-      (context->InputCount() > 15 && context->Input<Tensor>(15) != nullptr)) {
+  // q_norm_weight (input 14) / k_norm_weight (input 15) carry the per-head Q/K RMSNorm (QK-Norm)
+  // prologue weights, each of shape (head_size,) and shared across heads. They are populated by the
+  // GroupQueryAttentionPreNormFusion optimizer pass for Qwen3 / Gemma 2-3 / OLMo2 / SmolLM3 style
+  // models. Both must be present together; shape validation and wiring happen after CheckInputs,
+  // where head_size is known.
+  const Tensor* q_norm_weight = (context->InputCount() > 14) ? context->Input<Tensor>(14) : nullptr;
+  const Tensor* k_norm_weight = (context->InputCount() > 15) ? context->Input<Tensor>(15) : nullptr;
+  if ((q_norm_weight != nullptr) != (k_norm_weight != nullptr)) {
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, INVALID_ARGUMENT,
-        "GroupQueryAttention (CUDA): q_norm_weight / k_norm_weight inputs are not supported. "
-        "The per-head Q/K RMS normalization prologue is implemented only on the WebGPU EP.");
+        "GroupQueryAttention (CUDA): q_norm_weight and k_norm_weight must be provided together.");
   }
 
   if (k_quant_type_ != KVQuantizationType::NONE) {
@@ -299,6 +310,27 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                                                attention_bias,
                                                                                head_sink,
                                                                                parameters));
+
+  // Validate and enable the per-head Q/K RMSNorm (QK-Norm) prologue (inputs 14/15). Both weights
+  // must be 1D tensors of shape (head_size) with element type T (shared across all heads).
+  if (q_norm_weight != nullptr) {
+    const auto& q_norm_shape = q_norm_weight->Shape();
+    const auto& k_norm_shape = k_norm_weight->Shape();
+    if (q_norm_shape.NumDimensions() != 1 || q_norm_shape[0] != parameters.head_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "q_norm_weight must be a 1D tensor of shape (head_size=", parameters.head_size, ")");
+    }
+    if (k_norm_shape.NumDimensions() != 1 || k_norm_shape[0] != parameters.head_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "k_norm_weight must be a 1D tensor of shape (head_size=", parameters.head_size, ")");
+    }
+    if (!q_norm_weight->IsDataType<T>() || !k_norm_weight->IsDataType<T>()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "q_norm_weight/k_norm_weight type must match GroupQueryAttention input type T.");
+    }
+    parameters.use_qk_norm = true;
+  }
+  parameters.qk_norm_epsilon = qk_norm_epsilon_;
 
   parameters.local_window_size = local_window_size_;
   parameters.is_unidirectional = is_unidirectional_;
@@ -388,7 +420,13 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // 4. Past and Present KV cache share the same buffer (required for XQA specific memory access).
   // 5. No Softcap (XQA doesn't support softcap).
   // 6. Standard Softmax, or smooth softmax represented by a head_sink tensor.
-  // 7. No local window attention (global attention only).
+  // 7. Local window (sliding window) attention is supported on both the non-quantized and the
+  //    quantized (INT8/FP8) XQA paths (local_window_size == -1 means global attention).
+  // QK-Norm can use XQA for the non-quantized KV-cache path: ExtremeDecoding runs the same
+  // UnpackRoPEAppend preprocess before XQA, so Q/K can be normalized before the XQA kernel consumes
+  // Q and the appended cache. Keep quantized QK-Norm off the XQA route until scale correctness is
+  // validated for normalized K before quantized-cache append.
+  const bool xqa_qk_norm_ok = !parameters.use_qk_norm || !is_inputs_quantized;
   const bool use_xqa_attention_sinks = head_sink != nullptr && !is_inputs_quantized;
   const bool is_xqa_smooth_softmax_supported = !parameters.use_smooth_softmax || use_xqa_attention_sinks;
   // XQA is enabled when enable_xqa_=true; ineligible shapes/group sizes fall back via data.use_xqa below.
@@ -399,10 +437,12 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
       parameters.kv_sequence_length > 0 &&  // Shared KV (kv_seq=0) has no new K/V to append
       parameters.past_present_share_buffer &&
       parameters.softcap == 0.0f &&
-      is_xqa_smooth_softmax_supported &&
-      parameters.local_window_size == -1) {
+      xqa_qk_norm_ok &&
+      is_xqa_smooth_softmax_supported) {
     int group_size = parameters.num_heads / parameters.kv_num_heads;
 
+    // Sliding window (local_window_size > 0) is wired through to the quantized XQA kernels as well,
+    // so the INT8/FP8 variants no longer need to be restricted to global attention.
     bool is_int8_quantized_supported = is_int8 &&
                                        (k_quant_type_ == KVQuantizationType::PER_TENSOR &&
                                         v_quant_type_ == KVQuantizationType::PER_TENSOR &&
@@ -518,7 +558,10 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                                  parameters.kv_num_heads);
 
   data.use_flash_attention = use_flash_attention;
-  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt && parameters.kv_sequence_length > 0 && parameters.past_present_share_buffer && !is_inputs_quantized;
+  // The fast-decode path lets the flash kernel perform RoPE and KV-append internally, bypassing
+  // PrepareQKV (and therefore the fused QK-Norm prologue). Disable it when q/k norm weights are
+  // present so the regular FlashAttention path (which normalizes via PrepareQKV) is used instead.
+  data.use_flash_attention_fast_decode = use_flash_attention && !disable_flash_decode_ && !parameters.is_first_prompt && parameters.kv_sequence_length > 0 && parameters.past_present_share_buffer && !is_inputs_quantized && !parameters.use_qk_norm;
 
   if (use_flash_attention) {
     // Allocate Flash specific buffers (Softmax LSE, Accum)
@@ -699,6 +742,12 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
   if (head_sink != nullptr) {
     data.head_sink = reinterpret_cast<const CudaT*>(head_sink->Data<T>());
+  }
+
+  if (parameters.use_qk_norm) {
+    data.q_norm_weight = reinterpret_cast<const CudaT*>(q_norm_weight->Data<T>());
+    data.k_norm_weight = reinterpret_cast<const CudaT*>(k_norm_weight->Data<T>());
+    data.qk_norm_epsilon = qk_norm_epsilon_;
   }
 
 #if DUMP_TENSOR_LEVEL > 0
