@@ -72,5 +72,38 @@ TEST(TelemetryRedactionTest, TrailingPunctuationAfterPath) {
             "missing foo.onnx, retry");
 }
 
+TEST(TelemetryRedactionTest, HomeDirectoryReducedToTilde) {
+  // A path that ends at the user's home directory must not emit the bare username.
+  EXPECT_EQ(RedactAbsolutePathsForTelemetry("/home/alice"), "~");
+  EXPECT_EQ(RedactAbsolutePathsForTelemetry("/Users/alice"), "~");
+  EXPECT_EQ(RedactAbsolutePathsForTelemetry("C:\\Users\\bob"), "~");
+  EXPECT_EQ(RedactAbsolutePathsForTelemetry("could not access /home/alice"), "could not access ~");
+  EXPECT_EQ(RedactAbsolutePathsForTelemetry("/root"), "~");
+  EXPECT_EQ(RedactAbsolutePathsForTelemetry("C:\\Users\\bob").find("bob"), std::string::npos);
+}
+
+TEST(TelemetryRedactionTest, PathsWithSpacesAreFullyReduced) {
+  // The username and directory layout are dropped even when the path contains spaces.
+  EXPECT_EQ(RedactAbsolutePathsForTelemetry("Load C:\\Users\\First Last\\model.onnx failed"),
+            "Load model.onnx failed");
+  EXPECT_EQ(RedactAbsolutePathsForTelemetry("C:\\Program Files\\foo\\bar.dll"), "bar.dll");
+  EXPECT_EQ(RedactAbsolutePathsForTelemetry("/Users/bob/Library/Application Support/x/m.onnx"),
+            "m.onnx");
+  EXPECT_EQ(RedactAbsolutePathsForTelemetry("Load C:\\Users\\First Last\\model.onnx failed").find("First"),
+            std::string::npos);
+}
+
+TEST(TelemetryRedactionTest, PathsGluedToPunctuation) {
+  EXPECT_EQ(RedactAbsolutePathsForTelemetry("input:/home/alice/secret/m.onnx"), "input:m.onnx");
+  EXPECT_EQ(RedactAbsolutePathsForTelemetry("paths /a/b/c.txt,/x/y/z.txt done"),
+            "paths c.txt,z.txt done");
+}
+
+TEST(TelemetryRedactionTest, FileUriRedactedButHttpPreserved) {
+  EXPECT_EQ(RedactAbsolutePathsForTelemetry("file:///home/alice/secret/model.onnx"), "file:model.onnx");
+  EXPECT_EQ(RedactAbsolutePathsForTelemetry("see https://example.com/a/b for x"),
+            "see https://example.com/a/b for x");
+}
+
 }  // namespace test
 }  // namespace onnxruntime
