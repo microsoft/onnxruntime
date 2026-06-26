@@ -446,12 +446,26 @@ stages:
       displayName: "Build iOS dynamic framework"
 
     - script: |
+        python tools/ci_build/github/apple/build_apple_framework.py \
+          --build_dir "$(Build.BinariesDirectory)/ios_framework_static" \
+          tools/ci_build/github/apple/test_ios_framework_build_settings.json
+      displayName: "Build iOS static framework"
+
+    - script: |
         python tools/ci_build/github/apple/test_apple_packages.py \
           --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
           --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
           --variant Full \
           --skip_macos_test
-      displayName: "Test pod with iOS framework"
+      displayName: "Test pod with iOS dynamic framework"
+
+    - script: |
+        python tools/ci_build/github/apple/test_apple_packages.py \
+          --framework_info_file "$(Build.BinariesDirectory)/ios_framework_static/xcframework_info.json" \
+          --c_framework_dir "$(Build.BinariesDirectory)/ios_framework_static/framework_out" \
+          --variant Full \
+          --skip_macos_test
+      displayName: "Test pod with iOS static framework"
 
 - stage: IosMinimalTrainingBuild
   dependsOn: []
