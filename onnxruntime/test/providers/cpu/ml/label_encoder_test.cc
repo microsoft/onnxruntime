@@ -4,7 +4,7 @@
 #include "gtest/gtest.h"
 #include "core/framework/tensorprotoutils.h"
 #include "test/providers/provider_test_utils.h"
-#include <fstream>
+#include "test/util/include/file_util.h"
 
 namespace onnxruntime {
 namespace test {
@@ -762,17 +762,16 @@ TEST(LabelEncoder, EmptyInputOpset4) {
 // In no-exceptions builds, ORT_ENFORCE calls abort() so these tests cannot run.
 #if !defined(ORT_NO_EXCEPTIONS)
 
-// RAII helper that creates a dummy binary file on construction and removes it on destruction.
-struct ScopedExternalDataFile {
-  std::string path;
-  ScopedExternalDataFile(const std::string& filename, size_t num_bytes) : path(filename) {
-    std::ofstream ofs(path, std::ios::binary);
-    std::vector<char> data(num_bytes, 0);
-    ofs.write(data.data(), static_cast<std::streamsize>(num_bytes));
-  }
-  ~ScopedExternalDataFile() { std::remove(path.c_str()); }
-  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ScopedExternalDataFile);
-};
+// RAII helper that creates a unique dummy binary file and removes it on destruction.
+static std::pair<std::string, ScopedFileDeleter> CreateExternalDataFile(size_t num_bytes) {
+  PathString filename(ORT_TSTR("ext_data_XXXXXX"));
+  FILE* fp = nullptr;
+  CreateTestFile(fp, filename);
+  std::vector<char> data(num_bytes, 0);
+  fwrite(data.data(), 1, num_bytes, fp);
+  fclose(fp);
+  return {ToUTF8String(filename), ScopedFileDeleter(filename)};
+}
 
 // Helper: create a TensorProto that references external data in the given file.
 static ONNX_NAMESPACE::TensorProto MakeExternalInt64TensorProto(const std::string& name,
@@ -796,10 +795,10 @@ static ONNX_NAMESPACE::TensorProto MakeExternalInt64TensorProto(const std::strin
 }
 
 TEST(LabelEncoder, RejectsExternalDataInKeysTensorOpset4) {
-  ScopedExternalDataFile ext_file("label_encoder_test_ext_keys.bin", 16);  // 2 x int64
+  auto [ext_path, ext_deleter] = CreateExternalDataFile(16);  // 2 x int64
 
   OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
-  test.AddAttribute("keys_tensor", MakeExternalInt64TensorProto("keys_tensor", ext_file.path, 2));
+  test.AddAttribute("keys_tensor", MakeExternalInt64TensorProto("keys_tensor", ext_path, 2));
 
   // Normal values_tensor
   ONNX_NAMESPACE::TensorProto values_proto;
@@ -826,14 +825,14 @@ TEST(LabelEncoder, RejectsExternalDataInKeysTensorOpset4) {
 }
 
 TEST(LabelEncoder, RejectsExternalDataInDefaultTensorOpset4) {
-  ScopedExternalDataFile ext_file("label_encoder_test_ext_default.bin", 8);  // 1 x int64
+  auto [ext_path, ext_deleter] = CreateExternalDataFile(8);  // 1 x int64
 
   OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
 
   test.AddAttribute("keys_int64s", std::vector<int64_t>{1, 2});
   test.AddAttribute("values_int64s", std::vector<int64_t>{10, 20});
 
-  test.AddAttribute("default_tensor", MakeExternalInt64TensorProto("default_tensor", ext_file.path, 1));
+  test.AddAttribute("default_tensor", MakeExternalInt64TensorProto("default_tensor", ext_path, 1));
 
   test.AddInput<int64_t>("X", {1, 2}, {1, 3});
   test.AddOutput<int64_t>("Y", {1, 2}, {10, 0});
@@ -844,7 +843,7 @@ TEST(LabelEncoder, RejectsExternalDataInDefaultTensorOpset4) {
 }
 
 TEST(LabelEncoder, RejectsExternalDataInValuesTensorOpset4) {
-  ScopedExternalDataFile ext_file("label_encoder_test_ext_values.bin", 16);  // 2 x int64
+  auto [ext_path, ext_deleter] = CreateExternalDataFile(16);  // 2 x int64
 
   OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
 
@@ -857,7 +856,7 @@ TEST(LabelEncoder, RejectsExternalDataInValuesTensorOpset4) {
   keys_proto.add_int64_data(2);
   test.AddAttribute("keys_tensor", keys_proto);
 
-  test.AddAttribute("values_tensor", MakeExternalInt64TensorProto("values_tensor", ext_file.path, 2));
+  test.AddAttribute("values_tensor", MakeExternalInt64TensorProto("values_tensor", ext_path, 2));
 
   ONNX_NAMESPACE::TensorProto default_proto;
   default_proto.set_name("default_tensor");

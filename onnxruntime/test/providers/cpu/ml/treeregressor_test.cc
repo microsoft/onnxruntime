@@ -3,7 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
-#include <fstream>
+#include "test/util/include/file_util.h"
 
 namespace onnxruntime {
 namespace test {
@@ -1087,16 +1087,15 @@ TEST(MLOpTest, TreeEnsembleRegressorBaseValuesWrongSize) {
 #if !defined(ORT_NO_EXCEPTIONS)
 
 TEST(MLOpTest, TreeEnsembleRegressorRejectsExternalDataInTensorAttribute) {
-  // RAII helper: creates a dummy binary file on construction, removes it on destruction.
-  struct ScopedFile {
-    std::string path;
-    ScopedFile(const std::string& p, size_t n) : path(p) {
-      std::ofstream ofs(path, std::ios::binary);
-      std::vector<char> data(n, 0);
-      ofs.write(data.data(), static_cast<std::streamsize>(n));
-    }
-    ~ScopedFile() { std::remove(path.c_str()); }
-  } ext_file("tree_regressor_test_ext_values.bin", 12);  // 3 x float
+  // Create a unique temp file so the ONNX checker passes file-existence validation.
+  PathString filename(ORT_TSTR("ext_data_XXXXXX"));
+  FILE* fp = nullptr;
+  CreateTestFile(fp, filename);
+  std::vector<char> data(12, 0);  // 3 x float
+  fwrite(data.data(), 1, data.size(), fp);
+  fclose(fp);
+  ScopedFileDeleter ext_deleter(filename);
+  std::string ext_path = ToUTF8String(filename);
 
   OpTester test("TreeEnsembleRegressor", 3, onnxruntime::kMLDomain);
 
@@ -1128,7 +1127,7 @@ TEST(MLOpTest, TreeEnsembleRegressorRejectsExternalDataInTensorAttribute) {
   values_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
   auto* loc = values_proto.add_external_data();
   loc->set_key("location");
-  loc->set_value(ext_file.path);
+  loc->set_value(ext_path);
   auto* offset = values_proto.add_external_data();
   offset->set_key("offset");
   offset->set_value("0");
