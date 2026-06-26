@@ -21,6 +21,7 @@
 #include "test/unittest_util/graph_transform_test_builder.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/scoped_env_vars.h"
+#include "test/contrib_ops/matmul_nbits_prepack_sharing_test_util.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/ort_env.h"
 #include "core/util/qmath.h"
@@ -50,6 +51,10 @@ struct TestOptions8Bits {
   bool zp_is_typed{false};  // true: zero_points use same type as scales (T); false: uint8
   bool has_g_idx{false};
   bool has_bias{false};
+
+  // When set, RunTest8Bits validates cross-session sharing of the pre-packed weights instead of
+  // doing a single run. The model is run in two CPU sessions that use the same container.
+  std::optional<PrepackSharingMode> prepack_sharing_mode{};
 
   std::optional<float> output_abs_error{};
   std::optional<float> output_rel_error{};
@@ -219,6 +224,14 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
 
   if (opts.output_rel_error.has_value()) {
     test.SetOutputRelErr("Y", *opts.output_rel_error);
+  }
+
+  if (opts.prepack_sharing_mode.has_value()) {
+    // Pre-packed weight sharing is a CPU-EP-only feature; the helper runs the model on the CPU EP
+    // in two sessions and validates the sharing counters.
+    CheckSharedPrepackedWeights(test, *opts.prepack_sharing_mode,
+                                {q_cols, k_blocks, q_rows / k_blocks}, input1_vals);
+    return;
   }
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
@@ -670,6 +683,56 @@ TEST(MatMulNBits, BFloat16_Int8_Chunked_BFloat16ZeroPoint) {
   }
 }
 #endif
+
+#if !defined(USE_CUDA) && !defined(USE_WEBGPU)
+#ifndef ENABLE_TRAINING
+// Pre-packing (and therefore cross-session sharing of pre-packed weights) is disabled in a full
+// training build and is only implemented for the CPU EP, so these tests are CPU-only.
+
+namespace {
+// Builds a representative 8-bit MatMulNBits TestOptions for the pre-packed weight sharing tests.
+// accuracy_level 4 selects the int8 compute type (SQNBIT_CompInt8 / HQNBIT_CompInt8), which is the
+// 8-bit path that pre-packs the quantized B weight.
+TestOptions8Bits MakeSharingTestOptions8Bits(int64_t block_size, bool has_zero_point, bool has_bias,
+                                             PrepackSharingMode mode) {
+  TestOptions8Bits opts{};
+  opts.M = 8;
+  opts.N = 32;
+  opts.K = 256;
+  opts.block_size = block_size;
+  opts.accuracy_level = 4;
+  opts.has_zero_point = has_zero_point;
+  opts.has_bias = has_bias;
+  opts.prepack_sharing_mode = mode;
+  opts.output_abs_error = 0.1f;
+  opts.output_rel_error = 0.02f;
+  return opts;
+}
+}  // namespace
+
+// Legacy sharing path for 8-bit weights: B is registered as a shared initializer via
+// SessionOptions::AddInitializer.
+TEST(MatMulNBits, SharedPrepackedWeights_8b_AddInitializer) {
+  for (bool has_zero_point : {false, true}) {
+    for (bool has_bias : {false, true}) {
+      RunTest8Bits<float>(MakeSharingTestOptions8Bits(32, has_zero_point, has_bias,
+                                                      PrepackSharingMode::kAddInitializer));
+      RunTest8Bits<MLFloat16>(MakeSharingTestOptions8Bits(32, has_zero_point, has_bias,
+                                                          PrepackSharingMode::kAddInitializer));
+    }
+  }
+}
+
+// Negative control for 8-bit weights: with the shared container present but neither opt-in mechanism
+// enabled, no pre-packed weights are shared across sessions.
+TEST(MatMulNBits, SharedPrepackedWeights_8b_NotSharedWithoutOptIn) {
+  RunTest8Bits<float>(MakeSharingTestOptions8Bits(32, /*has_zero_point*/ true, /*has_bias*/ true,
+                                                  PrepackSharingMode::kNoSharing));
+  RunTest8Bits<MLFloat16>(MakeSharingTestOptions8Bits(32, /*has_zero_point*/ false, /*has_bias*/ false,
+                                                      PrepackSharingMode::kNoSharing));
+}
+#endif  // !ENABLE_TRAINING
+#endif  // !USE_CUDA && !USE_WEBGPU
 
 }  // namespace test
 }  // namespace onnxruntime
