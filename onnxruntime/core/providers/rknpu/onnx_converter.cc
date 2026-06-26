@@ -129,11 +129,10 @@ static uint32_t ToRknpuDim(int64_t dim, const std::string& name) {
   return static_cast<uint32_t>(dim);
 }
 
-// Allocates a zero-initialized buffer holding `count` elements of `element_size`
-// bytes each, used as an implicit (all-zero) bias when a Conv/Gemm node omits
-// its bias input. SafeInt throws OnnxRuntimeException if `element_size * count`
-// overflows size_t, guarding against a heap buffer overflow from a malicious
-// weight dimension. std::make_unique zero-initializes and owns the buffer.
+// Allocates a zero-initialized bias buffer for `count` elements of `element_size`
+// bytes, used when a Conv/Gemm node omits its bias input. SafeInt provides
+// overflow-checked size arithmetic (throws on size_t overflow); std::make_unique
+// zero-initializes and owns the buffer.
 static std::unique_ptr<uint8_t[]> AllocZeroedBias(size_t element_size, uint32_t count) {
   const size_t num_bytes = SafeInt<size_t>(element_size) * count;
   return std::make_unique<uint8_t[]>(num_bytes);
