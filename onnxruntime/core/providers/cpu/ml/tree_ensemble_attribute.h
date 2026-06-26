@@ -26,6 +26,7 @@ inline bool _isnan_(double x) { return std::isnan(x); }
 inline bool _isnan_(int64_t) { return false; }
 inline bool _isnan_(int32_t) { return false; }
 
+// Target count must be positive, and target ids must be in [0, target_count).
 inline void ValidateTargetIds(gsl::span<const int64_t> target_ids,
                               int64_t target_count,
                               std::string_view target_ids_name,
