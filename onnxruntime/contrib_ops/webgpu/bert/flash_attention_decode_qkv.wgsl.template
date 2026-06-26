@@ -10,6 +10,7 @@
 #param tile_size
 #param tile_size_k_vec
 #param use_indirect_dispatch
+#param use_seqlen_k
 
 #use .getByOffset .setByOffset
 
@@ -34,18 +35,22 @@ var<workgroup> tile_max: array<f32, m_tile>;
 var<workgroup> tile_sum: array<f32, m_tile>;
 
 #if has_attention_bias
-  fn loadAttentionBias(batch_idx: u32, head_idx: u32, q_idx: u32, k_idx: u32, total_seq_length: u32) -> q_element_t
+  fn loadAttentionBias(batch_idx: u32, head_idx: u32, q_idx: u32, k_idx: u32) -> q_element_t
   {
     let bias_batch_idx = select(batch_idx, 0u, batch_idx >= uniforms.attn_bias_dim0);
     let bias_head_idx = select(head_idx, 0u, head_idx >= uniforms.attn_bias_dim1);
-    let offset = bias_batch_idx * uniforms.attn_bias_dim1 * uniforms.new_sequence_length * total_seq_length +
-                 bias_head_idx * uniforms.new_sequence_length * total_seq_length +
-                 q_idx * total_seq_length +
+    // Stride along the last dim of attention_bias matches its actual shape, which may
+    // differ from the per-step total_sequence_length (e.g. graph-capture sets that uniform
+    // to 0, or batches use a global max). The host passes attn_bias_dim3 explicitly.
+    let stride_total_seq = uniforms.attn_bias_dim3;
+    let offset = bias_batch_idx * uniforms.attn_bias_dim1 * uniforms.new_sequence_length * stride_total_seq +
+                 bias_head_idx * uniforms.new_sequence_length * stride_total_seq +
+                 q_idx * stride_total_seq +
                  k_idx;
     return attention_bias[offset];
   }
 #else
-  fn loadAttentionBias(batch_idx: u32, head_idx: u32, q_idx: u32, k_idx: u32, total_seq_length: u32) -> q_element_t
+  fn loadAttentionBias(batch_idx: u32, head_idx: u32, q_idx: u32, k_idx: u32) -> q_element_t
   {
     return q_element_t(0);
   }
@@ -54,12 +59,14 @@ var<workgroup> tile_sum: array<f32, m_tile>;
 $MAIN {
   let local_row = u32(local_idx / tile_size_k_vec);
   let local_col = local_idx % tile_size_k_vec;
+  // total_sequence_length used for workgroup_idx slicing must match the host-side dispatch
+  // grid, i.e. the global maximum across batches. Per-batch total is derived separately below.
   #if use_indirect_dispatch
-  let total_sequence_length = u32(seqlens_k[0]) + 1u;
+  let global_total_sequence_length = u32(total_sequence_length_input[0]);
   #else
-  let total_sequence_length = uniforms.total_sequence_length;
+  let global_total_sequence_length = uniforms.total_sequence_length;
   #endif
-  let num_total_seq_length_tile = (total_sequence_length + tile_size - 1) / tile_size;
+  let num_total_seq_length_tile = (global_total_sequence_length + tile_size - 1) / tile_size;
   let num_q_tiles = (uniforms.new_sequence_length + m_tile - 1) / m_tile;
   // Workgroup layout: [batch_heads, num_q_tiles, num_total_seq_length_tile]
   let total_seq_offset = (workgroup_idx % num_total_seq_length_tile) * tile_size;
@@ -71,8 +78,27 @@ $MAIN {
   if (batch_idx >= uniforms.batch_size) {
     return;
   }
+  // Per-batch total_sequence_length used for K/V bounds, causal mask, and softmax range.
+  #if use_seqlen_k
+  let total_sequence_length = u32(seqlens_k[batch_idx]) + 1u;
+  #else
+  let total_sequence_length = global_total_sequence_length;
+  #endif
   let present_key_offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * uniforms.head_size_vec;
   let present_value_offset = u32(batch_head_idx / uniforms.n_reps) * v_head_size_vec * uniforms.present_sequence_length;
+
+  // If this workgroup's tile lies entirely beyond this batch's per-batch total_sequence_length,
+  // write neutral metadata so VxReduce contributes nothing for these tiles, then exit early.
+  if (total_seq_offset >= total_sequence_length) {
+    if (local_idx == 0u) {
+      for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
+        let q_idx_local = q_base + m;
+        let meta_offset = (batch_head_idx * uniforms.new_sequence_length + q_idx_local) * uniforms.num_present_sequence_length_tile + workgroup_idx % num_total_seq_length_tile;
+        metadata.setByOffset(meta_offset, metadata_value_t(-3.4028234663852886e+38f, 0.0f));
+      }
+    }
+    return;
+  }
 
   // ============================================================
   // Phase 1: QK^T computation
@@ -109,6 +135,12 @@ $MAIN {
   }
 
   // Reduce inner_qk_values to tile_qk, apply attention bias and causal mask
+#if is_unidirectional
+  // Right-padded batches with prompt shorter than new_sequence_length would underflow u32; clamp to 0.
+  let past_sequence_length = select(total_sequence_length - uniforms.new_sequence_length,
+                                    0u,
+                                    total_sequence_length <= uniforms.new_sequence_length);
+#endif
   for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
     let q_idx = q_base + m;
     if (local_idx < tile_size && total_seq_offset + local_idx < total_sequence_length) {
@@ -117,9 +149,9 @@ $MAIN {
         sum += inner_qk_values[m][local_idx][i];
       }
 
-      sum = sum + loadAttentionBias(batch_idx, head_idx, q_idx, total_seq_offset + local_idx, total_sequence_length);
+      sum = sum + loadAttentionBias(batch_idx, head_idx, q_idx, total_seq_offset + local_idx);
 #if is_unidirectional
-      if (total_seq_offset + local_idx > total_sequence_length - uniforms.new_sequence_length + q_idx) {
+      if (total_seq_offset + local_idx > past_sequence_length + q_idx) {
         sum = q_element_t(-65504.0f);
       }
 #endif
