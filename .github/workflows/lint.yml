@@ -38,7 +38,7 @@ jobs:
   lint-python-format:
     # Required workflow
     name: Python format
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: ubuntu-22.04
     permissions:
       contents: read
       security-events: write
@@ -126,7 +126,7 @@ jobs:
 
   lint-js:
     name: Lint JavaScript
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

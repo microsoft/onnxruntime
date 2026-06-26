@@ -16,6 +16,7 @@ env:
 
 jobs:
   Windows-CUDA-12:
+    if: github.event_name != 'pull_request'
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     steps:
       - uses: actions/checkout@v4
