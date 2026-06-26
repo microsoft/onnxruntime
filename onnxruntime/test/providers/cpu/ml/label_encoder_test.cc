@@ -758,9 +758,10 @@ TEST(LabelEncoder, EmptyInputOpset4) {
   test.Run();
 }
 
-// External data in tensor attributes is not supported. The kernel must reject such attributes
-// during construction. These tests verify the rejection.
-// In no-exceptions builds, ORT_ENFORCE calls abort() so these tests cannot run.
+// External data in tensor attributes: file-based external data is validated and inlined
+// during session initialization. In-memory references are rejected by the ONNX checker
+// during Graph::Resolve() (it validates that external data locations are regular files).
+// In no-exceptions builds, the ONNX checker's fail_check calls abort() so these tests cannot run.
 #if !defined(ORT_NO_EXCEPTIONS)
 
 // RAII helper that creates a unique dummy binary file and removes it on destruction.
@@ -768,8 +769,9 @@ static std::pair<std::string, ScopedFileDeleter> CreateExternalDataFile(const vo
   PathString filename(ORT_TSTR("ext_data_XXXXXX"));
   FILE* fp = nullptr;
   CreateTestFile(fp, filename);
-  fwrite(data, 1, num_bytes, fp);
-  fclose(fp);
+  size_t written = fwrite(data, 1, num_bytes, fp);
+  ORT_ENFORCE(written == num_bytes, "Failed to write external data file");
+  ORT_ENFORCE(fclose(fp) == 0, "Failed to close external data file");
   return {ToUTF8String(filename), ScopedFileDeleter(filename)};
 }
 
@@ -866,7 +868,9 @@ TEST(LabelEncoder, RejectsInMemoryExternalDataInKeysTensorOpset4) {
   test.AddInput<int64_t>("X", {1, 2}, {1, 2});
   test.AddOutput<int64_t>("Y", {1, 2}, {10, 20});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "in-memory external data reference");
+  // Error originates from the ONNX checker (checker::check_node) during Graph::Resolve().
+  // There is no way to disable this check.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "is not regular file");
 }
 
 #endif  // !defined(ORT_NO_EXCEPTIONS)

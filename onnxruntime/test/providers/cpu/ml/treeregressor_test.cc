@@ -1083,11 +1083,9 @@ TEST(MLOpTest, TreeEnsembleRegressorBaseValuesWrongSize) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "base_values should have 0 or 2 values.");
 }
 
-// In-memory external data references in node attributes are rejected during initialization.
-// The ONNX checker (checker::check_node) runs during Graph::Resolve() before our
-// inlining code and validates that external data locations are regular files.
-// There is no way to disable this check. The error message comes from the ONNX checker.
-// In no-exceptions builds, ORT_RETURN_IF calls abort().
+// In-memory external data references in node attributes are rejected by the ONNX checker
+// during Graph::Resolve() (it validates that external data locations are regular files).
+// In no-exceptions builds, the ONNX checker's fail_check calls abort() so these tests cannot run.
 #if !defined(ORT_NO_EXCEPTIONS)
 
 TEST(MLOpTest, TreeEnsembleRegressorRejectsInMemoryExternalDataInTensorAttribute) {
@@ -1134,6 +1132,8 @@ TEST(MLOpTest, TreeEnsembleRegressorRejectsInMemoryExternalDataInTensorAttribute
   test.AddInput<float>("X", {1, 1}, X);
   test.AddOutput<float>("Y", {1, 1}, {0.f});
 
+  // Error originates from the ONNX checker (checker::check_node) during Graph::Resolve().
+  // There is no way to disable this check.
   test.Run(OpTester::ExpectResult::kExpectFailure, "is not regular file");
 }
 

@@ -3926,13 +3926,25 @@ Status Graph::ConvertInitializersIntoOrtValues() {
             const auto& location = external_data_info->GetRelPath();
 
             if (validated_external_data_paths.count(location) == 0) {
-              ORT_RETURN_IF_ERROR(utils::ValidateExternalDataPath(model_path, location));
+              auto path_status = utils::ValidateExternalDataPath(model_path, location);
+              if (!path_status.IsOK()) {
+                return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                       "Node '", node.Name(), "' attribute '", attr_name,
+                                       "': ", path_status.ErrorMessage());
+              }
               validated_external_data_paths.insert(location);
             }
 
             // Read external data and inline it into the TensorProto.
             std::vector<uint8_t> buffer;
-            ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(*tensor_proto, model_path, buffer));
+            {
+              auto unpack_status = utils::UnpackInitializerData(*tensor_proto, model_path, buffer);
+              if (!unpack_status.IsOK()) {
+                return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                       "Node '", node.Name(), "' attribute '", attr_name,
+                                       "': ", unpack_status.ErrorMessage());
+              }
+            }
             tensor_proto->clear_external_data();
             tensor_proto->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_DEFAULT);
             utils::SetRawDataInTensorProto(*tensor_proto, buffer.data(), buffer.size());
@@ -3951,12 +3963,24 @@ Status Graph::ConvertInitializersIntoOrtValues() {
               const auto& location = external_data_info->GetRelPath();
 
               if (validated_external_data_paths.count(location) == 0) {
-                ORT_RETURN_IF_ERROR(utils::ValidateExternalDataPath(model_path, location));
+                auto path_status = utils::ValidateExternalDataPath(model_path, location);
+                if (!path_status.IsOK()) {
+                  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                         "Node '", node.Name(), "' attribute '", attr_name,
+                                         "': ", path_status.ErrorMessage());
+                }
                 validated_external_data_paths.insert(location);
               }
 
               std::vector<uint8_t> buffer;
-              ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(tensor_proto, model_path, buffer));
+              {
+                auto unpack_status = utils::UnpackInitializerData(tensor_proto, model_path, buffer);
+                if (!unpack_status.IsOK()) {
+                  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                         "Node '", node.Name(), "' attribute '", attr_name,
+                                         "': ", unpack_status.ErrorMessage());
+                }
+              }
               tensor_proto.clear_external_data();
               tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_DEFAULT);
               utils::SetRawDataInTensorProto(tensor_proto, buffer.data(), buffer.size());

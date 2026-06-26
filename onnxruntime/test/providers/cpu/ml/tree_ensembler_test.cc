@@ -454,14 +454,12 @@ TEST(MLOpTest, TreeEnsembleIssue25400) {
   test.Run();
 }
 
-// External data in tensor attributes is not supported. In no-exceptions builds, the enforcement
-// calls abort() so these tests cannot run.
+// In-memory external data references in node attributes are rejected by the ONNX checker
+// during Graph::Resolve() (it validates that external data locations are regular files).
+// In no-exceptions builds, the ONNX checker's fail_check calls abort() so these tests cannot run.
 #if !defined(ORT_NO_EXCEPTIONS)
 
-// In-memory external data references in node attributes are rejected during initialization.
-// The ONNX checker (checker::check_node) runs during Graph::Resolve() before our
-// inlining code and validates that external data locations are regular files.
-// There is no way to disable this check. The error message comes from the ONNX checker.
+// In-memory external data references in node attributes are rejected during Graph::Resolve().
 TEST(MLOpTest, TreeEnsembleRejectsInMemoryExternalDataInTensorAttribute) {
   OpTester test("TreeEnsemble", 5, onnxruntime::kMLDomain);
 
@@ -513,6 +511,8 @@ TEST(MLOpTest, TreeEnsembleRejectsInMemoryExternalDataInTensorAttribute) {
   test.AddInput<float>("X", {1, 1}, X);
   test.AddOutput<float>("Y", {1, 1}, {0.f});
 
+  // Error originates from the ONNX checker (checker::check_node) during Graph::Resolve().
+  // There is no way to disable this check.
   test.Run(OpTester::ExpectResult::kExpectFailure, "is not regular file");
 }
 
