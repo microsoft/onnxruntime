@@ -112,10 +112,11 @@ inline bool EndsWithFileScheme(const std::string& out) {
 }
 
 // Directory names whose immediate child component is a username; used to redact a path that ends at
-// the user's home directory to "~" instead of emitting the bare username as the basename.
+// the user's home directory to "~" instead of emitting the bare username as the basename. Only
+// matched when the marker is the first path component (see RedactAbsolutePathsForTelemetry), so a
+// real file under an unrelated directory of the same name is not over-redacted.
 inline bool IsUserRootComponent(std::string_view comp) {
-  return EqualsAsciiCI(comp, "home") || EqualsAsciiCI(comp, "users") ||
-         EqualsAsciiCI(comp, "Documents and Settings");
+  return EqualsAsciiCI(comp, "home") || EqualsAsciiCI(comp, "users");
 }
 
 }  // namespace telemetry_detail
@@ -207,12 +208,18 @@ inline std::string RedactAbsolutePathsForTelemetry(std::string_view message) {
         (last_sep == std::string_view::npos) ? path : path.substr(last_sep + 1);
 
     // If the path ends at the user's home directory, the basename is the username; emit "~" instead.
+    // Only when the home marker is the first path component ("/home/X", "/Users/X", "X:\Users\X") so
+    // that a real file under an unrelated directory named home/users (e.g. "/usr/home/config.txt") is
+    // not over-redacted.
     if (last_sep != std::string_view::npos) {
       const std::string_view parent_dir = path.substr(0, last_sep);
       const size_t parent_sep = parent_dir.find_last_of("/\\");
       const std::string_view parent =
           (parent_sep == std::string_view::npos) ? parent_dir : parent_dir.substr(parent_sep + 1);
-      if (IsUserRootComponent(parent)) {
+      const bool marker_at_root = (parent_sep == 0);
+      const bool marker_after_drive = (parent_sep == 2 && parent_dir.size() >= 3 &&
+                                       IsAsciiLetter(parent_dir[0]) && parent_dir[1] == ':');
+      if ((marker_at_root || marker_after_drive) && IsUserRootComponent(parent)) {
         basename = "~";
       }
     }

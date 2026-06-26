@@ -82,6 +82,14 @@ TEST(TelemetryRedactionTest, HomeDirectoryReducedToTilde) {
   EXPECT_EQ(RedactAbsolutePathsForTelemetry("C:\\Users\\bob").find("bob"), std::string::npos);
 }
 
+TEST(TelemetryRedactionTest, DoesNotOverRedactUnrelatedHomeUsersDirs) {
+  // A real file under a directory merely named home/users (not the first path component) is kept.
+  EXPECT_EQ(RedactAbsolutePathsForTelemetry("/usr/home/config.txt"), "config.txt");
+  EXPECT_EQ(RedactAbsolutePathsForTelemetry("/opt/users/data.bin"), "data.bin");
+  EXPECT_EQ(RedactAbsolutePathsForTelemetry("/var/lib/users/cache.db"), "cache.db");
+  EXPECT_EQ(RedactAbsolutePathsForTelemetry("/home/alice/models/foo.onnx"), "foo.onnx");
+}
+
 TEST(TelemetryRedactionTest, PathsWithSpacesAreFullyReduced) {
   // The username and directory layout are dropped even when the path contains spaces.
   EXPECT_EQ(RedactAbsolutePathsForTelemetry("Load C:\\Users\\First Last\\model.onnx failed"),
