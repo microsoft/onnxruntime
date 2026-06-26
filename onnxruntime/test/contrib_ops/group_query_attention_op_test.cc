@@ -3228,7 +3228,7 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_IndirectDispatch_Decode) {
   // CPU reference: use real total_sequence_length so CPU path is correct.
   auto cpu_output = RunGQASharedKV(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false, /*use_webgpu=*/false);
+      num_heads, kv_num_heads, head_size, GqaTargetEp::kCpu);
 
   ExpectOutputsMatch(webgpu_output, cpu_output, 0.05f, "SharedKV_IndirectDispatch_Decode_WebGPU_vs_CPU");
 }
@@ -3287,7 +3287,7 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_IndirectDispatch_LargerPast) {
 
   auto cpu_output = RunGQASharedKV(
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, /*use_cuda=*/false, /*use_webgpu=*/false);
+      num_heads, kv_num_heads, head_size, GqaTargetEp::kCpu);
 
   ExpectOutputsMatch(webgpu_output, cpu_output, 0.05f, "SharedKV_IndirectDispatch_LargerPast_WebGPU_vs_CPU");
 }
