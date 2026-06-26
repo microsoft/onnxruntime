@@ -29,6 +29,7 @@
 #include <fstream>
 #endif
 
+#include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <thread>
@@ -291,12 +292,16 @@ void PosixTelemetry::LogEventAsync(Microsoft::Applications::Events::EventPropert
 void PosixTelemetry::Initialize() {
   std::unique_lock<std::shared_mutex> lock(mutex_);
 
-  // Environment opt-out: ORT_TELEMETRY_ENABLED=0/false disables telemetry at runtime without
-  // recompiling and skips creating the 1DS uploader entirely. Mirrors onnxruntime-genai's
-  // ORTGENAI_TELEMETRY_ENABLED opt-out.
+  // Environment opt-out: ORT_TELEMETRY_ENABLED set to a disabled value (0/false/off/no/disabled/n,
+  // case-insensitive) disables telemetry at runtime without recompiling and skips creating the 1DS
+  // uploader entirely. Accepts the same value set as onnxruntime-genai's ORTGENAI_TELEMETRY_ENABLED.
   if (const char* env = std::getenv("ORT_TELEMETRY_ENABLED"); env != nullptr) {
-    const std::string value(env);
-    if (value == "0" || value == "false" || value == "FALSE") {
+    std::string value(env);
+    for (char& ch : value) {
+      ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    if (value == "0" || value == "false" || value == "off" || value == "no" ||
+        value == "disabled" || value == "n") {
       enabled_.store(false, std::memory_order_release);
       return;
     }
@@ -314,7 +319,10 @@ void PosixTelemetry::Initialize() {
   auto& config = *config_;
 
   config[CFG_STR_COLLECTOR_URL] = "https://mobile.events.data.microsoft.com/OneCollector/1.0";
-  config["enableIpScrubbing"] = true;                        // collector-side client-IP obfuscation
+  // Set for parity with onnxruntime-genai. Client-IP obfuscation is enforced as a OneCollector
+  // tenant/server-side setting; the bundled cpp_client_telemetry SDK version does not consume this
+  // key, so the flag is an inert no-op kept only to mirror genai's configuration.
+  config["enableIpScrubbing"] = true;
   config[CFG_INT_TRACE_LEVEL_MASK] = 0;                      // Disable SDK internal logging
   config[CFG_INT_SDK_MODE] = SdkModeTypes::SdkModeTypes_CS;  // Common Schema 4.0 mode
   config[CFG_INT_MAX_TEARDOWN_TIME] = 10;                    // 10 seconds max for shutdown
