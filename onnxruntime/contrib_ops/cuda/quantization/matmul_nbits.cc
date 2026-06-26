@@ -440,43 +440,6 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 #endif
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<T>())) {
-    // accuracy_level=4 (int8 activation) path: quantize the activation to int8 per block_size-chunk and run
-    // the dp4a batched GEMV over the same 4-bit weight layout. Self-consistent across decode/verify (all M
-    // use int8). Gated on nbits==4 and an eligible shape; falls through to the A16 paths otherwise.
-    const int kCols = 8;  // kColsPerThreadBlock in the dp4a kernel
-    if (accuracy_level_ == 4 && nbits_ == 4 && m >= 1 && m <= kMatMulInt8Dp4aMaxM &&
-        (n % kCols == 0) && (k % SafeInt<int>(block_size_) == 0)) {
-      const int blocks_per_K = k / SafeInt<int>(block_size_);
-      auto aq_buffer = this->template GetScratchBuffer<int8_t>(static_cast<size_t>(m) * k, this->GetComputeStream(ctx));
-      auto ascale_buffer = this->template GetScratchBuffer<float>(static_cast<size_t>(m) * blocks_per_K, this->GetComputeStream(ctx));
-      int8_t* aq = aq_buffer.get();
-      float* ascale = ascale_buffer.get();
-      LaunchQuantizeRowwiseInt8<CudaT>(reinterpret_cast<const CudaT*>(a_data), aq, ascale, m, k, SafeInt<int>(block_size_), stream);
-      if (TryMatMulInt8Dp4a<CudaT>(
-              reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-              aq,
-              ascale,
-              blob_data,
-              reinterpret_cast<const CudaT*>(scales_data),
-              static_cast<const uint8_t*>(zero_points_data),
-              m,
-              n,
-              k,
-              SafeInt<int>(block_size_),
-              GetDeviceProp().sharedMemPerBlock,
-              stream)) {
-        if (bias_data != nullptr) {
-          LaunchMatMulNBitsBiasAdd<CudaT>(
-              reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-              reinterpret_cast<const CudaT*>(bias_data),
-              m,
-              n,
-              stream);
-        }
-        return Status::OK();
-      }
-    }
-
     // First, try the fused fast path. It handles bias only for the GPT-OSS router GEMV
     // specialization; for other shapes it fails when bias is present.
     if (TryMatMulNBits(

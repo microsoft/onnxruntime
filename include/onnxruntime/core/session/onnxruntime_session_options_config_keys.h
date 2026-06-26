@@ -523,13 +523,6 @@ static const char* const kOrtSessionOptionsQDQMatMulNBitsBlockSize = "session.qd
 // This is typically set automatically by InferenceSession when the NvTensorRTRTX EP is registered.
 static const char* const kOrtSessionOptionsEnableDQMatMulNBitsFusion = "session.enable_dq_matmulnbits_fusion";
 
-// Override the accuracy_level attribute of all MatMulNBits nodes at session initialization.
-// Read at kernel construction (before prepack), so it can drive accuracy_level-conditional behavior
-// such as int8-activation kernels without modifying the model graph. Useful for A/B testing accuracy
-// levels. If unset, each node's own accuracy_level attribute is used.
-// Value is the integer accuracy level as a string, e.g. "0" (default/highest precision) or "4" (int8).
-static const char* const kOrtSessionOptionsMatMulNBitsAccuracyLevel = "session.matmulnbits_accuracy_level";
-
 // THIS OPTION IS NOT A REGULAR SESSION OPTION SINCE IT CAN BE MODIFIED AT ANY TIME
 // Meant to be used with SetEpDynamicOptions
 // Specify the type of workload for this session.

@@ -12,7 +12,6 @@
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
 #include "core/platform/env_var_utils.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -51,14 +50,6 @@ class MatMulNBits final : public CudaKernel {
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("N", &N_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("block_size", &block_size_));
     ORT_ENFORCE(Status::OK() == info.GetAttr<int64_t>("bits", &nbits_));
-
-    // accuracy_level: from the node attribute, optionally overridden by a session config option so it
-    // can be A/B tested without editing the graph. Read here (session init) so it can drive prepack.
-    accuracy_level_ = info.GetAttrOrDefault<int64_t>("accuracy_level", 0);
-    auto accuracy_override = info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMatMulNBitsAccuracyLevel);
-    if (accuracy_override.has_value()) {
-      accuracy_level_ = std::stoll(*accuracy_override);
-    }
 
     constexpr int kInputIndexScale = 2;
     constexpr int kInputIndexZeroPoints = 3;
@@ -156,7 +147,6 @@ class MatMulNBits final : public CudaKernel {
   int64_t N_;
   int64_t block_size_;
   int64_t nbits_;
-  int64_t accuracy_level_{0};
   int sm_{0};
   bool column_wise_quant_blk_{true};
 
