@@ -7,6 +7,7 @@
 #include <string>
 #include <nlohmann/json.hpp>
 #include "core/framework/tensorprotoutils.h"
+#include "orttraining/core/framework/gradient_graph_builder.h"
 
 namespace onnxruntime {
 namespace training {
@@ -172,6 +173,71 @@ void ComputeBroadcastBackwardAxesDynamic(const ArgDef& a,
       NodeDef(OpDef{"BroadcastGradientArgs", kMSDomain, 1},
               {a_shape, b_shape},
               {a_op, b_op}));
+}
+
+std::unique_ptr<ONNX_NAMESPACE::GraphProto> GradientBuilderBase::SubgraphGradient(
+    const std::string& name,
+    std::function<void(std::vector<std::string>&, std::vector<std::string>&)> grad_func,
+    std::function<void(Graph*)> adjust_func) const {
+  const Graph* node_subgraph = node_->GetGraphAttribute(name);
+  ORT_ENFORCE(node_subgraph != nullptr);
+  auto implicit_inputs = node_->ImplicitInputDefs();
+  auto subgraph_proto = std::make_unique<ONNX_NAMESPACE::GraphProto>(node_subgraph->ToGraphProto());
+
+  std::unique_ptr<Graph> subgraph = std::make_unique<Graph>(*graph_, *node_, *subgraph_proto);
+  for (auto ii : implicit_inputs)
+    subgraph->AddOuterScopeNodeArg(ii->Name());
+
+  std::vector<Graph*> additional_graph = {subgraph.get()};
+  Graph::ResolveOptions options;
+  options.additional_graphs = &additional_graph;
+  ORT_THROW_IF_ERROR(subgraph->Resolve(options));
+
+  // subgraph's gradient graph input and outputs
+  std::vector<const NodeArg*> inputs = subgraph->GetInputs();
+  std::vector<const NodeArg*> outputs = subgraph->GetOutputs();
+
+  GradientGraphConfiguration config = gradient_graph_config_;
+  config.set_gradients_as_graph_outputs = true;
+
+  std::vector<std::string> gradient_inputs;
+  std::vector<std::string> gradient_outputs;
+
+  for (auto output : subgraph->GetOutputs())
+    gradient_inputs.push_back(output->Name());
+
+  for (auto input : subgraph->GetInputs())
+    gradient_outputs.push_back(input->Name());
+
+  for (int i = 0; i < GetSrcNodeImplicitInputSize(); i++)
+    if (IsGradientRequiredForSrcNodeImplicitInput(i))
+      gradient_outputs.push_back(II(i).name);
+
+  grad_func(gradient_inputs, gradient_outputs);
+
+  GradientGraphBuilder builder(
+      subgraph.get(),
+      std::unordered_set(gradient_inputs.begin(), gradient_inputs.end()),
+      std::unordered_set(gradient_outputs.begin(), gradient_outputs.end()),
+      "", config, logger_);
+  ORT_THROW_IF_ERROR(builder.Build(nullptr, true));
+
+  std::vector<const NodeArg*> nodearg_gradient_outputs;
+  nodearg_gradient_outputs.reserve(subgraph->GetOutputs().size());
+  for (size_t i = 0; i < subgraph->GetOutputs().size(); i++) {
+    if (i < outputs.size())
+      nodearg_gradient_outputs.push_back(outputs[i]);
+    else
+      nodearg_gradient_outputs.push_back(subgraph->GetNodeArg(GradientName(gradient_outputs[i - outputs.size()])));
+  }
+  subgraph->SetOutputs(nodearg_gradient_outputs);
+
+  adjust_func(subgraph.get());
+
+  subgraph->SetGraphProtoSyncNeeded();
+  ORT_THROW_IF_ERROR(subgraph->Resolve(options));
+  subgraph->ToGraphProto();
+  return subgraph_proto;
 }
 
 void GradientBuilderBase::AddReduceSumNode(const ArgDef& input_arg_def,
