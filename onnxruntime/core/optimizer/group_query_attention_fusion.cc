@@ -252,11 +252,31 @@ static bool NodeArgExists(const NodeArg* node_arg) {
   return node_arg != nullptr && node_arg->Exists();
 }
 
-static bool TryGetRotaryEmbeddingArgs(Node& rotary_node,
-                                      NodeArg*& cos_cache_arg,
-                                      NodeArg*& sin_cache_arg,
-                                      NodeArg*& position_ids_arg) {
+struct RotaryEmbeddingArgs {
+  NodeArg* cos_cache_arg = nullptr;
+  NodeArg* sin_cache_arg = nullptr;
+  NodeArg* position_ids_arg = nullptr;
+  int64_t interleaved = 0;
+  int64_t rotary_embedding_dim = 0;
+};
+
+static int64_t GetIntAttributeOrDefault(const Node& node, const std::string& attr_name, int64_t default_value) {
+  const auto* attr = graph_utils::GetNodeAttribute(node, attr_name);
+  return attr != nullptr ? attr->i() : default_value;
+}
+
+static bool TryGetRotaryEmbeddingArgs(Node& rotary_node, RotaryEmbeddingArgs& args) {
   if (rotary_node.OpType() != "RotaryEmbedding") {
+    return false;
+  }
+
+  if (rotary_node.Domain() != kMSDomain && rotary_node.Domain() != kOnnxDomain) {
+    return false;
+  }
+
+  args.interleaved = GetIntAttributeOrDefault(rotary_node, "interleaved", 0);
+  args.rotary_embedding_dim = GetIntAttributeOrDefault(rotary_node, "rotary_embedding_dim", 0);
+  if ((args.interleaved != 0 && args.interleaved != 1) || args.rotary_embedding_dim < 0) {
     return false;
   }
 
@@ -264,11 +284,13 @@ static bool TryGetRotaryEmbeddingArgs(Node& rotary_node,
   if (rotary_node.Domain() == kMSDomain) {
     // com.microsoft.RotaryEmbedding inputs:
     //   input, position_ids, cos_cache, sin_cache
-    if (input_defs.size() < 4 || !NodeArgExists(input_defs[2]) || !NodeArgExists(input_defs[3])) {
+    if (input_defs.size() < 4 || !NodeArgExists(input_defs[1]) || !NodeArgExists(input_defs[2]) ||
+        !NodeArgExists(input_defs[3])) {
       return false;
     }
-    cos_cache_arg = input_defs[2];
-    sin_cache_arg = input_defs[3];
+    args.position_ids_arg = input_defs[1];
+    args.cos_cache_arg = input_defs[2];
+    args.sin_cache_arg = input_defs[3];
     return true;
   }
 
@@ -281,9 +303,9 @@ static bool TryGetRotaryEmbeddingArgs(Node& rotary_node,
         !NodeArgExists(input_defs[3])) {
       return false;
     }
-    cos_cache_arg = input_defs[1];
-    sin_cache_arg = input_defs[2];
-    position_ids_arg = input_defs[3];
+    args.cos_cache_arg = input_defs[1];
+    args.sin_cache_arg = input_defs[2];
+    args.position_ids_arg = input_defs[3];
     return true;
   }
 
@@ -361,8 +383,10 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     NodeArg* cos_cache_arg = nullptr;
     NodeArg* sin_cache_arg = nullptr;
     NodeArg* position_ids_arg = nullptr;
-    bool position_ids_arg_set = false;
-    bool position_ids_arg_mismatch = false;
+    int64_t rotary_interleaved = 0;
+    int64_t rotary_embedding_dim = 0;
+    bool rotary_args_set = false;
+    bool rotary_args_mismatch = false;
     NodeArg* past_key_values_key_arg = node.MutableInputDefs()[3];
     NodeArg* past_key_values_value_arg = node.MutableInputDefs()[4];
     NodeArg* seqlens_k = node.MutableInputDefs()[5];
@@ -379,13 +403,8 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     for (auto pre_gqa_node = node.InputNodesBegin(); pre_gqa_node != node.InputNodesEnd(); ++pre_gqa_node) {
       Node& rotary_or_v_node = *graph.GetNode(pre_gqa_node->Index());
 
-      NodeArg* rotary_cos_cache_arg = nullptr;
-      NodeArg* rotary_sin_cache_arg = nullptr;
-      NodeArg* rotary_position_ids_arg = nullptr;
-      if (TryGetRotaryEmbeddingArgs(rotary_or_v_node,
-                                    rotary_cos_cache_arg,
-                                    rotary_sin_cache_arg,
-                                    rotary_position_ids_arg)) {
+      RotaryEmbeddingArgs rotary_args;
+      if (TryGetRotaryEmbeddingArgs(rotary_or_v_node, rotary_args)) {
         if (!rotary_node_1) {
           rotary_node_1 = &rotary_or_v_node;
         } else {
@@ -408,26 +427,26 @@ Status GroupQueryAttentionFusion::ApplyImpl(
           }
         }
 
-        if (cos_cache_arg == nullptr) {
-          cos_cache_arg = rotary_cos_cache_arg;
-        }
-
-        if (sin_cache_arg == nullptr) {
-          sin_cache_arg = rotary_sin_cache_arg;
-        }
-
-        if (!position_ids_arg_set) {
-          position_ids_arg = rotary_position_ids_arg;
-          position_ids_arg_set = true;
-        } else if (position_ids_arg != rotary_position_ids_arg) {
-          position_ids_arg_mismatch = true;
+        if (!rotary_args_set) {
+          cos_cache_arg = rotary_args.cos_cache_arg;
+          sin_cache_arg = rotary_args.sin_cache_arg;
+          position_ids_arg = rotary_args.position_ids_arg;
+          rotary_interleaved = rotary_args.interleaved;
+          rotary_embedding_dim = rotary_args.rotary_embedding_dim;
+          rotary_args_set = true;
+        } else if (cos_cache_arg != rotary_args.cos_cache_arg ||
+                   sin_cache_arg != rotary_args.sin_cache_arg ||
+                   position_ids_arg != rotary_args.position_ids_arg ||
+                   rotary_interleaved != rotary_args.interleaved ||
+                   rotary_embedding_dim != rotary_args.rotary_embedding_dim) {
+          rotary_args_mismatch = true;
         }
       } else if (rotary_or_v_node.OpType() == "MatMulNBits" || rotary_or_v_node.OpType() == "MatMul") {
         v_node = &rotary_or_v_node;
       }
     }
 
-    if (position_ids_arg_mismatch ||
+    if (rotary_args_mismatch ||
         CheckIfAnyOfRequiredGQANodesDoesNotExist(rotary_node_1, rotary_node_2, q_node, k_node, v_node) ||
         cos_cache_arg == nullptr || sin_cache_arg == nullptr) {
       // Some of the required pre-GQA nodes required for fusion were not retrieved,
@@ -549,6 +568,8 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     FusePreGQANodes(graph, q_node, k_node, v_node, rotary_node_1, rotary_node_2, mat_mul_or_n_bits_new_node, matmul_or_nbits_output);
 
     node.GetMutableAttributes()["do_rotary"] = ONNX_NAMESPACE::MakeAttribute("do_rotary", static_cast<int64_t>(1));
+    node.GetMutableAttributes()["rotary_interleaved"] =
+        ONNX_NAMESPACE::MakeAttribute("rotary_interleaved", rotary_interleaved);
 
     std::string empty_name;
     auto& empty_node_arg = graph.GetOrCreateNodeArg(empty_name, nullptr);

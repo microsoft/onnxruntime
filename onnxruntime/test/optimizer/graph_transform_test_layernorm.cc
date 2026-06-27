@@ -607,17 +607,21 @@ static void TestGQAFusion(const std::basic_string<ORTCHAR_T>& file_path, int mat
   ASSERT_TRUE(op_to_count["com.microsoft.GroupQueryAttention"] == 1);
 }
 
-static void BuildOnnxRotaryEmbeddingGQAFusionGraph(ModelTestBuilder& builder, bool include_position_ids) {
+static void BuildOnnxRotaryEmbeddingGQAFusionGraph(ModelTestBuilder& builder,
+                                                   bool include_position_ids,
+                                                   int64_t q_interleaved = 0,
+                                                   int64_t k_interleaved = 0,
+                                                   int64_t rotary_embedding_dim = 0) {
   constexpr int64_t batch_size = 1;
   constexpr int64_t sequence_length = 2;
   constexpr int64_t input_hidden_size = 8;
   constexpr int64_t num_heads = 2;
   constexpr int64_t kv_num_heads = 1;
-  constexpr int64_t head_size = 16;
-  constexpr int64_t q_hidden_size = num_heads * head_size;
-  constexpr int64_t kv_hidden_size = kv_num_heads * head_size;
+  const int64_t head_size = rotary_embedding_dim == 0 ? 16 : 32;
+  const int64_t q_hidden_size = num_heads * head_size;
+  const int64_t kv_hidden_size = kv_num_heads * head_size;
   constexpr int64_t max_sequence_length = 8;
-  constexpr int64_t half_rotary_dim = head_size / 2;
+  const int64_t half_rotary_dim = (rotary_embedding_dim == 0 ? head_size : rotary_embedding_dim) / 2;
 
   auto make_weight = [&builder](int64_t rows, int64_t cols, float value) {
     return builder.MakeInitializer<MLFloat16>(
@@ -662,8 +666,12 @@ static void BuildOnnxRotaryEmbeddingGQAFusionGraph(ModelTestBuilder& builder, bo
 
   Node& q_rotary = builder.AddNode("RotaryEmbedding", q_rotary_inputs, {q_rotary_out}, kOnnxDomain);
   q_rotary.AddAttribute("num_heads", num_heads);
+  q_rotary.AddAttribute("interleaved", q_interleaved);
+  q_rotary.AddAttribute("rotary_embedding_dim", rotary_embedding_dim);
   Node& k_rotary = builder.AddNode("RotaryEmbedding", k_rotary_inputs, {k_rotary_out}, kOnnxDomain);
   k_rotary.AddAttribute("num_heads", kv_num_heads);
+  k_rotary.AddAttribute("interleaved", k_interleaved);
+  k_rotary.AddAttribute("rotary_embedding_dim", rotary_embedding_dim);
 
   NodeArg* past_key =
       builder.MakeInput<MLFloat16>({{batch_size, kv_num_heads, max_sequence_length, head_size}});
@@ -683,7 +691,7 @@ static void BuildOnnxRotaryEmbeddingGQAFusionGraph(ModelTestBuilder& builder, bo
   gqa.AddAttribute("kv_num_heads", kv_num_heads);
 }
 
-static Status CheckOnnxRotaryEmbeddingGQAFused(Graph& graph) {
+static Status CheckOnnxRotaryEmbeddingGQAFusedWithInterleaved(Graph& graph, int64_t expected_rotary_interleaved) {
   const auto op_to_count = CountOpsInGraph(graph);
   TEST_RETURN_IF_NOT(OpCount(op_to_count, "RotaryEmbedding") == 0);
   TEST_RETURN_IF_NOT(OpCount(op_to_count, "MatMul") == 1);
@@ -703,9 +711,17 @@ static Status CheckOnnxRotaryEmbeddingGQAFused(Graph& graph) {
     auto do_rotary_attr = attrs.find("do_rotary");
     TEST_RETURN_IF_NOT(do_rotary_attr != attrs.end());
     TEST_RETURN_IF_NOT(do_rotary_attr->second.i() == 1);
+
+    auto rotary_interleaved_attr = attrs.find("rotary_interleaved");
+    TEST_RETURN_IF_NOT(rotary_interleaved_attr != attrs.end());
+    TEST_RETURN_IF_NOT(rotary_interleaved_attr->second.i() == expected_rotary_interleaved);
   }
 
   return Status::OK();
+}
+
+static Status CheckOnnxRotaryEmbeddingGQAFused(Graph& graph) {
+  return CheckOnnxRotaryEmbeddingGQAFusedWithInterleaved(graph, 0);
 }
 
 static Status CheckOnnxRotaryEmbeddingGQANotFused(Graph& graph) {
@@ -926,6 +942,43 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionFusionOnnxRotaryEmbeddingTes
                                         std::make_unique<GroupQueryAttentionFusion>(),
                                         TransformerLevel::Level2, 3, nullptr,
                                         CheckOnnxRotaryEmbeddingGQAFused));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionOnnxRotaryEmbeddingInterleavedTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildOnnxRotaryEmbeddingGQAFusionGraph(builder, true, 1, 1);
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    return CheckOnnxRotaryEmbeddingGQAFusedWithInterleaved(graph, 1);
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
+                                        std::make_unique<GroupQueryAttentionFusion>(),
+                                        TransformerLevel::Level2, 3, nullptr,
+                                        post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionOnnxRotaryEmbeddingPartialRotaryTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildOnnxRotaryEmbeddingGQAFusionGraph(builder, true, 0, 0, 16);
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
+                                        std::make_unique<GroupQueryAttentionFusion>(),
+                                        TransformerLevel::Level2, 3, nullptr,
+                                        CheckOnnxRotaryEmbeddingGQAFused));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionOnnxRotaryEmbeddingInterleavedMismatchTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildOnnxRotaryEmbeddingGQAFusionGraph(builder, true, 0, 1);
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
+                                        std::make_unique<GroupQueryAttentionFusion>(),
+                                        TransformerLevel::Level2, 3, nullptr,
+                                        CheckOnnxRotaryEmbeddingGQANotFused));
 }
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionFusionOnnxRotaryEmbeddingNoPositionIdsTest) {
