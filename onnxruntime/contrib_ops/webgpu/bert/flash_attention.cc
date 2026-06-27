@@ -457,7 +457,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   const bool turbo_quant_enabled = context.KvCacheQuantizationEnabled();
   if (turbo_quant_enabled && (parameters.head_size_ < 8 || (parameters.head_size_ & (parameters.head_size_ - 1)) != 0)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "KV cache quantization requires head_size >= 8 and a power of 2. Got head_size=", 
+                           "KV cache quantization requires head_size >= 8 and a power of 2. Got head_size=",
                            parameters.head_size_);
   }
 

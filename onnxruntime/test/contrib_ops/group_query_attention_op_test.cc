@@ -3025,7 +3025,10 @@ static std::vector<float> RunGQATurboQuant(
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   auto ep = WebGpuEPWithTurboQuant4();
   if (!ep) {
-    GTEST_SKIP() << "WebGPU EP not available";
+    // GTEST_SKIP() cannot be used in a value-returning helper (it expands to a
+    // void `return`). Callers already GTEST_SKIP() when the EP is unavailable, so
+    // this branch is unreachable in practice; return empty to keep the helper valid.
+    return {};
   }
   execution_providers.push_back(std::move(ep));
   tester.Run(expect, expected_error, {}, nullptr, &execution_providers);
@@ -3276,12 +3279,12 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_Prefill_PackedRotary_K24) {
 }
 
 // --- Error path: multi-batch with per-batch seqlens_k is rejected with TurboQuant ---
-// WebGPU flash attention does not implement right-padded per-batch prefill, so
-// CanApplyFlashAttention() returns false whenever batch_size > 1 and per-batch
-// seqlens_k are supplied with a non-empty KV cache. KV cache quantization requires
-// flash attention, so this configuration is rejected rather than silently falling
-// back to the (uncompressed-only) non-flash path. genai decode runs batch_size==1,
-// so this is not a supported production path.
+// The TurboQuant copy-to-quantized-KV-cache kernel reads seqlen_k[0] for every
+// batch on the graph-capture decode path, so it only supports batch_size == 1 and
+// explicitly rejects batch_size > 1 rather than silently corrupting batches 1..N-1.
+// (The non-quantized flash-attention copy path does support per-batch seqlens_k, so
+// this restriction is specific to KV cache quantization.) genai decode runs
+// batch_size==1, so multi-batch is not a supported production path.
 TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_RejectsMultiBatch) {
   auto ep = WebGpuEPWithTurboQuant4();
   if (!ep) {
@@ -3291,7 +3294,7 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_RejectsMultiBatch) {
                    /*num_heads=*/2, /*kv_num_heads=*/1, /*head_size=*/128,
                    /*do_rotary=*/false, /*is_packed_qkv=*/false,
                    OpTester::ExpectResult::kExpectFailure,
-                   "KV cache quantization requires flash attention");
+                   "supports batch_size == 1 only");
 }
 
 // ---------------------------------------------------------------------------
