@@ -145,11 +145,13 @@ inline std::string PathToUtf8StringForMessage(const std::filesystem::path& path)
   return status.IsOK() ? utf8_path : std::string{"<path conversion failed>"};
 }
 
-// Lexical check for a ".." component. This is a coarse guard used when there is no filesystem base directory to
-// contain against: logical callback-namespace names and trusted (graph == nullptr) physical paths. It is NOT a
-// containment mechanism: it does not resolve symlinks and it rejects benign cases such as "a/b/c/../file.txt".
-// Filesystem containment against a model directory is done by IsResolvedPathWithinBase() below, which the untrusted
-// (model-relative) resolution path uses.
+// Lexical check for a ".." component. Used only by ValidateEpContextDataName() to reject ".." in the logical
+// callback-namespace name that is written into the EPContext model's ep_cache_context attribute. That logical name is
+// never resolved against a filesystem base, so the model-directory containment check (IsResolvedPathWithinBase()
+// below) cannot apply to it; rejecting ".." up front keeps a generated model from embedding an unsafe relative
+// reference. It is NOT a containment mechanism: it does not resolve symlinks and it rejects benign cases such as
+// "a/b/c/../file.txt". Filesystem containment against a model directory is done by IsResolvedPathWithinBase(), which
+// the untrusted (model-relative) resolution path uses.
 inline bool ContainsPathTraversal(const std::filesystem::path& path) {
   const std::filesystem::path parent_dir{".."};
   for (const auto& component : path) {
@@ -232,8 +234,9 @@ inline OrtStatus* ValidateEpContextDataName(const OrtApi& api, const char* file_
 // Resolves `file_name` to a filesystem path for reading or writing EPContext data (used by both the read path and
 // the write-fallback path).
 //
-// When `graph` is null the caller is trusted and owns the path: `file_name` is returned as-is and may be absolute (a
-// lexical ".." is still rejected as a coarse guard). When `graph` is non-null, `file_name` originates from the
+// When `graph` is null the caller is trusted and owns the path: `file_name` is returned as-is and may be absolute and
+// may contain ".." (there is no model directory to contain against, and absolute paths are already permitted, so no
+// traversal check is applied). When `graph` is non-null, `file_name` originates from the
 // untrusted EPContext model "ep_cache_context" attribute: the graph must have a model path, the name must be
 // relative, and after combining it with the model's directory the result must stay within that directory. Symlinks and
 // ".." are resolved (via weakly_canonical), so a name that escapes the model directory - including through a symlink -
@@ -255,11 +258,11 @@ inline OrtStatus* ResolveEpContextDataPath(const OrtApi& api, const char* file_n
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name is not a valid path");
   }
 
-  // Trusted direct callers (graph == nullptr) own the path and may pass an absolute physical path.
+  // Trusted direct callers (graph == nullptr) own the path and may pass an absolute physical path, including one with
+  // ".." components. There is no model directory to contain against here, and absolute paths are already allowed, so
+  // no traversal check is applied; the untrusted (model-relative) branch below is the one constrained to the model
+  // directory.
   if (graph == nullptr) {
-    if (ContainsPathTraversal(candidate_path)) {
-      return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not contain path traversal");
-    }
     data_path = candidate_path;
     return nullptr;
   }

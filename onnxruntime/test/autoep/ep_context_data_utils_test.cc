@@ -127,9 +127,10 @@ TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathRejectsUnsafeNames) {
   const auto& api = Ort::GetApi();
   std::filesystem::path data_path;
 
-  ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, "../escape.ctx", nullptr, data_path),
-                       ORT_INVALID_ARGUMENT, "EPContext data file name must not contain path traversal");
-  EXPECT_TRUE(data_path.empty());
+  // Trusted direct callers (graph == nullptr) own the path: ".." is allowed (there is no model directory to contain
+  // against, and absolute paths are already permitted) and the name is accepted as-is rather than rejected.
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ResolveEpContextDataPath(api, "../escape.ctx", nullptr, data_path));
+  EXPECT_FALSE(data_path.empty());
 
 #ifdef _WIN32
   const char* absolute_file_name = "C:\\temp\\escape.ctx";
@@ -151,8 +152,10 @@ TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathRejectsUnsafeNames) {
 #endif
 
   std::vector<char> data;
+  // Trusted (graph == nullptr) reads also allow ".."; the resolver no longer rejects it, so a non-existent target now
+  // surfaces as a normal file-open failure rather than a traversal rejection.
   ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataFromFile(api, "../escape.ctx", nullptr, data),
-                       ORT_INVALID_ARGUMENT, "EPContext data file name must not contain path traversal");
+                       ORT_FAIL, "Failed to open EPContext data file for read");
   ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(
                            api, nullptr, absolute_file_name, "unused.ctx", nullptr, nullptr, 0),
                        ORT_INVALID_ARGUMENT, "EPContext data file name must not be absolute or rooted");
