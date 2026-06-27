@@ -32,11 +32,13 @@
 // the ORT C and EP ABI and are provided as a reference for EP authors that need to handle external (non-embedded)
 // EPContext binary data.
 //
-// The intended entry points for EP implementers are the ReadEpContextDataWithFileFallback /
-// WriteEpContextDataWithFileFallback overloads: they prefer an application-supplied OrtReadNamedBufferFunc /
-// OrtWriteNamedBufferFunc (carried by OrtEpContextConfig) and fall back to file I/O when no callback is configured.
-// The other functions are lower-level building blocks. Production EPs should additionally apply their own sandboxing,
-// size limits, and path policies; see the per-function notes on how untrusted, model-derived names are treated.
+// The intended entry points for EP implementers are the ReadEpContextData / WriteEpContextDataWithFileFallback
+// overloads: they prefer an application-supplied OrtReadNamedBufferFunc / OrtWriteNamedBufferFunc (carried by
+// OrtEpContextConfig) and fall back to file I/O when no callback is configured. ReadEpContextData returns an owning
+// EpContextData buffer and avoids copying large data; ReadEpContextDataWithFileFallback is a std::vector<char>
+// convenience wrapper around it. The other functions are lower-level building blocks. Production EPs should
+// additionally apply their own sandboxing, size limits, and path policies; see the per-function notes on how
+// untrusted, model-derived names are treated.
 namespace ep_context_data_utils {
 
 #ifdef _WIN32
@@ -163,12 +165,13 @@ inline bool HasAbsoluteOrRootedPath(const std::filesystem::path& path) {
 }
 
 // Returns true if the final component of `path` is empty (e.g., a trailing separator like "sub/") or is the
-// current-directory entry ".", i.e. the name designates a directory rather than a file (".." is handled separately by
-// ContainsPathTraversal()). Such a name resolves to a directory and would only surface later as a confusing file I/O
-// failure, so model-derived names like these are rejected up front.
+// current-directory entry "." or the parent-directory entry "..", i.e. the name designates a directory rather than a
+// file. Such a name resolves to a directory (e.g. "sub/.." resolves to the parent/model directory) and would only
+// surface later as a confusing file I/O failure, so model-derived names like these are rejected up front. A non-leaf
+// ".." anywhere in the path is rejected separately by ContainsPathTraversal() / the model-directory containment check.
 inline bool IsDirectoryOrEmptyName(const std::filesystem::path& path) {
   const std::filesystem::path leaf = path.filename();
-  return leaf.empty() || leaf == std::filesystem::path{"."};
+  return leaf.empty() || leaf == std::filesystem::path{"."} || leaf == std::filesystem::path{".."};
 }
 
 // Returns true if `candidate_full` (a base-relative name already combined with `base`) resolves to a location inside
@@ -348,9 +351,150 @@ inline OrtStatus* WriteEpContextDataToFile(const OrtApi& api, const char* file_n
   return WriteEpContextDataToResolvedFile(api, data_path, buffer, buffer_size);
 }
 
-// Low-level overload that takes the read callback and its opaque state directly. Production EPs should use the
-// overload below that takes an OrtEpContextConfig; this overload exists so unit tests can inject a callback without
-// constructing an OrtEpContextConfig. When `read_func` is null the data is read from a file.
+// Forward declaration so EpContextData can grant the populating read helper access to its internals.
+class EpContextData;
+inline OrtStatus* ReadEpContextData(const OrtApi& api, OrtReadNamedBufferFunc read_func, void* read_state,
+                                    const char* file_name, const OrtGraph* graph, EpContextData& out);
+
+// RAII owner for the bytes returned by an EPContext read, used to avoid copying potentially large data. The
+// app-supplied read-callback path adopts the allocator-provided buffer directly (no copy) and frees it via the same
+// allocator on destruction; the file-fallback path owns the bytes in a std::vector read straight from disk. Either
+// way the bytes are accessed through data()/size() without an extra copy. EPs that handle large EPContext blobs
+// should prefer ReadEpContextData() + EpContextData; the std::vector<char> ReadEpContextDataWithFileFallback()
+// overloads remain as a convenience for callers (e.g. tests) that want an owned vector and can afford one copy.
+class EpContextData {
+ public:
+  EpContextData() = default;
+  ~EpContextData() { FreeAllocatorBuffer(); }
+
+  EpContextData(EpContextData&& other) noexcept { MoveFrom(other); }
+  EpContextData& operator=(EpContextData&& other) noexcept {
+    if (this != &other) {
+      FreeAllocatorBuffer();
+      MoveFrom(other);
+    }
+    return *this;
+  }
+
+  EpContextData(const EpContextData&) = delete;
+  EpContextData& operator=(const EpContextData&) = delete;
+
+  // Pointer to the bytes, owned by this object (valid until it is destroyed or reassigned). May be null only when
+  // size() == 0.
+  const char* data() const noexcept {
+    return buffer_ != nullptr ? static_cast<const char*>(buffer_) : file_bytes_.data();
+  }
+  size_t size() const noexcept { return buffer_ != nullptr ? buffer_size_ : file_bytes_.size(); }
+  bool empty() const noexcept { return size() == 0; }
+
+ private:
+  friend OrtStatus* ReadEpContextData(const OrtApi& api, OrtReadNamedBufferFunc read_func, void* read_state,
+                                      const char* file_name, const OrtGraph* graph, EpContextData& out);
+
+  void FreeAllocatorBuffer() noexcept {
+    if (buffer_ != nullptr && allocator_ != nullptr && api_ != nullptr) {
+      // Best-effort free; release any returned status without throwing (matches the OrtStatus*-based, exception-free
+      // style of these helpers). The default allocator is owned by ORT and must not be released here.
+      Ort::Status free_status{api_->AllocatorFree(allocator_, buffer_)};
+      static_cast<void>(free_status);
+    }
+    api_ = nullptr;
+    allocator_ = nullptr;
+    buffer_ = nullptr;
+    buffer_size_ = 0;
+  }
+
+  void Reset() noexcept {
+    FreeAllocatorBuffer();
+    file_bytes_.clear();
+  }
+
+  void MoveFrom(EpContextData& other) noexcept {
+    api_ = other.api_;
+    allocator_ = other.allocator_;
+    buffer_ = other.buffer_;
+    buffer_size_ = other.buffer_size_;
+    file_bytes_ = std::move(other.file_bytes_);
+    other.api_ = nullptr;
+    other.allocator_ = nullptr;
+    other.buffer_ = nullptr;
+    other.buffer_size_ = 0;
+  }
+
+  const OrtApi* api_ = nullptr;        // Used to free buffer_ (callback path); null otherwise.
+  OrtAllocator* allocator_ = nullptr;  // Allocator that owns buffer_ (callback path); null for the file path.
+  void* buffer_ = nullptr;             // Adopted callback buffer; null when the bytes live in file_bytes_.
+  size_t buffer_size_ = 0;
+  std::vector<char> file_bytes_;  // Owns the bytes on the file-fallback path.
+};
+
+// Zero-copy read: reads EPContext binary data named `file_name` into `out` (reset first). If `read_func` is non-null
+// it is invoked and the buffer it allocates is adopted by `out` (no copy); otherwise the data is read from the file
+// fallback into `out`. See ReadEpContextDataFromFile() for how `graph` governs name resolution. This low-level
+// overload takes the callback directly so tests can inject one; production EPs use the OrtEpContextConfig overload.
+inline OrtStatus* ReadEpContextData(const OrtApi& api, OrtReadNamedBufferFunc read_func, void* read_state,
+                                    const char* file_name, const OrtGraph* graph, EpContextData& out) {
+  out.Reset();
+
+  if (file_name == nullptr || file_name[0] == '\0') {
+    return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
+  }
+
+  if (read_func == nullptr) {
+    // No callback: read the file fallback straight into the owned vector (no extra copy).
+    return ReadEpContextDataFromFile(api, file_name, graph, out.file_bytes_);
+  }
+
+  // Use the C allocator API (not Ort::AllocatorWithDefaultOptions, whose constructor throws) so this OrtStatus*-based
+  // helper stays exception-free. The default allocator is owned by ORT and must not be released here.
+  OrtAllocator* allocator = nullptr;
+  RETURN_IF_ERROR(api.GetAllocatorWithDefaultOptions(&allocator));
+
+  void* ep_context_data = nullptr;
+  size_t ep_context_data_size = 0;
+  OrtStatus* status = read_func(read_state, file_name, allocator, &ep_context_data, &ep_context_data_size);
+  // Adopt whatever the callback allocated so `out` frees it via the allocator on destruction, even on the error paths
+  // below. Ownership transfers without copying the (potentially large) buffer.
+  out.api_ = &api;
+  out.allocator_ = allocator;
+  out.buffer_ = ep_context_data;
+  out.buffer_size_ = ep_context_data_size;
+
+  if (status != nullptr) {
+    return status;
+  }
+
+  if (ep_context_data_size != 0 && ep_context_data == nullptr) {
+    return api.CreateStatus(ORT_FAIL, "OrtReadNamedBufferFunc returned a null buffer for non-empty EPContext data");
+  }
+
+  return nullptr;
+}
+
+// Zero-copy read using the OrtReadNamedBufferFunc carried by `ep_context_config` (if any); otherwise reads the file
+// fallback. See ReadEpContextData() above and ReadEpContextDataFromFile() for `graph` handling.
+inline OrtStatus* ReadEpContextData(const OrtApi& api, const OrtEpContextConfig* ep_context_config,
+                                    const char* file_name, const OrtGraph* graph, EpContextData& out) {
+  OrtReadNamedBufferFunc read_func = nullptr;
+  void* read_state = nullptr;
+  if (ep_context_config != nullptr) {
+    auto get_read_func =
+        Ort::Experimental::Get_OrtEpApi_EpContextConfig_GetEpContextDataReadFunc_SinceV28_Fn(&api);
+    if (get_read_func == nullptr) {
+      return api.CreateStatus(ORT_NOT_IMPLEMENTED,
+                              "OrtEpApi_EpContextConfig_GetEpContextDataReadFunc is not available");
+    }
+    RETURN_IF_ERROR(get_read_func(ep_context_config, &read_func, &read_state));
+  }
+  return ReadEpContextData(api, read_func, read_state, file_name, graph, out);
+}
+
+// std::vector<char> convenience overload that takes the read callback and its opaque state directly. Production EPs
+// should use the OrtEpContextConfig overload below; this overload exists so unit tests can inject a callback without
+// constructing an OrtEpContextConfig. When `read_func` is null the data is read from a file straight into `data` (no
+// extra copy); the callback path reads zero-copy via ReadEpContextData() and then copies once into `data`. EPs
+// handling large data that want to avoid that copy should call ReadEpContextData() and consume the EpContextData
+// buffer directly.
 inline OrtStatus* ReadEpContextDataWithFileFallback(
     const OrtApi& api,
     OrtReadNamedBufferFunc read_func, void* read_state,
@@ -364,37 +508,9 @@ inline OrtStatus* ReadEpContextDataWithFileFallback(
     return ReadEpContextDataFromFile(api, file_name, graph, data);
   }
 
-  // Use the C allocator API (not Ort::AllocatorWithDefaultOptions, whose constructor throws) so this OrtStatus*-based
-  // helper stays exception-free. The default allocator is owned by ORT and must not be released here.
-  OrtAllocator* allocator = nullptr;
-  RETURN_IF_ERROR(api.GetAllocatorWithDefaultOptions(&allocator));
-  void* ep_context_data = nullptr;
-  size_t ep_context_data_size = 0;
-  OrtStatus* status = read_func(read_state, file_name, allocator, &ep_context_data, &ep_context_data_size);
-  auto buffer_deleter = [&api, allocator](void* buffer_to_free) {
-    if (buffer_to_free != nullptr) {
-      // Best-effort free during cleanup; release any returned status without throwing.
-      Ort::Status free_status{api.AllocatorFree(allocator, buffer_to_free)};
-      static_cast<void>(free_status);
-    }
-  };
-  std::unique_ptr<void, decltype(buffer_deleter)> ep_context_data_guard(ep_context_data, buffer_deleter);
-
-  if (status != nullptr) {
-    return status;
-  }
-
-  if (ep_context_data_size != 0 && ep_context_data == nullptr) {
-    return api.CreateStatus(
-        ORT_FAIL, "OrtReadNamedBufferFunc returned a null buffer for non-empty EPContext data");
-  }
-
-  data.clear();
-  if (ep_context_data != nullptr) {
-    const char* ep_context_data_begin = static_cast<const char*>(ep_context_data);
-    data.assign(ep_context_data_begin, ep_context_data_begin + ep_context_data_size);
-  }
-
+  EpContextData owned;
+  RETURN_IF_ERROR(ReadEpContextData(api, read_func, read_state, file_name, graph, owned));
+  data.assign(owned.data(), owned.data() + owned.size());
   return nullptr;
 }
 

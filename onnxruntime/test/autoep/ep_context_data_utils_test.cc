@@ -162,10 +162,15 @@ TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathRejectsUnsafeNames) {
                                                                        empty_model_path_graph.ToExternal(), data_path),
                        ORT_INVALID_ARGUMENT, "requires a model path");
 
-  // A model-derived name that designates a directory ("." or a trailing separator with an empty filename) is
+  // A model-derived name that designates a directory (".", "..", or a trailing separator with an empty filename) is
   // rejected up front, rather than resolving to a directory and failing later with a confusing I/O error.
   ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, ".", empty_model_path_graph.ToExternal(),
                                                                        data_path),
+                       ORT_INVALID_ARGUMENT, "must refer to a file");
+  // A leaf ".." (e.g. "sub/..") resolves to the parent/model directory; it is rejected here rather than passing the
+  // model-directory containment check and surfacing later as a directory I/O failure.
+  ExpectOrtStatusError(ep_context_data_utils::ResolveEpContextDataPath(api, "sub/..",
+                                                                       empty_model_path_graph.ToExternal(), data_path),
                        ORT_INVALID_ARGUMENT, "must refer to a file");
   ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(
                            api, nullptr, ".", "unused.ctx", nullptr, nullptr, 0),
@@ -321,6 +326,38 @@ TEST(OrtEpLibrary, EpContextDataUtils_ReadCallbackRejectsNullBufferForNonEmptyPa
                        ORT_FAIL, "OrtReadNamedBufferFunc returned a null buffer for non-empty EPContext data");
   ASSERT_TRUE(read_callback_state.read_called);
   EXPECT_EQ(read_callback_state.read_file_name, "invalid_callback_context.bin");
+}
+
+TEST(OrtEpLibrary, EpContextDataUtils_ReadEpContextDataAdoptsCallbackBufferZeroCopy) {
+  const auto& api = Ort::GetApi();
+
+  // Callback path: ReadEpContextData adopts the buffer the callback allocates (no copy into a std::vector) and frees
+  // it via the same allocator when the EpContextData owner is destroyed.
+  EpContextDataCallbackState read_callback_state;
+  read_callback_state.payload = {'z', 'e', 'r', 'o', '-', 'c', 'o', 'p', 'y'};
+  ep_context_data_utils::EpContextData owned;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextData(
+      api, LoadEpContextDataCallback, &read_callback_state, "zero_copy_context.bin", nullptr, owned));
+  ASSERT_TRUE(read_callback_state.read_called);
+  EXPECT_EQ(read_callback_state.read_file_name, "zero_copy_context.bin");
+  ASSERT_EQ(owned.size(), read_callback_state.payload.size());
+  EXPECT_EQ(std::vector<char>(owned.data(), owned.data() + owned.size()), read_callback_state.payload);
+
+  // File-fallback path: with no callback configured, ReadEpContextData reads the file into the owned buffer.
+  const std::filesystem::path test_dir = PrepareTempTestDir("ort_ep_context_data_utils_zero_copy_test");
+  auto cleanup = gsl::finally([&]() { std::filesystem::remove_all(test_dir); });
+
+  const std::string payload = "zero copy file payload";
+  const std::filesystem::path data_path = test_dir / "zero_copy_file.bin";
+  std::string data_file_name;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::PathToUtf8String(api, data_path, data_file_name));
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::WriteEpContextDataToFile(api, data_file_name.c_str(), nullptr,
+                                                                      payload.data(), payload.size()));
+
+  ep_context_data_utils::EpContextData file_owned;
+  ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextData(
+      api, /*ep_context_config=*/nullptr, data_file_name.c_str(), nullptr, file_owned));
+  EXPECT_EQ(std::string(file_owned.data(), file_owned.data() + file_owned.size()), payload);
 }
 
 }  // namespace test
