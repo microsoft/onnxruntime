@@ -60,6 +60,7 @@ MultiHeadAttention<T, QK>::MultiHeadAttention(const OpKernelInfo& info)
   kernel_options_ = this->GetAttentionKernelOptions();
 
   constexpr bool kIsFp16 = std::is_same<T, MLFloat16>::value;
+  constexpr bool kIsFp16OrBf16 = kIsFp16 || std::is_same<T, BFloat16>::value;
 
   disable_fused_self_attention_ = !kIsFp16 || !kernel_options_->UseTrtFusedAttention();
   enable_trt_flash_attention_ = kIsFp16 && kernel_options_->UseTrtFlashAttention();
@@ -74,7 +75,13 @@ MultiHeadAttention<T, QK>::MultiHeadAttention(const OpKernelInfo& info)
 
   disable_fused_cross_attention_ = !kIsFp16 || !kernel_options_->UseTrtCrossAttention();
 
-  enable_cudnn_flash_attention_ = kIsFp16 && kernel_options_->UseCudnnFlashAttention();
+  // cuDNN SDPA (cudnn_frontend) supports both FP16 and BF16.
+  enable_cudnn_flash_attention_ = kIsFp16OrBf16 && kernel_options_->UseCudnnFlashAttention();
+
+  // On SM>=90 (Hopper/Blackwell) cuDNN SDPA is generally the fastest backend, so it is auto-preferred
+  // ahead of flash / cutlass attention unless the user explicitly pinned a different SDPA kernel via
+  // the sdpa_kernel provider option. The SM check itself is done at compute time.
+  auto_enable_cudnn_flash_attention_ = kIsFp16OrBf16 && kernel_options_->AllowCudnnFlashAttentionAuto();
 
   disable_decoder_attention_ = !kernel_options_->UseDecoderAttention();
 
@@ -298,8 +305,35 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   constexpr bool use_lean_attention = false;
 #endif
 
+  // === cuDNN SDPA eligibility (computed before flash so it can take priority on SM>=90) ===
+  // cuDNN SDPA only supports no mask, or a 1D key sequence length (padding) mask.
+  bool is_mask_none_or_1d_k_len = parameters.mask_type == AttentionMaskType::MASK_NONE ||
+                                  parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
+  // cuDNN SDPA is enabled when explicitly requested, or auto-preferred on SM>=90 (unless the user
+  // pinned a different SDPA kernel through the sdpa_kernel provider option).
+  bool cudnn_sdpa_enabled = enable_cudnn_flash_attention_ ||
+                            (auto_enable_cudnn_flash_attention_ && sm >= 90);
+  // Bottom-right causal masking (used by cuDNN when s_q != s_kv) does not support attention bias.
+  bool cudnn_sdpa_bias_ok = attention_bias == nullptr ||
+                            !is_unidirectional_ ||
+                            parameters.sequence_length == parameters.total_sequence_length;
+  bool cudnn_sdpa_supported = cudnn_sdpa_enabled &&
+                              cudnn_sdpa_bias_ok &&
+                              is_mask_none_or_1d_k_len &&
+                              onnxruntime::cudnn_sdpa::is_stable() &&
+                              onnxruntime::cudnn_sdpa::is_supported(device_prop,
+                                                                    parameters.num_heads,              // num_heads_q
+                                                                    parameters.num_heads,              // num_heads_kv
+                                                                    parameters.head_size,              // head_size_qk
+                                                                    parameters.v_head_size,            // head_size_v
+                                                                    parameters.sequence_length,        // seq_len_q
+                                                                    parameters.total_sequence_length,  // seq_len_kv
+                                                                    is_unidirectional_);
+
 #if USE_FLASH_ATTENTION
+  // On SM>=90 (Hopper/Blackwell) prefer cuDNN SDPA ahead of flash attention.
   bool use_flash_attention = kernel_type == AttentionKernelType::AttentionKernel_Default &&
+                             !(cudnn_sdpa_supported && sm >= 90) &&
                              !disable_flash_attention_ &&
                              nullptr == attention_bias &&
                              nullptr == key_padding_mask &&
@@ -348,19 +382,8 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   }
 #endif
 
-  bool is_mask_none_or_1d_k_len = parameters.mask_type == AttentionMaskType::MASK_NONE ||
-                                  parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
   bool use_cudnn_sdpa = kernel_type == AttentionKernelType::AttentionKernel_Default &&
-                        enable_cudnn_flash_attention_ &&
-                        is_mask_none_or_1d_k_len &&
-                        onnxruntime::cudnn_sdpa::is_supported(device_prop,
-                                                              parameters.num_heads,              // num_heads_q
-                                                              parameters.num_heads,              // num_heads_kv
-                                                              parameters.head_size,              // head_size_qk
-                                                              parameters.v_head_size,            // head_size_v
-                                                              parameters.sequence_length,        // seq_len_q
-                                                              parameters.total_sequence_length,  // seq_len_kv
-                                                              is_unidirectional_);
+                        cudnn_sdpa_supported;
   DUMP_STRING("Use cuDNN SDPA = ", (use_cudnn_sdpa == true));
   if (use_cudnn_sdpa) {
     kernel_type = AttentionKernelType::AttentionKernel_CudnnFlashAttention;
@@ -409,14 +432,14 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
       parameters.hidden_size == parameters.v_hidden_size &&
       parameters.sequence_length == parameters.kv_sequence_length &&  // self attention only for fused runner
       FusedMHARunnerFP16v2::IsSupported(sm, parameters.head_size, sequence_length,
-                                        enable_trt_flash_attention_, is_unidirectional_);
+                                        enable_trt_flash_attention_);
 
   DUMP_STRING("Use fused runner = ", (use_fused_runner == true));
   if (use_fused_runner) {
     // Here we assume that num_heads and head_size does not change for a MultiHeadAttention node.
     if (nullptr == fused_fp16_runner_.get()) {
       std::call_once(fused_fp16_runner_created_, [&]() {
-        fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm, is_unidirectional_,
+        fused_fp16_runner_ = FusedMHARunnerFP16v2::Create(num_heads_, parameters.head_size, sm,
                                                           enable_trt_flash_attention_, parameters.scale);
       });
     }
@@ -545,7 +568,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
     debug_info.use_trt_cross_attention = fused_cross_attention_kernel != nullptr;
     debug_info.use_efficient_attention = use_memory_efficient_attention;
     if (fused_fp16_runner_ != nullptr) {
-      debug_info.SetTrtFusedKernel(is_unidirectional_, enable_trt_flash_attention_, sequence_length);
+      debug_info.SetTrtFusedKernel(enable_trt_flash_attention_, sequence_length);
     }
     debug_info.Print("MultiHeadAttention",
                      this->Node().Name(),

@@ -49,4 +49,4 @@ docker run --rm \
         --use_vcpkg_ms_internal_asset_cache \
         --update \
         --build \
-        --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON ${EXTRA_CMAKE_DEFINES}"
+        --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF ${EXTRA_CMAKE_DEFINES}"

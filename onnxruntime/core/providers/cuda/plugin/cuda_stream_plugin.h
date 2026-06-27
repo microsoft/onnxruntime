@@ -46,6 +46,11 @@ class CudaSyncStream : public OrtSyncStreamImpl {
   /// resolved later from thread-local defaults when kernels dispatch.
   OrtStatus* InitHandlesWithExternalStream(cudaStream_t external_stream);
 
+  /// Initialize with a user-provided external CUDA stream, creating cuBLAS/cuDNN/
+  /// cuBLASLt handles bound to it. The stream is NOT owned (not destroyed on cleanup)
+  /// but library handles ARE owned. Use for user_compute_stream scenarios.
+  OrtStatus* InitHandlesWithUserStream(cudaStream_t user_stream);
+
   /// Look up the CudaSyncStream wrapper from a raw cudaStream_t handle.
   /// Uses a thread-local TLS cache with a generation counter to avoid lock
   /// contention on this hot path (called on every kernel launch).

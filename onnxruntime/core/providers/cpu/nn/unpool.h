@@ -30,6 +30,10 @@ class MaxUnpool : public OpKernel {
       strides_.resize(kernel_shape_.size(), 1);
     }
 
+    ORT_ENFORCE(pads_.size() == kernel_shape_.size() * 2,
+                "Pads attribute size must be twice the kernel_shape size. Got: ", pads_.size(),
+                ", expected: ", kernel_shape_.size() * 2);
+
     for (size_t dim = 0; dim < kernel_shape_.size(); ++dim) {
       ORT_ENFORCE(kernel_shape_[dim] > 0);
       ORT_ENFORCE(pads_[dim] < kernel_shape_[dim] && pads_[dim + kernel_shape_.size()] < kernel_shape_[dim],

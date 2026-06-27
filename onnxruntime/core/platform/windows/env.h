@@ -18,6 +18,7 @@ limitations under the License.
 #include "core/platform/windows/telemetry.h"
 #include "core/common/inlined_containers.h"
 #include <Windows.h>
+#include <filesystem>
 
 namespace onnxruntime {
 
@@ -47,7 +48,7 @@ class WindowsEnv : public Env {
 #endif
   EnvThread* CreateThread(_In_opt_z_ const ORTCHAR_T* name_prefix, int index,
                           unsigned (*start_address)(int id, Eigen::ThreadPoolInterface* param),
-                          Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options);
+                          Eigen::ThreadPoolInterface* param, const ThreadOptions& thread_options) override;
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
@@ -79,6 +80,7 @@ class WindowsEnv : public Env {
   common::Status FileOpenWr(const std::string& path, /*out*/ int& fd) const override;
   common::Status FileClose(int fd) const override;
   common::Status GetCanonicalPath(const PathString& path, PathString& canonical_path) const override;
+  common::Status GetWeaklyCanonicalPath(const PathString& path, PathString& canonical_path) const override;
   PathString GetRuntimePath() const override;
   Status LoadDynamicLibrary(const PathString& library_filename, bool /*global_symbols*/, void** handle) const override;
   Status UnloadDynamicLibrary(void* handle) const override;
@@ -140,5 +142,11 @@ class WindowsEnv : public Env {
   typedef VOID(WINAPI* FnGetSystemTimePreciseAsFileTime)(LPFILETIME);
   WindowsTelemetry telemetry_provider_;
 };
+
+namespace internal {
+// Test-only: exposes the AppContainer fallback used by WindowsEnv::GetWeaklyCanonicalPath.
+bool WeaklyCanonicalPathNtVolumeFallbackForTesting(const std::filesystem::path& input,
+                                                   std::filesystem::path& result);
+}  // namespace internal
 
 }  // namespace onnxruntime

@@ -489,5 +489,72 @@ TEST(MatMulIntegerToFloat, MatMulInteger_With_ZeroPoint) {
   test_case({15, 14, 13}, {15, 13, 27}, {15, 1, 27});
 }
 
+// Test that a bias tensor with length mismatched to B's last dimension is rejected.
+// This reproduces a heap OOB read when bias is shorter than N.
+TEST(MatMulIntegerToFloat, BiasShapeMismatch) {
+  constexpr int64_t M = 2;
+  constexpr int64_t K = 4;
+  constexpr int64_t N = 8;
+
+  std::vector<uint8_t> A_data(M * K, 128);
+  std::vector<uint8_t> B_data(K * N, 128);
+  std::vector<float> A_scale = {0.5f};
+  std::vector<float> B_scale = {0.5f};
+  std::vector<uint8_t> A_zero_point = {128};
+  std::vector<uint8_t> B_zero_point = {128};
+
+  // Bias has only 1 element but N=8. This must be rejected.
+  std::vector<float> bad_bias = {1.0f};
+
+  OpTester test("MatMulIntegerToFloat", 1, onnxruntime::kMSDomain);
+  test.AddInput<uint8_t>("A", {M, K}, A_data);
+  test.AddInput<uint8_t>("B", {K, N}, B_data);
+  test.AddInput<float>("a_scale", {1}, A_scale);
+  test.AddInput<float>("b_scale", {1}, B_scale);
+  test.AddInput<uint8_t>("a_zero_point", {1}, A_zero_point);
+  test.AddInput<uint8_t>("b_zero_point", {1}, B_zero_point);
+  test.AddInput<float>("bias", {1}, bad_bias);
+
+  test.AddOutput<float>("Y", {M, N}, std::vector<float>(M * N, 0.0f));
+
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .Config(OpTester::ExpectResult::kExpectFailure,
+              "bias tensor's element count must equal B's last dimension")
+      .RunWithConfig();
+}
+
+// Test that a bias tensor with length larger than B's last dimension is rejected.
+TEST(MatMulIntegerToFloat, BiasShapeMismatch_LargerBias) {
+  constexpr int64_t M = 2;
+  constexpr int64_t K = 4;
+  constexpr int64_t N = 8;
+
+  std::vector<uint8_t> A_data(M * K, 128);
+  std::vector<uint8_t> B_data(K * N, 128);
+  std::vector<float> A_scale = {0.5f};
+  std::vector<float> B_scale = {0.5f};
+  std::vector<uint8_t> A_zero_point = {128};
+  std::vector<uint8_t> B_zero_point = {128};
+
+  // Bias has length > N, which must be rejected.
+  std::vector<float> bad_bias(static_cast<size_t>(N + 1), 1.0f);
+
+  OpTester test("MatMulIntegerToFloat", 1, onnxruntime::kMSDomain);
+  test.AddInput<uint8_t>("A", {M, K}, A_data);
+  test.AddInput<uint8_t>("B", {K, N}, B_data);
+  test.AddInput<float>("a_scale", {1}, A_scale);
+  test.AddInput<float>("b_scale", {1}, B_scale);
+  test.AddInput<uint8_t>("a_zero_point", {1}, A_zero_point);
+  test.AddInput<uint8_t>("b_zero_point", {1}, B_zero_point);
+  test.AddInput<float>("bias", {N + 1}, bad_bias);
+
+  test.AddOutput<float>("Y", {M, N}, std::vector<float>(M * N, 0.0f));
+
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .Config(OpTester::ExpectResult::kExpectFailure,
+              "bias tensor's element count must equal B's last dimension")
+      .RunWithConfig();
+}
+
 }  // namespace test
 }  // namespace onnxruntime

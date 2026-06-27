@@ -31,6 +31,10 @@ ModelCompilationOptions::ModelCompilationOptions(const onnxruntime::Environment&
   ORT_ENFORCE(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1").IsOK());
   ORT_ENFORCE(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionsDisableModelCompile, "0").IsOK());
 
+  // Signal EPs that this session is used solely for compilation (no inference).
+  // EPs that opt in can use this to skip GPU deserialization / execution context creation.
+  ORT_ENFORCE(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1").IsOK());
+
   session_options_.value.graph_optimization_level = TransformerLevel::Default;  // L0: required transformers only
 }
 
@@ -279,9 +283,12 @@ Status ModelCompilationOptions::Check() const {
                              "OrtModel has no graph. Call AddGraphToModel before compilation.");
     }
 
-    if (input_model_->graph->GetNumInputs() == 0 || input_model_->graph->GetNumOutputs() == 0) {
+    // A model with zero graph inputs is legal (e.g., a graph composed of zero-input
+    // generator ops like RandomNormal that produces output without external input).
+    // We still require at least one graph output for the compiled model to be meaningful.
+    if (input_model_->graph->GetNumOutputs() == 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "OrtModel graph must have at least one input and one output defined.");
+                             "OrtModel graph must have at least one output defined.");
     }
 
     if (input_model_->domain_to_version.empty()) {

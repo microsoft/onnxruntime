@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+#include "core/framework/tensorprotoutils.h"
 #include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
@@ -438,6 +439,45 @@ TEST(LabelEncoder, TensorBasedAttributesOpset4) {
   for (const auto value : value_data) {
     values_proto.add_int64_data(value);
   }
+  test.AddAttribute("values_tensor", values_proto);
+
+  ONNX_NAMESPACE::TensorProto default_proto;
+  default_proto.set_name("default_tensor");
+  default_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  default_proto.add_dims(1);
+  default_proto.add_int64_data(42);
+  test.AddAttribute("default_tensor", default_proto);
+
+  test.AddInput<int64_t>("X", dims, input);
+  test.AddOutput<int64_t>("Y", dims, output);
+
+  test.Run();
+}
+
+TEST(LabelEncoder, Int64ToInt64TensorRawDataOpset4) {
+  std::vector<std::int64_t> dims{1, 3};
+
+  std::vector<int64_t> input{1, 2, 9};
+  std::vector<int64_t> output{12, 13, 42};
+  std::vector<int64_t> key_data{1, 2};
+  std::vector<int64_t> value_data{12, 13};
+
+  OpTester test("LabelEncoder", 4, onnxruntime::kMLDomain);
+
+  ONNX_NAMESPACE::TensorProto keys_proto;
+  keys_proto.set_name("keys_tensor");
+  keys_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  keys_proto.add_dims(key_data.size());
+  onnxruntime::utils::SetRawDataInTensorProto(keys_proto, key_data.data(),
+                                              key_data.size() * sizeof(int64_t));
+  test.AddAttribute("keys_tensor", keys_proto);
+
+  ONNX_NAMESPACE::TensorProto values_proto;
+  values_proto.set_name("values_tensor");
+  values_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  values_proto.add_dims(value_data.size());
+  onnxruntime::utils::SetRawDataInTensorProto(values_proto, value_data.data(),
+                                              value_data.size() * sizeof(int64_t));
   test.AddAttribute("values_tensor", values_proto);
 
   ONNX_NAMESPACE::TensorProto default_proto;

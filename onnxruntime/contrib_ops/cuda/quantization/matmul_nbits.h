@@ -18,6 +18,13 @@ namespace contrib {
 namespace cuda {
 using namespace onnxruntime::cuda;
 
+// Environment variables to force the chunked dequant+GEMM path for testing.
+// ORT_MATMULNBITS_FORCE_CHUNKED=1 bypasses the scratch-size and min-N guards.
+// ORT_MATMULNBITS_CHUNK_SIZE overrides the default chunk size (32768).
+constexpr const char* kForceChunkedEnvVar = "ORT_MATMULNBITS_FORCE_CHUNKED";
+constexpr const char* kChunkSizeEnvVar = "ORT_MATMULNBITS_CHUNK_SIZE";
+constexpr int64_t kDefaultChunkTargetRows = 32768;
+
 #if USE_FPA_INTB_GEMM
 using onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunner;
 using onnxruntime::llm::kernels::weight_only::GemmDims;
@@ -71,6 +78,12 @@ class MatMulNBits final : public CudaKernel {
     }
 #endif
     sm_ = this->GetDeviceProp().major * 10 + this->GetDeviceProp().minor;
+
+    force_chunked_ = ParseEnvironmentVariableWithDefault<int>(kForceChunkedEnvVar, 0) != 0;
+    chunk_target_rows_ = ParseEnvironmentVariableWithDefault<int64_t>(kChunkSizeEnvVar, kDefaultChunkTargetRows);
+    if (chunk_target_rows_ < 1) {
+      chunk_target_rows_ = kDefaultChunkTargetRows;
+    }
 
 #if USE_FPA_INTB_GEMM
     if constexpr (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value) {
@@ -141,6 +154,8 @@ class MatMulNBits final : public CudaKernel {
   bool has_bias_{false};
   bool has_zero_points_{false};
   bool is_zero_points_scale_same_type_{false};
+  bool force_chunked_{false};
+  int64_t chunk_target_rows_{kDefaultChunkTargetRows};
 
 #if USE_FPA_INTB_GEMM
   bool has_fpA_intB_gemv_{false};

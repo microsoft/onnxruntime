@@ -27,35 +27,33 @@ parameters:
 
 stages:
   - stage: Win_plugin_webgpu_${{ parameters.arch }}_Build
-    ${{ if eq(parameters.arch, 'arm64') }}:
-      # The ARM64 build consumes the x64 tblgen.exe artifact published by the Windows x64 stage.
-      dependsOn: Win_plugin_webgpu_x64_Build
-    ${{ else }}:
-      dependsOn: []
+    dependsOn: []
     jobs:
     - job: Win_plugin_webgpu_${{ parameters.arch }}_Build
       timeoutInMinutes: 360
       workspace:
         clean: all
       pool:
-        name: onnxruntime-Win-CPU-VS2022-Latest
-        os: windows
+        ${{ if eq(parameters.arch, 'arm64') }}:
+          name: onnxruntime-qnn-windows-vs-2022-arm64
+          os: windows
+          hostArchitecture: Arm64
+          demands:
+            - Agent.Version -equals 4.264.2
+        ${{ else }}:
+          name: onnxruntime-Win-CPU-VS2022-Latest
+          os: windows
       templateContext:
         sdl:
           codeSignValidation:
             enabled: true
             break: true
-            additionalTargetsGlobPattern: '-|**\clang-tblgen.exe;-|**\llvm-tblgen.exe'
           psscriptanalyzer:
             enabled: true
           binskim:
             enabled: true
             scanOutputDirectoryOnly: true
         outputs:
-        - ${{ if eq(parameters.arch, 'x64') }}:
-          - output: pipelineArtifact
-            targetPath: '$(Build.ArtifactStagingDirectory)\WebGPU_BuildTools'
-            artifactName: WebGPU_BuildTools_x64
         - output: pipelineArtifact
           targetPath: $(Build.ArtifactStagingDirectory)
           artifactName: webgpu_plugin_win_${{ parameters.arch }}
@@ -65,13 +63,6 @@ stages:
         value: '-Dorg.gradle.daemon=false'
       - name: VSGenerator
         value: 'Visual Studio 17 2022'
-      - name: CrossCompileDefines
-        value: ''
-      - name: ArchFlag
-        ${{ if eq(parameters.arch, 'arm64') }}:
-          value: '--arm64'
-        ${{ else }}:
-          value: ''
       steps:
       - checkout: self
         clean: true
@@ -79,7 +70,7 @@ stages:
 
       - template: ../templates/setup-build-tools.yml
         parameters:
-          host_cpu_arch: 'x64'
+          host_cpu_arch: ${{ parameters.arch }}
 
       - template: ../templates/set-nightly-build-option-variable-step.yml
 
@@ -95,28 +86,11 @@ stages:
         env:
           TMPDIR: "$(Agent.TempDirectory)"
 
-      - ${{ if eq(parameters.arch, 'arm64') }}:
-        - task: DownloadPipelineArtifact@2
-          displayName: 'Download WebGPU build tools from x64 build'
-          inputs:
-            artifactName: 'WebGPU_BuildTools_x64'
-            targetPath: '$(Build.BinariesDirectory)\WebGPU_BuildTools'
-        - script: |
-            @echo ##vso[task.setvariable variable=LLVM_TABLEGEN_PATH]$(Build.BinariesDirectory)\WebGPU_BuildTools\llvm-tblgen.exe
-            @echo ##vso[task.setvariable variable=CLANG_TABLEGEN_PATH]$(Build.BinariesDirectory)\WebGPU_BuildTools\clang-tblgen.exe
-          displayName: 'Set tablegen paths'
-        - powershell: |
-            Write-Host "Using LLVM_TABLEGEN_PATH: $(LLVM_TABLEGEN_PATH)"
-            Write-Host "Using CLANG_TABLEGEN_PATH: $(CLANG_TABLEGEN_PATH)"
-            Write-Host "##vso[task.setvariable variable=CrossCompileDefines]LLVM_TABLEGEN=$(LLVM_TABLEGEN_PATH) CLANG_TABLEGEN=$(CLANG_TABLEGEN_PATH)"
-          displayName: 'Set build flags for WebGPU cross-compilation'
-
       - task: PythonScript@0
         displayName: 'Build'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
           arguments: >-
-            $(ArchFlag)
             --config ${{ parameters.cmake_build_type }}
             --build_dir $(Build.BinariesDirectory)
             --skip_submodule_sync
@@ -132,16 +106,9 @@ stages:
             --wgsl_template static
             --disable_rtti
             --enable_lto
-            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_DAWN_BACKEND_D3D12=1 onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1 $(PluginEpVersionDefine) $(CrossCompileDefines)
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF onnxruntime_ENABLE_DAWN_BACKEND_D3D12=1 onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1 $(PluginEpVersionDefine)
             $(TelemetryOption)
           workingDirectory: '$(Build.BinariesDirectory)'
-
-      - ${{ if eq(parameters.arch, 'x64') }}:
-        - script: |
-            mkdir $(Build.ArtifactStagingDirectory)\WebGPU_BuildTools
-            copy $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\_deps\dawn-build\third_party\dxc\${{ parameters.cmake_build_type }}\bin\llvm-tblgen.exe $(Build.ArtifactStagingDirectory)\WebGPU_BuildTools
-            copy $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\_deps\dawn-build\third_party\dxc\${{ parameters.cmake_build_type }}\bin\clang-tblgen.exe $(Build.ArtifactStagingDirectory)\WebGPU_BuildTools
-          displayName: 'Copy WebGPU build tools'
 
       - powershell: |
           $dxcZipUrl = "https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.8.2502/dxc_2025_02_20.zip"
@@ -218,56 +185,58 @@ stages:
           type nul > "$(Build.ArtifactStagingDirectory)\version\$(PluginPackageVersion)"
         displayName: 'Create version marker file'
 
-    # Python package jobs (x64 only — arm64 cross-compiled binaries can't be
-    # packaged or tested on x64 agents)
-    - ${{ if eq(parameters.arch, 'x64') }}:
-      # Python package build job
-      - job: Win_plugin_webgpu_${{ parameters.arch }}_Python_Package
-        dependsOn: Win_plugin_webgpu_${{ parameters.arch }}_Build
-        timeoutInMinutes: 30
-        workspace:
-          clean: all
-        pool:
+    # Python package build job. Runs on a host whose architecture matches
+    # ${{ parameters.arch }} so that the produced wheel is tagged for that
+    # arch (PlatformBdistWheel.get_tag() picks up the host platform).
+    - job: Win_plugin_webgpu_${{ parameters.arch }}_Python_Package
+      dependsOn: Win_plugin_webgpu_${{ parameters.arch }}_Build
+      timeoutInMinutes: 60
+      workspace:
+        clean: all
+      pool:
+        ${{ if eq(parameters.arch, 'arm64') }}:
+          name: onnxruntime-qnn-windows-vs-2022-arm64
+          os: windows
+          hostArchitecture: Arm64
+          demands:
+            - Agent.Version -equals 4.264.2
+        ${{ else }}:
           name: onnxruntime-Win-CPU-VS2022-Latest
           os: windows
-        templateContext:
-          outputs:
-          - output: pipelineArtifact
-            targetPath: '$(Build.ArtifactStagingDirectory)\python'
-            artifactName: webgpu_plugin_python_win_${{ parameters.arch }}
-        variables:
-        - template: ../templates/common-variables.yml
-        steps:
-        - checkout: self
-          clean: true
-          submodules: none
+      templateContext:
+        outputs:
+        - output: pipelineArtifact
+          targetPath: '$(Build.ArtifactStagingDirectory)\python'
+          artifactName: webgpu_plugin_python_win_${{ parameters.arch }}
+      variables:
+      - template: ../templates/common-variables.yml
+      steps:
+      - checkout: self
+        clean: true
+        submodules: none
 
-        - template: ../templates/setup-build-tools.yml
-          parameters:
-            host_cpu_arch: 'x64'
+      - template: ../templates/setup-build-tools.yml
+        parameters:
+          host_cpu_arch: ${{ parameters.arch }}
 
-        - template: ../templates/set-nightly-build-option-variable-step.yml
+      - template: ../templates/set-nightly-build-option-variable-step.yml
 
-        - template: ../templates/set-plugin-ep-build-variables-step.yml
-          parameters:
-            package_version: ${{ parameters.package_version }}
-            version_file: ${{ parameters.version_file }}
-            python_command: python
+      - template: ../templates/set-plugin-ep-build-variables-step.yml
+        parameters:
+          package_version: ${{ parameters.package_version }}
+          version_file: ${{ parameters.version_file }}
+          python_command: python
 
-        - task: DownloadPipelineArtifact@2
-          displayName: 'Download plugin build artifacts'
-          inputs:
-            artifactName: webgpu_plugin_win_${{ parameters.arch }}
-            targetPath: '$(Build.BinariesDirectory)\plugin_artifacts'
+      - task: DownloadPipelineArtifact@2
+        displayName: 'Download plugin build artifacts'
+        inputs:
+          artifactName: webgpu_plugin_win_${{ parameters.arch }}
+          targetPath: '$(Build.BinariesDirectory)\plugin_artifacts'
 
-        - task: PowerShell@2
-          displayName: 'Build Python wheel'
-          inputs:
-            targetType: inline
-            pwsh: true
-            script: |
-              python -m pip install -r "$(Build.SourcesDirectory)\plugin-ep-webgpu\python\requirements-build-wheel.txt"
-              python "$(Build.SourcesDirectory)\plugin-ep-webgpu\python\build_wheel.py" `
-                --binary_dir "$(Build.BinariesDirectory)\plugin_artifacts\bin" `
-                --version "$(PluginPythonPackageVersion)" `
-                --output_dir "$(Build.ArtifactStagingDirectory)\python"
+      - powershell: |
+          python -m pip install -r "$(Build.SourcesDirectory)\plugin-ep-webgpu\python\requirements-build-wheel.txt"
+          python "$(Build.SourcesDirectory)\plugin-ep-webgpu\python\build_wheel.py" `
+            --binary_dir "$(Build.BinariesDirectory)\plugin_artifacts\bin" `
+            --version "$(PluginPythonPackageVersion)" `
+            --output_dir "$(Build.ArtifactStagingDirectory)\python"
+        displayName: 'Build Python wheel'

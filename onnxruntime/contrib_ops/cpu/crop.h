@@ -53,6 +53,11 @@ class CropBase {
 
     // scale = (height, width)
     if (!scale_.empty()) {
+      if (scale_.size() != 2) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Attribute scale needs to be specified with two elements (height, width), got ",
+                               scale_.size());
+      }
       int64_t bottomLimit = topBorder + scale_[0];
       int64_t rightLimit = leftBorder + scale_[1];
 

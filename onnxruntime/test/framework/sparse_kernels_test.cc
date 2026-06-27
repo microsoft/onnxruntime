@@ -2539,6 +2539,284 @@ TEST(SparseTensorConversionTests, SparseCooToDense_2DRowOutOfRange) {
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Invalid COO 2D index"));
 }
 
+// Positive tests for SparseTensorProtoToDenseTensorProto with external data.
+// These verify end-to-end conversion succeeds when values and/or indices are stored
+// in legitimate external files within the model directory.
+
+// Helper: write data to a temp file and configure a TensorProto to reference it as external data.
+// The file is created in the current working directory using CreateTestFile.
+// The ScopedFileDeleter is assigned immediately after file creation to ensure cleanup on any failure.
+template <typename T>
+static void SetupExternalDataTensor(TensorProto_DataType type,
+                                    const std::vector<T>& data,
+                                    PathString& filename,
+                                    TensorProto& tensor_proto,
+                                    ScopedFileDeleter& file_deleter) {
+  size_t size_in_bytes = data.size() * sizeof(T);
+  std::vector<unsigned char> le_data(size_in_bytes);
+
+  auto src_span = gsl::make_span(data.data(), data.size());
+  auto dst_span = gsl::make_span(le_data.data(), le_data.size());
+  ASSERT_STATUS_OK(onnxruntime::utils::WriteLittleEndian(src_span, dst_span));
+
+  FILE* fp;
+  CreateTestFile(fp, filename);
+  file_deleter = ScopedFileDeleter(filename);
+  ASSERT_EQ(size_in_bytes, fwrite(le_data.data(), 1, size_in_bytes, fp));
+  ASSERT_EQ(0, fclose(fp));
+
+  tensor_proto.set_data_type(type);
+  tensor_proto.set_data_location(TensorProto_DataLocation_EXTERNAL);
+
+  auto* loc = tensor_proto.mutable_external_data()->Add();
+  loc->set_key("location");
+  loc->set_value(ToUTF8String(filename));
+
+  auto* len = tensor_proto.mutable_external_data()->Add();
+  len->set_key("length");
+  len->set_value(std::to_string(size_in_bytes));
+}
+
+// External values + inline indices (INT64), rank-1 COO.
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_ExternalValues_InlineIndices) {
+  // Dense shape [2, 3] = 6 elements.
+  // NNZ=3 values at linear indices [0, 2, 5].
+  // Expected dense: [1.0, 0, 2.0, 0, 0, 3.0]
+  std::vector<float> values = {1.0f, 2.0f, 3.0f};
+  PathString values_file(ORT_TSTR("ext_val_XXXXXX"));
+
+  SparseTensorProto sparse;
+  sparse.add_dims(2);
+  sparse.add_dims(3);
+
+  ScopedFileDeleter values_deleter;
+  SetupExternalDataTensor<float>(TensorProto_DataType_FLOAT, values, values_file, *sparse.mutable_values(),
+                                 values_deleter);
+  sparse.mutable_values()->set_name("ext_values_test");
+  sparse.mutable_values()->add_dims(3);  // NNZ
+
+  auto* indices = sparse.mutable_indices();
+  indices->set_data_type(TensorProto_DataType_INT64);
+  indices->add_dims(3);
+  indices->add_int64_data(0);
+  indices->add_int64_data(2);
+  indices->add_int64_data(5);
+
+  // model_path in CWD so external files are within the model directory
+  std::filesystem::path model_path = std::filesystem::current_path() / "model.onnx";
+  TensorProto dense;
+  ASSERT_STATUS_OK(utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense));
+
+  ASSERT_EQ(dense.dims_size(), 2);
+  EXPECT_EQ(dense.dims(0), 2);
+  EXPECT_EQ(dense.dims(1), 3);
+
+  std::vector<float> unpacked(6);
+  ASSERT_STATUS_OK(utils::UnpackTensor<float>(dense, model_path, unpacked.data(), unpacked.size()));
+  std::vector<float> expected = {1.0f, 0.0f, 2.0f, 0.0f, 0.0f, 3.0f};
+  EXPECT_EQ(unpacked, expected);
+}
+
+// Inline values + external indices (INT64), rank-1 COO.
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_InlineValues_ExternalIndicesInt64) {
+  // Dense shape [4] = 4 elements.
+  // NNZ=2 at indices [1, 3].
+  // Expected dense: [0, 10.0, 0, 20.0]
+  std::vector<int64_t> indices_data = {1, 3};
+  PathString indices_file(ORT_TSTR("ext_idx_XXXXXX"));
+
+  SparseTensorProto sparse;
+  sparse.add_dims(4);
+
+  auto* values = sparse.mutable_values();
+  values->set_name("ext_indices_test");
+  values->set_data_type(TensorProto_DataType_FLOAT);
+  values->add_dims(2);
+  values->add_float_data(10.0f);
+  values->add_float_data(20.0f);
+
+  ScopedFileDeleter indices_deleter;
+  SetupExternalDataTensor<int64_t>(TensorProto_DataType_INT64, indices_data, indices_file,
+                                   *sparse.mutable_indices(), indices_deleter);
+  sparse.mutable_indices()->add_dims(2);
+
+  std::filesystem::path model_path = std::filesystem::current_path() / "model.onnx";
+  TensorProto dense;
+  ASSERT_STATUS_OK(utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense));
+
+  std::vector<float> unpacked(4);
+  ASSERT_STATUS_OK(utils::UnpackTensor<float>(dense, model_path, unpacked.data(), unpacked.size()));
+  std::vector<float> expected = {0.0f, 10.0f, 0.0f, 20.0f};
+  EXPECT_EQ(unpacked, expected);
+}
+
+// Inline values + external indices (INT32), rank-1 COO.
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_InlineValues_ExternalIndicesInt32) {
+  std::vector<int32_t> indices_data = {0, 3};
+  PathString indices_file(ORT_TSTR("ext_i32_XXXXXX"));
+
+  SparseTensorProto sparse;
+  sparse.add_dims(2);
+  sparse.add_dims(2);
+
+  auto* values = sparse.mutable_values();
+  values->set_name("ext_int32_idx_test");
+  values->set_data_type(TensorProto_DataType_FLOAT);
+  values->add_dims(2);
+  values->add_float_data(5.0f);
+  values->add_float_data(6.0f);
+
+  ScopedFileDeleter indices_deleter;
+  SetupExternalDataTensor<int32_t>(TensorProto_DataType_INT32, indices_data, indices_file,
+                                   *sparse.mutable_indices(), indices_deleter);
+  sparse.mutable_indices()->add_dims(2);
+
+  std::filesystem::path model_path = std::filesystem::current_path() / "model.onnx";
+  TensorProto dense;
+  ASSERT_STATUS_OK(utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense));
+
+  std::vector<float> unpacked(4);
+  ASSERT_STATUS_OK(utils::UnpackTensor<float>(dense, model_path, unpacked.data(), unpacked.size()));
+  std::vector<float> expected = {5.0f, 0.0f, 0.0f, 6.0f};
+  EXPECT_EQ(unpacked, expected);
+}
+
+// Inline values + external indices (INT16), rank-1 COO.
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_InlineValues_ExternalIndicesInt16) {
+  std::vector<int16_t> indices_data = {1, 2};
+  PathString indices_file(ORT_TSTR("ext_i16_XXXXXX"));
+
+  SparseTensorProto sparse;
+  sparse.add_dims(4);
+
+  auto* values = sparse.mutable_values();
+  values->set_name("ext_int16_idx_test");
+  values->set_data_type(TensorProto_DataType_FLOAT);
+  values->add_dims(2);
+  values->add_float_data(7.0f);
+  values->add_float_data(8.0f);
+
+  ScopedFileDeleter indices_deleter;
+  SetupExternalDataTensor<int16_t>(TensorProto_DataType_INT16, indices_data, indices_file,
+                                   *sparse.mutable_indices(), indices_deleter);
+  sparse.mutable_indices()->add_dims(2);
+
+  std::filesystem::path model_path = std::filesystem::current_path() / "model.onnx";
+  TensorProto dense;
+  ASSERT_STATUS_OK(utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense));
+
+  std::vector<float> unpacked(4);
+  ASSERT_STATUS_OK(utils::UnpackTensor<float>(dense, model_path, unpacked.data(), unpacked.size()));
+  std::vector<float> expected = {0.0f, 7.0f, 8.0f, 0.0f};
+  EXPECT_EQ(unpacked, expected);
+}
+
+// Inline values + external indices (INT8), rank-1 COO.
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_InlineValues_ExternalIndicesInt8) {
+  std::vector<int8_t> indices_data = {0, 2};
+  PathString indices_file(ORT_TSTR("ext_i8_XXXXXX"));
+
+  SparseTensorProto sparse;
+  sparse.add_dims(3);
+
+  auto* values = sparse.mutable_values();
+  values->set_name("ext_int8_idx_test");
+  values->set_data_type(TensorProto_DataType_FLOAT);
+  values->add_dims(2);
+  values->add_float_data(9.0f);
+  values->add_float_data(11.0f);
+
+  ScopedFileDeleter indices_deleter;
+  SetupExternalDataTensor<int8_t>(TensorProto_DataType_INT8, indices_data, indices_file,
+                                  *sparse.mutable_indices(), indices_deleter);
+  sparse.mutable_indices()->add_dims(2);
+
+  std::filesystem::path model_path = std::filesystem::current_path() / "model.onnx";
+  TensorProto dense;
+  ASSERT_STATUS_OK(utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense));
+
+  std::vector<float> unpacked(3);
+  ASSERT_STATUS_OK(utils::UnpackTensor<float>(dense, model_path, unpacked.data(), unpacked.size()));
+  std::vector<float> expected = {9.0f, 0.0f, 11.0f};
+  EXPECT_EQ(unpacked, expected);
+}
+
+// Both external values and external indices (INT64), rank-1 COO.
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_ExternalValues_ExternalIndicesInt64) {
+  // Dense shape [3, 2] = 6 elements.
+  // NNZ=2 at linear indices [1, 4].
+  // Expected dense: [0, 100.0, 0, 0, 200.0, 0]
+  std::vector<float> values_data = {100.0f, 200.0f};
+  std::vector<int64_t> indices_data = {1, 4};
+  PathString values_file(ORT_TSTR("ext_bv_XXXXXX"));
+  PathString indices_file(ORT_TSTR("ext_bi_XXXXXX"));
+
+  SparseTensorProto sparse;
+  sparse.add_dims(3);
+  sparse.add_dims(2);
+
+  ScopedFileDeleter values_deleter;
+  SetupExternalDataTensor<float>(TensorProto_DataType_FLOAT, values_data, values_file, *sparse.mutable_values(),
+                                 values_deleter);
+  sparse.mutable_values()->set_name("ext_both_test");
+  sparse.mutable_values()->add_dims(2);
+
+  ScopedFileDeleter indices_deleter;
+  SetupExternalDataTensor<int64_t>(TensorProto_DataType_INT64, indices_data, indices_file,
+                                   *sparse.mutable_indices(), indices_deleter);
+  sparse.mutable_indices()->add_dims(2);
+
+  std::filesystem::path model_path = std::filesystem::current_path() / "model.onnx";
+  TensorProto dense;
+  ASSERT_STATUS_OK(utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense));
+
+  ASSERT_EQ(dense.dims_size(), 2);
+  EXPECT_EQ(dense.dims(0), 3);
+  EXPECT_EQ(dense.dims(1), 2);
+
+  std::vector<float> unpacked(6);
+  ASSERT_STATUS_OK(utils::UnpackTensor<float>(dense, model_path, unpacked.data(), unpacked.size()));
+  std::vector<float> expected = {0.0f, 100.0f, 0.0f, 0.0f, 200.0f, 0.0f};
+  EXPECT_EQ(unpacked, expected);
+}
+
+// Both external values and external indices (INT64), rank-2 COO indices.
+TEST(SparseTensorConversionTests, SparseTensorProtoToDense_ExternalValues_ExternalIndicesInt64_Rank2) {
+  // Dense shape [3, 3] = 9 elements.
+  // NNZ=2 with 2D indices: [[0, 2], [2, 0]] -> positions (0,2)=2, (2,0)=6.
+  // Expected dense: [0, 0, 50.0, 0, 0, 0, 60.0, 0, 0]
+  std::vector<float> values_data = {50.0f, 60.0f};
+  // Rank-2 indices: flattened as [row0, col0, row1, col1]
+  std::vector<int64_t> indices_data = {0, 2, 2, 0};
+  PathString values_file(ORT_TSTR("ext_r2v_XXXXXX"));
+  PathString indices_file(ORT_TSTR("ext_r2i_XXXXXX"));
+
+  SparseTensorProto sparse;
+  sparse.add_dims(3);
+  sparse.add_dims(3);
+
+  ScopedFileDeleter values_deleter;
+  SetupExternalDataTensor<float>(TensorProto_DataType_FLOAT, values_data, values_file, *sparse.mutable_values(),
+                                 values_deleter);
+  sparse.mutable_values()->set_name("ext_rank2_test");
+  sparse.mutable_values()->add_dims(2);  // NNZ
+
+  ScopedFileDeleter indices_deleter;
+  SetupExternalDataTensor<int64_t>(TensorProto_DataType_INT64, indices_data, indices_file,
+                                   *sparse.mutable_indices(), indices_deleter);
+  sparse.mutable_indices()->add_dims(2);  // NNZ
+  sparse.mutable_indices()->add_dims(2);  // rank of dense tensor
+
+  std::filesystem::path model_path = std::filesystem::current_path() / "model.onnx";
+  TensorProto dense;
+  ASSERT_STATUS_OK(utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense));
+
+  std::vector<float> unpacked(9);
+  ASSERT_STATUS_OK(utils::UnpackTensor<float>(dense, model_path, unpacked.data(), unpacked.size()));
+  std::vector<float> expected = {0.0f, 0.0f, 50.0f, 0.0f, 0.0f, 0.0f, 60.0f, 0.0f, 0.0f};
+  EXPECT_EQ(unpacked, expected);
+}
+
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 }  // namespace test
 }  // namespace onnxruntime

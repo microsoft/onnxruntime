@@ -33,7 +33,7 @@ namespace cutlass_kernels {
 
 template <class ArchTag, class TileShape, class ClusterShape, class ActivationType>
 struct should_filter_tma_warp_specialized_gemm_problem_shape {
-#ifdef FAST_BUILD
+#if defined(ORT_QUICK_BUILD) && defined(__CUDACC__)
   using SupportedCtaShape = cute::Shape<cute::_128, cute::_128, decltype(cute::get<2>(TileShape{}))>;
   using SupportedCgaShape = cute::Shape<cute::_1, cute::_1, cute::_1>;
 

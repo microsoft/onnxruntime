@@ -34,7 +34,46 @@ Unified Unfused      → RunUnfusedAttention()
   (handles both MHA and GQA via reshape-Q trick)
 ```
 
+### Eligibility anchors (symbols are stable; line numbers as of cc34d0b914)
+
+| Stage | Decision symbol | Hard caps | Dispatch gate |
+|---|---|---|---|
+| Flash | `flash::is_supported<T>` (`flash_api.cc:414`) | fp16/bf16 only, SM≥8.0, `head_size%8==0`, **`head_size<=256`** | `attention.cc:1385` `flash_eligible` (fp32 excluded at :1387) |
+| MEA | `has_memory_efficient_attention` (`memory_efficient_attention.h:68`) | `(head_size&7)==0` **and `head_size<=kEfficientAttentionMaxHeadSize` (1024)**; **NO shared-memory feasibility check** (see #28388 + the head_size=512 caveat below) | `attention.cc:1415` `mea_eligible`; bias-stride `%4` at :1436 |
+| Unfused | (none — catch-all) | all dtypes/shapes | `attention.cc:1485` `RunUnfusedAttention` |
+
+**`head_size=512` IS routed to MEA, but its MEA kernel is NOT portably launchable — so it
+is not a robust test probe.**
+By the predicate, 512 > 256 fails Flash and 512 ≤ 1024 with `512 & 7 == 0` passes the MEA
+predicate, **so dispatch selects MEA** — but the MEA eligibility check
+(`memory_efficient_attention.h:68-73`) gates only on SM +
+`head&7==0` + `head<=1024`, with **no shared-memory check**. For `head_size=512` FP16 the
+CUTLASS MEA `SharedStorage` exceeds the dynamic-smem opt-in cap on capacity-limited arches
+(sm86 ~99KB, sm80 ~163KB, sm90 ~227KB — **non-monotonic**, no clean SM-version guard).
+`fmha_launch_template.h` calls `cudaFuncSetAttribute(..., cudaFuncAttributeMaxDynamicSharedMemorySize, ...)`
+but **ignores its return value and launches anyway**, so on sm86 the kernel dies at launch
+with `CUDA failure 1: invalid argument` — there is **no fallback to unfused** (live bug
+#28388; its fix PR #28383 was never merged). So `head_size=512`'s MEA kernel launches only
+on large-smem arches like sm90/H100.
+
+**To force the MEA path portably in a test, use `ORT_DISABLE_FLASH_ATTENTION=1` with a small
+`head_size` (e.g. 64) whose SharedStorage fits every target arch — NOT `head_size=512`.**
+Also guard with `SKIP_IF_MEA_NOT_COMPILED` (see §7) so a MEA-OFF build SKIPs rather than
+false-greens via the (correct) unfused fallback.
+
 **Flash eligibility**: fp16/bf16 only, SM≥8.0 (Ampere+), `head_size == v_head_size`, `head_size <= 256`, no `output_qk`, `attn_mask == nullptr`. Uses `mha_fwd` / `mha_fwd_kvcache`.
+
+> **QUICK_BUILD caveat (false hypothesis trap).** *(General principle — build flags can
+> silently reroute kernel dispatch — lives in the `ort-build` skill, "Agent tips". The
+> attention-specific instance:)* With `onnxruntime_QUICK_BUILD=ON`
+> (`-DORT_QUICK_BUILD`), Flash is compiled for **head_dim 128 only**:
+> `flash_api.h:147` `is_supported<T>` returns false for `head_size != 128`, and
+> `static_switch.h:80` `HEADDIM_SWITCH` only instantiates `kHeadDim=128`. So under
+> QUICK_BUILD nearly every shape routes to **MEA**, not FlashAttention-2. If a
+> `head_size!=128` test "fails only on some SM", suspect **MEA** (CUTLASS,
+> arch-independent), NOT a Flash/FA2 hardware bug. `head_size=512` **is routed to MEA** in all
+> MEA-enabled builds (Flash caps at 256), but its MEA kernel **fails to launch** on
+> small-smem GPUs — see the `head_size=512` caveat above (#28388).
 
 **MEA eligibility**: SM50+/53+/80+ by dtype, `head_size <= 1024` and divisible by 8 (enforced by `has_memory_efficient_attention`), no `output_qk`. GQA additionally requires `head_size == v_head_size` (for `LaunchUngroup`); decode also requires it (for `LaunchConcatNewToPastKV`). Bias stride must satisfy `total_sequence_length % 4 == 0`. GQA with FP32 is excluded (LaunchUngroup only has fp16/bf16 instantiations). Supports `softcap + attn_mask` — CUTLASS applies softcap before bias in kernel tiles, matching ONNX spec ordering (onnx/onnx#7867, supersedes the now-closed onnx/onnx#7865 issue).
 
@@ -142,15 +181,45 @@ for (int64_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
 Always call `CUDA_CALL(cudaGetLastError())` after kernel launches in standalone helper functions. This is the established pattern in the file (see `ConcatPastToPresent`, `PastPresentBufferShare`).
 
-## 6. Fully-Masked Batches
+## 6. Fully-Masked Rows and Batches
 
-All-false bool masks or `seqlens_k=0` produce NaN in CUTLASS MEA.
+All-false bool masks, an all-`-inf` `attn_mask` row, or a causal/nonpad frontier
+with no allowed key produce NaN in CUTLASS MEA (the uniform/empty softmax degenerates:
+`s_prime=0` → `1/s_prime=inf` → `0 × inf = NaN`). Per onnx/onnx#8068 (Bug-2), a
+**fully-masked query row** — one with no key allowed by the composed causal + nonpad +
+mask constraints — must output a **zero row** (`Y = 0`), **not** mean-of-V.
 
-**Additive-bias path** (bool mask converted to bias): Fixed by capping `mask_filter_value` to `-1e+30f` (see section 2). CUTLASS then naturally computes uniform softmax → mean(V).
+**This `Y = 0` behavior is now consistent on BOTH EPs** (the earlier mean(V)-vs-zero
+cross-EP divergence is RESOLVED — there is no longer an open TODO here):
 
-**Nonpad path** (`seqlens_k=0`): CUTLASS skips all K/V positions → `s_prime=0` → NaN. Fixed by `ZeroOutputForFullyMaskedBatches` kernel which zeros output for batches where `seqlens_k[b] == 0`. Note: this produces zeros, not mean(V) — a cross-EP consistency TODO exists.
+- **CUDA**: `ZeroFullyMaskedRowsKernel` (in `attention_mask_impl.cu`) runs after the
+  MEA/CUTLASS output and zeros each fully-masked row with a **select** (not multiply,
+  so `0 @ V = 0` even when V is poisoned). It detects a fully-masked row with an exact
+  per-key predicate (within the causal/nonpad frontier AND the additive-bias slot is
+  above the mask sentinel), matching the onnx#8068 `isneginf`-of-row-max reference. A
+  finite (even very negative) user bias is not the sentinel, so its key stays unmasked
+  and the row is left untouched.
+- **CPU**: `core/providers/cpu/llm/attention.cc` applies the same Bug-2 guard — after
+  softmax it zeros any row whose composed frontier admitted no unmasked key.
 
-**CPU/Unfused behavior**: `mask_filter_value = lowest()` (not `-inf`). All masked values are equal → `softmax(equal) = 1/N` → output = mean(V). This is the spec reference.
+**Additive-bias path** (bool mask converted to bias): `mask_filter_value` is capped to
+`-1e+30f` (see section 2) so CUTLASS does not overflow to NaN; a row that is nonetheless
+fully masked is then zeroed by the per-row guard above.
+
+**Whole-batch empty (`seqlens_k[b] == 0`)**: the structural case where an entire batch
+has zero valid keys is additionally handled by `ZeroOutputForFullyMaskedBatches`, which
+zeros that batch's output. (The per-row guard covers the finer-grained case where only
+some query rows are fully masked.)
+
+**`qk_matmul_output_mode` (mode 3 / post-softmax debug output)**: for a fully-masked row
+the mode-3 snapshot is **mandated to be `0`** (zero row), consistent with `Y = 0`, per the
+onnx#8068 SIG decision (this superseded the earlier "unspecified" proposal). The CPU
+post-softmax snapshot is taken **after** the row-zeroing guard — matching the onnx
+reference and the v23/v24 function bodies, where the guard runs before the mode-3
+capture — so the debug tensor reflects the same zero row as the output. Note this
+mode-3=0 behavior is served by the **CPU** path: CUDA `qk_matmul_output_mode` beyond
+`kNone`/`kQK` (i.e. `kPostSoftCap`/`kPostMaskBias`/`kPostSoftMax`) returns
+`NOT_IMPLEMENTED` (`attention.cc`), so an agent must not assume CUDA produces mode-3=0.
 
 ## 7. Test Runner Targeting
 
@@ -177,13 +246,21 @@ ScopedEnvironmentVariables scoped_env({
 
 Enable verbose logging to confirm: `LOGS_DEFAULT(VERBOSE) << "ONNX Attention: using ..."`.
 
+**`SKIP_IF_MEA_NOT_COMPILED`** is a local gtest macro (defined in
+`test/providers/cpu/llm/attention_op_test.cc`) that `GTEST_SKIP`s — rather than silently
+passes — when `USE_MEMORY_EFFICIENT_ATTENTION` is OFF, so an MEA-targeted test cannot
+false-green via the (correct) unfused fallback. Use it in any test that must prove the MEA
+path ran (see the `ort-test` skill → "Verify which path/kernel actually executed").
+
 ## 8. Cross-EP Consistency
 
 CPU is the spec reference implementation. CUDA outputs should match CPU for all valid inputs.
 
 - CPU uses `mask_filter_value = std::numeric_limits<T>::lowest()` (finite, not `-inf`)
 - CPU softmax: subtract-max-first → works correctly with extreme finite values
-- CPU handles fully-masked batches naturally (uniform softmax → mean(V))
+- CPU zeros fully-masked query rows (onnx#8068 Bug-2 guard) — output `Y = 0`, matching
+  CUDA's `ZeroFullyMaskedRowsKernel`. (Earlier docs claimed CPU produced mean(V) here;
+  that divergence is resolved — both EPs now emit a zero row.)
 
 Run tests with `disable_cpu=false` to always validate against CPU. The C++ test framework (`RunTest4D`) supports `disable_cpu`, `disable_cuda`, `disable_dml` flags.
 
@@ -198,7 +275,7 @@ Run tests with `disable_cpu=false` to always validate against CPU. The C++ test 
 | `core/providers/cuda/llm/attention_mask_impl.h` | Declarations for ONNX mask/bias kernels |
 | `core/providers/cpu/llm/attention.cc` | CPU reference implementation (ONNX domain) |
 | `core/providers/cpu/llm/attention_helper.h` | ONNX parameter validation and shape computation |
-| `test/providers/cpu/llm/attention_op_test.cc` | C++ attention tests (all EPs) |
+| `test/providers/cpu/llm/attention_op_test.cc` | C++ tests for the **ONNX-domain** `Attention` op — suite `AttentionTest.*`, runs in `onnxruntime_provider_test` (all EPs). NOT to be confused with the contrib `test/contrib_ops/attention_op_test.cc` (`ContribOpAttentionTest.*`); see `ort-test` skill. |
 | `test/python/transformers/test_onnx_attention/test_mha.py` | Python parity tests |
 | `test/python/transformers/test_onnx_attention/common.py` | Python test utilities and reference `attention_ref()` |
 
@@ -230,38 +307,108 @@ The contrib `QkvToContext` function (used by contrib MHA, NOT by ONNX Attention)
 
 The ONNX spec defines two causal alignment modes based on where query positions sit in the full attention matrix:
 
-- **Upper-left**: `q_i` attends to `kv[0..i]`. Query positions start at 0 in the full matrix.
-- **Lower-right**: `q_i` attends to `kv[kv_len - q_len + i..kv_len - 1]`. Query positions are at the end.
+- **Upper-left** (a.k.a. *top-left*): `q_i` attends to `kv[0..i]`. Query positions start at 0 in the full matrix.
+- **Bottom-right** (a.k.a. *lower-right*): `q_i` attends to `kv[0 .. kv_len - q_len + i]` — i.e. keys `j` with `j <= i + offset`, where `offset = kv_len - q_len` (clamped `>= 0`). The causal diagonal is anchored at the end of the key axis. This is the term onnx/onnx#8068 uses; kernel flags spell it `CausalFromBottomRight`.
 
-**ONNX spec rule**: `is_causal=1` always means upper-left in the full matrix. When `past_key` provides context, `past_sequence_length` shifts the query start position forward — the resulting `[S_q × total_kv]` sub-matrix effectively has lower-right alignment.
+**ONNX spec rule**: causal alignment depends on how the KV context is supplied.
+
+- **Internal cache / no cache** (`past_key`, or plain self-attention): `is_causal=1`
+  is upper-left in the full matrix. When `past_key` provides context,
+  `past_sequence_length` shifts the query start position forward — the resulting
+  `[S_q × total_kv]` sub-matrix is effectively bottom-right.
+- **External / static cache** (`nonpad_kv_seqlen`, no `past_key`, opset 24): per
+  onnx/onnx#8068, `is_causal=1` uses **bottom-right** (offset-aware) alignment —
+  query in-block index `i` attends key `j` iff `j <= i + offset[b]`, where
+  `offset[b] = nonpad_kv_seqlen[b] - q_sequence_length` (clamped to `>= 0`).
 
 ### Per-kernel behavior
 
 | Kernel | Alignment | Mechanism |
 |--------|-----------|-----------|
-| **Flash** | Lower-right only | `is_causal` flag → `seqlen_k - seqlen_q` offset in kernel. No top-left option. |
+| **Flash** | Bottom-right only | `is_causal` flag → `seqlen_k - seqlen_q` offset in kernel. No upper-left option. |
 | **MEA (CUTLASS)** | Both | `causal_from_top_left` flag in `MemoryEfficientAttentionParams`. `true` → `CausalFromTopLeft` (offset=0). `false` → `CausalFromBottomRight` (offset = num_keys - num_queries). |
-| **Unfused** | Both | `past_kv_length` param. `0` → upper-left. `total_kv - S_q` → lower-right. |
+| **Unfused** | Both | `past_kv_length` param. `0` → upper-left. `total_kv - S_q` → bottom-right. |
 
 ### Dispatch logic in attention.cc
 
 ```cpp
-// Flash cannot do upper-left → guarded by causal_cross_no_past
+// Pure cross-attention with NO external cache (S_q != S_kv, no past, no nonpad):
+// this is the upper-left case Flash cannot express.
 bool causal_cross_no_past = parameters.is_causal &&
     parameters.q_sequence_length != parameters.total_sequence_length &&
     parameters.past_sequence_length == 0;
 
-// Flash: skip when causal_cross_no_past (no top-left support)
-// MEA: NOT skipped — handles it via causal_from_top_left = (past_sequence_length == 0)
-// Unfused: always correct via past_kv_length = parameters.past_sequence_length
+// Flash: eligible UNLESS (causal_cross_no_past && nonpad_kv_seqlen == nullptr).
+//   - No external cache  -> upper-left required -> skip Flash (no upper-left support).
+//   - External cache (nonpad_kv_seqlen != nullptr) -> required frontier IS bottom-right
+//     (onnx#8068), so Flash IS eligible and produces it natively via seqlens_k.
+// MEA: external cache -> causal_from_top_left = false (bottom-right, offset = num_keys -
+//   num_queries == nonpad_kv_seqlen[b] - q_len per batch); otherwise causal_from_top_left
+//   = (past_sequence_length == 0).
+// Unfused: always correct via past_kv_length (0 -> upper-left; total_kv - S_q -> bottom-right).
 ```
 
 ### When S_q == S_kv
 
-Upper-left and lower-right produce **identical** results when `S_q == S_kv` (the offset is 0 either way). The alignment distinction only matters for cross-attention shapes (`S_q != S_kv`).
+Upper-left and bottom-right produce **identical** results when `S_q == S_kv` (the offset is 0 either way). The alignment distinction only matters for cross-attention shapes (`S_q != S_kv`).
 
 ### TensorScatter decode (opset 24 external KV cache)
 
-TensorScatter manages KV cache externally — `past_key` is nullptr but K/V already contain the full sequence. Per the ONNX spec, `is_causal` with `S_q != S_kv` and no `past_key` means upper-left (q[0] sees only kv[0]), which is **not meaningful for decode**.
+TensorScatter manages KV cache externally — `past_key` is nullptr but K/V already
+contain the full sequence, with `nonpad_kv_seqlen[b]` giving each batch's valid
+(non-padded) key count. Per onnx/onnx#8068, `is_causal=1` with an external/static KV
+cache (no `past_key`) uses **bottom-right** (offset-aware) alignment: query in-block
+index `i` attends key `j` iff `j <= i + offset[b]`, where
+`offset[b] = nonpad_kv_seqlen[b] - q_sequence_length` (clamped to `>= 0`). For decode
+(`q_sequence_length == 1`) the single query row therefore attends all
+`nonpad_kv_seqlen[b]` valid keys — the meaningful, spec-correct result (not the
+degenerate "q[0] sees only kv[0]" of upper-left).
 
-**Correct pattern**: TensorScatter decode must use `is_causal=0` and rely on `nonpad_kv_seqlen` to bound the active KV range. Models using `is_causal=1` with TensorScatter decode have a spec-invalid combination.
+**Correct pattern**: `is_causal=1` with TensorScatter + `nonpad_kv_seqlen` (no `past_key`)
+is **valid and supported** for both decode and continued-prefill — it yields bottom-right
+causal attention bounded by the per-batch valid-key count. (`is_causal=0` is also valid
+where a model wants no causal masking.) The earlier `is_causal=1` NOT_IMPLEMENTED reject
+was **removed** in the onnx#8068 alignment work; the only still-invalid combination is
+`nonpad_kv_seqlen` together with `past_key` (mutually exclusive internal-vs-external
+cache, enforced at validation in `attention_helper.h`).
+
+## 12. Signed Offsets in CUTLASS FMHA (uint wrap hazard)
+
+This is a specific instance of the general **signed-vs-unsigned wrap** bug class — see
+`AGENTS.md` → "Signed vs unsigned on negative-capable differences" for the principle. Below
+are the **attention-specific** fix sites in `cutlass_fmha/kernel_forward.h`. See §11 for what
+the offset *means* (bottom-right alignment); this section is purely the signed-arithmetic
+hazard.
+
+Any FMHA offset computed as a difference of counts — canonically
+`causal_diagonal_offset = num_keys - num_queries` (`CausalFromBottomRight`) — is
+**negative** whenever `num_keys < num_queries` (cross-attention / KV-trimmed /
+`nonpad_kv_seqlen[b] < q_len`, onnx#8068 / ORT #28904). It **must** be stored and
+compared as `int32_t`; a `uint32_t` wraps the negative value to ~4.29e9 (`0xFFFFFFFE`),
+the causal-mask guard `min(iter_key_start + kKeysPerBlock, num_keys) >= query_start + offset`
+becomes permanently false, the per-element causal mask is **silently skipped**, and boundary
+query rows over-attend one extra key.
+
+### Fix sites in `cutlass_fmha/kernel_forward.h` (symbols are stable; lines as of cc34d0b914)
+
+| Symbol / guard | Line | What it must do |
+|---|---|---|
+| `int32_t causal_diagonal_offset` (field decl) | ~206 | Stay **`int32_t`** so the negative offset is preserved (rationale comment ~202-205). |
+| `causal_diagonal_offset = num_keys - num_queries;` | ~354 | Set point for `CausalFromBottomRight`; may be negative (comment ~353). |
+| `int32_t(query_start + causal_diagonal_offset + kQueriesPerBlock)` | ~366 | First (AttentionKernel) `num_keys` clamp. The inner sum **does** wrap to `0xFFFFFFFE`-style values in unsigned arithmetic when the offset is negative, but casting the **whole sum** to `int32_t` recovers the correct value by two's-complement modular arithmetic, and the result is consumed **arithmetically** (as a `fast_min` operand), so the wrap is harmless. Contrast the ~924 guard, where the value feeds a **relational** comparison — there the unsigned wrap flips the comparison result, so the operand `query_start` must be cast to `int32_t` **before** the compare. |
+| "Mask out last if causal" guard: `static_cast<int32_t>(query_start) + p.causal_diagonal_offset` | ~924-926 | `query_start` is `uint32_t` (~707) — cast it to `int32_t` so the comparison is signed (rationale ~919-923). |
+| Sliding-window guard ("L957"): `static_cast<int32_t>(query_start) + p.causal_diagonal_offset ...` | ~962-963 | Same cast hardening (rationale ~956-961). |
+
+### Rules when editing `kernel_forward.h` (or any FMHA kernel)
+
+- Keep `causal_diagonal_offset` **`int32_t`**.
+- `query_start` in the iteration kernels is **`uint32_t`** — `static_cast<int32_t>(query_start)`
+  before adding the offset in ANY relational guard.
+- The same hazard is **dormant but real** at the `window_size > 0` guard: harden it the
+  same way even though opset-24 Attention currently pins `window=-1` (a future
+  sliding-window / KV-trim caller could combine `window_size>0` with a negative offset).
+- Tests that exercise this need a **negative** offset: `num_keys < num_queries`. Force the
+  MEA path **portably** with `ORT_DISABLE_FLASH_ATTENTION=1` + a small `head_size` (e.g. 64)
+  — **not** `head_size=512`, whose MEA launch is arch-fragile on small-smem GPUs (#28388,
+  see §1). The regression tests live in `test/providers/cpu/llm/attention_op_test.cc`
+  (`Attention_Causal_NonPadKVSeqLen_MEA_*`), guarded by `SKIP_IF_MEA_NOT_COMPILED`.

@@ -339,7 +339,7 @@ class NvExecutionProvider : public IExecutionProvider {
   // CUDA Graph support
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(int graph_annotation_id) const override;
-  Status ReplayGraph(int graph_annotation_id) override;
+  Status ReplayGraph(int graph_annotation_id, bool sync = true) override;
   void HandleCudaGraphStart(cudaStream_t stream, bool require_io_binding, CudaGraphAnnotation_t cuda_graph_annotation_id, bool& graph_replay_on_this_run, bool& should_start_capture);
 
   static common::Status RefitEngine(std::string onnx_model_filename,
@@ -413,6 +413,9 @@ class NvExecutionProvider : public IExecutionProvider {
 
   // For create/dump EP context node model
   bool dump_ep_context_model_ = false;
+  // Set when the EP is instantiated by OrtCompileAPI::CompileModel(). Causes
+  // CreateNodeComputeInfoFromGraph to skip GPU deserialization and context creation.
+  bool compile_only_mode_ = false;
   std::string ep_context_file_path_;
   int ep_context_embed_mode_ = 0;
   std::string ctx_model_path_;

@@ -244,16 +244,9 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ Alloc
   if (input_idx == 1) {
     size_t packed_b_size;
 #if defined(__aarch64__) && defined(__linux__)
-    size_t dim1 = 0;
-    size_t dim2 = 0;
     TensorShape b_shape = tensor.Shape();
 
-    if (b_shape.NumDimensions() == 2) {
-      dim1 = static_cast<size_t>(b_shape[0]);
-      dim2 = static_cast<size_t>(b_shape[1]);
-    }
-
-    if (use_fastmath_mode_ && (trans_a_attr_ == 0) && (trans_b_attr_ == 0) && ((dim1 * dim2) >= kFastMathModeKernelsizeThreshold)) {
+    if (CanPackBForFastMathModeSBGemm(b_shape)) {
       is_packed = GemmPackBBfloat16(alloc, tensor, trans_a_attr_ != 0, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_, &mlas_backend_kernel_selector_config_);
     } else
 #endif
@@ -323,7 +316,19 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   const size_t lda = helper.Lda(trans_a);
   const size_t ldb = helper.Ldb(trans_b);
 #if defined(__aarch64__) && defined(__linux__)
-  if (use_fastmath_mode_ && !trans_a && !trans_b && ((N * K) >= kFastMathModeKernelsizeThreshold)) {
+  const bool can_use_fastmath_sbgemm = CanUseFastMathModeSBGemm(N, K);
+  if (packed_b_) {
+    const bool packed_b_can_use_fastmath_sbgemm = CanPackBForFastMathModeSBGemm(b_shape);
+    if (packed_b_can_use_fastmath_sbgemm) {
+      ORT_ENFORCE(K == static_cast<size_t>(b_shape[0]),
+                  "MatMul fastmath PrePack/Compute K mismatch: packed B K=",
+                  b_shape[0], ", Compute K=", K);
+    }
+    ORT_ENFORCE(can_use_fastmath_sbgemm == packed_b_can_use_fastmath_sbgemm,
+                "MatMul fastmath PrePack/Compute eligibility mismatch.");
+  }
+
+  if (can_use_fastmath_sbgemm) {
     std::vector<MLAS_SBGEMM_DATA_PARAMS> data(max_len);
     for (size_t i = 0; i < max_len; i++) {
       data[i].BIsfp32 = !(bool(packed_b_));

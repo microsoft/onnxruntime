@@ -462,6 +462,16 @@ inline bool HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& ten_proto
   return g_host->Utils__HasExternalDataInMemory(ten_proto);
 }
 
+inline Status ValidateExternalDataPath(const std::filesystem::path& model_path,
+                                       const std::filesystem::path& external_data_path) {
+  return g_host->Utils__ValidateExternalDataPath(model_path, external_data_path);
+}
+
+inline Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
+                                              const std::filesystem::path& external_data_path) {
+  return g_host->Utils__ValidateExternalDataPathFromDir(model_dir, external_data_path);
+}
+
 }  // namespace utils
 
 namespace graph_utils {

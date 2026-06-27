@@ -357,8 +357,9 @@ Status FlashAttention(
   const int local_window_size = parameters.local_window_size;
   const int max_num_blocks_per_seq = parameters.max_num_blocks_per_seq;
   const int block_size = parameters.block_size;
-  // The following are passed to flash api but not used by the kernel, so they can be determined heuristically
-  const int max_query_len = token_count - batch_size + 1;
+  // Host-computed actual max from paged_attention.cc. Used as both
+  // `params.seqlen_q` for mha_varlen_fwd and grid.x for the rotary kernel.
+  const int max_query_len = data.max_query_len;
   const int max_seq_len = parameters.max_num_blocks_per_seq * parameters.block_size;
 
   T* query = const_cast<T*>(data.query);
@@ -419,9 +420,9 @@ Status FlashAttention(
   void* softmax_lse = reinterpret_cast<void*>(data.softmax_lse);
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_varlen_fwd(
       device_prop, stream, q, key_cache, value_cache, output, cumulative_seqlens_q, cumulative_seqlens_kv,
-      /*seqused_k*/ nullptr, block_table, softmax_lse, batch_size, num_heads, kv_num_heads, head_size, max_query_len,
-      max_seq_len, token_count, scale, softcap, /*is_causal*/ true, is_bf16, local_window_size - 1, max_num_blocks_per_seq,
-      block_size));
+      /*seqused_k*/ nullptr, block_table, softmax_lse, batch_size, num_heads, kv_num_heads, head_size,
+      max_query_len, max_seq_len, token_count, scale, softcap, /*is_causal*/ true, is_bf16, local_window_size - 1,
+      max_num_blocks_per_seq, block_size));
 
   DUMP_TENSOR_INIT();
   DUMP_TENSOR("flash attention output", data.output, token_count, num_heads, head_size);

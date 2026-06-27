@@ -969,5 +969,117 @@ TEST(MLOpTest, TreeRegressorOutsideBoundaryTargetIds) {
   test.Run(OpTester::ExpectResult::kExpectFailure, "At least one value (1) in target_ids or class_ids is greater or equal to the number of targets or classes (1)");
 }
 
+TEST(MLOpTest, TreeEnsembleRegressorTargetIdsOutsideBoundary) {
+  OpTester test("TreeEnsembleRegressor", 3, onnxruntime::kMLDomain);
+
+  std::vector<int64_t> lefts = {1, 0, 0};
+  std::vector<int64_t> rights = {2, 0, 0};
+  std::vector<int64_t> treeids = {0, 0, 0};
+  std::vector<int64_t> nodeids = {0, 1, 2};
+  std::vector<int64_t> featureids = {0, 0, 0};
+  std::vector<float> thresholds = {0.5, 0.0, 0.0};
+  std::vector<std::string> modes = {"BRANCH_LEQ", "LEAF", "LEAF"};
+
+  std::vector<int64_t> target_treeids = {0, 0};
+  std::vector<int64_t> target_nodeids = {1, 2};
+  std::vector<int64_t> target_ids = {1, 99};
+  std::vector<float> target_weights = {1.f, 1137.f};
+
+  test.AddAttribute("nodes_truenodeids", lefts);
+  test.AddAttribute("nodes_falsenodeids", rights);
+  test.AddAttribute("nodes_treeids", treeids);
+  test.AddAttribute("nodes_nodeids", nodeids);
+  test.AddAttribute("nodes_featureids", featureids);
+  test.AddAttribute("nodes_values", thresholds);
+  test.AddAttribute("nodes_modes", modes);
+  test.AddAttribute("target_treeids", target_treeids);
+  test.AddAttribute("target_nodeids", target_nodeids);
+  test.AddAttribute("target_ids", target_ids);
+  test.AddAttribute("target_weights", target_weights);
+  test.AddAttribute("n_targets", static_cast<int64_t>(2));
+
+  std::vector<float> X = {1.f};
+  test.AddInput<float>("X", {1, 1}, X);
+  test.AddOutput<float>("Y", {1, 2}, {0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "At least one value (99) in target_ids or class_ids is greater or equal to the number of targets or classes (2)");
+}
+
+TEST(MLOpTest, TreeEnsembleRegressorNegativeFeatureId) {
+  OpTester test("TreeEnsembleRegressor", 3, onnxruntime::kMLDomain);
+
+  std::vector<int64_t> lefts = {1, 0, 0};
+  std::vector<int64_t> rights = {2, 0, 0};
+  std::vector<int64_t> treeids = {0, 0, 0};
+  std::vector<int64_t> nodeids = {0, 1, 2};
+  std::vector<int64_t> featureids = {-1, 0, 0};
+  std::vector<float> thresholds = {0.5, 0.0, 0.0};
+  std::vector<std::string> modes = {"BRANCH_LEQ", "LEAF", "LEAF"};
+
+  std::vector<int64_t> target_treeids = {0, 0};
+  std::vector<int64_t> target_nodeids = {1, 2};
+  std::vector<int64_t> target_ids = {0, 0};
+  std::vector<float> target_weights = {1.f, 1137.f};
+
+  test.AddAttribute("nodes_truenodeids", lefts);
+  test.AddAttribute("nodes_falsenodeids", rights);
+  test.AddAttribute("nodes_treeids", treeids);
+  test.AddAttribute("nodes_nodeids", nodeids);
+  test.AddAttribute("nodes_featureids", featureids);
+  test.AddAttribute("nodes_values", thresholds);
+  test.AddAttribute("nodes_modes", modes);
+  test.AddAttribute("target_treeids", target_treeids);
+  test.AddAttribute("target_nodeids", target_nodeids);
+  test.AddAttribute("target_ids", target_ids);
+  test.AddAttribute("target_weights", target_weights);
+  test.AddAttribute("n_targets", static_cast<int64_t>(1));
+
+  std::vector<float> X = {1.f};
+  test.AddInput<float>("X", {1, 1}, X);
+  test.AddOutput<float>("Y", {1, 1}, {0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "nodes_featureids[0]=-1 must be in [0,");
+}
+
+TEST(MLOpTest, TreeEnsembleRegressorBaseValuesWrongSize) {
+  OpTester test("TreeEnsembleRegressor", 3, onnxruntime::kMLDomain);
+
+  std::vector<int64_t> lefts = {1, 0, 0};
+  std::vector<int64_t> rights = {2, 0, 0};
+  std::vector<int64_t> treeids = {0, 0, 0};
+  std::vector<int64_t> nodeids = {0, 1, 2};
+  std::vector<int64_t> featureids = {0, 0, 0};
+  std::vector<float> thresholds = {0.5f, 0.0f, 0.0f};
+  std::vector<std::string> modes = {"BRANCH_LEQ", "LEAF", "LEAF"};
+
+  std::vector<int64_t> target_treeids = {0, 0};
+  std::vector<int64_t> target_nodeids = {1, 2};
+  std::vector<int64_t> target_ids = {0, 1};
+  std::vector<float> target_weights = {1.f, 2.f};
+  // n_targets=2 but base_values has 3 elements — mismatch!
+  std::vector<float> base_values = {0.f, 0.f, 0.f};
+
+  test.AddAttribute("nodes_truenodeids", lefts);
+  test.AddAttribute("nodes_falsenodeids", rights);
+  test.AddAttribute("nodes_treeids", treeids);
+  test.AddAttribute("nodes_nodeids", nodeids);
+  test.AddAttribute("nodes_featureids", featureids);
+  test.AddAttribute("nodes_values", thresholds);
+  test.AddAttribute("nodes_modes", modes);
+  test.AddAttribute("target_treeids", target_treeids);
+  test.AddAttribute("target_nodeids", target_nodeids);
+  test.AddAttribute("target_ids", target_ids);
+  test.AddAttribute("target_weights", target_weights);
+  test.AddAttribute("n_targets", static_cast<int64_t>(2));
+  test.AddAttribute("base_values", base_values);
+
+  std::vector<float> X = {1.f};
+  test.AddInput<float>("X", {1, 1}, X);
+  test.AddOutput<float>("Y", {1, 2}, {0.f, 0.f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "base_values should have 0 or 2 values.");
+}
+
 }  // namespace test
 }  // namespace onnxruntime

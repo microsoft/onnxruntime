@@ -231,6 +231,12 @@ class Env {
       const PathString& path,
       PathString& canonical_path) const = 0;
 
+  /** Like GetCanonicalPath, but the path is not required to exist. Mirrors
+   *  std::filesystem::weakly_canonical. */
+  virtual common::Status GetWeaklyCanonicalPath(
+      const PathString& path,
+      PathString& canonical_path) const = 0;
+
   // This functions is always successful. It can't fail.
   virtual PIDType GetSelfPid() const = 0;
 

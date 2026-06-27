@@ -277,7 +277,7 @@ class PosixEnv : public Env {
 
   std::vector<LogicalProcessors> GetDefaultThreadAffinities() const override {
     std::vector<LogicalProcessors> ret;
-#ifdef ORT_USE_CPUINFO
+#if defined(ORT_USE_CPUINFO) && defined(__linux__)
     if (cpuinfo_available_) {
       auto num_phys_cores = cpuinfo_get_cores_count();
       ret.reserve(num_phys_cores);
@@ -293,7 +293,7 @@ class PosixEnv : public Env {
         ret.push_back(std::move(th_aff));
       }
     }
-#endif
+#endif  // defined(ORT_USE_CPUINFO) && defined(__linux__)
     // Just the size of the thread-pool
     if (ret.empty()) {
       ret.resize(GetNumPhysicalCpuCores());
@@ -543,6 +543,19 @@ class PosixEnv : public Env {
     return Status::OK();
   }
 
+  common::Status GetWeaklyCanonicalPath(
+      const PathString& path,
+      PathString& canonical_path) const override {
+    std::error_code ec;
+    auto canonical = std::filesystem::weakly_canonical(std::filesystem::path{path}, ec);
+    if (ec) {
+      return common::Status(common::ONNXRUNTIME, common::FAIL,
+                            "Failed to get the weakly canonical path: " + path + " - " + ec.message());
+    }
+    canonical_path.assign(canonical.native());
+    return Status::OK();
+  }
+
   common::Status LoadDynamicLibrary(const PathString& library_filename, bool global_symbols, void** handle) const override {
     dlerror();  // clear any old error_str
     *handle = dlopen(library_filename.c_str(), RTLD_NOW | (global_symbols ? RTLD_GLOBAL : RTLD_LOCAL));
@@ -642,6 +655,11 @@ class PosixEnv : public Env {
         std::cerr << "onnxruntime warning: cpuinfo_initialize failed. "
                      "May cause CPU EP performance degradation due to undetected CPU features.\n";
       }
+    }
+  }
+  ~PosixEnv() {
+    if (cpuinfo_available_) {
+      cpuinfo_deinitialize();
     }
   }
   bool cpuinfo_available_{false};

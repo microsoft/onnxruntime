@@ -30,6 +30,7 @@ from .quant_utils import (
     QuantFormat,
     QuantizationMode,
     QuantType,
+    get_opset_version,
     load_model_with_shape_infer,
     model_has_pre_process_metadata,
     save_and_reload_model_with_shape_infer,
@@ -113,6 +114,11 @@ class StaticQuantConfig(QuantConfig):
     ):
         """
         This is the derived class for static Quantize Configuration
+
+        This config is consumed by ``quantize_static``. For CPU inference, the key parameters are
+        ``quant_format``, ``activation_type``, ``weight_type``, ``reduce_range``, and ``per_channel``.
+        See ``quantize_static`` for a summary of recommended values per target CPU, and refer to
+        https://onnxruntime.ai/docs/performance/model-optimizations/quantization.html for the full guide.
 
         Args:
             calibration_data_reader:
@@ -380,14 +386,24 @@ def get_qdq_config(
         }
         final_extra_options.update(calib_extra_options)
 
-    # ONNX opset < 21 does not support 16-bit quantization, so must use 'com.microsoft' domain
-    # on Q/DQ operators if using 16-bit or 4-bit quantization.
-    onnx_opset = next(x for x in model.opset_import if x.domain == "" or x.domain == "ai.onnx")
-    if onnx_opset.version < 21:
-        opset21_types = q16_types.union(q4_types)
-        overrides_have_opset21_types = any(t in opset21_types for t in overrides_helper.get_quant_types())
-        if activation_type in opset21_types or weight_type in opset21_types or overrides_have_opset21_types:
-            final_extra_options["UseQDQContribOps"] = True
+    # ONNX opset < 21 does not support 4-bit quantization natively, so must use 'com.microsoft' domain
+    # on Q/DQ operators if using 4-bit quantization.  16-bit weight/activation types are excluded here
+    # because quantize_static() will automatically bump the model opset to 21, where native ONNX
+    # QuantizeLinear/DequantizeLinear supports INT16/UINT16 and INT4/UINT4 without contrib-domain ops.
+    # 16-bit types in TensorQuantOverrides also trigger the same opset bump, so a mixed 16-bit + 4-bit
+    # override config will be served at opset 21 where neither type needs contrib ops.
+    onnx_opset_version = get_opset_version(model)
+    if onnx_opset_version < 21:
+        override_types = overrides_helper.get_quant_types()
+        overrides_have_16bit = any(t in q16_types for t in override_types)
+        # If any 16-bit type is present (top-level or override), quantize_static() will bump the
+        # model to opset 21, making contrib ops unnecessary for all types.
+        will_bump_to_opset21 = activation_type in q16_types or weight_type in q16_types or overrides_have_16bit
+        if not will_bump_to_opset21:
+            overrides_have_q4_types = any(t in q4_types for t in override_types)
+            needs_contrib_ops = activation_type in q4_types or weight_type in q4_types or overrides_have_q4_types
+            if needs_contrib_ops:
+                final_extra_options["UseQDQContribOps"] = True
 
     # Allow user's extra_options to override our final_extra_options.
     if extra_options:
@@ -509,11 +525,45 @@ def quantize_static(
     calibration_cache_path: str | Path | None = None,
 ):
     """
-    Given an onnx model and calibration data reader, create a quantized onnx model and save it into a file
-    It is recommended to use QuantFormat.QDQ format from 1.11 with activation_type = QuantType.QInt8 and weight_type
-    = QuantType.QInt8. If model is targeted to GPU/TRT, symmetric activation and weight are required. If model is
-    targeted to CPU, asymmetric activation and symmetric weight are recommended for balance of performance and
-    accuracy.
+    Given an onnx model and calibration data reader, create a quantized onnx model and save it into a file.
+    ``QuantFormat.QDQ`` has been the recommended format since 1.11. Recommended values for
+    ``activation_type`` and ``weight_type`` depend on the target hardware: see "Choosing parameters
+    for CPU inference" below for CPU guidance, or use symmetric ``QuantType.QInt8`` for both
+    activations and weights when targeting GPU/TRT.
+
+    Choosing parameters for CPU inference:
+
+    - Format: ``QuantFormat.QDQ`` is strongly preferred over ``QOperator`` for CPU inference since
+      ORT 1.11, as CPU kernels are optimized for the QDQ representation.
+
+    - x86/x64 CPU without VNNI (e.g., most pre-Skylake-SP desktop/laptop CPUs):
+      Use ``activation_type=QuantType.QUInt8`` and ``weight_type=QuantType.QInt8``, and set
+      ``reduce_range=True``. The ``reduce_range`` flag quantizes weights to 7-bit to reduce the risk
+      of integer saturation on CPUs that typically lack the VNNI dot-product instruction; this is
+      particularly helpful for per-channel weight quantization.
+
+    - x86/x64 CPU with VNNI (e.g., Intel Skylake-SP/Cascade Lake/Ice Lake/Sapphire Rapids or AMD
+      Zen4 and later, though exact support varies by SKU):
+      Use ``activation_type=QuantType.QUInt8`` and ``weight_type=QuantType.QInt8`` with
+      ``reduce_range=False``. VNNI-capable cores typically accumulate 8-bit products without
+      saturation, so the range reduction is often unnecessary.
+
+    - ARM CPU (e.g., Cortex-A, Apple Silicon, Graviton):
+      ARM cores generally handle symmetric ``QInt8`` activations well. Use
+      ``activation_type=QuantType.QInt8`` and ``weight_type=QuantType.QInt8`` with
+      ``reduce_range=False``. Asymmetric (``QUInt8``) activations also work but symmetric is often
+      preferred by ARM-optimized kernels.
+
+    - per_channel: Setting ``per_channel=False`` (the default) gives the best throughput on CPU.
+      Setting ``per_channel=True`` can improve accuracy for models with weight distributions that
+      vary across output channels (e.g., ResNet-style convolutions) at a small performance cost.
+
+    Note: this guidance applies to models produced by ``quantize_static``. The separate
+    ``convert_onnx_models_to_ort`` tool's ``--target_platform`` flag is unrelated and only affects
+    ORT format conversion; it does not change the quantization parameters above.
+
+    For the full quantization guide including execution-provider-specific considerations, see
+    https://onnxruntime.ai/docs/performance/model-optimizations/quantization.html
 
     Args:
 
@@ -728,7 +778,13 @@ def quantize_static(
         nodes_to_exclude.extend([i.name for i in model.model.graph.node if i.name not in orig_nodes])
         model = load_model_with_shape_infer(Path(model_input))  # use smooth quant model for calibration
 
-    updated_model = update_opset_version(model, weight_type)
+    updated_model = update_opset_version(
+        model,
+        weight_type,
+        activation_type,
+        tensor_quant_overrides=(extra_options or {}).get("TensorQuantOverrides"),
+        block_size=(extra_options or {}).get("BlockSize", 0),
+    )
     is_model_updated = updated_model is not model
     if is_model_updated:
         model = updated_model

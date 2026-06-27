@@ -14,6 +14,11 @@
  * limitations under the License.
  */
 
+#ifdef _WIN32
+#pragma warning(push)
+#pragma warning(disable : 177)
+#endif
+
 #ifdef __GNUC__  // Check if the compiler is GCC or Clang
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
@@ -44,6 +49,10 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm_template_sm90.h"
 #endif
 #include "core/providers/cuda/shared_inc/cuda_call.h"
+
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
 
 namespace tk = onnxruntime::llm::common;
 namespace tkc = onnxruntime::llm::cutlass_extensions;

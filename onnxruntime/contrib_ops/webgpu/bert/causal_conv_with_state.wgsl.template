@@ -3,6 +3,7 @@
 
 #param has_bias
 #param has_conv_state
+#param output_present_state
 #param use_silu
 
 #use guardAgainstOutOfBoundsWorkgroupSizes
@@ -84,6 +85,7 @@ $MAIN {
   let out_idx = (batch_idx * channels + channel_idx) * input_length + pos;
   output[out_idx] = acc;
 
+#if output_present_state
   // Write present_state: the last (kernel_size - 1) elements from the
   // virtual input [conv_state, input]. We only write present_state once
   // per (batch, channel), using the thread at pos == 0.
@@ -115,4 +117,5 @@ $MAIN {
       present_state[ps_idx] = state_val;
     }
   }
+#endif
 } // MAIN

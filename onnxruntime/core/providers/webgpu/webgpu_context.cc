@@ -41,6 +41,8 @@ namespace webgpu {
 
 void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
   std::call_once(init_flag_, [this, &config]() {
+    max_num_pending_dispatches_ = config.max_num_pending_dispatches;
+
     if (device_ == nullptr) {
       // Create wgpu::Adapter
       wgpu::RequestAdapterOptions req_adapter_options = {};
@@ -148,12 +150,14 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
     buffer_mgr_ = BufferManagerFactory::Create(*this,
                                                config.buffer_cache_config.storage.mode,
                                                config.buffer_cache_config.uniform.mode,
-                                               config.buffer_cache_config.query_resolve.mode);
+                                               config.buffer_cache_config.query_resolve.mode,
+                                               config.buffer_cache_config.default_entry.mode);
 
     // create initializer buffer manager.
     initializer_buffer_mgr_ = BufferManagerFactory::Create(*this,
                                                            BufferCacheMode::LazyRelease,
                                                            BufferCacheMode::LazyRelease,
+                                                           BufferCacheMode::Disabled,
                                                            BufferCacheMode::Disabled);
 
     // create program manager
@@ -174,6 +178,16 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       query_type_ = TimestampQueryType::None;
     }
   });
+
+  if (max_num_pending_dispatches_ != config.max_num_pending_dispatches) {
+    LOGS_DEFAULT(WARNING)
+        << "WebGPU context is already initialized with "
+        << "maxNumPendingDispatches="
+        << max_num_pending_dispatches_
+        << ". Requested value "
+        << config.max_num_pending_dispatches
+        << " will be ignored.";
+  }
 }
 
 Status WebGpuContext::Wait(wgpu::Future f) {
@@ -303,9 +317,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
                                       metadata,
                                       inputs_segments,
                                       outputs_segments,
-#ifndef NDEBUG  // if debug build
                                       key,
-#endif
                                       x,
                                       y,
                                       z,
@@ -533,14 +545,29 @@ std::vector<const char*> WebGpuContext::GetEnabledDeviceToggles() const {
   // Enable / disable other toggles that may affect the performance.
   // Other toggles that may be useful: "dump_shaders", "disable_symbol_renaming"
   constexpr const char* toggles[] = {
-      "skip_validation",  // only use "skip_validation" when ValidationMode is set to "Disabled"
+      "skip_validation",
       "disable_robustness",
       "d3d_disable_ieee_strictness",
   };
+#ifndef NDEBUG
+  // validation_mode_explicitly_set_ only changes release behavior; mark it used in debug builds
+  // to avoid -Wunused-private-field on toolchains that treat warnings as errors.
+  ORT_UNUSED_PARAMETER(validation_mode_explicitly_set_);
   return std::vector<const char*>(ValidationMode() >= ValidationMode::WGPUOnly
                                       ? std::begin(toggles) + 1
                                       : std::begin(toggles),
                                   std::end(toggles));
+#else
+  // In release/relwithdebinfo builds, default to skip_validation for performance,
+  // but honor explicit validationMode overrides.
+  if (!validation_mode_explicitly_set_) {
+    return std::vector<const char*>(std::begin(toggles), std::end(toggles));
+  }
+  return std::vector<const char*>(ValidationMode() >= ValidationMode::WGPUOnly
+                                      ? std::begin(toggles) + 1
+                                      : std::begin(toggles),
+                                  std::end(toggles));
+#endif
 }
 
 std::vector<const char*> WebGpuContext::GetDisabledDeviceToggles() const {
@@ -614,6 +641,11 @@ void WebGpuContext::StartProfiling() {
   }
 
   is_profiling_ = true;
+  // profiling_start_time_ is supplied separately via SetProfilingStartTime, which is
+  // driven by WebGpuProfiler::StartProfiling and carries the ORT profiler's CPU time
+  // base for both session-level and run-level profiling.
+  gpu_timestamp_offset_ = 0;
+  profiling_first_submit_cpu_offset_us_ = -1;
 
   const uint32_t query_count = max_num_pending_dispatches_ * 2;
 
@@ -637,6 +669,13 @@ void WebGpuContext::StartProfiling() {
 
 void WebGpuContext::CollectProfilingData(profiling::Events& events) {
   if (!pending_queries_.empty()) {
+    // Shift GPU timestamps (which start from 0 at the first submit) onto the ORT
+    // profiler's CPU timeline by adding the CPU elapsed time from profiling_start_time_
+    // to that first submit. This keeps GPU events aligned with ORT CPU events.
+    int64_t cpu_offset_us = profiling_first_submit_cpu_offset_us_ > 0
+                                ? profiling_first_submit_cpu_offset_us_
+                                : 0;
+
     for (const auto& pending_query : pending_queries_) {
       const auto& pending_kernels = pending_query.kernels;
       const auto& query_read_buffer = pending_query.query_buffer;
@@ -665,7 +704,6 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
 
         if (gpu_timestamp_offset_ == 0) {
           gpu_timestamp_offset_ = mapped_data[i * 2];
-          // TODO: apply CPU-GPU time offset so that timestamps are aligned
         }
         uint64_t start_time = mapped_data[i * 2] - gpu_timestamp_offset_;
         uint64_t end_time = mapped_data[i * 2 + 1] - gpu_timestamp_offset_;
@@ -679,7 +717,7 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
                                      -1,
                                      -1,
                                      pending_kernel_info.name,
-                                     static_cast<int64_t>(std::round(start_time / 1000.0)),
+                                     static_cast<int64_t>(std::round(start_time / 1000.0)) + cpu_offset_us,
                                      static_cast<int64_t>(std::round((end_time - start_time) / 1000.0)),
                                      event_args);
         events.emplace_back(std::move(event));
@@ -744,6 +782,12 @@ void WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr) {
     ORT_ENFORCE(num_pending_dispatches_ == pending_kernels_.size(),
                 "Number of pending dispatches (", num_pending_dispatches_,
                 ") does not match pending kernels size (", pending_kernels_.size(), ")");
+
+    // Capture the CPU elapsed time from the ORT profiler's start to this first submit.
+    // Used in CollectProfilingData to offset GPU timestamps onto the ORT CPU timeline.
+    if (profiling_first_submit_cpu_offset_us_ < 0) {
+      profiling_first_submit_cpu_offset_us_ = TimeDiffMicroSeconds(profiling_start_time_);
+    }
 
     uint32_t query_count = num_pending_dispatches_ * 2;
     current_command_encoder_.ResolveQuerySet(
@@ -1008,6 +1052,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance,
                                                                     device,
                                                                     config.validation_mode,
+                                                                    config.validation_mode_explicitly_set,
                                                                     config.preserve_device,
                                                                     config.max_storage_buffer_binding_size));
     it = contexts_->emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;

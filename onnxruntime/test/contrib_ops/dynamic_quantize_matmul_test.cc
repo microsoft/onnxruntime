@@ -421,6 +421,47 @@ TEST(DynamicQuantizeMatMul, KleidiRejectsUnsupportedBShape) {
   test.Run();
 }
 
+// 6. Mismatched bias (runtime tensor) -> must be rejected at compute time.
+TEST(DynamicQuantizeMatMul, KleidiBiasRuntimeShapeMismatch) {
+  if (!HasArmSME()) GTEST_SKIP();
+  KleidiDynMatMulData data;
+  // Bias has only 1 element but N=3 — this must be rejected.
+  const std::vector<float> bad_bias = {1.0f};
+
+  OpTester test("DynamicQuantizeMatMul", 1, kMSDomain);
+  test.AddInput<float>("A", {data.M, data.K}, data.a);
+  test.AddInput<int8_t>("B", {data.K, data.N}, data.b, true /*initializer*/);
+  test.AddInput<float>("b_scale", {data.N}, data.b_scale, true);
+  test.AddInput<int8_t>("b_zero_point", {data.N}, data.b_zp, true);
+  test.AddInput<float>("bias", {1}, bad_bias, false /*runtime*/);
+  test.AddOutput<float>("Y", {data.M, data.N}, std::vector<float>(data.M * data.N, 0.0f));
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .Config(OpTester::ExpectResult::kExpectFailure,
+              "bias tensor's element count must equal B's last dimension")
+      .RunWithConfig();
+}
+
+// 7. Mismatched bias (constant initializer) -> KleidiAI pre-pack rejects -> falls back to ComputeCommon
+// -> rejected
+TEST(DynamicQuantizeMatMul, KleidiBiasInitializerShapeMismatch) {
+  if (!HasArmSME()) GTEST_SKIP();
+  KleidiDynMatMulData data;
+  // Bias has only 1 element but N=3 — this must be rejected.
+  const std::vector<float> bad_bias = {1.0f};
+
+  OpTester test("DynamicQuantizeMatMul", 1, kMSDomain);
+  test.AddInput<float>("A", {data.M, data.K}, data.a);
+  test.AddInput<int8_t>("B", {data.K, data.N}, data.b, true /*initializer*/);
+  test.AddInput<float>("b_scale", {data.N}, data.b_scale, true);
+  test.AddInput<int8_t>("b_zero_point", {data.N}, data.b_zp, true);
+  test.AddInput<float>("bias", {1}, bad_bias, true /*initializer*/);
+  test.AddOutput<float>("Y", {data.M, data.N}, std::vector<float>(data.M * data.N, 0.0f));
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .Config(OpTester::ExpectResult::kExpectFailure,
+              "bias tensor's element count must equal B's last dimension")
+      .RunWithConfig();
+}
+
 #endif  // USE_KLEIDIAI
 
 TEST(DynamicQuantizeMatMul, B_PerColumn_ND) {
@@ -484,6 +525,36 @@ TEST(DynamicQuantizeMatMul, B_PerColumn_ND) {
 
   // ND B per-column
   test_case({15, 14, 13}, {15, 13, 27}, {15, 1, 27});
+}
+
+// Test that a bias tensor with length mismatched to B's last dimension is rejected.
+// This reproduces a heap OOB read when bias is shorter than N.
+TEST(DynamicQuantizeMatMul, BiasShapeMismatch) {
+  constexpr int64_t M = 2;
+  constexpr int64_t K = 4;
+  constexpr int64_t N = 8;
+
+  std::vector<float> A_data(M * K, 1.0f);
+  std::vector<uint8_t> B_data(K * N, 128);
+  std::vector<float> B_scale = {0.5f};
+  std::vector<uint8_t> B_zero_point = {128};
+
+  // Bias has only 1 element but N=8 — this must be rejected.
+  std::vector<float> bad_bias = {1.0f};
+
+  OpTester test("DynamicQuantizeMatMul", 1, onnxruntime::kMSDomain);
+  test.AddInput<float>("A", {M, K}, A_data);
+  test.AddInput<uint8_t>("B", {K, N}, B_data);
+  test.AddInput<float>("b_scale", {1}, B_scale);
+  test.AddInput<uint8_t>("b_zero_point", {1}, B_zero_point);
+  test.AddInput<float>("bias", {1}, bad_bias);
+
+  test.AddOutput<float>("Y", {M, N}, std::vector<float>(M * N, 0.0f));
+
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .Config(OpTester::ExpectResult::kExpectFailure,
+              "bias tensor's element count must equal B's last dimension")
+      .RunWithConfig();
 }
 
 }  // namespace test

@@ -15,11 +15,13 @@ from ml_dtypes import int4, uint4
 from onnx import TensorProto, helper, numpy_helper
 
 from onnxruntime.quantization.quant_utils import (
+    QuantType,
     compute_scale_zp,
     load_model_with_shape_infer,
     model_has_infer_metadata,
     pack_bytes_to_4bit,
     quantize_data,
+    update_opset_version,
 )
 
 
@@ -172,6 +174,49 @@ class TestQuantUtil(unittest.TestCase):
                     numpy.clip(expected_quant_val, qmin, qmax, out=expected_quant_val)
 
                     self.assertEqual(numpy.array(actual_quant_val), expected_quant_val)
+
+    def test_update_opset_version_16bit(self):
+        graph = helper.make_graph([], "test_graph", [], [])
+
+        # 16-bit weight type alone should auto-bump opset < 21 -> 21
+        for weight_type, label in (
+            (QuantType.QUInt16, "QUInt16"),
+            (QuantType.QInt16, "QInt16"),
+        ):
+            with self.subTest(weight_type=label, opset=20):
+                model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 20)])
+                result = update_opset_version(model, weight_type)
+                result_opset = result.opset_import[0].version
+                self.assertEqual(result_opset, 21)
+
+        # Already at opset 21 - should stay at 21
+        for weight_type, label in (
+            (QuantType.QUInt16, "QUInt16"),
+            (QuantType.QInt16, "QInt16"),
+        ):
+            with self.subTest(weight_type=label, opset=21):
+                model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)])
+                result = update_opset_version(model, weight_type)
+                result_opset = result.opset_import[0].version
+                self.assertEqual(result_opset, 21)
+
+        # 16-bit activation type with 8-bit weight should also bump opset < 21 -> 21
+        for activation_type, label in (
+            (QuantType.QUInt16, "QUInt16"),
+            (QuantType.QInt16, "QInt16"),
+        ):
+            with self.subTest(activation_type=label, weight_type="QInt8", opset=20):
+                model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 20)])
+                result = update_opset_version(model, QuantType.QInt8, activation_type)
+                result_opset = result.opset_import[0].version
+                self.assertEqual(result_opset, 21)
+
+        # Both 8-bit should NOT bump to 21; opset stays at 20
+        with self.subTest(weight_type="QInt8", activation_type="QUInt8", opset=20):
+            model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 20)])
+            result = update_opset_version(model, QuantType.QInt8, QuantType.QUInt8)
+            result_opset = result.opset_import[0].version
+            self.assertEqual(result_opset, 20)
 
 
 if __name__ == "__main__":

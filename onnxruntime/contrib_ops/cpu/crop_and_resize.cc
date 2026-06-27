@@ -200,7 +200,14 @@ Status CropAndResize<T>::Compute(OpKernelContext* context) const {
   // validate crop_size
   if (crop_size_dims.NumDimensions() != 1) {
     return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
-                  "Number of dimensions for crop size should be exactly 1");
+                  std::string("crop_size must be a 1-D tensor; got rank ") +
+                      std::to_string(crop_size_dims.NumDimensions()));
+  }
+
+  if (crop_size_dims.Size() != 2) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                  std::string("crop_size input tensor must have exactly 2 elements; got ") +
+                      std::to_string(crop_size_dims.Size()));
   }
 
   auto channels = x_dims[1];

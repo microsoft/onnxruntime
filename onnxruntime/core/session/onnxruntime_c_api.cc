@@ -2540,6 +2540,13 @@ ORT_API_STATUS_IMPL(OrtApis::TensorAt, _Inout_ OrtValue* value, const int64_t* l
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "this API does not support strings");
   }
 
+  const auto* prim_type = tensor->DataType()->AsPrimitiveDataType();
+  if (prim_type != nullptr && prim_type->HasSubElems()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "this API does not support sub-byte packed types (e.g., int4). "
+                                 "Use OrtValue::GetTensorMutableData and manual unpacking instead.");
+  }
+
   const auto& tensor_shape = tensor->Shape();
   const auto num_dimensions = tensor_shape.NumDimensions();
   if (location_values_count != num_dimensions) {
@@ -2752,35 +2759,14 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetCustomJoinThreadFn, _Inout_ OrtSes
 }
 
 ORT_API(void, OrtApis::ReleaseValueInfo, _Frees_ptr_opt_ OrtValueInfo* value_info) {
-  if (value_info != nullptr) {
-    if (auto* me = onnxruntime::ModelEditorValueInfo::ToInternal(value_info);
-        me != nullptr && me->owned_) {
-      assert(false && "Releasing an OrtValueInfo that is owned by a graph");
-      return;
-    }
-  }
   delete value_info;
 }
 
 ORT_API(void, OrtApis::ReleaseNode, _Frees_ptr_opt_ OrtNode* node) {
-  if (node != nullptr) {
-    if (auto* me = onnxruntime::ModelEditorNode::ToInternal(node);
-        me != nullptr && me->owned_) {
-      assert(false && "Releasing an OrtNode that is owned by a graph");
-      return;
-    }
-  }
   delete node;
 }
 
 ORT_API(void, OrtApis::ReleaseGraph, _Frees_ptr_opt_ OrtGraph* graph) {
-  if (graph != nullptr) {
-    if (auto* me = onnxruntime::ModelEditorGraph::ToInternal(graph);
-        me != nullptr && me->owned_) {
-      assert(false && "Releasing an OrtGraph that is owned by a model");
-      return;
-    }
-  }
   delete graph;
 }
 
@@ -4365,6 +4351,13 @@ ORT_API_STATUS_IMPL(OrtApis::SetPerSessionThreadPoolCallbacks, _Inout_ OrtEnv* o
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::SessionReleaseCapturedGraph, _In_ OrtSession* session, _In_ int graph_annotation_id) {
+  API_IMPL_BEGIN
+  auto* inference_session = reinterpret_cast<::onnxruntime::InferenceSession*>(session);
+  return ToOrtStatus(inference_session->ReleaseCapturedGraph(graph_annotation_id));
+  API_IMPL_END
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString};
@@ -4408,7 +4401,7 @@ Second example, if we wanted to add and remove some members, we'd do this:
     In GetApi we now make it return ort_api_3 for version 3.
 */
 
-static constexpr OrtApi ort_api_1_to_27 = {
+static constexpr OrtApi ort_api_1_to_28 = {
     // NOTE: The ordering of these fields MUST not change after that version has shipped since existing binaries depend on this ordering.
 
     // Shipped as version 1 - DO NOT MODIFY (see above text for more information)
@@ -4916,8 +4909,15 @@ static constexpr OrtApi ort_api_1_to_27 = {
     &OrtApis::SetPerSessionThreadPoolCallbacks,
     // End of Version 25 - DO NOT MODIFY ABOVE (see above text for more information)
     // End of Version 26 - DO NOT MODIFY ABOVE (see above text for more information)
+
     &OrtApis::GetMemPatternEnabled,
     &OrtApis::GetSessionExecutionMode,
+    &OrtApis::SessionReleaseCapturedGraph,
+    // End of Version 27 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::GetExperimentalFunction,
+
+    &OrtApis::KernelContext_GetSyncStream,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
@@ -4957,9 +4957,10 @@ static_assert(offsetof(OrtApi, CreateExternalInitializerInfo) / sizeof(void*) ==
 static_assert(offsetof(OrtApi, GetTensorElementTypeAndShapeDataReference) / sizeof(void*) == 414, "Size of version 24 API cannot change");
 static_assert(offsetof(OrtApi, SetPerSessionThreadPoolCallbacks) / sizeof(void*) == 418, "Size of version 25 API cannot change");
 // no additions in version 26
+// no additions in version 27
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.27.0",
+static_assert(std::string_view(ORT_VERSION) == "1.28.0",
               "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
 //
@@ -4975,7 +4976,7 @@ static_assert(std::string_view(ORT_VERSION) == "1.27.0",
 
 ORT_API(const OrtApi*, OrtApis::GetApi, uint32_t version) {
   if (version >= 1 && version <= ORT_API_VERSION)
-    return &ort_api_1_to_27;
+    return &ort_api_1_to_28;
 
   fprintf(stderr,
           "The requested API version [%u] is not available, only API versions [1, %u] are supported in this build."

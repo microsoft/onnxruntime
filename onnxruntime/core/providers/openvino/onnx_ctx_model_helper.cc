@@ -114,6 +114,7 @@ std::unique_ptr<ModelBlobWrapper> EPCtxHandler::GetModelBlobStream(const std::fi
     if (blob_filepath.empty() && !graph_viewer.ModelPath().empty()) {
       blob_filepath = graph_viewer.ModelPath();
     }
+    ORT_THROW_IF_ERROR(utils::ValidateExternalDataPath(blob_filepath, std::filesystem::path(ep_cache_context)));
     blob_filepath = blob_filepath.parent_path() / ep_cache_context;
     ORT_ENFORCE(std::filesystem::exists(blob_filepath), "Blob file not found: ", blob_filepath.string());
     result.reset((std::istream*)new std::ifstream(blob_filepath, std::ios_base::binary | std::ios_base::in));
@@ -242,6 +243,8 @@ std::shared_ptr<SharedContext> EPCtxHandler::Initialize(const std::vector<IExecu
         shared_context->Deserialize(ss);
       }
     } else {
+      ORT_THROW_IF_ERROR(utils::ValidateExternalDataPath(session_context.GetOutputModelPath(),
+                                                         std::filesystem::path(ep_cache_context)));
       std::filesystem::path ep_context_path = session_context.GetOutputModelPath().parent_path() / ep_cache_context;
       if (ep_context_path.extension() != ".xml") {
         shared_context = shared_context_manager_->GetOrCreateSharedContext(ep_context_path);

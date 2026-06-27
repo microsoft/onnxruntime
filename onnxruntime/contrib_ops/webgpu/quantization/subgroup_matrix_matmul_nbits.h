@@ -5,6 +5,8 @@
 
 #if !defined(__wasm__)
 
+#include <limits>
+
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
@@ -65,7 +67,9 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
                                        uint32_t K,
                                        uint32_t nbits,
                                        bool is_fp16,
-                                       int32_t& config_index);
+                                       int32_t& config_index,
+                                       uint32_t M = std::numeric_limits<uint32_t>::max(),
+                                       bool has_weight_idx_indirect = false);
 
 }  // namespace webgpu
 }  // namespace contrib
