@@ -170,7 +170,8 @@ inline bool HasAbsoluteOrRootedPath(const std::filesystem::path& path) {
 // current-directory entry "." or the parent-directory entry "..", i.e. the name designates a directory rather than a
 // file. Such a name resolves to a directory (e.g. "sub/.." resolves to the parent/model directory) and would only
 // surface later as a confusing file I/O failure, so model-derived names like these are rejected up front. A non-leaf
-// ".." anywhere in the path is rejected separately by ContainsPathTraversal() / the model-directory containment check.
+// ".." in a logical callback-namespace name is rejected by ContainsPathTraversal(); in model-relative filesystem
+// names it is canonicalized and accepted only if the resolved path stays within the model directory.
 inline bool IsDirectoryOrEmptyName(const std::filesystem::path& path) {
   const std::filesystem::path leaf = path.filename();
   return leaf.empty() || leaf == std::filesystem::path{"."} || leaf == std::filesystem::path{".."};
@@ -511,16 +512,22 @@ inline OrtStatus* ReadEpContextDataWithFileFallback(
     return ReadEpContextDataFromFile(api, file_name, graph, data);
   }
 
+  // Clear up front so `data` is empty on any error path below and for an empty callback payload; assign only when the
+  // adopted buffer is non-empty (avoids pointer arithmetic on a possibly-null empty buffer).
+  data.clear();
   EpContextData owned;
   RETURN_IF_ERROR(ReadEpContextData(api, read_func, read_state, file_name, graph, owned));
-  data.assign(owned.data(), owned.data() + owned.size());
+  if (!owned.empty()) {
+    data.assign(owned.data(), owned.data() + owned.size());
+  }
   return nullptr;
 }
 
 // Reads EPContext binary data named `file_name`. If the session configured an OrtReadNamedBufferFunc (carried by
 // `ep_context_config`), it is used; otherwise the data is read from a file. When `graph` is non-null it is the
-// EPContext model graph: untrusted absolute/rooted/traversal names are rejected and relative names are resolved
-// against the model directory. Pass `graph == nullptr` only for trusted callers supplying a physical path. `data` is
+// EPContext model graph: untrusted absolute/rooted names are rejected and relative names are resolved against the
+// model directory, with canonicalization/containment handling any ".." components. Pass `graph == nullptr` only for
+// trusted callers supplying a physical path. `data` is
 // cleared first and receives the bytes on success.
 inline OrtStatus* ReadEpContextDataWithFileFallback(
     const OrtApi& api,
