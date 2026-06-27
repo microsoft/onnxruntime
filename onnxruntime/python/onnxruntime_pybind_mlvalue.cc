@@ -800,12 +800,16 @@ static void CreateMapMLValue_LoopIntoMap(Py_ssize_t& pos, PyObject*& key, const 
   ValueType cvalue;
   do {
     if (!keyGetter(key, ckey)) {
-      PyObject* pType = PyObject_Type(key);
-      auto pStr = PyObject_Str(pType);
-      py::str spyType = py::reinterpret_borrow<py::str>(pStr);
-      std::string sType = spyType;
-      Py_XDECREF(pStr);
-      Py_XDECREF(pType);
+      // Use pybind11 RAII objects for safer Python object management in Python 3.14+
+      std::string sType;
+      try {
+        py::object key_obj = py::reinterpret_borrow<py::object>(key);
+        py::object key_type = py::type::of(key_obj);
+        sType = py::str(key_type);
+      } catch (...) {
+        sType = "<unknown>";
+      }
+      
       if (owns_item_ref) {
         Py_XDECREF(item);
       }
@@ -816,12 +820,16 @@ static void CreateMapMLValue_LoopIntoMap(Py_ssize_t& pos, PyObject*& key, const 
     }
 
     if (!valueGetter(value, cvalue)) {
-      PyObject* pType = PyObject_Type(value);
-      auto pStr = PyObject_Str(pType);
-      py::str spyType = py::reinterpret_borrow<py::str>(pStr);
-      std::string sType = spyType;
-      Py_XDECREF(pStr);
-      Py_XDECREF(pType);
+      // Use pybind11 RAII objects for safer Python object management in Python 3.14+
+      std::string sType;
+      try {
+        py::object value_obj = py::reinterpret_borrow<py::object>(value);
+        py::object value_type = py::type::of(value_obj);
+        sType = py::str(value_type);
+      } catch (...) {
+        sType = "<unknown>";
+      }
+      
       if (owns_item_ref) {
         Py_XDECREF(item);
       }
