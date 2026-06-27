@@ -150,41 +150,63 @@ def _extract_cuda_major_version(version_str: str) -> str:
     return version_str.split(".", maxsplit=1)[0] if version_str else "12"
 
 
-def _get_cufft_version(cuda_major: str) -> str:
+def _get_cufft_version(cuda_major_version: str) -> str:
     """Get cufft library version based on CUDA major version.
 
     Args:
-        cuda_major: CUDA major version as string (e.g., "12", "13")
+        cuda_major_version: CUDA major version as string (e.g., "12", "13")
 
     Returns:
         cufft version as string
     """
     # cufft versions: CUDA 12.x -> 11, CUDA 13.x -> 12
-    return "12" if cuda_major == "13" else "11"
+    return "12" if int(cuda_major_version) >= 13 else "11"
 
 
 def _get_nvidia_dll_paths(is_windows: bool, cuda: bool = True, cudnn: bool = True):
-    # Dynamically determine CUDA major version from build info
+    # Dynamically determine CUDA major version from build info.
+    # build_cuda_version defaults to the version this package was built with; it is a parameter for testability.
     cuda_major_version = _extract_cuda_major_version(cuda_version)
     cufft_version = _get_cufft_version(cuda_major_version)
 
-    if is_windows:
+    # Starting with CUDA 13, NVIDIA consolidated the per-component CUDA Toolkit wheels
+    # (cublas, cufft, cuda_runtime, cuda_nvrtc, curand, ...) into a single "nvidia/cu{major}"
+    # package and dropped the "-cuNN" suffix from those package names. On Windows the DLLs
+    # moved into an architecture sub-folder ("bin/<arch>", e.g. "bin/x86_64"); on Linux the
+    # libraries are placed directly in "lib" (the wheel itself is architecture specific, so
+    # there is no arch sub-folder). cuDNN keeps its own "nvidia/cudnn" package and layout.
+    use_consolidated_layout = cuda_major_version.isdigit() and int(cuda_major_version) >= 13
+
+    if use_consolidated_layout:
+        cuda_dir = f"cu{cuda_major_version}"
+        if is_windows:
+            import platform  # noqa: PLC0415
+
+            arch = "arm64" if platform.machine().lower() in ("arm64", "aarch64") else "x86_64"
+            cuda_dll_paths = [
+                ("nvidia", cuda_dir, "bin", arch, f"cublasLt64_{cuda_major_version}.dll"),
+                ("nvidia", cuda_dir, "bin", arch, f"cublas64_{cuda_major_version}.dll"),
+                ("nvidia", cuda_dir, "bin", arch, f"cufft64_{cufft_version}.dll"),
+                ("nvidia", cuda_dir, "bin", arch, f"cudart64_{cuda_major_version}.dll"),
+            ]
+        else:  # Linux
+            # cublas64 depends on cublasLt64, so cublasLt64 should be loaded first.
+            cuda_dll_paths = [
+                ("nvidia", cuda_dir, "lib", f"libcublasLt.so.{cuda_major_version}"),
+                ("nvidia", cuda_dir, "lib", f"libcublas.so.{cuda_major_version}"),
+                ("nvidia", cuda_dir, "lib", f"libnvrtc.so.{cuda_major_version}"),
+                ("nvidia", cuda_dir, "lib", "libcurand.so.10"),
+                ("nvidia", cuda_dir, "lib", f"libcufft.so.{cufft_version}"),
+                ("nvidia", cuda_dir, "lib", f"libcudart.so.{cuda_major_version}"),
+            ]
+    elif is_windows:
+        # CUDA 12 and earlier: each component ships its own "nvidia/<component>" package.
         # Path is relative to site-packages directory.
         cuda_dll_paths = [
             ("nvidia", "cublas", "bin", f"cublasLt64_{cuda_major_version}.dll"),
             ("nvidia", "cublas", "bin", f"cublas64_{cuda_major_version}.dll"),
             ("nvidia", "cufft", "bin", f"cufft64_{cufft_version}.dll"),
             ("nvidia", "cuda_runtime", "bin", f"cudart64_{cuda_major_version}.dll"),
-        ]
-        cudnn_dll_paths = [
-            ("nvidia", "cudnn", "bin", "cudnn_engines_runtime_compiled64_9.dll"),
-            ("nvidia", "cudnn", "bin", "cudnn_engines_precompiled64_9.dll"),
-            ("nvidia", "cudnn", "bin", "cudnn_heuristic64_9.dll"),
-            ("nvidia", "cudnn", "bin", "cudnn_ops64_9.dll"),
-            ("nvidia", "cudnn", "bin", "cudnn_adv64_9.dll"),
-            ("nvidia", "cudnn", "bin", "cudnn_graph64_9.dll"),
-            ("nvidia", "cudnn", "bin", "cudnn64_9.dll"),
-            ("nvidia", "cudnn", "bin", "cudnn_engines_tensor_ir64_9.dll"),
         ]
     else:  # Linux
         # cublas64 depends on cublasLt64, so cublasLt64 should be loaded first.
@@ -197,6 +219,19 @@ def _get_nvidia_dll_paths(is_windows: bool, cuda: bool = True, cudnn: bool = Tru
             ("nvidia", "cuda_runtime", "lib", f"libcudart.so.{cuda_major_version}"),
         ]
 
+    # cuDNN keeps its own "nvidia/cudnn" package layout in both old and consolidated schemes.
+    if is_windows:
+        cudnn_dll_paths = [
+            ("nvidia", "cudnn", "bin", "cudnn_engines_runtime_compiled64_9.dll"),
+            ("nvidia", "cudnn", "bin", "cudnn_engines_precompiled64_9.dll"),
+            ("nvidia", "cudnn", "bin", "cudnn_heuristic64_9.dll"),
+            ("nvidia", "cudnn", "bin", "cudnn_ops64_9.dll"),
+            ("nvidia", "cudnn", "bin", "cudnn_adv64_9.dll"),
+            ("nvidia", "cudnn", "bin", "cudnn_graph64_9.dll"),
+            ("nvidia", "cudnn", "bin", "cudnn64_9.dll"),
+            ("nvidia", "cudnn", "bin", "cudnn_engines_tensor_ir64_9.dll"),
+        ]
+    else:  # Linux
         # Do not load cudnn sub DLLs (they will be dynamically loaded later) to be consistent with PyTorch in Linux.
         cudnn_dll_paths = [
             ("nvidia", "cudnn", "lib", "libcudnn.so.9"),
@@ -238,15 +273,19 @@ def print_debug_info():
         # Print version of installed packages that is related to CUDA or cuDNN DLLs.
         cuda_major = _extract_cuda_major_version(cuda_version)
 
+        # Starting with CUDA 13, NVIDIA dropped the "-cuNN" suffix from the per-component
+        # CUDA Toolkit packages (cuDNN keeps its suffixed package name).
+        cuda_pkg_suffix = "" if (cuda_major.isdigit() and int(cuda_major) >= 13) else f"-cu{cuda_major}"
+
         packages = [
             "torch",
-            f"nvidia-cuda-runtime-cu{cuda_major}",
+            f"nvidia-cuda-runtime{cuda_pkg_suffix}",
             f"nvidia-cudnn-cu{cuda_major}",
-            f"nvidia-cublas-cu{cuda_major}",
-            f"nvidia-cufft-cu{cuda_major}",
-            f"nvidia-curand-cu{cuda_major}",
-            f"nvidia-cuda-nvrtc-cu{cuda_major}",
-            f"nvidia-nvjitlink-cu{cuda_major}",
+            f"nvidia-cublas{cuda_pkg_suffix}",
+            f"nvidia-cufft{cuda_pkg_suffix}",
+            f"nvidia-curand{cuda_pkg_suffix}",
+            f"nvidia-cuda-nvrtc{cuda_pkg_suffix}",
+            f"nvidia-nvjitlink{cuda_pkg_suffix}",
         ]
         for package in packages:
             directory_name = "nvidia" if package.startswith("nvidia-") else None

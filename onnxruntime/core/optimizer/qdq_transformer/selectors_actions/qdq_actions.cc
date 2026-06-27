@@ -7,6 +7,7 @@
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_actions.h"
 #include "core/optimizer/qdq_transformer/qdq_util.h"
 #include "core/optimizer/initializer.h"
+#include "core/optimizer/matmul_nbits_sharing_identity.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/graph/graph_utils.h"
 #include "core/framework/tensorprotoutils.h"
@@ -646,8 +647,23 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
   ORT_RETURN_IF_ERROR(TransposeDQWeightsForMatMulNBits(
       graph, *dq_node, "fused_DQ_MatMul", intra_op_thread_pool_, effective_bs, transposed));
 
+  // Cross-session sharing identity for the generated B weight; computed before it is moved.
+  const auto* weight_arg = dq_node->InputDefs()[0];
+  const auto* weight_shape = weight_arg->Shape();
+  ORT_RETURN_IF_NOT(weight_shape != nullptr && weight_shape->dim_size() >= 2,
+                    "Weight shape unavailable for DQ node ", dq_node->Name());
+  const int64_t bits = DQWeightBits(weight_arg->TypeAsProto()->tensor_type().elem_type());
+  const std::string share_id = ComputeMatMulNBitsSharingId(
+      transposed.weight, transposed.scale, transposed.zero_point,
+      weight_shape->dim(1).dim_value(), weight_shape->dim(0).dim_value(),
+      effective_bs, bits, accuracy_level_);
+
   auto& input_defs = replacement_node.MutableInputDefs();
-  input_defs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, transposed.weight_proto, std::move(transposed.weight)));
+  NodeArg& b_weight_arg =
+      graph_utils::AddInitializerWithOrtValue(graph, transposed.weight_proto, std::move(transposed.weight));
+  // Tag the generated B weight for cross-session pre-pack sharing.
+  graph.SetSharedPrepackInitializerId(b_weight_arg.Name(), share_id);
+  input_defs.push_back(&b_weight_arg);
   replacement_node.MutableInputArgsCount().push_back(1);
 
   input_defs.push_back(&graph_utils::AddInitializerWithOrtValue(graph, transposed.scale_proto, std::move(transposed.scale)));

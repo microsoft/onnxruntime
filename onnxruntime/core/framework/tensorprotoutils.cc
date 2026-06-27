@@ -725,6 +725,17 @@ void ConvertRawDataInTensorProto(TensorProto& tensor) {
   SwapByteOrderInplace(element_size, span);
 }
 
+// Bool tensors must hold canonical {0, 1} byte values. Data sourced from raw_data or external
+// files is copied verbatim and may contain other non-zero bytes; normalize any non-zero byte to 1
+// so every consumer observes a single, consistent value. Operate on the byte representation to
+// avoid loading a bool object that does not yet hold a valid value.
+static void NormalizeBoolBytes(uint8_t* bool_bytes, size_t num_elements) {
+  static_assert(sizeof(bool) == 1, "Normalization assumes 1 byte per bool element");
+  for (size_t i = 0; i < num_elements; ++i) {
+    bool_bytes[i] = bool_bytes[i] != 0 ? 1 : 0;
+  }
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 
 static Status UnpackTensorWithExternalDataImpl(const ONNX_NAMESPACE::TensorProto& tensor,
@@ -750,6 +761,19 @@ Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
 
   return UnpackTensorWithExternalDataImpl(tensor, tensor_proto_dir, expected_num_elements, sizeof(T),
                                           reinterpret_cast<unsigned char*>(p_data));
+}
+
+// UnpackTensorWithExternalData<bool>
+// External data is copied verbatim and may contain bytes outside the canonical {0, 1} set, so
+// normalize them (see NormalizeBoolBytes).
+template <>
+Status UnpackTensorWithExternalData(const ONNX_NAMESPACE::TensorProto& tensor,
+                                    const std::filesystem::path& tensor_proto_dir, size_t expected_num_elements,
+                                    /*out*/ bool* p_data) {
+  ORT_RETURN_IF_ERROR(UnpackTensorWithExternalDataImpl(tensor, tensor_proto_dir, expected_num_elements, sizeof(bool),
+                                                       reinterpret_cast<unsigned char*>(p_data)));
+  NormalizeBoolBytes(reinterpret_cast<uint8_t*>(p_data), expected_num_elements);
+  return Status::OK();
 }
 
 #define DEFINE_4BIT_UNPACK_TENSOR_WITH_EXT_DATA_IMPL(FOUR_BIT_TYPE, CalcPairFun)                                    \
@@ -800,7 +824,9 @@ INSTANTIATE_UNPACK_EXTERNAL_TENSOR(int32_t)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(int64_t)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(uint64_t)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(uint32_t)
-INSTANTIATE_UNPACK_EXTERNAL_TENSOR(bool)
+// bool is intentionally omitted: UnpackTensorWithExternalData<bool> is explicitly specialized
+// above (to normalize bytes to {0, 1}), so an explicit instantiation here would have no effect
+// and triggers -Werror,-Winstantiation-after-specialization.
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(MLFloat16)
 INSTANTIATE_UNPACK_EXTERNAL_TENSOR(BFloat16)
 
@@ -907,7 +933,11 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
   }
 
   if (raw_data != nullptr) {
-    return UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data);
+    ORT_RETURN_IF_ERROR(UnpackTensorWithRawData(raw_data, raw_data_len, expected_size, p_data));
+    // raw_data is copied verbatim and may contain bytes outside the canonical {0, 1} set (see
+    // NormalizeBoolBytes).
+    NormalizeBoolBytes(reinterpret_cast<uint8_t*>(p_data), expected_size);
+    return Status::OK();
   }
 
   if (static_cast<size_t>(tensor.int32_data_size()) != expected_size)
@@ -1881,6 +1911,9 @@ Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_pa
     ORT_RETURN_IF_ERROR(GetExtDataFromTensorProto(env, model_path, tensor_proto, ort_value));
     const auto& ext_tensor = ort_value.Get<Tensor>();
     MakeCpuTensorCopy(ext_tensor, tensor);
+    // MakeCpuTensorCopy memcpy's external bytes verbatim. Bool external initializers may carry
+    // bytes outside the canonical {0, 1} set, so normalize them here as well (see NormalizeBoolBytes).
+    NormalizeBoolTensorIfNeeded(tensor);
     return Status::OK();
   }
 
@@ -2188,6 +2221,13 @@ void MakeCpuTensorCopy(const Tensor& src_tensor, Tensor& dst_tensor) {
     std::copy(src_span.begin(), src_span.end(), dst_tensor.MutableDataAsSpan<std::string>().begin());
   } else {
     std::memcpy(dst_tensor.MutableDataRaw(), src_tensor.DataRaw(), src_tensor.SizeInBytes());
+  }
+}
+
+void NormalizeBoolTensorIfNeeded(Tensor& tensor) {
+  if (tensor.IsDataType<bool>()) {
+    NormalizeBoolBytes(reinterpret_cast<uint8_t*>(tensor.MutableDataRaw()),
+                       narrow<size_t>(tensor.Shape().Size()));
   }
 }
 

@@ -18,10 +18,12 @@ endif()
 
 if(Patch_FOUND)
   if (WIN32)
-    set(ABSL_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/abseil/absl_windows.patch &&
-                           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/abseil/absl_cuda_warnings.patch)
+    set(ABSL_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/vcpkg-ports/abseil/absl_windows.patch &&
+                           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/vcpkg-ports/abseil/absl_cuda_warnings.patch &&
+                           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/vcpkg-ports/abseil/absl_cuda13_member_template.patch)
   else()
-    set(ABSL_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/abseil/absl_cuda_warnings.patch)
+    set(ABSL_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/vcpkg-ports/abseil/absl_cuda_warnings.patch &&
+                           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/vcpkg-ports/abseil/absl_cuda13_member_template.patch)
   endif()
 else()
   set(ABSL_PATCH_COMMAND "")

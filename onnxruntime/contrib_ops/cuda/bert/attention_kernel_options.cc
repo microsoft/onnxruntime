@@ -151,7 +151,9 @@ void AttentionKernelDebugInfo::Print(const char* operator_name,
   }
 
   sstream << " SdpaKernel=";
-  if (use_flash_attention.has_value() && use_flash_attention.value()) {
+  if (use_xqa.has_value() && use_xqa.value()) {
+    sstream << "XQA";
+  } else if (use_flash_attention.has_value() && use_flash_attention.value()) {
     sstream << "FLASH_ATTENTION";
 #if USE_LEAN_ATTENTION
   } else if (use_lean_attention.has_value() && use_lean_attention.value()) {

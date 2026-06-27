@@ -206,6 +206,15 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetGPUComputeStream, _In_ const OrtKe
   });
 };
 
+ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetSyncStream, _In_ const OrtKernelContext* context,
+                    _Outptr_result_maybenull_ OrtSyncStream** out) {
+  return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {
+    auto* stream = reinterpret_cast<const onnxruntime::OpKernelContext*>(context)->GetComputeStream();
+    *out = reinterpret_cast<OrtSyncStream*>(stream);
+    return nullptr;
+  });
+};
+
 ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetAllocator, _In_ const OrtKernelContext* context,
                     _In_ const OrtMemoryInfo* mem_info, _Outptr_ OrtAllocator** out) {
   return ExecuteIfKernelApiEnabled([&]() -> OrtStatusPtr {

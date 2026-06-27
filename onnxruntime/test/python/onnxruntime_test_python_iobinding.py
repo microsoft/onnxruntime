@@ -8,7 +8,6 @@ import numpy as np
 from helper import get_name
 from numpy.testing import assert_almost_equal
 from onnx import TensorProto, helper
-from onnx.defs import onnx_opset_version
 
 import onnxruntime as onnxrt
 from onnxruntime.capi._pybind_state import OrtDevice as C_OrtDevice  # pylint: disable=E0611
@@ -19,6 +18,11 @@ test_params = [
     ("cuda", "CUDAExecutionProvider", C_OrtDevice.cuda),
     ("dml", "DmlExecutionProvider", C_OrtDevice.dml),
 ]
+
+# Highest ai.onnx opset that has been *released* by the installed onnx package.
+# Avoid onnx.defs.onnx_opset_version(), which returns the in-development next opset
+# (ORT's loader rejects un-released opsets unless ALLOW_RELEASED_ONNX_OPSET_ONLY=0).
+_LAST_RELEASED_AI_ONNX_OPSET = max(v for (d, v) in helper.OP_SET_ID_VERSION_MAP if d == "ai.onnx")
 
 
 class TestIOBinding(unittest.TestCase):
@@ -74,7 +78,7 @@ class TestIOBinding(unittest.TestCase):
                 if execution_provider not in onnxrt.get_available_providers():
                     self.skipTest(f"Skipping on {device.upper()}.")
 
-                opset = onnx_opset_version()
+                opset = _LAST_RELEASED_AI_ONNX_OPSET
                 devices = [
                     (
                         C_OrtDevice(C_OrtDevice.cpu(), C_OrtDevice.default_memory(), 0),
@@ -143,7 +147,7 @@ class TestIOBinding(unittest.TestCase):
                             assert_almost_equal(x, y)
 
     def test_bind_onnx_types_supported_by_numpy(self):
-        opset = onnx_opset_version()
+        opset = _LAST_RELEASED_AI_ONNX_OPSET
         devices = [
             (
                 C_OrtDevice(C_OrtDevice.cpu(), C_OrtDevice.default_memory(), 0),
@@ -200,7 +204,7 @@ class TestIOBinding(unittest.TestCase):
         except ImportError:
             self.skipTest("Skipping since PyTorch is not installed.")
 
-        opset = onnx_opset_version()
+        opset = _LAST_RELEASED_AI_ONNX_OPSET
         devices = [
             (
                 C_OrtDevice(C_OrtDevice.cpu(), C_OrtDevice.default_memory(), 0),
