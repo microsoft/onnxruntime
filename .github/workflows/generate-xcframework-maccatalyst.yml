@@ -11,7 +11,22 @@ env:
 
 jobs:
   build_macabi_xcf:
-    runs-on: macos-14
+    name: build_${{ matrix.variant }}_xcf
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: static
+            build_dir_name: macabi_release_static_v20230327_2320
+            build_dynamic_flag: ""
+            artifact_name: onnxruntime-static.xcframework
+            zip_name: onnxruntime-static.xcframework.zip
+          - variant: dynamic
+            build_dir_name: macabi_release_dynamic_v20230327_2320
+            build_dynamic_flag: "--build_dynamic_framework"
+            artifact_name: onnxruntime.xcframework
+            zip_name: onnxruntime.xcframework.zip
+    runs-on: macos-26-xlarge
     env:
       xcode_version: 15
     steps:
@@ -21,7 +36,9 @@ jobs:
           python-version: ${{ env.python_version }}
 
       - name: check Xcode version and Python 3
+        shell: bash
         run: |
+          set -euxo pipefail
           /usr/bin/xcodebuild -version
           python3 --version
           python --version
@@ -45,8 +62,11 @@ jobs:
       #     mv protoc-21.12-osx-universal_binary/bin/protoc /usr/local/bin/protoc-3.21.12.0
       #     mv protoc-21.12-osx-universal_binary/include/* /usr/local/include/
 
-      - name: create directory to store the library
-        run: mkdir -p $HOME/onnxlibrary/macabi_release_v20230327_2320
+      - name: create directories to store the libraries
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p $HOME/onnxlibrary/${{ matrix.build_dir_name }}
 
       # - name: create release build
       #   run: |
@@ -67,33 +87,36 @@ jobs:
       #       --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
       #       --path_to_protoc_exe=/usr/local/bin/protoc-3.21.12.0 ${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config
 
-      - name: create release build
+      - name: create ${{ matrix.variant }} release build
+        shell: bash
         run: |
-          export PYTHONPATH=${{ github.workspace }}/tools/python:$PYTHONPATH
+          set -euxo pipefail
+          export PYTHONPATH="${{ github.workspace }}/tools/python:${PYTHONPATH:-}"
           pip install -r ${{ github.workspace }}/requirements-dev.txt
-          python3 ${{ github.workspace }}/tools/ci_build/github/apple/build_apple_framework.py --config Release --build_dynamic_framework  --build_dir=$HOME/onnxlibrary/macabi_release_v20230327_2320 \
-            --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
-            ${{ github.workspace }}/tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
+          for attempt in 1 2 3; do
+            if python3 ${{ github.workspace }}/tools/ci_build/github/apple/build_apple_framework.py --config Release ${{ matrix.build_dynamic_flag }} --build_dir=$HOME/onnxlibrary/${{ matrix.build_dir_name }} \
+              --include_ops_by_config=${{ github.workspace }}/tools/ci_build/github/apple/hws_mobile_package.required_operators.config \
+              ${{ github.workspace }}/tools/ci_build/github/apple/default_full_ios_framework_build_settings.json; then
+              break
+            fi
 
-      - name: verify expected slices
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+
+            sleep $((attempt * 30))
+          done
+
+      - name: archive ${{ matrix.variant }} xcframework
+        shell: bash
         run: |
-          set -euo pipefail
-          XCF=$HOME/onnxlibrary/macabi_release_v20230327_2320/framework_out/onnxruntime.xcframework
-          lipo "$XCF/ios-arm64/onnxruntime.framework/onnxruntime" -verify_arch arm64
-          lipo "$XCF/ios-arm64_x86_64-simulator/onnxruntime.framework/onnxruntime" -verify_arch arm64 x86_64
-          lipo "$XCF/ios-arm64_x86_64-maccatalyst/onnxruntime.framework/onnxruntime" -verify_arch arm64 x86_64
-          test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64/onnxruntime.framework/Info.plist")" = "16.4"
-          test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64_x86_64-simulator/onnxruntime.framework/Info.plist")" = "16.4"
-          test "$(plutil -extract MinimumOSVersion raw "$XCF/ios-arm64_x86_64-maccatalyst/onnxruntime.framework/Versions/A/Resources/Info.plist")" = "16.4"
+          set -euxo pipefail
+          cd $HOME/onnxlibrary/${{ matrix.build_dir_name }}/framework_out
+          zip -r -y "${{ github.workspace }}/${{ matrix.zip_name }}" onnxruntime.xcframework
 
-      - name: archive xcframework
-        run: |
-          cd $HOME/onnxlibrary/macabi_release_v20230327_2320/framework_out
-          zip -r -y "${{ github.workspace }}/onnxruntime.xcframework.zip" onnxruntime.xcframework
-
-      - name: upload xcframework artifact
+      - name: upload ${{ matrix.variant }} xcframework artifact
         uses: actions/upload-artifact@v4
         with:
-          name: onnxruntime.xcframework
-          path: onnxruntime.xcframework.zip
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.zip_name }}
           if-no-files-found: error

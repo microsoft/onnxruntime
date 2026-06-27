@@ -69,16 +69,26 @@ or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any addi
 This project is licensed under the [MIT License](LICENSE).
 
 ## Build for Goodnotes
+Dynamic XCFramework:
 ```
-python3 tools/ci_build/github/apple/build_apple_framework.py --config Release --build_dynamic_framework  --build_dir ~/Downloads/onnat/onnxlibrary/mac_release_v20230327_2320 --include_ops_by_config tools/ci_build/github/apple/hws_mobile_package.required_operators.config --path_to_protoc_exe /usr/local/bin/protoc tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
+python3 tools/ci_build/github/apple/build_apple_framework.py --config Release --build_dynamic_framework --build_dir ~/Downloads/onnat/onnxlibrary/mac_release_dynamic_v20230327_2320 --include_ops_by_config tools/ci_build/github/apple/hws_mobile_package.required_operators.config --path_to_protoc_exe /usr/local/bin/protoc tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
 ```
-(note there’s a --build_dynamic_framework arg)
-
-Now you can check
+Static XCFramework:
+```
+python3 tools/ci_build/github/apple/build_apple_framework.py --config Release --build_dir ~/Downloads/onnat/onnxlibrary/mac_release_static_v20230327_2320 --include_ops_by_config tools/ci_build/github/apple/hws_mobile_package.required_operators.config --path_to_protoc_exe /usr/local/bin/protoc tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
+```
+You can distinguish the outputs with `file onnxruntime`:
+Dynamic:
 ```
 onnxruntime.framework % file onnxruntime
 onnxruntime: Mach-O universal binary with 2 architectures: [x86_64:Mach-O 64-bit dynamically linked shared library x86_64] [arm64]
 onnxruntime (for architecture x86_64):	Mach-O 64-bit dynamically linked shared library x86_64
 onnxruntime (for architecture arm64):	Mach-O 64-bit dynamically linked shared library arm64
 ```
-
+Static:
+```
+onnxruntime.framework % file onnxruntime
+onnxruntime: Mach-O universal binary with 2 architectures: [x86_64:current ar archive random library] [arm64]
+onnxruntime (for architecture x86_64):	current ar archive random library
+onnxruntime (for architecture arm64):	current ar archive random library
+```

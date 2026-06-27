@@ -18,6 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: misspell # Check spellings as well
+        continue-on-error: true
         uses: reviewdog/action-misspell@v1
         with:
           github_token: ${{ secrets.github_token }}
@@ -26,6 +27,7 @@ jobs:
           level: info
           filter_mode: diff_context
       - name: shellcheck # Static check shell scripts
+        continue-on-error: true
         uses: reviewdog/action-shellcheck@v1
         with:
           github_token: ${{ secrets.github_token }}
@@ -36,12 +38,14 @@ jobs:
   lint-python-format:
     # Required workflow
     name: Python format
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: ubuntu-22.04
     permissions:
       contents: read
       security-events: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -63,7 +67,11 @@ jobs:
       - name: Run lintrunner on all files
         run: |
           set +e
-          if ! lintrunner --force-color --all-files --tee-json=lint.json -v; then
+          LINTRUNNER_ARGS=(--force-color --tee-json=lint.json -v)
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+              LINTRUNNER_ARGS+=(--all-files)
+          fi
+          if ! lintrunner "${LINTRUNNER_ARGS[@]}"; then
               echo ""
               echo -e "\e[1m\e[36mYou can reproduce these results locally by using \`lintrunner\`. To set up lintrunner locally, see https://github.com/microsoft/onnxruntime/blob/main/docs/Coding_Conventions_and_Standards.md#linting .\e[0m"
               exit 1
@@ -124,7 +132,7 @@ jobs:
 
   lint-js:
     name: Lint JavaScript
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

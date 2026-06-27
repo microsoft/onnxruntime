@@ -369,7 +369,7 @@ void ProfileComputePlan(NSURL* compileUrl, MLModelConfiguration* config) {
 #define HAS_COREMLOPTIMIZATIONHINT 0
 #endif
 
-#if HAS_COREMLOPTIMIZATIONHINT && \
+#if HAS_COREMLOPTIMIZATIONHINT &&                                                             \
     ((defined(__MAC_OS_X_VERSION_MAX_ALLOWED) && __MAC_OS_X_VERSION_MAX_ALLOWED >= 150000) || \
      (defined(__IPHONE_OS_VERSION_MAX_ALLOWED) && __IPHONE_OS_VERSION_MAX_ALLOWED >= 180000))
 #define HAS_COREMLOPTIMIZATIONHINT_SPECIALIZATION_STRATEGY 1
