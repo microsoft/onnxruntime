@@ -345,9 +345,11 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
                                   has_zp_input_, nullptr, threadpool_ptr, &mlas_backend_kernel_selector_config_);
 
 #if defined(MLAS_TARGET_ARM64)
-      // For KleidiAI asymmetric 4-bit path: compute BZpCorr now while scales and zero_points are accessible.
+      // KleidiAI W4: fold ZPs into BZpCorr now; the scales callback below sets
+      // scales_are_packed_=true, after which ORT may drop the scales tensor.
       if (compute_type_ == HQNBIT_CompInt8 && nbits_ == 4 && has_zp_input_ && scales_fp32_ &&
-          MlasQNBitGemmScalesPacked(K_, nbits_, block_size_, SQNBIT_CompInt8, has_zp_input_, &mlas_backend_kernel_selector_config_)) {
+          MlasQNBitGemmScalesPacked(K_, nbits_, block_size_, SQNBIT_CompInt8,
+                                    has_zp_input_, &mlas_backend_kernel_selector_config_)) {
         const Tensor* zp_tensor = nullptr;
         OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zp_tensor);
         if (zp_tensor != nullptr) {
@@ -487,11 +489,14 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       }
     }
 
-    // Pack zero_points separately only for 8-bit (matching standard SQNBIT_CompInt8 behavior).
-    // For 4-bit, zero_points are passed directly in data params or handled via KleidiAI BZpCorr.
-    if (input_idx == InputIndex::zero_points && packed_b_ != nullptr && nbits_ == 8) {
+    // Fold ZPs into packed_b_ for W2/W8 (W4 reads ZPs at compute time or via BZpCorr above).
+    // W2 must also pass scales here so QuantBBlkSum = -scale*zp is recomputed; otherwise it
+    // keeps the symmetric default ZP=2 from the B-pack call and silently produces wrong
+    // outputs whenever real ZPs != 2. W8 already has its scales packed via the scales callback.
+    if (input_idx == InputIndex::zero_points && packed_b_ != nullptr && (nbits_ == 2 || nbits_ == 8)) {
       auto zptr = tensor.Data<uint8_t>();
-      MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, SQNBIT_CompInt8, nullptr, packed_b_.get(), nullptr,
+      const float* sptr = (nbits_ == 2) ? scales_fp32_.get() : nullptr;
+      MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, SQNBIT_CompInt8, nullptr, packed_b_.get(), sptr,
                                   has_zp_input_, zptr, nullptr, &mlas_backend_kernel_selector_config_);
       is_packed = false;
     }
