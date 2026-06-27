@@ -481,14 +481,20 @@ class IExecutionProvider {
   // The legacy per-capability virtuals above are retained for compatibility;
   // EPs and callers can migrate to these hooks incrementally.
 
-  /** Return this EP's graph-capture/replay capability, or nullptr if unsupported. */
+  /** Return this EP's graph-capture/replay capability, or nullptr if unsupported.
+      Non-const because the capability exposes mutating operations (graph replay/release). */
   virtual IGraphCaptureCapability* GetGraphCaptureCapability() noexcept { return nullptr; }
 
-  /** Return this EP's TunableOp tuning capability, or nullptr if unsupported. */
-  virtual ITuningCapability* GetTuningCapability() const noexcept { return nullptr; }
+  /** Return this EP's TunableOp tuning capability, or nullptr if unsupported.
+      Non-const by design: acquiring the tuning capability is part of the mutating
+      execution path -- tuning records state through the returned ITuningContext --
+      so it is intentionally not exposed as a const, read-only query. */
+  virtual ITuningCapability* GetTuningCapability() noexcept { return nullptr; }
 
-  /** Return this EP's data-layout preference capability, or nullptr if unsupported. */
-  virtual IDataLayoutCapability* GetDataLayoutCapability() const noexcept { return nullptr; }
+  /** Return this EP's data-layout preference capability, or nullptr if unsupported.
+      Const and returning a const pointer: data-layout preference is a read-only
+      query, so it must not permit mutating the EP through a const reference. */
+  virtual const IDataLayoutCapability* GetDataLayoutCapability() const noexcept { return nullptr; }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /** Return this EP's subgraph-compilation capability, or nullptr if unsupported. */

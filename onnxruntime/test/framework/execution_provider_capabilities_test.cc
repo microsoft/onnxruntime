@@ -60,21 +60,15 @@ class TuningEp : public IExecutionProvider, public ITuningCapability {
  public:
   TuningEp() : IExecutionProvider(kFakeEpType) {}
 
-  ITuningCapability* GetTuningCapability() const noexcept override {
-    return const_cast<TuningEp*>(this);
-  }
+  // Non-const hook (matches the base signature): returns the mix-in subobject
+  // directly, with no const_cast.
+  ITuningCapability* GetTuningCapability() noexcept override { return this; }
 
-  // ITuningCapability. Returns nullptr (no real tuning state); a call counter
-  // proves the call is routed to the concrete implementation through the mix-in.
-  ITuningContext* GetTuningContext() const override {
-    ++tuning_query_count_;
-    return nullptr;
-  }
-
-  int tuning_query_count() const { return tuning_query_count_; }
-
- private:
-  mutable int tuning_query_count_ = 0;
+  // ITuningCapability::GetTuningContext() is pure virtual, so a successful call
+  // necessarily dispatches to this override -- that alone proves routing through
+  // the mix-in, with no mutable call-counter needed. A fake EP holds no real
+  // tuning state, so it reports a null context.
+  ITuningContext* GetTuningContext() const override { return nullptr; }
 };
 
 // An EP that supports only a data-layout preference.
@@ -82,9 +76,9 @@ class DataLayoutEp : public IExecutionProvider, public IDataLayoutCapability {
  public:
   DataLayoutEp() : IExecutionProvider(kFakeEpType) {}
 
-  IDataLayoutCapability* GetDataLayoutCapability() const noexcept override {
-    return const_cast<DataLayoutEp*>(this);
-  }
+  // Const hook returning a const pointer: no const_cast, returns the mix-in
+  // subobject directly.
+  const IDataLayoutCapability* GetDataLayoutCapability() const noexcept override { return this; }
 
   // IDataLayoutCapability
   DataLayout GetPreferredLayout() const override { return DataLayout::NHWC; }
@@ -145,9 +139,7 @@ class GraphCaptureAndDataLayoutEp : public IExecutionProvider,
   GraphCaptureAndDataLayoutEp() : IExecutionProvider(kFakeEpType) {}
 
   IGraphCaptureCapability* GetGraphCaptureCapability() noexcept override { return this; }
-  IDataLayoutCapability* GetDataLayoutCapability() const noexcept override {
-    return const_cast<GraphCaptureAndDataLayoutEp*>(this);
-  }
+  const IDataLayoutCapability* GetDataLayoutCapability() const noexcept override { return this; }
 
   // IGraphCaptureCapability
   bool IsGraphCaptureEnabled() const override { return true; }
@@ -207,7 +199,7 @@ TEST(ExecutionProviderCapabilitiesTest, DataLayoutCapabilityIsQueryableAndUsable
   DataLayoutEp ep;
   IExecutionProvider& base = ep;
 
-  IDataLayoutCapability* dl = base.GetDataLayoutCapability();
+  const IDataLayoutCapability* dl = base.GetDataLayoutCapability();
   ASSERT_NE(dl, nullptr) << "EP advertising a data-layout preference must return a non-null capability.";
 
   EXPECT_EQ(dl->GetPreferredLayout(), DataLayout::NHWC);
@@ -229,8 +221,9 @@ TEST(ExecutionProviderCapabilitiesTest, TuningCapabilityIsQueryableAndUsable) {
   ITuningCapability* tc = base.GetTuningCapability();
   ASSERT_NE(tc, nullptr) << "EP advertising tuning must return a non-null capability.";
 
+  // GetTuningContext() is pure virtual on the mix-in, so reaching this concrete
+  // (null-context) result proves the call routed through the mix-in.
   EXPECT_EQ(tc->GetTuningContext(), nullptr);
-  EXPECT_EQ(ep.tuning_query_count(), 1) << "GetTuningContext must reach the concrete implementation.";
 }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -297,7 +290,7 @@ TEST(ExecutionProviderCapabilitiesTest, MultipleCapabilitiesCoexist) {
   IExecutionProvider& base = ep;
 
   IGraphCaptureCapability* gc = base.GetGraphCaptureCapability();
-  IDataLayoutCapability* dl = base.GetDataLayoutCapability();
+  const IDataLayoutCapability* dl = base.GetDataLayoutCapability();
   ASSERT_NE(gc, nullptr);
   ASSERT_NE(dl, nullptr);
 
