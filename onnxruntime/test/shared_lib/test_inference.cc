@@ -4106,7 +4106,9 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
       {"cudnn_conv_algo_search", "DEFAULT"},
       {"do_copy_in_default_stream", "1"},
       {"cudnn_conv_use_max_workspace", "1"},
-      {"cudnn_conv1d_pad_to_nc1d", "1"}};
+      {"enable_cuda_graph", "1"},
+      {"cudnn_conv1d_pad_to_nc1d", "1"},
+      {"enable_skip_layer_norm_strict_mode", "1"}};
 
   cuda_options.Update(cuda_options_map);
 
@@ -4117,7 +4119,9 @@ TEST(CApiTest, TestConfigureCUDAProviderOptions) {
   ASSERT_TRUE(s.find("cudnn_conv_algo_search=DEFAULT") != std::string::npos);
   ASSERT_TRUE(s.find("do_copy_in_default_stream=1") != std::string::npos);
   ASSERT_TRUE(s.find("cudnn_conv_use_max_workspace=1") != std::string::npos);
-  ASSERT_TRUE(s.find("cudnn_conv1d_pad_to_nc1d") != std::string::npos);
+  ASSERT_TRUE(s.find("enable_cuda_graph=1") != std::string::npos);
+  ASSERT_TRUE(s.find("cudnn_conv1d_pad_to_nc1d=1") != std::string::npos);
+  ASSERT_TRUE(s.find("enable_skip_layer_norm_strict_mode=1") != std::string::npos);
 
   Ort::SessionOptions session_options;
   session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
