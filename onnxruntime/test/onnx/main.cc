@@ -906,7 +906,11 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         ORT_TSTR("mod_mixed_sign_int16"),
         ORT_TSTR("mod_mixed_sign_int8"),
         ORT_TSTR("mod_uint16"),
-        ORT_TSTR("mod_uint64")};
+        ORT_TSTR("mod_uint64"),
+        // QNN only support aligned = True.
+        ORT_TSTR("roialign_aligned_false"),
+        ORT_TSTR("roialign_aligned_false"),
+        ORT_TSTR("roialign_aligned_false")};};
 
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests), std::end(immutable_broken_tests));
 
