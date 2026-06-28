@@ -5636,5 +5636,68 @@ TEST(TransposeOptimizerTests, SharedInitializerHandlingBroadcast2) {
   ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<float>(),
               testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
 }
+// Regression test for a collision in synthesized NodeArg names that occurred when multiple nodes
+// shared an empty Node::Name().  See PR #28729.
+TEST(TransposeOptimizerTests, HandlesEmptyNodeNamesWithoutCollision) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 13;
+  Model model("HandlesEmptyNodeNamesWithoutCollision", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  // input: shape {1, 2, 3, 4}
+  auto* input_arg = builder.MakeInput<float>({1, 2, 3, 4}, 0.0f, 1.0f);
+
+  // First empty-named Transpose: NCHW -> NHWC  (perm = {0, 2, 3, 1})
+  auto* mid_arg = builder.MakeIntermediate();
+  auto& transpose1 = builder.AddNode("Transpose", {input_arg}, {mid_arg});
+  transpose1.SetName("");  // explicitly clear the name
+  transpose1.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+
+  // Second empty-named Transpose: NHWC -> NCHW  (perm = {0, 3, 1, 2})
+  auto* output_arg = builder.MakeOutput();
+  auto& transpose2 = builder.AddNode("Transpose", {mid_arg}, {output_arg});
+  transpose2.SetName("");  // explicitly clear the name
+  transpose2.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // Run the ONNX transpose optimizer directly (the same path used by the ORT optimizer at Level1).
+  using namespace onnx_transpose_optimization;
+  auto api_graph = MakeApiGraph(graph,
+                                TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                                /*new_node_ep*/ nullptr);
+  OptimizeResult result = Optimize(*api_graph);
+  ASSERT_EQ(result.error_msg, std::nullopt);
+
+  // After optimization the graph must still be valid.
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  // After the fix, every NodeArg referenced by the graph must have a non-empty name, and any two
+  // NodeArgs that share a name must be the same NodeArg pointer (i.e. no collisions across
+  // distinct tensors).
+  std::unordered_map<std::string, const NodeArg*> seen;
+  auto check = [&](const NodeArg* arg) {
+    if (arg == nullptr || !arg->Exists()) return;
+    const std::string& name = arg->Name();
+    EXPECT_FALSE(name.empty()) << "Found NodeArg with empty name after optimization.";
+    auto it = seen.find(name);
+    if (it == seen.end()) {
+      seen.emplace(name, arg);
+    } else {
+      EXPECT_EQ(it->second, arg) << "Distinct NodeArgs share the name '" << name << "' after optimization.";
+    }
+  };
+  for (const auto* arg : graph.GetInputsIncludingInitializers()) check(arg);
+  for (const auto* arg : graph.GetOutputs()) check(arg);
+  for (const auto& node : graph.Nodes()) {
+    for (const auto* arg : node.InputDefs()) check(arg);
+    for (const auto* arg : node.OutputDefs()) check(arg);
+  }
+}
+
 }  // namespace test
 }  // namespace onnxruntime
