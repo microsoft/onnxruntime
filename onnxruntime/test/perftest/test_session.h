@@ -12,6 +12,7 @@ namespace perftest {
 struct RunTiming {
   std::chrono::duration<double> submit_timing = std::chrono::seconds(0);
   std::chrono::duration<double> total_timing = std::chrono::seconds(0);
+  size_t shape_group_index = 0;  // which shape group (test_inputs_ index) was used
 };
 
 class TestSession {

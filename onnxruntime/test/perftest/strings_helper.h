@@ -2,6 +2,7 @@
 // Copyright (c) 2023 NVIDIA Corporation.
 // SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
+#include <cstdint>
 #include <string_view>
 #include <map>
 #include <unordered_map>
@@ -18,6 +19,9 @@ void ParseSessionConfigs(const std::string& configs_string,
 bool ParseDimensionOverride(const std::string& input, std::map<std::string, int64_t>& free_dim_override_map);
 
 bool ParseDimensionOverrideFromArgv(int argc, std::vector<std::string>& argv, std::string& option, std::map<std::string, int64_t>& free_dim_override_map);
+
+bool ParseDataShapeGroups(const std::string& input,
+                          std::map<std::string, std::vector<std::vector<int64_t>>>& data_shape_groups);
 
 void ParseEpList(const std::string& input, std::vector<std::string>& result);
 
