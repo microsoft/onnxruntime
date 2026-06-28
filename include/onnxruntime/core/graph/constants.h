@@ -47,7 +47,6 @@ constexpr const char* kAclExecutionProvider = "ACLExecutionProvider";
 constexpr const char* kCoreMLExecutionProvider = "CoreMLExecutionProvider";
 constexpr const char* kJsExecutionProvider = "JsExecutionProvider";
 constexpr const char* kSnpeExecutionProvider = "SNPEExecutionProvider";
-constexpr const char* kTvmExecutionProvider = "TvmExecutionProvider";
 constexpr const char* kXnnpackExecutionProvider = "XnnpackExecutionProvider";
 constexpr const char* kWebNNExecutionProvider = "WebNNExecutionProvider";
 constexpr const char* kWebGpuExecutionProvider = "WebGpuExecutionProvider";
