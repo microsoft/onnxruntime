@@ -12,6 +12,22 @@ using namespace onnxruntime::common;
 
 namespace onnxruntime {
 
+std::string removeDuplicatedSuffix(const std::string& s) {
+    const std::string suffix = "/duplicated";
+    if (s.length() >= suffix.length() &&
+        s.substr(s.length() - suffix.length()) == suffix) {
+        return s.substr(0, s.length() - suffix.length());
+    }
+    return s;
+}
+
+bool endsWith(const std::string& str, const std::string& suffix) {
+    if (str.size() < suffix.size()) {
+        return false;
+    }
+    return str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
 /**
 Rewrite x*sigmoid(alpha*x) or x*sigmoid(x) to QuickGelu.
 */
@@ -81,9 +97,19 @@ Status QuickGeluFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     int sigmoid_output_index = optimizer_utils::IndexOfNodeInput(mul_node, *sigmoid_node.MutableOutputDefs()[0]);
     if (!graph_utils::IsSupportedOptypeVersionAndDomain(mul_node, "Mul", {7, 13, 14}) ||
         !graph_utils::IsSupportedProvider(mul_node, GetCompatibleExecutionProviders()) ||
-        mul_node.MutableInputDefs()[(sigmoid_output_index + 1) % 2]->Name() != quick_gelu_input_arg->Name()) {
+        removeDuplicatedSuffix(mul_node.MutableInputDefs()[(sigmoid_output_index + 1) % 2]->Name())
+        != removeDuplicatedSuffix(quick_gelu_input_arg->Name())) {
       continue;
     }
+
+    int other_input_index = (sigmoid_output_index + 1) % 2;
+    NodeArg* other_input_arg = mul_node.MutableInputDefs()[other_input_index];
+    const Node* producer_nod = graph.GetProducerNode(other_input_arg->Name());
+    if(producer_nod && producer_nod->OutputDefs().size() == 1 &&
+       endsWith(producer_nod->Name(), "DequantizeLinear/duplicated")){
+      nodes_to_fuse.emplace_back(*graph.GetNode(producer_nod->Index()));
+    }
+
     nodes_to_fuse.emplace_back(mul_node);
 
     NodeArg* quick_gelu_output_arg = mul_node.MutableOutputDefs()[0];
