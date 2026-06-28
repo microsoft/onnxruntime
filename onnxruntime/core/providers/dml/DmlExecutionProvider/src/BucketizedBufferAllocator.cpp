@@ -78,11 +78,13 @@ namespace Dml
 
     void* BucketizedBufferAllocator::Alloc(size_t size)
     {
-        return Alloc(size, m_defaultRoundingMode);
+        return Alloc(size, m_defaultRoundingMode.load(std::memory_order_acquire));
     }
 
     void* BucketizedBufferAllocator::Alloc(size_t size, AllocatorRoundingMode roundingMode)
     {
+        std::lock_guard<std::mutex> lock(m_mutex);
+
         // For some reason lotus likes requesting 0 bytes of memory
         size = std::max<size_t>(1, size);
 
@@ -149,9 +151,9 @@ namespace Dml
 
     void BucketizedBufferAllocator::Free(void* p)
     {
-        // Release Lotus's reference on the allocation.  The allocation
-        // also inherits IUnknown, and once its final reference reaches zero
-        // it will call FreeResource
+        // No lock here: the ComPtr release may trigger AllocationInfo::~AllocationInfo
+        // which calls FreeResource() — that method acquires m_mutex itself.
+        // COM ref-count operations are already interlocked.
         ComPtr<AllocationInfo> allocInfo;
         allocInfo.Attach(static_cast<AllocationInfo*>(p));
     }
@@ -168,39 +170,49 @@ namespace Dml
             ORT_THROW_HR(E_INVALIDARG);
         }
 
-        // Free the resource to the pool if its size matches a bucket size
-        gsl::index bucketIndex = GetBucketIndexFromSize(allocInfo->GetRequestedSize());
-        if (GetBucketSizeFromIndex(bucketIndex) == allocInfo->GetResource()->GetDesc().Width)
-        {
-            assert(gsl::narrow_cast<gsl::index>(m_pool.size()) > bucketIndex);
+        // Capture resource outside lock to avoid lock-order inversion:
+        // allocator → context vs context → queue → destructor → allocator
+        ComPtr<DmlResourceWrapper> detachedWrapper;
+        bool needsQueueReference = false;
 
-            // Return the resource to the bucket
-            Bucket* bucket = &m_pool[bucketIndex];
-
-            Resource resource = {allocInfo->DetachResourceWrapper(), pooledResourceId};
-            bucket->resources.push_back(resource);
-        }
-        else
         {
-            if (!m_context->IsClosed())
+            std::lock_guard<std::mutex> lock(m_mutex);
+
+            // Free the resource to the pool if its size matches a bucket size
+            gsl::index bucketIndex = GetBucketIndexFromSize(allocInfo->GetRequestedSize());
+            if (GetBucketSizeFromIndex(bucketIndex) == allocInfo->GetResource()->GetDesc().Width)
             {
-                // Free the underlying allocation once queued work has completed.
-    #ifdef _GAMING_XBOX
-                m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->GetResource()).Get());
-    #else
-                m_context->QueueReference(allocInfo->GetResource());
-    #endif
+                assert(gsl::narrow_cast<gsl::index>(m_pool.size()) > bucketIndex);
+
+                // Return the resource to the bucket
+                Bucket* bucket = &m_pool[bucketIndex];
+
+                Resource resource = {allocInfo->DetachResourceWrapper(), pooledResourceId};
+                bucket->resources.push_back(resource);
+            }
+            else
+            {
+                detachedWrapper = allocInfo->DetachResourceWrapper();
+                needsQueueReference = true;
             }
 
-            allocInfo->DetachResourceWrapper();
+        #if _DEBUG
+            assert(m_outstandingAllocationsById[allocInfo->GetId()] == allocInfo);
+            m_outstandingAllocationsById.erase(allocInfo->GetId());
+        #endif
         }
 
-    #if _DEBUG
-        assert(m_outstandingAllocationsById[allocInfo->GetId()] == allocInfo);
-        m_outstandingAllocationsById.erase(allocInfo->GetId());
+        // Call into ExecutionContext OUTSIDE the allocator lock to prevent
+        // lock-order inversion (allocator→context vs context→queue→allocator)
+        if (needsQueueReference && !m_context->IsClosed())
+        {
+            // Free the underlying allocation once queued work has completed.
+    #ifdef _GAMING_XBOX
+            m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(detachedWrapper->GetD3D12Resource()).Get());
+    #else
+            m_context->QueueReference(detachedWrapper->GetD3D12Resource());
     #endif
-
-        // The allocation info is already destructing at this point
+        }
     }
 
 
@@ -217,6 +229,6 @@ namespace Dml
 
     void BucketizedBufferAllocator::SetDefaultRoundingMode(AllocatorRoundingMode roundingMode)
     {
-        m_defaultRoundingMode = roundingMode;
+        m_defaultRoundingMode.store(roundingMode, std::memory_order_release);
     }
 } // namespace Dml
