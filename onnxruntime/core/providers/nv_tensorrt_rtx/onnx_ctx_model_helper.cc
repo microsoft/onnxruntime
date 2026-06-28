@@ -318,7 +318,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const Node& node) {
 
   const int64_t embed_mode = attrs.at(EMBED_MODE).i();
   // Only make path checks if model not provided as byte buffer
-  bool make_secure_path_checks = ep_context_model_path_.empty();
+  bool make_secure_path_checks = !ep_context_model_path_.empty();
 
   if (embed_mode) {
     // Get engine from byte stream.
