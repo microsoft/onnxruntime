@@ -56,6 +56,7 @@ try:
         get_all_providers,  # noqa: F401
         get_available_providers,  # noqa: F401
         get_build_info,  # noqa: F401
+        get_default_logger_severity,  # noqa: F401
         get_device,  # noqa: F401
         get_ep_devices,  # noqa: F401
         get_version_string,  # noqa: F401
