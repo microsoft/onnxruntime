@@ -623,6 +623,32 @@ class TestQMoEFP4(unittest.TestCase):
             onnx_dtype=TensorProto.FLOAT16,
         )
 
+    @parameterized.expand(
+        [
+            (TensorProto.FLOAT16, 1, 4),
+            (TensorProto.FLOAT16, 2, 4),
+            (TensorProto.BFLOAT16, 1, 4),
+            (TensorProto.BFLOAT16, 2, 4),
+        ]
+    )
+    def test_fp4_decode_swiglu_gemv(self, onnx_dtype, num_tokens, top_k):
+        """Decode-shaped SwiGLU (hidden=inter=512, expanded_rows = num_tokens*top_k <= 8).
+
+        This shape satisfies is_moe_gemv_fp4_supported (n,k >= 512, expanded_rows in (0, 8]),
+        so with ORT_ENABLE_FP4_GEMV=1 it exercises the fused MXFP4 W4A16 GEMV decode path;
+        without it (the default) it exercises the dequant fallback. Both paths must meet the
+        accuracy tolerance, giving an on/off parity check for the fused GEMV.
+        """
+        self._run_fp4_moe_test(
+            hidden_size=512,
+            inter_size=512,
+            num_experts=8,
+            top_k=top_k,
+            num_tokens=num_tokens,
+            onnx_dtype=onnx_dtype,
+            use_swiglu=True,
+        )
+
 
 # ============================================================================
 # Standalone packing utility tests

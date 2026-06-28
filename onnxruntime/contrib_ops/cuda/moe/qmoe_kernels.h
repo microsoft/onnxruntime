@@ -215,6 +215,7 @@ void LaunchQMoEDequantizeFp4Weights(
     int num_experts,
     int n,
     int k,
+    const int* expert_active,
     cudaStream_t stream);
 
 void LaunchQMoEDequantizeFp4Weights(
@@ -225,6 +226,39 @@ void LaunchQMoEDequantizeFp4Weights(
     int num_experts,
     int n,
     int k,
+    const int* expert_active,
+    cudaStream_t stream);
+
+// Builds a per-expert active mask (size num_experts, 0/1) from the routing table
+// (``expert_indices`` of length ``count`` == num_rows * top_k). Used to skip dequantizing
+// experts that no token routes to in the FP4/FP8 dense dequant fallback.
+void LaunchQMoEBuildActiveExpertMask(
+    const int* expert_indices,
+    int count,
+    int num_experts,
+    int* mask,
+    cudaStream_t stream);
+
+// Combines MXFP4 e8m0 block scales with the per-expert global scale and transposes them into
+// the fused FP4 MoE GEMV scale layout. Input ``block_scales`` are ``[experts, n, k_blocks]``
+// uint8 e8m0 codes (k_blocks = k / 32); output ``gemv_scales`` are ``[experts, k_blocks, n]`` in
+// the activation dtype holding ``exp2(e8m0 - 127) * global_scales[expert]``.
+void LaunchQMoECombineFp4ScalesForGemv(
+    const uint8_t* block_scales,
+    const float* global_scales,
+    half* gemv_scales,
+    int experts,
+    int n,
+    int k_blocks,
+    cudaStream_t stream);
+
+void LaunchQMoECombineFp4ScalesForGemv(
+    const uint8_t* block_scales,
+    const float* global_scales,
+    __nv_bfloat16* gemv_scales,
+    int experts,
+    int n,
+    int k_blocks,
     cudaStream_t stream);
 
 void LaunchQMoEDequantizeFp8Weights(

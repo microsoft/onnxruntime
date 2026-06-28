@@ -948,6 +948,26 @@ __device__ __forceinline__ float DecodeUE8M0(uint8_t code) {
   return code == 0 ? 0.0f : exp2f(static_cast<int>(code) - 127);
 }
 
+// Builds a per-expert active mask from the routing table. ``expert_indices`` holds
+// ``count`` (== num_rows * top_k) selected expert ids; ``mask[e]`` is set to 1 for every
+// routed expert and left 0 otherwise. The mask lets the FP4/FP8 dequant kernels skip
+// experts that no token routes to, which on decode (top-k of many experts) avoids
+// materializing the dense BF16/FP16 weights for the untouched majority.
+__global__ void QMoEBuildActiveExpertMaskKernel(
+    const int* expert_indices,
+    int count,
+    int num_experts,
+    int* mask) {
+  int i = static_cast<int>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (i >= count) {
+    return;
+  }
+  int e = expert_indices[i];
+  if (e >= 0 && e < num_experts) {
+    mask[e] = 1;
+  }
+}
+
 template <typename T>
 __global__ void QMoEDequantizeFp4WeightsKernel(
     const uint8_t* packed_weights,
@@ -956,7 +976,8 @@ __global__ void QMoEDequantizeFp4WeightsKernel(
     T* output,
     int num_experts,
     int n,
-    int k) {
+    int k,
+    const int* expert_active) {
   int64_t total = static_cast<int64_t>(num_experts) * n * k;
   int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
   if (index >= total) {
@@ -965,6 +986,12 @@ __global__ void QMoEDequantizeFp4WeightsKernel(
 
   int64_t expert_stride = static_cast<int64_t>(n) * k;
   int expert = static_cast<int>(index / expert_stride);
+  // Skip experts that no token routes to: their dequantized weights are never read by
+  // the grouped GEMM (it only iterates experts with assigned rows), so leaving the
+  // corresponding scratch uninitialized is safe and saves the dominant HBM write traffic.
+  if (expert_active != nullptr && expert_active[expert] == 0) {
+    return;
+  }
   int64_t offset = index - static_cast<int64_t>(expert) * expert_stride;
   int row = static_cast<int>(offset / k);
   int col = static_cast<int>(offset - static_cast<int64_t>(row) * k);
@@ -988,12 +1015,13 @@ void LaunchQMoEDequantizeFp4WeightsImpl(
     int num_experts,
     int n,
     int k,
+    const int* expert_active,
     cudaStream_t stream) {
   int64_t total = static_cast<int64_t>(num_experts) * n * k;
   constexpr int block = 256;
   int grid = onnxruntime::narrow<int>((total + block - 1) / block);
   QMoEDequantizeFp4WeightsKernel<<<grid, block, 0, stream>>>(
-      packed_weights, block_scales, global_scales, output, num_experts, n, k);
+      packed_weights, block_scales, global_scales, output, num_experts, n, k, expert_active);
 }
 
 void LaunchQMoEDequantizeFp4Weights(
@@ -1004,8 +1032,9 @@ void LaunchQMoEDequantizeFp4Weights(
     int num_experts,
     int n,
     int k,
+    const int* expert_active,
     cudaStream_t stream) {
-  LaunchQMoEDequantizeFp4WeightsImpl(packed_weights, block_scales, global_scales, output, num_experts, n, k, stream);
+  LaunchQMoEDequantizeFp4WeightsImpl(packed_weights, block_scales, global_scales, output, num_experts, n, k, expert_active, stream);
 }
 
 void LaunchQMoEDequantizeFp4Weights(
@@ -1016,8 +1045,97 @@ void LaunchQMoEDequantizeFp4Weights(
     int num_experts,
     int n,
     int k,
+    const int* expert_active,
     cudaStream_t stream) {
-  LaunchQMoEDequantizeFp4WeightsImpl(packed_weights, block_scales, global_scales, output, num_experts, n, k, stream);
+  LaunchQMoEDequantizeFp4WeightsImpl(packed_weights, block_scales, global_scales, output, num_experts, n, k, expert_active, stream);
+}
+
+void LaunchQMoEBuildActiveExpertMask(
+    const int* expert_indices,
+    int count,
+    int num_experts,
+    int* mask,
+    cudaStream_t stream) {
+  CUDA_CALL_THROW(cudaMemsetAsync(mask, 0, static_cast<size_t>(num_experts) * sizeof(int), stream));
+  if (count <= 0) {
+    return;
+  }
+  constexpr int block = 256;
+  int grid = (count + block - 1) / block;
+  QMoEBuildActiveExpertMaskKernel<<<grid, block, 0, stream>>>(expert_indices, count, num_experts, mask);
+}
+
+// Combines the MXFP4 e8m0 block scales with the per-expert global scale and transposes
+// them into the layout the fused FP4 MoE GEMV consumes. Input block_scales are
+// ``[experts, n, k_blocks]`` (k_blocks = k / 32) uint8 e8m0 codes; output gemv_scales are
+// ``[experts, k_blocks, n]`` in the activation dtype (half/bf16) holding
+// ``exp2(e8m0 - 127) * global_scales[expert]``. This mirrors the groupwise scale layout the
+// INT MoE GEMV indexes (group-major along K, then N).
+template <typename T>
+__global__ void QMoECombineFp4ScalesForGemvKernel(
+    const uint8_t* __restrict__ block_scales,
+    const float* __restrict__ global_scales,
+    T* __restrict__ gemv_scales,
+    int experts,
+    int n,
+    int k_blocks) {
+  int64_t total = static_cast<int64_t>(experts) * n * k_blocks;
+  int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (idx >= total) {
+    return;
+  }
+  int64_t per_expert = static_cast<int64_t>(n) * k_blocks;
+  int expert = static_cast<int>(idx / per_expert);
+  int64_t rem = idx - static_cast<int64_t>(expert) * per_expert;
+  int row = static_cast<int>(rem / k_blocks);                            // n index
+  int g = static_cast<int>(rem - static_cast<int64_t>(row) * k_blocks);  // k-block index
+
+  uint8_t code = block_scales[idx];  // input is [experts, n, k_blocks] contiguous == idx
+  float value = (code == 0 ? 0.0f : exp2f(static_cast<int>(code) - 127)) * global_scales[expert];
+
+  int64_t out_idx = (static_cast<int64_t>(expert) * k_blocks + g) * n + row;
+  gemv_scales[out_idx] = static_cast<T>(value);
+}
+
+template <typename T>
+void LaunchQMoECombineFp4ScalesForGemvImpl(
+    const uint8_t* block_scales,
+    const float* global_scales,
+    T* gemv_scales,
+    int experts,
+    int n,
+    int k_blocks,
+    cudaStream_t stream) {
+  int64_t total = static_cast<int64_t>(experts) * n * k_blocks;
+  if (total <= 0) {
+    return;
+  }
+  constexpr int block = 256;
+  int grid = onnxruntime::narrow<int>((total + block - 1) / block);
+  QMoECombineFp4ScalesForGemvKernel<<<grid, block, 0, stream>>>(
+      block_scales, global_scales, gemv_scales, experts, n, k_blocks);
+}
+
+void LaunchQMoECombineFp4ScalesForGemv(
+    const uint8_t* block_scales,
+    const float* global_scales,
+    half* gemv_scales,
+    int experts,
+    int n,
+    int k_blocks,
+    cudaStream_t stream) {
+  LaunchQMoECombineFp4ScalesForGemvImpl(block_scales, global_scales, gemv_scales, experts, n, k_blocks, stream);
+}
+
+void LaunchQMoECombineFp4ScalesForGemv(
+    const uint8_t* block_scales,
+    const float* global_scales,
+    __nv_bfloat16* gemv_scales,
+    int experts,
+    int n,
+    int k_blocks,
+    cudaStream_t stream) {
+  LaunchQMoECombineFp4ScalesForGemvImpl(block_scales, global_scales, gemv_scales, experts, n, k_blocks, stream);
 }
 
 __device__ __forceinline__ float DecodeFloat8E4M3FN(uint8_t code) {

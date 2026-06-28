@@ -212,6 +212,9 @@ Set `ORT_DISABLE_MOE_GEMV=1` before process start to force the grouped GEMM
 fallback for debugging, benchmarking, or bisecting numerical differences. The
 switch is cached on first use.
 
+For planned operator-level tuning of grouped GEMM versus GEMV routes, see
+[QMoE GEMM/GEMV Autotuning Design](qmoe_gemm_gemv_autotune_design.md).
+
 ### 4.1 Per-mode dispatch matrix
 
 | Mode | SM75-89 (Ampere/Ada) | SM90 (Hopper) | SM100 (Blackwell) | SM120 (RTX 5090) |
@@ -942,6 +945,7 @@ column: scale tensors are `[E, N]`, and `block_size <= 0`.
 | Row-to-expert lookup | The prologue materializes the local expert id for each permuted row and passes it to the GEMV kernels. | Removes repeated prefix-offset scans inside each N-tile CTA; GPT-OSS and Gemma model-shape kernels improved. |
 | FC1 interleaved SwiGLU | The FC1 GEMV path can apply interleaved SwiGLU in the GEMV epilogue for the profiled FP16/BF16 INT4 path. | Removes the separate activation launch and FC1 intermediate traffic; GPT-OSS and Gemma improved end-to-end. |
 | One-row finalize | `num_rows == 1`, `top_k <= 4` has a static top-k finalize specialization. | Modest GPT-OSS finalize improvement while preserving the existing FC2 GEMV parallelism. |
+| GEMV config autotune | Route tuning can profile alternate GEMV configs (`CtaN=16`, `Threads=64`, and the FC1 split-K2 prototype) alongside the default route. | Keeps the current `CtaN=8`, `Threads=128` path as the baseline while allowing shape/GPU-specific retests without global source edits. |
 | End-to-end GPT-OSS | The final per-column GEMV path was validated in ORT GenAI on GPT-OSS-20B INT4. | About 15% faster than the grouped-GEMM baseline and about 8% faster than the FasterTransformer reference at batch 1. |
 
 #### Completed per-column INT8 work
@@ -1041,6 +1045,7 @@ onnxruntime/test/python/transformers/profile_qmoe_gemv.py \
 | Expanded rows 8/16 for 1024x4096 before model-specific tuning | GEMV compute stayed competitive, but total latency regressed for larger expanded-row counts. |
 | `CtaN=16, Threads=128` | Fewer N-tile CTAs did not offset lower per-CTA efficiency; GPT and Gemma kernels slowed down. |
 | `CtaN=8, Threads=64` | Lower thread count slowed both profiled model-size cases. |
+| FC1 split-K2 atomic prototype | Increased K parallelism, but lost fused SwiGLU and used FP16 atomic accumulation into the raw FC1 intermediate; quick GPT-OSS and Qwen profiles were slower than default GEMV. |
 | Map-specialized launch | Avoiding the runtime map/prefix branch was neutral or slightly worse and added code size. |
 | Naive FC2 GEMV + finalize fusion | Serialized top-k expert GEMVs inside one CTA; GPT-OSS FC2/finalize kernel time regressed sharply. |
 | One-row finalize with 128 threads | Underutilized the 2880-wide GPT-OSS output; the 256-thread static top-k variant was better. |
