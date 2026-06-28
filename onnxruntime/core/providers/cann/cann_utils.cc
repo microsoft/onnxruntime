@@ -236,7 +236,7 @@ std::string MatchFile(const std::string& file_name) {
   for (const auto& entry : fs::directory_iterator(current_dir)) {
     if (entry.is_regular_file()) {
       std::string name = entry.path().filename().string();
-      if (name.find(file_name) != std::string::npos && entry.path().extension() == ".om") {
+      if (name.find(file_name) != std::string::npos && entry.path().extension() == ".om" && name.find("_tmp_") == std::string::npos) {
         return name;
       }
     }
