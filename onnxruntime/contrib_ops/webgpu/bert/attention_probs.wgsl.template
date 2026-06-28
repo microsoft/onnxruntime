@@ -1,0 +1,126 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param components
+#param feed_past_key
+#param has_present_key
+#param has_attention_bias
+#param has_seqlen_k
+#param past_present_share_buffer
+#param is_unidirectional
+#param tile_size_param
+
+var<workgroup> tileQ: array<q_value_t, tile_size_param * tile_size_param>;
+var<workgroup> tileK: array<key_value_t, tile_size_param * tile_size_param>;
+#if components == 4
+alias f32_val_t = vec4<f32>;
+#elif components == 2
+alias f32_val_t = vec2<f32>;
+#else
+alias f32_val_t = f32;
+#endif
+
+#if has_attention_bias
+fn loadAttentionBias(batch_idx: u32, head_idx: u32, q_idx: u32, k_idx: u32) -> output_value_t {
+  // Handle broadcasting: if dimension size is 1, use index 0
+  let bias_batch_idx = select(batch_idx, 0u, batch_idx >= uniforms.attn_bias_dim0);
+  let bias_head_idx = select(head_idx, 0u, head_idx >= uniforms.attn_bias_dim1);
+  // Calculate flat offset with broadcasting applied
+  // attention_bias shape: [attn_bias_dim0, attn_bias_dim1, sequence_length, total_sequence_length]
+  let offset = bias_batch_idx * uniforms.attn_bias_dim1 * uniforms.M * uniforms.N +
+               bias_head_idx * uniforms.M * uniforms.N +
+               q_idx * uniforms.N +
+               k_idx;
+  return attention_bias[offset];
+}
+#endif
+
+$MAIN {
+  // x holds the N and y holds the M
+  let m = u32(workgroup_idx / uniforms.num_total_seq_length_tile) % uniforms.num_seq_length_tile * TILE_SIZE;
+  let n = (workgroup_idx % uniforms.num_total_seq_length_tile) * TILE_SIZE;
+  let batch_head_idx = u32(workgroup_idx / (uniforms.num_total_seq_length_tile * uniforms.num_seq_length_tile));
+  let batch_idx = batch_head_idx / uniforms.num_heads;
+  let qOffset = batch_head_idx * uniforms.M * uniforms.K + m * uniforms.K;
+  let sequence_length = uniforms.M;
+  var total_sequence_length = uniforms.N;
+#if has_seqlen_k
+  total_sequence_length = u32(seqlen_k[batch_idx]) + 1;
+  var past_sequence_length: u32 = select(total_sequence_length - sequence_length, 0u, uniforms.is_first_prompt > 0);
+#else
+  let past_sequence_length = uniforms.past_sequence_length;
+#endif
+  let kOffset = (batch_head_idx / uniforms.n_reps) * uniforms.kv_sequence_length * uniforms.K;
+#if has_present_key
+  let presentKeyOffset = (batch_head_idx / uniforms.n_reps) * uniforms.present_sequence_length * uniforms.K;
+#endif
+
+  var value = f32_val_t(0);
+  for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {
+    if (m + local_id.y < uniforms.M && w + local_id.x < uniforms.K) {
+      tileQ[TILE_SIZE * local_id.y + local_id.x] = q[qOffset + local_id.y * uniforms.K + w + local_id.x];
+    }
+    if (n + local_id.y < uniforms.N && w + local_id.x < uniforms.K) {
+      var idx = TILE_SIZE * local_id.y + local_id.x;
+#if (feed_past_key && has_present_key) || (past_present_share_buffer)
+      if (n + local_id.y < past_sequence_length) {
+        let pastKeyOffset = (batch_head_idx / uniforms.n_reps) * uniforms.past_sequence_length * uniforms.K;
+ #if past_present_share_buffer
+        tileK[idx] = present_key[pastKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x];
+ #else
+        tileK[idx] = past_key[pastKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x];
+ #endif
+      } else if (n + local_id.y - past_sequence_length < uniforms.kv_sequence_length) {
+        tileK[idx] = key[kOffset + (n + local_id.y - past_sequence_length) * uniforms.K + w + local_id.x];
+      }
+#else
+      if (n + local_id.y < uniforms.kv_sequence_length) {
+        tileK[idx] = key[kOffset + (n + local_id.y) * uniforms.K + w + local_id.x];
+      }
+#endif
+
+#if has_present_key
+ #if past_present_share_buffer
+      if (n + local_id.y >= past_sequence_length && n + local_id.y < uniforms.kv_sequence_length + past_sequence_length) {
+ #else
+      if (n + local_id.y < uniforms.kv_sequence_length + past_sequence_length) {
+ #endif
+        present_key[presentKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x] = tileK[idx];
+      }
+#endif
+    }
+    workgroupBarrier();
+    for (var k: u32 = 0u; k < TILE_SIZE && w+k < uniforms.K; k++) {
+      value += f32_val_t(tileQ[TILE_SIZE * local_id.y + k] * tileK[TILE_SIZE * local_id.x + k]);
+    }
+    workgroupBarrier();
+  }
+
+  if (m + local_id.y < uniforms.M && n + local_id.x < total_sequence_length) {
+    let headOffset = batch_head_idx * uniforms.M * uniforms.N;
+    let outputIdx = headOffset + (m + local_id.y) * uniforms.N + n + local_id.x;
+    let head_idx = batch_head_idx % uniforms.num_heads;
+#if components == 4
+    var sum: f32 = value.x + value.y + value.z + value.w;
+#elif components == 2
+    var sum: f32 = value.x + value.y;
+#else
+    var sum: f32 = value;
+#endif
+
+#if is_unidirectional
+    // Apply causal masking for unidirectional attention
+    let query_pos = m + local_id.y + past_sequence_length;
+    let key_pos = n + local_id.x;
+    if (key_pos > query_pos) {
+      sum = -3.4028234663852886e+38; // Set to very negative value for masking
+    }
+#endif
+
+#if has_attention_bias
+    output[outputIdx] = output_value_t(sum * uniforms.alpha) + loadAttentionBias(batch_idx, head_idx, m + local_id.y, n + local_id.x);
+#else
+    output[outputIdx] = output_value_t(sum * uniforms.alpha);
+#endif
+  }
+} // MAIN

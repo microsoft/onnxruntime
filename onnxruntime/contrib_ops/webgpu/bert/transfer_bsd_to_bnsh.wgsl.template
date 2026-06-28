@@ -1,0 +1,20 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#param has_bias
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+#use .offsetToIndices
+
+$MAIN {
+  guardAgainstOutOfBoundsWorkgroupSizes(uniforms.data_size);
+  let output_indices = qkv_output.offsetToIndices(global_idx);
+  let input_offset_idx = output_indices[0] * uniforms.batch_offset + output_indices[1] *
+      uniforms.head_offset + output_indices[2] * uniforms.sequence_offset + output_indices[3];
+#if has_bias
+  let bias_offset_idx = (input_offset_idx % uniforms.sequence_offset) + uniforms.bias_offset;
+  qkv_output[global_idx] = qkv_input[input_offset_idx] + bias[bias_offset_idx];
+#else
+  qkv_output[global_idx] = qkv_input[input_offset_idx];
+#endif
+} // MAIN
