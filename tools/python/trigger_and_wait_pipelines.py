@@ -374,7 +374,7 @@ def _parse_enable_flags(raw: list[str]) -> dict[int, bool]:
         key = key.strip()
         if key not in _PIPELINE_KEY_TO_ID:
             logger.warning("##[warning]Unknown pipeline key: %s", key)
-            # invalid key -> non-empty set -> ensures that we don't enable all pipelines if we don't recognise one.
+            # invalid key -> non-empty set -> ensures that we don't enable all pipelines if we don't recognize one.
             result[-1] = False
             continue
         result[_PIPELINE_KEY_TO_ID[key]] = val.strip().lower() == "true"
@@ -391,7 +391,7 @@ def _read_enable_flags_from_env() -> dict[int, bool]:
         if pipeline_key not in _PIPELINE_KEY_TO_ID:
             # Given that env vars are a swamp for config, just assume it wasn't meant for us.
             # Still warn about it, however.
-            # n.b. this differs in behaviour from cmd-ln parsing, where we mark unrecognised keys.
+            # n.b. this differs in behavior from cmd-ln parsing, where we mark unrecognized keys.
             logger.warning("##[warning]Unknown pipeline key in env-vars, ignoring: %s", key)
             continue
         result[_PIPELINE_KEY_TO_ID[pipeline_key]] = value.strip().lower() == "true"

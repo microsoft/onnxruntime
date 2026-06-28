@@ -180,6 +180,13 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
   GET_ENV_BOOL(migraphx_env_vars::kDumpModelOps, dump_model_ops_);
   GET_ENV_BOOL(migraphx_env_vars::kExhaustiveTune, exhaustive_tune_);
 
+  // Wire the external compute stream provided by the caller (e.g. Triton
+  // via user_compute_stream provider option). When set, ORT will reuse
+  // this stream for all ops, enabling end-to-end HIP graph capture.
+  if (info.user_compute_stream != nullptr) {
+    stream_ = static_cast<hipStream_t>(info.user_compute_stream);
+  }
+
   // Verify configuration correctness and adjust accordingly.
 
 #if HIP_VERSION_MAJOR < 6 || (HIP_VERSION_MAJOR == 6 && (HIP_VERSION_MINOR < 4 || (HIP_VERSION_MINOR == 4 && HIP_VERSION_PATCH < 2)))
@@ -1622,7 +1629,13 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
 void MIGraphXExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry,
                                                        AllocatorMap& allocators) const {
   auto allocator = allocators[GetOrtDeviceByMemType(OrtMemTypeCPU)];
-  RegisterMIGraphXStreamHandles(stream_handle_registry, OrtDevice::GPU, allocator, true, stream_, false /*TODO:external_stream_*/);
+  // When stream_ is set (external user_compute_stream provided), tell ORT
+  // to reuse it for H2D/D2H copies so all ops land on one stream, which
+  // is required for a complete end-to-end HIP graph capture.
+  const bool use_existing_stream = (stream_ != nullptr);
+  RegisterMIGraphXStreamHandles(
+      stream_handle_registry, OrtDevice::GPU, allocator, true,
+      stream_, use_existing_stream);
 }
 
 OrtDevice MIGraphXExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
@@ -1635,12 +1648,13 @@ OrtDevice MIGraphXExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) 
 }
 
 Status MIGraphXExecutionProvider::Sync() const {
-  HIP_CALL_THROW(hipStreamSynchronize(static_cast<hipStream_t>(nullptr)));
-
-  auto status = hipStreamQuery(stream_);
-  if (status != hipSuccess) {
-    return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::EP_FAIL);
-  }
+  // Sync the EP stream. When stream_ is set (external user_compute_stream),
+  // this synchronizes only that stream. When stream_ is nullptr (no external
+  // stream provided), this falls back to the HIP legacy default stream
+  // (nullptr), which is a full-device sync point — preserving the
+  // pre-existing behaviour for the common single-session case.
+  hipStream_t sync_stream = stream_ ? stream_ : static_cast<hipStream_t>(nullptr);
+  HIP_CALL_THROW(hipStreamSynchronize(sync_stream));
   return Status::OK();
 }
 
@@ -1648,11 +1662,15 @@ Status MIGraphXExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*ru
   return Status::OK();
 }
 
-Status MIGraphXExecutionProvider::OnRunEnd(bool /*sync_stream*/, const onnxruntime::RunOptions& /*run_options*/) {
-  auto status = hipStreamQuery(stream_);
-
-  if (status != hipSuccess) {
-    HIP_CALL_THROW(hipStreamSynchronize(stream_));
+Status MIGraphXExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& /*run_options*/) {
+  // Respect the sync_stream flag: ORT may pass false when it manages
+  // synchronization externally (e.g. during HIP graph capture).
+  if (sync_stream) {
+    hipStream_t check_stream = stream_ ? stream_ : static_cast<hipStream_t>(nullptr);
+    auto status = hipStreamQuery(check_stream);
+    if (status != hipSuccess) {
+      HIP_CALL_THROW(hipStreamSynchronize(check_stream));
+    }
   }
   return Status::OK();
 }

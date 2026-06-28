@@ -1022,7 +1022,7 @@ When profiling is disabled (default), `CudaEp::CreateProfiler` is set to `nullpt
 
     For plugin EPs, the `OrtEp::GetCapability` callback still has no mechanism to receive or report resource usage. `PluginExecutionProvider::GetCapability()` receives an `IResourceAccountant*`, but it currently leaves that parameter unused before calling the `OrtEp::GetCapability` callback. Two design options remain:
 
-    - **Option A (preferred — ORT core change):** Add an `OrtEp` analogue of the current `IResourceAccountant` flow, such as resource-accounting helpers on `OrtEpGraphSupportInfo`. This would let the plugin request per-node resource budget during `CudaEp::GetCapabilityImpl()` without duplicating partitioner budget logic.
+    - **Option A (preferred — ORT core change):** Add an `OrtEp` analog of the current `IResourceAccountant` flow, such as resource-accounting helpers on `OrtEpGraphSupportInfo`. This would let the plugin request per-node resource budget during `CudaEp::GetCapabilityImpl()` without duplicating partitioner budget logic.
 
     - **Option B (plugin-side workaround):** Expose the VRAM threshold through a plugin-specific session option key. During `GetCapabilityImpl`, the plugin reads the threshold from the parsed config and performs its own initializer-size accounting using `OrtEp_GetNodeAttributes` / node-graph-view APIs already present in the `OrtEp` API surface. This avoids an ORT core change but duplicates budget-tracking logic.
 
