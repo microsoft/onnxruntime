@@ -1324,3 +1324,45 @@ Two distinct levers, in priority order:
 > Never run them concurrently against the same model directory — a race made an
 > early FP4-on run read `enable_cuda_graph=0`. Run sequentially, or point them at
 > separate model copies.
+
+---
+
+## 2026-06-28 — Closing the residual 1.58× decode gap: vLLM (MXFP4) comparison + plan
+
+After the default-on win, FP4 decode is **263 tps** vs INT4 **354–427 tps** and
+vLLM MXFP4 **~350 tps**. Why is INT4/vLLM faster, and what is the lever?
+
+### What vLLM does (gpt-oss MXFP4, H200/SM90)
+
+vLLM picks the **Triton `matmul_ogs`** backend on SM90 (FlashInfer-TRTLLM is
+SM100+; Marlin is lower priority). That kernel is a **tensor-core grouped GEMM**
+(M = tokens × top_k) that dequantizes e2m1 + e8m0 **in the mainloop** with a
+Hopper value/scale swizzle, fused SwiGLU epilogue, one kernel for prefill and
+decode. So vLLM avoids both ORT problems at once: no dense dequant round-trip
+(prefill) and tensor-core MMA at low M (decode).
+
+### Why ORT INT4 already beats vLLM but FP4 does not
+
+ORT INT4 decode is **not** tensor-core — it is the CUDA-core `moe_gemv` with the
+`ColumnMajorInterleaved` layout (`kStepK = 128/4 = 32`, 128-bit weight loads) and
+fp16 accumulation, and it hits 354–427 tps. FP4 uses a **separate** `moe_gemv_fp4`
+with non-interleaved `ColumnMajor` (`kStepK = 8`, 32-bit loads) → 4× more K-trips
+and worse weight coalescing, hence ~2.9× slower per MoE layer (1.58× e2e). The
+structural reasons FP4 has not matched INT4's interleaving are recorded above
+(interleaved + bf16 regression; wide-load + fp32-accum occupancy wash).
+
+### Two candidate levers
+
+1. **Match INT4's interleaved GEMV for FP4 (in-family).** INT4 already supports a
+   clean per-shape **fp32-accum** instantiation (`TypeTag<float>` in `moe_gemv.cu`;
+   `bf16 always fp32`). The reverted FP4 interleave failed because it kept bf16
+   accum; pairing interleave with INT4's fp32-accum *and* a smaller `CtaN`/
+   register budget to hold occupancy is the untried combination. Ceiling ≈ INT4
+   GEMV (~400 tps) — closes decode but **not** prefill.
+2. **Tensor-core grouped GEMM with in-mainloop e2m1 dequant (vLLM-equivalent).**
+   Route FP4 through the CUTLASS `fpA_intB` grouped GEMM that INT4 prefill uses,
+   adding an e2m1+e8m0 converter. Closes **both** decode and prefill, matches
+   vLLM, but is a large kernel effort. Highest payoff, highest risk.
+
+Recommended order: try (1) first (bounded, reuses INT4 fp32-accum), keep (2) as
+the structural follow-up that also kills the 6.7× prefill gap.
