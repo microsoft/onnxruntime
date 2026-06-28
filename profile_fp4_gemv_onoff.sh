@@ -4,19 +4,20 @@
 # SAME FP4 model. ORT_ENABLE_FP4_GEMV gates the new path; everything else is held
 # fixed so the delta is attributable to the GEMV routing.
 #
-#   OFF: ORT_ENABLE_FP4_GEMV unset  -> top-k dequant fallback (QMoEDequantizeFp4WeightsKernel)
+#   OFF: ORT_ENABLE_FP4_GEMV=0      -> top-k dequant fallback (QMoEDequantizeFp4WeightsKernel); GEMV is now the default
 #   ON : ORT_ENABLE_FP4_GEMV=1      -> fused prologue/expand/GEMV/finalize, no per-fwd dequant
 set -uo pipefail
 
 GENAI_DIR="${GENAI_DIR:-/home/tianlei/onnxruntime-genai}"
 ORT_VENV="${ORT_VENV:-/home/tianlei/venv}"
-ORT_HOME="${ORT_HOME:-/home/tianlei/ort_home_cu130}"
+ORT_HOME="${ORT_HOME:-/home/tianlei/ort_home_cu130_fp4_bench}"
+ORT_BUILD_ABS="${ORT_BUILD_ABS:-/home/tianlei/onnxruntime/build/cu130_fp4_bench/Release}"
 CUDA_HOME="${CUDA_HOME:-/home/tianlei/cuda13.0}"
 CUDNN_HOME="${CUDNN_HOME:-/home/tianlei/cudnn_9.19_cuda13}"
 HF_HOME="${HF_HOME:-/home/tianlei/hf_cache}"
 NSYS="${NSYS:-$CUDA_HOME/bin/nsys}"
 
-FP4_MODEL="${FP4_MODEL:-/home/tianlei/gptoss20b_fp4_qmoe}"
+FP4_MODEL="${FP4_MODEL:-/tianlei/models/gpt-oss-20b/cuda_int4_rtn_mixed_fp4_qmoe}"
 
 PROMPT_LEN="${PROMPT_LEN:-64}"
 GEN_LEN="${GEN_LEN:-128}"
@@ -27,9 +28,10 @@ mkdir -p "$OUT_DIR"
 export TMPDIR="$OUT_DIR/nsystmp"
 mkdir -p "$TMPDIR"
 
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES="${GPU:-0}"
 export HF_HOME
-export LD_LIBRARY_PATH="$ORT_HOME/lib:$CUDA_HOME/lib64:$CUDNN_HOME/lib64:${LD_LIBRARY_PATH:-}"
+export PATH="$CUDA_HOME/bin:$PATH"
+export LD_LIBRARY_PATH="$ORT_HOME/lib:$ORT_BUILD_ABS:$CUDA_HOME/lib64:$CUDNN_HOME/lib64:${LD_LIBRARY_PATH:-}"
 # shellcheck disable=SC1091
 source "$ORT_VENV/bin/activate"
 
@@ -65,7 +67,7 @@ run_one() {
         | head -25
 }
 
-run_one fp4_gemv_off ORT_DISABLE_MOE_GEMV=0
+run_one fp4_gemv_off ORT_ENABLE_FP4_GEMV=0
 run_one fp4_gemv_on  ORT_ENABLE_FP4_GEMV=1
 
 restore_cfg

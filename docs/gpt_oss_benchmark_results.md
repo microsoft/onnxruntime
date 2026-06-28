@@ -143,6 +143,14 @@ weight-traffic tax.
 
 ### Why the `ORT_ENABLE_FP4_GEMV` experiment did not close it
 
+> **Update 2026-06-28 (superseded):** the "no e2e speedup" result below was on an
+> early build *before* the branch-free e2m1 converter + `{CtaN,Threads}` autotune
+> fixes. On the current binary the fused GEMV decode path gives **263 tps vs 15
+> tps** for the dequant fallback (~17.6×), and it is now the **default** on the
+> SM<120 regime (opt out with `ORT_ENABLE_FP4_GEMV=0`). The residual decode gap to
+> INT4 is ~1.58×, and prefill (fused-dequant grouped GEMM) is the remaining lever.
+> See `docs/contrib_ops/cuda/qmoe_fp4_experiments.md` (2026-06-28 section).
+
 A fused MXFP4 W4A16 GEMV decode path was prototyped (gated behind
 `ORT_ENABLE_FP4_GEMV`, default OFF). It engages on decode shapes and is
 accuracy-correct, but gives **no e2e speedup** (163.0 vs 163.1 tps). It replaces

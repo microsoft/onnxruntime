@@ -1190,3 +1190,137 @@ reverted (`git revert`). Future work that wants the interleaved layout must pair
 it with an accumulation strategy that is both higher-precision (for bf16 parity)
 and register-frugal (to preserve occupancy) — the two have so far been mutually
 exclusive in this kernel.
+
+---
+
+## 2026-06-28 — FP4 vs INT4 e2e re-baseline on current binary (CUDA graph ON) + prefill is the bigger gap
+
+Fresh side-by-side benchmark of the production-shaped FP4 (MXFP4) QMoE model vs
+the INT4 QMoE baseline on the **current** `cu130_fp4_bench` build, with each
+model's `genai_config.json` used **as-is** (`enable_cuda_graph=1`). This updates
+the older decode-only numbers above (which were all measured with CUDA graph
+*off* on a previous binary), and adds a prefill measurement that reframes where
+the remaining gap actually is.
+
+### Setup
+
+- GPU: 1× H200 (SM90). Build: `build/cu130_fp4_bench/Release`
+  (`onnxruntime_USE_FP4_QMOE=ON`), which already contains the branch-free e2m1
+  converter and the `{CtaN,Threads}` FP4-GEMV autotuner from the experiments above.
+- Models:
+  - FP4: `/tianlei/models/gpt-oss-20b/cuda_int4_rtn_mixed_fp4_qmoe`
+    (MXFP4 QMoE experts, block 32).
+  - INT4 baseline: `cuda_int4_int4_qmoe_rtn_mixed_lmh4_qknorm_qmoe32`
+    (same rtn-mixed recipe, INT4 QMoE block 32).
+- Driver: `~/dev/scripts/h200_18/bench_gpt_oss_fp4_vs_int4.sh`
+  (`benchmark_e2e.py`, batch 1, prompt 512, gen 128, reps 5, warmup 2).
+- Decode kernel attribution: `profile_fp4_vs_int4_decode.sh` +
+  `ORT_FORCE_DETERMINISTIC_MOE=1` (CUDA graph off, prompt 8, gen 128).
+
+### End-to-end throughput (batch 1, prompt 512, gen 128, **CUDA graph ON**)
+
+| Config | Prefill (tps) | Decode (tps) | Decode (ms/tok) | vs INT4 decode |
+|--------|---------------|--------------|-----------------|----------------|
+| INT4 baseline | 25300 | **427.2** | 2.34 | 1.00× |
+| FP4, `ORT_ENABLE_FP4_GEMV=1` (fused GEMV) | 3768 | **270.0** | 3.70 | 0.63× (1.58× slower) |
+| FP4, GEMV off (top-k dequant fallback) | 3742 | 15.0 | 66.77 | 0.035× (28.5× slower) |
+
+Takeaways that differ from the older (graph-off) record:
+
+1. **The fused GEMV path is now ~18× the fallback end-to-end** (270 vs 15 tps),
+   not the "~1 %" of the very first Phase-5 measurement. The Phase-0 fallback
+   regressed badly on this model/binary (15 tps); `ORT_ENABLE_FP4_GEMV=1` is
+   effectively mandatory for usable FP4 decode. **It is still opt-in (env-gated)
+   and should be made the SM<120 default for this model.**
+2. **CUDA graph helps INT4 more than FP4** (INT4 ~250→427 = 1.7×; FP4 ~188→270 =
+   1.4×). FP4 decode spends a larger fraction of each token *inside* the GEMV
+   kernels, so removing launch overhead buys proportionally less — i.e. the
+   residual decode gap is GPU-kernel-bound, consistent with the ncu diagnoses above.
+3. **Prefill is now the larger relative gap (6.7×), and it is untouched.** All
+   prior FP4 work optimized *decode*; prefill was never addressed.
+
+### Decode kernel attribution (deterministic, per call)
+
+| MoE kernel (per layer / token) | FP4 (GEMV on) | INT4 | FP4/INT4 |
+|--------------------------------|---------------|------|----------|
+| fc1 SwiGLU `moe_gemv_interleaved_swiglu_kernel` | 49.6 µs | 15.3 µs | 3.2× |
+| fc2 `moe_gemv_kernel` | 28.8 µs | 11.5 µs | 2.5× |
+| **MoE total / layer** | **78.4 µs** | **26.8 µs** | **2.9×** |
+
+The FP4 fc1 is down from the 63.5 µs baseline recorded above (the converter +
+autotune fixes are in this binary), but is still ~2.9× the INT4 MoE cost. This
+2.9× per-layer MoE deficit is the entire source of the 1.58× decode gap (the rest
+of the token — attention, norm, RoPE, router — is shared and identical).
+
+### Why FP4 prefill is 6.7× slower (the new finding)
+
+Prefill (`num_rows = 512 > 256`) does **not** engage the fused GEMV (decode-only
+gate), so it falls through to the dequant path. The deterministic trace shows the
+prefill-only kernels that never appear in INT4:
+
+- `QMoEDequantizeFp4WeightsKernel<half>` — ~2.0 ms/call, 48 calls per prefill
+  token-block (24 layers × {fc1,fc2}).
+- dense A16 `cutlass GemmUniversal GroupProblemShape` — the un-fused grouped GEMM
+  consuming the materialized BF16 weights.
+
+INT4 prefill instead uses the **fused** `MoeFCGemm … DqMmaMultistage` grouped GEMM
+(dequant fused in the GEMM mainloop, top-k experts only), which is why INT4
+prefill hits 25300 tps vs FP4's 3768.
+
+### How to close the gap
+
+Two distinct levers, in priority order:
+
+1. **Prefill (6.7×, biggest and untouched lever).** Route FP4 prefill through a
+   **fused-dequant grouped GEMM** like INT4's `DqMmaMultistage` (dequantize e2m1
+   in the GEMM mainloop, top-k experts only) instead of the all-expert
+   dequant-to-BF16 + dense A16 GEMM. Note the existing `QMoEBuildActiveExpertMask`
+   top-k skip in the dequant fallback does **not** help prefill: at prompt 512 ×
+   top-k 4 essentially **all 32 experts are active**, so the mask elides nothing
+   and the full dense-weight materialization + HBM round-trip happens anyway. The
+   structural fix is fusing dequant into the grouped-GEMM mainloop (as INT4 does).
+   This is the highest-value remaining FP4 work and is orthogonal to all the
+   (exhausted) decode-GEMV micro-opts.
+
+2. **Decode (1.58×, largely diminishing returns).** Per the reverted experiments
+   above, the GEMV is **intra-SM occupancy + per-element e2m1 decode + bf16-accum
+   precision** bound — interleaved layout, wide loads and split-K were all tried
+   and reverted (no gain and/or bf16 parity regression; the natural fix, fp32
+   accum, costs occupancy). The only remaining viable decode lever is a
+   **register-frugal higher-precision accumulation** (periodic fp32 flush of a
+   bf16 running sum) that would *unlock* the wide-load / interleaved K-loop
+   reduction without the occupancy penalty — i.e. break the
+   accuracy-vs-occupancy tension that blocked every prior attempt. This is a
+   harder kernel change for a capped ~1.58× ceiling, so it should come **after**
+   the prefill fix.
+
+3. **Ship the fast path by default. — LANDED 2026-06-28.** `ORT_ENABLE_FP4_GEMV`
+   was opt-in; without it FP4 decode was 15 tps (28.5× slower). The fused GEMV is
+   now the **default** on the SM<120 fallback regime (`moe_quantization.cc`:
+   `enable_fp4_gemv_` defaults true unless `ORT_ENABLE_FP4_GEMV=0`). Prefill and
+   any unsupported shape still fall through to the dequant path at dispatch time,
+   so this is a pure decode win with no prefill regression.
+
+   Validation: `test_qmoe_fp4_cuda.py` **19/19** with the new default *and* with
+   the explicit opt-out `ORT_ENABLE_FP4_GEMV=0` (dequant fallback). End-to-end on
+   gpt-oss-20b FP4 with **no env var set** (batch 1, prompt 512, gen 64, cg=1):
+   decode **263 tps** — up from 15 tps previously, a ~17.6× out-of-the-box
+   improvement, closing the decode gap to INT4 to the residual 1.58× kernel gap.
+   The bench/profile scripts' `*-off` configs were updated to set
+   `ORT_ENABLE_FP4_GEMV=0` explicitly (an unset env now means GEMV-on).
+
+### Artifacts
+
+- `~/dev/scripts/h200_18/bench_gpt_oss_fp4_vs_int4.sh` (new; INT4 / FP4-off /
+  FP4-on, config used as-is, optional `--cuda-graph` override).
+- `~/onnxruntime/profile_fp4_vs_int4_decode.sh`,
+  `~/onnxruntime/profile_fp4_gemv_onoff.sh` (updated to the `cu130_fp4_bench`
+  binary + current FP4/INT4 model paths; honor `GPU=` for device pinning).
+- CSVs under `~/bench_results/gpt_oss_fp4_vs_int4_*`; nsys reports under
+  `/tmp/qmoe_fp4_profile/` and `/tmp/qmoe_fp4_det/`.
+
+> Bench/profile concurrency caveat: the FP4 bench (`--cuda-graph`) and the profile
+> scripts both edit the **same** model `genai_config.json` (cuda-graph toggle).
+> Never run them concurrently against the same model directory — a race made an
+> early FP4-on run read `enable_cuda_graph=0`. Run sequentially, or point them at
+> separate model copies.

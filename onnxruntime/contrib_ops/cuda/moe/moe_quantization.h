@@ -115,10 +115,10 @@ class QMoE final : public CudaKernel, public MoEBase {
   IAllocatorUniquePtr<void> packed_fp4_fc1_block_scales_;
   IAllocatorUniquePtr<void> packed_fp4_fc2_block_scales_;
 
-  // Fused MXFP4 GEMV (W4A16) decode path. Opt-in via the ORT_ENABLE_FP4_GEMV environment
-  // variable; only active on the SM<120 dequant-fallback regime. When enabled, PrePack
-  // additionally lays out the MXFP4 weights in the GEMV-consumed [E, n, k/2] row-major
-  // layout and combines the e8m0 block scales with the per-expert global scale into the
+  // Fused MXFP4 GEMV (W4A16) decode path. Default-on (opt-out via ORT_ENABLE_FP4_GEMV=0) on
+  // the SM<120 dequant-fallback regime. When enabled, PrePack additionally lays out the MXFP4
+  // weights in the GEMV-consumed [E, n, k/2] row-major layout and combines the e8m0 block
+  // scales with the per-expert global scale into the
   // [E, k/32, n] activation-dtype scale layout. ComputeInternal routes small-decode shapes
   // through a standalone fused GEMV pipeline (prologue -> expand -> fc1 SwiGLU GEMV ->
   // fc2 GEMV -> finalize) instead of dequantizing to dense weights. Falls back to the

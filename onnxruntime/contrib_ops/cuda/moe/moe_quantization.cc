@@ -149,10 +149,14 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       ORT_ENFORCE(expert_weight_bits_ == 4, "FP4 quantization requires expert_weight_bits=4");
 #if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
       use_fp4_dequant_fallback_ = sm_ < 120;
-      // Opt-in fused MXFP4 GEMV (W4A16) decode path for the SM<120 fallback regime.
+      // Fused MXFP4 GEMV (W4A16) decode path for the SM<120 fallback regime. This is the
+      // default: on real decode shapes it is ~18x faster than re-dequantizing all experts to
+      // dense BF16/FP16 every token, and it is validated bit-exact against the fallback. Set
+      // ORT_ENABLE_FP4_GEMV=0 to force the dequant fallback (e.g. for debugging). Prefill and
+      // any unsupported shape still fall through to the dequant path at dispatch time.
       if (use_fp4_dequant_fallback_) {
         const char* v = std::getenv("ORT_ENABLE_FP4_GEMV");
-        enable_fp4_gemv_ = (v != nullptr && v[0] != '\0' && v[0] != '0');
+        enable_fp4_gemv_ = (v == nullptr || v[0] == '\0' || v[0] != '0');
       }
 #else
       use_fp4_dequant_fallback_ = true;
@@ -940,9 +944,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   Tensor* output = context->Output(0, input->Shape());
 
   // ---------------------------------------------------------------------------
-  // Fused MXFP4 GEMV (W4A16) decode fast path. Opt-in via ORT_ENABLE_FP4_GEMV on the
-  // SM<120 fallback regime. Instead of dequantizing every active expert's MXFP4 weights to
-  // dense BF16/FP16 HBM, route small-decode shapes through a standalone fused pipeline:
+  // Fused MXFP4 GEMV (W4A16) decode fast path. Default-on (opt-out via ORT_ENABLE_FP4_GEMV=0)
+  // on the SM<120 fallback regime. Instead of dequantizing every active expert's MXFP4 weights
+  // to dense BF16/FP16 HBM, route small-decode shapes through a standalone fused pipeline:
   //   build expert maps -> expand permuted activations -> fc1 SwiGLU GEMV -> fc2 GEMV ->
   //   finalize routing. The pre-packed [E,n,k/2] weights and [E,k/32,n] scales are produced
   //   by PrePack/TryBuildGemvFp4Scales. Unsupported shapes (prefill / large batch / missing
