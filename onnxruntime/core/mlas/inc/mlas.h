@@ -2302,9 +2302,9 @@ MlasFlashAttention(
 //
 // Adapts the online-softmax tiled algorithm to operate on an FP32 present
 // K/V cache laid out as BNSH ([batch, kv_num_heads, seqlen_present, head_size]).
-// Supports GQA head grouping, causal masking, local window attention, and
-// additive attention bias. Intended for prefill / chunked-prefill
-// (sequence_length > 1).
+// Supports GQA head grouping, causal masking, local window attention,
+// additive attention bias, and an optional flash-decoding split over the KV
+// sequence dimension for the single-token decode case.
 //
 struct MlasFlashAttentionGQAArgs {
     int batch_size;
@@ -2320,7 +2320,7 @@ struct MlasFlashAttentionGQAArgs {
     int kv_block_size;        // key/value tile size (Bc)
     float scale;              // QK scaling factor
     int thread_count;         // number of partitions / threads
-    float* buffer;            // per-thread scratch
+    float* buffer;            // per-thread scratch (+ optional flash-decoding partials)
     size_t buffer_size_per_thread;
 
     const float* query;       // [batch, num_heads, sequence_length, head_size] BNSH
@@ -2334,6 +2334,12 @@ struct MlasFlashAttentionGQAArgs {
     int attention_bias_seqlen_stride;
     bool attention_bias_broadcast_batch;
     bool attention_bias_broadcast_head;
+
+    // Flash decoding (sequence_length == 1): partition KV across threads.
+    // Set flash_decoding_partials != nullptr to enable; otherwise the standard
+    // per-(batch, head, q_block) partitioning is used.
+    float* flash_decoding_partials;
+    int kv_chunk_count;
 };
 
 /**

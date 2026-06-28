@@ -327,6 +327,8 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                           past_value->DataRaw() == present_value->DataRaw();
 
   ORT_ENFORCE(parameters.total_sequence_length_ <= parameters.seqlen_present_kv_cache_, "Total sequence length cannot be greater than the existing KV cache length.");
+  ORT_ENFORCE(!context.IsGraphCaptureEnabled() || parameters.past_present_share_buffer_,
+              "Graph capture requires past/present KV cache to share the same buffer (static KV cache).");
 
   Tensor qSplit;
   Tensor kSplit;
@@ -350,7 +352,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     // Create a temporary parameters copy with is_packed_qkv_ set to false to check if flash attention can be applied after unpacking
     WebgpuAttentionParameters temp_params = parameters;
     temp_params.is_packed_qkv_ = false;
-    will_use_flash_attention = CanApplyFlashAttention(temp_params, context, seqlen_k);
+    will_use_flash_attention = CanApplyFlashAttention(temp_params, context);
   }
 
   if (kv_empty) {
@@ -381,7 +383,8 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
       // Directly call ApplyFlashAttention with fused split/rotary/copyKV enabled
       // query points to packed QKV, K and V are nullptr since they're not needed
       return ApplyFlashAttention(query, nullptr, nullptr, attention_bias, output, past_key, present_key, past_value,
-                                 present_value, parameters, context, seqlen_k, cos_cache, sin_cache, head_sink);
+                                 present_value, parameters, context, seqlen_k, cos_cache, sin_cache, head_sink,
+                                 total_seqlen_tensor);
     }
     // Fused: splitQKV + rotary QK
     qSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.hidden_size_}));
@@ -472,7 +475,8 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
 
   if (will_use_flash_attention) {
     return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
-                               present_value, parameters, context, seqlen_k, nullptr, nullptr, head_sink);
+                               present_value, parameters, context, seqlen_k, nullptr, nullptr, head_sink,
+                               total_seqlen_tensor);
   }
 
   // Non-flash attention path does not support kv_sequence_length==0 (shared KV layers).
