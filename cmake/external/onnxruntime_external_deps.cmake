@@ -438,7 +438,16 @@ if(NOT safeint_SOURCE_DIR)
   FetchContent_Populate(safeint)
 endif()
 add_library(safeint_interface IMPORTED INTERFACE)
-target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})
+if(onnxruntime_USE_VCPKG)
+  find_package(safeint CONFIG QUIET)
+  if(safeint_FOUND)
+    target_link_libraries(safeint_interface INTERFACE safeint::safeint)
+  else()
+    target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})
+  endif()
+else()
+  target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})
+endif()
 
 
 # Flatbuffers
