@@ -214,7 +214,9 @@ void* CudaStream::GetResource(int version, int id) const {
       return reinterpret_cast<void*>(ep_info_.cudnn_conv1d_pad_to_nc1d);
       break;
     case CudaResource::enable_skip_layer_norm_strict_mode_t:
-      return reinterpret_cast<void*>(ep_info_.enable_skip_layer_norm_strict_mode);
+      // [Deprecated] SkipLayerNorm always accumulates in fp32; the strict-mode option no longer
+      // affects computation. Kept for backward compatibility and always reported as false.
+      return reinterpret_cast<void*>(false);
       break;
     case CudaResource::prefer_nhwc_t:
       return reinterpret_cast<void*>(ep_info_.prefer_nhwc);
