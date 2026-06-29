@@ -5,6 +5,8 @@
 #include "core/providers/webgpu/tensor/where.h"
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/webgpu_execution_provider.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -156,37 +158,64 @@ Status Where::ComputeInternal(ComputeContext& context) const {
 }
 
 namespace {
-const std::vector<MLDataType>& WhereOpTypeConstraints() {
+const std::vector<MLDataType>& WhereOpTypeConstraints(bool enable_int64 = false) {
   // currently support boolean, integer and float types that explicitly allowed in WGSL:
   // https://gpuweb.github.io/gpuweb/wgsl/#plain-types-section
   //
-  static std::vector<MLDataType> types{
+  static std::vector<MLDataType> base_types{
       DataTypeImpl::GetTensorType<MLFloat16>(),
       DataTypeImpl::GetTensorType<float>(),
       DataTypeImpl::GetTensorType<int32_t>(),
       DataTypeImpl::GetTensorType<uint32_t>(),
       DataTypeImpl::GetTensorType<bool>()};
-  return types;
+  if (enable_int64) {
+    static std::vector<MLDataType> types_with_int64 = []() {
+      auto types = base_types;
+      types.push_back(DataTypeImpl::GetTensorType<int64_t>());
+      return types;
+    }();
+    return types_with_int64;
+  }
+  return base_types;
 }
 }  // namespace
 
-ONNX_OPERATOR_VERSIONED_KERNEL_EX(
-    Where,
-    kOnnxDomain,
-    9, 15,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T", WhereOpTypeConstraints()),
-    Where);
+template <int StartVersion, int EndVersion>
+KernelCreateInfo CreateWhereVersionedKernelInfo(bool enable_int64) {
+  const auto& type_constraints = WhereOpTypeConstraints(enable_int64);
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Where>(info);
+    return Status::OK();
+  };
+  return {(*KernelDefBuilder::Create())
+              .SetName("Where")
+              .SetDomain(kOnnxDomain)
+              .SinceVersion(StartVersion, EndVersion)
+              .Provider(kWebGpuExecutionProvider)
+              .TypeConstraint("T", type_constraints)
+              .Build(),
+          kernel_create_fn};
+}
 
-ONNX_OPERATOR_KERNEL_EX(
-    Where,
-    kOnnxDomain,
-    16,
-    kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create())
-        .TypeConstraint("T", WhereOpTypeConstraints()),
-    Where);
+template <int SinceVersion>
+KernelCreateInfo CreateWhereKernelInfo(bool enable_int64) {
+  const auto& type_constraints = WhereOpTypeConstraints(enable_int64);
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<Where>(info);
+    return Status::OK();
+  };
+  return {(*KernelDefBuilder::Create())
+              .SetName("Where")
+              .SetDomain(kOnnxDomain)
+              .SinceVersion(SinceVersion)
+              .Provider(kWebGpuExecutionProvider)
+              .TypeConstraint("T", type_constraints)
+              .Build(),
+          kernel_create_fn};
+}
+
+template KernelCreateInfo CreateWhereVersionedKernelInfo<9, 15>(bool);
+template KernelCreateInfo CreateWhereKernelInfo<16>(bool);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

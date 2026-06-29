@@ -66,5 +66,16 @@ class BinaryElementwise : public WebGpuKernel {
   const GetAdditionalImplementationFunction get_additional_impl_;
 };
 
+// Factory functions for ops with conditional int64 support (registered via RegisterKernels).
+template <int StartVersion, int EndVersion>
+KernelCreateInfo CreateEqualVersionedKernelInfo(bool enable_int64);
+template <int SinceVersion>
+KernelCreateInfo CreateEqualKernelInfo(bool enable_int64);
+
+template <int StartVersion, int EndVersion>
+KernelCreateInfo CreateSubVersionedKernelInfo(bool enable_int64);
+template <int SinceVersion>
+KernelCreateInfo CreateSubKernelInfo(bool enable_int64);
+
 }  // namespace webgpu
 }  // namespace onnxruntime
