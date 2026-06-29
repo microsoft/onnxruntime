@@ -21,6 +21,7 @@ and have been significantly modified for ONNX Runtime — see
 7. [Cross-Architecture Packing Compatibility](#7-cross-architecture-packing-compatibility)
 8. [SwiGLU Fusion](#8-swiglu-fusion)
 9. [FP4 (MXFP4) Details](#9-fp4-mxfp4-details)
+  - [9.9 Runtime environment variables](#99-runtime-environment-variables)
 10. [FP8 (W8A16) Details](#10-fp8-w8a16-details)
 11. [WFP4AFP8 Details](#11-wfp4afp8-details)
 12. [Future / Deferred Modes](#12-future--deferred-modes)
@@ -754,6 +755,25 @@ switch (hopper_inputs.fusion) {
 | `launchers/generate_moe_gemm_tma_ws_sm90_fp4.py` | Added `k` and `fusion` fields; generates K={128,256} × NONE/FINALIZE |
 | `moe_gemm_template_dispatch_tma_ws_mixed_dtype.h` | `FUSION` param throughout; `PackedScalesNum`-based K tile; direct N tile mapping; workspace calc with `Ntile=128` |
 | `moe_gemm_template_dispatch.h` | FUSION routing in `dispatchToArch`; removed restrictive wfp4a16 config filter |
+
+### 9.9 Runtime environment variables
+
+The FP4 path is gated by several process-start environment variables (read once in the
+QMoE constructor). Defaults give the fastest validated behavior; the rest are opt-in or
+debug switches.
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `ORT_ENABLE_FP4_GEMV` | on | Fused MXFP4 GEMV decode kernel. Set to `0` to force the dequant-to-dense fallback (debugging/bisecting). Active in the SM<120 fallback regime, and as the decode arm when native CUTLASS prefill is enabled. |
+| `ORT_FP4_GEMV_AUTOTUNE` | `1` | Per-shape autotune of the GEMV CtaN/Threads tiling. Set to `0` to force the default tiling. |
+| `ORT_FP4_GEMV_AUTOTUNE_LOG` | `0` | Set to `1` to log the chosen GEMV configs per shape. |
+| `ORT_ENABLE_FP4_CUTLASS_GEMM` | `0` | Opt-in native SM90 WFP4A16 CUTLASS GEMM (fast prefill). Requires FP16, SM90, and aligned shapes (`hidden`/`inter` divisible by 256). Must be combined with `ORT_ENABLE_FP4_CUTLASS_UNSAFE=1`. |
+| `ORT_ENABLE_FP4_CUTLASS_UNSAFE` | `0` | Confirms use of the experimental native SM90 path. Without it, a request to enable native GEMM logs a warning and falls back to dequant/GEMV. |
+| `ORT_FP4_PREFILL_MIN_TOKENS` | `64` | When native CUTLASS is enabled, the per-node decode threshold. Tokens with `M >= threshold` (prefill) route to native CUTLASS; `M < threshold` (decode) route to the fused GEMV. Both weight/scale layouts are pre-packed so one node serves both regimes. |
+
+When native CUTLASS is enabled, weights and scales are dual-prepacked (native layout plus
+raw e8m0 block scales for GEMV), so `ORT_FP4_PREFILL_MIN_TOKENS` selects per call between the
+prefill and decode kernels with no extra conversion.
 
 ---
 
