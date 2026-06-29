@@ -259,34 +259,46 @@ template <typename AType>
 struct Fp4I2FConverter {
   static_assert(std::is_same_v<AType, half> || std::is_same_v<AType, __nv_bfloat16>);
 
-  __device__ __forceinline__ static AType decode(uint8_t code) {
-    uint32_t const q = code;
+  // Decode a single 4-bit e2m1 code into the raw 16-bit half/bf16 pattern.
+  __device__ __forceinline__ static uint16_t decode_bits(uint32_t q) {
     uint32_t const sign = (q & 0x8u) << 12;  // bit3 -> bit15 (half and bf16 share sign position)
     uint32_t const mag = q & 0x7u;
     if constexpr (std::is_same_v<AType, half>) {
       uint32_t const normal = (((mag >> 1) + 14u) << 10) | ((mag & 1u) << 9);
       uint32_t const sub = mag * 0x3800u;  // m=0 -> 0x0000 (0.0), m=1 -> 0x3800 (0.5)
-      uint16_t const bits = static_cast<uint16_t>((mag >= 2u ? normal : sub) | sign);
-      return __ushort_as_half(bits);
+      return static_cast<uint16_t>((mag >= 2u ? normal : sub) | sign);
     } else {
       uint32_t const normal = (((mag >> 1) + 126u) << 7) | ((mag & 1u) << 6);
       uint32_t const sub = mag * 0x3F00u;  // m=0 -> 0x0000 (0.0), m=1 -> 0x3F00 (0.5)
-      uint16_t const bits = static_cast<uint16_t>((mag >= 2u ? normal : sub) | sign);
-      return __ushort_as_bfloat16(bits);
+      return static_cast<uint16_t>((mag >= 2u ? normal : sub) | sign);
+    }
+  }
+
+  __device__ __forceinline__ static AType decode(uint8_t code) {
+    if constexpr (std::is_same_v<AType, half>) {
+      return __ushort_as_half(decode_bits(code));
+    } else {
+      return __ushort_as_bfloat16(decode_bits(code));
     }
   }
 
   // Converts N e2m1 codes (packed two per byte, low nibble first) into N AType.
+  // Each input byte holds two codes; decode both, assemble the pair into one
+  // 32-bit word, and emit a single aligned store. This halves the dynamic store
+  // count vs. two scalar writes and lets the two nibble decodes pipeline, easing
+  // the compute-bound decode that dominates the FP4 GEMV. Bit-identical to two
+  // decode() calls.
   template <int N>
   __device__ __forceinline__ static void convert(void* src, void* dst) {
     static_assert(N % 2 == 0);
     uint8_t const* s = reinterpret_cast<uint8_t const*>(src);
-    AType* d = reinterpret_cast<AType*>(dst);
+    uint32_t* d2 = reinterpret_cast<uint32_t*>(dst);
 #pragma unroll
     for (int i = 0; i < N; i += 2) {
-      uint8_t byte = s[i >> 1];
-      d[i] = decode(static_cast<uint8_t>(byte & 0x0F));
-      d[i + 1] = decode(static_cast<uint8_t>((byte >> 4) & 0x0F));
+      uint32_t const byte = s[i >> 1];
+      uint32_t const lo = decode_bits(byte & 0x0Fu);
+      uint32_t const hi = decode_bits((byte >> 4) & 0x0Fu);
+      d2[i >> 1] = lo | (hi << 16);
     }
   }
 };
