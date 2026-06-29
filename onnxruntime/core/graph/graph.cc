@@ -3919,8 +3919,15 @@ Status Graph::ConvertInitializersIntoOrtValues() {
                     "for node attributes.");
 
       std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
-      ORT_RETURN_IF_ERROR(
-          onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
+      {
+        auto create_status =
+            onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info);
+        if (!create_status.IsOK()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Node '", node.Name(), "' attribute '", attr_name,
+                                 "': ", create_status.ErrorMessage());
+        }
+      }
       const auto& location = external_data_info->GetRelPath();
 
       if (validated_external_data_paths.count(location) == 0) {

@@ -769,10 +769,11 @@ static std::pair<std::string, ScopedFileDeleter> CreateExternalDataFile(const vo
   PathString filename(ORT_TSTR("ext_data_XXXXXX"));
   FILE* fp = nullptr;
   CreateTestFile(fp, filename);
+  ScopedFileDeleter deleter(filename);  // ensure cleanup even if fwrite/fclose throws
   size_t written = fwrite(data, 1, num_bytes, fp);
   ORT_ENFORCE(written == num_bytes, "Failed to write external data file");
   ORT_ENFORCE(fclose(fp) == 0, "Failed to close external data file");
-  return {ToUTF8String(filename), ScopedFileDeleter(filename)};
+  return {ToUTF8String(filename), std::move(deleter)};
 }
 
 // Helper: create a TensorProto that references external data in the given file.
