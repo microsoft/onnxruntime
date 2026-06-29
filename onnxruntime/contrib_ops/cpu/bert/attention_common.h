@@ -91,6 +91,12 @@ constexpr bool LAYOUT_BNSH = true;
 namespace sparse_attention {
 // Environment variable to enable or disable sparse attention v1 kernel. Default is 0 (enabled).
 constexpr const char* kDisableSparseAttentionV1 = "ORT_DISABLE_SPARSE_ATTENTION_V1";
+
+// Environment variable to disable device-side validation of CSR indices and key sequence lengths.
+// Default is 0 (validation enabled). Set to 1 to skip the validation kernel launch and stream
+// synchronization, which may improve latency when inputs are known to be well-formed.
+// Usage: export ORT_DISABLE_SPARSE_ATTENTION_INPUT_VALIDATION=1
+constexpr const char* kDisableInputValidation = "ORT_DISABLE_SPARSE_ATTENTION_INPUT_VALIDATION";
 }  // namespace sparse_attention
 
 namespace attention {

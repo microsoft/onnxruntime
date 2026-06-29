@@ -144,10 +144,14 @@ jobs:
 
       # --- Run the CUDA plugin EP C++ GoogleTest binary ---
       # onnxruntime_provider_test is built into the artifact and links the plugin tests
-      # (gated by ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP). The user-stream + CUDA graph test
-      # registers the plugin .so via GetSharedLibraryFileName("onnxruntime_providers_cuda_plugin"),
-      # which returns the platform-specific filename without a directory component. Run from
-      # /build/Release/Release so that filename resolves to the plugin .so built there.
+      # (gated by ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP). These tests register the plugin .so via
+      # GetSharedLibraryFileName("onnxruntime_providers_cuda_plugin"), which returns the
+      # platform-specific filename without a directory component. Run from /build/Release/Release
+      # so that filename resolves to the plugin .so built there.
+      # The filter covers every CUDA plugin EP suite linked into this binary:
+      #   CudaPlugin*              -> CudaPluginUserStreamGraphTest, CudaPluginArenaTest,
+      #                              CudaPluginPartitioningTest, CudaPluginProfilingTest
+      #   CudaResourcePartitioning* -> CudaResourcePartitioningTest
       - name: Run CUDA Plugin EP C++ Tests
         run: |
           docker run --rm --gpus all \
@@ -163,5 +167,5 @@ jobs:
 
               cd /build/Release/Release
               ls -la onnxruntime_provider_test libonnxruntime_providers_cuda_plugin.so
-              ./onnxruntime_provider_test --gtest_filter='CudaPluginUserStreamGraphTest.*'
+              ./onnxruntime_provider_test --gtest_filter='CudaPlugin*:CudaResourcePartitioning*'
             "

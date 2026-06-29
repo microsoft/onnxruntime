@@ -84,7 +84,9 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                         bool has_subgroups,
                         bool q_BNSH,
                         bool use_seqlen_k = false,
-                        bool has_head_sink = false)
+                        bool has_head_sink = false,
+                        bool turbo_quant = false,
+                        int compressed_head_size_u32 = 0)
       : Program{kernel_name},
         has_attention_bias_(has_attention_bias),
         is_qualcomm_(is_qualcomm),
@@ -96,7 +98,9 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
         use_shm_path_(is_apple || is_nvidia || !has_subgroups),
         q_BNSH_(q_BNSH),
         use_seqlen_k_(use_seqlen_k),
-        has_head_sink_(has_head_sink) {
+        has_head_sink_(has_head_sink),
+        turbo_quant_(turbo_quant),
+        compressed_head_size_u32_(compressed_head_size_u32) {
     if (use_shm_path_) {
       // Use shared-memory loop-based path with dynamic max_k_step.
       // Compute max_k_step from workgroup shared memory budget: k_tile + v_tile = 2 * element_size * head_size * max_k_step
@@ -141,6 +145,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   bool use_seqlen_k_;
   bool has_head_sink_;
   int max_k_step_;
+  bool turbo_quant_;
+  int compressed_head_size_u32_;
 };
 
 class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecodeQKVProgram> {
@@ -150,8 +156,9 @@ class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecode
                                  bool use_indirect_dispatch, bool q_BNSH = false,
                                  bool is_unidirectional = false,
                                  uint32_t m_tile = 1,
-                                 bool use_seqlen_k = false)
-      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), head_size_vec_(head_size_vec), use_indirect_dispatch_(use_indirect_dispatch), q_BNSH_(q_BNSH), is_unidirectional_(is_unidirectional), m_tile_(m_tile), use_seqlen_k_(use_seqlen_k) {
+                                 bool use_seqlen_k = false,
+                                 bool turbo_quant = false, int compressed_head_size_u32 = 0)
+      : Program{kernel_name}, has_attention_bias_(has_attention_bias), tile_size_(tile_size), head_size_vec_(head_size_vec), use_indirect_dispatch_(use_indirect_dispatch), q_BNSH_(q_BNSH), is_unidirectional_(is_unidirectional), m_tile_(m_tile), use_seqlen_k_(use_seqlen_k), turbo_quant_(turbo_quant), compressed_head_size_u32_(compressed_head_size_u32) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -178,6 +185,8 @@ class FlashAttentionDecodeQKVProgram final : public Program<FlashAttentionDecode
   bool is_unidirectional_;
   uint32_t m_tile_;
   bool use_seqlen_k_;
+  bool turbo_quant_;
+  int compressed_head_size_u32_;
 };
 
 class FlashAttentionDecodeVxReduceProgram final : public Program<FlashAttentionDecodeVxReduceProgram> {
