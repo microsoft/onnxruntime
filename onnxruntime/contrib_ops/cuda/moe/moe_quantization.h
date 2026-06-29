@@ -38,6 +38,8 @@ class QMoE final : public CudaKernel, public MoEBase {
                         IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
   void PrePackSwizzleBlockScales(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
                                  IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
+  void PrePackFp4ScalesForTmaWs(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
+                                IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
   void PrePackRepackFP4Weights(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
                                IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
   // Builds the fused MXFP4 GEMV scale buffer for fc (1 or 2) once both the e8m0 block

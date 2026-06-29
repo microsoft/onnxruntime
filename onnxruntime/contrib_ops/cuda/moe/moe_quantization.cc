@@ -1427,7 +1427,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   } else if (input_idx == 3) {  // fc1_scales
     DUMP_TENSOR("fc1_scales", tensor);
     if (quant_type_ == "fp4" && !use_fp4_dequant_fallback_) {
-      PrePackTransposeAndPack(tensor, stream, alloc, packed_fp4_fc1_block_scales_, is_packed);
+      PrePackFp4ScalesForTmaWs(tensor, stream, alloc, packed_fp4_fc1_block_scales_, is_packed);
     } else if (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
       PrePackSwizzleBlockScales(tensor, stream, alloc, packed_fp4_fc1_block_scales_, is_packed);
     } else if (quant_type_ == "fp4" || quant_type_ == "wfp4afp8") {
@@ -1445,7 +1445,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   } else if (input_idx == 6) {  // fc2_scales
     DUMP_TENSOR("fc2_scales", tensor);
     if (quant_type_ == "fp4" && !use_fp4_dequant_fallback_) {
-      PrePackTransposeAndPack(tensor, stream, alloc, packed_fp4_fc2_block_scales_, is_packed);
+      PrePackFp4ScalesForTmaWs(tensor, stream, alloc, packed_fp4_fc2_block_scales_, is_packed);
     } else if (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
       PrePackSwizzleBlockScales(tensor, stream, alloc, packed_fp4_fc2_block_scales_, is_packed);
     } else if (quant_type_ == "fp4" || quant_type_ == "wfp4afp8") {
@@ -1712,6 +1712,43 @@ void QMoE::PrePackSwizzleBlockScales(const Tensor& tensor, cudaStream_t stream, 
       rows_padded,
       cols_padded,
       multi_processor_count,
+      stream);
+
+  CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+  is_packed = true;
+}
+
+void QMoE::PrePackFp4ScalesForTmaWs(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
+                                    IAllocatorUniquePtr<void>& packed_buf, bool& is_packed) {
+  auto shape = tensor.Shape();
+  ORT_ENFORCE(shape.NumDimensions() == 3, "Expected 3D FP4 block scales for WFP4A16 native prepack");
+  ORT_ENFORCE(tensor.IsDataType<Float8E8M0>(), "Expected Float8E8M0 FP4 block scales for WFP4A16 native prepack");
+
+  const int64_t experts = shape[0];
+  const int64_t rows = shape[1];
+  const int64_t k_blocks = shape[2];
+  ORT_ENFORCE(experts > 0 && rows > 0 && k_blocks > 0,
+              "FP4 block scales must have positive dimensions, got ", shape.ToString());
+  ORT_ENFORCE(experts <= std::numeric_limits<int>::max() && rows <= std::numeric_limits<int>::max() &&
+                  k_blocks <= std::numeric_limits<int>::max(),
+              "FP4 block-scale dimensions exceed CUDA launch int range, got ", shape.ToString());
+
+  const size_t bytes = tensor.SizeInBytes();
+  const void* p_src = tensor.DataRaw();
+  IAllocatorUniquePtr<void> temp_src_gpu;
+  if (tensor.Location().device.Type() == OrtDevice::CPU) {
+    temp_src_gpu = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
+    CUDA_CALL_THROW(cudaMemcpyAsync(temp_src_gpu.get(), p_src, bytes, cudaMemcpyHostToDevice, stream));
+    p_src = temp_src_gpu.get();
+  }
+
+  packed_buf = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
+  LaunchQMoEPackFp4ScalesForTmaWs(
+      static_cast<const uint8_t*>(p_src),
+      static_cast<uint8_t*>(packed_buf.get()),
+      static_cast<int>(experts),
+      static_cast<int>(rows),
+      static_cast<int>(k_blocks),
       stream);
 
   CUDA_CALL_THROW(cudaStreamSynchronize(stream));

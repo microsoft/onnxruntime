@@ -261,6 +261,17 @@ void LaunchQMoECombineFp4ScalesForGemv(
     int k_blocks,
     cudaStream_t stream);
 
+// Packs MXFP4 e8m0 block scales from [experts, n, k_blocks] into the SM90 TMA WS
+// WFP4A16 layout. The currently dispatched native WFP4A16 K tile is 256, so one
+// TMA scale element contains 8 adjacent k_blocks for one output row.
+void LaunchQMoEPackFp4ScalesForTmaWs(
+    const uint8_t* input,
+    uint8_t* output,
+    int experts,
+    int n,
+    int k_blocks,
+    cudaStream_t stream);
+
 void LaunchQMoEDequantizeFp8Weights(
     const uint8_t* weights,
     const float* global_scales,

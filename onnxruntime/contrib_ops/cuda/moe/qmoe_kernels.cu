@@ -1138,6 +1138,50 @@ void LaunchQMoECombineFp4ScalesForGemv(
   LaunchQMoECombineFp4ScalesForGemvImpl(block_scales, global_scales, gemv_scales, experts, n, k_blocks, stream);
 }
 
+__global__ void QMoEPackFp4ScalesForTmaWsKernel(
+    const uint8_t* input,
+    uint8_t* output,
+    int n,
+    int k_blocks,
+    int packed_scales_per_k_tile,
+    int64_t total) {
+  int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (index >= total) {
+    return;
+  }
+
+  int inner = static_cast<int>(index % packed_scales_per_k_tile);
+  int row = static_cast<int>((index / packed_scales_per_k_tile) % n);
+  int64_t packed_k_tile = (index / packed_scales_per_k_tile) / n;
+  int packed_k_tiles = k_blocks / packed_scales_per_k_tile;
+  int expert = static_cast<int>(packed_k_tile / packed_k_tiles);
+  int tile = static_cast<int>(packed_k_tile - static_cast<int64_t>(expert) * packed_k_tiles);
+  int k_block = tile * packed_scales_per_k_tile + inner;
+
+  output[index] = input[(static_cast<int64_t>(expert) * n + row) * k_blocks + k_block];
+}
+
+void LaunchQMoEPackFp4ScalesForTmaWs(
+    const uint8_t* input,
+    uint8_t* output,
+    int experts,
+    int n,
+    int k_blocks,
+    cudaStream_t stream) {
+  constexpr int kPackedScalesPerKTile = 8;
+  ORT_ENFORCE(k_blocks % kPackedScalesPerKTile == 0,
+              "SM90 WFP4A16 scale prepack requires k_blocks to be a multiple of ",
+              kPackedScalesPerKTile, ", got ", k_blocks);
+  int64_t total = static_cast<int64_t>(experts) * n * k_blocks;
+  if (total <= 0) {
+    return;
+  }
+  constexpr int block = 256;
+  int grid = onnxruntime::narrow<int>((total + block - 1) / block);
+  QMoEPackFp4ScalesForTmaWsKernel<<<grid, block, 0, stream>>>(
+      input, output, n, k_blocks, kPackedScalesPerKTile, total);
+}
+
 __device__ __forceinline__ float DecodeFloat8E4M3FN(uint8_t code) {
   // ONNX float8e4m3fn has no infinities. The only NaN payloads are 0x7F/0xFF;
   // finite values, including the max finite code 0x7E, use the normal E4M3 formula.
