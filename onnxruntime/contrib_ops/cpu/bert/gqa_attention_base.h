@@ -880,7 +880,7 @@ class GQAAttentionBase {
         const ptrdiff_t q_batch_stride_elems = packed_batch_stride > 0
                                                    ? packed_batch_stride
                                                    : static_cast<ptrdiff_t>(SafeInt<ptrdiff_t>(num_heads_) * sequence_length * head_size);
-        args.query = Q + static_cast<size_t>(b) * static_cast<size_t>(q_batch_stride_elems);
+        args.query = Q + static_cast<size_t>(SafeInt<size_t>(b) * static_cast<size_t>(q_batch_stride_elems));
         args.q_batch_stride = static_cast<size_t>(q_batch_stride_elems);
         args.k_cache = present_key_data +
                        static_cast<size_t>(b) * kv_num_heads_ * seqlen_present_kv_cache * packed_row_bytes;
@@ -897,7 +897,7 @@ class GQAAttentionBase {
         const float* batch_bias = attention_bias_data;
         if (attention_bias_data != nullptr && !attention_bias_broadcast_batch) {
           const size_t bias_head_extent = attention_bias_broadcast_head ? 1 : static_cast<size_t>(num_heads_);
-          batch_bias += static_cast<size_t>(b) * bias_head_extent * sequence_length * attention_bias_seqlen_stride;
+          batch_bias += static_cast<size_t>(SafeInt<size_t>(b) * bias_head_extent * sequence_length * attention_bias_seqlen_stride);
         }
         args.attention_bias = batch_bias;
         args.attention_bias_seqlen_stride = attention_bias_seqlen_stride;
