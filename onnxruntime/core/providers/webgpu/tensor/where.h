@@ -31,5 +31,11 @@ class Where final : public WebGpuKernel {
   Status ComputeInternal(ComputeContext& context) const override;
 };
 
+// Factory functions for conditional int64 support (registered via RegisterKernels).
+template <int StartVersion, int EndVersion>
+KernelCreateInfo CreateWhereVersionedKernelInfo(bool enable_int64);
+template <int SinceVersion>
+KernelCreateInfo CreateWhereKernelInfo(bool enable_int64);
+
 }  // namespace webgpu
 }  // namespace onnxruntime
