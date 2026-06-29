@@ -738,11 +738,6 @@ inline void SetCudaKernelAdapterRuntimeConfigForProvider(
   PL_CUDA_CALL_THROW(cudaGetDeviceProperties(&config->device_prop, config->device_id));
 }
 
-inline bool GetCudaKernelAdapterSkipLayerNormStrictMode(const void* provider) {
-  const auto config = detail::GetCudaKernelAdapterRuntimeConfigForProvider(provider);
-  return config->skip_layer_norm_strict_mode;
-}
-
 // Global aliases and shims
 using Status = onnxruntime::common::Status;
 using MLFloat16 = onnxruntime::MLFloat16;
