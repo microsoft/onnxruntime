@@ -783,18 +783,6 @@ if (onnxruntime_USE_WEBGPU)
           #
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_dxc_output_dir.patch &&
 
-          # The dawn_buffer_fix_injection.patch contains the following changes:
-          #
-          # - (private) Fix importJsBuffer calling wrong WGPUBufferImpl constructor
-          #   Without this patch, importJsBuffer calls emwgpuCreateBuffer which invokes the
-          #   (source, mappedAtCreation=false) constructor instead of the injection constructor
-          #   tagged with kImportedFromJS. This patch adjusts the injection constructor signature
-          #   to disambiguate it from the (source, mappedAtCreation) overload so emwgpuCreateBuffer
-          #   reliably selects the injection constructor and imported buffers are properly tagged
-          #   as kImportedFromJS.
-          #
-          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_buffer_fix_injection.patch &&
-
           # The dawn_parallel_build_fix.patch contains the following changes:
           #
           # - (private) Fix parallel build race condition in emdawnwebgpu header copy
