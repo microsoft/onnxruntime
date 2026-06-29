@@ -168,10 +168,9 @@ class ModelBuilder {
   const std::string& GetUniqueName(const std::string& base_name);
   const std::string& GetUniqueName(const Node& node, std::string_view suffix);
 
-  // Helpers to ensure the model_path always being passed.
-  Initializer CreateInitializer(const ONNX_NAMESPACE::TensorProto& tensor) const;
-  Initializer CreateInitializerWithGraph(const ONNX_NAMESPACE::TensorProto& tensor,
-                                         bool check_outer_scope = false) const;
+  // Helper to ensure the model_path is always passed when constructing an Initializer.
+  Initializer CreateInitializer(const ONNX_NAMESPACE::TensorProto& tensor,
+                                bool check_outer_scope = false) const;
 
   const logging::Logger& Logger() const { return logger_; }
 

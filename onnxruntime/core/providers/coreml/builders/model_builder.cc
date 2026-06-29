@@ -1298,12 +1298,8 @@ const std::string& ModelBuilder::GetUniqueName(const Node& node, std::string_vie
   }
 }
 
-Initializer ModelBuilder::CreateInitializer(const ONNX_NAMESPACE::TensorProto& tensor) const {
-  return Initializer(tensor, graph_viewer_.ModelPath());
-}
-
-Initializer ModelBuilder::CreateInitializerWithGraph(const ONNX_NAMESPACE::TensorProto& tensor,
-                                                     bool check_outer_scope) const {
+Initializer ModelBuilder::CreateInitializer(const ONNX_NAMESPACE::TensorProto& tensor,
+                                            bool check_outer_scope) const {
   return Initializer(graph_viewer_.GetGraph(), tensor, graph_viewer_.ModelPath(), check_outer_scope);
 }
 

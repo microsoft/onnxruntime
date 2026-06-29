@@ -46,7 +46,7 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   const auto& data_name = input_defs[0]->Name();
   const auto& new_shape_name = input_defs[1]->Name();
-  const auto unpacked_tensor = model_builder.CreateInitializerWithGraph(
+  const auto unpacked_tensor = model_builder.CreateInitializer(
       *model_builder.GetConstantInitializer(new_shape_name));
   TensorShapeVector new_shape = ToShapeVector(unpacked_tensor.DataAsSpan<int64_t>());
 

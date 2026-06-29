@@ -50,7 +50,7 @@ Status TileOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     auto op = model_builder.CreateOperation(node, "tile");
     AddOperationInput(*op, "x", input_defs[0]->Name());
     if (repeats_init) {
-      const auto unpacked = model_builder.CreateInitializerWithGraph(*repeats_init);
+      const auto unpacked = model_builder.CreateInitializer(*repeats_init);
       auto repeats = unpacked.DataAsSpan<int64_t>();
       AddOperationInput(*op, "reps", model_builder.AddConstant(op->type(), "reps", repeats));
     } else {
@@ -64,7 +64,7 @@ Status TileOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "TileOpBuilder NeuralNetwork path requires constant 'repeats'");
     }
-    const auto unpacked = model_builder.CreateInitializerWithGraph(*repeats_init);
+    const auto unpacked = model_builder.CreateInitializer(*repeats_init);
     auto repeats = unpacked.DataAsSpan<int64_t>();
     auto layer = model_builder.CreateNNLayer(node);
     auto* tile_params = layer->mutable_tile();

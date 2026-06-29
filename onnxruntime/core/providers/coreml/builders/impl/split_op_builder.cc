@@ -110,7 +110,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       // if "split" is explicitly provided as an input
       // const auto& split_tensor = *model_builder.GetInitializerTensors().at(input_defs[1]->Name());
       const auto& const_init = *model_builder.GetConstantInitializer(input_defs[1]->Name());
-      const auto unpacked_tensor = model_builder.CreateInitializerWithGraph(const_init);
+      const auto unpacked_tensor = model_builder.CreateInitializer(const_init);
       auto split_span = unpacked_tensor.DataAsSpan<int64_t>();
       for (const auto& split_size : split_span) {
         coreml_splitnd->add_splitsizes(split_size);
