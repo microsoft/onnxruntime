@@ -2553,13 +2553,13 @@ TEST(CApiTest, basic_cuda_graph) {
   binding.BindInput("X", bound_x);
   binding.BindOutput("Y", bound_y);
 
-  // Synchronize to make sure the input copy on the default stream is done since the EP isn't using the default stream.
+  // Synchronize to make sure the input upload is complete, since it may be issued on a different stream/queue than the EP uses.
   binding.SynchronizeInputs();
 
   // One regular run for necessary memory allocation and graph capturing
   session.Run(Ort::RunOptions(), binding);
 
-  // Synchronize to make sure the computation on the EP stream is done before reading the output on the default stream.
+  // Synchronize to make sure the EP computation is complete before reading the output back to the host.
   binding.SynchronizeOutputs();
 
   // Check the values against the bound raw memory (needs copying from device to host first)
@@ -2703,13 +2703,13 @@ static void RunWithCudaGraphAnnotation(T& cg_data,
     run_option.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, cuda_graph_annotation);
   }
 
-  // Synchronize to make sure the input copy on the default stream is done since the EP isn't using the default stream.
+  // Synchronize to make sure the input upload is complete, since it may be issued on a different stream/queue than the EP uses.
   binding.SynchronizeInputs();
 
   // One regular run for necessary memory allocation and graph capturing
   session.Run(run_option, binding);
 
-  // Synchronize to make sure the computation on the EP stream is done before reading the output on the default stream.
+  // Synchronize to make sure the EP computation is complete before reading the output back to the host.
   binding.SynchronizeOutputs();
 
   // Check the values against the bound raw memory (needs copying from device to host first)
