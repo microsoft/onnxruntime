@@ -127,10 +127,19 @@ class QMoE final : public CudaKernel, public MoEBase {
   // dequant path for unsupported shapes (prefill / large batch).
   bool enable_fp4_gemv_ = false;
   bool enable_fp4_cutlass_gemm_ = false;
+  // When native CUTLASS WFP4A16 is enabled, GEMV is also pre-packed and used for decode shapes
+  // (M < this threshold); prefill (M >= threshold) runs the native grouped GEMM. 0 disables the
+  // split (pure GEMV regime). Overridable via ORT_FP4_PREFILL_MIN_TOKENS.
+  int64_t fp4_prefill_min_tokens_ = 0;
   IAllocatorUniquePtr<void> gemv_fp4_fc1_weights_;  // [E, 2*inter, hidden/2] row-major e2m1
   IAllocatorUniquePtr<void> gemv_fp4_fc2_weights_;  // [E, hidden, inter/2] row-major e2m1
   IAllocatorUniquePtr<void> gemv_fp4_fc1_scales_;   // [E, hidden/32, 2*inter] activation dtype
   IAllocatorUniquePtr<void> gemv_fp4_fc2_scales_;   // [E, inter/32, hidden] activation dtype
+  // Raw [E, n, k_blocks] e8m0 block scales kept for GEMV when the native CUTLASS path has
+  // already swizzled packed_fp4_*_block_scales_ into the TMA layout. Empty in the pure-GEMV
+  // regime, where TryBuildGemvFp4Scales reads packed_fp4_*_block_scales_ directly.
+  IAllocatorUniquePtr<void> gemv_fp4_fc1_block_raw_;
+  IAllocatorUniquePtr<void> gemv_fp4_fc2_block_raw_;
   // Block-scale dimensions captured at PrePack time so TryBuildGemvFp4Scales can size and
   // launch the combine kernel once the global scale also arrives. [E, n, k_blocks].
   int64_t gemv_fp4_fc1_scale_e_ = 0;

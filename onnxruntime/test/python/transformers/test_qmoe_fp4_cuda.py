@@ -14,6 +14,7 @@
 # --------------------------------------------------------------------------
 
 import math
+import os
 import unittest
 
 import numpy
@@ -648,6 +649,94 @@ class TestQMoEFP4(unittest.TestCase):
             onnx_dtype=onnx_dtype,
             use_swiglu=True,
         )
+
+    def test_fp4_native_cutlass_row_varying_scales(self):
+        """Native SM90 WFP4A16 scale prepack preserves per-output-row MXFP4 scales."""
+        self._skip_if_no_fp4()
+        if _cuda_sm() != 90:
+            self.skipTest(f"Native FP4 CUTLASS GEMM is currently enabled only on SM90, got SM{_cuda_sm()}")
+
+        hidden_size = 512
+        inter_size = 512
+        num_experts = 1
+        top_k = 1
+        num_tokens = 1
+        onnx_dtype = TensorProto.FLOAT16
+
+        fc1_weights = torch.full((num_experts, hidden_size, inter_size // 2), 0x22, dtype=torch.uint8, device=device)
+        fc2_codes = torch.zeros((hidden_size, inter_size), dtype=torch.uint8, device=device)
+        diagonal = torch.arange(hidden_size, device=device)
+        fc2_codes[diagonal, diagonal] = 2
+        fc2_codes_kn = fc2_codes.T.contiguous()
+        fc2_weights = ((fc2_codes_kn[:, 1::2] << 4) | fc2_codes_kn[:, 0::2])[None]
+
+        row_codes = torch.where(
+            (torch.arange(inter_size, device=device) % 2) == 0,
+            torch.tensor(126, dtype=torch.uint8, device=device),
+            torch.tensor(128, dtype=torch.uint8, device=device),
+        )
+        fc1_block_scales = row_codes[None, :, None].expand(num_experts, inter_size, hidden_size // 32).contiguous()
+        fc2_block_scales = torch.full(
+            (num_experts, hidden_size, inter_size // 32), 127, dtype=torch.uint8, device=device
+        )
+        global_scale = torch.ones(num_experts, dtype=torch.float32, device=device)
+
+        onnx_model = create_fp4_moe_onnx_graph(
+            num_tokens=num_tokens,
+            hidden_size=hidden_size,
+            inter_size=inter_size,
+            num_experts=num_experts,
+            top_k=top_k,
+            onnx_dtype=onnx_dtype,
+            fc1_weights=fc1_weights,
+            fc2_weights=fc2_weights,
+            fc1_block_scales=fc1_block_scales,
+            fc1_global_scale=global_scale,
+            fc2_block_scales=fc2_block_scales,
+            fc2_global_scale=global_scale,
+            use_swiglu=False,
+        )
+
+        input_tensor = torch.full((num_tokens, hidden_size), 1.0 / hidden_size, device=device, dtype=torch.float16)
+        router_logits = torch.ones((num_tokens, num_experts), device=device, dtype=torch.float16)
+
+        def run(enable_native):
+            old_cutlass = os.environ.get("ORT_ENABLE_FP4_CUTLASS_GEMM")
+            old_unsafe = os.environ.get("ORT_ENABLE_FP4_CUTLASS_UNSAFE")
+            os.environ["ORT_ENABLE_FP4_CUTLASS_GEMM"] = "1" if enable_native else "0"
+            if enable_native:
+                os.environ["ORT_ENABLE_FP4_CUTLASS_UNSAFE"] = "1"
+            else:
+                os.environ.pop("ORT_ENABLE_FP4_CUTLASS_UNSAFE", None)
+            try:
+                opts = onnxruntime.SessionOptions()
+                opts.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+                session = onnxruntime.InferenceSession(
+                    onnx_model, opts, providers=[resolve_cuda_plugin_ep("CUDAExecutionProvider")]
+                )
+            finally:
+                if old_cutlass is None:
+                    os.environ.pop("ORT_ENABLE_FP4_CUTLASS_GEMM", None)
+                else:
+                    os.environ["ORT_ENABLE_FP4_CUTLASS_GEMM"] = old_cutlass
+                if old_unsafe is None:
+                    os.environ.pop("ORT_ENABLE_FP4_CUTLASS_UNSAFE", None)
+                else:
+                    os.environ["ORT_ENABLE_FP4_CUTLASS_UNSAFE"] = old_unsafe
+
+            output_tensor = torch.empty((num_tokens, hidden_size), device=device, dtype=torch.float16)
+            iobinding = session.io_binding()
+            iobinding.bind_input("input", "cuda", 0, onnx_dtype, input_tensor.shape, input_tensor.data_ptr())
+            iobinding.bind_input("router_probs", "cuda", 0, onnx_dtype, router_logits.shape, router_logits.data_ptr())
+            iobinding.bind_output("output", "cuda", 0, onnx_dtype, output_tensor.shape, output_tensor.data_ptr())
+            session.run_with_iobinding(iobinding)
+            iobinding.synchronize_outputs()
+            return output_tensor.float().cpu()
+
+        fallback_output = run(enable_native=False)
+        native_output = run(enable_native=True)
+        max_diff = (native_output - fallback_output).abs().max().item()
+        self.assertEqual(max_diff, 0.0)
 
 
 # ============================================================================

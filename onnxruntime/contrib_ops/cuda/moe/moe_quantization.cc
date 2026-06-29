@@ -230,6 +230,14 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       if (use_fp4_dequant_fallback_) {
         const char* v = std::getenv("ORT_ENABLE_FP4_GEMV");
         enable_fp4_gemv_ = (v == nullptr || v[0] == '\0' || v[0] != '0');
+      } else if (enable_fp4_cutlass_gemm_) {
+        // Native CUTLASS WFP4A16 scales well with M but is underfilled for decode (small M):
+        // route prefill (M >= ORT_FP4_PREFILL_MIN_TOKENS) through native, and small-decode
+        // shapes through the fused GEMV. Both weight/scale layouts are pre-packed alongside
+        // each other so a single QMoE node can serve both regimes.
+        enable_fp4_gemv_ = true;
+        fp4_prefill_min_tokens_ = onnxruntime::ParseEnvironmentVariableWithDefault<int64_t>(
+            "ORT_FP4_PREFILL_MIN_TOKENS", 64);
       }
 #else
       use_fp4_dequant_fallback_ = true;
@@ -1024,7 +1032,13 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   //   pre-pack buffers) fall through to the dequant fallback below.
   // MXFP4 uses a fixed group size of 32 (intrinsic to the e2m1 + e8m0 block format); the
   // block_size_ attribute is unset (-1) for fp4, so it is not part of the gate.
-  if (is_fp4 && use_fp4_dequant_fallback_ && enable_fp4_gemv_ && is_fused_swiglu &&
+  // When native CUTLASS WFP4A16 is enabled, GEMV serves only the decode regime
+  // (num_rows < fp4_prefill_min_tokens_); prefill (M >= threshold) falls through to native.
+  const bool fp4_decode_regime =
+      use_fp4_dequant_fallback_ ||
+      (enable_fp4_cutlass_gemm_ && fp4_prefill_min_tokens_ > 0 &&
+       moe_params.num_rows < fp4_prefill_min_tokens_);
+  if (is_fp4 && fp4_decode_regime && enable_fp4_gemv_ && is_fused_swiglu &&
       gemv_fp4_fc1_weights_ != nullptr && gemv_fp4_fc2_weights_ != nullptr &&
       gemv_fp4_fc1_scales_ != nullptr && gemv_fp4_fc2_scales_ != nullptr) {
     namespace gemv = onnxruntime::llm::kernels::moe_gemv;
@@ -1397,10 +1411,19 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   if (input_idx == 2 && ((quant_type_ == "fp4" && !use_fp4_dequant_fallback_) ||
                          (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_))) {
     PrePackRepackFP4Weights(tensor, stream, alloc, packed_fp4_fc1_weights_, is_packed);
+    // Native CUTLASS + GEMV coexist: also pre-pack the GEMV row-major layout for decode.
+    if (quant_type_ == "fp4" && enable_fp4_gemv_) {
+      bool local_packed = false;
+      PrePackRepackFP4Weights(tensor, stream, alloc, gemv_fp4_fc1_weights_, local_packed);
+    }
     is_packed = false;
   } else if (input_idx == 5 && ((quant_type_ == "fp4" && !use_fp4_dequant_fallback_) ||
                                 (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_))) {
     PrePackRepackFP4Weights(tensor, stream, alloc, packed_fp4_fc2_weights_, is_packed);
+    if (quant_type_ == "fp4" && enable_fp4_gemv_) {
+      bool local_packed = false;
+      PrePackRepackFP4Weights(tensor, stream, alloc, gemv_fp4_fc2_weights_, local_packed);
+    }
     is_packed = false;
   } else if (input_idx == 2 && quant_type_ == "fp4" && enable_fp4_gemv_) {
     // Fused MXFP4 GEMV: lay out fc1 weights as [E, 2*inter, hidden/2] row-major. Keep
@@ -1428,6 +1451,16 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     DUMP_TENSOR("fc1_scales", tensor);
     if (quant_type_ == "fp4" && !use_fp4_dequant_fallback_) {
       PrePackFp4ScalesForTmaWs(tensor, stream, alloc, packed_fp4_fc1_block_scales_, is_packed);
+      // Native CUTLASS swizzles the block scales; keep a raw copy + dims so GEMV decode can
+      // build its combined scale layout.
+      if (enable_fp4_gemv_ && tensor.Shape().NumDimensions() == 3) {
+        bool raw_packed = false;
+        PrePackCopyToGpu(tensor, stream, alloc, gemv_fp4_fc1_block_raw_, raw_packed);
+        gemv_fp4_fc1_scale_e_ = tensor.Shape()[0];
+        gemv_fp4_fc1_scale_n_ = tensor.Shape()[1];
+        gemv_fp4_fc1_scale_kb_ = tensor.Shape()[2];
+        TryBuildGemvFp4Scales(1, stream, alloc);
+      }
     } else if (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
       PrePackSwizzleBlockScales(tensor, stream, alloc, packed_fp4_fc1_block_scales_, is_packed);
     } else if (quant_type_ == "fp4" || quant_type_ == "wfp4afp8") {
@@ -1446,6 +1479,14 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     DUMP_TENSOR("fc2_scales", tensor);
     if (quant_type_ == "fp4" && !use_fp4_dequant_fallback_) {
       PrePackFp4ScalesForTmaWs(tensor, stream, alloc, packed_fp4_fc2_block_scales_, is_packed);
+      if (enable_fp4_gemv_ && tensor.Shape().NumDimensions() == 3) {
+        bool raw_packed = false;
+        PrePackCopyToGpu(tensor, stream, alloc, gemv_fp4_fc2_block_raw_, raw_packed);
+        gemv_fp4_fc2_scale_e_ = tensor.Shape()[0];
+        gemv_fp4_fc2_scale_n_ = tensor.Shape()[1];
+        gemv_fp4_fc2_scale_kb_ = tensor.Shape()[2];
+        TryBuildGemvFp4Scales(2, stream, alloc);
+      }
     } else if (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
       PrePackSwizzleBlockScales(tensor, stream, alloc, packed_fp4_fc2_block_scales_, is_packed);
     } else if (quant_type_ == "fp4" || quant_type_ == "wfp4afp8") {
@@ -1800,6 +1841,9 @@ void QMoE::TryBuildGemvFp4Scales(int fc, cudaStream_t stream, AllocatorPtr alloc
     return;
   }
   IAllocatorUniquePtr<void>& block = (fc == 1) ? packed_fp4_fc1_block_scales_ : packed_fp4_fc2_block_scales_;
+  IAllocatorUniquePtr<void>& raw_block = (fc == 1) ? gemv_fp4_fc1_block_raw_ : gemv_fp4_fc2_block_raw_;
+  // Native CUTLASS swizzles packed_fp4_*_block_scales_; in that regime read the raw e8m0 copy.
+  IAllocatorUniquePtr<void>& src_block = (raw_block != nullptr) ? raw_block : block;
   IAllocatorUniquePtr<void>& global = (fc == 1) ? packed_fc1_global_scale_ : packed_fc2_global_scale_;
   IAllocatorUniquePtr<void>& out = (fc == 1) ? gemv_fp4_fc1_scales_ : gemv_fp4_fc2_scales_;
   const int64_t experts = (fc == 1) ? gemv_fp4_fc1_scale_e_ : gemv_fp4_fc2_scale_e_;
@@ -1807,7 +1851,7 @@ void QMoE::TryBuildGemvFp4Scales(int fc, cudaStream_t stream, AllocatorPtr alloc
   const int64_t k_blocks = (fc == 1) ? gemv_fp4_fc1_scale_kb_ : gemv_fp4_fc2_scale_kb_;
 
   // Build exactly once, and only when both inputs are present and dimensions are known.
-  if (out != nullptr || block == nullptr || global == nullptr || experts <= 0 || n <= 0 || k_blocks <= 0) {
+  if (out != nullptr || src_block == nullptr || global == nullptr || experts <= 0 || n <= 0 || k_blocks <= 0) {
     return;
   }
 
@@ -1817,13 +1861,13 @@ void QMoE::TryBuildGemvFp4Scales(int fc, cudaStream_t stream, AllocatorPtr alloc
 
   if (is_fp16_) {
     LaunchQMoECombineFp4ScalesForGemv(
-        static_cast<const uint8_t*>(block.get()),
+        static_cast<const uint8_t*>(src_block.get()),
         static_cast<const float*>(global.get()),
         static_cast<half*>(out.get()),
         static_cast<int>(experts), static_cast<int>(n), static_cast<int>(k_blocks), stream);
   } else {
     LaunchQMoECombineFp4ScalesForGemv(
-        static_cast<const uint8_t*>(block.get()),
+        static_cast<const uint8_t*>(src_block.get()),
         static_cast<const float*>(global.get()),
         static_cast<__nv_bfloat16*>(out.get()),
         static_cast<int>(experts), static_cast<int>(n), static_cast<int>(k_blocks), stream);
