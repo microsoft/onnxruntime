@@ -173,6 +173,18 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   aggregate_function_ = MakeAggregateFunction(attributes.aggregate_function);
   post_transform_ = MakeTransform(attributes.post_transform);
   n_targets_or_classes_ = attributes.n_targets_or_classes;
+  ORT_ENFORCE(n_targets_or_classes_ > 0,
+              "target/class count must be positive, got ", n_targets_or_classes_);
+  if (!attributes.target_class_ids.empty()) {
+    const auto [min_target_id, max_target_id] =
+        std::minmax_element(attributes.target_class_ids.begin(), attributes.target_class_ids.end());
+    ORT_ENFORCE(*min_target_id >= 0,
+                "target/class ids cannot have negative values (", *min_target_id, ").");
+    ORT_ENFORCE(*max_target_id < n_targets_or_classes_,
+                "At least one value (", *max_target_id,
+                ") in target/class ids is greater or equal to the target/class count (",
+                n_targets_or_classes_, ").");
+  }
   if (!attributes.base_values_as_tensor.empty()) {
     ORT_ENFORCE(attributes.base_values.empty());
     base_values_ = attributes.base_values_as_tensor;
@@ -331,7 +343,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     w.value = attributes.target_class_weights_as_tensor.empty()
                   ? static_cast<ThresholdType>(attributes.target_class_weights[i])
                   : attributes.target_class_weights_as_tensor[i];
-    // TreeEnsembleAttributesV3 already made sure that w.i >= 0 && w.i < n_targets_or_classes_.
+    // TreeEnsembleCommon::Init already made sure that w.i >= 0 && w.i < n_targets_or_classes_.
     if (leaf.truenode_or_weight.weight_data.n_weights == 0) {
       leaf.truenode_or_weight.weight_data.weight = static_cast<int32_t>(weights_.size());
       leaf.value_or_unique_weight = w.value;
