@@ -3910,80 +3910,54 @@ Status Graph::ConvertInitializersIntoOrtValues() {
   // File-based external data paths are validated, read from disk, and inlined as raw_data
   // so all EPs (including plugins) can access attribute data uniformly.
   auto inline_external_attr_tensors_func = [&](Graph& graph) -> Status {
+    // Helper: validate and inline a single external TensorProto.
+    auto inline_tensor = [&](ONNX_NAMESPACE::TensorProto& tensor_proto,
+                             const Node& node, std::string_view attr_name) -> Status {
+      ORT_RETURN_IF(utils::HasExternalDataInMemory(tensor_proto),
+                    "Node '", node.Name(), "' attribute '", attr_name,
+                    "' contains an in-memory external data reference, which is not permitted ",
+                    "for node attributes.");
+
+      std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
+      ORT_RETURN_IF_ERROR(
+          onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
+      const auto& location = external_data_info->GetRelPath();
+
+      if (validated_external_data_paths.count(location) == 0) {
+        auto path_status = utils::ValidateExternalDataPath(model_path, location);
+        if (!path_status.IsOK()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Node '", node.Name(), "' attribute '", attr_name,
+                                 "': ", path_status.ErrorMessage());
+        }
+        validated_external_data_paths.insert(location);
+      }
+
+      std::vector<uint8_t> buffer;
+      auto unpack_status = utils::UnpackInitializerData(tensor_proto, model_path, buffer);
+      if (!unpack_status.IsOK()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Node '", node.Name(), "' attribute '", attr_name,
+                               "': ", unpack_status.ErrorMessage());
+      }
+
+      tensor_proto.clear_external_data();
+      tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_DEFAULT);
+      utils::SetRawDataInTensorProto(tensor_proto, buffer.data(), buffer.size());
+      return Status::OK();
+    };
+
     for (auto& node : graph.Nodes()) {
       for (auto& [attr_name, attr_proto] : node.GetMutableAttributes()) {
         if (utils::HasTensor(attr_proto)) {
           auto* tensor_proto = attr_proto.mutable_t();
           if (utils::HasExternalData(*tensor_proto)) {
-            ORT_RETURN_IF(utils::HasExternalDataInMemory(*tensor_proto),
-                          "Node '", node.Name(), "' attribute '", attr_name,
-                          "' contains an in-memory external data reference, which is not permitted ",
-                          "for node attributes.");
-
-            std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
-            ORT_RETURN_IF_ERROR(
-                onnxruntime::ExternalDataInfo::Create(tensor_proto->external_data(), external_data_info));
-            const auto& location = external_data_info->GetRelPath();
-
-            if (validated_external_data_paths.count(location) == 0) {
-              auto path_status = utils::ValidateExternalDataPath(model_path, location);
-              if (!path_status.IsOK()) {
-                return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                       "Node '", node.Name(), "' attribute '", attr_name,
-                                       "': ", path_status.ErrorMessage());
-              }
-              validated_external_data_paths.insert(location);
-            }
-
-            // Read external data and inline it into the TensorProto.
-            std::vector<uint8_t> buffer;
-            {
-              auto unpack_status = utils::UnpackInitializerData(*tensor_proto, model_path, buffer);
-              if (!unpack_status.IsOK()) {
-                return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                       "Node '", node.Name(), "' attribute '", attr_name,
-                                       "': ", unpack_status.ErrorMessage());
-              }
-            }
-            tensor_proto->clear_external_data();
-            tensor_proto->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_DEFAULT);
-            utils::SetRawDataInTensorProto(*tensor_proto, buffer.data(), buffer.size());
+            ORT_RETURN_IF_ERROR(inline_tensor(*tensor_proto, node, attr_name));
           }
         } else if (utils::HasTensors(attr_proto)) {
           for (auto& tensor_proto : *attr_proto.mutable_tensors()) {
             if (utils::HasExternalData(tensor_proto)) {
-              ORT_RETURN_IF(utils::HasExternalDataInMemory(tensor_proto),
-                            "Node '", node.Name(), "' attribute '", attr_name,
-                            "' contains an in-memory external data reference, which is not permitted ",
-                            "for node attributes.");
-
-              std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
-              ORT_RETURN_IF_ERROR(
-                  onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
-              const auto& location = external_data_info->GetRelPath();
-
-              if (validated_external_data_paths.count(location) == 0) {
-                auto path_status = utils::ValidateExternalDataPath(model_path, location);
-                if (!path_status.IsOK()) {
-                  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                         "Node '", node.Name(), "' attribute '", attr_name,
-                                         "': ", path_status.ErrorMessage());
-                }
-                validated_external_data_paths.insert(location);
-              }
-
-              std::vector<uint8_t> buffer;
-              {
-                auto unpack_status = utils::UnpackInitializerData(tensor_proto, model_path, buffer);
-                if (!unpack_status.IsOK()) {
-                  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                         "Node '", node.Name(), "' attribute '", attr_name,
-                                         "': ", unpack_status.ErrorMessage());
-                }
-              }
-              tensor_proto.clear_external_data();
-              tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_DEFAULT);
-              utils::SetRawDataInTensorProto(tensor_proto, buffer.data(), buffer.size());
+              ORT_RETURN_IF_ERROR(inline_tensor(tensor_proto, node, attr_name));
             }
           }
         }
