@@ -149,6 +149,11 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       ORT_ENFORCE(expert_weight_bits_ == 4, "FP4 quantization requires expert_weight_bits=4");
 #if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
       use_fp4_dequant_fallback_ = sm_ < 120;
+      enable_fp4_cutlass_gemm_ = is_fp16_ && sm_ == 90 &&
+                                 onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_FP4_CUTLASS_GEMM", 0) == 1;
+      if (enable_fp4_cutlass_gemm_) {
+        use_fp4_dequant_fallback_ = false;
+      }
       // Fused MXFP4 GEMV (W4A16) decode path for the SM<120 fallback regime. This is the
       // default: on real decode shapes it is ~18x faster than re-dequantizing all experts to
       // dense BF16/FP16 every token, and it is validated bit-exact against the fallback. Set
@@ -866,13 +871,11 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     ORT_RETURN_IF_NOT(p_fc1_block_scales && p_fc1_global_scale && p_fc2_block_scales && p_fc2_global_scale,
                       "QMoE quant_type='fp4' requires fc1_scales, fc2_scales, fc1_global_scale, and fc2_global_scale.");
     if (!use_fp4_dequant_fallback_) {
-      using NVFP4ElementSF = onnxruntime::llm::kernels::cutlass_kernels::TmaWarpSpecializedGroupedGemmInput::NVFP4ElementSF;
-      quant_params = onnxruntime::llm::kernels::cutlass_kernels::QuantParams::FP4(
-          nullptr,  // fc1_act_global_scale (no activation quantization for W4A16)
-          static_cast<const NVFP4ElementSF*>(p_fc1_block_scales),
+      using MXFPXElementSF = onnxruntime::llm::kernels::cutlass_kernels::TmaWarpSpecializedGroupedGemmInput::MXFPXElementSF;
+      quant_params = onnxruntime::llm::kernels::cutlass_kernels::QuantParams::MXFP8MXFP4(
+          static_cast<const MXFPXElementSF*>(p_fc1_block_scales),
           static_cast<const float*>(p_fc1_global_scale),
-          nullptr,  // fc2_act_global_scale
-          static_cast<const NVFP4ElementSF*>(p_fc2_block_scales),
+          static_cast<const MXFPXElementSF*>(p_fc2_block_scales),
           static_cast<const float*>(p_fc2_global_scale));
     }
   } else if (is_wfp4afp8) {
@@ -1136,17 +1139,17 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
   const void* fc1_weight_data = fc1_experts_weights ? fc1_experts_weights->DataRaw() : nullptr;
   const void* fc2_weight_data = fc2_experts_weights ? fc2_experts_weights->DataRaw() : nullptr;
-  if (is_wfp4afp8 && !use_wfp4afp8_dequant_fallback_) {
-    // The native CUTLASS WFP4AFP8 path consumes weights in the repacked FP4
+  if ((is_fp4 && !use_fp4_dequant_fallback_) || (is_wfp4afp8 && !use_wfp4afp8_dequant_fallback_)) {
+    // The native CUTLASS FP4 paths consume weights in the repacked FP4
     // layout produced by PrePack. If PrePack never ran (e.g.
     // ``session.disable_prepacking`` is set) the repacked buffers stay null and
     // falling through to the raw initializer bytes would feed a non-CUTLASS
     // layout to the runner, producing silently wrong output. Fail loudly.
     if (packed_fp4_fc1_weights_ == nullptr || packed_fp4_fc2_weights_ == nullptr) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "QMoE wfp4afp8 requires PrePack to run, but the repacked FP4 weight "
+                             "QMoE native FP4 requires PrePack to run, but the repacked FP4 weight "
                              "buffers were not produced (is session.disable_prepacking set?). "
-                             "Enable prepacking to use the native WFP4AFP8 path.");
+                             "Enable prepacking to use the native FP4 path.");
     }
     fc1_weight_data = packed_fp4_fc1_weights_.get();
     fc2_weight_data = packed_fp4_fc2_weights_.get();
@@ -1323,10 +1326,12 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
 #define DUMP_PACK_TENSOR(name, packed_scales, scales)
 #endif
 
-  if (input_idx == 2 && quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
+  if (input_idx == 2 && ((quant_type_ == "fp4" && !use_fp4_dequant_fallback_) ||
+                         (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_))) {
     PrePackRepackFP4Weights(tensor, stream, alloc, packed_fp4_fc1_weights_, is_packed);
     is_packed = false;
-  } else if (input_idx == 5 && quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
+  } else if (input_idx == 5 && ((quant_type_ == "fp4" && !use_fp4_dequant_fallback_) ||
+                                (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_))) {
     PrePackRepackFP4Weights(tensor, stream, alloc, packed_fp4_fc2_weights_, is_packed);
     is_packed = false;
   } else if (input_idx == 2 && quant_type_ == "fp4" && enable_fp4_gemv_) {
@@ -1353,7 +1358,9 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     PrePackIntExpertWeights(tensor, stream, alloc, packed_fc2_weights_, is_packed);
   } else if (input_idx == 3) {  // fc1_scales
     DUMP_TENSOR("fc1_scales", tensor);
-    if (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
+    if (quant_type_ == "fp4" && !use_fp4_dequant_fallback_) {
+      PrePackCopyToGpu(tensor, stream, alloc, packed_fp4_fc1_block_scales_, is_packed);
+    } else if (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
       PrePackSwizzleBlockScales(tensor, stream, alloc, packed_fp4_fc1_block_scales_, is_packed);
     } else if (quant_type_ == "fp4" || quant_type_ == "wfp4afp8") {
       PrePackCopyToGpu(tensor, stream, alloc, packed_fp4_fc1_block_scales_, is_packed);
@@ -1369,7 +1376,9 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
     }
   } else if (input_idx == 6) {  // fc2_scales
     DUMP_TENSOR("fc2_scales", tensor);
-    if (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
+    if (quant_type_ == "fp4" && !use_fp4_dequant_fallback_) {
+      PrePackCopyToGpu(tensor, stream, alloc, packed_fp4_fc2_block_scales_, is_packed);
+    } else if (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
       PrePackSwizzleBlockScales(tensor, stream, alloc, packed_fp4_fc2_block_scales_, is_packed);
     } else if (quant_type_ == "fp4" || quant_type_ == "wfp4afp8") {
       PrePackCopyToGpu(tensor, stream, alloc, packed_fp4_fc2_block_scales_, is_packed);

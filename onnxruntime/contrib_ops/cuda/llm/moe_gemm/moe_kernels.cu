@@ -857,12 +857,26 @@ __device__ void computeTmaWarpSpecializedInputPointers(TmaWarpSpecializedGrouped
     assert(groupwise_scale_group_size > 0);
     assert(mxfp4_weight_scale || w4a8_weight_scale);
     if (mxfp4_weight_scale) {
-      constexpr int scale_cols_alignment = 4;
-      auto const scale_rows = TmaWarpSpecializedGroupedGemmInput::alignToSfDim(
-          gemm_n, TmaWarpSpecializedGroupedGemmInput::MinNDimAlignmentMXFPX);
-      auto const scale_cols = TmaWarpSpecializedGroupedGemmInput::alignToSfDim(
-          gemm_k / groupwise_scale_group_size, scale_cols_alignment);
-      auto const scale_offset = expert * scale_rows * scale_cols;
+      constexpr bool use_wfp4a16_scale_layout =
+#if defined(ENABLE_FP4) && defined(ENABLE_BF16)
+          std::is_same_v<WeightType, __nv_fp4_e2m1> &&
+          (std::is_same_v<T, half> || std::is_same_v<T, __nv_bfloat16>);
+#elif defined(ENABLE_FP4)
+          std::is_same_v<WeightType, __nv_fp4_e2m1> && std::is_same_v<T, half>;
+#else
+          false;
+#endif
+      int64_t scale_offset = 0;
+      if constexpr (use_wfp4a16_scale_layout) {
+        scale_offset = expert * (gemm_n * gemm_k / groupwise_scale_group_size);
+      } else {
+        constexpr int scale_cols_alignment = 4;
+        auto const scale_rows = TmaWarpSpecializedGroupedGemmInput::alignToSfDim(
+            gemm_n, TmaWarpSpecializedGroupedGemmInput::MinNDimAlignmentMXFPX);
+        auto const scale_cols = TmaWarpSpecializedGroupedGemmInput::alignToSfDim(
+            gemm_k / groupwise_scale_group_size, scale_cols_alignment);
+        scale_offset = expert * scale_rows * scale_cols;
+      }
       layout_info.int4_groupwise_params.ptr_s_a[out_idx] =
           reinterpret_cast<TmaWarpSpecializedGroupedGemmInput::INT4GroupwiseParams::SFA const*>(
               safe_inc_ptr(mxfp4_weight_scale, scale_offset));
@@ -2562,12 +2576,18 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
   layout_info2.stride_c = nullptr;
 
   auto alpha_scale_flat1 = use_fp4        ? quant_params.fp4.fc1.global_scale
+                           : use_wfp4a16  ? (quant_params.mxfp8_mxfp4.fc1.global_scale
+                                                 ? quant_params.mxfp8_mxfp4.fc1.global_scale
+                                                 : quant_params.fp8_mxfp4.fc1.global_scale)
                            : use_wfp4afp8 ? (quant_params.fp8_mxfp4.fc1.global_scale
                                                  ? quant_params.fp8_mxfp4.fc1.global_scale
                                                  : quant_params.mxfp8_mxfp4.fc1.global_scale)
                            : use_fp8      ? fp8_dequant1
                                           : nullptr;
   auto alpha_scale_flat2 = use_fp4        ? quant_params.fp4.fc2.global_scale
+                           : use_wfp4a16  ? (quant_params.mxfp8_mxfp4.fc2.global_scale
+                                                 ? quant_params.mxfp8_mxfp4.fc2.global_scale
+                                                 : quant_params.fp8_mxfp4.fc2.global_scale)
                            : use_wfp4afp8 ? (quant_params.fp8_mxfp4.fc2.global_scale
                                                  ? quant_params.fp8_mxfp4.fc2.global_scale
                                                  : quant_params.mxfp8_mxfp4.fc2.global_scale)
@@ -2580,6 +2600,8 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
 
   layout_info1.int4_groupwise_params.enabled = use_w4afp8 || use_wfp4a16 || quant_params.groupwise.group_size > 0;
   layout_info2.int4_groupwise_params.enabled = use_w4afp8 || use_wfp4a16 || quant_params.groupwise.group_size > 0;
+  layout_info1.int4_groupwise_params.use_wfp4a16 = use_wfp4a16;
+  layout_info2.int4_groupwise_params.use_wfp4a16 = use_wfp4a16;
 
   layout_info1.fpX_block_scaling_type = getScalingType();
   layout_info2.fpX_block_scaling_type = getScalingType();
@@ -2644,7 +2666,8 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
     gemm2_tma_ws_input.fusion = TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::NONE;
 
     bool apply_bias = parallelism_config.tp_rank == 0;
-    bool using_hopper_fused_finalize = !use_deterministic_hopper_reduce_ && gemm2_config_->sm_version == 90 && !use_w4afp8;
+    bool using_hopper_fused_finalize = !use_deterministic_hopper_reduce_ && gemm2_config_->sm_version == 90 &&
+                                       !use_w4afp8 && !use_wfp4a16;
     if (using_hopper_fused_finalize) {
       gemm2_tma_ws_input.fusion = TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::FINALIZE;
       gemm2_tma_ws_input.setFinalizeFusionParams(final_output, permuted_token_final_scales_,

@@ -201,8 +201,10 @@ struct TmaWarpSpecializedGroupedGemmInput {
   FpXBlockScalingType fpX_block_scaling_type = FpXBlockScalingType::NONE;
 
   struct INT4GroupwiseParams {
-    constexpr static int group_size = 128;  // Unused, hard-coded to 128
+    constexpr static int int4_group_size = 128;
+    constexpr static int wfp4a16_group_size = 32;
     bool enabled = false;
+    bool use_wfp4a16 = false;
     using SFA = __nv_bfloat16;
     using SFB = __nv_bfloat16;  // Unused
     using ProblemShapeInt = cutlass::gemm::GroupProblemShape<cute::Shape<int, int, int>>;

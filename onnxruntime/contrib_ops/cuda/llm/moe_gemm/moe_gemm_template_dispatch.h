@@ -698,7 +698,7 @@ bool MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::supportsTmaWarpSpe
   }
 
   if constexpr (use_wfp4a16) {
-    return sm_ >= 120 && kernels::cutlass_kernels::isValidHopperMOESpecialisation<T, WeightType>();
+    return sm_ >= 90 && kernels::cutlass_kernels::isValidHopperMOESpecialisation<T, WeightType>();
   } else {
     return (sm_ == 90 && kernels::cutlass_kernels::isValidHopperMOESpecialisation<T, WeightType>()) ||
            (sm_ >= 100 && sm_ < 120 && kernels::cutlass_kernels::isValidBlackwellMOESpecialisation<T, WeightType>()) ||
@@ -865,39 +865,12 @@ void MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::dispatchToArch(
 #endif
         ORT_ENFORCE(inputs.gemm_config.is_tma_warp_specialized,
                     "wfp4a16 is only supported for TMA warp specialization");
-        // Select fusion and K tile based on runtime information
-        auto select_fusion = [&]() {
-          switch (hopper_inputs.fusion) {
-            case TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::FINALIZE:
-              if (inputs.k % 256 == 0) {
-                sm90_dispatch_moe_mixed_dtype_gemm_to_cutlass<T, WeightType, ScaleBiasType,
-                                                              cutlass_extensions::EpilogueOpDefault,
-                                                              TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::FINALIZE, 1>(
-                    inputs, hopper_inputs, multi_processor_count_, nullptr);
-              } else {
-                sm90_dispatch_moe_mixed_dtype_gemm_to_cutlass<T, WeightType, ScaleBiasType,
-                                                              cutlass_extensions::EpilogueOpDefault,
-                                                              TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::FINALIZE, 2>(
-                    inputs, hopper_inputs, multi_processor_count_, nullptr);
-              }
-              break;
-            case TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::NONE:
-            default:
-              if (inputs.k % 256 == 0) {
-                sm90_dispatch_moe_mixed_dtype_gemm_to_cutlass<T, WeightType, ScaleBiasType,
-                                                              cutlass_extensions::EpilogueOpDefault,
-                                                              TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::NONE, 1>(
-                    inputs, hopper_inputs, multi_processor_count_, nullptr);
-              } else {
-                sm90_dispatch_moe_mixed_dtype_gemm_to_cutlass<T, WeightType, ScaleBiasType,
-                                                              cutlass_extensions::EpilogueOpDefault,
-                                                              TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::NONE, 2>(
-                    inputs, hopper_inputs, multi_processor_count_, nullptr);
-              }
-              break;
-          }
-        };
-        select_fusion();
+        ORT_ENFORCE(hopper_inputs.fusion == TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::NONE,
+                    "wfp4a16 does not support fused finalize");
+        sm90_dispatch_moe_mixed_dtype_gemm_to_cutlass<T, WeightType, ScaleBiasType,
+                                                      cutlass_extensions::EpilogueOpDefault,
+                                                      TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::NONE, 1>(
+            inputs, hopper_inputs, multi_processor_count_, nullptr);
         return;
 #ifdef ORT_QUICK_BUILD
       }

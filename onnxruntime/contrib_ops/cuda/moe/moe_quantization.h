@@ -124,6 +124,7 @@ class QMoE final : public CudaKernel, public MoEBase {
   // fc2 GEMV -> finalize) instead of dequantizing to dense weights. Falls back to the
   // dequant path for unsupported shapes (prefill / large batch).
   bool enable_fp4_gemv_ = false;
+  bool enable_fp4_cutlass_gemm_ = false;
   IAllocatorUniquePtr<void> gemv_fp4_fc1_weights_;  // [E, 2*inter, hidden/2] row-major e2m1
   IAllocatorUniquePtr<void> gemv_fp4_fc2_weights_;  // [E, hidden, inter/2] row-major e2m1
   IAllocatorUniquePtr<void> gemv_fp4_fc1_scales_;   // [E, hidden/32, 2*inter] activation dtype
