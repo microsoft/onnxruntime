@@ -5,9 +5,15 @@
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
 #include <math_constants.h>
+
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
+
+// Include env_var_utils.h after cuda_common.h: the latter transitively pulls in provider_api.h,
+// which defines SHARED_PROVIDER. That guard suppresses env_var_utils.h's own logging.h include and
+// avoids redefining CREATE_MESSAGE/LOGS_CATEGORY in this provider-bridge translation unit.
+#include "core/platform/env_var_utils.h"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -15,6 +21,35 @@ using namespace cub;
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
+
+// The specialized router GEMV kernel only handles M=1, or batch size 1.
+constexpr int kRouterM = 1;
+
+// MoE router shape (N = number of experts, K = hidden size). The specialization is exact-shape
+// gated to the GPT-OSS-20B router projection to keep the dispatch change conservative.
+constexpr int kGptOssRouterN = 32;
+constexpr int kGptOssRouterK = 2880;
+
+static bool IsRouterGemvSpecializationDisabled() {
+  // Use ORT's cross-platform env var helper instead of std::getenv, which is unsafe on Windows.
+  return ParseEnvironmentVariableWithDefault<bool>("ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION", false);
+}
+
+// The router GEMV kernel handles any symmetric (no zero point) M=1 shape with an int4 group size of
+// 32 or 64 (whichever quantizes best) and N divisible by kColsPerThreadBlock. We gate on the exact
+// GPT-OSS-20B router shape to avoid changing the dispatch for general MatMulNBits cases. K must be a
+// multiple of the group size (always true for a router) and N a multiple of kColsPerThreadBlock
+// (checked in TryMatMul4Bits). Note kPerIter (256) is divisible by both 32 and 64, so the scale
+// stride is exact.
+static bool IsSupportedRouterGemvShape(const uint8_t* zero_points, int m, int n, int k, int block_size) {
+  if (zero_points != nullptr || m != kRouterM || (block_size != 32 && block_size != 64)) {
+    return false;
+  }
+  if (k % block_size != 0) {
+    return false;
+  }
+  return n == kGptOssRouterN && k == kGptOssRouterK;  // gpt-oss-20b
+}
 
 template <typename T>
 __device__ __forceinline__ T WarpUniform(T value) {
@@ -325,6 +360,87 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
   }
 }  // namespace cuda
 
+// Reduces kUnroll groups of kPerIter elements per step, advancing the packed-weight pointer, scale
+// index and k position in lockstep. Factored out of MatMulFloatInt4RouterKernel so the three unroll
+// factors (16, 4, 1) share one implementation instead of a macro.
+template <class T, int BlockSize, int kUnroll>
+__device__ __forceinline__ void RouterUnrollReduction(
+    const uint8_t*& b_data_quant,
+    const T* scales_data,
+    const T* a_data,
+    int k,
+    int& k_id,
+    int& scale_id,
+    T (&sums)[8]) {
+  constexpr int kPerIter = kWarpSize * kElementsPerThreadPerIteration;
+  constexpr int kUnrollStep = kUnroll * kPerIter;
+  const int k_unroll_bound = k - k % kUnrollStep;
+  for (; k_id < k_unroll_bound; k_id += kUnrollStep) {
+#pragma unroll
+    for (int i = 0; i < kUnroll; i++) {
+      uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant + kPerIter / 2 * i));
+      T scale = scales_data[scale_id + kPerIter / BlockSize * i];
+      AccumulateEightElements4b(value, scale, 8, a_data + k_id + i * kPerIter, sums);
+    }
+    b_data_quant += kPerIter / 2 * kUnroll;
+    scale_id += kPerIter / BlockSize * kUnroll;
+  }
+}
+
+// GEMV specialization for MoE routers: output(1, N) = a(1, K) x dequant(B(N, K)) [+ bias(N)].
+// B is 4-bit block-quantized (symmetric, no zero point) with group size BlockSize (32 or 64). One warp
+// computes one expert column; the thread block holds kColsPerThreadBlock warps. N is passed via the
+// grid and K at runtime, so a single instantiation per (T, BlockSize) serves every router shape.
+// Requirements (satisfied by the dispatch in TryMatMul4Bits): N % kColsPerThreadBlock == 0,
+// K % BlockSize == 0, and kPerIter % BlockSize == 0 so the per-iteration scale stride is exact.
+template <class T, int BlockSize>
+__global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt4RouterKernel(
+    T* output,
+    const T* a_data,
+    const uint8_t* b_data_quant,
+    const T* scales_data,
+    const T* bias_data,
+    int n,
+    int k) {
+  constexpr int kPerIter = kWarpSize * kElementsPerThreadPerIteration;
+  static_assert(kPerIter % BlockSize == 0, "kPerIter must be a multiple of BlockSize for exact scale stride");
+
+  const int lane_id = threadIdx.x;
+  const int warp_id = WarpUniform(threadIdx.y);
+  const int n_id = blockIdx.x * kColsPerThreadBlock + warp_id;
+
+  // Each column occupies k/2 bytes of packed 4-bit weights and k/BlockSize scales.
+  a_data += lane_id << 3;
+  b_data_quant += static_cast<size_t>(n_id) * (k / 2) + lane_id * 4;
+  scales_data += static_cast<size_t>(n_id) * (k / BlockSize);
+
+  T sums[8] = {0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f};
+  int k_id = 0;
+  int scale_id = lane_id * 8 / BlockSize;
+
+  RouterUnrollReduction<T, BlockSize, 16>(b_data_quant, scales_data, a_data, k, k_id, scale_id, sums);
+  RouterUnrollReduction<T, BlockSize, 4>(b_data_quant, scales_data, a_data, k, k_id, scale_id, sums);
+  RouterUnrollReduction<T, BlockSize, 1>(b_data_quant, scales_data, a_data, k, k_id, scale_id, sums);
+
+  if (k_id + lane_id * 8 < k) {
+    uint32_t value = *(reinterpret_cast<const uint32_t*>(b_data_quant));
+    T scale = scales_data[scale_id];
+    AccumulateEightElements4b(value, scale, 8, a_data + k_id, sums);
+  }
+
+  float sum = static_cast<float>(sums[0] + sums[1] + sums[2] + sums[3] + sums[4] + sums[5] + sums[6] + sums[7]);
+  for (int i = kWarpSize / 2; i > 0; i = i / 2) {
+    sum += WARP_SHFL_DOWN(sum, i);
+  }
+
+  if (lane_id == 0) {
+    if (bias_data != nullptr) {
+      sum += static_cast<float>(bias_data[n_id]);
+    }
+    output[n_id] = sum;
+  }
+}
+
 template <class T>
 bool TryMatMul4Bits(
     T* output,
@@ -332,6 +448,7 @@ bool TryMatMul4Bits(
     const uint8_t* b_data_quant,
     const T* scales_data,
     const uint8_t* zero_points,
+    const T* bias_data,
     int m,
     int n,
     int k,
@@ -341,6 +458,25 @@ bool TryMatMul4Bits(
   if (n % kColsPerThreadBlock != 0 || k % 8 != 0 || m > 1) {
     return false;
   }
+
+  if (IsSupportedRouterGemvShape(zero_points, m, n, k, block_size) &&
+      !IsRouterGemvSpecializationDisabled()) {
+    const dim3 blocks(n / kColsPerThreadBlock, 1);
+    const dim3 threads(GPU_WARP_SIZE_HOST, kColsPerThreadBlock);
+    if (block_size == 32) {
+      MatMulFloatInt4RouterKernel<T, 32><<<blocks, threads, 0, stream>>>(
+          output, a_data, b_data_quant, scales_data, bias_data, n, k);
+    } else {
+      MatMulFloatInt4RouterKernel<T, 64><<<blocks, threads, 0, stream>>>(
+          output, a_data, b_data_quant, scales_data, bias_data, n, k);
+    }
+    return true;
+  }
+
+  if (bias_data != nullptr) {
+    return false;
+  }
+
   dim3 blocks((n + kColsPerThreadBlock - 1) / kColsPerThreadBlock, m);
   dim3 threads(GPU_WARP_SIZE_HOST, kColsPerThreadBlock);
   int blocks_per_K = (k + block_size - 1) / block_size;
@@ -382,6 +518,7 @@ template bool TryMatMul4Bits<float>(
     const uint8_t* b_data_quant,
     const float* scales_data,
     const uint8_t* zero_points,
+    const float* bias_data,
     int m,
     int n,
     int k,
@@ -395,6 +532,7 @@ template bool TryMatMul4Bits<half>(
     const uint8_t* b_data_quant,
     const half* scales_data,
     const uint8_t* zero_points,
+    const half* bias_data,
     int m,
     int n,
     int k,
@@ -408,12 +546,50 @@ template bool TryMatMul4Bits<nv_bfloat16>(
     const uint8_t* b_data_quant,
     const nv_bfloat16* scales_data,
     const uint8_t* zero_points,
+    const nv_bfloat16* bias_data,
     int m,
     int n,
     int k,
     int block_size,
     size_t shared_mem_per_block,
     cudaStream_t stream);
+
+template <typename T>
+__global__ void MatMulNBitsBiasAddKernel(T* output, const T* bias_data, int n, int64_t total) {
+  const int64_t stride = static_cast<int64_t>(gridDim.x) * blockDim.x;
+  for (int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+       idx < total;
+       idx += stride) {
+    const int col = static_cast<int>(idx % n);
+    // Accumulate in float to stay accurate for half/bfloat16.
+    output[idx] = static_cast<T>(static_cast<float>(output[idx]) + static_cast<float>(bias_data[col]));
+  }
+}
+
+template <class T>
+void LaunchMatMulNBitsBiasAdd(T* output, const T* bias_data, int m, int n, cudaStream_t stream) {
+  const int64_t total = static_cast<int64_t>(m) * static_cast<int64_t>(n);
+  if (total == 0) {
+    return;
+  }
+  constexpr int kThreadsPerBlock = 256;
+  // Cap the grid at the CUDA gridDim.x limit (2^31 - 1); the kernel uses a grid-stride loop, so a
+  // capped grid still covers every element without truncating the launch size.
+  constexpr int64_t kMaxGridBlocks = 2147483647;
+  const int64_t blocks = (total + kThreadsPerBlock - 1) / kThreadsPerBlock;
+  const int64_t num_blocks = blocks < kMaxGridBlocks ? blocks : kMaxGridBlocks;
+  MatMulNBitsBiasAddKernel<T><<<static_cast<unsigned int>(num_blocks), kThreadsPerBlock, 0, stream>>>(
+      output, bias_data, n, total);
+}
+
+template void LaunchMatMulNBitsBiasAdd<float>(
+    float* output, const float* bias_data, int m, int n, cudaStream_t stream);
+
+template void LaunchMatMulNBitsBiasAdd<half>(
+    half* output, const half* bias_data, int m, int n, cudaStream_t stream);
+
+template void LaunchMatMulNBitsBiasAdd<nv_bfloat16>(
+    nv_bfloat16* output, const nv_bfloat16* bias_data, int m, int n, cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib

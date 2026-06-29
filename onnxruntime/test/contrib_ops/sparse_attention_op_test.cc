@@ -24,10 +24,10 @@ namespace test {
 
 namespace {
 
-void RunSparseAttentionInvalidInputTest(const std::vector<int32_t>& total_key_lengths_data,
-                                        const std::vector<int64_t>& total_key_lengths_dims,
-                                        const std::string& expected_error,
-                                        int32_t total_sequence_length = 4) {
+void RunSparseAttentionInvalidKeyLengthsTest(const std::vector<int32_t>& total_key_lengths_data,
+                                             const std::vector<int64_t>& total_key_lengths_dims,
+                                             const std::string& expected_error,
+                                             int32_t total_sequence_length = 4) {
   OpTester test("SparseAttention", 1, onnxruntime::kMSDomain);
   test.AddAttribute<int64_t>("num_heads", 2);
   test.AddAttribute<int64_t>("kv_num_heads", 2);
@@ -42,7 +42,7 @@ void RunSparseAttentionInvalidInputTest(const std::vector<int32_t>& total_key_le
   test.AddInput<float>("past_key", {1, 2, 4, 8}, std::vector<float>(64, 0.0f));
   test.AddInput<float>("past_value", {1, 2, 4, 8}, std::vector<float>(64, 0.0f));
   test.AddInput<int32_t>("block_row_indices", {1, 5}, {0, 1, 2, 3, 4});
-  test.AddInput<int32_t>("block_col_indices", {1, 1}, {0});
+  test.AddInput<int32_t>("block_col_indices", {1, 4}, {0, 1, 2, 3});
   test.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length});
   test.AddInput<int32_t>("key_total_sequence_lengths", total_key_lengths_dims, total_key_lengths_data);
   test.AddOptionalInputEdge<float>();
@@ -209,17 +209,17 @@ void RunSparseAttentionPromptInputTest(const std::vector<int32_t>& total_key_len
 }  // namespace
 
 TEST(SparseAttentionTest, RejectsOutOfRangeKeyTotalSequenceLengths) {
-  RunSparseAttentionInvalidInputTest({-5}, {1}, "key_total_sequence_lengths value -5 at batch index 0 is out of range [1, 4]");
+  RunSparseAttentionInvalidKeyLengthsTest({-5}, {1}, "key_total_sequence_lengths value -5 at batch index 0 is out of range [1, 4]");
 }
 
 TEST(SparseAttentionTest, RejectsKeyTotalSequenceLengthsShapeMismatch) {
-  RunSparseAttentionInvalidInputTest({4, 4}, {2}, "key_total_sequence_lengths must have shape (batch_size)");
+  RunSparseAttentionInvalidKeyLengthsTest({4, 4}, {2}, "key_total_sequence_lengths must have shape (batch_size)");
 }
 
 TEST(SparseAttentionTest, RejectsPromptKeyTotalSequenceLengthsShorterThanSequenceLength) {
-  RunSparseAttentionInvalidInputTest({0}, {1},
-                                     "key_total_sequence_lengths value 0 at batch index 0 is out of range [1, 1]",
-                                     1);
+  RunSparseAttentionInvalidKeyLengthsTest({0}, {1},
+                                          "key_total_sequence_lengths value 0 at batch index 0 is out of range [1, 1]",
+                                          1);
 }
 
 TEST(SparseAttentionTest, AcceptsPromptKeyTotalSequenceLengthsForPaddedBatch) {
@@ -257,6 +257,279 @@ TEST(SparseAttentionTest, RejectsZeroDimBlockRowIndices) {
            "block_row_indices must have shape (num_layout, max_blocks + 1) where num_heads is divisible by num_layout.",
            {}, nullptr, &execution_providers);
 }
+
+// Helper for CSR value-validation tests.
+// Uses: num_heads=2, kv_num_heads=2, sparse_block_size=16, head_size=8.
+// block_row_indices shape: (1, max_blocks+1), block_col_indices shape: (1, col_count).
+// max_sequence_length = max_blocks * 16 must be >= total_sequence_length.
+// These tests validate that element values in block_row_indices and block_col_indices are checked.
+// Note: these tests expect failure via a returned Status (ORT_MAKE_STATUS), so they are safe in
+// both exceptions-enabled and no-exceptions builds.
+static void RunSparseAttentionCSRValidationTest(
+    const std::vector<int32_t>& block_row_indices_data,
+    const std::vector<int64_t>& block_row_indices_dims,
+    const std::vector<int32_t>& block_col_indices_data,
+    const std::vector<int64_t>& block_col_indices_dims,
+    const std::string& expected_error) {
+  OpTester test("SparseAttention", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("num_heads", 2);
+  test.AddAttribute<int64_t>("kv_num_heads", 2);
+  test.AddAttribute<int64_t>("sparse_block_size", 16);
+  test.AddAttribute<float>("scale", 1.0f);
+  test.AddAttribute<int64_t>("do_rotary", 0);
+  test.AddAttribute<int64_t>("rotary_interleaved", 0);
+
+  // head_size=8, num_heads=2 => hidden_size=16
+  // sequence_length=1, batch_size=1
+  test.AddInput<float>("query", {1, 1, 16}, std::vector<float>(16, 0.0f));
+  test.AddInput<float>("key", {1, 1, 16}, std::vector<float>(16, 0.0f));
+  test.AddInput<float>("value", {1, 1, 16}, std::vector<float>(16, 0.0f));
+  // past_key/value: (batch_size=1, kv_num_heads=2, max_cache_seq_len=32, head_size=8)
+  test.AddInput<float>("past_key", {1, 2, 32, 8}, std::vector<float>(512, 0.0f));
+  test.AddInput<float>("past_value", {1, 2, 32, 8}, std::vector<float>(512, 0.0f));
+  test.AddInput<int32_t>("block_row_indices", block_row_indices_dims, block_row_indices_data);
+  test.AddInput<int32_t>("block_col_indices", block_col_indices_dims, block_col_indices_data);
+  test.AddInput<int32_t>("total_sequence_length", {1}, {2});
+  test.AddInput<int32_t>("key_total_sequence_lengths", {1}, {2});
+  test.AddOptionalInputEdge<float>();
+  test.AddOptionalInputEdge<float>();
+
+  test.AddOutput<float>("output", {1, 1, 16}, std::vector<float>(16, 0.0f));
+  test.AddOutput<float>("present_key", {1, 2, 32, 8}, std::vector<float>(512, 0.0f));
+  test.AddOutput<float>("present_value", {1, 2, 32, 8}, std::vector<float>(512, 0.0f));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, expected_error, {}, nullptr, &execution_providers);
+}
+
+// block_row_indices[0][0] must be 0.
+TEST(SparseAttentionTest, RejectsBlockRowIndicesFirstElementNonZero) {
+  // shape (1, 3) => max_blocks=2, max_sequence_length=32
+  RunSparseAttentionCSRValidationTest(
+      {1, 1, 2}, {1, 3},  // row indices: first element is 1, not 0
+      {0, 1}, {1, 2},     // col indices: valid
+      "block_row_indices[0][0] must be 0");
+}
+
+// block_row_indices must be monotonically non-decreasing.
+TEST(SparseAttentionTest, RejectsBlockRowIndicesNonMonotonic) {
+  // shape (1, 3) => max_blocks=2
+  RunSparseAttentionCSRValidationTest(
+      {0, 2, 1}, {1, 3},  // row indices: 2 > 1 at row 1 (non-monotonic)
+      {0, 1}, {1, 2},     // col indices: valid
+      "block_row_indices values are not monotonically non-decreasing");
+}
+
+// block_row_indices values must not exceed block_col_indices column count.
+TEST(SparseAttentionTest, RejectsBlockRowIndicesExceedsColCount) {
+  // shape (1, 3) => max_blocks=2, col_count=2
+  RunSparseAttentionCSRValidationTest(
+      {0, 1, 3}, {1, 3},  // row indices: last element 3 > col_count=2
+      {0, 1}, {1, 2},     // col indices shape (1, 2)
+      "block_row_indices values are not monotonically non-decreasing");
+}
+
+// block_col_indices values must be in [0, max_blocks).
+TEST(SparseAttentionTest, RejectsBlockColIndicesOutOfRange) {
+  // shape (1, 3) => max_blocks=2
+  RunSparseAttentionCSRValidationTest(
+      {0, 1, 2}, {1, 3},  // row indices: valid
+      {0, 2}, {1, 2},     // col indices: value 2 >= max_blocks=2
+      "block_col_indices[0][1]=2 is out of valid range [0, 2)");
+}
+
+// block_col_indices negative values must be rejected.
+TEST(SparseAttentionTest, RejectsBlockColIndicesNegative) {
+  // shape (1, 3) => max_blocks=2
+  RunSparseAttentionCSRValidationTest(
+      {0, 1, 2}, {1, 3},  // row indices: valid
+      {0, -1}, {1, 2},    // col indices: negative value
+      "block_col_indices[0][1]=-1 is out of valid range [0, 2)");
+}
+
+// block_row_indices with negative values.
+TEST(SparseAttentionTest, RejectsBlockRowIndicesNegative) {
+  RunSparseAttentionCSRValidationTest(
+      {0, -1, 2}, {1, 3},  // row indices: negative value at index 1
+      {0, 1}, {1, 2},      // col indices: valid
+      "block_row_indices values are not monotonically non-decreasing");
+}
+
+// block_col_indices with large OOB value (the original vulnerability scenario).
+TEST(SparseAttentionTest, RejectsBlockColIndicesLargeValue) {
+  // shape (1, 3) => max_blocks=2
+  RunSparseAttentionCSRValidationTest(
+      {0, 2, 2}, {1, 3},     // row indices: valid CSR format
+      {0, 1048576}, {1, 2},  // col indices: 0x100000 far out of range
+      "block_col_indices[0][1]=1048576 is out of valid range [0, 2)");
+}
+
+// Multi-layout: invalid col index in second layout only.
+TEST(SparseAttentionTest, RejectsBlockColIndicesInvalidInSecondLayout) {
+  // shape (2, 3) => num_layout=2, max_blocks=2
+  // num_heads=2, so num_heads % num_layout == 0
+  RunSparseAttentionCSRValidationTest(
+      {0, 1, 2, 0, 1, 2}, {2, 3},  // row indices: valid for both layouts
+      {0, 1, 0, 5}, {2, 2},        // col indices: layout 0 valid, layout 1 has 5 >= max_blocks=2
+      "block_col_indices[1][1]=5 is out of valid range [0, 2)");
+}
+
+// Multi-layout: invalid row pointer in second layout only.
+TEST(SparseAttentionTest, RejectsBlockRowIndicesInvalidInSecondLayout) {
+  // shape (2, 3) => num_layout=2, max_blocks=2
+  RunSparseAttentionCSRValidationTest(
+      {0, 1, 2, 1, 1, 2}, {2, 3},  // row indices: layout 0 valid, layout 1 starts with 1 != 0
+      {0, 1, 0, 1}, {2, 2},        // col indices: valid
+      "block_row_indices[1][0] must be 0");
+}
+
+// Col index invalid within NNZ range but padding would be fine.
+// row pointers say nnz=1, col[0] is invalid, col[1] is padding (not checked).
+TEST(SparseAttentionTest, RejectsBlockColIndicesInvalidWithinNNZ) {
+  // shape (1, 3) => max_blocks=2, row indices: {0, 1, 1} means row 0 has 1 entry, row 1 has 0
+  // nnz = r[max_blocks] = r[2] = 1, so only col[0] is validated
+  RunSparseAttentionCSRValidationTest(
+      {0, 1, 1}, {1, 3},  // row indices: valid, nnz=1
+      {99, 0}, {1, 2},    // col[0]=99 is out of range, col[1]=0 is padding (not checked)
+      "block_col_indices[0][0]=99 is out of valid range [0, 2)");
+}
+
+#if defined(USE_CUDA)
+// CUDA-specific CSR validation tests.
+// CUDA SparseAttention requires head_size=128, sparse_block_size=64, and MLFloat16 inputs.
+// These tests verify that the device-side ValidateCSRIndicesOnDevice kernel correctly
+// rejects invalid CSR indices. Error messages are less detailed than CPU (no per-element info)
+// because the CUDA kernel reports via a single error code.
+// Note: OpTester does not share past/present buffers (no IOBinding), but that is fine here
+// because the CSR validation runs before the shared-buffer check in ComputeInternal.
+// These tests expect failure from validation, not from compute.
+static void RunSparseAttentionCudaCSRValidationTest(
+    const std::vector<int32_t>& block_row_indices_data,
+    const std::vector<int64_t>& block_row_indices_dims,
+    const std::vector<int32_t>& block_col_indices_data,
+    const std::vector<int64_t>& block_col_indices_dims,
+    const std::string& expected_error) {
+  OpTester test("SparseAttention", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("num_heads", 1);
+  test.AddAttribute<int64_t>("kv_num_heads", 1);
+  test.AddAttribute<int64_t>("sparse_block_size", 64);
+  test.AddAttribute<float>("scale", 1.0f);
+  test.AddAttribute<int64_t>("do_rotary", 0);
+  test.AddAttribute<int64_t>("rotary_interleaved", 0);
+
+  // head_size=128, num_heads=1 => hidden_size=128
+  // sequence_length=1, batch_size=1
+  const int64_t hidden_size = 128;
+  const int64_t max_cache_seq_len = 128;
+  test.AddInput<MLFloat16>("query", {1, 1, hidden_size},
+                           std::vector<MLFloat16>(hidden_size, MLFloat16(0.0f)));
+  test.AddInput<MLFloat16>("key", {1, 1, hidden_size},
+                           std::vector<MLFloat16>(hidden_size, MLFloat16(0.0f)));
+  test.AddInput<MLFloat16>("value", {1, 1, hidden_size},
+                           std::vector<MLFloat16>(hidden_size, MLFloat16(0.0f)));
+  test.AddInput<MLFloat16>("past_key", {1, 1, max_cache_seq_len, hidden_size},
+                           std::vector<MLFloat16>(max_cache_seq_len * hidden_size, MLFloat16(0.0f)));
+  test.AddInput<MLFloat16>("past_value", {1, 1, max_cache_seq_len, hidden_size},
+                           std::vector<MLFloat16>(max_cache_seq_len * hidden_size, MLFloat16(0.0f)));
+  test.AddInput<int32_t>("block_row_indices", block_row_indices_dims, block_row_indices_data);
+  test.AddInput<int32_t>("block_col_indices", block_col_indices_dims, block_col_indices_data);
+  test.AddInput<int32_t>("total_sequence_length", {1}, {2});
+  test.AddInput<int32_t>("key_total_sequence_lengths", {1}, {2});
+  test.AddOptionalInputEdge<MLFloat16>();
+  test.AddOptionalInputEdge<MLFloat16>();
+
+  test.AddOutput<MLFloat16>("output", {1, 1, hidden_size},
+                            std::vector<MLFloat16>(hidden_size, MLFloat16(0.0f)));
+  test.AddOutput<MLFloat16>("present_key", {1, 1, max_cache_seq_len, hidden_size},
+                            std::vector<MLFloat16>(max_cache_seq_len * hidden_size, MLFloat16(0.0f)));
+  test.AddOutput<MLFloat16>("present_value", {1, 1, max_cache_seq_len, hidden_size},
+                            std::vector<MLFloat16>(max_cache_seq_len * hidden_size, MLFloat16(0.0f)));
+
+  // Run only on CUDA EP. CPU EP does not register MLFloat16 for SparseAttention with these params.
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, expected_error, {}, nullptr, &execution_providers);
+}
+
+// CUDA: block_row_indices first element must be 0.
+TEST(SparseAttentionTest, CudaRejectsBlockRowIndicesFirstElementNonZero) {
+  // shape (1, 3) => max_blocks=2
+  RunSparseAttentionCudaCSRValidationTest(
+      {1, 1, 2}, {1, 3},
+      {0, 1}, {1, 2},
+      "block_row_indices first element must be 0 for all layouts");
+}
+
+// CUDA: block_row_indices must be monotonically non-decreasing.
+TEST(SparseAttentionTest, CudaRejectsBlockRowIndicesNonMonotonic) {
+  RunSparseAttentionCudaCSRValidationTest(
+      {0, 2, 1}, {1, 3},
+      {0, 1}, {1, 2},
+      "block_row_indices values are not monotonically non-decreasing");
+}
+
+// CUDA: block_col_indices values must be in range.
+TEST(SparseAttentionTest, CudaRejectsBlockColIndicesOutOfRange) {
+  RunSparseAttentionCudaCSRValidationTest(
+      {0, 1, 2}, {1, 3},
+      {0, 99}, {1, 2},
+      "block_col_indices value is out of valid range");
+}
+
+// CUDA: block_col_indices with large OOB value.
+TEST(SparseAttentionTest, CudaRejectsBlockColIndicesLargeValue) {
+  RunSparseAttentionCudaCSRValidationTest(
+      {0, 2, 2}, {1, 3},
+      {0, 1048576}, {1, 2},
+      "block_col_indices value is out of valid range");
+}
+
+// CUDA: key_total_sequence_lengths out of range.
+TEST(SparseAttentionTest, CudaRejectsKeyLengthOutOfRange) {
+  OpTester test("SparseAttention", 1, onnxruntime::kMSDomain);
+  test.AddAttribute<int64_t>("num_heads", 1);
+  test.AddAttribute<int64_t>("kv_num_heads", 1);
+  test.AddAttribute<int64_t>("sparse_block_size", 64);
+  test.AddAttribute<float>("scale", 1.0f);
+  test.AddAttribute<int64_t>("do_rotary", 0);
+  test.AddAttribute<int64_t>("rotary_interleaved", 0);
+
+  const int64_t hidden_size = 128;
+  const int64_t max_cache_seq_len = 128;
+  test.AddInput<MLFloat16>("query", {1, 1, hidden_size},
+                           std::vector<MLFloat16>(hidden_size, MLFloat16(0.0f)));
+  test.AddInput<MLFloat16>("key", {1, 1, hidden_size},
+                           std::vector<MLFloat16>(hidden_size, MLFloat16(0.0f)));
+  test.AddInput<MLFloat16>("value", {1, 1, hidden_size},
+                           std::vector<MLFloat16>(hidden_size, MLFloat16(0.0f)));
+  test.AddInput<MLFloat16>("past_key", {1, 1, max_cache_seq_len, hidden_size},
+                           std::vector<MLFloat16>(max_cache_seq_len * hidden_size, MLFloat16(0.0f)));
+  test.AddInput<MLFloat16>("past_value", {1, 1, max_cache_seq_len, hidden_size},
+                           std::vector<MLFloat16>(max_cache_seq_len * hidden_size, MLFloat16(0.0f)));
+  // Valid CSR: shape (1, 3) => max_blocks=2
+  test.AddInput<int32_t>("block_row_indices", {1, 3}, {0, 1, 2});
+  test.AddInput<int32_t>("block_col_indices", {1, 2}, {0, 1});
+  test.AddInput<int32_t>("total_sequence_length", {1}, {4});
+  // Invalid key length: -5 is out of range [1, 4]
+  test.AddInput<int32_t>("key_total_sequence_lengths", {1}, {-5});
+  test.AddOptionalInputEdge<MLFloat16>();
+  test.AddOptionalInputEdge<MLFloat16>();
+
+  test.AddOutput<MLFloat16>("output", {1, 1, hidden_size},
+                            std::vector<MLFloat16>(hidden_size, MLFloat16(0.0f)));
+  test.AddOutput<MLFloat16>("present_key", {1, 1, max_cache_seq_len, hidden_size},
+                            std::vector<MLFloat16>(max_cache_seq_len * hidden_size, MLFloat16(0.0f)));
+  test.AddOutput<MLFloat16>("present_value", {1, 1, max_cache_seq_len, hidden_size},
+                            std::vector<MLFloat16>(max_cache_seq_len * hidden_size, MLFloat16(0.0f)));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "key_total_sequence_lengths value is out of valid range",
+           {}, nullptr, &execution_providers);
+}
+#endif  // USE_CUDA
 
 }  // namespace test
 }  // namespace onnxruntime

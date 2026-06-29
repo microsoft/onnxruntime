@@ -666,13 +666,13 @@ struct TypeTag {
   using type = T;
 };
 
-// Opt-in: accumulate the GEMV inner product in 16-bit (fp16) instead of the default
-// fp32. Honored only for fp16 activations (bf16 always accumulates in fp32). Set
-// ORT_MOE_GEMV_FP16_ACCUM=1 to measure the perf/accuracy tradeoff of 16-bit accumulation.
-inline bool MoeGemvUseFp16Accum() {
+// Opt-in: accumulate the GEMV inner product in fp32 instead of the default fp16
+// for fp16 activations. bf16 always accumulates in fp32 because 16-bit bf16
+// accumulation is too lossy.
+inline bool MoeGemvUseFp32Accum() {
   // Parsed once via ORT's environment helper (consistent parsing/thread-safety across platforms).
   static bool const enabled =
-      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_MOE_GEMV_FP16_ACCUM", 0) == 1;
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_MOE_GEMV_FP32_ACCUM", 0) == 1;
   return enabled;
 }
 
@@ -771,10 +771,9 @@ void launch_moe_gemv_int_symmetric(T const* act, WeightType const* weight, T con
   ORT_UNUSED_PARAMETER(sm);
   using Details = typename DetailsForTAndWeight<T, WeightType>::Details;
   using TypeA = typename DetailsForTAndWeight<T, WeightType>::TypeA;
-  // Accumulate in fp32 by default. fp16 activations may opt back into 16-bit accumulation
-  // via ORT_MOE_GEMV_FP16_ACCUM=1; bf16 always accumulates in fp32 (16-bit bf16 accumulation
-  // is too lossy). use_fp32_accum selects the kernel's AccT at runtime.
-  bool const use_fp32_accum = !std::is_same_v<T, half> || !MoeGemvUseFp16Accum();
+  // Accumulate fp16 activations in fp16 by default. ORT_MOE_GEMV_FP32_ACCUM=1
+  // restores the previous fp32 accumulation path; bf16 always uses fp32.
+  bool const use_fp32_accum = !std::is_same_v<T, half> || MoeGemvUseFp32Accum();
   auto launch = [&](auto acc_tag) {
     using AccT = typename decltype(acc_tag)::type;
     fiv::dispatch_moe_gemv_group_size<Details, kCtaN, kThreads, TypeA, AccT>(
@@ -801,8 +800,8 @@ void launch_moe_gemv_int_symmetric_interleaved_swiglu(
   ORT_UNUSED_PARAMETER(sm);
   using Details = typename DetailsForTAndWeight<T, WeightType>::Details;
   using TypeA = typename DetailsForTAndWeight<T, WeightType>::TypeA;
-  // Accumulate in fp32 by default (see launch_moe_gemv_int_symmetric for the policy).
-  bool const use_fp32_accum = !std::is_same_v<T, half> || !MoeGemvUseFp16Accum();
+  // Accumulation policy matches launch_moe_gemv_int_symmetric.
+  bool const use_fp32_accum = !std::is_same_v<T, half> || MoeGemvUseFp32Accum();
   // The split-K2 two-pass path always reduces FP32 partials, so it is only valid under fp32
   // accumulation. When ORT_MOE_GEMV_FP16_ACCUM=1 requests 16-bit accumulation, fall back to the
   // single-kernel path below so that env knob continues to behave as documented.
@@ -819,6 +818,7 @@ void launch_moe_gemv_int_symmetric_interleaved_swiglu(
       return;
     }
   }
+
   auto launch = [&](auto acc_tag) {
     using AccT = typename decltype(acc_tag)::type;
     fiv::dispatch_moe_gemv_interleaved_swiglu_group_size<Details, kCtaN, kThreads, TypeA, AccT>(

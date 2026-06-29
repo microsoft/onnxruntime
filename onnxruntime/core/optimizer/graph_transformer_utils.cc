@@ -451,9 +451,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
 #endif
 
-      transformers.emplace_back(std::make_unique<MatMulNBitsFusion>(cpu_ep));
+      transformers.emplace_back(std::make_unique<MatMulNBitsFusion>(cpu_cuda_eps));
       transformers.emplace_back(std::make_unique<GroupQueryAttentionPreNormFusion>(
-          InlinedHashSet<std::string_view>{onnxruntime::kWebGpuExecutionProvider}));
+          InlinedHashSet<std::string_view>{onnxruntime::kCudaExecutionProvider,
+                                           onnxruntime::kWebGpuExecutionProvider}));
       bool has_matmul_nbits_mlp_kernel = false;
       bool has_matmul_nbits_qkv_kernel = false;
       if (execution_providers != nullptr) {

@@ -136,6 +136,20 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                                                            deserialized_value,
                                                            &prepacked_for_graph));
 
+      const Tensor& cpu_staging_tensor = deserialized_value.Get<Tensor>();
+      // Bool external initializers are copied verbatim and may carry bytes outside the canonical
+      // {0, 1} set. The CPU staging tensor above can be backed by a read-only mmap, so normalize into
+      // a writable CPU copy before copying to the device (see utils::NormalizeBoolTensorIfNeeded).
+      if (cpu_staging_tensor.IsDataType<bool>()) {
+        Tensor normalized_cpu_tensor;
+        ORT_RETURN_IF_ERROR(AllocateTensorOnDeviceOrMemory(/* use_device_allocator_for_initializers =*/true,
+                                                           tensor_shape, type,
+                                                           default_cpu_alloc, normalized_cpu_tensor));
+        utils::MakeCpuTensorCopy(cpu_staging_tensor, normalized_cpu_tensor);
+        utils::NormalizeBoolTensorIfNeeded(normalized_cpu_tensor);
+        return CopyTensorFromCPUToDevice(data_transfer_mgr, normalized_cpu_tensor, std::move(tensor), ort_value);
+      }
+
       return CopyTensorFromCPUToDevice(data_transfer_mgr, deserialized_value.Get<Tensor>(),
                                        std::move(tensor), ort_value);
     }

@@ -98,6 +98,17 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
     }
   }
 
+  std::string kv_cache_quantization_bits_str;
+  if (config_options.TryGetConfigEntry(kKvCacheQuantizationBits, kv_cache_quantization_bits_str)) {
+    if (kv_cache_quantization_bits_str == kKvCacheQuantizationBits_OFF) {
+      webgpu_ep_config.kv_cache_quantization_bits = 0;
+    } else if (kv_cache_quantization_bits_str == kKvCacheQuantizationBits_4Bit) {
+      webgpu_ep_config.kv_cache_quantization_bits = 4;
+    } else {
+      ORT_THROW("Invalid kvCacheQuantizationBits value: ", kv_cache_quantization_bits_str, ". Must be \"0\" or \"4\".");
+    }
+  }
+
   // parse force CPU node names
   // The force CPU node names are separated by EOL (\n or \r\n) in the config entry.
   // each line is a node name that will be forced to run on CPU.

@@ -7496,6 +7496,27 @@ struct OrtApi {
    * \since Version 1.28.
    */
   ORT_API_T(OrtExperimentalFnPtr, GetExperimentalFunction, _In_ const char* name);
+
+  /** \brief Get the framework synchronization stream associated with a kernel context.
+   *
+   * This returns the framework stream wrapper for the execution provider stream used by this kernel invocation.
+   * It is intended for APIs that need a stable framework stream object for stream-aware allocation and
+   * synchronization bookkeeping. Use KernelContext_GetGPUComputeStream when launching native GPU work.
+   *
+   * \param[in] context OrtKernelContext instance.
+   * \param[out] out Returns the framework synchronization stream, or nullptr if the kernel has no stream.
+   *                 Do not free or mutate the returned pointer. It is owned by the underlying session.
+   *                 The pointer may be stored and used for stream-aware allocation and synchronization
+   *                 bookkeeping beyond the Compute call (e.g. an allocator may persist it in arena
+   *                 chunks); it remains valid until the owning Session::Run() completes its teardown.
+   *                 Do not retain or dereference it after the run that produced this kernel context ends.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.28.
+   */
+  ORT_API2_STATUS(KernelContext_GetSyncStream, _In_ const OrtKernelContext* context,
+                  _Outptr_result_maybenull_ OrtSyncStream** out);
 };
 
 /*

@@ -1010,6 +1010,19 @@ onnxruntime/test/python/transformers/profile_qmoe_gemv.py \
   --case gpt_oss_20b_m1_top4_fp16_2880x2880_e32 \
   --disable-splitk2-swiglu --warmup 5 --repeat 100 --nvtx
 ```
+#### Accumulation policy
+
+The QMoE GEMV fast path accumulates fp16 activations in fp16 by default. Set
+`ORT_MOE_GEMV_FP32_ACCUM=1` before process start to restore the previous fp32
+accumulation path for fp16 activations. BF16 activations always use fp32
+accumulation because bf16 accumulation is too lossy.
+
+On the GPT-OSS-20B decode-shaped helper case
+`gpt_oss_20b_m1_top4_fp16_2880x2880_e32`, the default fp16-accumulation path was
+0.0708 ms versus 0.0812 ms with `ORT_MOE_GEMV_FP32_ACCUM=1`. In a full GPT-OSS
+CUDA-graph decode run, default fp16 accumulation reached 386.26 tok/s versus
+353.70 tok/s with the fp32 fallback. A 1000-sample MMLU smoke test matched pooled
+accuracy at 0.8260 for both modes.
 
 #### Experiments rejected after profiling
 
