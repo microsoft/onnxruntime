@@ -374,7 +374,7 @@ class EpContextData {
   EpContextData(EpContextData&& other) noexcept { MoveFrom(other); }
   EpContextData& operator=(EpContextData&& other) noexcept {
     if (this != &other) {
-      FreeAllocatorBuffer();
+      Reset();
       MoveFrom(other);
     }
     return *this;
@@ -457,12 +457,18 @@ inline OrtStatus* ReadEpContextData(const OrtApi& api, OrtReadNamedBufferFunc re
   void* ep_context_data = nullptr;
   size_t ep_context_data_size = 0;
   OrtStatus* status = read_func(read_state, file_name, allocator, &ep_context_data, &ep_context_data_size);
-  // Adopt whatever the callback allocated so `out` frees it via the allocator on destruction, even on the error paths
-  // below. Ownership transfers without copying the (potentially large) buffer.
-  out.api_ = &api;
-  out.allocator_ = allocator;
-  out.buffer_ = ep_context_data;
-  out.buffer_size_ = ep_context_data_size;
+
+  // Hold any callback-allocated buffer in a local RAII guard so it is freed via the allocator on every error path
+  // below, while `out` stays empty (it was reset above). Ownership is transferred to `out` only on success, matching
+  // the reset-first / bytes-on-success contract and the std::vector overload's empty-on-failure guarantee.
+  auto buffer_deleter = [&api, allocator](void* buffer_to_free) {
+    if (buffer_to_free != nullptr) {
+      // Best-effort free; release any returned status without throwing (exception-free OrtStatus* style).
+      Ort::Status free_status{api.AllocatorFree(allocator, buffer_to_free)};
+      static_cast<void>(free_status);
+    }
+  };
+  std::unique_ptr<void, decltype(buffer_deleter)> buffer_guard(ep_context_data, buffer_deleter);
 
   if (status != nullptr) {
     return status;
@@ -471,6 +477,12 @@ inline OrtStatus* ReadEpContextData(const OrtApi& api, OrtReadNamedBufferFunc re
   if (ep_context_data_size != 0 && ep_context_data == nullptr) {
     return api.CreateStatus(ORT_FAIL, "OrtReadNamedBufferFunc returned a null buffer for non-empty EPContext data");
   }
+
+  // Success: transfer ownership of the callback buffer to `out` (no copy).
+  out.api_ = &api;
+  out.allocator_ = allocator;
+  out.buffer_ = buffer_guard.release();
+  out.buffer_size_ = ep_context_data_size;
 
   return nullptr;
 }

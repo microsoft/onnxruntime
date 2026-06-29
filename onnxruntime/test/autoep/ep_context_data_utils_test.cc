@@ -38,6 +38,26 @@ OrtStatus* ORT_API_CALL LoadInvalidEpContextDataCallback(void* state, const char
   return nullptr;
 }
 
+// Allocates a real buffer via the provided allocator and then returns an error status. Used to verify the zero-copy
+// reader frees the callback buffer and leaves the owning buffer empty on a callback error path.
+OrtStatus* ORT_API_CALL LoadFailingAfterAllocEpContextDataCallback(void* state, const char* file_name,
+                                                                   OrtAllocator* allocator, void** buffer,
+                                                                   size_t* data_size) {
+  auto* callback_state = static_cast<EpContextDataCallbackState*>(state);
+  callback_state->read_called = true;
+  callback_state->read_file_name = file_name;
+
+  *buffer = nullptr;
+  *data_size = 0;
+  constexpr size_t kSize = 8;
+  OrtStatus* alloc_status = Ort::GetApi().AllocatorAlloc(allocator, kSize, buffer);
+  if (alloc_status != nullptr) {
+    return alloc_status;
+  }
+  *data_size = kSize;
+  return Ort::GetApi().CreateStatus(ORT_FAIL, "synthetic read failure after allocation");
+}
+
 void ExpectOrtStatusError(OrtStatus* status_ptr, OrtErrorCode expected_code, std::string_view expected_message) {
   Ort::Status status{status_ptr};
   ASSERT_NE(status_ptr, nullptr) << "Expected a failure status, but the API returned nullptr (OK).";
@@ -371,6 +391,23 @@ TEST(OrtEpLibrary, EpContextDataUtils_ReadEpContextDataAdoptsCallbackBufferZeroC
   ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextData(
       api, /*ep_context_config=*/nullptr, data_file_name.c_str(), nullptr, file_owned));
   EXPECT_EQ(std::string(file_owned.data(), file_owned.data() + file_owned.size()), payload);
+}
+
+TEST(OrtEpLibrary, EpContextDataUtils_ReadEpContextDataLeavesOutputEmptyOnCallbackError) {
+  const auto& api = Ort::GetApi();
+
+  // A callback that allocates a buffer and then fails: ReadEpContextData must free that buffer (via its internal RAII
+  // guard) and leave the owning buffer empty, since ownership is transferred to `out` only on success.
+  EpContextDataCallbackState read_callback_state;
+  ep_context_data_utils::EpContextData owned;
+  ExpectOrtStatusError(ep_context_data_utils::ReadEpContextData(
+                           api, LoadFailingAfterAllocEpContextDataCallback, &read_callback_state,
+                           "failing_after_alloc_context.bin", nullptr, owned),
+                       ORT_FAIL, "synthetic read failure after allocation");
+  ASSERT_TRUE(read_callback_state.read_called);
+  EXPECT_EQ(read_callback_state.read_file_name, "failing_after_alloc_context.bin");
+  EXPECT_TRUE(owned.empty());
+  EXPECT_EQ(owned.size(), 0u);
 }
 
 }  // namespace test
