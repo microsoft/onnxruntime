@@ -46,7 +46,8 @@ void HandlePReluWeight(ModelBuilder& model_builder, const Node& node, const logg
                        std::vector<T>& alpha_values) {
   // add slope initializer as alpha weight
   const auto& slope_tensor = *model_builder.GetConstantInitializer(node.InputDefs()[1]->Name());
-  const auto unpacked_tensor = model_builder.CreateInitializer(slope_tensor);
+  const Initializer unpacked_tensor(model_builder.GetGraphViewer().GetGraph(), slope_tensor,
+                                    model_builder.GetGraphViewer().ModelPath());
   const auto alpha_v = unpacked_tensor.DataAsSpan<T>();
 
   if (alpha_v.size() == 1) {
@@ -81,7 +82,8 @@ Status AddPReluWeight(ModelBuilder& model_builder, const Node& node,
     // assume X has 3 or 4 dimensions, that was checked in IsPReluOpSupported()
     const auto num_channels = x_shape[x_shape.size() - 3];
 
-    const auto unpacked_tensor = model_builder.CreateInitializer(slope_tensor);
+    const Initializer unpacked_tensor(model_builder.GetGraphViewer().GetGraph(), slope_tensor,
+                                      model_builder.GetGraphViewer().ModelPath());
     float value = unpacked_tensor.DataAsSpan<float>()[0];
 
     auto& weight_values = *prelu.mutable_alpha()->mutable_floatvalue();

@@ -72,7 +72,8 @@ template <typename T>
 static Status GetTensorDataTransposed(const ONNX_NAMESPACE::TensorProto& tensor,
                                       const ModelBuilder& model_builder,
                                       std::vector<T>& transposed_data) {
-  const auto unpacked_tensor = model_builder.CreateInitializer(tensor);
+  const Initializer unpacked_tensor(model_builder.GetGraphViewer().GetGraph(), tensor,
+                                    model_builder.GetGraphViewer().ModelPath());
   const auto src_data = unpacked_tensor.DataAsSpan<T>();
   const auto& tensor_shape = tensor.dims();
   auto x_t = SafeInt<size_t>(tensor_shape[0]);
@@ -159,7 +160,8 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
           // can use existing initializer
           AddOperationInput(*gemm_op, "bias", bias_arg.Name());
         } else {
-          const auto unpacked_tensor = model_builder.CreateInitializer(bias);
+          const Initializer unpacked_tensor(model_builder.GetGraphViewer().GetGraph(), bias,
+                                            model_builder.GetGraphViewer().ModelPath());
           std::string_view bias_data_name;
 
           if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
@@ -229,7 +231,8 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
       // if scalar, or single value expand to 1D tensor of size N
       // IsOpSupportedImpl enforces it's scalar, {1}, {N}, or {1, N}.
-      const auto unpacked_tensor = model_builder.CreateInitializer(bias_tensor);
+      const Initializer unpacked_tensor(model_builder.GetGraphViewer().GetGraph(), bias_tensor,
+                                        model_builder.GetGraphViewer().ModelPath());
       auto bias_data = unpacked_tensor.DataAsSpan<float>();
       if (bias_data.size() == 1 && N > 1) {
         std::vector<float> expanded_bias_data(N, bias_data[0]);

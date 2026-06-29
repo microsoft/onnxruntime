@@ -1189,7 +1189,7 @@ std::string_view ModelBuilder::AddConstant(std::string_view op_type, std::string
                                            const ONNX_NAMESPACE::TensorProto& tensor,
                                            std::optional<gsl::span<const int64_t>> shape) {
   const auto data_type = tensor.data_type();
-  const auto unpacked_tensor = CreateInitializer(tensor);
+  const Initializer unpacked_tensor(graph_viewer_.GetGraph(), tensor, graph_viewer_.ModelPath());
   std::string_view ret;
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
@@ -1296,11 +1296,6 @@ const std::string& ModelBuilder::GetUniqueName(const Node& node, std::string_vie
   } else {
     return GetUniqueName(node.Name() + std::string(suffix));
   }
-}
-
-Initializer ModelBuilder::CreateInitializer(const ONNX_NAMESPACE::TensorProto& tensor,
-                                            bool check_outer_scope) const {
-  return Initializer(graph_viewer_.GetGraph(), tensor, graph_viewer_.ModelPath(), check_outer_scope);
 }
 
 }  // namespace coreml

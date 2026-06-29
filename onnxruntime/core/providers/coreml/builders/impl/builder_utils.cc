@@ -92,7 +92,8 @@ Status CreateCoreMLWeight(CoreML::Specification::WeightParams& weight,
                           const ONNX_NAMESPACE::TensorProto& tensor,
                           const ModelBuilder& model_builder) {
   const auto data_type = tensor.data_type();
-  const auto unpacked_tensor = model_builder.CreateInitializer(tensor);
+  const Initializer unpacked_tensor(model_builder.GetGraphViewer().GetGraph(), tensor,
+                                    model_builder.GetGraphViewer().ModelPath());
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       CreateCoreMLWeight(weight, unpacked_tensor.DataAsSpan<float>());
