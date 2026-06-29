@@ -630,8 +630,8 @@ TEST(CoreMLExecutionProviderTest, ExternalDataGemm) {
   // Gemm: Y = X * W + B, where X is {2,3}, W is {3,4}, B is {4}
   // Weight W: 3*4 = 12 floats, Bias B: 4 floats -> 16 floats total in external data
   const std::vector<float> weight_data = {0.1f, 0.2f, 0.3f, 0.4f,
-                                           0.5f, 0.6f, 0.7f, 0.8f,
-                                           0.9f, 1.0f, 1.1f, 1.2f};
+                                          0.5f, 0.6f, 0.7f, 0.8f,
+                                          0.9f, 1.0f, 1.1f, 1.2f};
   const std::vector<float> bias_data = {0.01f, 0.02f, 0.03f, 0.04f};
 
   // Write external data file: weight followed by bias
