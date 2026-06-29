@@ -133,6 +133,15 @@ void ModelCompilationOptions::SetOutputModelGetInitializerLocationFunc(
   };
 }
 
+void ModelCompilationOptions::SetEpContextDataWriteFunc(OrtWriteNamedBufferFunc write_func, void* state) {
+  // A null write_func clears any previously set callback. Clear the state too so a stale state pointer is never
+  // paired with a missing callback.
+  session_options_.value.ep_context_gen_options.ep_context_data_write_func = epctx::EpContextDataWriteFuncHolder{
+      write_func,
+      write_func != nullptr ? state : nullptr,
+  };
+}
+
 Status ModelCompilationOptions::SetEpContextBinaryInformation(const std::filesystem::path& output_directory,
                                                               const std::filesystem::path& model_name) {
   if (output_directory.empty() || model_name.empty()) {
@@ -283,9 +292,12 @@ Status ModelCompilationOptions::Check() const {
                              "OrtModel has no graph. Call AddGraphToModel before compilation.");
     }
 
-    if (input_model_->graph->GetNumInputs() == 0 || input_model_->graph->GetNumOutputs() == 0) {
+    // A model with zero graph inputs is legal (e.g., a graph composed of zero-input
+    // generator ops like RandomNormal that produces output without external input).
+    // We still require at least one graph output for the compiled model to be meaningful.
+    if (input_model_->graph->GetNumOutputs() == 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "OrtModel graph must have at least one input and one output defined.");
+                             "OrtModel graph must have at least one output defined.");
     }
 
     if (input_model_->domain_to_version.empty()) {

@@ -198,24 +198,11 @@ Status CheckInputs(void* params,
                            past_key_dims[3]);
   }
 
-  // Check the shape and values of total_key_sequence_lengths.
+  // Check the shape of total_key_sequence_lengths.
   const auto& k_len_dim = total_key_lengths->Shape().GetDims();
   if (k_len_dim.size() != 1 || k_len_dim[0] != batch_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "key_total_sequence_lengths must have shape (batch_size).");
-  }
-
-  const auto* key_len_data = total_key_lengths->Data<int32_t>();
-  const bool is_prompt = (sequence_length == total_sequence_length);
-  const int min_key_length = is_prompt ? 1 : sequence_length;
-  for (int i = 0; i < batch_size; ++i) {
-    const int key_length = key_len_data[i];
-    if (key_length < min_key_length || key_length > total_sequence_length) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "key_total_sequence_lengths value ", key_length,
-                             " at batch index ", i,
-                             " is out of range [", min_key_length, ", ", total_sequence_length, "].");
-    }
   }
 
   int rotary_dim = 0;

@@ -141,3 +141,31 @@ jobs:
               cd /onnxruntime_src/onnxruntime/test/python/transformers
               python test_cuda_plugin_ep.py
             "
+
+      # --- Run the CUDA plugin EP C++ GoogleTest binary ---
+      # onnxruntime_provider_test is built into the artifact and links the plugin tests
+      # (gated by ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP). These tests register the plugin .so via
+      # GetSharedLibraryFileName("onnxruntime_providers_cuda_plugin"), which returns the
+      # platform-specific filename without a directory component. Run from /build/Release/Release
+      # so that filename resolves to the plugin .so built there.
+      # The filter covers every CUDA plugin EP suite linked into this binary:
+      #   CudaPlugin*              -> CudaPluginUserStreamGraphTest, CudaPluginArenaTest,
+      #                              CudaPluginPartitioningTest, CudaPluginProfilingTest
+      #   CudaResourcePartitioning* -> CudaResourcePartitioningTest
+      - name: Run CUDA Plugin EP C++ Tests
+        run: |
+          docker run --rm --gpus all \
+            -v ${{ github.workspace }}:/onnxruntime_src \
+            -v ${{ runner.temp }}/Release:/build/Release \
+            -e NVIDIA_VISIBLE_DEVICES=all \
+            ${{ steps.build_docker_image_step.outputs.full-image-name }} \
+            bash -c "
+              set -ex
+              export PATH=/opt/python/cp312-cp312/bin:\$PATH
+              # Make libcudart.so.13 (and the plugin's CUDA deps) findable; see note above.
+              export LD_LIBRARY_PATH=/build/Release/Release:/usr/local/cuda-13.0/lib64:\${LD_LIBRARY_PATH:-}
+
+              cd /build/Release/Release
+              ls -la onnxruntime_provider_test libonnxruntime_providers_cuda_plugin.so
+              ./onnxruntime_provider_test --gtest_filter='CudaPlugin*:CudaResourcePartitioning*'
+            "

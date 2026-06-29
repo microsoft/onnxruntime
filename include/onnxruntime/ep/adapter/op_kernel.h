@@ -164,6 +164,14 @@ struct OpKernelContext {
   void* GetGPUComputeStream() const {
     return context_.GetGPUComputeStream();
   }
+  OrtSyncStream* GetSyncStream() const {
+    static constexpr uint32_t kOrtKernelContextGetSyncStreamMinVersion = 28;
+    if (CurrentOrtApiVersion() < kOrtKernelContextGetSyncStreamMinVersion) {
+      return nullptr;
+    }
+
+    return context_.GetSyncStream();
+  }
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OpKernelContext);

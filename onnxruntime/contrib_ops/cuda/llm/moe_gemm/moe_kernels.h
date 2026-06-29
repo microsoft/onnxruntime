@@ -305,16 +305,6 @@ class CutlassMoeFCRunnerInterface {
                                            TmaWarpSpecializedGroupedGemmInput::ElementSF const* fp4_act_flat2, QuantParams quant_params, void const* bias1,
                                            void const* bias2, void* gemm1_output, void* gemm2_output, cudaStream_t stream) = 0;
 
-  virtual std::pair<TmaWarpSpecializedGroupedGemmInput, TmaWarpSpecializedGroupedGemmInput>
-  computeStridesTmaWarpSpecializedLowLatencyDispatch(TmaWarpSpecializedGroupedGemmInput layout_info1,
-                                                     TmaWarpSpecializedGroupedGemmInput layout_info2, int64_t num_tokens, int64_t gemm1_n, int64_t gemm1_k,
-                                                     int64_t gemm2_n, int64_t gemm2_k, int const num_experts, void const* input1, void const* input2,
-                                                     void const* weights1, void const* weights2, float const* fp8_dequant1, float const* fp8_dequant2,
-                                                     TmaWarpSpecializedGroupedGemmInput::ElementSF const* fc1_fp4_act_flat,
-                                                     TmaWarpSpecializedGroupedGemmInput::ElementSF const* fc2_fp4_act_flat, QuantParams quant_params,
-                                                     void const* bias1, void const* bias2, void* output1, void* output2, int const* num_active_experts_per,
-                                                     int const* active_expert_global_ids, int start_expert, cudaStream_t stream) = 0;
-
   virtual size_t getGemmWorkspaceSize(int num_experts_per_node) const = 0;
 
   bool is_profiler = false;
@@ -521,25 +511,6 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
                                                   reinterpret_cast<UnfusedGemmOutputType*>(gemm2_output), stream);
   }
 
-  std::pair<TmaWarpSpecializedGroupedGemmInput, TmaWarpSpecializedGroupedGemmInput>
-  computeStridesTmaWarpSpecializedLowLatencyDispatch(TmaWarpSpecializedGroupedGemmInput layout_info1,
-                                                     TmaWarpSpecializedGroupedGemmInput layout_info2, int64_t num_tokens, int64_t gemm1_n, int64_t gemm1_k,
-                                                     int64_t gemm2_n, int64_t gemm2_k, int const num_experts, void const* input1, void const* input2,
-                                                     void const* weights1, void const* weights2, float const* fp8_dequant1, float const* fp8_dequant2,
-                                                     TmaWarpSpecializedGroupedGemmInput::ElementSF const* fc1_fp4_act_flat,
-                                                     TmaWarpSpecializedGroupedGemmInput::ElementSF const* fc2_fp4_act_flat, QuantParams quant_params,
-                                                     void const* bias1, void const* bias2, void* output1, void* output2, int const* num_active_experts_per,
-                                                     int const* active_expert_global_ids, int start_expert, cudaStream_t stream) override {
-    return Self::computeStridesTmaWarpSpecializedLowLatency(layout_info1, layout_info2, num_tokens, gemm1_n,
-                                                            gemm1_k, gemm2_n, gemm2_k, num_experts, reinterpret_cast<T const*>(input1),
-                                                            reinterpret_cast<T const*>(input2), reinterpret_cast<WeightType const*>(weights1),
-                                                            reinterpret_cast<WeightType const*>(weights2), fp8_dequant1, fp8_dequant2, fc1_fp4_act_flat,
-                                                            fc2_fp4_act_flat, quant_params, reinterpret_cast<ScaleBiasType const*>(bias1),
-                                                            reinterpret_cast<ScaleBiasType const*>(bias2), reinterpret_cast<UnfusedGemmOutputType*>(output1),
-                                                            reinterpret_cast<UnfusedGemmOutputType*>(output2), num_active_experts_per, active_expert_global_ids,
-                                                            start_expert, stream);
-  }
-
  private:
   std::pair<TmaWarpSpecializedGroupedGemmInput, TmaWarpSpecializedGroupedGemmInput> setupTmaWarpSpecializedInputs(
       int64_t num_rows, int64_t expanded_num_rows, ActivationType fc1_activation_type, bool use_fused_gated_activation,
@@ -560,16 +531,6 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
                                    TmaWarpSpecializedGroupedGemmInput::ElementSF const* fp4_act_flat2, QuantParams quant_params,
                                    ScaleBiasType const* bias1, ScaleBiasType const* bias2, UnfusedGemmOutputType* gemm1_output,
                                    UnfusedGemmOutputType* gemm2_output, cudaStream_t stream);
-  static std::pair<TmaWarpSpecializedGroupedGemmInput, TmaWarpSpecializedGroupedGemmInput>
-  computeStridesTmaWarpSpecializedLowLatency(TmaWarpSpecializedGroupedGemmInput layout_info1,
-                                             TmaWarpSpecializedGroupedGemmInput layout_info2, int64_t num_tokens, int64_t gemm1_n, int64_t gemm1_k,
-                                             int64_t gemm2_n, int64_t gemm2_k, int const num_experts, T const* input1, T const* input2,
-                                             WeightType const* weights1, WeightType const* weights2, float const* fp8_dequant1, float const* fp8_dequant2,
-                                             TmaWarpSpecializedGroupedGemmInput::ElementSF const* fc1_fp4_act_flat,
-                                             TmaWarpSpecializedGroupedGemmInput::ElementSF const* fc2_fp4_act_flat, QuantParams quant_params,
-                                             ScaleBiasType const* bias1, ScaleBiasType const* bias2, UnfusedGemmOutputType* output1,
-                                             UnfusedGemmOutputType* output2, int const* num_active_experts_per, int const* active_expert_global_ids,
-                                             int start_expert, cudaStream_t stream);
   std::map<std::string, std::pair<size_t, size_t>> getWorkspaceDeviceBufferSizes(int64_t const num_rows,
                                                                                  int64_t const hidden_size, int64_t const inter_size, int const num_experts_per_node,
                                                                                  int const experts_per_token, ActivationType activation_type,

@@ -1569,6 +1569,109 @@ TEST(GroupQueryAttentionTest, SharedKV_EmptyKV_WithPast_Rotary_Prompt_CUDA) {
   ExpectOutputsMatch(cuda_output, cpu_output, 0.05f, "SharedKV_Rotary_Prompt_CUDA_vs_CPU");
 }
 
+// CUDA: out-of-range (negative) seqlens_k must not drive an out-of-bounds KV-cache write.
+// On the CUDA EP seqlens_k is device-resident, so the host-side range check in the operator is
+// skipped and the derived append offset is clamped on the device instead. With sequence_length > 1
+// the non-fast-decode path is taken, exercising both the derived-length clamp and the cache-store
+// bound. The run must complete and yield finite outputs. This is a memory-safety regression that is
+// most precisely observed under compute-sanitizer, where the pre-clamp code reported an invalid
+// device write at this site.
+TEST(GroupQueryAttentionTest, NegativeSeqlensK_CacheAppend_NoOOB_CUDA) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
+  constexpr int batch_size = 1;
+  constexpr int sequence_length = 2;  // > 1 forces the non-fast-decode path
+  constexpr int past_seq_len = 4;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 16;  // must be a multiple of 16 for rotary
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+  constexpr int total_sequence_length = past_seq_len + sequence_length;
+  constexpr int present_seq_len = total_sequence_length;
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+  tester.AddAttribute<int64_t>("do_rotary", static_cast<int64_t>(1));
+
+  std::vector<float> query_data(batch_size * sequence_length * hidden_size);
+  std::vector<float> key_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> value_data(batch_size * sequence_length * kv_hidden_size);
+  std::vector<float> past_key_data(batch_size * kv_num_heads * past_seq_len * head_size);
+  std::vector<float> past_value_data(batch_size * kv_num_heads * past_seq_len * head_size);
+  for (size_t i = 0; i < query_data.size(); ++i) query_data[i] = 0.05f * static_cast<float>(i % 7 + 1);
+  for (size_t i = 0; i < key_data.size(); ++i) key_data[i] = 0.04f * static_cast<float>(i % 5 + 1);
+  for (size_t i = 0; i < value_data.size(); ++i) value_data[i] = 0.03f * static_cast<float>(i % 3 + 1);
+  for (size_t i = 0; i < past_key_data.size(); ++i) past_key_data[i] = 0.02f * static_cast<float>(i % 11 + 1);
+  for (size_t i = 0; i < past_value_data.size(); ++i) past_value_data[i] = 0.01f * static_cast<float>(i % 13 + 1);
+
+  tester.AddInput<MLFloat16>("query", {batch_size, sequence_length, hidden_size}, ToFloat16(query_data));
+  tester.AddInput<MLFloat16>("key", {batch_size, sequence_length, kv_hidden_size}, ToFloat16(key_data));
+  tester.AddInput<MLFloat16>("value", {batch_size, sequence_length, kv_hidden_size}, ToFloat16(value_data));
+  tester.AddInput<MLFloat16>("past_key", {batch_size, kv_num_heads, past_seq_len, head_size}, ToFloat16(past_key_data));
+  tester.AddInput<MLFloat16>("past_value", {batch_size, kv_num_heads, past_seq_len, head_size},
+                             ToFloat16(past_value_data));
+
+  // seqlens_k is negative, so the derived past length, (max(seqlens_k, 0) + 1) - sequence_length, is
+  // negative (here 0 + 1 - 2 = -1). The device-side derivation must neutralize this so the cache append
+  // for the new tokens stays within the present buffer instead of indexing before its start.
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, {-1});
+  // Marked as an initializer so shape inference can read the value at graph-build time and size
+  // present_kv to max(past_seq_len, total_sequence_length), matching the declared present outputs below.
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_sequence_length}, /*is_initializer=*/true);
+
+  const int max_seq_len = total_sequence_length + 8;
+  const int half_rotary = head_size / 2;
+  std::vector<float> cos_cache(max_seq_len * half_rotary);
+  std::vector<float> sin_cache(max_seq_len * half_rotary);
+  for (int pos = 0; pos < max_seq_len; ++pos) {
+    for (int d = 0; d < half_rotary; ++d) {
+      const float freq = 1.0f / std::pow(10000.0f, 2.0f * static_cast<float>(d) / static_cast<float>(head_size));
+      cos_cache[pos * half_rotary + d] = std::cos(static_cast<float>(pos) * freq);
+      sin_cache[pos * half_rotary + d] = std::sin(static_cast<float>(pos) * freq);
+    }
+  }
+  tester.AddInput<MLFloat16>("cos_cache", {max_seq_len, half_rotary}, ToFloat16(cos_cache));
+  tester.AddInput<MLFloat16>("sin_cache", {max_seq_len, half_rotary}, ToFloat16(sin_cache));
+
+  // Valid position_ids so the rotary index path is well-formed and only the cache-store bound is stressed.
+  std::vector<int64_t> position_ids(batch_size * sequence_length);
+  for (int s = 0; s < sequence_length; ++s) {
+    position_ids[s] = static_cast<int64_t>(past_seq_len + s);
+  }
+  tester.AddInput<int64_t>("position_ids", {batch_size, sequence_length}, position_ids);
+
+  const int output_size = batch_size * sequence_length * hidden_size;
+  tester.AddOutput<MLFloat16>("output", {batch_size, sequence_length, hidden_size},
+                              std::vector<MLFloat16>(output_size, MLFloat16(0.0f)));
+  const int present_size = batch_size * kv_num_heads * present_seq_len * head_size;
+  tester.AddOutput<MLFloat16>("present_key", {batch_size, kv_num_heads, present_seq_len, head_size},
+                              std::vector<MLFloat16>(present_size, MLFloat16(0.0f)));
+  tester.AddOutput<MLFloat16>("present_value", {batch_size, kv_num_heads, present_seq_len, head_size},
+                              std::vector<MLFloat16>(present_size, MLFloat16(0.0f)));
+
+  // The malformed seqlens_k drives the derived past length negative, which is the condition under test.
+  // That leaves the KV length under-specified for the query, so the attention is degenerate and its
+  // outputs may be non-finite; this is expected and intentionally not asserted. The regression point is
+  // that the cache append and attention complete without indexing outside their buffers (which a
+  // sanitizer build would otherwise flag), so only the output shape is verified.
+  tester.SetOutputTolerance(1e6f);
+  tester.SetCustomOutputVerifier([](const std::vector<OrtValue>& fetches,
+                                    const std::string& /*provider*/) {
+    ASSERT_FALSE(fetches.empty());
+    ASSERT_TRUE(fetches[0].IsTensor());
+    EXPECT_EQ(fetches[0].Get<Tensor>().Shape().Size(), static_cast<int64_t>(output_size));
+  });
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 // ---------------------------------------------------------------------------
 // Quantized KV cache tests for CPU GroupQueryAttention
 // ---------------------------------------------------------------------------
@@ -2510,7 +2613,8 @@ static std::vector<float> RunGQAPackedQKVRotaryPrefill(
     int head_size,
     const std::vector<int32_t>& seqlens_k_data,
     const std::vector<float>& packed_qkv_data,
-    GqaTargetEp target_ep = GqaTargetEp::kCpu) {
+    GqaTargetEp target_ep = GqaTargetEp::kCpu,
+    bool smooth_softmax = false) {
   const int hidden_size = num_heads * head_size;
   const int kv_hidden_size = kv_num_heads * head_size;
   const int qkv_hidden = hidden_size + 2 * kv_hidden_size;
@@ -2529,6 +2633,12 @@ static std::vector<float> RunGQAPackedQKVRotaryPrefill(
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
   tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
   tester.AddAttribute<int64_t>("do_rotary", static_cast<int64_t>(1));
+  if (smooth_softmax) {
+    // smooth_softmax disqualifies the WebGPU FlashAttention path via the outer
+    // gating in GroupQueryAttention::ComputeInternal, routing this case through
+    // ApplyAttention instead.
+    tester.AddAttribute<int64_t>("smooth_softmax", static_cast<int64_t>(1));
+  }
 
   // Packed QKV: pass through `query` input, leave key/value as optional edges.
   if (use_fp16) {
@@ -2619,7 +2729,9 @@ static std::vector<float> RunGQAPackedQKVRotaryPrefill(
 // output matches its single-prompt reference. Both reference and batched runs
 // go through the same EP, so this validates per-batch consistency within each
 // EP rather than cross-EP equivalence.
-static void RunBatchedRightPaddedRotaryPrefillForEP(GqaTargetEp target_ep) {
+static void RunBatchedRightPaddedRotaryPrefillForEP(GqaTargetEp target_ep,
+                                                    const std::vector<int>& real_lens = {4, 2, 6},
+                                                    bool smooth_softmax = false) {
   constexpr int batch_size = 3;
   constexpr int num_heads = 4;
   constexpr int kv_num_heads = 2;
@@ -2628,10 +2740,10 @@ static void RunBatchedRightPaddedRotaryPrefillForEP(GqaTargetEp target_ep) {
   constexpr int kv_hidden_size = kv_num_heads * head_size;
   constexpr int qkv_hidden = hidden_size + 2 * kv_hidden_size;
 
-  // Real prompt lengths per batch; max = sequence_length (right-padding extends
+  // Per-batch real prompt lengths; max = sequence_length (right-padding extends
   // shorter batches up to this length). The bug only manifests when at least
   // one batch is shorter than sequence_length.
-  const std::vector<int> real_lens = {4, 2, 6};
+  ASSERT_EQ(static_cast<int>(real_lens.size()), batch_size);
   const int sequence_length = *std::max_element(real_lens.begin(), real_lens.end());
 
   std::vector<float> packed_batched;
@@ -2652,7 +2764,7 @@ static void RunBatchedRightPaddedRotaryPrefillForEP(GqaTargetEp target_ep) {
         /*batch_size=*/1, /*sequence_length=*/real_len,
         num_heads, kv_num_heads, head_size,
         /*seqlens_k_data=*/{static_cast<int32_t>(real_len - 1)},
-        packed_single, target_ep);
+        packed_single, target_ep, smooth_softmax);
   }
 
   // Now run all batches together with right-padding.
@@ -2662,7 +2774,7 @@ static void RunBatchedRightPaddedRotaryPrefillForEP(GqaTargetEp target_ep) {
   }
   const auto batched_output = RunGQAPackedQKVRotaryPrefill(
       batch_size, sequence_length, num_heads, kv_num_heads, head_size,
-      seqlens_k_data, packed_batched, target_ep);
+      seqlens_k_data, packed_batched, target_ep, smooth_softmax);
 
   // Guard the regression deterministically: every element of the batched output
   // (including padding rows) must be finite. The CPU root cause is uninitialized
@@ -2713,6 +2825,51 @@ TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefill_WebGPU) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
   RunBatchedRightPaddedRotaryPrefillForEP(GqaTargetEp::kWebGpu);
+}
+
+// Same property as BatchedRightPaddedRotaryPrefill_WebGPU, but with per-batch
+// real_lens whose max crosses the prefill threshold (sequence_length >= 32) so
+// the WebGPU EP picks FlashAttentionProgram (single-kernel prefill path with
+// subgroup shuffles) instead of the split-reduce decode path. This exercises
+// the prefill flash-attention kernel under right-padded batches with do_rotary,
+// which is the path used by Phi-style models during batched prefill.
+TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefillFlashAttention_WebGPU) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  // sequence_length = max(real_lens) = 33 > 32 -> FlashAttentionProgram path.
+  // Mixed shorter batches (12, 20) ensure right-padding is non-trivial.
+  RunBatchedRightPaddedRotaryPrefillForEP(GqaTargetEp::kWebGpu, {20, 12, 33});
+}
+
+// Stress the FlashAttention prefill path with a per-batch spread that exceeds
+// the indirect-dispatch tile size (64). batch 0 has the SHORTEST real length;
+// batch 2 has the LONGEST. This is the data pattern that would surface the
+// indirect-dispatch undersizing bug when graph capture is enabled (where the
+// dispatch grid is sized from a GPU buffer rather than the host scalar).
+// OpTester does not toggle graph capture, so this test exercises the new
+// total_sequence_length_input shader plumbing on the non-graph-capture path;
+// the graph-capture path is covered end-to-end by phi4-graph-prune verification.
+TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefillFlashAttentionLargeSpread_WebGPU) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  // spread = 96 - 20 = 76 > tile_size(64), batch 0 is not the max.
+  RunBatchedRightPaddedRotaryPrefillForEP(GqaTargetEp::kWebGpu, {20, 12, 96});
+}
+
+// Same property as BatchedRightPaddedRotaryPrefill_WebGPU, but with
+// smooth_softmax=1 so the WebGPU EP bypasses CanApplyFlashAttention and routes
+// through ApplyAttention (non-flash path). Covers right-padded batched prefill
+// on the non-flash attention path (used by e.g. Phi-4 attention variants).
+TEST(GroupQueryAttentionTest, BatchedRightPaddedRotaryPrefillNonFlashAttention_WebGPU) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  RunBatchedRightPaddedRotaryPrefillForEP(GqaTargetEp::kWebGpu, {4, 2, 6}, /*smooth_softmax=*/true);
 }
 
 }  // namespace test
