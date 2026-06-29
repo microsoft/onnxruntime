@@ -1132,6 +1132,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
             finally
             {
+                host.UnpinArrays();
                 hostHdl.Free();
             }
         }
@@ -1156,6 +1157,11 @@ namespace Microsoft.ML.OnnxRuntime
             public IntPtr[] rawOutputNames { get; }
             public IntPtr[] rawOutputValues { get; }
 
+            private readonly GCHandle _pinnedInputNames;
+            private readonly GCHandle _pinnedInputValues;
+            private readonly GCHandle _pinnedOutputNames;
+            private readonly GCHandle _pinnedOutputValues;
+
             public CallbackHost(InferenceSession session,
                                 IReadOnlyCollection<string> cbInputNames,
                                 IReadOnlyCollection<OrtValue> cbinputValues,
@@ -1175,6 +1181,19 @@ namespace Microsoft.ML.OnnxRuntime
 
                 rawOutputNames = LookupUtf8Names(outputNames, n => n, session.LookupOutputMetadata);
                 rawOutputValues = outputValues.Select(v => v.Handle).ToArray();
+
+                _pinnedInputNames = GCHandle.Alloc(rawInputNames, GCHandleType.Pinned);
+                _pinnedInputValues = GCHandle.Alloc(rawInputValues, GCHandleType.Pinned);
+                _pinnedOutputNames = GCHandle.Alloc(rawOutputNames, GCHandleType.Pinned);
+                _pinnedOutputValues = GCHandle.Alloc(rawOutputValues, GCHandleType.Pinned);
+            }
+
+            internal void UnpinArrays()
+            {
+                _pinnedInputNames.Free();
+                _pinnedInputValues.Free();
+                _pinnedOutputNames.Free();
+                _pinnedOutputValues.Free();
             }
         }
 
@@ -1186,7 +1205,7 @@ namespace Microsoft.ML.OnnxRuntime
                                       UserCallbackDelegate callback)
         {
             CallbackHost host = new CallbackHost(this, inputNames, inputValues, outputNames, outputValues, callback);
-            var host_hdl = GCHandle.Alloc(host, GCHandleType.Pinned);
+            var host_hdl = GCHandle.Alloc(host, GCHandleType.Normal);
 
             try
             {
@@ -1205,6 +1224,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
             catch (OnnxRuntimeException)
             {
+                host.UnpinArrays();
                 host_hdl.Free();
                 throw;
             }
