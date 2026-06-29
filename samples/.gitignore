@@ -76,3 +76,13 @@ fastlane/test_output
 
 *.ort
 *.dylib
+
+# Python Virtual Environments
+venv/
+.venv/
+env/
+.env/
+
+# ONNX Model Weights
+*.onnx
+*.onnx.data
