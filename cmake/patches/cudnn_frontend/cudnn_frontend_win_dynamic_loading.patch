@@ -38,3 +38,15 @@
          HMODULE handle    = dlopen(libs[i], RTLD_NOW);
          const char *error = reinterpret_cast<const char *>(dlerror());
  
+@@ -182,10 +200,10 @@
+ #if defined NV_CUDNN_FRONTEND_USE_DYNAMIC_LOADING
+ 
+ #define NV_FE_CALL_TO_CUDA(function_name, cuda_symbol, ...) \
+-    return reinterpret_cast<decltype(function_name) *>(get_cuda_symbol(CudaLibrary::CUDART, #cuda_symbol))(__VA_ARGS__);
++    return cuda_symbol(__VA_ARGS__);
+ #define NV_FE_CALL_TO_CU(function_name, cuda_symbol, ...) \
+-    return reinterpret_cast<decltype(function_name) *>(get_cuda_symbol(CudaLibrary::CUDA, #cuda_symbol))(__VA_ARGS__);
++    return cuda_symbol(__VA_ARGS__);
+ 
+ #else
+ 
