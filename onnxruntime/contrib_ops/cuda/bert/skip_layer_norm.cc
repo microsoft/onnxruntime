@@ -43,6 +43,13 @@ SkipLayerNorm<T, Simplified>::SkipLayerNorm(const OpKernelInfo& op_kernel_info) 
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
   ORT_ENFORCE(epsilon_ >= 0);
 
+  // stash_type: 1 = float32 accumulation (default). When enabled for
+  // f16/bf16, use the float-accumulation path to avoid overflow in deep
+  // networks with large residual magnitudes.
+  int64_t stash_type = 1;
+  (void)op_kernel_info.GetAttr("stash_type", &stash_type);
+  use_float_accumulation_ = (stash_type == 1) && !std::is_same_v<T, float>;
+
 #ifdef BUILD_CUDA_EP_AS_PLUGIN
   // Plugin adapter cannot static_cast to CUDAExecutionProvider directly.
   // Use the adapter shim that reads the config from the per-EP runtime map.
@@ -94,7 +101,9 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
 
   const int skip_size = onnxruntime::narrow<int>(skip->Shape().Size());
 
-  if (strict_) {
+  if (strict_ || use_float_accumulation_) {
+    // Use HostApplyLayerNorm which accumulates in float, avoiding
+    // f16/bf16 overflow for large residual values in deep networks.
     HostApplyLayerNorm<CudaT, float, CudaT, Simplified>(
         GetDeviceProp(),
         Stream(ctx),

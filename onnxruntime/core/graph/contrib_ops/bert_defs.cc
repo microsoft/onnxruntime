@@ -1976,6 +1976,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc("Skip and Layer Normalization Fusion")
         .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultSkipLayerNormEpsilon)
+        .Attr("stash_type",
+              "Type of Mean and InvStdDev. This also specifies the precision of internal "
+              "accumulation. Defaults to 1 (float32). Set to 1 for float32 accumulation "
+              "to avoid f16 overflow in deep networks.",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
         .Input(0, "input", "3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
         .Input(1, "skip", "3D skip tensor with shape (batch_size, sequence_length, hidden_size) or (1, sequence_length, hidden_size) or (sequence_length, hidden_size)", "T")
         .Input(2, "gamma", "1D input tensor with shape (hidden_size)", "T")
@@ -1994,6 +2000,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc("Skip and Root Mean Square Layer Normalization")
         .Attr("epsilon", "The epsilon value to use to avoid division by zero.", AttributeProto::FLOAT, kDefaultSkipLayerNormEpsilon)
+        .Attr("stash_type",
+              "Type of Mean and InvStdDev. This also specifies the precision of internal "
+              "accumulation. Defaults to 1 (float32). Set to 1 for float32 accumulation "
+              "to avoid f16 overflow in deep networks.",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
         .Input(0,
                "input",
                "3D input tensor with shape (batch_size, sequence_length, hidden_size)"
