@@ -1104,7 +1104,7 @@ if (NOT onnxruntime_ORT_MINIMAL_BUILD)
     target_link_libraries(onnxruntime_mlas_q4dq PRIVATE debug Dbghelp Advapi32)
   endif()
   if (onnxruntime_LINK_LIBATOMIC)
-    target_link_libraries(onnxruntime_mlas_q4dq PRIVATE atomic)
+    target_link_libraries(onnxruntime_mlas_q4dq PRIVATE ${onnxruntime_LIBATOMIC_LINK_LIBS})
   endif()
   target_link_libraries(onnxruntime_mlas_q4dq PRIVATE Threads::Threads)
 
