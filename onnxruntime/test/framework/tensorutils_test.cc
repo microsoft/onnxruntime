@@ -1474,6 +1474,46 @@ TEST(SparseTensorProtoToDenseTensorProtoMarkerTest, RejectsInMemoryMarkerOnIndic
 
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
+// Defense-in-depth: ConstantNodeProtoToTensorProto must reject ORT's in-memory address marker
+// on a Constant node's dense tensor attribute. This isolates the guard added in
+// ConstantNodeProtoToTensorProto from the pre-existing dense-initializer guard in the Graph
+// constructor: callers such as Graph::AddConstantProtoAsInitializer and the ORT-format build
+// path emplace directly into name_to_initial_tensor_ and bypass that constructor-side check,
+// so this test exercises the new chokepoint directly.
+TEST(ConstantNodeProtoToTensorProtoMarkerTest, RejectsInMemoryMarkerOnDenseTensorAttribute) {
+  ONNX_NAMESPACE::NodeProto node;
+  node.set_op_type("Constant");
+  node.set_name("malicious_constant");
+  node.add_output("c");
+
+  auto* attr = node.add_attribute();
+  attr->set_name("value");
+  attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+  auto* t = attr->mutable_t();
+  t->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  t->add_dims(4);
+  t->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  // Backing buffer is irrelevant — the guard must reject before any dereference.
+  static std::vector<uint8_t> backing(16, 0);
+
+  auto* loc = t->add_external_data();
+  loc->set_key("location");
+  loc->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag));
+  auto* off = t->add_external_data();
+  off->set_key("offset");
+  off->set_value(std::to_string(reinterpret_cast<intptr_t>(backing.data())));
+  auto* len = t->add_external_data();
+  len->set_key("length");
+  len->set_value(std::to_string(backing.size()));
+
+  ONNX_NAMESPACE::TensorProto tensor_out;
+  Status status = utils::ConstantNodeProtoToTensorProto(node, std::filesystem::path{}, tensor_out);
+  ASSERT_FALSE(status.IsOK())
+      << "Constant node tensor attribute with an in-memory address marker must be rejected.";
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("in-memory address marker"));
+}
+
 // Defense-in-depth: GetExtDataFromTensorProto must reject absolute external paths even when
 // called with an empty model_path (e.g. from training checkpoint or custom-op init paths).
 // Previously, ValidateExternalDataPath was only invoked from Graph::ConvertInitializersIntoOrtValues,
