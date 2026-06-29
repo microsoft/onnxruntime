@@ -691,39 +691,6 @@ static void BuildOnnxRotaryEmbeddingGQAFusionGraph(ModelTestBuilder& builder,
   gqa.AddAttribute("kv_num_heads", kv_num_heads);
 }
 
-static Status CheckOnnxRotaryEmbeddingGQAFusedWithInterleaved(Graph& graph, int64_t expected_rotary_interleaved) {
-  const auto op_to_count = CountOpsInGraph(graph);
-  TEST_RETURN_IF_NOT(OpCount(op_to_count, "RotaryEmbedding") == 0);
-  TEST_RETURN_IF_NOT(OpCount(op_to_count, "MatMul") == 1);
-  TEST_RETURN_IF_NOT(OpCount(op_to_count, "com.microsoft.GroupQueryAttention") == 1);
-
-  for (const Node& node : graph.Nodes()) {
-    if (node.OpType() != "GroupQueryAttention") {
-      continue;
-    }
-
-    TEST_RETURN_IF_NOT(node.InputDefs().size() == 10);
-    TEST_RETURN_IF_NOT(node.InputDefs()[7] != nullptr && node.InputDefs()[7]->Exists());
-    TEST_RETURN_IF_NOT(node.InputDefs()[8] != nullptr && node.InputDefs()[8]->Exists());
-    TEST_RETURN_IF_NOT(node.InputDefs()[9] != nullptr && node.InputDefs()[9]->Exists());
-
-    const auto& attrs = node.GetAttributes();
-    auto do_rotary_attr = attrs.find("do_rotary");
-    TEST_RETURN_IF_NOT(do_rotary_attr != attrs.end());
-    TEST_RETURN_IF_NOT(do_rotary_attr->second.i() == 1);
-
-    auto rotary_interleaved_attr = attrs.find("rotary_interleaved");
-    TEST_RETURN_IF_NOT(rotary_interleaved_attr != attrs.end());
-    TEST_RETURN_IF_NOT(rotary_interleaved_attr->second.i() == expected_rotary_interleaved);
-  }
-
-  return Status::OK();
-}
-
-static Status CheckOnnxRotaryEmbeddingGQAFused(Graph& graph) {
-  return CheckOnnxRotaryEmbeddingGQAFusedWithInterleaved(graph, 0);
-}
-
 static Status CheckOnnxRotaryEmbeddingGQANotFused(Graph& graph) {
   const auto op_to_count = CountOpsInGraph(graph);
   TEST_RETURN_IF_NOT(OpCount(op_to_count, "RotaryEmbedding") == 2);
@@ -933,7 +900,7 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionFusionTest) {
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized_different_head_sizes.onnx", 1, 0, logger_.get());
 }
 
-TEST_F(GraphTransformationTests, GroupQueryAttentionFusionOnnxRotaryEmbeddingTest) {
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsOnnxRotaryEmbeddingTest) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildOnnxRotaryEmbeddingGQAFusionGraph(builder, true);
   };
@@ -941,25 +908,21 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionFusionOnnxRotaryEmbeddingTes
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
                                         std::make_unique<GroupQueryAttentionFusion>(),
                                         TransformerLevel::Level2, 3, nullptr,
-                                        CheckOnnxRotaryEmbeddingGQAFused));
+                                        CheckOnnxRotaryEmbeddingGQANotFused));
 }
 
-TEST_F(GraphTransformationTests, GroupQueryAttentionFusionOnnxRotaryEmbeddingInterleavedTest) {
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsOnnxRotaryEmbeddingInterleavedTest) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildOnnxRotaryEmbeddingGQAFusionGraph(builder, true, 1, 1);
-  };
-
-  auto post_graph_checker = [](Graph& graph) {
-    return CheckOnnxRotaryEmbeddingGQAFusedWithInterleaved(graph, 1);
   };
 
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
                                         std::make_unique<GroupQueryAttentionFusion>(),
                                         TransformerLevel::Level2, 3, nullptr,
-                                        post_graph_checker));
+                                        CheckOnnxRotaryEmbeddingGQANotFused));
 }
 
-TEST_F(GraphTransformationTests, GroupQueryAttentionFusionOnnxRotaryEmbeddingPartialRotaryTest) {
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsOnnxRotaryEmbeddingPartialRotaryTest) {
   auto build_test_case = [](ModelTestBuilder& builder) {
     BuildOnnxRotaryEmbeddingGQAFusionGraph(builder, true, 0, 0, 16);
   };
@@ -967,7 +930,7 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionFusionOnnxRotaryEmbeddingPar
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
                                         std::make_unique<GroupQueryAttentionFusion>(),
                                         TransformerLevel::Level2, 3, nullptr,
-                                        CheckOnnxRotaryEmbeddingGQAFused));
+                                        CheckOnnxRotaryEmbeddingGQANotFused));
 }
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionFusionOnnxRotaryEmbeddingInterleavedMismatchTest) {

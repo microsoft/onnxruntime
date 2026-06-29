@@ -270,7 +270,15 @@ static bool TryGetRotaryEmbeddingArgs(Node& rotary_node, RotaryEmbeddingArgs& ar
     return false;
   }
 
-  if (rotary_node.Domain() != kMSDomain && rotary_node.Domain() != kOnnxDomain) {
+  if (rotary_node.Domain() == kOnnxDomain) {
+    // Skip ONNX RotaryEmbedding for this fusion. With explicit position_ids it consumes the full
+    // [batch_size, sequence_length] tensor, while fused GQA currently uses prompt-time base-offset
+    // semantics. Without position_ids it uses 3D per-batch caches, which are also incompatible
+    // with GroupQueryAttention's 2D rotary cache inputs.
+    return false;
+  }
+
+  if (rotary_node.Domain() != kMSDomain) {
     return false;
   }
 
@@ -291,21 +299,6 @@ static bool TryGetRotaryEmbeddingArgs(Node& rotary_node, RotaryEmbeddingArgs& ar
     args.position_ids_arg = input_defs[1];
     args.cos_cache_arg = input_defs[2];
     args.sin_cache_arg = input_defs[3];
-    return true;
-  }
-
-  if (rotary_node.Domain() == kOnnxDomain) {
-    // ONNX RotaryEmbedding inputs:
-    //   X, cos_cache, sin_cache, optional position_ids
-    // If position_ids is omitted, ONNX RotaryEmbedding uses 3D per-batch caches, which are
-    // incompatible with GroupQueryAttention's 2D rotary cache inputs.
-    if (input_defs.size() < 4 || !NodeArgExists(input_defs[1]) || !NodeArgExists(input_defs[2]) ||
-        !NodeArgExists(input_defs[3])) {
-      return false;
-    }
-    args.cos_cache_arg = input_defs[1];
-    args.sin_cache_arg = input_defs[2];
-    args.position_ids_arg = input_defs[3];
     return true;
   }
 
