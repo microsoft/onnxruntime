@@ -65,6 +65,58 @@ const char* QMoEGemvConfigName(onnxruntime::llm::kernels::moe_gemv::MoeGemvConfi
   }
   return "default";
 }
+
+bool TryGetStaticDim(const ONNX_NAMESPACE::TensorShapeProto* shape, int dim_index, int64_t& value) {
+  if (shape == nullptr || dim_index >= shape->dim_size() || !shape->dim(dim_index).has_dim_value()) {
+    return false;
+  }
+  value = shape->dim(dim_index).dim_value();
+  return value > 0;
+}
+
+bool StaticFp4CutlassShapeSupported(const OpKernelInfo& op_kernel_info, bool is_swiglu) {
+#ifdef BUILD_CUDA_EP_AS_PLUGIN
+  ORT_UNUSED_PARAMETER(op_kernel_info);
+  ORT_UNUSED_PARAMETER(is_swiglu);
+  return false;
+#else
+  const auto& input_defs = op_kernel_info.node().InputDefs();
+  if (input_defs.size() <= 5 || input_defs[2] == nullptr || input_defs[5] == nullptr) {
+    return false;
+  }
+
+  const auto* fc1_shape = input_defs[2]->Shape();
+  const auto* fc2_shape = input_defs[5]->Shape();
+  if (fc1_shape == nullptr || fc2_shape == nullptr || fc1_shape->dim_size() != 3 || fc2_shape->dim_size() != 3) {
+    return false;
+  }
+
+  int64_t fc1_k = 0;
+  int64_t fc1_packed_n = 0;
+  int64_t fc2_k = 0;
+  int64_t fc2_packed_n = 0;
+  if (!TryGetStaticDim(fc1_shape, 1, fc1_k) || !TryGetStaticDim(fc1_shape, 2, fc1_packed_n) ||
+      !TryGetStaticDim(fc2_shape, 1, fc2_k) || !TryGetStaticDim(fc2_shape, 2, fc2_packed_n)) {
+    return false;
+  }
+
+  const int64_t hidden_size = fc1_k;
+  const int64_t hidden_size_from_fc2 = fc2_packed_n * 2;
+  const int64_t fc1_n = fc1_packed_n * 2;
+  if (hidden_size != hidden_size_from_fc2 || (is_swiglu && fc1_n % 2 != 0)) {
+    return false;
+  }
+
+  const int64_t inter_size = fc2_k;
+  const int64_t inter_size_from_fc1 = is_swiglu ? fc1_n / 2 : fc1_n;
+  if (inter_size != inter_size_from_fc1) {
+    return false;
+  }
+
+  constexpr int64_t kMxfp4CutlassAlignment = 256;
+  return hidden_size % kMxfp4CutlassAlignment == 0 && inter_size % kMxfp4CutlassAlignment == 0;
+#endif
+}
 }  // namespace
 
 namespace onnxruntime {
@@ -149,8 +201,24 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       ORT_ENFORCE(expert_weight_bits_ == 4, "FP4 quantization requires expert_weight_bits=4");
 #if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
       use_fp4_dequant_fallback_ = sm_ < 120;
-      enable_fp4_cutlass_gemm_ = is_fp16_ && sm_ == 90 &&
-                                 onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_FP4_CUTLASS_GEMM", 0) == 1;
+      const bool requested_fp4_cutlass_gemm =
+          onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_FP4_CUTLASS_GEMM", 0) == 1;
+      const bool allow_unsafe_fp4_cutlass_gemm =
+          onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_ENABLE_FP4_CUTLASS_UNSAFE", 0) == 1;
+      const bool fp4_cutlass_shape_supported = StaticFp4CutlassShapeSupported(
+          op_kernel_info, activation_type_ == onnxruntime::llm::kernels::cutlass_kernels::ActivationType::Swiglu);
+      enable_fp4_cutlass_gemm_ = is_fp16_ && sm_ == 90 && requested_fp4_cutlass_gemm &&
+                                 allow_unsafe_fp4_cutlass_gemm && fp4_cutlass_shape_supported;
+      if (requested_fp4_cutlass_gemm && is_fp16_ && sm_ == 90 && !allow_unsafe_fp4_cutlass_gemm) {
+        LOGS_DEFAULT(WARNING) << "QMoE native FP4 CUTLASS GEMM was requested, but it is disabled by default "
+                                 "while its SM90 MXFP4 conversion/layout path is still being validated; "
+                                 "falling back to the dequant/GEMV path. Set ORT_ENABLE_FP4_CUTLASS_UNSAFE=1 "
+                                 "only for debugging the experimental native path.";
+      } else if (requested_fp4_cutlass_gemm && is_fp16_ && sm_ == 90 && !fp4_cutlass_shape_supported) {
+        LOGS_DEFAULT(WARNING) << "QMoE native FP4 CUTLASS GEMM was requested, but the static FP4 weight "
+                                 "shape does not meet the current WFP4A16 alignment requirements; falling "
+                                 "back to the dequant/GEMV path.";
+      }
       if (enable_fp4_cutlass_gemm_) {
         use_fp4_dequant_fallback_ = false;
       }
@@ -1359,7 +1427,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   } else if (input_idx == 3) {  // fc1_scales
     DUMP_TENSOR("fc1_scales", tensor);
     if (quant_type_ == "fp4" && !use_fp4_dequant_fallback_) {
-      PrePackCopyToGpu(tensor, stream, alloc, packed_fp4_fc1_block_scales_, is_packed);
+      PrePackTransposeAndPack(tensor, stream, alloc, packed_fp4_fc1_block_scales_, is_packed);
     } else if (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
       PrePackSwizzleBlockScales(tensor, stream, alloc, packed_fp4_fc1_block_scales_, is_packed);
     } else if (quant_type_ == "fp4" || quant_type_ == "wfp4afp8") {
@@ -1377,7 +1445,7 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   } else if (input_idx == 6) {  // fc2_scales
     DUMP_TENSOR("fc2_scales", tensor);
     if (quant_type_ == "fp4" && !use_fp4_dequant_fallback_) {
-      PrePackCopyToGpu(tensor, stream, alloc, packed_fp4_fc2_block_scales_, is_packed);
+      PrePackTransposeAndPack(tensor, stream, alloc, packed_fp4_fc2_block_scales_, is_packed);
     } else if (quant_type_ == "wfp4afp8" && !use_wfp4afp8_dequant_fallback_) {
       PrePackSwizzleBlockScales(tensor, stream, alloc, packed_fp4_fc2_block_scales_, is_packed);
     } else if (quant_type_ == "fp4" || quant_type_ == "wfp4afp8") {
