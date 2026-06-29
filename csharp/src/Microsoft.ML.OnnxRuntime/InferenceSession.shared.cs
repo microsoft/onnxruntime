@@ -1186,7 +1186,7 @@ namespace Microsoft.ML.OnnxRuntime
                                       UserCallbackDelegate callback)
         {
             CallbackHost host = new CallbackHost(this, inputNames, inputValues, outputNames, outputValues, callback);
-            var host_hdl = GCHandle.Alloc(host, GCHandleType.Normal);
+            var host_hdl = GCHandle.Alloc(host, GCHandleType.Pinned);
 
             try
             {
