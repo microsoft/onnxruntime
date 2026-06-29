@@ -1426,7 +1426,6 @@ void PagedAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
     }
 
     if (ctx.hasInput(2)) {
-      ONNX_NAMESPACE::TensorShapeProto output_shape;
       propagateShapeFromInputToOutput(ctx, 0, 0);
     } else {  // packed QKV
       ONNX_NAMESPACE::TensorShapeProto output_shape;
