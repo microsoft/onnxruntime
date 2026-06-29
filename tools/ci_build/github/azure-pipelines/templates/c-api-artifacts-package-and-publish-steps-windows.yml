@@ -203,6 +203,9 @@ steps:
             echo "Removed .exe files from lib\"
           )
 
+          REM Copying provider_options.h file into include directory
+          copy "$(Build.SourcesDirectory)\include\onnxruntime\core\framework\provider_options.h" "%ARTIFACT%\include"
+
           REM Optional- CUDA provider - copy extra headers
           if exist "%INSTALLED%\bin\onnxruntime_providers_cuda.dll" (
             echo "CUDA provider present"
@@ -319,9 +322,6 @@ steps:
 
           # ---------- Include directory ----------
           if (Test-Path $includeDir) {
-              # Allow only these top-level directories (ORT public header roots).
-              # Note: 'onnxruntime' is deliberately NOT allowed because the flatten
-              # step earlier in this template should have already removed it.
               $allowedIncludeDirs = @('core', 'cuda', 'training')
               $unexpectedDirs = Get-ChildItem -Path $includeDir -Directory | Where-Object {
                   $_.Name -notin $allowedIncludeDirs
@@ -330,13 +330,16 @@ steps:
                   Write-Host "##vso[task.logissue type=error]Unexpected directories in include/: $($unexpectedDirs.Name -join ', ')"
                   exit 1
               }
-
-              # Reject any loose files directly under include/ (headers should be in subdirs)
-              $looseFiles = Get-ChildItem -Path $includeDir -File
+              # Allow loose files directly under include/ that are ORT's own public/training headers
+              $allowedLooseHeaderPattern = '^(onnxruntime.*\.h|provider_options\.h)$'
+              $looseFiles = Get-ChildItem -Path $includeDir -File | Where-Object {
+                  $_.Name -notmatch $allowedLooseHeaderPattern
+              }
               if ($looseFiles) {
-                  Write-Host "##vso[task.logissue type=error]Loose files found directly under include/: $($looseFiles.Name -join ', ')"
+                  Write-Host "##vso[task.logissue type=error]Unexpected loose files found directly under include/: $($looseFiles.Name -join ', ')"
                   exit 1
               }
+
           }
 
           # ---------- Library directory ----------
