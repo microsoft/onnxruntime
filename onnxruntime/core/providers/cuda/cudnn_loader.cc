@@ -34,6 +34,57 @@ std::vector<std::string> GetCandidateLibraryNames() {
   return candidates;
 }
 
+#ifdef _WIN32
+// Search the directories listed in the PATH environment variable for the given
+// library and, if found, load it by its full path. Loading by full path (rather
+// than letting the loader search) preserves the historical PATH-based cuDNN
+// discovery without ever loading from the current working directory, which the
+// LOAD_LIBRARY_SEARCH_DEFAULT_DIRS-only search excludes for security reasons.
+HMODULE LoadLibraryFromPathEnv(const std::string& candidate) {
+  DWORD length = GetEnvironmentVariableA("PATH", nullptr, 0);
+  if (length == 0) {
+    return nullptr;
+  }
+
+  std::string path_value(length, '\0');
+  length = GetEnvironmentVariableA("PATH", path_value.data(), length);
+  if (length == 0) {
+    return nullptr;
+  }
+  path_value.resize(length);
+
+  size_t start = 0;
+  while (start <= path_value.size()) {
+    size_t end = path_value.find(';', start);
+    if (end == std::string::npos) {
+      end = path_value.size();
+    }
+
+    std::string dir = path_value.substr(start, end - start);
+    start = end + 1;
+    if (dir.empty()) {
+      continue;
+    }
+
+    if (dir.back() != '\\' && dir.back() != '/') {
+      dir.push_back('\\');
+    }
+    std::string full_path = dir + candidate;
+
+    if (GetFileAttributesA(full_path.c_str()) == INVALID_FILE_ATTRIBUTES) {
+      continue;
+    }
+
+    HMODULE handle = LoadLibraryExA(full_path.c_str(), nullptr, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+    if (handle != nullptr) {
+      return handle;
+    }
+  }
+
+  return nullptr;
+}
+#endif
+
 void* LoadLibraryCandidate(const std::string& candidate, std::string& error) {
 #ifdef _WIN32
   // Use LOAD_LIBRARY_SEARCH_DEFAULT_DIRS so cuDNN is resolved only from the
@@ -42,6 +93,12 @@ void* LoadLibraryCandidate(const std::string& candidate, std::string& error) {
   // current working directory from the search order to avoid loading an
   // attacker-controlled DLL from the process CWD.
   HMODULE handle = LoadLibraryExA(candidate.c_str(), nullptr, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+  if (handle == nullptr) {
+    // Fall back to searching the directories listed in PATH (loading by full
+    // path), matching the pre-existing OS-loader behavior when cuDNN was a
+    // direct import dependency. The current working directory is never searched.
+    handle = LoadLibraryFromPathEnv(candidate);
+  }
   if (handle == nullptr) {
     error = "LoadLibrary failed for " + candidate + " with error " + std::to_string(GetLastError());
   }
