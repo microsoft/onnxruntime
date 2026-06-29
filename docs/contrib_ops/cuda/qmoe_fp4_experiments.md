@@ -1366,3 +1366,61 @@ structural reasons FP4 has not matched INT4's interleaving are recorded above
 
 Recommended order: try (1) first (bounded, reuses INT4 fp32-accum), keep (2) as
 the structural follow-up that also kills the 6.7× prefill gap.
+
+---
+
+## 2026-06-28 — FP4 GEMV converter: 2-nibbles-per-32-bit-store packing (TBD, GPU contended)
+
+Restart of "FlashInfer-style decode" experiments. Small contained converter
+change while warming back up to the kernel; deliberately low-risk.
+
+### Change
+
+- Commit: `0fb02a5fb7` — *EXP: FP4 GEMV converter packs 2 nibbles into one 32-bit
+  store (bit-identical)*. File: `onnxruntime/contrib_ops/cuda/llm/fpA_intB_gemv/details.h`.
+- `Fp4I2FConverter::convert<N>` now decodes both nibbles of each byte via a
+  `decode_bits()` helper, ORs them into one `uint32_t`, and emits a single aligned
+  store instead of two scalar `half`/`bf16` writes. `decode()` is preserved.
+  Bit-identical to two scalar decodes.
+
+### Reproduce
+
+```bash
+# Build (C++/CUDA only)
+cd /home/tianlei/onnxruntime/build/cu130_fp4_bench/Release && ninja onnxruntime_providers_cuda
+cd /home/tianlei/onnxruntime
+cp build/cu130_fp4_bench/Release/libonnxruntime_providers_cuda.so \
+   .venv_cu130/lib/python*/site-packages/onnxruntime/capi/
+cp build/cu130_fp4_bench/Release/libonnxruntime_providers_cuda.so \
+   /home/tianlei/ort_home_cu130_fp4_bench/lib/
+
+# Correctness (20 FP4 tests)
+cd onnxruntime/test/python/transformers
+export CUDA_VISIBLE_DEVICES=0
+export LD_LIBRARY_PATH=/home/tianlei/ort_home_cu130_fp4_bench/lib:/home/tianlei/onnxruntime/build/cu130_fp4_bench/Release:/home/tianlei/cuda13.0/lib64:$LD_LIBRARY_PATH
+/home/tianlei/onnxruntime/.venv_cu130/bin/python -m pytest test_qmoe_fp4_cuda.py -k fp4 -q
+
+# Decode microbench (small fast shape; gpt-oss 32E build is slow)
+export ORT_FORCE_DETERMINISTIC_MOE=1
+for r in 1 2 3; do /home/tianlei/onnxruntime/.venv_cu130/bin/python \
+  bench_fp4_gemv_autotune.py --hidden 512 --inter 512 --experts 8 --top_k 4 \
+  --tokens 1 --iters 200 --reps 4 2>&1 | tail -1; done
+```
+
+### Result — TBD (inconclusive)
+
+- Correctness: **20/20** `test_qmoe_fp4_cuda.py` pass.
+- Decode bench (512/512/E8, tok=1): prior baseline ~241 µs; this build measured
+  406/510/422 µs across 3 reps. **Pure contention noise, not a regression** — the
+  shared H200 farm was at 78–87 % SM on 7/8 GPUs and the test run took 557 s
+  vs ~normal. Cannot confirm a perf delta until a GPU frees up.
+
+### Comments
+
+- This overlaps the 2026-06-15 *SWAR vectorization (negative result)* above, which
+  packed both nibbles into a 32-bit lane and was reverted for no net speedup. ncu
+  there showed the GEMV is **integer-ALU / loop-index bound**, not store-bound, so
+  fewer stores is unlikely to help once timing is trustworthy. Kept anyway because
+  it is bit-identical, simpler than the reverted `decode2`, and at worst neutral.
+- Re-measure on a free GPU0; if flat, this is just a tidy refactor. The real lever
+  is still interleaved/fp32-accum (lever 1) or a tensor-core grouped GEMM (lever 2).
