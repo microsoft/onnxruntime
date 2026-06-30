@@ -22,12 +22,14 @@ struct SamplingState : public ISamplingState<T> {
             int seed,
             bool is_cuda,
             Stream* stream) {
-    // Compute the product in SafeInt's checked domain by casting an operand first; otherwise
-    // an `int * int` multiply with model-controlled operands can silently positive-wrap before
-    // the SafeInt cast sees it, leading to under-allocated buffers (heap-buffer-overflow on the
-    // downstream memcpy in SamplingCpuHelper::Sample). Matches the pattern used for
-    // next_token_scores in GreedySearchState::Init below.
-    const SafeInt<size_t> total_count = SafeInt<size_t>(batch_size) * static_cast<size_t>(vocab_size);
+    // Compute the product entirely in SafeInt's checked domain; an `int * int` multiply
+    // with model-controlled operands can silently positive-wrap before any SafeInt cast
+    // sees it, leading to under-allocated buffers (heap-buffer-overflow on the downstream
+    // memcpy in SamplingCpuHelper::Sample). Using SafeInt<size_t> on both operands also
+    // preserves sign/overflow checking for negative inputs (e.g. unvalidated vocab_size),
+    // which a static_cast<size_t> would silently turn into a huge value. Matches the
+    // pattern used for next_token_scores in GreedySearchState::Init below.
+    const SafeInt<size_t> total_count = SafeInt<size_t>(batch_size) * SafeInt<size_t>(vocab_size);
 
     this->h_softmaxed_score = AllocateBuffer<float>(cpu_allocator, h_softmaxed_score_buffer_, total_count, stream);
 
@@ -41,7 +43,7 @@ struct SamplingState : public ISamplingState<T> {
       this->d_sorted_softmaxed_score = AllocateBuffer<float>(allocator, d_sorted_softmaxed_score_buffer_, total_count, stream);
       this->d_softmaxed_score = AllocateBuffer<float>(allocator, d_softmaxed_score_buffer_, total_count, stream);
       this->d_sampled = AllocateBuffer<float>(allocator, d_sampled_buffer_, SafeInt<size_t>(batch_size), stream);
-      this->h_sampled_all = AllocateBuffer<float>(cpu_allocator, h_sampled_all_buffer_, SafeInt<size_t>(batch_size) * static_cast<size_t>(max_iter), stream);
+      this->h_sampled_all = AllocateBuffer<float>(cpu_allocator, h_sampled_all_buffer_, SafeInt<size_t>(batch_size) * SafeInt<size_t>(max_iter), stream);
       this->d_indices = AllocateBuffer<int32_t>(allocator, d_indices_buffer_, SafeInt<size_t>(batch_size), stream);
       this->temp_storage_bytes = 0;
       // TODO: Do not allocate this buffer if there's no presence_mask
