@@ -177,13 +177,13 @@ __device__ __forceinline__ void AccumulateEightElements8b(
 }
 
 // ===== Small-M batched GEMV (8-bit) =====
-// Same idea as the 4-bit batched kernel: dequantize each packed 8-bit word once and accumulate it
-// against CtaM activation rows, so weight traffic scales with ceil(M/CtaM) instead of M. The 8-bit
-// path already accumulates in float, so dequantized weights are kept as float[8] for every dtype.
-// Upper bound on M for the 8-bit batched path. The 8-bit kernel re-reads the (large) 8-bit weights
-// once per 2-row block and accumulates in float, so it only beats the dequantize+cuBLAS fallback at
-// m==2 (measured on A100); m>=3 falls back. Kept dtype-agnostic for simplicity.
-constexpr int kSmallMMax8 = 2;
+// Same idea as the 4-bit batched kernel: each warp computes CtaN columns x CtaM rows. Lanes split K
+// (8 elems/lane/iter via one uint64 weight load); each column's 8 weights are dequantized once per row
+// group, per-row activations are loaded once and reused across CtaN columns, and a single float
+// accumulator per (row, column) keeps register pressure low while the weight is streamed once. The
+// launch bound pins >=3 blocks per SM. Standard [N, blocks, blob] layout, no prepacking; the 8-bit path
+// accumulates in float, so this stays dtype-agnostic (float/half/bf16).
+constexpr int kSmallMMax8 = 5;
 template <class T>
 __host__ __device__ constexpr int SmallMCap8() {
   return kSmallMMax8;
@@ -209,18 +209,17 @@ __device__ __forceinline__ void DequantizeEight8b(uint64_t values_quant, T scale
   }
 }
 
+// Load 8 consecutive activations (one lane's iteration tile) into float[8].
 template <class T>
-__device__ __forceinline__ void AccumulateRow8b(const float dq[8], const T* a, float* sums_f) {
+__device__ __forceinline__ void LoadEightActivations8b(const T* a, float out[8]) {
 #pragma unroll
-  for (int i = 0; i < 8; ++i) {
-    sums_f[i] = fmaf(ToFloat8b<T>(a[i]), dq[i], sums_f[i]);
+  for (int j = 0; j < 8; ++j) {
+    out[j] = ToFloat8b<T>(a[j]);
   }
 }
 
-// Batched 8-bit GEMV: block computes CtaM rows x kColsPerThreadBlock columns; grid is
-// (ceil(N/kColsPerThreadBlock), ceil(M/CtaM)). Mirrors MatMulFloat8bKernelM1's shared-memory staging.
-template <class T, int block_size, bool has_zero_point, int CtaM>
-__global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat8bKernelSmallM(
+template <class T, int block_size, bool has_zero_point, int CtaM, int CtaN>
+__global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock, 3) MatMulFloat8bKernelBatched(
     T* output,
     const T* a_data,
     const uint8_t* b_data_quant,
@@ -230,104 +229,128 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat8bK
     int n,
     int k,
     int blocks_per_K) {
-  const int n_block_id = blockIdx.x;
-  const int m_base = blockIdx.y * CtaM;
   const int lane_id = threadIdx.x;
   const int warp_id = threadIdx.y;
-  const int n_block_head = n_block_id * kColsPerThreadBlock;
-  const int n_id = n_block_head + warp_id;
-  if (n_id >= n) return;
+  const int col_base = (blockIdx.x * kColsPerThreadBlock + warp_id) * CtaN;
+  const int m_base = blockIdx.y * CtaM;
+  const int valid = m - m_base;
+  constexpr int k_per_iter = kWarpSize * kElementsPerThreadPerIteration;  // 256
+  const int lane_offset = lane_id * kElementsPerThreadPerIteration;       // lane_id * 8
 
-  extern __shared__ char shared_buffer[];
-  T* b_scale_vec_shared = reinterpret_cast<T*>(shared_buffer);
-  [[maybe_unused]] uint8_t* b_zp_vec_shared = nullptr;
-  if constexpr (has_zero_point) {
-    b_zp_vec_shared = reinterpret_cast<uint8_t*>(b_scale_vec_shared + kColsPerThreadBlock * blocks_per_K);
+  const T* a_base = a_data + static_cast<size_t>(m_base) * k + lane_offset;
+  const uint8_t* b_ptr[CtaN];
+#pragma unroll
+  for (int c = 0; c < CtaN; ++c) {
+    b_ptr[c] = b_data_quant + static_cast<size_t>(col_base + c) * blocks_per_K * block_size + lane_offset;
   }
-  for (int i = threadIdx.y * kWarpSize + threadIdx.x; i < kColsPerThreadBlock * blocks_per_K; i += kColsPerThreadBlock * kWarpSize) {
-    int current_n_offset = i / blocks_per_K;
-    int current_k_block = i % blocks_per_K;
-    int current_n = n_block_head + current_n_offset;
-    if (current_n < n) {
-      int64_t scale_zp_idx = static_cast<int64_t>(current_n) * blocks_per_K + current_k_block;
-      b_scale_vec_shared[i] = scales_data[scale_zp_idx];
+
+  float acc[CtaM][CtaN];
+#pragma unroll
+  for (int r = 0; r < CtaM; ++r) {
+#pragma unroll
+    for (int c = 0; c < CtaN; ++c) {
+      acc[r][c] = 0.0f;
+    }
+  }
+
+  int k_id = 0;
+  int t_meta_k = lane_offset / block_size;
+  constexpr int kWork = CtaM * CtaN;
+  constexpr int kMainUnroll = (kWork >= 20) ? 1 : (kWork >= 12) ? 2
+                                                                : 4;
+
+#define BATCHED8_BODY(i)                                                                              \
+  do {                                                                                                \
+    float dq[CtaN][8];                                                                                \
+    const int bk = t_meta_k + k_per_iter / block_size * (i);                                          \
+    _Pragma("unroll") for (int c = 0; c < CtaN; ++c) {                                                \
+      uint64_t value = *reinterpret_cast<const uint64_t*>(b_ptr[c] + k_per_iter * (i));               \
+      T scale = scales_data[static_cast<size_t>(col_base + c) * blocks_per_K + bk];                   \
+      uint8_t zp = kDefaultZeroPoint;                                                                 \
+      if constexpr (has_zero_point) {                                                                 \
+        zp = zero_points[static_cast<size_t>(col_base + c) * blocks_per_K + bk];                      \
+      }                                                                                               \
+      DequantizeEight8b<T>(value, scale, zp, dq[c]);                                                  \
+    }                                                                                                 \
+    _Pragma("unroll") for (int r = 0; r < CtaM; ++r) {                                                \
+      if (r < valid) {                                                                                \
+        float av[8];                                                                                  \
+        LoadEightActivations8b<T>(a_base + static_cast<size_t>(r) * k + k_id + (i) * k_per_iter, av); \
+        _Pragma("unroll") for (int c = 0; c < CtaN; ++c) {                                            \
+          float s = 0.0f;                                                                             \
+          _Pragma("unroll") for (int j = 0; j < 8; ++j) {                                             \
+            s = fmaf(av[j], dq[c][j], s);                                                             \
+          }                                                                                           \
+          acc[r][c] += s;                                                                             \
+        }                                                                                             \
+      }                                                                                               \
+    }                                                                                                 \
+  } while (false)
+
+#define BATCHED8_UNROLL(unroll_size)                        \
+  do {                                                      \
+    constexpr int kUnroll = unroll_size;                    \
+    constexpr int kUnrollStep = kUnroll * k_per_iter;       \
+    const int k_unroll_bound = k - k % kUnrollStep;         \
+    for (; k_id < k_unroll_bound; k_id += kUnrollStep) {    \
+      _Pragma("unroll") for (int i = 0; i < kUnroll; ++i) { \
+        BATCHED8_BODY(i);                                   \
+      }                                                     \
+      _Pragma("unroll") for (int c = 0; c < CtaN; ++c) {    \
+        b_ptr[c] += kUnrollStep;                            \
+      }                                                     \
+      t_meta_k += k_per_iter / block_size * kUnroll;        \
+    }                                                       \
+  } while (false)
+
+  BATCHED8_UNROLL(kMainUnroll);
+  BATCHED8_UNROLL(1);
+#undef BATCHED8_UNROLL
+
+  if (lane_offset + k_id < k) {
+    float dq[CtaN][8];
+    const int bk = t_meta_k;
+#pragma unroll
+    for (int c = 0; c < CtaN; ++c) {
+      uint64_t value = *reinterpret_cast<const uint64_t*>(b_ptr[c]);
+      T scale = scales_data[static_cast<size_t>(col_base + c) * blocks_per_K + bk];
+      uint8_t zp = kDefaultZeroPoint;
       if constexpr (has_zero_point) {
-        b_zp_vec_shared[i] = zero_points[scale_zp_idx];
+        zp = zero_points[static_cast<size_t>(col_base + c) * blocks_per_K + bk];
+      }
+      DequantizeEight8b<T>(value, scale, zp, dq[c]);
+    }
+#pragma unroll
+    for (int r = 0; r < CtaM; ++r) {
+      if (r < valid) {
+        float av[8];
+        LoadEightActivations8b<T>(a_base + static_cast<size_t>(r) * k + k_id, av);
+#pragma unroll
+        for (int c = 0; c < CtaN; ++c) {
+          float s = 0.0f;
+#pragma unroll
+          for (int j = 0; j < 8; ++j) {
+            s = fmaf(av[j], dq[c][j], s);
+          }
+          acc[r][c] += s;
+        }
       }
     }
   }
-  __syncthreads();
+#undef BATCHED8_BODY
 
-  const int valid = m - m_base;
-  const int lane_offset = lane_id * kElementsPerThreadPerIteration;
-  const uint8_t* b_data_quant_thread =
-      b_data_quant + static_cast<int64_t>(n_id) * blocks_per_K * block_size + lane_offset;
-  const T* b_scale_vec_thread = b_scale_vec_shared + warp_id * blocks_per_K;
-  [[maybe_unused]] const uint8_t* b_zp_vec_thread = nullptr;
-  if constexpr (has_zero_point) {
-    b_zp_vec_thread = b_zp_vec_shared + warp_id * blocks_per_K;
-  }
-
-  const T* a_thread[CtaM];
 #pragma unroll
   for (int r = 0; r < CtaM; ++r) {
-    a_thread[r] = a_data + static_cast<size_t>(m_base + r) * k + lane_offset;
-  }
-
-  float sums[CtaM][kElementsPerThreadPerIteration];
+    if (r >= valid) continue;
 #pragma unroll
-  for (int r = 0; r < CtaM; ++r) {
-#pragma unroll
-    for (int j = 0; j < kElementsPerThreadPerIteration; ++j) {
-      sums[r][j] = 0.0f;
-    }
-  }
-
-  constexpr int k_per_iter = kWarpSize * kElementsPerThreadPerIteration;
-  int k_id = 0;
-  for (; k_id + k_per_iter <= k; k_id += k_per_iter) {
-    uint64_t value = *reinterpret_cast<const uint64_t*>(b_data_quant_thread + k_id);
-    int current_meta_k = (lane_offset + k_id) / block_size;
-    T scale = b_scale_vec_thread[current_meta_k];
-    uint8_t zp = kDefaultZeroPoint;
-    if constexpr (has_zero_point) {
-      zp = b_zp_vec_thread[current_meta_k];
-    }
-    float dq[8];
-    DequantizeEight8b<T>(value, scale, zp, dq);
-#pragma unroll
-    for (int r = 0; r < CtaM; ++r) {
-      if (r < valid) AccumulateRow8b<T>(dq, a_thread[r] + k_id, sums[r]);
-    }
-  }
-  if (lane_offset + k_id < k) {
-    uint64_t value = *reinterpret_cast<const uint64_t*>(b_data_quant_thread + k_id);
-    int current_meta_k = (lane_offset + k_id) / block_size;
-    T scale = b_scale_vec_thread[current_meta_k];
-    uint8_t zp = kDefaultZeroPoint;
-    if constexpr (has_zero_point) {
-      zp = b_zp_vec_thread[current_meta_k];
-    }
-    float dq[8];
-    DequantizeEight8b<T>(value, scale, zp, dq);
-#pragma unroll
-    for (int r = 0; r < CtaM; ++r) {
-      if (r < valid) AccumulateRow8b<T>(dq, a_thread[r] + k_id, sums[r]);
-    }
-  }
-
-  using BlockReduce = cub::WarpReduce<float>;
-  __shared__ typename BlockReduce::TempStorage temp_storage[kColsPerThreadBlock];
-#pragma unroll
-  for (int r = 0; r < CtaM; ++r) {
-    float ts = 0.0f;
-#pragma unroll
-    for (int i = 0; i < kElementsPerThreadPerIteration; ++i) {
-      ts += sums[r][i];
-    }
-    ts = BlockReduce(temp_storage[warp_id]).Sum(ts);
-    if (lane_id == 0 && r < valid) {
-      output[static_cast<size_t>(m_base + r) * n + n_id] = static_cast<T>(ts);
+    for (int c = 0; c < CtaN; ++c) {
+      float sum = acc[r][c];
+      for (int off = kWarpSize / 2; off > 0; off /= 2) {
+        sum += WARP_SHFL_DOWN(sum, off);
+      }
+      if (lane_id == 0) {
+        output[static_cast<size_t>(m_base + r) * n + (col_base + c)] = static_cast<T>(sum);
+      }
     }
   }
 }
@@ -552,34 +575,56 @@ bool TryMatMul8Bits(
     return false;
   }
 
-  // 2 <= m <= cap: batched GEMV reusing each dequantized weight across CtaM rows. The 8-bit kernel
-  // accumulates in float (8 floats/row), so CtaM=4 spills occupancy; CtaM=2 keeps register pressure
-  // low. Each 2-row block re-reads weights, so traffic grows with ceil(m/2); the cap bounds m.
+  // 2 <= m <= cap: batched GEMV. CtaM = smallest of {2,4,8} >= m streams the weight once per block row
+  // (m=5 uses CtaM=8 and skips the unused rows); CtaN = 2 columns/warp where N allows (reuses each
+  // activation load across columns). One float accumulator per (row, column) keeps register pressure
+  // low. 8-bit weights are twice the bytes of 4-bit and the GEMV runs on CUDA cores, so it crosses over
+  // to the dequantize + cuBLAS (tensor-core) fallback at a lower M than the 4-bit path; the cap keeps
+  // only the row counts where it is faster on every matrix shape.
   if (m >= 2) {
-    constexpr int cta_m = 2;
-    dim3 small_m_blocks((n + kColsPerThreadBlock - 1) / kColsPerThreadBlock, (m + cta_m - 1) / cta_m);
-#define MatMulFloat8bKernelSmallMDispatch(bs)                                                            \
-  if (nullptr != zero_points) {                                                                          \
-    MatMulFloat8bKernelSmallM<T, bs, true, cta_m><<<small_m_blocks, threads, total_shared_mem, stream>>>( \
-        output, a_data, b_data_quant, scales_data, zero_points, m, n, k, blocks_per_K);                  \
-  } else {                                                                                               \
-    MatMulFloat8bKernelSmallM<T, bs, false, cta_m><<<small_m_blocks, threads, total_shared_mem, stream>>>(\
-        output, a_data, b_data_quant, scales_data, nullptr, m, n, k, blocks_per_K);                      \
+    const int cta_m = (m <= 2) ? 2 : (m <= 4) ? 4
+                                              : 8;
+    const int cta_n = (n % (kColsPerThreadBlock * 2) == 0) ? 2 : 1;
+    dim3 batched_blocks(n / (kColsPerThreadBlock * cta_n), (m + cta_m - 1) / cta_m);
+#define MatMulFloat8bBatchedDispatch(bs, cm, cn)                                              \
+  if (nullptr != zero_points) {                                                               \
+    MatMulFloat8bKernelBatched<T, bs, true, cm, cn><<<batched_blocks, threads, 0, stream>>>(  \
+        output, a_data, b_data_quant, scales_data, zero_points, m, n, k, blocks_per_K);       \
+  } else {                                                                                    \
+    MatMulFloat8bKernelBatched<T, bs, false, cm, cn><<<batched_blocks, threads, 0, stream>>>( \
+        output, a_data, b_data_quant, scales_data, nullptr, m, n, k, blocks_per_K);           \
   }
-    if (16 == block_size) {
-      MatMulFloat8bKernelSmallMDispatch(16)
-    } else if (32 == block_size) {
-      MatMulFloat8bKernelSmallMDispatch(32)
-    } else if (64 == block_size) {
-      MatMulFloat8bKernelSmallMDispatch(64)
-    } else if (128 == block_size) {
-      MatMulFloat8bKernelSmallMDispatch(128)
-    } else if (256 == block_size) {
-      MatMulFloat8bKernelSmallMDispatch(256)
+#define MatMulFloat8bBatchedDispatchN(cm, cn) \
+  if (16 == block_size) {                     \
+    MatMulFloat8bBatchedDispatch(16, cm, cn)  \
+  } else if (32 == block_size) {              \
+    MatMulFloat8bBatchedDispatch(32, cm, cn)  \
+  } else if (64 == block_size) {              \
+    MatMulFloat8bBatchedDispatch(64, cm, cn)  \
+  } else if (128 == block_size) {             \
+    MatMulFloat8bBatchedDispatch(128, cm, cn) \
+  } else if (256 == block_size) {             \
+    MatMulFloat8bBatchedDispatch(256, cm, cn) \
+  } else {                                    \
+    return false;                             \
+  }
+#define MatMulFloat8bBatchedDispatchM(cn)         \
+  switch (cta_m) {                                \
+    case 2:                                       \
+      MatMulFloat8bBatchedDispatchN(2, cn) break; \
+    case 4:                                       \
+      MatMulFloat8bBatchedDispatchN(4, cn) break; \
+    default:                                      \
+      MatMulFloat8bBatchedDispatchN(8, cn) break; \
+  }
+    if (cta_n == 2) {
+      MatMulFloat8bBatchedDispatchM(2)
     } else {
-      return false;
+      MatMulFloat8bBatchedDispatchM(1)
     }
-#undef MatMulFloat8bKernelSmallMDispatch
+#undef MatMulFloat8bBatchedDispatchM
+#undef MatMulFloat8bBatchedDispatchN
+#undef MatMulFloat8bBatchedDispatch
     return true;
   }
 

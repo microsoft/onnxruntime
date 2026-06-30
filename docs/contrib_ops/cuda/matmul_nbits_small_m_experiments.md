@@ -35,7 +35,7 @@ nsys profile -t cuda,nvtx -o mnb --export=sqlite \
 python onnxruntime/test/python/transformers/parse_nsys.py mnb.sqlite --nvtx-range benchmark --pattern '%'
 ```
 
-### Before / After
+### Before / After (4-bit)
 
 `before` is the prior dispatch (M=1 single-row GEMV; M>1 falls back to weight dequantization + cuBLAS
 GEMM, which is M-independent and dequantizes the full weight regardless of M). `after` is the batched
@@ -72,12 +72,50 @@ Speedup (before / after, >1 means the batched GEMV is faster):
 | down    | 3.69x | 3.31x | 2.28x | 1.17x |
 | lm_head | 5.66x | 4.41x | 2.96x | 1.54x |
 
+### Before / After (8-bit)
+
+The 8-bit batched GEMV (`MatMulFloat8bKernelBatched`) covers M=2..5. 8-bit weights are twice the bytes of
+4-bit and the GEMV runs on CUDA cores, so it crosses over to the dequantize + cuBLAS (tensor-core) fallback
+at a lower M than the 4-bit path; M>=6 keeps the fallback. Values are average op latency in microseconds.
+
+Before (dequant + cuBLAS for M>1):
+
+| matrix  | K     | N      | M=1   | M=2    | M=3    | M=4    | M=5    |
+|---------|-------|--------|-------|--------|--------|--------|--------|
+| qkv     | 4096  | 4096   | 36.2  | 80.6   | 72.9   | 72.8   | 73.3   |
+| o_proj  | 4096  | 4096   | 31.1  | 73.2   | 72.7   | 73.6   | 73.4   |
+| gate_up | 4096  | 12288  | 63.5  | 184.4  | 184.2  | 184.1  | 184.3  |
+| down    | 12288 | 4096   | 67.8  | 187.3  | 187.4  | 187.8  | 188.0  |
+| lm_head | 4096  | 151936 | 535.9 | 2025.0 | 2025.9 | 2028.1 | 2029.8 |
+
+After (batched small-M GEMV for M=2..5):
+
+| matrix  | K     | N      | M=1   | M=2   | M=3   | M=4    | M=5    |
+|---------|-------|--------|-------|-------|-------|--------|--------|
+| qkv     | 4096  | 4096   | 36.2  | 46.1  | 48.7  | 57.9   | 67.0   |
+| o_proj  | 4096  | 4096   | 31.6  | 39.5  | 48.6  | 57.9   | 67.1   |
+| gate_up | 4096  | 12288  | 63.4  | 80.9  | 104.6 | 128.9  | 152.6  |
+| down    | 12288 | 4096   | 68.0  | 96.2  | 119.3 | 146.4  | 172.0  |
+| lm_head | 4096  | 151936 | 536.3 | 647.0 | 896.9 | 1157.1 | 1420.1 |
+
+Speedup (before / after, >1 means the batched GEMV is faster):
+
+| matrix  | M=2   | M=3   | M=4   | M=5   |
+|---------|-------|-------|-------|-------|
+| qkv     | 1.75x | 1.50x | 1.26x | 1.09x |
+| o_proj  | 1.85x | 1.50x | 1.27x | 1.09x |
+| gate_up | 2.28x | 1.76x | 1.43x | 1.21x |
+| down    | 1.95x | 1.57x | 1.28x | 1.09x |
+| lm_head | 3.13x | 2.26x | 1.75x | 1.43x |
+
 ### Observations
 
 - The previous M>1 path dequantizes the entire weight matrix to a temporary buffer and calls cuBLAS, so
   its latency is flat across M (e.g. `gate_up` ~172 us, `lm_head` ~1.9 ms even at M=2). The batched small-M
-  GEMV reads the quantized weight once and scales with M, giving 2.6-5.7x at M=2 and staying at or above
-  parity through M=16.
+  GEMV reads the quantized weight once and scales with M, giving 2.6-5.7x at M=2 (4-bit) / 1.8-3.1x at M=2
+  (8-bit).
+- 4-bit stays at or above parity through M=16; 8-bit wins through M=5 and falls back to dequant + cuBLAS
+  for M>=6, where the tensor-core GEMM beats the CUDA-core GEMV on the heavier 8-bit weights.
 - M=1 decode is unchanged (same single-row GEMV in both builds).
 - No prepacking is used, so there is no extra resident weight memory and no GEMM tactic profiling at
   session init.

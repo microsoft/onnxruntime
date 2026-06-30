@@ -82,7 +82,9 @@ def build_model(k, n, block_size, bits, onnx_dtype, with_zero_point=True):
     ]
     inputs = ["A", "B", "scales"]
     if with_zero_point:
-        zp = rng.integers(0, 256, size=(n * ((n_blocks + 1) // 2),), dtype=np.uint8)
+        # 4-bit zero points are packed two per byte; 8-bit zero points are one byte per block.
+        zp_count = n * ((n_blocks + 1) // 2) if bits == 4 else n * n_blocks
+        zp = rng.integers(0, 256, size=(zp_count,), dtype=np.uint8)
         inits.append(helper.make_tensor("zero_points", TensorProto.UINT8, list(zp.shape), zp.tobytes(), raw=True))
         inputs.append("zero_points")
     node = helper.make_node(

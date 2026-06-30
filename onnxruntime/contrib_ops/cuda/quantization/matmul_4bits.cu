@@ -614,10 +614,14 @@ __device__ __forceinline__ WPack<half> PackNatural(const DequantizedEight<half>&
   constexpr uint32_t kHi = 0x7632;  // (y0,y1) -> elements 4,5
   WPack<half> w;
   uint32_t t;
-  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d0), "r"(d1), "r"(kLo)); w.v[0] = *reinterpret_cast<half2*>(&t);
-  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d2), "r"(d3), "r"(kLo)); w.v[1] = *reinterpret_cast<half2*>(&t);
-  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d0), "r"(d1), "r"(kHi)); w.v[2] = *reinterpret_cast<half2*>(&t);
-  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d2), "r"(d3), "r"(kHi)); w.v[3] = *reinterpret_cast<half2*>(&t);
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d0), "r"(d1), "r"(kLo));
+  w.v[0] = *reinterpret_cast<half2*>(&t);
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d2), "r"(d3), "r"(kLo));
+  w.v[1] = *reinterpret_cast<half2*>(&t);
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d0), "r"(d1), "r"(kHi));
+  w.v[2] = *reinterpret_cast<half2*>(&t);
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d2), "r"(d3), "r"(kHi));
+  w.v[3] = *reinterpret_cast<half2*>(&t);
   return w;
 }
 __device__ __forceinline__ void DotAccum(const WPack<half>& w, const half2* a4, half2& acc) {
@@ -641,10 +645,14 @@ __device__ __forceinline__ WPack<nv_bfloat16> PackNatural(const DequantizedEight
   constexpr uint32_t kLo = 0x5410;
   constexpr uint32_t kHi = 0x7632;
   uint32_t t;
-  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d0), "r"(d1), "r"(kLo)); w.v[0] = *reinterpret_cast<__nv_bfloat162*>(&t);
-  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d2), "r"(d3), "r"(kLo)); w.v[1] = *reinterpret_cast<__nv_bfloat162*>(&t);
-  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d0), "r"(d1), "r"(kHi)); w.v[2] = *reinterpret_cast<__nv_bfloat162*>(&t);
-  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d2), "r"(d3), "r"(kHi)); w.v[3] = *reinterpret_cast<__nv_bfloat162*>(&t);
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d0), "r"(d1), "r"(kLo));
+  w.v[0] = *reinterpret_cast<__nv_bfloat162*>(&t);
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d2), "r"(d3), "r"(kLo));
+  w.v[1] = *reinterpret_cast<__nv_bfloat162*>(&t);
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d0), "r"(d1), "r"(kHi));
+  w.v[2] = *reinterpret_cast<__nv_bfloat162*>(&t);
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d2), "r"(d3), "r"(kHi));
+  w.v[3] = *reinterpret_cast<__nv_bfloat162*>(&t);
 #endif
   return w;
 }
@@ -709,50 +717,51 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock, 3) MatMulFloat
   int k_id = 0;
   int t_meta_k = lane_id * 8 / block_size;
   constexpr int kWork = CtaM * CtaN;
-  constexpr int kMainUnroll = (kWork >= 20) ? 1 : (kWork >= 12) ? 2 : 4;
+  constexpr int kMainUnroll = (kWork >= 20) ? 1 : (kWork >= 12) ? 2
+                                                                : 4;
 
-#define BATCHED_BODY(i)                                                                         \
-  do {                                                                                         \
-    WPack<T> w[CtaN];                                                                          \
-    const int bk = t_meta_k + k_per_iter / block_size * (i);                                   \
-    _Pragma("unroll") for (int c = 0; c < CtaN; c++) {                                         \
-      uint32_t value = *(reinterpret_cast<const uint32_t*>(b_ptr[c] + k_per_iter / 2 * (i)));  \
-      T scale = scales_data[static_cast<size_t>(col_base + c) * blocks_per_K + bk];            \
-      uint8_t zp = 8;                                                                          \
-      if constexpr (has_zero_point) {                                                          \
-        uint8_t zpb = zero_points[static_cast<size_t>(col_base + c) * zp_blocks + (bk >> 1)];  \
-        zp = (bk & 1) ? (zpb >> 4) : (zpb & 0x0f);                                             \
-      }                                                                                        \
-      DequantizedEight<T> d;                                                                   \
-      DequantizeEight(value, scale, zp, d);                                                    \
-      w[c] = PackNatural(d);                                                                   \
-    }                                                                                          \
-    _Pragma("unroll") for (int r = 0; r < CtaM; r++) {                                         \
-      if (r < valid) {                                                                         \
-        AccT a4[4];                                                                            \
-        *reinterpret_cast<uint4*>(a4) = *reinterpret_cast<const uint4*>(                       \
-            a_base + static_cast<size_t>(r) * k + k_id + (i) * k_per_iter);                    \
-        _Pragma("unroll") for (int c = 0; c < CtaN; c++) {                                     \
-          DotAccum(w[c], a4, acc[r][c]);                                                       \
-        }                                                                                      \
-      }                                                                                        \
-    }                                                                                          \
+#define BATCHED_BODY(i)                                                                       \
+  do {                                                                                        \
+    WPack<T> w[CtaN];                                                                         \
+    const int bk = t_meta_k + k_per_iter / block_size * (i);                                  \
+    _Pragma("unroll") for (int c = 0; c < CtaN; c++) {                                        \
+      uint32_t value = *(reinterpret_cast<const uint32_t*>(b_ptr[c] + k_per_iter / 2 * (i))); \
+      T scale = scales_data[static_cast<size_t>(col_base + c) * blocks_per_K + bk];           \
+      uint8_t zp = 8;                                                                         \
+      if constexpr (has_zero_point) {                                                         \
+        uint8_t zpb = zero_points[static_cast<size_t>(col_base + c) * zp_blocks + (bk >> 1)]; \
+        zp = (bk & 1) ? (zpb >> 4) : (zpb & 0x0f);                                            \
+      }                                                                                       \
+      DequantizedEight<T> d;                                                                  \
+      DequantizeEight(value, scale, zp, d);                                                   \
+      w[c] = PackNatural(d);                                                                  \
+    }                                                                                         \
+    _Pragma("unroll") for (int r = 0; r < CtaM; r++) {                                        \
+      if (r < valid) {                                                                        \
+        AccT a4[4];                                                                           \
+        *reinterpret_cast<uint4*>(a4) = *reinterpret_cast<const uint4*>(                      \
+            a_base + static_cast<size_t>(r) * k + k_id + (i) * k_per_iter);                   \
+        _Pragma("unroll") for (int c = 0; c < CtaN; c++) {                                    \
+          DotAccum(w[c], a4, acc[r][c]);                                                      \
+        }                                                                                     \
+      }                                                                                       \
+    }                                                                                         \
   } while (false)
 
-#define BATCHED_UNROLL(unroll_size)                                            \
-  do {                                                                        \
-    constexpr int kUnroll = unroll_size;                                      \
-    constexpr int kUnrollStep = kUnroll * k_per_iter;                         \
-    const int k_unroll_bound = k - k % kUnrollStep;                           \
-    for (; k_id < k_unroll_bound; k_id += kUnrollStep) {                      \
-      _Pragma("unroll") for (int i = 0; i < kUnroll; i++) {                   \
-        BATCHED_BODY(i);                                                       \
-      }                                                                       \
-      _Pragma("unroll") for (int c = 0; c < CtaN; c++) {                      \
-        b_ptr[c] += k_per_iter / 2 * kUnroll;                                 \
-      }                                                                       \
-      t_meta_k += k_per_iter / block_size * kUnroll;                          \
-    }                                                                         \
+#define BATCHED_UNROLL(unroll_size)                         \
+  do {                                                      \
+    constexpr int kUnroll = unroll_size;                    \
+    constexpr int kUnrollStep = kUnroll * k_per_iter;       \
+    const int k_unroll_bound = k - k % kUnrollStep;         \
+    for (; k_id < k_unroll_bound; k_id += kUnrollStep) {    \
+      _Pragma("unroll") for (int i = 0; i < kUnroll; i++) { \
+        BATCHED_BODY(i);                                    \
+      }                                                     \
+      _Pragma("unroll") for (int c = 0; c < CtaN; c++) {    \
+        b_ptr[c] += k_per_iter / 2 * kUnroll;               \
+      }                                                     \
+      t_meta_k += k_per_iter / block_size * kUnroll;        \
+    }                                                       \
   } while (false)
 
   BATCHED_UNROLL(kMainUnroll);
@@ -948,25 +957,25 @@ bool TryMatMulSmallM4Bits(
   dim3 threads(GPU_WARP_SIZE_HOST, kColsPerThreadBlock);
   dim3 blocks((n + kColsPerThreadBlock - 1) / kColsPerThreadBlock, (m + cta_m - 1) / cta_m);
 
-#define SmallMDispatch(BS, CM)                                                                  \
-  if (nullptr != zero_points) {                                                                 \
-    MatMulFloatInt4KernelSmallM<T, BS, true, CM><<<blocks, threads, shared_mem_size, stream>>>( \
-        output, a_data, b_data_quant, scales_data, zero_points, m, n, k, (k + BS - 1) / BS);    \
-  } else {                                                                                      \
-    MatMulFloatInt4KernelSmallM<T, BS, false, CM><<<blocks, threads, shared_mem_size, stream>>>(\
-        output, a_data, b_data_quant, scales_data, zero_points, m, n, k, (k + BS - 1) / BS);    \
+#define SmallMDispatch(BS, CM)                                                                   \
+  if (nullptr != zero_points) {                                                                  \
+    MatMulFloatInt4KernelSmallM<T, BS, true, CM><<<blocks, threads, shared_mem_size, stream>>>(  \
+        output, a_data, b_data_quant, scales_data, zero_points, m, n, k, (k + BS - 1) / BS);     \
+  } else {                                                                                       \
+    MatMulFloatInt4KernelSmallM<T, BS, false, CM><<<blocks, threads, shared_mem_size, stream>>>( \
+        output, a_data, b_data_quant, scales_data, zero_points, m, n, k, (k + BS - 1) / BS);     \
   }
-#define SmallMDispatchBlock(CM)            \
-  if (16 == block_size) {                  \
-    SmallMDispatch(16, CM)                 \
-  } else if (32 == block_size) {           \
-    SmallMDispatch(32, CM)                 \
-  } else if (64 == block_size) {           \
-    SmallMDispatch(64, CM)                 \
-  } else if (128 == block_size) {          \
-    SmallMDispatch(128, CM)                \
-  } else {                                 \
-    return false;                          \
+#define SmallMDispatchBlock(CM)   \
+  if (16 == block_size) {         \
+    SmallMDispatch(16, CM)        \
+  } else if (32 == block_size) {  \
+    SmallMDispatch(32, CM)        \
+  } else if (64 == block_size) {  \
+    SmallMDispatch(64, CM)        \
+  } else if (128 == block_size) { \
+    SmallMDispatch(128, CM)       \
+  } else {                        \
+    return false;                 \
   }
 
   if (cta_m == 2) {
@@ -1006,37 +1015,43 @@ bool TryMatMulBatched4Bits(
     // (10/12/14) compile to materially slower code, so the row-tile is rounded up (M>8 uses CtaM=16).
     // CtaN = 2 columns/warp where N allows (halves activation L2 traffic); CtaN=4 lost to register
     // pressure so it is not used by default.
-    const int cta_m = (m <= 2) ? 2 : (m <= 4) ? 4 : (m <= 8) ? 8 : 16;
+    const int cta_m = (m <= 2) ? 2 : (m <= 4) ? 4
+                                 : (m <= 8)   ? 8
+                                              : 16;
     const int cta_n = (n % (kColsPerThreadBlock * 2) == 0) ? 2 : 1;
     dim3 threads(GPU_WARP_SIZE_HOST, kColsPerThreadBlock);
     dim3 blocks(n / (kColsPerThreadBlock * cta_n), (m + cta_m - 1) / cta_m);
 
-#define BatchedDispatch(BS, CM, CN)                                                            \
-  if (nullptr != zero_points) {                                                               \
-    MatMulFloat4BatchedKernel<T, BS, true, CM, CN><<<blocks, threads, 0, stream>>>(            \
-        output, a_data, b_data_quant, scales_data, zero_points, m, n, k, (k + BS - 1) / BS);  \
-  } else {                                                                                    \
-    MatMulFloat4BatchedKernel<T, BS, false, CM, CN><<<blocks, threads, 0, stream>>>(           \
-        output, a_data, b_data_quant, scales_data, zero_points, m, n, k, (k + BS - 1) / BS);  \
+#define BatchedDispatch(BS, CM, CN)                                                          \
+  if (nullptr != zero_points) {                                                              \
+    MatMulFloat4BatchedKernel<T, BS, true, CM, CN><<<blocks, threads, 0, stream>>>(          \
+        output, a_data, b_data_quant, scales_data, zero_points, m, n, k, (k + BS - 1) / BS); \
+  } else {                                                                                   \
+    MatMulFloat4BatchedKernel<T, BS, false, CM, CN><<<blocks, threads, 0, stream>>>(         \
+        output, a_data, b_data_quant, scales_data, zero_points, m, n, k, (k + BS - 1) / BS); \
   }
-#define BatchedDispatchN(CM, CN)            \
-  if (16 == block_size) {                  \
-    BatchedDispatch(16, CM, CN)             \
-  } else if (32 == block_size) {           \
-    BatchedDispatch(32, CM, CN)             \
-  } else if (64 == block_size) {           \
-    BatchedDispatch(64, CM, CN)             \
-  } else if (128 == block_size) {          \
-    BatchedDispatch(128, CM, CN)            \
-  } else {                                 \
-    return false;                          \
+#define BatchedDispatchN(CM, CN)  \
+  if (16 == block_size) {         \
+    BatchedDispatch(16, CM, CN)   \
+  } else if (32 == block_size) {  \
+    BatchedDispatch(32, CM, CN)   \
+  } else if (64 == block_size) {  \
+    BatchedDispatch(64, CM, CN)   \
+  } else if (128 == block_size) { \
+    BatchedDispatch(128, CM, CN)  \
+  } else {                        \
+    return false;                 \
   }
-#define BatchedDispatchM(CN)        \
-  switch (cta_m) {                 \
-    case 2: BatchedDispatchN(2, CN) break;   \
-    case 4: BatchedDispatchN(4, CN) break;   \
-    case 8: BatchedDispatchN(8, CN) break;   \
-    default: BatchedDispatchN(16, CN) break; \
+#define BatchedDispatchM(CN)          \
+  switch (cta_m) {                    \
+    case 2:                           \
+      BatchedDispatchN(2, CN) break;  \
+    case 4:                           \
+      BatchedDispatchN(4, CN) break;  \
+    case 8:                           \
+      BatchedDispatchN(8, CN) break;  \
+    default:                          \
+      BatchedDispatchN(16, CN) break; \
   }
 
     if (cta_n == 2) {
@@ -1103,7 +1118,7 @@ bool TryMatMul4Bits(
   // dequantize + cuBLAS path (returned false above).
   if (m >= 2) {
     if (TryMatMulBatched4Bits<T>(output, a_data, b_data_quant, scales_data, zero_points,
-                                m, n, k, block_size, shared_mem_size, stream)) {
+                                 m, n, k, block_size, shared_mem_size, stream)) {
       return true;
     }
     return TryMatMulSmallM4Bits<T>(output, a_data, b_data_quant, scales_data, zero_points,
