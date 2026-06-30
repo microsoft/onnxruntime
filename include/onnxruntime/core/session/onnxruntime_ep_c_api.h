@@ -2996,7 +2996,7 @@ struct OrtEpFactory {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.27.
+   * \since Version 1.28.
    */
   ORT_API2_STATUS(SelectBestModelCandidate, _In_ OrtEpFactory* this_ptr,
                   _In_ const OrtHardwareDevice* device,
