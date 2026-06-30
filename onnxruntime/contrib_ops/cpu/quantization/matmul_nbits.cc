@@ -236,23 +236,6 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
                                 /*out*/ bool& is_packed,
                                 /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;
-  if (has_g_idx_) {
-    return Status::OK();
-  }
-  if (has_unquantized_zero_point_ && !prefer_lut_gemm_) {
-    return Status::OK();
-  }
-
-  // LUT GEMM requires ZP to be a constant initializer for prepacking. If the node
-  // has a ZP input but it's dynamic, skip LUT packing and fall through to the
-  // unpacked dequant path at compute time (similar to KleidiAI's dynamic ZP fallback).
-  if (prefer_lut_gemm_ && has_zp_arg_ && !has_zp_input_) {
-    return Status::OK();
-  }
-
-  if (!MlasIsQNBitGemmAvailable(nbits_, block_size_, compute_type_) && !prefer_lut_gemm_) {
-    return Status::OK();
-  }
 
   // Validate the incoming initializer's shape against the attribute-derived shape before any of
   // the pack routines below dereference tensor.DataRaw(). The MLAS pack routines size their reads
@@ -271,6 +254,14 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   // zero_points here, a crafted model with an undersized scales or zero_points buffer would still
   // trigger an OOB read inside the B packing pass before each tensor's own PrePack call could
   // catch the mismatch.
+  //
+  // This validation runs before the early-return guards below (has_g_idx_, unquantized ZP,
+  // dynamic-ZP-with-LUT, !MlasIsQNBitGemmAvailable). On builds where MLAS QNBit GEMM is not
+  // available (e.g. Windows x86 32-bit) PrePack would otherwise short-circuit before reaching
+  // these checks, and the original B tensor is dropped after PrePack so Compute()'s helper-time
+  // check never sees it. Running the validation first makes session init reject bad-shape models
+  // consistently across all build configurations. The checks are cheap (a few TensorShape
+  // equality comparisons) and independent of any MLAS kernel availability.
   {
     const int64_t n = static_cast<int64_t>(N_);
     const int64_t k = static_cast<int64_t>(K_);
@@ -328,6 +319,24 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     } else if (input_idx == InputIndex::zero_points) {
       ORT_RETURN_IF_ERROR(validate_zero_points_shape(shape, tensor.GetElementType()));
     }
+  }
+
+  if (has_g_idx_) {
+    return Status::OK();
+  }
+  if (has_unquantized_zero_point_ && !prefer_lut_gemm_) {
+    return Status::OK();
+  }
+
+  // LUT GEMM requires ZP to be a constant initializer for prepacking. If the node
+  // has a ZP input but it's dynamic, skip LUT packing and fall through to the
+  // unpacked dequant path at compute time (similar to KleidiAI's dynamic ZP fallback).
+  if (prefer_lut_gemm_ && has_zp_arg_ && !has_zp_input_) {
+    return Status::OK();
+  }
+
+  if (!MlasIsQNBitGemmAvailable(nbits_, block_size_, compute_type_) && !prefer_lut_gemm_) {
+    return Status::OK();
   }
 
   // Create a temporary threadpool for parallel packing
