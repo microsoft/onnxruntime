@@ -449,10 +449,10 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
 // CtaM activation rows held in registers, cutting weight traffic to ceil(M/CtaM)x. This is the same
 // design used by TensorRT-LLM weightOnlyBatchedGemv / AWQ / llama.cpp MMVQ for small batch.
 //
-// Upper bound on M is dtype-dependent (measured on A100 vs the dequantize+cuBLAS fallback): for
-// fp16/bf16 the batched GEMV becomes compute-bound and loses to tensor-core GEMM by M~16, so it is
-// only used through M<=8. fp32 has no tensor-core GEMM and a costly fp32 dequant, so batched wins
-// through M<=16.
+// Upper bound on M is kSmallMMax for all dtypes (measured on A100 vs the dequantize+cuBLAS fallback).
+// half/bf16 run the register-tiled batched kernel, which stays ahead of the tensor-core GEMM through
+// M<=16. float has no tensor-core GEMM fallback, so it uses the shared-memory small-M kernel over the
+// same range.
 constexpr int kSmallMMax = 16;
 template <class T>
 __host__ __device__ constexpr int SmallMCap() {
@@ -1112,10 +1112,10 @@ bool TryMatMul4Bits(
     return false;
   }
 
-  // 2 <= m <= SmallMCap<T>(): batched GEMV that reuses each dequantized weight across CtaM rows.
-  // For half/bf16 the small-M kernel streams the weight once (CtaM=m); float and any unsupported shape
-  // fall back to the SmallM kernel. m == 1 uses the single-row kernel below; larger m used the
-  // dequantize + cuBLAS path (returned false above).
+  // 2 <= m <= SmallMCap<T>(): batched GEMV that reuses each dequantized weight across a tile of rows.
+  // half/bf16 use the register-tiled batched kernel (CtaM rounded up to {2,4,8,16}, unused rows skipped);
+  // float and any unsupported shape fall back to the shared-memory small-M kernel. m == 1 uses the
+  // single-row kernel below; larger m used the dequantize + cuBLAS path (returned false above).
   if (m >= 2) {
     if (TryMatMulBatched4Bits<T>(output, a_data, b_data_quant, scales_data, zero_points,
                                  m, n, k, block_size, shared_mem_size, stream)) {

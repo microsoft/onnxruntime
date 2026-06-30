@@ -5,7 +5,6 @@
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
 #include <math_constants.h>
-#include <type_traits>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
@@ -526,7 +525,7 @@ bool TryMatMul8Bits(
     const uint8_t* b_data_quant,  // Input B Quantized [N, K/bs, bs]
     const T* scales_data,         // Scales [N, K/bs]
     const uint8_t* zero_points,   // Zero Points [N, K/bs] (can be nullptr)
-    int m,                        // Rows of A and C (MUST be 1)
+    int m,                        // Rows of A and C (1 single-row, 2..cap batched)
     int n,                        // Columns of B and C
     int k,                        // Columns of A / Rows of B
     int block_size,               // Quantization block size for B
@@ -535,7 +534,7 @@ bool TryMatMul8Bits(
   // Constraints Check
   // N must be a multiple of kColsPerThreadBlock (8) for warps to align with columns.
   // K must be a multiple of kElementsPerThreadPerIteration (8) for full uint64_t reads/processing.
-  // m up to the dtype-dependent cap is handled (m==1 single-row, 2..cap batched); larger m falls back.
+  // m up to the small-M cap is handled (m==1 single-row, 2..cap batched); larger m falls back.
   if (m < 1 || m > SmallMCap8<T>() || n % kColsPerThreadBlock != 0 || k % kElementsPerThreadPerIteration != 0) {
     return false;
   }

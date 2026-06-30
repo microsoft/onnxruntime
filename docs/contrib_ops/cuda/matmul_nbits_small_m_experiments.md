@@ -1,8 +1,9 @@
 # MatMulNBits Small-M GEMV Profiling Experiments
 
-This file records CUDA `MatMulNBits` 4-bit profiling results for the small-M
-range (M = 2..16, e.g. multi-row decode or short prefill) so future
-kernel and dispatch changes can be compared against a stable baseline.
+This file records CUDA `MatMulNBits` 4-bit (M = 2..16) and 8-bit (M = 2..5)
+profiling results for the small-M range (e.g. multi-row decode or short
+prefill) so future kernel and dispatch changes can be compared against a
+stable baseline.
 
 > **Note**: These are **point-in-time** measurements captured on the specific GPU, driver, CUDA
 > toolkit, and ORT build noted in the section header. Treat the numbers as a historical baseline
