@@ -8,7 +8,6 @@
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 #include "core/providers/webgpu/tensor/transpose.h"
-#include "core/providers/webgpu/webgpu_execution_provider.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -68,7 +67,7 @@ KernelCreateInfo CreateReduceSumVersionedKernelInfo(bool enable_int64) {
     out = std::make_unique<ReduceSum>(info);
     return Status::OK();
   };
-  return {(*KernelDefBuilder::Create())
+  return {KernelDefBuilder()
               .SetName("ReduceSum")
               .SetDomain(kOnnxDomain)
               .SinceVersion(StartVersion, EndVersion)
@@ -85,7 +84,7 @@ KernelCreateInfo CreateReduceSumKernelInfo(bool enable_int64) {
     out = std::make_unique<ReduceSum>(info);
     return Status::OK();
   };
-  return {(*KernelDefBuilder::Create())
+  return {KernelDefBuilder()
               .SetName("ReduceSum")
               .SetDomain(kOnnxDomain)
               .SinceVersion(SinceVersion)
