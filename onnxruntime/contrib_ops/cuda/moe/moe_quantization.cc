@@ -1332,7 +1332,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   if (fp4_sm80_prefill) {
     // SM80 FP4 grouped GEMM: consume the e2m1 weights in the SM80 CUTLASS interleaved layout
     // that PrePack produced into the GEMV "Lever A" buffers (same layout the INT4 SM80 grouped
-    // GEMM uses). The fp16 group scales are wired via quant_params above.
+    // GEMM uses). The activation-dtype group scales are wired via quant_params above.
     fc1_weight_data = gemv_fp4_fc1_weights_.get();
     fc2_weight_data = gemv_fp4_fc2_weights_.get();
   } else if ((is_fp4 && route_native_fp4) || (is_wfp4afp8 && !use_wfp4afp8_dequant_fallback_)) {

@@ -608,7 +608,7 @@ MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::getConfigs() const {
 
 // Route wfp4a16 (MXFP4 weights + FP16/BF16 activations) through the SM80 fused-dequant
 // grouped GEMM instead of the SM90 TMA WS path. Requires moe_quantization.cc to provide SM80
-// interleaved weights + FP16 group scales. ENABLED BY DEFAULT (it is several times faster than
+// interleaved weights + activation-dtype group scales. ENABLED BY DEFAULT (it is several times faster than
 // the SM90 TMA FP4 path at the gpt-oss-20b prefill regime); set ORT_FP4_SM80_GEMM=0 to disable.
 //
 // This MUST stay in lock-step with the ``enable_fp4_sm80_gemm_`` decision in moe_quantization.cc,

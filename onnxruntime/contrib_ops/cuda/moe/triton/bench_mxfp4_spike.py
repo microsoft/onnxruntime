@@ -23,8 +23,8 @@ def make_mxfp4(E, N, K, dev):
     packed = (codes[:, :, 0::2] | (codes[:, :, 1::2] << 4)).to(torch.uint8)  # [E,N,K//2] low=even
     decoded = lut[codes]  # [E,N,K]
     s_full = scales.transpose(1, 2).repeat_interleave(32, dim=2).to(torch.float32)  # [E,N,K]
-    W = (decoded * s_full).to(torch.float16)  # ref dense weight [E,N,K]
-    return packed, scales, W
+    weight = (decoded * s_full).to(torch.float16)  # ref dense weight [E,N,K]
+    return packed, scales, weight
 
 
 def ref(A, W, r2e):
@@ -33,51 +33,51 @@ def ref(A, W, r2e):
 
 def run(M, N, K, E, BM=16, BN=64, BK=64, w=4, stages=3):
     dev = "cuda"
-    A = (torch.randn(M, K, device=dev) * 0.05).to(torch.float16)
+    activation = (torch.randn(M, K, device=dev) * 0.05).to(torch.float16)
     r2e = torch.zeros(M, device=dev, dtype=torch.int32)  # one expert per M-tile (grouped)
-    packed, scales, W = make_mxfp4(E, N, K, dev)
-    Out = torch.empty(M, N, device=dev, dtype=torch.float16)
+    packed, scales, weight = make_mxfp4(E, N, K, dev)
+    output = torch.empty(M, N, device=dev, dtype=torch.float16)
     grid = (triton.cdiv(M, BM), triton.cdiv(N, BN))
     mxfp4_grouped_gemm[grid](
-        A,
+        activation,
         packed,
         scales,
         r2e,
-        Out,
+        output,
         M,
         N,
         K,
-        A.stride(0),
-        A.stride(1),
+        activation.stride(0),
+        activation.stride(1),
         *packed.stride(),
         *scales.stride(),
-        Out.stride(0),
-        Out.stride(1),
+        output.stride(0),
+        output.stride(1),
         BLOCK_M=BM,
         BLOCK_N=BN,
         BLOCK_K=BK,
         num_warps=w,
         num_stages=stages,
     )
-    R = ref(A, W, r2e)
-    err = (Out.float() - R.float()).abs().max().item()
-    rel = err / (R.float().abs().max().item() + 1e-6)
+    reference = ref(activation, weight, r2e)
+    err = (output.float() - reference.float()).abs().max().item()
+    rel = err / (reference.float().abs().max().item() + 1e-6)
     ms = triton.testing.do_bench(
         lambda: mxfp4_grouped_gemm[grid](
-            A,
+            activation,
             packed,
             scales,
             r2e,
-            Out,
+            output,
             M,
             N,
             K,
-            A.stride(0),
-            A.stride(1),
+            activation.stride(0),
+            activation.stride(1),
             *packed.stride(),
             *scales.stride(),
-            Out.stride(0),
-            Out.stride(1),
+            output.stride(0),
+            output.stride(1),
             BLOCK_M=BM,
             BLOCK_N=BN,
             BLOCK_K=BK,
