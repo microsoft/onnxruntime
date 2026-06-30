@@ -1137,7 +1137,7 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        private delegate void OrtCallbackDelegate(IntPtr userData, IntPtr[] outputs, uint numOutputs, IntPtr status);
+        private delegate void OrtCallbackDelegate(IntPtr userData, [MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 2)] IntPtr[] outputs, uint numOutputs, IntPtr status);
 
         private static OrtCallbackDelegate ortCallback = new OrtCallbackDelegate(OrtCallback);
 
