@@ -56,6 +56,8 @@ SparseAttention<T>::SparseAttention(const OpKernelInfo& info)
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
 
   disable_v1_kernel_ = ParseEnvironmentVariableWithDefault<bool>(sparse_attention::kDisableSparseAttentionV1, false);
+  disable_input_validation_ = ParseEnvironmentVariableWithDefault<bool>(
+      sparse_attention::kDisableInputValidation, false);
 }
 
 template <typename T>
@@ -105,6 +107,26 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                            block_col_indices,
                                                            seqlens_k_total,
                                                            total_seq_len));
+
+  // Validate CSR indices and key lengths on device to prevent out-of-bounds access.
+  // This must run before the shared-buffer check so OpTester-based tests can exercise it.
+  cudaStream_t cuda_stream = Stream(context);
+  if (!disable_input_validation_) {
+    auto csr_error_buffer = GetScratchBuffer<int32_t>(1, GetComputeStream(context));
+    ORT_RETURN_IF_ERROR(ValidateCSRIndicesOnDevice(
+        cuda_stream,
+        block_row_indices->Data<int32_t>(),
+        block_col_indices->Data<int32_t>(),
+        seqlens_k_total->Data<int32_t>(),
+        parameters.num_sparse_layout,
+        parameters.stride_row_indices - 1,  // max_blocks
+        parameters.stride_col_indices,      // col_count
+        parameters.batch_size,
+        parameters.sequence_length,
+        parameters.total_sequence_length,
+        csr_error_buffer.get()));
+  }
+
   // Some limitations of CUDA kernels
   // The v1 and v2 kernels have same coverage, so only check one of them to see whether it is supported.
   int sm = device_prop.major * 10 + device_prop.minor;
@@ -137,7 +159,6 @@ Status SparseAttention<T>::ComputeInternal(OpKernelContext* context) const {
   int32_t* total_k_seq_len_pinned = nullptr;
   AutoDestoryCudaEvent new_event;
   cudaEvent_t& isCopyDone = new_event.Get();
-  cudaStream_t cuda_stream = Stream(context);
   if (use_v2_kernel) {
     pinned_buffer = AllocateBufferOnCPUPinned<int32_t>(parameters.batch_size);
 

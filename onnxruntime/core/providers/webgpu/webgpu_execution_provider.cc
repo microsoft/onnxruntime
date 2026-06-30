@@ -582,6 +582,7 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       // enable_int64_ is always true when enable_graph_capture_ is true
       enable_int64_{config.enable_graph_capture || config.enable_int64},
       multi_rotary_cache_concat_offset_{config.multi_rotary_cache_concat_offset},
+      kv_cache_quantization_bits_{config.kv_cache_quantization_bits},
       prepack_allocator_{std::make_shared<webgpu::GpuBufferAllocator>(
           [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, false)} {
   if (enable_graph_capture_ && config.session_buffer_pool_generations > 0) {
@@ -778,8 +779,10 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
     context_.PushErrorScope();
   }
 
-  // Start profiling if session-level or run-level profiling is enabled
-  if (run_options.enable_profiling || (session_profiler_ && session_profiler_->Enabled())) {
+  // Start profiling if session-level or run-level profiling is enabled. The CPU time
+  // base used to align GPU timestamps is pushed into the context by
+  // WebGpuProfiler::StartProfiling, so no timepoint is threaded through here.
+  if ((session_profiler_ && session_profiler_->Enabled()) || run_options.enable_profiling) {
     context_.StartProfiling();
   }
 
@@ -802,6 +805,7 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
             context_,
             webgpu::BufferCacheMode::Graph,
             webgpu::BufferCacheMode::GraphSimple,
+            webgpu::BufferCacheMode::Disabled,
             webgpu::BufferCacheMode::Disabled);
         if (session_buffer_pool_) {
           session_buffer_pool_->SeedInto(*it->second);

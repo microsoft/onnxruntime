@@ -641,13 +641,18 @@ __global__ void GetSequenceLengths(const int* total_seq_lens_minus_one,
                                    const bool is_first_prompt) {
   int i = threadIdx.x + blockIdx.x * blockDim.x;
   if (i < batch_size) {
-    const int total_len = total_seq_lens_minus_one[i] + 1;
+    // total_seq_lens_minus_one is the seqlens_k input and is not range-checked on the device.
+    // Clamp the negative case at the source so the derived lengths below stay non-negative and
+    // cannot flow as negative offsets into KV-cache or attention index computations.
+    const int seqlens_k = total_seq_lens_minus_one[i];
+    const int total_len = (seqlens_k > 0 ? seqlens_k : 0) + 1;
     total_seq_lens[i] = total_len;
     if (is_first_prompt) {
       past_seq_lens[i] = 0;
       padded_seq_lens[i] = sequence_length;
     } else {
-      past_seq_lens[i] = total_len - sequence_length;
+      const int past_len = total_len - sequence_length;
+      past_seq_lens[i] = past_len > 0 ? past_len : 0;
       padded_seq_lens[i] = 0;
     }
   }
@@ -767,6 +772,7 @@ Status ExtremeDecoding(
       parameters.head_size,
       parameters.seqlen_present_kv_cache,  // max_seq_len (Capacity)
       scale,
+      parameters.local_window_size,  // -1 means global attention; >0 enables sliding window
       past_bsnh,
       data.past_seq_lens,
       data.xqa_head_sink,

@@ -482,7 +482,6 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   const std::string prefer_nhwc_key = ep_options_prefix + "prefer_nhwc";
   const std::string prefer_nhwc_layout_key = ep_options_prefix + "prefer_nhwc_layout";
   const std::string use_tf32_key = ep_options_prefix + "use_tf32";
-  const std::string skip_layer_norm_key = ep_options_prefix + "enable_skip_layer_norm_strict_mode";
   const std::string cudnn_use_max_workspace_key = ep_options_prefix + "cudnn_conv_use_max_workspace";
   const std::string cudnn_conv1d_pad_key = ep_options_prefix + "cudnn_conv1d_pad_to_nc1d";
   const std::string cudnn_conv_algo_key = ep_options_prefix + "cudnn_conv_algo";
@@ -505,9 +504,6 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
       {prefer_nhwc_key, prefer_nhwc_layout_key, "ep.cuda.prefer_nhwc_layout", "prefer_nhwc", "prefer_nhwc_layout"},
       config.prefer_nhwc);
   read_session_config_bool({use_tf32_key, "ep.cuda.use_tf32", "use_tf32"}, config.use_tf32);
-  read_session_config_bool(
-      {skip_layer_norm_key, "ep.cuda.enable_skip_layer_norm_strict_mode", "enable_skip_layer_norm_strict_mode"},
-      config.enable_skip_layer_norm_strict_mode);
   read_session_config_bool(
       {cudnn_use_max_workspace_key, "ep.cuda.cudnn_conv_use_max_workspace", "cudnn_conv_use_max_workspace"},
       config.cudnn_conv_use_max_workspace);
@@ -609,12 +605,9 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
         "CUDA plugin EP does not support using both user_compute_stream and external allocator simultaneously.");
   }
 
-  // Validate: user_compute_stream and cuda graph cannot both be active.
-  if (config.has_user_compute_stream && config.enable_cuda_graph) {
-    return factory->ort_api_.CreateStatus(
-        ORT_INVALID_ARGUMENT,
-        "CUDA plugin EP does not support using both user_compute_stream and enable_cuda_graph simultaneously.");
-  }
+  // user_compute_stream and enable_cuda_graph CAN be combined: when both are set, CUDA graph
+  // capture/replay runs on the user-provided stream (the same stream kernels are issued to),
+  // matching the bundled CUDA EP behavior. See CudaEp::GetPerThreadContext.
 
   // When user_compute_stream is set, force unified stream mode (matches bundled EP behavior).
   if (config.has_user_compute_stream) {

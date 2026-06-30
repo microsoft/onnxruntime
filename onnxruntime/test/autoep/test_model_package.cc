@@ -621,6 +621,11 @@ TEST(ModelPackageTest, CheckCompiledModelCompatibilityInfo) {
     compile_options.SetInputModelPath(input_model_file);
     compile_options.SetOutputModelPath(output_model_file);
 
+    // Embed the EPContext binary data inside the compiled model so the model is self-contained.
+    // This test copies only the compiled .onnx into the model package, so it must not rely on a
+    // separate sidecar EPContext data file (which non-embedded mode would produce).
+    compile_options.SetEpContextEmbedMode(true);
+
     ASSERT_CXX_ORTSTATUS_OK(Ort::CompileModel(*ort_env, compile_options));
     ASSERT_TRUE(std::filesystem::exists(output_model_file));
   }

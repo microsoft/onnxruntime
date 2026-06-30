@@ -2553,8 +2553,14 @@ TEST(CApiTest, basic_cuda_graph) {
   binding.BindInput("X", bound_x);
   binding.BindOutput("Y", bound_y);
 
+  // Synchronize to make sure the input upload is complete, since it may be issued on a different stream/queue than the EP uses.
+  binding.SynchronizeInputs();
+
   // One regular run for necessary memory allocation and graph capturing
   session.Run(Ort::RunOptions(), binding);
+
+  // Synchronize to make sure the EP computation is complete before reading the output back to the host.
+  binding.SynchronizeOutputs();
 
   // Check the values against the bound raw memory (needs copying from device to host first)
   std::array<float, 3 * 2> y_values;
@@ -2572,6 +2578,8 @@ TEST(CApiTest, basic_cuda_graph) {
 
   // Replay the captured CUDA graph
   session.Run(Ort::RunOptions(), binding);
+
+  binding.SynchronizeOutputs();
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT)
   (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
@@ -2593,6 +2601,8 @@ TEST(CApiTest, basic_cuda_graph) {
   binding.SynchronizeInputs();
 
   session.Run(Ort::RunOptions(), binding);
+
+  binding.SynchronizeOutputs();
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT)
   (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
@@ -2693,8 +2703,14 @@ static void RunWithCudaGraphAnnotation(T& cg_data,
     run_option.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, cuda_graph_annotation);
   }
 
+  // Synchronize to make sure the input upload is complete, since it may be issued on a different stream/queue than the EP uses.
+  binding.SynchronizeInputs();
+
   // One regular run for necessary memory allocation and graph capturing
   session.Run(run_option, binding);
+
+  // Synchronize to make sure the EP computation is complete before reading the output back to the host.
+  binding.SynchronizeOutputs();
 
   // Check the values against the bound raw memory (needs copying from device to host first)
 #ifdef USE_DML
@@ -2713,6 +2729,8 @@ static void RunWithCudaGraphAnnotation(T& cg_data,
 
   // Replay the captured CUDA graph
   session.Run(run_option, binding);
+
+  binding.SynchronizeOutputs();
 
 #ifdef USE_DML
   DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * cg_data.y_values.size()));
@@ -2740,6 +2758,8 @@ static void RunWithCudaGraphAnnotation(T& cg_data,
   binding.SynchronizeInputs();
 
   session.Run(run_option, binding);
+
+  binding.SynchronizeOutputs();
 
 #ifdef USE_DML
   DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * cg_data.y_values.size()));
