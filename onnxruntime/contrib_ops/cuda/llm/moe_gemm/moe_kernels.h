@@ -424,7 +424,7 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
                     TmaWarpSpecializedGroupedGemmInput::ElementSF* fc2_fp4_act_flat, QuantParams quant_params,
                     int64_t const num_rows, int64_t const expanded_num_rows, int64_t const hidden_size, int64_t const inter_size,
                     int const num_experts_per_node, ActivationType fc1_activation_type, float const** alpha_scale_ptr_array,
-                    int const* permuted_row_to_expert, bool bias_is_broadcast,
+                    int const* permuted_row_to_expert, float* moe_gemv_splitk_partials, bool bias_is_broadcast,
                     cudaStream_t stream, MOEParallelismConfig parallelism_config,
                     cutlass_extensions::CutlassGemmConfig config,
                     ActivationParameters activation_params);
@@ -462,7 +462,7 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
                        static_cast<WeightType const*>(fc1_expert_weights), static_cast<ScaleBiasType const*>(fc1_expert_biases),
                        num_valid_tokens_ptr, static_cast<ScaleBiasType const*>(fc1_int_scales), fc1_fp8_dequant, fc2_fp8_quant,
                        fc1_fp4_act_flat, fc2_fp4_act_flat, quant_params, num_rows, expanded_num_rows, hidden_size, inter_size,
-                       num_experts_per_node, fc1_activation_type, alpha_scale_ptr_array, nullptr, bias_is_broadcast, stream,
+                       num_experts_per_node, fc1_activation_type, alpha_scale_ptr_array, nullptr, nullptr, bias_is_broadcast, stream,
                        MOEParallelismConfig{}, config, activation_params);
   }
 
@@ -587,6 +587,7 @@ class CutlassMoeFCRunner : public CutlassMoeFCRunnerInterface {
   TmaWarpSpecializedGroupedGemmInput::ElementSF* fc2_fp4_act_scale_;
   float const** alpha_scale_ptr_array_fc1_ = nullptr;
   float const** alpha_scale_ptr_array_fc2_ = nullptr;
+  float* moe_gemv_splitk_partials_{};
   void* smoothed_act_{};
 
   TmaWarpSpecializedGroupedGemmInput tma_ws_grouped_gemm1_input_;
