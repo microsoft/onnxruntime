@@ -103,26 +103,6 @@ Abstract:
 
 MLAS_FORCEINLINE
 bool
-MlasMultiplyOverflowsSizeT(
-    size_t a,
-    size_t b,
-    size_t* out
-    )
-{
-#if defined(__has_builtin)
-#if __has_builtin(__builtin_mul_overflow)
-    return __builtin_mul_overflow(a, b, out);
-#endif
-#endif
-    if (b != 0 && a > (std::numeric_limits<size_t>::max)() / b) {
-        return true;
-    }
-    *out = a * b;
-    return false;
-}
-
-MLAS_FORCEINLINE
-bool
 MlasAddOverflowsSizeT(
     size_t a,
     size_t b,

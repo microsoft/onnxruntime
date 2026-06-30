@@ -177,6 +177,8 @@ ArmKleidiAI::MlasHalfGemmBatch(
         return false;
     }
 
+    // TODO: Plumb MLAS_ACTIVATION through this call site if MLAS_HALF_GEMM_DATA_PARAMS
+    // grows fused activation support.
     const float clamp_min = -std::numeric_limits<float>::infinity();
     const float clamp_max = std::numeric_limits<float>::infinity();
 

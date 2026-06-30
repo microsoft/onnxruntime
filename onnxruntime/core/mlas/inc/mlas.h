@@ -893,6 +893,10 @@ struct MLAS_CONV_PARAMETERS {
     size_t BatchCount;
     size_t GroupCount;
     size_t InputChannels;
+    /**
+     * Existing Conv layout flag from MlasConvPrepare; for HalfConv this matches
+     * InputOutputChannelsLast.
+     */
     bool ChannelsLast;
     size_t InputShape[3];
     size_t KernelShape[3];
@@ -911,6 +915,11 @@ struct MLAS_CONV_PARAMETERS {
     const void* PackedFilter = nullptr;
     size_t PackedFilterGroupStride = 0;
     bool FilterIsPacked = false;
+    /**
+     * HalfConv-specific: true means caller-provided input and output tensors
+     * are channels-last (NHWC); false means NCHW public tensors with any NHWC
+     * staging handled internally.
+     */
     bool InputOutputChannelsLast = false;
     union {
         struct {
@@ -1952,6 +1961,11 @@ struct MLAS_HALF_GEMM_DATA_PARAMS {
  *        Backend-native packed B is a constrained direct-consumption layout
  *        and does not support runtime Bias or OutputProcessor.
  *
+ * Uses MLAS_THROW_EX(std::runtime_error, ...) for contract violations that
+ * cannot be safely ignored: non-empty work with null DataParams, malformed
+ * backend-native packed-B parameters on the K == 0 path, or backend-native
+ * packed B reaching the generic MLAS kernels when no backend override consumes it.
+ *
  * Note:  We only support uniform batching, so shapes and types of the
  *        input must be same across all parameter blocks.
  *
@@ -1995,6 +2009,9 @@ MlasHalfGemmPackBSize(
 /**
  * @brief For half precision GEMM, pack the right hand
  *        side matrix B
+ *
+ * @pre For non-zero N and K, B and PackedB must be non-null and ldb must be at
+ *      least N.
  *
  * @param[in]  N        Number of columns
  * @param[in]  K        Number of rows

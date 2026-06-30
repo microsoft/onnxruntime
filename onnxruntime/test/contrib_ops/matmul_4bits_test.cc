@@ -328,7 +328,10 @@ void TestMatMulNBitsTyped(std::optional<float> abs_error = std::nullopt,
   } else if (base_opts.accuracy_level == 4) {
     base_opts.output_abs_error = 0.1f;
   } else if constexpr (std::is_same<AType, MLFloat16>::value) {
+    // The fp16 provider paths compare against a float reference while native kernels may accumulate
+    // in fp16 (for example native HGEMM on SME; see PR #28786), so allow slightly wider drift.
 #if defined(USE_WEBGPU)
+    // WebGPU's fp16 path has additional provider-specific rounding drift for these quantized matmul cases.
     base_opts.output_abs_error = 0.1f;
 #else
     base_opts.output_abs_error = 0.065f;

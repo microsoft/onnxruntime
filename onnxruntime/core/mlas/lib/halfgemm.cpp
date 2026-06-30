@@ -19,9 +19,6 @@ Abstract:
 #include "mlas_float16.h"
 
 #include "halfgemm.h"
-#if defined(USE_KLEIDIAI)
-#include "kleidiai/mlasi_kleidiai.h"
-#endif
 
 #include <exception>
 
@@ -63,8 +60,7 @@ MlasFp16AccelerationSupported()
 #endif
 }
 
-#if defined(USE_KLEIDIAI)
-bool
+static bool
 TryGetHalfGemmBackendSelectorConfig(
     size_t BatchN,
     const MLAS_HALF_GEMM_DATA_PARAMS* DataParams,
@@ -90,7 +86,6 @@ TryGetHalfGemmBackendSelectorConfig(
 
     return true;
 }
-#endif
 
 void
 MLASCALL
@@ -126,7 +121,6 @@ MlasHalfGemmBatch(
         return;
     }
 
-#if defined(USE_KLEIDIAI)
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig = nullptr;
     if (TryGetHalfGemmBackendSelectorConfig(BatchN, DataParams, BackendKernelSelectorConfig) &&
         GetMlasPlatform().MlasHalfGemmBatchOverride != nullptr &&
@@ -134,7 +128,6 @@ MlasHalfGemmBatch(
             M, N, K, BatchN, DataParams, ThreadPool, BackendKernelSelectorConfig)) {
         return;
     }
-#endif
 
     // BIsPacked denotes the generic MLAS halfgemm packed-B layout and can be
     // consumed here. Backend-native packed layouts are separate and must not
@@ -251,6 +244,7 @@ MlasHalfGemmPackB(
     )
 {
     const auto* dispatch = MlasHalfGemmGetDispatch();
+    assert(N == 0 || K == 0 || (B != nullptr && PackedB != nullptr && ldb >= N));
     if (B == nullptr || PackedB == nullptr || ldb < N ||
         dispatch->CopyPackBRoutine == nullptr || MlasHalfGemmPackBSize(N, K, false) == 0) {
         return;
@@ -269,18 +263,11 @@ MlasHalfGemmNativePackBSize(
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     )
 {
-#if defined(USE_KLEIDIAI)
     if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
         GetMlasPlatform().MlasHalfGemmPackBSizeOverride != nullptr) {
         return GetMlasPlatform().MlasHalfGemmPackBSizeOverride(TransA, TransB, N, K);
     }
-#else
-    MLAS_UNREFERENCED_PARAMETER(TransA);
-    MLAS_UNREFERENCED_PARAMETER(TransB);
-    MLAS_UNREFERENCED_PARAMETER(N);
-    MLAS_UNREFERENCED_PARAMETER(K);
-    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
-#endif
+
     return 0;
 }
 
@@ -297,21 +284,11 @@ MlasHalfGemmNativePackB(
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     )
 {
-#if defined(USE_KLEIDIAI)
     if ((!BackendKernelSelectorConfig || BackendKernelSelectorConfig->use_kleidiai) &&
         GetMlasPlatform().MlasHalfGemmPackBOverride != nullptr) {
         return GetMlasPlatform().MlasHalfGemmPackBOverride(TransA, TransB, N, K, B, ldb, PackedB);
     }
-#else
-    MLAS_UNREFERENCED_PARAMETER(TransA);
-    MLAS_UNREFERENCED_PARAMETER(TransB);
-    MLAS_UNREFERENCED_PARAMETER(N);
-    MLAS_UNREFERENCED_PARAMETER(K);
-    MLAS_UNREFERENCED_PARAMETER(B);
-    MLAS_UNREFERENCED_PARAMETER(ldb);
-    MLAS_UNREFERENCED_PARAMETER(PackedB);
-    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
-#endif
+
     return false;
 }
 
