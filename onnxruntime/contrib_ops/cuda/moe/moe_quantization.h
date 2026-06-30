@@ -137,12 +137,12 @@ class QMoE final : public CudaKernel, public MoEBase {
   bool enable_fp4_gemv_ = false;
   bool enable_fp4_cutlass_gemm_ = false;
   // Default-on (set ORT_FP4_SM80_GEMM=0 to disable) port of the INT4 SM80 fused-dequant grouped
-  // GEMM to MXFP4 (wfp4a16: e2m1 weight + fp16 activation; fp16 only). On H200 the native SM90
+  // GEMM to MXFP4 (wfp4a16: e2m1 weight + FP16/BF16 activation). On H200 the native SM90
   // TMA FP4 path is ~50x slower than vLLM at prefill; routing prefill through the Ampere/SM80
   // DqMma grouped GEMM (the same kernel INT4 uses) closes most of the gap. When set, PrePack lays the e2m1
   // weights out in the SM80 CUTLASS ColumnMajorTileInterleave layout (reusing the GEMV
   // "Lever A" buffers) and ComputeInternal routes prefill through the FP4 runner with
-  // QuantParams::GroupWise(32, ...) fp16 group scales. Decode still uses the fused GEMV.
+  // QuantParams::GroupWise(32, ...) activation-dtype group scales. Decode still uses the fused GEMV.
   bool enable_fp4_sm80_gemm_ = false;
   // When native CUTLASS WFP4A16 is enabled, GEMV is also pre-packed and used for decode shapes
   // (M < this threshold); prefill (M >= threshold) runs the native grouped GEMM. 0 disables the

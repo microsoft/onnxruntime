@@ -129,9 +129,9 @@ struct genericMoeGemmKernelLauncher {
 
     static_assert(cutlass::platform::is_same<T, WeightType>::value || cutlass::platform::is_same<WeightType, uint8_t>::value || cutlass::platform::is_same<WeightType, cutlass::uint4b_t>::value
 #if defined(ENABLE_FP4)
-                      || cutlass::platform::is_same<WeightType, __nv_fp4_e2m1>::value
+                  || cutlass::platform::is_same<WeightType, __nv_fp4_e2m1>::value
 #endif
-                  );
+    );
 
     static_assert(arch::kMinComputeCapability < 90, "Sm90+ architecture should use specialized kernels");
 
@@ -612,7 +612,7 @@ MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::getConfigs() const {
 // the SM90 TMA FP4 path at the gpt-oss-20b prefill regime); set ORT_FP4_SM80_GEMM=0 to disable.
 //
 // This MUST stay in lock-step with the ``enable_fp4_sm80_gemm_`` decision in moe_quantization.cc,
-// which is gated by ``use_fp4_dequant_fallback_ (= sm_ < 120) && is_fp16 && !requested_native``:
+// which is gated by ``use_fp4_dequant_fallback_ (= sm_ < 120) && !requested_native``:
 //   - ``sm < 120``: on Blackwell (sm >= 120) the FP4 runner is built for the NATIVE TMA/Blackwell
 //     path with non-interleaved weights, so SM80 must NOT be selected there.
 //   - ``!ORT_ENABLE_FP4_CUTLASS_GEMM``: if the user explicitly requested the native CUTLASS GEMM,
@@ -824,11 +824,11 @@ void MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::dispatchToArch(
       dispatchMoeGemmToCutlass<T, WeightType, ScaleBiasType, cutlass::arch::Sm89, EpilogueTag>(
           inputs, multi_processor_count_);
     } else if constexpr (use_wfp4a16) {
-      if constexpr (std::is_same_v<T, half>) {
+      if constexpr (std::is_same_v<T, half> || std::is_same_v<T, __nv_bfloat16>) {
         dispatchMoeGemmToCutlass<T, WeightType, ScaleBiasType, cutlass::arch::Sm80, EpilogueTag>(
             inputs, multi_processor_count_);
       } else {
-        ORT_THROW("wfp4a16 Ampere MoE GEMM currently supports fp16 activations only");
+        ORT_THROW("wfp4a16 Ampere MoE GEMM currently supports FP16/BF16 activations only");
       }
     } else if constexpr (use_wfp4afp8) {
       ORT_THROW("wfp4afp8 (FP4 weights with FP8 activations) requires SM100+");

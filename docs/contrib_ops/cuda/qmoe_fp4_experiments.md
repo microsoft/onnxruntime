@@ -2231,3 +2231,73 @@ noise, while the default-on path changes from hard failure to a large speedup.
   BF16 test coverage still passes through the supported fallback paths.
 - The result makes `ORT_FP4_SM80_GEMM` default-on viable on A100 for fp16 production
   shapes, while preserving `ORT_FP4_SM80_GEMM=0` as a fallback / comparison knob.
+
+## 2026-06-30 — A100 / SM80 BF16 FP4 grouped GEMM enablement
+
+Follow-up to the A100 repair above. The FP16 path proved that the SM80 fused-dequant
+grouped GEMM and groupwise MXFP4 scale plumbing are correct on A100; the remaining
+BF16 blocker was policy/gating rather than a missing CUTLASS specialization.
+
+### Change
+
+- `moe_quantization.cc`: `enable_fp4_sm80_gemm_` is no longer gated on `is_fp16_`.
+  In the FP4 fallback regime (`sm < 120`) and when native FP4 CUTLASS is not
+  explicitly requested, both FP16 and BF16 activation QMoE nodes now build the
+  SM80 FP4 runner and prepack the SM80 interleaved e2m1 weights plus activation-dtype
+  group scales.
+- `moe_gemm_template_dispatch.h`: the SM80 `use_wfp4a16` branch now dispatches both
+  `T == half` and `T == __nv_bfloat16` to the Ampere grouped GEMM instead of throwing
+  for BF16.
+- Nearby comments were updated from fp16-only / fp16-scale wording to FP16/BF16 /
+  activation-dtype wording.
+
+### Validation
+
+Provider build and staging:
+
+```bash
+cd /home/tianlei/git/onnxruntime
+cmake --build build/cu130_fp4_bench/Release --target onnxruntime_providers_cuda --parallel 16
+cp build/cu130_fp4_bench/Release/libonnxruntime_providers_cuda.so \
+  build/cu130_fp4_bench/Release/onnxruntime/capi/libonnxruntime_providers_cuda.so
+cp build/cu130_fp4_bench/Release/libonnxruntime_providers_cuda.so \
+  build/cu130_fp4_bench/Release/build/lib/onnxruntime/capi/libonnxruntime_providers_cuda.so
+```
+
+Result: provider build passed, including `moe_gemm_kernels_bf16_fp4.cu.o`; staged
+provider size was `109590720` bytes at all three locations.
+
+512-token gpt-oss-shaped BF16 probe (`hidden=inter=2880`, `E=32`, `top_k=4`,
+`--warmup 2 --iters 5 --reps 1`):
+
+| Setting | BF16 latency |
+|---------|-------------:|
+| `ORT_FP4_SM80_GEMM=1` | **1.72201 ms** |
+| `ORT_FP4_SM80_GEMM=0` | 19.44485 ms |
+
+Speedup: **11.29x** over the dense fallback. This also confirms the env gate is
+selecting the new BF16 SM80 grouped-GEMM path.
+
+SM80-relevant FP4 CUDA tests were run with `_skip_if_no_fp4` monkeypatched off
+and `ORT_FP4_SM80_GEMM=1`. The native SM90-only scale-prepack test still skipped
+on A100:
+
+```text
+Ran 15 tests in 2.576s
+OK (skipped=1)
+```
+
+BF16-specific test headlines:
+
+```text
+test_fp4_bf16_silu_basic ... max_diff=0.031250 ok
+test_fp4_bf16_swiglu ... max_diff=0.062500 ok
+test_fp4_decode_swiglu_gemv_2 ... max_diff=0.062500 ok
+test_fp4_decode_swiglu_gemv_3 ... max_diff=0.062500 ok
+```
+
+### Status / verdict
+
+BF16 WFP4A16 is now enabled on the same A100 SM80 grouped-GEMM path as FP16. The
+runtime probe and unit tests validate both correctness and fast-path engagement;
+`ORT_FP4_SM80_GEMM=0` remains the fallback/comparison knob.
