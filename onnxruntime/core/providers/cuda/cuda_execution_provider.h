@@ -142,8 +142,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   class PerThreadContext final {
    public:
-    PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream, size_t cuda_mem_limit, ArenaExtendStrategy arena_extend_strategy,
-                     CUDAExecutionProviderExternalAllocatorInfo external_alloc_info, OrtArenaCfg* arena_cfg);
+    PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream, const CUDAExecutionProviderInfo& info);
     ~PerThreadContext();
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PerThreadContext);
 

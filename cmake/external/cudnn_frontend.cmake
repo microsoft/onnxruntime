@@ -1,8 +1,13 @@
 
+# The cudnn_frontend shim only loads the CUDA runtime / driver libraries with
+# their Linux names (libcudart.so.*, libcuda.so.1) when NV_CUDNN_FRONTEND_USE_DYNAMIC_LOADING
+# is enabled. On Windows this always fails (dlopen is mapped to LoadLibrary), so patch the
+# shim to use the Windows DLL names (cudart64_*.dll, nvcuda.dll).
 onnxruntime_fetchcontent_declare(
   cudnn_frontend
   URL ${DEP_URL_cudnn_frontend}
   URL_HASH SHA1=${DEP_SHA1_cudnn_frontend}
+  PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/cudnn_frontend/cudnn_frontend_win_dynamic_loading.patch
   EXCLUDE_FROM_ALL
 )
 

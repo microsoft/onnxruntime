@@ -3,6 +3,7 @@
 #include "core/providers/cuda/cuda_resource.h"
 #include "core/providers/cuda/cuda_stream_handle.h"
 #include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/cudnn_loader.h"
 #include "core/common/spin_pause.h"
 
 namespace onnxruntime {
@@ -77,13 +78,17 @@ CudaStream::CudaStream(cudaStream_t stream,
   if (own_flag) {
     CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
     CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
-    CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
-    CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
+    if (ep_info_.enable_cudnn && cuda::CudnnLibrary::Get().Available()) {
+      CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
+      CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
+    }
   } else {
     cublas_handle_ = external_cublas_handle;
     CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
     cudnn_handle_ = external_cudnn_handle;
-    CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
+    if (cudnn_handle_ != nullptr) {
+      CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
+    }
   }
 #else
   (void)(external_cudnn_handle);
@@ -96,7 +101,9 @@ CudaStream::~CudaStream() {
 #ifndef USE_CUDA_MINIMAL
   if (own_stream_) {
     cublasDestroy(cublas_handle_);
-    cudnnDestroy(cudnn_handle_);
+    if (cudnn_handle_ != nullptr) {
+      cudnnDestroy(cudnn_handle_);
+    }
     auto* handle = GetHandle();
     if (handle)
       cudaStreamDestroy(static_cast<cudaStream_t>(handle));
