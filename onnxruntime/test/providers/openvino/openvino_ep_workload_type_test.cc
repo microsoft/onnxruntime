@@ -32,9 +32,14 @@ class OVEPWorkloadTypeTests : public ::testing::Test {
   }
 
   // Allow NPU resources to be fully released between tests.
-  // Without this delay the NPU driver may fail to re-initialise
+  // Without this delay the NPU driver may fail to re-initialise.
+  // Skip the delay when the test was skipped (e.g. no NPU available), since no
+  // NPU resources were acquired and the sleep would only add build latency.
   void TearDown() override {
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    if (IsSkipped()) {
+      return;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
 
   static Ort::Session CreateSqueezeNetSession(
