@@ -37,6 +37,13 @@ from onnx import TensorProto, helper
 import onnxruntime
 
 try:
+    import ml_dtypes
+
+    bfloat16 = ml_dtypes.bfloat16
+except ImportError:
+    bfloat16 = None
+
+try:
     import nvtx
 
     has_nvtx = True
@@ -73,9 +80,15 @@ def build_model(k, n, block_size, bits, onnx_dtype, with_zero_point=True):
     n_blocks = (k + block_size - 1) // block_size
     blob = block_size // (8 // bits)
     b = rng.integers(0, 256, size=(n, n_blocks, blob), dtype=np.uint8)
-    scales = (rng.random(n * n_blocks).astype(np.float32) * 0.02 + 0.01).astype(
-        np.float16 if onnx_dtype == TensorProto.FLOAT16 else np.float32
-    )
+    scales_f32 = rng.random(n * n_blocks).astype(np.float32) * 0.02 + 0.01
+    if onnx_dtype == TensorProto.FLOAT16:
+        scales = scales_f32.astype(np.float16)
+    elif onnx_dtype == TensorProto.BFLOAT16:
+        if bfloat16 is None:
+            raise RuntimeError("ml_dtypes is required for bf16 (pip install ml_dtypes)")
+        scales = scales_f32.astype(bfloat16)
+    else:
+        scales = scales_f32
     inits = [
         helper.make_tensor("B", TensorProto.UINT8, list(b.shape), b.tobytes(), raw=True),
         helper.make_tensor("scales", onnx_dtype, list(scales.shape), scales.tobytes(), raw=True),
