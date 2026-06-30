@@ -3,6 +3,7 @@
 
 #include <array>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -133,6 +134,78 @@ TEST_F(OVEPEPContextOVIRTests, RunEpCtxOvirModel) {
   Ort::Session session(*ort_env, kOvirModelPath, session_options);
 
   RunAndValidate(session);
+}
+
+// Negative / security test: an OVIR-encapsulated EP context model whose
+// "ep_cache_context" attribute points outside the model directory via "../"
+// traversal (e.g. "../../../etc/evil.xml") must be rejected at session-creation
+// time rather than silently reading an arbitrary file off disk.
+
+TEST_F(OVEPEPContextOVIRTests, RejectsEpCacheContextPathTraversal) {
+  ASSERT_TRUE(std::filesystem::exists(kOvirModelPath))
+      << "Missing OVIR EP context model. Expected testdata/mul_1_ep_ctx_ovir.onnx "
+         "(with sibling .xml and .bin files).";
+
+  // Load the known-good OVIR EP context model and rewrite its EPContext node so
+  // that ep_cache_context escapes the model directory.
+  ONNX_NAMESPACE::ModelProto model_proto;
+  ASSERT_STATUS_OK(Model::Load(kOvirModelPath, model_proto));
+
+  // Malicious relative path that escapes the model directory. The ".xml"
+  // extension routes validation through the OVIR ".xml" branch in
+  // EPCtxHandler::Initialize() (validated against the input model's directory),
+  // and "evil.xml" matches the "evil.onnx" output stem below so the node is also
+  // recognized as OVIR-encapsulated.
+  const std::string malicious_xml_path = "../../../etc/evil.xml";
+
+  bool patched = false;
+  for (auto& node : *model_proto.mutable_graph()->mutable_node()) {
+    if (node.op_type() != "EPContext") {
+      continue;
+    }
+    for (auto& attr : *node.mutable_attribute()) {
+      if (attr.name() == "embed_mode") {
+        attr.set_i(0);  // force non-embed so the path (not an inline blob) is validated
+      } else if (attr.name() == "ep_cache_context") {
+        attr.set_s(malicious_xml_path);
+        patched = true;
+      }
+    }
+  }
+  ASSERT_TRUE(patched) << "Test model did not contain an EPContext ep_cache_context attribute to patch.";
+
+  // Write the tampered model to a dedicated subfolder. The malicious ".xml" is
+  // intentionally never created on disk: validation must reject the path before
+  // any attempt to read it.
+  const std::filesystem::path out_dir = std::filesystem::path("testdata") / "ovir_epctx_path_traversal";
+  std::filesystem::remove_all(out_dir);
+  std::filesystem::create_directories(out_dir);
+  const std::filesystem::path malicious_model = out_dir / "evil.onnx";
+  {
+    std::ofstream ofs(malicious_model, std::ios::binary);
+    ASSERT_TRUE(ofs.is_open()) << "Failed to open " << malicious_model;
+    ASSERT_TRUE(model_proto.SerializeToOstream(&ofs)) << "Failed to serialize tampered model.";
+  }
+
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> ov_options = {{"device_type", kDevice}};
+  session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
+
+  bool threw = false;
+  std::string error_message;
+  try {
+    Ort::Session session(*ort_env, malicious_model.c_str(), session_options);
+  } catch (const Ort::Exception& ex) {
+    threw = true;
+    error_message = ex.what();
+  }
+
+  std::filesystem::remove_all(out_dir);
+
+  ASSERT_TRUE(threw)
+      << "Session creation should have rejected the path-traversal ep_cache_context, but it succeeded.";
+  EXPECT_THAT(error_message, ::testing::HasSubstr("escapes model directory"))
+      << "Expected a path-escape rejection. Actual error: " << error_message;
 }
 
 // Generates an EP context model from the OVIR-encapsulated source model and
