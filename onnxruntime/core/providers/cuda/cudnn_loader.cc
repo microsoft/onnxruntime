@@ -155,9 +155,9 @@ bool CudnnLibrary::Available() {
   return EnsureLoaded();
 }
 
-const char* CudnnLibrary::Error() const {
+std::string CudnnLibrary::Error() const {
   std::lock_guard<std::mutex> lock(mutex_);
-  return error_.empty() ? CudnnUnavailableErrorString() : error_.c_str();
+  return error_.empty() ? CudnnUnavailableErrorString() : error_;
 }
 
 void* CudnnLibrary::Handle() {

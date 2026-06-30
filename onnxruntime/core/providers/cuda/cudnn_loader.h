@@ -18,7 +18,7 @@ class CudnnLibrary {
   static CudnnLibrary& Get();
 
   bool Available();
-  const char* Error() const;
+  std::string Error() const;
   void* Handle();
 
   template <typename T>
