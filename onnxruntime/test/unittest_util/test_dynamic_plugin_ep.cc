@@ -92,6 +92,8 @@ Status ParseInitializationConfig(std::string_view json_str, InitializationConfig
     config.selected_ep_device_indices =
         parsed_json.value<decltype(config.selected_ep_device_indices)>("selected_ep_device_indices", {});
     config.tests_to_skip = parsed_json.value<decltype(config.tests_to_skip)>("tests_to_skip", {});
+    config.aliased_built_in_ep_name =
+        parsed_json.value<decltype(config.aliased_built_in_ep_name)>("aliased_built_in_ep_name", {});
 
     config_out = std::move(config);
     return Status::OK();
@@ -205,6 +207,19 @@ std::optional<std::string> GetEpName() {
   }
 
   return g_plugin_ep_infrastructure_state->ep_name;
+}
+
+std::optional<std::string> GetAliasedBuiltInEpName() {
+  if (!IsInitialized()) {
+    return std::nullopt;
+  }
+
+  const auto& aliased = g_plugin_ep_infrastructure_state->config.aliased_built_in_ep_name;
+  if (aliased.empty()) {
+    return std::nullopt;
+  }
+
+  return aliased;
 }
 
 std::vector<std::string> GetTestsToSkip() {

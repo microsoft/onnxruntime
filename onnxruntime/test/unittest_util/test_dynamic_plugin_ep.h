@@ -53,6 +53,13 @@ struct InitializationConfig {
   // Specifies any tests to skip.
   // Tests should be specified by full name, i.e., "<test suite name>.<test name>".
   std::vector<std::string> tests_to_skip{};
+
+  // Optional: name of a built-in EP that this plugin EP acts as a substitute for in tests.
+  // If set, test infrastructure that excludes the built-in EP (e.g., via
+  // `BaseTester::ConfigExcludeEps({<built-in EP name>})`) will also skip this plugin EP,
+  // without any plugin-specific name being hardcoded into the shared test code.
+  // Empty means unset.
+  std::string aliased_built_in_ep_name{};
 };
 
 // Parses `InitializationConfig` from JSON.
@@ -62,7 +69,8 @@ struct InitializationConfig {
 //   "ep_library_registration_name": "example_plugin_ep",
 //   "ep_library_path": "/path/to/example_plugin_ep.dll",
 //   "selected_ep_name": "example_plugin_ep",
-//   "default_ep_options": { "option_key": "option_value" }
+//   "default_ep_options": { "option_key": "option_value" },
+//   "aliased_built_in_ep_name": "TensorrtExecutionProvider"
 // }
 Status ParseInitializationConfig(std::string_view json_str, InitializationConfig& config);
 
@@ -82,6 +90,10 @@ std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger = nullp
 
 // Gets the dynamic plugin EP name, or `std::nullopt` if uninitialized.
 std::optional<std::string> GetEpName();
+
+// Gets the built-in EP name that this plugin EP should be treated as an alias of for
+// test-exclusion purposes. Returns `std::nullopt` if uninitialized or if no alias was configured.
+std::optional<std::string> GetAliasedBuiltInEpName();
 
 // Gets the list of tests to skip, or an empty list if uninitialized.
 std::vector<std::string> GetTestsToSkip();
