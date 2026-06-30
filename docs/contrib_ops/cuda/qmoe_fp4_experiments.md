@@ -1786,3 +1786,144 @@ ORT_ENABLE_FP4_GEMV=1 ORT_FP4_GEMV_INTERLEAVED=1 python bench_fp4_gemv_autotune.
   or fewer live fp32 accumulators — to give bf16 the same occupancy as fp16-accum
   while keeping fp32 precision. That, plus the tensor-core grouped-GEMM lever,
   remain the paths to close the bf16 decode gap.
+
+---
+
+## 2026-06-30 — "Lever B": native CUTLASS WFP4A16 grouped GEMM for **prefill** (the tensor-core lever) + per-expert-tokens dispatch heuristic
+
+Every decode-GEMV experiment above closed by pointing at the two structural
+levers, and the bigger of the two — the **6.7× prefill gap** (2026-06-28 finding)
+— was untouched. "Lever B" is that lever: route FP4 (MXFP4 / WFP4A16) QMoE
+**prefill** through the **native CUTLASS SM90 grouped GEMM** with in-mainloop
+e2m1 + e8m0 dequant (the vLLM-equivalent path), instead of the all-expert
+dequant-to-BF16 + dense A16 GEMM. FP16 weights, SM90-only, double opt-in
+(`ORT_ENABLE_FP4_CUTLASS_GEMM=1` + `ORT_ENABLE_FP4_CUTLASS_UNSAFE=1`).
+
+### Part 1 — Option B: enable native CUTLASS for non-256-aligned shapes (gpt-oss 2880)
+
+The native path's static shape gate required `hidden % 256 == 0 && inter % 256 == 0`
+(`kMxfp4CutlassAlignment = 256`) because the SM90 scale-pack kernel tiles K into
+groups of 8 e8m0 block-scales (`k_blocks = k/32` must be `% 8 == 0`, i.e. `k % 256`).
+gpt-oss-20b's 2880 → `k_blocks = 90`, `90 % 8 = 2` → the shape fell back. Relaxing
+the gate naively (256 → 32) crashed at the scale-pack `ORT_ENFORCE` (strictly worse
+than falling back).
+
+**Option B** enables 2880 by zero-padding **only the scale-factor (SF) buffer
+tail**, leaving activations and weights untouched (CUTLASS TMA predicates OOB-K to
+zero). Committed as `dd240d2b6a` (3 files, +58/-14):
+
+- `moe_quantization.cc` `StaticFp4CutlassShapeSupported`: `kMxfp4CutlassAlignment`
+  256 → 64 (+comment).
+- `qmoe_kernels.cu` `QMoEPackFp4ScalesForTmaWsKernel`/launcher: added a
+  `k_blocks_padded = ceil(k_blocks/8)*8` parameter; tail entries (`k_block >= k_blocks`)
+  write 0; **removed** the `k_blocks % 8` `ORT_ENFORCE`.
+- `moe_quantization.cc` `PrePackFp4ScalesForTmaWs`: allocate
+  `experts * rows * k_blocks_padded` (via `SafeInt`), fully initialized by the kernel.
+- `moe_kernels.cu` `computeTmaWarpSpecializedInputPointers` (WFP4A16):
+  `scale_offset = expert * (gemm_n * k_blocks_padded)` (no-op for 256-aligned shapes).
+- `moe_kernels.cu` runMoe alignment `ORT_ENFORCE` relaxed
+  `64*8/sizeof_bits<fp4>` (128 elements) → `32*8/sizeof_bits` (64 elements) so
+  `2880 % 64 == 0` passes (the WFP4A16 path reuses the `mxfp8_mxfp4.weight_block_scale`
+  field; 2880 % 128 = 64 crashed).
+
+Validation: `test_qmoe_fp4_cuda.py` 20/20; 2880 E4/M128 SiLU + E8/M256 SwiGLU
+correct (native quant error == fallback, e.g. 0.125/0.25); compute-sanitizer
+memcheck clean on 2880 native (no IMA from the relaxed alignment + SF tail-pad).
+
+### Part 2 — Crossover sweep: native FP4 wins at low M, loses at high M
+
+With 2880 enabled, a prefill latency sweep (QMoE node, io_binding, native-vs-dequant-
+fallback) across the **three production model shapes** revealed native FP4 is a
+large win at small per-call token counts but a **regression** at large counts:
+
+| Model (hidden / inter / E / top_k) | 128 tok | 256 | 512 | 1024 | 2048 | 4096 |
+|---|---|---|---|---|---|---|
+| gpt-oss (2880 / 2880 / 32 / 4) | 4.97× | 2.74× | 1.66× | 0.96× | 0.58× | 0.37× |
+| qwen3 (2048 / 512 / 256 / 8) | 6.43× | 6.42× | 4.74× | 2.79× | 1.63× | 0.96× |
+| gemma4 (2816 / 704 / 128 / 8) | 5.99× | 4.27× | 2.65× | 1.53× | 0.89× | 0.54× |
+
+(speedup = dequant-fallback latency / native-CUTLASS latency; > 1 means native faster.)
+
+**Key insight — the curves collapse when re-indexed by per-expert tokens**
+(`tokens × top_k / E`), and the crossover is **model-independent at ≈ 128
+tokens/expert**:
+
+| Per-expert tokens | ~16 | 32 | 64 | **128** | 256 |
+|---|---|---|---|---|---|
+| Speedup (all 3 models) | 4.3–5× | ~2.7× | 1.5–1.66× | **0.89–0.96× (crossover)** | 0.54–0.58× |
+
+Native FP4 (fp32 accum, tensor-core in-mainloop dequant) wins decisively while each
+expert's GEMM is small (decode + light prefill), and loses to the dense A16
+grouped GEMM once experts are large enough to be compute-bound — exactly the regime
+the dense fallback was already tuned for.
+
+### Part 3 — dual-runner per-expert-tokens dispatch heuristic (captures the win, drops the regression)
+
+To get the low-M win everywhere **without** the large-M regression, the op now holds
+**two** runners and routes per call by average tokens/expert:
+
+- **Second runner.** Alongside the native FP4 runner
+  (`CutlassMoeFCRunner<half/bf16, __nv_fp4_e2m1, half>`), the constructor now also
+  builds a dense A16 fallback runner `m_fp4_dense_fallback_runner_`
+  (`CutlassMoeFCRunner<half/bf16, half, half>`) inside the `ENABLE_FP4 / USE_FP4_QMOE`
+  block.
+- **Routing.** `avg_tokens_per_expert = (num_rows * k_) / num_experts`;
+  `route_native_fp4` is true when native is available and
+  `avg_tokens_per_expert <= ORT_FP4_NATIVE_MAX_TOKENS_PER_EXPERT` (default **128** =
+  the measured crossover; **0 disables** the heuristic = always-native, prior
+  behavior). `active_runner` is the dense fallback when native is available but the
+  threshold is exceeded, else the native runner. `active_runner` is threaded through
+  profiling, `getTactics`/`profileTactics`/`setTactic`, `getWorkspaceSize`, and
+  `runMoe`. `quant_params`/packed-FP4-weight selection are set only on the native
+  route; the dequant block runs on the dense route.
+- **Critical scale-layout fix.** When native is enabled, `packed_fp4_*_block_scales_`
+  is **TMA-swizzled**, but the dequant kernel needs raw `[E, n, k_blocks]` e8m0
+  scales. The dense route therefore prefers the raw copy kept by the native prepack
+  (`gemv_fp4_*_block_raw_`), falling back to `packed_fp4_*_block_scales_` (which holds
+  raw on the SM<90 / dequant-only build) then the input tensor. Null-safe, so SM<90
+  and wfp4afp8 paths are unaffected. The raw FP4 weight initializer stays available
+  because the native weight prepack sets `is_packed = false`.
+
+Files: `moe_quantization.{h,cc}` (uncommitted, layered on top of `dd240d2b6a`).
+
+### Validation (H200 / SM90)
+
+- `test_qmoe_fp4_cuda.py` **20/20** (these are m=1, so all route native — confirms no
+  regression on the native path).
+- gpt-oss-20b prefill bench, default threshold 128 (per-expert tokens in parens):
+
+  | Tokens | per-expert | route | speedup vs fallback | prior (always-native) |
+  |---|---|---|---|---|
+  | 512 | 64 | native | **1.66×** | 1.66× |
+  | 2048 | 256 | dense | **1.00×** | 0.58× |
+  | 4096 | 512 | dense | **1.01×** | 0.37× |
+
+  The low-M native win is preserved and the large-M regression is **eliminated**
+  (parity with the dense fallback instead of 0.58×/0.37×).
+- compute-sanitizer memcheck on the large-M dense route (2880, E32, 2048 tokens):
+  **0 errors** — the dual-runner dequant path (reading `gemv_fp4_*_block_raw_`) is
+  memory-clean.
+
+### Status / verdict
+
+- **Option B (`dd240d2b6a`) ships native CUTLASS prefill for gpt-oss-20b (2880)** —
+  correct + memcheck-clean — closing the 6.7× prefill gap in the low-per-expert-M
+  regime for the first time. This is the **tensor-core grouped-GEMM lever (lever 2)**
+  that every decode experiment above deferred to.
+- **The dual-runner heuristic** (uncommitted) makes native FP4 safe to enable across
+  the whole token range: it captures the multi-× win below ≈128 tokens/expert and
+  falls back to dense A16 parity above it, so there is no large-batch regression.
+  Tunable via `ORT_FP4_NATIVE_MAX_TOKENS_PER_EXPERT` (default 128; 0 = always native).
+- **Open follow-up:** at exactly 128 tok/expert the speedup is ~0.9× (a slight loss);
+  the default could be lowered to ~96 for a strictly ≥ 1.0× guarantee. The crossover
+  is model-independent in this sweep, but should be re-measured if the native kernel's
+  tactic selection changes.
+
+### Artifacts
+
+- Commit `dd240d2b6a` (Option B SF-tail-padding), branch `tlwu/20260625/qmoe_fp4`.
+- Prefill bench: `~/leverB_prefill_bench.py` (QMoE-node latency via io_binding;
+  `PROBE_HID`/`PROBE_INT`/`PROBE_E`/`PROBE_TOPK`/`PROBE_TOK` env vars; reports
+  native-vs-fallback speedup + max_diff).
+- Build: `build/cu130_fp4_bench/Release`; bench env
+  `CUDA_VISIBLE_DEVICES=0 ORT_ENABLE_FP4_CUTLASS_GEMM=1 ORT_ENABLE_FP4_CUTLASS_UNSAFE=1`.

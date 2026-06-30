@@ -94,6 +94,14 @@ class QMoE final : public CudaKernel, public MoEBase {
 
   std::unique_ptr<onnxruntime::llm::kernels::cutlass_kernels::CutlassMoeFCRunnerInterface> m_moe_runner;
 
+  // Dense A16 (FP16/BF16) fallback runner, constructed only when the native FP4 CUTLASS path is
+  // enabled. The native FP4 grouped GEMM wins when each expert processes few tokens, but the dense
+  // grouped GEMM (FP4 weights dequantized to FP16/BF16) is faster once the per-expert token count
+  // is large (compute-bound regime). ComputeInternal routes per call based on average tokens per
+  // expert vs fp4_native_max_tokens_per_expert_. Null when native FP4 is not enabled.
+  std::unique_ptr<onnxruntime::llm::kernels::cutlass_kernels::CutlassMoeFCRunnerInterface>
+      m_fp4_dense_fallback_runner_;
+
   // Pre-packed buffers
   // Note: For QMoE, we need both Scales (for dequant) and Bias (derived from ZP/Scale) during inference.
   // PrePack logic:
@@ -132,6 +140,11 @@ class QMoE final : public CudaKernel, public MoEBase {
   // (M < this threshold); prefill (M >= threshold) runs the native grouped GEMM. 0 disables the
   // split (pure GEMV regime). Overridable via ORT_FP4_PREFILL_MIN_TOKENS.
   int64_t fp4_prefill_min_tokens_ = 0;
+  // Upper bound on average tokens per expert (num_rows * top_k / num_experts) for the native FP4
+  // grouped GEMM. Above it, the prefill routes to the dense A16 fallback runner, which is faster in
+  // the compute-bound regime (measured crossover ~128 tokens/expert on H200). 0 disables the upper
+  // bound (always native for prefill). Overridable via ORT_FP4_NATIVE_MAX_TOKENS_PER_EXPERT.
+  int64_t fp4_native_max_tokens_per_expert_ = 0;
   IAllocatorUniquePtr<void> gemv_fp4_fc1_weights_;  // [E, 2*inter, hidden/2] row-major e2m1
   IAllocatorUniquePtr<void> gemv_fp4_fc2_weights_;  // [E, hidden, inter/2] row-major e2m1
   IAllocatorUniquePtr<void> gemv_fp4_fc1_scales_;   // [E, hidden/32, 2*inter] activation dtype

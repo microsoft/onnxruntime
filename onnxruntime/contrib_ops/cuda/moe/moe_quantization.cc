@@ -113,7 +113,18 @@ bool StaticFp4CutlassShapeSupported(const OpKernelInfo& op_kernel_info, bool is_
     return false;
   }
 
-  constexpr int64_t kMxfp4CutlassAlignment = 256;
+  // The SM90 WFP4A16 block-scaled grouped GEMM packs block scales in groups of 8 k-blocks
+  // (PackedScalesNum = CTA_K(256) / group_size(32)); the GEMM reads ceil(K/256) of those
+  // packed groups. PrePackFp4ScalesForTmaWs zero-pads each expert's k-block count up to a
+  // multiple of 8 (and the runner strides experts by the padded count), so K no longer has
+  // to be 256-aligned: the partial last group's tail blocks are zero and are only read by
+  // the GEMM's last CTA-K-tile, where the matching A/B K elements are TMA-zeroed. The
+  // binding requirements are now the MXFP4 block-scale vector size (k % 32 == 0 for an
+  // integral k-block count) and the weight/activation TMA alignment. Gate on 64 as a
+  // conservative margin above 32; this admits gpt-oss-20b (hidden=inter=2880) while leaving
+  // headroom for any untested N-dim/CTA tiling alignment, and can be lowered to 32 once
+  // broader shapes are validated.
+  constexpr int64_t kMxfp4CutlassAlignment = 64;
   return hidden_size % kMxfp4CutlassAlignment == 0 && inter_size % kMxfp4CutlassAlignment == 0;
 #endif
 }
@@ -238,6 +249,11 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
         enable_fp4_gemv_ = true;
         fp4_prefill_min_tokens_ = onnxruntime::ParseEnvironmentVariableWithDefault<int64_t>(
             "ORT_FP4_PREFILL_MIN_TOKENS", 64);
+        // Above this average per-expert token count, prefill routes to the dense A16 fallback
+        // runner instead of the native FP4 grouped GEMM (measured crossover ~128 tokens/expert
+        // on H200). 0 disables the upper bound. See ComputeInternal dispatch.
+        fp4_native_max_tokens_per_expert_ = onnxruntime::ParseEnvironmentVariableWithDefault<int64_t>(
+            "ORT_FP4_NATIVE_MAX_TOKENS_PER_EXPERT", 128);
       }
 #else
       use_fp4_dequant_fallback_ = true;
@@ -271,6 +287,17 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
             sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       } else {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<__nv_bfloat16, __nv_fp4_e2m1, __nv_bfloat16>>(
+            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
+      }
+      // Dense A16 fallback runner for the large-per-expert-M prefill regime, where dequantizing
+      // the MXFP4 weights to FP16/BF16 and running the dense grouped GEMM beats the native FP4
+      // grouped GEMM. Constructed alongside the FP4 runner so a single QMoE node can route per
+      // call (see fp4_native_max_tokens_per_expert_).
+      if (is_fp16) {
+        m_fp4_dense_fallback_runner_ = std::make_unique<CutlassMoeFCRunner<half, half, half>>(
+            sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
+      } else {
+        m_fp4_dense_fallback_runner_ = std::make_unique<CutlassMoeFCRunner<__nv_bfloat16, __nv_bfloat16, __nv_bfloat16>>(
             sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
       }
 #endif
@@ -567,6 +594,27 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   bool use_awq = (fc1_zeros != nullptr) || (packed_fc1_bias_ != nullptr);
   onnxruntime::llm::kernels::cutlass_kernels::MOEParallelismConfig parallelism_config{};
 
+  // Per-call native-vs-dense routing for the FP4 prefill regime. The native FP4 grouped GEMM wins
+  // when each expert processes few tokens, but the dense A16 grouped GEMM (MXFP4 weights
+  // dequantized to FP16/BF16) is faster once the average per-expert token count is large
+  // (compute-bound; measured crossover ~128 tokens/expert on H200). When native FP4 is enabled and
+  // the average exceeds fp4_native_max_tokens_per_expert_, route this call through the dense
+  // fallback runner instead. avg_tokens_per_expert = num_rows * top_k / num_experts.
+  const bool fp4_native_available = is_fp4 && !use_fp4_dequant_fallback_ && m_fp4_dense_fallback_runner_ != nullptr;
+  const int64_t avg_tokens_per_expert =
+      moe_params.num_experts > 0
+          ? (static_cast<int64_t>(moe_params.num_rows) * static_cast<int64_t>(k_)) /
+                static_cast<int64_t>(moe_params.num_experts)
+          : static_cast<int64_t>(moe_params.num_rows) * static_cast<int64_t>(k_);
+  const bool route_native_fp4 =
+      fp4_native_available &&
+      (fp4_native_max_tokens_per_expert_ <= 0 || avg_tokens_per_expert <= fp4_native_max_tokens_per_expert_);
+  // The dense fallback runner is selected only when native FP4 is available but this call exceeds
+  // the per-expert threshold. In every other configuration (native chosen, or native unavailable so
+  // m_moe_runner is itself the dense A16 runner) we use m_moe_runner.
+  onnxruntime::llm::kernels::cutlass_kernels::CutlassMoeFCRunnerInterface* active_runner =
+      (fp4_native_available && !route_native_fp4) ? m_fp4_dense_fallback_runner_.get() : m_moe_runner.get();
+
   // Profile and capture the best tactics under the profiler mutex, then release the mutex so
   // that scratch allocation, weight dequantization, scale prepping, softmax, and other
   // CPU-bound work can proceed concurrently across QMoE inferences. The mutex is reacquired
@@ -579,11 +627,11 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
     // Use profiler with proper weight type for quantized weights
     if (onnxruntime::llm::common::getEnvForceDeterministicMOE()) {
-      auto tactics = m_moe_runner->getTactics();
+      auto tactics = active_runner->getTactics();
       if (!tactics.empty()) {
         config1 = tactics[0];
         config2 = tactics[0];
-        m_moe_runner->setTactic(config1, config2);
+        active_runner->setTactic(config1, config2);
       }
     } else {
       AllocatorPtr allocator;
@@ -598,10 +646,11 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       if (is_wfp4afp8 && !use_wfp4afp8_dequant_fallback_) {
         dtype = onnxruntime::llm::nvinfer::DataType::kFP8;
       }
-      // Weight type: FP4 for MXFP4, INT4 for 4-bit integer, INT8 for 8-bit integer
+      // Weight type: FP4 for MXFP4, INT4 for 4-bit integer, INT8 for 8-bit integer. When the
+      // native FP4 path routes to the dense fallback for this call, profile the dense (A16) tactic.
       onnxruntime::llm::nvinfer::DataType wtype;
       if (is_fp4) {
-        wtype = use_fp4_dequant_fallback_ ? dtype : onnxruntime::llm::nvinfer::DataType::kFP4;
+        wtype = route_native_fp4 ? onnxruntime::llm::nvinfer::DataType::kFP4 : dtype;
       } else if (is_wfp4afp8) {
         // Native W4A8 path uses FP8 activation + FP4 weights through the block-scaled dispatch.
         // Profile against the FP4 weight tactic; fall back to dense dtype when the dequant path is selected.
@@ -629,7 +678,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
         // (small M) and prefill (large M) each profile and select their own best tile shape.
         GemmDims dims(static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.num_rows),
                       fc1_out_size, static_cast<int64_t>(moe_params.hidden_size));
-        mGemmProfiler.profileTactics(m_moe_runner.get(), dims, id1);
+        mGemmProfiler.profileTactics(active_runner, dims, id1);
       }
       config1 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), id1);
 
@@ -638,14 +687,14 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       {
         GemmDims dims(static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.num_rows),
                       static_cast<int64_t>(moe_params.hidden_size), static_cast<int64_t>(moe_params.inter_size));
-        mGemmProfiler.profileTactics(m_moe_runner.get(), dims, id2);
+        mGemmProfiler.profileTactics(active_runner, dims, id2);
       }
       config2 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), id2);
 
-      m_moe_runner->setTactic(config1, config2);
+      active_runner->setTactic(config1, config2);
     }
 
-    workspace_size = m_moe_runner->getWorkspaceSize(
+    workspace_size = active_runner->getWorkspaceSize(
         moe_params.num_rows, moe_params.hidden_size, moe_params.inter_size, moe_params.num_experts, k_,
         activation_type_, parallelism_config, use_awq);
   }
@@ -946,7 +995,9 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                                                               : (fc2_global_scale ? fc2_global_scale->DataRaw() : nullptr);
     ORT_RETURN_IF_NOT(p_fc1_block_scales && p_fc1_global_scale && p_fc2_block_scales && p_fc2_global_scale,
                       "QMoE quant_type='fp4' requires fc1_scales, fc2_scales, fc1_global_scale, and fc2_global_scale.");
-    if (!use_fp4_dequant_fallback_) {
+    // Only the native FP4 runner consumes block scales via quant_params; the dense fallback runner
+    // receives weights already dequantized to FP16/BF16 and leaves quant_params empty.
+    if (route_native_fp4) {
       using MXFPXElementSF = onnxruntime::llm::kernels::cutlass_kernels::TmaWarpSpecializedGroupedGemmInput::MXFPXElementSF;
       quant_params = onnxruntime::llm::kernels::cutlass_kernels::QuantParams::MXFP8MXFP4(
           static_cast<const MXFPXElementSF*>(p_fc1_block_scales),
@@ -1230,7 +1281,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
   const void* fc1_weight_data = fc1_experts_weights ? fc1_experts_weights->DataRaw() : nullptr;
   const void* fc2_weight_data = fc2_experts_weights ? fc2_experts_weights->DataRaw() : nullptr;
-  if ((is_fp4 && !use_fp4_dequant_fallback_) || (is_wfp4afp8 && !use_wfp4afp8_dequant_fallback_)) {
+  if ((is_fp4 && route_native_fp4) || (is_wfp4afp8 && !use_wfp4afp8_dequant_fallback_)) {
     // The native CUTLASS FP4 paths consume weights in the repacked FP4
     // layout produced by PrePack. If PrePack never ran (e.g.
     // ``session.disable_prepacking`` is set) the repacked buffers stay null and
@@ -1259,14 +1310,21 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   IAllocatorUniquePtr<void> dequant_fc1_weights;
   IAllocatorUniquePtr<void> dequant_fc2_weights;
   // FP4 (W4A16) and WFP4AFP8 (W4A8) share the MXFP4 weight format. When the native CUTLASS path
-  // is unavailable on the current SM, dequantize MXFP4 weights to FP16/BF16 and run the dense A16 runner.
-  if ((is_fp4 && use_fp4_dequant_fallback_) || (is_wfp4afp8 && use_wfp4afp8_dequant_fallback_)) {
-    const void* p_fc1_block_scales = packed_fp4_fc1_block_scales_ ? packed_fp4_fc1_block_scales_.get()
-                                                                  : (fp4_fc1_block_scales ? fp4_fc1_block_scales->DataRaw() : nullptr);
+  // is unavailable on the current SM, or when native FP4 routes this call to the dense fallback for
+  // the large per-expert-M regime, dequantize MXFP4 weights to FP16/BF16 and run the dense A16 runner.
+  if ((is_fp4 && !route_native_fp4) || (is_wfp4afp8 && use_wfp4afp8_dequant_fallback_)) {
+    // The dequant kernel expects raw [E, n, k_blocks] e8m0 block scales. When native FP4 is enabled
+    // (this is the large per-expert-M fallback), packed_fp4_*_block_scales_ holds the TMA-swizzled
+    // layout, so use the raw copy kept in gemv_fp4_*_block_raw_ instead. On the SM<90 dequant-only
+    // build that raw copy is absent and packed_fp4_*_block_scales_ already holds the raw scales.
+    const void* p_fc1_block_scales = gemv_fp4_fc1_block_raw_ ? gemv_fp4_fc1_block_raw_.get()
+                                     : (packed_fp4_fc1_block_scales_ ? packed_fp4_fc1_block_scales_.get()
+                                                                     : (fp4_fc1_block_scales ? fp4_fc1_block_scales->DataRaw() : nullptr));
     const void* p_fc1_global_scale = packed_fc1_global_scale_ ? packed_fc1_global_scale_.get()
                                                               : (fc1_global_scale ? fc1_global_scale->DataRaw() : nullptr);
-    const void* p_fc2_block_scales = packed_fp4_fc2_block_scales_ ? packed_fp4_fc2_block_scales_.get()
-                                                                  : (fp4_fc2_block_scales ? fp4_fc2_block_scales->DataRaw() : nullptr);
+    const void* p_fc2_block_scales = gemv_fp4_fc2_block_raw_ ? gemv_fp4_fc2_block_raw_.get()
+                                     : (packed_fp4_fc2_block_scales_ ? packed_fp4_fc2_block_scales_.get()
+                                                                     : (fp4_fc2_block_scales ? fp4_fc2_block_scales->DataRaw() : nullptr));
     const void* p_fc2_global_scale = packed_fc2_global_scale_ ? packed_fc2_global_scale_.get()
                                                               : (fc2_global_scale ? fc2_global_scale->DataRaw() : nullptr);
     ORT_RETURN_IF_NOT(p_fc1_block_scales && p_fc1_global_scale && p_fc2_block_scales && p_fc2_global_scale,
@@ -1354,8 +1412,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // Set tactic and run MoE. Must hold the mutex since setTactic mutates runner state.
   {
     std::lock_guard<std::mutex> profiler_lock(mGemmProfilerMutex);
-    m_moe_runner->setTactic(config1, config2);
-    m_moe_runner->runMoe(
+    active_runner->setTactic(config1, config2);
+    active_runner->runMoe(
         input->DataRaw(),
         nullptr,
         expert_indices,
@@ -1797,7 +1855,16 @@ void QMoE::PrePackFp4ScalesForTmaWs(const Tensor& tensor, cudaStream_t stream, A
     p_src = temp_src_gpu.get();
   }
 
-  packed_buf = IAllocator::MakeUniquePtr<void>(alloc, bytes, true);
+  // LaunchQMoEPackFp4ScalesForTmaWs pads the k-block count up to a multiple of the packed
+  // K-tile (8). Allocate the output buffer for the padded count so the GEMM's last partial
+  // CTA-K-tile can read a full packed scale group. The kernel writes every padded element
+  // (real blocks copied, tail blocks zeroed), so the buffer is fully initialized.
+  constexpr int64_t kPackedScalesPerKTile = 8;
+  const int64_t k_blocks_padded =
+      ((k_blocks + kPackedScalesPerKTile - 1) / kPackedScalesPerKTile) * kPackedScalesPerKTile;
+  const size_t out_bytes =
+      SafeInt<size_t>(experts) * SafeInt<size_t>(rows) * SafeInt<size_t>(k_blocks_padded);
+  packed_buf = IAllocator::MakeUniquePtr<void>(alloc, out_bytes, true);
   LaunchQMoEPackFp4ScalesForTmaWs(
       static_cast<const uint8_t*>(p_src),
       static_cast<uint8_t*>(packed_buf.get()),

@@ -868,7 +868,16 @@ __device__ void computeTmaWarpSpecializedInputPointers(TmaWarpSpecializedGrouped
 #endif
       int64_t scale_offset = 0;
       if constexpr (use_wfp4a16_scale_layout) {
-        scale_offset = expert * (gemm_n * gemm_k / groupwise_scale_group_size);
+        // The WFP4A16 scale buffer is packed in groups of 8 k-blocks (PackedScalesNum =
+        // CTA_K(256) / group_size(32)). PrePackFp4ScalesForTmaWs zero-pads each expert's
+        // k-block count up to a multiple of 8 so the GEMM's last partial CTA-K-tile can read
+        // a full packed group. Stride experts by the padded count to match the packed buffer.
+        // (For 8-aligned k-block counts this is a no-op, preserving existing 256-aligned shapes.)
+        constexpr int64_t kPackedScalesPerKTile = 8;
+        int64_t const k_blocks = gemm_k / groupwise_scale_group_size;
+        int64_t const k_blocks_padded =
+            ((k_blocks + kPackedScalesPerKTile - 1) / kPackedScalesPerKTile) * kPackedScalesPerKTile;
+        scale_offset = expert * (gemm_n * k_blocks_padded);
       } else {
         constexpr int scale_cols_alignment = 4;
         auto const scale_rows = TmaWarpSpecializedGroupedGemmInput::alignToSfDim(
@@ -2413,12 +2422,19 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
   ORT_ENFORCE(full_num_experts % parallelism_config.cluster_size == 0);
 
   if (quant_params.mxfp8_mxfp4.fc1.weight_block_scale) {
-    ORT_ENFORCE(hidden_size % (64 * 8 / sizeof_bits<WeightType>::value) == 0,
+    // 64-element (32-byte) K alignment for the FP4 weight. The original guard required
+    // 128 elements (64 bytes), but the WFP4A16 SM90 grouped GEMM only needs the weight K to
+    // satisfy the FP4 block-scale vector (32) and TMA (16-byte) alignment; the offline scale
+    // prepack (PrePackFp4ScalesForTmaWs) zero-pads each expert's k-block count up to a multiple
+    // of the packed K-tile (8) so the last partial CTA-K-tile can read a full packed group.
+    // Relaxing 128->64 admits gpt-oss-20b (hidden=inter=2880, 64-aligned but not 128-aligned);
+    // validated correct (matches dequant fallback) and clean under compute-sanitizer memcheck.
+    ORT_ENFORCE(hidden_size % (32 * 8 / sizeof_bits<WeightType>::value) == 0,
                 "Hidden size %d does not meet minimum alignment requirements for MXFP8_MXFP4 MOE GEMM %d",
-                (int)hidden_size, (int)(64 * 8 / sizeof_bits<WeightType>::value));
-    ORT_ENFORCE(inter_size % (64 * 8 / sizeof_bits<WeightType>::value) == 0,
+                (int)hidden_size, (int)(32 * 8 / sizeof_bits<WeightType>::value));
+    ORT_ENFORCE(inter_size % (32 * 8 / sizeof_bits<WeightType>::value) == 0,
                 "Inter size %d does not meet minimum alignment requirements for MXFP8_MXFP4 MOE GEMM %d", (int)inter_size,
-                (int)(64 * 8 / sizeof_bits<WeightType>::value));
+                (int)(32 * 8 / sizeof_bits<WeightType>::value));
   } else {
     // Require at least 128 bits of alignment for MOE GEMM
     ORT_ENFORCE(hidden_size % (128 / sizeof_bits<WeightType>::value) == 0,
