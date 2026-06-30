@@ -145,6 +145,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   // Validate seqlens_k values before they are used as GEMM dimensions to prevent OOB access.
   {
     const int32_t* seqlens_k_data = seqlens_k->Data<int32_t>();
+    const int past_kv_seqlen = parameters.seqlen_past_kv_cache;
     for (int b = 0; b < batch_size; b++) {
       if (seqlens_k_data[b] < 0 || seqlens_k_data[b] >= present_kv_seqlen) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -155,6 +156,27 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "seqlens_k[", b, "] = ", seqlens_k_data[b],
                                " is too small for sequence_length ", sequence_length);
+      }
+      // Bound the number of past KV rows copied out of the past key/value buffers.
+      // ConcatStateChunkGQA copies `past_seqlen` rows from the past buffer (sized
+      // past_kv_seqlen). The present buffer (validated above) can be larger than the past
+      // buffer when total_sequence_length exceeds the past sequence length, so the check
+      // above does not bound the past-side read. A large seqlens_k combined with a small
+      // past buffer would otherwise read past the end of the past key/value tensors.
+      if (past_kv_seqlen > 0) {
+        const int64_t total_seqlen_b = static_cast<int64_t>(seqlens_k_data[b]) + 1;
+        int64_t past_rows = 0;
+        if (parameters.kv_sequence_length == 0) {
+          past_rows = total_seqlen_b;  // shared KV: the entire past cache is copied
+        } else if (!parameters.is_first_prompt) {
+          past_rows = total_seqlen_b - sequence_length;
+        }
+        if (past_rows > past_kv_seqlen) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "seqlens_k[", b, "] = ", seqlens_k_data[b], " requires ", past_rows,
+                                 " past KV rows, which exceeds the past buffer sequence length ",
+                                 past_kv_seqlen, ".");
+        }
       }
     }
   }
