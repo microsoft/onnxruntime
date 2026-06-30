@@ -1974,12 +1974,14 @@ TEST(ConvTransposeTest, ConvTranspose_2D_OutputShape_RequiringPadding) {
 TEST(ConvTransposeTest, ConvTranspose_OverflowInPadComputation) {
   OpTester test("ConvTranspose", 11);
   test.AddShapeToTensorData(false);
-  // Use extreme values: kernel=INT64_MAX/4, dilation=8 makes (kernel-1)*dilation overflow.
+  // Use extreme dilation value: dilation * (kernel-1) overflows for kernel=3, dilation=INT64_MAX/4.
+  // W shape is kept small (kernel_shape attribute drives the computation, but the ORT_ENFORCE
+  // in the constructor fires on the attribute value before shape validation can occur).
   test.AddAttribute("strides", std::vector<int64_t>{1, 1});
-  test.AddAttribute("dilations", std::vector<int64_t>{8, 8});
-  test.AddAttribute("kernel_shape", std::vector<int64_t>{2305843009213693952LL, 2305843009213693952LL});
+  test.AddAttribute("dilations", std::vector<int64_t>{4611686018427387903LL, 4611686018427387903LL});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
   test.AddInput<float>("X", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
-  test.AddInput<float>("W", {1, 1, 2305843009213693952LL, 2305843009213693952LL}, {1.0f});
+  test.AddInput<float>("W", {1, 1, 3, 3}, std::vector<float>(9, 1.0f));
   test.AddOutput<float>("Y", {0}, {});
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "",
