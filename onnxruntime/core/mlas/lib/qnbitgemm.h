@@ -389,6 +389,8 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         const size_t RangeStartN,
         const size_t RangeCountN,
         size_t CountK,
+        bool HasQuantBZeroPoint,
+        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig,
         size_t ldc,
         const float* Bias
     );
@@ -583,15 +585,40 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     UsePacked_CompInt8_Fn* UsePacked_CompInt8 = nullptr;
 
     /**
+     * @brief Required N-start alignment for SQ4BitGemmKernel_Packed_CompInt8 ranges.
+     */
+    typedef size_t(PackedQ4BitGemmNAlignment_CompInt8_Fn)(
+        size_t K,
+        size_t BlkLen,
+        bool HasZp,
+        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    );
+
+    PackedQ4BitGemmNAlignment_CompInt8_Fn* PackedQ4BitGemmNAlignment_CompInt8 = nullptr;
+
+    /**
+     * @brief Whether to correct for asymmetric zero-point in RHS packed CompInt8 workloads
+     */
+    typedef bool(NeedsPackedZpCorrection_CompInt8_Fn)(
+        size_t K,
+        size_t BlkLen,
+        bool HasZp,
+        const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+    );
+
+    NeedsPackedZpCorrection_CompInt8_Fn* NeedsPackedZpCorrection_CompInt8 = nullptr;
+
+    /**
      * @brief Block quantize values from matrix A from floats to quantized 8-bit integers.
      *        Used in conjunction with SQ4BitGemmKernel_Packed_CompInt8.
      *
-     * @param       BlkLen  Number of values in a block.
-     * @param       A       Supplies the A matrix.
-     * @param       CountM  Number of rows of A.
-     * @param       CountK  Number of columns of A.
-     * @param[out]  QuantA  Supplies the output quantized A matrix.
-     *                      Binary data containing block quantized int8 data and scale values.
+     * @param       BlkLen           Number of values in a block.
+     * @param       A                Supplies the A matrix.
+     * @param       CountM           Number of rows of A.
+     * @param       CountK           Number of columns of A.
+     * @param       RHSHasZeroPoint  Whether packing happens for asymmetric or symmetric RHS
+     * @param[out]  QuantA           Supplies the output quantized A matrix.
+     *                               Binary data containing block quantized int8 data and scale values.
      * @param       BackendKernelSelectorConfig  Optional configuration for selecting backend kernels.
      */
     typedef void(QuantizeA_Packed_CompInt8_Fn)(
@@ -599,6 +626,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         const float* A,
         size_t CountM,
         size_t CountK,
+        bool RHSHasZeroPoint,
         std::byte* QuantA,
         const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     );

@@ -82,6 +82,36 @@ GetQNBitGemmVariant(
     return SQNBitGemmVariantInvalid;
 }
 
+bool RequiresPackedZpCorrection(
+    size_t K,
+    size_t BlkLen,
+    const void* QuantBZeroPoint,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig)
+{
+    const bool has_zp = QuantBZeroPoint != nullptr;
+    if (!has_zp) {
+        return false;
+    }
+
+    const auto* dispatch = GetMlasPlatform().QNBitGemmDispatch;
+    const auto fn = dispatch == nullptr ? nullptr : dispatch->NeedsPackedZpCorrection_CompInt8;
+    return fn != nullptr && fn(K, BlkLen, has_zp, BackendKernelSelectorConfig);
+}
+
+size_t GetPackedQ4BitGemmNAlignment(
+    size_t K,
+    size_t BlkLen,
+    const void* QuantBZeroPoint,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig)
+{
+    const auto* dispatch = GetMlasPlatform().QNBitGemmDispatch;
+    const auto fn = dispatch == nullptr ? nullptr : dispatch->PackedQ4BitGemmNAlignment_CompInt8;
+    if (fn == nullptr) {
+        return MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
+    }
+    return fn(K, BlkLen, QuantBZeroPoint != nullptr, BackendKernelSelectorConfig);
+}
+
 }  // namespace
 
 bool MLASCALL
@@ -739,17 +769,20 @@ SQ4BitGemm_CompInt8(
 {
     const auto UsePacked = GetMlasPlatform().QNBitGemmDispatch->UsePacked_CompInt8;
     const auto SQ4BitGemm = GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmKernel_Packed_CompInt8;
+    const bool HasQuantBZeroPoint = DataParams->QuantBZeroPoint != nullptr;
     if (UsePacked && SQ4BitGemm && UsePacked(K, BlkLen, DataParams->QuantBZeroPoint, BackendKernelSelectorConfig)) {
         const std::byte* QuantA = static_cast<const std::byte*>(PerGemmWorkspace);
         SQ4BitGemm(BlkLen, QuantA, DataParams->PackedQuantBData,
             DataParams->C, RangeStartM, RangeCountM, RangeStartN, RangeCountN, K,
+            HasQuantBZeroPoint, BackendKernelSelectorConfig,
             DataParams->ldc, DataParams->Bias);
 
         // Apply zero-point correction for asymmetric quantization (KleidiAI path only).
         // BZpCorr and AFloatBlkSum are only set when KleidiAI is active with asymmetric
         // quantization (has zero points). On all other paths they remain nullptr.
         // C += AFloatBlkSum * BZpCorr^T  (for this tile's M/N ranges)
-        if (DataParams->BZpCorr != nullptr && DataParams->AFloatBlkSum != nullptr) {
+        if (RequiresPackedZpCorrection(K, BlkLen, DataParams->QuantBZeroPoint, BackendKernelSelectorConfig) &&
+            DataParams->BZpCorr != nullptr && DataParams->AFloatBlkSum != nullptr) {
             const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
             const size_t ldc = DataParams->ldc;
             const float* ABlkSum = DataParams->AFloatBlkSum + RangeStartM * BlockCountK;
@@ -1140,11 +1173,13 @@ InitializeWorkspace_CompInt8<float>(
 
             const float* ARowPtr = data.A;
             std::byte* QuantARowPtr = static_cast<std::byte*>(Workspace) + gemm_idx * PerGemmWorkspaceStride;
-            QuantizeA_Packed(BlkLen, ARowPtr, M, K, QuantARowPtr, BackendKernelSelectorConfig);
+            const bool HasZp = data.QuantBZeroPoint != nullptr;
+            QuantizeA_Packed(BlkLen, ARowPtr, M, K, HasZp, QuantARowPtr, BackendKernelSelectorConfig);
 
             // For asymmetric KleidiAI path, also compute float-domain A block sums
             // for zero-point correction. AFloatBlkSum is stored after KleidiAI packed A.
-            if (data.QuantBZeroPoint != nullptr && ComputeAFloatBlkSumFn != nullptr && kleidiAIPackedASize > 0) {
+            if (RequiresPackedZpCorrection(K, BlkLen, data.QuantBZeroPoint, BackendKernelSelectorConfig) &&
+                ComputeAFloatBlkSumFn != nullptr && kleidiAIPackedASize > 0) {
                 // Align offset so AFloatBlkSum starts at a float-aligned address
                 constexpr size_t FloatAlignment = alignof(float);
                 const size_t alignedAOffset = (kleidiAIPackedASize + FloatAlignment - 1) & ~(FloatAlignment - 1);
@@ -1376,8 +1411,8 @@ MlasQNBitGemmBatch(
     // BZpCorr is stored after KleidiAI packed B data.
     // AFloatBlkSum is stored after KleidiAI packed A data in each per-GEMM workspace.
     const auto UsePacked = GetMlasPlatform().QNBitGemmDispatch->UsePacked_CompInt8;
-    if (Variant == SQ4BitGemmVariant_CompInt8 && has_zp_input && UsePacked &&
-        UsePacked(K, BlkLen, DataParams->QuantBZeroPoint, BackendKernelSelectorConfig)) {
+    if (Variant == SQ4BitGemmVariant_CompInt8 && RequiresPackedZpCorrection(K, BlkLen, DataParams->QuantBZeroPoint, BackendKernelSelectorConfig) &&
+        UsePacked && UsePacked(K, BlkLen, DataParams->QuantBZeroPoint, BackendKernelSelectorConfig)) {
         // Compute KleidiAI packed B size (without zero point correction space)
         const size_t kleidiAIPackedBSize = GetMlasPlatform().QNBitGemmDispatch->Q4BitGemmPackQuantBDataSize
             ? GetMlasPlatform().QNBitGemmDispatch->Q4BitGemmPackQuantBDataSize(
@@ -1468,6 +1503,13 @@ MlasQNBitGemmBatch(
 
     constexpr size_t StrideM = 128;
 
+    size_t StrideNThreadAlign = MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
+    if (Variant == SQ4BitGemmVariant_CompInt8) {
+        const size_t PackedNAlignment = GetPackedQ4BitGemmNAlignment(
+            K, BlkLen, DataParams->QuantBZeroPoint, BackendKernelSelectorConfig);
+        StrideNThreadAlign = std::max(StrideNThreadAlign, PackedNAlignment);
+    }
+
     size_t nc = N;
     if (ThreadsPerGemm > 1) {
         // more than one thread per GEMM
@@ -1476,8 +1518,7 @@ MlasQNBitGemmBatch(
         const size_t max_nc = MlasDivRoundup(N * BlockedM, ThreadsPerGemm);
         if (max_nc < nc) {
             nc = std::min(
-                nc, MlasDivRoundup(max_nc, MLAS_QGEMM_STRIDEN_THREAD_ALIGN) *
-                        MLAS_QGEMM_STRIDEN_THREAD_ALIGN
+                nc, MlasDivRoundup(max_nc, StrideNThreadAlign) * StrideNThreadAlign
             );
         }
     }

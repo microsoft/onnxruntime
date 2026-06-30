@@ -141,6 +141,22 @@ UsePacked_CompInt8(
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
 
+bool
+NeedsPackedZpCorrection_CompInt8(
+    size_t K,
+    size_t BlkLen,
+    bool HasZp,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
+
+size_t
+PackedQ4BitGemmNAlignment_CompInt8(
+    size_t K,
+    size_t BlkLen,
+    bool HasZp,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
+);
+
 void
 QuantizeARow_CompInt8(
     size_t BlkLen,
@@ -224,6 +240,7 @@ QuantizeA_Packed_CompInt8(
     const float* A,
     size_t CountM,
     size_t CountK,
+    bool HasZeroPoint,
     std::byte* QuantA,
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 );
@@ -239,6 +256,8 @@ SQ4BitGemmKernel_Packed_CompInt8(
     const size_t RangeStartN,
     const size_t RangeCountN,
     size_t CountK,
+    bool HasQuantBZeroPoint,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig,
     size_t ldc,
     const float *Bias
 );
@@ -266,7 +285,16 @@ ApplyBZpCorrection(
 #endif
 
 bool
-UseKleidiAI(size_t K, size_t BlkLen, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
+IsKleidiAIQ4ShapeSupported(size_t K, size_t BlkLen, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
+
+enum class KleidiAIQ4Backend {
+    None,
+    Qai8dxpQsi4c32p, // 4-bit symmetric block-quantized RHS
+    Qsi8d32pQai4c32p, // 4-bit asymmetric block-quantized RHS
+};
+
+KleidiAIQ4Backend
+SelectKleidiAIQ4Backend(size_t K, size_t BlkLen, bool HasZp, const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig);
 
 //
 // General helpers.

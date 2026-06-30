@@ -436,6 +436,15 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
         scale_ptr = scales->DataRaw();
       }
 
+      const void* zp_ptr = nullptr;
+      if (has_zp_input_) {
+        const Tensor* zero_points = nullptr;
+        ORT_IGNORE_RETURN_VALUE(OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zero_points));
+        if (zero_points != nullptr) {
+          zp_ptr = zero_points->DataRaw();
+        }
+      }
+
       packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
       // The framework content-hashes this packed buffer to deduplicate pre-packed weights, both
       // within a session and across sessions (the shared container). The session-state prepack pass
@@ -451,7 +460,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
         std::memset(packed_b_.get(), 0, packed_b_size_);
       }
       MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, effective_compute_type, qptr, packed_b_.get(), scale_ptr,
-                                  has_zp_input_, nullptr, threadpool_ptr, &mlas_backend_kernel_selector_config_);
+                                  has_zp_input_, zp_ptr, threadpool_ptr, &mlas_backend_kernel_selector_config_);
 
       // Fold the scales and (constant) zero points into packed_b_ now, during the B PrePack, instead
       // of deferring them to the later scales/zero_points PrePack calls. Pre-packed weight sharing
@@ -748,6 +757,14 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
     }
     auto qptr = tensor.DataRaw();
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
+    const void* zp_ptr = nullptr;
+    if (has_zp_input_) {
+      const Tensor* zero_points = nullptr;
+      ORT_IGNORE_RETURN_VALUE(OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zero_points));
+      if (zero_points != nullptr) {
+        zp_ptr = zero_points->DataRaw();
+      }
+    }
     // See the primary PrePack() above: SessionState::PrepackConstantInitializedTensors passes a
     // non-null prepacked_weights on both the container and the default single-session paths, so this
     // zero-fill runs on essentially every prepack at load (the guard only skips a caller that asks for
@@ -758,7 +775,7 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
       std::memset(packed_b_.get(), 0, packed_b_size_);
     }
     MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(),
-                                scales_fp32_.get(), has_zp_input_, nullptr, nullptr, &mlas_backend_kernel_selector_config_);
+                                scales_fp32_.get(), has_zp_input_, zp_ptr, nullptr, &mlas_backend_kernel_selector_config_);
 
     // Fold the scales and (constant) zero points into packed_b_ now (see the primary PrePack above):
     // the CompInt8 block sum and the KleidiAI BZpCorr depend on the zero points, so they must be
