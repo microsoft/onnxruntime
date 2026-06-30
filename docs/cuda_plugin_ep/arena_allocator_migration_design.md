@@ -62,7 +62,18 @@ if (!factory.arena_allocator_) {
 
 **Stream-aware allocation.** `ArenaImpl::AllocOnStream(size, stream)` tracks which chunks are assigned to which stream. `ResetChunksUsingStream(stream_impl)` is called from `OrtSyncStreamImpl::OnSessionRunEnd` to release chunk-to-stream assignments when a session run completes.
 
-**Read-only allocator bypasses arena.** The factory creates a plain `CustomAllocator` (no arena) for `OrtReadOnlyAllocator` (initializers), since initializer memory doesn't benefit from arena allocation.
+**Kernel-side consumption of the arena.** Migrated CUDA kernels obtain scratch/workspace memory from this arena through `CudaKernel::GetScratchBuffer`, which calls `Info().GetAllocator(OrtMemTypeDefault)`. Inside the plugin build that allocator is exposed to internal code as an `IAllocatorWrappingOrtAllocator` (`include/onnxruntime/ep/adapter/allocator.h`), which implements `IsStreamAware()`/`AllocOnStream()` by forwarding to the underlying `OrtAllocator`'s `AllocOnStream` (ORT >= 1.23), falling back to plain `Alloc` otherwise. `GetScratchBuffer` uses the framework `OrtSyncStream*` exposed through `KernelContext_GetSyncStream` to stream-tag scratch chunks, while kernels continue to use the raw `cudaStream_t` from `KernelContext_GetGPUComputeStream` for launches and library handles. This keeps allocation bookkeeping on the same framework stream wrapper that the arena stores in `chunk->stream` and later queries through the EP stream API (`SyncStream_GetImpl`/`SyncStream_GetSyncId`). If the negotiated ORT API version does not include `KernelContext_GetSyncStream`, the adapter falls back to a null stream tag and the EP does not advertise concurrent run support.
+
+#### Scratch buffer stream tagging
+
+A common review question is: *"Shouldn't the scratch buffer use the same stream as the kernel?"* The short answer is yes for concurrent multi-stream runs, but the allocator must receive the framework stream wrapper, not the raw CUDA handle.
+
+- **The `stream` argument is bookkeeping, not execution.** The stream passed to a stream-aware arena's `AllocOnStream()` is only metadata the arena uses to decide whether a *freed* chunk may be reused on a *different* stream without an intervening synchronization. It does **not** change where the kernel runs: the returned buffer is consumed by the kernel on its raw CUDA compute stream.
+- **Raw CUDA stream and framework stream are different objects.** `KernelContext_GetGPUComputeStream` returns the raw `cudaStream_t` used for CUDA calls. The stream-aware arena needs the framework `OrtSyncStream*` (`struct OrtSyncStream : public onnxruntime::Stream` in `core/framework/plugin_ep_stream.h`) because that stable wrapper is what it persists in each chunk. `CudaSyncStream::FromCudaStream()` can recover the plugin-side `CudaSyncStream` (`OrtSyncStreamImpl`), but that is not the ORT-core `OrtSyncStream*` the arena expects.
+- **How the plugin bridges them.** `KernelContext_GetSyncStream` exposes the framework stream for the current kernel dispatch. The CUDA plugin adapter records the mapping from raw `cudaStream_t` to framework stream when migrated kernels call `GetComputeStream(ctx)`, and `GetScratchBuffer` uses the framework stream for `AllocOnStream`. This preserves the existing migrated-kernel pattern while making scratch chunks safe for cross-stream reuse decisions.
+- **Compatibility fallback.** When the negotiated ORT API version does not include `KernelContext_GetSyncStream`, scratch allocations use a null stream tag. A null tag is correct for serialized runs and single-unified-stream CUDA graph capture, but it is not safe for overlapping runs on different CUDA streams, so the plugin EP only advertises concurrent `Session::Run()` when `KernelContext_GetSyncStream` is available.
+
+
 
 ### 2.2 How ORT Core Calls the Factory
 

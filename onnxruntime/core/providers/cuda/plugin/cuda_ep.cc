@@ -83,20 +83,33 @@ void DestroyCudaStreamForDevice(cudaStream_t stream, int device_id) {
 }  // namespace
 
 struct CudaEp::PerThreadContext {
-  explicit PerThreadContext(int device_id)
+  // When use_external_stream is true (user_compute_stream combined with CUDA graph), capture and
+  // replay happen on that user-owned stream so they see the same stream as the kernels; the
+  // context neither creates nor destroys it. Ownership is derived from the caller's intent rather
+  // than from external_stream being non-null, because a user may legitimately select the CUDA
+  // default stream (cudaStream_t(0), i.e. nullptr) as the compute stream — that is still an
+  // external, user-owned stream and must not be destroyed by the context. When use_external_stream
+  // is false the context creates and owns a dedicated graph stream.
+  explicit PerThreadContext(int device_id, bool use_external_stream = false,
+                            cudaStream_t external_stream = nullptr)
       : device_id(device_id),
-        graph_stream(CreateCudaStreamForDevice(device_id)),
+        owns_graph_stream(!use_external_stream),
+        graph_stream(use_external_stream ? external_stream
+                                         : CreateCudaStreamForDevice(device_id)),
         cuda_graph(graph_stream) {
   }
 
   ~PerThreadContext() {
     // Destroy captured graph execs before destroying the stream they replay on.
     cuda_graph.Reset();
-    DestroyCudaStreamForDevice(graph_stream, device_id);
+    if (owns_graph_stream) {
+      DestroyCudaStreamForDevice(graph_stream, device_id);
+    }
     graph_stream = nullptr;
   }
 
   int device_id;
+  bool owns_graph_stream;
   cudaStream_t graph_stream = nullptr;
   CudaGraphManager cuda_graph;
   size_t pre_capture_free_mem = 0;
@@ -189,7 +202,6 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   // below — no function-signature change.
   onnxruntime::cuda::detail::CudaKernelAdapterRuntimeConfig adapter_config;
   adapter_config.use_tf32 = config_.use_tf32;
-  adapter_config.skip_layer_norm_strict_mode = config_.enable_skip_layer_norm_strict_mode;
   adapter_config.cudnn_conv_algo = config_.cudnn_conv_algo;
   adapter_config.cudnn_conv_use_max_workspace = config_.cudnn_conv_use_max_workspace;
   adapter_config.cudnn_conv1d_pad_to_nc1d = config_.cudnn_conv1d_pad_to_nc1d;
@@ -391,8 +403,14 @@ OrtStatus* ORT_API_CALL CudaEp::CreateSyncStreamForDeviceImpl(
 
   auto cuda_stream = std::make_unique<CudaSyncStream>(ep->factory_, device_id, this_ptr);
 
-  if (ep->config_.has_user_compute_stream && ep->config_.user_compute_stream != nullptr) {
-    // Wrap the user-provided external CUDA stream with full cuBLAS/cuDNN handles.
+  if (ep->config_.has_user_compute_stream) {
+    // A user-provided compute stream is honored for kernels regardless of whether CUDA graph
+    // capture is enabled - this branch is taken in both graph and non-graph runs. Use the caller's
+    // intent flag rather than checking the handle for non-null: cudaStream_t(0) / nullptr is the
+    // valid CUDA default stream and can be selected explicitly by the user. Wrap the external CUDA
+    // stream with full cuBLAS/cuDNN handles. When CUDA graph capture is also enabled,
+    // capture/replay run on this same user stream (see GetPerThreadContext), so kernels and graph
+    // capture share one stream.
     RETURN_IF_ERROR(cuda_stream->InitHandlesWithUserStream(
         static_cast<cudaStream_t>(ep->config_.user_compute_stream)));
   } else if (ep->config_.enable_cuda_graph) {
@@ -439,15 +457,18 @@ OrtStatus* ORT_API_CALL CudaEp::SyncImpl(OrtEp* this_ptr) noexcept {
 /*static*/
 OrtStatus* ORT_API_CALL CudaEp::IsConcurrentRunSupportedImpl(
     OrtEp* this_ptr, bool* is_supported) noexcept {
+  ORT_UNUSED_PARAMETER(this_ptr);
+
   if (is_supported == nullptr) {
     return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "is_supported must not be null.");
   }
 
   auto* ep = static_cast<CudaEp*>(this_ptr);
-  // When a unified stream is in use (either from user_compute_stream, external
-  // allocator, or explicit use_ep_level_unified_stream), all operations share a
-  // single stream so concurrent runs are not safe.
-  *is_supported = !ep->config_.use_ep_level_unified_stream;
+  // Concurrent runs require stream-tagged scratch allocations. The plugin kernel adapter can tag
+  // scratch chunks only when the hosting ORT runtime exposes KernelContext_GetSyncStream.
+  static constexpr uint32_t kOrtKernelContextGetSyncStreamMinVersion = 28;
+  *is_supported = !ep->config_.use_ep_level_unified_stream &&
+                  ::onnxruntime::ep::CurrentOrtApiVersion() >= kOrtKernelContextGetSyncStreamMinVersion;
   return nullptr;
 }
 
@@ -467,7 +488,25 @@ CudaEp::PerThreadContext& CudaEp::GetPerThreadContext() const {
     return *cached_context_it->second;
   }
 
-  auto context = std::make_shared<PerThreadContext>(config_.device_id);
+  // NOTE: `enable_cuda_graph` in this condition does NOT restrict using a user compute stream to
+  // the graph case. A user compute stream is honored for kernels in BOTH graph and non-graph runs
+  // — that happens in CreateSyncStreamForDeviceImpl(), which wraps config_.user_compute_stream
+  // independently of enable_cuda_graph. This flag only governs the PerThreadContext's *graph
+  // stream*, and PerThreadContext is a graph-capture-only object: GetPerThreadContext() is reached
+  // exclusively from the graph path (CreateSyncStreamForDeviceImpl's enable_cuda_graph branch,
+  // OnRunStart/OnRunEnd, IsGraphCaptured, ReplayGraph). With graph disabled, no PerThreadContext is
+  // ever constructed, so its stream ownership is irrelevant.
+  //
+  // When a user compute stream IS combined with CUDA graph capture, capture/replay must run on the
+  // user's stream (the same stream the kernels are issued to) rather than a separate EP-owned
+  // stream. The user owns the stream's lifetime, so the context must not destroy it. Derive this
+  // from the caller's intent (has_user_compute_stream && enable_cuda_graph), not from whether the
+  // handle is null: a user may explicitly choose the CUDA default stream (nullptr), which is still
+  // an external stream that the context must not own/destroy.
+  const bool use_external_stream = config_.has_user_compute_stream && config_.enable_cuda_graph;
+  cudaStream_t external_stream =
+      use_external_stream ? static_cast<cudaStream_t>(config_.user_compute_stream) : nullptr;
+  auto context = std::make_shared<PerThreadContext>(config_.device_id, use_external_stream, external_stream);
   PerThreadContext& context_ref = *context;
   {
     std::lock_guard<std::mutex> lock(per_thread_contexts_mutex_);

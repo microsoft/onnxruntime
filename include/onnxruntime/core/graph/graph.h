@@ -1608,6 +1608,34 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     return *prepacked_weights_for_graph_;
   }
 
+  // Tags a fusion-generated initializer (whose name is not stable across sessions) with a stable,
+  // content-derived identity that SessionState uses to key cross-session pre-pack sharing.
+  //
+  // Single-consumer invariant: a MatMulNBits packed buffer folds in the *consuming* node's
+  // scales/zero_points/attributes, not B alone, so this id is meaningful only for a B initializer that
+  // has exactly one consumer. The DQ->MatMulNBits producers guarantee that -- each generated B has a
+  // unique name with a single consumer, and the fusion bails when the source weight/scale is shared (the
+  // DQMatMulNotConvertedToMatMulNBits_SharedWeight case). If a future change ever tags a multi-consumer
+  // initializer whose consumers differ in scales/zp/attrs, they would compute different ids for the same
+  // name and the last writer would silently mis-share. Enforce that a name is never re-tagged with a
+  // conflicting id so the invariant survives later refactors.
+  void SetSharedPrepackInitializerId(const std::string& initializer_name, std::string share_id) {
+    auto it = generated_shared_prepack_ids_.find(initializer_name);
+    if (it != generated_shared_prepack_ids_.end()) {
+      ORT_ENFORCE(it->second == share_id, "MatMulNBits pre-pack sharing id for initializer '",
+                  initializer_name, "' was re-tagged with a different id; the single-consumer invariant ",
+                  "is violated (a multi-consumer weight whose consumers differ in scales/zp/attrs).");
+      return;
+    }
+    generated_shared_prepack_ids_.emplace(initializer_name, std::move(share_id));
+  }
+
+  // Returns the sharing identity for a generated initializer, or nullptr if it was not tagged.
+  const std::string* GetSharedPrepackInitializerId(const std::string& initializer_name) const {
+    auto it = generated_shared_prepack_ids_.find(initializer_name);
+    return it == generated_shared_prepack_ids_.end() ? nullptr : &it->second;
+  }
+
   /** Returns the Node containing the GraphProto for this Graph instance if IsSubgraph is true */
   const Node* ParentNode() const { return parent_node_; }
 
@@ -2010,6 +2038,10 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // names and their pre-packed blobs (via keys).
   // This is optional due to delayed construction.
   std::optional<PrepackedWeightsForGraph> prepacked_weights_for_graph_;
+
+  // Maps a fusion-generated initializer name to its cross-session sharing identity.
+  // See SetSharedPrepackInitializerId.
+  InlinedHashMap<std::string, std::string> generated_shared_prepack_ids_;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // Runtime optimization storage.
