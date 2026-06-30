@@ -86,3 +86,4 @@ env/
 # ONNX Model Weights
 *.onnx
 *.onnx.data
+model_dir/

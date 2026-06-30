@@ -16,6 +16,21 @@ import onnxruntime as ort
 from transformers import AutoTokenizer
 
 
+def get_best_provider() -> str:
+    """Helper to detect and return the optimal execution provider available on the system."""
+    available = ort.get_available_providers()
+    priority = [
+        "CUDAExecutionProvider",
+        "CoreMLExecutionProvider",
+        "DirectMLExecutionProvider",
+        "CPUExecutionProvider"
+    ]
+    for provider in priority:
+        if provider in available:
+            return provider
+    return "CPUExecutionProvider"
+
+
 def run_benchmark(model_path: str, tokenizer_id: str, runs: int) -> None:
     """
     Benchmarks model loading, initialization, and execution performance.
@@ -46,10 +61,12 @@ def run_benchmark(model_path: str, tokenizer_id: str, runs: int) -> None:
     attention_mask = np.array([inputs["attention_mask"]], dtype=np.int64)
 
     # 3. Benchmark Session Initialization (Cold Startup Latency)
+    best_provider = get_best_provider()
+    print(f"Selecting optimal execution provider: '{best_provider}'")
     print("Measuring ONNX Runtime Session initialization latency...")
     start_init = time.perf_counter()
     try:
-        session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+        session = ort.InferenceSession(model_path, providers=[best_provider])
     except Exception as e:
         print(f"Failed to initialize ORT Session: {e}", file=sys.stderr)
         sys.exit(1)
