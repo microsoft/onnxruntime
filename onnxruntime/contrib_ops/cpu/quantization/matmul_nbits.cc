@@ -261,6 +261,16 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   // session initialization. The matching guard in matmul_nbits_helper::CheckInputs is invoked
   // from Compute() -- too late, because PrePack has already done the OOB read, and by then the
   // original B tensor is passed as nullptr so the Compute-time check never sees it.
+  //
+  // When input_idx == B, this guard also validates the constant scales and zero_points
+  // initializers (looked up via TryGetConstantInput). SessionState::PrepackConstantInitializedTensors
+  // iterates inputs in index order, so the B PrePack call runs before scales/zero_points are
+  // prepacked on their own. The B prepack path reads those constant tensors and passes their
+  // raw data to the MLAS pack routines (MlasLutGemmPack, MlasQNBitGemmPackQuantBData), which size
+  // their reads from the same (N, K, bits, block_size) attributes. Without validating scales /
+  // zero_points here, a crafted model with an undersized scales or zero_points buffer would still
+  // trigger an OOB read inside the B packing pass before each tensor's own PrePack call could
+  // catch the mismatch.
   {
     const int64_t n = static_cast<int64_t>(N_);
     const int64_t k = static_cast<int64_t>(K_);
@@ -268,6 +278,32 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     const int64_t bits = static_cast<int64_t>(nbits_);
     const int64_t k_blocks = (k + bs - 1) / bs;
     const int64_t blob_size = bs * bits / 8;
+    const int64_t zp_blob_size_uint8 = (k_blocks * bits + 7) / 8;
+
+    auto validate_scales_shape = [&](const TensorShape& s) -> Status {
+      // scales may be 1D [n * k_blocks] or 2D [n, k_blocks] for backward compatibility.
+      ORT_RETURN_IF_NOT(s == TensorShape({n * k_blocks}) || s == TensorShape({n, k_blocks}),
+                        "MatMulNBits PrePack: scales initializer shape ", s,
+                        " does not match attribute-derived shape [", n * k_blocks, "] or [",
+                        n, ",", k_blocks, "]");
+      return Status::OK();
+    };
+
+    auto validate_zero_points_shape = [&](const TensorShape& s, int32_t element_type) -> Status {
+      if (element_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+        ORT_RETURN_IF_NOT(s == TensorShape({n * zp_blob_size_uint8}) || s == TensorShape({n, zp_blob_size_uint8}),
+                          "MatMulNBits PrePack: zero_points initializer shape ", s,
+                          " does not match attribute-derived shape [", n * zp_blob_size_uint8, "] or [",
+                          n, ",", zp_blob_size_uint8, "]");
+      } else {
+        ORT_RETURN_IF_NOT(s == TensorShape({n * k_blocks}) || s == TensorShape({n, k_blocks}),
+                          "MatMulNBits PrePack: zero_points initializer shape ", s,
+                          " does not match attribute-derived shape [", n * k_blocks, "] or [",
+                          n, ",", k_blocks, "]");
+      }
+      return Status::OK();
+    };
+
     const TensorShape& shape = tensor.Shape();
 
     if (input_idx == InputIndex::B) {
@@ -275,25 +311,22 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
                         "MatMulNBits PrePack: B initializer shape ", shape,
                         " does not match attribute-derived shape [", n, ",", k_blocks, ",", blob_size,
                         "] (N=", N_, ", K=", K_, ", bits=", nbits_, ", block_size=", block_size_, ")");
-    } else if (input_idx == InputIndex::scales) {
-      // scales may be 1D [n * k_blocks] or 2D [n, k_blocks] for backward compatibility.
-      ORT_RETURN_IF_NOT(shape == TensorShape({n * k_blocks}) || shape == TensorShape({n, k_blocks}),
-                        "MatMulNBits PrePack: scales initializer shape ", shape,
-                        " does not match attribute-derived shape [", n * k_blocks, "] or [",
-                        n, ",", k_blocks, "]");
-    } else if (input_idx == InputIndex::zero_points) {
-      if (tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-        const int64_t zp_blob_size = (k_blocks * bits + 7) / 8;
-        ORT_RETURN_IF_NOT(shape == TensorShape({n * zp_blob_size}) || shape == TensorShape({n, zp_blob_size}),
-                          "MatMulNBits PrePack: zero_points initializer shape ", shape,
-                          " does not match attribute-derived shape [", n * zp_blob_size, "] or [",
-                          n, ",", zp_blob_size, "]");
-      } else {
-        ORT_RETURN_IF_NOT(shape == TensorShape({n * k_blocks}) || shape == TensorShape({n, k_blocks}),
-                          "MatMulNBits PrePack: zero_points initializer shape ", shape,
-                          " does not match attribute-derived shape [", n * k_blocks, "] or [",
-                          n, ",", k_blocks, "]");
+
+      // Also validate constant scales / zero_points, which the B prepack path below dereferences
+      // (via TryGetConstantInput) and hands to MLAS, before their own PrePack calls run.
+      const Tensor* scales_tensor = nullptr;
+      if (OpKernel::Info().TryGetConstantInput(InputIndex::scales, &scales_tensor) && scales_tensor != nullptr) {
+        ORT_RETURN_IF_ERROR(validate_scales_shape(scales_tensor->Shape()));
       }
+      const Tensor* zp_tensor = nullptr;
+      if (has_zp_arg_ && has_zp_input_ &&
+          OpKernel::Info().TryGetConstantInput(InputIndex::zero_points, &zp_tensor) && zp_tensor != nullptr) {
+        ORT_RETURN_IF_ERROR(validate_zero_points_shape(zp_tensor->Shape(), zp_tensor->GetElementType()));
+      }
+    } else if (input_idx == InputIndex::scales) {
+      ORT_RETURN_IF_ERROR(validate_scales_shape(shape));
+    } else if (input_idx == InputIndex::zero_points) {
+      ORT_RETURN_IF_ERROR(validate_zero_points_shape(shape, tensor.GetElementType()));
     }
   }
 
