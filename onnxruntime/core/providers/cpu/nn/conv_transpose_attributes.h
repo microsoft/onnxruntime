@@ -305,14 +305,46 @@ struct ConvTransposeAttributes : public ConvAttributes {
       int64_t* out_size) const {
     // Output shape is explicitly provided - pad values will have to be computed
     if (*out_size != -1) {
-      if (*out_size < 0) {
+      if (*out_size <= 0) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Explicit output size is negative: ", *out_size);
+                               "Explicit output size must be positive. Got: ", *out_size);
+      }
+      if (in_size <= 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Input spatial dimension must be positive. Got: ", in_size);
+      }
+      if (stride <= 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Stride must be positive. Got: ", stride);
+      }
+      if (kernel <= 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Kernel size must be positive. Got: ", kernel);
+      }
+      if (dilation <= 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Dilation must be positive. Got: ", dilation);
+      }
+      if (adj < 0) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Output padding must be non-negative. Got: ", adj);
       }
       // total pad
       auto total_pad = ComputeTotalPad(in_size, stride, adj,
                                        kernel, dilation, *out_size);
       DistributePadding(pad_type, total_pad, *pad_head, *pad_tail);
+
+      // Verify that the forward-conv re-derivation of input size from the output size and pads
+      // is consistent with the actual input size. Col2im re-derives the input spatial extent as:
+      //   derived_in = (out_size + pad_head + pad_tail - dkernel) / stride + 1
+      // If this exceeds in_size, Col2im would read past the col_buffer allocation.
+      SafeInt<int64_t> dkernel = (SafeInt<int64_t>(kernel) - 1) * dilation + 1;
+      int64_t derived_in = (SafeInt<int64_t>(*out_size) + *pad_head + *pad_tail - dkernel) / stride + 1;
+      if (derived_in != in_size) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "Explicit output_shape is inconsistent with input spatial dimensions. "
+                               "Expected input size ",
+                               derived_in, " but got ", in_size,
+                               " (output_size=", *out_size, ", kernel=", kernel,
+                               ", stride=", stride, ", dilation=", dilation, ", adj=", adj, ").");
+      }
       return Status::OK();
     }
 
