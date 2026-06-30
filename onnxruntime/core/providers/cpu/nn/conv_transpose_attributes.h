@@ -335,15 +335,19 @@ struct ConvTransposeAttributes : public ConvAttributes {
       // is consistent with the actual input size. Col2im re-derives the input spatial extent as:
       //   derived_in = (out_size + pad_head + pad_tail - dkernel) / stride + 1
       // If this exceeds in_size, Col2im would read past the col_buffer allocation.
+      // Note: derived_in < in_size is algebraically unreachable when adj >= 0 and total_pad >= 0,
+      // so this check is effectively one-sided (catches derived_in > in_size from oversized out_size).
       SafeInt<int64_t> dkernel = (SafeInt<int64_t>(kernel) - 1) * dilation + 1;
       int64_t derived_in = (SafeInt<int64_t>(*out_size) + *pad_head + *pad_tail - dkernel) / stride + 1;
       if (derived_in != in_size) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Explicit output_shape is inconsistent with input spatial dimensions. "
+                               "Explicit output_shape is inconsistent with input spatial dimensions"
+                               " and convolution parameters. "
                                "Expected input size ",
                                derived_in, " but got ", in_size,
                                " (output_size=", *out_size, ", kernel=", kernel,
-                               ", stride=", stride, ", dilation=", dilation, ", adj=", adj, ").");
+                               ", stride=", stride, ", dilation=", dilation,
+                               ", output_padding=", adj, ").");
       }
       return Status::OK();
     }
@@ -378,6 +382,20 @@ struct ConvTransposeAttributes : public ConvAttributes {
     *out_size = SafeInt<int64_t>(in_size - 1) * stride + adj +
                 SafeInt<int64_t>(kernel - 1) * dilation + 1 -
                 *pad_head - *pad_tail;
+
+    // Same consistency check as the explicit output_shape path: verify the forward-conv
+    // re-derivation of input size matches in_size. When output_padding (adj) >= stride
+    // (possible when dilation > stride passes the adj < max(stride, dilation) check),
+    // Col2im would compute a larger input extent and read past the col_buffer.
+    SafeInt<int64_t> dkernel2 = (SafeInt<int64_t>(kernel) - 1) * dilation + 1;
+    int64_t derived_in = (SafeInt<int64_t>(*out_size) + *pad_head + *pad_tail - dkernel2) / stride + 1;
+    if (derived_in != in_size) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Computed output shape is inconsistent with input spatial dimensions. "
+                             "output_padding (",
+                             adj, ") may be too large for stride (", stride,
+                             "). Expected input size ", derived_in, " but got ", in_size, ".");
+    }
     return Status::OK();
   }
 };
