@@ -3245,11 +3245,26 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
         if (input_type == nullptr) input_type = &null_pointer;
         // Type error in input model/graph.
 
+        // Build a sorted, readable list of the types the operator permits for this input so the
+        // error message tells the user which types are valid instead of only the offending one.
+        std::vector<std::string> permitted_type_strings;
+        permitted_type_strings.reserve(permitted_types.size());
+        for (const auto* permitted_type : permitted_types) {
+          permitted_type_strings.push_back(permitted_type != nullptr ? *permitted_type : "(null)");
+        }
+        std::sort(permitted_type_strings.begin(), permitted_type_strings.end());
+        std::string expected_types_str;
+        for (size_t t = 0; t < permitted_type_strings.size(); ++t) {
+          if (t != 0) expected_types_str += ", ";
+          expected_types_str += permitted_type_strings[t];
+        }
+
         Status status(ONNXRUNTIME, INVALID_GRAPH,
                       "This is an invalid model. "
                       "Type Error: Type '" +
                           *input_type + "' of input parameter (" + input_def->Name() +
-                          ") of operator (" + op.Name() + ") in node (" + node_name + ") is invalid.");
+                          ") of operator (" + op.Name() + ") in node (" + node_name +
+                          ") is invalid. Expected one of the following types: " + expected_types_str + ".");
         return status;
       }
 
