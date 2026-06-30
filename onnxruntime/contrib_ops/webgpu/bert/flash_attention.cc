@@ -52,14 +52,14 @@ fn populate_indirect_dispatch_buffer(x: u32, y: u32, z: u32) {
 }
 )";
 
-// Emits kNormalizeDispatchGroupSizeFn into AdditionalImplementation and appends the two
-// WGSL lines that compute num_total_seq_length_tile and call normalize_dispatch_group_size.
+// Emits kPopulateIndirectDispatchBufferFn into AdditionalImplementation and appends the two
+// WGSL lines that compute num_total_seq_length_tile and call populate_indirect_dispatch_buffer.
 // `total_seq_len_expr` is the WGSL expression that evaluates to the total sequence length.
 static void AppendNormalizeDispatchShader(ShaderHelper& shader, std::string_view total_seq_len_expr) {
-  shader.AdditionalImplementation() << kNormalizeDispatchGroupSizeFn;
+  shader.AdditionalImplementation() << kPopulateIndirectDispatchBufferFn;
   shader.MainFunctionBody()
       << "  let num_total_seq_length_tile = (" << total_seq_len_expr << " + uniforms.tile_size - 1u) / uniforms.tile_size;\n"
-      << "  normalize_dispatch_group_size(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);\n";
+      << "  populate_indirect_dispatch_buffer(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);\n";
 }
 
 Status SplitPackedQKVWithRotaryEmbeddingAndCopyKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
