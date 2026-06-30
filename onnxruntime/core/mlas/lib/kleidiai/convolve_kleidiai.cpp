@@ -123,7 +123,17 @@ static size_t ComputeMlasWorkingBufferSize(const size_t co,
     return m * co;
 }
 
-static bool CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
+static bool CheckIgemmRouteCapabilities(const MLAS_CONV_PARAMETERS* Parameters,
+                                         const ArmKleidiAI::ConvRouteSelection& route_selection) {
+    if (route_selection.route != ArmKleidiAI::ConvRoute::IGemm) {
+        if (route_selection.route == ArmKleidiAI::ConvRoute::SGemmFallback) {
+            KLEIDIAI_DEBUG_LOG("CheckIgemmRouteCapabilities returning false to prefer SGEMM-backed conv path.");
+        } else {
+            KLEIDIAI_DEBUG_LOG("CheckIgemmRouteCapabilities returning false on non-IGEMM route.");
+        }
+        return false;
+    }
+
     // Grouped support in this override is only implemented for channels-last
     // layout. The generic grouped path still assumes contiguous per-group CHW.
     if (Parameters->GroupCount > 1 && !Parameters->ChannelsLast) {
@@ -141,35 +151,24 @@ static bool CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
             Parameters->StrideShape,
             Parameters->FilterCount,
             Parameters->Beta)) {
-        KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSme returning false on shared capability checks.");
+        KLEIDIAI_DEBUG_LOG("CheckIgemmRouteCapabilities returning false on shared capability checks.");
         return false;
     }
 
-    const auto route_selection = ArmKleidiAI::SelectConvRoute(Parameters);
-    const auto route = route_selection.route;
+    // ensure LHS packed buffer size is non-zero
+    const size_t d_kh = route_selection.effective_kernel_h;
+    const size_t d_kw = route_selection.effective_kernel_w;
+    const size_t m_step = imatmul_conv.ukernel.get_m_step();
 
-    if (route == ArmKleidiAI::ConvRoute::IGemm) {
-        // ensure LHS packed buffer size is non-zero
-        const size_t d_kh = route_selection.effective_kernel_h;
-        const size_t d_kw = route_selection.effective_kernel_w;
-        const size_t m_step = imatmul_conv.ukernel.get_m_step();
+    const size_t bytes_per_m_step = kai_get_lhs_packed_size_lhs_imatmul_pack_x32p2vlx1_x32p_sme(
+        m_step, d_kh * d_kw, Parameters->InputChannels);
 
-        const size_t bytes_per_m_step = kai_get_lhs_packed_size_lhs_imatmul_pack_x32p2vlx1_x32p_sme(
-            m_step, d_kh * d_kw, Parameters->InputChannels);
-
-        if (bytes_per_m_step == 0) {
-            KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSME returning false on zero LHS packed size");
-            return false;
-        }
-        return true;
+    if (bytes_per_m_step == 0) {
+        KLEIDIAI_DEBUG_LOG("CheckIgemmRouteCapabilities returning false on zero LHS packed size");
+        return false;
     }
 
-    if (route == ArmKleidiAI::ConvRoute::SGemmFallback) {
-        KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSme returning false to prefer SGEMM-backed conv path.");
-    } else {
-        KLEIDIAI_DEBUG_LOG("CheckCapabilitiesSme returning false on functional or optimization checks.");
-    }
-    return false;
+    return true;
 }
 
 //General purpose axis swapping
@@ -758,7 +757,13 @@ ArmKleidiAI::MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
 
     Parameters->ThreadCount = MlasGetMaximumThreadCount(ThreadPool);
 
-    if(!CheckCapabilitiesSme(Parameters)){
+    const auto route_selection = ArmKleidiAI::SelectConvRoute(Parameters);
+    if (route_selection.route == ArmKleidiAI::ConvRoute::Depthwise) {
+        *WorkingBufferSize = 0;
+        return true;
+    }
+
+    if (!CheckIgemmRouteCapabilities(Parameters, route_selection)) {
         return false;
     }
 
@@ -790,26 +795,59 @@ ArmKleidiAI::MlasConv(
         return false;
     }
 
-    if(!CheckCapabilitiesSme(Parameters)){
-        // Fallback to Default Mlas
-        return false;
-    };
-    ConvolveSme(Parameters->FilterCount, Parameters->InputChannels,          // channel out, in
-                Parameters->InputShape[0], Parameters->InputShape[1],         // image dimensions
-                Parameters->KernelShape[0], Parameters->KernelShape[1],      // kernel dimensions
-                Parameters->StrideShape[0], Parameters->StrideShape[1],      // kernel stride dimensions
-                Parameters->DilationShape[0], Parameters->DilationShape[1],  // kernel dilation
-                Parameters->Padding[0],                                      // image padding
-                Parameters->GroupCount,                                      // filter groups
-                Filter, Bias,
-                reinterpret_cast<const std::byte*>(Parameters->PackedFilter),
-                Parameters->PackedFilterGroupStride,
-                Input, Output, WorkingBuffer, Parameters->ChannelsLast, ThreadPool);
+    const auto route_selection = ArmKleidiAI::SelectConvRoute(Parameters);
 
-    const bool grouped_channels_last = Parameters->ChannelsLast && Parameters->GroupCount > 1;
-    const size_t activation_rows = grouped_channels_last ? Parameters->OutputSize : Parameters->FilterCount;
-    const size_t activation_cols =
-        grouped_channels_last ? Parameters->GroupCount * Parameters->FilterCount : Parameters->OutputSize;
-    MlasActivation(Parameters->Activation, Output, nullptr, activation_rows, activation_cols, activation_cols);
-    return true;
+    if (route_selection.route == ArmKleidiAI::ConvRoute::Depthwise) {
+        if (DepthwiseConvKleidiAI(Parameters->BatchCount,
+                                  Parameters->InputShape[0],
+                                  Parameters->InputShape[1],
+                                  Parameters->GroupCount * Parameters->InputChannels,
+                                  Parameters->KernelShape[0],
+                                  Parameters->KernelShape[1],
+                                  Parameters->Padding[0],
+                                  Parameters->Padding[1],
+                                  Parameters->Padding[2],
+                                  Parameters->Padding[3],
+                                  Parameters->ChannelsLast,
+                                  Input,
+                                  Filter,
+                                  Bias,
+                                  Output,
+                                  -std::numeric_limits<float>::max(),
+                                  std::numeric_limits<float>::max())) {
+            const size_t activation_rows = Parameters->ChannelsLast
+                                               ? Parameters->OutputSize
+                                               : Parameters->GroupCount * Parameters->FilterCount;
+            const size_t activation_cols = Parameters->ChannelsLast
+                                               ? Parameters->GroupCount * Parameters->FilterCount
+                                               : Parameters->OutputSize;
+            MlasActivation(Parameters->Activation, Output, nullptr, activation_rows, activation_cols, activation_cols);
+            return true;
+        }
+
+        return false;
+    }
+
+    if (CheckIgemmRouteCapabilities(Parameters, route_selection)) {
+        ConvolveSme(Parameters->FilterCount, Parameters->InputChannels,          // channel out, in
+                    Parameters->InputShape[0], Parameters->InputShape[1],         // image dimensions
+                    Parameters->KernelShape[0], Parameters->KernelShape[1],      // kernel dimensions
+                    Parameters->StrideShape[0], Parameters->StrideShape[1],      // kernel stride dimensions
+                    Parameters->DilationShape[0], Parameters->DilationShape[1],  // kernel dilation
+                    Parameters->Padding[0],                                      // image padding
+                    Parameters->GroupCount,                                      // filter groups
+                    Filter, Bias,
+                    reinterpret_cast<const std::byte*>(Parameters->PackedFilter),
+                    Parameters->PackedFilterGroupStride,
+                    Input, Output, WorkingBuffer, Parameters->ChannelsLast, ThreadPool);
+
+        const bool grouped_channels_last = Parameters->ChannelsLast && Parameters->GroupCount > 1;
+        const size_t activation_rows = grouped_channels_last ? Parameters->OutputSize : Parameters->FilterCount;
+        const size_t activation_cols =
+            grouped_channels_last ? Parameters->GroupCount * Parameters->FilterCount : Parameters->OutputSize;
+        MlasActivation(Parameters->Activation, Output, nullptr, activation_rows, activation_cols, activation_cols);
+        return true;
+    }
+
+    return false;
 }
