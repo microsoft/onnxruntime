@@ -27,6 +27,17 @@ enum class MoeGemvConfig {
   kSplitK2,
 };
 
+// Number of K-splits used by the opt-in FP4 fc1 split-K SwiGLU GEMV path. Callers size the
+// split-K partials scratch as kFp4MoeGemvSplitK * expanded_num_rows * (2 * inter_size) floats.
+static constexpr int kFp4MoeGemvSplitK = 2;
+
+// True when the opt-in MXFP4 fc1 split-K + fp32-accumulation SwiGLU GEMV path is enabled
+// (env ORT_FP4_GEMV_SPLITK=1). Borrows the INT path's two-pass split-K reduction: each split
+// accumulates a shorter K-chain in fp32 and the cross-split reduce sums in fp32, which both
+// improves bf16 accuracy and refills the SMs that fp32 accumulation alone leaves under-occupied.
+// Callers query this to decide whether to allocate the split-K partials scratch buffer.
+bool Fp4MoeGemvUseSplitK();
+
 // MXFP4 GEMV shape support for the non-interleaved ColumnMajor layout (kInterleave = 1).
 // Requires sm >= 80, group_size == 32, n divisible by the kernel tile width (kCtaN) selected
 // by `config`, and the profiled small-decode row/dim bounds. See launch_moe_gemv_fp4_symmetric.
@@ -52,12 +63,15 @@ void launch_moe_gemv_fp4_symmetric(
 // Launches the MXFP4 MoE GEMV and fuses interleaved SwiGLU activation.
 //   weight/scales/bias use raw FC1 output width n = 2 * inter_size
 //   out is post-activation [expanded_num_rows, inter_size]
+//   splitk_partials: optional fp32 scratch of size kFp4MoeGemvSplitK * expanded_num_rows * (2 * inter_size).
+//     When non-null and Fp4MoeGemvUseSplitK() is true, the launcher takes the two-pass split-K +
+//     fp32-accumulation path; otherwise it falls back to the single-pass interleaved-SwiGLU GEMV.
 template <typename T>
 void launch_moe_gemv_fp4_symmetric_interleaved_swiglu(
     T const* act, uint8_t const* weight, T const* scales, T const* bias, T* out,
     int64_t const* expert_first_token_offset, int const* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
     int64_t inter_size, int64_t k, int group_size, int sm, cutlass_kernels::ActivationParams activation_params,
-    MoeGemvConfig config, cudaStream_t stream);
+    MoeGemvConfig config, void* splitk_partials, cudaStream_t stream);
 
 }  // namespace moe_gemv
 }  // namespace kernels

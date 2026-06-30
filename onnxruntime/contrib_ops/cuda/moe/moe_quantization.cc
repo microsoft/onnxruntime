@@ -1059,6 +1059,15 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       auto p_act_buf = GetScratchBuffer<void>(SafeInt<size_t>(expanded) * hidden * elt, GetComputeStream(context));
       auto p_fc1_buf = GetScratchBuffer<void>(SafeInt<size_t>(expanded) * inter * elt, GetComputeStream(context));
       auto p_fc2_buf = GetScratchBuffer<void>(SafeInt<size_t>(expanded) * hidden * elt, GetComputeStream(context));
+      // Optional fp32 scratch for the opt-in fc1 split-K + fp32-accumulation SwiGLU GEMV path.
+      // Only allocated when ORT_FP4_GEMV_SPLITK=1; nullptr otherwise (single-pass GEMV).
+      void* splitk_partials = nullptr;
+      IAllocatorUniquePtr<float> p_splitk_buf;
+      if (gemv::Fp4MoeGemvUseSplitK()) {
+        p_splitk_buf = GetScratchBuffer<float>(
+            SafeInt<size_t>(gemv::kFp4MoeGemvSplitK) * expanded * fc1_n, GetComputeStream(context));
+        splitk_partials = p_splitk_buf.get();
+      }
       int* p_r2u = p_r2u_buf.get();
       int* p_exp = p_exp_buf.get();
       int64_t* p_efto = p_efto_buf.get();
@@ -1114,7 +1123,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
               static_cast<const uint8_t*>(gemv_fp4_fc1_weights_.get()),
               static_cast<const T*>(gemv_fp4_fc1_scales_.get()),
               static_cast<const T*>(fc1_bias), static_cast<T*>(p_fc1_buf.get()),
-              p_efto, p_exp, num_experts, expanded, inter, hidden, 32, sm_, act_params, cfg, stream);
+              p_efto, p_exp, num_experts, expanded, inter, hidden, 32, sm_, act_params, cfg, splitk_partials, stream);
         };
         auto launch_fc2 = [&](MoeGemvConfig cfg) {
           gemv::launch_moe_gemv_fp4_symmetric<T>(

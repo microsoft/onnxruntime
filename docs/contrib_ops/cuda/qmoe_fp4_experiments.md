@@ -1457,3 +1457,85 @@ benchmarked both back-to-back on GPU 0.
 - If any further decode-converter idea is tried, profile with ncu (not wall-clock)
   and lock GPU clocks first; unlocked-clock wall-clock A/B on this farm cannot
   resolve deltas below ~10 %.
+
+## 2026-06-30 — FP4 fc1 split-K + **fp32-accumulation** SwiGLU GEMV, opt-in (UNFINISHED — benchmark contention-blocked)
+
+Revisit of the 2026-06-16 `kSplitK2` negative result, motivated by a new INT4
+data point: in the **current** tree INT4's two-pass split-K SwiGLU GEMV (`SplitK=2`,
+`AccT=float`) is *faster* than its non-split-K path with fp32 accumulation
+(`moe_gemv.cu` gates it behind `ORT_MOE_GEMV_SPLITK2_SWIGLU`). The split-K kernels
+were refactored since 2026-06-16: `moe_gemv_splitk_partials_kernel` now defaults
+`AccT=float`, so **each split accumulates its (shorter) K-chain in fp32 per-thread**
+and the cross-split reduce sums fp32 partials — not just the bf16-accum + fp32-reduce
+the original `kSplitK2` used. The question: does borrowing INT4's *current* split-K +
+fp32-accum recipe finally help FP4?
+
+### What was tried (kept, opt-in — not reverted)
+
+All behind a new env gate `ORT_FP4_GEMV_SPLITK=1`; default path is byte-for-byte
+unchanged (off by default).
+
+- `moe_gemv_fp4.h`: `Fp4MoeGemvUseSplitK()` accessor, `kFp4MoeGemvSplitK = 2`, and a
+  `void* splitk_partials` parameter on `launch_moe_gemv_fp4_symmetric_interleaved_swiglu`.
+- `moe_gemv_fp4.cu`: when `splitk_partials != nullptr && Fp4MoeGemvUseSplitK()`, the
+  fc1 launcher dispatches the **existing generic** two-pass kernel
+  `dispatch_moe_gemv_splitk_twopass_swiglu_group_size<Fp4KernelDetails<T>, CtaN,
+  Threads, 2, T, float, float>` (`AccT=float`, `PartialT=float`). The shared
+  `dequantize<Details,…>` routes to `Fp4I2FConverter` automatically (same `Details`
+  as the single-pass FP4 kernel), so no new device code is needed. Auto-degrades to
+  single-pass when `num_iters < 2`.
+- `moe_quantization.cc`: allocates the fp32 partials scratch
+  (`kFp4MoeGemvSplitK · expanded · 2·inter_size` floats) only when the env is set, and
+  plumbs it to the fc1 launch. fc2 (non-SwiGLU) is unchanged.
+
+Only fc1 (the dominant ~49.6 µs SwiGLU GEMV) is wired; fc2 keeps single-pass.
+
+### Engagement caveat (important for benchmarking)
+
+FP4 `ColumnMajor` has `kStepK = 128/16 = 8`, so `CtaK = StepK·Threads = 1024` and
+`num_iters = ceil(k / 1024)`. Split-K only engages when `num_iters ≥ 2`, i.e.
+**k ≥ 2048**. The small microbench shape (`--hidden 512`) degrades to single-pass and
+cannot measure this — the A/B **must** use realistic dims (gpt-oss-20b
+`hidden=inter=2880` → `num_iters=3`).
+
+### Result — correctness PASS; performance INCONCLUSIVE (farm contention)
+
+- Correctness: **20/20** `test_qmoe_fp4_cuda.py` pass with `ORT_FP4_GEMV_SPLITK=1`
+  (fp32 per-split + fp32 cross-split reduce holds the bf16/fp16 tolerance). This
+  result is independent of GPU load, so it is solid.
+- Decode A/B at `hidden=inter=2880`, clocks locked to 1980 MHz
+  (`sudo nvidia-smi -i 0 -lgc 1980`; reset with `-rgc` after):
+
+  | Config | Best-case min (µs) |
+  |--------|--------------------|
+  | Baseline (single-pass) | 135.1 – 136.7 |
+  | Split-K + fp32-accum (`SPLITK=1`) | 137.1, 137.1, 139.4 |
+
+  **These numbers are NOT trustworthy.** All 8 H200s were saturated by another
+  user's job (PIDs 555237–555244, ~90–105 GB and 70–98 % SM each; GPU 0 at 98 %),
+  so even with locked clocks the SM contention corrupts the comparison. The run was
+  stopped early and the clock lock reset (shared box).
+
+### Preliminary read (to be confirmed on an idle farm)
+
+Directionally split-K is ~1.5–3 % **slower**, matching the 2026-06-16 `kSplitK2`
+finding. The likely mechanism is unchanged: FP4's non-interleaved `ColumnMajor`
+(`kInterleave=1`, `CtaN=8`) already launches `expanded × n/8` base CTAs — **4× more
+y-blocks than INT4's interleaved `n/(CtaN·4)` grid** — so the SMs are already
+saturated and split-K only adds the second reduce pass + partials round-trip without
+filling idle SMs. INT4 benefits because its interleaved grid is 4× coarser and *does*
+leave SMs to fill. If so, the fp32-per-split refinement that helped INT4 does not
+transfer to FP4 because the two paths differ in grid occupancy, not accumulation
+precision.
+
+### Status / next step
+
+- **Unfinished.** The code is committed (opt-in, off by default, correctness-validated)
+  so the clean A/B can be reproduced later without rebuilding. Do **not** treat the
+  contended numbers above as the verdict.
+- **Next:** re-run the `hidden=inter=2880` A/B when the farm is idle (lock clocks,
+  best-case min over ≥8 launches per arm). If split-K is confirmed neutral/slower,
+  either keep it dormant behind the env flag or revert, and record it as the second
+  split-K negative — reinforcing that the FP4 decode lever is **not** grid
+  parallelism but the **interleaved layout (lever 1)** / **tensor-core grouped GEMM
+  (lever 2)** recorded above.
