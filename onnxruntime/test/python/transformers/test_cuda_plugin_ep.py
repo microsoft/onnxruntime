@@ -2768,6 +2768,7 @@ class TestCudaPluginEP(unittest.TestCase):
             # If GPU kernel events are present, validate their metadata.
             kernel_events = [e for e in profile_data if isinstance(e, dict) and e.get("cat") == "Kernel"]
             if kernel_events:
+                saw_matmul_attribution = False
                 for event in kernel_events:
                     self.assertIn("ts", event)
                     self.assertIn("dur", event)
@@ -2775,6 +2776,44 @@ class TestCudaPluginEP(unittest.TestCase):
                     args = event.get("args", {})
                     self.assertIn("stream", args, f"GPU kernel event missing 'stream': {event}")
                     self.assertIn("block_x", args, f"GPU kernel event missing 'block_x': {event}")
+
+                    # Every GPU kernel event must carry an explicit ORT correlation ID
+                    # so consumers can join it back to the originating ORT event without
+                    # relying on timestamp-proximity heuristics.
+                    self.assertIn(
+                        "ort_correlation_id",
+                        args,
+                        f"GPU kernel event missing 'ort_correlation_id': {event}",
+                    )
+                    self.assertTrue(
+                        args["ort_correlation_id"].isdigit(),
+                        f"'ort_correlation_id' must be a decimal string: {event}",
+                    )
+
+                    # Per-node attribution is best-effort (only NODE-category ORT events
+                    # populate the map). When present, validate the four annotation keys.
+                    if "ort_op_name" in args:
+                        self.assertIn("ort_event_name", args)
+                        self.assertIn("ort_node_index", args)
+                        self.assertTrue(
+                            args["ort_event_name"].endswith("_kernel_time"),
+                            f"'ort_event_name' should end with '_kernel_time': {event}",
+                        )
+                        self.assertTrue(
+                            args["ort_node_index"].isdigit(),
+                            f"'ort_node_index' must be a decimal string: {event}",
+                        )
+                        if args["ort_op_name"] == "MatMul":
+                            saw_matmul_attribution = True
+
+                # The test model contains exactly one MatMul node assigned to the plugin EP;
+                # if any per-node attribution landed, it must have been for MatMul.
+                any_op_attribution = any("ort_op_name" in (e.get("args") or {}) for e in kernel_events)
+                if any_op_attribution:
+                    self.assertTrue(
+                        saw_matmul_attribution,
+                        "Expected at least one GPU kernel event attributed to a MatMul node.",
+                    )
             else:
                 print("Note: No GPU Kernel events in profile (CUPTI may not be available).")
 
