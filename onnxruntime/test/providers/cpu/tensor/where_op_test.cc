@@ -7,6 +7,11 @@
 
 #include "test/providers/provider_test_utils.h"
 
+#ifdef USE_WEBGPU
+#include "test/util/include/default_providers.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
+#endif
+
 namespace onnxruntime {
 namespace test {
 
@@ -145,6 +150,21 @@ TEST(WhereOpTest, BroadcastWithScalar) {
 
   test.Run();
 }
+
+#ifdef USE_WEBGPU
+TEST(WhereOpTest, Where_int64_webgpu) {
+  OpTester test{kOpName, kOpVersion};
+  test.AddInput<bool>("condition", {4}, {true, false, true, false});
+  test.AddInput<int64_t>("X", {4}, {10, 20, 30, 40});
+  test.AddInput<int64_t>("Y", {4}, {1, 2, 3, 4});
+  test.AddOutput<int64_t>("output", {4}, {10, 2, 30, 4});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

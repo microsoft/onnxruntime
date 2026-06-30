@@ -60,6 +60,8 @@ REGISTER_REDUCE_KERNEL(ReduceMin, 20);
 
 // ReduceSum: versions 1-12 use axes as attribute; version 13+ uses axes as a CPU input tensor.
 // Factory functions allow conditional int64 support on the T type constraint.
+// NOTE: int64 reduction in the WebGPU shader uses i32 (low 32 bits only); values outside
+// the int32 range will produce incorrect results — same limitation as Range.
 template <int StartVersion, int EndVersion>
 KernelCreateInfo CreateReduceSumVersionedKernelInfo(bool enable_int64) {
   const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
