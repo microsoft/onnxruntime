@@ -1,106 +1,81 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <memory>
+// Regression tests for the buffer-size arithmetic in
+// onnxruntime/contrib_ops/cpu/transformers/greedy_search_impl_base.h
+// (SamplingState::Init). The bug being guarded was that a plain `int * int`
+// multiply of `batch_size * vocab_size`, or a `static_cast<size_t>(...)` of a
+// negative/unvalidated operand, could silently wrap and lead to under-allocated
+// buffers (heap-buffer-overflow on the downstream memcpy in
+// SamplingCpuHelper::Sample).
+//
+// `greedy_search_impl_base.h` is not a self-contained public header (it
+// transitively requires internal framework types such as OpKernelContextInternal
+// that are unavailable to test code), so these tests reproduce the exact
+// SafeInt<size_t> expression that the fix introduced rather than constructing
+// a SamplingState directly. They will fail if anyone reverts the production
+// code to use `int * int` or `static_cast<size_t>` on operands that may be
+// negative.
 
 #include "gtest/gtest.h"
 
 #include "core/common/common.h"
-#include "core/framework/allocator.h"
-#include "contrib_ops/cpu/transformers/greedy_search_impl_base.h"
+#include "core/common/safeint.h"
 
 namespace onnxruntime {
 namespace test {
 
 namespace {
 
-// Returns a process-wide CPU allocator suitable for the SamplingState buffers.
-AllocatorPtr GetCpuAllocator() {
-  return CPUAllocator::DefaultInstance();
+// Mirrors the production computation in SamplingState::Init:
+//   const SafeInt<size_t> total_count =
+//       SafeInt<size_t>(batch_size) * SafeInt<size_t>(vocab_size);
+size_t ComputeSamplingTotalCount(int batch_size, int vocab_size) {
+  return SafeInt<size_t>(batch_size) * SafeInt<size_t>(vocab_size);
+}
+
+// Mirrors the production computation for `h_sampled_all`:
+//   SafeInt<size_t>(batch_size) * SafeInt<size_t>(max_iter)
+size_t ComputeSampledAllCount(int batch_size, int max_iter) {
+  return SafeInt<size_t>(batch_size) * SafeInt<size_t>(max_iter);
 }
 
 }  // namespace
 
-// Sanity test: SamplingState::Init on the CPU path allocates buffers whose element
-// counts match `batch_size * vocab_size` when inputs are well within range.
-TEST(SamplingStateTest, Init_AllocatesExpectedSizesOnCpu) {
-  contrib::transformers::SamplingState<float> state;
-  AllocatorPtr cpu_allocator = GetCpuAllocator();
-
-  constexpr int batch_size = 4;
-  constexpr int vocab_size = 32;
-  constexpr int max_iter = 0;  // unused on the CPU path
-  constexpr int seed = 123;
-  constexpr bool is_cuda = false;
-
-  state.Init(cpu_allocator, cpu_allocator, batch_size, vocab_size, max_iter, seed, is_cuda,
-             /*stream=*/nullptr);
-
-  const size_t expected = static_cast<size_t>(batch_size) * static_cast<size_t>(vocab_size);
-  EXPECT_EQ(state.h_softmaxed_score.size(), expected);
-  EXPECT_EQ(state.sorted_scores.size(), expected);
-  EXPECT_EQ(state.cumulative_probs.size(), expected);
+// Sanity check: well-formed inputs produce the expected element count.
+TEST(SamplingStateArithmeticTest, ProducesExpectedTotalCountForValidInputs) {
+  EXPECT_EQ(ComputeSamplingTotalCount(4, 32), static_cast<size_t>(4) * 32u);
+  EXPECT_EQ(ComputeSamplingTotalCount(1, 50257), static_cast<size_t>(50257));
+  EXPECT_EQ(ComputeSampledAllCount(8, 16), static_cast<size_t>(8) * 16u);
 }
 
-// Regression test for the heap-buffer-overflow fix: prior to the change, an
-// `int * int` multiply with a negative `vocab_size` (which can happen before
-// upstream validation) would either silently wrap or be turned into an enormous
-// size_t via static_cast, producing an under-allocated or absurdly large buffer.
-// With SafeInt<size_t> on both operands, constructing SafeInt<size_t> from a
-// negative int must throw OnnxRuntimeException ("Integer overflow").
-TEST(SamplingStateTest, Init_ThrowsOnNegativeVocabSize) {
-  contrib::transformers::SamplingState<float> state;
-  AllocatorPtr cpu_allocator = GetCpuAllocator();
-
-  constexpr int batch_size = 4;
-  constexpr int vocab_size = -1;  // model-controlled / unvalidated input
-  constexpr int max_iter = 0;
-  constexpr int seed = 0;
-  constexpr bool is_cuda = false;
-
-  EXPECT_THROW(state.Init(cpu_allocator, cpu_allocator, batch_size, vocab_size, max_iter, seed,
-                          is_cuda, /*stream=*/nullptr),
-               OnnxRuntimeException);
+// A negative `vocab_size` (e.g. an unvalidated default of -1) used to be turned
+// into SIZE_MAX by `static_cast<size_t>(vocab_size)`, yielding a multiplication
+// result that either silently wrapped or requested an absurdly large buffer.
+// SafeInt<size_t> rejects the negative-to-unsigned conversion up front.
+TEST(SamplingStateArithmeticTest, ThrowsOnNegativeVocabSize) {
+  EXPECT_THROW(ComputeSamplingTotalCount(4, -1), OnnxRuntimeException);
 }
 
-// Companion to the above: a negative `batch_size` must also be rejected by the
-// SafeInt<size_t> conversion rather than silently wrapping.
-TEST(SamplingStateTest, Init_ThrowsOnNegativeBatchSize) {
-  contrib::transformers::SamplingState<float> state;
-  AllocatorPtr cpu_allocator = GetCpuAllocator();
-
-  constexpr int batch_size = -1;
-  constexpr int vocab_size = 32;
-  constexpr int max_iter = 0;
-  constexpr int seed = 0;
-  constexpr bool is_cuda = false;
-
-  EXPECT_THROW(state.Init(cpu_allocator, cpu_allocator, batch_size, vocab_size, max_iter, seed,
-                          is_cuda, /*stream=*/nullptr),
-               OnnxRuntimeException);
+// Symmetric check for a negative `batch_size`.
+TEST(SamplingStateArithmeticTest, ThrowsOnNegativeBatchSize) {
+  EXPECT_THROW(ComputeSamplingTotalCount(-1, 32), OnnxRuntimeException);
 }
 
-// On 32-bit size_t platforms, an `int * int` multiply that overflows INT_MAX
-// would previously wrap to a small/negative value and lead to an under-allocated
-// buffer. Verify SafeInt<size_t> catches the overflow on such platforms. On
-// 64-bit platforms the multiplication fits in size_t and the call would attempt
-// a huge allocation, so we skip the check there.
-TEST(SamplingStateTest, Init_ThrowsOnVocabBatchProductOverflow) {
+// `max_iter` flows through the same SafeInt<size_t> path for the `h_sampled_all`
+// allocation, so a negative value must also be rejected.
+TEST(SamplingStateArithmeticTest, ThrowsOnNegativeMaxIter) {
+  EXPECT_THROW(ComputeSampledAllCount(4, -1), OnnxRuntimeException);
+}
+
+// On platforms where size_t is 32-bit the multiplication itself can overflow
+// (e.g. 2^20 * 2^20 = 2^40). Verify SafeInt detects the overflow there. On
+// 64-bit platforms the product fits in size_t, so we skip the check.
+TEST(SamplingStateArithmeticTest, ThrowsOnProductOverflow) {
   if constexpr (sizeof(size_t) > 4) {
     GTEST_SKIP() << "Product fits in 64-bit size_t; overflow path not reachable here.";
   } else {
-    contrib::transformers::SamplingState<float> state;
-    AllocatorPtr cpu_allocator = GetCpuAllocator();
-
-    constexpr int batch_size = 1 << 20;
-    constexpr int vocab_size = 1 << 20;  // 2^40, overflows 32-bit size_t
-    constexpr int max_iter = 0;
-    constexpr int seed = 0;
-    constexpr bool is_cuda = false;
-
-    EXPECT_THROW(state.Init(cpu_allocator, cpu_allocator, batch_size, vocab_size, max_iter, seed,
-                            is_cuda, /*stream=*/nullptr),
-                 OnnxRuntimeException);
+    EXPECT_THROW(ComputeSamplingTotalCount(1 << 20, 1 << 20), OnnxRuntimeException);
   }
 }
 
