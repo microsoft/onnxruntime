@@ -606,15 +606,33 @@ MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::getConfigs() const {
   return getConfigs(sm_);
 }
 
-// Opt-in: route wfp4a16 (MXFP4 weights + FP16/BF16 activations) through the SM80 fused-dequant
+// Route wfp4a16 (MXFP4 weights + FP16/BF16 activations) through the SM80 fused-dequant
 // grouped GEMM instead of the SM90 TMA WS path. Requires moe_quantization.cc to provide SM80
-// interleaved weights + FP16 group scales. Read once per process.
-inline bool moeUseSm80Fp4() {
-  static const bool v = []() {
-    const char* e = std::getenv("ORT_FP4_SM80_GEMM");
-    return e != nullptr && (e[0] == '1' || e[0] == 'y' || e[0] == 'Y' || e[0] == 't' || e[0] == 'T');
-  }();
-  return v;
+// interleaved weights + FP16 group scales. ENABLED BY DEFAULT (it is several times faster than
+// the SM90 TMA FP4 path at the gpt-oss-20b prefill regime); set ORT_FP4_SM80_GEMM=0 to disable.
+//
+// This MUST stay in lock-step with the ``enable_fp4_sm80_gemm_`` decision in moe_quantization.cc,
+// which is gated by ``use_fp4_dequant_fallback_ (= sm_ < 120) && is_fp16 && !requested_native``:
+//   - ``sm < 120``: on Blackwell (sm >= 120) the FP4 runner is built for the NATIVE TMA/Blackwell
+//     path with non-interleaved weights, so SM80 must NOT be selected there.
+//   - ``!ORT_ENABLE_FP4_CUTLASS_GEMM``: if the user explicitly requested the native CUTLASS GEMM,
+//     honor that and use the TMA WS path instead. Reading the same env var here keeps both sites
+//     consistent even when native is requested but its shapes are unsupported (constructor then
+//     uses the dequant path, and this returns false, so no SM80 configs are offered).
+// The env is read fresh on every call (these are cold config-selection paths, not per-token): the
+// constructor reads it per-op, so caching here would desync the two sites whenever a process
+// changes the env between op constructions (e.g. unit tests toggling os.environ).
+inline bool moeUseSm80Fp4(int sm) {
+  if (sm >= 120) {
+    return false;
+  }
+  const char* e = std::getenv("ORT_FP4_SM80_GEMM");
+  // Default-on: only an explicit disabling value ('0'/'n'/'f') turns it off.
+  const bool sm80_enabled =
+      e == nullptr || !(e[0] == '0' || e[0] == 'n' || e[0] == 'N' || e[0] == 'f' || e[0] == 'F');
+  const char* n = std::getenv("ORT_ENABLE_FP4_CUTLASS_GEMM");
+  const bool native_requested = n != nullptr && n[0] == '1';
+  return sm80_enabled && !native_requested;
 }
 
 template <typename T, typename WeightType, typename OutputType, typename ScaleBiasType>
@@ -646,9 +664,9 @@ MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::getAmpereConfigs(int sm
     return {};
   }
   // wfp4a16 is Ampere-valid (for the SM80 fused-dequant path) but only offer SM80 configs when the
-  // SM80 FP4 path is explicitly enabled; otherwise the default SM90 TMA WS path is used.
+  // SM80 FP4 path is enabled (default-on for sm < 120); otherwise the default SM90 TMA WS path is used.
   if constexpr (use_wfp4a16) {
-    if (!moeUseSm80Fp4()) {
+    if (!moeUseSm80Fp4(sm)) {
       return {};
     }
   }
@@ -677,7 +695,7 @@ MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::getTmaWarpSpecializedCo
   // When the SM80 FP4 path is enabled, wfp4a16 uses the Ampere fused-dequant grouped GEMM only;
   // do not offer any TMA WS configs.
   if constexpr (use_wfp4a16) {
-    if (moeUseSm80Fp4()) {
+    if (moeUseSm80Fp4(sm)) {
       return {};
     }
   }
@@ -728,7 +746,7 @@ bool MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::supportsTmaWarpSpe
   }
 
   if constexpr (use_wfp4a16) {
-    if (moeUseSm80Fp4()) {
+    if (moeUseSm80Fp4(sm_)) {
       return false;  // SM80 fused-dequant grouped GEMM path; not TMA warp specialized.
     }
     return sm_ >= 90 && kernels::cutlass_kernels::isValidHopperMOESpecialisation<T, WeightType>();

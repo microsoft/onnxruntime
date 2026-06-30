@@ -255,15 +255,21 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
         fp4_native_max_tokens_per_expert_ = onnxruntime::ParseEnvironmentVariableWithDefault<int64_t>(
             "ORT_FP4_NATIVE_MAX_TOKENS_PER_EXPERT", 128);
       }
-      // Opt-in SM80 FP4 grouped GEMM (port of the INT4 fused-dequant Ampere path to MXFP4).
+      // SM80 FP4 grouped GEMM (port of the INT4 fused-dequant Ampere path to MXFP4).
       // Only meaningful in the dequant-fallback regime (sm_ < 120, e.g. H200), where the
-      // native SM90 TMA FP4 path is the slow prefill path. When enabled we force the GEMV
-      // prepack (which also produces the SM80 CUTLASS-interleaved e2m1 weights + fp16 group
-      // scales) and later override the runner to the FP4 runner so prefill can dispatch to
-      // the SM80 DqMma grouped GEMM (see moeUseSm80Fp4 / ORT_FP4_SM80_GEMM in the kernels).
+      // native SM90 TMA FP4 path is the slow prefill path. This SM80 grouped GEMM is several
+      // times faster at the gpt-oss-20b prefill regime, so it is enabled by DEFAULT for fp16;
+      // set ORT_FP4_SM80_GEMM=0 to fall back to the dequant path. If the user EXPLICITLY
+      // requested the native CUTLASS GEMM (ORT_ENABLE_FP4_CUTLASS_GEMM=1) we honor that intent
+      // and do not take the SM80 path — this keeps the kernel-side moeUseSm80Fp4() (which reads
+      // the same two env vars) in lock-step with this decision in every regime, including the
+      // native-requested-but-shape-unsupported fallback (which then uses the dequant path).
+      // When enabled we force the GEMV prepack (which also produces the SM80 CUTLASS-interleaved
+      // e2m1 weights + fp16 group scales) and later override the runner to the FP4 runner so
+      // prefill can dispatch to the SM80 DqMma grouped GEMM (see moeUseSm80Fp4 in the kernels).
       enable_fp4_sm80_gemm_ =
-          use_fp4_dequant_fallback_ && is_fp16_ &&
-          onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_SM80_GEMM", 0) == 1;
+          use_fp4_dequant_fallback_ && is_fp16_ && !requested_fp4_cutlass_gemm &&
+          onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_SM80_GEMM", 1) == 1;
       if (enable_fp4_sm80_gemm_) {
         enable_fp4_gemv_ = true;
       }
@@ -622,8 +628,8 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool route_native_fp4 =
       fp4_native_available &&
       (fp4_native_max_tokens_per_expert_ <= 0 || avg_tokens_per_expert <= fp4_native_max_tokens_per_expert_);
-  // Opt-in SM80 FP4 grouped-GEMM prefill path. Active when ORT_FP4_SM80_GEMM=1 and the GEMV
-  // prepack produced the SM80 CUTLASS-interleaved e2m1 weights + fp16 group scales. Decode
+  // SM80 FP4 grouped-GEMM prefill path. Active by default (unless ORT_FP4_SM80_GEMM=0) when the
+  // GEMV prepack produced the SM80 CUTLASS-interleaved e2m1 weights + fp16 group scales. Decode
   // shapes are still served by the fused GEMV (which returns early below); everything that
   // falls through to the runner here (prefill / GEMV-unsupported shapes) runs on the FP4
   // runner via the Ampere/SM80 DqMma grouped GEMM with QuantParams::GroupWise(32, ...).
