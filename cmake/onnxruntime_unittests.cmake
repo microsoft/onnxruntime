@@ -603,6 +603,7 @@ set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_allocator.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_data_copy.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_ep_context_data_api.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_experimental_api.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc
@@ -2174,6 +2175,7 @@ if (onnxruntime_BUILD_SHARED_LIB AND
   #
   file(GLOB onnxruntime_autoep_test_library_src "${TEST_SRC_DIR}/autoep/library/example_plugin_ep/*.h"
                                                 "${TEST_SRC_DIR}/autoep/library/example_plugin_ep/*.cc"
+                                                "${TEST_SRC_DIR}/autoep/library/ep_context_data_utils.h"
                                                 "${TEST_SRC_DIR}/autoep/library/plugin_ep_utils.h")
   onnxruntime_add_shared_library_module(example_plugin_ep ${onnxruntime_autoep_test_library_src})
   target_include_directories(example_plugin_ep PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)

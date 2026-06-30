@@ -88,6 +88,12 @@ Ort::ConstEpDevice FindCudaPluginDevice(Ort::Env& env) {
   return Ort::ConstEpDevice{nullptr};
 }
 
+// Dummy external allocator callbacks. They are only used to make the external-allocator
+// configuration non-null; the plugin EP rejects the combination with user_compute_stream
+// before either is ever invoked.
+void* DummyExternalAlloc(size_t /*size*/) { return nullptr; }
+void DummyExternalFree(void* /*ptr*/) {}
+
 }  // namespace
 
 class CudaPluginUserStreamGraphTest : public ::testing::Test {
@@ -127,6 +133,70 @@ class CudaPluginUserStreamGraphTest : public ::testing::Test {
     };
     so.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, provider_options);
     return so;
+  }
+
+  // Allocate device input/output, bind them, and run `iterations` times on `stream`, verifying
+  // Y = X * W each run. The input is uploaded once up front and then left constant: when CUDA graph
+  // capture is enabled, issuing host->device work on the stream immediately before the capture run
+  // would interfere with cudaStreamBeginCapture, so the buffers are populated and synchronized
+  // before any capture happens. When `graph_ids` is non-empty, run i sets gpu_graph_id to
+  // graph_ids[i % size] to exercise CUDA graph annotation-id switching. mul_1.onnx computes
+  // Y = X * W with W = [1..6] (shape 3x2).
+  void RunAndVerifyOnStream(Ort::Session& session, cudaStream_t stream, int iterations,
+                            const std::vector<std::string>& graph_ids = {}) {
+    auto device_memory_info = cuda_device_.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+    auto allocator = ort_env->GetSharedAllocator(device_memory_info);
+    ASSERT_NE(allocator, nullptr);
+
+    constexpr size_t kNumElements = 6;
+    constexpr size_t kBytes = kNumElements * sizeof(float);
+    const std::array<int64_t, 2> shape = {3, 2};
+    const std::array<float, kNumElements> w_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    const std::array<float, kNumElements> x_values = {2.0f, 3.0f, 5.0f, 7.0f, 11.0f, 13.0f};
+
+    // Fixed device buffers so captured CUDA graphs keep valid IO addresses across replays.
+    void* input_gpu = allocator.Alloc(kBytes);
+    void* output_gpu = allocator.Alloc(kBytes);
+    ASSERT_NE(input_gpu, nullptr);
+    ASSERT_NE(output_gpu, nullptr);
+
+    // Populate the input once and synchronize, so no host-issued work is pending on `stream`
+    // when graph capture begins on a later run.
+    ASSERT_EQ(cudaSuccess,
+              cudaMemcpyAsync(input_gpu, x_values.data(), kBytes, cudaMemcpyHostToDevice, stream));
+    ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+
+    Ort::Value input_tensor = Ort::Value::CreateTensor(
+        device_memory_info, reinterpret_cast<float*>(input_gpu), kNumElements,
+        shape.data(), shape.size());
+    Ort::Value output_tensor = Ort::Value::CreateTensor(
+        device_memory_info, reinterpret_cast<float*>(output_gpu), kNumElements,
+        shape.data(), shape.size());
+
+    Ort::IoBinding binding(session);
+    binding.BindInput("X", input_tensor);
+    binding.BindOutput("Y", output_tensor);
+
+    for (int i = 0; i < iterations; ++i) {
+      Ort::RunOptions run_options;
+      if (!graph_ids.empty()) {
+        run_options.AddConfigEntry("gpu_graph_id", graph_ids[i % graph_ids.size()].c_str());
+      }
+      session.Run(run_options, binding);
+
+      // Kernels run on `stream`; wait for them before copying the result back.
+      ASSERT_EQ(cudaSuccess, cudaStreamSynchronize(stream));
+      std::array<float, kNumElements> y{};
+      ASSERT_EQ(cudaSuccess, cudaMemcpy(y.data(), output_gpu, kBytes, cudaMemcpyDeviceToHost));
+      for (size_t j = 0; j < kNumElements; ++j) {
+        EXPECT_FLOAT_EQ(y[j], x_values[j] * w_values[j]) << "mismatch at iteration " << i << " index " << j;
+      }
+    }
+
+    binding.ClearBoundInputs();
+    binding.ClearBoundOutputs();
+    allocator.Free(input_gpu);
+    allocator.Free(output_gpu);
   }
 
   std::unique_ptr<ScopedCudaPluginRegistration> registration_;
@@ -230,6 +300,69 @@ TEST_F(CudaPluginUserStreamGraphTest, CaptureAndReplayOnUserStream) {
   binding.ClearBoundOutputs();
   allocator.Free(input_gpu);
   allocator.Free(output_gpu);
+
+  ASSERT_EQ(cudaSuccess, cudaStreamDestroy(user_stream));
+}
+
+// Negative: a user_compute_stream combined with an external GPU allocator
+// (gpu_external_alloc/gpu_external_free) is not supported and must be rejected at session
+// creation with an error rather than silently ignored.
+TEST_F(CudaPluginUserStreamGraphTest, RejectsUserStreamWithExternalAllocator) {
+  cudaStream_t user_stream = nullptr;
+  ASSERT_EQ(cudaSuccess, cudaStreamCreate(&user_stream));
+
+  Ort::SessionOptions so;
+  std::unordered_map<std::string, std::string> provider_options = {
+      {"user_compute_stream", std::to_string(reinterpret_cast<uintptr_t>(user_stream))},
+      {"gpu_external_alloc", std::to_string(reinterpret_cast<uintptr_t>(&DummyExternalAlloc))},
+      {"gpu_external_free", std::to_string(reinterpret_cast<uintptr_t>(&DummyExternalFree))},
+  };
+  so.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, provider_options);
+
+  EXPECT_THROW(
+      {
+        Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
+        (void)session;
+      },
+      Ort::Exception);
+
+  ASSERT_EQ(cudaSuccess, cudaStreamDestroy(user_stream));
+}
+
+// Edge case: cudaStream_t(0) (the CUDA default stream) is a valid user-provided stream. Because
+// user_compute_stream parses to nullptr, the caller must set has_user_compute_stream explicitly,
+// otherwise the stream would be treated as "not provided". Session creation must succeed and
+// inference must run correctly on the default stream.
+//
+// Note: CUDA graph capture is intentionally NOT enabled here. The legacy default stream (stream 0)
+// cannot be captured (cudaStreamBeginCapture returns cudaErrorStreamCaptureUnsupported), so this
+// test exercises only that stream 0 is honored as the compute stream for non-graph execution.
+TEST_F(CudaPluginUserStreamGraphTest, DefaultStreamAsUserStream) {
+  Ort::SessionOptions so;
+  std::unordered_map<std::string, std::string> provider_options = {
+      {"has_user_compute_stream", "1"},
+      {"user_compute_stream", "0"},
+  };
+  so.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, provider_options);
+
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
+
+  // Run several iterations on the default stream (stream 0) and verify correctness.
+  RunAndVerifyOnStream(session, /*stream=*/nullptr, /*iterations=*/4);
+}
+
+// Switching the CUDA graph annotation id (gpu_graph_id) between runs while using a user stream
+// must capture/replay a distinct graph per id without crashing and keep producing correct results.
+TEST_F(CudaPluginUserStreamGraphTest, GraphAnnotationIdSwitchingWithUserStream) {
+  cudaStream_t user_stream = nullptr;
+  ASSERT_EQ(cudaSuccess, cudaStreamCreate(&user_stream));
+
+  Ort::SessionOptions so = CreateUserStreamGraphSessionOptions(user_stream);
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
+
+  // Alternate between annotation ids "1" and "2". With min_num_runs_before_cuda_graph_capture == 2,
+  // 8 iterations let each id accumulate warmup runs, capture, and then replay on the user stream.
+  RunAndVerifyOnStream(session, user_stream, /*iterations=*/8, /*graph_ids=*/{"1", "2"});
 
   ASSERT_EQ(cudaSuccess, cudaStreamDestroy(user_stream));
 }

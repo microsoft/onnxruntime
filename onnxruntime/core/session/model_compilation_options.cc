@@ -133,6 +133,15 @@ void ModelCompilationOptions::SetOutputModelGetInitializerLocationFunc(
   };
 }
 
+void ModelCompilationOptions::SetEpContextDataWriteFunc(OrtWriteNamedBufferFunc write_func, void* state) {
+  // A null write_func clears any previously set callback. Clear the state too so a stale state pointer is never
+  // paired with a missing callback.
+  session_options_.value.ep_context_gen_options.ep_context_data_write_func = epctx::EpContextDataWriteFuncHolder{
+      write_func,
+      write_func != nullptr ? state : nullptr,
+  };
+}
+
 Status ModelCompilationOptions::SetEpContextBinaryInformation(const std::filesystem::path& output_directory,
                                                               const std::filesystem::path& model_name) {
   if (output_directory.empty() || model_name.empty()) {

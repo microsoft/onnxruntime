@@ -498,8 +498,15 @@ Status SessionState::PrepackConstantInitializedTensors(
                 auto iter = initializers_to_share_map.find(input_name);
                 bool is_shared_initializer = (iter != initializers_to_share_map.end());
 
-                // Caching pre-packed weights is limited to shared initializers associated with the CPU EP for now
-                if (is_shared_initializer && should_cache_prepacked_weights_for_shared_initializers &&
+                // CPU EP only. An initializer joins the shared pre-packed container either when it was
+                // registered via OrtApi::AddInitializer (is_shared_initializer) or when a graph transformer
+                // tagged this synthesized initializer with a sharing identity. Only the tag's *presence*
+                // matters here: it is the enrollment signal. The container key below is the packed-bytes
+                // hash, never the tag value (see the rationale at the key computation).
+                const bool enroll_tagged_initializer =
+                    (st->graph_.GetSharedPrepackInitializerId(input_name) != nullptr);
+                if ((is_shared_initializer || enroll_tagged_initializer) &&
+                    should_cache_prepacked_weights_for_shared_initializers &&
                     node.GetExecutionProviderType() == kCpuExecutionProvider) {
                   // caching of pre-packed weights' turned ON
 
@@ -530,12 +537,18 @@ Status SessionState::PrepackConstantInitializedTensors(
                     // TODO: Check if some version of the ONNX IR allows op_type to be empty
                     ORT_ENFORCE(!op_type.empty(), "The op type of a node cannot be empty");
 
-                    // The key for the pre-packed weights container lookup is the op_type + hash of the prepacked-weight
-                    // that we just got by invoking PrePack() on this kernel.
-
+                    // Key by the packed-bytes hash (op_type + a hash of the packed buffer), exactly as the
+                    // AddInitializer path does, so only byte-identical packed buffers are ever shared. The
+                    // tag is solely the enrollment signal that opted this fusion-generated initializer into
+                    // the container; it must NOT be used as the key, because it is derived from the
+                    // *unpacked* initializer content and so cannot distinguish packings that differ by node
+                    // options/attributes that change the packed layout (e.g. mlas.use_lut_gemm or a CPU
+                    // backend-selector difference). Two sessions that share a container but differ in such an
+                    // option compute the same tag yet produce different packed bytes; keying by the packed
+                    // bytes gives them distinct keys and prevents reusing an incompatible buffer
+                    // (wrong results/crash).
                     const std::string prepacked_weights_container_key =
-                        GenerateKeyForPrepackedWeightsMap(op_type,
-                                                          weights_to_be_filled_in);
+                        GenerateKeyForPrepackedWeightsMap(op_type, weights_to_be_filled_in);
 
                     bool container_contains_packed_weight = prepacked_weights_container_->HasWeight(
                         prepacked_weights_container_key);
@@ -624,11 +637,9 @@ Status SessionState::PrepackConstantInitializedTensors(
                                                       is_packed,
                                                       &weights_to_be_filled_in));
 
-                  // Some kernels (matmul_nbits and non-CPU related kernels) do not share their pre-packed results
+                  // Some kernels (non-CPU related kernels) do not share their pre-packed results
                   // even though they set is_packed = true so we leave it up to them.
                   // We can change their behavior if we wish do so in a separate PR
-                  // XXX: Interestingly enough, matmul_nbits does accept shared pre-packs, but does not
-                  // produce them.
                   if (is_packed && !weights_to_be_filled_in.buffers_.empty()) {
                     const auto& op_type = node.OpType();
                     const std::string prepacked_weights_container_key = GenerateKeyForPrepackedWeightsMap(

@@ -1091,15 +1091,48 @@ class GQAAttentionBase {
     int thread_count = concurrency::ThreadPool::DegreeOfParallelism(tp);
     thread_count = std::max(thread_count, 1);
 
-    // Per-thread scratch: l + m + scores[q_block_size * kv_block_size] + temp_output[q_block_size * head_size]
-    const size_t buffer_size_per_thread =
-        (SafeInt<size_t>(q_block_size) * 2 +              // l + m
-         SafeInt<size_t>(q_block_size) * kv_block_size +  // scores
-         SafeInt<size_t>(q_block_size) * head_size) *     // temp_output
-        sizeof(float);
-    size_t total_buffer_bytes = SafeInt<size_t>(buffer_size_per_thread) * thread_count;
+    // Flash decoding: for decode (sequence_length==1), partition KV across threads
+    // to improve parallelism when batch*heads < thread_count. This KV-split is only
+    // wired into the unified kernel (common_past_seqlen >= 0); the ragged/per-batch
+    // fallback runs the single-pass decode kernel instead, which needs a larger
+    // per-thread scratch (scores[total_seqlen] + temp_output[head_size]). Gating on
+    // common_past_seqlen >= 0 keeps the per-thread buffer sizing below consistent
+    // with the kernel that actually runs.
+    const int kv_chunk_count = (max_total_seqlen + kv_block_size - 1) / kv_block_size;
+    const bool use_flash_decoding = (sequence_length == 1 &&
+                                     common_past_seqlen >= 0 &&
+                                     batch_size * num_heads_ < thread_count &&
+                                     kv_chunk_count > 1);
+
+    size_t buffer_size_per_thread;
+    size_t partials_buffer_bytes = 0;
+    if (use_flash_decoding) {
+      // Flash decoding: per-thread scratch only needs scores[kv_block_size]
+      buffer_size_per_thread = SafeInt<size_t>(kv_block_size) * sizeof(float);
+      // Partials: [batch * num_heads * kv_chunk_count * (2 + head_size)] floats
+      partials_buffer_bytes = SafeInt<size_t>(batch_size) * num_heads_ *
+                              kv_chunk_count * (2 + head_size) * sizeof(float);
+    } else if (sequence_length == 1) {
+      // Decode (GEMV kernel, no Q/KV tiling): per-thread scratch holds the full
+      // score row scores[total_seqlen] plus a temp output accumulator[head_size].
+      buffer_size_per_thread =
+          (SafeInt<size_t>(max_total_seqlen) + head_size) * sizeof(float);
+    } else {
+      buffer_size_per_thread =
+          (SafeInt<size_t>(q_block_size) * 2 +              // l + m
+           SafeInt<size_t>(q_block_size) * kv_block_size +  // scores
+           SafeInt<size_t>(q_block_size) * head_size) *     // temp_output
+          sizeof(float);
+    }
+    size_t total_buffer_bytes = SafeInt<size_t>(buffer_size_per_thread) * thread_count + partials_buffer_bytes;
     auto flash_buffer_alloc = allocator->Alloc(total_buffer_bytes);
     BufferUniquePtr flash_buffer(flash_buffer_alloc, BufferDeleter(allocator));
+
+    // Partials buffer is placed after per-thread scratch
+    float* partials_ptr = use_flash_decoding
+                              ? reinterpret_cast<float*>(reinterpret_cast<char*>(flash_buffer_alloc) +
+                                                         buffer_size_per_thread * thread_count)
+                              : nullptr;
 
     const float scale = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(head_size)) : scale_;
 
@@ -1133,6 +1166,8 @@ class GQAAttentionBase {
       args.attention_bias_seqlen_stride = attention_bias_seqlen_stride;
       args.attention_bias_broadcast_batch = attention_bias_broadcast_batch;
       args.attention_bias_broadcast_head = attention_bias_broadcast_head;
+      args.flash_decoding_partials = partials_ptr;
+      args.kv_chunk_count = kv_chunk_count;
 
       MlasFlashAttentionGQA(&args, tp);
     } else {
@@ -1185,6 +1220,8 @@ class GQAAttentionBase {
         args.attention_bias_seqlen_stride = attention_bias_seqlen_stride;
         args.attention_bias_broadcast_batch = true;  // batch offset handled above
         args.attention_bias_broadcast_head = attention_bias_broadcast_head;
+        args.flash_decoding_partials = nullptr;  // per-batch doesn't use flash decoding
+        args.kv_chunk_count = 0;
 
         MlasFlashAttentionGQA(&args, tp);
       }

@@ -1483,6 +1483,74 @@ TEST_F(GraphTest, RejectInMemoryMarkerOnDenseInitializer) {
   }
 }
 
+// Regression test: a Constant node with a dense tensor attribute carrying an ORT in-memory address
+// marker must be rejected during model load. This is the attack vector described in the MSRC report
+// where an attacker crafts a Constant node to make ORT dereference an attacker-supplied pointer.
+TEST_F(GraphTest, RejectInMemoryMarkerOnConstantNodeTensorAttribute) {
+  Model model("RejectInMemoryMarkerOnConstantNode", false, *logger_);
+  auto model_proto = model.ToProto();
+  auto* m_graph = model_proto.mutable_graph();
+
+  // Build a minimal graph: Constant -> Identity -> output
+  static std::vector<uint8_t> backing(16, 0);
+
+  auto* const_node = m_graph->add_node();
+  const_node->set_op_type("Constant");
+  const_node->set_name("malicious_constant");
+  const_node->add_output("c");
+
+  auto* attr = const_node->add_attribute();
+  attr->set_name("value");
+  attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+  auto* t = attr->mutable_t();
+  t->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  t->add_dims(4);
+  t->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  auto* loc = t->add_external_data();
+  loc->set_key("location");
+  loc->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag));
+  auto* off = t->add_external_data();
+  off->set_key("offset");
+  off->set_value(std::to_string(reinterpret_cast<intptr_t>(backing.data())));
+  auto* len = t->add_external_data();
+  len->set_key("length");
+  len->set_value(std::to_string(backing.size()));
+
+  auto* identity_node = m_graph->add_node();
+  identity_node->set_op_type("Identity");
+  identity_node->set_name("identity");
+  identity_node->add_input("c");
+  identity_node->add_output("output");
+
+  auto* output = m_graph->add_output();
+  output->set_name("output");
+  auto* type_proto = output->mutable_type()->mutable_tensor_type();
+  type_proto->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  type_proto->mutable_shape()->add_dim()->set_dim_value(4);
+
+  std::string serialized;
+  model_proto.SerializeToString(&serialized);
+
+  ModelProto model_proto_roundtrip;
+  ASSERT_TRUE(model_proto_roundtrip.ParseFromString(serialized));
+
+  std::shared_ptr<onnxruntime::Model> p_tmp_model;
+  ORT_TRY {
+    auto status = onnxruntime::Model::Load(model_proto_roundtrip, p_tmp_model, nullptr, *logger_);
+    EXPECT_FALSE(status.IsOK()) << "Loading a model with an in-memory marker on a Constant node tensor attribute must fail.";
+    if (!status.IsOK()) {
+      EXPECT_THAT(status.ErrorMessage(),
+                  ::testing::HasSubstr("in-memory address marker"));
+    }
+  }
+  ORT_CATCH(const std::exception& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      EXPECT_THAT(std::string(ex.what()),
+                  ::testing::HasSubstr("in-memory address marker"));
+    });
+  }
+}
+
 TEST_F(GraphTest, GraphConstruction_CheckIsNotAcyclic) {
   // A cyclic graph
   //                 SouceNode

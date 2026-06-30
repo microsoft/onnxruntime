@@ -53,6 +53,7 @@ void launch_moe_gemv_int_symmetric_interleaved_swiglu(
     T const* act, WeightType const* weight, T const* scales, T const* bias, T* out,
     int64_t const* expert_first_token_offset, int const* permuted_row_to_expert, int num_experts, int64_t expanded_num_rows,
     int64_t inter_size, int64_t k, int group_size, int sm, cutlass_kernels::ActivationParams activation_params,
+    float* splitk_partials,
     cudaStream_t stream);
 
 // Launches the int4 per-channel MoE GEMV.

@@ -241,6 +241,23 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   }
 
   GroupQueryAttentionParameters params = {};
+
+  // KV cache quantization uses 4-bit quantization with 32 extra bits (1 u32) per head for the L2 norm.
+  // Requires head_size >= 8 and power-of-2.
+  const uint32_t kv_cache_bits = context.KvCacheQuantizationBits();
+  const bool kv_cache_quant = kv_cache_bits != 0;
+  const int kv_cache_bit_width = static_cast<int>(kv_cache_bits);
+  const int kv_cache_extra_bits = kv_cache_quant ? 32 : 0;
+  if (kv_cache_quant) {
+    const int qkv_last_dim = static_cast<int>(query->Shape().GetDims()[2]);
+    const bool is_packed = (key == nullptr);
+    const int hs = is_packed ? qkv_last_dim / (num_heads_ + 2 * kv_num_heads_) : qkv_last_dim / num_heads_;
+    if (hs < 8 || (hs & (hs - 1)) != 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "KV cache quantization requires head_size >= 8 and a power of 2. Got head_size=", hs);
+    }
+  }
+
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs(query,
                                                                 key,
                                                                 value,
@@ -255,8 +272,9 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                                                 total_seqlen_tensor,
                                                                 scale_,
                                                                 softcap_,
-                                                                0,
-                                                                onnxruntime::narrow<int>(context.DeviceLimits().maxComputeInvocationsPerWorkgroup)));
+                                                                kv_cache_bit_width,
+                                                                onnxruntime::narrow<int>(context.DeviceLimits().maxComputeInvocationsPerWorkgroup),
+                                                                kv_cache_extra_bits));
   params.use_smooth_softmax = use_smooth_softmax_;
   params.rotary_interleaved = rotary_interleaved_;
 
@@ -310,11 +328,19 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   output_shape[1] = static_cast<int64_t>(parameters.sequence_length_);
   output_shape[2] = static_cast<int64_t>(parameters.hidden_size_);
   Tensor* output = context.Output(0, output_shape);
+
+  // When TurboQuant is enabled, the KV cache head dimension is compressed.
+  // Derive from quantization parameters: (head_size * bit_width + extra_bits) / bits_per_element.
+  int64_t kv_head_dim = parameters.head_size_;
+  if (kv_cache_bit_width > 0) {
+    int bits_per_element = static_cast<int>(query->DataType()->Size()) * 8;
+    kv_head_dim = (parameters.head_size_ * kv_cache_bit_width + kv_cache_extra_bits) / bits_per_element;
+  }
   std::vector<int64_t> present_dims{
       parameters.batch_size_,
       kv_num_heads_,
       parameters.seqlen_present_kv_cache_,
-      parameters.head_size_};
+      kv_head_dim};
   std::vector<int64_t> present_kv_shape(present_dims);
   Tensor* present_key = context.Output(1, present_kv_shape);
   Tensor* present_value = context.Output(2, present_kv_shape);
@@ -327,6 +353,8 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                           past_value->DataRaw() == present_value->DataRaw();
 
   ORT_ENFORCE(parameters.total_sequence_length_ <= parameters.seqlen_present_kv_cache_, "Total sequence length cannot be greater than the existing KV cache length.");
+  ORT_ENFORCE(!context.IsGraphCaptureEnabled() || parameters.past_present_share_buffer_,
+              "Graph capture requires past/present KV cache to share the same buffer (static KV cache).");
 
   Tensor qSplit;
   Tensor kSplit;
@@ -350,7 +378,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     // Create a temporary parameters copy with is_packed_qkv_ set to false to check if flash attention can be applied after unpacking
     WebgpuAttentionParameters temp_params = parameters;
     temp_params.is_packed_qkv_ = false;
-    will_use_flash_attention = CanApplyFlashAttention(temp_params, context, seqlen_k);
+    will_use_flash_attention = CanApplyFlashAttention(temp_params, context);
   }
 
   if (kv_empty) {
@@ -377,11 +405,13 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     }
   } else if (parameters.is_packed_qkv_ && do_rotary_) {
     // Use the ultimate fused operation when FlashAttention and static KV cache is enabled.
+    // When TurboQuant is active, ApplyFlashAttention handles the fused split+rotary+Hadamard+quantize path.
     if (will_use_flash_attention && parameters.past_present_share_buffer_) {
       // Directly call ApplyFlashAttention with fused split/rotary/copyKV enabled
       // query points to packed QKV, K and V are nullptr since they're not needed
       return ApplyFlashAttention(query, nullptr, nullptr, attention_bias, output, past_key, present_key, past_value,
-                                 present_value, parameters, context, seqlen_k, cos_cache, sin_cache, head_sink);
+                                 present_value, parameters, context, seqlen_k, cos_cache, sin_cache, head_sink,
+                                 total_seqlen_tensor);
     }
     // Fused: splitQKV + rotary QK
     qSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.hidden_size_}));
@@ -472,7 +502,16 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
 
   if (will_use_flash_attention) {
     return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
-                               present_value, parameters, context, seqlen_k, nullptr, nullptr, head_sink);
+                               present_value, parameters, context, seqlen_k, nullptr, nullptr, head_sink,
+                               total_seqlen_tensor);
+  }
+
+  // KV cache quantization compresses the KV cache; non-flash attention paths cannot interpret it.
+  if (context.KvCacheQuantizationEnabled()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "KV cache quantization requires flash attention. "
+                           "The non-flash attention path cannot be used with compressed KV caches. "
+                           "Check that smooth_softmax and local_window_size are not set.");
   }
 
   // Non-flash attention path does not support kv_sequence_length==0 (shared KV layers).

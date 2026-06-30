@@ -58,8 +58,9 @@ parameters:
 
 variables:
   # Path (relative to the repository root) of the VERSION_NUMBER file used for plugin package versioning.
+  # The CUDA plugin EP is versioned independently from the ONNX Runtime release.
   - name: epVersionFile
-    value: VERSION_NUMBER
+    value: plugin-ep-cuda/VERSION_NUMBER
   # Non-dev package versions (release, RC) must use Release build type
   - name: invalidBuildTypeConfig
     value: ${{ and(ne(parameters.package_type, 'dev'), ne(parameters.cmake_build_type, 'Release')) }}

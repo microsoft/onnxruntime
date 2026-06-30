@@ -6,6 +6,8 @@
 #endif
 
 #include <algorithm>
+#include <cstdint>
+#include <type_traits>
 
 #include "gtest/gtest.h"
 
@@ -14,6 +16,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/optimizer/initializer.h"
 
 #include "core/optimizer/bias_skip_layer_norm_fusion.h"
@@ -21,6 +24,7 @@
 #include "core/optimizer/group_query_attention_fusion.h"
 #include "core/optimizer/layer_norm_fusion.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "test/capturing_sink.h"
 #include "test/unittest_util/framework_test_utils.h"
@@ -491,6 +495,347 @@ TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionTest) {
       EXPECT_TRUE(false) << "Unexpected node " << node.Name();
     }
   }
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionSharedCastPowExponent) {
+  for (const bool has_leading_cast : {false, true}) {
+    auto build_test_case = [has_leading_cast](ModelTestBuilder& builder) {
+      auto* pow_exponent_fp16 =
+          builder.MakeInitializer<MLFloat16>({}, {MLFloat16(2.0f)});
+      auto* pow_exponent = builder.MakeIntermediate();
+      builder.AddNode("Cast", {pow_exponent_fp16}, {pow_exponent})
+          .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+
+      auto* epsilon = builder.MakeInitializer<float>({}, {1e-5f});
+      auto* scale = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
+
+      auto add_simplified_layer_norm = [&](NodeArg* input) {
+        NodeArg* layer_norm_input = input;
+        if (has_leading_cast) {
+          layer_norm_input = builder.MakeIntermediate();
+          builder.AddNode("Cast", {input}, {layer_norm_input})
+              .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+        }
+
+        auto* pow_out = builder.MakeIntermediate();
+        auto* reduce_mean_out = builder.MakeIntermediate();
+        auto* add_out = builder.MakeIntermediate();
+        auto* sqrt_out = builder.MakeIntermediate();
+        auto* div_out = builder.MakeIntermediate();
+        auto* output = builder.MakeOutput();
+
+        builder.AddNode("Pow", {layer_norm_input, pow_exponent}, {pow_out});
+        builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out})
+            .AddAttribute("axes", std::vector<int64_t>{-1});
+        builder.AddNode("Add", {reduce_mean_out, epsilon}, {add_out});
+        builder.AddNode("Sqrt", {add_out}, {sqrt_out});
+        builder.AddNode("Div", {layer_norm_input, sqrt_out}, {div_out});
+        builder.AddNode("Mul", {div_out, scale}, {output});
+      };
+
+      auto make_input = [&]() -> NodeArg* {
+        return has_leading_cast ? builder.MakeInput<MLFloat16>({{2, 4}})
+                                : builder.MakeInput<float>({{2, 4}});
+      };
+
+      add_simplified_layer_norm(make_input());
+      add_simplified_layer_norm(make_input());
+    };
+
+    auto pre_graph_checker = [has_leading_cast](Graph& graph) {
+      if (has_leading_cast) {
+        for (Node& node : graph.Nodes()) {
+          node.SetExecutionProviderType(kCudaExecutionProvider);
+        }
+      }
+
+      const auto op_to_count = CountOpsInGraph(graph);
+      const auto cast_it = op_to_count.find("Cast");
+      const int expected_cast_count = has_leading_cast ? 3 : 1;
+      TEST_RETURN_IF_NOT(cast_it != op_to_count.end() && cast_it->second == expected_cast_count);
+      const auto pow_it = op_to_count.find("Pow");
+      TEST_RETURN_IF_NOT(pow_it != op_to_count.end() && pow_it->second == 2);
+      return Status::OK();
+    };
+
+    auto post_graph_checker = [has_leading_cast](Graph& graph) {
+      const auto op_to_count = CountOpsInGraph(graph);
+      const auto simplified_layer_norm_it = op_to_count.find("SimplifiedLayerNormalization");
+      TEST_RETURN_IF_NOT(simplified_layer_norm_it != op_to_count.end() &&
+                         simplified_layer_norm_it->second == 2);
+      TEST_RETURN_IF_NOT(op_to_count.find("Cast") == op_to_count.end());
+      TEST_RETURN_IF_NOT(op_to_count.find("Pow") == op_to_count.end());
+      TEST_RETURN_IF_NOT(op_to_count.find("ReduceMean") == op_to_count.end());
+      TEST_RETURN_IF_NOT(op_to_count.find("Add") == op_to_count.end());
+      TEST_RETURN_IF_NOT(op_to_count.find("Sqrt") == op_to_count.end());
+      TEST_RETURN_IF_NOT(op_to_count.find("Div") == op_to_count.end());
+      TEST_RETURN_IF_NOT(op_to_count.find("Mul") == op_to_count.end());
+
+      if (has_leading_cast) {
+        for (const Node& node : graph.Nodes()) {
+          if (node.OpType() == "SimplifiedLayerNormalization") {
+            TEST_RETURN_IF_NOT(node.GetExecutionProviderType() == kCudaExecutionProvider);
+          }
+        }
+      }
+
+      return Status::OK();
+    };
+
+    const InlinedHashSet<std::string_view> compatible_eps;
+    ASSERT_STATUS_OK(TestGraphTransformer(
+        build_test_case, 17, *logger_,
+        std::make_unique<SimplifiedLayerNormFusion>(compatible_eps),
+        TransformerLevel::Level2, 1, pre_graph_checker, post_graph_checker));
+  }
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionAddEpsilonInput0) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* input = builder.MakeInput<float>({{2, 4}});
+    auto* pow_exponent = builder.MakeInitializer<float>({}, {2.0f});
+    auto* epsilon = builder.MakeInitializer<float>({}, {1e-4f});
+    auto* scale = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
+
+    auto* pow_out = builder.MakeIntermediate();
+    auto* reduce_mean_out = builder.MakeIntermediate();
+    auto* add_out = builder.MakeIntermediate();
+    auto* sqrt_out = builder.MakeIntermediate();
+    auto* div_out = builder.MakeIntermediate();
+    auto* output = builder.MakeOutput();
+
+    builder.AddNode("Pow", {input, pow_exponent}, {pow_out});
+    builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out})
+        .AddAttribute("axes", std::vector<int64_t>{-1});
+    builder.AddNode("Add", {epsilon, reduce_mean_out}, {add_out});
+    builder.AddNode("Sqrt", {add_out}, {sqrt_out});
+    builder.AddNode("Div", {input, sqrt_out}, {div_out});
+    builder.AddNode("Mul", {div_out, scale}, {output});
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    const auto op_to_count = CountOpsInGraph(graph);
+    const auto simplified_layer_norm_it = op_to_count.find("SimplifiedLayerNormalization");
+    TEST_RETURN_IF_NOT(simplified_layer_norm_it != op_to_count.end() &&
+                       simplified_layer_norm_it->second == 1);
+
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == "SimplifiedLayerNormalization") {
+        const auto& attributes = node.GetAttributes();
+        const auto epsilon_it = attributes.find("epsilon");
+        TEST_RETURN_IF_NOT(epsilon_it != attributes.end());
+        TEST_RETURN_IF_NOT(epsilon_it->second.f() == 1e-4f);
+      }
+    }
+
+    return Status::OK();
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(
+      build_test_case, 17, *logger_,
+      std::make_unique<SimplifiedLayerNormFusion>(),
+      TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionAllowsIntegerPowExponentTwo) {
+  auto run_test = [this](auto exponent_value) {
+    using T = std::decay_t<decltype(exponent_value)>;
+
+    auto build_test_case = [exponent_value](ModelTestBuilder& builder) {
+      auto* input = builder.MakeInput<float>({{2, 4}});
+      auto* pow_exponent = builder.MakeInitializer<T>({}, {exponent_value});
+      auto* epsilon = builder.MakeInitializer<float>({}, {1e-5f});
+      auto* scale = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
+
+      auto* pow_out = builder.MakeIntermediate();
+      auto* reduce_mean_out = builder.MakeIntermediate();
+      auto* add_out = builder.MakeIntermediate();
+      auto* sqrt_out = builder.MakeIntermediate();
+      auto* div_out = builder.MakeIntermediate();
+      auto* output = builder.MakeOutput();
+
+      builder.AddNode("Pow", {input, pow_exponent}, {pow_out});
+      builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out})
+          .AddAttribute("axes", std::vector<int64_t>{-1});
+      builder.AddNode("Add", {reduce_mean_out, epsilon}, {add_out});
+      builder.AddNode("Sqrt", {add_out}, {sqrt_out});
+      builder.AddNode("Div", {input, sqrt_out}, {div_out});
+      builder.AddNode("Mul", {div_out, scale}, {output});
+    };
+
+    auto post_graph_checker = [](Graph& graph) {
+      const auto op_to_count = CountOpsInGraph(graph);
+      const auto simplified_layer_norm_it = op_to_count.find("SimplifiedLayerNormalization");
+      TEST_RETURN_IF_NOT(simplified_layer_norm_it != op_to_count.end() &&
+                         simplified_layer_norm_it->second == 1);
+      TEST_RETURN_IF_NOT(op_to_count.find("Pow") == op_to_count.end());
+      return Status::OK();
+    };
+
+    ASSERT_STATUS_OK(TestGraphTransformer(
+        build_test_case, 17, *logger_,
+        std::make_unique<SimplifiedLayerNormFusion>(),
+        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+  };
+
+  run_test(int8_t{2});
+  run_test(uint8_t{2});
+  run_test(int32_t{2});
+  run_test(int64_t{2});
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionRequiresPowExponentTwo) {
+  for (const bool has_cast_exponent : {false, true}) {
+    auto build_test_case = [has_cast_exponent](ModelTestBuilder& builder) {
+      auto* input = builder.MakeInput<float>({{2, 4}});
+      NodeArg* pow_exponent = nullptr;
+      if (has_cast_exponent) {
+        auto* pow_exponent_fp16 = builder.MakeInitializer<MLFloat16>({}, {MLFloat16(3.0f)});
+        pow_exponent = builder.MakeIntermediate();
+        builder.AddNode("Cast", {pow_exponent_fp16}, {pow_exponent})
+            .AddAttribute("to", static_cast<int64_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT));
+      } else {
+        pow_exponent = builder.MakeInitializer<float>({}, {3.0f});
+      }
+
+      auto* epsilon = builder.MakeInitializer<float>({}, {1e-5f});
+      auto* scale = builder.MakeInitializer<float>({4}, {1.0f, 1.0f, 1.0f, 1.0f});
+
+      auto* pow_out = builder.MakeIntermediate();
+      auto* reduce_mean_out = builder.MakeIntermediate();
+      auto* add_out = builder.MakeIntermediate();
+      auto* sqrt_out = builder.MakeIntermediate();
+      auto* div_out = builder.MakeIntermediate();
+      auto* output = builder.MakeOutput();
+
+      builder.AddNode("Pow", {input, pow_exponent}, {pow_out});
+      builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out})
+          .AddAttribute("axes", std::vector<int64_t>{-1});
+      builder.AddNode("Add", {reduce_mean_out, epsilon}, {add_out});
+      builder.AddNode("Sqrt", {add_out}, {sqrt_out});
+      builder.AddNode("Div", {input, sqrt_out}, {div_out});
+      builder.AddNode("Mul", {div_out, scale}, {output});
+    };
+
+    auto post_graph_checker = [](Graph& graph) {
+      const auto op_to_count = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_to_count.find("SimplifiedLayerNormalization") == op_to_count.end());
+      const auto pow_it = op_to_count.find("Pow");
+      TEST_RETURN_IF_NOT(pow_it != op_to_count.end() && pow_it->second == 1);
+      return Status::OK();
+    };
+
+    ASSERT_STATUS_OK(TestGraphTransformer(
+        build_test_case, 17, *logger_,
+        std::make_unique<SimplifiedLayerNormFusion>(),
+        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+  }
+}
+
+TEST_F(GraphTransformationTests, SimplifiedLayerNormFusionOptimizationLoopSharedPowExponent) {
+  if (MlasFp16AccelerationSupported()) {
+    GTEST_SKIP() << "Skipping test because FP16 acceleration support can avoid the CPU fp16 fallback path.";
+  }
+
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    auto* pow_exponent = builder.MakeInitializer<MLFloat16>({}, {MLFloat16(2.0f)});
+
+    auto add_simplified_layer_norm = [&](const std::vector<MLFloat16>& input_data) {
+      auto* input = builder.MakeInput<MLFloat16>({2, 4}, input_data);
+      auto* epsilon = builder.MakeInitializer<MLFloat16>({}, {MLFloat16(1e-4f)});
+      auto* scale = builder.MakeInitializer<MLFloat16>(
+          {4}, {MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f), MLFloat16(1.0f)});
+
+      auto* pow_out = builder.MakeIntermediate();
+      auto* reduce_mean_out = builder.MakeIntermediate();
+      auto* add_out = builder.MakeIntermediate();
+      auto* sqrt_out = builder.MakeIntermediate();
+      auto* div_out = builder.MakeIntermediate();
+      auto* output = builder.MakeOutput();
+
+      builder.AddNode("Pow", {input, pow_exponent}, {pow_out});
+      builder.AddNode("ReduceMean", {pow_out}, {reduce_mean_out})
+          .AddAttribute("axes", std::vector<int64_t>{-1});
+      builder.AddNode("Add", {reduce_mean_out, epsilon}, {add_out});
+      builder.AddNode("Sqrt", {add_out}, {sqrt_out});
+      builder.AddNode("Div", {input, sqrt_out}, {div_out});
+      builder.AddNode("Mul", {div_out, scale}, {output});
+    };
+
+    add_simplified_layer_norm({MLFloat16(0.5f), MLFloat16(1.0f), MLFloat16(1.5f), MLFloat16(2.0f),
+                               MLFloat16(2.5f), MLFloat16(3.0f), MLFloat16(3.5f), MLFloat16(4.0f)});
+    add_simplified_layer_norm({MLFloat16(1.0f), MLFloat16(1.25f), MLFloat16(1.5f), MLFloat16(1.75f),
+                               MLFloat16(2.0f), MLFloat16(2.25f), MLFloat16(2.5f), MLFloat16(2.75f)});
+
+    // This independent branch provides FuseInitializersTransformer with single-consumer FP16
+    // initializer Casts to fold at L4. With loop level 1, that L4 modification triggers the next L2 pass.
+    std::vector<MLFloat16> conv_input_data(25, MLFloat16(1.0f));
+    auto* conv_input = builder.MakeInput<MLFloat16>({1, 1, 5, 5}, conv_input_data);
+    auto* conv_weight = builder.MakeInitializer<MLFloat16>(
+        {1, 1, 3, 3}, std::vector<MLFloat16>(9, MLFloat16(0.25f)));
+    auto* conv_bias = builder.MakeInitializer<MLFloat16>({1}, {MLFloat16(0.0f)});
+    auto* conv_output = builder.MakeOutput();
+    builder.AddNode("Conv", {conv_input, conv_weight, conv_bias}, {conv_output});
+  };
+
+  auto op_count = [](const std::map<std::string, int>& op_to_count, const std::string& op_type) {
+    const auto it = op_to_count.find(op_type);
+    return it == op_to_count.end() ? 0 : it->second;
+  };
+
+  auto set_graph_optimization_loop_level = [](const char* loop_level) {
+    return [loop_level](SessionOptions& session_options) {
+      ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(
+          kOrtSessionOptionsGraphOptimizationsLoopLevel, loop_level));
+    };
+  };
+
+  auto check_without_l2_repeat = [&](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_count(op_to_count, "SimplifiedLayerNormalization"), 0);
+    EXPECT_EQ(op_count(op_to_count, "Pow"), 2);
+
+    int cpu_pow_count = 0;
+    for (const Node& node : session.GetGraph().Nodes()) {
+      if (node.OpType() == "Pow") {
+        EXPECT_EQ(node.GetExecutionProviderType(), kCpuExecutionProvider);
+        ++cpu_pow_count;
+      }
+    }
+    EXPECT_EQ(cpu_pow_count, 2);
+  };
+
+  auto check_with_l2_repeat = [&](InferenceSessionWrapper& session) {
+    const auto op_to_count = CountOpsInGraph(session.GetGraph());
+    EXPECT_EQ(op_count(op_to_count, "SimplifiedLayerNormalization"), 2);
+    EXPECT_EQ(op_count(op_to_count, "Pow"), 0);
+    EXPECT_EQ(op_count(op_to_count, "ReduceMean"), 0);
+    EXPECT_EQ(op_count(op_to_count, "Add"), 0);
+    EXPECT_EQ(op_count(op_to_count, "Sqrt"), 0);
+    EXPECT_EQ(op_count(op_to_count, "Div"), 0);
+    EXPECT_EQ(op_count(op_to_count, "Mul"), 0);
+
+    int cpu_simplified_layer_norm_count = 0;
+    int inserted_cast_count = 0;
+    for (const Node& node : session.GetGraph().Nodes()) {
+      if (node.OpType() == "SimplifiedLayerNormalization") {
+        EXPECT_EQ(node.GetExecutionProviderType(), kCpuExecutionProvider);
+        ++cpu_simplified_layer_norm_count;
+      } else if (node.OpType() == "Cast" &&
+                 node.Name().find("InsertedPrecisionFreeCast_") == 0) {
+        ++inserted_cast_count;
+      }
+    }
+    EXPECT_EQ(cpu_simplified_layer_norm_count, 2);
+    EXPECT_GE(inserted_cast_count, 2);
+  };
+
+  TransformerTester(build_test_case, check_without_l2_repeat,
+                    TransformerLevel::Level1, TransformerLevel::MaxLevel, 17,
+                    1e-3, 1e-3, nullptr, set_graph_optimization_loop_level("0"));
+  TransformerTester(build_test_case, check_with_l2_repeat,
+                    TransformerLevel::Level1, TransformerLevel::MaxLevel, 17,
+                    1e-3, 1e-3, nullptr, set_graph_optimization_loop_level("1"));
 }
 
 // It tests the scenario when scale or bias are not Graph Inputs and not initialized in Graph
