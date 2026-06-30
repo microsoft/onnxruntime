@@ -1172,8 +1172,8 @@ TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_PositionIds_Negative_WebGPU_Pas
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-// Test that cos_cache dimension exceeding hidden_size is rejected when rotary_embedding_dim=0.
-TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_RejectsCosCacheExceedsHiddenSize) {
+// Test that cos_cache dimension exceeding head_size is rejected when rotary_embedding_dim=0.
+TEST(RotaryEmbeddingTest, ContribRotaryEmbedding_RejectsCosCacheExceedsHeadSize) {
   int batch_size = 1;
   int sequence_length = 1;
   int hidden_size = 64;
