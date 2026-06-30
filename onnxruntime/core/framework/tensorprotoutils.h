@@ -283,6 +283,15 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
 /// <param name="dst_tensor"></param>
 void MakeCpuTensorCopy(const Tensor& src_tensor, Tensor& dst_tensor);
 
+/// <summary>
+/// Normalizes the bytes of a CPU bool tensor to the canonical {0, 1} set (any non-zero byte -> 1).
+/// Bool data sourced from raw_data or external files is copied verbatim and may contain other
+/// non-zero bytes; normalizing ensures every consumer observes a single, consistent value.
+/// No-op for non-bool tensors. The tensor must reside in writable CPU memory.
+/// </summary>
+/// <param name="tensor">The CPU tensor to normalize in place.</param>
+void NormalizeBoolTensorIfNeeded(Tensor& tensor);
+
 #if !defined(DISABLE_SPARSE_TENSORS)
 /// <summary>
 // The function supports only COO format with 1D or 2D indices. Values shape is expected to be 1D.

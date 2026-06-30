@@ -924,7 +924,7 @@ TEST(MLOpTest, TreeRegressorNegativeTargetIds) {
   std::vector<float> Y = {17.700000762939453, 11.100000381469727, -4.699999809265137};
   test.AddInput<float>("X", {3, 2}, X);
   test.AddOutput<float>("Y", {3, 1}, Y);
-  test.Run(OpTester::ExpectResult::kExpectFailure, "target_ids or class_ids cannot have negative values");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "target/class ids cannot have negative values");
 }
 
 TEST(MLOpTest, TreeRegressorOutsideBoundaryTargetIds) {
@@ -966,7 +966,7 @@ TEST(MLOpTest, TreeRegressorOutsideBoundaryTargetIds) {
   std::vector<float> Y = {17.700000762939453, 11.100000381469727, -4.699999809265137};
   test.AddInput<float>("X", {3, 2}, X);
   test.AddOutput<float>("Y", {3, 1}, Y);
-  test.Run(OpTester::ExpectResult::kExpectFailure, "At least one value (1) in target_ids or class_ids is greater or equal to the number of targets or classes (1)");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "At least one value (1) in target/class ids is greater or equal to the target/class count (1)");
 }
 
 TEST(MLOpTest, TreeEnsembleRegressorTargetIdsOutsideBoundary) {
@@ -1002,7 +1002,7 @@ TEST(MLOpTest, TreeEnsembleRegressorTargetIdsOutsideBoundary) {
   test.AddInput<float>("X", {1, 1}, X);
   test.AddOutput<float>("Y", {1, 2}, {0.f, 0.f});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "At least one value (99) in target_ids or class_ids is greater or equal to the number of targets or classes (2)");
+  test.Run(OpTester::ExpectResult::kExpectFailure, "At least one value (99) in target/class ids is greater or equal to the target/class count (2)");
 }
 
 TEST(MLOpTest, TreeEnsembleRegressorNegativeFeatureId) {
