@@ -1629,3 +1629,160 @@ runnable (behavior-preserving; correctness re-validated):
   onnx ≥ 1.22), which ORT rejects (`ai.onnx` officially supported through opset 26).
   The MoE op is a `com.microsoft` contrib op, so `bench_fp4_gemv_autotune.py`'s
   `build_session` now clamps the `ai.onnx` opset to 26 before session creation.
+
+---
+
+## 2026-06-30 — FP4 GEMV interleaved (“Lever A”) + **dtype-conditional accumulation**, opt-in (fp16 decode win ~4 %; bf16 accuracy-safe)
+
+This revisits the **2026-06-17 interleaved-layout negative** above, which closed
+with the open question:
+
+> Future work that wants the interleaved layout must pair it with an accumulation
+> strategy that is both higher-precision (for bf16 parity) **and** register-frugal
+> (to preserve occupancy) — the two have so far been mutually exclusive in this
+> kernel.
+
+“Lever A” is the attempt to satisfy that constraint. The key realization is that
+the precision-vs-occupancy tension **does not have to be resolved by one
+accumulator** — it can be split **per activation dtype**, because fp16 and bf16
+have different mantissa budgets. The result: **fp16 gets a real ~4 % decode win**
+from the interleaved layout, and **bf16 stays accurate** at a small (~1.6 %) cost.
+The path is kept **committed but opt-in** behind `ORT_FP4_GEMV_INTERLEAVED=1`
+(default off; shipping `ColumnMajor` path byte-for-byte unchanged).
+
+### What was implemented (kept, opt-in — not reverted)
+
+The three "levers" the prior single attempts kept separate, now combined:
+
+1. **Interleaved layout (lever 1).** `Fp4KernelDetailsInterleaved<T>` =
+   `KernelDetails<…, ColumnMajorInterleaved, false, TileSizeK=64>` ⇒
+   `kInterleave=4`, `kStepK=32`, `kThreadsPerInterleavedTile=2` (4× fewer K-trips
+   than the `kStepK=8` `ColumnMajor` baseline). The linear `Fp4I2FConverter` is
+   reused (`UseInterleavedConverter=false`); the preprocessor's layout-only
+   steps 1–3 produce exactly the nibble order the linear converter expects.
+2. **dtype-conditional accumulation (lever 2 — the new idea).**
+   `Fp4LeverAAccT<T> = std::conditional_t<std::is_same_v<T, half>, half, float>`:
+   - **fp16 → fp16 accum.** fp16's 10-bit mantissa tolerates 16-bit accumulation
+     over the longer `kStepK=32` chains; this keeps registers low (~79 reg).
+   - **bf16 → fp32 accum.** bf16's 7-bit mantissa does **not** — 16-bit accum
+     fails the bf16 tolerance — so bf16 accumulates in fp32 (~96 reg).
+3. **Smaller `CtaN` (lever 3).** `kInterleavedCtaN=4` (vs default 8), pinned with
+   `kInterleavedThreads=128` (config ignored so weights and kernel always agree).
+
+A diagnostic override `ORT_FP4_GEMV_INTERLEAVED_HALFACC=1` forces **16-bit accum
+for both dtypes** (used to isolate the layout-vs-accum effect; it regresses bf16).
+
+Files (all behind the gate; native WFP4AFP8 paths unchanged):
+
+- **`moe_gemv_fp4.{h,cu}`**: `Fp4MoeGemvUseInterleaved()` (env gate),
+  `Fp4MoeGemvInterleavedHalfAccum()` (diagnostic), `Fp4KernelDetailsInterleaved<T>`,
+  `Fp4LeverAAccT<T>`, interleaved branch in both `launch_moe_gemv_fp4_symmetric`
+  (fc2) and `launch_moe_gemv_fp4_symmetric_interleaved_swiglu` (fc1, before split-K),
+  and the interleaved shape gate (`n % (CtaN*4)==0`, `k % 64==0`).
+- **`fpA_intB_gemm_preprocessors.{h,_impl.cu}`**: `apply_bias_interleave=true`
+  param; FP4 passes `false` to skip integer-only step 4 (the `+8` bias +
+  pair-interleave would corrupt e2m1 float codes); layout-only steps 1–3 apply
+  to e2m1 unchanged.
+- **`moe_quantization.{h,cc}`**: `PrePackRepackFP4Weights(..., gemv_interleaved)`;
+  the interleaved branch routes raw `[E,k,n/2]` e2m1 per-expert through the CUTLASS
+  fpA_intB SM80 `W4_A16` preprocessor (`apply_bias_interleave=false`,
+  `packing_sm=80`). Scales unchanged (`kStepK=32` == MXFP4 block size).
+
+### Result — correctness PASS (4/4), fp16 decode win, bf16 accuracy-safe
+
+Hardware: **A100-SXM4-80GB (sm_80)**, graphics clock locked to 1410 MHz, idle GPU,
+CUDA 13.0. Correctness shape `hidden=inter=512`, swiglu, top_k=4; microbench shape
+`hidden=inter=2880`, `E=32`, `top_k=4`, `tokens=1` (`bench_fp4_gemv_autotune.py`).
+
+**Correctness (vs torch reference, all 4 cases PASS):**
+
+| `test_fp4_decode_swiglu_gemv` case | baseline (fp32 accum) | Lever A | atol |
+|---|---|---|---|
+| FP16 tokens=1 | 0.0078 | 0.0156 | 0.12 |
+| FP16 tokens=2 | 0.0078 | 0.0234 | 0.12 |
+| BF16 tokens=1 | 0.0625 | **0.0625** | 0.15 |
+| BF16 tokens=2 | 0.0625 | **0.0625** | 0.15 |
+
+fp16 uses the cheaper 16-bit accum (slightly looser but well within the 0.12
+atol); bf16 keeps fp32 accum and is bit-for-bit the baseline quality — the
+2026-06-17 bf16 regression (0.1563 / 0.1875) is **resolved**.
+
+**Decode kernel (ncu, fc1 fused-SwiGLU GEMV, `moe_gemv_interleaved_swiglu_kernel`):**
+
+| Config | reg/thread | occupancy | fc1 GEMV duration |
+|---|---|---|---|
+| baseline `ColumnMajor` (fp32 accum) | 56 | 48.9 % | ~101 µs |
+| **Lever A fp16** (fp16 accum) | **79** | **31.7 %** | **~96.8 µs** |
+| Lever A bf16 (fp32 accum) | 96 | 27.9 % | ~107.8 µs |
+
+**End-to-end (`BEST` of 8 reps × 400 iters, µs/run):**
+
+| dtype | baseline | Lever A | Δ |
+|---|---|---|---|
+| **fp16** | 172.1 | **165.3** | **−4.0 % (faster)** |
+| bf16 | 173.8 | 176.6 | +1.6 % (slower) |
+
+### Why fp16 wins and bf16 does not
+
+The 2026-06-17 diagnosis was correct that this GEMV is **occupancy/register-bound,
+not K-loop-bound** — the 4× K-trip reduction alone is a wash. The lever that
+actually moves occupancy is the **accumulator width**, not the layout, `CtaN`, or
+K-tiling:
+
+- A `CtaN` probe (4 vs 2) gave **identical** 96 reg / 28 % occ — `CtaN` is *not*
+  the register lever.
+- fp32 accum costs **+17 registers** (79 → 96), which drops occupancy 31.7 % →
+  27.9 % and **exactly cancels** the interleaved layout's K-trip savings (Lever A
+  bf16 is ~neutral-to-slightly-slower vs baseline).
+- fp16 accum stays at 79 reg / 31.7 % occ, so fp16 **keeps** the interleaved
+  layout's K-trip savings → a genuine ~4 % e2e win.
+
+So the precision-vs-occupancy tension is real and per-dtype: fp16 can afford the
+cheap accumulator and pockets the layout win; bf16 cannot, so it pays the fp32
+register cost and the layout win is erased. There is no single accumulator that is
+both high-precision and register-frugal here — the dtype split is the resolution.
+
+### Reproduce
+
+```bash
+# Build (C++/CUDA only, sm_80, FP4 QMoE on)
+cd ~/git/onnxruntime && ./build.sh --config Release --build_dir build/cu130_fp4_bench \
+  --build_wheel --parallel --nvcc_threads 2 --use_cuda \
+  --cuda_home <cuda> --cudnn_home <cudnn> --compile_no_warning_as_error --skip_tests \
+  --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=80 \
+  --cmake_extra_defines onnxruntime_USE_FP4_QMOE=ON \
+  --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+
+# Correctness (A100/sm_80; monkeypatch the SM<90 skip to exercise the decode path)
+ORT_ENABLE_FP4_GEMV=1 ORT_FP4_GEMV_INTERLEAVED=1 python test_fp4_decode_swiglu_gemv ...
+
+# Decode microbench / ncu (lock clocks first: sudo nvidia-smi -i 0 -lgc 1410)
+cd onnxruntime/test/python/transformers
+ORT_ENABLE_FP4_GEMV=1 ORT_FP4_GEMV_INTERLEAVED=1 python bench_fp4_gemv_autotune.py \
+  --dtype fp16 --reps 8 --iters 400      # baseline: drop ORT_FP4_GEMV_INTERLEAVED
+```
+
+> **Reproducibility gotcha (cost a wrong measurement).** The ORT `--build_wheel`
+> step **strips** `libonnxruntime_providers_cuda.so`, which can drop newly-added
+> template-instantiated `__global__` kernels (here the fp16 16-bit-accum interleaved
+> kernels). The installed wheel `.so` then silently falls back to a surviving
+> instantiation, making two configs that should differ produce **bit-identical**
+> ncu numbers. Verify with `nm -C <installed.so> | grep moe_gemv_interleaved_swiglu_kernel
+> | grep ColumnMajorInterleaved | grep ', 4, 128,'`; if the expected `__half, __half`
+> / `__nv_bfloat16, float` instantiations are missing, copy the **unstripped**
+> `build/.../Release/libonnxruntime_providers_cuda.so` over the venv copy before
+> profiling.
+
+### Status / verdict
+
+- **Kept, opt-in.** First **positive** FP4 decode result in this series: a real
+  ~4 % fp16 e2e decode win, accuracy-safe for bf16. The interleaved layout *is* a
+  lever — but only for fp16, and only once the accumulator is chosen per dtype.
+- **bf16 gets no win** (the fp32 register cost erases it), so for bf16 the
+  interleaved path is not worth enabling; the gate being opt-in lets fp16-only
+  deployments take the win without affecting bf16 or the shipping default.
+- **Open follow-up** (still the 2026-06-17 dream for bf16): a **register-frugal
+  higher-precision accumulator** — e.g. fp32 only in the final cross-step reduce,
+  or fewer live fp32 accumulators — to give bf16 the same occupancy as fp16-accum
+  while keeping fp32 precision. That, plus the tensor-core grouped-GEMM lever,
+  remain the paths to close the bf16 decode gap.

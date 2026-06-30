@@ -41,7 +41,8 @@ class QMoE final : public CudaKernel, public MoEBase {
   void PrePackFp4ScalesForTmaWs(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
                                 IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
   void PrePackRepackFP4Weights(const Tensor& tensor, cudaStream_t stream, AllocatorPtr alloc,
-                               IAllocatorUniquePtr<void>& packed_buf, bool& is_packed);
+                               IAllocatorUniquePtr<void>& packed_buf, bool& is_packed,
+                               bool gemv_interleaved = false);
   // Builds the fused MXFP4 GEMV scale buffer for fc (1 or 2) once both the e8m0 block
   // scales (inputs 3/6) and the per-expert global scale (inputs 15/16) have been staged
   // to GPU. Order-independent: invoked from both PrePack handlers; the call that completes

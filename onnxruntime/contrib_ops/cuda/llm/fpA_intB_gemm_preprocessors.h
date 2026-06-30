@@ -33,6 +33,11 @@ enum class QuantType {
 
 int get_arch_for_mixed_gemm_weight_preprocess(int arch);
 
+// ``apply_bias_interleave`` controls the final integer-only "+bias + pair-interleave" step
+// (step 4). It MUST be left true for genuine signed-integer weights (INT4/INT8). For MXFP4
+// (e2m1) codes the nibbles are floating-point, so the integer +8 bias would corrupt them;
+// FP4 callers pass false to skip step 4 while keeping the layout-only steps 1-3 (row-permute,
+// subbyte-transpose, column-interleave), which apply to e2m1 unchanged.
 void preprocess_weights_for_mixed_gemm_cuda(cudaStream_t stream,
                                             int arch,
                                             int8_t* preprocessed_quantized_weight,
@@ -40,7 +45,8 @@ void preprocess_weights_for_mixed_gemm_cuda(cudaStream_t stream,
                                             int32_t* d_permutation_map,
                                             std::vector<size_t> const& shape,
                                             QuantType quant_type,
-                                            bool synchronize = true);
+                                            bool synchronize = true,
+                                            bool apply_bias_interleave = true);
 
 }  // namespace weight_only
 }  // namespace kernels
