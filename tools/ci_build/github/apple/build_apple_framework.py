@@ -118,11 +118,13 @@ def _build_for_apple_sysroot(
     bundle_root = os.path.join(intermediates_dir, "frameworks", sysroot)
     framework_dir = os.path.join(bundle_root, "onnxruntime.framework")
     static_library_dir = os.path.join(bundle_root, "onnxruntime")
-    fat_binary_output_path = (
-        os.path.join(framework_dir, "onnxruntime")
-        if build_dynamic_framework
-        else os.path.join(static_library_dir, "libonnxruntime.a")
-    )
+    if build_dynamic_framework:
+        if sysroot == "macosx" or sysroot == "macabi":
+            fat_binary_output_path = os.path.join(framework_dir, "Versions", "A", "onnxruntime")
+        else:
+            fat_binary_output_path = os.path.join(framework_dir, "onnxruntime")
+    else:
+        fat_binary_output_path = os.path.join(static_library_dir, "libonnxruntime.a")
 
     if os.path.exists(bundle_root):
         shutil.rmtree(bundle_root)
