@@ -307,6 +307,9 @@ WEBGPU_BINARY_KERNEL(Mul, 14, Mul, WebGpuSupportedNumberTypes())
 
 WEBGPU_BINARY_IMPL(Sub, "a - b")
 
+// NOTE: int64 arithmetic in the WebGPU shader operates on the low 32 bits only (i32 element type).
+// Values outside the int32 range [-2^31, 2^31-1] will produce incorrect results.
+// This matches the same limitation documented in Range and is acceptable for token-position workloads.
 template <int StartVersion, int EndVersion>
 KernelCreateInfo CreateSubVersionedKernelInfo(bool enable_int64) {
   const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
@@ -386,6 +389,8 @@ WEBGPU_BINARY_KERNEL_2(Pow, 15, Pow, WebGpuSupportedNumberTypes(), WebGpuSupport
 
 WEBGPU_BINARY_IMPL(Equal, "vec4<u32>(vec4<input_a_element_t>(a) == vec4<input_b_element_t>(b))")
 
+// NOTE: int64 comparison in the WebGPU shader uses i32 element type (low 32 bits only).
+// Values outside the int32 range will produce incorrect results.
 template <int StartVersion, int EndVersion>
 KernelCreateInfo CreateEqualVersionedKernelInfo(bool enable_int64) {
   const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
