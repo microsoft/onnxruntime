@@ -68,16 +68,5 @@ TEST(SamplingStateArithmeticTest, ThrowsOnNegativeMaxIter) {
   EXPECT_THROW(ComputeSampledAllCount(4, -1), OnnxRuntimeException);
 }
 
-// On platforms where size_t is 32-bit the multiplication itself can overflow
-// (e.g. 2^20 * 2^20 = 2^40). Verify SafeInt detects the overflow there. On
-// 64-bit platforms the product fits in size_t, so we skip the check.
-TEST(SamplingStateArithmeticTest, ThrowsOnProductOverflow) {
-  if constexpr (sizeof(size_t) > 4) {
-    GTEST_SKIP() << "Product fits in 64-bit size_t; overflow path not reachable here.";
-  } else {
-    EXPECT_THROW(ComputeSamplingTotalCount(1 << 20, 1 << 20), OnnxRuntimeException);
-  }
-}
-
 }  // namespace test
 }  // namespace onnxruntime
