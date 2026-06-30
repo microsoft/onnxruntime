@@ -127,6 +127,8 @@ def _build_for_apple_sysroot(
     if os.path.exists(bundle_root):
         shutil.rmtree(bundle_root)
     pathlib.Path(bundle_root).mkdir(parents=True, exist_ok=True)
+    if build_dynamic_framework:
+        pathlib.Path(framework_dir).mkdir(parents=True, exist_ok=True)
 
     # copy the Info.plist, framework_info.json, and header files
 
