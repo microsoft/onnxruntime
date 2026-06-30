@@ -2850,6 +2850,8 @@ std::map<std::string, std::pair<size_t, size_t>> GemmProfilerBackend::getProfile
   // nvllm still uses int64 because torch doesn't have fp4 yet.
   // bool is_fp4_act_quant = mDType == nvinfer::DataType::kFP4 || mDType == nvinfer::DataType::kINT64;
   bool is_fp4_w_quant = mWType == nvinfer::DataType::kFP4 || mWType == nvinfer::DataType::kINT64;
+  bool is_wfp4a16_groupwise_quant = is_fp4_w_quant && !is_fp8_act_quant && mSM < 90;
+  int const effective_group_size = is_wfp4a16_groupwise_quant && mGroupSize <= 0 ? 32 : mGroupSize;
   bool is_w4afp8_quant = is_int_groupwise_w_quant && is_fp8_act_quant;
   // bool is_wfp4afp8_quant = is_fp4_w_quant && is_fp8_act_quant;
 
@@ -2874,16 +2876,23 @@ std::map<std::string, std::pair<size_t, size_t>> GemmProfilerBackend::getProfile
     quant_4_size = quant_2_size;
   }
 
+  if (is_wfp4a16_groupwise_quant) {
+    quant_1_size = fc1_out_size * num_experts_per_node * dtype_bytes * hidden_size / effective_group_size;
+    quant_2_size = hidden_size * num_experts_per_node * dtype_bytes * inter_size / effective_group_size;
+    quant_3_size = 0;
+    quant_4_size = 0;
+  }
+
   // FP4 sizes
-  quant_1_size = is_fp4_w_quant ? sizeof(float) : quant_1_size;
-  quant_2_size = is_fp4_w_quant ? getOffsetWeightSF(num_experts_per_node, inter_size, hidden_size, mScalingType) * sizeof(TmaWarpSpecializedGroupedGemmInput::ElementSF)
-                                : quant_2_size;
-  quant_3_size = is_fp4_w_quant ? num_experts_per_node * sizeof(float) : quant_3_size;
-  quant_4_size = is_fp4_w_quant ? sizeof(float) : quant_4_size;
-  size_t quant_5_size = is_fp4_w_quant
+  quant_1_size = is_fp4_w_quant && !is_wfp4a16_groupwise_quant ? sizeof(float) : quant_1_size;
+  quant_2_size = is_fp4_w_quant && !is_wfp4a16_groupwise_quant ? getOffsetWeightSF(num_experts_per_node, inter_size, hidden_size, mScalingType) * sizeof(TmaWarpSpecializedGroupedGemmInput::ElementSF)
+                                                               : quant_2_size;
+  quant_3_size = is_fp4_w_quant && !is_wfp4a16_groupwise_quant ? num_experts_per_node * sizeof(float) : quant_3_size;
+  quant_4_size = is_fp4_w_quant && !is_wfp4a16_groupwise_quant ? sizeof(float) : quant_4_size;
+  size_t quant_5_size = is_fp4_w_quant && !is_wfp4a16_groupwise_quant
                             ? getOffsetWeightSF(num_experts_per_node, hidden_size, inter_size, mScalingType) * sizeof(TmaWarpSpecializedGroupedGemmInput::ElementSF)
                             : 0;
-  size_t quant_6_size = is_fp4_w_quant ? num_experts_per_node * sizeof(float) : 0;
+  size_t quant_6_size = is_fp4_w_quant && !is_wfp4a16_groupwise_quant ? num_experts_per_node * sizeof(float) : 0;
 
   size_t tma_ws_input_workspace_size = 0;
   if (is_tma_ws_input) {
@@ -3052,6 +3061,9 @@ void GemmProfilerBackend::prepareQuantParams(int num_tokens, char* workspace_ptr
                                     static_cast<float const*>(quant_3), static_cast<float const*>(quant_4),
                                     static_cast<TmaWarpSpecializedGroupedGemmInput::NVFP4ElementSF const*>(quant_5),
                                     static_cast<float const*>(quant_6));
+  } else if ((mWType == nvinfer::DataType::kFP4 || mWType == nvinfer::DataType::kINT64) && mSM < 90) {
+    ORT_ENFORCE(quant_1 && quant_2);
+    mQuantParams = QuantParams::GroupWise(mGroupSize > 0 ? mGroupSize : 32, quant_1, quant_2);
   } else if (mWType == nvinfer::DataType::kFP4 || mWType == nvinfer::DataType::kINT64) {
     // W4A16: FP4 weights with FP16/BF16 activations (no activation quantization)
     ORT_ENFORCE(quant_2 && quant_3 && quant_5 && quant_6);

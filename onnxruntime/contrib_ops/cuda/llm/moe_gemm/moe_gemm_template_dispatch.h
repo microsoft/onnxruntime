@@ -824,7 +824,12 @@ void MoeGemmRunner<T, WeightType, OutputType, ScaleBiasType>::dispatchToArch(
       dispatchMoeGemmToCutlass<T, WeightType, ScaleBiasType, cutlass::arch::Sm89, EpilogueTag>(
           inputs, multi_processor_count_);
     } else if constexpr (use_wfp4a16) {
-      ORT_THROW("wfp4a16 (FP4 weights with FP16/BF16 activations) requires SM120+");
+      if constexpr (std::is_same_v<T, half>) {
+        dispatchMoeGemmToCutlass<T, WeightType, ScaleBiasType, cutlass::arch::Sm80, EpilogueTag>(
+            inputs, multi_processor_count_);
+      } else {
+        ORT_THROW("wfp4a16 Ampere MoE GEMM currently supports fp16 activations only");
+      }
     } else if constexpr (use_wfp4afp8) {
       ORT_THROW("wfp4afp8 (FP4 weights with FP8 activations) requires SM100+");
     } else if constexpr (use_wfp8a16) {

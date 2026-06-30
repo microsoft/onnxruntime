@@ -2087,3 +2087,147 @@ flag off (default path unchanged).
 At the gpt-oss-20b prefill regime (~64 tok/expert) the SM80 path is **4.7× faster than the
 SM90 TMA mixed kernel and 7.5× faster than the dense A16 dequant fallback**, landing close
 to INT4's SM80 envelope (0.66 ms) — closing the bulk of the FP4-vs-INT4 prefill gap.
+
+---
+
+## 2026-06-30 — A100 / SM80 default-on FP4 grouped GEMM repair (manual port from `91ef688`)
+
+Follow-up to the opt-in SM80 FP4 grouped-GEMM implementation above. The current
+`tlwu/20260625/qmoe_fp4` branch had enabled `ORT_FP4_SM80_GEMM` by default, but on
+an actual A100 build the default-on path failed before any useful timing could be
+collected. This experiment records the baseline failure, the minimal manual port from
+`91ef68800761bd5773032863d6426a58e062c83e`, and the repaired A100 numbers.
+
+### Setup
+
+- GPU: A100-SXM4-80GB, SM80, `CUDA_VISIBLE_DEVICES=0`.
+- Branch/head under test: `tlwu/20260625/qmoe_fp4`, head
+  `17694aa4e3768e6a24b54c55a207bb8901df449f` before local edits.
+- Build: `build/cu130_fp4_bench/Release`, `CMAKE_CUDA_ARCHITECTURES=80`,
+  `onnxruntime_USE_FP4_QMOE=ON`, CUDA 13.0 + cuDNN 9.23.
+- Python path for probes/tests:
+
+  ```bash
+  PYTHONPATH=/home/tianlei/git/onnxruntime/build/cu130_fp4_bench/Release:\
+/home/tianlei/git/onnxruntime/onnxruntime/test/python/transformers
+  ```
+
+- Important gate semantics on this branch: **do not** set
+  `ORT_ENABLE_FP4_CUTLASS_GEMM=1` when testing the SM80 path. That env var requests
+  the native/TMA path and suppresses the SM80 fallback. Use `ORT_FP4_SM80_GEMM=1`
+  for default-on SM80, and `ORT_FP4_SM80_GEMM=0` for the dense fallback baseline.
+
+### Baseline before the port
+
+The fallback path was healthy, but the default-on SM80 path failed on production
+shapes and on the small FP4 tests. The 512-token gpt-oss-shaped probe emitted:
+
+```text
+No valid GEMM config found for (N;K)=(5760;2880), dtype=1 wtype=9 gemm_type=0
+No valid GEMM config found for (N;K)=(2880;2880), dtype=1 wtype=9 gemm_type=1
+wfp4a16 (FP4 weights with FP16/BF16 activations) requires SM120+
+```
+
+Fallback validation with `ORT_FP4_SM80_GEMM=0` passed the SM80-relevant FP4 test
+suite and established the pre-port fallback baseline:
+
+| Tokens | Fallback latency |
+|-------:|-----------------:|
+| 512    | 18.21084 ms |
+| 1024   | 18.60141 ms |
+| 2048   | 19.45548 ms |
+| 4096   | 21.40929 ms |
+
+### Manual port from `91ef688`
+
+Only the pieces needed to repair the observed A100 failure were ported; newer fixes
+on `tlwu/20260625/qmoe_fp4` such as `interleave_without_bias` were preserved.
+
+1. **SM80 WFP4A16 groupwise quant workspace + params**
+   (`moe_gemm/moe_kernels.cu`): for `mSM < 90`, FP4 weights with FP16/BF16
+   activations now allocate two groupwise scale workspaces and use
+   `QuantParams::GroupWise(mGroupSize > 0 ? mGroupSize : 32, quant_1, quant_2)`.
+   The SM90/TMA FP4 quant-param layout remains gated to the non-SM80 path.
+2. **SM80 fp16 WFP4A16 dispatch**
+   (`moe_gemm/moe_gemm_template_dispatch.h`): the SM80 branch now dispatches
+   `use_wfp4a16 && T == half` to
+   `dispatchMoeGemmToCutlass<..., cutlass::arch::Sm80, ...>` instead of throwing
+   `requires SM120+`. BF16 still throws on this Ampere grouped-GEMM path.
+
+The first change alone was insufficient: after rebuilding and staging the provider,
+the same 512-token probe still failed with the `requires SM120+` throw. The second
+dispatch change directly addressed that remaining failure.
+
+### Rebuild / staging note
+
+After each provider-only rebuild, the fresh provider was copied into both Python
+load locations:
+
+```bash
+cd ~/git/onnxruntime && source .venv/bin/activate
+cmake --build build/cu130_fp4_bench/Release --target onnxruntime_providers_cuda \
+  --config Release -- -j96 \
+  > /tmp/ort_fp4_sm80_dispatch_build.log 2>&1
+cp build/cu130_fp4_bench/Release/libonnxruntime_providers_cuda.so \
+  build/cu130_fp4_bench/Release/onnxruntime/capi/libonnxruntime_providers_cuda.so
+cp build/cu130_fp4_bench/Release/libonnxruntime_providers_cuda.so \
+  build/cu130_fp4_bench/Release/build/lib/onnxruntime/capi/libonnxruntime_providers_cuda.so
+```
+
+The final rebuild relinked `libonnxruntime_providers_cuda.so` and staged a provider
+of size `109582528` bytes at all three locations.
+
+### Correctness / engagement validation
+
+The repaired default-on path now runs the production-shaped probe:
+
+```bash
+cd /tmp && source ~/git/onnxruntime/.venv/bin/activate
+CUDA_VISIBLE_DEVICES=0 ORT_FP4_SM80_GEMM=1 \
+PYTHONPATH=/home/tianlei/git/onnxruntime/build/cu130_fp4_bench/Release:/home/tianlei/git/onnxruntime/onnxruntime/test/python/transformers \
+python /home/tianlei/git/onnxruntime/onnxruntime/test/python/transformers/bench_fp4_gemv_autotune.py \
+  --tokens 512 --dtype fp16 --warmup 2 --iters 5 --reps 1
+```
+
+Result: **1713.32 us/run** at 512 tokens, with no `No valid GEMM config` warnings
+and no SM120 throw.
+
+The SM80-relevant FP4 CUDA tests also pass with the default-on path. The test harness
+was run from `/tmp`, monkeypatching the old SM90 skip (`_skip_if_no_fp4`) and clamping
+the default ONNX opset to 26. The native SM90-only prepack-scale test was excluded
+from the SM80 subset.
+
+```text
+Ran 14 tests in 2.105s
+OK
+```
+
+The full class run had the same 14 functional passes plus one expected SM90-only
+skip (`test_fp4_native_cutlass_row_varying_scales`).
+
+### A100 benchmark sweep (clock locked to 1410 MHz)
+
+Bench command shape: gpt-oss QMoE node (`hidden=2880`, `inter=2880`, `E=32`,
+`top_k=4`, fp16), `--warmup 5 --iters 20 --reps 3`. GPU clocks were locked with
+`sudo -n nvidia-smi -i 0 -lgc 1410` and reset with `-rgc` after the sweep.
+
+| Tokens | SM80 FP4 default-on (`ORT_FP4_SM80_GEMM=1`) | Fallback (`ORT_FP4_SM80_GEMM=0`) | Speedup |
+|-------:|--------------------------------------------:|----------------------------------:|--------:|
+| 512    | **1.69445 ms** | 18.20956 ms | **10.75×** |
+| 1024   | **2.50430 ms** | 18.61366 ms | **7.43×** |
+| 2048   | **4.03634 ms** | 19.45979 ms | **4.82×** |
+| 4096   | **7.35478 ms** | 21.35033 ms | **2.90×** |
+
+Compared with the pre-port baseline, the fallback numbers are unchanged within
+noise, while the default-on path changes from hard failure to a large speedup.
+
+### Status / verdict
+
+- The manual port repairs the A100 default-on SM80 FP4 grouped-GEMM path with only
+  two focused source changes.
+- SM80 fp16 WFP4A16 grouped GEMM is correct on the SM80-relevant FP4 tests and gives
+  a **2.9×–10.8×** QMoE-node speedup over the dense fallback across 512–4096 tokens.
+- BF16 Ampere grouped-GEMM dispatch remains intentionally unsupported in this port;
+  BF16 test coverage still passes through the supported fallback paths.
+- The result makes `ORT_FP4_SM80_GEMM` default-on viable on A100 for fp16 production
+  shapes, while preserving `ORT_FP4_SM80_GEMM=0` as a fallback / comparison knob.
