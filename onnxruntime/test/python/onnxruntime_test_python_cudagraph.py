@@ -132,12 +132,18 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
         ro = onnxrt.RunOptions()
 
         # One regular run for the necessary memory allocation and cuda graph capturing
+        # Synchronize to make sure the input copy on the default stream is done since the EP isn't using the default stream.
+        io_binding.synchronize_inputs()
         session.run_with_iobinding(io_binding, ro)
+        # Synchronize to make sure the computation on the EP stream is done before reading the output on the default stream.
+        io_binding.synchronize_outputs()
         expected_y = np.array([[5.0], [11.0], [17.0]] * INPUT_SIZE, dtype=np.float32)
         np.testing.assert_allclose(y_ortvalue.numpy(), expected_y, rtol=1e-05, atol=1e-05)
 
         # After capturing, CUDA graph replay happens from this Run onwards
+        io_binding.synchronize_inputs()
         session.run_with_iobinding(io_binding, ro)
+        io_binding.synchronize_outputs()
         np.testing.assert_allclose(y_ortvalue.numpy(), expected_y, rtol=1e-05, atol=1e-05)
 
         # Update input and then replay CUDA graph
@@ -147,7 +153,9 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
                 dtype=np.float32,
             )
         )
+        io_binding.synchronize_inputs()
         session.run_with_iobinding(io_binding, ro)
+        io_binding.synchronize_outputs()
         np.testing.assert_allclose(
             y_ortvalue.numpy(),
             np.array([[50.0], [110.0], [170.0]] * INPUT_SIZE, dtype=np.float32),
@@ -235,12 +243,18 @@ class TestInferenceSessionWithCudaGraph(unittest.TestCase):
 
             # One regular run for the necessary memory allocation and cuda graph capturing
             cuda_graph_helper.update_inputs(inputs)
+            # Synchronize to make sure the input copy on the default stream is done since the EP isn't using the default stream.
+            io_binding.synchronize_inputs()
             session.run_with_iobinding(io_binding)
+            # Synchronize to make sure the computation on the EP stream is done before reading the output on the default stream.
+            io_binding.synchronize_outputs()
             expected_output = cuda_graph_helper.get_output("softmaxout_1")
 
             # After capturing, CUDA graph replay happens from this Run onwards
             cuda_graph_helper.update_inputs(inputs)
+            io_binding.synchronize_inputs()
             session.run_with_iobinding(io_binding)
+            io_binding.synchronize_outputs()
             output = cuda_graph_helper.get_output("softmaxout_1")
 
             np.testing.assert_allclose(output, expected_output, rtol=1e-02, atol=1e-02)
