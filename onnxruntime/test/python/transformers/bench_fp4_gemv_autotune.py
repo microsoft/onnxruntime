@@ -17,6 +17,7 @@ import argparse
 import time
 
 import numpy
+import onnx
 import torch
 from cuda_plugin_ep_helper import resolve_cuda_plugin_ep
 from onnx import TensorProto
@@ -79,6 +80,15 @@ def build_session(hidden, inter, num_experts, top_k, num_tokens, onnx_dtype, use
         fc2_global_scale=fc2_global_scale,
         use_swiglu=use_swiglu,
     )
+
+    # create_fp4_moe_onnx_graph stamps the default onnx opset (27 for onnx>=1.22),
+    # which ORT rejects (official ai.onnx support is up to opset 26). The MoE op is
+    # a com.microsoft contrib op, so clamping the ai.onnx opset to 26 is safe.
+    model_proto = onnx.load_model_from_string(onnx_model)
+    for op in model_proto.opset_import:
+        if op.domain in ("", "ai.onnx") and op.version > 26:
+            op.version = 26
+    onnx_model = model_proto.SerializeToString()
 
     opts = onnxruntime.SessionOptions()
     opts.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL

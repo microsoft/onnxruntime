@@ -1458,7 +1458,7 @@ benchmarked both back-to-back on GPU 0.
   and lock GPU clocks first; unlocked-clock wall-clock A/B on this farm cannot
   resolve deltas below ~10 %.
 
-## 2026-06-30 — FP4 fc1 split-K + **fp32-accumulation** SwiGLU GEMV, opt-in (UNFINISHED — benchmark contention-blocked)
+## 2026-06-30 — FP4 fc1 split-K + **fp32-accumulation** SwiGLU GEMV, opt-in (FINISHED 2026-07-02 — confirmed slower on both H200 (~2.6 % fc1 / ~1.2 % e2e) and A100 (~4.5 %); second split-K negative)
 
 Revisit of the 2026-06-16 `kSplitK2` negative result, motivated by a new INT4
 data point: in the **current** tree INT4's two-pass split-K SwiGLU GEMV (`SplitK=2`,
@@ -1498,44 +1498,134 @@ FP4 `ColumnMajor` has `kStepK = 128/16 = 8`, so `CtaK = StepK·Threads = 1024` a
 cannot measure this — the A/B **must** use realistic dims (gpt-oss-20b
 `hidden=inter=2880` → `num_iters=3`).
 
-### Result — correctness PASS; performance INCONCLUSIVE (farm contention)
+### Result — correctness PASS; performance ~2.6 % slower (idle GPU, resolved)
 
 - Correctness: **20/20** `test_qmoe_fp4_cuda.py` pass with `ORT_FP4_GEMV_SPLITK=1`
-  (fp32 per-split + fp32 cross-split reduce holds the bf16/fp16 tolerance). This
-  result is independent of GPU load, so it is solid.
-- Decode A/B at `hidden=inter=2880`, clocks locked to 1980 MHz
-  (`sudo nvidia-smi -i 0 -lgc 1980`; reset with `-rgc` after):
+  (fp32 per-split + fp32 cross-split reduce holds the bf16/fp16 tolerance).
+- Clean A/B on a **fully idle** H200 (all 8 GPUs at 0 % SM), clocks locked to
+  1980 MHz (`sudo nvidia-smi -i 0 -lgc 1980`; reset `-rgc` after), no-dump-node
+  build (`git-commit-id=e8df8f4dd6`, `dump-node` compiled out — the earlier
+  `dump-node=1` build added per-node I/O dumps that inflated and de-stabilized the
+  measurement). `bench_fp4_gemv_autotune.py --hidden 2880 --inter 2880 --experts 8
+  --top_k 4 --tokens 1 --warmup 30 --iters 300 --reps 8`, best-of-reps:
 
-  | Config | Best-case min (µs) |
-  |--------|--------------------|
-  | Baseline (single-pass) | 135.1 – 136.7 |
-  | Split-K + fp32-accum (`SPLITK=1`) | 137.1, 137.1, 139.4 |
+  | Config | Whole MoE-layer BEST (µs) |
+  |--------|---------------------------|
+  | Baseline (single-pass) | **119.88** |
+  | Split-K + fp32-accum (`SPLITK=1`) | **121.30** (+1.2 %) |
 
-  **These numbers are NOT trustworthy.** All 8 H200s were saturated by another
-  user's job (PIDs 555237–555244, ~90–105 GB and 70–98 % SM each; GPU 0 at 98 %),
-  so even with locked clocks the SM contention corrupts the comparison. The run was
-  stopped early and the clock lock reset (shared box).
+- **Per-kernel attribution** (nsys `cuda_gpu_kern_sum`, median over 254 fc1 calls)
+  isolates the change to the fc1 GEMV itself — the cleanest signal:
 
-### Preliminary read (to be confirmed on an idle farm)
+  | fc1 component | Baseline | Split-K |
+  |---------------|----------|---------|
+  | `moe_gemv_interleaved_swiglu_kernel` (single-pass) | 53,439 ns | — |
+  | `moe_gemv_splitk_partials_kernel` (two-pass, fp32) | — | 52,927 ns |
+  | `moe_gemv_splitk_reduce_swiglu_kernel` | — | +1,920 ns |
+  | **fc1 total** | **53,439 ns** | **54,847 ns (+2.6 %)** |
 
-Directionally split-K is ~1.5–3 % **slower**, matching the 2026-06-16 `kSplitK2`
-finding. The likely mechanism is unchanged: FP4's non-interleaved `ColumnMajor`
-(`kInterleave=1`, `CtaN=8`) already launches `expanded × n/8` base CTAs — **4× more
-y-blocks than INT4's interleaved `n/(CtaN·4)` grid** — so the SMs are already
-saturated and split-K only adds the second reduce pass + partials round-trip without
-filling idle SMs. INT4 benefits because its interleaved grid is 4× coarser and *does*
-leave SMs to fill. If so, the fp32-per-split refinement that helped INT4 does not
-transfer to FP4 because the two paths differ in grid occupancy, not accumulation
-precision.
+  The split-K **partials** kernel is marginally *faster* than the baseline
+  single-pass (52,927 vs 53,439 ns — the shorter, fp32-accumulated per-split
+  K-chains help slightly and tighten the variance), **but** the mandatory reduce
+  pass (1,920 ns) more than erases that gain. Net fc1 is +2.6 % slower per call,
+  matching the +1.2 % whole-layer e2e delta (diluted by the rest of the op).
 
-### Status / next step
+### Why it's slower — confirmed grid-occupancy mechanism
 
-- **Unfinished.** The code is committed (opt-in, off by default, correctness-validated)
-  so the clean A/B can be reproduced later without rebuilding. Do **not** treat the
-  contended numbers above as the verdict.
-- **Next:** re-run the `hidden=inter=2880` A/B when the farm is idle (lock clocks,
-  best-case min over ≥8 launches per arm). If split-K is confirmed neutral/slower,
-  either keep it dormant behind the env flag or revert, and record it as the second
-  split-K negative — reinforcing that the FP4 decode lever is **not** grid
-  parallelism but the **interleaved layout (lever 1)** / **tensor-core grouped GEMM
-  (lever 2)** recorded above.
+The mechanism is exactly as hypothesized from the 2026-06-16 `kSplitK2` result:
+FP4's non-interleaved `ColumnMajor` (`kInterleave=1`, `CtaN=8`) already launches
+`expanded × n/8` base CTAs — **4× more y-blocks than INT4's interleaved
+`n/(CtaN·4)` grid** — so the SMs are already saturated. Splitting K therefore only
+adds the second reduce pass + partials round-trip without filling idle SMs. INT4
+benefits from the same recipe because its interleaved grid is 4× coarser and *does*
+leave SMs to fill. The fp32-per-split refinement that helped INT4 does **not**
+transfer to FP4 because the two paths differ in **grid occupancy, not accumulation
+precision** — the partials kernel even ran slightly faster here, so it is purely the
+reduce-pass overhead on an already-full grid.
+
+### Status / verdict
+
+- **Resolved negative — the second split-K negative for FP4** (after 2026-06-16
+  `kSplitK2`). Split-K + fp32-accum is correct but ~2.6 % slower on the fc1 GEMV
+  and ~1.2 % slower e2e on idle, locked-clock H200/SM90.
+- The code is **kept dormant**, opt-in behind `ORT_FP4_GEMV_SPLITK` (default off,
+  default path byte-for-byte unchanged, correctness-validated 20/20) so the A/B is
+  reproducible and so the same plumbing can be re-tested cheaply on a *different*
+  architecture (e.g. A100/SM80, which has fewer SMs and so an even-more-saturated
+  FP4 grid — expected to confirm the same negative, but worth a data point) without
+  rebuilding. No revert needed; it adds no cost when off.
+- The FP4 decode lever is therefore confirmed to be **not** grid parallelism but the
+  **interleaved layout (lever 1)** / **tensor-core grouped GEMM (lever 2)** recorded
+  above.
+
+### Benchmark-harness note (why setup, not measurement, was the slow part)
+
+The earlier "contention-blocked" run also suffered from a pathological *setup*
+cost unrelated to the kernel: the MXFP4 reference quantizer
+(`test_qmoe_fp4_cuda.py::quantize_weight_to_mxfp4`) computed the ue8m0 block scales
+in a **pure-Python double loop calling `.item()` per element** — ~25 M serialized
+GPU↔CPU syncs at the gpt-oss-20b 2880/32-expert shape (a reference quantizer
+written for tiny 128–256 unit-test shapes, reused unchanged at full size), which
+alone pushed one build past 7 minutes. It was **vectorized** to pure tensor ops
+(round-half-to-even `log2`, clamp `[1,254]`, default `1.0`/code `127` for all-zero
+blocks), verified **bit-identical** to the loop (0 mismatches over a 2880×90 tensor
+including zero blocks). The *measurement* loop was always fine; only the per-process
+setup was slow. After the fix, a full A/B (both arms, best-of-8) runs in well under
+a minute.
+
+### Result — re-run 2026-07-02 on idle A100 (resolved: split-K confirmed ~4.5 % SLOWER)
+
+The clean A/B was re-run on a **fully idle A100-SXM4-80GB** (sm_80, 108 SMs, all 8
+GPUs at 0 % SM), GPU 0 persistence-mode on and graphics clock locked to its 1410 MHz
+max (`sudo nvidia-smi -i 0 -lgc 1410`; reset with `-rgc` after). Same realistic shape
+(`hidden=inter=2880`, `E=32`, `top_k=4`, 1 token, fp16 → fc1 `n=5760 k=2880`,
+`num_iters=3`, so split-K genuinely engages). Best-case min µs/run over 8 internal
+reps × 3 process launches per arm:
+
+| Config | launch 1 | launch 2 | launch 3 | Best-case min (µs) |
+|--------|---------:|---------:|---------:|-------------------:|
+| Baseline (single-pass) | 171.87 | 172.40 | 171.63 | **171.63** |
+| Split-K + fp32-accum (`SPLITK=1`) | 179.27 | 179.30 | 179.66 | **179.27** |
+
+**Verdict: split-K is ~4.5 % slower** (179.27 / 171.63 = 1.045), with **zero overlap**
+between the two arms across all six launches — a clean, reproducible negative. This
+confirms (and is directionally stronger than) the contended H200 preliminary read of
+~1.5–3 % slower, and matches the 2026-06-16 `kSplitK2` finding.
+
+The mechanism argument holds and is in fact **reinforced on A100**: FP4's
+non-interleaved `ColumnMajor` (`kInterleave=1`, `CtaN=8`) launches `expanded × n/8`
+= `4 × 720 = 2880` base CTAs for fc1 — far above A100's 108 SMs — so the SMs are
+already saturated and split-K only adds the cross-split reduce pass + fp32-partials
+round-trip without filling idle SMs. With **fewer** SMs than the H200 (108 vs 132),
+the device is even more saturated, so the relative overhead of the extra pass is
+larger here (~4.5 % vs the H200's predicted 1.5–3 %). The fp32-per-split refinement
+that helped INT4 does not transfer to FP4, because the two paths differ in **grid
+occupancy**, not accumulation precision (INT4's interleaved grid is 4× coarser and
+*does* leave SMs to fill; FP4's does not).
+
+### Status — FINISHED
+
+- **Done.** This is the **second split-K negative** for FP4. The FP4 decode lever is
+  **not** grid parallelism but the **interleaved layout (lever 1)** / **tensor-core
+  grouped GEMM (lever 2)** recorded above.
+- The split-K code stays **committed but dormant** behind `ORT_FP4_GEMV_SPLITK=1`
+  (default off, single-pass path byte-for-byte unchanged, correctness 5/5 on sm_80 +
+  20/20 on session-capable GPUs). Keeping it opt-in preserves the reproducible
+  experiment without any cost to the shipping path; a follow-up may revert it once the
+  negative is considered permanently settled.
+
+#### Environment / harness notes (A100 re-run)
+
+The re-run was on a newer-onnx box than the original H200 capture; two
+environment-compatibility fixes to the test tree were needed to make the harness
+runnable (behavior-preserving; correctness re-validated):
+
+- `quantize_weight_to_mxfp4` (`test_qmoe_fp4_cuda.py`) used a per-element Python
+  `.item()` double loop for the ue8m0 block-scale codes (~24.9 M serialized GPU↔CPU
+  syncs at this shape) → `build_session` took **> 7 min and never finished**. Replaced
+  with a vectorized torch computation (`torch.round(log2(...))` + `clamp(1,254)`),
+  dropping per-session setup to ~8 s. Correctness unchanged.
+- `create_fp4_moe_onnx_graph` stamps the onnx-package default opset (27 for
+  onnx ≥ 1.22), which ORT rejects (`ai.onnx` officially supported through opset 26).
+  The MoE op is a `com.microsoft` contrib op, so `bench_fp4_gemv_autotune.py`'s
+  `build_session` now clamps the `ai.onnx` opset to 26 before session creation.

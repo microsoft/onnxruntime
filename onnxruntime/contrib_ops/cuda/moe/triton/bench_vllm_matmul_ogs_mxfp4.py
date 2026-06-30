@@ -55,7 +55,7 @@ def bench(M, N, K, E=1):
     err = (out.float() - ref.float()).abs().max().item()
     rel = err / (ref.float().abs().max().item() + 1e-6)
     ms = triton.testing.do_bench(lambda: matmul_ogs(x, w, None, precision_config=pc, y=y))
-    print(f"vLLM matmul_ogs M={M} N={N} K={K} E={E} | rel={rel:.4f} | {ms*1000:.1f} us")
+    print(f"vLLM matmul_ogs M={M} N={N} K={K} E={E} | rel={rel:.4f} | {ms * 1000:.1f} us")
 
 
 def make_decode_routing(M, E, dev):
@@ -86,7 +86,7 @@ def bench_decode_routed(M, N, K, E=32):
     err = (out.float() - ref.float()).abs().max().item()
     rel = err / (ref.float().abs().max().item() + 1e-6)
     ms = triton.testing.do_bench(lambda: matmul_ogs(x, w, None, routing_data=routing, precision_config=pc, y=y))
-    print(f"vLLM routed M={M} N={N} K={K} E={E} | rel={rel:.4f} | {ms*1000:.1f} us")
+    print(f"vLLM routed M={M} N={N} K={K} E={E} | rel={rel:.4f} | {ms * 1000:.1f} us")
 
 
 if __name__ == "__main__":

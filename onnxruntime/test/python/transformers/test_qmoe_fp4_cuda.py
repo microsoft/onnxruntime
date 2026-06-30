@@ -131,18 +131,22 @@ def quantize_weight_to_mxfp4(weight, block_size=32):
     # Per-block max absolute value
     block_amax = blocks.abs().amax(dim=-1)  # [N, num_blocks]
 
-    # Compute ue8m0 block scales (powers of 2)
-    scales_float = torch.ones(n, num_blocks, dtype=torch.float32, device=weight.device)
-    scales_code = torch.full((n, num_blocks), 127, dtype=torch.uint8, device=weight.device)
-
-    for i in range(n):
-        for j in range(num_blocks):
-            amax = block_amax[i, j].item()
-            if amax > 0:
-                ideal = amax / FP4_MAX
-                code = float_to_ue8m0_code(ideal)
-                scales_code[i, j] = code
-                scales_float[i, j] = ue8m0_code_to_float(code)
+    # Compute ue8m0 block scales (powers of 2). Vectorized equivalent of the
+    # per-element float_to_ue8m0_code / ue8m0_code_to_float loop: the scalar
+    # version calls .item() on every [n, num_blocks] entry (a GPU->CPU sync),
+    # which is ~25M serialized syncs at the gpt-oss-20b 32-expert shape and makes
+    # session construction take many minutes. torch.round matches Python round()
+    # (both round-half-to-even). Blocks with amax<=0 keep code=127 / scale=1.0.
+    pos = block_amax > 0
+    ideal = torch.where(pos, block_amax / FP4_MAX, torch.ones_like(block_amax))
+    exp = torch.round(torch.log2(ideal))
+    code = (exp + 127).clamp(1, 254).to(torch.uint8)
+    scales_code = torch.where(pos, code, torch.full_like(code, 127))
+    scales_float = torch.where(
+        pos,
+        torch.pow(2.0, scales_code.to(torch.float32) - 127.0),
+        torch.ones_like(block_amax, dtype=torch.float32),
+    )
 
     # Quantize values within each block
     scaled = blocks / scales_float.unsqueeze(-1)

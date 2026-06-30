@@ -38,25 +38,63 @@ def run(M, N, K, E, BM=16, BN=64, BK=64, w=4, stages=3):
     packed, scales, W = make_mxfp4(E, N, K, dev)
     Out = torch.empty(M, N, device=dev, dtype=torch.float16)
     grid = (triton.cdiv(M, BM), triton.cdiv(N, BN))
-    mxfp4_grouped_gemm[grid](A, packed, scales, r2e, Out, M, N, K,
-                             A.stride(0), A.stride(1), *packed.stride(), *scales.stride(),
-                             Out.stride(0), Out.stride(1), BLOCK_M=BM, BLOCK_N=BN, BLOCK_K=BK,
-                             num_warps=w, num_stages=stages)
+    mxfp4_grouped_gemm[grid](
+        A,
+        packed,
+        scales,
+        r2e,
+        Out,
+        M,
+        N,
+        K,
+        A.stride(0),
+        A.stride(1),
+        *packed.stride(),
+        *scales.stride(),
+        Out.stride(0),
+        Out.stride(1),
+        BLOCK_M=BM,
+        BLOCK_N=BN,
+        BLOCK_K=BK,
+        num_warps=w,
+        num_stages=stages,
+    )
     R = ref(A, W, r2e)
     err = (Out.float() - R.float()).abs().max().item()
     rel = err / (R.float().abs().max().item() + 1e-6)
-    ms = triton.testing.do_bench(lambda: mxfp4_grouped_gemm[grid](
-        A, packed, scales, r2e, Out, M, N, K, A.stride(0), A.stride(1), *packed.stride(),
-        *scales.stride(), Out.stride(0), Out.stride(1), BLOCK_M=BM, BLOCK_N=BN, BLOCK_K=BK,
-        num_warps=w, num_stages=stages))
-    print(f"M={M} N={N} K={K} E={E} BN={BN} BK={BK} w={w} st={stages} | rel={rel:.4f} | {ms*1000:.1f} us "
-          f"({ms*1000/M:.1f} us/row)")
+    ms = triton.testing.do_bench(
+        lambda: mxfp4_grouped_gemm[grid](
+            A,
+            packed,
+            scales,
+            r2e,
+            Out,
+            M,
+            N,
+            K,
+            A.stride(0),
+            A.stride(1),
+            *packed.stride(),
+            *scales.stride(),
+            Out.stride(0),
+            Out.stride(1),
+            BLOCK_M=BM,
+            BLOCK_N=BN,
+            BLOCK_K=BK,
+            num_warps=w,
+            num_stages=stages,
+        )
+    )
+    print(
+        f"M={M} N={N} K={K} E={E} BN={BN} BK={BK} w={w} st={stages} | rel={rel:.4f} | {ms * 1000:.1f} us "
+        f"({ms * 1000 / M:.1f} us/row)"
+    )
 
 
 if __name__ == "__main__":
     # GPT-OSS-20B: hidden=2880, inter=2880, topk=4. Decode FC1 N=2*inter, FC2 N=hidden.
-    run(M=4, N=5760, K=2880, E=32)   # FC1 gate+up, 4 active experts
-    run(M=4, N=2880, K=2880, E=32)   # FC2
+    run(M=4, N=5760, K=2880, E=32)  # FC1 gate+up, 4 active experts
+    run(M=4, N=2880, K=2880, E=32)  # FC2
     print("--- sweep (FC1 m=4) ---")
     for bn in (32, 64, 128):
         for bk in (32, 64, 128):
@@ -64,5 +102,5 @@ if __name__ == "__main__":
                 for stages in (2, 3):
                     try:
                         run(M=4, N=5760, K=2880, E=32, BM=16, BN=bn, BK=bk, w=w, stages=stages)
-                    except Exception as ex:  # noqa: BLE001 - spike should keep sweeping after invalid configs.
+                    except Exception as ex:
                         print(f"M=4 N=5760 K=2880 BN={bn} BK={bk} w={w} st={stages} | fail: {type(ex).__name__}: {ex}")
