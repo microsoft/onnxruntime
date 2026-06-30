@@ -255,6 +255,18 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
         fp4_native_max_tokens_per_expert_ = onnxruntime::ParseEnvironmentVariableWithDefault<int64_t>(
             "ORT_FP4_NATIVE_MAX_TOKENS_PER_EXPERT", 128);
       }
+      // Opt-in SM80 FP4 grouped GEMM (port of the INT4 fused-dequant Ampere path to MXFP4).
+      // Only meaningful in the dequant-fallback regime (sm_ < 120, e.g. H200), where the
+      // native SM90 TMA FP4 path is the slow prefill path. When enabled we force the GEMV
+      // prepack (which also produces the SM80 CUTLASS-interleaved e2m1 weights + fp16 group
+      // scales) and later override the runner to the FP4 runner so prefill can dispatch to
+      // the SM80 DqMma grouped GEMM (see moeUseSm80Fp4 / ORT_FP4_SM80_GEMM in the kernels).
+      enable_fp4_sm80_gemm_ =
+          use_fp4_dequant_fallback_ && is_fp16_ &&
+          onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_FP4_SM80_GEMM", 0) == 1;
+      if (enable_fp4_sm80_gemm_) {
+        enable_fp4_gemv_ = true;
+      }
 #else
       use_fp4_dequant_fallback_ = true;
 #endif
@@ -280,7 +292,7 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
         use_fp8_dequant_fallback_ = true;
       }
     }
-    if (quant_type_ == "fp4" && !use_fp4_dequant_fallback_) {
+    if (quant_type_ == "fp4" && (!use_fp4_dequant_fallback_ || enable_fp4_sm80_gemm_)) {
 #if defined(ENABLE_FP4) && defined(USE_FP4_QMOE)
       if (is_fp16) {
         m_moe_runner = std::make_unique<CutlassMoeFCRunner<half, __nv_fp4_e2m1, half>>(
@@ -292,7 +304,8 @@ QMoE::QMoE(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info), MoE
       // Dense A16 fallback runner for the large-per-expert-M prefill regime, where dequantizing
       // the MXFP4 weights to FP16/BF16 and running the dense grouped GEMM beats the native FP4
       // grouped GEMM. Constructed alongside the FP4 runner so a single QMoE node can route per
-      // call (see fp4_native_max_tokens_per_expert_).
+      // call (see fp4_native_max_tokens_per_expert_). Not used by the SM80 grouped-GEMM path
+      // (enable_fp4_sm80_gemm_), which routes prefill through the FP4 runner directly.
       if (is_fp16) {
         m_fp4_dense_fallback_runner_ = std::make_unique<CutlassMoeFCRunner<half, half, half>>(
             sm_, activation_type_, normalize_routing_weights_, use_sparse_mixer_);
@@ -609,6 +622,15 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   const bool route_native_fp4 =
       fp4_native_available &&
       (fp4_native_max_tokens_per_expert_ <= 0 || avg_tokens_per_expert <= fp4_native_max_tokens_per_expert_);
+  // Opt-in SM80 FP4 grouped-GEMM prefill path. Active when ORT_FP4_SM80_GEMM=1 and the GEMV
+  // prepack produced the SM80 CUTLASS-interleaved e2m1 weights + fp16 group scales. Decode
+  // shapes are still served by the fused GEMV (which returns early below); everything that
+  // falls through to the runner here (prefill / GEMV-unsupported shapes) runs on the FP4
+  // runner via the Ampere/SM80 DqMma grouped GEMM with QuantParams::GroupWise(32, ...).
+  const bool fp4_sm80_prefill =
+      is_fp4 && enable_fp4_sm80_gemm_ &&
+      gemv_fp4_fc1_weights_ != nullptr && gemv_fp4_fc2_weights_ != nullptr &&
+      gemv_fp4_fc1_scales_ != nullptr && gemv_fp4_fc2_scales_ != nullptr;
   // The dense fallback runner is selected only when native FP4 is available but this call exceeds
   // the per-expert threshold. In every other configuration (native chosen, or native unavailable so
   // m_moe_runner is itself the dense A16 runner) we use m_moe_runner.
@@ -639,7 +661,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       mGemmProfiler.setAllocator(std::move(allocator));
       mGemmProfiler.setProfilerParams(static_cast<int>(moe_params.num_experts), static_cast<int>(k_),
                                       static_cast<int64_t>(moe_params.hidden_size), static_cast<int64_t>(moe_params.inter_size),
-                                      static_cast<int64_t>(block_size_), activation_type_,
+                                      fp4_sm80_prefill ? int64_t{32} : static_cast<int64_t>(block_size_), activation_type_,
                                       false, true, parallelism_config, sm_);
 
       onnxruntime::llm::nvinfer::DataType dtype = is_fp16_ ? onnxruntime::llm::nvinfer::DataType::kHALF : onnxruntime::llm::nvinfer::DataType::kBF16;
@@ -650,7 +672,14 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       // native FP4 path routes to the dense fallback for this call, profile the dense (A16) tactic.
       onnxruntime::llm::nvinfer::DataType wtype;
       if (is_fp4) {
-        wtype = route_native_fp4 ? onnxruntime::llm::nvinfer::DataType::kFP4 : dtype;
+        // fp4_sm80_prefill runs the e2m1 weights through the SM80 fused-dequant grouped GEMM,
+        // whose scratch + groupwise scale layout match INT4-groupwise (4-bit weight + fp16
+        // scales). Profile against kINT4 so the workspace is sized for the groupwise path
+        // rather than the FP4 TMA block-scale layout; the launched kernel is still the e2m1
+        // kernel (templated on the runner's WeightType), and the profiler's per-tactic
+        // try/catch discards tile shapes that fail can_implement.
+        wtype = fp4_sm80_prefill ? onnxruntime::llm::nvinfer::DataType::kINT4
+                                 : (route_native_fp4 ? onnxruntime::llm::nvinfer::DataType::kFP4 : dtype);
       } else if (is_wfp4afp8) {
         // Native W4A8 path uses FP8 activation + FP4 weights through the block-scaled dispatch.
         // Profile against the FP4 weight tactic; fall back to dense dtype when the dequant path is selected.
@@ -983,7 +1012,20 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
                    transposed_fc2_scales_holder, transposed_fc2_zp_holder, transient_fc2_bias, p_fc2_scales, p_fc2_zp);
 
   onnxruntime::llm::kernels::cutlass_kernels::QuantParams quant_params;
-  if (is_fp4) {
+  if (is_fp4 && fp4_sm80_prefill) {
+    // SM80 FP4 grouped-GEMM prefill: the e2m1 weights are in the SM80 CUTLASS interleaved
+    // layout and the scales are the fp16 group scales (group=32, [E, K/32, N]) the GEMV path
+    // already built (gemv_fp4_fc*_scales_ = e8m0_block_scale * global_scale). Feed them through
+    // the generic fine-grained groupwise path — identical plumbing to INT4 block-wise QMoE.
+    quant_params = onnxruntime::llm::kernels::cutlass_kernels::QuantParams::GroupWise(
+        /*group_size=*/32,
+        gemv_fp4_fc1_scales_.get(),
+        gemv_fp4_fc2_scales_.get(),
+        nullptr,
+        nullptr,
+        nullptr,
+        nullptr);
+  } else if (is_fp4) {
     // FP4 quantization: use QuantParams::FP4 with block scales and global scales
     const void* p_fc1_block_scales = packed_fp4_fc1_block_scales_ ? packed_fp4_fc1_block_scales_.get()
                                                                   : (fp4_fc1_block_scales ? fp4_fc1_block_scales->DataRaw() : nullptr);
@@ -1089,7 +1131,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
       use_fp4_dequant_fallback_ ||
       (enable_fp4_cutlass_gemm_ && fp4_prefill_min_tokens_ > 0 &&
        moe_params.num_rows < fp4_prefill_min_tokens_);
-  if (is_fp4 && fp4_decode_regime && enable_fp4_gemv_ && is_fused_swiglu &&
+  if (is_fp4 && fp4_decode_regime && enable_fp4_gemv_ && is_fused_swiglu && !enable_fp4_sm80_gemm_ &&
       gemv_fp4_fc1_weights_ != nullptr && gemv_fp4_fc2_weights_ != nullptr &&
       gemv_fp4_fc1_scales_ != nullptr && gemv_fp4_fc2_scales_ != nullptr) {
     namespace gemv = onnxruntime::llm::kernels::moe_gemv;
@@ -1281,7 +1323,13 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
   const void* fc1_weight_data = fc1_experts_weights ? fc1_experts_weights->DataRaw() : nullptr;
   const void* fc2_weight_data = fc2_experts_weights ? fc2_experts_weights->DataRaw() : nullptr;
-  if ((is_fp4 && route_native_fp4) || (is_wfp4afp8 && !use_wfp4afp8_dequant_fallback_)) {
+  if (fp4_sm80_prefill) {
+    // SM80 FP4 grouped GEMM: consume the e2m1 weights in the SM80 CUTLASS interleaved layout
+    // that PrePack produced into the GEMV "Lever A" buffers (same layout the INT4 SM80 grouped
+    // GEMM uses). The fp16 group scales are wired via quant_params above.
+    fc1_weight_data = gemv_fp4_fc1_weights_.get();
+    fc2_weight_data = gemv_fp4_fc2_weights_.get();
+  } else if ((is_fp4 && route_native_fp4) || (is_wfp4afp8 && !use_wfp4afp8_dequant_fallback_)) {
     // The native CUTLASS FP4 paths consume weights in the repacked FP4
     // layout produced by PrePack. If PrePack never ran (e.g.
     // ``session.disable_prepacking`` is set) the repacked buffers stay null and
@@ -1312,19 +1360,19 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   // FP4 (W4A16) and WFP4AFP8 (W4A8) share the MXFP4 weight format. When the native CUTLASS path
   // is unavailable on the current SM, or when native FP4 routes this call to the dense fallback for
   // the large per-expert-M regime, dequantize MXFP4 weights to FP16/BF16 and run the dense A16 runner.
-  if ((is_fp4 && !route_native_fp4) || (is_wfp4afp8 && use_wfp4afp8_dequant_fallback_)) {
+  if (((is_fp4 && !route_native_fp4) || (is_wfp4afp8 && use_wfp4afp8_dequant_fallback_)) && !fp4_sm80_prefill) {
     // The dequant kernel expects raw [E, n, k_blocks] e8m0 block scales. When native FP4 is enabled
     // (this is the large per-expert-M fallback), packed_fp4_*_block_scales_ holds the TMA-swizzled
     // layout, so use the raw copy kept in gemv_fp4_*_block_raw_ instead. On the SM<90 dequant-only
     // build that raw copy is absent and packed_fp4_*_block_scales_ already holds the raw scales.
     const void* p_fc1_block_scales = gemv_fp4_fc1_block_raw_ ? gemv_fp4_fc1_block_raw_.get()
-                                     : (packed_fp4_fc1_block_scales_ ? packed_fp4_fc1_block_scales_.get()
-                                                                     : (fp4_fc1_block_scales ? fp4_fc1_block_scales->DataRaw() : nullptr));
+                                                             : (packed_fp4_fc1_block_scales_ ? packed_fp4_fc1_block_scales_.get()
+                                                                                             : (fp4_fc1_block_scales ? fp4_fc1_block_scales->DataRaw() : nullptr));
     const void* p_fc1_global_scale = packed_fc1_global_scale_ ? packed_fc1_global_scale_.get()
                                                               : (fc1_global_scale ? fc1_global_scale->DataRaw() : nullptr);
     const void* p_fc2_block_scales = gemv_fp4_fc2_block_raw_ ? gemv_fp4_fc2_block_raw_.get()
-                                     : (packed_fp4_fc2_block_scales_ ? packed_fp4_fc2_block_scales_.get()
-                                                                     : (fp4_fc2_block_scales ? fp4_fc2_block_scales->DataRaw() : nullptr));
+                                                             : (packed_fp4_fc2_block_scales_ ? packed_fp4_fc2_block_scales_.get()
+                                                                                             : (fp4_fc2_block_scales ? fp4_fc2_block_scales->DataRaw() : nullptr));
     const void* p_fc2_global_scale = packed_fc2_global_scale_ ? packed_fc2_global_scale_.get()
                                                               : (fc2_global_scale ? fc2_global_scale->DataRaw() : nullptr);
     ORT_RETURN_IF_NOT(p_fc1_block_scales && p_fc1_global_scale && p_fc2_block_scales && p_fc2_global_scale,
@@ -1498,14 +1546,18 @@ Status QMoE::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   } else if (input_idx == 2 && quant_type_ == "fp4" && enable_fp4_gemv_) {
     // Fused MXFP4 GEMV: lay out fc1 weights as [E, 2*inter, hidden/2] row-major. Keep
     // is_packed = false so the raw [E, hidden, n/2] initializer remains available for the
-    // dequant fallback used by shapes the GEMV does not support.
+    // dequant fallback used by shapes the GEMV does not support. When the SM80 grouped-GEMM
+    // port is enabled, force the SM80 CUTLASS ColumnMajorTileInterleave layout (Lever A) so
+    // the same buffer feeds both the decode GEMV and the prefill grouped GEMM.
     bool local_packed = false;
     PrePackRepackFP4Weights(tensor, stream, alloc, gemv_fp4_fc1_weights_, local_packed,
-                            onnxruntime::llm::kernels::moe_gemv::Fp4MoeGemvUseInterleaved());
+                            onnxruntime::llm::kernels::moe_gemv::Fp4MoeGemvUseInterleaved() ||
+                                enable_fp4_sm80_gemm_);
   } else if (input_idx == 5 && quant_type_ == "fp4" && enable_fp4_gemv_) {
     bool local_packed = false;
     PrePackRepackFP4Weights(tensor, stream, alloc, gemv_fp4_fc2_weights_, local_packed,
-                            onnxruntime::llm::kernels::moe_gemv::Fp4MoeGemvUseInterleaved());
+                            onnxruntime::llm::kernels::moe_gemv::Fp4MoeGemvUseInterleaved() ||
+                                enable_fp4_sm80_gemm_);
   } else if (input_idx == 2 && quant_type_ == "int" && !weights_prepacked_) {
     // Caller opted in (``weights_prepacked=0`` attribute) to having ORT
     // do the CUTLASS fpA_intB layout transform internally, instead of
@@ -1939,6 +1991,10 @@ void QMoE::PrePackRepackFP4Weights(const Tensor& tensor, cudaStream_t stream, Al
                                       per_expert_bytes, cudaMemcpyDeviceToDevice, stream));
       // synchronize=false: one host-blocking sync after the loop (stream ordering guarantees
       // expert e finishes before e+1 reuses src_scratch). apply_bias_interleave=false for e2m1.
+      // When this buffer feeds the SM80 MoE grouped GEMM (enable_fp4_sm80_gemm_), additionally
+      // apply step 4's nibble pair-interleave WITHOUT the +8 bias, which is the layout that
+      // GEMM's e2m1 dequant converter inverts. The fused GEMV decode kernel (disabled under the
+      // SM80 flag) uses the plain steps-1-3 layout, so interleave_without_bias stays false there.
       onnxruntime::llm::kernels::weight_only::preprocess_weights_for_mixed_gemm_cuda(
           stream,
           packing_sm,
@@ -1948,7 +2004,8 @@ void QMoE::PrePackRepackFP4Weights(const Tensor& tensor, cudaStream_t stream, Al
           {static_cast<size_t>(k), static_cast<size_t>(n)},
           QuantType::W4_A16,
           /*synchronize=*/false,
-          /*apply_bias_interleave=*/false);
+          /*apply_bias_interleave=*/false,
+          /*interleave_without_bias=*/enable_fp4_sm80_gemm_);
     }
     CUDA_CALL_THROW(cudaStreamSynchronize(stream));
     is_packed = true;

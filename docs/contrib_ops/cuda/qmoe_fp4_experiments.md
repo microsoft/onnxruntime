@@ -2035,3 +2035,55 @@ does), turning the 5.10 ms / 2.0 % FP4 prefill into roughly the INT4 0.66 ms /
 - Code sites: `moe_tma_warp_specialized_traits.h` (`isValidAmpereMOESpecialisation`),
   `moe_gemm_template_dispatch.h` (SM80 `dispatch()` `!isFp4` guard, `getAmpereConfigs`),
   `cutlass_extensions/interleaved_numeric_conversion.h` (converter specializations).
+
+## Phase 3 complete: SM80 FP4 grouped GEMM lands and is correct (opt-in)
+
+The SM80 FP4 fused-dequant grouped GEMM is implemented end-to-end and gated behind
+`ORT_FP4_SM80_GEMM=1` (fp16 activation only this phase; bf16 still compiles). With the
+flag **off** behavior is byte-identical to before (the SM90 TMA / dense-fallback paths),
+so the feature is safe to ship dark.
+
+### What made it run and be correct
+
+1. **dlopen fix.** `moe_gemm_template_dispatch.h` threw with a bare
+   `Arch::kMinComputeCapability` const-ref inside `MakeString`, ODR-using the undefined
+   CUTLASS static `cutlass::arch::Sm80::kMinComputeCapability` and breaking `.so` load.
+   Wrapping it in an `int{…}` prvalue removed the undefined symbol.
+2. **`can_implement` accepts e2m1.** `moe_cutlass_kernel.h` rejected `float_e2m1_t`
+   weights when `weight_scales != nullptr` (`kInvalid` for every tactic). Added
+   `float_e2m1_t` to the groupwise-scale accept condition.
+3. **Profiler-based tactic selection.** The SM80-FP4 prefill routes through the existing
+   per-tactic profiler (with `wtype = kINT4` and `group_size = 32` to size the groupwise
+   4-bit workspace). The profiler's per-tactic try/catch discards tiles that fail
+   `can_implement`, so the fastest valid SM80 tile is chosen automatically.
+4. **The numerics fix — interleave without bias.** The e2m1 dequant converter
+   (`FastInterleavedAndBiasedNumericArrayConverter<half_t, float_e2m1_t, 8>`) *inverts*
+   step 4's `[e0,e2,e4,e6,e1,e3,e5,e7]` nibble pair-interleave. The FP4 prepack passed
+   `apply_bias_interleave=false`, which skipped step 4 **entirely** → the grouped GEMM
+   read un-interleaved nibbles (`max_diff≈14`). Fix: a new interleave-only kernel
+   (`interleave_int4s_inplace_kernel`) that applies the same permutation with the raw
+   4-bit code (no `+8` bias), wired through `preprocess_weights_for_mixed_gemm_cuda`
+   via a new `interleave_without_bias` parameter and enabled in `PrePackRepackFP4Weights`
+   when `enable_fp4_sm80_gemm_`. The fused MXFP4 GEMV decode kernel (disabled under the
+   SM80 flag) keeps the plain steps-1-3 layout, so the `gemv_fp4_fc*_weights_` buffer is
+   safely repurposed for the grouped GEMM layout.
+
+### Correctness
+
+`test_qmoe_fp4_cuda.py` — 13 fp16-related tests pass with `ORT_FP4_SM80_GEMM=1`
+(swiglu/silu, larger dims, more experts, token-count and top-4 variants); the headline
+`test_fp4_fp16_swiglu` reports `max_diff=0.0078` (atol 0.12). All 20 tests pass with the
+flag off (default path unchanged).
+
+### Measured prefill speedup (gpt-oss-20b shape, H200, FC1 N=5760 K=2880 / FC2 N=2880 K=2880)
+
+| tokens/expert | FP4 SM90 TMA (native) | **FP4 SM80 (this work)** | dense A16 fallback | speedup vs native |
+|--------------:|----------------------:|-------------------------:|-------------------:|------------------:|
+| 64            | 5.10 ms               | **1.08 ms**              | 8.12 ms            | 4.7×              |
+| 128           | 9.53 ms               | **1.52 ms**              | —                  | 6.3×              |
+| 256           | 10.24 ms              | **2.52 ms**              | 8.61 ms            | 4.1×              |
+| 512           | 9.25 ms               | **4.44 ms**              | —                  | 2.1×              |
+
+At the gpt-oss-20b prefill regime (~64 tok/expert) the SM80 path is **4.7× faster than the
+SM90 TMA mixed kernel and 7.5× faster than the dense A16 dequant fallback**, landing close
+to INT4's SM80 envelope (0.66 ms) — closing the bulk of the FP4-vs-INT4 prefill gap.
