@@ -160,12 +160,12 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 Status PrepareIndirectDispatchProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("seqlen_k", ShaderUsage::None);
+  shader.AddInput("total_sequence_length_input", ShaderUsage::None);
   shader.AddOutput("indirect_buffer", ShaderUsage::None);
   shader.AdditionalImplementation() << kPopulateIndirectDispatchBufferFn;
   shader.MainFunctionBody()
-      << "  let total_seq_length = u32(seqlen_k[0u]) + 1u;\n"
-      << "  let num_total_seq_length_tile = (total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;\n"
+      << "  let global_total_seq_length = u32(total_sequence_length_input[0]);\n"
+      << "  let num_total_seq_length_tile = (global_total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;\n"
       << "  populate_indirect_dispatch_buffer(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);\n";
   return Status::OK();
 }
@@ -522,14 +522,11 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   Tensor* indirect_buffer_ptr = nullptr;
   Tensor indirect_buffer;
 
-  // Prepare indirect dispatch buffer for split-reduce path when CPU-side
-  // total_sequence_length is unusable for dispatch sizing:
-  //   - past_present_share_buffer layers: when graph capture is enabled,
-  //     total_sequence_length_ may be 0 (GPU-based seqlen_k), so the indirect
-  //     buffer computes dispatch sizes on GPU. Static KV cache (past_present_share_buffer_)
-  //     is guaranteed by GQA's ORT_ENFORCE when graph capture is enabled.
-  //   - kv_empty layers: no KV tokens are appended, so total_sequence_length_ is always 0;
-  //     using it directly would produce dispatch(0) and skip attention entirely.
+  // Prepare indirect dispatch buffer for split-reduce path with static KV cache.
+  // When graph capture is enabled, total_sequence_length_ may be 0 (GPU-based
+  // seqlen_k), so the indirect buffer computes dispatch sizes on GPU.
+  // Static KV cache (past_present_share_buffer_) is guaranteed by GQA's
+  // ORT_ENFORCE when graph capture is enabled.
   const bool use_indirect_dispatch = seqlen_k != nullptr &&
                                      total_seqlen != nullptr &&
                                      context.IsGraphCaptureEnabled();
@@ -562,11 +559,13 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
       present_value = const_cast<Tensor*>(past_value);
     }
 
-    // CopyKVCache normally prepares the indirect buffer. Since we skip CopyKVCache
-    // for kv_empty layers, we must prepare it here.
+    // CopyKVCache normally prepares the indirect dispatch buffer. For kv_empty layers
+    // CopyKVCache is skipped, so we prepare it here. Only needed under graph capture
+    // because that is when total_seqlen is GPU-resident and CPU-side dispatch sizing
+    // is unavailable.
     if (use_indirect_dispatch) {
       PrepareIndirectDispatchProgram program;
-      program.AddInput({seqlen_k, ProgramTensorMetadataDependency::None});
+      program.AddInput({total_seqlen, ProgramTensorMetadataDependency::None});
       program.AddOutput({indirect_buffer_ptr, ProgramTensorMetadataDependency::None});
       program.SetDispatchGroupSize(1)
           .SetWorkgroupSize(1)
