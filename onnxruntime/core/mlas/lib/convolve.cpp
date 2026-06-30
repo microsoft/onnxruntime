@@ -15,6 +15,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#include "core/common/safeint.h"
 
 //
 // Define the number of working buffer elements required per thread.
@@ -1328,11 +1329,6 @@ Return Value:
         }
     }
 }
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(push)
-// Chance of arithmetic overflow could be reduced
-#pragma warning(disable : 26451)
-#endif
 
 namespace {
 
@@ -1560,9 +1556,14 @@ Return Value:
     Parameters->FilterCount = FilterCount;
     Parameters->Beta = Beta;
 
-    size_t InputSize = 1;
-    size_t OutputSize = 1;
-    size_t K = InputChannels;
+    // Accumulate dimension products in SafeInt's checked domain. The raw size_t multiplies
+    // here are reachable from attacker-controlled tensor shapes, and the cross-tensor product
+    // is not otherwise guarded (per-tensor element counts are SafeInt-checked elsewhere, but
+    // the product across tensors is not). On overflow SafeInt throws and the caller propagates
+    // it as a Status failure.
+    SafeInt<size_t> SafeInputSize = 1;
+    SafeInt<size_t> SafeOutputSize = 1;
+    SafeInt<size_t> SafeK = SafeInt<size_t>(InputChannels);
 
     bool AllStridesAreOne = true;
     bool AllDilationsAreOne = true;
@@ -1578,14 +1579,18 @@ Return Value:
         Parameters->Padding[dim + Dimensions] = size_t(Padding[dim + Dimensions]);
         Parameters->StrideShape[dim] = size_t(StrideShape[dim]);
 
-        InputSize *= Parameters->InputShape[dim];
-        OutputSize *= Parameters->OutputShape[dim];
-        K *= Parameters->KernelShape[dim];
+        SafeInputSize *= Parameters->InputShape[dim];
+        SafeOutputSize *= Parameters->OutputShape[dim];
+        SafeK *= Parameters->KernelShape[dim];
 
         AllStridesAreOne &= (Parameters->StrideShape[dim] == 1);
         AllDilationsAreOne &= (Parameters->DilationShape[dim] == 1);
         AllPaddingIsZero &= (Parameters->Padding[dim] == 0 && Parameters->Padding[dim + Dimensions] == 0);
     }
+
+    const size_t InputSize = SafeInputSize;
+    const size_t OutputSize = SafeOutputSize;
+    const size_t K = SafeK;
 
     Parameters->InputSize = InputSize;
     Parameters->OutputSize = OutputSize;
@@ -1675,7 +1680,10 @@ Return Value:
 
         Parameters->Algorithm = MlasConvAlgorithmExpandThenGemm;
 
-        *WorkingBufferSize = OutputSize * K;
+        // SafeInt guards against wrap of the cross-tensor product; the raw size_t multiply
+        // is reachable from attacker-controlled shapes and would otherwise under-size the
+        // im2col working buffer (heap-buffer-overflow on the downstream MlasConvIm2Col write).
+        *WorkingBufferSize = SafeInt<size_t>(OutputSize) * K;
 
     } else {
 
@@ -1774,18 +1782,18 @@ Return Value:
         Parameters->Algorithm = MlasConvAlgorithmExpandThenGemmSegmented;
         Parameters->u.ExpandThenGemmSegmented.ThreadStrideN = StrideN;
 
-        *WorkingBufferSize = TargetThreadCount * MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
+        // SafeInt-guarded products: TargetThreadCount and the BatchCount*GroupCount product
+        // are both reachable from attacker-controlled inputs.
+        *WorkingBufferSize = SafeInt<size_t>(TargetThreadCount) * MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
 
         if (Parameters->BatchCount > 1 || Parameters->GroupCount > 1) {
 
             TargetThreadCount = MaximumThreadCount;
-            if (static_cast<size_t>(TargetThreadCount) >= Parameters->BatchCount * Parameters->GroupCount) {
-                TargetThreadCount = static_cast<ptrdiff_t>(Parameters->BatchCount * Parameters->GroupCount);
+            const size_t BatchGroupProduct = SafeInt<size_t>(Parameters->BatchCount) * Parameters->GroupCount;
+            if (static_cast<size_t>(TargetThreadCount) >= BatchGroupProduct) {
+                TargetThreadCount = static_cast<ptrdiff_t>(BatchGroupProduct);
             }
-            *WorkingBufferSize = TargetThreadCount * MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
+            *WorkingBufferSize = SafeInt<size_t>(TargetThreadCount) * MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
         }
     }
 }
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(pop)
-#endif
