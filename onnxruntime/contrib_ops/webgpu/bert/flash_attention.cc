@@ -55,7 +55,7 @@ fn populate_indirect_dispatch_buffer(x: u32, y: u32, z: u32) {
 // Emits kPopulateIndirectDispatchBufferFn into AdditionalImplementation and appends the two
 // WGSL lines that compute num_total_seq_length_tile and call populate_indirect_dispatch_buffer.
 // `total_seq_len_expr` is the WGSL expression that evaluates to the total sequence length.
-static void AppendNormalizeDispatchShader(ShaderHelper& shader, std::string_view total_seq_len_expr) {
+static void AppendPopulateIndirectDispatchShader(ShaderHelper& shader, std::string_view total_seq_len_expr) {
   shader.AdditionalImplementation() << kPopulateIndirectDispatchBufferFn;
   shader.MainFunctionBody()
       << "  let num_total_seq_length_tile = (" << total_seq_len_expr << " + uniforms.tile_size - 1u) / uniforms.tile_size;\n"
@@ -173,7 +173,7 @@ Status PrepareIndirectDispatchProgram::GenerateShaderCode(ShaderHelper& shader) 
   shader.AddInput("seqlen_k", ShaderUsage::None);
   shader.AddOutput("indirect_buffer", ShaderUsage::None);
   shader.MainFunctionBody() << "  let total_seq_length = u32(seqlen_k[0u]) + 1u;\n";
-  AppendNormalizeDispatchShader(shader, "total_seq_length");
+  AppendPopulateIndirectDispatchShader(shader, "total_seq_length");
   return Status::OK();
 }
 
