@@ -456,7 +456,7 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
 constexpr int kSmallMMax = 16;
 template <class T>
 __host__ __device__ constexpr int SmallMCap() {
-  return std::is_same<T, float>::value ? kSmallMMax : 8;
+  return kSmallMMax;
 }
 
 // Holds the 8 dequantized weights produced from one packed 4-bit word, in the layout each
@@ -577,6 +577,232 @@ __device__ __forceinline__ void AccumulateRow(const DequantizedEight<nv_bfloat16
   s[2] = __hfma2(d.v[2], *reinterpret_cast<__nv_bfloat162*>(&vp.z), s[2]);
   s[3] = __hfma2(d.v[3], *reinterpret_cast<__nv_bfloat162*>(&vp.w), s[3]);
 #endif
+}
+
+// ---- Verify-range batched GEMV (half/bf16): fpA-style CtaM x CtaN register tiling ----------------
+// 2-wide accumulator type (half2 / bf162).
+template <class T>
+struct Acc2;
+#if (!defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530) && !defined(__HIPCC__)
+template <>
+struct Acc2<half> {
+  using type = half2;
+};
+#endif
+template <>
+struct Acc2<nv_bfloat16> {
+  using type = __nv_bfloat162;
+};
+
+// Four 2-wide weight lanes in NATURAL element order [01,23,45,67], so a naturally-loaded activation
+// (uint4 reinterpreted as four half2) can be multiply-accumulated with no per-activation permute.
+template <class T>
+struct WPack {
+  typename Acc2<T>::type v[4];
+};
+
+// DequantizeEight emits [04,15,26,37] (the order of Convert8xInt4To8xHalfs); repack to natural order
+// once per column. Doing the prmt on the (CtaN) weights instead of the (CtaM) activations cuts the
+// permute count by CtaM/CtaN, which dominates at verify M.
+#if (!defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530) && !defined(__HIPCC__)
+__device__ __forceinline__ WPack<half> PackNatural(const DequantizedEight<half>& d) {
+  uint32_t d0 = *reinterpret_cast<const uint32_t*>(&d.v[0]);
+  uint32_t d1 = *reinterpret_cast<const uint32_t*>(&d.v[1]);
+  uint32_t d2 = *reinterpret_cast<const uint32_t*>(&d.v[2]);
+  uint32_t d3 = *reinterpret_cast<const uint32_t*>(&d.v[3]);
+  constexpr uint32_t kLo = 0x5410;  // (x0,x1) of two half2 -> elements 0,1
+  constexpr uint32_t kHi = 0x7632;  // (y0,y1) -> elements 4,5
+  WPack<half> w;
+  uint32_t t;
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d0), "r"(d1), "r"(kLo)); w.v[0] = *reinterpret_cast<half2*>(&t);
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d2), "r"(d3), "r"(kLo)); w.v[1] = *reinterpret_cast<half2*>(&t);
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d0), "r"(d1), "r"(kHi)); w.v[2] = *reinterpret_cast<half2*>(&t);
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d2), "r"(d3), "r"(kHi)); w.v[3] = *reinterpret_cast<half2*>(&t);
+  return w;
+}
+__device__ __forceinline__ void DotAccum(const WPack<half>& w, const half2* a4, half2& acc) {
+  acc = __hfma2(w.v[0], a4[0], acc);
+  acc = __hfma2(w.v[1], a4[1], acc);
+  acc = __hfma2(w.v[2], a4[2], acc);
+  acc = __hfma2(w.v[3], a4[3], acc);
+}
+__device__ __forceinline__ float HorizontalAdd(half2 acc) {
+  return static_cast<float>(acc.x) + static_cast<float>(acc.y);
+}
+#endif
+
+__device__ __forceinline__ WPack<nv_bfloat16> PackNatural(const DequantizedEight<nv_bfloat16>& d) {
+  WPack<nv_bfloat16> w;
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  uint32_t d0 = *reinterpret_cast<const uint32_t*>(&d.v[0]);
+  uint32_t d1 = *reinterpret_cast<const uint32_t*>(&d.v[1]);
+  uint32_t d2 = *reinterpret_cast<const uint32_t*>(&d.v[2]);
+  uint32_t d3 = *reinterpret_cast<const uint32_t*>(&d.v[3]);
+  constexpr uint32_t kLo = 0x5410;
+  constexpr uint32_t kHi = 0x7632;
+  uint32_t t;
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d0), "r"(d1), "r"(kLo)); w.v[0] = *reinterpret_cast<__nv_bfloat162*>(&t);
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d2), "r"(d3), "r"(kLo)); w.v[1] = *reinterpret_cast<__nv_bfloat162*>(&t);
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d0), "r"(d1), "r"(kHi)); w.v[2] = *reinterpret_cast<__nv_bfloat162*>(&t);
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(t) : "r"(d2), "r"(d3), "r"(kHi)); w.v[3] = *reinterpret_cast<__nv_bfloat162*>(&t);
+#endif
+  return w;
+}
+__device__ __forceinline__ void DotAccum(const WPack<nv_bfloat16>& w, const __nv_bfloat162* a4, __nv_bfloat162& acc) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  acc = __hfma2(w.v[0], a4[0], acc);
+  acc = __hfma2(w.v[1], a4[1], acc);
+  acc = __hfma2(w.v[2], a4[2], acc);
+  acc = __hfma2(w.v[3], a4[3], acc);
+#endif
+}
+__device__ __forceinline__ float HorizontalAdd(__nv_bfloat162 acc) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  return static_cast<float>(acc.x) + static_cast<float>(acc.y);
+#else
+  return 0.f;
+#endif
+}
+
+// Each warp computes CtaN output columns x CtaM rows. Lanes split K (8 elems/lane/iter); per-row
+// activations are loaded once (uint4) and reused across CtaN columns, and the int4->half order permute
+// is applied once per column weight (not per row). A single 2-wide accumulator per (row,column) keeps
+// CtaM=m up to 16 in registers with the weight streamed exactly once. The launch bound pins >=3 blocks
+// per SM so the CtaN=4 tiling (which minimizes activation L2 traffic) keeps enough occupancy to hide
+// memory latency. Standard MatMulNBits [N, blocks, blob] layout, no prepacking; scales/zp from global.
+template <class T, int block_size, bool has_zero_point, int CtaM, int CtaN>
+__global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock, 3) MatMulFloat4VerifyKernel(
+    T* output,
+    const T* a_data,
+    const uint8_t* b_data_quant,
+    const T* scales_data,
+    const uint8_t* zero_points,
+    int m,
+    int n,
+    int k,
+    int blocks_per_K) {
+  using AccT = typename Acc2<T>::type;
+  const int lane_id = threadIdx.x;
+  const int warp_id = WarpUniform(threadIdx.y);
+  const int col_base = (blockIdx.x * kColsPerThreadBlock + warp_id) * CtaN;
+  const int m_base = blockIdx.y * CtaM;
+  const int valid = m - m_base;
+  constexpr int k_per_iter = kWarpSize * kElementsPerThreadPerIteration;  // 256
+  const int zp_blocks = (blocks_per_K + 1) / 2;
+
+  const T* a_base = a_data + static_cast<size_t>(m_base) * k + (lane_id << 3);
+  const uint8_t* b_ptr[CtaN];
+#pragma unroll
+  for (int c = 0; c < CtaN; c++) {
+    b_ptr[c] = b_data_quant + static_cast<size_t>(col_base + c) * blocks_per_K * (block_size / 2) + lane_id * 4;
+  }
+
+  AccT acc[CtaM][CtaN];
+#pragma unroll
+  for (int r = 0; r < CtaM; r++) {
+#pragma unroll
+    for (int c = 0; c < CtaN; c++) {
+      acc[r][c] = AccT{};
+    }
+  }
+
+  int k_id = 0;
+  int t_meta_k = lane_id * 8 / block_size;
+  constexpr int kWork = CtaM * CtaN;
+  constexpr int kMainUnroll = (kWork >= 20) ? 1 : (kWork >= 12) ? 2 : 4;
+
+#define VERIFY_BODY(i)                                                                         \
+  do {                                                                                         \
+    WPack<T> w[CtaN];                                                                          \
+    const int bk = t_meta_k + k_per_iter / block_size * (i);                                   \
+    _Pragma("unroll") for (int c = 0; c < CtaN; c++) {                                         \
+      uint32_t value = *(reinterpret_cast<const uint32_t*>(b_ptr[c] + k_per_iter / 2 * (i)));  \
+      T scale = scales_data[static_cast<size_t>(col_base + c) * blocks_per_K + bk];            \
+      uint8_t zp = 8;                                                                          \
+      if constexpr (has_zero_point) {                                                          \
+        uint8_t zpb = zero_points[static_cast<size_t>(col_base + c) * zp_blocks + (bk >> 1)];  \
+        zp = (bk & 1) ? (zpb >> 4) : (zpb & 0x0f);                                             \
+      }                                                                                        \
+      DequantizedEight<T> d;                                                                   \
+      DequantizeEight(value, scale, zp, d);                                                    \
+      w[c] = PackNatural(d);                                                                   \
+    }                                                                                          \
+    _Pragma("unroll") for (int r = 0; r < CtaM; r++) {                                         \
+      if (r < valid) {                                                                         \
+        AccT a4[4];                                                                            \
+        *reinterpret_cast<uint4*>(a4) = *reinterpret_cast<const uint4*>(                       \
+            a_base + static_cast<size_t>(r) * k + k_id + (i) * k_per_iter);                    \
+        _Pragma("unroll") for (int c = 0; c < CtaN; c++) {                                     \
+          DotAccum(w[c], a4, acc[r][c]);                                                       \
+        }                                                                                      \
+      }                                                                                        \
+    }                                                                                          \
+  } while (false)
+
+#define VERIFY_UNROLL(unroll_size)                                            \
+  do {                                                                        \
+    constexpr int kUnroll = unroll_size;                                      \
+    constexpr int kUnrollStep = kUnroll * k_per_iter;                         \
+    const int k_unroll_bound = k - k % kUnrollStep;                           \
+    for (; k_id < k_unroll_bound; k_id += kUnrollStep) {                      \
+      _Pragma("unroll") for (int i = 0; i < kUnroll; i++) {                   \
+        VERIFY_BODY(i);                                                       \
+      }                                                                       \
+      _Pragma("unroll") for (int c = 0; c < CtaN; c++) {                      \
+        b_ptr[c] += k_per_iter / 2 * kUnroll;                                 \
+      }                                                                       \
+      t_meta_k += k_per_iter / block_size * kUnroll;                          \
+    }                                                                         \
+  } while (false)
+
+  VERIFY_UNROLL(kMainUnroll);
+  VERIFY_UNROLL(1);
+#undef VERIFY_UNROLL
+
+  if (k_id + lane_id * 8 < k) {
+    WPack<T> w[CtaN];
+    const int bk = t_meta_k;
+#pragma unroll
+    for (int c = 0; c < CtaN; c++) {
+      uint32_t value = *(reinterpret_cast<const uint32_t*>(b_ptr[c]));
+      T scale = scales_data[static_cast<size_t>(col_base + c) * blocks_per_K + bk];
+      uint8_t zp = 8;
+      if constexpr (has_zero_point) {
+        uint8_t zpb = zero_points[static_cast<size_t>(col_base + c) * zp_blocks + (bk >> 1)];
+        zp = (bk & 1) ? (zpb >> 4) : (zpb & 0x0f);
+      }
+      DequantizedEight<T> d;
+      DequantizeEight(value, scale, zp, d);
+      w[c] = PackNatural(d);
+    }
+#pragma unroll
+    for (int r = 0; r < CtaM; r++) {
+      if (r < valid) {
+        AccT a4[4];
+        *reinterpret_cast<uint4*>(a4) = *reinterpret_cast<const uint4*>(a_base + static_cast<size_t>(r) * k + k_id);
+#pragma unroll
+        for (int c = 0; c < CtaN; c++) {
+          DotAccum(w[c], a4, acc[r][c]);
+        }
+      }
+    }
+  }
+#undef VERIFY_BODY
+
+#pragma unroll
+  for (int r = 0; r < CtaM; r++) {
+    if (r >= valid) continue;
+#pragma unroll
+    for (int c = 0; c < CtaN; c++) {
+      float sum = HorizontalAdd(acc[r][c]);
+      for (int i = kWarpSize / 2; i > 0; i = i / 2) {
+        sum += WARP_SHFL_DOWN(sum, i);
+      }
+      if (lane_id == 0) {
+        output[static_cast<size_t>(m_base + r) * n + (col_base + c)] = static_cast<T>(sum);
+      }
+    }
+  }
 }
 
 // Batched GEMV: block computes CtaM rows x kColsPerThreadBlock columns. Grid is
@@ -754,6 +980,78 @@ bool TryMatMulSmallM4Bits(
   return true;
 }
 
+// Verify-range launcher (half/bf16): picks CtaM >= m from {2,4,8,16} so a single block streams the
+// weight once, and CtaN columns/warp (largest of {4,2,1} dividing N/kCols) to reuse each activation
+// load across columns. Returns false for float or out-of-range m so the caller falls back.
+template <class T>
+bool TryMatMulVerify4Bits(
+    T* output,
+    const T* a_data,
+    const uint8_t* b_data_quant,
+    const T* scales_data,
+    const uint8_t* zero_points,
+    int m,
+    int n,
+    int k,
+    int block_size,
+    size_t /*shared_mem_size*/,
+    cudaStream_t stream) {
+  if constexpr (std::is_same<T, float>::value) {
+    return false;
+  } else {
+    if (m < 2 || m > kSmallMMax) {
+      return false;
+    }
+    // CtaM = smallest of {2,4,8,16} >= m, streaming the weight once per block row. Non-power-of-2 CtaM
+    // (10/12/14) compile to materially slower code, so the row-tile is rounded up (M>8 uses CtaM=16).
+    // CtaN = 2 columns/warp where N allows (halves activation L2 traffic); CtaN=4 lost to register
+    // pressure so it is not used by default.
+    const int cta_m = (m <= 2) ? 2 : (m <= 4) ? 4 : (m <= 8) ? 8 : 16;
+    const int cta_n = (n % (kColsPerThreadBlock * 2) == 0) ? 2 : 1;
+    dim3 threads(GPU_WARP_SIZE_HOST, kColsPerThreadBlock);
+    dim3 blocks(n / (kColsPerThreadBlock * cta_n), (m + cta_m - 1) / cta_m);
+
+#define VerifyDispatch(BS, CM, CN)                                                            \
+  if (nullptr != zero_points) {                                                               \
+    MatMulFloat4VerifyKernel<T, BS, true, CM, CN><<<blocks, threads, 0, stream>>>(            \
+        output, a_data, b_data_quant, scales_data, zero_points, m, n, k, (k + BS - 1) / BS);  \
+  } else {                                                                                    \
+    MatMulFloat4VerifyKernel<T, BS, false, CM, CN><<<blocks, threads, 0, stream>>>(           \
+        output, a_data, b_data_quant, scales_data, zero_points, m, n, k, (k + BS - 1) / BS);  \
+  }
+#define VerifyDispatchN(CM, CN)            \
+  if (16 == block_size) {                  \
+    VerifyDispatch(16, CM, CN)             \
+  } else if (32 == block_size) {           \
+    VerifyDispatch(32, CM, CN)             \
+  } else if (64 == block_size) {           \
+    VerifyDispatch(64, CM, CN)             \
+  } else if (128 == block_size) {          \
+    VerifyDispatch(128, CM, CN)            \
+  } else {                                 \
+    return false;                          \
+  }
+#define VerifyDispatchM(CN)        \
+  switch (cta_m) {                 \
+    case 2: VerifyDispatchN(2, CN) break;   \
+    case 4: VerifyDispatchN(4, CN) break;   \
+    case 8: VerifyDispatchN(8, CN) break;   \
+    default: VerifyDispatchN(16, CN) break; \
+  }
+
+    if (cta_n == 2) {
+      VerifyDispatchM(2)
+    } else {
+      VerifyDispatchM(1)
+    }
+
+#undef VerifyDispatchM
+#undef VerifyDispatchN
+#undef VerifyDispatch
+    return true;
+  }
+}
+
 template <class T>
 bool TryMatMul4Bits(
     T* output,
@@ -800,9 +1098,14 @@ bool TryMatMul4Bits(
   }
 
   // 2 <= m <= SmallMCap<T>(): batched GEMV that reuses each dequantized weight across CtaM rows.
-  // m == 1 falls through to the single-row kernel below; larger m returned false above and uses
-  // the dequantize + cuBLAS path.
+  // For half/bf16 the verify kernel streams the weight once (CtaM=m); float and any unsupported shape
+  // fall back to the SmallM kernel. m == 1 uses the single-row kernel below; larger m used the
+  // dequantize + cuBLAS path (returned false above).
   if (m >= 2) {
+    if (TryMatMulVerify4Bits<T>(output, a_data, b_data_quant, scales_data, zero_points,
+                                m, n, k, block_size, shared_mem_size, stream)) {
+      return true;
+    }
     return TryMatMulSmallM4Bits<T>(output, a_data, b_data_quant, scales_data, zero_points,
                                    m, n, k, block_size, shared_mem_size, stream);
   }
