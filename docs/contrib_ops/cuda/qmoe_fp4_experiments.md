@@ -1369,10 +1369,15 @@ the structural follow-up that also kills the 6.7× prefill gap.
 
 ---
 
-## 2026-06-28 — FP4 GEMV converter: 2-nibbles-per-32-bit-store packing (TBD, GPU contended)
+## 2026-06-28 — FP4 GEMV converter: 2-nibbles-per-32-bit-store packing (re-run 2026-06-30: performance-neutral)
 
 Restart of "FlashInfer-style decode" experiments. Small contained converter
 change while warming back up to the kernel; deliberately low-risk.
+
+> **Update 2026-06-30:** Re-run on a fully idle H200 (all 8 GPUs at 0 % SM).
+> Original 2026-06-28 numbers were contention noise. Conclusion below is now
+> **resolved**: the change is performance-neutral, confirming the store count
+> is not the GEMV bottleneck.
 
 ### Change
 
@@ -1407,20 +1412,48 @@ for r in 1 2 3; do /home/tianlei/onnxruntime/.venv_cu130/bin/python \
   --tokens 1 --iters 200 --reps 4 2>&1 | tail -1; done
 ```
 
-### Result — TBD (inconclusive)
+### Result — re-run 2026-06-30 on idle GPU (resolved: neutral)
 
-- Correctness: **20/20** `test_qmoe_fp4_cuda.py` pass.
-- Decode bench (512/512/E8, tok=1): prior baseline ~241 µs; this build measured
-  406/510/422 µs across 3 reps. **Pure contention noise, not a regression** — the
-  shared H200 farm was at 78–87 % SM on 7/8 GPUs and the test run took 557 s
-  vs ~normal. Cannot confirm a perf delta until a GPU frees up.
+The 2026-06-28 run was abandoned because the farm was contended (406/510/422 µs,
+557 s test wall-clock). Re-ran on 2026-06-30 with all 8 H200s idle (0 % SM), doing
+a proper A/B: rebuilt the **baseline** (pre-change scalar converter, parent of
+`0fb02a5fb7`) and the **experiment** (2-nibble store) from the same tree and
+benchmarked both back-to-back on GPU 0.
 
-### Comments
+- Correctness: **20/20** `test_qmoe_fp4_cuda.py` pass in 44 s (vs 557 s contended).
+- Decode bench (512/512/E8, tok=1). H200 clocks are unlocked on this farm
+  (idle 345 MHz → boost 1980 MHz; `nvidia-smi -lgc` denied — no permission), so
+  per-launch `BEST` is bimodal between a fully-boosted state (~56–58 µs) and a
+  partially-boosted state (~100–119 µs). The boosted **best-case minimum** across
+  many launches is the only clock-stable metric:
 
-- This overlaps the 2026-06-15 *SWAR vectorization (negative result)* above, which
-  packed both nibbles into a 32-bit lane and was reverted for no net speedup. ncu
-  there showed the GEMV is **integer-ALU / loop-index bound**, not store-bound, so
-  fewer stores is unlikely to help once timing is trustworthy. Kept anyway because
-  it is bit-identical, simpler than the reverted `decode2`, and at worst neutral.
-- Re-measure on a free GPU0; if flat, this is just a tidy refactor. The real lever
-  is still interleaved/fp32-accum (lever 1) or a tensor-core grouped GEMM (lever 2).
+  | Build | Best-case min (µs) | Typical band (µs) |
+  |-------|--------------------|-------------------|
+  | Baseline (scalar store) | **55.87** | 100–119 |
+  | Experiment (2-nibble store) | **57.58** | 98–117 |
+
+  The 55.87 vs 57.58 µs gap is ~3 %, inside clock/measurement jitter, and a
+  bit-identical store-packing change cannot produce a real 2× swing — the
+  bimodality is purely the GPU boost state. **Verdict: performance-neutral.**
+
+### Conclusion
+
+- The 2-nibbles-per-32-bit-store packing is **bit-identical and performance-neutral**
+  on SM90. It neither helps nor hurts, which **confirms the GEMV is not store-bound**
+  — consistent with the 2026-06-15 SWAR/`decode2` negative result and its ncu finding
+  that the kernel is **integer-ALU / loop-index bound**. Store count is not the lever.
+- Because the change is correct, simpler than the reverted `decode2`, and at worst
+  neutral, it is kept as a tidy refactor rather than reverted.
+
+### Next step
+
+- Stop pursuing converter/store-side micro-optimizations for the decode GEMV; they
+  are dead ends while the kernel is ALU/loop-index bound.
+- Pivot to the two structural levers recorded above, in order:
+  1. **Interleaved layout + fp32 accumulation** (lever 1) — bounded, reuses the
+     INT4 path; attack the integer-ALU/loop-index bound directly.
+  2. **Tensor-core grouped GEMM** (lever 2) — the structural fix that also closes
+     the 6.7× prefill gap.
+- If any further decode-converter idea is tried, profile with ncu (not wall-clock)
+  and lock GPU clocks first; unlocked-clock wall-clock A/B on this farm cannot
+  resolve deltas below ~10 %.
