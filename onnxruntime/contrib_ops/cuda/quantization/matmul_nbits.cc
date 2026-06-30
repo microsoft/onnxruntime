@@ -328,13 +328,32 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         cuda_kernel_type = nbits_ == 8 ? KernelType::BF16Int8Groupwise : KernelType::BF16Int4Groupwise;
       }
 
-      // Large-M dequant+cuBLAS path. Used when the CUTLASS tensor-core GEMM is unavailable or under-occupied:
-      //  - block_size 32: the GEMM cannot serve group_size 32 (its fine-grained scale iterator needs
-      //    group_size >= the 64-element CTA-K tile), so dequant for all M >= 16.
-      //  - block_size 64/128 with small N: a single-pass GEMM produces only N/128 column tiles, too few to
-      //    fill the GPU at large M, so it falls behind a plain cuBLAS HGEMM. Dequant for M >= 256 there.
-      //  - block_size 64/128 with large N: the GEMM stays well-occupied and is faster, so dequant is disabled.
-      // Threshold overridable via ORT_FPA_DEQUANT_MINM.
+      auto bestTactic = gemmProfiler_->getBestConfig(m, gemmId_);
+
+      // The profiler tends to over-select split-K (extra K-partitions + a serial partial-sum reduction) which
+      // helps occupancy at small M but collapses large-M throughput (the wide reduction dominates). Past
+      // ORT_FPA_SPLITK_MAXM, drop to a single-pass GEMM (NO_SPLIT_K) so prefill runs at tensor-core speed.
+      int const splitk_maxm = ParseEnvironmentVariableWithDefault<int>("ORT_FPA_SPLITK_MAXM", 64);
+      if (bestTactic.has_value() && !bestTactic->enableCudaKernel && m > splitk_maxm &&
+          bestTactic->split_k_factor > 1) {
+        bestTactic->split_k_factor = 1;
+        bestTactic->split_k_style = onnxruntime::llm::cutlass_extensions::SplitKStyle::NO_SPLIT_K;
+      }
+
+      // The profiler can mis-pick a tensor-core GEMM tactic over the CUDA-core GEMV at very small M (the
+      // GEMM wastes most of its M-tile at M=1). Allow forcing the GEMV for m <= ORT_FPA_FORCE_GEMV_MAXM.
+      int const force_gemv_maxm = ParseEnvironmentVariableWithDefault<int>("ORT_FPA_FORCE_GEMV_MAXM", 0);
+      bool const has_gemm_tactic = bestTactic.has_value() && !bestTactic->enableCudaKernel;
+
+      // Large-M dequant+cuBLAS path: dequantize the interleaved weight to a plain row-major [N,K] matrix once
+      // and run a single cuBLAS HGEMM. Chosen for m >= 16 (above the M<=15 GEMV range) when the CUTLASS
+      // tensor-core GEMM is either unusable or slower than a plain HGEMM:
+      //  - no valid GEMM tactic (group_size 32 is never served, and the weight-only GEMM emits no config for
+      //    small / non-power-of-two N such as 256/1024/3072): without this the row-chunked GEMV re-reads the
+      //    weight per 15 rows and grows linearly with M.
+      //  - m >= dequant_minm: the single-pass GEMM under-occupies at large M for small N (few column tiles).
+      // For large N the GEMM stays well-occupied and faster, so dequant_minm is effectively disabled there.
+      // Thresholds overridable via ORT_FPA_DEQUANT_MINM.
       int default_dequant_minm;
       if (block_size_ == 32) {
         default_dequant_minm = 16;
@@ -344,7 +363,9 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         default_dequant_minm = (1 << 30);
       }
       int const dequant_minm = ParseEnvironmentVariableWithDefault<int>("ORT_FPA_DEQUANT_MINM", default_dequant_minm);
-      if (has_fpA_intB_gemv_ && dequant_minm > 0 && m >= dequant_minm) {
+      bool const use_dequant = has_fpA_intB_gemv_ && m >= 16 && m > force_gemv_maxm &&
+                               (!has_gemm_tactic || m >= dequant_minm);
+      if (use_dequant) {
         auto b_dequant = this->template GetScratchBuffer<T>(static_cast<size_t>(n) * k, this->GetComputeStream(ctx));
         onnxruntime::llm::kernels::fpA_intB_gemv::Params deq_params(
             nullptr, nullptr, fpA_intB_weight_buffer_.get(), fpA_intB_scale_buffer_.get(),
@@ -365,31 +386,10 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         return Status::OK();
       }
 
-      auto bestTactic = gemmProfiler_->getBestConfig(m, gemmId_);
-
-      // The profiler tends to over-select split-K (extra K-partitions + a serial partial-sum reduction) which
-      // helps occupancy at small M but collapses large-M throughput (the wide reduction dominates). Past
-      // ORT_FPA_SPLITK_MAXM, drop to a single-pass GEMM (NO_SPLIT_K) so prefill runs at tensor-core speed.
-      int const splitk_maxm = ParseEnvironmentVariableWithDefault<int>("ORT_FPA_SPLITK_MAXM", 64);
-      if (bestTactic.has_value() && !bestTactic->enableCudaKernel && m > splitk_maxm &&
-          bestTactic->split_k_factor > 1) {
-        bestTactic->split_k_factor = 1;
-        bestTactic->split_k_style = onnxruntime::llm::cutlass_extensions::SplitKStyle::NO_SPLIT_K;
-      }
-
-      // The profiler can mis-pick a tensor-core GEMM tactic over the CUDA-core GEMV at very small M (the
-      // GEMM wastes most of its M-tile at M=1). Allow forcing the GEMV for m <= ORT_FPA_FORCE_GEMV_MAXM.
-      int force_gemv_maxm = ParseEnvironmentVariableWithDefault<int>("ORT_FPA_FORCE_GEMV_MAXM", 0);
-
-      // The CUTLASS tensor-core GEMM only supports group_size 64/128 (its fine-grained scale iterator
-      // assumes one scale group per 64-element K tile). For block_size 32 it would produce wrong results,
-      // so it is never profiled there and getBestConfig returns no tactic for m>=16; route those (and any
-      // forced-small-m) through the CUDA-core GEMV instead (chunked over rows, since the GEMV handles m<=15).
-      bool const gemm_supports_group_size = (block_size_ == 64 || block_size_ == 128);
-      bool const has_gemm_tactic = bestTactic.has_value() && !bestTactic->enableCudaKernel;
+      // Remaining cases: m <= 15 (GEMV verify/decode range) or a usable tensor-core GEMM tactic. Route to the
+      // CUDA-core GEMV when there is no GEMM tactic or the GEMV is forced; otherwise run the GEMM.
       bool use_cuda_kernel = (bestTactic.has_value() && bestTactic->enableCudaKernel) ||
-                             (has_fpA_intB_gemv_ &&
-                              (m <= force_gemv_maxm || !gemm_supports_group_size || !has_gemm_tactic));
+                             (has_fpA_intB_gemv_ && (m <= force_gemv_maxm || !has_gemm_tactic));
 
 #if ORT_LLM_VERBOSE > 1
       std::cout << "Best tactic for m=" << m << ", n=" << n << ", k=" << k << "group_size=" << block_size_
