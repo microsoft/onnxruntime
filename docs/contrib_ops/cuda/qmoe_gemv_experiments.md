@@ -979,6 +979,169 @@ Every case reported `has_invalid_output=false`.
 - Per-column INT8 W8A16 decode shapes route to GEMV for both FP16 and BF16 and
   beat the grouped-GEMM fallback at every profiled shape.
 
+## 2026-06-19: Split-K2 Two-Pass SwiGLU GEMV Experiment
+
+### Change Under Test
+
+- Code commit: `f1d6718be719c1237be392c0389874b6a8926a3c`
+  (`Experiment QMoE split-K SwiGLU GEMV`).
+- Added default Split-K2 route with opt-out env knob:
+  `ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU=1`.
+- Scope: FP16 INT4/interleaved-SwiGLU FC1 GEMV path for decode-shaped QMoE.
+- Implementation:
+  - First pass launches `moe_gemv_splitk_partials_kernel` with `SplitK=2` and
+    writes FP32 partials into QMoE workspace.
+  - Second pass launches `moe_gemv_splitk_reduce_swiglu_kernel` to reduce the
+    partials, add optional bias, and apply SwiGLU.
+  - FC2 remains on the existing `moe_gemv_kernel`.
+  - Scratch is allocated only for the supported Split-K2 route. Setting
+    `ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU=1` restores the previous single-kernel
+    FC1 SwiGLU GEMV path.
+
+### Repro Notes
+
+- Build: `cmake --build build/cu130/Release --target onnxruntime_providers_cuda --parallel $(nproc)`.
+- Important provider sync: Python tests importing from
+  `build/cu130/Release/onnxruntime` load
+  `build/cu130/Release/onnxruntime/capi/libonnxruntime_providers_cuda.so`, not
+  only the top-level `build/cu130/Release/libonnxruntime_providers_cuda.so` or
+  the venv copy. Sync all relevant copies before measuring:
+
+  ```bash
+  cp build/cu130/Release/libonnxruntime_providers_cuda.so \
+     build/cu130/Release/onnxruntime/capi/libonnxruntime_providers_cuda.so
+  cp build/cu130/Release/libonnxruntime_providers_cuda.so \
+     .venv_cu130/lib/python3.14/site-packages/onnxruntime/capi/libonnxruntime_providers_cuda.so
+  ```
+
+- Focused QMoE helper:
+
+  ```bash
+  cd ~
+  CUDA_VISIBLE_DEVICES=1 \
+  LD_LIBRARY_PATH=~/onnxruntime/build/cu130/Release:~/cuda13.0/lib64:~/cudnn9.19_cuda13/lib:~/cudnn9.19_cuda13/lib64:${LD_LIBRARY_PATH:-} \
+  PYTHONPATH=~/onnxruntime/build/cu130/Release:~/onnxruntime/onnxruntime/test/python/transformers \
+  ~/onnxruntime/.venv_cu130/bin/python \
+  ~/onnxruntime/onnxruntime/test/python/transformers/profile_qmoe_gemv.py \
+    --case gpt_oss_20b_m1_top4_fp16_2880x2880_e32 --warmup 3 --repeat 20
+  ```
+
+### Focused QMoE Smoke
+
+Both modes reported `has_invalid_output=false`.
+
+| Mode | Env | Latency ms |
+|------|-----|------------|
+| Baseline | `ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU=1` | 0.072344 |
+| Split-K2 | none | 0.073816 |
+
+The short helper was slightly slower with split-K2, so Nsight was required to
+confirm route selection and isolate kernel time.
+
+### Nsight Systems Kernel Results
+
+Artifacts:
+
+- Baseline: `/tmp/qmoe_gptoss_baseline_final.{nsys-rep,sqlite}`
+- Split-K2: `/tmp/qmoe_gptoss_splitk_final.{nsys-rep,sqlite}`
+
+Command shape:
+
+```bash
+~/cuda13.0/bin/nsys profile -t cuda,nvtx --force-overwrite true \
+  -o /tmp/qmoe_gptoss_splitk_final --export=sqlite \
+  ~/onnxruntime/.venv_cu130/bin/python \
+  ~/onnxruntime/onnxruntime/test/python/transformers/profile_qmoe_gemv.py \
+    --case gpt_oss_20b_m1_top4_fp16_2880x2880_e32 --warmup 3 --repeat 30 --nvtx
+```
+
+Parsed with `parse_nsys.py --nvtx-range benchmark --pattern '%'`.
+
+| Mode | Kernel | Calls | Avg us |
+|------|--------|-------|--------|
+| Baseline | `moe_gemv_interleaved_swiglu_kernel` | 30 | 21.42 |
+| Baseline | `moe_gemv_kernel` | 30 | 12.13 |
+| Split-K2 | `moe_gemv_splitk_partials_kernel` | 30 | 17.59 |
+| Split-K2 | `moe_gemv_splitk_reduce_swiglu_kernel` | 30 | 2.39 |
+| Split-K2 | `moe_gemv_kernel` | 30 | 12.22 |
+
+Split-K2 reduced FC1 kernel work from about `21.42 us` to `17.59 + 2.39 =
+19.98 us`, a net FC1 reduction of about `1.44 us` per QMoE invocation. End-to-end
+under Nsight was effectively tied:
+
+| Mode | Helper latency ms |
+|------|-------------------|
+| Baseline | 0.079855 |
+| Split-K2 | 0.079728 |
+
+### Model-Level Decode Benchmark With CUDA Graph
+
+The user requested model-level measurement assuming CUDA graph. Both runs used
+the GPT-OSS-20B INT4 QMoE model package, CUDA graph enabled, XQA enabled, and
+deterministic MoE tactic selection:
+
+```bash
+MODEL=models/gpt-oss-20b/variants/cuda_int4_int4_qmoe_rtn_matmul_only \
+GPU=0 PROMPT_LEN=512 GEN_LEN=128 REPS=10 WARMUP=3 CUDA_GRAPH=1 XQA=1 SYNC_LIB=1 \
+ORT_FORCE_DETERMINISTIC_MOE=1 \
+bash scripts/bench_gpt_oss_ort_decode.sh
+```
+
+Baseline additionally set `ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU=1`.
+
+| Run | Mode | Decode latency ms/token | Decode throughput tok/s |
+|-----|------|-------------------------|-------------------------|
+| R1, `REPS=5`, `WARMUP=2` | Baseline | 2.869450 | 348.498901 |
+| R1, `REPS=5`, `WARMUP=2` | Split-K2 | 2.823800 | 354.132707 |
+| R2, `REPS=10`, `WARMUP=3` | Baseline | 2.865840 | 348.937861 |
+| R2, `REPS=10`, `WARMUP=3` | Split-K2 | 2.839335 | 352.195107 |
+
+The longer CUDA-graph pair showed about `+0.9%` decode throughput. The shorter
+pair showed about `+1.6%`. Since the focused helper reported valid output and
+the model-level gain repeated in the same direction, even this modest gain is
+worth enabling for GPT-OSS-20B decode while keeping an opt-out for A/B checks.
+
+After flipping Split-K2 to the default and adding
+`ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU=1` as the opt-out, three more paired
+CUDA-graph model runs were collected with `REPS=10`, `WARMUP=3`, prompt length
+512, and generation length 128:
+
+| Run | Mode | Decode latency ms/token | Decode throughput tok/s |
+|-----|------|-------------------------|-------------------------|
+| R3 | Default Split-K2 | 3.017252 | 331.427448 |
+| R3 | Split-K2 disabled | 3.055736 | 327.253380 |
+| R4 | Default Split-K2 | 3.006739 | 332.586260 |
+| R4 | Split-K2 disabled | 3.047570 | 328.130314 |
+| R5 | Default Split-K2 | 3.009466 | 332.284898 |
+| R5 | Split-K2 disabled | 3.047015 | 328.190090 |
+| Average | Default Split-K2 | 3.011152 | 332.099536 |
+| Average | Split-K2 disabled | 3.050107 | 327.857928 |
+
+The default Split-K2 route was faster in all three pairs, averaging `+1.29%`
+decode throughput and `-1.28%` decode latency versus the opt-out fallback.
+
+### Accuracy Smoke
+
+A 1000-sample `match_mmlu` smoke was run with the local parallel eval harness on
+all eight H200 GPUs, using the same GPT-OSS-20B INT4 QMoE model package and the
+current ORT build package. The default Split-K2 run scored `0.8380` pooled
+accuracy; the opt-out fallback with `ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU=1`
+scored `0.8350`. The small positive difference is within smoke-test noise, and
+there is no accuracy regression signal from enabling Split-K2 by default.
+
+### Decision
+
+- Enable Split-K2 by default for its supported fp16 INT4 interleaved-SwiGLU GEMV
+  scope.
+- Keep `ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU=1` as the fallback and A/B knob.
+- The 1000-sample MMLU smoke matched the opt-out fallback within noise, so the
+  default flip has an accuracy sanity check in addition to focused-helper valid
+  output.
+- Future work:
+  - Add per-shape autotune so route selection is data-driven instead of a fixed
+    default.
+  - Try a launch-fused reduction strategy or cooperative approach to keep the
+    FC1 parallelism benefit without the extra reduce launch.
 ## 2026-06-19 FP16 Accumulation Default: SM90, GPT-OSS Decode Shape
 
 ### Setup

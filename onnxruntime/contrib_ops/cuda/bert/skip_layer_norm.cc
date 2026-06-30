@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/nn/layer_norm_impl.h"
 #include "core/common/narrow.h"
 #include "skip_layer_norm.h"
 #include "skip_layer_norm_impl.h"
@@ -42,26 +41,14 @@ template <typename T, bool Simplified>
 SkipLayerNorm<T, Simplified>::SkipLayerNorm(const OpKernelInfo& op_kernel_info) : CudaKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
   ORT_ENFORCE(epsilon_ >= 0);
-
-#ifdef BUILD_CUDA_EP_AS_PLUGIN
-  // Plugin adapter cannot static_cast to CUDAExecutionProvider directly.
-  // Use the adapter shim that reads the config from the per-EP runtime map.
-  strict_ = onnxruntime::cuda::GetCudaKernelAdapterSkipLayerNormStrictMode(op_kernel_info.GetExecutionProvider());
-#else
-  const CUDAExecutionProvider* cuda_ep = static_cast<const CUDAExecutionProvider*>(op_kernel_info.GetExecutionProvider());
-  strict_ = cuda_ep->IsSkipLayerNormInStrictMode();
-#endif
+  // Note: the enable_skip_layer_norm_strict_mode provider option is deprecated and ignored.
+  // The kernel always accumulates in fp32, so the previous strict-mode path is no longer needed.
 }
 
 template <typename T, bool Simplified>
 Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* input = ctx->Input<Tensor>(0);
   const Tensor* skip = ctx->Input<Tensor>(1);
-  if (strict_ && skip->Shape() != input->Shape()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "'input' and 'skip' shall have same shape when enable_skip_layer_norm_strict_mode is True");
-  }
-
   const Tensor* gamma = ctx->Input<Tensor>(2);
 
   const Tensor* beta = Simplified ? nullptr : ctx->Input<Tensor>(3);
@@ -94,53 +81,34 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
 
   const int skip_size = onnxruntime::narrow<int>(skip->Shape().Size());
 
-  if (strict_) {
-    HostApplyLayerNorm<CudaT, float, CudaT, Simplified>(
-        GetDeviceProp(),
+  if constexpr (std::is_same_v<T, BFloat16>) {
+    LaunchSkipLayerNormKernel<nv_bfloat16, Simplified>(
         Stream(ctx),
-        reinterpret_cast<CudaT*>(output->MutableData<T>()),                             // Y_data
-        nullptr,                                                                        // mean_data
-        nullptr,                                                                        // inv_var_data
-        reinterpret_cast<const CudaT*>(input->Data<T>()),                               // X_data
-        row_count,                                                                      // n1
-        hidden_size,                                                                    // n2
-        (double)epsilon_,                                                               // epsilon
-        reinterpret_cast<const CudaT*>(gamma->Data<T>()),                               // gamma
-        (beta != nullptr) ? reinterpret_cast<const CudaT*>(beta->Data<T>()) : nullptr,  // beta
-        0,                                                                              // no broadcast for gamma/beta
-        reinterpret_cast<const CudaT*>(skip->Data<T>()),                                // skip or residual to add
-        (bias != nullptr) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,  // bias to add
-        sum_output != nullptr ? reinterpret_cast<CudaT*>(sum_output->MutableData<T>()) : nullptr);
+        reinterpret_cast<nv_bfloat16*>(output->MutableData<T>()),
+        sum_output != nullptr ? reinterpret_cast<nv_bfloat16*>(sum_output->MutableData<T>()) : nullptr,
+        reinterpret_cast<const nv_bfloat16*>(input->Data<T>()),
+        reinterpret_cast<const nv_bfloat16*>(skip->Data<T>()),
+        (bias != nullptr) ? reinterpret_cast<const nv_bfloat16*>(bias->Data<T>()) : nullptr,
+        reinterpret_cast<const nv_bfloat16*>(gamma->Data<T>()),
+        (beta != nullptr) ? reinterpret_cast<const nv_bfloat16*>(beta->Data<T>()) : nullptr,
+        epsilon_,
+        hidden_size,
+        row_count,
+        skip_size);
   } else {
-    if constexpr (std::is_same_v<T, BFloat16>) {
-      LaunchSkipLayerNormKernel<nv_bfloat16, Simplified>(
-          Stream(ctx),
-          reinterpret_cast<nv_bfloat16*>(output->MutableData<T>()),
-          sum_output != nullptr ? reinterpret_cast<nv_bfloat16*>(sum_output->MutableData<T>()) : nullptr,
-          reinterpret_cast<const nv_bfloat16*>(input->Data<T>()),
-          reinterpret_cast<const nv_bfloat16*>(skip->Data<T>()),
-          (bias != nullptr) ? reinterpret_cast<const nv_bfloat16*>(bias->Data<T>()) : nullptr,
-          reinterpret_cast<const nv_bfloat16*>(gamma->Data<T>()),
-          (beta != nullptr) ? reinterpret_cast<const nv_bfloat16*>(beta->Data<T>()) : nullptr,
-          epsilon_,
-          hidden_size,
-          row_count,
-          skip_size);
-    } else {
-      LaunchSkipLayerNormKernel<CudaT, Simplified>(
-          Stream(ctx),
-          reinterpret_cast<CudaT*>(output->MutableData<T>()),
-          sum_output != nullptr ? reinterpret_cast<CudaT*>(sum_output->MutableData<T>()) : nullptr,
-          reinterpret_cast<const CudaT*>(input->Data<T>()),
-          reinterpret_cast<const CudaT*>(skip->Data<T>()),
-          (bias != nullptr) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,
-          reinterpret_cast<const CudaT*>(gamma->Data<T>()),
-          (beta != nullptr) ? reinterpret_cast<const CudaT*>(beta->Data<T>()) : nullptr,
-          epsilon_,
-          hidden_size,
-          row_count,
-          skip_size);
-    }
+    LaunchSkipLayerNormKernel<CudaT, Simplified>(
+        Stream(ctx),
+        reinterpret_cast<CudaT*>(output->MutableData<T>()),
+        sum_output != nullptr ? reinterpret_cast<CudaT*>(sum_output->MutableData<T>()) : nullptr,
+        reinterpret_cast<const CudaT*>(input->Data<T>()),
+        reinterpret_cast<const CudaT*>(skip->Data<T>()),
+        (bias != nullptr) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,
+        reinterpret_cast<const CudaT*>(gamma->Data<T>()),
+        (beta != nullptr) ? reinterpret_cast<const CudaT*>(beta->Data<T>()) : nullptr,
+        epsilon_,
+        hidden_size,
+        row_count,
+        skip_size);
   }
 
   CUDA_RETURN_IF_ERROR(cudaGetLastError());

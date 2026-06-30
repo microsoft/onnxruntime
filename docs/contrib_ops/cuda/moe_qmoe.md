@@ -989,6 +989,27 @@ per-column INT4, block-wise INT4/INT8, and interleaved-SwiGLU GEMV kernels.
 | Kernel instantiation | `moe_gemv.cu` adds `__nv_bfloat16` details/instantiations (group sizes 0/32/64/128, INT4/INT8, bias on/off) under `ENABLE_BF16`. | The custom FC1/FC2 GEMV kernels run for BF16; no grouped-GEMM fallback when the FP16 gate would route. |
 | Profiling | GPT-OSS-20B, Qwen3.6-35B-A3B, and Gemma model shapes profiled with `block_size=64` for both dtypes. | BF16 matches FP16 routing and latency within noise (about 1.3x–1.5x faster than grouped GEMM); SwiGLU BF16 parity tests pass. |
 
+#### Split-K2 SwiGLU GEMV default path
+
+The fp16 INT4 interleaved-SwiGLU GEMV path uses a two-pass Split-K2 FC1 kernel by
+default for supported decode shapes. The first pass computes two K-split FP32
+partials into QMoE workspace, and the second pass reduces those partials, adds
+optional bias, and applies the interleaved SwiGLU epilogue. FC2 stays on the
+regular `moe_gemv_kernel` path.
+
+Set `ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU=1` before process start to force the
+previous single-kernel FC1 SwiGLU GEMV path for debugging, A/B benchmarking, or
+bisecting numerical differences. On GPT-OSS-20B, Split-K2 reduced FC1 kernel
+work from about 21.42 us to 19.98 us and improved repeated CUDA-graph decode
+throughput by about 0.9% to 1.6% with valid focused-helper output. A 1000-sample
+MMLU smoke matched the opt-out fallback within noise. A future autotuner can
+replace this hand-selected default with per-shape route selection.
+
+```bash
+onnxruntime/test/python/transformers/profile_qmoe_gemv.py \
+  --case gpt_oss_20b_m1_top4_fp16_2880x2880_e32 \
+  --disable-splitk2-swiglu --warmup 5 --repeat 100 --nvtx
+```
 #### Accumulation policy
 
 The QMoE GEMV fast path accumulates fp16 activations in fp16 by default. Set

@@ -2158,6 +2158,15 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
 
   switch (constant_attribute.type()) {
     case AttributeProto_AttributeType_TENSOR:
+      // Defense-in-depth: reject ORT in-memory address markers on a Constant node's dense tensor
+      // attribute. These markers are an internal ORT sentinel for trusted in-memory buffers and must
+      // never appear in a deserialized protobuf. The Graph constructor also checks all initializers
+      // (including those converted from Constant nodes), but we block early here to prevent the
+      // crafted tensor from propagating further.
+      ORT_RETURN_IF(HasExternalDataInMemory(constant_attribute.t()),
+                    "Constant node '", node.name(),
+                    "' tensor attribute references an ORT in-memory address marker, "
+                    "which is not allowed in a model protobuf.");
       tensor = constant_attribute.t();
       break;
     case AttributeProto_AttributeType_FLOAT:
