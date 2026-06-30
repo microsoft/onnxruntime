@@ -15,7 +15,14 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
+// Standalone MLAS builds don't have access to the ORT-internal SafeInt
+// wrapper; fall back to the SafeInt.hpp header directly (its default
+// exception handler still throws on overflow).
+#include "SafeInt.hpp"
+#else
 #include "core/common/safeint.h"
+#endif
 
 //
 // Define the number of working buffer elements required per thread.

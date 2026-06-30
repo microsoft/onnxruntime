@@ -1,23 +1,26 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// Tests for the SafeInt-guarded working-buffer/size products in
-// MlasConvPrepare (see PR #29444). These cases construct attacker-controlled
-// shape/count combinations whose products overflow size_t and verify that
-// MlasConvPrepare throws onnxruntime::OnnxRuntimeException (raised by
-// SafeInt's overflow handler) rather than silently producing an under-sized
-// working buffer or wrapped tensor size.
+// Tests for the SafeInt-guarded working-buffer/size products in MlasConvPrepare.
+// These cases construct attacker-controlled shape/count combinations whose
+// products overflow size_t and verify that MlasConvPrepare throws
+// onnxruntime::OnnxRuntimeException (raised by SafeInt's overflow handler)
+// rather than silently producing an under-sized working buffer or wrapped
+// tensor size.
 
 #include "gtest/gtest.h"
 
-#include "core/common/exceptions.h"
 #include "mlas.h"
+
+// These tests rely on the ORT-internal SafeInt overflow handler
+// (onnxruntime::OnnxRuntimeException) and on ORT exception support, so they
+// are skipped in standalone MLAS builds and in no-exception configurations.
+#if !defined(ORT_NO_EXCEPTIONS) && !defined(BUILD_MLAS_NO_ONNXRUNTIME)
+
+#include "core/common/exceptions.h"
 
 #include <cstdint>
 #include <cstddef>
-#include <limits>
-
-#ifndef ORT_NO_EXCEPTIONS
 
 namespace {
 
@@ -192,4 +195,4 @@ TEST(MlasConvPrepareSafeIntTest, BatchGroupProductOverflowsThrows) {
   EXPECT_THROW(RunConvPrepare(in), onnxruntime::OnnxRuntimeException);
 }
 
-#endif  // ORT_NO_EXCEPTIONS
+#endif  // !defined(ORT_NO_EXCEPTIONS) && !defined(BUILD_MLAS_NO_ONNXRUNTIME)
