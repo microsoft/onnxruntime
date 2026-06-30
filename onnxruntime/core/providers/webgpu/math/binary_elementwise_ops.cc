@@ -7,7 +7,6 @@
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/string_macros.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
-#include "core/providers/webgpu/webgpu_execution_provider.h"
 
 namespace onnxruntime {
 namespace webgpu {
