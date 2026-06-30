@@ -93,6 +93,47 @@ void _multiply_arrays_values(std::vector<T>& data, int64_t val) {
   }
 }
 
+static void RunInvalidLeafTargetIdsTest(int64_t aggregate_function,
+                                        int64_t n_targets,
+                                        std::vector<int64_t> leaf_targetids,
+                                        const std::string& expected_error) {
+  OpTester test("TreeEnsemble", 5, onnxruntime::kMLDomain);
+
+  const int64_t post_transform = 0;
+  std::vector<int64_t> tree_roots = {0};
+  std::vector<uint8_t> nodes_modes = {0};
+  std::vector<int64_t> nodes_featureids = {0};
+  std::vector<double> nodes_splits = {0.0};
+  std::vector<int64_t> nodes_truenodeids = {0};
+  std::vector<int64_t> nodes_trueleafs = {1};
+  std::vector<int64_t> nodes_falsenodeids = {0};
+  std::vector<int64_t> nodes_falseleafs = {1};
+  std::vector<double> leaf_weights = {1.0};
+
+  auto nodes_modes_as_tensor = make_tensor(nodes_modes, "nodes_modes");
+  auto nodes_splits_as_tensor = make_tensor(nodes_splits, "nodes_splits");
+  auto leaf_weights_as_tensor = make_tensor(leaf_weights, "leaf_weight");
+
+  test.AddAttribute("n_targets", n_targets);
+  test.AddAttribute("aggregate_function", aggregate_function);
+  test.AddAttribute("post_transform", post_transform);
+  test.AddAttribute("tree_roots", tree_roots);
+  test.AddAttribute("nodes_modes", nodes_modes_as_tensor);
+  test.AddAttribute("nodes_featureids", nodes_featureids);
+  test.AddAttribute("nodes_splits", nodes_splits_as_tensor);
+  test.AddAttribute("nodes_truenodeids", nodes_truenodeids);
+  test.AddAttribute("nodes_trueleafs", nodes_trueleafs);
+  test.AddAttribute("nodes_falsenodeids", nodes_falsenodeids);
+  test.AddAttribute("nodes_falseleafs", nodes_falseleafs);
+  test.AddAttribute("leaf_targetids", leaf_targetids);
+  test.AddAttribute("leaf_weights", leaf_weights_as_tensor);
+
+  const int64_t output_targets = n_targets > 0 ? n_targets : 0;
+  test.AddInput<double>("X", {1, 1}, {1.0});
+  test.AddOutput<double>("Y", {1, output_targets}, std::vector<double>(static_cast<size_t>(output_targets), 0.0));
+  test.Run(OpTester::ExpectResult::kExpectFailure, expected_error);
+}
+
 template <typename T>
 void GenTreeAndRunTest(const std::vector<T>& X, const std::vector<T>& Y, const int64_t& aggregate_function, int n_trees = 1) {
   OpTester test("TreeEnsemble", 5, onnxruntime::kMLDomain);
@@ -288,6 +329,38 @@ TEST(MLOpTest, TreeEnsembleLeafOnly) {
   test.AddInput<double>("X", {2, 1}, X);
   test.AddOutput<double>("Y", {2, 1}, Y);
   test.Run();
+}
+
+TEST(MLOpTest, TreeEnsembleMinLeafTargetIdsOutsideBoundary) {
+  RunInvalidLeafTargetIdsTest(
+      2,
+      2,
+      {5},
+      "At least one value (5) in target/class ids is greater or equal to the target/class count (2)");
+}
+
+TEST(MLOpTest, TreeEnsembleMaxLeafTargetIdsOutsideBoundary) {
+  RunInvalidLeafTargetIdsTest(
+      3,
+      2,
+      {5},
+      "At least one value (5) in target/class ids is greater or equal to the target/class count (2)");
+}
+
+TEST(MLOpTest, TreeEnsembleNegativeLeafTargetIds) {
+  RunInvalidLeafTargetIdsTest(
+      1,
+      2,
+      {-1},
+      "target/class ids cannot have negative values (-1)");
+}
+
+TEST(MLOpTest, TreeEnsembleZeroTargets) {
+  RunInvalidLeafTargetIdsTest(
+      1,
+      0,
+      {0},
+      "target/class count must be positive, got 0");
 }
 
 TEST(MLOpTest, TreeEnsembleLeafLike) {

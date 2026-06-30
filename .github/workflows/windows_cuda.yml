@@ -148,7 +148,7 @@ jobs:
       DocUpdateNeeded: false
       ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
       AZCOPY_AUTO_LOGIN_TYPE: MSI
-      AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
+      AZCOPY_MSI_CLIENT_ID: d712a4c7-a0cf-4e87-af75-31510eba0a8e
 
   test:
     name: Windows GPU CUDA CI Pipeline Test Job
@@ -260,4 +260,4 @@ jobs:
       DocUpdateNeeded: false
       ONNXRUNTIME_TEST_GPU_DEVICE_ID: '0'
       AZCOPY_AUTO_LOGIN_TYPE: MSI
-      AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
+      AZCOPY_MSI_CLIENT_ID: d712a4c7-a0cf-4e87-af75-31510eba0a8e

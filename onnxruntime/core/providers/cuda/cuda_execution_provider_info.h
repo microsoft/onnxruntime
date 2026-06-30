@@ -71,7 +71,6 @@ struct CUDAExecutionProviderInfo {
 
   cuda::TunableOpInfo tunable_op{};
 
-  bool enable_skip_layer_norm_strict_mode{false};
   bool prefer_nhwc{false};
 
   bool use_ep_level_unified_stream{false};
@@ -105,7 +104,6 @@ struct std::hash<::onnxruntime::CUDAExecutionProviderInfo> {
                   (static_cast<size_t>(info.tunable_op.enable) << 24) ^
                   (static_cast<size_t>(info.tunable_op.tuning_enable) << 25) ^
                   (static_cast<size_t>(info.cudnn_conv1d_pad_to_nc1d) << 26) ^
-                  (static_cast<size_t>(info.enable_skip_layer_norm_strict_mode) << 27) ^
                   (static_cast<size_t>(info.prefer_nhwc) << 28) ^
                   (static_cast<size_t>(info.use_ep_level_unified_stream) << 29) ^
                   (static_cast<size_t>(info.use_tf32) << 30) ^

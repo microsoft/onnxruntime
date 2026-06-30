@@ -1,0 +1,237 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+// Fused TurboQuant: Split packed QKV + Rotary K + Hadamard + Quantize K/V + Rotary Q.
+//
+// A single dispatch handles all three components:
+//   Workgroups [0, num_kv_slices):                K — split from packed QKV, apply rotary, WHT, quantize, write to present_key
+//   Workgroups [num_kv_slices, 2*num_kv_slices):  V — split from packed QKV, WHT, quantize, write to present_value
+//   Workgroups [2*num_kv_slices, total):           Q — split from packed QKV, apply rotary, write to query output
+//
+// K/V path: apply Walsh-Hadamard butterfly transform in shared memory, compute L2 norm,
+// quantize each element to a 4-bit centroid index, pack 8 indices per u32, and store
+// norm (as bitcast<u32>(f32)) followed by packed index words.
+// Q path: per-element rotary embedding and return (no shared memory or barriers needed).
+//
+// Output layout per KV head: [norm_u32, packed_indices_0, ..., packed_indices_(HEAD_SIZE/8 - 1)]
+
+#param hadamard_size_log2
+#param half_rotary_dim
+#param compressed_head_size_u32
+#param past_present_share_buffer
+#param use_seqlen_k
+#param prepare_indirect_dispatch
+#param multi_rotary_cache_concat_offset
+#param use_multi_rotary_cache_concat
+#use .getByIndices .getByOffset .setByOffset
+
+const HEAD_SIZE : u32 = 1u << hadamard_size_log2;
+const COMPRESSED_HEAD_U32 : u32 = compressed_head_size_u32;
+const HALF_ROTARY_DIM : u32 = half_rotary_dim;
+
+var<workgroup> hadamard_buffer : array<f32, HEAD_SIZE>;
+
+#include "bert/hadamard_transform_common.wgsl.template"
+#include "bert/turbo_quant_common.wgsl.template"
+#if prepare_indirect_dispatch
+#include "bert/indirect_dispatch_common.wgsl.template"
+#endif
+
+var<workgroup> scale_reduction_buffer : array<f32, 64>;
+// Reuse shared memory for packing: store centroid indices (0-15) as u32 per element.
+var<workgroup> index_buffer : array<u32, HEAD_SIZE>;
+
+$MAIN {
+  // Compute total_seq_length.
+#if use_seqlen_k
+  let total_seq_length = u32(seqlen_k[0u]) + 1u;
+#else
+  let total_seq_length = uniforms.total_sequence_length;
+#endif
+  let past_seq_length = total_seq_length - uniforms.kv_sequence_length;
+
+  // Base position offset for rotary embedding cos/sin cache lookup.
+  let position_id = past_seq_length;
+#if use_multi_rotary_cache_concat
+  let base_position = select(0u, multi_rotary_cache_concat_offset, total_seq_length > multi_rotary_cache_concat_offset);
+#else
+  let base_position = 0u;
+#endif
+
+  // Prepare indirect dispatch buffer (first workgroup, first thread only).
+#if prepare_indirect_dispatch
+  if (workgroup_idx == 0u && local_idx == 0u) {
+    let num_total_seq_length_tile = (total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;
+    populate_indirect_dispatch_buffer(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);
+  }
+#endif
+
+  // Map flat workgroup index to logical component (Q, K, or V).
+  let num_kv_slices = uniforms.num_kv_slices;
+  let is_q = workgroup_idx >= 2u * num_kv_slices;
+  let is_value = !is_q && workgroup_idx >= num_kv_slices;
+
+  // ============ Q WORKGROUP PATH (early return, no shared memory/barriers) ============
+  if (is_q) {
+    let q_slice = workgroup_idx - 2u * num_kv_slices;
+    if (q_slice >= uniforms.num_q_slices) { return; }
+
+    // Unflatten q_slice into (batch, seq, head).
+    let batch = q_slice / (uniforms.kv_sequence_length * uniforms.num_heads);
+    let head = (q_slice / uniforms.kv_sequence_length) % uniforms.num_heads;
+    let seq = q_slice % uniforms.kv_sequence_length;
+
+    // Compute source offset in packed QKV for this Q head.
+    // Packed QKV layout per token: [Q_hidden | K_kv_hidden | V_kv_hidden].
+    let token_size = uniforms.hidden_size + 2u * uniforms.kv_hidden_size;
+    let token_offset = (batch * uniforms.kv_sequence_length + seq) * token_size;
+    let q_src_base = token_offset + head * HEAD_SIZE;
+
+    // Destination offset in query output (BSD layout: batch * seq * hidden_size).
+    let q_dst_base = (batch * uniforms.kv_sequence_length + seq) * uniforms.hidden_size + head * HEAD_SIZE;
+
+    // Position index for rotary embedding cos/sin lookup.
+    let seq_position_id = past_seq_length + seq;
+
+    // Apply rotary embedding: rotate first HALF_ROTARY_DIM pairs.
+    for (var i = local_idx; i < HALF_ROTARY_DIM; i += workgroup_size_x) {
+      let cos_v = cos_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i));
+      let sin_v = sin_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i));
+
+      let q_i = packed_qkv.getByOffset(q_src_base + i);
+      let q_j = packed_qkv.getByOffset(q_src_base + i + HALF_ROTARY_DIM);
+
+      let q_re = q_i * cos_v - q_j * sin_v;
+      let q_im = q_i * sin_v + q_j * cos_v;
+
+      query.setByOffset(q_dst_base + i, q_re);
+      query.setByOffset(q_dst_base + i + HALF_ROTARY_DIM, q_im);
+    }
+
+    // Copy non-rotary elements (if head_size > 2 * half_rotary_dim)
+    for (var i = local_idx; i < HEAD_SIZE - 2u * HALF_ROTARY_DIM; i += workgroup_size_x) {
+      let actual_idx = 2u * HALF_ROTARY_DIM + i;
+      query.setByOffset(q_dst_base + actual_idx, packed_qkv.getByOffset(q_src_base + actual_idx));
+    }
+    return;
+  }
+
+  // ============ K/V WORKGROUP PATH (WHT + quantize) ============
+  let kv_slice = select(workgroup_idx, workgroup_idx - num_kv_slices, is_value);
+  if (kv_slice >= num_kv_slices) { return; }
+
+  // Unflatten kv_slice into (batch, head, seq).
+  let batch = kv_slice / (uniforms.kv_num_heads * uniforms.kv_sequence_length);
+  let head = (kv_slice / uniforms.kv_sequence_length) % uniforms.kv_num_heads;
+  let seq = kv_slice % uniforms.kv_sequence_length;
+
+  // Compute destination offset in present_key/present_value (u32 packed, BNSH layout).
+#if past_present_share_buffer
+  let dest_seq = past_seq_length + seq;
+#else
+  let dest_seq = seq;
+#endif
+  let present_base = ((batch * uniforms.kv_num_heads + head) * uniforms.present_seq_length + dest_seq) * COMPRESSED_HEAD_U32;
+
+  // Compute source offset in packed QKV for this KV head.
+  // Packed QKV layout per token: [Q_hidden | K_kv_hidden | V_kv_hidden].
+  let token_size = uniforms.hidden_size + 2u * uniforms.kv_hidden_size;
+  let token_offset = (batch * uniforms.kv_sequence_length + seq) * token_size;
+  let k_src_base = token_offset + uniforms.hidden_size + head * HEAD_SIZE;
+  let v_src_base = token_offset + uniforms.hidden_size + uniforms.kv_hidden_size + head * HEAD_SIZE;
+  let src_base = select(k_src_base, v_src_base, is_value);
+
+  // Position index for rotary embedding cos/sin lookup (K only).
+  let seq_position_id = past_seq_length + seq;
+
+  // Load from packed QKV into shared memory (f32). K gets rotary, V loads directly.
+  if (!is_value) {
+    // K path: apply rotary embedding during load.
+    for (var i = local_idx; i < HALF_ROTARY_DIM; i += workgroup_size_x) {
+      let cos_v = f32(cos_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i)));
+      let sin_v = f32(sin_cache.getByIndices(vec2<u32>(base_position + seq_position_id, i)));
+
+      let k_i = f32(packed_qkv.getByOffset(src_base + i));
+      let k_j = f32(packed_qkv.getByOffset(src_base + i + HALF_ROTARY_DIM));
+
+      hadamard_buffer[i] = k_i * cos_v - k_j * sin_v;
+      hadamard_buffer[i + HALF_ROTARY_DIM] = k_i * sin_v + k_j * cos_v;
+    }
+    // Copy non-rotary elements (if head_size > 2 * half_rotary_dim)
+    for (var i = local_idx; i < HEAD_SIZE - 2u * HALF_ROTARY_DIM; i += workgroup_size_x) {
+      let actual_idx = 2u * HALF_ROTARY_DIM + i;
+      hadamard_buffer[actual_idx] = f32(packed_qkv.getByOffset(src_base + actual_idx));
+    }
+  } else {
+    // V path: straight copy, no rotary.
+    for (var i = local_idx; i < HEAD_SIZE; i += workgroup_size_x) {
+      hadamard_buffer[i] = f32(packed_qkv.getByOffset(src_base + i));
+    }
+  }
+  workgroupBarrier();
+
+  // Walsh-Hadamard Transform butterfly passes.
+  wht_butterfly(local_idx, workgroup_size_x);
+
+  // WHT normalization.
+  let wht_norm = 1.0f / sqrt(f32(HEAD_SIZE));
+  for (var i = local_idx; i < HEAD_SIZE; i += workgroup_size_x) {
+    hadamard_buffer[i] *= wht_norm;
+  }
+  workgroupBarrier();
+
+  // Compute L2 norm via parallel reduction.
+  var partial_sq_sum = 0.0f;
+  for (var i = local_idx; i < HEAD_SIZE; i += workgroup_size_x) {
+    partial_sq_sum += hadamard_buffer[i] * hadamard_buffer[i];
+  }
+  scale_reduction_buffer[local_idx] = partial_sq_sum;
+  workgroupBarrier();
+  // Tree reduction: each iteration halves active threads, accumulating the total
+  // sum of squares into scale_reduction_buffer[0] in log2(workgroup_size) steps.
+  for (var stride = workgroup_size_x >> 1u; stride > 0u; stride >>= 1u) {
+    if (local_idx < stride) {
+      scale_reduction_buffer[local_idx] += scale_reduction_buffer[local_idx + stride];
+    }
+    workgroupBarrier();
+  }
+  let l2_norm = sqrt(scale_reduction_buffer[0]);
+  let inv_l2 = select(0.0f, 1.0f / l2_norm, l2_norm > 0.0f);
+
+  // Quantize: compute centroid index for each element and store in index_buffer.
+  for (var i = local_idx; i < HEAD_SIZE; i += workgroup_size_x) {
+    let unit_val = hadamard_buffer[i] * inv_l2;
+    index_buffer[i] = snap_to_centroid_index(unit_val);
+  }
+  workgroupBarrier();
+
+  // Pack 8 indices per u32 word and write to output.
+  // Thread 0 writes the norm word.
+  if (local_idx == 0u) {
+    if (!is_value) {
+      present_key.setByOffset(present_base, bitcast<u32>(l2_norm));
+    } else {
+      present_value.setByOffset(present_base, bitcast<u32>(l2_norm));
+    }
+  }
+
+  // Each thread packs one or more u32 words (HEAD_SIZE/8 words total).
+  let num_packed_words = HEAD_SIZE >> 3u;
+  for (var w = local_idx; w < num_packed_words; w += workgroup_size_x) {
+    let base_elem = w << 3u;
+    var packed = 0u;
+    packed |= (index_buffer[base_elem + 0u] & 0xFu);
+    packed |= (index_buffer[base_elem + 1u] & 0xFu) << 4u;
+    packed |= (index_buffer[base_elem + 2u] & 0xFu) << 8u;
+    packed |= (index_buffer[base_elem + 3u] & 0xFu) << 12u;
+    packed |= (index_buffer[base_elem + 4u] & 0xFu) << 16u;
+    packed |= (index_buffer[base_elem + 5u] & 0xFu) << 20u;
+    packed |= (index_buffer[base_elem + 6u] & 0xFu) << 24u;
+    packed |= (index_buffer[base_elem + 7u] & 0xFu) << 28u;
+    if (!is_value) {
+      present_key.setByOffset(present_base + 1u + w, packed);
+    } else {
+      present_value.setByOffset(present_base + 1u + w, packed);
+    }
+  }
+}
