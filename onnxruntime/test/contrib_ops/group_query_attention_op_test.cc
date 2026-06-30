@@ -3211,13 +3211,10 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_KvEmpty_Decode) {
   webgpu_tester.AddOptionalInputEdge<float>();    // attention_bias
   webgpu_tester.AddOptionalInputEdge<float>();    // head_sink
   const int output_size = batch_size * q_seq_len * hidden_size;
-  const int present_size = batch_size * kv_num_heads * past_seq_len * head_size;
   webgpu_tester.AddOutput<float>("output", {batch_size, q_seq_len, hidden_size}, std::vector<float>(output_size, 0.0f));
-  webgpu_tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, past_seq_len, head_size}, std::vector<float>(present_size, 0.0f));
-  webgpu_tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, past_seq_len, head_size}, std::vector<float>(present_size, 0.0f));
   webgpu_tester.SetOutputTolerance(1e6f);
   std::vector<std::unique_ptr<IExecutionProvider>> webgpu_eps;
-  webgpu_eps.push_back(DefaultWebGpuExecutionProvider());
+  webgpu_eps.push_back(std::move(webgpu_ep));
   webgpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &webgpu_eps);
   const float* webgpu_out = webgpu_tester.GetFetches()[0].Get<Tensor>().Data<float>();
   std::vector<float> webgpu_output(webgpu_out, webgpu_out + output_size);
@@ -3270,13 +3267,10 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_KvEmpty_LargerPast) {
   webgpu_tester.AddOptionalInputEdge<float>();    // attention_bias
   webgpu_tester.AddOptionalInputEdge<float>();    // head_sink
   const int output_size = batch_size * q_seq_len * hidden_size;
-  const int present_size = batch_size * kv_num_heads * past_seq_len * head_size;
   webgpu_tester.AddOutput<float>("output", {batch_size, q_seq_len, hidden_size}, std::vector<float>(output_size, 0.0f));
-  webgpu_tester.AddOutput<float>("present_key", {batch_size, kv_num_heads, past_seq_len, head_size}, std::vector<float>(present_size, 0.0f));
-  webgpu_tester.AddOutput<float>("present_value", {batch_size, kv_num_heads, past_seq_len, head_size}, std::vector<float>(present_size, 0.0f));
   webgpu_tester.SetOutputTolerance(1e6f);
   std::vector<std::unique_ptr<IExecutionProvider>> webgpu_eps;
-  webgpu_eps.push_back(DefaultWebGpuExecutionProvider());
+  webgpu_eps.push_back(std::move(webgpu_ep));
   webgpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &webgpu_eps);
   const float* webgpu_out = webgpu_tester.GetFetches()[0].Get<Tensor>().Data<float>();
   std::vector<float> webgpu_output(webgpu_out, webgpu_out + output_size);
