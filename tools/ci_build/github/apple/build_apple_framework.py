@@ -66,6 +66,14 @@ def _get_framework_binary_path(framework_dir):
     return os.path.join(framework_dir, "onnxruntime")
 
 
+def _get_framework_headers_path(framework_dir):
+    versioned_headers_path = os.path.join(framework_dir, "Versions", "A", "Headers")
+    if os.path.exists(versioned_headers_path):
+        return versioned_headers_path
+
+    return os.path.join(framework_dir, "Headers")
+
+
 # Build fat framework for all archs of a single sysroot
 # For example, arm64 and x86_64 for iphonesimulator
 def _build_for_apple_sysroot(
@@ -105,20 +113,26 @@ def _build_for_apple_sysroot(
         if not info_plist_path:
             info_plist_path = os.path.join(build_dir_current_arch, build_config, "Info.plist")
             framework_info_path = os.path.join(build_dir_current_arch, build_config, "framework_info.json")
-            headers = glob.glob(os.path.join(framework_dir, "Headers", "*.h"))
+            headers = glob.glob(os.path.join(_get_framework_headers_path(framework_dir), "*.h"))
 
-    # manually create the fat framework
-    framework_dir = os.path.join(intermediates_dir, "frameworks", sysroot, "onnxruntime.framework")
-    # remove the existing framework if any
-    if os.path.exists(framework_dir):
-        shutil.rmtree(framework_dir)
-    pathlib.Path(framework_dir).mkdir(parents=True, exist_ok=True)
+    bundle_root = os.path.join(intermediates_dir, "frameworks", sysroot)
+    framework_dir = os.path.join(bundle_root, "onnxruntime.framework")
+    static_library_dir = os.path.join(bundle_root, "onnxruntime")
+    fat_binary_output_path = (
+        os.path.join(framework_dir, "onnxruntime")
+        if build_dynamic_framework
+        else os.path.join(static_library_dir, "libonnxruntime.a")
+    )
+
+    if os.path.exists(bundle_root):
+        shutil.rmtree(bundle_root)
+    pathlib.Path(bundle_root).mkdir(parents=True, exist_ok=True)
 
     # copy the Info.plist, framework_info.json, and header files
 
     # macos requires different framework structure:
     # https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPFrameworks/Concepts/FrameworkAnatomy.html
-    if sysroot == "macosx" or sysroot == "macabi":
+    if build_dynamic_framework and (sysroot == "macosx" or sysroot == "macabi"):
         # create headers and resources directory
         header_dir = os.path.join(framework_dir, "Versions", "A", "Headers")
         resource_dir = os.path.join(framework_dir, "Versions", "A", "Resources")
@@ -134,7 +148,7 @@ def _build_for_apple_sysroot(
         # use lipo to create a fat ort library
         lipo_command = ["lipo", "-create"]
         lipo_command += ort_libs
-        lipo_command += ["-output", os.path.join(framework_dir, "Versions", "A", "onnxruntime")]
+        lipo_command += ["-output", fat_binary_output_path]
         subprocess.run(lipo_command, shell=False, check=True)
 
         # create the symbolic link
@@ -148,9 +162,14 @@ def _build_for_apple_sysroot(
         pathlib.Path(os.path.join(framework_dir, "onnxruntime")).symlink_to("Versions/Current/onnxruntime")
 
     else:
-        shutil.copy(info_plist_path, framework_dir)
-        shutil.copy(framework_info_path, os.path.dirname(framework_dir))
-        header_dir = os.path.join(framework_dir, "Headers")
+        if build_dynamic_framework:
+            shutil.copy(info_plist_path, framework_dir)
+            header_dir = os.path.join(framework_dir, "Headers")
+        else:
+            header_dir = os.path.join(static_library_dir, "Headers")
+            pathlib.Path(static_library_dir).mkdir(parents=True, exist_ok=True)
+
+        shutil.copy(framework_info_path, bundle_root)
         pathlib.Path(header_dir).mkdir(parents=True, exist_ok=True)
 
         for _header in headers:
@@ -159,10 +178,15 @@ def _build_for_apple_sysroot(
         # use lipo to create a fat ort library
         lipo_command = ["lipo", "-create"]
         lipo_command += ort_libs
-        lipo_command += ["-output", os.path.join(framework_dir, "onnxruntime")]
+        lipo_command += ["-output", fat_binary_output_path]
         subprocess.run(lipo_command, shell=False, check=True)
 
-    return framework_dir
+    return {
+        "artifact_path": framework_dir if build_dynamic_framework else fat_binary_output_path,
+        "framework_info_path": os.path.join(bundle_root, "framework_info.json"),
+        "headers_path": header_dir if build_dynamic_framework else os.path.join(static_library_dir, "Headers"),
+        "is_framework": build_dynamic_framework,
+    }
 
 
 def _merge_framework_info_files(files, output_file):
@@ -188,7 +212,7 @@ def _build_package(args):
     build_config = args.config
 
     # build framework for individual sysroot
-    framework_dirs = []
+    build_artifacts = []
     framework_info_files_to_merge = []
     public_headers_path = ""
     for sysroot in build_settings["build_osx_archs"]:
@@ -205,7 +229,7 @@ def _build_package(args):
         if args.path_to_protoc_exe is not None:
             base_build_command += ["--path_to_protoc_exe=" + str(args.path_to_protoc_exe.resolve())]
 
-        framework_dir = _build_for_apple_sysroot(
+        build_artifact = _build_for_apple_sysroot(
             build_config,
             intermediates_dir,
             base_build_command,
@@ -213,14 +237,13 @@ def _build_package(args):
             build_settings["build_osx_archs"][sysroot],
             args.build_dynamic_framework,
         )
-        framework_dirs.append(framework_dir)
+        build_artifacts.append(build_artifact)
 
-        curr_framework_info_path = os.path.join(os.path.dirname(framework_dir), "framework_info.json")
-        framework_info_files_to_merge.append(curr_framework_info_path)
+        framework_info_files_to_merge.append(build_artifact["framework_info_path"])
 
         # headers for each sysroot are the same, pick one of them
         if not public_headers_path:
-            public_headers_path = os.path.join(os.path.dirname(framework_dir), "onnxruntime.framework", "Headers")
+            public_headers_path = build_artifact["headers_path"]
 
     # create the folder for xcframework and copy the LICENSE and framework_info.json file
     xcframework_dir = os.path.join(build_dir, "framework_out")
@@ -236,8 +259,13 @@ def _build_package(args):
 
     # Assemble the final xcframework
     build_xcframework_cmd = ["xcrun", "xcodebuild", "-create-xcframework", "-output", xcframework_path]
-    for framework_dir in framework_dirs:
-        build_xcframework_cmd.extend(["-framework", framework_dir])
+    for build_artifact in build_artifacts:
+        if build_artifact["is_framework"]:
+            build_xcframework_cmd.extend(["-framework", build_artifact["artifact_path"]])
+        else:
+            build_xcframework_cmd.extend(
+                ["-library", build_artifact["artifact_path"], "-headers", build_artifact["headers_path"]]
+            )
 
     subprocess.run(build_xcframework_cmd, shell=False, check=True, cwd=REPO_DIR)
 
