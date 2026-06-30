@@ -274,7 +274,8 @@ static Status ConcatenateCpuOutput(void* /*stream*/,
   const auto& first_output = per_iteration_output.front().Get<Tensor>();
   const auto& per_iteration_shape = first_output.Shape();
   const bool is_string = first_output.IsDataTypeString();
-  size_t bytes_per_iteration = first_output.SizeInBytes();
+  const size_t bytes_per_iteration = first_output.SizeInBytes();
+  const int64_t elements_per_iteration = first_output.Shape().Size();
 
   // for the non-string path, create the output span once outside the loop
   gsl::span<std::byte> output_span;
@@ -293,10 +294,11 @@ static Status ConcatenateCpuOutput(void* /*stream*/,
     }
 
     if (is_string) {
-      // std::string is not trivially copyable — must use proper copy semantics
-      auto src = iteration_data.DataAsSpan<std::string>();
-      auto* dst_begin = static_cast<std::string*>(output) + i * first_output.Shape().Size();
-      std::copy(src.begin(), src.end(), dst_begin);
+      // std::string is not trivially copyable — move from the per-iteration tensors since they are
+      // discarded after concatenation
+      auto src = ort_value.GetMutable<Tensor>()->MutableDataAsSpan<std::string>();
+      auto* dst_begin = static_cast<std::string*>(output) + i * elements_per_iteration;
+      std::move(src.begin(), src.end(), dst_begin);
     } else {
       auto src = gsl::make_span<const std::byte>(static_cast<const std::byte*>(iteration_data.DataRaw()),
                                                  bytes_per_iteration);
