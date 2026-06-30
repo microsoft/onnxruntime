@@ -3,6 +3,8 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/platform/path_lib.h"
 
 namespace onnxruntime {
 namespace test {
@@ -44,7 +46,7 @@ static ONNX_NAMESPACE::TensorProto make_tensor(std::vector<uint8_t> array, std::
 }
 
 template <typename T>
-void _multiply_update_array(std::vector<T>& data, int n, T inc = 0) {
+void MultiplyUpdateArray(std::vector<T>& data, int n, T inc = 0) {
   std::vector<T> copy = data;
   data.resize(copy.size() * n);
   T cst = 0;
@@ -57,7 +59,7 @@ void _multiply_update_array(std::vector<T>& data, int n, T inc = 0) {
 }
 
 template <typename T>
-void _multiply_update_childnode(std::vector<T>& childnodes, std::vector<T>& childleafs, std::vector<T>& otherchildleafs, int n) {
+void MultiplyUpdateChildnode(std::vector<T>& childnodes, std::vector<T>& childleafs, std::vector<T>& otherchildleafs, int n) {
   int64_t leafs_cnt = 0;
   int64_t nodes_cnt = childnodes.size();
   for (auto& childleaf : childleafs) {
@@ -87,7 +89,7 @@ void _multiply_update_childnode(std::vector<T>& childnodes, std::vector<T>& chil
 }
 
 template <typename T>
-void _multiply_arrays_values(std::vector<T>& data, int64_t val) {
+void MultiplyArraysValues(std::vector<T>& data, int64_t val) {
   for (auto& curr : data) {
     curr *= val;
   }
@@ -154,16 +156,16 @@ void GenTreeAndRunTest(const std::vector<T>& X, const std::vector<T>& Y, const i
 
   if (n_trees > 1) {
     // Multiplies the number of trees to test the parallelization by trees.
-    _multiply_update_array(tree_roots, n_trees, (int64_t)nodes_truenodeids.size());
-    _multiply_update_array(nodes_featureids, n_trees);
-    _multiply_update_childnode(nodes_truenodeids, nodes_trueleafs, nodes_falseleafs, n_trees);
-    _multiply_update_childnode(nodes_falsenodeids, nodes_falseleafs, nodes_trueleafs, n_trees);
-    _multiply_update_array(nodes_trueleafs, n_trees);
-    _multiply_update_array(nodes_falseleafs, n_trees);
-    _multiply_update_array(leaf_targetids, n_trees);
-    _multiply_update_array(nodes_modes, n_trees);
-    _multiply_update_array(nodes_splits, n_trees);
-    _multiply_update_array(leaf_weights, n_trees);
+    MultiplyUpdateArray(tree_roots, n_trees, (int64_t)nodes_truenodeids.size());
+    MultiplyUpdateArray(nodes_featureids, n_trees);
+    MultiplyUpdateChildnode(nodes_truenodeids, nodes_trueleafs, nodes_falseleafs, n_trees);
+    MultiplyUpdateChildnode(nodes_falsenodeids, nodes_falseleafs, nodes_trueleafs, n_trees);
+    MultiplyUpdateArray(nodes_trueleafs, n_trees);
+    MultiplyUpdateArray(nodes_falseleafs, n_trees);
+    MultiplyUpdateArray(leaf_targetids, n_trees);
+    MultiplyUpdateArray(nodes_modes, n_trees);
+    MultiplyUpdateArray(nodes_splits, n_trees);
+    MultiplyUpdateArray(leaf_weights, n_trees);
   }
 
   auto nodes_modes_as_tensor = make_tensor(nodes_modes, "nodes_modes");
@@ -212,17 +214,17 @@ void GenTreeAndRunTestWithSetMembership(const std::vector<T>& X, const std::vect
 
   if (n_trees > 1) {
     // Multiplies the number of trees to test the parallelization by trees.
-    _multiply_update_array(tree_roots, n_trees, (int64_t)nodes_truenodeids.size());
-    _multiply_update_array(nodes_featureids, n_trees);
-    _multiply_update_childnode(nodes_truenodeids, nodes_trueleafs, nodes_falseleafs, n_trees);
-    _multiply_update_childnode(nodes_falsenodeids, nodes_falseleafs, nodes_trueleafs, n_trees);
-    _multiply_update_array(nodes_trueleafs, n_trees);
-    _multiply_update_array(nodes_falseleafs, n_trees);
-    _multiply_update_array(leaf_targetids, n_trees);
-    _multiply_update_array(nodes_modes, n_trees);
-    _multiply_update_array(nodes_splits, n_trees);
-    _multiply_update_array(membership_values, n_trees);
-    _multiply_update_array(leaf_weights, n_trees);
+    MultiplyUpdateArray(tree_roots, n_trees, (int64_t)nodes_truenodeids.size());
+    MultiplyUpdateArray(nodes_featureids, n_trees);
+    MultiplyUpdateChildnode(nodes_truenodeids, nodes_trueleafs, nodes_falseleafs, n_trees);
+    MultiplyUpdateChildnode(nodes_falsenodeids, nodes_falseleafs, nodes_trueleafs, n_trees);
+    MultiplyUpdateArray(nodes_trueleafs, n_trees);
+    MultiplyUpdateArray(nodes_falseleafs, n_trees);
+    MultiplyUpdateArray(leaf_targetids, n_trees);
+    MultiplyUpdateArray(nodes_modes, n_trees);
+    MultiplyUpdateArray(nodes_splits, n_trees);
+    MultiplyUpdateArray(membership_values, n_trees);
+    MultiplyUpdateArray(leaf_weights, n_trees);
   }
 
   auto nodes_modes_as_tensor = make_tensor(nodes_modes, "nodes_modes");
@@ -266,7 +268,7 @@ TEST(MLOpTest, TreeEnsembleDouble) {
   std::vector<double> Y = {5.23f, 0.f, 5.23f, 0.f, 0.f, 12.12f};
   GenTreeAndRunTest<double>(X, Y, 1, 1);
 
-  _multiply_arrays_values(Y, 3);
+  MultiplyArraysValues(Y, 3);
   GenTreeAndRunTest<double>(X, Y, 1, 3);
 }
 
@@ -281,7 +283,7 @@ TEST(MLOpTest, TreeEnsembleSetMembership) {
       0.f, 10.f, 0.f, 0.f};
   GenTreeAndRunTestWithSetMembership<double>(X, Y, 1, 1);
 
-  _multiply_arrays_values(Y, 5);
+  MultiplyArraysValues(Y, 5);
   GenTreeAndRunTestWithSetMembership<double>(X, Y, 1, 5);
 }
 
@@ -524,6 +526,70 @@ TEST(MLOpTest, TreeEnsembleIssue25400) {
   test.AddOutput<float>("Y", {1, 4}, Y);
   test.Run();
 }
+
+// In-memory external data references in node attributes are rejected by the ONNX checker
+// during Graph::Resolve() (it validates that external data locations are regular files).
+// In no-exceptions builds, the ONNX checker's fail_check calls abort() so these tests cannot run.
+#if !defined(ORT_NO_EXCEPTIONS)
+
+// In-memory external data references in node attributes are rejected during Graph::Resolve().
+TEST(MLOpTest, TreeEnsembleRejectsInMemoryExternalDataInTensorAttribute) {
+  OpTester test("TreeEnsemble", 5, onnxruntime::kMLDomain);
+
+  // nodes_splits with in-memory external data reference (should be rejected)
+  ONNX_NAMESPACE::TensorProto splits_proto;
+  splits_proto.set_name("nodes_splits");
+  splits_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  splits_proto.add_dims(1);
+  splits_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  auto* loc = splits_proto.add_external_data();
+  loc->set_key("location");
+  loc->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoNativeEndianMemoryAddressTag));
+  auto* offset = splits_proto.add_external_data();
+  offset->set_key("offset");
+  offset->set_value("12345678");
+  auto* length = splits_proto.add_external_data();
+  length->set_key("length");
+  length->set_value("4");
+  test.AddAttribute("nodes_splits", splits_proto);
+
+  // Minimal valid structure for remaining attributes
+  ONNX_NAMESPACE::TensorProto leaf_weights_proto;
+  leaf_weights_proto.set_name("leaf_weights");
+  leaf_weights_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  leaf_weights_proto.add_dims(2);
+  leaf_weights_proto.add_float_data(1.0f);
+  leaf_weights_proto.add_float_data(2.0f);
+  test.AddAttribute("leaf_weights", leaf_weights_proto);
+
+  ONNX_NAMESPACE::TensorProto modes_proto;
+  modes_proto.set_name("nodes_modes");
+  modes_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+  modes_proto.add_dims(1);
+  modes_proto.add_int32_data(0);
+  test.AddAttribute("nodes_modes", modes_proto);
+
+  test.AddAttribute("aggregate_function", static_cast<int64_t>(1));
+  test.AddAttribute("leaf_targetids", std::vector<int64_t>{0, 0});
+  test.AddAttribute("n_targets", static_cast<int64_t>(1));
+  test.AddAttribute("nodes_falseleafs", std::vector<int64_t>{1});
+  test.AddAttribute("nodes_falsenodeids", std::vector<int64_t>{1});
+  test.AddAttribute("nodes_featureids", std::vector<int64_t>{0});
+  test.AddAttribute("nodes_trueleafs", std::vector<int64_t>{1});
+  test.AddAttribute("nodes_truenodeids", std::vector<int64_t>{0});
+  test.AddAttribute("post_transform", static_cast<int64_t>(0));
+  test.AddAttribute("tree_roots", std::vector<int64_t>{0});
+
+  std::vector<float> X = {1.f};
+  test.AddInput<float>("X", {1, 1}, X);
+  test.AddOutput<float>("Y", {1, 1}, {0.f});
+
+  // Error originates from the ONNX checker (checker::check_node) during Graph::Resolve().
+  // There is no way to disable this check.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "is not regular file");
+}
+
+#endif  // !defined(ORT_NO_EXCEPTIONS)
 
 }  // namespace test
 }  // namespace onnxruntime
