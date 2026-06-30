@@ -51,6 +51,23 @@ void RunExpandDimsExpectedFailureTest(const std::vector<int64_t>& input_shape, c
   test.AddOutput<float>("Y", input_shape, input_data);
   test.Run(BaseTester::ExpectResult::kExpectFailure, expected_failure_message);
 }
+
+// Runs ExpandDims with the axis supplied as a constant initializer. This causes the
+// operator's shape-inference function (which only runs when the axis value is known at
+// graph-resolution time via getInputData) to be exercised, in addition to the kernel.
+void RunExpandDimsConstAxisTest(const std::vector<int64_t>& input_shape, const int32_t expand_axis,
+                                const std::vector<int64_t>& expected_output_shape) {
+  SCOPED_TRACE(MakeString("input_shape: ", TensorShape(input_shape), ", expand_axis: ", expand_axis));
+
+  const auto input_size = ShapeSize(input_shape);
+  const auto input_data = GenerateInput(input_size);
+
+  OpTester test("ExpandDims", 1, onnxruntime::kMSDomain);
+  test.AddInput<float>("X", input_shape, input_data);
+  test.AddInput<int32_t>("axis", {}, {expand_axis}, /*is_initializer=*/true);
+  test.AddOutput<float>("Y", expected_output_shape, input_data);
+  test.Run();
+}
 }  // namespace
 
 TEST(ExpandDimsTest, Basic) {
@@ -67,6 +84,18 @@ TEST(ExpandDimsTest, MaxAxis) {
 TEST(ExpandDimsTest, MinAxis) {
   RunExpandDimsTest({2, 3}, -3, {1, 2, 3});
   RunExpandDimsTest({}, -1, {1});
+}
+
+// Regression test for a heap out-of-bounds read in the ExpandDims shape-inference function.
+// When the axis is a constant initializer, shape inference runs during graph resolution and
+// normalizes a negative axis against the output rank. The previous formula produced a negative
+// dimension index for the most-negative axes (e.g. pos == -2), indexing before the start of the
+// protobuf RepeatedPtrField backing store. These cases must resolve to valid output shapes.
+TEST(ExpandDimsTest, NegativeAxisConstInitializerShapeInference) {
+  RunExpandDimsConstAxisTest({2, 3}, -1, {2, 3, 1});
+  RunExpandDimsConstAxisTest({2, 3}, -2, {2, 1, 3});
+  RunExpandDimsConstAxisTest({2, 3}, -3, {1, 2, 3});  // minimum valid axis; previously read out of bounds
+  RunExpandDimsConstAxisTest({}, -1, {1});            // scalar, minimum valid axis; previously read out of bounds
 }
 
 TEST(ExpandDimsTest, PositiveAxisOutOfRange) {
