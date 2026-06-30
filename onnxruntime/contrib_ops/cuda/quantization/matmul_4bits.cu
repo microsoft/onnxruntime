@@ -1002,12 +1002,12 @@ bool TryMatMulVerify4Bits(
     if (m < 2 || m > kSmallMMax) {
       return false;
     }
-    // CtaM = smallest of {2,4,8,16} >= m, streaming the weight once per block row. Non-power-of-2 CtaM
-    // (10/12/14) compile to materially slower code, so the row-tile is rounded up (M>8 uses CtaM=16).
-    // CtaN = 2 columns/warp where N allows (halves activation L2 traffic); CtaN=4 lost to register
-    // pressure so it is not used by default.
-    const int cta_m = (m <= 2) ? 2 : (m <= 4) ? 4 : (m <= 8) ? 8 : 16;
-    const int cta_n = (n % (kColsPerThreadBlock * 2) == 0) ? 2 : 1;
+    // CtaM = smallest of {2,4,6,8,16} >= m so the weight is streamed once per block row with little row
+    // waste. (Odd CtaM 10/12/14 compile to materially slower code, so M>8 rounds up to 16.) CtaN = 2
+    // columns/warp at M>=3 to reuse each activation load across columns; at M=2 the activation is tiny so
+    // reuse saves nothing and CtaN=1 instead doubles the block count for better occupancy on small N.
+    const int cta_m = (m <= 2) ? 2 : (m <= 4) ? 4 : (m <= 6) ? 6 : (m <= 8) ? 8 : 16;
+    const int cta_n = (m >= 3 && n % (kColsPerThreadBlock * 2) == 0) ? 2 : 1;
     dim3 threads(GPU_WARP_SIZE_HOST, kColsPerThreadBlock);
     dim3 blocks(n / (kColsPerThreadBlock * cta_n), (m + cta_m - 1) / cta_m);
 
@@ -1035,6 +1035,7 @@ bool TryMatMulVerify4Bits(
   switch (cta_m) {                 \
     case 2: VerifyDispatchN(2, CN) break;   \
     case 4: VerifyDispatchN(4, CN) break;   \
+    case 6: VerifyDispatchN(6, CN) break;   \
     case 8: VerifyDispatchN(8, CN) break;   \
     default: VerifyDispatchN(16, CN) break; \
   }
