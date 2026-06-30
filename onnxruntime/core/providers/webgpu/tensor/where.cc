@@ -66,10 +66,28 @@ Status WhereProgram::GenerateShaderCode(ShaderHelper& shader) const {
     return absl::StrCat("select(", b, ", ", a, ", ", c, ")");
   };
 
-  if (!is_broadcast_) {
+  if (!is_broadcast_ && !is_int64_) {
     shader.MainFunctionBody() << output.SetByOffset(
         "global_idx",
         expression(a_input.GetByOffset("global_idx"), b_input.GetByOffset("global_idx"), c_input.GetByOffset("global_idx")));
+
+  } else if (is_int64_) {
+    // INT64: no vec4; process one element per thread using direct storage access.
+    // Handles both broadcast and non-broadcast (BroadcastedIndicesToOffset returns global_idx for matching shapes).
+    const auto& c_indices = shader.AddIndices("c_indices");
+    const auto& a_indices = shader.AddIndices("a_indices");
+    const auto& b_indices = shader.AddIndices("b_indices");
+    const auto& output_indices = shader.AddIndices("output_indices");
+
+    shader.MainFunctionBody()
+        << "let output_idx = " << output_indices.OffsetToIndices("global_idx") << ";\n"
+        << "let offset_a = " << a_indices.BroadcastedIndicesToOffset("output_idx", output_indices) << ";\n"
+        << "let offset_b = " << b_indices.BroadcastedIndicesToOffset("output_idx", output_indices) << ";\n"
+        << "let offset_c = " << c_indices.BroadcastedIndicesToOffset("output_idx", output_indices) << ";\n"
+        << "let cond = bool(c_data[offset_c / 4u] & (0xffu << (u32(offset_c % 4u) * 8u)));\n"
+        << "let a_val = a_data[offset_a];\n"
+        << "let b_val = b_data[offset_b];\n"
+        << "output_data[global_idx] = select(b_val, a_val, cond);\n";
 
   } else {
     const auto& c_indices = shader.AddIndices("c_indices");
@@ -131,22 +149,26 @@ Status Where::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
-  constexpr int component = 4;
-  uint32_t vec_size = onnxruntime::narrow<uint32_t>((output_shape.Size() + 3) / component);
+  bool is_int64 = x_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64 ||
+                  y_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+  const int component = is_int64 ? 1 : 4;
+  uint32_t vec_size = is_int64
+                          ? onnxruntime::narrow<uint32_t>(output_shape.Size())
+                          : onnxruntime::narrow<uint32_t>((output_shape.Size() + 3) / component);
   const auto is_broadcast = !(x_shape == y_shape &&
                               y_shape == cond_shape);
-  WhereProgram program{is_broadcast};
+  WhereProgram program{is_broadcast, is_int64};
   program
-      .CacheHint(is_broadcast)
+      .CacheHint(is_broadcast, is_int64)
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddInputs({{cond_tensor, ProgramTensorMetadataDependency::Type, {(cond_shape.Size() + 3) / 4}, 4},
-                  {x_tensor, ProgramTensorMetadataDependency::Type, {(x_shape.Size() + 3) / 4}, 4},
-                  {y_tensor, ProgramTensorMetadataDependency::Type, {(y_shape.Size() + 3) / 4}, 4}})
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, 4})
+                  {x_tensor, ProgramTensorMetadataDependency::Type, {is_int64 ? x_shape.Size() : (x_shape.Size() + 3) / 4}, component},
+                  {y_tensor, ProgramTensorMetadataDependency::Type, {is_int64 ? y_shape.Size() : (y_shape.Size() + 3) / 4}, component}})
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, component})
       .AddUniformVariables({
           {static_cast<uint32_t>(vec_size)},
       });
-  if (is_broadcast) {
+  if (is_broadcast || is_int64) {
     program
         .AddIndices(cond_shape)
         .AddIndices(x_shape)
