@@ -2278,6 +2278,18 @@ provider size was `109590720` bytes at all three locations.
 Speedup: **11.29x** over the dense fallback. This also confirms the env gate is
 selecting the new BF16 SM80 grouped-GEMM path.
 
+Full BF16 sweep, same gpt-oss QMoE node shape, `--warmup 5 --iters 20 --reps 3`,
+with GPU clocks locked to 1410 MHz and reset after the sweep:
+
+| Tokens | SM80 FP4 default-on (`ORT_FP4_SM80_GEMM=1`) | Fallback (`ORT_FP4_SM80_GEMM=0`) | Speedup |
+|-------:|--------------------------------------------:|---------------------------------:|--------:|
+| 512    | **1.70004 ms** | 18.22175 ms | **10.72×** |
+| 1024   | **2.44945 ms** | 18.61720 ms | **7.60×** |
+| 2048   | **4.04069 ms** | 19.46783 ms | **4.82×** |
+| 4096   | **7.37281 ms** | 21.37039 ms | **2.90×** |
+
+Detailed log: `/tmp/ort_bf16_sm80_sweep_20260630_171052.log`.
+
 SM80-relevant FP4 CUDA tests were run with `_skip_if_no_fp4` monkeypatched off
 and `ORT_FP4_SM80_GEMM=1`. The native SM90-only scale-prepack test still skipped
 on A100:
