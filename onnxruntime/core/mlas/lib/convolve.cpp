@@ -1351,6 +1351,9 @@ static constexpr size_t ComputeChannelsLastConvOutSize(size_t input, size_t kern
 
     return 0;
 }
+
+constexpr size_t kKleidiAIDepthwiseRowsPerTile = 4;
+constexpr size_t kKleidiAIDepthwiseColsPerTile = 4;
 #endif
 
 }  // namespace
@@ -1453,22 +1456,46 @@ MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
     MLAS_UNREFERENCED_PARAMETER(Beta);
     return false;
 #else
-    MLAS_UNREFERENCED_PARAMETER(Dimensions);
-    MLAS_UNREFERENCED_PARAMETER(BatchCount);
-    MLAS_UNREFERENCED_PARAMETER(GroupCount);
-    MLAS_UNREFERENCED_PARAMETER(InputChannelsPerGroup);
-    MLAS_UNREFERENCED_PARAMETER(InputShape);
-    MLAS_UNREFERENCED_PARAMETER(KernelShape);
-    MLAS_UNREFERENCED_PARAMETER(DilationShape);
-    MLAS_UNREFERENCED_PARAMETER(Padding);
-    MLAS_UNREFERENCED_PARAMETER(StrideShape);
-    MLAS_UNREFERENCED_PARAMETER(FilterCount);
-    MLAS_UNREFERENCED_PARAMETER(Beta);
+    if (GetMlasPlatform().MlasConvPrepareOverride == nullptr ||
+        GetMlasPlatform().MlasConvOverride == nullptr) {
+        return false;
+    }
 
-    // TODO: enable only for shapes supported by the dedicated
-    // depthwise kernel. Until then, keep depthwise/grouped convolutions out of
-    // the Arm® KleidiAI™ NHWC path.
-    return false;
+    if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2()) {
+        return false;
+    }
+
+    if (Dimensions != 2 || BatchCount != 1 || Beta != 0.0f || GroupCount == 0) {
+        return false;
+    }
+
+    if (InputChannelsPerGroup != 1 || FilterCount != 1) {
+        return false;
+    }
+
+    if (KernelShape[0] != 3 || KernelShape[1] != 3) {
+        return false;
+    }
+
+    if (StrideShape[0] != 1 || StrideShape[1] != 1) {
+        return false;
+    }
+
+    if (DilationShape[0] != 1 || DilationShape[1] != 1) {
+        return false;
+    }
+
+    const bool zero_padding = Padding[0] == 0 && Padding[1] == 0 && Padding[2] == 0 && Padding[3] == 0;
+    const bool unit_padding = Padding[0] == 1 && Padding[1] == 1 && Padding[2] == 1 && Padding[3] == 1;
+    if (!zero_padding && !unit_padding) {
+        return false;
+    }
+
+    const size_t output_h =
+        ComputeChannelsLastConvOutSize(InputShape[0], KernelShape[0], Padding[0], StrideShape[0]);
+    const size_t output_w =
+        ComputeChannelsLastConvOutSize(InputShape[1], KernelShape[1], Padding[1], StrideShape[1]);
+    return output_h >= kKleidiAIDepthwiseRowsPerTile && output_w >= kKleidiAIDepthwiseColsPerTile;
 #endif
 }
 
