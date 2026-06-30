@@ -13,7 +13,7 @@ namespace webgpu {
 
 class WhereProgram final : public Program<WhereProgram> {
  public:
-  WhereProgram(bool is_broadcast) : Program{"Where"}, is_broadcast_{is_broadcast} {
+  WhereProgram(bool is_broadcast, bool is_int64 = false) : Program{"Where"}, is_broadcast_{is_broadcast}, is_int64_{is_int64} {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -21,6 +21,7 @@ class WhereProgram final : public Program<WhereProgram> {
 
  private:
   const bool is_broadcast_;
+  const bool is_int64_;
 };
 
 class Where final : public WebGpuKernel {

@@ -29,14 +29,23 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
   if (is_lhs_scalar_ || is_rhs_scalar_ || !is_broadcast_) {
     // get A data
     if (is_lhs_scalar_) {
-      shader.MainFunctionBody() << "let a = input_a_value_t(" << a.GetByOffset("0") << ".x);\n";
+      if (is_int64_) {
+        // For INT64 with component=1, input_a_element_t is i32; GetByOffset already returns i32.
+        shader.MainFunctionBody() << "let a = " << a.GetByOffset("0") << ";\n";
+      } else {
+        shader.MainFunctionBody() << "let a = input_a_value_t(" << a.GetByOffset("0") << ".x);\n";
+      }
     } else {
       shader.MainFunctionBody() << "let a = " << a.GetByOffset("global_idx") << ";\n";
     }
 
     // get B data
     if (is_rhs_scalar_) {
-      shader.MainFunctionBody() << "let b = input_b_value_t(" << b.GetByOffset("0") << ".x);\n";
+      if (is_int64_) {
+        shader.MainFunctionBody() << "let b = " << b.GetByOffset("0") << ";\n";
+      } else {
+        shader.MainFunctionBody() << "let b = input_b_value_t(" << b.GetByOffset("0") << ".x);\n";
+      }
     } else {
       shader.MainFunctionBody() << "let b = " << b.GetByOffset("global_idx") << ";\n";
     }
@@ -145,12 +154,17 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
   bool is_lhs_bool = lhs_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
   bool is_rhs_bool = rhs_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL;
 
-  bool vectorize = is_lhs_scalar || is_rhs_scalar || !is_broadcast;
+  // INT64 has no vec4 representation in WebGPU (stored as vec2<u32>), so disable vectorization.
+  bool is_lhs_int64 = lhs_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+  bool is_rhs_int64 = rhs_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+  bool is_int64 = is_lhs_int64 || is_rhs_int64;
+
+  bool vectorize = !is_int64 && (is_lhs_scalar || is_rhs_scalar || !is_broadcast);
   bool a_last_dim_divisible_by_4 = false;
   bool b_last_dim_divisible_by_4 = false;
   bool shared_dimension_divisible_by_4 = false;
   size_t num_shared_dimension = 0;
-  if (!vectorize) {
+  if (!is_int64 && !vectorize) {
     // check whether vectorize can be enabled
     a_last_dim_divisible_by_4 = lhs_shape.NumDimensions() > 0 && lhs_shape[lhs_shape.NumDimensions() - 1] % 4 == 0;
     b_last_dim_divisible_by_4 = rhs_shape.NumDimensions() > 0 && rhs_shape[rhs_shape.NumDimensions() - 1] % 4 == 0;
@@ -167,7 +181,10 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     }
   }
 
-  uint32_t vec_size = onnxruntime::narrow<uint32_t>((size + 3) / 4);
+  bool is_output_int64 = output_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+  uint32_t vec_size = is_output_int64 ? onnxruntime::narrow<uint32_t>(size)
+                                      : onnxruntime::narrow<uint32_t>((size + 3) / 4);
+  int output_component = is_output_int64 ? 1 : 4;
 
   std::string additional_impl;
   if (get_additional_impl_) {
@@ -182,20 +199,21 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
                                    is_rhs_scalar,
                                    shared_dimension_divisible_by_4 || a_last_dim_divisible_by_4,
                                    shared_dimension_divisible_by_4 || b_last_dim_divisible_by_4,
-                                   vectorize};
+                                   vectorize,
+                                   is_int64};
   program
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
           {static_cast<uint32_t>(vec_size)},
       })
-      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, 4});
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, output_component});
 
-  if (is_lhs_scalar || is_rhs_scalar || !is_broadcast) {
-    // Mode Element-wise
+  if (is_int64 || is_lhs_scalar || is_rhs_scalar || !is_broadcast) {
+    // Mode Element-wise (also used for INT64 which has no vec4 representation)
     // cache hint: "E{is_a_scalar}{is_b_scalar}"
     program
-        .AddInputs({{lhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4},
-                    {rhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 4}})
+        .AddInputs({{lhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, is_int64 ? 1 : 4},
+                    {rhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, is_int64 ? 1 : 4}})
         .CacheHint("E" + std::to_string(is_lhs_scalar) + std::to_string(is_rhs_scalar));
   } else if (vectorize) {
     // reshape the dims to merge the shared dimension if available
