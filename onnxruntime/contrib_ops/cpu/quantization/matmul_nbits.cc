@@ -254,6 +254,49 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     return Status::OK();
   }
 
+  // Validate the incoming initializer's shape against the attribute-derived shape before any of
+  // the pack routines below dereference tensor.DataRaw(). The MLAS pack routines size their reads
+  // from the (N, K, bits, block_size) attributes; without this check a crafted model whose
+  // attributes overstate the real tensor extents would trigger a heap-buffer-overflow READ at
+  // session initialization. The matching guard in matmul_nbits_helper::CheckInputs is invoked
+  // from Compute() -- too late, because PrePack has already done the OOB read, and by then the
+  // original B tensor is passed as nullptr so the Compute-time check never sees it.
+  {
+    const int64_t n = static_cast<int64_t>(N_);
+    const int64_t k = static_cast<int64_t>(K_);
+    const int64_t bs = static_cast<int64_t>(block_size_);
+    const int64_t bits = static_cast<int64_t>(nbits_);
+    const int64_t k_blocks = (k + bs - 1) / bs;
+    const int64_t blob_size = bs * bits / 8;
+    const TensorShape& shape = tensor.Shape();
+
+    if (input_idx == InputIndex::B) {
+      ORT_RETURN_IF_NOT(shape == TensorShape({n, k_blocks, blob_size}),
+                        "MatMulNBits PrePack: B initializer shape ", shape,
+                        " does not match attribute-derived shape [", n, ",", k_blocks, ",", blob_size,
+                        "] (N=", N_, ", K=", K_, ", bits=", nbits_, ", block_size=", block_size_, ")");
+    } else if (input_idx == InputIndex::scales) {
+      // scales may be 1D [n * k_blocks] or 2D [n, k_blocks] for backward compatibility.
+      ORT_RETURN_IF_NOT(shape == TensorShape({n * k_blocks}) || shape == TensorShape({n, k_blocks}),
+                        "MatMulNBits PrePack: scales initializer shape ", shape,
+                        " does not match attribute-derived shape [", n * k_blocks, "] or [",
+                        n, ",", k_blocks, "]");
+    } else if (input_idx == InputIndex::zero_points) {
+      if (tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+        const int64_t zp_blob_size = (k_blocks * bits + 7) / 8;
+        ORT_RETURN_IF_NOT(shape == TensorShape({n * zp_blob_size}) || shape == TensorShape({n, zp_blob_size}),
+                          "MatMulNBits PrePack: zero_points initializer shape ", shape,
+                          " does not match attribute-derived shape [", n * zp_blob_size, "] or [",
+                          n, ",", zp_blob_size, "]");
+      } else {
+        ORT_RETURN_IF_NOT(shape == TensorShape({n * k_blocks}) || shape == TensorShape({n, k_blocks}),
+                          "MatMulNBits PrePack: zero_points initializer shape ", shape,
+                          " does not match attribute-derived shape [", n * k_blocks, "] or [",
+                          n, ",", k_blocks, "]");
+      }
+    }
+  }
+
   // Create a temporary threadpool for parallel packing
   // This is used during model load time to speed up weight prepacking
   std::unique_ptr<concurrency::ThreadPool> temp_threadpool;
