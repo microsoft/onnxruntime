@@ -4,6 +4,8 @@
 #include <vector>
 #include <iterator>
 #include <algorithm>
+#include <cstdint>
+#include <sstream>
 #include "core/providers/webgpu/nn/conv2d_mm.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -16,6 +18,46 @@
 
 namespace onnxruntime {
 namespace webgpu {
+
+uint64_t CalculateVec4MaxSpatialSize(uint64_t max_storage_buffer_binding_size) {
+  // Derivation:
+  // 1) Start from the device's storage binding cap in bytes.
+  // 2) Convert bytes to spatial budget using a conservative per-spatial-unit
+  //    byte estimate for the vec4 path.
+  // 3) Clamp to a practical range to avoid pathological behavior on devices
+  //    with very small/very large reported limits.
+  //
+  // spatial_budget ~= maxStorageBufferBindingSize / kBytesPerSpatialBudgetUnit
+  //
+  // Why 24 bytes?
+  // - This is a conservative proxy for per-spatial working-set pressure in the
+  //   vec4 path (output vec4 write is 16B plus additional input/weight/indexing
+  //   and temporary traffic amortized per output position).
+  // - It is intentionally not an exact memory model; it is a stable guardrail.
+  //
+  // Why clamp to [1M, 64M]?
+  // - 1M keeps vec4 available for typical small/medium shapes even on lower
+  //   limit devices, preventing over-eager fallback.
+  // - 64M avoids over-permissive thresholds on high-limit devices where other
+  //   factors (dispatch shape, access pattern, driver behavior) can still make
+  //   very large vec4 workloads fragile.
+  //
+  // Why default to 6M when the limit is unknown (0)?
+  // - Preserves the previously validated fallback behavior used before we wired
+  //   the device-limit-aware computation.
+  constexpr uint64_t kBytesPerSpatialBudgetUnit = 24ull;
+  constexpr uint64_t kMinVec4MaxSpatialSize = 1ull * 1024ull * 1024ull;
+  constexpr uint64_t kMaxVec4MaxSpatialSize = 64ull * 1024ull * 1024ull;
+  constexpr uint64_t kDefaultVec4MaxSpatialSize = 6ull * 1024ull * 1024ull;
+
+  if (max_storage_buffer_binding_size == 0) {
+    return kDefaultVec4MaxSpatialSize;
+  }
+
+  uint64_t spatial_budget = max_storage_buffer_binding_size / kBytesPerSpatialBudgetUnit;
+  return std::clamp(spatial_budget, kMinVec4MaxSpatialSize, kMaxVec4MaxSpatialSize);
+}
+
 std::string Conv2dMMProgram::Conv2dCommonSnippet(const ShaderVariableHelper& x, const ShaderVariableHelper& w, const Activation& activation, std::string data_type, uint32_t inner_element_size_x, uint32_t inner_element_size_w, uint32_t inner_element_size) const {
   auto get_x_snippet = [&](int32_t inner_element_size) -> std::string {
     switch (inner_element_size) {
@@ -165,7 +207,7 @@ Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
                   : MakeMatMulPackedSource(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, /*transpose_a = */ !is_channels_last_, /* transpose_b = */ false, 1.0f, true, tile_inner_, /* split_t = */ false, 0);
 }
 
-Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::vector<const Tensor*>& inputs, const std::vector<uint32_t>& pads, const std::vector<uint32_t>& strides, const std::vector<uint32_t>& dilations, Tensor* output, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last, const std::vector<TensorShape>& input_output_shapes) {
+Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::vector<const Tensor*>& inputs, const std::vector<uint32_t>& pads, const std::vector<uint32_t>& strides, const std::vector<uint32_t>& dilations, Tensor* output, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last, const std::vector<TensorShape>& input_output_shapes, uint64_t max_storage_buffer_binding_size) {
   const auto* input = inputs[0];
   const auto* weight = inputs[1];
   bool has_bias = inputs.size() > 2;
@@ -177,8 +219,14 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   const auto output_width = is_channels_last ? output_shape[2] : output_shape[3];
   const auto output_height = is_channels_last ? output_shape[1] : output_shape[2];
   const auto output_channels = is_channels_last ? output_shape[3] : output_shape[1];
+  const uint64_t spatial_size = static_cast<uint64_t>(output_width) * static_cast<uint64_t>(output_height);
+  const uint64_t kVec4MaxSpatialSize = CalculateVec4MaxSpatialSize(max_storage_buffer_binding_size);
+  const bool disable_vec4_for_large_spatial = spatial_size > kVec4MaxSpatialSize;
   // TODO: enable vec4 for NCHW
-  const bool is_vec4 = is_channels_last && (in_channels % 4 == 0 || in_channels % 3 == 0) && output_channels % 4 == 0;
+  const bool is_vec4 = is_channels_last &&
+                       (in_channels % 4 == 0 || in_channels % 3 == 0) &&
+                       output_channels % 4 == 0 &&
+                       !disable_vec4_for_large_spatial;
 
   // TODO: fine tune size
   const auto dispatch_x = is_channels_last ? output_channels : output_width * output_height;
