@@ -216,8 +216,7 @@ adds ~3 fields to `Tensor` and a branch in the data‑transfer hot path.
 
 ### 3.2 Public C API surface
 
-New API (added to a new minor `OrtApi` version, behind a feature flag if
-desired):
+New API (additive entries appended to the current `OrtApi` table; `ORT_API_VERSION` is bumped/finalized during release preparation per `docs/Versioning.md`):
 
 ```c
 // Create a strided tensor. strides are in *elements* (not bytes), one
