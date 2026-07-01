@@ -484,8 +484,7 @@ required for the customer scenario but make it cheap to extend.
 
 ## 5. Risks & Open Questions
 
-1. **ABI / header change**. New `OrtApi` entries are additive but we still
-   need to bump the `OrtApi` version. Standard process; no real risk.
+1. **ABI / header change**. New `OrtApi` entries are additive; `ORT_API_VERSION` and the version-boundary asserts are bumped/finalized during release preparation when the version number changes. Standard process; no real risk.
 
 2. **Planner complexity**. The strided alias path in
    `allocation_planner.cc` is already non‑trivial. Stage 3's pass needs to
