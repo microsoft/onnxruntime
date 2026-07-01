@@ -2,13 +2,18 @@
 // Licensed under the MIT License.
 
 #include "core/platform/windows/telemetry.h"
+#include <winapifamily.h>
+#include <cwchar>
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+#include <shellapi.h>
+#endif
+#include <winsvc.h>
 #include <mutex>
 #include <string>
 #include <vector>
-#include <cwchar>
-#include <winsvc.h>
 #include "core/common/logging/logging.h"
 #include "onnxruntime_config.h"
+#include "core/platform/telemetry_redaction.h"
 
 // ETW includes
 // need space after Windows.h to prevent clang-format re-ordering breaking the build.
@@ -75,14 +80,51 @@ std::string ConvertWideStringToUtf8(const std::wstring& wide) {
   return utf8;
 }
 
+// Parse the command line for -s (service name) and -k (service group) arguments.
+// These are svchost.exe conventions and may not be present for all services.
+std::string GetServiceNamesFromCommandLine() {
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+  LPCWSTR cmd_line = ::GetCommandLineW();
+  if (cmd_line == nullptr)
+    return {};
+
+  int argc = 0;
+  LPWSTR* argv = ::CommandLineToArgvW(cmd_line, &argc);
+  if (argv == nullptr)
+    return {};
+
+  std::wstring aggregated;
+  bool first = true;
+  for (int i = 0; i < argc - 1; ++i) {
+    if ((_wcsicmp(argv[i], L"-s") == 0 || _wcsicmp(argv[i], L"-k") == 0)) {
+      if (!first) {
+        aggregated.push_back(L',');
+      }
+      aggregated.append(argv[i + 1]);
+      first = false;
+      ++i;  // skip the value we just consumed
+    }
+  }
+
+  ::LocalFree(argv);
+  return ConvertWideStringToUtf8(aggregated);
+#else
+  // CommandLineToArgvW lives in shell32 and is only available on the desktop partition; the
+  // svchost -s/-k service-name convention does not apply on non-desktop Windows (UWP/GDK).
+  return {};
+#endif
+}
+
 std::string GetServiceNamesForCurrentProcess() {
   static std::once_flag once_flag;
   static std::string service_names;
 
   std::call_once(once_flag, [] {
     SC_HANDLE service_manager = ::OpenSCManagerW(nullptr, nullptr, SC_MANAGER_ENUMERATE_SERVICE);
-    if (service_manager == nullptr)
+    if (service_manager == nullptr) {
+      service_names = GetServiceNamesFromCommandLine();
       return;
+    }
 
     DWORD bytes_needed = 0;
     DWORD services_returned = 0;
@@ -91,11 +133,13 @@ std::string GetServiceNamesForCurrentProcess() {
                                  &services_returned, &resume_handle, nullptr) &&
         ::GetLastError() != ERROR_MORE_DATA) {
       ::CloseServiceHandle(service_manager);
+      service_names = GetServiceNamesFromCommandLine();
       return;
     }
 
     if (bytes_needed == 0) {
       ::CloseServiceHandle(service_manager);
+      service_names = GetServiceNamesFromCommandLine();
       return;
     }
 
@@ -106,6 +150,7 @@ std::string GetServiceNamesForCurrentProcess() {
     if (!::EnumServicesStatusExW(service_manager, SC_ENUM_PROCESS_INFO, SERVICE_WIN32, SERVICE_ACTIVE, reinterpret_cast<LPBYTE>(services),
                                  bytes_needed, &bytes_needed, &services_returned, &resume_handle, nullptr)) {
       ::CloseServiceHandle(service_manager);
+      service_names = GetServiceNamesFromCommandLine();
       return;
     }
 
@@ -125,6 +170,9 @@ std::string GetServiceNamesForCurrentProcess() {
     ::CloseServiceHandle(service_manager);
 
     service_names = ConvertWideStringToUtf8(aggregated);
+    if (service_names.empty()) {
+      service_names = GetServiceNamesFromCommandLine();
+    }
   });
 
   return service_names;
@@ -496,7 +544,7 @@ void WindowsTelemetry::LogCompileModelComplete(uint32_t session_id,
                     TraceLoggingBool(success, "success"),
                     TraceLoggingUInt32(error_code, "errorCode"),
                     TraceLoggingUInt32(error_category, "errorCategory"),
-                    TraceLoggingString(error_message.c_str(), "errorMessage"),
+                    TraceLoggingString(ScrubErrorMessage(error_message).c_str(), "errorMessage"),
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
@@ -519,7 +567,7 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingUInt32(status.Code(), "errorCode"),
                     TraceLoggingUInt32(status.Category(), "errorCategory"),
-                    TraceLoggingString(status.ErrorMessage().c_str(), "errorMessage"),
+                    TraceLoggingString(ScrubErrorMessage(status.ErrorMessage()).c_str(), "errorMessage"),
                     TraceLoggingString(file, "file"),
                     TraceLoggingString(function, "function"),
                     TraceLoggingInt32(line, "line"),
@@ -537,7 +585,7 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingUInt32(status.Code(), "errorCode"),
                     TraceLoggingUInt32(status.Category(), "errorCategory"),
-                    TraceLoggingString(status.ErrorMessage().c_str(), "errorMessage"),
+                    TraceLoggingString(ScrubErrorMessage(status.ErrorMessage()).c_str(), "errorMessage"),
                     TraceLoggingString(file, "file"),
                     TraceLoggingString(function, "function"),
                     TraceLoggingInt32(line, "line"),
@@ -563,7 +611,7 @@ void WindowsTelemetry::LogRuntimeInferenceError(uint32_t session_id, const commo
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingUInt32(status.Code(), "errorCode"),
                     TraceLoggingUInt32(status.Category(), "errorCategory"),
-                    TraceLoggingString(status.ErrorMessage().c_str(), "errorMessage"),
+                    TraceLoggingString(ScrubErrorMessage(status.ErrorMessage()).c_str(), "errorMessage"),
                     TraceLoggingString(ep_versions.c_str(), "executionProviderVersions"),
                     TraceLoggingString(ep_device_types.c_str(), "executionProviderDeviceTypes"),
                     TraceLoggingString(ORT_VERSION, "runtimeVersion"),
@@ -784,7 +832,7 @@ void WindowsTelemetry::LogModelLoadEnd(uint32_t session_id, const common::Status
                     TraceLoggingBool(status.IsOK(), "isSuccess"),
                     TraceLoggingUInt32(status.Code(), "errorCode"),
                     TraceLoggingUInt32(status.Category(), "errorCategory"),
-                    TraceLoggingString(status.IsOK() ? "" : status.ErrorMessage().c_str(), "errorMessage"),
+                    TraceLoggingString((status.IsOK() ? std::string() : ScrubErrorMessage(status.ErrorMessage())).c_str(), "errorMessage"),
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
@@ -805,7 +853,7 @@ void WindowsTelemetry::LogSessionCreationEnd(uint32_t session_id,
                     TraceLoggingBool(status.IsOK(), "isSuccess"),
                     TraceLoggingUInt32(status.Code(), "errorCode"),
                     TraceLoggingUInt32(status.Category(), "errorCategory"),
-                    TraceLoggingString(status.IsOK() ? "" : status.ErrorMessage().c_str(), "errorMessage"),
+                    TraceLoggingString((status.IsOK() ? std::string() : ScrubErrorMessage(status.ErrorMessage())).c_str(), "errorMessage"),
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 
@@ -861,7 +909,7 @@ void WindowsTelemetry::LogRegisterEpLibraryEnd(const std::string& registration_n
                     TraceLoggingBool(status.IsOK(), "isSuccess"),
                     TraceLoggingUInt32(status.Code(), "errorCode"),
                     TraceLoggingUInt32(status.Category(), "errorCategory"),
-                    TraceLoggingString(status.IsOK() ? "" : status.ErrorMessage().c_str(), "errorMessage"),
+                    TraceLoggingString((status.IsOK() ? std::string() : ScrubErrorMessage(status.ErrorMessage())).c_str(), "errorMessage"),
                     TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 }
 

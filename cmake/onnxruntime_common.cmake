@@ -55,6 +55,16 @@ else()
          "${ONNXRUNTIME_ROOT}/core/platform/posix/stacktrace.cc"
     )
 
+    # Telemetry for non-Windows platforms (enabled by USE_TELEMETRY)
+    if (onnxruntime_USE_TELEMETRY)
+        list(APPEND onnxruntime_common_src_patterns
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/device_id.h"
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/device_id.cc"
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry.h"
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/telemetry.cc"
+        )
+    endif()
+
     # logging files
     if (onnxruntime_USE_SYSLOG)
         list(APPEND onnxruntime_common_src_patterns
@@ -129,6 +139,13 @@ if(WIN32)
     set_property(TARGET onnxruntime_common PROPERTY CXX_STANDARD 23)
     target_compile_options(onnxruntime_common PRIVATE "/Zc:char8_t-")
   endif()
+  # windows/telemetry.cc's svchost service-name fallback uses CommandLineToArgvW (shell32), which is
+  # only compiled on the desktop partition (guarded with WINAPI_PARTITION_DESKTOP there). Restrict the
+  # explicit shell32 link to desktop Windows: GDK lists shell32.lib in nodefault_libs (excluded via
+  # /NODEFAULTLIB), and non-desktop partitions (UWP/WindowsStore) neither use nor ship it.
+  if(NOT GDK_PLATFORM AND NOT CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
+    target_link_libraries(onnxruntime_common PRIVATE shell32)
+  endif()
 endif()
 
 if(NOT WIN32 AND NOT APPLE AND NOT ANDROID AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
@@ -139,7 +156,26 @@ if(NOT WIN32 AND NOT APPLE AND NOT ANDROID AND CMAKE_SYSTEM_PROCESSOR MATCHES "x
 endif()
 
 if (onnxruntime_USE_TELEMETRY)
-  set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
+  if(WIN32)
+    set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
+  else()
+    target_compile_definitions(onnxruntime_common PRIVATE USE_1DS_TELEMETRY)
+    # The optional tenant-token override is emitted into a generated header in the build tree rather
+    # than onto the compiler command line, so an injected token (sourced from a CI secret) does not
+    # leak into compile_commands.json or build logs. DIY builds leave onnxruntime_1DS_TENANT_TOKEN
+    # empty, so the header defines nothing and telemetry.cc uses its throwaway default.
+    if(onnxruntime_1DS_TENANT_TOKEN)
+      set(ONNXRUNTIME_1DS_TENANT_TOKEN_DEFINE "#define ORT_1DS_TENANT_TOKEN \"${onnxruntime_1DS_TENANT_TOKEN}\"")
+    else()
+      set(ONNXRUNTIME_1DS_TENANT_TOKEN_DEFINE "")
+    endif()
+    set(_ort_telemetry_gen_dir "${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_telemetry")
+    configure_file(
+      "${REPO_ROOT}/cmake/onnxruntime_telemetry_tenant_token.h.in"
+      "${_ort_telemetry_gen_dir}/onnxruntime_telemetry_tenant_token.h"
+      @ONLY)
+    target_include_directories(onnxruntime_common PRIVATE "${_ort_telemetry_gen_dir}")
+  endif()
 endif()
 if (onnxruntime_USE_MIMALLOC)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES mimalloc-static)
@@ -199,6 +235,67 @@ if(CPUINFO_SUPPORTED)
   # Link cpuinfo if supported
   onnxruntime_add_include_to_target(onnxruntime_common cpuinfo::cpuinfo)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES cpuinfo::cpuinfo)
+endif()
+
+# Link telemetry library (1DS SDK) for non-Windows platforms
+if(onnxruntime_USE_TELEMETRY AND NOT WIN32)
+  if(TARGET MSTelemetry::mat)
+    # vcpkg port (cpp-client-telemetry): the imported target propagates its include
+    # directories and transitive dependencies (curl/sqlite3/zlib/nlohmann-json), so no
+    # manual include paths or system libraries are required here.
+    target_link_libraries(onnxruntime_common PRIVATE MSTelemetry::mat)
+    if(onnxruntime_TELEMETRY_SHARED_SDK AND onnxruntime_BUILD_SHARED_LIB)
+      # The vcpkg triplet built the SDK as a shared library (libmat.so) so it can be shared by
+      # several binaries (e.g. onnxruntime and onnxruntime-genai) instead of being statically
+      # embedded in each. Ship it next to libonnxruntime; the $ORIGIN/@loader_path RPATH set on the
+      # onnxruntime target (see onnxruntime.cmake) resolves it at load time. IMPORTED_RUNTIME_ARTIFACTS
+      # installs the resolved soname and its symlinks.
+      install(IMPORTED_RUNTIME_ARTIFACTS MSTelemetry::mat LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    endif()
+  elseif(TARGET mat)
+    if(onnxruntime_TELEMETRY_SHARED_SDK)
+      message(FATAL_ERROR "onnxruntime_TELEMETRY_SHARED_SDK requires the vcpkg cpp-client-telemetry port (build with --use_vcpkg); it is not supported with the FetchContent fallback.")
+    endif()
+    # mat is a FetchContent target that is not installed/exported. Scope the link to the build
+    # interface so it is still absorbed into libonnxruntime (shared build) and in-tree executables,
+    # but is excluded from the installed onnxruntimeTargets export of the static onnxruntime_common
+    # (where mat cannot be shipped). Without this, install(EXPORT) fails for static telemetry builds
+    # with "target onnxruntime_common requires target mat that is not in any export set". The vcpkg
+    # path links the imported MSTelemetry::mat target, which is exportable and unaffected.
+    target_link_libraries(onnxruntime_common PRIVATE $<BUILD_INTERFACE:mat>)
+    # cpp_client_telemetry uses include_directories() (directory-scoped) rather than
+    # target_include_directories(), so include paths don't propagate via target_link_libraries.
+    # Add them explicitly for onnxruntime_common. Mark them SYSTEM so the SDK's public headers are
+    # exempt from onnxruntime_common's -Wall -Wextra -Werror (they trip -Werror=unused-parameter in
+    # NullObjects.hpp / LogManagerProvider.hpp). The vcpkg MSTelemetry::mat path already propagates
+    # its includes as SYSTEM via the imported target.
+    if(DEFINED cpp_client_telemetry_SOURCE_DIR)
+      target_include_directories(onnxruntime_common SYSTEM PRIVATE
+        ${cpp_client_telemetry_SOURCE_DIR}/lib/include/public
+        ${cpp_client_telemetry_SOURCE_DIR}/lib/include/mat
+        ${cpp_client_telemetry_SOURCE_DIR}/lib
+      )
+    endif()
+    # Platform-specific system libraries required by the 1DS SDK
+    if(APPLE)
+      target_link_libraries(onnxruntime_common PRIVATE
+        "-framework CoreFoundation"
+        "-framework Security"
+        z
+        sqlite3
+      )
+    elseif(ANDROID)
+      target_link_libraries(onnxruntime_common PRIVATE z log)
+    elseif(UNIX)
+      target_link_libraries(onnxruntime_common PRIVATE
+        curl
+        z
+        sqlite3
+      )
+    endif()
+  else()
+    message(FATAL_ERROR "Telemetry enabled but no 1DS SDK target ('MSTelemetry::mat' or 'mat') was found")
+  endif()
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)

@@ -267,6 +267,8 @@ def generate_vcpkg_install_options(build_dir, args):
         vcpkg_install_options.append("--x-feature=webnn-ep")
     if args.use_xnnpack:
         vcpkg_install_options.append("--x-feature=xnnpack-ep")
+    if args.use_telemetry:
+        vcpkg_install_options.append("--x-feature=telemetry")
 
     overlay_triplets_dir = None
 
@@ -354,12 +356,33 @@ def generate_build_tree(
     disable_float4_types = args.android or ("float4" in types_to_disable)
     disable_optional_type = "optional" in types_to_disable
     disable_sparse_tensors = "sparsetensor" in types_to_disable
+    # Telemetry: On Windows uses ETW, on non-Windows uses 1DS. Telemetry is unsupported on
+    # WebAssembly/Emscripten (the 1DS vcpkg feature excludes it), so fail fast on that combination.
+    if args.use_telemetry and args.build_wasm:
+        raise BuildError(
+            "Telemetry is not supported for WebAssembly (Emscripten) builds; omit --use_telemetry when using --build_wasm."
+        )
+    # The shared 1DS SDK (libmat.so) is provided by the vcpkg cpp-client-telemetry port and is only
+    # meaningful for the non-Windows 1DS path. Fail fast on unsupported combinations.
+    if args.telemetry_shared_sdk:
+        if not args.use_telemetry:
+            raise BuildError("--telemetry_shared_sdk requires --use_telemetry.")
+        if not args.use_vcpkg:
+            raise BuildError(
+                "--telemetry_shared_sdk requires --use_vcpkg; the shared 1DS SDK is built by the vcpkg cpp-client-telemetry port."
+            )
+        if args.android:
+            raise BuildError("--telemetry_shared_sdk is not supported for Android builds.")
+    cmake_args += [
+        "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
+        "-Donnxruntime_TELEMETRY_SHARED_SDK=" + ("ON" if args.telemetry_shared_sdk else "OFF"),
+    ]
+
     disable_string_type = "string" in types_to_disable
     if is_windows():
         cmake_args += [
             "-Donnxruntime_USE_DML=" + ("ON" if args.use_dml else "OFF"),
             "-Donnxruntime_USE_WINML=" + ("ON" if args.use_winml else "OFF"),
-            "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
             "-Donnxruntime_ENABLE_PIX_FOR_WEBGPU_EP=" + ("ON" if args.enable_pix_capture else "OFF"),
         ]
 
@@ -618,10 +641,14 @@ def generate_build_tree(
                 osx_target = os.environ.get("MACOSX_DEPLOYMENT_TARGET")
             if osx_target is not None:
                 log.info(f"Setting VCPKG_OSX_DEPLOYMENT_TARGET to {osx_target}")
-            generate_macos_triplets(build_dir, configs, osx_target, args.use_full_protobuf)
+            generate_macos_triplets(
+                build_dir, configs, osx_target, args.use_full_protobuf, args.telemetry_shared_sdk, args.use_telemetry
+            )
         else:
             # Linux, *BSD, AIX or other platforms
-            generate_linux_triplets(build_dir, configs, args.use_full_protobuf)
+            generate_linux_triplets(
+                build_dir, configs, args.use_full_protobuf, args.telemetry_shared_sdk, args.use_telemetry
+            )
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", str(vcpkg_toolchain_path))
 
         # Choose the cmake triplet
