@@ -256,6 +256,7 @@ jobs:
           set -e -x
           npm install -g detox-cli
           brew tap wix/brew
+          brew trust wix/brew
           brew install applesimutils
           npm ci
         working-directory: ${{ github.workspace }}/js
