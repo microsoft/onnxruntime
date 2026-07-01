@@ -12,5 +12,6 @@ if (typeof window !== 'undefined') {
 }
 
 require('./backends/wasm/test-model-metadata');
+require('./backends/wasm/test-preallocated-cpu-output');
 
 require('./opset');
