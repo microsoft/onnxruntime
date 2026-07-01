@@ -129,6 +129,7 @@ int ParseSpinDurationUs(std::string_view str, const char* config_key,
   return spin_us;
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 // Returns the virtual model path derived from the
 // kOrtSessionOptionsModelExternalInitializersFileFolderPath config option, or an empty
 // PathString when the option is not set. When set, external initializers are resolved
@@ -141,6 +142,7 @@ PathString GetExternalInitializersFolderModelPath(const ConfigOptions& config_op
   }
   return ToPathString(external_data_folder_path + "/virtual_model.onnx");
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 // Parse a spin backoff max config value (exponential-backoff cap). Defaults to
 // 1 (no backoff, one SpinPause() per iteration). Values >= 2 enable backoff.
