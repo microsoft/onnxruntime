@@ -26,7 +26,29 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
   // check whether can use element-wise mode.
   // If either A or B is scalar, or A and B have the same shape, element-wise mode can be used.
   // In element-wise mode, no indices calculation is needed.
+  const bool is_bool_output = Outputs()[0].var_type == ProgramVariableDataType::Boolx4;
+
   if (is_lhs_scalar_ || is_rhs_scalar_ || !is_broadcast_) {
+    // INT64 inputs with bool output: output is packed 4-per-u32, but inputs are scalar i32 per element.
+    // Read 4 consecutive elements per thread and pack them together.
+    if (is_int64_ && is_bool_output) {
+      auto get_a = [&](const std::string& idx) {
+        return is_lhs_scalar_ ? a.GetByOffset("0") : a.GetByOffset(idx);
+      };
+      auto get_b = [&](const std::string& idx) {
+        return is_rhs_scalar_ ? b.GetByOffset("0") : b.GetByOffset(idx);
+      };
+      shader.MainFunctionBody()
+          << "let base = global_idx * 4u;\n"
+          << "let r = vec4<bool>("
+          << get_a("base") << " == " << get_b("base") << ", "
+          << get_a("base + 1u") << " == " << get_b("base + 1u") << ", "
+          << get_a("base + 2u") << " == " << get_b("base + 2u") << ", "
+          << get_a("base + 3u") << " == " << get_b("base + 3u") << ");\n";
+      shader.MainFunctionBody() << c.SetByOffset("global_idx", "r");
+      return Status::OK();
+    }
+
     // get A data
     if (is_lhs_scalar_) {
       if (is_int64_) {
