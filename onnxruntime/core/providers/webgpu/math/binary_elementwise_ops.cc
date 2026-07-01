@@ -38,13 +38,18 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
       auto get_b = [&](const std::string& idx) {
         return is_rhs_scalar_ ? b.GetByOffset("0") : b.GetByOffset(idx);
       };
+      // Each thread processes 4 output bool elements packed into one u32.
+      // INT64 inputs are stored element-by-element (component=1), so we must guard
+      // lanes 1-3 against out-of-bounds reads when the tensor size is not a multiple of 4.
       shader.MainFunctionBody()
           << "let base = global_idx * 4u;\n"
-          << "let r = vec4<bool>("
-          << get_a("base") << " == " << get_b("base") << ", "
-          << get_a("base + 1u") << " == " << get_b("base + 1u") << ", "
-          << get_a("base + 2u") << " == " << get_b("base + 2u") << ", "
-          << get_a("base + 3u") << " == " << get_b("base + 3u") << ");\n";
+          << "let n = uniforms.element_count;\n"
+          << "let r0 = " << get_a("base") << " == " << get_b("base") << ";\n"
+          << "var r1 = false; var r2 = false; var r3 = false;\n"
+          << "if (base + 1u < n) { r1 = " << get_a("base + 1u") << " == " << get_b("base + 1u") << "; }\n"
+          << "if (base + 2u < n) { r2 = " << get_a("base + 2u") << " == " << get_b("base + 2u") << "; }\n"
+          << "if (base + 3u < n) { r3 = " << get_a("base + 3u") << " == " << get_b("base + 3u") << "; }\n"
+          << "let r = vec4<bool>(r0, r1, r2, r3);\n";
       shader.MainFunctionBody() << c.SetByOffset("global_idx", "r");
       return Status::OK();
     }
@@ -227,6 +232,7 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
           {static_cast<uint32_t>(vec_size)},
+          {static_cast<uint32_t>(size)},
       })
       .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, output_component});
 

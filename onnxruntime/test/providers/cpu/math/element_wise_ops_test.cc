@@ -5069,9 +5069,9 @@ TEST(MathOpTest, Sub_int64_webgpu) {
 
 TEST(MathOpTest, Equal_int64_webgpu) {
   OpTester test("Equal", 13);
-  test.AddInput<int64_t>("A", {4}, {1, 0, -1, -1});
-  test.AddInput<int64_t>("B", {4}, {1, 1, 2, -1});
-  test.AddOutput<bool>("C", {4}, {true, false, false, true});
+  test.AddInput<int64_t>("A", {5}, {1, 0, -1, -1, 3});
+  test.AddInput<int64_t>("B", {5}, {1, 1, 2, -1, 3});
+  test.AddOutput<bool>("C", {5}, {true, false, false, true, true});
   ConfigOptions config_options{};
   ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
   auto provider = WebGpuExecutionProviderWithOptions(config_options);
