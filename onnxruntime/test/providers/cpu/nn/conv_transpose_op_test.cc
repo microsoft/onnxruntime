@@ -1826,7 +1826,8 @@ TEST(ConvTransposeTest, ConvTranspose_3D_ValidOutputShape) {
   TestConvTransposeOp(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape,
                       OpTester::ExpectResult::kExpectSuccess, "",
                       {kTensorrtExecutionProvider, kCudaExecutionProvider,
-                       kCudaNHWCExecutionProvider, kQnnExecutionProvider, kWebGpuExecutionProvider});
+                       kCudaNHWCExecutionProvider, kQnnExecutionProvider,
+                       kDmlExecutionProvider, kWebGpuExecutionProvider});
 }
 
 // Test group > 1 with explicit output_shape.
