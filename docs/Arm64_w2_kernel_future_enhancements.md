@@ -1,18 +1,15 @@
 # ARM64 W2 Kernel: Future Performance Enhancements
 
 This document captures two follow-up perf enhancements for the ARM64 W2
-(`SQNBIT_CompInt8`, BlkBitWidth=2) NEON kernel that landed on
-`hari/asg_perf_2` (the templated R{1,2}×C{1,4,8} DotProd tile grid). Both
-are deferred to separate PRs because they each touch the packed-B layout
-or add a new translation unit, and they are independent of the
+(`SQNBIT_CompInt8`, BlkBitWidth=2) NEON kernel — the templated
+R{1,2}×C{1,4,8} DotProd tile grid that ships in this PR. Both are
+deferred to separate PRs because they each touch the packed-B layout or
+add a new translation unit, and they are independent of the
 correctness-and-tiling work that already shipped.
 
-Companion docs:
-
-- `docs/arm64_w2_non_lut_kernel_plan.md` — original plan and scope.
-- `docs/arm64_w2_non_lut_agent_handoff.md` — implementation handoff
-  (some claims pre-date the templated grid; see plan doc for the current
-  authoritative ARM64 W2 layout).
+This document is the authoritative reference for the current ARM64 W2
+DotProd layout and dispatch; earlier design and handoff drafts have
+been folded into it.
 
 The W2 DotProd kernel as of the templated-grid commit is the recipe
 shipped in the table below. Both enhancements below extend it; neither

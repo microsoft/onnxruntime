@@ -112,11 +112,11 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/qnbitgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_fp32.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
-        # Portable W2 scalar pack / reference kernel. Misleadingly Avx512-named
-        # because the AVX-512 W2 path was the first consumer, but the TU itself
-        # contains no x86 intrinsics (see sqnbitgemm_kernel_avx512_2bit.cpp).
-        # ARM64 W2 dispatch wires its pack-size, pack, and kernel pointers to
-        # these portable functions until per-backend NEON / i8mm kernels land.
+        # Portable W2 pack helpers + scalar reference kernel. Misleadingly
+        # Avx512-named because the AVX-512 W2 path was the first consumer, but
+        # the TU contains no x86 intrinsics (see sqnbitgemm_kernel_avx512_2bit.cpp).
+        # ARM64 W2 dispatch reuses these for pack-size / pack / layout; the
+        # native compute kernel is the NEON DotProd TU listed just below.
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.h
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
         # W2 CompInt8 DotProd kernel (NEON FEAT_DotProd backend).

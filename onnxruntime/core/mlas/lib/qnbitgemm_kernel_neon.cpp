@@ -27,10 +27,11 @@ Abstract:
 #include "qnbitgemm.h"
 #include "sqnbitgemm_q8_block.h"
 
-// Scaffold: the W2 block-group pack helpers and scalar reference kernel
-// declared here are pure C++ (no x86 intrinsics) despite the file name. They
-// are reused on ARM64 in this commit to validate the W2 dispatch plumbing
-// end-to-end before native NEON/i8mm kernels land in subsequent commits.
+// W2 block-group pack helpers and scalar reference kernel declared in the
+// Avx512-named header are pure C++ (no x86 intrinsics). They serve as the
+// cross-arch layout authority for W2 and are reused on ARM64 for pack-size /
+// pack / layout; compute is provided by the native NEON DotProd kernel in
+// sqnbitgemm_kernel_neon_int8_2bit.cpp.
 #include "sqnbitgemm_kernel_avx512_2bit.h"
 
 #ifdef USE_KLEIDIAI

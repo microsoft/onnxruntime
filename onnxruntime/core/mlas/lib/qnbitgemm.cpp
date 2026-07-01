@@ -1153,7 +1153,12 @@ InitializeWorkspace_CompInt8<float>(
             }
         });
     } else {
-        // TODO(hasesh): Clean-up the following logic so that it is clean AND it works as expected on all platforms
+        // TODO(hasesh): The (BlkBitWidth x A-layout x A-signedness) matrix below is
+        // resolved by a hand-rolled cascade because the dispatch exposes both an
+        // interleaved-scale (W4-style) and a separate-scale (W8-style) quantize fn,
+        // plus a W2-specific signed-A override. Ideally the dispatch itself would
+        // expose a single "correct quantize fn for this (bit-width, kernel)" pointer
+        // so this call-site would not have to reason about layout/sign compatibility.
         if (BlkBitWidth == 4 || BlkBitWidth == 2) {
             // W2 requires the W8-style separate-scale layout produced by
             // QuantizeARowComputeBlkSum_CompInt8 because the W2 SQ2BitGemm
