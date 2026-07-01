@@ -2437,6 +2437,100 @@ TEST(MathOpTest, Min_13_Float16_with_scalar_Nan) {
                      std::numeric_limits<float>::quiet_NaN(),
                      std::numeric_limits<float>::quiet_NaN()});
 }
+
+// The default Max/Min NaN tests above are pinned to CPU/CUDA. These WebGPU-specific cases lock in
+// the ONNX opset-12+ requirement that Max/Min propagate NaN (a plain WGSL max/min builtin does
+// not guarantee this). The broadcast case exercises the vec4 broadcast shader path; the scalar
+// case exercises the element-wise scalar-operand path.
+TEST(MathOpTest, Max_12_Float_Nan_WebGpu) {
+  OpTester test("Max", 12);
+  test.AddInput<float>("data_0", {3, 3},
+                       {std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::quiet_NaN(),
+                        -0.5f, 0.0f, -2.0f,
+                        0.5f, 0.0f, 2.0f});
+  test.AddInput<float>("data_1", {3, 1},
+                       {0.0f, -1.0f, 1.0f});
+  test.AddOutput<float>("max", {3, 3},
+                        {std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         -0.5f, 0.0f, -1.0f,
+                         1.0f, 1.0f, 2.0f});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+TEST(MathOpTest, Min_12_Float_Nan_WebGpu) {
+  OpTester test("Min", 12);
+  test.AddInput<float>("data_0", {3, 3},
+                       {std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::quiet_NaN(),
+                        std::numeric_limits<float>::quiet_NaN(),
+                        -0.5f, 0.0f, -2.0f,
+                        0.5f, 0.0f, 2.0f});
+  test.AddInput<float>("data_1", {3, 1},
+                       {0.0f, -1.0f, 1.0f});
+  test.AddOutput<float>("min", {3, 3},
+                        {std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         -1.0f, -1.0f, -2.0f,
+                         0.5f, 0.0f, 1.0f});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// A scalar NaN operand must turn every output element into NaN (element-wise scalar path).
+TEST(MathOpTest, Max_12_Float_with_scalar_Nan_WebGpu) {
+  OpTester test("Max", 12);
+  test.AddInput<float>("data_0", {2, 2},
+                       {0.25f, -0.25f, -0.5f, 0.5f});
+  test.AddInput<float>("data_1", {1}, {std::numeric_limits<float>::quiet_NaN()});
+  test.AddOutput<float>("max", {2, 2},
+                        {std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN(),
+                         std::numeric_limits<float>::quiet_NaN()});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Variadic (3-input) fold must also propagate a NaN that appears in a middle operand.
+TEST(MathOpTest, Min_12_Float_Variadic_Nan_WebGpu) {
+  OpTester test("Min", 12);
+  test.AddInput<float>("data_0", {1, 3}, {1.0f, 2.0f, 3.0f});
+  test.AddInput<float>("data_1", {1, 3},
+                       {std::numeric_limits<float>::quiet_NaN(), 0.0f, 5.0f});
+  test.AddInput<float>("data_2", {1, 3}, {-1.0f, -2.0f, 4.0f});
+  test.AddOutput<float>("min", {1, 3},
+                        {std::numeric_limits<float>::quiet_NaN(), -2.0f, 3.0f});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// Float16 exercises the distinct NaN-detection path in the shader: f16 is widened to f32 before the
+// integer bitcast, since a vec4<f16> is too narrow for the vec4<u32> bitcast the check relies on.
+TEST(MathOpTest, Max_12_Float16_Nan_WebGpu) {
+  OpTester test("Max", 12);
+  test.AddInput<MLFloat16>("data_0", {3, 1},
+                           MakeMLFloat16({-1.0f, std::numeric_limits<float>::quiet_NaN(), 1.0f}));
+  test.AddInput<MLFloat16>("data_1", {3, 1},
+                           MakeMLFloat16({0.5f, 1.0f, std::numeric_limits<float>::quiet_NaN()}));
+  test.AddOutput<MLFloat16>("max", {3, 1},
+                            MakeMLFloat16({0.5f,
+                                           std::numeric_limits<float>::quiet_NaN(),
+                                           std::numeric_limits<float>::quiet_NaN()}));
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST(MathOpTest, Max_6) {
   OpTester test("Max", 6);
   std::vector<int64_t> dims{3, 3};

@@ -3,6 +3,7 @@
 
 #include <memory>
 
+#include "core/common/inlined_containers.h"
 #include "core/providers/common.h"
 #include "core/providers/webgpu/math/binary_elementwise_ops.h"
 #include "core/providers/webgpu/math/binary_elementwise_broadcast_utils.h"
@@ -161,19 +162,21 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
   return Status::OK();
 }
 
-Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
-  auto lhs_tensor = context.Input(0);
-  auto rhs_tensor = context.Input(1);
+namespace {
+// Builds and runs a BinaryElementwiseProgram that computes `output = expression(lhs, rhs)`
+// with multidirectional broadcasting. The output tensor must already be sized to the broadcast
+// shape of `lhs` and `rhs`, and must contain at least one element.
+Status RunBinaryProgram(ComputeContext& context,
+                        const std::string& kernel_name,
+                        const std::string& expression,
+                        const std::string& additional_impl,
+                        const Tensor* lhs_tensor,
+                        const Tensor* rhs_tensor,
+                        Tensor* output_tensor) {
   const auto& lhs_shape = lhs_tensor->Shape();
   const auto& rhs_shape = rhs_tensor->Shape();
-
-  TensorShape output_shape;
-  ORT_RETURN_IF_ERROR(ComputeBroadcastOutputShape(Node().Name(), lhs_shape, rhs_shape, output_shape));
-  auto output_tensor = context.Output(0, output_shape);
+  const auto& output_shape = output_tensor->Shape();
   int64_t size = output_shape.Size();
-  if (size == 0) {
-    return Status::OK();
-  }
 
   bool is_broadcast = lhs_shape != rhs_shape;
   bool is_lhs_scalar = lhs_shape.IsScalar();
@@ -217,13 +220,8 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
   int output_component = is_int64_output ? 1 : 4;
   uint32_t output_size = is_int64_output ? onnxruntime::narrow<uint32_t>(size) : vec_size;
 
-  std::string additional_impl;
-  if (get_additional_impl_) {
-    additional_impl = get_additional_impl_(lhs_tensor->GetElementType(), rhs_tensor->GetElementType());
-  }
-
-  BinaryElementwiseProgram program{kernel_name_,
-                                   expression_,
+  BinaryElementwiseProgram program{kernel_name,
+                                   expression,
                                    additional_impl,
                                    is_broadcast,
                                    is_lhs_scalar,
@@ -294,11 +292,97 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
 
   return context.RunProgram(program);
 }
+}  // namespace
+
+Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
+  auto lhs_tensor = context.Input(0);
+  auto rhs_tensor = context.Input(1);
+  const auto& lhs_shape = lhs_tensor->Shape();
+  const auto& rhs_shape = rhs_tensor->Shape();
+
+  TensorShape output_shape;
+  ORT_RETURN_IF_ERROR(ComputeBroadcastOutputShape(Node().Name(), lhs_shape, rhs_shape, output_shape));
+  auto output_tensor = context.Output(0, output_shape);
+  if (output_shape.Size() == 0) {
+    return Status::OK();
+  }
+
+  std::string additional_impl;
+  if (get_additional_impl_) {
+    additional_impl = get_additional_impl_(lhs_tensor->GetElementType(), rhs_tensor->GetElementType());
+  }
+
+  return RunBinaryProgram(context, kernel_name_, expression_, additional_impl, lhs_tensor, rhs_tensor, output_tensor);
+}
+
+Status VariadicElementwise::ComputeInternal(ComputeContext& context) const {
+  const int input_count = context.InputCount();
+  const auto* input_0 = context.Input(0);
+
+  // Single input: the output is a copy of the input.
+  if (input_count == 1) {
+    auto* output_tensor = context.Output(0, input_0->Shape());
+    if (output_tensor->Shape().Size() == 0) {
+      return Status::OK();
+    }
+    return context.CopyTensor(*input_0, *output_tensor);
+  }
+
+  // Compute the multidirectional (NumPy-style) broadcast output shape across all inputs.
+  TensorShape output_shape = input_0->Shape();
+  for (int i = 1; i < input_count; ++i) {
+    TensorShape accumulated_shape = output_shape;
+    ORT_RETURN_IF_ERROR(ComputeBroadcastOutputShape(Node().Name(), accumulated_shape, context.Input(i)->Shape(), output_shape));
+  }
+  auto* output_tensor = context.Output(0, output_shape);
+  if (output_shape.Size() == 0) {
+    return Status::OK();
+  }
+
+  // Fold the inputs pairwise: acc = op(acc, input[i]).
+  // Intermediate results (for input_count > 2) are held in temporary GPU tensors that must stay
+  // alive until their consuming program has been queued, so they are kept in a vector for the
+  // duration of this call. Reserve up front so the vector never reallocates and invalidates the
+  // pointers handed to the next iteration.
+  const auto element_type = input_0->DataType();
+  std::string additional_impl;
+  if (get_additional_impl_) {
+    additional_impl = get_additional_impl_(input_0->GetElementType(), input_0->GetElementType());
+  }
+  InlinedVector<Tensor> intermediate_tensors;
+  intermediate_tensors.reserve(static_cast<size_t>(input_count) - 2);
+
+  const Tensor* lhs_tensor = input_0;
+  for (int i = 1; i < input_count; ++i) {
+    const Tensor* rhs_tensor = context.Input(i);
+    Tensor* dst_tensor = nullptr;
+    if (i == input_count - 1) {
+      // The last fold writes directly to the kernel output.
+      dst_tensor = output_tensor;
+    } else {
+      TensorShape intermediate_shape;
+      ORT_RETURN_IF_ERROR(ComputeBroadcastOutputShape(Node().Name(), lhs_tensor->Shape(), rhs_tensor->Shape(), intermediate_shape));
+      intermediate_tensors.push_back(context.CreateGPUTensor(element_type, intermediate_shape));
+      dst_tensor = &intermediate_tensors.back();
+    }
+    ORT_RETURN_IF_ERROR(RunBinaryProgram(context, kernel_name_, expression_, additional_impl,
+                                         lhs_tensor, rhs_tensor, dst_tensor));
+    lhs_tensor = dst_tensor;
+  }
+
+  return Status::OK();
+}
 
 #define WEBGPU_BINARY_IMPL(OP_TYPE, ...)                                                  \
   class OP_TYPE final : public BinaryElementwise {                                        \
    public:                                                                                \
     OP_TYPE(const OpKernelInfo& info) : BinaryElementwise{info, #OP_TYPE, __VA_ARGS__} {} \
+  };
+
+#define WEBGPU_VARIADIC_IMPL(OP_TYPE, ...)                                                  \
+  class OP_TYPE final : public VariadicElementwise {                                        \
+   public:                                                                                  \
+    OP_TYPE(const OpKernelInfo& info) : VariadicElementwise{info, #OP_TYPE, __VA_ARGS__} {} \
   };
 
 #define WEBGPU_BINARY_KERNEL(OP_TYPE, VERSION, KERNEL_CLASS, TYPE) \
@@ -398,6 +482,51 @@ KernelCreateInfo CreateSubKernelInfo(bool enable_int64) {
 template KernelCreateInfo CreateSubVersionedKernelInfo<7, 12>(bool);
 template KernelCreateInfo CreateSubVersionedKernelInfo<13, 13>(bool);
 template KernelCreateInfo CreateSubKernelInfo<14>(bool);
+
+// ONNX Max/Min (opset 12+) propagate NaN: if either operand is NaN the result is NaN.
+// The WGSL `max`/`min` builtins do not guarantee this, so wrap them so that a NaN operand is
+// forwarded. NaN is detected via an integer bitcast (NaN iff `(bits & 0x7fffffff) > 0x7f800000`)
+// rather than the `x != x` self-inequality: shader compilers assume floats are never NaN and fold
+// `x != x` to `false`, which silently breaks propagation. Integer bit math is not subject to that
+// fast-math assumption. f16 is widened to f32 first (NaN is preserved) so the 16-byte
+// `vec4<u32>` bitcast is valid. For integer element types no NaN handling is emitted.
+static std::string GetMinMaxImpl(int element_type, bool is_max) {
+  const char* fn_name = is_max ? "max_v" : "min_v";
+  const char* builtin = is_max ? "max" : "min";
+  SS(s, 1024);
+  const bool is_float = element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
+                        element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
+  s << "fn " << fn_name << "(a : vec4<input_a_element_t>, b : vec4<input_b_element_t>) -> vec4<input_a_element_t> {\n";
+  if (is_float) {
+    const bool is_f16 = element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16;
+    const std::string a_bits = is_f16 ? "bitcast<vec4<u32>>(vec4<f32>(a))" : "bitcast<vec4<u32>>(a)";
+    const std::string b_bits = is_f16 ? "bitcast<vec4<u32>>(vec4<f32>(b))" : "bitcast<vec4<u32>>(b)";
+    s << "  let a_nan = (" << a_bits << " & vec4<u32>(0x7fffffffu)) > vec4<u32>(0x7f800000u);\n"
+      << "  let b_nan = (" << b_bits << " & vec4<u32>(0x7fffffffu)) > vec4<u32>(0x7f800000u);\n"
+      << "  return select(select(" << builtin << "(a, b), b, b_nan), a, a_nan);\n";
+  } else {
+    s << "  return " << builtin << "(a, b);\n";
+  }
+  s << "}\n";
+  return SS_GET(s);
+}
+
+static std::string GetMaxImpl(int lhs_element_type, int /* rhs_element_type */) {
+  return GetMinMaxImpl(lhs_element_type, /*is_max=*/true);
+}
+static std::string GetMinImpl(int lhs_element_type, int /* rhs_element_type */) {
+  return GetMinMaxImpl(lhs_element_type, /*is_max=*/false);
+}
+
+WEBGPU_VARIADIC_IMPL(Max, "max_v(vec4<input_a_element_t>(a), vec4<input_b_element_t>(b))", GetMaxImpl)
+WEBGPU_BINARY_VERSIONED_KERNEL(Max, 8, 11, Max, WebGpuSupportedNumberTypes())
+WEBGPU_BINARY_VERSIONED_KERNEL(Max, 12, 12, Max, WebGpuSupportedNumberTypes())
+WEBGPU_BINARY_KERNEL(Max, 13, Max, WebGpuSupportedNumberTypes())
+
+WEBGPU_VARIADIC_IMPL(Min, "min_v(vec4<input_a_element_t>(a), vec4<input_b_element_t>(b))", GetMinImpl)
+WEBGPU_BINARY_VERSIONED_KERNEL(Min, 8, 11, Min, WebGpuSupportedNumberTypes())
+WEBGPU_BINARY_VERSIONED_KERNEL(Min, 12, 12, Min, WebGpuSupportedNumberTypes())
+WEBGPU_BINARY_KERNEL(Min, 13, Min, WebGpuSupportedNumberTypes())
 
 std::string GetPowImpl(int lhs_element_type, int /* rhs_element_type */) {
   SS(s, 1024);

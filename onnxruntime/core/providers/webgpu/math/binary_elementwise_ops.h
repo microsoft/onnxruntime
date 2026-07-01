@@ -84,5 +84,29 @@ KernelCreateInfo CreateSubVersionedKernelInfo(bool enable_int64);
 template <int SinceVersion>
 KernelCreateInfo CreateSubKernelInfo(bool enable_int64);
 
+// Variadic element-wise operator (e.g. Max, Min) that accepts 1..N inputs with
+// multidirectional (NumPy-style) broadcasting. The inputs are folded pairwise using the
+// two-input binary element-wise program, reusing its broadcasting and vectorization paths.
+class VariadicElementwise : public WebGpuKernel {
+ public:
+  using GetAdditionalImplementationFunction = std::string (*)(int lhs_element_type, int rhs_element_type);
+
+  VariadicElementwise(const OpKernelInfo& info,
+                      const std::string& kernel_name,
+                      const std::string& expression,
+                      const GetAdditionalImplementationFunction get_additional_impl = nullptr) : WebGpuKernel{info},
+                                                                                                 kernel_name_{kernel_name},
+                                                                                                 expression_{expression},
+                                                                                                 get_additional_impl_{get_additional_impl} {}
+
+ protected:
+  Status ComputeInternal(ComputeContext& context) const final;
+
+ private:
+  std::string kernel_name_;
+  std::string expression_;
+  const GetAdditionalImplementationFunction get_additional_impl_;
+};
+
 }  // namespace webgpu
 }  // namespace onnxruntime
