@@ -3044,6 +3044,47 @@ struct OrtEpFactory {
    */
   ORT_API2_STATUS(DeinitGraphicsInterop, _In_ OrtEpFactory* this_ptr,
                   _In_ const OrtEpDevice* ep_device);
+
+  /** \brief Select the best model candidate from metadata lists.
+   *
+   * Evaluates each candidate metadata against the given hardware device and optional session options,
+   * and returns the index of the best match.
+   *
+   * Each candidate's OrtKeyValuePairs can have multiple entries and the entry with "ep_compatibility_info" key is
+   * required; its associated value is the compatibility information stored in onnx model metadata. When coming from
+   * a model package, these correspond to the fields in variant body.
+   * See model_package/README.md#variant-body for the full spec.
+   *
+   * Context about having this function:
+   * The existing ValidateCompiledModelCompatibilityInfo() alone is not sufficient for some EPs to determine the best
+   * compatible model when there are multiple candidates. For example, an EP may support multiple compilation modes
+   * (e.g., "speed optimized" vs "memory optimized") that produce different compatibility strings. The EP can implement
+   * this function to evaluate the candidate strings and select the best compatible one based on its own criteria,
+   * the target device, and the session options.
+   *
+   * If all candidates are unsupported, this function succeeds and sets `selected_index` to SIZE_MAX.
+   *
+   * \note The implementer should validate the compatibility of each candidate (e.g., by calling
+   * ValidateCompiledModelCompatibilityInfo for each one) before determining the best match.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[in] device The target hardware device that the EP would run on. Must map to this EP.
+   * \param[in] candidates Array of OrtKeyValuePairs pointers (one per model variant).
+   * \param[in] num_candidates Number of candidates.
+   * \param[in] session_options Optional session options to consider when selecting the best candidate.
+   *                            May be nullptr if no session-level preferences are relevant.
+   * \param[out] selected_index Selected candidate index, or SIZE_MAX if all unsupported.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.28.
+   */
+  ORT_API2_STATUS(SelectBestModelCandidate, _In_ OrtEpFactory* this_ptr,
+                  _In_ const OrtHardwareDevice* device,
+                  _In_reads_(num_candidates) const OrtKeyValuePairs* const* candidates,
+                  _In_ size_t num_candidates,
+                  _In_opt_ const OrtSessionOptions* session_options,
+                  _Out_ size_t* selected_index);
 };
 
 #ifdef __cplusplus
