@@ -1351,6 +1351,7 @@
       "conv1d.jsonc",
       "conv3dncdhw.jsonc",
       "cos.jsonc",
+      "dft.jsonc",
       "div.jsonc",
       "div_int32.jsonc",
       "depth-to-space.jsonc",
