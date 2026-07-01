@@ -4170,12 +4170,8 @@ TEST(MathOpTest, CosFloat) {
 }
 
 TEST(MathOpTest, CosDouble) {
-  if (DefaultCudaExecutionProvider().get() != nullptr) {  // double type not supported on CPU
-    OpTester test("Cos");
-    TrigDoubleTest<::cos>(test, {1.1, -1.1, 2.2, -2.2}, {kTensorrtExecutionProvider});
-    // Fails TensorRT unit-test because the unit tests only test one EP at a time and the TensorRT EP will not be able to find an implementation in the fall-back CPU EP,
-    // so skip it
-  }
+  OpTester test("Cos");
+  TrigDoubleTest<::cos>(test, {1.1, -1.1, 2.2, -2.2});
 }
 
 TEST(MathOpTest, CosFloat16) {
