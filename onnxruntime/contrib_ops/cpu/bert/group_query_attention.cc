@@ -166,7 +166,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
       // Shared KV (kv_sequence_length == 0) appends no new KV and its past read is already
       // bounded by the present-buffer check together with the total_sequence_length <=
       // seqlen_past_kv_cache enforcement in the apply-attention paths, so it needs no check here.
-      if (past_kv_seqlen > 0 && parameters.kv_sequence_length != 0 && !parameters.is_first_prompt) {
+      if (past_key != nullptr && past_value != nullptr && parameters.kv_sequence_length != 0 &&
+          !parameters.is_first_prompt) {
         const int64_t past_rows = static_cast<int64_t>(seqlens_k_data[b]) + 1 - sequence_length;
         if (past_rows > past_kv_seqlen) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

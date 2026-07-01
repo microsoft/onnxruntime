@@ -386,6 +386,18 @@ TEST(GroupQueryAttentionTest, SeqlensKExceedsPastBuffer_OOBRead) {
       /*past_seq_len=*/2);
 }
 
+TEST(GroupQueryAttentionTest, SeqlensKExceedsEmptyPastBuffer_OOBRead) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{50},
+      /*total_seq_len=*/100,
+      /*batch_size=*/1,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectFailure,
+      "exceeds the past buffer sequence length",
+      /*provide_past=*/true,
+      /*past_seq_len=*/0);
+}
+
 // INT32_MAX seqlens_k: rejected by the >= present_kv_seqlen check.
 TEST(GroupQueryAttentionTest, Int32MaxSeqlensK_OOB) {
   RunGQASeqlensKTest(
