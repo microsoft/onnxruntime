@@ -8359,6 +8359,30 @@ struct OrtCompileApi {
   ORT_API2_STATUS(ModelCompilationOptions_SetInputModel,
                   _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ const OrtModel* model);
+
+  /** \brief Enable weightless mode for model compilation.
+   *
+   * When enabled, the compiled EPContext model will not embed constant initializer data in the EP's
+   * compiled binary. Instead, the initializer data must be provided at inference time, either from the
+   * source model (via the "onnx_model_filename" EPContext node attribute or the
+   * "ep.context_source_model_path" session option) or from externalized weights.
+   *
+   * This enables smaller compiled models and allows sharing initializer data across multiple compiled
+   * model variants (e.g., multi-platform caches for different hardware generations).
+   *
+   * ORT verifies that the target EP supports weightless mode by calling OrtEpApi::GetWeightlessSupport().
+   * If the EP does not support weightless mode, an error is returned.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] use_weightless If true, enable weightless mode for the compiled model.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.28.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetWeightlessCache,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ bool use_weightless);
 };
 
 /**

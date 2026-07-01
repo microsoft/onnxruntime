@@ -2630,6 +2630,34 @@ struct OrtEp {
    * \since Version 1.27.
    */
   ORT_API2_STATUS(ReleaseCapturedGraph, _In_ OrtEp* this_ptr, _In_ int graph_annotation_id);
+
+  /** \brief Query whether the execution provider supports weightless mode for all initializers.
+   *
+   * When weightless mode is enabled (via the "ep.enable_weightless" session option), ORT calls this function
+   * to confirm that the EP supports operating without copying constant initializers. If the EP supports
+   * weightless mode, ORT extends the lifetime of initializer data past the Compile() call so the EP can
+   * hold references to the data for the session's lifetime.
+   *
+   * EPs that support weightless mode should:
+   * - During Compile(), obtain initializer data via ValueInfo_GetInitializerValue() and hold references
+   *   to the underlying data buffers. ORT guarantees these buffers remain valid for the session lifetime.
+   * - Set drop_constant_initializers to true in OrtNodeFusionOptions, since the EP will use its own
+   *   cached references rather than receiving initializers via KernelContext inputs.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[out] supported Output parameter set to true if the EP supports weightless mode for all
+   *                       initializers (internal and external), false otherwise.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Implementation of this function is optional. If set to NULL, ORT assumes the EP does not
+   *       support weightless mode for all initializers. EPs using the deprecated
+   *       "ep.enable_weightless_ep_context_nodes" session option (external initializers only) do not
+   *       need to implement this function.
+   *
+   * \since Version 1.28.
+   */
+  ORT_API2_STATUS(GetWeightlessSupport, _In_ const OrtEp* this_ptr, _Out_ bool* supported);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.

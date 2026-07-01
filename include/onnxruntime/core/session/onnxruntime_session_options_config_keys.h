@@ -580,7 +580,46 @@ static const char* const kOrtSessionOptionsRecordEpGraphAssignmentInfo = "sessio
 // Option values:
 // - "0": disable. (default)
 // - "1": enable.
+//
+// \deprecated Since version 1.28. Use "ep.enable_weightless" instead, which covers all initializers
+// (internal and external) and works in both JIT and AOT flows.
 static const char* const kOrtSessionOptionEpEnableWeightlessEpContextNodes = "ep.enable_weightless_ep_context_nodes";
+
+// Enable weightless mode for all initializers (internal and external).
+//
+// When enabled, ONNX Runtime requests that the execution provider operate without embedding or copying
+// constant initializers. ORT extends the lifetime of initializer data past EP compilation so that the EP
+// can hold references to the data without copying it.
+//
+// This option works in both JIT (non-cached) and AOT (EPContext model) flows:
+// - JIT: ORT keeps initializer data alive for the session lifetime so the EP can reference it directly.
+// - AOT: ORT generates EPContext models with weightless EPContext nodes. The EP should use the
+//   "onnx_model_filename" EPContext node attribute or the "ep.context_source_model_path" session option
+//   to locate the source model's initializer data at inference time.
+//
+// ORT checks that the EP supports weightless mode by calling OrtEpApi::GetWeightlessSupport().
+// If the EP does not support it, ORT returns an error.
+//
+// Option values:
+// - "0": disable. (default)
+// - "1": enable.
+//
+// \since Version 1.28.
+static const char* const kOrtSessionOptionEpEnableWeightless = "ep.enable_weightless";
+
+// Specifies the file path to the original (source) ONNX model when running inference with a weightless
+// EPContext model.
+//
+// When an EPContext model is generated with weightless mode ("ep.enable_weightless" = "1"), the compiled
+// model may not contain the original initializer data. At inference time, the EP needs to load the
+// initializer data from the source model. This session option provides the runtime location of the source
+// model, which may differ from the path used at compile time (stored in the EPContext node's
+// "onnx_model_filename" attribute).
+//
+// If not set, the EP falls back to the "onnx_model_filename" attribute in the EPContext node.
+//
+// \since Version 1.28.
+static const char* const kOrtSessionOptionEpContextSourceModelPath = "ep.context_source_model_path";
 
 // Controls the intra-op thread pool size for a session.
 // Value should be a base-10 int32 string.
