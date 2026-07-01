@@ -42,7 +42,8 @@ constexpr int kMatMulNBitsM1MinBlocksPerSM = 8;                               //
     __CUDA_ARCH__ == 600 || __CUDA_ARCH__ == 610 || __CUDA_ARCH__ == 620 ||   /* Pascal  (GTX 10xx)   */ \
     __CUDA_ARCH__ == 700 || __CUDA_ARCH__ == 720 ||                           /* Volta                */ \
     __CUDA_ARCH__ == 800 || __CUDA_ARCH__ == 900 ||                           /* A100 / Hopper        */ \
-    __CUDA_ARCH__ == 1000 || __CUDA_ARCH__ == 1030                            /* datacenter Blackwell */
+    __CUDA_ARCH__ == 1000 || __CUDA_ARCH__ == 1030 ||                         /* datacenter Blackwell */ \
+    __CUDA_ARCH__ == 1100                                                     /* Jetson 5000          */
 constexpr int kMatMulNBitsM1MinBlocksPerSM = 8;  // 64 warps/SM
 #elif __CUDA_ARCH__ == 750
 constexpr int kMatMulNBitsM1MinBlocksPerSM = 4;  // 32 warps/SM (Turing / RTX 20xx)
