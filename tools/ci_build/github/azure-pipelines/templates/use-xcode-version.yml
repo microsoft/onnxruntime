@@ -8,7 +8,30 @@ parameters:
 steps:
 - bash: |
     set -e -x
-    XCODE_DEVELOPER_DIR="/Applications/Xcode_${{ parameters.xcodeVersion }}.app/Contents/Developer"
+    VERSION="${{ parameters.xcodeVersion }}"
+
+    # Extract major version number (e.g., 16 from 16.4.0)
+    MAJOR_VERSION=$(echo "$VERSION" | cut -d'.' -f1)
+
+    # Hosted runners drop minor versions for Xcode 16+ (Xcode_16.app)
+    if [ "$MAJOR_VERSION" -ge 16 ]; then
+      FOLDER_NAME="Xcode_${MAJOR_VERSION}.app"
+    else
+      FOLDER_NAME="Xcode_${VERSION}.app"
+    fi
+
+    XCODE_DEVELOPER_DIR="/Applications/${FOLDER_NAME}/Contents/Developer"
+
+    # Fallback check if the folder doesn't exist
+    if [ ! -d "$XCODE_DEVELOPER_DIR" ]; then
+      echo "Requested path not found, searching for best match..."
+      XCODE_PATH=$(find /Applications -name "Xcode_${MAJOR_VERSION}*.app" -type d -maxdepth 1 | head -n 1)
+      if [ -n "$XCODE_PATH" ]; then
+        XCODE_DEVELOPER_DIR="$XCODE_PATH/Contents/Developer"
+      fi
+    fi
+
+    echo "Switching to: $XCODE_DEVELOPER_DIR"
     sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
 
   displayName: Use Xcode ${{ parameters.xcodeVersion }}
