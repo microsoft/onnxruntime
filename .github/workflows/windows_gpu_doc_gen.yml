@@ -1,43 +1,22 @@
 name: ONNX Runtime Windows GPU Doc Gen CI
 
 on:
-  push:
-    branches:
-      - main
-      - rel-*
-    paths:
-      - '**'
-      - '!docs/**'
-      - 'docs/OperatorKernels.md'
-      - 'docs/ContribOperators.md'
-      - '!README.md'
-      - '!CONTRIBUTING.md'
-      - '!BUILD.md'
-      - '!js/web/**'
-      - '!onnxruntime/core/providers/js/**'
-  pull_request:
-    branches:
-      - main
-      - rel-*
-    paths:
-      - '**'
-      - '!docs/**'
-      - 'docs/OperatorKernels.md'
-      - 'docs/ContribOperators.md'
-      - '!README.md'
-      - '!CONTRIBUTING.md'
-      - '!BUILD.md'
-      - '!js/web/**'
-      - '!onnxruntime/core/providers/js/**'
+  # Stage 3: Run only after the Linux CUDA CI succeeds.
+  workflow_run:
+    workflows: ["Linux CUDA CI"]
+    types: [completed]
+    branches: [main, 'rel-*']
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha || github.sha }}
   cancel-in-progress: true
 
 jobs:
   kernel_documentation:
     name: Windows GPU Kernel Documentation Validation
+    # Only run when triggered manually or when the upstream Linux CUDA CI succeeded
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     env:
       OrtPackageId: Microsoft.ML.OnnxRuntime
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
@@ -54,6 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
           submodules: 'none'
 

@@ -1,22 +1,20 @@
 name: ONNX Runtime WebGPU Builds
 
 on:
-  push:
-    branches:
-      - main
-      - rel-*
-  pull_request:
-    branches:
-      - main
-      - rel-*
+  # Stage 3: Run only after the Linux CUDA CI succeeds.
+  workflow_run:
+    workflows: ["Linux CUDA CI"]
+    types: [completed]
+    branches: [main, 'rel-*']
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha || github.sha }}
   cancel-in-progress: true
 
 jobs:
   webgpu_build_x64_RelWithDebInfo:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: [
       "self-hosted",
       "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
@@ -40,6 +38,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
           submodules: none
 
@@ -138,6 +137,7 @@ jobs:
         continue-on-error: true
 
   webgpu_plugin_build_x64_RelWithDebInfo:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: [
       "self-hosted",
       "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
@@ -155,6 +155,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
           submodules: none
 
@@ -217,6 +218,7 @@ jobs:
             ${{ github.workspace }}/RelWithDebInfo/RelWithDebInfo/dxil.dll
 
   webgpu_external_dawn_build_x64_RelWithDebInfo:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
@@ -227,6 +229,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
           submodules: none
 
@@ -267,6 +270,7 @@ jobs:
         working-directory: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo
 
   webgpu_minimal_build_edge_build_x64_RelWithDebInfo:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: [
         "self-hosted",
         "1ES.Pool=onnxruntime-github-Win2022-GPU-A10",
@@ -284,6 +288,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
           submodules: none
 

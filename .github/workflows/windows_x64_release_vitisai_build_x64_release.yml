@@ -1,18 +1,20 @@
 name: windows_x64_release_vitisai
 
 on:
-  push:
+  # Stage 3: Run only after the Linux CUDA CI succeeds.
+  workflow_run:
+    workflows: ["Linux CUDA CI"]
+    types: [completed]
     branches: [main, 'rel-*']
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha || github.sha }}
   cancel-in-progress: true
 
 jobs:
   build_x64_release_vitisai:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: [
       "self-hosted",
       "1ES.Pool=onnxruntime-github-vs2022-latest",
@@ -24,6 +26,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           submodules: false
 
       - name: Setup Python

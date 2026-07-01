@@ -34,6 +34,11 @@ on:
         required: false
         type: boolean
         default: false
+      ref:
+        required: false
+        type: string
+        description: 'Git ref or commit SHA to check out (optional; defaults to the SHA that triggered this workflow)'
+        default: ''
 
 jobs:
   build-wasm:
@@ -65,6 +70,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.ref != '' && inputs.ref || github.sha }}
           submodules: recursive
 
       - name: Set up Node.js
