@@ -11,6 +11,7 @@
 #include "core/framework/provider_options.h"
 #include "core/framework/tensor_shape.h"
 #include "core/common/float16.h"
+#include "core/common/cpuid_info.h"
 
 #include "test/util/include/test_utils.h"
 #include "test/util/include/test/test_environment.h"
@@ -31,6 +32,17 @@ using namespace onnxruntime::logging;
 extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace {
+
+// Returns true only on Intel CPUs.
+//
+// The OVIR EP context tests are gated on this because that path is currently
+// validated only on Intel silicon. In particular, embed_mode = 0 dumps the
+// compiled model to a separate .bin file and memory-maps it back on reload;
+// this round-trip is unsupported on non-Intel CPUs (e.g. AMD), where it can
+// crash. On those CPUs the OVIR EP context tests are skipped.
+bool IsIntelCPU() {
+  return onnxruntime::CPUIDInfo::GetCPUIDInfo().GetCPUVendor() == "Intel";
+}
 
 // Runs a mul_1-style model (X[3,2] -> Y[3,2], Y = X * {1,2,3,4,5,6}) with
 // X = all 2.0f and validates that Y == {2,4,6,8,10,12}.
@@ -115,6 +127,12 @@ TEST_F(OVEPEPContextTests, OVEPEPContextFolderPath) {
 // CPU only.
 class OVEPEPContextOVIRTests : public ::testing::Test {
  protected:
+  void SetUp() override {
+    if (!IsIntelCPU()) {
+      GTEST_SKIP() << "OVIR EP context is only validated on Intel CPUs; skipping on non-Intel silicon.";
+    }
+  }
+
   static constexpr const char* kDevice = "CPU";
   static constexpr const ORTCHAR_T* kOvirModelPath = ORT_TSTR("testdata/mul_1_ep_ctx_ovir.onnx");
 };
@@ -221,6 +239,12 @@ TEST_F(OVEPEPContextOVIRTests, RejectsEpCacheContextPathTraversal) {
 // CPU only. Parameter: embed_mode_enabled.
 class OVEPOVIRModelsExportEPContextTests : public ::testing::TestWithParam<bool> {
  protected:
+  void SetUp() override {
+    if (!IsIntelCPU()) {
+      GTEST_SKIP() << "OVIR EP context export is only validated on Intel CPUs; skipping on non-Intel silicon.";
+    }
+  }
+
   static constexpr const char* kDevice = "CPU";
   static constexpr const ORTCHAR_T* kOvirModelPath = ORT_TSTR("testdata/mul_1_ep_ctx_ovir.onnx");
 };
