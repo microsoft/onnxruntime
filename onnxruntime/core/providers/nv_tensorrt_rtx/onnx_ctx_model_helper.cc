@@ -317,8 +317,6 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const Node& node) {
   auto& attrs = node.GetAttributes();
 
   const int64_t embed_mode = attrs.at(EMBED_MODE).i();
-  // Only make path checks if model not provided as byte buffer
-  bool make_secure_path_checks = ep_context_model_path_.empty();
 
   if (embed_mode) {
     // Get engine from byte stream.
@@ -335,7 +333,6 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const Node& node) {
       const std::string onnx_model_filename = attrs.at(ONNX_MODEL_FILENAME).s();
       auto status = NvExecutionProvider::RefitEngine(onnx_model_filename,
                                                      onnx_model_folder_path_,
-                                                     make_secure_path_checks,
                                                      onnx_model_bytestream_,
                                                      onnx_model_bytestream_size_,
                                                      onnx_external_data_bytestream_,
@@ -389,7 +386,6 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const Node& node) {
       std::string weight_stripped_engine_cache = engine_cache_path.string();
       auto status = NvExecutionProvider::RefitEngine(onnx_model_filename,
                                                      onnx_model_folder_path_,
-                                                     make_secure_path_checks,
                                                      onnx_model_bytestream_,
                                                      onnx_model_bytestream_size_,
                                                      onnx_external_data_bytestream_,
