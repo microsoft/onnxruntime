@@ -68,6 +68,22 @@ void RunExpandDimsConstAxisTest(const std::vector<int64_t>& input_shape, const i
   test.AddOutput<float>("Y", expected_output_shape, input_data);
   test.Run();
 }
+
+void RunExpandDimsMalformedConstAxisTest(const std::vector<int64_t>& input_shape,
+                                         const std::vector<int32_t>& expand_axes,
+                                         const std::string& expected_failure_message) {
+  SCOPED_TRACE(MakeString("input_shape: ", TensorShape(input_shape)));
+
+  const auto input_size = ShapeSize(input_shape);
+  const auto input_data = GenerateInput(input_size);
+
+  OpTester test("ExpandDims", 1, onnxruntime::kMSDomain);
+  test.AddInput<float>("X", input_shape, input_data);
+  test.AddInput<int32_t>("axis", {static_cast<int64_t>(expand_axes.size())}, expand_axes,
+                         /*is_initializer=*/true);
+  test.AddOutput<float>("Y", input_shape, input_data);
+  test.Run(BaseTester::ExpectResult::kExpectFailure, expected_failure_message);
+}
 }  // namespace
 
 TEST(ExpandDimsTest, Basic) {
@@ -97,6 +113,13 @@ TEST(ExpandDimsTest, NegativeAxisConstInitializerShapeInference) {
   RunExpandDimsConstAxisTest({2, 3}, -3, {1, 2, 3});  // minimum valid axis; previously read out of bounds
   RunExpandDimsConstAxisTest({}, -1, {1});            // scalar, minimum valid axis; previously read out of bounds
 }
+
+#ifndef ORT_NO_EXCEPTIONS
+TEST(ExpandDimsTest, MalformedConstInitializerAxisFailsShapeInference) {
+  RunExpandDimsMalformedConstAxisTest({2, 3}, {0, 1},
+                                      "Input axis must be a single int32 scalar initializer");
+}
+#endif  // !ORT_NO_EXCEPTIONS
 
 TEST(ExpandDimsTest, PositiveAxisOutOfRange) {
   RunExpandDimsExpectedFailureTest({2, 3}, 3, "Axis must be within range [-3, 2]. Axis is 3");

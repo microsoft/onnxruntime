@@ -2008,8 +2008,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(ExpandDims, 1,
                                   // malformed initializer (wrong element type or not a single scalar) is a
                                   // model error, so fail shape inference rather than silently skipping it.
                                   int axis = 0;
-                                  if (!ParseScalar(axis_initializer, axis))
-                                    fail_shape_inference("Input axis must be a scalar tensor(int32) initializer");
+                                  if (!ParseScalar(axis_initializer, axis)) {
+                                    fail_shape_inference("Input axis must be a single int32 scalar initializer");
+                                  }
                                   if (axis > rank || axis < -rank - 1) {
                                     fail_shape_inference("Input axis is invalid: ", axis);
                                   }
