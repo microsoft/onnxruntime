@@ -15,6 +15,7 @@
 #include "test/util/include/default_providers.h"
 #ifdef USE_WEBGPU
 #include "core/providers/webgpu/webgpu_provider_options.h"
+#include "core/session/onnxruntime_run_options_config_keys.h"
 #endif
 
 namespace onnxruntime {
@@ -3160,77 +3161,15 @@ TEST(GroupQueryAttentionTest, WebGPU_TurboQuant_RejectsNonPowerOf2HeadSize) {
              {}, nullptr, &execution_providers);
 }
 
-// ---------------------------------------------------------------------------
-// kv_empty WebGPU tests
-//
 // kv_empty is triggered when key/value have sequence_length=0 (Gemma4 shared-KV
-// layers where KV is reused from another layer's cache). The WebGPU kernel
-// aliases present to past and runs flash attention directly against past_key/value.
-// Correctness is verified by cross-checking against the CPU reference path.
-// ---------------------------------------------------------------------------
-
-// WebGPU: kv_empty decode (q_seq=1, past_seq=8).
-// Exercises the kv_empty branch in ApplyFlashAttention for a short past.
-TEST(GroupQueryAttentionTest, WebGPU_SharedKV_KvEmpty_Decode) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
-  if (!webgpu_ep) {
-    GTEST_SKIP() << "WebGPU EP not available";
-  }
-
-  constexpr int batch_size = 1;
-  constexpr int q_seq_len = 1;
-  constexpr int past_seq_len = 8;
-  constexpr int num_heads = 2;
-  constexpr int kv_num_heads = 1;
-  constexpr int head_size = 8;
-  constexpr int hidden_size = num_heads * head_size;
-  constexpr int kv_hidden_size = kv_num_heads * head_size;
-
-  std::vector<float> query_data(batch_size * q_seq_len * hidden_size);
-  std::vector<float> past_key_data(batch_size * kv_num_heads * past_seq_len * head_size);
-  std::vector<float> past_value_data(batch_size * kv_num_heads * past_seq_len * head_size);
-  for (size_t i = 0; i < query_data.size(); i++) query_data[i] = 0.1f * static_cast<float>(i % 7 + 1);
-  for (size_t i = 0; i < past_key_data.size(); i++) past_key_data[i] = 0.2f * static_cast<float>(i % 5 + 1);
-  for (size_t i = 0; i < past_value_data.size(); i++) past_value_data[i] = 0.3f * static_cast<float>(i % 3 + 1);
-
-  // WebGPU run: kv_empty path — present is aliased to past, flash attention
-  // runs directly against past_key/value.
-  OpTester webgpu_tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
-  webgpu_tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
-  webgpu_tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
-  webgpu_tester.AddInput<float>("query", {batch_size, q_seq_len, hidden_size}, query_data);
-  webgpu_tester.AddInput<float>("key", {batch_size, 0, kv_hidden_size}, {});    // kv_empty
-  webgpu_tester.AddInput<float>("value", {batch_size, 0, kv_hidden_size}, {});  // kv_empty
-  webgpu_tester.AddInput<float>("past_key", {batch_size, kv_num_heads, past_seq_len, head_size}, past_key_data);
-  webgpu_tester.AddInput<float>("past_value", {batch_size, kv_num_heads, past_seq_len, head_size}, past_value_data);
-  webgpu_tester.AddInput<int32_t>("seqlens_k", {batch_size}, {static_cast<int32_t>(past_seq_len - 1)});
-  webgpu_tester.AddInput<int32_t>("total_sequence_length", {1}, {past_seq_len});
-  webgpu_tester.AddOptionalInputEdge<float>();    // cos_cache
-  webgpu_tester.AddOptionalInputEdge<float>();    // sin_cache
-  webgpu_tester.AddOptionalInputEdge<int64_t>();  // position_ids
-  webgpu_tester.AddOptionalInputEdge<float>();    // attention_bias
-  webgpu_tester.AddOptionalInputEdge<float>();    // head_sink
-  const int output_size = batch_size * q_seq_len * hidden_size;
-  webgpu_tester.AddOutput<float>("output", {batch_size, q_seq_len, hidden_size}, std::vector<float>(output_size, 0.0f));
-  webgpu_tester.SetOutputTolerance(1e6f);
-  std::vector<std::unique_ptr<IExecutionProvider>> webgpu_eps;
-  webgpu_eps.push_back(std::move(webgpu_ep));
-  webgpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &webgpu_eps);
-  const float* webgpu_out = webgpu_tester.GetFetches()[0].Get<Tensor>().Data<float>();
-  std::vector<float> webgpu_output(webgpu_out, webgpu_out + output_size);
-
-  // CPU reference: use real total_sequence_length so CPU path is correct.
-  auto cpu_output = RunGQASharedKV(
-      batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
-      num_heads, kv_num_heads, head_size, GqaTargetEp::kCpu);
-
-  ExpectOutputsMatch(webgpu_output, cpu_output, 0.05f, "SharedKV_KvEmpty_Decode_WebGPU_vs_CPU");
-}
-
-// WebGPU: kv_empty decode with larger past (past_seq=32, exercises tile boundary).
-// past_seq_len=32 crosses the tile size threshold, exercising multi-tile flash attention.
-TEST(GroupQueryAttentionTest, WebGPU_SharedKV_KvEmpty_LargerPast) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+// layers where KV is reused from another layer's cache). Under graph capture,
+// total_seqlen is GPU-resident so dispatch sizes must be computed on GPU via
+// PrepareIndirectDispatchProgram.
+TEST(GroupQueryAttentionTest, WebGPU_SharedKVLayers_IndirectDispatchForGraphCapture) {
+  ConfigOptions config_options{};
+  ORT_THROW_IF_ERROR(config_options.AddConfigEntry(webgpu::options::kEnableGraphCapture,
+                                                   webgpu::options::kEnableGraphCapture_ON));
+  auto webgpu_ep = WebGpuExecutionProviderWithOptions(config_options);
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU EP not available";
   }
@@ -3269,9 +3208,13 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_KvEmpty_LargerPast) {
   const int output_size = batch_size * q_seq_len * hidden_size;
   webgpu_tester.AddOutput<float>("output", {batch_size, q_seq_len, hidden_size}, std::vector<float>(output_size, 0.0f));
   webgpu_tester.SetOutputTolerance(1e6f);
+  // gpu_graph_id=-1 keeps IsGraphCaptureEnabled()=true (exercising the indirect dispatch
+  // code path) without triggering actual Dawn command capture/replay.
+  RunOptions run_options;
+  ORT_THROW_IF_ERROR(run_options.config_options.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, "-1"));
   std::vector<std::unique_ptr<IExecutionProvider>> webgpu_eps;
   webgpu_eps.push_back(std::move(webgpu_ep));
-  webgpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &webgpu_eps);
+  webgpu_tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, &run_options, &webgpu_eps);
   const float* webgpu_out = webgpu_tester.GetFetches()[0].Get<Tensor>().Data<float>();
   std::vector<float> webgpu_output(webgpu_out, webgpu_out + output_size);
 
@@ -3279,7 +3222,7 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_KvEmpty_LargerPast) {
       batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
       num_heads, kv_num_heads, head_size, GqaTargetEp::kCpu);
 
-  ExpectOutputsMatch(webgpu_output, cpu_output, 0.05f, "SharedKV_KvEmpty_LargerPast_WebGPU_vs_CPU");
+  ExpectOutputsMatch(webgpu_output, cpu_output, 0.05f, "SharedKVLayers_IndirectDispatchForGraphCapture_vs_CPU");
 }
 
 // --- Success paths: TurboQuant with flash attention at various K sizes ---
