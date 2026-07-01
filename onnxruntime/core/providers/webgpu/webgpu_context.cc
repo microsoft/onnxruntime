@@ -760,12 +760,12 @@ Status WebGpuContext::PopErrorScope() {
   Status status{};
   ORT_RETURN_IF_ERROR(Wait(device_.PopErrorScope(
       wgpu::CallbackMode::WaitAnyOnly,
-      [](wgpu::PopErrorScopeStatus pop_status, wgpu::ErrorType error_type, char const* message, Status* status) {
+      [](wgpu::PopErrorScopeStatus pop_status, wgpu::ErrorType error_type, wgpu::StringView message, Status* status) {
         ORT_ENFORCE(pop_status == wgpu::PopErrorScopeStatus::Success, "Instance dropped.");
         if (error_type == wgpu::ErrorType::NoError) {
           return;
         }
-        *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU validation failed. ", message);
+        *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU validation failed. ", std::string_view{message});
       },
       &status)));
   return status;
