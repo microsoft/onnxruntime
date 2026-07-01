@@ -6,6 +6,7 @@
 #include "core/framework/endian_utils.h"
 #include "core/framework/prepacked_weights.h"
 #include "core/framework/prepacked_weights_container.h"
+#include "core/framework/tensor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "test/util/include/asserts.h"
@@ -225,6 +226,65 @@ TEST(TensorProtoUtilsTest, UnpackTensor) {
   EXPECT_FALSE(status.IsOK());
 }
 
+// A bool initializer supplied through raw_data is copied verbatim, so its bytes are not
+// restricted to {0, 1}. UnpackTensor must normalize them so downstream consumers (which assume
+// canonical bool values) all observe the same result regardless of how they read the byte.
+TEST(TensorProtoUtilsTest, UnpackBoolTensorWithRawDataNormalizesToZeroOne) {
+  std::filesystem::path model_path;
+  TensorProto bool_tensor_proto;
+  bool_tensor_proto.set_data_type(TensorProto_DataType_BOOL);
+  bool_tensor_proto.add_dims(4);
+
+  // Bytes outside {0, 1}: 0x00 -> 0, 0x01 -> 1, 0x02 -> 1, 0xFF -> 1.
+  const unsigned char raw_bytes[] = {0x00, 0x01, 0x02, 0xFF};
+  bool_tensor_proto.set_raw_data(std::string(reinterpret_cast<const char*>(raw_bytes), sizeof(raw_bytes)));
+
+  bool bool_data[4];
+  auto status = UnpackTensor(bool_tensor_proto, model_path, bool_data, 4);
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  const auto* bytes = reinterpret_cast<const unsigned char*>(bool_data);
+  EXPECT_EQ(bytes[0], 0);
+  EXPECT_EQ(bytes[1], 1);
+  EXPECT_EQ(bytes[2], 1);
+  EXPECT_EQ(bytes[3], 1);
+}
+
+// NormalizeBoolTensorIfNeeded normalizes a CPU bool tensor's bytes to {0, 1} in place. It backs the
+// external-initializer device-copy path (session_state_utils.cc), where bool bytes that may be
+// non-canonical are normalized in a writable CPU staging copy before being copied to the device.
+TEST(TensorProtoUtilsTest, NormalizeBoolTensorIfNeededNormalizesToZeroOne) {
+  auto cpu_allocator = std::make_shared<CPUAllocator>();
+
+  // Bool tensor: write non-canonical bytes, then normalize.
+  Tensor bool_tensor(DataTypeImpl::GetType<bool>(), TensorShape({4}), cpu_allocator);
+  unsigned char* bool_bytes = reinterpret_cast<unsigned char*>(bool_tensor.MutableDataRaw());
+  bool_bytes[0] = 0x00;
+  bool_bytes[1] = 0x01;
+  bool_bytes[2] = 0x02;
+  bool_bytes[3] = 0xFF;
+
+  NormalizeBoolTensorIfNeeded(bool_tensor);
+
+  EXPECT_EQ(bool_bytes[0], 0);
+  EXPECT_EQ(bool_bytes[1], 1);
+  EXPECT_EQ(bool_bytes[2], 1);
+  EXPECT_EQ(bool_bytes[3], 1);
+
+  // Non-bool tensor: bytes must be left untouched.
+  Tensor int32_tensor(DataTypeImpl::GetType<int32_t>(), TensorShape({3}), cpu_allocator);
+  int32_t* int32_data = int32_tensor.MutableData<int32_t>();
+  int32_data[0] = 0;
+  int32_data[1] = 2;
+  int32_data[2] = 255;
+
+  NormalizeBoolTensorIfNeeded(int32_tensor);
+
+  EXPECT_EQ(int32_data[0], 0);
+  EXPECT_EQ(int32_data[1], 2);
+  EXPECT_EQ(int32_data[2], 255);
+}
+
 namespace {
 template <typename T>
 std::vector<T> CreateValues() {
@@ -346,6 +406,42 @@ TEST(TensorProtoUtilsTest, UnpackTensorWithExternalData) {
   TestUnpackExternalTensor<MLFloat16>(TensorProto_DataType_FLOAT16, model_path);
   TestUnpackExternalTensor<BFloat16>(TensorProto_DataType_BFLOAT16, model_path);
   TestUnpackExternalTensor<bool>(TensorProto_DataType_BOOL, model_path);
+}
+
+// A bool initializer supplied through external data is copied verbatim, so its bytes are not
+// restricted to {0, 1}. UnpackTensor must normalize them so downstream consumers (which assume
+// canonical bool values) all observe the same result regardless of how they read the byte.
+TEST(TensorProtoUtilsTest, UnpackBoolTensorWithExternalDataNormalizesToZeroOne) {
+  std::filesystem::path model_path;
+
+  // Bytes outside {0, 1}: 0x00 -> 0, 0x01 -> 1, 0x02 -> 1, 0xFF -> 1.
+  const unsigned char raw_bytes[] = {0x00, 0x01, 0x02, 0xFF};
+
+  std::basic_string<ORTCHAR_T> filename(ORT_TSTR("bool_tensor_XXXXXX"));
+  FILE* fp;
+  CreateTestFile(fp, filename);
+  ASSERT_EQ(sizeof(raw_bytes), fwrite(raw_bytes, 1, sizeof(raw_bytes), fp));
+  ASSERT_EQ(0, fclose(fp));
+  std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(const_cast<ORTCHAR_T*>(filename.c_str()),
+                                                                         DeleteFileFromDisk);
+
+  TensorProto bool_tensor_proto;
+  onnx::StringStringEntryProto* location = bool_tensor_proto.mutable_external_data()->Add();
+  location->set_key("location");
+  location->set_value(ToUTF8String(filename));
+  bool_tensor_proto.add_dims(4);
+  bool_tensor_proto.set_data_location(onnx::TensorProto_DataLocation_EXTERNAL);
+  bool_tensor_proto.set_data_type(TensorProto_DataType_BOOL);
+
+  auto arr = std::make_unique<bool[]>(4);
+  auto status = utils::UnpackTensor(bool_tensor_proto, model_path, arr.get(), 4);
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  const auto* bytes = reinterpret_cast<const unsigned char*>(arr.get());
+  EXPECT_EQ(bytes[0], 0);
+  EXPECT_EQ(bytes[1], 1);
+  EXPECT_EQ(bytes[2], 1);
+  EXPECT_EQ(bytes[3], 1);
 }
 
 template <typename T>
@@ -716,6 +812,164 @@ TEST_F(PathValidationTest, ValidateExternalDataPathEmptyModelPathWithSymlinkOuts
   EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes working directory"));
 }
 
+// Test that symlinked model + symlinked data in same blob store passes (HuggingFace layout).
+// Layout:
+//   base_dir_/blobs/model_blob       (real model file)
+//   base_dir_/blobs/data_blob        (real data file)
+//   base_dir_/snapshots/v1/model.onnx -> ../../blobs/model_blob  (symlink)
+//   base_dir_/snapshots/v1/data.bin   -> ../../blobs/data_blob   (symlink)
+TEST_F(PathValidationTest, ValidateExternalDataPathSymlinkedModelAndData_HuggingFaceLayout) {
+  auto blobs_dir = base_dir_ / "blobs";
+  auto snapshots_dir = base_dir_ / "snapshots" / "v1";
+  try {
+    CreateDirectories(blobs_dir);
+    CreateDirectories(snapshots_dir);
+
+    // Create real files in blobs/
+    std::ofstream{blobs_dir / "model_blob"};
+    std::ofstream{blobs_dir / "data_blob"};
+
+    // Create symlinks in snapshots/v1/
+    std::filesystem::create_symlink(blobs_dir / "model_blob", snapshots_dir / "model.onnx");
+    std::filesystem::create_symlink(blobs_dir / "data_blob", snapshots_dir / "data.bin");
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping symlink test: " << e.what();
+  }
+
+  // model.onnx is a symlink; data.bin is also a symlink.
+  // Both resolve to the same blobs/ directory — should pass.
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPath(snapshots_dir / "model.onnx", "data.bin"));
+}
+
+// Test that symlinked model + empty external data path is rejected (not silently accepted).
+TEST_F(PathValidationTest, ValidateExternalDataPathSymlinkedModel_EmptyPathRejected) {
+  auto blobs_dir = base_dir_ / "blobs";
+  auto snapshots_dir = base_dir_ / "snapshots" / "v1";
+  try {
+    CreateDirectories(blobs_dir);
+    CreateDirectories(snapshots_dir);
+    std::ofstream{blobs_dir / "model_blob"};
+    std::filesystem::create_symlink(blobs_dir / "model_blob", snapshots_dir / "model.onnx");
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping symlink test: " << e.what();
+  }
+
+  Status status = utils::ValidateExternalDataPath(snapshots_dir / "model.onnx", "");
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Empty external data path"));
+}
+
+// Test that symlinked model + absolute external data path is rejected without symlink fallback.
+TEST_F(PathValidationTest, ValidateExternalDataPathSymlinkedModel_AbsolutePathRejected) {
+  auto blobs_dir = base_dir_ / "blobs";
+  auto snapshots_dir = base_dir_ / "snapshots" / "v1";
+  try {
+    CreateDirectories(blobs_dir);
+    CreateDirectories(snapshots_dir);
+    std::ofstream{blobs_dir / "model_blob"};
+    std::filesystem::create_symlink(blobs_dir / "model_blob", snapshots_dir / "model.onnx");
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping symlink test: " << e.what();
+  }
+
+  Status status = utils::ValidateExternalDataPath(snapshots_dir / "model.onnx", "/etc/passwd");
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Absolute path not allowed"));
+}
+
+// Test that symlinked model + data symlink resolving OUTSIDE the real model dir is rejected.
+TEST_F(PathValidationTest, ValidateExternalDataPathSymlinkedModel_DataEscapesRealDir) {
+  auto blobs_dir = base_dir_ / "blobs";
+  auto snapshots_dir = base_dir_ / "snapshots" / "v1";
+  try {
+    CreateDirectories(blobs_dir);
+    CreateDirectories(snapshots_dir);
+    std::ofstream{blobs_dir / "model_blob"};
+    std::filesystem::create_symlink(blobs_dir / "model_blob", snapshots_dir / "model.onnx");
+
+    // Create data symlink that resolves outside of blobs/ (the real model dir)
+    auto outside_target = outside_dir_ / "evil.bin";
+    std::ofstream{outside_target};
+    std::filesystem::create_symlink(outside_target, snapshots_dir / "evil_data.bin");
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping symlink test: " << e.what();
+  }
+
+  Status status = utils::ValidateExternalDataPath(snapshots_dir / "model.onnx", "evil_data.bin");
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("escapes model directory"));
+}
+
+// Test that ValidateExternalDataPathFromDir rejects a non-existent file even if path is valid.
+TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_NonExistentFileRejected) {
+  // base_dir_ exists but "no_such_file.bin" does not.
+  Status status = utils::ValidateExternalDataPathFromDir(base_dir_, "no_such_file.bin");
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("does not exist"));
+}
+
+// Tests for ValidateExternalDataPathFromDir (directory-based overload used by EPs).
+TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_ValidSubpath) {
+  // A valid relative path under the given directory should pass.
+  CreateEmptyFile(base_dir_ / "engine.cache");
+  CreateDirectories(base_dir_ / "subdir");
+  CreateEmptyFile(base_dir_ / "subdir" / "engine.cache");
+
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPathFromDir(base_dir_, "engine.cache"));
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPathFromDir(base_dir_, "subdir/engine.cache"));
+#ifdef _WIN32
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPathFromDir(base_dir_, "subdir\\engine.cache"));
+#endif
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_EscapeViaDotDot) {
+  // A path with ".." that escapes the directory must fail.
+  CreateEmptyFile(outside_dir_ / "data.bin");
+
+  Status status = utils::ValidateExternalDataPathFromDir(base_dir_, "../data.bin");
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("External data path escapes model directory"));
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_AbsolutePathRejected) {
+  // Absolute paths must be rejected.
+#ifdef _WIN32
+  Status status = utils::ValidateExternalDataPathFromDir(base_dir_, "C:\\data.bin");
+  ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
+#endif
+  Status status_unix = utils::ValidateExternalDataPathFromDir(base_dir_, "/data.bin");
+  ASSERT_THAT(status_unix.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_EmptyPathRejected) {
+  Status status = utils::ValidateExternalDataPathFromDir(base_dir_, "");
+  ASSERT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Empty external data path"));
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_EmptyDirFallsToCwd) {
+  // When directory is empty, should fall back to current working directory.
+  std::filesystem::path cwd = std::filesystem::current_path();
+  CreateEmptyFile(cwd / "fromdir_test_data.bin");
+  other_files_.push_back(cwd / "fromdir_test_data.bin");
+
+  ASSERT_STATUS_OK(utils::ValidateExternalDataPathFromDir("", "fromdir_test_data.bin"));
+}
+
+TEST_F(PathValidationTest, ValidateExternalDataPathFromDir_SymlinkOutsideRejected) {
+  // A symlink that resolves outside the given directory must be rejected.
+  auto outside_target = outside_dir_ / "outside_engine.bin";
+  try {
+    std::ofstream{outside_target};
+    auto symlink_path = base_dir_ / "escape_link.bin";
+    std::filesystem::create_symlink(outside_target, symlink_path);
+  } catch (const std::exception& e) {
+    GTEST_SKIP() << "Skipping symlink test: " << e.what();
+  }
+
+  Status status = utils::ValidateExternalDataPathFromDir(base_dir_, "escape_link.bin");
+  ASSERT_FALSE(status.IsOK());
+}
+
 #if defined(_WIN32)
 // Direct tests for the Windows AppContainer fallback used by
 // WindowsEnv::GetWeaklyCanonicalPath. The AppContainer trigger itself can't be
@@ -834,6 +1088,493 @@ TEST_F(PathValidationTest, WeaklyCanonicalPathNtVolumeFallback_ResolvesDotDot) {
       << "canonical=" << canonical << " base=" << base_canonical << " ec=" << ec.message();
 }
 #endif  // defined(_WIN32)
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+// Regression test: SparseTensorProtoToDenseTensorProto must reject external_data paths
+// that escape the model directory (path traversal via "../" in location).
+TEST_F(PathValidationTest, SparseTensorExternalDataPathTraversalBlocked_Values) {
+  // Create model directory and a "secret" file outside it.
+  auto model_dir = base_dir_ / "model_dir";
+  std::error_code ec;
+  std::filesystem::create_directories(model_dir, ec);
+  ASSERT_FALSE(ec) << "Failed to create model_dir: " << ec.message();
+
+  // Write known float data to a file outside the model directory.
+  auto secret_file = base_dir_ / "secret.bin";
+  {
+    std::ofstream ofs(secret_file, std::ios::binary);
+    ASSERT_TRUE(ofs.is_open()) << "Failed to open " << secret_file;
+    float secret_data[] = {42.0f, 99.0f};
+    ofs.write(reinterpret_cast<const char*>(secret_data), sizeof(secret_data));
+    ASSERT_TRUE(ofs.good()) << "Failed to write to " << secret_file;
+  }
+
+  // Construct a SparseTensorProto whose values use external data with a path-traversal location.
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.add_dims(4);  // dense shape: [4]
+
+  // Values tensor: 2 non-zero float values stored in external file.
+  auto* values = sparse.mutable_values();
+  values->set_name("sparse_test");
+  values->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  values->add_dims(2);  // 2 non-zero elements
+  values->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  auto* loc = values->add_external_data();
+  loc->set_key("location");
+  loc->set_value("../secret.bin");  // path traversal!
+
+  auto* len_entry = values->add_external_data();
+  len_entry->set_key("length");
+  len_entry->set_value(std::to_string(2 * sizeof(float)));
+
+  // Indices: positions 0 and 1 in the dense tensor.
+  auto* indices = sparse.mutable_indices();
+  indices->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  indices->add_dims(2);
+  indices->add_int64_data(0);
+  indices->add_int64_data(1);
+
+  // Attempt to convert — this should fail with a path validation error.
+  ONNX_NAMESPACE::TensorProto dense;
+  std::filesystem::path model_path = model_dir / "model.onnx";
+  Status status = utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense);
+  ASSERT_FALSE(status.IsOK()) << "SparseTensorProtoToDenseTensorProto should reject path-traversal "
+                                 "in values external_data location, but it succeeded (reading "
+                                 "arbitrary file outside model directory).";
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("escapes"));
+}
+
+// Same as above but for path traversal in the indices external data.
+TEST_F(PathValidationTest, SparseTensorExternalDataPathTraversalBlocked_Indices) {
+  auto model_dir = base_dir_ / "model_dir";
+  std::error_code ec;
+  std::filesystem::create_directories(model_dir, ec);
+  ASSERT_FALSE(ec) << "Failed to create model_dir: " << ec.message();
+
+  // Write indices data (2 x int64) to a file outside the model directory.
+  auto secret_file = base_dir_ / "indices_secret.bin";
+  {
+    std::ofstream ofs(secret_file, std::ios::binary);
+    ASSERT_TRUE(ofs.is_open()) << "Failed to open " << secret_file;
+    int64_t idx_data[] = {0, 1};
+    ofs.write(reinterpret_cast<const char*>(idx_data), sizeof(idx_data));
+    ASSERT_TRUE(ofs.good()) << "Failed to write to " << secret_file;
+  }
+
+  // Also need a valid values file inside the model directory.
+  auto values_file = model_dir / "values.bin";
+  {
+    std::ofstream ofs(values_file, std::ios::binary);
+    ASSERT_TRUE(ofs.is_open()) << "Failed to open " << values_file;
+    float val_data[] = {1.0f, 2.0f};
+    ofs.write(reinterpret_cast<const char*>(val_data), sizeof(val_data));
+    ASSERT_TRUE(ofs.good()) << "Failed to write to " << values_file;
+  }
+
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.add_dims(4);
+
+  // Values: legitimate external data within model directory.
+  auto* values = sparse.mutable_values();
+  values->set_name("sparse_idx_test");
+  values->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  values->add_dims(2);
+  values->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  auto* val_loc = values->add_external_data();
+  val_loc->set_key("location");
+  val_loc->set_value("values.bin");
+
+  auto* val_len = values->add_external_data();
+  val_len->set_key("length");
+  val_len->set_value(std::to_string(2 * sizeof(float)));
+
+  // Indices: external data with path traversal.
+  auto* indices = sparse.mutable_indices();
+  indices->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  indices->add_dims(2);
+  indices->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  auto* idx_loc = indices->add_external_data();
+  idx_loc->set_key("location");
+  idx_loc->set_value("../indices_secret.bin");  // path traversal!
+
+  auto* idx_len = indices->add_external_data();
+  idx_len->set_key("length");
+  idx_len->set_value(std::to_string(2 * sizeof(int64_t)));
+
+  ONNX_NAMESPACE::TensorProto dense;
+  std::filesystem::path model_path = model_dir / "model.onnx";
+  Status status = utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense);
+  ASSERT_FALSE(status.IsOK()) << "SparseTensorProtoToDenseTensorProto should reject path-traversal "
+                                 "in indices external_data location, but it succeeded.";
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("escapes"));
+}
+
+// Regression test: SparseTensorProtoToDenseTensorProto must reject absolute paths
+// in values external_data location.
+TEST_F(PathValidationTest, SparseTensorExternalDataAbsolutePathBlocked_Values) {
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.add_dims(4);
+
+  auto* values = sparse.mutable_values();
+  values->set_name("abs_path_test");
+  values->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  values->add_dims(2);
+  values->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  auto* loc = values->add_external_data();
+  loc->set_key("location");
+  loc->set_value("/data.bin");  // absolute path
+
+  auto* len_entry = values->add_external_data();
+  len_entry->set_key("length");
+  len_entry->set_value(std::to_string(2 * sizeof(float)));
+
+  auto* indices = sparse.mutable_indices();
+  indices->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  indices->add_dims(2);
+  indices->add_int64_data(0);
+  indices->add_int64_data(1);
+
+  ONNX_NAMESPACE::TensorProto dense;
+  std::filesystem::path model_path = base_dir_ / "model.onnx";
+  Status status = utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense);
+  ASSERT_FALSE(status.IsOK()) << "SparseTensorProtoToDenseTensorProto should reject absolute path "
+                                 "in values external_data location.";
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
+
+#ifdef _WIN32
+  // Also verify Windows-style absolute path.
+  loc->set_value("C:\\data.bin");
+  status = utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense);
+  ASSERT_FALSE(status.IsOK()) << "SparseTensorProtoToDenseTensorProto should reject Windows absolute path "
+                                 "in values external_data location.";
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
+#endif
+}
+
+// Regression test: SparseTensorProtoToDenseTensorProto must reject absolute paths
+// in indices external_data location.
+TEST_F(PathValidationTest, SparseTensorExternalDataAbsolutePathBlocked_Indices) {
+  // Create a valid values file inside base_dir_ so values validation passes.
+  auto values_file = base_dir_ / "values.bin";
+  {
+    std::ofstream ofs(values_file, std::ios::binary);
+    ASSERT_TRUE(ofs.is_open()) << "Failed to open " << values_file;
+    float val_data[] = {1.0f, 2.0f};
+    ofs.write(reinterpret_cast<const char*>(val_data), sizeof(val_data));
+    ASSERT_TRUE(ofs.good()) << "Failed to write to " << values_file;
+  }
+
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.add_dims(4);
+
+  // Values: legitimate external data within base_dir_.
+  auto* values = sparse.mutable_values();
+  values->set_name("abs_path_idx_test");
+  values->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  values->add_dims(2);
+  values->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  auto* val_loc = values->add_external_data();
+  val_loc->set_key("location");
+  val_loc->set_value("values.bin");
+
+  auto* val_len = values->add_external_data();
+  val_len->set_key("length");
+  val_len->set_value(std::to_string(2 * sizeof(float)));
+
+  // Indices: external data with absolute path.
+  auto* indices = sparse.mutable_indices();
+  indices->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  indices->add_dims(2);
+  indices->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  auto* idx_loc = indices->add_external_data();
+  idx_loc->set_key("location");
+  idx_loc->set_value("/data.bin");  // absolute path
+
+  auto* idx_len = indices->add_external_data();
+  idx_len->set_key("length");
+  idx_len->set_value(std::to_string(2 * sizeof(int64_t)));
+
+  ONNX_NAMESPACE::TensorProto dense;
+  std::filesystem::path model_path = base_dir_ / "model.onnx";
+  Status status = utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense);
+  ASSERT_FALSE(status.IsOK()) << "SparseTensorProtoToDenseTensorProto should reject absolute path "
+                                 "in indices external_data location.";
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
+
+#ifdef _WIN32
+  idx_loc->set_value("C:\\data.bin");
+  status = utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense);
+  ASSERT_FALSE(status.IsOK()) << "SparseTensorProtoToDenseTensorProto should reject Windows absolute path "
+                                 "in indices external_data location.";
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
+#endif
+}
+
+// Regression test: validation must still reject escaping paths for zero-element dense tensors,
+// which previously returned early before path validation ran.
+TEST_F(PathValidationTest, SparseTensorExternalDataPathTraversalBlocked_ZeroDenseElements) {
+  auto model_dir = base_dir_ / "model_dir";
+  std::error_code ec;
+  std::filesystem::create_directories(model_dir, ec);
+  ASSERT_FALSE(ec) << "Failed to create model_dir: " << ec.message();
+
+  // Create the escaping file so that a "file not found" error would NOT be raised.
+  auto secret_file = base_dir_ / "secret.bin";
+  {
+    std::ofstream ofs(secret_file, std::ios::binary);
+    ASSERT_TRUE(ofs.is_open()) << "Failed to open " << secret_file;
+    ofs.put('\0');
+    ASSERT_TRUE(ofs.good()) << "Failed to write to " << secret_file;
+  }
+
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.add_dims(0);  // dense shape [0] → dense_elements == 0
+
+  auto* values = sparse.mutable_values();
+  values->set_name("zero_dense_test");
+  values->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  values->add_dims(0);  // NNZ=0
+  values->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  auto* loc = values->add_external_data();
+  loc->set_key("location");
+  loc->set_value("../secret.bin");  // path traversal
+
+  auto* len_entry = values->add_external_data();
+  len_entry->set_key("length");
+  len_entry->set_value("0");
+
+  auto* indices = sparse.mutable_indices();
+  indices->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  indices->add_dims(0);
+
+  ONNX_NAMESPACE::TensorProto dense;
+  std::filesystem::path model_path = model_dir / "model.onnx";
+  Status status = utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense);
+  ASSERT_FALSE(status.IsOK()) << "Should reject path-traversal in values even when dense_elements == 0.";
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("escapes"));
+}
+
+// Regression test: validation must reject escaping paths in indices even when NNZ == 0.
+TEST_F(PathValidationTest, SparseTensorExternalDataPathTraversalBlocked_ZeroNNZ) {
+  auto model_dir = base_dir_ / "model_dir";
+  std::error_code ec;
+  std::filesystem::create_directories(model_dir, ec);
+  ASSERT_FALSE(ec) << "Failed to create model_dir: " << ec.message();
+
+  // Create the escaping file so that a "file not found" error would NOT be raised.
+  auto secret_file = base_dir_ / "indices_secret.bin";
+  {
+    std::ofstream ofs(secret_file, std::ios::binary);
+    ASSERT_TRUE(ofs.is_open()) << "Failed to open " << secret_file;
+    ofs.put('\0');
+    ASSERT_TRUE(ofs.good()) << "Failed to write to " << secret_file;
+  }
+
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.add_dims(4);  // dense shape [4] → non-zero dense_elements
+
+  auto* values = sparse.mutable_values();
+  values->set_name("zero_nnz_test");
+  values->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  values->add_dims(0);  // NNZ=0
+
+  auto* indices = sparse.mutable_indices();
+  indices->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  indices->add_dims(0);
+  indices->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  auto* idx_loc = indices->add_external_data();
+  idx_loc->set_key("location");
+  idx_loc->set_value("../indices_secret.bin");  // path traversal
+
+  auto* idx_len = indices->add_external_data();
+  idx_len->set_key("length");
+  idx_len->set_value("0");
+
+  ONNX_NAMESPACE::TensorProto dense;
+  std::filesystem::path model_path = model_dir / "model.onnx";
+  Status status = utils::SparseTensorProtoToDenseTensorProto(sparse, model_path, dense);
+  ASSERT_FALSE(status.IsOK()) << "Should reject path-traversal in indices even when NNZ == 0.";
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("escapes"));
+}
+
+// Defense-in-depth: SparseTensorProtoToDenseTensorProto must reject ORT's in-memory address
+// marker on sparse sub-tensors unconditionally. The trusted .ort loader is required to
+// materialize sparse sub-tensors as inline raw_data so they never carry markers. Without this
+// self-check, a caller that bypasses the Graph-ctor chokepoint would dereference an
+// attacker-controlled address.
+TEST(SparseTensorProtoToDenseTensorProtoMarkerTest, RejectsInMemoryMarkerOnValuesByDefault) {
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.add_dims(4);
+
+  auto* values = sparse.mutable_values();
+  values->set_name("sparse_marker_values");
+  values->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  values->add_dims(2);
+  values->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  auto* loc = values->add_external_data();
+  loc->set_key("location");
+  loc->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag));
+  auto* off = values->add_external_data();
+  off->set_key("offset");
+  off->set_value("0");
+  auto* len = values->add_external_data();
+  len->set_key("length");
+  len->set_value(std::to_string(2 * sizeof(float)));
+
+  auto* indices = sparse.mutable_indices();
+  indices->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  indices->add_dims(2);
+  indices->add_int64_data(0);
+  indices->add_int64_data(1);
+
+  ONNX_NAMESPACE::TensorProto dense;
+  Status status = utils::SparseTensorProtoToDenseTensorProto(sparse, std::filesystem::path{}, dense);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("in-memory address marker"));
+}
+
+TEST(SparseTensorProtoToDenseTensorProtoMarkerTest, RejectsInMemoryMarkerOnIndicesByDefault) {
+  ONNX_NAMESPACE::SparseTensorProto sparse;
+  sparse.add_dims(4);
+
+  auto* values = sparse.mutable_values();
+  values->set_name("sparse_marker_indices");
+  values->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  values->add_dims(2);
+  values->add_float_data(1.0f);
+  values->add_float_data(2.0f);
+
+  auto* indices = sparse.mutable_indices();
+  indices->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
+  indices->add_dims(2);
+  indices->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  auto* loc = indices->add_external_data();
+  loc->set_key("location");
+  loc->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag));
+  auto* off = indices->add_external_data();
+  off->set_key("offset");
+  off->set_value("0");
+  auto* len = indices->add_external_data();
+  len->set_key("length");
+  len->set_value(std::to_string(2 * sizeof(int64_t)));
+
+  ONNX_NAMESPACE::TensorProto dense;
+  Status status = utils::SparseTensorProtoToDenseTensorProto(sparse, std::filesystem::path{}, dense);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("in-memory address marker"));
+}
+
+#endif  // !defined(DISABLE_SPARSE_TENSORS)
+
+// Defense-in-depth: ConstantNodeProtoToTensorProto must reject ORT's in-memory address marker
+// on a Constant node's dense tensor attribute. This isolates the guard added in
+// ConstantNodeProtoToTensorProto from the pre-existing dense-initializer guard in the Graph
+// constructor: callers such as Graph::AddConstantProtoAsInitializer and the ORT-format build
+// path emplace directly into name_to_initial_tensor_ and bypass that constructor-side check,
+// so this test exercises the new chokepoint directly.
+TEST(ConstantNodeProtoToTensorProtoMarkerTest, RejectsInMemoryMarkerOnDenseTensorAttribute) {
+  ONNX_NAMESPACE::NodeProto node;
+  node.set_op_type("Constant");
+  node.set_name("malicious_constant");
+  node.add_output("c");
+
+  auto* attr = node.add_attribute();
+  attr->set_name("value");
+  attr->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
+  auto* t = attr->mutable_t();
+  t->set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  t->add_dims(4);
+  t->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  // Backing buffer is irrelevant — the guard must reject before any dereference.
+  static std::vector<uint8_t> backing(16, 0);
+
+  auto* loc = t->add_external_data();
+  loc->set_key("location");
+  loc->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoLittleEndianMemoryAddressTag));
+  auto* off = t->add_external_data();
+  off->set_key("offset");
+  off->set_value(std::to_string(reinterpret_cast<intptr_t>(backing.data())));
+  auto* len = t->add_external_data();
+  len->set_key("length");
+  len->set_value(std::to_string(backing.size()));
+
+  ONNX_NAMESPACE::TensorProto tensor_out;
+  Status status = utils::ConstantNodeProtoToTensorProto(node, std::filesystem::path{}, tensor_out);
+  ASSERT_FALSE(status.IsOK())
+      << "Constant node tensor attribute with an in-memory address marker must be rejected.";
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("in-memory address marker"));
+}
+
+// Defense-in-depth: GetExtDataFromTensorProto must reject absolute external paths even when
+// called with an empty model_path (e.g. from training checkpoint or custom-op init paths).
+// Previously, ValidateExternalDataPath was only invoked from Graph::ConvertInitializersIntoOrtValues,
+// so direct callers of GetExtDataFromTensorProto could load arbitrary files.
+TEST(GetExtDataFromTensorProtoTest, RejectsAbsoluteExternalPathWithEmptyModelPath) {
+  ONNX_NAMESPACE::TensorProto tensor_proto;
+  tensor_proto.set_name("abs_external");
+  tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  tensor_proto.add_dims(2);
+  tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  auto* loc = tensor_proto.add_external_data();
+  loc->set_key("location");
+#ifdef _WIN32
+  loc->set_value("C:\\data.bin");
+#else
+  loc->set_value("/etc/passwd");
+#endif
+
+  auto* off = tensor_proto.add_external_data();
+  off->set_key("offset");
+  off->set_value("0");
+
+  auto* len = tensor_proto.add_external_data();
+  len->set_key("length");
+  len->set_value(std::to_string(2 * sizeof(float)));
+
+  OrtValue value;
+  Status status = utils::GetExtDataFromTensorProto(Env::Default(), {}, tensor_proto, value);
+  ASSERT_FALSE(status.IsOK()) << "Absolute external path must be rejected even with empty model_path.";
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("Absolute path not allowed"));
+}
+
+// Defense-in-depth: GetExtDataFromTensorProto must reject directory-escaping external paths even
+// when the caller passes a non-empty model_path. This guards callers outside Graph::Resolve.
+TEST(GetExtDataFromTensorProtoTest, RejectsEscapingExternalPath) {
+  ONNX_NAMESPACE::TensorProto tensor_proto;
+  tensor_proto.set_name("escape_external");
+  tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  tensor_proto.add_dims(2);
+  tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+
+  auto* loc = tensor_proto.add_external_data();
+  loc->set_key("location");
+  loc->set_value("../escape.bin");
+
+  auto* off = tensor_proto.add_external_data();
+  off->set_key("offset");
+  off->set_value("0");
+
+  auto* len = tensor_proto.add_external_data();
+  len->set_key("length");
+  len->set_value(std::to_string(2 * sizeof(float)));
+
+  OrtValue value;
+  // Pass a synthetic model_path so the validator has a model directory to compare against.
+  std::filesystem::path model_path = std::filesystem::temp_directory_path() / "sub" / "model.onnx";
+  Status status = utils::GetExtDataFromTensorProto(Env::Default(), model_path, tensor_proto, value);
+  ASSERT_FALSE(status.IsOK()) << "Directory-escaping external path must be rejected.";
+  EXPECT_THAT(status.ErrorMessage(), ::testing::HasSubstr("escapes"));
+}
 
 TEST(TensorProtoUtilsTest, GetNodeProtoLayeringAnnotation) {
   // Case 1: Annotation exists

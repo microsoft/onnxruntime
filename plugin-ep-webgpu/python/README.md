@@ -37,13 +37,10 @@ Install the wheel and dependencies in a clean environment, then run the smoke te
 ```bash
 python -m venv test_venv
 source test_venv/bin/activate  # or test_venv\Scripts\Activate.ps1 on Windows
-pip install onnx numpy
-pip install dist/onnxruntime_ep_webgpu-*.whl  # pulls in the minimum compatible onnxruntime
+pip install onnx numpy onnxruntime
+pip install dist/onnxruntime_ep_webgpu-*.whl
 python test/test_webgpu_plugin_ep.py
 ```
-
-The wheel declares a runtime dependency on the minimum compatible `onnxruntime` package, so pip will install (or
-verify) a compatible core runtime automatically.
 
 The test validates import, EP registration, device discovery, and inference (requires WebGPU-capable hardware for the
 inference portion). Set the environment variable `ORT_TEST_VERBOSE=1` to print additional diagnostic information

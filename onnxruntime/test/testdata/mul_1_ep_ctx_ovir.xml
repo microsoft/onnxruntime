@@ -1,0 +1,56 @@
+<?xml version="1.0"?>
+<net name="MulModel" version="11">
+	<layers>
+		<layer id="0" name="X" type="Parameter" version="opset1">
+			<data shape="3,2" element_type="f32" />
+			<output>
+				<port id="0" precision="FP32" names="X">
+					<dim>3</dim>
+					<dim>2</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="1" name="Constant_2" type="Const" version="opset1">
+			<data element_type="f32" shape="3, 2" offset="0" size="24" />
+			<output>
+				<port id="0" precision="FP32">
+					<dim>3</dim>
+					<dim>2</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="2" name="Y" type="Multiply" version="opset1">
+			<data auto_broadcast="numpy" />
+			<input>
+				<port id="0" precision="FP32">
+					<dim>3</dim>
+					<dim>2</dim>
+				</port>
+				<port id="1" precision="FP32">
+					<dim>3</dim>
+					<dim>2</dim>
+				</port>
+			</input>
+			<output>
+				<port id="2" precision="FP32" names="Y">
+					<dim>3</dim>
+					<dim>2</dim>
+				</port>
+			</output>
+		</layer>
+		<layer id="3" name="Result_4" type="Result" version="opset1" output_names="Y">
+			<input>
+				<port id="0" precision="FP32">
+					<dim>3</dim>
+					<dim>2</dim>
+				</port>
+			</input>
+		</layer>
+	</layers>
+	<edges>
+		<edge from-layer="0" from-port="0" to-layer="2" to-port="0" />
+		<edge from-layer="1" from-port="0" to-layer="2" to-port="1" />
+		<edge from-layer="2" from-port="2" to-layer="3" to-port="0" />
+	</edges>
+	<rt_info />
+</net>

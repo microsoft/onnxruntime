@@ -4,6 +4,8 @@
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/framework/data_types.h"
 #include "core/graph/graph_utils.h"
+#include "core/framework/compute_capability.h"
+#include "core/graph/indexed_sub_graph.h"
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -222,11 +224,19 @@ static bool IsIsolatedFp16NodeOnCpu(const onnxruntime::Node& node, onnxruntime::
   return false;
 }
 
+// These nodes have an fp16 CPU kernel and were therefore assigned to CPU EP by the partitioner;
+// that assignment has already been recorded.  Clearing the EP is the mechanism that makes
+// NeedInsertCast return true so they get wrapped with fp32 casts like any other unassigned node.
+// Collect their indices so ApplyImpl can skip the on_partition_assignment_fn_ callback for them:
+// the callback is only for nodes that are newly receiving a CPU EP fallback from this transformer,
+// not for nodes whose partitioner assignment is already on record.
 static Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph, const KernelRegistry& cpu_kernel_registry,
-                                                 const logging::Logger& logger) {
+                                                 const logging::Logger& logger,
+                                                 InlinedHashSet<NodeIndex>& nodes_with_recorded_cpu_assignment) {
   for (auto& node : graph.Nodes()) {
     if (IsIsolatedFp16NodeOnCpu(node, graph, cpu_kernel_registry, logger)) {
       // unassign the node so that NeedInsertCast will return true for it, forcing it to fp32
+      nodes_with_recorded_cpu_assignment.insert(node.Index());
       node.SetExecutionProviderType("");
     }
   }
@@ -504,8 +514,18 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
 
 Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level,
                                         const logging::Logger& logger) const {
+  // This transformer implements a targeted fallback policy: any unassigned node with an fp16 input
+  // is rewritten to consume fp32 (via inserted casts) and given a CPU EP assignment.
+  // on_partition_assignment_fn_ is fired to record each such new CPU EP assignment.
+  //
+  // Exception: ForceSingleNodeCPUFloat16ToFloat32 may clear the EP of nodes that were already
+  // assigned to CPU EP by the partitioner (they have an fp16 CPU kernel and got cast-wrapped to
+  // avoid isolated fp16 islands).  Those nodes are tracked here so we can skip the callback —
+  // their assignment was already recorded by the partitioner.
+  InlinedHashSet<NodeIndex> nodes_with_recorded_cpu_assignment;
   if (force_cpu_fp32_)
-    ORT_RETURN_IF_ERROR(ForceSingleNodeCPUFloat16ToFloat32(graph, *cpu_kernel_registries_, logger));
+    ORT_RETURN_IF_ERROR(ForceSingleNodeCPUFloat16ToFloat32(graph, *cpu_kernel_registries_, logger,
+                                                           nodes_with_recorded_cpu_assignment));
 
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();
@@ -548,6 +568,16 @@ Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modifie
       // Set current node to run on the CPU execution provider
       // Keep in mind that the EP will be empty because NeedInsertCast() already insures that
       node->SetExecutionProviderType(kCpuExecutionProvider);
+
+      // Record the new CPU EP assignment via the partition assignment callback if provided.
+      // Skip nodes in nodes_with_recorded_cpu_assignment: their CPU EP assignment was made by the partitioner
+      // and is already on record; the callback must not fire again for them.
+      if (on_partition_assignment_fn_ && nodes_with_recorded_cpu_assignment.find(node->Index()) == nodes_with_recorded_cpu_assignment.end()) {
+        auto sub_graph = std::make_unique<IndexedSubGraph>();
+        sub_graph->nodes = {node->Index()};
+        ComputeCapability capability(std::move(sub_graph));
+        on_partition_assignment_fn_(graph, capability, kCpuExecutionProvider);
+      }
 
       // Some ONNX operators have an attribute `dtype` which define the output type for these operators
       // (mostly Generator ops like RandomNormal, RandomNormalLike, EyeLike, etc.).

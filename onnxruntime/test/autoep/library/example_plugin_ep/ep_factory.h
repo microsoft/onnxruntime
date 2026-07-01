@@ -38,6 +38,10 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
     return vendor_id_;
   }
 
+  const OrtMemoryInfo* GetDefaultMemoryInfo() const {
+    return default_memory_info_;
+  }
+
   const OrtLogger& default_logger_;  // default logger for the EP factory
 
  private:
@@ -114,6 +118,7 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
   // CPU allocator so we can control the arena behavior. optional as ORT always provides a CPU allocator if needed.
   Ort::MemoryInfo default_memory_info_;
   Ort::MemoryInfo readonly_memory_info_;  // used for initializers
+  Ort::MemoryInfo host_accessible_memory_info_;
 
   bool arena_allocator_using_default_settings_{true};
   std::unique_ptr<ArenaAllocator> arena_allocator_;  // shared device allocator that uses an arena

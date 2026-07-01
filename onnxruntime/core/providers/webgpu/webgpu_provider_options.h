@@ -11,8 +11,13 @@ namespace options {
 
 constexpr const char* kPreferredLayout = "ep.webgpuexecutionprovider.preferredLayout";
 constexpr const char* kEnableGraphCapture = "ep.webgpuexecutionprovider.enableGraphCapture";
+// Number of generations of buffers to retain in the per-session pool for reuse
+// across captured-graph lifetimes. 0 disables pooling. Default 1 caches one
+// generator's worth of intermediate buffers.
+constexpr const char* kSessionBufferPoolGenerations = "ep.webgpuexecutionprovider.sessionBufferPoolGenerations";
 constexpr const char* kEnableInt64 = "ep.webgpuexecutionprovider.enableInt64";
 constexpr const char* kMultiRotaryCacheConcatOffset = "ep.webgpuexecutionprovider.multiRotaryCacheConcatOffset";
+constexpr const char* kKvCacheQuantizationBits = "ep.webgpuexecutionprovider.kvCacheQuantizationBits";
 
 constexpr const char* kDawnProcTable = "ep.webgpuexecutionprovider.dawnProcTable";
 
@@ -36,6 +41,9 @@ constexpr const char* kEnablePIXCapture = "ep.webgpuexecutionprovider.enablePIXC
 constexpr const char* kPreserveDevice = "ep.webgpuexecutionprovider.preserveDevice";
 
 constexpr const char* kMaxStorageBufferBindingSize = "ep.webgpuexecutionprovider.maxStorageBufferBindingSize";
+// Valid range: 1-4096. Larger values are rejected to avoid excessive
+// query buffer sizing and unpredictable memory/performance behavior.
+constexpr const char* kMaxNumPendingDispatches = "ep.webgpuexecutionprovider.maxNumPendingDispatches";
 
 // The following are the possible values for the provider options.
 
@@ -59,6 +67,12 @@ constexpr const char* kEnablePIXCapture_OFF = "0";
 
 constexpr const char* kPreserveDevice_ON = "1";
 constexpr const char* kPreserveDevice_OFF = "0";
+
+// kKvCacheQuantizationBits value is the number of quantization bits as a string.
+// "0" disables quantization; "4" enables 4-bit KV cache quantization.
+// (Future: "8" for 8-bit.)
+constexpr const char* kKvCacheQuantizationBits_OFF = "0";
+constexpr const char* kKvCacheQuantizationBits_4Bit = "4";
 
 constexpr const char* kBufferCacheMode_Disabled = "disabled";
 constexpr const char* kBufferCacheMode_LazyRelease = "lazyRelease";

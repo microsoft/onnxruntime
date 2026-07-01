@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <limits>
+
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/webgpu_kernel.h"
 
@@ -111,12 +113,20 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                                   const uint32_t weight_index,
                                   const Tensor* weight_index_indirect = nullptr);
 
+// The optional M / has_weight_idx_indirect / y arguments fold the original
+// dispatch-precondition (DP4A is preferred when M is large enough, or
+// unconditionally on FP32 outputs and Qualcomm GPUs) into the feasibility check
+// so callers don't need a separate wrapper. Defaults make the precondition
+// trivially satisfied for callers that only want the feasibility check.
 bool CanApplyDP4AMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
                                    uint64_t accuracy_level,
                                    uint32_t block_size,
                                    uint32_t N,
                                    uint32_t K,
-                                   uint32_t components_k);
+                                   uint32_t components_k,
+                                   uint32_t M = std::numeric_limits<uint32_t>::max(),
+                                   bool has_weight_idx_indirect = false,
+                                   const Tensor* y = nullptr);
 
 }  // namespace webgpu
 }  // namespace contrib

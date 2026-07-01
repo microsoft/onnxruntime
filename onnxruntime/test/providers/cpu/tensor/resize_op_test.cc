@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <exception>
+#include <limits>
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
@@ -1504,6 +1505,42 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_RoundPreferCeil_HalfPixel_2x2to7x8) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
 }
 
+// Test round_prefer_floor with half_pixel for a small upsample (2x2 -> 7x8).
+// Verifies that at positive .5 boundaries, floor is preferred.
+TEST(ResizeOpTest, ResizeOpNearestUpSample_RoundPreferFloor_HalfPixel_2x2to7x8) {
+  OpTester test("Resize", 13);
+
+  std::vector<float> roi{};
+  std::vector<float> scales{};
+  std::vector<int64_t> sizes{1, 1, 7, 8};
+
+  test.AddAttribute("mode", "nearest");
+  test.AddAttribute("coordinate_transformation_mode", "half_pixel");
+  test.AddAttribute("nearest_mode", "round_prefer_floor");
+
+  constexpr int64_t N = 1, C = 1, H = 2, W = 2;
+  std::vector<float> X = {1.0f, 2.0f, 3.0f, 4.0f};
+
+  test.AddInput<float>("X", {N, C, H, W}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("", {0}, scales);
+  test.AddInput<int64_t>("sizes", {4}, sizes);
+
+  // half_pixel: x_orig = (x_resized + 0.5) / scale - 0.5
+  // H scale = 7/2 = 3.5, W scale = 8/2 = 4.0
+  // H coords include i=3 -> 0.5, where round_prefer_floor chooses floor(0.5)=0.
+  std::vector<float> Y = {1.0f, 1.0f, 1.0f, 1.0f, 2.0f, 2.0f, 2.0f, 2.0f,
+                          1.0f, 1.0f, 1.0f, 1.0f, 2.0f, 2.0f, 2.0f, 2.0f,
+                          1.0f, 1.0f, 1.0f, 1.0f, 2.0f, 2.0f, 2.0f, 2.0f,
+                          1.0f, 1.0f, 1.0f, 1.0f, 2.0f, 2.0f, 2.0f, 2.0f,
+                          3.0f, 3.0f, 3.0f, 3.0f, 4.0f, 4.0f, 4.0f, 4.0f,
+                          3.0f, 3.0f, 3.0f, 3.0f, 4.0f, 4.0f, 4.0f, 4.0f,
+                          3.0f, 3.0f, 3.0f, 3.0f, 4.0f, 4.0f, 4.0f, 4.0f};
+
+  test.AddOutput<float>("Y", {N, C, sizes[2], sizes[3]}, Y);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100());
+}
+
 // Regression coverage for GitHub issue #28291.
 // https://github.com/microsoft/onnxruntime/issues/28291
 //
@@ -1542,6 +1579,40 @@ TEST(ResizeOpTest, ResizeOpNearestUpSample_RoundPreferCeil_HalfPixel_GH28291_Reg
 
   test.AddOutput<float>("Y", {N, C, H, 6}, Y);
   // OpenVINO EP does not implement the epsilon-based rounding fix for half_pixel ties.
+  std::unordered_set<std::string> excluded_eps = {kOpenVINOExecutionProvider};
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100(excluded_eps));
+}
+
+// Regression coverage analogous to GH28291 for round_prefer_floor.
+// Input width=20, output width=6 (scale = 6/20 = 0.3).
+// For output element 4: x_original = (4 + 0.5) / 0.3 - 0.5 = 14.5.
+// With round_prefer_floor, the tie at 14.5 must choose floor -> 14.
+TEST(ResizeOpTest, ResizeOpNearestUpSample_RoundPreferFloor_HalfPixel_GH28291_Regression) {
+  OpTester test("Resize", 13);
+
+  std::vector<float> roi{};
+  std::vector<int64_t> sizes{1, 1, 1, 6};
+
+  test.AddAttribute("mode", "nearest");
+  test.AddAttribute("coordinate_transformation_mode", "half_pixel");
+  test.AddAttribute("nearest_mode", "round_prefer_floor");
+
+  constexpr int64_t N = 1, C = 1, H = 1, W = 20;
+  std::vector<float> X(20);
+  for (int i = 0; i < 20; i++) X[i] = static_cast<float>(i) / 19.0f;
+
+  test.AddInput<float>("X", {N, C, H, W}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("", {0}, std::vector<float>{});
+  test.AddInput<int64_t>("sizes", {4}, sizes);
+
+  // Expected indices from round_prefer_floor ties:
+  // x_original(i) = (i + 0.5) / (6/20) - 0.5
+  // indices: [1, 4, 8, 11, 14, 18]
+  std::vector<float> Y = {
+      X[1], X[4], X[8], X[11], X[14], X[18]};
+
+  test.AddOutput<float>("Y", {N, C, H, 6}, Y);
   std::unordered_set<std::string> excluded_eps = {kOpenVINOExecutionProvider};
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", ExcludeTrtOnA100(excluded_eps));
 }
@@ -3185,6 +3256,209 @@ TEST(ResizeOpTest, Axes_OutOfRange_18) {
   test.Run(OpTester::ExpectResult::kExpectFailure,
            "axis 5 is not in valid range [-5,4]",
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Negative axis below the valid range must be rejected before being used as a scatter index.
+TEST(ResizeOpTest, Axes_NegativeOutOfRange_18) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> roi{};
+  std::vector<float> scales{0.75f, 0.75f, 0.75f};
+  std::vector<int64_t> axes{2, 3, -6};
+  std::vector<float> Y(16 * 4, 0.0f);
+
+  OpTester test("Resize", 18);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute<std::vector<int64_t>>("axes", axes);
+
+  test.AddInput<float>("X", {1, 1, 4, 4, 4}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {int64_t(scales.size())}, scales);
+  test.AddOutput<float>("Y", {1, 1, 4, 4, 4}, Y);
+
+  // TensorRT, QNN, and DML do not exercise the CPU axes-validation path.
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "axis -6 is not in valid range [-5,4]",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Valid negative axes (within [-rank, -1]) must still produce correct output.
+TEST(ResizeOpTest, Axes_NegativeInRange_18) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> Y = {3.5f, 4.8333335f, 6.1666665f, 8.833333f, 10.166667f, 11.5f, 14.166667f,
+                          15.5f, 16.833334f, 24.833334f, 26.166666f, 27.5f, 30.166666f, 31.5f,
+                          32.833332f, 35.5f, 36.833332f, 38.166668f, 46.166668f, 47.5f, 48.833332f,
+                          51.5f, 52.833332f, 54.166668f, 56.833332f, 58.166668f, 59.5f};
+  std::vector<float> roi{};
+  std::vector<float> scales{3 / 4.0f, 3 / 4.0f, 3 / 4.0f};
+  std::vector<int64_t> output_shape{1, 1, 3, 3, 3};
+  std::vector<int64_t> axes{-3, -2, -1};
+
+  OpTester test("Resize", 18);
+  test.AddAttribute<int64_t>("exclude_outside", 0LL);
+  test.AddAttribute<std::vector<int64_t>>("axes", axes);
+  test.AddAttribute<int64_t>("antialias", 0LL);
+  test.AddAttribute("mode", "linear");
+
+  test.AddInput<float>("X", {1, 1, 4, 4, 4}, X);
+  test.AddInput<float>("roi", {int64_t(roi.size())}, roi);
+  test.AddInput<float>("scales", {int64_t(scales.size())}, scales, true);
+
+  test.AddOutput<float>("Y", output_shape, Y);
+  // OpenVINO EP's Resize importer does not normalize negative axes against the input rank,
+  // so it rejects models that the ONNX spec accepts. Tracked by GH issue #28788.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kOpenVINOExecutionProvider});
+}
+
+// When axes is provided, the sizes input length must match axes length so the scatter
+// loop does not read past the end of sizes.
+TEST(ResizeOpTest, Axes_and_Sizes_CountMismatch_18) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> roi{};
+  std::vector<float> scales{};
+  std::vector<int64_t> sizes{3, 3};
+  std::vector<int64_t> axes{2, 3, 4};
+  std::vector<float> Y(16 * 4, 0.0f);
+
+  OpTester test("Resize", 18);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute<std::vector<int64_t>>("axes", axes);
+
+  test.AddInput<float>("X", {1, 1, 4, 4, 4}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("", {0}, scales);
+  test.AddInput<int64_t>("sizes", {int64_t(sizes.size())}, sizes);
+  test.AddOutput<float>("Y", {1, 1, 4, 4, 4}, Y);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Number of elements in sizes should be equal to number of axes.",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Non-finite scale values must be rejected before being multiplied into output dimensions.
+TEST(ResizeOpTest, Scales_NaN_Rejected_18) {
+  std::vector<float> X(16, 1.0f);
+  std::vector<float> roi{};
+  std::vector<float> scales{1.0f, 1.0f, std::numeric_limits<float>::quiet_NaN(), 2.0f};
+  std::vector<float> Y(32, 0.0f);
+
+  OpTester test("Resize", 18);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("mode", "linear");
+
+  test.AddInput<float>("X", {1, 1, 4, 4}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {int64_t(scales.size())}, scales);
+  test.AddOutput<float>("Y", {1, 1, 4, 8}, Y);
+
+  // EPs that do their own validation or do not exercise the CPU ScalesValidation path.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Scale value must be finite.",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
+            kOpenVINOExecutionProvider});
+}
+
+TEST(ResizeOpTest, Scales_PositiveInf_Rejected_18) {
+  std::vector<float> X(16, 1.0f);
+  std::vector<float> roi{};
+  std::vector<float> scales{1.0f, 1.0f, 2.0f, std::numeric_limits<float>::infinity()};
+  std::vector<float> Y(32, 0.0f);
+
+  OpTester test("Resize", 18);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("mode", "linear");
+
+  test.AddInput<float>("X", {1, 1, 4, 4}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {int64_t(scales.size())}, scales);
+  test.AddOutput<float>("Y", {1, 1, 8, 4}, Y);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Scale value must be finite.",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
+            kOpenVINOExecutionProvider});
+}
+
+// Duplicate values in the axes attribute violate the ONNX spec. The check runs after
+// negative-axis normalization, so it covers both raw duplicates and pairs that collide
+// only after canonicalization (e.g. {-1, rank-1}).
+TEST(ResizeOpTest, Axes_Duplicate_Rejected_18) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> roi{};
+  std::vector<float> scales{0.75f, 0.75f, 0.75f};
+  std::vector<int64_t> axes{2, 3, 2};
+  std::vector<float> Y(16 * 4, 0.0f);
+
+  OpTester test("Resize", 18);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute<std::vector<int64_t>>("axes", axes);
+
+  test.AddInput<float>("X", {1, 1, 4, 4, 4}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {int64_t(scales.size())}, scales);
+  test.AddOutput<float>("Y", {1, 1, 4, 4, 4}, Y);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "axes attribute contains duplicate axis 2",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Negative and positive axis entries that resolve to the same canonical index must be
+// rejected. For rank=5, axes={-1, 4} both map to 4.
+TEST(ResizeOpTest, Axes_Duplicate_AfterNormalization_Rejected_18) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  std::vector<float> roi{};
+  std::vector<float> scales{0.75f, 0.75f};
+  std::vector<int64_t> axes{-1, 4};
+  std::vector<float> Y(16 * 4, 0.0f);
+
+  OpTester test("Resize", 18);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute<std::vector<int64_t>>("axes", axes);
+
+  test.AddInput<float>("X", {1, 1, 4, 4, 4}, X);
+  test.AddInput<float>("roi", {0}, roi);
+  test.AddInput<float>("scales", {int64_t(scales.size())}, scales);
+  test.AddOutput<float>("Y", {1, 1, 4, 4, 4}, Y);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "axes attribute contains duplicate axis 4",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// When axes is provided in tf_crop_and_resize mode, the roi input must contain at least
+// 2 * len(axes) entries so the per-axis start/end pairs can be read safely.
+TEST(ResizeOpTest, Roi_TooShortForAxes_18) {
+  std::vector<float> X(16 * 4);
+  std::iota(X.begin(), X.end(), 0.f);
+  // roi length 4 (= 2 * 2), but axes has 3 entries, so 2 * len(axes) = 6 are required.
+  std::vector<float> roi{0.0f, 0.0f, 1.0f, 1.0f};
+  std::vector<float> scales{0.75f, 0.75f, 0.75f};
+  std::vector<int64_t> axes{2, 3, 4};
+  std::vector<float> Y(16 * 4, 0.0f);
+
+  OpTester test("Resize", 18);
+  test.AddShapeToTensorData(false);
+  test.AddAttribute("mode", "linear");
+  test.AddAttribute("coordinate_transformation_mode", "tf_crop_and_resize");
+  test.AddAttribute<std::vector<int64_t>>("axes", axes);
+
+  test.AddInput<float>("X", {1, 1, 4, 4, 4}, X);
+  test.AddInput<float>("roi", {int64_t(roi.size())}, roi);
+  test.AddInput<float>("scales", {int64_t(scales.size())}, scales);
+  test.AddOutput<float>("Y", {1, 1, 4, 4, 4}, Y);
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "roi input length",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider,
+            kOpenVINOExecutionProvider});
 }
 
 TEST(ResizeOpTest, Sizes_RankMismatch_13) {

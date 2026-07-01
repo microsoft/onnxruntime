@@ -183,23 +183,23 @@ stages:
       displayName: 'Shell Script'
       inputs:
         scriptPath: 'onnxruntime/tools/ci_build/github/linux/extract_and_bundle_gpu_package.sh'
-        args: '-a $(Build.BinariesDirectory)/tgz-artifacts'
+        args: '-a $(Build.BinariesDirectory)/tgz-artifacts -c $(CUDA_VERSION_MAJOR)'
         workingDirectory: '$(Build.BinariesDirectory)/tgz-artifacts'
 
     - task: ArchiveFiles@2
       inputs:
-        rootFolderOrFile: '$(Build.BinariesDirectory)/tgz-artifacts/onnxruntime-linux-x64-gpu'
+        rootFolderOrFile: '$(Build.BinariesDirectory)/tgz-artifacts/onnxruntime-linux-x64-gpu_cuda$(CUDA_VERSION_MAJOR)'
         includeRootFolder: false
         archiveType: 'tar' # Options: zip, 7z, tar, wim
         tarCompression: 'gz'
-        archiveFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/onnxruntime-linux-x64-gpu_cuda$(CUDA_VERSION_MAJOR)-$(OnnxRuntimeVersion).tgz'
         replaceExistingArchive: true
 
     - template: ../templates/validate-package.yml
       parameters:
         PackageType: 'tarball'
         PackagePath: '$(Build.ArtifactStagingDirectory)'
-        PackageName: 'onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz'
+        PackageName: 'onnxruntime-linux-x64-gpu_cuda$(CUDA_VERSION_MAJOR)-$(OnnxRuntimeVersion).tgz'
         ScriptPath: '$(Build.SourcesDirectory)/onnxruntime/tools/nuget/validate_package.py'
         PlatformsSupported: 'linux-x64'
         VerifyNugetSigning: false
@@ -214,10 +214,12 @@ stages:
         script: |
           docker run -e SYSTEM_COLLECTIONURI --gpus all -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e NVIDIA_VISIBLE_DEVICES=all --rm --volume /data/models:/data/models --volume $(Build.SourcesDirectory):/src_dir \
           --volume $(Build.ArtifactStagingDirectory):/artifact_src -e NIGHTLY_BUILD onnxruntimecuda${{ variables.CUDA_VERSION_MAJOR }}xtrt86build \
-          /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet/run_capi_application.sh -o /src_dir/onnxruntime -p /artifact_src/onnxruntime-linux-x64-gpu-$(OnnxRuntimeVersion).tgz -w /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet
+          /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet/run_capi_application.sh -o /src_dir/onnxruntime -p /artifact_src/onnxruntime-linux-x64-gpu_cuda${CUDA_VERSION_MAJOR}-$(OnnxRuntimeVersion).tgz -w /src_dir/onnxruntime-inference-examples/c_cxx/squeezenet
         workingDirectory: '$(Build.ArtifactStagingDirectory)'
+      env:
+        CUDA_VERSION_MAJOR: $(CUDA_VERSION_MAJOR)
 
     - task: 1ES.PublishPipelineArtifact@1
       inputs:
         targetPath: '$(Build.ArtifactStagingDirectory)'
-        artifactName: 'onnxruntime-linux-x64-gpu'
+        artifactName: 'onnxruntime-linux-x64-gpu_cuda$(CUDA_VERSION_MAJOR)'

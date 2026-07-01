@@ -277,7 +277,7 @@ class PosixEnv : public Env {
 
   std::vector<LogicalProcessors> GetDefaultThreadAffinities() const override {
     std::vector<LogicalProcessors> ret;
-#ifdef ORT_USE_CPUINFO
+#if defined(ORT_USE_CPUINFO) && defined(__linux__)
     if (cpuinfo_available_) {
       auto num_phys_cores = cpuinfo_get_cores_count();
       ret.reserve(num_phys_cores);
@@ -293,7 +293,7 @@ class PosixEnv : public Env {
         ret.push_back(std::move(th_aff));
       }
     }
-#endif
+#endif  // defined(ORT_USE_CPUINFO) && defined(__linux__)
     // Just the size of the thread-pool
     if (ret.empty()) {
       ret.resize(GetNumPhysicalCpuCores());
@@ -655,6 +655,11 @@ class PosixEnv : public Env {
         std::cerr << "onnxruntime warning: cpuinfo_initialize failed. "
                      "May cause CPU EP performance degradation due to undetected CPU features.\n";
       }
+    }
+  }
+  ~PosixEnv() {
+    if (cpuinfo_available_) {
+      cpuinfo_deinitialize();
     }
   }
   bool cpuinfo_available_{false};

@@ -72,6 +72,30 @@ TEST(CropAndResizeTest, CropAndResize_1222) {
   test2.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(CropAndResizeTest, CropAndResizeRejectsMalformedCropSize) {
+  OpTester test("CropAndResize", 1, onnxruntime::kMSDomain);
+  test.AddInput<float>("X", {1, 1, 2, 2}, {1.1f, 2.2f, 3.3f, 4.4f});
+  test.AddInput<float>("rois", {1, 4}, {0.0f, 0.0f, 1.0f, 1.0f});
+  test.AddInput<int32_t>("batch_indices", {1}, {0});
+  test.AddInput<int32_t>("crop_size", {1}, {2});
+  test.AddOutput<float>("output", {1, 1, 1, 1}, {0.0f});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "[ShapeInferenceError] crop_size input tensor must have exactly 2 elements; got 1",
+           {kTensorrtExecutionProvider});
+
+  OpTester test_with_three_elements("CropAndResize", 1, onnxruntime::kMSDomain);
+  test_with_three_elements.AddInput<float>("X", {1, 1, 2, 2}, {1.1f, 2.2f, 3.3f, 4.4f});
+  test_with_three_elements.AddInput<float>("rois", {1, 4}, {0.0f, 0.0f, 1.0f, 1.0f});
+  test_with_three_elements.AddInput<int32_t>("batch_indices", {1}, {0});
+  test_with_three_elements.AddInput<int32_t>("crop_size", {3}, {2, 2, 2});
+  test_with_three_elements.AddOutput<float>("output", {1, 1, 1, 1}, {0.0f});
+
+  test_with_three_elements.Run(OpTester::ExpectResult::kExpectFailure,
+                               "[ShapeInferenceError] crop_size input tensor must have exactly 2 elements; got 3",
+                               {kTensorrtExecutionProvider});
+}
+
 TEST(CropAndResizeTest, CropAndResize_1133) {
   OpTester test1("CropAndResize", 1, onnxruntime::kMSDomain);
   test1.AddInput<float>("X", {1, 1, 3, 3}, {1.1f, 2.2f, 3.3f, 4.4f, 5.5f, 6.6f, 7.7f, 8.8f, 9.9f});

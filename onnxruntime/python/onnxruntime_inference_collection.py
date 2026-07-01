@@ -104,9 +104,15 @@ class AdapterFormat:
         return self._adapter.model_version
 
     def set_parameters(self, params: dict[str, OrtValue]) -> None:
+        """Set adapter parameters for export."""
         self._adapter.parameters = {k: v._ortvalue for k, v in params.items()}
 
     def get_parameters(self) -> dict[str, OrtValue]:
+        """Get adapter parameters as a dict of name -> OrtValue.
+
+        On read instances, the returned OrtValues are zero-copy views; the
+        backing memory stays alive as long as any returned OrtValue is referenced.
+        """
         return {k: OrtValue(v) for k, v in self._adapter.parameters.items()}
 
 
@@ -1081,6 +1087,7 @@ class OrtValue:
         device_type: str = "cpu",
         device_id: int = 0,
         vendor_id: int | OrtDeviceVendorId = -1,
+        memory_info: C.OrtMemoryInfo | None = None,
     ) -> OrtValue:
         """
         Factory method to construct an OrtValue (which holds a Tensor) from given shape and element_type
@@ -1090,7 +1097,30 @@ class OrtValue:
         :param device_type: e.g. cpu, cuda, cann, cpu by default
         :param device_id: device id, e.g. 0
         :param vendor_id: The device's PCI vendor id as an int or OrtDeviceVendorId. If provided, the device type should be "gpu" or "npu".
+        :param memory_info: An OrtMemoryInfo from an OrtEpDevice (e.g. via ep_device.memory_info(OrtDeviceMemoryType.HOST_ACCESSIBLE)). When provided, the allocator matching this memory info is used directly, which allows allocating HOST_ACCESSIBLE memory for zero-copy numpy interop. The device_type, device_id, and vendor_id parameters are ignored when memory_info is provided.
         """
+
+        if memory_info is not None:
+            if device_type != "cpu" or device_id != 0 or vendor_id != -1:
+                warnings.warn(
+                    "device_type, device_id, and vendor_id are ignored when memory_info is provided.",
+                    stacklevel=2,
+                )
+            if isinstance(element_type, int):
+                return cls(
+                    C.OrtValue.ortvalue_from_shape_and_onnx_type_for_memory_info(
+                        shape,
+                        element_type,
+                        memory_info,
+                    )
+                )
+            return cls(
+                C.OrtValue.ortvalue_from_shape_and_type_for_memory_info(
+                    shape,
+                    element_type,
+                    memory_info,
+                )
+            )
 
         device = OrtDevice.make(device_type, device_id, vendor_id)._get_c_device()
 

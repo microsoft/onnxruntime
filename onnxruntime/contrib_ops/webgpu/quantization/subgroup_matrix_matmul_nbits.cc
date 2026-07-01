@@ -340,9 +340,17 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
                                        uint32_t K,
                                        uint32_t nbits,
                                        bool is_fp16,
-                                       int32_t& config_index) {
+                                       int32_t& config_index,
+                                       uint32_t M,
+                                       bool has_weight_idx_indirect) {
   // Subgroup matrix kernels only support 4-bit/8-bit quantization.
   if (nbits != 4 && nbits != 8) {
+    return false;
+  }
+
+  // Dispatch precondition: the subgroup-matrix kernel is reserved for the
+  // tile-optimized M range without indirect weight indexing.
+  if (!(M >= kMinMForTileOptimization && !has_weight_idx_indirect)) {
     return false;
   }
 

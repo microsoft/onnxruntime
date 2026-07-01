@@ -123,6 +123,7 @@ stages:
 
     - script: |
         brew tap wix/brew
+        brew trust wix/brew
         brew install applesimutils
       displayName: Install applesimutils
 

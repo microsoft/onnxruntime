@@ -272,7 +272,6 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   const uint8_t* blob_data = is_prepacked_weight_ ? nullptr : b->Data<uint8_t>();
   const auto* scales_data = is_prepacked_scale_ ? nullptr : scales->Data<T>();
   const auto* zero_points_data = (is_prepacked_zero_point_ || zero_points == nullptr) ? nullptr : zero_points->DataRaw();
-  const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T>();
 #else
   const Tensor* b = ctx->Input<Tensor>(1);
   const Tensor* scales = ctx->Input<Tensor>(2);
@@ -281,10 +280,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   const auto* scales_data = scales->Data<T>();
   const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
 #endif
-
-  if (bias != nullptr) {
-    ORT_THROW("MatMulNBits does not support bias in CUDA kernel");
-  }
+  const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T>();
 
   ORT_RETURN_IF_ERROR(matmul_nbits_helper::CheckInputs<Tensor>(
       a, b, scales, zero_points, reorder_idx, bias, N_, K_, block_size_, nbits_));
@@ -376,6 +372,8 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 #endif
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<T>())) {
+    // First, try the fused fast path. It handles bias only for the GPT-OSS router GEMV
+    // specialization; for other shapes it fails when bias is present.
     if (TryMatMulNBits(
             static_cast<int>(nbits_),
             reinterpret_cast<CudaT*>(Y->MutableData<T>()),
@@ -383,6 +381,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             blob_data,
             reinterpret_cast<const CudaT*>(scales_data),
             static_cast<const uint8_t*>(zero_points_data),
+            reinterpret_cast<const CudaT*>(bias_data),
             m,
             n,
             k,
@@ -391,41 +390,113 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             stream)) {
       return Status::OK();
     }
+
+    // If bias prevented the fused path from running, retry the fast path without bias and
+    // add the bias with a separate kernel. This keeps the lightweight GEMV path for cases
+    // (e.g. 8-bit, or 4-bit non-router shapes) where only the bias was unsupported.
+    if (bias_data != nullptr &&
+        TryMatMulNBits(
+            static_cast<int>(nbits_),
+            reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+            reinterpret_cast<const CudaT*>(a_data),
+            blob_data,
+            reinterpret_cast<const CudaT*>(scales_data),
+            static_cast<const uint8_t*>(zero_points_data),
+            /*bias_data*/ static_cast<const CudaT*>(nullptr),
+            m,
+            n,
+            k,
+            SafeInt<int>(block_size_),
+            GetDeviceProp().sharedMemPerBlock,
+            stream)) {
+      LaunchMatMulNBitsBiasAdd<CudaT>(
+          reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+          reinterpret_cast<const CudaT*>(bias_data),
+          m,
+          n,
+          stream);
+      return Status::OK();
+    }
   }
 
+  // When bias is present but the fused router GEMV specialization above did not apply,
+  // fall back to the generic dequantize + GEMM path (which ignores bias) and add the
+  // bias with a separate kernel after the GEMM completes.
+
   int64_t K_padded = (K_ + block_size_ - 1) / block_size_ * block_size_;
-  IAllocatorUniquePtr<T> b_data_ptr = this->template GetScratchBuffer<T>(N_ * K_padded, this->GetComputeStream(ctx));
+
+  // Chunked dequant+GEMM trades peak scratch memory for repeated kernel launches.
+  // Thresholds:
+  //   256 MB  – scratch budget; above this the full N*K_padded buffer would dominate
+  //             device memory and risk OOM on consumer GPUs (8–12 GB).
+  //   N > 2*chunk_target_rows (default 65536) – ensures at least two chunks so the
+  //             overhead of per-chunk cuBLAS calls is amortised.
+  //   chunk_target_rows (default 32768) – chosen so that each dequant+GEMM tile is
+  //             large enough to saturate SMs while keeping scratch ≤ ~128 MB.
+  // Only column-wise quantization without reorder_idx is supported; row-wise layouts
+  // interleave K blocks across N and cannot be sliced along the N axis.
+  const int64_t chunk_target_rows = chunk_target_rows_;
+  const int64_t scratch_bytes = N_ * K_padded * static_cast<int64_t>(sizeof(T));
+  const bool will_use_chunked = column_wise_quant_blk_ &&
+                                (reorder_idx_data == nullptr) &&
+                                (force_chunked_ ||
+                                 ((scratch_bytes > 256 * 1024 * 1024) &&
+                                  (N_ > chunk_target_rows * 2)));
+
+  // Allocate scratch: full size normally, chunk size if chunked path will be used
+  const int64_t scratch_n = will_use_chunked ? chunk_target_rows : N_;
+  IAllocatorUniquePtr<T> b_data_ptr = this->template GetScratchBuffer<T>(scratch_n * K_padded, this->GetComputeStream(ctx));
   auto* b_data = b_data_ptr.get();
 
-  if (nbits_ == 8) {
+  // Column-wise dequant helper: dispatches 8-bit / 4-bit × typed / uint8 zero-points.
+  // Used by both the full-N and chunked paths so the offset math stays in one place.
+  const int64_t blocks_per_col = K_padded / block_size_;
+  auto dequant_column_wise = [&](const uint8_t* chunk_blob,
+                                 const CudaT* chunk_scales,
+                                 const void* chunk_zp,
+                                 const int32_t* chunk_reorder_idx,
+                                 int n_rows) -> Status {
+    if (nbits_ == 8) {
+      if (zero_points && zero_points->IsDataType<T>()) {
+        return Dequantize8Bits(
+            reinterpret_cast<CudaT*>(b_data), chunk_blob, chunk_scales,
+            static_cast<const CudaT*>(chunk_zp), chunk_reorder_idx,
+            SafeInt<int>(K_padded), n_rows, SafeInt<int>(block_size_), stream);
+      } else {
+        return Dequantize8Bits(
+            reinterpret_cast<CudaT*>(b_data), chunk_blob, chunk_scales,
+            static_cast<const uint8_t*>(chunk_zp), chunk_reorder_idx,
+            SafeInt<int>(K_padded), n_rows, SafeInt<int>(block_size_), stream);
+      }
+    } else {
+      if (zero_points && zero_points->IsDataType<T>()) {
+        return Dequantize4Bits(
+            reinterpret_cast<CudaT*>(b_data), chunk_blob, chunk_scales,
+            static_cast<const CudaT*>(chunk_zp), chunk_reorder_idx,
+            SafeInt<int>(K_padded), n_rows, SafeInt<int>(block_size_), stream);
+      } else {
+        return Dequantize4Bits(
+            reinterpret_cast<CudaT*>(b_data), chunk_blob, chunk_scales,
+            static_cast<const uint8_t*>(chunk_zp), chunk_reorder_idx,
+            SafeInt<int>(K_padded), n_rows, SafeInt<int>(block_size_), stream);
+      }
+    }
+  };
+
+  // Skip full dequant when chunked path will handle it in the GEMM loop
+  if (!will_use_chunked) {
     if (column_wise_quant_blk_) {
       if (reorder_idx) {
         ORT_ENFORCE(K_padded == reorder_idx->Shape()[0], "K_padded != g_idx->Shape()[0]");
       }
-      if (zero_points && zero_points->IsDataType<T>()) {
-        ORT_RETURN_IF_ERROR(Dequantize8Bits(
-            reinterpret_cast<CudaT*>(b_data),
-            blob_data,
-            reinterpret_cast<const CudaT*>(scales_data),
-            (const CudaT*)zero_points_data,
-            reorder_idx_data,
-            SafeInt<int>(K_padded),
-            SafeInt<int>(N_),
-            SafeInt<int>(block_size_),
-            stream));
-      } else {
-        ORT_RETURN_IF_ERROR(Dequantize8Bits(
-            reinterpret_cast<CudaT*>(b_data),
-            blob_data,
-            reinterpret_cast<const CudaT*>(scales_data),
-            (const uint8_t*)zero_points_data,
-            reorder_idx_data,
-            SafeInt<int>(K_padded),
-            SafeInt<int>(N_),
-            SafeInt<int>(block_size_),
-            stream));
-      }
-    } else {  // row-wise block
+      ORT_RETURN_IF_ERROR(dequant_column_wise(
+          blob_data,
+          reinterpret_cast<const CudaT*>(scales_data),
+          zero_points_data,
+          reorder_idx_data,
+          SafeInt<int>(N_)));
+    } else if (nbits_ == 8) {
+      // row-wise block (8-bit)
       ORT_RETURN_IF_ERROR(DequantizeBlockwise8b(
           reinterpret_cast<CudaT*>(b_data),
           blob_data,
@@ -436,40 +507,9 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
           SafeInt<int>(K_),
           SafeInt<int>(N_),
           stream));
-    }
-  } else {  // 4 bits
-    if (column_wise_quant_blk_) {
-      if (reorder_idx) {
-        ORT_ENFORCE(K_padded == reorder_idx->Shape()[0], "K_padded != g_idx->Shape()[0]");
-      }
-      // column-wise block
-      if ((zero_points && zero_points->IsDataType<T>())) {
-        ORT_RETURN_IF_ERROR(Dequantize4Bits(
-            reinterpret_cast<CudaT*>(b_data),
-            blob_data,
-            reinterpret_cast<const CudaT*>(scales_data),
-            (const CudaT*)zero_points_data,
-            reorder_idx_data,
-            SafeInt<int>(K_padded),
-            SafeInt<int>(N_),
-            SafeInt<int>(block_size_),
-            stream));
-      } else {
-        ORT_RETURN_IF_ERROR(Dequantize4Bits(
-            reinterpret_cast<CudaT*>(b_data),
-            blob_data,
-            reinterpret_cast<const CudaT*>(scales_data),
-            (const uint8_t*)zero_points_data,
-            reorder_idx_data,
-            SafeInt<int>(K_padded),
-            SafeInt<int>(N_),
-            SafeInt<int>(block_size_),
-            stream));
-      }
     } else {
-      // row-wise block
+      // row-wise block (4-bit)
       K_padded = K_;
-
       ORT_RETURN_IF_ERROR(DequantizeBlockwise4b(
           reinterpret_cast<CudaT*>(b_data),
           blob_data,
@@ -481,31 +521,102 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
           SafeInt<int>(N_),
           stream));
     }
-  }
 
-  DUMP_TENSOR_D("DeQuantized", b_data, static_cast<int>(N_), static_cast<int>(K_padded));
+  }  // end if (!will_use_chunked)
+
+  if (!will_use_chunked) {
+    DUMP_TENSOR_D("DeQuantized", b_data, static_cast<int>(N_), static_cast<int>(K_padded));
+  }
 
   const CudaT alpha = onnxruntime::cuda::OrtToCudaType<T>::FromFloat(1.f);
   const CudaT zero = onnxruntime::cuda::OrtToCudaType<T>::FromFloat(0.f);
 
   if (helper.OutputOffsets().size() == 1) {
-    CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
-        GetCublasHandle(ctx),
-        CUBLAS_OP_T,
-        CUBLAS_OP_N,
-        SafeInt<int>(helper.N()),
-        SafeInt<int>(helper.M()),
-        SafeInt<int>(helper.K()),
-        &alpha,
-        reinterpret_cast<const CudaT*>(b_data),
-        SafeInt<int>(K_padded),
-        reinterpret_cast<const CudaT*>(a_data),
-        helper.Lda(transa),
-        &zero,
-        reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-        helper.Ldc(),
-        GetDeviceProp(),
-        UseTF32()));
+    if (will_use_chunked) {
+      // Chunked dequant+GEMM: scratch buffer is already sized for one chunk.
+      const int64_t chunk_n = chunk_target_rows;
+
+      auto* out_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
+
+      for (int64_t n_start = 0; n_start < N_; n_start += chunk_n) {
+        const int64_t n_end = std::min(n_start + chunk_n, N_);
+        const int this_chunk = static_cast<int>(n_end - n_start);
+
+        // Dequantize this chunk of N rows
+        // column_wise_quant_blk_ is guaranteed by will_use_chunked; assert to prevent
+        // silent use of uninitialized b_data if the outer guard is ever relaxed.
+        ORT_ENFORCE(column_wise_quant_blk_, "Chunked path requires column-wise quantization blocks");
+
+        // Compute per-chunk pointers into the column-wise-packed weight, scale, and ZP arrays.
+        const uint8_t* chunk_blob = blob_data + n_start * (nbits_ == 8 ? K_padded : K_padded / 2);
+        const auto* chunk_scales = reinterpret_cast<const CudaT*>(scales_data) + n_start * blocks_per_col;
+        const void* chunk_zp = nullptr;
+        if (zero_points_data) {
+          if (zero_points && zero_points->IsDataType<T>()) {
+            chunk_zp = reinterpret_cast<const CudaT*>(zero_points_data) + n_start * blocks_per_col;
+          } else if (nbits_ == 8) {
+            chunk_zp = static_cast<const uint8_t*>(zero_points_data) + n_start * blocks_per_col;
+          } else {
+            // 4-bit ZP: packed, offset by n_start * ceil(blocks_per_col / 2)
+            chunk_zp = static_cast<const uint8_t*>(zero_points_data) + n_start * ((blocks_per_col + 1) / 2);
+          }
+        }
+        ORT_RETURN_IF_ERROR(dequant_column_wise(
+            chunk_blob, chunk_scales, chunk_zp,
+            nullptr,  // no reorder_idx for chunked path
+            this_chunk));
+
+        DUMP_TENSOR_D("DeQuantized_chunk", b_data, this_chunk, static_cast<int>(K_padded));
+
+        // GEMM for this chunk: C[:, n_start:n_end] = A[M,K] @ B_chunk[chunk_n, K]^T
+        CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+            GetCublasHandle(ctx),
+            CUBLAS_OP_T,
+            CUBLAS_OP_N,
+            this_chunk,                // n (output columns for this chunk)
+            SafeInt<int>(helper.M()),  // m
+            SafeInt<int>(helper.K()),  // k
+            &alpha,
+            reinterpret_cast<const CudaT*>(b_data),  // B_chunk [chunk_n, K_padded]
+            SafeInt<int>(K_padded),
+            reinterpret_cast<const CudaT*>(a_data),  // A [M, K]
+            helper.Lda(transa),
+            &zero,
+            out_data + n_start,          // C[:, n_start] — strided output
+            SafeInt<int>(helper.Ldc()),  // ldc = N (full output stride)
+            GetDeviceProp(),
+            UseTF32()));
+      }
+    } else {
+      // Original non-chunked path for small N
+      CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+          GetCublasHandle(ctx),
+          CUBLAS_OP_T,
+          CUBLAS_OP_N,
+          SafeInt<int>(helper.N()),
+          SafeInt<int>(helper.M()),
+          SafeInt<int>(helper.K()),
+          &alpha,
+          reinterpret_cast<const CudaT*>(b_data),
+          SafeInt<int>(K_padded),
+          reinterpret_cast<const CudaT*>(a_data),
+          helper.Lda(transa),
+          &zero,
+          reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+          helper.Ldc(),
+          GetDeviceProp(),
+          UseTF32()));
+    }
+
+    // Fallback bias handling: the generic dequant + GEMM path above ignores bias, so add it here.
+    if (bias_data != nullptr) {
+      LaunchMatMulNBitsBiasAdd<CudaT>(
+          reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+          reinterpret_cast<const CudaT*>(bias_data),
+          m,
+          n,
+          stream);
+    }
   }
 
   return Status::OK();

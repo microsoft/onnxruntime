@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
+requires = ["setuptools>=77.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,8 +7,35 @@ name = "onnxruntime-ep-webgpu"
 version = "@version@"
 description = "ONNX Runtime WebGPU Plugin Execution Provider"
 readme = "onnxruntime_ep_webgpu/README.md"
-license = {text = "MIT"}
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE", "ThirdPartyNotices.txt"]
+authors = [
+    { name = "Microsoft Corporation", email = "onnxruntime@microsoft.com" },
+]
+keywords = ["onnx", "machine learning", "webgpu", "execution provider"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+]
+
+[project.urls]
+Homepage = "https://onnxruntime.ai"
+Source = "https://github.com/microsoft/onnxruntime"
+Issues = "https://github.com/microsoft/onnxruntime/issues"
+Download = "https://github.com/microsoft/onnxruntime/tags"
 
 [tool.setuptools.packages.find]
 include = ["onnxruntime_ep_webgpu*"]

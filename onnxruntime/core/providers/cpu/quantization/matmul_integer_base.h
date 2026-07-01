@@ -208,6 +208,9 @@ class MatMulIntegerBase : public OpKernel {
     }
 
     if (ctx.bias != nullptr) {
+      if (ctx.bias->Shape().Size() != static_cast<int64_t>(ctx.N)) {
+        return false;
+      }
       dynamic_quant_mlas_bias_data_was_packed_ = true;
     }
 

@@ -1094,11 +1094,49 @@ namespace DmlGraphFusionHelper
         uint64_t completionValue;
         HRESULT hr = provider->ExecuteCommandList(commandListState.graphicsCommandList.Get(), fence.GetAddressOf(), &completionValue);
 
-        if (hr == DXGI_ERROR_DEVICE_REMOVED)
+        // ExecuteCommandList may report any of the device-lost / removal-class HRESULTs when
+        // the GPU device has transitioned to a "removed" state. Windows often surfaces these
+        // through FormatMessage as "...most likely because of an invalid command...", but in
+        // practice they almost always indicate a Timeout Detection and Recovery (TDR) event
+        // (e.g. a long-running shader exceeding the system TdrDelay), a driver fault, or a
+        // hardware reset rather than a malformed command from the calling application.
+        //
+        // GetDeviceRemovedReason on the DML and D3D12 devices reports the underlying reason
+        // when the device has been removed. Throw with the most specific reason and a
+        // clearer message so that downstream tooling (Watson, telemetry, anyone reading the
+        // log) doesn't have to guess at the cause.
+        if (hr == DXGI_ERROR_DEVICE_REMOVED ||
+            hr == DXGI_ERROR_DEVICE_HUNG ||
+            hr == DXGI_ERROR_DEVICE_RESET ||
+            hr == DXGI_ERROR_DRIVER_INTERNAL_ERROR)
         {
-            ComPtr<ID3D12Device> device;
-            ORT_THROW_IF_FAILED(provider->GetD3DDevice(&device));
-            ORT_THROW_IF_FAILED(device->GetDeviceRemovedReason());
+            ComPtr<ID3D12Device> d3dDevice;
+            ComPtr<IDMLDevice> dmlDevice;
+            ORT_THROW_IF_FAILED(provider->GetD3DDevice(&d3dDevice));
+            ORT_THROW_IF_FAILED(provider->GetDmlDevice(&dmlDevice));
+
+            const HRESULT dmlRemovedReason = dmlDevice->GetDeviceRemovedReason();
+            const HRESULT d3dRemovedReason = d3dDevice->GetDeviceRemovedReason();
+
+            // Prefer the more-specific reason returned by GetDeviceRemovedReason - matching
+            // the prior behavior for DXGI_ERROR_DEVICE_REMOVED and the pattern in
+            // DmlCommandRecorder.cpp which checks DML first, then D3D12. Fall back to the
+            // original ExecuteCommandList HRESULT if neither device reports a removal reason.
+            const HRESULT throwHr = FAILED(dmlRemovedReason) ? dmlRemovedReason
+                                  : FAILED(d3dRemovedReason) ? d3dRemovedReason
+                                                             : hr;
+
+            ORT_THROW_HR_MSG(throwHr,
+                "DirectML execution failed because of a device-lost / removal-class error. "
+                "Windows may report this as 'invalid command' via FormatMessage, but in practice "
+                "this often indicates a Timeout Detection and Recovery (TDR) event (e.g. a shader "
+                "exceeding the system TdrDelay), a driver fault, or a hardware reset rather than "
+                "a malformed command from the application. ExecuteCommandList HRESULT=0x%08X, "
+                "ID3D12Device::GetDeviceRemovedReason=0x%08X, "
+                "IDMLDevice::GetDeviceRemovedReason=0x%08X.",
+                static_cast<unsigned int>(hr),
+                static_cast<unsigned int>(d3dRemovedReason),
+                static_cast<unsigned int>(dmlRemovedReason));
         }
 
         ORT_THROW_IF_FAILED(hr);

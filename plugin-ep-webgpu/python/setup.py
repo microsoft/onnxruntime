@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 """Minimal setup.py to produce a platform-specific wheel.
 
 The package contains pre-built native libraries (not CPython extension modules),

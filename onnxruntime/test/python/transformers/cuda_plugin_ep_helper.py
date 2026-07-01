@@ -21,7 +21,7 @@ class _CudaPluginRegistrationState:
     registered = False
 
 
-def should_test_with_cuda_plugin_ep(default_value: bool = True) -> bool:
+def should_test_with_cuda_plugin_ep(default_value: bool = False) -> bool:
     return os.getenv("ORT_TEST_CUDA_PLUGIN_EP", "1" if default_value else "0") == "1"
 
 
@@ -116,7 +116,7 @@ def _get_default_cuda_plugin_ep_path() -> str | None:
     return None
 
 
-def ensure_cuda_plugin_ep_registered(default_test_with_cuda_plugin_ep: bool = True) -> bool:
+def ensure_cuda_plugin_ep_registered(default_test_with_cuda_plugin_ep: bool = False) -> bool:
     if _CudaPluginRegistrationState.registered:
         return True
 
@@ -158,7 +158,7 @@ def ensure_cuda_plugin_ep_registered(default_test_with_cuda_plugin_ep: bool = Tr
     return _CudaPluginRegistrationState.registered
 
 
-def resolve_cuda_plugin_ep(ep: str, default_test_with_cuda_plugin_ep: bool = True) -> str:
+def resolve_cuda_plugin_ep(ep: str, default_test_with_cuda_plugin_ep: bool = False) -> str:
     # Keep all existing test call-sites unchanged: they pass CUDA EP,
     # and we transparently route to plugin EP when it is built and loadable.
     if ep == "CUDAExecutionProvider" and ensure_cuda_plugin_ep_registered(default_test_with_cuda_plugin_ep):

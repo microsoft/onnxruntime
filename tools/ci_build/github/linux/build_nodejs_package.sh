@@ -11,7 +11,7 @@ else
 fi
 
 mkdir -p "$HOME/.onnx"
-docker run -e SYSTEM_COLLECTIONURI --rm --volume /data/onnx:/data/onnx:ro --volume "$BUILD_SOURCESDIRECTORY:/onnxruntime_src" \
+docker run -e SYSTEM_COLLECTIONURI --rm --network=host --volume /data/onnx:/data/onnx:ro --volume "$BUILD_SOURCESDIRECTORY:/onnxruntime_src" \
 --volume "$BUILD_BINARIESDIRECTORY:/build" --volume /data/models:/build/models:ro \
 -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
 -e PIP_INDEX_URL \
@@ -20,7 +20,9 @@ docker run -e SYSTEM_COLLECTIONURI --rm --volume /data/onnx:/data/onnx:ro --volu
 --volume "$HOME/.gradle:/home/onnxruntimedev/.gradle" \
 --volume "$HOME/.onnx:/home/onnxruntimedev/.onnx" -e NIGHTLY_BUILD "onnxruntimecuda${CUDA_VERSION_MAJOR}xtrt86build" \
 /bin/bash -c "/usr/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release \
---skip_tests --skip_submodule_sync --parallel --use_binskim_compliant_compile_flags --build_shared_lib --build_nodejs \
+--skip_tests --skip_submodule_sync \
+--parallel --nvcc_threads 1 --flash_nvcc_threads 1 \
+--use_binskim_compliant_compile_flags --build_shared_lib --build_nodejs \
 --use_webgpu --use_tensorrt --cuda_version=$CUDA_VERSION --cuda_home=/usr/local/cuda-$CUDA_VERSION \
 --cudnn_home=/usr --tensorrt_home=/usr \
 --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHS}' --use_vcpkg --use_vcpkg_ms_internal_asset_cache \

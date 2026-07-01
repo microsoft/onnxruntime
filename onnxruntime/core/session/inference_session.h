@@ -414,6 +414,12 @@ class InferenceSession {
   [[nodiscard]] virtual common::Status Run(const RunOptions& run_options, IOBinding& io_binding);
   [[nodiscard]] common::Status Run(IOBinding& io_binding);
 
+  /**
+   * Release a previously captured graph and its associated resources.
+   * @param graph_annotation_id The annotation ID of the captured graph to release.
+   */
+  [[nodiscard]] common::Status ReleaseCapturedGraph(int graph_annotation_id);
+
 #ifdef ENABLE_TRAINING
   /**
    * Partially run a pre-loaded and pre-intialized model.
@@ -880,6 +886,11 @@ class InferenceSession {
    */
   void ShrinkMemoryArenas(gsl::span<const AllocatorPtr> arenas_to_shrink);
 
+  // Populates telemetry_.ep_device_info_ and the related summary strings used by
+  // the SessionCreation and EpDeviceUsage telemetry events. Must be called after
+  // graph partitioning is complete so node counts per EP are accurate.
+  void PopulateEpDeviceInfo(const onnxruntime::Graph& graph);
+
 #ifdef _WIN32
   static void LogAllSessions();
 #endif
@@ -1000,6 +1011,26 @@ class InferenceSession {
     constexpr static int64_t kRuntimePerfInitialInterval = 2 * 1000 * 1000;    // 2 seconds in (us)
     constexpr static int64_t kRuntimePerfMaxInterval = 1000 * 1000 * 60 * 10;  // 10 minutes in (us)
     int64_t runtime_perf_interval_ = kRuntimePerfInitialInterval;
+
+    // Per-(EP, hardware device) tuple captured once at session Initialize() time,
+    // after graph partitioning. Used to emit "EpDeviceUsage" events on the same
+    // cadence as RuntimePerf so downstream consumers can attribute inference usage
+    // to specific EP + device combinations without joining back to SessionCreation.
+    struct EpDeviceInfo {
+      std::string ep_type;               // e.g. "QNNExecutionProvider"
+      std::string hardware_device_type;  // "CPU", "GPU", "NPU", "FPGA", or "UNKNOWN"
+      uint32_t vendor_id = 0;            // PCI vendor ID (e.g. 0x5143 for Qualcomm)
+      uint32_t device_id = 0;            // PCI device ID (0 when unavailable)
+      std::string vendor;                // e.g. "Qualcomm"
+      std::string ep_vendor;             // e.g. "Qualcomm" (from OrtEpDevice)
+      std::string ep_version;            // e.g. "1.2.3" (from OrtEpFactory::GetVersion, empty when unavailable)
+      int assigned_node_count = 0;       // # graph nodes assigned to this EP type
+    };
+    std::vector<EpDeviceInfo> ep_device_info_;
+    // Pre-formatted comma-separated summaries used to enrich SessionCreation.
+    std::string ep_device_types_summary_;       // "NPU,CPU"
+    std::string ep_device_vendor_ids_summary_;  // "0x5143,0x0000"
+    std::string ep_versions_summary_;           // "QNNExecutionProvider:1.2.3,CPUExecutionProvider:"
   } telemetry_;
 
   mutable std::mutex telemetry_mutex_;  // to ensure thread-safe access to telemetry data
@@ -1080,11 +1111,18 @@ class InferenceSession {
       return cached_execution_provider_for_graph_replay_ != nullptr && graph_annotation_id != kGraphAnnotationSkip;
     }
 
-    Status ReplayGraph(int graph_annotation_id) {
+    Status ReplayGraph(int graph_annotation_id, bool sync = true) {
       if (cached_execution_provider_for_graph_replay_) {
-        return cached_execution_provider_for_graph_replay_->ReplayGraph(graph_annotation_id);
+        return cached_execution_provider_for_graph_replay_->ReplayGraph(graph_annotation_id, sync);
       }
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cached EP instance for graph replay is not set yet before calling ReplayGraph()");
+    }
+
+    Status ReleaseCapturedGraph(int graph_annotation_id) {
+      if (cached_execution_provider_for_graph_replay_) {
+        return cached_execution_provider_for_graph_replay_->ReleaseCapturedGraph(graph_annotation_id);
+      }
+      return Status::OK();
     }
 
     const std::string& Type() const {

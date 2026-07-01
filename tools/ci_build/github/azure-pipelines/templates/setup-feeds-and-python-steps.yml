@@ -71,6 +71,34 @@ steps:
   inputs:
     artifactFeeds: ${{ parameters.artifactFeeds }}
 
+- task: PowerShell@2
+  displayName: 'Cargo - create config.toml to mirror crates.io via internal feed'
+  env:
+    artifact_feed: ${{ parameters.artifactFeeds }}
+  inputs:
+    targetType: 'inline'
+    script: |
+      # Write to CARGO_HOME (global) so cargo finds it regardless of working directory.
+      $cargoHome = if ($env:CARGO_HOME) { $env:CARGO_HOME } else { "~/.cargo" }
+      if (!(Test-Path -Path $cargoHome)) {
+        New-Item -ItemType Directory -Path $cargoHome
+      }
+      Set-Content -Force -Path "$cargoHome/config.toml" -Value @"
+      [registry]
+      global-credential-providers = ["cargo:token"]
+
+      [registries.onnxruntime]
+      index = "sparse+https://aiinfra.pkgs.visualstudio.com/_packaging/${env:artifact_feed}/Cargo/index/"
+
+      [source.crates-io]
+      replace-with = "onnxruntime"
+
+      [source.onnxruntime]
+      registry = "sparse+https://aiinfra.pkgs.visualstudio.com/_packaging/${env:artifact_feed}/Cargo/index/"
+      "@
+
+      Write-Host "Wrote cargo config to: $cargoHome/config.toml"
+
 - task: UsePythonVersion@0
   displayName: 'Use Python ${{ parameters.versionSpec }}'
   # aarch64 (aka arm64) is not currently available (2026-04-09). Skip installation.

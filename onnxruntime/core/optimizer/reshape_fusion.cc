@@ -15,7 +15,10 @@ namespace onnxruntime {
 bool GetAxesFromUnsqueezeNode(const Graph& graph, const Node& unsqueeze, InlinedVector<int64_t>& axes) {
   if (graph_utils::MatchesOpSinceVersion(unsqueeze, {1, 11})) {
     return graph_utils::GetRepeatedNodeAttributeValues(unsqueeze, "axes", axes);
-  } else if (graph_utils::MatchesOpSinceVersion(unsqueeze, {13})) {
+  }
+
+  // Opset 13+ moved axes from attribute to input[1].
+  if (unsqueeze.InputDefs().size() > 1) {
     const NodeArg* axes_node_arg = unsqueeze.InputDefs()[1];
     return optimizer_utils::AppendTensorFromInitializer(graph, *axes_node_arg, axes, true);
   }
@@ -169,12 +172,11 @@ bool ReshapeFusion::Match_One_Element_Output_Subgraph_1(Graph& graph, const Node
     const Node& gather = edges[1]->GetNode();
     const Node& shape = edges[2]->GetNode();
 
-    if (graph_utils::MatchesOpSinceVersion(shape, {15})) {
-      const ONNX_NAMESPACE::AttributeProto* start_attr = graph_utils::GetNodeAttribute(shape, "start");
-      const ONNX_NAMESPACE::AttributeProto* end_attr = graph_utils::GetNodeAttribute(shape, "end");
-      if (!((!start_attr || static_cast<int>(start_attr->i()) == 0) && (!end_attr))) {
-        return false;
-      }
+    // The fusion assumes Shape returns the full tensor shape so that Gather indices correspond
+    // directly to tensor dimensions. A partial shape (opset 15+ start/end attributes) would shift
+    // the index mapping and produce incorrect results.
+    if (!graph_utils::IsFullShapeNode(shape)) {
+      return false;
     }
 
     InlinedVector<int64_t> axes;
@@ -468,6 +470,19 @@ bool ReshapeFusion::FuseContiguousReshapes(Node& reshape, Graph& graph) {
     Node* next_node = graph.GetNode(curr_node.OutputNodesBegin()->Index());
     if (next_node->OpType() != "Reshape" && next_node->OpType() != "Squeeze" && next_node->OpType() != "Unsqueeze") {
       break;
+    }
+
+    // If next_node is a Reshape with allowzero=1, the fused node cannot represent this
+    // correctly: the fused node inherits attributes from the first node in the chain
+    // (which has allowzero=0 or no allowzero attribute). Bailing out here prevents
+    // incorrect fusion such as Reshape([0,8,2]->[4,2,-1]) + Reshape([0,0,4],allowzero=1)
+    // being collapsed into Reshape([0,8,2]->[0,0,4],allowzero=0), which would silently
+    // copy dims from the original input instead of preserving the explicit zeros.
+    if (next_node->OpType() == "Reshape") {
+      const auto* az_attr = graph_utils::GetNodeAttribute(*next_node, "allowzero");
+      if ((nullptr != az_attr) && az_attr->has_i() && az_attr->i() != 0) {
+        break;
+      }
     }
 
     auto shape = next_node->OutputDefs()[0]->Shape();

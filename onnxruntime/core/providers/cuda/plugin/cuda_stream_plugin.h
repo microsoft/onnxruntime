@@ -28,7 +28,7 @@ class CudaEpFactory;
 /// or wraps an external stream for graph-mode registration/lifecycle tracking.
 class CudaSyncStream : public OrtSyncStreamImpl {
  public:
-  CudaSyncStream(CudaEpFactory& factory, int device_id,
+  CudaSyncStream(CudaEpFactory& factory, int device_id, bool enable_cudnn,
                  const OrtEp* ep);
   ~CudaSyncStream();
 
@@ -45,6 +45,11 @@ class CudaSyncStream : public OrtSyncStreamImpl {
   /// registered for stream-aware lookup/cleanup, but CUDA library handles are
   /// resolved later from thread-local defaults when kernels dispatch.
   OrtStatus* InitHandlesWithExternalStream(cudaStream_t external_stream);
+
+  /// Initialize with a user-provided external CUDA stream, creating cuBLAS/cuDNN/
+  /// cuBLASLt handles bound to it. The stream is NOT owned (not destroyed on cleanup)
+  /// but library handles ARE owned. Use for user_compute_stream scenarios.
+  OrtStatus* InitHandlesWithUserStream(cudaStream_t user_stream);
 
   /// Look up the CudaSyncStream wrapper from a raw cudaStream_t handle.
   /// Uses a thread-local TLS cache with a generation counter to avoid lock
@@ -65,6 +70,7 @@ class CudaSyncStream : public OrtSyncStreamImpl {
 
   CudaEpFactory& factory_;
   int device_id_;
+  bool enable_cudnn_ = true;
   cudaStream_t cuda_stream_ = nullptr;
   bool owns_stream_ = true;  ///< False when wrapping an external stream (e.g., for CUDA graph).
   cublasHandle_t cublas_handle_ = nullptr;

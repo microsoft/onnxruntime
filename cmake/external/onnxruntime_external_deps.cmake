@@ -149,10 +149,10 @@ if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE AND NOT onnxruntime_USE_VCPKG)
       if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
         onnxruntime_fetchcontent_declare(protoc_binary URL ${DEP_URL_protoc_linux_x64} URL_HASH SHA1=${DEP_SHA1_protoc_linux_x64} EXCLUDE_FROM_ALL)
         FetchContent_Populate(protoc_binary)
-      elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
+      elseif(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
         onnxruntime_fetchcontent_declare(protoc_binary URL ${DEP_URL_protoc_linux_x86} URL_HASH SHA1=${DEP_SHA1_protoc_linux_x86} EXCLUDE_FROM_ALL)
         FetchContent_Populate(protoc_binary)
-      elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^aarch64.*")
+      elseif(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^aarch64.*")
         onnxruntime_fetchcontent_declare(protoc_binary URL ${DEP_URL_protoc_linux_aarch64} URL_HASH SHA1=${DEP_SHA1_protoc_linux_aarch64} EXCLUDE_FROM_ALL)
         FetchContent_Populate(protoc_binary)
       endif()
@@ -371,9 +371,7 @@ if (CPUINFO_SUPPORTED)
       PATCH_COMMAND
         ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_cpuinfo_h_for_arm64ec.patch &&
         # https://github.com/pytorch/cpuinfo/pull/324
-        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_vcpkg_arm64ec_support.patch &&
-        # https://github.com/pytorch/cpuinfo/pull/348
-        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/win_arm_fp16_detection_fallback.patch
+        ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/patch_vcpkg_arm64ec_support.patch
       FIND_PACKAGE_ARGS NAMES cpuinfo
     )
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -405,24 +403,16 @@ if (CPUINFO_SUPPORTED)
   endif()
 endif()
 
-if(onnxruntime_USE_CUDA)
-  onnxruntime_fetchcontent_declare(
-    GSL
-    URL ${DEP_URL_microsoft_gsl}
-    URL_HASH SHA1=${DEP_SHA1_microsoft_gsl}
-    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/gsl/1064.patch
-    EXCLUDE_FROM_ALL
-    FIND_PACKAGE_ARGS 4.0 NAMES Microsoft.GSL
-  )
-else()
-  onnxruntime_fetchcontent_declare(
-    GSL
-    URL ${DEP_URL_microsoft_gsl}
-    URL_HASH SHA1=${DEP_SHA1_microsoft_gsl}
-    EXCLUDE_FROM_ALL
-    FIND_PACKAGE_ARGS 4.0 NAMES Microsoft.GSL
-  )
-endif()
+onnxruntime_fetchcontent_declare(
+  GSL
+  URL ${DEP_URL_microsoft_gsl}
+  URL_HASH SHA1=${DEP_SHA1_microsoft_gsl}
+  # Stringify fix for GSL_SUPPRESS on MSVC (C4875). Remove when GSL ships a release
+  # containing microsoft/GSL#1213 (commit 543d0dd).
+  PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/gsl/1213.patch
+  EXCLUDE_FROM_ALL
+  FIND_PACKAGE_ARGS 4.0 NAMES Microsoft.GSL
+)
 set(GSL_TARGET "Microsoft.GSL::GSL")
 set(GSL_INCLUDE_DIR "$<TARGET_PROPERTY:${GSL_TARGET},INTERFACE_INCLUDE_DIRECTORIES>")
 onnxruntime_fetchcontent_makeavailable(GSL)
@@ -624,10 +614,17 @@ endif()
 if(onnxruntime_ENABLE_TRAINING OR (onnxruntime_ENABLE_TRAINING_APIS AND onnxruntime_BUILD_UNIT_TESTS))
   # Once code under orttraining/orttraining/models dir is removed "onnxruntime_ENABLE_TRAINING" should be removed from
   # this conditional
+  if(Patch_FOUND)
+    set(ONNXRUNTIME_CXXOPTS_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/cxxopts/gcc-15-compat.patch)
+  else()
+    set(ONNXRUNTIME_CXXOPTS_PATCH_COMMAND "")
+  endif()
+
   onnxruntime_fetchcontent_declare(
     cxxopts
     URL ${DEP_URL_cxxopts}
     URL_HASH SHA1=${DEP_SHA1_cxxopts}
+    PATCH_COMMAND ${ONNXRUNTIME_CXXOPTS_PATCH_COMMAND}
     EXCLUDE_FROM_ALL
     FIND_PACKAGE_ARGS NAMES cxxopts
   )
@@ -798,6 +795,19 @@ if (onnxruntime_USE_WEBGPU)
           #
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_buffer_fix_injection.patch &&
 
+          # The dawn_parallel_build_fix.patch contains the following changes:
+          #
+          # - (private) Fix parallel build race condition in emdawnwebgpu header copy
+          #   The emdawnwebgpu_headers_gen_add macro's add_custom_command uses cmake -E copy
+          #   without ensuring the destination directory exists first. When building with
+          #   parallel jobs (-j32), the copy commands for webgpu_glfw.h and
+          #   webgpu_enum_class_bitmasks.h can run before any DawnJSONGenerator command
+          #   has created gen/src/emdawnwebgpu/include/webgpu/, causing the copy to fail.
+          #   This patch adds cmake -E make_directory before the copy so the directory is
+          #   always present regardless of parallel build ordering.
+          #
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_parallel_build_fix.patch &&
+
           # Remove the test folder to speed up potential file scan operations (70k+ files not needed for build).
           # Using <SOURCE_DIR> token ensures the correct absolute path regardless of working directory.
           ${CMAKE_COMMAND} -E rm -rf <SOURCE_DIR>/test)
@@ -827,27 +837,6 @@ if (onnxruntime_USE_WEBGPU)
 
   if (onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES webgpu_glfw glfw)
-  endif()
-
-  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
-    if(onnxruntime_USE_VCPKG)
-      find_package(unofficial-duktape CONFIG REQUIRED)
-      add_library(duktape_static ALIAS unofficial::duktape::duktape)
-    else()
-      onnxruntime_fetchcontent_declare(
-        duktape
-        URL ${DEP_URL_duktape}
-        URL_HASH SHA1=${DEP_SHA1_duktape}
-        EXCLUDE_FROM_ALL
-      )
-      onnxruntime_fetchcontent_makeavailable(duktape)
-
-      if(NOT TARGET duktape_static)
-        add_library(duktape_static STATIC "${duktape_SOURCE_DIR}/src/duktape.c")
-        target_compile_features(duktape_static PRIVATE c_std_99)
-        target_include_directories(duktape_static INTERFACE $<BUILD_INTERFACE:${duktape_SOURCE_DIR}/src>)
-      endif()
-    endif()
   endif()
 endif()
 

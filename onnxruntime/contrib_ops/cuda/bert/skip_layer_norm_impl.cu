@@ -37,24 +37,6 @@ namespace contrib {
 namespace cuda {
 
 namespace {
-template <typename T>
-T maybe2half(float x);
-
-template <>
-float maybe2half(float x) {
-  return x;
-}
-
-template <>
-half maybe2half(float x) {
-  return __float2half_rn(x);
-}
-
-template <>
-nv_bfloat16 maybe2half(float x) {
-  return __float2bfloat16_rn(x);
-}
-
 // Using only power of 2 numbers will lead to waste of compute for same size such as 768, which is a very common case
 // in BERT. Ideally we can step by wrap_size * num_unroll, but listing too many steps will cause long compile time.
 constexpr int kSizes[] = {128, 320, 384, 640, 768, 1024, 1280, 2048, 4096, 5120, 8192};
@@ -90,15 +72,16 @@ bool CanVectorized(void* output, void* sum_output, const void* input, const void
 
 template <typename T, unsigned TPB, bool Simplified>
 __global__ void SkipLayerNormKernel(
-    T* output, T* sum_output, const T* input, const T* skip, const T* bias, const T* gamma, const T* beta, T epsilon,
-    const int ld, int skip_size) {
-  const T reverse_ld = T(1.f / ld);
+    T* output, T* sum_output, const T* input, const T* skip, const T* bias, const T* gamma, const T* beta,
+    float epsilon, const int ld, int skip_size) {
+  const float reverse_ld = 1.f / ld;
   const int offset = blockIdx.x * ld;
   const bool has_bias = (bias != nullptr);
 
   // Reduce sum of x and x^2, and the results are divided by ld.
+  // Uses fp32 accumulation to avoid overflow in fp16/bf16.
   KeyValuePairSum pair_sum;
-  cub::KeyValuePair<T, T> thread_data(0, 0);
+  cub::KeyValuePair<float, float> thread_data(0.f, 0.f);
 
   for (int i = threadIdx.x; i < ld; i += TPB) {
     const int idx = offset + i;
@@ -109,8 +92,9 @@ __global__ void SkipLayerNormKernel(
     }
     val += skip[idx % skip_size];
 
-    const T rldval = reverse_ld * val;
-    thread_data = pair_sum(thread_data, cub::KeyValuePair<T, T>(rldval, rldval * val));
+    const float val_f = static_cast<float>(val);
+    const float rldval = reverse_ld * val_f;
+    thread_data = pair_sum(thread_data, cub::KeyValuePair<float, float>(rldval, rldval * val_f));
 
     if (sum_output != nullptr) {
       sum_output[idx] = val;
@@ -129,15 +113,15 @@ __global__ void SkipLayerNormKernel(
 // Vectorized kernel
 template <typename T, unsigned TPB, int ILP, bool Simplified>
 __global__ void SkipLayerNormKernelSmall(
-    T* output, T* sum_output, const T* input, const T* skip, const T* bias, const T* gamma, const T* beta, T epsilon,
-    int ld, int skip_size) {
-  const T rld = T(1.f / ld);
+    T* output, T* sum_output, const T* input, const T* skip, const T* bias, const T* gamma, const T* beta,
+    float epsilon, int ld, int skip_size) {
+  const float rld = 1.f / ld;
   const int idx = blockIdx.x * ld + threadIdx.x * ILP;
 
   using VecT = aligned_vector<T, ILP>;
   T sum_v[ILP];
 
-  cub::KeyValuePair<T, T> thread_data(T(0.f), T(0.f));
+  cub::KeyValuePair<float, float> thread_data(0.f, 0.f);
 
   if (ILP * threadIdx.x < ld) {  // load data under this guard to avoid reading out-of-bounds
     T skip_v[ILP], bias_v[ILP];
@@ -155,8 +139,8 @@ __global__ void SkipLayerNormKernelSmall(
       *bias_val = *reinterpret_cast<const VecT*>(&bias[threadIdx.x * ILP]);
     }
 
-    T rldval_sum = T(0.f);
-    T rldvalsq_sum = T(0.f);
+    float rldval_sum = 0.f;
+    float rldvalsq_sum = 0.f;
     const bool has_sum_output = (sum_output != nullptr);
 
 #pragma unroll
@@ -166,16 +150,17 @@ __global__ void SkipLayerNormKernelSmall(
       }
       sum_v[i] += skip_v[i];
 
-      const T rldval = rld * sum_v[i];
+      const float val_f = static_cast<float>(sum_v[i]);
+      const float rldval = rld * val_f;
       rldval_sum += rldval;
-      rldvalsq_sum += rldval * sum_v[i];
+      rldvalsq_sum += rldval * val_f;
     }
 
     if (has_sum_output) {
       *(reinterpret_cast<VecT*>(&sum_output[idx])) = *reinterpret_cast<VecT*>(&sum_v);
     }
 
-    thread_data = cub::KeyValuePair<T, T>(rldval_sum, rldvalsq_sum);
+    thread_data = cub::KeyValuePair<float, float>(rldval_sum, rldvalsq_sum);
   }
 
   if (Simplified) {
@@ -203,11 +188,11 @@ void LaunchSkipLayerNormKernel(
 
 #define LAUNCH_SKIP_LAYER_NORM_KERNEL_SMALL(num_unroll)                                                  \
   SkipLayerNormKernelSmall<T, block_size, num_unroll, Simplified><<<grid_size, block_size, 0, stream>>>( \
-      output, sum_output, input, skip, bias, gamma, beta, maybe2half<T>(epsilon), ld, skip_size)
+      output, sum_output, input, skip, bias, gamma, beta, epsilon, ld, skip_size)
 
 #define LAUNCH_SKIP_LAYER_NORM_KERNEL()                                                 \
   SkipLayerNormKernel<T, block_size, Simplified><<<grid_size, block_size, 0, stream>>>( \
-      output, sum_output, input, skip, bias, gamma, beta, maybe2half<T>(epsilon), ld, skip_size)
+      output, sum_output, input, skip, bias, gamma, beta, epsilon, ld, skip_size)
 
 #define CASE_NEXT_SIZE(next_size_value)                                         \
   case next_size_value: {                                                       \

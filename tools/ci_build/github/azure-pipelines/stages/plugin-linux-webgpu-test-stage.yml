@@ -71,7 +71,7 @@ stages:
           --env "PIP_INDEX_URL=${PIP_INDEX_URL}" \
           --env "VK_ICD_FILENAMES=${swiftshader_icd}" \
           --env "VK_DRIVER_FILES=${swiftshader_icd}" \
-          --env "ORT_TEST_VERBOSE=$(System.Debug)" \
+          --env "ORT_TEST_VERBOSE=$(OrtTestVerbose)" \
           --env "MIN_ORT_VERSION=${min_ort_version}" \
           onnxruntimewebgpuplugin \
           /bin/bash -c '

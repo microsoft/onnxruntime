@@ -199,15 +199,28 @@ bool CanApplyDP4AMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
                                    uint32_t block_size,
                                    uint32_t N,
                                    uint32_t K,
-                                   uint32_t components_k) {
+                                   uint32_t components_k,
+                                   uint32_t M,
+                                   bool has_weight_idx_indirect,
+                                   const Tensor* y) {
   // macOS - Avoid using dp4a on Metal, as it does not appear to have native dp4a support.
   // https://github.com/gpuweb/gpuweb/issues/2677#issuecomment-1713292226
   // Use 'vendor' to check for metal; 'backend' is always WEBGPU when running under wasm.
   bool use_dp4a = context.HasFeature(wgpu::FeatureName::Subgroups) &&
                   context.AdapterInfo().vendor != std::string_view{"apple"};
-  return (accuracy_level == 4 && block_size % 32 == 0 &&
-          components_k == 4 && K % 128 == 0 && N % 16 == 0 &&
-          use_dp4a);
+  if (!(accuracy_level == 4 && block_size % 32 == 0 &&
+        components_k == 4 && K % 128 == 0 && N % 16 == 0 &&
+        use_dp4a)) {
+    return false;
+  }
+
+  // Dispatch precondition: DP4A is used either when M is large enough (and the
+  // weight is contiguous), or unconditionally on FP32-only GPUs and Qualcomm
+  // GPUs where integer math beats FP32.
+  const bool m_large_enough = (M >= kMinMForTileOptimization && !has_weight_idx_indirect);
+  const bool fp32_output = (y != nullptr && y->DataType() == DataTypeImpl::GetType<float>());
+  const bool qualcomm_vendor = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
+  return m_large_enough || fp32_output || qualcomm_vendor;
 }
 
 }  // namespace webgpu

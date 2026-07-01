@@ -27,11 +27,13 @@ CausalConvActivation ParseCausalConvActivation(const std::string& activation_str
 // Program for CausalConvWithState
 class CausalConvWithStateProgram final : public Program<CausalConvWithStateProgram> {
  public:
-  CausalConvWithStateProgram(CausalConvActivation activation, bool has_bias, bool has_conv_state)
+  CausalConvWithStateProgram(CausalConvActivation activation, bool has_bias, bool has_conv_state,
+                             bool output_present_state)
       : Program{"CausalConvWithState"},
         activation_(activation),
         has_bias_(has_bias),
-        has_conv_state_(has_conv_state) {}
+        has_conv_state_(has_conv_state),
+        output_present_state_(output_present_state) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -47,6 +49,19 @@ class CausalConvWithStateProgram final : public Program<CausalConvWithStateProgr
   CausalConvActivation activation_;
   bool has_bias_;
   bool has_conv_state_;
+  bool output_present_state_;
+};
+
+class CausalConvUpdateStateProgram final : public Program<CausalConvUpdateStateProgram> {
+ public:
+  CausalConvUpdateStateProgram() : Program{"CausalConvUpdateState"} {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"input_length", ProgramUniformVariableDataType::Uint32},
+      {"state_length", ProgramUniformVariableDataType::Uint32},
+      {"update_size", ProgramUniformVariableDataType::Uint32});
 };
 
 // Kernel for CausalConvWithState

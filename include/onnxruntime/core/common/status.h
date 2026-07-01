@@ -16,9 +16,13 @@ limitations under the License.
 #include <memory>
 #include <ostream>
 #include <string>
+
 #ifdef _WIN32
 #include <winerror.h>
 #endif
+
+#include "core/session/onnxruntime_error_code.h"
+
 namespace onnxruntime {
 namespace common {
 
@@ -29,24 +33,27 @@ enum StatusCategory {
 };
 
 /**
-   Error code for ONNXRuntime.
-*/
+ * Error code for ONNXRuntime.
+ *
+ * The values are derived from the public C API OrtErrorCode enum so the enum values will match.
+ * If a new OrtErrorCode value is introduced, a corresponding value should also be added here.
+ */
 enum StatusCode {
-  OK = 0,
-  FAIL = 1,
-  INVALID_ARGUMENT = 2,
-  NO_SUCHFILE = 3,
-  NO_MODEL = 4,
-  ENGINE_ERROR = 5,
-  RUNTIME_EXCEPTION = 6,
-  INVALID_PROTOBUF = 7,
-  MODEL_LOADED = 8,
-  NOT_IMPLEMENTED = 9,
-  INVALID_GRAPH = 10,
-  EP_FAIL = 11,
-  MODEL_LOAD_CANCELED = 12,
-  MODEL_REQUIRES_COMPILATION = 13,
-  NOT_FOUND = 14,
+  OK = ORT_OK,
+  FAIL = ORT_FAIL,
+  INVALID_ARGUMENT = ORT_INVALID_ARGUMENT,
+  NO_SUCHFILE = ORT_NO_SUCHFILE,
+  NO_MODEL = ORT_NO_MODEL,
+  ENGINE_ERROR = ORT_ENGINE_ERROR,
+  RUNTIME_EXCEPTION = ORT_RUNTIME_EXCEPTION,
+  INVALID_PROTOBUF = ORT_INVALID_PROTOBUF,
+  MODEL_LOADED = ORT_MODEL_LOADED,
+  NOT_IMPLEMENTED = ORT_NOT_IMPLEMENTED,
+  INVALID_GRAPH = ORT_INVALID_GRAPH,
+  EP_FAIL = ORT_EP_FAIL,
+  MODEL_LOAD_CANCELED = ORT_MODEL_LOAD_CANCELED,
+  MODEL_REQUIRES_COMPILATION = ORT_MODEL_REQUIRES_COMPILATION,
+  NOT_FOUND = ORT_NOT_FOUND,
 };
 
 constexpr const char* StatusCodeToString(StatusCode status) noexcept {

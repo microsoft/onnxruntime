@@ -17,6 +17,7 @@
 
 #param use_vec4
 #param has_initial_state
+#param initial_state_in_present_state
 #param decay_broadcast_dk
 #param tile_v
 #param subgroup_min_size // 0 = disable subgroup reduction
@@ -90,9 +91,6 @@ $MAIN {
 
   // Initialize state tile in private memory
   var state: array<vtype, TILE_V>;
-  for (var j = 0u; j < TILE_V; j++) {
-    state[j] = vtype(0.0);
-  }
 
   // Load initial state if provided
 #if has_initial_state
@@ -100,7 +98,11 @@ $MAIN {
     let state_base = ((batch_idx * uniforms.num_heads + head_idx) * uniforms.head_dim_k + dk_idx) * uniforms.head_dim_v + dv_start;
     for (var j = 0u; j < TILE_V; j++) {
       if (dv_start + j < uniforms.head_dim_v) {
+#if initial_state_in_present_state
+        state[j] = vtype(present_state[state_base + j]);
+#else
         state[j] = vtype(initial_state[state_base + j]);
+#endif
       }
     }
   }

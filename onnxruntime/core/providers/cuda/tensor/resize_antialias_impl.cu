@@ -1314,6 +1314,7 @@ void ResizeNhwcBilinearBicubicUpsample(cudaStream_t stream,
                                        const T* input_data,
                                        T* output_data,
                                        const size_t N) {
+  ORT_UNUSED_PARAMETER(batch_size);  // Used implicitly via N = batch_size * H * W * C
   using AccumType = typename onnxruntime::AccumulateType<T>::type;
 
   const bool use_extrapolation = extrapolation.has_value();

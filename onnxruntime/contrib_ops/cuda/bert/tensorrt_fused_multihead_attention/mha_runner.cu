@@ -123,58 +123,20 @@ class FusedMHARunnerFP16v2::FmhaImpl {
     params.o_stride_in_bytes = interface_->num_heads_ * interface_->head_size_ * sizeof(half);
   }
 
-  void SetupCausal(Fused_multihead_attention_params_v2& params,
-                   int sequence_length,  // normalized sequence length
-                   int batch_size,
-                   bool& use_flash_attention) const {
-    const float scale_bmm1 = interface_->scale_;
-    const float scale_softmax = 1.f;  // Seems to be only required for int8
-    const float scale_bmm2 = 1.f;
-
-    set_alpha_fp16(params.scale_bmm1, scale_bmm1);
-    set_alpha_fp16(params.scale_softmax, scale_softmax);
-    set_alpha_fp16(params.scale_bmm2, scale_bmm2);
-
-    params.b = batch_size;
-    params.h = interface_->num_heads_;
-    params.s = sequence_length;
-    params.d = interface_->head_size_;
-
-    params.qkv_stride_in_bytes = 3 * interface_->num_heads_ * interface_->head_size_ * sizeof(half);
-    params.o_stride_in_bytes = interface_->num_heads_ * interface_->head_size_ * sizeof(half);
-
-    use_flash_attention = interface_->enable_flash_attention_;
-
-    // fallback to original fmha_v2 when head_size <= 64 and sequence_length <= 128
-    if (params.d <= 64 && params.s <= 128) {
-      use_flash_attention = false;
-      // get max sequence length
-      if (params.s > 64) {
-        params.s = 128;
-      } else {
-        params.s = 64;
-      }
-    }
-
-    // set flags
-    params.force_unroll = use_flash_attention;
-  }
-
   void Run(Fused_multihead_attention_params_v2& params,
            const void* input,
            const void* cu_seqlens,
            void* output,
            cudaStream_t stream,
-           bool use_flash_attention,
-           bool has_causal_mask) const {
+           bool use_flash_attention) const {
     params.qkv_ptr = const_cast<void*>(input);
     params.o_ptr = output;
     params.cu_seqlens = static_cast<int*>(const_cast<void*>(cu_seqlens));
 
-    if (use_flash_attention && flash_kernel_ != nullptr && !has_causal_mask) {
+    if (use_flash_attention && flash_kernel_ != nullptr) {
       flash_kernel_->run(params, stream);
     } else {
-      xmma_kernel_->run(params, stream, use_flash_attention, has_causal_mask);
+      xmma_kernel_->run(params, stream, use_flash_attention);
     }
 
     CUDA_CALL_THROW(cudaPeekAtLastError());
@@ -215,7 +177,6 @@ class FusedMHARunnerFP16v2::FmhaImpl {
 
  protected:
   bool UseFlashAttention(int sequence_length) const {
-    ORT_ENFORCE(interface_->is_causal_ == false);
     return interface_->enable_flash_attention_ && sequence_length >= kMinSequenceLengthFlashAttention;
   }
 
@@ -229,35 +190,15 @@ class FusedMHARunnerFP16v2::FmhaImpl {
 FusedMHARunnerFP16v2::FusedMHARunnerFP16v2(int num_heads,
                                            int head_size,
                                            int sm,
-                                           bool causal,
                                            bool enable_flash_attention,
                                            float scale)
-    : MHARunner(num_heads, head_size, causal, scale),
+    : MHARunner(num_heads, head_size, scale),
       enable_flash_attention_(enable_flash_attention),
       impl_(new FmhaImpl(this, sm)) {
 }
 
 bool FusedMHARunnerFP16v2::IsSupported(int sm, int head_size, int sequence_length,
-                                       bool enable_flash_attention, bool causal) {
-  if (causal) {
-    if (!(sm == kSM_70 || sm == kSM_75 || sm == kSM_80 || sm == kSM_86 || sm == kSM_89)) {
-      return false;
-    }
-
-    if (enable_flash_attention) {
-      return head_size == 64 ||
-             head_size == 32 ||
-             head_size == 40 ||
-             head_size == 80 ||
-             head_size == 128 ||
-             head_size == 144 ||
-             head_size == 160 ||
-             head_size == 256;
-    }
-
-    return (head_size == 64 || head_size == 32 || head_size == 40) && sequence_length <= 128;
-  }
-
+                                       bool enable_flash_attention) {
   bool use_flash = enable_flash_attention && sequence_length >= kMinSequenceLengthFlashAttention;
   if (use_flash && has_flash_attention_kernel(sm, head_size)) {
     return true;
@@ -288,13 +229,9 @@ void FusedMHARunnerFP16v2::Run(int batch_size,
                                cudaStream_t stream) const {
   Fused_multihead_attention_params_v2 params;
   bool use_flash_attention = false;
-  if (is_causal_) {
-    impl_->SetupCausal(params, normalized_sequence_length, batch_size, use_flash_attention);
-  } else {
-    impl_->Setup(params, normalized_sequence_length, batch_size, use_flash_attention);
-  }
+  impl_->Setup(params, normalized_sequence_length, batch_size, use_flash_attention);
 
-  impl_->Run(params, input, cu_seqlens, output, stream, use_flash_attention, is_causal_);
+  impl_->Run(params, input, cu_seqlens, output, stream, use_flash_attention);
 }
 
 bool FusedMHARunnerFP16v2::IsValid(int normalized_sequence_length) const {
@@ -308,16 +245,15 @@ int FusedMHARunnerFP16v2::NormalizeSequenceLength(int max_seq_len) const {
 std::unique_ptr<MHARunner> FusedMHARunnerFP16v2::Create(int num_heads,
                                                         int head_size,
                                                         int sm,
-                                                        bool causal,
                                                         bool enable_flash_attention,
                                                         const float scale) {
 #ifdef _MSC_VER
-  return std::make_unique<FusedMHARunnerFP16v2>(num_heads, head_size, sm, causal, enable_flash_attention, scale);
+  return std::make_unique<FusedMHARunnerFP16v2>(num_heads, head_size, sm, enable_flash_attention, scale);
 #else
   // Linux build has error using make_unique: invalid application of ‘sizeof’ to
   // incomplete type ‘onnxruntime::contrib::cuda::FusedMHARunnerFP16v2::FmhaImpl
   std::unique_ptr<MHARunner> runner;
-  runner.reset(new FusedMHARunnerFP16v2(num_heads, head_size, sm, causal, enable_flash_attention, scale));
+  runner.reset(new FusedMHARunnerFP16v2(num_heads, head_size, sm, enable_flash_attention, scale));
   return runner;
 #endif
 }

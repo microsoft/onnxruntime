@@ -603,6 +603,8 @@ set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/custom_op_utils.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_allocator.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_data_copy.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_ep_context_data_api.cc
+          ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_experimental_api.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_loading.cc
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_nontensor_types.cc
@@ -981,10 +983,24 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
   # onnxruntime_providers_cuda_ut is only for unittests.
   onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_ut ${onnxruntime_test_providers_cuda_ut_src} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
   config_cuda_provider_shared_module(onnxruntime_providers_cuda_ut)
+  target_compile_options(onnxruntime_providers_cuda_ut PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
   onnxruntime_add_include_to_target(onnxruntime_providers_cuda_ut GTest::gtest GTest::gmock)
   add_dependencies(onnxruntime_providers_cuda_ut onnxruntime_test_utils)
   target_include_directories(onnxruntime_providers_cuda_ut PRIVATE ${ONNXRUNTIME_ROOT}/core/mickey)
   target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_test_utils)
+  # Link architecture-specific OBJECT libraries (same as onnxruntime_providers_cuda).
+  if(TARGET onnxruntime_providers_cuda_sm90_tma)
+    target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE onnxruntime_providers_cuda_sm90_tma)
+  endif()
+  if(TARGET onnxruntime_providers_cuda_sm120_tma)
+    target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE onnxruntime_providers_cuda_sm120_tma)
+  endif()
+  if(TARGET onnxruntime_providers_cuda_flash_attention)
+    target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE onnxruntime_providers_cuda_flash_attention)
+  endif()
+  if(TARGET onnxruntime_providers_cuda_llm)
+    target_link_libraries(onnxruntime_providers_cuda_ut PRIVATE onnxruntime_providers_cuda_llm)
+  endif()
   if (MSVC)
     # Cutlass code has an issue with the following:
     # warning C4100: 'magic': unreferenced formal parameter
@@ -1450,6 +1466,50 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       PRIVATE ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
     target_compile_definitions(onnxruntime_mlas_softmax_riscv_compare PRIVATE ${mlas_private_compile_definitions})
     set_target_properties(onnxruntime_mlas_softmax_riscv_compare PROPERTIES FOLDER "ONNXRuntimeTest")
+
+    onnxruntime_add_executable(
+      onnxruntime_mlas_halfgemm_rvv_bench
+      ${MLAS_RISCV64_BENCH_DIR}/halfgemm_rvv_bench.cpp)
+    target_include_directories(onnxruntime_mlas_halfgemm_rvv_bench PRIVATE
+      ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}/core/mlas/lib)
+    target_link_libraries(
+      onnxruntime_mlas_halfgemm_rvv_bench
+      PRIVATE ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
+    target_compile_definitions(onnxruntime_mlas_halfgemm_rvv_bench PRIVATE ${mlas_private_compile_definitions})
+    set_target_properties(onnxruntime_mlas_halfgemm_rvv_bench PROPERTIES FOLDER "ONNXRuntimeTest")
+
+    onnxruntime_add_executable(
+      onnxruntime_mlas_cast_rvv_bench
+      ${MLAS_RISCV64_BENCH_DIR}/cast_rvv_bench.cpp)
+    target_include_directories(onnxruntime_mlas_cast_rvv_bench PRIVATE
+      ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}/core/mlas/lib)
+    target_link_libraries(
+      onnxruntime_mlas_cast_rvv_bench
+      PRIVATE ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
+    target_compile_definitions(onnxruntime_mlas_cast_rvv_bench PRIVATE ${mlas_private_compile_definitions})
+    set_target_properties(onnxruntime_mlas_cast_rvv_bench PROPERTIES FOLDER "ONNXRuntimeTest")
+
+    onnxruntime_add_executable(
+      onnxruntime_mlas_rope_rvv_bench
+      ${MLAS_RISCV64_BENCH_DIR}/rope_rvv_bench.cpp)
+    target_include_directories(onnxruntime_mlas_rope_rvv_bench PRIVATE
+      ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}/core/mlas/lib)
+    target_link_libraries(
+      onnxruntime_mlas_rope_rvv_bench
+      PRIVATE ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
+    target_compile_definitions(onnxruntime_mlas_rope_rvv_bench PRIVATE ${mlas_private_compile_definitions})
+    set_target_properties(onnxruntime_mlas_rope_rvv_bench PROPERTIES FOLDER "ONNXRuntimeTest")
+
+    onnxruntime_add_executable(
+      onnxruntime_mlas_rmsnorm_rvv_bench
+      ${MLAS_RISCV64_BENCH_DIR}/rmsnorm_rvv_bench.cpp)
+    target_include_directories(onnxruntime_mlas_rmsnorm_rvv_bench PRIVATE
+      ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}/core/mlas/lib)
+    target_link_libraries(
+      onnxruntime_mlas_rmsnorm_rvv_bench
+      PRIVATE ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
+    target_compile_definitions(onnxruntime_mlas_rmsnorm_rvv_bench PRIVATE ${mlas_private_compile_definitions})
+    set_target_properties(onnxruntime_mlas_rmsnorm_rvv_bench PROPERTIES FOLDER "ONNXRuntimeTest")
   endif()
 
   if(WIN32)
@@ -1550,8 +1610,8 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 
 endif()
 
-
-  if(onnxruntime_USE_QNN)
+  # Build ep_weight_sharing_ctx_gen for all supported EPs (QNN, TensorRT, OpenVINO, VitisAI)
+  if(onnxruntime_USE_QNN OR onnxruntime_USE_TENSORRT OR onnxruntime_USE_OPENVINO OR onnxruntime_USE_VITISAI)
     #qnn ctx generator
     set(ep_weight_sharing_ctx_gen_src_dir ${TEST_SRC_DIR}/ep_weight_sharing_ctx_gen)
     set(ep_weight_sharing_ctx_gen_src_patterns
@@ -2115,6 +2175,7 @@ if (onnxruntime_BUILD_SHARED_LIB AND
   #
   file(GLOB onnxruntime_autoep_test_library_src "${TEST_SRC_DIR}/autoep/library/example_plugin_ep/*.h"
                                                 "${TEST_SRC_DIR}/autoep/library/example_plugin_ep/*.cc"
+                                                "${TEST_SRC_DIR}/autoep/library/ep_context_data_utils.h"
                                                 "${TEST_SRC_DIR}/autoep/library/plugin_ep_utils.h")
   onnxruntime_add_shared_library_module(example_plugin_ep ${onnxruntime_autoep_test_library_src})
   target_include_directories(example_plugin_ep PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)

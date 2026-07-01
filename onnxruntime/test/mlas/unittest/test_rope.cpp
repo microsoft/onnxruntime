@@ -124,8 +124,8 @@ class RoPEShortExecuteTest : public MlasTestFixture<MlasRoPETest<T>> {
   bool interleaved_;
 };
 
-// only test float RoPE with avx2 where RopeDispatch is assigned at this moment.
-#ifdef MLAS_TARGET_AMD64
+// Enable RoPE tests on platforms where RopeDispatch is assigned.
+#if defined(MLAS_TARGET_AMD64) || (defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV))
 static size_t RoPERegisterAllShortExecuteTests() {
   return RoPEShortExecuteTest<float>::RegisterShortExecuteTests() + RoPEShortExecuteTest<MLFloat16>::RegisterShortExecuteTests();
 }

@@ -1398,7 +1398,7 @@ Status Upsample<T>::Compute(OpKernelContext* context) const {
     }
   }
 
-  ComputeROIWithAxes(roi_array, input_dims.size());
+  ORT_RETURN_IF_ERROR(ComputeROIWithAxes(roi_array, input_dims.size()));
   // Get scales data
   InlinedVector<float> scales_array(input_dims.size());
 
