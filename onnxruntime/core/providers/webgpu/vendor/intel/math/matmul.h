@@ -36,12 +36,14 @@ class MatMulSubgroupProgram final : public Program<MatMulSubgroupProgram> {
   const InlinedVector<int64_t> elements_per_thread_;
 };
 
-bool CanApplyMatMulIntel(const ComputeContext& context, int64_t M, int64_t N, int64_t K);
+bool CanApplyMatMulIntel(const ComputeContext& context, int64_t batch, int64_t M, int64_t N, int64_t K);
 
 Status ApplyMatMulIntel(ComputeContext& context,
                         const Activation& activation,
                         std::vector<const Tensor*>& inputs,
-                        Tensor* output);
+                        Tensor* output,
+                        const TensorShape& input_a_reshape = TensorShape(),
+                        const TensorShape& input_b_reshape = TensorShape());
 
 }  // namespace intel
 }  // namespace webgpu
