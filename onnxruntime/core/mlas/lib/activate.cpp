@@ -234,6 +234,38 @@ struct MLAS_ACTIVATION_FUNCTION<MlasHardSigmoidActivation>
     }
 };
 
+template<>
+struct MLAS_ACTIVATION_FUNCTION<MlasHardSwishActivation>
+{
+    MLAS_FLOAT32X4 AlphaBroadcast, BetaBroadcast, MinimumBroadcast, MaximumBroadcast;
+    MLAS_ACTIVATION_FUNCTION(const MLAS_ACTIVATION* Activation)
+    {
+        MLAS_UNREFERENCED_PARAMETER(Activation);
+        AlphaBroadcast = MlasBroadcastFloat32x4(1.0f / 6.0f);
+        BetaBroadcast = MlasBroadcastFloat32x4(0.5f);
+        MinimumBroadcast = MlasZeroFloat32x4();
+        MaximumBroadcast = MlasBroadcastFloat32x4(1.0f);
+    }
+    MLAS_FLOAT32X4 Activate(MLAS_FLOAT32X4 Value)
+    {
+        MLAS_FLOAT32X4 Gate = MlasMultiplyAddFloat32x4(Value, AlphaBroadcast, BetaBroadcast);
+        Gate = MlasMinimumFloat32x4(MaximumBroadcast, Gate);
+        Gate = MlasMaximumFloat32x4(MinimumBroadcast, Gate);
+        return MlasMultiplyFloat32x4(Value, Gate);
+    }
+    float Activate(float Value)
+    {
+#if defined(MLAS_SSE2_INTRINSICS)
+        return _mm_cvtss_f32(Activate(_mm_set_ss(Value)));
+#else
+        float Gate = MlasExtractLaneFloat32x4<0>(AlphaBroadcast) * Value + MlasExtractLaneFloat32x4<0>(BetaBroadcast);
+        Gate = std::min(Gate, MlasExtractLaneFloat32x4<0>(MaximumBroadcast));
+        Gate = std::max(Gate, MlasExtractLaneFloat32x4<0>(MinimumBroadcast));
+        return Value * Gate;
+#endif
+    }
+};
+
 template<MLAS_ACTIVATION_KIND ActivationKind, bool AddBias>
 void
 MlasActivationKernel(
@@ -509,6 +541,12 @@ Return Value:
         case MlasHardSigmoidActivation:
         {
             MlasActivationKernel<MlasHardSigmoidActivation>(Activation, Buffer, Bias, M, N, ldc);
+            break;
+        }
+
+        case MlasHardSwishActivation:
+        {
+            MlasActivationKernel<MlasHardSwishActivation>(Activation, Buffer, Bias, M, N, ldc);
             break;
         }
 
