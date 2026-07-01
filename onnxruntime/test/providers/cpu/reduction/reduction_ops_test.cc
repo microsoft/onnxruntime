@@ -7000,7 +7000,7 @@ TEST(ReductionOpTest, ReduceSum_int64_webgpu) {
   OpTester test("ReduceSum", 13);
   test.AddInput<int64_t>("data", {3}, {10, 20, 30});
   test.AddInput<int64_t>("axes", {1}, {0}, true);
-  test.AddOutput<int64_t>("reduced", {}, {60});
+  test.AddOutput<int64_t>("reduced", {1}, {60});
   ConfigOptions config_options{};
   ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
   auto provider = WebGpuExecutionProviderWithOptions(config_options);
