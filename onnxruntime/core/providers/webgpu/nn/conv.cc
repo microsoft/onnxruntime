@@ -102,6 +102,9 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     const auto x_channels = static_cast<uint32_t>(input_shape[is_channels_last ? 4 : 1]);
     Conv3DNaiveProgram program(activation_, has_bias, is_channels_last);
     program.CacheHint(activation_.ToString(), std::to_string(is_channels_last))
+        .ReserveInputCapacity(has_bias ? 3 : 2)
+        .ReserveOutputCapacity(1)
+        .ReserveUniformVariableCapacity(7)
         .AddInput({input, ProgramTensorMetadataDependency::TypeAndRank, input_shape, 1})
         .AddInput({kernel, ProgramTensorMetadataDependency::TypeAndRank, kernel_shape, 1})
         .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, output_shape, 1})
@@ -191,6 +194,9 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
     auto reduced_kernel_shape = ReduceShapeByComponents(modified_input_output_shapes[1], components);
     auto reduced_output_shape = ReduceShapeByComponents(modified_input_output_shapes[has_bias ? 3 : 2], components);
     program.CacheHint(activation_.ToString(), std::to_string(components), std::to_string(is_channels_last))
+        .ReserveInputCapacity(has_bias ? 3 : 2)
+        .ReserveOutputCapacity(1)
+        .ReserveUniformVariableCapacity(6)
         .AddInput({inputs[0], ProgramTensorMetadataDependency::TypeAndRank, modified_input_output_shapes[0], 1})
         .AddInput({inputs[1], ProgramTensorMetadataDependency::TypeAndRank, reduced_kernel_shape, components})
         .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, reduced_output_shape, components})
@@ -258,6 +264,9 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
       MatMulNaiveProgram program(activation_, output_rank, output_number, has_bias, is_channels_last);
       program
           .CacheHint(std::to_string(components), std::to_string(a_components), std::to_string(output_number))
+          .ReserveInputCapacity(has_bias ? 3 : 2)
+          .ReserveOutputCapacity(1)
+          .ReserveUniformVariableCapacity(4)
           .AddInputs({{matmul_inputs[0], ProgramTensorMetadataDependency::TypeAndRank, ReduceShapeByComponents(matmul_input_reshapes[0], a_components), int(a_components)},
                       {matmul_inputs[1], ProgramTensorMetadataDependency::TypeAndRank, ReduceShapeByComponents(matmul_input_reshapes[1], components), int(components)}});
       if (has_bias) {
