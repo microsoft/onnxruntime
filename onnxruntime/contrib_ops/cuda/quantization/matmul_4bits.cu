@@ -1103,6 +1103,15 @@ bool TryMatMul4Bits(
     return false;
   }
 
+  // The register-tiled batched path (half/bf16, 2 <= m <= cap) launches with no shared memory, so try
+  // it before the shared-memory budget gate that only constrains the shared-memory kernels below.
+  if (m >= 2) {
+    if (TryMatMulBatched4Bits<T>(output, a_data, b_data_quant, scales_data, zero_points,
+                                 m, n, k, block_size, 0, stream)) {
+      return true;
+    }
+  }
+
   dim3 blocks((n + kColsPerThreadBlock - 1) / kColsPerThreadBlock, m);
   dim3 threads(GPU_WARP_SIZE_HOST, kColsPerThreadBlock);
   int blocks_per_K = (k + block_size - 1) / block_size;
@@ -1112,15 +1121,10 @@ bool TryMatMul4Bits(
     return false;
   }
 
-  // 2 <= m <= SmallMCap<T>(): batched GEMV that reuses each dequantized weight across a tile of rows.
-  // half/bf16 use the register-tiled batched kernel (CtaM rounded up to {2,4,8,16}, unused rows skipped);
-  // float and any unsupported shape fall back to the shared-memory small-M kernel. m == 1 uses the
-  // single-row kernel below; larger m used the dequantize + cuBLAS path (returned false above).
+  // Float, and any half/bf16 shape the batched path rejected, falls back to the shared-memory small-M
+  // kernel. m == 1 uses the single-row kernel below; larger m used the dequantize + cuBLAS path
+  // (returned false above).
   if (m >= 2) {
-    if (TryMatMulBatched4Bits<T>(output, a_data, b_data_quant, scales_data, zero_points,
-                                 m, n, k, block_size, shared_mem_size, stream)) {
-      return true;
-    }
     return TryMatMulSmallM4Bits<T>(output, a_data, b_data_quant, scales_data, zero_points,
                                    m, n, k, block_size, shared_mem_size, stream);
   }

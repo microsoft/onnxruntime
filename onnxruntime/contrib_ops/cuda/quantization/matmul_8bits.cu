@@ -559,27 +559,13 @@ bool TryMatMul8Bits(
   // Calculate K / block_size (no rounding needed due to k % block_size == 0 check)
   int blocks_per_K = k / block_size;
 
-  // --- Shared Memory Calculation ---
-  // Memory for scales + optional zero points for the columns handled by the block
-  size_t scale_zp_shared_mem = (sizeof(T) + (zero_points != nullptr ? sizeof(uint8_t) : 0)) *
-                               static_cast<size_t>(blocks_per_K) * kColsPerThreadBlock;
-
-  size_t total_shared_mem = scale_zp_shared_mem;
-
-  // Add shared memory for CUB reduction storage if used
-  total_shared_mem += static_cast<size_t>(kColsPerThreadBlock) * sizeof(typename cub::WarpReduce<float>::TempStorage);
-
-  // Check if required shared memory exceeds device limits for the block
-  if (total_shared_mem > shared_mem_per_block) {
-    return false;
-  }
-
   // 2 <= m <= cap: batched GEMV. CtaM = smallest of {2,4,8} >= m streams the weight once per block row
   // (m=5 uses CtaM=8 and skips the unused rows); CtaN = 2 columns/warp where N allows (reuses each
   // activation load across columns). One float accumulator per (row, column) keeps register pressure
   // low. 8-bit weights are twice the bytes of 4-bit and the GEMV runs on CUDA cores, so it crosses over
   // to the dequantize + cuBLAS (tensor-core) fallback at a lower M than the 4-bit path; the cap keeps
-  // only the row counts where it is faster on every matrix shape.
+  // only the row counts where it is faster on every matrix shape. This path launches with no shared
+  // memory, so it runs before the shared-memory budget gate that only constrains the m==1 kernel below.
   if (m >= 2) {
     const int cta_m = (m <= 2) ? 2 : (m <= 4) ? 4
                                               : 8;
@@ -625,6 +611,21 @@ bool TryMatMul8Bits(
 #undef MatMulFloat8bBatchedDispatchN
 #undef MatMulFloat8bBatchedDispatch
     return true;
+  }
+
+  // --- Shared Memory Calculation (m == 1) ---
+  // Memory for scales + optional zero points for the columns handled by the block
+  size_t scale_zp_shared_mem = (sizeof(T) + (zero_points != nullptr ? sizeof(uint8_t) : 0)) *
+                               static_cast<size_t>(blocks_per_K) * kColsPerThreadBlock;
+
+  size_t total_shared_mem = scale_zp_shared_mem;
+
+  // Add shared memory for CUB reduction storage if used
+  total_shared_mem += static_cast<size_t>(kColsPerThreadBlock) * sizeof(typename cub::WarpReduce<float>::TempStorage);
+
+  // Check if required shared memory exceeds device limits for the block
+  if (total_shared_mem > shared_mem_per_block) {
+    return false;
   }
 
   // --- Kernel Launch (m == 1) ---
