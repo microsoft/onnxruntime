@@ -2739,6 +2739,10 @@ class InferenceContextImpl : public ONNX_NAMESPACE::InferenceContext {
   }
 
   TypeProto* getOutputType(size_t index) override {
+    if (index >= node_output_types_.size()) {
+      fail_type_inference("output index ", index, " is out of range; node has ",
+                          node_output_types_.size(), " outputs");
+    }
     return &node_output_types_[index];
   }
 
@@ -3839,7 +3843,7 @@ Status Graph::ConvertInitializersIntoOrtValues() {
   FindAllSubgraphs(all_subgraphs);
 
   const auto& model_path = GetModel().ModelPath();
-  std::unordered_set<PathString> validated_external_data_paths;
+  InlinedHashSet<PathString> validated_external_data_paths;
 
   auto put_weights_maybe_in_memory_func = [&](Graph& graph) -> Status {
     // if we have any initializers that are not in memory, put them there.
@@ -3903,7 +3907,77 @@ Status Graph::ConvertInitializersIntoOrtValues() {
     return Status::OK();
   };
 
-  return ForThisAndAllSubgraphs(all_subgraphs, put_weights_maybe_in_memory_func);
+  ORT_RETURN_IF_ERROR(ForThisAndAllSubgraphs(all_subgraphs, put_weights_maybe_in_memory_func));
+
+  // Validate and inline external data in node tensor attributes.
+  // In-memory references are rejected (no legitimate source creates them for attributes).
+  // File-based external data paths are validated, read from disk, and inlined as raw_data
+  // so all EPs (including plugins) can access attribute data uniformly.
+  auto inline_external_attr_tensors_func = [&](Graph& graph) -> Status {
+    // Helper: validate and inline a single external TensorProto.
+    auto inline_tensor = [&](ONNX_NAMESPACE::TensorProto& tensor_proto,
+                             const Node& node, std::string_view attr_name) -> Status {
+      ORT_RETURN_IF(utils::HasExternalDataInMemory(tensor_proto),
+                    "Node '", node.Name(), "' attribute '", attr_name,
+                    "' contains an in-memory external data reference, which is not permitted ",
+                    "for node attributes.");
+
+      std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
+      {
+        auto create_status =
+            onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info);
+        if (!create_status.IsOK()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Node '", node.Name(), "' attribute '", attr_name,
+                                 "': ", create_status.ErrorMessage());
+        }
+      }
+      const auto& location = external_data_info->GetRelPath();
+
+      if (validated_external_data_paths.count(location) == 0) {
+        auto path_status = utils::ValidateExternalDataPath(model_path, location);
+        if (!path_status.IsOK()) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "Node '", node.Name(), "' attribute '", attr_name,
+                                 "': ", path_status.ErrorMessage());
+        }
+        validated_external_data_paths.insert(location);
+      }
+
+      std::vector<uint8_t> buffer;
+      auto unpack_status = utils::UnpackInitializerData(tensor_proto, model_path, buffer);
+      if (!unpack_status.IsOK()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Node '", node.Name(), "' attribute '", attr_name,
+                               "': ", unpack_status.ErrorMessage());
+      }
+
+      tensor_proto.clear_external_data();
+      tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_DEFAULT);
+      utils::SetRawDataInTensorProto(tensor_proto, buffer.data(), buffer.size());
+      return Status::OK();
+    };
+
+    for (auto& node : graph.Nodes()) {
+      for (auto& [attr_name, attr_proto] : node.GetMutableAttributes()) {
+        if (utils::HasTensor(attr_proto)) {
+          auto* tensor_proto = attr_proto.mutable_t();
+          if (utils::HasExternalData(*tensor_proto)) {
+            ORT_RETURN_IF_ERROR(inline_tensor(*tensor_proto, node, attr_name));
+          }
+        } else if (utils::HasTensors(attr_proto)) {
+          for (auto& tensor_proto : *attr_proto.mutable_tensors()) {
+            if (utils::HasExternalData(tensor_proto)) {
+              ORT_RETURN_IF_ERROR(inline_tensor(tensor_proto, node, attr_name));
+            }
+          }
+        }
+      }
+    }
+    return Status::OK();
+  };
+
+  return ForThisAndAllSubgraphs(all_subgraphs, inline_external_attr_tensors_func);
 }
 
 void Graph::SetName(const std::string& name) {

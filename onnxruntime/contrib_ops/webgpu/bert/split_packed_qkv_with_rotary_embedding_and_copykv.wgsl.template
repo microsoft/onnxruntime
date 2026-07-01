@@ -6,6 +6,10 @@
 #use guardAgainstOutOfBoundsWorkgroupSizes
 #use .setByIndices .getByIndices .getByOffset
 
+#if prepare_indirect_dispatch
+#include "bert/indirect_dispatch_common.wgsl.template"
+#endif
+
 $MAIN {
   guardAgainstOutOfBoundsWorkgroupSizes(uniforms.dispatch_size);
 
@@ -45,7 +49,7 @@ $MAIN {
   if (global_idx == 0u) {
     let global_total_seq_length = u32(total_sequence_length_input[0]);
     let num_total_seq_length_tile = (global_total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;
-    normalize_dispatch_group_size(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);
+    populate_indirect_dispatch_buffer(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);
   }
 #endif
 

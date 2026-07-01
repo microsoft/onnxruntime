@@ -1,18 +1,27 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#param compressed_head_size_u32
 #param has_attention_bias
-#param v_head_size_vec
 #param is_unidirectional
 #param m_tile
 #param q_BNSH
 #param sub_tile_count
 #param tile_size
 #param tile_size_k_vec
+#param turbo_quant
 #param use_indirect_dispatch
 #param use_seqlen_k
+#param v_head_size_vec
 
 #use .getByOffset .setByOffset
+
+#if turbo_quant
+#include "bert/turbo_quant_common.wgsl.template"
+#include "bert/turbo_quant_dequant.wgsl.template"
+const COMPRESSED_HEAD_U32 : u32 = compressed_head_size_u32;
+const COMPRESSED_HEAD_U32_WITHOUT_SCALE : u32 = COMPRESSED_HEAD_U32 - 1u;
+#endif
 
 // Fused QK^T + softmax + V multiply shader.
 //
@@ -26,11 +35,19 @@
 //
 // The VxReduce shader performs the final rescaling across tiles.
 
+#if turbo_quant
+// TQ: preload all Q vec4s and centroid LUT into shared memory.
+var<workgroup> all_q: array<array<q_value_t, v_head_size_vec>, m_tile>;
+var<workgroup> tq_k_scales: array<f32, tile_size>;
+var<workgroup> tq_v_scales: array<f32, tile_size>;
+var<workgroup> tq_lut: array<f32, 16>;
+#else
 var<workgroup> tile_q: array<array<q_value_t, tile_size_k_vec>, m_tile>;
+#endif
 var<workgroup> inner_qk_values: array<array<array<q_element_t, tile_size_k_vec>, tile_size>, m_tile>;
-var<workgroup> tile_qk: array<array<present_value_element_t, tile_size>, m_tile>;
-var<workgroup> tile_output: array<array<present_value_value_t, v_head_size_vec>, m_tile>;
-var<workgroup> qkv_values: array<array<array<present_value_value_t, tile_size_k_vec>, sub_tile_count>, m_tile>;
+var<workgroup> tile_qk: array<array<q_element_t, tile_size>, m_tile>;
+var<workgroup> tile_output: array<array<q_value_t, v_head_size_vec>, m_tile>;
+var<workgroup> qkv_values: array<array<array<q_value_t, tile_size_k_vec>, sub_tile_count>, m_tile>;
 var<workgroup> tile_max: array<f32, m_tile>;
 var<workgroup> tile_sum: array<f32, m_tile>;
 
@@ -84,6 +101,66 @@ $MAIN {
   #else
   let total_sequence_length = global_total_sequence_length;
   #endif
+
+#if turbo_quant
+  let kv_head_offset = (batch_head_idx / uniforms.n_reps) * uniforms.present_sequence_length * COMPRESSED_HEAD_U32;
+
+  // Preload centroid LUT.
+  if (local_idx < 16u) {
+    tq_lut[local_idx] = TQ_CENTROIDS[local_idx];
+  }
+
+  // Preload K scales for this tile.
+  if (local_idx < tile_size && total_seq_offset + local_idx < total_sequence_length) {
+    let scale_base = kv_head_offset + (total_seq_offset + local_idx) * COMPRESSED_HEAD_U32;
+    tq_k_scales[local_idx] = bitcast<f32>(present_key[scale_base]);
+    tq_v_scales[local_idx] = bitcast<f32>(present_value[scale_base]);
+  }
+
+  // Preload all Q into shared memory.
+  for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
+    let q_idx = q_base + m;
+#if q_BNSH
+    let q_offset = batch_idx * uniforms.num_heads * uniforms.new_sequence_length * uniforms.head_size_vec +
+                   head_idx * uniforms.new_sequence_length * uniforms.head_size_vec +
+                   q_idx * uniforms.head_size_vec;
+#else
+    let q_offset = batch_idx * uniforms.new_sequence_length * uniforms.num_heads * uniforms.head_size_vec +
+                   q_idx * uniforms.num_heads * uniforms.head_size_vec +
+                   head_idx * uniforms.head_size_vec;
+#endif
+    for (var i = local_idx; i < v_head_size_vec; i += workgroup_size_x) {
+      all_q[m][i] = q.getByOffset(q_offset + i) * q_element_t(uniforms.alpha);
+    }
+  }
+  workgroupBarrier();
+
+  // ============================================================
+  // Phase 1 (TQ): QK^T with dequantized K from packed u32
+  // ============================================================
+  // Each thread processes one u32 word per iteration (8 nibbles → 2 vec4 dot products).
+  for (var kw: u32 = 0u; kw < COMPRESSED_HEAD_U32_WITHOUT_SCALE; kw += tile_size_k_vec) {
+    let word_idx = kw + local_col;
+    if (word_idx < COMPRESSED_HEAD_U32_WITHOUT_SCALE) {
+      for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_count) {
+        let seq_idx = total_seq_offset + row_offset + local_row;
+        if (seq_idx < total_sequence_length) {
+          let base = kv_head_offset + seq_idx * COMPRESSED_HEAD_U32;
+          let packed = present_key[base + 1u + word_idx];
+          let k_lo = tq_unpack_nibbles(packed);
+          let k_hi = tq_unpack_nibbles(packed >> 16u);
+          for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
+            let mq_lo = all_q[m][word_idx * 2u];
+            let mq_hi = all_q[m][word_idx * 2u + 1u];
+            inner_qk_values[m][row_offset + local_row][local_col] += dot(k_lo, mq_lo) + dot(k_hi, mq_hi);
+          }
+        }
+      }
+    }
+  }
+  workgroupBarrier();
+
+#else
   let present_key_offset = batch_head_idx / uniforms.n_reps * uniforms.present_sequence_length * uniforms.head_size_vec;
   let present_value_offset = u32(batch_head_idx / uniforms.n_reps) * v_head_size_vec * uniforms.present_sequence_length;
 
@@ -133,6 +210,7 @@ $MAIN {
     }
     workgroupBarrier();
   }
+#endif
 
   // Reduce inner_qk_values to tile_qk, apply attention bias and causal mask
 #if is_unidirectional
@@ -148,6 +226,10 @@ $MAIN {
       for (var i = 0u; i < tile_size_k_vec; i++) {
         sum += inner_qk_values[m][local_idx][i];
       }
+#if turbo_quant
+      // Apply the deferred scale (L2 norm factored out of the inner loop).
+      sum *= q_element_t(tq_k_scales[local_idx]);
+#endif
 
       sum = sum + loadAttentionBias(batch_idx, head_idx, q_idx, total_seq_offset + local_idx);
 #if is_unidirectional
@@ -155,7 +237,7 @@ $MAIN {
         sum = q_element_t(-65504.0f);
       }
 #endif
-      tile_qk[m][local_idx] = present_value_element_t(sum);
+      tile_qk[m][local_idx] = sum;
     }
     workgroupBarrier();
 
@@ -184,14 +266,51 @@ $MAIN {
   // Normalize tile_qk with local max/sum
   for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
     if (local_idx < tile_size && total_seq_offset + local_idx < total_sequence_length) {
-      tile_qk[m][local_idx] = present_value_element_t(exp(f32(tile_qk[m][local_idx]) - tile_max[m]) / tile_sum[m]);
+      tile_qk[m][local_idx] = q_element_t(exp(f32(tile_qk[m][local_idx]) - tile_max[m]) / tile_sum[m]);
     }
   }
   workgroupBarrier();
 
+#if turbo_quant
+  // TQ V multiply: dequantize V from packed u32 on the fly.
   for (var k: u32 = 0u; k < v_head_size_vec; k += tile_size_k_vec) {
     for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
-      qkv_values[m][local_row][local_col] = present_value_value_t(0);
+      qkv_values[m][local_row][local_col] = q_value_t(0);
+    }
+    workgroupBarrier();
+
+    if (k + local_col < v_head_size_vec) {
+      for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_count) {
+        let seq_idx = total_seq_offset + row_offset + local_row;
+        if (seq_idx < total_sequence_length) {
+          let elem_base = (k + local_col) * 4u;
+          let tq_word_idx = elem_base >> 3u;
+          let base = kv_head_offset + seq_idx * COMPRESSED_HEAD_U32;
+          let scale = tq_v_scales[row_offset + local_row];
+          let packed = present_value[base + 1u + tq_word_idx];
+          let tq_shift = (elem_base & 4u) << 2u;
+          let v_val = tq_unpack_nibbles(packed >> tq_shift) * q_element_t(scale);
+          for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
+            qkv_values[m][local_row][local_col] += v_val * tile_qk[m][row_offset + local_row];
+          }
+        }
+      }
+    }
+    workgroupBarrier();
+
+    if (local_idx < tile_size_k_vec) {
+      for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
+        for (var i = 0u; i < sub_tile_count; i++) {
+          tile_output[m][k + local_idx] += qkv_values[m][i][local_idx];
+        }
+      }
+    }
+    workgroupBarrier();
+  }
+#else
+  for (var k: u32 = 0u; k < v_head_size_vec; k += tile_size_k_vec) {
+    for (var m = 0u; m < m_tile && q_base + m < uniforms.new_sequence_length; m++) {
+      qkv_values[m][local_row][local_col] = q_value_t(0);
     }
     workgroupBarrier();
 
@@ -216,6 +335,7 @@ $MAIN {
     }
     workgroupBarrier();
   }
+#endif
 
   // Write output
   let tile_idx = workgroup_idx % num_total_seq_length_tile;

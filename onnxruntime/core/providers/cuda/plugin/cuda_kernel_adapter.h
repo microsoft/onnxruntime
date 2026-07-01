@@ -33,6 +33,7 @@
 #include <cublas_v2.h>
 #include <cudnn.h>
 #include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "core/providers/cuda/cudnn_loader.h"
 #include "contrib_ops/cuda/bert/attention_kernel_options.h"
 
 #ifdef __CUDACC__
@@ -264,6 +265,11 @@ using ::onnxruntime::HandleNegativeAxis;
   {                                                                                                                                                                 \
     cudnnStatus_t _status = (expr);                                                                                                                                 \
     if (_status != CUDNN_STATUS_SUCCESS) {                                                                                                                          \
+      if (!onnxruntime::cuda::CudnnLibrary::Get().Available()) {                                                                                                    \
+        return onnxruntime::common::Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,                                                  \
+                                           std::string("cuDNN is unavailable for CUDA Plugin Execution Provider: ") +                                               \
+                                               onnxruntime::cuda::CudnnLibrary::Get().Error());                                                                     \
+      }                                                                                                                                                             \
       return onnxruntime::common::Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, std::string("cuDNN error: ") + cudnnGetErrorString(_status)); \
     }                                                                                                                                                               \
   }
@@ -517,10 +523,10 @@ namespace cuda {
 namespace detail {
 struct CudaKernelAdapterRuntimeConfig {
   bool use_tf32 = true;
-  bool skip_layer_norm_strict_mode = false;
   int cudnn_conv_algo = 0;
   bool cudnn_conv_use_max_workspace = true;
   bool cudnn_conv1d_pad_to_nc1d = false;
+  bool enable_cudnn = true;
   bool fuse_conv_bias = false;
   int sdpa_kernel = 0;
   int device_id = 0;
@@ -588,6 +594,10 @@ inline DefaultCudaHandles& GetDefaultCudaHandlesForDevice(int device_id) {
   // Fallback handles are only used for code paths that need cuBLAS/cuDNN
   // without an active CudaSyncStream. Keep them thread-local so they are not
   // shared across callers that may use the libraries concurrently.
+  //
+  // Only cuBLAS/cuBLASLt are created here. The cuDNN fallback handle is created
+  // lazily by GetDefaultCudnnHandleForDevice() so that cuBLAS-only paths (and
+  // sessions with enable_cudnn=0) never trigger a cuDNN load.
   thread_local std::unordered_map<int, DefaultCudaHandles> handles_by_device;
   auto [it, inserted] = handles_by_device.try_emplace(device_id);
   if (inserted) {
@@ -601,18 +611,7 @@ inline DefaultCudaHandles& GetDefaultCudaHandlesForDevice(int device_id) {
       handles_by_device.erase(it);
       ORT_THROW("Failed to create default cuBLAS handle for CUDA plugin device ", device_id);
     }
-    if (cudnnCreate(&it->second.cudnn) != CUDNN_STATUS_SUCCESS) {
-      cublasDestroy(it->second.cublas);
-      it->second.cublas = nullptr;
-      if (get_device_result == cudaSuccess) {
-        cudaSetDevice(prev_device);
-      }
-      handles_by_device.erase(it);
-      ORT_THROW("Failed to create default cuDNN handle for CUDA plugin device ", device_id);
-    }
     if (cublasLtCreate(&it->second.cublas_lt) != CUBLAS_STATUS_SUCCESS) {
-      cudnnDestroy(it->second.cudnn);
-      it->second.cudnn = nullptr;
       cublasDestroy(it->second.cublas);
       it->second.cublas = nullptr;
       if (get_device_result == cudaSuccess) {
@@ -627,6 +626,31 @@ inline DefaultCudaHandles& GetDefaultCudaHandlesForDevice(int device_id) {
   }
 
   return it->second;
+}
+
+// Lazily creates the thread-local fallback cuDNN handle for the device. Callers
+// must check enable_cudnn and CudnnLibrary::Available() before invoking this so
+// that cuBLAS-only paths never trigger a cuDNN load.
+inline cudnnHandle_t GetDefaultCudnnHandleForDevice(int device_id) {
+  DefaultCudaHandles& handles = GetDefaultCudaHandlesForDevice(device_id);
+  if (handles.cudnn != nullptr) {
+    return handles.cudnn;
+  }
+
+  int prev_device = -1;
+  const cudaError_t get_device_result = cudaGetDevice(&prev_device);
+  PL_CUDA_CALL_THROW(cudaSetDevice(device_id));
+  cudnnHandle_t cudnn = nullptr;
+  const cudnnStatus_t status = cudnnCreate(&cudnn);
+  if (get_device_result == cudaSuccess) {
+    cudaSetDevice(prev_device);
+  }
+  if (status != CUDNN_STATUS_SUCCESS) {
+    ORT_THROW("Failed to create default cuDNN handle for CUDA plugin device ", device_id);
+  }
+
+  handles.cudnn = cudnn;
+  return cudnn;
 }
 
 inline const cudaDeviceProp& GetDevicePropForDevice(int device_id) {
@@ -727,20 +751,15 @@ inline void SetCudaKernelAdapterRuntimeConfigForProvider(
   // AttentionKernelOptions contains std::once_flag (not copyable), so assign
   // the plain-data fields individually rather than relying on operator=.
   config->use_tf32 = init_config.use_tf32;
-  config->skip_layer_norm_strict_mode = init_config.skip_layer_norm_strict_mode;
   config->cudnn_conv_algo = init_config.cudnn_conv_algo;
   config->cudnn_conv_use_max_workspace = init_config.cudnn_conv_use_max_workspace;
   config->cudnn_conv1d_pad_to_nc1d = init_config.cudnn_conv1d_pad_to_nc1d;
+  config->enable_cudnn = init_config.enable_cudnn;
   config->fuse_conv_bias = init_config.fuse_conv_bias;
   config->sdpa_kernel = init_config.sdpa_kernel;
   config->device_id = init_config.device_id;
   config->do_copy_in_default_stream = init_config.do_copy_in_default_stream;
   PL_CUDA_CALL_THROW(cudaGetDeviceProperties(&config->device_prop, config->device_id));
-}
-
-inline bool GetCudaKernelAdapterSkipLayerNormStrictMode(const void* provider) {
-  const auto config = detail::GetCudaKernelAdapterRuntimeConfigForProvider(provider);
-  return config->skip_layer_norm_strict_mode;
 }
 
 // Global aliases and shims
@@ -980,7 +999,12 @@ class CudaKernel : public OpKernel {
 
   inline cudaStream_t DefaultCudaStream() const { return Stream(static_cast<OpKernelContext*>(nullptr)); }
   inline cublasHandle_t DefaultCublasHandle() const { return detail::GetDefaultCudaHandlesForDevice(device_id_).cublas; }
-  inline cudnnHandle_t DefaultCudnnHandle() const { return detail::GetDefaultCudaHandlesForDevice(device_id_).cudnn; }
+  inline cudnnHandle_t DefaultCudnnHandle() const {
+    if (!runtime_config_->enable_cudnn || !onnxruntime::cuda::CudnnLibrary::Get().Available()) {
+      return nullptr;
+    }
+    return detail::GetDefaultCudnnHandleForDevice(device_id_);
+  }
   inline cublasLtHandle_t DefaultCublasLtHandle() const { return detail::GetDefaultCudaHandlesForDevice(device_id_).cublas_lt; }
 
   inline Status CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst, onnxruntime::Stream& stream) const {
@@ -1034,7 +1058,13 @@ class CudaKernel : public OpKernel {
     }
 
     handle = DefaultCudnnHandle();
-    if (stream != nullptr) {
+    if (handle == nullptr) {
+      ORT_THROW_IF_ERROR(onnxruntime::common::Status(
+          onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
+          std::string("cuDNN is unavailable or disabled for CUDA Plugin Execution Provider: ") +
+              onnxruntime::cuda::CudnnLibrary::Get().Error()));
+    }
+    if (handle != nullptr && stream != nullptr) {
       CUDNN_CALL_THROW(cudnnSetStream(handle, stream));
     }
     return handle;

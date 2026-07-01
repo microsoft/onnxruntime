@@ -26,6 +26,21 @@ The ORT CUDA build produces four separate libraries:
 | `onnxruntime_providers_cuda` | `libonnxruntime_providers_cuda.so` | Shared module | In-tree CUDA EP (uses `SHARED_PROVIDER` bridge) |
 | `onnxruntime_providers_cuda_plugin` | `libonnxruntime_providers_cuda_plugin.so` | Shared module | Plugin CUDA EP (uses EP API adapters) |
 
+### 2.1.1 Optional cuDNN Runtime Dependency
+
+The CUDA Plugin EP follows the in-tree CUDA EP's optional-cuDNN model. cuDNN headers are still required at build time, but the plugin shared library must not link directly to cuDNN or contain a cuDNN DLL/SO in its dynamic dependency table. cuDNN is loaded lazily through the ORT cuDNN loader when `enable_cudnn` is enabled and the runtime libraries are available through trusted process-level library discovery.
+
+The plugin exposes the same `enable_cudnn` provider option as the in-tree CUDA EP:
+
+```text
+enable_cudnn = 1  # default: try to load and use cuDNN when available
+enable_cudnn = 0  # do not load cuDNN; run native CUDA paths or fail cuDNN-required ops with NOT_IMPLEMENTED
+```
+
+There is intentionally no provider option for a custom cuDNN DLL/SO path. Provider options can flow from higher-level configuration systems, so allowing them to choose a native library path would create a code-loading security risk. Deployments that need a specific cuDNN directory should use trusted process-level mechanisms, such as the OS loader configuration, container image setup, or Python `preload_dlls(cudnn=True, directory=...)` before plugin registration.
+
+No-cuDNN plugin validation runs `test_cuda_plugin_ep.py` with `ORT_TEST_CUDA_PLUGIN_EP=1` and `ORT_TEST_CUDA_PLUGIN_NO_CUDNN=1`. That mode passes `enable_cudnn=0` to plugin sessions and skips tests for operators that still require cuDNN in the current implementation. Non-cuDNN operator coverage, plugin registration, device enumeration, graph assignment, CUDA graph, I/O binding, and profiling tests continue to run.
+
 ### 2.2 Preprocessor Defines
 
 Each build target uses different preprocessor defines that control how framework types are resolved:
@@ -618,7 +633,7 @@ The in-tree CUDA EP and shared provider bridge are compiled identically regardle
 
 ### 9.3 Plugin Independence
 
-`libonnxruntime_providers_cuda_plugin.so` is **fully self-contained**. It does not depend on `libonnxruntime_providers_cuda.so` or `libonnxruntime_providers_shared.so` at load time. It statically links against `onnxruntime_framework`, `onnxruntime_graph`, `onnxruntime_common`, `onnxruntime_mlas`, `onnxruntime_flatbuffers`, and links dynamically against CUDA (`cudart`, `cublas`, `cublasLt`, `cufft`), cuDNN, and protobuf. Communication with the ORT runtime happens exclusively through the C API (`OrtApi`/`OrtEpApi`) passed at load time.
+`libonnxruntime_providers_cuda_plugin.so` is **fully self-contained**. It does not depend on `libonnxruntime_providers_cuda.so` or `libonnxruntime_providers_shared.so` at load time. It statically links against `onnxruntime_framework`, `onnxruntime_graph`, `onnxruntime_common`, `onnxruntime_mlas`, `onnxruntime_flatbuffers`, and links dynamically against CUDA (`cudart`, `cublas`, `cublasLt`, `cufft`) and protobuf. cuDNN is loaded lazily only when enabled and available at runtime. Communication with the ORT runtime happens exclusively through the C API (`OrtApi`/`OrtEpApi`) passed at load time.
 
 ### 9.4 Build Outputs
 

@@ -39,7 +39,11 @@ struct VariantModelInfo {
   // from variant.json file entry
   std::optional<std::unordered_map<std::string, std::string>> session_options;
   std::optional<std::unordered_map<std::string, std::string>> provider_options;
-  std::optional<std::unordered_map<std::string, std::string>> shared_files;  // logical_name -> checksum/path
+
+  // Resolved folder containing the model's external initializer file, when
+  // executor_info.ort.external_data was set (path or sha256: URI). Empty
+  // otherwise. Used as the ORT external-initializers folder hint.
+  std::optional<std::string> external_data_folder_path;
 };
 
 // variant-level info (metadata.json + variant.json)
@@ -124,6 +128,10 @@ class ModelPackageComponentContext {
 
   Status GetSelectedVariantName(const std::string*& out_name) const;
 
+  // Returns the resolved external_data folder for the selected variant, or
+  // nullptr-on-success if none was declared. Borrowed from VariantModelInfo.
+  Status GetSelectedVariantExternalDataFolder(const std::string*& out_folder) const;
+
   std::vector<std::unique_ptr<IExecutionProvider>>& MutableProviderList() { return provider_list_; }
   const std::vector<const OrtEpDevice*>& ExecutionDevices() const { return execution_devices_; }
   const std::vector<const OrtEpDevice*>& DevicesSelected() const { return devices_selected_; }
@@ -184,7 +192,7 @@ class ModelPackageContext {
                          gsl::span<const std::string>& out_variant_names) const;
 
   // Get the EP compatibility info declared on a variant.
-  // Lets callers (e.g. GenAI defaulting logic) inspect what EP a variant targets
+  // Lets callers inspect what EP a variant targets
   // before any EP has been resolved / before SelectComponent has been called.
   Status GetVariantEpCompatibility(const std::string& component_name,
                                    const std::string& variant_name,
@@ -198,7 +206,25 @@ class ModelPackageContext {
     return model_variant_infos_;
   }
 
+  // Resolves a path reference from the package against the model_package library's rules:
+  // a "sha256:<hex>[/tail]" content-addressed shared-asset reference (honoring manifest
+  // overrides), or a plain relative path resolved against `base_dir` (empty base_dir falls
+  // back to the package root). When `must_exist` is true the resolved path must exist on
+  // disk. The returned pointer is owned by this context and stays valid until the next
+  // ResolveStringRef call. The underlying package handle is kept open for the context's
+  // lifetime so no reopen/reparse happens per call.
+  Status ResolveStringRef(const std::string& base_dir, const std::string& input,
+                          bool must_exist, const char*& out_path) const;
+
  private:
+  // The open model_package library handle, kept alive for this context's lifetime so path
+  // references can be resolved on demand. Stored type-erased (void*) to keep the
+  // model_package C header out of this ORT header; the deleter defined in the .cc closes it
+  // via ModelPackage_Close.
+  std::unique_ptr<void, void (*)(void*)> package_handle_;
+  std::filesystem::path package_root_{};
+  mutable std::string resolve_string_ref_cache_{};
+
   ModelPackageInfo model_package_info_{};
   std::vector<VariantInfo> model_variant_infos_;
 

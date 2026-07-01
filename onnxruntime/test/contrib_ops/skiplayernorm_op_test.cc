@@ -12,7 +12,6 @@ namespace test {
 constexpr float epsilon_ = 1e-12f;
 
 static void RunOneTest(
-    bool strict,
     const std::vector<float>& input_data,
     const std::vector<float>& skip_data,
     const std::vector<float>& gamma_data,
@@ -136,14 +135,7 @@ static void RunOneTest(
                                ToBFloat16(sum_output_data));
     }
 
-    if (strict) {
-      Ort::CUDAProviderOptions cuda_options;
-      std::unordered_map<std::string, std::string> options = {{"enable_skip_layer_norm_strict_mode", "1"}};
-      cuda_options.Update(options);
-      execution_providers.push_back(CudaExecutionProviderWithOptions(std::move(cuda_options)));
-    } else {
-      execution_providers.push_back(DefaultCudaExecutionProvider());
-    }
+    execution_providers.push_back(DefaultCudaExecutionProvider());
 
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   } else if (HasCudaEnvironment(530 /*min_cuda_architecture*/) ||
@@ -187,14 +179,7 @@ static void RunOneTest(
     } else if (dml_ep != nullptr) {
       execution_providers.push_back(DefaultDmlExecutionProvider());
     } else {
-      if (strict) {
-        Ort::CUDAProviderOptions cuda_options;
-        std::unordered_map<std::string, std::string> options = {{"enable_skip_layer_norm_strict_mode", "1"}};
-        cuda_options.Update(options);
-        execution_providers.push_back(CudaExecutionProviderWithOptions(std::move(cuda_options)));
-      } else {
-        execution_providers.push_back(DefaultCudaExecutionProvider());
-      }
+      execution_providers.push_back(DefaultCudaExecutionProvider());
     }
 
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
@@ -220,16 +205,9 @@ static void RunTest(
     bool use_token_count = false,
     bool broadcast_skip = false,
     bool no_batch_size = false) {
-  RunOneTest(false, input_data, skip_data, gamma_data, beta_data, bias_data, output_data, sum_output_data,
+  RunOneTest(input_data, skip_data, gamma_data, beta_data, bias_data, output_data, sum_output_data,
              epsilon, batch_size, sequence_length, hidden_size, use_float16, use_bfloat16, no_beta, simplified,
              use_token_count, broadcast_skip, no_batch_size);
-
-  // strict mode does not support skip broadcasting.
-  if (!broadcast_skip) {
-    RunOneTest(true, input_data, skip_data, gamma_data, beta_data, bias_data, output_data, sum_output_data,
-               epsilon, batch_size, sequence_length, hidden_size, use_float16, use_bfloat16, no_beta, simplified,
-               use_token_count, broadcast_skip, no_batch_size);
-  }
 }
 
 TEST(SkipLayerNormTest, SkipLayerNormPrePack) {

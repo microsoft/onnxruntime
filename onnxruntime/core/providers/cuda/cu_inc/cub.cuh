@@ -11,10 +11,14 @@
 #if defined(_MSC_VER)
 #pragma push_macro("__out")
 #undef __out
+// CCCL cub/config.cuh has a #pragma warning(pop) without matching push in CUDA v13.3.
+#pragma warning(push)
+#pragma warning(disable : 4193)
 #endif
 
 #include <cub/cub.cuh>
 
 #if defined(_MSC_VER)
+#pragma warning(pop)
 #pragma pop_macro("__out")
 #endif
