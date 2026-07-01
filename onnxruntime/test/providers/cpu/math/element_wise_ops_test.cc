@@ -23,6 +23,7 @@
 // and adds no link dependency on the webgpu provider library (which is not linked into
 // onnxruntime_provider_test in every build configuration, e.g. the plugin build). See issue #28969.
 #include "core/providers/webgpu/math/binary_elementwise_broadcast_utils.h"
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #endif
 
 namespace onnxruntime {
@@ -5052,6 +5053,32 @@ TEST(MathOpTest, BitwiseNot_uint8) {
   test.AddOutput<uint8_t>("Y", dims, {254, 251, 250, 252});
   test.Run();
 }
+
+#ifdef USE_WEBGPU
+TEST(MathOpTest, Sub_int64_webgpu) {
+  OpTester test("Sub", 14);
+  test.AddInput<int64_t>("A", {4}, {10, 5, -3, 0});
+  test.AddInput<int64_t>("B", {4}, {3, 5, 1, -7});
+  test.AddOutput<int64_t>("C", {4}, {7, 0, -4, 7});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+TEST(MathOpTest, Equal_int64_webgpu) {
+  OpTester test("Equal", 13);
+  test.AddInput<int64_t>("A", {5}, {1, 0, -1, -1, 3});
+  test.AddInput<int64_t>("B", {5}, {1, 1, 2, -1, 3});
+  test.AddOutput<bool>("C", {5}, {true, false, false, true, true});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
