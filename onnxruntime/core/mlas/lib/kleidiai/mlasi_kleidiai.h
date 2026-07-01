@@ -56,9 +56,16 @@ inline const bool UseSME2 = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2();
 inline const bool UseSME = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME();
 inline const std::string_view vendor_name = MLAS_CPUIDINFO::GetCPUIDInfo().GetCPUVendor();
 
+bool
+MLASCALL
+DepthwiseConvKleidiAISupported(
+    const MLAS_CONV_PARAMETERS* Parameters
+    );
+
 // Selects the convolution route for Arm® KleidiAI™
 enum class ConvRoute {
     NoKleidiAi,    // decline the conv, caller runs unchanged
+    Depthwise,     // handle the whole conv via SME2 depthwise kernel
     IGemm,         // handle the whole conv via SME IGEMM kernel
     SGemmFallback, // decline IGEMM, but still route the per-segment SGEMM slices through MlasGemm
                    // so that the Arm® KleidiAI™ SGEMM backend override can pick them up
@@ -115,6 +122,12 @@ inline ConvRouteSelection SelectConvRoute(const MLAS_CONV_PARAMETERS* Parameters
         (Parameters->Padding[0] != Parameters->Padding[2]) ||
         (Parameters->Padding[0] != Parameters->Padding[3])) {
         return ConvRouteSelection{};
+    }
+
+    if (Parameters->InputChannels == 1 && Parameters->FilterCount == 1) {
+        return DepthwiseConvKleidiAISupported(Parameters)
+            ? ConvRouteSelection{ConvRoute::Depthwise, Parameters->KernelShape[0], Parameters->KernelShape[1]}
+            : ConvRouteSelection{};
     }
 
     size_t effective_kernel_h;
@@ -336,6 +349,28 @@ MlasConv(
     float* WorkingBuffer,
     float* Output,
     MLAS_THREADPOOL* ThreadPool
+    );
+
+bool
+MLASCALL
+DepthwiseConvKleidiAI(
+    size_t batches,
+    size_t in_height,
+    size_t in_width,
+    size_t channels,
+    size_t filter_height,
+    size_t filter_width,
+    size_t pad_top,
+    size_t pad_left,
+    size_t pad_bottom,
+    size_t pad_right,
+    bool channels_last,
+    const float* feature_map,
+    const float* weights,
+    const float* bias,
+    float* out,
+    float clamp_min,
+    float clamp_max
     );
 
 size_t

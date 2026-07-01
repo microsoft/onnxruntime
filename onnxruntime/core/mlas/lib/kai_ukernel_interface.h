@@ -18,13 +18,18 @@
 
 #include "kai/ukernels/matmul/imatmul_clamp_f32_f32p_f32p/kai_imatmul_clamp_f32_f32p_f32p_interface.h"
 
+#include "kai/ukernels/dwconv/dwconv_f32_f32_f32p/kai_dwconv_clamp_f32_f32_f32p_interface.h"
+
 // Wrapper type that carries a stable "name" alongside the KAI ukernel interface.
 // This avoids needing to infer which underlying microkernel was selected from a function pointer.
 template <typename UkernelFn>
-struct KaiMatmulKernel {
+struct KaiKernel {
     const char* name;
     UkernelFn ukernel;
 };
+
+template <typename UkernelFn>
+using KaiMatmulKernel = KaiKernel<UkernelFn>;
 
 // Wrapper for FP32 GEMM kernels where both LHS and RHS are pre-packed (common SGEMM path).
 using KaiF32SgemmKernel = KaiMatmulKernel<kai_matmul_clamp_f32_f32p_f32p_ukernel>;
@@ -42,6 +47,9 @@ using KaiDynamicQGemmKernel = KaiMatmulKernel<kai_matmul_clamp_f32_qai8dxp_qsi8c
 using KaiF32IMatmulKernel = KaiMatmulKernel<kai_imatmul_clamp_f32_f32p_f32p_ukernel>;
 
 using KaiBF16SBgemmKernel = KaiMatmulKernel<kai_matmul_clamp_f32_bf16p_bf16p_ukernel>;
+
+// Wrapper for FP32 planar depthwise convolution kernels.
+using KaiF32DepthwiseConvKernel = KaiKernel<kai_dwconv_clamp_f32_f32_f32p_planar_ukernel>;
 
 // Returns the selected Qnbit GEMM ukernel based on runtime CPU capabilities.
 const KaiQnbitGemmKernel& GetKleidiAIGemmUKernel();
@@ -63,3 +71,6 @@ const KaiF32IMatmulKernel& GetKleidiAIF32IMatmulUKernel();
 
 // Returns the selected BF16 SBGEMM ukernel used by the KleidiAI based on runtime CPU capabilities.
 const KaiBF16SBgemmKernel& GetKleidiAISBGemmUKernel();
+
+// Returns the selected FP32 depthwise convolution ukernel based on runtime CPU capabilities.
+const KaiF32DepthwiseConvKernel& GetKleidiAIDepthwiseConvUKernel();
