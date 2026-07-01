@@ -14,7 +14,6 @@
 #include "core/session/model_package/model_package_context.h"
 #include "core/session/model_package/model_package_options.h"
 #include "core/session/utils.h"
-
 #endif
 
 using namespace onnxruntime;
@@ -400,13 +399,13 @@ ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_GetVariantEpName_SinceV28,
   const onnxruntime::VariantEpCompatibilityInfo* info = nullptr;
   auto status = reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->GetVariantEpCompatibility(
       component_name, variant_name, info);
+  if (!status.IsOK()) {
+    if (out_ep != nullptr) *out_ep = nullptr;
+    return onnxruntime::ToOrtStatus(status);
+  }
 
   if (out_ep != nullptr) {
-    if (status.IsOK() && info != nullptr && info->ep.has_value()) {
-      *out_ep = info->ep->c_str();
-    } else {
-      *out_ep = nullptr;
-    }
+    *out_ep = (info != nullptr && info->ep.has_value()) ? info->ep->c_str() : nullptr;
   }
   return nullptr;
 #else
@@ -414,6 +413,39 @@ ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_GetVariantEpName_SinceV28,
   ORT_UNUSED_PARAMETER(component_name);
   ORT_UNUSED_PARAMETER(variant_name);
   ORT_UNUSED_PARAMETER(out_ep);
+  RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelPackageApi_ModelPackage_ResolveStringRef_SinceV28,
+                    _In_ const OrtModelPackageContext* ctx,
+                    _In_opt_ const char* base_dir,
+                    _In_ const char* input,
+                    _In_ int must_exist,
+                    _Outptr_ const char** out_path) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  if (ctx == nullptr || input == nullptr || out_path == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ctx, input, and out_path must be non-null");
+  }
+  *out_path = nullptr;
+
+  const char* resolved = nullptr;
+  auto status = reinterpret_cast<const onnxruntime::ModelPackageContext*>(ctx)->ResolveStringRef(
+      base_dir != nullptr ? std::string(base_dir) : std::string{}, std::string(input),
+      must_exist != 0, resolved);
+  if (!status.IsOK()) {
+    return onnxruntime::ToOrtStatus(status);
+  }
+  *out_path = resolved;
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ctx);
+  ORT_UNUSED_PARAMETER(base_dir);
+  ORT_UNUSED_PARAMETER(input);
+  ORT_UNUSED_PARAMETER(must_exist);
+  ORT_UNUSED_PARAMETER(out_path);
   RETURN_NOT_IMPL_IN_MINIMAL_BUILD();
 #endif
   API_IMPL_END
