@@ -228,11 +228,17 @@ static bool AreAllComputeNodesAssignedToEpOrCpu(const Graph& graph, ProviderType
     }
   }
 
-  // Require at least one node on the target EP, and no Memcpy nodes.
-  // We allow CPU EPs to show up in the EP list as long as there is no Memcpy
-  // involved as shape subgraphs will be forced onto CPU and these will not have
-  // Memcpy nodes involved.
-  return has_node_on_provider && !HasMemcpyNodes(graph);
+  // Allow graph capture when there are no Memcpy nodes and either:
+  //   (a) at least one node is assigned to the target EP, or
+  //   (b) the graph has no nodes at all.
+  // Case (b) covers models that are fully consumed by the EP (e.g. runtime graph
+  // fusion) or trivially fold away to an empty graph (e.g. a lone Constant node,
+  // as used for allocator-initialization sessions). Such graphs have nothing that
+  // violates the "all compute on the EP or CPU" requirement, so they must not be
+  // rejected merely because no node remains assigned to the EP.
+  // CPU EPs are allowed to show up as long as there is no Memcpy involved, since
+  // shape subgraphs are forced onto CPU and do not introduce Memcpy nodes.
+  return (has_node_on_provider || graph.NumberOfNodes() == 0) && !HasMemcpyNodes(graph);
 }
 
 static bool AreAllNodesInMainGraphAssignedToOneEp(const Graph& graph, ProviderType provider) {
