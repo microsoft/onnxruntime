@@ -208,7 +208,7 @@
     target_compile_definitions(onnxruntime_providers_cuda PRIVATE FILE_NAME=\"onnxruntime_providers_cuda.dll\")
   endif()
 
-  # Work around a CUDA 13.x cudafe++ (EDG front-end) regression that mis-parses CCCL's
+  # Work around a CUDA 13.3 cudafe++ (EDG front-end) regression that mis-parses CCCL's
   # global-qualified partial specializations, e.g. in <cub/device/device_transform.cuh>:
   #   template <typename T>
   #   struct ::cuda::proclaims_copyable_arguments<...> : ::cuda::std::true_type {};
@@ -218,7 +218,7 @@
   # corrected copies of the affected headers into the build tree and place that directory
   # ahead of the toolkit cccl include path. This is a no-op on toolkits whose headers do not
   # contain the offending pattern (e.g. once NVIDIA fixes it), so it is safe to keep enabled.
-  function(ort_cuda13_patch_cccl_header src dst)
+  function(ort_cuda133_patch_cccl_header src dst)
     if (NOT EXISTS "${src}")
       return()
     endif()
@@ -412,19 +412,21 @@
     if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.0)
       foreach(inc_dir ${CUDAToolkit_INCLUDE_DIRS})
         if (EXISTS "${inc_dir}/cccl")
-          # Generate cudafe++-parseable copies of the CCCL headers that contain global-qualified
-          # partial specializations (see ort_cuda13_patch_cccl_header above) and put the fixed
-          # directory ahead of the toolkit cccl include so the corrected headers win.
-          set(_ort_cccl_fix_dir "${CMAKE_CURRENT_BINARY_DIR}/cccl_cuda13_fix")
-          ort_cuda13_patch_cccl_header(
-            "${inc_dir}/cccl/cub/device/device_transform.cuh"
-            "${_ort_cccl_fix_dir}/cub/device/device_transform.cuh")
-          ort_cuda13_patch_cccl_header(
-            "${inc_dir}/cccl/cub/device/dispatch/tuning/tuning_transform.cuh"
-            "${_ort_cccl_fix_dir}/cub/device/dispatch/tuning/tuning_transform.cuh")
-          if (EXISTS "${_ort_cccl_fix_dir}/cub/device/device_transform.cuh" OR
-              EXISTS "${_ort_cccl_fix_dir}/cub/device/dispatch/tuning/tuning_transform.cuh")
-            target_include_directories(${target} BEFORE PRIVATE "${_ort_cccl_fix_dir}")
+          if (UNIX AND CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 13.3 AND CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 13.4)
+            # Generate cudafe++-parseable copies of the CCCL headers that contain global-qualified
+            # partial specializations (see ort_cuda133_patch_cccl_header above) and put the fixed
+            # directory ahead of the toolkit cccl include so the corrected headers win.
+            set(_ort_cccl_fix_dir "${CMAKE_CURRENT_BINARY_DIR}/cccl_cuda13_fix")
+            ort_cuda133_patch_cccl_header(
+              "${inc_dir}/cccl/cub/device/device_transform.cuh"
+              "${_ort_cccl_fix_dir}/cub/device/device_transform.cuh")
+            ort_cuda133_patch_cccl_header(
+              "${inc_dir}/cccl/cub/device/dispatch/tuning/tuning_transform.cuh"
+              "${_ort_cccl_fix_dir}/cub/device/dispatch/tuning/tuning_transform.cuh")
+            if (EXISTS "${_ort_cccl_fix_dir}/cub/device/device_transform.cuh" OR
+                EXISTS "${_ort_cccl_fix_dir}/cub/device/dispatch/tuning/tuning_transform.cuh")
+              target_include_directories(${target} BEFORE PRIVATE "${_ort_cccl_fix_dir}")
+            endif()
           endif()
 
           # Add the cccl subdirectory to the include path so <cuda/std/utility> can be found

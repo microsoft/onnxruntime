@@ -225,6 +225,30 @@ TEST(TensorProtoUtilsTest, UnpackTensor) {
   EXPECT_FALSE(status.IsOK());
 }
 
+// A bool initializer supplied through raw_data is copied verbatim, so its bytes are not
+// restricted to {0, 1}. UnpackTensor must normalize them so downstream consumers (which assume
+// canonical bool values) all observe the same result regardless of how they read the byte.
+TEST(TensorProtoUtilsTest, UnpackBoolTensorWithRawDataNormalizesToZeroOne) {
+  std::filesystem::path model_path;
+  TensorProto bool_tensor_proto;
+  bool_tensor_proto.set_data_type(TensorProto_DataType_BOOL);
+  bool_tensor_proto.add_dims(4);
+
+  // Bytes outside {0, 1}: 0x00 -> 0, 0x01 -> 1, 0x02 -> 1, 0xFF -> 1.
+  const unsigned char raw_bytes[] = {0x00, 0x01, 0x02, 0xFF};
+  bool_tensor_proto.set_raw_data(std::string(reinterpret_cast<const char*>(raw_bytes), sizeof(raw_bytes)));
+
+  bool bool_data[4];
+  auto status = UnpackTensor(bool_tensor_proto, model_path, bool_data, 4);
+  ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
+
+  const auto* bytes = reinterpret_cast<const unsigned char*>(bool_data);
+  EXPECT_EQ(bytes[0], 0);
+  EXPECT_EQ(bytes[1], 1);
+  EXPECT_EQ(bytes[2], 1);
+  EXPECT_EQ(bytes[3], 1);
+}
+
 namespace {
 template <typename T>
 std::vector<T> CreateValues() {

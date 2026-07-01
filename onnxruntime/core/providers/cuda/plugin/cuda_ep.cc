@@ -464,14 +464,12 @@ OrtStatus* ORT_API_CALL CudaEp::IsConcurrentRunSupportedImpl(
     return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "is_supported must not be null.");
   }
 
-  // Plugin kernels currently expose only the raw cudaStream_t to GetScratchBuffer(), not the
-  // framework OrtSyncStream* that the stream-aware arena needs to tag scratch chunks by stream.
-  // Scratch chunks are therefore allocated with a null stream tag and can be reused freely. That is
-  // safe when runs are serialized, but it is not safe to advertise concurrent Session::Run(): two
-  // runs on different CUDA streams could reuse the same scratch chunk while earlier work is still
-  // in flight. Re-enable concurrent runs only after the plugin kernel layer can pass a stable
-  // framework stream (or equivalent sync id) to the arena.
-  *is_supported = false;
+  auto* ep = static_cast<CudaEp*>(this_ptr);
+  // Concurrent runs require stream-tagged scratch allocations. The plugin kernel adapter can tag
+  // scratch chunks only when the hosting ORT runtime exposes KernelContext_GetSyncStream.
+  static constexpr uint32_t kOrtKernelContextGetSyncStreamMinVersion = 28;
+  *is_supported = !ep->config_.use_ep_level_unified_stream &&
+                  ::onnxruntime::ep::CurrentOrtApiVersion() >= kOrtKernelContextGetSyncStreamMinVersion;
   return nullptr;
 }
 
