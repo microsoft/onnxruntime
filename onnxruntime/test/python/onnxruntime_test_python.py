@@ -268,6 +268,79 @@ class TestInferenceSession(unittest.TestCase):
         # may be no-op on certain Windows builds based on build configuration
         onnxrt.enable_telemetry_events()
 
+    def test_set_default_logger_callback(self):
+        # Verify that set_default_logger_callback is exposed in the onnxruntime namespace.
+        self.assertTrue(callable(onnxrt.set_default_logger_callback))
+
+        # Setting a Python callable should succeed.
+        messages = []
+
+        def my_callback(severity, category, logid, code_location, message):
+            messages.append((severity, category, logid, code_location, message))
+
+        onnxrt.set_default_logger_callback(my_callback, severity=0)
+
+        # Running inference while the callback is active should not crash.
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        # mul_1.onnx has a single input "X" and output "Y" (Y = X * [[1,2],[3,4],[5,6]]).
+        (res,) = sess.run(["Y"], {"X": x})
+        np.testing.assert_allclose(res, x * x)
+
+        # Creating a session at Verbose severity must have produced ORT log messages that
+        # were actually routed to the callback (otherwise the callback is a no-op).
+        self.assertGreater(len(messages), 0, "logging callback was never invoked")
+        # Each record must match the documented (severity, category, logid, code_location,
+        # message) signature.
+        for severity, category, logid, code_location, message in messages:
+            self.assertIsInstance(severity, int)
+            self.assertIsInstance(category, str)
+            self.assertIsInstance(logid, str)
+            self.assertIsInstance(code_location, str)
+            self.assertIsInstance(message, str)
+
+        # Resetting to None restores the default platform logger and should not raise.
+        onnxrt.set_default_logger_callback(None)
+        # Restore the default (Warning) severity so the Verbose level set above does not leak
+        # into the rest of the test / suite.
+        onnxrt.set_default_logger_severity(2)
+
+        # After reset, further inference still works.
+        (res,) = sess.run(["Y"], {"X": x})
+        np.testing.assert_allclose(res, x * x)
+
+        # Lambda callables are accepted.
+        onnxrt.set_default_logger_callback(lambda sev, cat, lid, loc, msg: None)
+
+        # Boundary severity values (0=Verbose and 4=Fatal) should be accepted.
+        onnxrt.set_default_logger_callback(my_callback, severity=0)
+        onnxrt.set_default_logger_callback(my_callback, severity=4)
+
+        # Invalid severity should raise.
+        with self.assertRaises(RuntimeError):
+            onnxrt.set_default_logger_callback(my_callback, severity=5)
+
+        with self.assertRaises(RuntimeError):
+            onnxrt.set_default_logger_callback(my_callback, severity=-1)
+
+        # Non-callable should raise.
+        with self.assertRaises(RuntimeError):
+            onnxrt.set_default_logger_callback("not a callable")
+
+        # A callback that raises should not crash the process.
+        def raising_callback(severity, category, logid, code_location, message):
+            raise ValueError("intentional error from callback")
+
+        onnxrt.set_default_logger_callback(raising_callback, severity=0)
+        # Create a session to trigger some ORT log output; it should not crash even though
+        # the callback raises.
+        onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=["CPUExecutionProvider"])
+
+        # Clean up: restore platform default logger and the default (Warning) severity so the
+        # Verbose level set above does not leak into the rest of the Python test suite.
+        onnxrt.set_default_logger_callback(None)
+        onnxrt.set_default_logger_severity(2)
+
     def test_deserialization_from_path_object(self):
         # path object is allowed
         onnxrt.InferenceSession(pathlib.Path(get_name("mul_1.onnx")), providers=available_providers)
