@@ -344,5 +344,58 @@ TEST(RangeTest, ContribOp_CountExceedsInt64Range_FailsCleanly) {
 
 #endif  // DISABLE_CONTRIB_OPS
 
+#ifdef USE_CUDA
+// The following tests exercise the standard onnx-domain Range CUDA kernel with runtime
+// (non-constant) inputs so the element-count guards in the CUDA ComputeRange are evaluated at
+// execution time. They are pinned to the CUDA execution provider and are skipped when a CUDA
+// provider is not available in the current build/runtime. The expected failure messages match
+// the CPU kernel exactly so both paths stay consistent.
+
+// Verifies that the CUDA kernel rejects an element count that exceeds the int64 range.
+TEST(RangeTest, CudaKernel_CountExceedsInt64Range_FailsAtRuntime) {
+  auto cuda_provider = DefaultCudaExecutionProvider();
+  if (cuda_provider == nullptr) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+  OpTester test("Range", 11);
+  test.AddInput<double>("start", {}, {0.0});
+  test.AddInput<double>("limit", {}, {1e19});
+  test.AddInput<double>("delta", {}, {1.0});
+  test.AddOutput<double>("output", {0}, {});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_provider));
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Range: the computed number of elements exceeds the supported range.", {}, nullptr,
+           &execution_providers);
+}
+
+// Verifies that the CUDA kernel rejects a non-finite computed element count (the difference of
+// the two inputs overflows to infinity).
+TEST(RangeTest, CudaKernel_NonFiniteCount_FailsAtRuntime) {
+  auto cuda_provider = DefaultCudaExecutionProvider();
+  if (cuda_provider == nullptr) {
+    GTEST_SKIP() << "CUDA execution provider is not available.";
+  }
+  OpTester test("Range", 11);
+  test.AddInput<double>("start", {}, {-1e308});
+  test.AddInput<double>("limit", {}, {1e308});
+  test.AddInput<double>("delta", {}, {1.0});
+  test.AddOutput<double>("output", {0}, {});
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_provider));
+  test.Run(OpTester::ExpectResult::kExpectFailure,
+           "Range: the computed number of elements is not a finite value.", {}, nullptr,
+           &execution_providers);
+}
+
+// Note on large-count coverage: a test that actually materializes a valid count > INT_MAX to
+// prove the int64 launch-path widening is intentionally omitted. OpTester requires a host-side
+// reference output tensor of the same element count, and a value above INT_MAX would need a
+// multi-GB host allocation (and matching device memory), which is impractical and OOM-prone on
+// CI. The int64 widening (count, grid sizing, and the grid-stride kernel index) is instead
+// covered by code review; the two guards above ensure non-finite and >= 2^63 counts are rejected
+// before any launch. A device-level large-count test can be added as a separate, opt-in benchmark.
+#endif  // USE_CUDA
+
 }  // namespace test
 }  // namespace onnxruntime
