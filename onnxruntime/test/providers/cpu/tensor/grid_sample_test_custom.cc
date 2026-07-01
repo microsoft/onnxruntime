@@ -50,6 +50,24 @@ std::vector<std::unique_ptr<IExecutionProvider>> GetExecutionProviders() {
   return execution_providers;
 }
 
+// Only the CPU and CUDA GridSample kernels currently validate that input spatial dimensions
+// are non-empty. WebGPU/CoreML use separate kernels without that guard, so the expect-failure
+// test below must exclude them to avoid a false failure on those builds.
+std::vector<std::unique_ptr<IExecutionProvider>> GetCpuAndCudaExecutionProviders() {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+
+#ifdef USE_CUDA
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+#ifdef ENABLE_CUDA_NHWC_OPS
+  execution_providers.push_back(DefaultCudaNHWCExecutionProvider());
+#endif
+#endif
+
+  return execution_providers;
+}
+
 template <typename T>
 void RunTests(T& test, std::vector<std::unique_ptr<IExecutionProvider>>&& execution_providers) {
   for (size_t idx = 0; idx < execution_providers.size(); ++idx) {
@@ -61,6 +79,17 @@ void RunTests(T& test, std::vector<std::unique_ptr<IExecutionProvider>>&& execut
 template <typename T>
 void RunCpuOnly(T& test) {
   RunTests(test, GetCpuExecutionProviders());
+}
+
+template <typename T>
+void RunTestsExpectFailure(T& test, const std::string& error_msg,
+                           std::vector<std::unique_ptr<IExecutionProvider>>&& execution_providers) {
+  for (size_t idx = 0; idx < execution_providers.size(); ++idx) {
+    test.Config(BaseTester::ExpectResult::kExpectFailure, error_msg)
+        .ConfigEp(std::move(execution_providers[idx]))
+        .RunWithConfig();
+  }
+  execution_providers.clear();
 }
 
 }  // namespace
@@ -577,6 +606,237 @@ TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_nearest_reflection_mixed
                             {TypeParam(5.0f), TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f)});
   RunCpuOnly(test);
 }
+
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_nearest_border_empty_spatial_rejected) {
+  // An input with a zero-size spatial dimension is rejected: the output is sized by the grid,
+  // so a non-empty grid skips the empty-output early return, and spatial dimensions must be
+  // non-empty for sampling to produce valid sample indices.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("nearest"));
+  test.AddAttribute("padding_mode", std::string("border"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 0, 5};
+  std::initializer_list<TypeParam> X_data{};
+  std::initializer_list<int64_t> Grid_shape{1, 2, 2, 2};
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(0.0f), TypeParam(0.0f), TypeParam(-1.0f), TypeParam(-1.0f),
+      TypeParam(1.0f), TypeParam(1.0f), TypeParam(0.5f), TypeParam(-0.5f)};
+  std::initializer_list<int64_t> Y_shape{1, 1, 2, 2};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  test.AddOutput<TypeParam>("Y", Y_shape,
+                            {TypeParam(0.0f), TypeParam(0.0f), TypeParam(0.0f), TypeParam(0.0f)});
+  // The zero-spatial-dim guard currently covers the CPU and CUDA kernels; other EPs (WebGPU/CoreML)
+  // are out of scope for this test, so restrict the expect-failure run to CPU + CUDA only.
+  RunTestsExpectFailure(test, "Input spatial dimensions must be non-empty for sampling",
+                        GetCpuAndCudaExecutionProviders());
+}
+
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_5D_nearest_border_empty_spatial_rejected) {
+  // Same rejection as the 4-D case, but for a 5-D input with a zero-size spatial dimension. This keeps
+  // the 5-D branch of the guard (and the CUDA NCHW/NHWC layouts) covered: the output is sized by the
+  // grid, so a non-empty grid skips the empty-output early return, and spatial dimensions must be
+  // non-empty for sampling to produce valid sample indices.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("nearest"));
+  test.AddAttribute("padding_mode", std::string("border"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 0, 2, 2};
+  std::initializer_list<TypeParam> X_data{};
+  std::initializer_list<int64_t> Grid_shape{1, 1, 1, 2, 3};
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(0.0f), TypeParam(0.0f), TypeParam(0.0f),
+      TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f)};
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 1, 2};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(0.0f), TypeParam(0.0f)});
+  // Restrict the expect-failure run to CPU + CUDA only, matching the 4-D case above.
+  RunTestsExpectFailure(test, "Input spatial dimensions must be non-empty for sampling",
+                        GetCpuAndCudaExecutionProviders());
+}
+
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_nearest_border_empty_last_spatial_rejected) {
+  // Zero-size trailing spatial dimension (W = 0), confirming the guard loop catches a non-first
+  // spatial dimension, not just the leading one. This runs on the CUDA NHWC provider as well: for a
+  // logical NCHW {1, 1, 5, 0} input the internal NHWC layout transform places the zero at a spatial
+  // index in the (N, H, W, C) layout, so it exercises the layout-aware spatial range on both kernels.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("nearest"));
+  test.AddAttribute("padding_mode", std::string("border"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 5, 0};
+  std::initializer_list<TypeParam> X_data{};
+  std::initializer_list<int64_t> Grid_shape{1, 2, 2, 2};
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(0.0f), TypeParam(0.0f), TypeParam(-1.0f), TypeParam(-1.0f),
+      TypeParam(1.0f), TypeParam(1.0f), TypeParam(0.5f), TypeParam(-0.5f)};
+  std::initializer_list<int64_t> Y_shape{1, 1, 2, 2};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  test.AddOutput<TypeParam>("Y", Y_shape,
+                            {TypeParam(0.0f), TypeParam(0.0f), TypeParam(0.0f), TypeParam(0.0f)});
+  RunTestsExpectFailure(test, "Input spatial dimensions must be non-empty for sampling",
+                        GetCpuAndCudaExecutionProviders());
+}
+
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_nearest_border_all_spatial_zero_rejected) {
+  // Both spatial dimensions are zero ({1, 1, 0, 0}); the guard must reject on the first zero dimension
+  // without double-reporting or crashing.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("nearest"));
+  test.AddAttribute("padding_mode", std::string("border"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 0, 0};
+  std::initializer_list<TypeParam> X_data{};
+  std::initializer_list<int64_t> Grid_shape{1, 2, 2, 2};
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(0.0f), TypeParam(0.0f), TypeParam(-1.0f), TypeParam(-1.0f),
+      TypeParam(1.0f), TypeParam(1.0f), TypeParam(0.5f), TypeParam(-0.5f)};
+  std::initializer_list<int64_t> Y_shape{1, 1, 2, 2};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  test.AddOutput<TypeParam>("Y", Y_shape,
+                            {TypeParam(0.0f), TypeParam(0.0f), TypeParam(0.0f), TypeParam(0.0f)});
+  RunTestsExpectFailure(test, "Input spatial dimensions must be non-empty for sampling",
+                        GetCpuAndCudaExecutionProviders());
+}
+
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_5D_nearest_border_middle_spatial_zero_rejected) {
+  // 5-D input with a zero in a non-first spatial dimension ({1, 1, 2, 0, 3}), confirming the guard
+  // spans the full spatial range of a 5-D tensor rather than only checking the first spatial index.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("nearest"));
+  test.AddAttribute("padding_mode", std::string("border"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 2, 0, 3};
+  std::initializer_list<TypeParam> X_data{};
+  std::initializer_list<int64_t> Grid_shape{1, 1, 1, 2, 3};
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(0.0f), TypeParam(0.0f), TypeParam(0.0f),
+      TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f)};
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 1, 2};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  test.AddOutput<TypeParam>("Y", Y_shape, {TypeParam(0.0f), TypeParam(0.0f)});
+  RunTestsExpectFailure(test, "Input spatial dimensions must be non-empty for sampling",
+                        GetCpuAndCudaExecutionProviders());
+}
+
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_linear_zeros_empty_spatial_rejected) {
+  // The guard must fire before interpolation regardless of padding mode. This covers padding_mode
+  // "zeros" (the mode where reads outside the image are otherwise silently treated as 0).
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("linear"));
+  test.AddAttribute("padding_mode", std::string("zeros"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 0, 5};
+  std::initializer_list<TypeParam> X_data{};
+  std::initializer_list<int64_t> Grid_shape{1, 2, 2, 2};
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(0.0f), TypeParam(0.0f), TypeParam(-1.0f), TypeParam(-1.0f),
+      TypeParam(1.0f), TypeParam(1.0f), TypeParam(0.5f), TypeParam(-0.5f)};
+  std::initializer_list<int64_t> Y_shape{1, 1, 2, 2};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  test.AddOutput<TypeParam>("Y", Y_shape,
+                            {TypeParam(0.0f), TypeParam(0.0f), TypeParam(0.0f), TypeParam(0.0f)});
+  RunTestsExpectFailure(test, "Input spatial dimensions must be non-empty for sampling",
+                        GetCpuAndCudaExecutionProviders());
+}
+
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_linear_reflection_empty_spatial_rejected) {
+  // Padding mode "reflection" is the most sensitive to a zero-size spatial dimension because the
+  // reflect logic divides by (length - 1); the guard must reject the input before that computation.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("linear"));
+  test.AddAttribute("padding_mode", std::string("reflection"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 0, 5};
+  std::initializer_list<TypeParam> X_data{};
+  std::initializer_list<int64_t> Grid_shape{1, 2, 2, 2};
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(0.0f), TypeParam(0.0f), TypeParam(-1.0f), TypeParam(-1.0f),
+      TypeParam(1.0f), TypeParam(1.0f), TypeParam(0.5f), TypeParam(-0.5f)};
+  std::initializer_list<int64_t> Y_shape{1, 1, 2, 2};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  test.AddOutput<TypeParam>("Y", Y_shape,
+                            {TypeParam(0.0f), TypeParam(0.0f), TypeParam(0.0f), TypeParam(0.0f)});
+  RunTestsExpectFailure(test, "Input spatial dimensions must be non-empty for sampling",
+                        GetCpuAndCudaExecutionProviders());
+}
+
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_nearest_border_nonzero_spatial_accepted) {
+  // Sanity check that the guard does not reject valid, non-empty spatial dimensions: a normal 2x2
+  // input with align_corners=1 samples its four corners exactly and must succeed on both kernels.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("nearest"));
+  test.AddAttribute("padding_mode", std::string("border"));
+  test.AddAttribute("align_corners", int64_t{1});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 2, 2};
+  std::initializer_list<TypeParam> X_data{TypeParam(1.0f), TypeParam(2.0f), TypeParam(3.0f), TypeParam(4.0f)};
+  std::initializer_list<int64_t> Grid_shape{1, 1, 4, 2};
+  // align_corners=1 on a 2x2 image maps normalized [-1, 1] -> pixel coords [0, 1]; sample all corners.
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(-1.0f), TypeParam(-1.0f),  // -> pixel(row 0, col 0) = 1
+      TypeParam(1.0f), TypeParam(-1.0f),   // -> pixel(row 0, col 1) = 2
+      TypeParam(-1.0f), TypeParam(1.0f),   // -> pixel(row 1, col 0) = 3
+      TypeParam(1.0f), TypeParam(1.0f)};   // -> pixel(row 1, col 1) = 4
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 4};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  test.AddOutput<TypeParam>("Y", Y_shape,
+                            {TypeParam(1.0f), TypeParam(2.0f), TypeParam(3.0f), TypeParam(4.0f)});
+  RunTests(test, GetCpuAndCudaExecutionProviders());
+}
+
+#ifdef USE_WEBGPU
+TYPED_TEST(GridSampleCustomTest, test_grid_sample_16_4D_webgpu_empty_spatial_rejected) {
+  // The WebGPU GridSample kernel is registered for opset 16-19 (NCHW, 4-D only) and now carries the
+  // same non-empty spatial-dimension guard as the CPU and CUDA kernels. Exercise it directly on the
+  // WebGPU provider with a zero-size spatial dimension; the guard rejects host-side before any shader
+  // dispatch, so this validates the WebGPU path without depending on a particular GPU adapter.
+  OpTester test("GridSample", 16);
+  test.AddAttribute("mode", std::string("nearest"));
+  test.AddAttribute("padding_mode", std::string("border"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 0, 5};
+  std::initializer_list<TypeParam> X_data{};
+  std::initializer_list<int64_t> Grid_shape{1, 2, 2, 2};
+  std::initializer_list<TypeParam> Grid_data{
+      TypeParam(0.0f), TypeParam(0.0f), TypeParam(-1.0f), TypeParam(-1.0f),
+      TypeParam(1.0f), TypeParam(1.0f), TypeParam(0.5f), TypeParam(-0.5f)};
+  std::initializer_list<int64_t> Y_shape{1, 1, 2, 2};
+
+  test.AddInput<TypeParam>("X", X_shape, X_data);
+  test.AddInput<TypeParam>("Grid", Grid_shape, Grid_data);
+  test.AddOutput<TypeParam>("Y", Y_shape,
+                            {TypeParam(0.0f), TypeParam(0.0f), TypeParam(0.0f), TypeParam(0.0f)});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultWebGpuExecutionProvider());
+  RunTestsExpectFailure(test, "Input spatial dimensions must be non-empty for sampling",
+                        std::move(execution_providers));
+}
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime
