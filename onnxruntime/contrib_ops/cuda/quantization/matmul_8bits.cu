@@ -5,6 +5,7 @@
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
 #include <math_constants.h>
+#include <limits>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
@@ -182,11 +183,12 @@ __device__ __forceinline__ void AccumulateEightElements8b(
 // accumulator per (row, column) keeps register pressure low while the weight is streamed once. The
 // launch bound pins >=3 blocks per SM. Standard [N, blocks, blob] layout, no prepacking; the 8-bit path
 // accumulates in float, so this stays dtype-agnostic (float/half/bf16).
+//
+// kSmallMMax8 is the default (measured) cap used when online tuning is off. kBatchedStructuralMax8
+// is the largest M the kernel can actually run (CtaM in {2,4,8}); an online tuner may pick any cap up to
+// this so a different device can use the batched path past the compile-time default.
 constexpr int kSmallMMax8 = 5;
-template <class T>
-__host__ __device__ constexpr int SmallMCap8() {
-  return kSmallMMax8;
-}
+constexpr int kBatchedStructuralMax8 = 8;
 
 template <class T>
 __device__ __forceinline__ float ToFloat8b(T v);
@@ -530,14 +532,22 @@ bool TryMatMul8Bits(
     int k,                        // Columns of A / Rows of B
     int block_size,               // Quantization block size for B
     size_t shared_mem_per_block,  // Available shared memory per block
-    cudaStream_t stream) {
+    cudaStream_t stream,
+    int max_batched_m) {
   // Constraints Check
   // N must be a multiple of kColsPerThreadBlock (8) for warps to align with columns.
   // K must be a multiple of kElementsPerThreadPerIteration (8) for full uint64_t reads/processing.
-  // m up to the small-M cap is handled (m==1 single-row, 2..cap batched); larger m falls back.
-  if (m < 1 || m > SmallMCap8<T>() || n % kColsPerThreadBlock != 0 || k % kElementsPerThreadPerIteration != 0) {
+  // Reject m the batched kernel cannot run (> structural max); m==1 uses the single-row kernel below,
+  // and 2..cap use the batched kernel (cap resolved below).
+  if (m < 1 || m > kBatchedStructuralMax8 || n % kColsPerThreadBlock != 0 || k % kElementsPerThreadPerIteration != 0) {
     return false;
   }
+
+  // Effective batched cap: the compile-time default unless an online tuner overrides it (clamped to
+  // what the kernel structurally supports). INT_MAX is the sentinel for "no tuning override".
+  const int batched_cap = (max_batched_m == (std::numeric_limits<int>::max)())
+                              ? kSmallMMax8
+                              : ((max_batched_m < kBatchedStructuralMax8) ? max_batched_m : kBatchedStructuralMax8);
 
   // Ensure k_per_iter (kWarpSize * kElementsPerThreadPerIteration) is multiple of block_size.
   constexpr int k_per_iter = kWarpSize * kElementsPerThreadPerIteration;
@@ -566,7 +576,9 @@ bool TryMatMul8Bits(
   // to the dequantize + cuBLAS (tensor-core) fallback at a lower M than the 4-bit path; the cap keeps
   // only the row counts where it is faster on every matrix shape. This path launches with no shared
   // memory, so it runs before the shared-memory budget gate that only constrains the m==1 kernel below.
-  if (m >= 2) {
+  // max_batched_m lets an online tuner cap the batched range below the compile-time cap for a given
+  // device/shape; above it, fall through to dequant + cuBLAS.
+  if (m >= 2 && m <= batched_cap) {
     const int cta_m = (m <= 2) ? 2 : (m <= 4) ? 4
                                               : 8;
     const int cta_n = (n % (kColsPerThreadBlock * 2) == 0) ? 2 : 1;
@@ -611,6 +623,11 @@ bool TryMatMul8Bits(
 #undef MatMulFloat8bBatchedDispatchN
 #undef MatMulFloat8bBatchedDispatch
     return true;
+  }
+
+  // Any remaining m >= 2 (above max_batched_m) uses dequant + cuBLAS; never the m==1 kernel below.
+  if (m >= 2) {
+    return false;
   }
 
   // --- Shared Memory Calculation (m == 1) ---
@@ -676,7 +693,8 @@ template bool TryMatMul8Bits<float>(
     int k,
     int block_size,
     size_t shared_mem_per_block,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    int max_batched_m);
 
 template bool TryMatMul8Bits<half>(
     half* output,
@@ -689,7 +707,8 @@ template bool TryMatMul8Bits<half>(
     int k,
     int block_size,
     size_t shared_mem_per_block,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    int max_batched_m);
 
 // Add template instantiation for nv_bfloat16
 template bool TryMatMul8Bits<nv_bfloat16>(
@@ -703,7 +722,8 @@ template bool TryMatMul8Bits<nv_bfloat16>(
     int k,
     int block_size,
     size_t shared_mem_per_block,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    int max_batched_m);
 
 }  // namespace cuda
 }  // namespace contrib
