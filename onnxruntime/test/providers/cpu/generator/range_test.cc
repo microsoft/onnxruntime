@@ -97,12 +97,15 @@ TEST(RangeTest, AlmostSameStartAndLimitHighDelta) {
 #ifndef DISABLE_CONTRIB_OPS
 
 namespace {
-// Describes a single Range input supplied as a graph initializer: its declared dimensions
-// and the exact raw_data bytes. Tests use this to craft both well-formed and truncated
-// initializers (e.g. dims=[0] with empty raw_data) for the contrib Range schema.
+// Describes a single Range input supplied as a graph initializer: its declared dimensions and
+// either the exact raw_data bytes or a typed int32_data payload. Tests use this to craft
+// well-formed, truncated (e.g. dims=[0] with empty raw_data), and typed-field initializers for
+// the contrib Range schema. When int32_data is non-empty it is stored in the typed field instead
+// of raw_data (ONNX packs sub-32-bit int types such as INT16 into int32_data).
 struct RangeInputSpec {
   std::vector<int64_t> dims;
   std::string raw_data;
+  std::vector<int32_t> int32_data;
 };
 
 // Serializes a scalar value to its raw_data byte representation.
@@ -116,14 +119,21 @@ std::string ToRawData(T value) {
 // A correctly-sized scalar initializer (no dims) holding a single value.
 template <typename T>
 RangeInputSpec ScalarInput(T value) {
-  return RangeInputSpec{{}, ToRawData(value)};
+  return RangeInputSpec{{}, ToRawData(value), {}};
 }
 
 // A zero-element initializer (dims=[0]) whose raw_data is empty. The declared size matches
 // the (empty) payload, so initializer size validation accepts it; shape inference, however,
 // still attempts to read the first element.
 RangeInputSpec EmptyInput() {
-  return RangeInputSpec{{0}, std::string{}};
+  return RangeInputSpec{{0}, std::string{}, {}};
+}
+
+// A scalar initializer whose single value is carried in the typed int32_data field. ONNX packs
+// INT16 (and other sub-32-bit int) initializer values into int32_data, so this exercises the
+// typed-field shape-inference path rather than the raw_data path.
+RangeInputSpec Int16TypedInput(int16_t value) {
+  return RangeInputSpec{{}, std::string{}, {static_cast<int32_t>(value)}};
 }
 
 void AddInitializer(ONNX_NAMESPACE::GraphProto* graph, const std::string& name, int data_type,
@@ -134,7 +144,13 @@ void AddInitializer(ONNX_NAMESPACE::GraphProto* graph, const std::string& name, 
   for (int64_t dim : spec.dims) {
     initializer->add_dims(dim);
   }
-  initializer->set_raw_data(spec.raw_data);
+  if (!spec.int32_data.empty()) {
+    for (int32_t value : spec.int32_data) {
+      initializer->add_int32_data(value);
+    }
+  } else {
+    initializer->set_raw_data(spec.raw_data);
+  }
 }
 
 // Builds a single com.microsoft Range node model whose start/limit/delta inputs are supplied
@@ -219,6 +235,20 @@ TEST(RangeTest, ContribOp_ExactSizeRawData_LoadsSuccessfully) {
   const auto status = BuildAndInitializeContribRangeModel(
       ONNX_NAMESPACE::TensorProto_DataType_DOUBLE, ScalarInput(0.0), ScalarInput(5.0),
       ScalarInput(1.0), session_object);
+  ASSERT_STATUS_OK(status);
+  ASSERT_EQ(GetInferredOutputDim(session_object), 5);
+}
+
+// Verifies that shape inference handles an INT16 Range whose initializers store their values in
+// the typed int32_data field (the ONNX packing for INT16) rather than raw_data. This exercises
+// the int16 typed-field path in get_data<int16_t>: start=0, limit=5, delta=1 -> 5 elements.
+TEST(RangeTest, ContribOp_Int16TypedField_InfersDim) {
+  SessionOptions so;
+  so.session_logid = "RangeTest.ContribOp_Int16TypedField_InfersDim";
+  InferenceSession session_object{so, GetEnvironment()};
+  const auto status = BuildAndInitializeContribRangeModel(
+      ONNX_NAMESPACE::TensorProto_DataType_INT16, Int16TypedInput(0), Int16TypedInput(5),
+      Int16TypedInput(1), session_object);
   ASSERT_STATUS_OK(status);
   ASSERT_EQ(GetInferredOutputDim(session_object), 5);
 }
