@@ -869,6 +869,47 @@ TEST(MatMulNBits, Fp16_Int4_NoZeroPoint) {
   }
 }
 
+// Exercises the CUDA small-M batched GEMV tiles: CtaM in {2,4,8,16} (with M values that are not a
+// multiple of CtaM so the row-skip path runs) and CtaN in {1,2} (N divisible / not divisible by 16).
+TEST(MatMulNBits, Fp16_Int4_SmallMBatchedTiles) {
+  constexpr float abs_error = 0.1f;
+  constexpr bool zp_is_4bit = true;
+  for (auto block_size : {32, 128}) {
+    for (auto m : {3, 4, 5, 8, 12, 16}) {
+      for (auto has_zeropoint : {false, true}) {
+        RunTest<MLFloat16>(m, 256, 1024, block_size, has_zeropoint, zp_is_4bit, abs_error);  // N % 16 == 0 -> CtaN=2
+        RunTest<MLFloat16>(m, 24, 1024, block_size, has_zeropoint, zp_is_4bit, abs_error);   // N % 16 != 0 -> CtaN=1
+      }
+    }
+  }
+}
+
+TEST(MatMulNBits, BFloat16_Int4_SmallMBatchedTiles) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "Skipping BFloat16 tests on CUDA < 8.0";
+  }
+
+  constexpr float abs_error = 0.1f;
+  for (auto block_size : {32, 128}) {
+    for (auto m : {3, 4, 5, 8, 12, 16}) {
+      for (auto n : {256, 24}) {  // N=256 -> CtaN=2, N=24 -> CtaN=1
+        for (auto has_zeropoint : {false, true}) {
+          TestOptions opts{};
+          opts.M = m, opts.N = n, opts.K = 1024;
+          opts.block_size = block_size;
+          opts.has_zero_point = has_zeropoint;
+          opts.zp_is_4bit = true;
+          opts.output_abs_error = abs_error;
+          opts.output_rel_error = 0.02f;
+          std::vector<std::unique_ptr<IExecutionProvider>> eps;
+          eps.push_back(DefaultCudaExecutionProvider());
+          RunTest<BFloat16>(opts, std::move(eps));
+        }
+      }
+    }
+  }
+}
+
 TEST(MatMulNBits, Fp16_Int4_GptOssRouterShapeNoZeroPoint) {
   constexpr float abs_error = 0.1f;
 
