@@ -265,7 +265,7 @@ constexpr int kWarpSize = GPU_WARP_SIZE;
 // Each thread block computes [1, K] x [kColsPerThreadBlock, (K + block_size - 1)/block_size, blob],
 //     i.e., computing kColsPerThreadBlock per block and a warp reduce (1, K) x (K)
 template <class T, int block_size, bool has_zero_point>
-__global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt4Kernel(
+__global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock, kMatMulNBitsM1MinBlocksPerSM) MatMulFloatInt4Kernel(
     T* output,
     const T* a_data,
     const uint8_t* b_data_quant,
