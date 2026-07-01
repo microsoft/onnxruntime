@@ -187,6 +187,103 @@ void SimpleWeightsNoBiasTwoRows(std::string direction,
                 nullptr, nullptr, nullptr, nullptr, seq_lengths, direction, 999.f, /* output_sequence*/ false);
 }
 
+static void RunInvalidLstmInputShapeTest(const std::vector<int64_t>& X_dims,
+                                         const std::vector<float>& X_data,
+                                         const std::vector<int64_t>& W_dims,
+                                         const std::vector<float>& W_data,
+                                         const std::vector<int64_t>& R_dims,
+                                         const std::vector<float>& R_data,
+                                         const std::string& expected_error) {
+  constexpr int64_t seq_length = 2;
+  constexpr int64_t batch_size = 1;
+  constexpr int64_t hidden_size = 2;
+  constexpr int64_t num_directions = 1;
+
+  OpTester test("LSTM");
+  test.AddAttribute<std::vector<string>>("activations", {"sigmoid", "tanh", "tanh"});
+  test.AddAttribute("direction", "forward");
+  test.AddAttribute("hidden_size", hidden_size);
+
+  test.AddInput<float>("X", X_dims, X_data);
+  test.AddInput<float>("W", W_dims, W_data);
+  test.AddInput<float>("R", R_dims, R_data);
+
+  test.AddOptionalInputEdge<float>();  // B
+  test.AddOptionalInputEdge<int>();    // sequence_lens
+  test.AddOptionalInputEdge<float>();  // initial_h
+  test.AddOptionalInputEdge<float>();  // initial_c
+  test.AddOptionalInputEdge<float>();  // P
+
+  std::vector<int64_t> Y_dims = {seq_length, num_directions, batch_size, hidden_size};
+  test.AddOutput<float>("Y", Y_dims, std::vector<float>(seq_length * num_directions * batch_size * hidden_size, 0.0f));
+  test.AddOptionalOutputEdge<float>();  // Y_h
+  test.AddOptionalOutputEdge<float>();  // Y_c
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectFailure, expected_error, {}, nullptr, &execution_providers);
+}
+
+TEST(LSTMTest, InvalidInputShapes) {
+  constexpr int64_t seq_length = 2;
+  constexpr int64_t batch_size = 1;
+  constexpr int64_t input_size = 1;
+  constexpr int64_t hidden_size = 2;
+  constexpr int64_t num_directions = 1;
+
+  const std::vector<int64_t> valid_X_dims = {seq_length, batch_size, input_size};
+  const std::vector<float> valid_X_data(seq_length * batch_size * input_size, 0.1f);
+
+  const std::vector<int64_t> valid_W_dims = {num_directions, 4 * hidden_size, input_size};
+  const std::vector<float> valid_W_data(num_directions * 4 * hidden_size * input_size, 0.1f);
+
+  const std::vector<int64_t> valid_R_dims = {num_directions, 4 * hidden_size, hidden_size};
+  const std::vector<float> valid_R_data(num_directions * 4 * hidden_size * hidden_size, 0.1f);
+
+  // X rank is validated by ONNX shape inference (RNNShapeInference) before the
+  // kernel runs, not by ORT kernel code. The expected error string is from the
+  // ONNX library. This sub-case serves as a regression test for that contract.
+  RunInvalidLstmInputShapeTest({seq_length, batch_size},
+                               std::vector<float>(seq_length * batch_size, 0.1f),
+                               valid_W_dims,
+                               valid_W_data,
+                               valid_R_dims,
+                               valid_R_data,
+                               "must have rank 3");
+
+  RunInvalidLstmInputShapeTest(valid_X_dims,
+                               valid_X_data,
+                               {4 * hidden_size, input_size},
+                               std::vector<float>(4 * hidden_size * input_size, 0.1f),
+                               valid_R_dims,
+                               valid_R_data,
+                               "Input W must have shape");
+
+  RunInvalidLstmInputShapeTest(valid_X_dims,
+                               valid_X_data,
+                               {num_directions, 4 * hidden_size - 1, input_size},
+                               std::vector<float>(num_directions * (4 * hidden_size - 1) * input_size, 0.1f),
+                               valid_R_dims,
+                               valid_R_data,
+                               "Input W must have shape");
+
+  RunInvalidLstmInputShapeTest(valid_X_dims,
+                               valid_X_data,
+                               valid_W_dims,
+                               valid_W_data,
+                               {4 * hidden_size, hidden_size},
+                               std::vector<float>(4 * hidden_size * hidden_size, 0.1f),
+                               "Input R must have shape");
+
+  RunInvalidLstmInputShapeTest(valid_X_dims,
+                               valid_X_data,
+                               valid_W_dims,
+                               valid_W_data,
+                               {num_directions, 4 * hidden_size, hidden_size + 1},
+                               std::vector<float>(num_directions * 4 * hidden_size * (hidden_size + 1), 0.1f),
+                               "Input R must have shape");
+}
+
 TEST(LSTMTest, ForwardSimpleWeightsNoBiasTwoRows) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
