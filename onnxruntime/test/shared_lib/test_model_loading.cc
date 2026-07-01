@@ -291,7 +291,8 @@ TEST(CApiTest, TestLoadModelFromPathWithExternalInitializersViaSetExternalDataPa
   ASSERT_FALSE(ec);
   const std::string copied_model_path = model_only_folder + model_file_name;
   std::filesystem::copy_file(test_folder + model_file_name, copied_model_path,
-                             std::filesystem::copy_options::overwrite_existing);
+                             std::filesystem::copy_options::overwrite_existing, ec);
+  ASSERT_FALSE(ec) << "Failed to copy model file: " << ec.message();
 
   Ort::SessionOptions so;
   so.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);
@@ -303,7 +304,8 @@ TEST(CApiTest, TestLoadModelFromPathWithExternalInitializersViaSetExternalDataPa
   Ort::Session session(*ort_env.get(), copied_model_path_t.c_str(), so);
 
   // Cleanup.
-  std::filesystem::remove_all(model_only_folder);
+  std::filesystem::remove_all(model_only_folder, ec);
+  ASSERT_FALSE(ec) << "Failed to remove temp folder: " << ec.message();
 }
 
 #ifndef _WIN32
