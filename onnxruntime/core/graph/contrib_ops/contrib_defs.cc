@@ -2004,10 +2004,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(ExpandDims, 1,
                                     return;
                                   // Read the scalar axis robustly. ParseScalar handles both raw_data and
                                   // int32_data encodings and validates the element count, avoiding an
-                                  // out-of-bounds read when the value is stored as raw_data.
+                                  // out-of-bounds read when the value is stored as raw_data. A present but
+                                  // malformed initializer (wrong element type or not a single scalar) is a
+                                  // model error, so fail shape inference rather than silently skipping it.
                                   int axis = 0;
                                   if (!ParseScalar(axis_initializer, axis))
-                                    return;
+                                    fail_shape_inference("Input axis must be a scalar tensor(int32) initializer");
                                   if (axis > rank || axis < -rank - 1) {
                                     fail_shape_inference("Input axis is invalid: ", axis);
                                   }
