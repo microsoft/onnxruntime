@@ -517,7 +517,6 @@ namespace cuda {
 namespace detail {
 struct CudaKernelAdapterRuntimeConfig {
   bool use_tf32 = true;
-  bool skip_layer_norm_strict_mode = false;
   int cudnn_conv_algo = 0;
   bool cudnn_conv_use_max_workspace = true;
   bool cudnn_conv1d_pad_to_nc1d = false;
@@ -727,7 +726,6 @@ inline void SetCudaKernelAdapterRuntimeConfigForProvider(
   // AttentionKernelOptions contains std::once_flag (not copyable), so assign
   // the plain-data fields individually rather than relying on operator=.
   config->use_tf32 = init_config.use_tf32;
-  config->skip_layer_norm_strict_mode = init_config.skip_layer_norm_strict_mode;
   config->cudnn_conv_algo = init_config.cudnn_conv_algo;
   config->cudnn_conv_use_max_workspace = init_config.cudnn_conv_use_max_workspace;
   config->cudnn_conv1d_pad_to_nc1d = init_config.cudnn_conv1d_pad_to_nc1d;
@@ -736,11 +734,6 @@ inline void SetCudaKernelAdapterRuntimeConfigForProvider(
   config->device_id = init_config.device_id;
   config->do_copy_in_default_stream = init_config.do_copy_in_default_stream;
   PL_CUDA_CALL_THROW(cudaGetDeviceProperties(&config->device_prop, config->device_id));
-}
-
-inline bool GetCudaKernelAdapterSkipLayerNormStrictMode(const void* provider) {
-  const auto config = detail::GetCudaKernelAdapterRuntimeConfigForProvider(provider);
-  return config->skip_layer_norm_strict_mode;
 }
 
 // Global aliases and shims

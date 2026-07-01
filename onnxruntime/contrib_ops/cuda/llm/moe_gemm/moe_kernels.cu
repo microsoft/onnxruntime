@@ -83,6 +83,19 @@ inline bool MoeGemvDisabledByEnv() {
   return disabled;
 }
 
+inline bool MoeGemvSplitK2SwiGLUDisabledByEnv() {
+  // Parsed once via ORT's environment helper (consistent parsing/thread-safety across platforms).
+  static bool const disabled =
+      onnxruntime::ParseEnvironmentVariableWithDefault<int>("ORT_DISABLE_MOE_GEMV_SPLITK2_SWIGLU", 0) == 1;
+  return disabled;
+}
+
+template <typename T, typename WeightType, typename ScaleBiasType>
+constexpr bool MoeGemvSplitK2SwiGLUSupported() {
+  return std::is_same_v<T, half> && std::is_same_v<WeightType, cutlass::uint4b_t> &&
+         std::is_same_v<ScaleBiasType, T>;
+}
+
 inline bool MoeGemvRejectedByProfiledInterSize(int64_t expanded_num_rows, int64_t inter_size) {
   return expanded_num_rows > onnxruntime::llm::kernels::moe_gemv::kMaxProfiledExpandedRowsForSmallProblemDim &&
          inter_size < onnxruntime::llm::kernels::moe_gemv::kMinProfiledProblemDimForExpandedRowsAbove4;
@@ -153,7 +166,7 @@ bool tryLaunchMoeGemvIntSymmetricInterleavedSwiGLU(
     ScaleBiasType const* biases, T* output,
     int64_t const* expert_first_token_offset, int num_experts_per_node, int const* permuted_row_to_expert,
     int64_t expanded_num_rows, int64_t inter_size, int64_t k, int sm, int group_size,
-    bool disabled, cutlass_kernels::ActivationParams activation_params, cudaStream_t stream) {
+    bool disabled, cutlass_kernels::ActivationParams activation_params, float* splitk_partials, cudaStream_t stream) {
   if constexpr ((std::is_same_v<WeightType, cutlass::uint4b_t> || std::is_same_v<WeightType, uint8_t>) &&
                 (std::is_same_v<T, half> || std::is_same_v<T, __nv_bfloat16>) && std::is_same_v<ScaleBiasType, T>) {
     bool const env_disabled = MoeGemvDisabledByEnv();
@@ -176,7 +189,8 @@ bool tryLaunchMoeGemvIntSymmetricInterleavedSwiGLU(
     }
     onnxruntime::llm::kernels::moe_gemv::launch_moe_gemv_int_symmetric_interleaved_swiglu<T, WeightType>(
         input, weights, scales, biases, output, expert_first_token_offset, permuted_row_to_expert,
-        num_experts_per_node, expanded_num_rows, inter_size, k, group_size, sm, activation_params, stream);
+        num_experts_per_node, expanded_num_rows, inter_size, k, group_size, sm, activation_params,
+        splitk_partials, stream);
     return true;
   } else {
     (void)input;
@@ -195,6 +209,7 @@ bool tryLaunchMoeGemvIntSymmetricInterleavedSwiGLU(
     (void)group_size;
     (void)disabled;
     (void)activation_params;
+    (void)splitk_partials;
     (void)stream;
     return false;
   }
@@ -1854,6 +1869,12 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
   // (see comment above). Only the gated / has-glu path uses it; zero otherwise.
   size_t const fc1_result_dedicated_size = (glu_inter_elems > 0) ? fc1_result_size : 0;
 
+  static constexpr int kMoeGemvSplitK = 2;
+  size_t const moe_gemv_splitk_partials_size = is_gated_activation && !MoeGemvSplitK2SwiGLUDisabledByEnv() &&
+                                                       MoeGemvSplitK2SwiGLUSupported<T, WeightType, ScaleBiasType>()
+                                                   ? kMoeGemvSplitK * glu_inter_elems * sizeof(float)
+                                                   : 0;
+
   size_t smoothed_act_size = use_awq ? std::max(permuted_elems, interbuf_elems) * sizeof(T) * 2
                                      : 0;  // Extra workspace required by AWQ for smoothing activations
 
@@ -1878,6 +1899,7 @@ CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Enable>:
   ADD(overlapped_gemm1_gemm2_inputs);
   ADD(overlapped_gemm1_gemm2_outputs);
   ADD(fc1_result_dedicated);
+  ADD(moe_gemv_splitk_partials);
   ADD_NAME(alpha_scale_ptr_array_fc1, alpha_scale_ptr_array_size);
   ADD_NAME(alpha_scale_ptr_array_fc2, alpha_scale_ptr_array_size);
   ADD(fp4_act_scale);
@@ -1955,6 +1977,7 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
                                      : getWsPtr(T{}, "overlapped_gemm1_gemm2_outputs");
   fc2_result_ = has_glu_inter_result ? getWsPtr(T{}, "overlapped_gemm1_gemm2_outputs")
                                      : getWsPtr(T{}, "overlapped_gemm1_gemm2_inputs");
+  moe_gemv_splitk_partials_ = getWsPtr(float{}, "moe_gemv_splitk_partials");
 
   alpha_scale_ptr_array_fc1_ = getWsPtr((float const*)(nullptr), "alpha_scale_ptr_array_fc1");
   alpha_scale_ptr_array_fc2_ = getWsPtr((float const*)(nullptr), "alpha_scale_ptr_array_fc2");
@@ -2019,7 +2042,7 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
     TmaWarpSpecializedGroupedGemmInput::ElementSF* fc2_fp4_act_flat, QuantParams quant_params, int64_t const num_rows,
     int64_t const expanded_num_rows, int64_t const hidden_size, int64_t const inter_size,
     int const num_experts_per_node, ActivationType fc1_activation_type, float const** alpha_scale_ptr_array,
-    int const* permuted_row_to_expert, bool bias_is_broadcast,
+    int const* permuted_row_to_expert, float* moe_gemv_splitk_partials, bool bias_is_broadcast,
     cudaStream_t stream, MOEParallelismConfig parallelism_config,
     cutlass_extensions::CutlassGemmConfig config,
     ActivationParameters activation_params) {
@@ -2138,6 +2161,10 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
       alpha_scale_ptr_array = computeFP8DequantScale(
           alpha_scale_ptr_array, num_experts_per_node, quant_params.groupwise.fc1.alpha, stream);
     }
+    bool const use_splitk_swiglu_gemv = !MoeGemvSplitK2SwiGLUDisabledByEnv() &&
+                                        MoeGemvSplitK2SwiGLUSupported<T, WeightType, ScaleBiasType>();
+    ORT_ENFORCE(!use_splitk_swiglu_gemv || moe_gemv_splitk_partials != nullptr,
+                "Split-K2 SwiGLU GEMV requires split-K GEMV workspace");
     bool const fc1_did_fused_gemv = tryLaunchMoeGemvIntSymmetricInterleavedSwiGLU<T, WeightType, ScaleBiasType>(
         input, fc1_expert_weights,
         quant_params.groupwise.group_size > 0
@@ -2151,7 +2178,9 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
         onnxruntime::llm::common::getSMVersion(), quant_params.groupwise.group_size,
         /*disabled=*/parallelism_config.ep_size > 1 || use_ampere_activation_fusion || !bias_is_broadcast ||
             MoeGemvRejectedByProfiledInterSize(expanded_num_rows, inter_size),
-        activation_params, stream);
+        activation_params,
+        use_splitk_swiglu_gemv ? moe_gemv_splitk_partials : nullptr,
+        stream);
 
     // Run the GEMM with activation function overridden with `Identity`, we do the activation separately.
     // Fast path: symmetric INT4/INT8 (per-column or block-wise) MoE GEMV for small expanded-row counts
@@ -2490,7 +2519,7 @@ void CutlassMoeFCRunner<T, WeightType, OutputType, InputType, ScaleBiasType, Ena
                 fc1_int_scales, fc1_fp8_dequant, use_wfp4afp8 ? fc2_wfp4afp8_quant_scale : fc2_fp8_quant,
                 fc1_fp4_act_scale_, fc2_fp4_act_scale_, quant_params, num_rows, expanded_num_rows, hidden_size, inter_size,
                 num_experts_per_node, fc1_activation_type, alpha_scale_ptr_array_fc1_, permuted_token_selected_experts_,
-                /*bias_is_broadcast=*/true, stream, parallelism_config, *gemm1_config_,
+                moe_gemv_splitk_partials_, /*bias_is_broadcast=*/true, stream, parallelism_config, *gemm1_config_,
                 activation_params);
     sync_check_cuda_error(stream);
 
