@@ -2972,7 +2972,9 @@ struct OrtEpFactory {
    * and returns the index of the best match.
    *
    * Each candidate's OrtKeyValuePairs can have multiple entries and the entry with "ep_compatibility_info" key is
-   * required; its associated value is the compatibility information stored in onnx model metadata.
+   * required; its associated value is the compatibility information stored in onnx model metadata. When coming from
+   * a model package, these correspond to the fields in variant body.
+   * See model_package/README.md#variant-body for the full spec.
    *
    * Context about having this function:
    * The existing ValidateCompiledModelCompatibilityInfo() alone is not sufficient for some EPs to determine the best
