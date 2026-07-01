@@ -2356,6 +2356,10 @@ struct OrtEp {
    *
    * The returned string should be a null-terminated, UTF-8 encoded string. ORT will copy it.
    *
+   * A single string is stored per EP (not per device). If the EP may later be validated against multiple devices
+   * (e.g., multi-adapter or multi-GPU), serialize enough information here to evaluate compatibility against each such
+   * device individually. See ValidateCompiledModelCompatibilityInfo for how the per-device verdicts are combined.
+   *
    * \param[in] this_ptr The OrtEp instance.
    * \param[in] graph The OrtGraph instance for which to generate compatibility information.
    *
@@ -2795,16 +2799,49 @@ struct OrtEpFactory {
 
   /** \brief Validate the compatibility of a compiled model with the execution provider factory for one or more devices.
    *
-   * Given a compatibility info string produced during model compilation, the EP factory should determine whether the
-   * compiled model is compatible with the EP factory when targeting the provided hardware devices. All devices provided
-   * must belong to the same execution provider instance that this factory creates.
+   * Given a compatibility info string produced during model compilation (see OrtEp::GetCompiledModelCompatibilityInfo),
+   * the EP factory determines whether the compiled model is compatible with the EP factory when targeting the provided
+   * hardware devices, and reports a single OrtCompiledModelCompatibility verdict for the whole set.
    *
-   * The EP factory implementation should consider the set of devices (e.g., multi-adapter or multi-GPU scenarios) when
-   * evaluating compatibility and set `model_compatibility` accordingly.
+   * All devices provided belong to the same execution provider instance that this factory creates. The set represents
+   * the devices the EP would run the model on *together* (e.g., multi-adapter or multi-GPU scenarios), NOT a menu of
+   * candidate placements to choose the best one from. Because the function returns a single verdict for the entire set,
+   * that verdict must describe running on the set as a whole (a conjunction): if the model cannot run on one of the
+   * devices the EP would use, the model cannot run on the set.
+   *
+   * A single-device EP (the common case) may ignore `devices`/`num_devices` and validate `compatibility_info` against
+   * its own configuration. The per-device algorithm below is required only when the EP may run a model across more
+   * than one device at once.
+   *
+   * Required implementation when num_devices > 1 (a "best of any device" result is NOT permitted -- a single verdict
+   * cannot convey which device it applies to, so ORT would otherwise be told a model is runnable on a set that
+   * contains a device it cannot run on):
+   *   1. Compute a per-device verdict (e.g., by validating `compatibility_info` against each device individually).
+   *   2. Combine the per-device verdicts into one. Treat EP_NOT_APPLICABLE as a neutral value (skip it) and take the
+   *      worst of the remaining verdicts:
+   *        - if any device is EP_UNSUPPORTED                        -> EP_UNSUPPORTED
+   *        - else if any device is EP_SUPPORTED_PREFER_RECOMPILATION -> EP_SUPPORTED_PREFER_RECOMPILATION
+   *        - else if at least one device is EP_SUPPORTED_OPTIMAL     -> EP_SUPPORTED_OPTIMAL
+   *        - else (every device was EP_NOT_APPLICABLE)               -> EP_NOT_APPLICABLE
+   *      Equivalently: report EP_SUPPORTED_OPTIMAL only if every device the EP has an opinion on is optimal.
+   *
+   * Choosing the verdict for the "no opinion" and "bad artifact" cases (the compatibility string is opaque to ORT and
+   * is interpreted only by the EP that produced it):
+   *   - EP_NOT_APPLICABLE: the EP has no opinion -- `compatibility_info` is empty or was clearly produced by a
+   *     different EP. ORT treats this as "no compiled artifact for this EP": session creation proceeds, and in model
+   *     package variant selection the variant remains eligible but at the lowest priority.
+   *   - EP_UNSUPPORTED: the string appears to be this EP's but the compiled model cannot run on the target
+   *     hardware/configuration. ORT rejects it (fails session creation / excludes the variant). Returning
+   *     EP_NOT_APPLICABLE for a corrupt or stale artifact that is actually this EP's would let it pass silently.
+   *
+   * Note that a single string is stored per EP (not per device), so GetCompiledModelCompatibilityInfo should serialize
+   * enough information to evaluate the string against every device the EP may later be asked to validate against.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] devices Array of OrtHardwareDevice pointers that the EP would run on. All must map to this EP.
-   * \param[in] num_devices Number of entries in `devices`.
+   * \param[in] num_devices Number of entries in `devices`. May be 0 when no device-specific context is available;
+   *                        in that case evaluate `compatibility_info` against the EP's own configuration and do NOT
+   *                        dereference `devices`.
    * \param[in] compatibility_info The compatibility information string produced when the model was compiled.
    * \param[out] model_compatibility OrtCompiledModelCompatibility value describing the compatibility of the model with the EP.
    *

@@ -4,7 +4,11 @@
 #include "ep_factory.h"
 
 #include <cassert>
+#include <optional>
+#include <string>
+#include <string_view>
 
+#include "compatibility_combine.h"
 #include "ep.h"
 #include "ep_allocator.h"
 #include "ep_arena.h"
@@ -449,10 +453,97 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateExternalResourceImporterForDevic
   return nullptr;
 }
 
+namespace {
+
+// Field keys for the example EP's compatibility string format
+// "<ep_name>;version=X;ort_api_version=Y;hardware_architecture=Z". Using named constants (rather than literal
+// offsets) keeps the parser robust if a key is renamed.
+constexpr std::string_view kVersionKey = "version=";
+constexpr std::string_view kOrtApiVersionKey = "ort_api_version=";
+constexpr std::string_view kHardwareArchKey = "hardware_architecture=";
+
+// Extracts the value of `key` from a ';'-delimited "k=v;k=v;..." string, or std::nullopt if the key is absent.
+// The key must appear at the start of a field (string start or right after a ';'), so "version=" does NOT match
+// the "version=" embedded in "ort_api_version=", and the value ends at the next ';' if present (otherwise the rest of the string).
+std::optional<std::string> GetField(const std::string& info, std::string_view key) {
+  for (size_t search = 0;;) {
+    size_t pos = info.find(key.data(), search, key.size());
+    if (pos == std::string::npos) {
+      return std::nullopt;
+    }
+    const bool at_field_start = (pos == 0) || (info[pos - 1] == ';');
+    if (at_field_start) {
+      size_t value_start = pos + key.size();
+      size_t value_end = info.find(';', value_start);
+      return value_end != std::string::npos ? info.substr(value_start, value_end - value_start)
+                                            : info.substr(value_start);
+    }
+    search = pos + 1;
+  }
+}
+
+// Computes the compatibility verdict of a single compatibility string against a single hardware device.
+// The compatibility string is opaque to ORT; only the EP that produced it knows how to interpret it.
+//
+// The architecture a compiled artifact targets is device-specific, so a real multi-device EP derives the expected
+// value from `device` (e.g., via HardwareDevice_Type/VendorId/Metadata) and the verdict can differ per device.
+// This example demonstrates that by mapping the hardware device type to an arch label. `device` may be nullptr
+// (when num_devices == 0), in which case the EP's default configuration is used.
+OrtCompiledModelCompatibility ComputeCompatibilityForDevice(const OrtApi& ort_api,
+                                                            const std::string& ep_version,
+                                                            const std::string& info,
+                                                            const OrtHardwareDevice* device) {
+  std::optional<std::string> compiled_ep_version = GetField(info, kVersionKey);
+  if (!compiled_ep_version.has_value()) {
+    // Our prefix but an unparseable string -> the artifact is ours but unusable.
+    return OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+  }
+
+  // Different EP version - might work but prefer recompilation.
+  if (*compiled_ep_version != ep_version) {
+    return OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
+  }
+
+  // Check ORT API version if present. Different ORT version - might still work but prefer recompilation.
+  if (std::optional<std::string> ort_version = GetField(info, kOrtApiVersionKey); ort_version.has_value()) {
+    if (*ort_version != std::to_string(ORT_API_VERSION)) {
+      return OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
+    }
+  }
+
+  // Check hardware architecture compatibility if present in the string. The expected arch is derived from the
+  // target device (CPU -> "arch1"); a mismatch means the artifact was built for a different device.
+  if (std::optional<std::string> hardware_arch = GetField(info, kHardwareArchKey); hardware_arch.has_value()) {
+    std::string expected_arch = "arch1";  // default / num_devices == 0
+    if (device != nullptr) {
+      switch (ort_api.HardwareDevice_Type(device)) {
+        case OrtHardwareDeviceType_GPU:
+          expected_arch = "arch2";
+          break;
+        case OrtHardwareDeviceType_NPU:
+          expected_arch = "arch3";
+          break;
+        default:  // CPU and any other type
+          expected_arch = "arch1";
+          break;
+      }
+    }
+    // Different hardware architecture - might still work but prefer recompilation.
+    if (*hardware_arch != expected_arch) {
+      return OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
+    }
+  }
+
+  // Everything matches - the compiled model is fully compatible with this device.
+  return OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL;
+}
+
+}  // namespace
+
 OrtStatus* ORT_API_CALL ExampleEpFactory::ValidateCompiledModelCompatibilityInfoImpl(
     OrtEpFactory* this_ptr,
-    const OrtHardwareDevice* const* /*devices*/,
-    size_t /*num_devices*/,
+    const OrtHardwareDevice* const* devices,
+    size_t num_devices,
     const char* compatibility_info,
     OrtCompiledModelCompatibility* model_compatibility) noexcept {
   auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
@@ -461,79 +552,41 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::ValidateCompiledModelCompatibilityInfo
     return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT, "model_compatibility cannot be nullptr");
   }
 
-  // Parse the compatibility info to check if it matches our current configuration.
-  // The expected format is "ExampleEP;version=0.1.0;ort_api_version=24".
-  // For this example implementation, we simply check if the string starts with our EP name.
-
+  // The compatibility string is opaque to ORT and is interpreted only by the EP that produced it. An empty string,
+  // or one that was not produced by this EP, means we have no opinion: report EP_NOT_APPLICABLE.
   if (compatibility_info == nullptr || compatibility_info[0] == '\0') {
-    *model_compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+    *model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
     return nullptr;
   }
 
+  // The expected format is "<ep_name>;version=<semver>;ort_api_version=<ORT_API_VERSION>;hardware_architecture=<arch>".
   std::string info(compatibility_info);
-  std::string expected_prefix = factory.ep_name_ + ";";
-
-  if (info.find(expected_prefix) != 0) {
-    // The compatibility info doesn't match our EP
-    *model_compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+  if (info.find(factory.ep_name_ + ";") != 0) {
+    *model_compatibility = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
     return nullptr;
   }
 
-  // Parse version parts: "ExampleEP;version=X;ort_api_version=Y"
-  // Look for "version=" and extract the value
-  size_t version_pos = info.find("version=");
-  size_t ort_version_pos = info.find("ort_api_version=");
-
-  if (version_pos == std::string::npos) {
-    // Invalid format
-    *model_compatibility = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+  // `devices` are the hardware devices this EP would run the model on *together* (e.g., multi-adapter or multi-GPU).
+  // Because we must return a single verdict for the whole set, evaluate the string against each device and combine
+  // the per-device verdicts: EP_NOT_APPLICABLE is neutral and otherwise the worst verdict wins, so the result is
+  // EP_SUPPORTED_OPTIMAL only if every device the EP has an opinion on is optimal. See the documentation for
+  // ValidateCompiledModelCompatibilityInfo in onnxruntime_ep_c_api.h.
+  if (num_devices == 0) {
+    // No specific devices supplied; evaluate against the EP's own configuration.
+    *model_compatibility =
+        ComputeCompatibilityForDevice(factory.ort_api, factory.GetEpVersionString(), info, /*device*/ nullptr);
     return nullptr;
   }
 
-  // Extract EP version (between "version=" and the next ";")
-  size_t version_start = version_pos + 8;  // length of "version="
-  size_t version_end = info.find(';', version_start);
-  std::string ep_version = (version_end != std::string::npos)
-                               ? info.substr(version_start, version_end - version_start)
-                               : info.substr(version_start);
-
-  // Check if the EP version matches our version
-  if (ep_version != factory.ep_version_) {
-    // Different EP version - might work but prefer recompilation
-    *model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
-    return nullptr;
-  }
-
-  // Check ORT API version if present
-  if (ort_version_pos != std::string::npos) {
-    size_t ort_version_start = ort_version_pos + 16;  // length of "ort_api_version="
-    size_t ort_version_end = info.find(';', ort_version_start);
-    std::string ort_version = (ort_version_end != std::string::npos)
-                                  ? info.substr(ort_version_start, ort_version_end - ort_version_start)
-                                  : info.substr(ort_version_start);
-    std::string current_ort_version = std::to_string(ORT_API_VERSION);
-    if (ort_version != current_ort_version) {
-      // Different ORT version - might still work but prefer recompilation
-      *model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
-      return nullptr;
+  OrtCompiledModelCompatibility combined = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+  for (size_t i = 0; i < num_devices; ++i) {
+    combined = example_ep::CombineCompatibility(
+        combined, ComputeCompatibilityForDevice(factory.ort_api, factory.GetEpVersionString(), info, devices[i]));
+    if (combined == OrtCompiledModelCompatibility_EP_UNSUPPORTED) {
+      break;  // worst possible verdict; no need to evaluate the remaining devices
     }
   }
 
-  // Check hardware architecture compatibility if that information is included in the compatibility_info string.
-  size_t hardware_arch_pos = info.find("hardware_architecture=");
-  if (hardware_arch_pos != std::string::npos) {
-    size_t hardware_arch_start = hardware_arch_pos + 22;  // length of "hardware_architecture="
-    std::string hardware_arch = info.substr(hardware_arch_start);
-    std::string current_hardware_arch = "arch1";  // "arch1" is for test purpose.
-                                                  // Replace with actual hardware architecture detection if needed
-    if (hardware_arch != current_hardware_arch) {
-      // Different hardware architecture - might still work but prefer recompilation
-      *model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
-      return nullptr;
-    }
-  }
-
-  // Everything matches - the compiled model is fully compatible
-  *model_compatibility = OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL;
+  *model_compatibility = combined;
   return nullptr;
 }

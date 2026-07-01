@@ -14,6 +14,7 @@
 #include "core/session/model_package/model_package_context.h"
 #include "core/session/onnxruntime_experimental_cxx_api.h"
 #include "core/session/abi_devices.h"
+#include "test/autoep/library/example_plugin_ep/compatibility_combine.h"
 #include "test/autoep/test_autoep_utils.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/api_asserts.h"
@@ -669,6 +670,88 @@ TEST(ModelPackageTest, CheckCompiledModelCompatibilityInfo) {
   // Cleanup
   std::error_code ec;
   std::filesystem::remove_all(package_root, ec);
+}
+
+// Exercises OrtEpFactory::ValidateCompiledModelCompatibilityInfo through the public
+// GetModelCompatibilityForEpDevices API against the example plugin EP. Covers the single-device verdicts, the
+// "no opinion" cases (empty / foreign compatibility string -> EP_NOT_APPLICABLE), and the multi-device path
+// (num_devices > 1) where the per-device verdicts are combined into a single result.
+//
+// Note: the example EP derives its per-device verdict from the device type, but only one hardware device (CPU)
+// is available here, so the multi-device cases below exercise the loop and combine path with uniform verdicts.
+// Heterogeneous (mixed) per-device verdicts are covered directly by the CombineCompatibility_* test below.
+TEST(ModelPackageTest, ValidateCompiledModelCompatibilityInfo_ExampleEp) {
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  // Build compat strings against the current ORT_API_VERSION so the EP's ORT-version check passes and the
+  // hardware_architecture field is what differentiates: arch1 -> OPTIMAL, arch2 -> PREFER_RECOMPILATION.
+  const std::string ort_api_version_str = std::to_string(ORT_API_VERSION);
+  const std::string compat_arch1 =
+      "example_ep;version=0.1.0;ort_api_version=" + ort_api_version_str + ";hardware_architecture=arch1";
+  const std::string compat_arch2 =
+      "example_ep;version=0.1.0;ort_api_version=" + ort_api_version_str + ";hardware_architecture=arch2";
+  // A string produced by a different EP (does not start with this EP's name).
+  const std::string foreign_info =
+      "some_other_ep;version=0.1.0;ort_api_version=" + ort_api_version_str + ";hardware_architecture=arch1";
+
+  const std::vector<Ort::ConstEpDevice> one_device{plugin_ep_device};
+  // Pass the same EP device twice to drive num_devices == 2 through the factory's combine path.
+  const std::vector<Ort::ConstEpDevice> two_devices{plugin_ep_device, plugin_ep_device};
+
+  // Single-device verdicts.
+  EXPECT_EQ(Ort::GetModelCompatibilityForEpDevices(one_device, compat_arch1.c_str()),
+            OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL);
+  EXPECT_EQ(Ort::GetModelCompatibilityForEpDevices(one_device, compat_arch2.c_str()),
+            OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION);
+
+  // "No opinion": an empty string or a string produced by a different EP -> EP_NOT_APPLICABLE.
+  EXPECT_EQ(Ort::GetModelCompatibilityForEpDevices(one_device, ""),
+            OrtCompiledModelCompatibility_EP_NOT_APPLICABLE);
+  EXPECT_EQ(Ort::GetModelCompatibilityForEpDevices(one_device, foreign_info.c_str()),
+            OrtCompiledModelCompatibility_EP_NOT_APPLICABLE);
+
+  // Multi-device: per-device verdicts are combined into a single result (uniform across devices here).
+  EXPECT_EQ(Ort::GetModelCompatibilityForEpDevices(two_devices, compat_arch1.c_str()),
+            OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL);
+  EXPECT_EQ(Ort::GetModelCompatibilityForEpDevices(two_devices, compat_arch2.c_str()),
+            OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION);
+}
+
+// Unit test for the per-device verdict fold (example_ep::CombineCompatibility) that
+// OrtEpFactory::ValidateCompiledModelCompatibilityInfo uses to reduce multiple per-device verdicts into a single
+// verdict. This exercises the worst-of + EP_NOT_APPLICABLE-identity rule with *heterogeneous* inputs, which the
+// end-to-end test above cannot (the example EP exposes a single hardware device).
+TEST(ModelPackageTest, CombineCompatibility_WorstOfWithNotApplicableIdentity) {
+  using example_ep::CombineCompatibility;
+  constexpr auto kNA = OrtCompiledModelCompatibility_EP_NOT_APPLICABLE;
+  constexpr auto kUnsupported = OrtCompiledModelCompatibility_EP_UNSUPPORTED;
+  constexpr auto kPrefer = OrtCompiledModelCompatibility_EP_SUPPORTED_PREFER_RECOMPILATION;
+  constexpr auto kOptimal = OrtCompiledModelCompatibility_EP_SUPPORTED_OPTIMAL;
+
+  // EP_NOT_APPLICABLE is the (two-sided) identity element.
+  EXPECT_EQ(CombineCompatibility(kNA, kNA), kNA);
+  EXPECT_EQ(CombineCompatibility(kNA, kOptimal), kOptimal);
+  EXPECT_EQ(CombineCompatibility(kOptimal, kNA), kOptimal);
+  EXPECT_EQ(CombineCompatibility(kNA, kUnsupported), kUnsupported);
+
+  // Worst-of wins for heterogeneous verdicts, in either argument order.
+  EXPECT_EQ(CombineCompatibility(kOptimal, kPrefer), kPrefer);
+  EXPECT_EQ(CombineCompatibility(kPrefer, kOptimal), kPrefer);
+  EXPECT_EQ(CombineCompatibility(kOptimal, kUnsupported), kUnsupported);
+  EXPECT_EQ(CombineCompatibility(kUnsupported, kPrefer), kUnsupported);
+
+  // Idempotent for uniform verdicts.
+  EXPECT_EQ(CombineCompatibility(kOptimal, kOptimal), kOptimal);
+  EXPECT_EQ(CombineCompatibility(kUnsupported, kUnsupported), kUnsupported);
+
+  // A full left-fold like the EP performs over a device set: optimal, prefer, optimal -> prefer.
+  OrtCompiledModelCompatibility acc = kNA;
+  acc = CombineCompatibility(acc, kOptimal);
+  acc = CombineCompatibility(acc, kPrefer);
+  acc = CombineCompatibility(acc, kOptimal);
+  EXPECT_EQ(acc, kPrefer);
 }
 
 TEST(ModelPackageTest, LoadModelPackageAndRunInference_DiscoverComponentsFromModelsFolder) {
