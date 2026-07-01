@@ -44,6 +44,13 @@ int64_t get_data<int64_t>(const TensorProto* shapeInitializer) {
 }
 
 template <>
+int16_t get_data<int16_t>(const TensorProto* shapeInitializer) {
+  // ONNX packs INT16 initializer values into the int32_data repeated field.
+  if (shapeInitializer->int32_data_size() > 0) return static_cast<int16_t>(shapeInitializer->int32_data(0));
+  fail_shape_inference("Can not get shape initializer data!");
+}
+
+template <>
 float get_data<float>(const TensorProto* shapeInitializer) {
   if (shapeInitializer->float_data_size() > 0) return shapeInitializer->float_data(0);
   fail_shape_inference("Can not get shape initializer data!");
