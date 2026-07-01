@@ -259,3 +259,180 @@ Either way, microbench the inner-loop change in isolation before
 committing — both enhancements have shape regimes where the win is
 small or negative, and a microbench harness around a fixed (M, N, K,
 BlkLen) grid is the cheapest way to discover those before shipping.
+
+## 4. Observed cross-ISA W2 perf asymmetry (context, not a task)
+
+Reported end-to-end on a QA transformer with `MatMulNBits`, `seq_len` in
+{32, 64, 128}, batch=1, `SQNBIT_CompInt8` (`accuracy_level=4`):
+
+- **ARM64** (Snapdragon X, DotProd, KleidiAI OFF in the build): W2 runs
+  ~20–40 % **faster** than W4, monotone across `seq_len`.
+- **AVX-512** (VNNI host, previously measured): W2 runs ~10–15 %
+  **slower** than W4.
+
+Both platforms exercise the same `MatMulNBits<T1>` operator over the
+same packed-B pipeline; the split is entirely inside the ISA-specific
+inner dot-product loop. Recorded here so a future contributor comparing
+W2 perf across CI hosts does not read the AVX-512 gap as a regression.
+
+### 4.1 Root-cause sketch
+
+Two facts to keep separate:
+
+**(a) Algorithmic bytes-per-MAC is set by the quant width, not by the
+ISA.** For an int8×int8 MAC the algorithm streams 1 B byte per MAC at
+W8, 0.5 B byte per MAC at W4, 0.25 B byte per MAC at W2. This is the
+same on `VPDPBUSD` and on `SDOT`. Comparing "MACs/cycle" across ISAs
+does *not* tell you how bandwidth-hungry the loop is; it tells you the
+per-cycle absolute throughput of the dot pipe.
+
+**(b) Compute-bound vs bandwidth-bound is a *ratio* between the
+algorithm's bytes-per-MAC and the ratio the hardware supports between
+peak compute (MACs/sec) and peak byte-delivery from the level of the
+cache hierarchy where B actually lives.** Wider dot units (Xeon SPR /
+EPYC AVX-512 VNNI) ship with proportionally wider L1/L2 pipes and
+larger private L2, so B tends to sit in L2 and the dot pipe is the
+ceiling. Client ARM SoCs (Snapdragon X Oryon) have narrower dot units
+*and* narrower cache pipes, but the two scale down at different rates;
+in practice B spills out of L1D into SLC and the delivery pipe becomes
+the ceiling for typical `MatMulNBits` shapes.
+
+W2 vs W4 trades two things against each other:
+
+- **W2 halves the B bytes streamed** (0.25 vs 0.5 byte/MAC). This shows
+  up as speedup only in proportion to how much of the runtime was
+  actually spent waiting on bytes.
+- **W2 adds an extra bit-unpack pass** — two shift+mask+`SUB` rounds
+  per 4 output lanes instead of one — issued into the vector/SIMD pipes
+  that also issue the dot instruction. This shows up as slowdown only
+  in proportion to how tight those pipes already are.
+
+Per ISA the trade lands opposite ways:
+
+| ISA | int8 dot inst | typical M ≤ 128, K-loop regime | W2 vs W4 outcome |
+|---|---|---|---|
+| AVX-512 VNNI | `VPDPBUSD` | dot-pipe-limited: SPR/EPYC L1/L2 keep `VPDPBUSD` near its 2/cycle peak while B is L2-resident | small bytes-saving win, unpack uops steal directly from the dot pipe → W2 ~10–15 % slower |
+| ARM64 NEON DotProd | `SDOT` | delivery-pipe-limited: on Oryon the L2/SLC pipes cannot keep 2 `SDOT`/cycle fed once B spills out of L1D | halved B translates almost linearly, dot pipe has slack to absorb the extra unpack uops → W2 ~20–40 % faster |
+
+Two clarifications this table hides:
+
+1. **NEON unpack does share the SIMD pipes with `SDOT`** — `USHR` /
+   `SSHR` / `AND` / `SUB` on vector regs are SIMD-issue ops, not scalar
+   ALU ops, and Oryon does not have a dedicated "unpack pipe" hiding
+   next to the dot unit. The reason the extra unpack cost does not
+   surface as a W2 slowdown on ARM64 is not that unpack runs on free
+   pipes — it is that the loop was not dot-pipe-limited to begin with,
+   so the SIMD pipes had cycles to spare. On AVX-512 the loop *is*
+   dot-pipe-limited, so the same class of extra uops pushes against the
+   ceiling.
+2. Snapdragon X is a *client* SoC. The dot-pipe / cache-pipe balance
+   here is not representative of ARM server parts (Neoverse V2 / V3),
+   which have wider cache pipes and can look dot-pipe-limited on the
+   same kernel. The "W2 wins on ARM64" observation is defensible on
+   Snapdragon X and similarly balanced client parts; extending it to
+   Graviton3/4 is a separate measurement.
+
+Amplifier on the AVX-512 side: the AVX-512 W4 kernel already uses a
+near-peak `VPDPBUSD` layout, so W4 is essentially dot-pipe-limited and
+W2 has an even higher bar to clear. The observed 10–15 % gap is
+consistent with the added unpack pressure and needs no other
+explanation.
+
+### 4.2 Is this worth chasing?
+
+**Not right now.** The theory follows from published int8-dot throughput
+numbers, the gap is small, and closing it would require redesigning the
+AVX-512 W2 inner loop — most obviously by materialising 8× int8 lanes
+into a scratch buffer per K-block ahead of the `VPDPBUSD` stream. That
+trades unpack uops for extra memory traffic, i.e. it gives back the very
+bandwidth advantage that made W2 attractive on ARM64. ARM64 is the
+target platform for W2 shipping today; that is also the ISA where W2's
+smaller B footprint actually helps.
+
+If a future PR does want to close it, two cheap experiments settle the
+question without touching kernel code:
+
+1. On an AVX-512 VNNI host, run
+   `perf stat -e uops_dispatched_port.port_5,cycle_activity.stalls_l1d_miss,cycles`
+   over `onnxruntime_mlas_benchmark --benchmark_filter='QNBITGEMM.*2.*'`
+   and the equivalent 4-bit filter at a fixed (M, N, K). If W2 has
+   markedly more port-5 (shift/rotate) uops and similar or fewer L1
+   miss stalls than W4, the compute-bound story is confirmed.
+2. Sweep K upward at fixed M (e.g. `K ∈ {512, 2048, 8192}`). If the
+   W2/W4 ratio on AVX-512 narrows as K grows, bandwidth pressure is
+   starting to bite and points at large-K regimes where the redesign
+   would pay off. If the ratio is flat, the current inner loop has no
+   bandwidth regime in which W2 wins on AVX-512 and no redesign is
+   warranted.
+
+Either result is standalone; neither blocks the ARM64 enhancements in
+§1 or §2.
+
+### 4.3 Alternative explanations to weigh before investing in a rewrite
+
+The §4.1 compute-vs-bandwidth-ratio story (plus the shared-SIMD-pipe
+observation) is the most compact single-cause explanation, but it is
+not the only plausible one, and the AVX-512 number by itself is not
+tight enough to isolate a single mechanism. Ranked roughly by the
+weight I would put on each:
+
+1. **Kernel-maturity asymmetry (probably the biggest factor).** The
+   AVX-512 W4 path in ORT is very mature — iterated across multiple
+   PRs, specialised VPDPBUSD B-layout, patterns copied from known-good
+   `q4_0` kernels. The AVX-512 W2 path is much younger and has had
+   far less hand-tuning attention. A 10–15 % gap can be entirely a
+   "how many perf-tuning passes has each kernel received" gap with no
+   per-instruction cause. Hard to distinguish from the port-pressure
+   story from numbers alone.
+2. **Scale / zero-point amortisation at smaller `BlkLen`.** W2 usually
+   ships with a smaller default `BlkLen` (16 or 32) than W4 to keep
+   quantisation error in range. Each K-block boundary applies scale +
+   zp to a partial-sum vector; at `BlkLen=16` W2 does 2× as many
+   boundary applications per K-unit as W4 at `BlkLen=32`. If the
+   AVX-512 W2 kernel applies scales via scalar FMAs per block instead
+   of fusing them into a per-N-tile post-loop `BlkSum` gather (which
+   is what the ARM64 W4 / W8 paths do), that overhead can drown a real
+   bandwidth win. Source-checkable.
+3. **Measurement-quality asymmetry.** The AVX-512 W2 / W4 gap was
+   collected earlier and separately from the ARM64 run. Same host?
+   Same thread count? Same `allow_spinning`? Same
+   `client_package_build`? Same seq_lens? Multiple runs with variance?
+   A single-run 10–15 % gap on AVX-512 is inside the typical noise
+   floor without NUMA pinning, turbo lock, and repeated runs. A clean
+   re-measurement under the same discipline as the ARM64 run might
+   shrink or eliminate the gap.
+4. **AVX-512 W2 may not use `VPDPBUSD`.** If the kernel uses
+   `VPMADDUBSW + VPADDD` (non-VNNI fallback) or a lane-permute-heavy
+   sequence instead of pure `VPDPBUSD`, throughput headroom is much
+   lower than W4's and the port-pressure story from §4.1 does not
+   apply — the two paths are apples-to-oranges. Easy to eliminate by
+   reading `onnxruntime/core/mlas/lib/sqnbitgemm_kernel_avx512_2bit.{h,cpp}`.
+5. **Register pressure / spills on AVX-512.** W2 unpack needs extra
+   ZMM registers for shift constants and intermediate masks. With only
+   32 ZMMs, spilling one or two accumulators to stack per K-step adds
+   a small hidden load-forwarding cost. On ARM64 with 32 128-bit
+   V-regs the same working set fits without spills. A couple-percent
+   effect at most, not a headline one.
+
+Weaker candidates (real effects, but unlikely at this magnitude in this
+regime): µop-cache / DSB pressure from a longer W2 inner loop,
+prefetcher unfriendliness of a non-sequential W2 B-layout stride,
+AVX-512 frequency-license downclocking on older SKUs, dependency-chain
+length changes if W2 uses fewer accumulators.
+
+**Cheapest-first order for a future investigation:**
+
+1. Re-run the AVX-512 measurement under the same discipline as the ARM64
+   run (item 3). If the gap narrows to < 5 %, stop.
+2. Grep `sqnbitgemm_kernel_avx512_2bit.{h,cpp}` to confirm `VPDPBUSD`
+   is used and that the B-layout matches the AVX-512 W4 kernel's layout
+   in spirit (item 4). If it does not, that is the first thing to fix,
+   independent of any port-pressure work.
+3. Check whether AVX-512 W2 applies scales per K-block or via a fused
+   post-loop `BlkSum` (item 2). If per-block, port the ARM64 pattern
+   and re-measure.
+4. Only then run the `perf stat` port-pressure experiment from §4.2
+   and the K-sweep. By that point items 1–3 have already ruled out the
+   easy explanations.
+
+None of this blocks the ARM64 enhancements in §1 or §2.
