@@ -71,6 +71,12 @@ enum class DataLayout {
   Default = NCHW,
 };
 
+// Segregated optional-capability mix-in interfaces. See execution_provider_capabilities.h.
+class IGraphCaptureCapability;
+class ITuningCapability;
+class IDataLayoutCapability;
+class ICompileCapability;
+
 class IExecutionProvider {
  protected:
   IExecutionProvider(const std::string& type)
@@ -466,6 +472,28 @@ class IExecutionProvider {
   virtual const OrtEp* GetOrtEp() const {
     return nullptr;
   }
+
+  // --- Segregated optional-capability query hooks (Interface Segregation) ---
+  // Each hook returns a pointer to a narrow capability mix-in (defined in
+  // execution_provider_capabilities.h) when this EP supports the corresponding
+  // optional capability, or nullptr otherwise. They let callers depend only on
+  // the capability they need instead of the full IExecutionProvider surface.
+  // The legacy per-capability virtuals above are retained for compatibility;
+  // EPs and callers can migrate to these hooks incrementally.
+
+  /** Return this EP's graph-capture/replay capability, or nullptr if unsupported. */
+  virtual IGraphCaptureCapability* GetGraphCaptureCapability() noexcept { return nullptr; }
+
+  /** Return this EP's TunableOp tuning capability, or nullptr if unsupported. */
+  virtual ITuningCapability* GetTuningCapability() const noexcept { return nullptr; }
+
+  /** Return this EP's data-layout preference capability, or nullptr if unsupported. */
+  virtual IDataLayoutCapability* GetDataLayoutCapability() const noexcept { return nullptr; }
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  /** Return this EP's subgraph-compilation capability, or nullptr if unsupported. */
+  virtual ICompileCapability* GetCompileCapability() noexcept { return nullptr; }
+#endif
 
  private:
   const std::string type_;
