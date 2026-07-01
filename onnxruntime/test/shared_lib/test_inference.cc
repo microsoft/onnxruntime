@@ -2506,7 +2506,8 @@ TEST(CApiTest, basic_cuda_graph) {
   Ort::ThrowOnError(api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
 
   auto dml_objects = CreateDmlObjects();
-  Ort::ThrowOnError(ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(session_options, dml_objects.dml_device.Get(), dml_objects.command_queue.Get()));
+  Ort::ThrowOnError(ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(
+      session_options, dml_objects.dml_device.Get(), dml_objects.command_queue.Get()));
 #endif
 
   Ort::Session session(*ort_env, MODEL_URI, session_options);
@@ -2824,7 +2825,8 @@ TEST(CApiTest, basic_cuda_graph_with_annotation) {
   const OrtDmlApi* ort_dml_api;
   Ort::ThrowOnError(api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
   auto dml_objects = CreateDmlObjects();
-  Ort::ThrowOnError(ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(session_options, dml_objects.dml_device.Get(), dml_objects.command_queue.Get()));
+  Ort::ThrowOnError(ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(
+      session_options, dml_objects.dml_device.Get(), dml_objects.command_queue.Get()));
 
   Ort::MemoryInfo info_mem("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
 #elif defined(USE_CUDA)
