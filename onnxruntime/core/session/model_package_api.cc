@@ -355,7 +355,31 @@ ORT_API_STATUS_IMPL(OrtModelPackageApi_CreateSession_SinceV28,
 
     effective_options = &*effective_options_storage;
   } else {
-    effective_options = session_options;
+    // Advanced path: use the caller-supplied options. Still carry over the variant's path-valued
+    // session options (e.g. the external initializers folder the model needs to load), but only
+    // for keys the caller did not set, so an explicit user value wins.
+    gsl::span<const std::string> session_option_keys;
+    gsl::span<const std::string> session_option_values;
+    ORT_API_RETURN_IF_STATUS_NOT_OK(
+        mp_ctx.GetSelectedVariantFileSessionOptions(session_option_keys, session_option_values));
+    ORT_API_RETURN_IF(session_option_keys.size() != session_option_values.size(),
+                      ORT_FAIL, "Session option keys/values size mismatch.");
+
+    effective_options_storage.emplace(*session_options);
+    const auto& existing = effective_options_storage->value.config_options.GetConfigOptionsMap();
+    for (size_t i = 0; i < session_option_keys.size(); ++i) {
+      if (!onnxruntime::IsModelPackagePathSessionOption(session_option_keys[i]) ||
+          existing.count(session_option_keys[i]) != 0) {
+        continue;
+      }
+      OrtStatus* st = OrtApis::AddSessionConfigEntry(&*effective_options_storage,
+                                                     session_option_keys[i].c_str(),
+                                                     session_option_values[i].c_str());
+      if (st != nullptr) {
+        return st;
+      }
+    }
+    effective_options = &*effective_options_storage;
   }
 
   // 3) Create session with the resolved file and effective session options.

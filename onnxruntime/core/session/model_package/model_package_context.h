@@ -36,15 +36,15 @@ struct VariantModelInfo {
   std::string identifier;                 // deterministic id (e.g., filename)
   std::filesystem::path model_file_path;  // resolved path under <component>/<variant>/
 
-  // from variant.json file entry
+  // from variant.json file entry. Values of path-valued session option keys (see
+  // IsModelPackagePathSessionOption) are resolved to absolute paths at parse time.
   std::optional<std::unordered_map<std::string, std::string>> session_options;
   std::optional<std::unordered_map<std::string, std::string>> provider_options;
-
-  // Resolved folder containing the model's external initializer file, when
-  // executor_info.ort.external_data was set (path or sha256: URI). Empty
-  // otherwise. Used as the ORT external-initializers folder hint.
-  std::optional<std::string> external_data_folder_path;
 };
+
+// True if the given ORT session-option config key holds a file/folder path reference that must be
+// resolved against the model package (sha256:<hex>, relative, or absolute) before use.
+bool IsModelPackagePathSessionOption(std::string_view key);
 
 // variant-level info (metadata.json + variant.json)
 struct VariantInfo {
@@ -127,10 +127,6 @@ class ModelPackageComponentContext {
   Status GetSelectedVariantConsumerMetadata(const std::string*& out_json_str) const;
 
   Status GetSelectedVariantName(const std::string*& out_name) const;
-
-  // Returns the resolved external_data folder for the selected variant, or
-  // nullptr-on-success if none was declared. Borrowed from VariantModelInfo.
-  Status GetSelectedVariantExternalDataFolder(const std::string*& out_folder) const;
 
   std::vector<std::unique_ptr<IExecutionProvider>>& MutableProviderList() { return provider_list_; }
   const std::vector<const OrtEpDevice*>& ExecutionDevices() const { return execution_devices_; }

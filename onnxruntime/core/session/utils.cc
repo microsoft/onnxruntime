@@ -981,67 +981,23 @@ OrtStatus* CreateSessionForModelPackage(_In_ const OrtSessionOptions* options,
                                         const std::filesystem::path& selected_model_path,
                                         onnxruntime::ModelPackageComponentContext& model_package_context,
                                         std::unique_ptr<onnxruntime::InferenceSession>& sess) {
-  // When the variant declares an external_data folder (e.g. a shared asset
-  // under <package_root>/shared_assets/sha256-<hex>/) we must switch to
-  // buffer load: ORT only honors session.model_external_initializers_file_folder_path
-  // when model_location_ is empty (see inference_session.cc). The mmap'd
-  // model buffer can be released right after Load; external initializers
-  // are read from the folder hint during Initialize.
-  const std::string* external_data_folder = nullptr;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(
-      model_package_context.GetSelectedVariantExternalDataFolder(external_data_folder));
-
-  std::unique_ptr<OrtSessionOptions> cloned_options;
+  // The model is loaded from selected_model_path. Any path-valued options (e.g. the external
+  // initializers folder via session.model_external_initializers_file_folder_path) were already
+  // resolved and merged into `options` by the caller.
+  std::unique_ptr<OrtSessionOptions> default_options;
   const OrtSessionOptions* options_to_use = options;
-  onnxruntime::Env::MappedMemoryPtr mapped_model;
-  const void* model_data = nullptr;
-  size_t model_data_length = 0;
-
-  if (external_data_folder != nullptr) {
-    cloned_options = options ? std::make_unique<OrtSessionOptions>(*options)
-                             : std::make_unique<OrtSessionOptions>();
-    ORT_API_RETURN_IF_STATUS_NOT_OK(
-        cloned_options->value.config_options.AddConfigEntry(
-            kOrtSessionOptionsModelExternalInitializersFileFolderPath,
-            external_data_folder->c_str()));
-    options_to_use = cloned_options.get();
-
-    size_t model_file_length = 0;
-    ORT_API_RETURN_IF_STATUS_NOT_OK(
-        onnxruntime::Env::Default().GetFileLength(selected_model_path.c_str(), model_file_length));
-    if (model_file_length == 0) {
-      return OrtApis::CreateStatus(
-          ORT_FAIL,
-          ("model_package: selected variant model file is empty: " + selected_model_path.string()).c_str());
-    }
-    ORT_API_RETURN_IF_STATUS_NOT_OK(
-        onnxruntime::Env::Default().MapFileIntoMemory(selected_model_path.c_str(),
-                                                      /*offset=*/0,
-                                                      model_file_length,
-                                                      mapped_model));
-    model_data = mapped_model.get();
-    model_data_length = model_file_length;
-  } else if (options_to_use == nullptr) {
-    // No external_data and caller did not pass options: synthesize a default
-    // OrtSessionOptions so the downstream *options_to_use dereferences are safe.
-    cloned_options = std::make_unique<OrtSessionOptions>();
-    options_to_use = cloned_options.get();
+  if (options_to_use == nullptr) {
+    // Caller did not pass options: synthesize a default OrtSessionOptions so the downstream
+    // *options_to_use dereferences are safe.
+    default_options = std::make_unique<OrtSessionOptions>();
+    options_to_use = default_options.get();
   }
 
-  if (model_data != nullptr) {
-    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadSingleModelImpl(options_to_use, env,
-                                                                /*model_path*/ nullptr,
-                                                                model_data,
-                                                                model_data_length,
-                                                                sess));
-  } else {
-    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadSingleModelImpl(options_to_use, env,
-                                                                selected_model_path.c_str(),
-                                                                /*model_data*/ nullptr,
-                                                                /*model_data_length*/ 0,
-                                                                sess));
-  }
-  mapped_model.reset();
+  ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadSingleModelImpl(options_to_use, env,
+                                                              selected_model_path.c_str(),
+                                                              /*model_data*/ nullptr,
+                                                              /*model_data_length*/ 0,
+                                                              sess));
 
   // Providers were created earlier from the original options; rebuild now so
   // any merged variant-specific provider options take effect.
