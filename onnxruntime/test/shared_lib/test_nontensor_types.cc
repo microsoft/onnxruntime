@@ -305,11 +305,13 @@ TEST(CApiTest, CreateGetSeqSubByteTensors) {
       ASSERT_EQ(tensor_info.GetElementType(), elem_type);
       ASSERT_EQ(tensor_info.GetShape(), dims);
 
-      // Compare the packed bytes directly. GetTensorData<T>() does not support sub-byte
-      // types, so use the raw pointer and the packing-aware byte size.
+      // `out` is a fresh tensor that GetValue() allocated and copied into, so its data is a
+      // distinct buffer from the input `packed` bytes (the input tensors alias `packed`).
+      // Comparing them therefore validates the copy rather than reading the same memory twice.
       const size_t out_bytes = out.GetTensorSizeInBytes();
       ASSERT_EQ(out_bytes, packed.size());
       const auto* ret = static_cast<const uint8_t*>(out.GetTensorRawData());
+      ASSERT_NE(static_cast<const void*>(ret), static_cast<const void*>(packed.data()));
       for (size_t i = 0; i < out_bytes; ++i) {
         ASSERT_EQ(ret[i], packed[i]);
       }

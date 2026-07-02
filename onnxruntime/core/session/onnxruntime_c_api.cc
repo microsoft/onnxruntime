@@ -2018,20 +2018,23 @@ static ORT_STATUS_PTR OrtGetValueImplSeqOfMap(const OrtValue* p_ml_value, int in
 }
 #endif
 
-ORT_STATUS_PTR PopulateTensorWithData(Tensor& tensor, _In_ const void* data_elem, size_t num_elems) {
-  auto len = narrow<size_t>(tensor.Shape().Size());
-  if (num_elems < len) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "input array is too short");
-  }
+// Copies the contents of `data_elem` into `tensor`.
+//
+// Both the element type and the number of elements to copy are derived from `tensor`:
+//   - For numeric tensors, tensor.SizeInBytes() bytes are copied. This is packing-aware,
+//     so sub-byte types (e.g. int4/uint4) copy only their packed storage size rather than
+//     one byte per logical element.
+//   - For string tensors, exactly tensor.Shape().Size() std::string elements are copied.
+//
+// Assumption: `data_elem` points to a buffer that holds at least as many elements as
+// `tensor`'s shape, with a matching element type. All current callers satisfy this because
+// they size the tensor from the same source data.
+ORT_STATUS_PTR PopulateTensorWithData(Tensor& tensor, _In_ const void* data_elem) {
   if (!tensor.IsDataTypeString()) {
-    // Use the tensor's actual storage size in bytes rather than elem_size * num_elems.
-    // For packed sub-byte types (e.g., int4/uint4) multiple elements share a storage byte,
-    // so the naive product over-counts and would over-read the source / overflow the destination.
     memcpy(tensor.MutableDataRaw(), data_elem, tensor.SizeInBytes());
   } else {
+    const auto len = narrow<size_t>(tensor.Shape().Size());
     const std::string* strings = reinterpret_cast<const std::string*>(data_elem);
-    // Copy exactly the tensor's element count (len), not num_elems, to avoid writing past
-    // the destination when the source is larger than the tensor.
     auto str_span = gsl::make_span(strings, len);
     auto* dst = tensor.MutableData<std::string>();
     std::copy(str_span.begin(), str_span.end(), dst);
@@ -2040,9 +2043,9 @@ ORT_STATUS_PTR PopulateTensorWithData(Tensor& tensor, _In_ const void* data_elem
 }
 
 ORT_STATUS_PTR CreateTensorAndPopulate(MLDataType element_type, const int64_t* shape, size_t shape_len,
-                                       const void* data, size_t num_elements, _Inout_ OrtAllocator* allocator, OrtValue& result) {
+                                       const void* data, _Inout_ OrtAllocator* allocator, OrtValue& result) {
   ORT_API_RETURN_IF_ERROR(CreateTensorImpl(element_type, shape, shape_len, allocator, result));
-  ORT_API_RETURN_IF_ERROR(PopulateTensorWithData(*result.GetMutable<Tensor>(), data, num_elements));
+  ORT_API_RETURN_IF_ERROR(PopulateTensorWithData(*result.GetMutable<Tensor>(), data));
   return nullptr;
 }
 
@@ -2060,7 +2063,6 @@ static ORT_STATUS_PTR OrtGetValueImplSeqOfTensors(_In_ const OrtValue* p_ml_valu
   auto result = std::make_unique<OrtValue>();
   ORT_API_RETURN_IF_ERROR(c_api_internal::CreateTensorAndPopulate(one_tensor.DataType(), tensor_shape.GetDims().data(),
                                                                   tensor_shape.NumDimensions(), one_tensor.DataRaw(),
-                                                                  narrow<size_t>(one_tensor.Shape().Size()),
                                                                   allocator, *result));
   *out = result.release();
   return nullptr;
@@ -2108,7 +2110,6 @@ static ORT_STATUS_PTR OrtGetValueImplMapHelper(_In_ const OrtValue* p_ml_value, 
   std::vector<TKey> vec_keys;
   std::vector<TVal> vec_vals;
   const void* data_ptr;
-  size_t data_size;
   MLDataType element_type;
   switch (index) {
     case 0: {  // user is requesting keys
@@ -2116,20 +2117,18 @@ static ORT_STATUS_PTR OrtGetValueImplMapHelper(_In_ const OrtValue* p_ml_value, 
       vec_keys.reserve(static_cast<size_t>(num_kv_pairs));
       std::transform(data.cbegin(), data.cend(), std::back_inserter(vec_keys), [](const auto& k) { return k.first; });
       data_ptr = vec_keys.data();
-      data_size = vec_keys.size();
     } break;
     case 1: {  // user is requesting values
       element_type = DataTypeImpl::TensorTypeFromONNXEnum(GetONNXTensorElementDataType<TVal>())->GetElementType();
       vec_vals.reserve(static_cast<size_t>(num_kv_pairs));
       std::transform(data.cbegin(), data.cend(), std::back_inserter(vec_vals), [](const auto& k) { return k.second; });
       data_ptr = vec_vals.data();
-      data_size = vec_vals.size();
     } break;
     default:
       return OrtApis::CreateStatus(ORT_FAIL, "Invalid index requested for map type.");
   }
   ORT_API_RETURN_IF_ERROR(c_api_internal::CreateTensorAndPopulate(element_type, dims.data(), dims.size(), data_ptr,
-                                                                  data_size, allocator, *result));
+                                                                  allocator, *result));
   *out = result.release();
   return nullptr;
 }
