@@ -73,7 +73,7 @@ jobs:
       # xCode version needs to match the "runs-on" configuration.
       # A matrix entry may override the Xcode version via "xcode_version";
       # otherwise fall back to the default.
-      xcode_version: ${{ matrix.xcode_version || '16' }}
+      xcode_version: ${{ matrix.xcode_version || '26.3' }}
 
     steps:
       - name: Checkout code
