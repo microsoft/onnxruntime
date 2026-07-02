@@ -22,7 +22,7 @@ under the new SMMLA layout (see §1.3).
 | ARM DotProd W4 | int8 | int8 after in-kernel `vsubq_s8(B, zp_b)` | SDOT | none | folded into unpack |
 | ARM DotProd W8 | uint8 (+128 offset) | uint8 raw | UDOT | extra 128-correction SGEMM | post-kernel BlkSum SGEMM |
 | ARM I8MM W8 | int8 | uint8 raw | USDOT (mixed-sign) | none | post-kernel BlkSum SGEMM |
-| **ARM DotProd W2 (current)** | int8 | int8 after in-kernel `vsubq_s8(B, 2)` during 2-bit unpack | SDOT | none | folded into unpack |
+| **ARM DotProd W2 (current)** | int8 | uint8 weights in [0, 3] (no in-kernel `vsub`) | SDOT | none | fused into accumulator via ABlockSum × QuantBBlkSum |
 
 
 ## 1. SMMLA-based W2 I8MM TU

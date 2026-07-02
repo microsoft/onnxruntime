@@ -671,10 +671,12 @@ GetMlasQNBitGemmDispatchNeon(
         //
         // SQ2BitGemmKernel_BlkSum_CompInt8 is wired to the native NEON
         // DotProd kernel when FEAT_DotProd is available; the kernel
-        // handles BlkLen ∈ {32, 64, 128} natively via SDOT inner loops
-        // (B is re-centered to signed int8 in-kernel during the 2-bit
-        // unpack, so no post-kernel zero-point correction SGEMM is
-        // needed).
+        // handles BlkLen ∈ {32, 64, 128} natively via SDOT inner loops.
+        // The 2-bit weights are unpacked to unsigned values in [0, 3] and
+        // fed directly to SDOT; the B zero-point correction is fused into
+        // the accumulator via the ABlockSum × QuantBBlkSum term (where
+        // QuantBBlkSum bakes in -scale × zp per block), so no post-kernel
+        // zero-point correction SGEMM is needed.
         //
         // FEAT_I8MM hosts also take this path: FEAT_I8MM always implies
         // FEAT_DotProd per the ARM spec, and USDOT and SDOT have identical
