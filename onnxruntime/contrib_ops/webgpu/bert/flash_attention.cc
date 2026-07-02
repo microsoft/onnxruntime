@@ -159,6 +159,17 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
+Status PrepareIndirectDispatchProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  shader.AddInput("total_sequence_length_input", ShaderUsage::None);
+  shader.AddOutput("indirect_buffer", ShaderUsage::None);
+  shader.AdditionalImplementation() << kPopulateIndirectDispatchBufferFn;
+  shader.MainFunctionBody()
+      << "  let global_total_seq_length = u32(total_sequence_length_input[0]);\n"
+      << "  let num_total_seq_length_tile = (global_total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;\n"
+      << "  populate_indirect_dispatch_buffer(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);\n";
+  return Status::OK();
+}
+
 Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& parameters,
                    const Tensor* K, const Tensor* past_key, Tensor* present_key,
                    const Tensor* V, const Tensor* past_value, Tensor* present_value,
@@ -546,6 +557,23 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
       // and CopyKVCache is skipped when kv_empty, so no writes occur through these pointers.
       present_key = const_cast<Tensor*>(past_key);
       present_value = const_cast<Tensor*>(past_value);
+    }
+
+    // CopyKVCache normally prepares the indirect dispatch buffer. For kv_empty layers
+    // CopyKVCache is skipped, so we prepare it here. Only needed under graph capture
+    // because that is when total_seqlen is GPU-resident and CPU-side dispatch sizing
+    // is unavailable.
+    if (use_indirect_dispatch) {
+      PrepareIndirectDispatchProgram program;
+      program.AddInput({total_seqlen, ProgramTensorMetadataDependency::None});
+      program.AddOutput({indirect_buffer_ptr, ProgramTensorMetadataDependency::None});
+      program.SetDispatchGroupSize(1)
+          .SetWorkgroupSize(1)
+          .AddUniformVariables({{tile_size},
+                                {static_cast<uint32_t>(parameters.num_heads_)},
+                                {num_q_tiles},
+                                {static_cast<uint32_t>(parameters.batch_size_)}});
+      ORT_RETURN_IF_ERROR(context.RunProgram(program));
     }
   }
 
