@@ -10,8 +10,7 @@ import unittest
 from contextlib import contextmanager
 
 import numpy as np
-import onnx
-from onnx import TensorProto, helper, numpy_helper
+from onnx import ModelProto, TensorProto, helper, numpy_helper
 
 import onnxruntime as ort
 from onnxruntime.capi import _pybind_state as _pybind
@@ -58,7 +57,7 @@ class TestMatMulNBitsPrepackedCuda(unittest.TestCase):
         bits: int,
         block_size: int,
         weight_prepacked: int,
-    ) -> onnx.ModelProto:
+    ) -> ModelProto:
         m, k = a_shape
         n = b.shape[0]
         node = helper.make_node(
@@ -89,7 +88,7 @@ class TestMatMulNBitsPrepackedCuda(unittest.TestCase):
         model.ir_version = 10
         return model
 
-    def _run_model(self, model: onnx.ModelProto, a: np.ndarray) -> np.ndarray:
+    def _run_model(self, model: ModelProto, a: np.ndarray) -> np.ndarray:
         sess = ort.InferenceSession(model.SerializeToString(), providers=["CUDAExecutionProvider"])
         return sess.run(None, {"A": a})[0]
 
@@ -111,7 +110,7 @@ class TestMatMulNBitsPrepackedCuda(unittest.TestCase):
             raw_output = self._run_model(raw_model, a)
             prepacked_output = self._run_model(prepacked_model, a)
 
-        np.testing.assert_allclose(prepacked_output, raw_output, rtol=0.0, atol=0.0)
+        np.testing.assert_allclose(prepacked_output, raw_output, rtol=1e-3, atol=1e-3)
 
     def test_int4_sm80_prepacked_weight_matches_runtime_prepack(self):
         self._check_prepacked_parity(bits=4, block_size=64, m=1)

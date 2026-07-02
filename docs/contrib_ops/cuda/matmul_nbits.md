@@ -77,9 +77,12 @@ input is present.
 
 `weight_prepacked=1` means input `B` has the same tensor shape and byte count as
 the standard MatMulNBits `B`, but its bytes are already reordered into the CUDA
-fpA_intB SM80 weight-only layout. The CUDA EP copies those bytes directly into
-the fpA_intB weight buffer during ORT prepacking; it does **not** run the normal
-runtime weight transpose / mixed-GEMM preprocessing step.
+fpA_intB SM80 weight-only layout. During ORT prepacking the CUDA EP passes those
+bytes directly to the fpA_intB kernels without an additional GPU copy: when `B`
+is already device-resident (e.g. a constant initializer pinned to the GPU) the
+prepacking step is skipped entirely; when `B` is host-resident it is transferred
+to device as usual but the runtime weight transpose / mixed-GEMM preprocessing
+step is **not** performed.
 
 The offline CUDA packer exposed through Python produces this layout:
 

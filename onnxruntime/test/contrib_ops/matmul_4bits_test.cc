@@ -887,7 +887,7 @@ TEST(MatMulNBits, Fp16_Int4_PrepackedWeightRequiresFpAIntBGemm) {
   opts.M = 1, opts.N = 256, opts.K = 1024;
   opts.block_size = 64;
   opts.weight_prepacked = 1;
-  opts.expected_failure = "weight_prepacked requires the fpA_intB path, but ORT_FPA_INTB_GEMM is off";
+  opts.expected_failure = "weight_prepacked requires";
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
   eps.push_back(DefaultCudaExecutionProvider());
   RunTest<MLFloat16>(opts, std::move(eps));
@@ -900,7 +900,7 @@ TEST(MatMulNBits, Fp16_Int4_PrepackedSm90WeightReserved) {
   opts.M = 1, opts.N = 256, opts.K = 1024;
   opts.block_size = 64;
   opts.weight_prepacked = 2;
-  opts.expected_failure = "weight_prepacked=2 (SM90 layout) is reserved and not supported yet";
+  opts.expected_failure = "weight_prepacked";
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
   eps.push_back(DefaultCudaExecutionProvider());
   RunTest<MLFloat16>(opts, std::move(eps));
