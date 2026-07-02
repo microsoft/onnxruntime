@@ -22,10 +22,8 @@ jobs:
     timeout-minutes: 300
 
     env:
-      # Number of GoogleTest shards to split the test run across. Each shard is a fresh
-      # process, so the AddressSanitizer per-size-class allocator arena is reset between
-      # shards and its peak stays roughly 1/N of an unsharded run. Bump to 6-8 if a shard
-      # still hits "AddressSanitizer: Out of memory ... size class 8192".
+      # Number of GoogleTest shards to split the test run across.
+      # Try increasing this if AddressSanitizer runs out of memory.
       SHARD_COUNT: 4
 
     steps:
@@ -49,11 +47,11 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+
           $buildDir = Join-Path $env:RUNNER_TEMP 'build'
           $optsFile = Join-Path $env:RUNNER_TEMP 'asan_build_options.txt'
-          # Common build.py options shared by the build and test phases below. build.py's
-          # argument-file parser (build_args.py Parser.convert_arg_line_to_args) uses shlex, so
-          # multiple tokens per line, quoted multi-word values, and '#' comments are supported.
+
+          # Common build.py options shared by the build and test phases below.
           @(
             '--config Debug'
             "--build_dir `"$buildDir`""
@@ -65,38 +63,49 @@ jobs:
             '--disable_memleak_checker'
             '--enable_address_sanitizer'
           ) | Set-Content -Path $optsFile -Encoding ascii
-          Write-Host "Wrote build options to $optsFile:"
+
+          Write-Host "Wrote build options to ${optsFile}:"
+
           Get-Content $optsFile | Write-Host
 
       - name: Build
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+
           $buildPy  = Join-Path $env:GITHUB_WORKSPACE 'tools\ci_build\build.py'
           $optsFile = Join-Path $env:RUNNER_TEMP 'asan_build_options.txt'
           $reqFile  = Join-Path $env:GITHUB_WORKSPACE 'tools\ci_build\github\windows\python\requirements.txt'
+
           python -m pip install -r $reqFile
           if ($LASTEXITCODE -ne 0) { throw "pip install failed ($LASTEXITCODE)" }
+
           # '@' must be quoted so PowerShell does not treat it as the splat operator.
           python $buildPy "@$optsFile" --update --build
           if ($LASTEXITCODE -ne 0) { throw "Build failed ($LASTEXITCODE)" }
 
-      - name: Test (sharded)
+      - name: Test
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+
           $buildPy  = Join-Path $env:GITHUB_WORKSPACE 'tools\ci_build\build.py'
           $optsFile = Join-Path $env:RUNNER_TEMP 'asan_build_options.txt'
           $shardCount = [int]$env:SHARD_COUNT
-          # GoogleTest reads these env vars; each ctest-launched test binary runs only its shard.
+
+          # GoogleTest reads the GTEST_TOTAL_SHARDS and GTEST_SHARD_INDEX env vars.
+          # Each ctest-launched test binary runs only its shard.
           $env:GTEST_TOTAL_SHARDS = $shardCount
-          # NOTE: onnxruntime_GENERATE_TEST_REPORTS bakes a fixed --gtest_output=xml path into each
-          # ctest command, so every shard writes the same *.results.xml and later shards clobber
-          # earlier ones (final file = last shard only). That is fine here: nothing consumes or
-          # uploads the XML - gating is the ctest exit code plus the per-shard console output.
+
           for ($i = 0; $i -lt $shardCount; $i++) {
-            $env:GTEST_SHARD_INDEX = $i
             Write-Host "=== Running test shard $i of $shardCount ==="
+
+            $env:GTEST_SHARD_INDEX = $i
+
+            # NOTE: The ctest commands produce a test output file with `--gtest_output=xml:...` that will be
+            # overwritten by subsequent shard runs. This is fine for now since nothing consumes the output files.
+            # If the output files are required, they can be renamed after each shard run so they don't get overwritten.
+
             # '@' must be quoted so PowerShell does not treat it as the splat operator.
             python $buildPy "@$optsFile" --test --test_parallel 4
             if ($LASTEXITCODE -ne 0) { throw "Test shard $i failed ($LASTEXITCODE)" }
