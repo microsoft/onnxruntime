@@ -374,6 +374,35 @@ TEST(GroupQueryAttentionTest, NonPromptSeqlensKUnderflow_OOB) {
       /*past_seq_len=*/4);
 }
 
+// Regression: present buffer large enough (total_seq_len passes the present-buffer check),
+// but the past buffer is much smaller. ConcatStateChunkGQA would copy
+// (seqlens_k + 1 - sequence_length) rows out of the small past buffer, reading past its end.
+TEST(GroupQueryAttentionTest, SeqlensKExceedsPastBuffer_OOBRead) {
+  // present_kv_seqlen = max(total_seq_len=100, past_seq_len=2) = 100, so seqlens_k=50 passes the
+  // present-buffer check, but past_seqlen = 51 - 1 = 50 rows >> past buffer (2 rows) => OOB read.
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{50},
+      /*total_seq_len=*/100,
+      /*batch_size=*/1,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectFailure,
+      "exceeds the past buffer sequence length",
+      /*provide_past=*/true,
+      /*past_seq_len=*/2);
+}
+
+TEST(GroupQueryAttentionTest, SeqlensKExceedsEmptyPastBuffer_OOBRead) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{50},
+      /*total_seq_len=*/100,
+      /*batch_size=*/1,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectFailure,
+      "exceeds the past buffer sequence length",
+      /*provide_past=*/true,
+      /*past_seq_len=*/0);
+}
+
 // INT32_MAX seqlens_k: rejected by the >= present_kv_seqlen check.
 TEST(GroupQueryAttentionTest, Int32MaxSeqlensK_OOB) {
   RunGQASeqlensKTest(

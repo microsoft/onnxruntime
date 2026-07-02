@@ -145,6 +145,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   // Validate seqlens_k values before they are used as GEMM dimensions to prevent OOB access.
   {
     const int32_t* seqlens_k_data = seqlens_k->Data<int32_t>();
+    const int past_kv_seqlen = parameters.seqlen_past_kv_cache;
     for (int b = 0; b < batch_size; b++) {
       if (seqlens_k_data[b] < 0 || seqlens_k_data[b] >= present_kv_seqlen) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -155,6 +156,25 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
         return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                                "seqlens_k[", b, "] = ", seqlens_k_data[b],
                                " is too small for sequence_length ", sequence_length);
+      }
+      // Bound the number of past KV rows copied out of the past key/value buffers during
+      // token generation (decode). ConcatStateChunkGQA copies (seqlens_k + 1 - sequence_length)
+      // rows from the past buffer (sized past_kv_seqlen). The present-buffer check above does
+      // not bound this past-side read, because the present buffer can be larger than the past
+      // buffer when total_sequence_length exceeds the past sequence length. A large seqlens_k
+      // combined with a small past buffer would otherwise read past the end of the past tensors.
+      // Shared KV (kv_sequence_length == 0) appends no new KV and its past read is already
+      // bounded by the present-buffer check together with the total_sequence_length <=
+      // seqlen_past_kv_cache enforcement in the apply-attention paths, so it needs no check here.
+      if (past_key != nullptr && past_value != nullptr && parameters.kv_sequence_length != 0 &&
+          !parameters.is_first_prompt) {
+        const int64_t past_rows = static_cast<int64_t>(seqlens_k_data[b]) + 1 - sequence_length;
+        if (past_rows > past_kv_seqlen) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                                 "seqlens_k[", b, "] = ", seqlens_k_data[b], " requires ", past_rows,
+                                 " past KV rows, which exceeds the past buffer sequence length ",
+                                 past_kv_seqlen, ".");
+        }
       }
     }
   }
