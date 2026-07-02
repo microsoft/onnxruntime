@@ -679,6 +679,13 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     );
     QuantizeARowComputeBlkSum_CompInt8_Fn* QuantizeARowComputeBlkSum_CompInt8 = nullptr;
 
+    // Optional W2-specific override of QuantizeARowComputeBlkSum_CompInt8.
+    // The W2 NEON DotProd kernel assumes SIGNED int8 A, but on DotProd-only hosts
+    // the shared field is wired to the UNSIGNED (u8 = i8+128) W8-compatible variant.
+    // When set, the W2 dispatch in InitializeWorkspace_CompInt8 uses this in
+    // preference to the shared field; otherwise it falls back to the shared one.
+    QuantizeARowComputeBlkSum_CompInt8_Fn* QuantizeARowComputeBlkSum_CompInt8_W2 = nullptr;
+
     /**
      * @brief Multiply fp16 matrix A rows with fp16 matrix B columns.
      *        Results are written to fp16 matrix C.
