@@ -63,6 +63,30 @@ void RunCpuOnly(T& test) {
   RunTests(test, GetCpuExecutionProviders());
 }
 
+// Execution providers targeted by the float->int64 cast hardening in the CUDA GridSample
+// kernels (onnxruntime/core/providers/cuda/tensor/grid_sample_impl.cu). CoreML and WebGPU
+// are intentionally excluded here: their integer-conversion semantics differ from the
+// CPU/CUDA "substitute the in-range border" behavior on NaN/Inf/extreme coordinates, so
+// their outputs for these adversarial inputs are not expected to match.
+std::vector<std::unique_ptr<IExecutionProvider>> GetCpuAndCudaExecutionProviders() {
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCpuExecutionProvider());
+
+#ifdef USE_CUDA
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+#ifdef ENABLE_CUDA_NHWC_OPS
+  execution_providers.push_back(DefaultCudaNHWCExecutionProvider());
+#endif
+#endif
+
+  return execution_providers;
+}
+
+template <typename T>
+void RunCpuAndCuda(T& test) {
+  RunTests(test, GetCpuAndCudaExecutionProviders());
+}
+
 }  // namespace
 
 template <typename T>
@@ -576,6 +600,195 @@ TYPED_TEST(GridSampleCustomTest, test_grid_sample_20_4D_nearest_reflection_mixed
   test.AddOutput<TypeParam>("Y", Y_shape,
                             {TypeParam(5.0f), TypeParam(1.0f), TypeParam(1.0f), TypeParam(1.0f)});
   RunCpuOnly(test);
+}
+
+// -----------------------------------------------------------------------------------------
+// CUDA hardening regression tests.
+//
+// These mirror the CPU-only cases above but also run on the CUDA execution provider (when
+// built) to cover the equivalent float->int64 cast hardening in
+// onnxruntime/core/providers/cuda/tensor/grid_sample_impl.cu. They are float-only because
+// the CUDA GridSample kernel is registered for float only, and they use constant-valued
+// images so the expected output is well-defined regardless of which in-range pixel each
+// (now clamped) index resolves to.
+// -----------------------------------------------------------------------------------------
+
+TEST(GridSampleCudaHardeningTest, nearest_reflection_extreme_and_nan_coords) {
+  // Exercises the CUDA _GridSampleKernel reflection path: GsReflect now guards NaN/Inf and
+  // uses int64_t for the wrap count (1e10 exceeds INT_MAX), and PixelAtGrid clamps the
+  // reflected index back into range.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("nearest"));
+  test.AddAttribute("padding_mode", std::string("reflection"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 2, 2};
+  std::initializer_list<float> X_data{1.0f, 1.0f, 1.0f, 1.0f};
+
+  std::initializer_list<int64_t> Grid_shape{1, 1, 2, 2};
+  std::initializer_list<float> Grid_data{
+      1.0e+10f, 1.0e+10f,
+      std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN()};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 2};
+
+  test.AddInput<float>("X", X_shape, X_data);
+  test.AddInput<float>("Grid", Grid_shape, Grid_data);
+  test.AddOutput<float>("Y", Y_shape, {1.0f, 1.0f});
+  RunCpuAndCuda(test);
+}
+
+TEST(GridSampleCudaHardeningTest, bilinear_reflection_infinity_coords) {
+  // CUDA bilinear reflection path: the GsReflect finite guard and coordinate sanitization
+  // keep the floor(...) cast well-defined for +/-Inf inputs.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("linear"));
+  test.AddAttribute("padding_mode", std::string("reflection"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 2, 2};
+  std::initializer_list<float> X_data{1.0f, 1.0f, 1.0f, 1.0f};
+
+  std::initializer_list<int64_t> Grid_shape{1, 1, 2, 2};
+  const float inf_val = std::numeric_limits<float>::infinity();
+  std::initializer_list<float> Grid_data{
+      inf_val, -inf_val,
+      -inf_val, inf_val};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 2};
+
+  test.AddInput<float>("X", X_shape, X_data);
+  test.AddInput<float>("Grid", Grid_shape, Grid_data);
+  test.AddOutput<float>("Y", Y_shape, {1.0f, 1.0f});
+  RunCpuAndCuda(test);
+}
+
+TEST(GridSampleCudaHardeningTest, bilinear_zeros_nan_inf_extreme_coords) {
+  // Zeros padding: the CUDA kernel's IsSafeForInt64Conversion sanitization substitutes the
+  // lower border (-0.5) for NaN/Inf/extreme coordinates before the floor cast. Only the
+  // bottom-right neighbor (pixel(0, 0) = 1.0) is in bounds with weight 0.5 * 0.5 = 0.25.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("linear"));
+  test.AddAttribute("padding_mode", std::string("zeros"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 2, 2};
+  std::initializer_list<float> X_data{1.0f, 1.0f, 1.0f, 1.0f};
+
+  std::initializer_list<int64_t> Grid_shape{1, 1, 3, 2};
+  std::initializer_list<float> Grid_data{
+      std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(),
+      std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity(),
+      1.0e+20f, -1.0e+20f};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 3};
+
+  test.AddInput<float>("X", X_shape, X_data);
+  test.AddInput<float>("Grid", Grid_shape, Grid_data);
+  test.AddOutput<float>("Y", Y_shape, {0.25f, 0.25f, 0.25f});
+  RunCpuAndCuda(test);
+}
+
+TEST(GridSampleCudaHardeningTest, cubic_reflection_extreme_coords) {
+  // CUDA bicubic path (4-D only): static_cast<int64_t>(std::floor(...)) - 1 is now
+  // protected by the coordinate sanitization. Constant-valued image => 1.0.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("cubic"));
+  test.AddAttribute("padding_mode", std::string("reflection"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 4, 4};
+  std::initializer_list<float> X_data{
+      1.0f, 1.0f, 1.0f, 1.0f,
+      1.0f, 1.0f, 1.0f, 1.0f,
+      1.0f, 1.0f, 1.0f, 1.0f,
+      1.0f, 1.0f, 1.0f, 1.0f};
+
+  std::initializer_list<int64_t> Grid_shape{1, 1, 1, 2};
+  std::initializer_list<float> Grid_data{1.0e+10f, -1.0e+10f};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 1};
+
+  test.AddInput<float>("X", X_shape, X_data);
+  test.AddInput<float>("Grid", Grid_shape, Grid_data);
+  test.AddOutput<float>("Y", Y_shape, {1.0f});
+  RunCpuAndCuda(test);
+}
+
+TEST(GridSampleCudaHardeningTest, nearest_reflection_dim1_align_corners) {
+  // 1x1 image with align_corners=1 makes the reflection range zero (x_min == x_max), so
+  // GsReflect must not divide by zero. The single input pixel is the only valid sample.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("nearest"));
+  test.AddAttribute("padding_mode", std::string("reflection"));
+  test.AddAttribute("align_corners", int64_t{1});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 1, 1};
+  std::initializer_list<float> X_data{7.0f};
+
+  std::initializer_list<int64_t> Grid_shape{1, 1, 2, 2};
+  std::initializer_list<float> Grid_data{
+      0.5f, 0.5f,
+      -0.5f, -0.5f};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 2};
+
+  test.AddInput<float>("X", X_shape, X_data);
+  test.AddInput<float>("Grid", Grid_shape, Grid_data);
+  test.AddOutput<float>("Y", Y_shape, {7.0f, 7.0f});
+  RunCpuAndCuda(test);
+}
+
+TEST(GridSampleCudaHardeningTest, nearest_reflection_5D_extreme_coords) {
+  // CUDA _GridSampleKernel3D reflection path: PixelAtGrid3D received the same safety clamp
+  // as PixelAtGrid. Constant-valued volume => 1.0.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("nearest"));
+  test.AddAttribute("padding_mode", std::string("reflection"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 2, 2, 2};
+  std::initializer_list<float> X_data{
+      1.0f, 1.0f, 1.0f, 1.0f,
+      1.0f, 1.0f, 1.0f, 1.0f};
+
+  std::initializer_list<int64_t> Grid_shape{1, 1, 1, 2, 3};
+  std::initializer_list<float> Grid_data{
+      1.0e+10f, 1.0e+10f, 1.0e+10f,
+      -1.0e+10f, -1.0e+10f, -1.0e+10f};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 1, 2};
+
+  test.AddInput<float>("X", X_shape, X_data);
+  test.AddInput<float>("Grid", Grid_shape, Grid_data);
+  test.AddOutput<float>("Y", Y_shape, {1.0f, 1.0f});
+  RunCpuAndCuda(test);
+}
+
+TEST(GridSampleCudaHardeningTest, bilinear_reflection_5D_extreme_coords) {
+  // CUDA 3D trilinear path: the x/y/z indices are computed via int64_t floor casts after
+  // sanitization. Constant-valued volume => 1.0.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("linear"));
+  test.AddAttribute("padding_mode", std::string("reflection"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 2, 2, 2};
+  std::initializer_list<float> X_data{
+      1.0f, 1.0f, 1.0f, 1.0f,
+      1.0f, 1.0f, 1.0f, 1.0f};
+
+  std::initializer_list<int64_t> Grid_shape{1, 1, 1, 2, 3};
+  std::initializer_list<float> Grid_data{
+      1.0e+20f, 1.0e+20f, 1.0e+20f,
+      -1.0e+20f, -1.0e+20f, -1.0e+20f};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 1, 2};
+
+  test.AddInput<float>("X", X_shape, X_data);
+  test.AddInput<float>("Grid", Grid_shape, Grid_data);
+  test.AddOutput<float>("Y", Y_shape, {1.0f, 1.0f});
+  RunCpuAndCuda(test);
 }
 
 }  // namespace test
