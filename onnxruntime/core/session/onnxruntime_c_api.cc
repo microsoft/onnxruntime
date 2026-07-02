@@ -2018,17 +2018,21 @@ static ORT_STATUS_PTR OrtGetValueImplSeqOfMap(const OrtValue* p_ml_value, int in
 }
 #endif
 
-ORT_STATUS_PTR PopulateTensorWithData(Tensor& tensor, bool is_string, _In_ const void* data_elem, size_t num_elems,
-                                      size_t elem_size) {
+ORT_STATUS_PTR PopulateTensorWithData(Tensor& tensor, _In_ const void* data_elem, size_t num_elems) {
   auto len = narrow<size_t>(tensor.Shape().Size());
   if (num_elems < len) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "input array is too short");
   }
-  if (!is_string) {
-    memcpy(tensor.MutableDataRaw(), data_elem, elem_size * num_elems);
+  if (!tensor.IsDataTypeString()) {
+    // Use the tensor's actual storage size in bytes rather than elem_size * num_elems.
+    // For packed sub-byte types (e.g., int4/uint4) multiple elements share a storage byte,
+    // so the naive product over-counts and would over-read the source / overflow the destination.
+    memcpy(tensor.MutableDataRaw(), data_elem, tensor.SizeInBytes());
   } else {
     const std::string* strings = reinterpret_cast<const std::string*>(data_elem);
-    auto str_span = gsl::make_span(strings, num_elems);
+    // Copy exactly the tensor's element count (len), not num_elems, to avoid writing past
+    // the destination when the source is larger than the tensor.
+    auto str_span = gsl::make_span(strings, len);
     auto* dst = tensor.MutableData<std::string>();
     std::copy(str_span.begin(), str_span.end(), dst);
   }
@@ -2038,8 +2042,7 @@ ORT_STATUS_PTR PopulateTensorWithData(Tensor& tensor, bool is_string, _In_ const
 ORT_STATUS_PTR CreateTensorAndPopulate(MLDataType element_type, const int64_t* shape, size_t shape_len,
                                        const void* data, size_t num_elements, _Inout_ OrtAllocator* allocator, OrtValue& result) {
   ORT_API_RETURN_IF_ERROR(CreateTensorImpl(element_type, shape, shape_len, allocator, result));
-  ORT_API_RETURN_IF_ERROR(PopulateTensorWithData(*result.GetMutable<Tensor>(), utils::IsDataTypeString(element_type),
-                                                 data, num_elements, element_type->Size()));
+  ORT_API_RETURN_IF_ERROR(PopulateTensorWithData(*result.GetMutable<Tensor>(), data, num_elements));
   return nullptr;
 }
 
