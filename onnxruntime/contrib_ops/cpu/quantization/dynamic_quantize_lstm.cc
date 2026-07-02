@@ -178,14 +178,14 @@ Status DynamicQuantizeLSTM::Compute(OpKernelContext* context) const {
   const Tensor* r_zp = context->Input<Tensor>(11);
 
   const TensorShape& W_zp_shape = w_zp->Shape();
-  const TensorShape& R_zp_shape = w_zp->Shape();
+  const TensorShape& R_zp_shape = r_zp->Shape();
   const TensorShape& W_scale_shape = w_scale->Shape();
   const TensorShape& R_scale_shape = r_scale->Shape();
 
   WeightCheck(W_zp_shape, W_zero_point);
   WeightCheck(R_zp_shape, R_zero_point);
   WeightCheck(W_scale_shape, W_scale);
-  WeightCheck(W_scale_shape, R_scale);
+  WeightCheck(R_scale_shape, R_scale);
 
   const bool is_W_signed = (W != nullptr) ? W->IsDataType<int8_t>() : is_W_signed_;
   const bool is_R_signed = (R != nullptr) ? R->IsDataType<int8_t>() : is_R_signed_;
