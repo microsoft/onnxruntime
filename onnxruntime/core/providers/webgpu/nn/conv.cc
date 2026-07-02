@@ -286,18 +286,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   inputs[1] = conv_kernel;
   TensorShape transposed_kernel_shape = conv_kernel->Shape();
   modified_input_output_shapes[1] = transposed_kernel_shape;
-  Conv2dMMProgram conv2d_mm_program = CreateConv2dMMProgram(activation_,
-                                                            inputs,
-                                                            pads,
-                                                            strides,
-                                                            dilations,
-                                                            output,
-                                                            dim_a_outer,
-                                                            dim_b_outer,
-                                                            dim_inner,
-                                                            is_channels_last,
-                                                            modified_input_output_shapes,
-                                                            context.DeviceLimits().maxStorageBufferBindingSize);
+  Conv2dMMProgram conv2d_mm_program = CreateConv2dMMProgram(activation_, inputs, pads, strides, dilations, output, dim_a_outer, dim_b_outer, dim_inner, is_channels_last, modified_input_output_shapes);
   return context.RunProgram(conv2d_mm_program);
 }
 
