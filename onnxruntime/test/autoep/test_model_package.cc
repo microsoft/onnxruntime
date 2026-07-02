@@ -204,6 +204,35 @@ std::filesystem::path BuildTwoVariantPackage(const std::filesystem::path& packag
   return BuildPackage(package_root, "model_1", variants);
 }
 
+// Runs the full experimental OrtModelPackageApi flow for a single-component package and returns the
+// created session: CreateModelPackageOptionsFromSessionOptions -> CreateModelPackageContext ->
+// SelectComponent -> CreateSession. `session_options` drives both variant/EP selection and session
+// creation (advanced path), mirroring how a caller loads a package. Throws on any error.
+Ort::Session CreateSessionFromModelPackage(const std::filesystem::path& package_root,
+                                           const std::string& component_name,
+                                           Ort::SessionOptions& session_options) {
+  const auto& pkg_api = GetModelPackageFns();
+
+  OrtModelPackageOptions* raw_mp_opts = nullptr;
+  Ort::ThrowOnError(pkg_api.CreateModelPackageOptionsFromSessionOptions(*ort_env, session_options, &raw_mp_opts));
+  std::unique_ptr<OrtModelPackageOptions, decltype(pkg_api.ReleaseModelPackageOptions)>
+      mp_opts(raw_mp_opts, pkg_api.ReleaseModelPackageOptions);
+
+  OrtModelPackageContext* raw_ctx = nullptr;
+  Ort::ThrowOnError(pkg_api.CreateModelPackageContext(package_root.c_str(), &raw_ctx));
+  std::unique_ptr<OrtModelPackageContext, decltype(pkg_api.ReleaseModelPackageContext)>
+      ctx(raw_ctx, pkg_api.ReleaseModelPackageContext);
+
+  OrtModelPackageComponentContext* raw_comp_ctx = nullptr;
+  Ort::ThrowOnError(pkg_api.SelectComponent(ctx.get(), component_name.c_str(), mp_opts.get(), &raw_comp_ctx));
+  std::unique_ptr<OrtModelPackageComponentContext, decltype(pkg_api.ReleaseModelPackageComponentContext)>
+      comp_ctx(raw_comp_ctx, pkg_api.ReleaseModelPackageComponentContext);
+
+  OrtSession* raw_session = nullptr;
+  Ort::ThrowOnError(pkg_api.CreateSession(*ort_env, comp_ctx.get(), session_options, &raw_session));
+  return Ort::Session{raw_session};
+}
+
 }  // namespace
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -430,7 +459,7 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PluginEp_AppendV2) {
   std::unordered_map<std::string, std::string> ep_options;
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
-  Ort::Session session(*ort_env, package_root.c_str(), session_options);
+  Ort::Session session = CreateSessionFromModelPackage(package_root, "model_1", session_options);
 
   Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
   std::vector<int64_t> shape = {3, 2};
@@ -468,7 +497,7 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PreferCpu) {
   Ort::SessionOptions session_options;
   session_options.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_CPU);
 
-  Ort::Session session(*ort_env, package_root.c_str(), session_options);
+  Ort::Session session = CreateSessionFromModelPackage(package_root, "model_1", session_options);
 
   Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
   std::vector<int64_t> shape = {3, 2};
@@ -541,7 +570,7 @@ TEST(ModelPackageTest, CheckCompiledModelCompatibilityInfo) {
   std::unordered_map<std::string, std::string> ep_options;
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
-  Ort::Session session(*ort_env, package_root.c_str(), session_options);
+  Ort::Session session = CreateSessionFromModelPackage(package_root, "model_1", session_options);
 
   std::error_code ec;
   std::filesystem::remove_all(package_root, ec);
