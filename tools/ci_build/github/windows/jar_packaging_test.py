@@ -60,15 +60,24 @@ def directory_setup_factory(tmp_path):
             linux_aarch64_native_dir.mkdir(parents=True, exist_ok=True)
             create_empty_file(linux_aarch64_dir / "libcustom_op_library.so")
 
+            # The outer artifact directory keeps the CI arch tag (osx-x86_64 /
+            # osx-arm64) to match jar_packaging.py's platform list, but the inner
+            # ai/onnxruntime/native/<arch> path uses the Java-convention arch
+            # names (osx-x64 / osx-aarch64) applied by
+            # linux_java_copy_strip_binary.py for .dylib builds.
             osx_x86_64_dir = java_artifact_dir / "onnxruntime-java-osx-x86_64"
-            osx_x86_64_native_dir = osx_x86_64_dir / "ai" / "onnxruntime" / "native" / "osx-x86_64"
+            osx_x86_64_native_dir = osx_x86_64_dir / "ai" / "onnxruntime" / "native" / "osx-x64"
             osx_x86_64_native_dir.mkdir(parents=True, exist_ok=True)
             create_empty_file(osx_x86_64_dir / "libcustom_op_library.dylib")
+            create_empty_file(osx_x86_64_native_dir / "libonnxruntime.dylib")
+            create_empty_file(osx_x86_64_native_dir / "libonnxruntime4j_jni.dylib")
 
             osx_arm64_dir = java_artifact_dir / "onnxruntime-java-osx-arm64"
-            osx_arm64_native_dir = osx_arm64_dir / "ai" / "onnxruntime" / "native" / "osx-arm64"
+            osx_arm64_native_dir = osx_arm64_dir / "ai" / "onnxruntime" / "native" / "osx-aarch64"
             osx_arm64_native_dir.mkdir(parents=True, exist_ok=True)
             create_empty_file(osx_arm64_dir / "libcustom_op_library.dylib")
+            create_empty_file(osx_arm64_native_dir / "libonnxruntime.dylib")
+            create_empty_file(osx_arm64_native_dir / "libonnxruntime4j_jni.dylib")
 
         return tmp_path
 
@@ -131,6 +140,15 @@ def test_cpu_packaging(directory_setup_factory, version_string):
         # Linux libs
         assert "ai/onnxruntime/native/linux-x64/libonnxruntime.so" in jar_contents
         assert "ai/onnxruntime/native/linux-x64/libonnxruntime4j_jni.so" in jar_contents
+        # macOS libs -- under the Java-convention arch paths (osx-x64 /
+        # osx-aarch64) produced by linux_java_copy_strip_binary.py.
+        assert "ai/onnxruntime/native/osx-x64/libonnxruntime.dylib" in jar_contents
+        assert "ai/onnxruntime/native/osx-x64/libonnxruntime4j_jni.dylib" in jar_contents
+        assert "ai/onnxruntime/native/osx-aarch64/libonnxruntime.dylib" in jar_contents
+        assert "ai/onnxruntime/native/osx-aarch64/libonnxruntime4j_jni.dylib" in jar_contents
+        # The pre-rename CI-arch paths must NOT appear in the JAR.
+        assert "ai/onnxruntime/native/osx-x86_64/libonnxruntime.dylib" not in jar_contents
+        assert "ai/onnxruntime/native/osx-arm64/libonnxruntime.dylib" not in jar_contents
         # GPU libs should NOT be present
         assert "ai/onnxruntime/native/linux-x64/libonnxruntime_providers_cuda.so" not in jar_contents
 
