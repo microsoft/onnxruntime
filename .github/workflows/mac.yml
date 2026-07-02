@@ -36,7 +36,7 @@ jobs:
       use_coreml: true
       matrix_include: >-
         [
-          {"machine": "arm64", "target": "x86_64", "build_config": "Release"},
+          {"machine": "x86_64", "target": "x86_64", "build_config": "Release"},
           {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
           {"machine": "arm64", "target": "arm64", "build_config": "Release"}
         ]
@@ -59,7 +59,7 @@ jobs:
       use_webgpu: true
       matrix_include: >-
         [
-          {"machine": "arm64", "target": "x86_64", "build_config": "Release"},
+          {"machine": "x86_64", "target": "x86_64", "build_config": "Release"},
           {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
           {"machine": "arm64", "target": "arm64", "build_config": "Release"}
         ]
