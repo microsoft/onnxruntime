@@ -516,6 +516,10 @@ inline OrtStatus* ReadEpContextDataWithFileFallback(
     OrtReadNamedBufferFunc read_func, void* read_state,
     const char* file_name, const OrtGraph* graph,
     std::vector<char>& data) {
+  // Clear first so `data` is empty on every error path (including an invalid file_name) and for an empty callback
+  // payload, matching the reset-first / empty-on-failure contract of the EpContextData overload.
+  data.clear();
+
   if (file_name == nullptr || file_name[0] == '\0') {
     return api.CreateStatus(ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
   }
@@ -524,11 +528,9 @@ inline OrtStatus* ReadEpContextDataWithFileFallback(
     return ReadEpContextDataFromFile(api, file_name, graph, data);
   }
 
-  // Clear up front so `data` is empty on any error path below and for an empty callback payload; assign only when the
-  // adopted buffer is non-empty (avoids pointer arithmetic on a possibly-null empty buffer).
-  data.clear();
   EpContextData owned;
   RETURN_IF_ERROR(ReadEpContextData(api, read_func, read_state, file_name, graph, owned));
+  // Assign only when non-empty to avoid pointer arithmetic on a possibly-null empty buffer.
   if (!owned.empty()) {
     data.assign(owned.data(), owned.data() + owned.size());
   }

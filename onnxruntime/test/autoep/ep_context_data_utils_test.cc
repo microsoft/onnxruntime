@@ -134,8 +134,10 @@ TEST(OrtEpLibrary, EpContextDataUtils_ResolvePathAndInvalidArguments) {
                        ORT_INVALID_ARGUMENT, "EPContext data buffer must not be null for non-empty data");
 
   std::vector<char> data;
+  data.assign({'s', 't', 'a', 'l', 'e'});
   ExpectOrtStatusError(ep_context_data_utils::ReadEpContextDataWithFileFallback(api, nullptr, "", nullptr, data),
                        ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
+  EXPECT_TRUE(data.empty());  // cleared up front, even though file_name validation fails
   ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(api, nullptr, "", nullptr, nullptr, 0),
                        ORT_INVALID_ARGUMENT, "EPContext data file name must not be empty");
   ExpectOrtStatusError(ep_context_data_utils::WriteEpContextDataWithFileFallback(
