@@ -354,6 +354,15 @@ static OrtStatus* CreateSessionAndLoadModelImpl(_In_ const OrtSessionOptions* op
                                                 _In_opt_ const void* model_data,
                                                 size_t model_data_length,
                                                 std::unique_ptr<onnxruntime::InferenceSession>& sess) {
+  if (model_path != nullptr) {
+    std::error_code ec;
+    if (std::filesystem::is_directory(model_path, ec) && !ec) {
+      return OrtApis::CreateStatus(
+          ORT_INVALID_ARGUMENT,
+          "The model path is a directory. Loading a model package from a directory path is not supported. "
+          "Use the model package API (CreateModelPackageContext, SelectComponent, CreateSession) instead.");
+    }
+  }
   return CreateSessionAndLoadSingleModelImpl(options, env, model_path, model_data, model_data_length, sess);
 }
 

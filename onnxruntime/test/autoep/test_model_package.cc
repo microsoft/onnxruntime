@@ -520,6 +520,32 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PreferCpu) {
   std::filesystem::remove_all(package_root, ec);
 }
 
+// Passing a directory path to OrtCreateSession is no longer treated as a model package. It must
+// fail with a clear message pointing at the model package API rather than a generic load error.
+TEST(ModelPackageTest, DirectoryPath_FailsWithModelPackageApiHint) {
+  const auto package_root = std::filesystem::temp_directory_path() / "ort_mp_directory_path_rejected";
+  BuildTwoVariantPackage(package_root,
+                         "variant_1", "cpu", "",
+                         "testdata/mul_1.onnx",
+                         "variant_2", "npu", "",
+                         "testdata/mul_16.onnx");
+
+  Ort::SessionOptions session_options;
+  bool threw = false;
+  try {
+    Ort::Session session(*ort_env, package_root.c_str(), session_options);
+  } catch (const Ort::Exception& e) {
+    threw = true;
+    const std::string msg = e.what();
+    EXPECT_NE(msg.find("directory"), std::string::npos) << "unexpected error: " << msg;
+    EXPECT_NE(msg.find("model package API"), std::string::npos) << "unexpected error: " << msg;
+  }
+  EXPECT_TRUE(threw) << "Loading a session from a directory path should fail";
+
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+}
+
 TEST(ModelPackageTest, CheckCompiledModelCompatibilityInfo) {
   RegisteredEpDeviceUniquePtr example_ep;
   ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
