@@ -95,6 +95,9 @@ struct TestOptions {
   // single run. The model is run in two sessions that use the same pre-packed weights container.
   std::optional<PrepackSharingMode> prepack_sharing_mode{};
 
+  std::optional<int64_t> weight_prepacked{};
+  std::optional<std::string> expected_failure{};
+
   std::optional<float> output_abs_error{};
   std::optional<float> output_rel_error{};
 };
@@ -181,6 +184,9 @@ void RunTest(const TestOptions& opts,
   test.AddAttribute<int64_t>("block_size", opts.block_size);
   test.AddAttribute<int64_t>("bits", QBits);
   test.AddAttribute<int64_t>("accuracy_level", opts.accuracy_level);
+  if (opts.weight_prepacked.has_value()) {
+    test.AddAttribute<int64_t>("weight_prepacked", *opts.weight_prepacked);
+  }
 
   if constexpr (std::is_same_v<T1, float>) {
     test.AddInput<T1>("A", {batch_count, M, K}, input0_vals, false);
@@ -286,6 +292,11 @@ void RunTest(const TestOptions& opts,
 
   if (!explicit_eps.empty()) {
     test.ConfigEps(std::move(explicit_eps));
+  }
+
+  if (opts.expected_failure.has_value()) {
+    test.Run(OpTester::ExpectResult::kExpectFailure, *opts.expected_failure);
+    return;
   }
 
   test.RunWithConfig();
@@ -867,6 +878,32 @@ TEST(MatMulNBits, Fp16_Int4_NoZeroPoint) {
     RunTest<MLFloat16>(1, 256, 1024, block_size, has_zeropoint, zp_is_4bit, abs_error);
     RunTest<MLFloat16>(32, 1024, 2048, block_size, has_zeropoint, zp_is_4bit, abs_error);
   }
+}
+
+TEST(MatMulNBits, Fp16_Int4_PrepackedWeightRequiresFpAIntBGemm) {
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "0"}}};
+
+  TestOptions opts{};
+  opts.M = 1, opts.N = 256, opts.K = 1024;
+  opts.block_size = 64;
+  opts.weight_prepacked = 1;
+  opts.expected_failure = "weight_prepacked requires the fpA_intB path, but ORT_FPA_INTB_GEMM is off";
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCudaExecutionProvider());
+  RunTest<MLFloat16>(opts, std::move(eps));
+}
+
+TEST(MatMulNBits, Fp16_Int4_PrepackedSm90WeightReserved) {
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
+
+  TestOptions opts{};
+  opts.M = 1, opts.N = 256, opts.K = 1024;
+  opts.block_size = 64;
+  opts.weight_prepacked = 2;
+  opts.expected_failure = "weight_prepacked=2 (SM90 layout) is reserved and not supported yet";
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(DefaultCudaExecutionProvider());
+  RunTest<MLFloat16>(opts, std::move(eps));
 }
 
 // Exercises the CUDA small-M batched GEMV tiles: CtaM in {2,4,8,16} (with M values that are not a
