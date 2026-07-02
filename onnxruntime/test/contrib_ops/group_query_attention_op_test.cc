@@ -2657,7 +2657,7 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_IndirectDispatchForGraphCapture) {
   auto gpu_alloc = session.GetAllocator(gpu_mem_info);
   AllocatorPtr cpu_alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
 
-  // Prepare test data.
+  // Capture-run input data (set A).
   std::vector<float> query_data(batch_size * q_seq_len * hidden_size);
   std::vector<float> past_key_data(batch_size * kv_num_heads * past_seq_len * head_size);
   std::vector<float> past_value_data(batch_size * kv_num_heads * past_seq_len * head_size);
@@ -2665,7 +2665,15 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_IndirectDispatchForGraphCapture) {
   for (size_t i = 0; i < past_key_data.size(); i++) past_key_data[i] = 0.2f * static_cast<float>(i % 5 + 1);
   for (size_t i = 0; i < past_value_data.size(); i++) past_value_data[i] = 0.3f * static_cast<float>(i % 3 + 1);
 
-  // Helper: create GPU OrtValue by copying from CPU data (data may be nullptr for zero-size tensors).
+  // Replay-run input data (set B) — different values to verify replay actually uses new data.
+  std::vector<float> query_data2(batch_size * q_seq_len * hidden_size);
+  std::vector<float> past_key_data2(batch_size * kv_num_heads * past_seq_len * head_size);
+  std::vector<float> past_value_data2(batch_size * kv_num_heads * past_seq_len * head_size);
+  for (size_t i = 0; i < query_data2.size(); i++) query_data2[i] = 0.5f * static_cast<float>(i % 11 + 1);
+  for (size_t i = 0; i < past_key_data2.size(); i++) past_key_data2[i] = 0.4f * static_cast<float>(i % 7 + 1);
+  for (size_t i = 0; i < past_value_data2.size(); i++) past_value_data2[i] = 0.6f * static_cast<float>(i % 4 + 1);
+
+  // Helper: create GPU OrtValue by copying from CPU data (nullptr = zero-size tensor).
   auto make_gpu_value = [&](const void* data, MLDataType dtype, TensorShape shape) -> OrtValue {
     Tensor gpu_tensor(dtype, shape, gpu_alloc);
     if (data != nullptr && shape.Size() > 0) {
@@ -2675,6 +2683,15 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_IndirectDispatchForGraphCapture) {
     OrtValue val;
     Tensor::InitOrtValue(std::move(gpu_tensor), val);
     return val;
+  };
+
+  // Helper: overwrite an existing GPU tensor's data in-place from CPU (same buffer, new values).
+  // Under graph capture the WGPUBuffer pointer is baked in; rebinding is not allowed.
+  auto update_gpu_value = [&](const OrtValue& gpu_val, const void* data, MLDataType dtype, TensorShape shape) {
+    if (shape.Size() > 0) {
+      Tensor cpu_tensor(dtype, shape, const_cast<void*>(data), cpu_alloc->Info());
+      ORT_THROW_IF_ERROR(ep_ptr->GetDataTransfer()->CopyTensor(cpu_tensor, const_cast<Tensor&>(gpu_val.Get<Tensor>())));
+    }
   };
 
   auto q_val = make_gpu_value(query_data.data(), DataTypeImpl::GetType<float>(),
@@ -2717,10 +2734,18 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_IndirectDispatchForGraphCapture) {
   RunOptions run_options;
   ORT_THROW_IF_ERROR(session.Run(run_options, *io_binding));
 
-  // Run 2: replay.
+  // Run 2: replay with different inputs (set B) written into the same GPU buffers.
+  // Rebinding is not allowed under graph capture — the WGPUBuffer pointers are baked
+  // in at capture time, so new data must be copied into the existing buffers.
+  update_gpu_value(q_val, query_data2.data(), DataTypeImpl::GetType<float>(),
+                   TensorShape{batch_size, q_seq_len, hidden_size});
+  update_gpu_value(pk_val, past_key_data2.data(), DataTypeImpl::GetType<float>(),
+                   TensorShape{batch_size, kv_num_heads, past_seq_len, head_size});
+  update_gpu_value(pv_val, past_value_data2.data(), DataTypeImpl::GetType<float>(),
+                   TensorShape{batch_size, kv_num_heads, past_seq_len, head_size});
   ORT_THROW_IF_ERROR(session.Run(run_options, *io_binding));
 
-  // Copy output GPU -> CPU and compare to CPU reference.
+  // Copy replay output GPU -> CPU and compare against CPU reference for set B.
   const int output_size = batch_size * q_seq_len * hidden_size;
   auto& gpu_out = io_binding->GetOutputs()[0].Get<Tensor>();
   Tensor cpu_out_tensor(DataTypeImpl::GetType<float>(), gpu_out.Shape(), cpu_alloc);
@@ -2729,7 +2754,7 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_IndirectDispatchForGraphCapture) {
                                    cpu_out_tensor.Data<float>() + output_size);
 
   auto cpu_output = RunGQASharedKV(
-      batch_size, q_seq_len, past_seq_len, query_data, past_key_data, past_value_data,
+      batch_size, q_seq_len, past_seq_len, query_data2, past_key_data2, past_value_data2,
       num_heads, kv_num_heads, head_size, GqaTargetEp::kCpu);
 
   ExpectOutputsMatch(webgpu_output, cpu_output, 0.05f, "SharedKV_IndirectDispatchForGraphCapture_vs_CPU");
