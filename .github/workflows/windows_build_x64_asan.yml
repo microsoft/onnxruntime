@@ -21,6 +21,13 @@ jobs:
         ]
     timeout-minutes: 300
 
+    env:
+      # Number of GoogleTest shards to split the test run across. Each shard is a fresh
+      # process, so the AddressSanitizer per-size-class allocator arena is reset between
+      # shards and its peak stays roughly 1/N of an unsharded run. Bump to 6-8 if a shard
+      # still hits "AddressSanitizer: Out of memory ... size class 8192".
+      SHARD_COUNT: 4
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -38,10 +45,59 @@ jobs:
         with:
           architecture: x64
 
-      - name: Build and Test (Combined)
-        shell: cmd
+      - name: Write shared build options
+        shell: pwsh
         run: |
-          @echo off
-          echo %PATH%
-          python -m pip install -r "%GITHUB_WORKSPACE%\tools\ci_build/github/windows\python\requirements.txt"
-          python "%GITHUB_WORKSPACE%\tools\ci_build\build.py" --config Debug --build_dir "%RUNNER_TEMP%\build" --skip_submodule_sync --parallel --test_parallel 4 --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_generator "Visual Studio 17 2022" --disable_memleak_checker --enable_address_sanitizer
+          $ErrorActionPreference = 'Stop'
+          $buildDir = Join-Path $env:RUNNER_TEMP 'build'
+          $optsFile = Join-Path $env:RUNNER_TEMP 'asan_build_options.txt'
+          # Common build.py options shared by the build and test phases below. build.py's
+          # argument-file parser (build_args.py Parser.convert_arg_line_to_args) uses shlex, so
+          # multiple tokens per line, quoted multi-word values, and '#' comments are supported.
+          @(
+            '--config Debug'
+            "--build_dir `"$buildDir`""
+            '--skip_submodule_sync'
+            '--parallel'
+            '--use_vcpkg'
+            '--use_vcpkg_ms_internal_asset_cache'
+            '--cmake_generator "Visual Studio 17 2022"'
+            '--disable_memleak_checker'
+            '--enable_address_sanitizer'
+          ) | Set-Content -Path $optsFile -Encoding ascii
+          Write-Host "Wrote build options to $optsFile:"
+          Get-Content $optsFile | Write-Host
+
+      - name: Build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $buildPy  = Join-Path $env:GITHUB_WORKSPACE 'tools\ci_build\build.py'
+          $optsFile = Join-Path $env:RUNNER_TEMP 'asan_build_options.txt'
+          $reqFile  = Join-Path $env:GITHUB_WORKSPACE 'tools\ci_build\github\windows\python\requirements.txt'
+          python -m pip install -r $reqFile
+          if ($LASTEXITCODE -ne 0) { throw "pip install failed ($LASTEXITCODE)" }
+          # '@' must be quoted so PowerShell does not treat it as the splat operator.
+          python $buildPy "@$optsFile" --update --build
+          if ($LASTEXITCODE -ne 0) { throw "Build failed ($LASTEXITCODE)" }
+
+      - name: Test (sharded)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $buildPy  = Join-Path $env:GITHUB_WORKSPACE 'tools\ci_build\build.py'
+          $optsFile = Join-Path $env:RUNNER_TEMP 'asan_build_options.txt'
+          $shardCount = [int]$env:SHARD_COUNT
+          # GoogleTest reads these env vars; each ctest-launched test binary runs only its shard.
+          $env:GTEST_TOTAL_SHARDS = $shardCount
+          # NOTE: onnxruntime_GENERATE_TEST_REPORTS bakes a fixed --gtest_output=xml path into each
+          # ctest command, so every shard writes the same *.results.xml and later shards clobber
+          # earlier ones (final file = last shard only). That is fine here: nothing consumes or
+          # uploads the XML - gating is the ctest exit code plus the per-shard console output.
+          for ($i = 0; $i -lt $shardCount; $i++) {
+            $env:GTEST_SHARD_INDEX = $i
+            Write-Host "=== Running test shard $i of $shardCount ==="
+            # '@' must be quoted so PowerShell does not treat it as the splat operator.
+            python $buildPy "@$optsFile" --test --test_parallel 4
+            if ($LASTEXITCODE -ne 0) { throw "Test shard $i failed ($LASTEXITCODE)" }
+          }
