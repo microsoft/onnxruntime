@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   iOS_CI_on_Mac:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -61,5 +61,5 @@ jobs:
 
     timeout-minutes: 150
     env:
-      XCODE_VERSION: 15.3.0
-      IOS_SIMULATOR_RUNTIME_VERSION: 17.4
+      XCODE_VERSION: 26.3
+      IOS_SIMULATOR_RUNTIME_VERSION: 26.2
