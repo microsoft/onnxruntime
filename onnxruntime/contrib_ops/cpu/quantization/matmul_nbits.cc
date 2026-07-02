@@ -715,7 +715,15 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
 #if defined(MLAS_TARGET_AMD64_IX86)
       return true;
 #else
-      return (nbits_ == 8);
+      // W2 on ARM64 (NEON DotProd) uses the 3-call prepack pattern: B in the
+      // input_idx==B call, scales+ZP in the separate input_idx==scales /
+      // input_idx==zero_points calls. Without W2 here, the ZP tensor is silently
+      // dropped and QuantBBlkSum bakes in the symmetric default ZP=2 for every
+      // block, producing wrong outputs whenever the model's real ZPs != 2. This
+      // mirrors the (nbits_==2 || nbits_==8) gate in the primary PrePack above.
+      // Reachable on Apple ARM64 (macOS), which lacks MLAS_F16VEC_INTRINSICS_SUPPORTED
+      // and so compiles this MLFloat16 specialization instead of the primary template.
+      return (nbits_ == 2 || nbits_ == 8);
 #endif
     }();
 
