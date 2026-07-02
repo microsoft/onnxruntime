@@ -157,9 +157,9 @@ using W2KernelFn = size_t(MLASCALL*)(
     const std::byte*, float*, size_t, size_t, size_t, size_t,
     const float*, size_t, const float*, const float*);
 
-void RunW2Case(size_t M, size_t N, size_t K, bool WithBias, uint32_t seed,
-               bool WithZeroPoints, W2KernelFn kernel,
-               const char* kernel_name) {
+[[maybe_unused]] void RunW2Case(size_t M, size_t N, size_t K, bool WithBias, uint32_t seed,
+                                bool WithZeroPoints, W2KernelFn kernel,
+                                const char* kernel_name) {
   const size_t BlockCountK = (K + kBlkLen - 1) / kBlkLen;
   ASSERT_EQ(K % kBlkLen, 0u) << "Test K must be a multiple of BlkLen=64";
   // BlockCountK no longer required to be a multiple of kBlockGroupBlks --
@@ -418,7 +418,7 @@ TEST(MlasSq2BitTest, Scalar_BlkLen64_WithZeroPoints) {
 // the right packed-B address regardless of K % 4. K=384 and the
 // synthetic K=320, K=448 shapes exercise this path.
 //
-constexpr struct {
+[[maybe_unused]] constexpr struct {
   size_t M, N, K;
 } kSimdShapes[] = {
     {1, 16, 256},     // R1 only
@@ -649,9 +649,9 @@ void ReferenceGemm_W2_CompInt8_BlkLen128(size_t M, size_t N, size_t K,
   }
 }
 
-void RunW2Case_BlkLen128(size_t M, size_t N, size_t K, bool WithBias, uint32_t seed,
-                         bool WithZeroPoints, W2KernelFn kernel,
-                         const char* kernel_name) {
+[[maybe_unused]] void RunW2Case_BlkLen128(size_t M, size_t N, size_t K, bool WithBias, uint32_t seed,
+                                          bool WithZeroPoints, W2KernelFn kernel,
+                                          const char* kernel_name) {
   const size_t BlockCountK = (K + kBlkLen128 - 1) / kBlkLen128;
   ASSERT_EQ(K % kBlkLen128, 0u) << "BlkLen128 test K must be a multiple of 128";
 
@@ -786,7 +786,7 @@ void RunW2Case_BlkLen128(size_t M, size_t N, size_t K, bool WithBias, uint32_t s
 //   * BlockCountK in {1, 2, 3, 4, 8, 16, 32} -- full + K-tail variants
 //   * N-tail (NMain=0 and various NTail) combined with K-tail
 //
-constexpr struct {
+[[maybe_unused]] constexpr struct {
   size_t M, N, K;
 } kSimdShapes_BlkLen128[] = {
     {1, 16, 128},     // R1, BlockCountK=1
@@ -1041,9 +1041,9 @@ void ReferenceGemm_W2_CompInt8_BlkLen32(size_t M, size_t N, size_t K,
   }
 }
 
-void RunW2Case_BlkLen32(size_t M, size_t N, size_t K, bool WithBias, uint32_t seed,
-                        bool WithZeroPoints, W2KernelFn kernel,
-                        const char* kernel_name) {
+[[maybe_unused]] void RunW2Case_BlkLen32(size_t M, size_t N, size_t K, bool WithBias, uint32_t seed,
+                                         bool WithZeroPoints, W2KernelFn kernel,
+                                         const char* kernel_name) {
   const size_t BlockCountK = (K + kBlkLen32 - 1) / kBlkLen32;
   ASSERT_EQ(K % kBlkLen32, 0u) << "BlkLen32 test K must be a multiple of 32";
 
@@ -1173,7 +1173,7 @@ void RunW2Case_BlkLen32(size_t M, size_t N, size_t K, bool WithBias, uint32_t se
 // K-shape constraint: K multiple of 32 (BlkLen=32). Covers BlockCountK in
 // {1, 2, 3, 4, 8, 16, 32, 64} -- both K-tail variants (BlockCountK not a
 // multiple of 4) and exact block-group multiples.
-constexpr struct {
+[[maybe_unused]] constexpr struct {
   size_t M, N, K;
 } kSimdShapes_BlkLen32[] = {
     {1, 16, 32},      // R1, BlockCountK=1
