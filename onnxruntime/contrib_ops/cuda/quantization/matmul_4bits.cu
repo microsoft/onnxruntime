@@ -449,7 +449,7 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
 // CtaM activation rows held in registers, cutting weight traffic to ceil(M/CtaM)x. This is the same
 // design used by TensorRT-LLM weightOnlyBatchedGemv / AWQ / llama.cpp MMVQ for small batch.
 //
-// Upper bound on M is kSmallMMax for all dtypes (measured on A100 vs the dequantize+cuBLAS fallback).
+// Upper bound on M is kSmallMMax for all dtypes (measured vs the dequantize+cuBLAS fallback).
 // half/bf16 run the register-tiled batched kernel, which stays ahead of the tensor-core GEMM through
 // M<=16. float has no tensor-core GEMM fallback, so it uses the shared-memory small-M kernel over the
 // same range.
@@ -1080,7 +1080,8 @@ bool TryMatMul4Bits(
     int k,
     int block_size,
     size_t shared_mem_per_block,
-    cudaStream_t stream) {
+    cudaStream_t stream,
+    int max_batched_m) {
   if (n % kColsPerThreadBlock != 0 || k % 8 != 0 || m > SmallMCap<T>()) {
     return false;
   }
@@ -1105,11 +1106,19 @@ bool TryMatMul4Bits(
 
   // The register-tiled batched path (half/bf16, 2 <= m <= cap) launches with no shared memory, so try
   // it before the shared-memory budget gate that only constrains the shared-memory kernels below.
-  if (m >= 2) {
+  // max_batched_m lets an online tuner cap the batched range below the compile-time cap for a given
+  // device/shape; above it, fall through to dequant + cuBLAS.
+  if (m >= 2 && m <= max_batched_m) {
     if (TryMatMulBatched4Bits<T>(output, a_data, b_data_quant, scales_data, zero_points,
                                  m, n, k, block_size, 0, stream)) {
       return true;
     }
+  }
+
+  // When the tuner selected the dequant path for this m, skip the shared-memory small-M fallback so the
+  // caller uses dequant + cuBLAS. (For the default cap this is unreachable since max_batched_m is INT_MAX.)
+  if (m >= 2 && m > max_batched_m) {
+    return false;
   }
 
   dim3 blocks((n + kColsPerThreadBlock - 1) / kColsPerThreadBlock, m);
@@ -1167,7 +1176,8 @@ template bool TryMatMul4Bits<float>(
     int k,
     int block_size,
     size_t shared_mem_per_block,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    int max_batched_m);
 
 template bool TryMatMul4Bits<half>(
     half* output,
@@ -1181,7 +1191,8 @@ template bool TryMatMul4Bits<half>(
     int k,
     int block_size,
     size_t shared_mem_per_block,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    int max_batched_m);
 
 template bool TryMatMul4Bits<nv_bfloat16>(
     nv_bfloat16* output,
@@ -1195,7 +1206,8 @@ template bool TryMatMul4Bits<nv_bfloat16>(
     int k,
     int block_size,
     size_t shared_mem_per_block,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    int max_batched_m);
 
 template <typename T>
 __global__ void MatMulNBitsBiasAddKernel(T* output, const T* bias_data, int n, int64_t total) {

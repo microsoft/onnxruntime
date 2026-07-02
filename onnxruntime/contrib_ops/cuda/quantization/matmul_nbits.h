@@ -7,11 +7,13 @@
 // pre-packed and block-compacted into int4
 //
 #pragma once
+#include <atomic>
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
 #include "core/platform/env_var_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -85,6 +87,8 @@ class MatMulNBits final : public CudaKernel {
       chunk_target_rows_ = kDefaultChunkTargetRows;
     }
 
+    tune_small_m_ = info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsConfigMatMulNBitsTuneSmallM) == "1";
+
 #if USE_FPA_INTB_GEMM
     if constexpr (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value) {
       int option = ParseEnvironmentVariableWithDefault<int>(kFpAIntBGemmOption, 0);
@@ -134,6 +138,15 @@ class MatMulNBits final : public CudaKernel {
 #endif
 
  private:
+  // Returns the max M for which the batched GEMV should be used for this op's fixed weight shape.
+  // When tuning is disabled it returns INT_MAX (use the compile-time cap). When enabled it lazily
+  // micro-benchmarks the batched GEMV vs dequant + cuBLAS once per shape and caches the crossover.
+  int ResolveSmallMBatchedCap(OpKernelContext* ctx,
+                              const uint8_t* blob_data,
+                              const void* scales_data,
+                              const void* zero_points_data,
+                              bool zero_points_is_typed,
+                              int n, int k, int64_t k_padded) const;
 #if USE_FPA_INTB_GEMM
   void InitGemmProfiler(int sm);
   void RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int max_m);
@@ -156,6 +169,11 @@ class MatMulNBits final : public CudaKernel {
   bool is_zero_points_scale_same_type_{false};
   bool force_chunked_{false};
   int64_t chunk_target_rows_{kDefaultChunkTargetRows};
+
+  bool tune_small_m_{false};
+  // Resolved batched-GEMV cap for this op: -1 = unresolved, otherwise the max M to run batched
+  // (INT_MAX means "use the compile-time cap"). Resolved once, then reused.
+  mutable std::atomic<int> resolved_small_m_cap_{-1};
 
 #if USE_FPA_INTB_GEMM
   bool has_fpA_intB_gemv_{false};
