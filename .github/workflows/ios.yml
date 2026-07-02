@@ -38,7 +38,7 @@ jobs:
           XCODE_DEVELOPER_DIR="/Applications/Xcode_${{ env.XCODE_VERSION }}.app/Contents/Developer"
           sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
 
-      - name: (CPU, CoreML, XNNPACK EPs) Build onnxruntime for iOS x86_64 and run tests using simulator
+      - name: (CPU, CoreML, XNNPACK EPs) Build onnxruntime for iOS and run tests using simulator
         shell: bash
         run: |
           python3 ${{ github.workspace }}/tools/ci_build/build.py \
@@ -49,7 +49,7 @@ jobs:
             --use_xnnpack \
             --ios \
             --apple_sysroot iphonesimulator \
-            --osx_arch x86_64 \
+            --osx_arch arm64 \
             --apple_deploy_target=15.1 \
             --use_xcode \
             --config RelWithDebInfo \
