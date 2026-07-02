@@ -92,6 +92,7 @@ jobs:
           $buildPy  = Join-Path $env:GITHUB_WORKSPACE 'tools\ci_build\build.py'
           $optsFile = Join-Path $env:RUNNER_TEMP 'asan_build_options.txt'
           $shardCount = [int]$env:SHARD_COUNT
+          if ($shardCount -lt 1) { throw "SHARD_COUNT must be >= 1 (got $shardCount)" }
 
           # GoogleTest reads the GTEST_TOTAL_SHARDS and GTEST_SHARD_INDEX env vars.
           # Each ctest-launched test binary runs only its shard.
@@ -108,5 +109,5 @@ jobs:
 
             # '@' must be quoted so PowerShell does not treat it as the splat operator.
             python $buildPy "@$optsFile" --test --test_parallel 4
-            if ($LASTEXITCODE -ne 0) { throw "Test shard $i failed ($LASTEXITCODE)" }
+            if ($LASTEXITCODE -ne 0) { throw "Test shard $($i + 1) of $shardCount failed ($LASTEXITCODE)" }
           }
