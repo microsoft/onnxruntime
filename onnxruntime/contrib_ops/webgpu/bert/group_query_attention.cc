@@ -353,7 +353,13 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                           past_value->DataRaw() == present_value->DataRaw();
 
   ORT_ENFORCE(parameters.total_sequence_length_ <= parameters.seqlen_present_kv_cache_, "Total sequence length cannot be greater than the existing KV cache length.");
-  ORT_ENFORCE(!context.IsGraphCaptureEnabled() || parameters.past_present_share_buffer_,
+  // kv_sequence_length==0 fast path: K/V inputs are empty (shared KV layer).
+  // Skip all K/V processing; only apply RoPE to Q if needed.
+  // Use past_key/past_value directly as the KV context.
+  const bool kv_empty = (parameters.kv_sequence_length_ == 0);
+  // kv_empty layers (e.g. Gemma4 layers 15-34) reuse KV from another layer so
+  // past/present cannot share the same buffer — exempt them from this check.
+  ORT_ENFORCE(!context.IsGraphCaptureEnabled() || kv_empty || parameters.past_present_share_buffer_,
               "Graph capture requires past/present KV cache to share the same buffer (static KV cache).");
 
   Tensor qSplit;
@@ -362,11 +368,6 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
 
   Tensor qRotary;
   Tensor kRotary;
-
-  // kv_sequence_length==0 fast path: K/V inputs are empty (shared KV layer).
-  // Skip all K/V processing; only apply RoPE to Q if needed.
-  // Use past_key/past_value directly as the KV context.
-  const bool kv_empty = (parameters.kv_sequence_length_ == 0);
 
   // Use a sliding window if the total sequence exceeds the window's length.
   bool use_sliding_window = (local_window_size_ != -1 && local_window_size_ < parameters.total_sequence_length_);
