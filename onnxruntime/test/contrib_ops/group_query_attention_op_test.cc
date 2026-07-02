@@ -2567,6 +2567,7 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_SlidingWindow) {
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
+#ifdef USE_WEBGPU
 // WebGPU graph capture test for kv_empty (Gemma4 shared-KV) layers.
 //
 // When graph capture is enabled, total_seqlen is GPU-resident and
@@ -2575,7 +2576,6 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_SlidingWindow) {
 // inputs as GPU tensors via IOBinding, running capture then replay, and
 // verifying the replay output matches the CPU reference.
 TEST(GroupQueryAttentionTest, WebGPU_SharedKV_IndirectDispatchForGraphCapture) {
-#ifdef USE_WEBGPU
   constexpr int batch_size = 1;
   constexpr int q_seq_len = 1;
   constexpr int past_seq_len = 32;
@@ -2758,8 +2758,8 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_IndirectDispatchForGraphCapture) {
       num_heads, kv_num_heads, head_size, GqaTargetEp::kCpu);
 
   ExpectOutputsMatch(webgpu_output, cpu_output, 0.05f, "SharedKV_IndirectDispatchForGraphCapture_vs_CPU");
-#endif
 }
+#endif  // USE_WEBGPU
 
 // ---------------------------------------------------------------------------
 // Batched right-padded packed-QKV prefill with do_rotary.
