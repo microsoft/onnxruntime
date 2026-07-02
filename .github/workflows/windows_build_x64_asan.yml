@@ -98,7 +98,7 @@ jobs:
           $env:GTEST_TOTAL_SHARDS = $shardCount
 
           for ($i = 0; $i -lt $shardCount; $i++) {
-            Write-Host "=== Running test shard $i of $shardCount ==="
+            Write-Host "=== Running test shard $($i + 1) of $shardCount ==="
 
             $env:GTEST_SHARD_INDEX = $i
 
