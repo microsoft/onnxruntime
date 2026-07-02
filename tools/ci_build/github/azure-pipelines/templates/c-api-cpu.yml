@@ -110,7 +110,7 @@ stages:
       name: AcesShared
       os: macOS
       demands:
-      - ImageOverride -equals ACES_VM_SharedPool_Sequoia
+      - ImageOverride -equals ACES_VM_SharedPool_Tahoe
 
     timeoutInMinutes: 300
     steps:
