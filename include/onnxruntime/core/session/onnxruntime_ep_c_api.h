@@ -2662,11 +2662,14 @@ struct OrtEp {
    * support weightless mode for all initializers on newer hardware but only for external initializers on
    * older hardware that requires weight transformation.
    *
-   * EPs that support weightless mode should:
-   * - During Compile(), obtain initializer data via ValueInfo_GetInitializerValue() and hold references
-   *   to the underlying data buffers. ORT guarantees these buffers remain valid for the session lifetime.
-   * - Set drop_constant_initializers to true in OrtNodeFusionOptions, since the EP will use its own
-   *   cached references rather than receiving initializers via KernelContext inputs.
+   * EPs that support weightless mode should set drop_constant_initializers to false in OrtNodeFusionOptions
+   * so that ORT provides the initializer data as inputs to the compiled/fused node. The EP can then access
+   * these initializers at Compute() time via KernelContext_GetInput().
+   *
+   * \note Extending the lifetime of initializer data obtained via ValueInfo_GetInitializerValue() during
+   *       Compile() so that the EP can cache and reuse data pointers directly (without going through
+   *       KernelContext) is planned but not yet implemented. Until then, KernelContext_GetInput() is the
+   *       only supported way to access initializer data at Compute() time.
    *
    * \param[in] this_ptr The OrtEp instance.
    * \param[out] support Output parameter set to the EP's weightless support scope.
