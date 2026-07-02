@@ -8363,9 +8363,9 @@ struct OrtCompileApi {
   /** \brief Enable weightless mode for model compilation.
    *
    * When enabled, the compiled EPContext model will not embed constant initializer data in the EP's
-   * compiled binary. Instead, the initializer data must be provided at inference time, either from the
-   * source model (via the "onnx_model_filename" EPContext node attribute or the
-   * "ep.context_source_model_path" session option) or from externalized weights.
+   * compiled binary. Instead, the initializer data must be provided when creating a session from the
+   * compiled model, either from the source model (via the "onnx_model_filename" EPContext node attribute
+   * or the "ep.context_source_model_path" session option) or from externalized weights.
    *
    * This enables smaller compiled models and allows sharing initializer data across multiple compiled
    * model variants (e.g., multi-platform caches for different hardware generations).
