@@ -96,6 +96,14 @@ option(onnxruntime_USE_ARM_NEON_NCHWC "Build with ARM Neon NCHWc kernels in MLAS
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 option(onnxruntime_USE_QMX_KLEIDIAI_COEXIST "Build with QMX and Arm KLEIDIAI libraries" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
+# When ON (default), materialize the ONNX node-test corpus from ONNX's Python generators into the
+# build tree at configure/build time, instead of depending on the on-disk corpus shipped in the
+# ONNX source archive. This detaches ORT from ONNX PR #7959 (which deletes onnx/backend/test/data/node).
+# Requires a Python interpreter with onnx (== cmake/deps.txt pin) and numpy installed; the configure
+# step FAILS LOUDLY with an actionable message if they are missing (it does NOT silently skip).
+cmake_dependent_option(onnxruntime_MATERIALIZE_ONNX_NODE_TESTS
+  "Materialize the ONNX node-test corpus into the build tree (needs onnx+numpy)." ON
+  "onnxruntime_BUILD_UNIT_TESTS;NOT onnxruntime_REDUCED_OPS_BUILD;NOT onnxruntime_MINIMAL_BUILD" OFF)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
 option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to provide eigen_SOURCE_PATH if turn this on." OFF)

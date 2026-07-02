@@ -1523,6 +1523,156 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       COMMAND onnx_test_runner ${onnx_SOURCE_DIR}/onnx/backend/test/data/pytorch-operator)
   endif()
 
+  # ---------------------------------------------------------------------------
+  # Materialized ONNX node-test corpus.
+  #
+  # ONNX PR #7959 deletes the on-disk node-test corpus (onnx/backend/test/data/node) from the ONNX
+  # source archive, leaving only the in-memory Python generators. To detach ORT from that on-disk
+  # artifact, we regenerate the corpus from ONNX's own generators into the build tree and point the
+  # C++ onnx_test_runner consumers (this ctest + QNN CI) at the materialized copy.
+  #
+  # Gated on onnxruntime_MATERIALIZE_ONNX_NODE_TESTS (default ON under BUILD_UNIT_TESTS). The gate
+  # FAILS LOUDLY at configure time if Python/onnx/numpy are missing or mismatched -- it never
+  # silently skips, because a silent skip would recreate the exact "green CI with zero node tests"
+  # coverage gap this feature exists to close.
+  # ---------------------------------------------------------------------------
+  if (onnxruntime_MATERIALIZE_ONNX_NODE_TESTS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    # onnx version pin: derive from the archive URL in cmake/deps.txt (single source of truth).
+    string(REGEX MATCH "v([0-9]+\\.[0-9]+\\.[0-9]+)" _onnx_url_ver "${DEP_URL_onnx}")
+    if(CMAKE_MATCH_1)
+      set(ONNX_PINNED_VERSION ${CMAKE_MATCH_1})
+    else()
+      message(FATAL_ERROR "Could not parse the pinned onnx version from DEP_URL_onnx='${DEP_URL_onnx}' "
+        "(expected a vX.Y.Z tag). Fix cmake/deps.txt or this regex.")
+    endif()
+
+    # Python interpreter is not guaranteed for static test-only builds (the top-level
+    # find_package(Python) in cmake/CMakeLists.txt is gated on BUILD_SHARED_LIB OR ENABLE_PYTHON).
+    #
+    # Guard on Python_VERSION, NOT Python_EXECUTABLE: Python_EXECUTABLE is a CACHE variable that
+    # persists across reconfigures, whereas Python_VERSION is a normal variable re-derived only when
+    # find_package actually runs. On any second `cmake` pass in an existing build dir, a cached
+    # Python_EXECUTABLE would skip find_package and leave Python_VERSION EMPTY -- and the
+    # numpy-pin-by-version selection below (`Python_VERSION VERSION_LESS 3.11`) treats empty as 0,
+    # silently picking the < 3.11 pin regardless of the real interpreter. Keying the guard on
+    # Python_VERSION forces find_package to repopulate the version before that selection every pass.
+    if(NOT Python_VERSION)
+      find_package(Python 3.10 COMPONENTS Interpreter REQUIRED)
+    endif()
+
+    # Configure-time fail-loud gate: onnx present and at the pinned version?
+    execute_process(
+      COMMAND ${Python_EXECUTABLE} -c "import onnx,sys; sys.stdout.write(onnx.__version__)"
+      RESULT_VARIABLE _onnx_rc OUTPUT_VARIABLE _onnx_ver ERROR_VARIABLE _onnx_err)
+    if(NOT _onnx_rc EQUAL 0)
+      message(FATAL_ERROR
+        "onnxruntime_MATERIALIZE_ONNX_NODE_TESTS=ON but 'import onnx' failed for ${Python_EXECUTABLE}.\n"
+        "  Fix: pip install onnx==${ONNX_PINNED_VERSION} numpy\n"
+        "  OR reconfigure with -Donnxruntime_MATERIALIZE_ONNX_NODE_TESTS=OFF (node-test coverage will be dropped).\n"
+        "  Details: ${_onnx_err}")
+    endif()
+    if(NOT _onnx_ver STREQUAL ONNX_PINNED_VERSION)
+      message(FATAL_ERROR
+        "onnx ${_onnx_ver} != pinned ${ONNX_PINNED_VERSION} (cmake/deps.txt). "
+        "A mismatched wheel bakes the wrong opset/IR into the materialized corpus (silent drift).\n"
+        "  Fix: pip install onnx==${ONNX_PINNED_VERSION}")
+    endif()
+
+    # numpy version: assert the build's numpy equals the CI-pinned numpy (the SAME pin the QNN
+    # legs install and that the ONNX corpus reproduction is validated under). Kept in sync with
+    # tools/ci_build/github/linux/docker/scripts/requirements.txt (python-conditional):
+    #   numpy==2.2.6 ; python_version <  "3.11"
+    #   numpy==2.4.2 ; python_version >= "3.11"
+    # The version ASSERT (installed == pin) and the equivalence ctest's <=4-ULP output band are
+    # SEPARATE guards: the assert catches env drift (wrong/unexpected numpy) at CONFIGURE time with
+    # a clear, early message; the ULP band separately absorbs the residual float drift between the
+    # pinned numpy and the numpy the archived ONNX release used to recompute reference outputs.
+    # Passing the pin (not the tautological installed value) is what makes the materializer's
+    # --expected-numpy-version assert meaningful. Both import failure AND mismatch FAIL LOUD.
+    if(Python_VERSION VERSION_LESS 3.11)
+      set(NUMPY_PINNED_VERSION 2.2.6)
+    else()
+      set(NUMPY_PINNED_VERSION 2.4.2)
+    endif()
+    execute_process(
+      COMMAND ${Python_EXECUTABLE} -c "import numpy,sys; sys.stdout.write(numpy.__version__)"
+      RESULT_VARIABLE _np_rc OUTPUT_VARIABLE _np_ver ERROR_VARIABLE _np_err)
+    if(NOT _np_rc EQUAL 0)
+      message(FATAL_ERROR
+        "onnxruntime_MATERIALIZE_ONNX_NODE_TESTS=ON but 'import numpy' failed for ${Python_EXECUTABLE}.\n"
+        "  Fix: pip install numpy==${NUMPY_PINNED_VERSION}\n"
+        "  OR reconfigure with -Donnxruntime_MATERIALIZE_ONNX_NODE_TESTS=OFF.\n"
+        "  Details: ${_np_err}")
+    endif()
+    if(NOT _np_ver STREQUAL NUMPY_PINNED_VERSION)
+      message(FATAL_ERROR
+        "numpy ${_np_ver} != pinned ${NUMPY_PINNED_VERSION} (requirements.txt, for Python "
+        "${Python_VERSION}). The materialized corpus must be reproduced under the pinned numpy so "
+        "the equivalence oracle stays within its <=4-ULP band.\n"
+        "  Fix: pip install numpy==${NUMPY_PINNED_VERSION}\n"
+        "  OR reconfigure with -Donnxruntime_MATERIALIZE_ONNX_NODE_TESTS=OFF.")
+    endif()
+
+    set(_materialize_script ${REPO_ROOT}/tools/python/materialize_onnx_node_tests.py)
+    set(ORT_MATERIALIZED_NODE_ROOT ${CMAKE_BINARY_DIR}/onnx_node_tests)
+    set(ORT_MATERIALIZED_NODE_DIR  ${ORT_MATERIALIZED_NODE_ROOT}/node)
+    # Single shared floor for the "silently-empty/undersized materialization" guard. Kept in
+    # lockstep with the other floor sites (all must move together if raised):
+    #   * MIN_NODE_CASES in onnxruntime/test/python/onnx_node_test_equivalence_test.py
+    #   * MIN_NODE_CASES in onnxruntime/test/python/onnx_backend_test_series.py
+    #   * onnx_test_runner -m (the C++ consumption-point tripwire, wired below)
+    # Today's corpus is ~1799 node cases; 1500 is a conservative floor that survives normal opset
+    # churn but fails loud on a catastrophic under-generation. Passed to the build-time materialize
+    # step (build fails loud), the node ctest (-m, consumption-point), AND the equivalence ctest.
+    set(ORT_ONNX_NODE_MIN_CASES 1500)
+
+    add_custom_command(
+      OUTPUT  ${ORT_MATERIALIZED_NODE_ROOT}/.stamp
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${ORT_MATERIALIZED_NODE_ROOT}
+      COMMAND ${Python_EXECUTABLE} ${_materialize_script}
+                --out ${ORT_MATERIALIZED_NODE_ROOT}
+                --expected-onnx-version ${ONNX_PINNED_VERSION}
+                --expected-numpy-version ${NUMPY_PINNED_VERSION}
+                --min-cases ${ORT_ONNX_NODE_MIN_CASES}
+                --stamp ${ORT_MATERIALIZED_NODE_ROOT}/.stamp
+      DEPENDS ${_materialize_script} ${REPO_ROOT}/cmake/deps.txt
+      COMMENT "Materializing ONNX node-test corpus -> ${ORT_MATERIALIZED_NODE_DIR}"
+      VERBATIM)
+    add_custom_target(onnx_node_tests_materialized ALL
+      DEPENDS ${ORT_MATERIALIZED_NODE_ROOT}/.stamp)
+
+    if (NOT onnxruntime_REDUCED_OPS_BUILD)
+      # First-class ctest over the materialized node corpus (the durable replacement for the
+      # on-disk corpus; previously node tests were only run via the Python series + QNN CI).
+      # -m enforces the case-count floor at CONSUMPTION (the runner's tally), so a silently
+      # empty/partial/truncated materialized tree fails loud instead of exiting green with
+      # near-zero coverage (onnx_test_runner skips non-existent dirs). Single-sourced with the
+      # build-time --min-cases via ORT_ONNX_NODE_MIN_CASES.
+      add_test(NAME onnx_test_node_materialized
+        COMMAND onnx_test_runner -m ${ORT_ONNX_NODE_MIN_CASES} ${ORT_MATERIALIZED_NODE_DIR})
+      set_tests_properties(onnx_test_node_materialized PROPERTIES DEPENDS onnx_node_tests_materialized)
+
+      # Equivalence oracle: while pinned BELOW #7959 the on-disk corpus still ships in the archive,
+      # so we byte-compare the materialized copy against it. Gated on if(EXISTS ...) at CONFIGURE
+      # time, so the test simply stops being registered (clean auto-retirement, no perpetual skip,
+      # no red CI) once the pin advances past #7959 and the oracle disappears.
+      set(_onnx_disk_node ${onnx_SOURCE_DIR}/onnx/backend/test/data/node)
+      if(EXISTS ${_onnx_disk_node})
+        add_test(NAME onnx_node_tests_equivalence
+          COMMAND ${Python_EXECUTABLE} ${REPO_ROOT}/tools/python/compare_node_test_corpora.py
+                  --oracle       ${_onnx_disk_node}
+                  --materialized ${ORT_MATERIALIZED_NODE_DIR}
+                  --expected-onnx-version  ${ONNX_PINNED_VERSION}
+                  --expected-numpy-version ${NUMPY_PINNED_VERSION}
+                  --min-cases ${ORT_ONNX_NODE_MIN_CASES})
+        set_tests_properties(onnx_node_tests_equivalence PROPERTIES DEPENDS onnx_node_tests_materialized)
+      else()
+        message(STATUS "ONNX on-disk node corpus absent (post-#7959 pin) -- equivalence oracle "
+          "retired; skipping onnx_node_tests_equivalence.")
+      endif()
+    endif()
+  endif()
+
   if (CMAKE_SYSTEM_NAME STREQUAL "Android")
       list(APPEND android_shared_libs log android)
   endif()
