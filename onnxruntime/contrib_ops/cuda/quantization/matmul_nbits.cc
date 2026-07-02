@@ -9,6 +9,7 @@
 #include <mutex>
 #include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "core/common/status.h"
 #include "core/common/float16.h"
@@ -262,9 +263,12 @@ namespace {
 // handful of distinct weight shapes in a model are profiled once rather than per node.
 std::mutex g_small_m_cap_mutex;
 std::unordered_map<uint64_t, int> g_small_m_cap_cache;
+// Keys currently being profiled by some thread, so concurrent first calls for the same shape do not
+// each run the (one-time) micro-benchmark.
+std::unordered_set<uint64_t> g_small_m_cap_in_progress;
 
 uint64_t MakeSmallMCapKey(int dtype_tag, int64_t k, int64_t n, int64_t block_size, int64_t bits,
-                          int zp_kind, int sm) {
+                          int zp_kind, int sm, int sm_count, int64_t l2_cache_size) {
   uint64_t h = 1469598103934665603ull;
   auto mix = [&](uint64_t v) {
     h ^= v;
@@ -276,7 +280,11 @@ uint64_t MakeSmallMCapKey(int dtype_tag, int64_t k, int64_t n, int64_t block_siz
   mix(static_cast<uint64_t>(block_size));
   mix(static_cast<uint64_t>(bits));
   mix(static_cast<uint64_t>(zp_kind));
+  // Device identity: compute capability alone does not distinguish two SM-equal GPUs with different
+  // SM counts / L2 (e.g. A100 vs A30), whose crossover differs, so mix those in too.
   mix(static_cast<uint64_t>(sm));
+  mix(static_cast<uint64_t>(sm_count));
+  mix(static_cast<uint64_t>(l2_cache_size));
   return h;
 }
 }  // namespace
@@ -316,7 +324,9 @@ int MatMulNBits<T>::ResolveSmallMBatchedCap(OpKernelContext* ctx,
 
     const int zp_kind = zero_points_data == nullptr ? 0 : 1;  // 0: none, 1: uint8
     const int dtype_tag = std::is_same_v<T, MLFloat16> ? 1 : 2;
-    const uint64_t key = MakeSmallMCapKey(dtype_tag, K_, N_, block_size_, nbits_, zp_kind, sm_);
+    const auto& device_prop = this->GetDeviceProp();
+    const uint64_t key = MakeSmallMCapKey(dtype_tag, K_, N_, block_size_, nbits_, zp_kind, sm_,
+                                          device_prop.multiProcessorCount, device_prop.l2CacheSize);
     {
       std::lock_guard<std::mutex> lock(g_small_m_cap_mutex);
       auto it = g_small_m_cap_cache.find(key);
@@ -324,6 +334,13 @@ int MatMulNBits<T>::ResolveSmallMBatchedCap(OpKernelContext* ctx,
         resolved_small_m_cap_.store(it->second, std::memory_order_relaxed);
         return it->second;
       }
+      if (g_small_m_cap_in_progress.count(key) != 0) {
+        // Another thread is profiling this shape. Use the built-in cap for this call (a safe default)
+        // and pick up the tuned value on a later call, rather than profiling redundantly. Do not store
+        // to resolved_small_m_cap_ so this node retries.
+        return kUseCompileTimeCap;
+      }
+      g_small_m_cap_in_progress.insert(key);
     }
 
     typedef typename onnxruntime::cuda::OrtToCudaType<T>::type CudaT;
@@ -347,16 +364,16 @@ int MatMulNBits<T>::ResolveSmallMBatchedCap(OpKernelContext* ctx,
     auto time_ms = [&](auto&& fn, int iters) -> float {
       for (int i = 0; i < 5; i++) fn();
       cudaEvent_t start, end;
-      cudaEventCreate(&start);
-      cudaEventCreate(&end);
-      cudaEventRecord(start, stream);
+      CUDA_CALL_THROW(cudaEventCreate(&start));
+      CUDA_CALL_THROW(cudaEventCreate(&end));
+      CUDA_CALL_THROW(cudaEventRecord(start, stream));
       for (int i = 0; i < iters; i++) fn();
-      cudaEventRecord(end, stream);
-      cudaEventSynchronize(end);
+      CUDA_CALL_THROW(cudaEventRecord(end, stream));
+      CUDA_CALL_THROW(cudaEventSynchronize(end));
       float ms = 0.f;
-      cudaEventElapsedTime(&ms, start, end);
-      cudaEventDestroy(start);
-      cudaEventDestroy(end);
+      CUDA_CALL_THROW(cudaEventElapsedTime(&ms, start, end));
+      CUDA_CALL_THROW(cudaEventDestroy(start));
+      CUDA_CALL_THROW(cudaEventDestroy(end));
       return ms / iters;
     };
 
@@ -425,6 +442,7 @@ int MatMulNBits<T>::ResolveSmallMBatchedCap(OpKernelContext* ctx,
     {
       std::lock_guard<std::mutex> lock(g_small_m_cap_mutex);
       g_small_m_cap_cache[key] = cap;
+      g_small_m_cap_in_progress.erase(key);
     }
     resolved_small_m_cap_.store(cap, std::memory_order_relaxed);
     return cap;
