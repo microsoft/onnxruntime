@@ -866,5 +866,3 @@ MlasSveDupqU32(uint32_t w0, uint32_t w1, uint32_t w2, uint32_t w3)
 #ifndef __clang__
 #pragma GCC pop_options
 #endif
-
-#endif
