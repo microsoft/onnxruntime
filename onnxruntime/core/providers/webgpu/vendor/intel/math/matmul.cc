@@ -126,7 +126,7 @@ Status ApplyMatMulIntel(ComputeContext& context,
 
   MatMulSubgroupProgram program{activation, has_bias, is_vec4, a_vec4, b_is_fp16, elements_per_thread};
   program
-      .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"), a_vec4)
+      .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"), a_vec4, b_is_fp16)
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, a_components},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, b_components}})
       .AddOutputs({{output, ProgramTensorMetadataDependency::Rank, output_shape_temp, components}})

@@ -71,6 +71,15 @@ std::string CalculateAccStr(const ShaderIndicesHelper* batch_dims, int64_t eleme
     // 0, 8, 16, 24 (the leading lane of each group).
     const std::map<uint32_t, uint32_t> sg_groups = {{32, 4}, {16, 2}, {8, 1}};
     for (const auto& [simd, num_groups] : sg_groups) {
+      // The vec4 cooperative-load path distributes eptY rows evenly across `num_groups`
+      // lane groups (up to 4), so it requires eptY to be a positive multiple of num_groups.
+      // This holds today because CanApplySubgroup gates the kernel to M >= 64, which makes
+      // ElementsPerThreadY return 4. Enforce it explicitly so that relaxing the M >= 64 guard
+      // or retuning ElementsPerThreadY fails loudly here instead of silently dividing by zero
+      // in the `g = r / rows_per_group` / `j = r % rows_per_group` computations below.
+      ORT_ENFORCE(elements_per_thread_y % num_groups == 0,
+                  "a_vec4 cooperative load requires elements_per_thread_y (", elements_per_thread_y,
+                  ") to be a positive multiple of num_groups (", num_groups, ").");
       const uint32_t rows_per_group = static_cast<uint32_t>(elements_per_thread_y) / num_groups;
       cal_acc_ss << "    if (sg_size == " << simd << ") {\n"
                  << "      let aSgLane = tileCol % " << simd << ";\n"

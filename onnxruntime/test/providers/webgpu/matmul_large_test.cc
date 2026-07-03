@@ -96,6 +96,8 @@ TEST(MatMul_Large, DISABLED_Aligned) {
 TEST(MatMul_Large, DISABLED_Unaligned) {
   RunBothTypes({127, 64}, {64, 1024});
   RunBothTypes({127, 63}, {63, 1023});
+  RunBothTypes({128, 36}, {36, 1024});
+  RunBothTypes({128, 68}, {68, 1024});
 }
 
 // 3D broadcast and non-broadcast cases.
