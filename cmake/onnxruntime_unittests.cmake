@@ -1541,7 +1541,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     # onnx version pin: derive from the archive URL in cmake/deps.txt (single source of truth).
     string(REGEX MATCH "v([0-9]+\\.[0-9]+\\.[0-9]+)" _onnx_url_ver "${DEP_URL_onnx}")
     if(CMAKE_MATCH_1)
-      set(ONNX_PINNED_VERSION ${CMAKE_MATCH_1})
+      set(_onnx_pinned_version ${CMAKE_MATCH_1})
     else()
       message(FATAL_ERROR "Could not parse the pinned onnx version from DEP_URL_onnx='${DEP_URL_onnx}' "
         "(expected a vX.Y.Z tag). Fix cmake/deps.txt or this regex.")
@@ -1568,15 +1568,34 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     if(NOT _onnx_rc EQUAL 0)
       message(FATAL_ERROR
         "onnxruntime_MATERIALIZE_ONNX_NODE_TESTS=ON but 'import onnx' failed for ${Python_EXECUTABLE}.\n"
-        "  Fix: pip install onnx==${ONNX_PINNED_VERSION} numpy\n"
+        "  Fix: pip install onnx==${_onnx_pinned_version} numpy\n"
         "  OR reconfigure with -Donnxruntime_MATERIALIZE_ONNX_NODE_TESTS=OFF (node-test coverage will be dropped).\n"
         "  Details: ${_onnx_err}")
     endif()
-    if(NOT _onnx_ver STREQUAL ONNX_PINNED_VERSION)
+    # onnx version gate: HARD FAIL on a genuine mismatch, but RC / pre-release AWARE.
+    # ONNX's opset-bump workflow ships wheels like 1.23.0rc1 or 1.23.0.dev20240101 whose
+    # COMPILED opset registry already matches the formal 1.23.0 tag, so we compare on the
+    # RELEASE BASE (major.minor.micro) rather than the raw string. This mirrors
+    # materialize_onnx_node_tests.py::_release_base EXACTLY (regex ^(\d+)\.(\d+)\.(\d+), with a
+    # raw-string fallback when there is no leading X.Y.Z) so the cmake and Python layers agree:
+    # an rcN/.devN wheel of the pinned tag passes, while a real major/minor/micro mismatch
+    # (e.g. 1.21.x, or 1.23.0 when pinned at 1.22.0) still FATALs. Both sides are normalized;
+    # _onnx_pinned_version is already a clean X.Y.Z (parsed from the deps.txt vX.Y.Z tag), so
+    # normalizing it is a no-op kept only for symmetry with the Python two-sided compare.
+    string(REGEX MATCH "^[0-9]+\\.[0-9]+\\.[0-9]+" _onnx_ver_base "${_onnx_ver}")
+    if(_onnx_ver_base STREQUAL "")
+      set(_onnx_ver_base "${_onnx_ver}")
+    endif()
+    string(REGEX MATCH "^[0-9]+\\.[0-9]+\\.[0-9]+" _onnx_pin_base "${_onnx_pinned_version}")
+    if(_onnx_pin_base STREQUAL "")
+      set(_onnx_pin_base "${_onnx_pinned_version}")
+    endif()
+    if(NOT _onnx_ver_base STREQUAL _onnx_pin_base)
       message(FATAL_ERROR
-        "onnx ${_onnx_ver} != pinned ${ONNX_PINNED_VERSION} (cmake/deps.txt). "
-        "A mismatched wheel bakes the wrong opset/IR into the materialized corpus (silent drift).\n"
-        "  Fix: pip install onnx==${ONNX_PINNED_VERSION}")
+        "onnx ${_onnx_ver} (release base ${_onnx_ver_base}) != pinned ${_onnx_pinned_version} "
+        "(cmake/deps.txt). A mismatched wheel bakes the wrong opset/IR into the materialized "
+        "corpus (silent drift).\n"
+        "  Fix: pip install onnx==${_onnx_pinned_version}")
     endif()
 
     # numpy version: assert the build's numpy equals the CI-pinned numpy (the SAME pin the QNN
@@ -1591,9 +1610,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     # Passing the pin (not the tautological installed value) is what makes the materializer's
     # --expected-numpy-version assert meaningful. Both import failure AND mismatch FAIL LOUD.
     if(Python_VERSION VERSION_LESS 3.11)
-      set(NUMPY_PINNED_VERSION 2.2.6)
+      set(_numpy_pinned_version 2.2.6)
     else()
-      set(NUMPY_PINNED_VERSION 2.4.2)
+      set(_numpy_pinned_version 2.4.2)
     endif()
     execute_process(
       COMMAND ${Python_EXECUTABLE} -c "import numpy,sys; sys.stdout.write(numpy.__version__)"
@@ -1601,22 +1620,22 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     if(NOT _np_rc EQUAL 0)
       message(FATAL_ERROR
         "onnxruntime_MATERIALIZE_ONNX_NODE_TESTS=ON but 'import numpy' failed for ${Python_EXECUTABLE}.\n"
-        "  Fix: pip install numpy==${NUMPY_PINNED_VERSION}\n"
+        "  Fix: pip install numpy==${_numpy_pinned_version}\n"
         "  OR reconfigure with -Donnxruntime_MATERIALIZE_ONNX_NODE_TESTS=OFF.\n"
         "  Details: ${_np_err}")
     endif()
-    if(NOT _np_ver STREQUAL NUMPY_PINNED_VERSION)
+    if(NOT _np_ver STREQUAL _numpy_pinned_version)
       message(FATAL_ERROR
-        "numpy ${_np_ver} != pinned ${NUMPY_PINNED_VERSION} (requirements.txt, for Python "
+        "numpy ${_np_ver} != pinned ${_numpy_pinned_version} (requirements.txt, for Python "
         "${Python_VERSION}). The materialized corpus must be reproduced under the pinned numpy so "
         "the equivalence oracle stays within its <=4-ULP band.\n"
-        "  Fix: pip install numpy==${NUMPY_PINNED_VERSION}\n"
+        "  Fix: pip install numpy==${_numpy_pinned_version}\n"
         "  OR reconfigure with -Donnxruntime_MATERIALIZE_ONNX_NODE_TESTS=OFF.")
     endif()
 
     set(_materialize_script ${REPO_ROOT}/tools/python/materialize_onnx_node_tests.py)
-    set(ORT_MATERIALIZED_NODE_ROOT ${CMAKE_BINARY_DIR}/onnx_node_tests)
-    set(ORT_MATERIALIZED_NODE_DIR  ${ORT_MATERIALIZED_NODE_ROOT}/node)
+    set(_materialized_node_root ${CMAKE_BINARY_DIR}/onnx_node_tests)
+    set(_materialized_node_dir  ${_materialized_node_root}/node)
     # Single shared floor for the "silently-empty/undersized materialization" guard. Kept in
     # lockstep with the other floor sites (all must move together if raised):
     #   * MIN_NODE_CASES in onnxruntime/test/python/onnx_node_test_equivalence_test.py
@@ -1628,19 +1647,19 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     set(ORT_ONNX_NODE_MIN_CASES 1500)
 
     add_custom_command(
-      OUTPUT  ${ORT_MATERIALIZED_NODE_ROOT}/.stamp
-      COMMAND ${CMAKE_COMMAND} -E make_directory ${ORT_MATERIALIZED_NODE_ROOT}
+      OUTPUT  ${_materialized_node_root}/.stamp
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${_materialized_node_root}
       COMMAND ${Python_EXECUTABLE} ${_materialize_script}
-                --out ${ORT_MATERIALIZED_NODE_ROOT}
-                --expected-onnx-version ${ONNX_PINNED_VERSION}
-                --expected-numpy-version ${NUMPY_PINNED_VERSION}
+                --out ${_materialized_node_root}
+                --expected-onnx-version ${_onnx_pinned_version}
+                --expected-numpy-version ${_numpy_pinned_version}
                 --min-cases ${ORT_ONNX_NODE_MIN_CASES}
-                --stamp ${ORT_MATERIALIZED_NODE_ROOT}/.stamp
+                --stamp ${_materialized_node_root}/.stamp
       DEPENDS ${_materialize_script} ${REPO_ROOT}/cmake/deps.txt
-      COMMENT "Materializing ONNX node-test corpus -> ${ORT_MATERIALIZED_NODE_DIR}"
+      COMMENT "Materializing ONNX node-test corpus -> ${_materialized_node_dir}"
       VERBATIM)
     add_custom_target(onnx_node_tests_materialized ALL
-      DEPENDS ${ORT_MATERIALIZED_NODE_ROOT}/.stamp)
+      DEPENDS ${_materialized_node_root}/.stamp)
 
     if (NOT onnxruntime_REDUCED_OPS_BUILD)
       # First-class ctest over the materialized node corpus (the durable replacement for the
@@ -1650,7 +1669,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       # near-zero coverage (onnx_test_runner skips non-existent dirs). Single-sourced with the
       # build-time --min-cases via ORT_ONNX_NODE_MIN_CASES.
       add_test(NAME onnx_test_node_materialized
-        COMMAND onnx_test_runner -m ${ORT_ONNX_NODE_MIN_CASES} ${ORT_MATERIALIZED_NODE_DIR})
+        COMMAND onnx_test_runner -m ${ORT_ONNX_NODE_MIN_CASES} ${_materialized_node_dir})
       set_tests_properties(onnx_test_node_materialized PROPERTIES DEPENDS onnx_node_tests_materialized)
 
       # Equivalence oracle: while pinned BELOW #7959 the on-disk corpus still ships in the archive,
@@ -1662,9 +1681,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         add_test(NAME onnx_node_tests_equivalence
           COMMAND ${Python_EXECUTABLE} ${REPO_ROOT}/tools/python/compare_node_test_corpora.py
                   --oracle       ${_onnx_disk_node}
-                  --materialized ${ORT_MATERIALIZED_NODE_DIR}
-                  --expected-onnx-version  ${ONNX_PINNED_VERSION}
-                  --expected-numpy-version ${NUMPY_PINNED_VERSION}
+                  --materialized ${_materialized_node_dir}
+                  --expected-onnx-version  ${_onnx_pinned_version}
+                  --expected-numpy-version ${_numpy_pinned_version}
                   --min-cases ${ORT_ONNX_NODE_MIN_CASES})
         set_tests_properties(onnx_node_tests_equivalence PROPERTIES DEPENDS onnx_node_tests_materialized)
       else()
