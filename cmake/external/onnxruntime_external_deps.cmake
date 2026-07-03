@@ -560,6 +560,11 @@ if(onnxruntime_USE_ONNX_LIGHT)
 
   onnxruntime_fetchcontent_makeavailable(onnx_light)
 
+  # Let ORT C++ sources detect at compile time that the protobuf-free onnx-light
+  # backend is in use, so they can call onnx-light's native (de)serialization API
+  # instead of the google::protobuf message/stream API.
+  add_compile_definitions(ORT_USE_ONNX_LIGHT)
+
   # When resolved via find_package(onnx_light) the compatibility targets are
   # namespaced (onnx::onnx / onnx::onnx_proto); alias them to the unqualified
   # names onnxruntime links against. When built from source they already exist.

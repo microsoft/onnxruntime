@@ -1,3 +1,5 @@
 # ONNX dependency variant (default).
 # Selected via: pip install onnxruntime[onnx]
 onnx==1.21.0
+# protobuf is required by the protobuf-based onnx package (onnx-light is protobuf-free).
+protobuf>=4.25.8

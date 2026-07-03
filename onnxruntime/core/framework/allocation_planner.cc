@@ -21,6 +21,7 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/graph/onnx_proto_serialize.h"
 #include "core/framework/utils.h"
 #include "core/framework/op_kernel_context_internal.h"
 #include "core/framework/sequential_executor.h"
@@ -1383,7 +1384,7 @@ class PlannerImpl {
 
           const auto* shape = context_->GetShape(*node_output);
           if (!shape) continue;
-          size_t size_in_bytes = shape->ByteSizeLong();
+          size_t size_in_bytes = onnxruntime::proto_io::ByteSize(*shape);
 
           const auto& location = allocation_plan[output_idx_global].location;
           auto local_iter = waiting_list.find(location);
