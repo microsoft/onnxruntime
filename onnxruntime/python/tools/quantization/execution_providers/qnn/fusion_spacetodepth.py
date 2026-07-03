@@ -5,7 +5,7 @@
 # --------------------------------------------------------------------------
 """Define SpaceToDepth fusion."""
 
-import onnx
+from onnxruntime._onnx_shim import onnx
 
 from ... import fusions, onnx_model
 

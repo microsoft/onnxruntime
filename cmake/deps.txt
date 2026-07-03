@@ -35,6 +35,7 @@ microsoft_wil;https://github.com/microsoft/wil/archive/refs/tags/v1.0.250325.1.z
 mimalloc;https://github.com/microsoft/mimalloc/archive/refs/tags/v2.1.1.zip;d5ee7d34223d0567892db5179849939c8769dc41
 mp11;https://github.com/boostorg/mp11/archive/refs/tags/boost-1.82.0.zip;9bc9e01dffb64d9e0773b2e44d2f22c51aace063
 onnx;https://github.com/onnx/onnx/archive/refs/tags/v1.21.0.zip;321d4acc807c8e0fb0bbcc0424a143dffde1e846
+onnx_light;https://github.com/xadupre/onnx-light/archive/refs/tags/0.1.2.zip;47e5eb85e90f0ede0dee74374b53fc85789cf899
 # Use the latest commit of 10.9-GA
 onnx_tensorrt;https://github.com/onnx/onnx-tensorrt/archive/d5dce67db7c2e64b07e055571f5ec06f7f254de2.zip;01114d3b67650857281fa50faa2e412130a63b69
 protobuf;https://github.com/protocolbuffers/protobuf/archive/refs/tags/v21.12.zip;7cf2733949036c7d52fda017badcab093fe73bfa

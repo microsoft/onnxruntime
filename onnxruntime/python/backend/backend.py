@@ -10,11 +10,11 @@ import os
 import unittest
 
 import packaging.version
-from onnx import ModelProto, helper, version  # noqa: F401
-from onnx.backend.base import Backend
-from onnx.checker import check_model
 
 from onnxruntime import InferenceSession, SessionOptions, get_available_providers, get_device
+from onnxruntime._onnx_shim.onnx import ModelProto, helper, version  # noqa: F401
+from onnxruntime._onnx_shim.onnx.backend.base import Backend
+from onnxruntime._onnx_shim.onnx.checker import check_model
 from onnxruntime.backend.backend_rep import OnnxRuntimeBackendRep
 
 # Allowlist of SessionOptions attributes that are safe to set via the backend API.

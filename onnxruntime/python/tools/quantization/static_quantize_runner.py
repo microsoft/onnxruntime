@@ -3,9 +3,9 @@ import json
 import os
 
 import numpy as np
-import onnx
 
 import onnxruntime
+from onnxruntime._onnx_shim import onnx
 from onnxruntime.quantization import QuantFormat, QuantType, StaticQuantConfig, quantize
 from onnxruntime.quantization.calibrate import CalibrationDataReader, CalibrationMethod
 

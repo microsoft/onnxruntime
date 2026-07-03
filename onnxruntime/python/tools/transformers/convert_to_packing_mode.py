@@ -14,9 +14,10 @@ from constants import (
     MultiHeadAttentionOutputIDs,
     Operators,
 )
-from onnx import helper, load_model
 from onnx_model import NodeProto, OnnxModel
 from shape_infer_helper import SymbolicShapeInferenceHelper
+
+from onnxruntime._onnx_shim.onnx import helper, load_model
 
 logger = logging.getLogger(__name__)
 

@@ -16,7 +16,8 @@ if TYPE_CHECKING:
     from shape_infer_helper import SymbolicShapeInferenceHelper
 
 from float16 import convert_float_to_float16
-from onnx import (
+
+from onnxruntime._onnx_shim.onnx import (
     AttributeProto,
     GraphProto,
     ModelProto,
@@ -27,7 +28,7 @@ from onnx import (
     numpy_helper,
     save_model,
 )
-from onnx.external_data_helper import load_external_data_for_tensor, uses_external_data
+from onnxruntime._onnx_shim.onnx.external_data_helper import load_external_data_for_tensor, uses_external_data
 
 logger = logging.getLogger(__name__)
 

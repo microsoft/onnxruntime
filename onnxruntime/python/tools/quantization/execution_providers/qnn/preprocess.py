@@ -9,7 +9,7 @@ import logging
 import tempfile
 from pathlib import Path
 
-import onnx
+from onnxruntime._onnx_shim import onnx
 
 from ....tools.onnx_model_utils import fix_output_shapes, make_input_shape_fixed, optimize_model
 from ....tools.remove_initializer_from_input import remove_initializer_from_input

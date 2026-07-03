@@ -29,11 +29,11 @@ import os
 import sys
 
 import numpy as np
-import onnx
-from onnx import numpy_helper
-from onnx.helper import np_dtype_to_tensor_dtype
 
 import onnxruntime as ort
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import numpy_helper
+from onnxruntime._onnx_shim.onnx.helper import np_dtype_to_tensor_dtype
 
 from .onnx_model import ONNXModel
 from .util import simple_progress_bar
@@ -925,7 +925,7 @@ def gptq_quantize(
 
     # reload external data to prevent external data file path errors
     if model.is_large_model:
-        from onnx.external_data_helper import load_external_data_for_model  # noqa: PLC0415
+        from onnxruntime._onnx_shim.onnx.external_data_helper import load_external_data_for_model  # noqa: PLC0415
 
         load_external_data_for_model(model.model, os.path.split(model.model_path)[0])
 

@@ -10,9 +10,8 @@ import tempfile
 import traceback
 from pathlib import Path
 
-import onnx
-
 import onnxruntime
+from onnxruntime._onnx_shim import onnx
 from onnxruntime.transformers.onnx_utils import extract_raw_data_from_model, has_external_data
 
 from .fusions import ReplaceUpsampleWithResize

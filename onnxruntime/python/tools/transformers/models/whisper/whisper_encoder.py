@@ -10,15 +10,15 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
-import onnx
 import torch
 from float16 import convert_float_to_float16
-from onnx import ModelProto
 from onnx_model import OnnxModel
 from transformers import WhisperConfig
 from whisper_inputs import get_model_dynamic_axes, get_sample_encoder_inputs
 
 from onnxruntime import InferenceSession
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import ModelProto
 
 logger = logging.getLogger(__name__)
 

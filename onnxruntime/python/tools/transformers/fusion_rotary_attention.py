@@ -7,8 +7,9 @@ import logging
 import numpy as np
 from fusion_attention import FusionAttention
 from fusion_base import Fusion
-from onnx import FunctionProto, NodeProto, TensorProto, helper, numpy_helper
 from onnx_model import OnnxModel
+
+from onnxruntime._onnx_shim.onnx import FunctionProto, NodeProto, TensorProto, helper, numpy_helper
 
 logger = logging.getLogger(__name__)
 

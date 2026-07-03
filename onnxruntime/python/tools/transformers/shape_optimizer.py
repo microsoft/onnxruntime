@@ -18,11 +18,11 @@ from datetime import datetime
 from pathlib import Path  # noqa: F401
 
 import numpy as np
-import onnx
-from onnx import ModelProto, TensorProto, numpy_helper
 from onnx_model import OnnxModel
 
 import onnxruntime
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import ModelProto, TensorProto, numpy_helper
 
 logger = logging.getLogger(__name__)
 

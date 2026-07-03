@@ -1,0 +1,3 @@
+# ONNX dependency variant (default).
+# Selected via: pip install onnxruntime[onnx]
+onnx==1.21.0

@@ -9,9 +9,10 @@ from fusion_attention import AttentionMask, FusionAttention
 from fusion_base import Fusion
 from fusion_simplified_layernorm import FusionSimplifiedLayerNormalization, FusionSkipSimplifiedLayerNormalization
 from fusion_utils import NumpyHelper
-from onnx import NodeProto, TensorProto, helper
 from onnx_model import OnnxModel
 from onnx_model_bert import BertOnnxModel
+
+from onnxruntime._onnx_shim.onnx import NodeProto, TensorProto, helper
 
 logger = logging.getLogger(__name__)
 

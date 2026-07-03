@@ -1,4 +1,4 @@
-import onnx
+from onnxruntime._onnx_shim import onnx
 
 from ..quant_utils import (  # noqa: F401
     TENSOR_NAME_QUANT_SUFFIX,

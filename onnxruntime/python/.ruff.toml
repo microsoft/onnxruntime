@@ -1,0 +1,21 @@
+# Scoped ruff configuration for the shipped onnxruntime Python package.
+#
+# Extends the repository configuration and additionally bans direct imports of
+# the upstream `onnx` package. Code in this tree must route ONNX access through
+# `onnxruntime._onnx_shim` so the onnx-light backend can be selected at runtime
+# via the USE_OPTIM_ONNX environment variable (see `_onnx_shim.py`), mirroring
+# the `-Donnxruntime_USE_ONNX_LIGHT=ON` build option on the C++ side.
+extend = "../../pyproject.toml"
+
+[lint]
+extend-select = ["TID251"]  # flake8-tidy-imports banned-api
+
+[lint.flake8-tidy-imports.banned-api]
+"onnx".msg = "Import ONNX through onnxruntime._onnx_shim (e.g. `from onnxruntime._onnx_shim.onnx import ...`) so the onnx-light backend can be used. See onnxruntime/python/_onnx_shim.py."
+
+[lint.per-file-ignores]
+# The shim is the single sanctioned place that resolves the onnx backend.
+"_onnx_shim.py" = ["TID251"]
+# Notebooks are standalone tutorials meant to run against the upstream onnx
+# package; they must not depend on the internal onnxruntime._onnx_shim module.
+"**/*.ipynb" = ["TID251"]

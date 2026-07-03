@@ -54,8 +54,8 @@ from perf_utils import (
 )
 
 import onnxruntime  # isort:skip
-import onnx  # isort:skip
-from onnx import numpy_helper  # isort:skip
+from onnxruntime._onnx_shim import onnx # isort:skip
+from onnxruntime._onnx_shim.onnx import numpy_helper # isort:skip
 import pandas as pd  # isort:skip
 
 debug = False

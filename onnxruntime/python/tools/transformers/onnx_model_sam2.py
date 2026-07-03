@@ -9,8 +9,9 @@ from fusion_attention_sam2 import FusionMultiHeadAttentionSam2
 from fusion_layernorm import FusionLayerNormalizationNCHW
 from fusion_options import FusionOptions
 from import_utils import is_installed
-from onnx import ModelProto
 from onnx_model_bert import BertOnnxModel
+
+from onnxruntime._onnx_shim.onnx import ModelProto
 
 logger = logging.getLogger(__name__)
 

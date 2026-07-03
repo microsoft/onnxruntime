@@ -7,8 +7,9 @@
 import logging
 import os
 
-import onnx
 import torch
+
+from onnxruntime._onnx_shim import onnx
 
 try:
     from transformers.pytorch_utils import Conv1D

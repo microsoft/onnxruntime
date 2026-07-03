@@ -23,8 +23,8 @@ import os
 import sys
 from dataclasses import dataclass
 
-import onnx
-from onnx import TensorProto, helper
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 IO_NAME_INDEX = 0
 IO_ELEM_TYPE_INDEX = 1

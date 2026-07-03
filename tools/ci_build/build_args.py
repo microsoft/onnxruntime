@@ -509,6 +509,12 @@ def add_linux_specific_args(parser: argparse.ArgumentParser) -> None:
 def add_dependency_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments related to external dependencies."""
     parser.add_argument("--use_full_protobuf", action="store_true", help="Use the full (non-lite) protobuf library.")
+    parser.add_argument(
+        "--use_onnx_light",
+        action="store_true",
+        help="Replace the upstream onnx dependency with onnx-light, which provides drop-in `onnx` and "
+        "`onnx_proto` CMake targets without a protobuf code-generation step.",
+    )
     parser.add_argument("--use_mimalloc", action="store_true", help="Use mimalloc memory allocator.")
     parser.add_argument(
         "--external_graph_transformer_path", type=str, help="Path to external graph transformer directory."

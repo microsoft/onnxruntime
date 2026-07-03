@@ -12,8 +12,9 @@ import random
 from pathlib import Path
 
 import numpy as np
-from onnx import ModelProto, TensorProto, numpy_helper
 from onnx_model import OnnxModel
+
+from onnxruntime._onnx_shim.onnx import ModelProto, TensorProto, numpy_helper
 
 
 def fake_input_ids_data(

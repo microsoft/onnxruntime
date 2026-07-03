@@ -3,11 +3,11 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 from fusion_utils import NumpyHelper
-from onnx import ModelProto, TensorProto
-from onnx.external_data_helper import set_external_data
 from onnx_model import OnnxModel
 
 from onnxruntime import OrtValue
+from onnxruntime._onnx_shim.onnx import ModelProto, TensorProto
+from onnxruntime._onnx_shim.onnx.external_data_helper import set_external_data
 
 
 def extract_raw_data_from_model(model: ModelProto):

@@ -9,9 +9,8 @@ import time
 
 import numpy as np
 import torch
-from utils import export_helper
-
 from onnxruntime import InferenceSession, SessionOptions
+from utils import export_helper
 
 
 def run_inference(args):

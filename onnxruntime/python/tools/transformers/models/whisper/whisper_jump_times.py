@@ -13,7 +13,6 @@ import textwrap
 from pathlib import Path
 
 import numpy as np
-import onnx
 import torch
 import torch.nn.functional as F
 import torch.utils.cpp_extension
@@ -22,6 +21,7 @@ from transformers import WhisperConfig
 from whisper_inputs import convert_inputs_for_ort, get_model_dynamic_axes, get_sample_jump_times_inputs
 
 from onnxruntime import InferenceSession
+from onnxruntime._onnx_shim import onnx
 from onnxruntime.tools import pytorch_export_contrib_ops
 
 logger = logging.getLogger(__name__)

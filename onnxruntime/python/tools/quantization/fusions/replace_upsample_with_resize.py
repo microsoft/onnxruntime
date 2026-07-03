@@ -6,7 +6,8 @@
 from __future__ import annotations
 
 import numpy as np
-import onnx
+
+from onnxruntime._onnx_shim import onnx
 
 from ..onnx_model import ONNXModel
 from .fusion import Fusion

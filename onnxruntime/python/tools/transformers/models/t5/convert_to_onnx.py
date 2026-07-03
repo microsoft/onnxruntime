@@ -16,9 +16,10 @@ from benchmark_helper import (
     prepare_environment,
     setup_logger,
 )
-from onnx.shape_inference import infer_shapes_path
 from t5_helper import PRETRAINED_MT5_MODELS, PRETRAINED_T5_MODELS, T5Helper
 from transformers import MT5Config, T5Config
+
+from onnxruntime._onnx_shim.onnx.shape_inference import infer_shapes_path
 
 logger = logging.getLogger("")
 

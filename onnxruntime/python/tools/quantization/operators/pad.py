@@ -7,7 +7,8 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
-import onnx
+
+from onnxruntime._onnx_shim import onnx
 
 from ..quant_utils import (
     TENSOR_NAME_QUANT_SUFFIX,

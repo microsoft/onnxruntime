@@ -6,8 +6,8 @@
 import json
 from argparse import ArgumentParser
 
-import onnx
-from onnx import TensorProto, helper
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import TensorProto, helper
 
 
 class QnnTensorStruct:

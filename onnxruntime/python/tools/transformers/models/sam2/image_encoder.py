@@ -149,8 +149,7 @@ def export_image_encoder_onnx(
             )
             onnx_program.optimize()
             onnx_program.save(onnx_model_path + ".dynamo.onnx", external_data=False)
-            import onnx  # noqa: PLC0415
-
+            from onnxruntime._onnx_shim import onnx  # noqa: PLC0415
             from onnxruntime.transformers.dynamo_onnx_helper import DynamoOnnxHelper  # noqa: PLC0415
 
             onnx_model = onnx.load_model(onnx_model_path + ".dynamo.onnx", load_external_data=True)

@@ -25,15 +25,15 @@ import logging
 import os
 import tempfile
 
-import onnx
 import onnx_graphsurgeon as gs
 import torch
 from diffusers.models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
-from onnx import GraphProto, ModelProto, shape_inference
 from ort_optimizer import OrtStableDiffusionOptimizer
 from polygraphy.backend.onnx.loader import fold_constants
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
+from onnxruntime._onnx_shim import onnx
+from onnxruntime._onnx_shim.onnx import GraphProto, ModelProto, shape_inference
 from onnxruntime.transformers.onnx_model import OnnxModel
 
 logger = logging.getLogger(__name__)

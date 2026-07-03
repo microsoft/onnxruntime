@@ -35,12 +35,13 @@ except ImportError:
 from pathlib import Path
 from typing import Any
 
-from datasets import load_dataset
 from evaluate import evaluator
 from optimum.onnxruntime import ORTModelForQuestionAnswering
 from optimum.version import __version__ as optimum_version
 from packaging import version as version_check
 from transformers import AutoTokenizer, pipeline
+
+from datasets import load_dataset
 
 if version_check.parse(optimum_version) < version_check.parse("1.13.1"):
     raise ImportError(f"Please install optimum>=1.13.1. Current version: {optimum_version}.")
