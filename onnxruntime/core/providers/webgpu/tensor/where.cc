@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <memory>
+
 #include "core/common/inlined_containers.h"
 #include "core/providers/webgpu/tensor/where.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -85,9 +87,9 @@ Status WhereProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "let offset_b = " << b_indices.BroadcastedIndicesToOffset("output_idx", output_indices) << ";\n"
         << "let offset_c = " << c_indices.BroadcastedIndicesToOffset("output_idx", output_indices) << ";\n"
         << "let cond = bool(c_data[offset_c / 4u] & (0xffu << (u32(offset_c % 4u) * 8u)));\n"
-        << "let a_val = a_data[offset_a];\n"
-        << "let b_val = b_data[offset_b];\n"
-        << "output_data[global_idx] = select(b_val, a_val, cond);\n";
+        << "let a_val = " << a_input.GetByOffset("offset_a") << ";\n"
+        << "let b_val = " << b_input.GetByOffset("offset_b") << ";\n";
+    shader.MainFunctionBody() << output.SetByOffset("global_idx", "select(b_val, a_val, cond)");
 
   } else {
     const auto& c_indices = shader.AddIndices("c_indices");

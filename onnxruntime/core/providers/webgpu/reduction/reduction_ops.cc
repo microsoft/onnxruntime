@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/reduction/reduction_ops.h"
+#include <memory>
 #include <sstream>
 #include "core/framework/data_transfer_manager.h"
 #include "core/providers/webgpu/data_transfer.h"
