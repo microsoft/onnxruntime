@@ -62,7 +62,7 @@ jobs:
   # (build_qnn/Release/onnx_node_tests/node) consumed below. The numpy markers self-select the
   # same pin the CMake gate asserts.
   - script: |
-      python3 -m pip install onnx==1.22.0 "numpy==2.2.6; python_version<'3.11'" "numpy==2.4.2; python_version>='3.11'"
+      python3 -m pip install --user onnx==1.22.0 "numpy==2.2.6; python_version<'3.11'" "numpy==2.4.2; python_version>='3.11'"
     displayName: Install onnx for node-test materialization
 
   - script: |
