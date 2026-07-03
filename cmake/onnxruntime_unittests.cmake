@@ -1531,7 +1531,8 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   # artifact, we regenerate the corpus from ONNX's own generators into the build tree and point the
   # C++ onnx_test_runner consumers (this ctest + QNN CI) at the materialized copy.
   #
-  # Gated on onnxruntime_MATERIALIZE_ONNX_NODE_TESTS (default ON under BUILD_UNIT_TESTS). The gate
+  # Gated on onnxruntime_MATERIALIZE_ONNX_NODE_TESTS (opt-in; default OFF -- enabled explicitly on
+  # the provisioned CI legs via --cmake_extra_defines). When ON, the gate
   # FAILS LOUDLY at configure time if Python/onnx/numpy are missing or mismatched -- it never
   # silently skips, because a silent skip would recreate the exact "green CI with zero node tests"
   # coverage gap this feature exists to close.

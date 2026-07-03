@@ -100,6 +100,7 @@ jobs:
         --build_shared_lib --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         --use_qnn $(QnnLibKind)
         --qnn_home $(QnnSDKRootDir)
+        --cmake_extra_defines onnxruntime_MATERIALIZE_ONNX_NODE_TESTS=ON
         --update --build --parallel $(ExtraQnnBuildArgs)
 
   - script: |

@@ -78,6 +78,7 @@ jobs:
             --use_qnn $(QnnLibKind) \
             --qnn_home $(QnnSDKRootDir) \
             --cmake_generator=Ninja \
+            --cmake_extra_defines onnxruntime_MATERIALIZE_ONNX_NODE_TESTS=ON \
             --update --build --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache
         displayName: Build QNN EP
 

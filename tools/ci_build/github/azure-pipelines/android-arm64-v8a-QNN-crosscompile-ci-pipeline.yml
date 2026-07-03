@@ -80,6 +80,7 @@ jobs:
         --use_qnn static_lib \
         --qnn_home $(QnnSDKRootDir) \
         --cmake_generator=Ninja \
+        --cmake_extra_defines onnxruntime_MATERIALIZE_ONNX_NODE_TESTS=ON \
         --skip_tests
     displayName: Build QNN EP
 
