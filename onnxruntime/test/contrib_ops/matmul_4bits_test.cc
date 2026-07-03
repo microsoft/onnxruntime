@@ -883,18 +883,28 @@ TEST(MatMulNBits, Fp16_Int4_NoZeroPoint) {
 TEST(MatMulNBits, Fp16_Int4_PrepackedWeightRequiresFpAIntBGemm) {
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "0"}}};
 
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable";
+  }
+
   TestOptions opts{};
   opts.M = 1, opts.N = 256, opts.K = 1024;
   opts.block_size = 64;
   opts.weight_prepacked = 1;
   opts.expected_failure = "weight_prepacked requires";
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
-  eps.push_back(DefaultCudaExecutionProvider());
+  eps.push_back(std::move(cuda_ep));
   RunTest<MLFloat16>(opts, std::move(eps));
 }
 
 TEST(MatMulNBits, Fp16_Int4_PrepackedSm90WeightReserved) {
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
+
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable";
+  }
 
   TestOptions opts{};
   opts.M = 1, opts.N = 256, opts.K = 1024;
@@ -902,7 +912,7 @@ TEST(MatMulNBits, Fp16_Int4_PrepackedSm90WeightReserved) {
   opts.weight_prepacked = 2;
   opts.expected_failure = "weight_prepacked";
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
-  eps.push_back(DefaultCudaExecutionProvider());
+  eps.push_back(std::move(cuda_ep));
   RunTest<MLFloat16>(opts, std::move(eps));
 }
 
