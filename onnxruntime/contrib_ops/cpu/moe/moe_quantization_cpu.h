@@ -6,6 +6,7 @@
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/mlas/inc/mlas_q4.h"
+#include "core/mlas/inc/mlas_qnbit.h"
 #include "contrib_ops/cpu/moe/moe_base_cpu.h"
 #include <vector>
 
@@ -28,6 +29,24 @@ class QMoECPU final : public OpKernel, public MoEBaseCPU {
   Status Compute(OpKernelContext* context) const override;
 
  private:
+  struct ComputeInputs {
+    const Tensor* input;
+    const Tensor* router_probs;
+    const Tensor* fc1_experts_weights;
+    const Tensor* fc1_scales;
+    const Tensor* fc1_experts_bias;
+    const Tensor* fc2_experts_weights;
+    const Tensor* fc2_scales;
+    const Tensor* fc2_experts_bias;
+    const Tensor* fc3_experts_weights;
+    const Tensor* fc3_scales;
+    const Tensor* fc3_experts_bias;
+    const Tensor* fc1_zero_points;
+    const Tensor* fc2_zero_points;
+    const Tensor* fc3_zero_points;
+    const Tensor* router_weights;
+  };
+
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
                  /*out*/ bool& is_packed,
                  /*out*/ PrePackedWeights* prepacked_weights) override;
@@ -36,6 +55,8 @@ class QMoECPU final : public OpKernel, public MoEBaseCPU {
                                    gsl::span<const size_t> prepacked_buffer_sizes,
                                    int input_idx,
                                    /*out*/ bool& used_shared_buffers) override;
+
+  Status ComputeCommon(OpKernelContext* context, const ComputeInputs& inputs, const MoEParameters& moe_params) const;
 
   void ApplyActivationVectorized(float* data, int64_t size) const;
 
@@ -46,6 +67,8 @@ class QMoECPU final : public OpKernel, public MoEBaseCPU {
 
   IAllocatorUniquePtr<void> packed_fc1_;
   IAllocatorUniquePtr<void> packed_fc2_;
+  IAllocatorUniquePtr<void> packed_fc1_lut_cache_;
+  IAllocatorUniquePtr<void> packed_fc2_lut_cache_;
 
   TensorShape fc1_shape_;
   TensorShape fc2_shape_;

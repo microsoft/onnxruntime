@@ -3,14 +3,15 @@
 
 #pragma once
 
+#include <unordered_map>
+#include <stack>
+#include <vector>
+
 #include "core/common/inlined_containers.h"
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "ml_common.h"
 #include "tree_ensemble_helper.h"
-#include <unordered_map>
-#include <stack>
-#include <vector>
 
 namespace onnxruntime {
 namespace ml {
@@ -113,12 +114,31 @@ struct TreeEnsembleAttributesV3 {
     ORT_ENFORCE(nodes_modes.size() < std::numeric_limits<uint32_t>::max(),
                 "nodes_modes size (", nodes_modes.size(), ") exceeds uint32_t max");
 
-    int64_t min_ids = *std::min_element(target_class_ids.begin(), target_class_ids.end());
-    ORT_ENFORCE(min_ids >= 0, "target_ids or class_ids cannot have negative values (", min_ids, ").");
-    int64_t max_ids = *std::max_element(target_class_ids.begin(), target_class_ids.end());
-    ORT_ENFORCE(max_ids < n_targets_or_classes, "At least one value (", max_ids,
-                ") in target_ids or class_ids is greater or equal to the number of targets or classes (",
-                n_targets_or_classes, ").");
+    if (classifier) {
+      if (n_targets_or_classes <= 2) {
+        if (base_values_as_tensor.empty()) {
+          ORT_ENFORCE(base_values.size() <= 2, "base_values should have 0, 1, or 2 values.");
+        } else {
+          ORT_ENFORCE(base_values_as_tensor.size() <= 2, "base_values_as_tensor should have 0, 1, or 2 values.");
+        }
+      } else {
+        if (base_values_as_tensor.empty()) {
+          ORT_ENFORCE(base_values.size() == static_cast<size_t>(n_targets_or_classes) || base_values.size() == 0,
+                      "base_values should have 0 or ", n_targets_or_classes, " values.");
+        } else {
+          ORT_ENFORCE(base_values_as_tensor.size() == static_cast<size_t>(n_targets_or_classes) || base_values_as_tensor.size() == 0,
+                      "base_values_as_tensor should have 0 or ", n_targets_or_classes, " values.");
+        }
+      }
+    } else {
+      if (base_values_as_tensor.empty()) {
+        ORT_ENFORCE(base_values.size() == static_cast<size_t>(n_targets_or_classes) || base_values.size() == 0,
+                    "base_values should have 0 or ", n_targets_or_classes, " values.");
+      } else {
+        ORT_ENFORCE(base_values_as_tensor.size() == static_cast<size_t>(n_targets_or_classes) || base_values_as_tensor.size() == 0,
+                    "base_values_as_tensor should have 0 or ", n_targets_or_classes, " values.");
+      }
+    }
   }
 
   std::string aggregate_function;

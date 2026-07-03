@@ -60,6 +60,9 @@ Abstract:
 #if defined(__s390x__)
 #define MLAS_TARGET_S390X
 #endif
+#if defined(__riscv) && defined(__riscv_xlen) && (__riscv_xlen == 64)
+#define MLAS_TARGET_RISCV64
+#endif
 
 #if defined(__VSX__)
 #define MLAS_TARGET_POWER
@@ -204,6 +207,7 @@ MlasActivation(
 
 struct MLAS_BACKEND_KERNEL_SELECTOR_CONFIG {
     bool use_kleidiai = true; /**< Flag to use KleidiAI backend kernels if available */
+    size_t kleidiai_conv_igemm_max_work = 0; /**< Optional SME IGEMM route threshold override; 0 uses default */
 };
 
 //
@@ -878,7 +882,7 @@ enum MLAS_CONV_ALGORITHM {
     MlasConvAlgorithmExpandThenGemm,
     MlasConvAlgorithmExpandThenGemmSegmented,
     MlasConvAlgorithmDepthwiseMultiplierGreaterThan1,
-#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64)
+#if defined(MLAS_TARGET_WASM_SCALAR) || defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_RISCV64)
     MlasConvAlgorithmDepthwise,
 #endif
 };
@@ -889,6 +893,7 @@ struct MLAS_CONV_PARAMETERS {
     size_t BatchCount;
     size_t GroupCount;
     size_t InputChannels;
+    bool ChannelsLast;
     size_t InputShape[3];
     size_t KernelShape[3];
     size_t DilationShape[3];
@@ -903,6 +908,9 @@ struct MLAS_CONV_PARAMETERS {
     MLAS_CONV_ALGORITHM Algorithm;
     ptrdiff_t ThreadCount;
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig = nullptr;
+    const void* PackedFilter = nullptr;
+    size_t PackedFilterGroupStride = 0;
+    bool FilterIsPacked = false;
     union {
         struct {
             CBLAS_TRANSPOSE TransB;
@@ -929,8 +937,38 @@ MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
                 size_t FilterCount,
                 const MLAS_ACTIVATION* Activation,
                 size_t* WorkingBufferSize,
+                bool ChannelsLast,
                 float Beta,
                 MLAS_THREADPOOL* ThreadPool);
+
+bool
+MLASCALL
+MlasConvSupportsDenseChannelsLast2DFloatKernel(
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    const size_t* InputShape,
+    const size_t* KernelShape,
+    const size_t* DilationShape,
+    const size_t* Padding,
+    const size_t* StrideShape,
+    size_t FilterCount,
+    float Beta);
+
+bool
+MLASCALL
+MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    size_t InputChannelsPerGroup,
+    const size_t* InputShape,
+    const size_t* KernelShape,
+    const size_t* DilationShape,
+    const size_t* Padding,
+    const size_t* StrideShape,
+    size_t FilterCount,
+    float Beta);
 
 void
 MLASCALL
@@ -1644,6 +1682,27 @@ MlasRotaryEmbedOneRow(
 );
 
 /**
+ * @brief Compute LayerNorm or RMSNorm (simplified) for one row of float data.
+ *        Uses platform-optimized kernel if available, otherwise returns false.
+ *        Any platform (AMD64/ARM64/RISC-V) can register a LayerNormF32Kernel.
+ *
+ * @return true if an optimized kernel was used, false if caller should fall back
+ */
+bool
+MLASCALL
+MlasLayerNormF32(
+    const float* Input,
+    const float* Scale,
+    const float* Bias,
+    float* Output,
+    float* MeanOut,
+    float* InvStdDevOut,
+    size_t NormSize,
+    float Epsilon,
+    bool Simplified
+);
+
+/**
  * @brief Supply matrices data information to half precision gemm functions
  */
 struct MLAS_HGEMM_DATA_PARAMS {
@@ -2235,6 +2294,63 @@ void
 MLASCALL
 MlasFlashAttention(
     MlasFlashAttentionThreadedArgs* args,
+    MLAS_THREADPOOL* ThreadPool
+);
+
+//
+// Flash Attention for non-quantized (FP32) GroupQueryAttention KV cache.
+//
+// Adapts the online-softmax tiled algorithm to operate on an FP32 present
+// K/V cache laid out as BNSH ([batch, kv_num_heads, seqlen_present, head_size]).
+// Supports GQA head grouping, causal masking, local window attention,
+// additive attention bias, and an optional flash-decoding split over the KV
+// sequence dimension for the single-token decode case.
+//
+struct MlasFlashAttentionGQAArgs {
+    int batch_size;
+    int num_heads;            // number of query heads
+    int kv_num_heads;         // number of key/value heads (num_heads % kv_num_heads == 0)
+    int sequence_length;      // number of new query tokens (S)
+    int total_seqlen;         // total tokens (past + new) for this invocation (T)
+    int head_size;            // per-head size (H)
+    int past_seqlen;          // causal offset (number of cached tokens before the new ones)
+    int local_window_size;    // -1 disables local window masking
+    int seqlen_present_kv;    // sequence dimension of the present K/V buffer
+    int q_block_size;         // query tile size (Br)
+    int kv_block_size;        // key/value tile size (Bc)
+    float scale;              // QK scaling factor
+    int thread_count;         // number of partitions / threads
+    float* buffer;            // per-thread scratch (+ optional flash-decoding partials)
+    size_t buffer_size_per_thread;
+
+    const float* query;       // [batch, num_heads, sequence_length, head_size] BNSH
+    size_t q_batch_stride;    // element stride between consecutive batches in `query`
+                              // (num_heads*S*H for unpacked, (num_heads+2*kv_num_heads)*S*H for packed QKV)
+    const float* k_cache;     // [batch, kv_num_heads, seqlen_present, head_size] FP32
+    const float* v_cache;     // [batch, kv_num_heads, seqlen_present, head_size] FP32
+    float* output;            // [batch, sequence_length, num_heads, head_size] BSNH
+
+    const float* attention_bias;  // [batch|1, num_heads|1, S, T] additive bias, or nullptr
+    int attention_bias_seqlen_stride;
+    bool attention_bias_broadcast_batch;
+    bool attention_bias_broadcast_head;
+
+    // Flash decoding (sequence_length == 1): partition KV across threads.
+    // Set flash_decoding_partials != nullptr to enable; otherwise the standard
+    // per-(batch, head, q_block) partitioning is used.
+    float* flash_decoding_partials;
+    int kv_chunk_count;
+};
+
+/**
+ * @brief FP32 Flash Attention for GroupQueryAttention with an FP32 KV cache.
+ * @param args         Arguments
+ * @param ThreadPool   Thread pool
+ */
+void
+MLASCALL
+MlasFlashAttentionGQA(
+    MlasFlashAttentionGQAArgs* args,
     MLAS_THREADPOOL* ThreadPool
 );
 

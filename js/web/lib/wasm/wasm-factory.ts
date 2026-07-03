@@ -193,7 +193,7 @@ export const initializeWebAssembly = async (flags: Env.WebAssemblyFlags): Promis
 
       if (wasmBinaryOverride) {
         // Set a custom buffer which contains the WebAssembly binary. This will skip the wasm file fetching.
-        config.wasmBinary = wasmBinaryOverride;
+        config.wasmBinary = wasmBinaryOverride as ArrayBuffer;
 
         // Offer an implementation of locateFile() that returns the file name directly. This helps to avoid an error
         // thrown later from the following code when `import.meta.url` is a blob URL:

@@ -11,7 +11,7 @@
       6
     ]
   },
-  "version": "1.26.0",
+  "version": "1.28.0",
   "dependencies": {
     "adm-zip": "^0.5.16",
     "global-agent": "^4.1.3",
@@ -37,6 +37,7 @@
   ],
   "devDependencies": {
     "@types/minimist": "^1.2.2",
+    "@types/node": "^20.10.0",
     "cmake-js": "^8.0.0",
     "jsonc": "^2.0.0",
     "minimist": "^1.2.8",

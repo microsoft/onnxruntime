@@ -186,6 +186,27 @@ TEST(ExpandOpTest, Expand_3x1x3x1_int64_webgpu) {
   test.ConfigEp(std::move(provider))
       .RunWithConfig();
 }
+
+TEST(ExpandOpTest, Expand_3x3_int64_webgpu_max_num_pending_dispatches) {
+  OpTester test("Expand", 8);
+
+  test.AddInput<int64_t>("data_0", {1}, {1});
+  test.AddInput<int64_t>("data_1", {2}, {3, 3});
+
+  test.AddOutput<int64_t>("result", {3, 3},
+                          {1, 1, 1,
+                           1, 1, 1,
+                           1, 1, 1});
+
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kMaxNumPendingDispatches, "32"));
+
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
 #endif
 
 TEST(ExpandOpTest, Expand_3x3_float16) {

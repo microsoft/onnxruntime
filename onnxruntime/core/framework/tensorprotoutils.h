@@ -283,6 +283,15 @@ common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& n
 /// <param name="dst_tensor"></param>
 void MakeCpuTensorCopy(const Tensor& src_tensor, Tensor& dst_tensor);
 
+/// <summary>
+/// Normalizes the bytes of a CPU bool tensor to the canonical {0, 1} set (any non-zero byte -> 1).
+/// Bool data sourced from raw_data or external files is copied verbatim and may contain other
+/// non-zero bytes; normalizing ensures every consumer observes a single, consistent value.
+/// No-op for non-bool tensors. The tensor must reside in writable CPU memory.
+/// </summary>
+/// <param name="tensor">The CPU tensor to normalize in place.</param>
+void NormalizeBoolTensorIfNeeded(Tensor& tensor);
+
 #if !defined(DISABLE_SPARSE_TENSORS)
 /// <summary>
 // The function supports only COO format with 1D or 2D indices. Values shape is expected to be 1D.
@@ -588,6 +597,19 @@ Status TensorProtoWithExternalDataToTensorProto(
 /// <returns>The function will fail if the resolved `external_data_path` path is not under the model directory</returns>
 Status ValidateExternalDataPath(const std::filesystem::path& model_path,
                                 const std::filesystem::path& external_data_path);
+
+/// <summary>
+/// Validates that the given external data path is not an absolute path, is under the given directory
+/// (after resolving symlinks), and exists.
+///
+/// Use this overload when you already have the directory that should contain the external data
+/// (e.g., EP context model directories). Use ValidateExternalDataPath() when you have a model file path.
+/// </summary>
+/// <param name="model_dir">Directory that should contain the external data. Falls back to "." if empty.</param>
+/// <param name="external_data_path">External data file path to be validated (must be relative).</param>
+/// <returns>The function will fail if the resolved `external_data_path` path is not under model_dir</returns>
+Status ValidateExternalDataPathFromDir(const std::filesystem::path& model_dir,
+                                       const std::filesystem::path& external_data_path);
 
 #endif  // !defined(SHARED_PROVIDER)
 

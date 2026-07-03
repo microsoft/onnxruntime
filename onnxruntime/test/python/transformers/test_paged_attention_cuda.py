@@ -262,6 +262,7 @@ def paged_attention_func(
     cos=None,
     sin=None,
     window_size=-1,
+    sdpa_kernel=0,
 ):
     num_tokens = cumulative_sequence_length[-1].item()
     num_blocks = key_cache.shape[0]
@@ -282,7 +283,11 @@ def paged_attention_func(
         "block_table": block_table.detach().cpu().numpy(),
     }
     sess_options = SessionOptions()
-    ort_session = InferenceSession(onnx_model_str, sess_options, providers=[config.ep])
+    if sdpa_kernel != 0 and config.ep == "CUDAExecutionProvider":
+        providers = [(config.ep, {"sdpa_kernel": str(sdpa_kernel)})]
+    else:
+        providers = [config.ep]
+    ort_session = InferenceSession(onnx_model_str, sess_options, providers=providers)
     io_binding = ort_session.io_binding()
     if key is not None and value is not None:
         ort_inputs["key"] = key.detach().cpu().numpy()
@@ -490,6 +495,8 @@ def parity_check_paged_attention(
     config: Config,
     rtol=1e-3,
     atol=1e-3,
+    sdpa_kernel=0,
+    new_seqlens_override=None,
 ):
     # Generate padded inputs
     q = torch.randn(
@@ -528,13 +535,19 @@ def parity_check_paged_attention(
         dtype=torch.int32,
         device="cuda",
     )
-    new_seqlens = torch.randint(
-        1,
-        config.sequence_length + 1,
-        (config.batch_size,),
-        dtype=torch.int32,
-        device="cuda",
-    )
+    if new_seqlens_override is not None:
+        new_seqlens = new_seqlens_override.to(dtype=torch.int32, device="cuda")
+        assert new_seqlens.shape == (config.batch_size,)
+        assert int(new_seqlens.min().item()) >= 0
+        assert int(new_seqlens.max().item()) <= config.sequence_length
+    else:
+        new_seqlens = torch.randint(
+            1,
+            config.sequence_length + 1,
+            (config.batch_size,),
+            dtype=torch.int32,
+            device="cuda",
+        )
     cum_seqlens = torch.cat(
         (torch.tensor([0], dtype=torch.int32, device="cuda"), torch.cumsum(new_seqlens, dim=0))
     ).type(torch.int32)
@@ -620,6 +633,7 @@ def parity_check_paged_attention(
         cos,
         sin,
         left_window_size,
+        sdpa_kernel=sdpa_kernel,
     )
     num_tokens = q_unpad.shape[0]
     out = torch.reshape(out, (num_tokens, config.num_heads, config.head_size))
@@ -670,6 +684,25 @@ def has_flash_attention():
         platform.system() == "Linux"
         or (platform.system() == "Windows" and version.parse(torch.version.cuda) >= version.parse("12.0"))
     )
+
+
+def has_memory_efficient_attention():
+    # CUTLASS fMHA (MemoryEfficientAttention) gate — these tests are fp16-only,
+    # so sm>=53 is sufficient. bf16 MEA would require sm>=80 but is not covered here.
+    if not torch.cuda.is_available():
+        return False
+    if "CUDAExecutionProvider" not in get_available_providers():
+        return False
+    major, minor = torch.cuda.get_device_capability()
+    return (major * 10 + minor) >= 53
+
+
+# Bit value matching AttentionBackend::EFFICIENT_ATTENTION in
+# onnxruntime/contrib_ops/cpu/bert/attention_common.h. Passing this as the
+# CUDA provider option `sdpa_kernel` forces the PagedAttention kernel to
+# select the MemoryEfficientAttention (CUTLASS fMHA) fallback even on SM>=80
+# where FlashAttention would otherwise be preferred.
+SDPA_KERNEL_EFFICIENT_ATTENTION = 2
 
 
 def paged_attention_test_cases():
@@ -730,6 +763,125 @@ class TestPagedAttention(unittest.TestCase):
     @parameterized.expand(paged_attention_test_cases())
     def test_paged_attention(self, _, config):
         parity_check_paged_attention(config, rtol=5e-3, atol=5e-3)
+
+
+@unittest.skipIf(
+    not has_memory_efficient_attention(),
+    reason="MemoryEfficientAttention (fp16) requires sm>=53; skipping.",
+)
+class TestPagedAttentionMEA(unittest.TestCase):
+    """Runs the same parity matrix as TestPagedAttention but forces the CUTLASS
+    memory-efficient attention fallback via the `sdpa_kernel` CUDA provider option.
+    This is the only coverage for the SM<80 fallback path introduced for PagedAttention;
+    on SM>=80 the class still runs to exercise the MEA dispatch end-to-end."""
+
+    @parameterized.expand(paged_attention_test_cases())
+    def test_paged_attention_mea(self, _, config):
+        parity_check_paged_attention(
+            config,
+            rtol=5e-3,
+            atol=5e-3,
+            sdpa_kernel=SDPA_KERNEL_EFFICIENT_ATTENTION,
+        )
+
+
+class TestPagedAttentionRotaryZeroTokenRegression(unittest.TestCase):
+    """Regression tests for the FA `max_query_len` heuristic when one or more
+    batches have zero new tokens.
+
+    The old FA path used `token_count - batch_size + 1` as both the rotary
+    grid size and the `mha_varlen_fwd` max query length. This assumes every
+    batch has at least one new token. With zero-token batches, the value can be
+    smaller than the real per-batch maximum, or even non-positive. Then rotary
+    can skip Q/K tokens, FA can under-launch at the kBlockM boundary, or FA can
+    fail with an invalid launch grid. The MEA path was fixed in PR #28200; this
+    class covers the FA regressions fixed by the current PR.
+    """
+
+    def _config(self, batch_size=4, sequence_length=10, total_sequence_length=64, rotary=True):
+        return Config(
+            batch_size=batch_size,
+            sequence_length=sequence_length,
+            total_sequence_length=total_sequence_length,
+            num_heads=8,
+            kv_num_heads=2,
+            head_size=64,
+            paged_kv_block_size=256,
+            local=False,
+            rotary=rotary,
+            rotary_interleaved=False,
+            packed=False,
+            softcap=0.0,
+        )
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_fa_rotary_zero_token_first_batch(self):
+        # lens = [10, 0, 0, 0]. heuristic = 10 - 4 + 1 = 7. true max = 10.
+        # Tokens at positions s=7,8,9 in batch 0 do not get rotary applied.
+        new_seqlens = torch.tensor([10, 0, 0, 0], dtype=torch.int32, device="cuda")
+        parity_check_paged_attention(self._config(), rtol=5e-3, atol=5e-3, new_seqlens_override=new_seqlens)
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_fa_rotary_zero_token_mixed(self):
+        # lens = [0, 7, 0, 3]. heuristic = 10 - 4 + 1 = 7. true max = 7.
+        # In this case the heuristic happens to equal the true max, but the
+        # input still has a zero-token batch and exercises the grid-launch path.
+        new_seqlens = torch.tensor([0, 7, 0, 3], dtype=torch.int32, device="cuda")
+        parity_check_paged_attention(self._config(), rtol=5e-3, atol=5e-3, new_seqlens_override=new_seqlens)
+
+    @unittest.skipIf(
+        not has_memory_efficient_attention(),
+        reason="MemoryEfficientAttention (fp16) requires sm>=53",
+    )
+    def test_mea_rotary_zero_token_no_regression(self):
+        # PR #28200 fixed the MEA path on this input. This test guards against
+        # a regression of that fix.
+        new_seqlens = torch.tensor([10, 0, 0, 0], dtype=torch.int32, device="cuda")
+        parity_check_paged_attention(
+            self._config(),
+            rtol=5e-3,
+            atol=5e-3,
+            sdpa_kernel=SDPA_KERNEL_EFFICIENT_ATTENTION,
+            new_seqlens_override=new_seqlens,
+        )
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_fa_rotary_zero_token_large_batch(self):
+        # 16 batches, only batch 0 has new tokens. token_count = 10, so the
+        # heuristic max_query_len_hint = 10 - 16 + 1 = -5 (negative). The
+        # value reaches mha_varlen_fwd as params.seqlen_q. Without the exact
+        # max_query_len fix added in this PR, FA launches with an invalid grid
+        # and fails with CUDA error 9 (invalid configuration argument).
+        config = self._config(batch_size=16)
+        new_seqlens = torch.tensor([10] + [0] * 15, dtype=torch.int32, device="cuda")
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3, new_seqlens_override=new_seqlens)
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_fa_no_rotary_zero_token_sanity(self):
+        # With rotary off, the rotary kernel is not launched, so this input
+        # only checks that ordinary zero-token batches still work on the FA
+        # path. The max query length stays below the kBlockM=64 boundary here.
+        new_seqlens = torch.tensor([10, 0, 0, 0], dtype=torch.int32, device="cuda")
+        parity_check_paged_attention(self._config(rotary=False), rtol=5e-3, atol=5e-3, new_seqlens_override=new_seqlens)
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_fa_kblockm_boundary_zero_token(self):
+        # batch_size=2, lens=[65, 0]. The true max new-query length is 65,
+        # which crosses the FA kBlockM=64 boundary. With the older
+        # `token_count - batch_size + 1` heuristic, mha_varlen_fwd would see
+        # seqlen_q=64 and launch grid.x=1, dropping the 65th query token.
+        # This test exercises FA grid sizing with rotary on.
+        config = self._config(batch_size=2, sequence_length=65, total_sequence_length=128)
+        new_seqlens = torch.tensor([65, 0], dtype=torch.int32, device="cuda")
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3, new_seqlens_override=new_seqlens)
+
+    @unittest.skipIf(not has_flash_attention(), reason="Flash Attention is not available")
+    def test_fa_kblockm_boundary_zero_token_no_rotary(self):
+        # Same kBlockM=64 boundary case as above with rotary off. This isolates
+        # the FA grid silent-drop from the rotary grid silent-drop.
+        config = self._config(batch_size=2, sequence_length=65, total_sequence_length=128, rotary=False)
+        new_seqlens = torch.tensor([65, 0], dtype=torch.int32, device="cuda")
+        parity_check_paged_attention(config, rtol=5e-3, atol=5e-3, new_seqlens_override=new_seqlens)
 
 
 if __name__ == "__main__":

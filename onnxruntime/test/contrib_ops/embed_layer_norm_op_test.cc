@@ -153,7 +153,12 @@ static void RunTest(const embedlayernorm::OpData& data,
       execution_providers.push_back(DefaultDmlExecutionProvider());
       tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     } else {
-      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+      if (sum_output) {
+        // OpenVINO EP only supports 2 outputs for EmbedLayerNormalization, skip when 3rd output (embedding_sum) is requested
+        tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+      } else {
+        tester.Run();
+      }
     }
   }
 }

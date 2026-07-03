@@ -1039,6 +1039,57 @@ inline std::vector<ConstEpDevice> Env::GetEpDevices() const {
   return devices;
 }
 
+inline size_t Env::GetNumHardwareDevices() const {
+  size_t num_devices = 0;
+  ThrowOnError(GetApi().GetNumHardwareDevices(p_, &num_devices));
+  return num_devices;
+}
+
+inline std::vector<ConstHardwareDevice> Env::GetHardwareDevices() const {
+  size_t num_devices = 0;
+  ThrowOnError(GetApi().GetNumHardwareDevices(p_, &num_devices));
+
+  std::vector<ConstHardwareDevice> devices;
+  if (num_devices > 0) {
+    std::vector<const OrtHardwareDevice*> device_ptrs(num_devices);
+    ThrowOnError(GetApi().GetHardwareDevices(p_, device_ptrs.data(), num_devices));
+    devices.reserve(num_devices);
+    for (size_t i = 0; i < num_devices; ++i) {
+      devices.emplace_back(device_ptrs[i]);
+    }
+  }
+
+  return devices;
+}
+
+inline DeviceEpIncompatibilityDetails Env::GetHardwareDeviceEpIncompatibilityDetails(
+    const char* ep_name, ConstHardwareDevice hw) const {
+  OrtDeviceEpIncompatibilityDetails* details = nullptr;
+  ThrowOnError(GetApi().GetHardwareDeviceEpIncompatibilityDetails(p_, ep_name, hw, &details));
+  return DeviceEpIncompatibilityDetails{details};
+}
+
+template <typename T>
+inline uint32_t detail::DeviceEpIncompatibilityDetailsImpl<T>::GetReasonsBitmask() const {
+  uint32_t reasons_bitmask = 0;
+  ThrowOnError(GetApi().DeviceEpIncompatibilityDetails_GetReasonsBitmask(this->p_, &reasons_bitmask));
+  return reasons_bitmask;
+}
+
+template <typename T>
+inline const char* detail::DeviceEpIncompatibilityDetailsImpl<T>::GetNotes() const {
+  const char* notes = nullptr;
+  ThrowOnError(GetApi().DeviceEpIncompatibilityDetails_GetNotes(this->p_, &notes));
+  return notes;
+}
+
+template <typename T>
+inline int32_t detail::DeviceEpIncompatibilityDetailsImpl<T>::GetErrorCode() const {
+  int32_t error_code = 0;
+  ThrowOnError(GetApi().DeviceEpIncompatibilityDetails_GetErrorCode(this->p_, &error_code));
+  return error_code;
+}
+
 inline Status Env::CopyTensors(const std::vector<Value>& src_tensors,
                                const std::vector<Value>& dst_tensors,
                                OrtSyncStream* stream) const {
@@ -1347,6 +1398,20 @@ inline std::string ConstSessionOptionsImpl<T>::GetConfigEntryOrDefault(const cha
   }
 
   return this->GetConfigEntry(config_key);
+}
+
+template <typename T>
+inline bool ConstSessionOptionsImpl<T>::GetMemPatternEnabled() const {
+  int out = 0;
+  ThrowOnError(GetApi().GetMemPatternEnabled(this->p_, &out));
+  return out != 0;
+}
+
+template <typename T>
+inline ExecutionMode ConstSessionOptionsImpl<T>::GetExecutionMode() const {
+  ExecutionMode out{};
+  ThrowOnError(GetApi().GetSessionExecutionMode(this->p_, &out));
+  return out;
 }
 
 template <typename T>
@@ -2041,6 +2106,11 @@ inline void SessionImpl<T>::FinalizeModelEditorSession(const Model& model, const
   ThrowOnError(GetModelEditorApi().FinalizeModelEditorSession(this->p_, options, prepacked_weights_container));
 }
 #endif  // #if !defined(ORT_MINIMAL_BUILD)
+
+template <typename T>
+inline void SessionImpl<T>::ReleaseCapturedGraph(int graph_annotation_id) {
+  ThrowOnError(GetApi().SessionReleaseCapturedGraph(this->p_, graph_annotation_id));
+}
 
 }  // namespace detail
 
@@ -2803,6 +2873,12 @@ inline UnownedValue KernelContext::GetOutput(size_t index, const std::vector<int
 inline void* KernelContext::GetGPUComputeStream() const {
   void* out = nullptr;
   Ort::ThrowOnError(GetApi().KernelContext_GetGPUComputeStream(ctx_, &out));
+  return out;
+}
+
+inline OrtSyncStream* KernelContext::GetSyncStream() const {
+  OrtSyncStream* out = nullptr;
+  Ort::ThrowOnError(GetApi().KernelContext_GetSyncStream(ctx_, &out));
   return out;
 }
 
@@ -3876,14 +3952,18 @@ inline void GraphImpl<T>::AddInitializer(const std::string& name, Value& initial
 
 template <typename T>
 inline void GraphImpl<T>::AddNode(Node& node) {
-  // Graph takes ownership of `node`
-  ThrowOnError(GetModelEditorApi().AddNodeToGraph(this->p_, node.release()));
+  // Graph takes ownership of `node` only on success. Pass the raw pointer via implicit conversion
+  // (which does not release the wrapper) so that on failure `node` still owns it; release after the
+  // C call returns OK.
+  ThrowOnError(GetModelEditorApi().AddNodeToGraph(this->p_, node));
+  node.release();
 }
 
 template <typename T>
 inline void ModelImpl<T>::AddGraph(Graph& graph) {
-  // Model takes ownership of `graph`
-  ThrowOnError(GetModelEditorApi().AddGraphToModel(this->p_, graph.release()));
+  // Model takes ownership of `graph` only on success. See AddNode for the rationale.
+  ThrowOnError(GetModelEditorApi().AddGraphToModel(this->p_, graph));
+  graph.release();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

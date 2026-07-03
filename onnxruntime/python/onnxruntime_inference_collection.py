@@ -13,13 +13,12 @@ from collections.abc import Callable, Sequence
 from enum import IntEnum
 from typing import Any
 
+import numpy as np
+
 from onnxruntime.capi import _pybind_state as C
 
 if typing.TYPE_CHECKING:
-    import numpy as np
     import numpy.typing as npt
-
-    import onnxruntime
 
 
 def get_ort_device_type(device_type: str) -> int:
@@ -105,9 +104,15 @@ class AdapterFormat:
         return self._adapter.model_version
 
     def set_parameters(self, params: dict[str, OrtValue]) -> None:
+        """Set adapter parameters for export."""
         self._adapter.parameters = {k: v._ortvalue for k, v in params.items()}
 
     def get_parameters(self) -> dict[str, OrtValue]:
+        """Get adapter parameters as a dict of name -> OrtValue.
+
+        On read instances, the returned OrtValues are zero-copy views; the
+        backing memory stays alive as long as any returned OrtValue is referenced.
+        """
         return {k: OrtValue(v) for k, v in self._adapter.parameters.items()}
 
 
@@ -204,35 +209,35 @@ class Session:
         self._sess = None
         self._enable_fallback = enable_fallback
 
-    def get_session_options(self) -> onnxruntime.SessionOptions:
+    def get_session_options(self) -> C.SessionOptions:
         "Return the session options. See :class:`onnxruntime.SessionOptions`."
         return self._sess_options
 
-    def get_inputs(self) -> Sequence[onnxruntime.NodeArg]:
+    def get_inputs(self) -> Sequence[C.NodeArg]:
         "Return the inputs metadata as a list of :class:`onnxruntime.NodeArg`."
         return self._inputs_meta
 
-    def get_outputs(self) -> Sequence[onnxruntime.NodeArg]:
+    def get_outputs(self) -> Sequence[C.NodeArg]:
         "Return the outputs metadata as a list of :class:`onnxruntime.NodeArg`."
         return self._outputs_meta
 
-    def get_overridable_initializers(self) -> Sequence[onnxruntime.NodeArg]:
+    def get_overridable_initializers(self) -> Sequence[C.NodeArg]:
         "Return the inputs (including initializers) metadata as a list of :class:`onnxruntime.NodeArg`."
         return self._overridable_initializers
 
-    def get_modelmeta(self) -> onnxruntime.ModelMetadata:
+    def get_modelmeta(self) -> C.ModelMetadata:
         "Return the metadata. See :class:`onnxruntime.ModelMetadata`."
         return self._model_meta
 
-    def get_input_memory_infos(self) -> Sequence[onnxruntime.MemoryInfo]:
+    def get_input_memory_infos(self) -> Sequence[C.OrtMemoryInfo]:
         "Return the memory info for the inputs."
         return self._input_meminfos
 
-    def get_output_memory_infos(self) -> Sequence[onnxruntime.MemoryInfo]:
+    def get_output_memory_infos(self) -> Sequence[C.OrtMemoryInfo]:
         "Return the memory info for the outputs."
         return self._output_meminfos
 
-    def get_input_epdevices(self) -> Sequence[onnxruntime.OrtEpDevice]:
+    def get_input_epdevices(self) -> Sequence[C.OrtEpDevice]:
         "Return the execution providers for the inputs."
         return self._input_epdevices
 
@@ -244,7 +249,7 @@ class Session:
         "Return registered execution providers' configurations."
         return self._provider_options
 
-    def get_provider_graph_assignment_info(self) -> Sequence[onnxruntime.OrtEpAssignedSubgraph]:
+    def get_provider_graph_assignment_info(self) -> Sequence[C.OrtEpAssignedSubgraph]:
         """
         Get information about the subgraphs assigned to each execution provider and the nodes within.
 
@@ -469,7 +474,7 @@ class InferenceSession(Session):
     def __init__(
         self,
         path_or_bytes: str | bytes | os.PathLike,
-        sess_options: onnxruntime.SessionOptions | None = None,
+        sess_options: C.SessionOptions | None = None,
         providers: Sequence[str | tuple[str, dict[Any, Any]]] | None = None,
         provider_options: Sequence[dict[Any, Any]] | None = None,
         **kwargs,
@@ -740,7 +745,7 @@ class ModelCompiler:
 
     def __init__(
         self,
-        sess_options: onnxruntime.SessionOptions,
+        sess_options: C.SessionOptions,
         input_model_path_or_bytes: str | os.PathLike | bytes,
         embed_compiled_data_into_model: bool = False,
         external_initializers_file_path: str | os.PathLike | None = None,
@@ -1082,6 +1087,7 @@ class OrtValue:
         device_type: str = "cpu",
         device_id: int = 0,
         vendor_id: int | OrtDeviceVendorId = -1,
+        memory_info: C.OrtMemoryInfo | None = None,
     ) -> OrtValue:
         """
         Factory method to construct an OrtValue (which holds a Tensor) from given shape and element_type
@@ -1091,7 +1097,30 @@ class OrtValue:
         :param device_type: e.g. cpu, cuda, cann, cpu by default
         :param device_id: device id, e.g. 0
         :param vendor_id: The device's PCI vendor id as an int or OrtDeviceVendorId. If provided, the device type should be "gpu" or "npu".
+        :param memory_info: An OrtMemoryInfo from an OrtEpDevice (e.g. via ep_device.memory_info(OrtDeviceMemoryType.HOST_ACCESSIBLE)). When provided, the allocator matching this memory info is used directly, which allows allocating HOST_ACCESSIBLE memory for zero-copy numpy interop. The device_type, device_id, and vendor_id parameters are ignored when memory_info is provided.
         """
+
+        if memory_info is not None:
+            if device_type != "cpu" or device_id != 0 or vendor_id != -1:
+                warnings.warn(
+                    "device_type, device_id, and vendor_id are ignored when memory_info is provided.",
+                    stacklevel=2,
+                )
+            if isinstance(element_type, int):
+                return cls(
+                    C.OrtValue.ortvalue_from_shape_and_onnx_type_for_memory_info(
+                        shape,
+                        element_type,
+                        memory_info,
+                    )
+                )
+            return cls(
+                C.OrtValue.ortvalue_from_shape_and_type_for_memory_info(
+                    shape,
+                    element_type,
+                    memory_info,
+                )
+            )
 
         device = OrtDevice.make(device_type, device_id, vendor_id)._get_c_device()
 
@@ -1212,8 +1241,6 @@ class OrtValue:
             If ``None`` (default), a copy will be made only if needed.
         :return: A numpy array with the same data as the OrtValue.
         """
-        import numpy as np  # noqa: PLC0415
-
         arr = self.numpy()
 
         if copy is not None:
@@ -1302,15 +1329,25 @@ class OrtValue:
 
         return cls(C.OrtValue.from_dlpack(capsule, is_bool))
 
-    def update_inplace(self, np_arr) -> None:
+    def update_inplace(self, data) -> None:
         """
-        Update the OrtValue in place with a new Numpy array. The numpy contents
-        are copied over to the device memory backing the OrtValue. It can be used
-        to update the input valuess for an InferenceSession with CUDA graph
-        enabled or other scenarios where the OrtValue needs to be updated while
-        the memory address can not be changed.
+        Update the OrtValue in place. The source data is copied over to the device
+        memory backing the OrtValue. It can be used to update the input values for
+        an InferenceSession with CUDA graph enabled or other scenarios where the
+        OrtValue needs to be updated while the memory address can not be changed.
+
+        :param data: The source data, which can be a Numpy array or another OrtValue.
+            When an OrtValue is provided, data can be copied between devices (e.g.,
+            GPU to GPU) without going through the CPU.
         """
-        self._ortvalue.update_inplace(np_arr)
+        if isinstance(data, OrtValue):
+            self._ortvalue.update_inplace(data._ortvalue)
+            return
+
+        if not isinstance(data, np.ndarray):
+            raise TypeError("data must be a numpy.ndarray or an OrtValue.")
+
+        self._ortvalue.update_inplace(data)
 
 
 def copy_tensors(src: Sequence[OrtValue], dst: Sequence[OrtValue], stream=None) -> None:

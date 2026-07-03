@@ -1,0 +1,4 @@
+{
+  "type": "parser",
+  "description": "Test multi-layer include preprocessing with nested includes (A includes B, B includes C, C includes D)"
+}

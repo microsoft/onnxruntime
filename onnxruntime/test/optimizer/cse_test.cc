@@ -295,5 +295,54 @@ TEST(CseTests, MergeConstants) {
   ASSERT_EQ(op_count["Add"], 2);
 }
 
+TEST(CseTests, StringTensorAttr) {
+  // Regression test for https://github.com/microsoft/onnxruntime/issues/28413.
+  // CSE must not crash when it encounters a node with a STRING tensor attribute,
+  // and it must correctly merge identical nodes that have such attributes.
+  // We use two identical Constant nodes with STRING tensor values feeding into
+  // Identity nodes to exercise CSE hashing and comparison for STRING tensors.
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+  Model model("CseStringTensorAttrTest", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(),
+              {{kOnnxDomain, 21}}, {}, logger);
+  auto& graph = model.MainGraph();
+
+  ONNX_NAMESPACE::TypeProto string_scalar_type;
+  string_scalar_type.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  string_scalar_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  // STRING tensor value attribute for the Constant nodes.
+  ONNX_NAMESPACE::TensorProto string_value;
+  string_value.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_STRING);
+  string_value.add_dims(1);
+  string_value.add_string_data("hello");
+
+  // Two identical Constant nodes producing the same STRING tensor.
+  auto& const_out1 = graph.GetOrCreateNodeArg("const_1", &string_scalar_type);
+  auto& node1 = graph.AddNode("constant_1", "Constant", "", {}, {&const_out1});
+  node1.AddAttribute("value", string_value);
+
+  auto& const_out2 = graph.GetOrCreateNodeArg("const_2", &string_scalar_type);
+  auto& node2 = graph.AddNode("constant_2", "Constant", "", {}, {&const_out2});
+  node2.AddAttribute("value", string_value);
+
+  // Feed the Constant outputs through Identity nodes so they are not direct graph outputs
+  // (CSE does not merge nodes whose outputs are graph outputs).
+  auto& id_out1 = graph.GetOrCreateNodeArg("id_out_1", &string_scalar_type);
+  graph.AddNode("identity_1", "Identity", "", {&const_out1}, {&id_out1});
+
+  auto& id_out2 = graph.GetOrCreateNodeArg("id_out_2", &string_scalar_type);
+  graph.AddNode("identity_2", "Identity", "", {&const_out2}, {&id_out2});
+
+  graph.SetInputs({});
+  graph.SetOutputs({&id_out1, &id_out2});
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  ApplyCse(model);
+
+  auto op_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_count["Constant"], 1);
+}
+
 }  // namespace test
 }  // namespace onnxruntime

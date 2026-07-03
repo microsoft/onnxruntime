@@ -880,6 +880,42 @@ namespace Microsoft.ML.OnnxRuntime
                     api_.CreateExternalInitializerInfo,
                     typeof(DOrtCreateExternalInitializerInfo));
 
+            // Version 24 additions
+            OrtGetNumHardwareDevices =
+                (DOrtGetNumHardwareDevices)Marshal.GetDelegateForFunctionPointer(
+                    api_.GetNumHardwareDevices,
+                    typeof(DOrtGetNumHardwareDevices));
+
+            OrtGetHardwareDevices =
+                (DOrtGetHardwareDevices)Marshal.GetDelegateForFunctionPointer(
+                    api_.GetHardwareDevices,
+                    typeof(DOrtGetHardwareDevices));
+
+            OrtGetHardwareDeviceEpIncompatibilityDetails =
+                (DOrtGetHardwareDeviceEpIncompatibilityDetails)Marshal.GetDelegateForFunctionPointer(
+                    api_.GetHardwareDeviceEpIncompatibilityDetails,
+                    typeof(DOrtGetHardwareDeviceEpIncompatibilityDetails));
+
+            OrtDeviceEpIncompatibilityDetails_GetReasonsBitmask =
+                (DOrtDeviceEpIncompatibilityDetails_GetReasonsBitmask)Marshal.GetDelegateForFunctionPointer(
+                    api_.DeviceEpIncompatibilityDetails_GetReasonsBitmask,
+                    typeof(DOrtDeviceEpIncompatibilityDetails_GetReasonsBitmask));
+
+            OrtDeviceEpIncompatibilityDetails_GetNotes =
+                (DOrtDeviceEpIncompatibilityDetails_GetNotes)Marshal.GetDelegateForFunctionPointer(
+                    api_.DeviceEpIncompatibilityDetails_GetNotes,
+                    typeof(DOrtDeviceEpIncompatibilityDetails_GetNotes));
+
+            OrtDeviceEpIncompatibilityDetails_GetErrorCode =
+                (DOrtDeviceEpIncompatibilityDetails_GetErrorCode)Marshal.GetDelegateForFunctionPointer(
+                    api_.DeviceEpIncompatibilityDetails_GetErrorCode,
+                    typeof(DOrtDeviceEpIncompatibilityDetails_GetErrorCode));
+
+            OrtReleaseDeviceEpIncompatibilityDetails =
+                (DOrtReleaseDeviceEpIncompatibilityDetails)Marshal.GetDelegateForFunctionPointer(
+                    api_.ReleaseDeviceEpIncompatibilityDetails,
+                    typeof(DOrtReleaseDeviceEpIncompatibilityDetails));
+
             OrtCreateSharedAllocator =
                 (DOrtCreateSharedAllocator)Marshal.GetDelegateForFunctionPointer(
                     api_.CreateSharedAllocator,
@@ -2817,6 +2853,75 @@ namespace Microsoft.ML.OnnxRuntime
         public static DOrtExternalInitializerInfo_GetFilePath OrtExternalInitializerInfo_GetFilePath;
         public static DOrtExternalInitializerInfo_GetFileOffset OrtExternalInitializerInfo_GetFileOffset;
         public static DOrtExternalInitializerInfo_GetByteSize OrtExternalInitializerInfo_GetByteSize;
+
+        #endregion
+
+        #region Hardware Device EP Compatibility API
+
+        /// <summary>
+        /// Get the number of available hardware devices.
+        /// </summary>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtGetNumHardwareDevices(
+            IntPtr /* const OrtEnv* */ env,
+            out UIntPtr /* size_t* */ numDevices);
+
+        /// <summary>
+        /// Get the list of available hardware devices.
+        /// </summary>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtGetHardwareDevices(
+            IntPtr /* const OrtEnv* */ env,
+            [Out] IntPtr[] /* const OrtHardwareDevice** */ devices,
+            UIntPtr /* size_t */ numDevices);
+
+        /// <summary>
+        /// Check for known incompatibility issues between hardware device and a specific execution provider.
+        /// </summary>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtGetHardwareDeviceEpIncompatibilityDetails(
+            IntPtr /* const OrtEnv* */ env,
+            byte[] /* const char* */ epName,
+            IntPtr /* const OrtHardwareDevice* */ hw,
+            out IntPtr /* OrtDeviceEpIncompatibilityDetails** */ details);
+
+        /// <summary>
+        /// Get the incompatibility reasons bitmask from OrtDeviceEpIncompatibilityDetails.
+        /// </summary>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtDeviceEpIncompatibilityDetails_GetReasonsBitmask(
+            IntPtr /* const OrtDeviceEpIncompatibilityDetails* */ details,
+            out uint /* uint32_t* */ reasonsBitmask);
+
+        /// <summary>
+        /// Get the notes from OrtDeviceEpIncompatibilityDetails.
+        /// </summary>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtDeviceEpIncompatibilityDetails_GetNotes(
+            IntPtr /* const OrtDeviceEpIncompatibilityDetails* */ details,
+            out IntPtr /* const char** */ notes);
+
+        /// <summary>
+        /// Get the EP-specific error code from OrtDeviceEpIncompatibilityDetails.
+        /// </summary>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /* OrtStatus* */ DOrtDeviceEpIncompatibilityDetails_GetErrorCode(
+            IntPtr /* const OrtDeviceEpIncompatibilityDetails* */ details,
+            out int /* int32_t* */ errorCode);
+
+        /// <summary>
+        /// Release an OrtDeviceEpIncompatibilityDetails instance.
+        /// </summary>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void DOrtReleaseDeviceEpIncompatibilityDetails(IntPtr /* OrtDeviceEpIncompatibilityDetails* */ details);
+
+        public static DOrtGetNumHardwareDevices OrtGetNumHardwareDevices;
+        public static DOrtGetHardwareDevices OrtGetHardwareDevices;
+        public static DOrtGetHardwareDeviceEpIncompatibilityDetails OrtGetHardwareDeviceEpIncompatibilityDetails;
+        public static DOrtDeviceEpIncompatibilityDetails_GetReasonsBitmask OrtDeviceEpIncompatibilityDetails_GetReasonsBitmask;
+        public static DOrtDeviceEpIncompatibilityDetails_GetNotes OrtDeviceEpIncompatibilityDetails_GetNotes;
+        public static DOrtDeviceEpIncompatibilityDetails_GetErrorCode OrtDeviceEpIncompatibilityDetails_GetErrorCode;
+        public static DOrtReleaseDeviceEpIncompatibilityDetails OrtReleaseDeviceEpIncompatibilityDetails;
 
         #endregion
 

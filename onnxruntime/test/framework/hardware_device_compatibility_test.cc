@@ -188,7 +188,7 @@ TEST(GetHardwareDeviceEpIncompatibilityDetailsCapiTest, CpuEp_ReturnsEmptyDetail
 
   const char* notes = "...";  // Initialize to non-null to verify it gets set
   ASSERT_ORTSTATUS_OK(api->DeviceEpIncompatibilityDetails_GetNotes(details, &notes));
-  EXPECT_TRUE(notes == nullptr || strlen(notes) == 0);
+  EXPECT_TRUE(notes == nullptr || *notes == '\0');
 
   api->ReleaseDeviceEpIncompatibilityDetails(details);
   api->ReleaseEnv(env);
@@ -371,4 +371,63 @@ TEST(GetHardwareDevicesCapiTest, ReturnsDevices) {
   }
 
   api->ReleaseEnv(env);
+}
+// -----------------------------
+// C++ API unit tests
+// -----------------------------
+
+TEST(HardwareDeviceCompatibilityCxxApiTest, GetNumHardwareDevices) {
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "HwDevicesCxxTest"};
+
+  size_t num_devices = env.GetNumHardwareDevices();
+  // Should return at least one device (CPU)
+  EXPECT_GT(num_devices, 0u);
+}
+
+TEST(HardwareDeviceCompatibilityCxxApiTest, GetHardwareDevices) {
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "HwDevicesCxxTest"};
+
+  std::vector<Ort::ConstHardwareDevice> devices = env.GetHardwareDevices();
+
+  // Should return at least one device (CPU)
+  EXPECT_FALSE(devices.empty());
+
+  // Verify we can access device properties
+  for (const auto& device : devices) {
+    OrtHardwareDeviceType device_type = device.Type();
+    EXPECT_TRUE(device_type == OrtHardwareDeviceType_CPU ||
+                device_type == OrtHardwareDeviceType_GPU ||
+                device_type == OrtHardwareDeviceType_NPU);
+
+    const char* vendor = device.Vendor();
+    EXPECT_NE(vendor, nullptr);
+  }
+}
+
+TEST(HardwareDeviceCompatibilityCxxApiTest, GetHardwareDeviceEpIncompatibilityDetails_CpuEp) {
+  Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "HwDevicesCxxTest"};
+
+  std::vector<Ort::ConstHardwareDevice> devices = env.GetHardwareDevices();
+  ASSERT_FALSE(devices.empty());
+
+  // Find a CPU device
+  Ort::ConstHardwareDevice cpu_device{nullptr};
+  for (const auto& device : devices) {
+    if (device.Type() == OrtHardwareDeviceType_CPU) {
+      cpu_device = device;
+      break;
+    }
+  }
+  ASSERT_NE(static_cast<const OrtHardwareDevice*>(cpu_device), nullptr) << "No CPU device found";
+
+  // CPU EP doesn't implement GetHardwareDeviceIncompatibilityDetails, so should return empty details
+  Ort::DeviceEpIncompatibilityDetails details = env.GetHardwareDeviceEpIncompatibilityDetails(
+      "CPUExecutionProvider", cpu_device);
+
+  // Verify empty details (compatible)
+  EXPECT_EQ(details.GetReasonsBitmask(), 0u);
+  EXPECT_EQ(details.GetErrorCode(), 0);
+  // Notes should be null or empty
+  const char* notes = details.GetNotes();
+  EXPECT_TRUE(notes == nullptr || *notes == '\0');
 }

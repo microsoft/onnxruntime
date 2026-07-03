@@ -1,0 +1,147 @@
+parameters:
+- name: arch
+  type: string
+  values:
+  - x64
+  - arm64
+
+stages:
+- stage: Win_plugin_webgpu_${{ parameters.arch }}_Test
+  dependsOn: []
+  jobs:
+  - job: Win_plugin_webgpu_${{ parameters.arch }}_Python_Test
+    timeoutInMinutes: 30
+    workspace:
+      clean: all
+    pool:
+      ${{ if eq(parameters.arch, 'arm64') }}:
+        name: onnxruntime-qnn-windows-vs-2022-arm64
+        os: windows
+        hostArchitecture: Arm64
+        demands:
+          - Agent.Version -equals 4.264.2
+      ${{ else }}:
+        name: onnxruntime-Win2022-VS2022-webgpu-A10
+        os: windows
+    steps:
+    - checkout: self
+      clean: true
+      submodules: none
+
+    - template: ../templates/setup-build-tools.yml
+      parameters:
+        host_cpu_arch: ${{ parameters.arch }}
+
+    # Download the Python wheel produced by the packaging pipeline run that
+    # triggered this pipeline (or that was selected at queue time).
+    - download: build
+      artifact: webgpu_plugin_python_win_${{ parameters.arch }}
+      displayName: 'Download Python wheel'
+
+    - powershell: |
+        echo "creating test_venv"
+        python -m venv "$(Build.BinariesDirectory)\test_venv"
+
+        echo "activating test_venv"
+        & "$(Build.BinariesDirectory)\test_venv\Scripts\Activate.ps1"
+
+        $minOrtVersionFile = "$(Build.SourcesDirectory)\plugin-ep-webgpu\MIN_ONNXRUNTIME_VERSION"
+        $minOrtVersion = (Get-Content $minOrtVersionFile -Raw).Trim()
+        echo "using minimum onnxruntime version $minOrtVersion from $minOrtVersionFile"
+
+        echo "installing test dependencies"
+        python -m pip install onnx "onnxruntime==$minOrtVersion" numpy
+
+        $wheelDir = "$(Pipeline.Workspace)\build\webgpu_plugin_python_win_${{ parameters.arch }}"
+        $wheel = (Get-ChildItem "$wheelDir\onnxruntime_ep_webgpu-*.whl")[0]
+        echo "installing ${wheel}"
+        python -m pip install $wheel.FullName
+
+        echo "running test_webgpu_plugin_ep.py"
+        python -u "$(Build.SourcesDirectory)\plugin-ep-webgpu\python\test\test_webgpu_plugin_ep.py"
+      displayName: 'Install and test Python package'
+      env:
+        ORT_TEST_VERBOSE: $(OrtTestVerbose)
+
+  # NuGet package test (x64 only — the NuGet package is multi-platform but
+  # the test runs on a single Windows agent that exercises the WebGPU EP).
+  - ${{ if eq(parameters.arch, 'x64') }}:
+    - job: Win_plugin_webgpu_nuget_Test
+      timeoutInMinutes: 30
+      workspace:
+        clean: all
+      pool:
+        name: onnxruntime-Win2022-VS2022-webgpu-A10
+        os: windows
+      variables:
+        WebGpuTestProject: '$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\test\WebGpuEpNuGetTest\WebGpuEpNuGetTest.csproj'
+      steps:
+      - checkout: self
+        submodules: none
+
+      - template: ../templates/setup-feeds-and-python-steps.yml
+
+      # Download the NuGet package produced by the packaging pipeline run that
+      # triggered this pipeline (or that was selected at queue time).
+      - download: build
+        artifact: webgpu_plugin_nuget
+        displayName: 'Download NuGet package'
+
+      # Set up local NuGet feed and extract the package version from the .nupkg filename
+      # so the test project can pin to it (instead of resolving via a floating version).
+      - powershell: |
+          $localFeedDir = "$(Build.BinariesDirectory)\local_feed"
+          New-Item -ItemType Directory -Path $localFeedDir -Force | Out-Null
+
+          # Locate the .nupkg.
+          $nupkg = Get-ChildItem "$(Pipeline.Workspace)\build\webgpu_plugin_nuget\Microsoft.ML.OnnxRuntime.EP.WebGpu.*.nupkg" |
+                   Select-Object -First 1
+          if (-not $nupkg) {
+              throw "No matching .nupkg found under $(Pipeline.Workspace)\build\webgpu_plugin_nuget"
+          }
+          Copy-Item $nupkg.FullName $localFeedDir -Force
+
+          # Extract version from filename: Microsoft.ML.OnnxRuntime.EP.WebGpu.<version>.nupkg
+          # The version starts with a digit, which disambiguates from any future filename suffixes.
+          if ($nupkg.BaseName -notmatch '^Microsoft\.ML\.OnnxRuntime\.EP\.WebGpu\.(\d.*)$') {
+              throw "Could not extract version from .nupkg filename: $($nupkg.Name)"
+          }
+          $packageVersion = $Matches[1]
+          Write-Host "Detected package version: $packageVersion"
+          Write-Host "##vso[task.setvariable variable=OrtWebGpuPackageVersion]$packageVersion"
+
+          $minOrtVersionFile = "$(Build.SourcesDirectory)\plugin-ep-webgpu\MIN_ONNXRUNTIME_VERSION"
+          $minOrtVersion = (Get-Content $minOrtVersionFile -Raw).Trim()
+          Write-Host "Using minimum core ORT version: $minOrtVersion from $minOrtVersionFile"
+          Write-Host "##vso[task.setvariable variable=OrtCoreTestVersion]$minOrtVersion"
+
+          # Write a project-level nuget.config that adds ONLY the local feed.
+          # NuGet merges this with the repo-root NuGet.config.
+          $nugetConfig = "$(Build.SourcesDirectory)\plugin-ep-webgpu\csharp\test\WebGpuEpNuGetTest\nuget.config"
+          Set-Content -Path $nugetConfig -Encoding UTF8 -Value @"
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources>
+              <add key="local" value="$localFeedDir" />
+            </packageSources>
+          </configuration>
+          "@
+          Write-Host "Wrote project-level nuget.config with local feed: $localFeedDir"
+          Write-Host "Local feed contents:"
+          Get-ChildItem $localFeedDir | ForEach-Object { Write-Host "  $($_.Name)" }
+        displayName: 'Set up local NuGet feed'
+
+      - powershell: |
+          dotnet build `
+            "$(WebGpuTestProject)" `
+            --configuration Release `
+            -p:OrtWebGpuPackageVersion=$(OrtWebGpuPackageVersion) `
+            -p:OrtCoreTestVersion=$(OrtCoreTestVersion)
+        displayName: 'Build test project'
+
+      - powershell: |
+          dotnet run `
+            --project "$(WebGpuTestProject)" `
+            --configuration Release `
+            --no-build
+        displayName: 'Run NuGet package test'

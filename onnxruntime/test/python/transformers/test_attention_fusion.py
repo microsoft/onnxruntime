@@ -12,6 +12,7 @@ import numpy as np
 import onnx
 from bart_model_generator import create_bart_attention_sdpa
 from bert_model_generator import create_bert_attention, create_bert_attention_pre_ln, create_tf2onnx_attention_3d
+from dit_model_generator import create_dit_attention, create_dit_attention_no_k_transpose
 from gpt2_model_generator import create_gpt2_attention, create_gpt2_attention_no_past
 from model_loader import get_test_data_path
 from onnx import numpy_helper
@@ -29,6 +30,45 @@ else:
 
 
 class TestFusion(unittest.TestCase):
+    def _validate_mha_input_types(self, optimized_model):
+        """Verify all MultiHeadAttention inputs share the same element type.
+
+        MHA's type parameter T binds Q, K, V to a single type. A mismatch
+        (e.g., Q=float32, V=float16) produces a graph that ORT rejects at load time.
+
+        Runs ONNX shape inference first to populate type info for intermediate
+        tensors — without this, get_dtype returns None for outputs of internal
+        nodes and the check would pass vacuously even if types are mismatched.
+        """
+        # Run shape inference to propagate types through standard ONNX ops
+        # so that MHA inputs (from Reshape, Transpose, etc.) have type info.
+        try:
+            inferred = onnx.shape_inference.infer_shapes(optimized_model.model, check_type=True, strict_mode=False)
+            optimized_model.model.CopyFrom(inferred)
+            # Reset cached dtype dict so get_dtype picks up inferred types
+            optimized_model._dtype_dict = None
+        except Exception:
+            pass  # Custom ops (com.microsoft) may cause warnings; proceed with available info
+
+        for node in optimized_model.model.graph.node:
+            if node.op_type == "MultiHeadAttention":
+                input_types = []
+                for inp_name in node.input[:3]:  # Q, K, V
+                    if not inp_name:
+                        continue
+                    dtype = optimized_model.get_dtype(inp_name)
+                    if dtype is not None:
+                        input_types.append((inp_name, dtype))
+                if len(input_types) >= 2:
+                    first_name, first_dtype = input_types[0]
+                    for inp_name, dtype in input_types[1:]:
+                        self.assertEqual(
+                            dtype,
+                            first_dtype,
+                            f"MHA input type mismatch: {first_name} has type {first_dtype} "
+                            f"but {inp_name} has type {dtype}",
+                        )
+
     def verify_fusion(self, optimized_model, expected_model_filename):
         optimized_model.topological_sort(is_deterministic=True)
 
@@ -601,6 +641,147 @@ class TestFusion(unittest.TestCase):
                 rtol=1e-6,
                 err_msg=f"sin_cache mismatch at position {pos}",
             )
+
+    def test_dit_attention_fusion(self):
+        """Test DiT attention fusion for F5-TTS-style pattern (FP32, with K pre-transpose)."""
+        model = create_dit_attention(
+            batch_size=2,
+            seq_len=4,
+            num_heads=4,
+            head_dim=8,
+            scale=100.0,
+            use_fp16_casts=False,
+        )
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "dit_attention.onnx")
+        onnx.save(model, model_path)
+
+        optimized_model = optimize_model(model_path, model_type="mmdit", opt_level=0)
+        os.remove(model_path)
+
+        # Validate the optimized model produces a type-consistent fused graph.
+        self._validate_mha_input_types(optimized_model)
+
+        mha_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "MultiHeadAttention"]
+        self.assertEqual(len(mha_nodes), 1, "Expected exactly 1 fused MultiHeadAttention node")
+
+        # Verify num_heads attribute
+        num_heads_attr = next((a for a in mha_nodes[0].attribute if a.name == "num_heads"), None)
+        self.assertIsNotNone(num_heads_attr)
+        self.assertEqual(num_heads_attr.i, 4)
+
+        # Verify scale attribute
+        scale_attr = next((a for a in mha_nodes[0].attribute if a.name == "scale"), None)
+        self.assertIsNotNone(scale_attr)
+        self.assertAlmostEqual(scale_attr.f, 100.0, places=5)
+
+        # Verify no Softmax remains (it should be absorbed into MHA)
+        softmax_count = sum(1 for n in optimized_model.model.graph.node if n.op_type == "Softmax")
+        self.assertEqual(softmax_count, 0, "Softmax should be fused into MultiHeadAttention")
+
+    def test_dit_attention_fusion_with_fp16_casts(self):
+        """Test DiT attention fusion with FP16 Cast nodes around Softmax."""
+        model = create_dit_attention(
+            batch_size=2,
+            seq_len=4,
+            num_heads=4,
+            head_dim=8,
+            scale=100.0,
+            use_fp16_casts=True,
+        )
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "dit_attention_fp16.onnx")
+        onnx.save(model, model_path)
+
+        optimized_model = optimize_model(model_path, model_type="mmdit", opt_level=0)
+        os.remove(model_path)
+
+        # Validate MHA input types — catches mixed-dtype fused graphs (e.g.,
+        # Q=float32 but V=float16) that pass structural assertions but fail at ORT load.
+        self._validate_mha_input_types(optimized_model)
+
+        mha_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "MultiHeadAttention"]
+        self.assertEqual(len(mha_nodes), 1, "Expected exactly 1 fused MultiHeadAttention node")
+
+        # Verify num_heads and scale
+        num_heads_attr = next((a for a in mha_nodes[0].attribute if a.name == "num_heads"), None)
+        self.assertIsNotNone(num_heads_attr)
+        self.assertEqual(num_heads_attr.i, 4)
+
+        scale_attr = next((a for a in mha_nodes[0].attribute if a.name == "scale"), None)
+        self.assertIsNotNone(scale_attr)
+        self.assertAlmostEqual(scale_attr.f, 100.0, places=5)
+
+        # Verify no Softmax remains (it should be absorbed into MHA)
+        softmax_count = sum(1 for n in optimized_model.model.graph.node if n.op_type == "Softmax")
+        self.assertEqual(softmax_count, 0, "Softmax should be fused into MultiHeadAttention")
+
+    def test_dit_attention_fusion_custom_scale(self):
+        """Test DiT attention fusion with standard 1/sqrt(d_k) scale."""
+        head_dim = 8
+        standard_scale = 1.0 / (head_dim**0.5)
+        model = create_dit_attention(
+            batch_size=1,
+            seq_len=4,
+            num_heads=4,
+            head_dim=head_dim,
+            scale=standard_scale,
+            use_fp16_casts=False,
+        )
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "dit_attention_standard_scale.onnx")
+        onnx.save(model, model_path)
+
+        optimized_model = optimize_model(model_path, model_type="mmdit", opt_level=0)
+        os.remove(model_path)
+
+        self._validate_mha_input_types(optimized_model)
+
+        mha_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "MultiHeadAttention"]
+        self.assertEqual(len(mha_nodes), 1, "Expected exactly 1 fused MultiHeadAttention node")
+
+        scale_attr = next((a for a in mha_nodes[0].attribute if a.name == "scale"), None)
+        self.assertIsNotNone(scale_attr)
+        self.assertAlmostEqual(scale_attr.f, standard_scale, places=5)
+
+        # Verify no Softmax remains (it should be absorbed into MHA)
+        softmax_count = sum(1 for n in optimized_model.model.graph.node if n.op_type == "Softmax")
+        self.assertEqual(softmax_count, 0, "Softmax should be fused into MultiHeadAttention")
+
+    def test_dit_attention_fusion_no_k_transpose(self):
+        """Test DiT attention fusion when K is natively BNHS (no explicit Transpose node)."""
+        model = create_dit_attention_no_k_transpose(
+            batch_size=2,
+            seq_len=4,
+            num_heads=4,
+            head_dim=8,
+            scale=100.0,
+        )
+        dir = tempfile.mkdtemp()
+        model_path = os.path.join(dir, "dit_attention_no_k_transpose.onnx")
+        onnx.save(model, model_path)
+
+        optimized_model = optimize_model(model_path, model_type="mmdit", opt_level=0)
+        os.remove(model_path)
+
+        self._validate_mha_input_types(optimized_model)
+
+        mha_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "MultiHeadAttention"]
+        self.assertEqual(len(mha_nodes), 1, "Expected exactly 1 fused MultiHeadAttention node")
+
+        # Verify scale attribute
+        scale_attr = next((a for a in mha_nodes[0].attribute if a.name == "scale"), None)
+        self.assertIsNotNone(scale_attr)
+        self.assertAlmostEqual(scale_attr.f, 100.0, places=5)
+
+        # Verify no Softmax remains
+        softmax_count = sum(1 for n in optimized_model.model.graph.node if n.op_type == "Softmax")
+        self.assertEqual(softmax_count, 0, "Softmax should be fused into MultiHeadAttention")
+
+        # Verify the fusion added a Transpose for K (BNHS -> BNSH)
+        transpose_nodes = [n for n in optimized_model.model.graph.node if n.op_type == "Transpose"]
+        has_bnhs_to_bnsh = any(OnnxModel.get_node_attribute(t, "perm") == [0, 1, 3, 2] for t in transpose_nodes)
+        self.assertTrue(has_bnhs_to_bnsh, "Fusion should add Transpose(BNHS->BNSH) for K")
 
 
 if __name__ == "__main__":

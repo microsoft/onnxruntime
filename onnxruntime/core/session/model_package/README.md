@@ -1,134 +1,246 @@
-# Model Package Format
+# ORT Model Package Integration
 
-This document describes the model package directory layout and the JSON files used by ONNX Runtime to discover and load model packages. All JSON files must be UTF-8 encoded.
+This directory implements ONNX Runtime's consumer-side glue for the
+standalone [`model_package` library](../../../../model_package/README.md):
+loading packages, selecting variants against the runtime's execution
+providers, and creating an `OrtSession` for the chosen variant.
 
-## Definitions
+The package format, manifest schema, shared-asset rules, and the C
+authoring/inspection API all live in `model_package/`. **This directory
+adds three things on top**:
 
-- Model Package
+1. The `executor_info["ort"]` payload schema (this is ORT's slot in the
+   variant body).
+2. The variant selection algorithm, which queries each execution provider
+   factory and picks the highest-scoring variant.
+3. The experimental `OrtModelPackageApi_*` C functions that wrap the library
+   and expose session creation. They are registered in
+   `include/onnxruntime/core/session/onnxruntime_experimental_c_api.inc` and
+   resolved by name through `OrtApi::GetExperimentalFunction`.
 
-  - A model package defines the overall logical ‘model’
-  - A model package contains one or more ‘component models’
-  - The component models are executed when running the model package to provide the overall functionality of the logical model
-  - A model package may contain configuration information to support running multiple component models
+ORT links the `model_package` library as a static archive; the library
+itself never links against ORT.
 
-- Component Model
-  - A component model comprises one or more ‘model variants’
-  - All variants have the same model inputs and outputs with the same shapes.
-    - The data types may vary.
+---
 
-- Model Variant
-  - A ‘model variant’ is a single ONNX or ORT format model.
+## Files
 
-## Directory layout
+| File                                  | Responsibility |
+| ------------------------------------- | -------------- |
+| `model_package_context.h/.cc`         | Translates the `model_package` library's C info tree into ORT-internal C++ structs (`ModelPackageInfo`, `ComponentInfo`, `VariantInfo`, `VariantModelInfo`). Parses the `executor_info["ort"]` payload. Owns `ModelPackageContext` (package-level) and `ModelPackageComponentContext` (per-component, with selected variant and provider list). |
+| `model_package_options.h/.cc`         | `ModelPackageOptions` snapshots EP intent (factories, devices, EP-name list) from an `OrtSessionOptions` at the moment `OrtModelPackageApi_CreateModelPackageOptionsFromSessionOptions_SinceV28` is called. Drives variant selection and provider construction. |
+| `model_package_variant_selector.h/.cc`| `VariantSelector::SelectVariant` picks the best variant from a component given the EP list. Uses `OrtEpFactory::ValidateCompiledModelCompatibilityInfo`. |
 
-````
-<model>.ortpackage/ 
-├── manifest.json
-├── pipeline.json
-├── configs/ 
-|   ├── genai_config.json 
-|   └── chat_template.jinja
-└── models/ 
-    └── model_name/ 
-        ├── metadata.json
-        |   └── Contains general information on the component model,
-        |       and specific information about each model variant
-        |       such as data types, quantization algo, EP, etc. that
-        |       is updated on add/remove of model variant
-        └── shared_weights/ (shared weights from all variants)
-            └── <checksum of weights file A>/
-                └── model.data
-            └── <checksum of weights file B>/
-                └── model.data
-            └── ...
-        └── base model /   
-            ├── model.onnx  
-        └── variant A / 
-            ├── optimized model.onnx (contains EPContext nodes) 
-            └── [Compilation artifacts] 
-        └── variant B / 
-            ├── optimized model.onnx (contains EPContext nodes) 
-            └── [Compilation artifacts] 
-````
+The C entry points themselves live in
+`onnxruntime/core/session/model_package_api.cc` under
+`namespace OrtExperimentalApis`.
 
+---
 
-## Notes:
-- Shared weights is not yet supported, but the format allows for it in the future.
+## `executor_info["ort"]` schema
 
-## `manifest.json` (required)
+ORT's slot in `variant.executor_info` is a JSON object. All fields are
+optional, but in practice `model_file` is required to load a session.
 
-Location: `<package_root>/manifest.json`
-
-Purpose: Provides the overall package identity and (optionally) lists component models available in the package.
-
-Schema:
-- `model_name` (string, required): Logical package name.
-- `model_version` (string, optional): Version of the model package.
-- `component_models` (array of strings, optional): List of component model names. If this field is omitted, ONNX Runtime will discover component models by enumerating subdirectories under `models/`. If present, the names listed here must match the subdirectory names under `models/`.
-
-### `manifest.json` example
-
-```json
+```jsonc
 {
-    "model_name":  <logical_model_name>,
-    "model_version": "1.0",
-    "component_models": [
-        <component_model_name_1>,
-        <component_model_name_2>
-    ]
+  "model_file":       "model.onnx",
+  "external_data":    "weights",
+  "session_options":  { "session.intra_op_thread_count": "4" },
+  "provider_options": { "device_id": "0" }
 }
 ```
 
-## `metadata.json` (required per component model)
+| Field              | Type   | Required | Notes |
+| ------------------ | ------ | -------- | ----- |
+| `model_file`       | string | yes (for session) | Path to the model file inside the variant. Resolved via `ModelPackage_ResolveStringRef`, anchored at the variant directory. Accepts relative paths, absolute paths or `..` segments (installed layout only), and `sha256:<hex>[/sub/path]` for shared-asset content. |
+| `external_data`    | string | no       | Folder containing the model's external-initializers blobs. Wired into the session as ORT's external-initializers folder hint. Same resolution rules as `model_file`. |
+| `session_options`  | object | no       | Map of `string -> string`. Merged on top of a fresh `OrtSessionOptions` when the caller passes `session_options == NULL` to `CreateSession`. Ignored when the caller supplies their own `OrtSessionOptions`. |
+| `provider_options` | object | no       | Map of `string -> string`. Merged into the variant's EP provider options on the default path. Ignored when the caller supplies their own `OrtSessionOptions`. |
 
-Location: `<package_root>/models/<component_model>/metadata.json`
+#### Inline vs external
 
-Purpose: Describes the variants available for a specific component model.
+The slot follows the standard `executor_info` shape: the value may be either
 
-Schema:
-- `component_model_name` (string, required): Name of the component model.
-- `model_variants` (object, required): Map of variant names to variant descriptors.
-  - `<variant_name>` (object, required):
-    - `model_type` (string, optional): Type of the model (e.g., `"onnx"`, `"ORT"`). If omitted, ORT will treat it as an ONNX model by default.
-    - `model_file` (string, optional): Path relative to the model variant directory. Can point to an ONNX model file or a directory. If it is a directory, or if `model_file` is omitted, ORT will discover the ONNX model file within that directory.
-    - `model_id` (string, optional): Unique identifier for the model variant. It should match a catalog value if the model comes from a catalog. If `model_id` is present, the model will be in the <component_model_name>/`model_id`/ directory.
-    - `constraints` (object, required):
-      - `ep` (string, required (except base model)): Execution provider name (e.g., `"TensorrtExecutionProvider"`, `"QNNExecutionProvider"`, `"OpenVINOExecutionProvider"`).
-      - `device` (string, optional): Target device type (e.g., `"cpu"`, `"gpu"`, `"npu"`). Must match a supported `OrtHardwareDevice`. If the EPContext model can support multiple device types, this field can be omitted and EP should record supported device types in `ep_compatibility_info` instead.
-      - `architecture` (string, optional): Hardware architecture hint; interpreted by the EP if needed.
-      - `ep_compatibility_info` (string, optional): EP-specific compatibility string (as produced by `OrtEp::GetCompiledModelCompatibilityInfo()`); validated by the EP when selecting a variant. **The compatibility value returned by the EP is critical—ORT uses it to rank and choose the model variant.**
+- a **string**, a path to a JSON file containing the body above (commonly
+  `ort_info.json` next to `model.onnx`), or
+- an **object**, the body inlined into `component.json` /
+  `manifest.json`.
 
-### `metadata.json` example
-```json
-{
-    "component_model_name":  <component_model_name>,
-    "model_variants": {
-        <variant_1>: {
-            "model_type": "onnx",
-            "model_file": "model_ctx.onnx",
-            "constraints": {
-                "ep": "TensorrtExecutionProvider",
-                "ep_compatibility_info": "..."
-            }
-        },
-        <variant_2>: {
-            "model_type": "onnx",
-            "model_file": "model_ctx.onnx",
-             "constraints": {
-                 "ep": "OpenVINOExecutionProvider",
-                 "device": "cpu",
-                 "ep_compatibility_info": "..."
-             }
-        }
-    }
-}
+Inline form keeps the package single-file. External form (the common case)
+keeps the variant directory self-describing and survives `executor_info`
+schema evolution without rewriting the manifest.
+
+The key under `executor_info` is the **executor namespace name** (`"ort"`),
+not the EP. Other consumers use their own namespace key, so a single
+variant can carry per-consumer payloads side by side.
+
+---
+
+## Variant selection
+
+`ModelPackageOptions(env, session_options)` captures the **EP intent**: the
+ordered list of execution providers registered on the session options, plus
+their associated `OrtEpDevice` / `OrtHardwareDevice` / metadata.
+
+`VariantSelector::SelectVariant(component, ep_infos, &selected)` then walks
+the component's variants and picks the best match:
+
+1. Use only the **first** EP from the captured list. (A policy may rank
+   several EPs; callers that need a specific EP should put it first.
+   Ranking across the full EP list is on the TODO list.)
+2. For each variant, require `variant.ep == ep_info.ep_name`.
+3. If `variant.device` is set (`"cpu"` / `"gpu"` / `"npu"`), require it to
+   match at least one of the EP's `OrtHardwareDevice` entries.
+4. If both pass, call `OrtEpFactory::ValidateCompiledModelCompatibilityInfo`
+   with `variant.compatibility_string`. The EP returns an
+   `OrtCompiledModelCompatibility` enum which maps to a score:
+
+   | Enum                                         | Score |
+   | -------------------------------------------- | ----- |
+   | `EP_SUPPORTED_OPTIMAL`                       | 100   |
+   | `EP_SUPPORTED_PREFER_RECOMPILATION`          |  50   |
+   | `EP_NOT_APPLICABLE` (or EP too old / no ABI) |   0   |
+   | `EP_UNSUPPORTED`                             | rejected |
+
+5. Pick the highest-scoring matching variant. Manifest declaration order
+   breaks ties.
+
+If no variant matches, `SelectComponent` fails with "No suitable model
+variant found for the configured execution providers."
+
+ORT does **not** parse `compatibility_string`. The EP owns the format and
+may encode multiple sub-targets (SoC ids, ISA flags, etc.) into the single
+string internally; ORT only round-trips it through the EP callback.
+
+---
+
+## Session creation contract
+
+`OrtModelPackageApi_CreateSession_SinceV28(env, component_ctx, session_options, &session)`.
+
+The `component_ctx` already knows which variant won selection and which
+provider list it should use. Two paths:
+
+- **`session_options == NULL` (default).** ORT starts from a fresh
+  `OrtSessionOptions` and merges the variant's `session_options` /
+  `provider_options` from `executor_info["ort"]` on top. EPs declared in the
+  manifest are constructed and registered. This is what nearly all callers
+  want.
+
+- **`session_options != NULL` (advanced).** ORT uses the caller-supplied
+  `OrtSessionOptions` as-is. The manifest's `session_options` and
+  `provider_options` are **not** merged. Use this when you need custom EP
+  setup that does not round-trip through string options (shared CUDA
+  streams, shared QNN EP contexts, custom allocators, ...). The
+  `OrtSessionOptions` passed earlier to
+  `CreateModelPackageOptionsFromSessionOptions` only drives variant
+  selection / EP discovery; it is never silently re-applied here.
+
+In both modes, `external_data` from `executor_info["ort"]` is wired in as
+ORT's external-initializers folder hint, so the model file can reference
+weights stored next to (or shared by) the package.
+
+---
+
+## C API surface
+
+The model package API is exposed via ONNX Runtime's
+[experimental C API](../../../../docs/design/Experimental_C_API.md). Each
+function is registered as a separate entry in
+`include/onnxruntime/core/session/onnxruntime_experimental_c_api.inc` with
+prefix `OrtModelPackageApi_` and version suffix `_SinceV28`. Consumers look
+the functions up by name through `OrtApi::GetExperimentalFunction`, either
+directly or via the typed C++ accessors in `Ort::Experimental::*` generated
+from `onnxruntime_experimental_c_api.h`.
+
+The opaque handle types (`OrtModelPackageOptions`, `OrtModelPackageContext`,
+`OrtModelPackageComponentContext`) are forward-declared at the top of
+`onnxruntime_experimental_c_api.h`.
+
+Registered entries:
+
+| Function                                              | Notes |
+| ----------------------------------------------------- | ----- |
+| `CreateModelPackageOptionsFromSessionOptions`         | Snapshots EP intent. |
+| `ReleaseModelPackageOptions`                          |       |
+| `CreateModelPackageContext`                           | Parses the manifest. |
+| `ReleaseModelPackageContext`                          |       |
+| `ModelPackage_GetSchemaVersion`                       |       |
+| `ModelPackage_GetComponentCount`                      |       |
+| `ModelPackage_GetComponentNames`                      |       |
+| `ModelPackage_GetVariantCount`                        |       |
+| `ModelPackage_GetVariantNames`                        |       |
+| `ModelPackage_GetVariantEpName`                       |       |
+| `SelectComponent`                                     | Resolves the best-matching variant. |
+| `ReleaseModelPackageComponentContext`                 |       |
+| `ModelPackageComponent_GetSelectedVariantName`        |       |
+| `ModelPackageComponent_GetSelectedVariantFolderPath`  |       |
+| `CreateSession`                                       |       |
+
+> Experimental functions are not part of the stable ABI. Names, signatures
+> and behaviour may change between releases until the surface is promoted
+> to the stable `OrtApi`. Callers should null-check every lookup.
+
+Typical flow:
+
+```cpp
+#include "onnxruntime_c_api.h"
+#include "onnxruntime_experimental_c_api.h"
+
+const OrtApi* ort = OrtGetApiBase()->GetApi(ORT_API_VERSION);
+
+auto fn_create_opts =
+    Ort::Experimental::Get_OrtModelPackageApi_CreateModelPackageOptionsFromSessionOptions_SinceV28_Fn(ort);
+auto fn_release_opts =
+    Ort::Experimental::Get_OrtModelPackageApi_ReleaseModelPackageOptions_SinceV28_Fn(ort);
+auto fn_create_ctx =
+    Ort::Experimental::Get_OrtModelPackageApi_CreateModelPackageContext_SinceV28_Fn(ort);
+auto fn_release_ctx =
+    Ort::Experimental::Get_OrtModelPackageApi_ReleaseModelPackageContext_SinceV28_Fn(ort);
+auto fn_select =
+    Ort::Experimental::Get_OrtModelPackageApi_SelectComponent_SinceV28_Fn(ort);
+auto fn_release_comp =
+    Ort::Experimental::Get_OrtModelPackageApi_ReleaseModelPackageComponentContext_SinceV28_Fn(ort);
+auto fn_create_session =
+    Ort::Experimental::Get_OrtModelPackageApi_CreateSession_SinceV28_Fn(ort);
+
+OrtSessionOptions* so = nullptr;
+ort->CreateSessionOptions(&so);
+ort->SessionOptionsAppendExecutionProvider(so, "CUDAExecutionProvider", nullptr, nullptr, 0);
+
+OrtModelPackageOptions* mp_opts = nullptr;
+fn_create_opts(env, so, &mp_opts);
+
+OrtModelPackageContext* ctx = nullptr;
+fn_create_ctx(ORT_TSTR("/path/to/pkg"), &ctx);
+
+OrtModelPackageComponentContext* comp_ctx = nullptr;
+fn_select(ctx, "decoder", mp_opts, &comp_ctx);
+
+OrtSession* session = nullptr;
+fn_create_session(env, comp_ctx, nullptr, &session);
+
+ort->ReleaseSession(session);
+fn_release_comp(comp_ctx);
+fn_release_ctx(ctx);
+fn_release_opts(mp_opts);
+ort->ReleaseSessionOptions(so);
 ```
 
+All `const char*` / `const ORTCHAR_T*` / array pointers returned by the API
+are owned by the context that produced them and remain valid until the
+context is released.
 
-## Processing rules (runtime expectations)
+---
 
-- ONNX Runtime reads `manifest.json` if the path passed in is the package root directory; if `component_models` is present, it uses that to determine which component models to load. If `component_models` is not present, ONNX Runtime discovers component models by enumerating subdirectories under `models/`. (In this case, ONNX Runtime expects only one component model exist in the model package.)
-- ONNX Runtime reads component model's `metadata.json` and ignores `manifest.json` if the path passed in points directly to a component model directory.
-- For each component model, `metadata.json` supplies the definitive list of variants and constraints.
-- Variant selection is performed by matching constraints (EP, device, `ep_compatibility_info`, and optionally architecture). **The EP’s returned compatibility value (e.g., `EP_SUPPORTED_OPTIMAL`, `EP_SUPPORTED_PREFER_RECOMPILATION`) is used to score and pick the winning model variant.**
-- All file paths must be relative paths; avoid absolute paths to keep packages portable
+## See also
+
+- [`model_package/README.md`](../../../../model_package/README.md): package
+  format, manifest/component schema, shared assets, path resolution, the
+  authoring C API, and the `executor_info` extension point.
+- [`docs/design/Experimental_C_API.md`](../../../../docs/design/Experimental_C_API.md):
+  design and lifecycle rules for the experimental C API mechanism that
+  hosts these entries.
+- `include/onnxruntime/core/session/onnxruntime_experimental_c_api.inc`:
+  the canonical list of `OrtModelPackageApi_*` entries.

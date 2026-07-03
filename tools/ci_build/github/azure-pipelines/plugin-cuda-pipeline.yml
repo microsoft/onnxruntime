@@ -57,6 +57,10 @@ parameters:
     - MinSizeRel
 
 variables:
+  # Path (relative to the repository root) of the VERSION_NUMBER file used for plugin package versioning.
+  # The CUDA plugin EP is versioned independently from the ONNX Runtime release.
+  - name: epVersionFile
+    value: plugin-ep-cuda/VERSION_NUMBER
   # Non-dev package versions (release, RC) must use Release build type
   - name: invalidBuildTypeConfig
     value: ${{ and(ne(parameters.package_type, 'dev'), ne(parameters.cmake_build_type, 'Release')) }}
@@ -124,11 +128,14 @@ extends:
             build_linux_aarch64: ${{ parameters.build_linux_aarch64 }}
             cuda_version: ${{ parameters.cuda_version }}
             package_type: ${{ parameters.package_type }}
+            version_file: ${{ variables.epVersionFile }}
             cmake_build_type: ${{ parameters.cmake_build_type }}
             ${{ if eq(parameters.cuda_version, '12.8') }}:
+              python_package_name: 'onnxruntime-ep-cuda12'
               docker_base_image: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_almalinux8_gcc14:20251017.1'
               cmake_cuda_archs: '52-real;61-real;75-real;86-real;89-real;90-virtual'
             ${{ if eq(parameters.cuda_version, '13.0') }}:
+              python_package_name: 'onnxruntime-ep-cuda13'
               docker_base_image: 'onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1'
               docker_base_image_aarch64: 'onnxruntimebuildcache.azurecr.io/public/azureml/onnxruntime_build_cuda13_aarch64_almalinux9_gcc14:20260323.1'
               cmake_cuda_archs: '75-real;80-real;86-real;89-real;90-real;100-real;120-real;120-virtual'

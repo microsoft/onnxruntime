@@ -158,12 +158,12 @@ ONNX_NAMESPACE::TensorProto CreateLargeWeight(
     std::vector<float> data(total_size);
     std::normal_distribution<float> dist(0.0f, scale);
     for (auto& v : data) v = dist(rng);
-    onnxruntime::utils::SetRawDataInTensorProto(tensor, data.data(), total_size * sizeof(float));
+    tensor.set_raw_data(data.data(), total_size * sizeof(float));
   } else if (dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
     std::vector<MLFloat16> data(total_size);
     std::normal_distribution<float> dist(0.0f, scale);
     for (auto& v : data) v = MLFloat16(dist(rng));
-    onnxruntime::utils::SetRawDataInTensorProto(tensor, data.data(), total_size * sizeof(MLFloat16));
+    tensor.set_raw_data(data.data(), total_size * sizeof(MLFloat16));
   } else {
     throw std::runtime_error("Unsupported data type for large weight");
   }
@@ -582,7 +582,7 @@ void CreateFP8CustomOpModel(const PathString& model_name, const std::string& gra
   scale_initializer.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
   // For FLOAT16, we need to convert the float value to MLFloat16 and store as raw data
   MLFloat16 scale_value(0.0078125f);
-  onnxruntime::utils::SetRawDataInTensorProto(scale_initializer, &scale_value, sizeof(MLFloat16));
+  scale_initializer.set_raw_data(&scale_value, sizeof(MLFloat16));
   graph.AddInitializedTensor(scale_initializer);
 
   // Get the scale node arg
@@ -697,7 +697,7 @@ void CreateFP4CustomOpModel(const PathString& model_name, const std::string& gra
   scale_initializer.set_name("scale");
   scale_initializer.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
   MLFloat16 scale_value(0.1234f);
-  onnxruntime::utils::SetRawDataInTensorProto(scale_initializer, &scale_value, sizeof(MLFloat16));
+  scale_initializer.set_raw_data(&scale_value, sizeof(MLFloat16));
   graph.AddInitializedTensor(scale_initializer);
   auto* scale_arg = graph.GetNodeArg("scale");
 
@@ -756,7 +756,7 @@ void CreateFP4CustomOpModel(const PathString& model_name, const std::string& gra
   dequant_scale_initializer.set_name("dequant_scale");
   dequant_scale_initializer.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
   MLFloat16 dequant_scale_value(0.0625f);
-  onnxruntime::utils::SetRawDataInTensorProto(dequant_scale_initializer, &dequant_scale_value, sizeof(MLFloat16));
+  dequant_scale_initializer.set_raw_data(&dequant_scale_value, sizeof(MLFloat16));
   graph.AddInitializedTensor(dequant_scale_initializer);
 
   // Get the dequant_scale node arg

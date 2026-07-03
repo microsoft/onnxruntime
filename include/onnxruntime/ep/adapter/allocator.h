@@ -8,12 +8,84 @@
 #endif
 
 #include <mutex>
+#include <string_view>
+#include <utility>
+#include <vector>
 
+#include "core/common/parse_string.h"
 #include "core/framework/allocator.h"
 
 namespace onnxruntime {
 namespace ep {
 namespace adapter {
+
+// Wraps an OrtAllocator* exposed by the C API as an IAllocator.
+// Takes ownership of the wrapped Ort::Allocator and releases it on destruction.
+class IAllocatorWrappingOrtAllocator final : public IAllocator {
+ public:
+  explicit IAllocatorWrappingOrtAllocator(Ort::Allocator ort_allocator)
+      : IAllocator(*(EnsureOrtAllocatorHasValue(ort_allocator).GetInfo())),
+        ort_allocator_(std::move(ort_allocator)) {
+  }
+
+  void* Alloc(size_t size) override {
+    return ort_allocator_.Alloc(size);
+  }
+
+  void Free(void* p) override {
+    ort_allocator_.Free(p);
+  }
+
+  void* Reserve(size_t size) override {
+    return ort_allocator_.Reserve(size);
+  }
+
+  bool IsStreamAware() const override {
+    static constexpr uint32_t kOrtAllocatorAllocOnStreamMinVersion = 23;
+    const OrtAllocator* raw = ort_allocator_;
+    return raw->version >= kOrtAllocatorAllocOnStreamMinVersion && raw->AllocOnStream != nullptr;
+  }
+
+  void* AllocOnStream(size_t size, Stream* stream) override {
+    static constexpr uint32_t kOrtAllocatorAllocOnStreamMinVersion = 23;
+    OrtAllocator* raw = ort_allocator_;
+    if (raw->version >= kOrtAllocatorAllocOnStreamMinVersion && raw->AllocOnStream != nullptr) {
+      return raw->AllocOnStream(raw, size, reinterpret_cast<OrtSyncStream*>(stream));
+    }
+
+    return raw->Alloc(raw, size);
+  }
+
+  void GetStats(AllocatorStats* stats) override {
+    if (!stats) return;
+    *stats = {};
+
+    // GetStats was added in OrtAllocator version 23. For older allocators the function pointer
+    // may be uninitialized, so we must not call through it.
+    const OrtAllocator* raw = ort_allocator_;
+    if (raw->version < 23 || !raw->GetStats) return;
+
+    Ort::KeyValuePairs kvps = ort_allocator_.GetStats();
+    std::vector<const char*> keys, values;
+    kvps.GetKeyValuePairs(keys, values);
+    const size_t n = keys.size() < values.size() ? keys.size() : values.size();
+    for (size_t i = 0; i < n; ++i) {
+      int64_t val = 0;
+      if (!TryParseStringWithClassicLocale(std::string_view(values[i]), val)) continue;
+      stats->SetFromKeyValue(keys[i], val);
+    }
+  }
+
+ private:
+  static const Ort::Allocator& EnsureOrtAllocatorHasValue(const Ort::Allocator& ort_allocator) {
+    ORT_ENFORCE(ort_allocator != nullptr, "Ort::Allocator must contain a non-nullptr OrtAllocator.");
+    return ort_allocator;
+  }
+
+  Ort::Allocator ort_allocator_;
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(IAllocatorWrappingOrtAllocator);
+};
 
 /// <summary>
 /// A bridge class between the EP API OrtAllocator and an IAllocator implementation.

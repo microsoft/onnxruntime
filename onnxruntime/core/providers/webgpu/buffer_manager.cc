@@ -304,6 +304,25 @@ class GraphCacheManager : public IBufferCacheManager {
     // no-op - buffers are already in buckets_
   }
 
+  std::vector<std::pair<size_t, WGPUBuffer>> ExtractCachedBuffers() override {
+    std::vector<std::pair<size_t, WGPUBuffer>> result;
+    for (auto& pair : buckets_) {
+      for (auto& buffer : pair.second) {
+        result.emplace_back(pair.first, buffer);
+      }
+      pair.second.clear();
+    }
+    return result;
+  }
+
+  void AbsorbCachedBuffers(std::vector<std::pair<size_t, WGPUBuffer>>&& buffers) override {
+    for (auto& entry : buffers) {
+      if (entry.second) {
+        ReleaseBuffer(entry.second);
+      }
+    }
+  }
+
   ~GraphCacheManager() {
     for (auto& pair : buckets_) {
       for (auto& buffer : pair.second) {
@@ -386,6 +405,37 @@ class GraphSimpleCacheManager : public IBufferCacheManager {
     }
   }
 
+  std::vector<std::pair<size_t, WGPUBuffer>> ExtractCachedBuffers() override {
+    // Donation is expected after captured commands have been released and any
+    // in-flight work has completed; all three containers therefore hold buffers
+    // no longer referenced by the device.
+    std::vector<std::pair<size_t, WGPUBuffer>> result;
+    for (auto& pair : buffers_) {
+      for (auto& buffer : pair.second) {
+        result.emplace_back(pair.first, buffer);
+      }
+      pair.second.clear();
+    }
+    buffers_.clear();
+    for (auto& buffer : pending_buffers_) {
+      result.emplace_back(static_cast<size_t>(wgpuBufferGetSize(buffer)), buffer);
+    }
+    pending_buffers_.clear();
+    for (auto& buffer : captured_buffers_) {
+      result.emplace_back(static_cast<size_t>(wgpuBufferGetSize(buffer)), buffer);
+    }
+    captured_buffers_.clear();
+    return result;
+  }
+
+  void AbsorbCachedBuffers(std::vector<std::pair<size_t, WGPUBuffer>>&& buffers) override {
+    for (auto& entry : buffers) {
+      if (entry.second) {
+        buffers_[entry.first].emplace_back(entry.second);
+      }
+    }
+  }
+
  protected:
   std::map<size_t, std::vector<WGPUBuffer>> buffers_;
   std::vector<WGPUBuffer> pending_buffers_;
@@ -437,12 +487,12 @@ std::ostream& operator<<(std::ostream& os, BufferCacheMode mode) {
   return os;
 }
 
-BufferManager::BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode)
+BufferManager::BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode)
     : context_{context},
       storage_cache_{CreateBufferCacheManager(storage_buffer_cache_mode)},
       uniform_cache_{CreateBufferCacheManager(uniform_buffer_cache_mode)},
       query_resolve_cache_{CreateBufferCacheManager(query_resolve_buffer_cache_mode)},
-      default_cache_{CreateBufferCacheManager(BufferCacheMode::Disabled)} {
+      default_cache_{CreateBufferCacheManager(default_buffer_cache_mode)} {
 }
 
 void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) const {
@@ -582,8 +632,8 @@ IBufferCacheManager& BufferManager::GetCacheManager(WGPUBuffer buffer) const {
   return GetCacheManager(usage);
 }
 
-std::unique_ptr<BufferManager> BufferManagerFactory::Create(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode) {
-  return std::make_unique<BufferManager>(context, storage_buffer_cache_mode, uniform_buffer_cache_mode, query_resolve_buffer_cache_mode);
+std::unique_ptr<BufferManager> BufferManagerFactory::Create(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode, BufferCacheMode default_buffer_cache_mode) {
+  return std::make_unique<BufferManager>(context, storage_buffer_cache_mode, uniform_buffer_cache_mode, query_resolve_buffer_cache_mode, default_buffer_cache_mode);
 }
 
 }  // namespace webgpu

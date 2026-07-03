@@ -76,16 +76,17 @@ Status ConvTranspose<float>::PrePack(const Tensor& tensor, int input_idx, Alloca
     size_t packed_filter_data_size = SafeInt<size_t>(packed_elements_per_group) * sizeof(float) * conv_transpose_attrs_.group;
     auto* packed_filter_data = alloc->Alloc(packed_filter_data_size);
 
+    // Wrap in BufferUniquePtr immediately to prevent leaks.
+    transposed_filter_ = BufferUniquePtr(packed_filter_data, BufferDeleter(std::move(alloc)));
+
     // Initialize memory to 0 as there could be some padding associated with pre-packed
     // buffer memory and we don not want it uninitialized and generate different hashes
     // if and when we try to cache this pre-packed buffer for sharing between sessions.
     memset(packed_filter_data, 0, packed_filter_data_size);
 
-    transposed_filter_ = BufferUniquePtr(packed_filter_data, BufferDeleter(std::move(alloc)));
-
     for (int64_t group_id = 0; group_id < conv_transpose_attrs_.group; ++group_id) {
       MlasTranspose(tensor.Data<float>() + (group_id * N * K),
-                    ((float*)packed_filter_data) + (group_id * packed_elements_per_group),
+                    static_cast<float*>(packed_filter_data) + (group_id * packed_elements_per_group),
                     K, N, nullptr);
     }
 

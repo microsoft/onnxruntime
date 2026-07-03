@@ -187,6 +187,9 @@ ABSL_FLAG(int, spin_backoff_max, 1,
           "legacy single-SpinPause behavior. Values >= 2 enable exp-backoff (typical: 4 or 8) to reduce "
           "CPU/power density during the spin window. Values above 64 are clamped to 64.");
 ABSL_FLAG(bool, n, DefaultPerformanceTestConfig().run_config.exit_after_session_creation, "Allows user to measure session creation time to measure impact of enabling any initialization optimizations.");
+ABSL_FLAG(uint32_t, hold_ms_after_session_creation, DefaultPerformanceTestConfig().run_config.hold_ms_after_session_creation,
+          "When used with -n, keeps the process alive for the specified number of milliseconds after session creation.\n"
+          "Prints 'SESSION_READY' to stdout before sleeping. Useful for multi-process memory measurements.");
 ABSL_FLAG(bool, l, DefaultPerformanceTestConfig().model_info.load_via_path, "Provides file as binary in memory by using fopen before session creation.");
 ABSL_FLAG(bool, g, DefaultPerformanceTestConfig().run_config.enable_cuda_io_binding, "[TensorRT RTX | TensorRT | CUDA] Enables tensor input and output bindings on CUDA before session run.");
 ABSL_FLAG(bool, X, DefaultPerformanceTestConfig().run_config.use_extensions, "Registers custom ops from onnxruntime-extensions.");
@@ -528,6 +531,13 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
 
   // -n
   test_config.run_config.exit_after_session_creation = absl::GetFlag(FLAGS_n);
+
+  // --hold_ms_after_session_creation
+  test_config.run_config.hold_ms_after_session_creation = absl::GetFlag(FLAGS_hold_ms_after_session_creation);
+  if (test_config.run_config.hold_ms_after_session_creation > 0 &&
+      !test_config.run_config.exit_after_session_creation) {
+    fprintf(stderr, "WARNING: --hold_ms_after_session_creation has no effect without -n.\n");
+  }
 
   // -l
   test_config.model_info.load_via_path = absl::GetFlag(FLAGS_l);

@@ -98,6 +98,10 @@ template <>
 constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<Float8E5M2FNUZ>() {
   return ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ;
 }
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<Float8E8M0>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E8M0;
+}
 
 #endif
 

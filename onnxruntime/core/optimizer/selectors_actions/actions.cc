@@ -88,8 +88,12 @@ static Status CreateReplacementNode(Graph& graph,
                                     &replacement_attributes,
                                     domain);
 
+  // If the target hasn't been partitioned yet (empty EP), leave the replacement's EP empty too
+  // so a later partitioning pass can place it freely.
   const auto& target_provider = target.GetExecutionProviderType();
-  replacement.SetExecutionProviderType(target_provider.empty() ? kCpuExecutionProvider : target_provider);
+  if (!target_provider.empty()) {
+    replacement.SetExecutionProviderType(target_provider);
+  }
 
   ORT_RETURN_IF_ERROR(MoveInputOutput(graph, selected_nodes, replacement, value_moves, only_update_dest_definitions));
 

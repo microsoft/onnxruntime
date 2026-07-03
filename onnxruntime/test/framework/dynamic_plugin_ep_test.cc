@@ -102,9 +102,9 @@ TEST(DynamicPluginEpInfraTest, UninitializedStateReturnsSafeDefaults) {
 #if defined(USE_CUDA) && defined(ORT_USE_EP_API_ADAPTERS)
 TEST(DynamicPluginEpInfraTest, CudaKernelAdapterRuntimeConfigExposesFuseConvBiasAndSdpaKernel) {
   onnxruntime::CUDAExecutionProvider provider{"CudaPluginExecutionProvider"};
-  auto& config = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(&provider);
-  config.fuse_conv_bias = true;
-  config.sdpa_kernel = static_cast<int>(onnxruntime::contrib::attention::AttentionBackend::MATH);
+  auto config = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(&provider);
+  config->fuse_conv_bias = true;
+  config->sdpa_kernel = static_cast<int>(onnxruntime::contrib::attention::AttentionBackend::MATH);
 
   EXPECT_TRUE(provider.IsFuseConvBias());
 
@@ -113,6 +113,20 @@ TEST(DynamicPluginEpInfraTest, CudaKernelAdapterRuntimeConfigExposesFuseConvBias
   EXPECT_FALSE(attention_kernel_options->UseFlashAttention());
   EXPECT_FALSE(attention_kernel_options->UseEfficientAttention());
   EXPECT_FALSE(attention_kernel_options->UseCudnnFlashAttention());
+}
+
+TEST(DynamicPluginEpInfraTest, CudaKernelAdapterRuntimeConfigExposesDoCopyInDefaultStream) {
+  onnxruntime::CUDAExecutionProvider provider{"CudaPluginExecutionProvider"};
+  auto config = onnxruntime::cuda::detail::GetCudaKernelAdapterRuntimeConfigForProvider(&provider);
+
+  // Default should be true
+  EXPECT_TRUE(provider.DoCopyOnDefaultStream());
+
+  config->do_copy_in_default_stream = false;
+  EXPECT_FALSE(provider.DoCopyOnDefaultStream());
+
+  config->do_copy_in_default_stream = true;
+  EXPECT_TRUE(provider.DoCopyOnDefaultStream());
 }
 
 TEST(DynamicPluginEpInfraTest, CudaKernelAdapterTryBytesForCountDetectsOverflow) {

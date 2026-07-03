@@ -5,6 +5,7 @@
 # pylint: disable=C0103
 
 import datetime
+import json
 import logging
 import platform
 import shlex
@@ -167,14 +168,21 @@ try:
         def _rewrite_ld_preload_cuda(self, to_preload):
             with open("onnxruntime/capi/_ld_preload.py", "a") as f:
                 if len(to_preload) > 0:
+                    # Generate a cascade loop so each version is tried independently;
+                    # the first one that loads successfully wins and the rest are skipped.
+                    # This avoids the single-try-block pitfall where a missing newer version
+                    # (e.g. libcudart.so.13 on a CUDA 12 machine) would short-circuit to
+                    # ORT_CUDA_UNAVAILABLE without ever trying the older version.
+                    f.write("import os\n")
                     f.write("from ctypes import CDLL, RTLD_GLOBAL\n")
-                    f.write("try:\n")
-                    f.writelines(
-                        '    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library)
-                        for library in to_preload
-                    )
-                    f.write("except OSError:\n")
-                    f.write("    import os\n")
+                    f.write("_libcudart = None\n")
+                    f.write(f"for _cudart_lib in {json.dumps(to_preload)}:\n")
+                    f.write("    try:\n")
+                    f.write("        _libcudart = CDLL(_cudart_lib, mode=RTLD_GLOBAL)\n")
+                    f.write("        break\n")
+                    f.write("    except OSError:\n")
+                    f.write("        pass\n")
+                    f.write("if _libcudart is None:\n")
                     f.write('    os.environ["ORT_CUDA_UNAVAILABLE"] = "1"\n')
 
         def _rewrite_ld_preload_tensorrt(self, to_preload):
@@ -292,8 +300,13 @@ try:
                 self._rewrite_ld_preload_tensorrt(to_preload_tensorrt)
                 self._rewrite_ld_preload_tensorrt(to_preload_nv_tensorrt_rtx)
                 self._rewrite_ld_preload(to_preload_cann)
-            else:
-                pass
+            elif platform.system() == "Linux":
+                # Non-manylinux Linux builds: preload libcudart so that undefined CUDA symbols
+                # in onnxruntime_pybind11_state.so can be resolved at import time.
+                if cuda_major_version:
+                    # Use the exact version this wheel was built against.
+                    cudart_libs = [f"libcudart.so.{cuda_major_version}"]
+                    self._rewrite_ld_preload_cuda(cudart_libs)
 
             # qnn links libc++ rather than libstdc++ for its x86_64 dependencies which we currently do not
             # support for many_linux. This is not the case for other platforms.
@@ -709,7 +722,7 @@ if enable_training or enable_training_apis:
 if package_name == "onnxruntime-tvm":
     packages += ["onnxruntime.providers.tvm"]
 
-package_data["onnxruntime"] = data + examples + extra
+package_data["onnxruntime"] = data + examples + extra + ["py.typed"]
 
 version_number = ""
 with open("VERSION_NUMBER") as f:
@@ -804,7 +817,9 @@ with open(requirements_path) as f:
 # Adding CUDA Runtime as dependency for NV TensorRT RTX python wheel
 if package_name == "onnxruntime-trt-rtx":
     major = cuda_major_version or "12"  # Default to CUDA 12
-    install_requires.append(f"nvidia-cuda-runtime-cu{major}~={major}.0")
+    # CUDA 13 dropped the "-cuNN" suffix from the CUDA Runtime package name.
+    runtime_pkg = "nvidia-cuda-runtime" if int(major) >= 13 else f"nvidia-cuda-runtime-cu{major}"
+    install_requires.append(f"{runtime_pkg}~={major}.0")
 
 
 def save_build_and_package_info(package_name, version_number, cuda_version, qnn_version):
@@ -849,13 +864,18 @@ extras_require = {
 if package_name == "onnxruntime-gpu" and cuda_major_version:
     # Determine cufft version: CUDA 13 uses cufft 12, CUDA 12 uses cufft 11
     cufft_version = "12.0" if cuda_major_version == "13" else "11.0"
+
+    # Starting with CUDA 13, NVIDIA renamed the per-component CUDA Toolkit packages by
+    # dropping the "-cuNN" suffix (e.g. "nvidia-cuda-runtime-cu12" -> "nvidia-cuda-runtime").
+    # cuDNN keeps the suffixed package name ("nvidia-cudnn-cu13").
+    cuda_pkg_suffix = "" if int(cuda_major_version) >= 13 else f"-cu{cuda_major_version}"
     extras_require.update(
         {
             "cuda": [
-                f"nvidia-cuda-nvrtc-cu{cuda_major_version}~={cuda_major_version}.0",
-                f"nvidia-cuda-runtime-cu{cuda_major_version}~={cuda_major_version}.0",
-                f"nvidia-cufft-cu{cuda_major_version}~={cufft_version}",
-                f"nvidia-curand-cu{cuda_major_version}~=10.0",
+                f"nvidia-cuda-nvrtc{cuda_pkg_suffix}~={cuda_major_version}.0",
+                f"nvidia-cuda-runtime{cuda_pkg_suffix}~={cuda_major_version}.0",
+                f"nvidia-cufft{cuda_pkg_suffix}~={cufft_version}",
+                f"nvidia-curand{cuda_pkg_suffix}~=10.0",
             ],
             "cudnn": [
                 f"nvidia-cudnn-cu{cuda_major_version}~=9.0",
@@ -872,6 +892,7 @@ setup(
     author_email="onnxruntime@microsoft.com",
     cmdclass=cmd_classes,
     license="MIT License",
+    license_files=["LICENSE", "ThirdPartyNotices.txt"],
     packages=packages,
     ext_modules=ext_modules,
     package_data=package_data,

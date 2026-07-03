@@ -1810,7 +1810,8 @@ MlasBlockwiseQuantizedBufferSizes(
             break;
 
         default:
-            // Only block size 16, 32, 64, 128, 256 are supported.
+            ORT_ENFORCE(false, "Only block sizes 16, 32, 64, 128, 256 are supported for buffer size calculation, got: ",
+                        block_size);
             break;
     }
 }
@@ -1918,7 +1919,8 @@ MlasQuantizeBlockwise(
             break;
 
         default:
-            // Only block size 16, 32, 64, 128, 256 are supported.
+            ORT_ENFORCE(false, "Only block sizes 16, 32, 64, 128, 256 are supported for quantization, got: ",
+                        block_size);
             break;
     }
 }
@@ -2074,7 +2076,8 @@ MlasDequantizeBlockwise(
             }
             break;
         default:
-            // Only block size 16, 32, 64, 128, 256 are supported.
+            ORT_ENFORCE(false, "Only block sizes 16, 32, 64, 128, 256 are supported for dequantization, got: ",
+                        block_size);
             break;
     }
 }

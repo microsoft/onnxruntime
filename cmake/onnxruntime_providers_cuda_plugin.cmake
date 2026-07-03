@@ -88,15 +88,11 @@ list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/sequence_op\\.cc$")
 # in the CPU provider and is not linked into the plugin.
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/size\\.cc$")
 
-# Permanently excluded — pure CPU ops, handled by GetCpuPreferredNodes.
-# shape_op.cc inherits from onnxruntime::OpKernel (framework)
-# which cannot convert to ep::adapter::OpKernel in the plugin build.
-list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/shape_op\\.cc$")
-
-# Exclude contrib llm/ for now. The core CUDA llm kernels are adapter-safe, but
-# contrib llm kernels still need their own plugin pass.
-list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/llm/.*")
-list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/llm/.*")
+# shape_op.cc is INCLUDED in the plugin build. It provides an adapter-based
+# Shape kernel under #ifdef BUILD_CUDA_EP_AS_PLUGIN (the CPU onnxruntime::Shape
+# class, which derives from the framework OpKernel, is only used in the
+# non-plugin build). Registering Shape on the EP keeps it off the CPU EP and
+# avoids Memcpy nodes that would otherwise break CUDA Graph capture.
 
 # Exclude contrib training ops (shrunken_gather depends on provider_api.h in header).
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/tensor/shrunken_gather\\.cc$")
@@ -105,6 +101,21 @@ list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/tensor/shr
 # Exclude contrib transformers/ (beam search, greedy search, sampling). Those need subgraph inference.
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/transformers/.*")
 list(FILTER CUDA_PLUGIN_EP_CU_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/transformers/.*")
+
+# Apply shared CUDA .cu source filtering (flash attention quick build, MoE GEMM FP4/FP8).
+include(onnxruntime_cuda_source_filters.cmake)
+onnxruntime_filter_cuda_cu_sources(CUDA_PLUGIN_EP_CU_SRCS)
+onnxruntime_extract_sm_specific_cuda_sources(CUDA_PLUGIN_EP_CU_SRCS
+  SM90_SOURCES _cuda_plugin_sm90_tma_srcs
+  SM120_SOURCES _cuda_plugin_sm120_tma_srcs
+)
+onnxruntime_extract_flash_attention_sources(CUDA_PLUGIN_EP_CU_SRCS
+  FLASH_SOURCES _cuda_plugin_flash_attention_srcs
+)
+onnxruntime_extract_llm_sources(CUDA_PLUGIN_EP_CU_SRCS
+  LLM_SOURCES _cuda_plugin_llm_srcs
+  LLM_SM90_SOURCES _cuda_plugin_llm_sm90_srcs
+)
 
 # Create shared library target using the ORT helper function for plugins
 onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_plugin
@@ -162,10 +173,12 @@ if (MSVC)
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>"
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4211>"
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>"
+        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>"
         "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>"
     )
 
     target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
+        "$<$<COMPILE_LANGUAGE:CXX>:/Zc:preprocessor>"
         # /permissive is required for CUTLASS cute headers (cute::stride.hpp, cute::Layout etc.)
         "$<$<COMPILE_LANGUAGE:CXX>:/permissive>"
         # /permissive disables C++ alternative tokens (or, and, not, etc.).
@@ -180,28 +193,148 @@ endif()
 if (DEFINED onnxruntime_NVCC_THREADS)
     set(onnxruntime_plugin_nvcc_threads "${onnxruntime_NVCC_THREADS}")
 else()
-    set(onnxruntime_plugin_nvcc_threads "1")
+    set(onnxruntime_plugin_nvcc_threads "4")
 endif()
-target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
-        "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_plugin_nvcc_threads}\">"
-        "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=177>"
+# Shared CUDA compile options (excluding --threads, which is set per-target so that
+# flash attention can use a lower thread count without duplicate-flag nvcc warnings).
+# These mirror the options from the parent plugin target and config_cuda_provider_shared_module
+# so that OBJECT libraries compiled separately receive the same flags.
+set(_cuda_plugin_shared_compile_options
+    # Force NVCC onto C++20 explicitly. With the VS generator the CUDA_STANDARD
+    # property alone still leaves `-std=c++17` in AdditionalOptions.
+    "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--std c++20>"
+    "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=177>"
+    # Suppress cudafe front-end diagnostic 550 (variable set but never used) from third-party headers.
+    "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe --diag_suppress=550>"
+    # Suppress cudafe [[nodiscard]] false positive on Status assignments.
+    "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe --diag_suppress=2810>"
 )
 
 if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
-    target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
+    list(APPEND _cuda_plugin_shared_compile_options
             "$<$<COMPILE_LANGUAGE:CUDA>:--static-global-template-stub=false>"
             "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=221>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=2908>"
     )
 
     if (MSVC)
-        target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
+        list(APPEND _cuda_plugin_shared_compile_options
                 "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4505>"
         )
     endif()
 endif()
 
+if (MSVC)
+    list(APPEND _cuda_plugin_shared_compile_options
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /permissive>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4834>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4127>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4211>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:__cplusplus>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /Zc:preprocessor>"
+            "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>"
+    )
+endif()
+
 include(cudnn_frontend)
 include(cutlass)
+
+# TMA compile definitions — mirror config_cuda_provider_shared_module in onnxruntime_providers_cuda.cmake
+if(ORT_HAS_SM90_OR_LATER)
+  list(APPEND _cuda_plugin_shared_compile_options
+    "$<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-w>"
+    "$<$<COMPILE_LANGUAGE:CUDA>:-DCUTLASS_ENABLE_GDC_FOR_SM90=1>")
+  target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_HOPPER_TMA_GEMMS)
+  if(NOT MSVC)
+    target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_HOPPER_TMA_GROUPED_GEMMS)
+  endif()
+endif()
+if("120" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG AND NOT MSVC)
+  target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE COMPILE_BLACKWELL_SM120_TMA_GROUPED_GEMMS)
+endif()
+
+# Apply shared options + --threads to the parent plugin target.
+target_compile_options(onnxruntime_providers_cuda_plugin PRIVATE
+  ${_cuda_plugin_shared_compile_options}
+  "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_plugin_nvcc_threads}\">"
+)
+
+# SM-specific OBJECT libraries — compiled with restricted CUDA architectures.
+# Flash Attention is also used by the ONNX domain Attention op, so it is always included.
+# SM90/SM120 TMA and LLM contain MoE and MatMulNBits kernels (contrib ops only).
+
+# Flash Attention OBJECT library: SM80+ only, with independent nvcc_threads.
+# Flash Attention V2 kernels require SM80 and are memory-intensive to compile.
+# Included even with onnxruntime_DISABLE_CONTRIB_OPS because the ONNX domain Attention
+# kernel depends on flash attention infrastructure in contrib_ops/cuda/bert/.
+if(NOT DEFINED onnxruntime_FLASH_NVCC_THREADS)
+  set(onnxruntime_FLASH_NVCC_THREADS "1")
+endif()
+if(_cuda_plugin_flash_attention_srcs)
+  onnxruntime_filter_cuda_archs(_plugin_flash_cuda_architectures MIN_SM 80)
+  if(_plugin_flash_cuda_architectures)
+    onnxruntime_add_cuda_plugin_object_library(
+      NAME onnxruntime_providers_cuda_plugin_flash_attention
+      PARENT onnxruntime_providers_cuda_plugin
+      CUDA_ARCHITECTURES "${_plugin_flash_cuda_architectures}"
+      NVCC_THREADS "${onnxruntime_FLASH_NVCC_THREADS}"
+      COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
+      SOURCES ${_cuda_plugin_flash_attention_srcs})
+  else()
+    # No SM80+ architectures available: compile flash sources in parent target so the
+    # linker can find the host-side symbols referenced by flash_api.cc. The kernels
+    # themselves will be empty stubs due to __CUDA_ARCH__ >= 800 guards.
+    target_sources(onnxruntime_providers_cuda_plugin PRIVATE ${_cuda_plugin_flash_attention_srcs})
+  endif()
+endif()
+
+if(NOT onnxruntime_DISABLE_CONTRIB_OPS)
+  # SM90 TMA warp-specialized files use SM90-specific collective operations.
+  # Also includes fpA_intB SM90 launchers (guarded by #ifndef EXCLUDE_SM_90).
+  if(_cuda_plugin_sm90_tma_srcs OR _cuda_plugin_llm_sm90_srcs)
+    set(_plugin_sm90_all_srcs ${_cuda_plugin_sm90_tma_srcs} ${_cuda_plugin_llm_sm90_srcs})
+    onnxruntime_filter_cuda_archs(_plugin_sm90_check MIN_SM 90)
+    if(_plugin_sm90_check)
+      onnxruntime_add_cuda_plugin_object_library(
+        NAME onnxruntime_providers_cuda_plugin_sm90_tma
+        PARENT onnxruntime_providers_cuda_plugin
+        CUDA_ARCHITECTURES "90a-real"
+        NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
+        COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
+        SOURCES ${_plugin_sm90_all_srcs})
+    endif()
+  endif()
+
+  if(_cuda_plugin_sm120_tma_srcs)
+    onnxruntime_filter_cuda_archs(_plugin_sm120_cuda_architectures MIN_SM 120)
+    if(_plugin_sm120_cuda_architectures)
+      onnxruntime_add_cuda_plugin_object_library(
+        NAME onnxruntime_providers_cuda_plugin_sm120_tma
+        PARENT onnxruntime_providers_cuda_plugin
+        CUDA_ARCHITECTURES "${_plugin_sm120_cuda_architectures}"
+        NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
+        COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
+        SOURCES ${_cuda_plugin_sm120_tma_srcs})
+    endif()
+  endif()
+
+  # LLM OBJECT library: SM75+ (backward compatible with fpA_intB_gemv/gemm which support SM75).
+  # Excludes SM120+ real (native SASS) architectures — SM120-specific kernels are compiled in
+  # the separate SM120 TMA OBJECT library, and the general LLM code triggers CCCL tcgen05 PTX
+  # headers that fail on Windows/MSVC when compiled for sm_120a. Virtual arch (PTX) is kept.
+  if(_cuda_plugin_llm_srcs)
+    onnxruntime_filter_cuda_archs(_plugin_llm_cuda_architectures MIN_SM 75 EXCLUDE_SM120_REAL)
+    if(_plugin_llm_cuda_architectures)
+      onnxruntime_add_cuda_plugin_object_library(
+        NAME onnxruntime_providers_cuda_plugin_llm
+        PARENT onnxruntime_providers_cuda_plugin
+        CUDA_ARCHITECTURES "${_plugin_llm_cuda_architectures}"
+        NVCC_THREADS "${onnxruntime_plugin_nvcc_threads}"
+        COMPILE_OPTIONS ${_cuda_plugin_shared_compile_options}
+        SOURCES ${_cuda_plugin_llm_srcs})
+    endif()
+  endif()
+endif()
 
 # --- Find cuDNN (may be at a custom path via onnxruntime_CUDNN_HOME) ---
 set(_CUDNN_SEARCH_PATHS "")
@@ -215,12 +348,12 @@ endif()
 set(CUDA_PLUGIN_CUDNN_INCLUDE_DIR ${CUDNN_INCLUDE_DIR})
 set(CUDA_PLUGIN_CUDNN_LIBRARY ${cudnn_LIBRARY})
 
-if(NOT CUDA_PLUGIN_CUDNN_INCLUDE_DIR OR NOT CUDA_PLUGIN_CUDNN_LIBRARY)
-  message(FATAL_ERROR "cuDNN not found (from main ORT search) for CUDA Plugin EP.")
+if(NOT CUDA_PLUGIN_CUDNN_INCLUDE_DIR)
+  message(FATAL_ERROR "cuDNN headers not found (from main ORT search) for CUDA Plugin EP.")
 endif()
 
 message(STATUS "CUDA Plugin EP: cuDNN include: ${CUDA_PLUGIN_CUDNN_INCLUDE_DIR}")
-message(STATUS "CUDA Plugin EP: cuDNN library: ${CUDA_PLUGIN_CUDNN_LIBRARY}")
+message(STATUS "CUDA Plugin EP: cuDNN runtime library: ${CUDA_PLUGIN_CUDNN_LIBRARY}")
 
 # Include directories — only public ORT headers + CUDA toolkit + cuDNN + internal headers for adapter
 target_include_directories(onnxruntime_providers_cuda_plugin PRIVATE
@@ -244,13 +377,17 @@ onnxruntime_add_include_to_target(
     flatbuffers::flatbuffers
 )
 
+# Ensure generated headers (e.g. onnx-ml.pb.h) are available before compiling.
+add_dependencies(onnxruntime_providers_cuda_plugin ${onnxruntime_EXTERNAL_DEPENDENCIES})
+
 # Link libraries
 target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE
     CUDA::cudart
     CUDA::cublas
     CUDA::cublasLt
     CUDA::cufft
-    CUDNN::cudnn_all
+    CUDA::nvrtc
+    CUDA::cuda_driver
     cudnn_frontend
     Boost::mp11
     safeint_interface
@@ -265,13 +402,39 @@ target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE
     ${PROTOBUF_LIB}
 )
 
+  target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE NV_CUDNN_FRONTEND_USE_DYNAMIC_LOADING)
+
+if (onnxruntime_ENABLE_CUDA_PROFILING)
+    target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE CUDA::cupti)
+    target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE ENABLE_CUDA_PROFILING)
+endif()
+
 # Default plugin EP version to ORT_VERSION with "-dev" suffix if not explicitly provided.
 if(NOT DEFINED onnxruntime_PLUGIN_EP_VERSION)
   set(onnxruntime_PLUGIN_EP_VERSION "${ORT_VERSION}-dev")
 endif()
 
+# Bake the minimum compatible ORT version (the single source of truth lives in
+# plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION) into the EP DLL so it can be enforced at runtime by
+# onnxruntime::ep::ApiInit(). Format is strict "MAJOR.MINOR.PATCH".
+set(_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION_FILE "${REPO_ROOT}/plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION")
+# Re-run CMake configure when the version file changes so the baked-in value stays in sync.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION_FILE}")
+file(STRINGS "${_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION_FILE}" _ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION LIMIT_COUNT 1)
+string(STRIP "${_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION}" _ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION)
+if(NOT _ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION)
+  message(FATAL_ERROR "CUDA plugin EP minimum ORT version file is missing or empty: "
+                      "${_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION_FILE}")
+endif()
+# ApiInit() strictly parses "MAJOR.MINOR.PATCH"; fail fast on any malformed value.
+if(NOT _ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+  message(FATAL_ERROR "CUDA plugin EP minimum ORT version must be \"MAJOR.MINOR.PATCH\", got "
+                      "\"${_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION}\" from "
+                      "${_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION_FILE}")
+endif()
+
 # Symbol visibility — only export CreateEpFactories and ReleaseEpFactory
-target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE ORT_API_MANUAL_INIT BUILD_CUDA_EP_AS_PLUGIN ORT_USE_EP_API_ADAPTERS=1 ONNX_ML=1 ONNX_NAMESPACE=onnx ONNX_USE_LITE_PROTO=1 ORT_PLUGIN_EP_VERSION="${onnxruntime_PLUGIN_EP_VERSION}")
+target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE ORT_API_MANUAL_INIT BUILD_CUDA_EP_AS_PLUGIN ORT_USE_EP_API_ADAPTERS=1 ONNX_ML=1 ONNX_NAMESPACE=onnx ONNX_USE_LITE_PROTO=1 ORT_PLUGIN_EP_VERSION="${onnxruntime_PLUGIN_EP_VERSION}" ORT_PLUGIN_EP_MIN_ORT_VERSION="${_ORT_PLUGIN_EP_CUDA_MIN_ORT_VERSION}")
 
 if (onnxruntime_USE_CUDA_NHWC_OPS)
     target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE ENABLE_CUDA_NHWC_OPS)

@@ -460,16 +460,22 @@ def cpu_test_cases():
 
 
 def cuda_fp16_test_cases():
-    """CUDA fp16: both GQA and MHA cases. Flash attention handles external KV cache directly."""
+    """CUDA fp16: both GQA and MHA cases. Flash attention handles external KV cache directly.
+    TensorScatter manages KV cache externally with nonpad_kv_seqlen bounding the active range.
+    Per ONNX spec, is_causal with S_q!=S_kv and no past_key gives upper-left alignment
+    (q[0] sees only kv[0]), which is not meaningful for decode. KV bounds are enforced by
+    nonpad_kv_seqlen instead, so is_causal=0 is the correct setting for TensorScatter decode."""
     yield from _make_test_params(_GQA_CASES + _MHA_CASES, is_causal=0)
-    yield from _make_test_params(_GQA_CASES + _MHA_CASES, is_causal=1)
 
 
 def cuda_fp32_test_cases():
     """CUDA fp32: MHA only. GQA requires fp16/bf16, and flash attention requires fp16/bf16.
-    fp32 MHA uses the unfused attention_bias fallback path."""
+    fp32 MHA uses the unfused attention_bias fallback path.
+    TensorScatter manages KV cache externally with nonpad_kv_seqlen bounding the active range.
+    Per ONNX spec, is_causal with S_q!=S_kv and no past_key gives upper-left alignment
+    (q[0] sees only kv[0]), which is not meaningful for decode. KV bounds are enforced by
+    nonpad_kv_seqlen instead, so is_causal=0 is the correct setting for TensorScatter decode."""
     yield from _make_test_params(_MHA_CASES, is_causal=0)
-    yield from _make_test_params(_MHA_CASES, is_causal=1)
 
 
 # #################################################################################################
@@ -969,6 +975,48 @@ class TestTensorScatterAttentionWithMaskCUDA(unittest.TestCase):
             ep="CUDAExecutionProvider",
             torch_type=torch.float16,
             ort_type=TensorProto.FLOAT16,
+        )
+        numpy.testing.assert_allclose(output, ref_output, rtol=rtol["fp16"], atol=atol["fp16"])
+        numpy.testing.assert_allclose(present_k, ref_present_k, rtol=rtol["fp16"], atol=atol["fp16"])
+        numpy.testing.assert_allclose(present_v, ref_present_v, rtol=rtol["fp16"], atol=atol["fp16"])
+
+
+class TestCausalTensorScatterBottomRight(unittest.TestCase):
+    """Test that is_causal=1 + TensorScatter decode (S_q != S_kv, no past) is SUPPORTED.
+
+    Per onnx/onnx#8068, is_causal with an external KV cache (nonpad_kv_seqlen) and no
+    past_key uses BOTTOM-RIGHT alignment: query in-block index i attends key j iff
+    j <= i + offset[b], where offset[b] = nonpad_kv_seqlen[b] - S_q. For decode
+    (S_q=1, nonpad=5) the offset is 4, so the single query row attends keys 0..4 — all
+    valid cache positions — a meaningful, correct decode result.
+
+    This combination previously returned NOT_IMPLEMENTED under the pre-#8068 upper-left
+    assumption (where q[0] would have seen only kv[0]); onnxruntime#28904 removed that
+    dispatch guard and now computes the bottom-right frontier via Flash (seqlens_k) or the
+    CUTLASS memory-efficient fallback (causal_diagonal_offset = num_keys - num_queries).
+    The is_causal + nonpad_kv_seqlen + past_key combination remains rejected upstream
+    (ORT_ENFORCE in attention_helper.h). Deeper S_q>1 / nonpad<S_q structural-empty-row
+    parity is locked by the C++ AttentionTest goldens (Decode_BottomRight,
+    StructuralEmptyRows_Zero_CUDA); at S_q=1 the suite's total-kv-relative numpy reference
+    coincides with bottom-right, so the parity assertion below is sound.
+    """
+
+    @unittest.skipUnless("CUDAExecutionProvider" in get_available_providers(), "CUDA not available")
+    def test_is_causal_with_tensorscatter_no_past_bottom_right(self):
+        """is_causal=1 + TensorScatter + nonpad_kv_seqlen (no past) runs and matches the bottom-right reference."""
+        output, ref_output, present_k, present_v, ref_present_k, ref_present_v = run_tensorscatter_attention(
+            batch_size=1,
+            total_kv_seq_len=8,
+            q_seq_len=1,
+            q_num_heads=2,
+            kv_num_heads=2,
+            head_size=32,
+            nonpad_seqlens=[5],
+            scatter_positions=[4],
+            ep="CUDAExecutionProvider",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            is_causal=1,
         )
         numpy.testing.assert_allclose(output, ref_output, rtol=rtol["fp16"], atol=atol["fp16"])
         numpy.testing.assert_allclose(present_k, ref_present_k, rtol=rtol["fp16"], atol=atol["fp16"])

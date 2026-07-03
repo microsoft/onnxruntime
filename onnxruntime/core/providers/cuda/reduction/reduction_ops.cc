@@ -8,6 +8,8 @@
 #include "core/providers/cuda/math/binary_elementwise_ops_impl.h"
 #include "core/providers/cuda/math/binary_elementwise_ops.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
+#include "core/providers/cuda/reduction/reduction_functions.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 #ifdef ENABLE_TRAINING
 #include "contrib_ops/cpu/aten_ops/aten_op.h"
 #endif
@@ -31,6 +33,16 @@ namespace cuda {
       name,                                                                                                                       \
       kOnnxDomain,                                                                                                                \
       version,                                                                                                                    \
+      T,                                                                                                                          \
+      kCudaExecutionProvider,                                                                                                     \
+      (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).InputMemoryType(OrtMemTypeCPUInput, 1), \
+      name<T>);
+
+#define REGISTER_KERNEL_VERSIONED_RANGE_AXES_INPUT_TYPED(name, T, begin, end)                                                     \
+  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                                                                                        \
+      name,                                                                                                                       \
+      kOnnxDomain,                                                                                                                \
+      begin, end,                                                                                                                 \
       T,                                                                                                                          \
       kCudaExecutionProvider,                                                                                                     \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()).InputMemoryType(OrtMemTypeCPUInput, 1), \
@@ -169,6 +181,10 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
                       reinterpret_cast<CudaT*>(exp_result),
                       input_count);
 
+      // Fix NaN from exp(inf - inf): use original input to determine correct value.
+      Impl_FixExpForReduceLogSumExp<CudaT>(cuda_stream, reinterpret_cast<const CudaT*>(X),
+                                           reinterpret_cast<CudaT*>(exp_result), input_count);
+
       // ReduceSum
       CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(
           cudnn_handle, reduce_desc, indices_cuda.get(), indices_bytes, workspace_cuda.get(), workspace_bytes,
@@ -196,9 +212,14 @@ Status ReduceKernel<allow_multi_axes>::ReduceKernelShared(
           &one, input_tensor, input_data,
           &zero, output_tensor, reinterpret_cast<CudaT*>(Y)));
     } else {
-      // cudnnReduceTensor for ReduceSum has issue if input and output has same size, we just need to copy the data for this case
+      // cudnnReduceTensor has issues if input and output have the same size. This happens when the input is a
+      // scalar or when a singleton axis (dim == 1) is reduced, making the reduction a no-op.
       if (input_count == output_count) {
-        if (reinterpret_cast<const void*>(Y) != reinterpret_cast<const void*>(X)) {
+        // For norm ops the result must still be non-negative (|x| for single-element no-op reductions).
+        if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_NORM1 || cudnn_reduce_op == CUDNN_REDUCE_TENSOR_NORM2) {
+          Impl_SaturatingAbs<CudaT>(cuda_stream, reinterpret_cast<const CudaT*>(X),
+                                    reinterpret_cast<CudaT*>(Y), input_count);
+        } else if (reinterpret_cast<const void*>(Y) != reinterpret_cast<const void*>(X)) {
           CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y, X, input_count * sizeof(T), cudaMemcpyDeviceToDevice, cuda_stream));
         }
       } else {
@@ -288,7 +309,7 @@ Status PrepareForReduce(const Tensor* X,
     prepare_reduce_metadata.output_dims = input_shape.AsShapeVector();
     for (auto axis : axes) {
       axis = HandleNegativeAxis(axis, rank);
-      ORT_ENFORCE(input_dims[axis] != 0,
+      ORT_ENFORCE(keepdims || input_dims[axis] != 0,
                   "Can't reduce on dim with value of 0 if 'keepdims' is false. "
                   "Invalid output shape would be produced. input_shape:",
                   input_shape);
@@ -303,7 +324,7 @@ Status PrepareForReduce(const Tensor* X,
                   "Can't reduce on dim with value of 0 if 'keepdims' is false. "
                   "Invalid output shape would be produced. input_shape:",
                   input_shape);
-      prepare_reduce_metadata.output_dims.push_back(dim == 0 ? 0 : 1);
+      prepare_reduce_metadata.output_dims.push_back(1);
     }
   }
 
@@ -367,7 +388,42 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const CudaKernel* ke
   auto& output_dims_cudnn = prepare_reduce_metadata.output_dims_cudnn;
   // special case when there is a dim value of 0 in the shape.
   if (input_count == 0) {
-    assert(output.Shape().Size() == 0);
+    if (output_count == 0) {
+      return Status::OK();
+    }
+    // Empty-set reduction with non-empty output: fill with identity values per the ONNX spec.
+    if (ReduceTensorIndices == CUDNN_REDUCE_TENSOR_FLATTENED_INDICES) {
+      // ArgMax/ArgMin: cannot select an index from an empty set (matches NumPy/PyTorch behavior).
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                             "Cannot perform ArgMax/ArgMin on an empty reduction axis. input_shape:", input_shape);
+    }
+    auto* output_data = reinterpret_cast<CudaT*>(output.MutableData<T>());
+    if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MAX) {
+      // Per ONNX spec: empty-set max yields -inf if supported, else lowest value.
+      CudaT fill_val;
+      if constexpr (std::numeric_limits<T>::has_infinity) {
+        fill_val = ToCudaType<T>::FromFloat(-std::numeric_limits<float>::infinity());
+      } else {
+        // For integer types, CudaT == T.
+        fill_val = static_cast<CudaT>(std::numeric_limits<T>::lowest());
+      }
+      Fill(stream, output_data, fill_val, output_count);
+    } else if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MIN) {
+      // Per ONNX spec: empty-set min yields +inf if supported, else max value.
+      CudaT fill_val;
+      if constexpr (std::numeric_limits<T>::has_infinity) {
+        fill_val = ToCudaType<T>::FromFloat(std::numeric_limits<float>::infinity());
+      } else {
+        fill_val = static_cast<CudaT>(std::numeric_limits<T>::max());
+      }
+      Fill(stream, output_data, fill_val, output_count);
+    } else if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MUL) {
+      // Identity for product is 1
+      Fill(stream, output_data, ToCudaType<T>::FromFloat(1.0f), output_count);
+    } else {
+      // Identity for sum, mean, norm1, norm2 is 0
+      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(output.MutableDataRaw(), 0, output.SizeInBytes(), stream));
+    }
     return Status::OK();
   }
 
@@ -537,6 +593,10 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const CudaKernel* ke
                       reinterpret_cast<CudaT*>(exp_result),
                       input_count);
 
+      // Fix NaN from exp(inf - inf): use original input to determine correct value.
+      Impl_FixExpForReduceLogSumExp<CudaT>(stream, reinterpret_cast<const CudaT*>(input.Data<T>()),
+                                           reinterpret_cast<CudaT*>(exp_result), input_count);
+
       // cudnnReduceTensor for ReduceSum has issue if input and output has same size, we just need to copy the data for this case
       // This happens when the input is Scalar. We do not need to add anything in this case.
       if (input_count == output_count) {
@@ -579,10 +639,16 @@ Status ReduceComputeCore(const AllocatorPtr& gpu_allocator, const CudaKernel* ke
             &zero, output_tensor, p_output));
       }
     } else {
-      // cudnnReduceTensor for ReduceSum has issue if input and output has same size, we just need to copy the data for this case
+      // cudnnReduceTensor has issues if input and output have the same size. This happens when the input is a
+      // scalar or when a singleton axis (dim == 1) is reduced, making the reduction a no-op.
       if (input_count == output_count) {
-        if (output.MutableData<T>() != input.Data<T>()) {
-          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output.MutableData<T>(), input.Data<T>(), input_count * sizeof(T), cudaMemcpyDeviceToDevice, stream));
+        // For norm ops the result must still be non-negative (|x| for single-element no-op reductions).
+        if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_NORM1 || cudnn_reduce_op == CUDNN_REDUCE_TENSOR_NORM2) {
+          Impl_SaturatingAbs<CudaT>(stream, reinterpret_cast<const CudaT*>(input.Data<T>()),
+                                    reinterpret_cast<CudaT*>(output.MutableData<T>()), input_count);
+        } else if (output.MutableData<T>() != input.Data<T>()) {
+          CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(output.MutableData<T>(), input.Data<T>(),
+                                               input_count * sizeof(T), cudaMemcpyDeviceToDevice, stream));
         }
       } else {
         if (temp_X) {
@@ -760,12 +826,32 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
     auto& output_dims_cudnn = prepare_reduce_metadata.output_dims_cudnn;                                                  \
                                                                                                                           \
     if (input_count == 0) {                                                                                               \
-      assert(Y->Shape().Size() == 0);                                                                                     \
+      if (output_count == 0) {                                                                                            \
+        return Status::OK();                                                                                              \
+      }                                                                                                                   \
+      /* Empty-set reduction with non-empty output: fill with identity values per ONNX spec. */                           \
+      auto* output_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());                                                  \
+      if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MAX) {                                                                   \
+        CudaT fill_val = static_cast<CudaT>(std::numeric_limits<T>::lowest());                                            \
+        Fill(Stream(ctx), output_data, fill_val, output_count);                                                           \
+      } else if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MIN) {                                                            \
+        CudaT fill_val = static_cast<CudaT>(std::numeric_limits<T>::max());                                               \
+        Fill(Stream(ctx), output_data, fill_val, output_count);                                                           \
+      } else if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_MUL) {                                                            \
+        CudaT one_val = static_cast<CudaT>(1);                                                                            \
+        Fill(Stream(ctx), output_data, one_val, output_count);                                                            \
+      } else {                                                                                                            \
+        CUDA_RETURN_IF_ERROR(cudaMemsetAsync(Y->MutableDataRaw(), 0, Y->SizeInBytes(), Stream(ctx)));                     \
+      }                                                                                                                   \
       return Status::OK();                                                                                                \
     }                                                                                                                     \
                                                                                                                           \
     if (input_count == output_count) {                                                                                    \
-      if (Y->MutableData<T>() != X->Data<T>()) {                                                                          \
+      /* For no-op reductions where element count is unchanged, L1/L2 must still apply norm semantics. */                 \
+      if (cudnn_reduce_op == CUDNN_REDUCE_TENSOR_NORM1 || cudnn_reduce_op == CUDNN_REDUCE_TENSOR_NORM2) {                 \
+        Impl_SaturatingAbs<CudaT>(Stream(ctx), reinterpret_cast<const CudaT*>(X->Data<T>()),                              \
+                                  reinterpret_cast<CudaT*>(Y->MutableData<T>()), input_count);                            \
+      } else if (Y->MutableData<T>() != X->Data<T>()) {                                                                   \
         CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(Y->MutableData<T>(), X->Data<T>(),                                           \
                                              input_count * sizeof(T), cudaMemcpyDeviceToDevice, Stream(ctx)));            \
       }                                                                                                                   \
@@ -780,9 +866,16 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
     CudnnTensor output_tensor;                                                                                            \
     CudnnReduceDescriptor reduce_desc;                                                                                    \
                                                                                                                           \
-    cudnnDataType_t cudnn_type_X = CUDNN_DATA_FLOAT;                                                                      \
-    IAllocatorUniquePtr<float> temp_X = GetScratchBuffer<float>(input_count, GetComputeStream(ctx));                      \
-    Impl_Cast<CudaT, float>(Stream(ctx), reinterpret_cast<const CudaT*>(X->Data<T>()), temp_X.get(), X->Shape().Size());  \
+    /* Use double for integer reductions to avoid integer overflow UB and improve precision.       */                     \
+    /* double's 53-bit mantissa: int32 values are exactly representable, but their squares         */                     \
+    /* (up to ~2^62) may exceed 53 bits and lose precision for large values. Still, double         */                     \
+    /* provides vastly better precision than float (24-bit mantissa) for all integer types.        */                     \
+    /* Note: cuDNN handles summation order internally, so Kahan compensation is not applicable.    */                     \
+    /* For int64 values > 2^53, precision loss during accumulation is inherent to cuDNN's design.  */                     \
+    /* The double accumulator cannot overflow: even INT64_MAX^2 * N needs > 10^270 elements.      */                      \
+    cudnnDataType_t cudnn_type_X = CUDNN_DATA_DOUBLE;                                                                     \
+    IAllocatorUniquePtr<double> temp_X = GetScratchBuffer<double>(input_count, GetComputeStream(ctx));                    \
+    Impl_Cast<CudaT, double>(Stream(ctx), reinterpret_cast<const CudaT*>(X->Data<T>()), temp_X.get(), X->Shape().Size()); \
                                                                                                                           \
     ORT_RETURN_IF_ERROR(reduce_desc.Set(cudnn_reduce_op, cudnn_type_X, CUDNN_REDUCE_TENSOR_NO_INDICES));                  \
     ORT_RETURN_IF_ERROR(input_tensor.Set(input_dims_cudnn, cudnn_type_X));                                                \
@@ -794,17 +887,39 @@ Status ReduceKernel<allow_multi_axes>::ComputeImpl(OpKernelContext* ctx, cudnnRe
     IAllocatorUniquePtr<void> indices_cuda = GetScratchBuffer<void>(indices_bytes, GetComputeStream(ctx));                \
     IAllocatorUniquePtr<void> workspace_cuda = GetScratchBuffer<void>(workspace_bytes, GetComputeStream(ctx));            \
                                                                                                                           \
-    const auto one = Consts<float>::One;                                                                                  \
-    const auto zero = Consts<float>::Zero;                                                                                \
-    auto temp_Y = GetScratchBuffer<float>(output_count, GetComputeStream(ctx));                                           \
+    const auto one = Consts<double>::One;                                                                                 \
+    const auto zero = Consts<double>::Zero;                                                                               \
+    auto temp_Y = GetScratchBuffer<double>(output_count, GetComputeStream(ctx));                                          \
     CUDNN_RETURN_IF_ERROR(cudnnReduceTensor(GetCudnnHandle(ctx), reduce_desc, indices_cuda.get(), indices_bytes,          \
                                             workspace_cuda.get(), workspace_bytes, &one, input_tensor, temp_X.get(),      \
                                             &zero, output_tensor, temp_Y.get()));                                         \
-    Impl_Cast<float, CudaT>(Stream(ctx), temp_Y.get(), reinterpret_cast<CudaT*>(Y->MutableData<T>()), output_count);      \
+    /* Cast double result back to integer with explicit saturation (clamping to [T_MIN, T_MAX]).    */                    \
+    /* A plain C++ cast from double to int is UB when out of range ([conv.fpint]/1). We use a     */                      \
+    /* dedicated saturating kernel that clamps before casting, matching the CPU's explicit logic.  */                     \
+    Impl_SaturatingCastFromDouble<CudaT>(Stream(ctx), temp_Y.get(),                                                       \
+                                         reinterpret_cast<CudaT*>(Y->MutableData<T>()), output_count);                    \
                                                                                                                           \
     return Status::OK();                                                                                                  \
   }
 
+// Integer reduction specializations.
+// cuDNN does not natively support integer tensor reductions, so the strategy is:
+//   1. Cast integer input → double (device kernel via Impl_Cast)
+//   2. Perform cuDNN reduction in double precision (CUDNN_DATA_DOUBLE)
+//   3. Cast double result → integer (device kernel via Impl_SaturatingCastFromDouble)
+//
+// Why double and not float?
+//   - double avoids integer overflow UB and provides much better precision for all int types.
+//   - int32 values are exactly representable in double; their squares (up to ~2^62) may lose
+//     precision for |v| > 2^26, but this is at most 1 ULP error — far better than overflow.
+//   - float (24-bit mantissa) loses precision for int32 values > 16M and any int64 values.
+//   - For int64 values > 2^53, precision loss remains inherent (same limitation as CPU).
+//   - Memory cost: 2× scratch buffer vs float — acceptable for integer reductions (rare).
+//
+// Saturation behavior:
+//   - Impl_SaturatingCastFromDouble explicitly clamps to [T_MIN, T_MAX] before casting,
+//     avoiding the undefined behavior of out-of-range double→int conversions in C++.
+//   - This matches the CPU's explicit clamping logic in ReduceAggregatorL1/L2.
 SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(int32_t)
 SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(int64_t)
 SPECIALIZED_REDUCEKERNEL_COMPUTEIMPL(int8_t)
@@ -876,13 +991,27 @@ REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMin, MLFloat16)
 REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMin, float)
 REGISTER_KERNEL_ARGMIN_OR_ARGMAX(ArgMin, double)
 
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, MLFloat16, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, float, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, double, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, int32_t, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, int64_t, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, int8_t, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMax, uint8_t, 17, 18)
+REGISTER_KERNEL_VERSIONED_RANGE_TYPED(ReduceMax, MLFloat16, 1, 17)
+REGISTER_KERNEL_VERSIONED_RANGE_TYPED(ReduceMax, float, 1, 17)
+REGISTER_KERNEL_VERSIONED_RANGE_TYPED(ReduceMax, double, 1, 17)
+REGISTER_KERNEL_VERSIONED_RANGE_TYPED(ReduceMax, int32_t, 1, 17)
+REGISTER_KERNEL_VERSIONED_RANGE_TYPED(ReduceMax, int64_t, 1, 17)
+REGISTER_KERNEL_VERSIONED_RANGE_TYPED(ReduceMax, int8_t, 1, 17)
+REGISTER_KERNEL_VERSIONED_RANGE_TYPED(ReduceMax, uint8_t, 1, 17)
+REGISTER_KERNEL_VERSIONED_RANGE_AXES_INPUT_TYPED(ReduceMax, MLFloat16, 18, 19)
+REGISTER_KERNEL_VERSIONED_RANGE_AXES_INPUT_TYPED(ReduceMax, float, 18, 19)
+REGISTER_KERNEL_VERSIONED_RANGE_AXES_INPUT_TYPED(ReduceMax, double, 18, 19)
+REGISTER_KERNEL_VERSIONED_RANGE_AXES_INPUT_TYPED(ReduceMax, int32_t, 18, 19)
+REGISTER_KERNEL_VERSIONED_RANGE_AXES_INPUT_TYPED(ReduceMax, int64_t, 18, 19)
+REGISTER_KERNEL_VERSIONED_RANGE_AXES_INPUT_TYPED(ReduceMax, int8_t, 18, 19)
+REGISTER_KERNEL_VERSIONED_RANGE_AXES_INPUT_TYPED(ReduceMax, uint8_t, 18, 19)
+REGISTER_KERNEL_VERSIONED_SINCE_TYPED(ReduceMax, MLFloat16, 20)
+REGISTER_KERNEL_VERSIONED_SINCE_TYPED(ReduceMax, float, 20)
+REGISTER_KERNEL_VERSIONED_SINCE_TYPED(ReduceMax, double, 20)
+REGISTER_KERNEL_VERSIONED_SINCE_TYPED(ReduceMax, int32_t, 20)
+REGISTER_KERNEL_VERSIONED_SINCE_TYPED(ReduceMax, int64_t, 20)
+REGISTER_KERNEL_VERSIONED_SINCE_TYPED(ReduceMax, int8_t, 20)
+REGISTER_KERNEL_VERSIONED_SINCE_TYPED(ReduceMax, uint8_t, 20)
 
 REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMean, MLFloat16, 17, 18)
 REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMean, float, 17, 18)
@@ -890,13 +1019,27 @@ REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMean, double, 17, 18)
 REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMean, BFloat16, 17, 18)
 REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMean, int32_t, 17, 18)
 
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMin, MLFloat16, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMin, float, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMin, double, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMin, int32_t, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMin, int64_t, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMin, int8_t, 17, 18)
-REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceMin, uint8_t, 17, 18)
+REGISTER_KERNEL_VERSIONED_RANGE_TYPED(ReduceMin, MLFloat16, 1, 17)
+REGISTER_KERNEL_VERSIONED_RANGE_TYPED(ReduceMin, float, 1, 17)
+REGISTER_KERNEL_VERSIONED_RANGE_TYPED(ReduceMin, double, 1, 17)
+REGISTER_KERNEL_VERSIONED_RANGE_TYPED(ReduceMin, int32_t, 1, 17)
+REGISTER_KERNEL_VERSIONED_RANGE_TYPED(ReduceMin, int64_t, 1, 17)
+REGISTER_KERNEL_VERSIONED_RANGE_TYPED(ReduceMin, int8_t, 1, 17)
+REGISTER_KERNEL_VERSIONED_RANGE_TYPED(ReduceMin, uint8_t, 1, 17)
+REGISTER_KERNEL_VERSIONED_RANGE_AXES_INPUT_TYPED(ReduceMin, MLFloat16, 18, 19)
+REGISTER_KERNEL_VERSIONED_RANGE_AXES_INPUT_TYPED(ReduceMin, float, 18, 19)
+REGISTER_KERNEL_VERSIONED_RANGE_AXES_INPUT_TYPED(ReduceMin, double, 18, 19)
+REGISTER_KERNEL_VERSIONED_RANGE_AXES_INPUT_TYPED(ReduceMin, int32_t, 18, 19)
+REGISTER_KERNEL_VERSIONED_RANGE_AXES_INPUT_TYPED(ReduceMin, int64_t, 18, 19)
+REGISTER_KERNEL_VERSIONED_RANGE_AXES_INPUT_TYPED(ReduceMin, int8_t, 18, 19)
+REGISTER_KERNEL_VERSIONED_RANGE_AXES_INPUT_TYPED(ReduceMin, uint8_t, 18, 19)
+REGISTER_KERNEL_VERSIONED_SINCE_TYPED(ReduceMin, MLFloat16, 20)
+REGISTER_KERNEL_VERSIONED_SINCE_TYPED(ReduceMin, float, 20)
+REGISTER_KERNEL_VERSIONED_SINCE_TYPED(ReduceMin, double, 20)
+REGISTER_KERNEL_VERSIONED_SINCE_TYPED(ReduceMin, int32_t, 20)
+REGISTER_KERNEL_VERSIONED_SINCE_TYPED(ReduceMin, int64_t, 20)
+REGISTER_KERNEL_VERSIONED_SINCE_TYPED(ReduceMin, int8_t, 20)
+REGISTER_KERNEL_VERSIONED_SINCE_TYPED(ReduceMin, uint8_t, 20)
 
 REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceProd, MLFloat16, 17, 18)
 REGISTER_KERNEL_TYPED_AXES_INPUT_WITH_VERSIONED(ReduceProd, float, 17, 18)

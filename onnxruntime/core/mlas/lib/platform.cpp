@@ -27,16 +27,26 @@ Abstract:
 #include "kleidiai/mlasi_kleidiai.h"
 #endif
 
-#include <thread>
+#if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV)
+#include <riscv_vector.h>
+#endif
+
+#include <cctype>
+#include <cstdlib>
 #include <mutex>
+#include <thread>
 
 #if defined(MLAS_TARGET_POWER)
 #if defined(__linux__)
 #include <sys/auxv.h>
 #elif defined(_AIX)
-#define POWER_10       0x40000
-#define POWER_10_ANDUP (POWER_10)
 #include <sys/systemcfg.h>
+#if !defined(POWER_10)
+#define POWER_10       0x40000
+#endif
+#if !defined(POWER_10_ANDUP)
+#define POWER_10_ANDUP (POWER_10)
+#endif
 #define __power_10_andup() (_system_configuration.implementation & POWER_10_ANDUP)
 #elif defined(__FreeBSD__)
 #include <machine/cpu.h>
@@ -48,6 +58,8 @@ Abstract:
 #if defined(MLAS_TARGET_S390X)
 #include <sys/auxv.h>
 #endif
+
+
 
 #if defined(MLAS_TARGET_ARM64)
 #if defined(_WIN32)
@@ -265,6 +277,72 @@ Return Value:
     this->CastF16ToF32Kernel = nullptr;
     this->CastF32ToF16Kernel = nullptr;
 
+#if defined(MLAS_TARGET_RISCV64)
+    this->GemmFloatKernel = nullptr;
+    this->GemmU8S8Dispatch = &MlasGemmQuantDispatchDefault;
+    this->GemmU8U8Dispatch = &MlasGemmQuantDispatchDefault;
+    this->GemmS8S8Dispatch = &MlasGemmQuantDispatchDefault;
+    this->GemmS8U8Dispatch = &MlasGemmQuantDispatchDefault;
+    this->ErfKernelRoutine = MlasErfKernel;
+    this->LogisticKernelRoutine = MlasLogisticKernel;
+    this->GeluErfKernelRoutine = MlasGeluErfKernel;
+    this->SiluKernelRoutine = MlasSiluKernel;
+    this->TanhKernelRoutine = MlasTanhKernel;
+    this->ComputeExpF32Kernel = MlasComputeExpF32Kernel;
+    this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
+    this->ComputeSumExpF32Kernel = MlasComputeSumExpF32Kernel;
+    this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
+    this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
+
+#if defined(MLAS_USE_RVV)
+    this->GemmFloatKernel = MlasGemmFloatKernelRvv;
+    this->GemmU8S8Dispatch = &MlasGemmQuantDispatchRvv;
+    this->GemmU8U8Dispatch = &MlasGemmQuantDispatchRvv;
+    this->GemmS8S8Dispatch = &MlasGemmQuantDispatchRvv;
+    this->GemmS8U8Dispatch = &MlasGemmQuantDispatchRvv;
+    this->ErfKernelRoutine = MlasErfKernelRvv;
+    this->LogisticKernelRoutine = MlasLogisticKernelRvv;
+    this->GeluErfKernelRoutine = MlasGeluErfKernelRvv;
+    this->SiluKernelRoutine = MlasSiluKernelRvv;
+    this->TanhKernelRoutine = MlasTanhKernelRvv;
+    this->ComputeExpF32Kernel = MlasComputeExpF32KernelRvv;
+    this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelRvv;
+    this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelRvv;
+    this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32KernelRvv;
+    this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelRvv;
+    this->RopeDispatch = &MlasRopeDispatchRvv;
+    this->LayerNormF32Kernel = &MlasLayerNormKernelRvv;
+
+#if defined(MLAS_USE_RVV_ZVFH)
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasFp16VectorAcceleration()) {
+        this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelRvv;
+        this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelRvv;
+    }
+#endif
+
+    // NCHWc kernels require VLEN>=128 so that vfloat32m4_t holds 16 floats.
+    if (__riscv_vlenb() >= 16) {
+        this->NchwcBlockSize = 16;
+        this->ConvNchwFloatKernel = MlasConvNchwFloatKernelRvv;
+        this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelRvv;
+        this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelRvv;
+        this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelRvv;
+        this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelRvv;
+        this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelRvv;
+        this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelRvv;
+    } else {
+        this->NchwcBlockSize = 1;
+        this->ConvNchwFloatKernel = nullptr;
+        this->ConvNchwcFloatKernel = nullptr;
+        this->ConvDepthwiseFloatKernel = nullptr;
+        this->ConvPointwiseFloatKernel = nullptr;
+        this->PoolFloatKernel[MlasMaximumPooling] = nullptr;
+        this->PoolFloatKernel[MlasAveragePoolingExcludePad] = nullptr;
+        this->PoolFloatKernel[MlasAveragePoolingIncludePad] = nullptr;
+    }
+#endif
+#endif
+
 #if defined(MLAS_TARGET_AMD64_IX86)
 
     //
@@ -426,6 +504,7 @@ Return Value:
                 this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelAvx2;
                 this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelAvx2;
                 this->RopeDispatch = &MlasRopeDispatchAvx2;
+                this->KVQuantGemmDispatch = &MlasKVQuantGemmDispatchAvx2;
 
                 // TODO(vraspar): check if this really goes here or if there are other platform reqs that we need to fulfill
                 this->LutGenKernel = &MlasLutGenKernelAvx2;
@@ -511,6 +590,7 @@ Return Value:
                             this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Vnni;
                             this->Q8Q4GemmDispatch = &MlasQ8Q4GemmDispatchAvx512vnni;
                             this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx512vnni;
+                            this->KVQuantGemmDispatch = &MlasKVQuantGemmDispatchAvx512Vnni;
                         }
                     }
                 }
@@ -573,6 +653,7 @@ Return Value:
     this->HGemmDispatch = &MlasHGemmDispatchNeon;
     this->SoftmaxDispatch = &MlasSoftmaxDispatchNeon;
     this->EltwiseDispatch = &MlasEltwiseDispatchNeon;
+    this->KVQuantGemmDispatch = &MlasKVQuantGemmDispatchNeon;
 
 #if defined(MLAS_USE_ARM_NEON_NCHWC)
     // Use the AArch64 assembly implementation on non-Windows platforms.
@@ -632,6 +713,7 @@ Return Value:
         this->MlasDynamicQGemmPackBOverride = ArmKleidiAI::MlasDynamicQGemmPackB;
         this->MlasConvPrepareOverride = ArmKleidiAI::MlasConvPrepare;
         this->MlasConvOverride = ArmKleidiAI::MlasConv;
+        this->MlasConvSGemmRouteOverride = ArmKleidiAI::MlasConvSGemmRoute;
 #if defined(__aarch64__) && defined(__linux__)
         // Currently only an SME2 variant of SBGEMM exists
         if (ArmKleidiAI::UseSME2){

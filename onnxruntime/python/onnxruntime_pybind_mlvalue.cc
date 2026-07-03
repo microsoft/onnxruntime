@@ -1071,5 +1071,116 @@ void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const
   }
 }
 
+void UpdateOrtValueInplace(OrtValue& dst, const OrtValue& src) {
+  if (!dst.IsTensor()) {
+    throw std::runtime_error("Inplace update of OrtValues is only supported for Tensors");
+  }
+  if (!src.IsTensor()) {
+    throw std::runtime_error("The source OrtValue must contain a Tensor");
+  }
+
+  const auto& dst_tensor = dst.Get<Tensor>();
+  const auto& src_tensor = src.Get<Tensor>();
+
+  if (dst_tensor.DataType() != src_tensor.DataType()) {
+    throw std::runtime_error("The source and destination OrtValues must have the same data type");
+  }
+
+  if (dst_tensor.Shape().Size() != src_tensor.Shape().Size()) {
+    throw std::runtime_error("The source and destination OrtValues must have the same size");
+  }
+
+  if (dst_tensor.IsDataTypeString()) {
+    throw std::runtime_error("Inplace update of string tensors is not supported");
+  }
+
+  size_t bytes = 0;
+  auto status = Tensor::CalculateTensorStorageSize(dst_tensor.DataType(), dst_tensor.Shape(), 0, bytes);
+  if (!status.IsOK()) {
+    throw std::runtime_error(status.ErrorMessage());
+  }
+
+  const auto src_device = src_tensor.Location().device;
+  const auto dst_device = dst_tensor.Location().device;
+
+  void* dst_ptr = dst.GetMutable<Tensor>()->MutableDataRaw();
+  const void* src_ptr = src_tensor.DataRaw();
+
+  if (src_device.UsesCpuMemory() && dst_device.UsesCpuMemory()) {
+    memcpy(dst_ptr, src_ptr, bytes);
+  } else {
+    auto copy_fn = CreateDataTransferMemCpy(src_device, dst_device);
+    if (!copy_fn) {
+      // Fall back to built-in EP copy functions.
+      // Gate each path on (Type, VendorId) so that builds with multiple GPU EPs
+      // (e.g. CUDA + DML) route through the correct backend.
+#ifdef USE_CUDA
+      const auto is_cuda_device = [](const OrtDevice& device) {
+        return device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::NVIDIA;
+      };
+
+      if (is_cuda_device(src_device) && is_cuda_device(dst_device)) {
+        auto data_transfer = GetGPUDataTransfer();
+        ORT_THROW_IF_ERROR(data_transfer->CopyTensor(src_tensor, *dst.GetMutable<Tensor>()));
+        return;
+      }
+      if (src_device.UsesCpuMemory() && is_cuda_device(dst_device)) {
+        CpuToCudaMemCpy(dst_ptr, src_ptr, bytes);
+        return;
+      }
+      if (is_cuda_device(src_device) && dst_device.UsesCpuMemory()) {
+        CudaToCpuMemCpy(dst_ptr, src_ptr, bytes);
+        return;
+      }
+#endif
+#if USE_MIGRAPHX
+      const auto is_migraphx_device = [](const OrtDevice& device) {
+        return device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::AMD;
+      };
+
+      if (src_device.UsesCpuMemory() && is_migraphx_device(dst_device)) {
+        CpuToMIGraphXMemCpy(dst_ptr, src_ptr, bytes);
+        return;
+      }
+      if (is_migraphx_device(src_device) && dst_device.UsesCpuMemory()) {
+        MIGraphXToCpuMemCpy(dst_ptr, src_ptr, bytes);
+        return;
+      }
+#endif
+#if USE_DML
+      const auto is_dml_device = [](const OrtDevice& device) {
+        return (device.Type() == OrtDevice::GPU && device.Vendor() == OrtDevice::VendorIds::MICROSOFT) ||
+               device.Type() == OrtDevice::DML;
+      };
+
+      if (src_device.UsesCpuMemory() && is_dml_device(dst_device)) {
+        CpuToDmlMemCpy(dst_ptr, src_ptr, bytes);
+        return;
+      }
+      if (is_dml_device(src_device) && dst_device.UsesCpuMemory()) {
+        DmlToCpuMemCpy(dst_ptr, src_ptr, bytes);
+        return;
+      }
+#endif
+#ifdef USE_CANN
+      const auto is_cann_device = [](const OrtDevice& device) {
+        return device.Type() == OrtDevice::NPU && device.Vendor() == OrtDevice::VendorIds::HUAWEI;
+      };
+
+      if (src_device.UsesCpuMemory() && is_cann_device(dst_device)) {
+        CpuToCannMemCpy(dst_ptr, src_ptr, bytes);
+        return;
+      }
+      if (is_cann_device(src_device) && dst_device.UsesCpuMemory()) {
+        CannToCpuMemCpy(dst_ptr, src_ptr, bytes);
+        return;
+      }
+#endif
+      throw std::runtime_error("Unable to copy data between the source and destination devices");
+    }
+    copy_fn(dst_ptr, src_ptr, bytes);
+  }
+}
+
 }  // namespace python
 }  // namespace onnxruntime

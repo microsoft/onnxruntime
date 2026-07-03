@@ -182,6 +182,38 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
        })});
 
   test_cases.push_back(
+      {"test 3D tensors with batchA = 3, M = 2, N = 3",
+       {3, 2, 8},
+       {1, 8, 3},
+       {3, 2, 3},
+       real_expected_vals({
+           // clang-format off
+              420, 448, 476,
+              1092, 1184, 1276,
+              1764, 1920, 2076,
+              2436, 2656, 2876,
+              3108, 3392, 3676,
+              3780, 4128, 4476,
+           // clang-format on
+       })});
+
+  test_cases.push_back(
+      {"test 3D tensors with batchA = 3, M = 2, N = 4",
+       {3, 2, 8},
+       {1, 8, 4},
+       {3, 2, 4},
+       real_expected_vals({
+           // clang-format off
+              560, 588, 616, 644,
+              1456, 1548, 1640, 1732,
+              2352, 2508, 2664, 2820,
+              3248, 3468, 3688, 3908,
+              4144, 4428, 4712, 4996,
+              5040, 5388, 5736, 6084,
+           // clang-format on
+       })});
+
+  test_cases.push_back(
       {"test 4D tensors with M = 1",
        {2, 3, 1, 8},
        {1, 1, 8, 3},
@@ -596,6 +628,63 @@ TEST(MathOpTest, MatMulSharedPrepackedWeights) {
     ASSERT_EQ(number_of_pre_packed_weights_counter_session_2,
               static_cast<size_t>(number_of_shared_pre_packed_weights_counter));
   }
+}
+
+// Test MatMul with batch_size > 1 that exercises the Split-K path.
+// Split-K is triggered when dim_inner is large relative to dim_a_outer * dim_b_outer,
+// is_vec4 is true, and the GPU supports it. This test validates correctness when
+// batch_size > 1 with dimensions that would trigger Split-K on supported hardware.
+TEST(MathOpTest, MatMulBatchedSplitK) {
+  // Dimensions chosen so dim_inner is large (triggers Split-K) and vec4-compatible.
+  // batch=2, M=4, K=768, N=64
+  constexpr int64_t batch = 2;
+  constexpr int64_t M = 4;
+  constexpr int64_t K = 768;
+  constexpr int64_t N = 64;
+
+  std::vector<int64_t> A_shape = {batch, M, K};
+  std::vector<int64_t> B_shape = {batch, K, N};
+  std::vector<int64_t> Y_shape = {batch, M, N};
+
+  // Generate sequential data so the expected output is deterministic.
+  int64_t a_size = batch * M * K;
+  int64_t b_size = batch * K * N;
+  std::vector<float> A_data(a_size);
+  std::vector<float> B_data(b_size);
+
+  // Use small values to avoid fp32 overflow.
+  for (int64_t i = 0; i < a_size; ++i) {
+    A_data[i] = static_cast<float>((i % 11) - 5) * 0.01f;
+  }
+  for (int64_t i = 0; i < b_size; ++i) {
+    B_data[i] = static_cast<float>((i % 13) - 6) * 0.01f;
+  }
+
+  // Compute expected output on CPU.
+  std::vector<float> expected(batch * M * N, 0.0f);
+  for (int64_t b_idx = 0; b_idx < batch; ++b_idx) {
+    for (int64_t m = 0; m < M; ++m) {
+      for (int64_t n = 0; n < N; ++n) {
+        float sum = 0.0f;
+        for (int64_t k = 0; k < K; ++k) {
+          float a_val = A_data[b_idx * M * K + m * K + k];
+          float b_val = B_data[b_idx * K * N + k * N + n];
+          sum += a_val * b_val;
+        }
+        expected[b_idx * M * N + m * N + n] = sum;
+      }
+    }
+  }
+
+  OpTester test("MatMul", 13);
+  test.AddInput<float>("A", A_shape, A_data);
+  test.AddInput<float>("B", B_shape, B_data);
+  test.AddOutput<float>("Y", Y_shape, expected);
+
+  // Exclude providers that don't support this configuration.
+  test.ConfigExcludeEps({kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kQnnExecutionProvider})
+      .Config(run_with_tunable_op)
+      .RunWithConfig();
 }
 
 #endif

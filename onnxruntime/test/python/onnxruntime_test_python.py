@@ -439,6 +439,8 @@ class TestInferenceSession(unittest.TestCase):
 
                 test_get_and_set_option_with_values("cudnn_conv_algo_search", ["DEFAULT", "EXHAUSTIVE", "HEURISTIC"])
 
+                test_get_and_set_option_with_values("enable_cudnn", ["1", "0"])
+
                 test_get_and_set_option_with_values("do_copy_in_default_stream", [0, 1])
 
                 test_get_and_set_option_with_values("tunable_op_enable", ["1", "0"])
@@ -2103,6 +2105,143 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(expected_val.shape(), value.shape())
             np.testing.assert_allclose(value.numpy(), expected_val.numpy())
 
+    def test_adapter_read_modify_export(self):
+        # Verify that an instance created by read_adapter can have its
+        # parameters replaced and re-exported (single-source architecture).
+        adapter_version = 1
+        model_version = 1
+        file_path = pathlib.Path(os.path.realpath(__file__)).parent
+        original_path = str(file_path / "test_adapter_read_modify_original.onnx_adapter")
+        modified_path = str(file_path / "test_adapter_read_modify_new.onnx_adapter")
+
+        float_data_type = 1
+        original_data = np.array([1, 2, 3, 4]).astype(np.float32).reshape(2, 2)
+        modified_data = np.array([10, 20, 30, 40, 50, 60]).astype(np.float32).reshape(3, 2)
+
+        ort_original = onnxrt.OrtValue.ortvalue_from_numpy_with_onnx_type(original_data, float_data_type)
+        ort_modified = onnxrt.OrtValue.ortvalue_from_numpy_with_onnx_type(modified_data, float_data_type)
+
+        # Write original adapter
+        adapter_format = onnxrt.AdapterFormat()
+        adapter_format.set_adapter_version(adapter_version)
+        adapter_format.set_model_version(model_version)
+        adapter_format.set_parameters({"param": ort_original})
+        adapter_format.export_adapter(original_path)
+
+        try:
+            # Read, replace parameters, and re-export.
+            adapter_read = onnxrt.AdapterFormat.read_adapter(original_path)
+            adapter_read.set_parameters({"new_param": ort_modified})
+            adapter_read.export_adapter(modified_path)
+
+            # Verify the re-exported file has the NEW parameters.
+            adapter_verify = onnxrt.AdapterFormat.read_adapter(modified_path)
+            params = adapter_verify.get_parameters()
+            self.assertIn("new_param", params)
+            self.assertNotIn("param", params)
+            self.assertEqual(params["new_param"].shape(), [3, 2])
+            np.testing.assert_allclose(params["new_param"].numpy(), modified_data)
+        finally:
+            if os.path.exists(original_path):
+                os.remove(original_path)
+            if os.path.exists(modified_path):
+                os.remove(modified_path)
+
+    def test_adapter_parameters_keep_alive(self):
+        # Regression test: AdapterFormat.read_adapter returned OrtValue views
+        # over storage owned by the C AdapterFormat with nothing keeping the
+        # parent alive. The natural pattern below dropped the parent and left
+        # the dict with dangling pointers, causing a use-after-free on the
+        # next access. read_adapter now pins the owning C AdapterFormat on
+        # every OrtValue it produces (pybind11 add_patient via
+        # keep_alive_impl), so the dict and any individual value keep the
+        # backing adapter alive on their own. Mirrors the strong-ref pattern
+        # used by the SparseTensor view bindings.
+        adapter_version = 1
+        model_version = 1
+        file_path = pathlib.Path(os.path.realpath(__file__)).parent
+        file_path = str(file_path / "test_adapter_keep_alive.onnx_adapter")
+
+        float_data_type = 1
+        val = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        param_1 = np.array(val).astype(np.float32).reshape(5, 2)
+
+        ort_val_1 = onnxrt.OrtValue.ortvalue_from_numpy_with_onnx_type(param_1, float_data_type)
+
+        adapter_format = onnxrt.AdapterFormat()
+        adapter_format.set_adapter_version(adapter_version)
+        adapter_format.set_model_version(model_version)
+        adapter_format.set_parameters({"param_1": ort_val_1})
+        adapter_format.export_adapter(file_path)
+
+        try:
+            # Drop the AdapterFormat temporary; only `params` keeps a reference.
+            params = onnxrt.AdapterFormat.read_adapter(file_path).get_parameters()
+            gc.collect()
+
+            self.assertIn("param_1", params)
+            value = params["param_1"]
+            self.assertTrue(value.is_tensor())
+            self.assertEqual(value.shape(), [5, 2])
+            np.testing.assert_allclose(value.numpy(), param_1)
+
+            # Also drop the dict; an individual OrtValue must keep the adapter
+            # alive on its own (we pin it on every value in get_parameters()).
+            single_value = params["param_1"]
+            del params
+            gc.collect()
+            np.testing.assert_allclose(single_value.numpy(), param_1)
+        finally:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
+    def test_adapter_export_rejects_string_tensors(self):
+        # Regression test: export_adapter previously serialized Tensor::DataRaw()
+        # for SizeInBytes() bytes regardless of element type. For string tensors
+        # that copied the std::string object representation (heap pointers and
+        # uninitialized padding) into the adapter file, leaking runtime addresses
+        # (ASLR bypass) and producing an unloadable adapter. Export must reject
+        # string-typed parameters.
+        #
+        # There is no public Python API to construct a string-typed OrtValue
+        # directly (ortvalue_from_numpy rejects non-numeric arrays), so we
+        # obtain one by running a tiny Constant model whose only output is a
+        # string tensor.
+        from onnx import TensorProto, helper  # noqa: PLC0415
+
+        const_node = helper.make_node(
+            "Constant",
+            inputs=[],
+            outputs=["str_out"],
+            value=helper.make_tensor("v", TensorProto.STRING, dims=[2], vals=[b"hello", b"world"]),
+        )
+        graph = helper.make_graph(
+            [const_node],
+            "string_const",
+            inputs=[],
+            outputs=[helper.make_tensor_value_info("str_out", TensorProto.STRING, [2])],
+        )
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 17)])
+        sess = onnxrt.InferenceSession(model.SerializeToString(), providers=onnxrt.get_available_providers())
+        ort_val_str = sess.run_with_ort_values(["str_out"], {})[0]
+
+        adapter_format = onnxrt.AdapterFormat()
+        adapter_format.set_adapter_version(1)
+        adapter_format.set_model_version(1)
+        adapter_format.set_parameters({"str_param": ort_val_str})
+
+        file_path = pathlib.Path(os.path.realpath(__file__)).parent
+        file_path = str(file_path / "test_adapter_string_reject.onnx_adapter")
+
+        try:
+            with self.assertRaises(Exception) as ctx:
+                adapter_format.export_adapter(file_path)
+            self.assertIn("STRING", str(ctx.exception))
+            self.assertFalse(os.path.exists(file_path), "adapter file must not be created when export is rejected")
+        finally:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
     def test_run_with_adapter(self):
         model_path = get_name("lora/two_params_lora_model.onnx")
         file_path = os.getcwd() + "/" + get_name("lora/two_params_lora_model.onnx_adapter")
@@ -2193,6 +2332,114 @@ class TestInferenceSession(unittest.TestCase):
             "Session configuration entry 'session.record_ep_graph_assignment_info' must be set to \"1\"",
             str(context.exception),
         )
+
+    def test_tree_ensemble_logistic(self):
+        try:
+            import onnx  # noqa: PLC0415
+        except ImportError:
+            # onnx is not installed on ARM build.
+            self.skipTest("onnx is not installed")
+        # issue https://github.com/microsoft/onnxruntime/issues/27533
+        x = onnx.helper.make_tensor_value_info("X", onnx.TensorProto.FLOAT, [None, 3])
+        label_out = onnx.helper.make_tensor_value_info("label", onnx.TensorProto.INT64, [None])
+        prob_out = onnx.helper.make_tensor_value_info("probs", onnx.TensorProto.FLOAT, [None, 2])
+
+        def make_model(
+            nodes_modes,
+            nodes_values,
+            nodes_truenodeids,
+            nodes_falsenodeids,
+            class_treeids,
+            class_nodeids,
+            class_weights,
+            **node_kwargs,
+        ):
+            """Build a minimal TreeEnsembleClassifier ONNX model."""
+            n_nodes = len(nodes_modes)
+            if "base_values" not in node_kwargs:
+                node_kwargs["base_values"] = [-0.405]  # logit(0.4)
+            node = onnx.helper.make_node(
+                "TreeEnsembleClassifier",
+                inputs=["X"],
+                outputs=["label", "probs"],
+                domain="ai.onnx.ml",
+                nodes_treeids=[0] * n_nodes,
+                nodes_nodeids=list(range(n_nodes)),
+                nodes_featureids=[0] * n_nodes,
+                nodes_values=nodes_values,
+                nodes_modes=nodes_modes,
+                nodes_truenodeids=nodes_truenodeids,
+                nodes_falsenodeids=nodes_falsenodeids,
+                nodes_missing_value_tracks_true=[0] * n_nodes,
+                nodes_hitrates=[1.0] * n_nodes,
+                class_treeids=class_treeids,
+                class_nodeids=class_nodeids,
+                class_ids=[0] * len(class_weights),
+                class_weights=class_weights,
+                classlabels_int64s=[0, 1],
+                post_transform="LOGISTIC",
+                **node_kwargs,
+            )
+            graph = onnx.helper.make_graph([node], "test", [x], [label_out, prob_out])
+            return onnx.helper.make_model(
+                graph,
+                opset_imports=[
+                    onnx.helper.make_opsetid("", 15),
+                    onnx.helper.make_opsetid("ai.onnx.ml", 3),
+                ],
+            )
+
+        test_input = {"X": np.array([[0.1, 0.0, 0.0]], dtype=np.float32)}
+
+        # Case 1: Tree with a real split (root splits on feature 0 at 0.5)
+        model_split = make_model(
+            nodes_modes=["BRANCH_LT", "LEAF", "LEAF"],
+            nodes_values=[0.5, 0.0, 0.0],
+            nodes_truenodeids=[1, 0, 0],
+            nodes_falsenodeids=[2, 0, 0],
+            class_treeids=[0, 0],
+            class_nodeids=[1, 2],
+            class_weights=[0.3, -0.3],  # mixed positive/negative
+        )
+        sess_split = onnxrt.InferenceSession(model_split.SerializeToString())
+        result_split = sess_split.run(None, test_input)
+        # x[0]=0.1 < 0.5, so left leaf (weight=0.3), aggregate = -0.405 + 0.3 = -0.105
+        expected_p1 = 1 / (1 + np.exp(0.105))  # sigmoid(-0.105)
+        with self.subTest(case="Case 1: Tree with a real split"):
+            np.testing.assert_allclose(result_split[1][0][1], expected_p1, atol=1e-5)
+
+        # Case 2: Leaf-only tree (single LEAF node, no splits)
+        model_leaf = make_model(
+            nodes_modes=["LEAF"],
+            nodes_values=[0.0],
+            nodes_truenodeids=[0],
+            nodes_falsenodeids=[0],
+            class_treeids=[0],
+            class_nodeids=[0],
+            class_weights=[0.0],  # non-negative weight
+        )
+        sess_leaf = onnxrt.InferenceSession(model_leaf.SerializeToString())
+        result_leaf = sess_leaf.run(None, test_input)
+        # aggregate = -0.405 + 0 = -0.405
+        expected_p1_leaf = 1 / (1 + np.exp(0.405))  # sigmoid(-0.405) ≈ 0.400
+        with self.subTest(case="Case 2: Leaf-only tree (single LEAF node, no splits)"):
+            np.testing.assert_allclose(result_leaf[1][0][1], expected_p1_leaf, atol=1e-5)
+
+        # Case 3: Same leaf-only tree but with a negative weight (workaround)
+        model_leaf_neg = make_model(
+            nodes_modes=["LEAF"],
+            nodes_values=[0.0],
+            nodes_truenodeids=[0],
+            nodes_falsenodeids=[0],
+            class_treeids=[0],
+            class_nodeids=[0],
+            class_weights=[-0.405],  # negative weight (move base_values into weight)
+            base_values=[0.0],  # zero base
+        )
+        sess_leaf_neg = onnxrt.InferenceSession(model_leaf_neg.SerializeToString())
+        result_leaf_neg = sess_leaf_neg.run(None, test_input)
+        with self.subTest(case="Case 3: Same leaf-only tree but with a negative weight"):
+            np.testing.assert_allclose(result_leaf_neg[1][0][1], expected_p1_leaf, atol=1e-5)
 
 
 if __name__ == "__main__":

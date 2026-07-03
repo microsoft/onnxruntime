@@ -11,6 +11,7 @@
 #include "ep_data_transfer.h"
 #include "ep_stream_support.h"
 
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtLogger& default_logger)
@@ -19,7 +20,8 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
       default_logger_{default_logger},
       ep_name_{ep_name},
       default_memory_info_{nullptr},
-      readonly_memory_info_{nullptr} {
+      readonly_memory_info_{nullptr},
+      host_accessible_memory_info_{nullptr} {
   ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
   GetName = GetNameImpl;
   GetVendor = GetVendorImpl;
@@ -71,12 +73,12 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis, const OrtL
 
   // HOST_ACCESSIBLE memory example. use the non-CPU device type so it's clear which device the memory is also
   // accessible from. we infer from the type of HOST_ACCESSIBLE that it's CPU accessible.
-  auto host_accessible_memory_info = Ort::MemoryInfo{"ExampleEP GPU pinned",
-                                                     OrtMemoryInfoDeviceType_GPU,
-                                                     /*vendor*/ 0xBE57, /* device_id */ 0,
-                                                     OrtDeviceMemoryType_HOST_ACCESSIBLE,
-                                                     /*alignment*/ 0,
-                                                     OrtAllocatorType::OrtDeviceAllocator};
+  host_accessible_memory_info_ = Ort::MemoryInfo{"ExampleEP GPU pinned",
+                                                 OrtMemoryInfoDeviceType_GPU,
+                                                 /*vendor*/ 0xBE57, /* device_id */ 0,
+                                                 OrtDeviceMemoryType_HOST_ACCESSIBLE,
+                                                 /*alignment*/ 0,
+                                                 OrtAllocatorType::OrtDeviceAllocator};
   // Custom Op Domains
   custom_op_domains_[0] = Ort::CustomOpDomain{"test"};
   custom_op_domains_[1] = Ort::CustomOpDomain{"test2"};
@@ -141,6 +143,9 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetSupportedDevicesImpl(OrtEpFactory* 
 
       // random example using made up values
       factory->ort_api.AddKeyValuePair(ep_metadata, "supported_devices", "CrackGriffin 7+");
+      // Example os_driver_version. A real EP would read the OS driver version from the device.
+      // The format is a 4-part dot-separated version matching the DXCore DriverVersion property.
+      factory->ort_api.AddKeyValuePair(ep_metadata, kOrtEpDevice_EpMetadataKey_OSDriverVersion, "31.0.101.1000");
       factory->ort_api.AddKeyValuePair(ep_options, "run_really_fast", "true");
 
       // OrtEpDevice copies ep_metadata and ep_options.
@@ -156,10 +161,11 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetSupportedDevicesImpl(OrtEpFactory* 
       }
 
       // register the allocator info required by the EP.
-      // registering OrtMemoryInfo for host accessible memory would be done in an additional call.
       // OrtReadOnlyAllocator + OrtDeviceMemoryType_DEFAULT allocator for use with initializers is optional.
+      // OrtDeviceMemoryType_HOST_ACCESSIBLE is also optional and exposes CPU-accessible memory on the EP device.
       RETURN_IF_ERROR(factory->ep_api.EpDevice_AddAllocatorInfo(ep_device, factory->default_memory_info_));
       RETURN_IF_ERROR(factory->ep_api.EpDevice_AddAllocatorInfo(ep_device, factory->readonly_memory_info_));
+      RETURN_IF_ERROR(factory->ep_api.EpDevice_AddAllocatorInfo(ep_device, factory->host_accessible_memory_info_));
 
       ep_devices[num_ep_devices++] = ep_device;
     }
@@ -171,6 +177,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetSupportedDevicesImpl(OrtEpFactory* 
     //    Ort::KeyValuePairs ep_metadata;
     //    Ort::KeyValuePairs ep_options;
     //    ep_metadata.Add("supported_devices", "CrackGriffin 7+");
+    //    ep_metadata.Add(kOrtEpDevice_EpMetadataKey_OSDriverVersion, "31.0.101.1000");
     //    ep_options.Add("run_really_fast", "true");
     //    Ort::EpDevice ep_device{*this_ptr, device, ep_metadata.GetConst(), ep_options.GetConst()};
     //    ep_devices[num_ep_devices++] = ep_device.release();
@@ -189,6 +196,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
                                                        const OrtSessionOptions* session_options,
                                                        const OrtLogger* logger,
                                                        OrtEp** ep) noexcept {
+  EXCEPTION_TO_RETURNED_STATUS_BEGIN
   auto* factory = static_cast<ExampleEpFactory*>(this_ptr);
   *ep = nullptr;
 
@@ -212,20 +220,33 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   // Create EP configuration from session options, if needed.
   // Note: should not store a direct reference to the session options object as its lifespan is not guaranteed.
   std::string ep_context_enable;
+  std::string ep_context_embed_mode;
+  std::string ep_context_output_model_path;
   std::string weightless_ep_context_nodes_enable;
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextEnable, "0",
                                                  ep_context_enable));
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextEmbedMode, "0",
+                                                 ep_context_embed_mode));
+  RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpContextFilePath, "",
+                                                 ep_context_output_model_path));
   RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(*session_options, kOrtSessionOptionEpEnableWeightlessEpContextNodes,
                                                  "0", weightless_ep_context_nodes_enable));
 
   ExampleEp::Config config = {};
   config.enable_ep_context = ep_context_enable == "1";
+  config.embed_ep_context_in_model = ep_context_embed_mode == "1";
+  config.ep_context_output_model_path = std::move(ep_context_output_model_path);
   config.enable_weightless_ep_context_nodes = weightless_ep_context_nodes_enable == "1";
 
-  auto dummy_ep = std::make_unique<ExampleEp>(*factory, factory->ep_name_, config, *logger);
-
+  // The EpContextConfig wrapper extracts the EPContext callbacks from the session options and owns the handle. It
+  // throws if the experimental functions are unavailable or extraction fails; EXCEPTION_TO_RETURNED_STATUS_END
+  // converts that (and any other exception thrown in this function) into an OrtStatus.
+  auto dummy_ep = std::make_unique<ExampleEp>(
+      *factory, factory->ep_name_, config, *logger,
+      Ort::Experimental::EpContextConfig{Ort::ConstSessionOptions{session_options}});
   *ep = dummy_ep.release();
   return nullptr;
+  EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 /*static*/
@@ -244,8 +265,9 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
 
   bool is_default_allocator = memory_info == factory.default_memory_info_;
   bool is_readonly_allocator = memory_info == factory.readonly_memory_info_;
+  bool is_host_accessible_allocator = memory_info == factory.host_accessible_memory_info_;
 
-  if (!is_default_allocator && !is_readonly_allocator) {
+  if (!is_default_allocator && !is_readonly_allocator && !is_host_accessible_allocator) {
     return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
                                         "INTERNAL ERROR! Unknown memory info provided to CreateAllocator. "
                                         "Value did not come directly from an OrtEpDevice returned by this factory.");
@@ -261,9 +283,10 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
   //       You are of course free to have completely different settings.
 
   // the read-only allocator is used for initializers. we don't need an arena for that.
-  if (is_readonly_allocator) {
-    auto read_only_allocator = std::make_unique<CustomAllocator>(memory_info, factory);
-    *allocator = read_only_allocator.release();
+  // host-accessible memory is also returned via a plain non-arena allocator.
+  if (is_readonly_allocator || is_host_accessible_allocator) {
+    auto simple_allocator = std::make_unique<CustomAllocator>(memory_info, factory);
+    *allocator = simple_allocator.release();
     return nullptr;
   }
 

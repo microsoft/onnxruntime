@@ -157,6 +157,12 @@ struct GroupQueryAttentionData {
   const T* sin_cache = nullptr;
   const T* head_sink = nullptr;
 
+  // Optional per-head Q/K RMSNorm (QK-Norm) weights, shape (head_size,), shared across heads.
+  // Both are non-null together (validated in the op) and trigger the fused normalization before RoPE.
+  const T* q_norm_weight = nullptr;
+  const T* k_norm_weight = nullptr;
+  float qk_norm_epsilon = 1e-6f;
+
   const float* k_scale = nullptr;
   const float* v_scale = nullptr;
 
@@ -197,6 +203,8 @@ struct GroupQueryAttentionData {
   bool use_memory_efficient_attention = false;
   bool use_flash_attention_fast_decode = false;
   bool use_xqa = false;
+  // cuDNN SDPA (cudnn_frontend) path: preferred on SM>=90 for non-quantized FP16/BF16 GQA.
+  bool use_cudnn_sdpa = false;
   // GQA-capable unfused fallback (issue #28195): used when Flash/MEA/XQA are all ineligible,
   // e.g. fp16 head_size > 256 with past_key, or GQA on old GPUs without MEA/Flash support.
   bool use_unfused = false;
@@ -204,15 +212,26 @@ struct GroupQueryAttentionData {
   // XQA buffer
   void* xqa_buffer = nullptr;
   size_t xqa_buffer_bytes = 0;
+  // FP32 per-head attention sink consumed by the XQA kernel (nullptr when no head_sink input).
+  // Either points to a PrePack-cached buffer or to scratch that is filled at launch time.
+  float* xqa_head_sink = nullptr;
+  // When true, head_sink was not prepacked (e.g. dynamic/non-initializer input) and the FP16/BF16
+  // head_sink must be converted to xqa_head_sink (FP32 scratch) before launching XQA.
+  bool xqa_head_sink_needs_conversion = false;
 
-  // Unfused fallback buffers (see LaunchGqaUnfusedAttention in gqa_unfused_attention.h):
+  // Unfused fallback buffers (see LaunchUnfusedAttention in unfused_attention.h):
   //   unfused_q_bnsh : [B, N_q, S_q, H]   (Q transposed from BSNH to BNSH)
   //   unfused_y_bnsh : [B, N_q, S_q, H_v] (output BNSH, transposed to BSNH before leaving op)
   //   unfused_workspace: FP32 QK scratch + T softmax scratch (sized by
-  //                      GetGqaUnfusedAttentionWorkspaceSize)
+  //                      GetUnfusedAttentionWorkspaceSize)
   T* unfused_q_bnsh = nullptr;
   T* unfused_y_bnsh = nullptr;
   void* unfused_workspace = nullptr;
+
+  // cuDNN SDPA path: temp-space allocator and cuDNN handle (stored as void* to avoid pulling the
+  // cuDNN headers into this file; cast to cudnnHandle_t in the .cu runner).
+  AllocatorPtr allocator = nullptr;
+  void* cudnn_handle = nullptr;
 };
 
 template <typename T>
@@ -237,11 +256,27 @@ struct PagedAttentionData {
   // Fused op buffers
   T* workspace_buffer = nullptr;
 
+  // Memory-efficient attention (CUTLASS fMHA) buffers for the unfused fallback path
+  // taken when FlashAttention is unavailable (SM<80 or ORT_DISABLE_FLASH_ATTENTION).
+  T* gathered_key = nullptr;    // [total_kv_tokens, num_heads, head_size], packed varlen (GQA-expanded)
+  T* gathered_value = nullptr;  // [total_kv_tokens, num_heads, head_size], packed varlen (GQA-expanded)
+  T* fmha_buffer = nullptr;     // CUTLASS fMHA output-accumulator workspace
+  // Populated by the caller after a D->H sync on cumulative_seqlens_kv[batch_size].
+  int total_kv_tokens = 0;
+
+  // Actual max of per-batch new-query lengths (cumulative_seqlens_q[i+1] - cumulative_seqlens_q[i]).
+  // Populated by the caller via the same D->H sync so the MEA path's rotary grid and MEA's
+  // grid_x (ceil_div(sequence_length, kQueriesPerBlock)) cover every query token. The previous
+  // heuristic `token_count - batch_size + 1` underestimates when any batch has 0 new tokens,
+  // producing silent per-token dropout in MEA and rotary.
+  int max_query_len = 0;
+
   // Output Tensors
   T* output = nullptr;
 
   // Kernel Flags
   bool use_flash_attention = false;
+  bool use_memory_efficient_attention = false;
 };
 
 }  // namespace cuda

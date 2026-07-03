@@ -31,6 +31,9 @@ parameters:
   type: number
   default: 0
 
+variables:
+- template: templates/common-variables.yml
+
 extends:
   # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
   # For non-production pipelines, use "Unofficial" as defined below.
@@ -76,7 +79,7 @@ extends:
         DoEsrp: ${{ parameters.DoEsrp }}
         NuPackScript: |
           python -m pip install setuptools
-          msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} /p:CurrentData=$(BuildDate) /p:CurrentTime=$(BuildTime)
+          msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreatePackage /p:OrtPackageId=Microsoft.ML.OnnxRuntime.DirectML /p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} /p:CurrentData=$(ORT_CI_BUILD_DATE) /p:CurrentTime=$(ORT_CI_BUILD_TIME)
           if errorlevel 1 exit /b 1
           copy $(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
           if errorlevel 1 exit /b 1

@@ -26,6 +26,21 @@ The ORT CUDA build produces four separate libraries:
 | `onnxruntime_providers_cuda` | `libonnxruntime_providers_cuda.so` | Shared module | In-tree CUDA EP (uses `SHARED_PROVIDER` bridge) |
 | `onnxruntime_providers_cuda_plugin` | `libonnxruntime_providers_cuda_plugin.so` | Shared module | Plugin CUDA EP (uses EP API adapters) |
 
+### 2.1.1 Optional cuDNN Runtime Dependency
+
+The CUDA Plugin EP follows the in-tree CUDA EP's optional-cuDNN model. cuDNN headers are still required at build time, but the plugin shared library must not link directly to cuDNN or contain a cuDNN DLL/SO in its dynamic dependency table. cuDNN is loaded lazily through the ORT cuDNN loader when `enable_cudnn` is enabled and the runtime libraries are available through trusted process-level library discovery.
+
+The plugin exposes the same `enable_cudnn` provider option as the in-tree CUDA EP:
+
+```text
+enable_cudnn = 1  # default: try to load and use cuDNN when available
+enable_cudnn = 0  # do not load cuDNN; run native CUDA paths or fail cuDNN-required ops with NOT_IMPLEMENTED
+```
+
+There is intentionally no provider option for a custom cuDNN DLL/SO path. Provider options can flow from higher-level configuration systems, so allowing them to choose a native library path would create a code-loading security risk. Deployments that need a specific cuDNN directory should use trusted process-level mechanisms, such as the OS loader configuration, container image setup, or Python `preload_dlls(cudnn=True, directory=...)` before plugin registration.
+
+No-cuDNN plugin validation runs `test_cuda_plugin_ep.py` with `ORT_TEST_CUDA_PLUGIN_EP=1` and `ORT_TEST_CUDA_PLUGIN_NO_CUDNN=1`. That mode passes `enable_cudnn=0` to plugin sessions and skips tests for operators that still require cuDNN in the current implementation. Non-cuDNN operator coverage, plugin registration, device enumeration, graph assignment, CUDA graph, I/O binding, and profiling tests continue to run.
+
 ### 2.2 Preprocessor Defines
 
 Each build target uses different preprocessor defines that control how framework types are resolved:
@@ -75,6 +90,48 @@ The plugin exports exactly two C symbols:
 - `ReleaseEpFactory()` — called by ORT to destroy the factory
 
 All other symbols have hidden visibility.
+
+### 2.5 ORT Version Compatibility and API Negotiation
+
+The plugin is built against the ORT headers in this repository (`ORT_API_VERSION`) but is designed to load into an **older** ORT runtime as well, down to the floor declared in [`plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION`](../../plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION) (currently `1.24.4`). The floor is a single source of truth:
+
+- **Build time:** `cmake/onnxruntime_providers_cuda_plugin.cmake` reads the file and bakes it into the DLL as the `ORT_PLUGIN_EP_MIN_ORT_VERSION` preprocessor definition.
+- **Packaging:** the Python wheel (`onnxruntime>=<floor>`, via `plugin-ep-cuda/python/build_wheel.py`) and the NuGet package (`plugin-ep-cuda/csharp/pack_nuget.py`) read the same file.
+
+`CreateEpFactories()` negotiates the API version with the runtime instead of hard-coding it:
+
+1. It calls `onnxruntime::ep::ApiInit(ort_api_base, ORT_PLUGIN_EP_MIN_ORT_VERSION)` (from `include/onnxruntime/ep/api.h`). `ApiInit()` parses the runtime version string reported by `OrtApiBase::GetVersionString()`, enforces the minimum, requests the `OrtApi` matching the **runtime's** version, and initializes the C++ API (`Ort::InitApi`). If the runtime is older than the floor, or the requested API/EP API is unavailable, `ApiInit()` throws and the factory creation fails with a descriptive `OrtStatus` (constructed conservatively via the v1 `OrtApi`, since the C++ API is not yet initialized at that point).
+2. Every EP-facing callback struct (`OrtEpFactory`, `OrtEp`, `OrtAllocator`, `OrtSyncStreamImpl`, `OrtSyncNotificationImpl`, `OrtDataTransferImpl`, `OrtEpProfilerImpl`, `OrtLoopKernelHelper`, `OrtScanKernelHelper`) initializes its `ort_version_supported`/`version` field to `ORT_API_VERSION` — the ORT API version the plugin was compiled with — consistent with every other EP API struct. ORT uses this field only to avoid reading struct fields that did not exist when the plugin was compiled; it is append-only, so reporting the compiled version is always safe. Whether the plugin may *call* a newer `OrtApi`/`OrtEpApi` function is a separate concern governed by the runtime API version (`onnxruntime::ep::CurrentOrtApiVersion()`), handled by the capability gating in §2.6 — not by lowering this field.
+
+> **Lowering the floor.** The floor reflects the newest `OrtApi`/`OrtEpApi` function the plugin actually calls. The kernel-registry EP path (`CreateKernelRegistry`, `KernelRegistry_AddKernel`, `GetKernelRegistry`, `EpGraphSupportInfo_*`, `CreateIfKernel`/`CreateLoopKernel`/`CreateScanKernel`) is `\since 1.24`; the stream, memory-device, and data-transfer EP functions are `\since 1.23`. The `Test Linux CUDA Plugin EP` stage (`plugin-linux-cuda-test-stage.yml`) installs the floor version of the base `onnxruntime` package and runs the plugin test against it, so an accidental dependency on a newer API is caught in CI. The Python plugin-loading helpers (`register_execution_provider_library`, `get_ep_devices`, `add_provider_for_devices`) must also exist in the floor's base package; the same test validates this.
+
+### 2.6 API Version Audit and Defensive Capability Gating
+
+Because the plugin binary may load into an older runtime, every `OrtApi`/`OrtEpApi` function it calls must exist in that runtime. The following audit records the newest `\since` version of each API surface the plugin uses (verified against the `\since` annotations in `onnxruntime_c_api.h` and `onnxruntime_ep_c_api.h`). It is the justification for the `1.24.4` floor and identifies exactly which features depend on APIs newer than the floor.
+
+| API surface | Newest `\since` used | Representative functions |
+| --- | --- | --- |
+| `OrtApi` — direct calls (`ort_api_.*`, `Ort::GetApi().*`) | **1.23** | `SyncStream_GetHandle`, `GetTensorSizeInBytes`, `GetRunConfigEntry`, `CreateMemoryInfo_V2`, `Graph_GetNumNodes`/`Graph_GetNodes` (older: `CreateStatus`, `Logger_LogMessage`, `*KeyValuePairs`, `HardwareDevice_*`, `MemoryInfoGet*`, `GetSessionConfigEntry`) |
+| `OrtApi` — optional gated kernel-context capability | **1.28** | `KernelContext_GetSyncStream` (called from the adapter only when `CurrentOrtApiVersion() >= 28`; otherwise scratch allocation uses a null stream tag and concurrent run support is not advertised) |
+| `OrtEpApi` — direct calls (`ep_api_.*`, `Ort::GetEpApi().*`) | **1.24** | `CreateKernelRegistry`, `KernelRegistry_AddKernel`, `ReleaseKernelRegistry`, `CreateIfKernel`/`CreateLoopKernel`/`CreateScanKernel`, `EpGraphSupportInfo_LookUpKernel` (older: `MemoryDevice_*`, `MemoryInfo_GetMemoryDevice`, `SyncStream_*`, `EpDevice_AddAllocatorInfo`, `EpGraphSupportInfo_AddSingleNode`, `CreateEpDevice`/`ReleaseEpDevice`) |
+| EP profiler API (only when built with `ENABLE_CUDA_PROFILING`) | **1.25** | `CreateProfilingEvent`, `ProfilingEventsContainer_AddEvents`, `ReleaseProfilingEvent` (called from `cuda_profiler_plugin.cc` via the `Ort::ProfilingEvent` / `Ort::UnownedProfilingEventsContainer` wrappers) |
+
+`provider_api_shims.cc` uses only internal helpers (`GetEnvironmentVar`, `MLFloat16` conversions), and the plugin uses no Model Editor, Model Package, or Compile API. **Apart from optional gated capabilities such as EP profiling and stream-tagged scratch allocation, every API the plugin calls is `\since 1.24` or older**, so the true compatibility floor is `1.24.4`.
+
+**Defensive capability gating.** Reading a struct field is safe because the field is append-only and ORT only reads fields it knows about. The real hazard is *calling* an `OrtApi`/`OrtEpApi` function that the (possibly older) runtime does not provide. The correct guard for that is the runtime API version, `onnxruntime::ep::CurrentOrtApiVersion()`, not `ort_version_supported`. The `CudaEp` constructor (`cuda_ep.cc`) therefore reads `const uint32_t ort_version = onnxruntime::ep::CurrentOrtApiVersion();` and only installs an `OrtEp` callback when that runtime version is new enough to provide both the callback field and every API its implementation calls:
+
+| `OrtEp` callback | `\since` | Installed only when |
+| --- | --- | --- |
+| `Sync` | 1.25 | `ort_version >= 25` |
+| `CreateProfiler` | 1.25 | `ort_version >= 25` **and** `ENABLE_CUDA_PROFILING` |
+| `IsGraphCaptureEnabled`, `IsGraphCaptured`, `ReplayGraph`, `GetGraphCaptureNodeAssignmentPolicy` | 1.26 | `ort_version >= 26` |
+| `GetAvailableResource` | 1.26 | `ort_version >= 26` |
+
+All other `OrtEp` and `OrtEpFactory` callbacks are `\since 1.24` or older and are installed unconditionally. Gating `CreateProfiler` is what makes the three `\since 1.25` profiler functions unreachable on an older runtime: when the profiler is never created, ORT never drives the `OrtEpProfilerImpl` callbacks that call them.
+
+`KernelContext_GetSyncStream` is guarded at the adapter call site rather than through an `OrtEp` callback field: `OpKernelContext::GetSyncStream()` returns null when `CurrentOrtApiVersion() < 28`, and `CudaEp::IsConcurrentRunSupportedImpl()` only advertises concurrent runs when that API is available. Older runtimes therefore keep the previous serialized-run behavior while still using the same plugin binary.
+
+The gates use **graceful degradation rather than throwing**: the gated callbacks and adapter capabilities are optional features (per-run sync, EP-level GPU profiling, CUDA-graph capture/replay, device-memory budgeting, stream-tagged scratch for concurrent runs), so disabling them on an older runtime still yields a fully functional EP — inference runs, just without that specific feature. This was validated by loading the plugin (built against the latest headers) into both the latest runtime (full test suite passes) and an `onnxruntime==1.24.4` runtime (the EP registers, enumerates devices, and runs inference correctly with the newer callbacks left null).
 
 ---
 
@@ -390,6 +447,8 @@ That behavior is now implemented by tracking:
 
 The final support set is chosen from `candidate_nodes`, with the existing CPU-preferred-node filtering applied only where appropriate.
 
+When resource accounting is also enabled (`session.resource_cuda_partitioning_settings`), this two-pass flow interacts with the partitioner's budget commit in an important way. The first-pass tags are tentative — ORT applies them only so the layout transformer can rewrite the nodes — so the partitioner does **not** commit any accountant budget for them. After the second pass, the partitioner commits budget only for the first-pass nodes that survived (still claimed by the plugin), using the per-node costs captured during the first pass. Nodes dropped on the second pass therefore never consume budget, and surviving nodes are counted exactly once. Plugin EPs that attach accounting costs should do so only on first-pass (newly claimed) capabilities, mirroring the in-tree CUDA EP, which leaves already-assigned second-pass nodes cost-free and relies on the partitioner's deferred commit.
+
 **B. Cache the shim provider pointer at kernel creation**
 
 Migrated CUDA kernels expect `info.GetExecutionProvider()` to return the shim `CUDAExecutionProvider`, not the outer `PluginExecutionProvider`. The adapter now resolves that relationship once during kernel creation, captures the shim provider's runtime-config object, and uses `CudaKernel` accessors for later provider-setting reads.
@@ -418,9 +477,18 @@ The NHWC rollout is effectively in a "runtime enabled, cleanup remaining" state:
 | 2 | Cache the shim provider pointer in the adapter `OpKernelInfo` | Implemented; fixes the observed NHWC runtime crash |
 | 3 | Consolidate allowlists, improve internal-domain diagnostics, and strengthen structural NHWC assertions | Recommended follow-up work |
 
+#### 5.3.2 Allocator Resolution for Kernels (Scratch and PrePack)
+
+Migrated kernels need a valid device allocator in two places: scratch/workspace buffers during `Compute()`, and one-time weight conversion or packing during `PrePack()`. Both now resolve the allocator the same way the bundled CUDA EP does, through the kernel's own `OpKernelInfo`.
+
+- **Scratch buffers.** `CudaKernel::GetScratchBuffer` allocates through `Info().GetAllocator(OrtMemTypeDefault)` (the EP arena) and stream-tags scratch chunks with the framework `OrtSyncStream*` from `KernelContext_GetSyncStream`, instead of issuing a raw `cudaMallocAsync`/`cudaMalloc` per call. The adapter `OpKernelInfo::GetAllocator` resolves the EP's default-memory (device) allocator and is always valid for a migrated kernel, so no plugin-only scratch path is needed. Routing through the arena is also what keeps the device free-memory footprint stable during CUDA graph capture (see [cuda_graph_for_cuda_plugin.md](cuda_graph_for_cuda_plugin.md#arena-allocator-integration)). CUDA launches still use the raw `cudaStream_t` from `KernelContext_GetGPUComputeStream`; the framework stream is used only for stream-aware arena bookkeeping.
+- **PrePack.** The framework prepack loop (`SessionState::PrepackConstantInitializedTensors`) resolves the allocator with `GetInitializerAllocator(kernel->Info().GetDevice(OrtMemTypeDefault))`, a session map keyed by device. For a plugin EP registered as a separate library, that device-keyed lookup can miss and return null. The loop now falls back to `kernel->Info().GetAllocator(OrtMemTypeDefault)` when the lookup is null, so every `PrePack` implementation receives a valid allocator at the single framework call site. This replaces the earlier approach of adding a per-kernel `if (!alloc) alloc = Info().GetAllocator(...)` guard to each prepacking op (which only covered the few ops that were touched and risked missing future ones). The fallback is behavior-neutral for in-tree EPs, whose device-keyed lookup already succeeds, and it does **not** force `is_packed`/`prepacked_weights` handling \u2014 ops such as `QMoE` and `MatMulNBits` still set `is_packed = true` and populate prepacked weights normally.
+
+The enabling adapter changes are in [`include/onnxruntime/ep/adapter/allocator.h`](../../include/onnxruntime/ep/adapter/allocator.h) and [`include/onnxruntime/ep/adapter/op_kernel.h`](../../include/onnxruntime/ep/adapter/op_kernel.h): `IAllocatorWrappingOrtAllocator` implements `IsStreamAware()`/`AllocOnStream()` by forwarding to the underlying `OrtAllocator`'s `AllocOnStream` when it is available (ORT >= 1.23), and `OpKernelContext::GetSyncStream()` exposes the framework stream when the negotiated ORT API version includes `KernelContext_GetSyncStream`. The CUDA plugin uses that framework stream for `GetScratchBuffer`; if it is unavailable, allocation falls back to a null stream tag and concurrent `Session::Run()` is not advertised.
+
 ### 5.4 CUDA Graph Support
 
-CUDA Graph capture/replay is fully implemented for the plugin EP, including arena integration (both default BFC arena and CUDA native mempool), multi-graph via annotation IDs with different input shapes, and concurrent `Session::Run()` support. The full design — plugin-side implementation, per-thread isolation, arena integration, capture flow, and concurrent run details — is in [cuda_graph_for_cuda_plugin.md](cuda_graph_for_cuda_plugin.md). This section documents only the framework-level and C API changes that affect the broader ORT architecture.
+CUDA Graph capture/replay is fully implemented for the plugin EP, including arena integration (both default BFC arena and CUDA native mempool), multi-graph via annotation IDs with different input shapes, and combining a caller-supplied `user_compute_stream` with capture/replay. Concurrent `Session::Run()` is supported when the host runtime exposes `KernelContext_GetSyncStream` and the session is not forced into EP-level unified-stream mode. The full design — plugin-side implementation, per-thread isolation, arena integration, capture flow, and user-stream mode — is in [cuda_graph_for_cuda_plugin.md](cuda_graph_for_cuda_plugin.md). This section documents only the framework-level and C API changes that affect the broader ORT architecture.
 
 #### 5.4.1 OrtEp C API Extensions (v1.26)
 
@@ -446,6 +514,10 @@ Session-level changes in `inference_session.cc`:
 - **Policy-driven validation**: Graph capture validation at session initialization now iterates all EPs and queries `GetGraphCaptureNodeAssignmentPolicy()` instead of hard-coding EP name lists.
 - **Bounded recursion**: After each normal run when graph capture is enabled, the session recursively calls `RunImpl()` (bounded by `kMaxGraphCaptureWarmupRuns = 8`) until the graph is captured. From the user's perspective, a single `Run()` call handles the entire warm-up + capture sequence.
 - **Stream collection lifetime**: ORT core now caches `DeviceStreamCollection` objects in thread-affine session buckets keyed by a per-thread lifetime token. Graph-enabled runs recycle and reacquire stream wrappers only on the creating thread, which preserves warm-up/capture reuse without cross-thread leakage.
+
+#### 5.4.3 User Compute Stream with CUDA Graph
+
+A caller-provided `user_compute_stream` may be combined with `enable_cuda_graph` (the factory previously rejected this pair). When both are set, `CudaEp::GetPerThreadContext()` builds the per-thread graph context around the user-owned stream rather than an EP-owned one, so capture and replay run on the same stream the kernels are issued to (matching the bundled CUDA EP). The context marks the stream as not owned and never destroys it. Details are in [cuda_graph_for_cuda_plugin.md](cuda_graph_for_cuda_plugin.md#user-compute-stream--cuda-graph).
 
 ---
 
@@ -561,7 +633,7 @@ The in-tree CUDA EP and shared provider bridge are compiled identically regardle
 
 ### 9.3 Plugin Independence
 
-`libonnxruntime_providers_cuda_plugin.so` is **fully self-contained**. It does not depend on `libonnxruntime_providers_cuda.so` or `libonnxruntime_providers_shared.so` at load time. It statically links against `onnxruntime_framework`, `onnxruntime_graph`, `onnxruntime_common`, `onnxruntime_mlas`, `onnxruntime_flatbuffers`, and links dynamically against CUDA (`cudart`, `cublas`, `cublasLt`, `cufft`), cuDNN, and protobuf. Communication with the ORT runtime happens exclusively through the C API (`OrtApi`/`OrtEpApi`) passed at load time.
+`libonnxruntime_providers_cuda_plugin.so` is **fully self-contained**. It does not depend on `libonnxruntime_providers_cuda.so` or `libonnxruntime_providers_shared.so` at load time. It statically links against `onnxruntime_framework`, `onnxruntime_graph`, `onnxruntime_common`, `onnxruntime_mlas`, `onnxruntime_flatbuffers`, and links dynamically against CUDA (`cudart`, `cublas`, `cublasLt`, `cufft`) and protobuf. cuDNN is loaded lazily only when enabled and available at runtime. Communication with the ORT runtime happens exclusively through the C API (`OrtApi`/`OrtEpApi`) passed at load time.
 
 ### 9.4 Build Outputs
 
@@ -831,29 +903,105 @@ include/onnxruntime/ep/
 
 ---
 
-## 14. Future Work
+## 14. Profiling and Observability
 
-1. **Profiling and observability** — ORT's generic plugin EP bridge now supports `OrtEp::CreateProfiler`, but the CUDA plugin EP does not implement that callback yet. Future work should add CUDA-plugin-specific profiler wiring, integrate CUDA/NVTX/CUPTI-based tracing where appropriate, and make plugin execution visible in the same profiling flows users already rely on for the bundled CUDA EP.
+The CUDA plugin EP implements the `OrtEpProfilerImpl` interface (introduced in ORT 1.25 via [PR #27649](https://github.com/microsoft/onnxruntime/pull/27649)) to participate in ORT's profiling system. When profiling is enabled, GPU kernel executions (CUDA kernels, memory copies) captured by NVIDIA CUPTI appear alongside ORT's CPU-side events in the profiling output.
 
-2. **Remaining stream/adapter parity for framework-style `Stream*` consumers** — Much of the broad `Stream*` gap has already been addressed: the plugin adapter now provides an `OrtStreamAdapter` / `PluginStreamShim` path for framework-style `Stream*` call sites, FFT is included, and quantization/diffusion kernels are no longer excluded as a class. Remaining work is narrower:
+### 14.1 Architecture
+
+The profiling stack has three layers:
+
+1. **ORT Core** (`Profiler` in `profiler.cc`) — drives the profiling lifecycle. It calls `PluginExecutionProvider::GetProfiler()`, which invokes `OrtEp::CreateProfiler` on the plugin and wraps the returned `OrtEpProfilerImpl` in a `PluginEpProfiler` bridge.
+2. **Bridge** (`PluginEpProfiler` in `ep_event_profiling.cc`) — adapts the C++ `EpProfiler` interface to the C `OrtEpProfilerImpl` callbacks. It handles clock synchronization (provides an epoch-independent offset in `StartProfiling`) and converts relative ORT event IDs to absolute epoch-based correlation IDs for `StartEvent`/`StopEvent`.
+3. **Plugin-side profiler** (`CudaPluginEpProfiler` in `cuda_profiler_plugin.h/.cc`) — implements `OrtEpProfilerImpl` inside the plugin DLL. Delegates to `CUPTIManager` for GPU activity tracing.
+
+```
+ORT Profiler
+  └─ PluginEpProfiler (bridge, in ORT core)
+       └─ OrtEpProfilerImpl callbacks (C API boundary)
+            └─ CudaPluginEpProfiler (in plugin DLL)
+                 └─ CUPTIManager singleton (in plugin DLL)
+                      └─ CUPTI activity APIs (GPU tracing)
+```
+
+### 14.2 CUPTI Integration
+
+The plugin DLL links `CUDA::cupti` and compiles `cupti_manager.cc` when `onnxruntime_ENABLE_CUDA_PROFILING` is ON. The `CUPTIManager` singleton lives inside the plugin DLL, isolated from any in-tree CUDA EP in the same process. This is the expected isolation model for plugin EPs.
+
+CUPTI activities enabled:
+- `CUPTI_ACTIVITY_KIND_RUNTIME` — CUDA runtime API calls
+- `CUPTI_ACTIVITY_KIND_DRIVER` — CUDA driver API calls
+- `CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL` — GPU kernel execution
+- `CUPTI_ACTIVITY_KIND_MEMCPY` — device memory transfers
+- `CUPTI_ACTIVITY_KIND_EXTERNAL_CORRELATION` — maps GPU activities to ORT event correlation IDs
+
+### 14.3 Correlation ID Flow
+
+The plugin API's `StartEvent`/`StopEvent` receive **absolute epoch-based** correlation IDs (converted by the `PluginEpProfiler` bridge from ORT's relative event IDs). These are pushed directly to CUPTI's external correlation stack via `cuptiActivityPushExternalCorrelationId`, allowing CUPTI to tag GPU activities with the corresponding ORT event. When `StopEvent` is called, the correlation ID is popped. This matches the pattern used by the in-tree CUDA EP's `GPUTracerManager::PushCorrelation`/`PopCorrelation`.
+
+### 14.4 Event Collection (EndProfiling)
+
+When ORT calls `EndProfiling`:
+1. CUPTI activity buffers are flushed (`cuptiActivityFlushAll`).
+2. GPU activity records are processed — kernel names, timestamps, durations, and stream/grid metadata are extracted.
+3. Events are converted to `Ort::ProfilingEvent` instances with `OrtProfilingEventCategory_KERNEL`.
+4. Events are appended to the `OrtProfilingEventsContainer` via `AddEvents`.
+
+The plugin does **not** perform the post-hoc merge/sort that the in-tree `GPUProfilerBase::EndProfiling` does. The plugin API is append-only, and the `PluginEpProfiler` bridge on the ORT side likewise appends EP events to ORT's profiling event collection without merge/sort by timestamp or correlation ID. Any ordering or interleaving into a global timeline is handled by downstream trace consumers.
+
+### 14.5 Design Differences from In-Tree CUDA EP Profiler
+
+| Aspect | In-tree CUDA EP | CUDA Plugin EP |
+|--------|----------------|----------------|
+| Event merge | `GPUProfilerBase::MergeEvents` interleaves GPU events into ORT's array (has known sort-order bug) | Append-only; ORT-side bridge appends only, and trace consumers handle ordering |
+| Correlation IDs | Relative → absolute conversion in `GPUTracerManager::PushCorrelation` | Bridge provides absolute IDs directly; plugin pushes to CUPTI as-is |
+| `StopEvent` metadata | Ignored (just pops correlation) | ORT event metadata available; currently unused, can annotate GPU events in future |
+| GPU→ORT event linkage | Implicit via CUPTI external correlation IDs merged into timeline | GPU events carry only CUPTI metadata (`stream`, `grid_*`, `block_*`); no ORT correlation or parent identifier is attached. Downstream consumers must relate GPU kernels to ORT nodes via timestamp proximity. This is a known limitation; future work may attach `correlation_id` or parent event name via `StopEvent`'s `OrtProfilingEvent` parameter |
+| Singleton scope | Process-wide `CUPTIManager` in main ORT DLL | DLL-local `CUPTIManager` in plugin (process isolation) |
+
+### 14.6 Build Configuration
+
+CUPTI profiling is conditional:
+- **CMake flag**: `onnxruntime_ENABLE_CUDA_PROFILING=ON`
+- **Compile definition**: `ENABLE_CUDA_PROFILING` added to the plugin target
+- **Link**: `CUDA::cupti` linked to `onnxruntime_providers_cuda_plugin`
+- **Source**: `cupti_manager.cc` compiled into the plugin
+
+When profiling is disabled (default), `CudaEp::CreateProfiler` is set to `nullptr` and no CUPTI code is compiled.
+
+### 14.7 Files
+
+| File | Role |
+|------|------|
+| `plugin/cuda_profiler_plugin.h` | `CudaPluginEpProfiler` struct definition |
+| `plugin/cuda_profiler_plugin.cc` | Profiler callback implementations |
+| `plugin/cuda_ep.h` | `CreateProfilerImpl` declaration |
+| `plugin/cuda_ep.cc` | `CreateProfiler` callback wiring |
+| `cmake/onnxruntime_providers_cuda_plugin.cmake` | Conditional CUPTI linkage |
+
+---
+
+## 15. Future Work
+
+1. **Remaining stream/adapter parity for framework-style `Stream*` consumers** — Much of the broad `Stream*` gap has already been addressed: the plugin adapter now provides an `OrtStreamAdapter` / `PluginStreamShim` path for framework-style `Stream*` call sites, FFT is included, and quantization/diffusion kernels are no longer excluded as a class. Remaining work is narrower:
 
    - Continue using `Stream(context)` / `GetOrtStream(context)` patterns for migrated kernels rather than adding raw-stream-only forks.
    - Audit still-excluded directories that require more than a stream handle: `contrib_ops/cuda/llm/*`, `contrib_ops/cuda/transformers/*`, and `contrib_ops/cuda/collective/*`.
    - For each re-inclusion pass, add or extend focused plugin tests before removing the CMake exclusion.
 
-3. **Contrib LLM migration pass** — Still open. The core CUDA LLM attention path is now adapter-safe, but `contrib_ops/cuda/llm/*` remains excluded in `cmake/onnxruntime_providers_cuda_plugin.cmake`. The remaining work is a dedicated contrib-LLM adapter pass: resolve any plugin build failures under `ORT_USE_EP_API_ADAPTERS`, keep the normal stream/scratch-buffer helpers, remove the `contrib_ops/cuda/llm/*` CMake filters, and add focused tests or parity-report coverage for the first re-included kernels.
+2. **Contrib LLM migration pass** — Still open. The core CUDA LLM attention path is now adapter-safe, but `contrib_ops/cuda/llm/*` remains excluded in `cmake/onnxruntime_providers_cuda_plugin.cmake`. The remaining work is a dedicated contrib-LLM adapter pass: resolve any plugin build failures under `ORT_USE_EP_API_ADAPTERS`, keep the normal stream/scratch-buffer helpers, remove the `contrib_ops/cuda/llm/*` CMake filters, and add focused tests or parity-report coverage for the first re-included kernels.
 
-4. **Tunable ops** — Implement a plugin-side `ITuningContext` and remove the `ORT_USE_EP_API_ADAPTERS` guards in `matmul.cc`/`gemm.cc` so the plugin can recover runtime kernel selection and profiling-based tuning behavior.
+3. **Tunable ops** — Implement a plugin-side `ITuningContext` and remove the `ORT_USE_EP_API_ADAPTERS` guards in `matmul.cc`/`gemm.cc` so the plugin can recover runtime kernel selection and profiling-based tuning behavior.
 
-5. **TensorSeq and additional C API coverage** — Add enough sequence/tensor-sequence support to unblock `sequence_op.cc` (the last remaining TensorSeq-dependent file), and extend the ORT C API where needed for remaining framework-style attribute accessors such as string-array attributes used by RNN kernels. Note: `identity_op.cc` is now included in the plugin build — its TensorSeq code path is guarded by `#ifndef BUILD_CUDA_EP_AS_PLUGIN` and opset 14+ registrations use `AllFixedSizeTensorTypes()` (Tensor-only) instead of `AllFixedSizeTensorAndSequenceTensorTypes()`.
+4. **TensorSeq and additional C API coverage** — Add enough sequence/tensor-sequence support to unblock `sequence_op.cc` (the last remaining TensorSeq-dependent file), and extend the ORT C API where needed for remaining framework-style attribute accessors such as string-array attributes used by RNN kernels. Note: `identity_op.cc` is now included in the plugin build — its TensorSeq code path is guarded by `#ifndef BUILD_CUDA_EP_AS_PLUGIN` and opset 14+ registrations use `AllFixedSizeTensorTypes()` (Tensor-only) instead of `AllFixedSizeTensorAndSequenceTensorTypes()`.
 
-6. **Remaining contrib exclusions** — Remaining contrib exclusions are: `shrunken_gather.cc` (training), `transformers/*` (subgraph), `aten_ops/*` (ATen), `collective/*` (NCCL), and `llm/*` (contrib LLM pass).
+5. **Remaining contrib exclusions** — Remaining contrib exclusions are: `shrunken_gather.cc` (training), `transformers/*` (subgraph), `aten_ops/*` (ATen), `collective/*` (NCCL), and `llm/*` (contrib LLM pass).
 
-7. **CI integration and targeted benchmarking** — Partially complete. Basic CUDA plugin build + `test_cuda_plugin_ep.py` coverage now exists in Linux and Windows plugin CI workflows. Remaining work is perf-oriented and feature-specific validation: add targeted benchmarks or perf gates for graph replay and allocator behavior, and extend CI once profiling and tunable-op support land.
+6. **CI integration and targeted benchmarking** — Partially complete. Basic CUDA plugin build + `test_cuda_plugin_ep.py` coverage now exists in Linux and Windows plugin CI workflows. Remaining work is perf-oriented and feature-specific validation: add targeted benchmarks or perf gates for graph replay and allocator behavior, and extend CI once profiling and tunable-op support land.
 
-8. **NHWC cleanup and hardening** — Partially complete. Runtime NHWC callbacks, second-pass capability handling for pre-assigned NHWC nodes, cached provider-config access, and focused Conv/BatchNormalization/Pool tests are in place. Remaining work is the cleanup described in [Section 5.3.1](#531-nhwc-layout-transformation-support): unify the conversion allowlist with the bundled CUDA EP, improve internal-domain kernel-miss diagnostics, and add stronger structural assertions that plugin-backed NHWC execution was actually selected.
+7. **NHWC cleanup and hardening** — Partially complete. Runtime NHWC callbacks, second-pass capability handling for pre-assigned NHWC nodes, cached provider-config access, and focused Conv/BatchNormalization/Pool tests are in place. Remaining work is the cleanup described in [Section 5.3.1](#531-nhwc-layout-transformation-support): unify the conversion allowlist with the bundled CUDA EP, improve internal-domain kernel-miss diagnostics, and add stronger structural assertions that plugin-backed NHWC execution was actually selected.
 
-9. **OpSchema-validated kernel registration after PR #27713** — PR #27713 has already landed, so the `OrtEpApi` and C++ wrappers for querying ONNX operator schemas are available (see [Section 3.5.1](#351-type-constraint-names-and-opschema-access)). The remaining work is plugin-side adoption:
+8. **OpSchema-validated kernel registration after PR #27713** — PR #27713 has already landed, so the `OrtEpApi` and C++ wrappers for querying ONNX operator schemas are available (see [Section 3.5.1](#351-type-constraint-names-and-opschema-access)). The remaining work is plugin-side adoption:
 
     **A. Registration-time validation pass**
 
@@ -881,7 +1029,7 @@ include/onnxruntime/ep/
     | `cuda_ep.cc` / `GetCapabilityImpl()` | (Optional) Add schema-based diagnostic when `EpGraphSupportInfo_LookUpKernel` returns nullptr |
     | `test_cuda_plugin_ep.py` | Add a validation stage that exercises schema-validated registration |
 
-10. **Resource accounting and annotation-based partitioning after PR #27595** — PR #27595 has already landed, so ORT now has framework-side resource accounting and layering annotations. The remaining CUDA plugin work is to bridge those capabilities through the plugin EP API and plugin capability implementation.
+9. **Resource accounting and annotation-based partitioning after PR #27595** — PR #27595 has already landed, so ORT now has framework-side resource accounting and layering annotations. The remaining CUDA plugin work is to bridge those capabilities through the plugin EP API and plugin capability implementation.
 
     **A. Resource accounting**
 
