@@ -134,6 +134,11 @@ stages:
         popd
       displayName: "Build Apple xcframework"
 
+    - task: 1ES.PublishPipelineArtifact@1
+      inputs:
+        targetPath: '$(Build.BinariesDirectory)/artifacts'
+        artifactName: 'onnxruntime-ios-full-xcframework'
+
     - script: |
         python3 tools/ci_build/github/apple/test_apple_packages.py \
           --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
@@ -141,11 +146,6 @@ stages:
           --skip_macos_test \
           --mac_catalyst_enabled
       displayName: "Test Apple framework"
-
-    - task: 1ES.PublishPipelineArtifact@1
-      inputs:
-        targetPath: '$(Build.BinariesDirectory)/artifacts'
-        artifactName: 'onnxruntime-ios-full-xcframework'
 
 - template: win-ci.yml
   parameters:

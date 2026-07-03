@@ -19,7 +19,8 @@
             "--use_coreml",
             "--skip_tests",
             "--no_kleidiai",
-            "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF"
+            "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF",
+            "--cmake_extra_defines=CMAKE_POLICY_VERSION_MINIMUM=3.5"
         ],
         "iphoneos": [
             "--ios",
