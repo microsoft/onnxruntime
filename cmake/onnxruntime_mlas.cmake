@@ -850,13 +850,13 @@ else()
           list(APPEND mlas_private_compile_definitions MLAS_SUPPORTS_AVX512FP16)
         endif()
 
-if(NOT "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" OR CMAKE_CXX_COMPILER_VERSION VERSION_GREATER "11")
+        if(NOT "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" OR CMAKE_CXX_COMPILER_VERSION VERSION_GREATER "11")
           message(STATUS "Using -mavx2 -mfma -mavxvnni flags")
           set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c -mavxvnni")
-else()
+        else()
           message(STATUS "Using -mavx2 -mfma flags")
           set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "-mavx2 -mfma -mf16c")
-endif()
+        endif()
         set(mlas_platform_srcs_avx512f
           ${MLAS_SRC_DIR}/x86_64/DgemmKernelAvx512F.S
           ${MLAS_SRC_DIR}/x86_64/SgemmKernelAvx512F.S
