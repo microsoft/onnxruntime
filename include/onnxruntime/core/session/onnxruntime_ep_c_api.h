@@ -2971,27 +2971,18 @@ struct OrtEpFactory {
    * Evaluates each candidate's metadata against the given hardware device and optional session options,
    * and returns the index of the best match.
    *
-   * Each candidate is an OrtKeyValuePairs representing one model variant. When coming from a model package,
-   * these correspond to the fields in the variant body. See model_package/README.md for the full spec.
+   * Each candidate is an OrtKeyValuePairs representing one model variant. The KVP uses indexed keys
+   * so that the EP can inspect each model's metadata independently. A variant always has num_models >= 1.
    *
-   * **Single-model variants (simple case):**
-   *
-   * The KVP contains a single "ep_compatibility_info" key whose value is the compatibility string
-   * stored in the ONNX model metadata (as produced by OrtEp::GetCompiledModelCompatibilityInfo()).
-   *
-   * **Multi-model variants:**
-   *
-   * When a variant contains multiple sub-models (e.g., prefill + decode in a GenAI scenario),
-   * the KVP uses indexed keys so that the EP can inspect each sub-model's metadata independently:
-   *
-   *   - "num_models"                 — number of sub-models in this variant (e.g., "3")
-   *   - "<i>.ep_compatibility_info"  — compatibility string for sub-model i (required per sub-model)
-   *   - "<i>.role"                   — role/purpose of sub-model i (e.g., "prefill", "decode") (optional)
-   *   - "<i>.future_meaningful_info" — additional EP-meaningful metadata for sub-model i (optional)
+   * Required and optional keys:
+   *   - "num_models"                 — number of models in this variant (>= 1) (required)
+   *   - "<i>.ep_compatibility_info"  — compatibility string for model i (required per model)
+   *   - "<i>.role"                   — role/purpose of model i (e.g., "prefill", "decode") (optional)
+   *   - "<i>.future_meaningful_info" — additional EP-meaningful metadata for model i (optional)
    *
    * where <i> is a zero-based index (e.g., "0.ep_compatibility_info", "1.ep_compatibility_info").
    *
-   * A basic implementation can simply validate every "<i>.ep_compatibility_info" entry.
+   * The implementer should loop from 0 to num_models - 1 and validate each "<i>.ep_compatibility_info" entry.
    * An advanced implementation may additionally consider "role" or other metadata when ranking candidates.
    *
    * **Why this function exists:**
@@ -3004,8 +2995,8 @@ struct OrtEpFactory {
    *
    * If all candidates are unsupported, this function succeeds and sets `selected_index` to SIZE_MAX.
    *
-   * \note The implementer should validate the compatibility of each candidate (e.g., by calling
-   * ValidateCompiledModelCompatibilityInfo for each sub-model) before determining the best match.
+   * \note The implementer should validate each "<i>.ep_compatibility_info" in the candidate (e.g., by calling
+   * ValidateCompiledModelCompatibilityInfo for each one) before determining the best match.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] device The target hardware device that the EP would run on. Must map to this EP.
