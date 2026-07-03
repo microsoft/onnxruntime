@@ -10,6 +10,7 @@ from .calibrate import (  # noqa: F401
     save_tensors_data,
 )
 from .qdq_quantizer import QDQQuantizer  # noqa: F401
+from .qmoe_quantizer import MoeCudaQuantizer  # noqa: F401
 from .quant_utils import QuantFormat, QuantType, write_calibration_table  # noqa: F401
 from .quantize import (
     DynamicQuantConfig,  # noqa: F401
