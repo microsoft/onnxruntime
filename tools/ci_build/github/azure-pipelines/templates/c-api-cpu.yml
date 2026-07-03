@@ -102,6 +102,9 @@ stages:
 
 - stage: iOS_Full_xcframework
   dependsOn: []
+  variables:
+    xcodeVersion: "26.3"
+    iosSimulatorRuntimeVersion: "26.2"
   jobs:
   - job: iOS_Full_xcframework
     workspace:
@@ -117,6 +120,8 @@ stages:
     - template: set-version-number-variables-step.yml
 
     - template: use-xcode-version.yml
+      parameters:
+        xcodeVersion: ${{ variables.xcodeVersion }}
 
     - template: setup-build-tools.yml
       parameters:
@@ -147,6 +152,8 @@ stages:
           --skip_macos_test \
           --mac_catalyst_enabled
       displayName: "Test Apple framework"
+      env:
+        ORT_GET_SIMULATOR_DEVICE_INFO_REQUESTED_RUNTIME_VERSION: ${{ variables.iosSimulatorRuntimeVersion }}
 
 - template: win-ci.yml
   parameters:
