@@ -150,10 +150,45 @@ stages:
         targetPath: '$(Build.BinariesDirectory)/artifacts'
         artifactName: 'onnxruntime-ios-full-xcframework'
 
+  # Run the framework test on a Microsoft-hosted macOS image, which has the required iOS simulator
+  # runtime. The build above stays on the faster ACES pool; only this lighter test job uses the
+  # hosted image. It consumes the xcframework artifact published by the build job.
+  - job: iOS_Full_xcframework_test
+    dependsOn: iOS_Full_xcframework
+    workspace:
+      clean: all
+    pool:
+      name: "Azure Pipelines"
+      image: "macOS-15"
+      os: macOS
+    timeoutInMinutes: 90
+    templateContext:
+      inputs:
+      - input: pipelineArtifact
+        artifactName: 'onnxruntime-ios-full-xcframework'
+        targetPath: '$(Build.BinariesDirectory)/xcframework_artifact'
+    steps:
+    - checkout: self
+
+    - template: use-xcode-version.yml
+      parameters:
+        xcodeVersion: ${{ variables.xcodeVersion }}
+
+    - template: setup-build-tools.yml
+      parameters:
+        host_cpu_arch: arm64
+
+    - script: |
+        set -e -x
+        mkdir -p "$(Build.BinariesDirectory)/xcframework_out"
+        unzip -q "$(Build.BinariesDirectory)"/xcframework_artifact/onnxruntime_ios_xcframework.*.zip \
+          -d "$(Build.BinariesDirectory)/xcframework_out"
+      displayName: "Extract xcframework artifact"
+
     - script: |
         python3 tools/ci_build/github/apple/test_apple_packages.py \
-          --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
-          --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
+          --framework_info_file "$(Build.BinariesDirectory)/xcframework_artifact/xcframework_info.json" \
+          --c_framework_dir "$(Build.BinariesDirectory)/xcframework_out" \
           --skip_macos_test \
           --mac_catalyst_enabled
       displayName: "Test Apple framework"
