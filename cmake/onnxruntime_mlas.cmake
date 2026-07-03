@@ -300,8 +300,9 @@ function(setup_mlas_source_for_windows)
       set(CMAKE_REQUIRED_FLAGS "/arch:AVX512")
     endif()
     check_c_source_compiles("
+    #include <immintrin.h>
     int main() {
-        __asm volatile(\"vcvtneeph2ps %ymm0, %ymm1\");
+        __m256 v = _mm256_cvtneephi2ps(_mm256_setzero_si256());
         return 0;
     }
     " COMPILER_SUPPORTS_AVX512FP16)
@@ -833,8 +834,9 @@ else()
           set(CMAKE_REQUIRED_FLAGS "-mavx512fp16")
         endif()
         check_c_source_compiles("
+        #include <immintrin.h>
         int main() {
-            __asm__ volatile(\"vcvtneeph2ps %ymm0, %ymm1\");
+            __m256 v = _mm256_cvtneephi2ps(_mm256_setzero_si256());
             return 0;
         }
         " COMPILER_SUPPORTS_AVX512FP16)
