@@ -132,13 +132,18 @@ stages:
         python3 tools/ci_build/github/apple/build_apple_framework.py \
           --build_dir "$(Build.BinariesDirectory)/ios_framework" \
           tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
+      displayName: "Build Apple xcframework"
+
+    - script: |
+        set -e -x
         mkdir $(Build.BinariesDirectory)/artifacts
         pushd $(Build.BinariesDirectory)/ios_framework/framework_out
         zip -vry $(Build.BinariesDirectory)/artifacts/onnxruntime_ios_xcframework.$(OnnxRuntimeVersion).zip \
           onnxruntime.xcframework
-        cp xcframework_info.json $(Build.BinariesDirectory)/artifacts/xcframework_info.json
         popd
-      displayName: "Build Apple xcframework"
+        cp $(Build.BinariesDirectory)/ios_framework/xcframework_info.json \
+          $(Build.BinariesDirectory)/artifacts/xcframework_info.json
+      displayName: "Stage artifacts"
 
     - task: 1ES.PublishPipelineArtifact@1
       inputs:
