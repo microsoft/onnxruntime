@@ -13,6 +13,7 @@
 #include "core/session/ort_apis.h"
 #include "core/common/string_utils.h"
 #include "core/common/logging/logging.h"
+#include "core/platform/env_var_utils.h"
 
 std::ostream& operator<<(std::ostream& os, const OrtThreadPoolParams& params) {
   os << "OrtThreadPoolParams {";
@@ -175,12 +176,33 @@ CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
                                       spin_us, /*force_hybrid*/ false, backoff_max);
 }
 
+static constexpr const char* kIntraOpNumThreadsEnvVar = "ORT_INTRA_OP_NUM_THREADS";
+static constexpr const char* kInterOpNumThreadsEnvVar = "ORT_INTER_OP_NUM_THREADS";
+
+// Determines the default thread count from the environment for a pool whose size was not set
+// programmatically (thread_pool_size <= 0). Returns 0 when the environment does not specify one,
+// leaving the machine-sized default in place.
+//
+// ORT_INTRA_OP_NUM_THREADS sizes the intra-op pool and ORT_INTER_OP_NUM_THREADS the inter-op pool.
+// Parsing is strict (a negative or non-integer value fails loudly); an explicit value of 0 requests
+// the machine-sized default. This lets CPU-limited containers bound ORT's pools without reaching
+// every InferenceSession call site: physical-core detection cannot see the cgroup CPU reservation,
+// so the machine-sized default otherwise oversubscribes it.
+static int NumThreadsFromEnvironment(ThreadPoolType tpool_type) {
+  const bool is_intra_op = tpool_type == ThreadPoolType::INTRA_OP;
+  const char* ort_env_var = is_intra_op ? kIntraOpNumThreadsEnvVar : kInterOpNumThreadsEnvVar;
+  if (const auto parsed = ParseEnvironmentVariable<int>(ort_env_var); parsed.has_value()) {
+    ORT_ENFORCE(*parsed >= 0, ort_env_var, " must be a non-negative integer, got: ", *parsed);
+    return *parsed;
+  }
+  return 0;
+}
+
 std::unique_ptr<ThreadPool>
 CreateThreadPool(Env* env, OrtThreadPoolParams options, ThreadPoolType tpool_type) {
-  // If openmp is enabled we don't want to create any additional threadpools for sequential execution.
-  // However, parallel execution relies on the existence of a separate threadpool. Hence we allow eigen threadpools
-  // to be created for parallel execution.
-  ORT_UNUSED_PARAMETER(tpool_type);
+  if (options.thread_pool_size <= 0) {  // default: consult the environment before sizing to the machine
+    options.thread_pool_size = NumThreadsFromEnvironment(tpool_type);
+  }
   return CreateThreadPoolHelper(env, options);
 }
 
