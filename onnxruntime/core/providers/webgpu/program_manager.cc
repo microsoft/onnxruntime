@@ -21,6 +21,11 @@ ProgramArtifact::ProgramArtifact(const ProgramBase& program, wgpu::ComputePipeli
       compute_pipeline{compute_pipeline},
       shape_uniform_ranks{shape_uniform_ranks} {}
 
+ProgramArtifact::ProgramArtifact(std::string program_name, wgpu::ComputePipeline&& compute_pipeline, std::vector<int>&& shape_uniform_ranks)
+    : name{std::move(program_name)},
+      compute_pipeline{std::move(compute_pipeline)},
+      shape_uniform_ranks{std::move(shape_uniform_ranks)} {}
+
 ProgramManager::ProgramManager(WebGpuContext& webgpu_context)
     : webgpu_context_{webgpu_context} {
   if (std::string dump_file_path = onnxruntime::detail::GetEnvironmentVar("ORT_WEBGPU_EP_SHADER_DUMP_FILE");
@@ -85,7 +90,9 @@ Status ProgramManager::Build(const ProgramBase& program,
                              uint32_t normalized_dispatch_y,
                              uint32_t normalized_dispatch_z,
                              wgpu::ComputePipeline& compute_pipeline,
-                             std::vector<int>& shape_uniform_ranks) const {
+                             std::vector<int>& shape_uniform_ranks,
+                             wgpu::Future* out_future,
+                             std::unique_ptr<PipelineCallbackContext>* out_ctx) const {
   auto& device = webgpu_context_.Device();
   ShaderHelper shader_helper{program,
                              program_metadata,
@@ -214,29 +221,43 @@ Status ProgramManager::Build(const ProgramBase& program,
   pipeline_descriptor.label = program.Name().c_str();
 #endif
 
-  struct CreateComputePipelineContext {
-    wgpu::ComputePipeline& pipeline;
-    Status status;
-  } create_pipeline_context{compute_pipeline, {}};
+  auto pipeline_callback =
+      [](wgpu::CreatePipelineAsyncStatus status, wgpu::ComputePipeline pipeline, wgpu::StringView message,
+         PipelineCallbackContext* context) noexcept {
+        if (status == wgpu::CreatePipelineAsyncStatus::Success) {
+          context->pipeline = std::move(pipeline);
+        } else {
+          context->status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create a WebGPU compute pipeline: ", std::string_view{message});
+        }
+      };
 
+  if (out_future != nullptr) {
+    // Asynchronous mode (deferred-dispatch): issue the async pipeline creation and return the
+    // future without waiting. Ownership of the callback context is returned to the caller, which
+    // must keep it (and the `compute_pipeline` storage it references) alive until the future is
+    // waited on.
+    ORT_ENFORCE(out_ctx != nullptr, "out_ctx must be provided when out_future is provided.");
+    auto ctx = std::unique_ptr<PipelineCallbackContext>(new PipelineCallbackContext{compute_pipeline, {}});
+    *out_future = device.CreateComputePipelineAsync(
+        &pipeline_descriptor,
+        wgpu::CallbackMode::WaitAnyOnly,
+        pipeline_callback,
+        ctx.get());
+    *out_ctx = std::move(ctx);
+    return Status::OK();
+  }
+
+  // Synchronous mode: create the pipeline and wait for completion inline.
+  PipelineCallbackContext sync_context{compute_pipeline, {}};
   ORT_RETURN_IF_ERROR(
       webgpu_context_.Wait(
           device.CreateComputePipelineAsync(
               &pipeline_descriptor,
               wgpu::CallbackMode::WaitAnyOnly,
-              // Note: Don't throw from a Dawn callback.
-              [](wgpu::CreatePipelineAsyncStatus status, wgpu::ComputePipeline pipeline, wgpu::StringView message,
-                 CreateComputePipelineContext* context) noexcept {
-                if (status == wgpu::CreatePipelineAsyncStatus::Success) {
-                  context->pipeline = std::move(pipeline);
-                } else {
-                  context->status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create a WebGPU compute pipeline: ",
-                                                    std::string_view{message});
-                }
-              },
-              &create_pipeline_context)));
+              pipeline_callback,
+              &sync_context)));
 
-  return create_pipeline_context.status;
+  return sync_context.status;
 }
 
 const ProgramArtifact* ProgramManager::Get(const std::string& key) const {

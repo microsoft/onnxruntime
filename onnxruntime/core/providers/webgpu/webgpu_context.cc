@@ -238,6 +238,78 @@ Status WebGpuContext::Wait(wgpu::Future f) {
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to wait for the operation:", uint32_t(status));
 }
 
+// ===========================================================================================
+// DEFER-DISPATCH (windowed) cold-start optimization.
+// Each full window (max_num_pending_dispatches_) of recorded dispatches is waited on and flushed,
+// which preserves buffer recycling and CPU/GPU overlap while several shader compilations proceed
+// concurrently in Dawn's worker pool.
+// ===========================================================================================
+void WebGpuContext::SetDeferDispatch(bool value) {
+  defer_dispatch_ = value;
+}
+
+Status WebGpuContext::FlushDeferredWindow(std::vector<DeferredDispatch>& window) {
+  if (window.empty()) {
+    return Status::OK();
+  }
+
+  // 1) Wait for this window's in-flight pipeline compilations (issued concurrently) and commit them.
+  Status result = Status::OK();
+  for (auto& d : window) {
+    if (d.pending_build) {
+      Status ws = Wait(d.pending_build->future);
+      if (!ws.IsOK()) {
+        result = ws;
+        continue;
+      }
+      if (d.pending_build->cb_ctx && !d.pending_build->cb_ctx->status.IsOK()) {
+        result = d.pending_build->cb_ctx->status;
+        continue;
+      }
+      d.program_artifact = program_mgr_->Set(d.pending_build->key,
+                                             ProgramArtifact{std::move(d.pending_build->name),
+                                                             std::move(d.pending_build->pipeline),
+                                                             std::move(d.pending_build->shape_uniform_ranks)});
+    }
+  }
+  ORT_RETURN_IF_ERROR(result);
+
+  // 2) Encode + dispatch all recorded commands in order, batching like the normal path.
+  for (auto& d : window) {
+    const auto& compute_pass_encoder = GetComputePassEncoder();
+    WriteTimestamp(num_pending_dispatches_ * 2);
+    LaunchComputePipeline(compute_pass_encoder, d.bind_buffers, d.bind_buffers_segments,
+                          *d.program_artifact, d.x, d.y, d.z, d.indirect_dispatch_tensor);
+    if (d.uniform_buffer) {
+      deferred_buffer_mgr_->Release(d.uniform_buffer);
+    }
+    WriteTimestamp(num_pending_dispatches_ * 2 + 1);
+    ++num_pending_dispatches_;
+    // Replay the profiling info captured at record time so pending_kernels_ stays in sync with
+    // num_pending_dispatches_ (Flush asserts they match when profiling is enabled).
+    if (is_profiling_ && d.pending_kernel_info.has_value()) {
+      pending_kernels_.emplace_back(std::move(*d.pending_kernel_info));
+    }
+    if (num_pending_dispatches_ >= max_num_pending_dispatches_ ||
+        (is_profiling_ && query_type_ == TimestampQueryType::AtPasses)) {
+      EndComputePass();
+    }
+    if (num_pending_dispatches_ >= max_num_pending_dispatches_) {
+      Flush(*deferred_buffer_mgr_);
+      num_pending_dispatches_ = 0;
+    }
+  }
+  window.clear();
+  return Status::OK();
+}
+
+Status WebGpuContext::FlushDeferred() {
+  // Drain the final (partial) window at run end.
+  Status result = FlushDeferredWindow(deferred_dispatches_);
+  deferred_buffer_mgr_ = nullptr;
+  return result;
+}
+
 Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& program) {
   const auto& inputs = program.Inputs();
   const auto& outputs = program.Outputs();
@@ -350,7 +422,27 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   LOGS(context.Logger(), INFO) << "Starting program \"" << key << "\" (" << x << ", " << y << ", " << z << ")";
 
   const auto* program_artifact = program_mgr_->Get(key);
-  if (program_artifact == nullptr) {
+
+  // [DEFER-DISPATCH] Deferred-dispatch mode: do NOT compile synchronously and do NOT
+  // launch now. Issue async compilation for cache misses and record the dispatch; FlushDeferred()
+  // waits for the remaining pipelines (compiled concurrently) then encodes + submits. Recorded
+  // buffers stay valid until flush because the run is routed through a graph-mode buffer manager.
+  std::unique_ptr<PendingPipelineBuild> deferred_pending;
+  if (defer_dispatch_) {
+    if (program_artifact == nullptr) {
+      deferred_pending = std::make_unique<PendingPipelineBuild>();
+      deferred_pending->key = key;
+      deferred_pending->name = program.Name();
+      ORT_RETURN_IF_ERROR(program_mgr_->Build(program, metadata, inputs_segments, outputs_segments,
+                                              key, x, y, z,
+                                              deferred_pending->pipeline,
+                                              deferred_pending->shape_uniform_ranks,
+                                              &deferred_pending->future,
+                                              &deferred_pending->cb_ctx));
+    }
+  }
+
+  if (program_artifact == nullptr && !defer_dispatch_) {
     wgpu::ComputePipeline compute_pipeline;
     std::vector<int> shape_uniform_ranks;
     auto status = program_mgr_->Build(program,
@@ -373,19 +465,23 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   }
 
   // prepare shape uniforms for shader variables (if any) and user defined uniforms
+  // In deferred mode on a cache miss the pipeline is still compiling, so use the ranks computed
+  // synchronously by Build (stored in deferred_pending); otherwise use the cached artifact.
+  const std::vector<int>& shape_uniform_ranks = deferred_pending ? deferred_pending->shape_uniform_ranks
+                                                                  : program_artifact->shape_uniform_ranks;
   std::vector<ProgramUniformVariableValue> shape_uniforms;
-  shape_uniforms.reserve(program_artifact->shape_uniform_ranks.size() * 2);
+  shape_uniforms.reserve(shape_uniform_ranks.size() * 2);
   if (ValidationMode() >= ValidationMode::Basic) {
-    ORT_RETURN_IF_NOT(program_artifact->shape_uniform_ranks.size() == inputs.size() + outputs.size() + program.Indices().size(),
-                      "Invalid program artifact: variable size (", program_artifact->shape_uniform_ranks.size(),
+    ORT_RETURN_IF_NOT(shape_uniform_ranks.size() == inputs.size() + outputs.size() + program.Indices().size(),
+                      "Invalid program artifact: variable size (", shape_uniform_ranks.size(),
                       ") does not match current program (input: ", inputs.size(),
                       ", output: ", outputs.size(),
                       ", indices: ", program.Indices().size(), ")");
   }
 
-  auto append_shape_uniforms = [&shape_uniforms, program_artifact](size_t i, const TensorShape& shape) {
-    if (program_artifact->shape_uniform_ranks[i] > 0) {
-      size_t expected_rank = static_cast<size_t>(program_artifact->shape_uniform_ranks[i]);
+  auto append_shape_uniforms = [&shape_uniforms, &shape_uniform_ranks](size_t i, const TensorShape& shape) {
+    if (shape_uniform_ranks[i] > 0) {
+      size_t expected_rank = static_cast<size_t>(shape_uniform_ranks[i]);
       ORT_RETURN_IF(expected_rank != shape.NumDimensions(),
                     "Invalid program artifact: variable[", i, "] rank mismatch. Expected: ", expected_rank,
                     ", Actual: ", shape.NumDimensions());
@@ -502,10 +598,6 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
     device_queue_.WriteBuffer(uniform_buffer, 0, uniform_data_buffer.data(), uniform_buffer_total_size);
   }
 
-  const auto& compute_pass_encoder = GetComputePassEncoder();
-
-  WriteTimestamp(num_pending_dispatches_ * 2);
-
   const size_t total_buffer_count = inputs.size() + outputs.size() + (uniform_buffer ? 1 : 0);
 
   std::vector<WGPUBuffer> bind_buffers;
@@ -524,6 +616,44 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
     bind_buffers.push_back(uniform_buffer);
     bind_buffers_segments.push_back(1);  // uniform buffer defaults to 1 segment
   }
+
+  // [DEFER-DISPATCH] Record the dispatch (pipeline may still be compiling) and return.
+  // Buffer reuse is suppressed so these buffers remain valid until FlushDeferred encodes them.
+  if (defer_dispatch_) {
+    DeferredDispatch d;
+    d.key = key;
+    d.program_artifact = program_artifact;  // null if a pending build is in flight
+    d.pending_build = std::move(deferred_pending);
+    d.bind_buffers = std::move(bind_buffers);
+    d.bind_buffers_segments = std::move(bind_buffers_segments);
+    d.uniform_buffer = uniform_buffer;
+    d.x = x;
+    d.y = y;
+    d.z = z;
+    d.indirect_dispatch_tensor = program.IndirectDispatchTensor();
+    // Capture profiling info now (shapes must be read while tensors are alive); replayed in flush.
+    if (is_profiling_ && graph_capture_state_ != GraphCaptureState::Capturing) {
+      d.pending_kernel_info.emplace(context.NodeName(), context.OpType(), program.Name(),
+                                    key, inputs, outputs);
+    }
+    deferred_dispatches_.push_back(std::move(d));
+    deferred_buffer_mgr_ = &buffer_mgr;
+
+    // Windowed flush: once a full batch of dispatches has been recorded, wait for that window's
+    // pipelines (whose async compilations were issued concurrently across the preceding Run() calls)
+    // and encode + submit them now. Submitting each window keeps the GPU busy and lets the recorded
+    // buffers recycle for the next window (bounding peak memory). (A double-buffered "lag one window"
+    // variant was tried and measured slower: recording a window is much faster than compiling it, so
+    // the deferred flush still blocks on compilation while adding a window of latency.)
+    if (deferred_dispatches_.size() >= max_num_pending_dispatches_) {
+      ORT_RETURN_IF_ERROR(FlushDeferredWindow(deferred_dispatches_));
+    }
+    return Status::OK();
+  }
+
+  const auto& compute_pass_encoder = GetComputePassEncoder();
+
+  WriteTimestamp(num_pending_dispatches_ * 2);
 
   LaunchComputePipeline(compute_pass_encoder, bind_buffers, bind_buffers_segments, *program_artifact, x, y, z, program.IndirectDispatchTensor());
   if (uniform_buffer) {

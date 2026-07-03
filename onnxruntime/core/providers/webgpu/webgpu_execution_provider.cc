@@ -24,6 +24,7 @@
 #include "core/graph/indexed_sub_graph.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/common/parse_string.h"
+#include "core/platform/env_var.h"
 
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/data_transfer.h"
@@ -801,6 +802,63 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
     context_.StartProfiling();
   }
 
+  // ===========================================================================================
+  // DEFER-DISPATCH (windowed) cold-start optimization.
+  // On the first non-captured prefill run, compile cache-miss shader pipelines asynchronously and
+  // record their dispatches, then flush per window (see WebGpuContext::Run / FlushDeferred). This
+  // parallelizes the otherwise-serial cold-start shader compilation.
+  //
+  // Enabled by default, but ONLY under a graph-capture-enabled session: there, prefill uses
+  // annotation -1 and GQA keeps total_sequence_length on the GPU, which avoids a CPU read-back that
+  // would otherwise force an early flush and break deferral. It can be disabled with the run-option
+  // "ep.webgpu.defer_dispatch"="0" or the env var ORT_WEBGPU_DEFER_DISPATCH=0. Runs that will be
+  // graph-captured (annotation != -1) are skipped so capture/replay is unaffected.
+  // ===========================================================================================
+  defer_dispatch_active_ = false;
+  if (defer_dispatch_pending_ && IsGraphCaptureEnabled()) {
+    bool defer_on = true;
+    auto defer_entry = run_options.config_options.GetConfigEntry("ep.webgpu.defer_dispatch");
+    if (defer_entry.has_value()) {
+      defer_on = !(*defer_entry == "0" || *defer_entry == "false");
+    } else if (auto env_val = onnxruntime::detail::GetEnvironmentVar("ORT_WEBGPU_DEFER_DISPATCH");
+               env_val == "0" || env_val == "false") {
+      defer_on = false;
+    }
+    bool will_be_captured = false;
+    if (defer_on) {
+      auto ann = run_options.config_options.GetConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation);
+      int ann_id = 0;
+      if (ann.has_value()) {
+        ORT_ENFORCE(onnxruntime::TryParseStringWithClassicLocale<int>(*ann, ann_id),
+                    "Failed to parse the graph annotation id: ", *ann);
+      }
+      will_be_captured = (ann_id != -1);
+    }
+    if (defer_on && !will_be_captured) {
+      defer_dispatch_active_ = true;
+      defer_dispatch_pending_ = false;
+      context_.SetDeferDispatch(true);
+
+      // Route this run through a graph-mode buffer manager (Graph/GraphSimple). Those caches never
+      // free buffers within a run (OnRefresh is a no-op), so the WGPUBuffer handles recorded during
+      // the deferred pass stay valid until FlushDeferred replays them — exactly the stability
+      // guarantee graph capture relies on. A reserved annotation id keeps it separate from real
+      // captured graphs.
+      constexpr int kDeferGraphAnnotationId = -2;
+      auto [it, inserted] = per_graph_buffer_mgrs_.try_emplace(kDeferGraphAnnotationId, nullptr);
+      if (inserted) {
+        it->second = webgpu::BufferManagerFactory::Create(context_,
+                                                          webgpu::BufferCacheMode::Graph,
+                                                          webgpu::BufferCacheMode::GraphSimple,
+                                                          webgpu::BufferCacheMode::Disabled,
+                                                          webgpu::BufferCacheMode::Disabled);
+      }
+      current_graph_annotation_id_ = kDeferGraphAnnotationId;
+      graph_buffer_mgr_active_ = true;
+      return Status::OK();
+    }
+  }
+
   if (IsGraphCaptureEnabled()) {
     auto graph_annotation_str = run_options.config_options.GetConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation);
     int graph_annotation_id = 0;
@@ -839,6 +897,32 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
 }
 
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& run_options) {
+  // [DEFER-DISPATCH] Deferred-dispatch first run: wait for the remaining concurrently-compiled
+  // pipelines, then encode+submit. This run is never graph-captured (it used the reserved defer
+  // buffer manager), so handle it self-contained and return -- do NOT fall through to the
+  // capture/replay path.
+  if (defer_dispatch_active_) {
+    Status flush_status = context_.FlushDeferred();
+    context_.SetDeferDispatch(false);
+    defer_dispatch_active_ = false;
+    // Submit any remaining encoder work, then release the graph-mode buffer routing.
+    context_.Flush(BufferManager());
+    graph_buffer_mgr_active_ = false;
+    current_graph_annotation_id_ = 0;
+
+    if (session_profiler_ && session_profiler_->Enabled()) {
+      context_.CollectProfilingData(session_profiler_->GpuEvents());
+    } else if (run_options.enable_profiling) {
+      context_.CollectProfilingData();
+    }
+
+    if (context_.ValidationMode() >= ValidationMode::Basic) {
+      Status pop_status = context_.PopErrorScope();
+      return flush_status.IsOK() ? pop_status : flush_status;
+    }
+    return flush_status;
+  }
+
   context_.Flush(BufferManager());
 
   if (IsGraphCaptureEnabled() && !IsGraphCaptured(current_graph_annotation_id_)) {

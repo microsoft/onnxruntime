@@ -6,6 +6,9 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
+#include <unordered_set>
+#include <vector>
 
 #include "core/providers/webgpu/webgpu_external_header.h"
 
@@ -268,6 +271,24 @@ class WebGpuContext final {
 
   Status Run(ComputeContextBase& context, const ProgramBase& program);
 
+  // ===========================================================================================
+  // DEFER-DISPATCH (windowed) cold-start optimization.
+  // On the first prefill run, shader pipelines for cache-miss programs are compiled
+  // asynchronously (via CreateComputePipelineAsync) while the dispatches are recorded instead of
+  // launched immediately. Once a window of dispatches (max_num_pending_dispatches_) is recorded,
+  // that window's pipelines -- which Dawn's worker pool has been compiling concurrently -- are
+  // waited on and then encoded + submitted. Windowing preserves buffer recycling and CPU/GPU
+  // overlap while letting several shader compilations proceed in parallel, cutting the serial
+  // cold-start shader-compilation latency of the first run.
+  // ===========================================================================================
+  // Enable or disable deferred-dispatch mode. While enabled, Run() issues asynchronous pipeline
+  // compilation for cache-miss programs and records the dispatch (no SetPipeline yet) instead of
+  // running it immediately, so all compilations in a batch proceed concurrently. FlushDeferred()
+  // waits for the remaining pipelines, then encodes and submits the recorded dispatches.
+  void SetDeferDispatch(bool value);
+  bool DeferDispatch() const { return defer_dispatch_; }
+  Status FlushDeferred();
+
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
   std::unique_ptr<WebGpuPIXFrameGenerator> CreatePIXFrameGenerator() {
     return std::make_unique<WebGpuPIXFrameGenerator>(instance_,
@@ -309,6 +330,11 @@ class WebGpuContext final {
                              uint32_t x, uint32_t y, uint32_t z,
                              const Tensor* indirect_dispatch_tensor = nullptr);
 
+  // [DEFER-DISPATCH] Wait for the given window's async pipeline compilations, commit
+  // them to the cache, then encode + submit the recorded dispatches (batched like the normal path).
+  // Uses deferred_buffer_mgr_ for uniform release and flushing. Clears `window` on completion.
+  // (Defined below the DeferredDispatch struct it depends on.)
+
   std::vector<const char*> GetEnabledAdapterToggles() const;
   std::vector<const char*> GetEnabledDeviceToggles() const;
   std::vector<const char*> GetDisabledDeviceToggles() const;
@@ -327,6 +353,40 @@ class WebGpuContext final {
     std::vector<PendingKernelInfo> kernels;
     wgpu::Buffer query_buffer;
   };
+
+  // State for an in-flight pipeline compilation issued during deferred-dispatch mode.
+  // Stored via unique_ptr so its address (and that of `pipeline`, which `cb_ctx` references)
+  // remains stable while the containing vector grows.
+  struct PendingPipelineBuild {
+    std::string key;
+    std::string name;
+    std::vector<int> shape_uniform_ranks;
+    wgpu::ComputePipeline pipeline;
+    std::unique_ptr<PipelineCallbackContext> cb_ctx;
+    wgpu::Future future;
+  };
+
+  // A dispatch recorded during deferred-dispatch mode. The pipeline may still be compiling; its
+  // bind group is created only after the pipeline is ready (in FlushDeferredWindow). `program_artifact`
+  // points into the program cache and may be filled in by a pending build at flush time.
+  struct DeferredDispatch {
+    std::string key;
+    const ProgramArtifact* program_artifact = nullptr;  // null until resolved
+    std::unique_ptr<PendingPipelineBuild> pending_build;  // non-null if compiled in this batch
+    std::vector<WGPUBuffer> bind_buffers;
+    std::vector<uint32_t> bind_buffers_segments;
+    WGPUBuffer uniform_buffer = nullptr;
+    uint32_t x = 1, y = 1, z = 1;
+    const Tensor* indirect_dispatch_tensor = nullptr;
+    // Profiling info captured at record time (shapes must be read while the tensors are alive);
+    // replayed into pending_kernels_ during FlushDeferredWindow so GPU profiling stays consistent.
+    std::optional<PendingKernelInfo> pending_kernel_info;
+  };
+
+  // Wait for `window`'s async pipeline compilations, commit them to the cache, then encode +
+  // submit the recorded dispatches (batched like the normal path). Uses deferred_buffer_mgr_ for
+  // uniform release and flushing. Clears `window` on completion.
+  Status FlushDeferredWindow(std::vector<DeferredDispatch>& window);
 
   friend class WebGpuContextFactory;
 
@@ -355,6 +415,14 @@ class WebGpuContext final {
 
   uint32_t num_pending_dispatches_ = 0;
   uint32_t max_num_pending_dispatches_ = 16;
+
+  // Deferred-dispatch (parallel cold-start compile) state: records dispatches and issues their
+  // pipeline compilations asynchronously. `deferred_dispatches_` accumulates the current window;
+  // when it fills (max_num_pending_dispatches_) FlushDeferredWindow() waits for that window's
+  // pipelines and encodes + submits them.
+  bool defer_dispatch_ = false;
+  std::vector<DeferredDispatch> deferred_dispatches_;
+  const webgpu::BufferManager* deferred_buffer_mgr_ = nullptr;
 
   std::unique_ptr<SplitKConfig> split_k_config_;
 
