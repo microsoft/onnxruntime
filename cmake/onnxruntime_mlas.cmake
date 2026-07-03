@@ -292,10 +292,26 @@ function(setup_mlas_source_for_windows)
       set_source_files_properties(${MLAS_SRC_DIR}/amd64/ConvSymKernelAvx2.asm PROPERTIES COMPILE_FLAGS "-DENABLE_CONVSYMKERNELAVX2_SAT_CHECKER")
     endif()
 
-    if(MSVC_VERSION GREATER_EQUAL 1933)
+    include(CheckCSourceCompiles)
+    set(MLAS_OLD_CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS}")
+    if(CMAKE_REQUIRED_FLAGS)
+      set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} /arch:AVX512")
+    else()
+      set(CMAKE_REQUIRED_FLAGS "/arch:AVX512")
+    endif()
+    check_c_source_compiles("
+    int main() {
+        __asm volatile(\"vcvtneeph2ps %ymm0, %ymm1\");
+        return 0;
+    }
+    " COMPILER_SUPPORTS_AVX512FP16)
+    set(CMAKE_REQUIRED_FLAGS "${MLAS_OLD_CMAKE_REQUIRED_FLAGS}")
+
+    if(COMPILER_SUPPORTS_AVX512FP16)
       target_sources(onnxruntime_mlas PRIVATE
         ${MLAS_SRC_DIR}/amd64/cvtfp16Avx.asm
       )
+      list(APPEND mlas_private_compile_definitions MLAS_SUPPORTS_AVX512FP16)
     endif()
 
     if (NOT onnxruntime_ORT_MINIMAL_BUILD)
@@ -311,6 +327,7 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/i386/SgemmKernelAvx.asm
     )
   endif()
+  set(mlas_private_compile_definitions ${mlas_private_compile_definitions} PARENT_SCOPE)
 endfunction()
 
 function(setup_kleidiai)
@@ -830,9 +847,6 @@ else()
           )
           list(APPEND mlas_private_compile_definitions MLAS_SUPPORTS_AVX512FP16)
         endif()
-
-message(STATUS "CMAKE_CXX_COMPILER_ID: ${CMAKE_CXX_COMPILER_ID}")
-message(STATUS "CMAKE_CXX_COMPILER_VERSION: ${CMAKE_CXX_COMPILER_VERSION}")
 
 if(NOT "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" OR CMAKE_CXX_COMPILER_VERSION VERSION_GREATER "11")
           message(STATUS "Using -mavx2 -mfma -mavxvnni flags")
