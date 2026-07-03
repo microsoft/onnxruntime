@@ -1,14 +1,15 @@
 name: CUDA Plugin Linux CI
 
 on:
-  push:
-    branches: [main, 'rel-*']
-  pull_request:
+  # Stage 3: Run only after the Linux CUDA CI succeeds.
+  workflow_run:
+    workflows: ["Linux CUDA CI"]
+    types: [completed]
     branches: [main, 'rel-*']
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha || github.sha }}
   cancel-in-progress: true
 
 permissions:
@@ -20,8 +21,11 @@ permissions:
 jobs:
   build-linux-cuda-plugin-x64-release:
     name: Build Linux CUDA Plugin EP x64 Release
+    # Only run when triggered manually or when the upstream Linux CUDA CI succeeded
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
+      ref: ${{ github.event.workflow_run.head_sha || '' }}
       pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
       build_config: Release
       architecture: x64
@@ -62,6 +66,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
         id: build_docker_image_step

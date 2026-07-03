@@ -1,18 +1,20 @@
 name: React Native CI Pipeline
 
 on:
-  push:
-    branches: [main, 'rel-*']
-  pull_request:
+  # Stage 3: Run only after the Linux CUDA CI succeeds.
+  workflow_run:
+    workflows: ["Linux CUDA CI"]
+    types: [completed]
     branches: [main, 'rel-*']
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha || github.sha }}
   cancel-in-progress: true
 
 jobs:
   build_android_packages:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     name: Build Android AAR Packages
     runs-on: [
         "self-hosted",
@@ -26,6 +28,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           submodules: false
 
       - name: Set version number variables
@@ -70,6 +73,7 @@ jobs:
           path: ${{ runner.temp }}/artifacts
 
   react_native_ci_android:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     name: React Native CI Android
     needs: build_android_packages
     runs-on: [
@@ -84,6 +88,8 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Use Python 3.12
         uses: actions/setup-python@v6
@@ -178,12 +184,15 @@ jobs:
             ${{ github.workspace }}/js/react_native/e2e/artifacts
 
   react_native_ci_ios_build:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     name: React Native CI iOS Build
     runs-on: macos-14
     timeout-minutes: 120
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Use Xcode 15.3.0
         run: sudo xcode-select --switch /Applications/Xcode_15.3.0.app/Contents/Developer
@@ -220,6 +229,7 @@ jobs:
           path: ${{ runner.temp }}/ios_pod
 
   react_native_ci_ios_e2e_tests:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     name: React Native CI iOS E2E Tests
     needs: react_native_ci_ios_build
     runs-on: macos-14
@@ -227,6 +237,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+      with:
+        ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Download iOS pod artifact
         uses: actions/download-artifact@v7

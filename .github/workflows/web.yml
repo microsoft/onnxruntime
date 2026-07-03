@@ -1,29 +1,31 @@
 name: Web CI Pipeline
 
 on:
-  push:
-    branches:
-      - main
-      - rel-*
-  pull_request:
+  # Stage 3: Run only after the Linux CUDA CI succeeds.
+  workflow_run:
+    workflows: ["Linux CUDA CI"]
+    types: [completed]
     branches:
       - main
       - rel-*
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event.workflow_run.head_sha || github.sha }}
   cancel-in-progress: true
 
 jobs:
   precheck:
     runs-on: ubuntu-latest
+    # Only run when triggered manually or when the upstream Linux CUDA CI succeeded
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     outputs:
       commit_sha: ${{ steps.extract_commit.outputs.commit_sha }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           submodules: true
 
       - name: Init and Precheck
@@ -31,13 +33,14 @@ jobs:
 
       - name: Extract commit SHA
         id: extract_commit
-        run: echo "commit_sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+        run: echo "commit_sha=${{ github.event.workflow_run.head_sha || github.sha }}" >> $GITHUB_OUTPUT
         shell: bash
 
   wasm_Debug:
     needs: precheck
     uses: ./.github/workflows/linux-wasm-ci-build-and-test-workflow.yml
     with:
+      ref: ${{ needs.precheck.outputs.commit_sha }}
       job_name: wasm_Debug
       build_config: Debug
       extra_build_args: "--enable_wasm_profiling"
@@ -48,6 +51,7 @@ jobs:
     needs: precheck
     uses: ./.github/workflows/linux-wasm-ci-build-and-test-workflow.yml
     with:
+      ref: ${{ needs.precheck.outputs.commit_sha }}
       job_name: wasm_Release
       build_config: Release
       extra_build_args: "--target onnxruntime_webassembly --skip_tests --disable_rtti"
@@ -58,6 +62,7 @@ jobs:
     needs: precheck
     uses: ./.github/workflows/linux-wasm-ci-build-and-test-workflow.yml
     with:
+      ref: ${{ needs.precheck.outputs.commit_sha }}
       job_name: wasm_Release_static_library
       build_config: Release
       extra_build_args: "--skip_tests --disable_rtti --build_wasm_static_lib"
