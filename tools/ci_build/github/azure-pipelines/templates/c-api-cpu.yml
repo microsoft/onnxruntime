@@ -136,23 +136,39 @@ stages:
 
     - script: |
         set -e -x
-        mkdir $(Build.BinariesDirectory)/artifacts
+
+        # Stage onnxruntime.xcframework as artifact.
+        mkdir -p $(Build.BinariesDirectory)/artifacts/xcframework
+
         pushd $(Build.BinariesDirectory)/ios_framework/framework_out
-        zip -vry $(Build.BinariesDirectory)/artifacts/onnxruntime_ios_xcframework.$(OnnxRuntimeVersion).zip \
+        zip -vry $(Build.BinariesDirectory)/artifacts/xcframework/onnxruntime_ios_xcframework.$(OnnxRuntimeVersion).zip \
           onnxruntime.xcframework
         popd
-        cp $(Build.BinariesDirectory)/ios_framework/xcframework_info.json \
-          $(Build.BinariesDirectory)/artifacts/xcframework_info.json
+
+        # Stage framework_out and xcframework_info.json as test artifact.
+        # Note: framework_out has another copy of onnxruntime.xcframework. This duplication is simpler than
+        # reconstructing the test files from two separate pipeline artifacts.
+        mkdir -p $(Build.BinariesDirectory)/artifacts/test
+
+        pushd $(Build.BinariesDirectory)/ios_framework
+        zip -vry $(Build.BinariesDirectory)/artifacts/test/test_files.zip \
+          framework_out xcframework_info.json
+        popd
       displayName: "Stage artifacts"
 
     - task: 1ES.PublishPipelineArtifact@1
       inputs:
-        targetPath: '$(Build.BinariesDirectory)/artifacts'
+        targetPath: '$(Build.BinariesDirectory)/artifacts/xcframework'
         artifactName: 'onnxruntime-ios-full-xcframework'
 
-  # Run the framework test on a Microsoft-hosted macOS image, which has the required iOS simulator
-  # runtime. The build above stays on the faster ACES pool; only this lighter test job uses the
-  # hosted image. It consumes the xcframework artifact published by the build job.
+    - task: 1ES.PublishPipelineArtifact@1
+      inputs:
+        targetPath: '$(Build.BinariesDirectory)/artifacts/test'
+        artifactName: 'onnxruntime-ios-full-xcframework-test'
+
+  # Run the framework test on a Microsoft-hosted macOS image, which has the required iOS simulator runtime.
+  # The build above stays on the faster ACES pool; only this lighter test job uses the hosted image.
+  # It consumes the onnxruntime-ios-full-xcframework-test artifact published by the build job.
   - job: iOS_Full_xcframework_test
     dependsOn: iOS_Full_xcframework
     workspace:
@@ -165,8 +181,8 @@ stages:
     templateContext:
       inputs:
       - input: pipelineArtifact
-        artifactName: 'onnxruntime-ios-full-xcframework'
-        targetPath: '$(Build.BinariesDirectory)/xcframework_artifact'
+        artifactName: 'onnxruntime-ios-full-xcframework-test'
+        targetPath: '$(Build.BinariesDirectory)/artifacts/test'
     steps:
     - checkout: self
 
@@ -180,15 +196,13 @@ stages:
 
     - script: |
         set -e -x
-        mkdir -p "$(Build.BinariesDirectory)/xcframework_out"
-        unzip -q "$(Build.BinariesDirectory)"/xcframework_artifact/onnxruntime_ios_xcframework.*.zip \
-          -d "$(Build.BinariesDirectory)/xcframework_out"
-      displayName: "Extract xcframework artifact"
+        unzip "$(Build.BinariesDirectory)/artifacts/test/test_files.zip" -d "$(Build.BinariesDirectory)"
+      displayName: "Extract test files"
 
     - script: |
         python3 tools/ci_build/github/apple/test_apple_packages.py \
-          --framework_info_file "$(Build.BinariesDirectory)/xcframework_artifact/xcframework_info.json" \
-          --c_framework_dir "$(Build.BinariesDirectory)/xcframework_out" \
+          --framework_info_file "$(Build.BinariesDirectory)/xcframework_info.json" \
+          --c_framework_dir "$(Build.BinariesDirectory)/framework_out" \
           --skip_macos_test \
           --mac_catalyst_enabled
       displayName: "Test Apple framework"
