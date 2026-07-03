@@ -68,10 +68,11 @@ Status WhereProgram::GenerateShaderCode(ShaderHelper& shader) const {
     return absl::StrCat("select(", b, ", ", a, ", ", c, ")");
   };
 
-  // Fast path: no-broadcast, non-INT64. One thread handles 4 elements (vec4); global_idx is a
-  // vec4 index and c_input.GetByOffset reads a full packed-bool u32 directly.
-  // INT64 is excluded because its layout is element-per-thread (component=1, vec_size=output_size),
-  // so the condition byte must be extracted with the packed-bool logic in the is_int64_ branch below.
+  // Fast path: no-broadcast, non-INT64. global_idx is a vec4 index (vec_size = output_size/4),
+  // and c_input.GetByOffset reads a full packed-bool u32 as vec4<bool> directly.
+  // INT64 is excluded because vec_size = output_size (one thread per element), so global_idx is
+  // an element index — c_input.GetByOffset would read the wrong condition word. The is_int64_
+  // branch below extracts the correct condition bit via offset_c / 4u and byte masking.
   if (!is_broadcast_ && !is_int64_) {
     shader.MainFunctionBody() << output.SetByOffset(
         "global_idx",
