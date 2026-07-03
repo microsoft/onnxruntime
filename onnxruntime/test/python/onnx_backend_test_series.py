@@ -40,7 +40,9 @@ class OrtBackendTest(onnx.backend.test.runner.Runner):
         self._rtol_overrides = rtol_overrides
         self._atol_overrides = atol_overrides
         # Counts "node"-kind test cases discovered on disk. Set before super().__init__ because the
-        # base Runner scans the data dirs (calling _add_model_test) during construction.
+        # base Runner scans the data dirs (calling _add_model_test) during construction. NOTE: onnx's
+        # Runner passes the *capitalized* category label ("Node"), not the lowercase load kind, so the
+        # match below is case-insensitive.
         self._node_case_count = 0
 
         super().__init__(backend, parent_module=__name__)
@@ -78,7 +80,7 @@ class OrtBackendTest(onnx.backend.test.runner.Runner):
         attrs["rtol"] = self._rtol_overrides[model_test.name]
         attrs["atol"] = self._atol_overrides[model_test.name]
 
-        if kind == "node":
+        if kind.lower() == "node":
             self._node_case_count += 1
 
         super()._add_model_test(onnx.backend.test.case.test_case.TestCase(**attrs), kind)
