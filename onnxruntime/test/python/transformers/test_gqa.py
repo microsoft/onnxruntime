@@ -448,7 +448,7 @@ def create_gqa_node_and_io(
         # validates at runtime; declare it symbolic so one graph serves all cache states.
         graph_input.append(
             helper.make_tensor_value_info(
-                "attention_bias", ort_type, [config.batch_size, 1, config.q_sequence_length, "total_seq_len"]
+                "attention_bias", ort_type, [config.batch_size, 1, config.q_sequence_length, "total_sequence_length"]
             )
         )
     if config.has_head_sink:
@@ -1455,7 +1455,14 @@ def parity_check_gqa_past(
         # Positions beyond each batch's valid length get a large negative finite value
         # (matching the CPU test convention; avoids inf-inf NaN when composed with masking).
         attention_bias = (
-            torch.randn(config.batch_size, 1, config.q_sequence_length, total_seq_len, device=device, dtype=torch_type)
+            torch.randn(
+                config.batch_size,
+                1,
+                config.q_sequence_length,
+                total_seq_len,
+                device=device,
+                dtype=torch_type,
+            )
             * 0.5
         )
         for b in range(config.batch_size):
