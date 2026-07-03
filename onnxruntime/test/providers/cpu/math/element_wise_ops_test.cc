@@ -5055,7 +5055,7 @@ TEST(MathOpTest, BitwiseNot_uint8) {
 }
 
 #ifdef USE_WEBGPU
-TEST(MathOpTest, Sub_int64_webgpu) {
+TEST(MathOpTest, Sub_webgpu_int64) {
   OpTester test("Sub", 14);
   test.AddInput<int64_t>("A", {4}, {10, 5, -3, 0});
   test.AddInput<int64_t>("B", {4}, {3, 5, 1, -7});
@@ -5067,11 +5067,78 @@ TEST(MathOpTest, Sub_int64_webgpu) {
       .RunWithConfig();
 }
 
-TEST(MathOpTest, Equal_int64_webgpu) {
+TEST(MathOpTest, Equal_webgpu_int64) {
   OpTester test("Equal", 13);
   test.AddInput<int64_t>("A", {5}, {1, 0, -1, -1, 3});
   test.AddInput<int64_t>("B", {5}, {1, 1, 2, -1, 3});
   test.AddOutput<bool>("C", {5}, {true, false, false, true, true});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// Size divisible by 4: exercises the packed-bool path without tail padding.
+TEST(MathOpTest, Equal_webgpu_int64_size_div4) {
+  OpTester test("Equal", 13);
+  test.AddInput<int64_t>("A", {8}, {1, 2, 3, 4, 5, 6, 7, 8});
+  test.AddInput<int64_t>("B", {8}, {1, 0, 3, 0, 5, 0, 7, 0});
+  test.AddOutput<bool>("C", {8}, {true, false, true, false, true, false, true, false});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// Scalar LHS: lhs is a scalar, rhs is a vector; exercises is_lhs_scalar_ path.
+TEST(MathOpTest, Equal_webgpu_int64_lhs_scalar) {
+  OpTester test("Equal", 13);
+  test.AddInput<int64_t>("A", {1}, {3});
+  test.AddInput<int64_t>("B", {5}, {1, 2, 3, 4, 3});
+  test.AddOutput<bool>("C", {5}, {false, false, true, false, true});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// Scalar RHS: rhs is a scalar, lhs is a vector; exercises is_rhs_scalar_ path.
+TEST(MathOpTest, Equal_webgpu_int64_rhs_scalar) {
+  OpTester test("Equal", 13);
+  test.AddInput<int64_t>("A", {5}, {1, 2, 3, 4, 3});
+  test.AddInput<int64_t>("B", {1}, {3});
+  test.AddOutput<bool>("C", {5}, {false, false, true, false, true});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// Shape broadcast, size not divisible by 4: A [1,3] broadcasts against B [2,3] -> output [2,3].
+// Exercises the INT64 broadcast path with tail padding in the packed-bool output.
+TEST(MathOpTest, Equal_webgpu_int64_broadcast) {
+  OpTester test("Equal", 13);
+  test.AddInput<int64_t>("A", {1, 3}, {1, 2, 3});
+  test.AddInput<int64_t>("B", {2, 3}, {1, 0, 3, 1, 2, 3});
+  test.AddOutput<bool>("C", {2, 3}, {true, false, true, true, true, true});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// Shape broadcast, size divisible by 4: A [1,4] broadcasts against B [2,4] -> output [2,4].
+// Exercises the INT64 broadcast path without tail padding.
+TEST(MathOpTest, Equal_webgpu_int64_broadcast_size_div4) {
+  OpTester test("Equal", 13);
+  test.AddInput<int64_t>("A", {1, 4}, {1, 2, 3, 4});
+  test.AddInput<int64_t>("B", {2, 4}, {1, 0, 3, 0, 1, 2, 3, 4});
+  test.AddOutput<bool>("C", {2, 4}, {true, false, true, false, true, true, true, true});
   ConfigOptions config_options{};
   ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
   auto provider = WebGpuExecutionProviderWithOptions(config_options);

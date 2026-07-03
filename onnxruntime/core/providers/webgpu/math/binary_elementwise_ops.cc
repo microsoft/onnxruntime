@@ -20,6 +20,7 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
 
   const bool a_is_bool = Inputs()[0].var_type == ProgramVariableDataType::Boolx4;
   const bool b_is_bool = Inputs()[1].var_type == ProgramVariableDataType::Boolx4;
+  const bool is_bool_output = Outputs()[0].var_type == ProgramVariableDataType::Boolx4;
 
   shader.AdditionalImplementation() << additional_impl_;
 
@@ -28,34 +29,37 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
   // check whether can use element-wise mode.
   // If either A or B is scalar, or A and B have the same shape, element-wise mode can be used.
   // In element-wise mode, no indices calculation is needed.
-  const bool is_bool_output = Outputs()[0].var_type == ProgramVariableDataType::Boolx4;
+  const bool can_use_element_wise_mode = is_lhs_scalar_ || is_rhs_scalar_ || !is_broadcast_;
+  // INT64 with bool output (e.g. Equal) requires special handling: the output is packed 4-per-u32
+  // (Boolx4) but inputs are i32 per element (component=1). Each thread reads 4 consecutive input
+  // elements and packs the comparison results into one u32, with bounds guards for non-div-4 sizes.
+  // The non-scalar broadcast case (shapes differ, neither input scalar) falls through to the
+  // standard broadcast path below, which handles component=1 INT64 via vec4<i32>==vec4<i32>.
+  if (is_int64_ && is_bool_output && can_use_element_wise_mode) {
+    auto get_a = [&](const std::string& idx) {
+      return is_lhs_scalar_ ? a.GetByOffset("0") : a.GetByOffset(idx);
+    };
+    auto get_b = [&](const std::string& idx) {
+      return is_rhs_scalar_ ? b.GetByOffset("0") : b.GetByOffset(idx);
+    };
+    // Each thread processes 4 output bool elements packed into one u32.
+    // INT64 inputs are stored element-by-element (component=1), so we must guard
+    // lanes 1-3 against out-of-bounds reads when the tensor size is not a multiple of 4.
+    shader.MainFunctionBody()
+        << "let base = global_idx * 4u;\n"
+        << "let n = uniforms.element_count;\n"
+        << "let r0 = " << get_a("base") << " == " << get_b("base") << ";\n"
+        << "var r1 = false; var r2 = false; var r3 = false;\n"
+        << "if (base + 1u < n) { r1 = " << get_a("base + 1u") << " == " << get_b("base + 1u") << "; }\n"
+        << "if (base + 2u < n) { r2 = " << get_a("base + 2u") << " == " << get_b("base + 2u") << "; }\n"
+        << "if (base + 3u < n) { r3 = " << get_a("base + 3u") << " == " << get_b("base + 3u") << "; }\n"
+        << "let r = vec4<bool>(r0, r1, r2, r3);\n";
+    shader.MainFunctionBody() << c.SetByOffset("global_idx", "r");
+    return Status::OK();
+  }
 
-  if (is_lhs_scalar_ || is_rhs_scalar_ || !is_broadcast_) {
-    // INT64 inputs with bool output: output is packed 4-per-u32, but inputs are scalar i32 per element.
-    // Read 4 consecutive elements per thread and pack them together.
-    if (is_int64_ && is_bool_output) {
-      auto get_a = [&](const std::string& idx) {
-        return is_lhs_scalar_ ? a.GetByOffset("0") : a.GetByOffset(idx);
-      };
-      auto get_b = [&](const std::string& idx) {
-        return is_rhs_scalar_ ? b.GetByOffset("0") : b.GetByOffset(idx);
-      };
-      // Each thread processes 4 output bool elements packed into one u32.
-      // INT64 inputs are stored element-by-element (component=1), so we must guard
-      // lanes 1-3 against out-of-bounds reads when the tensor size is not a multiple of 4.
-      shader.MainFunctionBody()
-          << "let base = global_idx * 4u;\n"
-          << "let n = uniforms.element_count;\n"
-          << "let r0 = " << get_a("base") << " == " << get_b("base") << ";\n"
-          << "var r1 = false; var r2 = false; var r3 = false;\n"
-          << "if (base + 1u < n) { r1 = " << get_a("base + 1u") << " == " << get_b("base + 1u") << "; }\n"
-          << "if (base + 2u < n) { r2 = " << get_a("base + 2u") << " == " << get_b("base + 2u") << "; }\n"
-          << "if (base + 3u < n) { r3 = " << get_a("base + 3u") << " == " << get_b("base + 3u") << "; }\n"
-          << "let r = vec4<bool>(r0, r1, r2, r3);\n";
-      shader.MainFunctionBody() << c.SetByOffset("global_idx", "r");
-      return Status::OK();
-    }
-
+  // Same shape or scalar: read inputs at the flat output index, no broadcast index calculation.
+  if (can_use_element_wise_mode) {
     // get A data
     if (is_lhs_scalar_) {
       if (is_int64_) {
@@ -238,8 +242,8 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
       })
       .AddOutput({output_tensor, ProgramTensorMetadataDependency::Type, {vec_size}, output_component});
 
-  if (is_int64 || is_lhs_scalar || is_rhs_scalar || !is_broadcast) {
-    // Mode Element-wise (also used for INT64 which has no vec4 representation)
+  if (is_lhs_scalar || is_rhs_scalar || !is_broadcast) {
+    // Mode Element-wise
     // cache hint: "E{is_a_scalar}{is_b_scalar}"
     program
         .AddInputs({{lhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, is_int64 ? 1 : 4},

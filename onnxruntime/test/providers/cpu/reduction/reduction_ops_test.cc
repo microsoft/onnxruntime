@@ -6996,11 +6996,24 @@ TEST(ReductionOpTest, ReduceProd_EmptySet_DefaultAxes_KeepDims) {
 }
 
 #ifdef USE_WEBGPU
-TEST(ReductionOpTest, ReduceSum_int64_webgpu) {
+TEST(ReductionOpTest, ReduceSum_WebGpu_EnableInt64) {
   OpTester test("ReduceSum", 13);
   test.AddInput<int64_t>("data", {3}, {10, 20, 30});
   test.AddInput<int64_t>("axes", {1}, {0}, true);
   test.AddOutput<int64_t>("reduced", {1}, {60});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// Size divisible by 4: catches issues if the shader is ever accidentally vectorized for INT64.
+TEST(ReductionOpTest, ReduceSum_WebGpu_EnableInt64_SizeDiv4) {
+  OpTester test("ReduceSum", 13);
+  test.AddInput<int64_t>("data", {4}, {10, 20, 30, 40});
+  test.AddInput<int64_t>("axes", {1}, {0}, true);
+  test.AddOutput<int64_t>("reduced", {1}, {100});
   ConfigOptions config_options{};
   ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
   auto provider = WebGpuExecutionProviderWithOptions(config_options);
