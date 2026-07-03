@@ -2972,8 +2972,7 @@ struct OrtEpFactory {
    * and returns the index of the best match.
    *
    * Each candidate is an OrtKeyValuePairs representing one model variant. When coming from a model package,
-   * these correspond to the fields in the variant body of metadata.json.
-   * See model_package/README.md for the full spec.
+   * these correspond to the fields in the variant body. See model_package/README.md for the full spec.
    *
    * **Single-model variants (simple case):**
    *
@@ -2985,10 +2984,10 @@ struct OrtEpFactory {
    * When a variant contains multiple sub-models (e.g., prefill + decode in a GenAI scenario),
    * the KVP uses indexed keys so that the EP can inspect each sub-model's metadata independently:
    *
-   *   - "num_models"              — number of sub-models in this variant (e.g., "3")
-   *   - "<i>.ep_compatibility_info" — compatibility string for sub-model i (required per sub-model)
-   *   - "<i>.role"                — role/purpose of sub-model i (e.g., "prefill", "decode") (optional)
-   *   - "<i>.path"                — relative path to sub-model i (optional)
+   *   - "num_models"                 — number of sub-models in this variant (e.g., "3")
+   *   - "<i>.ep_compatibility_info"  — compatibility string for sub-model i (required per sub-model)
+   *   - "<i>.role"                   — role/purpose of sub-model i (e.g., "prefill", "decode") (optional)
+   *   - "<i>.future_meaningful_info" — additional EP-meaningful metadata for sub-model i (optional)
    *
    * where <i> is a zero-based index (e.g., "0.ep_compatibility_info", "1.ep_compatibility_info").
    *
