@@ -1444,6 +1444,8 @@ extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni;
 
 extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchLasx;
 
+extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchRvv;
+
 struct MLAS_QNBIT_LUT_GEMM_DISPATCH;
 
 extern const MLAS_QNBIT_LUT_GEMM_DISPATCH MlasLutGenKernelAvx2;
