@@ -131,6 +131,7 @@ stages:
         pushd $(Build.BinariesDirectory)/ios_framework/framework_out
         zip -vry $(Build.BinariesDirectory)/artifacts/onnxruntime_ios_xcframework.$(OnnxRuntimeVersion).zip \
           onnxruntime.xcframework
+        cp xcframework_info.json $(Build.BinariesDirectory)/artifacts/xcframework_info.json
         popd
       displayName: "Build Apple xcframework"
 
