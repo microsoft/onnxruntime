@@ -111,7 +111,10 @@ def _find_oracle_node_dir() -> str | None:
         import onnx.backend.test  # noqa: PLC0415
 
         candidates.append(os.path.join(os.path.dirname(onnx.backend.test.__file__), "data", "node"))
-    except Exception:
+    except ImportError:
+        # onnx (or its backend.test data package) isn't importable in this env, so
+        # the installed-wheel oracle location simply doesn't contribute a candidate.
+        # Other candidate sources (env override, build tree) still apply.
         pass
     for c in candidates:
         if c and os.path.isdir(c) and any(n.startswith("test_") for n in os.listdir(c)):

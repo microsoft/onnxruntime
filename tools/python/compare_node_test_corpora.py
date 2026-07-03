@@ -22,7 +22,10 @@ aliases of THIS canonical check, not independent implementations:
 
 Equivalence relation (see ``compare_to_oracle``):
   * dir-set equality (both directions),
-  * ``model.onnx`` + ``input_*.pb`` byte-identical (hard-fail on diff),
+  * ``model.onnx`` + ``input_*.pb`` byte-identical (hard-fail on diff), EXCEPT
+    ``input_*.pb`` of the ``test_image_decoder_*`` family -- those are encoded-image
+    blobs whose bytes are codec/env-dependent (and the family is globally excluded
+    downstream), so input-byte divergence there is an accepted, logged, non-fatal class,
   * ``output_*.pb`` byte-identical OR within the Class-A float-ULP band (numpy-gen
     skew -> logged warning), else hard-fail,
   * a min-count floor so an empty/undersized tree fails loud.
