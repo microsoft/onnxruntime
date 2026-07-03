@@ -46,6 +46,7 @@ B/C/D can be validated). Throughout this section, bold letters in parentheses (e
 | `cmake/patches/onnx/onnx.patch` | rebase to the new source (see §3) |
 | `cmake/vcpkg-ports/onnx/fix-dependency-protobuf.patch`, `fix-cmakelists.patch` | re-`diff` only if they fail to apply |
 | **The 7 `requirements.txt` files** with `onnx==X.Y.Z` | `onnxruntime/test/python/requirements.txt`; `tools/ci_build/github/linux/python/requirements.txt`; `tools/ci_build/github/windows/python/requirements.txt`; `tools/ci_build/github/linux/docker/scripts/{requirements.txt,manylinux/requirements.txt,lort/requirements.txt}`; `tools/ci_build/github/linux/docker/inference/aarch64/python/cpu/scripts/requirements.txt`. Confirm with `git grep -n "onnx==<OLD>"` (e.g. `onnx==1.21`) — grep the **old** pin you are replacing, not bare `onnx==1`. ⚠️ **Do NOT bump all matches.** `git grep -n "onnx==1"` also lists 3 transformers-model files — `onnxruntime/python/tools/transformers/models/{llama,phi2,stable_diffusion}/requirements.txt` — that are **intentionally frozen at `onnx==1.18.0`**. Leave those alone; only the 7 CI files above get the new pin. |
+| **The 4 QNN/android CI yaml with an INLINE `onnx==X.Y.Z` pip pin** (node-test materialization legs — NOT covered by the `requirements.txt` grep above) | `tools/ci_build/github/azure-pipelines/linux-qnn-ci-pipeline.yml`; `tools/ci_build/github/azure-pipelines/win-qnn-arm64-ci-pipeline.yml`; `tools/ci_build/github/azure-pipelines/android-arm64-v8a-QNN-crosscompile-ci-pipeline.yml`; `.github/workflows/windows_qnn_x64.yml`. Each has a `pip install onnx==X.Y.Z "numpy==...; ..."` step feeding the `onnxruntime_MATERIALIZE_ONNX_NODE_TESTS` gate (see gotcha **p**); the pin must be bumped in lockstep with `cmake/deps.txt`. Confirm with `git grep -n "onnx==<OLD>" -- '*.yml'`. (These are inline, not `-r requirements.txt`, by design — pulling the full requirements would drag heavy unrelated test deps onto the QNN legs.) |
 
 ### Group B — opset enablement
 | File | Change |
@@ -461,6 +462,15 @@ simply gone.**
   corpus-absence regression (#7959, a bad archive, broken FetchContent, an over-matching
   filter) from an invisible pass into a **loud red** — the single highest-leverage, lowest-cost
   change here.
+- **Other on-disk node-test consumers to repoint when #7959 lands (track, don't lose).** Beyond the
+  C++ `onnx_test_runner` + QNN `.../node` path, three more consumers read the ONNX on-disk
+  node-test data and will break/skip silently once #7959 deletes it — repoint/update each in the
+  same bump: **`csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh`** (C# backend test
+  runner pointed at the node dir), **`js/scripts/prepare-onnx-node-tests.ts`** (the JS/web test
+  harness that stages the node corpus), and **`docs/python/conf.py`** (Sphinx doc build that
+  references the node-test data). None are
+  covered by the C++ materialization mitigation above; each needs its own repoint to the
+  materialized tree (or removal) when the corpus source disappears.
 
 ## 5. Build & validate locally
 

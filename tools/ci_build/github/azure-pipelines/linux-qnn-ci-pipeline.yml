@@ -64,6 +64,10 @@ jobs:
       # regenerates the onnx node-test corpus into the build tree
       # (build/Release/onnx_node_tests/node) for onnx_test_runner. The numpy markers self-select
       # the same pin the CMake gate asserts (2.2.6 for py<3.11, 2.4.2 for py>=3.11).
+      # --user: this leg runs on a bare non-root Ubuntu agent (system python3, no venv); a plain
+      # install would write /usr/local/bin/f2py -> Permission denied. --user targets ~/.local for
+      # the same agent user, which the configure-time `import onnx` (same python3) resolves. (The
+      # two Windows QNN legs omit --user: their Python Scripts dir is writable.)
       - script: |
           python3 -m pip install --user onnx==1.22.0 "numpy==2.2.6; python_version<'3.11'" "numpy==2.4.2; python_version>='3.11'"
         displayName: Install onnx for node-test materialization
