@@ -2966,32 +2966,52 @@ struct OrtEpFactory {
   ORT_API2_STATUS(DeinitGraphicsInterop, _In_ OrtEpFactory* this_ptr,
                   _In_ const OrtEpDevice* ep_device);
 
-  /** \brief Select the best model candidate from metadata lists.
+  /** \brief Select the best model variant candidate from metadata.
    *
-   * Evaluates each candidate metadata against the given hardware device and optional session options,
+   * Evaluates each candidate's metadata against the given hardware device and optional session options,
    * and returns the index of the best match.
    *
-   * Each candidate's OrtKeyValuePairs can have multiple entries and the entry with "ep_compatibility_info" key is
-   * required; its associated value is the compatibility information stored in onnx model metadata. When coming from
-   * a model package, these correspond to the fields in variant body.
-   * See model_package/README.md#variant-body for the full spec.
+   * Each candidate is an OrtKeyValuePairs representing one model variant. When coming from a model package,
+   * these correspond to the fields in the variant body of metadata.json.
+   * See model_package/README.md for the full spec.
    *
-   * Context about having this function:
+   * **Single-model variants (simple case):**
+   *
+   * The KVP contains a single "ep_compatibility_info" key whose value is the compatibility string
+   * stored in the ONNX model metadata (as produced by OrtEp::GetCompiledModelCompatibilityInfo()).
+   *
+   * **Multi-model variants:**
+   *
+   * When a variant contains multiple sub-models (e.g., prefill + decode in a GenAI scenario),
+   * the KVP uses indexed keys so that the EP can inspect each sub-model's metadata independently:
+   *
+   *   - "num_models"              — number of sub-models in this variant (e.g., "3")
+   *   - "<i>.ep_compatibility_info" — compatibility string for sub-model i (required per sub-model)
+   *   - "<i>.role"                — role/purpose of sub-model i (e.g., "prefill", "decode") (optional)
+   *   - "<i>.path"                — relative path to sub-model i (optional)
+   *
+   * where <i> is a zero-based index (e.g., "0.ep_compatibility_info", "1.ep_compatibility_info").
+   *
+   * A basic implementation can simply validate every "<i>.ep_compatibility_info" entry.
+   * An advanced implementation may additionally consider "role" or other metadata when ranking candidates.
+   *
+   * **Why this function exists:**
+   *
    * The existing ValidateCompiledModelCompatibilityInfo() alone is not sufficient for some EPs to determine the best
    * compatible model when there are multiple candidates. For example, an EP may support multiple compilation modes
    * (e.g., "speed optimized" vs "memory optimized") that produce different compatibility strings. The EP can implement
-   * this function to evaluate the candidate strings and select the best compatible one based on its own criteria,
+   * this function to evaluate the candidate metadata and select the best compatible variant based on its own criteria,
    * the target device, and the session options.
    *
    * If all candidates are unsupported, this function succeeds and sets `selected_index` to SIZE_MAX.
    *
    * \note The implementer should validate the compatibility of each candidate (e.g., by calling
-   * ValidateCompiledModelCompatibilityInfo for each one) before determining the best match.
+   * ValidateCompiledModelCompatibilityInfo for each sub-model) before determining the best match.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] device The target hardware device that the EP would run on. Must map to this EP.
    * \param[in] candidates Array of OrtKeyValuePairs pointers (one per model variant).
-   * \param[in] num_candidates Number of candidates.
+   * \param[in] num_candidates Number of candidates (i.e., number of model variants to evaluate).
    * \param[in] session_options Optional session options to consider when selecting the best candidate.
    *                            May be nullptr if no session-level preferences are relevant.
    * \param[out] selected_index Selected candidate index, or SIZE_MAX if all unsupported.
