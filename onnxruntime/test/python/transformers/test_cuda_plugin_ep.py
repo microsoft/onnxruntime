@@ -450,6 +450,39 @@ def run_provider_options_test(provider_options, expect_plugin_provider=True):
             os.remove(model_path)
 
 
+def run_auto_registered_provider_options_test(provider_options):
+    require_cuda_plugin_ep()
+
+    with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+        model_path = tmp.name
+    try:
+        create_add_model(model_path)
+        sess_options = _create_session_options()
+        providers = [(CUDA_PLUGIN_EP_NAME, _plugin_provider_options(provider_options)), "CPUExecutionProvider"]
+        sess = onnxrt.InferenceSession(model_path, sess_options=sess_options, providers=providers)
+
+        active_providers = sess.get_providers()
+        assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
+        if not assigned_nodes:
+            print(
+                f"FAILURE: {CUDA_PLUGIN_EP_NAME} was assigned no nodes. Providers: {active_providers}. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}"
+            )
+            return False
+
+        a = np.random.rand(3, 2).astype(np.float32)
+        b = np.random.rand(3, 2).astype(np.float32)
+        res = sess.run(None, {"A": a, "B": b})
+        np.testing.assert_allclose(res[0], a + b, rtol=1e-3, atol=1e-3)
+        return True
+    except Exception as e:
+        print(f"FAIL ({e})")
+        return False
+    finally:
+        if os.path.exists(model_path):
+            os.remove(model_path)
+
+
 def _expected_conv(inputs):
     return F.conv2d(torch.from_numpy(inputs["X"]), torch.from_numpy(inputs["W"]), padding=1).numpy()
 
@@ -683,6 +716,12 @@ class TestCudaPluginEP(unittest.TestCase):
     def test_provider_options_valid(self):
         result = run_provider_options_test({"device_id": "0", "use_tf32": "0"}, expect_plugin_provider=True)
         self.assertTrue(result, "Provider options with valid device_id/use_tf32 failed")
+
+    def test_auto_registered_provider_options_valid(self):
+        result = run_auto_registered_provider_options_test(
+            {"device_id": "0", "ep.cuda.use_tf32": "0", "ep.cuda.prefer_nhwc_layout": "0"}
+        )
+        self.assertTrue(result, "Auto-registered provider options with prefixed CUDA options failed")
 
     def test_provider_options_invalid_device(self):
         result = run_provider_options_test({"device_id": "999"}, expect_plugin_provider=False)

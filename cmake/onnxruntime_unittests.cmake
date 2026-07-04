@@ -870,6 +870,11 @@ endif()
 add_dependencies(onnxruntime_test_utils ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime_test_utils PUBLIC "${TEST_SRC_DIR}/util/include" PRIVATE
         ${ONNXRUNTIME_ROOT})
+if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+  target_compile_definitions(onnxruntime_test_utils PRIVATE
+    ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE
+    ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
+endif()
 set_target_properties(onnxruntime_test_utils PROPERTIES FOLDER "ONNXRuntimeTest")
 source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_test_utils_src})
 
@@ -1015,6 +1020,63 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_cuda_ut)
 endif()
 
+if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN AND
+    NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
+  set(onnxruntime_test_providers_cuda_plugin_internal_test_src
+    "${TEST_SRC_DIR}/providers/cuda/test_cases/allocator_cuda_test.cc"
+    "${TEST_SRC_DIR}/providers/cuda/test_cases/cuda_utils_test.cc"
+    "${TEST_SRC_DIR}/providers/cuda/test_cases/reduction_functions_test.cc"
+  )
+
+  if (NOT onnxruntime_DISABLE_CONTRIB_OPS)
+    list(APPEND onnxruntime_test_providers_cuda_plugin_internal_test_src
+      "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/softmax_topk_kernel_test.cc"
+    )
+  endif()
+
+  list(APPEND all_tests ${onnxruntime_test_providers_cuda_plugin_internal_test_src})
+
+  if (TARGET onnxruntime_providers_cuda_plugin)
+    set(onnxruntime_providers_cuda_plugin_ut_impl_src
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_allocator.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_call.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_utils.cu"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cudnn_common.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/cudnn_loader.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/reduction/reduction_functions.cc"
+      "${ONNXRUNTIME_ROOT}/core/providers/cuda/reduction/reduction_functions.cu"
+      "${TEST_SRC_DIR}/providers/cuda/test_cases/cuda_plugin_test_shims.cc"
+    )
+
+    if (NOT onnxruntime_DISABLE_CONTRIB_OPS)
+      list(APPEND onnxruntime_providers_cuda_plugin_ut_impl_src
+        "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/moe/qmoe_kernels.cu"
+      )
+    endif()
+
+    onnxruntime_add_object_library(onnxruntime_providers_cuda_plugin_ut_impl ${onnxruntime_providers_cuda_plugin_ut_impl_src})
+    set_target_properties(onnxruntime_providers_cuda_plugin_ut_impl PROPERTIES
+      CUDA_STANDARD 20
+      CUDA_STANDARD_REQUIRED ON
+    )
+    target_include_directories(onnxruntime_providers_cuda_plugin_ut_impl PRIVATE
+      $<TARGET_PROPERTY:onnxruntime_providers_cuda_plugin,INCLUDE_DIRECTORIES>)
+    target_compile_definitions(onnxruntime_providers_cuda_plugin_ut_impl PRIVATE
+      BUILD_CUDA_EP_AS_PLUGIN
+      ONNX_ML=1
+      ONNX_NAMESPACE=onnx
+      ONNX_USE_LITE_PROTO=1
+      ORT_API_MANUAL_INIT
+      ORT_USE_EP_API_ADAPTERS=1)
+    target_compile_options(onnxruntime_providers_cuda_plugin_ut_impl PRIVATE
+      ${_cuda_plugin_shared_compile_options}
+      "$<$<COMPILE_LANGUAGE:CXX>:-Wno-unused-parameter>"
+      "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_plugin_nvcc_threads}\">")
+    add_dependencies(onnxruntime_providers_cuda_plugin_ut_impl ${onnxruntime_EXTERNAL_DEPENDENCIES})
+    set(onnxruntime_providers_cuda_plugin_ut_impl_objects $<TARGET_OBJECTS:onnxruntime_providers_cuda_plugin_ut_impl>)
+  endif()
+endif()
+
 set(all_dependencies ${onnxruntime_test_providers_dependencies} )
 
 if (onnxruntime_ENABLE_TRAINING)
@@ -1141,7 +1203,9 @@ target_include_directories(onnxruntime_test_all PRIVATE ${ONNXRUNTIME_ROOT}/core
 onnxruntime_apply_test_target_workarounds(onnxruntime_test_all)
 
 if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
-  target_compile_definitions(onnxruntime_test_all PRIVATE ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
+  target_compile_definitions(onnxruntime_test_all PRIVATE
+    ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH="$<TARGET_FILE_NAME:onnxruntime_providers_cuda_plugin>"
+    ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
 endif()
 
 if (MSVC)
@@ -1296,6 +1360,7 @@ block()
 
   list(APPEND onnxruntime_provider_test_srcs
     ${supporting_test_srcs}
+    ${onnxruntime_providers_cuda_plugin_ut_impl_objects}
     ${onnxruntime_unittest_main_src}
   )
 
@@ -1319,7 +1384,21 @@ block()
   onnxruntime_set_plugin_ep_test_environment(onnxruntime_provider_test)
 
   if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
-    target_compile_definitions(onnxruntime_provider_test PRIVATE ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
+    target_compile_definitions(onnxruntime_provider_test PRIVATE
+      ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH="$<TARGET_FILE_NAME:onnxruntime_providers_cuda_plugin>"
+      ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
+  endif()
+
+  if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+    target_link_libraries(onnxruntime_provider_test PRIVATE
+      CUDA::cudart
+      CUDA::cublas
+      CUDA::cublasLt
+      CUDA::curand
+      CUDA::cufft
+      CUDA::cuda_driver
+      CUDNN::cudnn
+      cudnn_frontend)
   endif()
 
   # Expose QNN SDK headers to unit tests via an interface target

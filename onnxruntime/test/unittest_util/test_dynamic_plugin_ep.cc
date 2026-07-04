@@ -135,6 +135,10 @@ Status Initialize(Ort::Env& env, InitializationConfig config) {
                  [&selected_ep_name = std::as_const(config.selected_ep_name)](Ort::ConstEpDevice ep_device) {
                    return ep_device.EpName() == selected_ep_name;
                  });
+
+    if (config.selected_ep_name == kCudaExecutionProviderPluginName && selected_c_ep_devices.size() > 1) {
+      selected_c_ep_devices.resize(1);
+    }
   }
 
   ORT_RETURN_IF(selected_c_ep_devices.empty(), "No EP devices were selected.");
