@@ -2069,9 +2069,9 @@ def gqa_cuda_attention_bias_test_cases(is_past: bool):
             (2, 1, 128, 6, 3, 40, False, True, False, False),  # odd head size
             (2, 1, 128, 32, 8, 128, False, True, False, True),  # per-head bias (dim 1 == num_heads)
         ]
-        cases = [c + (False,) for c in cases] + [
+        cases = [(*c, False) for c in cases] + [
             (3, 1, 500, 9, 9, 80, False, False, False, False, True),  # batch-broadcast bias (dim 0 == 1)
-            (2, 1, 128, 6, 3, 40, False, True, False, False, True),   # batch-broadcast, shared buffer
+            (2, 1, 128, 6, 3, 40, False, True, False, False, True),  # batch-broadcast, shared buffer
         ]
         for b, s, s2, n, n2, h, packed, share_buffer, rotary, per_head, bcast0 in cases:
             # The past-parity harness compares the full present buffer; without buffer
@@ -2092,7 +2092,9 @@ def gqa_cuda_attention_bias_test_cases(is_past: bool):
                 attention_bias_per_head=per_head,
                 attention_bias_broadcast_dim_0=bcast0,
             )
-            name = f"bias_b{b}_s{s}_{s2}_nh{n}_{n2}_h{h}_pkd{packed}_sb{share_buffer}_rot{rotary}_ph{per_head}_bc0{bcast0}"
+            name = (
+                f"bias_b{b}_s{s}_{s2}_nh{n}_{n2}_h{h}_pkd{packed}_sb{share_buffer}_rot{rotary}_ph{per_head}_bc0{bcast0}"
+            )
             yield name, config
     else:
         # (batch, seq, num_heads, kv_num_heads, head_size, packed, share_buffer, rotary,
