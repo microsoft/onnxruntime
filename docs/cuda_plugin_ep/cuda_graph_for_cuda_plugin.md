@@ -49,10 +49,10 @@ Session::Run()
 
 | Option Key | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `ep.cudaexecutionprovider.enable_cuda_graph` | bool | false | Enable CUDA graph capture/replay |
-| `ep.cudaexecutionprovider.min_num_runs_before_cuda_graph_capture` | int | 2 | Warmup runs before capture |
+| `ep.cuda.enable_cuda_graph` | bool | false | Enable CUDA graph capture/replay |
+| `ep.cuda.min_num_runs_before_cuda_graph_capture` | int | 2 | Warmup runs before capture |
 
-Legacy aliases `ep.cuda.enable_cuda_graph` and `enable_cuda_graph` are also supported. For the warm-up count, `ep.cuda.min_num_runs_before_cuda_graph_capture` is also accepted.
+Legacy flat alias `enable_cuda_graph` is also supported.
 
 The provider option `user_compute_stream` (a `cudaStream_t` passed as a pointer) may be combined with `enable_cuda_graph`. See [User Compute Stream + CUDA Graph](#user-compute-stream--cuda-graph).
 

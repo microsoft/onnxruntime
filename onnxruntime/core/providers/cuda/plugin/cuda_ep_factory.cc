@@ -105,6 +105,10 @@ std::string ToUpper(std::string value) {
 }
 
 std::string GetProviderOptionPrefix(std::string_view provider_name) {
+  if (provider_name == kCudaExecutionProvider) {
+    return "ep.cuda.";
+  }
+
   return "ep." + onnxruntime::utils::GetLowercaseString(std::string{provider_name}) + ".";
 }
 
@@ -499,8 +503,7 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   const std::string gpu_external_free_key = ep_options_prefix + "gpu_external_free";
   const std::string gpu_external_empty_cache_key = ep_options_prefix + "gpu_external_empty_cache";
 
-  // Prefer plugin-provider-option keys, then fall back to the legacy ep.cuda.*
-  // aliases and finally to the historical flat session config names.
+  // Prefer canonical EP-scoped keys, then fall back to historical flat session config names.
   read_session_config_bool(
       {prefer_nhwc_key, prefer_nhwc_layout_key, "ep.cuda.prefer_nhwc_layout", "prefer_nhwc", "prefer_nhwc_layout"},
       config.prefer_nhwc);
