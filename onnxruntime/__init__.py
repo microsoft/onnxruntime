@@ -104,6 +104,39 @@ if version:
 onnxruntime_validation.check_distro_info()
 
 
+def _get_cuda_plugin_ep_library_path() -> str | None:
+    import os  # noqa: PLC0415
+    import sys  # noqa: PLC0415
+
+    if sys.platform == "win32":
+        library_name = "onnxruntime_providers_cuda_plugin.dll"
+    elif sys.platform == "darwin":
+        library_name = "libonnxruntime_providers_cuda_plugin.dylib"
+    else:
+        library_name = "libonnxruntime_providers_cuda_plugin.so"
+
+    library_path = os.path.join(os.path.dirname(__file__), "capi", library_name)
+    return library_path if os.path.isfile(library_path) else None
+
+
+def _register_bundled_cuda_plugin_ep(warn_on_failure: bool = False):
+    library_path = _get_cuda_plugin_ep_library_path()
+    if not library_path:
+        return
+
+    try:
+        register_execution_provider_library("CUDAExecutionProvider", library_path)
+    except Exception as e:
+        if "already registered" not in str(e).lower():
+            if warn_on_failure:
+                import warnings  # noqa: PLC0415
+
+                warnings.warn(f"Failed to register bundled CUDA plugin EP from {library_path}: {e}")
+
+
+_register_bundled_cuda_plugin_ep()
+
+
 def _get_package_version(package_name: str):
     from importlib.metadata import PackageNotFoundError, version  # noqa: PLC0415
 
@@ -460,3 +493,5 @@ def preload_dlls(cuda: bool = True, cudnn: bool = True, msvc: bool = True, direc
 
     if has_failure:
         print("Please follow https://onnxruntime.ai/docs/install/#cuda-and-cudnn to install CUDA.")
+
+    _register_bundled_cuda_plugin_ep(warn_on_failure=True)

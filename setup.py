@@ -347,6 +347,7 @@ class InstallCommand(InstallCommandBase):
 
 
 providers_cuda = "onnxruntime_providers_cuda"
+providers_cuda_plugin = "onnxruntime_providers_cuda_plugin"
 providers_tensorrt_or_migraphx = "onnxruntime_providers_" + ("migraphx" if is_migraphx else "tensorrt")
 providers_nv_tensorrt_rtx = "onnxruntime_providers_nv_tensorrt_rtx"
 providers_openvino = "onnxruntime_providers_openvino"
@@ -355,6 +356,7 @@ providers_qnn = "onnxruntime_providers_qnn"
 
 if platform.system() == "Linux":
     providers_cuda = "lib" + providers_cuda + ".so"
+    providers_cuda_plugin = "lib" + providers_cuda_plugin + ".so"
     providers_tensorrt_or_migraphx = "lib" + providers_tensorrt_or_migraphx + ".so"
     providers_nv_tensorrt_rtx = "lib" + providers_nv_tensorrt_rtx + ".so"
     providers_openvino = "lib" + providers_openvino + ".so"
@@ -362,6 +364,7 @@ if platform.system() == "Linux":
     providers_qnn = "lib" + providers_qnn + ".so"
 elif platform.system() == "Windows":
     providers_cuda = providers_cuda + ".dll"
+    providers_cuda_plugin = providers_cuda_plugin + ".dll"
     providers_tensorrt_or_migraphx = providers_tensorrt_or_migraphx + ".dll"
     providers_nv_tensorrt_rtx = providers_nv_tensorrt_rtx + ".dll"
     providers_openvino = providers_openvino + ".dll"
@@ -384,6 +387,7 @@ if platform.system() == "Linux" or platform.system() == "AIX":
     ]
     dl_libs = ["libonnxruntime_providers_shared.so"]
     dl_libs.append(providers_cuda)
+    dl_libs.append(providers_cuda_plugin)
     dl_libs.append(providers_tensorrt_or_migraphx)
     dl_libs.append(providers_cann)
     dl_libs.append(providers_qnn)
@@ -394,6 +398,7 @@ if platform.system() == "Linux" or platform.system() == "AIX":
     libs.extend(["libonnxruntime_providers_openvino.so"])
     libs.extend(["libonnxruntime_providers_vitisai.so"])
     libs.append(providers_cuda)
+    libs.append(providers_cuda_plugin)
     libs.append(providers_nv_tensorrt_rtx)
     libs.append(providers_tensorrt_or_migraphx)
     libs.append(providers_cann)
@@ -431,6 +436,7 @@ elif platform.system() == "Darwin":
     libs.extend(["libonnxruntime_providers_dnnl.dylib"])
     libs.extend(["libonnxruntime_providers_tensorrt.dylib"])
     libs.extend(["libonnxruntime_providers_cuda.dylib"])
+    libs.extend(["libonnxruntime_providers_cuda_plugin.dylib"])
     libs.extend(["libonnxruntime_providers_vitisai.dylib"])
     if nightly_build:
         libs.extend(["libonnxruntime_pywrapper.dylib"])
@@ -441,6 +447,7 @@ else:
         "mklml.dll",
         "libiomp5md.dll",
         providers_cuda,
+        providers_cuda_plugin,
         providers_tensorrt_or_migraphx,
         providers_nv_tensorrt_rtx,
         providers_cann,
