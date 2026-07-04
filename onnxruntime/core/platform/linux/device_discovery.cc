@@ -280,6 +280,20 @@ Status GetGpuDevices(std::vector<OrtHardwareDevice>& gpu_devices_out) {
   gpu_devices.reserve(gpu_sysfs_path_infos.size());
 
   for (const auto& gpu_sysfs_path_info : gpu_sysfs_path_infos) {
+    // Virtual DRM devices (e.g., evdi/DisplayLink, vkms, simple-framebuffer) have no backing
+    // PCI device and thus no "device/vendor" entry. A missing "device/vendor" is an expected
+    // configuration rather than a detection failure, so skip such devices without logging a
+    // warning. Only treat a genuinely absent file (file_type::not_found) as virtual; any other
+    // condition (e.g. a permission error, which leaves file_type::none) falls through to
+    // GetGpuDeviceFromSysfs below so that it is reported as a real failure.
+    std::error_code vendor_status_error_code{};
+    const auto vendor_status = fs::status(gpu_sysfs_path_info.path / "device" / "vendor", vendor_status_error_code);
+    if (vendor_status.type() == fs::file_type::not_found) {
+      LOGS_DEFAULT(VERBOSE) << MakeString("Skipping DRM device without PCI vendor information (virtual display device?): ",
+                                          gpu_sysfs_path_info.path);
+      continue;
+    }
+
     OrtHardwareDevice gpu_device{};
     if (auto status = GetGpuDeviceFromSysfs(gpu_sysfs_path_info, gpu_device); !status.IsOK()) {
       LOGS_DEFAULT(WARNING) << MakeString("Failed to detect devices under ", gpu_sysfs_path_info.path, ": ", status.ErrorMessage());
