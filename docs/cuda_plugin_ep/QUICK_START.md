@@ -39,7 +39,7 @@ At load time, `CreateEpFactories()` negotiates the API version with the runtime:
 
 ## Running
 
-When the plugin is built, it will produce `libonnxruntime_providers_cuda_plugin.so` (or `.dll` on Windows) in the build output directory alongside `libonnxruntime.so`.
+When the plugin is built, it will produce `libonnxruntime_providers_cuda.so` (or `onnxruntime_providers_cuda.dll` on Windows) in the build output directory alongside `libonnxruntime.so`.
 
 The plugin EP is registered under the name **`CUDAExecutionProvider`** and uses the EP Plugin API (`RegisterExecutionProviderLibrary` / `GetEpDevices` / `SessionOptionsAppendExecutionProvider_V2`). When using the plugin package directly, register the plugin library before creating sessions that request `CUDAExecutionProvider`.
 
@@ -54,7 +54,7 @@ Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "PluginTest");
 
 // 1. Register the plugin library.
 env.RegisterExecutionProviderLibrary("CUDAExecutionProvider",
-                                     ORT_TSTR("libonnxruntime_providers_cuda_plugin.so"));
+                                     ORT_TSTR("libonnxruntime_providers_cuda.so"));
 
 // 2. Enumerate available EP devices and pick the CUDA plugin device.
 auto ep_devices = env.GetEpDevices();
@@ -85,7 +85,7 @@ import onnxruntime as ort
 # 1. Register the plugin library.
 ort.register_execution_provider_library(
     "CUDAExecutionProvider",
-    "libonnxruntime_providers_cuda_plugin.so",
+  "libonnxruntime_providers_cuda.so",
 )
 
 # 2. Enumerate devices and pick the CUDA plugin device.
@@ -109,7 +109,7 @@ import onnxruntime as ort
 
 ort.register_execution_provider_library(
     "CUDAExecutionProvider",
-    "libonnxruntime_providers_cuda_plugin.so",
+  "libonnxruntime_providers_cuda.so",
 )
 
 sess = ort.InferenceSession(
@@ -145,13 +145,13 @@ The test helper tries to auto-detect the plugin library from the installed wheel
 Linux example:
 
 ```bash
-export ORT_CUDA_PLUGIN_PATH=/path/to/build/Release/libonnxruntime_providers_cuda_plugin.so
+export ORT_CUDA_PLUGIN_PATH=/path/to/build/Release/libonnxruntime_providers_cuda.so
 ```
 
 Windows example:
 
 ```cmd
-set ORT_CUDA_PLUGIN_PATH=E:\path\to\build\Release\Release\onnxruntime_providers_cuda_plugin.dll
+set ORT_CUDA_PLUGIN_PATH=E:\path\to\build\Release\Release\onnxruntime_providers_cuda.dll
 ```
 
 ### Run the test script
@@ -177,7 +177,7 @@ To run the same focused test against a plugin build without cuDNN in the runtime
 ```bash
 export ORT_TEST_CUDA_PLUGIN_NO_CUDNN=1
 export ORT_TEST_CUDA_PLUGIN_EP=1
-export ORT_CUDA_PLUGIN_PATH=/path/to/build/Release/libonnxruntime_providers_cuda_plugin.so
+export ORT_CUDA_PLUGIN_PATH=/path/to/build/Release/libonnxruntime_providers_cuda.so
 python test_cuda_plugin_ep.py
 ```
 
@@ -193,7 +193,7 @@ The plugin must keep working on the oldest supported ONNX Runtime (see [Minimum 
 pip install "onnxruntime==$(cat plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION)" --force-reinstall
 
 # 3. Point the test at the freshly built plugin library and run it.
-export ORT_CUDA_PLUGIN_PATH=/path/to/build/Release/libonnxruntime_providers_cuda_plugin.so
+export ORT_CUDA_PLUGIN_PATH=/path/to/build/Release/libonnxruntime_providers_cuda.so
 cd onnxruntime/test/python/transformers
 python test_cuda_plugin_ep.py
 ```
@@ -205,5 +205,5 @@ This loads the plugin (compiled against the latest headers) into the minimum sup
 You can generate a parity report comparing the kernels available in the plugin EP versus the statically linked CUDA EP.
 ```bash
 # Check runtime registry parity:
-python tools/ci_build/cuda_plugin_parity_report.py --runtime --plugin-ep-lib build/Linux/RelWithDebInfo/libonnxruntime_providers_cuda_plugin.so
+python tools/ci_build/cuda_plugin_parity_report.py --runtime --plugin-ep-lib build/Linux/RelWithDebInfo/libonnxruntime_providers_cuda.so
 ```

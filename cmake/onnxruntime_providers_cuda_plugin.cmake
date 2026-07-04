@@ -458,7 +458,7 @@ endif()
 
 # Set output name and solution folder
 set_target_properties(onnxruntime_providers_cuda_plugin PROPERTIES
-    OUTPUT_NAME "onnxruntime_providers_cuda_plugin"
+  OUTPUT_NAME "onnxruntime_providers_cuda"
     FOLDER "ONNXRuntime"
 )
 

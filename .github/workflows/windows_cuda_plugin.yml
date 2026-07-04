@@ -198,7 +198,7 @@ jobs:
         working-directory: ${{ github.workspace }}\onnxruntime\test\python\transformers
         shell: pwsh
         run: |
-          $env:ORT_CUDA_PLUGIN_PATH = "${{ runner.temp }}\build\Release\Release\onnxruntime_providers_cuda_plugin.dll"
+          $env:ORT_CUDA_PLUGIN_PATH = "${{ runner.temp }}\build\Release\Release\onnxruntime_providers_cuda.dll"
           Write-Host "ORT_CUDA_PLUGIN_PATH=$env:ORT_CUDA_PLUGIN_PATH"
           if (-not (Test-Path $env:ORT_CUDA_PLUGIN_PATH)) {
             Write-Error "CUDA plugin EP library not found at $env:ORT_CUDA_PLUGIN_PATH"

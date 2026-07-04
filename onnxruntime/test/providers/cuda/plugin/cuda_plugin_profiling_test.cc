@@ -43,7 +43,7 @@ constexpr const char* kCudaPluginEpName = "CUDAExecutionProvider";
 constexpr const char* kRegistrationName = "CudaPluginProfilingTest";
 
 std::filesystem::path GetCudaPluginLibraryPath() {
-  return GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_cuda_plugin"));
+  return GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_cuda"));
 }
 
 // Get the internal OrtEnv from the C++ Ort::Env wrapper.

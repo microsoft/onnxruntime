@@ -128,7 +128,7 @@ jobs:
               python -m pip install /build/Release/Release/dist/onnxruntime*.whl
               python -m pip install numpy onnx
               python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
-              export ORT_CUDA_PLUGIN_PATH=/build/Release/Release/libonnxruntime_providers_cuda_plugin.so
+              export ORT_CUDA_PLUGIN_PATH=/build/Release/Release/libonnxruntime_providers_cuda.so
               cd /onnxruntime_src/onnxruntime/test/python/transformers
               python test_cuda_plugin_ep.py
             "

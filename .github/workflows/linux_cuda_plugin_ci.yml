@@ -134,7 +134,7 @@ jobs:
               python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
 
               # Set plugin path and run tests
-              export ORT_CUDA_PLUGIN_PATH=/build/Release/Release/libonnxruntime_providers_cuda_plugin.so
+              export ORT_CUDA_PLUGIN_PATH=/build/Release/Release/libonnxruntime_providers_cuda.so
               echo \"ORT_CUDA_PLUGIN_PATH=\$ORT_CUDA_PLUGIN_PATH\"
               ls -la \$ORT_CUDA_PLUGIN_PATH
 
@@ -166,6 +166,6 @@ jobs:
               export LD_LIBRARY_PATH=/build/Release/Release:/usr/local/cuda-13.0/lib64:\${LD_LIBRARY_PATH:-}
 
               cd /build/Release/Release
-              ls -la onnxruntime_provider_test libonnxruntime_providers_cuda_plugin.so
+              ls -la onnxruntime_provider_test libonnxruntime_providers_cuda.so
               ./onnxruntime_provider_test --gtest_filter='CudaPlugin*:CudaResourcePartitioning*'
             "

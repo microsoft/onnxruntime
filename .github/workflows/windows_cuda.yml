@@ -247,7 +247,7 @@ jobs:
             exit $lastExitCode
           }
 
-          $env:ORT_CUDA_PLUGIN_PATH = "${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo\onnxruntime_providers_cuda_plugin.dll"
+          $env:ORT_CUDA_PLUGIN_PATH = "${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo\onnxruntime_providers_cuda.dll"
           if (-not (Test-Path $env:ORT_CUDA_PLUGIN_PATH)) {
             Write-Error "CUDA plugin EP library not found at $env:ORT_CUDA_PLUGIN_PATH"
             exit 1

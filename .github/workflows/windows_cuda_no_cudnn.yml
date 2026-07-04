@@ -229,7 +229,7 @@ jobs:
       - name: Verify CUDA plugin has no direct cuDNN dependency
         shell: pwsh
         run: |
-          $pluginPath = "${{ runner.temp }}\build\Release\Release\onnxruntime_providers_cuda_plugin.dll"
+          $pluginPath = "${{ runner.temp }}\build\Release\Release\onnxruntime_providers_cuda.dll"
           if (-not (Test-Path $pluginPath)) {
             Write-Error "CUDA plugin EP library not found at $pluginPath"
             exit 1
@@ -245,7 +245,7 @@ jobs:
         working-directory: ${{ github.workspace }}\onnxruntime\test\python\transformers
         shell: pwsh
         run: |
-          $env:ORT_CUDA_PLUGIN_PATH = "${{ runner.temp }}\build\Release\Release\onnxruntime_providers_cuda_plugin.dll"
+          $env:ORT_CUDA_PLUGIN_PATH = "${{ runner.temp }}\build\Release\Release\onnxruntime_providers_cuda.dll"
           $env:ORT_TEST_CUDA_PLUGIN_EP = "1"
           $env:ORT_TEST_CUDA_PLUGIN_NO_CUDNN = "1"
           Write-Host "ORT_CUDA_PLUGIN_PATH=$env:ORT_CUDA_PLUGIN_PATH"

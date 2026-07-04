@@ -4,7 +4,7 @@
 
 ### Background
 
-The CUDA Plugin EP is a standalone shared library (`libonnxruntime_providers_cuda_plugin.so`) that implements the OrtEp C API, allowing CUDA EP updates independent of ORT releases. CUDA graph capture/replay is a critical performance optimization that records a sequence of GPU operations into a graph, then replays it with minimal CPU overhead on subsequent runs.
+The CUDA Plugin EP is a standalone shared library (`libonnxruntime_providers_cuda.so`) that implements the OrtEp C API, allowing CUDA EP updates independent of ORT releases. CUDA graph capture/replay is a critical performance optimization that records a sequence of GPU operations into a graph, then replays it with minimal CPU overhead on subsequent runs.
 
 The OrtEp C API (v1.26+) provides four graph-capture callbacks:
 

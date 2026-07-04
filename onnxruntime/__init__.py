@@ -108,12 +108,15 @@ def _get_cuda_plugin_ep_library_path() -> str | None:
     import os  # noqa: PLC0415
     import sys  # noqa: PLC0415
 
+    if ", cuda-plugin-ep=" not in get_build_info():
+        return None
+
     if sys.platform == "win32":
-        library_name = "onnxruntime_providers_cuda_plugin.dll"
+        library_name = "onnxruntime_providers_cuda.dll"
     elif sys.platform == "darwin":
-        library_name = "libonnxruntime_providers_cuda_plugin.dylib"
+        library_name = "libonnxruntime_providers_cuda.dylib"
     else:
-        library_name = "libonnxruntime_providers_cuda_plugin.so"
+        library_name = "libonnxruntime_providers_cuda.so"
 
     library_path = os.path.join(os.path.dirname(__file__), "capi", library_name)
     return library_path if os.path.isfile(library_path) else None

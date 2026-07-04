@@ -45,7 +45,7 @@ constexpr const char* kResourcePartitioningRegistrationName = "CudaPluginResourc
 
 // Resolve the CUDA plugin EP shared library path.
 std::filesystem::path GetCudaPluginLibraryPath() {
-  return GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_cuda_plugin"));
+  return GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_cuda"));
 }
 
 // RAII handle that registers/unregisters the CUDA plugin EP library.

@@ -31,11 +31,11 @@ public class CudaPluginEpTests
         string libName;
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            libName = "onnxruntime_providers_cuda_plugin.dll";
+            libName = "onnxruntime_providers_cuda.dll";
         }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
-            libName = "libonnxruntime_providers_cuda_plugin.so";
+            libName = "libonnxruntime_providers_cuda.so";
         }
         else
         {

@@ -222,7 +222,7 @@ if __name__ == "__main__":
         dest="plugin_eps",
         help="Register plugin EP libraries and include their kernels. "
         "Each entry is NAME:PATH, e.g. "
-        "'CUDAExecutionProvider:/path/to/libonnxruntime_providers_cuda_plugin.so'.",
+        "'CUDAExecutionProvider:/path/to/libonnxruntime_providers_cuda.so'.",
     )
     parser.add_argument(
         "--output_path",

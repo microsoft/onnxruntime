@@ -43,7 +43,7 @@ int64_t GetStatInt(const Ort::KeyValuePairs& stats, const char* key) {
 
 // Resolve the CUDA plugin EP shared library path.
 std::filesystem::path GetCudaPluginLibraryPath() {
-  return GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_cuda_plugin"));
+  return GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_cuda"));
 }
 
 // RAII handle that registers/unregisters the CUDA plugin EP library.

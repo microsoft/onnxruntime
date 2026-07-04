@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-The CUDA Plugin EP is an alternative build of the ONNX Runtime CUDA Execution Provider that compiles as a standalone shared library (`libonnxruntime_providers_cuda_plugin.so`). It loads at runtime through the ORT EP Plugin API instead of being statically linked into the main runtime binary.
+The CUDA Plugin EP is an alternative build of the ONNX Runtime CUDA Execution Provider that compiles as a standalone shared library (`libonnxruntime_providers_cuda.so`). It loads at runtime through the ORT EP Plugin API instead of being statically linked into the main runtime binary.
 
 **Goals:**
 - Allow CUDA EP updates independent of ORT core releases
@@ -24,7 +24,7 @@ The ORT CUDA build produces four separate libraries:
 | `onnxruntime_providers` | `libonnxruntime_providers.a` | Static lib | CPU provider + framework ops |
 | `onnxruntime_providers_shared` | `libonnxruntime_providers_shared.so` | Shared lib | DLL-boundary bridge for in-tree EPs |
 | `onnxruntime_providers_cuda` | `libonnxruntime_providers_cuda.so` | Shared module | In-tree CUDA EP (uses `SHARED_PROVIDER` bridge) |
-| `onnxruntime_providers_cuda_plugin` | `libonnxruntime_providers_cuda_plugin.so` | Shared module | Plugin CUDA EP (uses EP API adapters) |
+| `onnxruntime_providers_cuda_plugin` | `libonnxruntime_providers_cuda.so` | Shared module | Plugin CUDA EP (uses EP API adapters) |
 
 ### 2.1.1 Optional cuDNN Runtime Dependency
 
@@ -628,7 +628,7 @@ sh build.sh --config Release --build_dir build/cuda --parallel --use_cuda \
 
 The `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON` flag replaces the legacy CUDA provider target with the plugin target. It:
 
-1. Adds the `onnxruntime_providers_cuda_plugin` target (producing `libonnxruntime_providers_cuda_plugin.so`)
+1. Adds the `onnxruntime_providers_cuda_plugin` target (producing `libonnxruntime_providers_cuda.so`)
 2. Skips the legacy `onnxruntime_providers_cuda` target and CUDA EP internal unit-test library
 3. Copies the plugin library into Python and Java package outputs when those packages are built
 4. Appends `"cuda-plugin-ep=1"` to the build info string
@@ -637,7 +637,7 @@ Use `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=OFF` when you need to build the origina
 
 ### 9.3 Plugin Independence
 
-`libonnxruntime_providers_cuda_plugin.so` is **fully self-contained**. It does not depend on `libonnxruntime_providers_cuda.so` or `libonnxruntime_providers_shared.so` at load time. It statically links against `onnxruntime_framework`, `onnxruntime_graph`, `onnxruntime_common`, `onnxruntime_mlas`, `onnxruntime_flatbuffers`, and links dynamically against CUDA (`cudart`, `cublas`, `cublasLt`, `cufft`) and protobuf. cuDNN is loaded lazily only when enabled and available at runtime. Communication with the ORT runtime happens exclusively through the C API (`OrtApi`/`OrtEpApi`) passed at load time.
+The plugin build's `libonnxruntime_providers_cuda.so` is **fully self-contained**. It does not depend on `libonnxruntime_providers_shared.so` at load time. It statically links against `onnxruntime_framework`, `onnxruntime_graph`, `onnxruntime_common`, `onnxruntime_mlas`, `onnxruntime_flatbuffers`, and links dynamically against CUDA (`cudart`, `cublas`, `cublasLt`, `cufft`) and protobuf. cuDNN is loaded lazily only when enabled and available at runtime. Communication with the ORT runtime happens exclusively through the C API (`OrtApi`/`OrtEpApi`) passed at load time.
 
 ### 9.4 Build Outputs
 
@@ -647,15 +647,14 @@ After a successful build with the plugin flag ON, `build/cuda/Release/` contains
 |------|-------------|
 | `libonnxruntime_providers.a` | CPU provider (static, linked into main binary) |
 | `libonnxruntime_providers_shared.so` | Shared provider bridge (for in-tree CUDA EP) |
-| `libonnxruntime_providers_cuda.so` | In-tree CUDA EP (uses shared provider bridge) |
-| `libonnxruntime_providers_cuda_plugin.so` | Plugin CUDA EP (standalone, uses C API) |
+| `libonnxruntime_providers_cuda.so` | Plugin CUDA EP when `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON`; in-tree CUDA EP when it is OFF |
 
 ### 9.5 Deployment
 
 To use the plugin EP, copy the `.so` to the ORT Python package's `capi/` directory:
 
 ```bash
-cp build/cuda/Release/libonnxruntime_providers_cuda_plugin.so \
+cp build/cuda/Release/libonnxruntime_providers_cuda.so \
    $(python -c "import onnxruntime; print(onnxruntime.__path__[0])")/capi/
 ```
 

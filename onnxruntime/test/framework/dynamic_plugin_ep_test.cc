@@ -24,7 +24,7 @@ TEST(DynamicPluginEpInfraTest, ParseInitializationConfigParsesOptionalFields) {
   constexpr std::string_view kConfigJson = R"json(
 {
   "ep_library_registration_name": "CUDAExecutionProvider",
-  "ep_library_path": "/tmp/libonnxruntime_providers_cuda_plugin.so",
+  "ep_library_path": "/tmp/libonnxruntime_providers_cuda.so",
   "selected_ep_device_indices": [0, 2],
   "default_ep_options": {
     "ep.cuda.use_tf32": "1",
@@ -41,7 +41,7 @@ TEST(DynamicPluginEpInfraTest, ParseInitializationConfigParsesOptionalFields) {
   ASSERT_STATUS_OK(dynamic_plugin_ep_test_infra::ParseInitializationConfig(kConfigJson, config));
 
   EXPECT_EQ(config.ep_library_registration_name, "CUDAExecutionProvider");
-  EXPECT_EQ(config.ep_library_path, "/tmp/libonnxruntime_providers_cuda_plugin.so");
+  EXPECT_EQ(config.ep_library_path, "/tmp/libonnxruntime_providers_cuda.so");
   EXPECT_TRUE(config.selected_ep_name.empty());
   EXPECT_THAT(config.selected_ep_device_indices, ::testing::ElementsAre(0u, 2u));
   EXPECT_THAT(config.default_ep_options,
