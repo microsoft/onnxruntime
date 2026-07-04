@@ -48,5 +48,48 @@ TEST(GetExecutionProvidersTest, NoDuplicates) {
   check(GetAvailableExecutionProviderNames());
 }
 
+TEST(GetExecutionProvidersTest, CpuAlwaysUsable) {
+  // CPU provider is always statically linked and should always be usable
+  EXPECT_TRUE(IsExecutionProviderUsable(kCpuExecutionProvider));
+}
+
+TEST(GetExecutionProvidersTest, UnknownProviderNotUsable) {
+  EXPECT_FALSE(IsExecutionProviderUsable("NonExistentExecutionProvider"));
+}
+
+TEST(GetExecutionProvidersTest, UsableIsSubsetOfAvailable) {
+  const auto& available = GetAvailableExecutionProviderNames();
+  const auto usable = GetUsableExecutionProviderNames();
+
+  // Every usable provider must be in the available list
+  for (const auto& provider : usable) {
+    EXPECT_NE(std::find(available.begin(), available.end(), provider), available.end())
+        << "Usable provider " << provider << " is not in available providers list";
+  }
+
+  // Usable count must be <= available count
+  EXPECT_LE(usable.size(), available.size());
+}
+
+TEST(GetExecutionProvidersTest, UsableProvidersMaintainPriorityOrder) {
+  const auto& available = GetAvailableExecutionProviderNames();
+  const auto usable = GetUsableExecutionProviderNames();
+
+  // Verify usable providers maintain the same relative ordering as available
+  size_t last_available_idx = 0;
+  for (const auto& provider : usable) {
+    auto it = std::find(available.begin() + last_available_idx, available.end(), provider);
+    ASSERT_NE(it, available.end())
+        << "Usable provider " << provider << " not found in available list";
+    last_available_idx = static_cast<size_t>(std::distance(available.begin(), it)) + 1;
+  }
+}
+
+TEST(GetExecutionProvidersTest, CpuAlwaysLastInUsable) {
+  const auto usable = GetUsableExecutionProviderNames();
+  ASSERT_FALSE(usable.empty());
+  EXPECT_EQ(usable.back(), kCpuExecutionProvider);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
