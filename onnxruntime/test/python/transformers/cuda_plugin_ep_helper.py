@@ -11,7 +11,7 @@ import torch
 
 import onnxruntime as onnxrt
 
-CUDA_PLUGIN_EP_NAME = "CudaPluginExecutionProvider"
+CUDA_PLUGIN_EP_NAME = "CUDAExecutionProvider"
 enable_debug_print = False
 logger = logging.getLogger(__name__)
 
@@ -145,12 +145,7 @@ def ensure_cuda_plugin_ep_registered(default_test_with_cuda_plugin_ep: bool = Fa
         if "already registered" in str(e).lower():
             _CudaPluginRegistrationState.registered = True
         else:
-            try:
-                providers = {device.ep_name for device in onnxrt.get_ep_devices()}
-            except Exception:
-                providers = set()
-
-            _CudaPluginRegistrationState.registered = CUDA_PLUGIN_EP_NAME in providers
+            _CudaPluginRegistrationState.registered = False
 
             if enable_debug_print and not _CudaPluginRegistrationState.registered:
                 print(f"Failed to register CUDA Plugin EP from {ep_lib_path}: {e}")

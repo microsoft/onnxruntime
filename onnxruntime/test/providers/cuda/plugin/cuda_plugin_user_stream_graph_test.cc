@@ -36,7 +36,7 @@ namespace test {
 namespace {
 
 constexpr const char* kCudaPluginEpRegistrationName = "CudaPluginUserStreamGraphTest";
-constexpr const char* kCudaPluginEpName = "CudaPluginExecutionProvider";
+constexpr const char* kCudaPluginEpName = "CUDAExecutionProvider";
 
 // Resolve the CUDA plugin EP shared library path.
 std::filesystem::path GetCudaPluginLibraryPath() {

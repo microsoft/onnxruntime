@@ -30,7 +30,7 @@ def get_library_path() -> str:
 
 def get_ep_name() -> str:
     """Return the CUDA plugin Execution Provider name."""
-    return "CudaPluginExecutionProvider"
+    return "CUDAExecutionProvider"
 
 
 def get_ep_names() -> list[str]:

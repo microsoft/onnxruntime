@@ -39,7 +39,7 @@ namespace onnxruntime {
 namespace test {
 namespace {
 
-constexpr const char* kCudaPluginEpName = "CudaPluginExecutionProvider";
+constexpr const char* kCudaPluginEpName = "CUDAExecutionProvider";
 constexpr const char* kRegistrationName = "CudaPluginProfilingTest";
 
 std::filesystem::path GetCudaPluginLibraryPath() {

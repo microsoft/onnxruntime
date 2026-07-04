@@ -2320,7 +2320,7 @@ class TestCudaPluginEP(unittest.TestCase):
     def _create_cuda_graph_session(self, model_path, extra_session_config=None, provider_options=None):
         """Create a session with CUDA graph capture enabled for the plugin EP."""
         sess_options = _create_session_options()
-        sess_options.add_session_config_entry("ep.cudapluginexecutionprovider.enable_cuda_graph", "1")
+        sess_options.add_session_config_entry("ep.cudaexecutionprovider.enable_cuda_graph", "1")
         if extra_session_config:
             for key, value in extra_session_config.items():
                 sess_options.add_session_config_entry(key, value)
@@ -2442,7 +2442,7 @@ class TestCudaPluginEP(unittest.TestCase):
             try:
                 session = self._create_cuda_graph_session(
                     model_path,
-                    extra_session_config={"ep.cudapluginexecutionprovider.arena.use_cuda_mempool": "1"},
+                    extra_session_config={"ep.cudaexecutionprovider.arena.use_cuda_mempool": "1"},
                 )
             except Exception as exc:
                 if is_cuda_mempool_unsupported_error(exc):

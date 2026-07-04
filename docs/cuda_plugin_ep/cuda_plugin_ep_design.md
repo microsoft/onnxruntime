@@ -410,13 +410,13 @@ The current implementation already has the core runtime pieces in place:
 | Provider option parsing | `CudaEpFactory` already parses `prefer_nhwc` / `prefer_nhwc_layout` into `CudaEp::Config` |
 | Build-time gating | `cmake/onnxruntime_providers_cuda_plugin.cmake` propagates `ENABLE_CUDA_NHWC_OPS` to the plugin target when `onnxruntime_USE_CUDA_NHWC_OPS=ON` |
 | NHWC kernel registration | NHWC kernels are compiled from the normal CUDA kernel sources and self-register through `PluginKernelCollector`; the centralized `cuda_nhwc_kernels.cc` table stays excluded in plugin builds |
-| Second capability pass | `CudaEp::GetCapabilityImpl()` preserves nodes already assigned to `CudaPluginExecutionProvider`, so ORT's post-layout-transformation partitioning pass does not drop rewritten NHWC nodes that were previously selected by the plugin |
+| Second capability pass | `CudaEp::GetCapabilityImpl()` preserves nodes already assigned to `CUDAExecutionProvider`, so ORT's post-layout-transformation partitioning pass does not drop rewritten NHWC nodes that were previously selected by the plugin |
 | Adapter provider access | `ep::adapter::OpKernelInfo` caches the inner shim `EpImpl()` pointer at kernel-creation time, avoiding a fragile runtime `OrtKernelInfo -> OrtEp -> EpImpl()` round-trip in NHWC kernels |
 | Focused validation | `test_cuda_plugin_ep.py` Stage 3 now runs NHWC-requested sessions for Conv, BatchNormalization, MaxPool, and AveragePool and requires plugin-backed execution to succeed numerically |
 
 The fixes that made this work were not limited to turning the callbacks back on:
 
-- The plugin now keeps both newly discovered candidate nodes and nodes already assigned to `CudaPluginExecutionProvider` during the second `GetCapability()` pass that runs after layout transformation.
+- The plugin now keeps both newly discovered candidate nodes and nodes already assigned to `CUDAExecutionProvider` during the second `GetCapability()` pass that runs after layout transformation.
 - NHWC kernels now obtain provider configuration through the cached shim pointer in `ep::adapter::OpKernelInfo`, which removed a runtime crash path in migrated kernels such as NHWC `Conv`.
 
 With those pieces in place, NHWC-requested sessions take the real plugin execution path rather than silently falling back to the stable NCHW path.
@@ -443,7 +443,7 @@ The current implementation has the minimum runtime fixes required for plugin-sid
 
 That behavior is now implemented by tracking:
 - `tentative_nodes`: newly discovered nodes with matching kernel registrations
-- `candidate_nodes`: both tentative nodes and nodes already assigned to `CudaPluginExecutionProvider`
+- `candidate_nodes`: both tentative nodes and nodes already assigned to `CUDAExecutionProvider`
 
 The final support set is chosen from `candidate_nodes`, with the existing CPU-preferred-node filtering applied only where appropriate.
 
@@ -609,7 +609,10 @@ The broad trend remains positive: most operator-level plugin conditionals were r
 
 ### 9.1 CMake Flag
 
-The plugin is enabled by setting `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON`:
+The plugin is the default CUDA EP build when `onnxruntime_USE_CUDA=ON`. The `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN` option controls whether CUDA is built as the plugin EP or as the legacy in-tree provider:
+
+- `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON` builds `onnxruntime_providers_cuda_plugin` and advertises it as `CUDAExecutionProvider`.
+- `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=OFF` builds the legacy source-built `onnxruntime_providers_cuda` provider.
 
 ```bash
 sh build.sh --config Release --build_dir build/cuda --parallel --use_cuda \
@@ -618,18 +621,19 @@ sh build.sh --config Release --build_dir build/cuda --parallel --use_cuda \
     --build_wheel --skip_tests \
     --cmake_generator Ninja \
     --enable_cuda_nhwc_ops \
-    --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON \
     --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES="90"
 ```
 
 ### 9.2 Impact on Other Build Targets
 
-The `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON` flag has **no impact** on `libonnxruntime_providers_cuda.so` or `libonnxruntime_providers_shared.so`. It only:
+The `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON` flag replaces the legacy CUDA provider target with the plugin target. It:
 
 1. Adds the `onnxruntime_providers_cuda_plugin` target (producing `libonnxruntime_providers_cuda_plugin.so`)
-2. Appends `"cuda-plugin-ep=1"` to the build info string (cosmetic)
+2. Skips the legacy `onnxruntime_providers_cuda` target and CUDA EP internal unit-test library
+3. Copies the plugin library into Python and Java package outputs when those packages are built
+4. Appends `"cuda-plugin-ep=1"` to the build info string
 
-The in-tree CUDA EP and shared provider bridge are compiled identically regardless of this flag. A single build with the flag ON produces all four libraries — there is no need for separate build scripts or build directories.
+Use `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=OFF` when you need to build the original in-tree CUDA EP from source.
 
 ### 9.3 Plugin Independence
 
@@ -655,7 +659,7 @@ cp build/cuda/Release/libonnxruntime_providers_cuda_plugin.so \
    $(python -c "import onnxruntime; print(onnxruntime.__path__[0])")/capi/
 ```
 
-The plugin is then available as `CudaPluginExecutionProvider` in session provider lists.
+The plugin is then available as `CUDAExecutionProvider` in session provider lists.
 
 ---
 
@@ -688,7 +692,7 @@ The plugin is then available as `CudaPluginExecutionProvider` in session provide
 | Memcpy | Explicit `MemcpyFromHost` and `MemcpyToHost` standalone tests to ensure copy ops are dispatched |
 | CUDA Graph | Capture/replay with default arena (`test_cuda_graph_capture_and_replay`, `test_cuda_graph_add_model`), in-place input update after capture (`test_cuda_graph_replay_with_updated_input`), CUDA native mempool allocator (`test_cuda_graph_with_mempool`), and multiple annotation IDs (`test_cuda_graph_annotation_id`) |
 | IOBinding / Sync | IOBinding-based tests (Add, MatMul) that bind CPU inputs and CUDA outputs to exercise `OrtEp::Sync` and `OrtEp::CreateSyncStreamForDevice` |
-| Key-ops probe | Session-based probing that all key ops are assigned to `CudaPluginExecutionProvider` |
+| Key-ops probe | Session-based probing that all key ops are assigned to `CUDAExecutionProvider` |
 
 ### 10.2 Running Tests
 
@@ -1047,7 +1051,7 @@ When profiling is disabled (default), `CudaEp::CreateProfiler` is set to `nullpt
 
     Current known limitations to keep in future work:
 
-    - The `cuda(...)` device selector currently matches only the built-in `CUDAExecutionProvider`. It does not match the plugin EP name `CudaPluginExecutionProvider`, so layer assignment settings written against `cuda(...)` do not work with the CUDA plugin EP today.
+    - The `cuda(...)` device selector matches the renamed CUDA plugin EP through the `CUDAExecutionProvider` name. Future work should keep this path covered as plugin device metadata evolves.
     - The `gpu:<index>(...)` selector is currently matched using `OrtHardwareDevice::device_id`. That field is not a stable CUDA ordinal and is not guaranteed to uniquely identify one physical GPU, so index-based layer assignment is unreliable for the CUDA plugin EP, especially on hosts with multiple similar NVIDIA GPUs.
 
     **Recommended action:** First add the plugin API bridge for resource accounting, then update `CudaEp::GetCapabilityImpl()` to request resource budget for candidate nodes when layer assignments exist. Until that bridge exists, the plugin can observe the filtered node set from ORT partitioning but cannot report resource consumption through the same `IResourceAccountant` flow as the in-tree CUDA EP.

@@ -49,8 +49,8 @@ Session::Run()
 
 | Option Key | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `ep.cudapluginexecutionprovider.enable_cuda_graph` | bool | false | Enable CUDA graph capture/replay |
-| `ep.cudapluginexecutionprovider.min_num_runs_before_cuda_graph_capture` | int | 2 | Warmup runs before capture |
+| `ep.cudaexecutionprovider.enable_cuda_graph` | bool | false | Enable CUDA graph capture/replay |
+| `ep.cudaexecutionprovider.min_num_runs_before_cuda_graph_capture` | int | 2 | Warmup runs before capture |
 
 Legacy aliases `ep.cuda.enable_cuda_graph` and `enable_cuda_graph` are also supported. For the warm-up count, `ep.cuda.min_num_runs_before_cuda_graph_capture` is also accepted.
 

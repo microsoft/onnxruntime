@@ -58,7 +58,7 @@ namespace Microsoft.ML.OnnxRuntime.EP.Cuda
         /// <returns>The EP name string.</returns>
         public static string GetEpName()
         {
-            return "CudaPluginExecutionProvider";
+            return "CUDAExecutionProvider";
         }
 
         private static string GetNativeDirectory()

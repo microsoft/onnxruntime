@@ -382,9 +382,9 @@ The pinned allocator is also wrapped in `CudaArenaAllocator` but must **not** be
 
 `PluginExecutionProvider::CreatePreferredAllocators()` calls `ep_factory_.CreateAllocator()` for each memory info registered by the EP's devices. Today this passes `allocator_options = nullptr`, which means the factory always creates arenas with default config.
 
-**Session-level plumbing (new).** To support session-level arena config (e.g. `ep.cudapluginexecutionprovider.arena.max_mem`), `PluginExecutionProvider` needs to:
+**Session-level plumbing (new).** To support session-level arena config (e.g. `ep.cudaexecutionprovider.arena.max_mem`), `PluginExecutionProvider` needs to:
 
-1. **Extract arena options at construction time (gated).** The constructor already receives `const OrtSessionOptions& session_options`. The extraction is gated on `ep_factory_.CreateAllocator != nullptr` — only factory-based allocator creation accepts `allocator_options`, so the scan is skipped entirely for plugin EPs that don't implement factory-level allocator creation (the `OrtEp::CreateAllocator` path has no options parameter). When gated in, the constructor constructs the EP-specific prefix via `OrtSessionOptions::GetProviderOptionPrefix(ep->GetName(ep.get()))` (which lowercases the EP name), appends `"arena."`, and scans `session_options.value.config_options` for matching keys. Matching keys are stored with the EP prefix stripped (bare `"arena.*"` keys) in a `std::optional<OrtKeyValuePairs>` member (`session_arena_options_`). The EP-name prefix ensures that only keys intended for this specific EP are extracted — e.g. `ep.cudapluginexecutionprovider.arena.*` keys will never match a session for a different plugin EP.
+1. **Extract arena options at construction time (gated).** The constructor already receives `const OrtSessionOptions& session_options`. The extraction is gated on `ep_factory_.CreateAllocator != nullptr` — only factory-based allocator creation accepts `allocator_options`, so the scan is skipped entirely for plugin EPs that don't implement factory-level allocator creation (the `OrtEp::CreateAllocator` path has no options parameter). When gated in, the constructor constructs the EP-specific prefix via `OrtSessionOptions::GetProviderOptionPrefix(ep->GetName(ep.get()))` (which lowercases the EP name), appends `"arena."`, and scans `session_options.value.config_options` for matching keys. Matching keys are stored with the EP prefix stripped (bare `"arena.*"` keys) in a `std::optional<OrtKeyValuePairs>` member (`session_arena_options_`). The EP-name prefix ensures that only keys intended for this specific EP are extracted — e.g. `ep.cudaexecutionprovider.arena.*` keys will never match a session for a different plugin EP.
 
 2. **Pass options in `CreatePreferredAllocators`.** If `session_arena_options_` has a value, pass it as `allocator_options` to `ep_factory_.CreateAllocator()`. Otherwise pass `nullptr` (preserving existing behavior for EPs that don't use arena keys).
 
@@ -396,7 +396,7 @@ This means:
 ```
 Session-level flow:
 SessionOptionsAppendExecutionProvider_V2(session, ep_devices, keys[], values[])
-  → keys stored in session_options.config_options as "ep.cudapluginexecutionprovider.arena.*"
+  → keys stored in session_options.config_options as "ep.cudaexecutionprovider.arena.*"
   → PluginExecutionProvider constructor extracts "arena.*" keys
   → CreatePreferredAllocators() builds OrtKeyValuePairs and passes to CreateAllocator()
   → factory creates/reuses arena with provided config
@@ -409,8 +409,8 @@ SessionOptionsAppendExecutionProvider_V2(session, ep_devices, keys[], values[])
 Environment-level config can be passed via `OrtEnvCreationOptions::config_entries`:
 
 ```cpp
-api->AddKeyValuePair(kvps, "ep_factory.CudaPluginExecutionProvider.arena.extend_strategy", "1");
-api->AddKeyValuePair(kvps, "ep_factory.CudaPluginExecutionProvider.arena.max_mem", "4294967296");
+api->AddKeyValuePair(kvps, "ep_factory.CUDAExecutionProvider.arena.extend_strategy", "1");
+api->AddKeyValuePair(kvps, "ep_factory.CUDAExecutionProvider.arena.max_mem", "4294967296");
 
 OrtEnvCreationOptions options{};
 options.config_entries = kvps;
@@ -441,7 +441,7 @@ ORT has two separate configuration namespaces for EP-specific options.
 | **Lowercasing applied?** | **Not defined** — ORT never constructs or parses this prefix today | **Yes** — `GetLowercaseString(GetName())` |
 | **Backing store** | `std::map<string,string>` (case-sensitive) | `std::unordered_map<string,string>` (case-sensitive) |
 | **Set via** | `CreateEnvWithOptions` (`OrtEnvCreationOptions.config_entries`) | `SessionOptionsAppendExecutionProvider_V2` |
-| **CUDA plugin `GetName()`** | `"CudaPluginExecutionProvider"` | `"CudaPluginExecutionProvider"` |
+| **CUDA plugin `GetName()`** | `"CUDAExecutionProvider"` | `"CUDAExecutionProvider"` |
 
 The C API documentation (`onnxruntime_c_api.h`) describes the environment-level prefix as `ep_factory.<ep_name>.` where `<ep_name>` is the factory's own name (from `OrtEpFactory::GetName()`), **not** the user-provided registration name passed to `RegisterExecutionProviderLibrary`. However, ORT core does not currently construct, parse, or normalize this prefix — it is purely a documentation convention. The design (Section 3.5 / 5.3) proposes new code in `RegisterExecutionProviderLibrary` that would extract these keys for the first time, which requires deciding on a casing convention.
 
@@ -462,15 +462,15 @@ Since new code must be written to extract `ep_factory.` keys, we must decide how
 
 | Option | Env-level example key | Pros | Cons |
 |--------|----------------------|------|------|
-| **(A) Use `GetName()` as-is** | `ep_factory.CudaPluginExecutionProvider.arena.*` | Exact match to factory identity; unambiguous | Inconsistent with session-level (lowercase); users must get casing exactly right; error-prone |
-| **(B) Lowercase like session-level** | `ep_factory.cudapluginexecutionprovider.arena.*` | Consistent with `ep.cudapluginexecutionprovider.*`; users see one pattern | Diverges from C API doc comment which doesn't specify lowercasing; slight surprise if user reads `GetName()` |
+| **(A) Use `GetName()` as-is** | `ep_factory.CUDAExecutionProvider.arena.*` | Exact match to factory identity; unambiguous | Inconsistent with session-level (lowercase); users must get casing exactly right; error-prone |
+| **(B) Lowercase like session-level** | `ep_factory.cudaexecutionprovider.arena.*` | Consistent with `ep.cudaexecutionprovider.*`; users see one pattern | Diverges from C API doc comment which doesn't specify lowercasing; slight surprise if user reads `GetName()` |
 | **(C) Case-insensitive matching** | Either casing works | Most forgiving for users | Requires scanning all map entries (can't use `std::map::find`); unusual; extra code |
 
 **Recommendation: Option A** — use `GetName()` as-is, respecting the C API specification which is case-sensitive. The `ep_factory.<ep_name>.` prefix uses the factory's own name verbatim:
 
 ```
-Environment: ep_factory.CudaPluginExecutionProvider.arena.extend_strategy
-Session:     ep.cudapluginexecutionprovider.arena.extend_strategy
+Environment: ep_factory.CUDAExecutionProvider.arena.extend_strategy
+Session:     ep.cudaexecutionprovider.arena.extend_strategy
 ```
 
 The new code in `RegisterExecutionProviderLibrary` constructs the prefix as:

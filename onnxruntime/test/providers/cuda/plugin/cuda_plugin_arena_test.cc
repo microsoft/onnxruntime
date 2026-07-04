@@ -84,7 +84,7 @@ class ScopedCudaPluginRegistration {
 Ort::ConstEpDevice FindCudaPluginDevice(Ort::Env& env) {
   auto ep_devices = env.GetEpDevices();
   for (const auto& device : ep_devices) {
-    if (strcmp(device.EpName(), "CudaPluginExecutionProvider") == 0) {
+    if (strcmp(device.EpName(), "CUDAExecutionProvider") == 0) {
       return device;
     }
   }

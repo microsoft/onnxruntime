@@ -659,8 +659,8 @@ def main():
     )
     parser.add_argument(
         "--plugin-ep-name",
-        default="CudaPluginExecutionProvider",
-        help="Name of the plugin EP (default: CudaPluginExecutionProvider)",
+        default="CUDAExecutionProvider",
+        help="Name of the plugin EP (default: CUDAExecutionProvider)",
     )
     parser.add_argument(
         "--plugin-ep-lib",

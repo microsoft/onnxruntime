@@ -2,7 +2,9 @@
 
 ## Build Instructions
 
-To build ONNX Runtime with the CUDA Plugin Execution Provider instead of the statically linked CUDA EP, use the `--cmake_extra_defines "onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON"` flag with the build script.
+ONNX Runtime CUDA builds now build the CUDA Plugin Execution Provider by default. The plugin is advertised as `CUDAExecutionProvider` and replaces the legacy in-tree CUDA EP for normal CUDA builds.
+
+To build the legacy source-built CUDA EP instead, pass `--cmake_extra_defines "onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=OFF"` with the build script.
 
 Example command to build the CUDA Plugin EP in Windows:
 ```
@@ -11,8 +13,7 @@ build.bat --cmake_generator "Visual Studio 17 2022" --config Release --build_whe
           --use_cuda --cuda_version "12.8" --cuda_home "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8" ^
           --cudnn_home "D:\path\to\cudnn-installation-root" ^
           --use_vcpkg --use_binskim_compliant_compile_flags ^
-          --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=native" ^
-          --cmake_extra_defines "onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON"
+          --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=native"
 ```
 
 ### Building and testing without cuDNN at runtime
@@ -40,7 +41,7 @@ At load time, `CreateEpFactories()` negotiates the API version with the runtime:
 
 When the plugin is built, it will produce `libonnxruntime_providers_cuda_plugin.so` (or `.dll` on Windows) in the build output directory alongside `libonnxruntime.so`.
 
-The plugin EP is registered under the name **`CudaPluginExecutionProvider`** and uses the EP Plugin API (`RegisterExecutionProviderLibrary` / `GetEpDevices` / `SessionOptionsAppendExecutionProvider_V2`). It is **not** a drop-in replacement for the in-tree `CUDAExecutionProvider` — you must register the plugin library, enumerate its devices, and add them to the session.
+The plugin EP is registered under the name **`CUDAExecutionProvider`** and uses the EP Plugin API (`RegisterExecutionProviderLibrary` / `GetEpDevices` / `SessionOptionsAppendExecutionProvider_V2`). When using the plugin package directly, register the plugin library before creating sessions that request `CUDAExecutionProvider`.
 
 ### C++ API
 
@@ -52,14 +53,14 @@ Use `Env::RegisterExecutionProviderLibrary` to load the plugin, `Env::GetEpDevic
 Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "PluginTest");
 
 // 1. Register the plugin library.
-env.RegisterExecutionProviderLibrary("CudaPluginExecutionProvider",
+env.RegisterExecutionProviderLibrary("CUDAExecutionProvider",
                                      ORT_TSTR("libonnxruntime_providers_cuda_plugin.so"));
 
 // 2. Enumerate available EP devices and pick the CUDA plugin device.
 auto ep_devices = env.GetEpDevices();
 std::vector<Ort::ConstEpDevice> plugin_devices;
 for (const auto& dev : ep_devices) {
-  if (std::string(dev.EpName()) == "CudaPluginExecutionProvider") {
+  if (std::string(dev.EpName()) == "CUDAExecutionProvider") {
     plugin_devices.push_back(dev);
     break;  // use the first CUDA plugin device
   }
@@ -83,13 +84,13 @@ import onnxruntime as ort
 
 # 1. Register the plugin library.
 ort.register_execution_provider_library(
-    "CudaPluginExecutionProvider",
+    "CUDAExecutionProvider",
     "libonnxruntime_providers_cuda_plugin.so",
 )
 
 # 2. Enumerate devices and pick the CUDA plugin device.
 devices = ort.get_ep_devices()
-plugin_device = next(d for d in devices if d.ep_name == "CudaPluginExecutionProvider")
+plugin_device = next(d for d in devices if d.ep_name == "CUDAExecutionProvider")
 
 # 3. Create session with the plugin device.
 sess_options = ort.SessionOptions()
@@ -100,21 +101,21 @@ sess = ort.InferenceSession("model.onnx", sess_options=sess_options)
 
 **Provider-name approach:**
 
-You can also pass `CudaPluginExecutionProvider` by name in the `providers` list
+You can also pass `CUDAExecutionProvider` by name in the `providers` list
 (the plugin library must already be registered):
 
 ```python
 import onnxruntime as ort
 
 ort.register_execution_provider_library(
-    "CudaPluginExecutionProvider",
+    "CUDAExecutionProvider",
     "libonnxruntime_providers_cuda_plugin.so",
 )
 
 sess = ort.InferenceSession(
     "model.onnx",
     providers=[
-        ("CudaPluginExecutionProvider", {"device_id": "0"}),
+        ("CUDAExecutionProvider", {"device_id": "0"}),
         "CPUExecutionProvider",
     ],
 )
@@ -126,7 +127,7 @@ The focused validation script for the CUDA Plugin EP is `onnxruntime/test/python
 
 ### Test prerequisites
 
-- Build ONNX Runtime with `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON`.
+- Build ONNX Runtime with CUDA plugin EP enabled. This is the CUDA build default; pass `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON` explicitly if you need to override a local cache.
 - Install the built ONNX Runtime wheel.
 - Install Python test dependencies. `test_cuda_plugin_ep.py` uses PyTorch for CPU-side reference computations, so CPU-only PyTorch is sufficient.
 
@@ -169,7 +170,7 @@ cd /d onnxruntime\test\python\transformers
 python test_cuda_plugin_ep.py
 ```
 
-The script validates plugin registration, device enumeration, provider options, operator coverage, and that key nodes are actually assigned to `CudaPluginExecutionProvider`.
+The script validates plugin registration, device enumeration, provider options, operator coverage, and that key nodes are actually assigned to `CUDAExecutionProvider`.
 
 To run the same focused test against a plugin build without cuDNN in the runtime search path:
 

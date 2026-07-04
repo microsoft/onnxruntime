@@ -15,6 +15,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "core/graph/constants.h"
 #include "core/common/inlined_containers.h"
 
 namespace onnxruntime {
@@ -97,7 +98,7 @@ class CudaEpFactory : public OrtEpFactory {
   const OrtEpApi& ep_api_;
   const OrtLogger& default_logger_;
 
-  const std::string ep_name_{"CudaPluginExecutionProvider"};
+  const std::string ep_name_{kCudaExecutionProvider};
   const std::string vendor_{"NVIDIA"};
   const uint32_t vendor_id_ = 0x10DE;  // NVIDIA PCI vendor ID
   const std::string ep_version_{ORT_PLUGIN_EP_VERSION};
