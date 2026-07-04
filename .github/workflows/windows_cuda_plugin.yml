@@ -194,17 +194,35 @@ jobs:
         shell: pwsh
         run: nvidia-smi
 
+      - name: Run Tests
+        working-directory: ${{ runner.temp }}
+        shell: pwsh
+        run: |
+          python.exe ${{ github.workspace }}\tools\python\update_ctest_path.py "${{ runner.temp }}\build\Release\CTestTestfile.cmake" "${{ runner.temp }}\build\Release"
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --test --config Release --build_dir build --skip_submodule_sync --parallel --nvcc_threads 4 --flash_nvcc_threads 4 --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --build_wheel --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.8" --enable_cuda_profiling --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines onnxruntime_QUICK_BUILD=ON --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+
       - name: Run CUDA Plugin EP Python Tests
         working-directory: ${{ github.workspace }}\onnxruntime\test\python\transformers
         shell: pwsh
         run: |
-          $env:ORT_CUDA_PLUGIN_PATH = "${{ runner.temp }}\build\Release\Release\onnxruntime_providers_cuda.dll"
-          Write-Host "ORT_CUDA_PLUGIN_PATH=$env:ORT_CUDA_PLUGIN_PATH"
-          if (-not (Test-Path $env:ORT_CUDA_PLUGIN_PATH)) {
-            Write-Error "CUDA plugin EP library not found at $env:ORT_CUDA_PLUGIN_PATH"
-            exit 1
-          }
+          $env:ORT_TEST_CUDA_PLUGIN_EP = "1"
           python test_cuda_plugin_ep.py
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+
+      - name: Run CUDA Plugin EP C++ Tests
+        working-directory: ${{ runner.temp }}\build\Release\Release
+        shell: pwsh
+        run: |
+          .\onnxruntime_provider_test.exe --gtest_filter='CudaPlugin*:CudaResourcePartitioning*'
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }

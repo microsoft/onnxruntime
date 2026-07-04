@@ -29,7 +29,7 @@ jobs:
       dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
       docker_build_args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1'
       docker_image_repo: onnxruntimecuda13manylinuxbuild
-      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --parallel --nvcc_threads 4 --flash_nvcc_threads 4 --cuda_version=13.0 --cuda_home=/usr/local/cuda-13.0 --cudnn_home=/usr/local/cuda-13.0 --enable_cuda_profiling --build_java --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=OFF'
+      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --parallel --nvcc_threads 4 --flash_nvcc_threads 4 --cuda_version=13.0 --cuda_home=/usr/local/cuda-13.0 --cudnn_home=/usr/local/cuda-13.0 --enable_cuda_profiling --build_java --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON'
       python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
       run_tests: false            # <<< Do not run tests in this job
       upload_build_output: true   # <<< Upload the build/Release directory
@@ -111,38 +111,5 @@ jobs:
           build_config: Release
           mode: 'test' # Set mode to test
           execution_providers: 'cuda'
-          extra_build_flags: '--use_binskim_compliant_compile_flags --cuda_version=13.0 --cuda_home=/usr/local/cuda-13.0 --cudnn_home=/usr/local/cuda-13.0 --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=OFF'
+          extra_build_flags: '--use_binskim_compliant_compile_flags --cuda_version=13.0 --cuda_home=/usr/local/cuda-13.0 --cudnn_home=/usr/local/cuda-13.0 --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON'
           python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
-
-      - name: Run CUDA Plugin EP Python Tests
-        run: |
-          docker run --rm --gpus all \
-            -v ${{ github.workspace }}:/onnxruntime_src \
-            -v ${{ runner.temp }}/Release:/build/Release \
-            -e NVIDIA_VISIBLE_DEVICES=all \
-            ${{ steps.build_docker_image_step.outputs.full-image-name }} \
-            bash -c "
-              set -ex
-              export PATH=/opt/python/cp310-cp310/bin:\$PATH
-              export LD_LIBRARY_PATH=/build/Release/Release:/usr/local/cuda-13.0/lib64:\${LD_LIBRARY_PATH:-}
-              python -m pip install /build/Release/Release/dist/onnxruntime*.whl
-              python -m pip install numpy onnx
-              python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
-              export ORT_CUDA_PLUGIN_PATH=/build/Release/Release/libonnxruntime_providers_cuda.so
-              cd /onnxruntime_src/onnxruntime/test/python/transformers
-              python test_cuda_plugin_ep.py
-            "
-
-      - name: Run CUDA Plugin EP C++ Tests
-        run: |
-          docker run --rm --gpus all \
-            -v ${{ github.workspace }}:/onnxruntime_src \
-            -v ${{ runner.temp }}/Release:/build/Release \
-            -e NVIDIA_VISIBLE_DEVICES=all \
-            ${{ steps.build_docker_image_step.outputs.full-image-name }} \
-            bash -c "
-              set -ex
-              export LD_LIBRARY_PATH=/build/Release/Release:/usr/local/cuda-13.0/lib64:\${LD_LIBRARY_PATH:-}
-              cd /build/Release/Release
-              ./onnxruntime_provider_test --gtest_filter='CudaPlugin*:CudaResourcePartitioning*'
-            "

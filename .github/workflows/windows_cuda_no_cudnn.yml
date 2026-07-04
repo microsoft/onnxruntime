@@ -245,10 +245,8 @@ jobs:
         working-directory: ${{ github.workspace }}\onnxruntime\test\python\transformers
         shell: pwsh
         run: |
-          $env:ORT_CUDA_PLUGIN_PATH = "${{ runner.temp }}\build\Release\Release\onnxruntime_providers_cuda.dll"
           $env:ORT_TEST_CUDA_PLUGIN_EP = "1"
           $env:ORT_TEST_CUDA_PLUGIN_NO_CUDNN = "1"
-          Write-Host "ORT_CUDA_PLUGIN_PATH=$env:ORT_CUDA_PLUGIN_PATH"
           python test_cuda_plugin_ep.py
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
