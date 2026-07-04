@@ -4,7 +4,7 @@ parameters:
 
 - name: python_version
   type: string
-  
+
 - name: cmake_build_type
   type: string
   default: 'Release'
@@ -37,16 +37,13 @@ jobs:
   variables:
   - name: MACOSX_DEPLOYMENT_TARGET
     value: '14.0'
-        
+
   steps:
   - checkout: self
     clean: true
     submodules: none
 
   - template: use-xcode-version.yml
-    parameters:
-      xcodeVersion: '16.4'
-
 
   - template: setup-build-tools.yml
     parameters:
