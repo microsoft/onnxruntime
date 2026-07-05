@@ -172,6 +172,22 @@ void Shutdown() {
   g_plugin_ep_infrastructure_state.reset();
 }
 
+void RunWithTemporaryShutdownForTesting(const std::function<void()>& test_body) {
+  // Save the current global infrastructure state, then present an uninitialized state to `test_body`.
+  // The prior state is restored afterwards (even if `test_body` throws), so a test that exercises the
+  // uninitialized/shutdown behavior does not disturb the shared infrastructure that unit test main set up
+  // and that other tests (e.g. those routing CUDA to the plugin EP) rely on.
+  std::optional<PluginEpInfrastructureState> saved_state = std::move(g_plugin_ep_infrastructure_state);
+  g_plugin_ep_infrastructure_state.reset();
+
+  struct StateRestorer {
+    std::optional<PluginEpInfrastructureState>& saved;
+    ~StateRestorer() { g_plugin_ep_infrastructure_state = std::move(saved); }
+  } restorer{saved_state};
+
+  test_body();
+}
+
 std::unique_ptr<IExecutionProvider> MakeEp(const logging::Logger* logger, const ConfigOptions* ep_options) {
   if (!IsInitialized()) {
     return nullptr;

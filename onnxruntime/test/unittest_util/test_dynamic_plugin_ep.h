@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -75,6 +76,12 @@ bool IsInitialized();
 // Shuts down dynamic plugin EP infrastructure.
 // This does not require a previously successful call to `Initialize()`.
 void Shutdown();
+
+// Test-only helper. Temporarily presents an uninitialized/shutdown infrastructure state to `test_body`,
+// then restores the previous global state (even if `test_body` throws). This lets a test exercise
+// uninitialized-state behavior without disturbing the shared global infrastructure that unit test main
+// initialized and that other tests (e.g. those routing CUDA to the plugin EP) depend on.
+void RunWithTemporaryShutdownForTesting(const std::function<void()>& test_body);
 
 // Returns a dynamic plugin EP `IExecutionProvider` instance, or `nullptr` if uninitialized.
 // `ep_options` provides additional EP-specific option overrides (key-value pairs) on top of the defaults.

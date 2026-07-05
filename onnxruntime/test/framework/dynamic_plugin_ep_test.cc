@@ -85,18 +85,24 @@ TEST(DynamicPluginEpInfraTest, ParseInitializationConfigRejectsMissingRequiredFi
 }
 
 TEST(DynamicPluginEpInfraTest, UninitializedStateReturnsSafeDefaults) {
-  dynamic_plugin_ep_test_infra::Shutdown();
+  // Use RunWithTemporaryShutdownForTesting so that shutting the infrastructure down here does not
+  // leave the shared global infrastructure uninitialized for subsequent tests. Unit test main may have
+  // initialized it (e.g. to route CUDA to the plugin EP), and tearing it down permanently would cause
+  // later tests that rely on DefaultCudaExecutionProvider() to receive a null provider and crash.
+  dynamic_plugin_ep_test_infra::RunWithTemporaryShutdownForTesting([]() {
+    dynamic_plugin_ep_test_infra::Shutdown();
 
-  EXPECT_FALSE(dynamic_plugin_ep_test_infra::IsInitialized());
-  EXPECT_EQ(dynamic_plugin_ep_test_infra::MakeEp(), nullptr);
-  EXPECT_FALSE(dynamic_plugin_ep_test_infra::GetEpName().has_value());
-  EXPECT_TRUE(dynamic_plugin_ep_test_infra::GetTestsToSkip().empty());
+    EXPECT_FALSE(dynamic_plugin_ep_test_infra::IsInitialized());
+    EXPECT_EQ(dynamic_plugin_ep_test_infra::MakeEp(), nullptr);
+    EXPECT_FALSE(dynamic_plugin_ep_test_infra::GetEpName().has_value());
+    EXPECT_TRUE(dynamic_plugin_ep_test_infra::GetTestsToSkip().empty());
 
-  dynamic_plugin_ep_test_infra::Shutdown();
+    dynamic_plugin_ep_test_infra::Shutdown();
 
-  EXPECT_FALSE(dynamic_plugin_ep_test_infra::IsInitialized());
-  EXPECT_FALSE(dynamic_plugin_ep_test_infra::GetEpName().has_value());
-  EXPECT_TRUE(dynamic_plugin_ep_test_infra::GetTestsToSkip().empty());
+    EXPECT_FALSE(dynamic_plugin_ep_test_infra::IsInitialized());
+    EXPECT_FALSE(dynamic_plugin_ep_test_infra::GetEpName().has_value());
+    EXPECT_TRUE(dynamic_plugin_ep_test_infra::GetTestsToSkip().empty());
+  });
 }
 
 #if defined(USE_CUDA) && defined(ORT_USE_EP_API_ADAPTERS)

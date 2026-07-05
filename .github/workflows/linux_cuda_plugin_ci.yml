@@ -111,19 +111,21 @@ jobs:
             "${{ steps.build_docker_image_step.outputs.full-image-name }}" \
             nvidia-smi
 
-      # --- Run Tests using the downloaded build ---
-      # The run-build-script-in-docker action mounts ${{ runner.temp }} to /onnxruntime_src/build
-      # So build.py --build_dir build/Release inside the container correctly finds the artifacts.
-      - name: Test ONNX Runtime
-        id: test_step
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
-        with:
-          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
-          build_config: Release
-          mode: 'test' # Set mode to test
-          execution_providers: 'cuda'
-          extra_build_flags: '--use_binskim_compliant_compile_flags --cuda_version=13.0 --cuda_home=/usr/local/cuda-13.0 --cudnn_home=/usr/local/cuda-13.0 --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON'
-          python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
+      - name: Run CUDA Plugin EP C++ Tests
+        run: |
+          docker run --rm --gpus all \
+            -v ${{ github.workspace }}:/onnxruntime_src \
+            -v ${{ runner.temp }}/Release:/build/Release \
+            -e NVIDIA_VISIBLE_DEVICES=all \
+            -e ORT_UNIT_TEST_MAIN_DYNAMIC_PLUGIN_EP_CONFIG_JSON='{"ep_library_registration_name":"CUDAExecutionProvider","ep_library_path":"libonnxruntime_providers_cuda.so","selected_ep_name":"CUDAExecutionProvider","tests_to_skip":["BeamSearchTest.*","ContribOpAttentionTest.AttentionPastState_dynamic","ContribOpAttentionTest.Attention_Mask1D_Fp32_B2_S64","ContribOpAttentionTest.Attention_Mask2D_Fp32_B2_S32","ConvTest.Conv2D_MatMul_*","CudaPluginArenaTest.DeviceAllocator_ArenaReusesMemory","CudaPluginArenaTest.DeviceAllocator_CudaMemoryIsValid","CudaPluginArenaTest.DeviceAllocator_IsArena","CudaPluginArenaTest.DeviceAllocator_MultipleAllocations","DeformConvTest.Group1OffsetGroup2","GRUTest.*","GreedySearchTest.*","InferenceSessionTests.Test2LayerNestedSubgraph","InferenceSessionTests.Test3LayerNestedSubgraph","InferenceSessionTests.TestArenaShrinkageAfterRun","LSTMTest.*","LogSoftmaxOperator.*","LongformerAttentionTest.*","LoraAdapterTest.VerifyDeviceCopy","PackedAttentionTest.*","PlannerTest.MultiStream","PlannerTest.MultiStream1StreamWaitFor2Streams","PlannerTest.MultiStream2NodesSameStreamConsumedBy1NodeInDifferentStream","PlannerTest.MultiStreamCudaEPNodeCPUOutput","PlannerTest.MultiStreamMultiOutput","RNNTest.*","ReductionOpTest.ArgMax2D_select_last","ReductionOpTest.ArgMin_do_not_keepdims_2_select_last","SamplingTest.*","Scan.MixedExecutionProvidersUnknownDimInSubgraphOutput","Scan8.*","SessionStateTest.TestLayeringPartitioning","SessionStateTest.TestResourceAwarePartitioning_LargeLimit","SessionStateTest.TestResourceAwarePartitioning_NoLimit","SkipGroupNormTest.*","TopKOperator.NthElementBFloat16_NegativeVals"]}' \
+            ${{ steps.build_docker_image_step.outputs.full-image-name }} \
+            bash -c "
+              set -ex
+              export LD_LIBRARY_PATH=/build/Release/Release:/usr/local/cuda-13.0/lib64:\${LD_LIBRARY_PATH:-}
+              cd /build/Release/Release
+              ./onnxruntime_test_all
+              ./onnxruntime_provider_test
+            "
 
       - name: Run CUDA Plugin EP Python Tests
         run: |
@@ -143,16 +145,3 @@ jobs:
               python test_cuda_plugin_ep.py
             "
 
-      - name: Run CUDA Plugin EP C++ Tests
-        run: |
-          docker run --rm --gpus all \
-            -v ${{ github.workspace }}:/onnxruntime_src \
-            -v ${{ runner.temp }}/Release:/build/Release \
-            -e NVIDIA_VISIBLE_DEVICES=all \
-            ${{ steps.build_docker_image_step.outputs.full-image-name }} \
-            bash -c "
-              set -ex
-              export LD_LIBRARY_PATH=/build/Release/Release:/usr/local/cuda-13.0/lib64:\${LD_LIBRARY_PATH:-}
-              cd /build/Release/Release
-              ./onnxruntime_provider_test --gtest_filter='CudaPlugin*:CudaResourcePartitioning*'
-            "

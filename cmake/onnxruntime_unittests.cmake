@@ -989,6 +989,14 @@ if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS AND NOT onnxruntime_BUILD_CUDA_EP_
     ${onnxruntime_test_cuda_kernels_src_patterns}
   )
 
+  # cuda_plugin_test_shims.cc provides onnxruntime::GetEnvironmentVar for the
+  # BUILD_CUDA_EP_AS_PLUGIN unit-test object library, where provider_bridge_provider.cc
+  # is not linked. In the non-plugin onnxruntime_providers_cuda_ut module the symbol is
+  # already defined by provider_bridge_provider.cc (via onnxruntime_providers_cuda_obj),
+  # so exclude the shim here to avoid a duplicate-definition link error.
+  list(REMOVE_ITEM onnxruntime_test_providers_cuda_ut_src
+    "${TEST_SRC_DIR}/providers/cuda/test_cases/cuda_plugin_test_shims.cc")
+
   # onnxruntime_providers_cuda_ut is only for unittests.
   onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_ut ${onnxruntime_test_providers_cuda_ut_src} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
   config_cuda_provider_shared_module(onnxruntime_providers_cuda_ut)
@@ -1203,7 +1211,12 @@ target_include_directories(onnxruntime_test_all PRIVATE ${ONNXRUNTIME_ROOT}/core
 onnxruntime_apply_test_target_workarounds(onnxruntime_test_all)
 
 if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+  # ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE is required so that test_main.cc initializes
+  # the dynamic plugin EP infrastructure. onnxruntime_test_utils (which compiles default_providers.cc)
+  # already routes DefaultCudaExecutionProvider() through the plugin infrastructure in plugin builds;
+  # without initializing it here, that routing returns a null EP and tests crash.
   target_compile_definitions(onnxruntime_test_all PRIVATE
+    ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE
     ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH="$<TARGET_FILE_NAME:onnxruntime_providers_cuda_plugin>"
     ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
 endif()

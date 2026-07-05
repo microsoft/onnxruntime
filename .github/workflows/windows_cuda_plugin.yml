@@ -195,15 +195,17 @@ jobs:
         run: nvidia-smi
 
       - name: Run Tests
-        working-directory: ${{ runner.temp }}
+        working-directory: ${{ runner.temp }}\build\Release\Release
         shell: pwsh
         run: |
-          python.exe ${{ github.workspace }}\tools\python\update_ctest_path.py "${{ runner.temp }}\build\Release\CTestTestfile.cmake" "${{ runner.temp }}\build\Release"
+          $env:ORT_UNIT_TEST_MAIN_DYNAMIC_PLUGIN_EP_CONFIG_JSON = '{"ep_library_registration_name":"CUDAExecutionProvider","ep_library_path":"onnxruntime_providers_cuda.dll","selected_ep_name":"CUDAExecutionProvider","tests_to_skip":["BeamSearchTest.*","ContribOpAttentionTest.AttentionPastState_dynamic","ContribOpAttentionTest.Attention_Mask1D_Fp32_B2_S64","ContribOpAttentionTest.Attention_Mask2D_Fp32_B2_S32","ConvTest.Conv2D_MatMul_*","CudaPluginArenaTest.DeviceAllocator_ArenaReusesMemory","CudaPluginArenaTest.DeviceAllocator_CudaMemoryIsValid","CudaPluginArenaTest.DeviceAllocator_IsArena","CudaPluginArenaTest.DeviceAllocator_MultipleAllocations","DeformConvTest.Group1OffsetGroup2","GRUTest.*","GreedySearchTest.*","InferenceSessionTests.Test2LayerNestedSubgraph","InferenceSessionTests.Test3LayerNestedSubgraph","InferenceSessionTests.TestArenaShrinkageAfterRun","LSTMTest.*","LogSoftmaxOperator.*","LongformerAttentionTest.*","LoraAdapterTest.VerifyDeviceCopy","PackedAttentionTest.*","PlannerTest.MultiStream","PlannerTest.MultiStream1StreamWaitFor2Streams","PlannerTest.MultiStream2NodesSameStreamConsumedBy1NodeInDifferentStream","PlannerTest.MultiStreamCudaEPNodeCPUOutput","PlannerTest.MultiStreamMultiOutput","RNNTest.*","ReductionOpTest.ArgMax2D_select_last","ReductionOpTest.ArgMin_do_not_keepdims_2_select_last","SamplingTest.*","Scan.MixedExecutionProvidersUnknownDimInSubgraphOutput","Scan8.*","SessionStateTest.TestLayeringPartitioning","SessionStateTest.TestResourceAwarePartitioning_LargeLimit","SessionStateTest.TestResourceAwarePartitioning_NoLimit","SkipGroupNormTest.*","TopKOperator.NthElementBFloat16_NegativeVals"]}'
+
+          .\onnxruntime_test_all.exe
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
 
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --test --config Release --build_dir build --skip_submodule_sync --parallel --nvcc_threads 4 --flash_nvcc_threads 4 --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --build_wheel --use_cuda --cuda_home="$env:RUNNER_TEMP\v12.8" --enable_cuda_profiling --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines onnxruntime_QUICK_BUILD=ON --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --cmake_extra_defines onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
+          .\onnxruntime_provider_test.exe
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
@@ -218,14 +220,6 @@ jobs:
             exit $lastExitCode
           }
 
-      - name: Run CUDA Plugin EP C++ Tests
-        working-directory: ${{ runner.temp }}\build\Release\Release
-        shell: pwsh
-        run: |
-          .\onnxruntime_provider_test.exe --gtest_filter='CudaPlugin*:CudaResourcePartitioning*'
-          if ($lastExitCode -ne 0) {
-            exit $lastExitCode
-          }
     env:
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       setVcvars: true
