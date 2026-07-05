@@ -178,6 +178,7 @@ class CudaQuantizer:
         *,
         symmetric: bool,
         abs_scales: bool,
+        unsigned_full_range: bool,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Quantize ``weights`` with MatMulNBits pybinds and return unflattened storage."""
         torch = _get_torch()
@@ -193,6 +194,29 @@ class CudaQuantizer:
 
         num_blocks = k // block_size
         pack = 8 // bits
+
+        if symmetric:
+            if bits == 4:
+                qmin, qmax, scale_divisor, zero_point = (-8, 7, 8, 8) if unsigned_full_range else (-7, 7, 7, 8)
+            else:
+                qmin, qmax, scale_divisor, zero_point = (
+                    (-128, 127, 128, 128) if unsigned_full_range else (-127, 127, 127, 128)
+                )
+
+            blocked = w.reshape(n, num_blocks, block_size)
+            scales = np.max(np.abs(blocked), axis=2).astype(np.float32) / np.float32(scale_divisor)
+            scales = np.maximum(scales, np.finfo(np.float32).eps)
+            quantized = np.clip(np.rint(-blocked / scales[:, :, np.newaxis]), qmin, qmax).astype(np.int16)
+            quantized = (quantized + zero_point).astype(np.uint8)
+
+            if bits == 4:
+                qweight = (quantized[:, :, 0::2] & 0xF) | ((quantized[:, :, 1::2] & 0xF) << 4)
+                qweight = qweight.astype(np.uint8)
+            else:
+                qweight = quantized
+
+            zero_points = np.zeros((n, (num_blocks + 1) // 2 if bits == 4 else num_blocks), dtype=np.uint8)
+            return torch.from_numpy(qweight), torch.from_numpy(scales), torch.from_numpy(zero_points)
 
         w_t = np.ascontiguousarray(w.T)
         qweight = np.zeros((n, num_blocks, block_size // pack), dtype=np.uint8)
@@ -217,12 +241,16 @@ class CudaQuantizer:
         symmetric: bool = True,
         return_zero_points: bool = False,
         abs_scales: bool = True,
+        unsigned_full_range: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor] | tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Quantize one expert with ONNX Runtime's MatMulNBits blockwise encoding.
 
         ``weights`` has logical shape ``[N, K]``. Returns raw MatMulNBits storage
         ``[N, K/pack]`` and block scales ``[N, K/block_size]`` by default.
         Set ``return_zero_points=True`` to also return packed block zero-points.
+        Symmetric quantization uses the full ``[-8, 7]`` / ``[-128, 127]`` range
+        by default. Set ``unsigned_full_range=False`` to use the legacy
+        ``[-7, 7]`` / ``[-127, 127]`` range.
         """
         qweight, scales, zero_points = CudaQuantizer._matmulnbits_blockwise_quantize_impl(
             weights,
@@ -230,6 +258,7 @@ class CudaQuantizer:
             block_size,
             symmetric=symmetric,
             abs_scales=abs_scales,
+            unsigned_full_range=unsigned_full_range,
         )
         qweight = qweight.reshape(qweight.shape[0], -1).contiguous()
         if return_zero_points:
@@ -247,6 +276,7 @@ class CudaQuantizer:
         symmetric: bool = True,
         return_zero_points: bool = False,
         abs_scales: bool = True,
+        unsigned_full_range: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor] | tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Quantize and CUDA-prepack one MatMulNBits weight initializer.
 
@@ -269,6 +299,7 @@ class CudaQuantizer:
             block_size,
             symmetric=symmetric,
             abs_scales=abs_scales,
+            unsigned_full_range=unsigned_full_range,
         )
 
         pack_weights_for_cuda_mixed_gemm = _get_pack_weights_for_cuda_mixed_gemm()
@@ -290,6 +321,7 @@ class CudaQuantizer:
         symmetric: bool = True,
         return_zero_points: bool = False,
         abs_scales: bool = False,
+        unsigned_full_range: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor] | tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Quantize one expert and CUTLASS-prepack it for CUDA QMoE fpA_intB GEMM.
 
@@ -310,6 +342,7 @@ class CudaQuantizer:
             block_size,
             symmetric=symmetric,
             abs_scales=abs_scales,
+            unsigned_full_range=unsigned_full_range,
         )
 
         pack_weights_for_cuda_mixed_gemm = _get_pack_weights_for_cuda_mixed_gemm()
@@ -327,6 +360,8 @@ class CudaQuantizer:
         weights: torch.Tensor,
         bits: int,
         block_size: int,
+        *,
+        unsigned_full_range: bool = True,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         """Quantize one expert with a pure-PyTorch symmetric blockwise encoding.
 
@@ -341,9 +376,9 @@ class CudaQuantizer:
         bits = int(bits)
         block_size = int(block_size)
         if bits == 4:
-            qmin, qmax = -7, 7
+            qmin, qmax, scale_divisor = (-8, 7, 8) if unsigned_full_range else (-7, 7, 7)
         elif bits == 8:
-            qmin, qmax = -127, 127
+            qmin, qmax, scale_divisor = (-128, 127, 128) if unsigned_full_range else (-127, 127, 127)
         else:
             raise ValueError(f"CUDA blockwise quantization only supports 4 or 8 bits, got {bits}.")
 
@@ -360,7 +395,7 @@ class CudaQuantizer:
 
         reshaped_weights = weights_padded.view(*original_shape[:-1], num_blocks, block_size)
         block_max_abs = torch.max(torch.abs(reshaped_weights), dim=-1)[0]
-        scales = torch.clamp(block_max_abs / qmax, min=1e-8)
+        scales = torch.clamp(block_max_abs / scale_divisor, min=1e-8)
 
         quantized = torch.round(reshaped_weights / scales.unsqueeze(-1))
         quantized = torch.clamp(quantized, qmin, qmax)
