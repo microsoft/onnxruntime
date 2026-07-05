@@ -35,7 +35,7 @@ from torch import nn
 
 import onnxruntime
 from onnxruntime.capi import _pybind_state as _pybind
-from onnxruntime.quantization import MoeCudaQuantizer
+from onnxruntime.quantization import CudaQuantizer
 
 try:
     import nvtx
@@ -161,144 +161,64 @@ def print_diff_statistics(diff_tensor: torch.Tensor, prefix: str = ""):
 
 
 def quant_dequant_blockwise(weights, block_size, is_4_bit_quantization: bool = True, asymmetric: bool = False):
-    # DEBUG
-    # print(f"DEBUG: quant_dequant input shape={weights.shape}, 4bit={is_4_bit_quantization}, asym={asymmetric}")
+    bits = 4 if is_4_bit_quantization else 8
+    n, k = weights.shape
+    block_per_k = (k + block_size - 1) // block_size
+    pack = 8 // bits
+    is_symmetric = not asymmetric
+
+    q_weight, scale, zero_point = CudaQuantizer.matmulnbits_blockwise_quantize(
+        weights,
+        bits,
+        block_size,
+        symmetric=is_symmetric,
+        return_zero_points=True,
+        abs_scales=is_symmetric,
+    )
+    processed_q_weight, _ = CudaQuantizer.cutlass_prepacked_blockwise_quantize(
+        weights,
+        bits,
+        block_size,
+        symmetric=is_symmetric,
+        abs_scales=is_symmetric,
+    )
+
+    scale_torch = scale.to(weights.device).unsqueeze(-1)
+    q_weight_torch = q_weight.view(n, block_per_k, block_size // pack).to(weights.device)
 
     if is_4_bit_quantization:
-        weights_t = weights.T.contiguous()
-        rows, cols = weights_t.shape
-        k, n = rows, cols
-        block_per_k = (k + block_size - 1) // block_size
-        blob_size = block_size // 2
-
-        q_weight = numpy.zeros((n, block_per_k, blob_size), dtype=numpy.uint8)
-        scale = numpy.zeros((n, block_per_k), dtype=numpy.float32)
-        zero_point = numpy.zeros((n, (block_per_k + 1) // 2), dtype=numpy.uint8)
-
-        is_symmetric = not asymmetric
-
-        # Use existing binding which determines implementation based on type
-        # Assuming weights are float16 or float32. Binding supports both (via overload or check).
-        # We need to pass numpy array.
-        # We need to pass numpy array.
-        if weights_t.dtype == torch.bfloat16:
-            weights_np = weights_t.detach().to(torch.float32).cpu().numpy()
-        else:
-            weights_np = weights_t.detach().cpu().numpy()
-
-        _pybind.quantize_matmul_4bits(q_weight, weights_np, scale, zero_point, block_size, n, k, is_symmetric)
+        q_low = q_weight_torch & 0x0F
+        q_high = (q_weight_torch >> 4) & 0x0F
+        q_unpacked = torch.stack((q_low, q_high), dim=-1).view(n, block_per_k, block_size).to(weights.dtype)
         if is_symmetric:
-            scale = numpy.abs(scale)
-
-        q_weight_reshaped = q_weight.reshape(n, -1)
-        processed_q_weight = _pybind.pack_weights_for_cuda_mixed_gemm(q_weight_reshaped, n, k, 4, 80)
-
-        # Dequantize for reference
-        scale_torch = torch.from_numpy(scale).to(weights.device).unsqueeze(-1)
-        q_weight_torch = torch.from_numpy(q_weight).to(weights.device)
-
-        if is_symmetric:
-            # Unpack: low, high
-            q_low = q_weight_torch & 0x0F
-            q_high = (q_weight_torch >> 4) & 0x0F
-            q_unpacked = torch.stack((q_low, q_high), dim=-1).view(n, block_per_k, block_size)
-            q_unpacked = q_unpacked.to(weights.dtype)
             dequantized = (q_unpacked - 8.0) * scale_torch
         else:
-            # Asymmetric
-            # Unpack weights same way
-            q_low = q_weight_torch & 0x0F
-            q_high = (q_weight_torch >> 4) & 0x0F
-            q_unpacked = torch.stack((q_low, q_high), dim=-1).view(n, block_per_k, block_size)
-            q_unpacked = q_unpacked.to(weights.dtype)
-
-            # Unpack ZP
-            zp_torch = torch.from_numpy(zero_point).to(weights.device)
+            zp_torch = zero_point.to(weights.device)
             zp_low = zp_torch & 0x0F
             zp_high = (zp_torch >> 4) & 0x0F
-            zp_unpacked = torch.stack((zp_low, zp_high), dim=-1).flatten(1, 2)
-            zp_unpacked = zp_unpacked[:, :block_per_k].contiguous()
-            zp_unpacked = zp_unpacked.view(n, block_per_k, 1)
-            zp_unpacked = zp_unpacked.to(weights.dtype)
-
+            zp_unpacked = torch.stack((zp_low, zp_high), dim=-1).flatten(1, 2)[:, :block_per_k]
+            zp_unpacked = zp_unpacked.contiguous().view(n, block_per_k, 1).to(weights.dtype)
             dequantized = (q_unpacked - zp_unpacked) * scale_torch
-
-        scale_torch_out = torch.from_numpy(scale).to(weights.device).to(torch.float16)  # N, block_per_K
-
-        # zero_point_storage
-        zero_points_storage = torch.from_numpy(zero_point).to(weights.device) if asymmetric else None
-
-        processed_q_weight_torch = (
-            torch.from_numpy(processed_q_weight).reshape(k, n // 2).to(weights.device).view(torch.uint8)
-        )
-        result = dequantized.view(n, k)
-        return scale_torch_out, processed_q_weight_torch, result, zero_points_storage
-
     else:
-        # 8-bit
-        # C++ binding for 8-bit blockwise quantization (if exists) or use Python implementation
-        # For now, we use a simple Python implementation that matches the 8nd bits format
-        # but in practice, we should use the same logic as the kernel.
-        # Since currently QMoE kernel only supports 4-bit, we don't have a 8-bit PrePack binding yet.
-
-        if _pybind and hasattr(_pybind, "quantize_matmul_8bits"):
-            # Placeholder for future used when 8-bit is supported
-            pass
-        weights_t = weights.T.contiguous()
-        rows, cols = weights_t.shape
-        k, n = rows, cols
-        block_per_k = (k + block_size - 1) // block_size
-
-        q_weight = numpy.zeros((n, block_per_k, block_size), dtype=numpy.uint8)
-        scale = numpy.zeros((n, block_per_k), dtype=numpy.float32)
-        zero_point = numpy.zeros((n, block_per_k), dtype=numpy.uint8)
-
-        is_symmetric = not asymmetric
-        if weights_t.dtype == torch.bfloat16:
-            weights_np = weights_t.detach().to(torch.float32).cpu().numpy()
-        else:
-            weights_np = weights_t.detach().cpu().numpy()
-
-        _pybind.quantize_matmul_8bits(q_weight, weights_np, scale, zero_point, block_size, n, k, is_symmetric)
-
-        q_weight_reshaped = q_weight.reshape(n, -1)
-        processed_q_weight = _pybind.pack_weights_for_cuda_mixed_gemm(q_weight_reshaped, n, k, 8, 80)
-
-        # Use abs() for reference dequant to match Cutlass kernel's positive scales
-        scale_torch = torch.from_numpy(scale).to(weights.device).unsqueeze(-1).abs()
-        q_weight_torch = torch.from_numpy(q_weight).to(weights.device).to(weights.dtype)
-
+        q_unpacked = q_weight_torch.to(weights.dtype)
         if is_symmetric:
-            # Kernel does: (biased_uint8 - 128) * scale for symmetric 8-bit
-            # quantize_matmul_8bits produces biased uint8 values in [0, 255] centered at 128
-            dequantized = (q_weight_torch - 128.0) * scale_torch
+            dequantized = (q_unpacked - 128.0) * scale_torch
         else:
-            zp_torch = torch.from_numpy(zero_point).to(weights.device).to(weights.dtype).unsqueeze(-1)
-            dequantized = (q_weight_torch - zp_torch) * scale_torch
+            zp_torch = zero_point.to(weights.device).to(weights.dtype).unsqueeze(-1)
+            dequantized = (q_unpacked - zp_torch) * scale_torch
 
-        # Scales must be positive for Cutlass kernel (absolute values)
-        scale_torch_out = torch.from_numpy(scale).to(weights.device).to(torch.float16).abs()
+    scale_torch_out = scale.to(weights.device).to(torch.float16)
+    processed_q_weight_torch = processed_q_weight.to(weights.device).view(torch.uint8)
+    result = dequantized.view(n, k)
 
-        processed_q_weight_torch = (
-            torch.from_numpy(processed_q_weight).reshape(k, n).to(weights.device).view(torch.uint8)
-        )  # 8-bit layout is (K, N) after transpose by pack_weights_for_cuda_mixed_gemm
+    if asymmetric:
+        zero_points_storage = zero_point.to(weights.device).to(torch.uint8)
+    elif not is_4_bit_quantization:
+        zero_points_storage = torch.full((n, block_per_k), 128, dtype=torch.uint8, device=weights.device)
+    else:
+        zero_points_storage = None
 
-        result = dequantized.view(n, k)
-
-        if not asymmetric and not is_4_bit_quantization:
-            # 8-bit Symmetric: weights are uint8, biased by 128.
-            # Cutlass expects explicit Zero Point = 128 to perform (q - 128) * scale.
-            # ZP must be FP16 (match Scale type).
-            zero_point[:] = 128
-            zero_points_storage = torch.from_numpy(zero_point).to(weights.device).to(torch.uint8)
-        else:
-            zero_points_storage = (
-                torch.from_numpy(zero_point).to(weights.device).to(torch.uint8) if asymmetric else None
-            )
-
-        # Return scale in [N, block_per_k] layout matching operator spec [E, N, B] after stacking
-        # Operator will transpose from [E, N, B] to [E, B, N] for kernel
-        return scale_torch_out, processed_q_weight_torch, result, zero_points_storage
+    return scale_torch_out, processed_q_weight_torch, result, zero_points_storage
 
 
 def _dequantize_unsigned_per_channel_storage(qweight, scales, weights, bits: int):
@@ -326,11 +246,11 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True, asymmetric: bool 
     block_size = weights.shape[1]
     if not asymmetric and block_size > 256:
         bits = 4 if is_4_bit_quantization else 8
-        qweight, scales = MoeCudaQuantizer.symmetric_per_channel_quantize(
+        qweight, scales = CudaQuantizer.symmetric_per_channel_quantize(
             weights,
             bits,
         )
-        processed_q_weight, _ = MoeCudaQuantizer.cuda_per_channel_quantize(
+        processed_q_weight, _ = CudaQuantizer.cuda_per_channel_quantize(
             weights,
             bits,
             True,
@@ -2746,7 +2666,7 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
         ]
         for bits, weights, expected_qweight in cases:
             with self.subTest(bits=bits):
-                qweight, scales = MoeCudaQuantizer.symmetric_per_channel_quantize(
+                qweight, scales = CudaQuantizer.symmetric_per_channel_quantize(
                     weights,
                     bits,
                 )
@@ -2920,17 +2840,13 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
         cuda_fc2 = numpy.zeros((num_experts, fc2_k, fc2_n // pack), dtype=numpy.uint8)
         cuda_fc1_scales = numpy.zeros((num_experts, fc1_n), dtype=numpy.float16)
         cuda_fc2_scales = numpy.zeros((num_experts, fc2_n), dtype=numpy.float16)
-        moe_cuda_quantizer = MoeCudaQuantizer()
+        cuda_quantizer = CudaQuantizer()
 
         for e in range(num_experts):
             w1 = (torch.randn(fc1_n, fc1_k) * 0.05).numpy().astype(numpy.float16)
             w2 = (torch.randn(fc2_n, fc2_k) * 0.05).numpy().astype(numpy.float16)
-            cuda_fc1_t, cuda_fc1_scales_t = moe_cuda_quantizer.cuda_per_channel_quantize(
-                torch.from_numpy(w1), bits, True
-            )
-            cuda_fc2_t, cuda_fc2_scales_t = moe_cuda_quantizer.cuda_per_channel_quantize(
-                torch.from_numpy(w2), bits, True
-            )
+            cuda_fc1_t, cuda_fc1_scales_t = cuda_quantizer.cuda_per_channel_quantize(torch.from_numpy(w1), bits, True)
+            cuda_fc2_t, cuda_fc2_scales_t = cuda_quantizer.cuda_per_channel_quantize(torch.from_numpy(w2), bits, True)
             cuda_fc1[e] = cuda_fc1_t.numpy()
             cuda_fc2[e] = cuda_fc2_t.numpy()
             cuda_fc1_scales[e] = cuda_fc1_scales_t.numpy().astype(numpy.float16)
@@ -2971,7 +2887,7 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
         fc2_n = hidden_size
         fc2_k = inter_size
         pack = 8 // bits
-        moe_cuda_quantizer = MoeCudaQuantizer()
+        cuda_quantizer = CudaQuantizer()
 
         fc1_weights = numpy.zeros((num_experts, fc1_k, fc1_n // pack), dtype=numpy.uint8)
         fc2_weights = numpy.zeros((num_experts, fc2_k, fc2_n // pack), dtype=numpy.uint8)
@@ -2981,8 +2897,8 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
         for e in range(num_experts):
             w1 = torch.randn(fc1_n, fc1_k, dtype=torch.float16) * 0.01
             w2 = torch.randn(fc2_n, fc2_k, dtype=torch.float16) * 0.01
-            q1, s1 = moe_cuda_quantizer.cuda_per_channel_quantize(w1, bits, True)
-            q2, s2 = moe_cuda_quantizer.cuda_per_channel_quantize(w2, bits, True)
+            q1, s1 = cuda_quantizer.cuda_per_channel_quantize(w1, bits, True)
+            q2, s2 = cuda_quantizer.cuda_per_channel_quantize(w2, bits, True)
             fc1_weights[e] = q1.numpy()
             fc2_weights[e] = q2.numpy()
             fc1_scales[e] = s1.numpy().astype(numpy.float16)
