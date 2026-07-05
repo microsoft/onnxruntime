@@ -1085,7 +1085,7 @@ def generate_build_tree(
                 first_line = f.readline()
                 ort_version_matches = re.match(r"(\d+)\.(\d+)\.(\d+)", first_line)
                 if not ort_version_matches:
-                    raise BuildError("Couldn't read version from VERSION_FILE")
+                    raise BuildError("Couldn't read version from VERSION_NUMBER")
                 ort_major = ort_version_matches.group(1)
                 ort_minor = ort_version_matches.group(2)
                 ort_patch = ort_version_matches.group(3)
