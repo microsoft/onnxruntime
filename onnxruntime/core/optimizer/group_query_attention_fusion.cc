@@ -310,10 +310,10 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     // If the node uses any optional input beyond sin_cache -- position_ids (#9), attention_bias (#10),
     // or head_sink (#11) -- those inputs would be silently dropped and the input-arg-count array would
     // no longer match the input defs, producing an invalid graph at resolve time. Skip fusion in that case.
-    const auto& gqa_input_defs = node.InputDefs();
+    const auto& node_input_defs = node.InputDefs();
     bool has_unsupported_optional_input = false;
-    for (size_t i = 9; i < gqa_input_defs.size(); ++i) {
-      if (gqa_input_defs[i] != nullptr && gqa_input_defs[i]->Exists()) {
+    for (size_t i = 9; i < node_input_defs.size(); ++i) {
+      if (node_input_defs[i] != nullptr && node_input_defs[i]->Exists()) {
         has_unsupported_optional_input = true;
         break;
       }
