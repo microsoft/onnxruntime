@@ -2,9 +2,9 @@
 
 ## Build Instructions
 
-ONNX Runtime CUDA builds now build the CUDA Plugin Execution Provider by default. The plugin is advertised as `CUDAExecutionProvider` and replaces the legacy in-tree CUDA EP for normal CUDA builds.
+To build ONNX Runtime with the CUDA Plugin Execution Provider, pass `--cmake_extra_defines "onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON"` with the build script.
 
-To build the legacy source-built CUDA EP instead, pass `--cmake_extra_defines "onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=OFF"` with the build script.
+If the flag is omitted, the default build uses the legacy source-built CUDA EP (`onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=OFF`).
 
 Example command to build the CUDA Plugin EP in Windows:
 ```
@@ -13,7 +13,8 @@ build.bat --cmake_generator "Visual Studio 17 2022" --config Release --build_whe
           --use_cuda --cuda_version "12.8" --cuda_home "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8" ^
           --cudnn_home "D:\path\to\cudnn-installation-root" ^
           --use_vcpkg --use_binskim_compliant_compile_flags ^
-          --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=native"
+          --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=native" ^
+          --cmake_extra_defines "onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON"
 ```
 
 ### Building and testing without cuDNN at runtime
@@ -155,7 +156,7 @@ The focused validation script for the CUDA Plugin EP is `onnxruntime/test/python
 
 ### Test prerequisites
 
-- Build ONNX Runtime with CUDA plugin EP enabled. This is the CUDA build default; pass `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON` explicitly if you need to override a local cache.
+- Build ONNX Runtime with CUDA plugin EP enabled by setting `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON`.
 - Install the built ONNX Runtime wheel.
 - Install Python test dependencies. `test_cuda_plugin_ep.py` uses PyTorch for CPU-side reference computations, so CPU-only PyTorch is sufficient.
 

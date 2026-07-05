@@ -135,7 +135,7 @@ jobs:
             bash -c "
               set -ex
               export PATH=/opt/python/cp312-cp312/bin:\$PATH
-5             export LD_LIBRARY_PATH=/build/Release/Release:/usr/local/cuda-13.0/lib64:\${LD_LIBRARY_PATH:-}
+              export LD_LIBRARY_PATH=/build/Release/Release:/usr/local/cuda-13.0/lib64:\${LD_LIBRARY_PATH:-}
               python -m pip install /build/Release/Release/dist/onnxruntime*.whl
               python -m pip install numpy onnx
               python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
