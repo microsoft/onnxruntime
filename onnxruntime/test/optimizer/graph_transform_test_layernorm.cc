@@ -952,6 +952,27 @@ static void TestGQAFusion(const std::basic_string<ORTCHAR_T>& file_path, int mat
   ASSERT_TRUE(op_to_count["com.microsoft.GroupQueryAttention"] == 1);
 }
 
+// Verifies the fusion is skipped when the GQA node uses an optional input beyond sin_cache (e.g. attention_bias),
+// which the fusion does not preserve. Fusing would drop the input and produce an invalid graph.
+static void TestGQAFusionNotApplied(const std::basic_string<ORTCHAR_T>& file_path, logging::Logger* logger) {
+  std::shared_ptr<Model> p_model;
+  ASSERT_TRUE(Model::Load(file_path, p_model, nullptr, *logger).IsOK());
+  Graph& graph = p_model->MainGraph();
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{3};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GroupQueryAttentionFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger));
+
+  // Fusion must not fire: RotaryEmbedding nodes are preserved and the graph remains valid.
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["com.microsoft.RotaryEmbedding"] == 2);
+  ASSERT_TRUE(op_to_count["com.microsoft.GroupQueryAttention"] == 1);
+
+  // The GQA node must still be resolvable (its input defs and arg counts remain consistent).
+  ASSERT_STATUS_OK(graph.Resolve());
+}
+
 static void TestSkipLayerNormFusion(const std::basic_string<ORTCHAR_T>& file_path, int add_count, int ln_count,
                                     int skip_ln_count, int cast_count, logging::Logger* logger) {
   std::shared_ptr<Model> p_model;
@@ -1139,6 +1160,9 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionFusionTest) {
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized_simple.onnx", 1, 0, logger_.get());
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_different_head_sizes.onnx", 0, 1, logger_.get());
   TestGQAFusion(MODEL_FOLDER "fusion/gqa_fusion_quantized_different_head_sizes.onnx", 1, 0, logger_.get());
+
+  // GQA nodes carrying an optional input beyond sin_cache (here attention_bias) must not be fused.
+  TestGQAFusionNotApplied(MODEL_FOLDER "fusion/gqa_fusion_with_attention_bias.onnx", logger_.get());
 }
 
 TEST_F(GraphTransformationTests, SkipLayerNormFusionWithCastTest) {
