@@ -717,6 +717,7 @@ class TestCudaPluginEP(unittest.TestCase):
         result = run_provider_options_test({"device_id": "0", "use_tf32": "0"}, expect_plugin_provider=True)
         self.assertTrue(result, "Provider options with valid device_id/use_tf32 failed")
 
+    @requires_cudnn
     def test_auto_registered_provider_options_valid(self):
         result = run_auto_registered_provider_options_test(
             {"device_id": "0", "ep.cuda.use_tf32": "0", "ep.cuda.prefer_nhwc_layout": "0"}
