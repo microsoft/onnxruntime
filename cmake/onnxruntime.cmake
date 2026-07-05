@@ -402,14 +402,18 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
         # vs. onnxruntime/providers/core/cpu/math/element_wise_ops.o)
         # In that case, using 'ar ARGS -x' to extract the .o files from .a lib would possibly cause duplicate naming files being overwritten
         # and lead to missing undefined symbol error in the generated binary.
-        # So we use the below python script as a sanity check to do a recursive find of all .o files in ${CUR_TARGET_CMAKE_SOURCE_LIB_DIR}
+        # So we use the below python script as a sanity check to do a recursive find of all .o files in ${CUR_TARGET_OBJECT_DIR}
         # and verifies that matches the content of the .a, and then copy from the source dir.
         # TODO: The copying action here isn't really necessary. For future fix, consider using the script extracts from the ar with the rename to potentially
         # make both maccatalyst and other builds do the same thing.
-        set(CUR_TARGET_CMAKE_SOURCE_LIB_DIR ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${_LIB}.dir)
+
+        # Use the target's own BINARY_DIR: targets added via add_subdirectory (e.g. model_package) put their
+        # objects under a nested CMakeFiles/<lib>.dir, not one directly under CMAKE_CURRENT_BINARY_DIR.
+        get_target_property(_LIB_BINARY_DIR ${_LIB} BINARY_DIR)
+        set(CUR_TARGET_OBJECT_DIR ${_LIB_BINARY_DIR}/CMakeFiles/${_LIB}.dir)
         add_custom_command(TARGET onnxruntime POST_BUILD
                           COMMAND /usr/bin/ar -t $<TARGET_FILE:${_LIB}> | grep "\.o$"  > ${_LIB}.object_file_list.txt
-                          COMMAND ${CMAKE_COMMAND} -E env python3 ${CMAKE_CURRENT_SOURCE_DIR}/maccatalyst_prepare_objects_for_prelink.py ${CUR_TARGET_CMAKE_SOURCE_LIB_DIR} ${CUR_STATIC_LIB_OBJ_DIR} ${CUR_STATIC_LIB_OBJ_DIR}/${_LIB}.object_file_list.txt
+                          COMMAND ${CMAKE_COMMAND} -E env python3 ${CMAKE_CURRENT_SOURCE_DIR}/maccatalyst_prepare_objects_for_prelink.py ${CUR_TARGET_OBJECT_DIR} ${CUR_STATIC_LIB_OBJ_DIR} ${CUR_STATIC_LIB_OBJ_DIR}/${_LIB}.object_file_list.txt
                           WORKING_DIRECTORY ${CUR_STATIC_LIB_OBJ_DIR})
       else()
         add_custom_command(TARGET onnxruntime POST_BUILD

@@ -14,7 +14,12 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
 #ifdef USE_WEBGPU
+#include "core/graph/model.h"
 #include "core/providers/webgpu/webgpu_provider_options.h"
+#include "core/session/inference_session.h"
+#include "core/session/IOBinding.h"
+#include "test/test_environment.h"
+#include "test/unittest_util/framework_test_utils.h"
 #endif
 
 namespace onnxruntime {
@@ -367,6 +372,35 @@ TEST(GroupQueryAttentionTest, NonPromptSeqlensKUnderflow_OOB) {
       "is too small for sequence_length",
       /*provide_past=*/true,
       /*past_seq_len=*/4);
+}
+
+// Regression: present buffer large enough (total_seq_len passes the present-buffer check),
+// but the past buffer is much smaller. ConcatStateChunkGQA would copy
+// (seqlens_k + 1 - sequence_length) rows out of the small past buffer, reading past its end.
+TEST(GroupQueryAttentionTest, SeqlensKExceedsPastBuffer_OOBRead) {
+  // present_kv_seqlen = max(total_seq_len=100, past_seq_len=2) = 100, so seqlens_k=50 passes the
+  // present-buffer check, but past_seqlen = 51 - 1 = 50 rows >> past buffer (2 rows) => OOB read.
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{50},
+      /*total_seq_len=*/100,
+      /*batch_size=*/1,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectFailure,
+      "exceeds the past buffer sequence length",
+      /*provide_past=*/true,
+      /*past_seq_len=*/2);
+}
+
+TEST(GroupQueryAttentionTest, SeqlensKExceedsEmptyPastBuffer_OOBRead) {
+  RunGQASeqlensKTest(
+      /*seqlens_k_data=*/{50},
+      /*total_seq_len=*/100,
+      /*batch_size=*/1,
+      /*sequence_length=*/1,
+      OpTester::ExpectResult::kExpectFailure,
+      "exceeds the past buffer sequence length",
+      /*provide_past=*/true,
+      /*past_seq_len=*/0);
 }
 
 // INT32_MAX seqlens_k: rejected by the >= present_kv_seqlen check.
@@ -2561,6 +2595,200 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_SlidingWindow) {
   execution_providers.push_back(DefaultWebGpuExecutionProvider());
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
+
+#ifdef USE_WEBGPU
+// WebGPU graph capture test for kv_empty (Gemma4 shared-KV) layers.
+//
+// When graph capture is enabled, total_seqlen is GPU-resident and
+// PrepareIndirectDispatchProgram must compute dispatch sizes on GPU.
+// This test exercises the full ORT graph capture path by allocating all
+// inputs as GPU tensors via IOBinding, running capture then replay, and
+// verifying the replay output matches the CPU reference.
+TEST(GroupQueryAttentionTest, WebGPU_SharedKV_IndirectDispatchForGraphCapture) {
+  constexpr int batch_size = 1;
+  constexpr int q_seq_len = 1;
+  constexpr int past_seq_len = 32;
+  constexpr int num_heads = 2;
+  constexpr int kv_num_heads = 1;
+  constexpr int head_size = 8;
+  constexpr int hidden_size = num_heads * head_size;
+  constexpr int kv_hidden_size = kv_num_heads * head_size;
+
+  // Build a GQA model directly using the Graph API so graph inputs are
+  // properly declared (OpTester::BuildModel doesn't call graph.Resolve or
+  // SetInputs, producing a proto that InferenceSession::Load rejects).
+  std::unique_ptr<onnxruntime::Model> p_model;
+  {
+    std::unordered_map<std::string, int> domain_to_version;
+    domain_to_version[kOnnxDomain] = 17;
+    domain_to_version[kMSDomain] = 1;
+    p_model = std::make_unique<onnxruntime::Model>(
+        "gqa_gc_test", true, ModelMetaData(), PathString(),
+        IOnnxRuntimeOpSchemaRegistryList(), domain_to_version,
+        std::vector<ONNX_NAMESPACE::FunctionProto>{},
+        DefaultLoggingManager().DefaultLogger(),
+        ModelOptions(true, true));
+    onnxruntime::Graph& graph = p_model->MainGraph();
+
+    ONNX_NAMESPACE::TypeProto tp_float, tp_int32;
+    tp_float.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+    tp_int32.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
+
+    std::vector<onnxruntime::NodeArg*> in_defs = {
+        &graph.GetOrCreateNodeArg("query", &tp_float),
+        &graph.GetOrCreateNodeArg("key", &tp_float),
+        &graph.GetOrCreateNodeArg("value", &tp_float),
+        &graph.GetOrCreateNodeArg("past_key", &tp_float),
+        &graph.GetOrCreateNodeArg("past_value", &tp_float),
+        &graph.GetOrCreateNodeArg("seqlens_k", &tp_int32),
+        &graph.GetOrCreateNodeArg("total_sequence_length", &tp_int32),
+        // optional inputs 8-12 are absent — use empty NodeArgs
+        &graph.GetOrCreateNodeArg("", nullptr),
+        &graph.GetOrCreateNodeArg("", nullptr),
+        &graph.GetOrCreateNodeArg("", nullptr),
+        &graph.GetOrCreateNodeArg("", nullptr),
+        &graph.GetOrCreateNodeArg("", nullptr),
+    };
+    std::vector<onnxruntime::NodeArg*> out_defs = {
+        &graph.GetOrCreateNodeArg("output", &tp_float),
+    };
+
+    auto& node = graph.AddNode("gqa", "GroupQueryAttention", "GQA",
+                               in_defs, out_defs, nullptr, kMSDomain);
+    node.AddAttribute("num_heads", static_cast<int64_t>(num_heads));
+    node.AddAttribute("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+    ORT_THROW_IF_ERROR(graph.Resolve());
+  }
+
+  std::string model_data;
+  p_model->ToProto().SerializeToString(&model_data);
+
+  // Create InferenceSession with graph capture EP.
+  SessionOptions so;
+  InferenceSession session{so, GetEnvironment()};
+  ConfigOptions config_options{};
+  ORT_THROW_IF_ERROR(config_options.AddConfigEntry(webgpu::options::kEnableGraphCapture,
+                                                   webgpu::options::kEnableGraphCapture_ON));
+  auto webgpu_ep = WebGpuExecutionProviderWithOptions(config_options);
+  if (!webgpu_ep) {
+    GTEST_SKIP() << "WebGPU EP not available";
+  }
+  IExecutionProvider* ep_ptr = webgpu_ep.get();
+  ORT_THROW_IF_ERROR(session.RegisterExecutionProvider(std::move(webgpu_ep)));
+  std::istringstream model_stream(model_data);
+  ORT_THROW_IF_ERROR(session.Load(model_stream));
+  ORT_THROW_IF_ERROR(session.Initialize());
+
+  // Get GPU allocator from session.
+  OrtMemoryInfo gpu_mem_info(WEBGPU_BUFFER, OrtAllocatorType::OrtDeviceAllocator,
+                             OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0));
+  auto gpu_alloc = session.GetAllocator(gpu_mem_info);
+  AllocatorPtr cpu_alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+
+  // Capture-run input data (set A).
+  std::vector<float> query_data(batch_size * q_seq_len * hidden_size);
+  std::vector<float> past_key_data(batch_size * kv_num_heads * past_seq_len * head_size);
+  std::vector<float> past_value_data(batch_size * kv_num_heads * past_seq_len * head_size);
+  for (size_t i = 0; i < query_data.size(); i++) query_data[i] = 0.1f * static_cast<float>(i % 7 + 1);
+  for (size_t i = 0; i < past_key_data.size(); i++) past_key_data[i] = 0.2f * static_cast<float>(i % 5 + 1);
+  for (size_t i = 0; i < past_value_data.size(); i++) past_value_data[i] = 0.3f * static_cast<float>(i % 3 + 1);
+
+  // Replay-run input data (set B) — different values to verify replay actually uses new data.
+  std::vector<float> query_data2(batch_size * q_seq_len * hidden_size);
+  std::vector<float> past_key_data2(batch_size * kv_num_heads * past_seq_len * head_size);
+  std::vector<float> past_value_data2(batch_size * kv_num_heads * past_seq_len * head_size);
+  for (size_t i = 0; i < query_data2.size(); i++) query_data2[i] = 0.5f * static_cast<float>(i % 11 + 1);
+  for (size_t i = 0; i < past_key_data2.size(); i++) past_key_data2[i] = 0.4f * static_cast<float>(i % 7 + 1);
+  for (size_t i = 0; i < past_value_data2.size(); i++) past_value_data2[i] = 0.6f * static_cast<float>(i % 4 + 1);
+
+  // Helper: create GPU OrtValue by copying from CPU data (nullptr = zero-size tensor).
+  auto make_gpu_value = [&](const void* data, MLDataType dtype, TensorShape shape) -> OrtValue {
+    Tensor gpu_tensor(dtype, shape, gpu_alloc);
+    if (data != nullptr && shape.Size() > 0) {
+      Tensor cpu_tensor(dtype, shape, const_cast<void*>(data), cpu_alloc->Info());
+      ORT_THROW_IF_ERROR(ep_ptr->GetDataTransfer()->CopyTensor(cpu_tensor, gpu_tensor));
+    }
+    OrtValue val;
+    Tensor::InitOrtValue(std::move(gpu_tensor), val);
+    return val;
+  };
+
+  // Helper: overwrite an existing GPU tensor's data in-place from CPU (same buffer, new values).
+  // Under graph capture the WGPUBuffer pointer is baked in; rebinding is not allowed.
+  auto update_gpu_value = [&](const OrtValue& gpu_val, const void* data, MLDataType dtype, TensorShape shape) {
+    if (shape.Size() > 0) {
+      Tensor cpu_tensor(dtype, shape, const_cast<void*>(data), cpu_alloc->Info());
+      ORT_THROW_IF_ERROR(ep_ptr->GetDataTransfer()->CopyTensor(cpu_tensor, const_cast<Tensor&>(gpu_val.Get<Tensor>())));
+    }
+  };
+
+  auto q_val = make_gpu_value(query_data.data(), DataTypeImpl::GetType<float>(),
+                              TensorShape{batch_size, q_seq_len, hidden_size});
+  auto key_val = make_gpu_value(nullptr, DataTypeImpl::GetType<float>(),
+                                TensorShape{batch_size, 0, kv_hidden_size});
+  auto value_val = make_gpu_value(nullptr, DataTypeImpl::GetType<float>(),
+                                  TensorShape{batch_size, 0, kv_hidden_size});
+  auto pk_val = make_gpu_value(past_key_data.data(), DataTypeImpl::GetType<float>(),
+                               TensorShape{batch_size, kv_num_heads, past_seq_len, head_size});
+  auto pv_val = make_gpu_value(past_value_data.data(), DataTypeImpl::GetType<float>(),
+                               TensorShape{batch_size, kv_num_heads, past_seq_len, head_size});
+  std::vector<int32_t> seqlens_k_data = {past_seq_len - 1};
+  auto sk_val = make_gpu_value(seqlens_k_data.data(), DataTypeImpl::GetType<int32_t>(),
+                               TensorShape{batch_size});
+  std::vector<int32_t> total_seqlen_data = {past_seq_len};
+  auto ts_val = make_gpu_value(total_seqlen_data.data(), DataTypeImpl::GetType<int32_t>(),
+                               TensorShape{1});
+
+  // Preallocate GPU output.
+  Tensor gpu_out_tensor(DataTypeImpl::GetType<float>(),
+                        TensorShape{batch_size, q_seq_len, hidden_size}, gpu_alloc);
+  OrtValue out_val;
+  Tensor::InitOrtValue(std::move(gpu_out_tensor), out_val);
+
+  // Bind inputs and output.
+  std::unique_ptr<IOBinding> io_binding;
+  ORT_THROW_IF_ERROR(session.NewIOBinding(&io_binding));
+  ORT_THROW_IF_ERROR(io_binding->BindInput("query", q_val));
+  ORT_THROW_IF_ERROR(io_binding->BindInput("key", key_val));
+  ORT_THROW_IF_ERROR(io_binding->BindInput("value", value_val));
+  ORT_THROW_IF_ERROR(io_binding->BindInput("past_key", pk_val));
+  ORT_THROW_IF_ERROR(io_binding->BindInput("past_value", pv_val));
+  ORT_THROW_IF_ERROR(io_binding->BindInput("seqlens_k", sk_val));
+  ORT_THROW_IF_ERROR(io_binding->BindInput("total_sequence_length", ts_val));
+  ORT_THROW_IF_ERROR(io_binding->BindOutput("output", out_val));
+  ORT_THROW_IF_ERROR(io_binding->SynchronizeInputs());
+
+  // Run 1: capture.
+  RunOptions run_options;
+  ORT_THROW_IF_ERROR(session.Run(run_options, *io_binding));
+
+  // Run 2: replay with different inputs (set B) written into the same GPU buffers.
+  // Rebinding is not allowed under graph capture — the WGPUBuffer pointers are baked
+  // in at capture time, so new data must be copied into the existing buffers.
+  update_gpu_value(q_val, query_data2.data(), DataTypeImpl::GetType<float>(),
+                   TensorShape{batch_size, q_seq_len, hidden_size});
+  update_gpu_value(pk_val, past_key_data2.data(), DataTypeImpl::GetType<float>(),
+                   TensorShape{batch_size, kv_num_heads, past_seq_len, head_size});
+  update_gpu_value(pv_val, past_value_data2.data(), DataTypeImpl::GetType<float>(),
+                   TensorShape{batch_size, kv_num_heads, past_seq_len, head_size});
+  ORT_THROW_IF_ERROR(session.Run(run_options, *io_binding));
+
+  // Copy replay output GPU -> CPU and compare against CPU reference for set B.
+  const int output_size = batch_size * q_seq_len * hidden_size;
+  auto& gpu_out = io_binding->GetOutputs()[0].Get<Tensor>();
+  Tensor cpu_out_tensor(DataTypeImpl::GetType<float>(), gpu_out.Shape(), cpu_alloc);
+  ORT_THROW_IF_ERROR(ep_ptr->GetDataTransfer()->CopyTensor(gpu_out, cpu_out_tensor));
+  std::vector<float> webgpu_output(cpu_out_tensor.Data<float>(),
+                                   cpu_out_tensor.Data<float>() + output_size);
+
+  auto cpu_output = RunGQASharedKV(
+      batch_size, q_seq_len, past_seq_len, query_data2, past_key_data2, past_value_data2,
+      num_heads, kv_num_heads, head_size, GqaTargetEp::kCpu);
+
+  ExpectOutputsMatch(webgpu_output, cpu_output, 0.05f, "SharedKV_IndirectDispatchForGraphCapture_vs_CPU");
+}
+#endif  // USE_WEBGPU
 
 // ---------------------------------------------------------------------------
 // Batched right-padded packed-QKV prefill with do_rotary.
