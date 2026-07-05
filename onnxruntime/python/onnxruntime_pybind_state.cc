@@ -1412,9 +1412,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(const Sessio
 
       auto adapted_options = AdaptProviderOptionsForRegisteredPluginEp(type, *provider_options);
       return AddEpOptionsToSessionOptions(selected_devices,
-                                         adapted_options.key_ptrs,
-                                         adapted_options.value_ptrs,
-                                         ort_session_options.value);
+                                          adapted_options.key_ptrs,
+                                          adapted_options.value_ptrs,
+                                          ort_session_options.value);
     };
 
     auto status = add_registered_plugin_ep_options_to_session();

@@ -329,6 +329,10 @@ void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
   auto* typed = static_cast<CudaAllocatorBase*>(allocator);
   switch (typed->GetKind()) {
     case CudaAllocatorKind::kDevice:
+      if (typed->IsExternalDeviceAllocator()) {
+        delete static_cast<CudaExternalDeviceAllocator*>(allocator);
+        return;
+      }
       delete static_cast<CudaDeviceAllocator*>(allocator);
       return;
     case CudaAllocatorKind::kPinned:
@@ -344,6 +348,7 @@ void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
 This handles:
 - **Shared allocators** — `RegisterExecutionProviderLibrary` iterates over each `OrtEpDevice` and calls `CreateAllocator` for each device's memory infos. Each device gets its own shared arena.
 - **Per-session allocators** — each session calls `CreateAllocator` (returning the same shared arena for the device) and `ReleaseAllocator` on session teardown.
+- **External allocator sessions** — when a `CudaEp` instance is configured with `gpu_external_alloc` and `gpu_external_free`, it advertises `OrtEp::CreateAllocator` and creates a per-session `CudaExternalDeviceAllocator` from that EP's config. The factory's device cache does not store external allocator callbacks or a shared external allocator, so a later session on the same GPU without external allocator options still uses the factory's internal arena/mempool path. Release falls through to the raw allocator case above and uses `CudaAllocatorBase::IsExternalDeviceAllocator()` to delete it with the correct concrete type.
 
 The `OrtApi::CreateSharedAllocator` public API also flows through `CreateAllocatorImpl` with `replace_existing=true`. When replacing, `ReleaseAllocator` is called on the old allocator first (dropping that device's arena if ref count hits zero), then `CreateAllocator` is called again with the new options — potentially creating a new arena with different config for that specific device.
 
@@ -659,8 +664,8 @@ The arena implementation in `onnxruntime/test/autoep/library/example_plugin_ep/`
 | `inference_session.cc` | **`ValidateAndParseShrinkArenaString`** and **`ShrinkMemoryArenas`**: simplified to use `allocator->AsArena()` directly, which now also discovers plugin arenas wrapped via `IArenaImplWrappingOrtAllocator`. |
 | `device_stream_collection.cc` | `ReleaseSingleStreamBuffers`: simplified to use `allocator->AsArena()` directly (removed `alloc_type == OrtArenaAllocator` check). |
 | Future: `environment.cc` | `RegisterExecutionProviderLibrary`: construct prefix `"ep_factory." + factory->GetName(factory) + "."` (case-sensitive, with null-guard), obtain config snapshot via `GetConfigEntries()`, extract matching `arena.*` keys, strip prefix, build `OrtKeyValuePairs` with bare `arena.*` keys, pass as `allocator_options` to `CreateSharedAllocatorImpl` instead of `nullptr` (see Section 3.6 for casing convention). |
-| Future: `ep_plugin_provider_interfaces.h` | Add `std::optional<OrtKeyValuePairs> session_arena_options_` member to `PluginExecutionProvider` to store session-level arena config extracted at construction time. |
-| Future: `ep_plugin_provider_interfaces.cc` | **(a)** In `PluginExecutionProvider` constructor: gated on `ep_factory_.CreateAllocator != nullptr` — construct EP prefix via `GetProviderOptionPrefix(ep->GetName(ep.get()))`, scan `session_options.value.config_options` for keys matching `<prefix>arena.*`, strip the EP prefix, and store as bare `"arena.*"` keys in `session_arena_options_`. The EP-name prefix naturally scopes extraction to the current EP. **(b)** In `CreatePreferredAllocators()`: if `session_arena_options_` has a value, pass it as `allocator_options` to `ep_factory_.CreateAllocator()` instead of `nullptr`. |
+| `ep_plugin_provider_interfaces.h` | Added `std::optional<OrtKeyValuePairs> session_arena_options_` member to `PluginExecutionProvider` to store session-level arena config extracted at construction time. |
+| `ep_plugin_provider_interfaces.cc` | **(a)** In `PluginExecutionProvider` constructor: gated on `ep_factory_.CreateAllocator != nullptr` and `ort_ep_->CreateAllocator == nullptr` — construct EP prefix via `GetProviderOptionPrefix(ep->GetName(ep.get()))`, scan `session_options.value.config_options` for keys matching `<prefix>arena.*`, strip the EP prefix, and store as bare `"arena.*"` keys in `session_arena_options_`. The EP-name prefix naturally scopes extraction to the current EP. **(b)** In `CreatePreferredAllocators()`: if `session_arena_options_` has a value, pass it as `allocator_options` to `ep_factory_.CreateAllocator()` instead of `nullptr`. |
 
 ### 5.4 Shrink and ORT Core Arena Integration
 

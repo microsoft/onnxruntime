@@ -26,6 +26,8 @@ The ORT CUDA build produces four separate libraries:
 | `onnxruntime_providers_cuda` | `libonnxruntime_providers_cuda.so` | Shared module | In-tree CUDA EP (uses `SHARED_PROVIDER` bridge) |
 | `onnxruntime_providers_cuda_plugin` | `libonnxruntime_providers_cuda.so` | Shared module | Plugin CUDA EP (uses EP API adapters) |
 
+The plugin target keeps the canonical CUDA provider library filename (`onnxruntime_providers_cuda.*`) and advertises the canonical provider name (`CUDAExecutionProvider`). This is intentional compatibility behavior: a CUDA build contains either the plugin implementation or the legacy source-built implementation behind the same provider name and native filename, selected by `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN`.
+
 ### 2.1.1 Optional cuDNN Runtime Dependency
 
 The CUDA Plugin EP follows the in-tree CUDA EP's optional-cuDNN model. cuDNN headers are still required at build time, but the plugin shared library must not link directly to cuDNN or contain a cuDNN DLL/SO in its dynamic dependency table. cuDNN is loaded lazily through the ORT cuDNN loader when `enable_cudnn` is enabled and the runtime libraries are available through trusted process-level library discovery.
@@ -76,9 +78,10 @@ Migrated CUDA kernels
 
 Key ownership relationships:
 - `CudaEpFactory` implements raw `OrtEpFactory` callbacks and owns shared factory-level state such as the kernel registry, cached `OrtMemoryInfo` instances, and the hardware-device to CUDA-ordinal map.
-- `CudaEpFactory` also implements the factory-level `OrtEpFactory::CreateSyncStreamForDevice` callback as a fallback path when the `OrtEp` callback is not used.
+- `CudaEpFactory` also implements the factory-level `OrtEpFactory::CreateAllocator` and `OrtEpFactory::CreateSyncStreamForDevice` callbacks as fallback paths when the `OrtEp` callback is not used. Factory-created allocators are shared per device for internal arena/mempool use.
 - `CudaEp` inherits from `ep::adapter::Ep`, which itself derives from `OrtEp` and owns a framework-facing `IExecutionProvider` object.
 - `CudaEp` implements the `OrtEp::CreateSyncStreamForDevice` callback, which is the per-session stream-creation entry point used in preference to the factory callback.
+- `CudaEp` implements `OrtEp::CreateAllocator` only when that EP instance was configured with `gpu_external_alloc` and `gpu_external_free`. External allocator callbacks are session-scoped provider options, so they are stored in `CudaEp::Config` and produce per-session `CudaExternalDeviceAllocator` instances rather than mutating shared factory device-cache state.
 - The plugin-local `CUDAExecutionProvider` in `cuda_kernel_adapter.h` is a real shim object owned by `ep::adapter::Ep`. It is not the full in-tree CUDA EP, but it has its own object identity and stores plugin-specific members — including the wrapped `OrtEp*` and a provider-owned shared runtime-config object.
 - Runtime configuration needed by migrated kernels is stored on that shim provider and exposed to kernels as a cached `shared_ptr<CudaKernelAdapterRuntimeConfig>`, rather than through a separate global map keyed by the provider address.
 - `CudaSyncStream` owns `cudaStream_t`, `cublasHandle_t`, `cudnnHandle_t`, and `cublasLtHandle_t` for each sync stream created through the EP API.
@@ -628,7 +631,7 @@ sh build.sh --config Release --build_dir build/cuda --parallel --use_cuda \
 
 The `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON` flag replaces the legacy CUDA provider target with the plugin target. It:
 
-1. Adds the `onnxruntime_providers_cuda_plugin` target (producing `libonnxruntime_providers_cuda.so`)
+1. Adds the `onnxruntime_providers_cuda_plugin` CMake target, whose native output uses the canonical CUDA provider filename (`libonnxruntime_providers_cuda.so` / `onnxruntime_providers_cuda.dll`)
 2. Skips the legacy `onnxruntime_providers_cuda` target and CUDA EP internal unit-test library
 3. Copies the plugin library into Python and Java package outputs when those packages are built
 4. Appends `"cuda-plugin-ep=1"` to the build info string
@@ -651,14 +654,14 @@ After a successful build with the plugin flag ON, `build/cuda/Release/` contains
 
 ### 9.5 Deployment
 
-To use the plugin EP, copy the `.so` to the ORT Python package's `capi/` directory:
+To use the plugin EP with a bundled ONNX Runtime Python package, copy the plugin library to the ORT Python package's `capi/` directory using the canonical CUDA provider filename:
 
 ```bash
 cp build/cuda/Release/libonnxruntime_providers_cuda.so \
    $(python -c "import onnxruntime; print(onnxruntime.__path__[0])")/capi/
 ```
 
-The plugin is then available as `CUDAExecutionProvider` in session provider lists.
+If the package build info contains `cuda-plugin-ep=1`, importing `onnxruntime` auto-registers that bundled library as `CUDAExecutionProvider`. `onnxruntime.preload_dlls(...)` also retries bundled plugin registration after loading CUDA/cuDNN DLLs, which is useful on Windows. Standalone plugin packages and native applications continue to load the same file explicitly through `register_execution_provider_library()` / `RegisterExecutionProviderLibrary()` before creating sessions.
 
 ---
 

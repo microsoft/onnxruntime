@@ -39,9 +39,14 @@ At load time, `CreateEpFactories()` negotiates the API version with the runtime:
 
 ## Running
 
-When the plugin is built, it will produce `libonnxruntime_providers_cuda.so` (or `onnxruntime_providers_cuda.dll` on Windows) in the build output directory alongside `libonnxruntime.so`.
+When the plugin is built, it will produce `libonnxruntime_providers_cuda.so` on Linux, `onnxruntime_providers_cuda.dll` on Windows, or `libonnxruntime_providers_cuda.dylib` on macOS in the build output directory alongside the ONNX Runtime library.
 
-The plugin EP is registered under the name **`CUDAExecutionProvider`** and uses the EP Plugin API (`RegisterExecutionProviderLibrary` / `GetEpDevices` / `SessionOptionsAppendExecutionProvider_V2`). When using the plugin package directly, register the plugin library before creating sessions that request `CUDAExecutionProvider`.
+The plugin EP is registered under the name **`CUDAExecutionProvider`** and intentionally uses the same native provider library filename as the legacy CUDA EP. The selected build mode determines what that filename contains:
+
+- `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON`: `onnxruntime_providers_cuda` is the CUDA plugin EP.
+- `onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=OFF`: `onnxruntime_providers_cuda` is the legacy source-built CUDA EP.
+
+The plugin uses the EP Plugin API (`RegisterExecutionProviderLibrary` / `GetEpDevices` / `SessionOptionsAppendExecutionProvider_V2`). The bundled ONNX Runtime Python package auto-registers the plugin from its `onnxruntime/capi/` directory when the build info contains `cuda-plugin-ep=1`. Direct/native use, C++ use, and the standalone `onnxruntime-ep-cuda12` / `onnxruntime-ep-cuda13` plugin packages still register the plugin library explicitly before creating sessions that request `CUDAExecutionProvider`.
 
 ### C++ API
 
@@ -75,9 +80,27 @@ Ort::Session session(env, "model.onnx", session_options);
 
 ### Python API
 
-Use `onnxruntime.register_execution_provider_library` to load the plugin, `onnxruntime.get_ep_devices` to discover devices, and `SessionOptions.add_provider_for_devices` to add the selected device.
+Bundled CUDA plugin wheels auto-register the plugin at `import onnxruntime` time when `cuda-plugin-ep=1` appears in `onnxruntime.get_build_info()` and the provider library is present in `onnxruntime/capi/`. After import, `CUDAExecutionProvider` can be used like the legacy CUDA EP name.
 
-**Device-based approach (recommended):**
+If CUDA/cuDNN DLL discovery must be prepared first (commonly on Windows), call `onnxruntime.preload_dlls(...)`; it retries bundled plugin registration after loading DLLs and warns if registration still fails.
+
+When using a standalone plugin package or a manually built plugin library outside the bundled wheel, use `onnxruntime.register_execution_provider_library` to load the plugin, `onnxruntime.get_ep_devices` to discover devices, and `SessionOptions.add_provider_for_devices` to add the selected device.
+
+**Bundled wheel approach:**
+
+```python
+import onnxruntime as ort
+
+sess = ort.InferenceSession(
+    "model.onnx",
+    providers=[
+        ("CUDAExecutionProvider", {"device_id": "0"}),
+        "CPUExecutionProvider",
+    ],
+)
+```
+
+**Standalone or manually registered plugin approach (recommended when using EP devices):**
 
 ```python
 import onnxruntime as ort
@@ -85,7 +108,7 @@ import onnxruntime as ort
 # 1. Register the plugin library.
 ort.register_execution_provider_library(
     "CUDAExecutionProvider",
-  "libonnxruntime_providers_cuda.so",
+    "libonnxruntime_providers_cuda.so",
 )
 
 # 2. Enumerate devices and pick the CUDA plugin device.
@@ -99,17 +122,16 @@ sess_options.add_provider_for_devices([plugin_device], {})
 sess = ort.InferenceSession("model.onnx", sess_options=sess_options)
 ```
 
-**Provider-name approach:**
+**Provider-name approach with explicit registration:**
 
-You can also pass `CUDAExecutionProvider` by name in the `providers` list
-(the plugin library must already be registered):
+You can also pass `CUDAExecutionProvider` by name in the `providers` list after explicit registration:
 
 ```python
 import onnxruntime as ort
 
 ort.register_execution_provider_library(
     "CUDAExecutionProvider",
-  "libonnxruntime_providers_cuda.so",
+    "libonnxruntime_providers_cuda.so",
 )
 
 sess = ort.InferenceSession(
@@ -120,6 +142,12 @@ sess = ort.InferenceSession(
     ],
 )
 ```
+
+### External GPU Allocator Options
+
+The CUDA plugin EP supports the same external GPU allocator provider options as the legacy CUDA EP: `gpu_external_alloc`, `gpu_external_free`, and `gpu_external_empty_cache` (also accepted with the canonical `ep.cuda.*` session config prefix). External allocator callbacks are session-scoped. A session that provides external allocator callbacks creates a per-session CUDA device allocator from that EP instance's options; a later session on the same GPU without those options continues to use the plugin factory's internal arena or CUDA mempool allocator.
+
+`user_compute_stream` and an external allocator cannot be used together in the same session. If both are configured, session creation fails with `ORT_INVALID_ARGUMENT`.
 
 ## Running Tests
 

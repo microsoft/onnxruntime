@@ -137,7 +137,7 @@ def _register_bundled_cuda_plugin_ep(warn_on_failure: bool = False):
                 warnings.warn(f"Failed to register bundled CUDA plugin EP from {library_path}: {e}")
 
 
-_register_bundled_cuda_plugin_ep()
+_register_bundled_cuda_plugin_ep(warn_on_failure=True)
 
 
 def _get_package_version(package_name: str):

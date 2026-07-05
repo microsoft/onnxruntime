@@ -104,16 +104,17 @@ extern "C" void ortenv_setup() {
             std::istreambuf_iterator<char>{config_file}, std::istreambuf_iterator<char>{});
       }
 
-        #if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP) && defined(ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH)
-          if (!dynamic_plugin_ep_config_json.has_value()) {
-            dynamic_plugin_ep_config_json.emplace(
+#if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP) && defined(ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH)
+      if (!dynamic_plugin_ep_config_json.has_value()) {
+        dynamic_plugin_ep_config_json.emplace(
             "{\n"
             "  \"ep_library_registration_name\": \"CUDAExecutionProvider\",\n"
-            "  \"ep_library_path\": \"" ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH "\",\n"
+            "  \"ep_library_path\": \"" ORT_UNIT_TEST_CUDA_PLUGIN_EP_LIBRARY_PATH
+            "\",\n"
             "  \"selected_ep_name\": \"CUDAExecutionProvider\"\n"
             "}");
-          }
-        #endif
+      }
+#endif
 
       if (dynamic_plugin_ep_config_json.has_value()) {
         std::cout << "Initializing dynamic plugin EP infrastructure with configuration:\n"
