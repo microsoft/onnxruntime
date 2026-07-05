@@ -84,6 +84,8 @@ struct TestOptions {
   int64_t block_size{32};
   int64_t accuracy_level{0};
 
+  bool disable_cpu_ep_fallback{false};
+
   bool has_zero_point{false};
   bool zp_is_4bit{true};
   bool has_g_idx{false};
@@ -294,8 +296,16 @@ void RunTest(const TestOptions& opts,
     test.ConfigEps(std::move(explicit_eps));
   }
 
+  if (opts.disable_cpu_ep_fallback) {
+    SessionOptions session_options;
+    session_options.use_per_session_threads = false;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    test.Config(session_options);
+  }
+
   if (opts.expected_failure.has_value()) {
-    test.Run(OpTester::ExpectResult::kExpectFailure, *opts.expected_failure);
+    test.Config(OpTester::ExpectResult::kExpectFailure, *opts.expected_failure);
+    test.RunWithConfig();
     return;
   }
 
@@ -891,6 +901,7 @@ TEST(MatMulNBits, Fp16_Int4_PrepackedWeightRequiresFpAIntBGemm) {
   TestOptions opts{};
   opts.M = 1, opts.N = 256, opts.K = 1024;
   opts.block_size = 64;
+  opts.disable_cpu_ep_fallback = true;
   opts.weight_prepacked = 1;
   opts.expected_failure = "weight_prepacked requires";
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
@@ -909,6 +920,7 @@ TEST(MatMulNBits, Fp16_Int4_PrepackedSm90WeightReserved) {
   TestOptions opts{};
   opts.M = 1, opts.N = 256, opts.K = 1024;
   opts.block_size = 64;
+  opts.disable_cpu_ep_fallback = true;
   opts.weight_prepacked = 2;
   opts.expected_failure = "weight_prepacked";
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
