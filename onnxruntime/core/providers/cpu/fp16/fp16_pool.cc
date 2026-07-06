@@ -77,8 +77,8 @@ Status PoolFp16::Compute(OpKernelContext* context) const {
     std::ostringstream ss;
     ss << "Invalid kernel shape. Input shape ";
     ss << (channels_last_ ? "(NHWC):[" : "(NCHW):[");
-    // Iterate over the dimension array by rank (NumDimensions), not Size() which is the element
-    // count (product of dims); indexing input_shape by the element count would read past the dims.
+    // NumDimensions() is the number of dimensions; TensorShape::Size() is the element count
+    // (product of dims), so iterating to Size() would index beyond the dimension array.
     for (size_t i = 0; i < input_shape.NumDimensions(); i++) {
       ss << input_shape[i] << ", ";
     }
