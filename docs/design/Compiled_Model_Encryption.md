@@ -51,7 +51,24 @@ and hand the bytes to the session.
 - **Compilation:** there was no hook to intercept EPContext binary data writes when embed mode is
   disabled — the EP wrote the context binary directly to a file, defeating application-side encryption.
 - **Load:** there was no way to supply decrypted EPContext binary data to the EP without writing
-  plaintext to disk and without double-buffering.
+  plaintext to disk and without double-buffering. Before this feature the EP loaded its EPContext
+  binary by opening the external file itself (e.g. `std::ifstream` on the path stored in the
+  `ep_cache_context` attribute). For an encrypted model that forced two undesirable outcomes:
+  - **Plaintext on disk.** Because the EP reads from a file path, the application had to first decrypt
+    the binary to a temporary plaintext file for the EP to open — directly violating the
+    "no unencrypted data on disk" property this feature exists to preserve. Even a short-lived temp
+    file exposes the decrypted engine/context binary to other processes and to crash/interruption
+    scenarios, and adds extra I/O.
+  - **Double-buffering (2× peak memory).** Even if the application decrypted into memory instead, there
+    was no API to hand that buffer to the EP. The EP would allocate its own buffer and read the bytes
+    in, so the decrypted payload existed twice at once — once in the application's buffer and once in
+    the EP's copy. For EPContext binaries that can be hundreds of MB to several GB (TensorRT engines,
+    QNN / Ryzen AI context binaries), that doubled peak is significant.
+
+  The load-side read callback closes both gaps: the application allocates the final buffer once via the
+  ORT-provided allocator and returns the decrypted bytes directly to the EP — no temporary plaintext
+  file and no second copy (1× peak). See [Named-Buffer I/O Callbacks](#named-buffer-io-callbacks) and
+  [Memory Usage Analysis](#memory-usage-analysis).
 
 ## Requirements
 
