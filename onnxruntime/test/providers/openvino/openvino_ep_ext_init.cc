@@ -516,8 +516,15 @@ TEST_P(OVEP_ExtInit_DynamicEmbed_Tests, ModelWithDynamicShapeEmbedsWeights) {
   session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);
   session_options.AddExternalInitializersFromFilesInMemory(names_path, buffers, buffer_sizes);
 
-  EXPECT_THROW({ Ort::Session session(*ort_env, model_data_.value().data(), model_data_.value().size(), session_options); }, Ort::Exception) << "Expected Ort::Exception when creating session with dynamic shape and >2GB weights, "
-                                                                                                                                             << "as weights should be embedded in proto causing it to exceed protobuf's 2GB limit";
+  if (device == "NPU") {
+    EXPECT_NO_THROW({ Ort::Session session(*ort_env, model_data_.value().data(), model_data_.value().size(), session_options); })
+        << "OpenVINO NPU defers dynamic-shape backend creation at session initialization, so the external weights "
+        << "should not be embedded in the model proto and hit protobuf's 2GB limit at this point.";
+  } else {
+    EXPECT_THROW({ Ort::Session session(*ort_env, model_data_.value().data(), model_data_.value().size(), session_options); }, Ort::Exception)
+        << "Expected Ort::Exception when creating session with dynamic shape and >2GB weights, "
+        << "as weights should be embedded in proto causing it to exceed protobuf's 2GB limit";
+  }
 }
 
 TEST_P(OVEP_ExtInit_EmptyRawData_Tests, ModelWithEmptyRawDataInitializer) {
