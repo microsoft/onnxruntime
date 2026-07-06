@@ -9,44 +9,29 @@
 // buffers (heap-buffer-overflow on the downstream memcpy in
 // SamplingCpuHelper::Sample).
 //
-// `greedy_search_impl_base.h` is not a self-contained public header (it
-// transitively requires internal framework types such as OpKernelContextInternal
-// that are unavailable to test code), so these tests reproduce the exact
-// SafeInt<size_t> expression that the fix introduced rather than constructing
-// a SamplingState directly. They will fail if anyone reverts the production
-// code to use `int * int` or `static_cast<size_t>` on operands that may be
-// negative.
+// The production computation lives in `sampling_buffer_element_count.h` as
+// `SamplingBufferElementCount`, which `SamplingState::Init` calls directly.
+// These tests call the same helper, so reverting the production code to
+// `int * int` or `static_cast<size_t>` on operands that may be negative will
+// fail these tests.
 
 #include "gtest/gtest.h"
 
 #include "core/common/common.h"
 #include "core/common/safeint.h"
+#include "contrib_ops/cpu/transformers/sampling_buffer_element_count.h"
 
 namespace onnxruntime {
 namespace test {
 
-namespace {
-
-// Mirrors the production computation in SamplingState::Init:
-//   const SafeInt<size_t> total_count =
-//       SafeInt<size_t>(batch_size) * SafeInt<size_t>(vocab_size);
-size_t ComputeSamplingTotalCount(int batch_size, int vocab_size) {
-  return SafeInt<size_t>(batch_size) * SafeInt<size_t>(vocab_size);
-}
-
-// Mirrors the production computation for `h_sampled_all`:
-//   SafeInt<size_t>(batch_size) * SafeInt<size_t>(max_iter)
-size_t ComputeSampledAllCount(int batch_size, int max_iter) {
-  return SafeInt<size_t>(batch_size) * SafeInt<size_t>(max_iter);
-}
-
-}  // namespace
+using contrib::transformers::SamplingBufferElementCount;
 
 // Sanity check: well-formed inputs produce the expected element count.
 TEST(SamplingStateArithmeticTest, ProducesExpectedTotalCountForValidInputs) {
-  EXPECT_EQ(ComputeSamplingTotalCount(4, 32), static_cast<size_t>(4) * 32u);
-  EXPECT_EQ(ComputeSamplingTotalCount(1, 50257), static_cast<size_t>(50257));
-  EXPECT_EQ(ComputeSampledAllCount(8, 16), static_cast<size_t>(8) * 16u);
+  EXPECT_EQ(SamplingBufferElementCount(4, 32), static_cast<size_t>(4) * 32u);
+  EXPECT_EQ(SamplingBufferElementCount(1, 50257), static_cast<size_t>(50257));
+  // `h_sampled_all` uses the same helper with `max_iter` as the second operand.
+  EXPECT_EQ(SamplingBufferElementCount(8, 16), static_cast<size_t>(8) * 16u);
 }
 
 // A negative `vocab_size` (e.g. an unvalidated default of -1) used to be turned
@@ -54,18 +39,18 @@ TEST(SamplingStateArithmeticTest, ProducesExpectedTotalCountForValidInputs) {
 // result that either silently wrapped or requested an absurdly large buffer.
 // SafeInt<size_t> rejects the negative-to-unsigned conversion up front.
 TEST(SamplingStateArithmeticTest, ThrowsOnNegativeVocabSize) {
-  EXPECT_THROW(ComputeSamplingTotalCount(4, -1), OnnxRuntimeException);
+  EXPECT_THROW(SamplingBufferElementCount(4, -1), OnnxRuntimeException);
 }
 
 // Symmetric check for a negative `batch_size`.
 TEST(SamplingStateArithmeticTest, ThrowsOnNegativeBatchSize) {
-  EXPECT_THROW(ComputeSamplingTotalCount(-1, 32), OnnxRuntimeException);
+  EXPECT_THROW(SamplingBufferElementCount(-1, 32), OnnxRuntimeException);
 }
 
-// `max_iter` flows through the same SafeInt<size_t> path for the `h_sampled_all`
+// `max_iter` flows through the same helper for the `h_sampled_all`
 // allocation, so a negative value must also be rejected.
 TEST(SamplingStateArithmeticTest, ThrowsOnNegativeMaxIter) {
-  EXPECT_THROW(ComputeSampledAllCount(4, -1), OnnxRuntimeException);
+  EXPECT_THROW(SamplingBufferElementCount(4, -1), OnnxRuntimeException);
 }
 
 }  // namespace test
