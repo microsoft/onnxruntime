@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cmath>
+#include "core/common/safeint.h"
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/framework/op_node_proto_helper.h"
@@ -45,6 +46,8 @@ struct PoolAttributes {
     if (!info.GetAttrs("pads", pads).IsOK() || pads.empty()) {
       pads.resize(kernel_shape.size() * 2, 0);
     }
+    ORT_ENFORCE(pads.size() == kernel_shape.size() * 2,
+                "'pads' attribute must have a length of 2 * kernel_shape rank.");
 
     if (!info.GetAttrs("strides", strides).IsOK() || strides.empty()) {
       strides.resize(kernel_shape.size(), 1);
@@ -108,6 +111,9 @@ struct PoolAttributes {
                                   int64_t output_channel,
                                   TensorShapeVector* actual_pads,
                                   bool is_nhwc = false) const {
+    ORT_ENFORCE(input_shape.NumDimensions() >= 2,
+                "Input must have at least 2 dimensions (N, C, ...spatial). Got rank: ",
+                input_shape.NumDimensions());
     ORT_ENFORCE(input_shape.Size() > 0 || input_shape[0] == 0,
                 "Invalid input shape. Only N can be zero. Got:", input_shape);
     TensorShapeVector output_dims;
@@ -130,10 +136,13 @@ struct PoolAttributes {
     if (global_pooling) {
       output_dims->assign(input_dims.size() - 2, 1);
     } else {
+      ORT_ENFORCE(input_dims.size() - 2 == kernel_shape.size(),
+                  "kernel_shape rank must match the input spatial rank. Input spatial rank: ",
+                  input_dims.size() - 2, ", kernel_shape rank: ", kernel_shape.size());
       for (size_t dim = 0; dim < input_dims.size() - 2; ++dim) {
         int64_t dim_size = 0;
         auto spatial_dim = is_nhwc ? input_dims[dim + 1] : input_dims[dim + 2];
-        ComputeSizePadDilations(static_cast<int>(spatial_dim),
+        ComputeSizePadDilations(spatial_dim,
                                 strides[dim],
                                 kernel_shape[dim],
                                 &actual_pads->at(dim),
@@ -194,7 +203,7 @@ struct PoolAttributes {
                             int64_t pad_head,
                             int64_t pad_tail,
                             int64_t dilation) const {
-    int64_t numerator = in_size + pad_head + pad_tail - dilation * (kernel - 1) - 1;
+    int64_t numerator = SafeInt<int64_t>(in_size) + pad_head + pad_tail - SafeInt<int64_t>(dilation) * (kernel - 1) - 1;
     int64_t out_size = numerator / stride + 1;
 
     if (ceil_mode == 1) {
@@ -205,6 +214,8 @@ struct PoolAttributes {
         --out_size;
       }
     }
+    ORT_ENFORCE(out_size >= 0,
+                "Calculated output dimension is negative. Check kernel_shape, pads, strides and dilations.");
     return out_size;
   }
 #if defined(_MSC_VER) && !defined(__clang__)
