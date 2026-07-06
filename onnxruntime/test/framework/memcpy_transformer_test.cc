@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <functional>
 #include <iterator>
 
 #include "core/framework/execution_providers.h"
@@ -91,7 +92,33 @@ void ExpectCopy(const onnxruntime::Node& source, const std::string copy_op,
   EXPECT_TRUE(false) << "Copy node expected but not found";
 }
 
+static void RunMemcpyTransformerTestWithDeviceProvider(
+    const std::string& device_provider_type,
+    const std::function<std::unique_ptr<IExecutionProvider>()>& device_provider_factory,
+    const std::function<void(KernelRegistryManager&)>& register_provider_kernels = {});
+
 TEST(TransformerTest, MemcpyTransformerTestWithFakeDeviceProvider) {
+  auto fake_provider_factory = []() -> std::unique_ptr<IExecutionProvider> {
+    return std::make_unique<FakeDeviceExecutionProvider>();
+  };
+
+  auto register_fake_kernel = [](KernelRegistryManager& test_registry_manager) {
+    auto test_kernel_registry = std::make_shared<KernelRegistry>();
+    ASSERT_STATUS_OK(test_kernel_registry->Register(KernelCreateInfo(
+        KernelDefBuilder().SetName("MatMul").Provider(kFakeDeviceExecutionProvider).SinceVersion(1, 10).Build(),
+        [](FuncManager&, const OpKernelInfo&, std::unique_ptr<OpKernel>&) -> Status {
+          return Status::OK();
+        })));
+    test_registry_manager.RegisterKernelRegistry(test_kernel_registry);
+  };
+
+  RunMemcpyTransformerTestWithDeviceProvider(kFakeDeviceExecutionProvider, fake_provider_factory, register_fake_kernel);
+}
+
+static void RunMemcpyTransformerTestWithDeviceProvider(
+    const std::string& device_provider_type,
+    const std::function<std::unique_ptr<IExecutionProvider>()>& device_provider_factory,
+  const std::function<void(KernelRegistryManager&)>& register_provider_kernels) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = 7;
   auto model = std::make_shared<onnxruntime::Model>("test", false, ModelMetaData(), PathString(),
@@ -112,24 +139,21 @@ TEST(TransformerTest, MemcpyTransformerTestWithFakeDeviceProvider) {
   auto& node1 = graph.AddNode("node1", "MatMul", "cpu operator", ArgMap{&i1_def, &i2_def}, ArgMap{&o1_def});
   node1.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
   auto& node2 = graph.AddNode("node2", "MatMul", "fake device operator", ArgMap{&o1_def, &i3_def}, ArgMap{&o2_def});
-  node2.SetExecutionProviderType(kFakeDeviceExecutionProvider);
+  node2.SetExecutionProviderType(device_provider_type);
   auto& node3 = graph.AddNode("node3", "Clip", "cpu operator", ArgMap{&o2_def}, ArgMap{&o3_def});
   node3.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
 
   ASSERT_STATUS_OK(graph.Resolve());
 
   ExecutionProviders execution_providers;
-  ASSERT_STATUS_OK(execution_providers.Add(kFakeDeviceExecutionProvider,
-                                           std::make_unique<FakeDeviceExecutionProvider>()));
+  ASSERT_STATUS_OK(execution_providers.Add(device_provider_type, device_provider_factory()));
   ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCpuExecutionProvider, DefaultCpuExecutionProvider()));
   KernelRegistryManager test_registry_manager;
-  auto test_kernel_registry = std::make_shared<KernelRegistry>();
-  ASSERT_STATUS_OK(test_kernel_registry->Register(KernelCreateInfo(
-      KernelDefBuilder().SetName("MatMul").Provider(kFakeDeviceExecutionProvider).SinceVersion(1, 10).Build(),
-      [](FuncManager&, const OpKernelInfo&, std::unique_ptr<OpKernel>&) -> Status {
-        return Status::OK();
-      })));
-  test_registry_manager.RegisterKernelRegistry(test_kernel_registry);
+  if (register_provider_kernels) {
+    register_provider_kernels(test_registry_manager);
+  } else {
+    ASSERT_STATUS_OK(test_registry_manager.RegisterKernels(execution_providers));
+  }
 
   MemcpyTransformer transformer(GetNotNullProviderPtrs(execution_providers), test_registry_manager);
 
@@ -141,6 +165,14 @@ TEST(TransformerTest, MemcpyTransformerTestWithFakeDeviceProvider) {
   ExpectCopy(node1, "MemcpyFromHost", node2, 0);
   ExpectCopy(node2, "MemcpyToHost", node3, 0);
 }
+
+#ifdef USE_DML
+TEST(TransformerTest, MemcpyTransformerTestWithDmlProvider) {
+  RunMemcpyTransformerTestWithDeviceProvider(onnxruntime::kDmlExecutionProvider, []() {
+    return DefaultDmlExecutionProvider();
+  });
+}
+#endif
 
 #ifdef USE_CUDA
 
