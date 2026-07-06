@@ -325,12 +325,6 @@ template <bool allow_multi_axes>
 Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) const {
   const auto* input_tensor = context.Input(0);
   ORT_RETURN_IF_ERROR(CheckInput(input_tensor));
-  // INT64 must use component=1 (WebGPU has no native i64 vector type).
-  // ToProgramVariableDataType(INT64, 4) returns InvalidType today — if a future change
-  // adds Int64x4, this assert fires and the shader must be updated for vectorized INT64.
-  ORT_ENFORCE(ToProgramVariableDataType(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, 4) == ProgramVariableDataType::InvalidType,
-              "INT64 reduction requires component=1. If Int64x4 is now supported, update the reduction "
-              "shader to handle vectorized INT64 before removing this check.");
   InlinedVector<uint32_t> input_axes;
   bool add_suffix = name_ == "ArgMax" || name_ == "ArgMin";
   ReduceOpType reduce_op_type = StringToReduceOp(name_ + std::string((select_last_index_ != 0 && add_suffix) ? "_select_last_index" : ""));

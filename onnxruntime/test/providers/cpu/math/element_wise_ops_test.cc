@@ -5067,6 +5067,19 @@ TEST(MathOpTest, Sub_webgpu_int64) {
       .RunWithConfig();
 }
 
+// INT64 Sub with broadcast: A [1,3] broadcasts against B [2,3] -> output [2,3].
+TEST(MathOpTest, Sub_webgpu_int64_broadcast) {
+  OpTester test("Sub", 14);
+  test.AddInput<int64_t>("A", {1, 3}, {10, 20, 30});
+  test.AddInput<int64_t>("B", {2, 3}, {1, 2, 3, 4, 5, 6});
+  test.AddOutput<int64_t>("C", {2, 3}, {9, 18, 27, 6, 15, 24});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
 TEST(MathOpTest, Equal_webgpu_int64) {
   OpTester test("Equal", 13);
   test.AddInput<int64_t>("A", {5}, {1, 0, -1, -1, 3});
