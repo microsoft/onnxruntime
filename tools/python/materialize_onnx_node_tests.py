@@ -55,6 +55,7 @@ import os
 import re
 import shutil
 import sys
+import warnings
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -338,13 +339,29 @@ def _classify_tensor_diff(a_path: str, b_path: str) -> tuple[str, str]:
             # Bytes differ yet decoded arrays are equal -> the PROTO ENCODING
             # drifted (field order, raw_data vs typed field, default-value
             # elision). Byte-identity is the contract, so this is a real (Class B)
-            # failure, not tolerable numpy float skew.
-            return "B", "bytes differ but arrays equal (proto encoding drift)"
+            # failure, not tolerable numpy float skew. NOTE: a pure +0.0/-0.0
+            # flip lands here by design -- ``np.array_equal`` treats the zeros as
+            # equal while the bytes differ, so it is (correctly) a byte/proto
+            # drift, NOT tolerable skew. The signed-zero merging in
+            # ``_max_ulp_diff`` is for MIXED tensors (a co-occurring signed zero
+            # must not inflate the ULP of a genuine sub-band skew); it is not a
+            # claim that a pure sign-of-zero flip passes.
+            return "B", "bytes differ but arrays equal (proto encoding drift or signed-zero flip)"
         if not np.issubdtype(a.dtype, np.floating):
             return "B", "non-float tensor values differ (real regression)"
         with np.errstate(over="ignore", invalid="ignore"):
             ulp = _max_ulp_diff(a, b)
-        max_abs = float(np.nanmax(np.abs(a.astype(np.float64) - b.astype(np.float64))))
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)  # inf/NaN -> All-NaN slice is expected here
+                max_abs = float(np.nanmax(np.abs(a.astype(np.float64) - b.astype(np.float64))))
+        # A raw-bit ULP metric treats max-finite<->inf and inf<->NaN as adjacent
+        # (both are 1 ULP), so a STRUCTURAL finite->inf or inf->NaN output drift
+        # (max|d|=inf/nan) would otherwise be mis-blessed as a tolerable <=4-ULP
+        # numpy skew. A genuine numpy-gen skew never changes the finite/inf/NaN
+        # structure, so require the two arrays to share it -- and the max abs
+        # diff to be finite -- before Class A can apply.
+        if np.any(np.isfinite(a) != np.isfinite(b)) or np.any(np.isnan(a) != np.isnan(b)) or not np.isfinite(max_abs):
+            return "B", f"finite/inf/NaN structure differs (max|d|={max_abs:.3e}); real drift"
         if ulp <= _CLASS_A_MAX_ULP:
             return (
                 "A",
@@ -366,6 +383,19 @@ def _max_ulp_diff(a, b) -> int:
     ``-0.0`` vs ``+0.0`` reported 2**32 instead of 0). Keys are promoted to
     Python ints (object dtype) before subtraction so even float64 (64-bit) key
     distances cannot overflow.
+
+    The signed-zero merge matters for MIXED tensors: a co-occurring ``+0.0``/
+    ``-0.0`` element must not inflate the max ULP of an otherwise genuine
+    sub-band skew. It is NOT a claim that a pure signed-zero-only difference is
+    tolerated -- that case has no other diff, so ``_classify_tensor_diff``
+    catches it upstream via the byte-identity (``np.array_equal``) Class-B gate
+    before this metric is ever consulted.
+
+    NOTE: this raw-bit metric is intentionally NOT finite-aware -- max-finite
+    and ``inf`` (and ``inf`` and the adjacent ``NaN`` bit pattern) are 1 ULP
+    apart here. The caller (``_classify_tensor_diff``) rejects any finite/inf/NaN
+    structural mismatch BEFORE applying the Class-A ULP band, so a finite->inf or
+    inf->NaN drift can never be mis-accepted despite its small raw-bit distance.
 
     float16/float32/float64 are handled exactly. Other float kinds (e.g.
     ml_dtypes bfloat16) have no matching fixed-width unsigned view here; the
