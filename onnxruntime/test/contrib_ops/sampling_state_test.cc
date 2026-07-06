@@ -64,9 +64,11 @@ TEST(SamplingStateArithmeticTest, ThrowsOnNegativeMaxIter) {
 // return the correct non-wrapped product. Reverting the production code to
 // `int * int` (or `static_cast<size_t>(int_product)`) fails this test.
 TEST(SamplingStateArithmeticTest, ReturnsCorrectProductWhenIntMultiplyWouldOverflow) {
-  // 100000 * 100000 = 1e10, which exceeds INT_MAX (~2.147e9) and would
-  // signed-overflow if computed in `int`.
-  constexpr int large_operand = 100000;
+  // 50000 * 50000 = 2.5e9, which exceeds INT_MAX (~2.147e9) and would
+  // signed-overflow if computed in `int`, but still fits in a 32-bit
+  // `size_t` so the test is portable to 32-bit Windows builds where
+  // `size_t` is 32-bit (SIZE_MAX ~ 4.29e9).
+  constexpr int large_operand = 50000;
   const size_t expected = static_cast<size_t>(large_operand) * static_cast<size_t>(large_operand);
   EXPECT_EQ(SamplingBufferElementCount(large_operand, large_operand), expected);
 }
