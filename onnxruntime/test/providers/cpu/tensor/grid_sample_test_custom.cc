@@ -663,6 +663,31 @@ TEST(GridSampleCudaHardeningTest, bilinear_reflection_infinity_coords) {
   RunCpuAndCuda(test);
 }
 
+TEST(GridSampleCudaHardeningTest, bilinear_border_nan_inf_extreme_coords) {
+  // CUDA bilinear border path: coordinate sanitization keeps the floor(...) cast
+  // well-defined before PixelAtGrid clamps border-padding samples into range.
+  OpTester test("GridSample", 20);
+  test.AddAttribute("mode", std::string("linear"));
+  test.AddAttribute("padding_mode", std::string("border"));
+  test.AddAttribute("align_corners", int64_t{0});
+
+  std::initializer_list<int64_t> X_shape{1, 1, 2, 2};
+  std::initializer_list<float> X_data{1.0f, 1.0f, 1.0f, 1.0f};
+
+  std::initializer_list<int64_t> Grid_shape{1, 1, 3, 2};
+  std::initializer_list<float> Grid_data{
+      std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::quiet_NaN(),
+      std::numeric_limits<float>::infinity(), -std::numeric_limits<float>::infinity(),
+      1.0e+20f, -1.0e+20f};
+
+  std::initializer_list<int64_t> Y_shape{1, 1, 1, 3};
+
+  test.AddInput<float>("X", X_shape, X_data);
+  test.AddInput<float>("Grid", Grid_shape, Grid_data);
+  test.AddOutput<float>("Y", Y_shape, {1.0f, 1.0f, 1.0f});
+  RunCpuAndCuda(test);
+}
+
 TEST(GridSampleCudaHardeningTest, bilinear_zeros_nan_inf_extreme_coords) {
   // Zeros padding: the CUDA kernel's IsSafeForInt64Conversion sanitization substitutes the
   // lower border (-0.5) for NaN/Inf/extreme coordinates before the floor cast. Only the
