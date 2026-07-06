@@ -2136,11 +2136,12 @@ TEST(PoolTest, MaxPool_DilationsLengthMismatch) {
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
 }
 
-// Verify that a low-rank input is rejected before pooling. The SetOutputSize F5 guard
+// Verify that a low-rank input is rejected before pooling. The rank check in SetOutputSize
 // (NumDimensions >= 2) is defense-in-depth for execution providers and direct callers, but the CPU
-// pooling kernels reject inputs with rank < 3 earlier in Compute, so this test pins that earlier
-// guard's message. AddShapeToTensorData(false) bypasses shape inference so the rank-2 input reaches
-// the kernel. Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML).
+// pooling kernels reject inputs with rank < 3 earlier in Compute, so the tested path fires that
+// earlier guard and this test pins its message ("Input dimension cannot be less than 3").
+// AddShapeToTensorData(false) bypasses shape inference so the rank-2 input reaches the kernel.
+// Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML).
 TEST(PoolTest, MaxPool_InputRankTooLow) {
   OpTester test("MaxPool");
   test.AddShapeToTensorData(false);

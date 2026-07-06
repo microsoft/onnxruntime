@@ -136,7 +136,9 @@ struct PoolAttributes {
                        TensorShapeVector* output_dims,
                        TensorShapeVector* actual_pads,
                        bool is_nhwc = false) const {
-    ORT_ENFORCE(input_dims.size() >= 2);
+    ORT_ENFORCE(input_dims.size() >= 2,
+                "Input must have at least 2 dimensions (batch and channel) before the spatial dims. "
+                "Got rank: ", input_dims.size());
     if (global_pooling) {
       output_dims->assign(input_dims.size() - 2, 1);
     } else {
@@ -210,7 +212,9 @@ struct PoolAttributes {
                             int64_t pad_head,
                             int64_t pad_tail,
                             int64_t dilation) const {
-    // SafeInt guards against int64 overflow in the output-size arithmetic.
+    // SafeInt wraps the residual output-size arithmetic below (the numerator terms and the +1 /
+    // ceil-mode add and subtract) to catch int64 overflow. It does not cover the auto_pad SAME_*
+    // padding math in the caller or the numerator / stride division.
     int64_t numerator = SafeInt<int64_t>(in_size) + pad_head + pad_tail - SafeInt<int64_t>(dilation) * (kernel - 1) - 1;
     int64_t out_size = static_cast<int64_t>(SafeInt<int64_t>(numerator / stride) + 1);
 
