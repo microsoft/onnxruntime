@@ -25,6 +25,13 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.vec_size");
 
+  if (is_int64_input_ || is_int64_output_) {
+    // INT64 input or output (component=1): declare shared base and element_count for use in the shader.
+    shader.MainFunctionBody()
+        << "let base = global_idx * 4u;\n"
+        << "let element_count = uniforms.element_count;\n";
+  }
+
   // check whether can use element-wise mode.
   // If either A or B is scalar, or A and B have the same shape, element-wise mode can be used.
   // In element-wise mode, no indices calculation is needed.
@@ -39,15 +46,13 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
         return is_rhs_scalar_ ? b.GetByOffset("0") : b.GetByOffset(idx);
       };
       shader.MainFunctionBody()
-          << "let base = global_idx * 4u;\n"
-          << "let n = uniforms.element_count;\n"
           << "var a0 = " << a_offset("base") << ";\n"
           << "var b0 = " << b_offset("base") << ";\n"
           << "var a1 = input_a_value_t(0); var a2 = input_a_value_t(0); var a3 = input_a_value_t(0);\n"
           << "var b1 = input_b_value_t(0); var b2 = input_b_value_t(0); var b3 = input_b_value_t(0);\n"
-          << "if (base + 1u < n) { a1 = " << a_offset("base + 1u") << "; b1 = " << b_offset("base + 1u") << "; }\n"
-          << "if (base + 2u < n) { a2 = " << a_offset("base + 2u") << "; b2 = " << b_offset("base + 2u") << "; }\n"
-          << "if (base + 3u < n) { a3 = " << a_offset("base + 3u") << "; b3 = " << b_offset("base + 3u") << "; }\n"
+          << "if (base + 1u < element_count) { a1 = " << a_offset("base + 1u") << "; b1 = " << b_offset("base + 1u") << "; }\n"
+          << "if (base + 2u < element_count) { a2 = " << a_offset("base + 2u") << "; b2 = " << b_offset("base + 2u") << "; }\n"
+          << "if (base + 3u < element_count) { a3 = " << a_offset("base + 3u") << "; b3 = " << b_offset("base + 3u") << "; }\n"
           << "let a = vec4<input_a_value_t>(a0, a1, a2, a3);\n"
           << "let b = vec4<input_b_value_t>(b0, b1, b2, b3);\n";
     } else {
@@ -146,11 +151,10 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
     // INT64 output (component=1): write each component of the vec4 result individually.
     shader.MainFunctionBody()
         << "let result = " << expression_ << ";\n"
-        << "let output_size = uniforms.element_count;\n"
-        << c.SetByOffset("global_idx * 4u", "result[0]") << "\n"
-        << "if (global_idx * 4u + 1u < output_size) { " << c.SetByOffset("global_idx * 4u + 1u", "result[1]") << " }\n"
-        << "if (global_idx * 4u + 2u < output_size) { " << c.SetByOffset("global_idx * 4u + 2u", "result[2]") << " }\n"
-        << "if (global_idx * 4u + 3u < output_size) { " << c.SetByOffset("global_idx * 4u + 3u", "result[3]") << " }\n";
+        << c.SetByOffset("base", "result[0]") << "\n"
+        << "if (base + 1u < element_count) { " << c.SetByOffset("base + 1u", "result[1]") << " }\n"
+        << "if (base + 2u < element_count) { " << c.SetByOffset("base + 2u", "result[2]") << " }\n"
+        << "if (base + 3u < element_count) { " << c.SetByOffset("base + 3u", "result[3]") << " }\n";
   } else {
     shader.MainFunctionBody() << c.SetByOffset("global_idx", expression_);
   }
