@@ -123,16 +123,11 @@ Status CheckInputs(const T* input,
       head_size = effective_rotary_dim;
     }
 
-    // Rotary embedding is applied per head, so the inferred dimension must not exceed head_size.
-    if (head_size > 0 && effective_rotary_dim > head_size) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "RotaryEmbedding: cos_cache dimension (", cache_width,
-                             " * 2 = ", effective_rotary_dim,
-                             ") exceeds head_size (", head_size,
-                             ") when rotary_embedding_dim is 0");
-    }
-
-    // Also guard against exceeding the full hidden_size (covers num_heads==0 / rank-3 without num_heads).
+    // Guard against a cos_cache large enough to read past the end of the input (covers the
+    // num_heads == 0 / rank-3 without num_heads path, where head_size is inferred from the cache
+    // and the exact-width check below cannot catch a mismatch because head_size == effective_rotary_dim
+    // by construction). When num_heads > 0 / rank-4, the exact-width check below already rejects any
+    // oversized cache with a more actionable message.
     if (hidden_size > 0 && effective_rotary_dim > hidden_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "RotaryEmbedding: cos_cache dimension (", cache_width,
