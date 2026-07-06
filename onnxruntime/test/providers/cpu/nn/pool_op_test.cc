@@ -2158,6 +2158,29 @@ TEST(PoolTest, MaxPool_InputRankTooLow) {
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
 }
 
+// Verify that a MaxPool 'storage_order' outside the valid set {0, 1} is rejected by the
+// PoolAttributes constructor. storage_order was introduced in MaxPool opset 8, so target that
+// version. AddShapeToTensorData(false) bypasses shape inference so the model reaches kernel
+// construction where the ORT_ENFORCE fires. Exclude compiling EPs (TRT, QNN) and EPs with their
+// own validation (DML) that produce different error messages.
+TEST(PoolTest, MaxPool_InvalidStorageOrder) {
+  OpTester test("MaxPool", 8);
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+  test.AddAttribute("storage_order", static_cast<int64_t>(2));
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "storage_order must be 0",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
 // DML EP validates stride/dilation in OperatorHelper.cpp (KernelHelper constructor) via
 // ML_CHECK_VALID_ARGUMENT_MSG, but the descriptive message is lost when the exception crosses
 // the COM/HRESULT boundary (CATCH_RETURN strips the message, THROW_IF_FAILED re-throws with

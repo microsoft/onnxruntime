@@ -75,6 +75,8 @@ struct PoolAttributes {
     if (op_name == "MaxPool") {
       if (start_version >= 8) {
         ORT_ENFORCE(info.GetAttr("storage_order", &storage_order).IsOK());
+        ORT_ENFORCE(storage_order == 0 || storage_order == 1,
+                    "storage_order must be 0 (row-major) or 1 (column-major). Got: ", storage_order);
       }
     }
 
@@ -164,6 +166,9 @@ struct PoolAttributes {
                                int64_t dilation,
                                int64_t* out_size) const {
     if (auto_pad != AutoPadType::NOTSET) {
+      // TODO: Per the ONNX spec, auto_pad and explicit pads are mutually exclusive. ORT currently
+      // accepts both and overwrites any explicit pads below when auto_pad is set, rather than
+      // rejecting the model, to preserve backward compatibility with existing models.
       switch (auto_pad) {
         case AutoPadType::VALID:
           *pad_head = 0;
