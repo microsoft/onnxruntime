@@ -36,8 +36,6 @@ Abstract:
 #include "core/mlas/lib/mlasi.h"
 #include "core/mlas/lib/sqnbitgemm_kernel_avx512_2bit.h"
 
-#if defined(MLAS_TARGET_AMD64)
-
 namespace {
 
 namespace sq2 = onnxruntime::mlas::sq2bit_avx512;
@@ -159,9 +157,9 @@ using W2KernelFn = size_t(MLASCALL*)(
     const std::byte*, float*, size_t, size_t, size_t, size_t,
     const float*, size_t, const float*, const float*);
 
-void RunW2Case(size_t M, size_t N, size_t K, bool WithBias, uint32_t seed,
-               bool WithZeroPoints, W2KernelFn kernel,
-               const char* kernel_name) {
+[[maybe_unused]] void RunW2Case(size_t M, size_t N, size_t K, bool WithBias, uint32_t seed,
+                                bool WithZeroPoints, W2KernelFn kernel,
+                                const char* kernel_name) {
   const size_t BlockCountK = (K + kBlkLen - 1) / kBlkLen;
   ASSERT_EQ(K % kBlkLen, 0u) << "Test K must be a multiple of BlkLen=64";
   // BlockCountK no longer required to be a multiple of kBlockGroupBlks --
@@ -302,6 +300,8 @@ void RunW2Case(size_t M, size_t N, size_t K, bool WithBias, uint32_t seed,
 
 }  // namespace
 
+#if defined(MLAS_TARGET_AMD64)
+
 //
 // Scalar block-group test, no zero-points. Covers the same small synthetic
 // shapes + representative prefill sizes used by the production W2 tests. All
@@ -393,6 +393,8 @@ TEST(MlasSq2BitTest, Scalar_BlkLen64_WithZeroPoints) {
   }
 }
 
+#endif  // defined(MLAS_TARGET_AMD64) -- kSimdShapes itself is cross-arch (also used by the ARM64 NEON DotProd W2 tests further down)
+
 //
 // SIMD block-group shape coverage. Phase-3+K-tail kernel requires:
 //   * BlkLen == 64
@@ -416,7 +418,7 @@ TEST(MlasSq2BitTest, Scalar_BlkLen64_WithZeroPoints) {
 // the right packed-B address regardless of K % 4. K=384 and the
 // synthetic K=320, K=448 shapes exercise this path.
 //
-constexpr struct {
+[[maybe_unused]] constexpr struct {
   size_t M, N, K;
 } kSimdShapes[] = {
     {1, 16, 256},     // R1 only
@@ -469,7 +471,25 @@ constexpr struct {
     {1, 17, 384},
     {4, 33, 384},
     {128, 19, 448},
+    // R*xC4 tile coverage (CountN % 8 in [4..7]). The per-BlkLen NEON tile
+    // dispatcher splits CountN into NMain8 + NMain4 + NTail; without these
+    // shapes the NMain4 region (R1xC4 / R2xC4 tiles) is never exercised.
+    // M={1,2,3} covers M-tail-only / M-pair-only / mixed M-pair+M-tail.
+    {1, 4, 256},   // R1xC4 only
+    {2, 4, 256},   // R2xC4 only
+    {3, 4, 256},   // R2xC4 + R1xC4
+    {1, 5, 256},   // R1xC4 + R1xC1
+    {2, 5, 256},   // R2xC4 + R2xC1
+    {3, 5, 256},   // R2xC4 + R2xC1 + R1xC4 + R1xC1
+    {1, 12, 256},  // R1xC8 + R1xC4
+    {2, 12, 256},  // R2xC8 + R2xC4
+    {3, 12, 256},  // R2xC8 + R2xC4 + R1xC8 + R1xC4
+    {1, 13, 256},  // R1xC8 + R1xC4 + R1xC1
+    {3, 13, 256},  // ALL 6 tiles (R2xC8 + R2xC4 + R2xC1 + R1xC8 + R1xC4 + R1xC1)
+    {3, 21, 384},  // ALL 6 tiles + K-tail
 };
+
+#if defined(MLAS_TARGET_AMD64)
 
 //
 // AVX-512BW (non-VNNI) SIMD block-group kernel.
@@ -542,10 +562,15 @@ TEST(MlasSq2BitTest, BlkLen64_Avx512Vnni_WithZeroPoints) {
   }
 }
 
+#endif  // defined(MLAS_TARGET_AMD64)
+
 // =============================================================================
 // BlkLen=128 coverage. Mirrors the BlkLen=64 tests above. The helpers are
 // duplicated rather than templated to keep the BlkLen=64 path bit-identical;
 // the diff is purely additive.
+//
+// The helper namespace is intentionally cross-arch (not under MLAS_TARGET_AMD64)
+// so the ARM64 NEON DotProd tests in this file can reuse RunW2Case_BlkLen128.
 // =============================================================================
 
 namespace {
@@ -624,9 +649,9 @@ void ReferenceGemm_W2_CompInt8_BlkLen128(size_t M, size_t N, size_t K,
   }
 }
 
-void RunW2Case_BlkLen128(size_t M, size_t N, size_t K, bool WithBias, uint32_t seed,
-                         bool WithZeroPoints, W2KernelFn kernel,
-                         const char* kernel_name) {
+[[maybe_unused]] void RunW2Case_BlkLen128(size_t M, size_t N, size_t K, bool WithBias, uint32_t seed,
+                                          bool WithZeroPoints, W2KernelFn kernel,
+                                          const char* kernel_name) {
   const size_t BlockCountK = (K + kBlkLen128 - 1) / kBlkLen128;
   ASSERT_EQ(K % kBlkLen128, 0u) << "BlkLen128 test K must be a multiple of 128";
 
@@ -761,13 +786,17 @@ void RunW2Case_BlkLen128(size_t M, size_t N, size_t K, bool WithBias, uint32_t s
 //   * BlockCountK in {1, 2, 3, 4, 8, 16, 32} -- full + K-tail variants
 //   * N-tail (NMain=0 and various NTail) combined with K-tail
 //
-constexpr struct {
+[[maybe_unused]] constexpr struct {
   size_t M, N, K;
 } kSimdShapes_BlkLen128[] = {
     {1, 16, 128},     // R1, BlockCountK=1
     {1, 32, 256},     // R1, BlockCountK=2 (K-tail, no full group)
     {1, 1024, 1024},  // R1, BlockCountK=8
     {1, 1024, 4096},  // R1, BlockCountK=32 (representative N)
+    // K < BlkLen coverage lives at the operator layer
+    // (MatMul2Bits.Float32_2b_BlkLen128_Accuracy4), which goes through the
+    // quantizer's K-pad-up path. This direct-kernel runner intentionally
+    // enforces K % BlkLen == 0.
     {2, 16, 128},
     {2, 32, 256},
     {2, 64, 512},  // BlockCountK=4 (one full group)
@@ -807,9 +836,27 @@ constexpr struct {
     {1, 17, 384},
     {4, 33, 384},
     {128, 19, 640},
+    // R*xC4 tile coverage (CountN % 8 in [4..7]). The per-BlkLen NEON tile
+    // dispatcher splits CountN into NMain8 + NMain4 + NTail; without these
+    // shapes the NMain4 region (R1xC4 / R2xC4 tiles) is never exercised.
+    // M={1,2,3} covers M-tail-only / M-pair-only / mixed M-pair+M-tail.
+    {1, 4, 256},   // R1xC4 only
+    {2, 4, 256},   // R2xC4 only
+    {3, 4, 256},   // R2xC4 + R1xC4
+    {1, 5, 256},   // R1xC4 + R1xC1
+    {2, 5, 256},   // R2xC4 + R2xC1
+    {3, 5, 256},   // R2xC4 + R2xC1 + R1xC4 + R1xC1
+    {1, 12, 256},  // R1xC8 + R1xC4
+    {2, 12, 256},  // R2xC8 + R2xC4
+    {3, 12, 256},  // R2xC8 + R2xC4 + R1xC8 + R1xC4
+    {1, 13, 256},  // R1xC8 + R1xC4 + R1xC1
+    {3, 13, 256},  // ALL 6 tiles (R2xC8 + R2xC4 + R2xC1 + R1xC8 + R1xC4 + R1xC1)
+    {3, 21, 384},  // ALL 6 tiles + K-tail
 };
 
 }  // namespace
+
+#if defined(MLAS_TARGET_AMD64)
 
 TEST(MlasSq2BitTest, Scalar_BlkLen128) {
   if (!GetMlasPlatform().Avx512Supported_) {
@@ -907,10 +954,15 @@ TEST(MlasSq2BitTest, BlkLen128_Avx512Vnni_WithZeroPoints) {
   }
 }
 
+#endif  // defined(MLAS_TARGET_AMD64)
+
 // =============================================================================
 // BlkLen=32 coverage. Mirrors BlkLen=128 above with per-block byte width 8
 // and per-group bytes 32. Helpers duplicated (rather than templated) to keep
 // the BlkLen=64 hot path bit-identical.
+//
+// The helper namespace is intentionally cross-arch (not under MLAS_TARGET_AMD64)
+// so the ARM64 NEON DotProd tests in this file can reuse RunW2Case_BlkLen32.
 // =============================================================================
 
 namespace {
@@ -989,9 +1041,9 @@ void ReferenceGemm_W2_CompInt8_BlkLen32(size_t M, size_t N, size_t K,
   }
 }
 
-void RunW2Case_BlkLen32(size_t M, size_t N, size_t K, bool WithBias, uint32_t seed,
-                        bool WithZeroPoints, W2KernelFn kernel,
-                        const char* kernel_name) {
+[[maybe_unused]] void RunW2Case_BlkLen32(size_t M, size_t N, size_t K, bool WithBias, uint32_t seed,
+                                         bool WithZeroPoints, W2KernelFn kernel,
+                                         const char* kernel_name) {
   const size_t BlockCountK = (K + kBlkLen32 - 1) / kBlkLen32;
   ASSERT_EQ(K % kBlkLen32, 0u) << "BlkLen32 test K must be a multiple of 32";
 
@@ -1121,7 +1173,7 @@ void RunW2Case_BlkLen32(size_t M, size_t N, size_t K, bool WithBias, uint32_t se
 // K-shape constraint: K multiple of 32 (BlkLen=32). Covers BlockCountK in
 // {1, 2, 3, 4, 8, 16, 32, 64} -- both K-tail variants (BlockCountK not a
 // multiple of 4) and exact block-group multiples.
-constexpr struct {
+[[maybe_unused]] constexpr struct {
   size_t M, N, K;
 } kSimdShapes_BlkLen32[] = {
     {1, 16, 32},      // R1, BlockCountK=1
@@ -1167,9 +1219,27 @@ constexpr struct {
     {1, 17, 96},
     {4, 33, 96},
     {128, 19, 160},
+    // R*xC4 tile coverage (CountN % 8 in [4..7]). The per-BlkLen NEON tile
+    // dispatcher splits CountN into NMain8 + NMain4 + NTail; without these
+    // shapes the NMain4 region (R1xC4 / R2xC4 tiles) is never exercised.
+    // M={1,2,3} covers M-tail-only / M-pair-only / mixed M-pair+M-tail.
+    {1, 4, 128},   // R1xC4 only
+    {2, 4, 128},   // R2xC4 only
+    {3, 4, 128},   // R2xC4 + R1xC4
+    {1, 5, 128},   // R1xC4 + R1xC1
+    {2, 5, 128},   // R2xC4 + R2xC1
+    {3, 5, 128},   // R2xC4 + R2xC1 + R1xC4 + R1xC1
+    {1, 12, 128},  // R1xC8 + R1xC4
+    {2, 12, 128},  // R2xC8 + R2xC4
+    {3, 12, 128},  // R2xC8 + R2xC4 + R1xC8 + R1xC4
+    {1, 13, 128},  // R1xC8 + R1xC4 + R1xC1
+    {3, 13, 128},  // ALL 6 tiles (R2xC8 + R2xC4 + R2xC1 + R1xC8 + R1xC4 + R1xC1)
+    {3, 21, 160},  // ALL 6 tiles + K-tail
 };
 
 }  // namespace
+
+#if defined(MLAS_TARGET_AMD64)
 
 TEST(MlasSq2BitTest, Scalar_BlkLen32) {
   if (!GetMlasPlatform().Avx512Supported_) {
@@ -1267,6 +1337,133 @@ TEST(MlasSq2BitTest, BlkLen32_Avx512Vnni_WithZeroPoints) {
   }
 }
 
+#endif  // defined(MLAS_TARGET_AMD64)
+
+#if defined(MLAS_TARGET_ARM64)
+
+#include "core/mlas/lib/qnbitgemm_kernel_neon.h"
+
+//
+// W2 NEON DotProd kernel direct-call tests. Mirror the AVX-512 layout
+// above: BlkLen 64 / 128 / 32, each with a no-zero-points and a
+// with-zero-points variant, all driven from the shared kSimdShapes*
+// shape tables and the cross-arch RunW2Case* helpers (which build the
+// packed B and quantized A in the layout the kernel expects).
+//
+// End-to-end coverage through MlasQNBitGemmBatch is provided by the
+// MatMulNBits operator tests; this file only verifies the inner kernel.
+//
+// Skipped on ARM64 hosts that lack FEAT_DotProd -- the NEON DotProd
+// kernel emits SDOT instructions and would SIGILL on a pre-armv8.2 core.
+//
+
+//
+// NEON DotProd SIMD block-group kernel, BlkLen=64.
+//
+TEST(MlasSq2BitTest, BlkLen64_NeonDotProd) {
+  if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
+    GTEST_SKIP() << "ARM NEON FEAT_DotProd not available on this host";
+  }
+  for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+    for (const auto& s : kSimdShapes) {
+      for (bool bias : {false, true}) {
+        RunW2Case(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                  /*WithZeroPoints=*/false,
+                  sqnbitgemm_neon::SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd,
+                  "NEON-DotProd");
+      }
+    }
+  }
+}
+
+TEST(MlasSq2BitTest, BlkLen64_NeonDotProd_WithZeroPoints) {
+  if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
+    GTEST_SKIP() << "ARM NEON FEAT_DotProd not available on this host";
+  }
+  for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+    for (const auto& s : kSimdShapes) {
+      for (bool bias : {false, true}) {
+        RunW2Case(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                  /*WithZeroPoints=*/true,
+                  sqnbitgemm_neon::SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd,
+                  "NEON-DotProd");
+      }
+    }
+  }
+}
+
+//
+// NEON DotProd SIMD block-group kernel, BlkLen=128.
+//
+TEST(MlasSq2BitTest, BlkLen128_NeonDotProd) {
+  if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
+    GTEST_SKIP() << "ARM NEON FEAT_DotProd not available on this host";
+  }
+  for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+    for (const auto& s : kSimdShapes_BlkLen128) {
+      for (bool bias : {false, true}) {
+        RunW2Case_BlkLen128(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                            /*WithZeroPoints=*/false,
+                            sqnbitgemm_neon::SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd,
+                            "NEON-DotProd");
+      }
+    }
+  }
+}
+
+TEST(MlasSq2BitTest, BlkLen128_NeonDotProd_WithZeroPoints) {
+  if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
+    GTEST_SKIP() << "ARM NEON FEAT_DotProd not available on this host";
+  }
+  for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+    for (const auto& s : kSimdShapes_BlkLen128) {
+      for (bool bias : {false, true}) {
+        RunW2Case_BlkLen128(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                            /*WithZeroPoints=*/true,
+                            sqnbitgemm_neon::SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd,
+                            "NEON-DotProd");
+      }
+    }
+  }
+}
+
+//
+// NEON DotProd SIMD block-group kernel, BlkLen=32.
+//
+TEST(MlasSq2BitTest, BlkLen32_NeonDotProd) {
+  if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
+    GTEST_SKIP() << "ARM NEON FEAT_DotProd not available on this host";
+  }
+  for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+    for (const auto& s : kSimdShapes_BlkLen32) {
+      for (bool bias : {false, true}) {
+        RunW2Case_BlkLen32(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                           /*WithZeroPoints=*/false,
+                           sqnbitgemm_neon::SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd,
+                           "NEON-DotProd");
+      }
+    }
+  }
+}
+
+TEST(MlasSq2BitTest, BlkLen32_NeonDotProd_WithZeroPoints) {
+  if (!MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot()) {
+    GTEST_SKIP() << "ARM NEON FEAT_DotProd not available on this host";
+  }
+  for (uint32_t seed : {0xC0FFEEu, 0xBADC0DEu}) {
+    for (const auto& s : kSimdShapes_BlkLen32) {
+      for (bool bias : {false, true}) {
+        RunW2Case_BlkLen32(s.M, s.N, s.K, bias, seed + (bias ? 1u : 0u),
+                           /*WithZeroPoints=*/true,
+                           sqnbitgemm_neon::SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd,
+                           "NEON-DotProd");
+      }
+    }
+  }
+}
+
+#endif  // defined(MLAS_TARGET_ARM64)
+
 //
 // Availability contract test for W2 + SQNBIT_CompInt8.
 //
@@ -1277,9 +1474,18 @@ TEST(MlasSq2BitTest, BlkLen32_Avx512Vnni_WithZeroPoints) {
 // availability return true for shapes that Q2BitGemmPackQuantBDataSize_Avx512
 // would refuse to size (returning 0).
 //
+// The contract is platform-agnostic: it must hold wherever a W2 dispatch is
+// installed (AVX-512 on x86_64, NEON+DotProd or i8mm on ARM64). We skip on
+// hosts where no W2 dispatch is wired in (e.g. pure-NEON-only ARM, or x86
+// without AVX-512) -- there is nothing to assert about a feature that is
+// uniformly unavailable.
+//
 TEST(MlasSq2BitTest, AvailabilityContract_BlkLens) {
-  if (!GetMlasPlatform().Avx512Supported_) {
-    GTEST_SKIP() << "W2 native dispatch is AVX-512-only on x86_64";
+  // Probe a representative supported BlkLen to detect whether ANY W2 dispatch
+  // is installed on this host. This mirrors the dispatch-pointer-identity
+  // guard pattern that the W4/W8 tests use.
+  if (!MlasIsQNBitGemmAvailable(2, 64, SQNBIT_CompInt8)) {
+    GTEST_SKIP() << "No W2 native dispatch on this host";
   }
 
   // Supported BlkLens.
@@ -1295,5 +1501,3 @@ TEST(MlasSq2BitTest, AvailabilityContract_BlkLens) {
   EXPECT_FALSE(MlasIsQNBitGemmAvailable(2, 64, SQNBIT_CompFp32));
   EXPECT_FALSE(MlasIsQNBitGemmAvailable(2, 64, HQNBIT_CompFp16));
 }
-
-#endif  // defined(MLAS_TARGET_AMD64)

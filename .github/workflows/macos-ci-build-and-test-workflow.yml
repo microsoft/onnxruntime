@@ -70,8 +70,9 @@ jobs:
         --config ${{ matrix.build_config }}
         --osx_arch ${{ matrix.target }}
 
-      # xCode version needs to match the "runs-on" configuration.
-      xcode_version: '16'
+      # A matrix entry may override the Xcode version via "xcode_version"; otherwise fall back to the default.
+      # The Xcode version needs to be present on the image specified in the "runs-on" configuration.
+      xcode_version: ${{ matrix.xcode_version || '26.3' }}
 
     steps:
       - name: Checkout code

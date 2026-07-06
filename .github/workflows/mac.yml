@@ -23,10 +23,12 @@ jobs:
     uses: ./.github/workflows/macos-ci-build-and-test-workflow.yml
     with:
       # Only build arm64 for CPU
+      # Also run a Release build on Xcode 16 for legacy-toolchain coverage.
       matrix_include: >-
         [
           {"machine": "arm64", "target": "arm64", "build_config": "Debug"},
-          {"machine": "arm64", "target": "arm64", "build_config": "Release"}
+          {"machine": "arm64", "target": "arm64", "build_config": "Release"},
+          {"machine": "arm64", "target": "arm64", "build_config": "Release", "xcode_version": "16"}
         ]
       python_version: "3.14"
 
@@ -69,8 +71,8 @@ jobs:
     runs-on: macos-15
 
     env:
-      xcode_version: 16.4
-      simulator_runtime_version: 18.5
+      xcode_version: 26.3
+      simulator_runtime_version: 26.2
 
     strategy:
       matrix:

@@ -2002,11 +2002,21 @@ ONNX_MS_OPERATOR_SET_SCHEMA(ExpandDims, 1,
                                   const ONNX_NAMESPACE::TensorProto* axis_initializer = ctx.getInputData(1);
                                   if (!axis_initializer)
                                     return;
-                                  const int axis = axis_initializer->int32_data()[0];
+                                  // Read the scalar axis robustly. ParseScalar handles both raw_data and
+                                  // int32_data encodings and validates the element count, avoiding an
+                                  // out-of-bounds read when the value is stored as raw_data. A present but
+                                  // malformed initializer (wrong element type or not a single scalar) is a
+                                  // model error, so fail shape inference rather than silently skipping it.
+                                  int axis = 0;
+                                  if (!ParseScalar(axis_initializer, axis)) {
+                                    fail_shape_inference("Input axis must be a single int32 scalar initializer");
+                                  }
                                   if (axis > rank || axis < -rank - 1) {
                                     fail_shape_inference("Input axis is invalid: ", axis);
                                   }
-                                  int pos = axis >= 0 ? axis : rank + axis - 1;
+                                  // The output has rank + 1 dimensions, so a negative axis is normalized
+                                  // against the output rank: pos = axis + (rank + 1).
+                                  int pos = axis >= 0 ? axis : rank + axis + 1;
                                   ONNX_NAMESPACE::TensorShapeProto output_shape;
                                   for (int i = 0; i < pos; ++i) {
                                     output_shape.add_dim();

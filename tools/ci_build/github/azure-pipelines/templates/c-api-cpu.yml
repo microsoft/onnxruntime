@@ -102,6 +102,9 @@ stages:
 
 - stage: iOS_Full_xcframework
   dependsOn: []
+  variables:
+    xcodeVersion: "26.3"
+    iosSimulatorRuntimeVersion: "26.2"
   jobs:
   - job: iOS_Full_xcframework
     workspace:
@@ -118,7 +121,7 @@ stages:
 
     - template: use-xcode-version.yml
       parameters:
-        xcodeVersion: 16.4
+        xcodeVersion: ${{ variables.xcodeVersion }}
 
     - template: setup-build-tools.yml
       parameters:
@@ -129,25 +132,82 @@ stages:
         python3 tools/ci_build/github/apple/build_apple_framework.py \
           --build_dir "$(Build.BinariesDirectory)/ios_framework" \
           tools/ci_build/github/apple/default_full_ios_framework_build_settings.json
-        mkdir $(Build.BinariesDirectory)/artifacts
-        pushd $(Build.BinariesDirectory)/ios_framework/framework_out
-        zip -vry $(Build.BinariesDirectory)/artifacts/onnxruntime_ios_xcframework.$(OnnxRuntimeVersion).zip \
-          onnxruntime.xcframework
-        popd
       displayName: "Build Apple xcframework"
 
     - script: |
-        python3 tools/ci_build/github/apple/test_apple_packages.py \
-          --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
-          --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
-          --skip_macos_test \
-          --mac_catalyst_enabled
-      displayName: "Test Apple framework"
+        set -e -x
+
+        # Stage onnxruntime.xcframework as artifact.
+        mkdir -p $(Build.BinariesDirectory)/artifacts/xcframework
+
+        pushd $(Build.BinariesDirectory)/ios_framework/framework_out
+        zip -vry $(Build.BinariesDirectory)/artifacts/xcframework/onnxruntime_ios_xcframework.$(OnnxRuntimeVersion).zip \
+          onnxruntime.xcframework
+        popd
+
+        # Stage framework_out and xcframework_info.json as test artifact.
+        # Note: framework_out has another copy of onnxruntime.xcframework. This duplication is simpler than
+        # reconstructing the test files from two separate pipeline artifacts.
+        mkdir -p $(Build.BinariesDirectory)/artifacts/test
+
+        pushd $(Build.BinariesDirectory)/ios_framework
+        zip -vry $(Build.BinariesDirectory)/artifacts/test/test_files.zip \
+          framework_out xcframework_info.json
+        popd
+      displayName: "Stage artifacts"
 
     - task: 1ES.PublishPipelineArtifact@1
       inputs:
-        targetPath: '$(Build.BinariesDirectory)/artifacts'
+        targetPath: '$(Build.BinariesDirectory)/artifacts/xcframework'
         artifactName: 'onnxruntime-ios-full-xcframework'
+
+    - task: 1ES.PublishPipelineArtifact@1
+      inputs:
+        targetPath: '$(Build.BinariesDirectory)/artifacts/test'
+        artifactName: 'onnxruntime-ios-full-xcframework-test'
+
+  # Run the framework test on a Microsoft-hosted macOS image, which has the required iOS simulator runtime.
+  # The build above stays on the faster ACES pool; only this lighter test job uses the hosted image.
+  # It consumes the onnxruntime-ios-full-xcframework-test artifact published by the build job.
+  - job: iOS_Full_xcframework_test
+    dependsOn: iOS_Full_xcframework
+    workspace:
+      clean: all
+    pool:
+      name: "Azure Pipelines"
+      image: "macOS-15"
+      os: macOS
+    timeoutInMinutes: 90
+    templateContext:
+      inputs:
+      - input: pipelineArtifact
+        artifactName: 'onnxruntime-ios-full-xcframework-test'
+        targetPath: '$(Build.BinariesDirectory)/artifacts/test'
+    steps:
+    - checkout: self
+
+    - template: use-xcode-version.yml
+      parameters:
+        xcodeVersion: ${{ variables.xcodeVersion }}
+
+    - template: setup-build-tools.yml
+      parameters:
+        host_cpu_arch: arm64
+
+    - script: |
+        set -e -x
+        unzip "$(Build.BinariesDirectory)/artifacts/test/test_files.zip" -d "$(Build.BinariesDirectory)"
+      displayName: "Extract test files"
+
+    - script: |
+        python3 tools/ci_build/github/apple/test_apple_packages.py \
+          --framework_info_file "$(Build.BinariesDirectory)/xcframework_info.json" \
+          --c_framework_dir "$(Build.BinariesDirectory)/framework_out" \
+          --skip_macos_test \
+          --mac_catalyst_enabled
+      displayName: "Test Apple framework"
+      env:
+        ORT_GET_SIMULATOR_DEVICE_INFO_REQUESTED_RUNTIME_VERSION: ${{ variables.iosSimulatorRuntimeVersion }}
 
 - template: win-ci.yml
   parameters:
