@@ -279,11 +279,21 @@ TEST(MathOpTest, Add_float) {
   test.Run();
 #endif
 
-  TestBinaryFloat16("Add", dims, lhs_values, dims, rhs_values, dims, out_values);
-
 #if defined(USE_DNNL)
   TestBFloat16("Add", dims, lhs_values, dims, rhs_values, dims, out_values);
 #endif  // USE_DNNL
+}
+
+TEST(MathOpTest, Add_float16) {
+#if defined(USE_CUDA) || defined(USE_COREML)
+  std::vector<int64_t> dims{3, 3};
+  std::initializer_list<float> lhs_values{1.0f, 2.0f, -1.0f, 0.0f, 1.5f, -100.0f, -5.4f, 9.3f, -10000.0f};
+  std::initializer_list<float> rhs_values{-1.0f, 4.4f, 432.3f, 0.0f, 3.5f, 64.0f, -5.4f, 9.3f, 10000.0f};
+  std::initializer_list<float> out_values{0.0f, 6.4f, 431.3f, 0.0f, 5.0f, -36.0f, -10.8f, 18.6f, 0.0f};
+  TestBinaryFloat16("Add", dims, lhs_values, dims, rhs_values, dims, out_values);
+#else
+  GTEST_SKIP() << "Add float16 is only exercised on CUDA or CoreML EP builds.";
+#endif
 }
 
 TEST(MathOpTest, Add_double) {
@@ -316,11 +326,21 @@ TEST(MathOpTest, Add_Broadcast_Axis) {
   test.AddOutput<float>("C", dims, out_values);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "");
 
-  TestBinaryFloat16("Add", dims, lhs_values, {3, 1}, rhs_values, dims, out_values);
-
 #if defined(USE_DNNL)
   TestBFloat16("Add", dims, lhs_values, {3, 1}, rhs_values, dims, out_values);
 #endif  // USE_DNNL
+}
+
+TEST(MathOpTest, Add_Broadcast_Axis_float16) {
+#if defined(USE_CUDA) || defined(USE_COREML)
+  std::vector<int64_t> dims{3, 3};
+  std::initializer_list<float> lhs_values{1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  std::initializer_list<float> rhs_values{3.0f, 2.0f, 1.0f};
+  std::initializer_list<float> out_values{4.0f, 5.0f, 6.0f, 6.0f, 7.0f, 8.0f, 8.0f, 9.0f, 10.0f};
+  TestBinaryFloat16("Add", dims, lhs_values, {3, 1}, rhs_values, dims, out_values);
+#else
+  GTEST_SKIP() << "Add broadcast float16 is only exercised on CUDA or CoreML EP builds.";
+#endif
 }
 
 TEST(MathOpTest, Add_Broadcast_MultidirectionalAB) {
@@ -340,11 +360,20 @@ TEST(MathOpTest, Add_Broadcast_MultidirectionalAB) {
            {kTensorrtExecutionProvider});  // TensorRT: got C with shape [3, 1]
 #endif
 
-  TestBinaryFloat16("Add", {3, 1}, lhs_values, {3}, rhs_values, {3, 3}, out_values);
-
 #if defined(USE_DNNL)
   TestBFloat16("Add", {3, 1}, lhs_values, {3}, rhs_values, {3, 3}, out_values);
 #endif  // USE_DNNL
+}
+
+TEST(MathOpTest, Add_Broadcast_MultidirectionalAB_float16) {
+#if defined(USE_CUDA) || defined(USE_COREML)
+  std::initializer_list<float> lhs_values{3.0f, 2.0f, 1.0f};
+  std::initializer_list<float> rhs_values{1.0f, 2.0f, 3.0f};
+  std::initializer_list<float> out_values{4.0f, 5.0f, 6.0f, 3.0f, 4.0f, 5.0f, 2.0f, 3.0f, 4.0f};
+  TestBinaryFloat16("Add", {3, 1}, lhs_values, {3}, rhs_values, {3, 3}, out_values);
+#else
+  GTEST_SKIP() << "Add broadcast float16 is only exercised on CUDA or CoreML EP builds.";
+#endif
 }
 
 TEST(MathOpTest, Add_Broadcast_MultidirectionalBA) {
@@ -364,11 +393,20 @@ TEST(MathOpTest, Add_Broadcast_MultidirectionalBA) {
            {kTensorrtExecutionProvider});  // TensorRT: got C with shape [3, 1]
 #endif
 
-  TestBinaryFloat16("Add", {3}, lhs_values, {3, 1}, rhs_values, {3, 3}, out_values);
-
 #if defined(USE_DNNL)
   TestBFloat16("Add", {3}, lhs_values, {3, 1}, rhs_values, {3, 3}, out_values);
 #endif  // USE_DNNL
+}
+
+TEST(MathOpTest, Add_Broadcast_MultidirectionalBA_float16) {
+#if defined(USE_CUDA) || defined(USE_COREML)
+  std::initializer_list<float> lhs_values{1.0f, 2.0f, 3.0f};
+  std::initializer_list<float> rhs_values{3.0f, 2.0f, 1.0f};
+  std::initializer_list<float> out_values{4.0f, 5.0f, 6.0f, 3.0f, 4.0f, 5.0f, 2.0f, 3.0f, 4.0f};
+  TestBinaryFloat16("Add", {3}, lhs_values, {3, 1}, rhs_values, {3, 3}, out_values);
+#else
+  GTEST_SKIP() << "Add broadcast float16 is only exercised on CUDA or CoreML EP builds.";
+#endif
 }
 
 TEST(MathOpTest, Add_Broadcast_0x0) {
@@ -715,10 +753,20 @@ TEST(MathOpTest, Sub_float) {
   test.AddOutput<float>("C", dims, out_values);
   test.Run();
 
-  TestBinaryFloat16("Sub", dims, lhs_values, dims, rhs_values, dims, out_values);
-
 #if defined(USE_DNNL)
   TestBFloat16("Sub", dims, lhs_values, dims, rhs_values, dims, out_values);
+#endif
+}
+
+TEST(MathOpTest, Sub_float16) {
+#if defined(USE_CUDA) || defined(USE_COREML)
+  std::vector<int64_t> dims{3, 3};
+  std::initializer_list<float> lhs_values{1.0f, 2.0f, -1.0f, 0.0f, 1.5f, -100.0f, -5.4f, 9.3f, -10000.0f};
+  std::initializer_list<float> rhs_values{-1.0f, 4.4f, 432.3f, 0.0f, 3.5f, 64.0f, -5.4f, 9.3f, 10000.0f};
+  std::initializer_list<float> out_values{2.0f, -2.4f, -433.3f, 0.0f, -2.0f, -164.0f, 0.0f, 0.0f, -20000.0f};
+  TestBinaryFloat16("Sub", dims, lhs_values, dims, rhs_values, dims, out_values);
+#else
+  GTEST_SKIP() << "Sub float16 is only exercised on CUDA or CoreML EP builds.";
 #endif
 }
 
@@ -837,10 +885,20 @@ TEST(MathOpTest, Mul_float) {
 
   test.Run();
 
-  TestBinaryFloat16("Mul", dims, lhs_values, dims, rhs_values, dims, out_values);
-
 #if defined(USE_DNNL)
   TestBFloat16("Mul", dims, lhs_values, dims, rhs_values, dims, out_values);
+#endif
+}
+
+TEST(MathOpTest, Mul_float16) {
+#if defined(USE_CUDA) || defined(USE_COREML)
+  std::vector<int64_t> dims{3, 3};
+  std::initializer_list<float> lhs_values{1.0f, 2.0f, -1.0f, 0.0f, 1.5f, -100.0f, -5.0f, 9.3f, -10000.0f};
+  std::initializer_list<float> rhs_values{-1.0f, 4.4f, 432.3f, 0.0f, 3.5f, 64.0f, -5.4f, 9.0f, 10000.0f};
+  std::initializer_list<float> out_values{-1.0f, 8.8f, -432.3f, 0.0f, 5.25f, -6400.0f, 27.0f, 83.7f, -100000000.0f};
+  TestBinaryFloat16("Mul", dims, lhs_values, dims, rhs_values, dims, out_values);
+#else
+  GTEST_SKIP() << "Mul float16 is only exercised on CUDA or CoreML EP builds.";
 #endif
 }
 
@@ -1000,10 +1058,20 @@ TEST(MathOpTest, Div_float) {
   test.AddOutput<float>("C", dims, out_values);
   test.Run();
 
-  TestBinaryFloat16("Div", dims, lhs_values, dims, rhs_values, dims, out_values);
-
 #if defined(USE_DNNL)
   TestBFloat16("Div", dims, lhs_values, dims, rhs_values, dims, out_values);
+#endif
+}
+
+TEST(MathOpTest, Div_float16) {
+#if defined(USE_CUDA) || defined(USE_COREML)
+  std::vector<int64_t> dims{2, 3};
+  std::initializer_list<float> lhs_values{1000.0f, 1.0f, 6.0f, 0.0f, -10.0f, -1.0f};
+  std::initializer_list<float> rhs_values{1000.0f, 2.0f, 3.0f, 1.0f, -1.0f, 4.0f};
+  std::initializer_list<float> out_values{1.0f, 0.5f, 2.0f, 0.0f, 10.0f, -0.25f};
+  TestBinaryFloat16("Div", dims, lhs_values, dims, rhs_values, dims, out_values);
+#else
+  GTEST_SKIP() << "Div float16 is only exercised on CUDA or CoreML EP builds.";
 #endif
 }
 
@@ -1198,7 +1266,17 @@ TEST(MathOpTest, Reciprocal) {
   test.AddInput<float>("X", dims, inputs);
   test.AddOutput<float>("Y", dims, outputs);
   test.Run();
+}
+
+TEST(MathOpTest, Reciprocal_float16) {
+#if defined(USE_CUDA) || defined(USE_COREML)
+  std::vector<int64_t> dims{2, 2};
+  std::initializer_list<float> inputs = {1.0f, 2.0f, -1.0f, -2.0f};
+  std::initializer_list<float> outputs = {1.0f, 0.5f, -1.0f, -0.5f};
   TestUnaryFloat16("Reciprocal", dims, inputs, dims, outputs, 12, false);
+#else
+  GTEST_SKIP() << "Reciprocal float16 is only exercised on CUDA or CoreML EP builds.";
+#endif
 }
 
 TEST(MathOpTest, Reciprocal_double) {
@@ -1221,7 +1299,17 @@ TEST(MathOpTest, Sqrt_Float) {
   test.AddInput<float>("X", dims, inputs);
   test.AddOutput<float>("Y", dims, outputs);
   test.Run();
+}
+
+TEST(MathOpTest, Sqrt_float16) {
+#if defined(USE_CUDA) || defined(USE_COREML)
+  std::initializer_list<float> inputs = {1.0f, 4.0f, 0.0f, 9.0f};
+  std::initializer_list<float> outputs = {1.0f, 2.0f, 0.0f, 3.0f};
+  std::vector<int64_t> dims{2, 2};
   TestUnaryFloat16("Sqrt", dims, inputs, dims, outputs);
+#else
+  GTEST_SKIP() << "Sqrt float16 is only exercised on CUDA or CoreML EP builds.";
+#endif
 }
 
 #if defined(USE_DNNL) || defined(USE_CUDA)
