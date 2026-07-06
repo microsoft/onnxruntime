@@ -164,7 +164,6 @@ def quant_dequant_blockwise(weights, block_size, is_4_bit_quantization: bool = T
     bits = 4 if is_4_bit_quantization else 8
     n, k = weights.shape
     block_per_k = (k + block_size - 1) // block_size
-    pack = 8 // bits
     is_symmetric = not asymmetric
 
     q_weight, scale, zero_point = CudaQuantizer.matmulnbits_blockwise_quantize(
@@ -174,6 +173,7 @@ def quant_dequant_blockwise(weights, block_size, is_4_bit_quantization: bool = T
         symmetric=is_symmetric,
         return_zero_points=True,
         abs_scales=is_symmetric,
+        flatten_qweight=False,
     )
     processed_q_weight, _ = CudaQuantizer.cutlass_prepacked_blockwise_quantize(
         weights,
@@ -184,12 +184,13 @@ def quant_dequant_blockwise(weights, block_size, is_4_bit_quantization: bool = T
     )
 
     scale_torch = scale.to(weights.device).unsqueeze(-1)
-    q_weight_torch = q_weight.view(n, block_per_k, block_size // pack).to(weights.device)
+    q_weight_torch = q_weight.to(weights.device)
 
     if is_4_bit_quantization:
         q_low = q_weight_torch & 0x0F
         q_high = (q_weight_torch >> 4) & 0x0F
-        q_unpacked = torch.stack((q_low, q_high), dim=-1).view(n, block_per_k, block_size).to(weights.dtype)
+        q_unpacked = torch.stack((q_low, q_high), dim=-1).view(n, block_per_k, -1)[:, :, :block_size]
+        q_unpacked = q_unpacked.to(weights.dtype)
         if is_symmetric:
             dequantized = (q_unpacked - 8.0) * scale_torch
         else:
@@ -1529,7 +1530,7 @@ def _run_qmoe_cutlass_gemm_second_scale_row_regression(test_case, quant_bits, us
             os.environ["ORT_DISABLE_MOE_GEMV"] = previous_disable_gemv
 
     x = torch.zeros((sequence_length, hidden_size), device=device, dtype=torch_dtype)
-    x[:, block_size : 2 * block_size] = 1.0 if use_asymmetric_quant else -1.0
+    x[:, block_size : 2 * block_size] = 1.0
     router = torch.zeros((sequence_length, num_experts), device=device, dtype=torch_dtype)
 
     ort_output = sess.run(None, {"input": x.cpu().numpy(), "router_probs": router.cpu().numpy()})[0]

@@ -108,20 +108,22 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True):
     n, k = weights.shape
     block_size = min(128, k)
     block_per_k = (k + block_size - 1) // block_size
-    pack = 8 // bits
 
-    q_weight, scales = CudaQuantizer.matmulnbits_blockwise_quantize(weights, bits, block_size, abs_scales=True)
+    q_weight, scales = CudaQuantizer.matmulnbits_blockwise_quantize(
+        weights, bits, block_size, abs_scales=True, flatten_qweight=False
+    )
     processed_q_weight, _ = CudaQuantizer.cutlass_prepacked_blockwise_quantize(
         weights, bits, block_size, abs_scales=True
     )
 
-    q_weight = q_weight.view(n, block_per_k, block_size // pack).to(weights.device)
+    q_weight = q_weight.to(weights.device)
     scales = scales.to(weights.device)
 
     if is_4_bit_quantization:
         q_low = q_weight & 0x0F
         q_high = (q_weight >> 4) & 0x0F
-        q_unpacked = torch.stack((q_low, q_high), dim=-1).view(n, block_per_k, block_size).to(weights.dtype)
+        q_unpacked = torch.stack((q_low, q_high), dim=-1).view(n, block_per_k, -1)[:, :, :block_size]
+        q_unpacked = q_unpacked.to(weights.dtype)
         dequantized = (q_unpacked - 8.0) * scales.unsqueeze(-1)
     else:
         q_unpacked = q_weight.to(weights.dtype)
