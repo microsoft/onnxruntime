@@ -48,9 +48,27 @@ TEST(SamplingStateArithmeticTest, ThrowsOnNegativeBatchSize) {
 }
 
 // `max_iter` flows through the same helper for the `h_sampled_all`
-// allocation, so a negative value must also be rejected.
+// allocation, so a negative value in the second operand slot must also be
+// rejected. Uses a valid `batch_size` and a negative `max_iter` to exercise
+// the operand distinctly from `ThrowsOnNegativeVocabSize` above.
 TEST(SamplingStateArithmeticTest, ThrowsOnNegativeMaxIter) {
-  EXPECT_THROW(SamplingBufferElementCount(4, -1), OnnxRuntimeException);
+  constexpr int batch_size = 4;
+  constexpr int max_iter = -1;
+  EXPECT_THROW(SamplingBufferElementCount(batch_size, max_iter), OnnxRuntimeException);
+}
+
+// The core bug this PR guards against: a plain `int * int` multiply of
+// `batch_size * vocab_size` silently wraps once the mathematical product
+// exceeds `INT_MAX`, producing an under-allocated buffer. `SafeMul<size_t>`
+// promotes both operands to `size_t` before multiplying, so the helper must
+// return the correct non-wrapped product. Reverting the production code to
+// `int * int` (or `static_cast<size_t>(int_product)`) fails this test.
+TEST(SamplingStateArithmeticTest, ReturnsCorrectProductWhenIntMultiplyWouldOverflow) {
+  // 100000 * 100000 = 1e10, which exceeds INT_MAX (~2.147e9) and would
+  // signed-overflow if computed in `int`.
+  constexpr int large_operand = 100000;
+  const size_t expected = static_cast<size_t>(large_operand) * static_cast<size_t>(large_operand);
+  EXPECT_EQ(SamplingBufferElementCount(large_operand, large_operand), expected);
 }
 
 }  // namespace test
