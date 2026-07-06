@@ -115,7 +115,7 @@ class CudaQuantizer:
                 qmin, qmax, scale_divisor, zero_point = -8, 7, 8, 8
             else:
                 qmin, qmax, scale_divisor, zero_point = -7, 7, 7, 8
-        elif bits == 8:
+        else:  # bits == 8, already validated above
             if unsigned_full_range:
                 qmin, qmax, scale_divisor, zero_point = -128, 127, 128, 128
             else:
