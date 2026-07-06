@@ -348,12 +348,12 @@ endif()
 set(CUDA_PLUGIN_CUDNN_INCLUDE_DIR ${CUDNN_INCLUDE_DIR})
 set(CUDA_PLUGIN_CUDNN_LIBRARY ${cudnn_LIBRARY})
 
-if(NOT CUDA_PLUGIN_CUDNN_INCLUDE_DIR OR NOT CUDA_PLUGIN_CUDNN_LIBRARY)
-  message(FATAL_ERROR "cuDNN not found (from main ORT search) for CUDA Plugin EP.")
+if(NOT CUDA_PLUGIN_CUDNN_INCLUDE_DIR)
+  message(FATAL_ERROR "cuDNN headers not found (from main ORT search) for CUDA Plugin EP.")
 endif()
 
 message(STATUS "CUDA Plugin EP: cuDNN include: ${CUDA_PLUGIN_CUDNN_INCLUDE_DIR}")
-message(STATUS "CUDA Plugin EP: cuDNN library: ${CUDA_PLUGIN_CUDNN_LIBRARY}")
+message(STATUS "CUDA Plugin EP: cuDNN runtime library: ${CUDA_PLUGIN_CUDNN_LIBRARY}")
 
 # Include directories — only public ORT headers + CUDA toolkit + cuDNN + internal headers for adapter
 target_include_directories(onnxruntime_providers_cuda_plugin PRIVATE
@@ -388,7 +388,6 @@ target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE
     CUDA::cufft
     CUDA::nvrtc
     CUDA::cuda_driver
-    CUDNN::cudnn_all
     cudnn_frontend
     Boost::mp11
     safeint_interface
@@ -402,6 +401,8 @@ target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE
     onnx_proto
     ${PROTOBUF_LIB}
 )
+
+  target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE NV_CUDNN_FRONTEND_USE_DYNAMIC_LOADING)
 
 if (onnxruntime_ENABLE_CUDA_PROFILING)
     target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE CUDA::cupti)

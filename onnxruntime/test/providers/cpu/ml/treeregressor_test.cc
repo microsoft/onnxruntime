@@ -3,12 +3,14 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/platform/path_lib.h"
 
 namespace onnxruntime {
 namespace test {
 
 template <typename T>
-void _multiply_update_array(std::vector<T>& data, int n, T inc = 0) {
+void MultiplyUpdateArray(std::vector<T>& data, int n, T inc = 0) {
   std::vector<T> copy = data;
   data.resize(copy.size() * n);
   T cst = 0;
@@ -20,7 +22,7 @@ void _multiply_update_array(std::vector<T>& data, int n, T inc = 0) {
   }
 }
 
-void _multiply_update_array_string(std::vector<std::string>& data, int n) {
+void MultiplyUpdateArrayString(std::vector<std::string>& data, int n) {
   std::vector<std::string> copy = data;
   data.resize(copy.size() * n);
   for (int i = 0; i < n; ++i) {
@@ -52,17 +54,17 @@ void GenTreeAndRunTest(int opsetml, const std::vector<T>& X, const std::vector<f
 
   if (n_trees > 1) {
     // Multiplies the number of trees to test the parallelization by trees.
-    _multiply_update_array(lefts, n_trees);
-    _multiply_update_array(rights, n_trees);
-    _multiply_update_array(treeids, n_trees, (int64_t)3);
-    _multiply_update_array(nodeids, n_trees);
-    _multiply_update_array(featureids, n_trees);
-    _multiply_update_array(thresholds, n_trees);
-    _multiply_update_array_string(modes, n_trees);
-    _multiply_update_array(target_treeids, n_trees, (int64_t)3);
-    _multiply_update_array(target_nodeids, n_trees);
-    _multiply_update_array(target_classids, n_trees);
-    _multiply_update_array(target_weights, n_trees);
+    MultiplyUpdateArray(lefts, n_trees);
+    MultiplyUpdateArray(rights, n_trees);
+    MultiplyUpdateArray(treeids, n_trees, (int64_t)3);
+    MultiplyUpdateArray(nodeids, n_trees);
+    MultiplyUpdateArray(featureids, n_trees);
+    MultiplyUpdateArray(thresholds, n_trees);
+    MultiplyUpdateArrayString(modes, n_trees);
+    MultiplyUpdateArray(target_treeids, n_trees, (int64_t)3);
+    MultiplyUpdateArray(target_nodeids, n_trees);
+    MultiplyUpdateArray(target_classids, n_trees);
+    MultiplyUpdateArray(target_weights, n_trees);
   }
 
   // add attributes
@@ -146,17 +148,17 @@ void GenTreeAndRunTest_as_tensor(int opsetml, const std::vector<T>& X, const std
 
   if (n_trees > 1) {
     // Multiplies the number of trees to test the parallelization by trees.
-    _multiply_update_array(lefts, n_trees);
-    _multiply_update_array(rights, n_trees);
-    _multiply_update_array(treeids, n_trees, (int64_t)3);
-    _multiply_update_array(nodeids, n_trees);
-    _multiply_update_array(featureids, n_trees);
-    _multiply_update_array(thresholds, n_trees);
-    _multiply_update_array_string(modes, n_trees);
-    _multiply_update_array(target_treeids, n_trees, (int64_t)3);
-    _multiply_update_array(target_nodeids, n_trees);
-    _multiply_update_array(target_classids, n_trees);
-    _multiply_update_array(target_weights, n_trees);
+    MultiplyUpdateArray(lefts, n_trees);
+    MultiplyUpdateArray(rights, n_trees);
+    MultiplyUpdateArray(treeids, n_trees, (int64_t)3);
+    MultiplyUpdateArray(nodeids, n_trees);
+    MultiplyUpdateArray(featureids, n_trees);
+    MultiplyUpdateArray(thresholds, n_trees);
+    MultiplyUpdateArrayString(modes, n_trees);
+    MultiplyUpdateArray(target_treeids, n_trees, (int64_t)3);
+    MultiplyUpdateArray(target_nodeids, n_trees);
+    MultiplyUpdateArray(target_classids, n_trees);
+    MultiplyUpdateArray(target_weights, n_trees);
   }
 
   // add attributes
@@ -356,17 +358,17 @@ void GenTreeAndRunTest1(int opsetml, const std::string& aggFunction, bool one_ob
 
   if (n_trees > 1) {
     // Multiplies the number of trees to test the parallelization by trees.
-    _multiply_update_array(lefts, n_trees);
-    _multiply_update_array(rights, n_trees);
-    _multiply_update_array(treeids, n_trees, (int64_t)3);
-    _multiply_update_array(nodeids, n_trees);
-    _multiply_update_array(featureids, n_trees);
-    _multiply_update_array(thresholds, n_trees);
-    _multiply_update_array_string(modes, n_trees);
-    _multiply_update_array(target_treeids, n_trees, (int64_t)3);
-    _multiply_update_array(target_nodeids, n_trees);
-    _multiply_update_array(target_classids, n_trees);
-    _multiply_update_array(target_weights, n_trees);
+    MultiplyUpdateArray(lefts, n_trees);
+    MultiplyUpdateArray(rights, n_trees);
+    MultiplyUpdateArray(treeids, n_trees, (int64_t)3);
+    MultiplyUpdateArray(nodeids, n_trees);
+    MultiplyUpdateArray(featureids, n_trees);
+    MultiplyUpdateArray(thresholds, n_trees);
+    MultiplyUpdateArrayString(modes, n_trees);
+    MultiplyUpdateArray(target_treeids, n_trees, (int64_t)3);
+    MultiplyUpdateArray(target_nodeids, n_trees);
+    MultiplyUpdateArray(target_classids, n_trees);
+    MultiplyUpdateArray(target_weights, n_trees);
   }
 
   std::vector<float> results;
@@ -469,17 +471,17 @@ void GenTreeAndRunTest1_as_tensor(int opsetml, const std::string& aggFunction, b
 
   if (n_trees > 1) {
     // Multiplies the number of trees to test the parallelization by trees.
-    _multiply_update_array(lefts, n_trees);
-    _multiply_update_array(rights, n_trees);
-    _multiply_update_array(treeids, n_trees, (int64_t)3);
-    _multiply_update_array(nodeids, n_trees);
-    _multiply_update_array(featureids, n_trees);
-    _multiply_update_array(thresholds, n_trees);
-    _multiply_update_array_string(modes, n_trees);
-    _multiply_update_array(target_treeids, n_trees, (int64_t)3);
-    _multiply_update_array(target_nodeids, n_trees);
-    _multiply_update_array(target_classids, n_trees);
-    _multiply_update_array(target_weights, n_trees);
+    MultiplyUpdateArray(lefts, n_trees);
+    MultiplyUpdateArray(rights, n_trees);
+    MultiplyUpdateArray(treeids, n_trees, (int64_t)3);
+    MultiplyUpdateArray(nodeids, n_trees);
+    MultiplyUpdateArray(featureids, n_trees);
+    MultiplyUpdateArray(thresholds, n_trees);
+    MultiplyUpdateArrayString(modes, n_trees);
+    MultiplyUpdateArray(target_treeids, n_trees, (int64_t)3);
+    MultiplyUpdateArray(target_nodeids, n_trees);
+    MultiplyUpdateArray(target_classids, n_trees);
+    MultiplyUpdateArray(target_weights, n_trees);
   }
 
   std::vector<float> results;
@@ -1080,6 +1082,62 @@ TEST(MLOpTest, TreeEnsembleRegressorBaseValuesWrongSize) {
 
   test.Run(OpTester::ExpectResult::kExpectFailure, "base_values should have 0 or 2 values.");
 }
+
+// In-memory external data references in node attributes are rejected by the ONNX checker
+// during Graph::Resolve() (it validates that external data locations are regular files).
+// In no-exceptions builds, the ONNX checker's fail_check calls abort() so these tests cannot run.
+#if !defined(ORT_NO_EXCEPTIONS)
+
+TEST(MLOpTest, TreeEnsembleRegressorRejectsInMemoryExternalDataInTensorAttribute) {
+  OpTester test("TreeEnsembleRegressor", 3, onnxruntime::kMLDomain);
+
+  // Minimal valid tree structure
+  std::vector<int64_t> lefts = {1, 0, 0};
+  std::vector<int64_t> rights = {2, 0, 0};
+  std::vector<int64_t> treeids = {0, 0, 0};
+  std::vector<int64_t> nodeids = {0, 1, 2};
+  std::vector<int64_t> featureids = {0, 0, 0};
+  std::vector<std::string> modes = {"BRANCH_LEQ", "LEAF", "LEAF"};
+
+  test.AddAttribute("nodes_truenodeids", lefts);
+  test.AddAttribute("nodes_falsenodeids", rights);
+  test.AddAttribute("nodes_treeids", treeids);
+  test.AddAttribute("nodes_nodeids", nodeids);
+  test.AddAttribute("nodes_featureids", featureids);
+  test.AddAttribute("nodes_modes", modes);
+  test.AddAttribute("target_treeids", std::vector<int64_t>{0, 0});
+  test.AddAttribute("target_nodeids", std::vector<int64_t>{1, 2});
+  test.AddAttribute("target_ids", std::vector<int64_t>{0, 0});
+  test.AddAttribute("target_weights", std::vector<float>{1.f, 2.f});
+  test.AddAttribute("n_targets", static_cast<int64_t>(1));
+
+  // nodes_values_as_tensor with in-memory external data reference (should be rejected)
+  ONNX_NAMESPACE::TensorProto values_proto;
+  values_proto.set_name("nodes_values_as_tensor");
+  values_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  values_proto.add_dims(3);
+  values_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+  auto* loc = values_proto.add_external_data();
+  loc->set_key("location");
+  loc->set_value(ToUTF8String(utils::kTensorProtoNativeEndianMemoryAddressTag));
+  auto* offset = values_proto.add_external_data();
+  offset->set_key("offset");
+  offset->set_value("12345678");
+  auto* length = values_proto.add_external_data();
+  length->set_key("length");
+  length->set_value("12");
+  test.AddAttribute("nodes_values_as_tensor", values_proto);
+
+  std::vector<float> X = {1.f};
+  test.AddInput<float>("X", {1, 1}, X);
+  test.AddOutput<float>("Y", {1, 1}, {0.f});
+
+  // Error originates from the ONNX checker (checker::check_node) during Graph::Resolve().
+  // There is no way to disable this check.
+  test.Run(OpTester::ExpectResult::kExpectFailure, "is not regular file");
+}
+
+#endif  // !defined(ORT_NO_EXCEPTIONS)
 
 }  // namespace test
 }  // namespace onnxruntime

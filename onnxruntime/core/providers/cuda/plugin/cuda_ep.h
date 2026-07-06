@@ -30,6 +30,7 @@ class CudaEp : public onnxruntime::ep::adapter::Ep {
     int cudnn_conv_algo = 0;                         ///< cuDNN convolution algorithm selection.
     bool cudnn_conv_use_max_workspace = true;        ///< Use maximum workspace for cuDNN conv algo search.
     bool cudnn_conv1d_pad_to_nc1d = false;           ///< Pad 1D convolutions to NC1D format.
+    bool enable_cudnn = true;                        ///< Enable runtime loading and use of cuDNN-backed kernels.
     bool fuse_conv_bias = false;                     ///< Enable cuDNN frontend conv+bias fusion.
     int sdpa_kernel = 0;                             ///< Attention backend bitmask override.
     bool enable_cuda_graph = false;                  ///< Enable CUDA graph capture and replay.

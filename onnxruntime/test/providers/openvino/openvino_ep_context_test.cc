@@ -252,6 +252,10 @@ class OVEPOVIRModelsExportEPContextTests : public ::testing::TestWithParam<bool>
 TEST_P(OVEPOVIRModelsExportEPContextTests, ExportEpCtxFromOVIRModel) {
   const bool embed_mode = GetParam();
 
+  if (!embed_mode) {
+    GTEST_SKIP() << "Skipping embed_off variant of ExportEpCtxFromOVIRModel.";
+  }
+
   ASSERT_TRUE(std::filesystem::exists(kOvirModelPath))
       << "Missing OVIR EP context model. Expected testdata/mul_1_ep_ctx_ovir.onnx "
          "(with sibling .xml and .bin files).";

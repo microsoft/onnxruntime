@@ -21,6 +21,11 @@ jobs:
         ]
     timeout-minutes: 300
 
+    env:
+      # Number of GoogleTest shards to split the test run across.
+      # Try increasing this if AddressSanitizer runs out of memory.
+      SHARD_COUNT: 4
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -38,10 +43,71 @@ jobs:
         with:
           architecture: x64
 
-      - name: Build and Test (Combined)
-        shell: cmd
+      - name: Write shared build options
+        shell: pwsh
         run: |
-          @echo off
-          echo %PATH%
-          python -m pip install -r "%GITHUB_WORKSPACE%\tools\ci_build/github/windows\python\requirements.txt"
-          python "%GITHUB_WORKSPACE%\tools\ci_build\build.py" --config Debug --build_dir "%RUNNER_TEMP%\build" --skip_submodule_sync --parallel --test_parallel 4 --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_generator "Visual Studio 17 2022" --disable_memleak_checker --enable_address_sanitizer
+          $ErrorActionPreference = 'Stop'
+
+          $buildDir = Join-Path $env:RUNNER_TEMP 'build'
+          $optsFile = Join-Path $env:RUNNER_TEMP 'asan_build_options.txt'
+
+          # Common build.py options shared by the build and test phases below.
+          @(
+            '--config Debug'
+            "--build_dir `"$buildDir`""
+            '--skip_submodule_sync'
+            '--parallel'
+            '--use_vcpkg'
+            '--use_vcpkg_ms_internal_asset_cache'
+            '--cmake_generator "Visual Studio 17 2022"'
+            '--disable_memleak_checker'
+            '--enable_address_sanitizer'
+          ) | Set-Content -Path $optsFile -Encoding ascii
+
+          Write-Host "Wrote build options to ${optsFile}:"
+
+          Get-Content $optsFile | Write-Host
+
+      - name: Build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $buildPy  = Join-Path $env:GITHUB_WORKSPACE 'tools\ci_build\build.py'
+          $optsFile = Join-Path $env:RUNNER_TEMP 'asan_build_options.txt'
+          $reqFile  = Join-Path $env:GITHUB_WORKSPACE 'tools\ci_build\github\windows\python\requirements.txt'
+
+          python -m pip install -r $reqFile
+          if ($LASTEXITCODE -ne 0) { throw "pip install failed ($LASTEXITCODE)" }
+
+          # '@' must be quoted so PowerShell does not treat it as the splat operator.
+          python $buildPy "@$optsFile" --update --build
+          if ($LASTEXITCODE -ne 0) { throw "Build failed ($LASTEXITCODE)" }
+
+      - name: Test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $buildPy  = Join-Path $env:GITHUB_WORKSPACE 'tools\ci_build\build.py'
+          $optsFile = Join-Path $env:RUNNER_TEMP 'asan_build_options.txt'
+          $shardCount = [int]$env:SHARD_COUNT
+          if ($shardCount -lt 1) { throw "SHARD_COUNT must be >= 1 (got $shardCount)" }
+
+          # GoogleTest reads the GTEST_TOTAL_SHARDS and GTEST_SHARD_INDEX env vars.
+          # Each ctest-launched test binary runs only its shard.
+          $env:GTEST_TOTAL_SHARDS = $shardCount
+
+          for ($i = 0; $i -lt $shardCount; $i++) {
+            Write-Host "=== Running test shard $($i + 1) of $shardCount ==="
+
+            $env:GTEST_SHARD_INDEX = $i
+
+            # NOTE: The ctest commands produce a test output file with `--gtest_output=xml:...` that will be
+            # overwritten by subsequent shard runs. This is fine for now since nothing consumes the output files.
+            # If the output files are required, they can be renamed after each shard run so they don't get overwritten.
+
+            # '@' must be quoted so PowerShell does not treat it as the splat operator.
+            python $buildPy "@$optsFile" --test --test_parallel 4
+            if ($LASTEXITCODE -ne 0) { throw "Test shard $($i + 1) of $shardCount failed ($LASTEXITCODE)" }
+          }

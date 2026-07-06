@@ -486,6 +486,7 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   const std::string cudnn_conv1d_pad_key = ep_options_prefix + "cudnn_conv1d_pad_to_nc1d";
   const std::string cudnn_conv_algo_key = ep_options_prefix + "cudnn_conv_algo";
   const std::string cudnn_conv_algo_search_key = ep_options_prefix + "cudnn_conv_algo_search";
+  const std::string enable_cudnn_key = ep_options_prefix + "enable_cudnn";
   const std::string fuse_conv_bias_key = ep_options_prefix + "fuse_conv_bias";
   const std::string sdpa_kernel_key = ep_options_prefix + "sdpa_kernel";
   const std::string enable_cuda_graph_key = ep_options_prefix + "enable_cuda_graph";
@@ -514,6 +515,9 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
       {cudnn_conv_algo_search_key, cudnn_conv_algo_key, "ep.cuda.cudnn_conv_algo_search", "ep.cuda.cudnn_conv_algo",
        "cudnn_conv_algo_search", "cudnn_conv_algo"},
       config.cudnn_conv_algo);
+  read_session_config_bool(
+      {enable_cudnn_key, "ep.cuda.enable_cudnn", "enable_cudnn"},
+      config.enable_cudnn);
   read_session_config_bool(
       {fuse_conv_bias_key, "ep.cuda.fuse_conv_bias", "fuse_conv_bias"},
       config.fuse_conv_bias);
@@ -881,7 +885,11 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateSyncStreamForDeviceImpl(
 
   auto* factory = static_cast<CudaEpFactory*>(this_ptr);
   int req_device_id = factory->ep_api_.MemoryDevice_GetDeviceId(memory_device);
-  auto cuda_stream = std::make_unique<CudaSyncStream>(*factory, req_device_id, nullptr);
+  // Factory-level streams are not tied to a specific EP instance's enable_cudnn policy. Default cuDNN
+  // off here so this path never triggers a cuDNN load or handle creation; kernels that need cuDNN run
+  // on EP-owned streams created with the EP's actual enable_cudnn setting, and otherwise fall back to
+  // the per-thread default cuDNN handle.
+  auto cuda_stream = std::make_unique<CudaSyncStream>(*factory, req_device_id, false, nullptr);
 
   // Initialize CUDA handles (stream, cuBLAS, cuDNN)
   RETURN_IF_ERROR(cuda_stream->InitHandles());

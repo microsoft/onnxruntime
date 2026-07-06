@@ -122,6 +122,24 @@ class EpFactoryInternalImpl {
     return nullptr;
   }
 
+  virtual OrtStatus* SelectBestModelCandidate(
+      _In_ const OrtHardwareDevice* device,
+      _In_reads_(num_candidates) const OrtKeyValuePairs* const* candidates,
+      _In_ size_t num_candidates,
+      _In_opt_ const OrtSessionOptions* session_options,
+      _Out_ size_t* selected_index) noexcept {
+    ORT_UNUSED_PARAMETER(device);
+    ORT_UNUSED_PARAMETER(session_options);
+    if (candidates == nullptr || num_candidates == 0 || selected_index == nullptr) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "Invalid arguments to SelectBestModelCandidate.");
+    }
+
+    // Default implementation: all candidates are unsupported, sets `selected_index` to SIZE_MAX.
+    *selected_index = SIZE_MAX;
+    return nullptr;
+  }
+
   // Function ORT calls to release an EP instance.
   void ReleaseEp(OrtEp* ep);
 
