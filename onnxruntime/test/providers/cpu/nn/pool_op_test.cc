@@ -1964,6 +1964,111 @@ TEST(PoolTest, MaxPool_ZeroDilation) {
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
 }
 
+// Verify that a 'pads' attribute shorter than 2 * kernel_shape rank is rejected by PoolAttributes
+// kernel validation. AddShapeToTensorData(false) omits input shape from the graph so ONNX shape
+// inference is bypassed and the model reaches kernel construction where the ORT_ENFORCE fires.
+// Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
+// different error messages.
+TEST(PoolTest, MaxPool_PadsTooShort) {
+  OpTester test("MaxPool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "pads",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+TEST(PoolTest, AveragePool_PadsTooShort) {
+  OpTester test("AveragePool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+  test.AddAttribute("count_include_pad", static_cast<int64_t>(0));
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "pads",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+TEST(PoolTest, LpPool_PadsTooShort) {
+  OpTester test("LpPool", 18);
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "pads",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Verify that a kernel_shape whose rank does not match the input spatial rank is rejected by
+// PoolAttributes::InferOutputSize. LpPool (opset < 18) uses the generic Pool::Compute path, which
+// has no earlier rank guard, so the request reaches the InferOutputSize validation directly.
+// AddShapeToTensorData(false) omits the input shape so ONNX shape inference is bypassed.
+// Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
+// different error messages.
+TEST(PoolTest, LpPool_KernelRankMismatch) {
+  OpTester test("LpPool", 11);
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  // Input spatial rank is 3 while kernel_shape rank is 2.
+  std::vector<float> x_vals(1 * 1 * 8 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "input spatial rank",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Verify that attribute values producing a non-positive output dimension are rejected by
+// PoolAttributes::ComputeOutputSize. A 3x3 kernel over a 1x1 spatial input with no padding makes
+// the padded input smaller than the dilated kernel, so the computed output dimension is negative.
+// AddShapeToTensorData(false) omits the input shape so ONNX shape inference is bypassed.
+// Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
+// different error messages.
+TEST(PoolTest, AveragePool_NegativeOutputDim) {
+  OpTester test("AveragePool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddAttribute("count_include_pad", static_cast<int64_t>(0));
+
+  std::vector<float> x_vals(1 * 1 * 1 * 1, 1.0f);
+  test.AddInput<float>("X", {1, 1, 1, 1}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "output dimension is negative",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
 // DML EP validates stride/dilation in OperatorHelper.cpp (KernelHelper constructor) via
 // ML_CHECK_VALID_ARGUMENT_MSG, but the descriptive message is lost when the exception crosses
 // the COM/HRESULT boundary (CATCH_RETURN strips the message, THROW_IF_FAILED re-throws with
