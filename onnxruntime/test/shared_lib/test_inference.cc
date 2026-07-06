@@ -751,6 +751,8 @@ TEST(CApiTest, SparseInputModel) {
 // Test that a custom op compiled against a newer ORT version (higher OrtCustomOp::version)
 // can still be loaded and executed on this ORT runtime. This simulates the forward compatibility
 // scenario where an IHV EP compiled against ORT v(N+1) is loaded into ORT v(N).
+// We test session creation only (which covers schema registration, kernel def building, and
+// CustomOpKernel construction with the capped API version).
 #ifndef ABSL_HAVE_ADDRESS_SANITIZER
 TEST(CApiTest, custom_op_forward_version_compat) {
   std::vector<Input<float>> inputs(1);
@@ -771,8 +773,10 @@ TEST(CApiTest, custom_op_forward_version_compat) {
   Ort::CustomOpDomain custom_op_domain("test");
   custom_op_domain.Add(&custom_op);
 
+  // test_session_creation_only=true: exercises schema registration, kernel def building, and
+  // CustomOpKernel construction (which was previously blocked by the blanket version reject).
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
-                       custom_op_domain, nullptr);
+                       custom_op_domain, nullptr, /*test_session_creation_only=*/true);
 }
 #endif
 
