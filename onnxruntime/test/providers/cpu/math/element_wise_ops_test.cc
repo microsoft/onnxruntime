@@ -5080,6 +5080,58 @@ TEST(MathOpTest, Sub_webgpu_int64_broadcast) {
       .RunWithConfig();
 }
 
+// Size divisible by 4: catches future vec4 optimizations that might break INT64.
+TEST(MathOpTest, Sub_webgpu_int64_size_div4) {
+  OpTester test("Sub", 14);
+  test.AddInput<int64_t>("A", {8}, {10, 20, 30, 40, 50, 60, 70, 80});
+  test.AddInput<int64_t>("B", {8}, {1, 2, 3, 4, 5, 6, 7, 8});
+  test.AddOutput<int64_t>("C", {8}, {9, 18, 27, 36, 45, 54, 63, 72});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// Scalar LHS: exercises is_lhs_scalar_ path for INT64 Sub.
+TEST(MathOpTest, Sub_webgpu_int64_lhs_scalar) {
+  OpTester test("Sub", 14);
+  test.AddInput<int64_t>("A", {1}, {100});
+  test.AddInput<int64_t>("B", {5}, {1, 2, 3, 4, 5});
+  test.AddOutput<int64_t>("C", {5}, {99, 98, 97, 96, 95});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// Scalar RHS: exercises is_rhs_scalar_ path for INT64 Sub.
+TEST(MathOpTest, Sub_webgpu_int64_rhs_scalar) {
+  OpTester test("Sub", 14);
+  test.AddInput<int64_t>("A", {5}, {10, 20, 30, 40, 50});
+  test.AddInput<int64_t>("B", {1}, {7});
+  test.AddOutput<int64_t>("C", {5}, {3, 13, 23, 33, 43});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
+// Shape broadcast, size divisible by 4: A [1,4] broadcasts against B [2,4] -> output [2,4].
+TEST(MathOpTest, Sub_webgpu_int64_broadcast_size_div4) {
+  OpTester test("Sub", 14);
+  test.AddInput<int64_t>("A", {1, 4}, {10, 20, 30, 40});
+  test.AddInput<int64_t>("B", {2, 4}, {1, 2, 3, 4, 5, 6, 7, 8});
+  test.AddOutput<int64_t>("C", {2, 4}, {9, 18, 27, 36, 5, 14, 23, 32});
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kEnableInt64, "1"));
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
+  test.ConfigEp(std::move(provider))
+      .RunWithConfig();
+}
+
 TEST(MathOpTest, Equal_webgpu_int64) {
   OpTester test("Equal", 13);
   test.AddInput<int64_t>("A", {5}, {1, 0, -1, -1, 3});
