@@ -1991,9 +1991,25 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // in the Graph instance and retrieve during session state finalization.
   std::unordered_map<std::string, OrtValue> ortvalue_initializers_;
 
+#if defined(ORT_USE_ONNX_LIGHT)
+  // onnx-light proto string fields are utils::String, not std::string, so accessors like
+  // graph_proto_->name() cannot return a const std::string& to reference directly. These
+  // mutable caches provide stable std::string storage for Graph::Name()/Description(), which
+  // must return const std::string& per their public signatures.
+  mutable std::string cached_name_;
+  mutable std::string cached_description_;
+#endif
+
+#if defined(ORT_USE_ONNX_LIGHT)
+  // onnx-light proto string fields are utils::String (not std::string), so we cannot store
+  // reference_wrapper<const std::string> pointing into proto storage. Store names by value;
+  // sparse tensor names are few and small, so the extra copies are negligible.
+  std::unordered_set<std::string> sparse_tensor_names_;
+#else
   std::unordered_set<std::reference_wrapper<const std::string>,
                      std::hash<std::string>, std::equal_to<std::string>>
       sparse_tensor_names_;
+#endif
 
   // Prepacked blobs container that stored pre-packed initializers
   // data that is:

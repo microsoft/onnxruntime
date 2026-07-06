@@ -186,6 +186,9 @@ static std::string GenerateSchemaKey(const IndexedSubGraph& subgraph_ptr) {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 NodeArg::NodeArg(const std::string& name, const TypeProto* p_node_arg_type) {
   node_arg_info_.set_name(name);
+#if defined(ORT_USE_ONNX_LIGHT)
+  name_ = name;
+#endif
   // If the name is empty, it means the arg does not exist.
   exists_ = !(name.empty());
   if (nullptr != p_node_arg_type) {
@@ -204,6 +207,9 @@ NodeArg::NodeArg(const std::string& name, const TypeProto* p_node_arg_type) {
 
 NodeArg::NodeArg(NodeArgInfo&& node_arg_info) {
   node_arg_info_ = std::move(node_arg_info);
+#if defined(ORT_USE_ONNX_LIGHT)
+  name_ = node_arg_info_.name();
+#endif
 
   exists_ = !node_arg_info_.name().empty();
   if (node_arg_info_.has_type())
@@ -214,7 +220,11 @@ NodeArg::NodeArg(NodeArgInfo&& node_arg_info) {
 }
 
 const std::string& NodeArg::Name() const noexcept {
+#if defined(ORT_USE_ONNX_LIGHT)
+  return name_;
+#else
   return node_arg_info_.name();
+#endif
 }
 
 DataType NodeArg::Type() const noexcept {
@@ -3476,7 +3486,7 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
         } else {
           for (int i = 0; i < p_existing_shape->dim_size(); ++i) {
             auto& d = p_existing_shape->dim(i);
-            if (utils::HasDimValue(d) && (d.dim_value() != tensor_proto->dims(i))) {
+            if (utils::HasDimValue(d) && (d.dim_value() != static_cast<int64_t>(tensor_proto->dims(i)))) {
               invalid = true;
               break;
             }
@@ -4040,11 +4050,21 @@ Status Graph::RemoveAllLayeringAnnotations() {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 const std::string& Graph::Name() const noexcept {
+#if defined(ORT_USE_ONNX_LIGHT)
+  cached_name_ = graph_proto_->name();
+  return cached_name_;
+#else
   return graph_proto_->name();
+#endif
 }
 
 const std::string& Graph::Description() const noexcept {
+#if defined(ORT_USE_ONNX_LIGHT)
+  cached_description_ = graph_proto_->doc_string();
+  return cached_description_;
+#else
   return graph_proto_->doc_string();
+#endif
 }
 
 const std::filesystem::path& Graph::ModelPath() const {

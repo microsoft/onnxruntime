@@ -621,7 +621,7 @@ void PackedAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx)
   if (hasInputShape(ctx, 0) && hasInputShape(ctx, 2)) {
     auto& input_shape = getInputShape(ctx, 0);
     auto& input_dims = input_shape.dim();
-    int input_dim_size = input_dims.size();
+    int input_dim_size = static_cast<int>(input_dims.size());
     if (input_dim_size != 2) {
       fail_shape_inference("Inputs 0 shall be 2 dimensions");
     }

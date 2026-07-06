@@ -565,6 +565,16 @@ if(onnxruntime_USE_ONNX_LIGHT)
   # instead of the google::protobuf message/stream API.
   add_compile_definitions(ORT_USE_ONNX_LIGHT)
 
+  # The upstream onnx package exports ONNX_NAMESPACE / ONNX_ML as PUBLIC compile
+  # definitions on its onnx/onnx_proto targets, which propagate to every ORT
+  # translation unit. Many ORT headers (e.g. core/graph/basic_types.h) forward
+  # declare protos with `namespace ONNX_NAMESPACE { class ValueInfoProto; }`
+  # WITHOUT first including an onnx header, so ONNX_NAMESPACE must be defined
+  # globally or those decls land in a bogus literal `ONNX_NAMESPACE` namespace
+  # (yielding "undefined class" and type-mismatch errors). onnx-light lives in
+  # the onnx_light namespace, so mirror the upstream behaviour with onnx_light.
+  add_compile_definitions(ONNX_NAMESPACE=onnx_light ONNX_ML=1)
+
   # When resolved via find_package(onnx_light) the compatibility targets are
   # namespaced (onnx::onnx / onnx::onnx_proto); alias them to the unqualified
   # names onnxruntime links against. When built from source they already exist.

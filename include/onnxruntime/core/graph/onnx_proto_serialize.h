@@ -9,11 +9,12 @@
 //
 // When ORT is built against onnx-light the ONNX message classes (ModelProto,
 // TensorProto, ...) do NOT expose the protobuf message API
-// (ParseFromArray/SerializeToArray/ByteSizeLong/ParseFromZeroCopyStream/...).
+// (ParseFromArray/SerializeToArray/ParseFromZeroCopyStream/...).
 // They provide onnx-light's own API instead:
-//   * void  ParseFromString(const std::string&)
-//   * bool  ParseFromIstream(std::istream*)
-//   * void  SerializeToString(std::string&) const
+//   * bool   ParseFromString(const std::string&)
+//   * bool   ParseFromIstream(std::istream*)
+//   * bool   SerializeToString(std::string&) const
+//   * size_t ByteSizeLong() const  (native; computed from SerializeSize())
 // These helpers route every (de)serialization operation used by onnxruntime to
 // the correct backend. When onnx-light is not used they forward verbatim to the
 // protobuf API, preserving the existing behavior byte for byte.
