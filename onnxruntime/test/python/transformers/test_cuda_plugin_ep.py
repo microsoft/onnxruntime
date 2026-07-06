@@ -121,16 +121,18 @@ class _CudaOrtValueBinding:
         if dtype != np.float32:
             raise TypeError(f"Unsupported CUDA graph binding dtype: {dtype}")
 
-        with torch.cuda.device(device_id):
-            self._tensor = torch.empty(tuple(shape), dtype=torch.float32, device=f"cuda:{device_id}")
-            self.ort_value = onnxrt.OrtValue.from_dlpack(self._tensor)
+        self._dtype = np.float32
+        # Allocate a GPU-backed OrtValue with a stable device address so CUDA graph
+        # capture/replay can reuse the same memory across runs. Using ORT's native
+        # allocator here avoids a dependency on a CUDA-enabled PyTorch build.
+        self.ort_value = onnxrt.OrtValue.ortvalue_from_shape_and_type(list(shape), self._dtype, "cuda", device_id)
 
     def update_inplace(self, data):
-        with torch.no_grad():
-            self._tensor.copy_(torch.as_tensor(data, dtype=self._tensor.dtype, device=self._tensor.device))
+        # Copy host data into the existing GPU buffer without changing its address.
+        self.ort_value.update_inplace(np.ascontiguousarray(data, dtype=self._dtype))
 
     def numpy(self):
-        return self._tensor.detach().cpu().numpy()
+        return self.ort_value.numpy()
 
 
 def _format_assigned_node(node):

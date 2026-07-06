@@ -157,7 +157,7 @@ jobs:
         shell: cmd
 
       - name: Install torch for CPU only
-        run: python -m pip install torch
+        run: python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
         working-directory: ${{ github.workspace }}
         shell: cmd
 
