@@ -1887,7 +1887,7 @@ TEST_F(GraphTransformationTests, FuseConvBNNoBias) {
   }
 }
 
-static void RunConvTransposeBNFusionTest(bool add_conv_bias, int64_t group) {
+static void RunConvTransposeBNFusionTest(bool add_conv_bias, int64_t group, bool add_epsilon = true) {
   const int64_t input_channels_per_group = 2;
   const int64_t input_channels = input_channels_per_group * group;
   const int64_t output_channels_per_group = 3;
@@ -1948,8 +1948,10 @@ static void RunConvTransposeBNFusionTest(bool add_conv_bias, int64_t group) {
     auto* output = builder.MakeOutput<float>(std::vector<int64_t>{1, output_channels, output_h, output_w});
     bn_output_name = output->Name();
 
-    builder.AddNode("BatchNormalization", {conv_output, bn_scale, bn_bias, bn_mean, bn_var}, {output})
-        .AddAttribute("epsilon", 1e-5f);
+    auto& batch_norm = builder.AddNode("BatchNormalization", {conv_output, bn_scale, bn_bias, bn_mean, bn_var}, {output});
+    if (add_epsilon) {
+      batch_norm.AddAttribute("epsilon", 1e-5f);
+    }
   };
 
   auto check_transformed_graph = [&bn_output_name](InferenceSessionWrapper& session) {
@@ -1984,6 +1986,10 @@ static void RunConvTransposeBNFusionTest(bool add_conv_bias, int64_t group) {
 
 TEST_F(GraphTransformationTests, FuseConvTransposeBNNoBias) {
   RunConvTransposeBNFusionTest(false, 1);
+}
+
+TEST_F(GraphTransformationTests, FuseConvTransposeBNWithDefaultEpsilon) {
+  RunConvTransposeBNFusionTest(false, 1, false);
 }
 
 TEST_F(GraphTransformationTests, FuseConvTransposeBNWithBias) {

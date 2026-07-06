@@ -15,6 +15,8 @@ namespace onnxruntime {
 
 namespace {
 
+constexpr float kDefaultBatchNormalizationEpsilon = 1e-5f;
+
 int64_t GetGroup(const Node& node) {
   const auto* group_attr = graph_utils::GetNodeAttribute(node, "group");
   return group_attr != nullptr && utils::HasInt(*group_attr) ? group_attr->i() : 1;
@@ -112,13 +114,14 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   const bool is_conv_transpose = conv_node.OpType() == "ConvTranspose";
   const int64_t group = is_conv_transpose ? GetGroup(conv_node) : 1;
 
-  // Get value of attribute epsilon
-  const onnxruntime::NodeAttributes& attributes = bn_node.GetAttributes();
-  const ONNX_NAMESPACE::AttributeProto* attr = &(attributes.find("epsilon")->second);
-  if (attr == nullptr || attr->type() != AttributeProto_AttributeType_FLOAT) {
-    return Status::OK();
+  float epsilon = kDefaultBatchNormalizationEpsilon;
+  const auto* attr = graph_utils::GetNodeAttribute(bn_node, "epsilon");
+  if (attr != nullptr) {
+    if (!utils::HasFloat(*attr)) {
+      return Status::OK();
+    }
+    epsilon = static_cast<float>(attr->f());
   }
-  float epsilon = static_cast<float>(attr->f());
 
   // Get initializers of BatchNormalization
   const auto& bn_inputs = bn_node.InputDefs();
