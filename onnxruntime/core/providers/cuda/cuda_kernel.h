@@ -7,6 +7,7 @@
 
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
+#include "core/providers/cuda/cudnn_loader.h"
 #include "core/providers/cuda/cuda_fwd.h"
 #include <mutex>
 #include "core/providers/cuda/cuda_stream_handle.h"
@@ -129,7 +130,7 @@ class CudaKernel : public OpKernel {
   }
 
   inline cudnnHandle_t GetCudnnHandle(OpKernelContext* ctx) const {
-    return GetCudnnHandle(static_cast<CudaStream*>(ctx->GetComputeStream()));
+    return RequireCudnnHandle(GetCudnnHandle(static_cast<CudaStream*>(ctx->GetComputeStream())));
   }
 
   static inline cudnnHandle_t GetCudnnHandle(onnxruntime::CudaStream* stream) {
@@ -143,7 +144,7 @@ class CudaKernel : public OpKernel {
   }
 
   inline cudnnHandle_t GetCudnnHandleOrDefault(onnxruntime::Stream* stream) const {
-    return stream ? GetCudnnHandle(stream) : DefaultCudnnHandle();
+    return stream ? RequireCudnnHandle(GetCudnnHandle(stream)) : DefaultCudnnHandle();
   }
 
   inline cublasHandle_t GetCublasHandle(OpKernelContext* ctx) const {
@@ -258,7 +259,21 @@ class CudaKernel : public OpKernel {
   }
 
   inline cudnnHandle_t DefaultCudnnHandle() const {
-    return provider_->PerThreadDefaultCudnnHandle();
+    return RequireCudnnHandle(provider_->PerThreadDefaultCudnnHandle());
+  }
+
+  static inline cudnnHandle_t RequireCudnnHandle(cudnnHandle_t handle) {
+    if (handle == nullptr) {
+#ifndef USE_CUDA_MINIMAL
+      ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                                         "cuDNN is unavailable or disabled for CUDA Execution Provider: ",
+                                         cuda::CudnnLibrary::Get().Error()));
+#else
+      ORT_THROW_IF_ERROR(ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                                         "cuDNN is unavailable for CUDA Execution Provider in a CUDA minimal build."));
+#endif
+    }
+    return handle;
   }
 
   inline cudaStream_t DefaultCudaStream() const {

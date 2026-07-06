@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "core/providers/cuda/cuda_common.h"
 #include "core/common/narrow.h"
 #include "skip_layer_norm.h"
@@ -76,6 +78,15 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
   if (row_count == 0) {
     return Status::OK();
   }
+
+  // Element offsets into the output are 32-bit on device; reject shapes whose element count would
+  // exceed the 32-bit indexable range. The output shares the input shape, so input->Shape().Size()
+  // is the output element count. The maximum output write index is
+  // row_count * hidden_size - 1 == output element count - 1, so this guard covers every device write site.
+  const int64_t output_element_count = input->Shape().Size();
+  ORT_RETURN_IF_NOT(output_element_count <= static_cast<int64_t>(std::numeric_limits<int32_t>::max()),
+                    "SkipLayerNormalization: output element count (", output_element_count,
+                    ") exceeds the supported 32-bit indexing range.");
 
   typedef typename ToCudaType<T>::MappedType CudaT;
 

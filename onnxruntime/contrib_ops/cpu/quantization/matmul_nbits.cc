@@ -420,7 +420,14 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
 #if defined(MLAS_TARGET_AMD64_IX86)
       return true;
 #else
-      return (nbits_ == 8);
+      // W2 on ARM64 (NEON DotProd) uses the same 3-call prepack pattern as
+      // AVX-512: B in the input_idx==B call, scales+ZP in the separate
+      // input_idx==scales / input_idx==zero_points calls. Without this, the
+      // ZP tensor is silently dropped and QuantBBlkSum bakes in the symmetric
+      // default ZP=2 for every block, producing wrong outputs whenever the
+      // model's real ZPs ≠ 2. W4 stays out because it goes through the
+      // KleidiAI scale-baked path above and does not use the 3-call pattern.
+      return (nbits_ == 2 || nbits_ == 8);
 #endif
     }();
 
@@ -549,12 +556,14 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       }
     }
 
-    // Pack zero_points separately only for 8-bit (matching standard SQNBIT_CompInt8 behavior).
-    // For 4-bit, zero_points are passed directly in data params or handled via KleidiAI BZpCorr.
-    if (input_idx == InputIndex::zero_points && packed_b_ != nullptr && nbits_ == 8 && !packed_b_finalized_) {
+    // Pack zero_points separately for W2; W4/W8 are folded into packed_b_ during the B PrePack.
+    // Pass scales_fp32_ so QuantBBlkSum = -scale*zp is recomputed (otherwise it keeps the symmetric
+    // default ZP=2 from the B-pack call and silently produces wrong outputs when real ZPs != 2).
+    if (input_idx == InputIndex::zero_points && packed_b_ != nullptr && !packed_b_finalized_ && nbits_ == 2) {
       auto zptr = tensor.Data<uint8_t>();
-      MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, SQNBIT_CompInt8, nullptr, packed_b_.get(), nullptr,
-                                  has_zp_input_, zptr, nullptr, &mlas_backend_kernel_selector_config_);
+      MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, SQNBIT_CompInt8, nullptr, packed_b_.get(),
+                                  scales_fp32_.get(), has_zp_input_, zptr, nullptr,
+                                  &mlas_backend_kernel_selector_config_);
       is_packed = false;
     }
 
@@ -706,7 +715,7 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
 #if defined(MLAS_TARGET_AMD64_IX86)
       return true;
 #else
-      return (nbits_ == 8);
+      return (nbits_ == 2 || nbits_ == 8);
 #endif
     }();
 

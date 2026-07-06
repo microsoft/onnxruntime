@@ -330,14 +330,14 @@ def print_debug_info():
 
 
 def preload_dlls(cuda: bool = True, cudnn: bool = True, msvc: bool = True, directory=None):
-    """Preload CUDA 12.x+ and cuDNN 9.x DLLs in Windows or Linux, and MSVC runtime DLLs in Windows.
+    """Preload CUDA 12.x+ and optional cuDNN 9.x DLLs in Windows or Linux, and MSVC runtime DLLs in Windows.
 
        When the installed PyTorch is compatible (using same major version of CUDA and cuDNN),
        there is no need to call this function if `import torch` is done before `import onnxruntime`.
 
     Args:
         cuda (bool, optional): enable loading CUDA DLLs. Defaults to True.
-        cudnn (bool, optional): enable loading cuDNN DLLs. Defaults to True.
+        cudnn (bool, optional): enable loading cuDNN DLLs. Defaults to True. Missing cuDNN DLLs are ignored.
         msvc (bool, optional): enable loading MSVC DLLs in Windows. Defaults to True.
         directory(str, optional): a directory contains CUDA or cuDNN DLLs. It can be an absolute path,
            or a path relative to the directory of this file.
@@ -430,6 +430,7 @@ def preload_dlls(cuda: bool = True, cudnn: bool = True, msvc: bool = True, direc
 
     # Try load DLLs from nvidia site packages.
     dll_paths = _get_nvidia_dll_paths(is_windows, cuda, cudnn)
+    optional_dll_filenames = {relative_path[-1] for relative_path in _get_nvidia_dll_paths(is_windows, False, cudnn)}
     loaded_dlls = []
     for relative_path in dll_paths:
         dll_path = (
@@ -442,11 +443,8 @@ def preload_dlls(cuda: bool = True, cudnn: bool = True, msvc: bool = True, direc
                 _ = ctypes.CDLL(dll_path)
                 loaded_dlls.append(relative_path[-1])
             except Exception as e:
-                print(f"Failed to load {dll_path}: {e}")
-
-    # cuDNN DLLs that only exist in newer cuDNN releases (e.g. >= 9.23) and are
-    # optional for inference. Missing them on older cuDNN must not be treated as a failure.
-    _optional_dll_filenames = {"cudnn_engines_tensor_ir64_9.dll"}
+                if relative_path[-1] not in optional_dll_filenames:
+                    print(f"Failed to load {dll_path}: {e}")
 
     # Try load DLLs with default path settings.
     has_failure = False
@@ -456,9 +454,9 @@ def preload_dlls(cuda: bool = True, cudnn: bool = True, msvc: bool = True, direc
             try:
                 _ = ctypes.CDLL(dll_filename)
             except Exception as e:
-                if dll_filename not in _optional_dll_filenames:
+                if dll_filename not in optional_dll_filenames:
                     has_failure = True
                     print(f"Failed to load {dll_filename}: {e}")
 
     if has_failure:
-        print("Please follow https://onnxruntime.ai/docs/install/#cuda-and-cudnn to install CUDA and CuDNN.")
+        print("Please follow https://onnxruntime.ai/docs/install/#cuda-and-cudnn to install CUDA.")

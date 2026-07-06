@@ -18,6 +18,7 @@
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/cuda_profiler.h"
 #include "core/providers/cuda/cuda_mempool_arena.h"
+#include "core/providers/cuda/cudnn_loader.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 
 #ifndef USE_CUDA_MINIMAL
@@ -223,18 +224,19 @@ AllocatorPtr CUDAExecutionProvider::CreateCudaPinnedAllocator(const CUDAAllocato
   return CreateAllocator(pinned_memory_info);
 }
 
-CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream, size_t /*gpu_mem_limit*/,
-                                                          ArenaExtendStrategy /*arena_extend_strategy*/, CUDAExecutionProviderExternalAllocatorInfo /*external_allocator_info*/,
-                                                          OrtArenaCfg* /*default_memory_arena_cfg*/) {
+CUDAExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, cudaStream_t stream,
+                                                          const CUDAExecutionProviderInfo& info) {
   CUDA_CALL_THROW(cudaSetDevice(device_id));
 #ifndef USE_CUDA_MINIMAL
   CUBLAS_CALL_THROW(cublasCreate(&cublas_handle_));
   CUBLAS_CALL_THROW(cublasLtCreate(&cublas_lt_handle_));
   CUBLAS_CALL_THROW(cublasSetStream(cublas_handle_, stream));
 
-  CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
-  CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
-  LOGS_DEFAULT(INFO) << "cuDNN version: " << cudnnGetVersion();
+  if (info.enable_cudnn && cuda::CudnnLibrary::Get().Available()) {
+    CUDNN_CALL_THROW(cudnnCreate(&cudnn_handle_));
+    CUDNN_CALL_THROW(cudnnSetStream(cudnn_handle_, stream));
+    LOGS_DEFAULT(INFO) << "cuDNN version: " << cudnnGetVersion();
+  }
 #endif
   cuda_graph_.SetStream(stream);
 }
@@ -243,7 +245,9 @@ CUDAExecutionProvider::PerThreadContext::~PerThreadContext() {
 #ifndef USE_CUDA_MINIMAL
   ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasDestroy(cublas_handle_)));
   ORT_IGNORE_RETURN_VALUE(CUBLAS_CALL(cublasLtDestroy(cublas_lt_handle_)));
-  ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(cudnn_handle_)));
+  if (cudnn_handle_ != nullptr) {
+    ORT_IGNORE_RETURN_VALUE(CUDNN_CALL(cudnnDestroy(cudnn_handle_)));
+  }
 #endif
 }
 
@@ -446,8 +450,7 @@ CUDAExecutionProvider::PerThreadContext& CUDAExecutionProvider::GetPerThreadCont
 
     // get or create a context
     if (context_state_.retired_context_pool.empty()) {
-      context = std::make_shared<PerThreadContext>(info_.device_id, stream_, info_.gpu_mem_limit,
-                                                   info_.arena_extend_strategy, info_.external_allocator_info, info_.default_memory_arena_cfg);
+      context = std::make_shared<PerThreadContext>(info_.device_id, stream_, info_);
     } else {
       context = context_state_.retired_context_pool.back();
       context_state_.retired_context_pool.pop_back();
