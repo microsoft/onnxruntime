@@ -119,16 +119,16 @@ Status CheckInputs(const T* input,
     int effective_rotary_dim = 0;
     ORT_RETURN_IF_ERROR(detail::CheckedMulToInt32(cache_width, 2, "effective_rotary_dim", effective_rotary_dim));
 
-    if (head_size == 0) {
+    const bool head_size_inferred = (head_size == 0);
+    if (head_size_inferred) {
       head_size = effective_rotary_dim;
     }
 
-    // Guard against a cos_cache large enough to read past the end of the input (covers the
-    // num_heads == 0 / rank-3 without num_heads path, where head_size is inferred from the cache
-    // and the exact-width check below cannot catch a mismatch because head_size == effective_rotary_dim
-    // by construction). When num_heads > 0 / rank-4, the exact-width check below already rejects any
+    // Only needed when head_size is inferred from the cache; the exact-width check below
+    // cannot catch a mismatch there because head_size == effective_rotary_dim by construction.
+    // When num_heads > 0 / rank-4, head_size is known and the exact-width check rejects an
     // oversized cache with a more actionable message.
-    if (hidden_size > 0 && effective_rotary_dim > hidden_size) {
+    if (head_size_inferred && hidden_size > 0 && effective_rotary_dim > hidden_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "RotaryEmbedding: cos_cache dimension (", cache_width,
                              " * 2 = ", effective_rotary_dim,
