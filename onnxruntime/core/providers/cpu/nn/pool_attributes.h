@@ -84,7 +84,8 @@ struct PoolAttributes {
                   "Pad should be smaller than kernel.");
     }
 
-    ORT_ENFORCE(strides.size() == kernel_shape.size());
+    ORT_ENFORCE(strides.size() == kernel_shape.size(),
+                "Strides dimensions should match kernel shape");
     for (auto stride : strides) {
       ORT_ENFORCE(stride > 0, "All stride values must be positive, got: ", stride);
     }

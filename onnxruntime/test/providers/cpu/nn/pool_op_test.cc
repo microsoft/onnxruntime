@@ -2109,7 +2109,7 @@ TEST(PoolTest, MaxPool_StridesLengthMismatch) {
   test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
   test.AddOutput<float>("Y", {0}, {});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "strides.size() == kernel_shape.size()",
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Strides dimensions should match kernel shape",
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
 }
 
@@ -2118,6 +2118,7 @@ TEST(PoolTest, MaxPool_StridesLengthMismatch) {
 // Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
 // different error messages.
 TEST(PoolTest, MaxPool_DilationsLengthMismatch) {
+  // 'dilations' is only a valid MaxPool attribute from opset 10 onward, so target that version.
   OpTester test("MaxPool", 10);
   test.AddShapeToTensorData(false);
 
