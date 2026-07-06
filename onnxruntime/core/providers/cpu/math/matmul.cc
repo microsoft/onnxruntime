@@ -316,8 +316,9 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   const size_t K = static_cast<size_t>(helper.K());
   const size_t lda = helper.Lda(trans_a);
   const size_t ldb = helper.Ldb(trans_b);
-  // Small batches use stack-backed InlinedVector storage (no per-Compute() heap
-  // allocation); larger batches fall back to std::vector. Shared by both paths below.
+  // When Abseil is enabled (the default), small batches use stack-backed InlinedVector
+  // storage to avoid a per-Compute() heap allocation; larger batches use std::vector.
+  // (Under DISABLE_ABSEIL, InlinedVector is std::vector, so this is a no-op.)
   constexpr size_t kInlineBatchCutoff = 2;
 #if defined(__aarch64__) && defined(__linux__)
   const bool can_use_fastmath_sbgemm = CanUseFastMathModeSBGemm(N, K);
