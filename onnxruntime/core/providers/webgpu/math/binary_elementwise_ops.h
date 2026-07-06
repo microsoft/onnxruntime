@@ -21,16 +21,18 @@ class BinaryElementwiseProgram final : public Program<BinaryElementwiseProgram> 
                            const bool is_lhs_use_4_components,
                            const bool is_rhs_use_4_components,
                            const bool vectorize,
-                           const bool is_int64 = false) : Program{kernel_name},
-                                                          expression_{expression},
-                                                          additional_impl_{additional_impl},
-                                                          is_broadcast_{is_broadcast},
-                                                          is_lhs_scalar_{is_lhs_scalar},
-                                                          is_rhs_scalar_{is_rhs_scalar},
-                                                          is_lhs_use_4_components_{is_lhs_use_4_components},
-                                                          is_rhs_use_4_components_{is_rhs_use_4_components},
-                                                          vectorize_{vectorize},
-                                                          is_int64_{is_int64} {}
+                           const bool is_int64_input = false,
+                           const bool is_int64_output = false) : Program{kernel_name},
+                                                                 expression_{expression},
+                                                                 additional_impl_{additional_impl},
+                                                                 is_broadcast_{is_broadcast},
+                                                                 is_lhs_scalar_{is_lhs_scalar},
+                                                                 is_rhs_scalar_{is_rhs_scalar},
+                                                                 is_lhs_use_4_components_{is_lhs_use_4_components},
+                                                                 is_rhs_use_4_components_{is_rhs_use_4_components},
+                                                                 vectorize_{vectorize},
+                                                                 is_int64_input_{is_int64_input},
+                                                                 is_int64_output_{is_int64_output} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
@@ -46,7 +48,8 @@ class BinaryElementwiseProgram final : public Program<BinaryElementwiseProgram> 
   bool is_lhs_use_4_components_;
   bool is_rhs_use_4_components_;
   bool vectorize_;
-  bool is_int64_;
+  bool is_int64_input_;
+  bool is_int64_output_;
 };
 
 class BinaryElementwise : public WebGpuKernel {

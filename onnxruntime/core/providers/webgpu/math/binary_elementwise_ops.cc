@@ -20,7 +20,6 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
 
   const bool a_is_bool = Inputs()[0].var_type == ProgramVariableDataType::Boolx4;
   const bool b_is_bool = Inputs()[1].var_type == ProgramVariableDataType::Boolx4;
-  const bool is_int64_output = is_int64_ && Outputs()[0].var_type != ProgramVariableDataType::Boolx4;
 
   shader.AdditionalImplementation() << additional_impl_;
 
@@ -30,31 +29,41 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
   // If either A or B is scalar, or A and B have the same shape, element-wise mode can be used.
   // In element-wise mode, no indices calculation is needed.
   if (is_lhs_scalar_ || is_rhs_scalar_ || !is_broadcast_) {
-    // get A data
-    if (is_int64_) {
+    if (is_int64_input_) {
       // INT64 inputs have component=1; read 4 individual elements into vec4 for uniform processing.
-      shader.MainFunctionBody() << "let a = vec4<input_a_value_t>("
-                                << a.GetByOffset(is_lhs_scalar_ ? "0" : "global_idx * 4u") << ", "
-                                << a.GetByOffset(is_lhs_scalar_ ? "0" : "global_idx * 4u + 1u") << ", "
-                                << a.GetByOffset(is_lhs_scalar_ ? "0" : "global_idx * 4u + 2u") << ", "
-                                << a.GetByOffset(is_lhs_scalar_ ? "0" : "global_idx * 4u + 3u") << ");\n";
-    } else if (is_lhs_scalar_) {
-      shader.MainFunctionBody() << "let a = input_a_value_t(" << a.GetByOffset("0") << ".x);\n";
+      // Guard lanes 1-3 against OOB reads when size is not divisible by 4.
+      const auto a_offset = [&](const std::string& idx) {
+        return is_lhs_scalar_ ? a.GetByOffset("0") : a.GetByOffset(idx);
+      };
+      const auto b_offset = [&](const std::string& idx) {
+        return is_rhs_scalar_ ? b.GetByOffset("0") : b.GetByOffset(idx);
+      };
+      shader.MainFunctionBody()
+          << "let base = global_idx * 4u;\n"
+          << "let n = uniforms.element_count;\n"
+          << "var a0 = " << a_offset("base") << ";\n"
+          << "var b0 = " << b_offset("base") << ";\n"
+          << "var a1 = input_a_value_t(0); var a2 = input_a_value_t(0); var a3 = input_a_value_t(0);\n"
+          << "var b1 = input_b_value_t(0); var b2 = input_b_value_t(0); var b3 = input_b_value_t(0);\n"
+          << "if (base + 1u < n) { a1 = " << a_offset("base + 1u") << "; b1 = " << b_offset("base + 1u") << "; }\n"
+          << "if (base + 2u < n) { a2 = " << a_offset("base + 2u") << "; b2 = " << b_offset("base + 2u") << "; }\n"
+          << "if (base + 3u < n) { a3 = " << a_offset("base + 3u") << "; b3 = " << b_offset("base + 3u") << "; }\n"
+          << "let a = vec4<input_a_value_t>(a0, a1, a2, a3);\n"
+          << "let b = vec4<input_b_value_t>(b0, b1, b2, b3);\n";
     } else {
-      shader.MainFunctionBody() << "let a = " << a.GetByOffset("global_idx") << ";\n";
-    }
+      // get A data
+      if (is_lhs_scalar_) {
+        shader.MainFunctionBody() << "let a = input_a_value_t(" << a.GetByOffset("0") << ".x);\n";
+      } else {
+        shader.MainFunctionBody() << "let a = " << a.GetByOffset("global_idx") << ";\n";
+      }
 
-    // get B data
-    if (is_int64_) {
-      shader.MainFunctionBody() << "let b = vec4<input_b_value_t>("
-                                << b.GetByOffset(is_rhs_scalar_ ? "0" : "global_idx * 4u") << ", "
-                                << b.GetByOffset(is_rhs_scalar_ ? "0" : "global_idx * 4u + 1u") << ", "
-                                << b.GetByOffset(is_rhs_scalar_ ? "0" : "global_idx * 4u + 2u") << ", "
-                                << b.GetByOffset(is_rhs_scalar_ ? "0" : "global_idx * 4u + 3u") << ");\n";
-    } else if (is_rhs_scalar_) {
-      shader.MainFunctionBody() << "let b = input_b_value_t(" << b.GetByOffset("0") << ".x);\n";
-    } else {
-      shader.MainFunctionBody() << "let b = " << b.GetByOffset("global_idx") << ";\n";
+      // get B data
+      if (is_rhs_scalar_) {
+        shader.MainFunctionBody() << "let b = input_b_value_t(" << b.GetByOffset("0") << ".x);\n";
+      } else {
+        shader.MainFunctionBody() << "let b = " << b.GetByOffset("global_idx") << ";\n";
+      }
     }
   } else {
     const auto& c_indices = shader.AddIndices("bcast_indices");
@@ -133,7 +142,7 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
     }
   }
 
-  if (is_int64_output) {
+  if (is_int64_output_) {
     // INT64 output (component=1): write each component of the vec4 result individually.
     shader.MainFunctionBody()
         << "let result = " << expression_ << ";\n"
@@ -175,14 +184,14 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
   // INT64 has no vec4 representation in WebGPU (stored as vec2<u32>), so disable vectorization.
   bool is_lhs_int64 = lhs_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
   bool is_rhs_int64 = rhs_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
-  bool is_int64 = is_lhs_int64 || is_rhs_int64;
+  bool is_int64_input = is_lhs_int64 || is_rhs_int64;
 
-  bool vectorize = !is_int64 && (is_lhs_scalar || is_rhs_scalar || !is_broadcast);
+  bool vectorize = !is_int64_input && (is_lhs_scalar || is_rhs_scalar || !is_broadcast);
   bool a_last_dim_divisible_by_4 = false;
   bool b_last_dim_divisible_by_4 = false;
   bool shared_dimension_divisible_by_4 = false;
   size_t num_shared_dimension = 0;
-  if (!is_int64 && !vectorize) {
+  if (!is_int64_input && !vectorize) {
     // check whether vectorize can be enabled
     a_last_dim_divisible_by_4 = lhs_shape.NumDimensions() > 0 && lhs_shape[lhs_shape.NumDimensions() - 1] % 4 == 0;
     b_last_dim_divisible_by_4 = rhs_shape.NumDimensions() > 0 && rhs_shape[rhs_shape.NumDimensions() - 1] % 4 == 0;
@@ -199,10 +208,10 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     }
   }
 
-  bool is_output_int64 = output_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
+  bool is_int64_output = output_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64;
   uint32_t vec_size = onnxruntime::narrow<uint32_t>((size + 3) / 4);
-  int output_component = is_output_int64 ? 1 : 4;
-  uint32_t output_size = is_output_int64 ? onnxruntime::narrow<uint32_t>(size) : vec_size;
+  int output_component = is_int64_output ? 1 : 4;
+  uint32_t output_size = is_int64_output ? onnxruntime::narrow<uint32_t>(size) : vec_size;
 
   std::string additional_impl;
   if (get_additional_impl_) {
@@ -218,7 +227,8 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
                                    shared_dimension_divisible_by_4 || a_last_dim_divisible_by_4,
                                    shared_dimension_divisible_by_4 || b_last_dim_divisible_by_4,
                                    vectorize,
-                                   is_int64};
+                                   is_int64_input,
+                                   is_int64_output};
   program
       .SetDispatchGroupSize((vec_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
@@ -231,8 +241,8 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     // Mode Element-wise
     // cache hint: "E{is_a_scalar}{is_b_scalar}"
     program
-        .AddInputs({{lhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, is_int64 ? 1 : 4},
-                    {rhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, is_int64 ? 1 : 4}})
+        .AddInputs({{lhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, is_int64_input ? 1 : 4},
+                    {rhs_tensor, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, is_int64_input ? 1 : 4}})
         .CacheHint("E" + std::to_string(is_lhs_scalar) + std::to_string(is_rhs_scalar));
   } else if (vectorize) {
     // reshape the dims to merge the shared dimension if available
