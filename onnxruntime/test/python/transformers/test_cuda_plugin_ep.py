@@ -116,6 +116,24 @@ def _create_session_options(session_config=None):
     return sess_options
 
 
+class _CudaOrtValueBinding:
+    def __init__(self, shape, dtype, device_id):
+        if dtype != np.float32:
+            raise TypeError(f"Unsupported CUDA graph binding dtype: {dtype}")
+
+        self._dtype = np.float32
+        # Allocate a GPU-backed OrtValue with a stable device address so CUDA graph
+        # capture/replay can reuse the same memory across runs.
+        self.ort_value = onnxrt.OrtValue.ortvalue_from_shape_and_type(list(shape), self._dtype, "cuda", device_id)
+
+    def update_inplace(self, data):
+        # Copy host data into the existing GPU buffer without changing its address.
+        self.ort_value.update_inplace(np.ascontiguousarray(data, dtype=self._dtype))
+
+    def numpy(self):
+        return self.ort_value.numpy()
+
+
 def _format_assigned_node(node):
     domain = node.domain or "ai.onnx"
     if node.name:
@@ -392,8 +410,21 @@ def run_provider_options_test(provider_options, expect_plugin_provider=True):
         model_path = tmp.name
     try:
         create_add_model(model_path)
-        providers = [(CUDA_PLUGIN_EP_NAME, _plugin_provider_options(provider_options)), "CPUExecutionProvider"]
-        sess = onnxrt.InferenceSession(model_path, sess_options=_create_session_options(), providers=providers)
+        sess_options = _create_session_options()
+        if expect_plugin_provider:
+            target_device = get_cuda_plugin_device_by_id(int(provider_options.get("device_id", "0")))
+            sess_options.add_provider_for_devices([target_device], _plugin_provider_options(provider_options))
+            sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
+        else:
+            try:
+                target_device = get_cuda_plugin_device_by_id(int(provider_options.get("device_id", "0")))
+            except unittest.SkipTest:
+                sess = onnxrt.InferenceSession(
+                    model_path, sess_options=sess_options, providers=["CPUExecutionProvider"]
+                )
+            else:
+                sess_options.add_provider_for_devices([target_device], _plugin_provider_options(provider_options))
+                sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
         active_providers = sess.get_providers()
         assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
 
@@ -422,6 +453,39 @@ def run_provider_options_test(provider_options, expect_plugin_provider=True):
 
         print(f"Expected failure for provider options {provider_options}: {e}")
         return True
+    finally:
+        if os.path.exists(model_path):
+            os.remove(model_path)
+
+
+def run_auto_registered_provider_options_test(provider_options):
+    require_cuda_plugin_ep()
+
+    with tempfile.NamedTemporaryFile(suffix=".onnx", delete=False) as tmp:
+        model_path = tmp.name
+    try:
+        create_add_model(model_path)
+        sess_options = _create_session_options()
+        providers = [(CUDA_PLUGIN_EP_NAME, _plugin_provider_options(provider_options)), "CPUExecutionProvider"]
+        sess = onnxrt.InferenceSession(model_path, sess_options=sess_options, providers=providers)
+
+        active_providers = sess.get_providers()
+        assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
+        if not assigned_nodes:
+            print(
+                f"FAILURE: {CUDA_PLUGIN_EP_NAME} was assigned no nodes. Providers: {active_providers}. "
+                f"Assignments: {_format_assignment_summary(assignment_info)}"
+            )
+            return False
+
+        a = np.random.rand(3, 2).astype(np.float32)
+        b = np.random.rand(3, 2).astype(np.float32)
+        res = sess.run(None, {"A": a, "B": b})
+        np.testing.assert_allclose(res[0], a + b, rtol=1e-3, atol=1e-3)
+        return True
+    except Exception as e:
+        print(f"FAIL ({e})")
+        return False
     finally:
         if os.path.exists(model_path):
             os.remove(model_path)
@@ -661,6 +725,13 @@ class TestCudaPluginEP(unittest.TestCase):
         result = run_provider_options_test({"device_id": "0", "use_tf32": "0"}, expect_plugin_provider=True)
         self.assertTrue(result, "Provider options with valid device_id/use_tf32 failed")
 
+    @requires_cudnn
+    def test_auto_registered_provider_options_valid(self):
+        result = run_auto_registered_provider_options_test(
+            {"device_id": "0", "ep.cuda.use_tf32": "0", "ep.cuda.prefer_nhwc_layout": "0"}
+        )
+        self.assertTrue(result, "Auto-registered provider options with prefixed CUDA options failed")
+
     def test_provider_options_invalid_device(self):
         result = run_provider_options_test({"device_id": "999"}, expect_plugin_provider=False)
         self.assertTrue(result, "Provider options with invalid device_id failed")
@@ -676,8 +747,9 @@ class TestCudaPluginEP(unittest.TestCase):
             model_path = tmp.name
         try:
             create_add_model(model_path)
-            providers = [(CUDA_PLUGIN_EP_NAME, _plugin_provider_options({"device_id": "1"})), "CPUExecutionProvider"]
-            sess = onnxrt.InferenceSession(model_path, sess_options=_create_session_options(), providers=providers)
+            sess_options = _create_session_options()
+            sess_options.add_provider_for_devices([target_device], _plugin_provider_options({"device_id": "1"}))
+            sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
 
             active_providers = sess.get_providers()
             assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
@@ -2320,13 +2392,14 @@ class TestCudaPluginEP(unittest.TestCase):
     def _create_cuda_graph_session(self, model_path, extra_session_config=None, provider_options=None):
         """Create a session with CUDA graph capture enabled for the plugin EP."""
         sess_options = _create_session_options()
-        sess_options.add_session_config_entry("ep.cudapluginexecutionprovider.enable_cuda_graph", "1")
+        sess_options.add_session_config_entry("ep.cuda.enable_cuda_graph", "1")
         if extra_session_config:
             for key, value in extra_session_config.items():
                 sess_options.add_session_config_entry(key, value)
         provider_options = _plugin_provider_options({"enable_cuda_graph": "1", **(provider_options or {})})
-        providers = [(CUDA_PLUGIN_EP_NAME, provider_options), "CPUExecutionProvider"]
-        return onnxrt.InferenceSession(model_path, sess_options=sess_options, providers=providers)
+        target_device = get_cuda_plugin_device_by_id(int(provider_options.get("device_id", "0")))
+        sess_options.add_provider_for_devices([target_device], provider_options)
+        return onnxrt.InferenceSession(model_path, sess_options=sess_options)
 
     def _setup_cuda_graph_io(self, session, input_shapes, output_shapes, device_id=0):
         """Pre-allocate GPU OrtValues and set up IOBinding for graph capture."""
@@ -2336,15 +2409,15 @@ class TestCudaPluginEP(unittest.TestCase):
 
         for inp in session.get_inputs():
             shape = input_shapes[inp.name]
-            ort_value = onnxrt.OrtValue.ortvalue_from_shape_and_type(shape, np.float32, "cuda", device_id)
-            input_ort_values[inp.name] = ort_value
-            io_binding.bind_ortvalue_input(inp.name, ort_value)
+            binding = _CudaOrtValueBinding(shape, np.float32, device_id)
+            input_ort_values[inp.name] = binding
+            io_binding.bind_ortvalue_input(inp.name, binding.ort_value)
 
         for out in session.get_outputs():
             shape = output_shapes[out.name]
-            ort_value = onnxrt.OrtValue.ortvalue_from_shape_and_type(shape, np.float32, "cuda", device_id)
-            output_ort_values[out.name] = ort_value
-            io_binding.bind_ortvalue_output(out.name, ort_value)
+            binding = _CudaOrtValueBinding(shape, np.float32, device_id)
+            output_ort_values[out.name] = binding
+            io_binding.bind_ortvalue_output(out.name, binding.ort_value)
 
         return io_binding, input_ort_values, output_ort_values
 
@@ -2442,7 +2515,7 @@ class TestCudaPluginEP(unittest.TestCase):
             try:
                 session = self._create_cuda_graph_session(
                     model_path,
-                    extra_session_config={"ep.cudapluginexecutionprovider.arena.use_cuda_mempool": "1"},
+                    extra_session_config={"ep.cuda.arena.use_cuda_mempool": "1"},
                 )
             except Exception as exc:
                 if is_cuda_mempool_unsupported_error(exc):
