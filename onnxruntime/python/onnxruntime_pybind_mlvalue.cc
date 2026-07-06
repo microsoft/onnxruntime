@@ -23,6 +23,10 @@
 #include "core/framework/kernel_registry.h"
 #include "core/framework/provider_options_utils.h"
 
+#if defined(USE_CUDA) && !defined(ORT_NO_CUDA_IN_PYBIND)
+#include <cuda_runtime_api.h>
+#endif
+
 #ifdef USE_DML
 using Microsoft::WRL::ComPtr;
 
@@ -180,12 +184,48 @@ int32_t GetTensorProtoType(const OrtValue& ort_value) {
 }
 
 #ifdef USE_CUDA
+namespace {
+
+#if !defined(ORT_NO_CUDA_IN_PYBIND)
+void CudaRuntimeMemCpy(void* dst, const void* src, size_t num_bytes, cudaMemcpyKind kind) {
+  const auto copy_result = cudaMemcpy(dst, src, num_bytes, kind);
+  ORT_ENFORCE(copy_result == cudaSuccess, "cudaMemcpy failed: ", cudaGetErrorString(copy_result));
+
+  if (kind == cudaMemcpyHostToDevice) {
+    // Match ProviderInfo_CUDA::cudaMemcpy_HostToDevice: cudaMemcpy() uses the default
+    // stream, and pageable host-to-device copies can return before DMA to device is done.
+    const auto sync_result = cudaStreamSynchronize(0);
+    ORT_ENFORCE(sync_result == cudaSuccess, "cudaStreamSynchronize failed: ", cudaGetErrorString(sync_result));
+  }
+}
+#endif
+
+}  // namespace
+
 void CpuToCudaMemCpy(void* dst, const void* src, size_t num_bytes) {
-  GetProviderInfo_CUDA().cudaMemcpy_HostToDevice(dst, src, num_bytes);
+  if (TryGetProviderInfo_CUDA() != nullptr) {
+    GetProviderInfo_CUDA().cudaMemcpy_HostToDevice(dst, src, num_bytes);
+    return;
+  }
+
+#if !defined(ORT_NO_CUDA_IN_PYBIND)
+  CudaRuntimeMemCpy(dst, src, num_bytes, cudaMemcpyHostToDevice);
+#else
+  ORT_THROW("CUDA provider interface is not available for host-to-device copy.");
+#endif
 }
 
 void CudaToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
-  GetProviderInfo_CUDA().cudaMemcpy_DeviceToHost(dst, src, num_bytes);
+  if (TryGetProviderInfo_CUDA() != nullptr) {
+    GetProviderInfo_CUDA().cudaMemcpy_DeviceToHost(dst, src, num_bytes);
+    return;
+  }
+
+#if !defined(ORT_NO_CUDA_IN_PYBIND)
+  CudaRuntimeMemCpy(dst, src, num_bytes, cudaMemcpyDeviceToHost);
+#else
+  ORT_THROW("CUDA provider interface is not available for device-to-host copy.");
+#endif
 }
 
 const std::unordered_map<OrtDevice, MemCpyFunc>* GetCudaToHostMemCpyFunction(const OrtDevice& device) {

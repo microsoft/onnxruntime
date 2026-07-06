@@ -342,7 +342,7 @@ class PluginKernelCollector {
 #define ORT_ADAPTER_CONCAT(x, y) ORT_ADAPTER_CONCAT_IMPL(x, y)
 
 // The provider parameter are not used in below macros since we are hardcoding the provider to cuda plugin.
-#define CUDA_PLUGIN_EP ::onnxruntime::kCudaPluginExecutionProvider
+#define CUDA_PLUGIN_EP ::onnxruntime::kCudaExecutionProviderPluginAlias
 
 #undef ONNX_OPERATOR_KERNEL_EX
 #define ONNX_OPERATOR_KERNEL_EX(name, domain, ver, provider, builder, ...)                           \
