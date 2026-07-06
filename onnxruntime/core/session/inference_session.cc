@@ -129,6 +129,21 @@ int ParseSpinDurationUs(std::string_view str, const char* config_key,
   return spin_us;
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+// Returns the virtual model path derived from the
+// kOrtSessionOptionsModelExternalInitializersFileFolderPath config option, or an empty
+// PathString when the option is not set. When set, external initializers are resolved
+// relative to this folder, overriding the model's own directory.
+PathString GetExternalInitializersFolderModelPath(const ConfigOptions& config_options) {
+  const std::string external_data_folder_path = config_options.GetConfigOrDefault(
+      kOrtSessionOptionsModelExternalInitializersFileFolderPath, "");
+  if (external_data_folder_path.empty()) {
+    return PathString{};
+  }
+  return ToPathString(external_data_folder_path + "/virtual_model.onnx");
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 // Parse a spin backoff max config value (exponential-backoff cap). Defaults to
 // 1 (no backoff, one SpinPause() per iteration). Values >= 2 enable backoff.
 unsigned int ParseSpinBackoffMax(std::string_view str, const char* config_key,
@@ -1171,7 +1186,7 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
 
 common::Status InferenceSession::LoadOnnxModel(const PathString& model_uri) {
   model_location_ = model_uri;
-  auto loader = [this](std::shared_ptr<onnxruntime::Model>& model) {
+  auto loader = [this, model_uri](std::shared_ptr<onnxruntime::Model>& model) {
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
     LoadInterOp(model_location_, interop_domains_, [&](const char* msg) { LOGS(*session_logger_, WARNING) << msg; });
     InlinedVector<OrtCustomOpDomain*> domain_ptrs;
@@ -1182,10 +1197,19 @@ common::Status InferenceSession::LoadOnnxModel(const PathString& model_uri) {
 
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
+    ModelOptions model_opts(true, strict_shape_type_inference, check_load_cancellation_fn_);
+
+    // When set, the external initializers folder overrides the model's own directory as the
+    // base for resolving external data. The model bytes are still read from model_uri.
+    PathString external_data_model_path = GetExternalInitializersFolderModelPath(session_options_.config_options);
+    if (!external_data_model_path.empty()) {
+      model_location_ = external_data_model_path;
+      return onnxruntime::Model::Load(model_uri, model_location_, model,
+                                      HasLocalSchema() ? &custom_schema_registries_ : nullptr,
+                                      *session_logger_, model_opts);
+    }
     return onnxruntime::Model::Load(model_location_, model, HasLocalSchema() ? &custom_schema_registries_ : nullptr,
-                                    *session_logger_,
-                                    ModelOptions(true, strict_shape_type_inference,
-                                                 check_load_cancellation_fn_));
+                                    *session_logger_, model_opts);
   };
 
   common::Status st = LoadWithLoader(loader, "model_loading_uri");
@@ -1270,10 +1294,9 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
 
-    std::string external_data_folder_path = session_options_.config_options.GetConfigOrDefault(
-        kOrtSessionOptionsModelExternalInitializersFileFolderPath, "");
-    if (!external_data_folder_path.empty() && model_location_.empty()) {
-      model_location_ = ToPathString(external_data_folder_path + "/virtual_model.onnx");
+    PathString external_data_model_path = GetExternalInitializersFolderModelPath(session_options_.config_options);
+    if (!external_data_model_path.empty()) {
+      model_location_ = external_data_model_path;
     }
 
     return onnxruntime::Model::Load(std::move(model_proto), model_location_, model,
@@ -1308,10 +1331,9 @@ common::Status InferenceSession::LoadOnnxModel(ModelProto model_proto) {
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
 
-    std::string external_data_folder_path = session_options_.config_options.GetConfigOrDefault(
-        kOrtSessionOptionsModelExternalInitializersFileFolderPath, "");
-    if (!external_data_folder_path.empty() && model_location_.empty()) {
-      model_location_ = ToPathString(external_data_folder_path + "/virtual_model.onnx");
+    PathString external_data_model_path = GetExternalInitializersFolderModelPath(session_options_.config_options);
+    if (!external_data_model_path.empty()) {
+      model_location_ = external_data_model_path;
     }
 
     // This call will move model_proto to the constructed model instance
@@ -1354,10 +1376,9 @@ common::Status InferenceSession::Load(std::istream& model_istream, bool allow_re
                             strict_shape_type_inference,
                             check_load_cancellation_fn_);
 
-    std::string external_data_folder_path = session_options_.config_options.GetConfigOrDefault(
-        kOrtSessionOptionsModelExternalInitializersFileFolderPath, "");
-    if (!external_data_folder_path.empty() && model_location_.empty()) {
-      model_location_ = ToPathString(external_data_folder_path + "/virtual_model.onnx");
+    PathString external_data_model_path = GetExternalInitializersFolderModelPath(session_options_.config_options);
+    if (!external_data_model_path.empty()) {
+      model_location_ = external_data_model_path;
     }
 
     return onnxruntime::Model::Load(std::move(model_proto), model_location_, model,
@@ -1387,6 +1408,11 @@ common::Status InferenceSession::Load() {
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
     const bool allow_released_opsets_only = session_options_.config_options.GetConfigOrDefault(
                                                 kOrtSessionOptionsConfigStrictAllowReleasedOpsetsOnly, "1") == "1";
+
+    PathString external_data_model_path = GetExternalInitializersFolderModelPath(session_options_.config_options);
+    if (!external_data_model_path.empty()) {
+      model_location_ = external_data_model_path;
+    }
 
     // Pass on ownership of the parsed ModelProto to the Model instance (its job here is done by this stage)
     return Model::Load(std::move(this->model_proto_), model_location_, model,
