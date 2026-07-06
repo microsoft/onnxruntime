@@ -5,16 +5,25 @@
 
 #include "gtest/gtest.h"
 
+#include "core/providers/webgpu/webgpu_provider_options.h"
 #include "default_providers.h"
 #include "test/providers/provider_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
 
-// Regression test for large output flattening indices in Conv2dMM shader writes.
-// The output tensor is intentionally large enough that flat indices exceed 16-bit ranges.
+// Regression test for segmented storage-buffer writes in Conv2dMM shader output paths.
+// We force a small maxStorageBufferBindingSize so the output uses segmented accessors
+// (`GetByOffset`/`SetByOffset`) on a modest tensor shape.
 TEST(Conv_WebGPU, LargeFlatOutputIndex_UsesHelperIndexing) {
-  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  constexpr uint64_t kForcedMaxStorageBufferBindingSize = 512 * 1024;  // 512 KiB
+
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(
+      webgpu::options::kMaxStorageBufferBindingSize,
+      std::to_string(kForcedMaxStorageBufferBindingSize).c_str()));
+
+  auto webgpu_ep = WebGpuExecutionProviderWithOptions(config_options);
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU execution provider is not available.";
   }
