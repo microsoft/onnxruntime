@@ -175,7 +175,7 @@ def quant_dequant_blockwise(weights, block_size, is_4_bit_quantization: bool = T
         abs_scales=is_symmetric,
         flatten_qweight=False,
     )
-    processed_q_weight, _ = CudaQuantizer.cutlass_prepacked_blockwise_quantize(
+    processed_q_weight, _ = CudaQuantizer.qmoe_prepacked_blockwise_quantize(
         weights,
         bits,
         block_size,
@@ -247,11 +247,11 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True, asymmetric: bool 
     block_size = weights.shape[1]
     if not asymmetric and block_size > 256:
         bits = 4 if is_4_bit_quantization else 8
-        qweight, scales = CudaQuantizer.symmetric_per_channel_quantize(
+        qweight, scales = CudaQuantizer.qmoe_symmetric_per_channel_quantize(
             weights,
             bits,
         )
-        processed_q_weight, _ = CudaQuantizer.cuda_per_channel_quantize(
+        processed_q_weight, _ = CudaQuantizer.qmoe_per_channel_quantize(
             weights,
             bits,
             True,
@@ -2667,7 +2667,7 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
         ]
         for bits, weights, expected_qweight in cases:
             with self.subTest(bits=bits):
-                qweight, scales = CudaQuantizer.symmetric_per_channel_quantize(
+                qweight, scales = CudaQuantizer.qmoe_symmetric_per_channel_quantize(
                     weights,
                     bits,
                 )
@@ -2846,8 +2846,8 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
         for e in range(num_experts):
             w1 = (torch.randn(fc1_n, fc1_k) * 0.05).numpy().astype(numpy.float16)
             w2 = (torch.randn(fc2_n, fc2_k) * 0.05).numpy().astype(numpy.float16)
-            cuda_fc1_t, cuda_fc1_scales_t = cuda_quantizer.cuda_per_channel_quantize(torch.from_numpy(w1), bits, True)
-            cuda_fc2_t, cuda_fc2_scales_t = cuda_quantizer.cuda_per_channel_quantize(torch.from_numpy(w2), bits, True)
+            cuda_fc1_t, cuda_fc1_scales_t = cuda_quantizer.qmoe_per_channel_quantize(torch.from_numpy(w1), bits, True)
+            cuda_fc2_t, cuda_fc2_scales_t = cuda_quantizer.qmoe_per_channel_quantize(torch.from_numpy(w2), bits, True)
             cuda_fc1[e] = cuda_fc1_t.numpy()
             cuda_fc2[e] = cuda_fc2_t.numpy()
             cuda_fc1_scales[e] = cuda_fc1_scales_t.numpy().astype(numpy.float16)
@@ -2898,8 +2898,8 @@ class TestQMoEIntPrePackSmoke(unittest.TestCase):
         for e in range(num_experts):
             w1 = torch.randn(fc1_n, fc1_k, dtype=torch.float16) * 0.01
             w2 = torch.randn(fc2_n, fc2_k, dtype=torch.float16) * 0.01
-            q1, s1 = cuda_quantizer.cuda_per_channel_quantize(w1, bits, True)
-            q2, s2 = cuda_quantizer.cuda_per_channel_quantize(w2, bits, True)
+            q1, s1 = cuda_quantizer.qmoe_per_channel_quantize(w1, bits, True)
+            q2, s2 = cuda_quantizer.qmoe_per_channel_quantize(w2, bits, True)
             fc1_weights[e] = q1.numpy()
             fc2_weights[e] = q2.numpy()
             fc1_scales[e] = s1.numpy().astype(numpy.float16)

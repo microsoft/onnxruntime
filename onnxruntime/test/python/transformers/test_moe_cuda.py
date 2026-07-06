@@ -112,7 +112,7 @@ def quant_dequant(weights, is_4_bit_quantization: bool = True):
     q_weight, scales = CudaQuantizer.matmulnbits_blockwise_quantize(
         weights, bits, block_size, abs_scales=True, flatten_qweight=False
     )
-    processed_q_weight, _ = CudaQuantizer.cutlass_prepacked_blockwise_quantize(
+    processed_q_weight, _ = CudaQuantizer.qmoe_prepacked_blockwise_quantize(
         weights, bits, block_size, abs_scales=True
     )
 

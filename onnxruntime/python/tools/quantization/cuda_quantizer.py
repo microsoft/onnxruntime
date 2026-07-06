@@ -82,7 +82,7 @@ class CudaQuantizer:
     """
 
     @staticmethod
-    def symmetric_per_channel_quantize(
+    def qmoe_symmetric_per_channel_quantize(
         weights: torch.Tensor,
         bits: int,
         *,
@@ -134,7 +134,7 @@ class CudaQuantizer:
         return qweight.contiguous(), scales.squeeze(-1).contiguous()
 
     @staticmethod
-    def cuda_per_channel_quantize(
+    def qmoe_per_channel_quantize(
         weights: torch.Tensor,
         bits: int,
         prepack: bool,
@@ -151,7 +151,7 @@ class CudaQuantizer:
         """
         torch = _get_torch()
 
-        qweight, scales = CudaQuantizer.symmetric_per_channel_quantize(
+        qweight, scales = CudaQuantizer.qmoe_symmetric_per_channel_quantize(
             weights,
             bits,
             unsigned_full_range=unsigned_full_range,
@@ -293,16 +293,30 @@ class CudaQuantizer:
 
         ``weights`` has logical shape ``[N, K]``. Returns ``B`` with the standard
         MatMulNBits initializer shape ``[N, K/block_size, block_size*bits/8]``
-        and scales with shape ``[N, K/block_size]``. Use the returned ``B`` with
-        ``weight_prepacked=1`` on the MatMulNBits node.
+        and scales with shape ``[N, K/block_size]``.
 
-        The default ``force_arch=80`` matches the current CUDA MatMulNBits
-        fpA_intB path: runtime prepacking and offline prepacking both consume the
-        SM80 mixed-GEMM layout, including on newer GPUs.
+        The ``force_arch`` value selects the mixed-GEMM weight layout and must match
+        the ``weight_prepacked`` attribute set on the MatMulNBits node:
+
+        * ``force_arch=80`` (default): SM80/Ampere layout, consumed by the SM80 kernel
+          (also used on newer GPUs via the compatibility path). Use ``weight_prepacked=1``.
+        * ``force_arch=90``: SM90/Hopper layout, consumed by the native SM90 TMA/WGMMA
+          kernel. Use ``weight_prepacked=2``. Requires ``block_size`` in {64, 128}.
         """
         torch = _get_torch()
 
         bits = int(bits)
+        block_size = int(block_size)
+        force_arch = int(force_arch)
+        if force_arch not in (80, 90):
+            raise ValueError(f"force_arch must be 80 (SM80) or 90 (SM90), but got {force_arch}.")
+        # The native SM90 kernel needs group_size to be a multiple of the 64-element Hopper K tile,
+        # so block_size=32 is only supported by the SM80/Ampere-class kernel.
+        allowed_block_sizes = (32, 64, 128) if force_arch == 80 else (64, 128)
+        if block_size not in allowed_block_sizes:
+            raise ValueError(
+                f"block_size must be one of {allowed_block_sizes} for force_arch={force_arch}, but got {block_size}."
+            )
         n, k = weights.shape
         if k % block_size != 0:
             raise ValueError(f"K ({k}) must be divisible by block_size ({block_size}) for CUDA-prepacked weights.")
@@ -326,7 +340,7 @@ class CudaQuantizer:
         return packed, scales
 
     @staticmethod
-    def cutlass_prepacked_blockwise_quantize(
+    def qmoe_prepacked_blockwise_quantize(
         weights: torch.Tensor,
         bits: int,
         block_size: int,
