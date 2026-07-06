@@ -1472,6 +1472,16 @@ MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
 #endif
 }
 
+// The shape-derived products inside MlasConvPrepare are now checked via
+// SafeInt, but MSVC's /analyze (26451) still flags the size_t multiplies
+// that feed into SafeInt. Scope the historical suppression narrowly to this
+// function so it doesn't apply to unrelated helpers above.
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(push)
+// Chance of arithmetic overflow could be reduced
+#pragma warning(disable : 26451)
+#endif
+
 void
 MLASCALL
 MlasConvPrepare(
@@ -1804,3 +1814,6 @@ Return Value:
         }
     }
 }
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
