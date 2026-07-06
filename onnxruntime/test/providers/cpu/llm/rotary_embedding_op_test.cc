@@ -1412,13 +1412,18 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_PositionIds_OOB_InBatch_WebGPU_Passthr
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
-// Test that cos_cache dimension exceeding hidden_size is rejected when rotary_embedding_dim=0.
-TEST(RotaryEmbeddingTest, RotaryEmbedding_RejectsCosCacheExceedsHiddenSize) {
-  // hidden_size = 64, cos_cache dim1 = 64 => effective rotary dim = 128 > 64
+// Test that a cos_cache whose width does not match head_size / 2 (or rotary_embedding_dim / 2)
+// is rejected by the mainline op. The mainline op needs no additional hidden_size/OOB guard
+// because it requires num_heads > 0 for a rank-3 input, so head_size is always derived as
+// hidden_size / num_heads (never inferred from the cache) and the exact-width check below
+// already rejects an over-sized cos_cache.
+TEST(RotaryEmbeddingTest, RotaryEmbedding_RejectsCosCacheWidthMismatch) {
+  // hidden_size = 64, num_heads = 1 => head_size = 64, expected cache width = 32.
+  // cos_cache dim1 = 64 mismatches the expected 32 and is rejected by the existing width check.
   int batch_size = 1;
   int sequence_length = 1;
   int hidden_size = 64;
-  int half_rotary_dim = 64;  // makes cos_cache_dims[1]*2 = 128 > hidden_size
+  int half_rotary_dim = 64;  // mismatches expected head_size / 2 = 32
   int max_sequence_length = 2;
 
   OpTester test("RotaryEmbedding", 23, onnxruntime::kOnnxDomain);
