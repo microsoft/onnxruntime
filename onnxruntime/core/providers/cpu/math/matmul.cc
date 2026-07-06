@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cpu/math/matmul.h"
-#include "core/common/inlined_containers.h"
+#include "core/common/inlined_containers_fwd.h"
 #include "core/providers/cpu/math/gemm_matmul_common.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/util/math.h"
@@ -316,6 +316,9 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   const size_t K = static_cast<size_t>(helper.K());
   const size_t lda = helper.Lda(trans_a);
   const size_t ldb = helper.Ldb(trans_b);
+  // Small batches use stack-backed InlinedVector storage (no per-Compute() heap
+  // allocation); larger batches fall back to std::vector. Shared by both paths below.
+  constexpr size_t kInlineBatchCutoff = 2;
 #if defined(__aarch64__) && defined(__linux__)
   const bool can_use_fastmath_sbgemm = CanUseFastMathModeSBGemm(N, K);
   if (packed_b_) {
@@ -348,8 +351,8 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
                       M, N, K, max_len, data.data(), thread_pool, &mlas_backend_kernel_selector_config_);
     };
 
-    if (max_len <= 2) {
-      InlinedVector<MLAS_SBGEMM_DATA_PARAMS, 2> data(max_len);
+    if (max_len <= kInlineBatchCutoff) {
+      InlinedVector<MLAS_SBGEMM_DATA_PARAMS, kInlineBatchCutoff> data(max_len);
       gemm_batch(data);
     } else {
       std::vector<MLAS_SBGEMM_DATA_PARAMS> data(max_len);
@@ -374,8 +377,8 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
                     M, N, K, data.data(), max_len, thread_pool, &mlas_backend_kernel_selector_config_);
     };
 
-    if (max_len <= 2) {
-      InlinedVector<MLAS_SGEMM_DATA_PARAMS, 2> data(max_len);
+    if (max_len <= kInlineBatchCutoff) {
+      InlinedVector<MLAS_SGEMM_DATA_PARAMS, kInlineBatchCutoff> data(max_len);
       gemm_batch(data);
     } else {
       std::vector<MLAS_SGEMM_DATA_PARAMS> data(max_len);
