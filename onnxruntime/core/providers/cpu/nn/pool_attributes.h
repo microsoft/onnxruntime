@@ -47,7 +47,8 @@ struct PoolAttributes {
       pads.resize(kernel_shape.size() * 2, 0);
     }
     ORT_ENFORCE(pads.size() == kernel_shape.size() * 2,
-                "'pads' attribute must have a length of 2 * kernel_shape rank.");
+                "'pads' must have twice the kernel_shape rank (2 entries per spatial dim). Got pads size: ",
+                pads.size(), ", expected: ", kernel_shape.size() * 2);
 
     if (!info.GetAttrs("strides", strides).IsOK() || strides.empty()) {
       strides.resize(kernel_shape.size(), 1);
@@ -203,6 +204,7 @@ struct PoolAttributes {
                             int64_t pad_head,
                             int64_t pad_tail,
                             int64_t dilation) const {
+    // SafeInt guards against int64 overflow in the output-size arithmetic.
     int64_t numerator = SafeInt<int64_t>(in_size) + pad_head + pad_tail - SafeInt<int64_t>(dilation) * (kernel - 1) - 1;
     int64_t out_size = numerator / stride + 1;
 

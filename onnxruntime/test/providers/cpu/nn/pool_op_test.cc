@@ -1982,7 +1982,7 @@ TEST(PoolTest, MaxPool_PadsTooShort) {
   test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
   test.AddOutput<float>("Y", {0}, {});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "pads",
+  test.Run(OpTester::ExpectResult::kExpectFailure, "twice the kernel_shape rank",
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
 }
 
@@ -2000,7 +2000,7 @@ TEST(PoolTest, AveragePool_PadsTooShort) {
   test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
   test.AddOutput<float>("Y", {0}, {});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "pads",
+  test.Run(OpTester::ExpectResult::kExpectFailure, "twice the kernel_shape rank",
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
 }
 
@@ -2017,7 +2017,7 @@ TEST(PoolTest, LpPool_PadsTooShort) {
   test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
   test.AddOutput<float>("Y", {0}, {});
 
-  test.Run(OpTester::ExpectResult::kExpectFailure, "pads",
+  test.Run(OpTester::ExpectResult::kExpectFailure, "twice the kernel_shape rank",
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
 }
 
