@@ -501,6 +501,13 @@ static const char* const kOrtSessionOptionsMlasLutGemm = "mlas.use_lut_gemm";
 // - "1": Disable KleidiAI kernels even if available.
 static const char* const kOrtSessionOptionsMlasDisableKleidiAi = "mlas.disable_kleidiai";
 
+// Use SVE SGEMM kernels in MLAS if available.
+// Option values:
+// - "0": Disable Use of SVE SGEMM kernels. [DEFAULT]
+// - "1": Use SVE SGEMM kernels when available.
+static const char* const kOrtSessionOptionsMlasEnableSveSgemm = "mlas.enable_sve_sgemm";
+
+
 // Power-user tuning option for the Arm® KleidiAI™ SME IGEMM convolution route on Arm64.
 // For 2D convolutions where both SME IGEMM and the MlasGemm SGEMM fallback are valid routes, work is estimated as:
 //  output_h * output_w * input_channels * dilated_kernel_h * dilated_kernel_w * filter_count.
