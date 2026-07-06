@@ -63,13 +63,18 @@ void GraphTransformerManager::ClearGraphModified(void) {
 common::Status GraphTransformerManager::Register(std::unique_ptr<GraphTransformer> transformer,
                                                  TransformerLevel level) {
   const auto& name = transformer->Name();
-  const auto& registered = level_to_transformer_map_[level];
-  if (std::find(registered.begin(), registered.end(), transformer) != registered.end()) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "This transformer is already registered " + name);
+  auto& transformers_at_level = level_to_transformer_map_[level];
+  // Reject a duplicate transformer name at this level. Comparing the incoming unique_ptr
+  // against the stored ones could never match (it owns a distinct, not-yet-inserted pointer),
+  // so duplicates previously slipped through and were applied twice per level.
+  for (const auto& registered_transformer : transformers_at_level) {
+    if (registered_transformer->Name() == name) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "This transformer is already registered " + name);
+    }
   }
 
   transformers_info_[name] = transformer.get();
-  level_to_transformer_map_[level].push_back(std::move(transformer));
+  transformers_at_level.push_back(std::move(transformer));
   return Status::OK();
 }
 }  // namespace onnxruntime
