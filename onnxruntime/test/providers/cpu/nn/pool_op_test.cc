@@ -2069,6 +2069,94 @@ TEST(PoolTest, AveragePool_NegativeOutputDim) {
            {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
 }
 
+// Verify that a 'pads' attribute longer than 2 * kernel_shape rank is rejected by the
+// PoolAttributes constructor. AddShapeToTensorData(false) omits the input shape so ONNX shape
+// inference is bypassed and the model reaches kernel construction where the ORT_ENFORCE fires.
+// Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
+// different error messages.
+TEST(PoolTest, MaxPool_PadsTooLong) {
+  OpTester test("MaxPool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "twice the kernel_shape rank",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Verify that a 'strides' attribute whose length does not match the kernel_shape rank is rejected
+// by the PoolAttributes constructor. The bare ORT_ENFORCE carries the stringified condition as its
+// message, so the assertion pins that check. AddShapeToTensorData(false) bypasses shape inference.
+// Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
+// different error messages.
+TEST(PoolTest, MaxPool_StridesLengthMismatch) {
+  OpTester test("MaxPool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "strides.size() == kernel_shape.size()",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Verify that a 'dilations' attribute whose length does not match the kernel_shape rank is
+// rejected by the PoolAttributes constructor. AddShapeToTensorData(false) bypasses shape inference.
+// Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
+// different error messages.
+TEST(PoolTest, MaxPool_DilationsLengthMismatch) {
+  OpTester test("MaxPool", 10);
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", std::vector<int64_t>{1, 1, 1});
+
+  std::vector<float> x_vals(1 * 1 * 8 * 8, 1.0f);
+  test.AddInput<float>("X", {1, 1, 8, 8}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Dilations dimensions should match kernel shape",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
+// Verify that a low-rank input is rejected before pooling. The SetOutputSize F5 guard
+// (NumDimensions >= 2) is defense-in-depth for execution providers and direct callers, but the CPU
+// pooling kernels reject inputs with rank < 3 earlier in Compute, so this test pins that earlier
+// guard's message. AddShapeToTensorData(false) bypasses shape inference so the rank-2 input reaches
+// the kernel. Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML).
+TEST(PoolTest, MaxPool_InputRankTooLow) {
+  OpTester test("MaxPool");
+  test.AddShapeToTensorData(false);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 0, 0});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+
+  std::vector<float> x_vals(4 * 4, 1.0f);
+  test.AddInput<float>("X", {4, 4}, x_vals);
+  test.AddOutput<float>("Y", {0}, {});
+
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Input dimension cannot be less than 3",
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kDmlExecutionProvider});
+}
+
 // DML EP validates stride/dilation in OperatorHelper.cpp (KernelHelper constructor) via
 // ML_CHECK_VALID_ARGUMENT_MSG, but the descriptive message is lost when the exception crosses
 // the COM/HRESULT boundary (CATCH_RETURN strips the message, THROW_IF_FAILED re-throws with

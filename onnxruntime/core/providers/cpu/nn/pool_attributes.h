@@ -206,13 +206,16 @@ struct PoolAttributes {
                             int64_t dilation) const {
     // SafeInt guards against int64 overflow in the output-size arithmetic.
     int64_t numerator = SafeInt<int64_t>(in_size) + pad_head + pad_tail - SafeInt<int64_t>(dilation) * (kernel - 1) - 1;
-    int64_t out_size = numerator / stride + 1;
+    int64_t out_size = static_cast<int64_t>(SafeInt<int64_t>(numerator / stride) + 1);
 
     if (ceil_mode == 1) {
-      out_size = static_cast<int64_t>(std::ceil(static_cast<float>(numerator) / stride)) + 1;
+      int64_t ceil_div = static_cast<int64_t>(std::ceil(static_cast<float>(numerator) / stride));
+      out_size = static_cast<int64_t>(SafeInt<int64_t>(ceil_div) + 1);
       // Ensure that the last pooling starts inside the image (at least 1 pixel)
       // Reference: https://github.com/onnx/onnx/pull/5741
-      if ((out_size - 1) * stride >= in_size + pad_head) {
+      int64_t last_pool_start = static_cast<int64_t>((SafeInt<int64_t>(out_size) - 1) * stride);
+      int64_t input_extent = static_cast<int64_t>(SafeInt<int64_t>(in_size) + pad_head);
+      if (last_pool_start >= input_extent) {
         --out_size;
       }
     }
