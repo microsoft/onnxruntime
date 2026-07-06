@@ -251,6 +251,15 @@ Status ModelCompilationOptions::SetGraphOptimizationLevel(GraphOptimizationLevel
   return Status::OK();
 }
 
+Status ModelCompilationOptions::SetWeightlessCache(bool use_weightless) {
+  use_weightless_cache_ = use_weightless;
+  if (use_weightless) {
+    ORT_RETURN_IF_ERROR(
+        session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionEpEnableWeightless, "1"));
+  }
+  return Status::OK();
+}
+
 Status ModelCompilationOptions::Check() const {
   const ConfigOptions& config_options = session_options_.value.config_options;
 

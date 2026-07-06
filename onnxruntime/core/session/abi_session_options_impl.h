@@ -38,4 +38,10 @@ struct OrtSessionOptions {
   // e.g. for EP called 'MyEP' an options 'device_id' would be added as 'ep.myep.device_id'
   //      with GetProviderOptionPrefix returning 'ep.myep.'
   static std::string GetProviderOptionPrefix(const char* provider_name);
+
+  // Weightless source model for EPContext sessions.
+  // Set via SessionOptionsSetWeightlessSourceModelPath or SessionOptionsSetWeightlessSourceModelFromBuffer.
+  onnxruntime::PathString weightless_source_model_path;
+  const void* weightless_source_model_data = nullptr;
+  size_t weightless_source_model_data_size = 0;
 };
