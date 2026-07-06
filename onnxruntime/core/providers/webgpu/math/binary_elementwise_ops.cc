@@ -146,11 +146,11 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
     // INT64 output (component=1): write each component of the vec4 result individually.
     shader.MainFunctionBody()
         << "let result = " << expression_ << ";\n"
-        << "let n = uniforms.element_count;\n"
+        << "let output_size = uniforms.element_count;\n"
         << c.SetByOffset("global_idx * 4u", "result[0]") << "\n"
-        << "if (global_idx * 4u + 1u < n) { " << c.SetByOffset("global_idx * 4u + 1u", "result[1]") << " }\n"
-        << "if (global_idx * 4u + 2u < n) { " << c.SetByOffset("global_idx * 4u + 2u", "result[2]") << " }\n"
-        << "if (global_idx * 4u + 3u < n) { " << c.SetByOffset("global_idx * 4u + 3u", "result[3]") << " }\n";
+        << "if (global_idx * 4u + 1u < output_size) { " << c.SetByOffset("global_idx * 4u + 1u", "result[1]") << " }\n"
+        << "if (global_idx * 4u + 2u < output_size) { " << c.SetByOffset("global_idx * 4u + 2u", "result[2]") << " }\n"
+        << "if (global_idx * 4u + 3u < output_size) { " << c.SetByOffset("global_idx * 4u + 3u", "result[3]") << " }\n";
   } else {
     shader.MainFunctionBody() << c.SetByOffset("global_idx", expression_);
   }
