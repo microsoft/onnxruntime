@@ -748,6 +748,34 @@ TEST(CApiTest, SparseInputModel) {
 #endif  // DISABLE_CONTRIB_OPS
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
+// Test that a custom op compiled against a newer ORT version (higher OrtCustomOp::version)
+// can still be loaded and executed on this ORT runtime. This simulates the forward compatibility
+// scenario where an IHV EP compiled against ORT v(N+1) is loaded into ORT v(N).
+#ifndef ABSL_HAVE_ADDRESS_SANITIZER
+TEST(CApiTest, custom_op_forward_version_compat) {
+  std::vector<Input<float>> inputs(1);
+  auto& input = inputs[0];
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
+
+  MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
+
+  // Simulate an EP compiled against a newer ORT version by setting version higher than ORT_API_VERSION.
+  // The OrtCustomOp struct's function pointers are still valid for the current version, so this should work.
+  custom_op.version = ORT_API_VERSION + 1;
+
+  Ort::CustomOpDomain custom_op_domain("test");
+  custom_op_domain.Add(&custom_op);
+
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
+                       custom_op_domain, nullptr);
+}
+#endif
+
 // Memory leak
 #ifndef ABSL_HAVE_ADDRESS_SANITIZER
 TEST(CApiTest, custom_op_handler) {
