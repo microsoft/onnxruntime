@@ -92,7 +92,7 @@ The plugin exports exactly two C symbols:
 - `CreateEpFactories()` — called by ORT to create the EP factory
 - `ReleaseEpFactory()` — called by ORT to destroy the factory
 
-All other symbols have hidden visibility.
+All other symbols have hidden visibility. In particular, the plugin does not export the legacy provider bridge entry point `GetProvider()`. Code running in ORT core or the Python binding must not assume that `GetProviderInfo_CUDA()` is available when the CUDA EP is supplied by this plugin library.
 
 ### 2.5 ORT Version Compatibility and API Negotiation
 
@@ -339,6 +339,15 @@ Implementation details:
 - It then issues `cudaDeviceSynchronize()` as a conservative device-wide barrier
 
 This is intentionally conservative and correct for the plugin EP's first sync integration. A narrower stream-scoped synchronization strategy can be considered later if profiling shows a need.
+
+#### 5.1.2 Python Host/Device Tensor Copies
+
+The Python `OrtValue` helpers (`update_inplace()` for host-to-device and `numpy()` for device-to-host) historically reached CUDA copies through the legacy provider bridge (`GetProviderInfo_CUDA()`). That bridge requires the provider shared library to export `GetProvider()`, which the CUDA plugin intentionally does not export.
+
+The fallback path is platform-specific:
+
+- On non-Windows CUDA builds, `onnxruntime_pybind11_state` links `CUDA::cudart`. If `TryGetProviderInfo_CUDA()` fails, pybind can copy directly with `cudaMemcpy`; host-to-device copies synchronize the default stream, matching `ProviderInfo_CUDA::cudaMemcpy_HostToDevice()`.
+- On Windows CUDA builds, pybind is compiled with `ORT_NO_CUDA_IN_PYBIND` and does not link CUDA runtime APIs. If `TryGetProviderInfo_CUDA()` fails, pybind must obtain an `OrtDataTransfer` copy function from the registered plugin EP. Without a registered plugin data-transfer implementation, CUDA `OrtValue.update_inplace()` cannot copy host data into the plugin-owned device tensor.
 
 ### 5.2 Handle Access Path
 

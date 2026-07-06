@@ -133,6 +133,7 @@ jobs:
             -v ${{ github.workspace }}:/onnxruntime_src \
             -v ${{ runner.temp }}/Release:/build/Release \
             -e NVIDIA_VISIBLE_DEVICES=all \
+            -e ORT_TEST_CUDA_PLUGIN_EP=1 \
             ${{ steps.build_docker_image_step.outputs.full-image-name }} \
             bash -c "
               set -ex

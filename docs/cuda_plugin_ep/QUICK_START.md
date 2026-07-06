@@ -144,6 +144,10 @@ sess = ort.InferenceSession(
 )
 ```
 
+**Python `OrtValue` host/device copies:**
+
+`OrtValue.update_inplace()` and `OrtValue.numpy()` work with CUDA plugin tensors after the plugin has been registered. On Linux, the ONNX Runtime Python binding links the CUDA runtime and can fall back to direct `cudaMemcpy` if the legacy CUDA provider bridge is unavailable. On Windows, the Python binding is built with `ORT_NO_CUDA_IN_PYBIND`, so it cannot call CUDA runtime APIs directly; host/device copies must use the data-transfer implementation registered by the CUDA plugin library. If `OrtValue.update_inplace()` fails with a message about the CUDA provider interface or an unsupported GPU device, verify that the plugin library is registered before creating or updating CUDA `OrtValue` objects.
+
 ### External GPU Allocator Options
 
 The CUDA plugin EP supports the same external GPU allocator provider options as the legacy CUDA EP: `gpu_external_alloc`, `gpu_external_free`, and `gpu_external_empty_cache` (also accepted with the canonical `ep.cuda.*` session config prefix). External allocator callbacks are session-scoped. A session that provides external allocator callbacks creates a per-session CUDA device allocator from that EP instance's options; a later session on the same GPU without those options continues to use the plugin factory's internal arena or CUDA mempool allocator.
@@ -189,6 +193,7 @@ Run the script from a directory outside the repository checkout to avoid Python 
 
 ```bash
 cd onnxruntime/test/python/transformers
+export ORT_TEST_CUDA_PLUGIN_EP=1
 python test_cuda_plugin_ep.py
 ```
 
@@ -196,6 +201,7 @@ On Windows:
 
 ```cmd
 cd /d onnxruntime\test\python\transformers
+set ORT_TEST_CUDA_PLUGIN_EP=1
 python test_cuda_plugin_ep.py
 ```
 

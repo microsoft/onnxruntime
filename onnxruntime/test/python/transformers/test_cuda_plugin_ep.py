@@ -123,8 +123,7 @@ class _CudaOrtValueBinding:
 
         self._dtype = np.float32
         # Allocate a GPU-backed OrtValue with a stable device address so CUDA graph
-        # capture/replay can reuse the same memory across runs. Using ORT's native
-        # allocator here avoids a dependency on a CUDA-enabled PyTorch build.
+        # capture/replay can reuse the same memory across runs.
         self.ort_value = onnxrt.OrtValue.ortvalue_from_shape_and_type(list(shape), self._dtype, "cuda", device_id)
 
     def update_inplace(self, data):
@@ -417,8 +416,15 @@ def run_provider_options_test(provider_options, expect_plugin_provider=True):
             sess_options.add_provider_for_devices([target_device], _plugin_provider_options(provider_options))
             sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
         else:
-            providers = [(CUDA_PLUGIN_EP_NAME, _plugin_provider_options(provider_options)), "CPUExecutionProvider"]
-            sess = onnxrt.InferenceSession(model_path, sess_options=sess_options, providers=providers)
+            try:
+                target_device = get_cuda_plugin_device_by_id(int(provider_options.get("device_id", "0")))
+            except unittest.SkipTest:
+                sess = onnxrt.InferenceSession(
+                    model_path, sess_options=sess_options, providers=["CPUExecutionProvider"]
+                )
+            else:
+                sess_options.add_provider_for_devices([target_device], _plugin_provider_options(provider_options))
+                sess = onnxrt.InferenceSession(model_path, sess_options=sess_options)
         active_providers = sess.get_providers()
         assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
 
