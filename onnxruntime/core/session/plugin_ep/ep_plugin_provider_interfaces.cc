@@ -29,6 +29,7 @@
 #include "core/session/plugin_ep/ep_event_profiling.h"
 #include "core/session/ort_apis.h"
 #include "core/providers/partitioning_utils.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 
@@ -184,6 +185,20 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
       ep_devices_(ep_devices.begin(), ep_devices.end()),
       kernel_registry_(std::move(kernel_registry)) {
   generate_ep_ctx_model_ = session_options.value.GetEpContextGenerationOptions().enable;
+
+  // Check if the app requested weightless mode and the EP supports it.
+  {
+    const auto weightless_requested =
+        session_options.value.config_options.GetConfigOrDefault(kOrtSessionOptionEpEnableWeightless, "0") != "0";
+    if (weightless_requested && ort_ep_->ort_version_supported >= 28 && ort_ep_->GetWeightlessSupport != nullptr) {
+      OrtWeightlessSupport support = OrtWeightlessSupport_NONE;
+      auto* ort_status = ort_ep_->GetWeightlessSupport(ort_ep_.get(), &support);
+      if (ort_status == nullptr && support != OrtWeightlessSupport_NONE) {
+        weightless_enabled_ = true;
+      }
+      OrtApis::ReleaseStatus(ort_status);
+    }
+  }
 
   // Extract EP-scoped session config entries (ep.<ep_name>.* keys).
   // Arena options go to session_arena_options_; the rest go to provider_options_.
@@ -396,11 +411,21 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       // TODO(adrianlizarraga): Do not use the heavy-weight CreateSupportedPartitions just to check if the user
       // provided a single partition. Use utils::MakeCapability() and create a new helper to check that there are no
       // unsupported nodes in any path between supported nodes.
+
+      // When weightless mode is enabled, override drop_constant_initializers to false so that ORT keeps
+      // constant initializers as fused node inputs. The EP can then access them via KernelContext_GetInput().
+      bool drop_constant_initializers = node_grouping.fusion_options.drop_constant_initializers;
+      if (weightless_enabled_ && drop_constant_initializers) {
+        LOGS(logger, INFO) << "Weightless mode enabled for " << Type()
+                           << ": overriding drop_constant_initializers to false.";
+        drop_constant_initializers = false;
+      }
+
       auto metadef_gen_functor = PluginEpMetaDefNameFunctor(metadef_id_generator_, graph_viewer, this->Type());
       std::vector<std::unique_ptr<ComputeCapability>> capabilities = utils::CreateSupportedPartitions(
           graph_viewer, node_set, /*stop_ops*/ {}, std::move(metadef_gen_functor),
           this->Type(), this->Type(), /*node_unit_map*/ nullptr,
-          node_grouping.fusion_options.drop_constant_initializers);
+          drop_constant_initializers);
 
       if (capabilities.size() != 1) {
         LOGS(logger, ERROR) << "OrtEp::GetCapability() for " << Type() << " set nodes that cannot be fused together. "
