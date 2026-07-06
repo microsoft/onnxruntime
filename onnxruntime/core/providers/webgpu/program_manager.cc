@@ -237,7 +237,7 @@ Status ProgramManager::Build(const ProgramBase& program,
     // must keep it (and the `compute_pipeline` storage it references) alive until the future is
     // waited on.
     ORT_ENFORCE(out_ctx != nullptr, "out_ctx must be provided when out_future is provided.");
-    auto ctx = std::unique_ptr<PipelineCallbackContext>(new PipelineCallbackContext{compute_pipeline, {}});
+    auto ctx = std::make_unique<PipelineCallbackContext>(compute_pipeline, Status{});
     *out_future = device.CreateComputePipelineAsync(
         &pipeline_descriptor,
         wgpu::CallbackMode::WaitAnyOnly,

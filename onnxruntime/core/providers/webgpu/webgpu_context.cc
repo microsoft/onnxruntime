@@ -240,9 +240,13 @@ Status WebGpuContext::Wait(wgpu::Future f) {
 
 // ===========================================================================================
 // DEFER-DISPATCH (windowed) cold-start optimization.
-// Each full window (max_num_pending_dispatches_) of recorded dispatches is waited on and flushed,
-// which preserves buffer recycling and CPU/GPU overlap while several shader compilations proceed
-// concurrently in Dawn's worker pool.
+//
+// On the first prefill run, shader pipelines for cache-miss programs are compiled asynchronously
+// (CreateComputePipelineAsync) while their dispatches are only recorded. Once a window of
+// max_num_pending_dispatches_ dispatches has accumulated, that window's pipelines -- which Dawn's
+// worker pool has been compiling concurrently -- are waited on and then encoded + submitted.
+// Windowing preserves buffer recycling and CPU/GPU overlap, cutting the otherwise-serial
+// cold-start shader-compilation latency of the first run.
 // ===========================================================================================
 void WebGpuContext::SetDeferDispatch(bool value) {
   defer_dispatch_ = value;
@@ -272,14 +276,27 @@ Status WebGpuContext::FlushDeferredWindow(std::vector<DeferredDispatch>& window)
                                                              std::move(d.pending_build->shape_uniform_ranks)});
     }
   }
-  ORT_RETURN_IF_ERROR(result);
+  if (!result.IsOK()) {
+    // A pipeline compilation failed. Release the per-dispatch uniform buffers and drop the window so
+    // no stale buffers/pointers linger in it, then surface the error.
+    for (auto& d : window) {
+      if (d.uniform_buffer) {
+        deferred_buffer_mgr_->Release(d.uniform_buffer);
+      }
+    }
+    window.clear();
+    return result;
+  }
 
   // 2) Encode + dispatch all recorded commands in order, batching like the normal path.
   for (auto& d : window) {
+    // Repeated occurrences of a cache key within the window carry no pending build; their pipeline
+    // was committed to the cache above by the first occurrence, so resolve it here.
+    const ProgramArtifact* artifact = d.program_artifact ? d.program_artifact : program_mgr_->Get(d.key);
     const auto& compute_pass_encoder = GetComputePassEncoder();
     WriteTimestamp(num_pending_dispatches_ * 2);
     LaunchComputePipeline(compute_pass_encoder, d.bind_buffers, d.bind_buffers_segments,
-                          *d.program_artifact, d.x, d.y, d.z, d.indirect_dispatch_tensor);
+                          *artifact, d.x, d.y, d.z, d.indirect_dispatch_tensor);
     if (d.uniform_buffer) {
       deferred_buffer_mgr_->Release(d.uniform_buffer);
     }
@@ -306,6 +323,7 @@ Status WebGpuContext::FlushDeferredWindow(std::vector<DeferredDispatch>& window)
 Status WebGpuContext::FlushDeferred() {
   // Drain the final (partial) window at run end.
   Status result = FlushDeferredWindow(deferred_dispatches_);
+  deferred_inflight_builds_.clear();
   deferred_buffer_mgr_ = nullptr;
   return result;
 }
@@ -423,13 +441,15 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
 
   const auto* program_artifact = program_mgr_->Get(key);
 
-  // [DEFER-DISPATCH] Deferred-dispatch mode: do NOT compile synchronously and do NOT
-  // launch now. Issue async compilation for cache misses and record the dispatch; FlushDeferred()
-  // waits for the remaining pipelines (compiled concurrently) then encodes + submits. Recorded
-  // buffers stay valid until flush because the run is routed through a graph-mode buffer manager.
+  // Deferred-dispatch mode: do NOT compile synchronously and do NOT launch now. For the first
+  // occurrence of a cache-miss key in the current window, issue an asynchronous compilation and
+  // cache its shape-uniform ranks; repeated occurrences reuse those ranks and resolve the compiled
+  // pipeline from the cache at flush. The dispatch is recorded and encoded later by FlushDeferred.
   std::unique_ptr<PendingPipelineBuild> deferred_pending;
-  if (defer_dispatch_) {
-    if (program_artifact == nullptr) {
+  const std::vector<int>* deferred_ranks = nullptr;
+  if (defer_dispatch_ && program_artifact == nullptr) {
+    auto [it, inserted] = deferred_inflight_builds_.try_emplace(key);
+    if (inserted) {
       deferred_pending = std::make_unique<PendingPipelineBuild>();
       deferred_pending->key = key;
       deferred_pending->name = program.Name();
@@ -439,7 +459,9 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
                                               deferred_pending->shape_uniform_ranks,
                                               &deferred_pending->future,
                                               &deferred_pending->cb_ctx));
+      it->second = deferred_pending->shape_uniform_ranks;
     }
+    deferred_ranks = &it->second;
   }
 
   if (program_artifact == nullptr && !defer_dispatch_) {
@@ -466,9 +488,9 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
 
   // prepare shape uniforms for shader variables (if any) and user defined uniforms
   // In deferred mode on a cache miss the pipeline is still compiling, so use the ranks computed
-  // synchronously by Build (stored in deferred_pending); otherwise use the cached artifact.
-  const std::vector<int>& shape_uniform_ranks = deferred_pending ? deferred_pending->shape_uniform_ranks
-                                                                  : program_artifact->shape_uniform_ranks;
+  // synchronously by Build (deferred_ranks); otherwise use the cached artifact.
+  const std::vector<int>& shape_uniform_ranks = deferred_ranks ? *deferred_ranks
+                                                               : program_artifact->shape_uniform_ranks;
   std::vector<ProgramUniformVariableValue> shape_uniforms;
   shape_uniforms.reserve(shape_uniform_ranks.size() * 2);
   if (ValidationMode() >= ValidationMode::Basic) {
@@ -617,8 +639,7 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
     bind_buffers_segments.push_back(1);  // uniform buffer defaults to 1 segment
   }
 
-  // [DEFER-DISPATCH] Record the dispatch (pipeline may still be compiling) and return.
-  // Buffer reuse is suppressed so these buffers remain valid until FlushDeferred encodes them.
+  // Record the dispatch (its pipeline may still be compiling) and return; FlushDeferred encodes it.
   if (defer_dispatch_) {
     DeferredDispatch d;
     d.key = key;
@@ -639,12 +660,8 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
     deferred_dispatches_.push_back(std::move(d));
     deferred_buffer_mgr_ = &buffer_mgr;
 
-    // Windowed flush: once a full batch of dispatches has been recorded, wait for that window's
-    // pipelines (whose async compilations were issued concurrently across the preceding Run() calls)
-    // and encode + submit them now. Submitting each window keeps the GPU busy and lets the recorded
-    // buffers recycle for the next window (bounding peak memory). (A double-buffered "lag one window"
-    // variant was tried and measured slower: recording a window is much faster than compiling it, so
-    // the deferred flush still blocks on compilation while adding a window of latency.)
+    // Flush as soon as a full window has been recorded so the GPU stays busy and the recorded
+    // buffers recycle for the next window (bounding peak memory).
     if (deferred_dispatches_.size() >= max_num_pending_dispatches_) {
       ORT_RETURN_IF_ERROR(FlushDeferredWindow(deferred_dispatches_));
     }

@@ -13,6 +13,7 @@
 #include "core/providers/webgpu/webgpu_external_header.h"
 
 #include "core/common/common.h"
+#include "core/common/inlined_containers.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/program_manager.h"
 #include "core/providers/webgpu/webgpu_utils.h"
@@ -367,12 +368,14 @@ class WebGpuContext final {
   };
 
   // A dispatch recorded during deferred-dispatch mode. The pipeline may still be compiling; its
-  // bind group is created only after the pipeline is ready (in FlushDeferredWindow). `program_artifact`
-  // points into the program cache and may be filled in by a pending build at flush time.
+  // bind group is created only after the pipeline is ready (in FlushDeferredWindow). For the first
+  // occurrence of a cache key in a window `pending_build` holds the in-flight compilation; repeated
+  // occurrences leave both `program_artifact` and `pending_build` null and resolve the compiled
+  // pipeline from the cache at flush time.
   struct DeferredDispatch {
     std::string key;
-    const ProgramArtifact* program_artifact = nullptr;  // null until resolved
-    std::unique_ptr<PendingPipelineBuild> pending_build;  // non-null if compiled in this batch
+    const ProgramArtifact* program_artifact = nullptr;
+    std::unique_ptr<PendingPipelineBuild> pending_build;
     std::vector<WGPUBuffer> bind_buffers;
     std::vector<uint32_t> bind_buffers_segments;
     WGPUBuffer uniform_buffer = nullptr;
@@ -419,9 +422,12 @@ class WebGpuContext final {
   // Deferred-dispatch (parallel cold-start compile) state: records dispatches and issues their
   // pipeline compilations asynchronously. `deferred_dispatches_` accumulates the current window;
   // when it fills (max_num_pending_dispatches_) FlushDeferredWindow() waits for that window's
-  // pipelines and encodes + submits them.
+  // pipelines and encodes + submits them. `deferred_inflight_builds_` maps each in-flight cache key
+  // to its shape-uniform ranks so repeated occurrences within a window skip launching a redundant
+  // compilation.
   bool defer_dispatch_ = false;
   std::vector<DeferredDispatch> deferred_dispatches_;
+  InlinedHashMap<std::string, std::vector<int>> deferred_inflight_builds_;
   const webgpu::BufferManager* deferred_buffer_mgr_ = nullptr;
 
   std::unique_ptr<SplitKConfig> split_k_config_;

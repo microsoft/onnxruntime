@@ -803,19 +803,16 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
   }
 
   // ===========================================================================================
-  // DEFER-DISPATCH (windowed) cold-start optimization.
-  // On the first non-captured prefill run, compile cache-miss shader pipelines asynchronously and
-  // record their dispatches, then flush per window (see WebGpuContext::Run / FlushDeferred). This
-  // parallelizes the otherwise-serial cold-start shader compilation.
-  //
-  // Enabled by default, but ONLY under a graph-capture-enabled session: there, prefill uses
-  // annotation -1 and GQA keeps total_sequence_length on the GPU, which avoids a CPU read-back that
-  // would otherwise force an early flush and break deferral. It can be disabled with the run-option
-  // "ep.webgpu.defer_dispatch"="0" or the env var ORT_WEBGPU_DEFER_DISPATCH=0. Runs that will be
-  // graph-captured (annotation != -1) are skipped so capture/replay is unaffected.
+  // DEFER-DISPATCH: activate the windowed cold-start optimization (see WebGpuContext) on the first
+  // eligible prefill run. The run is routed through a reserved graph-mode buffer manager
+  // (annotation -2) whose caches never free buffers mid-run, so the WGPUBuffer handles recorded
+  // during the deferred pass stay valid until FlushDeferred replays them. Enabled by default;
+  // disable per run with the run-option "ep.webgpu.defer_dispatch"="0" or the env var
+  // ORT_WEBGPU_DEFER_DISPATCH=0. Runs that will be graph-captured (annotation != -1) are skipped so
+  // capture/replay is unaffected.
   // ===========================================================================================
   defer_dispatch_active_ = false;
-  if (defer_dispatch_pending_ && IsGraphCaptureEnabled()) {
+  if (defer_dispatch_pending_) {
     bool defer_on = true;
     auto defer_entry = run_options.config_options.GetConfigEntry("ep.webgpu.defer_dispatch");
     if (defer_entry.has_value()) {
@@ -825,7 +822,7 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
       defer_on = false;
     }
     bool will_be_captured = false;
-    if (defer_on) {
+    if (defer_on && IsGraphCaptureEnabled()) {
       auto ann = run_options.config_options.GetConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation);
       int ann_id = 0;
       if (ann.has_value()) {
@@ -839,10 +836,9 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
       defer_dispatch_pending_ = false;
       context_.SetDeferDispatch(true);
 
-      // Route this run through a graph-mode buffer manager (Graph/GraphSimple). Those caches never
-      // free buffers within a run (OnRefresh is a no-op), so the WGPUBuffer handles recorded during
-      // the deferred pass stay valid until FlushDeferred replays them — exactly the stability
-      // guarantee graph capture relies on. A reserved annotation id keeps it separate from real
+      // Route this run through a graph-mode buffer manager (Graph/GraphSimple), whose caches never
+      // free buffers within a run (OnRefresh is a no-op), so recorded buffer handles stay valid
+      // until FlushDeferred replays them. A reserved annotation id keeps it separate from real
       // captured graphs.
       constexpr int kDeferGraphAnnotationId = -2;
       auto [it, inserted] = per_graph_buffer_mgrs_.try_emplace(kDeferGraphAnnotationId, nullptr);
@@ -897,10 +893,9 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
 }
 
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& run_options) {
-  // [DEFER-DISPATCH] Deferred-dispatch first run: wait for the remaining concurrently-compiled
-  // pipelines, then encode+submit. This run is never graph-captured (it used the reserved defer
-  // buffer manager), so handle it self-contained and return -- do NOT fall through to the
-  // capture/replay path.
+  // Drain the deferred-dispatch run: wait for its remaining pipelines, then encode + submit. This
+  // run is self-contained (it used the reserved defer buffer manager), so return without falling
+  // through to the capture/replay path.
   if (defer_dispatch_active_) {
     Status flush_status = context_.FlushDeferred();
     context_.SetDeferDispatch(false);
