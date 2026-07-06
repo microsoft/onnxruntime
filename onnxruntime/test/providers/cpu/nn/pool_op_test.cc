@@ -2092,9 +2092,9 @@ TEST(PoolTest, MaxPool_PadsTooLong) {
 }
 
 // Verify that a 'strides' attribute whose length does not match the kernel_shape rank is rejected
-// by the PoolAttributes constructor. The bare ORT_ENFORCE carries the stringified condition as its
-// message, so the assertion pins that check. AddShapeToTensorData(false) bypasses shape inference.
-// Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
+// by the PoolAttributes constructor. The assertion pins the explicit strides length message
+// ("Strides dimensions should match kernel shape"). AddShapeToTensorData(false) bypasses shape
+// inference. Exclude compiling EPs (TRT, QNN) and EPs with their own validation (DML) that produce
 // different error messages.
 TEST(PoolTest, MaxPool_StridesLengthMismatch) {
   OpTester test("MaxPool");
