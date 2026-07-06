@@ -2506,7 +2506,8 @@ TEST(CApiTest, basic_cuda_graph) {
   Ort::ThrowOnError(api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
 
   auto dml_objects = CreateDmlObjects();
-  ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(session_options, dml_objects.dml_device.Get(), dml_objects.command_queue.Get());
+  Ort::ThrowOnError(ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(
+      session_options, dml_objects.dml_device.Get(), dml_objects.command_queue.Get()));
 #endif
 
   Ort::Session session(*ort_env, MODEL_URI, session_options);
@@ -2607,6 +2608,44 @@ TEST(CApiTest, basic_cuda_graph) {
   binding.ClearBoundInputs();
   binding.ClearBoundOutputs();
 }
+
+#if defined(USE_DML)
+// Regression test for graph capture on a model that folds to an *empty* graph.
+// The model below is a single Constant node, which constant-folding removes,
+// leaving zero compute nodes. GenAI creates such an allocator-initialization
+// session with DML graph capture enabled. Previously the graph-capture selection
+// logic rejected an empty graph (because no node was assigned to the EP) and threw
+// "all compute graph nodes have not been partitioned to the DmlExecutionProvider".
+// An empty graph has nothing that violates the requirement, so it must succeed.
+TEST(CApiTest, DmlGraphCaptureEmptyGraph) {
+  // A minimal model consisting of a single Constant node producing "values".
+  // Constant folding removes the node, leaving an empty graph.
+  static const uint8_t constant_only_model[] = {
+      0x08, 0x0a, 0x3a, 0x5b, 0x0a, 0x31, 0x12, 0x06, 0x76, 0x61, 0x6c, 0x75,
+      0x65, 0x73, 0x22, 0x08, 0x43, 0x6f, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x74,
+      0x2a, 0x1d, 0x0a, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x2a, 0x11, 0x08,
+      0x01, 0x10, 0x01, 0x22, 0x04, 0x00, 0x00, 0x80, 0x3f, 0x42, 0x05, 0x76,
+      0x61, 0x6c, 0x75, 0x65, 0xa0, 0x01, 0x04, 0x12, 0x10, 0x74, 0x72, 0x69,
+      0x76, 0x69, 0x61, 0x6c, 0x5f, 0x63, 0x6f, 0x6e, 0x73, 0x74, 0x61, 0x6e,
+      0x74, 0x62, 0x14, 0x0a, 0x06, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x73, 0x12,
+      0x0a, 0x0a, 0x08, 0x08, 0x01, 0x12, 0x04, 0x0a, 0x02, 0x08, 0x01, 0x42,
+      0x04, 0x0a, 0x00, 0x10, 0x0d};
+
+  const auto& api = Ort::GetApi();
+  Ort::SessionOptions session_options;
+  session_options.AddConfigEntry("ep.dml.enable_graph_capture", "1");
+  const OrtDmlApi* ort_dml_api;
+  Ort::ThrowOnError(api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
+
+  auto dml_objects = CreateDmlObjects();
+  Ort::ThrowOnError(ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(
+      session_options, dml_objects.dml_device.Get(), dml_objects.command_queue.Get()));
+
+  EXPECT_NO_THROW({
+    Ort::Session session(*ort_env, constant_only_model, sizeof(constant_only_model), session_options);
+  });
+}
+#endif  // defined(USE_DML)
 
 #if defined(USE_CUDA) || defined(USE_DML)
 struct CudaGraphInputOutputData_0 {
@@ -2766,7 +2805,8 @@ TEST(CApiTest, basic_cuda_graph_with_annotation) {
   const OrtDmlApi* ort_dml_api;
   Ort::ThrowOnError(api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
   auto dml_objects = CreateDmlObjects();
-  ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(session_options, dml_objects.dml_device.Get(), dml_objects.command_queue.Get());
+  Ort::ThrowOnError(ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(
+      session_options, dml_objects.dml_device.Get(), dml_objects.command_queue.Get()));
 
   Ort::MemoryInfo info_mem("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
 #elif defined(USE_CUDA)
