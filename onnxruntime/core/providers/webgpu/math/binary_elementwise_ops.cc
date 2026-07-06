@@ -115,6 +115,8 @@ Status BinaryElementwiseProgram::GenerateShaderCode(ShaderHelper& shader) const 
       }
     } else {
       // In broadcast mode, each element of the vec4 value of A and B will be loaded separately to calculate the output value.
+      // This path is also used by INT64 broadcast (component=1): each GetByOffset returns one i32 element,
+      // and the expression (e.g. vec4<i32>==vec4<i32>) produces correct vec4<bool> results.
       shader.MainFunctionBody() << "var outputIndices = " << c_indices.OffsetToIndices("global_idx * 4") << ";\n"
                                 << "let offset_a0 = " << a_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"
                                 << "let offset_b0 = " << b_indices.BroadcastedIndicesToOffset("outputIndices", c_indices) << ";\n"

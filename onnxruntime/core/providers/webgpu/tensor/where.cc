@@ -91,7 +91,7 @@ Status WhereProgram::GenerateShaderCode(ShaderHelper& shader) const {
         << "let offset_a = " << a_indices.BroadcastedIndicesToOffset("output_idx", output_indices) << ";\n"
         << "let offset_b = " << b_indices.BroadcastedIndicesToOffset("output_idx", output_indices) << ";\n"
         << "let offset_c = " << c_indices.BroadcastedIndicesToOffset("output_idx", output_indices) << ";\n"
-        << "let cond = bool(c_data[offset_c / 4u] & (0xffu << (u32(offset_c % 4u) * 8u)));\n"
+        << "let cond = " << c_input.GetByOffset("offset_c / 4") << "[offset_c % 4];\n"
         << "let a_val = " << a_input.GetByOffset("offset_a") << ";\n"
         << "let b_val = " << b_input.GetByOffset("offset_b") << ";\n";
     shader.MainFunctionBody() << output.SetByOffset("global_idx", "select(b_val, a_val, cond)");
