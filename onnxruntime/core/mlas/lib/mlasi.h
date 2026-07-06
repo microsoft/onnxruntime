@@ -119,6 +119,33 @@ Abstract:
 
 #define MLAS_UNREFERENCED_PARAMETER(parameter) ((void)(parameter))
 
+//
+// Reports whether multiplying two size_t values would overflow.
+//
+
+MLAS_FORCEINLINE
+bool
+MlasMultiplyOverflowsSizeT(
+    size_t a,
+    size_t b,
+    size_t* out
+    )
+{
+#if defined(__has_builtin)
+#if __has_builtin(__builtin_mul_overflow)
+    size_t result;
+    return __builtin_mul_overflow(a, b, out != nullptr ? out : &result);
+#endif
+#endif
+    if (b != 0 && a > std::numeric_limits<size_t>::max() / b) {
+        return true;
+    }
+    if (out != nullptr) {
+        *out = a * b;
+    }
+    return false;
+}
+
 #ifdef MLAS_NO_EXCEPTION
 
 MLAS_FORCEINLINE void
@@ -891,6 +918,18 @@ bool
     MLAS_THREADPOOL* ThreadPool
     );
 
+enum MLAS_CONV_SGEMM_ROUTE {
+    MlasConvSGemmRouteDirect,   // call MlasSgemmOperation directly
+    MlasConvSGemmRouteDispatch, // call MlasGemm so backend SGEMM overrides may be selected
+};
+
+typedef
+MLAS_CONV_SGEMM_ROUTE
+(MLASCALL MLAS_CONV_SGEMM_ROUTE_OVERRIDE)(
+    const MLAS_CONV_PARAMETERS* Parameters
+    );
+
+
 typedef
 bool
 (MLASCALL MLAS_SGEMM_BATCH_OVERRIDE)(
@@ -1520,6 +1559,7 @@ struct MLAS_PLATFORM {
     // MLAS Conv overrides
     MLAS_CONV_PREPARE_FLOAT_OVERRIDE* MlasConvPrepareOverride = nullptr;
     MLAS_CONV_FLOAT_OVERRIDE* MlasConvOverride = nullptr;
+    MLAS_CONV_SGEMM_ROUTE_OVERRIDE* MlasConvSGemmRouteOverride = nullptr;
 #if defined(__aarch64__) && defined(__linux__)
     // SBGemm overrides
     MLAS_SBGEMM_BATCH_OVERRIDE* MlasSBGemmBatchOverride = nullptr;

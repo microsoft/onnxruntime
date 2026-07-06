@@ -15,6 +15,18 @@ build.bat --cmake_generator "Visual Studio 17 2022" --config Release --build_whe
           --cmake_extra_defines "onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON"
 ```
 
+### Building and testing without cuDNN at runtime
+
+The CUDA Plugin EP build still requires cuDNN headers, but the plugin library must not have a hard runtime dependency on cuDNN. When cuDNN is not present, non-cuDNN kernels can still run. Kernels that still require cuDNN fail with `NOT_IMPLEMENTED` unless they have a native CUDA fallback.
+
+For local Linux CUDA 13 validation, use the no-cuDNN helper script. It keeps `CUDNN_HOME` available for headers, excludes cuDNN directories from `PATH` and `LD_LIBRARY_PATH`, verifies the plugin has no direct cuDNN dependency, and runs plugin tests in no-cuDNN mode:
+
+```bash
+bash .env/cuda_130_plugin_no_cudnn.sh --build --test_plugin
+```
+
+The test mode sets `ORT_TEST_CUDA_PLUGIN_EP=1` and `ORT_TEST_CUDA_PLUGIN_NO_CUDNN=1`, which passes `enable_cudnn=0` to plugin sessions and skips plugin tests for operators that still require cuDNN, such as Conv, ConvTranspose, BatchNormalization, InstanceNormalization, LRN, ArgMax, reductions, Einsum, and cuDNN-backed pooling paths.
+
 ## Minimum ONNX Runtime Version
 
 The plugin is compiled against the ONNX Runtime headers in this repository, but it is designed to load into an **older** ONNX Runtime runtime as well. The minimum compatible version is declared in [`plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION`](../../plugin-ep-cuda/MIN_ONNXRUNTIME_VERSION) (currently **1.24.4**) and is the single source of truth:
@@ -158,6 +170,15 @@ python test_cuda_plugin_ep.py
 ```
 
 The script validates plugin registration, device enumeration, provider options, operator coverage, and that key nodes are actually assigned to `CudaPluginExecutionProvider`.
+
+To run the same focused test against a plugin build without cuDNN in the runtime search path:
+
+```bash
+export ORT_TEST_CUDA_PLUGIN_NO_CUDNN=1
+export ORT_TEST_CUDA_PLUGIN_EP=1
+export ORT_CUDA_PLUGIN_PATH=/path/to/build/Release/libonnxruntime_providers_cuda_plugin.so
+python test_cuda_plugin_ep.py
+```
 
 ### Test against the minimum supported ORT version
 

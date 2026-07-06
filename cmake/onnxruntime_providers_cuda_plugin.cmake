@@ -88,10 +88,11 @@ list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/sequence_op\\.cc$")
 # in the CPU provider and is not linked into the plugin.
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/size\\.cc$")
 
-# Permanently excluded — pure CPU ops, handled by GetCpuPreferredNodes.
-# shape_op.cc inherits from onnxruntime::OpKernel (framework)
-# which cannot convert to ep::adapter::OpKernel in the plugin build.
-list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/tensor/shape_op\\.cc$")
+# shape_op.cc is INCLUDED in the plugin build. It provides an adapter-based
+# Shape kernel under #ifdef BUILD_CUDA_EP_AS_PLUGIN (the CPU onnxruntime::Shape
+# class, which derives from the framework OpKernel, is only used in the
+# non-plugin build). Registering Shape on the EP keeps it off the CPU EP and
+# avoids Memcpy nodes that would otherwise break CUDA Graph capture.
 
 # Exclude contrib training ops (shrunken_gather depends on provider_api.h in header).
 list(FILTER CUDA_PLUGIN_EP_CC_SRCS EXCLUDE REGEX ".*/contrib_ops/cuda/tensor/shrunken_gather\\.cc$")
@@ -347,12 +348,12 @@ endif()
 set(CUDA_PLUGIN_CUDNN_INCLUDE_DIR ${CUDNN_INCLUDE_DIR})
 set(CUDA_PLUGIN_CUDNN_LIBRARY ${cudnn_LIBRARY})
 
-if(NOT CUDA_PLUGIN_CUDNN_INCLUDE_DIR OR NOT CUDA_PLUGIN_CUDNN_LIBRARY)
-  message(FATAL_ERROR "cuDNN not found (from main ORT search) for CUDA Plugin EP.")
+if(NOT CUDA_PLUGIN_CUDNN_INCLUDE_DIR)
+  message(FATAL_ERROR "cuDNN headers not found (from main ORT search) for CUDA Plugin EP.")
 endif()
 
 message(STATUS "CUDA Plugin EP: cuDNN include: ${CUDA_PLUGIN_CUDNN_INCLUDE_DIR}")
-message(STATUS "CUDA Plugin EP: cuDNN library: ${CUDA_PLUGIN_CUDNN_LIBRARY}")
+message(STATUS "CUDA Plugin EP: cuDNN runtime library: ${CUDA_PLUGIN_CUDNN_LIBRARY}")
 
 # Include directories — only public ORT headers + CUDA toolkit + cuDNN + internal headers for adapter
 target_include_directories(onnxruntime_providers_cuda_plugin PRIVATE
@@ -387,7 +388,6 @@ target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE
     CUDA::cufft
     CUDA::nvrtc
     CUDA::cuda_driver
-    CUDNN::cudnn_all
     cudnn_frontend
     Boost::mp11
     safeint_interface
@@ -401,6 +401,8 @@ target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE
     onnx_proto
     ${PROTOBUF_LIB}
 )
+
+  target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE NV_CUDNN_FRONTEND_USE_DYNAMIC_LOADING)
 
 if (onnxruntime_ENABLE_CUDA_PROFILING)
     target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE CUDA::cupti)

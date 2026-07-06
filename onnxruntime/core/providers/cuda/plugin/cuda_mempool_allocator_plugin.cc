@@ -361,6 +361,7 @@ OrtStatus* ORT_API_CALL CudaMempoolOrtAllocator::GetStatsImpl(
       std::lock_guard<std::mutex> lock(self.mutex_);
       stats.num_allocs = static_cast<int64_t>(self.num_allocs_);
       stats.bytes_in_use = static_cast<int64_t>(self.in_use_bytes_);
+      stats.bytes_requested_in_use = static_cast<int64_t>(self.in_use_bytes_);  // No padding in mempool
       stats.max_bytes_in_use = static_cast<int64_t>(self.max_bytes_in_use_);
       stats.max_alloc_size = static_cast<int64_t>(self.max_alloc_size_);
       stats.num_arena_shrinkages = static_cast<int64_t>(self.num_arena_shrinkages_);

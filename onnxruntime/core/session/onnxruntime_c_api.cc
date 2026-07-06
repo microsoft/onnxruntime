@@ -2540,6 +2540,13 @@ ORT_API_STATUS_IMPL(OrtApis::TensorAt, _Inout_ OrtValue* value, const int64_t* l
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "this API does not support strings");
   }
 
+  const auto* prim_type = tensor->DataType()->AsPrimitiveDataType();
+  if (prim_type != nullptr && prim_type->HasSubElems()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "this API does not support sub-byte packed types (e.g., int4). "
+                                 "Use OrtValue::GetTensorMutableData and manual unpacking instead.");
+  }
+
   const auto& tensor_shape = tensor->Shape();
   const auto num_dimensions = tensor_shape.NumDimensions();
   if (location_values_count != num_dimensions) {
@@ -4909,6 +4916,8 @@ static constexpr OrtApi ort_api_1_to_28 = {
     // End of Version 27 - DO NOT MODIFY ABOVE (see above text for more information)
 
     &OrtApis::GetExperimentalFunction,
+
+    &OrtApis::KernelContext_GetSyncStream,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

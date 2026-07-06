@@ -98,6 +98,17 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
     }
   }
 
+  std::string kv_cache_quantization_bits_str;
+  if (config_options.TryGetConfigEntry(kKvCacheQuantizationBits, kv_cache_quantization_bits_str)) {
+    if (kv_cache_quantization_bits_str == kKvCacheQuantizationBits_OFF) {
+      webgpu_ep_config.kv_cache_quantization_bits = 0;
+    } else if (kv_cache_quantization_bits_str == kKvCacheQuantizationBits_4Bit) {
+      webgpu_ep_config.kv_cache_quantization_bits = 4;
+    } else {
+      ORT_THROW("Invalid kvCacheQuantizationBits value: ", kv_cache_quantization_bits_str, ". Must be \"0\" or \"4\".");
+    }
+  }
+
   // parse force CPU node names
   // The force CPU node names are separated by EOL (\n or \r\n) in the config entry.
   // each line is a node name that will be forced to run on CPU.
@@ -213,6 +224,30 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
         "Invalid maxStorageBufferBindingSize value: ", max_storage_buffer_binding_size_str);
   }
 
+  std::string max_num_pending_dispatches_str;
+  if (config_options.TryGetConfigEntry(
+          kMaxNumPendingDispatches,
+          max_num_pending_dispatches_str)) {
+    ORT_ENFORCE(
+        std::errc{} ==
+            std::from_chars(
+                max_num_pending_dispatches_str.data(),
+                max_num_pending_dispatches_str.data() +
+                    max_num_pending_dispatches_str.size(),
+                config.max_num_pending_dispatches)
+                .ec,
+        "Invalid maxNumPendingDispatches value: ",
+        max_num_pending_dispatches_str);
+    ORT_ENFORCE(
+        config.max_num_pending_dispatches > 0,
+        "maxNumPendingDispatches must be greater than 0");
+    // Practical cap to avoid excessive query buffer sizing and
+    // unpredictable memory/performance behavior.
+    ORT_ENFORCE(
+        config.max_num_pending_dispatches <= 4096,
+        "maxNumPendingDispatches must be less than or equal to 4096");
+  }
+
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP Device ID: " << config.context_id;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP WGPUInstance: " << reinterpret_cast<size_t>(config.instance);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP WGPUDevice: " << reinterpret_cast<size_t>(config.device);
@@ -220,6 +255,7 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP ValidationMode: " << config.validation_mode;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP PreserveDevice: " << config.preserve_device;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP max storage buffer binding size: " << config.max_storage_buffer_binding_size;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP max pending dispatches: " << config.max_num_pending_dispatches;
 
   // buffer cache modes
   auto parse_buffer_cache_mode = [&config_options](const std::string& config_entry_str,

@@ -1,0 +1,131 @@
+name: Linux CUDA No cuDNN CI
+
+on:
+  pull_request:
+    branches: [main, 'rel-*']
+    paths:
+      - '.github/workflows/linux_cuda_no_cudnn.yml'
+      - 'cmake/onnxruntime_providers_cuda.cmake'
+      - 'cmake/onnxruntime_python.cmake'
+      - 'onnxruntime/__init__.py'
+      - 'onnxruntime/core/providers/cuda/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  attestations: write
+  id-token: write
+
+jobs:
+  build-linux-cuda-no-cudnn-x64-release:
+    name: Build Linux CUDA x64 Release without cuDNN link
+    uses: ./.github/workflows/reusable_linux_build.yml
+    with:
+      pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
+      build_config: Release
+      architecture: x64
+      dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+      docker_build_args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1'
+      docker_image_repo: onnxruntimecuda13manylinuxbuild
+      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --parallel --nvcc_threads 4 --flash_nvcc_threads 4 --cuda_version=13.0 --cuda_home=/usr/local/cuda-13.0 --cudnn_home=/usr/local/cuda-13.0 --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 onnxruntime_BUILD_UNIT_TESTS=ON'
+      python_path_prefix: 'PATH=/opt/python/cp312-cp312/bin:$PATH'
+      run_tests: false
+      upload_build_output: true
+      execution_providers: 'cuda'
+      job_identifier: build-linux-cuda-no-cudnn-x64-release
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  smoke-linux-cuda-no-cudnn-x64-release:
+    name: Smoke Linux CUDA x64 Release without cuDNN runtime use
+    needs: build-linux-cuda-no-cudnn-x64-release
+    runs-on:
+      - self-hosted
+      - "1ES.Pool=onnxruntime-github-linux-a10"
+      - "1ES.ImageOverride=onnxruntime-ubuntu2204-CUDA-A10-Test"
+      - "JobId=smoke-linux-cuda-no-cudnn-x64-release-${{ github.run_id }}-${{ github.run_number }}-${{ github.run_attempt }}"
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1
+        id: build_docker_image_step
+        with:
+          dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
+          image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecuda13manylinuxbuild
+          build-args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda13_x64_almalinux8_gcc14:20251107.1'
+          push: true
+          azure-container-registry-name: onnxruntimebuildcache
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: build-output-x64-Release
+          path: ${{ runner.temp }}/Release
+
+      - name: Restore Executable Permissions
+        working-directory: ${{ runner.temp }}/Release
+        run: |
+          if [ -f perms.txt ]; then
+            while IFS= read -r file; do
+              if [ -f "$file" ]; then
+                chmod +x "$file"
+              fi
+            done < perms.txt
+          fi
+
+      - name: Verify CUDA provider has no direct cuDNN dependency
+        run: |
+          docker run --rm --gpus all \
+            -v "${{ runner.temp }}/Release:/build/Release" \
+            "${{ steps.build_docker_image_step.outputs.full-image-name }}" \
+            bash -lc 'set -euo pipefail
+          ldd /build/Release/Release/libonnxruntime_providers_cuda.so | tee /tmp/ldd.txt
+          ! grep -i cudnn /tmp/ldd.txt'
+
+      - name: Run no-cuDNN CUDA EP smoke test
+        run: |
+          docker run --rm --gpus all \
+            -v "${{ runner.temp }}/Release:/build/Release" \
+            "${{ steps.build_docker_image_step.outputs.full-image-name }}" \
+            bash -lc 'set -e
+          PATH=/opt/python/cp312-cp312/bin:$PATH
+          LD_LIBRARY_PATH=/usr/local/cuda-13.0/lib64:${LD_LIBRARY_PATH:-}
+          export PATH LD_LIBRARY_PATH
+          WHEEL_PATH=$(find /build/Release/Release/dist -type f -name "onnxruntime_gpu-*.whl" | head -n 1)
+          if [ -z "$WHEEL_PATH" ]; then
+            echo "No built onnxruntime GPU wheel found under /build/Release/Release/dist" >&2
+            exit 1
+          fi
+          echo "Installing $WHEEL_PATH"
+          python -m pip install --no-cache-dir --force-reinstall --no-deps numpy onnx "$WHEEL_PATH"
+          python - <<"PY"
+          import numpy as np
+          import onnx
+          import onnxruntime as ort
+          from onnx import TensorProto, helper
+
+          x = helper.make_tensor_value_info("x", TensorProto.FLOAT, [2, 3])
+          y = helper.make_tensor_value_info("y", TensorProto.FLOAT, [2, 3])
+          node = helper.make_node("Add", ["x", "x"], ["y"])
+          graph = helper.make_graph([node], "cuda_no_cudnn_smoke", [x], [y])
+          model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 21)])
+          model.ir_version = 10
+
+          providers = [("CUDAExecutionProvider", {"enable_cudnn": "0"})]
+          sess = ort.InferenceSession(model.SerializeToString(), providers=providers)
+          data = np.arange(6, dtype=np.float32).reshape(2, 3)
+          result = sess.run(None, {"x": data})[0]
+          np.testing.assert_allclose(result, data + data)
+          print("CUDA no-cuDNN smoke test passed")
+          PY'

@@ -6,6 +6,10 @@
 #use guardAgainstOutOfBoundsWorkgroupSizes
 #use .setByIndices .getByIndices .getByOffset
 
+#if prepare_indirect_dispatch
+#include "bert/indirect_dispatch_common.wgsl.template"
+#endif
+
 $MAIN {
   guardAgainstOutOfBoundsWorkgroupSizes(uniforms.dispatch_size);
 
@@ -31,7 +35,8 @@ $MAIN {
   let seqlen = u32(seqlen_i);
   let total_seqlen = seqlen + 1u;
 
-  let past_seqlen = total_seqlen - uniforms.sequence_length;
+  // Right-padded batches with prompt shorter than sequence_length would underflow u32; clamp to 0.
+  let past_seqlen = select(total_seqlen - uniforms.sequence_length, 0u, total_seqlen <= uniforms.sequence_length);
   // `position_id` is used to get cos/sin cache and also as the time step index in present_key/present_value
   let position_id = past_seqlen + seq_idx;
 #if use_multi_rotary_cache_concat
@@ -42,8 +47,9 @@ $MAIN {
 
 #if prepare_indirect_dispatch
   if (global_idx == 0u) {
-    let num_total_seq_length_tile = (total_seqlen + uniforms.tile_size - 1u) / uniforms.tile_size;
-    normalize_dispatch_group_size(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);
+    let global_total_seq_length = u32(total_sequence_length_input[0]);
+    let num_total_seq_length_tile = (global_total_seq_length + uniforms.tile_size - 1u) / uniforms.tile_size;
+    populate_indirect_dispatch_buffer(num_total_seq_length_tile, uniforms.num_heads * uniforms.num_q_tiles, uniforms.batch_size);
   }
 #endif
 

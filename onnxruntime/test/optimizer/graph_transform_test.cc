@@ -95,6 +95,7 @@
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
+#include "test/util/include/scoped_env_vars.h"
 #include "test/util/include/temp_dir.h"
 #include "test/util/include/test_utils.h"
 #ifdef ENABLE_TRAINING
@@ -6909,6 +6910,8 @@ TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaCurrentOpsetTest) {
     BuildMobileClipAttentionTestCase(builder, MobileClipProjectionType::MatMulAdd);
   };
 
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
   TransformerTester(build_test_case,
                     CheckMobileClipAttentionFusedSession,
                     TransformerLevel::Level1,
@@ -6916,7 +6919,11 @@ TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaCurrentOpsetTest) {
                     GetCurrentOnnxOpset(),
                     1e-3,
                     0.0,
-                    std::make_unique<AttentionFusion>());
+                    std::make_unique<AttentionFusion>(),
+                    /*add_session_options*/ {},
+                    /*disabled_optimizers*/ {},
+                    /*ep*/ nullptr,
+                    ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false});
 }
 
 TEST_F(GraphTransformationTests, AttentionFusionMobileClipMhaProjectionGemmTest) {
@@ -7057,9 +7064,12 @@ TEST_F(GraphTransformationTests, GeluFusionCurrentOpsetTest) {
                            " or skip this opset in the test if the fusion is not expected to apply.");
   };
 
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
                                         std::make_unique<GeluFusion>(),
-                                        TransformerLevel::Level1, 1, nullptr, post_graph_checker));
+                                        TransformerLevel::Level1, 1, nullptr, post_graph_checker,
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 }
 
 TEST_F(GraphTransformationTests, FastGeluFusionCurrentOpsetTest) {
@@ -7112,9 +7122,12 @@ TEST_F(GraphTransformationTests, FastGeluFusionCurrentOpsetTest) {
                            " or skip this opset in the test if the fusion is not expected to apply.");
   };
 
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
                                         std::make_unique<FastGeluFusion>(),
-                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker,
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 }
 
 TEST_F(GraphTransformationTests, BiasGeluFusionCurrentOpsetTest) {
@@ -7149,9 +7162,12 @@ TEST_F(GraphTransformationTests, BiasGeluFusionCurrentOpsetTest) {
                            " or skip this opset in the test if the fusion is not expected to apply.");
   };
 
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
                                         std::make_unique<BiasGeluFusion>(),
-                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker,
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 }
 
 TEST_F(GraphTransformationTests, MatMulAddFusionCurrentOpsetTest) {
@@ -7184,9 +7200,12 @@ TEST_F(GraphTransformationTests, MatMulAddFusionCurrentOpsetTest) {
                            " or skip this opset in the test if the fusion is not expected to apply.");
   };
 
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
                                         std::make_unique<MatMulAddFusion>(),
-                                        TransformerLevel::Level1, 1, nullptr, post_graph_checker));
+                                        TransformerLevel::Level1, 1, nullptr, post_graph_checker,
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 }
 
 TEST_F(GraphTransformationTests, DivMulFusionCurrentOpsetTest) {
@@ -7219,9 +7238,12 @@ TEST_F(GraphTransformationTests, DivMulFusionCurrentOpsetTest) {
 
   auto rule_transformer = std::make_unique<RuleBasedGraphTransformer>("DivMulFusionCurrentOpset");
   ASSERT_STATUS_OK(rule_transformer->Register(std::make_unique<DivMulFusion>()));
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
                                         std::move(rule_transformer),
-                                        TransformerLevel::Level1, 1, nullptr, post_graph_checker));
+                                        TransformerLevel::Level1, 1, nullptr, post_graph_checker,
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 }
 
 TEST_F(GraphTransformationTests, QuickGeluFusionCurrentOpsetTest) {
@@ -7255,9 +7277,12 @@ TEST_F(GraphTransformationTests, QuickGeluFusionCurrentOpsetTest) {
                            " or skip this opset in the test if the fusion is not expected to apply.");
   };
 
+  // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+  // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, current_opset, *logger_,
                                         std::make_unique<QuickGeluFusion>(),
-                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker));
+                                        TransformerLevel::Level2, 1, nullptr, post_graph_checker,
+                                        ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 }
 
 TEST_F(GraphTransformationTests, GeluFusionTest) {
@@ -8557,8 +8582,12 @@ TEST_F(GraphTransformationTests, ReshapeFusionOpsetTest) {
 
     // Test that the fusion fires for every opset.
     std::unique_ptr<GraphTransformer> transformer = std::make_unique<ReshapeFusion>();
+    // The opset list includes the current ONNX opset, which may still be under development
+    // (e.g. opset 27 in ONNX 1.22). Allow the unreleased opset so the model loads on strict legs.
+    // Remove once opset 27 is released. Tracked by #28966.
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, opset, *logger_, std::move(transformer), TransformerLevel::Level1, 1,
-                                          pre_graph_checker, post_graph_checker));
+                                          pre_graph_checker, post_graph_checker,
+                                          ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
 
     // For opset >= 15, also test that partial Shape (start=1, end=2) prevents fusion.
     if (opset >= 15) {
@@ -8595,8 +8624,11 @@ TEST_F(GraphTransformationTests, ReshapeFusionOpsetTest) {
       };
 
       std::unique_ptr<GraphTransformer> transformer_no_fuse = std::make_unique<ReshapeFusion>();
+      // opset 27 is under development in ONNX 1.22 (released map-max 27 > last release 26), so strict legs
+      // reject this *CurrentOpset model at load; allow the unreleased opset. Remove once opset 27 ships. #28966.
       ASSERT_STATUS_OK(TestGraphTransformer(build_partial_shape_case, opset, *logger_, std::move(transformer_no_fuse),
-                                            TransformerLevel::Level1, 1, pre_graph_checker, pre_graph_checker));
+                                            TransformerLevel::Level1, 1, pre_graph_checker, pre_graph_checker,
+                                            ModelOptions{kAllowReleasedOpsetsOnly, /*strict_shape_type_inference*/ false}));
     }
   }
 }
@@ -10708,6 +10740,51 @@ TEST_F(GraphTransformationTests, GatherToSliceFusion) {
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
                                           TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
+
+  // OpSet-27, Tind is int64. Range gained an opset-27 schema in ONNX 1.22; ensure the fusion still matches it.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* data_arg = builder.MakeInput<float>({{8, 8, 8, 8}});
+      auto* range_input_1 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(0)});
+      auto* range_input_2 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(8)});
+      auto* range_input_3 = builder.MakeInitializer<int64_t>({}, {static_cast<int64_t>(1)});
+      auto* range_output = builder.MakeIntermediate();
+      auto* gather_output = builder.MakeOutput();
+
+      builder.AddNode("Range", {range_input_1, range_input_2, range_input_3}, {range_output});
+      builder.AddNode("Gather", {data_arg, range_output}, {gather_output})
+          .AddAttribute("axis", static_cast<int64_t>(2));
+    };
+
+    auto post_graph_checker = [&](Graph& graph) {
+      auto op_count_map = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_count_map["Range"] == 0);
+      TEST_RETURN_IF_NOT(op_count_map["Gather"] == 0);
+      TEST_RETURN_IF_NOT(op_count_map["Slice"] == 1);
+      for (auto& node : graph.Nodes()) {
+        if (node.OpType() == "Slice") {
+          const NodeArg& input_arg = *(node.InputDefs()[3]);
+          const ONNX_NAMESPACE::TensorProto* tensor_proto =
+              graph_utils::GetConstantInitializer(graph, input_arg.Name());
+          TEST_RETURN_IF_NOT(tensor_proto != nullptr);
+          Initializer init_const{graph, *tensor_proto, graph.ModelPath()};
+          TEST_RETURN_IF_NOT(tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT64);
+          TEST_RETURN_IF_NOT(2 == static_cast<int32_t>(*(init_const.data<int64_t>())));
+        }
+      }
+      return Status::OK();
+    };
+
+    std::unique_ptr<GraphTransformer> transformer = std::make_unique<GatherToSliceFusion>();
+    // Opset 27 is still under development in ONNX 1.22, so the default released-opset-only model load
+    // would throw on strict (ALLOW_RELEASED_ONNX_OPSET_ONLY!=0) legs. Allow the unreleased opset here so
+    // this sub-block exercises the opset-27 Range schema on every CI leg, not just the relaxed ones.
+    const ModelOptions allow_unreleased_opset{kAllowReleasedOpsetsOnly,
+                                              /*strict_shape_type_inference*/ false};
+    ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 27, *logger_, std::move(transformer),
+                                          TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker,
+                                          allow_unreleased_opset));
+  }
 }
 
 #if !defined(DISABLE_CONTRIB_OPS)
@@ -10716,26 +10793,32 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
   struct TestOptions {
     bool bias_is_first_add_input{false};
     bool add_produces_graph_output{false};
+    bool use_cuda_ep{false};
+    bool use_gpt_oss_router_shape{false};
   };
 
   auto run_test = [&logger = *logger_](const TestOptions& opts) {
     SCOPED_TRACE(MakeString("bias_is_first_add_input:", opts.bias_is_first_add_input,
-                            ", add_produces_graph_output:", opts.add_produces_graph_output));
+                            ", add_produces_graph_output:", opts.add_produces_graph_output,
+                            ", use_cuda_ep:", opts.use_cuda_ep,
+                            ", use_gpt_oss_router_shape:", opts.use_gpt_oss_router_shape));
 
     auto build_test_case = [&](ModelTestBuilder& builder) {
       constexpr size_t qbits = 4;
       constexpr size_t block_size = 32;
 
-      constexpr int64_t M = 2, K = 4, N = 8;
+      const int64_t M = opts.use_gpt_oss_router_shape ? 1 : 2;
+      const int64_t K = opts.use_gpt_oss_router_shape ? 2880 : 4;
+      const int64_t N = opts.use_gpt_oss_router_shape ? 32 : 8;
 
       int q_rows, q_cols;
       MlasBlockwiseQuantizedShape<float, qbits>(block_size, /* columnwise */ true,
-                                                K, N,
+                                                static_cast<int>(K), static_cast<int>(N),
                                                 q_rows, q_cols);
 
       size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
       MlasBlockwiseQuantizedBufferSizes<qbits>(block_size, /* columnwise */ true,
-                                               K, N,
+                                               static_cast<int>(K), static_cast<int>(N),
                                                q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
 
       auto* A = builder.MakeInput<float>(std::vector{M, K}, "A");
@@ -10744,8 +10827,10 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
                                                       uint8_t{0}, uint8_t{255});
       auto* B_scales = builder.MakeInitializer<float>({static_cast<int64_t>(q_scale_size)},
                                                       1.0f, 2.0f);
-      auto* B_zero_points = builder.MakeInitializer<uint8_t>({static_cast<int64_t>(q_zp_size_in_bytes)},
-                                                             uint8_t{0}, uint8_t{255});
+      NodeArg* B_zero_points = opts.use_gpt_oss_router_shape
+                                   ? builder.MakeEmptyInput()
+                                   : builder.MakeInitializer<uint8_t>({static_cast<int64_t>(q_zp_size_in_bytes)},
+                                                                      uint8_t{0}, uint8_t{255});
 
       auto* matmul_output = builder.MakeIntermediate();
 
@@ -10757,6 +10842,9 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
       matmul.AddAttribute("K", K);
       matmul.AddAttribute("block_size", static_cast<int64_t>(block_size));
       matmul.AddAttribute("bits", static_cast<int64_t>(qbits));
+      if (opts.use_cuda_ep) {
+        matmul.SetExecutionProviderType(kCudaExecutionProvider);
+      }
 
       auto* Bias = builder.MakeInput<float>(std::vector{N}, "Bias");
 
@@ -10764,15 +10852,21 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
 
       auto* add_output = opts.add_produces_graph_output ? graph_output : builder.MakeIntermediate();
 
-      builder.AddNode("Add",
-                      {opts.bias_is_first_add_input ? Bias : matmul_output,
-                       opts.bias_is_first_add_input ? matmul_output : Bias},
-                      {add_output});
+      auto& add = builder.AddNode("Add",
+                                  {opts.bias_is_first_add_input ? Bias : matmul_output,
+                                   opts.bias_is_first_add_input ? matmul_output : Bias},
+                                  {add_output});
+      if (opts.use_cuda_ep) {
+        add.SetExecutionProviderType(kCudaExecutionProvider);
+      }
 
       if (!opts.add_produces_graph_output) {
-        builder.AddNode("Identity",
-                        {add_output},
-                        {graph_output});
+        auto& identity = builder.AddNode("Identity",
+                                         {add_output},
+                                         {graph_output});
+        if (opts.use_cuda_ep) {
+          identity.SetExecutionProviderType(kCudaExecutionProvider);
+        }
       }
     };
 
@@ -10797,6 +10891,14 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
       TestOptions opts{};
       opts.bias_is_first_add_input = bias_is_first_add_input;
       opts.add_produces_graph_output = add_produces_graph_output;
+      run_test(opts);
+
+      // CUDA now fuses bias generically for any shape (the kernel adds the bias with a
+      // separate kernel when the fused GEMV fast path does not apply).
+      opts.use_cuda_ep = true;
+      run_test(opts);
+
+      opts.use_gpt_oss_router_shape = true;
       run_test(opts);
     }
   }

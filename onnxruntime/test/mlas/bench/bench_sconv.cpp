@@ -238,17 +238,29 @@ void SCONV_NHWC_KLEIDIAI(benchmark::State& state, const char* /*dummy*/) {
   const auto strides_size_t = ToSizeT(args.strides);
   const auto dilations_size_t = ToSizeT(args.dilations);
 
-  if (!MlasConvSupportsSymmetricChannelsLast2DFloatKernel(
-          static_cast<size_t>(args.rank),
-          static_cast<size_t>(args.batch_size),
-          static_cast<size_t>(args.groups),
-          input_shape_size_t.data(),
-          kernel_shape_size_t.data(),
-          dilations_size_t.data(),
-          paddings_size_t.data(),
-          strides_size_t.data(),
-          static_cast<size_t>(args.output_channels_per_group),
-          0.0f)) {
+  if (!(MlasConvSupportsDenseChannelsLast2DFloatKernel(
+            static_cast<size_t>(args.rank),
+            static_cast<size_t>(args.batch_size),
+            static_cast<size_t>(args.groups),
+            input_shape_size_t.data(),
+            kernel_shape_size_t.data(),
+            dilations_size_t.data(),
+            paddings_size_t.data(),
+            strides_size_t.data(),
+            static_cast<size_t>(args.output_channels_per_group),
+            0.0f) ||
+        MlasConvSupportsDepthwiseChannelsLast2DFloatKernel(
+            static_cast<size_t>(args.rank),
+            static_cast<size_t>(args.batch_size),
+            static_cast<size_t>(args.groups),
+            static_cast<size_t>(args.input_channels_per_group),
+            input_shape_size_t.data(),
+            kernel_shape_size_t.data(),
+            dilations_size_t.data(),
+            paddings_size_t.data(),
+            strides_size_t.data(),
+            static_cast<size_t>(args.output_channels_per_group),
+            0.0f))) {
     state.SkipWithError("KleidiAI NHWC kernel is not supported for this benchmark shape on the current platform.");
     return;
   }

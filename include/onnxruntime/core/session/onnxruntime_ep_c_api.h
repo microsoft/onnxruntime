@@ -3044,6 +3044,57 @@ struct OrtEpFactory {
    */
   ORT_API2_STATUS(DeinitGraphicsInterop, _In_ OrtEpFactory* this_ptr,
                   _In_ const OrtEpDevice* ep_device);
+
+  /** \brief Select the best model variant candidate from metadata.
+   *
+   * Evaluates each candidate's metadata against the given hardware device and optional session options,
+   * and returns the index of the best match.
+   *
+   * Each candidate is an OrtKeyValuePairs representing one model variant. The KVP uses indexed keys
+   * so that the EP can inspect each model's metadata independently. A variant always has num_models >= 1.
+   *
+   * Required and optional keys:
+   *   - "num_models"                 — number of models in this variant (>= 1) (required)
+   *   - "<i>.ep_compatibility_info"  — compatibility string for model i (required per model)
+   *   - "<i>.role"                   — role/purpose of model i (e.g., "prefill", "decode") (optional)
+   *   - "<i>.future_meaningful_info" — additional EP-meaningful metadata for model i (optional)
+   *
+   * where <i> is a zero-based index (e.g., "0.ep_compatibility_info", "1.ep_compatibility_info").
+   *
+   * The implementer should loop from 0 to num_models - 1 and validate each "<i>.ep_compatibility_info" entry.
+   * An advanced implementation may additionally consider "role" or other metadata when ranking candidates.
+   *
+   * **Why this function exists:**
+   *
+   * The existing ValidateCompiledModelCompatibilityInfo() alone is not sufficient for some EPs to determine the best
+   * compatible model when there are multiple candidates. For example, an EP may support multiple compilation modes
+   * (e.g., "speed optimized" vs "memory optimized") that produce different compatibility strings. The EP can implement
+   * this function to evaluate the candidate metadata and select the best compatible variant based on its own criteria,
+   * the target device, and the session options.
+   *
+   * If all candidates are unsupported, this function succeeds and sets `selected_index` to SIZE_MAX.
+   *
+   * \note The implementer should validate each "<i>.ep_compatibility_info" in the candidate (e.g., by calling
+   * ValidateCompiledModelCompatibilityInfo for each one) before determining the best match.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[in] device The target hardware device that the EP would run on. Must map to this EP.
+   * \param[in] candidates Array of OrtKeyValuePairs pointers (one per model variant).
+   * \param[in] num_candidates Number of candidates (i.e., number of model variants to evaluate).
+   * \param[in] session_options Optional session options to consider when selecting the best candidate.
+   *                            May be nullptr if no session-level preferences are relevant.
+   * \param[out] selected_index Selected candidate index, or SIZE_MAX if all unsupported.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.28.
+   */
+  ORT_API2_STATUS(SelectBestModelCandidate, _In_ OrtEpFactory* this_ptr,
+                  _In_ const OrtHardwareDevice* device,
+                  _In_reads_(num_candidates) const OrtKeyValuePairs* const* candidates,
+                  _In_ size_t num_candidates,
+                  _In_opt_ const OrtSessionOptions* session_options,
+                  _Out_ size_t* selected_index);
 };
 
 #ifdef __cplusplus

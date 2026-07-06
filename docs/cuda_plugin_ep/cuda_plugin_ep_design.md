@@ -26,6 +26,21 @@ The ORT CUDA build produces four separate libraries:
 | `onnxruntime_providers_cuda` | `libonnxruntime_providers_cuda.so` | Shared module | In-tree CUDA EP (uses `SHARED_PROVIDER` bridge) |
 | `onnxruntime_providers_cuda_plugin` | `libonnxruntime_providers_cuda_plugin.so` | Shared module | Plugin CUDA EP (uses EP API adapters) |
 
+### 2.1.1 Optional cuDNN Runtime Dependency
+
+The CUDA Plugin EP follows the in-tree CUDA EP's optional-cuDNN model. cuDNN headers are still required at build time, but the plugin shared library must not link directly to cuDNN or contain a cuDNN DLL/SO in its dynamic dependency table. cuDNN is loaded lazily through the ORT cuDNN loader when `enable_cudnn` is enabled and the runtime libraries are available through trusted process-level library discovery.
+
+The plugin exposes the same `enable_cudnn` provider option as the in-tree CUDA EP:
+
+```text
+enable_cudnn = 1  # default: try to load and use cuDNN when available
+enable_cudnn = 0  # do not load cuDNN; run native CUDA paths or fail cuDNN-required ops with NOT_IMPLEMENTED
+```
+
+There is intentionally no provider option for a custom cuDNN DLL/SO path. Provider options can flow from higher-level configuration systems, so allowing them to choose a native library path would create a code-loading security risk. Deployments that need a specific cuDNN directory should use trusted process-level mechanisms, such as the OS loader configuration, container image setup, or Python `preload_dlls(cudnn=True, directory=...)` before plugin registration.
+
+No-cuDNN plugin validation runs `test_cuda_plugin_ep.py` with `ORT_TEST_CUDA_PLUGIN_EP=1` and `ORT_TEST_CUDA_PLUGIN_NO_CUDNN=1`. That mode passes `enable_cudnn=0` to plugin sessions and skips tests for operators that still require cuDNN in the current implementation. Non-cuDNN operator coverage, plugin registration, device enumeration, graph assignment, CUDA graph, I/O binding, and profiling tests continue to run.
+
 ### 2.2 Preprocessor Defines
 
 Each build target uses different preprocessor defines that control how framework types are resolved:
@@ -97,10 +112,11 @@ Because the plugin binary may load into an older runtime, every `OrtApi`/`OrtEpA
 | API surface | Newest `\since` used | Representative functions |
 | --- | --- | --- |
 | `OrtApi` — direct calls (`ort_api_.*`, `Ort::GetApi().*`) | **1.23** | `SyncStream_GetHandle`, `GetTensorSizeInBytes`, `GetRunConfigEntry`, `CreateMemoryInfo_V2`, `Graph_GetNumNodes`/`Graph_GetNodes` (older: `CreateStatus`, `Logger_LogMessage`, `*KeyValuePairs`, `HardwareDevice_*`, `MemoryInfoGet*`, `GetSessionConfigEntry`) |
+| `OrtApi` — optional gated kernel-context capability | **1.28** | `KernelContext_GetSyncStream` (called from the adapter only when `CurrentOrtApiVersion() >= 28`; otherwise scratch allocation uses a null stream tag and concurrent run support is not advertised) |
 | `OrtEpApi` — direct calls (`ep_api_.*`, `Ort::GetEpApi().*`) | **1.24** | `CreateKernelRegistry`, `KernelRegistry_AddKernel`, `ReleaseKernelRegistry`, `CreateIfKernel`/`CreateLoopKernel`/`CreateScanKernel`, `EpGraphSupportInfo_LookUpKernel` (older: `MemoryDevice_*`, `MemoryInfo_GetMemoryDevice`, `SyncStream_*`, `EpDevice_AddAllocatorInfo`, `EpGraphSupportInfo_AddSingleNode`, `CreateEpDevice`/`ReleaseEpDevice`) |
 | EP profiler API (only when built with `ENABLE_CUDA_PROFILING`) | **1.25** | `CreateProfilingEvent`, `ProfilingEventsContainer_AddEvents`, `ReleaseProfilingEvent` (called from `cuda_profiler_plugin.cc` via the `Ort::ProfilingEvent` / `Ort::UnownedProfilingEventsContainer` wrappers) |
 
-`provider_api_shims.cc` uses only internal helpers (`GetEnvironmentVar`, `MLFloat16` conversions), and the plugin uses no Model Editor, Model Package, or Compile API. **Apart from the optional EP profiler, every API the plugin calls is `\since 1.24` or older**, so the true compatibility floor is `1.24.4`.
+`provider_api_shims.cc` uses only internal helpers (`GetEnvironmentVar`, `MLFloat16` conversions), and the plugin uses no Model Editor, Model Package, or Compile API. **Apart from optional gated capabilities such as EP profiling and stream-tagged scratch allocation, every API the plugin calls is `\since 1.24` or older**, so the true compatibility floor is `1.24.4`.
 
 **Defensive capability gating.** Reading a struct field is safe because the field is append-only and ORT only reads fields it knows about. The real hazard is *calling* an `OrtApi`/`OrtEpApi` function that the (possibly older) runtime does not provide. The correct guard for that is the runtime API version, `onnxruntime::ep::CurrentOrtApiVersion()`, not `ort_version_supported`. The `CudaEp` constructor (`cuda_ep.cc`) therefore reads `const uint32_t ort_version = onnxruntime::ep::CurrentOrtApiVersion();` and only installs an `OrtEp` callback when that runtime version is new enough to provide both the callback field and every API its implementation calls:
 
@@ -113,7 +129,9 @@ Because the plugin binary may load into an older runtime, every `OrtApi`/`OrtEpA
 
 All other `OrtEp` and `OrtEpFactory` callbacks are `\since 1.24` or older and are installed unconditionally. Gating `CreateProfiler` is what makes the three `\since 1.25` profiler functions unreachable on an older runtime: when the profiler is never created, ORT never drives the `OrtEpProfilerImpl` callbacks that call them.
 
-The gates use **graceful degradation rather than throwing**: the gated callbacks are all optional capabilities (per-run sync, EP-level GPU profiling, CUDA-graph capture/replay, device-memory budgeting), so disabling them on an older runtime still yields a fully functional EP — inference runs, just without that specific feature. This was validated by loading the plugin (built against the latest headers) into both the latest runtime (full test suite passes) and an `onnxruntime==1.24.4` runtime (the EP registers, enumerates devices, and runs inference correctly with the newer callbacks left null).
+`KernelContext_GetSyncStream` is guarded at the adapter call site rather than through an `OrtEp` callback field: `OpKernelContext::GetSyncStream()` returns null when `CurrentOrtApiVersion() < 28`, and `CudaEp::IsConcurrentRunSupportedImpl()` only advertises concurrent runs when that API is available. Older runtimes therefore keep the previous serialized-run behavior while still using the same plugin binary.
+
+The gates use **graceful degradation rather than throwing**: the gated callbacks and adapter capabilities are optional features (per-run sync, EP-level GPU profiling, CUDA-graph capture/replay, device-memory budgeting, stream-tagged scratch for concurrent runs), so disabling them on an older runtime still yields a fully functional EP — inference runs, just without that specific feature. This was validated by loading the plugin (built against the latest headers) into both the latest runtime (full test suite passes) and an `onnxruntime==1.24.4` runtime (the EP registers, enumerates devices, and runs inference correctly with the newer callbacks left null).
 
 ---
 
@@ -459,9 +477,18 @@ The NHWC rollout is effectively in a "runtime enabled, cleanup remaining" state:
 | 2 | Cache the shim provider pointer in the adapter `OpKernelInfo` | Implemented; fixes the observed NHWC runtime crash |
 | 3 | Consolidate allowlists, improve internal-domain diagnostics, and strengthen structural NHWC assertions | Recommended follow-up work |
 
+#### 5.3.2 Allocator Resolution for Kernels (Scratch and PrePack)
+
+Migrated kernels need a valid device allocator in two places: scratch/workspace buffers during `Compute()`, and one-time weight conversion or packing during `PrePack()`. Both now resolve the allocator the same way the bundled CUDA EP does, through the kernel's own `OpKernelInfo`.
+
+- **Scratch buffers.** `CudaKernel::GetScratchBuffer` allocates through `Info().GetAllocator(OrtMemTypeDefault)` (the EP arena) and stream-tags scratch chunks with the framework `OrtSyncStream*` from `KernelContext_GetSyncStream`, instead of issuing a raw `cudaMallocAsync`/`cudaMalloc` per call. The adapter `OpKernelInfo::GetAllocator` resolves the EP's default-memory (device) allocator and is always valid for a migrated kernel, so no plugin-only scratch path is needed. Routing through the arena is also what keeps the device free-memory footprint stable during CUDA graph capture (see [cuda_graph_for_cuda_plugin.md](cuda_graph_for_cuda_plugin.md#arena-allocator-integration)). CUDA launches still use the raw `cudaStream_t` from `KernelContext_GetGPUComputeStream`; the framework stream is used only for stream-aware arena bookkeeping.
+- **PrePack.** The framework prepack loop (`SessionState::PrepackConstantInitializedTensors`) resolves the allocator with `GetInitializerAllocator(kernel->Info().GetDevice(OrtMemTypeDefault))`, a session map keyed by device. For a plugin EP registered as a separate library, that device-keyed lookup can miss and return null. The loop now falls back to `kernel->Info().GetAllocator(OrtMemTypeDefault)` when the lookup is null, so every `PrePack` implementation receives a valid allocator at the single framework call site. This replaces the earlier approach of adding a per-kernel `if (!alloc) alloc = Info().GetAllocator(...)` guard to each prepacking op (which only covered the few ops that were touched and risked missing future ones). The fallback is behavior-neutral for in-tree EPs, whose device-keyed lookup already succeeds, and it does **not** force `is_packed`/`prepacked_weights` handling \u2014 ops such as `QMoE` and `MatMulNBits` still set `is_packed = true` and populate prepacked weights normally.
+
+The enabling adapter changes are in [`include/onnxruntime/ep/adapter/allocator.h`](../../include/onnxruntime/ep/adapter/allocator.h) and [`include/onnxruntime/ep/adapter/op_kernel.h`](../../include/onnxruntime/ep/adapter/op_kernel.h): `IAllocatorWrappingOrtAllocator` implements `IsStreamAware()`/`AllocOnStream()` by forwarding to the underlying `OrtAllocator`'s `AllocOnStream` when it is available (ORT >= 1.23), and `OpKernelContext::GetSyncStream()` exposes the framework stream when the negotiated ORT API version includes `KernelContext_GetSyncStream`. The CUDA plugin uses that framework stream for `GetScratchBuffer`; if it is unavailable, allocation falls back to a null stream tag and concurrent `Session::Run()` is not advertised.
+
 ### 5.4 CUDA Graph Support
 
-CUDA Graph capture/replay is fully implemented for the plugin EP, including arena integration (both default BFC arena and CUDA native mempool), multi-graph via annotation IDs with different input shapes, and concurrent `Session::Run()` support. The full design — plugin-side implementation, per-thread isolation, arena integration, capture flow, and concurrent run details — is in [cuda_graph_for_cuda_plugin.md](cuda_graph_for_cuda_plugin.md). This section documents only the framework-level and C API changes that affect the broader ORT architecture.
+CUDA Graph capture/replay is fully implemented for the plugin EP, including arena integration (both default BFC arena and CUDA native mempool), multi-graph via annotation IDs with different input shapes, and combining a caller-supplied `user_compute_stream` with capture/replay. Concurrent `Session::Run()` is supported when the host runtime exposes `KernelContext_GetSyncStream` and the session is not forced into EP-level unified-stream mode. The full design — plugin-side implementation, per-thread isolation, arena integration, capture flow, and user-stream mode — is in [cuda_graph_for_cuda_plugin.md](cuda_graph_for_cuda_plugin.md). This section documents only the framework-level and C API changes that affect the broader ORT architecture.
 
 #### 5.4.1 OrtEp C API Extensions (v1.26)
 
@@ -487,6 +514,10 @@ Session-level changes in `inference_session.cc`:
 - **Policy-driven validation**: Graph capture validation at session initialization now iterates all EPs and queries `GetGraphCaptureNodeAssignmentPolicy()` instead of hard-coding EP name lists.
 - **Bounded recursion**: After each normal run when graph capture is enabled, the session recursively calls `RunImpl()` (bounded by `kMaxGraphCaptureWarmupRuns = 8`) until the graph is captured. From the user's perspective, a single `Run()` call handles the entire warm-up + capture sequence.
 - **Stream collection lifetime**: ORT core now caches `DeviceStreamCollection` objects in thread-affine session buckets keyed by a per-thread lifetime token. Graph-enabled runs recycle and reacquire stream wrappers only on the creating thread, which preserves warm-up/capture reuse without cross-thread leakage.
+
+#### 5.4.3 User Compute Stream with CUDA Graph
+
+A caller-provided `user_compute_stream` may be combined with `enable_cuda_graph` (the factory previously rejected this pair). When both are set, `CudaEp::GetPerThreadContext()` builds the per-thread graph context around the user-owned stream rather than an EP-owned one, so capture and replay run on the same stream the kernels are issued to (matching the bundled CUDA EP). The context marks the stream as not owned and never destroys it. Details are in [cuda_graph_for_cuda_plugin.md](cuda_graph_for_cuda_plugin.md#user-compute-stream--cuda-graph).
 
 ---
 
@@ -602,7 +633,7 @@ The in-tree CUDA EP and shared provider bridge are compiled identically regardle
 
 ### 9.3 Plugin Independence
 
-`libonnxruntime_providers_cuda_plugin.so` is **fully self-contained**. It does not depend on `libonnxruntime_providers_cuda.so` or `libonnxruntime_providers_shared.so` at load time. It statically links against `onnxruntime_framework`, `onnxruntime_graph`, `onnxruntime_common`, `onnxruntime_mlas`, `onnxruntime_flatbuffers`, and links dynamically against CUDA (`cudart`, `cublas`, `cublasLt`, `cufft`), cuDNN, and protobuf. Communication with the ORT runtime happens exclusively through the C API (`OrtApi`/`OrtEpApi`) passed at load time.
+`libonnxruntime_providers_cuda_plugin.so` is **fully self-contained**. It does not depend on `libonnxruntime_providers_cuda.so` or `libonnxruntime_providers_shared.so` at load time. It statically links against `onnxruntime_framework`, `onnxruntime_graph`, `onnxruntime_common`, `onnxruntime_mlas`, `onnxruntime_flatbuffers`, and links dynamically against CUDA (`cudart`, `cublas`, `cublasLt`, `cufft`) and protobuf. cuDNN is loaded lazily only when enabled and available at runtime. Communication with the ORT runtime happens exclusively through the C API (`OrtApi`/`OrtEpApi`) passed at load time.
 
 ### 9.4 Build Outputs
 

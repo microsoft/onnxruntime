@@ -16,6 +16,7 @@
 #pragma once
 
 #include <limits>
+#include <unordered_map>
 
 #include "core/common/status.h"
 #include "core/common/narrow.h"
@@ -32,6 +33,7 @@
 #include <cublas_v2.h>
 #include <cudnn.h>
 #include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "core/providers/cuda/cudnn_loader.h"
 #include "contrib_ops/cuda/bert/attention_kernel_options.h"
 
 #ifdef __CUDACC__
@@ -53,6 +55,81 @@
 namespace onnxruntime {
 struct CudaStream;
 
+namespace cuda_plugin {
+namespace detail {
+inline thread_local std::unordered_map<void*, onnxruntime::Stream*> stream_to_framework_stream;
+inline thread_local void* current_cuda_stream = nullptr;
+inline thread_local onnxruntime::Stream* current_framework_stream = nullptr;
+
+inline void RegisterFrameworkStreamForCudaStream(void* cuda_stream, OrtSyncStream* framework_stream) {
+  current_cuda_stream = cuda_stream;
+  current_framework_stream = reinterpret_cast<onnxruntime::Stream*>(framework_stream);
+
+  if (current_framework_stream == nullptr) {
+    return;
+  }
+
+  // Map only from the raw cudaStream_t handle to the current framework stream. The framework
+  // stream is already handled directly by GetFrameworkStreamForStreamArg, so we deliberately do
+  // not insert a framework_stream -> framework_stream entry: it would be unused and would grow the
+  // thread-local map without bound while retaining framework stream pointers past the
+  // Session::Run() teardown lifetime documented for KernelContext_GetSyncStream.
+  if (cuda_stream != nullptr) {
+    stream_to_framework_stream[cuda_stream] = current_framework_stream;
+  }
+}
+
+inline onnxruntime::Stream* GetFrameworkStreamForStreamArg(void* stream) {
+  // A null stream argument means "the compute stream of the current Compute call". This is the
+  // form used by GetTransientScratchBuffer and legacy GetScratchBuffer(..., nullptr). Map it to
+  // the framework stream registered for this call so scratch chunks are still stream-tagged even
+  // when the kernel runs on a non-default CUDA stream (where current_cuda_stream is non-null and a
+  // nullptr arg would otherwise miss the map lookup and fall back to a null stream tag).
+  //
+  // current_framework_stream is scoped to a single CudaKernel::Compute invocation by
+  // ComputeStreamScope (see below). Outside any Compute call it is nullptr, so allocations made
+  // from kernel constructors (which also call GetScratchBuffer(..., nullptr)) fall back to the
+  // non-stream-tagged path instead of inheriting a stale framework stream pointer whose lifetime
+  // ended with a previous Session::Run().
+  if (stream == nullptr || stream == current_cuda_stream || stream == current_framework_stream) {
+    return current_framework_stream;
+  }
+
+  auto it = stream_to_framework_stream.find(stream);
+  return it == stream_to_framework_stream.end() ? nullptr : it->second;
+}
+
+// RAII guard that scopes the thread-local "current Compute call" framework stream to the lifetime
+// of a single CudaKernel::Compute invocation on a worker thread.
+//
+// On entry it clears current_cuda_stream/current_framework_stream so that scratch allocated before
+// the kernel registers its stream (via Stream(ctx)/GetComputeStream(ctx)/GetOrtStream(ctx)), or via
+// a nullptr stream argument, does not inherit a stale framework stream left over from a previous
+// Compute call on this worker thread. On exit it restores the previous values, which keeps nested
+// Compute calls (a kernel that invokes another kernel's Compute) correct and leaves the per-thread
+// "current" stream cleared once the outermost Compute returns. The borrowed framework stream is
+// only valid until its owning Session::Run() completes teardown, so it must not outlive the call.
+struct ComputeStreamScope {
+  ComputeStreamScope()
+      : saved_cuda_stream_(current_cuda_stream),
+        saved_framework_stream_(current_framework_stream) {
+    current_cuda_stream = nullptr;
+    current_framework_stream = nullptr;
+  }
+  ~ComputeStreamScope() {
+    current_cuda_stream = saved_cuda_stream_;
+    current_framework_stream = saved_framework_stream_;
+  }
+
+ private:
+  void* saved_cuda_stream_;
+  onnxruntime::Stream* saved_framework_stream_;
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ComputeStreamScope);
+};
+}  // namespace detail
+}  // namespace cuda_plugin
+
 // Lightweight Stream shim for plugin build: wraps a raw cudaStream_t as a
 // framework-compatible Stream* that can be passed to _impl.cu functions which
 // call stream->GetHandle().  Stack-allocated; does NOT own the stream.
@@ -70,6 +147,11 @@ class OrtStreamAdapter {
   explicit OrtStreamAdapter(void* cuda_stream_handle)
       : plugin_stream_shim_(cuda_stream_handle), stream_(&plugin_stream_shim_) {}
 
+  OrtStreamAdapter(void* cuda_stream_handle, OrtSyncStream* framework_stream)
+      : plugin_stream_shim_(cuda_stream_handle),
+        stream_(framework_stream == nullptr ? static_cast<onnxruntime::Stream*>(&plugin_stream_shim_)
+                                            : reinterpret_cast<onnxruntime::Stream*>(framework_stream)) {}
+
   onnxruntime::Stream* get() const { return stream_; }
   operator onnxruntime::Stream*() const { return stream_; }
 
@@ -82,6 +164,10 @@ class OrtStreamAdapter {
  public:
   explicit OrtStreamAdapter(void* cuda_stream_handle)
       : stream_(static_cast<onnxruntime::Stream*>(cuda_stream_handle)) {}
+
+  OrtStreamAdapter(void* cuda_stream_handle, OrtSyncStream* framework_stream)
+      : stream_(framework_stream == nullptr ? static_cast<onnxruntime::Stream*>(cuda_stream_handle)
+                                            : reinterpret_cast<onnxruntime::Stream*>(framework_stream)) {}
 
   onnxruntime::Stream* get() const { return stream_; }
   operator onnxruntime::Stream*() const { return stream_; }
@@ -179,6 +265,11 @@ using ::onnxruntime::HandleNegativeAxis;
   {                                                                                                                                                                 \
     cudnnStatus_t _status = (expr);                                                                                                                                 \
     if (_status != CUDNN_STATUS_SUCCESS) {                                                                                                                          \
+      if (!onnxruntime::cuda::CudnnLibrary::Get().Available()) {                                                                                                    \
+        return onnxruntime::common::Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,                                                  \
+                                           std::string("cuDNN is unavailable for CUDA Plugin Execution Provider: ") +                                               \
+                                               onnxruntime::cuda::CudnnLibrary::Get().Error());                                                                     \
+      }                                                                                                                                                             \
       return onnxruntime::common::Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, std::string("cuDNN error: ") + cudnnGetErrorString(_status)); \
     }                                                                                                                                                               \
   }
@@ -432,10 +523,10 @@ namespace cuda {
 namespace detail {
 struct CudaKernelAdapterRuntimeConfig {
   bool use_tf32 = true;
-  bool skip_layer_norm_strict_mode = false;
   int cudnn_conv_algo = 0;
   bool cudnn_conv_use_max_workspace = true;
   bool cudnn_conv1d_pad_to_nc1d = false;
+  bool enable_cudnn = true;
   bool fuse_conv_bias = false;
   int sdpa_kernel = 0;
   int device_id = 0;
@@ -503,6 +594,10 @@ inline DefaultCudaHandles& GetDefaultCudaHandlesForDevice(int device_id) {
   // Fallback handles are only used for code paths that need cuBLAS/cuDNN
   // without an active CudaSyncStream. Keep them thread-local so they are not
   // shared across callers that may use the libraries concurrently.
+  //
+  // Only cuBLAS/cuBLASLt are created here. The cuDNN fallback handle is created
+  // lazily by GetDefaultCudnnHandleForDevice() so that cuBLAS-only paths (and
+  // sessions with enable_cudnn=0) never trigger a cuDNN load.
   thread_local std::unordered_map<int, DefaultCudaHandles> handles_by_device;
   auto [it, inserted] = handles_by_device.try_emplace(device_id);
   if (inserted) {
@@ -516,18 +611,7 @@ inline DefaultCudaHandles& GetDefaultCudaHandlesForDevice(int device_id) {
       handles_by_device.erase(it);
       ORT_THROW("Failed to create default cuBLAS handle for CUDA plugin device ", device_id);
     }
-    if (cudnnCreate(&it->second.cudnn) != CUDNN_STATUS_SUCCESS) {
-      cublasDestroy(it->second.cublas);
-      it->second.cublas = nullptr;
-      if (get_device_result == cudaSuccess) {
-        cudaSetDevice(prev_device);
-      }
-      handles_by_device.erase(it);
-      ORT_THROW("Failed to create default cuDNN handle for CUDA plugin device ", device_id);
-    }
     if (cublasLtCreate(&it->second.cublas_lt) != CUBLAS_STATUS_SUCCESS) {
-      cudnnDestroy(it->second.cudnn);
-      it->second.cudnn = nullptr;
       cublasDestroy(it->second.cublas);
       it->second.cublas = nullptr;
       if (get_device_result == cudaSuccess) {
@@ -542,6 +626,31 @@ inline DefaultCudaHandles& GetDefaultCudaHandlesForDevice(int device_id) {
   }
 
   return it->second;
+}
+
+// Lazily creates the thread-local fallback cuDNN handle for the device. Callers
+// must check enable_cudnn and CudnnLibrary::Available() before invoking this so
+// that cuBLAS-only paths never trigger a cuDNN load.
+inline cudnnHandle_t GetDefaultCudnnHandleForDevice(int device_id) {
+  DefaultCudaHandles& handles = GetDefaultCudaHandlesForDevice(device_id);
+  if (handles.cudnn != nullptr) {
+    return handles.cudnn;
+  }
+
+  int prev_device = -1;
+  const cudaError_t get_device_result = cudaGetDevice(&prev_device);
+  PL_CUDA_CALL_THROW(cudaSetDevice(device_id));
+  cudnnHandle_t cudnn = nullptr;
+  const cudnnStatus_t status = cudnnCreate(&cudnn);
+  if (get_device_result == cudaSuccess) {
+    cudaSetDevice(prev_device);
+  }
+  if (status != CUDNN_STATUS_SUCCESS) {
+    ORT_THROW("Failed to create default cuDNN handle for CUDA plugin device ", device_id);
+  }
+
+  handles.cudnn = cudnn;
+  return cudnn;
 }
 
 inline const cudaDeviceProp& GetDevicePropForDevice(int device_id) {
@@ -642,20 +751,15 @@ inline void SetCudaKernelAdapterRuntimeConfigForProvider(
   // AttentionKernelOptions contains std::once_flag (not copyable), so assign
   // the plain-data fields individually rather than relying on operator=.
   config->use_tf32 = init_config.use_tf32;
-  config->skip_layer_norm_strict_mode = init_config.skip_layer_norm_strict_mode;
   config->cudnn_conv_algo = init_config.cudnn_conv_algo;
   config->cudnn_conv_use_max_workspace = init_config.cudnn_conv_use_max_workspace;
   config->cudnn_conv1d_pad_to_nc1d = init_config.cudnn_conv1d_pad_to_nc1d;
+  config->enable_cudnn = init_config.enable_cudnn;
   config->fuse_conv_bias = init_config.fuse_conv_bias;
   config->sdpa_kernel = init_config.sdpa_kernel;
   config->device_id = init_config.device_id;
   config->do_copy_in_default_stream = init_config.do_copy_in_default_stream;
   PL_CUDA_CALL_THROW(cudaGetDeviceProperties(&config->device_prop, config->device_id));
-}
-
-inline bool GetCudaKernelAdapterSkipLayerNormStrictMode(const void* provider) {
-  const auto config = detail::GetCudaKernelAdapterRuntimeConfigForProvider(provider);
-  return config->skip_layer_norm_strict_mode;
 }
 
 // Global aliases and shims
@@ -868,6 +972,11 @@ class CudaKernel : public OpKernel {
   }
   virtual ~CudaKernel() = default;
   Status Compute(OpKernelContext* ctx) const {
+    // Scope the thread-local "current Compute call" framework stream to this invocation so that
+    // scratch tagged via a nullptr stream argument never inherits a stale framework stream from a
+    // previous Compute call (or leaks one to a later kernel constructor) on this worker thread.
+    cuda_plugin::detail::ComputeStreamScope compute_stream_scope;
+
     // Ensure the correct CUDA device is active for this kernel.
     // Worker threads default to device 0; sessions on device > 0 need an
     // explicit cudaSetDevice. Skip during CUDA graph capture because
@@ -890,7 +999,12 @@ class CudaKernel : public OpKernel {
 
   inline cudaStream_t DefaultCudaStream() const { return Stream(static_cast<OpKernelContext*>(nullptr)); }
   inline cublasHandle_t DefaultCublasHandle() const { return detail::GetDefaultCudaHandlesForDevice(device_id_).cublas; }
-  inline cudnnHandle_t DefaultCudnnHandle() const { return detail::GetDefaultCudaHandlesForDevice(device_id_).cudnn; }
+  inline cudnnHandle_t DefaultCudnnHandle() const {
+    if (!runtime_config_->enable_cudnn || !onnxruntime::cuda::CudnnLibrary::Get().Available()) {
+      return nullptr;
+    }
+    return detail::GetDefaultCudnnHandleForDevice(device_id_);
+  }
   inline cublasLtHandle_t DefaultCublasLtHandle() const { return detail::GetDefaultCudaHandlesForDevice(device_id_).cublas_lt; }
 
   inline Status CopyTensor(const onnxruntime::Tensor& src, onnxruntime::Tensor& dst, onnxruntime::Stream& stream) const {
@@ -903,17 +1017,27 @@ class CudaKernel : public OpKernel {
 
   cudaStream_t Stream(OpKernelContext* ctx) const {
     if (!ctx) return nullptr;
-    return static_cast<cudaStream_t>(ctx->GetGPUComputeStream());
+    // Register the framework sync stream for this Compute call so that scratch allocated via
+    // GetTransientScratchBuffer()/GetScratchBuffer(..., nullptr) is still stream-tagged for kernels
+    // that call Stream(ctx) before GetComputeStream()/GetOrtStream() (e.g. conv algo search).
+    void* cuda_stream = ctx->GetGPUComputeStream();
+    cuda_plugin::detail::RegisterFrameworkStreamForCudaStream(cuda_stream, ctx->GetSyncStream());
+    return static_cast<cudaStream_t>(cuda_stream);
   }
 
   // Returns an opaque stream pointer for passing to GetScratchBuffer/AddDeferredReleaseCPUPtr/CopyToGpu.
   // Returns void* for dual-build compatibility: framework wraps Stream*, plugin wraps cudaStream_t.
   inline void* GetComputeStream(OpKernelContext* ctx) const {
-    return ctx->GetGPUComputeStream();
+    void* cuda_stream = ctx->GetGPUComputeStream();
+    cuda_plugin::detail::RegisterFrameworkStreamForCudaStream(cuda_stream, ctx->GetSyncStream());
+    return cuda_stream;
   }
 
   inline onnxruntime::OrtStreamAdapter GetOrtStream(OpKernelContext* ctx) const {
-    return onnxruntime::OrtStreamAdapter(GetComputeStream(ctx));
+    void* cuda_stream = ctx->GetGPUComputeStream();
+    OrtSyncStream* framework_stream = ctx->GetSyncStream();
+    cuda_plugin::detail::RegisterFrameworkStreamForCudaStream(cuda_stream, framework_stream);
+    return onnxruntime::OrtStreamAdapter(cuda_stream, framework_stream);
   }
 
   static cudnnHandle_t GetCudnnHandle(cudaStream_t s) {
@@ -934,7 +1058,13 @@ class CudaKernel : public OpKernel {
     }
 
     handle = DefaultCudnnHandle();
-    if (stream != nullptr) {
+    if (handle == nullptr) {
+      ORT_THROW_IF_ERROR(onnxruntime::common::Status(
+          onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
+          std::string("cuDNN is unavailable or disabled for CUDA Plugin Execution Provider: ") +
+              onnxruntime::cuda::CudnnLibrary::Get().Error()));
+    }
+    if (handle != nullptr && stream != nullptr) {
       CUDNN_CALL_THROW(cudnnSetStream(handle, stream));
     }
     return handle;
@@ -1023,56 +1153,42 @@ class CudaKernel : public OpKernel {
   template <typename T>
   using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
   template <typename T>
-  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t cnt, void* s) const {
+  inline IAllocatorUniquePtr<T> GetScratchBuffer(size_t cnt, void* stream) const {
     if (cnt == 0) return IAllocatorUniquePtr<T>(nullptr, [](T*) {});
-    size_t sz = 0;
-    if (!detail::TryBytesForCount(cnt, detail::SizeOf<T>::value, sz)) {
-      ORT_THROW("CUDA scratch buffer allocation size overflow for ", cnt, " elements");
-    }
 
-    void* p = nullptr;
-    cudaError_t alloc_result = cudaSuccess;
-    bool used_async_alloc = false;
-    if (s) {
-      // Note: stream-ordered allocations (cudaMallocAsync/cudaFreeAsync) rely on CUDA Memory Pools,
-      // which are not supported on NVIDIA GPUs with Multi-Instance GPU (MIG) enabled.
-      // On such instances, this will return cudaErrorNotSupported.
-      alloc_result = cudaMallocAsync(&p, sz, static_cast<cudaStream_t>(s));
-      used_async_alloc = (alloc_result == cudaSuccess);
-      if (!used_async_alloc && (alloc_result == cudaErrorNotSupported || alloc_result == cudaErrorInvalidValue)) {
-        cudaGetLastError();  // Clear the thread-local error state
-        alloc_result = cudaMalloc(&p, sz);
-      }
-    } else {
-      alloc_result = cudaMalloc(&p, sz);
-    }
-
-    if (alloc_result != cudaSuccess) {
-      ORT_THROW("CUDA scratch buffer allocation failed for ", sz, " bytes: ", cudaGetErrorString(alloc_result));
-    }
-
-    return IAllocatorUniquePtr<T>(static_cast<T*>(p), [s, used_async_alloc](T* ptr) {
-      if (ptr) {
-        // Guard: only attempt async free if the stream is still registered.
-        // CudaSyncStream::~CudaSyncStream guarantees UnregisterStream() is
-        // called before cudaStreamDestroy(), so a non-null lookup here means
-        // the raw cudaStream_t handle is still valid.
-        if (used_async_alloc && s &&
-            cuda_plugin::CudaSyncStream::FromCudaStream(static_cast<cudaStream_t>(s)) != nullptr) {
-          // As noted above, cudaFreeAsync may also return cudaErrorNotSupported on MIG-enabled instances.
-          cudaError_t free_result = cudaFreeAsync(ptr, static_cast<cudaStream_t>(s));
-          if (free_result == cudaSuccess) {
-            return;
-          }
-          cudaGetLastError();  // Clear any error set by cudaFreeAsync
-        }
-
-        // Fall back to synchronous free if async free is unsupported or if the
-        // stream is no longer registered. cudaFree is valid for allocations
-        // returned by cudaMallocAsync and avoids using a stale stream handle.
-        cudaFree(ptr);
-      }
-    });
+    // Route kernel scratch/workspace allocations through the EP allocator
+    // (a BFC arena by default) instead of raw cudaMallocAsync/cudaMalloc.
+    //
+    // The arena pre-reserves device memory and reuses freed chunks across runs.
+    // Once the model has executed `min_num_runs_before_cuda_graph_capture`
+    // warmup runs, the arena has grown to its steady-state working set, so the
+    // capture run serves every scratch allocation from an already-reserved chunk
+    // without issuing a fresh cudaMalloc. This keeps the device free-memory
+    // footprint stable across the capture window, which is required for correct
+    // CUDA graph capture/replay.
+    //
+    // The previous behavior (cudaMallocAsync/cudaMalloc allocated-and-freed per
+    // call) allocated new device memory on every run, including the capture run,
+    // so no amount of warmup could stabilize it and the
+    // "GPU memory was allocated during CUDA graph capture" detector would trip.
+    // This now matches the built-in (non-plugin) CUDA EP, which also obtains
+    // scratch from Info().GetAllocator() (see core/providers/cuda/cuda_kernel.h).
+    // The overflow check that the previous hand-rolled path performed is still
+    // enforced inside MakeUniquePtr via ValidatedCalcMemSizeForArray (it throws
+    // on cnt * sizeof(T) overflow).
+    //
+    // The `stream` argument is the raw cudaStream_t used by migrated CUDA kernels, or a Stream*
+    // from OrtStreamAdapter in code paths that need stream->GetHandle(). Stream-aware arena
+    // allocation needs the stable framework Stream* wrapper instead, because the arena stores it
+    // in each chunk and later queries sync ids through the EP stream API. Stream(ctx),
+    // GetComputeStream(ctx) and GetOrtStream(ctx) record the mapping from both argument forms to
+    // the framework stream for the current Compute call.
+    // If the negotiated ORT API version does not include KernelContext_GetSyncStream, the lookup
+    // returns null and allocation falls back to the non-stream-tagged path.
+    auto* framework_stream = cuda_plugin::detail::GetFrameworkStreamForStreamArg(stream);
+    return ::onnxruntime::IAllocator::MakeUniquePtr<T>(
+        Info().GetAllocator(OrtMemType::OrtMemTypeDefault), cnt, /*use_reserve*/ false,
+        framework_stream);
   }
   template <typename T>
   inline IAllocatorUniquePtr<T> GetTransientScratchBuffer(size_t cnt) const {
