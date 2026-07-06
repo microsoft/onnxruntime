@@ -59,6 +59,8 @@ def directory_setup_factory(tmp_path):
             linux_aarch64_native_dir = linux_aarch64_dir / "ai" / "onnxruntime" / "native" / "linux-aarch64"
             linux_aarch64_native_dir.mkdir(parents=True, exist_ok=True)
             create_empty_file(linux_aarch64_dir / "libcustom_op_library.so")
+            create_empty_file(linux_aarch64_native_dir / "libonnxruntime.so")
+            create_empty_file(linux_aarch64_native_dir / "libonnxruntime4j_jni.so")
 
             # The outer artifact directory keeps the CI arch tag (osx-x86_64 /
             # osx-arm64) to match jar_packaging.py's platform list, but the inner
@@ -140,6 +142,8 @@ def test_cpu_packaging(directory_setup_factory, version_string):
         # Linux libs
         assert "ai/onnxruntime/native/linux-x64/libonnxruntime.so" in jar_contents
         assert "ai/onnxruntime/native/linux-x64/libonnxruntime4j_jni.so" in jar_contents
+        assert "ai/onnxruntime/native/linux-aarch64/libonnxruntime.so" in jar_contents
+        assert "ai/onnxruntime/native/linux-aarch64/libonnxruntime4j_jni.so" in jar_contents
         # macOS libs -- under the Java-convention arch paths (osx-x64 /
         # osx-aarch64) produced by linux_java_copy_strip_binary.py.
         assert "ai/onnxruntime/native/osx-x64/libonnxruntime.dylib" in jar_contents
