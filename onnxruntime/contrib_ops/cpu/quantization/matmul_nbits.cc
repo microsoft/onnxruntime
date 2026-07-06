@@ -267,9 +267,11 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     const int64_t k = static_cast<int64_t>(K_);
     const int64_t bs = static_cast<int64_t>(block_size_);
     const int64_t bits = static_cast<int64_t>(nbits_);
-    const int64_t k_blocks = (k + bs - 1) / bs;
-    const int64_t blob_size = bs * bits / 8;
-    const int64_t zp_blob_size_uint8 = (k_blocks * bits + 7) / 8;
+    // Layout derivations live in matmul_nbits_helper.h so this guard and the Compute-time
+    // CheckInputs stay in lockstep if the canonical packing layout ever changes.
+    const int64_t k_blocks = matmul_nbits_helper::GetKBlocks(k, bs);
+    const int64_t blob_size = matmul_nbits_helper::GetBlobSize(bs, bits);
+    const int64_t zp_blob_size_uint8 = matmul_nbits_helper::GetUint8ZeroPointBlobSize(k_blocks, bits);
 
     auto validate_scales_shape = [&](const TensorShape& s) -> Status {
       // scales may be 1D [n * k_blocks] or 2D [n, k_blocks] for backward compatibility.
