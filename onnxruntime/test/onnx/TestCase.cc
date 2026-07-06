@@ -964,13 +964,16 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       // CUDA has no ConvInteger kernel at all -- so skip it globally here, mirroring the
       // provider-agnostic exclusion in onnx_backend_test_series_filters.jsonc.
       {"convinteger_with_padding", "ORT does not support per-channel quantization for ConvInteger (onnx#7959; mirrors onnx_backend_test_series_filters.jsonc global exclusion)"},
-      // onnx#7959 (same CPU-materialized-node-runner exposure as convinteger above): ORT's DFT
-      // kernel does not implement IRFFT (inverse real FFT) -- a known global conformance gap,
-      // provider-agnostically excluded in onnx_backend_test_series_filters.jsonc. Skip globally.
-      {"dft_irfft", "ORT DFT kernel does not implement IRFFT (onnx#7959; mirrors onnx_backend_test_series_filters.jsonc global exclusion)"},
-      {"dft_irfft_opset19", "ORT DFT kernel does not implement IRFFT (onnx#7959; mirrors onnx_backend_test_series_filters.jsonc global exclusion)"},
-      {"dft_rfft", "ORT DFT kernel does not implement IRFFT (onnx#7959; mirrors onnx_backend_test_series_filters.jsonc global exclusion)"},
-      {"dft_rfft_opset19", "ORT DFT kernel does not implement IRFFT (onnx#7959; mirrors onnx_backend_test_series_filters.jsonc global exclusion)"},
+      // onnx#7959 (same CPU-materialized-node-runner exposure as convinteger above): the ORT DFT
+      // rfft/irfft outputs are numerically near-correct but a few near-zero elements exceed the
+      // runner's tight ~1e-5 absolute tolerance (platform-dependent FFT roundoff: passes on Windows
+      // CPU, fails on Linux CPU by <=~1.6e-4). This mirrors the pre-existing GLOBAL exclusion of
+      // these same 4 tests in onnx_backend_test_series_filters.jsonc ("current_failing_tests"), so
+      // the C++ materialized runner stays at parity with the python conformance suite's pass set.
+      {"dft_irfft", "DFT rfft/irfft near-zero elements exceed the tight abs tolerance (onnx#7959; parity with onnx_backend_test_series_filters.jsonc global exclusion)"},
+      {"dft_irfft_opset19", "DFT rfft/irfft near-zero elements exceed the tight abs tolerance (onnx#7959; parity with onnx_backend_test_series_filters.jsonc global exclusion)"},
+      {"dft_rfft", "DFT rfft/irfft near-zero elements exceed the tight abs tolerance (onnx#7959; parity with onnx_backend_test_series_filters.jsonc global exclusion)"},
+      {"dft_rfft_opset19", "DFT rfft/irfft near-zero elements exceed the tight abs tolerance (onnx#7959; parity with onnx_backend_test_series_filters.jsonc global exclusion)"},
       // Spec-leading: PR #28379 fixed CPU Attention to match the corrected
       // scale -> softcap -> bias/mask -> softmax ordering established by
       // onnx/onnx#7867 (softcap before mask) and onnx/onnx#7913
@@ -1582,7 +1585,8 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"attention_4d_with_past_and_present_qk_matmul_bias_4d_mask_causal_expanded", "unknown version"});
     // Note: dft_irfft/dft_irfft_opset19/dft_rfft/dft_rfft_opset19 (previously listed here as
     // "Fails since ONNX==1.21.0") are now in the common GetBrokenTests initializer above, since
-    // the CPU-materialized node runner (onnx#7959) exposes the same global IRFFT conformance gap.
+    // the CPU-materialized node runner (onnx#7959) exposes the same marginal FFT precision failure
+    // that onnx_backend_test_series_filters.jsonc already excludes globally.
     broken_tests->insert({"bitcast_bool_to_uint8", "ORT BitCast kernel does not register bool type"});
   }
 
