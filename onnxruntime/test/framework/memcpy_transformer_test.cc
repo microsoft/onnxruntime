@@ -18,6 +18,25 @@ namespace test {
 
 typedef std::vector<onnxruntime::NodeArg*> ArgMap;
 
+constexpr const char* kFakeDeviceExecutionProvider = "FakeDeviceExecutionProvider";
+
+class FakeDeviceExecutionProvider : public IExecutionProvider {
+ public:
+  FakeDeviceExecutionProvider()
+      : IExecutionProvider(kFakeDeviceExecutionProvider,
+                           OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0)) {
+  }
+};
+
+static InlinedVector<gsl::not_null<const IExecutionProvider*>> GetNotNullProviderPtrs(
+    const ExecutionProviders& providers) {
+  InlinedVector<gsl::not_null<const IExecutionProvider*>> not_null_provider_ptrs{};
+  for (auto& provider_ptr : providers) {
+    not_null_provider_ptrs.emplace_back(provider_ptr.get());
+  }
+  return not_null_provider_ptrs;
+}
+
 void ExpectSame(const onnxruntime::Node& source, const onnxruntime::Node& target, int argnum) {
   // Check that target's argnum-th input comes from the source node (without copy):
   auto* source_output = source.OutputDefs()[0];
@@ -72,16 +91,58 @@ void ExpectCopy(const onnxruntime::Node& source, const std::string copy_op,
   EXPECT_TRUE(false) << "Copy node expected but not found";
 }
 
-#ifdef USE_CUDA
+TEST(TransformerTest, MemcpyTransformerTestWithFakeDeviceProvider) {
+  std::unordered_map<std::string, int> domain_to_version;
+  domain_to_version[kOnnxDomain] = 7;
+  auto model = std::make_shared<onnxruntime::Model>("test", false, ModelMetaData(), PathString(),
+                                                    IOnnxRuntimeOpSchemaRegistryList(),
+                                                    domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                                                    DefaultLoggingManager().DefaultLogger());
+  onnxruntime::Graph& graph = model->MainGraph();
 
-static InlinedVector<gsl::not_null<const IExecutionProvider*>> GetNotNullProviderPtrs(
-    const ExecutionProviders& providers) {
-  InlinedVector<gsl::not_null<const IExecutionProvider*>> not_null_provider_ptrs{};
-  for (auto& provider_ptr : providers) {
-    not_null_provider_ptrs.emplace_back(provider_ptr.get());
-  }
-  return not_null_provider_ptrs;
+  TypeProto tensor_float_type;
+  tensor_float_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  onnxruntime::NodeArg i1_def("I1", &tensor_float_type),
+      i2_def("I2", &tensor_float_type),
+      i3_def("I3", &tensor_float_type),
+      o1_def("O1", &tensor_float_type),
+      o2_def("O2", &tensor_float_type),
+      o3_def("O3", &tensor_float_type);
+
+  auto& node1 = graph.AddNode("node1", "MatMul", "cpu operator", ArgMap{&i1_def, &i2_def}, ArgMap{&o1_def});
+  node1.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+  auto& node2 = graph.AddNode("node2", "MatMul", "fake device operator", ArgMap{&o1_def, &i3_def}, ArgMap{&o2_def});
+  node2.SetExecutionProviderType(kFakeDeviceExecutionProvider);
+  auto& node3 = graph.AddNode("node3", "Clip", "cpu operator", ArgMap{&o2_def}, ArgMap{&o3_def});
+  node3.SetExecutionProviderType(onnxruntime::kCpuExecutionProvider);
+
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  ExecutionProviders execution_providers;
+  ASSERT_STATUS_OK(execution_providers.Add(kFakeDeviceExecutionProvider,
+                                           std::make_unique<FakeDeviceExecutionProvider>()));
+  ASSERT_STATUS_OK(execution_providers.Add(onnxruntime::kCpuExecutionProvider, DefaultCpuExecutionProvider()));
+  KernelRegistryManager test_registry_manager;
+  auto test_kernel_registry = std::make_shared<KernelRegistry>();
+  ASSERT_STATUS_OK(test_kernel_registry->Register(KernelCreateInfo(
+      KernelDefBuilder().SetName("MatMul").Provider(kFakeDeviceExecutionProvider).SinceVersion(1, 10).Build(),
+      [](FuncManager&, const OpKernelInfo&, std::unique_ptr<OpKernel>&) -> Status {
+        return Status::OK();
+      })));
+  test_registry_manager.RegisterKernelRegistry(test_kernel_registry);
+
+  MemcpyTransformer transformer(GetNotNullProviderPtrs(execution_providers), test_registry_manager);
+
+  bool modified = false;
+  auto status = transformer.Apply(graph, modified, DefaultLoggingManager().DefaultLogger());
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  EXPECT_TRUE(modified);
+
+  ExpectCopy(node1, "MemcpyFromHost", node2, 0);
+  ExpectCopy(node2, "MemcpyToHost", node3, 0);
 }
+
+#ifdef USE_CUDA
 
 TEST(TransformerTest, MemcpyTransformerTest) {
   std::unordered_map<std::string, int> domain_to_version;
