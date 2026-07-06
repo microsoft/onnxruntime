@@ -20,6 +20,7 @@
 #include "test/autoep/library/ep_context_data_utils.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/test_allocator.h"
 
 namespace onnxruntime {
 namespace test {
@@ -410,6 +411,29 @@ TEST(OrtEpLibrary, EpContextDataUtils_ReadEpContextDataLeavesOutputEmptyOnCallba
   EXPECT_EQ(read_callback_state.read_file_name, "failing_after_alloc_context.bin");
   EXPECT_TRUE(owned.empty());
   EXPECT_EQ(owned.size(), 0u);
+}
+
+TEST(OrtEpLibrary, EpContextDataUtils_ReadEpContextDataUsesCallerSuppliedAllocator) {
+  const auto& api = Ort::GetApi();
+
+  // A caller-supplied allocator is used for the callback output buffer, and the same allocator frees it when the
+  // EpContextData owner is destroyed (matching alloc/free).
+  MockedOrtAllocator allocator;
+  EpContextDataCallbackState read_callback_state;
+  read_callback_state.payload = {'a', 'l', 'l', 'o', 'c', 'a', 't', 'o', 'r'};
+
+  {
+    ep_context_data_utils::EpContextData owned;
+    ASSERT_ORTSTATUS_OK(ep_context_data_utils::ReadEpContextData(
+        api, LoadEpContextDataCallback, &read_callback_state, "caller_allocator_context.bin", nullptr, owned,
+        &allocator));
+    ASSERT_EQ(owned.size(), read_callback_state.payload.size());
+    EXPECT_EQ(std::vector<char>(owned.data(), owned.data() + owned.size()), read_callback_state.payload);
+    // The caller-supplied allocator (not ORT's default) allocated the callback output buffer.
+    EXPECT_GE(allocator.NumAllocations(), static_cast<size_t>(1));
+  }
+  // Destroying `owned` freed the buffer via the same caller-supplied allocator; nothing should leak.
+  allocator.LeakCheck();
 }
 
 }  // namespace test
