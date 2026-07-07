@@ -303,6 +303,39 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/q4gemm_avx512.cpp
       )
     endif()
+
+    # clang-cl (used when cross-compiling ONNX Runtime for Windows on a non-Windows
+    # host) enforces per-function target features: an intrinsic may only be used in
+    # a translation unit that was compiled with that feature enabled. MSVC has no
+    # such requirement, so several MLAS x64 kernels use AVX2/AVX-512/AMX/SSE4.1
+    # intrinsics without a TU-level arch flag. Supply the required features here,
+    # gated on Clang so the MSVC (cl.exe/ml64.exe) build stays byte-for-byte the
+    # same. Files already carrying an /arch flag above are not repeated.
+    if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+      set_source_files_properties(
+        ${MLAS_SRC_DIR}/rotary_embedding_kernel_avx2.cpp
+        ${MLAS_SRC_DIR}/qkv_quant_kernel_avx2.cpp
+        ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.cpp
+        PROPERTIES COMPILE_FLAGS "/arch:AVX2")
+      set_source_files_properties(
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
+        PROPERTIES COMPILE_FLAGS "/arch:AVX2 -mavxvnni")
+      set_source_files_properties(
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
+        PROPERTIES COMPILE_FLAGS "/arch:AVX512")
+      set_source_files_properties(
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
+        ${MLAS_SRC_DIR}/qkv_quant_kernel_avx512vnni.cpp
+        ${MLAS_SRC_DIR}/q4gemm_avx512.cpp
+        PROPERTIES COMPILE_FLAGS "/arch:AVX512 -mavx512vnni")
+      set_source_files_properties(
+        ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
+        PROPERTIES COMPILE_FLAGS "-msse4.1")
+      set_source_files_properties(
+        ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
+        PROPERTIES COMPILE_FLAGS "/arch:AVX512 -mamx-tile -mamx-int8 -mamx-bf16")
+    endif()
   else()
     target_sources(onnxruntime_mlas PRIVATE
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp

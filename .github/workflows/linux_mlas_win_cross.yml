@@ -1,0 +1,160 @@
+name: MLAS Windows-x64 Cross-Build (Linux)
+
+# Cross-compiles the MLAS static library (onnxruntime_mlas) for Windows x64 from a
+# Linux runner, using clang-cl + lld-link for C/C++, llvm-ml for the amd64 MASM
+# assembly kernels, and a Windows SDK/CRT staged by `xwin`.
+#
+# Why: downstream consumers such as the Edge browser build their Windows releases
+# on Linux machines (faster/cheaper than native Windows builders). Historically
+# ONNX Runtime's MLAS x64 assembly assembled only under ml64.exe, which is not
+# available on Linux. The amd64/*.asm sources are now dual-assembler compatible
+# (ml64 + llvm-ml), and this job is the authoritative guard that the whole MLAS
+# library keeps cross-building on Linux - a strict superset of merely assembling
+# the .asm files. It exercises the llvm-ml (/DLLVM_ML) branch of the sources plus
+# the clang-cl per-file arch-flag gating in cmake/onnxruntime_mlas.cmake.
+#
+# The complementary ml64.exe branch (no /DLLVM_ML define) is exercised by the
+# regular Windows build/test pipelines, so both assemblers remain covered.
+#
+# Tests are intentionally NOT run here: the artifacts are Windows-x64 binaries,
+# which cannot execute natively on a Linux runner (Wine is unreliable for the
+# AVX-512/AMX kernels MLAS ships). Runtime correctness of these kernels is covered
+# by the existing native Windows test pipelines.
+
+on:
+  push:
+    branches: [main, 'rel-*']
+    paths:
+      - 'onnxruntime/core/mlas/**'
+      - 'cmake/onnxruntime_mlas.cmake'
+      - 'cmake/win_x64_crosscompile_toolchain.cmake'
+      - '.github/workflows/linux_mlas_win_cross.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'onnxruntime/core/mlas/**'
+      - 'cmake/onnxruntime_mlas.cmake'
+      - 'cmake/win_x64_crosscompile_toolchain.cmake'
+      - '.github/workflows/linux_mlas_win_cross.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  LLVM_VERSION: '18'
+  XWIN_VERSION: '0.9.0'
+
+jobs:
+  mlas-win-cross-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Install build tools (cmake, ninja, LLVM/clang cross toolchain)
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build curl ca-certificates
+
+          # LLVM (clang-cl, lld-link, llvm-ml, llvm-lib, llvm-mt, llvm-rc) from apt.llvm.org.
+          curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh "${LLVM_VERSION}"
+          sudo apt-get install -y --no-install-recommends "llvm-${LLVM_VERSION}"
+
+          # Expose the version-suffixed tools under stable, unsuffixed names.
+          BIN="${HOME}/llvmbin"
+          mkdir -p "${BIN}"
+          link() {  # link <unsuffixed> <suffixed-candidate...>
+            local dest="$1"; shift
+            local src
+            for src in "$@"; do
+              if command -v "${src}" >/dev/null 2>&1; then
+                ln -sf "$(command -v "${src}")" "${BIN}/${dest}"
+                return 0
+              fi
+            done
+            echo "::error::required LLVM tool not found (tried: $*)"
+            return 1
+          }
+          link clang-cl "clang-cl-${LLVM_VERSION}"
+          link lld-link "lld-link-${LLVM_VERSION}"
+          link llvm-ml  "llvm-ml-${LLVM_VERSION}"
+          link llvm-mt  "llvm-mt-${LLVM_VERSION}"
+          link llvm-rc  "llvm-rc-${LLVM_VERSION}"
+          # llvm-lib is llvm-ar invoked under the lib.exe-compatible name.
+          link llvm-lib "llvm-lib-${LLVM_VERSION}" "llvm-ar-${LLVM_VERSION}"
+
+          echo "ORT_LLVM_BIN=${BIN}" >> "${GITHUB_ENV}"
+          echo "${BIN}" >> "${GITHUB_PATH}"
+          echo "== resolved LLVM tools =="
+          ls -l "${BIN}"
+
+      - name: Stage Windows SDK / CRT with xwin
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://github.com/Jake-Shadle/xwin/releases/download/${XWIN_VERSION}/xwin-${XWIN_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          curl -fsSL "${url}" -o /tmp/xwin.tar.gz
+          mkdir -p /tmp/xwin-dist
+          tar -xzf /tmp/xwin.tar.gz -C /tmp/xwin-dist --strip-components=1
+          XWIN_BIN="$(find /tmp/xwin-dist -name xwin -type f | head -1)"
+          chmod +x "${XWIN_BIN}"
+
+          XWIN_ROOT="${HOME}/xwinroot"
+          "${XWIN_BIN}" --accept-license --arch x86_64 splat --output "${XWIN_ROOT}"
+          echo "ORT_WIN_XWIN_ROOT=${XWIN_ROOT}" >> "${GITHUB_ENV}"
+          echo "== xwin layout =="
+          ls "${XWIN_ROOT}" && ls "${XWIN_ROOT}/crt" && ls "${XWIN_ROOT}/sdk"
+
+      - name: Configure (Windows x64 cross toolchain)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S cmake -B build_win_cross -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="${GITHUB_WORKSPACE}/cmake/win_x64_crosscompile_toolchain.cmake" \
+            -DORT_WIN_XWIN_ROOT="${ORT_WIN_XWIN_ROOT}" \
+            -DORT_LLVM_BIN="${ORT_LLVM_BIN}" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -Donnxruntime_BUILD_UNIT_TESTS=OFF \
+            -Donnxruntime_BUILD_SHARED_LIB=OFF \
+            -Donnxruntime_ENABLE_PYTHON=OFF \
+            -Donnxruntime_USE_FULL_PROTOBUF=OFF
+
+      - name: Build onnxruntime_mlas
+        shell: bash
+        run: cmake --build build_win_cross --target onnxruntime_mlas -j"$(nproc)"
+
+      - name: Verify cross-built library
+        shell: bash
+        run: |
+          set -euo pipefail
+          lib="$(find build_win_cross -name 'onnxruntime_mlas.lib' | head -1)"
+          if [ -z "${lib}" ]; then
+            echo "::error::onnxruntime_mlas.lib was not produced"
+            exit 1
+          fi
+          echo "Built: ${lib} ($(stat -c%s "${lib}") bytes)"
+
+          # The library must contain the amd64 MASM kernels assembled by llvm-ml.
+          asm_objs="$(llvm-lib /list "${lib}" 2>/dev/null | grep -c '\.asm\.obj$' || true)"
+          if [ "${asm_objs}" = "0" ]; then
+            # llvm-lib may not support /list on this platform; fall back to llvm-ar.
+            asm_objs="$( { llvm-ar t "${lib}" 2>/dev/null || true; } | grep -c '\.asm\.obj$' || true)"
+          fi
+          echo "amd64 .asm objects archived: ${asm_objs}"
+          if [ "${asm_objs}" -lt 1 ]; then
+            echo "::error::no amd64 .asm objects found in onnxruntime_mlas.lib"
+            exit 1
+          fi
