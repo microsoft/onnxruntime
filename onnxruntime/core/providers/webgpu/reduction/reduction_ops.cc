@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/reduction/reduction_ops.h"
+#include <memory>
 #include <sstream>
 #include "core/framework/data_transfer_manager.h"
 #include "core/providers/webgpu/data_transfer.h"
@@ -58,9 +59,48 @@ REGISTER_REDUCE_VERSIONED_KERNEL(ReduceMin, 13, 17);
 REGISTER_REDUCE_VERSIONED_KERNEL_WITH_AXIS_IN_INPUT(ReduceMin, 18, 19);
 REGISTER_REDUCE_KERNEL(ReduceMin, 20);
 
-REGISTER_REDUCE_VERSIONED_KERNEL(ReduceSum, 1, 10);
-REGISTER_REDUCE_VERSIONED_KERNEL(ReduceSum, 11, 12);
-REGISTER_REDUCE_KERNEL(ReduceSum, 13);
+// ReduceSum: versions 1-12 use axes as attribute; version 13+ uses axes as a CPU input tensor.
+// Factory functions allow conditional int64 support on the T type constraint.
+// NOTE: int64 reduction in the WebGPU shader uses i32 (low 32 bits only); values outside
+// the int32 range will produce incorrect results — same limitation as Range.
+template <int StartVersion, int EndVersion>
+KernelCreateInfo CreateReduceSumVersionedKernelInfo(bool enable_int64) {
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<ReduceSum>(info);
+    return Status::OK();
+  };
+  return {KernelDefBuilder()
+              .SetName("ReduceSum")
+              .SetDomain(kOnnxDomain)
+              .SinceVersion(StartVersion, EndVersion)
+              .Provider(kWebGpuExecutionProvider)
+              .TypeConstraint("T", type_constraints)
+              .Build(),
+          kernel_create_fn};
+}
+
+template <int SinceVersion>
+KernelCreateInfo CreateReduceSumKernelInfo(bool enable_int64) {
+  const auto& type_constraints = GetOpTypeConstraints(enable_int64, false);
+  KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
+    out = std::make_unique<ReduceSum>(info);
+    return Status::OK();
+  };
+  return {KernelDefBuilder()
+              .SetName("ReduceSum")
+              .SetDomain(kOnnxDomain)
+              .SinceVersion(SinceVersion)
+              .Provider(kWebGpuExecutionProvider)
+              .TypeConstraint("T", type_constraints)
+              .InputMemoryType(OrtMemTypeCPUInput, 1)
+              .Build(),
+          kernel_create_fn};
+}
+
+template KernelCreateInfo CreateReduceSumVersionedKernelInfo<1, 10>(bool);
+template KernelCreateInfo CreateReduceSumVersionedKernelInfo<11, 12>(bool);
+template KernelCreateInfo CreateReduceSumKernelInfo<13>(bool);
 
 REGISTER_REDUCE_VERSIONED_KERNEL(ReduceProd, 1, 10);
 REGISTER_REDUCE_VERSIONED_KERNEL(ReduceProd, 11, 12);
