@@ -40,6 +40,9 @@ constexpr int kFpAIntBGemmOption_All = 0x01;
 constexpr int kFpAIntBGemmOption_Gemv = 0x02;
 constexpr int kFpAIntBGemmOption_Int4 = 0x04;
 constexpr int kFpAIntBGemmOption_Int8 = 0x08;
+constexpr int64_t kMatMulNBitsWeightNotPrepacked = 0;
+constexpr int64_t kMatMulNBitsWeightPrepackedSm80 = 1;
+constexpr int64_t kMatMulNBitsWeightPrepackedSm90 = 2;
 #endif
 
 template <typename T>
@@ -86,8 +89,19 @@ class MatMulNBits final : public CudaKernel {
     }
 
 #if USE_FPA_INTB_GEMM
+    weight_prepacked_ = info.GetAttrOrDefault<int64_t>("weight_prepacked", kMatMulNBitsWeightNotPrepacked);
+    ORT_ENFORCE(weight_prepacked_ == kMatMulNBitsWeightNotPrepacked ||
+                    weight_prepacked_ == kMatMulNBitsWeightPrepackedSm80 ||
+                    weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90,
+                "weight_prepacked must be 0 (not prepacked), 1 (SM80 layout), or 2 (reserved SM90 layout), but got ",
+                weight_prepacked_);
+    ORT_ENFORCE(weight_prepacked_ != kMatMulNBitsWeightPrepackedSm90,
+                "weight_prepacked=2 (SM90 layout) is reserved and not supported yet");
+
     if constexpr (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value) {
       int option = ParseEnvironmentVariableWithDefault<int>(kFpAIntBGemmOption, 0);
+      ORT_ENFORCE(!(weight_prepacked_ != kMatMulNBitsWeightNotPrepacked && option == 0),
+                  "weight_prepacked requires the fpA_intB path, but ORT_FPA_INTB_GEMM is off for this node");
       if ((option & (static_cast<int>(nbits_) | kFpAIntBGemmOption_All)) != 0 &&
           (block_size_ == 64 || block_size_ == 128) &&
           (nbits_ == 4 || nbits_ == 8) &&
@@ -109,12 +123,23 @@ class MatMulNBits final : public CudaKernel {
           }
         }
 
-        InitGemmProfiler(sm_);
+        InitGemmProfiler(FpAIntBPackingSmForKernel());
 
         constexpr int max_m = 8291;
         RunGemmProfile(has_fpA_intB_gemv_, 1, max_m);
         has_fpA_intB_gemm_ = true;
       }
+
+      if (weight_prepacked_ != kMatMulNBitsWeightNotPrepacked) {
+        ORT_ENFORCE(has_fpA_intB_gemm_,
+                    "weight_prepacked requires the fpA_intB path, but it is disabled or unsupported for this node");
+        ORT_ENFORCE(weight_prepacked_ == RequiredWeightPrepackedFormat(),
+                    "weight_prepacked=", weight_prepacked_, " does not match the format required by the selected fpA_intB kernel: ",
+                    RequiredWeightPrepackedFormat());
+      }
+    } else {
+      ORT_ENFORCE(weight_prepacked_ == kMatMulNBitsWeightNotPrepacked,
+                  "weight_prepacked requires fp16 or bf16 input A so the CUDA fpA_intB path can consume input B");
     }
 
 #ifndef NDEBUG
@@ -124,6 +149,10 @@ class MatMulNBits final : public CudaKernel {
            int(has_g_idx_ ? 1 : 0), int(has_bias_ ? 1 : 0),
            int(has_fpA_intB_gemv_), int(has_fpA_intB_gemm_));
 #endif
+#else
+    const int64_t weight_prepacked = info.GetAttrOrDefault<int64_t>("weight_prepacked", static_cast<int64_t>(0));
+    ORT_ENFORCE(weight_prepacked == 0,
+                "weight_prepacked requires an ONNX Runtime build with onnxruntime_USE_FPA_INTB_GEMM=ON");
 #endif
   }
 
@@ -135,10 +164,13 @@ class MatMulNBits final : public CudaKernel {
 
  private:
 #if USE_FPA_INTB_GEMM
+  int FpAIntBPackingSmForKernel() const;
+  int64_t RequiredWeightPrepackedFormat() const;
+
   void InitGemmProfiler(int sm);
   void RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int max_m);
 
-  Status PrePack_B(const Tensor& tensor, AllocatorPtr alloc, cudaStream_t stream);
+  Status PrePack_B(const Tensor& tensor, AllocatorPtr alloc, cudaStream_t stream, bool& is_packed);
   Status PrePack_Scale(const Tensor& tensor, AllocatorPtr alloc, cudaStream_t stream);
   Status PrePack_ZeroPoint(const Tensor& tensor, AllocatorPtr alloc, cudaStream_t stream);
 #endif
@@ -160,6 +192,7 @@ class MatMulNBits final : public CudaKernel {
 #if USE_FPA_INTB_GEMM
   bool has_fpA_intB_gemv_{false};
   bool has_fpA_intB_gemm_{false};
+  int64_t weight_prepacked_{kMatMulNBitsWeightNotPrepacked};
 
   bool is_prepacked_weight_{false};
   bool is_prepacked_scale_{false};

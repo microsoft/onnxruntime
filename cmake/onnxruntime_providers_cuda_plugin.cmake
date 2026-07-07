@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 # Build the CUDA Execution Provider as a plugin shared library.
-# This file is included from the main CMakeLists.txt when onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON.
+# This file is included from onnxruntime_providers.cmake when onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON.
 
 message(STATUS "Building CUDA EP as plugin shared library")
 
@@ -458,7 +458,7 @@ endif()
 
 # Set output name and solution folder
 set_target_properties(onnxruntime_providers_cuda_plugin PROPERTIES
-    OUTPUT_NAME "onnxruntime_providers_cuda_plugin"
+  OUTPUT_NAME "onnxruntime_providers_cuda"
     FOLDER "ONNXRuntime"
 )
 

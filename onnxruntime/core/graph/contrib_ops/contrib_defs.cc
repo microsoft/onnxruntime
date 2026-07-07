@@ -3663,6 +3663,11 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
             "computation. 4 means input A can be quantized with the same block_size to int8 internally from "
             "type T1.",
             AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("weight_prepacked",
+            "If set, input B is already prepacked into an EP-specific layout and the EP skips runtime "
+            "weight prepacking. 0 (default): not prepacked. 1: prepacked in the CUDA SM80 fpA_intB layout. "
+            "2: reserved for a future SM90 layout (currently rejected at kernel construction).",
+            AttributeProto::INT, static_cast<int64_t>(0))
       .Input(0, "A", "The input tensor, not quantized.", "T1")
       .Input(1, "B",
              "Packed uint8 tensor of shape (N, k_blocks, blob_size), "

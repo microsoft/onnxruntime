@@ -1167,6 +1167,93 @@ TEST(MatMul2Bits, MLFloat16_2b_Uint8ZP_Fallback) {
       .RunWithConfig();
 }
 
+// MLFloat16 activation + Uint8 ZP with accuracy_level=4 -- exercises the native MLAS W2
+// CompInt8 path with PrePack of constant scales/ZPs. On ARM64 with f16 intrinsics this
+// goes through GetComputeType<MLFloat16> = HQNBIT_CompInt8 which redirects pack/compute
+// through SQNBIT_CompInt8. The bug being guarded: the HQNBIT_CompInt8 PrePack branch
+// originally only forwarded scales to the packer (zptr=nullptr), and the 3-call ZP
+// follow-up was gated on compute_type_ == SQNBIT_CompInt8 (so it did not fire here).
+// QuantBBlkSum then baked in the symmetric default ZP=2 for every block, giving wrong
+// outputs whenever the model's real ZPs != 2. Shape: M=1, N=32, K=128, block_size=64
+// (K%BlkLen==0, BlkLen in {32,64,128}); large/varied uint8 ZPs.
+TEST(MatMul2Bits, MLFloat16_2b_Uint8ZP_Accuracy4) {
+  RandomValueGenerator random{1234};
+  const int64_t M = 1, N = 32, K = 128, block_size = 64;
+  std::vector<float> input0_fp32_vals(random.Gaussian<float>(AsSpan({M, K}), 0.0f, 0.25f));
+  std::vector<float> input1_fp32_vals(random.Gaussian<float>(AsSpan({K, N}), 0.0f, 0.25f));
+
+  int q_rows, q_cols;
+  MlasBlockwiseQuantizedShape<float, QBits>(static_cast<int>(block_size), true,
+                                            static_cast<int>(K), static_cast<int>(N),
+                                            q_rows, q_cols);
+  size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
+  MlasBlockwiseQuantizedBufferSizes<QBits>(static_cast<int>(block_size), true,
+                                           static_cast<int>(K), static_cast<int>(N),
+                                           q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
+
+  std::vector<uint8_t> input1_vals(q_data_size_in_bytes);
+  std::vector<float> scales(q_scale_size);
+  std::vector<uint8_t> zero_points(q_zp_size_in_bytes);
+
+  auto& ortenv = **ort_env.get();
+  onnxruntime::concurrency::ThreadPool* tp = ortenv.GetEnvironment().GetIntraOpThreadPool();
+
+  MlasQuantizeBlockwise<float, QBits>(
+      input1_vals.data(), scales.data(), zero_points.data(),
+      input1_fp32_vals.data(), static_cast<int32_t>(block_size),
+      true, static_cast<int32_t>(K), static_cast<int32_t>(N),
+      static_cast<int32_t>(N), tp);
+
+  // Force non-symmetric ZPs so the bug actually surfaces. With all ZPs == 2 the
+  // missing-ZP code path coincidentally produces correct results; varying ZPs
+  // (1 / 2 / 3 packed two-per-byte) make the QuantBBlkSum correction non-trivial.
+  for (size_t i = 0; i < zero_points.size(); ++i) {
+    const uint8_t lo = static_cast<uint8_t>(((i * 3) % 4));      // 0,3,2,1,0,3,...
+    const uint8_t hi = static_cast<uint8_t>(((i * 5 + 1) % 4));  // 1,2,3,0,1,2,...
+    zero_points[i] = static_cast<uint8_t>((hi << 4) | (lo & 0x0F));
+  }
+
+  // Reference dequant via MLAS using the same (varied) ZPs so the expected matmul
+  // uses the same B values that the kernel sees post-pack.
+  MlasDequantizeBlockwise<float, QBits>(
+      input1_fp32_vals.data(), input1_vals.data(), scales.data(), zero_points.data(),
+      static_cast<int32_t>(block_size), true,
+      static_cast<int32_t>(K), static_cast<int32_t>(N), tp);
+
+  std::vector<float> expected_vals(M * N);
+  for (int64_t m = 0; m < M; m++) {
+    for (int64_t n = 0; n < N; n++) {
+      float sum = 0.0f;
+      for (int64_t k = 0; k < K; k++) {
+        sum += input0_fp32_vals[m * K + k] * input1_fp32_vals[n * K + k];
+      }
+      expected_vals[m * N + n] = sum;
+    }
+  }
+
+  int64_t k_blocks = (K + block_size - 1) / block_size;
+
+  OpTester test("MatMulNBits", 1, kMSDomain);
+  test.AddAttribute<int64_t>("K", K);
+  test.AddAttribute<int64_t>("N", N);
+  test.AddAttribute<int64_t>("block_size", block_size);
+  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("accuracy_level", static_cast<int64_t>(4));
+
+  test.AddInput<MLFloat16>("A", {M, K}, FloatsToMLFloat16s(input0_fp32_vals), false);
+  test.AddInput<uint8_t>("B", {q_cols, k_blocks, q_rows / k_blocks}, input1_vals, true);
+  test.AddInput<MLFloat16>("scales", {N, k_blocks}, FloatsToMLFloat16s(scales), true);
+  test.AddInput<uint8_t>("zero_points",
+                         {N, static_cast<int64_t>(q_zp_size_in_bytes) / N}, zero_points, true);
+
+  test.AddOutput<MLFloat16>("Y", {M, N}, FloatsToMLFloat16s(expected_vals));
+  test.SetOutputAbsErr("Y", 0.15f);
+  test.SetOutputRelErr("Y", 0.03f);
+
+  test.ConfigEp(DefaultCpuExecutionProvider())
+      .RunWithConfig();
+}
+
 TEST(MatMul2Bits, Float32_2b_Accuracy0) {
   TestMatMul2BitsTyped<float, 1, 1, 16, 16, 0>();
   TestMatMul2BitsTyped<float, 1, 2, 16, 16, 0>();

@@ -26,7 +26,7 @@ from torch import nn
 
 import onnxruntime
 from onnxruntime import InferenceSession, SessionOptions
-from onnxruntime.capi import _pybind_state as _quantize
+from onnxruntime.quantization import CudaQuantizer
 
 # Reduces number of tests to run for faster pipeline checks
 pipeline_mode = os.getenv("PIPELINE_MODE", "1") == "1"
@@ -104,348 +104,31 @@ def print_diff_statistics(diff_tensor: torch.Tensor, prefix: str = ""):
 
 
 def quant_dequant(weights, is_4_bit_quantization: bool = True):
-    # We use the pybind directly for testing to match what we added in onnxruntime_pybind_quant.cc
+    bits = 4 if is_4_bit_quantization else 8
+    n, k = weights.shape
+    block_size = min(128, k)
+    block_per_k = (k + block_size - 1) // block_size
+
+    q_weight, scales = CudaQuantizer.matmulnbits_blockwise_quantize(
+        weights, bits, block_size, abs_scales=True, flatten_qweight=False
+    )
+    processed_q_weight, _ = CudaQuantizer.qmoe_prepacked_blockwise_quantize(weights, bits, block_size, abs_scales=True)
+
+    q_weight = q_weight.to(weights.device)
+    scales = scales.to(weights.device)
+
     if is_4_bit_quantization:
-        # Quantize on CPU
-        # quantize_matmul_4bits returns: (q_weight, scale, zero_point)
-        # weights: [out, in] -> transpose to [in, out] for quantization
-        weights_t = weights.T.contiguous()
-        rows, cols = weights_t.shape
-        block_size = 128
-
-        # We need to manually call the quantization function exposed in pybind
-        # because the high-level python API might change.
-        # But wait, existing helper `quantize_matmul_4bits` in python calls the pybind.
-        # Let's inspect how to call it.
-        # Actually, let's use the C++ binding directly as defined in onnxruntime_pybind_quant.cc
-        # m.def("quantize_matmul_4bits", &QuantizeMatMulNBitsBlockwise<float, 4>);
-
-        # Create output buffers
-        # shape: [ n, block_per_k, block_blob_size ]
-        # n = cols, k = rows
-        k, n = rows, cols
-        block_per_k = (k + block_size - 1) // block_size
-        blob_size = block_size // 2  # 4 bits
-
-        q_weight = numpy.zeros((n, block_per_k, blob_size), dtype=numpy.uint8)
-        scale = numpy.zeros((n, block_per_k), dtype=numpy.float32)  # Use float32 for scale
-        zero_point = numpy.zeros((n, (block_per_k + 1) // 2), dtype=numpy.uint8)
-
-        # weights_t is float32 or float16. The pybind expects float or MLFloat16.
-        # If weights are float32, use float version.
-        is_symmetric = True
-
-        if weights.dtype == torch.float32:
-            _quantize.quantize_matmul_4bits(
-                q_weight, weights_t.detach().cpu().numpy(), scale, zero_point, block_size, n, k, is_symmetric
-            )
-        elif weights.dtype == torch.float16:
-            # We might need to handle float16 manually or convert to float32
-            _quantize.quantize_matmul_4bits(
-                q_weight, weights_t.detach().cpu().numpy(), scale, zero_point, block_size, n, k, is_symmetric
-            )
-
-        # The output of quantize_matmul_4bits is blockwise.
-        # We need to reshape it to [n, k // 2].
-        # q_weight is [n, k/block_size, block_size/2]
-        # reshape to [n, k/2]
-        q_weight_reshaped = q_weight.reshape(n, -1)
-
-        # Pack weights for CUDA mixed-gemm kernel (FpA_IntB format), and qMoE kernel uses the same format.
-        # INT MoE/QMoE kernels consume the SM80 column-interleaved layout, including on newer GPUs.
-        processed_q_weight = _quantize.pack_weights_for_cuda_mixed_gemm(q_weight_reshaped, n, k, 4, 80)
-
-        # So we need to DEQUANTIZE back to get `result`.
-        # scale is [n, block_per_k]
-        # q_weight is [n, block_per_k, blob_size]
-
-        # Let's do simple dequantization in torch for the reference
-        scale_torch = torch.from_numpy(scale).to(weights.device)
-        q_weight_torch = torch.from_numpy(q_weight).to(weights.device)
-
-        # unpack 4 bits
-        # low 4 bits
-        q_low = q_weight_torch & 0x0F
-        # high 4 bits
-        q_high = (q_weight_torch >> 4) & 0x0F
-
-        # q_weight was [n, blocks, block/2]
-        # we want [n, blocks, block]
-        # Interleave low and high?
-        # MlasQuantizeBlockwise packs 2 elements into uint8.
-        # e0 is low 4 bits, e1 is high 4 bits.
-
-        q_unpacked = torch.stack((q_low, q_high), dim=-1).view(n, block_per_k, block_size)
-
-        # symmetric quantization: value = (q - 8) * scale
-        # 8 is zero point for 4-bit symmetric?
-        # MlasQuantizeBlockwise: "is_symmetric ? nullptr"
-        # If symmetric, zero point is effectively 8 (offset in uint4 range 0-15).
-        # Wait, Mlas uses offset 8 for symmetric?
-        # In `MlasQuantizeBlockwise`:
-        # Value = (Quantized - ZeroPoint) * Scale
-        # For symmetric 4-bit, the range is [-7, 7].
-        # Usually mapped to [1, 15] with zero point 8.
-
+        q_low = q_weight & 0x0F
+        q_high = (q_weight >> 4) & 0x0F
+        q_unpacked = torch.stack((q_low, q_high), dim=-1).view(n, block_per_k, -1)[:, :, :block_size]
         q_unpacked = q_unpacked.to(weights.dtype)
-        scale_torch = scale_torch.unsqueeze(-1)  # [n, blocks, 1]
-
-        # (q - 8) * scale
-        dequantized = (q_unpacked - 8.0) * scale_torch
-
-        # reshape to [n, k] to match nn.Linear.weight shape [out_features, in_features]
-        result = dequantized.view(n, k)
-
-        # pack_weights_for_cuda_mixed_gemm returns flat [k * n // 2].
-        # ONNX expects [hidden_size, inter_size // 2] = [k, n // 2].
-        # The function transposes, so output is in [k, n // 2] row-major order.
-        processed_q_weight_torch = torch.from_numpy(processed_q_weight).reshape(k, n // 2).view(torch.uint8)
-
-        # Scale: flatten to [n] for per-channel quantization compatibility.
-        # The graph expects [inter_size] = [n].
-        scale_flat = scale.mean(axis=1)  # Average across blocks for per-channel approx
-        scale_flat_torch = torch.from_numpy(scale_flat).to(weights.device)
-
-        return scale_flat_torch.to(torch.float16), processed_q_weight_torch, result.to(device=weights.device)
-
+        dequantized = (q_unpacked - 8.0) * scales.unsqueeze(-1)
     else:
-        # 8-bit quantization
-        weights_t = weights.T.contiguous()
-        rows, cols = weights_t.shape
-        block_size = 128
-        k, n = rows, cols
-        block_per_k = (k + block_size - 1) // block_size
+        q_unpacked = q_weight.to(weights.dtype)
+        dequantized = (q_unpacked - 128.0) * scales.unsqueeze(-1)
 
-        # 8-bit: 1 byte per element
-        q_weight = numpy.zeros((n, block_per_k, block_size), dtype=numpy.uint8)
-        scale = numpy.zeros((n, block_per_k), dtype=numpy.float32)
-        zero_point = numpy.zeros((n, block_per_k), dtype=numpy.uint8)  # Or dummy?
-
-        is_symmetric = True
-
-        if weights.dtype == torch.float32:
-            _quantize.quantize_matmul_8bits(
-                q_weight, weights_t.detach().cpu().numpy(), scale, zero_point, block_size, n, k, is_symmetric
-            )
-        else:
-            _quantize.quantize_matmul_8bits(
-                q_weight, weights_t.detach().cpu().numpy(), scale, zero_point, block_size, n, k, is_symmetric
-            )
-
-        q_weight_reshaped = q_weight.reshape(n, -1)
-        # Pack weights for CUDA mixed-gemm kernel (FpA_IntB format)
-        # INT MoE/QMoE kernels consume the SM80 column-interleaved layout, including on newer GPUs.
-        processed_q_weight = _quantize.pack_weights_for_cuda_mixed_gemm(q_weight_reshaped, n, k, 8, 80)
-
-        # Dequantize for reference
-        # (q - 128) * scale if using 128 offset? or (q) * scale if symmetric around 0?
-        # Mlas symmetric 8-bit usually maps to [-127, 127] or similar?
-        # Let's assume (q - 128) * scale like standard uint8 quantization if explicit ZP is 128?
-        # But `is_symmetric=True` passes `nullptr` for ZP.
-        # Check `MlasQuantizeBlockwise` logic for 8-bit symmetric.
-        # Usually it produces `int8` directly?
-        # But `q_weight` is `uint8`.
-        # If it produces `int8` cast to `uint8` (e.g. 2s complement).
-        # Then dequantize is `q.view(int8) * scale`.
-
-        scale_torch = torch.from_numpy(scale).to(weights.device)
-        q_weight_torch = torch.from_numpy(q_weight).to(weights.device)
-
-        # Reinterpret uint8 as int8
-        q_signed = q_weight_torch.view(torch.int8)
-
-        scale_torch = scale_torch.unsqueeze(-1)
-        dequantized = q_signed.to(weights.dtype) * scale_torch
-        # reshape to [n, k] to match nn.Linear.weight shape [out_features, in_features]
-        result = dequantized.view(n, k)
-
-        # pack_weights_moe returns flat [k * n].
-        # ONNX expects [hidden_size, inter_size] = [k, n].
-        processed_q_weight_torch = torch.from_numpy(processed_q_weight).reshape(k, n).view(torch.uint8)
-
-        # Scale: flatten to [n] for per-channel quantization compatibility.
-        scale_flat = scale.mean(axis=1)  # Average across blocks for per-channel approx
-        scale_flat_torch = torch.from_numpy(scale_flat).to(weights.device)
-
-        return scale_flat_torch.to(torch.float16), processed_q_weight_torch, result.to(device=weights.device)
-
-        # Let's check `test_moe_cuda.py` logic around line 956:
-        # "Corrected quantization logic for per-output-channel quantization"
-        # But `MatMulNBits` supports blockwise.
-
-        # If `quant_dequant` returns scales, and those scales are used in `create_phi_moe_onnx_graph`.
-        # The shape is `[num_experts, inter_size]`.
-        # If block_size is used, the scale should be larger.
-        # Unless block_size == K?
-
-        # The current `quant_dequant` implementation in `test_moe_cuda.py` calls:
-        # torch.ops.trtllm._symmetric_quantize_last_axis_of_batched_matrix
-        # This function name suggests per-channel (last axis) or blockwise?
-
-        # If `test_moe_cuda.py` assumes per-channel quantization (scale size = inter_size),
-        # then block_size must be equal to the hidden dimension (row size).
-
-        # HOWEVER, `MatMulNBits` in ORT supports blocking.
-        # QMoE usually uses blocking (e.g. 128).
-
-        # Let's look at `create_phi_moe_onnx_graph` again.
-        # fc1_scale_shape = [num_experts, inter_size]
-        # This assumes one scale per output channel?
-        # Wait, `inter_size` is the output dimension of fc1 (hidden -> inter).
-        # So yes, per-channel quantization.
-
-        # BUT, `MatMulNBits` requires `block_size` attribute.
-        # If we use per-channel, block_size should be K (input dim).
-
-        # Let's check if `test_moe_cuda.py` sets block_size.
-        # It's not explicitly set in `create_phi_moe_onnx_graph`.
-        # Wait, `create_phi_moe_onnx_graph` handles the ONNX node creation.
-        # It assumes `op_name` is "QMoE".
-        # QMoE kernel in `moe_quantization.cc` reads `block_size` attribute.
-        # default is -1?
-
-        # In `moe_quantization.cc`:
-        # this->block_size_ = op_kernel_info.GetAttrOrDefault<int64_t>("block_size", -1);
-
-        # If block_size is -1, what happens?
-        # In `ComputeInternal`:
-        # if (block_size_ > 0) { ... GroupWise ... } else { ... Per-column ... }
-
-        # So if we want to match current behavior, we need to see what TRT-LLM `_symmetric_quantize_last_axis_of_batched_matrix` does.
-        # "last_axis_of_batched_matrix" implies per-channel (per-row of weights if weights are [Out, In]).
-        # weights passed to `quant_dequant` are `self.experts[i].w1.weight`.
-        # Linear layer weights are [Out, In].
-        # Quantizing last axis means quantizing along `In` dimension, producing one scale per `Out` element.
-        # This is per-channel quantization.
-
-        # So `block_size` should be -1 (or K).
-
-        # My proposed implementation using `quantize_matmul_4bits` supports `block_size`.
-        # If I set `block_size = K`, it mimics per-channel.
-
-        # HOWEVER, `pack_weights_moe` implementation I just wrote:
-        # It calls `preprocess_weights_for_mixed_gemm_cuda`.
-        # Does that support per-channel?
-        # `QuantType::W4_A16`.
-
-        # The TRT-LLM function returns `processed_q_weight`.
-        # This suggests it does the pre-processing (permutation) required by the TRT-LLM/Cutlass kernels.
-        # The `QMoE` operator in ORT is based on Cutlass/TRT-LLM code.
-        # So providing the same pre-processed weights is crucial.
-
-        # If `block_size` is not specified in the ONNX node in `test_moe_cuda.py`, it defaults to -1.
-        # So we should use per-channel quantization.
-
-        # `quantize_matmul_4bits` with `block_size=K`.
-        # But `pack_weights_moe` logic needs to handle this.
-
-        # Let's proceed with `block_size = cols` (K).
-
-        # IMPORTANT: `create_phi_moe_onnx_graph` hardcodes `fc1_scale_shape = [num_experts, inter_size]`.
-        # This confirms per-channel.
-
-        # Also need to handle imports carefully inside the function to avoid global dependency errors if something is missing,
-        # but the test should have onnxruntime installed.
-
-        # Fix imports:
-        # `import onnxruntime.quantization._quantize` might not work if it's not exposed that way.
-        # The pybind module is usually updated into `onnxruntime.quantization`.
-        # Let's check `onnxruntime/python/Lib/site-packages/onnxruntime/quantization/__init__.py` or similar if we could.
-        # But generally, `from onnxruntime.quantization import _quantize` won't work directly if it's part of the main extension.
-        # Usually it's `from onnxruntime.capi import _pybind_state as _quantize` or similar?
-        # Actually `onnxruntime_pybind_quant.cc` defines a module.
-        # In `onnxruntime_pybind.cc`, `init_onnxruntime_pybind` calls `CreateQuantPybindModule(m)`.
-        # So the functions are available under `onnxruntime.capi._pybind_state`.
-
-    if is_4_bit_quantization:
-        weights_t = weights.T.contiguous()
-        rows, cols = weights_t.shape
-        k, n = rows, cols
-        block_size = k  # Per-channel
-
-        block_per_k = (k + block_size - 1) // block_size  # Should be 1
-        blob_size = block_size // 2
-
-        q_weight = numpy.zeros((n, block_per_k, blob_size), dtype=numpy.uint8)
-        scale = numpy.zeros((n, block_per_k), dtype=numpy.float32)
-        zero_point = numpy.zeros((n, (block_per_k + 1) // 2), dtype=numpy.uint8)
-
-        is_symmetric = True
-
-        if weights.dtype == torch.float32:
-            _quantize.quantize_matmul_4bits(
-                q_weight, weights_t.cpu().numpy(), scale, zero_point, block_size, n, k, is_symmetric
-            )
-        elif weights.dtype == torch.float16:
-            _quantize.quantize_matmul_4bits(
-                q_weight, weights_t.cpu().numpy(), scale, zero_point, block_size, n, k, is_symmetric
-            )
-
-        # Reshape for packing
-        q_weight_reshaped = q_weight.reshape(n, -1)
-
-        # Pack
-        # We invoke our new function
-        processed_q_weight = _quantize.pack_weights_moe(q_weight_reshaped, n, k, 4, block_size)
-
-        # Dequantize for reference
-        # scale: [n, 1]
-        scale_torch = torch.from_numpy(scale).to(device=weights.device, dtype=weights.dtype)
-
-        # We need raw q_weights for dequantization value recovery
-        q_weight_torch = torch.from_numpy(q_weight_reshaped).to(device=weights.device)  # [n, k/2]
-
-        # unpack 4 bits manually for reference
-        # Little endian packing in generic logic?
-        # MlasQuantizeBlockwise logic:
-        # dst[0] = (uint8_t)(v0 | (v1 << 4));
-        # So low 4 bits is first element, high 4 bits is second.
-
-        # unpack
-        # We need to expand [n, k/2] to [n, k]
-        # But we need to use the original `q_weight` buffer before packing?
-        # Yes, `q_weight` from `quantize_matmul_4bits` matches `q` values.
-
-        q_low = q_weight_torch & 0x0F
-        q_high = (q_weight_torch >> 4) & 0x0F
-
-        # Interleave
-        # flat view
-        q_flat = torch.stack((q_low, q_high), dim=-1).view(n, k)
-
-        # symmetric 4-bit range [0, 15], zero point 8.
-        # value = (q - 8) * scale
-
-        result = (q_flat.to(weights.dtype) - 8.0) * scale_torch
-
-        # Transpose result back to [Out, In]
-        result = result.T.contiguous()
-
-        # scales are [N, 1] -> flatten to [N]
-        scale_torch = scale_torch.flatten()
-
-        # processed_q_weight is 1D array of int8 (packed bytes).
-        # We should return it as is (or as tensor).
-        # The previous return was:
-        # return torch_weight_scales.to(torch.float16), processed_q_weight, result.to(device=weights.device)
-
-        return scale_torch.to(torch.float16), torch.from_numpy(processed_q_weight), result
-
-    else:
-        # INT8 implementation
-        # Not fully implemented in this task but required for 8-bit tests?
-        # The user request mentioned 4-bit mostly, but `test_phi3_qmoe_8bits` exists.
-        # "If you do not change C++ code... option 1... port implementation".
-        # I chose option 2 (change C++ code).
-        # I need to support 8-bit packing too in C++ or handle it.
-        # My C++ change included a TODO for 8-bit.
-        # I should probably support it or skip 8-bit tests.
-        # Let's try to stick to 4-bit for now as the prompt emphasized QMoE 4-bit mainly?
-        # "We have similar implementation... implement _symmetric_quantize_last_axis_of_batched_matrix"
-        # That function supports both.
-        # Let's stick to 4-bit support as per the immediate requirement and see.
-        # If 8-bit test fails, I'll update.
-        pass
+    scale_flat = scales.mean(dim=1)
+    return scale_flat.to(torch.float16), processed_q_weight.to(weights.device), dequantized.view(n, k)
 
 
 def create_moe_onnx_graph(

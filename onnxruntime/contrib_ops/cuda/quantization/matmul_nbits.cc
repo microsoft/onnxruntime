@@ -40,6 +40,17 @@ constexpr auto kScaleAndZeros = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AN
 constexpr auto kScaleOnly = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY;
 
 template <typename T>
+int MatMulNBits<T>::FpAIntBPackingSmForKernel() const {
+  // MatMulNBits mixed int-weight GEMM/GEMV consumes the SM80 fpA_intB weight layout in v1.
+  return 80;
+}
+
+template <typename T>
+int64_t MatMulNBits<T>::RequiredWeightPrepackedFormat() const {
+  return FpAIntBPackingSmForKernel() == 90 ? kMatMulNBitsWeightPrepackedSm90 : kMatMulNBitsWeightPrepackedSm80;
+}
+
+template <typename T>
 void MatMulNBits<T>::InitGemmProfiler(int sm) {
   gemmProfiler_ = s_profilerManager.createGemmPluginProfiler(/*inference*/ false);
 
@@ -109,9 +120,8 @@ Status MatMulNBits<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr
     if (has_fpA_intB_gemm_) {
       cudaStream_t stream = cudaStreamLegacy;  // Use default stream for prepacking.
       if (input_idx == MatMulNBits_Input_B) {
-        ORT_RETURN_IF_ERROR(PrePack_B(tensor, alloc, stream));
-        is_prepacked_weight_ = true;
-        is_packed = true;
+        ORT_RETURN_IF_ERROR(PrePack_B(tensor, alloc, stream, is_packed));
+        is_prepacked_weight_ = is_packed;
       } else if (input_idx == MatMulNBits_Input_Scale) {
         ORT_RETURN_IF_ERROR(PrePack_Scale(tensor, alloc, stream));
         is_prepacked_scale_ = true;
@@ -132,22 +142,43 @@ Status MatMulNBits<T>::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr
 template <typename T>
 Status MatMulNBits<T>::PrePack_B([[maybe_unused]] const Tensor& tensor,
                                  [[maybe_unused]] AllocatorPtr alloc,
-                                 [[maybe_unused]] cudaStream_t stream) {
+                                 [[maybe_unused]] cudaStream_t stream,
+                                 [[maybe_unused]] bool& is_packed) {
   if constexpr (std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>) {
     size_t n = static_cast<size_t>(N_);
     size_t k = static_cast<size_t>(K_);
 
     size_t packed_weight_bytes = n * k / (8 / nbits_);
 
+    const uint8_t* blob_data = tensor.Data<uint8_t>();
+    if (weight_prepacked_ != kMatMulNBitsWeightNotPrepacked) {
+      ORT_ENFORCE(tensor.SizeInBytes() == packed_weight_bytes,
+                  "Prepacked MatMulNBits weight size mismatch. Expected ", packed_weight_bytes,
+                  " bytes, got ", tensor.SizeInBytes());
+
+      // Keep device-resident prepacked weights as the original input to avoid a second GPU copy.
+      if (tensor.Location().device.Type() == OrtDevice::GPU) {
+        is_packed = false;
+        return Status::OK();
+      }
+
+      fpA_intB_weight_buffer_ = IAllocator::MakeUniquePtr<void>(alloc, packed_weight_bytes, true);
+      int8_t* preprocessed_weight = reinterpret_cast<int8_t*>(fpA_intB_weight_buffer_.get());
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(preprocessed_weight, blob_data, packed_weight_bytes, cudaMemcpyDefault, stream));
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+      DUMP_TENSOR_INIT();
+      DUMP_TENSOR_D("preprocessed_weight", reinterpret_cast<uint8_t*>(preprocessed_weight), k, n * nbits_ / 8);
+      is_packed = true;
+      return Status::OK();
+    }
+
     // uint8 does not need to be packed so we do not need to allocate extra space.
     IAllocatorUniquePtr<void> packed_transposed_weight_space = this->GetTransientScratchBuffer<void>(packed_weight_bytes);
     int8_t* packed_transposed_weight = reinterpret_cast<int8_t*>(packed_transposed_weight_space.get());
 
-    fpA_intB_weight_buffer_ = IAllocator::MakeUniquePtr<void>(alloc, packed_weight_bytes, true);  // Transient buffer.
-
+    fpA_intB_weight_buffer_ = IAllocator::MakeUniquePtr<void>(alloc, packed_weight_bytes, true);
     int8_t* preprocessed_weight = reinterpret_cast<int8_t*>(fpA_intB_weight_buffer_.get());
 
-    const uint8_t* blob_data = tensor.Data<uint8_t>();
     if (nbits_ == 4) {
       // Transpose the weight and add default zero point.
       onnxruntime::llm::kernels::fpA_intB_gemv::unpack_uint4_transposed_to_int8_direct_cuda(
@@ -163,7 +194,7 @@ Status MatMulNBits<T>::PrePack_B([[maybe_unused]] const Tensor& tensor,
     auto permutation_map_buffer = this->GetTransientScratchBuffer<int32_t>(32);
     onnxruntime::llm::kernels::weight_only::preprocess_weights_for_mixed_gemm_cuda(
         stream,
-        sm_,
+        FpAIntBPackingSmForKernel(),
         preprocessed_weight,
         packed_transposed_weight,
         permutation_map_buffer.get(),
@@ -174,6 +205,7 @@ Status MatMulNBits<T>::PrePack_B([[maybe_unused]] const Tensor& tensor,
     DUMP_TENSOR_INIT();
     DUMP_TENSOR_D("packed transposed_weight in GPU", packed_transposed_weight, k, n * nbits_ / 8);
     DUMP_TENSOR_D("preprocessed_weight", reinterpret_cast<uint8_t*>(preprocessed_weight), k, n * nbits_ / 8);
+    is_packed = true;
   }
 
   return Status::OK();
@@ -317,8 +349,11 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
     if (has_fpA_intB_gemm_) {
       // We expect weight/scale/zero_point(optional) inputs are initializers and have been prepacked.
       // User could disable it by setting ORT_FPA_INTB_GEMM=0 if those tensors cannot be prepacked (It is rare).
-      ORT_ENFORCE(is_prepacked_weight_ && is_prepacked_scale_ && (is_prepacked_zero_point_ || !has_zero_points_),
+      const bool has_fpA_intB_weight = is_prepacked_weight_ || weight_prepacked_ != kMatMulNBitsWeightNotPrepacked;
+      ORT_ENFORCE(has_fpA_intB_weight && is_prepacked_scale_ && (is_prepacked_zero_point_ || !has_zero_points_),
                   "To use fpA_intB_gemm, prepacking must be done on weight, scale and zero point.");
+
+      const void* fpA_intB_weight = is_prepacked_weight_ ? fpA_intB_weight_buffer_.get() : static_cast<const void*>(blob_data);
 
       auto const& bestTactic = gemmProfiler_->getBestConfig(m, gemmId_);
 
@@ -340,7 +375,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         bool apply_alpha_in_advance = false;
         float alpha = 1.0f;
         onnxruntime::llm::kernels::fpA_intB_gemv::Params params(
-            a_data, pre_quant_scale_ptr, fpA_intB_weight_buffer_.get(),
+            a_data, pre_quant_scale_ptr, fpA_intB_weight,
             fpA_intB_scale_buffer_.get(), has_zero_points_ ? fpA_intB_zero_buffer_.get() : nullptr,
             bias_data, out_data,
             alpha, m, n, k, block_size_, cuda_kernel_type, apply_alpha_in_advance);
@@ -352,7 +387,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 
         weightOnlyGemmRunner_->gemm(
             a_data,
-            fpA_intB_weight_buffer_.get(),
+            fpA_intB_weight,
             fpA_intB_scale_buffer_.get(),
             has_zero_points_ ? fpA_intB_zero_buffer_.get() : nullptr,
             bias_data,
