@@ -35,9 +35,9 @@ constexpr int kBatchBeamSize = 2;
 constexpr int kVocabSize = 4;
 
 // Builds a minimal GreedySearchParameters that activates only the MinLength processor path, so the
-// list-level construction guard at the Init call site is the sole observable behavior.
+// list-level tests exercise the MinLength construction condition without other processors interfering.
 GreedySearchParameters MakeMinLengthOnlyParameters(int min_length, int eos_token_id) {
-  GreedySearchParameters parameters;
+  GreedySearchParameters parameters{};
   parameters.model_type = IGenerationParameters::kModelTypeGpt;
   parameters.logits_processor = 0;
   parameters.eos_token_id = eos_token_id;
@@ -66,9 +66,10 @@ TEST(MinLengthLogitsProcessorTest, SetScoreIgnoresNegativeTokenId) {
   }
 }
 
-// The construction guard at the Init call site must skip the MinLength processor when eos_token_id is
-// the negative "no eos" sentinel. Running the list over a below-min-length sequence therefore leaves
-// all scores unchanged, because no MinLength processor was ever added to the list.
+// With a negative "no eos" sentinel there is no token to demote, so the Init guard skips constructing
+// the MinLength processor as a guaranteed no-op (a defensive/performance skip). The scores would be
+// unchanged here regardless, because SetScore also ignores a negative token id; the enforcement path
+// itself is covered by the eos >= 0 positive-control test below.
 TEST(MinLengthLogitsProcessorTest, ListInitSkipsProcessorForNegativeEosTokenId) {
   GreedySearchParameters parameters = MakeMinLengthOnlyParameters(/*min_length=*/5, /*eos_token_id=*/-1);
   LogitsProcessorList processor_list;
@@ -84,9 +85,9 @@ TEST(MinLengthLogitsProcessorTest, ListInitSkipsProcessorForNegativeEosTokenId) 
   }
 }
 
-// Positive control: with a valid eos_token_id the Init call site does add the MinLength processor, so
-// the same below-min-length run demotes the eos score. This proves the unchanged-scores result above
-// is caused by the guard skipping construction, not by an otherwise inert list.
+// Enforcement path: with a valid eos_token_id the Init call site adds the MinLength processor, so a
+// below-min-length run demotes the eos score. This is the discriminating test for the eos >= 0 branch
+// of the guard and for the min-length enforcement behavior.
 TEST(MinLengthLogitsProcessorTest, ListInitDemotesEosBelowMinLength) {
   constexpr int kEosTokenId = 2;
   GreedySearchParameters parameters = MakeMinLengthOnlyParameters(/*min_length=*/5, kEosTokenId);
