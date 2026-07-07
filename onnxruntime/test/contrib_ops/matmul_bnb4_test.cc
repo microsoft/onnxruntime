@@ -57,7 +57,12 @@ void QuantizeDequantizeBnb4(std::vector<float>& raw_vals,  // N X K
       tp.get());
 }
 
-void RunTest(int64_t quant_type, int64_t M, int64_t N, int64_t K, int64_t block_size, bool use_float16) {
+enum class TestProvider { kCpu,
+                          kCuda,
+                          kWebGpu };
+
+void RunTest(int64_t quant_type, int64_t M, int64_t N, int64_t K, int64_t block_size, bool use_float16,
+             TestProvider provider = TestProvider::kCpu) {
   RandomValueGenerator random{1234};
   std::vector<float> input0_vals(random.Gaussian<float>(std::vector<int64_t>({M, K}), 0.0f, 0.25f));
   // quantizer expects transposed weights, N X K
@@ -102,7 +107,11 @@ void RunTest(int64_t quant_type, int64_t M, int64_t N, int64_t K, int64_t block_
     test.SetOutputAbsErr("Y", 0.02f);
 
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-    execution_providers.push_back(DefaultCudaExecutionProvider());
+    if (provider == TestProvider::kWebGpu) {
+      execution_providers.push_back(DefaultWebGpuExecutionProvider());
+    } else {
+      execution_providers.push_back(DefaultCudaExecutionProvider());
+    }
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
   } else {
     test.AddInput<float>("A", {M, K}, input0_vals, false);
@@ -111,7 +120,14 @@ void RunTest(int64_t quant_type, int64_t M, int64_t N, int64_t K, int64_t block_
 
     test.AddOutput<float>("Y", {M, N}, expected_vals);
 
-    test.Run();
+    if (provider == TestProvider::kWebGpu) {
+      test.SetOutputAbsErr("Y", 0.02f);
+      std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+      execution_providers.push_back(DefaultWebGpuExecutionProvider());
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+    } else {
+      test.Run();
+    }
   }
 }
 
@@ -227,6 +243,37 @@ TEST(MatMulBnb4, Float16) {
 }
 
 #endif
+
+#if defined(USE_WEBGPU)
+TEST(MatMulBnb4, WebGpuFloat32) {
+  for (auto qt : {0, 1}) {
+    for (auto M : {1, 2, 100}) {
+      for (auto N : {1, 2, 32, 288}) {
+        for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
+          for (auto block_size : {16, 32, 64, 128}) {
+            RunTest(qt, M, N, K, block_size, false, TestProvider::kWebGpu);
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST(MatMulBnb4, WebGpuFloat16) {
+  for (auto qt : {0, 1}) {
+    for (auto M : {1, 2, 100}) {
+      for (auto N : {1, 2, 32, 288}) {
+        for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
+          for (auto block_size : {16, 32, 64, 128}) {
+            RunTest(qt, M, N, K, block_size, true, TestProvider::kWebGpu);
+          }
+        }
+      }
+    }
+  }
+}
+#endif
+
 }  // namespace test
 }  // namespace onnxruntime
 
