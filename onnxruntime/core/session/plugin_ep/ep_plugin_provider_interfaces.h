@@ -176,11 +176,11 @@ class PluginExecutionProvider : public IExecutionProvider {
   bool generate_ep_ctx_model_ = false;
   bool weightless_enabled_ = false;  // Set if app requested weightless AND EP supports it
 
-  // Provider options extracted from session-level config (ep.<ep_name>.* keys, excluding arena.*).
+  // Provider options extracted from session-level config (excluding arena.*).
   // Exposed through GetProviderOptions() so the framework reports the effective EP configuration.
   ProviderOptions provider_options_;
 
-  // Arena options extracted from session-level config (ep.<ep_name>.arena.* keys).
+  // Arena options extracted from session-level config.
   // Built once at construction; passed directly to ep_factory_.CreateAllocator.
   std::optional<OrtKeyValuePairs> session_arena_options_;
 

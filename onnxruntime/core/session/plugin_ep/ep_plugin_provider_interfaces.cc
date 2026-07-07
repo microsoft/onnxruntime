@@ -200,7 +200,7 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
     }
   }
 
-  // Extract EP-scoped session config entries (ep.<ep_name>.* keys).
+  // Extract EP-scoped session config entries.
   // Arena options go to session_arena_options_; the rest go to provider_options_.
   {
     const std::string ep_prefix = OrtSessionOptions::GetProviderOptionPrefix(ort_ep_->GetName(ort_ep_.get()));
@@ -222,7 +222,7 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
         continue;
       }
 
-      // Store the bare option name (strip the ep.<ep_name>. prefix) for GetProviderOptions().
+      // Store the bare option name (strip the EP-specific prefix) for GetProviderOptions().
       provider_options_[key.substr(ep_prefix.size())] = value;
     }
   }

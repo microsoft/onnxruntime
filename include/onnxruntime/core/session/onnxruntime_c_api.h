@@ -7584,7 +7584,10 @@ typedef enum OrtCustomOpInputOutputCharacteristic {
  * the implementor of the custom op.
  */
 struct OrtCustomOp {
-  uint32_t version;  // Must be initialized to ORT_API_VERSION
+  uint32_t version;  // Initialize to ORT_API_VERSION. ORT will cap the API version used to select the OrtApi passed
+                     // to CreateKernel/CreateKernelV2 callbacks, so custom ops compiled against a newer ORT can load
+                     // on an older runtime if they only use APIs available at the runtime version. Newer OrtCustomOp
+                     // function pointers are gated by per-function version checks within ORT.
 
   // This callback creates the kernel, which is a user defined
   // parameter that is passed to the Kernel* callbacks below. It is
