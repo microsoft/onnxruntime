@@ -469,8 +469,7 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
     // skip profiling and reuse a config cached from an earlier non-capturing run, falling back to
     // the default tactic when nothing is cached.
     cudaStream_t compute_stream = Stream(context);
-    const bool stream_is_capturing =
-        compute_stream != nullptr && onnxruntime::llm::common::isCapturing(compute_stream);
+    const bool stream_is_capturing = onnxruntime::llm::common::isCapturing(compute_stream);
 
     // Use profiler with proper weight type for quantized weights
     if (onnxruntime::llm::common::getEnvForceDeterministicMOE()) {

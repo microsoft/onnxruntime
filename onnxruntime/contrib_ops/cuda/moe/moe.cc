@@ -152,8 +152,7 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
     // illegal while that stream is being captured into a CUDA graph; performing them corrupts the
     // capture. During capture we therefore skip profiling and reuse a config cached from an earlier
     // non-capturing run, falling back to the default tactic when nothing is cached.
-    const bool stream_is_capturing =
-        stream != nullptr && onnxruntime::llm::common::isCapturing(stream);
+    const bool stream_is_capturing = onnxruntime::llm::common::isCapturing(stream);
 
     onnxruntime::llm::nvinfer::DataType dtype = onnxruntime::llm::nvinfer::DataType::kFLOAT;
     if constexpr (std::is_same_v<CudaT, half>) {

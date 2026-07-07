@@ -3033,6 +3033,7 @@ class TestQMoECudaGraph(unittest.TestCase):
 
         sess_options = onnxruntime.SessionOptions()
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        sess = None
         try:
             sess = onnxruntime.InferenceSession(
                 model_bytes,
@@ -3041,6 +3042,7 @@ class TestQMoECudaGraph(unittest.TestCase):
             )
         except Exception as e:
             self.skipTest(f"Could not create a CUDA-graph-enabled CUDA EP session: {e}")
+            return
 
         x = numpy.random.randn(batch_size, hidden_size).astype(numpy.float16)
         router = numpy.random.randn(batch_size, num_experts).astype(numpy.float16)
