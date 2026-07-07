@@ -10,6 +10,7 @@
 #include <iostream>
 
 #include "TestCase.h"
+#include "strings_helper.h"
 #include "utils.h"
 #include "ort_test_session.h"
 using onnxruntime::Status;
@@ -138,8 +139,6 @@ void PerformanceResult::DumpToFile(const std::basic_string<ORTCHAR_T>& path, boo
     if (have_file) {
       output_per_shape(outfile);
     }
-
-    output_per_shape(std::cout);
   }
 }
 
@@ -156,20 +155,7 @@ void PerformanceRunner::PrintPerShapeStats() const {
   std::cout << "\nLatency per shape group:" << std::endl;
 
   for (size_t g = 0; g < num_groups; g++) {
-    // Build label: "input_name : [d0,d1,...]"
-    std::string label;
-    for (const auto& [input_name, groups] : shape_groups) {
-      if (!label.empty()) label += ", ";
-      label += input_name + " : [";
-      const auto& dims = groups[g];
-      for (size_t d = 0; d < dims.size(); d++) {
-        if (d > 0) label += ",";
-        label += std::to_string(dims[d]);
-      }
-      label += "]";
-    }
-
-    std::cout << "  " << (g + 1) << ". " << label << std::endl;
+    std::cout << "  " << (g + 1) << ". " << FormatShapeGroup(shape_groups, g) << std::endl;
 
     const auto& time_costs = per_shape_costs[g];
     if (time_costs.empty()) {
@@ -401,7 +387,7 @@ bool PerformanceRunner::Initialize() {
   if (performance_test_config_.run_config.generate_model_input_binding) {
     auto* ort_session = static_cast<OnnxRuntimeTestSession*>(session_.get());
     if (!performance_test_config_.run_config.data_shape_groups.empty()) {
-      if (!ort_session->PopulateMultiShapeInputTestData(
+      if (!ort_session->PopulateGeneratedMultiShapeInputTestData(
               performance_test_config_.run_config.random_seed_for_input_data,
               performance_test_config_.run_config.data_shape_groups)) {
         return false;
@@ -484,14 +470,8 @@ bool PerformanceRunner::Initialize() {
         }
       }
       if (!found) {
-        std::cerr << "No test data found matching shape [";
-        const auto& first_input = data_shape_groups.begin();
-        const auto& dims = first_input->second[g];
-        for (size_t d = 0; d < dims.size(); ++d) {
-          if (d > 0) std::cerr << ",";
-          std::cerr << dims[d];
-        }
-        std::cerr << "] for input '" << first_input->first << "'." << std::endl;
+        std::cerr << "No test data found matching shape group " << (g + 1) << ": "
+                  << FormatShapeGroup(data_shape_groups, g) << "." << std::endl;
         return false;
       }
     }

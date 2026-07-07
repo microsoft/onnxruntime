@@ -86,7 +86,7 @@ class PerformanceRunner {
       performance_result_.total_time_cost += duration_seconds.total_timing.count();
       // Record per-shape timing when multi-shape mode is active
       if (!performance_result_.per_shape_time_costs_total.empty()) {
-        size_t shape_idx = duration_seconds.shape_group_index;
+        size_t shape_idx = duration_seconds.test_input_index;
         if (shape_idx < performance_result_.per_shape_time_costs_total.size()) {
           performance_result_.per_shape_time_costs_total[shape_idx].emplace_back(
               duration_seconds.total_timing.count());

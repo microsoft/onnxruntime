@@ -3,6 +3,7 @@
 // SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
+#include <charconv>
 #include <iostream>
 #include <sstream>
 
@@ -244,28 +245,21 @@ bool ParseDataShapeGroups(const std::string& input,
         }
         dim_token = dim_token.substr(start, end - start + 1);
 
-        ORT_TRY {
-          size_t chars_parsed = 0;
-          int64_t dim_val = std::stoll(dim_token, &chars_parsed);
-          if (chars_parsed != dim_token.length()) {
-            std::cerr << "Error parsing --data_shape: invalid characters in dimension '"
-                      << dim_token << "' for input '" << input_name << "'." << std::endl;
-            return false;
-          }
-          if (dim_val <= 0) {
-            std::cerr << "Error parsing --data_shape: dimensions must be positive integers, got '"
-                      << dim_token << "' for input '" << input_name << "'." << std::endl;
-            return false;
-          }
-          dims.push_back(dim_val);
-        }
-        ORT_CATCH(const std::exception& ex) {
-          ORT_HANDLE_EXCEPTION([&]() {
-            std::cerr << "Error parsing --data_shape: invalid dimension value '" << dim_token
-                      << "' for input '" << input_name << "': " << ex.what() << std::endl;
-          });
+        int64_t dim_val = 0;
+        const char* begin = dim_token.data();
+        const char* end_ptr = begin + dim_token.size();
+        auto [ptr, ec] = std::from_chars(begin, end_ptr, dim_val);
+        if (ec != std::errc{} || ptr != end_ptr) {
+          std::cerr << "Error parsing --data_shape: invalid dimension value '"
+                    << dim_token << "' for input '" << input_name << "'." << std::endl;
           return false;
         }
+        if (dim_val <= 0) {
+          std::cerr << "Error parsing --data_shape: dimensions must be positive integers, got '"
+                    << dim_token << "' for input '" << input_name << "'." << std::endl;
+          return false;
+        }
+        dims.push_back(dim_val);
       }
 
       shape_groups.push_back(std::move(dims));
@@ -305,5 +299,21 @@ bool ParseDataShapeGroups(const std::string& input,
 
   return true;
 }
+
+std::string FormatShapeGroup(const std::map<std::string, std::vector<std::vector<int64_t>>>& groups, size_t g) {
+  std::string result;
+  for (const auto& [name, shapes] : groups) {
+    if (!result.empty()) result += ", ";
+    result += name + ":[";
+    const auto& dims = shapes[g];
+    for (size_t d = 0; d < dims.size(); d++) {
+      if (d > 0) result += ",";
+      result += std::to_string(dims[d]);
+    }
+    result += "]";
+  }
+  return result;
+}
+
 }  // namespace perftest
 }  // namespace onnxruntime

@@ -32,7 +32,7 @@ class OnnxRuntimeTestSession : public TestSession {
   }
 
   bool PopulateGeneratedInputTestData(int32_t seed);
-  bool PopulateMultiShapeInputTestData(
+  bool PopulateGeneratedMultiShapeInputTestData(
       int32_t seed,
       const std::map<std::string, std::vector<std::vector<int64_t>>>& data_shape_groups);
 
@@ -47,6 +47,10 @@ class OnnxRuntimeTestSession : public TestSession {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxRuntimeTestSession);
 
  private:
+  void CreateAndStoreGeneratedInput(size_t test_data_id, size_t input_idx,
+                                    const std::vector<int64_t>& dims,
+                                    ONNXTensorElementDataType element_type, int32_t seed);
+
   Ort::Session session_{nullptr};
   std::mt19937 rand_engine_;
   std::uniform_int_distribution<int> dist_;

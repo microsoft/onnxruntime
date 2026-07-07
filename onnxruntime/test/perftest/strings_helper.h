@@ -30,5 +30,8 @@ void ParseEpDeviceFilterKeyValuePairs(const std::string& input, std::vector<std:
 
 bool ParseDataShapeGroups(const std::string& input,
                           std::map<std::string, std::vector<std::vector<int64_t>>>& data_shape_groups);
+
+std::string FormatShapeGroup(const std::map<std::string, std::vector<std::vector<int64_t>>>& groups, size_t g);
+
 }  // namespace perftest
 }  // namespace onnxruntime
