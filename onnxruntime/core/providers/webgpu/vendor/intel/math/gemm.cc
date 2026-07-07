@@ -67,7 +67,7 @@ Status ApplyGemmIntel(const Tensor* a,
 
   const bool is_vec4 = b_shape[1] % 4 == 0;
   // vec4 A loads and double-buffering of the B tile are only enabled on Xe-3LPG.
-  const bool is_xe_3lpg = context.AdapterInfo().architecture == std::string_view("xe-3lpg");
+  const bool is_xe_3lpg = context.AdapterInfo().architecture == gpu_arch::kXe3Lpg;
   // Load A from global memory as vec4 when K is a multiple of 4; otherwise fall back to scalar load.
   const bool a_vec4 = is_xe_3lpg && (K % 4 == 0);
   // Double-buffering of the B tile (held in workgroup memory) is only enabled for float16 B inputs.

@@ -9,6 +9,11 @@ namespace onnxruntime {
 namespace webgpu {
 namespace intel {
 
+namespace gpu_arch {
+inline constexpr std::string_view kXeLpg = "xe-lpg";
+inline constexpr std::string_view kXe3Lpg = "xe-3lpg";
+}
+
 const uint32_t kSubgroupLogicalWorkGroupSizeX = 32;
 const uint32_t kSubgroupLogicalWorkGroupSizeY = 8;
 const uint32_t kSubgroupLogicalWorkGroupSizeZ = 1;

@@ -62,8 +62,8 @@ Status ApplyMatMulIntel(ComputeContext& context,
   // fold actually claws that waste back. Otherwise the Z-dispatch path wins.
   const int64_t M = output_shape[output_shape.NumDimensions() - 2];
   const auto& arch = context.AdapterInfo().architecture;
-  const bool is_xe_lpg_or_xe_3lpg = arch == std::string_view("xe-lpg") ||
-                                    arch == std::string_view("xe-3lpg");
+  const bool is_xe_lpg_or_xe_3lpg = arch == gpu_arch::kXeLpg ||
+                                    arch == gpu_arch::kXe3Lpg;
   // 32 = kSubgroupLogicalWorkGroupSizeY * ElementsPerThreadY(M > 32) on Xe-LPG/3LPG
   const int64_t m_mod_32 = M % 32;
   const bool xe_lpg_or_xe_3lpg_fold_ok = (m_mod_32 > 0 && m_mod_32 <= 24);
@@ -102,7 +102,7 @@ Status ApplyMatMulIntel(ComputeContext& context,
   // Always access A with 1-component when using subgroup.
   const bool is_vec4 = dim_b_outer % 4 == 0;
   // vec4 A loads and double-buffering of the B tile are only enabled on Xe-3LPG.
-  const bool is_xe_3lpg = arch == std::string_view("xe-3lpg");
+  const bool is_xe_3lpg = arch == gpu_arch::kXe3Lpg;
   // Load A from global memory as vec4 when K is a multiple of 4; otherwise fall back to scalar load.
   const bool a_vec4 = is_xe_3lpg && dim_inner % 4 == 0;
   // Double-buffering of the B tile (held in workgroup memory) is only enabled for float16 B inputs.

@@ -77,7 +77,7 @@ std::string CalculateAccStr(const ShaderIndicesHelper* batch_dims, int64_t eleme
       // ElementsPerThreadY return 4. Enforce it explicitly so that relaxing the M >= 64 guard
       // or retuning ElementsPerThreadY fails loudly here instead of silently dividing by zero
       // in the `g = r / rows_per_group` / `j = r % rows_per_group` computations below.
-      ORT_ENFORCE(elements_per_thread_y % num_groups == 0,
+      ORT_ENFORCE(elements_per_thread_y > 0 && elements_per_thread_y % num_groups == 0,
                   "a_vec4 cooperative load requires elements_per_thread_y (", elements_per_thread_y,
                   ") to be a positive multiple of num_groups (", num_groups, ").");
       const uint32_t rows_per_group = static_cast<uint32_t>(elements_per_thread_y) / num_groups;
@@ -95,6 +95,8 @@ std::string CalculateAccStr(const ShaderIndicesHelper* batch_dims, int64_t eleme
       // Accumulate over the 8 vec4 columns (32 K) of the tile. Each kvec block is wrapped in
       // braces so the broadcast temporaries get a fresh scope (avoids redeclaration).
       for (uint32_t kvec = 0; kvec < 8; kvec++) {
+        // Fresh scope per kvec: the `aB_*` broadcast temporaries below are redeclared each
+        // iteration, which WGSL only allows in a new block scope.
         cal_acc_ss << "      {\n";
         for (uint32_t r = 0; r < elements_per_thread_y; r++) {
           const uint32_t g = r / rows_per_group;
@@ -154,8 +156,8 @@ bool CanApplySubgroup(const ComputeContext& context, int64_t M, int64_t N, int64
 int64_t ElementsPerThreadY(ComputeContext& context, uint32_t M) {
   // For Xe-LPG and Xe-3LPG, we have observed that 4 elements per thread is optimal when M is large.
   const auto& arch = context.AdapterInfo().architecture;
-  const bool is_xe_lpg_or_xe_3lpg = arch == std::string_view("xe-lpg") ||
-                                    arch == std::string_view("xe-3lpg");
+  const bool is_xe_lpg_or_xe_3lpg = arch == gpu_arch::kXeLpg ||
+                                    arch == gpu_arch::kXe3Lpg;
   return M <= 8 ? 1 : (M <= 16 ? 2 : (M <= 32 ? 4 : (is_xe_lpg_or_xe_3lpg ? 4 : 8)));
 }
 
