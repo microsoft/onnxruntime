@@ -46,7 +46,7 @@ const main = async () => {
     const opset = opsetMapping[0];
     const onnxVersion = opsetMapping[1];
 
-    // NOTE(#7959): a NEW opset (onnx >= 1.23) CANNOT be added via this rel-* archive path — #7959
+    // NOTE(onnx/onnx#7959): a NEW opset (onnx >= 1.23) CANNOT be added via this rel-* archive path — onnx/onnx#7959
     // deletes data/node on master/future releases; it needs a different materialization mechanism
     // (cf. tools/python/materialize_onnx_node_tests.py — JS would need its own multi-version equivalent).
     const resourceUri = `https://github.com/onnx/onnx/archive/refs/heads/rel-${onnxVersion}.zip`;
