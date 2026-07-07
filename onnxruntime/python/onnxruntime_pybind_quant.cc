@@ -201,7 +201,7 @@ py::array_t<int8_t> PackWeightsForMixedGemm(
   }
 
   size_t packed_weight_bytes = static_cast<size_t>(N) * static_cast<size_t>(K) /
-                               static_cast<size_t>(8 / bits);
+                               (static_cast<size_t>(8) / static_cast<size_t>(bits));
   py::array_t<int8_t> processed_weights({static_cast<pybind11::ssize_t>(packed_weight_bytes)});
   py::buffer_info out_buf = processed_weights.request();
 

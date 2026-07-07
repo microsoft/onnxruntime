@@ -205,7 +205,8 @@ struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
   void PackWeightsForMixedGemm(const uint8_t* q_weights, int32_t N, int32_t K,
                                 int32_t bits, int32_t force_arch,
                                 int8_t* output) override {
-    size_t packed_weight_bytes = static_cast<size_t>(N) * static_cast<size_t>(K) / static_cast<size_t>(8 / bits);
+    size_t packed_weight_bytes = static_cast<size_t>(N) * static_cast<size_t>(K) /
+                                 (static_cast<size_t>(8) / static_cast<size_t>(bits));
 
     struct CudaMemDeleter {
       void operator()(void* p) const noexcept {
@@ -230,7 +231,7 @@ struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
 
     if (bits == 4) {
       ::onnxruntime::llm::kernels::fpA_intB_gemv::unpack_uint4_transposed_to_int8_direct_cuda(
-          stream, d_transposed.get(), d_input.get(), N, K);
+          stream, static_cast<int8_t*>(d_transposed.get()), d_input.get(), N, K);
     } else {
       ::onnxruntime::llm::kernels::fpA_intB_gemv::transpose_uint8_matrix_and_convert_to_int8(
           stream,
