@@ -9,6 +9,7 @@
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
+#include <algorithm>
 
 #include <gsl/gsl>
 #include "core/common/safeint.h"
@@ -921,7 +922,8 @@ struct CustomOpKernel : OpKernel {
     // Individual newer functions in OrtCustomOp are gated by per-function version checks throughout this file.
     const uint32_t api_version = std::min(op_.version, static_cast<uint32_t>(ORT_API_VERSION));
     const OrtApi* ort_api = OrtGetApiBase()->GetApi(api_version);
-    ORT_ENFORCE(ort_api != nullptr, "Failed to get ORT API for version ", api_version);
+    ORT_ENFORCE(ort_api != nullptr, "Failed to get ORT API for version ",
+                api_version, " in custom op '", op_.GetName(&op_), "'");
 
     if (op_.version >= min_ort_version_with_compute_v2_support &&
         op_.CreateKernelV2) {

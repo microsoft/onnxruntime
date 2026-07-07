@@ -749,11 +749,10 @@ TEST(CApiTest, SparseInputModel) {
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
 // Test that a custom op compiled against a newer ORT version (higher OrtCustomOp::version)
-// can still be loaded and executed on this ORT runtime. This simulates the forward compatibility
+// can still be loaded on this ORT runtime. This simulates the forward compatibility
 // scenario where an IHV EP compiled against ORT v(N+1) is loaded into ORT v(N).
 // We test session creation only (which covers schema registration, kernel def building, and
 // CustomOpKernel construction with the capped API version).
-#ifndef ABSL_HAVE_ADDRESS_SANITIZER
 TEST(CApiTest, custom_op_forward_version_compat) {
   std::vector<Input<float>> inputs(1);
   auto& input = inputs[0];
@@ -778,7 +777,6 @@ TEST(CApiTest, custom_op_forward_version_compat) {
   TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
                        custom_op_domain, nullptr, /*test_session_creation_only=*/true);
 }
-#endif
 
 // Memory leak
 #ifndef ABSL_HAVE_ADDRESS_SANITIZER
