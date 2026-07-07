@@ -34,6 +34,22 @@ class FixedLengthSequences : public ISequences {
 constexpr int kBatchBeamSize = 2;
 constexpr int kVocabSize = 4;
 
+// Builds a minimal GreedySearchParameters that activates only the MinLength processor path, so the
+// list-level construction guard at the Init call site is the sole observable behavior.
+GreedySearchParameters MakeMinLengthOnlyParameters(int min_length, int eos_token_id) {
+  GreedySearchParameters parameters;
+  parameters.model_type = IGenerationParameters::kModelTypeGpt;
+  parameters.logits_processor = 0;
+  parameters.eos_token_id = eos_token_id;
+  parameters.min_length = min_length;
+  parameters.no_repeat_ngram_size = 0;
+  parameters.repetition_penalty = 1.0f;    // 1.0 means no penalty, so that processor is skipped
+  parameters.temperature = 0.0f;           // <= 0 skips the temperature processor
+  parameters.batch_size = kBatchBeamSize;  // GreedySearchParameters::BatchBeamSize() == batch_size
+  parameters.vocab_size = kVocabSize;
+  return parameters;
+}
+
 }  // namespace
 
 // A negative eos_token_id is the "no eos" sentinel used by greedy/sampling models. The processor
@@ -89,6 +105,52 @@ TEST(MinLengthLogitsProcessorTest, ValidEosTokenIdAtMinLengthLeavesScoresUnchang
 
   for (float value : scores) {
     EXPECT_FLOAT_EQ(value, 1.0f);
+  }
+}
+
+// The construction guard at the Init call site must skip the MinLength processor when eos_token_id is
+// the negative "no eos" sentinel. Running the list over a below-min-length sequence therefore leaves
+// all scores unchanged, because no MinLength processor was ever added to the list. This directly
+// covers the list-level guard rather than the SetScore runtime backstop.
+TEST(MinLengthLogitsProcessorTest, ListInitSkipsProcessorForNegativeEosTokenId) {
+  GreedySearchParameters parameters = MakeMinLengthOnlyParameters(/*min_length=*/5, /*eos_token_id=*/-1);
+  LogitsProcessorList processor_list;
+  processor_list.Init(parameters);
+
+  std::vector<float> scores(kBatchBeamSize * kVocabSize, 1.0f);
+  gsl::span<float> scores_span(scores);
+  FixedLengthSequences sequences(/*sequence_length=*/1);  // below min_length
+  processor_list.Process(&sequences, scores_span, /*step=*/1);
+
+  for (float value : scores) {
+    EXPECT_FLOAT_EQ(value, 1.0f);
+  }
+}
+
+// Positive control: with a valid eos_token_id the Init call site does add the MinLength processor, so
+// the same below-min-length run demotes the eos score. This proves the unchanged-scores result above
+// is caused by the guard skipping construction, not by an otherwise inert list.
+TEST(MinLengthLogitsProcessorTest, ListInitAddsProcessorForValidEosTokenId) {
+  constexpr int kEosTokenId = 2;
+  GreedySearchParameters parameters = MakeMinLengthOnlyParameters(/*min_length=*/5, kEosTokenId);
+  LogitsProcessorList processor_list;
+  processor_list.Init(parameters);
+
+  std::vector<float> scores(kBatchBeamSize * kVocabSize, 1.0f);
+  gsl::span<float> scores_span(scores);
+  FixedLengthSequences sequences(/*sequence_length=*/1);  // below min_length
+  processor_list.Process(&sequences, scores_span, /*step=*/1);
+
+  const float lowest = std::numeric_limits<float>::lowest();
+  for (int beam = 0; beam < kBatchBeamSize; ++beam) {
+    for (int token = 0; token < kVocabSize; ++token) {
+      const float value = scores[static_cast<size_t>(beam) * kVocabSize + token];
+      if (token == kEosTokenId) {
+        EXPECT_FLOAT_EQ(value, lowest);
+      } else {
+        EXPECT_FLOAT_EQ(value, 1.0f);
+      }
+    }
   }
 }
 
