@@ -9,9 +9,6 @@
 #include "contrib_ops/cpu/quantization/dequantize_blockwise_bnb4.h"
 #include "core/util/thread_utils.h"
 
-#if defined(USE_CUDA)
-#include "core/providers/cuda/cuda_provider_factory.h"
-#endif
 #include <stdexcept>
 #include <memory>
 #include <sstream>
@@ -34,13 +31,6 @@ struct npy_format_descriptor<onnxruntime::MLFloat16> {
 };
 }  // namespace detail
 }  // namespace pybind11
-
-#if defined(USE_CUDA)
-namespace onnxruntime {
-// Forward declaration; defined in provider_bridge_ort.cc and linked into pybind11 module.
-ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
-}  // namespace onnxruntime
-#endif
 
 namespace onnxruntime {
 namespace python {
@@ -152,69 +142,6 @@ void QuantizeMatMulBnb4Blockwise(
       tp.get());
 }
 
-#if defined(USE_CUDA)
-
-// Preprocess quantized weights for CUDA mixed-precision GEMM kernels (FpA_IntB format).
-//
-// MatMulNBits/QMoE stores quantized weights in (N, K) layout:
-//   - N = number of output channels (columns in weight matrix W)
-//   - K = number of input features (rows in weight matrix W)
-//   - For 4-bit: shape is (N, K/2) bytes where each byte packs 2 elements
-//   - For 8-bit: shape is (N, K) bytes
-//
-// FpA_IntB GEMM kernels expect weights in (K, N) layout (transposed) for efficient
-// memory access during matrix multiplication. This function:
-//   1. Transposes from (N, K) to (K, N) layout
-//   2. Converts unsigned quantized values to signed int8 with zero-point adjustment
-//      - 4-bit: uint4 -> int8 with zero_point=8 (range [0,15] -> [-8,7])
-//      - 8-bit: uint8 -> int8 with zero_point=128 (range [0,255] -> [-128,127])
-//   3. Applies architecture-specific row permutation for optimized tensor core access
-//
-// Input:  q_weights - Quantized weights from MatMulNBits in (N, K) layout
-// Output: Preprocessed weights in (K, N) layout ready for fpA_intB GEMM kernels
-py::array_t<int8_t> PackWeightsForMixedGemm(
-    py::array_t<uint8_t> q_weights,
-    int32_t N,
-    int32_t K,
-    int32_t bits,
-    int32_t force_arch = -1) {
-  if (bits != 4 && bits != 8) {
-    throw std::invalid_argument("bits must be 4 or 8");
-  }
-  if (N <= 0 || K <= 0) {
-    throw std::invalid_argument("N and K must be positive");
-  }
-  if (bits == 4 && K % 2 != 0) {
-    throw std::invalid_argument("K must be even for 4-bit packed weights");
-  }
-
-  py::buffer_info q_weights_buf = q_weights.request();
-  if (q_weights_buf.ndim != 2 || q_weights_buf.shape[0] != N || q_weights_buf.shape[1] != K / (8 / bits)) {
-    throw std::invalid_argument("q_weights must have shape (N, K / (8 / bits))");
-  }
-
-  auto* info = ::onnxruntime::TryGetProviderInfo_CUDA();
-  if (info == nullptr) {
-    throw std::runtime_error(
-        "CUDA provider is not available. Ensure onnxruntime was built with CUDA support "
-        "and that a CUDA-capable device is present.");
-  }
-
-  size_t packed_weight_bytes = static_cast<size_t>(N) * static_cast<size_t>(K) /
-                               (static_cast<size_t>(8) / static_cast<size_t>(bits));
-  py::array_t<int8_t> processed_weights({static_cast<pybind11::ssize_t>(packed_weight_bytes)});
-  py::buffer_info out_buf = processed_weights.request();
-
-  info->PackWeightsForMixedGemm(
-      static_cast<const uint8_t*>(q_weights_buf.ptr),
-      N, K, bits, force_arch,
-      static_cast<int8_t*>(out_buf.ptr));
-
-  return processed_weights;
-}
-
-#endif  // defined(USE_CUDA)
-
 // Pack FP4 (MXFP4) weights for MoE GEMM kernels.
 //
 // Input:  q_weights in [N, K/2] layout (FP4 packed 2 per byte along K dimension, row-major)
@@ -284,11 +211,6 @@ void CreateQuantPybindModule(py::module& m) {
   m.def("quantize_qdq_matmul_2bits", &QuantizeQDQMatMulNBitsBlockwise<MLFloat16, 2>);
   m.def("quantize_qdq_matmul_4bits", &QuantizeQDQMatMul4BitsBlockwise<float>);
   m.def("quantize_qdq_matmul_4bits", &QuantizeQDQMatMul4BitsBlockwise<MLFloat16>);
-#if defined(USE_CUDA)
-  m.def("pack_weights_for_cuda_mixed_gemm", &PackWeightsForMixedGemm,
-        "Pack quantized weights for CUDA mixed-precision GEMM (FpA_IntB format)",
-        py::arg("q_weights"), py::arg("N"), py::arg("K"), py::arg("bits"), py::arg("force_arch") = -1);
-#endif
   m.def("pack_fp4_weights_for_cuda_moe_gemm", &PackFP4WeightsForMoE,
         "Pack FP4 (MXFP4) weights for CUDA MoE GEMM: transpose [N,K/2] to column-major [K,N/2]",
         py::arg("q_weights"), py::arg("N"), py::arg("K"));

@@ -375,6 +375,7 @@ libs = []
 if platform.system() == "Linux" or platform.system() == "AIX":
     libs = [
         "onnxruntime_pybind11_state.so",
+        "onnxruntime_cuda_quant_preprocess.so",
         "libdnnl.so.2",
         "libmklml_intel.so",
         "libmklml_gnu.so",
@@ -422,6 +423,7 @@ if platform.system() == "Linux" or platform.system() == "AIX":
 elif platform.system() == "Darwin":
     libs = [
         "onnxruntime_pybind11_state.so",
+        "onnxruntime_cuda_quant_preprocess.so",
         "libdnnl.2.dylib",
         "mimalloc.so",
         "libonnxruntime*.dylib",

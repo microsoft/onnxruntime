@@ -17,6 +17,11 @@ from onnx import ModelProto, TensorProto, helper, numpy_helper
 import onnxruntime as ort
 from onnxruntime.capi import _pybind_state as _pybind
 
+try:
+    from onnxruntime.capi import onnxruntime_cuda_quant_preprocess as _cuda_quant
+except ImportError:
+    _cuda_quant = None
+
 
 @contextmanager
 def set_env(name: str, value: str):
@@ -32,7 +37,7 @@ def set_env(name: str, value: str):
 
 
 @unittest.skipIf("CUDAExecutionProvider" not in ort.get_available_providers(), "CUDA is not available")
-@unittest.skipUnless(hasattr(_pybind, "pack_weights_for_cuda_mixed_gemm"), "fpA_intB weight packer is unavailable")
+@unittest.skipUnless(_cuda_quant is not None, "fpA_intB weight packer is unavailable")
 class TestMatMulNBitsPrepackedCuda(unittest.TestCase):
     def _quantize_weight(self, weight: np.ndarray, bits: int, block_size: int):
         k, n = weight.shape
@@ -118,7 +123,7 @@ class TestMatMulNBitsPrepackedCuda(unittest.TestCase):
         bias = rng.normal(0.0, 1.0, size=(n,)).astype(np.float16) if has_bias else None
 
         q_weight, scales = self._quantize_weight(weight, bits, block_size)
-        prepacked_flat = _pybind.pack_weights_for_cuda_mixed_gemm(q_weight.reshape(n, -1), n, k, bits, force_arch)
+        prepacked_flat = _cuda_quant.pack_weights_for_cuda_mixed_gemm(q_weight.reshape(n, -1), n, k, bits, force_arch)
         prepacked_weight = np.asarray(prepacked_flat, dtype=np.int8).view(np.uint8).reshape(q_weight.shape)
 
         raw_model = self._make_model((m, k), q_weight, scales, bits, block_size, weight_prepacked=0, bias=bias)

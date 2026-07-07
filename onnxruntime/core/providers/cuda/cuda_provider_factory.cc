@@ -10,7 +10,6 @@
 #include <chrono>
 #include <memory>
 #include <string>
-#include <vector>
 
 #include <gsl/gsl>
 
@@ -21,8 +20,6 @@
 #include "core/providers/cuda/cuda_stream_handle.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
-#include "contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.h"
-#include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors.h"
 
 #ifdef ENABLE_NVTX_PROFILE
 #include "nvtx_profile.h"
@@ -200,71 +197,6 @@ struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
     params.arena_extend_strategy = arena_extend_strategy;
     params.arena_cfg = default_memory_arena_cfg;
     return CUDAExecutionProvider::CreateCudaPinnedAllocator(params);
-  }
-
-  void PackWeightsForMixedGemm(const uint8_t* q_weights, int32_t N, int32_t K,
-                                int32_t bits, int32_t force_arch,
-                                int8_t* output) override {
-    size_t packed_weight_bytes = static_cast<size_t>(N) * static_cast<size_t>(K) /
-                                 (static_cast<size_t>(8) / static_cast<size_t>(bits));
-
-    struct CudaMemDeleter {
-      void operator()(void* p) const noexcept {
-        if (p) cudaFree(p);
-      }
-    };
-    auto make_device_buf = [](size_t bytes) {
-      void* p = nullptr;
-      CUDA_CALL_THROW(cudaMalloc(&p, bytes));
-      return std::unique_ptr<void, CudaMemDeleter>(p);
-    };
-
-    auto d_input = make_device_buf(packed_weight_bytes);
-    auto d_transposed = make_device_buf(packed_weight_bytes);
-    auto d_preprocessed = make_device_buf(packed_weight_bytes);
-    auto d_permutation_map = make_device_buf(32 * sizeof(int32_t));
-
-    cudaStream_t stream = cudaStreamLegacy;
-
-    CUDA_CALL_THROW(cudaMemcpyAsync(d_input.get(), q_weights, packed_weight_bytes,
-                                    cudaMemcpyHostToDevice, stream));
-
-    if (bits == 4) {
-      ::onnxruntime::llm::kernels::fpA_intB_gemv::unpack_uint4_transposed_to_int8_direct_cuda(
-          stream, static_cast<int8_t*>(d_transposed.get()), d_input.get(), N, K);
-    } else {
-      ::onnxruntime::llm::kernels::fpA_intB_gemv::transpose_uint8_matrix_and_convert_to_int8(
-          stream,
-          static_cast<int8_t*>(d_transposed.get()),
-          static_cast<const uint8_t*>(d_input.get()),
-          N, K);
-    }
-
-    using ::onnxruntime::llm::kernels::weight_only::QuantType;
-    QuantType quant_type = (bits == 4) ? QuantType::W4_A16 : QuantType::W8_A16;
-
-    int sm = force_arch;
-    if (sm < 0) {
-      int device_id = 0;
-      CUDA_CALL_THROW(cudaGetDevice(&device_id));
-      cudaDeviceProp device_prop;
-      CUDA_CALL_THROW(cudaGetDeviceProperties(&device_prop, device_id));
-      sm = device_prop.major * 10 + device_prop.minor;
-    }
-    sm = ::onnxruntime::llm::kernels::weight_only::get_arch_for_mixed_gemm_weight_preprocess(sm);
-
-    ::onnxruntime::llm::kernels::weight_only::preprocess_weights_for_mixed_gemm_cuda(
-        stream, sm,
-        static_cast<int8_t*>(d_preprocessed.get()),
-        static_cast<int8_t*>(d_transposed.get()),
-        static_cast<int32_t*>(d_permutation_map.get()),
-        {static_cast<size_t>(K), static_cast<size_t>(N)},
-        quant_type);
-
-    CUDA_CALL_THROW(cudaGetLastError());
-    CUDA_CALL_THROW(cudaMemcpyAsync(output, d_preprocessed.get(), packed_weight_bytes,
-                                    cudaMemcpyDeviceToHost, stream));
-    CUDA_CALL_THROW(cudaStreamSynchronize(stream));
   }
 } g_info;
 

@@ -43,20 +43,38 @@ def _get_torch():
 
 
 def _get_pack_weights_for_cuda_mixed_gemm():
-    """Return the CUDA mixed-GEMM weight prepacker from the ORT pybind module."""
+    """Return the CUDA mixed-GEMM weight prepacker from the standalone CUDA module.
+
+    The prepacker lives in ``onnxruntime.capi.onnxruntime_cuda_quant_preprocess``, a
+    separate extension module that links the CUDA runtime. It is imported lazily here
+    (never at ``import onnxruntime`` time) so that CPU-only environments are unaffected.
+    """
     try:
-        from onnxruntime.capi import _pybind_state as _pybind  # noqa: PLC0415
+        from onnxruntime.capi import onnxruntime_cuda_quant_preprocess as _cuda_quant  # noqa: PLC0415
     except ImportError as e:
         raise ImportError(
             "CUDA weight prepacking requires pack_weights_for_cuda_mixed_gemm from an onnxruntime-gpu CUDA build."
         ) from e
 
     try:
-        return _pybind.pack_weights_for_cuda_mixed_gemm
+        return _cuda_quant.pack_weights_for_cuda_mixed_gemm
     except AttributeError as e:
         raise ImportError(
             "CUDA weight prepacking requires pack_weights_for_cuda_mixed_gemm from an onnxruntime-gpu CUDA build."
         ) from e
+
+
+def has_cuda_weight_prepacking() -> bool:
+    """Return True if the CUDA mixed-GEMM weight prepacker is importable.
+
+    Callers use this to skip CUDA-prepack code paths (and tests) when running against a
+    CPU-only or non-CUDA onnxruntime build.
+    """
+    try:
+        _get_pack_weights_for_cuda_mixed_gemm()
+    except ImportError:
+        return False
+    return True
 
 
 def _get_quantize_matmul_nbits():

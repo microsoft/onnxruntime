@@ -231,11 +231,11 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     Python::NumPy
 )
 
-# The CUDA quantization helpers (pack_weights_for_cuda_mixed_gemm) are called through the
-# ProviderInfo_CUDA interface, which dynamically loads onnxruntime_providers_cuda at runtime.
-# Do NOT compile CUDA source files directly into onnxruntime_pybind11_state or link
-# CUDA::cudart from it: that would create a hard libcudart.so dependency that prevents
-# importing the Python module on CPU-only machines.
+# The CUDA quantization helpers (pack_weights_for_cuda_mixed_gemm) are built into a
+# separate extension module (onnxruntime_cuda_quant_preprocess) that is imported on
+# demand. Do NOT compile CUDA source files directly into onnxruntime_pybind11_state or
+# link CUDA::cudart from it: that would create a hard libcudart.so dependency that
+# prevents importing the Python module on CPU-only machines.
 
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}
@@ -302,6 +302,69 @@ if (MSVC)
   set_target_properties(onnxruntime_pybind11_state PROPERTIES SUFFIX ".pyd")
 else()
   set_target_properties(onnxruntime_pybind11_state PROPERTIES SUFFIX ".so")
+endif()
+
+# ---------------------------------------------------------------------------
+# Standalone CUDA weight-preprocessing extension module.
+#
+# The CUDA weight-packing kernels (pack_weights_for_cuda_mixed_gemm) are compiled
+# into their OWN Python extension module instead of onnxruntime_pybind11_state.
+# This keeps the hard libcudart dependency out of the main pybind module so that
+# `import onnxruntime` still works on CPU-only machines. The module is imported
+# lazily by onnxruntime.python.tools.quantization.cuda_quantizer only when CUDA
+# weight prepacking is requested.
+#
+# It does NOT go through the provider bridge / ProviderInfo_CUDA, so it works for
+# both the legacy in-tree CUDA EP build and the CUDA-EP-as-plugin build.
+#
+# Not built on Windows: matching the previous behavior where CUDA runtime was not
+# linked into Python extension modules (DLL search path constraints since
+# Python 3.8), so pack_weights_for_cuda_mixed_gemm was unavailable there.
+if (onnxruntime_USE_CUDA AND NOT WIN32)
+  onnxruntime_add_shared_library_module(onnxruntime_cuda_quant_preprocess
+    "${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_cuda_quant.cc"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.cu"
+    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors_impl.cu"
+  )
+  include(cutlass)
+  onnxruntime_add_include_to_target(onnxruntime_cuda_quant_preprocess Python::Module onnxruntime_common)
+  target_include_directories(onnxruntime_cuda_quant_preprocess PRIVATE
+    ${ONNXRUNTIME_ROOT}
+    ${pybind11_INCLUDE_DIRS}
+    ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES}
+    ${cutlass_SOURCE_DIR}/include
+    ${cutlass_SOURCE_DIR}/tools/util/include
+  )
+  target_compile_definitions(onnxruntime_cuda_quant_preprocess PRIVATE USE_CUDA)
+  target_link_libraries(onnxruntime_cuda_quant_preprocess PRIVATE
+    onnxruntime_common
+    Boost::mp11
+    safeint_interface
+    ${ABSEIL_LIBS}
+    CUDA::cudart
+    ${pybind11_lib}
+    Python::NumPy
+  )
+  if (NOT MSVC)
+    target_compile_options(onnxruntime_cuda_quant_preprocess PRIVATE "-fvisibility=hidden")
+  endif()
+  set_target_properties(onnxruntime_cuda_quant_preprocess PROPERTIES PREFIX "" SUFFIX ".so" FOLDER "ONNXRuntime")
+  if (APPLE)
+    set_target_properties(onnxruntime_cuda_quant_preprocess PROPERTIES
+      INSTALL_RPATH "@loader_path"
+      BUILD_WITH_INSTALL_RPATH TRUE
+      INSTALL_RPATH_USE_LINK_PATH FALSE)
+  elseif (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+    target_link_options(onnxruntime_cuda_quant_preprocess PRIVATE "LINKER:-rpath=\$ORIGIN")
+  endif()
+  # Place the module next to the main pybind module inside onnxruntime/capi.
+  add_custom_command(
+    TARGET onnxruntime_cuda_quant_preprocess POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:onnxruntime_common>/onnxruntime/capi
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_cuda_quant_preprocess>
+        $<TARGET_FILE_DIR:onnxruntime_common>/onnxruntime/capi/
+  )
 endif()
 
 # Generate version_info.py in Windows build.
