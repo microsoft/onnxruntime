@@ -57,7 +57,7 @@ struct GemmDims {
 };
 
 // Unique ID of GEMM
-// In our case GEMM is uniqly identified by N and K, plus the target SM architecture (so the
+// In our case GEMM is uniquely identified by N and K, plus the target SM architecture (so the
 // SM80-compatibility and native SM90 kernels for the same shape do not share profiled configs).
 class GemmIdCore {
  public:

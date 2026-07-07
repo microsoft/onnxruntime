@@ -452,7 +452,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
                   << " has_bias=" << (bias_data != nullptr ? 1 : 0)
                   << " has_zero_points=" << (has_zero_points_ ? 1 : 0)
                   << " weight_format=" << weight_fmt
-                  << " kernel=" << (bestTactic->enableCudaKernel ? "GEMV(cuda)" : "CUTLASS(sm80 gemm)")
+                  << " kernel=" << (bestTactic->enableCudaKernel ? "GEMV(cuda)" : (FpAIntBPackingSmForKernel() == 90 ? "CUTLASS(sm90 gemm)" : "CUTLASS(sm80 gemm)"))
                   << " tactic=" << bestTactic->toString()
                   << std::endl;
       }
