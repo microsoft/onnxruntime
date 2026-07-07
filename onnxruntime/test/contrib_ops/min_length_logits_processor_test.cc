@@ -15,8 +15,8 @@ namespace test {
 
 namespace {
 
-// Minimal ISequences stub reporting a fixed sequence length. MinLengthLogitsProcessor only reads
-// GetSequenceLength(); the device/sequence accessors are unused on this path and return empty spans.
+// Minimal ISequences stub reporting a fixed sequence length. The MinLength path only reads
+// GetSequenceLength(); the device/sequence accessors are unused here and return empty spans.
 class FixedLengthSequences : public ISequences {
  public:
   explicit FixedLengthSequences(int sequence_length) : sequence_length_(sequence_length) {}
@@ -52,56 +52,14 @@ GreedySearchParameters MakeMinLengthOnlyParameters(int min_length, int eos_token
 
 }  // namespace
 
-// A negative eos_token_id is the "no eos" sentinel used by greedy/sampling models. The processor
-// must be a no-op and must never index scores with a negative token id.
-TEST(MinLengthLogitsProcessorTest, NegativeEosTokenIdIsNoOp) {
+// Backstop: SetScore ignores a negative token id, which is the "no eos" sentinel. This guards the
+// runtime path against indexing scores with a negative token id even if a processor is reached.
+TEST(MinLengthLogitsProcessorTest, SetScoreIgnoresNegativeTokenId) {
   std::vector<float> scores(kBatchBeamSize * kVocabSize, 1.0f);
   gsl::span<float> scores_span(scores);
   NextTokenScores<float> next_token_scores{scores_span, kBatchBeamSize, kVocabSize};
 
-  FixedLengthSequences sequences(/*sequence_length=*/1);  // below min_length: eos would be demoted
-  MinLengthLogitsProcessor<float> processor(/*min_length=*/5, /*eos_token_id=*/-1);
-  processor.Process(&sequences, next_token_scores);
-
-  for (float value : scores) {
-    EXPECT_FLOAT_EQ(value, 1.0f);
-  }
-}
-
-// With a valid eos_token_id and a sequence shorter than min_length, the eos score is demoted so
-// generation cannot stop early. This locks in the enforcement behavior (no regression).
-TEST(MinLengthLogitsProcessorTest, ValidEosTokenIdBelowMinLengthDemotesEos) {
-  std::vector<float> scores(kBatchBeamSize * kVocabSize, 1.0f);
-  gsl::span<float> scores_span(scores);
-  NextTokenScores<float> next_token_scores{scores_span, kBatchBeamSize, kVocabSize};
-
-  constexpr int kEosTokenId = 2;
-  FixedLengthSequences sequences(/*sequence_length=*/1);
-  MinLengthLogitsProcessor<float> processor(/*min_length=*/5, kEosTokenId);
-  processor.Process(&sequences, next_token_scores);
-
-  const float lowest = std::numeric_limits<float>::lowest();
-  for (int beam = 0; beam < kBatchBeamSize; ++beam) {
-    for (int token = 0; token < kVocabSize; ++token) {
-      const float value = scores[static_cast<size_t>(beam) * kVocabSize + token];
-      if (token == kEosTokenId) {
-        EXPECT_FLOAT_EQ(value, lowest);
-      } else {
-        EXPECT_FLOAT_EQ(value, 1.0f);
-      }
-    }
-  }
-}
-
-// Once the sequence reaches min_length, the eos score is left untouched even for a valid eos id.
-TEST(MinLengthLogitsProcessorTest, ValidEosTokenIdAtMinLengthLeavesScoresUnchanged) {
-  std::vector<float> scores(kBatchBeamSize * kVocabSize, 1.0f);
-  gsl::span<float> scores_span(scores);
-  NextTokenScores<float> next_token_scores{scores_span, kBatchBeamSize, kVocabSize};
-
-  FixedLengthSequences sequences(/*sequence_length=*/5);  // == min_length: no demotion expected
-  MinLengthLogitsProcessor<float> processor(/*min_length=*/5, /*eos_token_id=*/2);
-  processor.Process(&sequences, next_token_scores);
+  next_token_scores.SetScore(/*token_id=*/-1, std::numeric_limits<float>::lowest());
 
   for (float value : scores) {
     EXPECT_FLOAT_EQ(value, 1.0f);
@@ -110,8 +68,7 @@ TEST(MinLengthLogitsProcessorTest, ValidEosTokenIdAtMinLengthLeavesScoresUnchang
 
 // The construction guard at the Init call site must skip the MinLength processor when eos_token_id is
 // the negative "no eos" sentinel. Running the list over a below-min-length sequence therefore leaves
-// all scores unchanged, because no MinLength processor was ever added to the list. This directly
-// covers the list-level guard rather than the SetScore runtime backstop.
+// all scores unchanged, because no MinLength processor was ever added to the list.
 TEST(MinLengthLogitsProcessorTest, ListInitSkipsProcessorForNegativeEosTokenId) {
   GreedySearchParameters parameters = MakeMinLengthOnlyParameters(/*min_length=*/5, /*eos_token_id=*/-1);
   LogitsProcessorList processor_list;
@@ -130,7 +87,7 @@ TEST(MinLengthLogitsProcessorTest, ListInitSkipsProcessorForNegativeEosTokenId) 
 // Positive control: with a valid eos_token_id the Init call site does add the MinLength processor, so
 // the same below-min-length run demotes the eos score. This proves the unchanged-scores result above
 // is caused by the guard skipping construction, not by an otherwise inert list.
-TEST(MinLengthLogitsProcessorTest, ListInitAddsProcessorForValidEosTokenId) {
+TEST(MinLengthLogitsProcessorTest, ListInitDemotesEosBelowMinLength) {
   constexpr int kEosTokenId = 2;
   GreedySearchParameters parameters = MakeMinLengthOnlyParameters(/*min_length=*/5, kEosTokenId);
   LogitsProcessorList processor_list;
@@ -151,6 +108,24 @@ TEST(MinLengthLogitsProcessorTest, ListInitAddsProcessorForValidEosTokenId) {
         EXPECT_FLOAT_EQ(value, 1.0f);
       }
     }
+  }
+}
+
+// Once the sequence reaches min_length, a valid eos score is left untouched: min_length is no longer
+// enforced. This locks in the boundary behavior and confirms the guard change is limited to the
+// negative-sentinel case (no regression for valid eos ids).
+TEST(MinLengthLogitsProcessorTest, ListInitLeavesScoresUnchangedAtMinLength) {
+  GreedySearchParameters parameters = MakeMinLengthOnlyParameters(/*min_length=*/5, /*eos_token_id=*/2);
+  LogitsProcessorList processor_list;
+  processor_list.Init(parameters);
+
+  std::vector<float> scores(kBatchBeamSize * kVocabSize, 1.0f);
+  gsl::span<float> scores_span(scores);
+  FixedLengthSequences sequences(/*sequence_length=*/5);  // == min_length: no demotion expected
+  processor_list.Process(&sequences, scores_span, /*step=*/1);
+
+  for (float value : scores) {
+    EXPECT_FLOAT_EQ(value, 1.0f);
   }
 }
 
