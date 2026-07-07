@@ -251,6 +251,62 @@ TEST_P(EpConformanceTest, MetadataQueriesAreCallable) {
   (void)ep->ConcurrentRunSupported();
   (void)ep->GetTuningContext();
   (void)ep->GetOrtDeviceByMemType(OrtMemTypeDefault);
+  (void)ep->IsGraphCaptureEnabled();
+  (void)ep->ShouldConvertDataLayoutForOp(/*domain*/ "", /*op_type*/ "Conv", ep->GetPreferredLayout());
+}
+
+// Invariant: GetGraphCaptureNodeAssignmentPolicy() returns one of the defined
+// OrtGraphCaptureNodeAssignmentPolicy values. The session dispatches on this
+// while validating a graph for capture, so an out-of-range value is a bug.
+// This is a pure query and is valid to call on every EP regardless of whether
+// graph capture is enabled.
+TEST_P(EpConformanceTest, GraphCaptureNodeAssignmentPolicyIsValid) {
+  auto ep = MakeEp();
+  if (!ep) GTEST_SKIP() << GetParam().name << " EP not available in this environment.";
+
+  const OrtGraphCaptureNodeAssignmentPolicy policy = ep->GetGraphCaptureNodeAssignmentPolicy();
+  EXPECT_TRUE(policy == OrtGraphCaptureNodeAssignmentPolicy_ALL_NODES_ON_EP ||
+              policy == OrtGraphCaptureNodeAssignmentPolicy_ALLOW_CPU_FOR_SHAPES)
+      << "GetGraphCaptureNodeAssignmentPolicy() returned an unknown policy value.";
+}
+
+// Invariant: a built-in EP is not a plugin wrapper, so GetOrtEp() returns nullptr.
+// Only a PluginExecutionProvider wrapping an OrtEp reports a backing OrtEp, and
+// every EP exercised by this suite is built-in.
+TEST_P(EpConformanceTest, GetOrtEpIsNullForBuiltInEp) {
+  auto ep = MakeEp();
+  if (!ep) GTEST_SKIP() << GetParam().name << " EP not available in this environment.";
+
+  EXPECT_EQ(ep->GetOrtEp(), nullptr)
+      << "A built-in EP must not report a backing OrtEp (that is reserved for plugin EPs).";
+}
+
+// Invariant: GetEpContextNodes() reports no nodes on a freshly constructed EP.
+// EPs populate this only when generating an EPContext cache model during
+// compilation; with no compilation performed, the documented default is empty.
+TEST_P(EpConformanceTest, EpContextNodesEmptyOnFreshEp) {
+  auto ep = MakeEp();
+  if (!ep) GTEST_SKIP() << GetParam().name << " EP not available in this environment.";
+
+  EXPECT_TRUE(ep->GetEpContextNodes().empty())
+      << "A fresh EP (no compilation performed) must report no EPContext nodes.";
+}
+
+// Invariant: every preferred allocator reports self-consistent OrtMemoryInfo --
+// a non-empty name and a valid allocator type. This metadata keys allocator
+// lookup in the framework, so it must be well-formed for every EP. Only the
+// backend-agnostic fields are checked; the raw memory is not touched here.
+TEST_P(EpConformanceTest, PreferredAllocatorInfoIsConsistent) {
+  auto ep = MakeEp();
+  if (!ep) GTEST_SKIP() << GetParam().name << " EP not available in this environment.";
+
+  for (const auto& alloc : ep->CreatePreferredAllocators()) {
+    ASSERT_NE(alloc, nullptr) << "CreatePreferredAllocators() must not return null entries.";
+    const OrtMemoryInfo& info = alloc->Info();
+    EXPECT_FALSE(info.name.empty()) << "Allocator OrtMemoryInfo.name must not be empty.";
+    EXPECT_NE(info.alloc_type, OrtInvalidAllocator)
+        << "Allocator must report a valid OrtAllocatorType (not OrtInvalidAllocator).";
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(
