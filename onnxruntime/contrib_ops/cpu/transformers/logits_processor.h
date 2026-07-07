@@ -332,7 +332,9 @@ class LogitsProcessorList : public ILogitsProcessorList {
       processor_list_.push_back(prefix_vocab_mask_processor_.get());
     }
 
-    if (parameters.min_length > 0) {
+    // Skip when eos_token_id is the "no eos" sentinel (negative): there is no valid token to
+    // demote, so the processor would be a no-op. Matches the conditional-add style used above.
+    if (parameters.min_length > 0 && parameters.eos_token_id >= 0) {
       min_length_processor_ = std::make_unique<MinLengthLogitsProcessor<float>>(parameters.min_length,
                                                                                 parameters.eos_token_id);
       processor_list_.push_back(min_length_processor_.get());
