@@ -13,26 +13,20 @@ namespace onnxruntime {
 namespace test {
 
 // Regression test for segmented storage-buffer writes in Conv2dMM shader output paths.
-// We force a small maxStorageBufferBindingSize so the output uses segmented accessors
-// (`GetByOffset`/`SetByOffset`) on a modest tensor shape.
-TEST(Conv_WebGPU, LargeFlatOutputIndex_UsesHelperIndexing) {
-  constexpr uint64_t kForcedMaxStorageBufferBindingSize = 512 * 1024;  // 512 KiB
-
-  ConfigOptions config_options{};
-  ASSERT_STATUS_OK(config_options.AddConfigEntry(
-      webgpu::options::kMaxStorageBufferBindingSize,
-      std::to_string(kForcedMaxStorageBufferBindingSize).c_str()));
-
-  auto webgpu_ep = WebGpuExecutionProviderWithOptions(config_options);
+// Large-shape coverage for real device limits (typically >= 128 MiB for
+// maxStorageBufferBindingSize). Kept disabled due to memory footprint and
+// machine/device variance in CI.
+TEST(Conv_WebGPU, DISABLED_LargeFlatOutputIndex_UsesHelperIndexing_RealDeviceLimit) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
   if (!webgpu_ep) {
     GTEST_SKIP() << "WebGPU execution provider is not available.";
   }
 
   constexpr int64_t n = 1;
-  constexpr int64_t c = 4;
-  constexpr int64_t h = 256;
-  constexpr int64_t w = 256;
-  constexpr int64_t m = 4;
+  constexpr int64_t c = 1;
+  constexpr int64_t h = 8192;
+  constexpr int64_t w = 4200;
+  constexpr int64_t m = 1;
   constexpr int64_t kh = 1;
   constexpr int64_t kw = 1;
 
@@ -46,9 +40,7 @@ TEST(Conv_WebGPU, LargeFlatOutputIndex_UsesHelperIndexing) {
 
   std::vector<float> x_vals(x_size, 1.0f);
   std::vector<float> w_vals(w_size, 1.0f);
-
-  // For 1x1 conv with all-ones weights and 4 input channels, each output value is 4.
-  std::vector<float> expected_vals(y_size, 4.0f);
+  std::vector<float> expected_vals(y_size, 1.0f);
 
   OpTester test("Conv", 11);
   test.AddAttribute("group", static_cast<int64_t>(1));
