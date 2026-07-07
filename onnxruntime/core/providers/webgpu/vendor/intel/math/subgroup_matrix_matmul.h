@@ -10,6 +10,7 @@
 #include "core/providers/webgpu/math/matmul.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/vendor/intel/math/subgroup_matrix_matmul_tuning.h"
 
 namespace onnxruntime {
 namespace webgpu {
