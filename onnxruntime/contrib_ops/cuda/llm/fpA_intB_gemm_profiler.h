@@ -104,9 +104,17 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   void storePersistentCache(GemmIdCore const& gemmId, MProfileMap const& map,
                             bool hasWeightOnlyCudaKernel) override;
 
+  void stagePersistentCache(GemmIdCore const& gemmId, MProfileMap const& map,
+                            bool hasWeightOnlyCudaKernel) override;
+
  private:
   onnxruntime::llm::gemm_cache::MatMulNBitsKey makeCacheKey(GemmIdCore const& gemmId,
                                                             bool hasWeightOnlyCudaKernel) const;
+
+  // Populates the in-memory cache with any buckets in `map` not already recorded (no disk write).
+  // Returns true if at least one new bucket was staged.
+  bool stageProfiledTactics(GemmIdCore const& gemmId, MProfileMap const& map,
+                            bool hasWeightOnlyCudaKernel);
 
   bool mHasBiases;
   bool mHasZeros;

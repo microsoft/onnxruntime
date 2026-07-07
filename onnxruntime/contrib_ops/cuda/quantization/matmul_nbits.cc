@@ -40,31 +40,66 @@ using onnxruntime::llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPlugin
 using onnxruntime::llm::kernels::weight_only::WeightTypeId;
 static GemmPluginProfilerManager<WeightOnlyGroupwiseQuantGemmPluginProfiler> s_profilerManager;
 
-// Process-global persistent tactic caches, keyed by their resolved location so that identical
-// shapes are tuned once and reused across sessions and nodes that share a location. Sessions
-// configured with different cache directories/prefixes each get their own cache (rather than the
-// first constructed kernel's location silently winning for the whole process). Returns nullptr
-// when persistence is not configured (session config and env vars unset), in which case the
-// profiler keeps its in-process behavior.
+namespace {
+// Process-global registry of persistent tactic caches, keyed by their resolved file location so that
+// identical shapes are tuned once and reused across sessions and nodes that share a location.
+struct GlobalTacticCacheRegistry {
+  std::mutex mutex;
+  std::unordered_map<std::string, std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache>> caches;
+};
+
+GlobalTacticCacheRegistry& GetGlobalTacticCacheRegistry() {
+  static GlobalTacticCacheRegistry registry;
+  return registry;
+}
+}  // namespace
+
+// Returns the process-global cache for the resolved location (creating and registering it on first
+// use). Sessions configured with different cache directories/prefixes each get their own cache
+// (rather than the first constructed kernel's location silently winning for the whole process).
+// Returns nullptr when persistence is not configured (session config and env vars unset), in which
+// case the profiler keeps its in-process behavior. During a session, kernel destructors only STAGE
+// lazily-discovered tactics into these in-memory caches (no disk I/O); the single disk write happens
+// in FlushMatMulNBitsTacticCaches() at CUDA EP teardown.
 static std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> GetGlobalMatMulNBitsTacticCache(
     const std::string& config_dir, const std::string& config_prefix) {
-  static std::mutex cache_mutex;
-  static std::unordered_map<std::string, std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache>>
-      caches;
-
   auto cache = onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache::MaybeCreate(config_dir, config_prefix);
   if (cache == nullptr) {
     return nullptr;
   }
 
+  auto& registry = GetGlobalTacticCacheRegistry();
   const std::string& key = cache->FilePath();
-  std::lock_guard<std::mutex> lock(cache_mutex);
-  auto it = caches.find(key);
-  if (it != caches.end()) {
+  std::lock_guard<std::mutex> lock(registry.mutex);
+  auto it = registry.caches.find(key);
+  if (it != registry.caches.end()) {
     return it->second;
   }
-  caches.emplace(key, cache);
+  registry.caches.emplace(key, cache);
   return cache;
+}
+
+// Flushes every registered tactic cache to disk. This is the single place lazily-discovered tactics
+// reach disk (kernel destructors only stage them in memory), which avoids the
+// O(number-of-MatMulNBits-nodes) full-file rewrites a per-node flush would cause. Best-effort and
+// dirty-guarded (Flush() is a no-op when nothing new was staged), so calling it once per CUDA EP
+// teardown is cheap even when several sessions share the process. Safe to call from a destructor:
+// never throws.
+void FlushMatMulNBitsTacticCaches() {
+  auto& registry = GetGlobalTacticCacheRegistry();
+  std::lock_guard<std::mutex> lock(registry.mutex);
+  for (auto& [key, cache] : registry.caches) {
+    static_cast<void>(key);
+    if (cache == nullptr) {
+      continue;
+    }
+    try {
+      auto status = cache->Flush();
+      static_cast<void>(status);  // best-effort at EP teardown
+    } catch (...) {
+      // Swallow: cache persistence is best-effort and must not escape EP teardown.
+    }
+  }
 }
 
 constexpr auto kScaleAndZeros = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS;

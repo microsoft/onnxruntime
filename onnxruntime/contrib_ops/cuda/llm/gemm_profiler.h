@@ -179,17 +179,18 @@ class GemmPluginProfiler {
 
   virtual int getMaxProfileM() const;
 
-  // Persists the current in-process tactics for `gemmId` (including buckets profiled lazily during
-  // inference via getBestConfigOrProfile) to the subclass's persistent cache, if one is configured.
-  // Best-effort and intended to be called off the hot path (e.g. at kernel/session teardown) so
-  // runtime-discovered M buckets converge into the disk cache. No-op if `gemmId` was never profiled
-  // or the subclass has no persistent cache.
+  // Stages the current in-process tactics for `gemmId` (including buckets profiled lazily during
+  // inference via getBestConfigOrProfile) into the subclass's persistent cache, if one is configured.
+  // This only populates the process-global in-memory cache; it does NOT write to disk, so calling it
+  // from every MatMulNBits kernel destructor does not cause O(number-of-nodes) full-file rewrites.
+  // The staged tactics are written to disk once, when the process-global cache is torn down. No-op if
+  // `gemmId` was never profiled or the subclass has no persistent cache. Best-effort, off the hot path.
   void persistProfiledTactics(GemmIdType const& gemmId) {
     reader_lock lock(mMNKProfileMap->mutex);
     if (mSkip || !mMNKProfileMap->existsMProfileMap(gemmId)) {
       return;
     }
-    storePersistentCache(gemmId, *mMNKProfileMap->getMProfileMap(gemmId), mHasWeightOnlyCudaKernel);
+    stagePersistentCache(gemmId, *mMNKProfileMap->getMProfileMap(gemmId), mHasWeightOnlyCudaKernel);
   }
 
  protected:
@@ -217,7 +218,15 @@ class GemmPluginProfiler {
   virtual void loadPersistentCache(GemmIdType const& /*gemmId*/, MProfileMap& /*map*/,
                                    bool /*hasWeightOnlyCudaKernel*/) {}
 
+  // Called from the construction-time sweep: stage the profiled tactics AND write them to disk
+  // immediately (so the file exists while the session is alive, e.g. for the offline tuning tool).
   virtual void storePersistentCache(GemmIdType const& /*gemmId*/, MProfileMap const& /*map*/,
+                                    bool /*hasWeightOnlyCudaKernel*/) {}
+
+  // Called at kernel/session teardown: stage the profiled tactics into the in-memory cache WITHOUT
+  // writing to disk. The single disk write is deferred to the process-global cache teardown so that
+  // many per-node destructors do not each rewrite the whole cache file.
+  virtual void stagePersistentCache(GemmIdType const& /*gemmId*/, MProfileMap const& /*map*/,
                                     bool /*hasWeightOnlyCudaKernel*/) {}
 
  private:
@@ -488,9 +497,10 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
 
   // Deliberately do NOT flush this lazily-profiled bucket to the persistent disk cache here:
   // doing disk I/O (file lock + atomic write) on the inference compute path would stall latency.
-  // The bucket stays in the in-process map for the rest of the session and is persisted off the
-  // hot path by persistProfiledTactics() at kernel/session teardown (in addition to the initial
-  // profileTactics sweep and the offline tuning tool).
+  // The bucket stays in the in-process map for the rest of the session; it is staged into the
+  // process-global in-memory cache by persistProfiledTactics() at kernel teardown and written to
+  // disk once when the process-global cache is torn down (plus the construction-time sweep and the
+  // offline tuning tool flush eagerly).
   return best;
 }
 

@@ -233,26 +233,41 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::loadPersistentCache(
   }
 }
 
-void WeightOnlyGroupwiseQuantGemmPluginProfiler::storePersistentCache(
+bool WeightOnlyGroupwiseQuantGemmPluginProfiler::stageProfiledTactics(
     GemmIdCore const& gemmId, MProfileMap const& map, bool hasWeightOnlyCudaKernel) {
   if (mCache == nullptr) {
-    return;
+    return false;
   }
   auto key = makeCacheKey(gemmId, hasWeightOnlyCudaKernel);
   bool added = false;
   for (auto const& [m, config] : map) {
-    // Only persist buckets that are not already on disk (skips re-writing cache hits).
+    // Only stage buckets that are not already recorded (skips re-staging cache hits).
     if (!mCache->Get(key, m).has_value()) {
       mCache->Put(key, m, config);
       added = true;
     }
   }
-  if (added) {
+  return added;
+}
+
+void WeightOnlyGroupwiseQuantGemmPluginProfiler::storePersistentCache(
+    GemmIdCore const& gemmId, MProfileMap const& map, bool hasWeightOnlyCudaKernel) {
+  // Construction-time sweep: stage and flush immediately so the cache file exists while the session
+  // is alive (the offline tuning tool reads it before the process exits).
+  if (stageProfiledTactics(gemmId, map, hasWeightOnlyCudaKernel)) {
     auto status = mCache->Flush();
     if (!status.IsOK()) {
       ORT_LLM_LOG_WARNING("Failed to flush MatMulNBits gemm tactic cache: " + status.ErrorMessage());
     }
   }
+}
+
+void WeightOnlyGroupwiseQuantGemmPluginProfiler::stagePersistentCache(
+    GemmIdCore const& gemmId, MProfileMap const& map, bool hasWeightOnlyCudaKernel) {
+  // Teardown path: stage only (no disk write). Every MatMulNBits kernel destructor calls this, so
+  // flushing here would rewrite the whole cache file once per node. The staged tactics are written
+  // to disk a single time when the process-global cache table is destroyed (see matmul_nbits.cc).
+  stageProfiledTactics(gemmId, map, hasWeightOnlyCudaKernel);
 }
 
 }  // namespace onnxruntime::llm::kernels::weight_only

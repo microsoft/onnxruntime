@@ -288,15 +288,20 @@ sessions, and the first-time tuning cost is reduced. Design details:
 `M=1` and the top bucket). If a runtime `M` maps to an unprofiled bucket, that
 single bucket is profiled lazily on first use and kept in the in-process map for
 the rest of the session. Lazy buckets are intentionally **not** written to disk
-on the hot path (that would put file I/O on inference latency); instead they are
-flushed **best-effort at kernel/session teardown**, so the on-disk cache
-gradually converges to the `M` buckets the real workload actually hits. Disk
-persistence therefore covers the construction-time sweep, the offline tuning
-tool, and the teardown flush of lazily-discovered buckets. Lazy profiling is also
-skipped while a CUDA graph is being captured (profiling kernels/events/allocations
-are illegal during capture), so run a warmup inference **before** capture to tune
-any `M` buckets your captured graph needs. Set `ORT_FPA_INTB_PROFILE_M`
-(comma-separated) to override the bucket set; its maximum also sets the initial
+on the hot path (that would put file I/O on inference latency); instead each
+`MatMulNBits` kernel **stages** its lazily-discovered buckets into the
+process-global in-memory cache at teardown, and the cache is written to disk a
+**single time** at CUDA EP teardown (`~CUDAExecutionProvider`, which covers both
+the built-in and the CUDA plugin EP). (A per-node disk flush would rewrite the
+whole cache file once per node, since there is one kernel object per node.) Disk
+persistence therefore covers the construction-time sweep (flushed eagerly so the
+file exists while the session runs), the offline tuning tool, and the single
+EP-teardown flush of lazily-discovered buckets. Lazy profiling is also skipped
+while a CUDA graph is being captured (profiling kernels/events/allocations are
+illegal during capture), so run a
+warmup inference **before** capture to tune any `M` buckets your captured graph
+needs. Set `ORT_FPA_INTB_PROFILE_M` (comma-separated) to override the bucket set;
+its maximum also sets the initial
 profile range.
 
 **Enabling persistence.** Persistence is opt-in. Provide either a directory or an
