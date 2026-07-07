@@ -5,6 +5,7 @@
 
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
+#include "core/providers/webgpu/vendor/intel/intel_device_info.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -299,13 +300,8 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   // For large M on Intel Xe, cap dispatch_y so each workgroup processes multiple
   // M-tiles sequentially, reducing scheduling overhead.
   if (M > 2048 && context.AdapterInfo().vendor == std::string_view{"intel"}) {
-    // Each XeCore has 4 XVE x 8 SIMD-32 hardware threads = 32 subgroups.
-    uint32_t hw_subgroups = 0;
-    if (context.AdapterInfo().architecture == std::string_view{"xe-3lpg"}) {
-      hw_subgroups = 384;  // 12 XeCore x 32
-    } else if (context.AdapterInfo().architecture == std::string_view{"xe-2lpg"}) {
-      hw_subgroups = 256;  // 8 XeCore x 32
-    }
+    const uint32_t hw_subgroups =
+        ::onnxruntime::webgpu::intel::HwSubgroups(std::string_view{context.AdapterInfo().architecture});
     if (hw_subgroups > 0) {
       constexpr uint32_t kOccupancyFactor = 16;  // empirically tuned on Xe2/Xe3 devices
       uint32_t target_wgs = hw_subgroups * kOccupancyFactor / (work_group_size / 32);

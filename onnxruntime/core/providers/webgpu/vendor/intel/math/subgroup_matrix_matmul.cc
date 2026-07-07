@@ -1,0 +1,281 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#if !defined(__wasm__)
+
+#include "core/providers/webgpu/vendor/intel/math/subgroup_matrix_matmul.h"
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string_view>
+
+#include "core/common/narrow.h"
+#include "core/providers/webgpu/compute_context.h"
+#include "core/providers/webgpu/shader_helper.h"
+#include "core/providers/webgpu/vendor/intel/intel_device_info.h"
+
+// Pretuned tile + split-K table baked into the build; consulted before the
+// heuristic in SelectConfig.
+#include "core/providers/webgpu/vendor/intel/math/subgroup_matrix_matmul_tuned.inc"
+
+namespace onnxruntime {
+namespace webgpu {
+namespace intel {
+
+namespace {
+
+// Tile + split-K configuration chosen for one MatMul problem.
+struct SgMatMulConfig {
+  uint32_t tile_m;   // output rows per workgroup (multiple of kSubgroupMatrixM)
+  uint32_t tile_n;   // output cols per workgroup (multiple of kSubgroupMatrixN)
+  uint32_t split_k;  // subgroups cooperating along K (1 = no split)
+};
+
+bool IsFloat16(const Tensor& tensor) {
+  return tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+}
+
+constexpr uint32_t kTileMCandidates[] = {8, 16, 32, 64};
+constexpr uint32_t kTileNCandidates[] = {16, 32, 64};
+constexpr uint32_t kSplitKCandidates[] = {1, 2, 4, 8};
+// Scratch holds split_k partial f16 tiles; cap keeps it within the SLM budget.
+constexpr uint32_t kMaxScratchElems = 16384;  // 32 KB
+
+// Hard constraints a config must satisfy to run correctly for this problem.
+// Used to reject a pretuned entry whose bucket does not fit the actual K.
+bool IsConfigValid(const SgMatMulConfig& c, uint32_t K) {
+  if (c.tile_m == 0 || c.tile_n == 0 ||
+      c.tile_m % kSubgroupMatrixM != 0 || c.tile_n % kSubgroupMatrixN != 0) {
+    return false;
+  }
+  const uint32_t k_blocks = K / kSubgroupMatrixK;
+  if (c.split_k == 0 || c.split_k > k_blocks) {
+    return false;
+  }
+  return c.tile_m * c.tile_n * c.split_k <= kMaxScratchElems;
+}
+
+// Fallback config selection when no pretuned entry applies. The goal is to keep
+// the GPU busy without over-subscribing it: pick the tile whose independent
+// output-tile grid just fills the resident subgroups, preferring larger tiles
+// (more data reuse) among those that qualify, and only using smaller tiles when
+// nothing else would fill the machine. Split-K then adds cooperative subgroups
+// to reach up to 2x occupancy, subject to the per-subgroup K-work minimum and
+// the scratch (SLM) budget.
+SgMatMulConfig HeuristicConfig(std::string_view arch, uint32_t M, uint32_t N, uint32_t K) {
+  // HwSubgroups returns 0 for an unrecognized arch; fall back to a conservative
+  // default so the occupancy target is still reasonable.
+  uint32_t hw = HwSubgroups(arch);
+  if (hw == 0) {
+    hw = 256;
+  }
+  const uint32_t k_blocks = K / kSubgroupMatrixK;
+  auto tile_count = [](uint32_t dim, uint32_t tile) { return (dim + tile - 1) / tile; };
+
+  // Choose tile_m x tile_n. Skip tiles larger than the dimension (they only waste
+  // lanes). Prefer the largest-area tile whose grid already fills the hardware
+  // (num_tiles >= hw); if none does, take the tile that yields the most
+  // independent tiles (largest area breaks ties).
+  uint32_t tile_m = kTileMCandidates[0];
+  uint32_t tile_n = kTileNCandidates[0];
+  uint32_t best_tiles = 0;   // most output tiles seen so far (used only while under-filling)
+  uint32_t best_area = 0;    // tile_m * tile_n of the current pick (tie-breaker: larger reuse wins)
+  bool filled = false;       // true once some tile reaches num_tiles >= hw (machine is filled)
+  for (uint32_t tm : kTileMCandidates) {
+    if (tm > M && tm != kTileMCandidates[0]) {
+      continue;
+    }
+    for (uint32_t tn : kTileNCandidates) {
+      if (tn > N && tn != kTileNCandidates[0]) {
+        continue;
+      }
+      const uint32_t tiles = tile_count(M, tm) * tile_count(N, tn);
+      const uint32_t area = tm * tn;
+      if (tiles >= hw) {
+        // This tile fills the machine on its own. Among all such tiles, keep the
+        // largest-area one (best operand reuse); this also supersedes any
+        // under-filling pick made earlier.
+        if (!filled || area > best_area) {
+          filled = true;
+          best_area = area;
+          tile_m = tm;
+          tile_n = tn;
+        }
+      } else if (!filled && (tiles > best_tiles || (tiles == best_tiles && area > best_area))) {
+        // No tile has filled the machine yet: chase occupancy by maximizing the
+        // number of independent tiles, breaking ties toward larger area.
+        best_tiles = tiles;
+        best_area = area;
+        tile_m = tm;
+        tile_n = tn;
+      }
+    }
+  }
+
+  // Add split-K only while the independent tiles under-fill the machine; cap the
+  // total at 2x hardware and keep enough K work per subgroup and scratch budget.
+  const uint32_t num_tiles = tile_count(M, tile_m) * tile_count(N, tile_n);
+  constexpr uint32_t kMinBlocksPerSplit = 2;
+  uint32_t split_k = 1;
+  for (uint32_t cand : kSplitKCandidates) {
+    if (k_blocks >= cand * kMinBlocksPerSplit &&
+        num_tiles * cand <= 2 * hw &&
+        tile_m * tile_n * cand <= kMaxScratchElems) {
+      split_k = cand;
+    }
+  }
+  return {tile_m, tile_n, split_k};
+}
+
+// Looks up a pretuned config for this problem in the baked-in table
+// (subgroup_matrix_matmul_tuned.inc). The table holds one sub-table per GPU
+// architecture; we match `arch`, then map each problem dimension to the smallest
+// grid value >= it (clamped to the largest bucket). Returns nullopt when the
+// arch is not covered or no entry matches.
+std::optional<SgMatMulConfig> LookupPretunedConfig(std::string_view arch, uint32_t M, uint32_t N, uint32_t K) {
+  for (const auto& table : sgmm_tuned::kArchTables) {
+    if (table.arch != arch) {
+      continue;
+    }
+    auto bucket = [&table](uint32_t d) -> int {
+      int last = 0;
+      for (size_t i = 0; i < table.grid_count; ++i) {
+        if (table.grid[i] >= d) {
+          return static_cast<int>(i);
+        }
+        last = static_cast<int>(i);
+      }
+      return last;
+    };
+    const int mi = bucket(M);
+    const int ni = bucket(N);
+    const int ki = bucket(K);
+    for (size_t i = 0; i < table.entry_count; ++i) {
+      const auto& e = table.entries[i];
+      if (e.mi == mi && e.ni == ni && e.ki == ki) {
+        return SgMatMulConfig{e.tile_m, e.tile_n, e.split_k};
+      }
+    }
+    break;  // arch matched but no entry for this problem; fall through to heuristic
+  }
+  return std::nullopt;
+}
+
+// Chooses the tile + split-K config for the given problem: use the pretuned
+// table entry when one exists and fits, otherwise fall back to the heuristic.
+SgMatMulConfig SelectConfig(std::string_view arch, uint32_t M, uint32_t N, uint32_t K) {
+  if (const auto tuned = LookupPretunedConfig(arch, M, N, K); tuned && IsConfigValid(*tuned, K)) {
+    return *tuned;
+  }
+  return HeuristicConfig(arch, M, N, K);
+}
+
+// Intel subgroup-matrix MatMul implementation. Loads both A and B directly from
+// global memory and runs the subgroup-matrix kernel during Compute.
+class SubgroupMatrixMatMulImpl final : public MatMul::MatMulOptImpl {
+ public:
+  explicit SubgroupMatrixMatMulImpl(const MatMul& parent) : MatMul::MatMulOptImpl(parent) {}
+
+  Status Compute(ComputeContext& context, /*out*/ bool& handled) override {
+    handled = false;
+
+    const auto* a = context.Input(0);
+    const auto* b = context.Input(1);
+    // B must be a 2D KxN weight; A may be batched ([..., M, K]) and its leading
+    // dims are folded into M. Anything else falls back.
+    const auto& a_shape = a->Shape();
+    const auto& b_shape = b->Shape();
+    if (a_shape.NumDimensions() < 2 || b_shape.NumDimensions() != 2 ||
+        !IsFloat16(*a) || !IsFloat16(*b)) {
+      return Status::OK();
+    }
+
+    const uint32_t K = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 1]);
+    const uint32_t M = narrow<uint32_t>(a_shape.Size() / static_cast<int64_t>(K));
+    const uint32_t N = narrow<uint32_t>(b_shape[1]);
+    // K must match B; only K needs to align to the subgroup tiling. M and N
+    // partial tiles are handled by bounds-checked stores in the kernel.
+    if (narrow<uint32_t>(b_shape[0]) != K || K % kSubgroupMatrixK != 0) {
+      return Status::OK();
+    }
+
+    TensorShapeVector output_dims{a_shape.GetDims().begin(), a_shape.GetDims().end()};
+    output_dims.back() = static_cast<int64_t>(N);
+    TensorShape output_shape{output_dims};
+    auto* output = context.Output(0, output_shape);
+    if (output->Shape().Size() == 0) {
+      handled = true;
+      return Status::OK();
+    }
+
+    const bool has_bias = context.InputCount() > 2;
+    const Tensor* bias = has_bias ? context.Input(2) : nullptr;
+
+    // Pick the tile shape and split-K factor: pretuned table when available,
+    // otherwise the built-in heuristic.
+    const std::string_view arch = std::string_view{context.AdapterInfo().architecture};
+    const SgMatMulConfig config = SelectConfig(arch, M, N, K);
+    const uint32_t tile_m = config.tile_m;
+    const uint32_t tile_n = config.tile_n;
+    const uint32_t split_k = config.split_k;
+    const uint32_t sg_mat_count_m = tile_m / kSubgroupMatrixM;
+    const uint32_t sg_mat_count_n = tile_n / kSubgroupMatrixN;
+    const uint32_t dispatch_x = (N + tile_n - 1) / tile_n;
+    const uint32_t dispatch_y = (M + tile_m - 1) / tile_m;
+
+    SubgroupMatrixMatMulProgram program{has_bias, sg_mat_count_m, sg_mat_count_n, split_k};
+    program.SetWorkgroupSize(kSubgroupMatrixSubgroupSize * split_k);
+    program.SetDispatchGroupSize(dispatch_x, dispatch_y, 1);
+    program.CacheHint(has_bias, sg_mat_count_m, sg_mat_count_n, split_k)
+        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
+                    {b, ProgramTensorMetadataDependency::TypeAndRank, 1}})
+        .AddOutput({output, ProgramTensorMetadataDependency::Rank, output->Shape(), 1})
+        .AddUniformVariables({{M}, {N}, {K}});
+    if (has_bias) {
+      program.AddInput({bias, ProgramTensorMetadataDependency::None});
+    }
+    ORT_RETURN_IF_ERROR(context.RunProgram(program));
+
+    handled = true;
+    return Status::OK();
+  }
+};
+
+}  // namespace
+
+Status SubgroupMatrixMatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  shader.AddInput("input_a", ShaderUsage::UseUniform);
+  shader.AddInput("input_b", ShaderUsage::UseUniform);
+  if (has_bias_) {
+    shader.AddInput("bias", ShaderUsage::UseUniform);
+  }
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  return WGSL_TEMPLATE_APPLY(shader, "vendor/intel/math/subgroup_matrix_matmul.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(has_bias, has_bias_),
+                             WGSL_TEMPLATE_PARAMETER(sg_mat_count_m, sg_mat_count_m_),
+                             WGSL_TEMPLATE_PARAMETER(sg_mat_count_n, sg_mat_count_n_),
+                             WGSL_TEMPLATE_PARAMETER(sg_mat_k, kSubgroupMatrixK),
+                             WGSL_TEMPLATE_PARAMETER(sg_mat_m, kSubgroupMatrixM),
+                             WGSL_TEMPLATE_PARAMETER(sg_mat_n, kSubgroupMatrixN),
+                             WGSL_TEMPLATE_PARAMETER(split_k, split_k_),
+                             WGSL_TEMPLATE_VARIABLE(output, output));
+}
+
+std::unique_ptr<MatMul::MatMulOptImpl> CreateSubgroupMatrixMatMulImpl(const ComputeContextBase& context,
+                                                                      const MatMul& parent) {
+  if (context.AdapterInfo().vendor != std::string_view{"intel"}) {
+    return nullptr;
+  }
+  if (!IsSubgroupMatrixConfigSupported(context, kSubgroupMatrixM, kSubgroupMatrixN, kSubgroupMatrixK)) {
+    return nullptr;
+  }
+  return std::make_unique<SubgroupMatrixMatMulImpl>(parent);
+}
+
+}  // namespace intel
+}  // namespace webgpu
+}  // namespace onnxruntime
+
+#endif  // !defined(__wasm__)
