@@ -377,7 +377,9 @@ inside the pinned archive**: `onnx_test_runner` reads `model.onnx` + `test_data_
 from `_deps/onnx-src/onnx/backend/test/data/node/<test>/` (the FetchContent archive pinned by
 the **SHA1 on the `onnx;` line of `cmake/deps.txt` ~L40** — *not* the `cmake/external/onnx`
 submodule, which only the QNN CI `.../node` path uses). **ONNX PR [onnx/onnx#7959] "Remove
-node test artifacts" deletes that entire on-disk corpus** (~2992+ files) **and removes the
+node test artifacts" deletes that entire on-disk corpus** (~2992+ files) — it targets onnx
+master, so the first affected release is expected to be **onnx 1.23** (one past the current
+1.22 pin), consistent with the JS `NOTE(#7959)` "onnx >= 1.23" caveat — **and removes the
 `cmd_tools.py generate-data` node path**, replacing both with a **Python-only, in-memory**
 flow (`loader.load_node_model_tests()` → `runner.run_node()`, `model_dir=None`, nothing
 written to disk). Naming / directory layout / `.pb` format are **unchanged — the files are
