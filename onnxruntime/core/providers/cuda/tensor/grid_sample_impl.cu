@@ -25,11 +25,16 @@ template <typename T>
 __device__ T GsReflect(T x, float x_min, float x_max) {
   float fx = static_cast<float>(x);
   float dx = {};
+  // Guard against NaN or Inf first, before computing the range, so a non-finite coordinate
+  // returns early without an unnecessary subtraction and can never reach the float->int cast
+  // (undefined behavior) below.
+  if (!isfinite(fx)) {
+    return static_cast<T>(x_min);
+  }
   float range = x_max - x_min;
-  // Guard against NaN, Inf, or a non-positive range (e.g. dim==1 with align_corners=true)
-  // which would otherwise produce wild indices via division by zero or an out-of-range
-  // float->int cast (undefined behavior).
-  if (!isfinite(fx) || !(range > 0.0f)) {
+  // Guard against a non-positive range (e.g. dim==1 with align_corners=true) which would
+  // otherwise produce wild indices via division by zero.
+  if (!(range > 0.0f)) {
     return static_cast<T>(x_min);
   }
   if (fx < x_min) {
