@@ -377,7 +377,10 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
      * @param       RangeStartN         Start of N range.
      * @param       RangeCountN         Number of columns of B and C.
      * @param       CountK              Number of columns of A and rows of B.
+     * @param       HasQuantBZeroPoint  Whether RHS zero points were present during B packing.
+     * @param       BackendKernelSelectorConfig  Optional backend kernel selector configuration.
      * @param       ldc                 Number of elements between adjacent rows of C.
+     * @param       Bias                Bias vector of length N. Optional.
      */
     typedef void(SQ4BitGemmKernel_Packed_CompInt8_Fn)(
         size_t BlkLen,

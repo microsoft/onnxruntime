@@ -677,6 +677,15 @@ TEST(MatMulNBits, SharedPrepackedWeights_AddInitializer) {
   }
 }
 
+// Covers backends that fold asymmetric scales and zero points into the shared B buffer.
+TEST(MatMulNBits, SharedPrepackedWeights_AsymmetricPackedScales) {
+  auto opts = MakeSharingTestOptions(288, 1024, /*block_size*/ 128, /*accuracy_level*/ 4,
+                                     /*has_zero_point*/ true, /*has_bias*/ false,
+                                     PrepackSharingMode::kAddInitializer);
+  opts.M = 1;
+  RunTest<float>(opts);
+}
+
 // Negative control: with the shared container present but neither opt-in mechanism enabled, no
 // pre-packed weights are shared across sessions.
 TEST(MatMulNBits, SharedPrepackedWeights_NotSharedWithoutOptIn) {

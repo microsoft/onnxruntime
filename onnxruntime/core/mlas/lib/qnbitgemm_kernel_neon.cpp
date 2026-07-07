@@ -93,6 +93,7 @@ QNBitGemmPackQuantBDataSize(
                     return packed_size;
                 }
                 case KleidiAIQ4Backend::Qsi8d32pQai4c32p: {
+                    // Packed B is shared by GEMM and GEMV, so both kernels must use this RHS layout.
                     const auto& k = GetKleidiAIQai4GemmUKernel();
                     const auto& ukernel = k.ukernel;
                     const size_t nr = ukernel.get_nr();
@@ -104,7 +105,7 @@ QNBitGemmPackQuantBDataSize(
                         case KaiQ4RhsPackLayout::AsymmetricNxKInterleavedNrx4:
                             return kai_get_rhs_packed_size_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s0s1_f32_f32_f32_neon(N, K, nr, kr, BlkLen);
                         default:
-                            // This path should not be reached through valid Qsi8d32pQai4c32p Q4 Backend cases
+                            // Invalid layout for the asymmetric Q4 backend.
                             assert(false);
                             return 0;
                     }
@@ -279,6 +280,7 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
                 }
                 // Asymmetric Q4 block-quantized RHS path
                 case KleidiAIQ4Backend::Qsi8d32pQai4c32p: {
+                    // Packed B is shared by GEMM and GEMV, so both kernels must use this RHS layout.
                     const auto& k = GetKleidiAIQai4GemmUKernel();
                     const auto& ukernel = k.ukernel;
 
@@ -544,9 +546,8 @@ QNBitGemmPerGemmWorkspaceSize(
         case SQNBIT_CompInt8: {
             // workspace buffer is used for block quantization of A to int8
 #ifdef USE_KLEIDIAI
-            KleidiAIQ4Backend backend = SelectKleidiAIQ4Backend(K, BlkLen, HasZeroPoint, BackendKernelSelectorConfig);
-            if (BlkBitWidth == 4 && backend != KleidiAIQ4Backend::None) {
-                switch (backend) {
+            if (BlkBitWidth == 4) {
+                switch (SelectKleidiAIQ4Backend(K, BlkLen, HasZeroPoint, BackendKernelSelectorConfig)) {
                     case KleidiAIQ4Backend::Qai8dxpQsi4c32p: {
                         const auto& k = (M == 1) ? GetKleidiAIGemvUKernel() : GetKleidiAIGemmUKernel();
                         const auto& ukernel = k.ukernel;
@@ -578,15 +579,13 @@ QNBitGemmPerGemmWorkspaceSize(
                     case KleidiAIQ4Backend::None:
                         break;
                 }
-            } else
-#endif
-            {
-                // workspace buffer is used for block quantization of A to int8
-                const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-                // QuantData + Scale + BlkSum
-                const size_t PerGemmWorkspaceSize = M * BlockCountK * (Q8BlkSize(BlkLen) + sizeof(float));
-                return PerGemmWorkspaceSize;
             }
+#endif
+            // workspace buffer is used for block quantization of A to int8
+            const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+            // QuantData + Scale + BlkSum
+            const size_t PerGemmWorkspaceSize = M * BlockCountK * (Q8BlkSize(BlkLen) + sizeof(float));
+            return PerGemmWorkspaceSize;
         }
         default: {
             return 0;
