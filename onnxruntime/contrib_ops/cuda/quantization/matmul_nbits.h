@@ -93,19 +93,29 @@ class MatMulNBits final : public CudaKernel {
     ORT_ENFORCE(weight_prepacked_ == kMatMulNBitsWeightNotPrepacked ||
                     weight_prepacked_ == kMatMulNBitsWeightPrepackedSm80 ||
                     weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90,
-                "weight_prepacked must be 0 (not prepacked), 1 (SM80 layout), or 2 (reserved SM90 layout), but got ",
+                "weight_prepacked must be 0 (not prepacked), 1 (SM80 layout), or 2 (SM90 layout), but got ",
                 weight_prepacked_);
-    ORT_ENFORCE(weight_prepacked_ != kMatMulNBitsWeightPrepackedSm90,
-                "weight_prepacked=2 (SM90 layout) is reserved and not supported yet");
+    if (weight_prepacked_ == kMatMulNBitsWeightPrepackedSm90) {
+      // The native SM90 (Hopper TMA/WGMMA) mixed-GEMM kernel requires a compute-capability 9.0
+      // device and a block_size that is a multiple of the Hopper K tile (128 / sizeof(half) = 64).
+      // block_size=32 is only supported by the SM80/Ampere-class kernel + GEMV path.
+      ORT_ENFORCE(sm_ == 90,
+                  "weight_prepacked=2 (SM90 layout) requires a compute capability 9.0 (Hopper) device, but got sm ", sm_);
+      ORT_ENFORCE(block_size_ == 64 || block_size_ == 128,
+                  "weight_prepacked=2 (SM90 layout) supports block_size 64 or 128 only, but got ", block_size_);
+    }
 
     if constexpr (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value) {
       int option = ParseEnvironmentVariableWithDefault<int>(kFpAIntBGemmOption, 0);
       ORT_ENFORCE(!(weight_prepacked_ != kMatMulNBitsWeightNotPrepacked && option == 0),
                   "weight_prepacked requires the fpA_intB path, but ORT_FPA_INTB_GEMM is off for this node");
+      // Note: a fused bias (input[5]) is fully supported by the fpA_intB GEMV, CUTLASS SM80/SM90
+      // GEMM (EpilogueOpBias), and the tactic profiler, so bias-bearing nodes (e.g. gpt-oss
+      // qkv_proj/o_proj) are eligible. Only g_idx/reorder remains unsupported by this path.
       if ((option & (static_cast<int>(nbits_) | kFpAIntBGemmOption_All)) != 0 &&
-          (block_size_ == 64 || block_size_ == 128) &&
+          (block_size_ == 32 || block_size_ == 64 || block_size_ == 128) &&
           (nbits_ == 4 || nbits_ == 8) &&
-          !has_g_idx_ && !has_bias_ &&
+          !has_g_idx_ &&
           N_ % (nbits_ == 8 ? 32 : 64) == 0 &&
           K_ % block_size_ == 0 &&
           sm_ >= 75) {
