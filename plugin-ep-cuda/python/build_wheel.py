@@ -18,8 +18,8 @@ sys.path.insert(0, str(SCRIPT_DIR.parent))
 from _packaging_utils import gen_file_from_template  # noqa: E402 (path setup must precede import)
 
 BINARY_PATTERNS = [
-    "onnxruntime_providers_cuda_plugin.dll",
-    "libonnxruntime_providers_cuda_plugin.so",
+    "onnxruntime_providers_cuda.dll",
+    "libonnxruntime_providers_cuda.so",
 ]
 AUDITWHEEL_EXCLUDE = [
     "libcuda.so.1",
