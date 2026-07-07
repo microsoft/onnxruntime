@@ -51,14 +51,18 @@ static std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> Get
   static std::mutex cache_mutex;
   static std::unordered_map<std::string, std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache>>
       caches;
-  // '\n' cannot appear in a path/prefix, so it is a safe separator for the composite key.
-  const std::string key = config_prefix + "\n" + config_dir;
+
+  auto cache = onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache::MaybeCreate(config_dir, config_prefix);
+  if (cache == nullptr) {
+    return nullptr;
+  }
+
+  const std::string& key = cache->FilePath();
   std::lock_guard<std::mutex> lock(cache_mutex);
   auto it = caches.find(key);
   if (it != caches.end()) {
     return it->second;
   }
-  auto cache = onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache::MaybeCreate(config_dir, config_prefix);
   caches.emplace(key, cache);
   return cache;
 }

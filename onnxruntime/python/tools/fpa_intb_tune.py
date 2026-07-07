@@ -32,6 +32,7 @@ import argparse
 import os
 import sys
 
+import ml_dtypes
 import numpy as np
 
 import onnxruntime as ort
@@ -78,7 +79,7 @@ def _set_tuning_env(output_prefix: str, enable_gemv: bool, m_values: list[int]) 
 def _numpy_dtype_for(ort_type: str):
     mapping = {
         "tensor(float16)": np.float16,
-        "tensor(bfloat16)": np.float16,  # numpy has no bf16; only used for dummy inputs
+        "tensor(bfloat16)": ml_dtypes.bfloat16,
         "tensor(float)": np.float32,
         "tensor(double)": np.float64,
         "tensor(int64)": np.int64,

@@ -218,9 +218,15 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::loadPersistentCache(
   };
 
   for (auto const& [m, config] : buckets) {
-    if (config.has_value() && !config->enableCudaKernel && !is_valid_cutlass(*config)) {
-      ORT_LLM_LOG_WARNING("Dropping incompatible cached fpA_intB tactic from the tactic cache; re-profiling.");
-      continue;
+    if (config.has_value()) {
+      if (!checkTactic(m, gemmId.n, gemmId.k, *config)) {
+        ORT_LLM_LOG_WARNING("Dropping unsupported cached fpA_intB tactic from the tactic cache; re-profiling.");
+        continue;
+      }
+      if (!config->enableCudaKernel && !is_valid_cutlass(*config)) {
+        ORT_LLM_LOG_WARNING("Dropping incompatible cached fpA_intB tactic from the tactic cache; re-profiling.");
+        continue;
+      }
     }
     // Do not clobber tactics already selected in-process this session.
     map.emplace(m, config);

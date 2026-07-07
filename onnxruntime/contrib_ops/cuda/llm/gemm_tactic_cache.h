@@ -174,6 +174,7 @@ class MatMulNBitsTacticCache {
   mutable std::mutex mutex_;
   std::unordered_map<MatMulNBitsKey, BucketMap, MatMulNBitsKeyHash> table_;
   bool dirty_ = false;
+  size_t generation_ = 0;
 };
 
 }  // namespace onnxruntime::llm::gemm_cache

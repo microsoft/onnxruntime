@@ -435,6 +435,7 @@ void MatMulNBitsTacticCache::Put(const MatMulNBitsKey& key, int m_bucket,
   std::lock_guard<std::mutex> guard(mutex_);
   table_[key][m_bucket] = config;
   dirty_ = true;
+  ++generation_;
 }
 
 onnxruntime::common::Status MatMulNBitsTacticCache::Load() {
@@ -617,11 +618,20 @@ onnxruntime::common::Status MatMulNBitsTacticCache::WriteAllLocked(
     }
   }
 
+#if defined(_WIN32)
+  if (::MoveFileExA(tmp_path.c_str(), file_path_.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) == 0) {
+    std::remove(tmp_path.c_str());
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                           "Failed to atomically replace gemm tactic cache file: ", file_path_,
+                           ", Windows error: ", ::GetLastError());
+  }
+#else
   if (std::rename(tmp_path.c_str(), file_path_.c_str()) != 0) {
     std::remove(tmp_path.c_str());
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Failed to atomically replace gemm tactic cache file: ", file_path_);
   }
+#endif
   return onnxruntime::common::Status::OK();
 }
 
@@ -647,8 +657,13 @@ onnxruntime::common::Status MatMulNBitsTacticCache::Flush() {
     std::lock_guard<std::mutex> disk_guard(disk.mutex_);
     merged = disk.table_;
   }
+  size_t flush_generation = 0;
   {
     std::lock_guard<std::mutex> guard(mutex_);
+    if (!dirty_) {
+      return onnxruntime::common::Status::OK();
+    }
+    flush_generation = generation_;
     for (const auto& [key, buckets] : table_) {
       auto& dest = merged[key];
       for (const auto& [m, cfg] : buckets) {
@@ -661,7 +676,9 @@ onnxruntime::common::Status MatMulNBitsTacticCache::Flush() {
 
   {
     std::lock_guard<std::mutex> guard(mutex_);
-    dirty_ = false;
+    if (generation_ == flush_generation) {
+      dirty_ = false;
+    }
   }
   return onnxruntime::common::Status::OK();
 }
