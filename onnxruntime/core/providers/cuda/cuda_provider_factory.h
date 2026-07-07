@@ -55,6 +55,15 @@ struct ProviderInfo_CUDA {
   virtual std::shared_ptr<onnxruntime::IAllocator> CreateCudaAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, onnxruntime::CUDAExecutionProviderExternalAllocatorInfo& external_allocator_info, const OrtArenaCfg* default_memory_arena_cfg) = 0;
   virtual std::shared_ptr<onnxruntime::IAllocator> CreateCudaPinnedAllocator(int16_t device_id, size_t gpu_mem_limit, onnxruntime::ArenaExtendStrategy arena_extend_strategy, const OrtArenaCfg* default_memory_arena_cfg) = 0;
 
+  // Preprocess quantized weights for CUDA mixed-precision GEMM (FpA_IntB format).
+  // q_weights: packed quantized weights from MatMulNBits in (N, K/(8/bits)) layout.
+  // output:    caller-allocated buffer of size N * K / (8 / bits) bytes.
+  // bits:      quantization bit-width (4 or 8).
+  // force_arch: SM version to use for permutation (-1 for auto-detect from current device).
+  virtual void PackWeightsForMixedGemm(const uint8_t* q_weights, int32_t N, int32_t K,
+                                       int32_t bits, int32_t force_arch,
+                                       int8_t* output) = 0;
+
   // This function is the entry point to CUDA EP's UT cases.
   // All tests are only called from onnxruntime_provider_test.
   virtual void TestAll() {

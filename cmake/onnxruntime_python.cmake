@@ -231,22 +231,11 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     Python::NumPy
 )
 
-# Starting with Python 3.8 on Windows, PATH environment variable are no longer used to resolve DLL dependencies
-# for extension modules or libraries loaded via ctypes.
-# To avoid package import issues, we do not link pybind module against the CUDA runtime on Windows, instead of
-# os.add_dll_directory() to deal with CUDA paths.
-if (onnxruntime_USE_CUDA AND NOT WIN32)
-  target_sources(onnxruntime_pybind11_state PRIVATE
-    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.cu"
-    "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors_impl.cu"
-  )
-  include(cutlass)
-  target_include_directories(onnxruntime_pybind11_state PRIVATE ${cutlass_SOURCE_DIR}/include)
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE CUDA::cudart)
-endif()
-if (onnxruntime_USE_CUDA AND WIN32)
-  target_compile_definitions(onnxruntime_pybind11_state PRIVATE ORT_NO_CUDA_IN_PYBIND)
-endif()
+# The CUDA quantization helpers (pack_weights_for_cuda_mixed_gemm) are called through the
+# ProviderInfo_CUDA interface, which dynamically loads onnxruntime_providers_cuda at runtime.
+# Do NOT compile CUDA source files directly into onnxruntime_pybind11_state or link
+# CUDA::cudart from it: that would create a hard libcudart.so dependency that prevents
+# importing the Python module on CPU-only machines.
 
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}
