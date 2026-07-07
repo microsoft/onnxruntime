@@ -228,6 +228,40 @@ TEST(GemmTacticCacheTest, SignatureMismatchRejected) {
   CleanUp(file);
 }
 
+TEST(GemmTacticCacheTest, GitCommitAndBuildConfigNotStrict) {
+  const std::string prefix = UniqueTempPrefix("nonstrict");
+  const std::string file = prefix + ".matmulnbits_fpa_intb.tsv";
+  const gc::MatMulNBitsKey key = MakeKey();
+
+  // Write with one git commit / build config.
+  gc::HardwareSignature writer = MakeSignature();
+  writer.ort_git_commit = "commit_aaaa";
+  writer.ort_build_config = "Release";
+  {
+    gc::MatMulNBitsTacticCache cache(file, writer);
+    cache.Put(key, 1, MakeSm80Config());
+    ASSERT_TRUE(cache.Flush().IsOK());
+  }
+
+  // A reader with a DIFFERENT git commit and build config, but the same device/sm/cuda_runtime/
+  // ort_version, must still accept the cache: those two fields are diagnostic-only.
+  gc::HardwareSignature reader = MakeSignature();
+  reader.ort_git_commit = "commit_bbbb";
+  reader.ort_build_config = "Debug";
+  gc::MatMulNBitsTacticCache reloaded(file, reader);
+  ASSERT_TRUE(reloaded.Load().IsOK());
+  EXPECT_TRUE(reloaded.Get(key, 1).has_value());
+
+  // A different ort_version is still rejected (it remains part of the strict guard).
+  gc::HardwareSignature other_version = MakeSignature();
+  other_version.ort_version = "9.9.9";
+  gc::MatMulNBitsTacticCache rejected(file, other_version);
+  ASSERT_TRUE(rejected.Load().IsOK());
+  EXPECT_FALSE(rejected.Get(key, 1).has_value());
+
+  CleanUp(file);
+}
+
 TEST(GemmTacticCacheTest, AppendedColumnTolerated) {
   const std::string prefix = UniqueTempPrefix("appendcol");
   const std::string file = prefix + ".matmulnbits_fpa_intb.tsv";

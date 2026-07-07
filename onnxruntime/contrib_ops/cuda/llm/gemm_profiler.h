@@ -179,6 +179,19 @@ class GemmPluginProfiler {
 
   virtual int getMaxProfileM() const;
 
+  // Persists the current in-process tactics for `gemmId` (including buckets profiled lazily during
+  // inference via getBestConfigOrProfile) to the subclass's persistent cache, if one is configured.
+  // Best-effort and intended to be called off the hot path (e.g. at kernel/session teardown) so
+  // runtime-discovered M buckets converge into the disk cache. No-op if `gemmId` was never profiled
+  // or the subclass has no persistent cache.
+  void persistProfiledTactics(GemmIdType const& gemmId) {
+    reader_lock lock(mMNKProfileMap->mutex);
+    if (mSkip || !mMNKProfileMap->existsMProfileMap(gemmId)) {
+      return;
+    }
+    storePersistentCache(gemmId, *mMNKProfileMap->getMProfileMap(gemmId), mHasWeightOnlyCudaKernel);
+  }
+
  protected:
   virtual void runTactic(int m, int n, int k, Config const& tactic, char* workspace, cudaStream_t const& stream) = 0;
 
@@ -475,8 +488,9 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
 
   // Deliberately do NOT flush this lazily-profiled bucket to the persistent disk cache here:
   // doing disk I/O (file lock + atomic write) on the inference compute path would stall latency.
-  // The bucket stays in the in-process map for the rest of the session; disk persistence is
-  // handled off the hot path by the initial profileTactics sweep and the offline tuning tool.
+  // The bucket stays in the in-process map for the rest of the session and is persisted off the
+  // hot path by persistProfiledTactics() at kernel/session teardown (in addition to the initial
+  // profileTactics sweep and the offline tuning tool).
   return best;
 }
 

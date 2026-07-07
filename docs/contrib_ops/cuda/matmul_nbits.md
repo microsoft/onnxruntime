@@ -288,8 +288,11 @@ sessions, and the first-time tuning cost is reduced. Design details:
 `M=1` and the top bucket). If a runtime `M` maps to an unprofiled bucket, that
 single bucket is profiled lazily on first use and kept in the in-process map for
 the rest of the session. Lazy buckets are intentionally **not** written to disk
-(that would put file I/O on the inference hot path); disk persistence covers only
-the construction-time sweep and the offline tuning tool. Lazy profiling is also
+on the hot path (that would put file I/O on inference latency); instead they are
+flushed **best-effort at kernel/session teardown**, so the on-disk cache
+gradually converges to the `M` buckets the real workload actually hits. Disk
+persistence therefore covers the construction-time sweep, the offline tuning
+tool, and the teardown flush of lazily-discovered buckets. Lazy profiling is also
 skipped while a CUDA graph is being captured (profiling kernels/events/allocations
 are illegal during capture), so run a warmup inference **before** capture to tune
 any `M` buckets your captured graph needs. Set `ORT_FPA_INTB_PROFILE_M`
@@ -323,10 +326,15 @@ column-name row, and one row per `(problem shape, M bucket) → tactic`. Readers
 map by column name, so appended columns are backward/forward compatible.
 
 **Hardware guard.** On load, the file's signature must strictly match the current
-`device_name`, `sm`, `cuda_runtime`, `ort_version`, `ort_git_commit`, and
-`ort_build_config`; otherwise the file is ignored and shapes are re-profiled.
-This prevents reusing tactics across different GPUs or toolkit/ORT versions
-(e.g. RTX 4090 vs RTX 4060, which share `sm_89`).
+`device_name`, `sm`, `cuda_runtime`, and `ort_version`; otherwise the file is
+ignored and shapes are re-profiled. This prevents reusing tactics across different
+GPUs or toolkit/ORT versions (e.g. RTX 4090 vs RTX 4060, which share `sm_89`).
+`ort_git_commit`, `ort_build_config`, `multiprocessor_count`, and `cuda_driver`
+are recorded in the header for diagnostics but are **not** part of the guard: a
+tactic is only a config selected among `getConfigs()`, so a cross-commit or
+cross-build reuse can at worst pick a slightly suboptimal (never incorrect)
+tactic, and the stale-tactic guard above re-validates every CUTLASS tactic
+against the current runner anyway.
 
 **Offline tuning tool.** To pre-populate a cache without running your own
 workload, use

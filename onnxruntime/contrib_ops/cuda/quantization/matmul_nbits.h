@@ -166,6 +166,21 @@ class MatMulNBits final : public CudaKernel {
 #endif
   }
 
+#if USE_FPA_INTB_GEMM
+  ~MatMulNBits() {
+    // Best-effort: persist tactics discovered lazily during inference (runtime M buckets that were
+    // not part of the construction-time sweep) to the disk cache. Runs off the hot path at session
+    // teardown; the process-global cache outlives this kernel. A destructor must never throw.
+    if (gemmProfiler_ != nullptr) {
+      try {
+        gemmProfiler_->persistProfiledTactics(gemmId_);
+      } catch (...) {
+        // Swallow: cache persistence is best-effort and must not escape the destructor.
+      }
+    }
+  }
+#endif
+
   Status ComputeInternal(OpKernelContext* context) const override;
 #if USE_FPA_INTB_GEMM
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,

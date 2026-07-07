@@ -248,12 +248,13 @@ HardwareSignature HardwareSignature::Compute() {
 }
 
 bool HardwareSignature::StrictMatches(const HardwareSignature& other) const {
+  // ort_git_commit and ort_build_config are intentionally excluded (diagnostic only): reusing a
+  // tactic across commits or build configs can at worst be slightly suboptimal, never incorrect,
+  // and loadPersistentCache re-validates each CUTLASS tactic against the current runner anyway.
   return device_name == other.device_name &&
          sm == other.sm &&
          cuda_runtime == other.cuda_runtime &&
-         ort_version == other.ort_version &&
-         ort_git_commit == other.ort_git_commit &&
-         ort_build_config == other.ort_build_config;
+         ort_version == other.ort_version;
 }
 
 std::string HardwareSignature::FilePrefixToken() const {
@@ -363,7 +364,7 @@ namespace {
 // Column names for the MatMulNBits data rows, in write order.
 const std::vector<std::string>& MatMulNBitsColumnNames() {
   static const std::vector<std::string> names = {
-      "schema_version", "n_16b", "k", "activation_dtype", "weight_type", "bits",
+      "n_16b", "k", "activation_dtype", "weight_type", "bits",
       "block_size", "has_zero_points", "zero_point_dtype", "gemv_enabled", "packing_sm",
       "m_bucket", "valid_config", "sm_version", "tile80", "tile90", "tile100", "tile120",
       "split_k_style", "split_k", "stages", "cluster", "mainloop", "epilogue", "tma",
@@ -594,7 +595,6 @@ onnxruntime::common::Status MatMulNBitsTacticCache::WriteAllLocked(
       for (const auto& [m_bucket, cfg] : buckets) {
         std::vector<std::string> row;
         row.reserve(MatMulNBitsColumnNames().size());
-        row.emplace_back(std::to_string(kSchemaVersion));
         row.emplace_back(std::to_string(key.n_16b));
         row.emplace_back(std::to_string(key.k));
         row.emplace_back(TsvEncode(key.activation_dtype));

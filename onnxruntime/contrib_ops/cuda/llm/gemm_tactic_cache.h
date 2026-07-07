@@ -41,7 +41,6 @@ using onnxruntime::llm::cutlass_extensions::CutlassGemmConfig;
 // Cache file format version. Bump when the on-disk schema changes incompatibly.
 constexpr const char* kCacheMagic = "ort_cuda_gemm_tactic_cache";
 constexpr const char* kCacheFormatVersion = "v1";
-constexpr int kSchemaVersion = 1;
 
 constexpr const char* kTableMatMulNBits = "matmulnbits_fpa_intb";
 
@@ -63,16 +62,19 @@ struct HardwareSignature {
   int multiprocessor_count = 0;  // diagnostic only
   int cuda_runtime = 0;          // CUDART_VERSION
   int cuda_driver = 0;           // cudaDriverGetVersion(), diagnostic only
-  std::string ort_version;       // ORT_VERSION
-  std::string ort_git_commit;    // parsed from ORT_BUILD_INFO or "unknown"
-  std::string ort_build_config;  // "Release" / "Debug"
+  std::string ort_version;       // ORT_VERSION (strict-match field)
+  std::string ort_git_commit;    // parsed from ORT_BUILD_INFO or "unknown" (diagnostic only)
+  std::string ort_build_config;  // "Release" / "Debug" (diagnostic only)
 
   // Computes the signature for the current CUDA device and build.
   static HardwareSignature Compute();
 
-  // Strict reuse guard: device_name, sm, cuda_runtime, ort_version, ort_git_commit,
-  // ort_build_config must all match. multiprocessor_count and cuda_driver are
-  // recorded for diagnostics only.
+  // Strict reuse guard: device_name, sm, cuda_runtime, and ort_version must all match.
+  // multiprocessor_count, cuda_driver, ort_git_commit, and ort_build_config are recorded for
+  // diagnostics only and are NOT part of the guard: a tactic is just a config selected among
+  // getConfigs(), so a cross-commit/cross-build reuse can at worst pick a slightly suboptimal
+  // (never incorrect) tactic, and loadPersistentCache re-validates every CUTLASS tactic against
+  // the current runner and drops any that no longer applies.
   bool StrictMatches(const HardwareSignature& other) const;
 
   // A filesystem-safe token derived from device_name + sm used as a default cache prefix.
