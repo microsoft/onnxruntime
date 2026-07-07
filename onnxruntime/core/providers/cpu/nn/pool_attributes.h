@@ -138,7 +138,8 @@ struct PoolAttributes {
                        bool is_nhwc = false) const {
     ORT_ENFORCE(input_dims.size() >= 2,
                 "Input must have at least 2 dimensions (batch and channel) before the spatial dims. "
-                "Got rank: ", input_dims.size());
+                "Got rank: ",
+                input_dims.size());
     if (global_pooling) {
       output_dims->assign(input_dims.size() - 2, 1);
     } else {
