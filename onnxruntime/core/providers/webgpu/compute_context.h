@@ -104,6 +104,20 @@ class ComputeContextBase {
   }
 
   //
+  // Get the KV cache quantization bits (0 = disabled, 4 = 4-bit).
+  //
+  inline uint32_t KvCacheQuantizationBits() const {
+    return ep_.KvCacheQuantizationBits();
+  }
+
+  //
+  // Get whether KV cache quantization is enabled.
+  //
+  inline bool KvCacheQuantizationEnabled() const {
+    return ep_.KvCacheQuantizationEnabled();
+  }
+
+  //
   // Get the logger.
   //
   inline const logging::Logger& Logger() const {

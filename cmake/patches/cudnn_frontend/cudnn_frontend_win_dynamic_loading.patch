@@ -1,0 +1,52 @@
+--- a/include/cudnn_frontend_shim.h	2026-06-26 15:06:33.854043748 -0700
++++ b/include/cudnn_frontend_shim.h	2026-06-26 15:06:33.966044710 -0700
+@@ -69,7 +69,14 @@
+     dlerror();
+ 
+     // Attempt to open the cuda library
++#ifdef _WIN32
++    // Reset the thread error state so the GetLastError()-based success check
++    // below is not tripped by a stale error from an earlier call.
++    SetLastError(0);
++    HMODULE handle    = dlopen("nvcuda.dll", RTLD_NOW);
++#else
+     HMODULE handle    = dlopen("libcuda.so.1", RTLD_NOW);
++#endif
+     const char *error = reinterpret_cast<const char *>(dlerror());
+     if (!handle || error) {
+         // If opening the library fails, throw an exception with the error message
+@@ -85,13 +92,22 @@
+     dlerror();
+ 
+     // List of potential libcudart libraries (Adding major version to support python package)
++#ifdef _WIN32
++    constexpr const char *libs[] = {"cudart64_12.dll", "cudart64_13.dll"};
++#else
+     constexpr const char *libs[] = {"libcudart.so.12", "libcudart.so.13"};
++#endif
+     constexpr size_t num_libs    = sizeof(libs) / sizeof(libs[0]);
+ 
+     HMODULE lib_handle = nullptr;
+     int loaded_index   = -1;
+ 
+     for (size_t i = 0; i < num_libs; ++i) {
++#ifdef _WIN32
++        // Reset the thread error state so the GetLastError()-based success check
++        // below is not tripped by a stale error from a previous failed attempt.
++        SetLastError(0);
++#endif
+         HMODULE handle    = dlopen(libs[i], RTLD_NOW);
+         const char *error = reinterpret_cast<const char *>(dlerror());
+ 
+@@ -182,10 +200,10 @@
+ #if defined NV_CUDNN_FRONTEND_USE_DYNAMIC_LOADING
+ 
+ #define NV_FE_CALL_TO_CUDA(function_name, cuda_symbol, ...) \
+-    return reinterpret_cast<decltype(function_name) *>(get_cuda_symbol(CudaLibrary::CUDART, #cuda_symbol))(__VA_ARGS__);
++    return cuda_symbol(__VA_ARGS__);
+ #define NV_FE_CALL_TO_CU(function_name, cuda_symbol, ...) \
+-    return reinterpret_cast<decltype(function_name) *>(get_cuda_symbol(CudaLibrary::CUDA, #cuda_symbol))(__VA_ARGS__);
++    return cuda_symbol(__VA_ARGS__);
+ 
+ #else
+ 

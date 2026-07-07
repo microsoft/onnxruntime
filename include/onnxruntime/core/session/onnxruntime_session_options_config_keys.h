@@ -355,9 +355,12 @@ static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersFil
 static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes =
     "session.optimized_model_external_initializers_min_size_in_bytes";
 
-// When loading model from memory buffer and the model has external initializers
-// Use this config to set the external data file folder path
-// All external data files should be in the same folder
+// Specifies the folder path used to resolve a model's external initializer data files.
+// When set, external initializers are loaded from this folder instead of the model's own
+// directory, overriding the model directory. This applies whether the model is loaded from a
+// file path or from a memory buffer/stream. All external data files must be in the same folder.
+// Typical uses include loading models with external data from memory, sharing a weights file
+// across models, and weightless/cache models whose weights live outside the model directory.
 static const char* const kOrtSessionOptionsModelExternalInitializersFileFolderPath =
     "session.model_external_initializers_file_folder_path";
 
@@ -497,6 +500,14 @@ static const char* const kOrtSessionOptionsMlasLutGemm = "mlas.use_lut_gemm";
 // - "0": Use KleidiAI kernels when available. [DEFAULT]
 // - "1": Disable KleidiAI kernels even if available.
 static const char* const kOrtSessionOptionsMlasDisableKleidiAi = "mlas.disable_kleidiai";
+
+// Power-user tuning option for the Arm® KleidiAI™ SME IGEMM convolution route on Arm64.
+// For 2D convolutions where both SME IGEMM and the MlasGemm SGEMM fallback are valid routes, work is estimated as:
+//  output_h * output_w * input_channels * dilated_kernel_h * dilated_kernel_w * filter_count.
+// Work above this threshold routes through the SGEMM fallback; work at or below it stays on IGEMM.
+// "0" or unset uses the MLAS default heuristic, intended for typical workloads.
+// This option exists for perf experimentation; the default may be retuned in future ORT releases.
+static const char* const kOrtSessionOptionsMlasKleidiAiConvIgemmMaxWork = "mlas.kleidiai.conv_igemm_max_work";
 
 // When converting DQ + MatMul -> MatMulNBits, the accuracy level of the MatMulNBits is controlled by this option.
 // Refer to MatMulNBits op schema for more details.

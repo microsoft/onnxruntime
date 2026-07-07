@@ -713,6 +713,7 @@ Return Value:
         this->MlasDynamicQGemmPackBOverride = ArmKleidiAI::MlasDynamicQGemmPackB;
         this->MlasConvPrepareOverride = ArmKleidiAI::MlasConvPrepare;
         this->MlasConvOverride = ArmKleidiAI::MlasConv;
+        this->MlasConvSGemmRouteOverride = ArmKleidiAI::MlasConvSGemmRoute;
 #if defined(__aarch64__) && defined(__linux__)
         // Currently only an SME2 variant of SBGEMM exists
         if (ArmKleidiAI::UseSME2){

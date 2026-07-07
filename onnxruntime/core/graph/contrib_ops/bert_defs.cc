@@ -29,7 +29,7 @@ namespace contrib {
 void DecoderAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) {
   // Type inference
   ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 0);
-  if (ctx.getNumOutputs() > 1) {
+  if (ctx.getNumOutputs() > 2) {  // has new_key_cache and new_value_cache outputs; a pair, so present only when > 2
     ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 1);
     ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, 2);
   }
@@ -38,7 +38,7 @@ void DecoderAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx
     auto& query_shape = getInputShape(ctx, 0);
     updateOutputShape(ctx, 0, query_shape);
   }
-  if (ctx.getNumOutputs() > 1) {
+  if (ctx.getNumOutputs() > 2) {  // has new_key_cache and new_value_cache outputs; a pair, so present only when > 2
     if (hasInputShape(ctx, 6) && hasInputShape(ctx, 7)) {
       auto& cache_shape = getInputShape(ctx, 6);
       auto& cache_dims = cache_shape.dim();
@@ -199,7 +199,7 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
     }
   }
 
-  if (ctx.getNumOutputs() > 1) {  // has present output
+  if (ctx.getNumOutputs() > 2) {  // has present_key and present_value outputs; a pair, so present only when > 2
     if (hasInputShape(ctx, past_key_index)) {
       auto& past_shape = getInputShape(ctx, past_key_index);
       auto& past_dims = past_shape.dim();
@@ -1324,7 +1324,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "Optional 1D tensor of shape (head_size). When provided together with k_norm_weight, the kernel applies a "
                "per-head RMS normalization to Q (and K) before any rotary embedding. Used by Qwen3-style models that wrap "
                "their Q/K projections in a Reshape -> SimplifiedLayerNormalization -> Reshape stack; downstream graph fusion "
-               "folds that pattern into this input. Currently honored by the native WebGPU execution provider only; "
+               "folds that pattern into this input. Currently honored by the CUDA and native WebGPU execution providers; "
                "JSEP WebGPU/JS and other EPs must reject the node when this input is set.",
                "T",
                OpSchema::Optional)

@@ -34,6 +34,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "onnxruntime_error_code.h"
+
 /** \brief The API version defined in this header
  *
  * This value is used by some API functions to behave as this version of the header expects.
@@ -262,79 +264,6 @@ typedef enum OrtLoggingLevel {
   ORT_LOGGING_LEVEL_ERROR,    ///< Error messages.
   ORT_LOGGING_LEVEL_FATAL,    ///< Fatal error messages (most severe).
 } OrtLoggingLevel;
-
-/** \brief Error codes reported by ONNX Runtime.
- *
- * The error code associated with an ::OrtStatus.
- */
-typedef enum OrtErrorCode {
-  /**
-   * Success. No error occurred.
-   */
-  ORT_OK,
-  /**
-   * Generic failure that does not map to a more specific error code. Consult the error message for details.
-   */
-  ORT_FAIL,
-  /**
-   * A caller-supplied argument was invalid (e.g. NULL pointer, out-of-range value, mismatched shape/rank, or bad
-   * configuration).
-   */
-  ORT_INVALID_ARGUMENT,
-  /**
-   * A required file (such as a model file) does not exist.
-   */
-  ORT_NO_SUCHFILE,
-  /**
-   * Legacy/unused but retained for ABI compatibility. Historically returned when a model could not be found by name in
-   * the ONNX Runtime Server (removed in 2022).
-   */
-  ORT_NO_MODEL,
-  /**
-   * A hardware accelerator or backend engine reported a failure (e.g. a device crash or other device-level error).
-   */
-  ORT_ENGINE_ERROR,
-  /**
-   * A generic runtime exception was caught. The error message is the primary source of detail.
-   */
-  ORT_RUNTIME_EXCEPTION,
-  /**
-   * Protobuf parsing or serialization failed.
-   */
-  ORT_INVALID_PROTOBUF,
-  /**
-   * Invalid session state for the requested operation. Despite the name, this code does not mean "success, model
-   * loaded"; it is returned when the session is in the wrong state for the requested call (e.g. a model is already
-   * loaded, the session is already initialized, or no model has been loaded yet). The name is historical and is
-   * retained for ABI compatibility; consult the error message for the specific condition.
-   */
-  ORT_MODEL_LOADED,
-  /**
-   * The requested functionality is not implemented in this build.
-   */
-  ORT_NOT_IMPLEMENTED,
-  /**
-   * The model graph is structurally invalid (e.g. recursive function definitions, invalid tensor dimensions, or
-   * malformed nodes).
-   */
-  ORT_INVALID_GRAPH,
-  /**
-   * An execution provider reported a generic failure.
-   */
-  ORT_EP_FAIL,
-  /**
-   * Model loading or session initialization was canceled at the caller's request.
-   */
-  ORT_MODEL_LOAD_CANCELED,
-  /**
-   * The model requires compilation by an execution provider, but compilation was disabled via session options.
-   */
-  ORT_MODEL_REQUIRES_COMPILATION,
-  /**
-   * A requested resource could not be found.
-   */
-  ORT_NOT_FOUND,
-} OrtErrorCode;
 
 typedef enum OrtOpAttrType {
   ORT_OP_ATTR_UNDEFINED = 0,
@@ -7567,6 +7496,27 @@ struct OrtApi {
    * \since Version 1.28.
    */
   ORT_API_T(OrtExperimentalFnPtr, GetExperimentalFunction, _In_ const char* name);
+
+  /** \brief Get the framework synchronization stream associated with a kernel context.
+   *
+   * This returns the framework stream wrapper for the execution provider stream used by this kernel invocation.
+   * It is intended for APIs that need a stable framework stream object for stream-aware allocation and
+   * synchronization bookkeeping. Use KernelContext_GetGPUComputeStream when launching native GPU work.
+   *
+   * \param[in] context OrtKernelContext instance.
+   * \param[out] out Returns the framework synchronization stream, or nullptr if the kernel has no stream.
+   *                 Do not free or mutate the returned pointer. It is owned by the underlying session.
+   *                 The pointer may be stored and used for stream-aware allocation and synchronization
+   *                 bookkeeping beyond the Compute call (e.g. an allocator may persist it in arena
+   *                 chunks); it remains valid until the owning Session::Run() completes its teardown.
+   *                 Do not retain or dereference it after the run that produced this kernel context ends.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.28.
+   */
+  ORT_API2_STATUS(KernelContext_GetSyncStream, _In_ const OrtKernelContext* context,
+                  _Outptr_result_maybenull_ OrtSyncStream** out);
 };
 
 /*

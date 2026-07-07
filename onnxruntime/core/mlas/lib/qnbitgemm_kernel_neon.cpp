@@ -27,6 +27,13 @@ Abstract:
 #include "qnbitgemm.h"
 #include "sqnbitgemm_q8_block.h"
 
+// W2 block-group pack helpers and scalar reference kernel declared in the
+// Avx512-named header are pure C++ (no x86 intrinsics). They serve as the
+// cross-arch layout authority for W2 and are reused on ARM64 for pack-size /
+// pack / layout; compute is provided by the native NEON DotProd kernel in
+// sqnbitgemm_kernel_neon_int8_2bit.cpp.
+#include "sqnbitgemm_kernel_avx512_2bit.h"
+
 #ifdef USE_KLEIDIAI
 #include "kai/kai_common.h"
 #include "kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0.h"
@@ -653,6 +660,47 @@ GetMlasQNBitGemmDispatchNeon(
             d.Q8BitGemmPackQuantBDataSize = sqnbitgemm_neon::QNBitGemmPackQuantBDataSize<8, false>;
             d.QuantizeARowComputeBlkSum_CompInt8 = sqnbitgemm_neon::QuantizeARowComputeBlkSum_CompInt8<false>;
             d.SQ8BitGemmKernel_BlkSum_CompInt8 = sqnbitgemm_neon::SQ8BitGemmKernel_BlkSum_CompInt8<false>;
+        }
+
+        // W2 native CompInt8 path.
+        //
+        // Pack-size, pack-and-blksum, and EffectiveBlockCountK use the
+        // portable AVX-512-namespaced helpers (the file is misleadingly
+        // named -- the TU contains no x86 intrinsics) which serve as the
+        // cross-arch layout authority for W2.
+        //
+        // SQ2BitGemmKernel_BlkSum_CompInt8 is wired to the native NEON
+        // DotProd kernel when FEAT_DotProd is available; the kernel
+        // handles BlkLen ∈ {32, 64, 128} natively via SDOT inner loops.
+        // The 2-bit weights are unpacked to unsigned values in [0, 3] and
+        // fed directly to SDOT; the B zero-point correction is fused into
+        // the accumulator via the ABlockSum × QuantBBlkSum term (where
+        // QuantBBlkSum bakes in -scale × zp per block), so no post-kernel
+        // zero-point correction SGEMM is needed.
+        //
+        // FEAT_I8MM hosts also take this path: FEAT_I8MM always implies
+        // FEAT_DotProd per the ARM spec, and USDOT and SDOT have identical
+        // throughput on every core that implements both -- a separate I8MM
+        // TU using USDOT would be pure duplication. The real I8MM-only
+        // throughput win lives in SMMLA (R2-tile 2×2 matrix-multiply,
+        // 2× the dots/cycle of SDOT), which is future work.
+        //
+        // The Scalar fall-back is defensive: an I8MM-without-DotProd host
+        // is unreachable on conformant ARMv8.2+ hardware.
+        if (InitializeWithDotSupport || InitializeWithI8MMSupport) {
+            d.Q2BitGemmPackQuantBDataSize       = onnxruntime::mlas::sq2bit_avx512::Q2BitGemmPackQuantBDataSize_Avx512;
+            d.SQ2BitGemmPackQuantBDataAndBlkSum = onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmPackQuantBDataAndBlkSum_Scalar;
+            d.SQ2BitGemmKernel_BlkSum_CompInt8  = InitializeWithDotSupport
+                ? sqnbitgemm_neon::SQ2BitGemmKernel_BlkSum_CompInt8_NeonDotProd
+                : onnxruntime::mlas::sq2bit_avx512::SQ2BitGemmKernel_BlkSum_CompInt8_Scalar;
+            d.Q2BitGemmEffectiveBlockCountK     = [](size_t BlockCountK) {
+                return MlasDivRoundup(BlockCountK, kSq2BitAvx512WeightKBlockGroup) * kSq2BitAvx512WeightKBlockGroup;
+            };
+            // W2 NEON DotProd kernel uses vdotq_s32 over A and so requires
+            // SIGNED int8 A. The shared QuantizeARowComputeBlkSum is wired
+            // to the UNSIGNED W8 variant on DotProd-only hosts; route W2
+            // through the signed variant explicitly.
+            d.QuantizeARowComputeBlkSum_CompInt8_W2 = sqnbitgemm_neon::QuantizeARowComputeBlkSum_CompInt8<false>;
         }
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)

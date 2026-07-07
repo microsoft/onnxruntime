@@ -56,6 +56,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/sqnbitgemm_q8_block.h
   ${MLAS_SRC_DIR}/flashattn.cpp
   ${MLAS_SRC_DIR}/flashattn_qkv.cpp
+  ${MLAS_SRC_DIR}/flashattn_gqa.cpp
   ${MLAS_SRC_DIR}/qkv_quant.cpp
   ${MLAS_SRC_DIR}/cast.cpp
   ${MLAS_SRC_DIR}/layernorm.cpp
@@ -111,6 +112,15 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/qnbitgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_fp32.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
+        # Portable W2 pack helpers + scalar reference kernel. Misleadingly
+        # Avx512-named because the AVX-512 W2 path was the first consumer, but
+        # the TU contains no x86 intrinsics (see sqnbitgemm_kernel_avx512_2bit.cpp).
+        # ARM64 W2 dispatch reuses these for pack-size / pack / layout; the
+        # native compute kernel is the NEON DotProd TU listed just below.
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.h
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
+        # W2 CompInt8 DotProd kernel (NEON FEAT_DotProd backend).
+        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_2bit.cpp
         ${MLAS_SRC_DIR}/cast_kernel_neon.cpp
         ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16.cpp
         ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16_8bit.cpp
@@ -241,6 +251,11 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.h
       ${MLAS_SRC_DIR}/sqnbitgemm_lut_kernel_avx2.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
+      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.h
+      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
+      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen64.h
+      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen128.h
+      ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen32.h
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
       ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
       ${MLAS_SRC_DIR}/qkv_quant_kernel_avx512vnni.cpp
@@ -511,6 +526,15 @@ else()
           ${MLAS_SRC_DIR}/qnbitgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_fp32.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
+          # Portable W2 scalar pack / reference kernel. See ARM64 (Windows) branch
+          # above for the rationale; this is the matching entry for non-Windows
+          # ARM64 builds (Linux, macOS).
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.h
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
+          # W2 CompInt8 DotProd kernel (NEON FEAT_DotProd backend). Compiled
+          # with -march=armv8.2-a+dotprod on this branch -- see flag override
+          # further below alongside the W4/W8 dotprod TU.
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_2bit.cpp
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.h
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.cpp
           ${MLAS_SRC_DIR}/qkv_quant_kernel.h
@@ -544,6 +568,8 @@ else()
           setup_kleidiai()
         endif()
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
+                                    PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
+        set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_2bit.cpp
                                     PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8_i8mm.cpp
 				    PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+i8mm ")
@@ -837,8 +863,21 @@ endif()
           ${MLAS_SRC_DIR}/x86_64/QgemmU8X8KernelAvx512Core.S
           ${MLAS_SRC_DIR}/x86_64/ConvSymKernelAvx512Core.S
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512.cpp
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.h
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen64.h
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen128.h
+          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit_blklen32.h
         )
         set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_FLAGS "-mfma -mavx512vnni -mavx512bw -mavx512dq -mavx512vl")
+
+        # Strip -mavx512vnni from the W2 scalar oracle / pack-helper TU so the
+        # compiler cannot autovectorize its int8 dot-product loops to vpdpbusd.
+        # Needed because this helper runs at model load on AVX-512-only
+        # (non-VNNI) hosts via the AVX-512 W2 dispatch. TU is pure C++ -- no
+        # AVX-512 intrinsics inside.
+        set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp PROPERTIES
+          COMPILE_FLAGS "-mfma -mavx512bw -mavx512dq -mavx512vl")
 
         set(mlas_platform_srcs_avx512vnni
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp

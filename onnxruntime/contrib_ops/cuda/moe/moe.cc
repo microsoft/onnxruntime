@@ -184,11 +184,13 @@ Status MoE<T>::ComputeInternal(OpKernelContext* context) const {
       static_cast<size_t>(moe_params.inter_size), static_cast<size_t>(moe_params.num_experts), static_cast<size_t>(k_),
       kernel_activation_type, parallelism_config, use_awq);
 
-  // Scratch buffer for workspace + expert_scales + expert_indices + permutation_map
-  size_t scales_bytes = moe_params.num_rows * k_ * sizeof(float);
-  size_t indices_bytes = moe_params.num_rows * k_ * sizeof(int);
-  size_t permutation_bytes = moe_params.num_rows * k_ * sizeof(int);
-  size_t total_scratch_bytes = ws_size + scales_bytes + indices_bytes + permutation_bytes;
+  // Scratch buffer for workspace + expert_scales + expert_indices + permutation_map.
+  // Use checked arithmetic: these byte counts derive adjacent pointer offsets inside one allocation.
+  size_t expanded_rows = SafeInt<size_t>(moe_params.num_rows) * SafeInt<size_t>(k_);
+  size_t scales_bytes = expanded_rows * sizeof(float);
+  size_t indices_bytes = expanded_rows * sizeof(int);
+  size_t permutation_bytes = expanded_rows * sizeof(int);
+  size_t total_scratch_bytes = SafeInt<size_t>(ws_size) + scales_bytes + indices_bytes + permutation_bytes;
 
   auto work_space = GetScratchBuffer<void>(total_scratch_bytes, stream_obj);
   char* workspace_ptr = reinterpret_cast<char*>(work_space.get());

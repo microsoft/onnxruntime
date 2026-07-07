@@ -2675,7 +2675,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>v_scale</tt> (optional) : T_KV_SCALE</dt>
 <dd>Scale tensor for past_value.</dd>
 <dt><tt>q_norm_weight</tt> (optional) : T</dt>
-<dd>Optional 1D tensor of shape (head_size). When provided together with k_norm_weight, the kernel applies a per-head RMS normalization to Q (and K) before any rotary embedding. Used by Qwen3-style models that wrap their Q/K projections in a Reshape -> SimplifiedLayerNormalization -> Reshape stack; downstream graph fusion folds that pattern into this input. Currently honored by the native WebGPU execution provider only; JSEP WebGPU/JS and other EPs must reject the node when this input is set.</dd>
+<dd>Optional 1D tensor of shape (head_size). When provided together with k_norm_weight, the kernel applies a per-head RMS normalization to Q (and K) before any rotary embedding. Used by Qwen3-style models that wrap their Q/K projections in a Reshape -> SimplifiedLayerNormalization -> Reshape stack; downstream graph fusion folds that pattern into this input. Currently honored by the CUDA and native WebGPU execution providers; JSEP WebGPU/JS and other EPs must reject the node when this input is set.</dd>
 <dt><tt>k_norm_weight</tt> (optional) : T</dt>
 <dd>Optional 1D tensor of shape (head_size). See q_norm_weight. Must be provided together with q_norm_weight.</dd>
 </dl>
@@ -3158,6 +3158,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Bit-width used to quantize the weights (supported values: 2, 4, 8)</dd>
 <dt><tt>block_size</tt> : int (required)</dt>
 <dd>Size of each quantization block along the K (input feature) dimension. Must be a power of two and ≥ 16 (e.g., 16, 32, 64, 128).</dd>
+<dt><tt>weight_prepacked</tt> : int</dt>
+<dd>If set, input B is already prepacked into an EP-specific layout and the EP skips runtime weight prepacking. 0 (default): not prepacked. 1: prepacked in the CUDA SM80 fpA_intB layout. 2: reserved for a future SM90 layout (currently rejected at kernel construction).</dd>
 </dl>
 
 #### Inputs (3 - 6)

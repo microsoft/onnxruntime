@@ -34,6 +34,9 @@
 #include "core/providers/webgpu/tensor/grid_sample.h"
 #include "core/providers/webgpu/generator/range.h"
 #include "core/providers/webgpu/tensor/unsqueeze.h"
+#include "core/providers/webgpu/math/binary_elementwise_ops.h"
+#include "core/providers/webgpu/tensor/where.h"
+#include "core/providers/webgpu/reduction/reduction_ops.h"
 
 namespace onnxruntime {
 
@@ -158,9 +161,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO_VERSIONED(7, 12, Add),
     KERNEL_CREATE_INFO_VERSIONED(13, 13, Add),
     KERNEL_CREATE_INFO(14, Add),
-    KERNEL_CREATE_INFO_VERSIONED(7, 12, Sub),
-    KERNEL_CREATE_INFO_VERSIONED(13, 13, Sub),
-    KERNEL_CREATE_INFO(14, Sub),
+    // Sub: registered via RegisterKernels with conditional int64 support
     KERNEL_CREATE_INFO_VERSIONED(7, 12, Mul),
     KERNEL_CREATE_INFO_VERSIONED(13, 13, Mul),
     KERNEL_CREATE_INFO(14, Mul),
@@ -171,10 +172,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     KERNEL_CREATE_INFO_VERSIONED(12, 12, Pow),
     KERNEL_CREATE_INFO_VERSIONED(13, 14, Pow),
     KERNEL_CREATE_INFO(15, Pow),
-    KERNEL_CREATE_INFO_VERSIONED(7, 10, Equal),
-    KERNEL_CREATE_INFO_VERSIONED(11, 12, Equal),
-    KERNEL_CREATE_INFO_VERSIONED(13, 18, Equal),
-    KERNEL_CREATE_INFO(19, Equal),
+    // Equal: registered via RegisterKernels with conditional int64 support
     KERNEL_CREATE_INFO_VERSIONED(7, 8, Greater),
     KERNEL_CREATE_INFO_VERSIONED(9, 12, Greater),
     KERNEL_CREATE_INFO(13, Greater),
@@ -243,9 +241,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 17, ReduceProd)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 18, ReduceProd)>,
 
-    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 10, ReduceSum)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, ReduceSum)>,
-    BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, ReduceSum)>,
+    // ReduceSum: registered via RegisterKernels with conditional int64 support
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 10, ReduceL1)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 11, 12, ReduceL1)>,
@@ -272,8 +268,7 @@ static const BuildKernelCreateInfoFn build_kernel_create_info_function_table[] =
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 17, ReduceLogSumExp)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 18, ReduceLogSumExp)>,
 
-    KERNEL_CREATE_INFO_VERSIONED(9, 15, Where),
-    KERNEL_CREATE_INFO(16, Where),
+    // Where: registered via RegisterKernels with conditional int64 support
 
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 1, 12, Transpose)>,
     BuildKernelCreateInfo<class ONNX_OPERATOR_VERSIONED_KERNEL_CLASS_NAME(kWebGpuExecutionProvider, kOnnxDomain, 13, 20, Transpose)>,
@@ -492,6 +487,26 @@ std::unique_ptr<KernelRegistry> RegisterKernels(bool enable_graph_capture, bool 
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateExpandVersionedKernelInfo<8, 12>(enable_int64)));
   ORT_THROW_IF_ERROR(kernel_registry->Register(CreateExpandKernelInfo<13>(enable_int64)));
 
+  // Register Equal kernels with conditional int64 support
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateEqualVersionedKernelInfo<7, 10>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateEqualVersionedKernelInfo<11, 12>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateEqualVersionedKernelInfo<13, 18>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateEqualKernelInfo<19>(enable_int64)));
+
+  // Register Sub kernels with conditional int64 support
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateSubVersionedKernelInfo<7, 12>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateSubVersionedKernelInfo<13, 13>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateSubKernelInfo<14>(enable_int64)));
+
+  // Register Where kernels with conditional int64 support
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateWhereVersionedKernelInfo<9, 15>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateWhereKernelInfo<16>(enable_int64)));
+
+  // Register ReduceSum kernels with conditional int64 support
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReduceSumVersionedKernelInfo<1, 10>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReduceSumVersionedKernelInfo<11, 12>(enable_int64)));
+  ORT_THROW_IF_ERROR(kernel_registry->Register(CreateReduceSumKernelInfo<13>(enable_int64)));
+
 #ifndef DISABLE_CONTRIB_OPS
   Status status = ::onnxruntime::contrib::webgpu::RegisterWebGpuContribKernels(*kernel_registry, enable_graph_capture);
   ORT_ENFORCE(status.IsOK(), "Failed to register WebGPU contrib kernels: " + status.ErrorMessage());
@@ -582,6 +597,7 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       // enable_int64_ is always true when enable_graph_capture_ is true
       enable_int64_{config.enable_graph_capture || config.enable_int64},
       multi_rotary_cache_concat_offset_{config.multi_rotary_cache_concat_offset},
+      kv_cache_quantization_bits_{config.kv_cache_quantization_bits},
       prepack_allocator_{std::make_shared<webgpu::GpuBufferAllocator>(
           [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, false)} {
   if (enable_graph_capture_ && config.session_buffer_pool_generations > 0) {
@@ -778,8 +794,10 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
     context_.PushErrorScope();
   }
 
-  // Start profiling if session-level or run-level profiling is enabled
-  if (run_options.enable_profiling || (session_profiler_ && session_profiler_->Enabled())) {
+  // Start profiling if session-level or run-level profiling is enabled. The CPU time
+  // base used to align GPU timestamps is pushed into the context by
+  // WebGpuProfiler::StartProfiling, so no timepoint is threaded through here.
+  if ((session_profiler_ && session_profiler_->Enabled()) || run_options.enable_profiling) {
     context_.StartProfiling();
   }
 
@@ -802,6 +820,7 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
             context_,
             webgpu::BufferCacheMode::Graph,
             webgpu::BufferCacheMode::GraphSimple,
+            webgpu::BufferCacheMode::Disabled,
             webgpu::BufferCacheMode::Disabled);
         if (session_buffer_pool_) {
           session_buffer_pool_->SeedInto(*it->second);
