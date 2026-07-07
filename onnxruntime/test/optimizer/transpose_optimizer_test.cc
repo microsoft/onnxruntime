@@ -4861,6 +4861,67 @@ TEST(TransposeOptimizerTests, LayoutTransformDoesNotRetargetNhwcFusedConv) {
   EXPECT_EQ(nhwc_fused_conv_count, 1);
 }
 
+// Helper function to test layout transformation with unknown input rank but known weight rank.
+static void TestLayoutTransformWithUnknownInputRank(const std::string& op_type,
+                                                    const std::vector<int64_t>& weight_shape) {
+  std::unordered_map<std::string, int> domain_to_version{{kOnnxDomain, 13}};
+  Model model("LayoutTransform_" + op_type + "_RecoverRankFromWeight", false, ModelMetaData(), PathString(),
+              IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+              DefaultLoggingManager().DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder builder(graph);
+
+  // Create input with unknown shape (cleared).
+  auto* input_arg = builder.MakeInput<float>({1, 3, 7, 7}, -1.0f, 1.0f);
+  input_arg->ClearShape();
+
+  // Weight has known shape with rank 4.
+  auto* weight_arg = builder.MakeInitializer<float>(weight_shape, -1.0f, 1.0f);
+  auto* output_arg = builder.MakeOutput();
+
+  auto& node = builder.AddNode(op_type, {input_arg, weight_arg}, {output_arg});
+  node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+
+  builder.SetGraphOutputs();
+  ASSERT_STATUS_OK(graph.Resolve());
+
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  SessionOptions so;
+  using InternalTestingEP = internal_testing_ep::InternalTestingExecutionProvider;
+  const std::unordered_set<std::string> empty_set;
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set, empty_set, DataLayout::NHWC);
+  internal_testing_ep->EnableStaticKernels().TakeAllNodes();
+
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(internal_testing_ep)));
+  ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& optimized_graph = session.GetGraph();
+  const auto op_to_count = CountOpsInGraph(optimized_graph);
+  const auto get_op_count = [&op_to_count](std::string_view op_type) {
+    const auto it = op_to_count.find(std::string{op_type});
+    return it == op_to_count.end() ? 0 : it->second;
+  };
+
+  // Transpose nodes should be inserted, proving that layout transformation proceeded after recovering rank from weight.
+  EXPECT_GT(get_op_count("Transpose"), 0) << "Layout transformation should insert Transpose nodes for NCHW->NHWC conversion";
+}
+
+// Verifies that layout transformation recovers Conv rank from weight when input rank is unknown.
+TEST(TransposeOptimizerTests, LayoutTransformConvRecoverRankFromWeight) {
+  TestLayoutTransformWithUnknownInputRank("Conv", {8, 3, 3, 3});
+}
+
+// Verifies that layout transformation recovers ConvTranspose rank from weight when input rank is unknown.
+TEST(TransposeOptimizerTests, LayoutTransformConvTransposeRecoverRankFromWeight) {
+  TestLayoutTransformWithUnknownInputRank("ConvTranspose", {3, 8, 3, 3});
+}
+
 TEST(TransposeOptimizerTests, QnnTransposeReshapeQDQ) {
   Status status;
   auto model_uri = ORT_TSTR("testdata/layout_transform_reshape.qdq.onnx");
