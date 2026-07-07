@@ -21,8 +21,9 @@
 
 FgemmElementShift       EQU     3
 FgemmElementSize        EQU     (1 SHL FgemmElementShift)
-FgemmElementPtr         EQU     QWORD PTR
-FgemmElementBcst        EQU     QWORD BCST
+FgemmElementPtr         TEXTEQU     <QWORD PTR>
+FgemmElementBcst        TEXTEQU     <QWORD PTR>
+FgemmElementBcstSuffix TEXTEQU <{1to8}>
 
 ;
 ; Define the typed instructions for double precision.

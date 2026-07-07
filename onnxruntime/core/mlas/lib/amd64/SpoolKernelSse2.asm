@@ -17,10 +17,8 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
 INCLUDE SpoolKernelCommon.inc
-        .list
 
 ;
 ; Macro Description:
@@ -41,7 +39,7 @@ IFIDNI <PoolingType>, <Maximum>
 ENDIF
 
 IFIDNI <PoolingType>, <AverageIncludePad>
-        cvtsi2ss xmm5,SpoolKernelFrame.ActualKernelSize[rsp]
+        cvtsi2ss xmm5,QWORD PTR SpoolKernelFrame.ActualKernelSize[rsp]
         shufps  xmm5,xmm5,0
 ENDIF
 
@@ -200,6 +198,7 @@ ENDIF
 ;
 
 SpoolKernelFunction MACRO PoolingType, Isa
+        LOCAL   ProcessNextOutputCount, ExitKernel
 
 ;++
 ;

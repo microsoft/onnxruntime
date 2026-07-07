@@ -21,16 +21,16 @@
 
 FgemmKernelFrame STRUCT
 
-        SavedXmm6 OWORD ?
-        SavedXmm7 OWORD ?
-        SavedXmm8 OWORD ?
-        SavedXmm9 OWORD ?
-        SavedXmm10 OWORD ?
-        SavedXmm11 OWORD ?
-        SavedXmm12 OWORD ?
-        SavedXmm13 OWORD ?
-        SavedXmm14 OWORD ?
-        SavedXmm15 OWORD ?
+        SavedXmm6 QWORD 2 DUP (?)
+        SavedXmm7 QWORD 2 DUP (?)
+        SavedXmm8 QWORD 2 DUP (?)
+        SavedXmm9 QWORD 2 DUP (?)
+        SavedXmm10 QWORD 2 DUP (?)
+        SavedXmm11 QWORD 2 DUP (?)
+        SavedXmm12 QWORD 2 DUP (?)
+        SavedXmm13 QWORD 2 DUP (?)
+        SavedXmm14 QWORD 2 DUP (?)
+        SavedXmm15 QWORD 2 DUP (?)
         Padding QWORD ?
         SavedR12 QWORD ?
         SavedR13 QWORD ?
@@ -206,11 +206,7 @@ ENDIF
 ;
 
 ComputeBlockLoop MACRO ComputeBlock, RowCount, AdvanceMatrixAPlusRows
-
-        LOCAL   ComputeBlockBy4Loop
-        LOCAL   ProcessRemainingBlocks
-        LOCAL   ComputeBlockBy1Loop
-        LOCAL   OutputBlock
+        LOCAL   ComputeBlockBy4Loop, ProcessRemainingBlocks, ComputeBlockBy1Loop, OutputBlock
 
         mov     rdi,r9                      ; reload CountK
         sub     rdi,4

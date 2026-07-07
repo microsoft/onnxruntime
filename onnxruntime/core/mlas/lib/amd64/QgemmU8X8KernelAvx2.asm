@@ -18,12 +18,10 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
 INCLUDE AssembleAvxVnni.inc
-        .list
 
-        EXTERN  MlasMaskMoveTableAvx:NEAR
+        EXTERN  MlasMaskMoveTableAvx:PROC
 
 ;
 ; Stack frame layout for the Int8 kernel.
@@ -31,16 +29,16 @@ INCLUDE AssembleAvxVnni.inc
 
 GemmInt8KernelFrame STRUCT
 
-        SavedXmm6 OWORD ?
-        SavedXmm7 OWORD ?
-        SavedXmm8 OWORD ?
-        SavedXmm9 OWORD ?
-        SavedXmm10 OWORD ?
-        SavedXmm11 OWORD ?
-        SavedXmm12 OWORD ?
-        SavedXmm13 OWORD ?
-        SavedXmm14 OWORD ?
-        SavedXmm15 OWORD ?
+        SavedXmm6 QWORD 2 DUP (?)
+        SavedXmm7 QWORD 2 DUP (?)
+        SavedXmm8 QWORD 2 DUP (?)
+        SavedXmm9 QWORD 2 DUP (?)
+        SavedXmm10 QWORD 2 DUP (?)
+        SavedXmm11 QWORD 2 DUP (?)
+        SavedXmm12 QWORD 2 DUP (?)
+        SavedXmm13 QWORD 2 DUP (?)
+        SavedXmm14 QWORD 2 DUP (?)
+        SavedXmm15 QWORD 2 DUP (?)
         SavedR14 QWORD ?
         SavedR13 QWORD ?
         SavedR12 QWORD ?
@@ -322,11 +320,7 @@ ComputeBlockAvxVnni MACRO ColumnCount, RowCount, VectorOffset, BroadcastOffset, 
 ;
 
 ComputeBlockLoop MACRO Isa, ColumnCount, RowCount, ASigned, BSigned
-
-        LOCAL   ComputeBlockBy4Loop
-        LOCAL   ProcessRemainingBlocks
-        LOCAL   ComputeBlockBy1Loop
-        LOCAL   ComputeBlockLoopExit
+        LOCAL   ComputeBlockBy4Loop, ProcessRemainingBlocks, ComputeBlockBy1Loop, ComputeBlockLoopExit
 
         mov     rsi,r9                      ; reload row length remaining
 
@@ -479,11 +473,7 @@ ComputeBlockU8U8Avx2 MACRO ColumnCount, RowCount, VectorOffset, BroadcastOffset
 ;
 
 ComputeBlockLoopU8U8 MACRO Isa, ColumnCount, RowCount
-
-        LOCAL   ComputeBlockBy2Loop
-        LOCAL   ProcessRemainingBlocks
-        LOCAL   ComputeBlockBy1Loop
-        LOCAL   ExitComputeBlockLoop
+        LOCAL   ComputeBlockBy2Loop, ProcessRemainingBlocks, ComputeBlockBy1Loop, ExitComputeBlockLoop
 
         mov     rsi,r9                      ; reload row length remaining
 
@@ -555,12 +545,7 @@ ExitComputeBlockLoop:
 ;
 
 ProduceOutputBlock MACRO ColumnCount, RowCount, ASigned, BSigned
-
-        LOCAL   SkipScaleByZeroPointB
-        LOCAL   AccumulatorsInitialized
-        LOCAL   ProduceWithInt8AvxVnni
-        LOCAL   ProduceWithU8U8Avx2
-        LOCAL   ExitProduceOutputBlock
+        LOCAL   SkipScaleByZeroPointB, AccumulatorsInitialized, ProduceWithInt8AvxVnni, ProduceWithU8U8Avx2, ExitProduceOutputBlock
 
 ;
 ; Initialize the accumulators with the row and column sums.
@@ -720,16 +705,7 @@ ENDIF
 ;
 
 ProcessCountM MACRO RowCount, ASigned, BSigned, Fallthrough
-
-        LOCAL   ProcessNextColumnLoop16xN
-        LOCAL   SkipAccumulateOutput16xNBlock
-        LOCAL   OutputMasked16xNBlock
-        LOCAL   ExitProcessCountM
-        LOCAL   ProcessRemainingCountN
-        LOCAL   SkipAccumulateOutput8xNBlock
-        LOCAL   SkipAccumulateOutputMasked16xNBlock
-        LOCAL   OutputMasked8xNBlock
-        LOCAL   SkipAccumulateOutputMasked8xNBlock
+        LOCAL   ProcessNextColumnLoop16xN, SkipAccumulateOutput16xNBlock, OutputMasked16xNBlock, ExitProcessCountM, ProcessRemainingCountN, SkipAccumulateOutput8xNBlock, SkipAccumulateOutputMasked16xNBlock, OutputMasked8xNBlock, SkipAccumulateOutputMasked8xNBlock
 
         cmp     rbp,8
         jbe     ProcessRemainingCountN
@@ -867,22 +843,7 @@ SkipAccumulateOutputMasked8xNBlock:
 ;
 
 ProcessCount1AvxVnni MACRO RowCount, ASigned, BSigned, Fallthrough
-
-        LOCAL LProcessNextColumnLoop32xN1
-        LOCAL LSkipAccumulateOutputMasked32xNBlock1
-        LOCAL LProcessNextColumnLoop16xN1
-        LOCAL LSkipAccumulateOutput16xNBlock1
-        LOCAL LProcessRemainingCountN1
-        LOCAL LSkipAccumulateOutput8xNBlock1
-        LOCAL LExitProcessCountM1
-        LOCAL LOutputMasked32xNBlock1
-        LOCAL LSkipAccumulateOutputMasked32xNBlock1
-        LOCAL LOutputMasked24xNBlock1
-        LOCAL LSkipAccumulateOutputMasked24xNBlock1
-        LOCAL LOutputMasked16xNBlock1
-        LOCAL LSkipAccumulateOutputMasked16xNBlock1
-        LOCAL LOutputMasked8xNBlock1
-        LOCAL LSkipAccumulateOutputMasked8xNBlock1
+        LOCAL   LProcessNextColumnLoop32xN1, LSkipAccumulateOutputMasked32xNBlock1, LProcessNextColumnLoop16xN1, LSkipAccumulateOutput16xNBlock1, LProcessRemainingCountN1, LSkipAccumulateOutput8xNBlock1, LExitProcessCountM1, LOutputMasked32xNBlock1, LSkipAccumulateOutput32xNBlock1, LOutputMasked24xNBlock1, LSkipAccumulateOutputMasked24xNBlock1, LOutputMasked16xNBlock1, LSkipAccumulateOutputMasked16xNBlock1, LOutputMasked8xNBlock1, LSkipAccumulateOutputMasked8xNBlock1
 
         cmp     rbp,8
         jbe     LProcessRemainingCountN1       ; num of cols <= 8?: process the tail
@@ -1076,6 +1037,7 @@ LSkipAccumulateOutputMasked8xNBlock1:
 ;--
 
 MlasGemmInt8KernelAvx2 MACRO ASigned, BSigned
+        LOCAL   CheckCountM6OrMore, CheckCountM4OrMore, ProcessCountM2, ProcessCountM4, ProcessCountM6, ExitKernel, ProcessCountM1, ProcessCountM1AvxVnni, ProcessCountM3, ProcessCountM5
 
         rex_push_reg rbp
         push_reg rbx

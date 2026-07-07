@@ -17,11 +17,9 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
-        .list
 
-        EXTERN  MlasMinimumF32Value:NEAR
+        EXTERN  MlasMinimumF32Value:PROC
 
 ;++
 ;

@@ -17,12 +17,10 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
-        .list
 
-        EXTERN  MlasMaskMoveAvx:NEAR
-        EXTERN  MlasErfConstants:NEAR
+        EXTERN  MlasMaskMoveAvx:PROC
+        EXTERN  MlasErfConstants:PROC
 
 ;
 ; Structure layout for the erf constants block.
@@ -72,18 +70,18 @@ ErfConstants ENDS
 
 ErfKernelFrame STRUCT
 
-        ErfBuffer0 OWORD 8 DUP(?)
-        ErfBuffer1 OWORD 8 DUP(?)
-        SavedXmm6 OWORD ?
-        SavedXmm7 OWORD ?
-        SavedXmm8 OWORD ?
-        SavedXmm9 OWORD ?
-        SavedXmm10 OWORD ?
-        SavedXmm11 OWORD ?
-        SavedXmm12 OWORD ?
-        SavedXmm13 OWORD ?
-        SavedXmm14 OWORD ?
-        SavedXmm15 OWORD ?
+        ErfBuffer0 QWORD 16 DUP (?)
+        ErfBuffer1 QWORD 16 DUP (?)
+        SavedXmm6 QWORD 2 DUP (?)
+        SavedXmm7 QWORD 2 DUP (?)
+        SavedXmm8 QWORD 2 DUP (?)
+        SavedXmm9 QWORD 2 DUP (?)
+        SavedXmm10 QWORD 2 DUP (?)
+        SavedXmm11 QWORD 2 DUP (?)
+        SavedXmm12 QWORD 2 DUP (?)
+        SavedXmm13 QWORD 2 DUP (?)
+        SavedXmm14 QWORD 2 DUP (?)
+        SavedXmm15 QWORD 2 DUP (?)
         Padding0 QWORD ?
         Padding1 QWORD ?
         CountN QWORD ?

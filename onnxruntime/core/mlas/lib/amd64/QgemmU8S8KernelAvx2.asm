@@ -18,12 +18,10 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
 INCLUDE AssembleAvxVnni.inc
-        .list
 
-        EXTERN  MlasMaskMoveTableAvx:NEAR
+        EXTERN  MlasMaskMoveTableAvx:PROC
 
 ;
 ; Stack frame layout for the Int8 CopyPackA routine.
@@ -31,12 +29,12 @@ INCLUDE AssembleAvxVnni.inc
 
 GemmInt8CopyPackAFrame STRUCT
 
-        PaddedMatrixAData OWORD 4 DUP (?)
-        SavedXmm6 OWORD ?
-        SavedXmm7 OWORD ?
-        SavedXmm8 OWORD ?
-        SavedXmm9 OWORD ?
-        SavedXmm10 OWORD ?
+        PaddedMatrixAData QWORD 8 DUP (?)
+        SavedXmm6 QWORD 2 DUP (?)
+        SavedXmm7 QWORD 2 DUP (?)
+        SavedXmm8 QWORD 2 DUP (?)
+        SavedXmm9 QWORD 2 DUP (?)
+        SavedXmm10 QWORD 2 DUP (?)
         Padding QWORD ?
         SavedR13 QWORD ?
         SavedR12 QWORD ?
@@ -60,11 +58,11 @@ GemmInt8CopyPackAFrame ENDS
 
 GemmInt8CopyPackBFrame STRUCT
 
-        PaddedMatrixBData OWORD 4 DUP (?)
-        SavedXmm6 OWORD ?
-        SavedXmm7 OWORD ?
-        SavedXmm8 OWORD ?
-        SavedXmm9 OWORD ?
+        PaddedMatrixBData QWORD 8 DUP (?)
+        SavedXmm6 QWORD 2 DUP (?)
+        SavedXmm7 QWORD 2 DUP (?)
+        SavedXmm8 QWORD 2 DUP (?)
+        SavedXmm9 QWORD 2 DUP (?)
         Padding QWORD ?
         SavedRdi QWORD ?
         SavedRsi QWORD ?
@@ -110,6 +108,8 @@ GemmInt8CopyPackBFrame ENDS
 ;--
 
 MlasGemmCopyPackAAvx2 MACRO ASigned
+        LOCAL   ProcessNextRowM4, ProcessNextColumnLoopM4, ProcessRemainingColumnsM4, CopyRemainingCountKLessThan16M4, CopyRemainingCountKLessThan8M4, CopyRemainingCountKLessThan4M4, CopyRemainingCountKLessThan2M4, ProcessPaddedMatrixADataM4, ReduceRowSumBufferM4, ProcessRemainingRows, ProcessNextRowM1, ProcessNextColumnLoopM1, ProcessRemainingColumnsM1, CopyRemainingCountKLessThan16M1, CopyRemainingCountKLessThan8M1, CopyRemainingCountKLessThan4M1, \
+                CopyRemainingCountKLessThan2M1, ProcessPaddedMatrixADataM1, ReduceRowSumBufferM1, ExitRoutine
 
         rex_push_reg rbp
         push_reg rbx
@@ -536,6 +536,8 @@ ExitRoutine:
 ;--
 
 MlasGemmCopyPackBAvx2 MACRO IsVnni, BSigned
+        LOCAL   SkipUnsignedBitFlipVector, ProcessNextColumnN16, ProcessNextRowLoopN16, InterleaveRowDataN16, ProcessRemainingRowsN16, StoreColumnSumBufferN16, ProcessRemainingColumns, ExitRoutine, ProcessColumnNUnaligned, ProcessNextRowLoopNUnaligned, CopyRemainingCountNLessThan8K4, CopyRemainingCountNLessThan4K4, CopyRemainingCountNLessThan2K4, ProcessPaddedMatrixBData, ProcessRemainingRowsNUnaligned, CopyUnalignedRowLoop, \
+                CopyRemainingCountNLessThan8KSmall, CopyRemainingCountNLessThan4KSmall, CopyRemainingCountNLessThan2KSmall, DoneCopyRemainingCountNKSmall, StoreColumnSumBufferNUnaligned
 
         rex_push_reg rbp
         push_reg rbx

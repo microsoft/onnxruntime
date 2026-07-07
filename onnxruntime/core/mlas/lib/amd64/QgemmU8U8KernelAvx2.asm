@@ -17,11 +17,9 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
-        .list
 
-        EXTERN  MlasMaskMoveTableAvx:NEAR
+        EXTERN  MlasMaskMoveTableAvx:PROC
 
 ;
 ; Stack frame layout for the U8U8 CopyPackA routine.
@@ -29,11 +27,11 @@ INCLUDE mlasi.inc
 
 GemmU8U8CopyPackAFrame STRUCT
 
-        PaddedMatrixAData OWORD 4 DUP (?)
-        SavedXmm6 OWORD ?
-        SavedXmm7 OWORD ?
-        SavedXmm8 OWORD ?
-        SavedXmm9 OWORD ?
+        PaddedMatrixAData QWORD 8 DUP (?)
+        SavedXmm6 QWORD 2 DUP (?)
+        SavedXmm7 QWORD 2 DUP (?)
+        SavedXmm8 QWORD 2 DUP (?)
+        SavedXmm9 QWORD 2 DUP (?)
         Padding QWORD ?
         SavedR13 QWORD ?
         SavedR12 QWORD ?
@@ -57,7 +55,7 @@ GemmU8U8CopyPackAFrame ENDS
 
 GemmU8U8CopyPackBFrame STRUCT
 
-        PaddedMatrixBData OWORD 2 DUP (?)
+        PaddedMatrixBData QWORD 4 DUP (?)
         SavedRsi QWORD ?
         SavedRbx QWORD ?
         SavedRbp QWORD ?
@@ -473,18 +471,18 @@ ExitRoutine:
 ;
 
         sub     r9,16
-        jb      ProcessRemainingColumns
+        jb      ProcessRemainingColumns_2
 
-ProcessNextColumnN16:
+ProcessNextColumnN16_2:
         vpxor   xmm0,xmm0,xmm0              ; clear column accumulators
         vpxor   xmm1,xmm1,xmm1
         mov     rdx,rsi
         add     rsi,16                      ; advance next matrix B by 16 columns
         mov     rbx,r10                     ; reload rows remaining
         sub     rbx,2
-        jb      ProcessRemainingRowsN16
+        jb      ProcessRemainingRowsN16_2
 
-ProcessNextRowLoopN16:
+ProcessNextRowLoopN16_2:
         vmovdqu xmm2,XMMWORD PTR [rdx]      ; load 2 rows
         vmovdqu xmm3,XMMWORD PTR [rdx+r8]
         lea     rdx,[rdx+r8*2]              ; advance matrix B by 2 rows
@@ -500,11 +498,11 @@ ProcessNextRowLoopN16:
         vpmaddwd ymm3,ymm3,ymm5
         vpaddd  ymm1,ymm1,ymm3
         sub     rbx,2                       ; subtract rows remaining
-        jae     ProcessNextRowLoopN16
+        jae     ProcessNextRowLoopN16_2
 
-ProcessRemainingRowsN16:
+ProcessRemainingRowsN16_2:
         add     rbx,2                       ; correct for over-subtract above
-        jz      StoreColumnSumBufferN16
+        jz      StoreColumnSumBufferN16_2
         vpmovzxbw ymm4,XMMWORD PTR [rdx]
         vmovdqu YMMWORD PTR [rcx],ymm4      ; store interleaved rows
         vextracti128 xmm3,ymm4,1
@@ -516,22 +514,22 @@ ProcessRemainingRowsN16:
         vpaddd  ymm1,ymm1,ymm3
         add     rcx,32                      ; advance matrix D by 32 bytes
 
-StoreColumnSumBufferN16:
+StoreColumnSumBufferN16_2:
         vmovdqu YMMWORD PTR [r11],ymm0
         vmovdqu YMMWORD PTR [r11+32],ymm1
         add     r11,16*4                    ; advance column sum buffer by 16 dwords
         sub     r9,16                       ; subtract columns remaining
-        jae     ProcessNextColumnN16
+        jae     ProcessNextColumnN16_2
 
-ProcessRemainingColumns:
+ProcessRemainingColumns_2:
         add     r9,16                       ; correct for over-subtract above
-        jnz     ProcessColumnNUnaligned
+        jnz     ProcessColumnNUnaligned_2
 
 ;
 ; Restore non-volatile registers and return.
 ;
 
-ExitRoutine:
+ExitRoutine_2:
         vzeroupper
         add     rsp,(GemmU8U8CopyPackBFrame.SavedRsi)
 
@@ -546,18 +544,18 @@ ExitRoutine:
 ; Process the remaining columns of matrix B.
 ;
 
-ProcessColumnNUnaligned:
+ProcessColumnNUnaligned_2:
         vpxor   xmm0,xmm0,xmm0              ; clear column accumulators
         vpxor   xmm1,xmm1,xmm1
         sub     r10,2
-        jb      ProcessRemainingRowsNUnaligned
+        jb      ProcessRemainingRowsNUnaligned_2
 
-ProcessNextRowLoopNUnaligned:
+ProcessNextRowLoopNUnaligned_2:
         mov     rdx,rsi
 .errnz  GemmU8U8CopyPackBFrame.PaddedMatrixBData
         mov     rbp,rsp                     ; GemmU8U8CopyPackBFrame.PaddedMatrixBData
         test    r9b,8                       ; (CountN & 8) != 0?
-        jz      CopyRemainingCountNLessThan8K2
+        jz      CopyRemainingCountNLessThan8K2_2
         mov     rax,QWORD PTR [rdx]
         mov     QWORD PTR [rbp],rax
         mov     rax,QWORD PTR [rdx+r8]
@@ -565,9 +563,9 @@ ProcessNextRowLoopNUnaligned:
         add     rdx,8                       ; advance matrix B
         add     rbp,8                       ; advance padded buffer destination
 
-CopyRemainingCountNLessThan8K2:
+CopyRemainingCountNLessThan8K2_2:
         test    r9b,4                       ; (CountN & 4) != 0?
-        jz      CopyRemainingCountNLessThan4K2
+        jz      CopyRemainingCountNLessThan4K2_2
         mov     eax,DWORD PTR [rdx]
         mov     DWORD PTR [rbp],eax
         mov     eax,DWORD PTR [rdx+r8]
@@ -575,9 +573,9 @@ CopyRemainingCountNLessThan8K2:
         add     rdx,4                       ; advance matrix B
         add     rbp,4                       ; advance padded buffer destination
 
-CopyRemainingCountNLessThan4K2:
+CopyRemainingCountNLessThan4K2_2:
         test    r9b,2                       ; (CountN & 2) != 0?
-        jz      CopyRemainingCountNLessThan2K2
+        jz      CopyRemainingCountNLessThan2K2_2
         movzx   eax,WORD PTR [rdx]
         mov     WORD PTR [rbp],ax
         movzx   eax,WORD PTR [rdx+r8]
@@ -585,17 +583,17 @@ CopyRemainingCountNLessThan4K2:
         add     rdx,2                       ; advance matrix B
         add     rbp,2                       ; advance padded buffer destination
 
-CopyRemainingCountNLessThan2K2:
+CopyRemainingCountNLessThan2K2_2:
         test    r9b,1                       ; (CountN & 1) != 0?
-        jz      ProcessPaddedMatrixBDataK2
+        jz      ProcessPaddedMatrixBDataK2_2
         movzx   eax,BYTE PTR [rdx]
         mov     BYTE PTR [rbp],al
         movzx   eax,BYTE PTR [rdx+r8]
         mov     BYTE PTR [rbp+16],al
 
-ProcessPaddedMatrixBDataK2:
-        vmovdqu xmm2,XMMWORD PTR XMMWORD PTR GemmU8U8CopyPackBFrame.PaddedMatrixBData[rsp]
-        vmovdqu xmm3,XMMWORD PTR XMMWORD PTR GemmU8U8CopyPackBFrame.PaddedMatrixBData[rsp+16]
+ProcessPaddedMatrixBDataK2_2:
+        vmovdqu xmm2,XMMWORD PTR GemmU8U8CopyPackBFrame.PaddedMatrixBData[rsp]
+        vmovdqu xmm3,XMMWORD PTR GemmU8U8CopyPackBFrame.PaddedMatrixBData[rsp+16]
         vpunpcklbw xmm4,xmm2,xmm3           ; interleave row data
         vpunpckhbw xmm3,xmm2,xmm3
         vmovdqu XMMWORD PTR [rcx],xmm4      ; store interleaved rows
@@ -609,44 +607,44 @@ ProcessPaddedMatrixBDataK2:
         lea     rsi,[rsi+r8*2]              ; advance next matrix B by 2 rows
         add     rcx,32                      ; advance matrix D by 32 bytes
         sub     r10,2                       ; subtract columns remaining
-        jae     ProcessNextRowLoopNUnaligned
+        jae     ProcessNextRowLoopNUnaligned_2
 
-ProcessRemainingRowsNUnaligned:
+ProcessRemainingRowsNUnaligned_2:
         add     r10,2
-        jz      StoreColumnSumBufferNUnaligned
+        jz      StoreColumnSumBufferNUnaligned_2
         mov     rdx,rsi
 .errnz  GemmU8U8CopyPackBFrame.PaddedMatrixBData
         mov     rbp,rsp                     ; GemmU8U8CopyPackBFrame.PaddedMatrixBData
         test    r9b,8                       ; (CountN & 8) != 0?
-        jz      CopyRemainingCountNLessThan8K1
+        jz      CopyRemainingCountNLessThan8K1_2
         mov     rax,QWORD PTR [rdx]
         mov     QWORD PTR [rbp],rax
         add     rdx,8                       ; advance matrix B
         add     rbp,8                       ; advance padded buffer destination
 
-CopyRemainingCountNLessThan8K1:
+CopyRemainingCountNLessThan8K1_2:
         test    r9b,4                       ; (CountN & 4) != 0?
-        jz      CopyRemainingCountNLessThan4K1
+        jz      CopyRemainingCountNLessThan4K1_2
         mov     eax,DWORD PTR [rdx]
         mov     DWORD PTR [rbp],eax
         add     rdx,4                       ; advance matrix B
         add     rbp,4                       ; advance padded buffer destination
 
-CopyRemainingCountNLessThan4K1:
+CopyRemainingCountNLessThan4K1_2:
         test    r9b,2                       ; (CountN & 2) != 0?
-        jz      CopyRemainingCountNLessThan2K1
+        jz      CopyRemainingCountNLessThan2K1_2
         movzx   eax,WORD PTR [rdx]
         mov     WORD PTR [rbp],ax
         add     rdx,2                       ; advance matrix B
         add     rbp,2                       ; advance padded buffer destination
 
-CopyRemainingCountNLessThan2K1:
+CopyRemainingCountNLessThan2K1_2:
         test    r9b,1                       ; (CountN & 1) != 0?
-        jz      ProcessPaddedMatrixBDataK1
+        jz      ProcessPaddedMatrixBDataK1_2
         movzx   eax,BYTE PTR [rdx]
         mov     BYTE PTR [rbp],al
 
-ProcessPaddedMatrixBDataK1:
+ProcessPaddedMatrixBDataK1_2:
         vpmovzxbw ymm4,XMMWORD PTR GemmU8U8CopyPackBFrame.PaddedMatrixBData[rsp]
         vmovdqu YMMWORD PTR [rcx],ymm4      ; store interleaved rows
         vextracti128 xmm3,ymm4,1
@@ -657,10 +655,10 @@ ProcessPaddedMatrixBDataK1:
         vpmaddwd ymm3,ymm3,ymm5
         vpaddd  ymm1,ymm1,ymm3
 
-StoreColumnSumBufferNUnaligned:
+StoreColumnSumBufferNUnaligned_2:
         vmovdqu YMMWORD PTR [r11],ymm0
         vmovdqu YMMWORD PTR [r11+32],ymm1
-        jmp     ExitRoutine
+        jmp     ExitRoutine_2
 
         NESTED_END MlasGemmU8U8CopyPackBAvx2, _TEXT
 

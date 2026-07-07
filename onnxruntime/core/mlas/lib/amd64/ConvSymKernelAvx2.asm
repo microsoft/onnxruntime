@@ -17,11 +17,9 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
 INCLUDE ConvSymKernelCommon.inc
 INCLUDE AssembleAvxVnni.inc
-        .list
 
 extern CheckSaturationForVPMADDUBSW:proc
 
@@ -236,11 +234,7 @@ ComputeBlock MACRO Isa, RowCount, VectorOffset, BroadcastOffset
 ;
 
 ComputeBlockLoop MACRO Isa, RowCount, UnrollLoop
-
-        LOCAL   ComputeBlockBy4Loop
-        LOCAL   ProcessRemainingBlocks
-        LOCAL   ComputeBlockBy1Loop
-        LOCAL   ComputeBlockLoopExit
+        LOCAL   ComputeBlockBy4Loop, ProcessRemainingBlocks, ComputeBlockBy1Loop, ComputeBlockLoopExit
 
 IFNB <UnrollLoop>
         sub     rax,4*4
@@ -357,6 +351,8 @@ ConvertFloatToIntegerRegList MACRO RegList
 ;
 
 ConvSymKernelFunction MACRO Isa
+        LOCAL   ProcessNextInputBlock, InputDirect, InputIndirection, ComputeBlockLoopStart, ComputeBlockLoopDone, BroadcastScaleValue, ConvertLowAccumulatorsToFloat, ConvertHighAccumulatorsToFloat, ConvertFloatsToIntegers, StoreQuantizedOutputBy16, StoreQuantizedOutput6By16, StoreQuantizedOutput5By16, StoreQuantizedOutput4By16, StoreQuantizedOutput3By16, StoreQuantizedOutput2By16, StoreQuantizedOutput1By16, ExitKernel, StoreQuantizedOutputBy8, \
+                StoreQuantizedOutput6By8, StoreQuantizedOutput5By8, StoreQuantizedOutput4By8, StoreQuantizedOutput3By8, StoreQuantizedOutput2By8, StoreQuantizedOutput1By8, ComputeBlockLoopBy4, ComputeBlockLoopBy2
 
 ;++
 ;
@@ -825,6 +821,7 @@ DepthwiseMultiplyAccumulateCellAvxVnni MACRO AccumReg, Mult1Reg, Mult2Reg
 ;
 
 ConvSymDepthwiseKernelFunction MACRO Isa
+        LOCAL   ProcessNextInputBlock, BroadcastScaleValue, ConvertLowAccumulatorsToFloat, ConvertHighAccumulatorsToFloat, ConvertFloatsToIntegers, StoreQuantizedOutputBy16, StoreQuantizedOutput4By16, StoreQuantizedOutput3By16, StoreQuantizedOutput2By16, StoreQuantizedOutput1By16, ExitKernel
 
 ;++
 ;

@@ -17,11 +17,9 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
 INCLUDE ConvSymKernelCommon.inc
 INCLUDE AssembleAvx512Vnni.inc
-        .list
 
 ;
 ; Macro Description:
@@ -226,7 +224,6 @@ ComputeBlock MACRO Isa, ColumnCount, VectorOffset, BroadcastOffset
 ;
 
 ComputeBlockLoop MACRO Isa, ColumnCount
-
         LOCAL   ComputeBlockBy1Loop
 
 ComputeBlockBy1Loop:
@@ -250,6 +247,7 @@ ComputeBlockBy1Loop:
 ;
 
 ConvSymKernelFunction MACRO Isa
+        LOCAL   ProcessNextInputBlock, InputDirect, InputIndirection, ComputeBlockLoopStart, ComputeBlockLoopBy64, ComputeBlockLoopBy48, ComputeBlockLoopBy32, ComputeBlockLoopBy16, ComputeBlockLoopDone, ExitKernel
 
 ;++
 ;
@@ -482,6 +480,7 @@ ExitKernel:
 ;
 
 ConvSymDepthwiseKernelFunction MACRO Isa
+        LOCAL   ProcessNextInputBlock, ComputeDepthwiseBlockBy64, ComputeDepthwiseBlockBy48, ComputeDepthwiseBlockBy32, ComputeDepthwiseBlockBy16, ExitKernel
 
 ;++
 ;

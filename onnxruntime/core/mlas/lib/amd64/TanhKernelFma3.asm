@@ -17,13 +17,11 @@
 ;
 ;--
 
-        .xlist
 INCLUDE mlasi.inc
 INCLUDE TransKernelCommon.inc
-        .list
 
-        EXTERN  MlasMaskMoveTableAvx:NEAR
-        EXTERN  MlasTanhConstants:NEAR
+        EXTERN  MlasMaskMoveTableAvx:PROC
+        EXTERN  MlasTanhConstants:PROC
 
 ;++
 ;

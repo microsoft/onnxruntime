@@ -30,6 +30,7 @@ INCLUDE SpoolKernelCommon.inc
 ;
 
 SpoolKernelFunction MACRO PoolingType, Isa
+        LOCAL   ProcessOutputCountLeftPad, ProcessOutputCount, ProcessNextOutputCountBy3, ProcessRemainingOutputCount, ProcessOutputCountRightPad, ExitKernel, ProcessNextOutputCount
 
 ;++
 ;
