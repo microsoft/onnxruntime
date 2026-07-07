@@ -478,7 +478,7 @@ class KernelTestFixture : public ::testing::Test {
                                                          reinterpret_cast<const uint8_t*>(d_weight_->data()),
                                                          reinterpret_cast<const AType*>(d_scales_->data()),
                                                          static_cast<const uint8_t*>(d_uint8_zeros.data()),
-                                                         nullptr,
+                                                         static_cast<const AType*>(nullptr),
                                                          m_, n_, k_, block_size_, device_prop_.sharedMemPerBlock, s_);
             },
             warmup_, repeats_, s_);
