@@ -4,6 +4,9 @@
 #include "contrib_ops/cuda/quantization/matmul_nbits.h"
 
 #include <cstdint>
+#include <mutex>
+#include <string>
+#include <unordered_map>
 
 #include "core/common/status.h"
 #include "core/common/float16.h"
@@ -17,6 +20,7 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors.h"
+#include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 #endif
 #include "contrib_ops/cuda/llm/common/logger.h"
 #include "contrib_ops/cpu/quantization/matmul_nbits_helper.h"
@@ -35,6 +39,29 @@ using onnxruntime::llm::kernels::weight_only::GemmPluginProfilerManager;
 using onnxruntime::llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPluginProfiler;
 using onnxruntime::llm::kernels::weight_only::WeightTypeId;
 static GemmPluginProfilerManager<WeightOnlyGroupwiseQuantGemmPluginProfiler> s_profilerManager;
+
+// Process-global persistent tactic caches, keyed by their resolved location so that identical
+// shapes are tuned once and reused across sessions and nodes that share a location. Sessions
+// configured with different cache directories/prefixes each get their own cache (rather than the
+// first constructed kernel's location silently winning for the whole process). Returns nullptr
+// when persistence is not configured (session config and env vars unset), in which case the
+// profiler keeps its in-process behavior.
+static std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache> GetGlobalMatMulNBitsTacticCache(
+    const std::string& config_dir, const std::string& config_prefix) {
+  static std::mutex cache_mutex;
+  static std::unordered_map<std::string, std::shared_ptr<onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache>>
+      caches;
+  // '\n' cannot appear in a path/prefix, so it is a safe separator for the composite key.
+  const std::string key = config_prefix + "\n" + config_dir;
+  std::lock_guard<std::mutex> lock(cache_mutex);
+  auto it = caches.find(key);
+  if (it != caches.end()) {
+    return it->second;
+  }
+  auto cache = onnxruntime::llm::gemm_cache::MatMulNBitsTacticCache::MaybeCreate(config_dir, config_prefix);
+  caches.emplace(key, cache);
+  return cache;
+}
 
 constexpr auto kScaleAndZeros = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS;
 constexpr auto kScaleOnly = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY;
@@ -111,6 +138,14 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
   gemmProfiler_->setCudaKernelType(cuda_kernel_type, sm);
   gemmProfiler_->setQuant(nbits_, has_bias_, has_zero_points_);
   gemmProfiler_->setGroupSize(block_size_);
+
+  // Resolve the persistent tactic cache location from session config (falls back to env vars).
+  const auto& config_options = this->Info().GetConfigOptions();
+  const std::string cache_dir =
+      config_options.GetConfigOrDefault(onnxruntime::llm::gemm_cache::kSessionConfigCacheDir, "");
+  const std::string cache_prefix =
+      config_options.GetConfigOrDefault(onnxruntime::llm::gemm_cache::kSessionConfigCachePrefix, "");
+  gemmProfiler_->setPersistentCache(GetGlobalMatMulNBitsTacticCache(cache_dir, cache_prefix));
 
   auto allocator = this->Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
   gemmProfiler_->setAllocator(allocator);
@@ -378,11 +413,22 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 
       const void* fpA_intB_weight = is_prepacked_weight_ ? fpA_intB_weight_buffer_.get() : static_cast<const void*>(blob_data);
 
-      auto const bestTactic = gemmProfiler_->getBestConfig(m, gemmId_);
+      // During CUDA graph capture we must not lazily profile: profiling launches kernels, records
+      // and synchronizes events, and allocates/frees scratch, all of which are illegal while the
+      // compute stream is being captured. Fall back to a lookup of an already-profiled bucket
+      // (warmup runs before capture populate these); only outside capture do we allow lazy
+      // single-bucket profiling.
+      const bool stream_is_capturing =
+          stream != nullptr && onnxruntime::llm::common::isCapturing(stream);
+      auto const bestTactic = stream_is_capturing ? gemmProfiler_->getBestConfig(m, gemmId_)
+                                                  : gemmProfiler_->getBestConfigOrProfile(m, gemmId_);
       if (!bestTactic.has_value()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "No valid fpA_intB MatMulNBits tactic for M=", m,
-                               ", N=", n, ", K=", k);
+        return ORT_MAKE_STATUS(
+            ONNXRUNTIME, FAIL,
+            "No valid fpA_intB MatMulNBits tactic for M=", m, ", N=", n, ", K=", k,
+            stream_is_capturing
+                ? ". The M bucket was not profiled before CUDA graph capture; run a warmup inference outside capture first."
+                : "");
       }
 
       // Env-gated diagnostics (ORT_FPA_INTB_DEBUG=1): dump the selected tactic, the kernel path

@@ -17,6 +17,11 @@
 #if USE_FPA_INTB_GEMM
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
 #include "contrib_ops/cuda/llm/common/workspace.h"
+#include "core/platform/env_var_utils.h"
+
+#include <algorithm>
+#include <set>
+#include <sstream>
 
 using namespace onnxruntime::llm::common;
 using namespace onnxruntime::llm::kernels::cutlass_kernels;
@@ -95,6 +100,153 @@ bool WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic(int m, int /*n*/, i
     return m < 16;
   }
   return true;
+}
+
+std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMOverride() {
+  const std::string value = onnxruntime::ParseEnvironmentVariableWithDefault<std::string>(kEnvProfileM, "");
+  std::vector<int> result;
+  if (value.empty()) {
+    return result;
+  }
+  std::stringstream ss(value);
+  std::string token;
+  std::set<int> unique;
+  while (std::getline(ss, token, ',')) {
+    // Trim surrounding whitespace.
+    size_t start = token.find_first_not_of(" \t");
+    size_t end = token.find_last_not_of(" \t");
+    if (start == std::string::npos) {
+      continue;
+    }
+    token = token.substr(start, end - start + 1);
+    try {
+      int m = std::stoi(token);
+      if (m > 0) {
+        unique.insert(m);
+      }
+    } catch (const std::exception&) {
+      // Ignore malformed entries.
+    }
+  }
+  result.assign(unique.begin(), unique.end());
+  return result;
+}
+
+int WeightOnlyGroupwiseQuantGemmPluginProfiler::ProfileMaxM() {
+  auto override_ms = ParseProfileMOverride();
+  if (!override_ms.empty()) {
+    return override_ms.back();  // sorted ascending
+  }
+  return kDefaultProfileMaxM;
+}
+
+std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::getProfileMBuckets(
+    int minM, int maxM, bool /*hasWeightOnlyCudaKernel*/) const {
+  int const lo = std::max(1, minM);
+  int const hi = std::max(lo, maxM);
+
+  std::set<int> buckets;
+
+  auto override_ms = ParseProfileMOverride();
+  if (!override_ms.empty()) {
+    for (int m : override_ms) {
+      buckets.insert(std::min(std::max(lo, m), hi));
+    }
+  } else {
+    // Small default bucket set clamped to [lo, hi].
+    static const int kDefault[] = {1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048};
+    for (int m : kDefault) {
+      if (m >= lo && m <= hi) {
+        buckets.insert(m);
+      }
+    }
+  }
+
+  // Always include the decode bucket (M=1) and the top bucket so both extremes are tuned.
+  buckets.insert(lo);
+  buckets.insert(hi);
+
+  return std::vector<int>(buckets.begin(), buckets.end());
+}
+
+onnxruntime::llm::gemm_cache::MatMulNBitsKey WeightOnlyGroupwiseQuantGemmPluginProfiler::makeCacheKey(
+    GemmIdCore const& gemmId, bool hasWeightOnlyCudaKernel) const {
+  onnxruntime::llm::gemm_cache::MatMulNBitsKey key;
+  key.n_16b = gemmId.n;
+  key.k = gemmId.k;
+  key.activation_dtype = (gemmId.dtype == onnxruntime::llm::nvinfer::DataType::kBF16) ? "bfloat16" : "half";
+  key.weight_type = (mQuantBits == 8) ? "uint8_t" : "uint4b_t";
+  key.bits = mQuantBits;
+  key.block_size = mGroupSize;
+  key.has_zero_points = mHasZeros;
+  key.zero_point_dtype = mHasZeros ? key.weight_type : "none";
+  key.gemv_enabled = hasWeightOnlyCudaKernel;
+  key.packing_sm = mArch;
+  return key;
+}
+
+void WeightOnlyGroupwiseQuantGemmPluginProfiler::loadPersistentCache(
+    GemmIdCore const& gemmId, MProfileMap& map, bool hasWeightOnlyCudaKernel) {
+  if (mCache == nullptr) {
+    return;
+  }
+  auto key = makeCacheKey(gemmId, hasWeightOnlyCudaKernel);
+  auto buckets = mCache->GetAll(key);
+  if (buckets.empty()) {
+    return;
+  }
+
+  // Validate CUTLASS tactics loaded from disk against the tactics this runner can actually
+  // dispatch. A parseable-but-incompatible cache row (e.g. hand-edited, or written by a build
+  // whose signature happens to match but whose tactic set differs) would otherwise be handed
+  // straight to the kernel. Non-matching CUTLASS tactics are dropped so the bucket is re-profiled.
+  // The synthetic CUDA-GEMV tactic (enableCudaKernel) is not part of getConfigs(); its validity
+  // is already keyed by gemv_enabled in the cache key, so it is accepted as-is.
+  auto const valid_configs = getTactics(0, gemmId.n, gemmId.k);
+  auto is_valid_cutlass = [&valid_configs](Config const& c) {
+    for (auto const& v : valid_configs) {
+      if (v.sm_version == c.sm_version && v.is_tma_warp_specialized == c.is_tma_warp_specialized &&
+          v.tile_config_sm80 == c.tile_config_sm80 && v.tile_config_sm90 == c.tile_config_sm90 &&
+          v.tile_config_sm100 == c.tile_config_sm100 && v.tile_config_sm120 == c.tile_config_sm120 &&
+          v.split_k_style == c.split_k_style && v.split_k_factor == c.split_k_factor &&
+          v.stages == c.stages && v.cluster_shape == c.cluster_shape &&
+          v.mainloop_schedule == c.mainloop_schedule && v.epilogue_schedule == c.epilogue_schedule) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  for (auto const& [m, config] : buckets) {
+    if (config.has_value() && !config->enableCudaKernel && !is_valid_cutlass(*config)) {
+      ORT_LLM_LOG_WARNING("Dropping incompatible cached fpA_intB tactic from the tactic cache; re-profiling.");
+      continue;
+    }
+    // Do not clobber tactics already selected in-process this session.
+    map.emplace(m, config);
+  }
+}
+
+void WeightOnlyGroupwiseQuantGemmPluginProfiler::storePersistentCache(
+    GemmIdCore const& gemmId, MProfileMap const& map, bool hasWeightOnlyCudaKernel) {
+  if (mCache == nullptr) {
+    return;
+  }
+  auto key = makeCacheKey(gemmId, hasWeightOnlyCudaKernel);
+  bool added = false;
+  for (auto const& [m, config] : map) {
+    // Only persist buckets that are not already on disk (skips re-writing cache hits).
+    if (!mCache->Get(key, m).has_value()) {
+      mCache->Put(key, m, config);
+      added = true;
+    }
+  }
+  if (added) {
+    auto status = mCache->Flush();
+    if (!status.IsOK()) {
+      ORT_LLM_LOG_WARNING("Failed to flush MatMulNBits gemm tactic cache: " + status.ErrorMessage());
+    }
+  }
 }
 
 }  // namespace onnxruntime::llm::kernels::weight_only
