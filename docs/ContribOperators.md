@@ -3158,6 +3158,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Bit-width used to quantize the weights (supported values: 2, 4, 8)</dd>
 <dt><tt>block_size</tt> : int (required)</dt>
 <dd>Size of each quantization block along the K (input feature) dimension. Must be a power of two and ≥ 16 (e.g., 16, 32, 64, 128).</dd>
+<dt><tt>weight_prepacked</tt> : int</dt>
+<dd>If set, input B is already prepacked into an EP-specific layout and the EP skips runtime weight prepacking. 0 (default): not prepacked. 1: prepacked in the CUDA SM80 fpA_intB layout. 2: reserved for a future SM90 layout (currently rejected at kernel construction).</dd>
 </dl>
 
 #### Inputs (3 - 6)

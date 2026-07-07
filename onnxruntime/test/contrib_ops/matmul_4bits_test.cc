@@ -84,6 +84,8 @@ struct TestOptions {
   int64_t block_size{32};
   int64_t accuracy_level{0};
 
+  bool disable_cpu_ep_fallback{false};
+
   bool has_zero_point{false};
   bool zp_is_4bit{true};
   bool has_g_idx{false};
@@ -94,6 +96,9 @@ struct TestOptions {
   // When set, RunTest validates cross-session sharing of the pre-packed weights instead of doing a
   // single run. The model is run in two sessions that use the same pre-packed weights container.
   std::optional<PrepackSharingMode> prepack_sharing_mode{};
+
+  std::optional<int64_t> weight_prepacked{};
+  std::optional<std::string> expected_failure{};
 
   std::optional<float> output_abs_error{};
   std::optional<float> output_rel_error{};
@@ -181,6 +186,9 @@ void RunTest(const TestOptions& opts,
   test.AddAttribute<int64_t>("block_size", opts.block_size);
   test.AddAttribute<int64_t>("bits", QBits);
   test.AddAttribute<int64_t>("accuracy_level", opts.accuracy_level);
+  if (opts.weight_prepacked.has_value()) {
+    test.AddAttribute<int64_t>("weight_prepacked", *opts.weight_prepacked);
+  }
 
   if constexpr (std::is_same_v<T1, float>) {
     test.AddInput<T1>("A", {batch_count, M, K}, input0_vals, false);
@@ -286,6 +294,19 @@ void RunTest(const TestOptions& opts,
 
   if (!explicit_eps.empty()) {
     test.ConfigEps(std::move(explicit_eps));
+  }
+
+  if (opts.disable_cpu_ep_fallback) {
+    SessionOptions session_options;
+    session_options.use_per_session_threads = false;
+    ASSERT_STATUS_OK(session_options.config_options.AddConfigEntry(kOrtSessionOptionsDisableCPUEPFallback, "1"));
+    test.Config(session_options);
+  }
+
+  if (opts.expected_failure.has_value()) {
+    test.Config(OpTester::ExpectResult::kExpectFailure, *opts.expected_failure);
+    test.RunWithConfig();
+    return;
   }
 
   test.RunWithConfig();
@@ -867,6 +888,44 @@ TEST(MatMulNBits, Fp16_Int4_NoZeroPoint) {
     RunTest<MLFloat16>(1, 256, 1024, block_size, has_zeropoint, zp_is_4bit, abs_error);
     RunTest<MLFloat16>(32, 1024, 2048, block_size, has_zeropoint, zp_is_4bit, abs_error);
   }
+}
+
+TEST(MatMulNBits, Fp16_Int4_PrepackedWeightRequiresFpAIntBGemm) {
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "0"}}};
+
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable";
+  }
+
+  TestOptions opts{};
+  opts.M = 1, opts.N = 256, opts.K = 1024;
+  opts.block_size = 64;
+  opts.disable_cpu_ep_fallback = true;
+  opts.weight_prepacked = 1;
+  opts.expected_failure = "weight_prepacked requires";
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(std::move(cuda_ep));
+  RunTest<MLFloat16>(opts, std::move(eps));
+}
+
+TEST(MatMulNBits, Fp16_Int4_PrepackedSm90WeightReserved) {
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
+
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable";
+  }
+
+  TestOptions opts{};
+  opts.M = 1, opts.N = 256, opts.K = 1024;
+  opts.block_size = 64;
+  opts.disable_cpu_ep_fallback = true;
+  opts.weight_prepacked = 2;
+  opts.expected_failure = "weight_prepacked";
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(std::move(cuda_ep));
+  RunTest<MLFloat16>(opts, std::move(eps));
 }
 
 // Exercises the CUDA small-M batched GEMV tiles: CtaM in {2,4,8,16} (with M values that are not a

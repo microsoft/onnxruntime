@@ -386,11 +386,23 @@ void CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType
                                                    workspace_ptr, workspace_bytes, gemm_config, stream, occupancy);
 #ifndef EXCLUDE_SM_90
   } else if (sm_ == 90) {
-    static_assert(!cutlass::platform::is_same<ActivationType, __nv_fp8_e4m3>::value || cutlass::platform::is_same<ScaleZeroType, half>::value,
-                  "ScaleZeroType must be half for activation=fp8");
-    sm90_dispatch_gemm_to_cutlass<ActivationType, WeightType, ScaleZeroType, BiasType, OutputType, QuantOp,
-                                  EpilogueTag>(A, B, weight_scales, weight_zero_points, biases, alpha, C, m, n, k, group_size, workspace_ptr,
-                                               workspace_bytes, gemm_config, stream, occupancy);
+    if constexpr ((cutlass::platform::is_same<ActivationType, half>::value ||
+                   cutlass::platform::is_same<ActivationType, __nv_bfloat16>::value) &&
+                  (cutlass::platform::is_same<WeightType, uint8_t>::value ||
+                   cutlass::platform::is_same<WeightType, cutlass::uint4b_t>::value) &&
+                  cutlass::platform::is_same<ActivationType, ScaleZeroType>::value &&
+                  cutlass::platform::is_same<ActivationType, BiasType>::value &&
+                  cutlass::platform::is_same<ActivationType, OutputType>::value) {
+      dispatch_gemm_to_cutlass<ActivationType, WeightType, ScaleZeroType, BiasType, OutputType, cutlass::arch::Sm80,
+                               QuantOp, EpilogueTag>(A, B, weight_scales, weight_zero_points, biases, alpha, C, m, n, k, group_size,
+                                                     workspace_ptr, workspace_bytes, gemm_config, stream, occupancy);
+    } else {
+      static_assert(!cutlass::platform::is_same<ActivationType, __nv_fp8_e4m3>::value || cutlass::platform::is_same<ScaleZeroType, half>::value,
+                    "ScaleZeroType must be half for activation=fp8");
+      sm90_dispatch_gemm_to_cutlass<ActivationType, WeightType, ScaleZeroType, BiasType, OutputType, QuantOp,
+                                    EpilogueTag>(A, B, weight_scales, weight_zero_points, biases, alpha, C, m, n, k, group_size, workspace_ptr,
+                                                 workspace_bytes, gemm_config, stream, occupancy);
+    }
 #endif
   } else {
     dispatch_gemm_to_cutlass<ActivationType, WeightType, ScaleZeroType, BiasType, OutputType, cutlass::arch::Sm80,
