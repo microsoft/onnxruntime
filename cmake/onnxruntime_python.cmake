@@ -20,6 +20,13 @@ file(GLOB onnxruntime_pybind_srcs CONFIGURE_DEPENDS
   ${onnxruntime_pybind_srcs_pattern}
   )
 
+# onnxruntime_pybind_cuda_quant.cc is compiled into the standalone
+# onnxruntime_cuda_quant_preprocess extension module (see below), not into
+# onnxruntime_pybind11_state. It includes <cuda_runtime.h> and links CUDA::cudart,
+# so compiling it into the main pybind module would break CPU-only builds and
+# re-introduce the hard libcudart dependency this design avoids.
+list(REMOVE_ITEM onnxruntime_pybind_srcs ${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_cuda_quant.cc)
+
 if(onnxruntime_ENABLE_TRAINING)
   list(REMOVE_ITEM onnxruntime_pybind_srcs  ${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_module.cc)
 endif()
@@ -236,6 +243,16 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
 # demand. Do NOT compile CUDA source files directly into onnxruntime_pybind11_state or
 # link CUDA::cudart from it: that would create a hard libcudart.so dependency that
 # prevents importing the Python module on CPU-only machines.
+
+# On Windows CUDA builds the main pybind module must still be built with
+# ORT_NO_CUDA_IN_PYBIND so that onnxruntime_pybind_mlvalue.cc / onnxruntime_pybind_ortvalue.cc
+# do not call CUDA runtime APIs (e.g. cudaMemcpy) directly. Starting with Python 3.8 on
+# Windows, PATH is no longer used to resolve extension-module DLL dependencies, so we avoid
+# linking the CUDA runtime into the pybind module and rely on os.add_dll_directory() /
+# the provider bridge instead.
+if (onnxruntime_USE_CUDA AND WIN32)
+  target_compile_definitions(onnxruntime_pybind11_state PRIVATE ORT_NO_CUDA_IN_PYBIND)
+endif()
 
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}
