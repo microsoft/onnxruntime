@@ -890,6 +890,100 @@ TEST(MatMulNBits, Fp16_Int4_NoZeroPoint) {
   }
 }
 
+// block_size=32 with the fpA_intB path. Production rc2/rc3 int4 models are quantized with
+// block_size=32. The fpA_intB kernels support group_size=32: the GEMV select_gs dispatches
+// GroupSize==32, and the SM80/Ampere fine-grained CUTLASS GEMM uses kMinFinegrainedGroupSize=32
+// (two scale rows per 64-element K tile). Exercises M=1 (GEMV) and M=32 (CUTLASS), with and
+// without zero-points, for fp16 and bf16.
+TEST(MatMulNBits, Fp16_Int4_BlockSize32_FpAIntB) {
+  constexpr float abs_error = 0.1f;
+  constexpr bool zp_is_4bit = true;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
+
+  for (auto has_zeropoint : {false, true}) {
+    RunTest<MLFloat16>(1, 256, 1024, 32, has_zeropoint, zp_is_4bit, abs_error);
+    RunTest<MLFloat16>(32, 1024, 2048, 32, has_zeropoint, zp_is_4bit, abs_error);
+  }
+}
+
+TEST(MatMulNBits, BFloat16_Int4_BlockSize32_FpAIntB) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "Skipping BFloat16 MatMul tests on CUDA < 8.0";
+  }
+
+  constexpr float abs_error = 0.5f;
+  constexpr bool zp_is_4bit = true;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
+
+  for (auto has_zeropoint : {false, true}) {
+    RunTest<BFloat16>(1, 256, 1024, 32, has_zeropoint, zp_is_4bit, abs_error);
+    RunTest<BFloat16>(32, 1024, 2048, 32, has_zeropoint, zp_is_4bit, abs_error);
+  }
+}
+
+// Fused bias with the fpA_intB path. Exercises both the GEMV path (M=1) and the CUTLASS GEMM path
+// (M=32), for fp16 and bf16, with block_size 64/128. This is the gpt-oss qkv_proj/o_proj scenario
+// where MatMulNBitsFusion folds the Add(bias) into MatMulNBits input[5].
+TEST(MatMulNBits, Fp16_Int4_NoZeroPoint_Bias) {
+  constexpr float abs_error = 0.1f;
+  constexpr bool zp_is_4bit = true;
+  constexpr bool has_zeropoint = false;
+  constexpr bool has_g_idx = false;
+  constexpr bool has_bias = true;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
+
+  for (auto block_size : {64, 128}) {
+    RunTest<MLFloat16>(1, 256, 1024, block_size, has_zeropoint, zp_is_4bit, abs_error, has_g_idx, has_bias);
+    RunTest<MLFloat16>(32, 1024, 2048, block_size, has_zeropoint, zp_is_4bit, abs_error, has_g_idx, has_bias);
+  }
+}
+
+TEST(MatMulNBits, BFloat16_Int4_NoZeroPoint_Bias) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "Skipping BFloat16 MatMul tests on CUDA < 8.0";
+  }
+
+  constexpr float abs_error = 0.5f;
+  constexpr bool zp_is_4bit = true;
+  constexpr bool has_zeropoint = false;
+  constexpr bool has_g_idx = false;
+  constexpr bool has_bias = true;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
+
+  for (auto block_size : {64, 128}) {
+    RunTest<BFloat16>(1, 256, 1024, block_size, has_zeropoint, zp_is_4bit, abs_error, has_g_idx, has_bias);
+    RunTest<BFloat16>(32, 1024, 2048, block_size, has_zeropoint, zp_is_4bit, abs_error, has_g_idx, has_bias);
+  }
+}
+
+TEST(MatMulNBits, Fp16_Int4_NoZeroPoint_Bias_Prepacked) {
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
+
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA execution provider is unavailable";
+  }
+
+  // Bias-bearing node with runtime prepacking (weight_prepacked=0): the kernel's PrePack transforms
+  // the raw weight into the fpA_intB layout at session init and the fused bias flows through the
+  // CUTLASS/GEMV epilogue. Offline weight_prepacked=1 parity for bias is covered by the Python test
+  // test_op_matmulnbits_prepacked_cuda.py.
+  TestOptions opts{};
+  opts.M = 32, opts.N = 1024, opts.K = 2048;
+  opts.block_size = 64;
+  opts.has_zero_point = false;
+  opts.has_bias = true;
+  opts.output_abs_error = 0.1f;
+  opts.output_rel_error = 0.02f;
+  std::vector<std::unique_ptr<IExecutionProvider>> eps;
+  eps.push_back(std::move(cuda_ep));
+  RunTest<MLFloat16>(opts, std::move(eps));
+}
+
 TEST(MatMulNBits, Fp16_Int4_PrepackedWeightRequiresFpAIntBGemm) {
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "0"}}};
 
@@ -909,7 +1003,14 @@ TEST(MatMulNBits, Fp16_Int4_PrepackedWeightRequiresFpAIntBGemm) {
   RunTest<MLFloat16>(opts, std::move(eps));
 }
 
-TEST(MatMulNBits, Fp16_Int4_PrepackedSm90WeightReserved) {
+// weight_prepacked=2 selects the native SM90 (Hopper) mixed-GEMM layout. It is rejected up front
+// unless the device is SM90 and block_size is 64 or 128 (the SM90 TMA kernel requires group_size to
+// be a multiple of the 64-element Hopper K tile, so block_size=32 is SM80-only). When the fpA_intB
+// path is compiled in, both rejection messages begin with "weight_prepacked=2 (SM90 layout)", so the
+// check is device-independent: non-Hopper hits the compute-capability guard, Hopper hits the
+// block_size guard. In a build without onnxruntime_USE_FPA_INTB_GEMM the kernel rejects any
+// weight_prepacked!=0 up front with a different ("weight_prepacked requires ...") message.
+TEST(MatMulNBits, Fp16_Int4_PrepackedSm90BlockSize32Rejected) {
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
 
   auto cuda_ep = DefaultCudaExecutionProvider();
@@ -919,10 +1020,14 @@ TEST(MatMulNBits, Fp16_Int4_PrepackedSm90WeightReserved) {
 
   TestOptions opts{};
   opts.M = 1, opts.N = 256, opts.K = 1024;
-  opts.block_size = 64;
+  opts.block_size = 32;
   opts.disable_cpu_ep_fallback = true;
   opts.weight_prepacked = 2;
-  opts.expected_failure = "weight_prepacked";
+#if USE_FPA_INTB_GEMM
+  opts.expected_failure = "weight_prepacked=2 (SM90 layout)";
+#else
+  opts.expected_failure = "weight_prepacked requires";
+#endif
   std::vector<std::unique_ptr<IExecutionProvider>> eps;
   eps.push_back(std::move(cuda_ep));
   RunTest<MLFloat16>(opts, std::move(eps));
