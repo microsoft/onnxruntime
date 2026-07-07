@@ -67,19 +67,23 @@ const calculateResultSnippet = (transposeA: boolean, innerElementSize: number) =
         let ACached2 = mm_Asub[k * innerElementSize + 2][localRow];
         ${innerElementSize === 3 ? '' : 'let ACached3 = mm_Asub[k * innerElementSize + 3][localRow];'}
         for (var i = 0; i < rowPerThread; i = i + 1) {
-          acc[i] = BCached0 * ACached0[i] + acc[i];
-          acc[i] = BCached1 * ACached1[i] + acc[i];
-          acc[i] = BCached2 * ACached2[i] + acc[i];
-          ${innerElementSize === 3 ? '' : 'acc[i] = BCached3 * ACached3[i] + acc[i];'}
+          // Explicit f32 casts on each operand are required: Dawn/D3D12 re-demotes
+          // temporaries to f16 when 'enable f16;' is active (issue #26732).
+          acc[i] = vec4<f32>(BCached0) * f32(ACached0[i]) + acc[i];
+          acc[i] = vec4<f32>(BCached1) * f32(ACached1[i]) + acc[i];
+          acc[i] = vec4<f32>(BCached2) * f32(ACached2[i]) + acc[i];
+          ${innerElementSize === 3 ? '' : 'acc[i] = vec4<f32>(BCached3) * f32(ACached3[i]) + acc[i];'}
         }`;
   } else {
     return `
         for (var i = 0; i < rowPerThread; i = i + 1) {
           let ACached = mm_Asub[tileRow + i][k];
-          acc[i] = BCached0 * ACached.x + acc[i];
-          acc[i] = BCached1 * ACached.y + acc[i];
-          acc[i] = BCached2 * ACached.z + acc[i];
-          ${innerElementSize === 3 ? '' : 'acc[i] = BCached3 * ACached.w + acc[i];'}
+          // Explicit f32 casts on each operand are required: Dawn/D3D12 re-demotes
+          // temporaries to f16 when 'enable f16;' is active (issue #26732).
+          acc[i] = vec4<f32>(BCached0) * f32(ACached.x) + acc[i];
+          acc[i] = vec4<f32>(BCached1) * f32(ACached.y) + acc[i];
+          acc[i] = vec4<f32>(BCached2) * f32(ACached.z) + acc[i];
+          ${innerElementSize === 3 ? '' : 'acc[i] = vec4<f32>(BCached3) * f32(ACached.w) + acc[i];'}
         }`;
   }
 };
@@ -140,7 +144,9 @@ fn main(@builtin(local_invocation_id) localId : vec3<u32>,
   let num_tiles = ${splitK ? `${Math.ceil(splitedDimInner / tileInner)}` : '(uniforms.dim_inner - 1) / tileInner + 1'};
   var kStart = ${splitK ? `i32(globalId.z) * ${splitedDimInner}` : '0'};
 
-  var acc: array<vec4<${type}>, rowPerThread>;
+  // Accumulate in f32 to prevent fp16 overflow in long dot products (issue #26732).
+  // Tiles (mm_Asub/mm_Bsub) stay in ${type}: no shared-memory or bandwidth regression.
+  var acc: array<vec4<f32>, rowPerThread>;
 
   // Loop over shared dimension.
   let tileRowB = localRow * ${rowPerThreadB};
@@ -177,7 +183,7 @@ fn main(@builtin(local_invocation_id) localId : vec3<u32>,
   }
 
   for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {
-      mm_write(batch, globalRow + innerRow, globalCol, acc[innerRow]);
+      mm_write(batch, globalRow + innerRow, globalCol, vec4<${type}>(acc[innerRow]));
   }
 }`;
 };
@@ -268,8 +274,10 @@ export const makeMatMulPackedSource = (
               : `mm_Asub[localRow + innerRow * ${workgroupSize[1]}][k];`
           }
           for (var innerCol = 0; innerCol < colPerThread; innerCol = innerCol + 1) {
+            // Explicit f32 casts required: Dawn/D3D12 re-demotes temporaries to f16
+            // when 'enable f16;' is active (issue #26732).
             acc[innerRow][innerCol] = acc[innerRow][innerCol] +
-                ACached * BCached[innerCol];
+                f32(ACached) * f32(BCached[innerCol]);
           }
         }
       }
@@ -279,7 +287,7 @@ export const makeMatMulPackedSource = (
       let gRow = globalRowStart + localRow + innerRow * ${workgroupSize[1]};
       for (var innerCol = 0; innerCol < colPerThread; innerCol = innerCol + 1) {
         let gCol = globalColStart + localCol + innerCol * ${workgroupSize[0]};
-        mm_write(batch, gRow, gCol, acc[innerRow][innerCol]);
+        mm_write(batch, gRow, gCol, ${type}(acc[innerRow][innerCol]));
       }
     }
     `
@@ -328,7 +336,9 @@ for (var t = 0; t < num_tiles; t = t + 1) {
     for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {
       ${readDataFromSubASnippet(transposeA)}
       for (var innerCol = 0; innerCol < colPerThread; innerCol = innerCol + 1) {
-        acc[innerRow][innerCol] = acc[innerRow][innerCol] + ACached * BCached[innerCol];
+        // Explicit f32 casts required: Dawn/D3D12 re-demotes temporaries to f16
+        // when 'enable f16;' is active (issue #26732).
+        acc[innerRow][innerCol] = acc[innerRow][innerCol] + f32(ACached) * f32(BCached[innerCol]);
       }
     }
   }
@@ -339,7 +349,7 @@ for (var t = 0; t < num_tiles; t = t + 1) {
 for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {
   for (var innerCol = 0; innerCol < colPerThread; innerCol = innerCol + 1) {
     mm_write(batch, globalRow + innerRow, globalCol + innerCol,
-        acc[innerRow][innerCol]);
+        ${type}(acc[innerRow][innerCol]));
   }
 }
 `;
@@ -362,7 +372,9 @@ fn main(@builtin(local_invocation_id) localId : vec3<u32>,
     };
     var kStart = ${splitK ? `i32(globalId.z) * ${splitedDimInner}` : '0'};
 
-    var acc : array<array<${type}, colPerThread>, rowPerThread>;
+    // Accumulate in f32 to prevent fp16 overflow in long dot products (issue #26732).
+    // Tiles (mm_Asub/mm_Bsub) stay in ${type}: no shared-memory or bandwidth regression.
+    var acc : array<array<f32, colPerThread>, rowPerThread>;
     ${matmulSnippet}
   }
 `;

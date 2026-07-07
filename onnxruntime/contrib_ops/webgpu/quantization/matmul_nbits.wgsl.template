@@ -22,7 +22,10 @@
 
 // Shared memory
 var<workgroup> tile_A : array<input_a_value_t, a_length_per_tile>;
-var<workgroup> inter_results: array<array<output_element_t, tile_size_k_vec>, tile_size>;
+// Accumulate partial sums along K in f32: with fp16 outputs, summing 2048+ f16
+// products overflows the f16 max (65504) and poisons the output with +Inf/NaN
+// (issue #26732). Only the block-local `sum` stays in output_element_t.
+var<workgroup> inter_results: array<array<f32, tile_size_k_vec>, tile_size>;
 
 fn loadSHMA(batch: u32, a_global: u32, kidx: u32, col: u32)
 {
@@ -222,7 +225,9 @@ $MAIN {
 #endif
 #endif
 
-        inter_results[local_row_offset + idy][idx] += sum;
+        // Explicit f32 cast: Dawn/D3D12 re-demotes temporaries to f16 when
+        // 'enable f16;' is active (issue #26732).
+        inter_results[local_row_offset + idy][idx] += f32(sum);
       }
     }
     workgroupBarrier();
@@ -233,7 +238,7 @@ $MAIN {
   }
 
   if (local_idx < tile_size) {
-    var output_value = output_element_t(0);
+    var output_value = f32(0);
     for (var b = 0u; b < tile_size_k_vec; b++) {
       output_value += inter_results[local_idx][b];
     }
@@ -241,9 +246,10 @@ $MAIN {
     let output_idx = batch * uniforms.dispatch_M * uniforms.N + a_global * uniforms.N + b_global;
     if (b_global < uniforms.N) {
 #if has_bias
-      output_value += bias[b_global + b_bias_offset];
+      output_value += f32(bias[b_global + b_bias_offset]);
 #endif
-      output.setByOffset(output_idx, output_value);
+      // Downcast to the output type only at the final write.
+      output.setByOffset(output_idx, output_element_t(output_value));
     }
   }
 }  // MAIN
