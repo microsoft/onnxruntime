@@ -1101,7 +1101,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
   // that would later deadlock during Cleanup().
   try {
     it->second.context->Initialize(config);
-  } catch (...) {
+  } catch (const std::exception&) {
     if (--it->second.ref_count == 0) {
       contexts_->erase(it);
     }
