@@ -218,8 +218,8 @@ class TestFpAIntBConfigKeys(unittest.TestCase):
 
     These do not need the offline weight packer (pack_weights_for_cuda_mixed_gemm), so they run in
     more build configurations than TestMatMulNBitsPrepackedCuda. They cover: the config key enabling
-    the fpA_intB path, session config overriding the ORT_FPA_INTB_GEMM env var, the profile-M key
-    being accepted, and the prepacked-requires-enable error message referencing the config key.
+    the fpA_intB path (on/off only), session config overriding the ORT_FPA_INTB_GEMM env var, the
+    profile-M key being accepted, and env-var backward compatibility.
     """
 
     def setUp(self):
@@ -283,10 +283,10 @@ class TestFpAIntBConfigKeys(unittest.TestCase):
 
     def test_config_key_enables_fpa_intb(self):
         # Baseline runs the standard dequant path (fpA_intB disabled); the config key must switch to
-        # the fpA_intB path and stay numerically equivalent.
+        # the fpA_intB path and stay numerically equivalent. Only on/off is accepted.
         model, a, _, _ = self._make_int4_case()
         ref = self._run(model, a)
-        for value in ("1", "all", "on", "0x4"):
+        for value in ("1", "on", "all", "true"):
             out = self._run(model, a, {"ep.cuda.fpa_intb_gemm": value})
             np.testing.assert_allclose(out, ref, rtol=2e-2, atol=2e-2, err_msg=f"value={value}")
 
@@ -307,9 +307,11 @@ class TestFpAIntBConfigKeys(unittest.TestCase):
     def test_env_var_backward_compatible(self):
         model, a, _, _ = self._make_int4_case()
         ref = self._run(model, a)
-        with set_env("ORT_FPA_INTB_GEMM", "1"):
-            out = self._run(model, a)
-        np.testing.assert_allclose(out, ref, rtol=2e-2, atol=2e-2)
+        # "1" plus a legacy non-zero numeric value (previously a bitmask) both mean "enabled" now.
+        for value in ("1", "4"):
+            with set_env("ORT_FPA_INTB_GEMM", value):
+                out = self._run(model, a)
+            np.testing.assert_allclose(out, ref, rtol=2e-2, atol=2e-2, err_msg=f"env={value}")
 
     def test_prepacked_requires_enable_reports_config_key(self):
         # A prepacked node requires the fpA_intB path; when it is disabled the construction-time

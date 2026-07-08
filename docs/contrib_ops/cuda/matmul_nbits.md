@@ -263,8 +263,7 @@ Prepacked weights are intentionally strict:
 
 - If ORT was built without `onnxruntime_USE_FPA_INTB_GEMM=ON`, any nonzero
   `weight_prepacked` value throws during kernel construction.
-- If `ORT_FPA_INTB_GEMM` is unset or `0`, any nonzero `weight_prepacked` value
-  throws instead of silently falling back to a raw-layout path.
+- If any nonzero `weight_prepacked` value will cause `ORT_FPA_INTB_GEMM` be ignored.
 - Nonzero `weight_prepacked` requires FP16 or BF16 input `A`, because only the
   CUDA fpA_intB path consumes this layout.
 - `weight_prepacked` must match the layout the selected kernel expects: `1` is
@@ -293,7 +292,7 @@ present. `ComputeInternal` then:
 | Variable | Type / default | Effect |
 |----------|----------------|--------|
 | `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION` | bool, `0` | Disable the router GEMV specialization (§4.2); shapes fall back to the generic GEMV / dequant path. Useful for A/B benchmarking. |
-| `ORT_FPA_INTB_GEMM` | int bitmask, `0` | Enable the CUTLASS weight-only path (§6). `0x01` = all, `0x02` = CUDA GEMV, `0x04` = int4, `0x08` = int8. `0` disables it. |
+| `ORT_FPA_INTB_GEMM` | int/string, `0` | Enable the CUTLASS weight-only path (§6). `0` or `off` disables it, otherwise enables it. |
 | `ORT_MATMULNBITS_FORCE_CHUNKED` | int, `0` | Force the chunked dequant+GEMM fallback (§5) regardless of the size heuristic. |
 | `ORT_MATMULNBITS_CHUNK_SIZE` | int64, `32768` | Target rows per chunk in the chunked fallback. Values `< 1` reset to the default. |
 
