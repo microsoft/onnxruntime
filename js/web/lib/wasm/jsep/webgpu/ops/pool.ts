@@ -56,6 +56,7 @@ const getAdjustedPoolAttributesAndOutputShape = <AttributeType extends AveragePo
     kernelShape,
     pads,
     attributes.autoPad,
+    attributes.ceilMode,
   );
 
   const newAttributes = Object.assign({}, attributes);
