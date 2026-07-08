@@ -302,6 +302,19 @@ class PosixEnv : public Env {
   }
 
   int GetL2CacheSize() const override {
+#ifdef ORT_USE_CPUINFO
+    // Prefer cpuinfo for detection. glibc's aarch64 sysconf backend does not
+    // implement the cache-size queries, so sysconf(_SC_LEVEL2_CACHE_SIZE)
+    // returns 0 on Linux/aarch64, which silently disables cache-tiled kernels
+    // (e.g. CPU FlashAttention in MultiHeadAttention). cpuinfo reads the sizes
+    // from sysfs cacheinfo and works across architectures.
+    if (cpuinfo_available_ && cpuinfo_get_l2_caches_count() > 0) {
+      const auto* l2_cache = cpuinfo_get_l2_cache(0);
+      if (l2_cache != nullptr && l2_cache->size > 0) {
+        return static_cast<int>(l2_cache->size);
+      }
+    }
+#endif  // ORT_USE_CPUINFO
 #ifdef _SC_LEVEL2_CACHE_SIZE
     return static_cast<int>(sysconf(_SC_LEVEL2_CACHE_SIZE));
 #else
