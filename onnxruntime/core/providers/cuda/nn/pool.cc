@@ -6,6 +6,7 @@
 #include "core/providers/cuda/nn/pool.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cuda/nn/max_pool_with_index.h"
+#include "core/providers/cuda/nn/avg_pool_impl.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 
 using namespace onnxruntime::common;
@@ -204,6 +205,29 @@ Status Pool<T, PoolType, Layout>::ComputeInternal(OpKernelContext* context) cons
 
   auto x_data = reinterpret_cast<const CudaT*>(X->Data<T>());
   auto y_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
+
+  // cuDNN's pooling descriptor stores a single symmetric pad value per axis and applies it
+  // to both sides, so it silently drops ONNX end pads when pad_begin != pad_end. Any
+  // asymmetric-pad AveragePool (explicit asymmetric pads, auto_pad=SAME_UPPER/SAME_LOWER, or
+  // ceil_mode boundaries) therefore produces wrong sums and divisors on cuDNN. Route only that
+  // case to the custom kernel, which honors per-side pads and matches the CPU reference divisor
+  // exactly. Symmetric pads (the common case, including all global pooling) keep the fast cuDNN
+  // path unchanged, so there is zero perf regression.
+  if constexpr (PoolType::type == onnxruntime::PoolType::kAveragePool) {
+    const size_t spatial_rank = kernel_shape.size();
+    bool asymmetric_pads = false;
+    for (size_t i = 0; i < spatial_rank; ++i) {
+      if (pads[i] != pads[spatial_rank + i]) {
+        asymmetric_pads = true;
+        break;
+      }
+    }
+    if (asymmetric_pads) {
+      AveragePoolWithPad<CudaT, Layout>(Stream(context), x_shape, y_shape, kernel_shape, strides, pads,
+                                        pool_attrs_.dilations, pool_attrs_.count_include_pad, x_data, y_data);
+      return Status::OK();
+    }
+  }
 
   TensorShapeVector x_dims_cudnn(x_dims.begin(), x_dims.end());
   TensorShapeVector y_dims_cudnn(y_dims);
