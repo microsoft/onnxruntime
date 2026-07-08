@@ -39,9 +39,9 @@ __global__ void AveragePoolWithPadKernel(
     int64_t stride_h,
     int64_t stride_w,
     int64_t stride_d,
-    int64_t pad_h,
-    int64_t pad_w,
-    int64_t pad_d,
+    int64_t pad_h_head,
+    int64_t pad_w_head,
+    int64_t pad_d_head,
     int64_t pad_h_tail,
     int64_t pad_w_tail,
     int64_t pad_d_tail,
@@ -82,9 +82,9 @@ __global__ void AveragePoolWithPadKernel(
   }
 
   // Window bounds mirror the CPU AveragePool{1,2,3}DTask reference exactly.
-  int64_t h_start = h_index * stride_h - pad_h;
-  int64_t w_start = w_index * stride_w - pad_w;
-  int64_t d_start = d_index * stride_d - pad_d;
+  int64_t h_start = h_index * stride_h - pad_h_head;
+  int64_t w_start = w_index * stride_w - pad_w_head;
+  int64_t d_start = d_index * stride_d - pad_d_head;
 
   int64_t h_end = _Min<int64_t>(h_start + kernel_h * dilation_h, height + pad_h_tail);
   int64_t w_end = _Min<int64_t>(w_start + kernel_w * dilation_w, width + pad_w_tail);
@@ -165,9 +165,9 @@ void AveragePoolWithPad(
   int64_t stride_d = rank > 2 ? stride_shape[2] : 1;
 
   // pads: [x1_begin,...,xN_begin, x1_end,...,xN_end]. Begin at [i], end at [rank + i].
-  int64_t pad_h = pads[0];
-  int64_t pad_w = rank > 1 ? pads[1] : 0;
-  int64_t pad_d = rank > 2 ? pads[2] : 0;
+  int64_t pad_h_head = pads[0];
+  int64_t pad_w_head = rank > 1 ? pads[1] : 0;
+  int64_t pad_d_head = rank > 2 ? pads[2] : 0;
   int64_t pad_h_tail = pads[rank + 0];
   int64_t pad_w_tail = rank > 1 ? pads[rank + 1] : 0;
   int64_t pad_d_tail = rank > 2 ? pads[rank + 2] : 0;
@@ -199,9 +199,9 @@ void AveragePoolWithPad(
       stride_h,
       stride_w,
       stride_d,
-      pad_h,
-      pad_w,
-      pad_d,
+      pad_h_head,
+      pad_w_head,
+      pad_d_head,
       pad_h_tail,
       pad_w_tail,
       pad_d_tail,
