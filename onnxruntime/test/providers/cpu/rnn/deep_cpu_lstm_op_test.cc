@@ -1392,9 +1392,10 @@ TEST(LSTMTest, MismatchedWeightShapeIsRejected) {
   std::vector<float> Y_data(seq_length * 1 * batch_size * hidden_size, 0.f);
   test.AddOutput<float>("Y", Y_dims, Y_data);
 
-  // Expect a clean validation error rather than a crash.
+  // Expect a clean validation error rather than a crash. Skip DML (deprecated) and QNN (now maintained
+  // out-of-tree in the onnxruntime-qnn repo), which do not perform this validation.
   test.Run(OpTester::ExpectResult::kExpectFailure, "Input W must have shape",
-           {kTensorrtExecutionProvider});
+           {kTensorrtExecutionProvider, kDmlExecutionProvider, kQnnExecutionProvider});
 }
 
 #ifndef ENABLE_TRAINING
