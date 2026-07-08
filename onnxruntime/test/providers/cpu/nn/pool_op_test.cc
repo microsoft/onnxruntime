@@ -1095,6 +1095,120 @@ TEST(PoolTest, AveragePool_19_ceil_count_include_pad_1d) {
            {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider});
 }
 
+// (a)-gate regression test for the CPU/MLAS AvgPool ceil_mode + count_include_pad bug
+// (PyTorch #183528). This is the opset-18 clone of AveragePool_19_ceil_count_include_pad_1d:
+// same X and same expected_vals, but at opset 18 the float path routes through MLAS (which
+// divided by the full kernel size and produced a wrong average) instead of the v19 reference
+// loop. GPU / other EPs are excluded so the test is green the moment the CPU fix lands; the
+// CUDA leg is tracked separately as the (b) probe.
+TEST(PoolTest, AveragePool_18_ceil_count_include_pad_1d) {
+  OpTester test("AveragePool", 18);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{3});
+  test.AddAttribute("pads", std::vector<int64_t>{3, 3});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{7});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<float> x_vals = {2.0903f, 4.6493f, 1.6320f, -3.2051f, 4.6975f, 4.7296f, 3.3653f, -1.5815f, -2.3832f, 0.9628f, -1.5899f, -2.6820f, 5.7529f, 7.7346f, -0.8910f, -2.0151f, 0.1313f, -0.5374f};
+  std::vector<int64_t> x_dims = {1, 2, 9};
+  std::vector<int64_t> expected_dims = {1, 2, 4};
+  std::vector<float> expected_vals = {0.73807144f, 2.5655572f, 0.8032287f, -0.09990001f, 0.34911433f, 1.0389f, 1.4536142f, -0.40353334f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider,
+            kOpenVINOExecutionProvider, kDmlExecutionProvider});
+}
+
+// 2D opset-18 case for the same bug. Input is the PyTorch #183528 repro:
+// x = arange(1, 17).reshape(1, 1, 4, 4), kernel=3, stride=2, pad=1, ceil_mode=1,
+// count_include_pad=1. The ceil-mode trailing window ends past input+pad_tail, so MLAS's
+// full-kernel divisor gave a wrong average; the reference loop divides by the clamped
+// window (in-bounds + real pad cells only).
+TEST(PoolTest, AveragePool_18_ceil_count_include_pad_2d) {
+  OpTester test("AveragePool", 18);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<float> x_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f,
+                               9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f};
+  std::vector<int64_t> x_dims = {1, 1, 4, 4};
+  std::vector<int64_t> expected_dims = {1, 1, 3, 3};
+  std::vector<float> expected_vals = {1.5555556f, 3.3333333f, 2.0f,
+                                      6.3333335f, 11.0f, 6.0f,
+                                      4.5f, 7.5f, 4.0f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider,
+            kOpenVINOExecutionProvider, kDmlExecutionProvider});
+}
+
+// 3D opset-18 case for the same bug, exercising the AveragePool3DTask path.
+TEST(PoolTest, AveragePool_18_ceil_count_include_pad_3d) {
+  OpTester test("AveragePool", 18);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1, 1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3, 3});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<float> x_vals(27);
+  for (int i = 0; i < 27; ++i) {
+    x_vals[i] = static_cast<float>(i + 1);
+  }
+  std::vector<int64_t> x_dims = {1, 1, 3, 3, 3};
+  std::vector<int64_t> expected_dims = {1, 1, 2, 2, 2};
+  // Ground truth from the CPU v19 reference loop (window clamped to input + real pad).
+  std::vector<float> expected_vals = {2.2222223f, 2.5185184f, 3.1111112f, 3.4074075f,
+                                      4.888889f, 5.185185f, 5.7777777f, 6.074074f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider,
+            kOpenVINOExecutionProvider, kDmlExecutionProvider});
+}
+
+// No-regression guard for INV-3: with count_include_pad=0 the divisor already counts only
+// in-bounds cells, so this combo stays on the MLAS fast path and must remain correct.
+TEST(PoolTest, AveragePool_18_ceil_count_exclude_pad_2d) {
+  OpTester test("AveragePool", 18);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{2, 2});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)0);
+
+  std::vector<float> x_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f,
+                               9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f, 16.0f};
+  std::vector<int64_t> x_dims = {1, 1, 4, 4};
+  std::vector<int64_t> expected_dims = {1, 1, 3, 3};
+  // count_include_pad=0: each output divides by the number of in-bounds cells only.
+  std::vector<float> expected_vals = {3.5f, 5.0f, 6.0f,
+                                      9.5f, 11.0f, 12.0f,
+                                      13.5f, 15.0f, 16.0f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider,
+            kOpenVINOExecutionProvider, kDmlExecutionProvider});
+}
+
 TEST(PoolTest, GlobalAveragePool) {
   OpTester test("GlobalAveragePool");
 
