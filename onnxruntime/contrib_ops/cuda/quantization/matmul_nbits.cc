@@ -712,7 +712,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
       // Chunked dequant+GEMM: scratch buffer is already sized for one chunk.
       const int64_t chunk_n = chunk_target_rows;
 
-      auto* out_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
+      auto* chunk_out_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
 
       for (int64_t n_start = 0; n_start < N_; n_start += chunk_n) {
         const int64_t n_end = std::min(n_start + chunk_n, N_);
@@ -758,7 +758,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             reinterpret_cast<const CudaT*>(a_data),  // A [M, K]
             helper.Lda(transa),
             &zero,
-            out_data + n_start,          // C[:, n_start] — strided output
+            chunk_out_data + n_start,    // C[:, n_start] — strided output
             SafeInt<int>(helper.Ldc()),  // ldc = N (full output stride)
             GetDeviceProp(),
             UseTF32()));
