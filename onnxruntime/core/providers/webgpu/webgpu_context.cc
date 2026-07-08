@@ -1099,13 +1099,14 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
   // perform initialization; on failure, undo the ref_count increment and remove the entry
   // if this was the first (and only) reference, so we don't leave a zombie context in the map
   // that would later deadlock during Cleanup().
-  try {
+  ORT_TRY {
     it->second.context->Initialize(config);
-  } catch (const std::exception&) {
+  }
+  ORT_CATCH(...) {
     if (--it->second.ref_count == 0) {
       contexts_->erase(it);
     }
-    throw;
+    ORT_RETHROW;
   }
 
   return *it->second.context;
