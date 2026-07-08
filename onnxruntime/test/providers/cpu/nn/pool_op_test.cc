@@ -1095,6 +1095,215 @@ TEST(PoolTest, AveragePool_19_ceil_count_include_pad_1d) {
            {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider, kDmlExecutionProvider});
 }
 
+// ---------------------------------------------------------------------------
+// Target (b): CUDA AveragePool asymmetric-padding parity tests.
+//
+// cuDNN's pooling descriptor stores one symmetric pad per axis, so it silently drops the
+// ONNX end pad when pad_begin != pad_end, producing wrong averages on CUDA (QA probe:
+// 1D pad(0,3) CUDA=[4,6.5,8] vs CPU=[4,5.571,4]; 2D pad(0,0,3,3) diff 53.25). The custom
+// AveragePoolWithPad CUDA kernel fixes this. These cases keep the CUDA EP UN-excluded so the
+// CUDA leg actually runs and must match the CPU reference oracle. Expected values are the CPU
+// reference outputs (also cross-checked against the QA probe numbers).
+//
+// ceil_mode + count_include_pad cases use opset 19 so the CPU leg runs the already-correct v19
+// reference functor and validates the CUDA kernel independently of the separate CPU opset-7..18
+// MLAS fix (PR #29629); the CUDA routing is opset-independent, so this still exercises the fix.
+// ---------------------------------------------------------------------------
+TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_1d) {
+  OpTester test("AveragePool", 19);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{3});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 3});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{7});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<float> x_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  std::vector<int64_t> x_dims = {1, 1, 9};
+  std::vector<int64_t> expected_dims = {1, 1, 3};
+  std::vector<float> expected_vals = {4.0f, 5.5714283f, 4.0f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+            kDmlExecutionProvider});
+}
+
+TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_1d_exclude_pad) {
+  OpTester test("AveragePool", 18);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{3});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 3});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{7});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)0);
+
+  std::vector<float> x_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  std::vector<int64_t> x_dims = {1, 1, 9};
+  std::vector<int64_t> expected_dims = {1, 1, 3};
+  // exclude-pad divides by in-bounds cells only.
+  std::vector<float> expected_vals = {4.0f, 6.5f, 8.0f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+            kDmlExecutionProvider});
+}
+
+TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_2d) {
+  OpTester test("AveragePool", 19);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{3, 3});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 3, 3});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{7, 7});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<float> x_vals(81);
+  for (int i = 0; i < 81; ++i) {
+    x_vals[i] = static_cast<float>(i + 1);
+  }
+  std::vector<int64_t> x_dims = {1, 1, 9, 9};
+  std::vector<int64_t> expected_dims = {1, 1, 3, 3};
+  std::vector<float> expected_vals = {31.0f, 28.714287f, 17.5f,
+                                      45.857143f, 41.142857f, 24.642858f,
+                                      33.5f, 29.785715f, 17.75f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+            kDmlExecutionProvider});
+}
+
+TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_2d_exclude_pad) {
+  OpTester test("AveragePool", 18);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{3, 3});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 0, 3, 3});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{7, 7});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)0);
+
+  std::vector<float> x_vals(81);
+  for (int i = 0; i < 81; ++i) {
+    x_vals[i] = static_cast<float>(i + 1);
+  }
+  std::vector<int64_t> x_dims = {1, 1, 9, 9};
+  std::vector<int64_t> expected_dims = {1, 1, 3, 3};
+  std::vector<float> expected_vals = {31.0f, 33.5f, 35.0f,
+                                      53.5f, 56.0f, 57.5f,
+                                      67.0f, 69.5f, 71.0f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+            kDmlExecutionProvider});
+}
+
+// auto_pad=SAME_UPPER produces naturally asymmetric pads (here pad(0,1)); proves the latent
+// SAME-pad bug on CUDA is also fixed by the same kernel.
+TEST(PoolTest, AveragePool_CUDA_same_upper_asymmetric_1d) {
+  OpTester test("AveragePool", 18);
+
+  test.AddAttribute("auto_pad", "SAME_UPPER");
+  test.AddAttribute("strides", std::vector<int64_t>{2});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3});
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<float> x_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f};
+  std::vector<int64_t> x_dims = {1, 1, 10};
+  std::vector<int64_t> expected_dims = {1, 1, 5};
+  std::vector<float> expected_vals = {2.0f, 4.0f, 6.0f, 8.0f, 6.3333335f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+            kDmlExecutionProvider});
+}
+
+// Regression guard: symmetric pads must STAY on the fast cuDNN path and remain correct.
+TEST(PoolTest, AveragePool_CUDA_symmetric_pad_regression_1d) {
+  OpTester test("AveragePool", 19);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{3});
+  test.AddAttribute("pads", std::vector<int64_t>{3, 3});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{7});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<float> x_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  std::vector<int64_t> x_dims = {1, 1, 9};
+  std::vector<int64_t> expected_dims = {1, 1, 4};
+  std::vector<float> expected_vals = {1.4285715f, 4.0f, 5.5714283f, 4.0f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+            kDmlExecutionProvider});
+}
+
+// MaxPool asymmetric-pad probe/regression on CUDA (verify-then-decide per design). MaxPool
+// ignores pad cells (no divisor); asymmetric tail pad only changes output size, computed
+// correctly upstream. CUDA un-excluded to confirm parity with the CPU reference.
+TEST(PoolTest, MaxPool_CUDA_asymmetric_tail_pad_1d) {
+  OpTester test("MaxPool", 12);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{3});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 3});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{7});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+
+  std::vector<float> x_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  std::vector<int64_t> x_dims = {1, 1, 9};
+  std::vector<int64_t> expected_dims = {1, 1, 3};
+  std::vector<float> expected_vals = {7.0f, 9.0f, 9.0f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+            kDmlExecutionProvider});
+}
+
+// fp16 asymmetric-pad AveragePool (opset 19 so both CPU AveragePoolV19 and the CUDA kernel
+// run). Exercises the half accumulate-in-float path of AveragePoolWithPad.
+TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_1d_fp16) {
+  OpTester test("AveragePool", 19);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{3});
+  test.AddAttribute("pads", std::vector<int64_t>{0, 3});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{7});
+  test.AddAttribute("ceil_mode", (int64_t)1);
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<MLFloat16> x_vals = {MLFloat16(1.0f), MLFloat16(2.0f), MLFloat16(3.0f),
+                                   MLFloat16(4.0f), MLFloat16(5.0f), MLFloat16(6.0f),
+                                   MLFloat16(7.0f), MLFloat16(8.0f), MLFloat16(9.0f)};
+  std::vector<int64_t> x_dims = {1, 1, 9};
+  std::vector<int64_t> expected_dims = {1, 1, 3};
+  std::vector<MLFloat16> expected_vals = {MLFloat16(4.0f), MLFloat16(5.5714283f), MLFloat16(4.0f)};
+
+  test.AddInput<MLFloat16>("X", x_dims, x_vals);
+  test.AddOutput<MLFloat16>("Y", expected_dims, expected_vals);
+  test.SetOutputTolerance(0.005f);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+            kDmlExecutionProvider});
+}
+
 TEST(PoolTest, GlobalAveragePool) {
   OpTester test("GlobalAveragePool");
 
