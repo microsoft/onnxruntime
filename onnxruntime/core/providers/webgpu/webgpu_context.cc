@@ -71,7 +71,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
                                                                      &req_adapter_options,
                                                                      wgpu::CallbackMode::WaitAnyOnly,
                                                                      [](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter, wgpu::StringView message,
-                                                                        RequestAdapterResult* result) {
+                                                                        RequestAdapterResult* result) noexcept {
                                                                        result->status = status;
                                                                        if (status == wgpu::RequestAdapterStatus::Success) {
                                                                          result->adapter = std::move(adapter);
@@ -111,20 +111,24 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       device_desc.requiredLimits = &required_limits;
 
       // TODO: revise temporary error handling
-      device_desc.SetUncapturedErrorCallback([](const wgpu::Device& /*device*/, wgpu::ErrorType type, wgpu::StringView message) {
-        if (logging::LoggingManager::HasDefaultLogger()) {
-          LOGS_DEFAULT(ERROR) << "WebGPU device error(" << int(type) << "): " << std::string_view{message};
-        }
-      });
+      device_desc.SetUncapturedErrorCallback(
+          // Note: Don't throw from a Dawn callback.
+          [](const wgpu::Device& /*device*/, wgpu::ErrorType type,
+             wgpu::StringView message) noexcept {
+            if (logging::LoggingManager::HasDefaultLogger()) {
+              LOGS_DEFAULT(ERROR) << "WebGPU device error(" << int(type) << "): " << std::string_view{message};
+            }
+          });
       // TODO: revise temporary device lost handling
-      device_desc.SetDeviceLostCallback(wgpu::CallbackMode::AllowSpontaneous, [](const wgpu::Device& /*device*/, wgpu::DeviceLostReason reason, wgpu::StringView message) {
-        if (logging::LoggingManager::HasDefaultLogger()) {
-          LOGS_DEFAULT(INFO) << "WebGPU device lost (" << int(reason) << "): " << std::string_view{message};
-        }
-      });
+      device_desc.SetDeviceLostCallback(
+          wgpu::CallbackMode::AllowSpontaneous,
+          // Note: Don't throw from a Dawn callback.
+          [](const wgpu::Device& /*device*/, wgpu::DeviceLostReason reason, wgpu::StringView message) noexcept {
+            if (logging::LoggingManager::HasDefaultLogger()) {
+              LOGS_DEFAULT(INFO) << "WebGPU device lost (" << int(reason) << "): " << std::string_view{message};
+            }
+          });
 
-      // Capture device request result without throwing inside the Dawn callback (same
-      // reasoning as the adapter callback above).
       struct RequestDeviceResult {
         wgpu::RequestDeviceStatus status = wgpu::RequestDeviceStatus::Error;
         wgpu::Device device;
@@ -134,8 +138,11 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(adapter.RequestDevice(
                                                                      &device_desc,
                                                                      wgpu::CallbackMode::WaitAnyOnly,
-                                                                     [](wgpu::RequestDeviceStatus status, wgpu::Device device, wgpu::StringView message,
-                                                                        RequestDeviceResult* result) {
+                                                                     // Note: Don't throw from a Dawn callback.
+                                                                     [](wgpu::RequestDeviceStatus status,
+                                                                        wgpu::Device device,
+                                                                        wgpu::StringView message,
+                                                                        RequestDeviceResult* result) noexcept {
                                                                        result->status = status;
                                                                        if (status == wgpu::RequestDeviceStatus::Success) {
                                                                          result->device = std::move(device);
@@ -687,13 +694,30 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
       const auto& pending_kernels = pending_query.kernels;
       const auto& query_read_buffer = pending_query.query_buffer;
 
-      ORT_ENFORCE(Wait(query_read_buffer.MapAsync(wgpu::MapMode::Read,
-                                                  0,
-                                                  static_cast<size_t>(query_read_buffer.GetSize()),
-                                                  wgpu::CallbackMode::WaitAnyOnly,
-                                                  [](wgpu::MapAsyncStatus status, wgpu::StringView message) {
-                                                    ORT_ENFORCE(status == wgpu::MapAsyncStatus::Success, "Failed to download data from buffer: ", std::string_view{message});
-                                                  })) == Status::OK());
+      struct MapAsyncResult {
+        wgpu::MapAsyncStatus status{};
+        std::string message{};
+      } map_async_result;
+
+      ORT_THROW_IF_ERROR(Wait(query_read_buffer.MapAsync(
+          wgpu::MapMode::Read,
+          0,
+          static_cast<size_t>(query_read_buffer.GetSize()),
+          wgpu::CallbackMode::WaitAnyOnly,
+          // Note: Don't throw from a Dawn callback.
+          [](wgpu::MapAsyncStatus status, wgpu::StringView message, MapAsyncResult* result) noexcept {
+            result->status = status;
+            if (auto message_sv = static_cast<std::string_view>(message);
+                !message_sv.empty()) {
+              result->message = std::string{message_sv};
+            }
+          },
+          &map_async_result)));
+
+      ORT_ENFORCE(map_async_result.status == wgpu::MapAsyncStatus::Success,
+                  "Failed to download data from buffer. wgpu::MapAsyncStatus value: ",
+                  static_cast<int>(map_async_result.status), ", message: ", map_async_result.message);
+
       auto mapped_data = static_cast<const uint64_t*>(query_read_buffer.GetConstMappedRange());
 
       for (size_t i = 0; i < pending_kernels.size(); i++) {
@@ -768,12 +792,15 @@ Status WebGpuContext::PopErrorScope() {
   Status status{};
   ORT_RETURN_IF_ERROR(Wait(device_.PopErrorScope(
       wgpu::CallbackMode::WaitAnyOnly,
-      [](wgpu::PopErrorScopeStatus pop_status, wgpu::ErrorType error_type, char const* message, Status* status) {
-        ORT_ENFORCE(pop_status == wgpu::PopErrorScopeStatus::Success, "Instance dropped.");
-        if (error_type == wgpu::ErrorType::NoError) {
-          return;
+      // Note: Don't throw from a Dawn callback.
+      [](wgpu::PopErrorScopeStatus pop_status, wgpu::ErrorType error_type, char const* message,
+         Status* status) noexcept {
+        if (pop_status != wgpu::PopErrorScopeStatus::Success) {
+          *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to pop WebGPU error scope. status=",
+                                    static_cast<uint32_t>(pop_status));
+        } else if (error_type != wgpu::ErrorType::NoError) {
+          *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU validation failed. ", message);
         }
-        *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU validation failed. ", message);
       },
       &status)));
   return status;
