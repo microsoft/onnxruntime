@@ -149,9 +149,8 @@ void CropAndResizeForward(const TensorShape& output_shape,
               for (auto c = 0; c < channels; c++) {
                 int64_t index_n_c = index_n + c * pooled_width * pooled_height;
                 int64_t index = index_n_c + ph * pooled_width + pw;
-                const T* offset_bottom_data =
-                    bottom_data +
-                    static_cast<int64_t>((SafeInt<int64_t>(roi_batch_ind) * channels + c) * height * width);
+                const int64_t bottom_data_offset = (SafeInt<int64_t>(roi_batch_ind) * channels + c) * height * width;
+                const T* offset_bottom_data = bottom_data + bottom_data_offset;
                 const float top_left(static_cast<float>(offset_bottom_data[top_left_index]));
                 const float top_right(static_cast<float>(offset_bottom_data[top_right_index]));
                 const float bottom_left(static_cast<float>(offset_bottom_data[bottom_left_index]));
@@ -169,9 +168,8 @@ void CropAndResizeForward(const TensorShape& output_shape,
               for (auto c = 0; c < channels; c++) {
                 int64_t index_n_c = index_n + c * pooled_width * pooled_height;
                 int64_t index = index_n_c + ph * pooled_width + pw;
-                const T* offset_bottom_data =
-                    bottom_data +
-                    static_cast<int64_t>((SafeInt<int64_t>(roi_batch_ind) * channels + c) * height * width);
+                const int64_t bottom_data_offset = (SafeInt<int64_t>(roi_batch_ind) * channels + c) * height * width;
+                const T* offset_bottom_data = bottom_data + bottom_data_offset;
                 top_data[index] = static_cast<float>(offset_bottom_data[closest_index]);
               }
             }
