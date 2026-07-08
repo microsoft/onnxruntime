@@ -80,9 +80,9 @@ SgMatMulConfig HeuristicConfig(std::string_view arch, uint32_t M, uint32_t N, ui
   // independent tiles (largest area breaks ties).
   uint32_t tile_m = kTileMCandidates[0];
   uint32_t tile_n = kTileNCandidates[0];
-  uint32_t best_tiles = 0;   // most output tiles seen so far (used only while under-filling)
-  uint32_t best_area = 0;    // tile_m * tile_n of the current pick (tie-breaker: larger reuse wins)
-  bool filled = false;       // true once some tile reaches num_tiles >= hw (machine is filled)
+  uint32_t best_tiles = 0;  // most output tiles seen so far (used only while under-filling)
+  uint32_t best_area = 0;   // tile_m * tile_n of the current pick (tie-breaker: larger reuse wins)
+  bool filled = false;      // true once some tile reaches num_tiles >= hw (machine is filled)
   for (uint32_t tm : kTileMCandidates) {
     if (tm > M && tm != kTileMCandidates[0]) {
       continue;

@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <memory>
+
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/cpu/math/matmul_helper.h"
