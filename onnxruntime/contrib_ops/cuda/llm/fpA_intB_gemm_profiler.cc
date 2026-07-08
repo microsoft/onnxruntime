@@ -17,7 +17,6 @@
 #if USE_FPA_INTB_GEMM
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
 #include "contrib_ops/cuda/llm/common/workspace.h"
-#include "core/platform/env_var_utils.h"
 
 #include <algorithm>
 #include <set>
@@ -102,8 +101,7 @@ bool WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic(int m, int /*n*/, i
   return true;
 }
 
-std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMOverride() {
-  const std::string value = onnxruntime::ParseEnvironmentVariableWithDefault<std::string>(kEnvProfileM, "");
+std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMList(const std::string& value) {
   std::vector<int> result;
   if (value.empty()) {
     return result;
@@ -132,14 +130,6 @@ std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMOverri
   return result;
 }
 
-int WeightOnlyGroupwiseQuantGemmPluginProfiler::ProfileMaxM() {
-  auto override_ms = ParseProfileMOverride();
-  if (!override_ms.empty()) {
-    return override_ms.back();  // sorted ascending
-  }
-  return kDefaultProfileMaxM;
-}
-
 std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::getProfileMBuckets(
     int minM, int maxM, bool /*hasWeightOnlyCudaKernel*/) const {
   int const lo = std::max(1, minM);
@@ -147,9 +137,8 @@ std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::getProfileMBuckets(
 
   std::set<int> buckets;
 
-  auto override_ms = ParseProfileMOverride();
-  if (!override_ms.empty()) {
-    for (int m : override_ms) {
+  if (!mProfileMOverride.empty()) {
+    for (int m : mProfileMOverride) {
       buckets.insert(std::min(std::max(lo, m), hi));
     }
   } else {
