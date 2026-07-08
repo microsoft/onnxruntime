@@ -50,7 +50,7 @@ diff --git a/onnx/common/scoped_resource.h b/onnx/common/scoped_resource.h
 index 525e4d6..2c41f0b 100644
 --- a/onnx/common/scoped_resource.h
 +++ b/onnx/common/scoped_resource.h
-@@ -56,7 +56,31 @@ class ScopedResource {
+@@ -56,7 +56,41 @@ class ScopedResource {
  inline void close_handle(HANDLE h) {
    CloseHandle(h);
  }
@@ -76,6 +76,16 @@ index 525e4d6..2c41f0b 100644
 +    HANDLE tmp = val_;
 +    val_ = INVALID_HANDLE_VALUE;
 +    return tmp;
++  }
++  ScopedHandle(ScopedHandle&& other) : val_(other.release()) {}
++  ScopedHandle& operator=(ScopedHandle&& other) {
++    if (this != &other) {
++      if (val_ != INVALID_HANDLE_VALUE) {
++        close_handle(val_);
++      }
++      val_ = other.release();
++    }
++    return *this;
 +  }
 +  ScopedHandle(const ScopedHandle&) = delete;
 +  ScopedHandle& operator=(const ScopedHandle&) = delete;

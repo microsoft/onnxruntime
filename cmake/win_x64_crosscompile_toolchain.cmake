@@ -96,7 +96,7 @@ add_link_options(
 # llvm-rc (resource compiler, used for the DLL's version resource) does not honor
 # /imsvc, so give it the Windows SDK headers on its own include path.
 set(CMAKE_RC_FLAGS_INIT
-  "/I ${_ort_crt}/include /I ${_ort_sdk}/include/um /I ${_ort_sdk}/include/shared /I ${_ort_sdk}/include/ucrt")
+  "/I \"${_ort_crt}/include\" /I \"${_ort_sdk}/include/um\" /I \"${_ort_sdk}/include/shared\" /I \"${_ort_sdk}/include/ucrt\"")
 
 # MLAS amd64 .asm via llvm-ml: unlike ml64.exe, llvm-ml is not implicitly 64-bit,
 # does not search the source file's own directory for includes, and needs the

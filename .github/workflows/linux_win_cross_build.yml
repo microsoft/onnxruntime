@@ -64,6 +64,12 @@ env:
   # assets are mutable, so pin the digest and verify it rather than trusting the
   # release (or its co-located .sha256 sidecar, which an attacker could swap too).
   XWIN_SHA256: '31e1033f30608ba6b821d17f1461042bd54c23424813c9b4e9ae15b6d32fa4cd'
+  # SHA256 of apt.llvm.org/llvm.sh, which is fetched and run as root. The script
+  # is maintained upstream (opencollab/llvm-jenkins.debian.net) and changes when
+  # new LLVM releases are added, so this digest must be re-verified and updated
+  # when it legitimately changes; a mismatch fails the job rather than silently
+  # executing tampered/rotated content as root.
+  LLVM_SH_SHA256: '9474ecd78b52aba6e923976b1e9773f5613027cc7e237b9956986cb536e02a36'
 
 jobs:
   win-cross-build:
@@ -85,6 +91,7 @@ jobs:
 
           # LLVM (clang-cl, lld-link, llvm-ml, llvm-lib, llvm-mt, llvm-rc) from apt.llvm.org.
           curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh
+          echo "${LLVM_SH_SHA256}  /tmp/llvm.sh" | sha256sum -c -
           chmod +x /tmp/llvm.sh
           sudo /tmp/llvm.sh "${LLVM_VERSION}"
           sudo apt-get install -y --no-install-recommends "llvm-${LLVM_VERSION}"
