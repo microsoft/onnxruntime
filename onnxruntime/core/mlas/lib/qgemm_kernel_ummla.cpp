@@ -974,20 +974,24 @@ MlasGemmQuantKernel<MLAS_GEMM_U8X8_KERNEL_UMMLA>(const MLAS_GEMM_U8X8_KERNEL_UMM
     size_t RowsHandled;
 
     if (ZeroMode) {
-        if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()){
+    #if defined(MLAS_USE_SVE)
+        if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSVE_I8MM()) {
             RowsHandled = MlasSveQgemmU8X8KernelUmmlaZero(A, B, C, PackedCountK, CountM, CountN, ldc,
-                                                  RowSumBuffer, ColumnSumBuffer, ZeroPointB);
-        }
-        else{
+                                                        RowSumBuffer, ColumnSumBuffer, ZeroPointB);
+        } else
+    #endif
+        {
             RowsHandled = MlasGemmU8X8KernelUmmlaZero(A, B, C, PackedCountK, CountM, CountN, ldc,
-                                                  RowSumBuffer, ColumnSumBuffer, ZeroPointB);
+                                                    RowSumBuffer, ColumnSumBuffer, ZeroPointB);
         }
     } else {
-        if(MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSve()){
+    #if defined(MLAS_USE_SVE)
+        if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSVE_I8MM()) {
             RowsHandled = MlasSveQgemmU8X8KernelUmmlaAdd(A, B, C, PackedCountK, CountM, CountN, ldc,
-                                                 RowSumBuffer, ColumnSumBuffer, ZeroPointB);
-        }
-        else{
+                                                        RowSumBuffer, ColumnSumBuffer, ZeroPointB);
+        } else
+    #endif
+        {
             RowsHandled = MlasGemmU8X8KernelUmmlaAdd(A, B, C, PackedCountK, CountM, CountN, ldc,
                                                     RowSumBuffer, ColumnSumBuffer, ZeroPointB);
         }
