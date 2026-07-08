@@ -23,5 +23,5 @@ docker run -e SYSTEM_COLLECTIONURI --rm \
 --parallel --nvcc_threads 1 --flash_nvcc_threads 1 \
 --use_cuda --cuda_version=$CUDA_VERSION --cuda_home=/usr/local/cuda-$CUDA_VERSION --cudnn_home=/usr/local/cuda-$CUDA_VERSION \
 --skip_tests --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
---cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHS}' 'onnxruntime_USE_FPA_INTB_GEMM=OFF' \
+--cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHS}' 'onnxruntime_USE_FPA_INTB_GEMM=ON' \
 && cd /build/Release && make install DESTDIR=/build/installed"
