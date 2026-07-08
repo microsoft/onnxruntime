@@ -330,7 +330,7 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
   mDims = dims;
   mHasWeightOnlyCudaKernel = hasWeightOnlyCudaKernel;
 
-  int const maxM = std::min(nextPowerOfTwo(dims.maxM), getMaxProfileM());
+  int const maxM = std::min(nextPowerOfTwo(static_cast<int>(dims.maxM)), getMaxProfileM());
 
   size_t workspace_bytes = computeTmpSize(maxM, dims.n, dims.k);
 
@@ -374,8 +374,8 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
 
   // Profile the (possibly reduced) set of M buckets. Any unprofiled runtime M is handled
   // later by lazy single-bucket profiling in getBestConfigOrProfile.
-  for (int m : getProfileMBuckets(dims.minM, maxM, hasWeightOnlyCudaKernel)) {
-    profileTactics(m, dims.n, dims.k);
+  for (int m : getProfileMBuckets(static_cast<int>(dims.minM), maxM, hasWeightOnlyCudaKernel)) {
+    profileTactics(m, static_cast<int>(dims.n), static_cast<int>(dims.k));
   }
 
   if (isAllocated) {
@@ -480,8 +480,8 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
     return std::nullopt;
   }
 
-  int const n = mDims.n;
-  int const k = mDims.k;
+  int const n = static_cast<int>(mDims.n);
+  int const k = static_cast<int>(mDims.k);
   size_t const workspace_bytes = computeTmpSize(target, n, k);
 
   CUDA_CALL_THROW(cudaStreamCreate(&mStream));
