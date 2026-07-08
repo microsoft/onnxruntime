@@ -141,6 +141,33 @@ const poolShapeCases: PoolShapeCase[] = [
     ceilMode: 1,
     expectedShape: [1, 1, 2, 2],
   },
+  // SAME_UPPER auto_pad honors ceil_mode (exercises the recomputed-pad branch).
+  // Reviewer-verified: in=5, stride=2, kernel=3, SAME_UPPER, ceil -> 3.
+  {
+    name: 'SAME_UPPER auto_pad + ceil_mode -> [1,1,3]',
+    isGlobalOperator: false,
+    inputDims: [1, 1, 5],
+    strides: [2],
+    dilations: [1],
+    kernelShape: [3],
+    pads: [0, 0],
+    autoPad: 'SAME_UPPER',
+    ceilMode: 1,
+    expectedShape: [1, 1, 3],
+  },
+  // SAME_LOWER auto_pad honors ceil_mode (same numeric case, mirrored padding split).
+  {
+    name: 'SAME_LOWER auto_pad + ceil_mode -> [1,1,3]',
+    isGlobalOperator: false,
+    inputDims: [1, 1, 5],
+    strides: [2],
+    dilations: [1],
+    kernelShape: [3],
+    pads: [0, 0],
+    autoPad: 'SAME_LOWER',
+    ceilMode: 1,
+    expectedShape: [1, 1, 3],
+  },
 ];
 
 function runPoolConvUtil(

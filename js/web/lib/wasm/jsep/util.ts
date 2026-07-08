@@ -468,11 +468,13 @@ export class PoolConvUtil {
   }
 
   // Computes the output spatial size for a single dimension.
-  // Replicates the C++ PoolAttributes::ComputeOutputSize
-  // (onnxruntime/core/providers/cpu/nn/pool_attributes.h) EXACTLY, including the ceil_mode
-  // "shrink the last window if it starts entirely in the trailing padding" rule. Keep the two
-  // in algebraic lockstep: `numerator` here already equals `inSize + padHead + padTail - dkernel`,
-  // matching the C++ `in_size + pad_head + pad_tail - dilation * (kernel - 1) - 1`.
+  // Produces results identical to the C++ PoolAttributes::ComputeOutputSize
+  // (onnxruntime/core/providers/cpu/nn/pool_attributes.h), including the ceil_mode
+  // "shrink the last window if it starts entirely in the trailing padding" rule. The JS
+  // signature takes a pre-computed `numerator` (equal to `inSize + padHead + padTail - dkernel`,
+  // matching the C++ `in_size + pad_head + pad_tail - dilation * (kernel - 1) - 1`) instead of
+  // the raw pooling attributes, but the computed output size is the same.
+  // Keep in sync with the onnxjs/jsep copy.
   private static computeOutputSize(
     numerator: number,
     stride: number,
@@ -481,9 +483,11 @@ export class PoolConvUtil {
     ceilMode: number,
   ): number {
     let outSize = Math.floor(numerator / stride) + 1;
-    if (ceilMode) {
+    // Match C++ `ceil_mode == 1` exactly so out-of-spec ceil_mode values do not diverge.
+    if (ceilMode === 1) {
       outSize = Math.ceil(numerator / stride) + 1;
       // Ensure the last pooling window starts inside the image (ref: https://github.com/onnx/onnx/pull/5741).
+      // inSize and padHead are needed here to reconstruct the last window's start position.
       if ((outSize - 1) * stride >= inSize + padHead) {
         outSize -= 1;
       }
