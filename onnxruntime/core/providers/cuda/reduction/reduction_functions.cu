@@ -543,7 +543,8 @@ __global__ void arg_min_max_last_axis_kernel(const TIn* input, int64_t* output, 
 
 template <typename TIn, bool IsArgMax>
 Status arg_min_max_last_axis(cudaStream_t stream, const TIn* input, int64_t* output, int m, int n) {
-  if (m == 0) return Status::OK();
+  // The kernel reads input[row_offset] unconditionally, so a non-empty reduction axis is required.
+  if (m == 0 || n <= 0) return Status::OK();
   constexpr int block_size = 256;
   const int grid_size = (m + block_size - 1) / block_size;
   detail::arg_min_max_last_axis_kernel<TIn, IsArgMax><<<grid_size, block_size, 0, stream>>>(input, output, m, n);
