@@ -7533,7 +7533,7 @@ struct OrtApi {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.28.
+   * \since Version 1.29.
    */
   ORT_API2_STATUS(SessionOptionsSetWeightlessSourceModelPath, _Inout_ OrtSessionOptions* options,
                   _In_ const ORTCHAR_T* source_model_path);
@@ -7552,7 +7552,7 @@ struct OrtApi {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.28.
+   * \since Version 1.29.
    */
   ORT_API2_STATUS(SessionOptionsSetWeightlessSourceModelFromBuffer, _Inout_ OrtSessionOptions* options,
                   _In_ const void* source_model_data, _In_ size_t source_model_data_length);
@@ -8420,7 +8420,7 @@ struct OrtCompileApi {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.28.
+   * \since Version 1.29.
    */
   ORT_API2_STATUS(ModelCompilationOptions_SetWeightlessCache,
                   _In_ OrtModelCompilationOptions* model_compile_options,

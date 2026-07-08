@@ -584,7 +584,7 @@ static const char* const kOrtSessionOptionsRecordEpGraphAssignmentInfo = "sessio
 // - "0": disable. (default)
 // - "1": enable.
 //
-// \deprecated Since version 1.28. Use "ep.enable_weightless" instead, which covers all initializers
+// \deprecated Since version 1.29. Use "ep.enable_weightless" instead, which covers all initializers
 // (internal and external) and works in both JIT and AOT flows.
 static const char* const kOrtSessionOptionEpEnableWeightlessEpContextNodes = "ep.enable_weightless_ep_context_nodes";
 
@@ -610,7 +610,7 @@ static const char* const kOrtSessionOptionEpEnableWeightlessEpContextNodes = "ep
 // - "0": disable. (default)
 // - "1": enable.
 //
-// \since Version 1.28.
+// \since Version 1.29.
 static const char* const kOrtSessionOptionEpEnableWeightless = "ep.enable_weightless";
 
 // Specifies the file path to the original (source) ONNX model when creating a session with a weightless
@@ -624,7 +624,7 @@ static const char* const kOrtSessionOptionEpEnableWeightless = "ep.enable_weight
 //
 // If not set, the EP falls back to the "onnx_model_filename" attribute in the EPContext node.
 //
-// \since Version 1.28.
+// \since Version 1.29.
 static const char* const kOrtSessionOptionEpContextSourceModelPath = "ep.context_source_model_path";
 
 // Controls the intra-op thread pool size for a session.

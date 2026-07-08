@@ -190,7 +190,7 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
   {
     const auto weightless_requested =
         session_options.value.config_options.GetConfigOrDefault(kOrtSessionOptionEpEnableWeightless, "0") != "0";
-    if (weightless_requested && ort_ep_->ort_version_supported >= 28 && ort_ep_->GetWeightlessSupport != nullptr) {
+    if (weightless_requested && ort_ep_->ort_version_supported >= 29 && ort_ep_->GetWeightlessSupport != nullptr) {
       OrtWeightlessSupport support = OrtWeightlessSupport_NONE;
       auto* ort_status = ort_ep_->GetWeightlessSupport(ort_ep_.get(), &support);
       if (ort_status == nullptr && support != OrtWeightlessSupport_NONE) {

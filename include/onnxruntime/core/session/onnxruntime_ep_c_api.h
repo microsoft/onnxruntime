@@ -2117,7 +2117,7 @@ typedef enum OrtGraphCaptureNodeAssignmentPolicy {
  * Returned by OrtEp::GetWeightlessSupport() to indicate which types of initializers
  * the EP can operate on without copying.
  *
- * \since Version 1.28.
+ * \since Version 1.29.
  */
 typedef enum OrtWeightlessSupport {
   /** EP does not support weightless mode. */
@@ -2679,7 +2679,7 @@ struct OrtEp {
    * \note Implementation of this function is optional. If set to NULL, ORT assumes the EP does not
    *       support weightless mode (equivalent to OrtWeightlessSupport_NONE).
    *
-   * \since Version 1.28.
+   * \since Version 1.29.
    */
   ORT_API2_STATUS(GetWeightlessSupport, _In_ const OrtEp* this_ptr, _Out_ OrtWeightlessSupport* support);
 };
