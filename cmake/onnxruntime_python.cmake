@@ -244,18 +244,6 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
 # link CUDA::cudart from it: that would create a hard libcudart.so dependency that
 # prevents importing the Python module on CPU-only machines.
 
-# Because the main pybind module no longer links CUDA::cudart, it must be built with
-# ORT_NO_CUDA_IN_PYBIND on all platforms so that onnxruntime_pybind_mlvalue.cc /
-# onnxruntime_pybind_ortvalue.cc do not call CUDA runtime APIs (e.g. cudaMemcpy) directly
-# (which would leave undefined symbols like cudaMemcpy in the module). Instead the module
-# routes host/device copies through the CUDA provider bridge (ProviderInfo_CUDA). On Windows
-# this also matches the pre-existing behavior where, starting with Python 3.8, PATH is no
-# longer used to resolve extension-module DLL dependencies, so we rely on
-# os.add_dll_directory() / the provider bridge rather than linking the CUDA runtime.
-if (onnxruntime_USE_CUDA)
-  target_compile_definitions(onnxruntime_pybind11_state PRIVATE ORT_NO_CUDA_IN_PYBIND)
-endif()
-
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}
     ${pybind11_dep}

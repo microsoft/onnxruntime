@@ -344,10 +344,12 @@ This is intentionally conservative and correct for the plugin EP's first sync in
 
 The Python `OrtValue` helpers (`update_inplace()` for host-to-device and `numpy()` for device-to-host) historically reached CUDA copies through the legacy provider bridge (`GetProviderInfo_CUDA()`). That bridge requires the provider shared library to export `GetProvider()`, which the CUDA plugin intentionally does not export.
 
-The fallback path is platform-specific:
+To keep working when the bridge is absent (as with the plugin EP), the pybind can reach CUDA copies two ways: the legacy provider bridge (`TryGetProviderInfo_CUDA()`) and a plugin-registered `OrtDataTransfer` copy function (`CreateDataTransferMemCpy()`, backed by the plugin EP's `IDataTransfer`). It tries whichever is available and throws if neither is, in which case a CUDA `OrtValue` copy cannot be performed.
 
-- On non-Windows CUDA builds, `onnxruntime_pybind11_state` links `CUDA::cudart`. If `TryGetProviderInfo_CUDA()` fails, pybind can copy directly with `cudaMemcpy`; host-to-device copies synchronize the default stream, matching `ProviderInfo_CUDA::cudaMemcpy_HostToDevice()`.
-- On Windows CUDA builds, pybind is compiled with `ORT_NO_CUDA_IN_PYBIND` and does not link CUDA runtime APIs. If `TryGetProviderInfo_CUDA()` fails, pybind must obtain an `OrtDataTransfer` copy function from the registered plugin EP. Without a registered plugin data-transfer implementation, CUDA `OrtValue.update_inplace()` cannot copy host data into the plugin-owned device tensor.
+The two code paths differ only in which mechanism they try first, and this does not change the outcome (exactly one applies in a given build):
+
+- `OrtValue.update_inplace(numpy_array)` / `OrtValue.numpy()` (in `onnxruntime_pybind_ortvalue.cc`) try the provider bridge first, then fall back to the plugin `OrtDataTransfer`.
+- `OrtValue.update_inplace(OrtValue)` (`UpdateOrtValueInplace` in `onnxruntime_pybind_mlvalue.cc`) tries the plugin `OrtDataTransfer` first, then falls back to the built-in CUDA provider copy functions.
 
 ### 5.2 Handle Access Path
 
