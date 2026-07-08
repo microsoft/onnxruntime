@@ -82,3 +82,10 @@ func TestStringDataOnNonStringTensor(t *testing.T) {
 		t.Fatal("expected error calling StringData on float tensor")
 	}
 }
+
+func TestCreateStringTensorShapeMismatch(t *testing.T) {
+	_, err := CreateStringTensor([]int64{2, 3}, []string{"a", "b"})
+	if err == nil {
+		t.Fatal("expected error for shape/data mismatch")
+	}
+}

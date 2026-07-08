@@ -4,8 +4,9 @@
 #include "onnxruntime_c_api.h"
 
 // Minimum ORT API version required by these bindings.
-// Covers all functions used, including UpdateCUDAProviderOptions (1.16).
-#define ORT_GO_API_VERSION 17
+// Requires ORT >= 1.27.0. Covers all functions used, including
+// GetMemPatternEnabled and GetSessionExecutionMode (1.27).
+#define ORT_GO_API_VERSION 27
 
 // Initialize the global OrtApi pointer from a resolved OrtGetApiBase function.
 // Returns 0 on success, 1 if apiBase is NULL, 2 if GetApi returns NULL.
@@ -169,6 +170,10 @@ OrtStatusPtr ort_AddInitializer(OrtSessionOptions *opts, const char *name, const
 
 // Session profiling
 OrtStatusPtr ort_SessionEndProfiling(OrtSession *session, OrtAllocator *allocator, char **out);
+
+// Session options getters (since 1.27)
+OrtStatusPtr ort_GetMemPatternEnabled(const OrtSessionOptions *opts, int *out);
+OrtStatusPtr ort_GetSessionExecutionMode(const OrtSessionOptions *opts, ExecutionMode *out);
 
 // Value type
 OrtStatusPtr ort_GetValueType(const OrtValue *value, enum ONNXType *out);

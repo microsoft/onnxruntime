@@ -116,111 +116,11 @@ func (s *Session) Run(ctx context.Context, inputs map[string]*Tensor, outputName
 		}
 	}
 
-	nInputs := len(inputs)
-	nOutputs := len(outputNames)
-
-	cInputNames := make([]*C.char, nInputs)
-	cInputValues := make([]*C.OrtValue, nInputs)
-	i := 0
-	for name, tensor := range inputs {
-		cInputNames[i] = C.CString(name)
-		cInputValues[i] = tensor.value
-		i++
-	}
-	defer func() {
-		for _, cn := range cInputNames {
-			C.free(unsafe.Pointer(cn))
-		}
-	}()
-
-	cOutputNames := make([]*C.char, nOutputs)
-	for i, name := range outputNames {
-		cOutputNames[i] = C.CString(name)
-	}
-	defer func() {
-		for _, cn := range cOutputNames {
-			C.free(unsafe.Pointer(cn))
-		}
-	}()
-
-	cOutputValues := make([]*C.OrtValue, nOutputs)
-
-	var runOpts *C.OrtRunOptions
-	var stopWatcher chan struct{}
-
-	if ctx.Done() != nil {
-		if err := checkStatus(C.ort_CreateRunOptions(&runOpts)); err != nil {
-			return nil, wrapErr("create run options", err)
-		}
-		defer C.ort_ReleaseRunOptions(runOpts)
-
-		stopWatcher = make(chan struct{})
-		watcherDone := make(chan struct{})
-		done := ctx.Done()
-		go func() {
-			defer close(watcherDone)
-			select {
-			case <-done:
-				C.ort_RunOptionsSetTerminate(runOpts)
-			case <-stopWatcher:
-			}
-		}()
-		defer func() {
-			close(stopWatcher)
-			<-watcherDone
-		}()
+	if len(outputNames) == 0 {
+		return nil, fmt.Errorf("ort: run: no output names specified")
 	}
 
-	var inNamesPtr **C.char
-	var inValuesPtr **C.OrtValue
-	if nInputs > 0 {
-		inNamesPtr = &cInputNames[0]
-		inValuesPtr = &cInputValues[0]
-	}
-
-	var outNamesPtr **C.char
-	if nOutputs > 0 {
-		outNamesPtr = &cOutputNames[0]
-	}
-
-	err := checkStatus(C.ort_Run(
-		s.handle, runOpts,
-		inNamesPtr,
-		inValuesPtr, C.size_t(nInputs),
-		outNamesPtr, C.size_t(nOutputs),
-		&cOutputValues[0],
-	))
-
-	if err != nil {
-		for _, v := range cOutputValues {
-			if v != nil {
-				C.ort_ReleaseValue(v)
-			}
-		}
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		return nil, wrapErr("run", err)
-	}
-
-	result := make(map[string]*Tensor, nOutputs)
-	for i, name := range outputNames {
-		t, err := wrapOutputTensor(cOutputValues[i])
-		if err != nil {
-			for _, v := range cOutputValues[i+1:] {
-				if v != nil {
-					C.ort_ReleaseValue(v)
-				}
-			}
-			for _, existing := range result {
-				_ = existing.Close()
-			}
-			return nil, wrapErr("wrap output "+name, err)
-		}
-		result[name] = t
-	}
-
-	return result, nil
+	return s.runInner(ctx, inputs, outputNames, nil)
 }
 
 // RunWithOptions executes inference with explicit run options.
@@ -243,9 +143,21 @@ func (s *Session) RunWithOptions(ctx context.Context, opts *RunOptions, inputs m
 		}
 	}
 
+	if len(outputNames) == 0 {
+		return nil, fmt.Errorf("ort: run: no output names specified")
+	}
+
+	var runOpts *C.OrtRunOptions
+	if opts != nil {
+		runOpts = opts.handle
+	}
+
+	return s.runInner(ctx, inputs, outputNames, runOpts)
+}
+
+func (s *Session) runInner(ctx context.Context, inputs map[string]*Tensor, outputNames []string, runOpts *C.OrtRunOptions) (map[string]*Tensor, error) {
 	nInputs := len(inputs)
 	nOutputs := len(outputNames)
-
 	cInputNames := make([]*C.char, nInputs)
 	cInputValues := make([]*C.OrtValue, nInputs)
 	i := 0
@@ -272,9 +184,32 @@ func (s *Session) RunWithOptions(ctx context.Context, opts *RunOptions, inputs m
 
 	cOutputValues := make([]*C.OrtValue, nOutputs)
 
-	var runOpts *C.OrtRunOptions
-	if opts != nil {
-		runOpts = opts.handle
+	ownRunOpts := false
+	if runOpts == nil && ctx.Done() != nil {
+		var err error
+		if err = checkStatus(C.ort_CreateRunOptions(&runOpts)); err != nil {
+			return nil, wrapErr("create run options", err)
+		}
+		ownRunOpts = true
+
+		stopWatcher := make(chan struct{})
+		watcherDone := make(chan struct{})
+		done := ctx.Done()
+		go func() {
+			defer close(watcherDone)
+			select {
+			case <-done:
+				C.ort_RunOptionsSetTerminate(runOpts)
+			case <-stopWatcher:
+			}
+		}()
+		defer func() {
+			close(stopWatcher)
+			<-watcherDone
+		}()
+	}
+	if ownRunOpts {
+		defer C.ort_ReleaseRunOptions(runOpts)
 	}
 
 	var inNamesPtr **C.char
@@ -284,16 +219,11 @@ func (s *Session) RunWithOptions(ctx context.Context, opts *RunOptions, inputs m
 		inValuesPtr = &cInputValues[0]
 	}
 
-	var outNamesPtr **C.char
-	if nOutputs > 0 {
-		outNamesPtr = &cOutputNames[0]
-	}
-
 	err := checkStatus(C.ort_Run(
 		s.handle, runOpts,
 		inNamesPtr,
 		inValuesPtr, C.size_t(nInputs),
-		outNamesPtr, C.size_t(nOutputs),
+		&cOutputNames[0], C.size_t(nOutputs),
 		&cOutputValues[0],
 	))
 

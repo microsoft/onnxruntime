@@ -4,10 +4,7 @@ package onnxruntime
 #include "cshim.h"
 */
 import "C"
-import (
-	"fmt"
-	"unsafe"
-)
+import "fmt"
 
 // ErrorCode mirrors OrtErrorCode from the C API.
 type ErrorCode int
@@ -87,7 +84,3 @@ func wrapErr(context string, err error) error {
 
 var errNotInitialized = fmt.Errorf("ort: not initialized; call Init() first")
 var errShutdown = fmt.Errorf("ort: already shut down")
-
-func statusToErr(status unsafe.Pointer) error {
-	return checkStatus((*C.OrtStatus)(status))
-}

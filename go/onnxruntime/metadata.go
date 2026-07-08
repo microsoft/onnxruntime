@@ -61,6 +61,9 @@ func (m *ModelMetadata) GraphDescription() (string, error) {
 }
 
 func (m *ModelMetadata) Version() (int64, error) {
+	if err := m.checkClosed(); err != nil {
+		return 0, err
+	}
 	var version C.int64_t
 	if err := checkStatus(C.ort_ModelMetadataGetVersion(m.handle, &version)); err != nil {
 		return 0, wrapErr("metadata version", err)
@@ -69,6 +72,9 @@ func (m *ModelMetadata) Version() (int64, error) {
 }
 
 func (m *ModelMetadata) CustomMetadataKeys() ([]string, error) {
+	if err := m.checkClosed(); err != nil {
+		return nil, err
+	}
 	alloc, err := defaultAllocator()
 	if err != nil {
 		return nil, wrapErr("metadata custom keys", err)
@@ -97,6 +103,9 @@ func (m *ModelMetadata) CustomMetadataKeys() ([]string, error) {
 }
 
 func (m *ModelMetadata) LookupCustomMetadata(key string) (string, error) {
+	if err := m.checkClosed(); err != nil {
+		return "", err
+	}
 	alloc, err := defaultAllocator()
 	if err != nil {
 		return "", wrapErr("metadata lookup", err)
@@ -129,7 +138,17 @@ func (m *ModelMetadata) Close() error {
 	return nil
 }
 
+func (m *ModelMetadata) checkClosed() error {
+	if m.closed {
+		return fmt.Errorf("ort: metadata: already closed")
+	}
+	return nil
+}
+
 func (m *ModelMetadata) getString(fn func(*C.OrtAllocator, **C.char) error, context string) (string, error) {
+	if err := m.checkClosed(); err != nil {
+		return "", err
+	}
 	alloc, err := defaultAllocator()
 	if err != nil {
 		return "", wrapErr("metadata "+context, err)

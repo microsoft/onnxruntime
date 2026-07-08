@@ -62,6 +62,57 @@ func TestSessionOptionsExecutionMode(t *testing.T) {
 	}
 }
 
+func TestSessionOptionsGetExecutionMode(t *testing.T) {
+	opts, err := NewSessionOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opts.Close()
+
+	opts.SetExecutionMode(ExecutionModeParallel)
+	mode, err := opts.GetExecutionMode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mode != ExecutionModeParallel {
+		t.Errorf("expected Parallel, got %d", mode)
+	}
+
+	opts.SetExecutionMode(ExecutionModeSequential)
+	mode, err = opts.GetExecutionMode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mode != ExecutionModeSequential {
+		t.Errorf("expected Sequential, got %d", mode)
+	}
+}
+
+func TestSessionOptionsIsMemPatternEnabled(t *testing.T) {
+	opts, err := NewSessionOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opts.Close()
+
+	enabled, err := opts.IsMemPatternEnabled()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !enabled {
+		t.Error("expected mem pattern enabled by default")
+	}
+
+	opts.DisableMemPattern()
+	enabled, err = opts.IsMemPatternEnabled()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if enabled {
+		t.Error("expected mem pattern disabled after DisableMemPattern")
+	}
+}
+
 func TestSessionOptionsProfiling(t *testing.T) {
 	opts, err := NewSessionOptions()
 	if err != nil {
@@ -113,6 +164,19 @@ func TestSessionOptionsFreeDimension(t *testing.T) {
 				t.Errorf("expected no dynamic dims after override, but input %s has shape %v", in.Name, in.Shape)
 			}
 		}
+	}
+}
+
+func TestAppendExecutionProviderUnknown(t *testing.T) {
+	opts, err := NewSessionOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opts.Close()
+
+	err = opts.AppendExecutionProvider("NoSuchProvider_XYZ_999", nil)
+	if err == nil {
+		t.Fatal("expected error for unknown execution provider")
 	}
 }
 

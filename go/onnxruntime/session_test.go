@@ -322,6 +322,69 @@ func TestSessionOptions(t *testing.T) {
 	sess.Close()
 }
 
+func TestRunEmptyOutputNames(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	a, _ := CreateTensor[float32]([]int64{2, 3}, []float32{1, 2, 3, 4, 5, 6})
+	b, _ := CreateTensor[float32]([]int64{2, 3}, []float32{1, 1, 1, 1, 1, 1})
+	defer a.Close()
+	defer b.Close()
+
+	_, err = sess.Run(context.Background(), map[string]*Tensor{
+		"A": a, "B": b,
+	}, []string{})
+	if err == nil {
+		t.Fatal("expected error for empty output names")
+	}
+}
+
+func TestRunAfterClose(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess.Close()
+
+	a, _ := CreateTensor[float32]([]int64{2, 3}, []float32{1, 2, 3, 4, 5, 6})
+	b, _ := CreateTensor[float32]([]int64{2, 3}, []float32{1, 1, 1, 1, 1, 1})
+	defer a.Close()
+	defer b.Close()
+
+	_, err = sess.Run(context.Background(), map[string]*Tensor{
+		"A": a, "B": b,
+	}, nil)
+	if err == nil {
+		t.Fatal("expected error running on closed session")
+	}
+	if got := err.Error(); got != "ort: run: session is closed" {
+		t.Errorf("unexpected error message: %s", got)
+	}
+}
+
+func TestNewSessionFromBytesCorrupt(t *testing.T) {
+	garbage := []byte("this is not a valid onnx model at all")
+	_, err := NewSessionFromBytes(garbage, nil)
+	if err == nil {
+		t.Fatal("expected error for corrupt model bytes")
+	}
+}
+
+func TestNewSessionFromBytesEmpty(t *testing.T) {
+	_, err := NewSessionFromBytes(nil, nil)
+	if err == nil {
+		t.Fatal("expected error for nil model bytes")
+	}
+
+	_, err = NewSessionFromBytes([]byte{}, nil)
+	if err == nil {
+		t.Fatal("expected error for empty model bytes")
+	}
+}
+
 func mapKeys(m map[string]*Tensor) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {

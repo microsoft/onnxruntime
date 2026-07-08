@@ -68,3 +68,41 @@ func TestModelMetadataDoubleClose(t *testing.T) {
 	meta.Close()
 	meta.Close()
 }
+
+func TestModelMetadataUseAfterClose(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	meta, err := sess.ModelMetadata()
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta.Close()
+
+	_, err = meta.ProducerName()
+	if err == nil {
+		t.Fatal("expected error calling ProducerName after Close")
+	}
+}
+
+func TestModelMetadataGraphDescription(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	meta, err := sess.ModelMetadata()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer meta.Close()
+
+	_, err = meta.GraphDescription()
+	if err != nil {
+		t.Errorf("GraphDescription: %v", err)
+	}
+}

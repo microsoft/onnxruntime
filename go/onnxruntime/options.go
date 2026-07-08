@@ -131,6 +131,24 @@ func (o *SessionOptions) SetExecutionMode(mode ExecutionMode) error {
 		checkStatus(C.ort_SetSessionExecutionMode(o.handle, C.ExecutionMode(mode))))
 }
 
+// GetExecutionMode returns the current execution mode. Requires ORT >= 1.27.
+func (o *SessionOptions) GetExecutionMode() (ExecutionMode, error) {
+	var mode C.ExecutionMode
+	if err := checkStatus(C.ort_GetSessionExecutionMode(o.handle, &mode)); err != nil {
+		return 0, wrapErr("get execution mode", err)
+	}
+	return ExecutionMode(mode), nil
+}
+
+// IsMemPatternEnabled reports whether memory pattern optimization is enabled. Requires ORT >= 1.27.
+func (o *SessionOptions) IsMemPatternEnabled() (bool, error) {
+	var out C.int
+	if err := checkStatus(C.ort_GetMemPatternEnabled(o.handle, &out)); err != nil {
+		return false, wrapErr("get mem pattern enabled", err)
+	}
+	return out != 0, nil
+}
+
 // AddInitializer overrides a model initializer with the given tensor value.
 func (o *SessionOptions) AddInitializer(name string, value *Tensor) error {
 	cName := C.CString(name)

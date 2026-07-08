@@ -181,3 +181,212 @@ func TestScalarTensor(t *testing.T) {
 		t.Errorf("expected 1 element, got %d", tensor.ElementCount())
 	}
 }
+
+func TestCreateTensorAllTypes(t *testing.T) {
+	t.Run("uint8", func(t *testing.T) {
+		data := []uint8{1, 2, 3}
+		tensor, err := CreateTensor[uint8]([]int64{3}, data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tensor.Close()
+		if tensor.DataType() != TensorElementDataTypeUint8 {
+			t.Errorf("expected Uint8, got %s", tensor.DataType())
+		}
+		got, err := TensorData[uint8](tensor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, v := range got {
+			if v != data[i] {
+				t.Errorf("[%d]: expected %d, got %d", i, data[i], v)
+			}
+		}
+	})
+
+	t.Run("int8", func(t *testing.T) {
+		data := []int8{-1, 0, 1}
+		tensor, err := CreateTensor[int8]([]int64{3}, data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tensor.Close()
+		if tensor.DataType() != TensorElementDataTypeInt8 {
+			t.Errorf("expected Int8, got %s", tensor.DataType())
+		}
+		got, err := TensorData[int8](tensor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, v := range got {
+			if v != data[i] {
+				t.Errorf("[%d]: expected %d, got %d", i, data[i], v)
+			}
+		}
+	})
+
+	t.Run("int16", func(t *testing.T) {
+		data := []int16{-100, 0, 100}
+		tensor, err := CreateTensor[int16]([]int64{3}, data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tensor.Close()
+		if tensor.DataType() != TensorElementDataTypeInt16 {
+			t.Errorf("expected Int16, got %s", tensor.DataType())
+		}
+		got, err := TensorData[int16](tensor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, v := range got {
+			if v != data[i] {
+				t.Errorf("[%d]: expected %d, got %d", i, data[i], v)
+			}
+		}
+	})
+
+	t.Run("uint16", func(t *testing.T) {
+		data := []uint16{0, 1000, 65535}
+		tensor, err := CreateTensor[uint16]([]int64{3}, data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tensor.Close()
+		if tensor.DataType() != TensorElementDataTypeUint16 {
+			t.Errorf("expected Uint16, got %s", tensor.DataType())
+		}
+		got, err := TensorData[uint16](tensor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, v := range got {
+			if v != data[i] {
+				t.Errorf("[%d]: expected %d, got %d", i, data[i], v)
+			}
+		}
+	})
+
+	t.Run("int32", func(t *testing.T) {
+		data := []int32{-1, 0, 2147483647}
+		tensor, err := CreateTensor[int32]([]int64{3}, data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tensor.Close()
+		if tensor.DataType() != TensorElementDataTypeInt32 {
+			t.Errorf("expected Int32, got %s", tensor.DataType())
+		}
+		got, err := TensorData[int32](tensor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, v := range got {
+			if v != data[i] {
+				t.Errorf("[%d]: expected %d, got %d", i, data[i], v)
+			}
+		}
+	})
+
+	t.Run("uint32", func(t *testing.T) {
+		data := []uint32{0, 42, 4294967295}
+		tensor, err := CreateTensor[uint32]([]int64{3}, data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tensor.Close()
+		if tensor.DataType() != TensorElementDataTypeUint32 {
+			t.Errorf("expected Uint32, got %s", tensor.DataType())
+		}
+		got, err := TensorData[uint32](tensor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, v := range got {
+			if v != data[i] {
+				t.Errorf("[%d]: expected %d, got %d", i, data[i], v)
+			}
+		}
+	})
+
+	t.Run("uint64", func(t *testing.T) {
+		data := []uint64{0, 42, 18446744073709551615}
+		tensor, err := CreateTensor[uint64]([]int64{3}, data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tensor.Close()
+		if tensor.DataType() != TensorElementDataTypeUint64 {
+			t.Errorf("expected Uint64, got %s", tensor.DataType())
+		}
+		got, err := TensorData[uint64](tensor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, v := range got {
+			if v != data[i] {
+				t.Errorf("[%d]: expected %d, got %d", i, data[i], v)
+			}
+		}
+	})
+
+	t.Run("float64", func(t *testing.T) {
+		data := []float64{1.5, -2.5, 3.14}
+		tensor, err := CreateTensor[float64]([]int64{3}, data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tensor.Close()
+		if tensor.DataType() != TensorElementDataTypeFloat64 {
+			t.Errorf("expected Float64, got %s", tensor.DataType())
+		}
+		got, err := TensorData[float64](tensor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, v := range got {
+			if v != data[i] {
+				t.Errorf("[%d]: expected %f, got %f", i, data[i], v)
+			}
+		}
+	})
+}
+
+func TestNewTensorFromBytesUnsupportedDtype(t *testing.T) {
+	_, err := NewTensorFromBytes(TensorElementDataTypeString, []int64{2}, []byte{0, 0, 0, 0})
+	if err == nil {
+		t.Fatal("expected error for String dtype in NewTensorFromBytes")
+	}
+}
+
+func TestNewTensorFromBytesFloat16(t *testing.T) {
+	// IEEE 754 half-precision: 1.0 = 0x3C00, 2.0 = 0x4000 (little-endian)
+	data := []byte{0x00, 0x3C, 0x00, 0x40}
+	tensor, err := NewTensorFromBytes(TensorElementDataTypeFloat16, []int64{2}, data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tensor.Close()
+
+	if tensor.DataType() != TensorElementDataTypeFloat16 {
+		t.Errorf("expected Float16, got %s", tensor.DataType())
+	}
+
+	shape := tensor.Shape()
+	if len(shape) != 1 || shape[0] != 2 {
+		t.Errorf("expected shape [2], got %v", shape)
+	}
+
+	b, err := tensor.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b) != len(data) {
+		t.Fatalf("expected %d bytes, got %d", len(data), len(b))
+	}
+	for i, v := range b {
+		if v != data[i] {
+			t.Errorf("byte[%d]: expected 0x%02X, got 0x%02X", i, data[i], v)
+		}
+	}
+}

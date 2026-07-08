@@ -5,7 +5,10 @@ package onnxruntime
 #include <stdlib.h>
 */
 import "C"
-import "unsafe"
+import (
+	"fmt"
+	"unsafe"
+)
 
 type AllocatorType int
 
@@ -73,6 +76,11 @@ type IOBinding struct {
 func NewIOBinding(session *Session) (*IOBinding, error) {
 	if err := checkInit(); err != nil {
 		return nil, err
+	}
+	session.mu.RLock()
+	defer session.mu.RUnlock()
+	if session.closed {
+		return nil, fmt.Errorf("ort: create io binding: session is closed")
 	}
 	var binding *C.OrtIoBinding
 	if err := checkStatus(C.ort_CreateIoBinding(session.handle, &binding)); err != nil {

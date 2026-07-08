@@ -457,6 +457,16 @@ OrtStatusPtr ort_CreateMemoryInfo(const char *name, enum OrtAllocatorType type,
     return g_api->CreateMemoryInfo(name, type, id, mem_type, out);
 }
 
+// Session options getters (since 1.27)
+
+OrtStatusPtr ort_GetMemPatternEnabled(const OrtSessionOptions *opts, int *out) {
+    return g_api->GetMemPatternEnabled(opts, out);
+}
+
+OrtStatusPtr ort_GetSessionExecutionMode(const OrtSessionOptions *opts, ExecutionMode *out) {
+    return g_api->GetSessionExecutionMode(opts, out);
+}
+
 // Error handling
 
 OrtErrorCode ort_GetErrorCode(const OrtStatus *status) {
