@@ -63,7 +63,7 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
     onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(mArch, params, stream);
   } else {
     // run CUTLASS kernel
-    int const wsSize = mRunner->getWorkspaceSize(m, originalN, k);
+    size_t const wsSize = mRunner->getWorkspaceSize(m, originalN, k);
     if (mQuantBits == 8) {
       mRunner->gemm(actPtr, reinterpret_cast<int8_t*>(weightPtr), inputScalesPtr, zerosPtr, biasesPtr, outputPtr,
                     m, originalN, k, mGroupSize, tactic, workspacePtr, wsSize, stream);
@@ -76,17 +76,17 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
 
 size_t WeightOnlyGroupwiseQuantGemmPluginProfiler::computeTmpSize(size_t maxM, size_t n, size_t k) {
   // Quantized weights are packed in FP16 format (INT4*4 -> FP16, INT8*2 -> FP16)
-  int const originalN = mQuantBits == 8 ? n * FP16_INT8_RATIO : n * FP16_INT4_RATIO;
+  int const originalN = mQuantBits == 8 ? static_cast<int>(n) * FP16_INT8_RATIO : static_cast<int>(n) * FP16_INT4_RATIO;
   std::vector<size_t> workspaces = {
-      maxM * k * sizeof(half),                       // A
-      k * n * sizeof(half),                          // B
-      k * originalN * sizeof(half) / mGroupSize,     // scales
-      k * originalN * sizeof(half) / mGroupSize,     // zeros
-      originalN * sizeof(half),                      // biases
-      maxM * originalN * sizeof(half),               // C
-      mRunner->getWorkspaceSize(maxM, originalN, k)  // workspace
+      maxM * k * sizeof(half),                                                           // A
+      k * n * sizeof(half),                                                              // B
+      k * originalN * sizeof(half) / mGroupSize,                                         // scales
+      k * originalN * sizeof(half) / mGroupSize,                                         // zeros
+      originalN * sizeof(half),                                                          // biases
+      maxM * originalN * sizeof(half),                                                   // C
+      mRunner->getWorkspaceSize(static_cast<int>(maxM), originalN, static_cast<int>(k))  // workspace
   };
-  return calculateTotalWorkspaceSize(workspaces.data(), workspaces.size());
+  return calculateTotalWorkspaceSize(workspaces.data(), static_cast<int>(workspaces.size()));
 }
 
 std::vector<WeightOnlyGroupwiseQuantGemmPluginProfiler::Config> WeightOnlyGroupwiseQuantGemmPluginProfiler::getTactics(
