@@ -170,7 +170,7 @@ py::array_t<uint8_t> PackFP4WeightsForMoE(
   int K_half = K / 2;
   int N_half = N / 2;
   size_t out_size = static_cast<size_t>(K) * static_cast<size_t>(N_half);
-  py::array_t<uint8_t> output({static_cast<pybind11::ssize_t>(out_size)});
+  py::array_t<uint8_t> output(static_cast<pybind11::ssize_t>(out_size));
   py::buffer_info out_buf = output.request();
   uint8_t* dst = static_cast<uint8_t*>(out_buf.ptr);
   std::memset(dst, 0, out_size);
