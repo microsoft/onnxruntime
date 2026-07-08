@@ -110,10 +110,10 @@ class GemmPluginProfiler {
   using MProfileMap = std::unordered_map<int, std::optional<Config>>;
   using MProfileMapPtr = std::shared_ptr<MProfileMap>;
 
+  // requires shared ownership to read from *this
+  using reader_lock = std::shared_lock<std::shared_timed_mutex>;
   // requires exclusive ownership to write to *this
-  using reader_lock = std::unique_lock<std::shared_timed_mutex>;
-  // requires shared ownership to read from other
-  using writer_lock = std::shared_lock<std::shared_timed_mutex>;
+  using writer_lock = std::unique_lock<std::shared_timed_mutex>;
 
   // Struct of continuing map if GEMMs to the best profiles for different Ms
   struct MNKProfileMap {
@@ -168,6 +168,13 @@ class GemmPluginProfiler {
 
   std::optional<Config> getBestConfig(int m, GemmIdType const& gemmId) const;
 
+  // Like getBestConfig, but if the requested M bucket has not been profiled yet, profiles it
+  // lazily (single bucket) and inserts it into the in-process map. This briefly blocks the caller
+  // but guarantees a tuned tactic for any runtime M, which is what makes the reduced first-time M
+  // sweep safe. Must not be called while the compute stream is being captured into a CUDA graph
+  // (the caller is responsible for using getBestConfig instead during capture).
+  std::optional<Config> getBestConfigOrProfile(int m, GemmIdType const& gemmId);
+
   virtual int getMaxProfileM() const;
 
  protected:
@@ -182,6 +189,11 @@ class GemmPluginProfiler {
   virtual std::vector<Config> getTactics(int m, int n, int k) const = 0;
 
   virtual void initTmpData(int m, int n, int k, char* workspace, size_t size, cudaStream_t stream);
+
+  // Returns the ordered set of M buckets to profile during the initial sweep, given the
+  // (rounded) profile range [minM, maxM]. The default reproduces the historical dense sweep.
+  // Subclasses may override to profile a smaller, configurable bucket set.
+  virtual std::vector<int> getProfileMBuckets(int minM, int maxM, bool hasWeightOnlyCudaKernel) const;
 
  private:
   std::optional<Config> profileTacticsForProblem(int m, int n, int k, std::vector<Config> const& tactics);
@@ -213,6 +225,10 @@ class GemmPluginProfiler {
   GemmDims mDims{};
 
   bool mSkip{false};
+
+  // Remembered from the initial profileTactics call so lazy single-bucket profiling can
+  // reproduce the same tactic candidate set.
+  bool mHasWeightOnlyCudaKernel{false};
 
   onnxruntime::AllocatorPtr mAllocator;
 };
@@ -277,8 +293,10 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
 
   mRunner = runner;
   mType = type;
+  mDims = dims;
+  mHasWeightOnlyCudaKernel = hasWeightOnlyCudaKernel;
 
-  int const maxM = std::min(nextPowerOfTwo(dims.maxM), getMaxProfileM());
+  int const maxM = std::min(nextPowerOfTwo(static_cast<int>(dims.maxM)), getMaxProfileM());
 
   size_t workspace_bytes = computeTmpSize(maxM, dims.n, dims.k);
 
@@ -317,27 +335,11 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
 
   CUDA_CALL_THROW(cudaStreamCreate(&mStream));
 
-  int const startMinMRounded = nextPowerOfTwo(dims.minM);
-
-  if (hasWeightOnlyCudaKernel) {
-    // Profile tactics for finer granularity of M,
-    // if CUDA kernel is enabled for weight-only plugins
-    int minM = dims.minM;
-    for (int m = std::max(1, minM); m < std::min(16, maxM); m += 1) {
-      profileTactics(m, dims.n, dims.k);
-    }
-
-    for (int m = 16; m < maxM; m *= 2) {
-      profileTactics(m, dims.n, dims.k);
-    }
-  } else {
-    // Profile tactics for CUTLASS kernel only
-    for (int m = std::max(1, startMinMRounded); m < maxM; m *= 2) {
-      profileTactics(m, dims.n, dims.k);
-    }
+  // Profile the (possibly reduced) set of M buckets. Any unprofiled runtime M is handled
+  // later by lazy single-bucket profiling in getBestConfigOrProfile.
+  for (int m : getProfileMBuckets(static_cast<int>(dims.minM), maxM, hasWeightOnlyCudaKernel)) {
+    profileTactics(m, static_cast<int>(dims.n), static_cast<int>(dims.k));
   }
-
-  profileTactics(maxM, dims.n, dims.k);
 
   if (isAllocated) {
     // Free tmp data
@@ -370,6 +372,90 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
     ORT_LLM_LOG_WARNING(msg.str());
     return std::nullopt;
   }
+}
+
+template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
+std::vector<int> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::getProfileMBuckets(
+    int minM, int maxM, bool hasWeightOnlyCudaKernel) const {
+  // Default: reproduce the historical dense sweep so any other users of this template keep
+  // their behavior. Subclasses may override this to profile a smaller bucket set.
+  std::vector<int> buckets;
+  if (hasWeightOnlyCudaKernel) {
+    for (int m = std::max(1, minM); m < std::min(16, maxM); m += 1) {
+      buckets.push_back(m);
+    }
+    for (int m = 16; m < maxM; m *= 2) {
+      buckets.push_back(m);
+    }
+  } else {
+    for (int m = std::max(1, nextPowerOfTwo(minM)); m < maxM; m *= 2) {
+      buckets.push_back(m);
+    }
+  }
+  buckets.push_back(maxM);
+  return buckets;
+}
+
+template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
+std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::getBestConfigOrProfile(
+    int m, GemmIdType const& gemmId) {
+  if (mSkip) {
+    return std::nullopt;
+  }
+
+  int const target = std::min(std::max(1, nextPowerOfTwo(m)), getMaxProfileM());
+
+  // Fast path: an already-profiled (exact or rounded) bucket under a shared read lock.
+  {
+    reader_lock lock(mMNKProfileMap->mutex);
+    if (mMNKProfileMap->existsMProfileMap(gemmId)) {
+      auto mProfileMap = mMNKProfileMap->getMProfileMap(gemmId);
+      if (mProfileMap->count(m) > 0) {
+        return mProfileMap->at(m);
+      }
+      if (mProfileMap->count(target) > 0) {
+        return mProfileMap->at(target);
+      }
+    }
+  }
+
+  writer_lock lock(mMNKProfileMap->mutex);
+
+  if (!mMNKProfileMap->existsMProfileMap(gemmId)) {
+    mMNKProfileMap->createMProfileMap(gemmId);
+  }
+  auto mProfileMap = mMNKProfileMap->getMProfileMap(gemmId);
+
+  // Re-check under the writer lock: another thread may have profiled it meanwhile.
+  if (mProfileMap->count(m) > 0) {
+    return mProfileMap->at(m);
+  }
+  if (mProfileMap->count(target) > 0) {
+    return mProfileMap->at(target);
+  }
+
+  // We can only profile lazily if the profiling context from construction is available.
+  if (mRunner == nullptr || mAllocator == nullptr || !mDims.isInitialized()) {
+    ORT_LLM_LOG_WARNING("Cannot lazily profile an unprofiled M bucket: profiler context is unavailable.");
+    return std::nullopt;
+  }
+
+  int const n = static_cast<int>(mDims.n);
+  int const k = static_cast<int>(mDims.k);
+  size_t const workspace_bytes = computeTmpSize(target, n, k);
+
+  CUDA_CALL_THROW(cudaStreamCreate(&mStream));
+  mWorkspaceTmp = onnxruntime::IAllocator::MakeUniquePtr<char>(mAllocator, workspace_bytes, true);
+  initTmpData(target, n, k, mWorkspaceTmp.get(), workspace_bytes, mStream);
+
+  auto tactics = this->getTactics(target, n, k);
+  auto best = this->profileTacticsForProblem(target, n, k, tactics);
+  mProfileMap->insert({target, best});
+
+  mWorkspaceTmp.reset();
+  CUDA_CALL_THROW(cudaStreamDestroy(mStream));
+
+  return best;
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>

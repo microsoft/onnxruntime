@@ -17,6 +17,7 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors.h"
+#include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 #endif
 #include "contrib_ops/cuda/llm/common/logger.h"
 #include "contrib_ops/cpu/quantization/matmul_nbits_helper.h"
@@ -378,11 +379,22 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 
       const void* fpA_intB_weight = is_prepacked_weight_ ? fpA_intB_weight_buffer_.get() : static_cast<const void*>(blob_data);
 
-      auto const bestTactic = gemmProfiler_->getBestConfig(m, gemmId_);
+      // During CUDA graph capture we must not lazily profile: profiling launches kernels, records
+      // and synchronizes events, and allocates/frees scratch, all of which are illegal while the
+      // compute stream is being captured. Fall back to a lookup of an already-profiled bucket
+      // (warmup runs before capture populate these); only outside capture do we allow lazy
+      // single-bucket profiling.
+      const bool stream_is_capturing =
+          stream != nullptr && onnxruntime::llm::common::isCapturing(stream);
+      auto const bestTactic = stream_is_capturing ? gemmProfiler_->getBestConfig(m, gemmId_)
+                                                  : gemmProfiler_->getBestConfigOrProfile(m, gemmId_);
       if (!bestTactic.has_value()) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "No valid fpA_intB MatMulNBits tactic for M=", m,
-                               ", N=", n, ", K=", k);
+        return ORT_MAKE_STATUS(
+            ONNXRUNTIME, FAIL,
+            "No valid fpA_intB MatMulNBits tactic for M=", m, ", N=", n, ", K=", k,
+            stream_is_capturing
+                ? ". The M bucket was not profiled before CUDA graph capture; run a warmup inference outside capture first."
+                : "");
       }
 
       // Env-gated diagnostics (ORT_FPA_INTB_DEBUG=1): dump the selected tactic, the kernel path
