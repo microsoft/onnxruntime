@@ -19,6 +19,7 @@ var (
 	libPath      string
 	initialized  bool
 	shutdown     bool
+	apiVersion   int
 	env          *C.OrtEnv
 	cpuMemInfo   *C.OrtMemoryInfo
 	sessionCount atomic.Int64
@@ -53,13 +54,15 @@ func Init() error {
 		return wrapErr("load library", err)
 	}
 
-	rc := C.ort_init_api(fn)
+	var cVersion C.int
+	rc := C.ort_init_api(fn, &cVersion)
 	if rc == 1 {
 		return wrapErr("init api", fmt.Errorf("OrtGetApiBase returned NULL"))
 	}
 	if rc == 2 {
-		return wrapErr("init api", fmt.Errorf("GetApi(%d) returned NULL; ORT library may be too old", C.ORT_GO_API_VERSION))
+		return wrapErr("init api", fmt.Errorf("GetApi failed; ORT library may be too old (need API >= %d)", C.ORT_GO_API_VERSION_MIN))
 	}
+	apiVersion = int(cVersion)
 
 	cLogID := C.CString("onnxruntime-go")
 	defer C.free(unsafe.Pointer(cLogID))

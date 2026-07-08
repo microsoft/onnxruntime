@@ -3,14 +3,16 @@
 
 #include "onnxruntime_c_api.h"
 
-// Minimum ORT API version required by these bindings.
-// Requires ORT >= 1.27.0. Covers all functions used, including
-// GetMemPatternEnabled and GetSessionExecutionMode (1.27).
-#define ORT_GO_API_VERSION 27
+// Preferred API version (ORT >= 1.27.0, includes getter APIs).
+// Falls back to ORT_GO_API_VERSION_MIN for older libraries.
+#define ORT_GO_API_VERSION_MAX 27
+#define ORT_GO_API_VERSION_MIN 17
 
 // Initialize the global OrtApi pointer from a resolved OrtGetApiBase function.
-// Returns 0 on success, 1 if apiBase is NULL, 2 if GetApi returns NULL.
-int ort_init_api(void *get_api_base_fn);
+// Tries ORT_GO_API_VERSION_MAX first, falls back to ORT_GO_API_VERSION_MIN.
+// Returns 0 on success, 1 if apiBase is NULL, 2 if even min version unsupported.
+// Sets *actual_version to the version that was loaded.
+int ort_init_api(void *get_api_base_fn, int *actual_version);
 
 // Environment
 OrtStatusPtr ort_CreateEnv(OrtLoggingLevel level, const char *logid, OrtEnv **out);
@@ -172,6 +174,7 @@ OrtStatusPtr ort_AddInitializer(OrtSessionOptions *opts, const char *name, const
 OrtStatusPtr ort_SessionEndProfiling(OrtSession *session, OrtAllocator *allocator, char **out);
 
 // Session options getters (since 1.27)
+int ort_api_version(void);
 OrtStatusPtr ort_GetMemPatternEnabled(const OrtSessionOptions *opts, int *out);
 OrtStatusPtr ort_GetSessionExecutionMode(const OrtSessionOptions *opts, ExecutionMode *out);
 

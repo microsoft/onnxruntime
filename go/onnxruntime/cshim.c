@@ -1,12 +1,24 @@
 #include "cshim.h"
 
 static const OrtApi *g_api = NULL;
+static int g_api_version = 0;
 
-int ort_init_api(void *get_api_base_fn) {
+int ort_init_api(void *get_api_base_fn, int *actual_version) {
     const OrtApiBase *base = ((const OrtApiBase *(*)(void))get_api_base_fn)();
     if (base == NULL) return 1;
-    g_api = base->GetApi(ORT_GO_API_VERSION);
-    return g_api == NULL ? 2 : 0;
+    g_api = base->GetApi(ORT_GO_API_VERSION_MAX);
+    if (g_api != NULL) {
+        g_api_version = ORT_GO_API_VERSION_MAX;
+        *actual_version = g_api_version;
+        return 0;
+    }
+    g_api = base->GetApi(ORT_GO_API_VERSION_MIN);
+    if (g_api != NULL) {
+        g_api_version = ORT_GO_API_VERSION_MIN;
+        *actual_version = g_api_version;
+        return 0;
+    }
+    return 2;
 }
 
 // Environment
@@ -458,6 +470,10 @@ OrtStatusPtr ort_CreateMemoryInfo(const char *name, enum OrtAllocatorType type,
 }
 
 // Session options getters (since 1.27)
+
+int ort_api_version(void) {
+    return g_api_version;
+}
 
 OrtStatusPtr ort_GetMemPatternEnabled(const OrtSessionOptions *opts, int *out) {
     return g_api->GetMemPatternEnabled(opts, out);
