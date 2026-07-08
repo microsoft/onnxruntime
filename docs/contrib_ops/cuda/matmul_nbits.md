@@ -87,9 +87,9 @@ step is **not** performed.
 The offline CUDA packer exposed through Python produces this layout:
 
 ```python
-from onnxruntime.capi import _pybind_state as _pybind
+from onnxruntime.capi import onnxruntime_cuda_quant_preprocess as _cuda_quant
 
-prepacked_flat = _pybind.pack_weights_for_cuda_mixed_gemm(
+prepacked_flat = _cuda_quant.pack_weights_for_cuda_mixed_gemm(
   q_weight.reshape(N, -1), N, K, bits, 80
 )
 prepacked_b = np.asarray(prepacked_flat, dtype=np.int8).view(np.uint8).reshape(q_weight.shape)
@@ -308,7 +308,7 @@ present. `ComputeInternal` then:
   GEMV profiling helpers, e.g. `profile_qmoe_gemv.sh`).
 - CUDA prepacked-weight parity tests:
   [onnxruntime/test/python/quantization/test_op_matmulnbits_prepacked_cuda.py](../../../onnxruntime/test/python/quantization/test_op_matmulnbits_prepacked_cuda.py).
-  These use `_pybind_state.pack_weights_for_cuda_mixed_gemm(..., 80)` to produce
+  These use `onnxruntime_cuda_quant_preprocess.pack_weights_for_cuda_mixed_gemm(..., 80)` to produce
   `weight_prepacked=1` initializers and compare their outputs against runtime
   fpA_intB prepacking for int4/int8 and GEMV/GEMM-shaped `M` values.
 - Constructor failure tests for unsupported prepacked configurations live in
