@@ -353,9 +353,11 @@ TEST(InferenceSessionTests, RequestLoadCancellation) {
   }
 }
 
-// Error-path coverage for InferenceSession validation / early-return branches (audit T8).
-// "Invalid input name" is already covered by TestOptionalInputs, so these target the
-// remaining gaps: Run-before-Initialize, an invalid output name, and malformed-model ingestion.
+// Error-path coverage for InferenceSession validation / early-return branches.
+// "Invalid input name" is already covered by TestOptionalInputs; the tests below cover the
+// remaining gaps in Run/Initialize/Load: Run-before-Initialize, Initialize-before-Load, an
+// invalid output name, input type/rank and output type mismatches, feed name/value count
+// mismatch, and load failures (malformed model bytes and a nonexistent model path).
 TEST(InferenceSessionTests, RunBeforeInitializeReturnsError) {
   SessionOptions so;
   so.session_logid = "InferenceSessionTests.RunBeforeInitializeReturnsError";
