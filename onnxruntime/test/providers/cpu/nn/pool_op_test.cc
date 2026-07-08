@@ -1304,6 +1304,62 @@ TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_1d_fp16) {
             kDmlExecutionProvider});
 }
 
+// Symmetric pads BUT dilation > 1. cuDNN's pooling descriptor has no dilation parameter, so the
+// old (asymmetric-pads-only) guard let this fall through to cuDNN, which silently ignored the
+// dilation and produced the wrong result. The dilation guard (!default_dilations) now routes this
+// to the custom kernel. opset 19 so the CPU AveragePoolV19 reference (which honors dilation) also
+// runs and must match. Expected values come from that CPU reference.
+TEST(PoolTest, AveragePool_CUDA_symmetric_pad_dilation_1d) {
+  OpTester test("AveragePool", 19);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1});
+  test.AddAttribute("pads", std::vector<int64_t>{2, 2});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3});
+  test.AddAttribute("dilations", std::vector<int64_t>{2});
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<float> x_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+  std::vector<int64_t> x_dims = {1, 1, 9};
+  std::vector<int64_t> expected_dims = {1, 1, 9};
+  std::vector<float> expected_vals = {1.3333334f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f,
+                                      4.6666665f, 5.3333335f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+            kDmlExecutionProvider});
+}
+
+// auto_pad=SAME_LOWER produces naturally asymmetric pads with the extra pad on the LOW side
+// (here pad(1,0)); companion to the SAME_UPPER case. opset 19 so the CPU reference also runs.
+TEST(PoolTest, AveragePool_CUDA_same_lower_asymmetric_1d) {
+  OpTester test("AveragePool", 19);
+
+  test.AddAttribute("auto_pad", "SAME_LOWER");
+  test.AddAttribute("strides", std::vector<int64_t>{2});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{3});
+  test.AddAttribute("count_include_pad", (int64_t)1);
+
+  std::vector<float> x_vals = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f};
+  std::vector<int64_t> x_dims = {1, 1, 10};
+  std::vector<int64_t> expected_dims = {1, 1, 5};
+  std::vector<float> expected_vals = {1.0f, 3.0f, 5.0f, 7.0f, 9.0f};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+            kDmlExecutionProvider});
+}
+
+// bf16 AveragePool is intentionally NOT tested here: although the CUDA kernel instantiates
+// BFloat16 (compile-checked) and AveragePoolWithPad accumulates it in float like fp16, the ONNX
+// AveragePool schema type constraint does not include tensor(bfloat16), so OpTester's model
+// type-checker rejects such a graph at load. The fp16 case above already exercises the
+// accumulate-in-float path.
+
 TEST(PoolTest, GlobalAveragePool) {
   OpTester test("GlobalAveragePool");
 
