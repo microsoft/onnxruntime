@@ -392,7 +392,11 @@ export const parseAveragePoolAttributes = (attributes: Record<string, unknown>):
   const countIncludePad = (attributes.count_include_pad as number) === 0 ? false : true;
 
   const attr = parsePoolCommonAttributes(attributes);
-  // TODO: support attribute 'ceil_mode'
+  // ceil_mode is honored by the output-shape math (PoolConvUtil.computePoolOutputShape now
+  // threads ceilMode and matches the C++ reference), but end-to-end execution stays gated
+  // here: the WebGPU pooling kernel must also apply the ceil_mode trailing-padding handling
+  // (and, for AveragePool, the count_include_pad divisor) before this throw can be removed.
+  // Tracked follow-up: remove this guard + add kernel ceil_mode padding support.
   if (attr.ceilMode !== 0) {
     throw new Error('using ceil() in shape computation is not yet supported for AveragePool');
   }
@@ -492,10 +496,15 @@ export const parseMaxPoolAttributes = (attributes: Record<string, unknown>): Max
   const dilations = attributes.dilations as [number, number];
 
   const attr = parsePoolCommonAttributes(attributes);
-  // TODO: support attribute 'ceil_mode' and 'storage_order'
+  // TODO: support attribute 'storage_order'
   if (storageOrder !== 0) {
     throw new Error('column major storage order is not yet supported for MaxPool');
   }
+  // ceil_mode is honored by the output-shape math (PoolConvUtil.computePoolOutputShape now
+  // threads ceilMode and matches the C++ reference), but end-to-end execution stays gated
+  // here: the WebGPU pooling kernel must also apply the ceil_mode trailing-padding handling
+  // before this throw can be removed. Tracked follow-up: remove this guard + add kernel
+  // ceil_mode padding support.
   if (attr.ceilMode !== 0) {
     throw new Error('using ceil() in shape computation is not yet supported for MaxPool');
   }

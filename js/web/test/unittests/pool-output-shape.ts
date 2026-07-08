@@ -1,6 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// These tests target PoolConvUtil.computePoolOutputShape directly (the pure shape function),
+// not the end-to-end pooling op. That is intentional: while the shape math now honors
+// ceil_mode, execution is still gated by the ceil_mode throw in parseAveragePool/MaxPoolAttributes
+// (js/web/lib/wasm/jsep/webgpu/ops/pool.ts), because the WebGPU kernel does not yet implement
+// ceil_mode trailing-padding handling. Removing that throw + adding kernel support is a tracked
+// follow-up; until then the shape path is only reachable via this unit test.
+
 import { expect } from 'chai';
 
 import { PoolConvUtil as JsepPoolConvUtil } from '../../lib/wasm/jsep/util';
