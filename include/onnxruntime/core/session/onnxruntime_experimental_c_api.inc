@@ -66,6 +66,7 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtApi_ExperimentalApiTest, _Out_ int64_t
 //    - OrtModelPackageApi_ModelPackage_GetVariantCount
 //    - OrtModelPackageApi_ModelPackage_GetVariantNames
 //    - OrtModelPackageApi_ModelPackage_GetVariantEpName
+//    - OrtModelPackageApi_ModelPackage_ResolveStringRef
 // 4) Select a component and resolve variant:
 //    - OrtModelPackageApi_SelectComponent
 // 5) Query selected variant info (optional):
@@ -211,6 +212,33 @@ ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtModelPackageApi_ModelPackage_GetVarian
                      _In_ const char* component_name,
                      _In_ const char* variant_name,
                      _Outptr_result_maybenull_ const char** out_ep)
+
+/** \brief Resolve a path reference declared inside the package against the model_package rules.
+ *
+ * Handles the path forms a package may use:
+ *   - "sha256:<hex>" or "sha256:<hex>/<tail>": a content-addressed shared asset. Resolves to
+ *     the asset's on-disk directory (honoring manifest shared_assets overrides), optionally
+ *     joined with the confined tail. Errors if the asset is not declared/discovered.
+ *   - any other value: a relative path resolved against `base_dir` (or the package root when
+ *     `base_dir` is NULL), with portable-layout confinement (no absolute paths, no "..").
+ *
+ * When `must_exist` is non-zero the resolved path must exist on disk. `out_path` is owned by
+ * `ctx` and remains valid until the next call to this function on the same context.
+ *
+ * \param[in] ctx The package context returned by OrtModelPackageApi_CreateModelPackageContext.
+ * \param[in] base_dir Base directory for relative inputs. May be NULL to use the package root.
+ * \param[in] input The path reference to resolve.
+ * \param[in] must_exist Non-zero to require that the resolved path exists on disk.
+ * \param[out] out_path Receives the resolved path string.
+ *
+ * \snippet{doc} snippets.dox OrtStatus Return Value
+ */
+ORT_EXPERIMENTAL_API(28, OrtStatusPtr, OrtModelPackageApi_ModelPackage_ResolveStringRef,
+                     _In_ const OrtModelPackageContext* ctx,
+                     _In_opt_ const char* base_dir,
+                     _In_ const char* input,
+                     _In_ int must_exist,
+                     _Outptr_ const char** out_path)
 
 /** \brief Select a component model and return an opaque component instance.
  *

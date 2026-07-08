@@ -3,9 +3,11 @@
 
 #include "cuda_ep.h"
 #include "cuda_ep_factory.h"
+#include "core/providers/cuda/cudnn_loader.h"
 #include "cuda_stream_plugin.h"
 #include "cuda_graph_plugin.h"
 #include "core/providers/cuda/plugin/cuda_kernel_adapter.h"
+#include "cuda_allocator_plugin.h"
 #include "core/providers/cuda/cuda_allocator.h"
 #include "core/framework/allocator.h"
 #include "ep/get_capability_utils.h"
@@ -144,6 +146,9 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   GetKernelRegistry = GetKernelRegistryImpl;
   GetPreferredDataLayout = GetPreferredDataLayoutImpl;
   ShouldConvertDataLayoutForOp = ShouldConvertDataLayoutForOpImpl;
+  CreateAllocator = (config_.external_alloc != nullptr && config_.external_free != nullptr)
+                        ? CreateAllocatorImpl
+                        : nullptr;
   CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
   IsConcurrentRunSupported = IsConcurrentRunSupportedImpl;
   OnRunStart = config_.enable_cuda_graph ? OnRunStartImpl : nullptr;
@@ -202,10 +207,10 @@ CudaEp::CudaEp(CudaEpFactory& factory, const Config& config, const OrtLogger& lo
   // below — no function-signature change.
   onnxruntime::cuda::detail::CudaKernelAdapterRuntimeConfig adapter_config;
   adapter_config.use_tf32 = config_.use_tf32;
-  adapter_config.skip_layer_norm_strict_mode = config_.enable_skip_layer_norm_strict_mode;
   adapter_config.cudnn_conv_algo = config_.cudnn_conv_algo;
   adapter_config.cudnn_conv_use_max_workspace = config_.cudnn_conv_use_max_workspace;
   adapter_config.cudnn_conv1d_pad_to_nc1d = config_.cudnn_conv1d_pad_to_nc1d;
+  adapter_config.enable_cudnn = config_.enable_cudnn;
   adapter_config.fuse_conv_bias = config_.fuse_conv_bias;
   adapter_config.sdpa_kernel = config_.sdpa_kernel;
   adapter_config.device_id = config_.device_id;
@@ -402,7 +407,7 @@ OrtStatus* ORT_API_CALL CudaEp::CreateSyncStreamForDeviceImpl(
     return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, error.c_str());
   }
 
-  auto cuda_stream = std::make_unique<CudaSyncStream>(ep->factory_, device_id, this_ptr);
+  auto cuda_stream = std::make_unique<CudaSyncStream>(ep->factory_, device_id, ep->config_.enable_cudnn, this_ptr);
 
   if (ep->config_.has_user_compute_stream) {
     // A user-provided compute stream is honored for kernels regardless of whether CUDA graph
@@ -425,6 +430,42 @@ OrtStatus* ORT_API_CALL CudaEp::CreateSyncStreamForDeviceImpl(
 
   *stream = cuda_stream.release();
   return nullptr;
+
+  EXCEPTION_TO_STATUS_END
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL CudaEp::CreateAllocatorImpl(
+    OrtEp* this_ptr,
+    const OrtMemoryInfo* memory_info,
+    OrtAllocator** allocator) noexcept {
+  EXCEPTION_TO_STATUS_BEGIN
+
+  auto& ep = *static_cast<CudaEp*>(this_ptr);
+  *allocator = nullptr;
+
+  const OrtApi& ort_api = ep.factory_.GetOrtApi();
+  const char* name = "";
+  OrtStatus* status = ort_api.MemoryInfoGetName(memory_info, &name);
+  if (status != nullptr) {
+    return status;
+  }
+
+  int req_device_id = 0;
+  status = ort_api.MemoryInfoGetId(memory_info, &req_device_id);
+  if (status != nullptr) {
+    return status;
+  }
+
+  if (name != nullptr && strcmp(name, "Cuda") == 0) {
+    auto external_allocator = std::make_unique<CudaExternalDeviceAllocator>(
+        memory_info, req_device_id,
+        ep.config_.external_alloc, ep.config_.external_free, ep.config_.external_empty_cache);
+    *allocator = external_allocator.release();
+    return nullptr;
+  }
+
+  return ep.factory_.CreateAllocator(&ep.factory_, memory_info, nullptr, allocator);
 
   EXCEPTION_TO_STATUS_END
 }

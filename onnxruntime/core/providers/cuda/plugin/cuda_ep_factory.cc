@@ -105,6 +105,10 @@ std::string ToUpper(std::string value) {
 }
 
 std::string GetProviderOptionPrefix(std::string_view provider_name) {
+  if (provider_name == kCudaExecutionProvider) {
+    return "ep.cuda.";
+  }
+
   return "ep." + onnxruntime::utils::GetLowercaseString(std::string{provider_name}) + ".";
 }
 
@@ -482,11 +486,11 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   const std::string prefer_nhwc_key = ep_options_prefix + "prefer_nhwc";
   const std::string prefer_nhwc_layout_key = ep_options_prefix + "prefer_nhwc_layout";
   const std::string use_tf32_key = ep_options_prefix + "use_tf32";
-  const std::string skip_layer_norm_key = ep_options_prefix + "enable_skip_layer_norm_strict_mode";
   const std::string cudnn_use_max_workspace_key = ep_options_prefix + "cudnn_conv_use_max_workspace";
   const std::string cudnn_conv1d_pad_key = ep_options_prefix + "cudnn_conv1d_pad_to_nc1d";
   const std::string cudnn_conv_algo_key = ep_options_prefix + "cudnn_conv_algo";
   const std::string cudnn_conv_algo_search_key = ep_options_prefix + "cudnn_conv_algo_search";
+  const std::string enable_cudnn_key = ep_options_prefix + "enable_cudnn";
   const std::string fuse_conv_bias_key = ep_options_prefix + "fuse_conv_bias";
   const std::string sdpa_kernel_key = ep_options_prefix + "sdpa_kernel";
   const std::string enable_cuda_graph_key = ep_options_prefix + "enable_cuda_graph";
@@ -499,15 +503,11 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
   const std::string gpu_external_free_key = ep_options_prefix + "gpu_external_free";
   const std::string gpu_external_empty_cache_key = ep_options_prefix + "gpu_external_empty_cache";
 
-  // Prefer plugin-provider-option keys, then fall back to the legacy ep.cuda.*
-  // aliases and finally to the historical flat session config names.
+  // Prefer canonical EP-scoped keys, then fall back to historical flat session config names.
   read_session_config_bool(
       {prefer_nhwc_key, prefer_nhwc_layout_key, "ep.cuda.prefer_nhwc_layout", "prefer_nhwc", "prefer_nhwc_layout"},
       config.prefer_nhwc);
   read_session_config_bool({use_tf32_key, "ep.cuda.use_tf32", "use_tf32"}, config.use_tf32);
-  read_session_config_bool(
-      {skip_layer_norm_key, "ep.cuda.enable_skip_layer_norm_strict_mode", "enable_skip_layer_norm_strict_mode"},
-      config.enable_skip_layer_norm_strict_mode);
   read_session_config_bool(
       {cudnn_use_max_workspace_key, "ep.cuda.cudnn_conv_use_max_workspace", "cudnn_conv_use_max_workspace"},
       config.cudnn_conv_use_max_workspace);
@@ -518,6 +518,9 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
       {cudnn_conv_algo_search_key, cudnn_conv_algo_key, "ep.cuda.cudnn_conv_algo_search", "ep.cuda.cudnn_conv_algo",
        "cudnn_conv_algo_search", "cudnn_conv_algo"},
       config.cudnn_conv_algo);
+  read_session_config_bool(
+      {enable_cudnn_key, "ep.cuda.enable_cudnn", "enable_cudnn"},
+      config.enable_cudnn);
   read_session_config_bool(
       {fuse_conv_bias_key, "ep.cuda.fuse_conv_bias", "fuse_conv_bias"},
       config.fuse_conv_bias);
@@ -623,18 +626,6 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateEpImpl(
     config.use_ep_level_unified_stream = true;
   }
 
-  // Store external allocator info in the device cache entry so CreateAllocatorImpl can use it.
-  if (config.external_alloc != nullptr && config.external_free != nullptr) {
-    std::lock_guard<std::mutex> lock(factory->device_cache_mutex_);
-    auto* entry = factory->FindDeviceCacheEntryByOrdinalLocked(config.device_id);
-    if (entry) {
-      std::lock_guard<std::mutex> arena_lock(entry->arena_mutex);
-      entry->external_alloc = config.external_alloc;
-      entry->external_free = config.external_free;
-      entry->external_empty_cache = config.external_empty_cache;
-    }
-  }
-
   const OrtLogger& ep_logger = logger ? *logger : factory->default_logger_;
   auto actual_ep = std::make_unique<CudaEp>(*factory, config, ep_logger);
   *ep = actual_ep.release();
@@ -692,19 +683,6 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateAllocatorImpl(
     }
 
     std::lock_guard<std::mutex> lock{entry->arena_mutex};
-
-    // If external allocator function pointers are configured, use those directly
-    // (no arena, no mempool — the external allocator manages its own caching).
-    if (entry->UseExternalAllocator()) {
-      if (!entry->external_device_allocator) {
-        entry->external_device_allocator = std::make_unique<CudaExternalDeviceAllocator>(
-            memory_info, req_device_id,
-            entry->external_alloc, entry->external_free, entry->external_empty_cache);
-      }
-      ++entry->num_external_allocator_users;
-      *allocator = entry->external_device_allocator.get();
-      return nullptr;
-    }
 
     if (use_mempool) {
       if (!entry->mempool_allocator) {
@@ -829,16 +807,6 @@ void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
         if (--entry.num_mempool_users == 0) entry.mempool_allocator.reset();
         return;
       }
-      if (allocator == entry.external_device_allocator.get()) {
-        if (entry.num_external_allocator_users <= 0) {
-          LogWarning(factory->ort_api_, factory->default_logger_, ORT_FILE, __LINE__,
-                     "CudaEpFactory::ReleaseAllocatorImpl",
-                     "Refcount underflow in ReleaseAllocatorImpl (external_device_allocator). Ignoring release.");
-          return;
-        }
-        if (--entry.num_external_allocator_users == 0) entry.external_device_allocator.reset();
-        return;
-      }
     }
   }
 
@@ -846,6 +814,10 @@ void ORT_API_CALL CudaEpFactory::ReleaseAllocatorImpl(
   auto* typed_allocator = static_cast<CudaAllocatorBase*>(allocator);
   switch (typed_allocator->GetKind()) {
     case CudaAllocatorKind::kDevice:
+      if (typed_allocator->IsExternalDeviceAllocator()) {
+        delete static_cast<CudaExternalDeviceAllocator*>(allocator);
+        return;
+      }
       delete static_cast<CudaDeviceAllocator*>(allocator);
       return;
     case CudaAllocatorKind::kPinned:
@@ -885,7 +857,11 @@ OrtStatus* ORT_API_CALL CudaEpFactory::CreateSyncStreamForDeviceImpl(
 
   auto* factory = static_cast<CudaEpFactory*>(this_ptr);
   int req_device_id = factory->ep_api_.MemoryDevice_GetDeviceId(memory_device);
-  auto cuda_stream = std::make_unique<CudaSyncStream>(*factory, req_device_id, nullptr);
+  // Factory-level streams are not tied to a specific EP instance's enable_cudnn policy. Default cuDNN
+  // off here so this path never triggers a cuDNN load or handle creation; kernels that need cuDNN run
+  // on EP-owned streams created with the EP's actual enable_cudnn setting, and otherwise fall back to
+  // the per-thread default cuDNN handle.
+  auto cuda_stream = std::make_unique<CudaSyncStream>(*factory, req_device_id, false, nullptr);
 
   // Initialize CUDA handles (stream, cuBLAS, cuDNN)
   RETURN_IF_ERROR(cuda_stream->InitHandles());

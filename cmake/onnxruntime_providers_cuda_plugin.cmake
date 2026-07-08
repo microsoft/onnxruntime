@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 # Build the CUDA Execution Provider as a plugin shared library.
-# This file is included from the main CMakeLists.txt when onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON.
+# This file is included from onnxruntime_providers.cmake when onnxruntime_BUILD_CUDA_EP_AS_PLUGIN=ON.
 
 message(STATUS "Building CUDA EP as plugin shared library")
 
@@ -348,12 +348,12 @@ endif()
 set(CUDA_PLUGIN_CUDNN_INCLUDE_DIR ${CUDNN_INCLUDE_DIR})
 set(CUDA_PLUGIN_CUDNN_LIBRARY ${cudnn_LIBRARY})
 
-if(NOT CUDA_PLUGIN_CUDNN_INCLUDE_DIR OR NOT CUDA_PLUGIN_CUDNN_LIBRARY)
-  message(FATAL_ERROR "cuDNN not found (from main ORT search) for CUDA Plugin EP.")
+if(NOT CUDA_PLUGIN_CUDNN_INCLUDE_DIR)
+  message(FATAL_ERROR "cuDNN headers not found (from main ORT search) for CUDA Plugin EP.")
 endif()
 
 message(STATUS "CUDA Plugin EP: cuDNN include: ${CUDA_PLUGIN_CUDNN_INCLUDE_DIR}")
-message(STATUS "CUDA Plugin EP: cuDNN library: ${CUDA_PLUGIN_CUDNN_LIBRARY}")
+message(STATUS "CUDA Plugin EP: cuDNN runtime library: ${CUDA_PLUGIN_CUDNN_LIBRARY}")
 
 # Include directories — only public ORT headers + CUDA toolkit + cuDNN + internal headers for adapter
 target_include_directories(onnxruntime_providers_cuda_plugin PRIVATE
@@ -388,7 +388,6 @@ target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE
     CUDA::cufft
     CUDA::nvrtc
     CUDA::cuda_driver
-    CUDNN::cudnn_all
     cudnn_frontend
     Boost::mp11
     safeint_interface
@@ -402,6 +401,8 @@ target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE
     onnx_proto
     ${PROTOBUF_LIB}
 )
+
+  target_compile_definitions(onnxruntime_providers_cuda_plugin PRIVATE NV_CUDNN_FRONTEND_USE_DYNAMIC_LOADING)
 
 if (onnxruntime_ENABLE_CUDA_PROFILING)
     target_link_libraries(onnxruntime_providers_cuda_plugin PRIVATE CUDA::cupti)
@@ -457,7 +458,7 @@ endif()
 
 # Set output name and solution folder
 set_target_properties(onnxruntime_providers_cuda_plugin PROPERTIES
-    OUTPUT_NAME "onnxruntime_providers_cuda_plugin"
+  OUTPUT_NAME "onnxruntime_providers_cuda"
     FOLDER "ONNXRuntime"
 )
 

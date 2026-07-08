@@ -8,6 +8,8 @@
 #if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP)
 
 #include <algorithm>
+#include <atomic>
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <functional>
@@ -41,9 +43,23 @@ int64_t GetStatInt(const Ort::KeyValuePairs& stats, const char* key) {
   return v ? std::stoll(v) : 0;
 }
 
+std::atomic<int> g_external_alloc_calls{0};
+std::atomic<int> g_external_free_calls{0};
+
+void* CountingExternalAlloc(size_t size) {
+  ++g_external_alloc_calls;
+  void* ptr = nullptr;
+  return cudaMalloc(&ptr, size) == cudaSuccess ? ptr : nullptr;
+}
+
+void CountingExternalFree(void* ptr) {
+  ++g_external_free_calls;
+  ASSERT_EQ(cudaSuccess, cudaFree(ptr));
+}
+
 // Resolve the CUDA plugin EP shared library path.
 std::filesystem::path GetCudaPluginLibraryPath() {
-  return GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_cuda_plugin"));
+  return GetSharedLibraryFileName(ORT_TSTR("onnxruntime_providers_cuda"));
 }
 
 // RAII handle that registers/unregisters the CUDA plugin EP library.
@@ -84,7 +100,7 @@ class ScopedCudaPluginRegistration {
 Ort::ConstEpDevice FindCudaPluginDevice(Ort::Env& env) {
   auto ep_devices = env.GetEpDevices();
   for (const auto& device : ep_devices) {
-    if (strcmp(device.EpName(), "CudaPluginExecutionProvider") == 0) {
+    if (strcmp(device.EpName(), "CUDAExecutionProvider") == 0) {
       return device;
     }
   }
@@ -267,6 +283,47 @@ TEST_F(CudaPluginArenaTest, DeviceAllocator_ZeroSizeAlloc) {
   EXPECT_EQ(p, nullptr);
 
   allocator.Free(nullptr);
+}
+
+TEST_F(CudaPluginArenaTest, ExternalAllocator_IsSessionScoped) {
+  auto device_memory_info = cuda_device_.GetMemoryInfo(OrtDeviceMemoryType_DEFAULT);
+
+  g_external_alloc_calls = 0;
+  g_external_free_calls = 0;
+
+  {
+    Ort::SessionOptions so;
+    std::unordered_map<std::string, std::string> provider_options = {
+        {"gpu_external_alloc", std::to_string(reinterpret_cast<std::uintptr_t>(&CountingExternalAlloc))},
+        {"gpu_external_free", std::to_string(reinterpret_cast<std::uintptr_t>(&CountingExternalFree))},
+    };
+    so.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, provider_options);
+
+    Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
+    Ort::Allocator allocator(session, device_memory_info);
+    void* ptr = allocator.Alloc(1024);
+    ASSERT_NE(ptr, nullptr);
+    allocator.Free(ptr);
+  }
+
+  const int external_allocs_after_external_session = g_external_alloc_calls.load();
+  EXPECT_GT(external_allocs_after_external_session, 0);
+  EXPECT_EQ(g_external_free_calls.load(), external_allocs_after_external_session);
+
+  {
+    Ort::SessionOptions so;
+    std::unordered_map<std::string, std::string> provider_options;
+    so.AppendExecutionProvider_V2(*ort_env, {cuda_device_}, provider_options);
+
+    Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), so);
+    Ort::Allocator allocator(session, device_memory_info);
+    void* ptr = allocator.Alloc(1024);
+    ASSERT_NE(ptr, nullptr);
+    allocator.Free(ptr);
+  }
+
+  EXPECT_EQ(g_external_alloc_calls.load(), external_allocs_after_external_session)
+      << "A later session without external allocator options must not inherit callbacks from an earlier session.";
 }
 
 // Verify arena handles a large allocation.

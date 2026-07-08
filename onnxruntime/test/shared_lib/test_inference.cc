@@ -748,6 +748,36 @@ TEST(CApiTest, SparseInputModel) {
 #endif  // DISABLE_CONTRIB_OPS
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
+// Test that a custom op compiled against a newer ORT version (higher OrtCustomOp::version)
+// can still be loaded on this ORT runtime. This simulates the forward compatibility
+// scenario where an IHV EP compiled against ORT v(N+1) is loaded into ORT v(N).
+// We test session creation only (which covers schema registration, kernel def building, and
+// CustomOpKernel construction with the capped API version).
+TEST(CApiTest, custom_op_forward_version_compat) {
+  std::vector<Input<float>> inputs(1);
+  auto& input = inputs[0];
+  input.name = "X";
+  input.dims = {3, 2};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+
+  std::vector<int64_t> expected_dims_y = {3, 2};
+  std::vector<float> expected_values_y = {2.0f, 4.0f, 6.0f, 8.0f, 10.0f, 12.0f};
+
+  MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
+
+  // Simulate an EP compiled against a newer ORT version by setting version higher than ORT_API_VERSION.
+  // The OrtCustomOp struct's function pointers are still valid for the current version, so this should work.
+  custom_op.version = ORT_API_VERSION + 1;
+
+  Ort::CustomOpDomain custom_op_domain("test");
+  custom_op_domain.Add(&custom_op);
+
+  // test_session_creation_only=true: exercises schema registration, kernel def building, and
+  // CustomOpKernel construction (which was previously blocked by the blanket version reject).
+  TestInference<float>(*ort_env, CUSTOM_OP_MODEL_URI, inputs, "Y", expected_dims_y, expected_values_y, 0,
+                       custom_op_domain, nullptr, /*test_session_creation_only=*/true);
+}
+
 // Memory leak
 #ifndef ABSL_HAVE_ADDRESS_SANITIZER
 TEST(CApiTest, custom_op_handler) {
@@ -2506,7 +2536,8 @@ TEST(CApiTest, basic_cuda_graph) {
   Ort::ThrowOnError(api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
 
   auto dml_objects = CreateDmlObjects();
-  ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(session_options, dml_objects.dml_device.Get(), dml_objects.command_queue.Get());
+  Ort::ThrowOnError(ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(
+      session_options, dml_objects.dml_device.Get(), dml_objects.command_queue.Get()));
 #endif
 
   Ort::Session session(*ort_env, MODEL_URI, session_options);
@@ -2553,8 +2584,14 @@ TEST(CApiTest, basic_cuda_graph) {
   binding.BindInput("X", bound_x);
   binding.BindOutput("Y", bound_y);
 
+  // Synchronize to make sure the input upload is complete, since it may be issued on a different stream/queue than the EP uses.
+  binding.SynchronizeInputs();
+
   // One regular run for necessary memory allocation and graph capturing
   session.Run(Ort::RunOptions(), binding);
+
+  // Synchronize to make sure the EP computation is complete before reading the output back to the host.
+  binding.SynchronizeOutputs();
 
   // Check the values against the bound raw memory (needs copying from device to host first)
   std::array<float, 3 * 2> y_values;
@@ -2572,6 +2609,8 @@ TEST(CApiTest, basic_cuda_graph) {
 
   // Replay the captured CUDA graph
   session.Run(Ort::RunOptions(), binding);
+
+  binding.SynchronizeOutputs();
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT)
   (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
@@ -2594,6 +2633,8 @@ TEST(CApiTest, basic_cuda_graph) {
 
   session.Run(Ort::RunOptions(), binding);
 
+  binding.SynchronizeOutputs();
+
 #if defined(USE_CUDA) || defined(USE_TENSORRT)
   (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
 #elif defined(USE_DML)
@@ -2607,6 +2648,44 @@ TEST(CApiTest, basic_cuda_graph) {
   binding.ClearBoundInputs();
   binding.ClearBoundOutputs();
 }
+
+#if defined(USE_DML)
+// Regression test for graph capture on a model that folds to an *empty* graph.
+// The model below is a single Constant node, which constant-folding removes,
+// leaving zero compute nodes. GenAI creates such an allocator-initialization
+// session with DML graph capture enabled. Previously the graph-capture selection
+// logic rejected an empty graph (because no node was assigned to the EP) and threw
+// "all compute graph nodes have not been partitioned to the DmlExecutionProvider".
+// An empty graph has nothing that violates the requirement, so it must succeed.
+TEST(CApiTest, DmlGraphCaptureEmptyGraph) {
+  // A minimal model consisting of a single Constant node producing "values".
+  // Constant folding removes the node, leaving an empty graph.
+  static const uint8_t constant_only_model[] = {
+      0x08, 0x0a, 0x3a, 0x5b, 0x0a, 0x31, 0x12, 0x06, 0x76, 0x61, 0x6c, 0x75,
+      0x65, 0x73, 0x22, 0x08, 0x43, 0x6f, 0x6e, 0x73, 0x74, 0x61, 0x6e, 0x74,
+      0x2a, 0x1d, 0x0a, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x2a, 0x11, 0x08,
+      0x01, 0x10, 0x01, 0x22, 0x04, 0x00, 0x00, 0x80, 0x3f, 0x42, 0x05, 0x76,
+      0x61, 0x6c, 0x75, 0x65, 0xa0, 0x01, 0x04, 0x12, 0x10, 0x74, 0x72, 0x69,
+      0x76, 0x69, 0x61, 0x6c, 0x5f, 0x63, 0x6f, 0x6e, 0x73, 0x74, 0x61, 0x6e,
+      0x74, 0x62, 0x14, 0x0a, 0x06, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x73, 0x12,
+      0x0a, 0x0a, 0x08, 0x08, 0x01, 0x12, 0x04, 0x0a, 0x02, 0x08, 0x01, 0x42,
+      0x04, 0x0a, 0x00, 0x10, 0x0d};
+
+  const auto& api = Ort::GetApi();
+  Ort::SessionOptions session_options;
+  session_options.AddConfigEntry("ep.dml.enable_graph_capture", "1");
+  const OrtDmlApi* ort_dml_api;
+  Ort::ThrowOnError(api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
+
+  auto dml_objects = CreateDmlObjects();
+  Ort::ThrowOnError(ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(
+      session_options, dml_objects.dml_device.Get(), dml_objects.command_queue.Get()));
+
+  EXPECT_NO_THROW({
+    Ort::Session session(*ort_env, constant_only_model, sizeof(constant_only_model), session_options);
+  });
+}
+#endif  // defined(USE_DML)
 
 #if defined(USE_CUDA) || defined(USE_DML)
 struct CudaGraphInputOutputData_0 {
@@ -2693,8 +2772,14 @@ static void RunWithCudaGraphAnnotation(T& cg_data,
     run_option.AddConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation, cuda_graph_annotation);
   }
 
+  // Synchronize to make sure the input upload is complete, since it may be issued on a different stream/queue than the EP uses.
+  binding.SynchronizeInputs();
+
   // One regular run for necessary memory allocation and graph capturing
   session.Run(run_option, binding);
+
+  // Synchronize to make sure the EP computation is complete before reading the output back to the host.
+  binding.SynchronizeOutputs();
 
   // Check the values against the bound raw memory (needs copying from device to host first)
 #ifdef USE_DML
@@ -2713,6 +2798,8 @@ static void RunWithCudaGraphAnnotation(T& cg_data,
 
   // Replay the captured CUDA graph
   session.Run(run_option, binding);
+
+  binding.SynchronizeOutputs();
 
 #ifdef USE_DML
   DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * cg_data.y_values.size()));
@@ -2741,6 +2828,8 @@ static void RunWithCudaGraphAnnotation(T& cg_data,
 
   session.Run(run_option, binding);
 
+  binding.SynchronizeOutputs();
+
 #ifdef USE_DML
   DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * cg_data.y_values.size()));
 #else
@@ -2766,7 +2855,8 @@ TEST(CApiTest, basic_cuda_graph_with_annotation) {
   const OrtDmlApi* ort_dml_api;
   Ort::ThrowOnError(api.GetExecutionProviderApi("DML", ORT_API_VERSION, reinterpret_cast<const void**>(&ort_dml_api)));
   auto dml_objects = CreateDmlObjects();
-  ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(session_options, dml_objects.dml_device.Get(), dml_objects.command_queue.Get());
+  Ort::ThrowOnError(ort_dml_api->SessionOptionsAppendExecutionProvider_DML1(
+      session_options, dml_objects.dml_device.Get(), dml_objects.command_queue.Get()));
 
   Ort::MemoryInfo info_mem("DML", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
 #elif defined(USE_CUDA)
