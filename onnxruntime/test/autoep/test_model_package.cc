@@ -16,6 +16,7 @@
 
 #include "core/session/model_package/model_package_context.h"
 #include "core/session/onnxruntime_experimental_cxx_api.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/abi_devices.h"
 #include "test/autoep/test_autoep_utils.h"
 #include "test/util/include/asserts.h"
@@ -201,6 +202,35 @@ std::filesystem::path BuildTwoVariantPackage(const std::filesystem::path& packag
   variants.push_back(VariantSpec{std::string(variant_name_1), std::string(ep_name), std::string(device_1), std::string(compat_1), model_1, {}, {}});
   variants.push_back(VariantSpec{std::string(variant_name_2), std::string(ep_name), std::string(device_2), std::string(compat_2), model_2, {}, {}});
   return BuildPackage(package_root, "model_1", variants);
+}
+
+// Runs the full experimental OrtModelPackageApi flow for a single-component package and returns the
+// created session: CreateModelPackageOptionsFromSessionOptions -> CreateModelPackageContext ->
+// SelectComponent -> CreateSession. `session_options` drives both variant/EP selection and session
+// creation (advanced path), mirroring how a caller loads a package. Throws on any error.
+Ort::Session CreateSessionFromModelPackage(const std::filesystem::path& package_root,
+                                           const std::string& component_name,
+                                           Ort::SessionOptions& session_options) {
+  const auto& pkg_api = GetModelPackageFns();
+
+  OrtModelPackageOptions* raw_mp_opts = nullptr;
+  Ort::ThrowOnError(pkg_api.CreateModelPackageOptionsFromSessionOptions(*ort_env, session_options, &raw_mp_opts));
+  std::unique_ptr<OrtModelPackageOptions, decltype(pkg_api.ReleaseModelPackageOptions)>
+      mp_opts(raw_mp_opts, pkg_api.ReleaseModelPackageOptions);
+
+  OrtModelPackageContext* raw_ctx = nullptr;
+  Ort::ThrowOnError(pkg_api.CreateModelPackageContext(package_root.c_str(), &raw_ctx));
+  std::unique_ptr<OrtModelPackageContext, decltype(pkg_api.ReleaseModelPackageContext)>
+      ctx(raw_ctx, pkg_api.ReleaseModelPackageContext);
+
+  OrtModelPackageComponentContext* raw_comp_ctx = nullptr;
+  Ort::ThrowOnError(pkg_api.SelectComponent(ctx.get(), component_name.c_str(), mp_opts.get(), &raw_comp_ctx));
+  std::unique_ptr<OrtModelPackageComponentContext, decltype(pkg_api.ReleaseModelPackageComponentContext)>
+      comp_ctx(raw_comp_ctx, pkg_api.ReleaseModelPackageComponentContext);
+
+  OrtSession* raw_session = nullptr;
+  Ort::ThrowOnError(pkg_api.CreateSession(*ort_env, comp_ctx.get(), session_options, &raw_session));
+  return Ort::Session{raw_session};
 }
 
 }  // namespace
@@ -429,7 +459,7 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PluginEp_AppendV2) {
   std::unordered_map<std::string, std::string> ep_options;
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
-  Ort::Session session(*ort_env, package_root.c_str(), session_options);
+  Ort::Session session = CreateSessionFromModelPackage(package_root, "model_1", session_options);
 
   Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
   std::vector<int64_t> shape = {3, 2};
@@ -467,7 +497,7 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PreferCpu) {
   Ort::SessionOptions session_options;
   session_options.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_CPU);
 
-  Ort::Session session(*ort_env, package_root.c_str(), session_options);
+  Ort::Session session = CreateSessionFromModelPackage(package_root, "model_1", session_options);
 
   Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
   std::vector<int64_t> shape = {3, 2};
@@ -485,6 +515,32 @@ TEST(ModelPackageTest, LoadModelPackageAndRunInference_PreferCpu) {
   const float* out = outputs[0].GetTensorData<float>();
   gsl::span<const float> out_span(out, input_data.size());
   EXPECT_THAT(out_span, ::testing::ElementsAre(1.f, 4.f, 9.f, 16.f, 25.f, 36.f));
+
+  std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+}
+
+// Passing a directory path to OrtCreateSession is no longer treated as a model package. It must
+// fail with a clear message pointing at the model package API rather than a generic load error.
+TEST(ModelPackageTest, DirectoryPath_FailsWithModelPackageApiHint) {
+  const auto package_root = std::filesystem::temp_directory_path() / "ort_mp_directory_path_rejected";
+  BuildTwoVariantPackage(package_root,
+                         "variant_1", "cpu", "",
+                         "testdata/mul_1.onnx",
+                         "variant_2", "npu", "",
+                         "testdata/mul_16.onnx");
+
+  Ort::SessionOptions session_options;
+  bool threw = false;
+  try {
+    Ort::Session session(*ort_env, package_root.c_str(), session_options);
+  } catch (const Ort::Exception& e) {
+    threw = true;
+    const std::string msg = e.what();
+    EXPECT_NE(msg.find("directory"), std::string::npos) << "unexpected error: " << msg;
+    EXPECT_NE(msg.find("model package API"), std::string::npos) << "unexpected error: " << msg;
+  }
+  EXPECT_TRUE(threw) << "Loading a session from a directory path should fail";
 
   std::error_code ec;
   std::filesystem::remove_all(package_root, ec);
@@ -540,7 +596,7 @@ TEST(ModelPackageTest, CheckCompiledModelCompatibilityInfo) {
   std::unordered_map<std::string, std::string> ep_options;
   session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
 
-  Ort::Session session(*ort_env, package_root.c_str(), session_options);
+  Ort::Session session = CreateSessionFromModelPackage(package_root, "model_1", session_options);
 
   std::error_code ec;
   std::filesystem::remove_all(package_root, ec);
@@ -747,6 +803,80 @@ TEST(ModelPackageTest, VariantSessionOptions_DispatchedThroughAddSessionConfigEn
   EXPECT_TRUE(mentions_dispatch) << "error did not mention typed dispatch: " << err_msg;
 
   std::error_code ec;
+  std::filesystem::remove_all(package_root, ec);
+}
+
+// A variant's path-valued session option (the external initializers folder) is resolved against
+// the package (relative -> absolute) at parse time and applied, so the model's external data can
+// live outside the model's own directory.
+TEST(ModelPackageTest, VariantSessionOption_ResolvesExternalInitializersFolder) {
+  const auto package_root = std::filesystem::temp_directory_path() / "ort_mp_ext_ini_resolve";
+  std::vector<VariantSpec> variants;
+  variants.push_back(VariantSpec{
+      "variant_1", "example_ep", "cpu", "", "testdata/conv_qdq_external_ini.onnx", std::unordered_map<std::string, std::string>{
+                                                                                       {kOrtSessionOptionsModelExternalInitializersFileFolderPath, "weights"},
+                                                                                   },
+      {}});
+  BuildPackage(package_root, "model_1", variants);
+
+  // Put the external data file in a subfolder of the variant dir. It can only be found if
+  // "weights" is resolved to <variant_dir>/weights and used to override the model directory.
+  const auto weights_dir = package_root / "model_1" / "variant_1" / "weights";
+  std::error_code ec;
+  std::filesystem::create_directories(weights_dir, ec);
+  ASSERT_FALSE(ec);
+  std::filesystem::copy_file("testdata/conv_qdq_external_ini.bin",
+                             weights_dir / "conv_qdq_external_ini.bin",
+                             std::filesystem::copy_options::overwrite_existing, ec);
+  ASSERT_FALSE(ec);
+
+  RegisteredEpDeviceUniquePtr example_ep;
+  ASSERT_NO_FATAL_FAILURE(Utils::RegisterAndGetExampleEp(*ort_env, Utils::example_ep_info, example_ep));
+  Ort::ConstEpDevice plugin_ep_device(example_ep.get());
+
+  Ort::SessionOptions session_options;
+  std::unordered_map<std::string, std::string> ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, {plugin_ep_device}, ep_options);
+
+  const auto& pkg_api = GetModelPackageFns();
+  ASSERT_NE(pkg_api.CreateModelPackageContext, nullptr) << "Model package experimental API is not available";
+
+  auto options_deleter = [&pkg_api](OrtModelPackageOptions* p) { if (p) pkg_api.ReleaseModelPackageOptions(p); };
+  auto context_deleter = [&pkg_api](OrtModelPackageContext* p) { if (p) pkg_api.ReleaseModelPackageContext(p); };
+  auto component_context_deleter = [&pkg_api](OrtModelPackageComponentContext* p) {
+    if (p) pkg_api.ReleaseModelPackageComponentContext(p);
+  };
+  std::unique_ptr<OrtModelPackageOptions, decltype(options_deleter)> mp_opts(nullptr, options_deleter);
+  std::unique_ptr<OrtModelPackageContext, decltype(context_deleter)> ctx(nullptr, context_deleter);
+  std::unique_ptr<OrtModelPackageComponentContext, decltype(component_context_deleter)> comp_ctx(nullptr, component_context_deleter);
+
+  OrtModelPackageOptions* raw_mp_opts = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api.CreateModelPackageOptionsFromSessionOptions(*ort_env, session_options, &raw_mp_opts));
+  mp_opts.reset(raw_mp_opts);
+
+  OrtModelPackageContext* raw_ctx = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api.CreateModelPackageContext(package_root.c_str(), &raw_ctx));
+  ctx.reset(raw_ctx);
+
+  OrtModelPackageComponentContext* raw_comp_ctx = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api.SelectComponent(ctx.get(), "model_1", mp_opts.get(), &raw_comp_ctx));
+  comp_ctx.reset(raw_comp_ctx);
+
+  // nullptr session_options -> metadata-merge (default) path applies the resolved folder option.
+  // Session creation loads the external initializers during Initialize; it succeeds only if the
+  // relative "weights" was resolved and used to override the model directory.
+  OrtSession* raw_session = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api.CreateSession(*ort_env, comp_ctx.get(), /*session_options=*/nullptr, &raw_session));
+  ASSERT_NE(raw_session, nullptr);
+  Ort::Session session(raw_session);
+
+  // Advanced path: pass the caller's own session options. The variant's resolved folder option is
+  // still carried over (the caller did not set it), so external initializers still load.
+  OrtSession* raw_session_adv = nullptr;
+  ASSERT_ORTSTATUS_OK(pkg_api.CreateSession(*ort_env, comp_ctx.get(), session_options, &raw_session_adv));
+  ASSERT_NE(raw_session_adv, nullptr);
+  Ort::Session session_adv(raw_session_adv);
+
   std::filesystem::remove_all(package_root, ec);
 }
 

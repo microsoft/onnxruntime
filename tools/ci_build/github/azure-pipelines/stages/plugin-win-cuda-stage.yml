@@ -181,7 +181,7 @@ stages:
           Pattern: '*.dll'
 
       - powershell: |
-          $pluginPath = "$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_providers_cuda_plugin.dll"
+          $pluginPath = "$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_providers_cuda.dll"
           if (-not (Test-Path $pluginPath)) {
             Write-Error "Expected plugin binary not found at '$pluginPath'. Failing build to avoid publishing an invalid package."
             exit 1
@@ -194,8 +194,8 @@ stages:
         inputs:
           SourceFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
           Contents: |
-            onnxruntime_providers_cuda_plugin.dll
-            onnxruntime_providers_cuda_plugin.pdb
+            onnxruntime_providers_cuda.dll
+            onnxruntime_providers_cuda.pdb
           TargetFolder: '$(Build.ArtifactStagingDirectory)\bin'
 
       - script: |
