@@ -55,7 +55,8 @@ Eigen::ThreadPoolInterface* GetDefaultThreadPool(const onnxruntime::Env& env) {
 namespace onnxruntime {
 namespace perftest {
 
-void PerformanceResult::DumpToFile(const std::basic_string<ORTCHAR_T>& path, bool f_include_statistics) const {
+void PerformanceResult::DumpToFile(const std::basic_string<ORTCHAR_T>& path, bool f_include_statistics,
+                                   const std::map<std::string, std::vector<std::vector<int64_t>>>& shape_groups) const {
   bool have_file = !path.empty();
   std::ofstream outfile;
 
@@ -114,9 +115,17 @@ void PerformanceResult::DumpToFile(const std::basic_string<ORTCHAR_T>& path, boo
   // Per-shape statistics (when --data_shape is used)
   if (!per_shape_time_costs_total.empty() && f_include_statistics) {
     auto output_per_shape = [&](std::ostream& ostream) {
+      ostream << "\nLatency per shape group:" << std::endl;
       for (size_t g = 0; g < per_shape_time_costs_total.size(); g++) {
         const auto& shape_costs = per_shape_time_costs_total[g];
-        if (shape_costs.empty()) continue;
+
+        std::string label = FormatShapeGroup(shape_groups, g);
+        ostream << "  " << (g + 1) << ". " << (label.empty() ? "shape group" : label) << std::endl;
+
+        if (shape_costs.empty()) {
+          ostream << "      (no data)" << std::endl;
+          continue;
+        }
 
         std::vector<double> sorted = shape_costs;
         std::sort(sorted.begin(), sorted.end());
@@ -125,64 +134,30 @@ void PerformanceResult::DumpToFile(const std::basic_string<ORTCHAR_T>& path, boo
         size_t s90 = static_cast<size_t>(count * 0.9);
         size_t s95 = static_cast<size_t>(count * 0.95);
         size_t s99 = static_cast<size_t>(count * 0.99);
+        double avg = std::accumulate(sorted.begin(), sorted.end(), 0.0) / static_cast<double>(count);
 
-        ostream << "\nShape group " << (g + 1) << " (" << count << " iterations):\n";
-        ostream << "  Min Latency: " << sorted[0] << " s\n";
-        ostream << "  Max Latency: " << sorted[count - 1] << " s\n";
-        ostream << "  P50 Latency: " << sorted[s50] << " s\n";
-        ostream << "  P90 Latency: " << sorted[s90] << " s\n";
-        ostream << "  P95 Latency: " << sorted[s95] << " s\n";
-        ostream << "  P99 Latency: " << sorted[s99] << " s" << std::endl;
+        ostream << "      Iterations: " << count << "\n"
+                << "      Average Latency: " << avg * 1000.0 << " ms\n"
+                << "      Min Latency: " << sorted[0] * 1000.0 << " ms\n"
+                << "      Max Latency: " << sorted[count - 1] * 1000.0 << " ms\n"
+                << "      P50 Latency: " << sorted[s50] * 1000.0 << " ms\n"
+                << "      P90 Latency: " << sorted[s90] * 1000.0 << " ms\n"
+                << "      P95 Latency: " << sorted[s95] * 1000.0 << " ms\n"
+                << "      P99 Latency: " << sorted[s99] * 1000.0 << " ms" << std::endl;
       }
     };
 
     if (have_file) {
       output_per_shape(outfile);
     }
+
+    output_per_shape(std::cout);
   }
 }
 
 void PerformanceRunner::LogSessionCreationTime() {
   std::chrono::duration<double> session_create_duration = session_create_end_ - session_create_start_;
   std::cout << "\nSession creation time cost: " << session_create_duration.count() << " s\n";
-}
-
-void PerformanceRunner::PrintPerShapeStats() const {
-  const auto& shape_groups = performance_test_config_.run_config.data_shape_groups;
-  const auto& per_shape_costs = performance_result_.per_shape_time_costs_total;
-  size_t num_groups = per_shape_costs.size();
-
-  std::cout << "\nLatency per shape group:" << std::endl;
-
-  for (size_t g = 0; g < num_groups; g++) {
-    std::cout << "  " << (g + 1) << ". " << FormatShapeGroup(shape_groups, g) << std::endl;
-
-    const auto& time_costs = per_shape_costs[g];
-    if (time_costs.empty()) {
-      std::cout << "      (no data)" << std::endl;
-      continue;
-    }
-
-    std::vector<double> sorted_time = time_costs;
-    std::sort(sorted_time.begin(), sorted_time.end());
-    size_t total = sorted_time.size();
-    size_t n50 = static_cast<size_t>(total * 0.5);
-    size_t n90 = static_cast<size_t>(total * 0.9);
-    size_t n95 = static_cast<size_t>(total * 0.95);
-    size_t n99 = static_cast<size_t>(total * 0.99);
-
-    double avg = std::accumulate(sorted_time.begin(), sorted_time.end(), 0.0) / static_cast<double>(total);
-
-    std::cout << "      Iterations: " << total << "\n"
-              << "      Average Latency: " << avg * 1000.0 << " ms\n"
-              << "      Min Latency: " << sorted_time[0] * 1000.0 << " ms\n"
-              << "      Max Latency: " << sorted_time[total - 1] * 1000.0 << " ms\n"
-              << "      P50 Latency: " << sorted_time[n50] * 1000.0 << " ms\n"
-              << "      P90 Latency: " << sorted_time[n90] * 1000.0 << " ms\n"
-              << "      P95 Latency: " << sorted_time[n95] * 1000.0 << " ms\n"
-              << "      P99 Latency: " << sorted_time[n99] * 1000.0 << " ms"
-              << std::endl;
-  }
 }
 
 Status PerformanceRunner::Run() {
@@ -245,10 +220,6 @@ Status PerformanceRunner::Run() {
             << "Avg CPU usage: " << performance_result_.average_CPU_usage << " %\n"
             << "Peak working set size: " << performance_result_.peak_workingset_size << " bytes"
             << std::endl;
-
-  if (!performance_result_.per_shape_time_costs_total.empty()) {
-    PrintPerShapeStats();
-  }
 
   return Status::OK();
 }

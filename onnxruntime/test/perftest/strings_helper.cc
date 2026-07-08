@@ -6,6 +6,7 @@
 #include <charconv>
 #include <iostream>
 #include <sstream>
+#include <system_error>
 
 #include "strings_helper.h"
 #include "core/common/common.h"
@@ -301,6 +302,9 @@ bool ParseDataShapeGroups(const std::string& input,
 }
 
 std::string FormatShapeGroup(const std::map<std::string, std::vector<std::vector<int64_t>>>& groups, size_t g) {
+  if (groups.empty() || g >= groups.begin()->second.size()) {
+    return "";
+  }
   std::string result;
   for (const auto& [name, shapes] : groups) {
     if (!result.empty()) result += ", ";

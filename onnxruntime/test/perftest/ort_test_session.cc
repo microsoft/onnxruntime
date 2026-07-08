@@ -45,8 +45,9 @@ RunTiming OnnxRuntimeTestSession::Run() {
   // Select input set: round-robin for multi-shape mode, random otherwise.
   size_t id;
   if (use_round_robin_ && test_inputs_.size() > 1) {
-    id = shape_group_counter_.fetch_add(1, std::memory_order_relaxed) % test_inputs_.size();
+    id = round_robin_counter_.fetch_add(1, std::memory_order_relaxed) % test_inputs_.size();
   } else {
+    // Random selection (not thread-safe).
     const std::uniform_int_distribution<int>::param_type p(0, static_cast<int>(test_inputs_.size() - 1));
     id = static_cast<size_t>(dist_(rand_engine_, p));
   }

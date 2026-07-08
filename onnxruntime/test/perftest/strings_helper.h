@@ -2,9 +2,13 @@
 // Copyright (c) 2023 NVIDIA Corporation.
 // SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
+
+#pragma once
+
 #include <cstdint>
-#include <string_view>
 #include <map>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
