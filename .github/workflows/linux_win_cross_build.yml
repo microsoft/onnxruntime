@@ -1,41 +1,51 @@
-name: MLAS Windows-x64 Cross-Build (Linux)
+name: ONNX Runtime Windows-x64 Cross-Build (Linux)
 
-# Cross-compiles the MLAS static library (onnxruntime_mlas) for Windows x64 from a
-# Linux runner, using clang-cl + lld-link for C/C++, llvm-ml for the amd64 MASM
-# assembly kernels, and a Windows SDK/CRT staged by `xwin`.
+# Cross-compiles the full onnxruntime.dll for Windows x64 from a Linux runner,
+# using clang-cl + lld-link for C/C++, llvm-ml for the MLAS amd64 MASM assembly
+# kernels, llvm-rc for the version resource, and a Windows SDK/CRT staged by
+# `xwin`.
 #
 # Why: downstream consumers such as the Edge browser build their Windows releases
 # on Linux machines (faster/cheaper than native Windows builders). Historically
-# ONNX Runtime's MLAS x64 assembly assembled only under ml64.exe, which is not
-# available on Linux. The amd64/*.asm sources are now dual-assembler compatible
-# (ml64 + llvm-ml), and this job is the authoritative guard that the whole MLAS
-# library keeps cross-building on Linux - a strict superset of merely assembling
-# the .asm files. It exercises the llvm-ml (/DLLVM_ML) branch of the sources plus
-# the clang-cl per-file arch-flag gating in cmake/onnxruntime_mlas.cmake.
+# ONNX Runtime could not cross-build for Windows because the MLAS x64 assembly
+# assembled only under ml64.exe (a Windows-only PE tool). The amd64/*.asm sources
+# are now dual-assembler compatible (ml64 + llvm-ml), and the remaining C/C++
+# portability gaps for clang-cl have been addressed, so the whole DLL links on
+# Linux. This job is the authoritative guard that the property keeps holding.
 #
-# The complementary ml64.exe branch (no /DLLVM_ML define) is exercised by the
-# regular Windows build/test pipelines, so both assemblers remain covered.
+# The complementary native path (cl.exe + ml64.exe, warnings-as-errors on) is
+# exercised by the regular Windows build/test pipelines, so both toolchains
+# remain covered.
+#
+# clang-cl surfaces many warnings MSVC never emits; treating them as errors would
+# make the cross-build unbuildable for no portability benefit, so this job sets
+# -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF (the native pipelines keep -WX on).
+#
+# The MSVC runtime library is pinned to the dynamic CRT (MultiThreadedDLL) for
+# every target, including the FetchContent'd protobuf, so the shared DLL links
+# without a /failifmismatch RuntimeLibrary conflict (protobuf otherwise defaults
+# to the static CRT under MSVC-like toolchains).
 #
 # Tests are intentionally NOT run here: the artifacts are Windows-x64 binaries,
 # which cannot execute natively on a Linux runner (Wine is unreliable for the
-# AVX-512/AMX kernels MLAS ships). Runtime correctness of these kernels is covered
-# by the existing native Windows test pipelines.
+# AVX-512/AMX kernels MLAS ships). Runtime correctness is covered by the existing
+# native Windows test pipelines.
 
 on:
   push:
     branches: [main, 'rel-*']
     paths:
-      - 'onnxruntime/core/mlas/**'
-      - 'cmake/onnxruntime_mlas.cmake'
-      - 'cmake/win_x64_crosscompile_toolchain.cmake'
-      - '.github/workflows/linux_mlas_win_cross.yml'
+      - 'onnxruntime/core/**'
+      - 'include/onnxruntime/**'
+      - 'cmake/**'
+      - '.github/workflows/linux_win_cross_build.yml'
   pull_request:
     branches: [main]
     paths:
-      - 'onnxruntime/core/mlas/**'
-      - 'cmake/onnxruntime_mlas.cmake'
-      - 'cmake/win_x64_crosscompile_toolchain.cmake'
-      - '.github/workflows/linux_mlas_win_cross.yml'
+      - 'onnxruntime/core/**'
+      - 'include/onnxruntime/**'
+      - 'cmake/**'
+      - '.github/workflows/linux_win_cross_build.yml'
   workflow_dispatch:
 
 concurrency:
@@ -56,9 +66,9 @@ env:
   XWIN_SHA256: '31e1033f30608ba6b821d17f1461042bd54c23424813c9b4e9ae15b6d32fa4cd'
 
 jobs:
-  mlas-win-cross-build:
+  win-cross-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
@@ -101,6 +111,9 @@ jobs:
           link llvm-rc  "llvm-rc-${LLVM_VERSION}"
           # llvm-lib is llvm-ar invoked under the lib.exe-compatible name.
           link llvm-lib "llvm-lib-${LLVM_VERSION}" "llvm-ar-${LLVM_VERSION}"
+          # llvm-ar (Unix archive tool) is used to inspect the built .lib in the
+          # verify step; it lists members that the lib.exe-mode driver does not.
+          link llvm-ar  "llvm-ar-${LLVM_VERSION}"
 
           echo "ORT_LLVM_BIN=${BIN}" >> "${GITHUB_ENV}"
           echo "${BIN}" >> "${GITHUB_PATH}"
@@ -134,33 +147,38 @@ jobs:
             -DORT_WIN_XWIN_ROOT="${ORT_WIN_XWIN_ROOT}" \
             -DORT_LLVM_BIN="${ORT_LLVM_BIN}" \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF \
+            -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreadedDLL \
+            -Dprotobuf_MSVC_STATIC_RUNTIME=OFF \
             -Donnxruntime_BUILD_UNIT_TESTS=OFF \
-            -Donnxruntime_BUILD_SHARED_LIB=OFF \
+            -Donnxruntime_BUILD_SHARED_LIB=ON \
             -Donnxruntime_ENABLE_PYTHON=OFF \
             -Donnxruntime_USE_FULL_PROTOBUF=OFF
 
-      - name: Build onnxruntime_mlas
+      - name: Build onnxruntime.dll
         shell: bash
-        run: cmake --build build_win_cross --target onnxruntime_mlas -j"$(nproc)"
+        run: cmake --build build_win_cross --target onnxruntime -j"$(nproc)"
 
-      - name: Verify cross-built library
+      - name: Verify cross-built artifacts
         shell: bash
         run: |
           set -euo pipefail
-          lib="$(find build_win_cross -name 'onnxruntime_mlas.lib' | head -1)"
-          if [ -z "${lib}" ]; then
-            echo "::error::onnxruntime_mlas.lib was not produced"
+          dll="$(find build_win_cross -name 'onnxruntime.dll' | head -1)"
+          if [ -z "${dll}" ]; then
+            echo "::error::onnxruntime.dll was not produced"
             exit 1
           fi
-          echo "Built: ${lib} ($(stat -c%s "${lib}") bytes)"
-
-          # The library must contain the amd64 MASM kernels assembled by llvm-ml.
-          asm_objs="$(llvm-lib /list "${lib}" 2>/dev/null | grep -c '\.asm\.obj$' || true)"
-          if [ "${asm_objs}" = "0" ]; then
-            # llvm-lib may not support /list on this platform; fall back to llvm-ar.
-            asm_objs="$( { llvm-ar t "${lib}" 2>/dev/null || true; } | grep -c '\.asm\.obj$' || true)"
+          echo "Built: ${dll} ($(stat -c%s "${dll}") bytes)"
+          # A PE32+ (x86-64) DLL starts with the 'MZ' DOS stub.
+          if [ "$(head -c2 "${dll}")" != "MZ" ]; then
+            echo "::error::onnxruntime.dll is not a PE image"
+            exit 1
           fi
-          echo "amd64 .asm objects archived: ${asm_objs}"
+
+          # The DLL must embed the MLAS amd64 MASM kernels assembled by llvm-ml.
+          mlas_lib="$(find build_win_cross -name 'onnxruntime_mlas.lib' | head -1)"
+          asm_objs="$( { llvm-ar t "${mlas_lib}" 2>/dev/null || true; } | grep -c '\.asm\.obj$' || true)"
+          echo "amd64 .asm objects in onnxruntime_mlas.lib: ${asm_objs}"
           if [ "${asm_objs}" -lt 1 ]; then
             echo "::error::no amd64 .asm objects found in onnxruntime_mlas.lib"
             exit 1

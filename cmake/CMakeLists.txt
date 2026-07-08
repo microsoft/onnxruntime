@@ -1115,7 +1115,12 @@ function(onnxruntime_set_compile_flags target_name)
       target_compile_definitions(${target_name} PRIVATE USE_KLEIDIAI)
     endif()
 
-    set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR ON)
+    # Honor an explicit -DCMAKE_COMPILE_WARNING_AS_ERROR=OFF (default remains ON).
+    # Useful for clang-cl cross-compilation, which surfaces warnings MSVC never
+    # emits; consumers that treat those as errors would otherwise be unbuildable.
+    if (NOT DEFINED CMAKE_COMPILE_WARNING_AS_ERROR OR CMAKE_COMPILE_WARNING_AS_ERROR)
+      set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR ON)
+    endif()
     if (onnxruntime_USE_CUDA)
       # Suppress a "conversion_function_not_usable" warning in gsl/span
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe \"--diag_suppress=conversion_function_not_usable\">")

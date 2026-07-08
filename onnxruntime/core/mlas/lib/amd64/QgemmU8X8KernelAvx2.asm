@@ -704,7 +704,7 @@ ENDIF
 ;   r13 - Optionally supplies the address of the matrix B zero point buffer.
 ;
 
-ProcessCountM MACRO RowCount, ASigned, BSigned, Fallthrough
+ProcessCountM MACRO RowCount, ASigned, BSigned, ExitLabel
         LOCAL   ProcessNextColumnLoop16xN, SkipAccumulateOutput16xNBlock, OutputMasked16xNBlock, ExitProcessCountM, ProcessRemainingCountN, SkipAccumulateOutput8xNBlock, SkipAccumulateOutputMasked16xNBlock, OutputMasked8xNBlock, SkipAccumulateOutputMasked8xNBlock
 
         cmp     rbp,8
@@ -751,7 +751,7 @@ SkipAccumulateOutput16xNBlock:
 
 ExitProcessCountM:
         mov     eax,RowCount
-        jmp     ExitKernel
+        jmp     ExitLabel
 
 ProcessRemainingCountN:
         ProduceOutputBlock 8, RowCount, ASigned, BSigned
@@ -842,7 +842,7 @@ SkipAccumulateOutputMasked8xNBlock:
 ;
 ;
 
-ProcessCount1AvxVnni MACRO RowCount, ASigned, BSigned, Fallthrough
+ProcessCount1AvxVnni MACRO RowCount, ASigned, BSigned, ExitLabel
         LOCAL   LProcessNextColumnLoop32xN1, LSkipAccumulateOutputMasked32xNBlock1, LProcessNextColumnLoop16xN1, LSkipAccumulateOutput16xNBlock1, LProcessRemainingCountN1, LSkipAccumulateOutput8xNBlock1, LExitProcessCountM1, LOutputMasked32xNBlock1, LSkipAccumulateOutput32xNBlock1, LOutputMasked24xNBlock1, LSkipAccumulateOutputMasked24xNBlock1, LOutputMasked16xNBlock1, LSkipAccumulateOutputMasked16xNBlock1, LOutputMasked8xNBlock1, LSkipAccumulateOutputMasked8xNBlock1
 
         cmp     rbp,8
@@ -909,7 +909,7 @@ LSkipAccumulateOutput8xNBlock1:
 
 LExitProcessCountM1:                           ; num of cols = 0, we are done
         mov     eax, 1
-        jmp     ExitKernel
+        jmp     ExitLabel
 
 ;; -- Section to write final tail of C matrix and exit -- ;;
 ;; write <= 32 elements ;;
@@ -1095,13 +1095,13 @@ CheckCountM4OrMore:
         je      ProcessCountM1
 
 ProcessCountM2:
-        ProcessCountM 2, ASigned, BSigned
+        ProcessCountM 2, ASigned, BSigned, ExitKernel
 
 ProcessCountM4:
-        ProcessCountM 4, ASigned, BSigned
+        ProcessCountM 4, ASigned, BSigned, ExitKernel
 
 ProcessCountM6:
-        ProcessCountM 6, ASigned, BSigned
+        ProcessCountM 6, ASigned, BSigned, ExitKernel
 
 ;
 ; Restore non-volatile registers and return.
@@ -1135,16 +1135,16 @@ ExitKernel:
 ProcessCountM1:
         cmp     DWORD PTR GemmInt8KernelFrame.PreviousP1Home[rsp],-1
         je ProcessCountM1AvxVnni
-        ProcessCountM 1, ASigned, BSigned
+        ProcessCountM 1, ASigned, BSigned, ExitKernel
 
 ProcessCountM1AvxVnni:
-        ProcessCount1AvxVnni 1, ASigned, BSigned
+        ProcessCount1AvxVnni 1, ASigned, BSigned, ExitKernel
 
 ProcessCountM3:
-        ProcessCountM 3, ASigned, BSigned
+        ProcessCountM 3, ASigned, BSigned, ExitKernel
 
 ProcessCountM5:
-        ProcessCountM 5, ASigned, BSigned
+        ProcessCountM 5, ASigned, BSigned, ExitKernel
 
         ENDM
 
