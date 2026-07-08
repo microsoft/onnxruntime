@@ -40,7 +40,8 @@
 
 const double_tile_size_k_vec = 2 * tile_size_k_vec;
 
-var<workgroup> inter_results: array<array<output_element_t, tile_size_k_vec>, tile_size>;
+// Accumulate in f32 to avoid f16 overflow (max ~65504) when summing partial dot products over K.
+var<workgroup> inter_results: array<array<f32, tile_size_k_vec>, tile_size>;
 // Need 2 * tile_size_k_vec to store a tile_A since b is quantized as 4 bits and a is quantized as 8 bits.
 var<workgroup> tile_A : array<vec4<u32>, double_tile_size_k_vec>;
 // double_tile_size_k_vec * 16 / 128
@@ -164,14 +165,14 @@ $MAIN {
                 let b_value = b.getByOffset(b_offset);
                 let own_b = DequantizedFrom4BitsTo8Bits(b_value.xy, zero);
                 let own_b1 = DequantizedFrom4BitsTo8Bits(b_value.zw, zero);
-                inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
+                inter_results[row_offset + local_row][local_col] += f32(SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b));
 #elif n_bits == 8
                 let own_b = AlignWithZeroPoint(b.getByOffset(b_offset * 2));
                 let own_b1 = AlignWithZeroPoint(b.getByOffset(b_offset * 2 + 1));
 #if has_zero_points
-                inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b, zero);
+                inter_results[row_offset + local_row][local_col] += f32(SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b, zero));
 #else
-                inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
+                inter_results[row_offset + local_row][local_col] += f32(SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b));
 #endif
 
 #elif n_bits == 2
@@ -183,7 +184,7 @@ $MAIN {
                 let own_b = DequantizedFrom2BitsTo8Bits(b_value.x);
                 let own_b1 = DequantizedFrom2BitsTo8Bits(b_value.y);
 #endif
-                inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
+                inter_results[row_offset + local_row][local_col] += f32(SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b));
 #endif
             }
         }
@@ -192,7 +193,7 @@ $MAIN {
 
     if (local_idx < tile_size) {
       // Do reduce sum to get final output.
-      var output_value = output_element_t(0);
+      var output_value = f32(0);
       for (var b = 0u; b < tile_size_k_vec; b++) {
         output_value += inter_results[local_idx][b];
       }
@@ -200,10 +201,11 @@ $MAIN {
       let output_idx = batch * uniforms.dispatch_M * uniforms.N + a_global * uniforms.N + b_global;
       if (b_global < uniforms.N) {
 #if has_bias
-        let bias_value = bias[b_global + b_bias_offset];
-        output.setByOffset(output_idx, output_value + bias_value);
+        let bias_value = f32(bias[b_global + b_bias_offset]);
+        // Downcast to the output element type only at the final store.
+        output.setByOffset(output_idx, output_element_t(output_value + bias_value));
 #else
-        output.setByOffset(output_idx, output_value);
+        output.setByOffset(output_idx, output_element_t(output_value));
 #endif
       }
     }
