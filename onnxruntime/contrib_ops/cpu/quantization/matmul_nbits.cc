@@ -231,6 +231,21 @@ static const float* ConvertFloatZeroPointsForLutGemm(
   return zp_fp32_buf.data();
 }
 
+#if defined(MLAS_TARGET_ARM64)
+bool RequiresDynamicZeroPointPrepackFallback(
+    size_t K, size_t nbits, size_t block_size,
+    bool has_zp_arg, bool has_zp_input,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE compute_type,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG& backend_kernel_selector_config) {
+  const auto effective_compute_type = compute_type == HQNBIT_CompInt8 ? SQNBIT_CompInt8 : compute_type;
+
+  // KleidiAI asymmetric Q4 pack needs zero points during PrePack; dynamic zero points arrive later.
+  return has_zp_arg && !has_zp_input && nbits == 4 && effective_compute_type == SQNBIT_CompInt8 &&
+         MlasQNBitGemmScalesPacked(K, nbits, block_size, effective_compute_type,
+                                   true, &backend_kernel_selector_config);
+}
+#endif
+
 template <typename T1>
 Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ AllocatorPtr alloc,
                                 /*out*/ bool& is_packed,
@@ -340,6 +355,13 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
   if (!MlasIsQNBitGemmAvailable(nbits_, block_size_, compute_type_) && !prefer_lut_gemm_) {
     return Status::OK();
   }
+
+#if defined(MLAS_TARGET_ARM64)
+  if (RequiresDynamicZeroPointPrepackFallback(K_, nbits_, block_size_, has_zp_arg_, has_zp_input_,
+                                              compute_type_, mlas_backend_kernel_selector_config_)) {
+    return Status::OK();
+  }
+#endif
 
   // Create a temporary threadpool for parallel packing
   // This is used during model load time to speed up weight prepacking
@@ -734,6 +756,13 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
     return Status::OK();
   }
 
+#if defined(MLAS_TARGET_ARM64)
+  if (RequiresDynamicZeroPointPrepackFallback(K_, nbits_, block_size_, has_zp_arg_, has_zp_input_,
+                                              compute_type_, mlas_backend_kernel_selector_config_)) {
+    return Status::OK();
+  }
+#endif
+
   const auto effective_compute_type = compute_type_ == HQNBIT_CompInt8 ? SQNBIT_CompInt8 : compute_type_;
   if (input_idx == InputIndex::B) {
     const Tensor* scales = nullptr;
@@ -852,6 +881,13 @@ Status MatMulNBits<T1>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& 
   used_shared_buffers = false;
 
   if (input_idx == InputIndex::B && !prepacked_buffers.empty()) {
+#if defined(MLAS_TARGET_ARM64)
+    ORT_RETURN_IF(RequiresDynamicZeroPointPrepackFallback(K_, nbits_, block_size_, has_zp_arg_, has_zp_input_,
+                                                          compute_type_, mlas_backend_kernel_selector_config_),
+                  "MatMulNBits cannot use shared prepacked B for KleidiAI Q4 with runtime zero_points. ",
+                  "PrePack should have declined prepacking for this node.");
+#endif
+
     ORT_RETURN_IF(prepacked_buffer_sizes.empty(),
                   "Missing MatMulNBits prepacked B buffer size metadata.");
 

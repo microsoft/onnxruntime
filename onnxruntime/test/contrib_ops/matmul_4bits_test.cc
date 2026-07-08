@@ -88,6 +88,7 @@ struct TestOptions {
 
   bool has_zero_point{false};
   bool zp_is_4bit{true};
+  bool zero_points_are_initializers{true};
   bool has_g_idx{false};
   bool has_bias{false};
 
@@ -111,6 +112,7 @@ struct TestOptions {
             << ", accuracy_level:" << opts.accuracy_level
             << ", has_zero_point:" << opts.has_zero_point
             << ", zp_is_4bit:" << opts.zp_is_4bit
+            << ", zero_points_are_initializers:" << opts.zero_points_are_initializers
             << ", has_g_idx:" << opts.has_g_idx
             << ", has_bias:" << opts.has_bias;
 }
@@ -215,7 +217,7 @@ void RunTest(const TestOptions& opts,
     if (zp_is_4bit) {
       auto zp_shape = opts.legacy_shape ? std::vector<int64_t>{N * zero_point_blob_size}
                                         : std::vector<int64_t>{N, zero_point_blob_size};
-      test.AddInput<uint8_t>("zero_points", zp_shape, zp, true);
+      test.AddInput<uint8_t>("zero_points", zp_shape, zp, opts.zero_points_are_initializers);
     } else {
       std::vector<float> zp_f;
       zp_f.reserve(q_zp_size_in_bytes * 2);
@@ -230,11 +232,11 @@ void RunTest(const TestOptions& opts,
       }
 
       if constexpr (std::is_same_v<T1, float>) {
-        test.AddInput<T1>("zero_points", scales_shape, zp_f, true);
+        test.AddInput<T1>("zero_points", scales_shape, zp_f, opts.zero_points_are_initializers);
       } else if constexpr (std::is_same_v<T1, MLFloat16>) {
-        test.AddInput<T1>("zero_points", scales_shape, FloatsToMLFloat16s(zp_f), true);
+        test.AddInput<T1>("zero_points", scales_shape, FloatsToMLFloat16s(zp_f), opts.zero_points_are_initializers);
       } else if constexpr (std::is_same_v<T1, BFloat16>) {
-        test.AddInput<T1>("zero_points", scales_shape, FloatsToBFloat16s(zp_f), true);
+        test.AddInput<T1>("zero_points", scales_shape, FloatsToBFloat16s(zp_f), opts.zero_points_are_initializers);
       }
     }
   } else {
@@ -683,6 +685,37 @@ TEST(MatMulNBits, SharedPrepackedWeights_AsymmetricPackedScales) {
                                      /*has_zero_point*/ true, /*has_bias*/ false,
                                      PrepackSharingMode::kAddInitializer);
   opts.M = 1;
+  RunTest<float>(opts);
+}
+
+// Uses a KleidiAI-compatible Q4 CompInt8 shape. Runtime zero points must not reuse a B pack
+// generated without them.
+TEST(MatMulNBits, DynamicZeroPoints_AsymmetricCompInt8) {
+  TestOptions opts{};
+  opts.M = 1;
+  opts.N = 288;
+  opts.K = 1024;
+  opts.block_size = 128;
+  opts.accuracy_level = 4;
+  opts.has_zero_point = true;
+  opts.zero_points_are_initializers = false;
+  opts.output_abs_error = 0.1f;
+  opts.output_rel_error = 0.02f;
+  RunTest<float>(opts);
+}
+
+// Same runtime-ZP case with the shared container enabled. PrePack must decline B packing, so the
+// second session must not adopt a shared B buffer built without those runtime zero points.
+TEST(MatMulNBits, SharedPrepackedWeights_DynamicZeroPoints_AsymmetricCompInt8) {
+  if (!MlasQNBitGemmScalesPacked(1024, QBits, 128, SQNBIT_CompInt8, true, nullptr)) {
+    GTEST_SKIP() << "KleidiAI Q4 packed-scales path is not active.";
+  }
+
+  auto opts = MakeSharingTestOptions(288, 1024, /*block_size*/ 128, /*accuracy_level*/ 4,
+                                     /*has_zero_point*/ true, /*has_bias*/ false,
+                                     PrepackSharingMode::kAddInitializerExpectNoPrepack);
+  opts.M = 1;
+  opts.zero_points_are_initializers = false;
   RunTest<float>(opts);
 }
 
