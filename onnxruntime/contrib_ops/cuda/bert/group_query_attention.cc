@@ -205,7 +205,8 @@ Status GroupQueryAttention<T, U>::PrePack(const Tensor& tensor, int input_idx, A
 // 7. cos_cache         (Tensor) - Precomputed cosine table for RoPE
 // 8. sin_cache         (Tensor) - Precomputed sine table for RoPE
 // 9. position_ids      (Tensor) - Position indices for RoPE
-// 10. attention_bias   (Tensor) - Not supported in this kernel
+// 10. attention_bias   (Tensor) [batch or 1, num_heads or 1, sequence_length, total_sequence_length] (Optional)
+//                      Additive bias to QxK'; dispatches to the unfused fallback path.
 // 11. head_sink        (Tensor) - Attention sink for GPT-OSS
 template <typename T, typename U>
 Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) const {
@@ -272,9 +273,22 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
     }
   }
 
-  if (attention_bias != nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "attention_bias is not supported in GroupQueryAttention cuda kernel.");
+  // attention_bias runs on the unfused fallback path (the fused kernels below have no bias input),
+  // so the feature combinations that path excludes stay NOT_IMPLEMENTED with the bias present.
+  const bool has_attention_bias = attention_bias != nullptr;
+  if (has_attention_bias) {
+    if (!attention_bias->IsDataType<T>()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "attention_bias type must match GroupQueryAttention input type T.");
+    }
+    if (k_quant_type_ != KVQuantizationType::NONE || v_quant_type_ != KVQuantizationType::NONE) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "attention_bias with quantized KV cache is not implemented in GroupQueryAttention cuda kernel.");
+    }
+    if (use_smooth_softmax_ || head_sink != nullptr) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                             "attention_bias with smooth softmax or head_sink is not implemented in GroupQueryAttention cuda kernel.");
+    }
   }
 
   auto& device_prop = GetDeviceProp();
@@ -310,6 +324,12 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
                                                                                attention_bias,
                                                                                head_sink,
                                                                                parameters));
+
+  if (has_attention_bias) {
+    const auto& bias_dims = attention_bias->Shape().GetDims();
+    parameters.broadcast_attn_bias_dim_0 = bias_dims[0] == 1;
+    parameters.broadcast_attn_bias_dim_1 = bias_dims[1] == 1;
+  }
 
   // Validate and enable the per-head Q/K RMSNorm (QK-Norm) prologue (inputs 14/15). Both weights
   // must be 1D tensors of shape (head_size) with element type T (shared across all heads).
@@ -430,7 +450,9 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   const bool use_xqa_attention_sinks = head_sink != nullptr && !is_inputs_quantized;
   const bool is_xqa_smooth_softmax_supported = !parameters.use_smooth_softmax || use_xqa_attention_sinks;
   // XQA is enabled when enable_xqa_=true; ineligible shapes/group sizes fall back via data.use_xqa below.
+  // The XQA kernel has no attention_bias input.
   if (enable_xqa_ &&
+      !has_attention_bias &&
       (device_prop.major >= 8) &&
       !parameters.is_first_prompt &&
       parameters.sequence_length == 1 &&
@@ -528,6 +550,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   // no smooth-softmax / head sink, and no sliding window. Rotary and packed QKV are handled by
   // PrepareQKV before the kernel runs; cuDNN handles grouped-query attention natively.
   bool use_cudnn_sdpa = !data.use_xqa &&
+                        !has_attention_bias &&  // GQA's cuDNN path is bottom-right causal, which cuDNN doesn't compose with a bias
                         !is_inputs_quantized &&
                         std::is_same<T, U>::value &&
                         parameters.softcap == 0.0f &&
@@ -551,6 +574,7 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 #if USE_FLASH_ATTENTION
   bool use_flash_attention = !data.use_xqa &&
                              !data.use_cudnn_sdpa &&
+                             !has_attention_bias &&  // flash_api.h has no bias parameter
                              !disable_flash_attention_ &&
                              onnxruntime::flash::is_supported<T>(device_prop,
                                                                  parameters.head_size,
@@ -640,8 +664,13 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
   if (!data.use_xqa && !data.use_cudnn_sdpa && !data.use_flash_attention) {
     // Fall back to memory efficient attention.
     int sm = (device_prop.major * 10) + device_prop.minor;
+    // With attention_bias, MEA is skipped: the cutlass wrapper computes the bias row stride from
+    // kv_sequence_length, which GQA sets to the KV-cache capacity (seqlen_present_kv_cache), not
+    // the bias row length (total_sequence_length) — mismatched under past/present buffer sharing.
+    // Bias-carrying nodes take the unfused fallback below instead.
     bool use_memory_efficient_attention =
         !disable_memory_efficient_attention_ &&
+        !has_attention_bias &&
         has_memory_efficient_attention(sm, std::is_same<T, MLFloat16>::value, std::is_same<T, BFloat16>::value, parameters.head_size, parameters.head_size);
     data.use_memory_efficient_attention = use_memory_efficient_attention;
 
@@ -742,6 +771,10 @@ Status GroupQueryAttention<T, U>::ComputeInternal(OpKernelContext* context) cons
 
   if (head_sink != nullptr) {
     data.head_sink = reinterpret_cast<const CudaT*>(head_sink->Data<T>());
+  }
+
+  if (has_attention_bias) {
+    data.attention_bias = reinterpret_cast<const CudaT*>(attention_bias->Data<T>());
   }
 
   if (parameters.use_qk_norm) {

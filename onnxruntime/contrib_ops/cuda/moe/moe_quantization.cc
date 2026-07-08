@@ -15,6 +15,7 @@
 #include "contrib_ops/cuda/moe/qmoe_kernels.h"
 #include "contrib_ops/cuda/llm/common/env_utils.h"
 #include "contrib_ops/cuda/llm/common/logger.h"
+#include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors.h"
 
@@ -460,6 +461,16 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
   {
     std::lock_guard<std::mutex> profiler_lock(mGemmProfilerMutex);
 
+    // Profiling launches grouped-GEMM kernels, records/synchronizes CUDA events, and
+    // allocates/frees scratch from the temp allocator on the compute stream. All of these are
+    // illegal while that stream is being captured into a CUDA graph; performing them corrupts the
+    // capture and later surfaces as an illegal memory access (CUDA 700) reported at a downstream
+    // MoE kernel launch (e.g. moe_kernels.cu cudaFuncSetAttribute). During capture we therefore
+    // skip profiling and reuse a config cached from an earlier non-capturing run, falling back to
+    // the default tactic when nothing is cached.
+    cudaStream_t compute_stream = Stream(context);
+    const bool stream_is_capturing = onnxruntime::llm::common::isCapturing(compute_stream);
+
     // Use profiler with proper weight type for quantized weights
     if (onnxruntime::llm::common::getEnvForceDeterministicMOE()) {
       auto tactics = m_moe_runner->getTactics();
@@ -507,23 +518,38 @@ Status QMoE::ComputeInternal(OpKernelContext* context) const {
 
       // GEMM 1: N=fc1_out_size (doubled for gated), K=hidden_size
       MoeGemmId id1(static_cast<int>(fc1_out_size), static_cast<int>(moe_params.hidden_size), dtype, wtype, MoeGemmId::GemmType::Gemm1);
-      {
+      if (!stream_is_capturing) {
         // profileTactics caches per (GemmId, M bucket); calling it every forward lets decode
         // (small M) and prefill (large M) each profile and select their own best tile shape.
         GemmDims dims(static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.num_rows),
                       fc1_out_size, static_cast<int64_t>(moe_params.hidden_size));
-        mGemmProfiler.profileTactics(m_moe_runner.get(), dims, id1);
+        mGemmProfiler.profileTactics(m_moe_runner.get(), dims, id1, compute_stream);
       }
       config1 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), id1);
 
       // GEMM 2
       MoeGemmId id2(static_cast<int>(moe_params.hidden_size), static_cast<int>(moe_params.inter_size), dtype, wtype, MoeGemmId::GemmType::Gemm2);
-      {
+      if (!stream_is_capturing) {
         GemmDims dims(static_cast<int64_t>(moe_params.num_rows), static_cast<int64_t>(moe_params.num_rows),
                       static_cast<int64_t>(moe_params.hidden_size), static_cast<int64_t>(moe_params.inter_size));
-        mGemmProfiler.profileTactics(m_moe_runner.get(), dims, id2);
+        mGemmProfiler.profileTactics(m_moe_runner.get(), dims, id2, compute_stream);
       }
       config2 = mGemmProfiler.getBestConfig(static_cast<int>(moe_params.num_rows), id2);
+
+      // Capture-safe fallback: if profiling was skipped (graph capture) and no tuned config was
+      // cached from a prior non-capturing run, use the runner's default tactic instead of leaving
+      // the config unset.
+      if (!config1 || !config2) {
+        auto tactics = m_moe_runner->getTactics();
+        if (!tactics.empty()) {
+          if (!config1) {
+            config1 = tactics[0];
+          }
+          if (!config2) {
+            config2 = tactics[0];
+          }
+        }
+      }
 
       m_moe_runner->setTactic(config1, config2);
     }

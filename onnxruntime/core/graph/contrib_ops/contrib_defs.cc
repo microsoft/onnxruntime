@@ -3666,7 +3666,8 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
       .Attr("weight_prepacked",
             "If set, input B is already prepacked into an EP-specific layout and the EP skips runtime "
             "weight prepacking. 0 (default): not prepacked. 1: prepacked in the CUDA SM80 fpA_intB layout. "
-            "2: reserved for a future SM90 layout (currently rejected at kernel construction).",
+            "2: prepacked in the CUDA SM90 (Hopper) fpA_intB layout, consumed by the native SM90 kernel "
+            "(requires a compute capability 9.0 device and block_size in {64, 128}).",
             AttributeProto::INT, static_cast<int64_t>(0))
       .Input(0, "A", "The input tensor, not quantized.", "T1")
       .Input(1, "B",
