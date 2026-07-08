@@ -1636,14 +1636,24 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     set(_materialize_script ${REPO_ROOT}/tools/python/materialize_onnx_node_tests.py)
     set(_materialized_node_root ${CMAKE_BINARY_DIR}/onnx_node_tests)
     set(_materialized_node_dir  ${_materialized_node_root}/node)
-    # Single shared floor for the "silently-empty/undersized materialization" guard. Kept in
-    # lockstep with the other floor sites (all must move together if raised):
+    # Single shared floor VALUE for the "silently-empty/undersized materialization" guard. Wired to
+    # three consumption sites; all use the same 1500 literal, but they DO NOT all count the same
+    # population -- the floor is one stable value, not a claim that the counts are identical:
     #   * MIN_NODE_CASES in onnxruntime/test/python/onnx_node_test_equivalence_test.py
-    #   * MIN_NODE_CASES in onnxruntime/test/python/onnx_backend_test_series.py
-    #   * onnx_test_runner -m (the C++ consumption-point tripwire, wired below)
-    # Today's corpus is ~1799 node cases; 1500 is a conservative floor that survives normal opset
-    # churn but fails loud on a catastrophic under-generation. Passed to the build-time materialize
-    # step (build fails loud), the node ctest (-m, consumption-point), AND the equivalence ctest.
+    #   * MIN_NODE_CASES in onnxruntime/test/python/onnx_backend_test_series.py -- the PRE-exclude
+    #     population (counted in the base runner's _add_model_test, BEFORE backend_test.exclude()
+    #     drops filtered cases), i.e. the full materialized case count.
+    #   * onnx_test_runner -m (the C++ consumption-point tripwire, wired below) -- checked against
+    #     tests.size() in main.cc, which is the POST-skip COLLECTED count: LoadTests (TestCase.cc)
+    #     already `continue`s past broken/disabled/no-test-data/training-domain cases before they
+    #     reach that tally, so the C++ population is the Python one MINUS the CPU skip set.
+    # These two populations are INTENTIONALLY different; 1500 is a single conservative floor that
+    # clears both today by a wide margin: ~1799 collected minus a handful of CPU skips (~5:
+    # convinteger + 4 dft_*) is ~1794, still >> 1500 (~17% headroom on the smaller C++ count). 1500
+    # is a STABLE floor, not a moving target -- it does not track the corpus size. If the CPU
+    # broken/skip set ever grew past that margin, the C++ `-m` floor would red-fail LOUDLY (the safe
+    # direction) -- never a silent pass. Passed to the build-time materialize step (build fails
+    # loud), the node ctest (-m, consumption-point), AND the equivalence ctest.
     set(ORT_ONNX_NODE_MIN_CASES 1500)
 
     add_custom_command(
