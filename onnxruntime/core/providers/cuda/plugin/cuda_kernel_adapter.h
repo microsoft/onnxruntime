@@ -1079,7 +1079,11 @@ class CudaKernel : public OpKernel {
 
     handle = DefaultCudnnHandle();
     if (handle != nullptr && stream != nullptr) {
-      CUDNN_CALL_THROW(cudnnSetStream(handle, stream));
+      // Keep this accessor non-throwing: if the stream cannot be bound, treat it as "no cuDNN handle"
+      // so callers can fall back to a cuDNN-free path instead of failing.
+      if (!CUDNN_CALL(cudnnSetStream(handle, stream)).IsOK()) {
+        return nullptr;
+      }
     }
     return handle;
   }
