@@ -57,12 +57,16 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
  public:
   using Config = onnxruntime::llm::cutlass_extensions::CutlassGemmConfig;
 
-  // Parses kEnvProfileM into a sorted, de-duplicated, positive M list (empty when unset).
-  static std::vector<int> ParseProfileMOverride();
+  // Parses a comma-separated list of M buckets (e.g. "1,8,64,512") into a sorted, de-duplicated,
+  // positive list (empty when the string is empty/blank). Used for the ep.cuda.fpa_intb_profile_m
+  // session-config key and the ORT_FPA_INTB_PROFILE_M env var, both resolved by the kernel.
+  static std::vector<int> ParseProfileMList(const std::string& value);
 
-  // Returns the top M used to size the initial profile range. Honors kEnvProfileM if set,
-  // otherwise kDefaultProfileMaxM.
-  static int ProfileMaxM();
+  // Overrides the initial profile M-bucket set for this profiler instance (per session). An empty
+  // list keeps the built-in default bucket set. Resolved by the kernel from session config / env.
+  void setProfileMOverride(std::vector<int> ms) {
+    mProfileMOverride = std::move(ms);
+  }
 
   void setQuant(int bits, bool has_bias, bool has_zeros) {
     mQuantBits = bits;
@@ -98,6 +102,7 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   int mGroupSize;
   KernelType mCudaKernelType;
   int mArch;
+  std::vector<int> mProfileMOverride;
 };
 
 }  // namespace onnxruntime::llm::kernels::weight_only

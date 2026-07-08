@@ -13,6 +13,10 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
 #include "core/platform/env_var_utils.h"
 
+#include <cctype>
+#include <string>
+#include <vector>
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -43,6 +47,51 @@ constexpr int kFpAIntBGemmOption_Int8 = 0x08;
 constexpr int64_t kMatMulNBitsWeightNotPrepacked = 0;
 constexpr int64_t kMatMulNBitsWeightPrepackedSm80 = 1;
 constexpr int64_t kMatMulNBitsWeightPrepackedSm90 = 2;
+
+// Session-option config keys. These are readable by BOTH the built-in CUDA EP and the CUDA plugin
+// EP: every kernel is created via KernelRegistryManager::CreateKernel, which injects the
+// session-level ConfigOptions, and the plugin CUDA EP wraps a CUDAExecutionProvider that reuses this
+// same kernel. Each key overrides its ORT_* environment-variable equivalent (config wins).
+//   ep.cuda.fpa_intb_gemm       <-> ORT_FPA_INTB_GEMM       (enable/mode)
+//   ep.cuda.fpa_intb_profile_m  <-> ORT_FPA_INTB_PROFILE_M  (initial profile M buckets)
+constexpr const char* kConfigFpAIntBGemm = "ep.cuda.fpa_intb_gemm";
+constexpr const char* kConfigFpAIntBProfileM = "ep.cuda.fpa_intb_profile_m";
+
+// Resolves a setting from the session config first (per-session, EP-agnostic), then the environment
+// variable, else empty. Session config wins so a model/session can override a process-wide env var.
+inline std::string ResolveFpAIntBConfigOrEnv(const OpKernelInfo& info, const char* config_key,
+                                             const char* env_key) {
+  const std::string from_config = info.GetConfigOptions().GetConfigOrDefault(config_key, "");
+  if (!from_config.empty()) {
+    return from_config;
+  }
+  return ParseEnvironmentVariableWithDefault<std::string>(env_key, "");
+}
+
+// Parses the fpA_intB enable/mode setting. Accepts (case-insensitive): "" / "0" / "off" / "false" /
+// "none" -> disabled; "on" / "true" / "all" -> all; otherwise a numeric bitmask of
+// kFpAIntBGemmOption_* (decimal or 0x-prefixed hex), e.g. "4" = int4 only, "6" = int4 + GEMV.
+inline int ParseFpAIntBOption(const std::string& value) {
+  if (value.empty()) {
+    return 0;
+  }
+  std::string v;
+  v.reserve(value.size());
+  for (char c : value) {
+    v.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+  }
+  if (v == "0" || v == "off" || v == "false" || v == "none") {
+    return 0;
+  }
+  if (v == "on" || v == "true" || v == "all") {
+    return kFpAIntBGemmOption_All;
+  }
+  try {
+    return static_cast<int>(std::stol(v, nullptr, /*base*/ 0));
+  } catch (const std::exception&) {
+    return 0;
+  }
+}
 #endif
 
 template <typename T>
@@ -106,9 +155,11 @@ class MatMulNBits final : public CudaKernel {
     }
 
     if constexpr (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value) {
-      int option = ParseEnvironmentVariableWithDefault<int>(kFpAIntBGemmOption, 0);
+      // Enable/mode from session config (ep.cuda.fpa_intb_gemm) with ORT_FPA_INTB_GEMM env fallback.
+      int option = ParseFpAIntBOption(ResolveFpAIntBConfigOrEnv(info, kConfigFpAIntBGemm, kFpAIntBGemmOption));
       ORT_ENFORCE(!(weight_prepacked_ != kMatMulNBitsWeightNotPrepacked && option == 0),
-                  "weight_prepacked requires the fpA_intB path, but ORT_FPA_INTB_GEMM is off for this node");
+                  "weight_prepacked requires the fpA_intB path, but it is disabled for this node "
+                  "(set session config ep.cuda.fpa_intb_gemm=1 or env ORT_FPA_INTB_GEMM=1)");
       // Note: a fused bias (input[5]) is fully supported by the fpA_intB GEMV, CUTLASS SM80/SM90
       // GEMM (EpilogueOpBias), and the tactic profiler, so bias-bearing nodes (e.g. gpt-oss
       // qkv_proj/o_proj) are eligible. Only g_idx/reorder remains unsupported by this path.
@@ -135,7 +186,15 @@ class MatMulNBits final : public CudaKernel {
 
         InitGemmProfiler(FpAIntBPackingSmForKernel());
 
-        int max_m = WeightOnlyGroupwiseQuantGemmPluginProfiler::ProfileMaxM();
+        // Initial profile M buckets from session config (ep.cuda.fpa_intb_profile_m) with
+        // ORT_FPA_INTB_PROFILE_M env fallback; empty -> profiler uses its default bucket set.
+        std::vector<int> profile_m = WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMList(
+            ResolveFpAIntBConfigOrEnv(info, kConfigFpAIntBProfileM,
+                                      onnxruntime::llm::kernels::weight_only::kEnvProfileM));
+        gemmProfiler_->setProfileMOverride(profile_m);
+
+        int max_m = profile_m.empty() ? onnxruntime::llm::kernels::weight_only::kDefaultProfileMaxM
+                                      : profile_m.back();
         RunGemmProfile(has_fpA_intB_gemv_, 1, max_m);
         has_fpA_intB_gemm_ = true;
       }
