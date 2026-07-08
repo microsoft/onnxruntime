@@ -320,6 +320,13 @@ TEST(InternalTestingEP, TestReplaceAllocatorDoesntBreakDueToLocalAllocatorStorag
 
   ASSERT_EQ(session_allocator, &ort_allocator)
       << "Allocators registered from Env should have the highest priority";
+
+  // Unregister the allocator before the stack-allocated `ort_allocator` goes out of scope. The environment
+  // stores a raw pointer to it in its shared allocator set (it does not take ownership), so leaving it
+  // registered would leave a dangling pointer that can be dereferenced later - e.g. when a plugin EP
+  // library registered in the same (global) environment is unregistered during teardown, which iterates
+  // the shared allocators and would crash.
+  ASSERT_STATUS_OK(env.GetEnvironment().UnregisterAllocator(mem_info));
 }
 
 #endif  // !defined(DISABLE_CONTRIB_OPS)

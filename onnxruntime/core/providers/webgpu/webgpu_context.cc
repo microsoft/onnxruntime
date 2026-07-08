@@ -59,16 +59,33 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       req_adapter_options.nextInChain = &adapter_toggles_desc;
 #endif
 
-      wgpu::Adapter adapter;
+      // Capture adapter request result without throwing inside the Dawn callback.
+      // Throwing C++ exceptions inside Dawn callbacks leaves Dawn's internal mutexes locked,
+      // which causes a self-deadlock when the WGPUInstance is later released (e.g., during
+      // OrtEnv teardown via EventManager::ShutDown()).
+      struct RequestAdapterResult {
+        wgpu::RequestAdapterStatus status = wgpu::RequestAdapterStatus::Error;
+        wgpu::Adapter adapter;
+        std::string message;
+      };
+      RequestAdapterResult adapter_result;
       ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(instance_.RequestAdapter(
                                                                      &req_adapter_options,
                                                                      wgpu::CallbackMode::WaitAnyOnly,
-                                                                     [](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter, wgpu::StringView message, wgpu::Adapter* ptr) {
-                                                                       ORT_ENFORCE(status == wgpu::RequestAdapterStatus::Success, "Failed to get a WebGPU adapter: ", std::string_view{message});
-                                                                       *ptr = std::move(adapter);
+                                                                     [](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter, wgpu::StringView message,
+                                                                        RequestAdapterResult* result) {
+                                                                       result->status = status;
+                                                                       if (status == wgpu::RequestAdapterStatus::Success) {
+                                                                         result->adapter = std::move(adapter);
+                                                                       } else {
+                                                                         result->message = std::string{message};
+                                                                       }
                                                                      },
-                                                                     &adapter),
+                                                                     &adapter_result),
                                                                  UINT64_MAX));
+      ORT_ENFORCE(adapter_result.status == wgpu::RequestAdapterStatus::Success,
+                  "Failed to get a WebGPU adapter: ", adapter_result.message);
+      wgpu::Adapter adapter = std::move(adapter_result.adapter);
       ORT_ENFORCE(adapter != nullptr, "Failed to get a WebGPU adapter.");
 
       // Create wgpu::Device
@@ -108,15 +125,31 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
         }
       });
 
+      // Capture device request result without throwing inside the Dawn callback (same
+      // reasoning as the adapter callback above).
+      struct RequestDeviceResult {
+        wgpu::RequestDeviceStatus status = wgpu::RequestDeviceStatus::Error;
+        wgpu::Device device;
+        std::string message;
+      };
+      RequestDeviceResult device_result;
       ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(adapter.RequestDevice(
                                                                      &device_desc,
                                                                      wgpu::CallbackMode::WaitAnyOnly,
-                                                                     [](wgpu::RequestDeviceStatus status, wgpu::Device device, wgpu::StringView message, wgpu::Device* ptr) {
-                                                                       ORT_ENFORCE(status == wgpu::RequestDeviceStatus::Success, "Failed to get a WebGPU device: ", std::string_view{message});
-                                                                       *ptr = std::move(device);
+                                                                     [](wgpu::RequestDeviceStatus status, wgpu::Device device, wgpu::StringView message,
+                                                                        RequestDeviceResult* result) {
+                                                                       result->status = status;
+                                                                       if (status == wgpu::RequestDeviceStatus::Success) {
+                                                                         result->device = std::move(device);
+                                                                       } else {
+                                                                         result->message = std::string{message};
+                                                                       }
                                                                      },
-                                                                     &device_),
+                                                                     &device_result),
                                                                  UINT64_MAX));
+      ORT_ENFORCE(device_result.status == wgpu::RequestDeviceStatus::Success,
+                  "Failed to get a WebGPU device: ", device_result.message);
+      device_ = std::move(device_result.device);
       ORT_ENFORCE(device_ != nullptr, "Failed to get a WebGPU device.");
     }
 
@@ -1063,8 +1096,18 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
   }
   it->second.ref_count++;
 
-  // perform initialization
-  it->second.context->Initialize(config);
+  // perform initialization; on failure, undo the ref_count increment and remove the entry
+  // if this was the first (and only) reference, so we don't leave a zombie context in the map
+  // that would later deadlock during Cleanup().
+  ORT_TRY {
+    it->second.context->Initialize(config);
+  }
+  ORT_CATCH(...) {
+    if (--it->second.ref_count == 0) {
+      contexts_->erase(it);
+    }
+    ORT_RETHROW;
+  }
 
   return *it->second.context;
 }

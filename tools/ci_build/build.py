@@ -1069,7 +1069,7 @@ def generate_build_tree(
     cmake_args += cmake_extra_args
 
     # ADO pipelines will store the pipeline build number
-    # (e.g. 191101-2300.1.master) and source version in environment
+    # (e.g. 20260615.4) and source version in environment
     # variables. If present, use these values to define the
     # WinML/ORT DLL versions.
     build_number = os.getenv("Build_BuildNumber")  # noqa: SIM112
@@ -1077,31 +1077,31 @@ def generate_build_tree(
     if build_number and source_version:
         build_matches = re.fullmatch(r"(\d\d)(\d\d)(\d\d)(\d\d)\.(\d+)", build_number)
         if build_matches:
-            YY = build_matches.group(2)  # noqa: N806
             MM = build_matches.group(3)  # noqa: N806
             DD = build_matches.group(4)  # noqa: N806
 
-            # Get ORT major and minor number
+            # Get ORT major, minor, and patch number
             with open(os.path.join(source_dir, "VERSION_NUMBER")) as f:
                 first_line = f.readline()
-                ort_version_matches = re.match(r"(\d+).(\d+)", first_line)
+                ort_version_matches = re.match(r"(\d+)\.(\d+)\.(\d+)", first_line)
                 if not ort_version_matches:
-                    raise BuildError("Couldn't read version from VERSION_FILE")
+                    raise BuildError("Couldn't read version from VERSION_NUMBER")
                 ort_major = ort_version_matches.group(1)
                 ort_minor = ort_version_matches.group(2)
-                # Example (BuildNumber: 191101-2300.1.master,
-                # SourceVersion: 0bce7ae6755c792eda558e5d27ded701707dc404)
+                ort_patch = ort_version_matches.group(3)
+                # Example (VERSION_NUMBER: 1.27.0, BuildNumber: 20260615.4,
+                # SourceVersion: 8f0278c77bf44b0cc83c098c6c722b92a36ac4b5)
                 # MajorPart = 1
-                # MinorPart = 0
-                # BuildPart = 1911
-                # PrivatePart = 123
-                # String = 191101-2300.1.master.0bce7ae
+                # MinorPart = 27
+                # BuildPart = 0
+                # PrivatePart = 615
+                # String = 1.27.0.20260615.4.8f0278c
                 cmake_args += [
                     f"-DVERSION_MAJOR_PART={ort_major}",
                     f"-DVERSION_MINOR_PART={ort_minor}",
-                    f"-DVERSION_BUILD_PART={YY}",
+                    f"-DVERSION_BUILD_PART={ort_patch}",
                     f"-DVERSION_PRIVATE_PART={MM}{DD}",
-                    f"-DVERSION_STRING={ort_major}.{ort_minor}.{build_number}.{source_version[0:7]}",
+                    f"-DVERSION_STRING={ort_major}.{ort_minor}.{ort_patch}.{build_number}.{source_version[0:7]}",
                 ]
 
     for config in configs:

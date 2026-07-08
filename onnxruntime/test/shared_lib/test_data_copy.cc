@@ -72,9 +72,9 @@ TEST(PluginEpDataCopyTest, CopyInputsToCudaDevice) {
       stream = cuda_device.CreateSyncStream();
 
       size_t stream_addr = reinterpret_cast<size_t>(stream.GetHandle());
-      options.AddConfigEntry("ep.cudaexecutionprovider.user_compute_stream", std::to_string(stream_addr).c_str());
+      options.AddConfigEntry("ep.cuda.user_compute_stream", std::to_string(stream_addr).c_str());
       // we explicitly specify user_compute_stream, so why do we also need to set has_user_compute_stream?
-      options.AddConfigEntry("ep.cudaexecutionprovider.has_user_compute_stream", "1");
+      options.AddConfigEntry("ep.cuda.has_user_compute_stream", "1");
     }
 
     Ort::Session session(*ort_env, ORT_TSTR("testdata/mnist.onnx"), options);
