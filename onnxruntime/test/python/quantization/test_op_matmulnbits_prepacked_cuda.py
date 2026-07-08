@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import unittest
 from contextlib import contextmanager
 
@@ -21,6 +22,23 @@ try:
     from onnxruntime.capi import onnxruntime_cuda_quant_preprocess as _cuda_quant
 except ImportError:
     _cuda_quant = None
+
+
+@unittest.skipIf("CUDAExecutionProvider" not in ort.get_available_providers(), "CUDA is not available")
+class TestCudaQuantPreprocessAvailability(unittest.TestCase):
+    """Guards against ``TestMatMulNBitsPrepackedCuda`` being silently skipped.
+
+    The fpA_intB weight packer ships as a standalone extension module
+    (``onnxruntime_cuda_quant_preprocess``) in the ``capi/`` directory.
+    ``TestMatMulNBitsPrepackedCuda`` is skipped when that module fails to import,
+    so a broken/missing module would hide those tests without any failure. When
+    CUDA is available (and the module is built, i.e. non-Windows), the import
+    must succeed.
+    """
+
+    @unittest.skipIf(sys.platform.startswith("win"), "cuda quant preprocess module is not built on Windows")
+    def test_import_succeeds_when_library_exists(self):
+        self.assertIsNotNone(_cuda_quant, "onnxruntime_cuda_quant_preprocess exists but module-level import failed")
 
 
 @contextmanager
