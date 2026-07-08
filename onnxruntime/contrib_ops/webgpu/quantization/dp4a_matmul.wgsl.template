@@ -457,15 +457,15 @@ $MAIN {
             bias[b_global + 14 + b_bias_offset],
             bias[b_global + 15 + b_bias_offset]
         );
-        output.setByOffset(output_idx, vec4<output_element_t>(lane_outputs[0], lane_outputs[1], lane_outputs[2], lane_outputs[3]) + bias_vec1);
-        output.setByOffset(output_idx+1, vec4<output_element_t>(lane_outputs[4], lane_outputs[5], lane_outputs[6], lane_outputs[7]) + bias_vec2);
-        output.setByOffset(output_idx+2, vec4<output_element_t>(lane_outputs[8], lane_outputs[9], lane_outputs[10], lane_outputs[11]) + bias_vec3);
-        output.setByOffset(output_idx+3, vec4<output_element_t>(lane_outputs[12], lane_outputs[13], lane_outputs[14], lane_outputs[15]) + bias_vec4);
+        output.setByOffset(output_idx, vec4<output_element_t>(vec4<f32>(lane_outputs[0], lane_outputs[1], lane_outputs[2], lane_outputs[3])) + bias_vec1);
+        output.setByOffset(output_idx+1, vec4<output_element_t>(vec4<f32>(lane_outputs[4], lane_outputs[5], lane_outputs[6], lane_outputs[7])) + bias_vec2);
+        output.setByOffset(output_idx+2, vec4<output_element_t>(vec4<f32>(lane_outputs[8], lane_outputs[9], lane_outputs[10], lane_outputs[11])) + bias_vec3);
+        output.setByOffset(output_idx+3, vec4<output_element_t>(vec4<f32>(lane_outputs[12], lane_outputs[13], lane_outputs[14], lane_outputs[15])) + bias_vec4);
  #else
-        output.setByOffset(output_idx, vec4<output_element_t>(lane_outputs[0], lane_outputs[1], lane_outputs[2], lane_outputs[3]));
-        output.setByOffset(output_idx+1, vec4<output_element_t>(lane_outputs[4], lane_outputs[5], lane_outputs[6], lane_outputs[7]));
-        output.setByOffset(output_idx+2, vec4<output_element_t>(lane_outputs[8], lane_outputs[9], lane_outputs[10], lane_outputs[11]));
-        output.setByOffset(output_idx+3, vec4<output_element_t>(lane_outputs[12], lane_outputs[13], lane_outputs[14], lane_outputs[15]));
+        output.setByOffset(output_idx, vec4<output_element_t>(vec4<f32>(lane_outputs[0], lane_outputs[1], lane_outputs[2], lane_outputs[3])));
+        output.setByOffset(output_idx+1, vec4<output_element_t>(vec4<f32>(lane_outputs[4], lane_outputs[5], lane_outputs[6], lane_outputs[7])));
+        output.setByOffset(output_idx+2, vec4<output_element_t>(vec4<f32>(lane_outputs[8], lane_outputs[9], lane_outputs[10], lane_outputs[11])));
+        output.setByOffset(output_idx+3, vec4<output_element_t>(vec4<f32>(lane_outputs[12], lane_outputs[13], lane_outputs[14], lane_outputs[15])));
  #endif
 #else
  #if has_bias
