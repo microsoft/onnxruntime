@@ -17,6 +17,11 @@
 #if USE_FPA_INTB_GEMM
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
 #include "contrib_ops/cuda/llm/common/workspace.h"
+#include "core/platform/env_var_utils.h"
+
+#include <algorithm>
+#include <set>
+#include <sstream>
 
 using namespace onnxruntime::llm::common;
 using namespace onnxruntime::llm::kernels::cutlass_kernels;
@@ -95,6 +100,73 @@ bool WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic(int m, int /*n*/, i
     return m < 16;
   }
   return true;
+}
+
+std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMOverride() {
+  const std::string value = onnxruntime::ParseEnvironmentVariableWithDefault<std::string>(kEnvProfileM, "");
+  std::vector<int> result;
+  if (value.empty()) {
+    return result;
+  }
+  std::stringstream ss(value);
+  std::string token;
+  std::set<int> unique;
+  while (std::getline(ss, token, ',')) {
+    // Trim surrounding whitespace.
+    size_t start = token.find_first_not_of(" \t");
+    size_t end = token.find_last_not_of(" \t");
+    if (start == std::string::npos) {
+      continue;
+    }
+    token = token.substr(start, end - start + 1);
+    try {
+      int m = std::stoi(token);
+      if (m > 0) {
+        unique.insert(m);
+      }
+    } catch (const std::exception&) {
+      // Ignore malformed entries.
+    }
+  }
+  result.assign(unique.begin(), unique.end());
+  return result;
+}
+
+int WeightOnlyGroupwiseQuantGemmPluginProfiler::ProfileMaxM() {
+  auto override_ms = ParseProfileMOverride();
+  if (!override_ms.empty()) {
+    return override_ms.back();  // sorted ascending
+  }
+  return kDefaultProfileMaxM;
+}
+
+std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::getProfileMBuckets(
+    int minM, int maxM, bool /*hasWeightOnlyCudaKernel*/) const {
+  int const lo = std::max(1, minM);
+  int const hi = std::max(lo, maxM);
+
+  std::set<int> buckets;
+
+  auto override_ms = ParseProfileMOverride();
+  if (!override_ms.empty()) {
+    for (int m : override_ms) {
+      buckets.insert(std::min(std::max(lo, m), hi));
+    }
+  } else {
+    // Small default bucket set clamped to [lo, hi].
+    static const int kDefault[] = {1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048};
+    for (int m : kDefault) {
+      if (m >= lo && m <= hi) {
+        buckets.insert(m);
+      }
+    }
+  }
+
+  // Always include the decode bucket (M=1) and the top bucket so both extremes are tuned.
+  buckets.insert(lo);
+  buckets.insert(hi);
+
+  return std::vector<int>(buckets.begin(), buckets.end());
 }
 
 }  // namespace onnxruntime::llm::kernels::weight_only

@@ -135,7 +135,7 @@ class MatMulNBits final : public CudaKernel {
 
         InitGemmProfiler(FpAIntBPackingSmForKernel());
 
-        constexpr int max_m = 8291;
+        int max_m = WeightOnlyGroupwiseQuantGemmPluginProfiler::ProfileMaxM();
         RunGemmProfile(has_fpA_intB_gemv_, 1, max_m);
         has_fpA_intB_gemm_ = true;
       }
