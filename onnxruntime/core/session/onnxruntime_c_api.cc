@@ -4949,7 +4949,7 @@ static constexpr OrtApi ort_api_1_to_29 = {
 
     &OrtApis::GetExperimentalFunction,
     &OrtApis::KernelContext_GetSyncStream,
-    // End of Version 28 - DO NOT MODIFY ABOVE (see above text for more information) 
+    // End of Version 28 - DO NOT MODIFY ABOVE (see above text for more information)
 
     &OrtApis::SessionOptionsSetWeightlessSourceModelPath,
     &OrtApis::SessionOptionsSetWeightlessSourceModelFromBuffer,
