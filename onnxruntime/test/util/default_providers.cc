@@ -5,6 +5,7 @@
 #include "test/util/include/default_providers.h"
 
 #include <memory>
+#include <string>
 
 #include "core/framework/session_options.h"
 #include "core/providers/cpu/cpu_provider_factory_creator.h"
@@ -25,6 +26,42 @@
 namespace onnxruntime {
 
 namespace test {
+
+namespace {
+
+#if defined(USE_CUDA) && defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP) && defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+void AddCudaPluginOption(ConfigOptions& config_options, const char* key, std::string value) {
+  ORT_THROW_IF_ERROR(config_options.AddConfigEntry(key, value.c_str()));
+}
+
+std::unique_ptr<IExecutionProvider> CudaPluginExecutionProviderWithOptions(const OrtCUDAProviderOptionsV2* provider_options) {
+  auto ep_name = dynamic_plugin_ep_infra::GetEpName();
+  if (!ep_name.has_value()) {
+    return nullptr;
+  }
+
+  ORT_ENFORCE(*ep_name == dynamic_plugin_ep_infra::kCudaExecutionProviderPluginName,
+              "Dynamic plugin EP is not the CUDA EP. Expected \"", dynamic_plugin_ep_infra::kCudaExecutionProviderPluginName,
+              "\", got \"", *ep_name, "\"");
+
+  ConfigOptions config_options{};
+  if (provider_options != nullptr) {
+    AddCudaPluginOption(config_options, "do_copy_in_default_stream", std::to_string(provider_options->do_copy_in_default_stream));
+    AddCudaPluginOption(config_options, "cudnn_conv_use_max_workspace", std::to_string(provider_options->cudnn_conv_use_max_workspace));
+    AddCudaPluginOption(config_options, "cudnn_conv1d_pad_to_nc1d", std::to_string(provider_options->cudnn_conv1d_pad_to_nc1d));
+    AddCudaPluginOption(config_options, "enable_cuda_graph", std::to_string(provider_options->enable_cuda_graph));
+    AddCudaPluginOption(config_options, "prefer_nhwc", std::to_string(provider_options->prefer_nhwc));
+    AddCudaPluginOption(config_options, "use_ep_level_unified_stream", std::to_string(provider_options->use_ep_level_unified_stream));
+    AddCudaPluginOption(config_options, "use_tf32", std::to_string(provider_options->use_tf32));
+    AddCudaPluginOption(config_options, "fuse_conv_bias", std::to_string(provider_options->fuse_conv_bias));
+    AddCudaPluginOption(config_options, "sdpa_kernel", std::to_string(provider_options->sdpa_kernel));
+  }
+
+  return dynamic_plugin_ep_infra::MakeEp(nullptr, &config_options);
+}
+#endif
+
+}  // namespace
 
 std::unique_ptr<IExecutionProvider> DefaultCpuExecutionProvider(bool enable_arena) {
   return CPUProviderFactoryCreator::Create(enable_arena)->CreateProvider();
@@ -129,8 +166,7 @@ std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
   OrtCUDAProviderOptionsV2 provider_options{};
   provider_options.do_copy_in_default_stream = true;
   provider_options.use_tf32 = false;
-  if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
-    return factory->CreateProvider();
+  return CudaExecutionProviderWithOptions(&provider_options);
 #endif
   return nullptr;
 }
@@ -142,8 +178,7 @@ std::unique_ptr<IExecutionProvider> DefaultCudaNHWCExecutionProvider() {
   provider_options.do_copy_in_default_stream = true;
   provider_options.use_tf32 = false;
   provider_options.prefer_nhwc = true;
-  if (auto factory = CudaProviderFactoryCreator::Create(&provider_options))
-    return factory->CreateProvider();
+  return CudaExecutionProviderWithOptions(&provider_options);
 #endif
   return nullptr;
 }
@@ -151,8 +186,12 @@ std::unique_ptr<IExecutionProvider> DefaultCudaNHWCExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> CudaExecutionProviderWithOptions(const OrtCUDAProviderOptionsV2* provider_options) {
 #ifdef USE_CUDA
+#if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP) && defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+  return CudaPluginExecutionProviderWithOptions(provider_options);
+#else
   if (auto factory = CudaProviderFactoryCreator::Create(provider_options))
     return factory->CreateProvider();
+#endif
 #else
   ORT_UNUSED_PARAMETER(provider_options);
 #endif

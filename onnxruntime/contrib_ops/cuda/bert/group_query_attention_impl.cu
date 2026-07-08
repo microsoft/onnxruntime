@@ -1186,8 +1186,10 @@ Status EfficientAttention(
 //
 // Not supported (caller falls through elsewhere):
 //   - Quantized KV cache (U != T): hit by the original NOT_IMPLEMENTED path.
-//   - attention_bias input: rejected by op-level ComputeInternal.
 //   - Smooth softmax / head_sink: Flash-only feature.
+//
+// attention_bias (with dim-0/dim-1 broadcast) is supported here; this is the path
+// bias-carrying GQA nodes are dispatched to, since Flash/XQA/cuDNN don't take a bias.
 // ============================================================================
 template <typename T, typename U>
 Status UnfusedGqaAttention(
@@ -1252,8 +1254,8 @@ Status UnfusedGqaAttention(
   // seqlens to the softmax so positions beyond the valid length are masked.
   p.total_kv_length = parameters.total_sequence_length;
   p.max_kv_length = max_kv;
-  p.broadcast_attn_bias_dim_0 = false;
-  p.broadcast_attn_bias_dim_1 = false;
+  p.broadcast_attn_bias_dim_0 = parameters.broadcast_attn_bias_dim_0;
+  p.broadcast_attn_bias_dim_1 = parameters.broadcast_attn_bias_dim_1;
   p.is_causal = parameters.is_unidirectional;
   p.local_window_size = parameters.local_window_size;  // -1 disables
   p.past_kv_length = parameters.total_sequence_length - parameters.sequence_length;
@@ -1266,7 +1268,7 @@ Status UnfusedGqaAttention(
       data.unfused_q_bnsh,
       reinterpret_cast<const T*>(data.present_key),
       reinterpret_cast<const T*>(data.present_value),
-      /*attn_bias=*/nullptr,
+      data.attention_bias,
       data.unfused_y_bnsh,
       data.unfused_workspace,
       /*output_qk=*/nullptr)));

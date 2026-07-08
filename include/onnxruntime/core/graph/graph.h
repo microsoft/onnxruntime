@@ -1455,10 +1455,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     SetInputs(AsSpan(inputs));
   }
 
-  const Model& GetModel() const {
-    return owning_model_;
-  }
-
   const logging::Logger& GetLogger() const {
     return logger_;
   }
@@ -1476,6 +1472,10 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  const Model& GetModel() const {
+    return owning_model_;
+  }
+
   /** Sets the type of a NodeArg, replacing existing type/shape if any */
   void SetNodeArgType(NodeArg& arg, const ONNX_NAMESPACE::TypeProto& type_proto);
 

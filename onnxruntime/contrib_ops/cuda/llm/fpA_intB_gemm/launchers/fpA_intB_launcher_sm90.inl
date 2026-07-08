@@ -59,7 +59,13 @@ using namespace cute;
 template <typename ActivationType, typename WeightType, typename ScaleZeroType, typename BiasType, typename OutputType,
           cutlass::WeightOnlyQuantOp QuantOp, typename EpilogueTag, typename CTAShape, typename ClusterShape,
           typename MainloopScheduleType, typename EpilogueScheduleType>
-#if defined(COMPILE_HOPPER_TMA_GEMMS) && defined(__CUDA_ARCH__) && (__CUDA_ARCH__ == 900) && defined(__NV_SASS_VERSION__)
+// Gate the real launcher on the COMPILE_HOPPER_TMA_GEMMS preprocessor macro only (matching the MoE
+// TMA launcher in moe_gemm_tma_ws_launcher.inl). The host-callable launcher symbol is emitted from
+// the host compilation pass, so it must NOT be gated on __CUDA_ARCH__/__NV_SASS_VERSION__ (which are
+// only set during device passes) — otherwise the host links the stub below and every SM90 tactic
+// fails at runtime with "recompile ... 90a". The device kernel body is guarded internally by the
+// collective (CUTE_ARCH_MMA_SM90A_ENABLED); these files are compiled at sm_90a-real.
+#if defined(COMPILE_HOPPER_TMA_GEMMS)
 void sm90_generic_mixed_gemm_kernelLauncher(
     ActivationType const* A, WeightType const* B,
     ScaleZeroType const* weight_scales, ScaleZeroType const* weight_zero_points, BiasType const* biases,

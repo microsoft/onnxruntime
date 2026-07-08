@@ -3125,7 +3125,15 @@ void GemmProfilerBackend::runProfiler(int original_num_tokens, Config const& tac
 
   mSampleIndex = (mSampleIndex + 1) % NUM_ROUTING_SAMPLES;
 
-  auto workspaces = getProfilerWorkspaces(original_num_tokens, tactic.is_tma_warp_specialized);
+  // The workspace layout must match the one used to size the allocation (getWorkspaceSize) and to
+  // populate routing/quant/TMA inputs (prepareRouting/prepareQuantParams/prepareTmaWsInputs), all of
+  // which key the layout on `mSM >= 90`. Keying it here on the per-tactic `tactic.is_tma_warp_specialized`
+  // instead diverges on SM90 whenever a non-TMA (Ampere-fallback) tactic is profiled — e.g. the INT4
+  // mixed-input GEMM tiles. That divergence drops the tma_ws_input region and shifts every subsequent
+  // sub-buffer offset, so runProfiler would read expert_first_token_offset (and the GEMM inputs) from the
+  // wrong, random-filled locations, producing garbage per-expert token counts and an out-of-bounds read
+  // in the grouped GEMM (surfacing as a sticky CUDA 700 at a later launch). Use the same key everywhere.
+  auto workspaces = getProfilerWorkspaces(original_num_tokens, mSM >= 90);
 
 #define GET_WS_PTR_OFFSET(type, name, offset)                                                             \
   auto* name = (workspaces.at(#name).first                                                                \

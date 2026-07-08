@@ -1085,7 +1085,7 @@ if (DEFINED ENV{OPENVINO_MANYLINUX})
     )
 endif()
 
-if (onnxruntime_USE_CUDA)
+if (onnxruntime_USE_CUDA AND NOT onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
@@ -1093,6 +1093,15 @@ if (onnxruntime_USE_CUDA)
           $<TARGET_FILE:onnxruntime_providers_shared>
           $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
     )
+endif()
+
+if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+      $<TARGET_FILE:onnxruntime_providers_cuda_plugin>
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
 endif()
 
 if (onnxruntime_USE_CANN)
