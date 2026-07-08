@@ -372,7 +372,8 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   if constexpr (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value) {
     if (has_fpA_intB_gemm_) {
       // We expect weight/scale/zero_point(optional) inputs are initializers and have been prepacked.
-      // User could disable it by setting ORT_FPA_INTB_GEMM=0 if those tensors cannot be prepacked (It is rare).
+      // A non-prepacked node can opt out by setting session config ep.cuda.fpa_intb_gemm=0 (or env
+      // ORT_FPA_INTB_GEMM=0) if those tensors cannot be prepacked (it is rare).
       const bool has_fpA_intB_weight = is_prepacked_weight_ || weight_prepacked_ != kMatMulNBitsWeightNotPrepacked;
       ORT_ENFORCE(has_fpA_intB_weight && is_prepacked_scale_ && (is_prepacked_zero_point_ || !has_zero_points_),
                   "To use fpA_intB_gemm, prepacking must be done on weight, scale and zero point.");
