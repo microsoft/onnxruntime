@@ -46,7 +46,9 @@ permissions:
   contents: read
 
 env:
-  LLVM_VERSION: '18'
+  # The MSVC CRT headers staged by xwin enforce a minimum Clang version via a
+  # static_assert (STL1000); keep this at or above what that CRT requires.
+  LLVM_VERSION: '19'
   XWIN_VERSION: '0.9.0'
   # SHA256 of xwin-${XWIN_VERSION}-x86_64-unknown-linux-musl.tar.gz. GitHub release
   # assets are mutable, so pin the digest and verify it rather than trusting the
