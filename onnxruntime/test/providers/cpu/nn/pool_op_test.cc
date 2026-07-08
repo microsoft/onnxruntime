@@ -1181,8 +1181,8 @@ TEST(PoolTest, AveragePool_18_ceil_count_include_pad_3d) {
             kOpenVINOExecutionProvider, kDmlExecutionProvider});
 }
 
-// No-regression guard for INV-3: with count_include_pad=0 the divisor already counts only
-// in-bounds cells, so this combo stays on the MLAS fast path and must remain correct.
+// No-regression guard: with count_include_pad=0 the divisor already counts only in-bounds
+// cells, so this combo stays on the MLAS fast path and must remain correct.
 TEST(PoolTest, AveragePool_18_ceil_count_exclude_pad_2d) {
   OpTester test("AveragePool", 18);
 

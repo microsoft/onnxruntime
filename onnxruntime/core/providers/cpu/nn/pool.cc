@@ -50,6 +50,10 @@ template <typename T>
 Status ComputeAveragePoolReference(OpKernelContext* context,
                                    const PoolAttributes& pool_attrs,
                                    concurrency::ThreadPool* tp) {
+  ORT_ENFORCE(!pool_attrs.global_pooling,
+              "ComputeAveragePoolReference requires non-global pooling; "
+              "strides/dilations are not populated for global pooling.");
+
   const auto* X = context->Input<Tensor>(0);
   const TensorShape& x_shape = X->Shape();
   ORT_RETURN_IF_NOT(x_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
@@ -234,6 +238,8 @@ Status Pool<float, AveragePool>::Compute(OpKernelContext* context) const {
   // ceil_mode phantom tail cells, giving a wrong average for
   // ceil_mode=1 && count_include_pad. Route only that combo to the reference loop,
   // which clamps the window to input+tail_pad. Everything else keeps the MLAS fast path.
+  // Global pooling is excluded because it has no ceil/pads (so it is already correct) and
+  // its strides[] are not populated, which ComputeAveragePoolReference requires.
   if (pool_attrs_.ceil_mode == 1 && pool_attrs_.count_include_pad && !pool_attrs_.global_pooling) {
     return ComputeAveragePoolReference<float>(context, pool_attrs_, context->GetOperatorThreadPool());
   }
