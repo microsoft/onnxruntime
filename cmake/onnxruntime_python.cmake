@@ -317,9 +317,11 @@ endif()
 # The CUDA weight-packing kernels (pack_weights_for_cuda_mixed_gemm) are compiled
 # into their OWN Python extension module instead of onnxruntime_pybind11_state.
 # This keeps the hard libcudart dependency out of the main pybind module so that
-# `import onnxruntime` still works on CPU-only machines. The module is imported
-# lazily by onnxruntime.python.tools.quantization.cuda_quantizer only when CUDA
-# weight prepacking is requested.
+# `import onnxruntime` still works on CPU-only machines.
+#
+# Production weight packing is done in PyTorch (cuda_quantizer.py); this module is
+# retained only as a byte-parity oracle for that PyTorch packer. It is gated by
+# onnxruntime_BUILD_CUDA_QUANT_PREPROCESS.
 #
 # It does NOT go through the provider bridge / ProviderInfo_CUDA, so it works for
 # both the legacy in-tree CUDA EP build and the CUDA-EP-as-plugin build.
@@ -327,7 +329,7 @@ endif()
 # Not built on Windows: matching the previous behavior where CUDA runtime was not
 # linked into Python extension modules (DLL search path constraints since
 # Python 3.8), so pack_weights_for_cuda_mixed_gemm was unavailable there.
-if (onnxruntime_USE_CUDA AND NOT WIN32)
+if (onnxruntime_USE_CUDA AND NOT WIN32 AND onnxruntime_BUILD_CUDA_QUANT_PREPROCESS)
   onnxruntime_add_shared_library_module(onnxruntime_cuda_quant_preprocess
     "${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_cuda_quant.cc"
     "${ONNXRUNTIME_ROOT}/contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.cu"
