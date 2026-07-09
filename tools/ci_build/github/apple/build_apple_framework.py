@@ -179,6 +179,13 @@ def _build_for_apple_sysroot(
         for _header in headers:
             shutil.copy(_header, header_dir)
 
+        # Also place headers in an "onnxruntime/" subdirectory so consumers can use
+        # both <foo.h> and <onnxruntime/foo.h> include styles.
+        onnxruntime_subdir = os.path.join(header_dir, "onnxruntime")
+        pathlib.Path(onnxruntime_subdir).mkdir(parents=True, exist_ok=True)
+        for _header in headers:
+            shutil.copy(_header, onnxruntime_subdir)
+
         # use lipo to create a fat ort library
         lipo_command = ["lipo", "-create"]
         lipo_command += ort_libs
