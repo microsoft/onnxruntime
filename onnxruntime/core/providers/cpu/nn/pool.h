@@ -34,9 +34,6 @@ class AveragePoolV19 : public OpKernel, public PoolBase {
   }
 
   Status Compute(OpKernelContext* context) const override;
-
- private:
-  int64_t p_;
 };
 
 // For maxpool v8 and beyond

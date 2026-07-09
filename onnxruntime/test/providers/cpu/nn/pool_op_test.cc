@@ -1119,7 +1119,7 @@ TEST(PoolTest, AveragePool_18_ceil_count_include_pad_1d) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider,
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider,
             kOpenVINOExecutionProvider, kDmlExecutionProvider});
 }
 
@@ -1149,7 +1149,7 @@ TEST(PoolTest, AveragePool_18_ceil_count_include_pad_2d) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider,
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider,
             kOpenVINOExecutionProvider, kDmlExecutionProvider});
 }
 
@@ -1177,7 +1177,7 @@ TEST(PoolTest, AveragePool_18_ceil_count_include_pad_3d) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider,
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider,
             kOpenVINOExecutionProvider, kDmlExecutionProvider});
 }
 
@@ -1205,7 +1205,7 @@ TEST(PoolTest, AveragePool_18_ceil_count_exclude_pad_2d) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider,
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider,
             kOpenVINOExecutionProvider, kDmlExecutionProvider});
 }
 

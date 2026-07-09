@@ -58,6 +58,17 @@ Status ComputeAveragePoolReference(OpKernelContext* context,
   const TensorShape& x_shape = X->Shape();
   ORT_RETURN_IF_NOT(x_shape.NumDimensions() >= 3, "Input dimension cannot be less than 3.");
 
+  // Mirror the rank checks PoolBase::Compute performs before SetOutputSize. This function is
+  // reached directly from the Pool<float, AveragePool>::Compute ceil_mode+count_include_pad
+  // guard (and from AveragePoolV19), bypassing PoolBase::Compute, so without these a
+  // rank-mismatched model would reach SetOutputSize/InferOutputSize and read out of bounds.
+  const size_t pooling_dims = x_shape.NumDimensions() - 2;
+  if (pooling_dims > 3) {
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported pooling size.");
+  }
+  ORT_RETURN_IF_NOT(pooling_dims == pool_attrs.kernel_shape.size(),
+                    "kernel_shape num_dims is not compatible with X num_dims.");
+
   auto pads = pool_attrs.pads;
   auto kernel_shape = pool_attrs.kernel_shape;
 
