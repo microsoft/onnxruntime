@@ -458,8 +458,7 @@ TEST(PoolTest, MaxPool_10_DilationPadding_1d) {
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   // TODO: Re-enable DML when fixed #41968513
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider,
-            kDmlExecutionProvider});
+           {kTensorrtExecutionProvider, kDmlExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_Dilation_2d) {
@@ -535,7 +534,66 @@ TEST(PoolTest, MaxPool_10_DilationPadding_2d) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
+           {kTensorrtExecutionProvider});
+}
+
+// Regression test for a CUDA MaxPool bug where dilation > 1 combined with a non-zero begin
+// (head) pad produced wrong values and indices because the negative window start was clamped
+// to 0 without preserving the dilation phase. CPU is the oracle; the CUDA leg is included.
+TEST(PoolTest, MaxPool_DilationPadding_1d_Indices) {
+  OpTester test("MaxPool", 12);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+  test.AddAttribute("dilations", std::vector<int64_t>{2});
+
+  std::vector<float> x_vals = {1, 9, 2, 8, 3, 7, 4, 6, 5};
+  std::vector<int64_t> x_dims = {1, 1, 9};
+  std::vector<int64_t> expected_dims = {1, 1, 9};
+  std::vector<float> expected_vals = {9, 2, 9, 3, 8, 4, 7, 5, 6};
+  std::vector<int64_t> expected_indices = {1, 2, 1, 4, 3, 6, 5, 8, 7};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kDmlExecutionProvider, kOpenVINOExecutionProvider,
+            kAclExecutionProvider});
+}
+
+TEST(PoolTest, MaxPool_DilationPadding_2d_Indices) {
+  OpTester test("MaxPool", 12);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1, 1});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2, 2});
+  test.AddAttribute("dilations", std::vector<int64_t>{2, 2});
+
+  std::vector<float> x_vals = {
+      1, 9, 2, 8, 3,
+      7, 4, 6, 5, 10,
+      15, 11, 14, 12, 13,
+      20, 16, 19, 17, 18};
+  std::vector<int64_t> x_dims = {1, 1, 4, 5};
+  std::vector<int64_t> expected_dims = {1, 1, 4, 5};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims,
+                        {4, 7, 5, 10, 5,
+                         11, 15, 12, 14, 12,
+                         16, 20, 17, 19, 17,
+                         11, 15, 12, 14, 12});
+  test.AddOutput<int64_t>("Indices", expected_dims,
+                          {6, 5, 8, 9, 8,
+                           11, 10, 13, 12, 13,
+                           16, 15, 18, 17, 18,
+                           11, 10, 13, 12, 13});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kDmlExecutionProvider, kOpenVINOExecutionProvider,
+            kAclExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_Dilation_Ceil0_2d) {

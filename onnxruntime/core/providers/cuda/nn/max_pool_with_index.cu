@@ -75,9 +75,12 @@ __global__ void MaxPoolWithIndexKernel(
   int64_t w_end = _Min<int64_t>(w_start + (kernel_w - 1) * dilation_w + 1, width);
   int64_t h_end = _Min<int64_t>(h_start + (kernel_h - 1) * dilation_h + 1, height);
 
-  d_start = _Max<int64_t>(d_start, 0);
-  w_start = _Max<int64_t>(w_start, 0);
-  h_start = _Max<int64_t>(h_start, 0);
+  // Advance a negative window start to the first non-negative dilated tap, preserving the
+  // dilation phase. A plain _Max(start, 0) would collapse the start to 0 and read the wrong
+  // input element (wrong phase) whenever begin-pad > 0 and dilation > 1.
+  if (d_start < 0) d_start += ((-d_start + dilation_d - 1) / dilation_d) * dilation_d;
+  if (w_start < 0) w_start += ((-w_start + dilation_w - 1) / dilation_w) * dilation_w;
+  if (h_start < 0) h_start += ((-h_start + dilation_h - 1) / dilation_h) * dilation_h;
   int64_t d_index_max = -1;
   int64_t w_index_max = -1;
   int64_t h_index_max = -1;
