@@ -412,20 +412,11 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       // provided a single partition. Use utils::MakeCapability() and create a new helper to check that there are no
       // unsupported nodes in any path between supported nodes.
 
-      // When weightless mode is enabled, override drop_constant_initializers to false so that ORT keeps
-      // constant initializers as fused node inputs. The EP can then access them via KernelContext_GetInput().
-      bool drop_constant_initializers = node_grouping.fusion_options.drop_constant_initializers;
-      if (weightless_enabled_ && drop_constant_initializers) {
-        LOGS(logger, INFO) << "Weightless mode enabled for " << Type()
-                           << ": overriding drop_constant_initializers to false.";
-        drop_constant_initializers = false;
-      }
-
       auto metadef_gen_functor = PluginEpMetaDefNameFunctor(metadef_id_generator_, graph_viewer, this->Type());
       std::vector<std::unique_ptr<ComputeCapability>> capabilities = utils::CreateSupportedPartitions(
           graph_viewer, node_set, /*stop_ops*/ {}, std::move(metadef_gen_functor),
           this->Type(), this->Type(), /*node_unit_map*/ nullptr,
-          drop_constant_initializers);
+          node_grouping.fusion_options.drop_constant_initializers);
 
       if (capabilities.size() != 1) {
         LOGS(logger, ERROR) << "OrtEp::GetCapability() for " << Type() << " set nodes that cannot be fused together. "

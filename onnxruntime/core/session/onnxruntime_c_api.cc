@@ -5,6 +5,7 @@
 #include <cassert>
 #include <climits>
 #include <cstring>
+#include <filesystem>
 #include <functional>
 #include <mutex>
 #include <sstream>
@@ -2763,6 +2764,10 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetWeightlessSourceModelPath, _Inout_
   API_IMPL_BEGIN
   if (source_model_path == nullptr || source_model_path[0] == '\0') {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid source model path: path is null or empty");
+  }
+
+  if (!std::filesystem::exists(source_model_path)) {
+    return OrtApis::CreateStatus(ORT_NO_SUCHFILE, "Weightless source model path does not exist");
   }
 
   options->weightless_source_model_path = source_model_path;
