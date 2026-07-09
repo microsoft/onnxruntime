@@ -267,7 +267,11 @@ static int64_t EstimateUniqueOutputSizeInBytes(const Node& node) {
 
     if (output_idx == 0) {
       // Output 0 has the same (possibly packed sub-byte) element type as the input.
-      total_size += ComputeTensorSizeInBytesForConstantFolding(input_elem_type, input_num_elements);
+      const int64_t output0_size = ComputeTensorSizeInBytesForConstantFolding(input_elem_type, input_num_elements);
+      if (output0_size < 0) {
+        return -1;  // Output 0 size is unknown; treat the whole node's output size as unknown.
+      }
+      total_size += output0_size;
     } else {
       // The remaining Unique outputs are int64 index/count tensors.
       total_size += SafeInt<int64_t>(input_num_elements) * sizeof(int64_t);
@@ -317,18 +321,15 @@ static int64_t EstimateConstantOfShapeOutputSizeInBytes(const Node& node, const 
     num_elements *= dim;
   }
 
-  // Determine the element size of the output. The ONNX spec for ConstantOfShape defaults the
+  // Determine the element type of the output. The ONNX spec for ConstantOfShape defaults the
   // element type to float when the optional 'value' attribute is absent.
-  size_t element_size = sizeof(float);
   auto elem_type = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
   const auto& attrs = node.GetAttributes();
   auto it = attrs.find("value");
   if (it != attrs.end() && it->second.type() == ONNX_NAMESPACE::AttributeProto::TENSOR) {
     const auto value_elem_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(
         it->second.t().data_type());
-    const size_t es = GetElementSizeForConstantFolding(value_elem_type);
-    if (es != 0) {
-      element_size = es;
+    if (GetElementSizeForConstantFolding(value_elem_type) != 0) {
       elem_type = value_elem_type;
     }
   }
