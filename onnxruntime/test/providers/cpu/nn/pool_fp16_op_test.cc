@@ -3,6 +3,9 @@
 
 #include "core/mlas/inc/mlas.h"
 
+// NOTE: MLAS_F16VEC_INTRINSICS_SUPPORTED is defined only on ARM64 (non-Apple), so on x86 this
+// whole file (and the fp16 PoolFp16 kernel it exercises) compiles out. These tests therefore run
+// only on the ARM64 / CoreML / XNNPACK / WebGPU CI legs, never on an x86 host build.
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(USE_COREML) || defined(USE_XNNPACK) || defined(USE_WEBGPU)
 
 #include "core/providers/cpu/nn/pool.h"

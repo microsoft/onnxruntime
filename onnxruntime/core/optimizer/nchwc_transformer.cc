@@ -548,7 +548,12 @@ void NchwcTransformerImpl::TransformPool(Node& node) {
                  ? it->second.i()
                  : 0;
     };
-    if (get_int_attr("ceil_mode") == 1 && get_int_attr("count_include_pad") == 1) {
+    // Gate count_include_pad as (!= 0) to match how PoolBase and the float (pool.cc) / fp16
+    // kernels treat it: any nonzero value enables include-pad. Using == 1 here would let an
+    // out-of-spec count_include_pad=2 model escape the bail-out, convert to NchwcAveragePool,
+    // and silently hit the buggy full-kernel divisor in the optimized graph. ceil_mode stays
+    // == 1 because the kernels gate the ceil-window fix on exactly ceil_mode == 1.
+    if (get_int_attr("ceil_mode") == 1 && get_int_attr("count_include_pad") != 0) {
       return;
     }
   }

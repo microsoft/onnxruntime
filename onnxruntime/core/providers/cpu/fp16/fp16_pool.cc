@@ -244,6 +244,14 @@ Status PoolFp16::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
+// Reference (non-MLAS) fp16 average-pooling loop for the ceil_mode + count_include_pad case.
+// This is the fp16 analog of the float ComputeAveragePoolReference in cpu/nn/pool.cc, but its
+// structure deliberately diverges: the float version delegates to the AveragePool{1,2,3}DTask
+// functors, and those functors accumulate/divide directly in the tensor's element type. No fp16
+// Task functor exists, and MLFloat16 has no arithmetic operators, so we cannot reuse them here.
+// Instead this rolls its own N-D odometer loop that accumulates each window in float (via
+// MLFloat16::ToFloat) and rounds the final average back to fp16 -- the same divisor semantics
+// (clamp window end to input+pad_tail), just self-contained.
 Status PoolFp16::ComputeAveragePoolFp16Reference(OpKernelContext* context,
                                                  const Tensor* X,
                                                  const TensorShapeVector& output_dims,
@@ -346,6 +354,8 @@ Status PoolFp16::ComputeAveragePoolFp16Reference(OpKernelContext* context,
               }
               tap[d] = wstart[d];
             }
+            // The odometer carried out of the outermost dim: d underflowed past 0 to
+            // size_t(-1), meaning every window position has been visited -> stop.
             if (d == static_cast<size_t>(-1)) {
               break;
             }
