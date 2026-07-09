@@ -1221,6 +1221,20 @@ if (onnxruntime_USE_CUDA AND onnxruntime_BUILD_CUDA_EP_AS_PLUGIN)
     ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP=1)
 endif()
 
+if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EP_API_ADAPTERS)
+  # Route the WebGPU EP through the dynamic plugin EP infrastructure in plugin builds
+  # (--use_webgpu shared_lib). Same rationale as the CUDA-as-plugin block above: without initializing the
+  # infra in test_main.cc, WebGpuExecutionProviderWithOptions() (default_providers.cc, adapters branch)
+  # returns null and every WebGPU test skips itself, leaving the plugin path with no test coverage.
+  target_compile_definitions(onnxruntime_test_all PRIVATE
+    ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE
+    ORT_UNIT_TEST_WEBGPU_PLUGIN_EP_LIBRARY_PATH="$<TARGET_FILE_NAME:onnxruntime_providers_webgpu>"
+    ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP=1)
+  # The plugin EP DLL is dlopen'd at test-run time (not linked), so add an explicit build-order
+  # dependency to ensure it (and its co-located dawn/dxcompiler DLLs) exist before the tests run.
+  add_dependencies(onnxruntime_test_all onnxruntime_providers_webgpu)
+endif()
+
 if (MSVC)
   # The warning means the type of two integral values around a binary operator is narrow than their result.
   # If we promote the two input values first, it could be more tolerant to integer overflow.

@@ -10,6 +10,7 @@
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/ort_apis.h"
 
 #include "core/providers/webgpu/webgpu_provider_options.h"
@@ -213,6 +214,11 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
     }
   }
 
+  // Compile-only mode (skip Dawn adapter/device creation so graph transformation can run device-free)
+  // is derived from the session config kOrtSessionOptionCompileOnly, which the Compile API sets
+  // automatically -- same signal other EPs use (e.g. NV TensorRT RTX). Not a WebGPU-specific option.
+  config.compile_only = config_options.GetConfigOrDefault(kOrtSessionOptionCompileOnly, "0") == "1";
+
   std::string max_storage_buffer_binding_size_str;
   if (config_options.TryGetConfigEntry(kMaxStorageBufferBindingSize, max_storage_buffer_binding_size_str)) {
     ORT_ENFORCE(
@@ -254,6 +260,7 @@ WebGpuContextConfig ParseWebGpuContextConfig(const ConfigOptions& config_options
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP DawnProcTable: " << reinterpret_cast<size_t>(config.dawn_proc_table);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP ValidationMode: " << config.validation_mode;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP PreserveDevice: " << config.preserve_device;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP CompileOnly: " << config.compile_only;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP max storage buffer binding size: " << config.max_storage_buffer_binding_size;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP max pending dispatches: " << config.max_num_pending_dispatches;
 

@@ -31,6 +31,7 @@ namespace test {
 namespace dynamic_plugin_ep_infra {
 
 inline constexpr std::string_view kCudaExecutionProviderPluginName{"CUDAExecutionProvider"};
+inline constexpr std::string_view kWebGpuExecutionProviderPluginName{"WebGpuExecutionProvider"};
 
 // Note: `Initialize()` and `Shutdown()` are not thread-safe.
 // They should be called before and after calls to most of the other functions in this namespace.

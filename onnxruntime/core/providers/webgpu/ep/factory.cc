@@ -7,12 +7,17 @@
 #include "core/framework/error_code_helper.h"
 #include "core/graph/constants.h"
 
+#include <cstring>
+
 #include "core/framework/execution_provider.h"
 #include "core/framework/config_options.h"
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/allocator.h"
+#include "core/session/onnxruntime_env_config_keys.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -50,6 +55,14 @@ Factory::Factory() : OrtEpFactory{},
   CreateDataTransfer = CreateDataTransferImpl;
 
   IsStreamAware = IsStreamAwareImpl;
+}
+
+// Destructor: release the virtual hardware device if one was created in GetSupportedDevices.
+Factory::~Factory() {
+  if (virtual_hw_device_ != nullptr) {
+    Api().ep.ReleaseHardwareDevice(virtual_hw_device_);
+    virtual_hw_device_ = nullptr;
+  }
 }
 
 // Static C API implementations
@@ -97,21 +110,55 @@ OrtStatus* ORT_API_CALL Factory::GetSupportedDevicesImpl(
     }
   }
 
+  // If the environment allows virtual devices, register a virtual GPU EP device (vendor/device id 0) so
+  // the WebGPU EP stays selectable for a device-free compile-only session on hosts where OS device
+  // enumeration finds no GPU (e.g. a Win32k-lockdown sandbox). It is offered *in addition* to any real
+  // GPU device, so the device-free path remains exercisable on a host that also has a real GPU. Since
+  // allow_virtual_devices is opt-in, normal (real GPU) usage is unaffected.
+  if (num_ep_devices < max_ep_devices) {
+    OrtKeyValuePairs* env_config = nullptr;
+    ORT_API_RETURN_IF_ERROR(Api().ep.GetEnvConfigEntries(&env_config));
+    Ort::KeyValuePairs env_config_holder(env_config);  // allow automatic release
+    const char* allow_virtual = env_config_holder.GetValue(kOrtEnvAllowVirtualDevices);
+    const bool allow_virtual_devices = allow_virtual != nullptr && std::strcmp(allow_virtual, "1") == 0;
+
+    if (allow_virtual_devices) {
+      OrtKeyValuePairs* hw_metadata = nullptr;
+      Api().ort.CreateKeyValuePairs(&hw_metadata);
+      Api().ort.AddKeyValuePair(hw_metadata, kOrtHardwareDevice_MetadataKey_IsVirtual, "1");
+      OrtStatus* status = Api().ep.CreateHardwareDevice(OrtHardwareDeviceType::OrtHardwareDeviceType_GPU,
+                                                        /*vendor_id=*/0, /*device_id=*/0,
+                                                        GetVendorImpl(this_ptr), hw_metadata,
+                                                        &factory->virtual_hw_device_);
+      Api().ort.ReleaseKeyValuePairs(hw_metadata);  // ORT makes a copy
+      ORT_API_RETURN_IF_ERROR(status);
+
+      OrtEpDevice* ep_device = nullptr;
+      ORT_API_RETURN_IF_ERROR(Api().ep.CreateEpDevice(this_ptr, factory->virtual_hw_device_,
+                                                      nullptr, nullptr, &ep_device));
+      // No allocator info: a virtual device only backs a device-free compile-only session, which stops
+      // before session-state finalization and never allocates. Leaving the memory info unset also avoids
+      // ORT trying to create a shared WebGPU allocator (environment.cc) with no underlying device.
+      ep_devices[num_ep_devices++] = ep_device;
+    }
+  }
+
   return nullptr;
   EXCEPTION_TO_RETURNED_STATUS_END
 }
 
 OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
     OrtEpFactory* this_ptr,
-    const OrtHardwareDevice* const* /*devices*/,
+    const OrtHardwareDevice* const* devices,
     const OrtKeyValuePairs* const* /*ep_metadata*/,
     size_t num_devices,
     const OrtSessionOptions* session_options,
     const OrtLogger* logger,
     OrtEp** ep) noexcept {
   EXCEPTION_TO_RETURNED_STATUS_BEGIN
-  if (num_devices == 0) {
-    return Api().ort.CreateStatus(ORT_INVALID_ARGUMENT, "No hardware devices provided to create WebGPU EP.");
+  if (num_devices != 1) {
+    return Api().ort.CreateStatus(ORT_INVALID_ARGUMENT,
+                                  "WebGPU EP factory currently only supports one device at a time.");
   }
 
   OrtKeyValuePairs* session_config_entries = nullptr;
@@ -130,18 +177,38 @@ OrtStatus* ORT_API_CALL Factory::CreateEpImpl(
     }
   }
 
+  // A virtual GPU device has no real GPU behind it, so it can only back a device-free compile-only session
+  // (see the concept map in webgpu_context.cc). Reject the invalid combination up front with a clear message
+  // instead of letting Dawn fail obscurely when it later tries to create a device.
+  const bool compile_only = config_options.GetConfigOrDefault(kOrtSessionOptionCompileOnly, "0") == "1";
+  const OrtKeyValuePairs* device_metadata = Api().ort.HardwareDevice_Metadata(devices[0]);
+  const bool selected_virtual_device =
+      device_metadata != nullptr &&
+      Api().ort.GetKeyValue(device_metadata, kOrtHardwareDevice_MetadataKey_IsVirtual) != nullptr;
+  if (selected_virtual_device && !compile_only) {
+    return Api().ort.CreateStatus(
+        ORT_INVALID_ARGUMENT,
+        "WebGPU EP was selected on a virtual GPU device, which has no real GPU behind it and can only serve "
+        "a compile-only session (session.compile_only=1). Select a real GPU device to run inference.");
+  }
+
   auto webgpu_ep_factory = WebGpuProviderFactoryCreator::Create(config_options);
   auto webgpu_ep = webgpu_ep_factory->CreateProvider(*session_options, *logger);
   static_cast<WebGpuExecutionProvider*>(webgpu_ep.get())->SetEpLogger(logger);
   auto factory = static_cast<Factory*>(this_ptr);
   const int context_id = webgpu_ep->GetDeviceId();
   auto* webgpu_ep_ptr = static_cast<WebGpuExecutionProvider*>(webgpu_ep.get());
-  auto device_alloc = std::make_shared<webgpu::GpuBufferAllocator>(
+  // A device-free context (compile-only session) gets a no-op allocator: a real GpuBufferAllocator
+  // needs a device, and such a session stops before finalization and never allocates.
+  const bool device_free = !WebGpuContextFactory::GetContext(context_id).HasDevice();
+  auto device_alloc = webgpu::CreateWebGpuAllocator(
+      device_free,
       [webgpu_ep_ptr]() -> const webgpu::BufferManager& { return webgpu_ep_ptr->BufferManager(); }, false);
   Ep::Config webgpu_ep_config{
       CPUAllocator::DefaultInstance(),  // CPU allocator
       device_alloc,                     // default device allocator
-      std::make_shared<webgpu::GpuBufferAllocator>(
+      webgpu::CreateWebGpuAllocator(
+          device_free,
           [context_id]() -> const webgpu::BufferManager& {
             return WebGpuContextFactory::GetContext(context_id).InitializerBufferManager();
           },

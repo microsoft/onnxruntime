@@ -598,7 +598,8 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       enable_int64_{config.enable_graph_capture || config.enable_int64},
       multi_rotary_cache_concat_offset_{config.multi_rotary_cache_concat_offset},
       kv_cache_quantization_bits_{config.kv_cache_quantization_bits},
-      prepack_allocator_{std::make_shared<webgpu::GpuBufferAllocator>(
+      prepack_allocator_{CreateWebGpuAllocator(
+          /*device_free=*/!context.HasDevice(),
           [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, false)} {
   if (enable_graph_capture_ && config.session_buffer_pool_generations > 0) {
     session_buffer_pool_ = std::make_unique<webgpu::SessionBufferPool>(
@@ -615,14 +616,16 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
 }
 
 std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
-  auto device_allocator = std::make_unique<webgpu::GpuBufferAllocator>(
-      [this]() -> const webgpu::BufferManager& { return BufferManager(); }, false);
+  const bool device_free = !context_.HasDevice();
   return {
       // allocator for initializers
-      std::make_unique<webgpu::GpuBufferAllocator>(
+      CreateWebGpuAllocator(
+          device_free,
           [this]() -> const webgpu::BufferManager& { return context_.InitializerBufferManager(); }, true),
       // default allocator
-      std::move(device_allocator),
+      CreateWebGpuAllocator(
+          device_free,
+          [this]() -> const webgpu::BufferManager& { return BufferManager(); }, false),
   };
 }
 

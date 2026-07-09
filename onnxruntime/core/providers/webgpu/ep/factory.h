@@ -66,9 +66,16 @@ class Factory : public OrtEpFactory {
   Ort::MemoryInfo default_memory_info_;
   Ort::MemoryInfo readonly_memory_info_;  // used for initializers
 
+  // Owned virtual GPU hardware device created on demand by GetSupportedDevices when the environment
+  // allows virtual devices (OrtEnv config "allow_virtual_devices"=1) and no real GPU device was
+  // discovered -- e.g. in a sandboxed process where OS device enumeration is unavailable (such as
+  // Win32k lockdown), so ORT device discovery is skipped. Released in the destructor. nullptr when
+  // no virtual device was made.
+  OrtHardwareDevice* virtual_hw_device_ = nullptr;
+
  public:
   Factory();
-  ~Factory() = default;
+  ~Factory();
 };
 
 }  // namespace ep
