@@ -207,6 +207,7 @@ MlasActivation(
 
 struct MLAS_BACKEND_KERNEL_SELECTOR_CONFIG {
     bool use_kleidiai = true; /**< Flag to use KleidiAI backend kernels if available */
+    size_t kleidiai_conv_igemm_max_work = 0; /**< Optional SME IGEMM route threshold override; 0 uses default */
 };
 
 //

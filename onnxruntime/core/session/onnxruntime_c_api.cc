@@ -4946,7 +4946,7 @@ static_assert(offsetof(OrtApi, SetPerSessionThreadPoolCallbacks) / sizeof(void*)
 // no additions in version 26
 
 // So that nobody forgets to finish an API version, this check will serve as a reminder:
-static_assert(std::string_view(ORT_VERSION) == "1.27.0",
+static_assert(std::string_view(ORT_VERSION) == "1.27.1",
               "ORT_Version change detected, please follow below steps to ensure OrtApi is updated properly");
 // 1. Update the hardcoded version string in above static_assert to silence it
 //
