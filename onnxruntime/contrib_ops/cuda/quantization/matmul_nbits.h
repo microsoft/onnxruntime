@@ -68,9 +68,15 @@ inline std::string ResolveFpAIntBConfigOrEnv(const OpKernelInfo& info, const cha
 
 // Parses the fpA_intB enable flag. "on" enables the full fpA_intB path (the CUTLASS GEMM and, where
 // supported, the GEMV decode kernel; they share one weight layout and cannot be split). Accepts
-// (case-insensitive): "" / "0" / "off" -> disabled; otherise, enabled.
+// (case-insensitive): "" / "0" / "off" -> disabled; otherwise, enabled (a non-zero numeric value
+// still enables, for backward compatibility).
 inline bool ParseFpAIntBEnabled(const std::string& value) {
-  if (value.empty() || value == "0" || value == "off") {
+  std::string lowered;
+  lowered.reserve(value.size());
+  for (char c : value) {
+    lowered.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+  }
+  if (lowered.empty() || lowered == "0" || lowered == "off") {
     return false;
   }
   return true;
