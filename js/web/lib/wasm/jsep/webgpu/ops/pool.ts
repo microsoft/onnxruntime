@@ -20,7 +20,8 @@ import {
 } from './common';
 
 // TODO: support:
-// - ceil_mode                 "test_maxpool_2d_ceil"
+// - ceil_mode kernel execution "test_maxpool_2d_ceil" (output SHAPE already honors ceil_mode
+//   via PoolConvUtil.computePoolOutputShape; the WebGPU kernel padding/divisor handling is pending)
 // - storage_order             "test_maxpool_with_argmax_2d_precomputed_strides"
 // - [MaxPool] dilations       "test_maxpool_2d_dilations"
 // - [MaxPool] output[1]       "test_maxpool_with_argmax_2d_precomputed_pads"
@@ -398,7 +399,9 @@ export const parseAveragePoolAttributes = (attributes: Record<string, unknown>):
   // (and, for AveragePool, the count_include_pad divisor) before this throw can be removed.
   // Tracked follow-up: remove this guard + add kernel ceil_mode padding support.
   if (attr.ceilMode !== 0) {
-    throw new Error('using ceil() in shape computation is not yet supported for AveragePool');
+    throw new Error(
+      'ceil_mode output-shape is computed, but ceil_mode kernel execution (padding/divisor) is not yet implemented in the WebGPU AveragePool kernel',
+    );
   }
   const averagePoolAttributes = { countIncludePad, ...attr, cacheKey: '' };
   return { ...averagePoolAttributes, cacheKey: createAveragePoolShaderKeyFromAttributes(averagePoolAttributes) };
@@ -506,7 +509,9 @@ export const parseMaxPoolAttributes = (attributes: Record<string, unknown>): Max
   // before this throw can be removed. Tracked follow-up: remove this guard + add kernel
   // ceil_mode padding support.
   if (attr.ceilMode !== 0) {
-    throw new Error('using ceil() in shape computation is not yet supported for MaxPool');
+    throw new Error(
+      'ceil_mode output-shape is computed, but ceil_mode kernel execution (padding) is not yet implemented in the WebGPU MaxPool kernel',
+    );
   }
   const maxPoolAttributes = { storageOrder, dilations, ...attr, cacheKey: '' };
   return { ...maxPoolAttributes, cacheKey: createMaxPoolShaderKeyFromAttributes(maxPoolAttributes) };

@@ -168,6 +168,34 @@ const poolShapeCases: PoolShapeCase[] = [
     ceilMode: 1,
     expectedShape: [1, 1, 3],
   },
+  // Non-divisible SAME_UPPER + ceil_mode regression guard: legacyTargetSize must use C++
+  // integer division. With float division this yielded [1,1,2] instead of the correct [1,1,1].
+  // (in=2, stride=2, kernel=3, SAME_UPPER, ceil -> 1, matching C++ ComputeSizePadDilations.)
+  {
+    name: 'SAME_UPPER auto_pad + ceil_mode non-divisible -> [1,1,1]',
+    isGlobalOperator: false,
+    inputDims: [1, 1, 2],
+    strides: [2],
+    dilations: [1],
+    kernelShape: [3],
+    pads: [0, 0],
+    autoPad: 'SAME_UPPER',
+    ceilMode: 1,
+    expectedShape: [1, 1, 1],
+  },
+  // SAME_LOWER symmetric counterpart of the non-divisible regression guard.
+  {
+    name: 'SAME_LOWER auto_pad + ceil_mode non-divisible -> [1,1,1]',
+    isGlobalOperator: false,
+    inputDims: [1, 1, 2],
+    strides: [2],
+    dilations: [1],
+    kernelShape: [3],
+    pads: [0, 0],
+    autoPad: 'SAME_LOWER',
+    ceilMode: 1,
+    expectedShape: [1, 1, 1],
+  },
 ];
 
 function runPoolConvUtil(
