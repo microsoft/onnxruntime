@@ -411,7 +411,6 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       // TODO(adrianlizarraga): Do not use the heavy-weight CreateSupportedPartitions just to check if the user
       // provided a single partition. Use utils::MakeCapability() and create a new helper to check that there are no
       // unsupported nodes in any path between supported nodes.
-
       auto metadef_gen_functor = PluginEpMetaDefNameFunctor(metadef_id_generator_, graph_viewer, this->Type());
       std::vector<std::unique_ptr<ComputeCapability>> capabilities = utils::CreateSupportedPartitions(
           graph_viewer, node_set, /*stop_ops*/ {}, std::move(metadef_gen_functor),
