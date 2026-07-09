@@ -88,6 +88,16 @@ string(JOIN " " _ort_win_include_flags
 add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:SHELL:${_ort_win_include_flags}>")
 add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:-Wno-unused-command-line-argument>")
 
+# The xwin CRT's <intrin.h> transitively pulls clang's <mmintrin.h>, whose legacy
+# MMX intrinsics use the 64-bit integer vector typedefs (e.g. __v4hi). Some clang
+# x86_64 builds (notably the apt.llvm.org snapshot used in CI) only treat those as
+# real vectors when 'mmx' is in the *global* target features; without it the
+# vector_size attribute is dropped and the header fails to compile
+# ("__v4hi (aka 'short')"). Enable mmx globally so the header's typedefs stay
+# vectors. ORT itself uses no MMX; this only affects the transitively-included
+# header, not codegen for ORT's own SIMD kernels.
+add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:-mmmx>")
+
 add_link_options(
   "/libpath:${_ort_crt}/lib/x86_64"
   "/libpath:${_ort_sdk}/lib/ucrt/x86_64"
