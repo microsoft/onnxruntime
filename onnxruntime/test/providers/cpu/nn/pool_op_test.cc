@@ -960,8 +960,10 @@ TEST(PoolTest, AveragePool_CountIncludePad_AsymmetricPads) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   // The CUDA custom AveragePoolWithPad kernel now honors per-side (asymmetric) pads, so the
-  // CUDA (NCHW) leg is un-excluded here to lock in that fix. The remaining exclusions are EPs
-  // whose external libraries (cuDNN NHWC, CoreML, etc.) still produce wrong results for this case.
+  // CUDA (NCHW) leg is un-excluded here to lock in that fix. kCudaNHWCExecutionProvider is still
+  // excluded because the custom kernel's NHWC decode branch is not yet covered by these tests
+  // (asymmetric NHWC routes to that branch, not to cuDNN) — tracked as a follow-up. The remaining
+  // exclusions are EPs whose external libraries (CoreML, etc.) still produce wrong results here.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kCudaNHWCExecutionProvider,
             kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
@@ -996,8 +998,10 @@ TEST(PoolTest, AveragePool3D_CountIncludePad_AsymmetricPads) {
   test.AddInput<float>("X", x3d_dims, x3d_vals);
   test.AddOutput<float>("Y", expected3d_dims, expected3d_vals);
   // The CUDA custom AveragePoolWithPad kernel now honors per-side (asymmetric) pads in 3D, so the
-  // CUDA (NCHW) leg is un-excluded here to lock in that fix. The remaining exclusions are EPs
-  // whose external libraries (cuDNN NHWC, CoreML, etc.) still produce wrong results for this case.
+  // CUDA (NCHW) leg is un-excluded here to lock in that fix. kCudaNHWCExecutionProvider is still
+  // excluded because the custom kernel's NHWC decode branch is not yet covered by these tests
+  // (asymmetric NHWC routes to that branch, not to cuDNN) — tracked as a follow-up. The remaining
+  // exclusions are EPs whose external libraries (CoreML, etc.) still produce wrong results here.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kCudaNHWCExecutionProvider,
             kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,

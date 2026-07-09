@@ -12,7 +12,7 @@ namespace cuda {
 //
 // cuDNN's pooling descriptor stores a single symmetric pad value per axis, so it cannot
 // represent ONNX asymmetric padding (pad_begin != pad_end), which arises from explicit
-// asymmetric `pads`, `auto_pad = SAME_UPPER/SAME_LOWER`, and ceil_mode boundaries. This
+// asymmetric `pads` or `auto_pad = SAME_UPPER/SAME_LOWER` resolving to asymmetric pads. This
 // kernel is the CUDA fallback for that case and mirrors the CPU reference functor
 // (AveragePool{1,2,3}DTask) exactly:
 //   start = out_idx * stride - pad_begin
