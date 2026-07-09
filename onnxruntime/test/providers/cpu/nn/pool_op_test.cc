@@ -539,7 +539,8 @@ TEST(PoolTest, MaxPool_10_DilationPadding_2d) {
 
 // Regression test for a CUDA MaxPool bug where dilation > 1 combined with a non-zero begin
 // (head) pad produced wrong values and indices because the negative window start was clamped
-// to 0 without preserving the dilation phase. CPU is the oracle; the CUDA leg is included.
+// to 0 without preserving the dilation phase. CPU is the oracle and the CUDA leg now runs too
+// (it is intentionally not excluded below).
 TEST(PoolTest, MaxPool_DilationPadding_1d_Indices) {
   OpTester test("MaxPool", 12);
 
@@ -560,7 +561,7 @@ TEST(PoolTest, MaxPool_DilationPadding_1d_Indices) {
   test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kDmlExecutionProvider, kOpenVINOExecutionProvider,
-            kAclExecutionProvider});
+            kAclExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_DilationPadding_2d_Indices) {
@@ -593,7 +594,7 @@ TEST(PoolTest, MaxPool_DilationPadding_2d_Indices) {
                            11, 10, 13, 12, 13});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kDmlExecutionProvider, kOpenVINOExecutionProvider,
-            kAclExecutionProvider});
+            kAclExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_10_Dilation_Ceil0_2d) {

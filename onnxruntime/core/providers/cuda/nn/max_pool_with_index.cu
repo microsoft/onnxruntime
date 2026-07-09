@@ -77,7 +77,8 @@ __global__ void MaxPoolWithIndexKernel(
 
   // Advance a negative window start to the first non-negative dilated tap, preserving the
   // dilation phase. A plain _Max(start, 0) would collapse the start to 0 and read the wrong
-  // input element (wrong phase) whenever begin-pad > 0 and dilation > 1.
+  // input element (wrong phase) whenever begin-pad > 0 and dilation > 1. For example, with
+  // dilation 2 and start -1, the first valid tap is at 1 (= -1 + 2), not 0.
   if (d_start < 0) d_start += ((-d_start + dilation_d - 1) / dilation_d) * dilation_d;
   if (w_start < 0) w_start += ((-w_start + dilation_w - 1) / dilation_w) * dilation_w;
   if (h_start < 0) h_start += ((-h_start + dilation_h - 1) / dilation_h) * dilation_h;
