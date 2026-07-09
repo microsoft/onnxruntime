@@ -28,6 +28,20 @@ CMAKE_HASHES = {
     "macos": "99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8",
 }
 
+# Not specified for others b/c they a pre-bundled version of Ninja.
+NINJA_VERSION = "1.13.0"
+NINJA_HASHES = {
+    "windows": {
+        "x64": "cffea62711b5a89ec494b48ae5e8df32f24cab0e642363ac20cc250c7d7f75ad43258f8d3721c68b23413e401d42630945c534ff95355cfe664e5da1d36569bf",
+        "arm64": "abcd",  # trigger error to fetch correct hash
+    },
+    "linux": {
+        "x64": None,
+        "arm64": None,
+    },
+    "macos": None,
+}
+
 
 def get_platform_keys() -> tuple[str | None, str | None]:
     """Detects the OS and CPU architecture and returns normalized keys."""
@@ -70,8 +84,10 @@ def main() -> None:
     try:
         if os_key == "macos":
             cmake_hash = CMAKE_HASHES[os_key]
+            ninja_hash = NINJA_HASHES[os_key]
         else:
             cmake_hash = CMAKE_HASHES[os_key][arch_key]
+            ninja_hash = NINJA_HASHES[os_key][arch_key]
 
         print(f"Selected CMake hash for '{os_key}'.")
     except KeyError:
@@ -89,6 +105,9 @@ def main() -> None:
         "INPUT_VCPKG-HASH": "9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079",
         "INPUT_ADD-CMAKE-TO-PATH": "true",
     }
+    if ninja_hash is not None:
+        action_inputs["INPUT_NINJA-VERSION"] = NINJA_VERSION
+        action_inputs["INPUT_NINJA-HASH"] = ninja_hash
 
     if os_key == "windows" and Path(terrapin_tool_path_str).exists():
         disable_terrapin_value = "false"

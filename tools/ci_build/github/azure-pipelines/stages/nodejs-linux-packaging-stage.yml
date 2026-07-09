@@ -47,6 +47,8 @@ stages:
         Repository: onnxruntimecuda${{ variables.CUDA_VERSION_MAJOR }}xtrt86build
     - template: ../templates/set-version-number-variables-step.yml
 
+    - template: ../templates/steps/ccache-and-vcpkg.yml
+
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_nodejs_package.sh
       workingDirectory: $(Build.SourcesDirectory)
       displayName: 'Build Node.js binding Package'

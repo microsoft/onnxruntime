@@ -10,20 +10,55 @@ else
     exit 1
 fi
 
-mkdir -p "$HOME/.onnx"
-docker run -e SYSTEM_COLLECTIONURI --rm --network=host --volume /data/onnx:/data/onnx:ro --volume "$BUILD_SOURCESDIRECTORY:/onnxruntime_src" \
---volume "$BUILD_BINARIESDIRECTORY:/build" --volume /data/models:/build/models:ro \
--e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
--e PIP_INDEX_URL \
---volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
---volume "$HOME/.m2:/home/onnxruntimedev/.m2:ro" \
---volume "$HOME/.gradle:/home/onnxruntimedev/.gradle" \
---volume "$HOME/.onnx:/home/onnxruntimedev/.onnx" -e NIGHTLY_BUILD "onnxruntimecuda${CUDA_VERSION_MAJOR}xtrt86build" \
-/bin/bash -c "/usr/bin/python3 /onnxruntime_src/tools/ci_build/build.py --build_dir /build --config Release \
---skip_tests --skip_submodule_sync \
---parallel --nvcc_threads 1 --flash_nvcc_threads 1 \
---use_binskim_compliant_compile_flags --build_shared_lib --build_nodejs \
---use_webgpu --use_tensorrt --cuda_version=$CUDA_VERSION --cuda_home=/usr/local/cuda-$CUDA_VERSION \
---cudnn_home=/usr --tensorrt_home=/usr \
---cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHS}' --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
-&& cd /build/Release && make install DESTDIR=/build/installed"
+# HACK: so the docker user can write to the caches
+mkdir -p "${CCACHE_DIR}"
+mkdir -p "${VCPKG_DEFAULT_BINARY_CACHE}"
+chmod -R 777 "${CCACHE_DIR}"
+chmod -R 777 "${VCPKG_DEFAULT_BINARY_CACHE}"
+
+mkdir -p "${HOME}/.onnx"
+docker run \
+    --network=host \
+    --rm \
+    --volume "${BUILD_BINARIESDIRECTORY}:/build" \
+    --volume "${BUILD_SOURCESDIRECTORY}:/onnxruntime_src" \
+    --volume "${CCACHE_DIR}:/cache/ccache" \
+    --volume "${HOME}/.gradle:/home/onnxruntimedev/.gradle" \
+    --volume "${HOME}/.m2:/home/onnxruntimedev/.m2:ro" \
+    --volume "${HOME}/.onnx:/home/onnxruntimedev/.onnx" \
+    --volume "${NPM_CONFIG_USERCONFIG}:/tmp/.npmrc:ro" \
+    --volume "${VCPKG_DEFAULT_BINARY_CACHE}:/cache/vcpkg" \
+    --volume /data/models:/build/models:ro \
+    --volume /data/onnx:/data/onnx:ro \
+    -e CCACHE_DIR=/cache/ccache \
+    -e NIGHTLY_BUILD \
+    -e NPM_CONFIG_USERCONFIG=/tmp/.npmrc \
+    -e PIP_INDEX_URL \
+    -e SYSTEM_COLLECTIONURI \
+    -e VCPKG_DEFAULT_BINARY_CACHE=/cache/vcpkg \
+    "onnxruntimecuda${CUDA_VERSION_MAJOR}xtrt86build" \
+    /bin/bash -c "\
+ccache --zero-stats \
+&& /usr/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+    --build_dir /build \
+    --build_nodejs \
+    --build_shared_lib \
+    --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHS}' \
+    --config Release \
+    --cuda_home '/usr/local/cuda-${CUDA_VERSION}' \
+    --cuda_version '${CUDA_VERSION}' \
+    --cudnn_home /usr \
+    --flash_nvcc_threads 1 \
+    --nvcc_threads 1 \
+    --parallel \
+    --skip_submodule_sync \
+    --skip_tests \
+    --tensorrt_home=/usr \
+    --use_binskim_compliant_compile_flags \
+    --use_cache \
+    --use_tensorrt \
+    --use_vcpkg \
+    --use_vcpkg_ms_internal_asset_cache \
+    --use_webgpu \
+&& cd /build/Release \
+&& make install DESTDIR=/build/installed"
