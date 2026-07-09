@@ -2083,15 +2083,15 @@ class TestCudaPluginEP(unittest.TestCase):
         model = _make_simple_model(
             "ReduceSum",
             [("X", TensorProto.FLOAT, [3, 4, 5]), ("axes", TensorProto.INT64, [1])],
-            [("Y", TensorProto.FLOAT, [3, 4, 1])],
+            [("Y", TensorProto.FLOAT, [3, 1, 5])],
             attrs={"keepdims": 1},
             opset=13,
         )
-        axes_init = helper.make_tensor("axes", TensorProto.INT64, [1], [2])
+        axes_init = helper.make_tensor("axes", TensorProto.INT64, [1], [1])
         model.graph.initializer.append(axes_init)
         feed = {"X": np.random.rand(3, 4, 5).astype(np.float32)}
         result = _run_model_test(
-            target_device, "ReduceSum", model, feed, lambda f: np.sum(f["X"], axis=2, keepdims=True)
+            target_device, "ReduceSum", model, feed, lambda f: np.sum(f["X"], axis=1, keepdims=True)
         )
         self.assertEqual(result, TEST_PASS, "ReduceSum test failed")
 
