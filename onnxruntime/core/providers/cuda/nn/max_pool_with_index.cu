@@ -71,6 +71,9 @@ __global__ void MaxPoolWithIndexKernel(
   int64_t w_start = w_index * stride_w - pad_w;
   int64_t h_start = h_index * stride_h - pad_h;
 
+  // NOTE: *_end is intentionally computed from the raw (possibly negative) start, before the
+  // phase-preserving advance below. This keeps the loop upper bound correct regardless of how
+  // far the start is advanced into the padded region.
   int64_t d_end = _Min<int64_t>(d_start + (kernel_d - 1) * dilation_d + 1, depth);
   int64_t w_end = _Min<int64_t>(w_start + (kernel_w - 1) * dilation_w + 1, width);
   int64_t h_end = _Min<int64_t>(h_start + (kernel_h - 1) * dilation_h + 1, height);
@@ -78,16 +81,26 @@ __global__ void MaxPoolWithIndexKernel(
   // Advance a negative window start to the first non-negative dilated tap, preserving the
   // dilation phase. A plain _Max(start, 0) would collapse the start to 0 and read the wrong
   // input element (wrong phase) whenever begin-pad > 0 and dilation > 1. For example, with
-  // dilation 2 and start -1, the first valid tap is at 1 (= -1 + 2), not 0.
-  if (d_start < 0) d_start += ((-d_start + dilation_d - 1) / dilation_d) * dilation_d;
-  if (w_start < 0) w_start += ((-w_start + dilation_w - 1) / dilation_w) * dilation_w;
-  if (h_start < 0) h_start += ((-h_start + dilation_h - 1) / dilation_h) * dilation_h;
+  // dilation 2 and start -1, the first valid tap is at 1 (= -1 + 2), not 0. If every dilated
+  // tap of the window falls in the begin padding, the advanced start ends up >= *_end and the
+  // loop below does not execute (handled as an empty window afterwards).
+  auto advance_to_first_nonneg_tap = [](int64_t start, int64_t dilation) -> int64_t {
+    if (start < 0) start += ((-start + dilation - 1) / dilation) * dilation;
+    return start;
+  };
+  d_start = advance_to_first_nonneg_tap(d_start, dilation_d);
+  w_start = advance_to_first_nonneg_tap(w_start, dilation_w);
+  h_start = advance_to_first_nonneg_tap(h_start, dilation_h);
+
   int64_t d_index_max = -1;
   int64_t w_index_max = -1;
   int64_t h_index_max = -1;
   int64_t offset = compute_offset(n_index, c_index, 0, 0, 0);
   const T* p_slice = p_input + offset;
-  T maxval = p_slice[compute_offset(0, 0, h_start, w_start, d_start)] - (T)1;
+  // Seed with the type's lowest value (not a read of p_slice[start]) so that an empty window
+  // never dereferences an out-of-range tap, and so the sentinel cannot wrap for integral/half
+  // element types.
+  T maxval = NumericLimits<T>::Lowest();
   for (int64_t d = d_start; d < d_end; d += dilation_d) {
     for (int64_t w = w_start; w < w_end; w += dilation_w) {
       for (int64_t h = h_start; h < h_end; h += dilation_h) {
@@ -96,11 +109,30 @@ __global__ void MaxPoolWithIndexKernel(
           h_index_max = h;
           w_index_max = w;
           d_index_max = d;
-          maxval = static_cast<float>(p_slice[pool_offset]);
+          maxval = p_slice[pool_offset];
         }
       }
     }
   }
+
+  // When the window has no valid tap (all dilated taps fell in the begin padding), the loop
+  // above never runs and *_index_max stays -1. Mirror the CPU/ONNX reference: emit the type's
+  // lowest value and a -1 sentinel index, without reading p_input at the (out-of-range) taps.
+  if (h_index_max < 0) {
+    p_output[id] = maxval;
+    if (p_indices) {
+      if constexpr (Layout == LAYOUT_NCHW) {
+        p_indices[id] = -1;
+      } else if constexpr (Layout == LAYOUT_NHWC) {
+        int64_t id_nchw = (((n_index * channels + c_index) * pooled_height + h_index) * pooled_width + w_index) *
+                              pooled_depth +
+                          d_index;
+        p_indices[id_nchw] = -1;
+      }
+    }
+    return;
+  }
+
   p_output[id] = p_input[offset + compute_offset(0, 0, h_index_max, w_index_max, d_index_max)];
 
   if (p_indices) {

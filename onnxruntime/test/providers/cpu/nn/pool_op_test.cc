@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <limits>
+
 #include "core/providers/cpu/nn/pool.h"
 #include "default_providers.h"
 #include "gtest/gtest.h"
@@ -597,6 +599,32 @@ TEST(PoolTest, MaxPool_DilationPadding_2d_Indices) {
             kAclExecutionProvider, kWebGpuExecutionProvider});
 }
 
+// Empty-window regression test: with dilation > 1 and begin padding, a window can have no valid
+// tap (all dilated taps land in the padding). The CUDA kernel must not read out of bounds and must
+// emit the type's lowest value and a -1 index, matching the CPU/ONNX reference.
+TEST(PoolTest, MaxPool_DilationPadding_1d_EmptyWindow) {
+  OpTester test("MaxPool", 12);
+
+  test.AddAttribute("auto_pad", "");
+  test.AddAttribute("strides", std::vector<int64_t>{1});
+  test.AddAttribute("pads", std::vector<int64_t>{1, 1});
+  test.AddAttribute("kernel_shape", std::vector<int64_t>{2});
+  test.AddAttribute("dilations", std::vector<int64_t>{2});
+
+  std::vector<float> x_vals = {42};
+  std::vector<int64_t> x_dims = {1, 1, 1};
+  std::vector<int64_t> expected_dims = {1, 1, 1};
+  std::vector<float> expected_vals = {std::numeric_limits<float>::lowest()};
+  std::vector<int64_t> expected_indices = {-1};
+
+  test.AddInput<float>("X", x_dims, x_vals);
+  test.AddOutput<float>("Y", expected_dims, expected_vals);
+  test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kTensorrtExecutionProvider, kDmlExecutionProvider, kOpenVINOExecutionProvider,
+            kAclExecutionProvider, kWebGpuExecutionProvider});
+}
+
 TEST(PoolTest, MaxPool_10_Dilation_Ceil0_2d) {
   OpTester test("MaxPool", 10);
 
@@ -707,7 +735,7 @@ TEST(PoolTest, MaxPool_10_DilationPadding_3d) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider});
+           {kTensorrtExecutionProvider});
 }
 
 TYPED_TEST(PoolTest, GlobalMaxPool) {
