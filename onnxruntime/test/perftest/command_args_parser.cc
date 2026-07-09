@@ -214,6 +214,15 @@ ABSL_FLAG(bool, compile_ep_context, DefaultPerformanceTestConfig().run_config.co
 ABSL_FLAG(std::string, compile_model_path, "model_ctx.onnx", "The compiled model path for saving EP context model. Overwrites if already exists");
 ABSL_FLAG(bool, compile_binary_embed, DefaultPerformanceTestConfig().run_config.compile_binary_embed, "Embed binary blob within EP context node");
 ABSL_FLAG(bool, compile_only, DefaultPerformanceTestConfig().run_config.compile_only, "Only compile EP context model without running it");
+ABSL_FLAG(std::string, data_shape, "",
+          "Specifies input shapes for multi-shape profiling within a single session.\n"
+          "The model is compiled once and run with each shape group in round-robin order.\n"
+          "[Usage]: --data_shape \"input_name:[d0,d1,...][d0,d1,...] ...\"\n"
+          "[Example]: --data_shape \"input:[1,3,224,224][1,3,448,448][1,3,112,112]\"\n"
+          "With -I: generates random input of the specified shapes.\n"
+          "Without -I: selects test data folders whose tensor shapes match.\n"
+          "All inputs must have the same number of shape groups.\n"
+          "All dimension values must be positive integers.");
 ABSL_FLAG(bool, h, false, "Print program usage.");
 
 namespace onnxruntime {
@@ -480,6 +489,16 @@ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int a
 
   // -I
   test_config.run_config.generate_model_input_binding = absl::GetFlag(FLAGS_I);
+
+  // --data_shape
+  {
+    const auto& data_shape_str = absl::GetFlag(FLAGS_data_shape);
+    if (!data_shape_str.empty()) {
+      if (!ParseDataShapeGroups(data_shape_str, test_config.run_config.data_shape_groups)) {
+        return false;
+      }
+    }
+  }
 
   // -d
   if (absl::GetFlag(FLAGS_d) < 0) return false;
