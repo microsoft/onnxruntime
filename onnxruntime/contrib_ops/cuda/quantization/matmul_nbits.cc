@@ -110,8 +110,8 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
   }
 
   gemmProfiler_->setCudaKernelType(cuda_kernel_type, sm);
-  gemmProfiler_->setQuant(nbits_, has_bias_, has_zero_points_);
-  gemmProfiler_->setGroupSize(block_size_);
+  gemmProfiler_->setQuant(static_cast<int>(nbits_), has_bias_, has_zero_points_);
+  gemmProfiler_->setGroupSize(static_cast<int>(block_size_));
 
   auto allocator = this->Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
   gemmProfiler_->setAllocator(allocator);
@@ -120,15 +120,15 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
 template <typename T>
 void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int max_m) {
   // Number of 16-bit elements after casting int8/int4 to fp16.
-  int n_16b = N_ / (nbits_ == 8 ? 2 : 4);
+  int n_16b = static_cast<int>(N_ / (nbits_ == 8 ? 2 : 4));
 
   // Include the packing/kernel SM in the GEMM id so the SM80-compatibility and native SM90 kernels
   // (which need different tactics) do not share profiled configs for the same (N, K, dtype).
   const int kernel_sm = FpAIntBPackingSmForKernel();
   if constexpr (std::is_same_v<T, MLFloat16>) {
-    gemmId_ = GemmIdCore(n_16b, K_, onnxruntime::llm::nvinfer::DataType::kHALF, kernel_sm);
+    gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), onnxruntime::llm::nvinfer::DataType::kHALF, kernel_sm);
   } else if constexpr (std::is_same_v<T, BFloat16>) {
-    gemmId_ = GemmIdCore(n_16b, K_, onnxruntime::llm::nvinfer::DataType::kBF16, kernel_sm);
+    gemmId_ = GemmIdCore(n_16b, static_cast<int>(K_), onnxruntime::llm::nvinfer::DataType::kBF16, kernel_sm);
   }
 
   GemmDims dims = {min_m, max_m, n_16b, K_};
@@ -206,10 +206,10 @@ Status MatMulNBits<T>::PrePack_B([[maybe_unused]] const Tensor& tensor,
     if (nbits_ == 4) {
       // Transpose the weight and add default zero point.
       onnxruntime::llm::kernels::fpA_intB_gemv::unpack_uint4_transposed_to_int8_direct_cuda(
-          stream, packed_transposed_weight, blob_data, n, k);
+          stream, packed_transposed_weight, blob_data, static_cast<int>(n), static_cast<int>(k));
     } else {
       onnxruntime::llm::kernels::fpA_intB_gemv::transpose_uint8_matrix_and_convert_to_int8(
-          stream, packed_transposed_weight, blob_data, n, k);
+          stream, packed_transposed_weight, blob_data, static_cast<int>(n), static_cast<int>(k));
     }
 
     using onnxruntime::llm::kernels::weight_only::QuantType;
@@ -252,7 +252,7 @@ Status MatMulNBits<T>::PrePack_Scale([[maybe_unused]] const Tensor& tensor,
     CudaT* transposed_scales = reinterpret_cast<CudaT*>(fpA_intB_scale_buffer_.get());
 
     onnxruntime::llm::kernels::fpA_intB_gemv::launch_transpose_scale_kernel<CudaT>(
-        stream, reinterpret_cast<const CudaT*>(tensor.Data<T>()), transposed_scales, n, k_blocks);
+        stream, reinterpret_cast<const CudaT*>(tensor.Data<T>()), transposed_scales, static_cast<int>(n), static_cast<int>(k_blocks));
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
 
     DUMP_TENSOR_INIT();
@@ -288,16 +288,16 @@ Status MatMulNBits<T>::PrePack_ZeroPoint([[maybe_unused]] const Tensor& tensor,
       if (nbits_ == 4) {
         onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<true, CudaT, uint8_t>(
             stream, reinterpret_cast<const uint8_t*>(zero_points_data),
-            transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
+            transposed_scales, scaled_zero_points, static_cast<int>(n), static_cast<int>(k_blocks), default_zero_point);
       } else {
         onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<false, CudaT, uint8_t>(
             stream, reinterpret_cast<const uint8_t*>(zero_points_data),
-            transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
+            transposed_scales, scaled_zero_points, static_cast<int>(n), static_cast<int>(k_blocks), default_zero_point);
       }
     } else {  // zero point is not uint8_t type
       onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<false, CudaT, CudaT>(
           stream, reinterpret_cast<const CudaT*>(zero_points_data),
-          transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
+          transposed_scales, scaled_zero_points, static_cast<int>(n), static_cast<int>(k_blocks), default_zero_point);
     }
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
 
@@ -441,7 +441,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             a_data, pre_quant_scale_ptr, fpA_intB_weight,
             fpA_intB_scale_buffer_.get(), has_zero_points_ ? fpA_intB_zero_buffer_.get() : nullptr,
             bias_data, out_data,
-            alpha, m, n, k, block_size_, cuda_kernel_type, apply_alpha_in_advance);
+            alpha, m, n, k, static_cast<int>(block_size_), cuda_kernel_type, apply_alpha_in_advance);
 
         // Launch the GEMV with the arch the weights were PACKED for (FpAIntBPackingSmForKernel),
         // not the raw device SM. The GEMV interleave layout is arch-dependent: arch in [90,100)
@@ -463,7 +463,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             1.f,
             out_data,
             m, n, k,
-            block_size_,
+            static_cast<int>(block_size_),
             *bestTactic,
             reinterpret_cast<char*>(workspace_buffer.get()),
             workspace_size,
