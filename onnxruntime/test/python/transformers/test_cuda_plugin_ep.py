@@ -2095,6 +2095,32 @@ class TestCudaPluginEP(unittest.TestCase):
         )
         self.assertEqual(result, TEST_PASS, "ReduceSum test failed")
 
+    def _run_reduce_sum_integer_last_axis(self, onnx_dtype, np_dtype):
+        # Mirrors the qwen attention_mask usage: a rank-2 integer ReduceSum over the last axis.
+        # Integer ReduceSum takes a specialized path that does not use the float matrix fast path,
+        # so without cuDNN it must fall back to the general native kernel. Covering it here keeps the
+        # no-cuDNN CI honest for the exact layout that broke real models.
+        target_device = get_cuda_plugin_device()
+        model = _make_simple_model(
+            "ReduceSum",
+            [("X", onnx_dtype, [2, 8]), ("axes", TensorProto.INT64, [1])],
+            [("Y", onnx_dtype, [2, 1])],
+            attrs={"keepdims": 1},
+            opset=13,
+        )
+        axes_init = helper.make_tensor("axes", TensorProto.INT64, [1], [1])
+        model.graph.initializer.append(axes_init)
+        feed = {"X": np.arange(16, dtype=np_dtype).reshape(2, 8)}
+        return _run_model_test(target_device, "ReduceSum", model, feed, lambda f: np.sum(f["X"], axis=1, keepdims=True))
+
+    def test_op_reduce_sum_int64_last_axis(self):
+        result = self._run_reduce_sum_integer_last_axis(TensorProto.INT64, np.int64)
+        self.assertEqual(result, TEST_PASS, "ReduceSum int64 test failed")
+
+    def test_op_reduce_sum_int32_last_axis(self):
+        result = self._run_reduce_sum_integer_last_axis(TensorProto.INT32, np.int32)
+        self.assertEqual(result, TEST_PASS, "ReduceSum int32 test failed")
+
     def test_op_gather_nd(self):
         target_device = get_cuda_plugin_device()
         model = _make_simple_model(
