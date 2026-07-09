@@ -282,8 +282,12 @@ class TestFpAIntBConfigKeys(unittest.TestCase):
         return model, a, q_weight, scales
 
     def test_config_key_enables_fpa_intb(self):
-        # Baseline runs the standard dequant path (fpA_intB disabled); the config key must switch to
-        # the fpA_intB path and stay numerically equivalent. Only on/off is accepted.
+        # On fpA_intB-capable hardware (compute capability >= 7.5) the baseline (no config) runs the
+        # standard dequant path -- for a non-prepacked node the enable flag defaults to disabled --
+        # while the config key selects the fpA_intB path; the two paths must stay numerically
+        # equivalent. On sm < 75 both fall back to the dequant path, so this asserts equivalence
+        # rather than the switch itself (the prepacked tests force and exercise the fpA_intB kernel).
+        # Only on/off is accepted.
         model, a, _, _ = self._make_int4_case()
         ref = self._run(model, a)
         for value in ("1", "on", "all", "true"):
