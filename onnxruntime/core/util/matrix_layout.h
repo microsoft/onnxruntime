@@ -14,7 +14,10 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
+#include <type_traits>
+
 #include <gsl/gsl>
 
 #include "core/util/force_inline.h"
@@ -38,8 +41,10 @@ template <
     >
 struct Position {
  public:
+  static_assert(Rank_ > 0, "Position rank must be positive.");
+
   /// Number of elements in Position
-  static int const kRank = Rank_;
+  static constexpr int kRank = Rank_;
 
   /// Index type used to store elements
   using Index = Index_;
@@ -51,29 +56,29 @@ struct Position {
   Index idx[kRank];
 
  public:
-  ORT_FORCEINLINE explicit Position(Index value = Index(0)) {
+  ORT_FORCEINLINE constexpr explicit Position(Index value = Index(0)) {
     for (int i = 0; i < kRank; ++i) {
       idx[i] = value;
     }
   }
 
   /// Constructs from an array of integers
-  ORT_FORCEINLINE
+  ORT_FORCEINLINE constexpr
   Position(Index const (&_idx)[kRank]) {
     for (int i = 0; i < kRank; ++i) {
       idx[i] = _idx[i];
     }
   }
 
-  template <int R, typename I, typename L>
-  ORT_FORCEINLINE
-  Position(Position<R, I, L> other) {
+  template <typename I, typename L>
+  ORT_FORCEINLINE constexpr
+  Position(Position<Rank_, I, L> const& other) {
     for (int i = 0; i < kRank; ++i) {
       idx[i] = other[i];
     }
   }
 
-  ORT_FORCEINLINE
+  ORT_FORCEINLINE constexpr
   Position operator+(Position const& b) const {
     Position c;
     for (int i = 0; i < kRank; ++i) {
@@ -82,7 +87,7 @@ struct Position {
     return c;
   }
 
-  ORT_FORCEINLINE
+  ORT_FORCEINLINE constexpr
   Position operator-(Position const& b) const {
     Position c;
     for (int i = 0; i < kRank; ++i) {
@@ -91,7 +96,7 @@ struct Position {
     return c;
   }
 
-  ORT_FORCEINLINE
+  ORT_FORCEINLINE constexpr
   Position operator*(Position const& b) const {
     Position c;
     for (int i = 0; i < kRank; ++i) {
@@ -100,7 +105,7 @@ struct Position {
     return c;
   }
 
-  ORT_FORCEINLINE
+  ORT_FORCEINLINE constexpr
   Position operator/(Position const& b) const {
     Position c;
     for (int i = 0; i < kRank; ++i) {
@@ -109,7 +114,7 @@ struct Position {
     return c;
   }
 
-  ORT_FORCEINLINE
+  ORT_FORCEINLINE constexpr
   Position& operator+=(Position const& b) {
     for (int i = 0; i < kRank; ++i) {
       idx[i] += b.idx[i];
@@ -117,7 +122,7 @@ struct Position {
     return *this;
   }
 
-  ORT_FORCEINLINE
+  ORT_FORCEINLINE constexpr
   Position& operator-=(Position const& b) {
     for (int i = 0; i < kRank; ++i) {
       idx[i] -= b.idx[i];
@@ -125,7 +130,7 @@ struct Position {
     return *this;
   }
 
-  ORT_FORCEINLINE
+  ORT_FORCEINLINE constexpr
   Position& operator*=(Position const& b) {
     for (int i = 0; i < kRank; ++i) {
       idx[i] *= b.idx[i];
@@ -133,7 +138,7 @@ struct Position {
     return *this;
   }
 
-  ORT_FORCEINLINE
+  ORT_FORCEINLINE constexpr
   Position& operator/=(Position const& b) {
     for (int i = 0; i < kRank; ++i) {
       idx[i] /= b.idx[i];
@@ -141,11 +146,11 @@ struct Position {
     return *this;
   }
 
-  ORT_FORCEINLINE Index& operator[](int dim) { return idx[dim]; }
+  ORT_FORCEINLINE constexpr Index& operator[](int dim) { return idx[dim]; }
 
-  ORT_FORCEINLINE Index const& operator[](int dim) const { return idx[dim]; }
+  ORT_FORCEINLINE constexpr Index const& operator[](int dim) const { return idx[dim]; }
 
-  ORT_FORCEINLINE bool operator==(Position const& b) const {
+  ORT_FORCEINLINE constexpr bool operator==(Position const& b) const {
     bool equal = true;
     for (int i = 0; equal && i < kRank; ++i) {
       equal = (idx[i] == b.idx[i]);
@@ -153,9 +158,9 @@ struct Position {
     return equal;
   }
 
-  ORT_FORCEINLINE bool operator!=(Position const& b) const { return !(*this == b); }
+  ORT_FORCEINLINE constexpr bool operator!=(Position const& b) const { return !(*this == b); }
 
-  ORT_FORCEINLINE
+  ORT_FORCEINLINE constexpr
   Position& clamp(Position const& max, Position const& min = Position()) {
     for (int i = 0; i < kRank; ++i) {
       idx[i] = std::max(std::min(idx[i], max.idx[i]), min.idx[i]);
@@ -163,7 +168,7 @@ struct Position {
     return *this;
   }
 
-  ORT_FORCEINLINE
+  ORT_FORCEINLINE constexpr
   Index sum() const {
     Index sum_(idx[0]);
     for (int i = 1; i < kRank; ++i) {
@@ -172,7 +177,7 @@ struct Position {
     return sum_;
   }
 
-  ORT_FORCEINLINE
+  ORT_FORCEINLINE constexpr
   LongIndex product() const {
     LongIndex product_(idx[0]);
     for (int i = 1; i < kRank; ++i) {
@@ -183,15 +188,15 @@ struct Position {
 };
 
 template <typename T, typename L = int64_t>
-Position<2, T, L> make_Position(T _0, T _1) {
+constexpr Position<2, T, L> make_Position(T _0, T _1) {
   T values[2] = {_0, _1};
   return Position<2, T, L>(values);
 }
 
 template <typename T, typename L = int64_t>
-Position<3, T, L> make_Position(T _0, T _1, T _2) {
+constexpr Position<3, T, L> make_Position(T _0, T _1, T _2) {
   T values[3] = {_0, _1, _2};
-  return Position<2, T, L>(values);
+  return Position<3, T, L>(values);
 }
 
 /// Describes the size of a matrix tile
@@ -200,11 +205,13 @@ template <
     int Column_  ///< columns of a matrix
     >
 struct MatrixShape {
-  static int const kRow = Row_;              ///< rows of a matrix
-  static int const kColumn = Column_;        ///< columns of a matrix
-  static int const kCount = Row_ * Column_;  ///< total number of elements in a matrix
+  static_assert(Row_ >= 0 && Column_ >= 0, "Matrix dimensions must not be negative.");
 
-  ORT_FORCEINLINE static Position<2> toCoord() {
+  static constexpr int kRow = Row_;              ///< rows of a matrix
+  static constexpr int kColumn = Column_;        ///< columns of a matrix
+  static constexpr int kCount = Row_ * Column_;  ///< total number of elements in a matrix
+
+  ORT_FORCEINLINE static constexpr Position<2> toCoord() {
     return make_Position(kRow, kColumn);
   }
 };
@@ -228,27 +235,27 @@ class RowMajorLayout {
   Index stride_;
 
  public:
-  ORT_FORCEINLINE
+  ORT_FORCEINLINE constexpr
   RowMajorLayout(Index ldm = 0) : stride_(ldm) {}
 
-  ORT_FORCEINLINE static RowMajorLayout packed(MatCoord const& extent) {
+  ORT_FORCEINLINE static constexpr RowMajorLayout packed(MatCoord const& extent) {
     return RowMajorLayout(extent[1]);
   }
 
   /// Returns the offset of a coordinate in linear memory.
   /// Assumes coordinate has convention (row, column)
-  ORT_FORCEINLINE
+  ORT_FORCEINLINE constexpr
   LongIndex operator()(MatCoord const& coord) const {
     return LongIndex(coord[0]) * stride_ + coord[1];
   }
 
   /// Inverse of layout function, mapping linear offset to logical coordinate
-  ORT_FORCEINLINE
+  ORT_FORCEINLINE constexpr
   MatCoord inverse(LongIndex offset) const {
     return make_Position(Index(offset / stride_), Index(offset % stride_));
   }
 
-  ORT_FORCEINLINE
+  ORT_FORCEINLINE constexpr
   Index stride() const {
     return stride_;
   }
@@ -269,27 +276,27 @@ class ColumnMajorLayout {
   Index stride_;
 
  public:
-  ORT_FORCEINLINE
+  ORT_FORCEINLINE constexpr
   ColumnMajorLayout(Index ldm = 0) : stride_(ldm) {}
 
-  ORT_FORCEINLINE static ColumnMajorLayout packed(MatCoord const& extent) {
+  ORT_FORCEINLINE static constexpr ColumnMajorLayout packed(MatCoord const& extent) {
     return ColumnMajorLayout(extent[0]);
   }
 
   /// Returns the offset of a coordinate in linear memory.
   /// Assumes coordinate has convention (row, column)
-  ORT_FORCEINLINE
+  ORT_FORCEINLINE constexpr
   LongIndex operator()(MatCoord const& coord) const {
     return LongIndex(coord[1]) * LongIndex(stride_) + coord[0];
   }
 
   /// Inverse of layout function, mapping linear offset to logical coordinate
-  ORT_FORCEINLINE
+  ORT_FORCEINLINE constexpr
   MatCoord inverse(LongIndex offset) const {
     return make_Position(Index(offset % stride_), Index(offset / stride_));
   }
 
-  ORT_FORCEINLINE
+  ORT_FORCEINLINE constexpr
   Index stride() const {
     return stride_;
   }
