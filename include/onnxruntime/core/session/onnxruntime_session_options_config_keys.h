@@ -521,6 +521,15 @@ static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "sessio
 // "-1": heuristic - largest power-of-2 <= min(K, 256) that minimizes padding.
 static const char* const kOrtSessionOptionsQDQMatMulNBitsBlockSize = "session.qdq_matmulnbits_block_size";
 
+// Enables online tuning of the CUDA MatMulNBits small-M batched GEMV cap (weight-only int4/int8).
+// On the first call whose row count M falls in the batched-candidate range for a given weight shape,
+// the batched GEMV is micro-benchmarked against the dequantize + cuBLAS fallback and the crossover M is
+// cached, replacing the built-in per-device default with a measured one. The result is cached per shape.
+// Option values:
+// - "0": (default) use the built-in cap.
+// - "1": enable online tuning.
+static const char* const kOrtSessionOptionsConfigMatMulNBitsTuneSmallM = "ep.cuda.matmulnbits_tune_small_m";
+
 // Enable the DQ->MatMulNBits fusion graph transformer.
 // "0": disabled (default). "1": enabled.
 // This is typically set automatically by InferenceSession when the NvTensorRTRTX EP is registered.

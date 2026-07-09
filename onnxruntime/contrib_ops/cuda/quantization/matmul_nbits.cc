@@ -4,6 +4,12 @@
 #include "contrib_ops/cuda/quantization/matmul_nbits.h"
 
 #include <cstdint>
+#include <algorithm>
+#include <limits>
+#include <mutex>
+#include <type_traits>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "core/common/status.h"
 #include "core/common/float16.h"
@@ -307,6 +313,197 @@ Status MatMulNBits<T>::PrePack_ZeroPoint([[maybe_unused]] const Tensor& tensor,
 }
 #endif
 
+namespace {
+// Process-global cache of tuned batched-GEMV caps, shared across all MatMulNBits nodes so that the
+// handful of distinct weight shapes in a model are profiled once rather than per node.
+std::mutex g_small_m_cap_mutex;
+std::unordered_map<uint64_t, int> g_small_m_cap_cache;
+// Keys currently being profiled by some thread, so concurrent first calls for the same shape do not
+// each run the (one-time) micro-benchmark.
+std::unordered_set<uint64_t> g_small_m_cap_in_progress;
+
+uint64_t MakeSmallMCapKey(int dtype_tag, int64_t k, int64_t n, int64_t block_size, int64_t bits,
+                          int zp_kind, int sm, int sm_count, int64_t l2_cache_size) {
+  uint64_t h = 1469598103934665603ull;
+  auto mix = [&](uint64_t v) {
+    h ^= v;
+    h *= 1099511628211ull;
+  };
+  mix(static_cast<uint64_t>(dtype_tag));
+  mix(static_cast<uint64_t>(k));
+  mix(static_cast<uint64_t>(n));
+  mix(static_cast<uint64_t>(block_size));
+  mix(static_cast<uint64_t>(bits));
+  mix(static_cast<uint64_t>(zp_kind));
+  // Device identity: compute capability alone does not distinguish two SM-equal GPUs with different
+  // SM counts / L2 (e.g. A100 vs A30), whose crossover differs, so mix those in too.
+  mix(static_cast<uint64_t>(sm));
+  mix(static_cast<uint64_t>(sm_count));
+  mix(static_cast<uint64_t>(l2_cache_size));
+  return h;
+}
+}  // namespace
+
+template <typename T>
+int MatMulNBits<T>::ResolveSmallMBatchedCap(OpKernelContext* ctx,
+                                            const uint8_t* blob_data,
+                                            const void* scales_data,
+                                            const void* zero_points_data,
+                                            bool zero_points_is_typed,
+                                            int n, int k, int64_t k_padded) const {
+  constexpr int kUseCompileTimeCap = std::numeric_limits<int>::max();
+
+  if constexpr (!(std::is_same_v<T, MLFloat16> || std::is_same_v<T, BFloat16>)) {
+    return kUseCompileTimeCap;  // float has no batched GEMV to tune.
+  } else {
+    if (!tune_small_m_) {
+      return kUseCompileTimeCap;
+    }
+
+    int cached = resolved_small_m_cap_.load(std::memory_order_relaxed);
+    if (cached >= 0) {
+      return cached;
+    }
+
+    // The batched fast path (and hence tuning) only applies to the column-wise, non-typed-zero-point
+    // case that the dequant fallback below also serves. Typed zero points and the chunked large-N path
+    // are left on the compile-time cap.
+    const int64_t scratch_bytes = static_cast<int64_t>(N_) * k_padded * static_cast<int64_t>(sizeof(T));
+    const bool will_use_chunked = column_wise_quant_blk_ &&
+                                  (force_chunked_ ||
+                                   ((scratch_bytes > 256 * 1024 * 1024) && (N_ > chunk_target_rows_ * 2)));
+    if (!column_wise_quant_blk_ || will_use_chunked || zero_points_is_typed) {
+      resolved_small_m_cap_.store(kUseCompileTimeCap, std::memory_order_relaxed);
+      return kUseCompileTimeCap;
+    }
+
+    const int zp_kind = zero_points_data == nullptr ? 0 : 1;  // 0: none, 1: uint8
+    const int dtype_tag = std::is_same_v<T, MLFloat16> ? 1 : 2;
+    const auto& device_prop = this->GetDeviceProp();
+    const uint64_t key = MakeSmallMCapKey(dtype_tag, K_, N_, block_size_, nbits_, zp_kind, sm_,
+                                          device_prop.multiProcessorCount, device_prop.l2CacheSize);
+    {
+      std::lock_guard<std::mutex> lock(g_small_m_cap_mutex);
+      auto it = g_small_m_cap_cache.find(key);
+      if (it != g_small_m_cap_cache.end()) {
+        resolved_small_m_cap_.store(it->second, std::memory_order_relaxed);
+        return it->second;
+      }
+      if (g_small_m_cap_in_progress.count(key) != 0) {
+        // Another thread is profiling this shape. Use the built-in cap for this call (a safe default)
+        // and pick up the tuned value on a later call, rather than profiling redundantly. Do not store
+        // to resolved_small_m_cap_ so this node retries.
+        return kUseCompileTimeCap;
+      }
+      g_small_m_cap_in_progress.insert(key);
+    }
+
+    typedef typename onnxruntime::cuda::OrtToCudaType<T>::type CudaT;
+    cudaStream_t stream = this->Stream(ctx);
+    const int max_probe = (nbits_ == 8) ? 8 : 16;  // structural max M of the batched kernels (CtaM range).
+
+    auto a_buf = this->template GetScratchBuffer<CudaT>(static_cast<size_t>(max_probe) * k, this->GetComputeStream(ctx));
+    auto y_buf = this->template GetScratchBuffer<CudaT>(static_cast<size_t>(max_probe) * n, this->GetComputeStream(ctx));
+    auto b_buf = this->template GetScratchBuffer<CudaT>(static_cast<size_t>(n) * k_padded, this->GetComputeStream(ctx));
+    CudaT* a_data = a_buf.get();
+    CudaT* y_data = y_buf.get();
+    CudaT* b_dequant = b_buf.get();
+    CUDA_CALL_THROW(cudaMemsetAsync(a_data, 0, static_cast<size_t>(max_probe) * k * sizeof(CudaT), stream));
+
+    const CudaT* scales = reinterpret_cast<const CudaT*>(scales_data);
+    const uint8_t* zp = static_cast<const uint8_t*>(zero_points_data);
+    const size_t shared_mem_per_block = this->GetDeviceProp().sharedMemPerBlock;
+    const CudaT alpha = onnxruntime::cuda::OrtToCudaType<T>::FromFloat(1.f);
+    const CudaT zero = onnxruntime::cuda::OrtToCudaType<T>::FromFloat(0.f);
+
+    auto time_ms = [&](auto&& fn, int iters) -> float {
+      for (int i = 0; i < 5; i++) fn();
+      cudaEvent_t start, end;
+      CUDA_CALL_THROW(cudaEventCreate(&start));
+      CUDA_CALL_THROW(cudaEventCreate(&end));
+      CUDA_CALL_THROW(cudaEventRecord(start, stream));
+      for (int i = 0; i < iters; i++) fn();
+      CUDA_CALL_THROW(cudaEventRecord(end, stream));
+      CUDA_CALL_THROW(cudaEventSynchronize(end));
+      float ms = 0.f;
+      CUDA_CALL_THROW(cudaEventElapsedTime(&ms, start, end));
+      CUDA_CALL_THROW(cudaEventDestroy(start));
+      CUDA_CALL_THROW(cudaEventDestroy(end));
+      return ms / iters;
+    };
+
+    auto run_batched = [&](int m) -> bool {
+      return TryMatMulNBits<CudaT>(static_cast<int>(nbits_), y_data, a_data, blob_data, scales, zp,
+                                   /*bias_data*/ static_cast<const CudaT*>(nullptr), m, n, k,
+                                   static_cast<int>(block_size_), shared_mem_per_block, stream, /*max_batched_m*/ m);
+    };
+
+    auto run_dequant = [&](int m) {
+      if (nbits_ == 8) {
+        ORT_IGNORE_RETURN_VALUE((Dequantize8Bits<CudaT, uint8_t>(b_dequant, blob_data, scales, zp, nullptr,
+                                                                 SafeInt<int>(k_padded), n, SafeInt<int>(block_size_), stream)));
+      } else {
+        ORT_IGNORE_RETURN_VALUE((Dequantize4Bits<CudaT, uint8_t>(b_dequant, blob_data, scales, zp, nullptr,
+                                                                 SafeInt<int>(k_padded), n, SafeInt<int>(block_size_), stream)));
+      }
+      ORT_IGNORE_RETURN_VALUE(cublasGemmHelper(GetCublasHandle(ctx), CUBLAS_OP_T, CUBLAS_OP_N, n, m, k,
+                                               &alpha, b_dequant, SafeInt<int>(k_padded), a_data, k,
+                                               &zero, y_data, n, GetDeviceProp(), UseTF32()));
+    };
+
+    constexpr int kIters = 30;
+    // Warm up the batched kernel's CtaM tiers (each distinct CtaM/CtaN is its own instantiation) and the
+    // dequant path so the timed measurements below exclude one-time module-load / cuBLAS-setup costs.
+    for (int wm : {2, 4, 8, max_probe}) {
+      if (wm >= 2 && wm <= max_probe && run_batched(wm)) run_dequant(wm);
+    }
+    CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+
+    // Does the batched GEMV beat dequant + cuBLAS at M=m, by a margin? median-of-3 per path (robust to a
+    // single noisy sample) and a small margin give hysteresis so near-ties don't flip the cap run-to-run.
+    constexpr float kMargin = 0.02f;  // batched must be >=2% faster to be preferred.
+    auto batched_wins = [&](int m) -> bool {
+      auto med3 = [&](auto&& fn) {
+        float a = time_ms(fn, kIters), b = time_ms(fn, kIters), c = time_ms(fn, kIters);
+        return a + b + c - std::min({a, b, c}) - std::max({a, b, c});
+      };
+      const float tb = med3([&] { run_batched(m); });
+      const float td = med3([&] { run_dequant(m); });
+      return tb < td * (1.0f - kMargin);
+    };
+
+    // The batched kernel's cost is ~linear in M: it skips padded rows (only the real M rows compute), so
+    // batched(M) rises with M while dequant + cuBLAS is ~flat. Hence "batched wins" is monotone in M with
+    // a single crossover, and the cap can land at any M (not only CtaM tier ends). Binary-search the
+    // boundary (largest M where batched wins), seeding the first probe at the built-in cap so a GPU that
+    // matches the reference converges in ~2 probes.
+    const int seed = std::min((nbits_ == 8) ? 5 : 16, max_probe);
+    int cap = 1;  // 1 disables batched (m>=2 all use dequant).
+    if (run_batched(2) && batched_wins(2)) {
+      cap = 2;
+      int lo = 3, hi = max_probe;
+      int probe = std::max(lo, std::min(hi, seed));
+      while (lo <= hi) {
+        if (run_batched(probe) && batched_wins(probe)) {
+          cap = probe;
+          lo = probe + 1;
+        } else {
+          hi = probe - 1;
+        }
+        probe = (lo + hi) / 2;
+      }
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(g_small_m_cap_mutex);
+      g_small_m_cap_cache[key] = cap;
+      g_small_m_cap_in_progress.erase(key);
+    }
+    resolved_small_m_cap_.store(cap, std::memory_order_relaxed);
+    return cap;
+  }
+}
+
 template <typename T>
 Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   if constexpr (std::is_same_v<T, BFloat16>) {
@@ -463,6 +660,20 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 #endif
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<T>())) {
+    // Resolve the batched-GEMV cap for this shape/device (INT_MAX unless online tuning is enabled).
+    // Only M in the batched-candidate range can use the batched path, so restrict tuning to it: M==1
+    // (decode) uses the single-row kernel and M beyond the structural max (e.g. prefill) always uses
+    // dequant + cuBLAS, so neither should pay the one-time profiling cost.
+    int max_batched_m = std::numeric_limits<int>::max();
+    const int batched_structural_max = (nbits_ == 8) ? 8 : 16;
+    if (m >= 2 && m <= batched_structural_max) {
+      const int64_t k_padded_for_tune = (K_ + block_size_ - 1) / block_size_ * block_size_;
+      max_batched_m = ResolveSmallMBatchedCap(
+          ctx, blob_data, reinterpret_cast<const void*>(scales_data), zero_points_data,
+          /*zero_points_is_typed*/ (zero_points != nullptr && zero_points->IsDataType<T>()),
+          n, k, k_padded_for_tune);
+    }
+
     // First, try the fused fast path. It handles bias only for the GPT-OSS router GEMV
     // specialization; for other shapes it fails when bias is present.
     if (TryMatMulNBits(
@@ -478,7 +689,8 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             k,
             SafeInt<int>(block_size_),
             GetDeviceProp().sharedMemPerBlock,
-            stream)) {
+            stream,
+            max_batched_m)) {
       return Status::OK();
     }
 
@@ -499,7 +711,8 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             k,
             SafeInt<int>(block_size_),
             GetDeviceProp().sharedMemPerBlock,
-            stream)) {
+            stream,
+            max_batched_m)) {
       LaunchMatMulNBitsBiasAdd<CudaT>(
           reinterpret_cast<CudaT*>(Y->MutableData<T>()),
           reinterpret_cast<const CudaT*>(bias_data),
