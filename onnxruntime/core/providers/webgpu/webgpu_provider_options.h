@@ -18,6 +18,7 @@ constexpr const char* kSessionBufferPoolGenerations = "ep.webgpuexecutionprovide
 constexpr const char* kEnableInt64 = "ep.webgpuexecutionprovider.enableInt64";
 constexpr const char* kMultiRotaryCacheConcatOffset = "ep.webgpuexecutionprovider.multiRotaryCacheConcatOffset";
 constexpr const char* kKvCacheQuantizationBits = "ep.webgpuexecutionprovider.kvCacheQuantizationBits";
+constexpr const char* kSoftmaxAlgorithm = "ep.webgpuexecutionprovider.softmaxAlgorithm";
 
 constexpr const char* kDawnProcTable = "ep.webgpuexecutionprovider.dawnProcTable";
 
@@ -73,6 +74,9 @@ constexpr const char* kPreserveDevice_OFF = "0";
 // (Future: "8" for 8-bit.)
 constexpr const char* kKvCacheQuantizationBits_OFF = "0";
 constexpr const char* kKvCacheQuantizationBits_4Bit = "4";
+
+constexpr const char* kSoftmaxAlgorithm_Naive = "naive";
+constexpr const char* kSoftmaxAlgorithm_Online = "online";
 
 constexpr const char* kBufferCacheMode_Disabled = "disabled";
 constexpr const char* kBufferCacheMode_LazyRelease = "lazyRelease";

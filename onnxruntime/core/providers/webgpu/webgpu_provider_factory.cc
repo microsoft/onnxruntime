@@ -36,6 +36,17 @@ struct WebGpuProviderFactory : IExecutionProviderFactory {
 
 namespace {
 
+const char* ToString(SoftmaxAlgorithm algorithm) {
+  switch (algorithm) {
+    case SoftmaxAlgorithm::Naive:
+      return kSoftmaxAlgorithm_Naive;
+    case SoftmaxAlgorithm::Online:
+      return kSoftmaxAlgorithm_Online;
+    default:
+      return "unknown";
+  }
+}
+
 WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options) {
   WebGpuExecutionProviderConfig webgpu_ep_config{};
 
@@ -109,6 +120,17 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
     }
   }
 
+  if (std::string softmax_algorithm_str;
+      config_options.TryGetConfigEntry(kSoftmaxAlgorithm, softmax_algorithm_str)) {
+    if (softmax_algorithm_str == kSoftmaxAlgorithm_Naive) {
+      webgpu_ep_config.softmax_algorithm = SoftmaxAlgorithm::Naive;
+    } else if (softmax_algorithm_str == kSoftmaxAlgorithm_Online) {
+      webgpu_ep_config.softmax_algorithm = SoftmaxAlgorithm::Online;
+    } else {
+      ORT_THROW("Invalid softmaxAlgorithm value: ", softmax_algorithm_str, ". Must be \"naive\" or \"online\".");
+    }
+  }
+
   // parse force CPU node names
   // The force CPU node names are separated by EOL (\n or \r\n) in the config entry.
   // each line is a node name that will be forced to run on CPU.
@@ -147,6 +169,7 @@ WebGpuExecutionProviderConfig ParseEpConfig(const ConfigOptions& config_options)
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP enable int64: " << webgpu_ep_config.enable_int64;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP multi rotary cache concat offset: " << webgpu_ep_config.multi_rotary_cache_concat_offset;
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP session buffer pool generations: " << webgpu_ep_config.session_buffer_pool_generations;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP softmax algorithm: " << ToString(webgpu_ep_config.softmax_algorithm);
 
   return webgpu_ep_config;
 }

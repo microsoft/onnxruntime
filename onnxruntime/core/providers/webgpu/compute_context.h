@@ -117,6 +117,10 @@ class ComputeContextBase {
     return ep_.KvCacheQuantizationEnabled();
   }
 
+  inline webgpu::SoftmaxAlgorithm GetSoftmaxAlgorithm() const {
+    return ep_.GetSoftmaxAlgorithm();
+  }
+
   //
   // Get the logger.
   //

@@ -26,6 +26,11 @@ struct pthreadpool;
 namespace onnxruntime {
 namespace webgpu {
 
+enum class SoftmaxAlgorithm {
+  Naive,
+  Online,
+};
+
 // forward declaration for this EP's namespace.
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
@@ -52,6 +57,7 @@ struct WebGpuExecutionProviderConfig {
   // generator's worth of intermediate buffers.
   size_t session_buffer_pool_generations{1};
   uint32_t kv_cache_quantization_bits{0};  // KV cache quantization bits (0 = off, 4 = 4-bit)
+  webgpu::SoftmaxAlgorithm softmax_algorithm{webgpu::SoftmaxAlgorithm::Naive};
   std::vector<std::string> force_cpu_node_names{};
 };
 
@@ -115,6 +121,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   uint32_t MultiRotaryCacheConcatOffset() const { return multi_rotary_cache_concat_offset_; }
   uint32_t KvCacheQuantizationBits() const { return kv_cache_quantization_bits_; }
   bool KvCacheQuantizationEnabled() const { return kv_cache_quantization_bits_ != 0; }
+  webgpu::SoftmaxAlgorithm GetSoftmaxAlgorithm() const { return softmax_algorithm_; }
 
 #if defined(ORT_USE_EP_API_ADAPTERS)
   inline onnxruntime::ep::adapter::Logger& GetEpLogger() const {
@@ -139,6 +146,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool enable_int64_ = false;
   uint32_t multi_rotary_cache_concat_offset_ = 0;
   uint32_t kv_cache_quantization_bits_ = 0;
+  webgpu::SoftmaxAlgorithm softmax_algorithm_{webgpu::SoftmaxAlgorithm::Naive};
   std::unordered_map<int, int> graph_id_to_run_count_;
   // Required regular runs before graph capture for any necessary allocations.
   const int min_num_runs_before_graph_capture_ = 0;

@@ -38,8 +38,8 @@ class Softmax final : public WebGpuKernel {
 
 class SoftmaxProgram final : public Program<SoftmaxProgram> {
  public:
-  SoftmaxProgram(uint32_t wg, bool is_fp32)
-      : Program{"Softmax"}, wg_{wg}, is_fp32_{is_fp32} {
+  SoftmaxProgram(uint32_t wg, bool is_fp32, SoftmaxAlgorithm algorithm)
+    : Program{"Softmax"}, wg_{wg}, is_fp32_{is_fp32}, algorithm_{algorithm} {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -49,6 +49,7 @@ class SoftmaxProgram final : public Program<SoftmaxProgram> {
  private:
   uint32_t wg_;
   bool is_fp32_;
+  SoftmaxAlgorithm algorithm_;
 };
 
 }  // namespace webgpu
