@@ -2068,7 +2068,7 @@ struct TensorTypeAndShapeInfoImpl : Base<T> {
   /// Wraps OrtApi::GetTensorShapeElementCount.
   /// Returns the number of logical elements in the tensor (the product of its shape dimensions).
   /// Use Ort::Value::GetTensorSizeInBytes() when sizing or bounds-checking the raw buffer returned
-  /// by GetTensorRawData()/GetTensorData<T>().
+  /// by GetTensorRawData()/GetTensorData\<T\>().
   size_t GetElementCount() const;
 
   size_t GetDimensionsCount() const;  ///< Wraps OrtApi::GetDimensionsCount
@@ -2354,7 +2354,7 @@ struct ConstValueImpl : Base<T> {
   /// sizeof(element_type) * total_element_count. For packed sub-byte types (e.g. int4/uint4)
   /// it is the actual packed storage size, which is smaller than the element count returned by
   /// GetTensorTypeAndShapeInfo().GetElementCount(). Use this value (not the element count) when
-  /// copying or bounds-checking the raw buffer from GetTensorRawData()/GetTensorData<T>().
+  /// copying or bounds-checking the raw buffer from GetTensorRawData()/GetTensorData\<T\>().
   /// </summary>
   /// <returns>The total size of the tensor data in bytes</returns>
   size_t GetTensorSizeInBytes() const;  ///< Wraps OrtApi::GetTensorSizeInBytes
