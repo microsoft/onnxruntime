@@ -375,6 +375,7 @@ libs = []
 if platform.system() == "Linux" or platform.system() == "AIX":
     libs = [
         "onnxruntime_pybind11_state.so",
+        "onnxruntime_cuda_quant_preprocess.so",
         "libdnnl.so.2",
         "libmklml_intel.so",
         "libmklml_gnu.so",
@@ -388,6 +389,13 @@ if platform.system() == "Linux" or platform.system() == "AIX":
     dl_libs.append(providers_cann)
     dl_libs.append(providers_qnn)
     dl_libs.append("libonnxruntime.so*")
+    # onnxruntime_cuda_quant_preprocess.so is a standalone CUDA extension module used only as a
+    # byte-parity oracle for the PyTorch weight packer. It is built (and thus present here) only
+    # when the CMake option onnxruntime_BUILD_CUDA_QUANT_PREPROCESS is ON. The glob-based filters below
+    # drop missing files, so listing it here is a no-op when it was not built. It must be listed in
+    # dl_libs (not just libs) so that manylinux test wheels include it: the manylinux packaging path
+    # builds "data" from dl_libs only (see the is_manylinux block below).
+    dl_libs.append("onnxruntime_cuda_quant_preprocess.so")
     # DNNL, TensorRT, OpenVINO, and QNN EPs are built as shared libs
     libs.extend(["libonnxruntime_providers_shared.so"])
     libs.extend(["libonnxruntime_providers_dnnl.so"])
@@ -422,6 +430,7 @@ if platform.system() == "Linux" or platform.system() == "AIX":
 elif platform.system() == "Darwin":
     libs = [
         "onnxruntime_pybind11_state.so",
+        "onnxruntime_cuda_quant_preprocess.so",
         "libdnnl.2.dylib",
         "mimalloc.so",
         "libonnxruntime*.dylib",

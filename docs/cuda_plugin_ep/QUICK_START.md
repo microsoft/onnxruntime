@@ -146,7 +146,7 @@ sess = ort.InferenceSession(
 
 **Python `OrtValue` host/device copies:**
 
-`OrtValue.update_inplace()` and `OrtValue.numpy()` work with CUDA plugin tensors after the plugin has been registered. On Linux, the ONNX Runtime Python binding links the CUDA runtime and can fall back to direct `cudaMemcpy` if the legacy CUDA provider bridge is unavailable. On Windows, the Python binding is built with `ORT_NO_CUDA_IN_PYBIND`, so it cannot call CUDA runtime APIs directly; host/device copies must use the data-transfer implementation registered by the CUDA plugin library. If `OrtValue.update_inplace()` fails with a message about the CUDA provider interface or an unsupported GPU device, verify that the plugin library is registered before creating or updating CUDA `OrtValue` objects.
+`OrtValue.update_inplace()` and `OrtValue.numpy()` work with CUDA plugin tensors after the plugin has been registered. The Python binding cannot call CUDA runtime APIs directly; host/device copies must use the data-transfer implementation registered by the CUDA plugin library. If `OrtValue.update_inplace()` fails with a message about the CUDA provider interface or an unsupported GPU device, verify that the plugin library is registered before creating or updating CUDA `OrtValue` objects.
 
 ### External GPU Allocator Options
 
