@@ -5,6 +5,7 @@
 #include "core/common/span_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/graph/graph_utils.h"
+#include "core/optimizer/propagate_cast_ops_metadata.h"
 #include "core/optimizer/utils.h"
 #include <deque>
 
@@ -80,20 +81,9 @@ static bool IsRelevantInput(const Node* node, const NodeArg* input) {
    *  performed in float or float16. If an opcode is not listed in these tables, the code will look at all the inputs to validate
    *  transformation.
    */
-  static const InlinedHashMap<std::string_view, std::array<int, 3>> opcode_to_input_map = {
-      {"Gather", {0}},
-      {"Reshape", {0}},
-      {"Dropout", {0}},
-      {"Expand", {0}},
-      {"LayerNormalization", {0, 1, 2}},
-      {"Squeeze", {0}},
-      {"Unsqueeze", {0}}};
-
-  auto it = opcode_to_input_map.find(node->OpType());
-  if (it != opcode_to_input_map.cend()) {
-    const auto& selected_inputs = it->second;
-    int input_index = optimizer_utils::IndexOfNodeInput(*node, *input);
-    return std::find(selected_inputs.begin(), selected_inputs.end(), input_index) != selected_inputs.end();
+  const auto* metadata = propagate_cast_ops_internal::FindRelevantOpArgs(node->OpType());
+  if (metadata != nullptr) {
+    return metadata->IsRelevantInput(optimizer_utils::IndexOfNodeInput(*node, *input));
   }
   return true;
 }
@@ -109,20 +99,9 @@ static bool IsRelevantOutput(const Node* node, const NodeArg* output) {
    *  performed in float or float16. If an opcode is not listed in these tables, the code will look at all the outputs to validate
    *  transformation.
    */
-  static const InlinedHashMap<std::string_view, std::array<int, 1>> opcode_to_output_map = {
-      {"Gather", {0}},
-      {"Reshape", {0}},
-      {"Dropout", {0}},
-      {"Expand", {0}},
-      {"LayerNormalization", {0}},
-      {"Squeeze", {0}},
-      {"Unsqueeze", {0}}};
-
-  auto it = opcode_to_output_map.find(node->OpType());
-  if (it != opcode_to_output_map.cend()) {
-    const auto& selected_outputs = it->second;
-    int input_index = optimizer_utils::IndexOfNodeOutput(*node, *output);
-    return std::find(selected_outputs.begin(), selected_outputs.end(), input_index) != selected_outputs.end();
+  const auto* metadata = propagate_cast_ops_internal::FindRelevantOpArgs(node->OpType());
+  if (metadata != nullptr) {
+    return metadata->IsRelevantOutput(optimizer_utils::IndexOfNodeOutput(*node, *output));
   }
   return true;
 }
