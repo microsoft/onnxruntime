@@ -539,9 +539,9 @@ static void ConvolveSme(const size_t co, //channels out
         // LHS packing data
         const float* pad_data = GetOrCreatePadDataSme(ci);
         std::unique_ptr<float[]> nhwc_holder;
-        const float* activation_src = input_group;
+        const float* activation_src = in;
         if (!input_is_channels_last) {
-            nhwc_holder = NChwToNhwc(1, ci, ih, iw, input_group, 1, 1, false, ThreadPool);
+            nhwc_holder = NChwToNhwc(1, ci, ih, iw, in, 1, 1, false, ThreadPool);
             activation_src = nhwc_holder.get();
         }
         auto lhs_ptrs = GetOrCreateLhsPtrTableSme(ci, ih, iw, d_kh, d_kw, sh, sw, padding, pad_data);
