@@ -42,8 +42,12 @@ class ReshapeHelper {
         }
         size *= dim;
         if (dim == 0) {
-          has_zero_dim = true;
+          has_zero_dim = allow_zero;
         } else {
+          if (size_for_inference > (std::numeric_limits<int64_t>::max() / dim)) {
+            ORT_THROW("The requested shape has too many elements. Input shape:", input_shape,
+                      ", requested shape:", TensorShape(requested_shape));
+          }
           size_for_inference *= dim;
         }
       }
@@ -64,6 +68,10 @@ class ReshapeHelper {
         int64_t input_shape_non_zero_size = 1;
         for (size_t i = 0; i < input_shape.NumDimensions(); ++i) {
           if (input_shape[i] != 0) {
+            if (input_shape_non_zero_size > (std::numeric_limits<int64_t>::max() / input_shape[i])) {
+              ORT_THROW("The input shape has too many elements. Input shape:", input_shape,
+                        ", requested shape:", TensorShape(requested_shape));
+            }
             input_shape_non_zero_size *= input_shape[i];
           }
         }
