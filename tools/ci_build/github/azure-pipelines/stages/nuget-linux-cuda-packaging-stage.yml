@@ -38,6 +38,7 @@ stages:
         Context: tools/ci_build/github/linux/docker/inference/x86_64/default/cuda${{ variables.CUDA_VERSION_MAJOR }}
         DockerBuildArgs: " --build-arg BUILD_UID=$( id -u )"
         Repository: onnxruntimecuda${{ variables.CUDA_VERSION_MAJOR }}build
+    - template: ../templates/steps/ccache-and-vcpkg.yml
 
     - script: $(Build.SourcesDirectory)/tools/ci_build/github/linux/build_cuda_c_api_package.sh
       workingDirectory: $(Build.SourcesDirectory)

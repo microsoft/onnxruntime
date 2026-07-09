@@ -1,0 +1,24 @@
+steps:
+- pwsh: |
+    echo "##vso[task.setvariable variable=CCACHE_DIR;isOutput=false]${env:AGENT_TEMPDIRECTORY}/.ccache"
+    echo "##vso[task.setvariable variable=VCPKG_DEFAULT_BINARY_CACHE;isOutput=false]${env:AGENT_TEMPDIRECTORY}/.vcpkg-cache"
+
+    # vcpkg will error/exit if `VCPKG_DEFAULT_BINARY_CACHE` does not exist as a directory.
+    # c.f.  ccache happily creates the cache dir if it does not exist.
+    #       Don't create ccache's dir so that `action/cache` skips if ccache isn't populated.
+    New-Item -ItemType Directory -Path "${env:AGENT_TEMPDIRECTORY}/.vcpkg-cache" -Force
+  displayName: Set ccache & vcpkg dirs
+
+- task: Cache@2
+  displayName: Pull/push ccache cache
+  continueOnError: true
+  inputs:
+    key:  '"ccache" | "$(System.StageName)" | "$(System.PhaseName)" | "$(Build.BuildId)"'
+    path: $(Agent.TempDirectory)/.ccache
+
+- task: Cache@2
+  displayName: Pull/push vcpkg cache
+  continueOnError: true
+  inputs:
+    key:  '"vcpkg" | "$(System.StageName)" | "$(System.PhaseName)" | "$(Build.BuildId)"'
+    path: $(Agent.TempDirectory)/.vcpkg-cache
