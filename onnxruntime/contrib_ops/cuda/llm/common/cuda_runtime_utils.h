@@ -16,12 +16,13 @@
  */
 #pragma once
 
+#include <cstdlib>
 #include <optional>
+#include <string>
 #include <cuda_runtime_api.h>
 #ifdef ENABLE_FP8
 #include <cuda_fp8.h>
 #endif
-#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/platform/env_var_utils.h"
 
@@ -63,7 +64,18 @@ inline std::optional<bool> isCudaLaunchBlocking() {
   thread_local bool firstCall = true;
   thread_local std::optional<bool> result = std::nullopt;
   if (!firstCall) {
-    result = ParseEnvironmentVariableWithDefault<int>("CUDA_LAUNCH_BLOCKING", 0) == 1;
+    // Read the env var directly here instead of via core/platform/env_var_utils.h.
+    // This is a leaf CUDA header pulled in by kernel headers (e.g. compute_occupancy.h)
+    // BEFORE the SHARED_PROVIDER bridge (provider_api.h) is established. env_var_utils.h
+    // unconditionally includes core/common/logging/logging.h while SHARED_PROVIDER is
+    // undefined, which then clashes with the logging stubs provider_api.h defines later in
+    // the same translation unit. Using std::getenv keeps this header self-contained.
+    char const* env = std::getenv("CUDA_LAUNCH_BLOCKING");
+    if (env != nullptr && std::string(env) == "1") {
+      result = true;
+    } else {
+      result = false;
+    }
     firstCall = false;
   }
   return result;
