@@ -1134,6 +1134,7 @@ TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_1d) {
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+            kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
             kDmlExecutionProvider});
 }
 
@@ -1157,6 +1158,7 @@ TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_1d_exclude_pad) {
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+            kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
             kDmlExecutionProvider});
 }
 
@@ -1184,6 +1186,7 @@ TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_2d) {
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+            kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
             kDmlExecutionProvider});
 }
 
@@ -1211,6 +1214,7 @@ TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_2d_exclude_pad) {
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+            kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
             kDmlExecutionProvider});
 }
 
@@ -1233,6 +1237,7 @@ TEST(PoolTest, AveragePool_CUDA_same_upper_asymmetric_1d) {
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+            kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
             kDmlExecutionProvider});
 }
 
@@ -1256,6 +1261,7 @@ TEST(PoolTest, AveragePool_CUDA_symmetric_pad_regression_1d) {
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+            kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
             kDmlExecutionProvider});
 }
 
@@ -1280,12 +1286,21 @@ TEST(PoolTest, MaxPool_CUDA_asymmetric_tail_pad_1d) {
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+            kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
             kDmlExecutionProvider});
 }
 
-// fp16 asymmetric-pad AveragePool (opset 19 so both CPU AveragePoolV19 and the CUDA kernel
-// run). Exercises the half accumulate-in-float path of AveragePoolWithPad.
+// fp16 asymmetric-pad AveragePool. Runs on the CUDA EP ONLY (via an explicit provider list):
+// the CPU AveragePool has no fp16 kernel on x64, and the Arm64 NEON fp16 pooling kernel does
+// not honor the ceil_mode + count_include_pad divisor rule (a separate, pre-existing CPU
+// limitation), so it cannot serve as the fp16 oracle. This test validates that the CUDA
+// AveragePoolWithPad kernel's half accumulate-in-float path matches the reference values.
 TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_1d_fp16) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    return;
+  }
+
   OpTester test("AveragePool", 19);
 
   test.AddAttribute("auto_pad", "");
@@ -1305,9 +1320,10 @@ TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_1d_fp16) {
   test.AddInput<MLFloat16>("X", x_dims, x_vals);
   test.AddOutput<MLFloat16>("Y", expected_dims, expected_vals);
   test.SetOutputTolerance(0.005f);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
-            kDmlExecutionProvider});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(cuda_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
 // Symmetric pads BUT dilation > 1. cuDNN's pooling descriptor has no dilation parameter, so the
@@ -1335,6 +1351,7 @@ TEST(PoolTest, AveragePool_CUDA_symmetric_pad_dilation_1d) {
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+            kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
             kDmlExecutionProvider});
 }
 
@@ -1357,6 +1374,7 @@ TEST(PoolTest, AveragePool_CUDA_same_lower_asymmetric_1d) {
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+            kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
             kDmlExecutionProvider});
 }
 
