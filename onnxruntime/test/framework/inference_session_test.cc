@@ -45,6 +45,18 @@
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #endif
 #include "core/session/allocator_adapters.h"
+#include "core/framework/config_options.h"
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+#include "core/session/abi_devices.h"
+#include "core/session/plugin_ep/ep_api.h"
+#include "core/session/plugin_ep/ep_factory_internal.h"
+#include "core/session/plugin_ep/ep_factory_webgpu.h"
+#include "core/providers/webgpu/allocator.h"
+#endif
+// Virtual-device metadata key: used by the built-in WebGPU factory tests and the plugin WebGPU end-to-end test.
+#if (defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)) || defined(ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP)
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
+#endif
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session_utils.h"
@@ -328,6 +340,313 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   ASSERT_TRUE(session_object_emptyValidation.Load(test_model).IsOK());
   ASSERT_TRUE(session_object_emptyValidation.Initialize().IsOK());
 }
+
+#if defined(USE_WEBGPU)
+// A compile-only session (as marked by the Compile API via kOrtSessionOptionCompileOnly) that uses the
+// WebGPU EP stops session initialization right after graph transformation/partitioning, before
+// session-state finalization (kernel creation, PrePack, memory planning). This validates the new
+// control flow: (1) Initialize() succeeds, (2) optimized_model_filepath is still serialized and the
+// produced model is valid ONNX (loadable and runnable), and (3) Run() fails because the session was
+// never finalized. The WebGPU EP is created device-free (compile-only), so this does not require a GPU.
+TEST(InferenceSessionTests, WebGpuCompileOnlySkipsFinalization) {
+  // Create a device-free WebGPU EP: with kOrtSessionOptionCompileOnly set, the WebGPU context skips
+  // Dawn adapter/device creation, so this runs on machines without a GPU. Skip if WebGPU is not built
+  // or otherwise unavailable in this configuration.
+  ConfigOptions ep_config_options;
+  ASSERT_STATUS_OK(ep_config_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+  auto webgpu_ep = WebGpuExecutionProviderWithOptions(ep_config_options);
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  }
+
+  const std::basic_string<ORTCHAR_T> optimized_model_path = ORT_TSTR("webgpu_compile_only_optimized.onnx");
+  // Remove any stale file up front, and guarantee cleanup on every exit path (including a failed
+  // ASSERT_*, which returns from the test) so we never leave the serialized model behind.
+  std::filesystem::remove(optimized_model_path);
+  struct RemoveOnExit {
+    std::basic_string<ORTCHAR_T> path;
+    ~RemoveOnExit() { std::filesystem::remove(path); }
+  } remove_on_exit{optimized_model_path};
+
+  {
+    SessionOptions so;
+    so.session_logid = "InferenceSessionTests.WebGpuCompileOnlySkipsFinalization";
+    // The Compile API sets this internally to mark a compile-only session; set it directly here.
+    ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+    so.optimized_model_filepath = optimized_model_path;
+
+    InferenceSession session_object{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(webgpu_ep)));
+    ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
+
+    // Initialize succeeds, but skips session-state finalization.
+    ASSERT_STATUS_OK(session_object.Initialize());
+
+    // optimized_model_filepath must still be honored on the stop-before-finalize path.
+    ASSERT_TRUE(std::filesystem::exists(optimized_model_path));
+
+    // The session is not runnable: finalization was skipped, so Run() must fail (and not crash).
+    std::vector<int64_t> dims_x = {3, 2};
+    std::vector<float> values_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    OrtValue ml_value;
+    CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_x, values_x, &ml_value);
+    NameMLValMap feeds;
+    feeds.insert(std::make_pair("X", ml_value));
+    std::vector<std::string> output_names{"Y"};
+    std::vector<OrtValue> fetches;
+    RunOptions run_options;
+    // Run() must fail on a compile-only session that skipped session-state finalization.
+    const auto run_status = session_object.Run(run_options, feeds, output_names, &fetches);
+    ASSERT_STATUS_NOT_OK(run_status);
+  }
+
+  // The serialized optimized model must be valid ONNX: load and run it in a normal CPU session and
+  // verify it produces the expected output.
+  {
+    SessionOptions so;
+    so.session_logid = "InferenceSessionTests.WebGpuCompileOnlySkipsFinalization.Verify";
+    InferenceSession verify_session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(verify_session.Load(optimized_model_path));
+    ASSERT_STATUS_OK(verify_session.Initialize());
+    RunOptions run_options;
+    RunModel(verify_session, run_options);
+  }
+}
+#endif  // defined(USE_WEBGPU)
+
+#if defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+// The internal WebGPU EP factory registers a virtual GPU OrtEpDevice when the environment allows virtual
+// devices -- so the WebGPU EP stays selectable for a device-free compile-only session on hosts where OS
+// device enumeration finds no GPU (e.g. a Win32k-lockdown sandbox). The virtual device is offered in
+// addition to any real GPU, so the device-free path is still exercisable on a host that also has a GPU.
+// GetSupportedDevices is called directly with a controlled hardware-device list so all three cases are
+// deterministic, independent of whether the test machine actually has a GPU.
+TEST(InferenceSessionTests, WebGpuEpFactoryVirtualDevice) {
+  constexpr size_t kMaxEpDevices = 4;
+
+  // allow_virtual_devices = true, no hardware devices -> exactly one virtual GPU EP device.
+  {
+    EpFactoryInternal factory(std::make_unique<WebGpuEpFactory>(/*allow_virtual_devices=*/true));
+    OrtEpDevice* ep_devices[kMaxEpDevices] = {nullptr};
+    size_t num_ep_devices = 0;
+    OrtStatus* status = factory.GetSupportedDevices(/*devices=*/nullptr, /*num_devices=*/0,
+                                                    ep_devices, kMaxEpDevices, &num_ep_devices);
+    ASSERT_EQ(status, nullptr);
+    ASSERT_EQ(num_ep_devices, 1u);
+
+    const OrtEpDevice* ep_device = ep_devices[0];
+    EXPECT_EQ(ep_device->ep_name, kWebGpuExecutionProvider);
+    ASSERT_NE(ep_device->device, nullptr);
+    EXPECT_EQ(ep_device->device->type, OrtHardwareDeviceType_GPU);
+    EXPECT_EQ(ep_device->device->vendor_id, 0u);
+
+    const auto& metadata = ep_device->device->metadata.Entries();
+    auto is_virtual = metadata.find(kOrtHardwareDevice_MetadataKey_IsVirtual);
+    ASSERT_NE(is_virtual, metadata.end());
+    EXPECT_EQ(is_virtual->second, "1");
+
+    OrtExecutionProviderApi::ReleaseEpDevice(ep_devices[0]);
+  }
+
+  // allow_virtual_devices = false, no hardware devices -> no virtual device registered.
+  {
+    EpFactoryInternal factory(std::make_unique<WebGpuEpFactory>(/*allow_virtual_devices=*/false));
+    OrtEpDevice* ep_devices[kMaxEpDevices] = {nullptr};
+    size_t num_ep_devices = 0;
+    OrtStatus* status = factory.GetSupportedDevices(/*devices=*/nullptr, /*num_devices=*/0,
+                                                    ep_devices, kMaxEpDevices, &num_ep_devices);
+    ASSERT_EQ(status, nullptr);
+    EXPECT_EQ(num_ep_devices, 0u);
+  }
+
+  // allow_virtual_devices = true, a real GPU is present -> the real device plus one virtual GPU device.
+  // This validates that the device-free path stays selectable/testable on a host that has a real GPU.
+  {
+    OrtHardwareDevice real_gpu{};
+    real_gpu.type = OrtHardwareDeviceType_GPU;
+    real_gpu.vendor_id = 0x8086;
+    real_gpu.device_id = 0x1234;
+    real_gpu.vendor = "TestVendor";
+    const OrtHardwareDevice* devices[] = {&real_gpu};
+
+    EpFactoryInternal factory(std::make_unique<WebGpuEpFactory>(/*allow_virtual_devices=*/true));
+    OrtEpDevice* ep_devices[kMaxEpDevices] = {nullptr};
+    size_t num_ep_devices = 0;
+    OrtStatus* status = factory.GetSupportedDevices(devices, /*num_devices=*/1,
+                                                    ep_devices, kMaxEpDevices, &num_ep_devices);
+    ASSERT_EQ(status, nullptr);
+    ASSERT_EQ(num_ep_devices, 2u);
+
+    // The real device is enumerated first, then the virtual device is appended.
+    const OrtEpDevice* real_ep_device = ep_devices[0];
+    EXPECT_EQ(real_ep_device->ep_name, kWebGpuExecutionProvider);
+    ASSERT_NE(real_ep_device->device, nullptr);
+    EXPECT_EQ(real_ep_device->device->vendor_id, 0x8086u);
+    EXPECT_EQ(real_ep_device->device->metadata.Entries().count(kOrtHardwareDevice_MetadataKey_IsVirtual), 0u);
+
+    const OrtEpDevice* virtual_ep_device = ep_devices[1];
+    EXPECT_EQ(virtual_ep_device->ep_name, kWebGpuExecutionProvider);
+    ASSERT_NE(virtual_ep_device->device, nullptr);
+    EXPECT_EQ(virtual_ep_device->device->type, OrtHardwareDeviceType_GPU);
+    EXPECT_EQ(virtual_ep_device->device->vendor_id, 0u);
+    const auto& metadata = virtual_ep_device->device->metadata.Entries();
+    auto is_virtual = metadata.find(kOrtHardwareDevice_MetadataKey_IsVirtual);
+    ASSERT_NE(is_virtual, metadata.end());
+    EXPECT_EQ(is_virtual->second, "1");
+
+    OrtExecutionProviderApi::ReleaseEpDevice(ep_devices[0]);
+    OrtExecutionProviderApi::ReleaseEpDevice(ep_devices[1]);
+  }
+}
+
+// A virtual GPU device has no real GPU behind it, so it can only back a device-free compile-only session.
+// Selecting it for a normal (non-compile-only) session must be rejected up front by the factory's
+// CreateIExecutionProvider, rather than being allowed through to fail obscurely when Dawn later tries to
+// create a device. (The accepted path -- device-free compile-only -- is covered by
+// WebGpuCompileOnlySkipsFinalization.)
+TEST(InferenceSessionTests, WebGpuEpFactoryRejectsVirtualDeviceWithoutCompileOnly) {
+  OrtHardwareDevice virtual_gpu{};
+  virtual_gpu.type = OrtHardwareDeviceType_GPU;
+  virtual_gpu.vendor = "Microsoft";
+  virtual_gpu.metadata.Add(kOrtHardwareDevice_MetadataKey_IsVirtual, "1");
+  const OrtHardwareDevice* devices[] = {&virtual_gpu};
+
+  EpFactoryInternal factory(std::make_unique<WebGpuEpFactory>(/*allow_virtual_devices=*/true));
+
+  Ort::SessionOptions session_options;  // no session.compile_only set -> a runnable (non-compile-only) session
+  const OrtSessionOptions* c_session_options = session_options;
+  std::unique_ptr<IExecutionProvider> ep;
+  // logger is unused on the rejection path (CreateIExecutionProvider returns before it is dereferenced).
+  OrtStatus* status = factory.CreateIExecutionProvider(devices, /*ep_metadata_pairs=*/nullptr, /*num_devices=*/1,
+                                                       c_session_options, /*logger=*/nullptr, &ep);
+  ASSERT_NE(status, nullptr);
+  Ort::Status ort_status{status};  // takes ownership; releases on scope exit
+  EXPECT_EQ(ort_status.GetErrorCode(), ORT_INVALID_ARGUMENT);
+  EXPECT_EQ(ep, nullptr);
+}
+
+// Directly validates that a device-free (compile-only) WebGPU EP hands out the no-op "dummy" allocator
+// instead of a real GpuBufferAllocator -- the allocator that a device-free session relies on (a real one
+// can't even be constructed without a Dawn device). The other WebGPU tests assert behavior (Initialize
+// succeeds, model serialized); this one asserts the allocator *type*, which is what device-free-ness comes
+// down to. Independent of whether the host has a GPU, since device-free is driven by compile_only.
+TEST(InferenceSessionTests, WebGpuCompileOnlyUsesNoOpAllocator) {
+  ConfigOptions ep_config_options;
+  ASSERT_STATUS_OK(ep_config_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1"));
+  auto webgpu_ep = WebGpuExecutionProviderWithOptions(ep_config_options);
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  }
+
+  bool found_noop_allocator = false;
+  for (const auto& allocator : webgpu_ep->CreatePreferredAllocators()) {
+    if (dynamic_cast<const webgpu::WebGpuNoOpAllocator*>(allocator.get()) != nullptr) {
+      found_noop_allocator = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(found_noop_allocator)
+      << "A device-free (compile-only) WebGPU EP must hand out the no-op (dummy) device allocator.";
+}
+#endif  // defined(USE_WEBGPU) && !defined(ORT_USE_EP_API_ADAPTERS)
+
+#if defined(ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP)
+// End-to-end via the public V2 API in the *plugin* WebGPU build: select the virtual WebGPU OrtEpDevice and run a
+// compile-only session.
+//
+// Key requirement / setup: this test relies on test_main.cc registering the WebGPU plugin EP under a ".virtual"
+// registration name (see the ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP block there). ORT treats the ".virtual" suffix as a
+// request to auto-enable the env config "allow_virtual_devices" on the global ort_env, which is what makes the WebGPU
+// factory surface a virtual GPU OrtEpDevice. Because that registration is guaranteed in this build, the test fails
+// (rather than skips) if no virtual device is surfaced -- see the ASSERT_FALSE below. This is also why the test can
+// use the shared ort_env directly instead of recreating an OrtEnv.
+//
+// It exercises the accepted (device-free) path even on a host that has a real GPU: device-free is driven by
+// session.compile_only, not by which device is selected, so no Dawn device is created. (Built-in-EP coverage of the
+// same path: WebGpuCompileOnlySkipsFinalization, WebGpuEpFactoryVirtualDevice, WebGpuCompileOnlyUsesNoOpAllocator.)
+TEST(InferenceSessionTests, WebGpuVirtualDeviceCompileOnlyEndToEnd) {
+  // Pick the virtual WebGPU device (is_virtual=1). On a host with a real GPU the factory surfaces both a real and a
+  // virtual device; we deliberately select the virtual one.
+  std::vector<Ort::ConstEpDevice> selected;
+  for (const auto& ep_device : ort_env->GetEpDevices()) {
+    if (std::string(ep_device.EpName()) != kWebGpuExecutionProvider) {
+      continue;
+    }
+    const auto metadata = ep_device.Device().Metadata().GetKeyValuePairs();
+    const auto it = metadata.find(kOrtHardwareDevice_MetadataKey_IsVirtual);
+    if (it != metadata.end() && it->second == "1") {
+      selected.push_back(ep_device);
+      break;
+    }
+  }
+  // test_main.cc registers the WebGPU plugin EP with a ".virtual" name, which enables allow_virtual_devices, so a
+  // virtual device must be present in this build. Fail (not skip) if it isn't -- that's a regression in the
+  // virtual-device path, not an environment we should quietly tolerate.
+  ASSERT_FALSE(selected.empty())
+      << "Expected a virtual WebGPU EP device from test_main.cc's .virtual registration, but none was surfaced.";
+
+  const std::basic_string<ORTCHAR_T> optimized_model_path = ORT_TSTR("webgpu_virtual_compile_only_optimized.onnx");
+  std::filesystem::remove(optimized_model_path);
+  struct RemoveOnExit {
+    std::basic_string<ORTCHAR_T> path;
+    ~RemoveOnExit() { std::filesystem::remove(path); }
+  } remove_on_exit{optimized_model_path};
+
+  Ort::SessionOptions session_options;
+  // session-level compile_only (NOT an EP option) -> drives the device-free context and stop-before-finalize.
+  session_options.AddConfigEntry(kOrtSessionOptionCompileOnly, "1");
+  session_options.SetOptimizedModelFilePath(optimized_model_path.c_str());
+  Ort::KeyValuePairs ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, selected, ep_options);
+
+  // Constructing the session runs Initialize(): compile_only -> device-free WebGPU context (no Dawn device even if
+  // the host has a GPU) -> finalization skipped. Must succeed and still serialize the optimized model.
+  Ort::Session session(*ort_env, MODEL_URI, session_options);
+  ASSERT_TRUE(std::filesystem::exists(optimized_model_path));
+}
+
+// Plugin-build counterpart of WebGpuEpFactoryRejectsVirtualDeviceWithoutCompileOnly (which drives the built-in
+// internal factory): selecting the virtual WebGPU device for a normal (non-compile-only) session must be rejected
+// up front by the *adapter* factory's CreateEp with ORT_INVALID_ARGUMENT, rather than proceeding into Dawn to fail
+// obscurely with no real GPU behind the virtual device. Exercises the adapter factory's copy of the enforcement
+// through the public V2 API. Depends on the same test_main.cc ".virtual" registration as
+// WebGpuVirtualDeviceCompileOnlyEndToEnd above (that's what surfaces the virtual device to select).
+TEST(InferenceSessionTests, WebGpuVirtualDeviceRejectedWithoutCompileOnly) {
+  std::vector<Ort::ConstEpDevice> selected;
+  for (const auto& ep_device : ort_env->GetEpDevices()) {
+    if (std::string(ep_device.EpName()) != kWebGpuExecutionProvider) {
+      continue;
+    }
+    const auto metadata = ep_device.Device().Metadata().GetKeyValuePairs();
+    const auto it = metadata.find(kOrtHardwareDevice_MetadataKey_IsVirtual);
+    if (it != metadata.end() && it->second == "1") {
+      selected.push_back(ep_device);
+      break;
+    }
+  }
+  // See WebGpuVirtualDeviceCompileOnlyEndToEnd: a virtual device must be present from test_main.cc's .virtual
+  // registration in this build, so fail (not skip) if none was surfaced.
+  ASSERT_FALSE(selected.empty())
+      << "Expected a virtual WebGPU EP device from test_main.cc's .virtual registration, but none was surfaced.";
+
+  // Deliberately NOT setting session.compile_only -> a runnable session on a virtual device, which must be rejected.
+  Ort::SessionOptions session_options;
+  Ort::KeyValuePairs ep_options;
+  session_options.AppendExecutionProvider_V2(*ort_env, selected, ep_options);
+
+  try {
+    // EP creation (adapter factory CreateEp) runs during session Initialize(); the rejection surfaces here.
+    Ort::Session session(*ort_env, MODEL_URI, session_options);
+    FAIL() << "Selecting a virtual GPU device without compile_only must fail EP creation.";
+  } catch (const Ort::Exception& ex) {
+    // The plugin provider-factory layer (ep_plugin_provider_interfaces.cc) re-wraps the factory's
+    // ORT_INVALID_ARGUMENT as ORT_FAIL, so assert on the distinctive message rather than the error code to confirm
+    // this is our virtual-device rejection and not some unrelated failure.
+    const std::string message = ex.what();
+    EXPECT_NE(message.find("virtual GPU device"), std::string::npos) << message;
+  }
+}
+#endif  // defined(ORT_UNIT_TEST_HAS_WEBGPU_PLUGIN_EP)
 
 TEST(InferenceSessionTests, RequestLoadCancellation) {
   {

@@ -97,6 +97,9 @@ struct WebGpuContextConfig {
   };
   bool validation_mode_explicitly_set{false};
   bool preserve_device{false};
+  // When true, skip Dawn adapter/device creation and all device-dependent initialization; the context
+  // can only be used for graph transformation, not execution. Derived from kOrtSessionOptionCompileOnly.
+  bool compile_only{false};
   uint32_t max_num_pending_dispatches{16};
   uint64_t max_storage_buffer_binding_size{0};
   WebGpuBufferCacheConfig buffer_cache_config{};
@@ -232,6 +235,10 @@ class WebGpuContext final {
   inline webgpu::ValidationMode ValidationMode() const {
     return validation_mode_;
   }
+
+  // False for a device-free ("virtual device") context, which has no Dawn device and can only run graph
+  // transformation. Used to hand out a no-op allocator instead of a real GpuBufferAllocator.
+  inline bool HasDevice() const { return device_ != nullptr; }
 
   //
   // Get Split-K configuration.
