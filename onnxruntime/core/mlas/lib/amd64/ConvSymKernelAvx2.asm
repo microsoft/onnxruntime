@@ -351,8 +351,6 @@ ConvertFloatToIntegerRegList MACRO RegList
 ;
 
 ConvSymKernelFunction MACRO Isa
-        LOCAL   ProcessNextInputBlock, InputDirect, InputIndirection, ComputeBlockLoopStart, ComputeBlockLoopDone, BroadcastScaleValue, ConvertLowAccumulatorsToFloat, ConvertHighAccumulatorsToFloat, ConvertFloatsToIntegers, StoreQuantizedOutputBy16, StoreQuantizedOutput6By16, StoreQuantizedOutput5By16, StoreQuantizedOutput4By16, StoreQuantizedOutput3By16, StoreQuantizedOutput2By16, StoreQuantizedOutput1By16, ExitKernel, StoreQuantizedOutputBy8, \
-                StoreQuantizedOutput6By8, StoreQuantizedOutput5By8, StoreQuantizedOutput4By8, StoreQuantizedOutput3By8, StoreQuantizedOutput2By8, StoreQuantizedOutput1By8, ComputeBlockLoopBy4, ComputeBlockLoopBy2
 
 ;++
 ;
@@ -464,16 +462,16 @@ ENDIF
 ; Process an input block of length InputChannels for each element of the kernel.
 ;
 
-ProcessNextInputBlock:
+ProcessNextInputBlockK&Isa&:
         test    bpl,MLAS_CONV_SYM_FLAG_INPUT_DIRECT
-        jz      InputIndirection
+        jz      InputIndirectionK&Isa&
 
 ;
 ; The input buffer points directly at the input data and this is effectively a
 ; GEMM operation (such as a pointwise convolution or an Im2Col transform).
 ;
 
-InputDirect:
+InputDirectK&Isa&:
         xor     r10,r10
         mov     r11,rsi
         lea     r12,[r11+r11]
@@ -493,9 +491,9 @@ IFIDNI <Isa>, <AvxVnni>
         cmovb   r15,r10
 ENDIF
         mov     r10,rcx
-        jmp     ComputeBlockLoopStart
+        jmp     ComputeBlockLoopStartK&Isa&
 
-InputIndirection:
+InputIndirectionK&Isa&:
         lea     r11,[rcx+rdi]
         lea     r12,[rcx+rdi*2]
         lea     r13,[r11+rdi*2]
@@ -530,21 +528,21 @@ IFIDNI <Isa>, <AvxVnni>
         sub     r15,r10
 ENDIF
 
-ComputeBlockLoopStart:
+ComputeBlockLoopStartK&Isa&:
         mov     rax,rsi                     ; reload input channels
         cmp     ebx,2                       ; output count <= 2?
-        jbe     ComputeBlockLoopBy2
+        jbe     ComputeBlockLoopBy2K&Isa&
 IFIDNI <Isa>, <AvxVnni>
         cmp     ebx,4                       ; output count <= 4?
-        jbe     ComputeBlockLoopBy4
+        jbe     ComputeBlockLoopBy4K&Isa&
         ComputeBlockLoop Isa,6,UnrollLoop
 ELSE
         ComputeBlockLoop Isa,4,UnrollLoop
 ENDIF
 
-ComputeBlockLoopDone:
+ComputeBlockLoopDoneK&Isa&:
         dec     r9                          ; decrement input blocks remaining
-        jnz     ProcessNextInputBlock
+        jnz     ProcessNextInputBlockK&Isa&
 
 ;
 ; Apply the bias and convert the block accumulators to intermediate float values.
@@ -559,27 +557,27 @@ ComputeBlockLoopDone:
         add     r10,r8
         vmovdqu ymm0,YMMWORD PTR [rcx]      ; load low bias vector
         test    bpl,MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
-        jz      BroadcastScaleValue
+        jz      BroadcastScaleValueK&Isa&
         vmovups ymm1,YMMWORD PTR [r9]       ; load low scale vector
-        jmp     ConvertLowAccumulatorsToFloat
+        jmp     ConvertLowAccumulatorsToFloatK&Isa&
 
-BroadcastScaleValue:
+BroadcastScaleValueK&Isa&:
         vbroadcastss ymm1,DWORD PTR [r9]
 
-ConvertLowAccumulatorsToFloat:
+ConvertLowAccumulatorsToFloatK&Isa&:
 IFIDNI <Isa>, <AvxVnni>
         ConvertAccumulatorToFloatRegList <ymm4,ymm6,ymm8,ymm10,ymm12,ymm14>
 ELSE
         ConvertAccumulatorToFloatRegList <ymm4,ymm6,ymm8,ymm10>
 ENDIF
         cmp     r11d,8                      ; output single vector?
-        jbe     ConvertFloatsToIntegers
+        jbe     ConvertFloatsToIntegersK&Isa&
         vmovdqu ymm0,YMMWORD PTR [rcx+8*4]  ; load high bias vector
         test    bpl,MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
-        jz      ConvertHighAccumulatorsToFloat
+        jz      ConvertHighAccumulatorsToFloatK&Isa&
         vmovups ymm1,YMMWORD PTR [r9+8*4]   ; load high scale vector
 
-ConvertHighAccumulatorsToFloat:
+ConvertHighAccumulatorsToFloatK&Isa&:
 IFIDNI <Isa>, <AvxVnni>
         ConvertAccumulatorToFloatRegList <ymm5,ymm7,ymm9,ymm11,ymm13,ymm15>
 ELSE
@@ -590,7 +588,7 @@ ENDIF
 ; Convert the intermediate float values to 32-bit integers in the range 0 to 255.
 ;
 
-ConvertFloatsToIntegers:
+ConvertFloatsToIntegersK&Isa&:
         vbroadcastss ymm0,DWORD PTR ConvSymPostProcessParams.MinimumValue[rdx]
         vbroadcastss ymm1,DWORD PTR ConvSymPostProcessParams.MaximumValue[rdx]
         vpbroadcastd ymm2,DWORD PTR ConvSymPostProcessParams.OutputZeroPoint[rdx]
@@ -600,7 +598,7 @@ ELSE
         ConvertFloatToIntegerRegList <ymm4,ymm6,ymm8,ymm10>
 ENDIF
         cmp     r11d,8                      ; output single vector?
-        jbe     StoreQuantizedOutputBy8
+        jbe     StoreQuantizedOutputBy8K&Isa&
 IFIDNI <Isa>, <AvxVnni>
         ConvertFloatToIntegerRegList <ymm5,ymm7,ymm9,ymm11,ymm13,ymm15>
 ELSE
@@ -611,21 +609,21 @@ ENDIF
 ; Pack with saturation and store 16 bytes to the output buffer.
 ;
 
-StoreQuantizedOutputBy16:
+StoreQuantizedOutputBy16K&Isa&:
 IFIDNI <Isa>, <AvxVnni>
         cmp     ebx,5
-        ja      StoreQuantizedOutput6By16
-        je      StoreQuantizedOutput5By16
+        ja      StoreQuantizedOutput6By16K&Isa&
+        je      StoreQuantizedOutput5By16K&Isa&
 ENDIF
         cmp     ebx,3
-        ja      StoreQuantizedOutput4By16
-        je      StoreQuantizedOutput3By16
+        ja      StoreQuantizedOutput4By16K&Isa&
+        je      StoreQuantizedOutput3By16K&Isa&
         cmp     ebx,1
-        ja      StoreQuantizedOutput2By16
-        jmp     StoreQuantizedOutput1By16
+        ja      StoreQuantizedOutput2By16K&Isa&
+        jmp     StoreQuantizedOutput1By16K&Isa&
 
 IFIDNI <Isa>, <AvxVnni>
-StoreQuantizedOutput6By16:
+StoreQuantizedOutput6By16K&Isa&:
         vextracti128 xmm0,ymm14,1
         vpackusdw xmm14,xmm14,xmm0
         vextracti128 xmm1,ymm15,1
@@ -633,7 +631,7 @@ StoreQuantizedOutput6By16:
         vpackuswb xmm14,xmm14,xmm15
         vmovdqu XMMWORD PTR [r10+rsi*2],xmm14
 
-StoreQuantizedOutput5By16:
+StoreQuantizedOutput5By16K&Isa&:
         vextracti128 xmm0,ymm12,1
         vpackusdw xmm12,xmm12,xmm0
         vextracti128 xmm1,ymm13,1
@@ -642,7 +640,7 @@ StoreQuantizedOutput5By16:
         vmovdqu XMMWORD PTR [r10+rsi],xmm12
 ENDIF
 
-StoreQuantizedOutput4By16:
+StoreQuantizedOutput4By16K&Isa&:
         vextracti128 xmm0,ymm10,1
         vpackusdw xmm10,xmm10,xmm0
         vextracti128 xmm1,ymm11,1
@@ -650,7 +648,7 @@ StoreQuantizedOutput4By16:
         vpackuswb xmm10,xmm10,xmm11
         vmovdqu XMMWORD PTR [r10],xmm10
 
-StoreQuantizedOutput3By16:
+StoreQuantizedOutput3By16K&Isa&:
         vextracti128 xmm0,ymm8,1
         vpackusdw xmm8,xmm8,xmm0
         vextracti128 xmm1,ymm9,1
@@ -658,7 +656,7 @@ StoreQuantizedOutput3By16:
         vpackuswb xmm8,xmm8,xmm9
         vmovdqu XMMWORD PTR [r8+rsi*2],xmm8
 
-StoreQuantizedOutput2By16:
+StoreQuantizedOutput2By16K&Isa&:
         vextracti128 xmm0,ymm6,1
         vpackusdw xmm6,xmm6,xmm0
         vextracti128 xmm1,ymm7,1
@@ -666,7 +664,7 @@ StoreQuantizedOutput2By16:
         vpackuswb xmm6,xmm6,xmm7
         vmovdqu XMMWORD PTR [r8+rsi],xmm6
 
-StoreQuantizedOutput1By16:
+StoreQuantizedOutput1By16K&Isa&:
         vextracti128 xmm0,ymm4,1
         vpackusdw xmm4,xmm4,xmm0
         vextracti128 xmm1,ymm5,1
@@ -678,7 +676,7 @@ StoreQuantizedOutput1By16:
 ; Restore non-volatile registers and return.
 ;
 
-ExitKernel:
+ExitKernelK&Isa&:
         vzeroupper
         movaps  xmm6,ConvSymKernelFrame.SavedXmm6[rsp]
         movaps  xmm7,ConvSymKernelFrame.SavedXmm7[rsp]
@@ -710,71 +708,71 @@ ENDIF
 ; Pack with saturation and store 8 bytes to the output buffer.
 ;
 
-StoreQuantizedOutputBy8:
+StoreQuantizedOutputBy8K&Isa&:
 IFIDNI <Isa>, <AvxVnni>
         cmp     ebx,5
-        ja      StoreQuantizedOutput6By8
-        je      StoreQuantizedOutput5By8
+        ja      StoreQuantizedOutput6By8K&Isa&
+        je      StoreQuantizedOutput5By8K&Isa&
 ENDIF
         cmp     ebx,3
-        ja      StoreQuantizedOutput4By8
-        je      StoreQuantizedOutput3By8
+        ja      StoreQuantizedOutput4By8K&Isa&
+        je      StoreQuantizedOutput3By8K&Isa&
         cmp     ebx,1
-        ja      StoreQuantizedOutput2By8
-        jmp     StoreQuantizedOutput1By8
+        ja      StoreQuantizedOutput2By8K&Isa&
+        jmp     StoreQuantizedOutput1By8K&Isa&
 
 IFIDNI <Isa>, <AvxVnni>
-StoreQuantizedOutput6By8:
+StoreQuantizedOutput6By8K&Isa&:
         vextracti128 xmm0,ymm14,1
         vpackusdw xmm14,xmm14,xmm0
         vpackuswb xmm14,xmm14,xmm14
         vmovq   QWORD PTR [r10+rsi*2],xmm14
 
-StoreQuantizedOutput5By8:
+StoreQuantizedOutput5By8K&Isa&:
         vextracti128 xmm0,ymm12,1
         vpackusdw xmm12,xmm12,xmm0
         vpackuswb xmm12,xmm12,xmm12
         vmovq   QWORD PTR [r10+rsi],xmm12
 ENDIF
 
-StoreQuantizedOutput4By8:
+StoreQuantizedOutput4By8K&Isa&:
         vextracti128 xmm0,ymm10,1
         vpackusdw xmm10,xmm10,xmm0
         vpackuswb xmm10,xmm10,xmm10
         vmovq   QWORD PTR [r10],xmm10
 
-StoreQuantizedOutput3By8:
+StoreQuantizedOutput3By8K&Isa&:
         vextracti128 xmm0,ymm8,1
         vpackusdw xmm8,xmm8,xmm0
         vpackuswb xmm8,xmm8,xmm8
         vmovq   QWORD PTR [r8+rsi*2],xmm8
 
-StoreQuantizedOutput2By8:
+StoreQuantizedOutput2By8K&Isa&:
         vextracti128 xmm0,ymm6,1
         vpackusdw xmm6,xmm6,xmm0
         vpackuswb xmm6,xmm6,xmm6
         vmovq   QWORD PTR [r8+rsi],xmm6
 
-StoreQuantizedOutput1By8:
+StoreQuantizedOutput1By8K&Isa&:
         vextracti128 xmm0,ymm4,1
         vpackusdw xmm4,xmm4,xmm0
         vpackuswb xmm4,xmm4,xmm4
         vmovq   QWORD PTR [r8],xmm4
-        jmp     ExitKernel
+        jmp     ExitKernelK&Isa&
 
 ;
 ; Process the tail output counts out of line with a reduced block size.
 ;
 
 IFIDNI <Isa>, <AvxVnni>
-ComputeBlockLoopBy4:
+ComputeBlockLoopBy4K&Isa&:
         ComputeBlockLoop Isa,4
-        jmp     ComputeBlockLoopDone
+        jmp     ComputeBlockLoopDoneK&Isa&
 ENDIF
 
-ComputeBlockLoopBy2:
+ComputeBlockLoopBy2K&Isa&:
         ComputeBlockLoop Isa,2
-        jmp     ComputeBlockLoopDone
+        jmp     ComputeBlockLoopDoneK&Isa&
 
         NESTED_END MlasConvSymKernel&Isa&, _TEXT
 
@@ -821,7 +819,6 @@ DepthwiseMultiplyAccumulateCellAvxVnni MACRO AccumReg, Mult1Reg, Mult2Reg
 ;
 
 ConvSymDepthwiseKernelFunction MACRO Isa
-        LOCAL   ProcessNextInputBlock, BroadcastScaleValue, ConvertLowAccumulatorsToFloat, ConvertHighAccumulatorsToFloat, ConvertFloatsToIntegers, StoreQuantizedOutputBy16, StoreQuantizedOutput4By16, StoreQuantizedOutput3By16, StoreQuantizedOutput2By16, StoreQuantizedOutput1By16, ExitKernel
 
 ;++
 ;
@@ -899,7 +896,7 @@ ConvSymDepthwiseKernelFunction MACRO Isa
 ; Process an input block of length Channels for each element of the kernel.
 ;
 
-ProcessNextInputBlock:
+ProcessNextInputBlockD&Isa&:
         vpmovsxbd ymm0,QWORD PTR [rdx]
         vpmovsxbd ymm1,QWORD PTR [rdx+8]
         lea     r11,[rcx+rdi]
@@ -933,7 +930,7 @@ ProcessNextInputBlock:
         add     rdx,rsi                     ; advance filter to next kernel
         DepthwiseMultiplyAccumulateCell&Isa& ymm11,ymm3,ymm1
         dec     r9                          ; decrement input blocks remaining
-        jnz     ProcessNextInputBlock
+        jnz     ProcessNextInputBlockD&Isa&
 
 ;
 ; Apply the bias and convert the block accumulators to intermediate float values.
@@ -944,28 +941,28 @@ ProcessNextInputBlock:
         mov     r9,ConvSymPostProcessParams.Scale[rdx]
         vmovdqu ymm0,YMMWORD PTR [rcx]      ; load low bias vector
         test    bpl,MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
-        jz      BroadcastScaleValue
+        jz      BroadcastScaleValueD&Isa&
         vmovups ymm1,YMMWORD PTR [r9]       ; load low scale vector
-        jmp     ConvertLowAccumulatorsToFloat
+        jmp     ConvertLowAccumulatorsToFloatD&Isa&
 
-BroadcastScaleValue:
+BroadcastScaleValueD&Isa&:
         vbroadcastss ymm1,DWORD PTR [r9]
 
-ConvertLowAccumulatorsToFloat:
+ConvertLowAccumulatorsToFloatD&Isa&:
         ConvertAccumulatorToFloatRegList <ymm4,ymm6,ymm8,ymm10>
         vmovdqu ymm0,YMMWORD PTR [rcx+8*4]  ; load high bias vector
         test    bpl,MLAS_CONV_SYM_FLAG_PER_CHANNEL_SCALE
-        jz      ConvertHighAccumulatorsToFloat
+        jz      ConvertHighAccumulatorsToFloatD&Isa&
         vmovups ymm1,YMMWORD PTR [r9+8*4]   ; load high scale vector
 
-ConvertHighAccumulatorsToFloat:
+ConvertHighAccumulatorsToFloatD&Isa&:
         ConvertAccumulatorToFloatRegList <ymm5,ymm7,ymm9,ymm11>
 
 ;
 ; Convert the intermediate float values to 32-bit integers in the range 0 to 255.
 ;
 
-ConvertFloatsToIntegers:
+ConvertFloatsToIntegersD&Isa&:
         vbroadcastss ymm0,DWORD PTR ConvSymPostProcessParams.MinimumValue[rdx]
         vbroadcastss ymm1,DWORD PTR ConvSymPostProcessParams.MaximumValue[rdx]
         vpbroadcastd ymm2,DWORD PTR ConvSymPostProcessParams.OutputZeroPoint[rdx]
@@ -976,16 +973,16 @@ ConvertFloatsToIntegers:
 ; Pack with saturation and store 16 bytes to the output buffer.
 ;
 
-StoreQuantizedOutputBy16:
+StoreQuantizedOutputBy16D&Isa&:
         lea     r10,[rsi*2+rsi]
         cmp     ebx,3
-        ja      StoreQuantizedOutput4By16
-        je      StoreQuantizedOutput3By16
+        ja      StoreQuantizedOutput4By16D&Isa&
+        je      StoreQuantizedOutput3By16D&Isa&
         cmp     ebx,1
-        ja      StoreQuantizedOutput2By16
-        jmp     StoreQuantizedOutput1By16
+        ja      StoreQuantizedOutput2By16D&Isa&
+        jmp     StoreQuantizedOutput1By16D&Isa&
 
-StoreQuantizedOutput4By16:
+StoreQuantizedOutput4By16D&Isa&:
         vextracti128 xmm0,ymm10,1
         vpackusdw xmm10,xmm10,xmm0
         vextracti128 xmm1,ymm11,1
@@ -993,7 +990,7 @@ StoreQuantizedOutput4By16:
         vpackuswb xmm10,xmm10,xmm11
         vmovdqu XMMWORD PTR [r8+r10],xmm10
 
-StoreQuantizedOutput3By16:
+StoreQuantizedOutput3By16D&Isa&:
         vextracti128 xmm0,ymm8,1
         vpackusdw xmm8,xmm8,xmm0
         vextracti128 xmm1,ymm9,1
@@ -1001,7 +998,7 @@ StoreQuantizedOutput3By16:
         vpackuswb xmm8,xmm8,xmm9
         vmovdqu XMMWORD PTR [r8+rsi*2],xmm8
 
-StoreQuantizedOutput2By16:
+StoreQuantizedOutput2By16D&Isa&:
         vextracti128 xmm0,ymm6,1
         vpackusdw xmm6,xmm6,xmm0
         vextracti128 xmm1,ymm7,1
@@ -1009,7 +1006,7 @@ StoreQuantizedOutput2By16:
         vpackuswb xmm6,xmm6,xmm7
         vmovdqu XMMWORD PTR [r8+rsi],xmm6
 
-StoreQuantizedOutput1By16:
+StoreQuantizedOutput1By16D&Isa&:
         vextracti128 xmm0,ymm4,1
         vpackusdw xmm4,xmm4,xmm0
         vextracti128 xmm1,ymm5,1
@@ -1021,7 +1018,7 @@ StoreQuantizedOutput1By16:
 ; Restore non-volatile registers and return.
 ;
 
-ExitKernel:
+ExitKernelD&Isa&:
         vzeroupper
         movaps  xmm6,ConvSymDepthwiseKernelFrame.SavedXmm6[rsp]
         movaps  xmm7,ConvSymDepthwiseKernelFrame.SavedXmm7[rsp]
