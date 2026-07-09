@@ -2,23 +2,25 @@
 
 static const OrtApi *g_api = NULL;
 static int g_api_version = 0;
+static const char *g_ort_version = NULL;
 
 int ort_init_api(void *get_api_base_fn, int *actual_version) {
     const OrtApiBase *base = ((const OrtApiBase *(*)(void))get_api_base_fn)();
     if (base == NULL) return 1;
-    g_api = base->GetApi(ORT_GO_API_VERSION_MAX);
-    if (g_api != NULL) {
-        g_api_version = ORT_GO_API_VERSION_MAX;
-        *actual_version = g_api_version;
-        return 0;
-    }
-    g_api = base->GetApi(ORT_GO_API_VERSION_MIN);
-    if (g_api != NULL) {
-        g_api_version = ORT_GO_API_VERSION_MIN;
-        *actual_version = g_api_version;
-        return 0;
+    g_ort_version = base->GetVersionString();
+    for (int v = ORT_GO_API_VERSION_MAX; v >= ORT_GO_API_VERSION_MIN; v--) {
+        g_api = base->GetApi((uint32_t)v);
+        if (g_api != NULL) {
+            g_api_version = v;
+            *actual_version = v;
+            return 0;
+        }
     }
     return 2;
+}
+
+const char *ort_GetVersionString(void) {
+    return g_ort_version;
 }
 
 // Environment
@@ -462,6 +464,13 @@ OrtStatusPtr ort_GetValue(const OrtValue *value, int index, OrtAllocator *alloca
     return g_api->GetValue(value, index, allocator, out);
 }
 
+// Value creation (sequence/map)
+
+OrtStatusPtr ort_CreateValue(const OrtValue *const *in, size_t num_values,
+    enum ONNXType value_type, OrtValue **out) {
+    return g_api->CreateValue(in, num_values, value_type, out);
+}
+
 // Memory info
 
 OrtStatusPtr ort_CreateMemoryInfo(const char *name, enum OrtAllocatorType type,
@@ -471,16 +480,41 @@ OrtStatusPtr ort_CreateMemoryInfo(const char *name, enum OrtAllocatorType type,
 
 // Session options getters (since 1.27)
 
-int ort_api_version(void) {
-    return g_api_version;
-}
-
 OrtStatusPtr ort_GetMemPatternEnabled(const OrtSessionOptions *opts, int *out) {
     return g_api->GetMemPatternEnabled(opts, out);
 }
 
 OrtStatusPtr ort_GetSessionExecutionMode(const OrtSessionOptions *opts, ExecutionMode *out) {
     return g_api->GetSessionExecutionMode(opts, out);
+}
+
+// Telemetry
+
+OrtStatusPtr ort_EnableTelemetryEvents(const OrtEnv *env) {
+    return g_api->EnableTelemetryEvents(env);
+}
+
+OrtStatusPtr ort_DisableTelemetryEvents(const OrtEnv *env) {
+    return g_api->DisableTelemetryEvents(env);
+}
+
+// Additional session options (continued)
+
+OrtStatusPtr ort_SetOptimizedModelFilePath(OrtSessionOptions *opts, const char *path) {
+    return g_api->SetOptimizedModelFilePath(opts, path);
+}
+
+OrtStatusPtr ort_RegisterCustomOpsLibrary_V2(OrtSessionOptions *opts, const char *path) {
+    return g_api->RegisterCustomOpsLibrary_V2(opts, path);
+}
+
+OrtStatusPtr ort_HasSessionConfigEntry(const OrtSessionOptions *opts, const char *key, int *out) {
+    return g_api->HasSessionConfigEntry(opts, key, out);
+}
+
+OrtStatusPtr ort_GetSessionConfigEntry(const OrtSessionOptions *opts, const char *key,
+    char *value, size_t *size) {
+    return g_api->GetSessionConfigEntry(opts, key, value, size);
 }
 
 // Error handling

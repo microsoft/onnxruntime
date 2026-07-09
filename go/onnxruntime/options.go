@@ -163,6 +163,51 @@ func (o *SessionOptions) AddInitializer(name string, value *Tensor) error {
 	return wrapErr("add initializer", checkStatus(C.ort_AddInitializer(o.handle, cName, value.value)))
 }
 
+// SetOptimizedModelFilePath sets a path to save the optimized model to.
+func (o *SessionOptions) SetOptimizedModelFilePath(path string) error {
+	cPath := C.CString(path)
+	defer C.free(unsafe.Pointer(cPath))
+	return wrapErr("set optimized model path",
+		checkStatus(C.ort_SetOptimizedModelFilePath(o.handle, cPath)))
+}
+
+// RegisterCustomOpsLibrary loads a shared library containing custom ops.
+func (o *SessionOptions) RegisterCustomOpsLibrary(libraryPath string) error {
+	cPath := C.CString(libraryPath)
+	defer C.free(unsafe.Pointer(cPath))
+	return wrapErr("register custom ops library",
+		checkStatus(C.ort_RegisterCustomOpsLibrary_V2(o.handle, cPath)))
+}
+
+// HasSessionConfigEntry reports whether the config key exists.
+func (o *SessionOptions) HasSessionConfigEntry(key string) (bool, error) {
+	cKey := C.CString(key)
+	defer C.free(unsafe.Pointer(cKey))
+	var out C.int
+	if err := checkStatus(C.ort_HasSessionConfigEntry(o.handle, cKey, &out)); err != nil {
+		return false, wrapErr("has session config entry", err)
+	}
+	return out != 0, nil
+}
+
+// GetSessionConfigEntry returns the value for the given config key.
+func (o *SessionOptions) GetSessionConfigEntry(key string) (string, error) {
+	cKey := C.CString(key)
+	defer C.free(unsafe.Pointer(cKey))
+	var size C.size_t
+	if err := checkStatus(C.ort_GetSessionConfigEntry(o.handle, cKey, nil, &size)); err != nil {
+		return "", wrapErr("get session config entry size", err)
+	}
+	if size == 0 {
+		return "", nil
+	}
+	buf := make([]C.char, size)
+	if err := checkStatus(C.ort_GetSessionConfigEntry(o.handle, cKey, &buf[0], &size)); err != nil {
+		return "", wrapErr("get session config entry", err)
+	}
+	return C.GoString(&buf[0]), nil
+}
+
 // Close releases the session options. It is idempotent.
 func (o *SessionOptions) Close() error {
 	if o.handle != nil {

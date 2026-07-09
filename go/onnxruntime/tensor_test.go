@@ -390,3 +390,71 @@ func TestNewTensorFromBytesFloat16(t *testing.T) {
 		}
 	}
 }
+
+func TestNewSequence(t *testing.T) {
+	t1, _ := CreateTensor[float32]([]int64{3}, []float32{1, 2, 3})
+	t2, _ := CreateTensor[float32]([]int64{3}, []float32{4, 5, 6})
+	defer t1.Close()
+	defer t2.Close()
+
+	seq, err := NewSequence([]*Tensor{t1, t2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer seq.Close()
+
+	if !seq.IsSequence() {
+		t.Error("expected IsSequence() = true")
+	}
+
+	n, err := seq.SequenceLen()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Errorf("expected 2 elements, got %d", n)
+	}
+
+	elem, err := seq.SequenceAt(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer elem.Close()
+
+	data, err := TensorData[float32](elem)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data[0] != 1 || data[1] != 2 || data[2] != 3 {
+		t.Errorf("expected [1,2,3], got %v", data)
+	}
+}
+
+func TestNewMap(t *testing.T) {
+	keys, _ := CreateTensor[int64]([]int64{2}, []int64{10, 20})
+	vals, _ := CreateTensor[float32]([]int64{2}, []float32{1.5, 2.5})
+	defer keys.Close()
+	defer vals.Close()
+
+	m, err := NewMap(keys, vals)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+
+	if !m.IsMap() {
+		t.Error("expected IsMap() = true")
+	}
+}
+
+func TestNewMapFromGoMap(t *testing.T) {
+	m, err := NewMapFromGoMap[int64, float32](map[int64]float32{1: 10.5, 2: 20.5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer m.Close()
+
+	if !m.IsMap() {
+		t.Error("expected IsMap() = true")
+	}
+}

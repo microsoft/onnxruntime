@@ -84,6 +84,24 @@ func Init() error {
 	return nil
 }
 
+// GetVersion returns the ORT library version string (e.g. "1.27.0").
+// Must be called after Init.
+func GetVersion() (string, error) {
+	mu.Lock()
+	defer mu.Unlock()
+	if !initialized {
+		return "", errNotInitialized
+	}
+	return C.GoString(C.ort_GetVersionString()), nil
+}
+
+// APIVersion returns the ORT API version negotiated during Init.
+func APIVersion() int {
+	mu.Lock()
+	defer mu.Unlock()
+	return apiVersion
+}
+
 // IsInitialized reports whether Init has completed successfully.
 func IsInitialized() bool {
 	mu.Lock()
@@ -116,6 +134,26 @@ func Shutdown() error {
 	initialized = false
 	shutdown = true
 	return nil
+}
+
+// EnableTelemetry enables platform telemetry collection.
+func EnableTelemetry() error {
+	mu.Lock()
+	defer mu.Unlock()
+	if !initialized {
+		return errNotInitialized
+	}
+	return wrapErr("enable telemetry", checkStatus(C.ort_EnableTelemetryEvents(env)))
+}
+
+// DisableTelemetry disables platform telemetry collection.
+func DisableTelemetry() error {
+	mu.Lock()
+	defer mu.Unlock()
+	if !initialized {
+		return errNotInitialized
+	}
+	return wrapErr("disable telemetry", checkStatus(C.ort_DisableTelemetryEvents(env)))
 }
 
 // AvailableProviders returns the execution providers available in the loaded

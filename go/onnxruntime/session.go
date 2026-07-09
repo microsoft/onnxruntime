@@ -22,11 +22,12 @@ type IOInfo struct {
 // Session wraps an ORT inference session. It is safe for concurrent use:
 // multiple goroutines may call Run simultaneously.
 type Session struct {
-	mu      sync.RWMutex
-	handle  *C.OrtSession
-	inputs  []IOInfo
-	outputs []IOInfo
-	closed  bool
+	mu          sync.RWMutex
+	handle      *C.OrtSession
+	inputs      []IOInfo
+	outputs     []IOInfo
+	nameCache   map[string]*C.char
+	closed      bool
 }
 
 // NewSession creates a session from an ONNX model file.
@@ -160,25 +161,33 @@ func (s *Session) runInner(ctx context.Context, inputs map[string]*Tensor, outpu
 	nOutputs := len(outputNames)
 	cInputNames := make([]*C.char, nInputs)
 	cInputValues := make([]*C.OrtValue, nInputs)
+	var tempNames []*C.char
 	i := 0
 	for name, tensor := range inputs {
-		cInputNames[i] = C.CString(name)
+		if cached, ok := s.nameCache[name]; ok {
+			cInputNames[i] = cached
+		} else {
+			cs := C.CString(name)
+			cInputNames[i] = cs
+			tempNames = append(tempNames, cs)
+		}
 		cInputValues[i] = tensor.value
 		i++
 	}
-	defer func() {
-		for _, cn := range cInputNames {
-			C.free(unsafe.Pointer(cn))
-		}
-	}()
 
 	cOutputNames := make([]*C.char, nOutputs)
 	for i, name := range outputNames {
-		cOutputNames[i] = C.CString(name)
+		if cached, ok := s.nameCache[name]; ok {
+			cOutputNames[i] = cached
+		} else {
+			cs := C.CString(name)
+			cOutputNames[i] = cs
+			tempNames = append(tempNames, cs)
+		}
 	}
 	defer func() {
-		for _, cn := range cOutputNames {
-			C.free(unsafe.Pointer(cn))
+		for _, cs := range tempNames {
+			C.free(unsafe.Pointer(cs))
 		}
 	}()
 
@@ -292,6 +301,10 @@ func (s *Session) Close() error {
 		return nil
 	}
 	s.closed = true
+	for _, cs := range s.nameCache {
+		C.free(unsafe.Pointer(cs))
+	}
+	s.nameCache = nil
 	C.ort_ReleaseSession(s.handle)
 	s.handle = nil
 	sessionCount.Add(-1)
@@ -322,11 +335,22 @@ func finalizeSession(handle *C.OrtSession) (*Session, error) {
 		return nil, err
 	}
 
+	cache := make(map[string]*C.char, len(inputs)+len(outputs))
+	for _, info := range inputs {
+		cache[info.Name] = C.CString(info.Name)
+	}
+	for _, info := range outputs {
+		if _, ok := cache[info.Name]; !ok {
+			cache[info.Name] = C.CString(info.Name)
+		}
+	}
+
 	sessionCount.Add(1)
 	return &Session{
-		handle:  handle,
-		inputs:  inputs,
-		outputs: outputs,
+		handle:    handle,
+		inputs:    inputs,
+		outputs:   outputs,
+		nameCache: cache,
 	}, nil
 }
 

@@ -191,19 +191,19 @@ func (t *Tensor) ValueType() (int, error) {
 // IsTensor reports whether this value is a tensor (as opposed to sequence/map).
 func (t *Tensor) IsTensor() bool {
 	vt, err := t.ValueType()
-	return err == nil && vt == 1 // ONNX_TYPE_TENSOR
+	return err == nil && vt == int(C.ONNX_TYPE_TENSOR)
 }
 
 // IsSequence reports whether this value is a sequence.
 func (t *Tensor) IsSequence() bool {
 	vt, err := t.ValueType()
-	return err == nil && vt == 3 // ONNX_TYPE_SEQUENCE
+	return err == nil && vt == int(C.ONNX_TYPE_SEQUENCE)
 }
 
 // IsMap reports whether this value is a map.
 func (t *Tensor) IsMap() bool {
 	vt, err := t.ValueType()
-	return err == nil && vt == 4 // ONNX_TYPE_MAP
+	return err == nil && vt == int(C.ONNX_TYPE_MAP)
 }
 
 // SequenceLen returns the number of elements in a sequence value.
@@ -233,6 +233,83 @@ func (t *Tensor) SequenceAt(index int) (*Tensor, error) {
 		return nil, wrapErr("get value", err)
 	}
 	return wrapOutputTensor(value)
+}
+
+// NewSequence creates a sequence value from the given tensors.
+// All elements must be the same ONNX type. The returned value must be closed.
+func NewSequence(elements []*Tensor) (*Tensor, error) {
+	if err := checkInit(); err != nil {
+		return nil, err
+	}
+	if len(elements) == 0 {
+		return nil, fmt.Errorf("ort: create sequence: at least one element required")
+	}
+
+	values := make([]*C.OrtValue, len(elements))
+	for i, e := range elements {
+		if e == nil {
+			return nil, fmt.Errorf("ort: create sequence: element %d is nil", i)
+		}
+		values[i] = e.value
+	}
+
+	var out *C.OrtValue
+	if err := checkStatus(C.ort_CreateValue(&values[0], C.size_t(len(values)),
+		C.ONNX_TYPE_SEQUENCE, &out)); err != nil {
+		return nil, wrapErr("create sequence", err)
+	}
+
+	return &Tensor{value: out, dtype: TensorElementDataTypeUndefined, owned: true}, nil
+}
+
+// NewMap creates a map value from key and value tensors.
+// Keys must be a 1-D tensor of int64 or string type. Values must be a 1-D tensor.
+func NewMap(keys, values *Tensor) (*Tensor, error) {
+	if err := checkInit(); err != nil {
+		return nil, err
+	}
+	if keys == nil || values == nil {
+		return nil, fmt.Errorf("ort: create map: keys and values must not be nil")
+	}
+
+	ins := []*C.OrtValue{keys.value, values.value}
+	var out *C.OrtValue
+	if err := checkStatus(C.ort_CreateValue(&ins[0], 2,
+		C.ONNX_TYPE_MAP, &out)); err != nil {
+		return nil, wrapErr("create map", err)
+	}
+
+	return &Tensor{value: out, dtype: TensorElementDataTypeUndefined, owned: true}, nil
+}
+
+// NewMapFromGoMap creates a map OrtValue from a Go map.
+// Key type must be int64. Value type must be a TensorElement type.
+func NewMapFromGoMap[K int64, V TensorElement](m map[K]V) (*Tensor, error) {
+	if err := checkInit(); err != nil {
+		return nil, err
+	}
+
+	n := len(m)
+	keys := make([]K, 0, n)
+	vals := make([]V, 0, n)
+	for k, v := range m {
+		keys = append(keys, k)
+		vals = append(vals, v)
+	}
+
+	keyTensor, err := CreateTensor[K]([]int64{int64(n)}, keys)
+	if err != nil {
+		return nil, wrapErr("create map keys", err)
+	}
+	defer func() { _ = keyTensor.Close() }()
+
+	valTensor, err := CreateTensor[V]([]int64{int64(n)}, vals)
+	if err != nil {
+		return nil, wrapErr("create map values", err)
+	}
+	defer func() { _ = valTensor.Close() }()
+
+	return NewMap(keyTensor, valTensor)
 }
 
 // Close releases the tensor's resources. It is idempotent.

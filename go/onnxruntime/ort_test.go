@@ -37,6 +37,26 @@ func TestIsInitialized(t *testing.T) {
 	}
 }
 
+func TestGetVersion(t *testing.T) {
+	v, err := GetVersion()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v == "" {
+		t.Fatal("expected non-empty version string")
+	}
+	t.Logf("ORT version: %s, API version: %d", v, APIVersion())
+}
+
+func TestTelemetry(t *testing.T) {
+	if err := DisableTelemetry(); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnableTelemetry(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAvailableProviders(t *testing.T) {
 	providers, err := AvailableProviders()
 	if err != nil {

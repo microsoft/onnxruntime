@@ -180,6 +180,40 @@ func TestAppendExecutionProviderUnknown(t *testing.T) {
 	}
 }
 
+func TestSessionConfigEntry(t *testing.T) {
+	opts, err := NewSessionOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opts.Close()
+
+	opts.AddConfigEntry("test.key", "test.value")
+
+	has, err := opts.HasSessionConfigEntry("test.key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !has {
+		t.Error("expected config entry to exist")
+	}
+
+	val, err := opts.GetSessionConfigEntry("test.key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if val != "test.value" {
+		t.Errorf("expected 'test.value', got %q", val)
+	}
+
+	has, err = opts.HasSessionConfigEntry("nonexistent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if has {
+		t.Error("expected config entry to not exist")
+	}
+}
+
 func TestTensorIsTensor(t *testing.T) {
 	tensor, err := CreateTensor[float32]([]int64{2}, []float32{1, 2})
 	if err != nil {

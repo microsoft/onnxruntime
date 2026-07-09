@@ -173,8 +173,10 @@ OrtStatusPtr ort_AddInitializer(OrtSessionOptions *opts, const char *name, const
 // Session profiling
 OrtStatusPtr ort_SessionEndProfiling(OrtSession *session, OrtAllocator *allocator, char **out);
 
+// Version
+const char *ort_GetVersionString(void);
+
 // Session options getters (since 1.27)
-int ort_api_version(void);
 OrtStatusPtr ort_GetMemPatternEnabled(const OrtSessionOptions *opts, int *out);
 OrtStatusPtr ort_GetSessionExecutionMode(const OrtSessionOptions *opts, ExecutionMode *out);
 
@@ -183,9 +185,24 @@ OrtStatusPtr ort_GetValueType(const OrtValue *value, enum ONNXType *out);
 OrtStatusPtr ort_GetValueCount(const OrtValue *value, size_t *out);
 OrtStatusPtr ort_GetValue(const OrtValue *value, int index, OrtAllocator *allocator, OrtValue **out);
 
+// Value creation (sequence/map)
+OrtStatusPtr ort_CreateValue(const OrtValue *const *in, size_t num_values,
+    enum ONNXType value_type, OrtValue **out);
+
 // Memory info
 OrtStatusPtr ort_CreateMemoryInfo(const char *name, enum OrtAllocatorType type,
     int id, enum OrtMemType mem_type, OrtMemoryInfo **out);
+
+// Telemetry
+OrtStatusPtr ort_EnableTelemetryEvents(const OrtEnv *env);
+OrtStatusPtr ort_DisableTelemetryEvents(const OrtEnv *env);
+
+// Additional session options (continued)
+OrtStatusPtr ort_SetOptimizedModelFilePath(OrtSessionOptions *opts, const char *path);
+OrtStatusPtr ort_RegisterCustomOpsLibrary_V2(OrtSessionOptions *opts, const char *path);
+OrtStatusPtr ort_HasSessionConfigEntry(const OrtSessionOptions *opts, const char *key, int *out);
+OrtStatusPtr ort_GetSessionConfigEntry(const OrtSessionOptions *opts, const char *key,
+    char *value, size_t *size);
 
 // Error handling
 OrtErrorCode ort_GetErrorCode(const OrtStatus *status);
