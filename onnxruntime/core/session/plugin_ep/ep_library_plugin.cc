@@ -11,8 +11,8 @@ namespace onnxruntime {
 Status EpLibraryPlugin::Load() {
   auto status = Status::OK();
 
-  std::lock_guard<std::mutex> lock{mutex_};
   ORT_TRY {
+    std::lock_guard<std::mutex> lock{mutex_};
     if (factories_.empty()) {
       // Run the load steps in an inner lambda so that an early error return from ORT_RETURN_IF_ERROR
       // is captured in `status` rather than returning out of this function. That lets the cleanup
