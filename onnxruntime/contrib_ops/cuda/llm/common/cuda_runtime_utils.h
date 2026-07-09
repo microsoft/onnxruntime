@@ -21,6 +21,7 @@
 #ifdef ENABLE_FP8
 #include <cuda_fp8.h>
 #endif
+#include "core/platform/env_var_utils.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/platform/env_var_utils.h"
 
@@ -62,11 +63,7 @@ inline std::optional<bool> isCudaLaunchBlocking() {
   thread_local bool firstCall = true;
   thread_local std::optional<bool> result = std::nullopt;
   if (!firstCall) {
-    if (ParseEnvironmentVariableWithDefault<int>("CUDA_LAUNCH_BLOCKING", 0) == 1) {
-      result = true;
-    } else {
-      result = false;
-    }
+    result = ParseEnvironmentVariableWithDefault<int>("CUDA_LAUNCH_BLOCKING", 0) == 1;
     firstCall = false;
   }
   return result;
