@@ -28,6 +28,8 @@ interface PoolShapeCase {
   readonly autoPad?: string;
   readonly ceilMode: number;
   readonly expectedShape: number[];
+  // When set, asserts the auto_pad pad distribution written back to the pads out-param.
+  readonly expectedPads?: number[];
 }
 
 const poolShapeCases: PoolShapeCase[] = [
@@ -196,37 +198,74 @@ const poolShapeCases: PoolShapeCase[] = [
     ceilMode: 1,
     expectedShape: [1, 1, 1],
   },
+  // ceilMode=0 SAME_* regression guards: the Math.floor(legacyTargetSize) fix also corrects the
+  // auto_pad pad DISTRIBUTION on the floor path (output shape is unchanged, so only asserting the
+  // shape would miss it). Old float division gave pads (1,1); C++ integer division gives (0,1) for
+  // SAME_UPPER and (1,0) for SAME_LOWER at in=2, stride=2, kernel=3.
+  {
+    name: 'SAME_UPPER auto_pad ceilMode=0 non-divisible corrects pad split -> pads [0,1]',
+    isGlobalOperator: false,
+    inputDims: [1, 1, 2],
+    strides: [2],
+    dilations: [1],
+    kernelShape: [3],
+    pads: [0, 0],
+    autoPad: 'SAME_UPPER',
+    ceilMode: 0,
+    expectedShape: [1, 1, 1],
+    expectedPads: [0, 1],
+  },
+  {
+    name: 'SAME_LOWER auto_pad ceilMode=0 non-divisible corrects pad split -> pads [1,0]',
+    isGlobalOperator: false,
+    inputDims: [1, 1, 2],
+    strides: [2],
+    dilations: [1],
+    kernelShape: [3],
+    pads: [0, 0],
+    autoPad: 'SAME_LOWER',
+    ceilMode: 0,
+    expectedShape: [1, 1, 1],
+    expectedPads: [1, 0],
+  },
 ];
 
 function runPoolConvUtil(
   computePoolOutputShape: typeof JsepPoolConvUtil.computePoolOutputShape,
   testCase: PoolShapeCase,
-): number[] {
-  // pads/strides/dilations/kernelShape are copied because computePoolOutputShape mutates pads
-  // in the auto_pad branches.
-  return computePoolOutputShape(
+): { shape: number[]; pads: number[] } {
+  // strides/dilations/kernelShape/pads are copied because computePoolOutputShape mutates pads
+  // in the auto_pad branches. The mutated pads copy is returned so tests can assert the
+  // computed auto_pad pad distribution, not just the output shape.
+  const pads = testCase.pads.slice();
+  const shape = computePoolOutputShape(
     testCase.isGlobalOperator,
     testCase.inputDims,
     testCase.strides.slice(),
     testCase.dilations.slice(),
     testCase.kernelShape.slice(),
-    testCase.pads.slice(),
+    pads,
     testCase.autoPad,
     testCase.ceilMode,
   );
+  return { shape, pads };
 }
 
 describe('PoolConvUtil.computePoolOutputShape ceil_mode', () => {
   for (const testCase of poolShapeCases) {
     it(`[jsep] ${testCase.name}`, () => {
-      expect(runPoolConvUtil(JsepPoolConvUtil.computePoolOutputShape, testCase)).to.deep.equal(
-        testCase.expectedShape,
-      );
+      const { shape, pads } = runPoolConvUtil(JsepPoolConvUtil.computePoolOutputShape, testCase);
+      expect(shape).to.deep.equal(testCase.expectedShape);
+      if (testCase.expectedPads) {
+        expect(pads).to.deep.equal(testCase.expectedPads);
+      }
     });
     it(`[onnxjs] ${testCase.name}`, () => {
-      expect(runPoolConvUtil(OnnxjsPoolConvUtil.computePoolOutputShape, testCase)).to.deep.equal(
-        testCase.expectedShape,
-      );
+      const { shape, pads } = runPoolConvUtil(OnnxjsPoolConvUtil.computePoolOutputShape, testCase);
+      expect(shape).to.deep.equal(testCase.expectedShape);
+      if (testCase.expectedPads) {
+        expect(pads).to.deep.equal(testCase.expectedPads);
+      }
     });
   }
 

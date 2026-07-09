@@ -520,6 +520,7 @@ export class PoolConvUtil {
           if (dilation !== 1) {
             throw new Error('Dilation not supported for SAME_UPPER or SAME_LOWER');
           } else {
+            // Integer division to match C++ pool_attributes.h ComputeSizePadDilations; float division mis-rounds SAME_* pads.
             const legacyTargetSize = Math.floor((inSize + stride - 1) / stride);
             const padNeeded = (legacyTargetSize - 1) * stride + kernel - inSize;
             pads[padHeadIndex] = autoPad === 'SAME_LOWER' ? Math.floor((padNeeded + 1) / 2) : Math.floor(padNeeded / 2);
