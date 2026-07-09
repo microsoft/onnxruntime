@@ -20,7 +20,9 @@
 
 #include <algorithm>
 #include <set>
-#include <sstream>
+
+#include "core/common/parse_string.h"
+#include "core/common/string_utils.h"
 
 using namespace onnxruntime::llm::common;
 using namespace onnxruntime::llm::kernels::cutlass_kernels;
@@ -77,12 +79,12 @@ size_t WeightOnlyGroupwiseQuantGemmPluginProfiler::computeTmpSize(size_t maxM, s
   // Quantized weights are packed in FP16 format (INT4*4 -> FP16, INT8*2 -> FP16)
   int const originalN = static_cast<int>(mQuantBits == 8 ? n * FP16_INT8_RATIO : n * FP16_INT4_RATIO);
   std::vector<size_t> workspaces = {
-      maxM * k * sizeof(half),                    // A
-      k * n * sizeof(half),                       // B
-      k * originalN * sizeof(half) / mGroupSize,  // scales
-      k * originalN * sizeof(half) / mGroupSize,  // zeros
-      originalN * sizeof(half),                   // biases
-      maxM * originalN * sizeof(half),            // C
+      /* A */ maxM * k * sizeof(half),
+      /* B */ k * n * sizeof(half),
+      /* scales */ k * originalN * sizeof(half) / mGroupSize,
+      /* zeros */ k * originalN * sizeof(half) / mGroupSize,
+      /* biases */ originalN * sizeof(half),
+      /* C */ maxM * originalN * sizeof(half),
       mRunner->getWorkspaceSize(static_cast<int>(maxM), originalN, static_cast<int>(k))  // workspace
   };
   return calculateTotalWorkspaceSize(workspaces.data(), static_cast<int>(workspaces.size()));
@@ -106,24 +108,15 @@ std::vector<int> WeightOnlyGroupwiseQuantGemmPluginProfiler::ParseProfileMList(c
   if (value.empty()) {
     return result;
   }
-  std::stringstream ss(value);
-  std::string token;
   std::set<int> unique;
-  while (std::getline(ss, token, ',')) {
-    // Trim surrounding whitespace.
-    size_t start = token.find_first_not_of(" \t");
-    size_t end = token.find_last_not_of(" \t");
-    if (start == std::string::npos) {
+  for (const auto token : onnxruntime::utils::SplitString(value, ",", true)) {
+    const std::string trimmed_token = onnxruntime::utils::TrimString(token);
+    if (trimmed_token.empty()) {
       continue;
     }
-    token = token.substr(start, end - start + 1);
-    try {
-      int m = std::stoi(token);
-      if (m > 0) {
-        unique.insert(m);
-      }
-    } catch (const std::exception&) {
-      // Ignore malformed entries.
+    int m = 0;
+    if (TryParseStringWithClassicLocale(trimmed_token, m) && m > 0) {
+      unique.insert(m);
     }
   }
   result.assign(unique.begin(), unique.end());

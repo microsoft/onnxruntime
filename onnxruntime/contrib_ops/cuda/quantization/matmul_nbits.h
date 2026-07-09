@@ -8,12 +8,12 @@
 //
 #pragma once
 #include "core/common/safeint.h"
+#include "core/common/string_utils.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
 #include "core/platform/env_var_utils.h"
 
-#include <cctype>
 #include <string>
 #include <vector>
 
@@ -59,9 +59,9 @@ constexpr const char* kConfigFpAIntBProfileM = "ep.cuda.fpa_intb_profile_m";
 // variable, else empty. Session config wins so a model/session can override a process-wide env var.
 inline std::string ResolveFpAIntBConfigOrEnv(const OpKernelInfo& info, const char* config_key,
                                              const char* env_key) {
-  const std::string from_config = info.GetConfigOptions().GetConfigOrDefault(config_key, "");
-  if (!from_config.empty()) {
-    return from_config;
+  const auto from_config = info.GetConfigOptions().GetConfigEntry(config_key);
+  if (from_config.has_value()) {
+    return *from_config;
   }
   return ParseEnvironmentVariableWithDefault<std::string>(env_key, "");
 }
@@ -71,11 +71,7 @@ inline std::string ResolveFpAIntBConfigOrEnv(const OpKernelInfo& info, const cha
 // (case-insensitive): "" / "0" / "off" -> disabled; otherwise, enabled (a non-zero numeric value
 // still enables, for backward compatibility).
 inline bool ParseFpAIntBEnabled(const std::string& value) {
-  std::string lowered;
-  lowered.reserve(value.size());
-  for (char c : value) {
-    lowered.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-  }
+  const std::string lowered = onnxruntime::utils::GetLowercaseString(onnxruntime::utils::TrimString(value));
   if (lowered.empty() || lowered == "0" || lowered == "off") {
     return false;
   }
