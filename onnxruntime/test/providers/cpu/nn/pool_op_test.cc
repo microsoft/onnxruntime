@@ -9,6 +9,21 @@
 namespace onnxruntime {
 namespace test {
 
+// Execution providers excluded from the four opset-18 AveragePool ceil_mode +
+// count_include_pad parity tests below. Shared by all four tests to prevent scoping
+// drift. Two rationales:
+//   - Most EPs (kTensorrt, kNvTensorRTRTX, kAcl, kOpenVINO, kDml, kWebGpu, kDnnl,
+//     kCoreML, kQnn) do not implement the clamped-window divisor (PyTorch #183528),
+//     so they return the pre-fix full-kernel-size average and would fail these tests.
+//   - kCuda / kCudaNHWC DO support the semantics, but these opset-18 cases are
+//     CPU-reference gate tests (the CUDA path has its own parity tests) and cuDNN-NHWC
+//     can flap on the 2D case, so they are excluded here too.
+static const std::unordered_set<std::string> kPoolingEpsExcludedFromCeilCountIncludePadTests = {
+    kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider,
+    kNvTensorRTRTXExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
+    kDmlExecutionProvider, kWebGpuExecutionProvider, kDnnlExecutionProvider,
+    kCoreMLExecutionProvider, kQnnExecutionProvider};
+
 template <typename T>
 class PoolTest : public ::testing::Test {
 };
@@ -1118,9 +1133,7 @@ TEST(PoolTest, AveragePool_18_ceil_count_include_pad_1d) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider,
-            kOpenVINOExecutionProvider, kDmlExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsExcludedFromCeilCountIncludePadTests);
 }
 
 // 2D opset-18 case for the same bug. Input is the PyTorch #183528 repro:
@@ -1148,9 +1161,7 @@ TEST(PoolTest, AveragePool_18_ceil_count_include_pad_2d) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider,
-            kOpenVINOExecutionProvider, kDmlExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsExcludedFromCeilCountIncludePadTests);
 }
 
 // 3D opset-18 case for the same bug, exercising the AveragePool3DTask path.
@@ -1176,9 +1187,7 @@ TEST(PoolTest, AveragePool_18_ceil_count_include_pad_3d) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider,
-            kOpenVINOExecutionProvider, kDmlExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsExcludedFromCeilCountIncludePadTests);
 }
 
 // No-regression guard: with count_include_pad=0 the divisor already counts only in-bounds
@@ -1204,9 +1213,7 @@ TEST(PoolTest, AveragePool_18_ceil_count_exclude_pad_2d) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider,
-            kOpenVINOExecutionProvider, kDmlExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsExcludedFromCeilCountIncludePadTests);
 }
 
 TEST(PoolTest, GlobalAveragePool) {
