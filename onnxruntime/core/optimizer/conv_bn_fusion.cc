@@ -5,6 +5,7 @@
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/conv_bn_fusion.h"
 #include "core/optimizer/utils.h"
+#include "core/common/safeint.h"
 
 #include <limits>
 #include <type_traits>
@@ -59,14 +60,15 @@ void ScaleConvTransposeWeightData(Initializer& weight, const Initializer& scaler
               "Invalid ConvTranspose output channel count.");
 
   const int64_t input_channels_per_group = input_channels / group;
-  ORT_ENFORCE(static_cast<size_t>(output_channels_per_group * group) == scalers.size(),
+  ORT_ENFORCE(SafeInt<size_t>(output_channels_per_group) * group == scalers.size(),
               "Invalid ConvTranspose channel scaler size.");
 
-  size_t kernel_size = 1;
+  SafeInt<size_t> safe_kernel_size = 1;
   for (size_t i = 2; i < dims.size(); ++i) {
     ORT_ENFORCE(dims[i] > 0, "Invalid ConvTranspose kernel shape.");
-    kernel_size *= static_cast<size_t>(dims[i]);
+    safe_kernel_size *= SafeInt<size_t>(dims[i]);
   }
+  const size_t kernel_size = safe_kernel_size;
 
   using Numeric = std::conditional_t<std::is_same_v<T, double>, double, float>;
   T* weight_data = weight.data<T>();
@@ -78,9 +80,7 @@ void ScaleConvTransposeWeightData(Initializer& weight, const Initializer& scaler
       const auto scaler_index = static_cast<size_t>(group_index * output_channels_per_group + output_channel);
       const Numeric scale = static_cast<Numeric>(scaler_data[scaler_index]);
       const size_t weight_offset =
-          (static_cast<size_t>(input_channel) * static_cast<size_t>(output_channels_per_group) +
-           static_cast<size_t>(output_channel)) *
-          kernel_size;
+          (SafeInt<size_t>(input_channel) * output_channels_per_group + output_channel) * kernel_size;
 
       for (size_t kernel_index = 0; kernel_index < kernel_size; ++kernel_index) {
         T& value = weight_data[weight_offset + kernel_index];
