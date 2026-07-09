@@ -102,8 +102,22 @@ stages:
             Write-Host "##vso[task.setvariable variable=BuildCommandExtra]--cmake_extra_defines LLVM_TABLEGEN=$(LLVM_TABLEGEN_PATH) CLANG_TABLEGEN=$(CLANG_TABLEGEN_PATH)"
           displayName: 'Set build flags for WebGPU cross-compilation'
 
+      - template: ../templates/steps/ccache-and-vcpkg.yml
+
       - powershell: |
-          python tools\ci_build\build.py --build_dir $(Build.BinariesDirectory) ${{ parameters.BuildCommand }} $(BuildCommandExtra) --use_binskim_compliant_compile_flags --parallel --build --update --config $(BuildConfig) --msbuild_extra_options IncludeMobileTargets=false ${{ variables.build_py_lto_flag }}
+          python tools\ci_build\build.py `
+            --build `
+            --build_dir ${env:BUILD_BINARIESDIRECTORY} `
+            --config ${env:BUILDCONFIG} `
+            --msbuild_extra_options IncludeMobileTargets=false `
+            --parallel `
+            --update `
+            --use_binskim_compliant_compile_flags `
+            --use_cache `
+            $(BuildCommandExtra) `
+            ${{ parameters.BuildCommand }} `
+            ${{ variables.build_py_lto_flag }}
+        displayName: Build
 
       - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
         # Use cross-compiled protoc

@@ -15,6 +15,19 @@ sys.path.insert(0, str(REPO_DIR / "tools" / "python"))
 
 from util import run  # noqa: E402
 
+CCACHE_VERSION = "4.13.1"
+CCACHE_HASHES = {
+    "windows": {
+        "x64": "fe678d8e82f35e1d5f13c7bcd86447c08b67b0831dec8c772ef1257090a0f51678e296bb6d3ea38433f472d0fded52da96445cbc6fa8f945ecf94351d2c149d8",
+        "arm64": None,
+    },
+    "linux": {
+        "x64": "626407a9b81dd86f8ec9867bff396b32dd1f00344f5b323526579a64f6d4104927f83e8d7a05ad9806fd78f4491e0adb4cff73388000a62050cb1b00766214ee",
+        "arm64": None,
+    },
+    "mac": "d831cbd84ac1efb32441c5bfbc7cc662830c0c22e96c5b5b27a6ce4746c81d6076261cf61217fb67ff4585fbd6cbd91ea817aa4ed904b81fcba621bb60881f56",
+}
+
 # Hash structure for platform-specific binaries
 CMAKE_HASHES = {
     "windows": {
@@ -26,6 +39,20 @@ CMAKE_HASHES = {
         "arm64": "8eeb07e966a5340c122979dd2e371708a78adccc85200b22bc7e66028e65513bce5ced6c37fe65aedb94000d970186c5c7562d1ab3dbda911061de46b75345d9",
     },
     "macos": "99cc9c63ae49f21253efb5921de2ba84ce136018abf08632c92c060ba91d552e0f6acc214e9ba8123dee0cf6d1cf089ca389e321879fd9d719a60d975bcffcc8",
+}
+
+# Not specified for others b/c they a pre-bundled version of Ninja.
+NINJA_VERSION = "1.13.0"
+NINJA_HASHES = {
+    "windows": {
+        "x64": "cffea62711b5a89ec494b48ae5e8df32f24cab0e642363ac20cc250c7d7f75ad43258f8d3721c68b23413e401d42630945c534ff95355cfe664e5da1d36569bf",
+        "arm64": "abcd",  # trigger error to fetch correct hash
+    },
+    "linux": {
+        "x64": None,
+        "arm64": None,
+    },
+    "macos": None,
 }
 
 
@@ -69,9 +96,13 @@ def main() -> None:
 
     try:
         if os_key == "macos":
+            ccache_hash = CCACHE_HASHES[os_key]
             cmake_hash = CMAKE_HASHES[os_key]
+            ninja_hash = NINJA_HASHES[os_key]
         else:
+            ccache_hash = CCACHE_HASHES[os_key][arch_key]
             cmake_hash = CMAKE_HASHES[os_key][arch_key]
+            ninja_hash = NINJA_HASHES[os_key][arch_key]
 
         print(f"Selected CMake hash for '{os_key}'.")
     except KeyError:
@@ -83,17 +114,24 @@ def main() -> None:
     terrapin_tool_path_str = "C:\\local\\Terrapin\\TerrapinRetrievalTool.exe"
 
     action_inputs = {
+        "INPUT_CCACHE-VERSION": CCACHE_VERSION,
+        "INPUT_CCACHE-HASH": ccache_hash,
         "INPUT_CMAKE-VERSION": "3.31.8",
         "INPUT_CMAKE-HASH": cmake_hash,
         "INPUT_VCPKG-VERSION": "2025.08.27",
         "INPUT_VCPKG-HASH": "9a4b32849792e13bee1d24726f073b3881acae4165206ddf1a6378e44a4ddd05b3ee93f55ff46d8e8873b3cbcd06606212989e248f0bd615a5bf365070074079",
+        "INPUT_ADD-CCACHE-TO-PATH": "true",
         "INPUT_ADD-CMAKE-TO-PATH": "true",
     }
+    if ninja_hash is not None:
+        action_inputs["INPUT_NINJA-VERSION"] = NINJA_VERSION
+        action_inputs["INPUT_NINJA-HASH"] = ninja_hash
 
-    if os_key == "windows" and Path(terrapin_tool_path_str).exists():
-        disable_terrapin_value = "false"
-        action_inputs["INPUT_TERRAPIN-TOOL-PATH"] = terrapin_tool_path_str
-        print("Terrapin tool found. Setting INPUT_DISABLE-TERRAPIN to 'false' and providing tool path.")
+    # not all assets are yet in terrapin
+    # if os_key == "windows" and Path(terrapin_tool_path_str).exists():
+    #     disable_terrapin_value = "false"
+    #     action_inputs["INPUT_TERRAPIN-TOOL-PATH"] = terrapin_tool_path_str
+    #     print("Terrapin tool found. Setting INPUT_DISABLE-TERRAPIN to 'false' and providing tool path.")
 
     action_inputs["INPUT_DISABLE-TERRAPIN"] = disable_terrapin_value
 
