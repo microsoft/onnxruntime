@@ -19,10 +19,10 @@
 #define WINAPI_FAMILY WINAPI_FAMILY_DESKTOP_APP
 #include <PathCch.h>
 #pragma pop_macro("WINAPI_FAMILY")
-#pragma comment(lib, "PathCch.lib")
+#pragma comment(lib, "pathcch.lib")
 #else
 #include <PathCch.h>
-#pragma comment(lib, "PathCch.lib")
+#pragma comment(lib, "pathcch.lib")
 #endif
 #else
 #include <libgen.h>

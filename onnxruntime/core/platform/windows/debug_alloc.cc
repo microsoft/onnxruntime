@@ -33,7 +33,7 @@ constexpr int c_callstack_limit = 32;  // Maximum depth of callstack in leak tra
 #include <iostream>
 #include "debug_alloc.h"
 #include <DbgHelp.h>
-#pragma comment(lib, "Dbghelp.lib")
+#pragma comment(lib, "dbghelp.lib")
 
 // If you are seeing errors of
 // "Error LNK2005: "void __cdecl operator delete(void *)" (??3@YAXPEAX@Z) already defined in LIBCMTD.lib(delete_scalar.obj)"
