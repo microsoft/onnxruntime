@@ -263,7 +263,10 @@ Prepacked weights are intentionally strict:
 
 - If ORT was built without `onnxruntime_USE_FPA_INTB_GEMM=ON`, any nonzero
   `weight_prepacked` value throws during kernel construction.
-- If any nonzero `weight_prepacked` value will cause `ORT_FPA_INTB_GEMM` be ignored.
+- Any nonzero `weight_prepacked` value forces the fpA_intB path on, so the enable
+  flag (`ep.cuda.fpa_intb_gemm` session config, or the `ORT_FPA_INTB_GEMM` env
+  var) is ignored for prepacked weights — the layout choice was fixed at export
+  time and cannot be turned off at run time.
 - Nonzero `weight_prepacked` requires FP16 or BF16 input `A`, because only the
   CUDA fpA_intB path consumes this layout.
 - `weight_prepacked` must match the layout the selected kernel expects: `1` is

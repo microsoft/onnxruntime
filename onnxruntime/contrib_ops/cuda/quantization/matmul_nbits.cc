@@ -384,9 +384,9 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
       // and synchronizes events, and allocates/frees scratch, all of which are illegal while the
       // compute stream is being captured. Fall back to a lookup of an already-profiled bucket
       // (warmup runs before capture populate these); only outside capture do we allow lazy
-      // single-bucket profiling.
-      const bool stream_is_capturing =
-          stream != nullptr && onnxruntime::llm::common::isCapturing(stream);
+      // single-bucket profiling. Note: a null cudaStream_t is the default stream (a valid capture
+      // target under per-thread default streams), so query the capture status unconditionally.
+      const bool stream_is_capturing = onnxruntime::llm::common::isCapturing(stream);
       auto const bestTactic = stream_is_capturing ? gemmProfiler_->getBestConfig(m, gemmId_)
                                                   : gemmProfiler_->getBestConfigOrProfile(m, gemmId_);
       if (!bestTactic.has_value()) {
