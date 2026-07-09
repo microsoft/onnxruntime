@@ -95,7 +95,10 @@ jobs:
 
       - name: Run no-cuDNN CUDA EP op smoke test
         run: |
-          docker run --rm --gpus all \
+          # The build image runs as a non-root user by default, but this step
+          # deletes the system cuDNN libraries and rebuilds the dynamic linker
+          # cache (both require root). Run this disposable test container as root.
+          docker run --rm --gpus all --user root \
             -v "${{ runner.temp }}/Release:/build/Release" \
             "${{ steps.build_docker_image_step.outputs.full-image-name }}" \
             bash -lc 'set -e
