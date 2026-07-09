@@ -960,9 +960,9 @@ TEST(PoolTest, AveragePool_CountIncludePad_AsymmetricPads) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   // The CUDA custom AveragePoolWithPad kernel now honors per-side (asymmetric) pads, so the
-  // CUDA (NCHW) leg is un-excluded here to lock in that fix. kCudaNHWCExecutionProvider is still
-  // excluded because the custom kernel's NHWC decode branch is not yet covered by these tests
-  // (asymmetric NHWC routes to that branch, not to cuDNN) — tracked as a follow-up. The remaining
+  // CUDA (NCHW) leg is un-excluded here to lock in that fix. kCudaNHWCExecutionProvider is
+  // excluded here only to avoid redundant coverage: the asymmetric NHWC-CUDA decode branch is
+  // now exercised (and passing) by the 1D/2D AveragePool_CUDA_* parity tests below. The remaining
   // exclusions are EPs whose external libraries (CoreML, etc.) still produce wrong results here.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kCudaNHWCExecutionProvider,
@@ -998,10 +998,11 @@ TEST(PoolTest, AveragePool3D_CountIncludePad_AsymmetricPads) {
   test.AddInput<float>("X", x3d_dims, x3d_vals);
   test.AddOutput<float>("Y", expected3d_dims, expected3d_vals);
   // The CUDA custom AveragePoolWithPad kernel now honors per-side (asymmetric) pads in 3D, so the
-  // CUDA (NCHW) leg is un-excluded here to lock in that fix. kCudaNHWCExecutionProvider is still
-  // excluded because the custom kernel's NHWC decode branch is not yet covered by these tests
-  // (asymmetric NHWC routes to that branch, not to cuDNN) — tracked as a follow-up. The remaining
-  // exclusions are EPs whose external libraries (CoreML, etc.) still produce wrong results here.
+  // CUDA (NCHW) leg is un-excluded here to lock in that fix. kCudaNHWCExecutionProvider stays
+  // excluded here: the asymmetric NHWC-CUDA decode branch is now exercised (and passing) by the
+  // 1D/2D AveragePool_CUDA_* parity tests below, but 3D (NDHWC) NHWC pooling is not among them, so
+  // it remains a follow-up. The remaining exclusions are EPs whose external libraries (CoreML,
+  // etc.) still produce wrong results here.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kCudaNHWCExecutionProvider,
             kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
@@ -1114,7 +1115,27 @@ TEST(PoolTest, AveragePool_19_ceil_count_include_pad_1d) {
 // ceil_mode + count_include_pad cases use opset 19 so the CPU leg runs the already-correct v19
 // reference functor and validates the CUDA kernel independently of the separate CPU opset-7..18
 // MLAS fix (PR #29629); the CUDA routing is opset-independent, so this still exercises the fix.
+//
+// Exception: the fp16 case below runs CUDA-only (CPU has no fp16 AveragePool kernel on x64 and
+// the Arm64 NEON fp16 pooling kernel mishandles the ceil_mode + count_include_pad divisor), so
+// the "CPU leg runs the v19 reference oracle" statement above does not apply to it — see its own
+// comment for how it validates the CUDA half accumulate-in-float path without a CPU oracle.
+//
+// The float cases share a single exclusion set (kPoolingEpsWithoutCeilCip) so the list cannot
+// drift test-to-test. It names every EP whose pooling does NOT implement ONNX's asymmetric-pad /
+// dilated / ceil_mode + count_include_pad clamped-divisor semantics (they would produce wrong
+// values and cannot serve as an oracle). The CPU EP (correct v19 reference) stays un-excluded as
+// the float oracle, and the CUDA + CUDA-NHWC EPs stay un-excluded as the tested targets — the
+// asymmetric NHWC-CUDA path is intentionally exercised here (USE_CUDA_NHWC_OPS defaults ON) and
+// passes. kWebGpuExecutionProvider is listed defensively: it auto-skips in a CUDA-only build
+// (DefaultWebGpuExecutionProvider returns nullptr), but naming it keeps a future WebGPU build leg
+// from re-triggering the CI failure this list fixes.
 // ---------------------------------------------------------------------------
+const std::unordered_set<std::string> kPoolingEpsWithoutCeilCip = {
+    kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
+    kAclExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
+    kDmlExecutionProvider, kWebGpuExecutionProvider};
+
 TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_1d) {
   OpTester test("AveragePool", 19);
 
@@ -1132,10 +1153,7 @@ TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_1d) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
-            kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
-            kDmlExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsWithoutCeilCip);
 }
 
 TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_1d_exclude_pad) {
@@ -1156,10 +1174,7 @@ TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_1d_exclude_pad) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
-            kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
-            kDmlExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsWithoutCeilCip);
 }
 
 TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_2d) {
@@ -1184,10 +1199,7 @@ TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_2d) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
-            kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
-            kDmlExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsWithoutCeilCip);
 }
 
 TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_2d_exclude_pad) {
@@ -1212,10 +1224,7 @@ TEST(PoolTest, AveragePool_CUDA_asymmetric_tail_pad_2d_exclude_pad) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
-            kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
-            kDmlExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsWithoutCeilCip);
 }
 
 // auto_pad=SAME_UPPER produces naturally asymmetric pads (here pad(0,1)); proves the latent
@@ -1235,10 +1244,7 @@ TEST(PoolTest, AveragePool_CUDA_same_upper_asymmetric_1d) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
-            kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
-            kDmlExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsWithoutCeilCip);
 }
 
 // Regression guard: symmetric pads must STAY on the fast cuDNN path and remain correct.
@@ -1259,10 +1265,7 @@ TEST(PoolTest, AveragePool_CUDA_symmetric_pad_regression_1d) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
-            kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
-            kDmlExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsWithoutCeilCip);
 }
 
 // MaxPool asymmetric-pad probe/regression on CUDA (verify-then-decide per design). MaxPool
@@ -1284,10 +1287,7 @@ TEST(PoolTest, MaxPool_CUDA_asymmetric_tail_pad_1d) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
-            kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
-            kDmlExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsWithoutCeilCip);
 }
 
 // fp16 asymmetric-pad AveragePool. Runs on the CUDA EP ONLY (via an explicit provider list):
@@ -1349,10 +1349,7 @@ TEST(PoolTest, AveragePool_CUDA_symmetric_pad_dilation_1d) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
-            kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
-            kDmlExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsWithoutCeilCip);
 }
 
 // auto_pad=SAME_LOWER produces naturally asymmetric pads with the extra pad on the LOW side
@@ -1372,10 +1369,7 @@ TEST(PoolTest, AveragePool_CUDA_same_lower_asymmetric_1d) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
-            kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
-            kDmlExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", kPoolingEpsWithoutCeilCip);
 }
 
 // bf16 AveragePool is intentionally NOT tested here: although the CUDA kernel instantiates
