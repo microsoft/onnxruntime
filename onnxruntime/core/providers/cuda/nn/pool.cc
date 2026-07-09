@@ -209,7 +209,7 @@ Status Pool<T, PoolType, Layout>::ComputeInternal(OpKernelContext* context) cons
   // cuDNN's pooling descriptor cannot represent two ONNX features:
   //  (1) Asymmetric padding: it stores a single symmetric pad value per axis and applies it to
   //      both sides, so it silently drops ONNX end pads when pad_begin != pad_end (explicit
-  //      asymmetric pads, auto_pad=SAME_UPPER/SAME_LOWER, or ceil_mode boundaries).
+  //      asymmetric pads, or auto_pad=SAME_UPPER/SAME_LOWER resolving to asymmetric pads).
   //  (2) Dilation: the pooling descriptor has no dilation parameter at all, so any dilation > 1
   //      is silently ignored.
   // Either case produces wrong sums and divisors on cuDNN, so route it to the custom kernel,

@@ -959,10 +959,11 @@ TEST(PoolTest, AveragePool_CountIncludePad_AsymmetricPads) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
-  // This test targets the CPU fix only. Exclude EPs whose external libraries
-  // (cuDNN, CoreML, etc.) also produce wrong results for this case.
+  // The CUDA custom AveragePoolWithPad kernel now honors per-side (asymmetric) pads, so the
+  // CUDA (NCHW) leg is un-excluded here to lock in that fix. The remaining exclusions are EPs
+  // whose external libraries (cuDNN NHWC, CoreML, etc.) still produce wrong results for this case.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider,
+           {kCudaNHWCExecutionProvider,
             kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
             kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
             kDmlExecutionProvider});
@@ -994,10 +995,11 @@ TEST(PoolTest, AveragePool3D_CountIncludePad_AsymmetricPads) {
                                         0.5f, 0.25f};
   test.AddInput<float>("X", x3d_dims, x3d_vals);
   test.AddOutput<float>("Y", expected3d_dims, expected3d_vals);
-  // This test targets the CPU fix only. Exclude EPs whose external libraries
-  // (cuDNN, CoreML, etc.) also produce wrong results for this case.
+  // The CUDA custom AveragePoolWithPad kernel now honors per-side (asymmetric) pads in 3D, so the
+  // CUDA (NCHW) leg is un-excluded here to lock in that fix. The remaining exclusions are EPs
+  // whose external libraries (cuDNN NHWC, CoreML, etc.) still produce wrong results for this case.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kCudaExecutionProvider, kCudaNHWCExecutionProvider,
+           {kCudaNHWCExecutionProvider,
             kTensorrtExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
             kDnnlExecutionProvider, kCoreMLExecutionProvider, kQnnExecutionProvider,
             kDmlExecutionProvider});
@@ -1096,14 +1098,14 @@ TEST(PoolTest, AveragePool_19_ceil_count_include_pad_1d) {
 }
 
 // ---------------------------------------------------------------------------
-// Target (b): CUDA AveragePool asymmetric-padding parity tests.
+// CUDA AveragePool asymmetric-padding parity tests.
 //
 // cuDNN's pooling descriptor stores one symmetric pad per axis, so it silently drops the
-// ONNX end pad when pad_begin != pad_end, producing wrong averages on CUDA (QA probe:
-// 1D pad(0,3) CUDA=[4,6.5,8] vs CPU=[4,5.571,4]; 2D pad(0,0,3,3) diff 53.25). The custom
-// AveragePoolWithPad CUDA kernel fixes this. These cases keep the CUDA EP UN-excluded so the
-// CUDA leg actually runs and must match the CPU reference oracle. Expected values are the CPU
-// reference outputs (also cross-checked against the QA probe numbers).
+// ONNX end pad when pad_begin != pad_end, producing wrong averages on CUDA (e.g. for a 1D
+// pad of (0,3) cuDNN yields [4, 6.5, 8] while the CPU reference yields [4, 5.571, 4], and a
+// 2D pad of (0,0,3,3) diverges by up to 53.25). The custom AveragePoolWithPad CUDA kernel
+// fixes this. These cases keep the CUDA EP UN-excluded so the CUDA leg actually runs and must
+// match the CPU reference oracle. Expected values are the CPU reference outputs.
 //
 // ceil_mode + count_include_pad cases use opset 19 so the CPU leg runs the already-correct v19
 // reference functor and validates the CUDA kernel independently of the separate CPU opset-7..18
