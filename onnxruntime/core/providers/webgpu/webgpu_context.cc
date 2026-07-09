@@ -328,6 +328,17 @@ Status WebGpuContext::FlushDeferred() {
   return result;
 }
 
+Status WebGpuContext::FlushDeferredIfPending() {
+  // A GPU->CPU readback (Download) is about to happen. If deferred-dispatch has recorded compute
+  // that has not been encoded/submitted yet, execute it now so the readback observes correct data.
+  // The recorded dispatches remain internally consistent across this drain; deferred-dispatch stays
+  // enabled, so subsequent Run() calls resume recording into a fresh window.
+  if (defer_dispatch_ && !deferred_dispatches_.empty()) {
+    return FlushDeferred();
+  }
+  return Status::OK();
+}
+
 Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& program) {
   const auto& inputs = program.Inputs();
   const auto& outputs = program.Outputs();

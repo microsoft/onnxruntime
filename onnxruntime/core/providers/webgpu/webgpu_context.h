@@ -290,6 +290,12 @@ class WebGpuContext final {
   bool DeferDispatch() const { return defer_dispatch_; }
   Status FlushDeferred();
 
+  // Correctness hook for deferred-dispatch: encode + submit any recorded-but-not-yet-executed
+  // dispatches so their GPU results are available. Called before a GPU->CPU readback (Download),
+  // because such a readback would otherwise observe stale data (the deferred compute has not run).
+  // No-op when deferred-dispatch is inactive or nothing is pending.
+  Status FlushDeferredIfPending();
+
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
   std::unique_ptr<WebGpuPIXFrameGenerator> CreatePIXFrameGenerator() {
     return std::make_unique<WebGpuPIXFrameGenerator>(instance_,
