@@ -69,13 +69,22 @@ inline std::optional<bool> isCudaLaunchBlocking() {
     // BEFORE the SHARED_PROVIDER bridge (provider_api.h) is established. env_var_utils.h
     // unconditionally includes core/common/logging/logging.h while SHARED_PROVIDER is
     // undefined, which then clashes with the logging stubs provider_api.h defines later in
-    // the same translation unit. Using std::getenv keeps this header self-contained.
-    char const* env = std::getenv("CUDA_LAUNCH_BLOCKING");
-    if (env != nullptr && std::string(env) == "1") {
-      result = true;
+    // the same translation unit. Read the variable directly to keep this header self-contained.
+    // std::getenv is avoided on MSVC because it raises C4996 (treated as an error); _dupenv_s
+    // is the supported Windows-safe replacement.
+#if defined(_WIN32)
+    char* env = nullptr;
+    size_t env_len = 0;
+    if (_dupenv_s(&env, &env_len, "CUDA_LAUNCH_BLOCKING") == 0 && env != nullptr) {
+      result = std::string(env) == "1";
     } else {
       result = false;
     }
+    std::free(env);
+#else
+    char const* env = std::getenv("CUDA_LAUNCH_BLOCKING");
+    result = (env != nullptr && std::string(env) == "1");
+#endif
     firstCall = false;
   }
   return result;
