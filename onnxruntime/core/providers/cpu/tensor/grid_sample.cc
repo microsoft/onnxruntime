@@ -64,10 +64,16 @@ template <typename T>
 T GsReflect(T x, T x_min, T x_max) {
   T dx = {};
   T fx = static_cast<T>(x);
+  // Guard against NaN or Inf first, before computing the range, so a non-finite coordinate
+  // returns early without an unnecessary subtraction and can never reach the float->int cast
+  // (undefined behavior) below.
+  if (!std::isfinite(fx)) {
+    return x_min;
+  }
   T range = x_max - x_min;
-  // Guard against NaN, Inf, or non-positive range (e.g. dim==1 with align_corners=true)
-  // which would otherwise produce wild indices via division by zero or UB float->int casts.
-  if (!std::isfinite(fx) || !(range > T{0})) {
+  // Guard against a non-positive range (e.g. dim==1 with align_corners=true) which would
+  // otherwise produce wild indices via division by zero.
+  if (!(range > T{0})) {
     return x_min;
   }
   if (fx < x_min) {
