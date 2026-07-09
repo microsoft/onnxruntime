@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <atomic>
 #include <core/session/onnxruntime_cxx_api.h>
 #include <random>
 #include "test_configuration.h"
@@ -31,6 +32,13 @@ class OnnxRuntimeTestSession : public TestSession {
   }
 
   bool PopulateGeneratedInputTestData(int32_t seed);
+  bool PopulateGeneratedMultiShapeInputTestData(
+      int32_t seed,
+      const std::map<std::string, std::vector<std::vector<int64_t>>>& data_shape_groups);
+
+  std::vector<int64_t> GetLoadedInputShape(size_t test_data_id, size_t input_id) const;
+  void SelectTestDataSets(const std::vector<size_t>& selected_ids);
+  void SetUseRoundRobin(bool v) { use_round_robin_ = v; }
 
   ~OnnxRuntimeTestSession();
 
@@ -39,6 +47,10 @@ class OnnxRuntimeTestSession : public TestSession {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(OnnxRuntimeTestSession);
 
  private:
+  void CreateAndStoreGeneratedInput(size_t test_data_id, size_t input_idx,
+                                    const std::vector<int64_t>& dims,
+                                    ONNXTensorElementDataType element_type, int32_t seed);
+
   Ort::Session session_{nullptr};
   std::mt19937 rand_engine_;
   std::uniform_int_distribution<int> dist_;
@@ -60,6 +72,8 @@ class OnnxRuntimeTestSession : public TestSession {
   std::string device_memory_name_;  // Device memory type name to use from the list in allocator.h
   const std::unordered_map<std::string, std::string>& run_config_entries_;
   bool has_dynamic_output_shapes_ = false;
+  std::atomic<size_t> round_robin_counter_{0};
+  bool use_round_robin_{false};
 #if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_NV)
   cudaStream_t stream_;  // Device stream if required by IO bindings
 #endif
