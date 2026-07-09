@@ -1365,6 +1365,52 @@ class FusionRotaryEmbeddings(Fusion):
 
         return cos_cache_name, sin_cache_name, position_ids
 
+    def make_position_ids_format0(self, position_ids: str) -> str:
+        """Reduce on-the-fly RoPE position_ids to a format-0 (single-offset) tensor.
+
+        In on-the-fly RoPE (Qwen3) the traced position_ids is cache_position broadcast
+        over the batch axis, i.e. a (1, sequence_length) tensor holding the contiguous
+        positions [base, base + 1, ..., base + sequence_length - 1]. The RotaryEmbedding
+        kernel only accepts a scalar/1-element position_ids (format 0) or an exact
+        (batch_size, sequence_length) tensor (format 1); a (1, sequence_length) tensor is
+        rejected once batch_size > 1. Format 0 computes the effective position as
+        position_ids[0] + s for every batch row, which reproduces the arange exactly, so
+        taking the first position yields an equivalent, batch-independent input.
+
+        The reduction flattens then slices the first element so it is correct for any
+        leading batch dimension. Returns the name of a (1,) tensor feeding RotaryEmbedding.
+        """
+        flatten_shape_name = "position_ids_format0_flatten_shape"
+        starts_name = "position_ids_format0_starts"
+        ends_name = "position_ids_format0_ends"
+        axes_name = "position_ids_format0_axes"
+        if self.model.get_initializer(flatten_shape_name) is None:
+            self.add_initializer(flatten_shape_name, TensorProto.INT64, dims=[1], vals=[-1], raw=False)
+            self.add_initializer(starts_name, TensorProto.INT64, dims=[1], vals=[0], raw=False)
+            self.add_initializer(ends_name, TensorProto.INT64, dims=[1], vals=[1], raw=False)
+            self.add_initializer(axes_name, TensorProto.INT64, dims=[1], vals=[0], raw=False)
+
+        flatten_node_name = self.model.create_node_name("Reshape", name_prefix="position_ids_format0_flatten")
+        flatten_node = helper.make_node(
+            "Reshape",
+            inputs=[position_ids, flatten_shape_name],
+            outputs=[flatten_node_name + "_output_0"],
+            name=flatten_node_name,
+        )
+        slice_node_name = self.model.create_node_name("Slice", name_prefix="position_ids_format0_slice")
+        slice_node = helper.make_node(
+            "Slice",
+            inputs=[flatten_node.output[0], starts_name, ends_name, axes_name],
+            outputs=[slice_node_name + "_output_0"],
+            name=slice_node_name,
+        )
+
+        self.nodes_to_add.extend([flatten_node, slice_node])
+        self.node_name_to_graph_name[flatten_node.name] = self.this_graph_name
+        self.node_name_to_graph_name[slice_node.name] = self.this_graph_name
+
+        return slice_node.output[0]
+
     def fuse(self, node, input_name_to_nodes, output_name_to_node):
         # Node is either RotaryEmbedding function or Add
         if self.base_name not in node.op_type and node.op_type != "Add":
@@ -1671,6 +1717,11 @@ class FusionRotaryEmbeddings(Fusion):
                 if cos_cache is None:
                     logger.debug("fuse_rotary_embeddings: failed to create cos/sin cache from on-the-fly RoPE")
                     return
+
+                # The traced position_ids is cache_position broadcast over the batch axis
+                # (shape (1, sequence_length)), which the RotaryEmbedding kernel rejects for
+                # batch_size > 1. Reduce it to an equivalent format-0 single-offset tensor.
+                position_ids = self.make_position_ids_format0(position_ids)
             else:
                 # Check path for position ids
                 if position_ids == "":
