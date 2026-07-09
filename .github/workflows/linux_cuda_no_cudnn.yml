@@ -102,6 +102,25 @@ jobs:
           PATH=/opt/python/cp312-cp312/bin:$PATH
           LD_LIBRARY_PATH=/usr/local/cuda-13.0/lib64:${LD_LIBRARY_PATH:-}
           export PATH LD_LIBRARY_PATH
+
+          # The build image contains cuDNN. Remove its runtime libraries from this disposable
+          # test container so the smoke test proves that the provider works when cuDNN is
+          # physically unavailable, rather than merely relying on enable_cudnn=0.
+          for root in /usr /opt /lib /lib64; do
+            if [ -e "$root" ]; then
+              find "$root" -name "libcudnn*.so*" -print -delete 2>/dev/null || true
+            fi
+          done
+          ldconfig
+          if ldconfig -p | grep -qi cudnn; then
+            echo "cuDNN remains available in the dynamic linker cache" >&2
+            exit 1
+          fi
+          if find /usr /opt /lib /lib64 -name "libcudnn*.so*" -print -quit 2>/dev/null | grep -q .; then
+            echo "cuDNN runtime libraries remain in the no-cuDNN test container" >&2
+            exit 1
+          fi
+
           WHEEL_PATH=$(find /build/Release/Release/dist -type f -name "onnxruntime_gpu-*.whl" | head -n 1)
           if [ -z "$WHEEL_PATH" ]; then
             echo "No built onnxruntime GPU wheel found under /build/Release/Release/dist" >&2
@@ -119,7 +138,9 @@ jobs:
 
           def run_op(name, model, feeds, expected, rtol=1e-4, atol=1e-4):
               model.ir_version = 10
-              sess = ort.InferenceSession(model.SerializeToString(), providers=providers)
+              options = ort.SessionOptions()
+              options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+              sess = ort.InferenceSession(model.SerializeToString(), sess_options=options, providers=providers)
               got = sess.run(None, feeds)[0]
               np.testing.assert_allclose(got, expected, rtol=rtol, atol=atol)
               print("[no-cuDNN] " + name + " passed")
@@ -177,18 +198,19 @@ jobs:
               data.mean(axis=1, keepdims=True),
           )
 
-          # ReduceSum over the last axis (axes supplied as an input in opset 13).
+          # ReduceSum over a middle axis, which requires the general no-cuDNN path.
+          reduce_sum_data = np.random.rand(2, 3, 4).astype(np.float32)
           run_op(
               "ReduceSum",
               make_model(
                   [helper.make_node("ReduceSum", ["x", "axes"], ["y"], keepdims=1)],
-                  [f32_in([2, 3])],
-                  [helper.make_tensor_value_info("y", TensorProto.FLOAT, [2, 1])],
+                  [f32_in([2, 3, 4])],
+                  [helper.make_tensor_value_info("y", TensorProto.FLOAT, [2, 1, 4])],
                   13,
                   initializers=[helper.make_tensor("axes", TensorProto.INT64, [1], [1])],
               ),
-              {"x": data},
-              data.sum(axis=1, keepdims=True),
+              {"x": reduce_sum_data},
+              reduce_sum_data.sum(axis=1, keepdims=True),
           )
 
           # ArgMax over the last axis (custom cuDNN-free kernel).
