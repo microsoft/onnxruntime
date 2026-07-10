@@ -48,6 +48,7 @@ namespace {
 struct EpConformanceParam {
   std::string name;
   std::function<std::unique_ptr<IExecutionProvider>()> factory;
+  bool expects_plugin_ep = false;
 };
 
 std::vector<EpConformanceParam> GetEpConformanceParams() {
@@ -60,7 +61,11 @@ std::vector<EpConformanceParam> GetEpConformanceParams() {
   params.push_back({"Cpu_NoArena", [] { return DefaultCpuExecutionProvider(/*enable_arena*/ false); }});
 
 #ifdef USE_CUDA
+#if defined(ORT_UNIT_TEST_HAS_CUDA_PLUGIN_EP) && defined(ORT_UNIT_TEST_ENABLE_DYNAMIC_PLUGIN_EP_USAGE)
+  params.push_back({"Cuda", [] { return DefaultCudaExecutionProvider(); }, true});
+#else
   params.push_back({"Cuda", [] { return DefaultCudaExecutionProvider(); }});
+#endif
 #endif
 #ifdef USE_DML
   params.push_back({"Dml", [] { return DefaultDmlExecutionProvider(); }});
@@ -270,15 +275,20 @@ TEST_P(EpConformanceTest, GraphCaptureNodeAssignmentPolicyIsValid) {
       << "GetGraphCaptureNodeAssignmentPolicy() returned an unknown policy value.";
 }
 
-// Invariant: a built-in EP is not a plugin wrapper, so GetOrtEp() returns nullptr.
-// Only a PluginExecutionProvider wrapping an OrtEp reports a backing OrtEp, and
-// every EP exercised by this suite is built-in.
-TEST_P(EpConformanceTest, GetOrtEpIsNullForBuiltInEp) {
+// Invariant: a built-in EP returns no backing OrtEp. A PluginExecutionProvider
+// returns the same non-null backing OrtEp across repeated queries.
+TEST_P(EpConformanceTest, GetOrtEpMatchesProviderKind) {
   auto ep = MakeEp();
   if (!ep) GTEST_SKIP() << GetParam().name << " EP not available in this environment.";
 
-  EXPECT_EQ(ep->GetOrtEp(), nullptr)
-      << "A built-in EP must not report a backing OrtEp (that is reserved for plugin EPs).";
+  const OrtEp* ort_ep = ep->GetOrtEp();
+  if (GetParam().expects_plugin_ep) {
+    ASSERT_NE(ort_ep, nullptr) << "A plugin EP must report its backing OrtEp.";
+    EXPECT_EQ(ep->GetOrtEp(), ort_ep) << "A plugin EP must report a stable backing OrtEp.";
+  } else {
+    EXPECT_EQ(ort_ep, nullptr)
+        << "A built-in EP must not report a backing OrtEp (that is reserved for plugin EPs).";
+  }
 }
 
 // Invariant: GetEpContextNodes() reports no nodes on a freshly constructed EP.
