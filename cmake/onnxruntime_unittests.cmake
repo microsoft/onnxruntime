@@ -1646,7 +1646,11 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     file(GLOB onnxruntime_perf_test_src CONFIGURE_DEPENDS
       ${onnxruntime_perf_test_src_patterns}
       )
-    onnxruntime_add_executable(onnxruntime_perf_test ${onnxruntime_perf_test_src} ${ONNXRUNTIME_ROOT}/core/platform/path_lib.cc)
+    # path_lib.cc is intentionally NOT compiled directly here: onnxruntime_common (linked below in
+    # both the shared and non-shared configurations) already provides GetDirNameFromFilePath.
+    # Compiling it directly as well produces a duplicate definition that MSVC's link.exe tolerates
+    # but lld-link (clang-cl) rejects.
+    onnxruntime_add_executable(onnxruntime_perf_test ${onnxruntime_perf_test_src})
 
     # ABSL_FLAGS_STRIP_NAMES is set to 1 by default to disable flag registration when building for Android, iPhone, and "embedded devices".
     # See the issue: https://github.com/abseil/abseil-cpp/issues/1875
