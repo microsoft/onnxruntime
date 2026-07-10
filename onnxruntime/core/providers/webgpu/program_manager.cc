@@ -226,7 +226,7 @@ Status ProgramManager::Build(const ProgramBase& program,
               wgpu::CallbackMode::WaitAnyOnly,
               // Note: Don't throw from a Dawn callback.
               [](wgpu::CreatePipelineAsyncStatus status, wgpu::ComputePipeline pipeline, wgpu::StringView message,
-                 CreateComputePipelineContext* context) noexcept {
+                 CreateComputePipelineContext* context) {
                 if (status == wgpu::CreatePipelineAsyncStatus::Success) {
                   context->pipeline = std::move(pipeline);
                 } else {

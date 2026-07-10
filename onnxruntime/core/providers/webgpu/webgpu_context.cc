@@ -73,7 +73,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
                                                                      &req_adapter_options,
                                                                      wgpu::CallbackMode::WaitAnyOnly,
                                                                      [](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter, wgpu::StringView message,
-                                                                        RequestAdapterResult* result) noexcept {
+                                                                        RequestAdapterResult* result) {
                                                                        result->status = status;
                                                                        if (status == wgpu::RequestAdapterStatus::Success) {
                                                                          result->adapter = std::move(adapter);
@@ -116,7 +116,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       device_desc.SetUncapturedErrorCallback(
           // Note: Don't throw from a Dawn callback.
           [](const wgpu::Device& /*device*/, wgpu::ErrorType type,
-             wgpu::StringView message) noexcept {
+             wgpu::StringView message) {
             if (logging::LoggingManager::HasDefaultLogger()) {
               LOGS_DEFAULT(ERROR) << "WebGPU device error(" << int(type) << "): " << std::string_view{message};
             }
@@ -125,7 +125,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
       device_desc.SetDeviceLostCallback(
           wgpu::CallbackMode::AllowSpontaneous,
           // Note: Don't throw from a Dawn callback.
-          [](const wgpu::Device& /*device*/, wgpu::DeviceLostReason reason, wgpu::StringView message) noexcept {
+          [](const wgpu::Device& /*device*/, wgpu::DeviceLostReason reason, wgpu::StringView message) {
             if (logging::LoggingManager::HasDefaultLogger()) {
               LOGS_DEFAULT(INFO) << "WebGPU device lost (" << int(reason) << "): " << std::string_view{message};
             }
@@ -144,7 +144,7 @@ void WebGpuContext::Initialize(const WebGpuContextConfig& config) {
                                                                      [](wgpu::RequestDeviceStatus status,
                                                                         wgpu::Device device,
                                                                         wgpu::StringView message,
-                                                                        RequestDeviceResult* result) noexcept {
+                                                                        RequestDeviceResult* result) {
                                                                        result->status = status;
                                                                        if (status == wgpu::RequestDeviceStatus::Success) {
                                                                          result->device = std::move(device);
@@ -731,7 +731,7 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
           static_cast<size_t>(query_read_buffer.GetSize()),
           wgpu::CallbackMode::WaitAnyOnly,
           // Note: Don't throw from a Dawn callback.
-          [](wgpu::MapAsyncStatus status, wgpu::StringView message, MapAsyncResult* result) noexcept {
+          [](wgpu::MapAsyncStatus status, wgpu::StringView message, MapAsyncResult* result) {
             result->status = status;
             if (auto message_sv = static_cast<std::string_view>(message);
                 !message_sv.empty()) {
@@ -818,13 +818,13 @@ Status WebGpuContext::PopErrorScope() {
   ORT_RETURN_IF_ERROR(Wait(device_.PopErrorScope(
       wgpu::CallbackMode::WaitAnyOnly,
       // Note: Don't throw from a Dawn callback.
-      [](wgpu::PopErrorScopeStatus pop_status, wgpu::ErrorType error_type, char const* message,
-         Status* status) noexcept {
+      [](wgpu::PopErrorScopeStatus pop_status, wgpu::ErrorType error_type, wgpu::StringView message,
+         Status* status) {
         if (pop_status != wgpu::PopErrorScopeStatus::Success) {
           *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to pop WebGPU error scope. status=",
                                     static_cast<uint32_t>(pop_status));
         } else if (error_type != wgpu::ErrorType::NoError) {
-          *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU validation failed. ", message);
+          *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU validation failed. ", std::string_view(message));
         }
       },
       &status)));

@@ -609,7 +609,7 @@ void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) const {
           wgpu::MapMode::Read, 0, buffer_size, wgpu::CallbackMode::WaitAnyOnly,
           // Note: Don't throw from a Dawn callback.
           [](wgpu::MapAsyncStatus status, wgpu::StringView message,
-             MapAsyncResult* result) noexcept {
+             MapAsyncResult* result) {
             result->status = status;
             if (auto message_sv = static_cast<std::string_view>(message);
                 !message_sv.empty()) {
