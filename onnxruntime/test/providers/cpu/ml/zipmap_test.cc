@@ -7,10 +7,14 @@ using namespace std;
 namespace onnxruntime {
 namespace test {
 template <typename T>
-void TestHelper(const std::vector<T>& classes,
+void TestHelper(std::initializer_list<T> classes_init,
                 const std::string& type,
                 const vector<int64_t>& input_dims,
                 OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess) {
+  // Materialize the class list inside the helper rather than binding a braced std::vector temporary
+  // at each call site: keeps the vector's construction/destruction out of the inlined TEST body,
+  // where GCC 15 emits a -Wfree-nonheap-object false positive on the vector's destructor.
+  const std::vector<T> classes(classes_init);
   OpTester test("ZipMap", 1, onnxruntime::kMLDomain);
 
   std::vector<float> input{1.f, 0.f, 3.f, 44.f, 23.f, 11.3f};

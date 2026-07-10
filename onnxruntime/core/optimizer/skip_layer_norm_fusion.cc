@@ -199,7 +199,11 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     Format matched_format = Format::None;
 
     // Format 1
-    std::vector<graph_utils::EdgeEndToMatch> format1_parent_path{
+    // The matcher paths are compile-time constants, so make them function-local `static const`:
+    // built once (not per node iteration), and their destructors run at program exit rather than
+    // inlined into ApplyImpl, which sidesteps a GCC 15 -Wfree-nonheap-object false positive on the
+    // vector's destructor.
+    static const std::vector<graph_utils::EdgeEndToMatch> format1_parent_path{
         {0, 0, "Add", {7, 13, 14}, kOnnxDomain},
         {0, 0, "Add", {7, 13, 14}, kOnnxDomain}};
 
@@ -218,7 +222,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
     if (matched_format == Format::None) {
       // Format 2
-      std::vector<graph_utils::EdgeEndToMatch> format2_parent_path{
+      static const std::vector<graph_utils::EdgeEndToMatch> format2_parent_path{
           {0, 0, "Add", {7, 13, 14}, kOnnxDomain},
           {0, 1, "Add", {7, 13, 14}, kOnnxDomain}};
 
@@ -237,7 +241,7 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
     if (matched_format == Format::None) {
       // Format 3
-      std::vector<graph_utils::EdgeEndToMatch> format3_parent_path{
+      static const std::vector<graph_utils::EdgeEndToMatch> format3_parent_path{
           {0, 0, "Add", {7, 13, 14}, kOnnxDomain}};
 
       if (graph_utils::FindPath(ln_node, true, format3_parent_path, edges, logger)) {
