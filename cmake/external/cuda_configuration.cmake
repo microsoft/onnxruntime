@@ -83,7 +83,9 @@ macro(setup_cuda_architectures)
   #  * A suffix-less architecture (e.g. `86`) enables BOTH `86-real` (SASS) and `86-virtual` (PTX).
   #  * A `-real` architecture is kept real only, and a `-virtual` architecture is kept virtual only.
   #    Every `-virtual` entry embeds its own PTX (the whole list is preserved, not just the last one).
-  #  * Always use accelerated (`-a` suffix) target for supported real and virtual architectures (SM >= 90).
+  #  * Supported real (SASS) architectures (SM >= 90) use the accelerated (`-a` suffix) target for
+  #    features like WGMMA and TMA. Virtual (PTX) architectures keep the user-specified variant so the
+  #    embedded PTX stays forward compatible on newer GPUs.
   # cmake-format: on
 
   # Allow override via CUDAARCHS environment variable (standard CMake variable)
@@ -147,7 +149,7 @@ macro(setup_cuda_architectures)
 
     if(CUDA_ARCH MATCHES "^(([1-9])([0-9])+[af]?)-virtual$")
       list(APPEND CMAKE_CUDA_ARCHITECTURES_VIRTUAL_CLEAN ${CMAKE_MATCH_1})
-    elseif(CUDA_ARCH MATCHES "^(([1-9])([0-9])+)[af]?-real$")
+    elseif(CUDA_ARCH MATCHES "^(([1-9])([0-9])+[af]?)-real$")
       list(APPEND CMAKE_CUDA_ARCHITECTURES_REAL_CLEAN ${CMAKE_MATCH_1})
     elseif(CUDA_ARCH MATCHES "^(([1-9])([0-9])+)([af]?)$")
       # Suffix-less architecture: standard CMake enables both real (SASS) and virtual (PTX).
@@ -226,12 +228,14 @@ macro(setup_cuda_architectures)
     if(CUDA_ARCH MATCHES "^([0-9]+)f$")
       # Family code, no -virtual suffix
       list(APPEND CMAKE_CUDA_ARCHITECTURES_NORMALIZED "${CUDA_ARCH}")
-    elseif("${CUDA_ARCH}" IN_LIST ARCHITECTURES_WITH_ACCEL)
-      list(APPEND CMAKE_CUDA_ARCHITECTURES_NORMALIZED "${CUDA_ARCH}a-virtual")
     else()
+      # Keep the user-specified virtual arch and do not force the accelerated `a` suffix:
+      # `Na-virtual` PTX is not forward compatible, while `N-virtual` PTX JITs onto newer GPUs.
       list(APPEND CMAKE_CUDA_ARCHITECTURES_NORMALIZED "${CUDA_ARCH}-virtual")
     endif()
   endforeach()
+
+  list(REMOVE_DUPLICATES CMAKE_CUDA_ARCHITECTURES_NORMALIZED)
 
   set(CMAKE_CUDA_ARCHITECTURES ${CMAKE_CUDA_ARCHITECTURES_NORMALIZED})
 
