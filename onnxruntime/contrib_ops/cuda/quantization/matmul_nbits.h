@@ -135,7 +135,7 @@ class MatMulNBits final : public CudaKernel {
 
         InitGemmProfiler(FpAIntBPackingSmForKernel());
 
-        constexpr int max_m = 8291;
+        int max_m = WeightOnlyGroupwiseQuantGemmPluginProfiler::ProfileMaxM();
         RunGemmProfile(has_fpA_intB_gemv_, 1, max_m);
         has_fpA_intB_gemm_ = true;
       }
@@ -165,6 +165,23 @@ class MatMulNBits final : public CudaKernel {
                 "weight_prepacked requires an ONNX Runtime build with onnxruntime_USE_FPA_INTB_GEMM=ON");
 #endif
   }
+
+#if USE_FPA_INTB_GEMM
+  ~MatMulNBits() {
+    // Best-effort: stage tactics discovered lazily during inference (runtime M buckets that were not
+    // part of the construction-time sweep) into the process-global in-memory cache. This does NOT
+    // write to disk: with one MatMulNBits object per node, a per-node disk flush would rewrite the
+    // whole cache file once per node. The single disk write happens at CUDA EP teardown, via
+    // FlushMatMulNBitsTacticCaches() called from ~CUDAExecutionProvider(). Never throw.
+    if (gemmProfiler_ != nullptr) {
+      try {
+        gemmProfiler_->persistProfiledTactics(gemmId_);
+      } catch (...) {
+        // Swallow: cache staging is best-effort and must not escape the destructor.
+      }
+    }
+  }
+#endif
 
   Status ComputeInternal(OpKernelContext* context) const override;
 #if USE_FPA_INTB_GEMM

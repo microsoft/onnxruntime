@@ -274,6 +274,108 @@ Prepacked weights are intentionally strict:
 
 ---
 
+## 6.1 fpA_intB Tactic Autotune Cache
+
+The fpA_intB profiler (§6) tunes CUTLASS/CUDA tactics per problem shape. By
+default this is in-process only and re-run every session. When a cache location
+is configured, tuned tactics are **persisted to disk** and reused across
+sessions, and the first-time tuning cost is reduced. Design details:
+[gemm_profiler_cache.md](gemm_profiler_cache.md).
+
+**Reduced first-time sweep + lazy fallback.** Instead of profiling a dense
+`M = 1 … 8291` sweep at construction, the profiler now tunes a small bucket set
+(`{1,2,4,…,2048}` by default, clamped to the problem range and always including
+`M=1` and the top bucket). If a runtime `M` maps to an unprofiled bucket, that
+single bucket is profiled lazily on first use and kept in the in-process map for
+the rest of the session. Lazy buckets are intentionally **not** written to disk
+on the hot path (that would put file I/O on inference latency); instead each
+`MatMulNBits` kernel **stages** its lazily-discovered buckets into the
+process-global in-memory cache at teardown, and the cache is written to disk a
+**single time** at CUDA EP teardown (`~CUDAExecutionProvider`, which covers both
+the built-in and the CUDA plugin EP). (A per-node disk flush would rewrite the
+whole cache file once per node, since there is one kernel object per node.) Disk
+persistence therefore covers the construction-time sweep (flushed eagerly so the
+file exists while the session runs), the offline tuning tool, and the single
+EP-teardown flush of lazily-discovered buckets. Lazy profiling is also skipped
+while a CUDA graph is being captured (profiling kernels/events/allocations are
+illegal during capture), so run a
+warmup inference **before** capture to tune any `M` buckets your captured graph
+needs. Set `ORT_FPA_INTB_PROFILE_M` (comma-separated) to override the bucket set;
+its maximum also sets the initial
+profile range.
+
+**Enabling persistence.** Persistence is opt-in. Provide either a directory or an
+explicit file prefix, via environment variable or session-config option:
+
+| Env var | Session-config key | Effect |
+|---------|--------------------|--------|
+| `ORT_CUDA_GEMM_TACTIC_CACHE_DIR` | `ep.cuda.gemm_tactic_cache_dir` | Directory for the cache file; the file name is derived from the hardware signature. |
+| `ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX` | `ep.cuda.gemm_tactic_cache_prefix` | Explicit file prefix; writes `<prefix>.matmulnbits_fpa_intb.tsv`. |
+
+Resolution order: session-config prefix → session-config dir → env prefix → env
+dir. A non-empty prefix wins over a directory. When none is set, nothing is
+written and behavior is unchanged. Cache instances are process-global and keyed
+by their resolved location, so all `MatMulNBits` nodes/sessions that resolve to
+the same location share one cache, while sessions configured with different
+locations each get their own.
+
+**Stale-tactic guard.** On load, each CUTLASS tactic read from disk is checked
+against the tactics the current runner can actually dispatch (`getConfigs()`);
+any row that no longer matches is dropped and that bucket is re-profiled, so a
+parseable-but-incompatible cache row is never handed to the kernel.
+
+**File format.** A tab-separated file (`<prefix>.matmulnbits_fpa_intb.tsv`) with
+`#`-prefixed header lines carrying a format version and a hardware/build
+signature (GPU name, SM, CUDA runtime, ORT version/commit/build config), a
+column-name row, and one row per `(problem shape, M bucket) → tactic`. Readers
+map by column name, so appended columns are backward/forward compatible.
+
+**Hardware guard.** On load, the file's signature must strictly match the current
+`device_name`, `sm`, `cuda_runtime`, and `ort_version`; otherwise the file is
+ignored and shapes are re-profiled. This prevents reusing tactics across different
+GPUs or toolkit/ORT versions (e.g. RTX 4090 vs RTX 4060, which share `sm_89`).
+`ort_git_commit`, `ort_build_config`, `multiprocessor_count`, and `cuda_driver`
+are recorded in the header for diagnostics but are **not** part of the guard: a
+tactic is only a config selected among `getConfigs()`, so a cross-commit or
+cross-build reuse can at worst pick a slightly suboptimal (never incorrect)
+tactic, and the stale-tactic guard above re-validates every CUTLASS tactic
+against the current runner anyway.
+
+**Offline tuning tool.** To pre-populate a cache without running your own
+workload, use
+[onnxruntime/python/tools/fpa_intb_tune.py](../../../onnxruntime/python/tools/fpa_intb_tune.py):
+
+```bash
+python -m onnxruntime.tools.fpa_intb_tune \
+    --model model.onnx \
+    --output-prefix /path/to/cache/mymodel \
+    --enable-gemv \
+    --m-values 1,8,16,32,64,128,256,512,1024,2048
+```
+
+It sets the cache prefix and profiling env vars, creates a CUDA-EP session (which
+profiles the bucket set during kernel construction), best-effort runs dummy
+inferences at each `M`, then prints the cache path and a summary of tuned shapes.
+
+**onnxruntime-genai integration.** Two options:
+
+1. *Environment variable* (no config change): export
+   `ORT_CUDA_GEMM_TACTIC_CACHE_DIR=/path` before launching genai.
+2. *genai_config.json* (recommended): add the session-config key under the
+   decoder's `session_options`. genai forwards any unrecognized `session_options`
+   entry to `AddConfigEntry`, so it reaches the CUDA EP:
+
+   ```json
+   "decoder": {
+     "session_options": {
+       "ep.cuda.gemm_tactic_cache_dir": "/path/to/cache",
+       "provider_options": [ { "cuda": { "enable_cuda_graph": "1" } } ]
+     }
+   }
+   ```
+
+---
+
 ## 7. Bias Handling
 
 Only the router specialization (§4.2) fuses bias inside the GEMV. For every other
@@ -294,6 +396,9 @@ present. `ComputeInternal` then:
 |----------|----------------|--------|
 | `ORT_DISABLE_QMOE_ROUTER_GEMV_SPECIALIZATION` | bool, `0` | Disable the router GEMV specialization (§4.2); shapes fall back to the generic GEMV / dequant path. Useful for A/B benchmarking. |
 | `ORT_FPA_INTB_GEMM` | int bitmask, `0` | Enable the CUTLASS weight-only path (§6). `0x01` = all, `0x02` = CUDA GEMV, `0x04` = int4, `0x08` = int8. `0` disables it. |
+| `ORT_FPA_INTB_PROFILE_M` | comma list, unset | Override the M buckets profiled for the fpA_intB tactic cache (§6.1). The maximum value also bounds the initial profile range. |
+| `ORT_CUDA_GEMM_TACTIC_CACHE_DIR` | path, unset | Directory for the persistent fpA_intB tactic cache (§6.1). Unset means the cache is in-process only. Session-config equivalent: `ep.cuda.gemm_tactic_cache_dir`. |
+| `ORT_CUDA_GEMM_TACTIC_CACHE_PREFIX` | path prefix, unset | Explicit cache file prefix (§6.1); writes `<prefix>.matmulnbits_fpa_intb.tsv`. Session-config equivalent: `ep.cuda.gemm_tactic_cache_prefix`. |
 | `ORT_MATMULNBITS_FORCE_CHUNKED` | int, `0` | Force the chunked dequant+GEMM fallback (§5) regardless of the size heuristic. |
 | `ORT_MATMULNBITS_CHUNK_SIZE` | int64, `32768` | Target rows per chunk in the chunked fallback. Values `< 1` reset to the default. |
 
@@ -314,6 +419,11 @@ present. `ComputeInternal` then:
   fpA_intB prepacking for int4/int8 and GEMV/GEMM-shaped `M` values.
 - Constructor failure tests for unsupported prepacked configurations live in
   [onnxruntime/test/contrib_ops/matmul_4bits_test.cc](../../../onnxruntime/test/contrib_ops/matmul_4bits_test.cc).
+- fpA_intB tactic cache (§6.1) unit tests:
+  [onnxruntime/test/contrib_ops/cuda_kernels/gemm_tactic_cache_test.cc](../../../onnxruntime/test/contrib_ops/cuda_kernels/gemm_tactic_cache_test.cc)
+  (config serialize/parse round-trip, signature-mismatch rejection, appended-column
+  tolerance, store/load and merge). Build with `onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON`
+  and run `./onnxruntime_provider_test --gtest_filter=GemmTacticCacheTest.*`.
 - GEMV profiling baselines and methodology are recorded in
   [qmoe_gemv_experiments.md](qmoe_gemv_experiments.md).
 - To compare the router specialization against the generic path, run the same

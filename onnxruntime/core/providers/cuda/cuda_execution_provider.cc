@@ -41,6 +41,11 @@
 
 #include "core/providers/cuda/cuda_stream_handle.h"
 
+// Persistent fpA_intB tactic cache flush at EP teardown (no-op unless onnxruntime_USE_FPA_INTB_GEMM).
+// The header is self-contained (no contrib/CUTLASS dependencies) and resolves to an inline no-op
+// when the fpA_intB path is not compiled in.
+#include "contrib_ops/cuda/quantization/matmul_nbits_tactic_cache.h"
+
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
@@ -399,6 +404,11 @@ std::optional<bool> CUDAExecutionProvider::ShouldConvertDataLayoutForOp([[maybe_
 }
 
 CUDAExecutionProvider::~CUDAExecutionProvider() {
+  // Persist any fpA_intB MatMulNBits tactics staged in memory during this session to disk. This is
+  // best-effort and dirty-guarded, and covers both the built-in CUDA EP and the plugin EP (which
+  // wraps a CUDAExecutionProvider). No-op in builds without onnxruntime_USE_FPA_INTB_GEMM.
+  onnxruntime::contrib::cuda::FlushMatMulNBitsTacticCaches();
+
   // clean up thread local context caches
   {
     std::lock_guard<std::mutex> lock(context_state_.mutex);
