@@ -584,9 +584,8 @@ void BufferManager::Release(WGPUBuffer buffer) const {
 }
 
 void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) const {
-  // If deferred-dispatch recorded compute that produces `src` (or anything it depends on) but has
-  // not been submitted yet, flush it first so this readback observes correct data rather than stale
-  // buffer contents.
+  // Encode pending deferred dispatches before recording the readback; the flush below submits both
+  // in order.
   ORT_THROW_IF_ERROR(context_.FlushDeferredIfPending());
 
   EnforceBufferUnmapped(context_, src);

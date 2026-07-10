@@ -272,28 +272,17 @@ class WebGpuContext final {
 
   Status Run(ComputeContextBase& context, const ProgramBase& program);
 
-  // ===========================================================================================
-  // DEFER-DISPATCH (windowed) cold-start optimization.
-  // On the first prefill run, shader pipelines for cache-miss programs are compiled
-  // asynchronously (via CreateComputePipelineAsync) while the dispatches are recorded instead of
-  // launched immediately. Once a window of dispatches (max_num_pending_dispatches_) is recorded,
-  // that window's pipelines -- which Dawn's worker pool has been compiling concurrently -- are
-  // waited on and then encoded + submitted. Windowing preserves buffer recycling and CPU/GPU
-  // overlap while letting several shader compilations proceed in parallel, cutting the serial
-  // cold-start shader-compilation latency of the first run.
-  // ===========================================================================================
-  // Enable or disable deferred-dispatch mode. While enabled, Run() issues asynchronous pipeline
-  // compilation for cache-miss programs and records the dispatch (no SetPipeline yet) instead of
-  // running it immediately, so all compilations in a batch proceed concurrently. FlushDeferred()
-  // waits for the remaining pipelines, then encodes and submits the recorded dispatches.
+  // Deferred dispatch reduces first-run latency by starting pipeline creation asynchronously for
+  // cache misses and recording their dispatches. A full `maxNumPendingDispatches` window waits for
+  // its pending builds and is encoded through the normal batching path. Draining a partial window
+  // encodes it, and the caller's subsequent Flush() submits any remaining work.
   void SetDeferDispatch(bool value);
   bool DeferDispatch() const { return defer_dispatch_; }
   Status FlushDeferred();
 
-  // Correctness hook for deferred-dispatch: encode + submit any recorded-but-not-yet-executed
-  // dispatches so their GPU results are available. Called before a GPU->CPU readback (Download),
-  // because such a readback would otherwise observe stale data (the deferred compute has not run).
-  // No-op when deferred-dispatch is inactive or nothing is pending.
+  // Called by Download() to encode pending deferred dispatches before the readback is recorded.
+  // Download() then flushes the context before mapping the result. No-op when defer is inactive or
+  // no dispatches are pending.
   Status FlushDeferredIfPending();
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
@@ -337,11 +326,6 @@ class WebGpuContext final {
                              uint32_t x, uint32_t y, uint32_t z,
                              const Tensor* indirect_dispatch_tensor = nullptr);
 
-  // [DEFER-DISPATCH] Wait for the given window's async pipeline compilations, commit
-  // them to the cache, then encode + submit the recorded dispatches (batched like the normal path).
-  // Uses deferred_buffer_mgr_ for uniform release and flushing. Clears `window` on completion.
-  // (Defined below the DeferredDispatch struct it depends on.)
-
   std::vector<const char*> GetEnabledAdapterToggles() const;
   std::vector<const char*> GetEnabledDeviceToggles() const;
   std::vector<const char*> GetDisabledDeviceToggles() const;
@@ -361,9 +345,8 @@ class WebGpuContext final {
     wgpu::Buffer query_buffer;
   };
 
-  // State for an in-flight pipeline compilation issued during deferred-dispatch mode.
-  // Stored via unique_ptr so its address (and that of `pipeline`, which `cb_ctx` references)
-  // remains stable while the containing vector grows.
+  // State for a pending pipeline build. It is heap-allocated so `pipeline`, which is referenced by
+  // `cb_ctx`, remains at a stable address while recorded dispatches move.
   struct PendingPipelineBuild {
     std::string key;
     std::string name;
@@ -373,11 +356,9 @@ class WebGpuContext final {
     wgpu::Future future;
   };
 
-  // A dispatch recorded during deferred-dispatch mode. The pipeline may still be compiling; its
-  // bind group is created only after the pipeline is ready (in FlushDeferredWindow). For the first
-  // occurrence of a cache key in a window `pending_build` holds the in-flight compilation; repeated
-  // occurrences leave both `program_artifact` and `pending_build` null and resolve the compiled
-  // pipeline from the cache at flush time.
+  // A recorded deferred dispatch. Its bind group is created only after any pending pipeline build
+  // completes. The first cache miss for a key owns `pending_build`; later occurrences before that
+  // build is cached leave both pointers null and resolve the artifact while draining the window.
   struct DeferredDispatch {
     std::string key;
     const ProgramArtifact* program_artifact = nullptr;
@@ -392,9 +373,9 @@ class WebGpuContext final {
     std::optional<PendingKernelInfo> pending_kernel_info;
   };
 
-  // Wait for `window`'s async pipeline compilations, commit them to the cache, then encode +
-  // submit the recorded dispatches (batched like the normal path). Uses deferred_buffer_mgr_ for
-  // uniform release and flushing. Clears `window` on completion.
+  // Wait for pending pipeline builds, cache the completed artifacts, and encode the window through
+  // the normal batching path. Full batches may be submitted here; the caller's subsequent Flush()
+  // submits any remaining work. Clears `window`.
   Status FlushDeferredWindow(std::vector<DeferredDispatch>& window);
 
   friend class WebGpuContextFactory;
@@ -425,12 +406,9 @@ class WebGpuContext final {
   uint32_t num_pending_dispatches_ = 0;
   uint32_t max_num_pending_dispatches_ = 16;
 
-  // Deferred-dispatch (parallel cold-start compile) state: records dispatches and issues their
-  // pipeline compilations asynchronously. `deferred_dispatches_` accumulates the current window;
-  // when it fills (max_num_pending_dispatches_) FlushDeferredWindow() waits for that window's
-  // pipelines and encodes + submits them. `deferred_inflight_builds_` maps each in-flight cache key
-  // to its shape-uniform ranks so repeated occurrences within a window skip launching a redundant
-  // compilation.
+  // `deferred_dispatches_` holds the active window. `deferred_inflight_builds_` retains
+  // shape-uniform ranks for cache-miss keys so repeated occurrences do not start duplicate builds;
+  // it is cleared when deferred state is drained.
   bool defer_dispatch_ = false;
   std::vector<DeferredDispatch> deferred_dispatches_;
   InlinedHashMap<std::string, std::vector<int>> deferred_inflight_builds_;

@@ -22,10 +22,8 @@ class Tensor;
 namespace webgpu {
 class WebGpuContext;
 
-// Holds the target compute pipeline and status written by the asynchronous
-// CreateComputePipelineAsync callback (used by deferred-dispatch). When a pipeline is built
-// asynchronously, an instance of this must outlive the Build() call until the corresponding
-// future is waited on.
+// Callback state for asynchronous pipeline creation. `pipeline` refers to caller-owned storage,
+// so both this object and that storage must remain alive until the future completes.
 struct PipelineCallbackContext {
   wgpu::ComputePipeline& pipeline;
   Status status;
@@ -54,16 +52,10 @@ class ProgramManager {
   Status NormalizeDispatchGroupSize(uint32_t& x, uint32_t& y, uint32_t& z) const;
   Status CalculateSegmentsForInputsAndOutputs(const ProgramBase& program, std::vector<uint32_t>& inputs_segments, std::vector<uint32_t>& outputs_segments) const;
 
-  // Build a compute pipeline for the given program.
-  //
-  // By default (out_future == nullptr) this issues CreateComputePipelineAsync and waits
-  // synchronously for completion, returning the ready pipeline in `compute_pipeline`.
-  //
-  // When `out_future` is provided (asynchronous mode, used by deferred-dispatch), the asynchronous
-  // pipeline creation is issued but NOT waited on: the future is returned via `*out_future`
-  // and ownership of the callback context (which the async callback writes the resulting
-  // pipeline and status into) is returned via `*out_ctx`. The caller must keep `*out_ctx`
-  // and the `compute_pipeline` storage alive until the future is waited on.
+  // Builds a compute pipeline for `program`. When `out_future` is null, waits for asynchronous
+  // creation to complete and returns the ready pipeline in `compute_pipeline`. Otherwise, returns
+  // immediately with the future and callback state in `out_future` and `out_ctx`; the caller must
+  // keep both `out_ctx` and `compute_pipeline` alive until the future completes.
   Status Build(const ProgramBase& program,
                const ProgramMetadata& metadata,
                const std::span<uint32_t> inputs_segments,

@@ -801,34 +801,13 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
     context_.StartProfiling();
   }
 
-  // ===========================================================================================
-  // DEFER-DISPATCH: activate the windowed cold-start optimization (see WebGpuContext) on the first
-  // run. Skipped entirely when graph capture is enabled, since graph capture records/replays
-  // commands itself and is mutually exclusive with deferral. The run is routed through a reserved
-  // graph-mode buffer manager (annotation -2) whose caches never free buffers mid-run, so the
-  // WGPUBuffer handles recorded during the deferred pass stay valid until FlushDeferred replays them.
-  // ===========================================================================================
+  // Deferred dispatch is currently disabled for graph-capture sessions because combining the two
+  // paths causes incorrect execution.
   defer_dispatch_active_ = false;
   if (defer_dispatch_pending_ && !IsGraphCaptureEnabled()) {
     defer_dispatch_active_ = true;
     defer_dispatch_pending_ = false;
     context_.SetDeferDispatch(true);
-
-    // Route this run through a graph-mode buffer manager (Graph/GraphSimple), whose caches never
-    // free buffers within a run (OnRefresh is a no-op), so recorded buffer handles stay valid
-    // until FlushDeferred replays them. A reserved annotation id keeps it separate from real
-    // captured graphs.
-    constexpr int kDeferGraphAnnotationId = -2;
-    auto [it, inserted] = per_graph_buffer_mgrs_.try_emplace(kDeferGraphAnnotationId, nullptr);
-    if (inserted) {
-      it->second = webgpu::BufferManagerFactory::Create(context_,
-                                                        webgpu::BufferCacheMode::Graph,
-                                                        webgpu::BufferCacheMode::GraphSimple,
-                                                        webgpu::BufferCacheMode::Disabled,
-                                                        webgpu::BufferCacheMode::Disabled);
-    }
-    current_graph_annotation_id_ = kDeferGraphAnnotationId;
-    graph_buffer_mgr_active_ = true;
     return Status::OK();
   }
 
@@ -870,17 +849,13 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
 }
 
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& run_options) {
-  // Drain the deferred-dispatch run: wait for its remaining pipelines, then encode + submit. This
-  // run is self-contained (it used the reserved defer buffer manager), so return without falling
-  // through to the capture/replay path.
+  // Drain the remaining deferred window before submitting any encoded work below.
   if (defer_dispatch_active_) {
     Status flush_status = context_.FlushDeferred();
     context_.SetDeferDispatch(false);
     defer_dispatch_active_ = false;
-    // Submit any remaining encoder work, then release the graph-mode buffer routing.
+    // Submit any remaining encoder work.
     context_.Flush(BufferManager());
-    graph_buffer_mgr_active_ = false;
-    current_graph_annotation_id_ = 0;
 
     if (session_profiler_ && session_profiler_->Enabled()) {
       context_.CollectProfilingData(session_profiler_->GpuEvents());

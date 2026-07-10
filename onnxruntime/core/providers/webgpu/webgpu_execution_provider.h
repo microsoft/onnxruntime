@@ -137,9 +137,9 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool enable_graph_capture_ = false;
   bool graph_buffer_mgr_active_ = false;
   bool enable_int64_ = false;
-  // Deferred-dispatch cold-start optimization (see OnRunStart / WebGpuContext). The first run of a
-  // non-graph-capture session compiles its shader pipelines concurrently. `pending_` gates it to
-  // that first run; `active_` marks a run that took the deferred path so OnRunEnd can drain it.
+  // Automatic first-run deferred-dispatch state. `defer_dispatch_pending_` allows activation only
+  // on the first run of a session with graph capture disabled; `defer_dispatch_active_` tells
+  // OnRunEnd() to drain that run's deferred work.
   bool defer_dispatch_pending_ = true;
   bool defer_dispatch_active_ = false;
   uint32_t multi_rotary_cache_concat_offset_ = 0;
