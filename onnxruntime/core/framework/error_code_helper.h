@@ -32,7 +32,8 @@ Status ToStatusAndRelease(OrtStatus* ort_status,
     return OrtApis::CreateStatus(ORT_RUNTIME_EXCEPTION, ex.what());                \
   }                                                                                \
   catch (...) {                                                                    \
-    return OrtApis::CreateStatus(ORT_FAIL, ::onnxruntime::MakeString("Unknown exception in ", __func__).c_str()); \
+    const auto msg = ::onnxruntime::MakeString("Unknown exception in ", __func__); \
+    return OrtApis::CreateStatus(ORT_FAIL, msg.c_str());                           \
   }
 
 #else
