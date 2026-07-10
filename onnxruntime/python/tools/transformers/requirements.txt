@@ -1,4 +1,6 @@
 onnx >= 1.8
+onnxscript >= 0.5
+onnx-ir >= 0.1
 numpy >= 1.19.0
 psutil
 py-cpuinfo
