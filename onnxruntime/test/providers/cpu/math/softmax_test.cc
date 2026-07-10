@@ -21,7 +21,7 @@ namespace test {
 static std::unique_ptr<IExecutionProvider> CreateWebGpuProvider(const char* softmax_algorithm) {
   ConfigOptions config_options{};
   if (softmax_algorithm != nullptr) {
-    ORT_THROW_IF_ERROR(config_options.AddConfigEntry(webgpu::options::kSoftmaxAlgorithm, softmax_algorithm));
+    ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kSoftmaxAlgorithm, softmax_algorithm));
   }
 
   return WebGpuExecutionProviderWithOptions(config_options);
