@@ -385,6 +385,7 @@ Return Value:
     this->QuantizeLinearU4Kernel = MlasQuantizeLinearU4Kernel;
     this->DequantizeLinearS8Kernel = MlasDequantizeLinearS8Kernel;
     this->DequantizeLinearU8Kernel = MlasDequantizeLinearU8Kernel;
+    this->DequantizeBlockwise2BitsKernel = MlasDequantizeBlockwise2BitsKernel;
 #ifndef __APPLE__
 #ifndef FORCE_GENERIC_ALGORITHMS
     this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelSse;
@@ -482,6 +483,7 @@ Return Value:
                 this->GemmU8U8Dispatch = &MlasGemmU8U8DispatchAvx2;
                 this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx2;
                 this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx2;
+                this->DequantizeBlockwise2BitsKernel = MlasDequantizeBlockwise2BitsKernelAvx2;
 
                 this->GemmFloatKernel = MlasGemmFloatKernelFma3;
                 this->GemmDoubleKernel = MlasGemmDoubleKernelFma3;
