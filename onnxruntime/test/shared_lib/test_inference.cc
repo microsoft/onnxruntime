@@ -781,7 +781,6 @@ TEST(CApiTest, custom_op_forward_version_compat) {
 // Test that adding the same custom op domain name twice to session options is silently deduplicated.
 // This prevents crashes when an EP provides custom ops through both OrtEpFactory::GetCustomOpDomains
 // and a separate custom op DLL (via RegisterCustomOpsLibrary / AddCustomOpDomain).
-#ifndef ABSL_HAVE_ADDRESS_SANITIZER
 TEST(CApiTest, custom_op_duplicate_domain_dedup) {
   MyCustomOp custom_op{onnxruntime::kCpuExecutionProvider};
 
@@ -801,7 +800,6 @@ TEST(CApiTest, custom_op_duplicate_domain_dedup) {
   // Session creation should succeed without conflicting schema errors
   EXPECT_NO_THROW(Ort::Session(*ort_env, CUSTOM_OP_MODEL_URI, session_options));
 }
-#endif
 
 // Memory leak
 #ifndef ABSL_HAVE_ADDRESS_SANITIZER

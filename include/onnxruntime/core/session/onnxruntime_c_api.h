@@ -1638,9 +1638,14 @@ struct OrtApi {
   /// \name OrtSessionOptions
   /// @{
 
-  /** \brief Add custom op domain to a session options
+  /** \brief Add custom op domain to a session options.
    *
-   * \note The OrtCustomOpDomain* must not be deleted until all sessions using it are released
+   * If a domain with the same name has already been added to the session options, the call is
+   * silently ignored and a warning is logged. This prevents duplicate registration errors that
+   * can occur when an EP provides custom ops through multiple paths (e.g., both
+   * OrtEpFactory::GetCustomOpDomains and a separate custom op library).
+   *
+   * \note The OrtCustomOpDomain* must not be deleted until all sessions using it are released.
    *
    * \param[in] options
    * \param[in] custom_op_domain
