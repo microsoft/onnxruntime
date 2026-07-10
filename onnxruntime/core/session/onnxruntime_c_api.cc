@@ -840,6 +840,16 @@ ORT_API_STATUS_IMPL(OrtApis::CustomOpDomain_Add, _Inout_ OrtCustomOpDomain* cust
 ORT_API_STATUS_IMPL(OrtApis::AddCustomOpDomain, _Inout_ OrtSessionOptions* options,
                     _In_ OrtCustomOpDomain* custom_op_domain) {
   API_IMPL_BEGIN
+  // Skip duplicate domain names. This can happen when an EP provides custom ops through both
+  // OrtEpFactory::GetCustomOpDomains (added via SessionOptionsAppendExecutionProvider_V2) and
+  // a separate custom op DLL (added via RegisterCustomOpsLibrary / AddCustomOpDomain).
+  for (const auto* existing : options->custom_op_domains_) {
+    if (existing->domain_ == custom_op_domain->domain_) {
+      LOGS_DEFAULT(WARNING) << "Skipping duplicate custom op domain '" << custom_op_domain->domain_
+                            << "'. A domain with this name has already been added to the session options.";
+      return nullptr;
+    }
+  }
   options->custom_op_domains_.emplace_back(custom_op_domain);
   return nullptr;
   API_IMPL_END
