@@ -29,6 +29,29 @@
 ; construct that llvm-ml cannot parse.
 ;
 
+;
+;
+
+;
+; AVX-512 embedded-broadcast operand forms.
+;
+; ml64 uses the MASM 'DWORD/QWORD BCST [mem]' keyword; llvm-ml uses the
+; NASM-style 'DWORD/QWORD PTR [mem]{1toN}' decorator. Use these text equates so
+; a broadcast operand is written as  MlasBcstD [mem]MlasBcstDSuffix  and expands
+; to the correct form for whichever assembler is building.
+;
+IFDEF LLVM_ML
+MlasBcstD       TEXTEQU <DWORD PTR>
+MlasBcstDSuffix TEXTEQU <{1to16}>
+MlasBcstQ       TEXTEQU <QWORD PTR>
+MlasBcstQSuffix TEXTEQU <{1to8}>
+ELSE
+MlasBcstD       TEXTEQU <DWORD BCST>
+MlasBcstDSuffix TEXTEQU <>
+MlasBcstQ       TEXTEQU <QWORD BCST>
+MlasBcstQSuffix TEXTEQU <>
+ENDIF
+
 push_reg MACRO Reg
         push    Reg
         .pushreg Reg

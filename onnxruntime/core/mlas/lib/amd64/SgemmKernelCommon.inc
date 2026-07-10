@@ -22,8 +22,13 @@
 FgemmElementShift       EQU     2
 FgemmElementSize        EQU     (1 SHL FgemmElementShift)
 FgemmElementPtr         TEXTEQU     <DWORD PTR>
+IFDEF LLVM_ML
 FgemmElementBcst        TEXTEQU     <DWORD PTR>
 FgemmElementBcstSuffix TEXTEQU <{1to16}>
+ELSE
+FgemmElementBcst        TEXTEQU     <DWORD BCST>
+FgemmElementBcstSuffix TEXTEQU <>
+ENDIF
 
 ;
 ; Define the typed instructions for single precision.

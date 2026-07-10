@@ -115,12 +115,12 @@ IFIDNI <KernelType>, <Depthwise>
 ELSE
 IF FilterCount EQ 1
         vmovups zmm24,ZMMWORD PTR [rdx+VectorOffset]
-        EmitIfCountGE OutputCount, 1, <vfmadd231ps zmm0,zmm24,DWORD PTR [rcx+BroadcastOffset]{1to16}>
-        EmitIfCountGE OutputCount, 2, <vfmadd231ps zmm4,zmm24,DWORD PTR [rcx+r9+BroadcastOffset]{1to16}>
-        EmitIfCountGE OutputCount, 3, <vfmadd231ps zmm8,zmm24,DWORD PTR [rcx+r9*2+BroadcastOffset]{1to16}>
-        EmitIfCountGE OutputCount, 4, <vfmadd231ps zmm12,zmm24,DWORD PTR [r14+BroadcastOffset]{1to16}>
-        EmitIfCountGE OutputCount, 5, <vfmadd231ps zmm16,zmm24,DWORD PTR [r14+r9+BroadcastOffset]{1to16}>
-        EmitIfCountGE OutputCount, 6, <vfmadd231ps zmm20,zmm24,DWORD PTR [r14+r9*2+BroadcastOffset]{1to16}>
+        EmitIfCountGE OutputCount, 1, <vfmadd231ps zmm0,zmm24,MlasBcstD [rcx+BroadcastOffset]MlasBcstDSuffix>
+        EmitIfCountGE OutputCount, 2, <vfmadd231ps zmm4,zmm24,MlasBcstD [rcx+r9+BroadcastOffset]MlasBcstDSuffix>
+        EmitIfCountGE OutputCount, 3, <vfmadd231ps zmm8,zmm24,MlasBcstD [rcx+r9*2+BroadcastOffset]MlasBcstDSuffix>
+        EmitIfCountGE OutputCount, 4, <vfmadd231ps zmm12,zmm24,MlasBcstD [r14+BroadcastOffset]MlasBcstDSuffix>
+        EmitIfCountGE OutputCount, 5, <vfmadd231ps zmm16,zmm24,MlasBcstD [r14+r9+BroadcastOffset]MlasBcstDSuffix>
+        EmitIfCountGE OutputCount, 6, <vfmadd231ps zmm20,zmm24,MlasBcstD [r14+r9*2+BroadcastOffset]MlasBcstDSuffix>
 ELSE
         EmitIfCountGE OutputCount, 1, <vbroadcastss zmm26,DWORD PTR [rcx+BroadcastOffset]>
         EmitIfCountGE OutputCount, 2, <vbroadcastss zmm27,DWORD PTR [rcx+r9+BroadcastOffset]>

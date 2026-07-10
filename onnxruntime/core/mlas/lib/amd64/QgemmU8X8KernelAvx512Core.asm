@@ -342,63 +342,63 @@ ENDIF
 ELSE
         vmovdqu32 zmm3,ZMMWORD PTR [r13]
 ENDIF
-        EmitIfCount2GE RowCount, 1, ColumnCount, 16, <vpmulld zmm14,zmm3,DWORD PTR [r11]{1to16}>
-        EmitIfCount2GE RowCount, 1, ColumnCount, 32, <vpmulld zmm20,zmm4,DWORD PTR [r11]{1to16}>
-        EmitIfCount2GE RowCount, 1, ColumnCount, 48, <vpmulld zmm26,zmm5,DWORD PTR [r11]{1to16}>
+        EmitIfCount2GE RowCount, 1, ColumnCount, 16, <vpmulld zmm14,zmm3,MlasBcstD [r11]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 1, ColumnCount, 32, <vpmulld zmm20,zmm4,MlasBcstD [r11]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 1, ColumnCount, 48, <vpmulld zmm26,zmm5,MlasBcstD [r11]MlasBcstDSuffix>
         EmitIfCount2GE RowCount, 1, ColumnCount, 16, <vpaddd zmm14,zmm0,zmm14>
         EmitIfCount2GE RowCount, 1, ColumnCount, 32, <vpaddd zmm20,zmm1,zmm20>
         EmitIfCount2GE RowCount, 1, ColumnCount, 48, <vpaddd zmm26,zmm2,zmm26>
-        EmitIfCount2GE RowCount, 2, ColumnCount, 16, <vpmulld zmm15,zmm3,DWORD PTR [r11+4]{1to16}>
-        EmitIfCount2GE RowCount, 2, ColumnCount, 32, <vpmulld zmm21,zmm4,DWORD PTR [r11+4]{1to16}>
-        EmitIfCount2GE RowCount, 2, ColumnCount, 48, <vpmulld zmm27,zmm5,DWORD PTR [r11+4]{1to16}>
+        EmitIfCount2GE RowCount, 2, ColumnCount, 16, <vpmulld zmm15,zmm3,MlasBcstD [r11+4]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 2, ColumnCount, 32, <vpmulld zmm21,zmm4,MlasBcstD [r11+4]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 2, ColumnCount, 48, <vpmulld zmm27,zmm5,MlasBcstD [r11+4]MlasBcstDSuffix>
         EmitIfCount2GE RowCount, 2, ColumnCount, 16, <vpaddd zmm15,zmm0,zmm15>
         EmitIfCount2GE RowCount, 2, ColumnCount, 32, <vpaddd zmm21,zmm1,zmm21>
         EmitIfCount2GE RowCount, 2, ColumnCount, 48, <vpaddd zmm27,zmm2,zmm27>
-        EmitIfCount2GE RowCount, 3, ColumnCount, 16, <vpmulld zmm16,zmm3,DWORD PTR [r11+8]{1to16}>
-        EmitIfCount2GE RowCount, 3, ColumnCount, 32, <vpmulld zmm22,zmm4,DWORD PTR [r11+8]{1to16}>
-        EmitIfCount2GE RowCount, 3, ColumnCount, 48, <vpmulld zmm28,zmm5,DWORD PTR [r11+8]{1to16}>
+        EmitIfCount2GE RowCount, 3, ColumnCount, 16, <vpmulld zmm16,zmm3,MlasBcstD [r11+8]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 3, ColumnCount, 32, <vpmulld zmm22,zmm4,MlasBcstD [r11+8]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 3, ColumnCount, 48, <vpmulld zmm28,zmm5,MlasBcstD [r11+8]MlasBcstDSuffix>
         EmitIfCount2GE RowCount, 3, ColumnCount, 16, <vpaddd zmm16,zmm0,zmm16>
         EmitIfCount2GE RowCount, 3, ColumnCount, 32, <vpaddd zmm22,zmm1,zmm22>
         EmitIfCount2GE RowCount, 3, ColumnCount, 48, <vpaddd zmm28,zmm2,zmm28>
-        EmitIfCount2GE RowCount, 4, ColumnCount, 16, <vpmulld zmm17,zmm3,DWORD PTR [r11+12]{1to16}>
-        EmitIfCount2GE RowCount, 4, ColumnCount, 32, <vpmulld zmm23,zmm4,DWORD PTR [r11+12]{1to16}>
-        EmitIfCount2GE RowCount, 4, ColumnCount, 48, <vpmulld zmm29,zmm5,DWORD PTR [r11+12]{1to16}>
+        EmitIfCount2GE RowCount, 4, ColumnCount, 16, <vpmulld zmm17,zmm3,MlasBcstD [r11+12]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 4, ColumnCount, 32, <vpmulld zmm23,zmm4,MlasBcstD [r11+12]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 4, ColumnCount, 48, <vpmulld zmm29,zmm5,MlasBcstD [r11+12]MlasBcstDSuffix>
         EmitIfCount2GE RowCount, 4, ColumnCount, 16, <vpaddd zmm17,zmm0,zmm17>
         EmitIfCount2GE RowCount, 4, ColumnCount, 32, <vpaddd zmm23,zmm1,zmm23>
         EmitIfCount2GE RowCount, 4, ColumnCount, 48, <vpaddd zmm29,zmm2,zmm29>
-        EmitIfCount2GE RowCount, 5, ColumnCount, 16, <vpmulld zmm18,zmm3,DWORD PTR [r11+16]{1to16}>
-        EmitIfCount2GE RowCount, 5, ColumnCount, 32, <vpmulld zmm24,zmm4,DWORD PTR [r11+16]{1to16}>
-        EmitIfCount2GE RowCount, 5, ColumnCount, 48, <vpmulld zmm30,zmm5,DWORD PTR [r11+16]{1to16}>
+        EmitIfCount2GE RowCount, 5, ColumnCount, 16, <vpmulld zmm18,zmm3,MlasBcstD [r11+16]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 5, ColumnCount, 32, <vpmulld zmm24,zmm4,MlasBcstD [r11+16]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 5, ColumnCount, 48, <vpmulld zmm30,zmm5,MlasBcstD [r11+16]MlasBcstDSuffix>
         EmitIfCount2GE RowCount, 5, ColumnCount, 16, <vpaddd zmm18,zmm0,zmm18>
         EmitIfCount2GE RowCount, 5, ColumnCount, 32, <vpaddd zmm24,zmm1,zmm24>
         EmitIfCount2GE RowCount, 5, ColumnCount, 48, <vpaddd zmm30,zmm2,zmm30>
-        EmitIfCount2GE RowCount, 6, ColumnCount, 16, <vpmulld zmm19,zmm3,DWORD PTR [r11+20]{1to16}>
-        EmitIfCount2GE RowCount, 6, ColumnCount, 32, <vpmulld zmm25,zmm4,DWORD PTR [r11+20]{1to16}>
-        EmitIfCount2GE RowCount, 6, ColumnCount, 48, <vpmulld zmm31,zmm5,DWORD PTR [r11+20]{1to16}>
+        EmitIfCount2GE RowCount, 6, ColumnCount, 16, <vpmulld zmm19,zmm3,MlasBcstD [r11+20]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 6, ColumnCount, 32, <vpmulld zmm25,zmm4,MlasBcstD [r11+20]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 6, ColumnCount, 48, <vpmulld zmm31,zmm5,MlasBcstD [r11+20]MlasBcstDSuffix>
         EmitIfCount2GE RowCount, 6, ColumnCount, 16, <vpaddd zmm19,zmm0,zmm19>
         EmitIfCount2GE RowCount, 6, ColumnCount, 32, <vpaddd zmm25,zmm1,zmm25>
         EmitIfCount2GE RowCount, 6, ColumnCount, 48, <vpaddd zmm31,zmm2,zmm31>
         jmp     AccumulatorsInitialized
 
 SkipScaleByZeroPointB:
-        EmitIfCount2GE RowCount, 1, ColumnCount, 16, <vpaddd zmm14,zmm0,DWORD PTR [r11]{1to16}>
-        EmitIfCount2GE RowCount, 1, ColumnCount, 32, <vpaddd zmm20,zmm1,DWORD PTR [r11]{1to16}>
-        EmitIfCount2GE RowCount, 1, ColumnCount, 48, <vpaddd zmm26,zmm2,DWORD PTR [r11]{1to16}>
-        EmitIfCount2GE RowCount, 2, ColumnCount, 16, <vpaddd zmm15,zmm0,DWORD PTR [r11+4]{1to16}>
-        EmitIfCount2GE RowCount, 2, ColumnCount, 32, <vpaddd zmm21,zmm1,DWORD PTR [r11+4]{1to16}>
-        EmitIfCount2GE RowCount, 2, ColumnCount, 48, <vpaddd zmm27,zmm2,DWORD PTR [r11+4]{1to16}>
-        EmitIfCount2GE RowCount, 3, ColumnCount, 16, <vpaddd zmm16,zmm0,DWORD PTR [r11+8]{1to16}>
-        EmitIfCount2GE RowCount, 3, ColumnCount, 32, <vpaddd zmm22,zmm1,DWORD PTR [r11+8]{1to16}>
-        EmitIfCount2GE RowCount, 3, ColumnCount, 48, <vpaddd zmm28,zmm2,DWORD PTR [r11+8]{1to16}>
-        EmitIfCount2GE RowCount, 4, ColumnCount, 16, <vpaddd zmm17,zmm0,DWORD PTR [r11+12]{1to16}>
-        EmitIfCount2GE RowCount, 4, ColumnCount, 32, <vpaddd zmm23,zmm1,DWORD PTR [r11+12]{1to16}>
-        EmitIfCount2GE RowCount, 4, ColumnCount, 48, <vpaddd zmm29,zmm2,DWORD PTR [r11+12]{1to16}>
-        EmitIfCount2GE RowCount, 5, ColumnCount, 16, <vpaddd zmm18,zmm0,DWORD PTR [r11+16]{1to16}>
-        EmitIfCount2GE RowCount, 5, ColumnCount, 32, <vpaddd zmm24,zmm1,DWORD PTR [r11+16]{1to16}>
-        EmitIfCount2GE RowCount, 5, ColumnCount, 48, <vpaddd zmm30,zmm2,DWORD PTR [r11+16]{1to16}>
-        EmitIfCount2GE RowCount, 6, ColumnCount, 16, <vpaddd zmm19,zmm0,DWORD PTR [r11+20]{1to16}>
-        EmitIfCount2GE RowCount, 6, ColumnCount, 32, <vpaddd zmm25,zmm1,DWORD PTR [r11+20]{1to16}>
-        EmitIfCount2GE RowCount, 6, ColumnCount, 48, <vpaddd zmm31,zmm2,DWORD PTR [r11+20]{1to16}>
+        EmitIfCount2GE RowCount, 1, ColumnCount, 16, <vpaddd zmm14,zmm0,MlasBcstD [r11]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 1, ColumnCount, 32, <vpaddd zmm20,zmm1,MlasBcstD [r11]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 1, ColumnCount, 48, <vpaddd zmm26,zmm2,MlasBcstD [r11]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 2, ColumnCount, 16, <vpaddd zmm15,zmm0,MlasBcstD [r11+4]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 2, ColumnCount, 32, <vpaddd zmm21,zmm1,MlasBcstD [r11+4]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 2, ColumnCount, 48, <vpaddd zmm27,zmm2,MlasBcstD [r11+4]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 3, ColumnCount, 16, <vpaddd zmm16,zmm0,MlasBcstD [r11+8]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 3, ColumnCount, 32, <vpaddd zmm22,zmm1,MlasBcstD [r11+8]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 3, ColumnCount, 48, <vpaddd zmm28,zmm2,MlasBcstD [r11+8]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 4, ColumnCount, 16, <vpaddd zmm17,zmm0,MlasBcstD [r11+12]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 4, ColumnCount, 32, <vpaddd zmm23,zmm1,MlasBcstD [r11+12]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 4, ColumnCount, 48, <vpaddd zmm29,zmm2,MlasBcstD [r11+12]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 5, ColumnCount, 16, <vpaddd zmm18,zmm0,MlasBcstD [r11+16]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 5, ColumnCount, 32, <vpaddd zmm24,zmm1,MlasBcstD [r11+16]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 5, ColumnCount, 48, <vpaddd zmm30,zmm2,MlasBcstD [r11+16]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 6, ColumnCount, 16, <vpaddd zmm19,zmm0,MlasBcstD [r11+20]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 6, ColumnCount, 32, <vpaddd zmm25,zmm1,MlasBcstD [r11+20]MlasBcstDSuffix>
+        EmitIfCount2GE RowCount, 6, ColumnCount, 48, <vpaddd zmm31,zmm2,MlasBcstD [r11+20]MlasBcstDSuffix>
 
 AccumulatorsInitialized:
 
