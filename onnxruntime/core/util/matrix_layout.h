@@ -74,7 +74,7 @@ struct Position {
   ORT_FORCEINLINE constexpr
   Position(Position<Rank_, I, L> const& other) {
     for (int i = 0; i < kRank; ++i) {
-      idx[i] = other[i];
+      idx[i] = gsl::narrow_cast<Index>(other[i]);
     }
   }
 
