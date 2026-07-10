@@ -108,6 +108,8 @@ GemmInt8CopyPackBFrame ENDS
 ;--
 
 MlasGemmCopyPackAAvx2 MACRO ASigned
+        LOCAL   PnrM4, PnclM4, PrcM4, Crk16M4, Crk8M4, Crk4M4, Crk2M4, PpmaM4, RrsbM4, Prr, PnrM1, PnclM1, PrcM1, Crk16M1, Crk8M1, Crk4M1, \
+                Crk2M1, PpmaM1, RrsbM1, ExitRt
 
         rex_push_reg rbp
         push_reg rbx
@@ -160,9 +162,9 @@ MlasGemmCopyPackAAvx2 MACRO ASigned
 ;
 
         sub     r9,4
-        jb      ProcessRemainingRowsA&ASigned
+        jb      Prr
 
-ProcessNextRowM4A&ASigned:
+PnrM4:
         vpxor   xmm0,xmm0,xmm0              ; clear row accumulators
         vpxor   xmm1,xmm1,xmm1
         vpxor   xmm2,xmm2,xmm2
@@ -175,9 +177,9 @@ ProcessNextRowM4A&ASigned:
         lea     rdi,[rdi+r11*4]             ; advance next matrix D by 4 rows
         mov     rbx,r10                     ; reload columns remaining
         sub     rbx,32
-        jb      ProcessRemainingColumnsM4A&ASigned
+        jb      PrcM4
 
-ProcessNextColumnLoopM4A&ASigned:
+PnclM4:
         vmovdqu ymm4,YMMWORD PTR [rdx]
         vmovdqu ymm5,YMMWORD PTR [rdx+r8]
         vmovdqu ymm6,YMMWORD PTR [rdx+r8*2]
@@ -204,13 +206,13 @@ ENDIF
         add     rdx,32                      ; advance matrix A by 32 bytes
         add     rcx,32                      ; advance matrix D by 32 bytes
         sub     rbx,32                      ; subtract columns remaining
-        jae     ProcessNextColumnLoopM4A&ASigned
+        jae     PnclM4
 
-ProcessRemainingColumnsM4A&ASigned:
+PrcM4:
         add     rbx,32                      ; correct for over-subtract above
-        jz      ReduceRowSumBufferM4A&ASigned
+        jz      RrsbM4
         test    bl,16                       ; (CountK & 16) != 0?
-        jz      CopyRemainingCountKLessThan16M4A&ASigned
+        jz      Crk16M4
         vmovdqu xmm4,XMMWORD PTR [rdx]
         vmovdqu xmm5,XMMWORD PTR [rdx+r8]
         vmovdqu xmm6,XMMWORD PTR [rdx+r8*2]
@@ -237,17 +239,17 @@ ENDIF
         add     rdx,16                      ; advance matrix A by 16 bytes
         add     rcx,16                      ; advance matrix D by 16 bytes
         test    bl,15                       ; test for unaligned columns
-        jz      ReduceRowSumBufferM4A&ASigned
+        jz      RrsbM4
 
 ;
 ; Copy the unaligned CountK columns to a zero padded stack buffer.
 ;
 
-CopyRemainingCountKLessThan16M4A&ASigned:
+Crk16M4:
 .errnz  GemmInt8CopyPackAFrame.PaddedMatrixAData
         mov     rbp,rsp                     ; GemmInt8CopyPackAFrame.PaddedMatrixAData
         test    bl,8                        ; (CountK & 8) != 0?
-        jz      CopyRemainingCountKLessThan8M4A&ASigned
+        jz      Crk8M4
         mov     rax,QWORD PTR [rdx]
         mov     QWORD PTR [rbp],rax
         mov     rax,QWORD PTR [rdx+r8]
@@ -259,9 +261,9 @@ CopyRemainingCountKLessThan16M4A&ASigned:
         add     rdx,8
         add     rbp,8                       ; advance padded buffer destination
 
-CopyRemainingCountKLessThan8M4A&ASigned:
+Crk8M4:
         test    bl,4                        ; (CountK & 4) != 0?
-        jz      CopyRemainingCountKLessThan4M4A&ASigned
+        jz      Crk4M4
         mov     eax,DWORD PTR [rdx]
         mov     DWORD PTR [rbp],eax
         mov     eax,DWORD PTR [rdx+r8]
@@ -273,9 +275,9 @@ CopyRemainingCountKLessThan8M4A&ASigned:
         add     rdx,4
         add     rbp,4                       ; advance padded buffer destination
 
-CopyRemainingCountKLessThan4M4A&ASigned:
+Crk4M4:
         test    bl,2                        ; (CountK & 2) != 0?
-        jz      CopyRemainingCountKLessThan2M4A&ASigned
+        jz      Crk2M4
         movzx   eax,WORD PTR [rdx]
         mov     WORD PTR [rbp],ax
         movzx   eax,WORD PTR [rdx+r8]
@@ -287,9 +289,9 @@ CopyRemainingCountKLessThan4M4A&ASigned:
         add     rdx,2
         add     rbp,2                       ; advance padded buffer destination
 
-CopyRemainingCountKLessThan2M4A&ASigned:
+Crk2M4:
         test    bl,1                        ; (CountK & 1) != 0?
-        jz      ProcessPaddedMatrixADataM4A&ASigned
+        jz      PpmaM4
         movzx   eax,BYTE PTR [rdx]
         mov     BYTE PTR [rbp],al
         movzx   eax,BYTE PTR [rdx+r8]
@@ -303,7 +305,7 @@ CopyRemainingCountKLessThan2M4A&ASigned:
 ; Process the remaining CountK columns using the zero padded stack buffer.
 ;
 
-ProcessPaddedMatrixADataM4A&ASigned:
+PpmaM4:
         vmovdqu xmm4,XMMWORD PTR GemmInt8CopyPackAFrame.PaddedMatrixAData[rsp]
         vmovdqu xmm5,XMMWORD PTR GemmInt8CopyPackAFrame.PaddedMatrixAData[rsp+16]
         vmovdqu xmm6,XMMWORD PTR GemmInt8CopyPackAFrame.PaddedMatrixAData[rsp+32]
@@ -333,7 +335,7 @@ ENDIF
 ; Reduce the sums for the four rows of output.
 ;
 
-ReduceRowSumBufferM4A&ASigned:
+RrsbM4:
 IF ASigned EQ 1
         vphaddd ymm0,ymm0,ymm1              ; reduce and interleave Sum1/Sum0
 ELSE
@@ -350,17 +352,17 @@ ENDIF
         vmovdqu XMMWORD PTR [r12],xmm0
         add     r12,4*4                     ; advance row sum buffer by 4 dwords
         sub     r9,4                        ; subtract rows remaining
-        jae     ProcessNextRowM4A&ASigned
+        jae     PnrM4
 
-ProcessRemainingRowsA&ASigned:
+Prr:
         add     r9,4                        ; correct for over-subtract above
-        jz      ExitRoutineA&ASigned
+        jz      ExitRt
 
 ;
 ; Process a single row of matrix A in a loop.
 ;
 
-ProcessNextRowM1A&ASigned:
+PnrM1:
         vpxor   xmm0,xmm0,xmm0              ; clear row accumulator
         mov     rdx,rsi
         mov     rcx,rdi
@@ -368,9 +370,9 @@ ProcessNextRowM1A&ASigned:
         add     rdi,r11
         mov     rbx,r10                     ; reload columns remaining
         sub     rbx,32
-        jb      ProcessRemainingColumnsM1A&ASigned
+        jb      PrcM1
 
-ProcessNextColumnLoopM1A&ASigned:
+PnclM1:
         vmovdqu ymm4,YMMWORD PTR [rdx]
         vmovdqu YMMWORD PTR [rcx],ymm4
 IF ASigned EQ 1
@@ -382,13 +384,13 @@ ENDIF
         add     rdx,32                      ; advance matrix A by 32 bytes
         add     rcx,32                      ; advance matrix D by 32 bytes
         sub     rbx,32                      ; subtract columns remaining
-        jae     ProcessNextColumnLoopM1A&ASigned
+        jae     PnclM1
 
-ProcessRemainingColumnsM1A&ASigned:
+PrcM1:
         add     rbx,32                      ; correct for over-subtract above
-        jz      ReduceRowSumBufferM1A&ASigned
+        jz      RrsbM1
         test    bl,16                       ; (CountK & 16) != 0?
-        jz      CopyRemainingCountKLessThan16M1A&ASigned
+        jz      Crk16M1
         vmovdqu xmm4,XMMWORD PTR [rdx]
         vmovdqu XMMWORD PTR [rcx],xmm4
 IF ASigned EQ 1
@@ -400,41 +402,41 @@ ENDIF
         add     rdx,16                      ; advance matrix A by 16 bytes
         add     rcx,16                      ; advance matrix D by 16 bytes
         test    bl,15                       ; test for unaligned columns
-        jz      ReduceRowSumBufferM1A&ASigned
+        jz      RrsbM1
 
 ;
 ; Copy the unaligned CountK columns to a zero padded stack buffer.
 ;
 
-CopyRemainingCountKLessThan16M1A&ASigned:
+Crk16M1:
 .errnz  GemmInt8CopyPackAFrame.PaddedMatrixAData
         mov     rbp,rsp                     ; GemmInt8CopyPackAFrame.PaddedMatrixAData
         test    bl,8                        ; (CountK & 8) != 0?
-        jz      CopyRemainingCountKLessThan8M1A&ASigned
+        jz      Crk8M1
         mov     rax,QWORD PTR [rdx]
         mov     QWORD PTR [rbp],rax
         add     rdx,8
         add     rbp,8                       ; advance padded buffer destination
 
-CopyRemainingCountKLessThan8M1A&ASigned:
+Crk8M1:
         test    bl,4                        ; (CountK & 4) != 0?
-        jz      CopyRemainingCountKLessThan4M1A&ASigned
+        jz      Crk4M1
         mov     eax,DWORD PTR [rdx]
         mov     DWORD PTR [rbp],eax
         add     rdx,4
         add     rbp,4                       ; advance padded buffer destination
 
-CopyRemainingCountKLessThan4M1A&ASigned:
+Crk4M1:
         test    bl,2                        ; (CountK & 2) != 0?
-        jz      CopyRemainingCountKLessThan2M1A&ASigned
+        jz      Crk2M1
         movzx   eax,WORD PTR [rdx]
         mov     WORD PTR [rbp],ax
         add     rdx,2
         add     rbp,2                       ; advance padded buffer destination
 
-CopyRemainingCountKLessThan2M1A&ASigned:
+Crk2M1:
         test    bl,1                        ; (CountK & 1) != 0?
-        jz      ProcessPaddedMatrixADataM1A&ASigned
+        jz      PpmaM1
         movzx   eax,BYTE PTR [rdx]
         mov     BYTE PTR [rbp],al
 
@@ -442,7 +444,7 @@ CopyRemainingCountKLessThan2M1A&ASigned:
 ; Process the remaining CountK columns using the zero padded stack buffer.
 ;
 
-ProcessPaddedMatrixADataM1A&ASigned:
+PpmaM1:
         vmovdqu xmm4,XMMWORD PTR GemmInt8CopyPackAFrame.PaddedMatrixAData[rsp]
         vpmaskmovd XMMWORD PTR [rcx],xmm10,xmm4
 IF ASigned EQ 1
@@ -456,7 +458,7 @@ ENDIF
 ; Reduce the sum for the single row of output.
 ;
 
-ReduceRowSumBufferM1A&ASigned:
+RrsbM1:
 IF ASigned EQ 0
         vpmaddwd ymm0,ymm0,ymm8             ; horizontal word+word=dword per row
 ENDIF
@@ -467,13 +469,13 @@ ENDIF
         vmovd   DWORD PTR [r12],xmm0
         add     r12,4                       ; advance row sum buffer by 1 dword
         dec     r9                          ; decrement rows remaining
-        jnz     ProcessNextRowM1A&ASigned
+        jnz     PnrM1
 
 ;
 ; Restore non-volatile registers and return.
 ;
 
-ExitRoutineA&ASigned:
+ExitRt:
         vzeroupper
         movaps  xmm6,GemmInt8CopyPackAFrame.SavedXmm6[rsp]
         movaps  xmm7,GemmInt8CopyPackAFrame.SavedXmm7[rsp]
@@ -534,6 +536,8 @@ ExitRoutineA&ASigned:
 ;--
 
 MlasGemmCopyPackBAvx2 MACRO IsVnni, BSigned
+        LOCAL   Subfv, PncN16, PnrlN16, IrdN16, PrrN16, ScsbN16, PrCol, ExitRt, PcNu, PnrlNu, Crn8K4, Crn4K4, Crn2K4, Ppmb, PrrNu, Curl, \
+                Crn8Ks, Crn4Ks, Crn2Ks, DoneCrnKs, ScsbNu
 
         rex_push_reg rbp
         push_reg rbx
@@ -563,35 +567,35 @@ MlasGemmCopyPackBAvx2 MACRO IsVnni, BSigned
         vpxor   xmm9,xmm9,xmm9              ; generate word vector [0x0000]
 IF IsVnni EQ 0
         cmp     BYTE PTR GemmInt8CopyPackBFrame.BIsSigned[rsp],0
-        jnz     SkipUnsignedBitFlipVectorB&IsVnni&&BSigned
+        jnz     Subfv
         vpsllw  ymm9,ymm8,7                 ; generate word vector [0x8080]
 ENDIF
-SkipUnsignedBitFlipVectorB&IsVnni&&BSigned:
+Subfv:
 
 ;
 ; Process 16 columns of matrix B in a loop.
 ;
 
         sub     r9,16
-        jb      ProcessRemainingColumnsB&IsVnni&&BSigned
+        jb      PrCol
 
-ProcessNextColumnN16B&IsVnni&&BSigned:
+PncN16:
         vpxor   xmm0,xmm0,xmm0              ; clear column accumulators
         vpxor   xmm1,xmm1,xmm1
         mov     rdx,rsi
         add     rsi,16                      ; advance next matrix B by 16 columns
         mov     rbx,r10                     ; reload rows remaining
         sub     rbx,4
-        jb      ProcessRemainingRowsN16B&IsVnni&&BSigned
+        jb      PrrN16
 
-ProcessNextRowLoopN16B&IsVnni&&BSigned:
+PnrlN16:
         vmovdqu xmm2,XMMWORD PTR [rdx]      ; load 4 rows
         vmovdqu xmm3,XMMWORD PTR [rdx+r8]
         vmovdqu xmm4,XMMWORD PTR [rdx+r8*2]
         vmovdqu xmm5,XMMWORD PTR [rdx+rdi]
         lea     rdx,[rdx+r8*4]              ; advance matrix B by 4 rows
 
-InterleaveRowDataN16B&IsVnni&&BSigned:
+IrdN16:
         vpunpcklbw xmm6,xmm2,xmm3           ; interleave row data
         vpunpckhbw xmm3,xmm2,xmm3
         vpunpcklbw xmm2,xmm4,xmm5
@@ -626,44 +630,44 @@ ELSE
 ENDIF
         add     rcx,64                      ; advance matrix D by 64 bytes
         sub     rbx,4                       ; subtract rows remaining
-        jae     ProcessNextRowLoopN16B&IsVnni&&BSigned
+        jae     PnrlN16
 
 ;
 ; Process the less than 4 remaining rows where the row has 16 columns.
 ;
 
-ProcessRemainingRowsN16B&IsVnni&&BSigned:
+PrrN16:
         add     rbx,4                       ; correct for over-subtract above
-        jz      StoreColumnSumBufferN16B&IsVnni&&BSigned
+        jz      ScsbN16
         vmovdqu xmm2,XMMWORD PTR [rdx]
         vmovaps xmm3,xmm9
         vmovaps xmm4,xmm9
         vmovaps xmm5,xmm9
         xor     ebx,ebx                     ; no more rows remaining
         test    r10b,2                      ; (CountK & 2) != 0?
-        jz      InterleaveRowDataN16B&IsVnni&&BSigned
+        jz      IrdN16
         vmovdqu xmm3,XMMWORD PTR [rdx+r8]
         test    r10b,1                      ; (CountK & 1) != 0?
-        jz      InterleaveRowDataN16B&IsVnni&&BSigned
+        jz      IrdN16
         vmovdqu xmm4,XMMWORD PTR [rdx+r8*2]
-        jmp     InterleaveRowDataN16B&IsVnni&&BSigned
+        jmp     IrdN16
 
-StoreColumnSumBufferN16B&IsVnni&&BSigned:
+ScsbN16:
         vmovdqu YMMWORD PTR [r11],ymm0
         vmovdqu YMMWORD PTR [r11+32],ymm1
         add     r11,16*4                    ; advance column sum buffer by 16 dwords
         sub     r9,16                       ; subtract columns remaining
-        jae     ProcessNextColumnN16B&IsVnni&&BSigned
+        jae     PncN16
 
-ProcessRemainingColumnsB&IsVnni&&BSigned:
+PrCol:
         add     r9,16                       ; correct for over-subtract above
-        jnz     ProcessColumnNUnalignedB&IsVnni&&BSigned
+        jnz     PcNu
 
 ;
 ; Restore non-volatile registers and return.
 ;
 
-ExitRoutineB&IsVnni&&BSigned:
+ExitRt:
         vzeroupper
         movaps  xmm6,GemmInt8CopyPackBFrame.SavedXmm6[rsp]
         movaps  xmm7,GemmInt8CopyPackBFrame.SavedXmm7[rsp]
@@ -683,20 +687,20 @@ ExitRoutineB&IsVnni&&BSigned:
 ; Process the remaining columns of matrix B.
 ;
 
-ProcessColumnNUnalignedB&IsVnni&&BSigned:
+PcNu:
         vpxor   xmm0,xmm0,xmm0              ; clear column accumulators
         vpxor   xmm1,xmm1,xmm1
         vmovdqu YMMWORD PTR GemmInt8CopyPackBFrame.PaddedMatrixBData[rsp],ymm9
         vmovdqu YMMWORD PTR GemmInt8CopyPackBFrame.PaddedMatrixBData[rsp+32],ymm9
         sub     r10,4
-        jb      ProcessRemainingRowsNUnalignedB&IsVnni&&BSigned
+        jb      PrrNu
 
-ProcessNextRowLoopNUnalignedB&IsVnni&&BSigned:
+PnrlNu:
         mov     rdx,rsi
 .errnz  GemmInt8CopyPackBFrame.PaddedMatrixBData
         mov     rbp,rsp                     ; GemmInt8CopyPackBFrame.PaddedMatrixBData
         test    r9b,8                       ; (CountN & 8) != 0?
-        jz      CopyRemainingCountNLessThan8K4B&IsVnni&&BSigned
+        jz      Crn8K4
         mov     rax,QWORD PTR [rdx]
         mov     QWORD PTR [rbp],rax
         mov     rax,QWORD PTR [rdx+r8]
@@ -708,9 +712,9 @@ ProcessNextRowLoopNUnalignedB&IsVnni&&BSigned:
         add     rdx,8                       ; advance matrix B
         add     rbp,8                       ; advance padded buffer destination
 
-CopyRemainingCountNLessThan8K4B&IsVnni&&BSigned:
+Crn8K4:
         test    r9b,4                       ; (CountN & 4) != 0?
-        jz      CopyRemainingCountNLessThan4K4B&IsVnni&&BSigned
+        jz      Crn4K4
         mov     eax,DWORD PTR [rdx]
         mov     DWORD PTR [rbp],eax
         mov     eax,DWORD PTR [rdx+r8]
@@ -722,9 +726,9 @@ CopyRemainingCountNLessThan8K4B&IsVnni&&BSigned:
         add     rdx,4                       ; advance matrix B
         add     rbp,4                       ; advance padded buffer destination
 
-CopyRemainingCountNLessThan4K4B&IsVnni&&BSigned:
+Crn4K4:
         test    r9b,2                       ; (CountN & 2) != 0?
-        jz      CopyRemainingCountNLessThan2K4B&IsVnni&&BSigned
+        jz      Crn2K4
         movzx   eax,WORD PTR [rdx]
         mov     WORD PTR [rbp],ax
         movzx   eax,WORD PTR [rdx+r8]
@@ -736,9 +740,9 @@ CopyRemainingCountNLessThan4K4B&IsVnni&&BSigned:
         add     rdx,2                       ; advance matrix B
         add     rbp,2                       ; advance padded buffer destination
 
-CopyRemainingCountNLessThan2K4B&IsVnni&&BSigned:
+Crn2K4:
         test    r9b,1                       ; (CountN & 1) != 0?
-        jz      ProcessPaddedMatrixBDataB&IsVnni&&BSigned
+        jz      Ppmb
         movzx   eax,BYTE PTR [rdx]
         mov     BYTE PTR [rbp],al
         movzx   eax,BYTE PTR [rdx+r8]
@@ -748,7 +752,7 @@ CopyRemainingCountNLessThan2K4B&IsVnni&&BSigned:
         movzx   eax,BYTE PTR [rdx+rdi]
         mov     BYTE PTR [rbp+48],al
 
-ProcessPaddedMatrixBDataB&IsVnni&&BSigned:
+Ppmb:
         vmovdqu xmm2,XMMWORD PTR GemmInt8CopyPackBFrame.PaddedMatrixBData[rsp]
         vmovdqu xmm3,XMMWORD PTR GemmInt8CopyPackBFrame.PaddedMatrixBData[rsp+16]
         vmovdqu xmm4,XMMWORD PTR GemmInt8CopyPackBFrame.PaddedMatrixBData[rsp+32]
@@ -788,11 +792,11 @@ ENDIF
         lea     rsi,[rsi+r8*4]              ; advance next matrix B by 4 rows
         add     rcx,64                      ; advance matrix D by 64 bytes
         sub     r10,4                       ; subtract rows remaining
-        jae     ProcessNextRowLoopNUnalignedB&IsVnni&&BSigned
+        jae     PnrlNu
 
-ProcessRemainingRowsNUnalignedB&IsVnni&&BSigned:
+PrrNu:
         add     r10,4
-        jz      StoreColumnSumBufferNUnalignedB&IsVnni&&BSigned
+        jz      ScsbNu
 
 ;
 ; Process the less than 4 remaining rows where the row has less than 16 columns.
@@ -803,49 +807,49 @@ ProcessRemainingRowsNUnalignedB&IsVnni&&BSigned:
         vmovdqu YMMWORD PTR [rbp],ymm9
         vmovdqu YMMWORD PTR [rbp+32],ymm9
 
-CopyUnalignedRowLoopB&IsVnni&&BSigned:
+Curl:
         lea     rdi,[rbp+16]                ; advance next padded buffer by 16 bytes
         mov     rdx,rsi
         test    r9b,8                       ; (CountN & 8) != 0?
-        jz      CopyRemainingCountNLessThan8KSmallB&IsVnni&&BSigned
+        jz      Crn8Ks
         mov     rax,QWORD PTR [rdx]
         mov     QWORD PTR [rbp],rax
         add     rdx,8                       ; advance matrix B
         add     rbp,8                       ; advance padded buffer destination
 
-CopyRemainingCountNLessThan8KSmallB&IsVnni&&BSigned:
+Crn8Ks:
         test    r9b,4                       ; (CountN & 4) != 0?
-        jz      CopyRemainingCountNLessThan4KSmallB&IsVnni&&BSigned
+        jz      Crn4Ks
         mov     eax,DWORD PTR [rdx]
         mov     DWORD PTR [rbp],eax
         add     rdx,4                       ; advance matrix B
         add     rbp,4                       ; advance padded buffer destination
 
-CopyRemainingCountNLessThan4KSmallB&IsVnni&&BSigned:
+Crn4Ks:
         test    r9b,2                       ; (CountN & 2) != 0?
-        jz      CopyRemainingCountNLessThan2KSmallB&IsVnni&&BSigned
+        jz      Crn2Ks
         movzx   eax,WORD PTR [rdx]
         mov     WORD PTR [rbp],ax
         add     rdx,2                       ; advance matrix B
         add     rbp,2                       ; advance padded buffer destination
 
-CopyRemainingCountNLessThan2KSmallB&IsVnni&&BSigned:
+Crn2Ks:
         test    r9b,1                       ; (CountN & 1) != 0?
-        jz      DoneCopyRemainingCountNKSmallB&IsVnni&&BSigned
+        jz      DoneCrnKs
         movzx   eax,BYTE PTR [rdx]
         mov     BYTE PTR [rbp],al
 
-DoneCopyRemainingCountNKSmallB&IsVnni&&BSigned:
+DoneCrnKs:
         dec     r10
-        jz      ProcessPaddedMatrixBDataB&IsVnni&&BSigned
+        jz      Ppmb
         add     rsi,r8                      ; advance next matrix B by 1 row
         mov     rbp,rdi
-        jmp     CopyUnalignedRowLoopB&IsVnni&&BSigned
+        jmp     Curl
 
-StoreColumnSumBufferNUnalignedB&IsVnni&&BSigned:
+ScsbNu:
         vmovdqu YMMWORD PTR [r11],ymm0
         vmovdqu YMMWORD PTR [r11+32],ymm1
-        jmp     ExitRoutineB&IsVnni&&BSigned
+        jmp     ExitRt
 
 ENDM
 
