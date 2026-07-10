@@ -40,7 +40,8 @@ struct PerformanceResult {
   std::vector<std::vector<double>> per_shape_time_costs_total;
   std::string model_name;
 
-  void DumpToFile(const std::basic_string<ORTCHAR_T>& path, bool f_include_statistics = false) const;
+  void DumpToFile(const std::basic_string<ORTCHAR_T>& path, bool f_include_statistics = false,
+                  const std::map<std::string, std::vector<std::vector<int64_t>>>& shape_groups = {}) const;
 };
 
 class PerformanceRunner {
@@ -56,7 +57,8 @@ class PerformanceRunner {
 
   inline void SerializeResult() const {
     performance_result_.DumpToFile(performance_test_config_.model_info.result_file_path,
-                                   performance_test_config_.run_config.f_dump_statistics);
+                                   performance_test_config_.run_config.f_dump_statistics,
+                                   performance_test_config_.run_config.data_shape_groups);
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PerformanceRunner);
 
@@ -86,7 +88,7 @@ class PerformanceRunner {
       performance_result_.total_time_cost += duration_seconds.total_timing.count();
       // Record per-shape timing when multi-shape mode is active
       if (!performance_result_.per_shape_time_costs_total.empty()) {
-        size_t shape_idx = duration_seconds.shape_group_index;
+        size_t shape_idx = duration_seconds.test_input_index;
         if (shape_idx < performance_result_.per_shape_time_costs_total.size()) {
           performance_result_.per_shape_time_costs_total[shape_idx].emplace_back(
               duration_seconds.total_timing.count());
