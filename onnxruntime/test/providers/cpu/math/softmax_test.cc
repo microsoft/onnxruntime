@@ -6,12 +6,47 @@
 #include "gtest/gtest.h"
 
 #include "core/session/environment.h"
+#ifdef USE_WEBGPU
+#include "core/providers/webgpu/webgpu_provider_options.h"
+#include "test/util/include/default_providers.h"
+#endif
 #include "test/providers/provider_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/dnnl_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
+
+#ifdef USE_WEBGPU
+static std::unique_ptr<IExecutionProvider> CreateWebGpuProvider(const char* softmax_algorithm) {
+  ConfigOptions config_options{};
+  if (softmax_algorithm != nullptr) {
+    ORT_THROW_IF_ERROR(config_options.AddConfigEntry(webgpu::options::kSoftmaxAlgorithm, softmax_algorithm));
+  }
+
+  return WebGpuExecutionProviderWithOptions(config_options);
+}
+
+static void RunWebGpuSoftmaxOnlineTest(const std::vector<float>& x_vals,
+                                       const std::vector<float>& expected_vals,
+                                       const std::vector<int64_t>& dimensions,
+                                       int opset = 13,
+                                       int64_t axis = -1) {
+  auto provider = CreateWebGpuProvider(webgpu::options::kSoftmaxAlgorithm_Online);
+  if (!provider) {
+    GTEST_SKIP() << "WebGPU execution provider is not available.";
+  }
+
+  OpTester test("Softmax", opset);
+  if (axis != -1) {
+    test.AddAttribute("axis", axis);
+  }
+
+  test.AddInput<float>("X", dimensions, x_vals);
+  test.AddOutput<float>("Y", dimensions, expected_vals);
+  test.ConfigEp(std::move(provider)).RunWithConfig();
+}
+#endif
 
 static void RunTest(const std::vector<float>& x_vals,
                     const std::vector<float>& expected_vals,
@@ -63,6 +98,43 @@ TEST(SoftmaxOperator, webgpu_nan) {
   // explicitly disable for EPs that do not handle NaN
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kCpuExecutionProvider, kCoreMLExecutionProvider, kDmlExecutionProvider});
+}
+
+TEST(SoftmaxOperator, WebGpuOnlineSimple) {
+  std::vector<float> x_vals = {-1.0f, 0.0f, 1.0f};
+  std::vector<float> expected_vals = {0.09003058f, 0.24472848f, 0.66524094f};
+  std::vector<int64_t> dimensions = {1, 3};
+
+  RunWebGpuSoftmaxOnlineTest(x_vals, expected_vals, dimensions);
+}
+
+TEST(SoftmaxOperator, WebGpuOnlineLargeNumber) {
+  std::vector<float> x_vals = {0.0f, 1.0f, 2.0f, 3.0f, 10000.0f, 10001.0f, 10002.0f, 10003.0f};
+  std::vector<float> expected_vals = {0.0320586f, 0.08714432f, 0.23688284f, 0.64391428f,
+                                      0.0320586f, 0.08714432f, 0.23688284f, 0.64391428f};
+  std::vector<int64_t> dimensions = {2, 4};
+
+  RunWebGpuSoftmaxOnlineTest(x_vals, expected_vals, dimensions);
+}
+
+TEST(SoftmaxOperator, WebGpuOnlineAllNegativeInfinity) {
+  std::vector<float> x_vals = {-INFINITY, -INFINITY, -INFINITY};
+  std::vector<float> expected_vals = {0.0f, 0.0f, 0.0f};
+  std::vector<int64_t> dimensions = {1, 3};
+
+  RunWebGpuSoftmaxOnlineTest(x_vals, expected_vals, dimensions);
+}
+
+TEST(SoftmaxOperator, DISABLED_WebGpuOnlineLargeInputSize) {
+  constexpr int64_t rows = 1024;
+  constexpr int64_t cols = 256;
+  const std::vector<int64_t> dimensions = {rows, cols};
+
+  const size_t element_count = static_cast<size_t>(rows * cols);
+  std::vector<float> x_vals(element_count, 0.0f);
+  std::vector<float> expected_vals(element_count, 1.0f / static_cast<float>(cols));
+
+  RunWebGpuSoftmaxOnlineTest(x_vals, expected_vals, dimensions);
 }
 #endif
 
