@@ -398,10 +398,10 @@ ReduceRowSumBufferM1:
 
 ExitRoutine:
         vzeroupper
-        movaps  xmm6,GemmU8U8CopyPackAFrame.SavedXmm6[rsp]
-        movaps  xmm7,GemmU8U8CopyPackAFrame.SavedXmm7[rsp]
-        movaps  xmm8,GemmU8U8CopyPackAFrame.SavedXmm8[rsp]
-        movaps  xmm9,GemmU8U8CopyPackAFrame.SavedXmm9[rsp]
+        movaps  xmm6,XMMWORD PTR GemmU8U8CopyPackAFrame.SavedXmm6[rsp]
+        movaps  xmm7,XMMWORD PTR GemmU8U8CopyPackAFrame.SavedXmm7[rsp]
+        movaps  xmm8,XMMWORD PTR GemmU8U8CopyPackAFrame.SavedXmm8[rsp]
+        movaps  xmm9,XMMWORD PTR GemmU8U8CopyPackAFrame.SavedXmm9[rsp]
         add     rsp,(GemmU8U8CopyPackAFrame.SavedR13)
 
         BEGIN_EPILOGUE

@@ -177,7 +177,7 @@ ProcessRemainingRows:
 
 ExitKernel:
         vzeroupper
-        movaps  xmm6,GemvU8S8KernelFrame.SavedXmm6[rsp]
+        movaps  xmm6,XMMWORD PTR GemvU8S8KernelFrame.SavedXmm6[rsp]
         add     rsp,(GemvU8S8KernelFrame.SavedRdi)
 
         BEGIN_EPILOGUE

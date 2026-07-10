@@ -215,9 +215,9 @@ ProcessRemainingCountK:
 
 ExitKernel:
         vzeroupper
-        movaps  xmm6,SgemmKernelM1Frame.SavedXmm6[rsp]
-        movaps  xmm7,SgemmKernelM1Frame.SavedXmm7[rsp]
-        movaps  xmm8,SgemmKernelM1Frame.SavedXmm8[rsp]
+        movaps  xmm6,XMMWORD PTR SgemmKernelM1Frame.SavedXmm6[rsp]
+        movaps  xmm7,XMMWORD PTR SgemmKernelM1Frame.SavedXmm7[rsp]
+        movaps  xmm8,XMMWORD PTR SgemmKernelM1Frame.SavedXmm8[rsp]
         add     rsp,(SgemmKernelM1Frame.SavedRsi)
 
         BEGIN_EPILOGUE
@@ -463,8 +463,8 @@ ProcessRemainingCountN_2:
 
 ExitKernel_2:
         vzeroupper
-        movaps  xmm6,SgemmKernelM1Frame.SavedXmm6[rsp]
-        movaps  xmm7,SgemmKernelM1Frame.SavedXmm7[rsp]
+        movaps  xmm6,XMMWORD PTR SgemmKernelM1Frame.SavedXmm6[rsp]
+        movaps  xmm7,XMMWORD PTR SgemmKernelM1Frame.SavedXmm7[rsp]
         add     rsp,(SgemmKernelM1Frame.SavedRsi)
 
         BEGIN_EPILOGUE

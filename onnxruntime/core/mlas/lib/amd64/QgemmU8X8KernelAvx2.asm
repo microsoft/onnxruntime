@@ -1109,16 +1109,16 @@ ProcessCountM6:
 
 ExitKernel:
         vzeroupper
-        movaps  xmm6,GemmInt8KernelFrame.SavedXmm6[rsp]
-        movaps  xmm7,GemmInt8KernelFrame.SavedXmm7[rsp]
-        movaps  xmm8,GemmInt8KernelFrame.SavedXmm8[rsp]
-        movaps  xmm9,GemmInt8KernelFrame.SavedXmm9[rsp]
-        movaps  xmm10,GemmInt8KernelFrame.SavedXmm10[rsp]
-        movaps  xmm11,GemmInt8KernelFrame.SavedXmm11[rsp]
-        movaps  xmm12,GemmInt8KernelFrame.SavedXmm12[rsp]
-        movaps  xmm13,GemmInt8KernelFrame.SavedXmm13[rsp]
-        movaps  xmm14,GemmInt8KernelFrame.SavedXmm14[rsp]
-        movaps  xmm15,GemmInt8KernelFrame.SavedXmm15[rsp]
+        movaps  xmm6,XMMWORD PTR GemmInt8KernelFrame.SavedXmm6[rsp]
+        movaps  xmm7,XMMWORD PTR GemmInt8KernelFrame.SavedXmm7[rsp]
+        movaps  xmm8,XMMWORD PTR GemmInt8KernelFrame.SavedXmm8[rsp]
+        movaps  xmm9,XMMWORD PTR GemmInt8KernelFrame.SavedXmm9[rsp]
+        movaps  xmm10,XMMWORD PTR GemmInt8KernelFrame.SavedXmm10[rsp]
+        movaps  xmm11,XMMWORD PTR GemmInt8KernelFrame.SavedXmm11[rsp]
+        movaps  xmm12,XMMWORD PTR GemmInt8KernelFrame.SavedXmm12[rsp]
+        movaps  xmm13,XMMWORD PTR GemmInt8KernelFrame.SavedXmm13[rsp]
+        movaps  xmm14,XMMWORD PTR GemmInt8KernelFrame.SavedXmm14[rsp]
+        movaps  xmm15,XMMWORD PTR GemmInt8KernelFrame.SavedXmm15[rsp]
         add     rsp,(GemmInt8KernelFrame.SavedR14)
 
         BEGIN_EPILOGUE

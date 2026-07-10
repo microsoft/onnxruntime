@@ -680,17 +680,17 @@ Sqo1By16:
 
 ExitK:
         vzeroupper
-        movaps  xmm6,ConvSymKernelFrame.SavedXmm6[rsp]
-        movaps  xmm7,ConvSymKernelFrame.SavedXmm7[rsp]
-        movaps  xmm8,ConvSymKernelFrame.SavedXmm8[rsp]
-        movaps  xmm9,ConvSymKernelFrame.SavedXmm9[rsp]
-        movaps  xmm10,ConvSymKernelFrame.SavedXmm10[rsp]
-        movaps  xmm11,ConvSymKernelFrame.SavedXmm11[rsp]
-        movaps  xmm12,ConvSymKernelFrame.SavedXmm12[rsp]
+        movaps  xmm6,XMMWORD PTR ConvSymKernelFrame.SavedXmm6[rsp]
+        movaps  xmm7,XMMWORD PTR ConvSymKernelFrame.SavedXmm7[rsp]
+        movaps  xmm8,XMMWORD PTR ConvSymKernelFrame.SavedXmm8[rsp]
+        movaps  xmm9,XMMWORD PTR ConvSymKernelFrame.SavedXmm9[rsp]
+        movaps  xmm10,XMMWORD PTR ConvSymKernelFrame.SavedXmm10[rsp]
+        movaps  xmm11,XMMWORD PTR ConvSymKernelFrame.SavedXmm11[rsp]
+        movaps  xmm12,XMMWORD PTR ConvSymKernelFrame.SavedXmm12[rsp]
 IFIDNI <Isa>, <AvxVnni>
-        movaps  xmm13,ConvSymKernelFrame.SavedXmm13[rsp]
-        movaps  xmm14,ConvSymKernelFrame.SavedXmm14[rsp]
-        movaps  xmm15,ConvSymKernelFrame.SavedXmm15[rsp]
+        movaps  xmm13,XMMWORD PTR ConvSymKernelFrame.SavedXmm13[rsp]
+        movaps  xmm14,XMMWORD PTR ConvSymKernelFrame.SavedXmm14[rsp]
+        movaps  xmm15,XMMWORD PTR ConvSymKernelFrame.SavedXmm15[rsp]
         mov     r14,ConvSymKernelFrame.SavedR14[rsp]
         mov     r15,ConvSymKernelFrame.SavedR15[rsp]
 ENDIF
@@ -1023,12 +1023,12 @@ Sqo1By16:
 
 ExitK:
         vzeroupper
-        movaps  xmm6,ConvSymDepthwiseKernelFrame.SavedXmm6[rsp]
-        movaps  xmm7,ConvSymDepthwiseKernelFrame.SavedXmm7[rsp]
-        movaps  xmm8,ConvSymDepthwiseKernelFrame.SavedXmm8[rsp]
-        movaps  xmm9,ConvSymDepthwiseKernelFrame.SavedXmm9[rsp]
-        movaps  xmm10,ConvSymDepthwiseKernelFrame.SavedXmm10[rsp]
-        movaps  xmm11,ConvSymDepthwiseKernelFrame.SavedXmm11[rsp]
+        movaps  xmm6,XMMWORD PTR ConvSymDepthwiseKernelFrame.SavedXmm6[rsp]
+        movaps  xmm7,XMMWORD PTR ConvSymDepthwiseKernelFrame.SavedXmm7[rsp]
+        movaps  xmm8,XMMWORD PTR ConvSymDepthwiseKernelFrame.SavedXmm8[rsp]
+        movaps  xmm9,XMMWORD PTR ConvSymDepthwiseKernelFrame.SavedXmm9[rsp]
+        movaps  xmm10,XMMWORD PTR ConvSymDepthwiseKernelFrame.SavedXmm10[rsp]
+        movaps  xmm11,XMMWORD PTR ConvSymDepthwiseKernelFrame.SavedXmm11[rsp]
         add     rsp,(ConvSymDepthwiseKernelFrame.SavedR13)
 
         BEGIN_EPILOGUE

@@ -127,16 +127,16 @@ ProcessRemainingCount:
 
 ExitKernel:
         vzeroupper
-        movaps  xmm6,TransKernelFrame.SavedXmm6[rsp]
-        movaps  xmm7,TransKernelFrame.SavedXmm7[rsp]
-        movaps  xmm8,TransKernelFrame.SavedXmm8[rsp]
-        movaps  xmm9,TransKernelFrame.SavedXmm9[rsp]
-        movaps  xmm10,TransKernelFrame.SavedXmm10[rsp]
-        movaps  xmm11,TransKernelFrame.SavedXmm11[rsp]
-        movaps  xmm12,TransKernelFrame.SavedXmm12[rsp]
-        movaps  xmm13,TransKernelFrame.SavedXmm13[rsp]
-        movaps  xmm14,TransKernelFrame.SavedXmm14[rsp]
-        movaps  xmm15,TransKernelFrame.SavedXmm15[rsp]
+        movaps  xmm6,XMMWORD PTR TransKernelFrame.SavedXmm6[rsp]
+        movaps  xmm7,XMMWORD PTR TransKernelFrame.SavedXmm7[rsp]
+        movaps  xmm8,XMMWORD PTR TransKernelFrame.SavedXmm8[rsp]
+        movaps  xmm9,XMMWORD PTR TransKernelFrame.SavedXmm9[rsp]
+        movaps  xmm10,XMMWORD PTR TransKernelFrame.SavedXmm10[rsp]
+        movaps  xmm11,XMMWORD PTR TransKernelFrame.SavedXmm11[rsp]
+        movaps  xmm12,XMMWORD PTR TransKernelFrame.SavedXmm12[rsp]
+        movaps  xmm13,XMMWORD PTR TransKernelFrame.SavedXmm13[rsp]
+        movaps  xmm14,XMMWORD PTR TransKernelFrame.SavedXmm14[rsp]
+        movaps  xmm15,XMMWORD PTR TransKernelFrame.SavedXmm15[rsp]
         add     rsp,(TransKernelFrame.ReturnAddress)
 
         BEGIN_EPILOGUE

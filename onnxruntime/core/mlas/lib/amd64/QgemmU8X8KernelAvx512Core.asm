@@ -722,9 +722,9 @@ ProcessCountM6:
 
 ExitKernel:
         vzeroupper
-        movaps  xmm13,GemmU8X8KernelFrame.SavedXmm13[rsp]
-        movaps  xmm14,GemmU8X8KernelFrame.SavedXmm14[rsp]
-        movaps  xmm15,GemmU8X8KernelFrame.SavedXmm15[rsp]
+        movaps  xmm13,XMMWORD PTR GemmU8X8KernelFrame.SavedXmm13[rsp]
+        movaps  xmm14,XMMWORD PTR GemmU8X8KernelFrame.SavedXmm14[rsp]
+        movaps  xmm15,XMMWORD PTR GemmU8X8KernelFrame.SavedXmm15[rsp]
         add     rsp,(GemmU8X8KernelFrame.SavedR14)
 
         BEGIN_EPILOGUE

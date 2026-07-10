@@ -51,7 +51,7 @@ save_reg MACRO Reg, Offset
         ENDM
 
 save_xmm128 MACRO Reg, Offset
-        movaps  Offset[rsp], Reg
+        movaps  XMMWORD PTR Offset[rsp], Reg
         .savexmm128 Reg, Offset
         ENDM
 

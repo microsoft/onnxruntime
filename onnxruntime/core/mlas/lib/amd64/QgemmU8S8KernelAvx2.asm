@@ -477,11 +477,11 @@ ENDIF
 
 ExitRt:
         vzeroupper
-        movaps  xmm6,GemmInt8CopyPackAFrame.SavedXmm6[rsp]
-        movaps  xmm7,GemmInt8CopyPackAFrame.SavedXmm7[rsp]
-        movaps  xmm8,GemmInt8CopyPackAFrame.SavedXmm8[rsp]
-        movaps  xmm9,GemmInt8CopyPackAFrame.SavedXmm9[rsp]
-        movaps  xmm10,GemmInt8CopyPackAFrame.SavedXmm10[rsp]
+        movaps  xmm6,XMMWORD PTR GemmInt8CopyPackAFrame.SavedXmm6[rsp]
+        movaps  xmm7,XMMWORD PTR GemmInt8CopyPackAFrame.SavedXmm7[rsp]
+        movaps  xmm8,XMMWORD PTR GemmInt8CopyPackAFrame.SavedXmm8[rsp]
+        movaps  xmm9,XMMWORD PTR GemmInt8CopyPackAFrame.SavedXmm9[rsp]
+        movaps  xmm10,XMMWORD PTR GemmInt8CopyPackAFrame.SavedXmm10[rsp]
         add     rsp,(GemmInt8CopyPackAFrame.SavedR13)
 
         BEGIN_EPILOGUE
@@ -669,10 +669,10 @@ PrCol:
 
 ExitRt:
         vzeroupper
-        movaps  xmm6,GemmInt8CopyPackBFrame.SavedXmm6[rsp]
-        movaps  xmm7,GemmInt8CopyPackBFrame.SavedXmm7[rsp]
-        movaps  xmm8,GemmInt8CopyPackBFrame.SavedXmm8[rsp]
-        movaps  xmm9,GemmInt8CopyPackBFrame.SavedXmm9[rsp]
+        movaps  xmm6,XMMWORD PTR GemmInt8CopyPackBFrame.SavedXmm6[rsp]
+        movaps  xmm7,XMMWORD PTR GemmInt8CopyPackBFrame.SavedXmm7[rsp]
+        movaps  xmm8,XMMWORD PTR GemmInt8CopyPackBFrame.SavedXmm8[rsp]
+        movaps  xmm9,XMMWORD PTR GemmInt8CopyPackBFrame.SavedXmm9[rsp]
         add     rsp,(GemmInt8CopyPackBFrame.SavedRdi)
 
         BEGIN_EPILOGUE

@@ -546,16 +546,16 @@ LBiggerNumbersRemaining:
 
 LErfBatchExp:
         vzeroupper
-        movaps  xmm6,ErfKernelFrame.SavedXmm6[rsp]
-        movaps  xmm7,ErfKernelFrame.SavedXmm7[rsp]
-        movaps  xmm8,ErfKernelFrame.SavedXmm8[rsp]
-        movaps  xmm9,ErfKernelFrame.SavedXmm9[rsp]
-        movaps  xmm10,ErfKernelFrame.SavedXmm10[rsp]
-        movaps  xmm11,ErfKernelFrame.SavedXmm11[rsp]
-        movaps  xmm12,ErfKernelFrame.SavedXmm12[rsp]
-        movaps  xmm13,ErfKernelFrame.SavedXmm13[rsp]
-        movaps  xmm14,ErfKernelFrame.SavedXmm14[rsp]
-        movaps  xmm15,ErfKernelFrame.SavedXmm15[rsp]
+        movaps  xmm6,XMMWORD PTR ErfKernelFrame.SavedXmm6[rsp]
+        movaps  xmm7,XMMWORD PTR ErfKernelFrame.SavedXmm7[rsp]
+        movaps  xmm8,XMMWORD PTR ErfKernelFrame.SavedXmm8[rsp]
+        movaps  xmm9,XMMWORD PTR ErfKernelFrame.SavedXmm9[rsp]
+        movaps  xmm10,XMMWORD PTR ErfKernelFrame.SavedXmm10[rsp]
+        movaps  xmm11,XMMWORD PTR ErfKernelFrame.SavedXmm11[rsp]
+        movaps  xmm12,XMMWORD PTR ErfKernelFrame.SavedXmm12[rsp]
+        movaps  xmm13,XMMWORD PTR ErfKernelFrame.SavedXmm13[rsp]
+        movaps  xmm14,XMMWORD PTR ErfKernelFrame.SavedXmm14[rsp]
+        movaps  xmm15,XMMWORD PTR ErfKernelFrame.SavedXmm15[rsp]
         add     rsp,(ErfKernelFrame.ReturnAddress)
 
         BEGIN_EPILOGUE

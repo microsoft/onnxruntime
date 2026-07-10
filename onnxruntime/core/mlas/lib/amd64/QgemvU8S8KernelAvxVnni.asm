@@ -184,11 +184,11 @@ ProcessRemainingRows:
 
 ExitKernel:
         vzeroupper
-        movaps  xmm6,GemvU8S8KernelFrame.SavedXmm6[rsp]
-        movaps  xmm7,GemvU8S8KernelFrame.SavedXmm7[rsp]
-        movaps  xmm8,GemvU8S8KernelFrame.SavedXmm8[rsp]
-        movaps  xmm9,GemvU8S8KernelFrame.SavedXmm9[rsp]
-        movaps  xmm10,GemvU8S8KernelFrame.SavedXmm10[rsp]
+        movaps  xmm6,XMMWORD PTR GemvU8S8KernelFrame.SavedXmm6[rsp]
+        movaps  xmm7,XMMWORD PTR GemvU8S8KernelFrame.SavedXmm7[rsp]
+        movaps  xmm8,XMMWORD PTR GemvU8S8KernelFrame.SavedXmm8[rsp]
+        movaps  xmm9,XMMWORD PTR GemvU8S8KernelFrame.SavedXmm9[rsp]
+        movaps  xmm10,XMMWORD PTR GemvU8S8KernelFrame.SavedXmm10[rsp]
         add     rsp,(GemvU8S8KernelFrame.SavedRdi)
 
         BEGIN_EPILOGUE
