@@ -433,6 +433,13 @@ def add_windows_specific_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments specific to Windows builds or Windows cross-compilation."""
     # Build tools / config
     parser.add_argument("--msvc_toolset", help="MSVC toolset version (e.g., 14.11). Must be >=14.40")
+    parser.add_argument(
+        "--use_clang_cl",
+        action="store_true",
+        help="Build with the LLVM clang-cl compiler instead of MSVC cl.exe. "
+        "Requires the Visual Studio generator and the 'C++ Clang Compiler for Windows' component. "
+        "Selects the 'ClangCL' platform toolset. clang-cl is MSVC-ABI compatible.",
+    )
     parser.add_argument("--windows_sdk_version", help="Windows SDK version (e.g., 10.0.19041.0).")
     parser.add_argument("--enable_msvc_static_runtime", action="store_true", help="Statically link MSVC runtimes.")
     parser.add_argument("--use_telemetry", action="store_true", help="Enable telemetry (official builds only).")
@@ -1015,6 +1022,15 @@ def parse_arguments() -> argparse.Namespace:
     if is_windows():
         if getattr(args, "use_winml", False) and not getattr(args, "enable_wcos", False):
             parser.error("--use_winml requires --enable_wcos to be specified.")
+        if getattr(args, "use_clang_cl", False):
+            generator = getattr(args, "cmake_generator", None)
+            if generator is None or not generator.startswith("Visual Studio"):
+                parser.error(
+                    "--use_clang_cl requires the Visual Studio CMake generator "
+                    "(it selects the 'ClangCL' platform toolset)."
+                )
+            if getattr(args, "arm", False) or getattr(args, "arm64", False) or getattr(args, "arm64ec", False):
+                parser.error("--use_clang_cl currently supports the x64 host/target only.")
         if hasattr(args, "msvc_toolset") and args.msvc_toolset:
             try:
                 # Extract major.minor version parts (e.g., "14.36")

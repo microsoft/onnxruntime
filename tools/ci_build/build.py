@@ -1135,7 +1135,8 @@ def generate_build_tree(
                 # do not need to have it.
                 ldflags = ["/profile", "/DYNAMICBASE"]
                 # Address Sanitizer libs do not have a Qspectre version. So they two cannot be both enabled.
-                if not args.enable_address_sanitizer:
+                # clang-cl does not support /Qspectre either.
+                if not args.enable_address_sanitizer and not args.use_clang_cl:
                     cflags += ["/Qspectre"]
                 if config == "Release":
                     cflags += ["/O2", "/Ob2", "/DNDEBUG"]
@@ -2485,6 +2486,10 @@ def main():
                     toolset = "host=" + host_arch + ",version=" + args.msvc_toolset
                 else:
                     toolset = "host=" + host_arch
+                if args.use_clang_cl:
+                    # Select the LLVM/clang-cl platform toolset for the Visual Studio generator.
+                    # clang-cl is MSVC-ABI compatible, so it reuses the MSVC host toolset settings.
+                    toolset = "ClangCL," + toolset
                 if args.use_cuda and args.cuda_version:
                     toolset += ",cuda=" + args.cuda_version
                 elif args.use_cuda and args.cuda_home:
