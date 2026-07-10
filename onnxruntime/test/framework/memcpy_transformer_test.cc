@@ -5,6 +5,7 @@
 #include <iterator>
 
 #include "core/framework/execution_providers.h"
+#include "core/framework/kernel_registry.h"
 #include "core/optimizer/transformer_memcpy.h"
 #include "core/graph/model.h"
 #include "default_providers.h"
@@ -118,7 +119,7 @@ TEST(TransformerTest, MemcpyTransformerTestWithFakeDeviceProvider) {
 static void RunMemcpyTransformerTestWithDeviceProvider(
     const std::string& device_provider_type,
     const std::function<std::unique_ptr<IExecutionProvider>()>& device_provider_factory,
-  const std::function<void(KernelRegistryManager&)>& register_provider_kernels) {
+    const std::function<void(KernelRegistryManager&)>& register_provider_kernels) {
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = 7;
   auto model = std::make_shared<onnxruntime::Model>("test", false, ModelMetaData(), PathString(),
