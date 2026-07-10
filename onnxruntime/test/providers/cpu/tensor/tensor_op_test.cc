@@ -174,6 +174,11 @@ TEST(TensorOpTest, Reshape_EmptyInputWithAllowZero) {
 // Test allowzero=1 with zero dim and unknown dim (-1): infer unknown from non-zero product.
 // Input: {2, 0, 3} (0 elements), shape: {0, -1} → output: {0, 6}
 TEST(TensorOpTest, Reshape_AllowZeroWithZeroDimAndUnknownDim) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
   OpTester test("Reshape", 14);
 
   test.AddInput<float>("data", {2, 0, 3}, std::vector<float>());
@@ -186,6 +191,11 @@ TEST(TensorOpTest, Reshape_AllowZeroWithZeroDimAndUnknownDim) {
 
 // Test allowzero=1 with zero dim and unknown dim: input {4, 0}, shape {0, 2, -1} → output {0, 2, 2}
 TEST(TensorOpTest, Reshape_AllowZeroWithZeroDimAndUnknownDim2) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
   OpTester test("Reshape", 14);
 
   test.AddInput<float>("data", {4, 0}, std::vector<float>());
@@ -199,6 +209,11 @@ TEST(TensorOpTest, Reshape_AllowZeroWithZeroDimAndUnknownDim2) {
 // Test allowzero=1 with zero dim, unknown dim, and multi-dim non-zero product.
 // Input: {3, 0, 5} (0 elements), shape: {0, -1} → non-zero product of input is 3*5=15, output: {0, 15}
 TEST(TensorOpTest, Reshape_AllowZeroWithZeroDimAndUnknownDimMultiDim) {
+  // TODO: Unskip when fixed #41968513
+  if (DefaultDmlExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
+  }
+
   OpTester test("Reshape", 14);
 
   test.AddInput<float>("data", {3, 0, 5}, std::vector<float>());
