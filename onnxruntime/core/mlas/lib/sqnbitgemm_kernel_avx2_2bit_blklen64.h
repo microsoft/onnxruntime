@@ -58,6 +58,8 @@ dot_accumulate_4blk_w2_blklen64(
 {
     const __m256i m03 = _mm256_set1_epi8(0x03);
     __m256i d0, d1, d2, d3;
+    // GCC 11+ is needed for _mm256_dpbusds_avx_epi32; older toolchains fall
+    // through to the vpmaddubsw+vpmaddwd path even on AVX-VNNI hardware.
 #if !defined(__GNUC__) || (__GNUC__ > 10)
     if constexpr (kVnni) {
         d0 = _mm256_dpbusds_avx_epi32(_mm256_setzero_si256(), _mm256_and_si256(glo, m03), a0lo);

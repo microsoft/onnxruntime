@@ -871,11 +871,13 @@ endif()
         )
         set_source_files_properties(${mlas_platform_srcs_avx512core} PROPERTIES COMPILE_FLAGS "-mfma -mavx512vnni -mavx512bw -mavx512dq -mavx512vl")
 
-        # Build the W2 scalar oracle / pack-helper TU without any AVX-512
-        # flags so the compiler cannot autovectorize its scalar loops into
-        # EVEX instructions. This helper runs at model load on AVX-512-only
-        # (non-VNNI) hosts via the AVX-512 W2 dispatch and on AVX2-only hosts
-        # via the AVX2 W2 dispatch. TU is pure C++ -- no intrinsics inside.
+        # NOTE: this TU is intrinsic-free scalar helpers reached from both the
+        # AVX2 and AVX-512 W2 dispatch tables at model load. Flags must not
+        # enable any ISA the AVX2-only host lacks, or the compiler may
+        # autovectorize the scalar loops into EVEX instructions and SIGILL.
+        # If the AVX-512 W2 pack ever becomes a perf hot spot, split this
+        # file: keep the scalar pack in a flag-less TU and put an optimized
+        # variant in a separate one only used by the AVX-512 tables.
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512_2bit.cpp PROPERTIES
           COMPILE_FLAGS "")
 
