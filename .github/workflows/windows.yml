@@ -14,6 +14,9 @@ env:
   AZCOPY_AUTO_LOGIN_TYPE: MSI
   AZCOPY_MSI_CLIENT_ID: 63b63039-6328-442f-954b-5a64d124e5b4
 
+permissions:
+  contents: read
+
 jobs:
   Windows-CUDA-12:
     if: github.event_name != 'pull_request'
