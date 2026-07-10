@@ -17,11 +17,15 @@ class MatMulSubgroupProgram final : public Program<MatMulSubgroupProgram> {
   MatMulSubgroupProgram(const Activation& activation,
                         bool bias,
                         bool is_vec4,
+                        bool a_vec4,
+                        bool b_is_fp16,
                         const gsl::span<int64_t>& elements_per_thread)
       : Program{"MatMulSubgroup"},
         activation_(activation),
         has_bias_{bias},
         is_vec4_{is_vec4},
+        a_vec4_{a_vec4},
+        b_is_fp16_{b_is_fp16},
         elements_per_thread_(elements_per_thread.begin(), elements_per_thread.end()) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -33,6 +37,8 @@ class MatMulSubgroupProgram final : public Program<MatMulSubgroupProgram> {
   const Activation activation_;
   const bool has_bias_;
   const bool is_vec4_;
+  const bool a_vec4_;
+  const bool b_is_fp16_;
   const InlinedVector<int64_t> elements_per_thread_;
 };
 
