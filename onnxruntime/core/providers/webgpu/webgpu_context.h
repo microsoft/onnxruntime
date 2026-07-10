@@ -358,10 +358,9 @@ class WebGpuContext final {
 
   // A recorded deferred dispatch. Its bind group is created only after any pending pipeline build
   // completes. The first cache miss for a key owns `pending_build`; later occurrences before that
-  // build is cached leave both pointers null and resolve the artifact while draining the window.
+  // build is cached resolve the artifact from the program cache while draining the window.
   struct DeferredDispatch {
     std::string key;
-    const ProgramArtifact* program_artifact = nullptr;
     std::unique_ptr<PendingPipelineBuild> pending_build;
     std::vector<WGPUBuffer> bind_buffers;
     std::vector<uint32_t> bind_buffers_segments;

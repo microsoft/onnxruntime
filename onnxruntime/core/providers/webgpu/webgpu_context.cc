@@ -260,10 +260,9 @@ Status WebGpuContext::FlushDeferredWindow(std::vector<DeferredDispatch>& window)
         result = d.pending_build->cb_ctx->status;
         continue;
       }
-      d.program_artifact = program_mgr_->Set(d.pending_build->key,
-                                             ProgramArtifact{std::move(d.pending_build->name),
-                                                             std::move(d.pending_build->pipeline),
-                                                             std::move(d.pending_build->shape_uniform_ranks)});
+      auto& build = *d.pending_build;
+      ProgramArtifact artifact{std::move(build.name), std::move(build.pipeline), std::move(build.shape_uniform_ranks)};
+      program_mgr_->Set(build.key, std::move(artifact));
     }
   }
   if (!result.IsOK()) {
@@ -280,9 +279,8 @@ Status WebGpuContext::FlushDeferredWindow(std::vector<DeferredDispatch>& window)
 
   // Encode the recorded dispatches in order, using the normal batching and submission thresholds.
   for (auto& d : window) {
-    // For repeated occurrences of a cache-miss key, retrieve the artifact cached by its first
-    // occurrence above.
-    const ProgramArtifact* artifact = d.program_artifact ? d.program_artifact : program_mgr_->Get(d.key);
+    const ProgramArtifact* artifact = program_mgr_->Get(d.key);
+    ORT_RETURN_IF_NOT(artifact != nullptr, "Program artifact not found for deferred dispatch: ", d.key);
     const auto& compute_pass_encoder = GetComputePassEncoder();
     WriteTimestamp(num_pending_dispatches_ * 2);
     LaunchComputePipeline(compute_pass_encoder, d.bind_buffers, d.bind_buffers_segments,
@@ -436,11 +434,13 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
 
   LOGS(context.Logger(), INFO) << "Starting program \"" << key << "\" (" << x << ", " << y << ", " << z << ")";
 
+  // The program cache prevents duplicate builds across drained windows. FlushDeferredWindow()
+  // inserts completed pipelines into this cache before clearing the window.
   const auto* program_artifact = program_mgr_->Get(key);
 
-  // In deferred mode, start pipeline creation asynchronously for the first cache miss of a key and
-  // retain its shape-uniform ranks for repeats. Record each dispatch for later encoding after the
-  // pending pipeline is ready.
+  // For cache misses within the active window, `deferred_inflight_builds_` prevents duplicate builds
+  // and retains shape-uniform ranks for repeated keys. Record each dispatch for later encoding after
+  // the pending pipeline is ready.
   std::unique_ptr<PendingPipelineBuild> deferred_pending;
   const std::vector<int>* deferred_ranks = nullptr;
   if (defer_dispatch_ && program_artifact == nullptr) {
@@ -639,7 +639,6 @@ Status WebGpuContext::Run(ComputeContextBase& context, const ProgramBase& progra
   if (defer_dispatch_) {
     DeferredDispatch d;
     d.key = key;
-    d.program_artifact = program_artifact;  // null if a pending build is in flight
     d.pending_build = std::move(deferred_pending);
     d.bind_buffers = std::move(bind_buffers);
     d.bind_buffers_segments = std::move(bind_buffers_segments);
