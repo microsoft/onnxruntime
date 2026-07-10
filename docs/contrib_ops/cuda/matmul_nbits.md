@@ -44,7 +44,7 @@ Source files:
 | `bits` | Quantization bit width: `4` or `8`. |
 | `block_size` | Quantization group size along `K` (16 / 32 / 64 / 128). One scale (and optional zero point) per group. |
 | `accuracy_level` | Minimum accuracy level for internal handling of `A`; default `0` means unset. |
-| `weight_prepacked` | CUDA fpA_intB weight-layout selector. `0` (default): `B` is in standard MatMulNBits layout and may be runtime-prepacked. `1`: `B` is already prepacked in the CUDA SM80 fpA_intB layout. `2`: reserved SM90 layout; currently rejected. |
+| `weight_prepacked` | CUDA fpA_intB weight-layout selector. `0` (default): `B` is in standard MatMulNBits layout and may be runtime-prepacked. `1`: `B` is already prepacked in the CUDA SM80 fpA_intB layout. `2`: `B` is prepacked in the CUDA SM90 (Hopper) fpA_intB layout, consumed by the native SM90 kernel (requires an SM90 device and `block_size` in {64, 128}). |
 
 | Input | Index | Notes |
 |-------|-------|-------|
@@ -87,21 +87,26 @@ step is **not** performed.
 The offline CUDA packer exposed through Python produces this layout:
 
 ```python
-from onnxruntime.capi import _pybind_state as _pybind
+from onnxruntime.capi import onnxruntime_cuda_quant_preprocess as _cuda_quant
 
-prepacked_flat = _pybind.pack_weights_for_cuda_mixed_gemm(
+prepacked_flat = _cuda_quant.pack_weights_for_cuda_mixed_gemm(
   q_weight.reshape(N, -1), N, K, bits, 80
 )
 prepacked_b = np.asarray(prepacked_flat, dtype=np.int8).view(np.uint8).reshape(q_weight.shape)
 ```
 
-The final argument is the target packing architecture. For MatMulNBits v1, use
-`80`: both runtime preprocessing and offline preprocessing force the SM80
-layout. On SM90 devices, the supported mixed FP16/BF16 activation + int4/int8
-weight path routes to the SM80 CUTLASS kernel/layout for this operator.
+The final argument is the target packing architecture. Use `80` for the SM80
+layout (consumed by the SM80 CUTLASS kernel, including on newer GPUs via the
+compatibility path) and set `weight_prepacked=1` on the node. Use `90` for the
+native SM90 (Hopper) layout and set `weight_prepacked=2` on the node.
 
-`weight_prepacked=2` is reserved for a future SM90/Hopper-specific layout and is
-currently rejected during kernel construction.
+`weight_prepacked=2` selects the native SM90 (Hopper TMA/WGMMA) mixed-GEMM
+kernel and its Hopper weight layout. It requires a compute capability 9.0 device
+and `block_size` in `{64, 128}` (the SM90 kernel needs `group_size` to be a
+multiple of the 64-element Hopper K tile, so `block_size=32` is SM80-only). On
+SM90 devices, runtime-prepacked (`weight_prepacked=0`) and SM80-prepacked
+(`weight_prepacked=1`) weights continue to route to the SM80 CUTLASS
+kernel/layout.
 
 ---
 
@@ -112,7 +117,7 @@ falls through to progressively more general ones:
 
 ```mermaid
 flowchart TD
-  A[ComputeInternal] --> F{has_fpA_intB_gemm_?<br/>FP16/BF16, ORT-prepackable weights,<br/>block 64/128, sm>=75}
+  A[ComputeInternal] --> F{has_fpA_intB_gemm_?<br/>FP16/BF16, ORT-prepackable weights,<br/>block 32/64/128, sm>=75}
   F -- yes --> FP[fpA_intB CUDA GEMV<br/>or CUTLASS grouped GEMM] --> R[return]
   F -- no --> G{reorder_idx == null<br/>and zero_points not typed-T?}
   G -- no --> DQ
@@ -236,10 +241,14 @@ and enabled via `ORT_FPA_INTB_GEMM`, FP16/BF16 MatMulNBits can use the
 TensorRT-LLM-derived CUTLASS weight-only kernels. The constructor sets
 `has_fpA_intB_gemm_` only when:
 
-- dtype is FP16 or BF16, `bits ∈ {4, 8}`, `block_size ∈ {64, 128}`,
-- no `g_idx`, no `bias`, `N % (bits==8 ? 32 : 64) == 0`, `K % block_size == 0`,
+- dtype is FP16 or BF16, `bits ∈ {4, 8}`, `block_size ∈ {32, 64, 128}`,
+- no `g_idx`, `N % (bits==8 ? 32 : 64) == 0`, `K % block_size == 0`,
 - `sm_ >= 75`, and weight/scale/zero-point inputs are constant initializers that
   ORT can prepack.
+
+`block_size=32` is served by the SM80/Ampere-class fine-grained kernel (and its
+SM90 compatibility path); the native SM90 kernel (`weight_prepacked=2`) supports
+only `block_size ∈ {64, 128}` — see §2.1.
 
 At run time a profiler picks the best tactic; small `M` may use a dedicated CUDA
 GEMV kernel (`bestTactic->enableCudaKernel`), otherwise a CUTLASS grouped GEMM.
@@ -258,8 +267,10 @@ Prepacked weights are intentionally strict:
   throws instead of silently falling back to a raw-layout path.
 - Nonzero `weight_prepacked` requires FP16 or BF16 input `A`, because only the
   CUDA fpA_intB path consumes this layout.
-- `weight_prepacked=1` must match the currently required SM80 layout; `2` is
-  reserved and rejected.
+- `weight_prepacked` must match the layout the selected kernel expects: `1` is
+  the SM80 layout, `2` is the native SM90 (Hopper) layout. `2` additionally
+  requires a compute-capability 9.0 device and `block_size ∈ {64, 128}` and is
+  rejected otherwise.
 
 ---
 
@@ -298,7 +309,7 @@ present. `ComputeInternal` then:
   GEMV profiling helpers, e.g. `profile_qmoe_gemv.sh`).
 - CUDA prepacked-weight parity tests:
   [onnxruntime/test/python/quantization/test_op_matmulnbits_prepacked_cuda.py](../../../onnxruntime/test/python/quantization/test_op_matmulnbits_prepacked_cuda.py).
-  These use `_pybind_state.pack_weights_for_cuda_mixed_gemm(..., 80)` to produce
+  These use `onnxruntime_cuda_quant_preprocess.pack_weights_for_cuda_mixed_gemm(..., 80)` to produce
   `weight_prepacked=1` initializers and compare their outputs against runtime
   fpA_intB prepacking for int4/int8 and GEMV/GEMM-shaped `M` values.
 - Constructor failure tests for unsupported prepacked configurations live in

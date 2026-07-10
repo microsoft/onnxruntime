@@ -7,6 +7,7 @@
 #include <optional>
 #include <random>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -2594,6 +2595,136 @@ TEST(GroupQueryAttentionTest, WebGPU_SharedKV_SlidingWindow) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   execution_providers.push_back(DefaultWebGpuExecutionProvider());
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
+// ---------------------------------------------------------------------------
+// attention_bias parity (CUDA vs CPU).
+//
+// The CUDA GQA kernel routes attention_bias-carrying nodes to the unfused
+// fallback; the CPU EP implements attention_bias directly, so it is the
+// reference. This runs the SAME prompt case on CUDA (fp16, the only float type
+// the CUDA kernel registers) and on CPU (fp32) and compares the outputs,
+// covering the three bias shapes that drive broadcast_attn_bias_dim_0/1:
+//   [batch, 1,    S, S]  -> dim0=false, dim1=true  (the default)
+//   [1,     1,    S, S]  -> dim0=true              (batch broadcast)
+//   [batch, heads, S, S] -> dim1=false             (per-head)
+// These run on real GPU in PR CI (C++ ctest), unlike the Python parity tests
+// which need a CUDA-enabled torch the PR agents don't have.
+// ---------------------------------------------------------------------------
+template <typename T>
+static std::vector<float> RunGQAPromptWithBias(
+    int batch_size, int seq_len, int num_heads, int kv_num_heads, int head_size,
+    int bias_dim0, int bias_dim1,
+    const std::vector<float>& query_data,
+    const std::vector<float>& key_data,
+    const std::vector<float>& value_data,
+    const std::vector<float>& bias_data,
+    GqaTargetEp target_ep) {
+  const int hidden_size = num_heads * head_size;
+  const int kv_hidden_size = kv_num_heads * head_size;
+  const int total_seq_len = seq_len;  // prompt: no past
+
+  auto cvt = [](const std::vector<float>& v) {
+    if constexpr (std::is_same_v<T, MLFloat16>) {
+      return ToFloat16(v);
+    } else {
+      return v;
+    }
+  };
+
+  OpTester tester("GroupQueryAttention", 1, onnxruntime::kMSDomain);
+  tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
+  tester.AddAttribute<int64_t>("kv_num_heads", static_cast<int64_t>(kv_num_heads));
+
+  tester.AddInput<T>("query", {batch_size, seq_len, hidden_size}, cvt(query_data));
+  tester.AddInput<T>("key", {batch_size, seq_len, kv_hidden_size}, cvt(key_data));
+  tester.AddInput<T>("value", {batch_size, seq_len, kv_hidden_size}, cvt(value_data));
+
+  tester.AddOptionalInputEdge<T>();  // past_key
+  tester.AddOptionalInputEdge<T>();  // past_value
+  std::vector<int32_t> seqlens_k(batch_size, total_seq_len - 1);
+  tester.AddInput<int32_t>("seqlens_k", {batch_size}, seqlens_k);
+  tester.AddInput<int32_t>("total_sequence_length", {1}, {total_seq_len}, /*is_initializer=*/true);
+
+  tester.AddOptionalInputEdge<T>();        // cos_cache
+  tester.AddOptionalInputEdge<T>();        // sin_cache
+  tester.AddOptionalInputEdge<int64_t>();  // position_ids
+  tester.AddInput<T>("attention_bias", {bias_dim0, bias_dim1, seq_len, total_seq_len}, cvt(bias_data));
+
+  const int output_size = batch_size * seq_len * hidden_size;
+  tester.AddOutput<T>("output", {batch_size, seq_len, hidden_size}, std::vector<T>(output_size, T(0.0f)));
+  const int present_size = batch_size * kv_num_heads * total_seq_len * head_size;
+  tester.AddOutput<T>("present_key", {batch_size, kv_num_heads, total_seq_len, head_size},
+                      std::vector<T>(present_size, T(0.0f)));
+  tester.AddOutput<T>("present_value", {batch_size, kv_num_heads, total_seq_len, head_size},
+                      std::vector<T>(present_size, T(0.0f)));
+
+  tester.SetOutputTolerance(1e6f);  // outputs are compared explicitly by the caller
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(MakeExecutionProviderForGqaTest(target_ep));
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+
+  auto fetches = tester.GetFetches();
+  const T* out = fetches[0].Get<Tensor>().Data<T>();
+  std::vector<float> result(output_size);
+  for (int i = 0; i < output_size; ++i) {
+    if constexpr (std::is_same_v<T, MLFloat16>) {
+      result[i] = out[i].ToFloat();
+    } else {
+      result[i] = out[i];
+    }
+  }
+  return result;
+}
+
+TEST(GroupQueryAttentionTest, CudaAttentionBiasParityVsCpu) {
+  auto cuda_ep = DefaultCudaExecutionProvider();
+  if (!cuda_ep) {
+    GTEST_SKIP() << "CUDA EP not available";
+  }
+
+  constexpr int batch_size = 2;
+  constexpr int seq_len = 3;
+  constexpr int num_heads = 4;
+  constexpr int kv_num_heads = 2;
+  constexpr int head_size = 8;
+  const int hidden_size = num_heads * head_size;
+  const int kv_hidden_size = kv_num_heads * head_size;
+
+  std::vector<float> query(batch_size * seq_len * hidden_size);
+  std::vector<float> key(batch_size * seq_len * kv_hidden_size);
+  std::vector<float> value(batch_size * seq_len * kv_hidden_size);
+  for (size_t i = 0; i < query.size(); ++i) query[i] = 0.1f * static_cast<float>(i % 7 + 1);
+  for (size_t i = 0; i < key.size(); ++i) key[i] = 0.2f * static_cast<float>(i % 5 + 1);
+  for (size_t i = 0; i < value.size(); ++i) value[i] = 0.3f * static_cast<float>(i % 3 + 1);
+
+  struct BiasShape {
+    int dim0;
+    int dim1;
+    const char* label;
+  };
+  const std::vector<BiasShape> shapes = {
+      {batch_size, 1, "batch_head_broadcast"},  // dim0=false, dim1=true (default)
+      {1, 1, "batch_broadcast"},                // dim0=true
+      {batch_size, num_heads, "per_head"},      // dim1=false
+  };
+
+  for (const auto& shape : shapes) {
+    std::vector<float> bias(static_cast<size_t>(shape.dim0) * shape.dim1 * seq_len * seq_len);
+    for (size_t i = 0; i < bias.size(); ++i) {
+      bias[i] = 0.5f * std::sin(0.7f * static_cast<float>(i));
+    }
+
+    auto cuda_output = RunGQAPromptWithBias<MLFloat16>(
+        batch_size, seq_len, num_heads, kv_num_heads, head_size, shape.dim0, shape.dim1,
+        query, key, value, bias, GqaTargetEp::kCuda);
+    auto cpu_output = RunGQAPromptWithBias<float>(
+        batch_size, seq_len, num_heads, kv_num_heads, head_size, shape.dim0, shape.dim1,
+        query, key, value, bias, GqaTargetEp::kCpu);
+
+    ExpectOutputsMatch(cuda_output, cpu_output, 0.02f, shape.label);
+  }
 }
 
 #ifdef USE_WEBGPU

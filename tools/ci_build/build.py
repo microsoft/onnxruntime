@@ -1823,7 +1823,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
 
                 if not args.disable_contrib_ops:
                     run_subprocess(
-                        [sys.executable, "-m", "unittest", "discover", "-s", "quantization"], cwd=cwd, dll_path=dll_path
+                        [sys.executable, "-m", "unittest", "discover", "-s", "quantization", "-v"],
+                        cwd=cwd,
+                        dll_path=dll_path,
                     )
 
                     if args.enable_transformers_tool_test and (sys.version_info.major, sys.version_info.minor) < (

@@ -5,6 +5,8 @@
 # license information.
 # --------------------------------------------------------------------------
 
+from __future__ import annotations
+
 import os
 import unittest
 from contextlib import contextmanager
@@ -14,6 +16,12 @@ from onnx import ModelProto, TensorProto, helper, numpy_helper
 
 import onnxruntime as ort
 from onnxruntime.capi import _pybind_state as _pybind
+from onnxruntime.quantization.cuda_quantizer import _pack_weights_for_cuda_mixed_gemm
+
+try:
+    from onnxruntime.capi import onnxruntime_cuda_quant_preprocess as _cuda_quant
+except ImportError:
+    _cuda_quant = None
 
 
 @contextmanager
@@ -30,7 +38,7 @@ def set_env(name: str, value: str):
 
 
 @unittest.skipIf("CUDAExecutionProvider" not in ort.get_available_providers(), "CUDA is not available")
-@unittest.skipUnless(hasattr(_pybind, "pack_weights_for_cuda_mixed_gemm"), "fpA_intB weight packer is unavailable")
+@unittest.skipUnless(_cuda_quant is not None, "fpA_intB weight packer is unavailable")
 class TestMatMulNBitsPrepackedCuda(unittest.TestCase):
     def _quantize_weight(self, weight: np.ndarray, bits: int, block_size: int):
         k, n = weight.shape
@@ -57,12 +65,22 @@ class TestMatMulNBitsPrepackedCuda(unittest.TestCase):
         bits: int,
         block_size: int,
         weight_prepacked: int,
+        bias: np.ndarray | None = None,
     ) -> ModelProto:
         m, k = a_shape
         n = b.shape[0]
+        inputs = ["A", "B", "scales"]
+        initializer = [
+            numpy_helper.from_array(b, name="B"),
+            numpy_helper.from_array(scales, name="scales"),
+        ]
+        if bias is not None:
+            # bias is input index 5; indices 3 (zero_points) and 4 (g_idx) are left empty.
+            inputs.extend(["", "", "bias"])
+            initializer.append(numpy_helper.from_array(bias, name="bias"))
         node = helper.make_node(
             "MatMulNBits",
-            ["A", "B", "scales"],
+            inputs,
             ["Y"],
             domain="com.microsoft",
             K=k,
@@ -76,10 +94,7 @@ class TestMatMulNBitsPrepackedCuda(unittest.TestCase):
             "matmulnbits_prepacked_cuda_test",
             [helper.make_tensor_value_info("A", TensorProto.FLOAT16, [m, k])],
             [helper.make_tensor_value_info("Y", TensorProto.FLOAT16, [m, n])],
-            initializer=[
-                numpy_helper.from_array(b, name="B"),
-                numpy_helper.from_array(scales, name="scales"),
-            ],
+            initializer=initializer,
         )
         model = helper.make_model(
             graph,
@@ -92,19 +107,30 @@ class TestMatMulNBitsPrepackedCuda(unittest.TestCase):
         sess = ort.InferenceSession(model.SerializeToString(), providers=["CUDAExecutionProvider"])
         return sess.run(None, {"A": a})[0]
 
-    def _check_prepacked_parity(self, bits: int, block_size: int, m: int):
+    def _check_prepacked_parity(
+        self,
+        bits: int,
+        block_size: int,
+        m: int,
+        has_bias: bool = False,
+        force_arch: int = 80,
+        weight_prepacked: int = 1,
+    ):
         rng = np.random.default_rng(1234 + bits * 10 + block_size + m)
         k = 256
         n = 256 if bits == 8 else 512
         a = rng.normal(0.0, 0.25, size=(m, k)).astype(np.float16)
         weight = rng.normal(0.0, 0.25, size=(k, n)).astype(np.float16)
+        bias = rng.normal(0.0, 1.0, size=(n,)).astype(np.float16) if has_bias else None
 
         q_weight, scales = self._quantize_weight(weight, bits, block_size)
-        prepacked_flat = _pybind.pack_weights_for_cuda_mixed_gemm(q_weight.reshape(n, -1), n, k, bits, 80)
+        prepacked_flat = _cuda_quant.pack_weights_for_cuda_mixed_gemm(q_weight.reshape(n, -1), n, k, bits, force_arch)
         prepacked_weight = np.asarray(prepacked_flat, dtype=np.int8).view(np.uint8).reshape(q_weight.shape)
 
-        raw_model = self._make_model((m, k), q_weight, scales, bits, block_size, weight_prepacked=0)
-        prepacked_model = self._make_model((m, k), prepacked_weight, scales, bits, block_size, weight_prepacked=1)
+        raw_model = self._make_model((m, k), q_weight, scales, bits, block_size, weight_prepacked=0, bias=bias)
+        prepacked_model = self._make_model(
+            (m, k), prepacked_weight, scales, bits, block_size, weight_prepacked=weight_prepacked, bias=bias
+        )
 
         with set_env("ORT_FPA_INTB_GEMM", "1"):
             raw_output = self._run_model(raw_model, a)
@@ -116,9 +142,73 @@ class TestMatMulNBitsPrepackedCuda(unittest.TestCase):
         self._check_prepacked_parity(bits=4, block_size=64, m=1)
         self._check_prepacked_parity(bits=4, block_size=128, m=32)
 
+    def test_int4_bs32_sm80_prepacked_weight_matches_runtime_prepack(self):
+        # Production rc2/rc3 models use block_size=32 (SM80/Ampere layout, weight_prepacked=1).
+        self._check_prepacked_parity(bits=4, block_size=32, m=1)
+        self._check_prepacked_parity(bits=4, block_size=32, m=32)
+
     def test_int8_sm80_prepacked_weight_matches_runtime_prepack(self):
         self._check_prepacked_parity(bits=8, block_size=64, m=1)
         self._check_prepacked_parity(bits=8, block_size=128, m=32)
+
+    def test_int4_sm80_prepacked_weight_with_bias_matches_runtime_prepack(self):
+        self._check_prepacked_parity(bits=4, block_size=64, m=1, has_bias=True)
+        self._check_prepacked_parity(bits=4, block_size=128, m=32, has_bias=True)
+
+    def _check_sm90_parity(self, **kwargs):
+        # The native SM90 (Hopper) layout (force_arch=90, weight_prepacked=2) only runs on an SM90
+        # device; the MatMulNBits kernel rejects it up front elsewhere. Self-gate by skipping when
+        # the compute-capability guard fires so the test is a no-op on non-Hopper CI.
+        try:
+            self._check_prepacked_parity(force_arch=90, weight_prepacked=2, **kwargs)
+        except Exception as exc:
+            if "compute capability 9.0" in str(exc):
+                self.skipTest("native SM90 fpA_intB requires a Hopper (SM90) device")
+            raise
+
+    def test_int4_sm90_prepacked_weight_matches_runtime_prepack(self):
+        self._check_sm90_parity(bits=4, block_size=64, m=1)
+        self._check_sm90_parity(bits=4, block_size=128, m=32)
+
+    def test_int4_sm90_prepacked_weight_with_bias_matches_runtime_prepack(self):
+        self._check_sm90_parity(bits=4, block_size=128, m=32, has_bias=True)
+
+    def test_int8_sm90_prepacked_weight_matches_runtime_prepack(self):
+        self._check_sm90_parity(bits=8, block_size=128, m=32)
+
+
+@unittest.skipIf("CUDAExecutionProvider" not in ort.get_available_providers(), "CUDA is not available")
+@unittest.skipUnless(_cuda_quant is not None, "standalone CUDA weight packer (parity oracle) is unavailable")
+class TestCudaQuantizerTorchPackerParity(unittest.TestCase):
+    """Validate the PyTorch mixed-GEMM packer in cuda_quantizer.py against the CUDA oracle.
+
+    ``cuda_quantizer._pack_weights_for_cuda_mixed_gemm`` (PyTorch, used in production, and the
+    only option on Windows where the standalone module is not built) must be byte-identical to
+    the standalone ``onnxruntime_cuda_quant_preprocess.pack_weights_for_cuda_mixed_gemm`` (the
+    CUDA code the runtime prepack uses). This test is the guard against silent drift; it only
+    runs where the oracle is built (non-Windows CUDA).
+    """
+
+    def _check(self, bits: int, force_arch: int, n: int, k: int):
+        pack = 8 // bits
+        rng = np.random.default_rng(20260708 + bits * 100 + force_arch + n + k)
+        q = rng.integers(0, 256, size=(n, k // pack), dtype=np.uint8)
+        oracle = np.asarray(_cuda_quant.pack_weights_for_cuda_mixed_gemm(q, n, k, bits, force_arch), dtype=np.int8)
+        torch_out = _pack_weights_for_cuda_mixed_gemm(q, n, k, bits, force_arch).astype(np.int8)
+        self.assertEqual(oracle.shape, torch_out.shape, f"shape mismatch bits={bits} arch={force_arch} N={n} K={k}")
+        np.testing.assert_array_equal(
+            torch_out, oracle, err_msg=f"byte mismatch bits={bits} arch={force_arch} N={n} K={k}"
+        )
+
+    def test_torch_packer_matches_cuda_oracle(self):
+        # Cover both weight bit-widths, both mixed-GEMM layouts (SM80/SM90), and a GPT-OSS-20B
+        # MoE shape (fused gate+up FC1 [5760, 2880] and down FC2 [2880, 2880]).
+        shapes = [(256, 256), (512, 256), (256, 512), (5760, 2880), (2880, 2880), (128, 128)]
+        for bits in (4, 8):
+            for force_arch in (80, 90):
+                for n, k in shapes:
+                    with self.subTest(bits=bits, force_arch=force_arch, n=n, k=k):
+                        self._check(bits, force_arch, n, k)
 
 
 if __name__ == "__main__":
