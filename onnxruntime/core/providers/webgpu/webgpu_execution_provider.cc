@@ -24,7 +24,6 @@
 #include "core/graph/indexed_sub_graph.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "core/common/parse_string.h"
-#include "core/platform/env_var.h"
 
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/data_transfer.h"
@@ -804,55 +803,33 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
 
   // ===========================================================================================
   // DEFER-DISPATCH: activate the windowed cold-start optimization (see WebGpuContext) on the first
-  // eligible prefill run. The run is routed through a reserved graph-mode buffer manager
-  // (annotation -2) whose caches never free buffers mid-run, so the WGPUBuffer handles recorded
-  // during the deferred pass stay valid until FlushDeferred replays them. Enabled by default;
-  // disable per run with the run-option "ep.webgpu.defer_dispatch"="0" or the env var
-  // ORT_WEBGPU_DEFER_DISPATCH=0. Runs that will be graph-captured (annotation != -1) are skipped so
-  // capture/replay is unaffected.
+  // run. Skipped entirely when graph capture is enabled, since graph capture records/replays
+  // commands itself and is mutually exclusive with deferral. The run is routed through a reserved
+  // graph-mode buffer manager (annotation -2) whose caches never free buffers mid-run, so the
+  // WGPUBuffer handles recorded during the deferred pass stay valid until FlushDeferred replays them.
   // ===========================================================================================
   defer_dispatch_active_ = false;
-  if (defer_dispatch_pending_) {
-    bool defer_on = true;
-    auto defer_entry = run_options.config_options.GetConfigEntry("ep.webgpu.defer_dispatch");
-    if (defer_entry.has_value()) {
-      defer_on = !(*defer_entry == "0" || *defer_entry == "false");
-    } else if (auto env_val = onnxruntime::detail::GetEnvironmentVar("ORT_WEBGPU_DEFER_DISPATCH");
-               env_val == "0" || env_val == "false") {
-      defer_on = false;
-    }
-    bool will_be_captured = false;
-    if (defer_on && IsGraphCaptureEnabled()) {
-      auto ann = run_options.config_options.GetConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation);
-      int ann_id = 0;
-      if (ann.has_value()) {
-        ORT_ENFORCE(onnxruntime::TryParseStringWithClassicLocale<int>(*ann, ann_id),
-                    "Failed to parse the graph annotation id: ", *ann);
-      }
-      will_be_captured = (ann_id != -1);
-    }
-    if (defer_on && !will_be_captured) {
-      defer_dispatch_active_ = true;
-      defer_dispatch_pending_ = false;
-      context_.SetDeferDispatch(true);
+  if (defer_dispatch_pending_ && !IsGraphCaptureEnabled()) {
+    defer_dispatch_active_ = true;
+    defer_dispatch_pending_ = false;
+    context_.SetDeferDispatch(true);
 
-      // Route this run through a graph-mode buffer manager (Graph/GraphSimple), whose caches never
-      // free buffers within a run (OnRefresh is a no-op), so recorded buffer handles stay valid
-      // until FlushDeferred replays them. A reserved annotation id keeps it separate from real
-      // captured graphs.
-      constexpr int kDeferGraphAnnotationId = -2;
-      auto [it, inserted] = per_graph_buffer_mgrs_.try_emplace(kDeferGraphAnnotationId, nullptr);
-      if (inserted) {
-        it->second = webgpu::BufferManagerFactory::Create(context_,
-                                                          webgpu::BufferCacheMode::Graph,
-                                                          webgpu::BufferCacheMode::GraphSimple,
-                                                          webgpu::BufferCacheMode::Disabled,
-                                                          webgpu::BufferCacheMode::Disabled);
-      }
-      current_graph_annotation_id_ = kDeferGraphAnnotationId;
-      graph_buffer_mgr_active_ = true;
-      return Status::OK();
+    // Route this run through a graph-mode buffer manager (Graph/GraphSimple), whose caches never
+    // free buffers within a run (OnRefresh is a no-op), so recorded buffer handles stay valid
+    // until FlushDeferred replays them. A reserved annotation id keeps it separate from real
+    // captured graphs.
+    constexpr int kDeferGraphAnnotationId = -2;
+    auto [it, inserted] = per_graph_buffer_mgrs_.try_emplace(kDeferGraphAnnotationId, nullptr);
+    if (inserted) {
+      it->second = webgpu::BufferManagerFactory::Create(context_,
+                                                        webgpu::BufferCacheMode::Graph,
+                                                        webgpu::BufferCacheMode::GraphSimple,
+                                                        webgpu::BufferCacheMode::Disabled,
+                                                        webgpu::BufferCacheMode::Disabled);
     }
+    current_graph_annotation_id_ = kDeferGraphAnnotationId;
+    graph_buffer_mgr_active_ = true;
+    return Status::OK();
   }
 
   if (IsGraphCaptureEnabled()) {
