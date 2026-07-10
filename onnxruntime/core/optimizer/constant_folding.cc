@@ -10,6 +10,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/optimizer/optimizer_execution_frame.h"
 #include "core/framework/op_kernel.h"
+#include "core/framework/tensor.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/common/safeint.h"
@@ -148,6 +149,15 @@ static Status ConstantFoldIfNode(Graph& graph, Node& if_node, const logging::Log
 static constexpr int64_t kDefaultConstantFoldingMaxOutputSizeInBytes = 1024 * 1024 * 1024;
 
 static size_t GetElementSizeForConstantFolding(ONNX_NAMESPACE::TensorProto_DataType elem_type) {
+  // Complex types are excluded: ORT's tensor type system (DataTypeImpl::TensorTypeFromONNXEnum)
+  // does not support them, so we cannot size them via Tensor::CalculateTensorStorageSize().
+  // Returning 0 makes callers treat the size as unknown instead of attempting an unsupported
+  // conversion.
+  if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_COMPLEX64 ||
+      elem_type == ONNX_NAMESPACE::TensorProto_DataType_COMPLEX128) {
+    return 0;
+  }
+
   const size_t element_size = utils::GetElementSizeOfTensor(elem_type);
   if (element_size != 0) {
     return element_size;
@@ -155,6 +165,28 @@ static size_t GetElementSizeForConstantFolding(ONNX_NAMESPACE::TensorProto_DataT
 
   // String tensors allocate storage for std::string slots even though the payload size is variable.
   return elem_type == ONNX_NAMESPACE::TensorProto_DataType_STRING ? sizeof(std::string) : 0;
+}
+
+// Computes the packed storage size in bytes for `num_elements` elements of `elem_type`.
+// Delegates to Tensor::CalculateTensorStorageSize() so the sub-byte packing math (e.g. int4/uint4
+// pack 2 elements per byte, int2/uint2 pack 4) lives in a single place and does not have to be kept
+// in sync here. Returns -1 if the element type is not a recognized tensor element type or the
+// computed size cannot be represented.
+static int64_t ComputeTensorSizeInBytesForConstantFolding(ONNX_NAMESPACE::TensorProto_DataType elem_type,
+                                                          int64_t num_elements) {
+  if (GetElementSizeForConstantFolding(elem_type) == 0) {
+    return -1;  // Unknown element type.
+  }
+
+  const MLDataType elt_type = DataTypeImpl::TensorTypeFromONNXEnum(elem_type)->GetElementType();
+  size_t storage_size = 0;
+  const Status status =
+      Tensor::CalculateTensorStorageSize(elt_type, TensorShape({num_elements}), /*alignment*/ 0, storage_size);
+  if (!status.IsOK() || storage_size > static_cast<size_t>(std::numeric_limits<int64_t>::max())) {
+    return -1;
+  }
+
+  return static_cast<int64_t>(storage_size);
 }
 
 static int64_t EstimateTensorElementCount(const ONNX_NAMESPACE::TensorShapeProto& shape) {
@@ -197,7 +229,7 @@ static int64_t EstimateTensorSizeInBytes(const NodeArg& node_arg) {
     return -1;
   }
 
-  return SafeInt<int64_t>(num_elements) * static_cast<int64_t>(element_size);
+  return ComputeTensorSizeInBytesForConstantFolding(elem_type, num_elements);
 }
 
 static int64_t EstimateUniqueOutputSizeInBytes(const Node& node) {
@@ -233,8 +265,17 @@ static int64_t EstimateUniqueOutputSizeInBytes(const Node& node) {
       continue;
     }
 
-    const size_t element_size = output_idx == 0 ? input_element_size : sizeof(int64_t);
-    total_size += SafeInt<int64_t>(input_num_elements) * static_cast<int64_t>(element_size);
+    if (output_idx == 0) {
+      // Output 0 has the same (possibly packed sub-byte) element type as the input.
+      const int64_t output0_size = ComputeTensorSizeInBytesForConstantFolding(input_elem_type, input_num_elements);
+      if (output0_size < 0) {
+        return -1;  // Output 0 size is unknown; treat the whole node's output size as unknown.
+      }
+      total_size += output0_size;
+    } else {
+      // The remaining Unique outputs are int64 index/count tensors.
+      total_size += SafeInt<int64_t>(input_num_elements) * sizeof(int64_t);
+    }
   }
 
   return total_size;
@@ -280,21 +321,20 @@ static int64_t EstimateConstantOfShapeOutputSizeInBytes(const Node& node, const 
     num_elements *= dim;
   }
 
-  // Determine the element size of the output. The ONNX spec for ConstantOfShape defaults the
+  // Determine the element type of the output. The ONNX spec for ConstantOfShape defaults the
   // element type to float when the optional 'value' attribute is absent.
-  size_t element_size = sizeof(float);
+  auto elem_type = ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
   const auto& attrs = node.GetAttributes();
   auto it = attrs.find("value");
   if (it != attrs.end() && it->second.type() == ONNX_NAMESPACE::AttributeProto::TENSOR) {
-    const auto elem_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(
+    const auto value_elem_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(
         it->second.t().data_type());
-    const size_t es = GetElementSizeForConstantFolding(elem_type);
-    if (es != 0) {
-      element_size = es;
+    if (GetElementSizeForConstantFolding(value_elem_type) != 0) {
+      elem_type = value_elem_type;
     }
   }
 
-  return num_elements * static_cast<int64_t>(element_size);
+  return ComputeTensorSizeInBytesForConstantFolding(elem_type, num_elements);
 }
 
 // Estimate the total output size in bytes for a node using shape inference results.

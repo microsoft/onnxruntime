@@ -19,6 +19,7 @@
 
 #include "core/common/span_utils.h"
 #include "core/framework/data_types.h"
+#include "core/framework/int4.h"
 #include "core/framework/ort_value.h"
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
@@ -1751,6 +1752,76 @@ TEST_F(GraphTransformationTests, ConstantFoldingConstantOfShapeBlockedWhenOutput
                                         std::make_unique<ConstantFolding>(*e.get(), false, config_options),
                                         TransformerLevel::Level1, 1,
                                         pre_graph_checker, post_graph_checker));
+}
+
+// The constant-folding output-size estimate must be packing-aware for sub-byte types.
+// A QuantizeLinear node that produces a packed int4 output stores 2 elements per byte, so its
+// real storage size is ceil(num_elements / 2) bytes. The pre-execution size estimate previously
+// used num_elements * 1 byte, over-counting by ~2x and needlessly blocking folding of sub-byte
+// outputs that actually fit within the configured limit.
+TEST_F(GraphTransformationTests, ConstantFoldingSubByteOutputSizeIsPacked) {
+  // 20000 int4 elements -> 10000 packed bytes of real storage (the old estimate was 20000 bytes).
+  constexpr int64_t kNumElements = 20000;
+
+  auto build_model = [&](ModelTestBuilder& builder) {
+    auto* input_data = builder.MakeInitializer<float>({kNumElements}, -1.0f, 1.0f);
+    auto* output_arg = builder.MakeOutput();
+    builder.AddQuantizeLinearNode<Int4x2>(input_data, 1.0f, Int4x2(0, 0), output_arg);
+  };
+
+  // Case 1: limit (15000 bytes) sits between the packed size (10000) and the old over-estimate
+  // (20000). With the packing-aware estimate the node SHOULD be folded. Under the old estimate
+  // it would have been (incorrectly) skipped.
+  {
+    auto pre_graph_checker = [](Graph& graph) -> Status {
+      auto op_to_count = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_to_count["QuantizeLinear"] == 1);
+      return Status::OK();
+    };
+
+    auto post_graph_checker = [](Graph& graph) -> Status {
+      auto op_to_count = CountOpsInGraph(graph);
+      // Real packed size (10000 bytes) is within the 15000 byte limit, so folding proceeds.
+      TEST_RETURN_IF_NOT(op_to_count["QuantizeLinear"] == 0);
+      return Status::OK();
+    };
+
+    std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    ConfigOptions config_options;
+    ASSERT_STATUS_OK(config_options.AddConfigEntry(
+        kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes, "15000"));
+
+    ASSERT_STATUS_OK(TestGraphTransformer(build_model, 21, *logger_,
+                                          std::make_unique<ConstantFolding>(*e.get(), false, config_options),
+                                          TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
+  }
+
+  // Case 2: limit (5000 bytes) is below even the packed size (10000), so folding is blocked.
+  {
+    auto pre_graph_checker = [](Graph& graph) -> Status {
+      auto op_to_count = CountOpsInGraph(graph);
+      TEST_RETURN_IF_NOT(op_to_count["QuantizeLinear"] == 1);
+      return Status::OK();
+    };
+
+    auto post_graph_checker = [](Graph& graph) -> Status {
+      auto op_to_count = CountOpsInGraph(graph);
+      // Real packed size (10000 bytes) exceeds the 5000 byte limit, so the node is not folded.
+      TEST_RETURN_IF_NOT(op_to_count["QuantizeLinear"] == 1);
+      return Status::OK();
+    };
+
+    std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
+    ConfigOptions config_options;
+    ASSERT_STATUS_OK(config_options.AddConfigEntry(
+        kOrtSessionOptionsConstantFoldingMaxOutputSizeInBytes, "5000"));
+
+    ASSERT_STATUS_OK(TestGraphTransformer(build_model, 21, *logger_,
+                                          std::make_unique<ConstantFolding>(*e.get(), false, config_options),
+                                          TransformerLevel::Level1, 1,
+                                          pre_graph_checker, post_graph_checker));
+  }
 }
 
 // Test that small constant folding still works with the size limit.
