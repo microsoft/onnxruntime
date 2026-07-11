@@ -44,7 +44,7 @@ consteval bool IsTensorProtoToOrtElementTypeMapBijective() {
   constexpr size_t ort_element_type_count =
       static_cast<size_t>(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E8M0) + 1;
   constexpr size_t onnx_element_type_count = ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE;
-  if (onnx_element_type_count != ort_element_type_count) {
+  if constexpr (onnx_element_type_count != ort_element_type_count) {
     return false;
   }
 
