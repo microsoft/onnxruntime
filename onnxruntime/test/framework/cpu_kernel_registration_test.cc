@@ -26,7 +26,7 @@ constexpr BuildKernelCreateInfoFn kValidTable[] = {
     BuildDisabledEntry,
 };
 constexpr BuildKernelCreateInfoFn kMissingDisabledEntryTable[] = {
-    BuildTestEntry,
+    nullptr,
 };
 constexpr BuildKernelCreateInfoFn kNullFactoryTable[] = {
     BuildDisabledEntry,
