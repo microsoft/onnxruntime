@@ -126,8 +126,8 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
     for (size_t i = 0; i < node->InputDefs().size(); ++i) {
       auto* input = node->InputDefs()[i];
 
-      // skip placing on CPU if the data typs is float16 or bfloat16 or
-      // float8e4m3fn, float8e4m3fnuz, floate5m2, floate5m2fnuz or float4e2m1
+      // Skip CPU placement for float16, bfloat16, float8e4m3fn, float8e4m3fnuz,
+      // float8e5m2, float8e5m2fnuz, and float4e2m1 inputs.
       const auto* input_type = input->Type();
       if (input_type != nullptr && fallback_cpu_capability_internal::IsUnsupportedCpuFallbackType(*input_type)) {
         place_in_cpu = false;
