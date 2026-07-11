@@ -9,6 +9,9 @@ on:
 env:
   python_version: 3.11
 
+permissions:
+  contents: read
+
 jobs:
   build_macabi_xcf:
     name: build_${{ matrix.variant }}_xcf

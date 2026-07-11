@@ -5,6 +5,9 @@ on:
     paths:
       - CITATION.cff
 
+permissions:
+  contents: read
+  
 jobs:
   validate:
     name: "validate"
