@@ -147,8 +147,14 @@ static Status ConstantFoldIfNode(Graph& graph, Node& if_node, const logging::Log
 // This prevents malicious models from causing excessive memory allocation during optimization.
 static constexpr int64_t kDefaultConstantFoldingMaxOutputSizeInBytes = 1024 * 1024 * 1024;
 
-static size_t GetElementSizeForConstantFolding(ONNX_NAMESPACE::TensorProto_DataType elem_type) {
+static constexpr size_t GetElementSizeForConstantFolding(ONNX_NAMESPACE::TensorProto_DataType elem_type) {
   const size_t element_size = utils::GetElementSizeOfTensor(elem_type);
+  if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_COMPLEX64 ||
+      elem_type == ONNX_NAMESPACE::TensorProto_DataType_COMPLEX128) {
+    // GetElementSizeOfTensor returns the component size used for endian conversion.
+    return element_size * 2;
+  }
+
   if (element_size != 0) {
     return element_size;
   }
@@ -156,6 +162,9 @@ static size_t GetElementSizeForConstantFolding(ONNX_NAMESPACE::TensorProto_DataT
   // String tensors allocate storage for std::string slots even though the payload size is variable.
   return elem_type == ONNX_NAMESPACE::TensorProto_DataType_STRING ? sizeof(std::string) : 0;
 }
+
+static_assert(GetElementSizeForConstantFolding(ONNX_NAMESPACE::TensorProto_DataType_COMPLEX64) == 2 * sizeof(float));
+static_assert(GetElementSizeForConstantFolding(ONNX_NAMESPACE::TensorProto_DataType_COMPLEX128) == 2 * sizeof(double));
 
 static int64_t EstimateTensorElementCount(const ONNX_NAMESPACE::TensorShapeProto& shape) {
   SafeInt<int64_t> num_elements = 1;
