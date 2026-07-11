@@ -285,9 +285,27 @@ pinned tracking issue rather than a runtime shim.
 
 ### Release gate
 
-Before flipping the default, the **web CI test matrix must run the default-bundle suite against the native EP**.
-Today that suite exercises JSEP for the `.` bundle; a green `/webgpu` run is not sufficient to prove the default
-flip. This is an explicit gate on Phase 2.
+Phase 2 (the default flip) is gated on **both** of the following:
+
+1. **Default-bundle suite runs against the native EP.** The web CI test matrix must exercise the default `.`
+   bundle against the native WebGPU EP. Today that suite runs JSEP for the `.` bundle; a green `/webgpu` run is
+   **not** sufficient to prove the default flip, because the two bundles differ in wiring (proxy, IO-binding,
+   WebNN host) even when op kernels match.
+2. **Section 7 blockers resolved with targeted coverage.** The potential blockers in §7 must be closed out before
+   the flip — not merely tracked. Op-parity tests do **not** exercise these paths, so each needs dedicated
+   coverage:
+   - **Proxy-worker path (§7.1):** run the native EP under `wasm.proxy = true` in CI (not just the default
+     `proxy = false`).
+   - **IO-binding (§7.2):** add tests for both `'gpu-buffer'` and `'ml-tensor'` output locations that assert the
+     native EP's zero-copy handoff semantics.
+   - **Native WebNN (§7.3):** validate the native WebNN path separately from WebGPU, since the default-bundle
+     WebNN users are silently moved from JSEP-hosted to native WebNN by the same flip.
+
+   §7.4 (typed-option parity) should be audited in the same pass; a JSEP-only option silently becoming a no-op is
+   a quieter regression than the first three but is closed the same way (test or documented removal).
+
+Passing gate #1 while leaving gate #2 open would let the design meet its stated bar with acknowledged
+blocker-class parity gaps still unverified; both are required.
 
 ---
 

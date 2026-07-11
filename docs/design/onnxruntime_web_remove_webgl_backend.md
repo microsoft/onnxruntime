@@ -72,25 +72,28 @@ It appears in two bundles:
 The `./webgl` bundle sets `BUILD_DEFS.DISABLE_WASM: true`, so it has **no WASM/CPU fallback** — it is WebGL or
 nothing.
 
-### 4.1 WebGPU browser coverage (why the fallback gap is small and shrinking)
+### 4.1 WebGPU browser coverage (expanding, but with platform caveats)
 
 A common historical reason to keep WebGL was "WebGPU isn't available on Safari / iOS / Firefox." As of 2026 that
-is **no longer true**. Per MDN's `api.GPU` browser-compat data:
+is **less true than it was**, though MDN's `api.GPU` browser-compat data still reports meaningful caveats — the
+Chrome and Firefox entries are **partial**, not blanket support:
 
-| Browser | WebGPU |
+| Browser | WebGPU (per MDN BCD) |
 |---|---|
-| Chrome / Edge (desktop) | ✔️ 113+ |
-| Chrome Android | ✔️ 121+ |
-| Safari (macOS) | ✔️ 26 |
-| Safari (iOS) | ✔️ 26 |
-| Chrome / Edge (iOS, via WebKit) | ✔️ 26 |
-| Firefox (desktop) | ✔️ 141 |
+| Chrome / Edge (desktop) | Partial from 113 (ChromeOS/macOS/Windows); broader/full only in a later version, with Linux limited to newer Intel-gen GPUs |
+| Chrome Android | 121+ |
+| Safari (macOS) | Full, 26 |
+| Safari (iOS) | Full, 26 |
+| Chrome / Edge (iOS, via WebKit) | Full, 26 |
+| Firefox (desktop) | Partial from 141; **excludes Linux and Intel-based macOS** (Apple-Silicon-first) |
 | Firefox for Android | ❌ |
 
-WebGPU is now broadly available across current Chrome/Edge, Safari 26 (macOS **and** iOS), and Firefox 141. The
-remaining gap is older browser versions, Firefox for Android, and some Linux configurations. This narrows the set
-of users for whom WebGL is the *only* GPU path to a small, shrinking tail and strengthens the case for a clean
-removal.
+So Safari/iOS coverage is now solid, and Chrome/Firefox are moving in the right direction — but there remain real
+gaps: older browser versions, Firefox for Android, Linux (both Chrome's GPU-generation limits and Firefox's
+exclusion), and Intel-based Macs on Firefox. WebGPU coverage is **broadening but not yet universal**, so the set
+of users for whom WebGL is the *only* GPU path is shrinking rather than gone. This supports removing WebGL over a
+deprecation window, but the design does **not** rely on WebGPU being universally available — the actionable
+fallback for uncovered users is the WASM/CPU backend, not WebGPU.
 
 ---
 
@@ -126,13 +129,6 @@ export or a runtime shim for the `'webgl'` backend key. The rationale:
   found" error from `resolveBackendAndExecutionProviders`.
 - WebGL was never a production-grade, first-class backend (narrow op set, fp32 drift, negative priority), so an
   elaborate soft-landing is not warranted.
-
-The **one** silent case worth guarding is `executionProviders: ['webgl', 'wasm']`: today the unavailable
-`'webgl'` entry is silently dropped and the session runs on `wasm`. This is a *correct* outcome (the consumer
-gets a working fallback), but it is silent. An optional, cheap safeguard is a **single non-silent** warn in
-`resolveBackendAndExecutionProviders` when a removed backend name is dropped, pointing at the migration guide.
-Given the now-broad WebGPU coverage (§4.1) and the fact that `wasm` still runs the model, this is a low-priority
-nicety, not a blocker — Phase 1's explicit deprecation warning already does the real communication.
 
 ---
 
@@ -174,7 +170,7 @@ No behavior change. Deliverables:
 
 | Risk | Likelihood | Mitigation |
 |---|---|---|
-| Consumers relying on WebGL as a fallback where WebGPU is unavailable | Low–Medium | WebGPU now broadly available (§4.1), shrinking the affected tail; explicit migration message to `wasm`; deprecation window + release notes |
+| Consumers relying on WebGL as a fallback where WebGPU is unavailable | Medium | WebGPU coverage is broadening but still has platform caveats (§4.1); the actionable fallback for uncovered users is `wasm`, not WebGPU; explicit migration message + deprecation window + release notes |
 | Silent breakage from `./webgl` import removal | Low | Deprecate first; document removal release; no transparent redirect (avoids hidden drift) |
 | No telemetry on WebGL adoption | Medium | Warn-once as the feedback mechanism during the deprecation window |
 
