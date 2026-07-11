@@ -29,11 +29,23 @@ onnx-ir rewriters are intentionally **not** duplicated here.
 
 ### First batch
 
+Newly authored, self-contained fusions:
+
 | Fusion | Replaces | Target op |
 |---|---|---|
 | `quick_gelu_rules()` | `fusion_quickgelu.py` | `com.microsoft.QuickGelu` |
 | `bias_add_rules()` | `fusion_bias_add.py` | `com.microsoft.BiasAdd` |
 | `group_norm_rules()` | `fusion_group_norm.py` | `com.microsoft.GroupNorm` |
+
+Ported directly from existing onnx-ir rewrite rules:
+
+| Fusion | Replaces | Target op |
+|---|---|---|
+| `bias_gelu_rules()` | `fusion_biasgelu.py` | `com.microsoft.BiasGelu` |
+| `gelu_fusion_rules()` | `fusion_gelu.py` / `fusion_fastgelu.py` | `Gelu` (exact + tanh) |
+| `layer_norm_fusion_rules()` | `fusion_layernorm.py` | `LayerNormalization` |
+| `skip_layer_norm_rules()` | `fusion_skiplayernorm.py` | `com.microsoft.SkipLayerNormalization` |
+| `skip_norm_rules()` | `fusion_simplified_layernorm.py` | `com.microsoft.SkipSimplifiedLayerNormalization` |
 
 ## Usage
 
