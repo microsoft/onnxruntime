@@ -788,18 +788,18 @@ class TestCudaPluginEP(unittest.TestCase):
                 if "allocator != nullptr" in str(exc):
                     raise
                 self.skipTest(f"MatMulNBits pre-pack not supported on this device: {exc}")
+            else:
+                assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
+                self.assertTrue(
+                    assigned_nodes,
+                    f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
+                    f"Assignments: {_format_assignment_summary(assignment_info)}",
+                )
 
-            assigned_nodes, assignment_info = _get_assigned_nodes(sess, CUDA_PLUGIN_EP_NAME)
-            self.assertTrue(
-                assigned_nodes,
-                f"{CUDA_PLUGIN_EP_NAME} was assigned no nodes. "
-                f"Assignments: {_format_assignment_summary(assignment_info)}",
-            )
-
-            a = np.random.rand(2, 64).astype(np.float16)
-            res = sess.run(None, {"A": a})
-            self.assertEqual(res[0].shape, (2, 64))
-            self.assertTrue(np.isfinite(res[0].astype(np.float32)).all(), "MatMulNBits produced non-finite output")
+                a = np.random.rand(2, 64).astype(np.float16)
+                res = sess.run(None, {"A": a})
+                self.assertEqual(res[0].shape, (2, 64))
+                self.assertTrue(np.isfinite(res[0].astype(np.float32)).all(), "MatMulNBits produced non-finite output")
         finally:
             if os.path.exists(model_path):
                 os.remove(model_path)
