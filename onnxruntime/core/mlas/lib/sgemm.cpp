@@ -288,6 +288,7 @@ Return Value:
 --*/
 {
 #if defined(MLAS_TARGET_RISCV64) && defined(MLAS_USE_RVV) && !defined(FORCE_GENERIC_ALGORITHMS)
+    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
     if (GetMlasPlatform().GemmFloatKernel != nullptr) {
         MlasSgemmCopyPackBRvv(D, B, ldb, CountX, CountY);
         return;
@@ -312,8 +313,10 @@ Return Value:
                 MlasStoreNeon4Lane(D, b);
             }
 #elif defined(MLAS_NEON_INTRINSICS)
+            MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
             MlasStoreNeon4Lane(D, b);
 #else
+            MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);            
             MLAS_FLOAT32X4 t0 = MlasLoadFloat32x4(&b[0]);
             MLAS_FLOAT32X4 t1 = MlasLoadFloat32x4(&b[4]);
             MLAS_FLOAT32X4 t2 = MlasLoadFloat32x4(&b[8]);
@@ -532,7 +535,7 @@ Return Value:
         size_t x = CountX;
 
 #if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
-
+        MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
         MLAS_SGEMM_TRANSPOSE_PACKB_BLOCK_ROUTINE* SgemmTransposePackB16x4Routine =
             GetMlasPlatform().TransposePackB16x4Routine;
 
@@ -559,7 +562,7 @@ Return Value:
             }
         }
 #else
-
+        MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
         while (x >= 4) {
 
             MlasSgemmTransposePackBNx4<16>(&D[0], &b[0], ldb);
@@ -724,7 +727,6 @@ Return Value:
                 }
 #elif defined(MLAS_NEON_INTRINSICS)
                 MlasNeonScatterStore4(d, b);
-            }
 
 #else
                 d[0] = b[0];
@@ -1090,8 +1092,10 @@ Return Value:
     while (CountM > 0) {
         size_t RowsHandled = 0;
 #if (defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_S390X) || defined(MLAS_TARGET_LARCH64)) && !defined(FORCE_GENERIC_ALGORITHMS)
+        MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
         RowsHandled = GetMlasPlatform().GemmFloatKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
 #elif defined(MLAS_TARGET_RISCV64) && !defined(FORCE_GENERIC_ALGORITHMS)
+        MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
         if (GetMlasPlatform().GemmFloatKernel != nullptr) {
             RowsHandled = GetMlasPlatform().GemmFloatKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
         } else if (ZeroMode) {
@@ -1108,6 +1112,7 @@ Return Value:
                 RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
             }
 #else
+            MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
             RowsHandled = MlasSgemmKernelZero(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
 #endif
         } else {
@@ -1118,6 +1123,7 @@ Return Value:
                 RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
             }
 #else
+            MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
             RowsHandled = MlasSgemmKernelAdd(A, B, C, CountK, CountM, CountN, lda, ldc, alpha);
 #endif
         }
