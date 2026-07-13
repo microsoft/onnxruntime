@@ -3,6 +3,7 @@
 
 #include <algorithm>
 
+#include "core/common/inlined_containers.h"
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cpu/llm/attention.h"
@@ -254,10 +255,42 @@ Status Attention<T>::RunFlashAttention(
   size_t softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(
       parameters.q_sequence_length, parameters.batch_size, parameters.q_num_heads);
 
+  // Size the Flash split-KV launch (num_splits) from the VALID KV length, not the
+  // KV cache buffer length. In the external-cache decode path (nonpad_kv_seqlen,
+  // opset 24), K/V are the full pre-allocated cache, so parameters.total_sequence_length
+  // is the buffer length. get_num_splits_and_buffer_sizes uses that length to derive
+  // num_n_blocks and choose num_splits; the split-KV kernel then partitions the buffer
+  // range into num_splits and reduces over all of them in the combine pass. Sizing this
+  // from the buffer over-partitions the launch and does wasted work over the padding
+  // region — for a fixed valid length, enlarging the cache buffer makes the same kernel
+  // dramatically slower (see issue #29686).
+  //
+  // The valid KV length lives device-side in nonpad_kv_seqlen, so read the per-batch max
+  // onto the host (a small batch_size-element copy) to size num_splits from the real work.
+  // This is a perf-only knob: the kernel's seqlen_k stays = total_sequence_length so the
+  // KV cache strides remain correct, and the device-side seqlens_k masking still bounds the
+  // math per batch, so correctness is unaffected.
+  int split_kv_seqlen = parameters.total_sequence_length;
+  if (nonpad_kv_seqlen != nullptr && parameters.batch_size > 0) {
+    InlinedVector<int64_t> host_nonpad_kv_seqlen(parameters.batch_size);
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+        host_nonpad_kv_seqlen.data(), nonpad_kv_seqlen->Data<int64_t>(),
+        sizeof(int64_t) * parameters.batch_size, cudaMemcpyDeviceToHost, cuda_stream));
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+    int64_t max_valid_kv_seqlen = 0;
+    for (int b = 0; b < parameters.batch_size; ++b) {
+      max_valid_kv_seqlen = std::max(max_valid_kv_seqlen, host_nonpad_kv_seqlen[b]);
+    }
+    // Clamp to the buffer length (defensive; valid length can't exceed the cache buffer)
+    // and keep at least 1 so the heuristic is well-defined for an all-empty cache.
+    max_valid_kv_seqlen = std::min<int64_t>(max_valid_kv_seqlen, parameters.total_sequence_length);
+    split_kv_seqlen = std::max<int>(1, static_cast<int>(max_valid_kv_seqlen));
+  }
+
   auto [num_splits, softmax_lse_accum_bytes, out_accum_bytes] =
       onnxruntime::flash::get_num_splits_and_buffer_sizes(
           parameters.batch_size, parameters.q_sequence_length,
-          parameters.total_sequence_length, parameters.q_num_heads,
+          split_kv_seqlen, parameters.q_num_heads,
           parameters.head_size, device_prop.multiProcessorCount);
 
   auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, GetComputeStream(context));

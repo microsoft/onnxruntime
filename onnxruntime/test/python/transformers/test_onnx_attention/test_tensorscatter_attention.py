@@ -567,6 +567,41 @@ class TestTensorScatterAttentionCUDAFP16(unittest.TestCase):
         numpy.testing.assert_allclose(present_k, ref_present_k, rtol=rtol["fp16"], atol=atol["fp16"])
         numpy.testing.assert_allclose(present_v, ref_present_v, rtol=rtol["fp16"], atol=atol["fp16"])
 
+    @parameterized.expand(
+        [
+            # (name, batch, q_heads, kv_heads, total_kv (buffer), scatter_pos, nonpad_seqlens)
+            # A large pre-allocated cache buffer with a small valid KV length is the
+            # long-max-context decode scenario. The Flash split-KV launch must be sized
+            # from the valid length (max of nonpad_kv_seqlen), not the buffer length
+            # (issue #29686). These cases exercise that host-side sizing branch with a
+            # large num_n_blocks while keeping the valid range small; output must still
+            # match the reference regardless of the chosen num_splits.
+            ("mha_bigbuf_smallvalid", 1, 4, 4, 2048, [63], [64]),
+            ("gqa_bigbuf_diff_lens", 2, 8, 2, 2048, [63, 127], [64, 128]),
+            ("gqa_bigbuf_one_empty", 2, 8, 2, 2048, [0, 95], [1, 96]),
+        ]
+    )
+    def test_tensorscatter_attention_cuda_fp16_large_buffer(
+        self, name, batch, q_heads, kv_heads, total_kv, scatter_pos, seqlens
+    ):
+        output, ref_output, present_k, present_v, ref_present_k, ref_present_v = run_tensorscatter_attention(
+            batch_size=batch,
+            total_kv_seq_len=total_kv,
+            q_seq_len=1,
+            q_num_heads=q_heads,
+            kv_num_heads=kv_heads,
+            head_size=_HEAD_SIZE,
+            nonpad_seqlens=seqlens,
+            scatter_positions=scatter_pos,
+            ep="CUDAExecutionProvider",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            is_causal=0,
+        )
+        numpy.testing.assert_allclose(output, ref_output, rtol=rtol["fp16"], atol=atol["fp16"])
+        numpy.testing.assert_allclose(present_k, ref_present_k, rtol=rtol["fp16"], atol=atol["fp16"])
+        numpy.testing.assert_allclose(present_v, ref_present_v, rtol=rtol["fp16"], atol=atol["fp16"])
+
 
 @unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping tests.")
 class TestTensorScatterAttentionCUDAFP32(unittest.TestCase):
