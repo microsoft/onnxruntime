@@ -18,6 +18,11 @@ namespace test {
 //   - kCuda / kCudaNHWC DO support the semantics, but these opset-18 cases are
 //     CPU-reference gate tests (the CUDA path has its own parity tests) and cuDNN-NHWC
 //     can flap on the 2D case, so they are excluded here too.
+//
+// NOTE: do not confuse this with kPoolingEpsExcludedFromCeilCipTests (defined ~L1150), which
+// has the OPPOSITE kCuda membership. This set is the CPU-reference GATE and therefore INCLUDES
+// kCuda/kCudaNHWC in the exclusion list (CPU is the oracle here); that other set EXCLUDES
+// kCuda/kCudaNHWC because there CUDA is the tested target. Pick the one matching your intent.
 static const std::unordered_set<std::string> kPoolingEpsExcludedFromCeilCountIncludePadTests = {
     kCudaExecutionProvider, kCudaNHWCExecutionProvider, kTensorrtExecutionProvider,
     kNvTensorRTRTXExecutionProvider, kAclExecutionProvider, kOpenVINOExecutionProvider,
@@ -1145,6 +1150,11 @@ TEST(PoolTest, AveragePool_19_ceil_count_include_pad_1d) {
 // passes. kWebGpuExecutionProvider is listed defensively: it auto-skips in a CUDA-only build
 // (DefaultWebGpuExecutionProvider returns nullptr), but naming it keeps a future WebGPU build leg
 // from re-triggering the CI failure this list fixes.
+//
+// NOTE: do not confuse this with kPoolingEpsExcludedFromCeilCountIncludePadTests (top of file,
+// ~L21), which has the OPPOSITE kCuda membership. That set is a CPU-reference GATE and INCLUDES
+// kCuda/kCudaNHWC in its exclusions; this set EXCLUDES them because here CUDA/CUDA-NHWC ARE the
+// tested targets. Opposite kCuda intent — pick the one matching your test.
 // ---------------------------------------------------------------------------
 const std::unordered_set<std::string> kPoolingEpsExcludedFromCeilCipTests = {
     kTensorrtExecutionProvider, kNvTensorRTRTXExecutionProvider, kDnnlExecutionProvider,

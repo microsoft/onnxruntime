@@ -7,6 +7,7 @@
 
 #include "core/framework/op_kernel.h"
 #include "core/util/math.h"
+#include "core/providers/cpu/nn/pool.h"
 #include "core/providers/cpu/nn/pool_attributes.h"
 #include "core/platform/threadpool.h"
 #include "core/common/safeint.h"
@@ -40,14 +41,15 @@ class PoolFp16 : public OpKernel {
  private:
   // Correct reference fallback for ceil_mode==1 && count_include_pad==1 AveragePool. The MLAS
   // fp16 im2col path divides by the full kernel_size and cannot drop the ceil_mode phantom tail
-  // cells; this loop clamps each window end to input+pad_tail and accumulates in float. Handles
-  // both NCHW and channels-last (NHWC) layouts and 1D/2D/3D. Zero MLAS edits.
+  // cells. Rather than duplicate the pooling loop, this casts the tensor MLFloat16->float,
+  // delegates to the shared float ComputeAveragePoolReferenceCompute (cpu/nn/pool.cc), then casts
+  // float->MLFloat16 with a single round at store. Accumulation happens in float inside the shared
+  // helper, so the result is identical to accumulate-in-float + round-once. Handles both NCHW and
+  // channels-last (NHWC) layouts (transposing to NCHW for the shared helper) and 1D/2D/3D. Zero
+  // MLAS edits.
   Status ComputeAveragePoolFp16Reference(OpKernelContext* context,
                                          const Tensor* X,
                                          const TensorShapeVector& output_dims,
-                                         const TensorShapeVector& kernel_shape,
-                                         const TensorShapeVector& strides,
-                                         const TensorShapeVector& dilations,
                                          const TensorShapeVector& pads,
                                          int64_t N,
                                          int64_t C) const;
@@ -138,8 +140,7 @@ Status PoolFp16::Compute(OpKernelContext* context) const {
   // float AveragePool paths stay dtype-consistent.
   if (!is_max_pool_ && pool_attrs_.ceil_mode == 1 && pool_attrs_.count_include_pad &&
       !pool_attrs_.global_pooling) {
-    return ComputeAveragePoolFp16Reference(context, X, output_dims, kernel_shape, strides,
-                                           dilations, pads, N, C);
+    return ComputeAveragePoolFp16Reference(context, X, output_dims, pads, N, C);
   }
 
   const bool need_padding = !is_max_pool_ && pool_attrs_.count_include_pad;
@@ -244,125 +245,89 @@ Status PoolFp16::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-// Reference (non-MLAS) fp16 average-pooling loop for the ceil_mode + count_include_pad case.
-// This is the fp16 analog of the float ComputeAveragePoolReference in cpu/nn/pool.cc, but its
-// structure deliberately diverges: the float version delegates to the AveragePool{1,2,3}DTask
-// functors, and those functors accumulate/divide directly in the tensor's element type. No fp16
-// Task functor exists, and MLFloat16 has no arithmetic operators, so we cannot reuse them here.
-// Instead this rolls its own N-D odometer loop that accumulates each window in float (via
-// MLFloat16::ToFloat) and rounds the final average back to fp16 -- the same divisor semantics
-// (clamp window end to input+pad_tail), just self-contained.
+// fp16 AveragePool reference fallback for ceil_mode + count_include_pad. Casts the input
+// MLFloat16->float (transposing NHWC->NCHW when channels_last_), runs the shared float pooling
+// core (ComputeAveragePoolReferenceCompute in cpu/nn/pool.cc), then casts float->MLFloat16 into
+// the output (transposing NCHW->NHWC back when channels_last_). A single round happens at the
+// float->fp16 store; all accumulation is in float inside the shared core, so this is numerically
+// equivalent to accumulate-in-float + round-once and stays in lockstep with the float path's
+// clamped-divisor semantics. Reuses the float loop per xadupre's review request.
 Status PoolFp16::ComputeAveragePoolFp16Reference(OpKernelContext* context,
                                                  const Tensor* X,
                                                  const TensorShapeVector& output_dims,
-                                                 const TensorShapeVector& kernel_shape,
-                                                 const TensorShapeVector& strides,
-                                                 const TensorShapeVector& dilations,
                                                  const TensorShapeVector& pads,
                                                  int64_t N,
                                                  int64_t C) const {
   const TensorShape& input_shape = X->Shape();
-  const size_t spatial_dims = kernel_shape.size();
+  const size_t spatial_dims = output_dims.size() - 2;
   const size_t spatial_dim_start = channels_last_ ? 1 : 2;
 
-  // Per-dim input/output extents, pad head/tail, and row-major strides (in taps) for both
-  // the input and output spatial grids.
-  TensorShapeVector in_dim(spatial_dims), out_dim(spatial_dims);
-  TensorShapeVector pad_head(spatial_dims), pad_tail(spatial_dims);
-  TensorShapeVector in_stride(spatial_dims), out_stride(spatial_dims);
+  // Build NCHW spatial extents plus flat spatial sizes for input and output.
   int64_t input_image_size = 1;
   int64_t output_image_size = 1;
+  TensorShapeVector x_nchw_dims({N, C});
+  TensorShapeVector out_nchw_dims({N, C});
   for (size_t d = 0; d < spatial_dims; ++d) {
-    in_dim[d] = input_shape[d + spatial_dim_start];
-    out_dim[d] = output_dims[d + spatial_dim_start];
-    pad_head[d] = pads[d];
-    pad_tail[d] = pads[spatial_dims + d];
-    input_image_size *= in_dim[d];
-    output_image_size *= out_dim[d];
+    const int64_t in_d = input_shape[d + spatial_dim_start];
+    const int64_t out_d = output_dims[d + spatial_dim_start];
+    x_nchw_dims.push_back(in_d);
+    out_nchw_dims.push_back(out_d);
+    input_image_size *= in_d;
+    output_image_size *= out_d;
   }
-  int64_t in_acc = 1, out_acc = 1;
-  for (size_t d = spatial_dims; d-- > 0;) {
-    in_stride[d] = in_acc;
-    out_stride[d] = out_acc;
-    in_acc *= in_dim[d];
-    out_acc *= out_dim[d];
+  const TensorShape x_nchw_shape(x_nchw_dims);
+
+  AllocatorPtr alloc;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&alloc));
+
+  const size_t x_float_count = static_cast<size_t>(N) * static_cast<size_t>(C) *
+                               static_cast<size_t>(input_image_size);
+  const size_t y_float_count = static_cast<size_t>(N) * static_cast<size_t>(C) *
+                               static_cast<size_t>(output_image_size);
+  auto x_float = IAllocator::MakeUniquePtr<float>(alloc, x_float_count);
+  auto y_float = IAllocator::MakeUniquePtr<float>(alloc, y_float_count);
+
+  // Cast MLFloat16 -> float into an NCHW buffer (transpose from NHWC when channels_last_).
+  const auto* Xdata = X->Data<MLFloat16>();
+  float* x_ptr = x_float.get();
+  if (channels_last_) {
+    for (int64_t n = 0; n < N; ++n) {
+      for (int64_t c = 0; c < C; ++c) {
+        for (int64_t s = 0; s < input_image_size; ++s) {
+          x_ptr[(n * C + c) * input_image_size + s] =
+              Xdata[(n * input_image_size + s) * C + c].ToFloat();
+        }
+      }
+    }
+  } else {
+    for (size_t i = 0; i < x_float_count; ++i) {
+      x_ptr[i] = Xdata[i].ToFloat();
+    }
   }
 
-  const auto* Xdata = X->Data<MLFloat16>();
+  // Run the shared float pooling core. The guard in Compute() excludes global_pooling, so
+  // pool_attrs_ carries fully-populated kernel_shape/strides/dilations that match this call.
+  concurrency::ThreadPool* tp = context->GetOperatorThreadPool();
+  ORT_RETURN_IF_ERROR(ComputeAveragePoolReferenceCompute(x_ptr, y_float.get(), x_nchw_shape,
+                                                         out_nchw_dims, pads, pool_attrs_, tp));
+
+  // Cast float -> MLFloat16 into the output (transpose back to NHWC when channels_last_).
+  // MLFloat16(float) is the single, final rounding step.
   auto* Y = context->Output(0, output_dims);
   auto* Ydata = Y->MutableData<MLFloat16>();
-
-  TensorShapeVector out_coord(spatial_dims, 0);
-  TensorShapeVector wstart(spatial_dims), wend(spatial_dims), tap(spatial_dims);
-
-  for (int64_t n = 0; n < N; ++n) {
-    for (int64_t out_flat = 0; out_flat < output_image_size; ++out_flat) {
-      // Decode the flat output spatial index into per-dim coordinates.
-      int64_t rem = out_flat;
-      for (size_t d = 0; d < spatial_dims; ++d) {
-        out_coord[d] = rem / out_stride[d];
-        rem %= out_stride[d];
-      }
-
-      // Window range per dim. hstart is intentionally left un-clamped (may be negative) so the
-      // include-pad divisor counts the low-side pad cells; hend is clamped to input+pad_tail so
-      // the ceil_mode phantom tail cells past the real padding are dropped -- THE FIX.
-      int64_t divisor = 1;
-      for (size_t d = 0; d < spatial_dims; ++d) {
-        int64_t start = out_coord[d] * strides[d] - pad_head[d];
-        int64_t end = std::min(start + kernel_shape[d] * dilations[d], in_dim[d] + pad_tail[d]);
-        wstart[d] = start;
-        wend[d] = end;
-        divisor *= (1 + (end - start - 1) / dilations[d]);
-      }
-
-      const int64_t out_base = channels_last_
-                                   ? (n * output_image_size + out_flat) * C
-                                   : (n * C) * output_image_size + out_flat;
-      const int64_t out_cstride = channels_last_ ? 1 : output_image_size;
-
+  const float* y_ptr = y_float.get();
+  if (channels_last_) {
+    for (int64_t n = 0; n < N; ++n) {
       for (int64_t c = 0; c < C; ++c) {
-        float sum = 0.0f;
-        if (divisor > 0) {
-          for (size_t d = 0; d < spatial_dims; ++d) {
-            tap[d] = wstart[d];
-          }
-          // Odometer over the window taps; accumulate only the in-bounds cells in float.
-          while (true) {
-            bool in_bounds = true;
-            for (size_t d = 0; d < spatial_dims; ++d) {
-              if (tap[d] < 0 || tap[d] >= in_dim[d]) {
-                in_bounds = false;
-                break;
-              }
-            }
-            if (in_bounds) {
-              int64_t flat_spatial = 0;
-              for (size_t d = 0; d < spatial_dims; ++d) {
-                flat_spatial += tap[d] * in_stride[d];
-              }
-              int64_t idx = channels_last_
-                                ? (n * input_image_size + flat_spatial) * C + c
-                                : ((n * C + c) * input_image_size) + flat_spatial;
-              sum += Xdata[idx].ToFloat();
-            }
-            size_t d = spatial_dims;
-            while (d-- > 0) {
-              tap[d] += dilations[d];
-              if (tap[d] < wend[d]) {
-                break;
-              }
-              tap[d] = wstart[d];
-            }
-            // The odometer carried out of the outermost dim: d underflowed past 0 to
-            // size_t(-1), meaning every window position has been visited -> stop.
-            if (d == static_cast<size_t>(-1)) {
-              break;
-            }
-          }
+        for (int64_t s = 0; s < output_image_size; ++s) {
+          Ydata[(n * output_image_size + s) * C + c] =
+              MLFloat16(y_ptr[(n * C + c) * output_image_size + s]);
         }
-        Ydata[out_base + c * out_cstride] = MLFloat16(divisor > 0 ? sum / static_cast<float>(divisor) : 0.0f);
       }
+    }
+  } else {
+    for (size_t i = 0; i < y_float_count; ++i) {
+      Ydata[i] = MLFloat16(y_ptr[i]);
     }
   }
 
