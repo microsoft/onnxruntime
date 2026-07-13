@@ -48,7 +48,7 @@ processrows_8(
         for (size_t k_block = 0; k_block < k; k_block += k_step) {
             size_t k_max = std::min(k_block + k_step, k);
             for (size_t p = k_block; p < k_max; ++p) {
-                const float* b0_ptr = b + p * PACKED_B_BLOCK_WIDTH + col;
+                const float* b0_ptr = b + p * kMlasSvePackedBBlockWidth + col;
                 const float* b1_ptr = b0_ptr + vl;
                 svfloat32_t b0 = MlasSveLoadFloat32(pg0, b0_ptr);
                 svfloat32_t b1 = MlasSveLoadFloat32(pg1, b1_ptr);
@@ -148,7 +148,7 @@ processrows_8(
         for (size_t k_block = 0; k_block < k; k_block += k_step) {
             size_t k_max = std::min(k_block + k_step, k);
             for (size_t p = k_block; p < k_max; ++p) {
-                const float* b_ptr = b + p * PACKED_B_BLOCK_WIDTH + col;
+                const float* b_ptr = b + p * kMlasSvePackedBBlockWidth + col;
                 svfloat32_t b0 = MlasSveLoadFloat32(pg, b_ptr);
 
                 float a0 = a[0 * lda + p];
@@ -260,7 +260,7 @@ processrows_6(
         for (size_t k_block = 0; k_block < k; k_block += k_step) {
             size_t k_max = std::min(k_block + k_step, k);
             for (size_t p = k_block; p < k_max; ++p) {
-                const float* b0_ptr = b + p * PACKED_B_BLOCK_WIDTH + col;
+                const float* b0_ptr = b + p * kMlasSvePackedBBlockWidth + col;
                 const float* b1_ptr = b0_ptr + vl;
 
                 svfloat32_t b0 = MlasSveLoadFloat32(pg0, b0_ptr);
@@ -346,7 +346,7 @@ processrows_6(
             size_t k_max = std::min(k_block + k_step, k);
 
             for (size_t p = k_block; p < k_max; ++p) {
-                const float* b_ptr = b + p * PACKED_B_BLOCK_WIDTH + col;
+                const float* b_ptr = b + p * kMlasSvePackedBBlockWidth + col;
                 svfloat32_t b0 = MlasSveLoadFloat32(pg, b_ptr);
                 float a0 = a[0 * lda + p];
                 float a1 = a[1 * lda + p];
@@ -429,7 +429,7 @@ processrows_4(
             size_t k_max = std::min(k_block + k_step, k);
 
             for (size_t p = k_block; p < k_max; ++p) {
-                const float* b0_ptr = b + p * PACKED_B_BLOCK_WIDTH + col;
+                const float* b0_ptr = b + p * kMlasSvePackedBBlockWidth + col;
                 const float* b1_ptr = b0_ptr + vl;
                 svfloat32_t b0 = MlasSveLoadFloat32(pg0, b0_ptr);
                 svfloat32_t b1 = MlasSveLoadFloat32(pg1, b1_ptr);
@@ -497,7 +497,7 @@ processrows_4(
         for (size_t k_block = 0; k_block < k; k_block += k_step) {
             size_t k_max = std::min(k_block + k_step, k);
             for (size_t p = k_block; p < k_max; ++p) {
-                const float* b_ptr = b + p * PACKED_B_BLOCK_WIDTH + col;
+                const float* b_ptr = b + p * kMlasSvePackedBBlockWidth + col;
                 svfloat32_t b0 = MlasSveLoadFloat32(pg, b_ptr);
                 float a0 = a[0 * lda + p];
                 float a1 = a[1 * lda + p];
@@ -564,7 +564,7 @@ processrows_2(
         for (size_t k_block = 0; k_block < k; k_block += k_step) {
             size_t k_max = std::min(k_block + k_step, k);
             for (size_t p = k_block; p < k_max; ++p) {
-                const float* b0_ptr = b + p * PACKED_B_BLOCK_WIDTH + col;
+                const float* b0_ptr = b + p * kMlasSvePackedBBlockWidth + col;
                 const float* b1_ptr = b0_ptr + vl;
                 svfloat32_t b0 = MlasSveLoadFloat32(pg0, b0_ptr);
                 svfloat32_t b1 = MlasSveLoadFloat32(pg1, b1_ptr);
@@ -602,7 +602,7 @@ processrows_2(
         for (size_t k_block = 0; k_block < k; k_block += k_step) {
             size_t k_max = std::min(k_block + k_step, k);
             for (size_t p = k_block; p < k_max; ++p) {
-                const float* b_ptr = b + p * PACKED_B_BLOCK_WIDTH + col;
+                const float* b_ptr = b + p * kMlasSvePackedBBlockWidth + col;
                 svfloat32_t b0 = MlasSveLoadFloat32(pg, b_ptr);
                 float a0 = a[0 * lda + p];
                 float a1 = a[1 * lda + p];
@@ -655,7 +655,7 @@ processrows_1(
         for (size_t k_block = 0; k_block < k; k_block += k_step) {
             size_t k_max = std::min(k_block + k_step, k);
             for (size_t p = k_block; p < k_max; ++p) {
-                const float* b0_ptr = b + p * PACKED_B_BLOCK_WIDTH + col;
+                const float* b0_ptr = b + p * kMlasSvePackedBBlockWidth + col;
                 const float* b1_ptr = b0_ptr + vl;
                 svfloat32_t b0 = MlasSveLoadFloat32(pg0, b0_ptr);
                 svfloat32_t b1 = MlasSveLoadFloat32(pg1, b1_ptr);
@@ -681,7 +681,7 @@ processrows_1(
         for (size_t k_block = 0; k_block < k; k_block += k_step) {
             size_t k_max = std::min(k_block + k_step, k);
             for (size_t p = k_block; p < k_max; ++p) {
-                const float* b_ptr = b + p * PACKED_B_BLOCK_WIDTH + col;
+                const float* b_ptr = b + p * kMlasSvePackedBBlockWidth + col;
                 svfloat32_t b = MlasSveLoadFloat32(pg, b_ptr);
                 float a0 = a[p];
                 if constexpr (!Alpha1)
@@ -714,7 +714,7 @@ ProcessRowsTemplate(
     size_t n = 0;
     const size_t vl = svcntw();
     while (n < N) {
-        int cols = (n + PACKED_B_BLOCK_WIDTH <= N) ? PACKED_B_BLOCK_WIDTH : (N - n);
+        int cols = (n + kMlasSvePackedBBlockWidth <= N) ? kMlasSvePackedBBlockWidth : (N - n);
         ProcessFn(A, B, C, K, cols, lda, ldc, alpha, vl);
         B += cols * K;
         C += cols;
@@ -1128,7 +1128,7 @@ void static inline Transpose_SVE512_16x16(float* D, const float* B, size_t ldb)
 
 template <unsigned N>
 void
-TransposePackBNx8(
+MlasSveTransposePackBNx8(
     float* D,
     const float* B,
     size_t ldb
@@ -1178,7 +1178,7 @@ MlasSveTransposePackBNx4<8>(
 );
 
 void MLAS_SVE_TARGET MLASCALL
-SVE_TRANSPOSE(float*& D, const float*& b, size_t ldb, size_t& x)
+MlasSveTranspose(float*& D, const float*& b, size_t ldb, size_t& x)
 {
     const static size_t VL = svcntw();
     if (VL == 16) {
@@ -1190,7 +1190,7 @@ SVE_TRANSPOSE(float*& D, const float*& b, size_t ldb, size_t& x)
         }
     } else if (VL == 8) {
         while (x >= 8) {
-            TransposePackBNx8<16>(&D[0], &b[0], ldb);
+            MlasSveTransposePackBNx8<16>(&D[0], &b[0], ldb);
             D += 128;
             b += 8;
             x = x - 8;
@@ -1206,7 +1206,7 @@ SVE_TRANSPOSE(float*& D, const float*& b, size_t ldb, size_t& x)
 }
 
 void MLAS_SVE_TARGET MLASCALL
-SCATTER_STORE(float* d, const float* b)
+MlasSveScatterStore(float* d, const float* b)
 {
     MLAS_SVBOOL pb = svwhilelt_b32((int)0, 4);
     MLAS_SVFLOAT32 vec0 = MlasSveLoadFloat32(pb, b);
@@ -1224,7 +1224,7 @@ SCATTER_STORE(float* d, const float* b)
 }
 
 void MLAS_SVE_TARGET MLASCALL
-SVE_LOAD_STORE(float* D, const float* b)
+MlasSveLoadStore(float* D, const float* b)
 {
     for (int i = 0; i < MLAS_SGEMM_STRIDEN_THREAD_ALIGN; i += VL()) {
         svfloat32_t vec0 = MlasSveLoadFloat32(svptrue_b32(), b + i);
@@ -1233,10 +1233,10 @@ SVE_LOAD_STORE(float* D, const float* b)
 }
 
 void MLAS_SVE_TARGET MLASCALL
-SVE_ZERO_INITIALIZE(float* d)
+MlasSveZeroInitialize(float* d)
 {
     svfloat32_t zero = svdup_f32(0.0f);
-    for (int i = 0; i < PACKED_B_BLOCK_WIDTH; i += svcntw()) {
+    for (int i = 0; i < kMlasSvePackedBBlockWidth; i += svcntw()) {
         MlasSveStoreFloat32(svptrue_b32(), d + i, zero);
     }
 }
