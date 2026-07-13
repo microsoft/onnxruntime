@@ -18,6 +18,7 @@
 
 #include <cuda_runtime.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
