@@ -155,6 +155,10 @@ class GQAConfig:
 
     has_position_ids: bool = False
     has_attention_bias: bool = False
+    # attention_bias leading dims: dim 0 is batch_size (or 1 when broadcast), dim 1 is
+    # 1 (broadcast over heads) or num_heads. Defaults keep the original [batch, 1, ...] shape.
+    attention_bias_broadcast_dim_0: bool = False
+    attention_bias_per_head: bool = False
 
     # Quantization parameters
     k_quant_type: str = "NONE"
@@ -444,10 +448,13 @@ def create_gqa_node_and_io(
             )
         )
     if config.has_attention_bias:
-        bias_len = present_kv_seqlen if is_past else config.kv_sequence_length
+        # Per the op spec the last dim is total_sequence_length (past + new), which the kernel
+        # validates at runtime; declare it symbolic so one graph serves all cache states.
+        bias_dim_0 = 1 if config.attention_bias_broadcast_dim_0 else config.batch_size
+        bias_dim_1 = config.num_heads if config.attention_bias_per_head else 1
         graph_input.append(
             helper.make_tensor_value_info(
-                "attention_bias", ort_type, [config.batch_size, 1, config.q_sequence_length, bias_len]
+                "attention_bias", ort_type, [bias_dim_0, bias_dim_1, config.q_sequence_length, "total_sequence_length"]
             )
         )
     if config.has_head_sink:
@@ -1125,13 +1132,17 @@ def parity_check_gqa_prompt(
             .contiguous()
         )
     if config.has_attention_bias:
-        attention_bias = torch.zeros(
-            config.batch_size,
-            1,
-            config.q_sequence_length,
-            config.kv_sequence_length,
-            device=device,
-            dtype=torch_type,
+        # Random (non-zero) bias so that a kernel silently ignoring the input fails parity.
+        attention_bias = (
+            torch.randn(
+                1 if config.attention_bias_broadcast_dim_0 else config.batch_size,
+                config.num_heads if config.attention_bias_per_head else 1,
+                config.q_sequence_length,
+                config.kv_sequence_length,
+                device=device,
+                dtype=torch_type,
+            )
+            * 0.5
         )
 
     arange = rearrange(torch.arange(config.buffer_sequence_length, device=device), "s -> 1 s")
@@ -1446,12 +1457,27 @@ def parity_check_gqa_past(
     if config.has_position_ids:
         position_ids = (cache_seqlens.unsqueeze(1) + torch.arange(config.q_sequence_length, device=device)).long()
     if config.has_attention_bias:
-        attention_bias = torch.zeros(
-            config.batch_size, 1, config.q_sequence_length, total_seq_len, device=device, dtype=torch_type
+        # Random (non-zero) bias so that a kernel silently ignoring the input fails parity.
+        # Positions beyond each batch's valid length get a large negative finite value
+        # (matching the CPU test convention; avoids inf-inf NaN when composed with masking).
+        # A batch-broadcast bias (dim 0 == 1) cannot carry per-batch tails; it relies on
+        # the kernel's seqlens_k cutoff and the reference mask never reading those
+        # positions — which the dim0-broadcast past cases below verify holds.
+        attention_bias = (
+            torch.randn(
+                1 if config.attention_bias_broadcast_dim_0 else config.batch_size,
+                config.num_heads if config.attention_bias_per_head else 1,
+                config.q_sequence_length,
+                total_seq_len,
+                device=device,
+                dtype=torch_type,
+            )
+            * 0.5
         )
-        for b in range(config.batch_size):
-            end_pos = cache_seqlens[b] + config.q_sequence_length
-            attention_bias[b, :, :, end_pos:] = float("-inf")
+        if not config.attention_bias_broadcast_dim_0:
+            for b in range(config.batch_size):
+                end_pos = cache_seqlens[b] + config.q_sequence_length
+                attention_bias[b, :, :, end_pos:] = -10000.0
 
     arange = rearrange(torch.arange(config.buffer_sequence_length, device=device), "s -> 1 s")
     cache_seqlens_expanded = rearrange(cache_seqlens, "b -> b 1")
@@ -2027,6 +2053,81 @@ def gqa_cuda_past_test_cases(
                     yield name, config
 
 
+def gqa_cuda_attention_bias_test_cases(is_past: bool):
+    """Focused cases for the attention_bias input. Dispatch must route these away from
+    the bias-incapable fused paths (flash/XQA/cuDNN), so no kernel-pinning env vars are
+    needed. Covers packed/unpacked QKV, shared/separate KV buffer, rotary, odd head
+    sizes (unfused supports any head_size) and a subsequent multi-token prompt."""
+    if is_past:
+        # (batch, new_seq, past_seq, num_heads, kv_num_heads, head_size, packed, share_buffer,
+        #  rotary, per_head_bias)
+        cases = [
+            (2, 1, 128, 32, 8, 128, False, True, False, False),
+            (1, 1, 2048, 6, 3, 128, True, True, True, False),
+            (3, 1, 500, 9, 9, 80, False, False, False, False),
+            (1, 3, 256, 6, 3, 128, True, True, False, False),  # subsequent prompt
+            (2, 1, 128, 6, 3, 40, False, True, False, False),  # odd head size
+            (2, 1, 128, 32, 8, 128, False, True, False, True),  # per-head bias (dim 1 == num_heads)
+        ]
+        cases = [(*c, False) for c in cases] + [
+            (3, 1, 500, 9, 9, 80, False, False, False, False, True),  # batch-broadcast bias (dim 0 == 1)
+            (2, 1, 128, 6, 3, 40, False, True, False, False, True),  # batch-broadcast, shared buffer
+        ]
+        for b, s, s2, n, n2, h, packed, share_buffer, rotary, per_head, bcast0 in cases:
+            # The past-parity harness compares the full present buffer; without buffer
+            # sharing the op emits exactly past+new, so the buffer must match that size.
+            config = GQAConfig(
+                batch_size=b,
+                q_sequence_length=s,
+                kv_sequence_length=s,
+                past_kv_sequence_length=s2,
+                buffer_sequence_length=s + s2 + (8 if share_buffer else 0),
+                num_heads=n,
+                kv_num_heads=n2,
+                head_size=h,
+                rotary=rotary,
+                packed=packed,
+                share_buffer=share_buffer,
+                has_attention_bias=True,
+                attention_bias_per_head=per_head,
+                attention_bias_broadcast_dim_0=bcast0,
+            )
+            name = (
+                f"bias_b{b}_s{s}_{s2}_nh{n}_{n2}_h{h}_pkd{packed}_sb{share_buffer}_rot{rotary}_ph{per_head}_bc0{bcast0}"
+            )
+            yield name, config
+    else:
+        # (batch, seq, num_heads, kv_num_heads, head_size, packed, share_buffer, rotary,
+        #  bias_broadcast_dim_0, per_head_bias)
+        cases = [
+            (2, 127, 6, 3, 128, False, True, False, False, False),
+            (1, 500, 32, 8, 128, True, True, True, False, False),
+            (3, 64, 9, 9, 80, False, False, False, False, False),
+            (2, 127, 6, 3, 40, True, True, False, False, False),  # odd head size
+            (3, 64, 9, 9, 80, False, False, False, True, False),  # batch-broadcast bias (dim 0 == 1)
+            (2, 127, 6, 3, 128, False, True, False, False, True),  # per-head bias (dim 1 == num_heads)
+        ]
+        for b, sq, n, n2, h, packed, share_buffer, rotary, bcast0, per_head in cases:
+            config = GQAConfig(
+                batch_size=b,
+                q_sequence_length=sq,
+                kv_sequence_length=sq,
+                past_kv_sequence_length=0,
+                buffer_sequence_length=sq + 8,
+                num_heads=n,
+                kv_num_heads=n2,
+                head_size=h,
+                rotary=rotary,
+                packed=packed,
+                share_buffer=share_buffer,
+                has_attention_bias=True,
+                attention_bias_broadcast_dim_0=bcast0,
+                attention_bias_per_head=per_head,
+            )
+            name = f"bias_b{b}_sq{sq}_nh{n}_{n2}_h{h}_pkd{packed}_sb{share_buffer}_rot{rotary}_bc0{bcast0}_ph{per_head}"
+            yield name, config
+
+
 def gqa_cuda_quantized_test_cases(is_past: bool):
     base_cases = (
         gqa_cuda_past_test_cases(allow_local=True, enforce_share_buffer=True)
@@ -2546,6 +2647,46 @@ class TestBF16MemoryEfficientGQA(unittest.TestCase):
                 rtol=rtol["bf16"],
                 atol=atol["bf16"],
             )
+
+
+@unittest.skipIf(not has_cuda_device(53), "attention_bias CUDA parity tests require a CUDA GPU, skipping tests.")
+class TestGQAAttentionBias(unittest.TestCase):
+    """Parity for the optional attention_bias input (CUDA). No kernel-pinning env vars:
+    bias-aware dispatch itself must route to a bias-capable path."""
+
+    @parameterized.expand(gqa_cuda_attention_bias_test_cases(is_past=False))
+    def test_gqa_prompt_attention_bias(self, name, config):
+        if enable_debug_print:
+            print("-" * 20)
+            print(f"test_case: {name}\n{config}")
+
+        parity_check_gqa_prompt(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
+
+    @parameterized.expand(gqa_cuda_attention_bias_test_cases(is_past=True))
+    def test_gqa_past_attention_bias(self, name, config):
+        if enable_debug_print:
+            print("-" * 20)
+            print(f"test_case: {name}\n{config}")
+
+        parity_check_gqa_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=rtol["fp16"],
+            atol=atol["fp16"],
+        )
 
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
