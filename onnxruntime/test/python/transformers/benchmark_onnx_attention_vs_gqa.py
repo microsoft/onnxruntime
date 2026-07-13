@@ -23,16 +23,13 @@ Arms, all decode-shaped (S_q = 1, causal, no RoPE, no mask, no softcap):
 
 Measurement notes:
   - attn_scatter includes the TensorScatter nodes so both ops pay their cache
-    append; --attention-only times the bare Attention node instead.
+    append (--attention-only drops them). Its latency also depends on
+    --max-seq-len: the valid length is a device tensor, so the host sizes the
+    Flash split-KV launch from the buffer length (attention.cc, nonpad path).
   - ONNX arms disable memory-efficient attention so a Flash ineligibility
-    surfaces as the (obviously slow) unfused kernel, never a silent MEA flip.
-  - ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO=1 prints the resolved GQA backend.
-    ONNX Attention has no such print; verify it from kernel names in an
-    Nsight Systems capture (--profile).
-  - --max-seq-len (KV buffer length) directly affects attn_scatter latency:
-    the valid length is a device tensor, so the host sizes the Flash split-KV
-    launch from the buffer length (attention.cc, nonpad_kv_seqlen path). GQA
-    sizes splits from its CPU-side total_sequence_length input.
+    surfaces as the obviously slow unfused kernel, never a silent MEA flip.
+  - ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO=1 prints the resolved GQA backend;
+    verify ONNX Attention from kernel names in an nsys capture (--profile).
 
 Usage:
   python benchmark_onnx_attention_vs_gqa.py --dtype float16 --csv results.csv
