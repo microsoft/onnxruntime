@@ -12,7 +12,6 @@
 #use .getByOffset .setByOffset
 
 // Only support Block32 at the moment.
-// A block of 32 elements maps to 8 vec4 (input_a_value_t) vectors along K.
 const KAVecSizeForBlock32 = 8u;
 
 const kTileM : u32 = tile_m;
@@ -186,9 +185,7 @@ fn dequantize(packed_data : vec2<u32>,
 }
 #endif
 
-// The KAVecSizeForBlock32 vectors along K are stored as KAVecSizeForBlock32/2 pairs so the two
-// vecs consumed per dequantized weight column can be read in one access.
-var<workgroup> a_data_tile : array<array<array<input_a_value_t, 2u>, KAVecSizeForBlock32 / 2u>, kTileM>;
+var<workgroup> a_data_tile : array<array<input_a_value_t, KAVecSizeForBlock32>, kTileM>;
 
 $MAIN {
   let batch = workgroup_idx / (uniforms.num_M_tile * uniforms.num_N_tile);
@@ -197,13 +194,12 @@ $MAIN {
 
   var results : array<output_element_t, kTileM>;
   for (var block_idx = 0u; block_idx < uniforms.n_blocks_per_col; block_idx++) {
-    // Load `a` elements into workgroup memory, kTileM x KAVecSizeForBlock32 (block32),
-    // stored as pairs of vecs along K.
+    // Load `a` elements into workgroup memory, TileM x KAVecSizeForBlock32 (block32)
     let a_row_idx = local_idx / KAVecSizeForBlock32;
     let a_col_idx = local_idx % KAVecSizeForBlock32;
-    a_data_tile[a_row_idx][a_col_idx / 2u][a_col_idx % 2u] = load_a(batch,
-                                                                    row + a_row_idx,
-                                                                    block_idx * KAVecSizeForBlock32 + a_col_idx);
+    a_data_tile[a_row_idx][a_col_idx] = load_a(batch,
+                                               row + a_row_idx,
+                                               block_idx * KAVecSizeForBlock32 + a_col_idx);
     workgroupBarrier();
 
     let b_row = col + local_idx;
@@ -211,12 +207,14 @@ $MAIN {
     let zero_point = load_zero(b_row, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
     let b_data = load_b(b_row, block_idx);
 
-    for (var b_idx = 0u; b_idx < KAVecSizeForBlock32 / 2u; b_idx++) {
+    for (var b_idx = 0u; b_idx < 4u; b_idx++) {
       let b_dequantized = dequantize(b_data[b_idx], zero_point, scale);
       for (var m_idx = 0u; m_idx < kTileM; m_idx++) {
-        let a = a_data_tile[m_idx][b_idx];
-        results[m_idx] += dot(a[0], b_dequantized[0]) +
-                          dot(a[1], b_dequantized[1]);
+        let a_data0 = a_data_tile[m_idx][b_idx * 2u];
+        let a_data1 = a_data_tile[m_idx][b_idx * 2u + 1u];
+
+        results[m_idx] += dot(a_data0, b_dequantized[0]) +
+                          dot(a_data1, b_dequantized[1]);
       }
     }
     workgroupBarrier();
