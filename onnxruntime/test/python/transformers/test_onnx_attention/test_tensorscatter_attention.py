@@ -570,7 +570,10 @@ class TestTensorScatterAttentionCUDAFP16(unittest.TestCase):
     @parameterized.expand(
         [
             # (name, batch, q_heads, kv_heads, total_kv (buffer), scatter_pos, nonpad_seqlens)
-            # A large pre-allocated cache buffer with a small valid KV length is the
+            # q_seq_len is fixed at 1 here (decode), so for each batch b the new token is
+            # written at scatter_pos[b] and the resulting valid KV length is
+            # nonpad_seqlens[b] == scatter_pos[b] + q_seq_len (i.e. scatter_pos[b] + 1).
+            # A large pre-allocated cache buffer (total_kv) with a small valid KV length is the
             # long-max-context decode scenario. The Flash split-KV launch must be sized
             # from the valid length (max of nonpad_kv_seqlen), not the buffer length
             # (issue #29686). These cases exercise that host-side sizing branch with a
