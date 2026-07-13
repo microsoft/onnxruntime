@@ -1640,8 +1640,9 @@ struct OrtApi {
 
   /** \brief Add custom op domain to a session options.
    *
-   * If a domain with the same name has already been added to the session options, the call is
-   * silently ignored and a warning is logged. This prevents duplicate registration errors that
+   * If the new domain contains any custom op that matches an op (same op name and same execution
+   * provider type) in a previously added domain with the same domain name, the entire new domain
+   * is silently skipped and a warning is logged. This prevents kernel registration conflicts that
    * can occur when an EP provides custom ops through multiple paths (e.g., both
    * OrtEpFactory::GetCustomOpDomains and a separate custom op library).
    *

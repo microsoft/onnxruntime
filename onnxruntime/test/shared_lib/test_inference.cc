@@ -798,7 +798,7 @@ TEST(CApiTest, custom_op_duplicate_domain_dedup) {
   session_options.Add(domain2);
 
   // Session creation should succeed without conflicting schema errors
-  EXPECT_NO_THROW(Ort::Session(*ort_env, CUSTOM_OP_MODEL_URI, session_options));
+  Ort::Session(*ort_env, CUSTOM_OP_MODEL_URI, session_options);
 }
 
 // Memory leak

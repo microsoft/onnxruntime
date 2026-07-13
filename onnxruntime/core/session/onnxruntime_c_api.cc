@@ -840,16 +840,37 @@ ORT_API_STATUS_IMPL(OrtApis::CustomOpDomain_Add, _Inout_ OrtCustomOpDomain* cust
 ORT_API_STATUS_IMPL(OrtApis::AddCustomOpDomain, _Inout_ OrtSessionOptions* options,
                     _In_ OrtCustomOpDomain* custom_op_domain) {
   API_IMPL_BEGIN
-  // Skip duplicate domain names. This can happen when an EP provides custom ops through both
-  // OrtEpFactory::GetCustomOpDomains (added via SessionOptionsAppendExecutionProvider_V2) and
-  // a separate custom op DLL (added via RegisterCustomOpsLibrary / AddCustomOpDomain).
+  // Check for duplicate custom ops that would conflict during kernel registration.
+  // If any op in the new domain matches an existing op (same name + EP) in a domain with the
+  // same name, skip the entire new domain. Even a single conflicting kernel would cause a
+  // registration failure, and partial overlap within the same domain name typically indicates
+  // the same ops being registered through multiple paths (e.g., EP factory + custom op DLL).
   for (const auto* existing : options->custom_op_domains_) {
-    if (existing->domain_ == custom_op_domain->domain_) {
-      LOGS_DEFAULT(WARNING) << "Skipping duplicate custom op domain '" << custom_op_domain->domain_
-                            << "'. A domain with this name has already been added to the session options.";
-      return nullptr;
+    if (existing->domain_ != custom_op_domain->domain_) {
+      continue;
+    }
+
+    // Same domain name found. Check if any op in the new domain duplicates an existing op.
+    for (const auto* new_op : custom_op_domain->custom_ops_) {
+      const char* new_name = new_op->GetName(new_op);
+      const char* new_ep = new_op->GetExecutionProviderType(new_op);
+
+      for (const auto* existing_op : existing->custom_ops_) {
+        const char* existing_name = existing_op->GetName(existing_op);
+        const char* existing_ep = existing_op->GetExecutionProviderType(existing_op);
+
+        if (strcmp(new_name, existing_name) == 0 &&
+            ((new_ep == nullptr && existing_ep == nullptr) ||
+             (new_ep != nullptr && existing_ep != nullptr && strcmp(new_ep, existing_ep) == 0))) {
+          LOGS_DEFAULT(WARNING) << "Skipping custom op domain '" << custom_op_domain->domain_
+                                << "': op '" << new_name << "' already registered in an existing domain"
+                                << " with the same name and execution provider.";
+          return nullptr;
+        }
+      }
     }
   }
+
   options->custom_op_domains_.emplace_back(custom_op_domain);
   return nullptr;
   API_IMPL_END
