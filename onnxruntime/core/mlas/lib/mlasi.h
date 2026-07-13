@@ -1347,7 +1347,8 @@ MlasSgemmOperation(
     size_t ldb,
     float beta,
     float* C,
-    size_t ldc
+    size_t ldc,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     );
 
 //
