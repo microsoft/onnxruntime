@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 )
 
@@ -22,12 +23,12 @@ type IOInfo struct {
 // Session wraps an ORT inference session. It is safe for concurrent use:
 // multiple goroutines may call Run simultaneously.
 type Session struct {
-	mu          sync.RWMutex
-	handle      *C.OrtSession
-	inputs      []IOInfo
-	outputs     []IOInfo
-	nameCache   map[string]*C.char
-	closed      bool
+	mu        sync.RWMutex
+	handle    *C.OrtSession
+	inputs    []IOInfo
+	outputs   []IOInfo
+	nameCache map[string]*C.char
+	closed    bool
 }
 
 // NewSession creates a session from an ONNX model file.
@@ -45,8 +46,11 @@ func NewSession(modelPath string, opts *SessionOptions) (*Session, error) {
 		defer func() { _ = opts.Close() }()
 	}
 
-	cPath := C.CString(modelPath)
-	defer C.free(unsafe.Pointer(cPath))
+	cPath, freePath, err := ortPath(modelPath)
+	if err != nil {
+		return nil, err
+	}
+	defer freePath()
 
 	var handle *C.OrtSession
 	if err := checkStatus(C.ort_CreateSession(env, cPath, opts.handle, &handle)); err != nil {
@@ -162,8 +166,16 @@ func (s *Session) runInner(ctx context.Context, inputs map[string]*Tensor, outpu
 	cInputNames := make([]*C.char, nInputs)
 	cInputValues := make([]*C.OrtValue, nInputs)
 	var tempNames []*C.char
+	defer func() {
+		for _, cs := range tempNames {
+			C.free(unsafe.Pointer(cs))
+		}
+	}()
 	i := 0
 	for name, tensor := range inputs {
+		if err := tensor.checkUsable(fmt.Sprintf("run: input %q", name)); err != nil {
+			return nil, err
+		}
 		if cached, ok := s.nameCache[name]; ok {
 			cInputNames[i] = cached
 		} else {
@@ -185,22 +197,25 @@ func (s *Session) runInner(ctx context.Context, inputs map[string]*Tensor, outpu
 			tempNames = append(tempNames, cs)
 		}
 	}
-	defer func() {
-		for _, cs := range tempNames {
-			C.free(unsafe.Pointer(cs))
-		}
-	}()
 
 	cOutputValues := make([]*C.OrtValue, nOutputs)
 
-	ownRunOpts := false
-	if runOpts == nil && ctx.Done() != nil {
-		var err error
-		if err = checkStatus(C.ort_CreateRunOptions(&runOpts)); err != nil {
-			return nil, wrapErr("create run options", err)
+	// Cancellation is delivered to ORT by setting the terminate flag on the run
+	// options, so a cancellable context needs run options even when the caller
+	// supplied none.
+	if ctx.Done() != nil {
+		callerOpts := runOpts != nil
+		if !callerOpts {
+			if err := checkStatus(C.ort_CreateRunOptions(&runOpts)); err != nil {
+				return nil, wrapErr("create run options", err)
+			}
+			// Registered before the watcher's stop-and-join defer: defers run LIFO,
+			// so the watcher is joined before these run options are released and can
+			// never touch freed memory.
+			defer C.ort_ReleaseRunOptions(runOpts)
 		}
-		ownRunOpts = true
 
+		var terminated atomic.Bool
 		stopWatcher := make(chan struct{})
 		watcherDone := make(chan struct{})
 		done := ctx.Done()
@@ -208,17 +223,22 @@ func (s *Session) runInner(ctx context.Context, inputs map[string]*Tensor, outpu
 			defer close(watcherDone)
 			select {
 			case <-done:
-				C.ort_RunOptionsSetTerminate(runOpts)
+				// A failed terminate can only mean cancellation goes unnoticed;
+				// the run's own result is reported instead.
+				_ = checkStatus(C.ort_RunOptionsSetTerminate(runOpts))
+				terminated.Store(true)
 			case <-stopWatcher:
 			}
 		}()
 		defer func() {
 			close(stopWatcher)
 			<-watcherDone
+			// The terminate flag is sticky: left set, it would abort the caller's
+			// next run with these options.
+			if callerOpts && terminated.Load() {
+				_ = checkStatus(C.ort_RunOptionsUnsetTerminate(runOpts))
+			}
 		}()
-	}
-	if ownRunOpts {
-		defer C.ort_ReleaseRunOptions(runOpts)
 	}
 
 	var inNamesPtr **C.char

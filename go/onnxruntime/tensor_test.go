@@ -1,6 +1,8 @@
 package onnxruntime
 
 import (
+	"math"
+	"strings"
 	"testing"
 )
 
@@ -456,5 +458,79 @@ func TestNewMapFromGoMap(t *testing.T) {
 
 	if !m.IsMap() {
 		t.Error("expected IsMap() = true")
+	}
+}
+
+func TestBytesStringTensorError(t *testing.T) {
+	st, err := CreateStringTensor([]int64{2}, []string{"hello", "world"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	_, err = st.Bytes()
+	if err == nil {
+		t.Fatal("expected error calling Bytes() on a string tensor")
+	}
+}
+
+func TestShapeElementCount(t *testing.T) {
+	tests := []struct {
+		name  string
+		shape []int64
+		want  int64
+	}{
+		{"scalar", []int64{}, 1},
+		{"normal", []int64{2, 3, 4}, 24},
+		{"zero dim", []int64{2, 0, 4}, 0},
+		{"empty kv cache", []int64{1, 8, 0, 128}, 0},
+		{"max dim", []int64{math.MaxInt64}, math.MaxInt64},
+		{"negative dim", []int64{2, -1, 4}, -1},
+		{"product overflows int64", []int64{1 << 32, 1 << 32, 2}, -1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shapeElementCount(tt.shape); got != tt.want {
+				t.Errorf("shapeElementCount(%v) = %d, want %d", tt.shape, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestTensorInvalidShapeRejected covers the count < 0 bail in both entry points.
+func TestTensorInvalidShapeRejected(t *testing.T) {
+	shape := []int64{1 << 32, 1 << 32, 2}
+
+	t.Run("CreateTensor", func(t *testing.T) {
+		_, err := CreateTensor[float32](shape, []float32{})
+		if err == nil {
+			t.Fatal("expected error for overflowing shape element count")
+		}
+	})
+
+	t.Run("NewTensorFromBytes", func(t *testing.T) {
+		_, err := NewTensorFromBytes(TensorElementDataTypeFloat32, shape, []byte{})
+		if err == nil {
+			t.Fatal("expected error for overflowing shape element count")
+		}
+	})
+}
+
+// TestNewTensorFromBytesByteSizeOverflow reaches the byte-size guard: the
+// element count fits in int64, but count*elemSize does not fit in int. Without
+// the guard the expected byte size wraps and the length check misbehaves.
+func TestNewTensorFromBytesByteSizeOverflow(t *testing.T) {
+	shape := []int64{1 << 62} // 2^62 elements, 2^64 bytes as float32
+
+	if got := shapeElementCount(shape); got != 1<<62 {
+		t.Fatalf("shapeElementCount(%v) = %d, want %d; test no longer reaches the byte-size guard", shape, got, int64(1)<<62)
+	}
+
+	_, err := NewTensorFromBytes(TensorElementDataTypeFloat32, shape, []byte{})
+	if err == nil {
+		t.Fatal("expected error for shape whose byte size overflows int")
+	}
+	if !strings.Contains(err.Error(), "overflows byte size") {
+		t.Fatalf("expected byte-size overflow error, got: %v", err)
 	}
 }

@@ -100,8 +100,11 @@ func (o *SessionOptions) DisableCpuMemArena() error {
 
 // EnableProfiling enables profiling with the given file prefix.
 func (o *SessionOptions) EnableProfiling(profileFilePrefix string) error {
-	cPrefix := C.CString(profileFilePrefix)
-	defer C.free(unsafe.Pointer(cPrefix))
+	cPrefix, freePrefix, err := ortPath(profileFilePrefix)
+	if err != nil {
+		return err
+	}
+	defer freePrefix()
 	return wrapErr("enable profiling", checkStatus(C.ort_EnableProfiling(o.handle, cPrefix)))
 }
 
@@ -157,7 +160,14 @@ func (o *SessionOptions) IsMemPatternEnabled() (bool, error) {
 }
 
 // AddInitializer overrides a model initializer with the given tensor value.
+// The tensor must outlive every session created from these options.
 func (o *SessionOptions) AddInitializer(name string, value *Tensor) error {
+	if o.handle == nil {
+		return fmt.Errorf("ort: add initializer: session options are closed")
+	}
+	if err := value.checkUsable("add initializer"); err != nil {
+		return err
+	}
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
 	return wrapErr("add initializer", checkStatus(C.ort_AddInitializer(o.handle, cName, value.value)))
@@ -165,16 +175,22 @@ func (o *SessionOptions) AddInitializer(name string, value *Tensor) error {
 
 // SetOptimizedModelFilePath sets a path to save the optimized model to.
 func (o *SessionOptions) SetOptimizedModelFilePath(path string) error {
-	cPath := C.CString(path)
-	defer C.free(unsafe.Pointer(cPath))
+	cPath, freePath, err := ortPath(path)
+	if err != nil {
+		return err
+	}
+	defer freePath()
 	return wrapErr("set optimized model path",
 		checkStatus(C.ort_SetOptimizedModelFilePath(o.handle, cPath)))
 }
 
 // RegisterCustomOpsLibrary loads a shared library containing custom ops.
 func (o *SessionOptions) RegisterCustomOpsLibrary(libraryPath string) error {
-	cPath := C.CString(libraryPath)
-	defer C.free(unsafe.Pointer(cPath))
+	cPath, freePath, err := ortPath(libraryPath)
+	if err != nil {
+		return err
+	}
+	defer freePath()
 	return wrapErr("register custom ops library",
 		checkStatus(C.ort_RegisterCustomOpsLibrary_V2(o.handle, cPath)))
 }

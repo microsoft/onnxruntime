@@ -46,6 +46,28 @@ func TestCreateStringTensorEmpty(t *testing.T) {
 	}
 }
 
+func TestCreateStringTensorAllEmpty(t *testing.T) {
+	data := []string{"", "", ""}
+	tensor, err := CreateStringTensor([]int64{3}, data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tensor.Close()
+
+	got, err := tensor.StringData()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("expected 3 elements, got %d", len(got))
+	}
+	for i, v := range got {
+		if v != "" {
+			t.Errorf("[%d]: expected empty string, got %q", i, v)
+		}
+	}
+}
+
 func TestCreateStringTensor2D(t *testing.T) {
 	data := []string{"a", "bb", "ccc", "dddd", "eeeee", "ffffff"}
 	tensor, err := CreateStringTensor([]int64{2, 3}, data)

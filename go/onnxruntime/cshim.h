@@ -46,7 +46,7 @@ OrtStatusPtr ort_SessionOptionsAppendExecutionProvider_TensorRT_V2(
 void ort_ReleaseTensorRTProviderOptions(OrtTensorRTProviderOptionsV2 *opts);
 
 // Session
-OrtStatusPtr ort_CreateSession(const OrtEnv *env, const char *model_path,
+OrtStatusPtr ort_CreateSession(const OrtEnv *env, const ORTCHAR_T *model_path,
     const OrtSessionOptions *opts, OrtSession **out);
 OrtStatusPtr ort_CreateSessionFromArray(const OrtEnv *env, const void *model_data,
     size_t model_data_length, const OrtSessionOptions *opts, OrtSession **out);
@@ -161,7 +161,7 @@ OrtStatusPtr ort_EnableMemPattern(OrtSessionOptions *opts);
 OrtStatusPtr ort_DisableMemPattern(OrtSessionOptions *opts);
 OrtStatusPtr ort_EnableCpuMemArena(OrtSessionOptions *opts);
 OrtStatusPtr ort_DisableCpuMemArena(OrtSessionOptions *opts);
-OrtStatusPtr ort_EnableProfiling(OrtSessionOptions *opts, const char *prefix);
+OrtStatusPtr ort_EnableProfiling(OrtSessionOptions *opts, const ORTCHAR_T *prefix);
 OrtStatusPtr ort_DisableProfiling(OrtSessionOptions *opts);
 OrtStatusPtr ort_AddFreeDimensionOverride(OrtSessionOptions *opts,
     const char *dim_denotation, int64_t dim_value);
@@ -198,8 +198,8 @@ OrtStatusPtr ort_EnableTelemetryEvents(const OrtEnv *env);
 OrtStatusPtr ort_DisableTelemetryEvents(const OrtEnv *env);
 
 // Additional session options (continued)
-OrtStatusPtr ort_SetOptimizedModelFilePath(OrtSessionOptions *opts, const char *path);
-OrtStatusPtr ort_RegisterCustomOpsLibrary_V2(OrtSessionOptions *opts, const char *path);
+OrtStatusPtr ort_SetOptimizedModelFilePath(OrtSessionOptions *opts, const ORTCHAR_T *path);
+OrtStatusPtr ort_RegisterCustomOpsLibrary_V2(OrtSessionOptions *opts, const ORTCHAR_T *path);
 OrtStatusPtr ort_HasSessionConfigEntry(const OrtSessionOptions *opts, const char *key, int *out);
 OrtStatusPtr ort_GetSessionConfigEntry(const OrtSessionOptions *opts, const char *key,
     char *value, size_t *size);

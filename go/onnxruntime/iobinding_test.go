@@ -216,3 +216,206 @@ func TestIOBindingOutputNames(t *testing.T) {
 		t.Errorf("expected output name 'C', got %q", names[0])
 	}
 }
+
+func TestBindInputNilTensor(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	binding, err := NewIOBinding(sess)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer binding.Close()
+
+	if err := binding.BindInput("A", nil); err == nil {
+		t.Fatal("expected error binding nil tensor")
+	}
+}
+
+func TestBindInputClosedTensor(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	binding, err := NewIOBinding(sess)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer binding.Close()
+
+	tensor, err := CreateTensor[float32]([]int64{2, 3}, []float32{1, 2, 3, 4, 5, 6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tensor.Close()
+
+	if err := binding.BindInput("A", tensor); err == nil {
+		t.Fatal("expected error binding closed tensor")
+	}
+}
+
+func TestBindAfterBindingClosed(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	binding, err := NewIOBinding(sess)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binding.Close()
+
+	tensor, err := CreateTensor[float32]([]int64{2, 3}, []float32{1, 2, 3, 4, 5, 6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tensor.Close()
+
+	if err := binding.BindInput("A", tensor); err == nil {
+		t.Fatal("expected error binding on closed IOBinding")
+	}
+	if err := binding.BindOutput("C", tensor); err == nil {
+		t.Fatal("expected error binding output on closed IOBinding")
+	}
+}
+
+func TestBindOutputToDeviceNilMemInfo(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	binding, err := NewIOBinding(sess)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer binding.Close()
+
+	if err := binding.BindOutputToDevice("C", nil); err == nil {
+		t.Fatal("expected error binding with nil MemoryInfo")
+	}
+}
+
+func TestNewIOBindingNilSession(t *testing.T) {
+	binding, err := NewIOBinding(nil)
+	if err == nil {
+		binding.Close()
+		t.Fatal("expected error creating IOBinding with nil session")
+	}
+	if binding != nil {
+		t.Fatal("expected nil IOBinding on error")
+	}
+}
+
+// A binding outlives its session only as a dangling reference: every call must
+// report an error rather than hand a released OrtSession to ORT.
+func TestIOBindingAfterSessionClosed(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	binding, err := NewIOBinding(sess)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer binding.Close()
+
+	memInfo, err := NewCPUMemoryInfo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer memInfo.Close()
+
+	tensor, err := CreateTensor[float32]([]int64{2, 3}, []float32{1, 2, 3, 4, 5, 6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tensor.Close()
+
+	sess.Close()
+
+	if err := binding.BindInput("A", tensor); err == nil {
+		t.Error("expected error binding input on closed session")
+	}
+	if err := binding.BindOutput("C", tensor); err == nil {
+		t.Error("expected error binding output on closed session")
+	}
+	if err := binding.BindOutputToDevice("C", memInfo); err == nil {
+		t.Error("expected error binding output to device on closed session")
+	}
+	if err := binding.Run(nil); err == nil {
+		t.Error("expected error running binding on closed session")
+	}
+	if _, err := binding.OutputNames(); err == nil {
+		t.Error("expected error getting output names on closed session")
+	}
+	if _, err := binding.OutputValues(); err == nil {
+		t.Error("expected error getting output values on closed session")
+	}
+
+	// No-ops, must not reach the C API.
+	binding.ClearInputs()
+	binding.ClearOutputs()
+}
+
+// Same, but with inputs and outputs already bound before the session is closed.
+func TestIOBindingRunAfterSessionClosed(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	binding, err := NewIOBinding(sess)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer binding.Close()
+
+	a, err := CreateTensor[float32]([]int64{2, 3}, []float32{1, 2, 3, 4, 5, 6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	b, err := CreateTensor[float32]([]int64{2, 3}, []float32{10, 20, 30, 40, 50, 60})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+
+	memInfo, err := NewCPUMemoryInfo()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer memInfo.Close()
+
+	if err := binding.BindInput("A", a); err != nil {
+		t.Fatal(err)
+	}
+	if err := binding.BindInput("B", b); err != nil {
+		t.Fatal(err)
+	}
+	if err := binding.BindOutputToDevice("C", memInfo); err != nil {
+		t.Fatal(err)
+	}
+
+	sess.Close()
+
+	if err := binding.Run(nil); err == nil {
+		t.Error("expected error running bound binding on closed session")
+	}
+	if _, err := binding.OutputNames(); err == nil {
+		t.Error("expected error getting output names on closed session")
+	}
+	if _, err := binding.OutputValues(); err == nil {
+		t.Error("expected error getting output values on closed session")
+	}
+}

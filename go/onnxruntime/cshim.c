@@ -107,7 +107,7 @@ void ort_ReleaseTensorRTProviderOptions(OrtTensorRTProviderOptionsV2 *opts) {
 
 // Session
 
-OrtStatusPtr ort_CreateSession(const OrtEnv *env, const char *model_path,
+OrtStatusPtr ort_CreateSession(const OrtEnv *env, const ORTCHAR_T *model_path,
     const OrtSessionOptions *opts, OrtSession **out) {
     return g_api->CreateSession(env, model_path, opts, out);
 }
@@ -418,7 +418,7 @@ OrtStatusPtr ort_DisableCpuMemArena(OrtSessionOptions *opts) {
     return g_api->DisableCpuMemArena(opts);
 }
 
-OrtStatusPtr ort_EnableProfiling(OrtSessionOptions *opts, const char *prefix) {
+OrtStatusPtr ort_EnableProfiling(OrtSessionOptions *opts, const ORTCHAR_T *prefix) {
     return g_api->EnableProfiling(opts, prefix);
 }
 
@@ -500,11 +500,11 @@ OrtStatusPtr ort_DisableTelemetryEvents(const OrtEnv *env) {
 
 // Additional session options (continued)
 
-OrtStatusPtr ort_SetOptimizedModelFilePath(OrtSessionOptions *opts, const char *path) {
+OrtStatusPtr ort_SetOptimizedModelFilePath(OrtSessionOptions *opts, const ORTCHAR_T *path) {
     return g_api->SetOptimizedModelFilePath(opts, path);
 }
 
-OrtStatusPtr ort_RegisterCustomOpsLibrary_V2(OrtSessionOptions *opts, const char *path) {
+OrtStatusPtr ort_RegisterCustomOpsLibrary_V2(OrtSessionOptions *opts, const ORTCHAR_T *path) {
     return g_api->RegisterCustomOpsLibrary_V2(opts, path);
 }
 

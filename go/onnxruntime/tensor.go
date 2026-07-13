@@ -6,6 +6,7 @@ package onnxruntime
 import "C"
 import (
 	"fmt"
+	"math"
 	"runtime"
 	"unsafe"
 )
@@ -32,7 +33,7 @@ func CreateTensor[T TensorElement](shape []int64, data []T) (*Tensor, error) {
 	dtype := dtypeOf[T]()
 	count := shapeElementCount(shape)
 	if count < 0 {
-		return nil, fmt.Errorf("ort: create tensor: shape contains negative dimension")
+		return nil, fmt.Errorf("ort: create tensor: invalid shape (negative or overflowing element count)")
 	}
 	if int64(len(data)) != count {
 		return nil, fmt.Errorf("ort: create tensor: data length %d does not match shape element count %d", len(data), count)
@@ -75,7 +76,7 @@ func NewTensorFromBytes(dtype TensorElementDataType, shape []int64, data []byte)
 
 	count := shapeElementCount(shape)
 	if count < 0 {
-		return nil, fmt.Errorf("ort: create tensor: shape contains negative dimension")
+		return nil, fmt.Errorf("ort: create tensor: invalid shape (negative or overflowing element count)")
 	}
 
 	es := elemSize(dtype)
@@ -83,6 +84,9 @@ func NewTensorFromBytes(dtype TensorElementDataType, shape []int64, data []byte)
 		return nil, fmt.Errorf("ort: create tensor: unsupported dtype %s", dtype)
 	}
 
+	if count > math.MaxInt/int64(es) {
+		return nil, fmt.Errorf("ort: create tensor: shape element count %d overflows byte size for dtype %s", count, dtype)
+	}
 	expected := int(count) * es
 	if len(data) != expected {
 		return nil, fmt.Errorf("ort: create tensor: data length %d does not match expected %d bytes", len(data), expected)
@@ -119,8 +123,8 @@ func NewTensorFromBytes(dtype TensorElementDataType, shape []int64, data []byte)
 // slice is valid until the tensor is closed. Returns an error if T's dtype
 // does not match the tensor's element type.
 func TensorData[T TensorElement](t *Tensor) ([]T, error) {
-	if t.closed {
-		return nil, fmt.Errorf("ort: tensor data: tensor is closed")
+	if err := t.checkUsable("tensor data"); err != nil {
+		return nil, err
 	}
 
 	expected := dtypeOf[T]()
@@ -131,6 +135,9 @@ func TensorData[T TensorElement](t *Tensor) ([]T, error) {
 	count := shapeElementCount(t.shape)
 	if count == 0 {
 		return nil, nil
+	}
+	if count > math.MaxInt/int64(elemSize(expected)) {
+		return nil, fmt.Errorf("ort: tensor data: element count %d exceeds addressable range", count)
 	}
 
 	var dataPtr unsafe.Pointer
@@ -143,13 +150,21 @@ func TensorData[T TensorElement](t *Tensor) ([]T, error) {
 
 // Bytes returns a raw byte view of the tensor's data buffer.
 func (t *Tensor) Bytes() ([]byte, error) {
-	if t.closed {
-		return nil, fmt.Errorf("ort: tensor bytes: tensor is closed")
+	if err := t.checkUsable("tensor bytes"); err != nil {
+		return nil, err
+	}
+
+	es := elemSize(t.dtype)
+	if es == 0 {
+		return nil, fmt.Errorf("ort: tensor bytes: unsupported element type %s (use StringData for string tensors)", t.dtype)
 	}
 
 	count := shapeElementCount(t.shape)
 	if count == 0 {
 		return nil, nil
+	}
+	if count > math.MaxInt/int64(es) {
+		return nil, fmt.Errorf("ort: tensor bytes: byte size overflows addressable range")
 	}
 
 	var dataPtr unsafe.Pointer
@@ -157,7 +172,7 @@ func (t *Tensor) Bytes() ([]byte, error) {
 		return nil, wrapErr("tensor bytes", err)
 	}
 
-	nbytes := int(count) * elemSize(t.dtype)
+	nbytes := int(count) * es
 	return unsafe.Slice((*byte)(dataPtr), nbytes), nil
 }
 
@@ -178,8 +193,8 @@ func (t *Tensor) ElementCount() int64 {
 
 // ValueType returns the ONNX type of the underlying OrtValue.
 func (t *Tensor) ValueType() (int, error) {
-	if t.closed {
-		return 0, fmt.Errorf("ort: value type: tensor is closed")
+	if err := t.checkUsable("value type"); err != nil {
+		return 0, err
 	}
 	var onnxType C.enum_ONNXType
 	if err := checkStatus(C.ort_GetValueType(t.value, &onnxType)); err != nil {
@@ -208,8 +223,8 @@ func (t *Tensor) IsMap() bool {
 
 // SequenceLen returns the number of elements in a sequence value.
 func (t *Tensor) SequenceLen() (int, error) {
-	if t.closed {
-		return 0, fmt.Errorf("ort: sequence len: value is closed")
+	if err := t.checkUsable("sequence len"); err != nil {
+		return 0, err
 	}
 	var count C.size_t
 	if err := checkStatus(C.ort_GetValueCount(t.value, &count)); err != nil {
@@ -221,8 +236,8 @@ func (t *Tensor) SequenceLen() (int, error) {
 // SequenceAt returns the element at the given index from a sequence value.
 // The returned tensor must be closed by the caller.
 func (t *Tensor) SequenceAt(index int) (*Tensor, error) {
-	if t.closed {
-		return nil, fmt.Errorf("ort: sequence at: value is closed")
+	if err := t.checkUsable("sequence at"); err != nil {
+		return nil, err
 	}
 	var allocator *C.OrtAllocator
 	if err := checkStatus(C.ort_GetAllocatorWithDefaultOptions(&allocator)); err != nil {
@@ -247,8 +262,8 @@ func NewSequence(elements []*Tensor) (*Tensor, error) {
 
 	values := make([]*C.OrtValue, len(elements))
 	for i, e := range elements {
-		if e == nil {
-			return nil, fmt.Errorf("ort: create sequence: element %d is nil", i)
+		if err := e.checkUsable(fmt.Sprintf("create sequence: element %d", i)); err != nil {
+			return nil, err
 		}
 		values[i] = e.value
 	}
@@ -268,8 +283,11 @@ func NewMap(keys, values *Tensor) (*Tensor, error) {
 	if err := checkInit(); err != nil {
 		return nil, err
 	}
-	if keys == nil || values == nil {
-		return nil, fmt.Errorf("ort: create map: keys and values must not be nil")
+	if err := keys.checkUsable("create map: keys"); err != nil {
+		return nil, err
+	}
+	if err := values.checkUsable("create map: values"); err != nil {
+		return nil, err
 	}
 
 	ins := []*C.OrtValue{keys.value, values.value}
@@ -310,6 +328,15 @@ func NewMapFromGoMap[K int64, V TensorElement](m map[K]V) (*Tensor, error) {
 	defer func() { _ = valTensor.Close() }()
 
 	return NewMap(keyTensor, valTensor)
+}
+
+// checkUsable reports an error if the tensor cannot be passed to the C API.
+// op names the calling operation, e.g. `run: input "ids"`.
+func (t *Tensor) checkUsable(op string) error {
+	if t == nil || t.closed || t.value == nil {
+		return fmt.Errorf("ort: %s: tensor is nil or closed", op)
+	}
+	return nil
 }
 
 // Close releases the tensor's resources. It is idempotent.
@@ -394,6 +421,9 @@ func shapeElementCount(shape []int64) int64 {
 	count := int64(1)
 	for _, d := range shape {
 		if d < 0 {
+			return -1
+		}
+		if d != 0 && count > math.MaxInt64/d {
 			return -1
 		}
 		count *= d

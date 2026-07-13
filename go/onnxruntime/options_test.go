@@ -63,6 +63,9 @@ func TestSessionOptionsExecutionMode(t *testing.T) {
 }
 
 func TestSessionOptionsGetExecutionMode(t *testing.T) {
+	if APIVersion() < 27 {
+		t.Skipf("GetExecutionMode requires ORT >= 1.27 (have API version %d)", APIVersion())
+	}
 	opts, err := NewSessionOptions()
 	if err != nil {
 		t.Fatal(err)
@@ -89,6 +92,9 @@ func TestSessionOptionsGetExecutionMode(t *testing.T) {
 }
 
 func TestSessionOptionsIsMemPatternEnabled(t *testing.T) {
+	if APIVersion() < 27 {
+		t.Skipf("IsMemPatternEnabled requires ORT >= 1.27 (have API version %d)", APIVersion())
+	}
 	opts, err := NewSessionOptions()
 	if err != nil {
 		t.Fatal(err)
@@ -229,5 +235,118 @@ func TestTensorIsTensor(t *testing.T) {
 	}
 	if tensor.IsMap() {
 		t.Error("expected IsMap() = false")
+	}
+}
+
+// newFloatTensor returns a live 2-element float32 tensor, closed by the test.
+func newFloatTensor(t *testing.T) *Tensor {
+	t.Helper()
+	tensor, err := CreateTensor[float32]([]int64{2}, []float32{1, 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { tensor.Close() })
+	return tensor
+}
+
+func TestNewSequenceNilElement(t *testing.T) {
+	if _, err := NewSequence([]*Tensor{newFloatTensor(t), nil}); err == nil {
+		t.Fatal("expected error for nil sequence element")
+	}
+}
+
+func TestNewSequenceClosedElement(t *testing.T) {
+	closed := newFloatTensor(t)
+	closed.Close()
+
+	if _, err := NewSequence([]*Tensor{newFloatTensor(t), closed}); err == nil {
+		t.Fatal("expected error for closed sequence element")
+	}
+}
+
+func TestNewMapNilTensors(t *testing.T) {
+	if _, err := NewMap(nil, newFloatTensor(t)); err == nil {
+		t.Error("expected error for nil keys")
+	}
+	if _, err := NewMap(newFloatTensor(t), nil); err == nil {
+		t.Error("expected error for nil values")
+	}
+}
+
+func TestNewMapClosedKeys(t *testing.T) {
+	keys, err := CreateTensor[int64]([]int64{2}, []int64{1, 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys.Close()
+
+	if _, err := NewMap(keys, newFloatTensor(t)); err == nil {
+		t.Fatal("expected error for closed map keys")
+	}
+}
+
+func TestNewMapClosedValues(t *testing.T) {
+	keys, err := CreateTensor[int64]([]int64{2}, []int64{1, 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer keys.Close()
+
+	values := newFloatTensor(t)
+	values.Close()
+
+	if _, err := NewMap(keys, values); err == nil {
+		t.Fatal("expected error for closed map values")
+	}
+}
+
+func TestAddInitializerNilTensor(t *testing.T) {
+	opts, err := NewSessionOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opts.Close()
+
+	if err := opts.AddInitializer("w", nil); err == nil {
+		t.Fatal("expected error for nil initializer tensor")
+	}
+}
+
+func TestAddInitializerClosedTensor(t *testing.T) {
+	opts, err := NewSessionOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opts.Close()
+
+	tensor := newFloatTensor(t)
+	tensor.Close()
+
+	if err := opts.AddInitializer("w", tensor); err == nil {
+		t.Fatal("expected error for closed initializer tensor")
+	}
+}
+
+func TestAddInitializerClosedOptions(t *testing.T) {
+	opts, err := NewSessionOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts.Close()
+
+	if err := opts.AddInitializer("w", newFloatTensor(t)); err == nil {
+		t.Fatal("expected error for closed session options")
+	}
+}
+
+func TestAddInitializerLiveTensor(t *testing.T) {
+	opts, err := NewSessionOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opts.Close()
+
+	if err := opts.AddInitializer("w", newFloatTensor(t)); err != nil {
+		t.Fatalf("expected live tensor to be accepted: %v", err)
 	}
 }

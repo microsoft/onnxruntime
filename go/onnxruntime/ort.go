@@ -17,8 +17,9 @@ import (
 var (
 	mu           sync.Mutex
 	libPath      string
-	initialized  bool
-	shutdown     bool
+	libModule    libHandle
+	initialized  atomic.Bool
+	shutdown     atomic.Bool
 	apiVersion   int
 	env          *C.OrtEnv
 	cpuMemInfo   *C.OrtMemoryInfo
@@ -30,7 +31,7 @@ var (
 func SetSharedLibraryPath(path string) {
 	mu.Lock()
 	defer mu.Unlock()
-	if !initialized {
+	if !initialized.Load() {
 		libPath = path
 	}
 }
@@ -41,25 +42,29 @@ func Init() error {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if shutdown {
+	if shutdown.Load() {
 		return errShutdown
 	}
-	if initialized {
+	if initialized.Load() {
 		return nil
 	}
 
 	path := resolveLibPath()
-	fn, err := loadLibrary(path)
+	fn, handle, err := loadLibrary(path)
 	if err != nil {
 		return wrapErr("load library", err)
 	}
+	// Init is retryable: unload the library on every failure below, or a
+	// failed attempt leaks the mapping for the lifetime of the process.
 
 	var cVersion C.int
 	rc := C.ort_init_api(fn, &cVersion)
 	if rc == 1 {
+		closeLibrary(handle)
 		return wrapErr("init api", fmt.Errorf("OrtGetApiBase returned NULL"))
 	}
 	if rc == 2 {
+		closeLibrary(handle)
 		return wrapErr("init api", fmt.Errorf("GetApi failed; ORT library may be too old (need API >= %d)", C.ORT_GO_API_VERSION_MIN))
 	}
 	apiVersion = int(cVersion)
@@ -69,18 +74,21 @@ func Init() error {
 
 	var ortEnv *C.OrtEnv
 	if err := checkStatus(C.ort_CreateEnv(C.ORT_LOGGING_LEVEL_WARNING, cLogID, &ortEnv)); err != nil {
+		closeLibrary(handle)
 		return wrapErr("create env", err)
 	}
 
 	var memInfo *C.OrtMemoryInfo
 	if err := checkStatus(C.ort_CreateCpuMemoryInfo(C.OrtDeviceAllocator, C.OrtMemTypeDefault, &memInfo)); err != nil {
 		C.ort_ReleaseEnv(ortEnv)
+		closeLibrary(handle)
 		return wrapErr("create cpu memory info", err)
 	}
 
 	env = ortEnv
 	cpuMemInfo = memInfo
-	initialized = true
+	libModule = handle
+	initialized.Store(true)
 	return nil
 }
 
@@ -89,7 +97,7 @@ func Init() error {
 func GetVersion() (string, error) {
 	mu.Lock()
 	defer mu.Unlock()
-	if !initialized {
+	if !initialized.Load() {
 		return "", errNotInitialized
 	}
 	return C.GoString(C.ort_GetVersionString()), nil
@@ -106,20 +114,22 @@ func APIVersion() int {
 func IsInitialized() bool {
 	mu.Lock()
 	defer mu.Unlock()
-	return initialized
+	return initialized.Load()
 }
 
 // Shutdown releases the ONNX Runtime environment. It returns an error if
 // any sessions are still open. After Shutdown, Init cannot be called again.
+// Shutdown must not run concurrently with other calls into this package:
+// it releases the shared environment that those calls use.
 func Shutdown() error {
 	mu.Lock()
 	defer mu.Unlock()
 
-	if shutdown {
+	if shutdown.Load() {
 		return nil
 	}
-	if !initialized {
-		shutdown = true
+	if !initialized.Load() {
+		shutdown.Store(true)
 		return nil
 	}
 
@@ -131,8 +141,8 @@ func Shutdown() error {
 	cpuMemInfo = nil
 	C.ort_ReleaseEnv(env)
 	env = nil
-	initialized = false
-	shutdown = true
+	initialized.Store(false)
+	shutdown.Store(true)
 	return nil
 }
 
@@ -140,7 +150,7 @@ func Shutdown() error {
 func EnableTelemetry() error {
 	mu.Lock()
 	defer mu.Unlock()
-	if !initialized {
+	if !initialized.Load() {
 		return errNotInitialized
 	}
 	return wrapErr("enable telemetry", checkStatus(C.ort_EnableTelemetryEvents(env)))
@@ -150,7 +160,7 @@ func EnableTelemetry() error {
 func DisableTelemetry() error {
 	mu.Lock()
 	defer mu.Unlock()
-	if !initialized {
+	if !initialized.Load() {
 		return errNotInitialized
 	}
 	return wrapErr("disable telemetry", checkStatus(C.ort_DisableTelemetryEvents(env)))
@@ -160,7 +170,7 @@ func DisableTelemetry() error {
 // ORT library.
 func AvailableProviders() ([]string, error) {
 	mu.Lock()
-	if !initialized {
+	if !initialized.Load() {
 		mu.Unlock()
 		return nil, errNotInitialized
 	}
@@ -201,8 +211,8 @@ func resolveDir(path string) string {
 }
 
 func checkInit() error {
-	if !initialized {
-		if shutdown {
+	if !initialized.Load() {
+		if shutdown.Load() {
 			return errShutdown
 		}
 		return errNotInitialized

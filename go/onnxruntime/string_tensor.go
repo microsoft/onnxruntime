@@ -85,18 +85,16 @@ func (t *Tensor) StringData() ([]string, error) {
 	}
 
 	n := int(count)
+
+	if totalLen == 0 {
+		return make([]string, n), nil
+	}
+
 	buf := make([]byte, int(totalLen))
 	offsets := make([]C.size_t, n)
 
-	var bufPtr unsafe.Pointer
-	if totalLen > 0 {
-		bufPtr = unsafe.Pointer(&buf[0])
-	} else {
-		bufPtr = unsafe.Pointer(&buf)
-	}
-
 	if err := checkStatus(C.ort_GetStringTensorContent(
-		t.value, bufPtr, totalLen, &offsets[0], C.size_t(n))); err != nil {
+		t.value, unsafe.Pointer(&buf[0]), totalLen, &offsets[0], C.size_t(n))); err != nil {
 		return nil, wrapErr("get string tensor content", err)
 	}
 

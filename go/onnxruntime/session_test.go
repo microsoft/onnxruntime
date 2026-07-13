@@ -2,11 +2,15 @@ package onnxruntime
 
 import (
 	"context"
+	"errors"
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func testdataPath(name string) string {
@@ -391,4 +395,379 @@ func mapKeys(m map[string]*Tensor) []string {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+func TestRunNilTensor(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	tensorA, err := CreateTensor[float32]([]int64{2, 3}, []float32{1, 2, 3, 4, 5, 6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tensorA.Close()
+
+	_, err = sess.Run(context.Background(), map[string]*Tensor{
+		"A": tensorA,
+		"B": nil,
+	}, nil)
+	if err == nil {
+		t.Fatal("expected error for nil input tensor")
+	}
+}
+
+func TestRunClosedTensor(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	tensorA, err := CreateTensor[float32]([]int64{2, 3}, []float32{1, 2, 3, 4, 5, 6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tensorA.Close()
+
+	tensorB, err := CreateTensor[float32]([]int64{2, 3}, []float32{10, 20, 30, 40, 50, 60})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = tensorB.Close()
+
+	_, err = sess.Run(context.Background(), map[string]*Tensor{
+		"A": tensorA,
+		"B": tensorB,
+	}, nil)
+	if err == nil {
+		t.Fatal("expected error for closed input tensor")
+	}
+}
+
+// addModelInputs returns fresh inputs for add_f32.onnx and a cleanup func.
+func addModelInputs(t *testing.T) (map[string]*Tensor, func()) {
+	t.Helper()
+
+	a, err := CreateTensor[float32]([]int64{2, 3}, []float32{1, 2, 3, 4, 5, 6})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := CreateTensor[float32]([]int64{2, 3}, []float32{10, 20, 30, 40, 50, 60})
+	if err != nil {
+		_ = a.Close()
+		t.Fatal(err)
+	}
+	return map[string]*Tensor{"A": a, "B": b}, func() {
+		_ = a.Close()
+		_ = b.Close()
+	}
+}
+
+func closeTensorMap(tensors map[string]*Tensor) {
+	for _, tensor := range tensors {
+		_ = tensor.Close()
+	}
+}
+
+func TestRunWithOptionsCancelledBeforeCall(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	opts, err := NewRunOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opts.Close()
+
+	inputs, cleanup := addModelInputs(t)
+	defer cleanup()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err = sess.RunWithOptions(ctx, opts, inputs, []string{"C"})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+
+	results, err := sess.RunWithOptions(context.Background(), opts, inputs, []string{"C"})
+	if err != nil {
+		t.Fatalf("reusing run options after a cancelled run: %v", err)
+	}
+	closeTensorMap(results)
+}
+
+func TestRunWithOptionsExpiredDeadline(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	opts, err := NewRunOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opts.Close()
+
+	inputs, cleanup := addModelInputs(t)
+	defer cleanup()
+
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	_, err = sess.RunWithOptions(ctx, opts, inputs, []string{"C"})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context.DeadlineExceeded, got %v", err)
+	}
+}
+
+// countingContext reports whether the run subscribed to cancellation.
+type countingContext struct {
+	context.Context
+	doneCalls atomic.Int64
+}
+
+func (c *countingContext) Done() <-chan struct{} {
+	c.doneCalls.Add(1)
+	return c.Context.Done()
+}
+
+// TestRunWithOptionsWatchesContext pins that caller-supplied run options do not
+// disable cancellation: the run must watch ctx.Done() so it can terminate an
+// in-flight run, exactly as it does for the options it creates itself.
+func TestRunWithOptionsWatchesContext(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	opts, err := NewRunOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opts.Close()
+
+	inputs, cleanup := addModelInputs(t)
+	defer cleanup()
+
+	base, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ctx := &countingContext{Context: base}
+
+	results, err := sess.RunWithOptions(ctx, opts, inputs, []string{"C"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	closeTensorMap(results)
+
+	if ctx.doneCalls.Load() == 0 {
+		t.Fatal("run never consulted ctx.Done(): cancellation is ignored when the caller supplies run options")
+	}
+}
+
+// TestRunWithOptionsCancelledDuringRunKeepsOptionsUsable pins the terminate
+// restore: the watcher sets the terminate flag on the caller's run options, and
+// that flag is sticky, so leaving it set would abort the caller's next run.
+// runInner is called directly because RunWithOptions rejects an already
+// cancelled context before the watcher would ever start.
+func TestRunWithOptionsCancelledDuringRunKeepsOptionsUsable(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	opts, err := NewRunOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opts.Close()
+
+	const iterations = 20
+	terminated := 0
+	for i := range iterations {
+		inputs, cleanup := addModelInputs(t)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		results, err := sess.runInner(ctx, inputs, []string{"C"}, opts.handle)
+		switch {
+		case err == nil:
+			// The run reached ORT's terminate check before the watcher fired; these
+			// single-node models cannot be aborted once the kernel is running.
+			closeTensorMap(results)
+		case errors.Is(err, context.Canceled):
+			terminated++
+		default:
+			cleanup()
+			t.Fatalf("iteration %d: expected context.Canceled, got %v", i, err)
+		}
+
+		results, err = sess.RunWithOptions(context.Background(), opts, inputs, []string{"C"})
+		if err != nil {
+			cleanup()
+			t.Fatalf("iteration %d: run options left terminated by the cancelled run: %v", i, err)
+		}
+		closeTensorMap(results)
+		cleanup()
+	}
+	t.Logf("%d/%d cancellations reached ORT before the run finished", terminated, iterations)
+}
+
+// TestRunWithOptionsPreservesCallerTerminate pins that only a terminate flag the
+// watcher set is cleared: one the caller set is theirs to keep.
+func TestRunWithOptionsPreservesCallerTerminate(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	opts, err := NewRunOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opts.Close()
+
+	inputs, cleanup := addModelInputs(t)
+	defer cleanup()
+
+	if err := opts.SetTerminate(); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if _, err := sess.RunWithOptions(ctx, opts, inputs, []string{"C"}); err == nil {
+		t.Fatal("expected error from terminated run options")
+	}
+	if _, err := sess.RunWithOptions(context.Background(), opts, inputs, []string{"C"}); err == nil {
+		t.Fatal("terminate flag set by the caller was cleared by the run")
+	}
+}
+
+// TestRunWithOptionsReuseAfterCancelledRun cancels concurrently with the run, so
+// the watcher fires before, during, and after the call, and requires the
+// caller's run options to stay usable in every case.
+func TestRunWithOptionsReuseAfterCancelledRun(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	opts, err := NewRunOptions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opts.Close()
+
+	inputs, cleanup := addModelInputs(t)
+	defer cleanup()
+
+	for i := range 50 {
+		ctx, cancel := context.WithCancel(context.Background())
+		go cancel()
+
+		results, err := sess.RunWithOptions(ctx, opts, inputs, []string{"C"})
+		if err != nil && !errors.Is(err, context.Canceled) {
+			t.Fatalf("iteration %d: expected context.Canceled or success, got %v", i, err)
+		}
+		closeTensorMap(results)
+
+		results, err = sess.RunWithOptions(context.Background(), opts, inputs, []string{"C"})
+		if err != nil {
+			t.Fatalf("iteration %d: run options left terminated by the cancelled run: %v", i, err)
+		}
+		closeTensorMap(results)
+	}
+}
+
+// TestRunCancelRace shakes the run options Run creates for itself: cancelling
+// around the moment the run finishes leaves the watcher parked on options that
+// must not be released before it is joined.
+func TestRunCancelRace(t *testing.T) {
+	sess, err := NewSession(testdataPath("add_f32.onnx"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	const workers = 8
+	const iterations = 40
+
+	var wg sync.WaitGroup
+	errs := make(chan error, workers*iterations)
+	for range workers {
+		inputs, cleanup := addModelInputs(t)
+		defer cleanup()
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range iterations {
+				// Timeouts straddle the run duration, so cancellation lands before,
+				// during, and just after the call into ORT.
+				ctx, cancel := context.WithTimeout(context.Background(), time.Duration(i%20*10)*time.Microsecond)
+				results, err := sess.Run(ctx, inputs, []string{"C"})
+				cancel()
+
+				if err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+					errs <- err
+				}
+				closeTensorMap(results)
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+}
+
+func TestNewSessionUnicodePath(t *testing.T) {
+	data, err := os.ReadFile(testdataPath("add_f32.onnx"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(t.TempDir(), "模型-mödel-🎉.onnx")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	sess, err := NewSession(path, nil)
+	if err != nil {
+		t.Fatalf("load model from non-ASCII path: %v", err)
+	}
+	defer sess.Close()
+
+	if len(sess.Inputs()) != 2 {
+		t.Errorf("expected 2 inputs, got %d", len(sess.Inputs()))
+	}
+}
+
+func TestNewSessionRejectsNULInPath(t *testing.T) {
+	// Without the NUL check, the path is truncated at the NUL and the model at
+	// the truncated path loads instead — silently ignoring what the caller asked for.
+	sess, err := NewSession(testdataPath("add_f32.onnx")+"\x00ignored", nil)
+	if err == nil {
+		sess.Close()
+		t.Fatal("expected error for path containing NUL byte, but a model loaded")
+	}
+	if !strings.Contains(err.Error(), "NUL") {
+		t.Errorf("expected a NUL-byte error, got: %v", err)
+	}
 }

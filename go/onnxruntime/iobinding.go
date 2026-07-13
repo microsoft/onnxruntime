@@ -77,6 +77,9 @@ func NewIOBinding(session *Session) (*IOBinding, error) {
 	if err := checkInit(); err != nil {
 		return nil, err
 	}
+	if session == nil {
+		return nil, fmt.Errorf("ort: create io binding: session is nil")
+	}
 	session.mu.RLock()
 	defer session.mu.RUnlock()
 	if session.closed {
@@ -89,36 +92,93 @@ func NewIOBinding(session *Session) (*IOBinding, error) {
 	return &IOBinding{handle: binding, session: session}, nil
 }
 
+// lockSession acquires the session read lock and verifies that both the binding
+// and its session are still usable. The underlying OrtIoBinding holds a
+// reference to the session, so the lock must be held for the duration of any C
+// call made through the binding: a concurrent Session.Close would otherwise
+// leave that reference dangling.
+//
+// On success the caller must release the returned session's read lock. On
+// error no lock is held.
+func (b *IOBinding) lockSession(op string) (*Session, error) {
+	if b == nil || b.handle == nil || b.session == nil {
+		return nil, fmt.Errorf("ort: %s: io binding is closed", op)
+	}
+	s := b.session
+	s.mu.RLock()
+	if s.closed || s.handle == nil {
+		s.mu.RUnlock()
+		return nil, fmt.Errorf("ort: %s: session is closed", op)
+	}
+	return s, nil
+}
+
 func (b *IOBinding) BindInput(name string, value *Tensor) error {
+	s, err := b.lockSession("bind input")
+	if err != nil {
+		return err
+	}
+	defer s.mu.RUnlock()
+
+	if err := value.checkUsable("bind input"); err != nil {
+		return err
+	}
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
 	return wrapErr("bind input", checkStatus(C.ort_BindInput(b.handle, cName, value.value)))
 }
 
 func (b *IOBinding) BindOutput(name string, value *Tensor) error {
+	s, err := b.lockSession("bind output")
+	if err != nil {
+		return err
+	}
+	defer s.mu.RUnlock()
+
+	if err := value.checkUsable("bind output"); err != nil {
+		return err
+	}
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
 	return wrapErr("bind output", checkStatus(C.ort_BindOutput(b.handle, cName, value.value)))
 }
 
 func (b *IOBinding) BindOutputToDevice(name string, memInfo *MemoryInfo) error {
+	s, err := b.lockSession("bind output to device")
+	if err != nil {
+		return err
+	}
+	defer s.mu.RUnlock()
+
+	if memInfo == nil || memInfo.handle == nil {
+		return fmt.Errorf("ort: bind output to device: memory info is nil or closed")
+	}
 	cName := C.CString(name)
 	defer C.free(unsafe.Pointer(cName))
 	return wrapErr("bind output to device", checkStatus(C.ort_BindOutputToDevice(b.handle, cName, memInfo.handle)))
 }
 
 func (b *IOBinding) Run(opts *RunOptions) error {
-	b.session.mu.RLock()
-	defer b.session.mu.RUnlock()
+	s, err := b.lockSession("run with binding")
+	if err != nil {
+		return err
+	}
+	defer s.mu.RUnlock()
 
 	var runOpts *C.OrtRunOptions
 	if opts != nil {
 		runOpts = opts.handle
 	}
-	return wrapErr("run with binding", checkStatus(C.ort_RunWithBinding(b.session.handle, runOpts, b.handle)))
+	return wrapErr("run with binding", checkStatus(C.ort_RunWithBinding(s.handle, runOpts, b.handle)))
 }
 
 func (b *IOBinding) OutputNames() ([]string, error) {
+	s, err := b.lockSession("get bound output names")
+	if err != nil {
+		return nil, err
+	}
+	defer s.mu.RUnlock()
+
 	var allocator *C.OrtAllocator
 	if err := checkStatus(C.ort_GetAllocatorWithDefaultOptions(&allocator)); err != nil {
 		return nil, wrapErr("get allocator", err)
@@ -130,8 +190,16 @@ func (b *IOBinding) OutputNames() ([]string, error) {
 	if err := checkStatus(C.ort_GetBoundOutputNames(b.handle, allocator, &buffer, &lengths, &count)); err != nil {
 		return nil, wrapErr("get bound output names", err)
 	}
-	defer C.ort_AllocatorFree(allocator, unsafe.Pointer(buffer))
-	defer C.ort_AllocatorFree(allocator, unsafe.Pointer(lengths))
+	defer func() {
+		if buffer != nil {
+			C.ort_AllocatorFree(allocator, unsafe.Pointer(buffer))
+		}
+	}()
+	defer func() {
+		if lengths != nil {
+			C.ort_AllocatorFree(allocator, unsafe.Pointer(lengths))
+		}
+	}()
 
 	n := int(count)
 	if n == 0 {
@@ -150,6 +218,12 @@ func (b *IOBinding) OutputNames() ([]string, error) {
 }
 
 func (b *IOBinding) OutputValues() ([]*Tensor, error) {
+	s, err := b.lockSession("get bound output values")
+	if err != nil {
+		return nil, err
+	}
+	defer s.mu.RUnlock()
+
 	var allocator *C.OrtAllocator
 	if err := checkStatus(C.ort_GetAllocatorWithDefaultOptions(&allocator)); err != nil {
 		return nil, wrapErr("get allocator", err)
@@ -160,7 +234,11 @@ func (b *IOBinding) OutputValues() ([]*Tensor, error) {
 	if err := checkStatus(C.ort_GetBoundOutputValues(b.handle, allocator, &values, &count)); err != nil {
 		return nil, wrapErr("get bound output values", err)
 	}
-	defer C.ort_AllocatorFree(allocator, unsafe.Pointer(values))
+	defer func() {
+		if values != nil {
+			C.ort_AllocatorFree(allocator, unsafe.Pointer(values))
+		}
+	}()
 
 	n := int(count)
 	if n == 0 {
@@ -185,18 +263,37 @@ func (b *IOBinding) OutputValues() ([]*Tensor, error) {
 	return tensors, nil
 }
 
+// ClearInputs unbinds all inputs. It is a no-op if the binding or its session
+// is closed.
 func (b *IOBinding) ClearInputs() {
+	s, err := b.lockSession("clear bound inputs")
+	if err != nil {
+		return
+	}
+	defer s.mu.RUnlock()
+
 	C.ort_ClearBoundInputs(b.handle)
 }
 
+// ClearOutputs unbinds all outputs. It is a no-op if the binding or its session
+// is closed.
 func (b *IOBinding) ClearOutputs() {
+	s, err := b.lockSession("clear bound outputs")
+	if err != nil {
+		return
+	}
+	defer s.mu.RUnlock()
+
 	C.ort_ClearBoundOutputs(b.handle)
 }
 
+// Close releases the binding. It is idempotent. The bound values it owns are
+// independent of the session, so Close is safe after the session is closed.
 func (b *IOBinding) Close() error {
-	if b.handle != nil {
-		C.ort_ReleaseIoBinding(b.handle)
-		b.handle = nil
+	if b == nil || b.handle == nil {
+		return nil
 	}
+	C.ort_ReleaseIoBinding(b.handle)
+	b.handle = nil
 	return nil
 }
