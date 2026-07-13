@@ -6,6 +6,7 @@
 #include "core/providers/cuda/nn/pool.h"
 #include "core/providers/cuda/cudnn_common.h"
 #include "core/providers/cuda/nn/max_pool_with_index.h"
+#include "core/providers/cuda/nn/avg_pool_impl.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 
 using namespace onnxruntime::common;
@@ -204,6 +205,37 @@ Status Pool<T, PoolType, Layout>::ComputeInternal(OpKernelContext* context) cons
 
   auto x_data = reinterpret_cast<const CudaT*>(X->Data<T>());
   auto y_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
+
+  // cuDNN's pooling descriptor cannot represent two ONNX features:
+  //  (1) Asymmetric padding: it stores a single symmetric pad value per axis and applies it to
+  //      both sides, so it silently drops ONNX end pads when pad_begin != pad_end (explicit
+  //      asymmetric pads, or auto_pad=SAME_UPPER/SAME_LOWER resolving to asymmetric pads).
+  //  (2) Dilation: the pooling descriptor has no dilation parameter at all, so any dilation > 1
+  //      is silently ignored.
+  // Either case produces wrong sums and divisors on cuDNN, so route it to the custom kernel,
+  // which honors per-side pads AND dilation and matches the CPU reference divisor exactly.
+  // Symmetric, non-dilated pooling (the common case, including all global pooling) keeps the
+  // fast cuDNN path unchanged, so there is zero perf regression. (MaxPool<8> guards dilation the
+  // same way via !default_dilations.) Global pooling is always symmetric and never dilated, and
+  // its kernel_shape/strides/dilations are left unpopulated (PoolAttributes returns early), so it
+  // is excluded here and stays on cuDNN.
+  if constexpr (PoolType::type == onnxruntime::PoolType::kAveragePool) {
+    if (!pool_attrs_.global_pooling) {
+      const size_t spatial_rank = kernel_shape.size();
+      bool asymmetric_pads = false;
+      for (size_t i = 0; i < spatial_rank; ++i) {
+        if (pads[i] != pads[spatial_rank + i]) {
+          asymmetric_pads = true;
+          break;
+        }
+      }
+      if (asymmetric_pads || !pool_attrs_.default_dilations) {
+        AveragePoolWithPad<CudaT, Layout>(Stream(context), x_shape, y_shape, kernel_shape, strides, pads,
+                                          pool_attrs_.dilations, pool_attrs_.count_include_pad, x_data, y_data);
+        return Status::OK();
+      }
+    }
+  }
 
   TensorShapeVector x_dims_cudnn(x_dims.begin(), x_dims.end());
   TensorShapeVector y_dims_cudnn(y_dims);

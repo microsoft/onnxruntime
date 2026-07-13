@@ -6,10 +6,7 @@
 #include <cmath>
 
 #include "core/providers/op_kernel_type_control.h"
-// TODO: fix the warnings
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(disable : 26451)
-#endif
+
 namespace onnxruntime {
 
 namespace op_kernel_type_control {
@@ -80,9 +77,26 @@ static Status ComputeRange(
   if (delta == T{0}) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "delta in Range operator can not be zero!");
   }
-  int64_t n = static_cast<int64_t>(ceil((1.0 * (limit - start)) / delta));
-  if (n <= 0)
-    n = 0;
+  // Compute the element count in double, mirroring the shape-inference path
+  // (core/graph/contrib_ops/range_schema_defs.cc CalcRangeDim) exactly. The operands are
+  // promoted to double before the subtraction so integral inputs cannot overflow in T.
+  double count = ceil((static_cast<double>(limit) - static_cast<double>(start)) / static_cast<double>(delta));
+  if (!std::isfinite(count)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Range: the computed number of elements is not a finite value.");
+  }
+  // Empty or backward ranges clamp to 0; handle the non-positive case before the cast so a
+  // large-magnitude negative count can never reach (and overflow) the int64 conversion.
+  int64_t n = 0;
+  if (count > 0) {
+    // static_cast<double>(INT64_MAX) rounds up to 2^63 (9223372036854775808.0), which is not
+    // representable as int64_t, so reject any count at or above that boundary before the cast.
+    if (count >= 9223372036854775808.0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Range: the computed number of elements exceeds the supported range.");
+    }
+    n = static_cast<int64_t>(count);
+  }
   TensorShape shape = {n};
   T* y = ctx->Output(0, shape)->MutableData<T>();
   for (int64_t i = 0; i < n; ++i) {
