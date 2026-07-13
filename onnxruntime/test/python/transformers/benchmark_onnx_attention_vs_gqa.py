@@ -7,7 +7,7 @@
 Benchmark ONNX Attention (opset 23/24, CUDA EP) against contrib GroupQueryAttention
 for single-stream decode (issue #28352 baseline recipe).
 
-Arms, all decode-shaped (S_q = 1, causal, no RoPE, no mask, no softcap):
+Arms, all decode-shaped (S_q = 1, causal, no RoPE, no attn_mask, no softcap):
 
   gqa_xqa       GroupQueryAttention, shared KV buffer, XQA decode kernel.
   gqa_flash     GroupQueryAttention pinned to the Flash Attention kernels
@@ -28,8 +28,10 @@ Measurement notes:
     Flash split-KV launch from the buffer length (attention.cc, nonpad path).
   - ONNX arms disable memory-efficient attention so a Flash ineligibility
     surfaces as the obviously slow unfused kernel, never a silent MEA flip.
-  - ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO=1 prints the resolved GQA backend;
-    verify ONNX Attention from kernel names in an nsys capture (--profile).
+  - Before timing, gqa_* arms assert their resolved backend (SdpaKernel debug
+    print) and every session is checked for nodes placed off the CUDA EP.
+    ONNX Attention has no backend print; verify it from an nsys capture
+    (--profile).
 
 Usage:
   python benchmark_onnx_attention_vs_gqa.py --dtype float16 --csv results.csv
@@ -41,9 +43,12 @@ Usage:
 import argparse
 import contextlib
 import csv
+import json
 import os
+import re
 import subprocess
 import sys
+import tempfile
 
 import torch
 from gqa_test_helper import GroupQueryAttentionConfig, create_gqa_ort_session
@@ -51,15 +56,8 @@ from onnx import TensorProto, helper
 from onnxruntime.transformers.io_binding_helper import CudaSession
 
 import onnxruntime
-from onnxruntime import InferenceSession
 
-try:
-    from triton.testing import do_bench
-
-    TIMER = "triton.testing.do_bench(warmup=15ms, rep=100ms)"
-except ImportError:
-    do_bench = None
-    TIMER = "cuda-event fallback (20 warmup iters, 100 timed iters, mean)"
+TIMER = "cuda-event per iteration, 256 MiB L2 flush between iterations, warmup=20, rep=100, mean"
 
 ALL_ARMS = ["gqa_xqa", "gqa_flash", "gqa_cudnn", "attn_past", "attn_scatter"]
 
@@ -68,17 +66,31 @@ TORCH_DTYPE = {"float16": torch.float16, "bfloat16": torch.bfloat16}
 # Kernel-dispatch pins per arm. ORT reads these at session creation, so they
 # are scoped around InferenceSession construction (see build_arm). cuDNN SDPA
 # must be pinned off for gqa_flash: SM90+ auto-enables it when XQA is off.
+# Flash-reliant arms pin ORT_DISABLE_FLASH_ATTENTION=0 against ambient disables.
 ARM_ENV = {
     "gqa_xqa": {"ORT_ENABLE_XQA": "1"},
-    "gqa_flash": {"ORT_ENABLE_XQA": "0", "ORT_ENABLE_CUDNN_FLASH_ATTENTION": "0"},
+    "gqa_flash": {
+        "ORT_ENABLE_XQA": "0",
+        "ORT_ENABLE_CUDNN_FLASH_ATTENTION": "0",
+        "ORT_DISABLE_FLASH_ATTENTION": "0",
+    },
     "gqa_cudnn": {"ORT_ENABLE_XQA": "0", "ORT_ENABLE_CUDNN_FLASH_ATTENTION": "1"},
-    "attn_past": {"ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION": "1"},
-    "attn_scatter": {"ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION": "1"},
+    "attn_past": {"ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION": "1", "ORT_DISABLE_FLASH_ATTENTION": "0"},
+    "attn_scatter": {"ORT_DISABLE_MEMORY_EFFICIENT_ATTENTION": "1", "ORT_DISABLE_FLASH_ATTENTION": "0"},
+}
+
+# GQA falls back silently when a pinned backend is ineligible, so build_arm
+# asserts the resolved kernel matches the arm name.
+GQA_EXPECTED_KERNEL = {
+    "gqa_xqa": "XQA",
+    "gqa_flash": "FLASH_ATTENTION",
+    "gqa_cudnn": "CUDNN_FLASH_ATTENTION",
 }
 
 
 @contextlib.contextmanager
 def scoped_env(env: dict):
+    """Set environment variables for the duration of the block, then restore."""
     saved = {k: os.environ.get(k) for k in env}
     os.environ.update(env)
     try:
@@ -191,13 +203,15 @@ def create_attention_scatter_model(
             ]
         )
 
+    # is_causal=0: at q_len=1 causal masking is a no-op under ORT's bottom-right
+    # frontier but masks all but column 0 under the spec's top-left reference.
     nodes.append(
         helper.make_node(
             "Attention",
             inputs=["query", k_name, v_name, "", "", "", "nonpad_kv_seqlen"],
             outputs=["output"],
             name="Attention_0",
-            is_causal=1,
+            is_causal=0,
             q_num_heads=q_heads,
             kv_num_heads=kv_heads,
             softcap=0.0,
@@ -231,13 +245,23 @@ def create_attention_scatter_model(
 # #################################################################################################
 
 
+def profiling_session_options():
+    """Profiling on so build_arm can check node placement; stopped before timing."""
+    sess_options = onnxruntime.SessionOptions()
+    sess_options.enable_profiling = True
+    sess_options.profile_file_prefix = os.path.join(tempfile.gettempdir(), "attn_bench_placement")
+    return sess_options
+
+
 def create_cuda_session(model_bytes, device, buffer_sharing=None):
     device_id = torch.cuda.current_device()
     provider_options = CudaSession.get_cuda_provider_options(
         device_id, enable_cuda_graph=False, stream=torch.cuda.current_stream().cuda_stream
     )
-    ort_session = InferenceSession(
-        model_bytes, providers=[("CUDAExecutionProvider", provider_options), "CPUExecutionProvider"]
+    ort_session = onnxruntime.InferenceSession(
+        model_bytes,
+        profiling_session_options(),
+        providers=[("CUDAExecutionProvider", provider_options), "CPUExecutionProvider"],
     )
     session = CudaSession(ort_session, device)
     if buffer_sharing:
@@ -260,7 +284,7 @@ def make_gqa_arm(args, past_seq_len, torch_dtype, canonical=None):
         dtype=torch_dtype,
         kv_cache_type="float16" if torch_dtype == torch.float16 else "bfloat16",
     )
-    session = create_gqa_ort_session(config)
+    session = create_gqa_ort_session(config, session_options=profiling_session_options())
     feeds = config.random_inputs()
     if canonical is not None:
         q, past_k, past_v, new_k, new_v = canonical
@@ -394,6 +418,20 @@ def random_canonical_inputs(args, past_seq_len, torch_dtype):
     return q, past_k, past_v, new_k, new_v
 
 
+def reference_output(canonical, args):
+    """fp32 repeat-KV SDPA reference for one decode step, flattened to
+    [batch, 1, q_heads * head_size]. At q_len=1 causal masking is a no-op, so
+    plain SDPA matches every arm."""
+    q, past_k, past_v, new_k, new_v = (t.float() for t in canonical)
+    key = torch.cat([past_k, new_k.transpose(1, 2)], dim=2)
+    value = torch.cat([past_v, new_v.transpose(1, 2)], dim=2)
+    group = args.q_heads // args.kv_heads
+    key = key.repeat_interleave(group, dim=1)
+    value = value.repeat_interleave(group, dim=1)
+    out = torch.nn.functional.scaled_dot_product_attention(q.transpose(1, 2), key, value)
+    return out.transpose(1, 2).reshape(args.batch, 1, -1).cpu()
+
+
 ARM_BUILDERS = {
     "gqa_xqa": make_gqa_arm,
     "gqa_flash": make_gqa_arm,
@@ -403,9 +441,68 @@ ARM_BUILDERS = {
 }
 
 
+def resolved_sdpa_kernel(session, feeds):
+    """Run one inference with fd-level stdout captured (ORT's kernel debug
+    print bypasses sys.stdout) and return the resolved SdpaKernel name."""
+    sys.stdout.flush()
+    saved_fd = os.dup(1)
+    try:
+        with tempfile.TemporaryFile() as tmp:
+            os.dup2(tmp.fileno(), 1)
+            try:
+                session.infer(feeds)
+            finally:
+                sys.stdout.flush()
+                os.dup2(saved_fd, 1)
+            tmp.seek(0)
+            text = tmp.read().decode(errors="replace")
+    finally:
+        os.close(saved_fd)
+    match = re.search(r"SdpaKernel=(\w+)", text)
+    return match.group(1) if match else None
+
+
+def assert_nodes_on_cuda(arm, session, feeds):
+    """Run one inference and abort if the session profile shows a node off the
+    CUDA EP or an inserted Memcpy node. Ends profiling, so timed runs are
+    unaffected."""
+    session.infer(feeds)
+    profile_path = session.ort_session.end_profiling()
+    try:
+        with open(profile_path) as f:
+            events = json.load(f)
+    finally:
+        os.remove(profile_path)
+    offenders = set()
+    for event in events:
+        if event.get("cat") != "Node" or not event["name"].endswith("_kernel_time"):
+            continue
+        op_name = event.get("args", {}).get("op_name", "?")
+        provider = event.get("args", {}).get("provider", "?")
+        if provider != "CUDAExecutionProvider" or op_name.startswith("Memcpy"):
+            offenders.add((op_name, provider))
+    if offenders:
+        sys.exit(f"{arm}: nodes off the CUDA EP: {sorted(offenders)}")
+
+
 def build_arm(arm, args, past_seq_len, torch_dtype, canonical=None):
+    """Build (session, feeds) under the arm's kernel pins; abort on backend
+    mismatch (gqa_* arms) or off-CUDA node placement."""
+    if arm in GQA_EXPECTED_KERNEL:
+        # The debug print fires on every Run, so latch it on a throwaway
+        # session only, never the timed one.
+        with scoped_env({**ARM_ENV[arm], "ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO": "1"}):
+            session, feeds = ARM_BUILDERS[arm](args, past_seq_len, torch_dtype, canonical)
+        resolved = resolved_sdpa_kernel(session, feeds)
+        with contextlib.suppress(Exception):
+            os.remove(session.ort_session.end_profiling())
+        del session
+        if resolved != GQA_EXPECTED_KERNEL[arm]:
+            sys.exit(f"{arm}: resolved SdpaKernel={resolved}, expected {GQA_EXPECTED_KERNEL[arm]}")
     with scoped_env(ARM_ENV[arm]):
-        return ARM_BUILDERS[arm](args, past_seq_len, torch_dtype, canonical)
+        session, feeds = ARM_BUILDERS[arm](args, past_seq_len, torch_dtype, canonical)
+    assert_nodes_on_cuda(arm, session, feeds)
+    return session, feeds
 
 
 # #################################################################################################
@@ -413,29 +510,29 @@ def build_arm(arm, args, past_seq_len, torch_dtype, canonical=None):
 # #################################################################################################
 
 
-def event_bench(fn, warmup=20, rep=100):
-    for _ in range(warmup):
-        fn()
-    torch.cuda.synchronize()
-    start = torch.cuda.Event(enable_timing=True)
-    end = torch.cuda.Event(enable_timing=True)
-    start.record()
-    for _ in range(rep):
-        fn()
-    end.record()
-    torch.cuda.synchronize()
-    return start.elapsed_time(end) / rep
+def bench_arm(session, feeds, warmup=20, rep=100):
+    """Return mean latency in ms: per-iteration CUDA events with a 256 MiB
+    buffer zeroed between iterations, so each run sees a cold L2 (do_bench's
+    cache policy)."""
+    l2_flush = torch.empty(256 * 1024 * 1024, dtype=torch.int8, device="cuda")
 
-
-def bench_arm(session, feeds):
     def run():
         # The session runs on torch's current stream, so CUDA-event timers see
         # its work without per-call host syncs.
         session.infer(feeds, synchronize=False)
 
-    if do_bench is not None:
-        return do_bench(run, warmup=15, rep=100)
-    return event_bench(run)
+    for _ in range(warmup):
+        run()
+    torch.cuda.synchronize()
+    starts = [torch.cuda.Event(enable_timing=True) for _ in range(rep)]
+    ends = [torch.cuda.Event(enable_timing=True) for _ in range(rep)]
+    for start, end in zip(starts, ends, strict=True):
+        l2_flush.zero_()
+        start.record()
+        run()
+        end.record()
+    torch.cuda.synchronize()
+    return sum(start.elapsed_time(end) for start, end in zip(starts, ends, strict=True)) / rep
 
 
 # #################################################################################################
@@ -509,6 +606,8 @@ def run_sweep(args):
                         "head_size",
                         "past_seq_len",
                         "buffer_len",
+                        "attention_only",
+                        "cache_4d",
                         "latency_us",
                         "timer",
                     ]
@@ -525,6 +624,8 @@ def run_sweep(args):
                             args.head_size,
                             row["past_seq_len"],
                             args.max_seq_len,
+                            int(args.attention_only),
+                            int(args.cache_4d),
                             f"{row[arm]:.3f}",
                             TIMER,
                         ]
@@ -533,39 +634,35 @@ def run_sweep(args):
 
 
 def run_sanity(args):
-    """Run one decode step per arm on identical inputs and compare outputs.
-
-    A mismatch means the arms are not computing the same attention (config
-    drift), which would invalidate the latency comparison.
-    """
+    """Run one decode step per arm on identical inputs and compare against an
+    fp32 torch reference; a mismatch (config drift) would invalidate the
+    latency comparison."""
     torch_dtype = TORCH_DTYPE[args.dtype]
     past_seq_len = args.past_seq_len
     canonical = random_canonical_inputs(args, past_seq_len, torch_dtype)
+    reference = reference_output(canonical, args)
 
-    outputs = {}
+    # Inputs are generated in half precision and upcast exactly, so arms differ
+    # from the reference only by accumulation order and output rounding
+    # (~1e-4 fp16, ~1e-3 bf16); config drift shows up as O(0.1) diffs.
+    atol = {"float16": 2e-3, "bfloat16": 1e-2}[args.dtype]
+    rtol = {"float16": 1e-2, "bfloat16": 5e-2}[args.dtype]
+
+    print(f"## Sanity: output parity vs fp32 torch reference at past_seq_len={past_seq_len}, dtype={args.dtype}")
+    print(f"(per-element |diff| <= {atol} + {rtol} * |reference|)")
+    ok = True
     for arm in args.arms:
         session, feeds = build_arm(arm, args, past_seq_len, torch_dtype, canonical)
         result = session.infer(feeds)
         # 3D arms emit [B, 1, H*D]; the 4D scatter variant emits BNSH [B, H, 1, D].
         # Both flatten to the same head-major element order.
-        outputs[arm] = result["output"].reshape(args.batch, 1, -1).float().cpu().clone()
+        out = result["output"].reshape(args.batch, 1, -1).float().cpu()
         del session
         torch.cuda.empty_cache()
-
-    reference_arm = args.arms[0]
-    # Cross-kernel comparison of half-precision outputs; config drift shows up
-    # as O(0.1+) diffs, far above these thresholds.
-    threshold = 1e-2 if args.dtype == "float16" else 5e-2
-    print(f"## Sanity: cross-arm output parity at past_seq_len={past_seq_len}, dtype={args.dtype}")
-    print(f"(reference arm: {reference_arm}; max |diff| threshold {threshold})")
-    ok = True
-    for arm, out in outputs.items():
-        if arm == reference_arm:
-            continue
-        max_diff = (out - outputs[reference_arm]).abs().max().item()
-        status = "PASS" if max_diff <= threshold else "FAIL"
-        ok &= status == "PASS"
-        print(f"- {arm} vs {reference_arm}: max |diff| = {max_diff:.6f} [{status}]")
+        diff = (out - reference).abs()
+        status = "PASS" if bool((diff <= atol + rtol * reference.abs()).all()) else "FAIL"
+        ok = ok and status == "PASS"
+        print(f"- {arm} vs reference: max |diff| = {diff.max().item():.6f} [{status}]")
     print()
     return ok
 
@@ -627,9 +724,31 @@ def main():
 
     if not torch.cuda.is_available() or "CUDAExecutionProvider" not in onnxruntime.get_available_providers():
         sys.exit("This benchmark requires a CUDA device and an onnxruntime build with the CUDA EP.")
+    try:
+        device = torch.device(args.device)
+    except RuntimeError as e:
+        sys.exit(f"--device: {e}")
+    if device.type != "cuda":
+        sys.exit("--device must be a CUDA device (e.g. cuda or cuda:1).")
+    if device.index is not None:
+        # Sessions bind to torch's current device/stream; keep them where tensors live.
+        torch.cuda.set_device(device)
     major, minor = torch.cuda.get_device_capability()
     if major < 8:
         sys.exit(f"SM{major}{minor} < SM80: Flash/XQA decode paths are unavailable; results would be meaningless.")
+
+    for name, value in {
+        "--batch": args.batch,
+        "--q-heads": args.q_heads,
+        "--kv-heads": args.kv_heads,
+        "--head-size": args.head_size,
+        "--past-seq-len": args.past_seq_len,
+        "--sweep": min(args.sweep),
+    }.items():
+        if value <= 0:
+            sys.exit(f"{name} must be positive.")
+    if args.q_heads % args.kv_heads != 0:
+        sys.exit("--q-heads must be a multiple of --kv-heads.")
     if max([*args.sweep, args.past_seq_len]) >= args.max_seq_len:
         sys.exit("--max-seq-len must exceed every swept past length (buffer holds past + 1 new token).")
 
