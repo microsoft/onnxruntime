@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #include "core/framework/execution_provider.h"
 
+#include "core/common/logging/logging.h"
 #include "core/graph/graph_viewer.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/kernel_registry.h"
@@ -23,6 +24,15 @@ IExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
       sub_graph->nodes.push_back(node.Index());
       result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+    } else if (node.GetExecutionProviderType().empty()) {
+      // No kernel was found in this EP's registry for a still-unassigned node. Logging the op type,
+      // domain and resolved opset makes it obvious why a node is not claimed by the EP (and therefore
+      // falls back to another provider such as the CPU EP). This is the root-cause signal for
+      // unexpected CPU fallbacks, e.g. an op registered only for a different opset range or
+      // domain/layout. Skipping nodes already assigned to another EP keeps the output readable.
+      LOGS_DEFAULT(VERBOSE) << "EP [" << Type() << "] has no kernel for node '" << node.Name()
+                            << "': " << node.OpType() << "(" << node.SinceVersion() << ") domain=["
+                            << node.Domain() << "] -> not claimed by this EP.";
     }
   }
 

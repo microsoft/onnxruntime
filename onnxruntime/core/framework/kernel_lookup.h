@@ -32,13 +32,25 @@ class KernelLookup final : public IExecutionProvider::IKernelLookup {
 
   const KernelCreateInfo* LookUpKernel(const Node& node) const override {
     const KernelCreateInfo* kernel_create_info{};
+    std::string last_reason;
     for (const auto& registry : kernel_registries_) {
       const auto lookup_status = registry->TryFindKernel(node, provider_type_, kernel_type_str_resolver_, logger_,
                                                          &kernel_create_info);
       if (lookup_status.IsOK() && kernel_create_info != nullptr) {
         return kernel_create_info;
       }
+      if (!lookup_status.IsOK()) {
+        last_reason = lookup_status.ErrorMessage();
+      }
     }
+
+    // Diagnostic: surface *why* no kernel matched (version vs. type-constraint mismatch, or no
+    // registration at all). TryFindKernel builds this reason but the pointer-only return discards it,
+    // which otherwise leaves EP GetCapability logging only an opaque "kernel not found".
+    LOGS(logger_, VERBOSE) << "LookUpKernel[" << provider_type_ << "] no kernel for "
+                           << node.OpType() << "(" << node.Name() << "): "
+                           << (last_reason.empty() ? "no candidate kernels registered for this op/domain/provider"
+                                                   : last_reason);
 
     return nullptr;
   }

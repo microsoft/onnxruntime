@@ -393,6 +393,12 @@ std::string ShaderVariableHelper::SetByOffsetImpl(std::string_view offset, std::
     case onnxruntime::webgpu::ProgramVariableDataType::Boolx4:
       ss << name_ << "[" << offset << "]=dot(vec4<u32>(0x1, 0x100, 0x10000, 0x1000000), vec4<u32>(" << value << "));";
       break;
+    case onnxruntime::webgpu::ProgramVariableDataType::Uint8x4:
+      // Pack 4 uint8 elements (supplied as a vec4<u32>, one value per lane) into a single u32
+      // storage word, lane 0 -> low byte. Same byte layout as Boolx4, but mask each lane to a
+      // byte so values > 1 (real uint8, not just 0/1) pack correctly.
+      ss << name_ << "[" << offset << "]=dot(vec4<u32>(0x1u, 0x100u, 0x10000u, 0x1000000u), (vec4<u32>(" << value << ") & vec4<u32>(0xFFu)));";
+      break;
     default:
       ss << name_ << "[" << offset << "]=" << value << ";";
   }

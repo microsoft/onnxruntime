@@ -219,6 +219,35 @@ TEST(MathOpTest, Clip_uint32) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+// int64 Clip, run explicitly on the WebGPU EP. WebGPU has no native 64-bit integer type; the EP
+// stores int64 as vec2<u32> and the dedicated ClipInt64 kernel clamps on the truncated low 32 bits
+// (interpreted as i32), then sign-extends on write. Values are kept within the int32 range -- the
+// realistic index/position case and where the truncated clamp matches the reference result.
+TEST(MathOpTest, Clip_int64_WebGpu) {
+  auto webgpu_ep = DefaultWebGpuExecutionProvider();
+  if (webgpu_ep == nullptr) {
+    GTEST_SKIP() << "WebGPU EP is not available in this build.";
+  }
+
+  OpTester test("Clip", 13);
+
+  std::vector<int64_t> dims{3, 3};
+  test.AddInput<int64_t>("X", dims,
+                         {-1, 0, 1,
+                          -16, 12, -6,
+                          -5, 2, 16});
+  test.AddInput<int64_t>("min", {}, {-10});
+  test.AddInput<int64_t>("max", {}, {10});
+  test.AddOutput<int64_t>("Y", dims,
+                          {-1, 0, 1,
+                           -10, 10, -6,
+                           -5, 2, 10});
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.push_back(std::move(webgpu_ep));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+
 TEST(MathOpTest, Clip) {
   // To test NNAPI EP, we need the min/max to be in initializers
   auto run_test = [](bool min_max_are_initializer) {

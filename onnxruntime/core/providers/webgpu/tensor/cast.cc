@@ -61,6 +61,11 @@ Status CastProgram::GenerateShaderCode(ShaderHelper& sh) const {
     case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
       expression = "vec4<u32>(a)";
       break;
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+      // Output uint8 is stored packed (4 bytes per u32); the SetByOffset for Uint8x4 does the
+      // packing, so here we just widen to a vec4<u32> of per-lane values (e.g. bool 0/1 -> uint8).
+      expression = "vec4<u32>(a)";
+      break;
     case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
       expression = "vec4<bool>(a)";
       break;
@@ -187,7 +192,12 @@ template <int StartVersion, int EndVersion>
 KernelCreateInfo CreateCastKernelInfo(bool enable_int64) {
   // Casting to int64 is always supported. Casting *from* int64 (int64 in T1/input) stays guarded by enable_int64.
   const auto& t1_constraints = GetOpTypeConstraints(/*enable_int64=*/enable_int64, /*enable_bool=*/true);
-  const auto& t2_constraints = GetOpTypeConstraints(/*enable_int64=*/true, /*enable_bool=*/true);
+  // T2 (output): the int64+bool set, plus uint8 so the WebGPU EP can produce the packed-uint8
+  // tensors that WebNN uses to represent bool graph outputs (e.g. the SD safety checker's terminal
+  // bool->uint8 casts). uint8 is output-only (not added to T1): casting *to* uint8 packs via the
+  // Uint8x4 SetByOffset; casting *from* uint8 is not needed by these graphs.
+  std::vector<MLDataType> t2_constraints = GetOpTypeConstraints(/*enable_int64=*/true, /*enable_bool=*/true);
+  t2_constraints.push_back(DataTypeImpl::GetTensorType<uint8_t>());
 
   KernelCreatePtrFn kernel_create_fn = [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
     out = std::make_unique<Cast>(info);
