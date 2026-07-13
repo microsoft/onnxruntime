@@ -122,8 +122,8 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
          << "    workgroupBarrier();\n"
          << "  }\n"
          << "  if (lindex == 0) {\n"
-         << "    row_max_shared = thread_shared[0];\n"
-         << "    row_sum_shared = thread_sum_shared[0];\n"
+         << "    row_max_shared = x_value_t(" << MaxVector("thread_shared[0]", components) << ");\n"
+         << "    row_sum_shared = x_value_t(" << SumVector("thread_sum_shared[0]", components) << ");\n"
          << "  }\n"
          << "  workgroupBarrier();\n";
   } else {
@@ -215,7 +215,7 @@ Status Softmax::ComputeInternal(ComputeContext& context) const {
   const int64_t cols = is_transpose_required ? transposed_input_shape[input_rank - 1] : (opset_ >= 13 ? input_shape[input_rank - 1] : input_shape.SizeFromDimension(axis));
   const int64_t rows = input_shape.Size() / cols;
   const auto algorithm = context.GetSoftmaxAlgorithm();
-  const int64_t components = algorithm == SoftmaxAlgorithm::Online ? 1 : GetMaxComponents(cols);
+  const int64_t components = GetMaxComponents(cols);
   const auto packed_cols = cols / components;
   uint32_t workgroup_size = rows == 1 ? 256 : 64;
   // check input tensor element type is float

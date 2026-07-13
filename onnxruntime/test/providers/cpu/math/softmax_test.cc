@@ -18,21 +18,16 @@ namespace onnxruntime {
 namespace test {
 
 #ifdef USE_WEBGPU
-static std::unique_ptr<IExecutionProvider> CreateWebGpuProvider(const char* softmax_algorithm) {
-  ConfigOptions config_options{};
-  if (softmax_algorithm != nullptr) {
-    ORT_THROW_IF_ERROR(config_options.AddConfigEntry(webgpu::options::kSoftmaxAlgorithm, softmax_algorithm));
-  }
-
-  return WebGpuExecutionProviderWithOptions(config_options);
-}
-
 static void RunWebGpuSoftmaxOnlineTest(const std::vector<float>& x_vals,
                                        const std::vector<float>& expected_vals,
                                        const std::vector<int64_t>& dimensions,
                                        int opset = 13,
                                        int64_t axis = -1) {
-  auto provider = CreateWebGpuProvider(webgpu::options::kSoftmaxAlgorithm_Online);
+  ConfigOptions config_options{};
+  ASSERT_STATUS_OK(config_options.AddConfigEntry(webgpu::options::kSoftmaxAlgorithm,
+                                                 webgpu::options::kSoftmaxAlgorithm_Online));
+
+  auto provider = WebGpuExecutionProviderWithOptions(config_options);
   if (!provider) {
     GTEST_SKIP() << "WebGPU execution provider is not available.";
   }
