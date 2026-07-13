@@ -84,7 +84,7 @@ bool KernelDef::IsConflict(const KernelDef& other) const {
   // check memory type
   auto& other_input_mem_types = other.input_memory_type_args_;
   for (auto it : input_memory_type_args_) {
-    if (other_input_mem_types.count(it.first) && other_input_mem_types.find(it.first)->second != it.second)
+    if (other_input_mem_types.count(it.first) && other_input_mem_types.find(it.first)->second == it.second)
       return false;
   }
   if (input_memory_type_args_.empty() && !other.input_memory_type_args_.empty())
@@ -92,7 +92,7 @@ bool KernelDef::IsConflict(const KernelDef& other) const {
 
   auto& other_output_mem_types = other.output_memory_type_args_;
   for (auto it : output_memory_type_args_) {
-    if (other_output_mem_types.count(it.first) && other_output_mem_types.find(it.first)->second != it.second)
+    if (other_output_mem_types.count(it.first) && other_output_mem_types.find(it.first)->second == it.second)
       return false;
   }
   return !(output_memory_type_args_.empty() && !other.output_memory_type_args_.empty());
