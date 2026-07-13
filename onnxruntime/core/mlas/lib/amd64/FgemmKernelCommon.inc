@@ -148,16 +148,16 @@ ENDIF
 FgemmKernelExit MACRO Isa
 
         mov     eax,r11d
-        movaps  xmm6,FgemmKernelFrame.SavedXmm6[rsp]
-        movaps  xmm7,FgemmKernelFrame.SavedXmm7[rsp]
-        movaps  xmm8,FgemmKernelFrame.SavedXmm8[rsp]
-        movaps  xmm9,FgemmKernelFrame.SavedXmm9[rsp]
-        movaps  xmm10,FgemmKernelFrame.SavedXmm10[rsp]
-        movaps  xmm11,FgemmKernelFrame.SavedXmm11[rsp]
-        movaps  xmm12,FgemmKernelFrame.SavedXmm12[rsp]
-        movaps  xmm13,FgemmKernelFrame.SavedXmm13[rsp]
-        movaps  xmm14,FgemmKernelFrame.SavedXmm14[rsp]
-        movaps  xmm15,FgemmKernelFrame.SavedXmm15[rsp]
+        movaps  xmm6,XMMWORD PTR FgemmKernelFrame.SavedXmm6[rsp]
+        movaps  xmm7,XMMWORD PTR FgemmKernelFrame.SavedXmm7[rsp]
+        movaps  xmm8,XMMWORD PTR FgemmKernelFrame.SavedXmm8[rsp]
+        movaps  xmm9,XMMWORD PTR FgemmKernelFrame.SavedXmm9[rsp]
+        movaps  xmm10,XMMWORD PTR FgemmKernelFrame.SavedXmm10[rsp]
+        movaps  xmm11,XMMWORD PTR FgemmKernelFrame.SavedXmm11[rsp]
+        movaps  xmm12,XMMWORD PTR FgemmKernelFrame.SavedXmm12[rsp]
+        movaps  xmm13,XMMWORD PTR FgemmKernelFrame.SavedXmm13[rsp]
+        movaps  xmm14,XMMWORD PTR FgemmKernelFrame.SavedXmm14[rsp]
+        movaps  xmm15,XMMWORD PTR FgemmKernelFrame.SavedXmm15[rsp]
 IFIDNI <Isa>, <Avx512F>
         mov     r12,FgemmKernelFrame.SavedR12[rsp]
         mov     r13,FgemmKernelFrame.SavedR13[rsp]
