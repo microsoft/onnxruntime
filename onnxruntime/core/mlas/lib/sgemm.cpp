@@ -1129,7 +1129,8 @@ MlasSgemmOperation(
     size_t ldb,
     float beta,
     float* C,
-    size_t ldc
+    size_t ldc,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
     )
 /*++
 
@@ -1310,9 +1311,9 @@ Return Value:
             //
 
             if (TransB == CblasNoTrans) {
-                MlasSgemmCopyPackB(PanelB, B + n + k * ldb, ldb, CountN, CountK, nullptr);
+                MlasSgemmCopyPackB(PanelB, B + n + k * ldb, ldb, CountN, CountK, BackendKernelSelectorConfig);
             } else {
-                MlasSgemmTransposePackB(PanelB, B + k + n * ldb, ldb, CountN, CountK, nullptr);
+                MlasSgemmTransposePackB(PanelB, B + k + n * ldb, ldb, CountN, CountK, BackendKernelSelectorConfig);
             }
 
             //
@@ -1323,7 +1324,7 @@ Return Value:
 
             if (TransA == CblasNoTrans) {
 
-                MlasSgemmKernelLoop(A + k, PanelB, c, CountK, M, CountN, lda, ldc, alpha, ZeroMode, nullptr);
+                MlasSgemmKernelLoop(A + k, PanelB, c, CountK, M, CountN, lda, ldc, alpha, ZeroMode, BackendKernelSelectorConfig);
 
             } else {
 
@@ -1347,7 +1348,7 @@ Return Value:
                     // Step through the rows of the local buffer.
                     //
 
-                    c = MlasSgemmKernelLoop(PanelA, PanelB, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha, ZeroMode, nullptr);
+                    c = MlasSgemmKernelLoop(PanelA, PanelB, c, CountK, RowsTransposed, CountN, CountK, ldc, alpha, ZeroMode, BackendKernelSelectorConfig);
                 }
             }
 
@@ -1589,7 +1590,7 @@ Return Value:
         const float* B = (const float*)DataParams->B + RangeStartN * ((TransB == CblasNoTrans) ? 1 : ldb);
 
         MlasSgemmOperation(TransA, TransB, RangeCountM, RangeCountN, K,
-            DataParams->alpha, A, lda, B, ldb, DataParams->beta, C, ldc);
+            DataParams->alpha, A, lda, B, ldb, DataParams->beta, C, ldc, BackendKernelSelectorConfig);
     }
 }
 #if defined(_MSC_VER) && !defined(__clang__)

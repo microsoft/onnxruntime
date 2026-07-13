@@ -46,7 +46,8 @@ void MlasSgemmCopyPackB(
     const float* B,
     size_t ldb,
     size_t CountX,
-    size_t CountY);
+    size_t CountY,
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* mlas_backend_kernel_selector_config);
 
 #endif  // x64
 
@@ -100,7 +101,7 @@ class MlasQ4dqTest : public MlasTestBase {
     const size_t AlignedK = (K + 15) & ~15;
     float* gemmpack = SgemmPackBuf.GetBuffer(AlignedK * AlignedN, true);
     float* gemmpack_ref = SgemmPackRefBuf.GetBuffer(AlignedK * AlignedN, true);
-    MlasSgemmCopyPackB(gemmpack_ref, Input, N, N, K);
+    MlasSgemmCopyPackB(gemmpack_ref, Input, N, N, K, nullptr);
 
     const size_t blkq_ldb = MlasQ4GemmPackBSize(qtype, 1, K);
     MlasBlkQ4DequantSgemmPackB(qtype, gemmpack, Packed, N, K, blkq_ldb);
