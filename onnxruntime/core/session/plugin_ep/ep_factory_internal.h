@@ -4,9 +4,9 @@
 #pragma once
 
 #include <gsl/gsl>
-#include <vector>
 
 #include "core/common/common.h"
+#include "core/common/inlined_containers.h"
 #include "core/providers/providers.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
@@ -46,15 +46,12 @@ class EpFactoryInternal : public OrtEpFactory {
     ORT_THROW("Internal error. CreateIExecutionProvider should be used for EpFactoryInternal.");
   }
 
-  // same input args as CreateEp in case we need something from device or ep_metadata_pairs in the future.
-  OrtStatus* CreateIExecutionProvider(_In_reads_(num_devices) const OrtHardwareDevice* const* devices,
-                                      _In_reads_(num_devices) const OrtKeyValuePairs* const* ep_metadata_pairs,
-                                      _In_ size_t num_devices,
+  // Creates an IExecutionProvider for the selected OrtEpDevice instances.
+  // The provider reports this selection through GetEpDevices.
+  OrtStatus* CreateIExecutionProvider(gsl::span<const OrtEpDevice* const> ep_devices,
                                       _In_ const OrtSessionOptions* session_options,
                                       _In_ const OrtLogger* logger,
-                                      _Out_ std::unique_ptr<IExecutionProvider>* ep) {
-    return impl_->CreateIExecutionProvider(devices, ep_metadata_pairs, num_devices, session_options, logger, ep);
-  }
+                                      _Out_ std::unique_ptr<IExecutionProvider>* ep);
 
   OrtStatus* CreateAllocator(_In_ const OrtMemoryInfo* memory_info,
                              _In_opt_ const OrtKeyValuePairs* allocator_options,
@@ -138,8 +135,7 @@ struct InternalExecutionProviderFactory : public IExecutionProviderFactory {
 
  private:
   EpFactoryInternal& ep_factory_;
-  std::vector<const OrtHardwareDevice*> devices_;
-  std::vector<const OrtKeyValuePairs*> ep_metadata_;
+  InlinedVector<const OrtEpDevice*> ep_devices_;
 };
 
 }  // namespace onnxruntime

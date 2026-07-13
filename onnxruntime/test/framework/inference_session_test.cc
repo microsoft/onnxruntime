@@ -792,21 +792,52 @@ TEST(InferenceSessionTests, WebGpuEpFactoryRejectsVirtualDeviceWithoutCompileOnl
   virtual_gpu.type = OrtHardwareDeviceType_GPU;
   virtual_gpu.vendor = "Microsoft";
   virtual_gpu.metadata.Add(kOrtHardwareDevice_MetadataKey_IsVirtual, "1");
-  const OrtHardwareDevice* devices[] = {&virtual_gpu};
 
   EpFactoryInternal factory(std::make_unique<WebGpuEpFactory>(/*allow_virtual_devices=*/true));
+
+  OrtEpDevice virtual_ep_device{};
+  virtual_ep_device.device = &virtual_gpu;
+  const OrtEpDevice* selected_ep_devices[] = {&virtual_ep_device};
 
   Ort::SessionOptions session_options;  // no session.compile_only set -> a runnable (non-compile-only) session
   const OrtSessionOptions* c_session_options = session_options;
   std::unique_ptr<IExecutionProvider> ep;
   // logger is unused on the rejection path (CreateIExecutionProvider returns before it is dereferenced).
-  OrtStatus* status = factory.CreateIExecutionProvider(devices, /*ep_metadata_pairs=*/nullptr, /*num_devices=*/1,
-                                                       c_session_options, /*logger=*/nullptr, &ep);
+  OrtStatus* status = factory.CreateIExecutionProvider(selected_ep_devices, c_session_options, /*logger=*/nullptr,
+                                                       &ep);
   ASSERT_NE(status, nullptr);
-  Ort::Status ort_status{status};  // takes ownership; releases on scope exit
+  Ort::Status ort_status{status};  // Takes ownership of the status and releases it on destruction.
   EXPECT_EQ(ort_status.GetErrorCode(), ORT_INVALID_ARGUMENT);
   EXPECT_EQ(ep, nullptr);
 }
+
+#if !defined(ORT_NO_EXCEPTIONS)
+// Parsing an invalid WebGPU option throws an exception. Verify that the factory's noexcept
+// CreateIExecutionProvider returns an error status instead of terminating the process.
+TEST(InferenceSessionTests, WebGpuEpFactoryReturnsStatusForInvalidOption) {
+  OrtHardwareDevice gpu{};
+  gpu.type = OrtHardwareDeviceType_GPU;
+  gpu.vendor = "TestVendor";
+
+  EpFactoryInternal factory(std::make_unique<WebGpuEpFactory>(/*allow_virtual_devices=*/false));
+
+  OrtEpDevice ep_device{};
+  ep_device.device = &gpu;
+  const OrtEpDevice* selected_ep_devices[] = {&ep_device};
+
+  Ort::SessionOptions session_options;
+  session_options.AddConfigEntry("ep.webgpuexecutionprovider.preferredLayout", "invalid");
+  const OrtSessionOptions* c_session_options = session_options;
+  std::unique_ptr<IExecutionProvider> ep;
+  // The session logger is not used because option parsing fails before the EP is created.
+  OrtStatus* status = factory.CreateIExecutionProvider(selected_ep_devices, c_session_options, /*logger=*/nullptr,
+                                                       &ep);
+  ASSERT_NE(status, nullptr);
+  Ort::Status ort_status{status};  // Takes ownership of the status and releases it on destruction.
+  EXPECT_NE(ort_status.GetErrorMessage().find("Invalid preferred layout"), std::string::npos);
+  EXPECT_EQ(ep, nullptr);
+}
+#endif  // !defined(ORT_NO_EXCEPTIONS)
 
 // A device-free (compile-only) WebGPU EP must hand out the no-op "dummy" allocator instead of a real
 // GpuBufferAllocator, which can't be constructed without a Dawn device. Asserts the allocator *type*, which

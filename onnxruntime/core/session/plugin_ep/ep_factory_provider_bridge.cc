@@ -34,6 +34,7 @@ OrtStatus* ProviderBridgeEpFactory::CreateIExecutionProvider(const OrtHardwareDe
                                                              const OrtSessionOptions* session_options,
                                                              const OrtLogger* session_logger,
                                                              std::unique_ptr<IExecutionProvider>* ep) noexcept {
+  API_IMPL_BEGIN
   // get the provider specific options
   auto ep_options = GetOptionsFromSessionOptions(session_options->value);
   auto& provider = provider_library_.Get();
@@ -42,5 +43,6 @@ OrtStatus* ProviderBridgeEpFactory::CreateIExecutionProvider(const OrtHardwareDe
                                                   ep_options, *session_options, *session_logger, *ep);
 
   return ToOrtStatus(status);
+  API_IMPL_END
 }
 }  // namespace onnxruntime
