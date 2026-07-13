@@ -198,7 +198,9 @@ Q2Int8GemmR1xC4BlkLen128Avx2(
 
             QuantBDataColPtr += GroupStrideBytes;
             QuantBScaleColPtr += GroupStrideScale;
-            BiasPtr += BiasPtr != nullptr ? kNCols4 : 0;
+            if (BiasPtr != nullptr) {
+                BiasPtr += kNCols4;
+            }
             SumPtr += kNCols4;
         }
     }
