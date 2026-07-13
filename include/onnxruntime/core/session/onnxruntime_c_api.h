@@ -5767,9 +5767,13 @@ struct OrtApi {
 
   /** \brief Compute total size in bytes of the tensor data contained in an OrtValue.
    *
-   * Returns the total number of bytes used to store the tensor data. For numeric tensors,
-   * this is sizeof(element_type) * total_element_count. OrtValues that are not tensors or
-   * that are tensors that contain strings will cause an error to be returned.
+   * Returns the total number of bytes used to store the tensor data. For numeric tensors of a
+   * type that occupies at least one byte per element, this is sizeof(element_type) *
+   * total_element_count. For packed sub-byte types (e.g. int4/uint4, which store multiple
+   * elements per byte) it is the actual packed storage size, which is smaller than
+   * sizeof(element_type) * total_element_count. Use this value (not the element count) when
+   * copying or bounds-checking the raw tensor buffer. OrtValues that are not tensors or that are
+   * tensors that contain strings will cause an error to be returned.
    *
    * \param[in] ort_value OrtValue instance containing a tensor
    * \param[out] size The total size of the tensor data in bytes
