@@ -7,6 +7,7 @@
 #include <filesystem>
 
 #include "onnx_ctx_model_helper.h"
+#include "core/common/path_utils.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/framework/execution_provider.h"
 #include "nv_execution_provider.h"
@@ -216,103 +217,6 @@ Status CreateCtxNode(const GraphViewer& graph_viewer,
   return Status::OK();
 }
 
-/*
- * Return the directory where the ep context model locates
- */
-std::filesystem::path GetPathOrParentPathOfCtxModel(const std::string& ep_context_file_path) {
-  if (ep_context_file_path.empty()) {
-    return std::filesystem::path();
-  }
-  std::filesystem::path ctx_path(ep_context_file_path);
-  if (std::filesystem::is_directory(ep_context_file_path)) {
-    return ctx_path;
-  } else {
-    return ctx_path.parent_path();
-  }
-}
-
-/*
- * Get "EP context" model path.
- *
- * Function logic:
- * If ep_context_file_path is provided,
- *     - If ep_context_file_path is a file, return "ep_context_file_path".
- *     - If ep_context_file_path is a directory, return "ep_context_file_path/original_model_name_ctx.onnx".
- * If ep_context_file_path is not provided,
- *     - Return "original_model_name_ctx.onnx".
- *
- * TRT EP has rules about context model path and engine cache path (see tensorrt_execution_provider.cc):
- * - If dump_ep_context_model_ and engine_cache_enabled_ is enabled, TRT EP will dump context model and save engine cache
- *   to the same directory provided by ep_context_file_path_. (i.e. engine_cache_path_ = ep_context_file_path_)
- *
- * Example 1:
- * ep_context_file_path = "/home/user/ep_context_model_directory"
- * original_model_path = "model.onnx"
- * => return "/home/user/ep_context_model_folder/model_ctx.onnx"
- *
- * Example 2:
- * ep_context_file_path = "my_ctx_model.onnx"
- * original_model_path = "model.onnx"
- * => return "my_ctx_model.onnx"
- *
- * Example 3:
- * ep_context_file_path = "/home/user2/ep_context_model_directory/my_ctx_model.onnx"
- * original_model_path = "model.onnx"
- * => return "/home/user2/ep_context_model_directory/my_ctx_model.onnx"
- *
- */
-std::string GetCtxModelPath(const std::string& ep_context_file_path,
-                            const std::string& original_model_path) {
-  std::string ctx_model_path;
-
-  if (!ep_context_file_path.empty() && !std::filesystem::is_directory(ep_context_file_path)) {
-    ctx_model_path = ep_context_file_path;
-  } else {
-    std::filesystem::path model_path = original_model_path;
-    std::filesystem::path model_name_stem = model_path.stem();  // model_name.onnx -> model_name
-    std::string ctx_model_name = model_name_stem.string() + "_ctx.onnx";
-
-    if (std::filesystem::is_directory(ep_context_file_path)) {
-      std::filesystem::path model_directory = ep_context_file_path;
-      ctx_model_path = model_directory.append(ctx_model_name).string();
-    } else {
-      ctx_model_path = ctx_model_name;
-    }
-  }
-  return ctx_model_path;
-}
-
-bool IsAbsolutePath(const std::string& path_string) {
-#ifdef _WIN32
-  onnxruntime::PathString ort_path_string = onnxruntime::ToPathString(path_string);
-  auto path = std::filesystem::path(ort_path_string.c_str());
-  return path.is_absolute();
-#else
-  if (!path_string.empty() && path_string[0] == '/') {
-    return true;
-  }
-  return false;
-#endif
-}
-
-// Like "../file_path"
-bool IsRelativePathToParentPath(const std::string& path_string) {
-#ifdef _WIN32
-  onnxruntime::PathString ort_path_string = onnxruntime::ToPathString(path_string);
-  auto path = std::filesystem::path(ort_path_string.c_str());
-  auto relative_path = path.lexically_normal().make_preferred().wstring();
-  if (relative_path.find(L"..", 0) != std::string::npos) {
-    return true;
-  }
-  return false;
-#else
-  if (!path_string.empty() && path_string.find("..", 0) != std::string::npos) {
-    return true;
-  }
-  return false;
-#endif
-}
-
 Status TensorRTCacheModelHandler::GetEpContextFromGraph(const Node& node) {
   auto& attrs = node.GetAttributes();
 
@@ -352,7 +256,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const Node& node) {
 
     // Validate that the cache path does not escape the model directory.
     // Rejects absolute paths, ".." traversal, and symlink-based escapes.
-    std::filesystem::path ctx_model_dir(GetPathOrParentPathOfCtxModel(ep_context_model_path_));
+    std::filesystem::path ctx_model_dir(path_utils::GetDirOrParentPath(ep_context_model_path_));
     ORT_RETURN_IF_ERROR(utils::ValidateExternalDataPathFromDir(ctx_model_dir, std::filesystem::path(cache_path)));
 
     // The engine cache and context model (current model) should be in the same directory
