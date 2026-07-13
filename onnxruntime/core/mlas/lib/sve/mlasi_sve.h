@@ -30,7 +30,7 @@ Abstract:
 #endif
 
 
-#define PACKED_B_BLOCK_WIDTH 16
+#define kMlasSvePackedBBlockWidth 16
 
 typedef svfloat32_t MLAS_SVFLOAT32;
 typedef svint32_t MLAS_SVINT32;
@@ -177,16 +177,16 @@ MlasSgemmKernelZero_sve(
 );
 
 void MLAS_SVE_TARGET MLASCALL
-SCATTER_STORE(float* d, const float* b);
+MlasSveScatterStore(float* d, const float* b);
 
 void MLAS_SVE_TARGET MLASCALL
-SVE_ZERO_INITIALIZE(float* d);
+MlasSveZeroInitialize(float* d);
 
 void MLAS_SVE_TARGET MLASCALL
-SVE_LOAD_STORE(float* D, const float* b);
+MlasSveLoadStore(float* D, const float* b);
 
 void MLAS_SVE_TARGET MLASCALL
-SVE_TRANSPOSE(float*& D, const float*& b, size_t ldb, size_t& x);
+MlasSveTranspose(float*& D, const float*& b, size_t ldb, size_t& x);
 
 template <unsigned N>
 void
@@ -197,8 +197,8 @@ MlasSveTransposePackBNx4(
 );
 
 template <unsigned N>
- void
-TransposePackBNx8(
+void
+MlasSveTransposePackBNx8(
     float* D,
     const float* B,
     size_t ldb
