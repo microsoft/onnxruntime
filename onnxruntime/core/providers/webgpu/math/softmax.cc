@@ -59,24 +59,21 @@ static std::string MaxVector(const std::string& name, int components) {
 
 Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Add input and output variables
-  const auto& input = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+  const auto& input = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
+                                               ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AddOutput("result", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   int components = input.NumComponents();
 
-  const std::string thread_max_decl = is_fp32_
-                                          ? "var thread_max = x_value_t(-3.4028234663852886e+38f);\n"
-                                          : "var thread_max = x_value_t(-65504.0h);\n";
+  const std::string thread_max_scalar_decl = is_fp32_
+                                                 ? "var thread_max = x_element_t(-3.4028234663852886e+38f);\n"
+                                                 : "var thread_max = x_element_t(-65504.0h);\n";
 
   // Define shared memory for row max and row sum
   shader.AdditionalImplementation()
       << "var<workgroup> row_max_shared : x_value_t;\n"
       << "var<workgroup> row_sum_shared : x_value_t;\n"
-      << "var<workgroup> thread_shared : array<x_value_t, " << wg_ << ">;\n";
-
-  if (algorithm_ == SoftmaxAlgorithm::Online) {
-    shader.AdditionalImplementation()
-        << "var<workgroup> thread_sum_shared : array<x_value_t, " << wg_ << ">;\n";
-  }
+      << "var<workgroup> thread_max_scalar_shared : array<x_element_t, " << wg_ << ">;\n"
+      << "var<workgroup> thread_sum_scalar_shared : array<x_element_t, " << wg_ << ">;\n";
 
   // Define helper functions to get and set values
   shader.AdditionalImplementation()
@@ -89,90 +86,56 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "  result[index] = value;\n"
       << "}\n";
 
-  auto& body = shader.MainFunctionBody();
-  body << "  let gindex = i32(global_idx);\n"
-       << "  let lindex = i32(local_idx);\n"
-       << "  const wg = " << wg_ << ";\n"
-       << "  let row = gindex / wg;\n"
-       << "  let cols = uniforms.packedCols;\n"
-       << "  let row_stride : i32 = uniforms.packedCols;\n";
+  // Main function body
+  shader.MainFunctionBody()
+      << "  let gindex = i32(global_idx);\n"
+      << "  let lindex = i32(local_idx);\n"
+      << "  const wg = " << wg_ << ";\n"
+      << "  let row = gindex / wg;\n"
+      << "  let cols = uniforms.packedCols;\n"
+      << "  let row_stride : i32 = uniforms.packedCols;\n"
 
-  if (algorithm_ == SoftmaxAlgorithm::Online) {
-    body << thread_max_decl
-         << "  var thread_sum = x_value_t(0.0);\n"
-         << "  for (var col = lindex; col < cols; col += wg) {\n"
-         << "    let value = getValue(row, col, row_stride);\n"
-         << "    let new_max = max(thread_max, value);\n"
-         << "    thread_sum = thread_sum * exp(thread_max - new_max) + exp(value - new_max);\n"
-         << "    thread_max = new_max;\n"
-         << "  }\n"
-         << "  thread_shared[lindex] = thread_max;\n"
-         << "  thread_sum_shared[lindex] = thread_sum;\n"
-         << "  workgroupBarrier();\n"
-         << "  for (var curr_size = wg >> 1; curr_size > 0; curr_size = curr_size >> 1) {\n"
-         << "    if (lindex < curr_size) {\n"
-         << "      let rhs_max = thread_shared[lindex + curr_size];\n"
-         << "      let rhs_sum = thread_sum_shared[lindex + curr_size];\n"
-         << "      let lhs_max = thread_shared[lindex];\n"
-         << "      let lhs_sum = thread_sum_shared[lindex];\n"
-         << "      let merged_max = max(lhs_max, rhs_max);\n"
-         << "      thread_sum_shared[lindex] = lhs_sum * exp(lhs_max - merged_max) + rhs_sum * exp(rhs_max - merged_max);\n"
-         << "      thread_shared[lindex] = merged_max;\n"
-         << "    }\n"
-         << "    workgroupBarrier();\n"
-         << "  }\n"
-         << "  if (lindex == 0) {\n"
-         << "    row_max_shared = x_value_t(" << MaxVector("thread_shared[0]", components) << ");\n"
-         << "    row_sum_shared = x_value_t(" << SumVector("thread_sum_shared[0]", components) << ");\n"
-         << "  }\n"
-         << "  workgroupBarrier();\n";
-  } else {
-    body << thread_max_decl
-         << "  for (var col = lindex; col < cols; col += wg) {\n"
-         << "    let value = getValue(row, col, row_stride);\n"
-         << "    thread_max = max(thread_max, value);\n"
-         << "  }\n"
-         << "  if (lindex < cols) {\n"
-         << "    thread_shared[lindex] = thread_max;\n"
-         << "  }\n"
-         << "  workgroupBarrier();\n"
-         << "  var reduce_size = min(cols, wg);\n"
-         << "  for (var curr_size = reduce_size >> 1; curr_size > 0; curr_size = reduce_size >> 1) {\n"
-         << "    reduce_size = curr_size + (reduce_size & 1);\n"
-         << "    if (lindex < curr_size) {\n"
-         << "      thread_shared[lindex] = max(thread_shared[lindex], thread_shared[lindex + reduce_size]);\n"
-         << "    }\n"
-         << "    workgroupBarrier();\n"
-         << "  }\n"
-         << "  if (lindex == 0) {\n"
-         << "    row_max_shared = x_value_t(" << MaxVector("thread_shared[0]", components) << ");\n"
-         << "  }\n"
-         << "  workgroupBarrier();\n"
-         << "  var thread_sum = x_value_t(0.0);\n"
-         << "  for (var col = lindex; col < cols; col += wg) {\n"
-         << "    let sub_exp = exp(getValue(row, col, row_stride) - row_max_shared);\n"
-         << "    thread_sum += sub_exp;\n"
-         << "  }\n"
-         << "  thread_shared[lindex] = thread_sum;\n"
-         << "  workgroupBarrier();\n"
-         << "  for (var curr_size = wg >> 1; curr_size > 0; curr_size = curr_size >> 1) {\n"
-         << "    if (lindex < curr_size) {\n"
-         << "      thread_shared[lindex] = thread_shared[lindex] + thread_shared[lindex + curr_size];\n"
-         << "    }\n"
-         << "    workgroupBarrier();\n"
-         << "  }\n"
-         << "  if (lindex == 0) {\n"
-         << "    row_sum_shared = x_value_t(" << SumVector("thread_shared[0]", components) << ");\n"
-         << "  }\n"
-         << "  workgroupBarrier();\n";
-  }
+      // Online accumulation: track scalar running max and scalar running sum.
+      << thread_max_scalar_decl
+      << "  var thread_sum = x_element_t(0.0);\n"
+      << "  for (var col = lindex; col < cols; col += wg) {\n"
+      << "    let value = getValue(row, col, row_stride);\n"
+      << "    let value_max = x_element_t(" << MaxVector("value", components) << ");\n"
+      << "    let new_max = max(thread_max, value_max);\n"
+      << "    let shifted_exp = exp(value - x_value_t(new_max));\n"
+      << "    thread_sum = thread_sum * exp(thread_max - new_max) + x_element_t(" << SumVector("shifted_exp", components) << ");\n"
+      << "    thread_max = new_max;\n"
+      << "  }\n"
+      << "  thread_max_scalar_shared[lindex] = thread_max;\n"
+      << "  thread_sum_scalar_shared[lindex] = thread_sum;\n"
+      << "  workgroupBarrier();\n"
 
-  body << "  for (var col = lindex; col < cols; col += wg) {\n"
-       << "    var value = exp(getValue(row, col, row_stride) - row_max_shared) / row_sum_shared;\n"
-       << "    // max operation protects against NaN since all values should be >=0\n"
-       << "    value = max(value, x_value_t(0.0));\n"
-       << "    setValue(row, col, row_stride, value);\n"
-       << "  }\n";
+      // Merge per-thread online states.
+      << "  for (var curr_size = wg >> 1; curr_size > 0; curr_size = curr_size >> 1) {\n"
+      << "    if (lindex < curr_size) {\n"
+      << "      let rhs_max = thread_max_scalar_shared[lindex + curr_size];\n"
+      << "      let rhs_sum = thread_sum_scalar_shared[lindex + curr_size];\n"
+      << "      let lhs_max = thread_max_scalar_shared[lindex];\n"
+      << "      let lhs_sum = thread_sum_scalar_shared[lindex];\n"
+      << "      let merged_max = max(lhs_max, rhs_max);\n"
+      << "      thread_sum_scalar_shared[lindex] = lhs_sum * exp(lhs_max - merged_max) + rhs_sum * exp(rhs_max - merged_max);\n"
+      << "      thread_max_scalar_shared[lindex] = merged_max;\n"
+      << "    }\n"
+      << "    workgroupBarrier();\n"
+      << "  }\n"
+      << "  if (lindex == 0) {\n"
+      << "    row_max_shared = x_value_t(thread_max_scalar_shared[0]);\n"
+      << "    row_sum_shared = x_value_t(thread_sum_scalar_shared[0]);\n"
+      << "  }\n"
+      << "  workgroupBarrier();\n"
+
+      // Calculate the final value for each element in the row
+      << "  for (var col = lindex; col < cols; col += wg) {\n"
+      << "    var value = exp(getValue(row, col, row_stride) - row_max_shared) / row_sum_shared;\n"
+      << "    // max operation protects against NaN since all values should be >=0\n"
+      << "    value = max(value, x_value_t(0.0));\n"
+      << "    setValue(row, col, row_stride, value);\n"
+      << "  }\n";
 
   return Status::OK();
 }
@@ -214,14 +177,13 @@ Status Softmax::ComputeInternal(ComputeContext& context) const {
   // one part is treated as batch size, and the other part is performed by Softmax.
   const int64_t cols = is_transpose_required ? transposed_input_shape[input_rank - 1] : (opset_ >= 13 ? input_shape[input_rank - 1] : input_shape.SizeFromDimension(axis));
   const int64_t rows = input_shape.Size() / cols;
-  const auto algorithm = context.GetSoftmaxAlgorithm();
   const int64_t components = GetMaxComponents(cols);
   const auto packed_cols = cols / components;
   uint32_t workgroup_size = rows == 1 ? 256 : 64;
   // check input tensor element type is float
   const bool is_fp32 = input_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
 
-  SoftmaxProgram program{workgroup_size, is_fp32, algorithm};
+  SoftmaxProgram program{workgroup_size, is_fp32};
   if (is_transpose_required) {
     program
         .AddInputs({{&transposed_input_tensor, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components)}})
@@ -233,7 +195,7 @@ Status Softmax::ComputeInternal(ComputeContext& context) const {
   }
 
   program
-      .CacheHint(std::to_string(components), std::to_string(workgroup_size), algorithm == SoftmaxAlgorithm::Online ? "online" : "naive")
+      .CacheHint(std::to_string(components), std::to_string(workgroup_size))
       .SetWorkgroupSize(workgroup_size)
       .SetDispatchGroupSize(static_cast<uint32_t>(rows))
       .AddUniformVariables({{static_cast<int32_t>(packed_cols)}});
