@@ -24,10 +24,10 @@ struct KaiHalfTlsBuffers {
     std::vector<std::byte> rhs_packed;
 
     void ReleaseLargeBuffers() {
-        MlasShrinkKleidiAIScratchIfTooLarge(lhs_converted);
-        MlasShrinkKleidiAIScratchIfTooLarge(rhs_converted);
-        MlasShrinkKleidiAIScratchIfTooLarge(bias_zero);
-        MlasShrinkKleidiAIScratchIfTooLarge(rhs_packed);
+        ArmKleidiAI::MlasShrinkKleidiAIScratchIfTooLarge(lhs_converted);
+        ArmKleidiAI::MlasShrinkKleidiAIScratchIfTooLarge(rhs_converted);
+        ArmKleidiAI::MlasShrinkKleidiAIScratchIfTooLarge(bias_zero);
+        ArmKleidiAI::MlasShrinkKleidiAIScratchIfTooLarge(rhs_packed);
     }
 };
 
@@ -132,6 +132,9 @@ ArmKleidiAI::MlasHalfGemmBatch(
     MLAS_THREADPOOL* ThreadPool,
     const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig
 ) {
+    if (BackendKernelSelectorConfig != nullptr && !BackendKernelSelectorConfig->use_kleidiai) {
+        return false;
+    }
     if (BatchN == 0 || M == 0 || N == 0) {
         return true;
     }
@@ -144,8 +147,6 @@ ArmKleidiAI::MlasHalfGemmBatch(
 
     ScopedKaiHalfTlsCleanup cleanup{g_kai_half_tls};
 
-    MLAS_UNREFERENCED_PARAMETER(ThreadPool);
-    MLAS_UNREFERENCED_PARAMETER(BackendKernelSelectorConfig);
     // Validate all batch entries up front so we never partially execute and then
     // fall back (which would corrupt results for the already-written outputs).
     bool needs_rhs_packing = false;

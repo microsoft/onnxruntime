@@ -32,7 +32,7 @@ struct KaiHalfConvTlsBuffers {
     std::vector<std::byte> packed_lhs;
 
     void ReleaseLargeBuffers() {
-        MlasShrinkKleidiAIScratchIfTooLarge(packed_lhs);
+        ArmKleidiAI::MlasShrinkKleidiAIScratchIfTooLarge(packed_lhs);
     }
 };
 

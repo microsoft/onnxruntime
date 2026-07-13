@@ -8,7 +8,6 @@
 
 #include "../mlasi.h"
 #include <limits>
-#include <iostream>
 #include <vector>
 
 // Fix to ensure compatibility with MSVC build
@@ -26,7 +25,7 @@
 #define KLEIDIAI_KERNEL_LOGGING 0
 #endif
 
-#if KLEIDIAI_DEBUG_LOGGING ||KLEIDIAI_KERNEL_LOGGING
+#if KLEIDIAI_DEBUG_LOGGING || KLEIDIAI_KERNEL_LOGGING
 #include <iostream>
 #define KLEIDIAI_LOG(tag, msg) \
     do { \
@@ -52,6 +51,8 @@
     #define KLEIDIAI_KERNEL_LOG(msg)
 #endif
 
+namespace ArmKleidiAI {
+
 constexpr size_t MaximumRetainedKleidiAIScratchBytes = 8 * 1024 * 1024;
 
 template <typename T>
@@ -61,8 +62,6 @@ void MlasShrinkKleidiAIScratchIfTooLarge(std::vector<T>& buffer)
         std::vector<T>().swap(buffer);
     }
 }
-
-namespace ArmKleidiAI {
 
 // By default we should try for SME2 first before falling back to SME.
 inline const bool UseSME2 = MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME2();
