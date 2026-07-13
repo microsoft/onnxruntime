@@ -633,7 +633,8 @@ else()
           endif()
           # SVE FP32 GEMM (SGEMM) compute kernels.
           list(APPEND mlas_platform_srcs ${MLAS_SRC_DIR}/sve/sgemm_sve.cpp)
-          set_source_files_properties(${MLAS_SRC_DIR}/sve/sgemm_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve -O3 -ffast-math -funroll-loops ${ORT_SVE_ABI_FLAGS} ")
+          set_source_files_properties(${MLAS_SRC_DIR}/sve/sgemm_sve.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve ${ORT_SVE_ABI_FLAGS} ")
+          set_property(SOURCE ${MLAS_SRC_DIR}/sve/sgemm_sve.cpp APPEND PROPERTY COMPILE_OPTIONS "$<$<CONFIG:Release>:-O3;-ffast-math;-funroll-loops>")
           # SVE LinearAttention: the driver is plain C++ (no SVE compiler
           # support required); the compute kernel comes from either the
           # generated KleidiAI-style machine code (portable, production
