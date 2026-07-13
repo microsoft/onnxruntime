@@ -1,6 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #pragma once
+
+#include <atomic>
+#include <limits>
+#include <mutex>
+#include <optional>
+#include <stop_token>
+
 #include "core/common/logging/logging.h"
 #include "core/framework/device_stream_collection.h"
 #include "core/framework/execution_frame.h"
@@ -39,23 +46,68 @@ class StreamExecutionContext {
 
     void Set(int32_t v) {
       ORT_ENFORCE(v >= 0);
-      v_.store(v, std::memory_order_relaxed);
+      v_.store(v, std::memory_order_release);
+      if (v == 0) {
+        v_.notify_all();
+      }
     }
 
     bool Dec() {
-      return v_.fetch_sub(1, std::memory_order_relaxed) == 1;
+      auto value = v_.load(std::memory_order_relaxed);
+      for (;;) {
+        ORT_ENFORCE(value > 0);
+        if (v_.compare_exchange_weak(value, value - 1,
+                                     std::memory_order_acq_rel,
+                                     std::memory_order_relaxed)) {
+          break;
+        }
+      }
+
+      if (value == 1) {
+        v_.notify_all();
+      }
+
+      return value == 1;
     }
 
-    int32_t Get() {
-      return gsl::narrow_cast<int32_t>(v_.load(std::memory_order_relaxed));
+    int32_t Get() const {
+      return gsl::narrow_cast<int32_t>(v_.load(std::memory_order_acquire));
+    }
+
+    void Wait() const {
+      auto value = v_.load(std::memory_order_acquire);
+      while (value != 0) {
+        v_.wait(value, std::memory_order_acquire);
+        value = v_.load(std::memory_order_acquire);
+      }
     }
 
     void Inc() {
-      ++v_;
+      auto value = v_.load(std::memory_order_relaxed);
+      for (;;) {
+        ORT_ENFORCE(value > 0);
+        ORT_ENFORCE(value < std::numeric_limits<decltype(value)>::max());
+        if (v_.compare_exchange_weak(value, value + 1,
+                                     std::memory_order_acq_rel,
+                                     std::memory_order_relaxed)) {
+          return;
+        }
+      }
     }
 
    private:
     std::atomic_int_fast32_t v_;
+  };
+
+  class FirstFailureStatus {
+   public:
+    void SetStatus(const Status& status);
+    Status GetStatus() const;
+    void Reset();
+
+   private:
+    mutable std::mutex mutex_;
+    Status status_{Status::OK()};
   };
 
   StreamExecutionContext(const SessionState& sess_state,
@@ -70,6 +122,7 @@ class StreamExecutionContext {
                          std::vector<OrtValue>& fetches,
                          const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                          const logging::Logger& sess_logger,
+                         std::stop_token terminate_token,
                          bool single_thread_mode);
 
   const SessionState& GetSessionState() const;
@@ -86,7 +139,7 @@ class StreamExecutionContext {
 
   // Get status of the execution.
   // if one of the stream got non-OK status, the whole task status will be set as that non-OK status.
-  const Status& TaskStatus() const;
+  Status TaskStatus() const;
 
   // Decrease the count of a given barrier.
   bool DecCountDownBarrier(size_t barrier_id);
@@ -111,7 +164,13 @@ class StreamExecutionContext {
   void WaitAll();
 
   // If one of the stream got non-OK status, update the status in the context.
-  void SetStatus(Status& status);
+  void SetStatus(const Status& status);
+
+  std::stop_token GetCancellationToken() const noexcept {
+    return stop_source_.get_token();
+  }
+
+  void ResetForExecution(int32_t num_tasks, std::stop_token terminate_token);
 
   // Release the OrtValues after a step, based on the execution plan.
   void RecycleNodeInputs(onnxruntime::NodeIndex node_index);
@@ -158,7 +217,17 @@ class StreamExecutionContext {
 
   CountDownBarrier remain_tasks_;
 
-  Status task_status_{Status::OK()};
+  struct RequestStop {
+    mutable std::stop_source stop_source;
+
+    void operator()() const noexcept {
+      stop_source.request_stop();
+    }
+  };
+
+  std::stop_source stop_source_;
+  std::optional<std::stop_callback<RequestStop>> external_stop_callback_;
+  FirstFailureStatus task_status_;
 
 #ifdef ENABLE_TRAINING
   const ProgramRegion* program_range_{nullptr};
@@ -186,13 +255,13 @@ using NotificationIndex = size_t;
 void RunSince(size_t stream_idx,
               StreamExecutionContext& ctx,
               SessionScope& session_scope,
-              const bool& terminate_flag,
+              std::stop_token terminate_token,
               size_t since);
 
 // Schedule the downstream jobs from other streams at 'trigger' step, based on the execution plan.
 void ScheduleDownstream(StreamExecutionContext& ctx,
                         size_t trigger,
                         bool single_thread_mode,
-                        const bool& terminate_flag,
+                        std::stop_token terminate_token,
                         SessionScope& session_scope);
 }  // namespace onnxruntime

@@ -16,7 +16,7 @@ class BarrierStep : public SequentialExecutionPlan::ExecutionStep {
   Status Execute(StreamExecutionContext& ctx,
                  size_t /*stream_idx*/,
                  SessionScope& /*session_scope*/,
-                 const bool& /*terminate_flag*/,
+                 std::stop_token /*terminate_token*/,
                  bool& continue_flag) override;
 
   std::string ToString() const override;
@@ -32,7 +32,7 @@ class WaitOnEPStep : public SequentialExecutionPlan::ExecutionStep {
   Status Execute(StreamExecutionContext& ctx,
                  size_t stream_idx,
                  SessionScope& /*session_scope*/,
-                 const bool& /*terminate_flag*/,
+                 std::stop_token /*terminate_token*/,
                  bool& continue_flag) override;
 
   std::string ToString() const override;
@@ -53,7 +53,7 @@ class LaunchKernelStep : public SequentialExecutionPlan::ExecutionStep {
   Status Execute(StreamExecutionContext& ctx,
                  size_t stream_idx,
                  SessionScope& session_scope,
-                 const bool& terminate_flag,
+                 std::stop_token terminate_token,
                  bool& continue_flag) override;
 
   std::string ToString() const override;
@@ -71,7 +71,7 @@ class ActivateNotificationStep : public SequentialExecutionPlan::ExecutionStep {
   Status Execute(StreamExecutionContext& ctx,
                  size_t stream_idx,
                  SessionScope& /*session_scope*/,
-                 const bool& /*terminate_flag*/,
+                 std::stop_token /*terminate_token*/,
                  bool& continue_flag) override;
 
   virtual std::string ToString() const override;
@@ -86,7 +86,7 @@ class TriggerDownstreamStep : public SequentialExecutionPlan::ExecutionStep {
   Status Execute(StreamExecutionContext& ctx,
                  size_t /*stream_idx*/,
                  SessionScope& session_scope,
-                 const bool& terminate_flag,
+                 std::stop_token terminate_token,
                  bool& continue_flag) override;
 
   virtual std::string ToString() const override;

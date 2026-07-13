@@ -671,7 +671,7 @@ ExecuteGraphImpl(const SessionState& session_state,
                  const FeedsFetchesManager& feeds_fetches_manager,
                  gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                  const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                 ExecutionMode execution_mode, const bool& terminate_flag,
+                 ExecutionMode execution_mode, std::stop_token terminate_token,
                  const logging::Logger& logger,
 #ifdef ORT_ENABLE_STREAM
                  DeviceStreamCollection* device_stream_collection,
@@ -707,7 +707,7 @@ ExecuteGraphImpl(const SessionState& session_state,
 #ifdef ORT_ENABLE_STREAM
                                   device_stream_collection,
 #endif
-                                  terminate_flag,
+                                  terminate_token,
                                   only_execute_path_to_fetches,
                                   // single thread mode
                                   single_thread_mode,
@@ -744,7 +744,7 @@ ExecuteGraphImpl(const SessionState& session_state,
 #ifdef ORT_ENABLE_STREAM
                                   device_stream_collection,
 #endif
-                                  terminate_flag,
+                                  terminate_token,
                                   only_execute_path_to_fetches,
                                   single_thread_mode,
                                   run_profiler));
@@ -779,7 +779,7 @@ ExecuteGraphImpl(const SessionState& session_state,
 common::Status ExecuteGraph(const SessionState& session_state,
                             FeedsFetchesManager& feeds_fetches_manager,
                             gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
-                            ExecutionMode execution_mode, const bool& terminate_flag,
+                            ExecutionMode execution_mode, std::stop_token terminate_token,
                             const logging::Logger& logger,
 #ifdef ORT_ENABLE_STREAM
                             DeviceStreamCollectionHolder& device_stream_collection_holder,
@@ -794,7 +794,7 @@ common::Status ExecuteGraph(const SessionState& session_state,
 #ifdef ORT_ENABLE_STREAM
   DeviceStreamCollection* device_stream_collection = device_stream_collection_holder.p_.get();
   auto retval = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
-                                 execution_mode, terminate_flag, logger,
+                                 execution_mode, terminate_token, logger,
                                  device_stream_collection,
                                  only_execute_path_to_fetches,
                                  parent_stream,
@@ -802,37 +802,18 @@ common::Status ExecuteGraph(const SessionState& session_state,
   return retval;
 #else
   return ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, {},
-                          execution_mode, terminate_flag, logger,
+                          execution_mode, terminate_token, logger,
                           only_execute_path_to_fetches,
                           parent_stream,
                           run_profiler);
 #endif
 }
 
-common::Status ExecuteGraph(const SessionState& session_state,
-                            FeedsFetchesManager& feeds_fetches_manager,
-                            gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
-                            ExecutionMode execution_mode, const RunOptions& run_options,
-#ifdef ORT_ENABLE_STREAM
-                            DeviceStreamCollectionHolder& device_stream_collection_holder,
-#endif
-                            const logging::Logger& logger,
-                            profiling::Profiler* run_profiler) {
-  return ExecuteGraph(session_state, feeds_fetches_manager, feeds, fetches,
-                      execution_mode, run_options.terminate, logger,
-#ifdef ORT_ENABLE_STREAM
-                      device_stream_collection_holder,
-#endif
-                      run_options.only_execute_path_to_fetches,
-                      nullptr /* parent_stream */,
-                      run_profiler);
-}
-
 #ifdef ENABLE_TRAINING
 common::Status ExecutePartialGraphImpl(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                                        std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                        const logging::Logger& logger, PartialGraphExecutionState& state,
-                                       const OrtValueCachePtr& cache, const bool& terminate_flag,
+                                       const OrtValueCachePtr& cache, std::stop_token terminate_token,
                                        DeviceStreamCollection* device_stream_collection,
                                        int32_t partial_graph_index,
                                        Stream* parent_stream) {
@@ -855,7 +836,7 @@ common::Status ExecutePartialGraphImpl(const SessionState& session_state, FeedsF
                                               feeds_fetches_info.fetches_mlvalue_idxs, fetches, {},
                                               logger,
                                               device_stream_collection,
-                                              terminate_flag,
+                                              terminate_token,
                                               // single thread mode
                                               single_thread_mode,
                                               state,
@@ -885,7 +866,7 @@ common::Status ExecutePartialGraphImpl(const SessionState& session_state, FeedsF
                                               feeds_fetches_info.fetches_mlvalue_idxs, *p_fetches, {},
                                               logger,
                                               device_stream_collection,
-                                              terminate_flag,
+                                              terminate_token,
                                               // single thread mode
                                               single_thread_mode,
                                               state,
@@ -918,12 +899,12 @@ common::Status ExecutePartialGraphImpl(const SessionState& session_state, FeedsF
 common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                                    std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                    const logging::Logger& logger, PartialGraphExecutionState& state,
-                                   const OrtValueCachePtr& cache, const bool& terminate_flag,
+                                   const OrtValueCachePtr& cache, std::stop_token terminate_token,
                                    int32_t partial_graph_index,
                                    Stream* parent_stream) {
   DeviceStreamCollection* device_stream_collection = state.GetDeviceStreamCollection(session_state);
   auto retval = ExecutePartialGraphImpl(session_state, feeds_fetches_manager, feeds, fetches,
-                                        logger, state, cache, terminate_flag, device_stream_collection,
+                                        logger, state, cache, terminate_token, device_stream_collection,
                                         partial_graph_index, parent_stream);
   if (device_stream_collection)
     ORT_CHECK_AND_SET_RETVAL(device_stream_collection->CleanUp(false));
@@ -934,7 +915,8 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
+                               ExecutionMode execution_mode, std::stop_token terminate_token,
+                               const logging::Logger& logger,
                                Stream* parent_stream,
                                bool sync_subgraph_fetches,
                                profiling::Profiler* run_profiler) {
@@ -943,13 +925,13 @@ common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFet
   DeviceStreamCollection* device_stream_collection = device_stream_collection_holder.p_.get();
 
   auto retval = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
-                                 execution_mode, terminate_flag, logger, device_stream_collection, false, parent_stream,
+                                 execution_mode, terminate_token, logger, device_stream_collection, false, parent_stream,
                                  run_profiler);
   if (device_stream_collection)
     ORT_CHECK_AND_SET_RETVAL(device_stream_collection->CleanUp(false));
 #else
   auto retval = ExecuteGraphImpl(session_state, feeds_fetches_manager, feeds, fetches, fetch_allocators,
-                                 execution_mode, terminate_flag, logger, false, parent_stream,
+                                 execution_mode, terminate_token, logger, false, parent_stream,
                                  run_profiler);
 #endif
   if (retval.IsOK() && sync_subgraph_fetches && parent_stream) {

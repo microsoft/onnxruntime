@@ -3,8 +3,9 @@
 
 #pragma once
 
+#include <memory>
+#include <stop_token>
 #include <string>
-#include <atomic>
 
 #include "core/common/inlined_containers_fwd.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -25,11 +26,6 @@ struct OrtRunOptions {
   int run_log_severity_level = -1;
   int run_log_verbosity_level = 0;  ///< VLOG level if debug build and run_log_severity_level is 0 (VERBOSE).
   std::string run_tag;              ///< A tag for the Run() calls using this.
-
-  // Set to 'true' to ensure the termination of all the outstanding Run() calls
-  // that use this OrtRunOptions instance. Some of the outstanding Run() calls may
-  // be forced to terminate with an error status.
-  bool terminate = false;
 
   // Set to 'true' to run only the nodes from feeds to required fetches.
   // So it is possible that only some of the nodes are executed.
@@ -64,8 +60,22 @@ struct OrtRunOptions {
   // synchronization with imported external semaphores.
   OrtSyncStream* sync_stream = nullptr;
 
-  OrtRunOptions() = default;
-  ~OrtRunOptions() = default;
+  OrtRunOptions();
+  OrtRunOptions(const OrtRunOptions& other);
+  OrtRunOptions& operator=(const OrtRunOptions& other);
+  OrtRunOptions(OrtRunOptions&&) noexcept = default;
+  OrtRunOptions& operator=(OrtRunOptions&&) noexcept = default;
+  ~OrtRunOptions();
+
+  // The token snapshots the current termination state. ResetTerminate replaces
+  // that state for future snapshots without reviving already-stopped tokens.
+  std::stop_token GetTerminateToken() const;
+  void RequestTerminate();
+  void ResetTerminate();
+
+ private:
+  class TerminationState;
+  std::shared_ptr<TerminationState> termination_state_;
 };
 
 namespace onnxruntime {

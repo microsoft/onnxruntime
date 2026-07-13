@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <stop_token>
+
 #include "core/graph/basic_types.h"
 #include "core/framework/allocator.h"
 #include "core/framework/data_types.h"
@@ -83,7 +85,8 @@ void FinalizeFeedFetchCopyInfo(FeedsFetchesManager& feeds_fetches_manager,
 // Execute the main graph. The feed_fetches_manager will be finalized based on the provided feeds and fetches.
 common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                             gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
-                            ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
+                            ExecutionMode execution_mode, std::stop_token terminate_token,
+                            const logging::Logger& logger,
 #ifdef ORT_ENABLE_STREAM
                             DeviceStreamCollectionHolder& device_stream_collection_holder,
 #endif
@@ -91,21 +94,12 @@ common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManag
                             Stream* parent_stream = nullptr,
                             profiling::Profiler* run_profiler = nullptr);
 
-common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
-                            gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
-                            ExecutionMode execution_mode, const RunOptions& run_options,
-#ifdef ORT_ENABLE_STREAM
-                            DeviceStreamCollectionHolder& device_stream_collection_holder,
-#endif
-                            const logging::Logger& logger,
-                            profiling::Profiler* run_profiler = nullptr);
-
 #ifdef ENABLE_TRAINING
 common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
                                    std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                    const logging::Logger& logger, PartialGraphExecutionState& state,
                                    const OrtValueCachePtr& cache,
-                                   const bool& terminate_flag,
+                                   std::stop_token terminate_token,
                                    int32_t partial_graph_index,
                                    Stream* parent_stream);
 #endif
@@ -115,7 +109,8 @@ common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetch
 common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFetchesManager& feeds_fetches_manager,
                                gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
                                const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
-                               ExecutionMode execution_mode, const bool& terminate_flag, const logging::Logger& logger,
+                               ExecutionMode execution_mode, std::stop_token terminate_token,
+                               const logging::Logger& logger,
                                Stream* parent_stream,
                                /*when this is enabled, we will sync the parent stream to make sure the subgraph fetches
                                is complete. this is mainly used when the parent kernel depends on the CPU value of the

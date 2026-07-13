@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <stop_token>
 #include <vector>
 #include "core/common/common.h"
 #include "core/common/status.h"
@@ -33,7 +34,7 @@ using OrtValueCachePtr = std::shared_ptr<OrtValueCache>;
 onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
                                   NodeIndex idx,
                                   size_t stream_idx,
-                                  const bool& terminate_flag,
+                                  std::stop_token terminate_token,
                                   SessionScope& session_scope);
 
 onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
@@ -44,7 +45,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
 #ifdef ORT_ENABLE_STREAM
                                    const DeviceStreamCollection* device_streams,
 #endif
-                                   const bool& terminate_flag,
+                                   std::stop_token terminate_token,
                                    const bool only_execute_path_to_fetches,
                                    bool single_thread_mode,
                                    profiling::Profiler* run_profiler = nullptr);
@@ -56,7 +57,7 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
                                           const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                           const logging::Logger& logger,
                                           const DeviceStreamCollection* device_streams,
-                                          const bool& terminate_flag,
+                                          std::stop_token terminate_token,
                                           bool single_thread_mode,
                                           PartialGraphExecutionState& state,
                                           const OrtValueCachePtr& cache,

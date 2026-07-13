@@ -66,16 +66,18 @@ StreamExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::spa
                                                                         const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                                                         const SessionState& session_state,
                                                                         const logging::Logger& sess_logger,
-                                                                        const DeviceStreamCollection* device_streams) {
-  if (execution_context_ == nullptr) {
-    auto* execution_plan = session_state.GetExecutionPlan();
-    LOGS(sess_logger, VERBOSE) << "Number of streams: " << execution_plan->execution_plan.size();
-    int32_t valid_streams = 0;
-    for (auto& stream : execution_plan->execution_plan) {
-      if (stream && stream->steps_.size() > 0)
-        valid_streams++;
+                                                                        const DeviceStreamCollection* device_streams,
+                                                                        std::stop_token terminate_token) {
+  auto* execution_plan = session_state.GetExecutionPlan();
+  LOGS(sess_logger, VERBOSE) << "Number of streams: " << execution_plan->execution_plan.size();
+  int32_t valid_streams = 0;
+  for (auto& stream : execution_plan->execution_plan) {
+    if (stream && !stream->steps_.empty()) {
+      ++valid_streams;
     }
+  }
 
+  if (execution_context_ == nullptr) {
     execution_context_ = std::make_unique<StreamExecutionContext>(
         session_state,
         valid_streams,
@@ -88,9 +90,11 @@ StreamExecutionContext& PartialGraphExecutionState::GetExecutionContext(gsl::spa
         fetches,
         fetch_allocators,
         sess_logger,
+        terminate_token,
         // partial executor in training can only be run with single thread
         true);
   } else {
+    execution_context_->ResetForExecution(valid_streams, terminate_token);
     execution_context_->GetExecutionFrame().UpdateFeeds(feed_mlvalue_idxs, std::move(feeds));
     execution_context_->GetExecutionFrame().UpdateFetches(fetch_mlvalue_idxs, fetches, session_state.GetInitializedTensors());
     execution_context_->SetLogger(sess_logger);

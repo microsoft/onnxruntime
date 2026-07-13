@@ -4,6 +4,8 @@
 #pragma once
 
 #ifdef ENABLE_TRAINING
+#include <stop_token>
+
 #include "core/common/common.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/iexecutor.h"
@@ -36,7 +38,8 @@ struct PartialGraphExecutionState {
                                               const std::unordered_map<size_t, IExecutor::CustomAllocator>& fetch_allocators,
                                               const SessionState& session_state,
                                               const logging::Logger& sess_logger,
-                                              const DeviceStreamCollection* device_streams);
+                                              const DeviceStreamCollection* device_streams,
+                                              std::stop_token terminate_token);
   DeviceStreamCollection* GetDeviceStreamCollection(const SessionState& session_state);
 
  private:

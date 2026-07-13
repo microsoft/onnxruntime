@@ -526,7 +526,7 @@ class KernelScope {
 onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
                                   NodeIndex idx,
                                   size_t stream_idx,
-                                  const bool& terminate_flag,
+                                  std::stop_token terminate_token,
                                   SessionScope& session_scope) {
   auto* p_kernel = ctx.GetSessionState().GetKernel(idx);
   if (p_kernel->KernelDef().OpName() == "YieldOp") {
@@ -538,12 +538,11 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
     ctx.RecycleNodeInputs(idx);
     return Status::OK();
   }
-  // TODO: set terminate flag from run_option
   OpKernelContextInternal kernel_ctx(ctx.GetSessionState(),
                                      ctx.GetExecutionFrame(),
                                      *p_kernel,
                                      ctx.GetLogger(),
-                                     terminate_flag,
+                                     terminate_token,
                                      ctx.GetDeviceStream(stream_idx),
                                      session_scope.GetRunProfiler());
   onnxruntime::Status status;
@@ -685,7 +684,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
 #ifdef ORT_ENABLE_STREAM
                                    const DeviceStreamCollection* device_streams,
 #endif
-                                   const bool& terminate_flag,
+                                   std::stop_token terminate_token,
                                    const bool only_execute_path_to_fetches,
                                    bool single_thread_mode,
                                    profiling::Profiler* run_profiler) {
@@ -710,6 +709,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                              fetches,
                              fetch_allocators,
                              logger,
+                             terminate_token,
                              single_thread_mode);
 #else
   StreamExecutionContext ctx(session_state,
@@ -720,6 +720,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                              fetches,
                              fetch_allocators,
                              logger,
+                             terminate_token,
                              single_thread_mode);
 #endif
 #ifdef ENABLE_TRAINING
@@ -734,6 +735,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
   SessionScope session_scope(session_state, ctx.GetExecutionFrame(), run_profiler);
 
   auto* tp = single_thread_mode ? nullptr : session_state.GetInterOpThreadPool();
+  const auto cancellation_token = ctx.GetCancellationToken();
 
   for (size_t i = 0; i < execution_plan->execution_plan.size(); ++i) {
     if (execution_plan->execution_plan[i]->steps_.empty()) {
@@ -742,8 +744,8 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
       // so don't need to invoke CompleteTask here
       // ctx.CompleteTask();
     } else {
-      concurrency::ThreadPool::Schedule(tp, [i, &ctx, &terminate_flag, &session_scope]() {
-        RunSince(i, ctx, session_scope, terminate_flag, 0);
+      concurrency::ThreadPool::Schedule(tp, [i, &ctx, cancellation_token, &session_scope]() {
+        RunSince(i, ctx, session_scope, cancellation_token, 0);
       });
     }
   }
@@ -779,14 +781,14 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
                                               fetch_allocators,
                                           const logging::Logger& logger,
                                           const DeviceStreamCollection* device_streams,
-                                          const bool& terminate_flag,
+                                          std::stop_token terminate_token,
                                           bool single_thread_mode,
                                           PartialGraphExecutionState& state,
                                           const OrtValueCachePtr& cache,
                                           int32_t partial_graph_index) {
   // Be noted: feeds will be std::move to ctx, so it will be empty after this function.
   auto& ctx = state.GetExecutionContext(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
-                                        fetch_allocators, session_state, logger, device_streams);
+                                        fetch_allocators, session_state, logger, device_streams, terminate_token);
 
   auto* plan = session_state.GetExecutionPlan();
 
@@ -804,13 +806,14 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
   ctx.SetOrtValueCache(cache);
 
   auto* tp = single_thread_mode ? nullptr : session_state.GetInterOpThreadPool();
+  const auto cancellation_token = ctx.GetCancellationToken();
 
   for (size_t i = 0; i < plan->execution_plan.size(); ++i) {
     if (!plan->execution_plan[i]->steps_.empty()) {
-      concurrency::ThreadPool::Schedule(tp, [i, &ctx, &terminate_flag, &session_scope]() {
+      concurrency::ThreadPool::Schedule(tp, [i, &ctx, cancellation_token, &session_scope]() {
         auto* range = ctx.GetCurrentRange();
         size_t start = !range ? 0 : range->stream_pc_range[i].first;
-        RunSince(i, ctx, session_scope, terminate_flag, start);
+        RunSince(i, ctx, session_scope, cancellation_token, start);
       });
     }
   }

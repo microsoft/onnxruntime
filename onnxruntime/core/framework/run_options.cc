@@ -2,6 +2,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/framework/run_options.h"
+
+#include <mutex>
+
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
 #include "core/framework/error_code_helper.h"
@@ -9,6 +12,82 @@
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(disable : 26409)
 #endif
+
+class OrtRunOptions::TerminationState {
+ public:
+  explicit TerminationState(bool stop_requested = false) {
+    if (stop_requested) {
+      stop_source_.request_stop();
+    }
+  }
+
+  std::stop_token GetToken() const {
+    std::lock_guard lock(mutex_);
+    return stop_source_.get_token();
+  }
+
+  void RequestStop() {
+    std::stop_source stop_source;
+    {
+      std::lock_guard lock(mutex_);
+      stop_source = stop_source_;
+    }
+
+    stop_source.request_stop();
+  }
+
+  void Reset() {
+    std::lock_guard lock(mutex_);
+    stop_source_ = std::stop_source{};
+  }
+
+ private:
+  mutable std::mutex mutex_;
+  std::stop_source stop_source_;
+};
+
+OrtRunOptions::OrtRunOptions() : termination_state_{std::make_shared<TerminationState>()} {
+}
+
+OrtRunOptions::OrtRunOptions(const OrtRunOptions& other)
+    : run_log_severity_level{other.run_log_severity_level},
+      run_log_verbosity_level{other.run_log_verbosity_level},
+      run_tag{other.run_tag},
+      only_execute_path_to_fetches{other.only_execute_path_to_fetches},
+      enable_profiling{other.enable_profiling},
+      profile_file_prefix{other.profile_file_prefix},
+#ifdef ENABLE_TRAINING
+      training_mode{other.training_mode},
+#endif
+      config_options{other.config_options},
+      active_adapters{other.active_adapters},
+      sync_stream{other.sync_stream},
+      termination_state_{
+          std::make_shared<TerminationState>(other.GetTerminateToken().stop_requested())} {
+}
+
+OrtRunOptions& OrtRunOptions::operator=(const OrtRunOptions& other) {
+  if (this != &other) {
+    OrtRunOptions copy{other};
+    *this = std::move(copy);
+  }
+
+  return *this;
+}
+
+OrtRunOptions::~OrtRunOptions() = default;
+
+std::stop_token OrtRunOptions::GetTerminateToken() const {
+  return termination_state_->GetToken();
+}
+
+void OrtRunOptions::RequestTerminate() {
+  termination_state_->RequestStop();
+}
+
+void OrtRunOptions::ResetTerminate() {
+  termination_state_->Reset();
+}
 
 ORT_API_STATUS_IMPL(OrtApis::CreateRunOptions, _Outptr_ OrtRunOptions** out) {
   API_IMPL_BEGIN
@@ -49,13 +128,17 @@ ORT_API_STATUS_IMPL(OrtApis::RunOptionsGetRunTag, _In_ const OrtRunOptions* opti
 }
 
 ORT_API_STATUS_IMPL(OrtApis::RunOptionsSetTerminate, _Inout_ OrtRunOptions* options) {
-  options->terminate = true;
+  API_IMPL_BEGIN
+  options->RequestTerminate();
   return nullptr;
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::RunOptionsUnsetTerminate, _Inout_ OrtRunOptions* options) {
-  options->terminate = false;
+  API_IMPL_BEGIN
+  options->ResetTerminate();
   return nullptr;
+  API_IMPL_END
 }
 
 ORT_API(void, OrtApis::RunOptionsSetSyncStream, _Inout_ OrtRunOptions* options, _In_ OrtSyncStream* sync_stream) {

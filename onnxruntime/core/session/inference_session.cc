@@ -3121,6 +3121,7 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
                                     FeedsFetchesManager& feeds_fetches_manager,
                                     const OrtValueCachePtr& cache,
                                     int32_t partial_graph_index) {
+  const auto terminate_token = run_options.GetTerminateToken();
   Status retval = Status::OK();
   std::vector<IExecutionProvider*> exec_providers_to_stop;
   exec_providers_to_stop.reserve(execution_providers_.NumProviders());
@@ -3166,7 +3167,7 @@ Status InferenceSession::PartialRun(onnxruntime::RunOptions& run_options,
     }
 #endif
     ORT_CHECK_AND_SET_RETVAL(utils::ExecutePartialGraph(*session_state_, feeds_fetches_manager, feeds, fetches,
-                                                        run_logger, state, cache, run_options.terminate,
+                                                        run_logger, state, cache, terminate_token,
                                                         partial_graph_index,
                                                         /*parent stream*/ nullptr));
   }
@@ -3236,11 +3237,12 @@ Status InferenceSession::Run(const RunOptions& run_options,
                              gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
                              gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
-  return RunImpl(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info,
+  const auto terminate_token = run_options.GetTerminateToken();
+  return RunImpl(run_options, terminate_token, feed_names, feeds, output_names, p_fetches, p_fetches_device_info,
                  /*graph_capture_depth=*/0);
 }
 
-Status InferenceSession::RunImpl(const RunOptions& run_options,
+Status InferenceSession::RunImpl(const RunOptions& run_options, std::stop_token terminate_token,
                                  gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
                                  gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
                                  const std::vector<OrtDevice>* p_fetches_device_info,
@@ -3405,11 +3407,13 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
       if (retval.IsOK()) {
         retval = utils::ExecuteGraph(*session_state_, feeds_fetches_manager, feeds, *p_fetches,
                                      session_options_.execution_mode,
-                                     run_options,
+                                     terminate_token,
+                                     run_logger,
 #ifdef ORT_ENABLE_STREAM
                                      device_stream_collection_holder,
 #endif
-                                     run_logger,
+                                     run_options.only_execute_path_to_fetches,
+                                     nullptr,
                                      run_profiler ? &*run_profiler : nullptr);
       }
 
@@ -3550,7 +3554,7 @@ Status InferenceSession::RunImpl(const RunOptions& run_options,
     // Disable run-level profiling for internal runs used for memory allocation or graph capture
     RunOptions recursive_run_options{run_options};
     recursive_run_options.enable_profiling = false;
-    ORT_RETURN_IF_ERROR(RunImpl(recursive_run_options, feed_names, feeds, output_names, p_fetches,
+    ORT_RETURN_IF_ERROR(RunImpl(recursive_run_options, terminate_token, feed_names, feeds, output_names, p_fetches,
                                 p_fetches_device_info, graph_capture_depth + 1));
   }
 

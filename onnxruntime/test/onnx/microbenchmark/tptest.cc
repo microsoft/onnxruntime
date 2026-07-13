@@ -2,6 +2,7 @@
 #include <core/platform/threadpool.h>
 #include <core/util/thread_utils.h>
 #include <core/session/onnxruntime_c_api.h>
+#include <core/framework/stream_execution_context.h>
 #include <core/platform/Barrier.h>
 
 #ifdef _WIN32
@@ -188,6 +189,55 @@ BENCHMARK(BM_SimpleScheduleWait)
     ->Arg(40000)
     ->Arg(80000)
     ->Arg(160000);
+
+static void BM_StreamExecutionCompletionWake(benchmark::State& state) {
+  const auto waiter_count = static_cast<size_t>(state.range(0));
+
+  for (auto _ : state) {
+    state.PauseTiming();
+    StreamExecutionContext::CountDownBarrier completion;
+    completion.Set(1);
+
+    std::atomic<size_t> ready{0};
+    std::atomic<bool> start{false};
+    std::vector<std::thread> waiters;
+    waiters.reserve(waiter_count);
+    for (size_t i = 0; i < waiter_count; ++i) {
+      waiters.emplace_back([&]() {
+        ready.fetch_add(1, std::memory_order_release);
+        ready.notify_one();
+        start.wait(false, std::memory_order_acquire);
+        completion.Wait();
+      });
+    }
+
+    size_t ready_count = ready.load(std::memory_order_acquire);
+    while (ready_count != waiter_count) {
+      ready.wait(ready_count, std::memory_order_acquire);
+      ready_count = ready.load(std::memory_order_acquire);
+    }
+
+    start.store(true, std::memory_order_release);
+    start.notify_all();
+    std::this_thread::yield();
+    state.ResumeTiming();
+
+    completion.Dec();
+    for (auto& waiter : waiters) {
+      waiter.join();
+    }
+  }
+
+  state.SetItemsProcessed(state.iterations() * static_cast<int64_t>(waiter_count));
+}
+
+BENCHMARK(BM_StreamExecutionCompletionWake)
+    ->MeasureProcessCPUTime()
+    ->UseRealTime()
+    ->Unit(benchmark::TimeUnit::kMicrosecond)
+    ->Arg(1)
+    ->Arg(8)
+    ->Arg(32);
 
 #ifdef _WIN32
 struct Param {
