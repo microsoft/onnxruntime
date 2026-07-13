@@ -1,0 +1,111 @@
+name: Custom ONNX Runtime Mobile
+
+on:
+  workflow_dispatch:
+    inputs:
+      ort_ref:
+        description: ONNX Runtime branch or tag
+        required: true
+        default: v1.27.0
+
+      package_version:
+        description: Custom package version
+        required: true
+        default: 1.27.0-custom.1
+
+      build_config:
+        description: Build configuration
+        required: true
+        default: Release
+        type: choice
+        options:
+          - Debug
+          - MinSizeRel
+          - Release
+          - RelWithDebInfo
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  android:
+    name: Build Android AAR
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build Android package
+        run: |
+          python3 tools/mobile_custom_build/build_custom_mobile_packages.py \
+            "$RUNNER_TEMP/ort-mobile" \
+            --platform android \
+            --onnxruntime_branch_or_tag "${{ inputs.ort_ref }}" \
+            --include_ops_by_config configs/required_operators.config \
+            --android_build_settings tools/ci_build/github/android/default_full_aar_build_settings.json \
+            --config "${{ inputs.build_config }}" \
+            --package_version "${{ inputs.package_version }}"
+
+      - name: Upload Android package
+        uses: actions/upload-artifact@v4
+        with:
+          name: onnxruntime-android-${{ inputs.package_version }}
+          path: |
+            ${{ runner.temp }}/ort-mobile/android/output/aar_out
+            ${{ runner.temp }}/ort-mobile/mobile-build-metadata.json
+          if-no-files-found: error
+          retention-days: 14
+
+  ios:
+    name: Build iOS XCFramework
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select \
+            -s /Applications/Xcode.app/Contents/Developer
+
+          xcodebuild -version
+
+      - name: Build iOS package
+        run: |
+          python3 tools/mobile_custom_build/build_custom_mobile_packages.py \
+            "$RUNNER_TEMP/ort-mobile" \
+            --platform ios \
+            --onnxruntime_branch_or_tag "${{ inputs.ort_ref }}" \
+            --include_ops_by_config configs/required_operators.config \
+            --ios_build_settings tools/ios_custom_build/configs/default_minimal_ios_framework_build_settings.json \
+            --ios_source_dir "$GITHUB_WORKSPACE" \
+            --config "${{ inputs.build_config }}" \
+            --package_version "${{ inputs.package_version }}" \
+            --clean_ios
+
+      - name: Upload iOS package
+        uses: actions/upload-artifact@v4
+        with:
+          name: onnxruntime-ios-${{ inputs.package_version }}
+          path: |
+            ${{ runner.temp }}/ort-mobile/ios/output/ios
+            ${{ runner.temp }}/ort-mobile/mobile-build-metadata.json
+          if-no-files-found: error
+          retention-days: 14

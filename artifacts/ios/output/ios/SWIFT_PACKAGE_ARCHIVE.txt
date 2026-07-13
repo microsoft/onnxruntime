@@ -1,0 +1,2 @@
+archive=onnxruntime-ios-custom-1.27.0.zip
+checksum=564fb922dea2551b2be6b965cd73fcd101b606a21e12e4e29091a5ba88326f0c

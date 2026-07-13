@@ -1,0 +1,10 @@
+{
+  "package": "onnxruntime-ios-custom-1.27.0",
+  "platform": "ios",
+  "configuration": "Release",
+  "onnxruntime_revision": "bb9ba7eba452791ac2e70c85044da96cf5555fe0",
+  "archive": "onnxruntime-ios-custom-1.27.0.zip",
+  "sha256": "564fb922dea2551b2be6b965cd73fcd101b606a21e12e4e29091a5ba88326f0c",
+  "framework": "framework_out/onnxruntime.xcframework",
+  "binary_url": null
+}
