@@ -16,11 +16,13 @@
  */
 #if USE_FPA_INTB_GEMM
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
-#include "contrib_ops/cuda/llm/common/workspace.h"
 
 #include <algorithm>
 #include <set>
+#include <string>
+#include <vector>
 
+#include "contrib_ops/cuda/llm/common/workspace.h"
 #include "core/common/parse_string.h"
 #include "core/common/string_utils.h"
 

@@ -7,15 +7,14 @@
 // pre-packed and block-compacted into int4
 //
 #pragma once
+#include <string>
+#include <vector>
 #include "core/common/safeint.h"
 #include "core/common/string_utils.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
 #include "core/platform/env_var_utils.h"
-
-#include <string>
-#include <vector>
 
 namespace onnxruntime {
 namespace contrib {

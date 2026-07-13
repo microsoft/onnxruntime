@@ -6,7 +6,6 @@ set -e -x
 mkdir -p /build/dist
 
 EXTRA_ARG=""
-ENABLE_CACHE=false
 # Put 3.12 at the last because Ubuntu 24.04 use python 3.12 and we will upload the intermediate build files of this
 # config to Azure DevOps Artifacts and download them to a Ubuntu 24.04 machine to run the tests.
 PYTHON_EXES=(
