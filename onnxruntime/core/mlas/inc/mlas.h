@@ -2492,6 +2492,7 @@ struct MlasFlashAttentionThreadedArgs {
     const float* key;
     const float* value;
     float* output;
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig;
 };
 
 /**
@@ -2550,6 +2551,7 @@ struct MlasFlashAttentionGQAArgs {
     // per-(batch, head, q_block) partitioning is used.
     float* flash_decoding_partials;
     int kv_chunk_count;
+    const MLAS_BACKEND_KERNEL_SELECTOR_CONFIG* BackendKernelSelectorConfig;
 };
 
 /**

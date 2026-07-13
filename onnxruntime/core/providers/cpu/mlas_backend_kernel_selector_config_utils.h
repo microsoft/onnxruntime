@@ -20,7 +20,7 @@ inline void SetupMlasBackendKernelSelectorFromConfigOptions(MLAS_BACKEND_KERNEL_
   config.use_kleidiai = config_options.GetConfigOrDefault(kOrtSessionOptionsMlasDisableKleidiAi, "0") != "1";
   config.nchwc_depthwise_sliding_kernel =
       config_options.GetConfigOrDefault(kOrtSessionOptionsMlasNchwcDepthwiseSliding, "1") != "0";
-  config.enable_sve_sgemm =config_options.GetConfigOrDefault(kOrtSessionOptionsMlasEnableSveSgemm, "0") == "1";
+  config.enable_sve_sgemm = config_options.GetConfigOrDefault(kOrtSessionOptionsMlasEnableSveSgemm, "0") == "1";
 
   if (auto conv_igemm_max_work =
           config_options.GetConfigEntry(kOrtSessionOptionsMlasKleidiAiConvIgemmMaxWork)) {
