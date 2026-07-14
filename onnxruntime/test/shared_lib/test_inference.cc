@@ -2558,7 +2558,7 @@ TEST(CApiTest, basic_cuda_graph) {
   ASSERT_NE(input_data.get(), nullptr);
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT)
-  (void)cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+  ASSERT_EQ(cudaSuccess, cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice));
 #elif defined(USE_DML)
   ComPtr<ID3D12Resource> input_resource;
   Ort::ThrowOnError(ort_dml_api->GetD3D12ResourceFromAllocation(allocator, input_data.get(), &input_resource));
@@ -2583,13 +2583,11 @@ TEST(CApiTest, basic_cuda_graph) {
   Ort::IoBinding binding(session);
   binding.BindInput("X", bound_x);
   binding.BindOutput("Y", bound_y);
-  Ort::RunOptions run_option;
-
   // Synchronize to make sure the input upload is complete, since it may be issued on a different stream/queue than the EP uses.
   binding.SynchronizeInputs();
 
   // One regular run for necessary memory allocation and graph capturing
-  session.Run(run_option, binding);
+  session.Run(Ort::RunOptions(), binding);
 
   // Synchronize to make sure the EP computation is complete before reading the output back to the host.
   binding.SynchronizeOutputs();
@@ -2598,7 +2596,7 @@ TEST(CApiTest, basic_cuda_graph) {
   std::array<float, 3 * 2> y_values;
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT)
-  (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
+  ASSERT_EQ(cudaSuccess, cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost));
 #elif defined(USE_DML)
   ComPtr<ID3D12Resource> output_resource;
   Ort::ThrowOnError(ort_dml_api->GetD3D12ResourceFromAllocation(allocator, output_data.get(), &output_resource));
@@ -2609,12 +2607,12 @@ TEST(CApiTest, basic_cuda_graph) {
   ASSERT_THAT(y_values, ::testing::ContainerEq(expected_y));
 
   // Replay the captured CUDA graph
-  session.Run(run_option, binding);
+  session.Run(Ort::RunOptions(), binding);
 
   binding.SynchronizeOutputs();
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT)
-  (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
+  ASSERT_EQ(cudaSuccess, cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost));
 #elif defined(USE_DML)
   DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * y_values.size()));
 #endif
@@ -2625,19 +2623,19 @@ TEST(CApiTest, basic_cuda_graph) {
   x_values = {10.0f, 20.0f, 30.0f, 40.0f, 50.0f, 60.0f};
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT)
-  (void)cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice);
+  ASSERT_EQ(cudaSuccess, cudaMemcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size(), cudaMemcpyHostToDevice));
 #elif defined(USE_DML)
   UploadDataToDml(dml_objects, input_resource.Get(), gsl::make_span(reinterpret_cast<const std::byte*>(x_values.data()), sizeof(float) * x_values.size()));
 #endif
 
   binding.SynchronizeInputs();
 
-  session.Run(run_option, binding);
+  session.Run(Ort::RunOptions(), binding);
 
   binding.SynchronizeOutputs();
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT)
-  (void)cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost);
+  ASSERT_EQ(cudaSuccess, cudaMemcpy(y_values.data(), output_data.get(), sizeof(float) * y_values.size(), cudaMemcpyDeviceToHost));
 #elif defined(USE_DML)
   DownloadDataFromDml(dml_objects, output_resource.Get(), gsl::make_span(output_cpu_bytes, sizeof(float) * y_values.size()));
 #endif
