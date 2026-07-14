@@ -2583,12 +2583,13 @@ TEST(CApiTest, basic_cuda_graph) {
   Ort::IoBinding binding(session);
   binding.BindInput("X", bound_x);
   binding.BindOutput("Y", bound_y);
+  Ort::RunOptions run_option;
 
   // Synchronize to make sure the input upload is complete, since it may be issued on a different stream/queue than the EP uses.
   binding.SynchronizeInputs();
 
   // One regular run for necessary memory allocation and graph capturing
-  session.Run(Ort::RunOptions(), binding);
+  session.Run(run_option, binding);
 
   // Synchronize to make sure the EP computation is complete before reading the output back to the host.
   binding.SynchronizeOutputs();
@@ -2608,7 +2609,7 @@ TEST(CApiTest, basic_cuda_graph) {
   ASSERT_THAT(y_values, ::testing::ContainerEq(expected_y));
 
   // Replay the captured CUDA graph
-  session.Run(Ort::RunOptions(), binding);
+  session.Run(run_option, binding);
 
   binding.SynchronizeOutputs();
 
@@ -2631,7 +2632,7 @@ TEST(CApiTest, basic_cuda_graph) {
 
   binding.SynchronizeInputs();
 
-  session.Run(Ort::RunOptions(), binding);
+  session.Run(run_option, binding);
 
   binding.SynchronizeOutputs();
 
