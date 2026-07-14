@@ -1,6 +1,5 @@
 # Design: Remove the WebGL (onnxjs) backend from onnxruntime-web
 
-**Status:** Draft
 **Last updated:** 2026-07-14
 **Scope:** `onnxruntime-web` JavaScript/TypeScript package — WebGL backend
 
@@ -20,7 +19,7 @@ This document proposes **deprecating and then removing** it as a straightforward
 explicit migration message — no transparent redirect (see §5.1), unlike the JSEP → native WebGPU EP migration:
 
 - **Phase 1 (this release):** deprecation warning + docs. No behavior change.
-- **Phase 2 (next release):** delete the `onnxjs` backend, its `'webgl'` registration, and the `ort.webgl` build
+- **Phase 2 (subsequent release):** delete the `onnxjs` backend, its `'webgl'` registration, and the `ort.webgl` build
   variant.
 
 ---
@@ -68,30 +67,29 @@ It appears in two bundles:
 The `./webgl` bundle sets `BUILD_DEFS.DISABLE_WASM: true`, so it has **no WASM/CPU fallback** — it is WebGL or
 nothing.
 
-### 4.1 WebGPU browser coverage (expanding, but with platform caveats)
+### 4.1 WebGPU browser coverage
 
 The historical reason to keep WebGL was "WebGPU isn't available on Safari / iOS / Firefox." As of 2026 that is
-**less true**, though MDN's `api.GPU` browser-compat data still shows Chrome and Firefox as **partial**:
+**less true**, though per MDN's `api.GPU` browser-compat data gaps remain:
 
 | Browser | WebGPU (per MDN BCD) |
 |---|---|
-| Chrome / Edge (desktop) | Partial from 113 (ChromeOS/macOS/Windows); Linux limited to newer Intel-gen GPUs |
-| Chrome Android | 121+ |
-| Safari (macOS / iOS) | Full, 26 |
-| Chrome / Edge (iOS, via WebKit) | Full, 26 |
-| Firefox (desktop) | Partial from 141; **excludes Linux and Intel-based macOS** (Apple-Silicon-first) |
+| Chrome / Edge (desktop) | Full from 144 (Linux: Intel Gen12+ only) |
+| Chrome Android | Full from 121 |
+| Safari (macOS / iOS) | Full from 26 |
+| Firefox (desktop) | Partial from 141 |
 | Firefox for Android | ❌ |
 
-Safari/iOS is now solid and Chrome/Firefox are improving, but real gaps remain (older versions, Firefox for
-Android, Linux, Intel Macs on Firefox). Coverage is **broadening but not universal**, so the pool of users for
-whom WebGL is the *only* GPU path is shrinking, not gone. The design does **not** assume universal WebGPU — the
-actionable fallback for uncovered users is the WASM/CPU backend.
+Safari/iOS and Chrome/Edge desktop are solid, but gaps remain (older versions, Firefox for Android, Firefox
+desktop still partial). Coverage is **broadening but not universal**, so the pool of users for whom WebGL is the
+*only* GPU path is shrinking, not gone. The design does **not** assume universal WebGPU — the actionable fallback
+for uncovered users is the WASM/CPU backend.
 
 ---
 
 ## 5. Proposed approach
 
-### 5.1 Explicit removal, not a transparent redirect
+### 5.1 Explicit removal
 
 WebGL cannot be transparently redirected (unlike the WebGPU JSEP → native swap):
 
@@ -108,7 +106,7 @@ The warning fires in `OnnxjsBackend` (`js/web/lib/backend-onnxjs.ts`), in `init(
 `createInferenceSessionHandler`. Because the backend has negative priority, it only fires when WebGL is
 **explicitly requested** — no spam for consumers who never opt in. Fires for both `ort.all` and `ort.webgl`.
 
-### 5.3 Removal ergonomics (no tombstones)
+### 5.3 Removal ergonomics
 
 Phase 2 relies on the native failure modes rather than adding tombstone stubs or a `'webgl'`-key shim:
 
@@ -123,10 +121,12 @@ a sufficient soft-landing.
 
 ## 6. `/all` bundle coupling
 
-`./all` holds two backends: WebGL and JSEP WebGPU/WebNN. This effort owns **removing WebGL from `/all`**; the
-[JSEP → native migration](onnxruntime_web_jsep_to_webgpu_ep_migration.md) owns the **final convergence** of the
-remaining JSEP backend onto the native EP. `/all` is **kept** as an export to avoid breaking imports (see JSEP doc
-§5.3 for the alias decision).
+`./all` bundles two **independent** things: WebGL **and** the WebGPU/WebNN backend. This effort owns **removing
+WebGL from `/all`**; the [JSEP → native migration](onnxruntime_web_jsep_to_webgpu_ep_migration.md) owns flipping
+the WebGPU/WebNN half from JSEP to the native EP. The two changes are independent and may land in either order, or
+in different releases; `/all` collapses into a single physical alias of the webgpu/default bundle only once
+**both** have landed (whichever lands second performs the repoint). `/all` is **kept** as an export to avoid
+breaking imports (see JSEP doc §5.3 for the alias decision).
 
 ---
 
@@ -142,13 +142,19 @@ No behavior change. Deliverables:
 
 ---
 
-## 8. Phase 2 — Removal (next release)
+## 8. Phase 2 — Removal (subsequent release)
+
+Timed a **single release** after Phase 1 by default, kept **independent** of the JSEP removal's schedule rather
+than forcing the two to align. Extend only if issues surface during deprecation (e.g. WebGL-reliant consumers
+report friction migrating to `wasm`/WebGPU) — real-world feedback, not the JSEP timeline, drives any extension.
 
 1. **Delete WebGL:** remove the `onnxjs` backend (`js/web/lib/onnxjs`), the `'webgl'` registration, and
    `backend-onnxjs.ts`.
 2. **Remove the `ort.webgl` build variant;** update `build.ts` and `package.json` exports (remove the `./webgl`
    export).
-3. **Drop WebGL from `ort.all`** (see §6).
+3. **Drop WebGL from `ort.all`** (see §6). If the JSEP → native flip has already landed, this is the step that
+   collapses `/all` into the webgpu/default alias; if not, `/all` remains a distinct JSEP WebGPU/WebNN bundle
+   until that flip lands.
 4. **Remove guarded code:** delete `BUILD_DEFS.DISABLE_WEBGL` and the code it gates; simplify `index.ts`.
 
 ---
@@ -163,7 +169,7 @@ No behavior change. Deliverables:
 
 ---
 
-## 10. Migration guide (for consumers)
+## 10. Migration guide
 
 - **`onnxruntime-web/webgl`:** removed. Migrate to the WebGPU EP (`executionProviders: ['webgpu']`) or the
   WASM/CPU backend (`executionProviders: ['wasm']`). There is no automatic redirect because WebGL builds have no
@@ -176,14 +182,3 @@ No behavior change. Deliverables:
 > [JSEP → native migration](onnxruntime_web_jsep_to_webgpu_ep_migration.md) issue. Console warnings, README/docs,
 > and CHANGELOG entries **link** to it rather than duplicating guidance. `/all` guidance (touched by both efforts)
 > links to whichever issue is relevant.
-
----
-
-## 11. Resolved decisions
-
-- **Deprecation window length.** Default to **one release**, kept **independent** of the JSEP removal's schedule
-  rather than forcing the two to align. Extend only if issues surface during deprecation (e.g. WebGL-reliant
-  consumers report friction migrating to `wasm`/WebGPU) — real-world feedback, not the JSEP timeline, drives any
-  extension.
-- **Warning suppressibility.** Warn once and respect `env.logLevel` — setting the log level to error/fatal
-  silences the deprecation warning; no separate opt-out flag is added. (Same policy as the JSEP effort.)

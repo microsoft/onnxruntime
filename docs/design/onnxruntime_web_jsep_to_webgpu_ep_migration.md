@@ -1,6 +1,5 @@
 # Design: Migrate onnxruntime-web WebGPU/WebNN from JSEP to the native WebGPU EP
 
-**Status:** Draft
 **Last updated:** 2026-07-14
 **Scope:** `onnxruntime-web` JavaScript/TypeScript package — WebGPU and WebNN backends
 
@@ -27,7 +26,7 @@ undiscovered parity gaps.
   `onnxruntime-web/jsep` escape-hatch export, and ship deprecation warnings + docs. The flip and the hatch ship
   together, so the native default and its JSEP fallback coexist for exactly one release. The pinned tracking issue
   is published **ahead of** this release as the early-warning channel — no separate warning-only release (§8).
-- **Phase 2 (next release):** delete JSEP and remove the temporary `/jsep` export and build flags.
+- **Phase 2 (subsequent release):** delete JSEP and remove the temporary `/jsep` export and build flags.
 
 ---
 
@@ -115,18 +114,22 @@ deleted.
 
 ### 5.3 `/all` bundle: keep as a converging alias
 
-`./all` today differs from the default only by including WebGL. After the WebGL removal (tracked
-[separately](onnxruntime_web_remove_webgl_backend.md)) and this JSEP → native swap, it converges to **native
-WebGPU EP + native WebNN**, identical to `./webgpu` and the default `.`.
+`./all` today bundles two **independent** things: the WebGPU/WebNN backend (JSEP) **and** WebGL. Two independent
+efforts change it — this migration flips its WebGPU/WebNN half from JSEP to the native EP, and the
+[WebGL removal](onnxruntime_web_remove_webgl_backend.md) drops WebGL. Once **both** have landed, `/all` converges
+to **native WebGPU EP + native WebNN**, identical to `./webgpu` and the default `.`.
 
-**Decision:** keep `/all` to avoid breaking imports, implemented as a **real alias to the same physical artifact**
-as the webgpu/default bundle rather than a separately-built `ort.all.*` — avoiding bundle drift, dropping a build
-target, and not doubling the CDN/WASM payload. The backing WASM shifts `.jsep.wasm` → `.asyncify.wasm` with the
-general filename migration. "all" becomes a mild misnomer (no longer implies WebGL) — documented, not worth an
-export break.
+**Decision:** keep `/all` to avoid breaking imports. Its **end state** is a **real alias to the same physical
+artifact** as the webgpu/default bundle (rather than a separately-built `ort.all.*`) — avoiding bundle drift,
+dropping a build target, and not doubling the CDN/WASM payload. The backing WASM shifts `.jsep.wasm` →
+`.asyncify.wasm` with the general filename migration. "all" becomes a mild misnomer (no longer implies WebGL) —
+documented, not worth an export break.
 
-**Sequencing:** the WebGL effort drops WebGL from `/all` first (still JSEP); this swap then converges `/all` onto
-the native artifact. Each effort owns its half.
+**Sequencing (order-independent).** The native flip (this effort) and the WebGL drop (the WebGL effort) are
+independent and may land in either order, or in different releases. Until both land, `/all` stays a **distinct
+bundle**: after this effort's Phase 1 flip but before WebGL is removed, `/all` is **native WebGPU/WebNN + WebGL**
+(still not identical to default/`./webgpu`). Whichever effort lands second collapses `/all` into the physical
+alias — see §9 (this effort's Phase 2) and the WebGL doc §8.
 
 ---
 
@@ -166,8 +169,9 @@ today.
 
 ## 7. Open investigation items (to resolve during implementation)
 
-Parity concerns to close before the Phase 1 flip. Each is an end-to-end validation: the TypeScript wiring is
-confirmable by source audit (noted below), but the runtime behavior needs a real browser + GPU/WebNN check.
+Parity concerns to close before the Phase 1 flip. Most are end-to-end validations — the TypeScript wiring is
+confirmable by source audit (noted below), but the runtime behavior needs a real browser + GPU/WebNN check. Item
+4 is not a runtime unknown but a known, addressable wiring gap — a prerequisite, not a blocker.
 
 1. **Proxy-worker parity (potential blocker).** `wasm.proxy = true` runs compute in a dedicated worker
    (`proxy-wrapper.ts`). *Source:* the wrapper is EP-agnostic and already forbids all GPU I/O over the proxy
@@ -180,11 +184,21 @@ confirmable by source audit (noted below), but the runtime behavior needs a real
 3. **WebNN native-vs-JSEP parity.** The flip also moves default-bundle WebNN from JSEP-hosted to native — a
    second silent swap. *Source:* both init paths are visible in `initEp` (`initJsep('webnn', …)` vs
    `webnnInit(...)`). *Runtime:* requires a `navigator.ml`-capable environment; E2E-only.
+4. **Global `env.webgpu.*` settings parity (prerequisite).** A known, addressable gap: the default bundle's
+   global WebGPU knobs are **not** honored by the native EP today. *Source:* `wasm-core-impl.ts` reads
+   `env.webgpu.adapter` / `powerPreference` / `forceFallbackAdapter` only to call `navigator.gpu.requestAdapter()`
+   on the JS side, then calls `webgpuInit()` **without passing that adapter** to the native EP — the JSEP branch
+   does forward it to `initJsep`, so the native path drops it. The C++ factory has a `powerPreference` config key
+   (`webgpu_provider_factory.cc`) that the TS layer never populates, and `startProfiling()` in
+   `session-handler-inference.ts` is still a `// TODO` on the native path while JSEP consumes
+   `env.webgpu.profiling.ondata`. So after the flip, consumers relying on these globals silently lose them.
+   *Action (required before the flip):* either wire the relevant settings into the native path (or typed
+   per-session replacements), or explicitly document the dropped/changed settings with migration guidance — a
+   release-gate item (§8).
 
-**Closed by source audit — typed-option parity.** The native EP branch in `session-options.ts` honors a
-**superset** of JSEP's per-session options, so no JSEP-only typed field silently becomes a no-op under native
-(JSEP's other configuration comes from the global `env.webgpu.*` object, not per-session options). The only
-residual is a source check that those global knobs (profiling in particular) reach the native `webgpuInit` path.
+**Closed by source audit — per-session typed-option parity.** The native EP branch in `session-options.ts` honors
+a **superset** of JSEP's per-session typed options, so no JSEP-only typed field silently becomes a no-op under
+native. JSEP's *global* `env.webgpu.*` configuration is a separate, still-open gap — see item 4.
 
 ---
 
@@ -194,7 +208,8 @@ Flip the default to the native EP **and** ship the escape hatch, so the swap is 
 fallback. Deliverables:
 
 1. **Flip the default.** Build the default `.` and `./all` bundles with the native EP (`USE_WEBGPU_EP=true`). The
-   `webgpu` key and public API are unchanged, so the swap is transparent (§5.1). Gated on the release gate below.
+   `webgpu` key and public API are unchanged, so the swap is transparent (§5.1). `/all` still bundles WebGL until
+   the WebGL effort removes it, so it stays a distinct bundle for now (§5.3). Gated on the release gate below.
 2. **Escape hatch.** Add the temporary `onnxruntime-web/jsep` export (built `USE_WEBGPU_EP=false`), deprecated
    with a scheduled removal, shipping in this same release.
 3. **JSEP warn-once.** In `wasm-core-impl.ts` `initEp` under `if (!BUILD_DEFS.DISABLE_JSEP)`, for `epName`
@@ -229,26 +244,30 @@ The default flip (#1) is gated on **both**:
    host) even when op kernels match.
 2. **§7 blockers resolved with targeted coverage** (op-parity tests don't exercise these paths): the native EP
    under `wasm.proxy = true` (§7.1); both `'gpu-buffer'` and `'ml-tensor'` IO-binding zero-copy handoff (§7.2);
-   native WebNN validated separately (§7.3). Typed-option parity is already closed by source audit; the only
-   residual is a source check that the global `env.webgpu.*` knobs reach the native `webgpuInit` path.
+   native WebNN validated separately (§7.3); and the global `env.webgpu.*` settings gap (§7.4) closed by wiring
+   `adapter` / `powerPreference` / `forceFallbackAdapter` / `profiling` into the native path (or typed per-session
+   replacements), or by documenting the dropped/changed settings with migration guidance. Per-session
+   typed-option parity is already closed by source audit.
 
 Both gates are required — passing #1 while leaving #2 open would ship acknowledged blocker-class parity gaps
 unverified.
 
 ---
 
-## 9. Phase 2 — Removal (next release)
+## 9. Phase 2 — Removal (subsequent release)
 
 The default already runs the native EP (flipped in Phase 1); this release deletes JSEP and the temporary surfaces.
 
 1. **Remove build variants:** drop JSEP WASM artifacts; update `build.ts` and `package.json` exports, and remove
-   the temporary `USE_WEBGPU_EP` flag. Repoint `/all` to the webgpu/default artifact (§5.3).
+   the temporary `USE_WEBGPU_EP` flag. Repoint `/all` to the webgpu/default artifact (§5.3) — valid only once
+   WebGL has also been dropped from `/all` (WebGL doc §8); if WebGL is still present, `/all` stays a distinct
+   bundle and the repoint waits on that removal.
 2. **Remove guarded code:** delete `BUILD_DEFS.DISABLE_JSEP` and the code it gates; simplify `index.ts`.
 3. **Relocate WebNN** out of the `jsep/` directory (`backend-webnn.ts`, `webnn/`) to a neutral path.
 4. **Remove `pre-jsep.js` glue;** confirm `post-webgpu.js` / `post-webnn.js` cover all initialization.
 5. **Remove the temporary `onnxruntime-web/jsep` export.**
 
-### Removal ergonomics (no tombstones)
+### Removal ergonomics
 
 The `/jsep` export is removed cleanly, relying on the native bundler error: a lingering
 `import 'onnxruntime-web/jsep'` fails with "subpath ./jsep is not defined by exports" — an acceptable build-time
@@ -266,12 +285,13 @@ EP), so no consumer on the documented path hits an error. Communicated via relea
 | Proxy-worker path behaves differently | Unknown | **Investigate before flip** (§7.1) |
 | IO-binding (gpu-buffer/ml-tensor) semantics differ | Unknown | **Investigate before flip** (§7.2) |
 | WebNN behavior changes under native path | Unknown | Validate native WebNN separately (§7.3) |
+| Global `env.webgpu.*` settings (adapter/powerPreference/forceFallbackAdapter/profiling) silently dropped on native | Medium | Wire into the native path or document dropped/changed settings with migration guidance — release gate (§7.4, §8) |
 | WASM artifact filename change breaks `wasmPaths` | Medium | Document migration; call out `.jsep.wasm` → `.asyncify.wasm` |
 | No telemetry on JSEP adoption | Medium | Warn-once funnel + one-release escape hatch as the feedback mechanism |
 
 ---
 
-## 11. Migration guide (for consumers)
+## 11. Migration guide
 
 - **Default import (`onnxruntime-web`):** no code change needed. The `webgpu` backend continues to work; the
   implementation swaps to the native EP in Phase 1 (this release).
@@ -289,11 +309,3 @@ EP), so no consumer on the documented path hits an error. Communicated via relea
 > [WebGL-removal](onnxruntime_web_remove_webgl_backend.md) issue. Console warnings, README/docs, and CHANGELOG
 > entries **link** to it rather than duplicating guidance. `/all` guidance (touched by both efforts) links to
 > whichever issue is relevant.
-
----
-
-## 12. Resolved decisions
-
-- **Warning suppressibility.** Warn once and respect `env.logLevel` — setting the log level to error/fatal
-  silences the deprecation warning; no separate opt-out flag is added. (The WebGL-removal effort adopts the same
-  policy.)
