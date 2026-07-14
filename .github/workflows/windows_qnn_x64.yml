@@ -47,6 +47,7 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env
         with:
           architecture: x64
+          cache_key: windows_qnn_x64.yml | build_test_qnn_ep_${{ matrix.QnnLibKind }}
 
       - name: Download QNN SDK
         working-directory: ${{ runner.temp }}
@@ -64,19 +65,44 @@ jobs:
           dir $qnn_sdk_path
 
       - name: Build and Test
-        shell: cmd
+        shell: pwsh
+        env:
+          qnn_kind: ${{ matrix.QnnLibKind }}
         run: |
-          python ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ runner.temp }}\build --cmake_generator "Visual Studio 17 2022" --build_java --build_shared_lib --use_qnn ${{ matrix.QnnLibKind }} --qnn_home %QNN_SDK_ROOT% --use_binskim_compliant_compile_flags --update --build --test --enable_onnx_tests --parallel
+          ccache --zero-stats
+
+          python.exe ${env:GITHUB_WORKSPACE}\tools\ci_build\build.py `
+            --build `
+            --build_dir "${env:RUNNER_TEMP}\build" `
+            --build_java `
+            --build_shared_lib `
+            --cmake_generator "Ninja" `
+            --config RelWithDebInfo `
+            --enable_onnx_tests `
+            --parallel `
+            --qnn_home "${env:QNN_SDK_ROOT}" `
+            --test `
+            --update `
+            --use_binskim_compliant_compile_flags `
+            --use_cache `
+            --use_qnn ${env:qnn_kind}
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+      - name: CCache Stats
+        shell: pwsh
+        run: ccache --show-stats -vv
 
       - name: Run ONNX Tests
         shell: cmd
-        working-directory: ${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo
+        working-directory: ${{ runner.temp }}\build\RelWithDebInfo
         run: |
           .\onnx_test_runner -j 1 -e qnn -i "backend_path|%QNN_SDK_ROOT%\lib\x86_64-windows-msvc\QnnCpu.dll" ${{ github.workspace }}\cmake\external\onnx\onnx\backend\test\data\node
 
       - name: Run float32 model tests
         shell: cmd
-        working-directory: ${{ runner.temp }}\build\RelWithDebInfo\RelWithDebInfo
+        working-directory: ${{ runner.temp }}\build\RelWithDebInfo
         run: |
           rem This step assumes the model data exists at C:\data\float32_models on the runner
           if exist C:\data\float32_models (

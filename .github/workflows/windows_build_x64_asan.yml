@@ -42,6 +42,7 @@ jobs:
         uses: ./.github/actions/locate-vcvarsall-and-setup-env # Use the composite action
         with:
           architecture: x64
+          cache_key: windows_build_x64_asan.yml | build_x64
 
       - name: Write shared build options
         shell: pwsh
@@ -57,6 +58,7 @@ jobs:
             "--build_dir `"$buildDir`""
             '--skip_submodule_sync'
             '--parallel'
+            '--use_cache'
             '--use_vcpkg'
             '--use_vcpkg_ms_internal_asset_cache'
             '--cmake_generator "Visual Studio 17 2022"'
@@ -83,6 +85,10 @@ jobs:
           # '@' must be quoted so PowerShell does not treat it as the splat operator.
           python $buildPy "@$optsFile" --update --build
           if ($LASTEXITCODE -ne 0) { throw "Build failed ($LASTEXITCODE)" }
+
+      - name: CCache Stats
+        shell: pwsh
+        run: ccache --show-stats -vv
 
       - name: Test
         shell: pwsh

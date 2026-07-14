@@ -4,7 +4,7 @@
 # This file is used by Zip-Nuget-Java Packaging Pipeline
 
 # Define the directory for NuGet artifacts.
-$nuget_artifacts_dir = "$Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\RelWithDebInfo\nuget-artifacts"
+$nuget_artifacts_dir = "$Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\nuget-artifacts"
 # Create the directory if it doesn't exist.
 New-Item -Path $nuget_artifacts_dir -ItemType directory -ErrorAction SilentlyContinue
 
@@ -92,7 +92,7 @@ if ($is_training_pipeline) {
 }
 
 # Copy onnxruntime and protoc binaries required by tests.
-$destinationDir = "$Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\RelWithDebInfo"
+$destinationDir = "$Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo"
 if ($is_training_pipeline) {
     Copy-Item -Path "$nuget_artifacts_dir\onnxruntime-training-win-x64-*\lib\*" -Destination $destinationDir -Recurse
 }
