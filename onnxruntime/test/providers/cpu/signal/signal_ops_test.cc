@@ -129,7 +129,9 @@ TEST(SignalOpsTest, DFT20_Float_Bluestein_DftLengthTruncatesInput) {
   test.AddInput<int64_t>("axis", {}, {1});
   test.AddOutput<float>("output", output_shape, expected_output);
   test.SetOutputAbsErr("output", 0.001f);
-  test.Run();
+  // DML path is deprecated for this test scenario.
+  test.ConfigExcludeEps({kDmlExecutionProvider});
+  test.RunWithConfig();
 }
 
 TEST(SignalOpsTest, DFT17_Float_inverse) {
