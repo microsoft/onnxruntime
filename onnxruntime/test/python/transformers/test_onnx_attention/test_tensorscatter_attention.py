@@ -621,6 +621,12 @@ class TestTensorScatterAttentionCUDAFP32(unittest.TestCase):
 _CUDNN_DECODE_HEAD_SIZE = 64
 _CUDNN_DECODE_TOTAL_KV = 8
 
+# sdpa_kernel bitmask (AttentionBackend in attention_common.h): select cuDNN and keep the unfused
+# kernel as a fallback for configs where cuDNN is unsupported.
+_SDPA_KERNEL_CUDNN_FLASH_ATTENTION = 8
+_SDPA_KERNEL_MATH = 16
+_SDPA_KERNEL_CUDNN_WITH_MATH_FALLBACK = _SDPA_KERNEL_CUDNN_FLASH_ATTENTION | _SDPA_KERNEL_MATH
+
 _CUDNN_DECODE_CASES = [
     # (batch, q_seq, q_heads, kv_heads, scatter_positions, nonpad_seqlens, label)
     (1, 1, 8, 8, [3], [4], "mha_batch1"),
@@ -678,8 +684,7 @@ class TestTensorScatterAttentionCudnnSdpaDecode(unittest.TestCase):
             torch_type=torch.float16,
             ort_type=TensorProto.FLOAT16,
             is_causal=1,
-            # CUDNN_FLASH_ATTENTION (8) | MATH (16, unfused fallback).
-            provider_options={"sdpa_kernel": "24"},
+            provider_options={"sdpa_kernel": str(_SDPA_KERNEL_CUDNN_WITH_MATH_FALLBACK)},
         )
         # Fully-masked rows (nonpad==0) must be exactly 0 (no NaN) — assert finiteness explicitly.
         self.assertFalse(numpy.isnan(output).any(), "cuDNN SDPA decode produced NaN output")
