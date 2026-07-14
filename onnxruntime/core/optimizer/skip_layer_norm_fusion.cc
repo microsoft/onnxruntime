@@ -5,6 +5,7 @@
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/graph_utils.h"
 #include "float.h"
+#include <array>
 #include <deque>
 
 using namespace ONNX_NAMESPACE;
@@ -199,13 +200,13 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     Format matched_format = Format::None;
 
     // Format 1
-    // The matcher paths are compile-time constants, so make them function-local `static const`:
-    // built once (not per node iteration), and their destructors run at program exit rather than
-    // inlined into ApplyImpl, which sidesteps a GCC 15 -Wfree-nonheap-object false positive on the
-    // vector's destructor.
-    static const std::vector<graph_utils::EdgeEndToMatch> format1_parent_path{
+    // The matcher paths are fixed, so hold them in function-local `static const std::array`s:
+    // built once (not per node iteration), with no heap-allocated backing buffer, and their
+    // destructors run at program exit rather than inlined into ApplyImpl. This sidesteps a GCC 15
+    // -Wfree-nonheap-object false positive that fired on the equivalent std::vector's destructor.
+    static const std::array<graph_utils::EdgeEndToMatch, 2> format1_parent_path{{
         {0, 0, "Add", {7, 13, 14}, kOnnxDomain},
-        {0, 0, "Add", {7, 13, 14}, kOnnxDomain}};
+        {0, 0, "Add", {7, 13, 14}, kOnnxDomain}}};
 
     std::vector<const Node::EdgeEnd*> edges;
     if (graph_utils::FindPath(ln_node, true, format1_parent_path, edges, logger)) {
@@ -222,9 +223,9 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
     if (matched_format == Format::None) {
       // Format 2
-      static const std::vector<graph_utils::EdgeEndToMatch> format2_parent_path{
+      static const std::array<graph_utils::EdgeEndToMatch, 2> format2_parent_path{{
           {0, 0, "Add", {7, 13, 14}, kOnnxDomain},
-          {0, 1, "Add", {7, 13, 14}, kOnnxDomain}};
+          {0, 1, "Add", {7, 13, 14}, kOnnxDomain}}};
 
       if (graph_utils::FindPath(ln_node, true, format2_parent_path, edges, logger)) {
         p_add1 = const_cast<Node*>(&edges[0]->GetNode());
@@ -241,8 +242,8 @@ Status SkipLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
 
     if (matched_format == Format::None) {
       // Format 3
-      static const std::vector<graph_utils::EdgeEndToMatch> format3_parent_path{
-          {0, 0, "Add", {7, 13, 14}, kOnnxDomain}};
+      static const std::array<graph_utils::EdgeEndToMatch, 1> format3_parent_path{{
+          {0, 0, "Add", {7, 13, 14}, kOnnxDomain}}};
 
       if (graph_utils::FindPath(ln_node, true, format3_parent_path, edges, logger)) {
         p_add1 = const_cast<Node*>(&edges[0]->GetNode());
