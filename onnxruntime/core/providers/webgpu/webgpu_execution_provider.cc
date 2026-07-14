@@ -801,12 +801,11 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_op
     context_.StartProfiling();
   }
 
-  // Deferred dispatch is currently disabled for graph-capture sessions because combining the two
-  // paths causes incorrect execution.
-  defer_dispatch_active_ = false;
-  if (defer_dispatch_pending_ && !IsGraphCaptureEnabled()) {
-    defer_dispatch_active_ = true;
-    defer_dispatch_pending_ = false;
+  // Deferred dispatch is disabled for graph-capture sessions because combining the two paths
+  // causes incorrect execution. Enable it for every regular run so cache misses introduced by
+  // different input shapes can also compile asynchronously.
+  defer_dispatch_active_ = !IsGraphCaptureEnabled();
+  if (defer_dispatch_active_) {
     context_.SetDeferDispatch(true);
     return Status::OK();
   }

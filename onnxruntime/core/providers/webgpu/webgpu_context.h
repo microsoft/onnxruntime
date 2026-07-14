@@ -272,10 +272,10 @@ class WebGpuContext final {
 
   Status Run(ComputeContextBase& context, const ProgramBase& program);
 
-  // Deferred dispatch reduces first-run latency by starting pipeline creation asynchronously for
-  // cache misses and recording their dispatches. A full `maxNumPendingDispatches` window waits for
-  // its pending builds and is encoded through the normal batching path. Draining a partial window
-  // encodes it, and the caller's subsequent Flush() submits any remaining work.
+  // Deferred dispatch reduces pipeline-cache-miss latency by starting pipeline creation asynchronously
+  // and recording the corresponding dispatches. A full `maxNumPendingDispatches` window waits for its
+  // pending builds and is encoded through the normal batching path. Draining a partial window encodes
+  // it, and the caller's subsequent Flush() submits any remaining work.
   void SetDeferDispatch(bool value);
   bool DeferDispatch() const { return defer_dispatch_; }
   Status FlushDeferred();

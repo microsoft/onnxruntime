@@ -137,10 +137,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool enable_graph_capture_ = false;
   bool graph_buffer_mgr_active_ = false;
   bool enable_int64_ = false;
-  // Automatic first-run deferred-dispatch state. `defer_dispatch_pending_` allows activation only
-  // on the first run of a session with graph capture disabled; `defer_dispatch_active_` tells
-  // OnRunEnd() to drain that run's deferred work.
-  bool defer_dispatch_pending_ = true;
+  // Tracks whether the current non-graph-capture run needs its deferred work drained by OnRunEnd().
   bool defer_dispatch_active_ = false;
   uint32_t multi_rotary_cache_concat_offset_ = 0;
   uint32_t kv_cache_quantization_bits_ = 0;
