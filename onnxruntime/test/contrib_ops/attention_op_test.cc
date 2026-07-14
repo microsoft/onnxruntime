@@ -883,6 +883,13 @@ TEST(ContribOpAttentionTest, Causal_EmptyPastState) {
 }
 
 TEST(ContribOpAttentionTest, CudnnFlashAttentionWithKeySequenceLengthMask) {
+#if !defined(USE_CUDA) || !GTEST_HAS_STREAM_REDIRECTION
+  GTEST_SKIP() << "Kernel selection verification requires CUDA and stdout capture support.";
+#else
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "cuDNN SDPA requires a CUDA device with compute capability 8.0 or later.";
+  }
+
   constexpr int batch_size = 1;
   constexpr int sequence_length = 2;
   constexpr int hidden_size = 64;
@@ -914,13 +921,22 @@ TEST(ContribOpAttentionTest, CudnnFlashAttentionWithKeySequenceLengthMask) {
           {onnxruntime::contrib::attention::kEnableCudnnFlashAttention, "1"},
           {onnxruntime::contrib::attention::kDisableTrtFlashAttention, "1"},
           {onnxruntime::contrib::attention::kDisableFusedSelfAttention, "1"},
-          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"}}};
+          {onnxruntime::contrib::attention::kDisableMemoryEfficientAttention, "1"},
+          {onnxruntime::contrib::attention::kEnableAttentionKernelDebugInfo, "1"}}};
 
   constexpr bool use_float16 = true;
   constexpr bool is_unidirectional = false;
+  testing::internal::CaptureStdout();
   RunAttentionTest(input_data, weight_data, bias_data, mask_index_data, output_data,
                    batch_size, sequence_length, hidden_size, number_of_heads,
                    use_float16, is_unidirectional);
+  const std::string debug_output = testing::internal::GetCapturedStdout();
+  if (debug_output.find("cuDNN Flash Attention is disabled") != std::string::npos) {
+    GTEST_SKIP() << debug_output;
+  }
+  EXPECT_NE(debug_output.find("SdpaKernel=CUDNN_FLASH_ATTENTION"), std::string::npos)
+      << debug_output;
+#endif
 }
 
 TEST(ContribOpAttentionTest, AttentionEmptyPastState) {
