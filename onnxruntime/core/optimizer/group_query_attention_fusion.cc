@@ -289,20 +289,17 @@ static bool TryGetRotaryEmbeddingArgs(Node& rotary_node, RotaryEmbeddingArgs& ar
   }
 
   auto& input_defs = rotary_node.MutableInputDefs();
-  if (rotary_node.Domain() == kMSDomain) {
-    // com.microsoft.RotaryEmbedding inputs:
-    //   input, position_ids, cos_cache, sin_cache
-    if (input_defs.size() < 4 || !NodeArgExists(input_defs[1]) || !NodeArgExists(input_defs[2]) ||
-        !NodeArgExists(input_defs[3])) {
-      return false;
-    }
-    args.position_ids_arg = input_defs[1];
-    args.cos_cache_arg = input_defs[2];
-    args.sin_cache_arg = input_defs[3];
-    return true;
+  // com.microsoft.RotaryEmbedding inputs:
+  //   input, position_ids, cos_cache, sin_cache
+  if (input_defs.size() < 4 || !NodeArgExists(input_defs[1]) || !NodeArgExists(input_defs[2]) ||
+      !NodeArgExists(input_defs[3])) {
+    return false;
   }
 
-  return false;
+  args.position_ids_arg = input_defs[1];
+  args.cos_cache_arg = input_defs[2];
+  args.sin_cache_arg = input_defs[3];
+  return true;
 }
 
 static void FusePreGQANodes(Graph& graph, Node* q_node, Node* k_node, Node* v_node, Node* rotary_node_1, Node* rotary_node_2, Node* new_node, NodeArg& new_node_output_arg) {
@@ -578,6 +575,9 @@ Status GroupQueryAttentionFusion::ApplyImpl(
         cos_cache_arg,
         sin_cache_arg};
     if (position_ids_arg != nullptr) {
+      // During prefill, GQA treats position_ids[0] as a shared base and derives each token's
+      // position as base + sequence index. This fusion therefore assumes the MS-domain
+      // RotaryEmbedding inputs use contiguous positions with the same base for every batch.
       gqa_input_defs.push_back(position_ids_arg);
     }
 
