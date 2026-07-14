@@ -1,13 +1,12 @@
 # Design: Remove the WebGL (onnxjs) backend from onnxruntime-web
 
 **Status:** Draft
-**Last updated:** 2026-07-10
+**Last updated:** 2026-07-14
 **Scope:** `onnxruntime-web` JavaScript/TypeScript package — WebGL backend
 
 **Related work:**
-[Migrate onnxruntime-web WebGPU/WebNN from JSEP to the native WebGPU EP](onnxruntime_web_jsep_to_webgpu_ep_migration.md).
-The two efforts are independent but share the `onnxruntime-web/all` bundle and the deprecation-warning utility;
-see §5 and §6 for the coupling.
+[Migrate onnxruntime-web WebGPU/WebNN from JSEP to the native WebGPU EP](onnxruntime_web_jsep_to_webgpu_ep_migration.md)
+— independent, but shares the `onnxruntime-web/all` bundle and the deprecation-warning utility (see §5–§6).
 
 ---
 
@@ -15,15 +14,12 @@ see §5 and §6 for the coupling.
 
 `onnxruntime-web` ships a legacy **WebGL** backend — the `onnxjs` implementation under `js/web/lib/onnxjs`,
 registered under the `'webgl'` backend key. It predates the current WASM architecture, supports a narrower
-operator set, and has known fp32/behavioral drift relative to the WebGPU path.
+operator set, and has fp32/behavioral drift relative to the WebGPU path.
 
-This document proposes **deprecating and then removing** the WebGL backend. Unlike the JSEP → native WebGPU EP
-migration, this is a straightforward **deprecate-and-delete** with an explicit migration message — there is no
-transparent redirect (see §5.1).
+This document proposes **deprecating and then removing** it as a straightforward **deprecate-and-delete** with an
+explicit migration message — no transparent redirect (see §5.1), unlike the JSEP → native WebGPU EP migration:
 
-The work is split into two phases:
-
-- **Phase 1 (this release):** ship a deprecation warning + docs. No behavior change.
+- **Phase 1 (this release):** deprecation warning + docs. No behavior change.
 - **Phase 2 (next release):** delete the `onnxjs` backend, its `'webgl'` registration, and the `ort.webgl` build
   variant.
 
@@ -74,26 +70,22 @@ nothing.
 
 ### 4.1 WebGPU browser coverage (expanding, but with platform caveats)
 
-A common historical reason to keep WebGL was "WebGPU isn't available on Safari / iOS / Firefox." As of 2026 that
-is **less true than it was**, though MDN's `api.GPU` browser-compat data still reports meaningful caveats — the
-Chrome and Firefox entries are **partial**, not blanket support:
+The historical reason to keep WebGL was "WebGPU isn't available on Safari / iOS / Firefox." As of 2026 that is
+**less true**, though MDN's `api.GPU` browser-compat data still shows Chrome and Firefox as **partial**:
 
 | Browser | WebGPU (per MDN BCD) |
 |---|---|
-| Chrome / Edge (desktop) | Partial from 113 (ChromeOS/macOS/Windows); broader/full only in a later version, with Linux limited to newer Intel-gen GPUs |
+| Chrome / Edge (desktop) | Partial from 113 (ChromeOS/macOS/Windows); Linux limited to newer Intel-gen GPUs |
 | Chrome Android | 121+ |
-| Safari (macOS) | Full, 26 |
-| Safari (iOS) | Full, 26 |
+| Safari (macOS / iOS) | Full, 26 |
 | Chrome / Edge (iOS, via WebKit) | Full, 26 |
 | Firefox (desktop) | Partial from 141; **excludes Linux and Intel-based macOS** (Apple-Silicon-first) |
 | Firefox for Android | ❌ |
 
-So Safari/iOS coverage is now solid, and Chrome/Firefox are moving in the right direction — but there remain real
-gaps: older browser versions, Firefox for Android, Linux (both Chrome's GPU-generation limits and Firefox's
-exclusion), and Intel-based Macs on Firefox. WebGPU coverage is **broadening but not yet universal**, so the set
-of users for whom WebGL is the *only* GPU path is shrinking rather than gone. This supports removing WebGL over a
-deprecation window, but the design does **not** rely on WebGPU being universally available — the actionable
-fallback for uncovered users is the WASM/CPU backend, not WebGPU.
+Safari/iOS is now solid and Chrome/Firefox are improving, but real gaps remain (older versions, Firefox for
+Android, Linux, Intel Macs on Firefox). Coverage is **broadening but not universal**, so the pool of users for
+whom WebGL is the *only* GPU path is shrinking, not gone. The design does **not** assume universal WebGPU — the
+actionable fallback for uncovered users is the WASM/CPU backend.
 
 ---
 
@@ -101,45 +93,40 @@ fallback for uncovered users is the WASM/CPU backend, not WebGPU.
 
 ### 5.1 Explicit removal, not a transparent redirect
 
-Unlike the WebGPU JSEP → native swap, WebGL cannot be transparently redirected to another backend:
+WebGL cannot be transparently redirected (unlike the WebGPU JSEP → native swap):
 
-- The `./webgl` bundle sets `DISABLE_WASM: true`, so there is **no WASM/CPU fallback** to silently fall back to.
-- WebGPU requires `navigator.gpu`; a silent redirect would fail on devices without WebGPU support.
-- WebGL exhibits fp32/op drift, so silently swapping results would be a hidden behavioral change.
+- The `./webgl` bundle sets `DISABLE_WASM: true`, so there is **no WASM/CPU fallback** to redirect to.
+- WebGPU requires `navigator.gpu`; a silent redirect would fail where WebGPU is unavailable.
+- WebGL's fp32/op drift means silently swapping results would be a hidden behavioral change.
 
-Therefore WebGL gets an **explicit deprecation warning + removal** with an actionable migration message directing
-users to the WebGPU EP (`webgpu`) or the WASM/CPU backend (`wasm`).
+So WebGL gets an **explicit deprecation warning + removal** directing users to the WebGPU EP (`webgpu`) or the
+WASM/CPU backend (`wasm`).
 
 ### 5.2 Warning placement
 
 The warning fires in `OnnxjsBackend` (`js/web/lib/backend-onnxjs.ts`), in `init()` /
-`createInferenceSessionHandler`. Because the backend registers with negative priority, this only fires when WebGL
-is **explicitly requested**, so it does not spam consumers who never opt into WebGL. It fires for both `ort.all`
-and `ort.webgl`.
+`createInferenceSessionHandler`. Because the backend has negative priority, it only fires when WebGL is
+**explicitly requested** — no spam for consumers who never opt in. Fires for both `ort.all` and `ort.webgl`.
 
 ### 5.3 Removal ergonomics (no tombstones)
 
-When the backend is removed in Phase 2, we do **not** ship throwing-stub "tombstone" modules for the `./webgl`
-export or a runtime shim for the `'webgl'` backend key. The rationale:
+Phase 2 relies on the native failure modes rather than adding tombstone stubs or a `'webgl'`-key shim:
 
-- Removing the `./webgl` export means a lingering `import 'onnxruntime-web/webgl'` fails with the native bundler
-  error ("subpath ./webgl is not defined by exports"). That is a clear, immediate, build-time failure — no shim
-  needed.
-- Requesting `executionProviders: ['webgl']` alone after removal already throws the generic "no available backend
-  found" error from `resolveBackendAndExecutionProviders`.
-- WebGL was never a production-grade, first-class backend (narrow op set, fp32 drift, negative priority), so an
-  elaborate soft-landing is not warranted.
+- A lingering `import 'onnxruntime-web/webgl'` fails with the native bundler error ("subpath ./webgl is not
+  defined by exports") — a clear build-time failure.
+- `executionProviders: ['webgl']` throws "no available backend found" from `resolveBackendAndExecutionProviders`.
+
+WebGL was never a first-class backend (narrow op set, fp32 drift, negative priority), so these built-in errors are
+a sufficient soft-landing.
 
 ---
 
 ## 6. `/all` bundle coupling
 
-WebGL is one of the two backends in `./all` (the other being JSEP WebGPU/WebNN). Removing WebGL drops it from
-`/all`, leaving JSEP (which the
-[JSEP → native migration](onnxruntime_web_jsep_to_webgpu_ep_migration.md) subsequently converges to the native
-EP). This effort owns **removing WebGL from `/all`**; the JSEP effort owns the **final convergence** of `/all`
-onto the native artifact. `/all` itself is **kept** as an export to avoid breaking imports (see the JSEP doc §5.3
-for the alias decision).
+`./all` holds two backends: WebGL and JSEP WebGPU/WebNN. This effort owns **removing WebGL from `/all`**; the
+[JSEP → native migration](onnxruntime_web_jsep_to_webgpu_ep_migration.md) owns the **final convergence** of the
+remaining JSEP backend onto the native EP. `/all` is **kept** as an export to avoid breaking imports (see JSEP doc
+§5.3 for the alias decision).
 
 ---
 
@@ -184,15 +171,19 @@ No behavior change. Deliverables:
 - **`onnxruntime-web/all`:** continues to work, but no longer includes WebGL. If you relied on WebGL as a
   fallback via `/all`, add `wasm` to your `executionProviders` list.
 
-> **Canonical source:** the authoritative, continuously-updated migration guidance for both the WebGL and JSEP
-> removals lives in a single pinned tracking issue (link TBD). Console warnings, README/docs, and CHANGELOG
-> entries **link** to that issue rather than duplicating this guidance, so there is one place to keep current.
+> **Canonical source:** this effort has its **own** pinned tracking issue (link TBD) as the authoritative,
+> continuously-updated migration guidance, independent of the
+> [JSEP → native migration](onnxruntime_web_jsep_to_webgpu_ep_migration.md) issue. Console warnings, README/docs,
+> and CHANGELOG entries **link** to it rather than duplicating guidance. `/all` guidance (touched by both efforts)
+> links to whichever issue is relevant.
 
 ---
 
-## 11. Open questions
+## 11. Resolved decisions
 
-1. **Warning suppressibility.** Always-once vs. env opt-out. Recommendation: once + respect `logLevel` so
-   error/fatal silences it. (Consistent with the JSEP effort.)
-2. **Deprecation window length.** One release (aligned with the JSEP removal) vs. longer. Recommendation: align
-   with the JSEP removal for a single coordinated backend-consolidation message.
+- **Deprecation window length.** Default to **one release**, kept **independent** of the JSEP removal's schedule
+  rather than forcing the two to align. Extend only if issues surface during deprecation (e.g. WebGL-reliant
+  consumers report friction migrating to `wasm`/WebGPU) — real-world feedback, not the JSEP timeline, drives any
+  extension.
+- **Warning suppressibility.** Warn once and respect `env.logLevel` — setting the log level to error/fatal
+  silences the deprecation warning; no separate opt-out flag is added. (Same policy as the JSEP effort.)
