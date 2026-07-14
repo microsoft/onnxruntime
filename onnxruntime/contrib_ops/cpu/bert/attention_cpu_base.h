@@ -265,11 +265,6 @@ class AttentionCPUBase : public AttentionBase {
       unit_cost.bytes_loaded = static_cast<double>((sequence_length + total_sequence_length) * head_size * sizeof(T));
       unit_cost.bytes_stored = static_cast<double>(probs_matrix_bytes);
 
-      if (mask_data != nullptr) {
-        unit_cost.bytes_loaded += static_cast<double>(probs_matrix_bytes);
-        unit_cost.bytes_stored += static_cast<double>(probs_matrix_bytes);
-      }
-
       if (present || present_key) {
         double bytes_to_copy_key = (past_present_share_buffer ? kv_input_chunk_length : present_chunk_length) *
                                    static_cast<double>(sizeof(T));
@@ -277,45 +272,10 @@ class AttentionCPUBase : public AttentionBase {
         unit_cost.bytes_stored += bytes_to_copy_key;
       }
 
-      if (attn_bias_data != nullptr) {
-        unit_cost.compute_cycles += static_cast<double>(probs_matrix_size);
-        unit_cost.bytes_loaded += probs_matrix_bytes * 2;
-        unit_cost.bytes_stored += probs_matrix_bytes;
-      }
-
       ThreadPool::TryParallelFor(tp, loop_len, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
         for (std::ptrdiff_t i = begin; i != end; ++i) {
-          const int batch_index = static_cast<int>(i) / num_heads_;
-          const std::ptrdiff_t head_index = i % static_cast<std::ptrdiff_t>(num_heads_);
-
           const ptrdiff_t output_offset = SafeInt<ptrdiff_t>(i) * probs_matrix_size;
-          const ptrdiff_t mask_offset = SafeInt<ptrdiff_t>(batch_index) * probs_matrix_size;
-
           T* output = attention_probs + output_offset;
-
-          if (attn_bias_data != nullptr) {
-            // Attention bias has shape (B or 1, N or 1, S, T)
-            // Here we handle the broadcast of batch_size and num_heads dimensions.
-            ptrdiff_t attn_bias_offset = 0;
-            if (attn_bias_dims[0] != 1) {
-              attn_bias_offset += SafeInt<ptrdiff_t>(batch_index) * attn_bias_dims[1] * probs_matrix_size;
-            }
-            if (attn_bias_dims[1] != 1) {
-              attn_bias_offset += head_index * probs_matrix_size;
-            }
-
-            memcpy(output, attn_bias_data + attn_bias_offset, probs_matrix_bytes);
-
-            if (mask_data != nullptr) {
-              // This can be optimized with vectorized add using MlasAddFloat32x4.
-              for (ptrdiff_t j = 0; j < probs_matrix_size; j++) {
-                output[j] += mask_data[mask_offset + j];
-              }
-            }
-          } else if (mask_data != nullptr) {
-            // Broadcast mask data: (Bx)SxT -> (BxNx)SxT
-            memcpy(output, mask_data + mask_offset, probs_matrix_bytes);
-          }
 
           const T* k = K + kv_input_chunk_length * i;
           if (nullptr != present) {
@@ -330,17 +290,69 @@ class AttentionCPUBase : public AttentionBase {
             }
           }
 
-          // Compute Q*K' + AttentionMask
+          // Compute the scaled Q*K' with a clean (beta=0) write. The additive mask and attention
+          // bias are applied afterwards in a separate, fully-parallel pass (see below).
           //                     original                 transposed             each iteration
           // A: Q                (B x N x) S x H          (B x N x) S x H        S x H
           // B: K'               (B x N x) T x H          (B x N x) H x T        H x T
           // C: attention_probs  (B x N x) S x T          (B x N x) S x T        S x T
           math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_sequence_length, head_size, alpha,
                                     Q + q_input_chunk_length * i, k,
-                                    (mask_data != nullptr || attn_bias_data != nullptr) ? 1.0f : 0.0f,
+                                    0.0f,
                                     output, nullptr, &mlas_backend_kernel_selector_config_);
         }
       });
+
+      // Apply the additive attention mask and/or attention bias to the scaled Q*K'.
+      // This is done in a dedicated pass over B*N*S rows so the work is spread across all
+      // threads. Combined with the clean beta=0 GEMM write above, it avoids a redundant
+      // per-head copy of the [S, T] mask tile and a read-modify-write accumulation.
+      if (mask_data != nullptr || attn_bias_data != nullptr) {
+        const ptrdiff_t num_rows = SafeInt<ptrdiff_t>(batch_size) * num_heads_ * sequence_length;
+        const int num_addends = (mask_data != nullptr ? 1 : 0) + (attn_bias_data != nullptr ? 1 : 0);
+
+        TensorOpCost mask_cost;
+        const double row_bytes = static_cast<double>(total_sequence_length) * sizeof(T);
+        mask_cost.compute_cycles = static_cast<double>(total_sequence_length) * num_addends;
+        mask_cost.bytes_loaded = row_bytes * (1 + num_addends);
+        mask_cost.bytes_stored = row_bytes;
+
+        ThreadPool::TryParallelFor(
+            tp, num_rows, mask_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+              for (std::ptrdiff_t r = begin; r != end; ++r) {
+                const int s_i = static_cast<int>(r % sequence_length);
+                const std::ptrdiff_t bn = r / sequence_length;  // batch_index * num_heads_ + head_index
+                const int batch_index = static_cast<int>(bn / num_heads_);
+
+                const ptrdiff_t output_offset = r * SafeInt<ptrdiff_t>(total_sequence_length);
+                T* output = attention_probs + output_offset;
+
+                if (attn_bias_data != nullptr) {
+                  // Attention bias has shape (B or 1, N or 1, S, T). Handle the broadcast of the
+                  // batch_size and num_heads dimensions.
+                  const int head_index = static_cast<int>(bn % num_heads_);
+                  ptrdiff_t attn_bias_offset = 0;
+                  if (attn_bias_dims[0] != 1) {
+                    attn_bias_offset += SafeInt<ptrdiff_t>(batch_index) * attn_bias_dims[1] * probs_matrix_size;
+                  }
+                  if (attn_bias_dims[1] != 1) {
+                    attn_bias_offset += SafeInt<ptrdiff_t>(head_index) * probs_matrix_size;
+                  }
+                  attn_bias_offset += SafeInt<ptrdiff_t>(s_i) * total_sequence_length;
+                  MlasEltwiseAdd<T>(output, attn_bias_data + attn_bias_offset, output,
+                                    static_cast<size_t>(total_sequence_length));
+                }
+
+                if (mask_data != nullptr) {
+                  // Mask data has shape (B, S, T) and is broadcast across the num_heads dimension.
+                  const ptrdiff_t mask_offset =
+                      (SafeInt<ptrdiff_t>(batch_index) * sequence_length + s_i) * total_sequence_length;
+                  MlasEltwiseAdd<T>(output, mask_data + mask_offset, output,
+                                    static_cast<size_t>(total_sequence_length));
+                }
+              }
+            });
+      }
     }
 
     if (output_qk != nullptr) {
