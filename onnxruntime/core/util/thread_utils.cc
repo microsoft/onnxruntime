@@ -180,7 +180,7 @@ static constexpr const char* kIntraOpNumThreadsEnvVar = "ORT_INTRA_OP_NUM_THREAD
 static constexpr const char* kInterOpNumThreadsEnvVar = "ORT_INTER_OP_NUM_THREADS";
 
 // Determines the default thread count from the environment for a pool whose size was not set
-// programmatically (thread_pool_size <= 0). Returns 0 when the environment does not specify one,
+// programmatically (thread_pool_size == 0). Returns 0 when the environment does not specify one,
 // leaving the machine-sized default in place.
 //
 // ORT_INTRA_OP_NUM_THREADS sizes the intra-op pool and ORT_INTER_OP_NUM_THREADS the inter-op pool.
@@ -200,7 +200,7 @@ static int NumThreadsFromEnvironment(ThreadPoolType tpool_type) {
 
 std::unique_ptr<ThreadPool>
 CreateThreadPool(Env* env, OrtThreadPoolParams options, ThreadPoolType tpool_type) {
-  if (options.thread_pool_size <= 0) {  // default: consult the environment before sizing to the machine
+  if (options.thread_pool_size == 0) {  // 0 == "use default": consult the environment before the helper sizes to the machine
     options.thread_pool_size = NumThreadsFromEnvironment(tpool_type);
   }
   return CreateThreadPoolHelper(env, options);
