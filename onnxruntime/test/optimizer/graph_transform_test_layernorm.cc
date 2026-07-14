@@ -607,11 +607,17 @@ static void TestGQAFusion(const std::basic_string<ORTCHAR_T>& file_path, int mat
   ASSERT_TRUE(op_to_count["com.microsoft.GroupQueryAttention"] == 1);
 }
 
-static void BuildOnnxRotaryEmbeddingGQAFusionGraph(ModelTestBuilder& builder,
-                                                   bool include_position_ids,
-                                                   int64_t q_interleaved = 0,
-                                                   int64_t k_interleaved = 0,
-                                                   int64_t rotary_embedding_dim = 0) {
+enum class RotaryEmbeddingDomain {
+  kOnnx,
+  kMS,
+};
+
+static void BuildRotaryEmbeddingGQAFusionGraph(ModelTestBuilder& builder,
+                                               RotaryEmbeddingDomain rotary_domain,
+                                               bool include_position_ids,
+                                               int64_t q_interleaved = 0,
+                                               int64_t k_interleaved = 0,
+                                               int64_t rotary_embedding_dim = 0) {
   constexpr int64_t batch_size = 1;
   constexpr int64_t sequence_length = 2;
   constexpr int64_t input_hidden_size = 8;
@@ -657,18 +663,27 @@ static void BuildOnnxRotaryEmbeddingGQAFusionGraph(ModelTestBuilder& builder,
   NodeArg* k_rotary_out =
       builder.MakeIntermediate<MLFloat16>(std::vector<int64_t>{batch_size, sequence_length, kv_hidden_size});
 
-  std::vector<NodeArg*> q_rotary_inputs{q_matmul_out, cos_cache, sin_cache};
-  std::vector<NodeArg*> k_rotary_inputs{k_matmul_out, cos_cache, sin_cache};
-  if (position_ids != nullptr) {
-    q_rotary_inputs.push_back(position_ids);
-    k_rotary_inputs.push_back(position_ids);
+  std::vector<NodeArg*> q_rotary_inputs;
+  std::vector<NodeArg*> k_rotary_inputs;
+  const char* rotary_domain_name =
+      rotary_domain == RotaryEmbeddingDomain::kMS ? kMSDomain : kOnnxDomain;
+  if (rotary_domain == RotaryEmbeddingDomain::kMS) {
+    q_rotary_inputs = {q_matmul_out, position_ids, cos_cache, sin_cache};
+    k_rotary_inputs = {k_matmul_out, position_ids, cos_cache, sin_cache};
+  } else {
+    q_rotary_inputs = {q_matmul_out, cos_cache, sin_cache};
+    k_rotary_inputs = {k_matmul_out, cos_cache, sin_cache};
+    if (position_ids != nullptr) {
+      q_rotary_inputs.push_back(position_ids);
+      k_rotary_inputs.push_back(position_ids);
+    }
   }
 
-  Node& q_rotary = builder.AddNode("RotaryEmbedding", q_rotary_inputs, {q_rotary_out}, kOnnxDomain);
+  Node& q_rotary = builder.AddNode("RotaryEmbedding", q_rotary_inputs, {q_rotary_out}, rotary_domain_name);
   q_rotary.AddAttribute("num_heads", num_heads);
   q_rotary.AddAttribute("interleaved", q_interleaved);
   q_rotary.AddAttribute("rotary_embedding_dim", rotary_embedding_dim);
-  Node& k_rotary = builder.AddNode("RotaryEmbedding", k_rotary_inputs, {k_rotary_out}, kOnnxDomain);
+  Node& k_rotary = builder.AddNode("RotaryEmbedding", k_rotary_inputs, {k_rotary_out}, rotary_domain_name);
   k_rotary.AddAttribute("num_heads", kv_num_heads);
   k_rotary.AddAttribute("interleaved", k_interleaved);
   k_rotary.AddAttribute("rotary_embedding_dim", rotary_embedding_dim);
@@ -706,6 +721,32 @@ static Status CheckOnnxRotaryEmbeddingGQANotFused(Graph& graph) {
     const auto& attrs = node.GetAttributes();
     auto do_rotary_attr = attrs.find("do_rotary");
     TEST_RETURN_IF_NOT(do_rotary_attr == attrs.end() || do_rotary_attr->second.i() == 0);
+  }
+
+  return Status::OK();
+}
+
+static Status CheckMsRotaryEmbeddingGQAFused(Graph& graph, int64_t expected_interleaved) {
+  const auto op_to_count = CountOpsInGraph(graph);
+  TEST_RETURN_IF_NOT(OpCount(op_to_count, "com.microsoft.RotaryEmbedding") == 0);
+  TEST_RETURN_IF_NOT(OpCount(op_to_count, "MatMul") == 1);
+  TEST_RETURN_IF_NOT(OpCount(op_to_count, "com.microsoft.GroupQueryAttention") == 1);
+
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() != "GroupQueryAttention") {
+      continue;
+    }
+
+    const auto& input_defs = node.InputDefs();
+    TEST_RETURN_IF_NOT(input_defs.size() == 10);
+    TEST_RETURN_IF_NOT(input_defs[9] != nullptr && input_defs[9]->Exists());
+
+    const auto& attrs = node.GetAttributes();
+    const auto do_rotary_attr = attrs.find("do_rotary");
+    TEST_RETURN_IF_NOT(do_rotary_attr != attrs.end() && do_rotary_attr->second.i() == 1);
+    const auto interleaved_attr = attrs.find("rotary_interleaved");
+    TEST_RETURN_IF_NOT(interleaved_attr != attrs.end() &&
+                       interleaved_attr->second.i() == expected_interleaved);
   }
 
   return Status::OK();
@@ -902,7 +943,7 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionFusionTest) {
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsOnnxRotaryEmbeddingTest) {
   auto build_test_case = [](ModelTestBuilder& builder) {
-    BuildOnnxRotaryEmbeddingGQAFusionGraph(builder, true);
+    BuildRotaryEmbeddingGQAFusionGraph(builder, RotaryEmbeddingDomain::kOnnx, true);
   };
 
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
@@ -913,7 +954,7 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsOnnxRotaryEmbeddi
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsOnnxRotaryEmbeddingInterleavedTest) {
   auto build_test_case = [](ModelTestBuilder& builder) {
-    BuildOnnxRotaryEmbeddingGQAFusionGraph(builder, true, 1, 1);
+    BuildRotaryEmbeddingGQAFusionGraph(builder, RotaryEmbeddingDomain::kOnnx, true, 1, 1);
   };
 
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
@@ -924,7 +965,7 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsOnnxRotaryEmbeddi
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsOnnxRotaryEmbeddingPartialRotaryTest) {
   auto build_test_case = [](ModelTestBuilder& builder) {
-    BuildOnnxRotaryEmbeddingGQAFusionGraph(builder, true, 0, 0, 16);
+    BuildRotaryEmbeddingGQAFusionGraph(builder, RotaryEmbeddingDomain::kOnnx, true, 0, 0, 16);
   };
 
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
@@ -935,7 +976,7 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionFusionSkipsOnnxRotaryEmbeddi
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionFusionOnnxRotaryEmbeddingInterleavedMismatchTest) {
   auto build_test_case = [](ModelTestBuilder& builder) {
-    BuildOnnxRotaryEmbeddingGQAFusionGraph(builder, true, 0, 1);
+    BuildRotaryEmbeddingGQAFusionGraph(builder, RotaryEmbeddingDomain::kOnnx, true, 0, 1);
   };
 
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
@@ -946,13 +987,27 @@ TEST_F(GraphTransformationTests, GroupQueryAttentionFusionOnnxRotaryEmbeddingInt
 
 TEST_F(GraphTransformationTests, GroupQueryAttentionFusionOnnxRotaryEmbeddingNoPositionIdsTest) {
   auto build_test_case = [](ModelTestBuilder& builder) {
-    BuildOnnxRotaryEmbeddingGQAFusionGraph(builder, false);
+    BuildRotaryEmbeddingGQAFusionGraph(builder, RotaryEmbeddingDomain::kOnnx, false);
   };
 
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
                                         std::make_unique<GroupQueryAttentionFusion>(),
                                         TransformerLevel::Level2, 3, nullptr,
                                         CheckOnnxRotaryEmbeddingGQANotFused));
+}
+
+TEST_F(GraphTransformationTests, GroupQueryAttentionFusionMsRotaryEmbeddingForwardsPositionIdsTest) {
+  auto build_test_case = [](ModelTestBuilder& builder) {
+    BuildRotaryEmbeddingGQAFusionGraph(builder, RotaryEmbeddingDomain::kMS, true, 1, 1);
+  };
+  auto check_fused_graph = [](Graph& graph) {
+    return CheckMsRotaryEmbeddingGQAFused(graph, 1);
+  };
+
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 23, *logger_,
+                                        std::make_unique<GroupQueryAttentionFusion>(),
+                                        TransformerLevel::Level2, 3, nullptr,
+                                        check_fused_graph));
 }
 
 TEST_F(GraphTransformationTests, SkipLayerNormFusionWithCastTest) {
