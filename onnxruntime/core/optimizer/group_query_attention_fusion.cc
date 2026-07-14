@@ -334,7 +334,8 @@ Status GroupQueryAttentionFusion::ApplyImpl(
     for (auto pre_gqa_node = node.InputNodesBegin(); pre_gqa_node != node.InputNodesEnd(); ++pre_gqa_node) {
       Node& rotary_or_v_node = *graph.GetNode(pre_gqa_node->Index());
 
-      if (rotary_or_v_node.OpType() == "RotaryEmbedding") {
+      // The ONNX-domain (opset 23) RotaryEmbedding has a different input layout; only match the contrib op.
+      if (rotary_or_v_node.OpType() == "RotaryEmbedding" && rotary_or_v_node.Domain() == kMSDomain) {
         if (!rotary_node_1) {
           rotary_node_1 = &rotary_or_v_node;
         } else {
