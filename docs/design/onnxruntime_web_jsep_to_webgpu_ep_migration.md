@@ -258,6 +258,10 @@ unverified.
 
 The default already runs the native EP (flipped in Phase 1); this release deletes JSEP and the temporary surfaces.
 
+Timed a **single release** after Phase 1 by default, keeping the `/jsep` escape hatch (and thus the JSEP
+implementation) available for exactly one release. Extend only if native-EP parity regressions surface in the wild
+— real fallback usage via `/jsep`, not a fixed calendar, drives any extension.
+
 1. **Remove build variants:** drop JSEP WASM artifacts; update `build.ts` and `package.json` exports, and remove
    the temporary `USE_WEBGPU_EP` flag. Repoint `/all` to the webgpu/default artifact (§5.3) — valid only once
    WebGL has also been dropped from `/all` (WebGL doc §8); if WebGL is still present, `/all` stays a distinct
