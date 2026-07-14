@@ -257,7 +257,7 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
                     const size_t sr = ukernel.get_sr();
 
                     assert(QuantBScaleBegin != nullptr);
-                    kai_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0_params params;
+                    kai_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0_params params{};
                     params.lhs_zero_point = 1;
                     params.rhs_zero_point = 8;
                     params.scale_dt = kai_dt_bf16;
@@ -290,58 +290,81 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
 
                     assert(QuantBScaleBegin != nullptr);
                     assert(QuantBZPBegin != nullptr);
-                    kai_rhs_pack_nxk_qai4c32p_params params;
+                    kai_rhs_pack_nxk_qai4c32p_params params{};
                     params.lhs_zero_point = 1;
                     params.rhs_zero_point = 8;
 
-                    std::vector<float> zero_offsets(N * BlockCountK);
                     const size_t zp_stride = MlasDivRoundup(BlockCountK, 2);
-
-                    // Getting zero-points from provided packed buffer
-                    for (size_t n = 0; n < N; ++n) {
-                        for (size_t blk = 0; blk < BlockCountK; ++blk) {
-                            const uint8_t zp_byte = static_cast<uint8_t>(QuantBZPBegin[n * zp_stride + blk / 2]);
-                            const uint8_t zp = (blk & 1) == 0 ? (zp_byte & 0x0F) : (zp_byte >> 4);
-                            const size_t idx = n * BlockCountK + blk;
-                            // ORT stores asymmetric Q4 as uint4; KAI QAI4 interprets it as signed int4
-                            // offset by rhs_zero_point.
-                            const float kai_zp_offset =
-                                static_cast<float>(params.rhs_zero_point) - static_cast<float>(zp);
-                            zero_offsets[idx] = kai_zp_offset * QuantBScaleBegin[idx];
-                        }
-                    }
-
-                    // Rearrange high/low nibble for KAI-expected format
-                    std::vector<uint8_t> rhs_for_kai(N * K / 2);
+                    const size_t rhs_stride = K / 2;
+                    // Reuse one kernel-width panel to keep scratch memory independent of N.
+                    std::vector<float> zero_offsets(nr * BlockCountK);
+                    std::vector<uint8_t> rhs_for_kai(nr * rhs_stride);
                     const auto* rhs = reinterpret_cast<const uint8_t*>(QuantBDataBegin);
-                    for (size_t i = 0; i < rhs_for_kai.size(); ++i) {
-                        rhs_for_kai[i] = static_cast<uint8_t>(((rhs[i] & 0x0F) << 4) | ((rhs[i] & 0xF0) >> 4));
-                    }
 
-                    // Pack using layout based on what the kernel expects
-                    switch (k.rhs_layout) {
-                        case KaiQ4RhsPackLayout::AsymmetricNxK:
-                            kai_run_rhs_pack_nxk_qai4c32p_qau4c32s0s1_f32_f32_f32_neon(
-                                1, N, K, nr, kr, sr, BlkLen,
-                                rhs_for_kai.data(),
-                                zero_offsets.data(),
-                                nullptr,
-                                QuantBScaleBegin,
-                                PackedQuantBDataBegin,
-                                0, &params);
-                            break;
-                        case KaiQ4RhsPackLayout::AsymmetricNxKInterleavedNrx4:
-                            kai_run_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s0s1_f32_f32_f32_neon(
-                                1, N, K, nr, kr, sr, BlkLen,
-                                rhs_for_kai.data(),
-                                zero_offsets.data(),
-                                nullptr,
-                                QuantBScaleBegin,
-                                PackedQuantBDataBegin,
-                                0, &params);
-                            break;
-                        default:
-                            assert(false);
+                    for (size_t panel_start = 0; panel_start < N; panel_start += nr) {
+                        const size_t panel_rows = std::min(nr, N - panel_start);
+
+                        // Getting zero-points for the current scratch buffer panel from provided packed buffer
+                        for (size_t panel_n = 0; panel_n < panel_rows; ++panel_n) {
+                            const size_t n = panel_start + panel_n;
+                            for (size_t blk = 0; blk < BlockCountK; ++blk) {
+                                const uint8_t zp_byte =
+                                    static_cast<uint8_t>(QuantBZPBegin[n * zp_stride + blk / 2]);
+                                const uint8_t zp = (blk & 1) == 0 ? (zp_byte & 0x0F) : (zp_byte >> 4);
+                                const size_t src_idx = n * BlockCountK + blk;
+                                const size_t panel_idx = panel_n * BlockCountK + blk;
+                                // ORT stores asymmetric Q4 as uint4; KAI QAI4 interprets it as signed int4
+                                // offset by rhs_zero_point.
+                                const float kai_zp_offset =
+                                    static_cast<float>(params.rhs_zero_point) - static_cast<float>(zp);
+                                zero_offsets[panel_idx] = kai_zp_offset * QuantBScaleBegin[src_idx];
+                            }
+                        }
+
+                        // Rearrange high/low nibble in the current scratch buffer panel for KAI-expected format
+                        const uint8_t* rhs_panel = rhs + panel_start * rhs_stride;
+                        const size_t rhs_panel_size = panel_rows * rhs_stride;
+                        for (size_t i = 0; i < rhs_panel_size; ++i) {
+                            rhs_for_kai[i] =
+                                static_cast<uint8_t>(
+                                    ((rhs_panel[i] & 0x0F) << 4) | ((rhs_panel[i] & 0xF0) >> 4));
+                        }
+
+                        const float* scales_panel = QuantBScaleBegin + panel_start * BlockCountK;
+
+                        // Pack the current scratch buffer panel using layout based on what the kernel expects
+                        switch (k.rhs_layout) {
+                            case KaiQ4RhsPackLayout::AsymmetricNxK: {
+                                const size_t packed_offset =
+                                    kai_get_rhs_packed_offset_rhs_pack_nxk_qai4c32p_qau4c32s0s1_f32_f32_f32_neon(
+                                        panel_start, K, nr, kr, BlkLen);
+                                kai_run_rhs_pack_nxk_qai4c32p_qau4c32s0s1_f32_f32_f32_neon(
+                                    1, panel_rows, K, nr, kr, sr, BlkLen,
+                                    rhs_for_kai.data(),
+                                    zero_offsets.data(),
+                                    nullptr,
+                                    scales_panel,
+                                    PackedQuantBDataBegin + packed_offset,
+                                    0, &params);
+                                break;
+                            }
+                            case KaiQ4RhsPackLayout::AsymmetricNxKInterleavedNrx4: {
+                                const size_t packed_offset =
+                                    kai_get_rhs_packed_offset_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s0s1_f32_f32_f32_neon(
+                                        panel_start, K, nr, kr, BlkLen);
+                                kai_run_rhs_pack_nxk_qai4c32ps1s0nrx4_qau4c32s0s1_f32_f32_f32_neon(
+                                    1, panel_rows, K, nr, kr, sr, BlkLen,
+                                    rhs_for_kai.data(),
+                                    zero_offsets.data(),
+                                    nullptr,
+                                    scales_panel,
+                                    PackedQuantBDataBegin + packed_offset,
+                                    0, &params);
+                                break;
+                            }
+                            default:
+                                assert(false);
+                        }
                     }
                     break;
                 }
