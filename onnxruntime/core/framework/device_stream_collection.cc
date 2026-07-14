@@ -59,6 +59,9 @@ class DeviceStreamCollectionImpl {
       ReleaseSingleStreamBuffers(stream_override_->second);
     }
 
+    // Note: Non-owned streams set via SetDeviceStream() (e.g., parent_stream from UpdateWithParentStream)
+    // are untagged by their owning collection's CleanUp(), not by this collection.
+
     return Status::OK();
   }
 
