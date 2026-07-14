@@ -57,6 +57,7 @@ static std::string MaxVector(const std::string& name, int components) {
   }
 }
 
+// Online Softmax implementation as described in https://arxiv.org/abs/1805.02867
 Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Add input and output variables
   const auto& input = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias |
