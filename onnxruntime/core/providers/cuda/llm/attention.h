@@ -31,6 +31,19 @@ class Attention final : public CudaKernel {
       Tensor* Y, Tensor* present_key, Tensor* present_value,
       const attention_helper::AttentionParameters& parameters) const;
 
+  // cuDNN SDPA decode tier (Phase 1: opset-24 external KV cache).
+  // Reads the full `present` KV cache (K/V) and a per-batch valid length derived from
+  // nonpad_kv_seqlen; produces GQA-class decode latency without any host-side valid-length
+  // readback (CUDA-graph safe). Only reached for the narrowly gated decode case: external
+  // cache (nonpad_kv_seqlen != nullptr, past_key == nullptr), is_causal, q_sequence_length == 1,
+  // no attn_mask / output_qk / softcap, fp16/bf16. See the cascade in ComputeInternal.
+  Status RunCudnnSdpaAttention(
+      OpKernelContext* context,
+      const Tensor* Q, const Tensor* K, const Tensor* V,
+      const Tensor* nonpad_kv_seqlen,
+      Tensor* Y, Tensor* present_key, Tensor* present_value,
+      const attention_helper::AttentionParameters& parameters) const;
+
   // Unified unfused fallback. Handles:
   //   - GQA (q_num_heads != kv_num_heads) without K/V head replication.
   //   - fp16/bf16 with large head_size (FP32 QK accumulation, fixes #28195).
@@ -65,6 +78,13 @@ class Attention final : public CudaKernel {
   int softmax_precision_;
   bool disable_flash_attention_;
   bool disable_memory_efficient_attention_;
+  // cuDNN SDPA (cudnn_frontend) tier. Reuses the shared cuDNN option surfaced via
+  // AttentionKernelOptions::UseCudnnFlashAttention() / AllowCudnnFlashAttentionAuto() (no
+  // Attention-specific option key). Mirrors GroupQueryAttention: enable_ is set when the option is
+  // on (fp16/bf16 only); auto_enable_ additionally auto-prefers cuDNN on SM>=90 unless the user
+  // pinned kernels or disabled it.
+  bool enable_cudnn_flash_attention_;
+  bool auto_enable_cudnn_flash_attention_;
 };
 
 }  // namespace cuda

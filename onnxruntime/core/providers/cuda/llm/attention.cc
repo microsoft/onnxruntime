@@ -17,6 +17,8 @@
 #include "contrib_ops/cuda/bert/unfused_attention.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
+#include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
+#include "contrib_ops/cuda/bert/attention_kernel_options.h"
 #include "core/providers/cuda/cuda_type_conversion.h"
 
 using namespace onnxruntime::cuda;
@@ -113,6 +115,13 @@ Attention<T>::Attention(const OpKernelInfo& info) : CudaKernel(info) {
   const auto* kernel_options = this->GetAttentionKernelOptions();
   disable_flash_attention_ = std::is_same<T, float>::value || !kernel_options->UseFlashAttention();
   disable_memory_efficient_attention_ = !kernel_options->UseEfficientAttention();
+  // cuDNN SDPA (cudnn_frontend) supports FP16 and BF16 only. Reuse the shared cuDNN option
+  // (ORT_ENABLE_CUDNN_FLASH_ATTENTION env / provider option) already surfaced via
+  // UseCudnnFlashAttention(); do NOT add an Attention-specific key. auto_enable mirrors GQA's
+  // SM>=90 auto-preference (group_query_attention.cc:135-136).
+  constexpr bool kIsFp16OrBf16 = std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value;
+  enable_cudnn_flash_attention_ = kIsFp16OrBf16 && kernel_options->UseCudnnFlashAttention();
+  auto_enable_cudnn_flash_attention_ = kIsFp16OrBf16 && kernel_options->AllowCudnnFlashAttentionAuto();
 }
 
 // ============================================================================
@@ -535,6 +544,181 @@ Status Attention<T>::RunFlashAttention(
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                          "Flash attention is not available in this build.");
 #endif
+}
+
+// ============================================================================
+// RunCudnnSdpaAttention: cuDNN SDPA (cudnn_frontend) decode tier — Phase 1.
+// ============================================================================
+//
+// Scope (Phase 1): opset-24 external KV cache decode only. The caller gates this
+// on ALL of: nonpad_kv_seqlen != nullptr, past_key == nullptr, is_causal == true,
+// q_sequence_length == 1, no attn_mask / output_qk / softcap, fp16/bf16, and
+// cudnn_sdpa::is_supported(). See §4 of the design (issue #29714).
+//
+// Layout / semantics (mirrors RunFlashAttention Path 1):
+//   * Q: 3D inputs (is_bsnh) are already physical BSNH → no transpose, Q_K_V_BSNH.
+//        4D inputs (BNSH) → transpose Q to BSNH while K/V stay BNSH → mixed
+//        Q_K_V_BSNH_BNSH_BNSH format (as GQA does).
+//   * Output: cuDNN always writes O as BSNH; transpose to BNSH when !is_bsnh.
+//   * Valid KV length → device int32 via LaunchConvertNonpadKvSeqlenToFlashSeqlensK
+//     (emits a clamped count, exactly cuDNN's mask_sequence_lengths_kv). No host readback.
+//   * sequence_length_kv = total_sequence_length (buffer capacity); the per-batch mask
+//     bounds the valid region. mask_sequence_lengths_q = nullptr (single valid q token).
+//   * Fully-masked batch (nonpad_kv_seqlen[b] == 0): cuDNN softmax over an all -inf row is
+//     unspecified (likely NaN), while every other tier defines output = 0. Apply
+//     LaunchZeroOutputForFullyMaskedBatches after run() to restore spec equivalence.
+//   * present_key/value are separate outputs populated from the input K/V cache (not aliases).
+//
+// CUDA-graph safety: no host read of valid length; the converter is a device kernel and the
+// cuDNN plan cache is keyed on capacity (stable across decode steps). The plan must be built
+// (warmup) before cudaStreamBeginCapture — a hard invariant, matching the existing GQA flow.
+template <typename T>
+Status Attention<T>::RunCudnnSdpaAttention(
+    OpKernelContext* context,
+    const Tensor* Q, const Tensor* K, const Tensor* V,
+    const Tensor* nonpad_kv_seqlen,
+    Tensor* Y, Tensor* present_key, Tensor* present_value,
+    const attention_helper::AttentionParameters& parameters) const {
+  auto& device_prop = GetDeviceProp();
+  auto* ort_stream = context->GetComputeStream();
+  auto cuda_stream = Stream(context);
+  const bool is_bf16 = std::is_same<T, BFloat16>::value;
+  const bool is_bsnh = parameters.transpose_output;  // 3D inputs → BSNH
+
+  // Phase 1 is external-cache decode only; the caller's eligibility gate guarantees this, but
+  // keep a defensive check (past_key handling / prefill are Phase 2/3, deferred — see issue #29714).
+  ORT_ENFORCE(nonpad_kv_seqlen != nullptr,
+              "RunCudnnSdpaAttention requires nonpad_kv_seqlen (opset-24 external KV cache).");
+  ORT_ENFORCE(parameters.past_sequence_length == 0,
+              "RunCudnnSdpaAttention with nonpad_kv_seqlen requires K/V to be the full cache "
+              "(past_sequence_length must be 0, got ",
+              parameters.past_sequence_length, ").");
+
+  // --- cuDNN handle + temp-space allocator (mirror GQA, group_query_attention.cc:807-810) ---
+  cudnnHandle_t cudnn_handle = GetCudnnHandle(context);
+  AllocatorPtr allocator;
+  ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+
+  // --- Transpose Q from BNSH to BSNH for 4D inputs (cuDNN expects Q as BSNH) ---
+  void* q_data = const_cast<void*>(static_cast<const void*>(Q->Data<T>()));
+  IAllocatorUniquePtr<void> q_bsnh_buffer;
+  if (!is_bsnh) {
+    size_t q_bytes = sizeof(T) * parameters.batch_size * parameters.q_sequence_length *
+                     parameters.q_num_heads * parameters.head_size;
+    q_bsnh_buffer = GetScratchBuffer<void>(q_bytes, GetComputeStream(context));
+    ORT_RETURN_IF_ERROR(TransposeBNSHtoBSNH<T>(
+        parameters.batch_size, parameters.q_sequence_length,
+        parameters.q_num_heads, parameters.head_size,
+        Q->Data<T>(), q_bsnh_buffer.get(),
+        cuda_stream, device_prop.maxThreadsPerBlock));
+    q_data = q_bsnh_buffer.get();
+  }
+
+  // cuDNN always writes O as BSNH. If Y expects BNSH, write to scratch then transpose.
+  void* out_data = Y->MutableData<T>();
+  IAllocatorUniquePtr<void> out_bsnh_buffer;
+  if (!is_bsnh) {
+    size_t out_bytes = sizeof(T) * parameters.batch_size * parameters.q_sequence_length *
+                       parameters.q_num_heads * parameters.v_head_size;
+    out_bsnh_buffer = GetScratchBuffer<void>(out_bytes, GetComputeStream(context));
+    out_data = out_bsnh_buffer.get();
+  }
+
+  // --- Valid KV length → device int32 count (mask_sequence_lengths_kv). No host readback. ---
+  auto seqlens_k_buffer = GetScratchBuffer<int>(parameters.batch_size, GetComputeStream(context));
+  ORT_RETURN_IF_ERROR(LaunchConvertNonpadKvSeqlenToFlashSeqlensK(
+      nonpad_kv_seqlen->Data<int64_t>(),
+      seqlens_k_buffer.get(),
+      parameters.batch_size,
+      parameters.total_sequence_length,
+      cuda_stream,
+      device_prop.maxThreadsPerBlock));
+
+  // 3D physical BSNH → Q_K_V_BSNH; 4D BNSH inputs → mixed (Q transposed to BSNH, K/V stay BNSH).
+  const onnxruntime::contrib::AttentionQkvFormat qkv_format =
+      is_bsnh ? onnxruntime::contrib::AttentionQkvFormat::Q_K_V_BSNH
+              : onnxruntime::contrib::AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH;
+
+  onnxruntime::cudnn_sdpa::run(
+      out_data,
+      q_data,
+      const_cast<void*>(static_cast<const void*>(K->Data<T>())),
+      const_cast<void*>(static_cast<const void*>(V->Data<T>())),
+      /*bias=*/nullptr,
+      /*mask_sequence_lengths_q=*/nullptr,  // single valid q token (decode); do NOT reuse KV lengths.
+      /*mask_sequence_lengths_kv=*/seqlens_k_buffer.get(),
+      parameters.batch_size,
+      parameters.q_num_heads,            // num_heads_q
+      parameters.kv_num_heads,           // num_heads_kv
+      parameters.head_size,              // head_size_qk
+      parameters.v_head_size,            // head_size_v (cuDNN allows head_size != v_head_size)
+      parameters.q_sequence_length,      // sequence_length_q
+      parameters.total_sequence_length,  // sequence_length_kv (capacity → physical strides)
+      parameters.scale,
+      parameters.is_causal,
+      is_bf16,
+      /*broadcast_attn_bias_dim_0=*/false,
+      /*broadcast_attn_bias_dim_1=*/false,
+      /*sliding_window=*/0,
+      qkv_format,
+      cudnn_handle,
+      ort_stream,
+      allocator);
+
+  // --- Fully-masked-batch guard (REQUIRED, §4.3 step 7). nonpad_kv_seqlen[b] may be 0; every
+  // other tier defines output = 0 there, but cuDNN's softmax over an all -inf row is unspecified
+  // (likely NaN). Zero those rows on the BSNH output before transposing to BNSH. This is a
+  // spec-equivalence requirement, not defense-in-depth. Cannot be done as a host-side eligibility
+  // gate because nonpad_kv_seqlen is a device buffer (a D2H copy would break CUDA-graph capture). ---
+  {
+    using CudaT = typename OrtToCudaType<T>::type;
+    int64_t elements_per_batch = static_cast<int64_t>(parameters.q_sequence_length) *
+                                 parameters.q_num_heads * parameters.v_head_size;
+    ORT_RETURN_IF_ERROR(LaunchZeroOutputForFullyMaskedBatches<CudaT>(
+        reinterpret_cast<CudaT*>(out_data),
+        seqlens_k_buffer.get(),
+        parameters.batch_size,
+        elements_per_batch,
+        cuda_stream,
+        device_prop.maxThreadsPerBlock));
+  }
+
+  // --- Transpose output BSNH → BNSH if input was 4D (BNSH) ---
+  if (!is_bsnh && out_bsnh_buffer != nullptr) {
+    ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(
+        parameters.batch_size, parameters.q_sequence_length,
+        parameters.q_num_heads, parameters.v_head_size,
+        out_bsnh_buffer.get(), Y->MutableData<T>(),
+        cuda_stream, device_prop.maxThreadsPerBlock));
+  }
+
+  // --- Populate present_key/value (BNSH) from the input K/V cache (separate outputs, not aliases).
+  // K/V are the full external cache after TensorScatter; mirror RunFlashAttention's Path-1/prompt
+  // population (transpose BSNH→BNSH for 3D inputs, D2D copy for 4D BNSH inputs). ---
+  if (present_key != nullptr && is_bsnh) {
+    ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(
+        parameters.batch_size, parameters.kv_sequence_length,
+        parameters.kv_num_heads, parameters.head_size,
+        K->Data<T>(), present_key->MutableData<T>(),
+        cuda_stream, device_prop.maxThreadsPerBlock));
+  } else if (present_key != nullptr && !is_bsnh) {
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+        present_key->MutableData<T>(), K->Data<T>(),
+        K->SizeInBytes(), cudaMemcpyDeviceToDevice, cuda_stream));
+  }
+  if (present_value != nullptr && is_bsnh) {
+    ORT_RETURN_IF_ERROR(TransposeBSNHtoBNSH<T>(
+        parameters.batch_size, parameters.kv_sequence_length,
+        parameters.kv_num_heads, parameters.v_head_size,
+        V->Data<T>(), present_value->MutableData<T>(),
+        cuda_stream, device_prop.maxThreadsPerBlock));
+  } else if (present_value != nullptr && !is_bsnh) {
+    CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(
+        present_value->MutableData<T>(), V->Data<T>(),
+        V->SizeInBytes(), cudaMemcpyDeviceToDevice, cuda_stream));
+  }
+
+  return Status::OK();
 }
 
 // ============================================================================
@@ -1344,9 +1528,27 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   //   Flash: cannot handle this combo (no bias param when seqlens_k is used) → excluded.
   //   MEA:   supports both (custom_right_padding for seqlens + additive attn_bias for mask).
   //   Unfused: nonpad → seqlens_k; mask → attention_bias; both handled independently in softmax kernel.
-#if USE_FLASH_ATTENTION || USE_MEMORY_EFFICIENT_ATTENTION
-  const bool has_output_qk = (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone);
-#endif
+  // has_output_qk is needed by all three (cuDNN, Flash, MEA) eligibility blocks. cuDNN is not
+  // gated under USE_FLASH_ATTENTION / USE_MEMORY_EFFICIENT_ATTENTION, so define it unconditionally.
+  [[maybe_unused]] const bool has_output_qk =
+      (qk_matmul_output_mode_ != attention_helper::QKMatMulOutputMode::kNone);
+
+  // Debug-info dispatch recording (mirrors contrib_ops/cuda/bert/attention.cc). When enabled,
+  // records which tier ran so tests can assert routing (the ONNX Attention kernel previously had
+  // no AttentionKernelDebugInfo wiring). Call right before each early return in the cascade.
+  const bool allow_debug_info = this->GetAttentionKernelOptions()->AllowDebugInfo();
+  auto emit_debug_info = [&](bool use_cudnn, bool use_flash, bool use_mea) {
+    if (allow_debug_info) {
+      AttentionKernelDebugInfo debug_info;
+      debug_info.use_cudnn_flash_attention = use_cudnn;
+      debug_info.use_flash_attention = use_flash;
+      debug_info.use_efficient_attention = use_mea;
+      debug_info.Print("Attention",
+                       this->Node().Name(),
+                       std::is_same<T, MLFloat16>::value,
+                       std::is_same<T, BFloat16>::value);
+    }
+  };
 
   // softmax_precision: All CUDA backends (Flash, MEA, Unfused) compute softmax in
   // FP32 internally (Flash/MEA via tile-based FP32 accumulators, Unfused via FP32
@@ -1376,6 +1578,61 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // cross-attention without an external cache (causal_cross_no_past && nonpad_kv_seqlen ==
   // nullptr) keeps upper-left alignment and is handled by MEA/Unfused below.
 
+  // === cuDNN SDPA decode tier (Phase 1) ===
+  // Highest priority when eligible, so the effective cascade is cuDNN → Flash → MEA → Unfused.
+  // NOT gated under USE_FLASH_ATTENTION / USE_MEMORY_EFFICIENT_ATTENTION: GQA's cuDNN eligibility
+  // lives outside those macros and the wrapper stubs out via CUDNN_MAJOR when cuDNN is too old.
+  //
+  // Phase-1 hard gate (ALL required, §3 of issue #29714): narrowly scoped to the opset-24
+  // external-KV-cache single-token decode path — its actual value proposition — so it cannot steal
+  // traffic from currently-correct paths:
+  //   * nonpad_kv_seqlen != nullptr  (opset-24 external cache)
+  //   * past_key == nullptr          (external cache, not internal past/present — Path 2 is Phase 2)
+  //   * is_causal == true
+  //   * q_sequence_length == 1       (decode: the only unconditionally-safe causal case — cuDNN
+  //                                    drops causal masking for s_q==1, so the per-batch KV padding
+  //                                    mask alone yields the exact ONNX frontier. Prefill (s_q>1)
+  //                                    needs extra anchor + query-padding handling → Phase 3.)
+  //   * !has_output_qk               (cuDNN cannot produce the optional output_qk)
+  //   * attn_mask == nullptr         (explicit mask routes to MEA/Unfused, unchanged)
+  //   * softcap == 0                 (no softcap / smooth-softmax / head-sink; ONNX Attention has
+  //                                    no head-sink, keep defensive)
+  //   * fp16/bf16 with head_size % 8 == 0 and <= 256 (checked by cudnn_sdpa::is_supported)
+  {
+    auto& device_prop = GetDeviceProp();
+    const bool cudnn_flash_enabled =
+        enable_cudnn_flash_attention_ ||
+        (auto_enable_cudnn_flash_attention_ && device_prop.major >= 9);
+    const bool cudnn_eligible =
+        cudnn_flash_enabled &&
+        nonpad_kv_seqlen != nullptr &&
+        past_key == nullptr &&
+        parameters.is_causal &&
+        parameters.q_sequence_length == 1 &&
+        !has_output_qk &&
+        attn_mask == nullptr &&
+        parameters.softcap == 0.0f &&
+        onnxruntime::cudnn_sdpa::is_stable() &&
+        onnxruntime::cudnn_sdpa::is_supported(device_prop,
+                                              parameters.q_num_heads,
+                                              parameters.kv_num_heads,
+                                              parameters.head_size,              // head_size_qk
+                                              parameters.v_head_size,            // head_size_v
+                                              parameters.q_sequence_length,      // seq_len_q
+                                              parameters.total_sequence_length,  // seq_len_kv (capacity)
+                                              parameters.is_causal);
+
+    if (cudnn_eligible) {
+      LOGS_DEFAULT(VERBOSE) << "ONNX Attention: using cuDNN SDPA"
+                            << " (batch=" << parameters.batch_size
+                            << ", q_seq=" << parameters.q_sequence_length
+                            << ", total_seq=" << parameters.total_sequence_length << ")";
+      emit_debug_info(/*use_cudnn=*/true, /*use_flash=*/false, /*use_mea=*/false);
+      return RunCudnnSdpaAttention(context, Q, K, V, nonpad_kv_seqlen,
+                                   Y, present_key, present_value, parameters);
+    }
+  }
+
 #if USE_FLASH_ATTENTION
   {
     auto& device_prop = GetDeviceProp();
@@ -1399,6 +1656,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                             << ", q_seq=" << parameters.q_sequence_length
                             << ", total_seq=" << parameters.total_sequence_length
                             << ", past=" << (past_key != nullptr ? "yes" : "no") << ")";
+      emit_debug_info(/*use_cudnn=*/false, /*use_flash=*/true, /*use_mea=*/false);
       return RunFlashAttention(context, Q, K, V, past_key, past_value,
                                nonpad_kv_seqlen, Y, present_key, present_value, parameters);
     }
@@ -1451,6 +1709,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                             << ", total_seq=" << parameters.total_sequence_length
                             << ", past=" << (past_key != nullptr ? "yes" : "no")
                             << ", mask=" << (attn_mask != nullptr ? "yes" : "no") << ")";
+      emit_debug_info(/*use_cudnn=*/false, /*use_flash=*/false, /*use_mea=*/true);
       return RunMemoryEfficientAttention(context, Q, K, V, attn_mask, past_key, past_value,
                                          nonpad_kv_seqlen, Y, present_key, present_value, parameters);
     }
@@ -1479,6 +1738,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   LOGS_DEFAULT(VERBOSE) << "Attention: using unified unfused path (is_gqa=" << is_gqa
                         << ", head_size=" << parameters.head_size
                         << ", softcap=" << parameters.softcap << ")";
+  emit_debug_info(/*use_cudnn=*/false, /*use_flash=*/false, /*use_mea=*/false);
   return RunUnfusedAttention(context, Q, K, V, attn_mask, past_key, past_value,
                              nonpad_kv_seqlen, Y, present_key, present_value,
                              output_qk, parameters);
