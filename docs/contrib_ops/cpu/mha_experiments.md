@@ -168,6 +168,60 @@ parallelism alone delivers a solid speedup.
 - The `[B,S,T]` mask is still materialized by `PrepareMask`. A further optimization could
   broadcast a `[B,T]` padding mask directly during the fused softmax pass (no `S`-axis
   materialization), but that is a separate change with causal-mask handling to consider.
+  **(Implemented in Experiment 4 below.)**
 - The batched-GEMM path is `float`-only (the only instantiation of this base). If a
   half-precision CPU `Attention`/`MHA` is ever added, it will use the per-head fallback until
   a batched half GEMM is wired up.
+
+## Experiment 4 — `[B,T]` padding mask broadcast in softmax
+
+A pure padding mask (1D `mask_index` of shape `(B)`/`(2B)`, or a 2D key mask `(B, T)`) with
+**no** causal mask does not depend on the query position `S`. Instead of expanding it to a
+full `[B, S, T]` tensor (`PrepareMask`), it is now kept as `[B, T]` (`PreparePaddingMask`) and
+broadcast across `S` during the fused softmax via a `mask_seq_stride = 0`.
+
+`ComputeAttentionProbs` takes `mask_batch_stride` / `mask_seq_stride`; the mask row for
+`(batch b, query s)` is `mask_data + b * mask_batch_stride + s * mask_seq_stride`:
+
+- full `[B,S,T]` mask (causal, 3D mask, or causal+padding): `batch_stride = S*T`, `seq_stride = T`.
+- `[B,T]` padding mask (this optimization): `batch_stride = T`, `seq_stride = 0`.
+
+This shrinks the mask buffer by a factor of `S`, removes the `S`-axis broadcast/`memcpy` in
+mask preparation, and cuts the mask bytes read during softmax from `O(B·N·S·T)` to
+`O(B·N·S·T)` reads of only `B·T` distinct bytes (hot in cache).
+
+**Why this matters:** CPU flash attention is skipped whenever `key_padding_mask != nullptr`
+(see `multihead_attention.cc`), so a **non-causal BERT/DistilBERT with a padding mask** runs
+through exactly this `AttentionCPUBase` path — the common real-world inference case.
+
+Benchmark uses a **2D key padding mask, non-causal** (`bench_padmask.py`, min over 3 runs ×
+500 iters, `taskset -c 0-15`). Three builds: **baseline** (`origin/main`), **deep fix only**
+(Experiment 2, no `[B,T]`), **+[B,T]** (this change on top of the deep fix). The deep-fix-only
+number is obtained by forcing `padding_mask_only = false`.
+
+| model shape (b, s, heads, 64) | threads | baseline | deep-fix only | +[B,T] | +[B,T] vs baseline |
+|---|---:|---:|---:|---:|---:|
+| BERT-base   (1, 384, 12) | 8  | 1.718 | 2.012 | 1.588 | **+8%** |
+| BERT-base   (1, 384, 12) | 16 | 1.846 | 1.919 | 1.609 | **+13%** |
+| BERT-base   (8, 384, 12) | 8  | 15.213 | 14.529 | 12.783 | **+16%** |
+| BERT-base   (8, 384, 12) | 16 | 13.489 | 12.615 | 11.556 | **+14%** |
+| BERT-large  (4, 512, 16) | 8  | 17.194 | 15.632 | 14.945 | **+13%** |
+| BERT-large  (4, 512, 16) | 16 | 14.512 | 13.567 | 12.302 | **+15%** |
+| DistilBERT  (8, 256, 12) | 8  | 7.388 | 6.977 | 6.199 | **+16%** |
+| DistilBERT  (8, 256, 12) | 16 | 6.603 | 6.340 | 6.185 | +6% |
+| BERT-base   (1, 512, 12) | 8  | 3.494 | 3.088 | 2.888 | **+17%** |
+| BERT-base   (1, 512, 12) | 16 | 2.925 | 2.811 | 2.686 | +8% |
+
+**Assessment:**
+
+- **Deep-fix-only is mixed vs baseline for padding masks:** it helps larger batches (BERT-base
+  `b=8 @8`: 15.213 → 14.529) but slightly *hurts* tiny `b=1` shapes (BERT-base `b=1 s=384 @8`:
+  1.718 → 2.012) — when `B·N ≥ threads` the batched GEMM adds little parallelism, and per-row
+  softmax is marginally slower than baseline's single batched `MlasComputeSoftmax`.
+- **`[B,T]` is the decisive optimization for padding masks:** it is faster than deep-fix-only
+  by **+4% to +21%** (e.g. BERT-base `b=1 s=384 @8`: 2.012 → 1.588 ms, +21%), and turns the
+  combined change into a **+6% to +17%** net win over `origin/main` across every
+  BERT/DistilBERT shape — including the small `b=1` cases where deep-fix-only alone regressed.
+- Correctness: `onnxruntime_provider_test` — all 112 mask tests pass (1D left/right padding,
+  2D raw mask, 3D mask, causal+mask, clamp-OOB), covering both the reduced `[B,T]` branch and
+  the full `[B,S,T]` fallback.

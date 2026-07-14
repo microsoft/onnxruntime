@@ -61,28 +61,52 @@ class AttentionCPUBase : public AttentionBase {
     // Total sequence length including that of past state: T = P + L
     const int total_sequence_length = past_sequence_length + kv_sequence_length;
 
-    // Merge causal mask with padding mask, and convert values from 0/1 to -inf/0, then broadcast to 3D (BxSxT).
+    // Merge causal mask with padding mask, and convert values from 0/1 to -inf/0.
     bool causal = (is_unidirectional_ && sequence_length > 1);
-    void* mask_data = nullptr;
-    if (mask_index != nullptr || causal) {
-      size_t mask_data_bytes = SafeInt<size_t>(batch_size) * sequence_length * total_sequence_length * sizeof(T);
-      mask_data = allocator->Alloc(mask_data_bytes);
-      memset(mask_data, 0, mask_data_bytes);
-    }
-    BufferUniquePtr mask_data_buffer(mask_data, BufferDeleter(allocator));
+
     const int32_t* mask_index_data = mask_index != nullptr ? mask_index->Data<int32_t>() : nullptr;
     gsl::span<const int64_t> mask_index_dims = mask_index != nullptr
                                                    ? mask_index->Shape().GetDims()
                                                    : gsl::span<const int64_t>{};
+
+    // A pure padding mask (1D mask_index of shape (B) or (2B), or a 2D raw key mask of shape (B, T)),
+    // without a causal mask, does not depend on the query position S. Store it as [B, T] and broadcast
+    // across S during softmax (mask_seq_stride = 0) instead of materializing the full [B, S, T] mask.
+    const bool padding_mask_only = (mask_index_data != nullptr) && !causal &&
+                                   (mask_index_dims.size() == 1 || mask_index_dims.size() == 2);
+
+    void* mask_data = nullptr;
+    ptrdiff_t mask_batch_stride = 0;  // stride (in elements) between consecutive batches in mask_data
+    ptrdiff_t mask_seq_stride = 0;    // stride (in elements) between consecutive query positions (0 broadcasts)
+    if (mask_index != nullptr || causal) {
+      const size_t mask_rows = padding_mask_only ? SafeInt<size_t>(batch_size)
+                                                 : SafeInt<size_t>(batch_size) * sequence_length;
+      size_t mask_data_bytes = mask_rows * total_sequence_length * sizeof(T);
+      mask_data = allocator->Alloc(mask_data_bytes);
+      memset(mask_data, 0, mask_data_bytes);
+
+      mask_batch_stride = padding_mask_only
+                              ? static_cast<ptrdiff_t>(total_sequence_length)
+                              : static_cast<ptrdiff_t>(SafeInt<ptrdiff_t>(sequence_length) * total_sequence_length);
+      mask_seq_stride = padding_mask_only ? static_cast<ptrdiff_t>(0) : static_cast<ptrdiff_t>(total_sequence_length);
+    }
+    BufferUniquePtr mask_data_buffer(mask_data, BufferDeleter(allocator));
+
     DUMP_CPU_TENSOR_INIT();
     DUMP_CPU_TENSOR("Mask", mask_index_data, mask_index_dims);
 
     if (mask_data != nullptr) {
       // Convert mask from boolean (0/1) to float (mask_filter_value/0.0f).
-      // Merge padding mask with causal mask, and broadcast to 3D (BxSxT).
-      PrepareMask(mask_index_data, mask_index_dims, static_cast<T*>(mask_data),
-                  causal, batch_size, sequence_length, kv_sequence_length, past_sequence_length, mask_filter_value_);
-      DUMP_CPU_TENSOR("Mask3D", static_cast<T*>(mask_data), batch_size, sequence_length, total_sequence_length);
+      if (padding_mask_only) {
+        PreparePaddingMask(mask_index_data, mask_index_dims, static_cast<T*>(mask_data),
+                           batch_size, kv_sequence_length, past_sequence_length, mask_filter_value_);
+        DUMP_CPU_TENSOR("Mask2D", static_cast<T*>(mask_data), batch_size, total_sequence_length);
+      } else {
+        // Merge padding mask with causal mask, and broadcast to 3D (BxSxT).
+        PrepareMask(mask_index_data, mask_index_dims, static_cast<T*>(mask_data),
+                    causal, batch_size, sequence_length, kv_sequence_length, past_sequence_length, mask_filter_value_);
+        DUMP_CPU_TENSOR("Mask3D", static_cast<T*>(mask_data), batch_size, sequence_length, total_sequence_length);
+      }
     }
 
     float scale = scale_ == 0.0f ? 1.0f / sqrt(static_cast<float>(qk_head_size)) : scale_;
@@ -110,7 +134,7 @@ class AttentionCPUBase : public AttentionBase {
     auto attention_probs = allocator->Alloc(bytes);
     BufferUniquePtr scratch_buffer(attention_probs, BufferDeleter(allocator));
     ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K,
-                             static_cast<T*>(mask_data),
+                             static_cast<T*>(mask_data), mask_batch_stride, mask_seq_stride,
                              batch_size, sequence_length, kv_sequence_length, past_sequence_length,
                              qk_head_size == 0 ? v_head_size : qk_head_size, past_data, past_key_data, present_data,
                              present_key_data, output_qk_data, tp, scale, attn_bias_data, attn_bias_dims,
@@ -228,6 +252,8 @@ class AttentionCPUBase : public AttentionBase {
                              const T* Q,                               // Q data. Its size is BxNxSxH
                              const T* K,                               // k data. Its size is BxNxLxH
                              T* mask_data,                             // buffer for mask data.
+                             ptrdiff_t mask_batch_stride,              // element stride between batches in mask_data
+                             ptrdiff_t mask_seq_stride,                // element stride between query positions (0 broadcasts)
                              int batch_size,                           // batch size of self-attention
                              int sequence_length,                      // sequence length of self-attention (S)
                              int kv_sequence_length,                   // sequence length of cross-attention (L)
@@ -399,8 +425,9 @@ class AttentionCPUBase : public AttentionBase {
           }
 
           if (mask_data != nullptr) {
-            // Mask data has shape (B, S, T) and is broadcast across the num_heads dimension.
-            const ptrdiff_t mask_offset = (SafeInt<ptrdiff_t>(batch_index) * sequence_length + s_i) * D;
+            // Mask data is broadcast across the num_heads dimension. It is either the full [B, S, T]
+            // mask (mask_seq_stride = T) or a [B, T] padding mask broadcast across S (mask_seq_stride = 0).
+            const ptrdiff_t mask_offset = SafeInt<ptrdiff_t>(batch_index) * mask_batch_stride + s_i * mask_seq_stride;
             MlasEltwiseAdd<T>(row, mask_data + mask_offset, row, static_cast<size_t>(D));
           }
 
