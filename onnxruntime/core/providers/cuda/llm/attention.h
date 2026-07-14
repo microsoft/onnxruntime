@@ -35,8 +35,10 @@ class Attention final : public CudaKernel {
   // Reads the full `present` KV cache (K/V) and a per-batch valid length derived from
   // nonpad_kv_seqlen; produces GQA-class decode latency without any host-side valid-length
   // readback (CUDA-graph safe). Only reached for the narrowly gated decode case: external
-  // cache (nonpad_kv_seqlen != nullptr, past_key == nullptr), is_causal, q_sequence_length == 1,
-  // no attn_mask / output_qk / softcap, fp16/bf16. See the cascade in ComputeInternal.
+  // cache (nonpad_kv_seqlen != nullptr, past_key == nullptr), q_sequence_length == 1,
+  // no attn_mask / output_qk / softcap, fp16/bf16 (is_causal is not gated — for s_q==1 cuDNN
+  // drops causal masking, so both is_causal values reduce to the same padding-only frontier).
+  // See the cascade in ComputeInternal.
   Status RunCudnnSdpaAttention(
       OpKernelContext* context,
       const Tensor* Q, const Tensor* K, const Tensor* V,
@@ -78,11 +80,15 @@ class Attention final : public CudaKernel {
   int softmax_precision_;
   bool disable_flash_attention_;
   bool disable_memory_efficient_attention_;
-  // cuDNN SDPA (cudnn_frontend) tier. Reuses the shared cuDNN option surfaced via
+  // cuDNN SDPA (cudnn_frontend) tier. NOTE: these use enable_/auto_enable_ polarity (not the
+  // disable_ polarity of the two members above) deliberately, to mirror GroupQueryAttention's
+  // cuDNN members verbatim (group_query_attention.h) — the cuDNN option defaults OFF, unlike
+  // Flash/MEA which default ON, so an enable_ flag is the natural fit and keeps the two ops'
+  // cuDNN gating identical. Reuses the shared cuDNN option surfaced via
   // AttentionKernelOptions::UseCudnnFlashAttention() / AllowCudnnFlashAttentionAuto() (no
-  // Attention-specific option key). Mirrors GroupQueryAttention: enable_ is set when the option is
-  // on (fp16/bf16 only); auto_enable_ additionally auto-prefers cuDNN on SM>=90 unless the user
-  // pinned kernels or disabled it.
+  // Attention-specific option key). enable_ is set when the option is on (fp16/bf16 only);
+  // auto_enable_ additionally auto-prefers cuDNN on SM>=90 unless the user pinned kernels or
+  // disabled it.
   bool enable_cudnn_flash_attention_;
   bool auto_enable_cudnn_flash_attention_;
 };

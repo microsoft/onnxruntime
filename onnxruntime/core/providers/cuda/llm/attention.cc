@@ -551,9 +551,10 @@ Status Attention<T>::RunFlashAttention(
 // ============================================================================
 //
 // Scope (Phase 1): opset-24 external KV cache decode only. The caller gates this
-// on ALL of: nonpad_kv_seqlen != nullptr, past_key == nullptr, is_causal == true,
-// q_sequence_length == 1, no attn_mask / output_qk / softcap, fp16/bf16, and
-// cudnn_sdpa::is_supported(). See §4 of the design (issue #29714).
+// on ALL of: nonpad_kv_seqlen != nullptr, past_key == nullptr, q_sequence_length == 1,
+// no attn_mask / output_qk / softcap, fp16/bf16, and cudnn_sdpa::is_supported(). is_causal
+// is intentionally NOT gated: for s_q==1 cuDNN drops causal masking, so is_causal=0 and
+// is_causal=1 collapse to the identical padding-only frontier. See §4 of the design (issue #29714).
 //
 // Layout / semantics (mirrors RunFlashAttention Path 1):
 //   * Q: 3D inputs (is_bsnh) are already physical BSNH → no transpose, Q_K_V_BSNH.
@@ -589,6 +590,9 @@ Status Attention<T>::RunCudnnSdpaAttention(
   // keep a defensive check (past_key handling / prefill are Phase 2/3, deferred — see issue #29714).
   ORT_ENFORCE(nonpad_kv_seqlen != nullptr,
               "RunCudnnSdpaAttention requires nonpad_kv_seqlen (opset-24 external KV cache).");
+  ORT_ENFORCE(parameters.q_sequence_length == 1,
+              "RunCudnnSdpaAttention is Phase-1 decode-only (q_sequence_length must be 1, got ",
+              parameters.q_sequence_length, "). Prefill (s_q>1) is Phase 3 — see issue #29714.");
   ORT_ENFORCE(parameters.past_sequence_length == 0,
               "RunCudnnSdpaAttention with nonpad_kv_seqlen requires K/V to be the full cache "
               "(past_sequence_length must be 0, got ",
@@ -1588,11 +1592,15 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   // traffic from currently-correct paths:
   //   * nonpad_kv_seqlen != nullptr  (opset-24 external cache)
   //   * past_key == nullptr          (external cache, not internal past/present — Path 2 is Phase 2)
-  //   * is_causal == true
-  //   * q_sequence_length == 1       (decode: the only unconditionally-safe causal case — cuDNN
-  //                                    drops causal masking for s_q==1, so the per-batch KV padding
-  //                                    mask alone yields the exact ONNX frontier. Prefill (s_q>1)
-  //                                    needs extra anchor + query-padding handling → Phase 3.)
+  //   * q_sequence_length == 1       (decode: the only unconditionally-safe case for this tier.
+  //                                    For s_q==1 cuDNN drops causal masking entirely
+  //                                    (cudnn_flash_attention.cc:430), so is_causal=0 and
+  //                                    is_causal=1 collapse to the identical padding-only frontier
+  //                                    j ∈ [0, nonpad[b]−1]; both are exact ONNX-equivalent here.
+  //                                    is_causal is therefore intentionally NOT gated — requiring it
+  //                                    would leave this tier dead for the repo's own decode contract,
+  //                                    which emits is_causal=0. Prefill (s_q>1) needs extra anchor +
+  //                                    query-padding handling → Phase 3.)
   //   * !has_output_qk               (cuDNN cannot produce the optional output_qk)
   //   * attn_mask == nullptr         (explicit mask routes to MEA/Unfused, unchanged)
   //   * softcap == 0                 (no softcap / smooth-softmax / head-sink; ONNX Attention has
@@ -1607,7 +1615,6 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         cudnn_flash_enabled &&
         nonpad_kv_seqlen != nullptr &&
         past_key == nullptr &&
-        parameters.is_causal &&
         parameters.q_sequence_length == 1 &&
         !has_output_qk &&
         attn_mask == nullptr &&

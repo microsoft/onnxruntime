@@ -44,6 +44,10 @@ CUDA support:
 """
 
 import math
+import os
+import re
+import sys
+import threading
 import unittest
 
 import numpy
@@ -56,6 +60,83 @@ from onnxruntime import InferenceSession, OrtValue, SessionOptions, get_availabl
 # #################################################################################################
 #  Helper Functions
 # #################################################################################################
+
+
+class _CaptureStdout:
+    """Capture output written to OS file descriptor 1 (C++ stdout).
+
+    The attention kernel debug info is emitted by the native ONNX Runtime library directly to
+    fd 1, which Python's contextlib.redirect_stdout (which only swaps sys.stdout) cannot
+    intercept, so fd-level dup2 redirection is used instead. Mirrors CaptureStdout in test_gqa.py.
+    """
+
+    def __init__(self):
+        self.fd = 1
+        self.chunk_size = 1024
+        self.output = b""
+
+    def _capture(self):
+        chunks = []
+        while chunk := os.read(self._pipe_reader, self.chunk_size):
+            chunks.append(chunk)
+        self.output = b"".join(chunks)
+
+    def __enter__(self):
+        sys.stdout.flush()
+        self._duped_fd = os.dup(self.fd)
+        self._pipe_reader, pipe_writer = os.pipe()
+        os.dup2(pipe_writer, self.fd)
+        os.close(pipe_writer)
+        self._capture_thread = threading.Thread(target=self._capture)
+        self._capture_thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        sys.stdout.flush()
+        os.dup2(self._duped_fd, self.fd)
+        self._capture_thread.join()
+        os.close(self._pipe_reader)
+        os.close(self._duped_fd)
+
+
+def _parse_sdpa_kernel(captured_text):
+    """Extract the SdpaKernel=... tier name emitted by AttentionKernelDebugInfo::Print."""
+    match = re.search(r"SdpaKernel=(?P<kernel>[A-Z_]+)", captured_text)
+    return match.group("kernel") if match is not None else None
+
+
+def cudnn_decode_supported(head_size):
+    """Return True when the current platform is expected to route the gated decode case to cuDNN.
+
+    cuDNN SDPA needs SM>=80 and cuDNN>=9.3 (cudnn_flash_attention.cc). We probe the cuDNN version
+    via torch as a heuristic; ORT links its own cuDNN, so on a rare version mismatch this may
+    over/under-estimate, but it matches the "config expected to support it" contract used to avoid
+    silently passing on the MATH fallback.
+    """
+    if not has_cuda_device(80):
+        return False
+    cudnn_version = torch.backends.cudnn.version()
+    return cudnn_version is not None and cudnn_version >= 90300 and head_size % 8 == 0 and head_size <= 256
+
+
+def _run_capturing_sdpa_kernel(run_func):
+    """Run run_func with attention-kernel debug info enabled and return (result, sdpa_kernel).
+
+    Sets ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO before run_func creates its session (the option
+    is initialized once per provider at session creation) and captures the native fd-1 output so
+    the selected tier (SdpaKernel=...) can be asserted, following the test_gqa.py pattern.
+    """
+    previous = os.environ.get("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO")
+    os.environ["ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO"] = "1"
+    try:
+        with _CaptureStdout() as captured:
+            result = run_func()
+    finally:
+        if previous is None:
+            os.environ.pop("ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO", None)
+        else:
+            os.environ["ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO"] = previous
+    return result, _parse_sdpa_kernel(captured.output.decode(errors="replace"))
 
 
 def has_cuda_provider():
@@ -117,6 +198,11 @@ def numpy_attention_ref(q, k, v, nonpad_kv_seqlen, is_causal=False, attn_bias=No
 
     # Apply causal mask
     if is_causal:
+        # NOTE (Phase-3 caveat): this uses a CAPACITY-anchored bottom-right offset (kv_seq - q_seq).
+        # It is exact for decode (q_seq == 1), where every batch's single query attends the whole
+        # valid KV region regardless of nonpad[b]. If this reference is reused for prefill
+        # (q_seq > 1) with heterogeneous nonpad lengths, it DIVERGES from the ONNX per-batch
+        # frontier (nonpad[b] - q_seq) per onnx/onnx#8068 — switch to a per-batch offset there.
         for sq in range(q_seq):
             offset = kv_seq - q_seq
             for sk in range(kv_seq):
@@ -285,6 +371,9 @@ def run_tensorscatter_attention(
         scatter_positions: list of ints per batch — the write index for TensorScatter.
         nonpad_seqlens: list of ints per batch — valid KV length AFTER scatter.
         is_causal: 1 for causal attention, 0 for non-causal.
+        provider_options: optional single-provider options dict (e.g. {"sdpa_kernel": "24"})
+            applied to the InferenceSession for `ep`. Pass a plain dict, not a list — it is
+            wrapped in a one-element list internally to match the single `providers=[ep]` entry.
     """
     torch.manual_seed(42)
     kv_hidden = kv_num_heads * head_size
@@ -614,10 +703,10 @@ class TestTensorScatterAttentionCUDAFP32(unittest.TestCase):
 
 # cuDNN SDPA decode tier (Phase 1, issue #29714). Forces the cuDNN kernel via the sdpa_kernel
 # provider option (CUDNN_FLASH_ATTENTION=8 | MATH=16 fallback) so the gated external-cache decode
-# path (nonpad_kv_seqlen, is_causal, q_seq==1, fp16) routes to cuDNN when supported and falls back
-# to the unfused kernel otherwise. Both produce spec-equivalent output, so this asserts numeric
-# parity either way — in particular the fully-masked-batch (nonpad==0) zero-fill guard, which cuDNN
-# needs but the other tiers get for free.
+# path (nonpad_kv_seqlen, q_seq==1, fp16; both is_causal=0 and is_causal=1) routes to cuDNN when
+# supported and falls back to the unfused kernel otherwise. Both produce spec-equivalent output,
+# so this asserts numeric parity either way — in particular the fully-masked-batch (nonpad==0)
+# zero-fill guard, which cuDNN needs but the other tiers get for free.
 _CUDNN_DECODE_HEAD_SIZE = 64
 _CUDNN_DECODE_TOTAL_KV = 8
 
@@ -645,19 +734,29 @@ _CUDNN_DECODE_CASES = [
 
 
 def cudnn_decode_test_cases():
-    """cuDNN SDPA decode cases: single-token (q_seq==1), causal, external KV cache."""
-    for batch, q_seq, q_heads, kv_heads, scatter_pos, seqlens, label in _CUDNN_DECODE_CASES:
-        name = f"b{batch}_qh{q_heads}_kvh{kv_heads}_h{_CUDNN_DECODE_HEAD_SIZE}_{label}"
-        yield (name, batch, q_seq, q_heads, kv_heads, scatter_pos, seqlens)
+    """cuDNN SDPA decode cases: single-token (q_seq==1), external KV cache.
+
+    Exercised for BOTH is_causal=0 and is_causal=1. For s_q==1 cuDNN drops causal masking, so the
+    two collapse to the identical padding-only frontier — is_causal=0 (the repo's documented
+    decode contract) must select cuDNN just like is_causal=1, which the eligibility gate now allows.
+    """
+    for is_causal in (0, 1):
+        causal_str = "causal" if is_causal else "noncausal"
+        for batch, q_seq, q_heads, kv_heads, scatter_pos, seqlens, label in _CUDNN_DECODE_CASES:
+            name = f"b{batch}_qh{q_heads}_kvh{kv_heads}_h{_CUDNN_DECODE_HEAD_SIZE}_{causal_str}_{label}"
+            yield (name, batch, q_seq, q_heads, kv_heads, scatter_pos, seqlens, is_causal)
 
 
 @unittest.skipIf(not has_cuda_device(53), "CUDA device not available, skipping tests.")
 class TestTensorScatterAttentionCudnnSdpaDecode(unittest.TestCase):
     """Force the cuDNN SDPA decode tier for the opset-24 external-cache decode path (fp16).
 
-    Requires SM>=90 (Hopper/Blackwell) and cuDNN >= 9.3 for cuDNN to actually run; on other
-    configurations the sdpa_kernel selection falls back to the unfused kernel, and the parity
-    assertions still hold because both paths are spec-equivalent.
+    cuDNN actually runs when SM>=80 and cuDNN>=9.3 (SM>=90 is only the auto-enable heuristic, not a
+    hard requirement for the forced path). On such configs (cudnn_decode_supported) the test asserts
+    routing landed on CUDNN_FLASH_ATTENTION via the AttentionKernelDebugInfo hook, so a broken cuDNN
+    path / fully-masked guard cannot silently pass on the MATH fallback. On other configurations the
+    sdpa_kernel selection falls back to the unfused kernel and only the (still spec-equivalent)
+    parity assertions apply.
     """
 
     @parameterized.expand(cudnn_decode_test_cases())
@@ -670,22 +769,38 @@ class TestTensorScatterAttentionCudnnSdpaDecode(unittest.TestCase):
         kv_heads,
         scatter_pos,
         seqlens,
+        is_causal,
     ):
-        output, ref_output, present_k, present_v, ref_present_k, ref_present_v = run_tensorscatter_attention(
-            batch_size=batch,
-            total_kv_seq_len=_CUDNN_DECODE_TOTAL_KV,
-            q_seq_len=q_seq,
-            q_num_heads=q_heads,
-            kv_num_heads=kv_heads,
-            head_size=_CUDNN_DECODE_HEAD_SIZE,
-            nonpad_seqlens=seqlens,
-            scatter_positions=scatter_pos,
-            ep="CUDAExecutionProvider",
-            torch_type=torch.float16,
-            ort_type=TensorProto.FLOAT16,
-            is_causal=1,
-            provider_options={"sdpa_kernel": str(_SDPA_KERNEL_CUDNN_WITH_MATH_FALLBACK)},
+        def run():
+            return run_tensorscatter_attention(
+                batch_size=batch,
+                total_kv_seq_len=_CUDNN_DECODE_TOTAL_KV,
+                q_seq_len=q_seq,
+                q_num_heads=q_heads,
+                kv_num_heads=kv_heads,
+                head_size=_CUDNN_DECODE_HEAD_SIZE,
+                nonpad_seqlens=seqlens,
+                scatter_positions=scatter_pos,
+                ep="CUDAExecutionProvider",
+                torch_type=torch.float16,
+                ort_type=TensorProto.FLOAT16,
+                is_causal=is_causal,
+                provider_options={"sdpa_kernel": str(_SDPA_KERNEL_CUDNN_WITH_MATH_FALLBACK)},
+            )
+
+        (output, ref_output, present_k, present_v, ref_present_k, ref_present_v), sdpa_kernel = (
+            _run_capturing_sdpa_kernel(run)
         )
+
+        # On cuDNN-capable platforms the gated decode case MUST route to cuDNN (not silently fall
+        # back to MATH), otherwise the cuDNN path and its fully-masked zero-fill guard go untested.
+        if cudnn_decode_supported(_CUDNN_DECODE_HEAD_SIZE):
+            self.assertEqual(
+                "CUDNN_FLASH_ATTENTION",
+                sdpa_kernel,
+                f"Expected cuDNN SDPA decode tier on a cuDNN-capable platform, got {sdpa_kernel}",
+            )
+
         # Fully-masked rows (nonpad==0) must be exactly 0 (no NaN) — assert finiteness explicitly.
         self.assertFalse(numpy.isnan(output).any(), "cuDNN SDPA decode produced NaN output")
         numpy.testing.assert_allclose(output, ref_output, rtol=rtol["fp16"], atol=atol["fp16"])
