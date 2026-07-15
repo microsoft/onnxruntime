@@ -468,9 +468,11 @@ export interface OrtWasmModule
    * Mount the external data file to an internal map, which will be used during session initialization.
    *
    * @param externalDataFilePath - specify the relative path of the external data file.
-   * @param externalDataFileData - specify the content data.
+   * @param externalDataFileData - specify the content data, either as the whole file content (Uint8Array) or as a
+   * reference to the file (Blob, including File). In JSPI builds a Blob is streamed on demand during session
+   * initialization; in other builds it is fully materialized into memory first.
    */
-  mountExternalData(externalDataFilePath: string, externalDataFileData: Uint8Array): void;
+  mountExternalData(externalDataFilePath: string, externalDataFileData: Uint8Array | Blob): void;
   /**
    * Unmount all external data files from the internal map.
    */
