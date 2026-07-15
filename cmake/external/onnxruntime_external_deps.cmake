@@ -573,9 +573,20 @@ if(onnxruntime_USE_ONNX_LIGHT)
   # the onnx_light namespace, so mirror the upstream behaviour with onnx_light.
   add_compile_definitions(ONNX_NAMESPACE=onnx_light ONNX_ML=1)
 
-  # When resolved via find_package(onnx_light) the compatibility targets are
-  # namespaced (onnx::onnx / onnx::onnx_proto); alias them to the unqualified
-  # names onnxruntime links against. When built from source they already exist.
+  # When onnx-light is consumed as a prebuilt CMake package (e.g. the
+  # onnx-light-cpp-*.tar.gz release artifact) find_package(onnx_light) only
+  # exposes the onnx_light::* targets. The drop-in onnx::onnx / onnx::onnx_proto
+  # compatibility targets live in a separate `onnx` package config that depends
+  # on onnx_light, so pull it in when it is available and not already provided.
+  # (When onnx-light is built from source the unqualified onnx / onnx_proto
+  # targets already exist and this find_package is skipped.)
+  if(NOT TARGET onnx::onnx AND NOT TARGET onnx)
+    find_package(onnx CONFIG QUIET)
+  endif()
+
+  # When resolved via find_package the compatibility targets are namespaced
+  # (onnx::onnx / onnx::onnx_proto); alias them to the unqualified names
+  # onnxruntime links against. When built from source they already exist.
   if(TARGET onnx::onnx AND NOT TARGET onnx)
     message(STATUS "Aliasing onnx::onnx (onnx-light) to onnx")
     add_library(onnx ALIAS onnx::onnx)
