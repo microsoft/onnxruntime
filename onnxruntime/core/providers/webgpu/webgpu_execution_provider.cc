@@ -873,7 +873,7 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     }
     graph_buffer_mgr_active_ = false;
     if (context_.ValidationMode() >= ValidationMode::Basic) {
-      context_.PopErrorScope();
+      static_cast<void>(context_.PopErrorScope());
     }
     return deferred_status;
   }
